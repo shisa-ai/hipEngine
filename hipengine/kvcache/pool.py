@@ -1,14 +1,15 @@
-"""Chunked KV pool bookkeeping for continuous-batching admission tests.
+"""Chunked KV pool bookkeeping for continuous-batching admission.
 
-The real runtime allocator still owns HIP device memory.  This module provides a
-host-only, deterministic model of the C4 dynamic-pool contract: one startup
-chunk, append-only growth, stable block ids/pointers, idle tail shrink, and
-simple refcount/free-page accounting.
+``ChunkedKVPool`` is the deterministic host model used by scheduler tests.
+``DeviceChunkedKVPool`` applies the same append-only identity and idle-tail
+shrink contract to callback-owned runtime allocations without importing a
+backend into policy code.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any, Callable
 
 
 @dataclass(frozen=True, slots=True)
@@ -373,8 +374,346 @@ class ChunkedKVPool:
         return known
 
 
+@dataclass(frozen=True, slots=True)
+class DeviceKVPoolAllocation:
+    """One request reservation backed by a single device KV chunk."""
+
+    request_id: int
+    block_ids: tuple[int, ...]
+    pointers: tuple[int, ...]
+    chunk_start_block_id: int
+    backing: Any
+
+
+@dataclass(frozen=True, slots=True)
+class DeviceKVPoolStats:
+    """Observable counters for callback-backed device KV chunks."""
+
+    current_pages: int
+    current_bytes: int
+    high_water_observed_pages: int
+    high_water_observed_bytes: int
+    free_pages: int
+    refcounted_pages: int
+    pinned_pages: int
+    grow_events: int
+    grow_failures: int
+    shrink_events: int
+
+    def to_json_dict(self) -> dict[str, int]:
+        return {
+            "current_pages": self.current_pages,
+            "current_bytes": self.current_bytes,
+            "high_water_observed_pages": self.high_water_observed_pages,
+            "high_water_observed_bytes": self.high_water_observed_bytes,
+            "free_pages": self.free_pages,
+            "refcounted_pages": self.refcounted_pages,
+            "pinned_pages": self.pinned_pages,
+            "grow_events": self.grow_events,
+            "grow_failures": self.grow_failures,
+            "shrink_events": self.shrink_events,
+        }
+
+
+@dataclass(slots=True)
+class _DeviceKVPoolChunkState:
+    descriptor: KVPoolChunk
+    backing: Any
+    free_block_ids: set[int]
+
+
+class DeviceChunkedKVPool:
+    """Chunked page allocator whose chunks own real runtime backing.
+
+    The allocator invokes ``allocate_chunk`` only when it appends a chunk and
+    ``free_chunk`` only for fully-free, graph-unpinned tail chunks.  A request's
+    pages always come from one backing chunk so kernels with a base pointer plus
+    int32 block-table ABI can address every page without a pointer-table ABI
+    change.  Logical block ids are monotonic and are never reused after shrink.
+    """
+
+    def __init__(
+        self,
+        *,
+        page_bytes: int,
+        initial_pages: int,
+        low_water_pages: int | None = None,
+        high_water_pages: int | None = None,
+        chunk_pages: int | None = None,
+        idle_grace_seconds: float = 0.0,
+        allocate_chunk: Callable[[int, int], Any],
+        free_chunk: Callable[[Any], None],
+        page_pointer: Callable[[Any, int], int],
+    ) -> None:
+        if page_bytes <= 0:
+            raise ValueError("page_bytes must be positive")
+        if initial_pages <= 0:
+            raise ValueError("initial_pages must be positive")
+        if low_water_pages is not None and low_water_pages <= 0:
+            raise ValueError("low_water_pages must be positive")
+        if high_water_pages is not None and high_water_pages < initial_pages:
+            raise ValueError("high_water_pages cannot be below initial_pages")
+        if chunk_pages is not None and chunk_pages <= 0:
+            raise ValueError("chunk_pages must be positive")
+        if idle_grace_seconds < 0:
+            raise ValueError("idle_grace_seconds must be non-negative")
+        self.page_bytes = int(page_bytes)
+        self.low_water_pages = int(low_water_pages if low_water_pages is not None else initial_pages)
+        if self.low_water_pages > int(initial_pages):
+            raise ValueError("low_water_pages cannot exceed initial_pages")
+        self.high_water_pages = None if high_water_pages is None else int(high_water_pages)
+        self.chunk_pages = int(chunk_pages if chunk_pages is not None else initial_pages)
+        self.idle_grace_seconds = float(idle_grace_seconds)
+        self._allocate_chunk = allocate_chunk
+        self._free_chunk = free_chunk
+        self._page_pointer = page_pointer
+        self._chunks: list[_DeviceKVPoolChunkState] = []
+        self._refcounts: dict[int, int] = {}
+        self._pin_counts: dict[int, int] = {}
+        self._request_allocations: dict[int, DeviceKVPoolAllocation] = {}
+        self._next_block_id = 0
+        self._grow_events = 0
+        self._grow_failures = 0
+        self._shrink_events = 0
+        self._last_active_seconds = 0.0
+        self._high_water_observed_pages = 0
+        self._append_device_chunk(int(initial_pages), count_growth=False)
+
+    @property
+    def chunks(self) -> tuple[KVPoolChunk, ...]:
+        return tuple(chunk.descriptor for chunk in self._chunks)
+
+    @property
+    def current_pages(self) -> int:
+        return sum(chunk.descriptor.pages for chunk in self._chunks)
+
+    @property
+    def stats(self) -> DeviceKVPoolStats:
+        current = self.current_pages
+        return DeviceKVPoolStats(
+            current_pages=current,
+            current_bytes=current * self.page_bytes,
+            high_water_observed_pages=self._high_water_observed_pages,
+            high_water_observed_bytes=self._high_water_observed_pages * self.page_bytes,
+            free_pages=sum(len(chunk.free_block_ids) for chunk in self._chunks),
+            refcounted_pages=sum(1 for count in self._refcounts.values() if count > 0),
+            pinned_pages=sum(1 for count in self._pin_counts.values() if count > 0),
+            grow_events=self._grow_events,
+            grow_failures=self._grow_failures,
+            shrink_events=self._shrink_events,
+        )
+
+    @property
+    def allocations(self) -> dict[int, DeviceKVPoolAllocation]:
+        return dict(self._request_allocations)
+
+    def pointer_for(self, block_id: int) -> int:
+        block = int(block_id)
+        chunk = self._chunk_for_block(block)
+        return int(self._page_pointer(chunk.backing, block - chunk.descriptor.start_block_id))
+
+    def refcount(self, block_id: int) -> int:
+        return int(self._refcounts.get(int(block_id), 0))
+
+    def pin_count(self, block_id: int) -> int:
+        return int(self._pin_counts.get(int(block_id), 0))
+
+    def allocate(
+        self,
+        request_id: int,
+        pages: int,
+        *,
+        now_seconds: float = 0.0,
+    ) -> DeviceKVPoolAllocation:
+        """Reserve pages atomically, growing one real backing chunk if needed."""
+
+        rid = int(request_id)
+        count = int(pages)
+        if count <= 0:
+            raise ValueError("pages must be positive")
+        if rid in self._request_allocations:
+            raise ValueError(f"request_id {rid} already has a device KV allocation")
+        self._last_active_seconds = float(now_seconds)
+        chunk = self._find_chunk(count)
+        if chunk is None:
+            chunk = self._grow_for_allocation(count)
+        if chunk is None:
+            self._grow_failures += 1
+            raise MemoryError("device KV pool high-water rejection")
+        block_ids = self._contiguous_free_block_ids(chunk, count)
+        if len(block_ids) != count:
+            raise RuntimeError("device KV pool selected a chunk without a contiguous free run")
+        for block_id in block_ids:
+            chunk.free_block_ids.remove(block_id)
+            self._refcounts[block_id] = 1
+        allocation = DeviceKVPoolAllocation(
+            request_id=rid,
+            block_ids=block_ids,
+            pointers=tuple(self.pointer_for(block_id) for block_id in block_ids),
+            chunk_start_block_id=chunk.descriptor.start_block_id,
+            backing=chunk.backing,
+        )
+        self._request_allocations[rid] = allocation
+        return allocation
+
+    def release(self, request_id: int, *, now_seconds: float = 0.0) -> DeviceKVPoolAllocation:
+        """Release one request while preserving graph-pinned pages as unavailable."""
+
+        rid = int(request_id)
+        try:
+            allocation = self._request_allocations.pop(rid)
+        except KeyError as exc:
+            raise KeyError(f"request_id {rid} has no device KV allocation") from exc
+        self._last_active_seconds = float(now_seconds)
+        chunk = self._chunk_for_block(allocation.block_ids[0])
+        for block_id in allocation.block_ids:
+            count = self._refcounts.get(block_id, 0)
+            if count != 1:
+                raise RuntimeError("device KV allocation refcount drift")
+            self._refcounts[block_id] = 0
+            if self._pin_counts.get(block_id, 0) == 0:
+                chunk.free_block_ids.add(block_id)
+        return allocation
+
+    def pin(self, block_ids: tuple[int, ...] | list[int]) -> None:
+        for raw_block_id in block_ids:
+            block_id = int(raw_block_id)
+            self._chunk_for_block(block_id)
+            if self._refcounts.get(block_id, 0) <= 0:
+                raise ValueError("cannot graph-pin an unreferenced device KV page")
+            self._pin_counts[block_id] = self._pin_counts.get(block_id, 0) + 1
+
+    def unpin(self, block_ids: tuple[int, ...] | list[int]) -> None:
+        for raw_block_id in block_ids:
+            block_id = int(raw_block_id)
+            chunk = self._chunk_for_block(block_id)
+            count = self._pin_counts.get(block_id, 0)
+            if count <= 0:
+                raise ValueError("device KV page is not graph-pinned")
+            if count == 1:
+                self._pin_counts[block_id] = 0
+                if self._refcounts.get(block_id, 0) == 0:
+                    chunk.free_block_ids.add(block_id)
+            else:
+                self._pin_counts[block_id] = count - 1
+
+    def shrink_idle(self, *, now_seconds: float) -> int:
+        """Free only fully-free and graph-unpinned tail chunks after grace."""
+
+        if float(now_seconds) - self._last_active_seconds < self.idle_grace_seconds:
+            return 0
+        freed_pages = 0
+        while len(self._chunks) > 1 and self.current_pages > self.low_water_pages:
+            tail = self._chunks[-1]
+            tail_ids = tuple(tail.descriptor.block_ids)
+            if any(self._refcounts.get(block_id, 0) > 0 for block_id in tail_ids):
+                break
+            if any(self._pin_counts.get(block_id, 0) > 0 for block_id in tail_ids):
+                break
+            if len(tail.free_block_ids) != tail.descriptor.pages:
+                raise RuntimeError("device KV tail free-page accounting drift")
+            if tail.descriptor.pages > self.current_pages - self.low_water_pages:
+                break
+            self._free_chunk(tail.backing)
+            self._chunks.pop()
+            for block_id in tail_ids:
+                self._refcounts.pop(block_id, None)
+                self._pin_counts.pop(block_id, None)
+            freed_pages += tail.descriptor.pages
+            self._shrink_events += 1
+        return freed_pages
+
+    def close(self) -> None:
+        if self._request_allocations:
+            raise RuntimeError("cannot close device KV pool with live request allocations")
+        if any(count > 0 for count in self._pin_counts.values()):
+            raise RuntimeError("cannot close device KV pool with graph-pinned pages")
+        while self._chunks:
+            chunk = self._chunks.pop()
+            self._free_chunk(chunk.backing)
+        self._refcounts.clear()
+        self._pin_counts.clear()
+
+    def _find_chunk(self, pages: int) -> _DeviceKVPoolChunkState | None:
+        candidates = [
+            chunk
+            for chunk in self._chunks
+            if len(self._contiguous_free_block_ids(chunk, int(pages))) == int(pages)
+        ]
+        if not candidates:
+            return None
+        return min(candidates, key=lambda chunk: (len(chunk.free_block_ids), chunk.descriptor.start_block_id))
+
+    @staticmethod
+    def _contiguous_free_block_ids(
+        chunk: _DeviceKVPoolChunkState,
+        pages: int,
+    ) -> tuple[int, ...]:
+        count = int(pages)
+        run: list[int] = []
+        previous: int | None = None
+        for block_id in sorted(chunk.free_block_ids):
+            if previous is None or block_id == previous + 1:
+                run.append(block_id)
+            else:
+                run = [block_id]
+            if len(run) == count:
+                return tuple(run)
+            previous = block_id
+        return ()
+
+    def _grow_for_allocation(self, pages: int) -> _DeviceKVPoolChunkState | None:
+        grow_pages = max(int(pages), self.chunk_pages)
+        if self.high_water_pages is not None:
+            remaining = self.high_water_pages - self.current_pages
+            if remaining < int(pages):
+                return None
+            grow_pages = min(grow_pages, remaining)
+        return self._append_device_chunk(grow_pages, count_growth=True)
+
+    def _append_device_chunk(
+        self,
+        pages: int,
+        *,
+        count_growth: bool,
+    ) -> _DeviceKVPoolChunkState:
+        start = self._next_block_id
+        try:
+            backing = self._allocate_chunk(start, int(pages))
+        except Exception:
+            if count_growth:
+                self._grow_failures += 1
+            raise
+        descriptor = KVPoolChunk(start_block_id=start, pages=int(pages))
+        chunk = _DeviceKVPoolChunkState(
+            descriptor=descriptor,
+            backing=backing,
+            free_block_ids=set(descriptor.block_ids),
+        )
+        self._chunks.append(chunk)
+        for block_id in descriptor.block_ids:
+            self._refcounts[block_id] = 0
+            self._pin_counts[block_id] = 0
+        self._next_block_id += int(pages)
+        if count_growth:
+            self._grow_events += 1
+        self._high_water_observed_pages = max(self._high_water_observed_pages, self.current_pages)
+        return chunk
+
+    def _chunk_for_block(self, block_id: int) -> _DeviceKVPoolChunkState:
+        block = int(block_id)
+        for chunk in self._chunks:
+            start = chunk.descriptor.start_block_id
+            if start <= block < start + chunk.descriptor.pages:
+                return chunk
+        raise KeyError(f"unknown live device KV block id {block}")
+
+
 __all__ = [
     "ChunkedKVPool",
+    "DeviceChunkedKVPool",
+    "DeviceKVPoolAllocation",
+    "DeviceKVPoolStats",
     "KVPoolAllocation",
     "KVPoolChunk",
     "KVPoolCopyOnWriteFork",

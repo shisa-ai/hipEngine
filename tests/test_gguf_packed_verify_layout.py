@@ -12,11 +12,16 @@ from hipengine.core.memory import DeviceBuffer
 from hipengine.runtime.qwen35_gguf_runner import (
     FULL_ATTENTION,
     LINEAR_ATTENTION,
+    Qwen35GGUFPackedPrefillResult,
     _GGUFPackedTargetState,
     _GGUFPackedVerifySlotBlock,
     _GGUFFullAttentionPrefillScratch,
     _HipEventStageRecorder,
     _build_gguf_packed_verify_layout,
+    _packed_ar_prefill_linear_state_plan,
+    _packed_decode_metadata_device_eligible,
+    _plan_packed_ar_prefill_chunks,
+    _scatter_packed_layer_output_hidden,
 )
 
 
@@ -133,6 +138,31 @@ def test_gguf_packed_verify_layout_maps_rows_and_slot_state() -> None:
     assert layout.total_physical_positions == 24
 
 
+def test_gguf_packed_verify_layout_preserves_inactive_physical_lanes() -> None:
+    layout = _build_gguf_packed_verify_layout(
+        (
+            _GGUFPackedVerifySlotBlock(input_token_ids=(11,), start_position=5),
+            _GGUFPackedVerifySlotBlock(input_token_ids=(0,), start_position=-1, active=False),
+            _GGUFPackedVerifySlotBlock(input_token_ids=(33,), start_position=7),
+            _GGUFPackedVerifySlotBlock(input_token_ids=(0,), start_position=-1, active=False),
+        ),
+        block_size=4,
+        slot_capacity=12,
+    )
+
+    np.testing.assert_array_equal(layout.active_mask, np.asarray([True, False, True, False]))
+    np.testing.assert_array_equal(layout.input_token_ids, np.asarray([11, 0, 33, 0], dtype=np.int64))
+    np.testing.assert_array_equal(layout.row_positions, np.asarray([5, -1, 7, -1], dtype=np.int64))
+    np.testing.assert_array_equal(layout.live_counts, np.asarray([6, 0, 8, 0], dtype=np.int64))
+    np.testing.assert_array_equal(layout.cu_seqlens, np.arange(5, dtype=np.int32))
+    np.testing.assert_array_equal(layout.state_indices, np.arange(4, dtype=np.int64))
+    np.testing.assert_array_equal(layout.block_table[1], np.full((3,), -1, dtype=np.int32))
+    np.testing.assert_array_equal(layout.block_table[3], np.full((3,), -1, dtype=np.int32))
+    assert layout.rows == 4
+    assert layout.slot_count == 4
+    assert layout.max_live_count == 8
+
+
 def test_gguf_packed_verify_layout_supports_variable_rows() -> None:
     layout = _build_gguf_packed_verify_layout(
         (
@@ -148,6 +178,26 @@ def test_gguf_packed_verify_layout_supports_variable_rows() -> None:
     np.testing.assert_array_equal(layout.live_counts, np.asarray([5, 6, 7, 3], dtype=np.int64))
     np.testing.assert_array_equal(layout.cu_seqlens, np.asarray([0, 3, 4], dtype=np.int32))
     assert layout.blocks_per_slot == 2
+
+
+def test_gguf_packed_decode_device_metadata_requires_singleton_c4_layout() -> None:
+    singleton = _build_gguf_packed_verify_layout(
+        tuple(
+            _GGUFPackedVerifySlotBlock(input_token_ids=(slot + 1,), start_position=position)
+            for slot, position in enumerate((513, 517, 521, 525))
+        ),
+        slot_capacity=1024,
+    )
+    multi_token = _build_gguf_packed_verify_layout(
+        (
+            _GGUFPackedVerifySlotBlock(input_token_ids=(1, 2), start_position=4),
+            _GGUFPackedVerifySlotBlock(input_token_ids=(3, 4), start_position=8),
+        ),
+        slot_capacity=1024,
+    )
+
+    assert _packed_decode_metadata_device_eligible(singleton)
+    assert not _packed_decode_metadata_device_eligible(multi_token)
 
 
 def test_gguf_packed_prefill_uses_slot_local_full_attention_at_c1_threshold() -> None:
@@ -170,6 +220,248 @@ def test_gguf_packed_prefill_uses_slot_local_full_attention_at_c1_threshold() ->
         layout,
         aotriton_threshold=0,
     )
+
+
+def test_gguf_packed_layer_output_hidden_scatter_selects_slot_rows() -> None:
+    sessions = tuple(SimpleNamespace(_last_layer_output_hidden={}) for _ in range(3))
+    hidden = np.arange(6 * 4, dtype=np.float32).reshape(6, 4)
+
+    _scatter_packed_layer_output_hidden(
+        sessions,
+        layer_id=7,
+        hidden_rows=hidden,
+        row_indices=(1, 3, 5),
+    )
+
+    for session, row_index in zip(sessions, (1, 3, 5), strict=True):
+        np.testing.assert_array_equal(
+            session._last_layer_output_hidden[7],
+            hidden[row_index : row_index + 1],
+        )
+        assert session._last_layer_output_hidden[7].shape == (1, 4)
+
+
+def test_gguf_packed_ar_prefill_chunks_all_row_c4_without_slot_serialization() -> None:
+    prompts = tuple(
+        tuple(slot * 1000 + row for row in range(512))
+        for slot in range(4)
+    )
+
+    chunks = _plan_packed_ar_prefill_chunks(prompts, row_capacity=768)
+
+    assert [chunk.rows for chunk in chunks] == [768, 768, 512]
+    assert [chunk.slot_indices for chunk in chunks] == [
+        (0, 1, 2, 3),
+        (0, 1, 2, 3),
+        (0, 1, 2, 3),
+    ]
+    assert [tuple(len(tokens) for tokens in chunk.prompt_token_ids) for chunk in chunks] == [
+        (192, 192, 192, 192),
+        (192, 192, 192, 192),
+        (128, 128, 128, 128),
+    ]
+    assert [chunk.start_offsets for chunk in chunks] == [
+        (0, 0, 0, 0),
+        (192, 192, 192, 192),
+        (384, 384, 384, 384),
+    ]
+    for slot_index, prompt in enumerate(prompts):
+        reconstructed = tuple(
+            token
+            for chunk in chunks
+            for chunk_slot, tokens in zip(
+                chunk.slot_indices,
+                chunk.prompt_token_ids,
+                strict=True,
+            )
+            if chunk_slot == slot_index
+            for token in tokens
+        )
+        assert reconstructed == prompt
+
+
+def test_gguf_packed_ar_prefill_chunk_plan_preserves_fitting_ragged_slab() -> None:
+    prompts = (
+        (1,) * 512,
+        (2,) * 64,
+        (3,) * 64,
+        (4,) * 64,
+    )
+
+    chunks = _plan_packed_ar_prefill_chunks(prompts, row_capacity=768)
+
+    assert len(chunks) == 1
+    assert chunks[0].slot_indices == (0, 1, 2, 3)
+    assert chunks[0].start_offsets == (0, 0, 0, 0)
+    assert chunks[0].prompt_token_ids == prompts
+    assert chunks[0].rows == 704
+
+
+def test_gguf_packed_ar_prefill_chunk_plan_refuses_dropping_active_slots() -> None:
+    with pytest.raises(ValueError, match="active slots"):
+        _plan_packed_ar_prefill_chunks(((1,), (2,), (3,)), row_capacity=2)
+
+
+def test_gguf_packed_ar_prefill_executes_each_round_with_all_active_slots(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[tuple[int, ...], tuple[tuple[int, ...], ...]]] = []
+    routes: list[tuple[bool | None, tuple[int, ...]]] = []
+    sessions = tuple(SimpleNamespace(position=0) for _ in range(4))
+    session_index = {id(session): index for index, session in enumerate(sessions)}
+
+    def fake_single_slab(self, prompt_token_ids, *, sessions, **kwargs):
+        prompt_tuple = tuple(tuple(int(token) for token in prompt) for prompt in prompt_token_ids)
+        slot_indices = tuple(session_index[id(session)] for session in sessions)
+        calls.append((slot_indices, prompt_tuple))
+        routes.append(
+            (
+                kwargs.get("_slot_local_full_attention"),
+                tuple(kwargs.get("_force_aotriton_slot_indices", ())),
+            )
+        )
+        for session, prompt in zip(sessions, prompt_tuple, strict=True):
+            session.position += len(prompt)
+        return [SimpleNamespace(token_id=int(prompt[-1])) for prompt in prompt_tuple]
+
+    monkeypatch.setattr(
+        gguf_runner.Qwen35GGUFResidentSession,
+        "_prefill_batch_native_single_slab",
+        fake_single_slab,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        gguf_runner,
+        "PrefillConfig",
+        lambda: SimpleNamespace(attn_aotriton_min_tokens=4),
+    )
+    owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner._bulk_prefill_scratch = SimpleNamespace(rows=8)
+    prompts = tuple(tuple(slot * 100 + row for row in range(6)) for slot in range(4))
+
+    results = owner.prefill_batch_native(prompts, sessions=sessions)
+
+    assert [slots for slots, _ in calls] == [(0, 1, 2, 3)] * 3
+    assert [[len(prompt) for prompt in chunk] for _, chunk in calls] == [[2, 2, 2, 2]] * 3
+    assert routes == [(True, (0, 1, 2, 3))] * 3
+    assert [result.token_id for result in results] == [prompt[-1] for prompt in prompts]
+    assert [session.position for session in sessions] == [6, 6, 6, 6]
+    assert owner.last_packed_prefill_plan["chunk_rows"] == [8, 8, 8]
+    assert owner.last_packed_prefill_plan["slot_indices"] == [[0, 1, 2, 3]] * 3
+    assert owner.last_packed_prefill_plan["all_active_slots_represented"] is True
+
+
+def test_gguf_packed_ar_prefill_preserves_full_prompt_attention_route_across_scheduler_chunks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    routes: list[tuple[bool | None, tuple[int, ...]]] = []
+    session = SimpleNamespace(position=0)
+
+    def fake_single_slab(self, prompt_token_ids, *, sessions, **kwargs):
+        routes.append(
+            (
+                kwargs.get("_slot_local_full_attention"),
+                tuple(kwargs.get("_force_aotriton_slot_indices", ())),
+            )
+        )
+        prompt = tuple(int(token) for token in prompt_token_ids[0])
+        sessions[0].position += len(prompt)
+        return [SimpleNamespace(token_id=prompt[-1])]
+
+    monkeypatch.setattr(
+        gguf_runner.Qwen35GGUFResidentSession,
+        "_prefill_batch_native_single_slab",
+        fake_single_slab,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        gguf_runner,
+        "PrefillConfig",
+        lambda: SimpleNamespace(attn_aotriton_min_tokens=4),
+    )
+    owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner._bulk_prefill_scratch = SimpleNamespace(rows=8)
+
+    for chunk in ((10, 11), (12, 13), (14, 15)):
+        owner.prefill_batch_native(
+            (chunk,),
+            sessions=(session,),
+            full_prompt_lengths=(6,),
+        )
+
+    assert routes == [(True, (0,))] * 3
+    assert session.position == 6
+    assert owner.last_packed_prefill_plan["full_prompt_lengths"] == [6]
+    assert owner.last_packed_prefill_plan["aotriton_eligible_slots"] == [0]
+    assert owner.last_packed_prefill_plan["aotriton_eligibility_preserved_across_chunks"] is True
+
+
+def test_gguf_packed_ar_prefill_concatenates_hidden_seed_rounds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sessions = tuple(SimpleNamespace(position=position) for position in (3, 5))
+
+    def fake_single_slab(self, prompt_token_ids, *, sessions, return_hidden_seeds, **kwargs):
+        assert return_hidden_seeds
+        results = []
+        for session, prompt in zip(sessions, prompt_token_ids, strict=True):
+            start = int(session.position)
+            tokens = [int(token) for token in prompt]
+            hidden = np.repeat(np.asarray(tokens, dtype=np.float32)[:, None], 3, axis=1)
+            session.position += len(tokens)
+            results.append(
+                Qwen35GGUFPackedPrefillResult(
+                    input_token_ids=tokens,
+                    token_id=tokens[-1] + 1,
+                    hidden_seeds=hidden,
+                    start_position=start,
+                )
+            )
+        return results
+
+    monkeypatch.setattr(
+        gguf_runner.Qwen35GGUFResidentSession,
+        "_prefill_batch_native_single_slab",
+        fake_single_slab,
+    )
+    owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner._bulk_prefill_scratch = SimpleNamespace(rows=4)
+    prompts = ((10, 11, 12, 13), (20, 21, 22, 23))
+
+    results = owner.prefill_batch_native(
+        prompts,
+        sessions=sessions,
+        return_hidden_seeds=True,
+    )
+
+    assert [result.input_token_ids for result in results] == [list(prompt) for prompt in prompts]
+    assert [result.start_position for result in results] == [3, 5]
+    assert [result.token_id for result in results] == [14, 24]
+    for result, prompt in zip(results, prompts, strict=True):
+        np.testing.assert_array_equal(
+            result.hidden_seeds,
+            np.repeat(np.asarray(prompt, dtype=np.float32)[:, None], 3, axis=1),
+        )
+
+
+def test_gguf_packed_ar_prefill_keeps_only_final_segment_state() -> None:
+    layout = _build_gguf_packed_verify_layout(
+        (
+            _GGUFPackedVerifySlotBlock(input_token_ids=(1,) * 512, start_position=0),
+            _GGUFPackedVerifySlotBlock(input_token_ids=(2,) * 64, start_position=0),
+            _GGUFPackedVerifySlotBlock(input_token_ids=(3,) * 64, start_position=0),
+            _GGUFPackedVerifySlotBlock(input_token_ids=(4,) * 64, start_position=0),
+        )
+    )
+
+    plan = _packed_ar_prefill_linear_state_plan(layout)
+
+    assert layout.rows == 704
+    assert plan.route == "segmented_in_place_final_state"
+    assert plan.state_slots == 4
+    assert plan.transient_state_rows == 0
+    assert not plan.capture_token_state_rows
+    assert not plan.commit_captured_state_rows
 
 
 def test_gguf_packed_verify_layout_honors_slot_capacity() -> None:
@@ -254,7 +546,7 @@ def test_gguf_prefill_scratch_uploads_packed_verify_layout(monkeypatch) -> None:
         runner,
         rows=6,
         capacity=1024,
-        segments=2,
+        segments=4,
         allocate_kv_cache=False,
         runtime=SimpleNamespace(),
     )
@@ -283,6 +575,46 @@ def test_gguf_prefill_scratch_uploads_packed_verify_layout(monkeypatch) -> None:
     assert view.block_table_tensor.shape == layout.block_table.shape
     assert view.positions_tensor.shape == layout.row_positions.shape
     assert view.context_counts_tensor.shape == layout.live_counts.shape
+    assert view.metadata_prepare_path == "host_upload"
+
+    device_calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+
+    def fake_device_prepare(*args, **kwargs):
+        device_calls.append((args, kwargs))
+
+    singleton_layout = _build_gguf_packed_verify_layout(
+        tuple(
+            _GGUFPackedVerifySlotBlock(input_token_ids=(slot + 1,), start_position=position)
+            for slot, position in enumerate((513, 517, 521, 525))
+        ),
+        slot_capacity=1024,
+    )
+    copies.clear()
+
+    device_view = scratch.for_packed_verify_layout(
+        singleton_layout,
+        runtime=SimpleNamespace(),
+        stream=7,
+        metadata_prepare_fn=fake_device_prepare,
+    )
+
+    assert copies == {}
+    assert len(device_calls) == 1
+    args, kwargs = device_calls[0]
+    assert args[:8] == (
+        scratch.block_table.ptr,
+        scratch.positions.ptr,
+        scratch.context_counts.ptr,
+        scratch.cu_q.ptr,
+        scratch.cu_k.ptr,
+        scratch.atomic.ptr,
+        scratch.gdn_cu_seqlens.ptr,
+        scratch.gdn_state_indices.ptr,
+    )
+    assert args[8] == (513, 517, 521, 525)
+    assert args[9] == 4
+    assert kwargs["stream"] == 7
+    assert device_view.metadata_prepare_path == "device_prepare_persistent"
 
 
 def test_gguf_packed_target_state_allocates_per_slot_state(monkeypatch) -> None:
@@ -458,6 +790,105 @@ def test_gguf_packed_ar_exact_linear_attention_slices_slot_state() -> None:
             0xA000 + 8 * 4,
             7,
         ),
+    ]
+    assert ffn_calls == [(0, 0x8000, 0x6000, 2)]
+
+
+def test_gguf_packed_ar_exact_linear_attention_dispatches_indexed_batch_plan() -> None:
+    cfg = SimpleNamespace(
+        hidden_size=8,
+        ssm_group_count=1,
+        ssm_conv_kernel=4,
+        ssm_time_step_rank=2,
+        ssm_state_size=2,
+        ssm_inner_size=6,
+    )
+    runner = object.__new__(gguf_runner.Qwen35GGUFFullStackRunner)
+    runner.weights = SimpleNamespace(config=cfg)
+    conv_row_nbytes = 10 * 4 * 4
+    recurrent_row_nbytes = 2 * 2 * 3 * 4
+
+    @dataclass(frozen=True)
+    class DecodeScratch:
+        layer_conv_states: tuple[DeviceBuffer | None, ...]
+        layer_recurrent_states: tuple[DeviceBuffer | None, ...]
+
+    decode_scratch = DecodeScratch(
+        layer_conv_states=(DeviceBuffer(0x2000, 2 * conv_row_nbytes),),
+        layer_recurrent_states=(DeviceBuffer(0x4000, 2 * recurrent_row_nbytes),),
+    )
+    scratch = SimpleNamespace(attn_out=DeviceBuffer(0x6000, 2 * 8 * 2))
+    batch_calls: list[tuple[int, ...]] = []
+    ffn_calls: list[tuple[int, int, int, int]] = []
+    batch_plan = SimpleNamespace(
+        available=True,
+        conv_indexed=object(),
+        gdn_segments=object(),
+    )
+
+    def reject_scalar(*args, **kwargs):
+        raise AssertionError("indexed batch plan must not replay scalar attention rows")
+
+    def fake_indexed_attention(
+        self,
+        layer_id,
+        hidden_ptr,
+        attn_out_ptr,
+        scratch_arg,
+        *,
+        rows,
+        decode_scratch,
+        batch_plan,
+        gdn_cu_seqlens_ptr,
+        state_indices_ptr,
+        hidden_f32_ptr=None,
+        stream=0,
+    ):
+        assert scratch_arg is scratch
+        batch_calls.append(
+            (
+                int(layer_id),
+                int(hidden_ptr),
+                int(attn_out_ptr),
+                int(rows),
+                int(decode_scratch.layer_conv_states[layer_id].ptr),
+                int(decode_scratch.layer_recurrent_states[layer_id].ptr),
+                int(gdn_cu_seqlens_ptr),
+                int(state_indices_ptr),
+                int(hidden_f32_ptr),
+                int(stream),
+            )
+        )
+
+    def fake_ffn(self, layer_id, hidden_ptr, attn_out_ptr, out_ptr, scratch_arg, *, rows, **kwargs):
+        assert scratch_arg is scratch
+        ffn_calls.append((int(layer_id), int(hidden_ptr), int(attn_out_ptr), int(rows)))
+
+    runner._run_linear_attention_attn_only = MethodType(reject_scalar, runner)
+    runner._run_linear_attention_attn_rows_indexed_exact = MethodType(
+        fake_indexed_attention,
+        runner,
+    )
+    runner._run_post_attention_ffn_rows = MethodType(fake_ffn, runner)
+
+    path = runner._run_linear_attention_decode_slot_rows_exact(
+        0,
+        0x8000,
+        0x9000,
+        scratch,
+        rows=2,
+        state_indices=(1, 0),
+        decode_scratch=decode_scratch,
+        batch_plan=batch_plan,
+        gdn_cu_seqlens_ptr=0xA000,
+        state_indices_ptr=0xB000,
+        hidden_f32_ptr=0xC000,
+        stream=7,
+    )
+
+    assert path == "indexed_batch"
+    assert batch_calls == [
+        (0, 0x8000, 0x6000, 2, 0x2000, 0x4000, 0xA000, 0xB000, 0xC000, 7)
     ]
     assert ffn_calls == [(0, 0x8000, 0x6000, 2)]
 

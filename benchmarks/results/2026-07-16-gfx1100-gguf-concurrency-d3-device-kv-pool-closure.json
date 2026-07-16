@@ -1,0 +1,313 @@
+{
+  "claim_level": "continuous_eq_ok",
+  "clean_w7900_graph_memory_gate": {
+    "command": "PY=/home/lhl/mambaforge/envs/therock/bin/python3.12; ROOT=$($PY -m rocm_sdk path --root); env -i HOME=$HOME USER=$USER LOGNAME=$LOGNAME SHELL=$SHELL TERM=${TERM:-xterm} PATH=$ROOT/bin:/home/lhl/mambaforge/envs/therock/bin:/usr/local/bin:/usr/bin:/bin LD_LIBRARY_PATH=$ROOT/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx110X_all/lib HIP_PATH=$ROOT ROCM_PATH=$ROOT HIP_LIB_PATH=$ROOT/lib HIP_INCLUDE_PATH=$ROOT/include HSA_OVERRIDE_GFX_VERSION=11.0.0 HIP_VISIBLE_DEVICES=0 PYTHONPATH=. HIPENGINE_COMPILER_VERSION_FILE=/tmp/gfx1100-concurrency/hipcc-version.txt /home/lhl/mambaforge/envs/therock/bin/python3.12 /tmp/gfx1100_d3_kv_graph_lifecycle.py",
+    "elapsed_seconds": 75.99303314596182,
+    "graph": {
+      "first_tail_ids": [
+        3,
+        4,
+        5
+      ],
+      "invalidations_after_reclaim": 1,
+      "low_water_pointer_stable": true,
+      "pinned_pages_during_capture": 3,
+      "second_tail_ids": [
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14
+      ],
+      "tail_pointer_stable_through_replay": true
+    },
+    "harness": {
+      "path": "/tmp/gfx1100_d3_kv_graph_lifecycle.py",
+      "sha256": "1472648ff8c89b936ffecb9f3a0d4785fdcee1b9a76f2fc297b0341ab5685963",
+      "size_bytes": 10900
+    },
+    "high_water_rejection": {
+      "after_pages": 3,
+      "after_refcounted_pages": 3,
+      "before_pages": 3,
+      "before_refcounted_pages": 3,
+      "error": "device KV pool high-water rejection",
+      "grow_failures_delta": 1,
+      "passed": true
+    },
+    "page_transitions": [
+      3,
+      6,
+      3,
+      12,
+      3
+    ],
+    "pool_byte_transitions": [
+      15728640,
+      31457280,
+      15728640,
+      62914560,
+      15728640
+    ],
+    "sampled_hip": {
+      "baseline_used_bytes": 25588015104,
+      "burst_used_bytes": 25623666688,
+      "final_used_bytes": 25590112256,
+      "peak_sampled_bytes": 25627197440
+    },
+    "shape": {
+      "max_tokens": 2,
+      "page_tokens": 256,
+      "prompt_tokens": 512
+    },
+    "source": {
+      "path": "/tmp/gfx1100-d3-kv-graph-lifecycle-clean-367cf7a5.json",
+      "sha256": "8ba84e493b1a2e79ec9ac1026157f8fe2d2cdf71bd1710c95b658854c1f83802",
+      "size_bytes": 9825
+    },
+    "state_kv_mismatch_count": 0,
+    "tokens": {
+      "dynamic_graph": [
+        9708,
+        9708
+      ],
+      "reference": [
+        9708,
+        9708
+      ]
+    },
+    "tracked_allocator": {
+      "baseline_current_bytes": 25125629536,
+      "burst_peak_bytes": 25172815456,
+      "final_current_bytes": 25125629536,
+      "first_grow_current_bytes": 25141358176,
+      "first_shrink_current_bytes": 25125629536,
+      "grow_delta_bytes": 15728640,
+      "shrink_delta_bytes": 15728640
+    }
+  },
+  "clean_w7900_live_lifecycle_gate": {
+    "allocations": {
+      "a": [
+        0,
+        1,
+        2
+      ],
+      "b": [
+        3,
+        4,
+        5
+      ],
+      "c": [
+        3,
+        4,
+        5
+      ],
+      "d": [
+        6,
+        7,
+        8
+      ]
+    },
+    "b_to_c_same_allocation": true,
+    "b_to_c_same_session": true,
+    "c_to_d_same_session": true,
+    "command": "PY=/home/lhl/mambaforge/envs/therock/bin/python3.12; ROOT=$($PY -m rocm_sdk path --root); env -i HOME=$HOME USER=$USER LOGNAME=$LOGNAME SHELL=$SHELL TERM=${TERM:-xterm} PATH=$ROOT/bin:/home/lhl/mambaforge/envs/therock/bin:/usr/local/bin:/usr/bin:/bin LD_LIBRARY_PATH=$ROOT/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx110X_all/lib HIP_PATH=$ROOT ROCM_PATH=$ROOT HIP_LIB_PATH=$ROOT/lib HIP_INCLUDE_PATH=$ROOT/include HSA_OVERRIDE_GFX_VERSION=11.0.0 HIP_VISIBLE_DEVICES=0 PYTHONPATH=. HIPENGINE_COMPILER_VERSION_FILE=/tmp/gfx1100-concurrency/hipcc-version.txt /home/lhl/mambaforge/envs/therock/bin/python3.12 /tmp/gfx1100_d3_live_lifecycle_smoke.py",
+    "elapsed_seconds": 78.5896349499817,
+    "final_pool": {
+      "current_bytes": 15728640,
+      "current_pages": 3,
+      "free_pages": 3,
+      "grow_events": 2,
+      "grow_failures": 0,
+      "high_water_observed_bytes": 31457280,
+      "high_water_observed_pages": 6,
+      "pinned_pages": 0,
+      "refcounted_pages": 0,
+      "shrink_events": 2
+    },
+    "harness": {
+      "path": "/tmp/gfx1100_d3_live_lifecycle_smoke.py",
+      "sha256": "0dc5fae5e097b1943cc58ebeba23b7c6214a015207cbf5d67a834e3ffec81491",
+      "size_bytes": 14047
+    },
+    "shape": {
+      "a_max_tokens": 8,
+      "b_cancel_after_tokens": 2,
+      "c_max_tokens": 2,
+      "d_cancel_after_prefill_tokens": 256,
+      "prefill_chunk_tokens": 256,
+      "prompt_tokens": 512,
+      "resident_capacity": 4
+    },
+    "source": {
+      "path": "/tmp/gfx1100-d3-live-lifecycle-clean-367cf7a5.json",
+      "sha256": "75f71acc8d2b0508b3c4becd93af80d3b3ebb386221a7a6d348197e997cd4fcd",
+      "size_bytes": 12293
+    },
+    "state_kv_mismatch_counts": {
+      "cancelled_b_state": 0,
+      "final_a_state": 0,
+      "retired_c_state": 0,
+      "survivor_after_b_cancel": 0,
+      "survivor_after_c_retire": 0,
+      "survivor_d_cancel_stability": 0
+    },
+    "tokens": {
+      "a_live": [
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707
+      ],
+      "a_reference": [
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707
+      ],
+      "b_live": [
+        9708,
+        9708
+      ],
+      "b_reference": [
+        9708,
+        9708
+      ],
+      "c_live": [
+        9709,
+        9709
+      ],
+      "c_reference": [
+        9709,
+        9709
+      ]
+    }
+  },
+  "created_at": "2026-07-16T22:36:59+09:00",
+  "device_kv_pool_claim": true,
+  "graph_pointer_validity_claim": true,
+  "host_validation": {
+    "command": "python3 -m pytest tests/test_kvcache_policy.py tests/test_generation_qwen35_gguf_sampling.py tests/test_generation_batch_scheduler.py tests/test_qwen35_gguf_decode_graph.py tests/test_gguf_packed_decode_graph.py tests/test_gguf_decode_graph_g5.py tests/test_llm_generate.py tests/test_llm_gguf_generate_path.py",
+    "coverage": [
+      "real-pool callback bookkeeping and stable logical identity",
+      "atomic scheduler and GGUF high-water admission",
+      "engine-loop config propagation from public LLM",
+      "c1 and packed graph pin/unpin hooks",
+      "EOS/max-token/cancel/disconnect/timeout reclaim",
+      "public prompt-list compatibility"
+    ],
+    "elapsed_seconds": 20.75,
+    "passed": 419,
+    "skipped": 4
+  },
+  "implementation": {
+    "allocation_layout": "one contiguous backing chunk per request; per-layer K/V subviews",
+    "full_attention_layers": 10,
+    "graph_pages_pinned_until_graph_destroy": true,
+    "grow_site": "admission reservation only",
+    "kv_live_spans_abi_unchanged": true,
+    "logical_block_ids_monotonic_across_shrink": true,
+    "loop_maintenance_barrier": "ResidentEngineLoop.tick completion",
+    "page_bytes": 5242880,
+    "page_tokens": 256,
+    "pool": "hipengine.kvcache.DeviceChunkedKVPool",
+    "public_llm_consumes_engine_loop_environment": true,
+    "runner": "hipengine.generation.qwen35_gguf.Qwen35GGUFResidentModelRunner",
+    "scheduler_barrier": "ResidentBatchScheduler.admit_pending reserve_callback before slot publication",
+    "session": "hipengine.runtime.qwen35_gguf_runner.Qwen35GGUFResidentSession",
+    "shrink_site": "post-transition loop barrier only",
+    "supported_dynamic_kv_dtype": "bf16"
+  },
+  "kind": "gfx1100_gguf_concurrency_d3_device_kv_pool_closure",
+  "known_non_claims": [
+    "D3 does not add a throughput, TTFT, ITL, or native-width performance claim.",
+    "D4 still owns OpenAI streaming delivery, per-row backpressure, disconnect integration, and shutdown drain.",
+    "Dynamic request-sized GGUF allocation is admitted for BF16 KV only; INT8 and mixed KV retain their existing non-D3 paths.",
+    "gfx1151 E1 remains hardware-blocked and no gfx1151 result is inferred from W7900.",
+    "Native c8 remains unimplemented; chunked c8 is not a native-c8 claim.",
+    "Sampled HIP used bytes are allocator-granular and do not contract byte-for-byte with tracked page frees; pool and tracked counters are the exact ownership oracle."
+  ],
+  "live_admission_claim": true,
+  "next_gate": "D4 OpenAI API streaming/backpressure/cancellation/drain through the same model-owning loop.",
+  "passed": true,
+  "performance_claim": false,
+  "production_server_continuous_batching_claim": false,
+  "provenance": {
+    "atomic_admission_commit": "4be921ec",
+    "compiler_version_file": {
+      "path": "/tmp/gfx1100-concurrency/hipcc-version.txt",
+      "sha256": "d9f2eb1c91e566e56a5cf684257ead1b7636f95406095c20a2c5542a8734a8d7",
+      "size_bytes": 203
+    },
+    "configured_backend": "hip_gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "dirty": false,
+    "environment": {
+      "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/gfx1100-concurrency/hipcc-version.txt",
+      "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact",
+      "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+      "HIPENGINE_KV_POOL_CHUNK_PAGES": "3",
+      "HIPENGINE_KV_POOL_HIGH_WATER_PAGES": "12",
+      "HIPENGINE_KV_POOL_IDLE_GRACE_SECONDS": "0",
+      "HIPENGINE_KV_POOL_INITIAL_PAGES": "3",
+      "HIPENGINE_KV_POOL_LOW_WATER_PAGES": "3",
+      "HIPENGINE_MAX_ACTIVE_REQUESTS": "4",
+      "HIPENGINE_MAX_PREFILL_CHUNK_TOKENS": "256",
+      "HIPENGINE_PREFILL_DECODE_POLICY": "protect_ttft",
+      "HIP_VISIBLE_DEVICES": "0",
+      "HSA_OVERRIDE_GFX_VERSION": "11.0.0"
+    },
+    "git_branch": "gfx1100-concurrency",
+    "implementation_commit": "367cf7a54e14fb1585fdb05fe067742bdebb81a9",
+    "kv_dtype": "bf16",
+    "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+    "model_size_bytes": 22663387424,
+    "quant": "gguf_q4_k_m",
+    "resolved_backend": "hip_gfx1100",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "target_arch": "gfx1100"
+  },
+  "requirements": {
+    "allocator_and_hip_memory_audit": {
+      "evidence": "Tracked grow and shrink are each exactly 15,728,640 bytes; 12-page burst tracked high water is 25,172,815,456 bytes and pool high water is 62,914,560 bytes. Sampled HIP current/peak are retained separately and show allocator granularity rather than being treated as an exact page oracle.",
+      "passed": true
+    },
+    "atomic_high_water": {
+      "evidence": "A real-HIP 3-page cap rejects request 3002 with the head row unleased/unallocated and leaves current/refcounted pages exactly 3/3; host scheduler tests retain pending identity and publish no slot.",
+      "passed": true
+    },
+    "barrier_growth_and_safe_shrink": {
+      "evidence": "Clean real-HIP lifecycle transitions 3->6->3->12->3 pages; only fully free unpinned tail chunks shrink.",
+      "passed": true
+    },
+    "burst_steady_idle_burst_pointer_graph_validity": {
+      "evidence": "Live low-water and tail representative pointers remain unchanged through grow/replay/shrink; a real graph pins three pages, replays exact token/state/KV, is invalidated once before reclaim, and regrowth uses fresh logical ids 6-14.",
+      "passed": true
+    },
+    "d2_lifecycle_non_regression": {
+      "evidence": "The clean A/B/C/D live gate remains token/Conv/GDN/live-KV exact; B and C reuse ids 3-5/backing/session, D regrows ids 6-8, and final pool state is three free pages.",
+      "passed": true
+    },
+    "real_paged_admission": {
+      "evidence": "Clean p512 requests bind three real 5,242,880-byte BF16 pages before scheduler slot publication and execute prefill/decode through those subviews.",
+      "passed": true
+    }
+  },
+  "schema": 1,
+  "status": "accepted_device_kv_pool",
+  "streaming_delivery_claim": false
+}

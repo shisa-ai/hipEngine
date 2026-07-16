@@ -1,0 +1,163 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_gguf_concurrency_d1_resident_model_runner_closure",
+  "created_at": "2026-07-16T20:45:14+09:00",
+  "status": "accepted_runner_ownership",
+  "passed": true,
+  "claim_level": "long_lived_model_and_session_owner_exact",
+  "performance_claim": false,
+  "continuous_batching_claim": false,
+  "live_admission_claim": false,
+  "streaming_delivery_claim": false,
+  "provenance": {
+    "implementation_commit": "285c20b4802e2505046b9abfa11a9d92a5399e71",
+    "git_branch": "gfx1100-concurrency",
+    "dirty": false,
+    "configured_backend": "hip_gfx1100",
+    "resolved_backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "compiler_version_file": "/tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt",
+    "environment": {
+      "HIP_VISIBLE_DEVICES": "0",
+      "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+      "HIPENGINE_BACKEND": "hip_gfx1100",
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt"
+    }
+  },
+  "implementation": {
+    "runner": "hipengine.generation.qwen35_gguf.Qwen35GGUFResidentModelRunner",
+    "adapter": "hipengine.generation.engine_loop.SubmitPollTextGenerator",
+    "loop": "hipengine.generation.engine_loop.ResidentEngineLoop",
+    "default_capacity": 4,
+    "ownership": {
+      "model_runner_count": 1,
+      "resident_session_count": 4,
+      "model_and_sessions_created_by_adapter_owner": true,
+      "sessions_created_inside_generate_detailed": false,
+      "session_identity_stable_across_api_calls": true,
+      "idle_prepare_barrier_rebuild_supported": true
+    },
+    "scheduler_contract": {
+      "prefill": "prefill_batch(work, commit=True)",
+      "decode": "decode_batch(work, commit=True)",
+      "compact": "compact_batch(slot_moves)",
+      "reclaim": "reclaim(completed_request)",
+      "request_identity_separate_from_physical_slots": true,
+      "canonical_state_commit_required": true,
+      "deferred_packed_state_flushed_before_membership_change": true
+    },
+    "locking": {
+      "request_lifetime_generation_lock": false,
+      "mutable_scheduler_tick_lock": true,
+      "lock_released_between_model_transitions": true
+    },
+    "routes": {
+      "greedy_prefill": "resident_session_prefill_commit",
+      "greedy_decode_c2_c4": "packed_native_model_step",
+      "greedy_decode_c1_or_unsupported": "explicit_resident_serial_fallback",
+      "sampled_or_processed": "explicit_resident_session_compatibility",
+      "zero_token": "explicit_empty_compatibility_transition"
+    },
+    "known_non_claims": [
+      "No request is admitted while another request is already decoding.",
+      "Scheduler prefill chunks are accounted incrementally, but D1 executes the real model prefill only at the final prompt commit; bounded mixed prefill/decode is D2.",
+      "Streaming still uses its compatibility adapter and is owned by D4.",
+      "Native c8 is not implemented; widths above four are explicit c4 chunks.",
+      "The older direct complete-call AR loop remains as an independent oracle and tracked refactor debt."
+    ]
+  },
+  "requirements": {
+    "long_lived_runner": {
+      "passed": true,
+      "evidence": "One Qwen35GGUFResidentModelRunner and ResidentEngineLoop survive multiple generate_detailed calls."
+    },
+    "model_session_creation_outside_generate": {
+      "passed": true,
+      "evidence": "The runner factory materializes one shared full-stack model and four resident sessions before request submission; unit and W7900 checks observe no new session identity across calls."
+    },
+    "no_request_lifetime_model_lock": {
+      "passed": true,
+      "evidence": "SubmitPollTextGenerator protects one scheduler submit/poll transition at a time and releases its loop lock between ticks."
+    },
+    "shared_submit_poll_loop": {
+      "passed": true,
+      "evidence": "The adapter constructs its runner and loop once; request ids remain monotonic and consumed completions are released from persistent state."
+    },
+    "prefill_decode_compact_reclaim": {
+      "passed": true,
+      "evidence": "Focused tests cover commit flags, compaction forwarding, completion/cancel callbacks, idle context-pool rebuild, sampled/zero-token fallbacks, and full session reclaim."
+    }
+  },
+  "clean_w7900_gate": {
+    "source_artifact": "/tmp/gfx1100-d1-resident-loop-clean-285c20b4.json",
+    "source_sha256": "2eee6f5ab4476e6501b2cbba1f7df037ec815062488c636a587fbdeac1966ebe",
+    "source_size_bytes": 9166,
+    "command": "hermetic TheRock python3 /tmp/gfx1100_d1_resident_loop_clean.py",
+    "shape": {
+      "rows": 2,
+      "prompt_tokens_per_row": [
+        16,
+        16
+      ],
+      "decode_tokens_per_row": 4,
+      "resident_capacity": 4
+    },
+    "direct_control_token_ids": [
+      [9707, 9707, 9707, 9707],
+      [9708, 9709, 9708, 9709]
+    ],
+    "first_loop_token_ids": [
+      [9707, 9707, 9707, 9707],
+      [9708, 9709, 9708, 9709]
+    ],
+    "second_loop_token_ids": [
+      [9707, 9707, 9707, 9707],
+      [9708, 9709, 9708, 9709]
+    ],
+    "control_first_repeat_exact": true,
+    "session_identity_stable": true,
+    "available_sessions_after_each_call": 4,
+    "active_requests_after_each_call": 0,
+    "last_route": {
+      "path": "gguf_packed_ar_server_decode",
+      "native_decode_steps": 3,
+      "native_caware_decode": true,
+      "serial_decode_fallback": false,
+      "native_compact_prefill": false
+    },
+    "elapsed_seconds": 76.23114357003942
+  },
+  "host_validation": {
+    "red": "The focused test failed because Qwen35GGUFResidentModelRunner and its factory did not exist.",
+    "green": {
+      "passed": 78,
+      "skipped": 4,
+      "commands": [
+        "uv run pytest -q tests/test_generation_qwen35_gguf_sampling.py tests/test_llm_generate.py tests/test_llm_gguf_generate_path.py",
+        "uv run pytest -q tests/test_generation_batch_scheduler.py -k 'submit_poll or resident_engine_loop or engine_loop_cli'",
+        "uv run ruff check hipengine/generation/qwen35_gguf.py hipengine/generation/engine_loop.py tests/test_generation_qwen35_gguf_sampling.py",
+        "python3 -m py_compile hipengine/generation/qwen35_gguf.py hipengine/generation/engine_loop.py tests/test_generation_qwen35_gguf_sampling.py",
+        "python3 scripts/smoke.py --mode registry",
+        "python3 scripts/smoke.py --mode cpu-fixtures"
+      ]
+    },
+    "pre_existing_fixture_check_blocker": {
+      "command": "python3 scripts/check_fixtures.py",
+      "status": "failed_outside_d1_scope",
+      "reason": "Nested fixture tests/fixtures/cpu_reference/moe/moe_ffn_selected_gguf_q4_k.json lacks the generic expected field and predates this change."
+    }
+  },
+  "next_gate": "D2 real scheduling: admit while decoding, bounded prefill/decode interleave, row-local retire/cancel/reuse, and exact token/state/KV equality across membership changes."
+}

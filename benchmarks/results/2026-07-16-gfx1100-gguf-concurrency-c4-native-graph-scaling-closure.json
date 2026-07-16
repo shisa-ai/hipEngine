@@ -1,0 +1,475 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_gguf_concurrency_c4_native_graph_scaling_closure",
+  "created_at": "2026-07-16T11:10:00+00:00",
+  "status": "retained_direct_native_c4_decode_model_step",
+  "passed": true,
+  "claim_level": "native_eq_ok_retained_direct_packet",
+  "performance_claim": true,
+  "performance_claim_scope": "direct packed graph decode model step at p512/d128; not a production continuous-batching or streaming-delivery claim",
+  "continuous_batching_claim": false,
+  "native_c8_claim": false,
+  "provenance": {
+    "primary_scaling_commit": "d59d7cf0c3532f4fd7a5601a26805c85698f1db8",
+    "graph_runtime_commit": "6f7851f3e8f2b31971028898fb5e7d8b53a31c34",
+    "clean_profiler_commit": "a05c560b7b00e9a41a329b377b9ba377e1676b1a",
+    "clean_sparse_commit": "17185d5339c91105d8987ed7362591a610bbef42",
+    "clean_category_commit": "799d29b9e36f3a033b76bee4ce369639d864b319",
+    "git_branch": "gfx1100-concurrency",
+    "dirty": false,
+    "configured_backend": "hip_gfx1100",
+    "resolved_backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        11331169424,
+        22662338848
+      ]
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "compiler_version_file": "/tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt",
+    "cached_build_required": true,
+    "environment": {
+      "HIPENGINE_BACKEND": "hip_gfx1100",
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt",
+      "HIP_VISIBLE_DEVICES": "0",
+      "ROCR_VISIBLE_DEVICES": null,
+      "GPU_MAX_HW_QUEUES": null,
+      "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+      "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact"
+    },
+    "runtime_source_equivalence": {
+      "from_commit": "6f7851f3e8f2b31971028898fb5e7d8b53a31c34",
+      "through_commit": "d59d7cf0c3532f4fd7a5601a26805c85698f1db8",
+      "diff_bytes": 0,
+      "files": {
+        "hipengine/runtime/gguf_packed_decode_graph.py": "fb340562a8df3041e99f078e4683c2d50b2716e8ff02027454ca49e1f26d73e4",
+        "hipengine/runtime/qwen35_gguf_runner.py": "2c167b52ccc61dc8f3429edecbdab4897301437f87a73084bb26b65a9259688f",
+        "hipengine/kernels/hip_gfx1100/runtime/state.hip": "e0a68ea12a72d1c7c54ccc37b4b47e94673407f4a8246da86499ab38ccf35fc2",
+        "hipengine/kernels/hip_gfx1100/runtime/state.py": "5c4f53bac8b7c233762d249543fd6b89f6e395a64e4e2f62bb84b4ae8d2ee9ef",
+        "hipengine/runtime/gguf_packed_manifest.py": "00f9855ec9272e02ecd23990aa6d34013ba0e30bb0b7bf1d01ee0493ed3950bf"
+      },
+      "rationale": "The clean d128 eager/graph oracle was run at the graph-runtime commit. Every runtime/kernel/manifest source in the C4 model step is byte-identical through the retained scaling commit; intervening commits change evidence scripts, tests, and WORKLOG only."
+    }
+  },
+  "implementation": {
+    "state_bound_graph_key": [
+      "backend/target/model identity",
+      "physical and active rows plus active mask",
+      "per-row state generation and replay context bucket",
+      "quant/KV/layout/build selectors",
+      "weight-role hash and buffer identity",
+      "metadata, token-feedback, and optional recording routes"
+    ],
+    "graph_control_primitives": [
+      "device-position packed metadata preparation",
+      "i32 sampled-token to persistent i64 embedding-input commit plus device position advance",
+      "optional indexed BF16 layer-output recording"
+    ],
+    "model_step": {
+      "complete_c1_session_replays": 0,
+      "complete_c1_layer_replays": 0,
+      "host_model_row_loop_sites": 0,
+      "host_model_row_iterations": 0,
+      "per_row_model_subgraph_invocations": 0,
+      "expected_exact_row_local_kernel_launches": 0
+    },
+    "family_routes": {
+      "linear_attention": "indexed_batch",
+      "full_attention": "kv_live_spans_batch",
+      "moe": "selected_rows_batch",
+      "lm_head": "q6_rowtile_f32_logits",
+      "sampler": "argmax_i32_rows",
+      "metadata": "device_positions_persistent",
+      "token_feedback": "device_i32_to_i64"
+    },
+    "steady_replay_movement": {
+      "host_to_device_total_copies": 0,
+      "device_to_host_vector_copies": 0,
+      "device_to_device_state_import_copies": 0,
+      "device_to_device_state_scatter_copies": 0,
+      "device_metadata_prepare_launches": 1,
+      "device_token_feedback_launches": 1
+    },
+    "fallback": "Existing eager packed c1/c2/c4 path and exact serial c1 groups remain available; graph capture rejects state generation, cursor, bucket, or identity drift."
+  },
+  "workload": {
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv_dtype": "bf16",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "prompt_tokens_per_row": 512,
+    "decode_transitions_per_row": 128,
+    "prompt_token_id": 9707,
+    "prompt_terminal_token_ids": [
+      9707,
+      9708,
+      9709,
+      9710,
+      9707,
+      9708,
+      9709,
+      9710
+    ],
+    "prompt_rows_sha256": "53b8d2a756f5b105803cc6a3b15a8bf43333bb54aa91e0180e8a9d029c0beb70",
+    "sampling": "greedy_top1",
+    "speculative_decode": false,
+    "warmup_runs": 1,
+    "measured_runs": 3,
+    "timing_contract": "one shared model load; monotonically grow resident sessions c1->c2->c4->chunked-c8; one synchronized graph replay per native group per logical transition; graph capture, diagnostic token readback, and final state flush excluded from decode throughput"
+  },
+  "correctness": {
+    "standard_p512_c4_d128": {
+      "graph": {
+        "source_sha256": "b6ee8dc8a8f650f6f88f92b3ae831dee89088185754c4811056a023659d95ae8",
+        "passed": true,
+        "tokens_exact": true,
+        "layer_hidden_comparisons": 20640,
+        "layer_hidden_exact": true,
+        "initial_state_exact": true,
+        "lifecycle_state_exact": true,
+        "final_state_exact": true,
+        "first_divergence": null,
+        "graph_replays": 128,
+        "replayed_steps": 128,
+        "physical_rows": 4,
+        "steady_h2d_copies": 0,
+        "steady_d2h_copies": 0
+      },
+      "eager": {
+        "source_sha256": "00c69f34095730024dea32de8243ca44a6d5c692679d625ed828ef12f68285eb",
+        "passed": true,
+        "tokens_exact": true,
+        "layer_hidden_comparisons": 20640,
+        "layer_hidden_exact": true,
+        "initial_state_exact": true,
+        "lifecycle_state_exact": true,
+        "final_state_exact": true,
+        "first_divergence": null
+      }
+    },
+    "sparse_graph_p512_d4": {
+      "source_sha256": "98cfb454676e95669d1a61b8a18a768de00e8cf0ac77c3857a1704b460864e70",
+      "passed": true,
+      "tokens_exact": true,
+      "layer_hidden_comparisons": 560,
+      "layer_hidden_exact": true,
+      "initial_state_exact": true,
+      "lifecycle_state_exact": true,
+      "final_state_exact": true,
+      "first_divergence": null,
+      "physical_bucket_sequence": [
+        4,
+        3,
+        2,
+        1
+      ],
+      "positive_replay_count_per_bucket": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "live_row_sequence": [
+        [0, 1, 2, 3],
+        [0, 2, 3],
+        [0, 3],
+        [3]
+      ]
+    },
+    "category_24x3": {
+      "artifact": "benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-b4-category-lifecycle.json",
+      "artifact_sha256": "992eb6762d5b0468901d4f923ea39791b3031734b158ae180c155d3554030e7f",
+      "passed": true,
+      "prompt_count": 18,
+      "prompt_repeat_executions": 54,
+      "token_comparisons": 1350,
+      "hidden_comparisons": 54000,
+      "hidden_mismatches": 0,
+      "state_or_kv_mismatches": 0,
+      "repeat_deterministic": true,
+      "inheritance_rationale": "Graph capture replays the same C3 model-step enqueue body and token-independent route. C4 adds device token/position feedback only; d128 and sparse graph gates cover feedback across repeated launches and bucket changes."
+    },
+    "same_session_cross_route": {
+      "passed": true,
+      "all_measured_runs_repeatable": true,
+      "c1_c2_c4_prefix_exact": true,
+      "c4_matches_serial_c4": true,
+      "chunked_c8_first_group_matches_c4": true,
+      "chunked_c8_second_group_matches_c4": true
+    }
+  },
+  "profiler_census": {
+    "artifact_sha256": "aa9bac93129a2d5a078ecbbee58bae48ad53e1fac1313c22e90279f4df3c07dc",
+    "kind": "gfx1100_gguf_concurrency_c4_graph_replay_census",
+    "status": "c4_graph_replay_census_complete",
+    "passed": true,
+    "performance_claim": false,
+    "c1_reference_dispatches": 628,
+    "c1_reference_instrumented_duration_ns": 9449786,
+    "c4_dispatches": 747,
+    "c4_instrumented_duration_ns": 17496929,
+    "packed_native_dispatches": 747,
+    "exact_row_local_dispatches": 0,
+    "copy_dispatches": 0,
+    "metadata_prepare_dispatches": 1,
+    "graph_replay_count": 1,
+    "family_proof": {
+      "full_attention": {
+        "passed": true,
+        "context_dispatches": 10,
+        "kv_write_dispatches": 10,
+        "row_extent": 4
+      },
+      "moe": {
+        "passed": true,
+        "selected_gate_up_dispatches": 40,
+        "selected_down_dispatches": 40,
+        "combine_dispatches": 40,
+        "selected_lanes": 32
+      },
+      "lm_head_sampler": {
+        "passed": true,
+        "lm_head_dispatches": 1,
+        "argmax_stage1_dispatches": 1,
+        "argmax_stage2_dispatches": 1,
+        "full_vocab_host_readback": false
+      }
+    },
+    "raw_trace_hashes": {
+      "kernel_csv_sha256": "c8a4296515c05aedbc998c2b077553001924deacd5a0e44129264b131e602440",
+      "marker_csv_sha256": "04fd5e4c3ac30e4dcb5a5e54b6faab9f5df461d7236515c6fdfc12174e660c68"
+    },
+    "duration_scope": "single marker-sliced instrumented graph replay; diagnostic only"
+  },
+  "performance": {
+    "source_sha256": "1fb58feb9b25fda7eeaaa17af3f497d4d7b85055d02105758722dc0aa8b1f607",
+    "source_size_bytes": 1138763,
+    "passed": true,
+    "complete_packet": true,
+    "maximum_decode_stdev_pct_of_median": 0.49480021141510605,
+    "routes": {
+      "c1": {
+        "logical_rows": 1,
+        "native_group_width": 1,
+        "native_group_count": 1,
+        "resident_sessions": 1,
+        "decode_tok_s_aggregate": 84.90688088165335,
+        "decode_tok_s_per_request": 84.90688088165335,
+        "prefill_tok_s_aggregate": 2454.797410471756,
+        "graph_capture_seconds": 0.03381469298619777,
+        "decode_seconds": 1.507533885014709,
+        "ttft_p50_seconds": 0.2085668930085376,
+        "ttft_p95_seconds": 0.20857455400982872,
+        "model_step_itl_p50_seconds": 0.011767556017730385,
+        "model_step_itl_p95_seconds": 0.012105226051062346,
+        "tracked_current_peak_bytes": 23389395560,
+        "hip_used_peak_sampled_bytes": 23876739072,
+        "bucket_shape_sha256": [
+          "a1709cf9e45714f626348cb2c4f8c5f6eff9baa0e1eb198e149cedb40cf3e8b1"
+        ]
+      },
+      "c2": {
+        "logical_rows": 2,
+        "native_group_width": 2,
+        "native_group_count": 1,
+        "resident_sessions": 2,
+        "decode_tok_s_aggregate": 126.9094605960339,
+        "decode_tok_s_per_request": 63.45473029801695,
+        "prefill_tok_s_aggregate": 1072.8867735794852,
+        "graph_capture_seconds": 0.03801228996599093,
+        "decode_seconds": 2.017186101002153,
+        "ttft_p50_seconds": 0.9544319289852865,
+        "ttft_p95_seconds": 0.956588126020506,
+        "model_step_itl_p50_seconds": 0.015801711502717808,
+        "model_step_itl_p95_seconds": 0.016023589007090777,
+        "tracked_current_peak_bytes": 24044895892,
+        "hip_used_peak_sampled_bytes": 24522399744,
+        "bucket_shape_sha256": [
+          "85d3ac9e283b861567bba29be23be7f6a0bddc2ae59461d5165781aed8f60ab1"
+        ]
+      },
+      "c4": {
+        "logical_rows": 4,
+        "native_group_width": 4,
+        "native_group_count": 1,
+        "resident_sessions": 4,
+        "decode_tok_s_aggregate": 184.99275097457215,
+        "decode_tok_s_per_request": 46.24818774364304,
+        "prefill_tok_s_aggregate": 1010.3250105376238,
+        "graph_capture_seconds": 0.038148701016325504,
+        "decode_seconds": 2.767676015966572,
+        "ttft_p50_seconds": 2.0270680359681137,
+        "ttft_p95_seconds": 2.030808787967544,
+        "model_step_itl_p50_seconds": 0.021641306026140228,
+        "model_step_itl_p95_seconds": 0.02188846899662167,
+        "tracked_current_peak_bytes": 25121126124,
+        "hip_used_peak_sampled_bytes": 25579364352,
+        "bucket_shape_sha256": [
+          "45bcf7e6ff3206d1465fa3b26b44786a6406f96f172cbb3691b2a5aab21e3894"
+        ],
+        "steady_occupancy": {
+          "logical_active_rows": 4,
+          "physical_bucket_widths": [4],
+          "active_masks": [[true, true, true, true]],
+          "row_count_transitions": []
+        },
+        "admission_completion": {
+          "admission_elapsed_seconds": 0.0,
+          "completion_timestamps": "phase-relative per measured sample in the source occupancy timeline",
+          "finish_reasons": [
+            "length_limit",
+            "length_limit",
+            "length_limit",
+            "length_limit"
+          ]
+        }
+      },
+      "chunked_c8": {
+        "logical_rows": 8,
+        "native_group_width": 4,
+        "native_group_count": 2,
+        "resident_sessions": 8,
+        "decode_tok_s_aggregate": 183.89976777971344,
+        "decode_tok_s_per_request": 22.98747097246418,
+        "prefill_tok_s_aggregate": 1005.0903628390905,
+        "graph_capture_seconds": 0.0812850880320184,
+        "decode_seconds": 5.568250641983468,
+        "ttft_p50_seconds": 3.0546636104991194,
+        "ttft_p95_seconds": 4.0788690490298904,
+        "model_step_itl_p50_seconds": 0.04348698802641593,
+        "model_step_itl_p95_seconds": 0.04401427000993863,
+        "tracked_current_peak_bytes": 27627979736,
+        "hip_used_peak_sampled_bytes": 28121112576,
+        "bucket_shape_sha256": [
+          "45bcf7e6ff3206d1465fa3b26b44786a6406f96f172cbb3691b2a5aab21e3894",
+          "45bcf7e6ff3206d1465fa3b26b44786a6406f96f172cbb3691b2a5aab21e3894"
+        ],
+        "native_c8": false
+      },
+      "serial_c4": {
+        "logical_rows": 4,
+        "native_group_width": 1,
+        "native_group_count": 4,
+        "resident_sessions": 8,
+        "decode_tok_s_aggregate": 84.13963802040178,
+        "decode_tok_s_per_request": 21.034909505100444,
+        "prefill_tok_s_aggregate": 2346.640398407828,
+        "graph_capture_seconds": 0.13006129098357633,
+        "decode_seconds": 6.0851224469952285,
+        "ttft_p50_seconds": 0.5467350559774786,
+        "ttft_p95_seconds": 0.8752057259553112,
+        "model_step_itl_p50_seconds": 0.04748082149308175,
+        "model_step_itl_p95_seconds": 0.04846499999985099,
+        "tracked_current_peak_bytes": 28611402712,
+        "hip_used_peak_sampled_bytes": 29110968320,
+        "bucket_shape_sha256": [
+          "a1709cf9e45714f626348cb2c4f8c5f6eff9baa0e1eb198e149cedb40cf3e8b1",
+          "a1709cf9e45714f626348cb2c4f8c5f6eff9baa0e1eb198e149cedb40cf3e8b1",
+          "a1709cf9e45714f626348cb2c4f8c5f6eff9baa0e1eb198e149cedb40cf3e8b1",
+          "a1709cf9e45714f626348cb2c4f8c5f6eff9baa0e1eb198e149cedb40cf3e8b1"
+        ]
+      }
+    },
+    "scaling": {
+      "c4_aggregate_vs_c1": 2.178772192001995,
+      "c4_aggregate_vs_c1_percent": 117.8772192001995,
+      "c4_aggregate_vs_serial_c4": 2.1986397294663425,
+      "c4_aggregate_vs_serial_c4_percent": 119.86397294663425,
+      "c4_per_request_vs_c1": 0.5446930480004988,
+      "c4_per_request_vs_c1_percent": -45.530695199950124,
+      "chunked_c8_aggregate_vs_c1": 2.165899463861361,
+      "c4_scaling_gate_passed": true
+    },
+    "tradeoffs": {
+      "c4_model_step_itl_vs_c1": 1.839065477447729,
+      "c4_model_step_itl_vs_c1_percent": 83.90654774477291,
+      "c4_ttft_vs_c1": 9.7190306991107,
+      "c4_tracked_current_peak_delta_bytes": 1731730564,
+      "c4_tracked_current_peak_delta_gib": 1.6127997674047947,
+      "c4_tracked_current_peak_delta_percent": 7.403913280091623,
+      "c4_hip_used_peak_delta_bytes": 1702625280,
+      "c4_hip_used_peak_delta_gib": 1.585693359375,
+      "interpretation": "C4 advances four requests per model step and doubles aggregate decode throughput, but each request sees lower decode rate and higher model-step latency; packed all-row prefill also raises TTFT. This is a retained direct decode-model-step packet, not automatic live-route admission."
+    }
+  },
+  "commands": {
+    "scaling": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/gguf_packed_ar_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --configurations c1,c2,c4,chunked_c8,serial_c4 --prompt-token-id 9707 --prompt-length 512 --decode-steps 128 --warmup-runs 1 --measured-runs 3 --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt --require-cached-build --json /tmp/gfx1100-c4-scaling-clean-d59d7cf0/packet.json",
+    "profiler": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/gguf_packed_ar_rocprof.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --decode-mode graph --prompt-length 512 --prompt-token-id 9707 --expected-token-id 9707 --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt --raw-root /tmp/gfx1100-c4-clean-a05c560b/raw --skip-warmbuild --rocprofv3 /home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin/rocprofv3 --out /tmp/gfx1100-c4-clean-a05c560b/c4-graph-census.json",
+    "standard_graph": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/gguf_packed_ar_state_oracle.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --rows 4 --lifecycle steady --prefill-mode packed --decode-mode graph --prompt-length 512 --decode-steps 128 --capture-layer-hidden --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt --require-cached-build",
+    "standard_eager": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/gguf_packed_ar_state_oracle.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --rows 4 --lifecycle steady --prefill-mode packed --decode-mode eager --prompt-length 512 --decode-steps 128 --capture-layer-hidden --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt --require-cached-build",
+    "sparse_graph": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/gguf_packed_ar_state_oracle.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --rows 4 --lifecycle shrink_sparse --prefill-mode packed --decode-mode graph --prompt-length 512 --decode-steps 4 --capture-layer-hidden --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt --require-cached-build"
+  },
+  "completion_audit": {
+    "objective": "One gfx1100 GGUF Q4_K_M/BF16-KV c4 decode model step is fully c-aware, exact through lifecycle, graph-replayed, marker-proven, and retained against same-protocol c1 and serial controls; c8 remains honestly chunked.",
+    "requirements": {
+      "capture_replay_c1_c2_c4": {
+        "passed": true,
+        "evidence": "The clean scaling packet records positive 128-step graph manifests and stable shape keys for physical c1, c2, and c4 buckets."
+      },
+      "replay_enabled_and_disabled_phase_b": {
+        "passed": true,
+        "evidence": "Clean graph and eager p512/c4/d128 each pass 20,640 hidden comparisons plus token/state/KV equality; clean sparse graph replay passes 560 comparisons through c4-to-c1."
+      },
+      "zero_undeclared_c1_fallback": {
+        "passed": true,
+        "evidence": "The clean marker window contains 747 packed-native, zero exact-row-local, and zero copy dispatches; runtime manifest reports zero complete c1 session/layer replay and zero host model-row loops."
+      },
+      "same_protocol_c1_c2_c4_chunked_c8": {
+        "passed": true,
+        "evidence": "One clean shared-runner 1+3 packet measures all five declared routes; chunked-c8 records two physical c4 groups and native_c8=false."
+      },
+      "throughput_latency_memory_occupancy_profiler": {
+        "passed": true,
+        "evidence": "The closure includes aggregate/per-request rate, TTFT and model-step ITL p50/p95, route-scoped tracked/HIP memory, phase-relative occupancy/admission/completion, length finish reasons, graph keys, and profiler family/launch accounting."
+      },
+      "native_c4_beats_c1_and_serial": {
+        "passed": true,
+        "evidence": "184.993 aggregate tok/s is 2.179x c1 and 2.199x serial-c4 in the same clean process and protocol; exact per-request/latency/memory tradeoffs are disclosed."
+      }
+    },
+    "gate_coverage": {
+      "gate_1_primitive": true,
+      "gate_2_direct_model_equality": true,
+      "gate_3_lifecycle_prompt_coverage": true,
+      "gate_4_native_execution": true,
+      "gate_5_retained_performance": true
+    },
+    "uncovered_future_scope": [
+      "Production long-lived model-loop admission, fairness, cancellation, reclaim, and streaming delivery remain Phase D.",
+      "A single physical native-c8 group remains Phase E; current c8 is two serialized c4 groups."
+    ],
+    "c4_objective_achieved": true
+  },
+  "validation": {
+    "focused_tests": "18 passed for final evidence harness plus 58 graph/runtime-focused tests and 4 GPU primitive tests at the graph-runtime commit",
+    "python_compile": true,
+    "ruff_changed_files": true,
+    "diff_check": true,
+    "profiled_children_require_cached_build": true,
+    "scaling_source_clean": true,
+    "profiler_source_clean": true,
+    "runtime_source_equivalent_across_evidence_commits": true
+  },
+  "limitations": [
+    "The retained performance claim is limited to the direct packed graph decode model step; Phase D still owns long-lived model-loop admission, fairness, cancellation, streaming token delivery, and scheduler integration.",
+    "The model-step ITL excludes per-token D2H and streaming delivery. Diagnostic token vectors are read once after each measured window.",
+    "C4 improves aggregate decode throughput while per-request decode rate, model-step ITL, packed-prefill TTFT, and memory regress relative to c1; exact tradeoffs are reported above rather than hidden.",
+    "chunked_c8 is two serial native-c4 groups and is never labeled native c8.",
+    "Profiler durations are diagnostic because the marker window is instrumented and synchronized.",
+    "Raw profiler CSVs and source oracle/scaling JSON remain under /tmp and are represented by exact sizes and SHA-256 hashes."
+  ]
+}

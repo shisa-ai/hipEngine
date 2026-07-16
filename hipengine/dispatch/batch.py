@@ -123,6 +123,8 @@ class WorkItem:
     token_rows: tuple[tuple[int, ...], ...] = ()
     draft_depth: int = 0
     tree_parents: tuple[int, ...] = ()
+    slot_ids: tuple[int, ...] = ()
+    active_mask: tuple[bool, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.request_ids:
@@ -134,6 +136,17 @@ class WorkItem:
             raise ValueError("row_to_request contains a request id not in request_ids")
         if self.draft_depth < 0:
             raise ValueError("draft_depth must be non-negative")
+        if self.slot_ids:
+            if len(self.slot_ids) != len(self.request_ids):
+                raise ValueError("slot_ids must align with request_ids")
+            if len(set(self.slot_ids)) != len(self.slot_ids) or any(slot < 0 for slot in self.slot_ids):
+                raise ValueError("slot_ids must be unique non-negative physical slots")
+        if self.active_mask:
+            if sum(bool(active) for active in self.active_mask) != len(self.request_ids):
+                raise ValueError("active_mask must contain one active lane per request_id")
+            active_slots = tuple(index for index, active in enumerate(self.active_mask) if active)
+            if self.slot_ids and active_slots != self.slot_ids:
+                raise ValueError("active_mask active lanes must equal slot_ids")
         if self.kind in {WorkKind.VERIFY_CHAIN, WorkKind.VERIFY_TREE} and self.draft_depth <= 0:
             raise ValueError("verify work requires positive draft_depth")
 

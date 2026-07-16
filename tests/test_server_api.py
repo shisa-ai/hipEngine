@@ -495,11 +495,14 @@ def _fake_kv_pool_stats() -> SimpleNamespace:
     return SimpleNamespace(
         current_bytes=4096,
         high_water_observed_bytes=8192,
+        current_pages=6,
+        high_water_observed_pages=8,
         grow_events=2,
         grow_failures=1,
         shrink_events=3,
         free_pages=4,
         refcounted_pages=5,
+        pinned_pages=1,
     )
 
 
@@ -507,11 +510,14 @@ def _fake_kv_pool_metadata() -> dict[str, float]:
     return {
         "current_bytes": 4096.0,
         "high_water_observed_bytes": 8192.0,
+        "current_pages": 6.0,
+        "high_water_observed_pages": 8.0,
         "grow_events": 2.0,
         "grow_failures": 1.0,
         "shrink_events": 3.0,
         "free_pages": 4.0,
         "refcounted_pages": 5.0,
+        "pinned_pages": 1.0,
     }
 
 
@@ -1262,6 +1268,12 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "chat_sessions": {
             "max_active": 3,
             "rejects_new_sessions_when_full": True,
+        },
+        "streaming": {
+            "controlled_model_loop": False,
+            "queue_max_chunks": 16,
+            "backpressure_scope": "per_request",
+            "shutdown_grace_seconds": 5.0,
         },
         "scheduler_fairness": {
             "policy": "fifo_compatible_sampling_key",
@@ -4151,6 +4163,207 @@ def test_generation_batcher_stream_uses_per_request_queue_and_coalesces() -> Non
         assert fake.calls[0][1] == sampling
 
     asyncio.run(run())
+
+
+def test_generation_batcher_controlled_stream_admits_while_neighbor_is_live() -> None:
+    class ControlledStreamLLM(FakeLLM):
+        supports_controlled_streaming = True
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.started = {"slow": threading.Event(), "fast": threading.Event()}
+            self.release_slow = threading.Event()
+
+        def stream_detailed(self, prompt: str, sampling_params: SamplingParams):
+            name = str(prompt)
+            self.started[name].set()
+            yield GenerationStreamChunk(text=f"{name}:0")
+            if name == "slow":
+                assert self.release_slow.wait(timeout=5.0)
+            yield GenerationStreamChunk(text=f"{name}:1")
+
+    async def run() -> None:
+        fake = ControlledStreamLLM()
+        sampling = SamplingParams(max_tokens=2)
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.0,
+        )
+
+        async def collect(name: str) -> list[str]:
+            return [chunk.text async for chunk in batcher.stream((name,), sampling)]
+
+        slow = asyncio.create_task(collect("slow"))
+        assert await asyncio.to_thread(fake.started["slow"].wait, 5.0)
+        fast = asyncio.create_task(collect("fast"))
+        await asyncio.sleep(0.05)
+        admitted_while_slow = fake.started["fast"].is_set()
+        fake.release_slow.set()
+        slow_text, fast_text = await asyncio.gather(slow, fast)
+
+        assert admitted_while_slow is True
+        assert slow_text == ["slow:0", "slow:1"]
+        assert fast_text == ["fast:0", "fast:1"]
+        assert batcher.active_requests() == 0
+
+    asyncio.run(run())
+
+
+def test_generation_batcher_bounds_slow_stream_queue_without_blocking_neighbor() -> None:
+    class BurstStreamLLM(FakeLLM):
+        supports_controlled_streaming = True
+
+        def stream_detailed(self, prompt: str, sampling_params: SamplingParams):
+            count = 20 if str(prompt) == "slow" else 2
+            for index in range(count):
+                yield GenerationStreamChunk(text=f"{prompt}:{index}")
+
+    async def run() -> None:
+        fake = BurstStreamLLM()
+        slow_token = GenerationCancellationToken()
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.0,
+            stream_queue_max_chunks=2,
+        )
+        slow_stream = batcher.stream(
+            ("slow",),
+            SamplingParams(max_tokens=20, cancellation_token=slow_token),
+        )
+
+        assert (await anext(slow_stream)).text == "slow:0"
+        await asyncio.sleep(0.05)
+        fast_text = [
+            chunk.text
+            async for chunk in batcher.stream(("fast",), SamplingParams(max_tokens=2))
+        ]
+
+        assert fast_text == ["fast:0", "fast:1"]
+        assert batcher.stream_queue_max_chunks() == 2
+        assert batcher.stream_queue_depths()
+        assert max(batcher.stream_queue_depths()) <= 2
+
+        await slow_stream.aclose()
+        await asyncio.sleep(0)
+        assert slow_token.cancelled is True
+        assert slow_token.finish_details.to_json_dict() == {
+            "reason": "cancelled",
+            "cancelled": True,
+        }
+        await batcher.shutdown(grace_seconds=0.1)
+        assert batcher.active() is False
+
+    asyncio.run(run())
+
+
+def test_generation_batcher_shutdown_forces_cancel_after_grace() -> None:
+    class CooperativeBlockingStreamLLM(FakeLLM):
+        supports_controlled_streaming = True
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.started = threading.Event()
+
+        def stream_detailed(self, prompt: str, sampling_params: SamplingParams):
+            del prompt
+            self.started.set()
+            token = sampling_params.cancellation_token
+            assert token is not None
+            while not token.cancelled:
+                time.sleep(0.005)
+            token.raise_if_cancelled()
+            yield GenerationStreamChunk(text="unreachable")
+
+    async def run() -> None:
+        fake = CooperativeBlockingStreamLLM()
+        token = GenerationCancellationToken()
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.0,
+            stream_queue_max_chunks=2,
+        )
+        stream = batcher.stream(
+            ("blocked",),
+            SamplingParams(max_tokens=8, cancellation_token=token),
+        )
+        pending = asyncio.create_task(anext(stream))
+        assert await asyncio.to_thread(fake.started.wait, 5.0)
+
+        result = await batcher.shutdown(grace_seconds=0.01)
+
+        assert result["forced"] is True
+        assert result["active_requests"] == 0
+        assert token.cancelled is True
+        with pytest.raises((GenerationCancelled, StopAsyncIteration, asyncio.CancelledError)):
+            await pending
+        await stream.aclose()
+        assert batcher.active() is False
+
+    asyncio.run(run())
+
+
+def test_capabilities_report_controlled_streaming_backpressure_and_continuous_membership() -> None:
+    fake = FakeLLM()
+    fake.supports_controlled_streaming = True
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            stream_queue_max_chunks=7,
+            shutdown_grace_seconds=1.5,
+        ),
+        llm=fake,
+    )
+
+    body = TestClient(app).get("/v1/hipengine/capabilities").json()
+
+    assert body["admission"]["streaming"] == {
+        "controlled_model_loop": True,
+        "queue_max_chunks": 7,
+        "backpressure_scope": "per_request",
+        "shutdown_grace_seconds": 1.5,
+    }
+    assert body["admission"]["scheduler_fairness"]["continuous_decode"] is True
+
+
+def test_server_shutdown_drains_batcher_and_closes_long_lived_engine() -> None:
+    class ClosableLLM(FakeLLM):
+        def __init__(self) -> None:
+            super().__init__()
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    fake = ClosableLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            stream_queue_max_chunks=4,
+            shutdown_grace_seconds=0.05,
+        ),
+        llm=fake,
+    )
+
+    with TestClient(app) as client:
+        assert client.get("/ready").status_code == 200
+
+    assert fake.closed is True
+    assert app.state.hipengine_shutdown == {
+        "forced": False,
+        "grace_seconds": 0.05,
+        "active_requests": 0,
+        "queued_requests": 0,
+    }
+    assert app.state.hipengine_readiness.status == "stopped"
+
+    with pytest.raises(ValueError, match="stream_queue_max_chunks"):
+        ServerConfig(model="fake-path", stream_queue_max_chunks=1)
+    with pytest.raises(ValueError, match="shutdown_grace_seconds"):
+        ServerConfig(model="fake-path", shutdown_grace_seconds=-0.1)
 
 
 def test_generation_batcher_stream_generate_only_fallback_yields_chunks() -> None:
@@ -16293,6 +16506,8 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
     monkeypatch.delenv("HIPENGINE_STARTUP_SCRATCH_PROBE", raising=False)
     monkeypatch.delenv("HIPENGINE_STARTUP_MIN_FREE_MIB", raising=False)
     monkeypatch.delenv("HIPENGINE_REQUEST_TIMEOUT_MS", raising=False)
+    monkeypatch.delenv("HIPENGINE_STREAM_QUEUE_MAX_CHUNKS", raising=False)
+    monkeypatch.delenv("HIPENGINE_SHUTDOWN_GRACE_SECONDS", raising=False)
     monkeypatch.delenv("HIPENGINE_MAX_QUEUED_REQUESTS", raising=False)
     monkeypatch.delenv("HIPENGINE_MAX_ACTIVE_REQUESTS", raising=False)
     monkeypatch.delenv("HIPENGINE_MAX_CHAT_SESSIONS", raising=False)
@@ -16308,6 +16523,8 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
     assert default_args.startup_scratch_probe is True
     assert default_args.startup_min_free_mib is None
     assert default_args.request_timeout_ms is None
+    assert default_args.stream_queue_max_chunks == 16
+    assert default_args.shutdown_grace_seconds == 5.0
     assert default_args.max_queued_requests is None
     assert default_args.max_active_requests is None
     assert default_args.max_chat_sessions is None
@@ -16323,6 +16540,8 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
     monkeypatch.setenv("HIPENGINE_STARTUP_SCRATCH_PROBE", "0")
     monkeypatch.setenv("HIPENGINE_STARTUP_MIN_FREE_MIB", "512")
     monkeypatch.setenv("HIPENGINE_REQUEST_TIMEOUT_MS", "250.5")
+    monkeypatch.setenv("HIPENGINE_STREAM_QUEUE_MAX_CHUNKS", "9")
+    monkeypatch.setenv("HIPENGINE_SHUTDOWN_GRACE_SECONDS", "2.5")
     monkeypatch.setenv("HIPENGINE_MAX_QUEUED_REQUESTS", "7")
     monkeypatch.setenv("HIPENGINE_MAX_ACTIVE_REQUESTS", "6")
     monkeypatch.setenv("HIPENGINE_MAX_CHAT_SESSIONS", "5")
@@ -16338,6 +16557,8 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
     assert env_args.startup_scratch_probe is False
     assert env_args.startup_min_free_mib == 512
     assert env_args.request_timeout_ms == 250.5
+    assert env_args.stream_queue_max_chunks == 9
+    assert env_args.shutdown_grace_seconds == 2.5
     assert env_args.max_queued_requests == 7
     assert env_args.max_active_requests == 6
     assert env_args.max_chat_sessions == 5
@@ -16356,6 +16577,10 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
             "0",
             "--request-timeout-ms",
             "123.5",
+            "--stream-queue-max-chunks",
+            "6",
+            "--shutdown-grace-seconds",
+            "1.25",
             "--max-queued-requests",
             "3",
             "--max-active-requests",
@@ -16379,6 +16604,8 @@ def test_metrics_prefix_cache_and_generation_batch_cli_env_defaults(monkeypatch)
     assert cli_args.prefix_cache == "off"
     assert cli_args.generation_batch_window_ms == 0.0
     assert cli_args.request_timeout_ms == 123.5
+    assert cli_args.stream_queue_max_chunks == 6
+    assert cli_args.shutdown_grace_seconds == 1.25
     assert cli_args.max_queued_requests == 3
     assert cli_args.max_active_requests == 4
     assert cli_args.max_chat_sessions == 2
@@ -17455,6 +17682,178 @@ def test_metrics_endpoint_is_opt_in_and_additive() -> None:
     assert 'hipengine_graph_bucket_kernel_time_bucket_total{bucket="lt_1us"}' not in metrics.text
 
 
+def test_metrics_endpoint_exports_resident_loop_d5_observability() -> None:
+    fake = FakeLLM()
+    fake.live_loop_snapshot = lambda: {
+        "schema": 1,
+        "kind": "resident_engine_loop_observability",
+        "loop": {
+            "requests": {
+                "pending": 1,
+                "admitted_current": 2,
+                "active": 2,
+                "admitted_total": 7,
+                "completed_buffered": 0,
+                "reclaimed_total": 5,
+            },
+            "physical_bucket": {
+                "capacity": 4,
+                "active_c": 2,
+                "occupied_slots": 2,
+                "free_slots": 2,
+                "active_mask": [True, False, True, False],
+                "slot_to_request": [10, None, 12, None],
+                "occupancy_ratio": 0.5,
+            },
+            "work_counts": {"prefill": 3, "decode": 9, "reclaim": 5},
+            "latency_seconds": {
+                "queue": {"count": 2, "sum": 0.3, "max": 0.2, "p50": 0.15, "p95": 0.2, "samples": [0.1, 0.2]},
+                "time_to_first_token": {"count": 2, "sum": 1.5, "max": 1.0, "p50": 0.75, "p95": 1.0, "samples": [0.5, 1.0]},
+                "inter_token": {"count": 3, "sum": 0.12, "max": 0.05, "p50": 0.04, "p95": 0.05, "samples": [0.03, 0.04, 0.05]},
+                "service": {"count": 2, "sum": 2.5, "max": 1.5, "p50": 1.25, "p95": 1.5, "samples": [1.0, 1.5]},
+                "completion": {"count": 2, "sum": 2.8, "max": 1.7, "p50": 1.4, "p95": 1.7, "samples": [1.1, 1.7]},
+            },
+            "recent_completed": [],
+            "scheduler_policy": {
+                "prefill_decode_policy": "protect_ttft",
+                "prefill_chunk_tokens": 256,
+                "last_work_kind": "decode",
+            },
+        },
+        "runner": {
+            "model_runner": {
+                "capacity": 4,
+                "active_request_ids": [10, 12],
+                "active_requests": 2,
+                "available_sessions": 2,
+            },
+            "kv_pool": {
+                "current_bytes": 15728640,
+                "high_water_observed_bytes": 31457280,
+                "current_pages": 3,
+                "high_water_observed_pages": 6,
+                "free_pages": 0,
+                "refcounted_pages": 3,
+                "pinned_pages": 1,
+                "grow_events": 2,
+                "grow_failures": 1,
+                "shrink_events": 1,
+            },
+            "graph_buckets": {
+                "entries": 1,
+                "captures_total": 2,
+                "hits_total": 3,
+                "replays_total": 3,
+                "invalidations_total": 1,
+                "buckets": {
+                    "bucket-c2": {
+                        "bucket_key": {"key_sha256": "bucket-c2", "active_rows": 2},
+                        "entries": 1,
+                        "captures": 2,
+                        "hits": 3,
+                        "replays": 3,
+                        "invalidations": 1,
+                    }
+                },
+            },
+            "routes": {
+                "counts": {
+                    "native_full_prefill_rows": 2,
+                    "native_incremental_prefill_chunks": 4,
+                    "native_packed_decode_steps": 3,
+                    "native_c1_decode_steps": 1,
+                    "serial_decode_fallback_steps": 0,
+                    "resident_fallback_requests": 1,
+                },
+                "fallback_reasons": {"host_sampling": 1},
+                "last_execution_manifest": {
+                    "kind": "gguf_packed_ar_execution_manifest",
+                    "rows": 2,
+                },
+                "recent_completed": [],
+            },
+        },
+    }
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            metrics="prometheus",
+        ),
+        llm=fake,
+    )
+
+    body = TestClient(app).get("/metrics").text
+
+    assert _metric_value(body, "hipengine_resident_requests_pending") == 1
+    assert _metric_value(body, "hipengine_resident_requests_admitted") == 2
+    assert _metric_value(body, "hipengine_resident_requests_active") == 2
+    assert _metric_value(body, "hipengine_resident_requests_admitted_total") == 7
+    assert _metric_value(body, "hipengine_resident_requests_reclaimed_total") == 5
+    assert _metric_value(body, "hipengine_resident_bucket_capacity") == 4
+    assert _metric_value(body, "hipengine_resident_bucket_active_rows") == 2
+    assert _metric_value(body, "hipengine_resident_bucket_occupied_slots") == 2
+    assert _metric_value(body, "hipengine_resident_bucket_free_slots") == 2
+    assert _metric_value(body, "hipengine_resident_bucket_occupancy_ratio") == 0.5
+    assert _metric_value(body, "hipengine_resident_work_prefill_total") == 3
+    assert _metric_value(body, "hipengine_resident_work_decode_total") == 9
+    assert _metric_value(body, "hipengine_resident_work_reclaim_total") == 5
+    assert (
+        'hipengine_resident_bucket_info{active_mask="1010",last_work_kind="decode",'
+        'policy="protect_ttft"} 1'
+        in body
+    )
+    assert _labeled_metric_value(
+        body,
+        "hipengine_resident_request_latency_seconds",
+        kind="time_to_first_token",
+        quantile="0.5",
+    ) == 0.75
+    assert _labeled_metric_value(
+        body,
+        "hipengine_resident_request_latency_seconds",
+        kind="inter_token",
+        quantile="0.95",
+    ) == 0.05
+    assert _labeled_metric_value(
+        body,
+        "hipengine_resident_request_latency_seconds_sum",
+        kind="completion",
+    ) == 2.8
+    assert _labeled_metric_value(
+        body,
+        "hipengine_resident_request_latency_seconds_count",
+        kind="completion",
+    ) == 2
+    assert _labeled_metric_value(
+        body,
+        "hipengine_resident_request_latency_max_seconds",
+        kind="service",
+    ) == 1.5
+    assert _metric_value(body, "hipengine_kv_pool_current_pages") == 3
+    assert _metric_value(body, "hipengine_kv_pool_high_water_observed_pages") == 6
+    assert _metric_value(body, "hipengine_kv_pool_pinned_pages") == 1
+    assert _metric_value(body, "hipengine_graph_bucket_captures_total") == 2
+    assert _metric_value(body, "hipengine_graph_bucket_replays_total") == 3
+    assert _metric_value(body, "hipengine_graph_bucket_invalidations_total") == 1
+    assert _labeled_metric_value(
+        body,
+        "hipengine_graph_bucket_replays_by_bucket_total",
+        bucket="bucket-c2",
+    ) == 3
+    assert _labeled_metric_value(
+        body,
+        "hipengine_resident_route_total",
+        route="native_packed_decode_steps",
+    ) == 3
+    assert _labeled_metric_value(
+        body,
+        "hipengine_resident_fallback_total",
+        reason="host_sampling",
+    ) == 1
+
+
 def test_metrics_endpoint_counts_cancelled_requests() -> None:
     app = create_app(
         ServerConfig(
@@ -18232,12 +18631,12 @@ def _metric_value(text: str, name: str) -> float:
     raise AssertionError(f"metric {name} not found in:\n{text}")
 
 
-def _labeled_metric_value(text: str, name: str, **labels: str) -> int:
+def _labeled_metric_value(text: str, name: str, **labels: str) -> float:
     encoded_labels = ",".join(f'{key}="{value}"' for key, value in sorted(labels.items()))
     prefix = f"{name}{{{encoded_labels}}} "
     for line in text.splitlines():
         if line.startswith(prefix):
-            return int(float(line.removeprefix(prefix)))
+            return float(line.removeprefix(prefix))
     raise AssertionError(f"metric {name} with labels {labels} not found in:\n{text}")
 
 

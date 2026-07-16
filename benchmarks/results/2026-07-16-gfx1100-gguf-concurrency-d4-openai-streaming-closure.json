@@ -1,0 +1,188 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_gguf_concurrency_d4_openai_streaming_closure",
+  "created_at": "2026-07-16T23:25:00+09:00",
+  "status": "accepted_openai_continuous_membership",
+  "passed": true,
+  "claim_level": "continuous_eq_ok",
+  "performance_claim": false,
+  "server_continuous_membership_claim": true,
+  "global_production_continuous_batching_claim": false,
+  "provenance": {
+    "implementation_commit": "f03957cc7c37805243356d5f8ca0435ffd08771b",
+    "resident_stream_commit": "0d158a1d",
+    "git_branch": "gfx1100-concurrency",
+    "dirty": false,
+    "configured_backend": "hip_gfx1100",
+    "resolved_backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+    "model_size_bytes": 22663387424,
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "compiler_version_file": {
+      "path": "/tmp/gfx1100-concurrency/hipcc-version.txt",
+      "sha256": "d9f2eb1c91e566e56a5cf684257ead1b7636f95406095c20a2c5542a8734a8d7",
+      "size_bytes": 203
+    },
+    "environment": {
+      "HIP_VISIBLE_DEVICES": "0",
+      "HSA_OVERRIDE_GFX_VERSION": "11.0.0",
+      "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/gfx1100-concurrency/hipcc-version.txt",
+      "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+      "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact",
+      "HIPENGINE_PREFILL_DECODE_POLICY": "protect_ttft",
+      "HIPENGINE_MAX_ACTIVE_REQUESTS": "4",
+      "HIPENGINE_MAX_PREFILL_CHUNK_TOKENS": "256",
+      "HIPENGINE_KV_POOL_INITIAL_PAGES": "3",
+      "HIPENGINE_KV_POOL_LOW_WATER_PAGES": "3",
+      "HIPENGINE_KV_POOL_HIGH_WATER_PAGES": "12",
+      "HIPENGINE_KV_POOL_CHUNK_PAGES": "3",
+      "HIPENGINE_KV_POOL_IDLE_GRACE_SECONDS": "0"
+    }
+  },
+  "implementation": {
+    "server_owner": "hipengine.server.api._GenerationBatcher",
+    "adapter": "hipengine.generation.engine_loop.SubmitPollTextGenerator",
+    "loop": "hipengine.generation.engine_loop.ResidentEngineLoop",
+    "runner": "hipengine.generation.qwen35_gguf.Qwen35GGUFResidentModelRunner",
+    "controlled_stream_producers": true,
+    "model_transition_lock": true,
+    "request_lifetime_model_lock": false,
+    "stream_queue_max_chunks": 2,
+    "backpressure_scope": "per_request",
+    "shutdown_order": [
+      "close admission",
+      "drain for grace period",
+      "trip request cancellation tokens and stop HTTP producers",
+      "close long-lived LLM/runner and reclaim remaining model rows/device KV"
+    ],
+    "compatibility_prompt_list_adapter_retained": true
+  },
+  "requirements": {
+    "one_model_loop_for_llm_and_openai": {
+      "passed": true,
+      "evidence": "Public blocking generation and OpenAI streaming use the same prepared SubmitPollTextGenerator, ResidentEngineLoop, GGUF runner, and request-id space; the SSE request appears as resident request 2 after live requests 0/1."
+    },
+    "per_request_token_streaming": {
+      "passed": true,
+      "evidence": "A and B receive distinct request ids and row-routed token chunks; they execute one joined native decode step while A still completes all eight exact tokens and B disconnects independently."
+    },
+    "bounded_backpressure_isolation": {
+      "passed": true,
+      "evidence": "A's HTTP stream queue reaches its configured depth 2 before B submits; B is admitted, prefilled, and joins native c2 decode while A's queue remains full. Host overflow tests cancel only the slow row with client_backpressure."
+    },
+    "cancel_timeout_disconnect_shutdown": {
+      "passed": true,
+      "evidence": "B closes as disconnect with only its cancellation token tripped; a real OpenAI timeout emits deadline_exceeded plus [DONE]; forced shutdown reports zero HTTP active/queued requests, and the immediately following runner close returns scheduler rows, sessions, and device-KV ownership to zero."
+    },
+    "compatibility_adapter_not_second_architecture": {
+      "passed": true,
+      "evidence": "Non-streaming prompt-list compatibility still lowers through the resident submit/poll loop for the controlled GGUF capability; fake and third-party generators retain their explicitly capability-scoped legacy hooks."
+    }
+  },
+  "clean_w7900_gate": {
+    "command": "PY=/home/lhl/mambaforge/envs/therock/bin/python3.12; ROOT=$($PY -m rocm_sdk path --root); env -i HOME=$HOME USER=$USER LOGNAME=$LOGNAME SHELL=$SHELL TERM=${TERM:-xterm} PATH=$ROOT/bin:/home/lhl/mambaforge/envs/therock/bin:/usr/local/bin:/usr/bin:/bin LD_LIBRARY_PATH=$ROOT/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx110X_all/lib HIP_PATH=$ROOT ROCM_PATH=$ROOT HIP_LIB_PATH=$ROOT/lib HIP_INCLUDE_PATH=$ROOT/include HSA_OVERRIDE_GFX_VERSION=11.0.0 HIP_VISIBLE_DEVICES=0 PYTHONPATH=. HIPENGINE_COMPILER_VERSION_FILE=/tmp/gfx1100-concurrency/hipcc-version.txt $PY /tmp/gfx1100_d4_openai_lifecycle.py",
+    "elapsed_seconds": 78.15756458195392,
+    "source": {
+      "path": "/tmp/gfx1100-d4-openai-lifecycle-clean-f03957cc.json",
+      "sha256": "6573ba1c0b2136b744db8d67cf791969eacbbabf844b562c3698e7f8f97563e2",
+      "size_bytes": 7777
+    },
+    "harness": {
+      "path": "/tmp/gfx1100_d4_openai_lifecycle.py",
+      "sha256": "b473a075784d1412e2aa60e51c16800b4f414792b4c76fc2080cff8256d3656e",
+      "size_bytes": 15769
+    },
+    "shape": {
+      "live_prompt_tokens_per_request": 512,
+      "live_max_tokens": 8,
+      "prefill_chunk_tokens": 256,
+      "stream_queue_max_chunks": 2,
+      "resident_capacity": 4
+    },
+    "live_membership": {
+      "a_request_id": 0,
+      "b_request_id": 1,
+      "a_tokens": [9707, 9707, 9707, 9707, 9707, 9707, 9707, 9707],
+      "a_reference_tokens": [9707, 9707, 9707, 9707, 9707, 9707, 9707, 9707],
+      "b_tokens": [9708],
+      "b_reference_prefix": [9708],
+      "a_state_kv_mismatch_count": 0,
+      "b_state_kv_mismatch_count": 0,
+      "a_finish_reason": "length",
+      "b_finish_reason": "disconnect",
+      "joined_native_decode": true,
+      "queue_depths_before_b": [2],
+      "queue_depths_with_b": [2, 0],
+      "a_block_ids": [0, 1, 2],
+      "b_block_ids": [3, 4, 5]
+    },
+    "openai_sse": {
+      "status_code": 200,
+      "payload_count": 4,
+      "delta_text": " five six",
+      "completion_event": true,
+      "usage_event": true,
+      "done_sentinel": true
+    },
+    "timeout_sse": {
+      "status_code": 200,
+      "error_code": "deadline_exceeded",
+      "done_sentinel": true
+    },
+    "forced_shutdown": {
+      "forced": true,
+      "grace_seconds": 0.01,
+      "http_active_requests_after_shutdown": 0,
+      "http_queued_requests_after_shutdown": 0,
+      "cancellation_token_tripped": true,
+      "pre_runner_close": {
+        "active_request_ids": [3],
+        "available_sessions": 3,
+        "scheduler_active": 1,
+        "scheduler_pending": 0,
+        "pool_current_pages": 3,
+        "pool_refcounted_pages": 3,
+        "pool_pinned_pages": 0,
+        "pool_current_bytes": 15728640
+      },
+      "post_runner_close": {
+        "active_request_ids": [],
+        "available_sessions": 0,
+        "scheduler_active": 0,
+        "scheduler_pending": 0,
+        "pool_is_none": true,
+        "remaining_request_finish_reason": "disconnect"
+      }
+    }
+  },
+  "host_validation": {
+    "server_api": {
+      "command": "python3 -m pytest -q tests/test_server_api.py",
+      "passed": 486
+    },
+    "scheduler_and_public_llm": {
+      "command": "python3 -m pytest -q tests/test_generation_batch_scheduler.py tests/test_llm_generate.py tests/test_llm_gguf_generate_path.py",
+      "passed": 329,
+      "skipped": 4
+    },
+    "gguf_runner_and_graph": {
+      "command": "python3 -m pytest -q tests/test_generation_qwen35_gguf_sampling.py tests/test_qwen35_gguf_runner.py tests/test_qwen35_gguf_decode_graph.py tests/test_gguf_packed_decode_graph.py tests/test_gguf_decode_graph_g5.py",
+      "passed": 68,
+      "skipped": 9
+    }
+  },
+  "known_non_claims": [
+    "D4 adds no throughput, TTFT, ITL, or native-width performance claim.",
+    "Model transitions remain serialized by the resident loop tick lock; continuous membership is not concurrent GPU kernel execution.",
+    "Global production continuous batching remains incomplete until D5 observability closes and equivalent PARO/gfx1151 coverage exists.",
+    "Forced shutdown is intentionally two-phase: HTTP producer shutdown precedes long-lived runner close, so device ownership may remain between those adjacent app-shutdown phases.",
+    "gfx1151 E1 remains hardware-blocked on this host and no gfx1151 result is inferred from W7900.",
+    "Native c8 remains unimplemented; chunked c8 is not a native-c8 claim."
+  ],
+  "next_gate": "D5 export scheduler, request-latency, KV-pool, graph, and route/fallback observability for the live server loop."
+}

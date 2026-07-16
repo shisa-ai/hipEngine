@@ -1,0 +1,1338 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_gguf_concurrency_c1_hybrid_census",
+  "created_at": "2026-07-16T07:18:22.267607+00:00",
+  "status": "c1_census_complete",
+  "passed": true,
+  "performance_claim": false,
+  "claim_level": "exact_hybrid_profiler_census",
+  "workload": {
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv_dtype": "bf16",
+    "backend": "hip_gfx1100",
+    "prompt_tokens_per_row": 512,
+    "profiled_decode_transitions": 1,
+    "c1_rows": 1,
+    "c4_rows": 4,
+    "sampling": "greedy_top1",
+    "speculative_decode": false
+  },
+  "correctness": {
+    "c1_all_tokens_exact": true,
+    "c4_all_tokens_exact": true,
+    "expected_token_id": 9707,
+    "c1_generated_token_ids": [
+      9707,
+      9707,
+      9707
+    ],
+    "c4_warmup_token_ids": [
+      9707,
+      9707,
+      9707,
+      9707
+    ],
+    "c4_profile_token_ids": [
+      9707,
+      9707,
+      9707,
+      9707
+    ],
+    "phase_b_gate": "benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-b4-category-lifecycle.json"
+  },
+  "execution_manifest": {
+    "schema": 1,
+    "kind": "gguf_packed_ar_execution_manifest",
+    "mode": "decode",
+    "claim_level": "exact_hybrid",
+    "rows": 4,
+    "layers": {
+      "total": 40,
+      "linear_attention": 30,
+      "full_attention": 10
+    },
+    "model_step": {
+      "complete_c1_session_replays": 0,
+      "complete_c1_layer_replays": 0,
+      "host_model_row_loop_sites": 30,
+      "host_model_row_iterations": 120,
+      "per_row_model_subgraph_invocations": 120,
+      "expected_exact_row_local_kernel_launches": 840
+    },
+    "layer_families": {
+      "projection": {
+        "execution": "hybrid",
+        "packed_native_work": [
+          "embedding",
+          "full_attention_qkv_o",
+          "moe_selected_and_shared_projections"
+        ],
+        "exact_row_local_work": [
+          "linear_attention_qkv_gate",
+          "linear_attention_alpha",
+          "linear_attention_beta",
+          "linear_attention_ssm_out"
+        ],
+        "host_row_loop_sites": 30,
+        "host_row_iterations": 120,
+        "exact_row_local_kernel_launches": 480
+      },
+      "conv_gdn": {
+        "execution": "exact_row_local",
+        "packed_native_work": [],
+        "exact_row_local_work": [
+          "conv_decode",
+          "gdn_recurrent_decode"
+        ],
+        "host_row_loop_sites": 30,
+        "host_row_iterations": 120,
+        "exact_row_local_kernel_launches": 240
+      },
+      "normalization": {
+        "execution": "hybrid",
+        "packed_native_work": [
+          "packed_layer_and_output_norms"
+        ],
+        "exact_row_local_work": [
+          "linear_attention_attn_norm"
+        ],
+        "host_row_loop_sites": 30,
+        "host_row_iterations": 120,
+        "exact_row_local_kernel_launches": 120
+      },
+      "full_attention": {
+        "execution": "packed_native",
+        "layer_invocations": 10,
+        "host_row_loop_sites": 0,
+        "host_row_iterations": 0,
+        "exact_row_local_kernel_launches": 0
+      },
+      "moe_ffn": {
+        "execution": "packed_native",
+        "layer_invocations": 40,
+        "host_row_loop_sites": 0,
+        "host_row_iterations": 0,
+        "exact_row_local_kernel_launches": 0
+      },
+      "lm_head": {
+        "execution": "packed_native",
+        "layer_invocations": 1,
+        "host_row_loop_sites": 0,
+        "host_row_iterations": 0,
+        "exact_row_local_kernel_launches": 0
+      },
+      "sampler": {
+        "execution": "packed_native",
+        "layer_invocations": 1,
+        "host_row_loop_sites": 0,
+        "host_row_iterations": 0,
+        "exact_row_local_kernel_launches": 0,
+        "device_result": "argmax_i32_rows",
+        "host_readback": "one_i32_vector"
+      }
+    },
+    "host_device_movement": {
+      "host_to_device_metadata_copies": 8,
+      "host_to_device_metadata_bytes": 200,
+      "host_to_device_input_copies": 1,
+      "host_to_device_input_bytes": 32,
+      "host_to_device_total_copies": 9,
+      "host_to_device_total_bytes": 232,
+      "device_to_device_state_import_copies": 0,
+      "device_to_device_state_scatter_copies": 0,
+      "diagnostic_layer_capture_device_to_host_copies": 0,
+      "device_to_host_vector_copies": 1,
+      "device_to_host_vector_values": 4,
+      "device_to_host_vector_bytes": 16,
+      "device_to_host_scalar_copies": 0
+    },
+    "synchronizations": 2,
+    "scalar_fallbacks": 0,
+    "state_import_slots": 0,
+    "state_import_slot_indices": [],
+    "scatter_state": false,
+    "steady_packed_state_reused": true,
+    "profiler_contract": {
+      "expected_execution_buckets": [
+        "exact_row_local",
+        "packed_native"
+      ],
+      "expected_exact_row_local_kernel_launches": 840,
+      "require_cached_build": true
+    }
+  },
+  "profiler_census": {
+    "route_check_passed": true,
+    "c1_reference": {
+      "dispatches": 628,
+      "total_duration_ns": 9417228,
+      "total_duration_ms": 9.417228,
+      "top_kernels": [
+        {
+          "kernel": "void (anonymous namespace)::q8_0_t16_dual_split_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, long, long, long, long)",
+          "dispatches": 30,
+          "total_duration_ns": 1490849,
+          "launch_shapes": [
+            {
+              "count": 30,
+              "grid": [
+                98304,
+                1,
+                1
+              ],
+              "workgroup": [
+                128,
+                1,
+                1
+              ],
+              "vgpr": 56,
+              "scratch_bytes": 0,
+              "lds_bytes": 512
+            }
+          ]
+        },
+        {
+          "kernel": "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, float)",
+          "dispatches": 10,
+          "total_duration_ns": 1448411,
+          "launch_shapes": [
+            {
+              "count": 10,
+              "grid": [
+                4096,
+                1,
+                1
+              ],
+              "workgroup": [
+                256,
+                1,
+                1
+              ],
+              "vgpr": 40,
+              "scratch_bytes": 0,
+              "lds_bytes": 0
+            }
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::q4_k_t16_selected_dual_silu_direct_gemv_kernel<...>(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long)",
+          "dispatches": 40,
+          "total_duration_ns": 962609,
+          "launch_shapes": [
+            {
+              "count": 40,
+              "grid": [
+                4096,
+                8,
+                1
+              ],
+              "workgroup": [
+                128,
+                1,
+                1
+              ],
+              "vgpr": 200,
+              "scratch_bytes": 0,
+              "lds_bytes": 1024
+            }
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::qk_t16_selected_direct_gemv_kernel<...>(unsigned short const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long)",
+          "dispatches": 40,
+          "total_duration_ns": 883404,
+          "launch_shapes": [
+            {
+              "count": 37,
+              "grid": [
+                16384,
+                8,
+                1
+              ],
+              "workgroup": [
+                128,
+                1,
+                1
+              ],
+              "vgpr": 128,
+              "scratch_bytes": 0,
+              "lds_bytes": 512
+            },
+            {
+              "count": 3,
+              "grid": [
+                16384,
+                8,
+                1
+              ],
+              "workgroup": [
+                128,
+                1,
+                1
+              ],
+              "vgpr": 96,
+              "scratch_bytes": 0,
+              "lds_bytes": 512
+            }
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::q8_0_t16_gemv_kernel<...>(float const*, unsigned char const*, unsigned short*, long, long, long)",
+          "dispatches": 30,
+          "total_duration_ns": 730647,
+          "launch_shapes": [
+            {
+              "count": 30,
+              "grid": [
+                16384,
+                1,
+                1
+              ],
+              "workgroup": [
+                128,
+                1,
+                1
+              ],
+              "vgpr": 48,
+              "scratch_bytes": 0,
+              "lds_bytes": 512
+            }
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::q6_k_t16_gemv_kernel<...>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+          "dispatches": 1,
+          "total_duration_ns": 620405,
+          "launch_shapes": [
+            {
+              "count": 1,
+              "grid": [
+                1986560,
+                1,
+                1
+              ],
+              "workgroup": [
+                128,
+                1,
+                1
+              ],
+              "vgpr": 72,
+              "scratch_bytes": 0,
+              "lds_bytes": 512
+            }
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::q8_0_t16_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "dispatches": 50,
+          "total_duration_ns": 459604,
+          "launch_shapes": [
+            {
+              "count": 50,
+              "grid": [
+                16384,
+                1,
+                1
+              ],
+              "workgroup": [
+                128,
+                1,
+                1
+              ],
+              "vgpr": 56,
+              "scratch_bytes": 0,
+              "lds_bytes": 512
+            }
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_router_topk_split_shared_coop_out_f32w_kernel<...>(unsigned short const*, float const*, float const*, float*, long*, float*, int*, long, long, long)",
+          "dispatches": 40,
+          "total_duration_ns": 439683,
+          "launch_shapes": [
+            {
+              "count": 40,
+              "grid": [
+                65792,
+                1,
+                1
+              ],
+              "workgroup": [
+                256,
+                1,
+                1
+              ],
+              "vgpr": 32,
+              "scratch_bytes": 0,
+              "lds_bytes": 512
+            }
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<...>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, float, long, long, long, long)",
+          "dispatches": 30,
+          "total_duration_ns": 434682,
+          "launch_shapes": [
+            {
+              "count": 30,
+              "grid": [
+                4096,
+                1,
+                1
+              ],
+              "workgroup": [
+                128,
+                1,
+                1
+              ],
+              "vgpr": 56,
+              "scratch_bytes": 0,
+              "lds_bytes": 0
+            }
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::q8_0_t16_dual_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long)",
+          "dispatches": 40,
+          "total_duration_ns": 401765,
+          "launch_shapes": [
+            {
+              "count": 40,
+              "grid": [
+                8192,
+                1,
+                1
+              ],
+              "workgroup": [
+                128,
+                1,
+                1
+              ],
+              "vgpr": 56,
+              "scratch_bytes": 0,
+              "lds_bytes": 512
+            }
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::q8_0_t16_triple_split_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, unsigned short*, long, long, long, long, long)",
+          "dispatches": 10,
+          "total_duration_ns": 366203,
+          "launch_shapes": [
+            {
+              "count": 10,
+              "grid": [
+                73728,
+                1,
+                1
+              ],
+              "workgroup": [
+                128,
+                1,
+                1
+              ],
+              "vgpr": 56,
+              "scratch_bytes": 0,
+              "lds_bytes": 512
+            }
+          ]
+        },
+        {
+          "kernel": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+          "dispatches": 40,
+          "total_duration_ns": 256882,
+          "launch_shapes": [
+            {
+              "count": 40,
+              "grid": [
+                256,
+                1,
+                1
+              ],
+              "workgroup": [
+                256,
+                1,
+                1
+              ],
+              "vgpr": 24,
+              "scratch_bytes": 0,
+              "lds_bytes": 0
+            }
+          ]
+        }
+      ]
+    },
+    "c4": {
+      "all": {
+        "dispatches": 1386,
+        "total_duration_ns": 19095683,
+        "total_duration_ms": 19.095683
+      },
+      "expected_exact_row_local_dispatches": 840,
+      "observed_exact_row_local_dispatches": 840,
+      "buckets": {
+        "exact_row_local": {
+          "dispatches": 840,
+          "total_duration_ns": 7847403,
+          "total_duration_ms": 7.847403,
+          "share_of_c4_gpu_duration": 0.41095167949740263,
+          "top_kernels": [
+            {
+              "kernel": "void (anonymous namespace)::q8_0_t16_dual_split_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, long, long, long, long)",
+              "dispatches": 120,
+              "total_duration_ns": 2973220,
+              "launch_shapes": [
+                {
+                  "count": 120,
+                  "grid": [
+                    98304,
+                    1,
+                    1
+                  ],
+                  "workgroup": [
+                    128,
+                    1,
+                    1
+                  ],
+                  "vgpr": 56,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 512
+                }
+              ]
+            },
+            {
+              "kernel": "void (anonymous namespace)::q8_0_t16_gemv_kernel<...>(float const*, unsigned char const*, unsigned short*, long, long, long)",
+              "dispatches": 120,
+              "total_duration_ns": 1758531,
+              "launch_shapes": [
+                {
+                  "count": 120,
+                  "grid": [
+                    16384,
+                    1,
+                    1
+                  ],
+                  "workgroup": [
+                    128,
+                    1,
+                    1
+                  ],
+                  "vgpr": 48,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 512
+                }
+              ]
+            },
+            {
+              "kernel": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<...>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, float, long, long, long, long)",
+              "dispatches": 120,
+              "total_duration_ns": 1556285,
+              "launch_shapes": [
+                {
+                  "count": 120,
+                  "grid": [
+                    4096,
+                    1,
+                    1
+                  ],
+                  "workgroup": [
+                    128,
+                    1,
+                    1
+                  ],
+                  "vgpr": 56,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 0
+                }
+              ]
+            },
+            {
+              "kernel": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+              "dispatches": 120,
+              "total_duration_ns": 647163,
+              "launch_shapes": [
+                {
+                  "count": 120,
+                  "grid": [
+                    256,
+                    1,
+                    1
+                  ],
+                  "workgroup": [
+                    256,
+                    1,
+                    1
+                  ],
+                  "vgpr": 16,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 0
+                }
+              ]
+            },
+            {
+              "kernel": "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)",
+              "dispatches": 240,
+              "total_duration_ns": 587723,
+              "launch_shapes": [
+                {
+                  "count": 240,
+                  "grid": [
+                    8192,
+                    1,
+                    1
+                  ],
+                  "workgroup": [
+                    256,
+                    1,
+                    1
+                  ],
+                  "vgpr": 24,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 1024
+                }
+              ]
+            },
+            {
+              "kernel": "void (anonymous namespace)::qwen35_linear_attn_conv_decode_lowp_kernel<...>(unsigned short const*, float*, float const*, float*, long, long)",
+              "dispatches": 120,
+              "total_duration_ns": 324481,
+              "launch_shapes": [
+                {
+                  "count": 120,
+                  "grid": [
+                    8192,
+                    1,
+                    1
+                  ],
+                  "workgroup": [
+                    256,
+                    1,
+                    1
+                  ],
+                  "vgpr": 16,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 0
+                }
+              ]
+            }
+          ]
+        },
+        "packed_native": {
+          "dispatches": 546,
+          "total_duration_ns": 11248280,
+          "total_duration_ms": 11.24828,
+          "share_of_c4_gpu_duration": 0.5890483205025974,
+          "top_kernels": [
+            {
+              "kernel": "void (anonymous namespace)::q4_k_t16_selected_dual_direct_gemv_kernel<...>(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, long, long, long, long, long)",
+              "dispatches": 40,
+              "total_duration_ns": 2470340,
+              "launch_shapes": [
+                {
+                  "count": 40,
+                  "grid": [
+                    4096,
+                    32,
+                    1
+                  ],
+                  "workgroup": [
+                    128,
+                    1,
+                    1
+                  ],
+                  "vgpr": 200,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 1024
+                }
+              ]
+            },
+            {
+              "kernel": "void (anonymous namespace)::qk_t16_selected_direct_gemv_kernel<...>(unsigned short const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long)",
+              "dispatches": 40,
+              "total_duration_ns": 2265614,
+              "launch_shapes": [
+                {
+                  "count": 37,
+                  "grid": [
+                    16384,
+                    32,
+                    1
+                  ],
+                  "workgroup": [
+                    128,
+                    1,
+                    1
+                  ],
+                  "vgpr": 128,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 512
+                },
+                {
+                  "count": 3,
+                  "grid": [
+                    16384,
+                    32,
+                    1
+                  ],
+                  "workgroup": [
+                    128,
+                    1,
+                    1
+                  ],
+                  "vgpr": 96,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 512
+                }
+              ]
+            },
+            {
+              "kernel": "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+              "dispatches": 10,
+              "total_duration_ns": 2235814,
+              "launch_shapes": [
+                {
+                  "count": 10,
+                  "grid": [
+                    4096,
+                    4,
+                    1
+                  ],
+                  "workgroup": [
+                    256,
+                    1,
+                    1
+                  ],
+                  "vgpr": 40,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 0
+                }
+              ]
+            },
+            {
+              "kernel": "void (anonymous namespace)::q6_k_t16_gemv_rowtile_kernel<...>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+              "dispatches": 1,
+              "total_duration_ns": 1110008,
+              "launch_shapes": [
+                {
+                  "count": 1,
+                  "grid": [
+                    1986560,
+                    1,
+                    1
+                  ],
+                  "workgroup": [
+                    128,
+                    1,
+                    1
+                  ],
+                  "vgpr": 136,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 1024
+                }
+              ]
+            },
+            {
+              "kernel": "void (anonymous namespace)::q8_0_t16_triple_split_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, unsigned short*, long, long, long, long, long)",
+              "dispatches": 10,
+              "total_duration_ns": 624083,
+              "launch_shapes": [
+                {
+                  "count": 10,
+                  "grid": [
+                    73728,
+                    4,
+                    1
+                  ],
+                  "workgroup": [
+                    128,
+                    1,
+                    1
+                  ],
+                  "vgpr": 56,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 512
+                }
+              ]
+            },
+            {
+              "kernel": "void (anonymous namespace)::q8_0_t16_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+              "dispatches": 50,
+              "total_duration_ns": 539162,
+              "launch_shapes": [
+                {
+                  "count": 50,
+                  "grid": [
+                    16384,
+                    4,
+                    1
+                  ],
+                  "workgroup": [
+                    128,
+                    1,
+                    1
+                  ],
+                  "vgpr": 56,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 512
+                }
+              ]
+            },
+            {
+              "kernel": "void (anonymous namespace)::q8_0_t16_dual_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long)",
+              "dispatches": 40,
+              "total_duration_ns": 427285,
+              "launch_shapes": [
+                {
+                  "count": 40,
+                  "grid": [
+                    8192,
+                    4,
+                    1
+                  ],
+                  "workgroup": [
+                    128,
+                    1,
+                    1
+                  ],
+                  "vgpr": 56,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 512
+                }
+              ]
+            },
+            {
+              "kernel": "void (anonymous namespace)::qwen35_router_logits_token_tile_kernel<...>(unsigned short const*, float const*, float*, long, long, long)",
+              "dispatches": 80,
+              "total_duration_ns": 392241,
+              "launch_shapes": [
+                {
+                  "count": 40,
+                  "grid": [
+                    256,
+                    1,
+                    1
+                  ],
+                  "workgroup": [
+                    256,
+                    1,
+                    1
+                  ],
+                  "vgpr": 32,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 0
+                },
+                {
+                  "count": 40,
+                  "grid": [
+                    65536,
+                    1,
+                    1
+                  ],
+                  "workgroup": [
+                    256,
+                    1,
+                    1
+                  ],
+                  "vgpr": 32,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 0
+                }
+              ]
+            },
+            {
+              "kernel": "(anonymous namespace)::qwen35_router_select_kernel(float const*, long*, float*, long, long, long)",
+              "dispatches": 40,
+              "total_duration_ns": 272163,
+              "launch_shapes": [
+                {
+                  "count": 40,
+                  "grid": [
+                    512,
+                    1,
+                    1
+                  ],
+                  "workgroup": [
+                    128,
+                    1,
+                    1
+                  ],
+                  "vgpr": 32,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 512
+                }
+              ]
+            },
+            {
+              "kernel": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+              "dispatches": 40,
+              "total_duration_ns": 251762,
+              "launch_shapes": [
+                {
+                  "count": 40,
+                  "grid": [
+                    1024,
+                    1,
+                    1
+                  ],
+                  "workgroup": [
+                    256,
+                    1,
+                    1
+                  ],
+                  "vgpr": 24,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 0
+                }
+              ]
+            },
+            {
+              "kernel": "void (anonymous namespace)::weighted_sum_shared_gate_combine_residual_batch_out_kernel<...>(unsigned short const*, float const*, unsigned short const*, float const*, unsigned short const*, unsigned short*, long, long, long, long)",
+              "dispatches": 40,
+              "total_duration_ns": 123962,
+              "launch_shapes": [
+                {
+                  "count": 40,
+                  "grid": [
+                    2048,
+                    4,
+                    1
+                  ],
+                  "workgroup": [
+                    256,
+                    1,
+                    1
+                  ],
+                  "vgpr": 16,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 0
+                }
+              ]
+            },
+            {
+              "kernel": "gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long)",
+              "dispatches": 10,
+              "total_duration_ns": 105401,
+              "launch_shapes": [
+                {
+                  "count": 10,
+                  "grid": [
+                    4608,
+                    4,
+                    1
+                  ],
+                  "workgroup": [
+                    256,
+                    1,
+                    1
+                  ],
+                  "vgpr": 16,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 0
+                }
+              ]
+            },
+            {
+              "kernel": "void (anonymous namespace)::silu_mul_separate_out_kernel<...>(unsigned short const*, unsigned short const*, unsigned short*, long, long)",
+              "dispatches": 40,
+              "total_duration_ns": 87481,
+              "launch_shapes": [
+                {
+                  "count": 40,
+                  "grid": [
+                    16384,
+                    1,
+                    1
+                  ],
+                  "workgroup": [
+                    256,
+                    1,
+                    1
+                  ],
+                  "vgpr": 16,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 0
+                }
+              ]
+            },
+            {
+              "kernel": "void (anonymous namespace)::silu_mul_dual_out_kernel<...>(unsigned short const*, unsigned short*, long, long)",
+              "dispatches": 40,
+              "total_duration_ns": 87441,
+              "launch_shapes": [
+                {
+                  "count": 40,
+                  "grid": [
+                    2048,
+                    1,
+                    1
+                  ],
+                  "workgroup": [
+                    256,
+                    1,
+                    1
+                  ],
+                  "vgpr": 16,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 0
+                }
+              ]
+            },
+            {
+              "kernel": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+              "dispatches": 11,
+              "total_duration_ns": 60520,
+              "launch_shapes": [
+                {
+                  "count": 11,
+                  "grid": [
+                    1024,
+                    1,
+                    1
+                  ],
+                  "workgroup": [
+                    256,
+                    1,
+                    1
+                  ],
+                  "vgpr": 16,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 0
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  },
+  "raw_traces": {
+    "c1": {
+      "kernel_csv": "/tmp/gfx1100-concurrency-c1-clean-88f10724/raw/c1/trace/epyc/2935273_kernel_trace.csv",
+      "kernel_csv_sha256": "f713fbd9b62b245c31afebc875fb26ac63f31dc9004f5fd8812bca3761377c8f",
+      "marker_csv": "/tmp/gfx1100-concurrency-c1-clean-88f10724/raw/c1/trace/epyc/2935273_marker_api_trace.csv",
+      "marker_csv_sha256": "6c479670ecfed8a3fe5a7c49459b0300fa01b83ebaa399956dc87cac3510c4fa",
+      "whole_trace_dispatches": 2921,
+      "selected_dispatches": 628,
+      "marker_start_ns": 343061184606272,
+      "marker_end_ns": 343061224851326
+    },
+    "c4": {
+      "kernel_csv": "/tmp/gfx1100-concurrency-c1-clean-88f10724/raw/c4/trace/epyc/2936887_kernel_trace.csv",
+      "kernel_csv_sha256": "6e146b9c9a23bb0ac1ad51cdbbd10cdecc06e3f4742698ca8a6a6c17b4b6980f",
+      "marker_csv": "/tmp/gfx1100-concurrency-c1-clean-88f10724/raw/c4/trace/epyc/2936887_marker_api_trace.csv",
+      "marker_csv_sha256": "8db6c94baddbb85ae6629e6b53cf18646cec8a645acba77e30315f43a0fa4d58",
+      "whole_trace_dispatches": 12464,
+      "selected_dispatches": 1386,
+      "marker_start_ns": 343147499168863,
+      "marker_end_ns": 343147575755088
+    }
+  },
+  "profile_safety": {
+    "profiled_leaf_children": 2,
+    "require_cached_build": true,
+    "observed_process_ids": [
+      2935273,
+      2936887
+    ],
+    "stderr": {
+      "c1": {
+        "path": "/tmp/gfx1100-concurrency-c1-clean-88f10724/raw/c1/stderr.log",
+        "sha256": "87ea6e37afddb27fa1d3538cfa0fba79237b7588225c2c54f71ab3aa654dfdc5"
+      },
+      "c4": {
+        "path": "/tmp/gfx1100-concurrency-c1-clean-88f10724/raw/c4/stderr.log",
+        "sha256": "2f3870e946fe08c0b1dc3b85becad960dcbb14dcfa4c9f4512cba458411a9672"
+      }
+    },
+    "compiler_or_linker_log_matches": [],
+    "zero_compiler_or_linker_log_matches": true,
+    "process_tree_monitoring": false
+  },
+  "commands": {
+    "parent": [
+      "/home/lhl/mambaforge/envs/therock/bin/python3",
+      "scripts/gguf_packed_ar_rocprof.py",
+      "--model",
+      "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1100",
+      "--prompt-length",
+      "512",
+      "--prompt-token-id",
+      "9707",
+      "--expected-token-id",
+      "9707",
+      "--compiler-version-file",
+      "/tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt",
+      "--raw-root",
+      "/tmp/gfx1100-concurrency-c1-clean-88f10724/raw",
+      "--out",
+      "/tmp/gfx1100-concurrency-c1-clean-88f10724/c1-census.json"
+    ],
+    "warmbuild": [
+      [
+        "/home/lhl/mambaforge/envs/therock/bin/python3",
+        "/home/lhl/hipEngine-main/scripts/gguf_packed_ar_rocprof.py",
+        "--child-mode",
+        "warmbuild",
+        "--concurrency",
+        "1",
+        "--model",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "--backend",
+        "hip_gfx1100",
+        "--prompt-length",
+        "512",
+        "--prompt-token-id",
+        "9707",
+        "--expected-token-id",
+        "9707",
+        "--child-json",
+        "/tmp/gfx1100-concurrency-c1-clean-88f10724/raw/warmbuild-c1/child.json",
+        "--compiler-version-file",
+        "/tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt"
+      ],
+      [
+        "/home/lhl/mambaforge/envs/therock/bin/python3",
+        "/home/lhl/hipEngine-main/scripts/gguf_packed_ar_rocprof.py",
+        "--child-mode",
+        "warmbuild",
+        "--concurrency",
+        "4",
+        "--model",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "--backend",
+        "hip_gfx1100",
+        "--prompt-length",
+        "512",
+        "--prompt-token-id",
+        "9707",
+        "--expected-token-id",
+        "9707",
+        "--child-json",
+        "/tmp/gfx1100-concurrency-c1-clean-88f10724/raw/warmbuild-c4/child.json",
+        "--compiler-version-file",
+        "/tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt"
+      ]
+    ],
+    "c1_profiler": [
+      "/home/lhl/mambaforge/envs/therock/bin/rocprofv3",
+      "--kernel-trace",
+      "--marker-trace",
+      "--output-format",
+      "csv",
+      "-d",
+      "/tmp/gfx1100-concurrency-c1-clean-88f10724/raw/c1/trace",
+      "--",
+      "/home/lhl/mambaforge/envs/therock/bin/python3",
+      "/home/lhl/hipEngine-main/scripts/gguf_packed_ar_rocprof.py",
+      "--child-mode",
+      "profile",
+      "--concurrency",
+      "1",
+      "--model",
+      "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1100",
+      "--prompt-length",
+      "512",
+      "--prompt-token-id",
+      "9707",
+      "--expected-token-id",
+      "9707",
+      "--child-json",
+      "/tmp/gfx1100-concurrency-c1-clean-88f10724/raw/c1/child.json",
+      "--compiler-version-file",
+      "/tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt",
+      "--require-cached-build"
+    ],
+    "c4_profiler": [
+      "/home/lhl/mambaforge/envs/therock/bin/rocprofv3",
+      "--kernel-trace",
+      "--marker-trace",
+      "--output-format",
+      "csv",
+      "-d",
+      "/tmp/gfx1100-concurrency-c1-clean-88f10724/raw/c4/trace",
+      "--",
+      "/home/lhl/mambaforge/envs/therock/bin/python3",
+      "/home/lhl/hipEngine-main/scripts/gguf_packed_ar_rocprof.py",
+      "--child-mode",
+      "profile",
+      "--concurrency",
+      "4",
+      "--model",
+      "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1100",
+      "--prompt-length",
+      "512",
+      "--prompt-token-id",
+      "9707",
+      "--expected-token-id",
+      "9707",
+      "--child-json",
+      "/tmp/gfx1100-concurrency-c1-clean-88f10724/raw/c4/child.json",
+      "--compiler-version-file",
+      "/tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt",
+      "--require-cached-build"
+    ]
+  },
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-16T07:18:22.226975+00:00",
+    "repo_root": "/home/lhl/hipEngine-main",
+    "hipengine_commit": "88f10724565964708f00f1564af5c13b06123f92",
+    "git_branch": "gfx1100-concurrency",
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "configured_backend": "hip_gfx1100",
+    "resolved_backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        11331169424,
+        22662338848
+      ],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "command": [
+      "/home/lhl/mambaforge/envs/therock/bin/python3",
+      "scripts/gguf_packed_ar_rocprof.py",
+      "--model",
+      "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1100",
+      "--prompt-length",
+      "512",
+      "--prompt-token-id",
+      "9707",
+      "--expected-token-id",
+      "9707",
+      "--compiler-version-file",
+      "/tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt",
+      "--raw-root",
+      "/tmp/gfx1100-concurrency-c1-clean-88f10724/raw",
+      "--out",
+      "/tmp/gfx1100-concurrency-c1-clean-88f10724/c1-census.json"
+    ],
+    "environment": {
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt",
+      "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+      "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact"
+    },
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "build_profile": "cached_only_paired_c1_c4_leaf_rocprof",
+    "timing_protocol": "single_synchronized_steady_decode_marker_window_nonperformance",
+    "warmups": 1,
+    "repetitions": 1,
+    "profiler": {
+      "kind": "rocprofv3_kernel_and_marker_trace",
+      "c1_command": [
+        "/home/lhl/mambaforge/envs/therock/bin/rocprofv3",
+        "--kernel-trace",
+        "--marker-trace",
+        "--output-format",
+        "csv",
+        "-d",
+        "/tmp/gfx1100-concurrency-c1-clean-88f10724/raw/c1/trace",
+        "--",
+        "/home/lhl/mambaforge/envs/therock/bin/python3",
+        "/home/lhl/hipEngine-main/scripts/gguf_packed_ar_rocprof.py",
+        "--child-mode",
+        "profile",
+        "--concurrency",
+        "1",
+        "--model",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "--backend",
+        "hip_gfx1100",
+        "--prompt-length",
+        "512",
+        "--prompt-token-id",
+        "9707",
+        "--expected-token-id",
+        "9707",
+        "--child-json",
+        "/tmp/gfx1100-concurrency-c1-clean-88f10724/raw/c1/child.json",
+        "--compiler-version-file",
+        "/tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt",
+        "--require-cached-build"
+      ],
+      "c4_command": [
+        "/home/lhl/mambaforge/envs/therock/bin/rocprofv3",
+        "--kernel-trace",
+        "--marker-trace",
+        "--output-format",
+        "csv",
+        "-d",
+        "/tmp/gfx1100-concurrency-c1-clean-88f10724/raw/c4/trace",
+        "--",
+        "/home/lhl/mambaforge/envs/therock/bin/python3",
+        "/home/lhl/hipEngine-main/scripts/gguf_packed_ar_rocprof.py",
+        "--child-mode",
+        "profile",
+        "--concurrency",
+        "4",
+        "--model",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "--backend",
+        "hip_gfx1100",
+        "--prompt-length",
+        "512",
+        "--prompt-token-id",
+        "9707",
+        "--expected-token-id",
+        "9707",
+        "--child-json",
+        "/tmp/gfx1100-concurrency-c1-clean-88f10724/raw/c4/child.json",
+        "--compiler-version-file",
+        "/tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt",
+        "--require-cached-build"
+      ]
+    }
+  },
+  "source_files": {
+    "hipengine/runtime/gguf_packed_manifest.py": "5883e9d81671ac36c879520be91ba5d0199c9eb3bd80864505b9155ec7a59c62",
+    "hipengine/runtime/qwen35_gguf_runner.py": "0e42183b184adbb3d05524cf2ef650b0af4906816f7a6e143b16dd025eba331f",
+    "scripts/gguf_packed_ar_rocprof.py": "e2461552138233ae6fa3b1d6390ae6e858288c3ebd7bca5df5d6d640a2448202",
+    "tests/test_gguf_packed_execution_manifest.py": "c69f96dac6ea2dbbde930c481720dc0ce52d4dd156d08e1098746c965199f4c0"
+  },
+  "source_result": {
+    "path": "/tmp/gfx1100-concurrency-c1-clean-88f10724/c1-census.json",
+    "sha256": "32217fd380979df83022131ab0bdc063fa4eccc96bd8f1c80b75b9da24fb41d5",
+    "child_sha256": {
+      "c1": "5337338d03454af424f36de7b5bfbb706fa1f867b3cc684fe18d15cff773f431",
+      "c4": "0a986840f2f9943ea9932d4df755e4b2719ca7be05d6ec946d07fdd77881cfd7"
+    }
+  },
+  "validation": {
+    "focused_tests": "python3 -m pytest -q tests/test_gguf_packed_execution_manifest.py tests/test_gguf_packed_verify_layout.py",
+    "focused_result": "24 passed",
+    "gguf_regression_tests": "python3 -m pytest -q tests/test_generation_qwen35_gguf_sampling.py tests/test_qwen35_gguf_hidden_seed_contract.py tests/test_gguf_packed_ar_state_oracle.py tests/test_gguf_packed_verify_layout.py tests/test_qwen35_gguf_runner.py tests/test_gguf_packed_execution_manifest.py",
+    "gguf_regression_result": "101 passed, 9 skipped"
+  },
+  "limitations": [
+    "One synchronized steady decode transition is a route census, not a throughput sample.",
+    "The c4 route remains exact_hybrid because recurrent linear attention replays a c1-exact row subgraph.",
+    "Profiler instrumentation and marker synchronization make all durations diagnostic only."
+  ]
+}

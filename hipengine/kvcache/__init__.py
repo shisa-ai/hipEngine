@@ -15,6 +15,9 @@ from hipengine.kvcache.policy import (
 )
 from hipengine.kvcache.pool import (
     ChunkedKVPool,
+    DeviceChunkedKVPool,
+    DeviceKVPoolAllocation,
+    DeviceKVPoolStats,
     KVPoolAllocation,
     KVPoolChunk,
     KVPoolCopyOnWriteFork,
@@ -35,6 +38,9 @@ from hipengine.kvcache.spans import KVLiveSpans, KVScaleMetadata
 
 __all__ = [
     "ChunkedKVPool",
+    "DeviceChunkedKVPool",
+    "DeviceKVPoolAllocation",
+    "DeviceKVPoolStats",
     "FixedPagedKVPolicy",
     "KVLiveSpans",
     "KVPolicy",

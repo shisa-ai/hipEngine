@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+from collections.abc import Sequence
 from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
@@ -23,6 +24,12 @@ _SYMBOL_SET_I64_VECTOR = "hipengine_set_i64_vector"
 _SYMBOL_SET_POSITION = "hipengine_set_decode_position_i64"
 _SYMBOL_SET_POSITIONS = "hipengine_set_decode_positions_i64"
 _SYMBOL_PREPARE_PREFILL_CHUNK_METADATA = "hipengine_prepare_prefill_chunk_metadata"
+_SYMBOL_PREPARE_PACKED_DECODE_METADATA = "hipengine_prepare_packed_decode_metadata"
+_SYMBOL_PREPARE_PACKED_DECODE_METADATA_FROM_POSITIONS = (
+    "hipengine_prepare_packed_decode_metadata_from_positions"
+)
+_SYMBOL_COMMIT_PACKED_DECODE_GRAPH_STEP = "hipengine_commit_packed_decode_graph_step"
+_SYMBOL_RECORD_U16_ROWS_INDEXED = "hipengine_record_u16_rows_indexed"
 _SYMBOL_ADVANCE_POSITION = "hipengine_advance_decode_position_i64"
 _SYMBOL_ADVANCE_POSITIONS = "hipengine_advance_decode_positions_i64"
 _SYMBOL_RECORD_I64_INDEXED = "hipengine_record_i64_scalar_indexed"
@@ -468,6 +475,262 @@ def prepare_prefill_chunk_metadata(
     _check_launch(runtime, err)
 
 
+def prepare_packed_decode_metadata(
+    block_table_i32_ptr: int,
+    positions_i64_ptr: int,
+    contexts_i64_ptr: int,
+    cu_q_i32_ptr: int,
+    cu_k_i32_ptr: int,
+    atomic_i32_ptr: int,
+    gdn_cu_seqlens_i32_ptr: int,
+    state_indices_i64_ptr: int,
+    position_values: Sequence[int],
+    blocks_per_slot: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Prepare singleton packed-decode metadata without host-to-device copies."""
+
+    values = tuple(int(value) for value in position_values)
+    if not values:
+        raise ValueError("position_values must be non-empty")
+    if len(values) > 4:
+        raise ValueError("position_values supports at most four packed decode rows")
+    if min(values) < 0:
+        raise ValueError("position_values must be non-negative")
+    if max(values) >= 2**31 - 1:
+        raise ValueError("position_values + 1 must fit int32 CU metadata")
+    block_count = int(blocks_per_slot)
+    if block_count <= 0:
+        raise ValueError("blocks_per_slot must be positive")
+    if len(values) * block_count > 2**31 - 1:
+        raise ValueError("packed block table size must fit int32")
+    padded_positions = (*values, *(0 for _ in range(4 - len(values))))
+
+    library = library or build_runtime_state(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_PREPARE_PACKED_DECODE_METADATA)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(block_table_i32_ptr),
+        ctypes.c_void_p(positions_i64_ptr),
+        ctypes.c_void_p(contexts_i64_ptr),
+        ctypes.c_void_p(cu_q_i32_ptr),
+        ctypes.c_void_p(cu_k_i32_ptr),
+        ctypes.c_void_p(atomic_i32_ptr),
+        ctypes.c_void_p(gdn_cu_seqlens_i32_ptr),
+        ctypes.c_void_p(state_indices_i64_ptr),
+        *(ctypes.c_int64(value) for value in padded_positions),
+        ctypes.c_int64(len(values)),
+        ctypes.c_int64(block_count),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def prepare_packed_decode_metadata_from_positions(
+    block_table_i32_ptr: int,
+    positions_i64_ptr: int,
+    contexts_i64_ptr: int,
+    cu_q_i32_ptr: int,
+    cu_k_i32_ptr: int,
+    atomic_i32_ptr: int,
+    gdn_cu_seqlens_i32_ptr: int,
+    state_indices_i64_ptr: int,
+    rows: int,
+    blocks_per_slot: int,
+    *,
+    active_mask_u8_ptr: int | None = None,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Refresh replayable packed metadata from device-resident positions."""
+
+    row_count = int(rows)
+    block_count = int(blocks_per_slot)
+    if row_count <= 0 or row_count > 8:
+        raise ValueError("rows must be in [1, 8]")
+    if block_count <= 0:
+        raise ValueError("blocks_per_slot must be positive")
+    if row_count * block_count > 2**31 - 1:
+        raise ValueError("packed block table size must fit int32")
+    library = library or build_runtime_state(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_PREPARE_PACKED_DECODE_METADATA_FROM_POSITIONS)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(block_table_i32_ptr),
+        ctypes.c_void_p(positions_i64_ptr),
+        ctypes.c_void_p(contexts_i64_ptr),
+        ctypes.c_void_p(cu_q_i32_ptr),
+        ctypes.c_void_p(cu_k_i32_ptr),
+        ctypes.c_void_p(atomic_i32_ptr),
+        ctypes.c_void_p(gdn_cu_seqlens_i32_ptr),
+        ctypes.c_void_p(state_indices_i64_ptr),
+        (
+            ctypes.c_void_p(active_mask_u8_ptr)
+            if active_mask_u8_ptr is not None
+            else ctypes.c_void_p()
+        ),
+        ctypes.c_int64(row_count),
+        ctypes.c_int64(block_count),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def commit_packed_decode_graph_step(
+    token_ids_i32_ptr: int,
+    token_ids_i64_ptr: int,
+    positions_i64_ptr: int,
+    contexts_i64_ptr: int,
+    rows: int,
+    *,
+    active_mask_u8_ptr: int | None = None,
+    recorded_token_ids_i32_ptr: int | None = None,
+    record_index_i64_ptr: int | None = None,
+    record_capacity: int = 0,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Feed sampled row tokens back to embedding and advance replay state."""
+
+    row_count = int(rows)
+    if row_count <= 0 or row_count > 8:
+        raise ValueError("rows must be in [1, 8]")
+    recording = recorded_token_ids_i32_ptr is not None or record_index_i64_ptr is not None
+    if recording and (
+        recorded_token_ids_i32_ptr is None
+        or record_index_i64_ptr is None
+        or int(record_capacity) <= 0
+    ):
+        raise ValueError("token recording requires output, index, and positive capacity")
+    library = library or build_runtime_state(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_COMMIT_PACKED_DECODE_GRAPH_STEP)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(token_ids_i32_ptr),
+        ctypes.c_void_p(token_ids_i64_ptr),
+        ctypes.c_void_p(positions_i64_ptr),
+        ctypes.c_void_p(contexts_i64_ptr),
+        (
+            ctypes.c_void_p(active_mask_u8_ptr)
+            if active_mask_u8_ptr is not None
+            else ctypes.c_void_p()
+        ),
+        (
+            ctypes.c_void_p(recorded_token_ids_i32_ptr)
+            if recorded_token_ids_i32_ptr is not None
+            else ctypes.c_void_p()
+        ),
+        (
+            ctypes.c_void_p(record_index_i64_ptr)
+            if record_index_i64_ptr is not None
+            else ctypes.c_void_p()
+        ),
+        ctypes.c_int64(int(record_capacity)),
+        ctypes.c_int64(row_count),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def record_u16_rows_indexed(
+    value_u16_ptr: int,
+    out_u16_ptr: int,
+    index_i64_ptr: int,
+    elements: int,
+    step_stride: int,
+    capacity: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Record one packed uint16 slab at the current graph-step index."""
+
+    element_count = int(elements)
+    stride = int(step_stride)
+    step_capacity = int(capacity)
+    if element_count <= 0:
+        raise ValueError("elements must be positive")
+    if stride < element_count:
+        raise ValueError("step_stride must cover elements")
+    if step_capacity <= 0:
+        raise ValueError("capacity must be positive")
+    library = library or build_runtime_state(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_RECORD_U16_ROWS_INDEXED)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(value_u16_ptr),
+        ctypes.c_void_p(out_u16_ptr),
+        ctypes.c_void_p(index_i64_ptr),
+        ctypes.c_int64(element_count),
+        ctypes.c_int64(stride),
+        ctypes.c_int64(step_capacity),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def advance_decode_position_i64(
     position_i64_ptr: int,
     context_i64_ptr: int,
@@ -683,6 +946,61 @@ def register_runtime_state_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "prefill_metadata", "gguf_qwen35", "contiguous_chunk"),
         prepare_prefill_chunk_metadata,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "decode_metadata", "gguf_qwen35", "packed_c4_i64"),
+        prepare_packed_decode_metadata,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "decode_metadata",
+            "gguf_qwen35",
+            "packed_c4_device_positions_i64",
+        ),
+        prepare_packed_decode_metadata_from_positions,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "decode_graph_commit",
+            "gguf_qwen35",
+            "packed_c4_i32_i64",
+        ),
+        commit_packed_decode_graph_step,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "decode_metadata",
+            "gguf_qwen35",
+            "packed_c8_device_positions_i64",
+        ),
+        prepare_packed_decode_metadata_from_positions,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "decode_graph_commit",
+            "gguf_qwen35",
+            "packed_c8_i32_i64",
+        ),
+        commit_packed_decode_graph_step,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "decode_graph_record",
+            "gguf_qwen35",
+            "packed_u16_rows_indexed",
+        ),
+        record_u16_rows_indexed,
         replace=replace,
     )
     register(

@@ -1,0 +1,878 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_gguf_concurrency_b4_category_lifecycle",
+  "created_at": "2026-07-16T06:45:00.774644+00:00",
+  "status": "exact_hybrid_correctness",
+  "passed": true,
+  "claim_level": "exact_hybrid_correctness",
+  "performance_claim": false,
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-16T06:43:23.392455+00:00",
+    "repo_root": "/home/lhl/hipEngine-main",
+    "hipengine_commit": "a55e81c21f9042522b75db7066f820ad71818269",
+    "git_branch": "gfx1100-concurrency",
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "configured_backend": "hip_gfx1100",
+    "resolved_backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        11331169424,
+        22662338848
+      ],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "command": [
+      "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+      "scripts/gguf_packed_ar_category_oracle.py",
+      "--model",
+      "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1100",
+      "--decode-steps",
+      "24",
+      "--repeats",
+      "3",
+      "--group-size",
+      "4",
+      "--compiler-version-file",
+      "/tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt",
+      "--require-cached-build",
+      "--json",
+      "/tmp/gfx1100-concurrency-b4-clean-a55e81c2/category-24x3.json"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": "hip_gfx1100",
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "GPU_MAX_HW_QUEUES": null,
+      "HIP_VISIBLE_DEVICES": "0",
+      "ROCR_VISIBLE_DEVICES": null,
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null
+    },
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "build_profile": "packed AR category equality; strict-exact GDN; groups <=c4; cached resident builds required",
+    "timing_protocol": "correctness only; canonical category plus heldout prompts; packed-vs-independent-c1 tokens/hidden/state/KV",
+    "warmups": 0,
+    "repetitions": 3,
+    "profiler": {
+      "used": false,
+      "performance_measurement": false
+    }
+  },
+  "source": {
+    "file": "category-24x3.json",
+    "size_bytes": 88039,
+    "sha256": "c77a81fdbc6f5a81e80398efcb56e5e62cc2bb3f2155a67744cfd345c4e5c55e"
+  },
+  "command": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_packed_ar_category_oracle.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --decode-steps 24 --repeats 3 --group-size 4 --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt --require-cached-build --json /tmp/gfx1100-concurrency-b4-clean-a55e81c2/category-24x3.json",
+  "build": {
+    "compiler_version_file": "/tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt",
+    "compiler_version_supplied": true,
+    "require_cached_build": true
+  },
+  "contract": {
+    "sampling": "greedy_top1",
+    "gdn_prefill_mode": "exact",
+    "kv_dtype": "bf16",
+    "max_group_size": 4,
+    "decode_steps": 24,
+    "repeats": 3,
+    "layer_count": 40,
+    "state_and_hidden_comparison": "bit exact"
+  },
+  "phase_b_evidence": {
+    "b3_standard_lifecycle": "benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-b3-standard-lifecycle.json",
+    "b4_category_lifecycle": "benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-b4-category-lifecycle.json"
+  },
+  "prompt_suites": {
+    "primary": {
+      "path": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+      "count": 10,
+      "category_counts": {
+        "code": 4,
+        "general_en": 2,
+        "general_ja": 2,
+        "mixed_ja_en": 2
+      },
+      "prompts": [
+        {
+          "id": "code_merge_intervals",
+          "category": "code",
+          "prompt_chars": 161,
+          "prompt_sha256": "7224cb33532a875c51134b2ca48c2700328ea39faa156e462cda0b29ef1594d6"
+        },
+        {
+          "id": "code_topological_sort",
+          "category": "code",
+          "prompt_chars": 184,
+          "prompt_sha256": "ab59c0e49ca4fb4ee3959f1201611bc03be53b10864cd95e29fe6738de9f609b"
+        },
+        {
+          "id": "code_lru_cache",
+          "category": "code",
+          "prompt_chars": 147,
+          "prompt_sha256": "8d53303f99803bea6cbbe7436bc9776e923f9ddad67ef9f01141fa94ca800cf8"
+        },
+        {
+          "id": "code_markdown_table",
+          "category": "code",
+          "prompt_chars": 214,
+          "prompt_sha256": "1148ced7b14c4f3a0763f0776b8fde37d70320bd372b2f48b7142a91ec18ffb9"
+        },
+        {
+          "id": "general_en_plan",
+          "category": "general_en",
+          "prompt_chars": 158,
+          "prompt_sha256": "e17b3e91d28543829ac542ded5af8a317d54a3b7786d6e86207d40663c59eda7"
+        },
+        {
+          "id": "general_en_explain",
+          "category": "general_en",
+          "prompt_chars": 158,
+          "prompt_sha256": "a222515d5bdbfc00bd44b9ed884145ac6df6eff9b69fd11e5506f78bc745b834"
+        },
+        {
+          "id": "general_ja_plan",
+          "category": "general_ja",
+          "prompt_chars": 68,
+          "prompt_sha256": "42e20345ac1e92a9c03a7d6453b8982feffe4deae2ca42063519fdc2fb0cb099"
+        },
+        {
+          "id": "general_ja_explain",
+          "category": "general_ja",
+          "prompt_chars": 56,
+          "prompt_sha256": "ec6e0a0ae0444b43d0b9b06cecbcd53a142a6eb55ebce9e7166fa5dffae7e9e0"
+        },
+        {
+          "id": "mixed_ja_en_translate",
+          "category": "mixed_ja_en",
+          "prompt_chars": 153,
+          "prompt_sha256": "e0564221797981a111f1aff35928bff0992f892c89326300cef90e27a222e00f"
+        },
+        {
+          "id": "mixed_ja_en_review",
+          "category": "mixed_ja_en",
+          "prompt_chars": 202,
+          "prompt_sha256": "937a468d1043a843267f1610aafba73af7c4327f6c1e04379068be066d1eb476"
+        }
+      ]
+    },
+    "heldout": {
+      "path": "/home/lhl/hipEngine-main/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "sha256": "8d86154fdb52adf5085dbf278c4097dce78d9510d1a6d04ade29a327560e5280",
+      "count": 8,
+      "category_counts": {
+        "code": 2,
+        "general_en": 2,
+        "general_ja": 2,
+        "mixed_ja_en": 2
+      },
+      "prompts": [
+        {
+          "id": "heldout_code_rate_limiter",
+          "category": "code",
+          "prompt_chars": 194,
+          "prompt_sha256": "a64214894c73cc4db1253641e0c723b101dc8ef660d9f06fd063c5f59c97feb6"
+        },
+        {
+          "id": "heldout_code_interval_schedule",
+          "category": "code",
+          "prompt_chars": 201,
+          "prompt_sha256": "f9574bb80a26bb5b1c52b1811f2e6e1ec683f514b9c907b2530cd0afc96084cb"
+        },
+        {
+          "id": "heldout_general_en_incident",
+          "category": "general_en",
+          "prompt_chars": 180,
+          "prompt_sha256": "32275637d440fd542e19fab51aaab79d6aedf068929f8ffa38ce9bd269f9044a"
+        },
+        {
+          "id": "heldout_general_en_quant",
+          "category": "general_en",
+          "prompt_chars": 199,
+          "prompt_sha256": "30d56cc8ef44e814daf6dd0f29dffaaea83b1d2705e956adce630ad8114d6288"
+        },
+        {
+          "id": "heldout_general_ja_migration",
+          "category": "general_ja",
+          "prompt_chars": 76,
+          "prompt_sha256": "0b157150150cc2f06310dca8cb39433bdcb0379927ed7d70e62a20e4d5fbab85"
+        },
+        {
+          "id": "heldout_general_ja_speculative",
+          "category": "general_ja",
+          "prompt_chars": 70,
+          "prompt_sha256": "985a2e8ccb23fefb9a24c2dcac003570cbee86ebb688ef4f7449a4cbe7dc465f"
+        },
+        {
+          "id": "heldout_mixed_summary",
+          "category": "mixed_ja_en",
+          "prompt_chars": 207,
+          "prompt_sha256": "085fce890f18591f27cb6985e577ce959a5e44361dff79b6373fa854ee7e5a44"
+        },
+        {
+          "id": "heldout_mixed_review",
+          "category": "mixed_ja_en",
+          "prompt_chars": 189,
+          "prompt_sha256": "1d111758768713e15792e350917d879b0bb97c27c4ab2a0605026547fe191a61"
+        }
+      ]
+    }
+  },
+  "rollup": {
+    "prompt_count": 18,
+    "primary_prompt_count": 10,
+    "heldout_prompt_count": 8,
+    "group_executions": 15,
+    "group_widths_per_repeat": [
+      4,
+      4,
+      2,
+      4,
+      4
+    ],
+    "prompt_repeat_executions": 54,
+    "token_comparisons": 1350,
+    "hidden_comparisons": 54000,
+    "hidden_mismatches": 0,
+    "initial_state_mismatches": 0,
+    "final_state_mismatches": 0,
+    "all_groups_passed": true,
+    "all_prompts_passed": true,
+    "repeat_deterministic": true,
+    "nondeterministic_prompts": []
+  },
+  "category_rollup": {
+    "code": {
+      "prompts": 6,
+      "prompt_repeat_executions": 18,
+      "token_comparisons": 450,
+      "hidden_comparisons": 18000,
+      "mismatches": 0,
+      "all_passed": true
+    },
+    "general_en": {
+      "prompts": 4,
+      "prompt_repeat_executions": 12,
+      "token_comparisons": 300,
+      "hidden_comparisons": 12000,
+      "mismatches": 0,
+      "all_passed": true
+    },
+    "general_ja": {
+      "prompts": 4,
+      "prompt_repeat_executions": 12,
+      "token_comparisons": 300,
+      "hidden_comparisons": 12000,
+      "mismatches": 0,
+      "all_passed": true
+    },
+    "mixed_ja_en": {
+      "prompts": 4,
+      "prompt_repeat_executions": 12,
+      "token_comparisons": 300,
+      "hidden_comparisons": 12000,
+      "mismatches": 0,
+      "all_passed": true
+    }
+  },
+  "groups": [
+    {
+      "suite": "primary",
+      "group_index": 0,
+      "width": 4,
+      "prompt_ids": [
+        "code_merge_intervals",
+        "code_topological_sort",
+        "code_lru_cache",
+        "code_markdown_table"
+      ],
+      "prompt_lengths": [
+        40,
+        50,
+        47,
+        52
+      ],
+      "packed_prefill_plan": {
+        "route": "slot_fair_bounded_rounds",
+        "row_capacity": 256,
+        "total_rows": 189,
+        "chunk_count": 1,
+        "chunk_rows": [
+          189
+        ],
+        "slot_indices": [
+          [
+            0,
+            1,
+            2,
+            3
+          ]
+        ],
+        "start_offsets": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ],
+        "slot_rows": [
+          [
+            40,
+            50,
+            47,
+            52
+          ]
+        ],
+        "all_active_slots_represented": true,
+        "slot_serial_fallback": false,
+        "aotriton_threshold": 512,
+        "aotriton_eligible_slots": [],
+        "aotriton_eligibility_preserved_across_chunks": false,
+        "intermediate_tail_samples": 0
+      },
+      "repeats": 3,
+      "all_repeats_passed": true
+    },
+    {
+      "suite": "primary",
+      "group_index": 1,
+      "width": 4,
+      "prompt_ids": [
+        "general_en_plan",
+        "general_en_explain",
+        "general_ja_plan",
+        "general_ja_explain"
+      ],
+      "prompt_lengths": [
+        39,
+        40,
+        43,
+        43
+      ],
+      "packed_prefill_plan": {
+        "route": "slot_fair_bounded_rounds",
+        "row_capacity": 256,
+        "total_rows": 165,
+        "chunk_count": 1,
+        "chunk_rows": [
+          165
+        ],
+        "slot_indices": [
+          [
+            0,
+            1,
+            2,
+            3
+          ]
+        ],
+        "start_offsets": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ],
+        "slot_rows": [
+          [
+            39,
+            40,
+            43,
+            43
+          ]
+        ],
+        "all_active_slots_represented": true,
+        "slot_serial_fallback": false,
+        "aotriton_threshold": 512,
+        "aotriton_eligible_slots": [],
+        "aotriton_eligibility_preserved_across_chunks": false,
+        "intermediate_tail_samples": 0
+      },
+      "repeats": 3,
+      "all_repeats_passed": true
+    },
+    {
+      "suite": "primary",
+      "group_index": 2,
+      "width": 2,
+      "prompt_ids": [
+        "mixed_ja_en_translate",
+        "mixed_ja_en_review"
+      ],
+      "prompt_lengths": [
+        64,
+        71
+      ],
+      "packed_prefill_plan": {
+        "route": "slot_fair_bounded_rounds",
+        "row_capacity": 256,
+        "total_rows": 135,
+        "chunk_count": 1,
+        "chunk_rows": [
+          135
+        ],
+        "slot_indices": [
+          [
+            0,
+            1
+          ]
+        ],
+        "start_offsets": [
+          [
+            0,
+            0
+          ]
+        ],
+        "slot_rows": [
+          [
+            64,
+            71
+          ]
+        ],
+        "all_active_slots_represented": true,
+        "slot_serial_fallback": false,
+        "aotriton_threshold": 512,
+        "aotriton_eligible_slots": [],
+        "aotriton_eligibility_preserved_across_chunks": false,
+        "intermediate_tail_samples": 0
+      },
+      "repeats": 3,
+      "all_repeats_passed": true
+    },
+    {
+      "suite": "heldout",
+      "group_index": 0,
+      "width": 4,
+      "prompt_ids": [
+        "heldout_code_rate_limiter",
+        "heldout_code_interval_schedule",
+        "heldout_general_en_incident",
+        "heldout_general_en_quant"
+      ],
+      "prompt_lengths": [
+        55,
+        52,
+        45,
+        56
+      ],
+      "packed_prefill_plan": {
+        "route": "slot_fair_bounded_rounds",
+        "row_capacity": 256,
+        "total_rows": 208,
+        "chunk_count": 1,
+        "chunk_rows": [
+          208
+        ],
+        "slot_indices": [
+          [
+            0,
+            1,
+            2,
+            3
+          ]
+        ],
+        "start_offsets": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ],
+        "slot_rows": [
+          [
+            55,
+            52,
+            45,
+            56
+          ]
+        ],
+        "all_active_slots_represented": true,
+        "slot_serial_fallback": false,
+        "aotriton_threshold": 512,
+        "aotriton_eligible_slots": [],
+        "aotriton_eligibility_preserved_across_chunks": false,
+        "intermediate_tail_samples": 0
+      },
+      "repeats": 3,
+      "all_repeats_passed": true
+    },
+    {
+      "suite": "heldout",
+      "group_index": 1,
+      "width": 4,
+      "prompt_ids": [
+        "heldout_general_ja_migration",
+        "heldout_general_ja_speculative",
+        "heldout_mixed_summary",
+        "heldout_mixed_review"
+      ],
+      "prompt_lengths": [
+        53,
+        45,
+        52,
+        56
+      ],
+      "packed_prefill_plan": {
+        "route": "slot_fair_bounded_rounds",
+        "row_capacity": 256,
+        "total_rows": 206,
+        "chunk_count": 1,
+        "chunk_rows": [
+          206
+        ],
+        "slot_indices": [
+          [
+            0,
+            1,
+            2,
+            3
+          ]
+        ],
+        "start_offsets": [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ],
+        "slot_rows": [
+          [
+            53,
+            45,
+            52,
+            56
+          ]
+        ],
+        "all_active_slots_represented": true,
+        "slot_serial_fallback": false,
+        "aotriton_threshold": 512,
+        "aotriton_eligible_slots": [],
+        "aotriton_eligibility_preserved_across_chunks": false,
+        "intermediate_tail_samples": 0
+      },
+      "repeats": 3,
+      "all_repeats_passed": true
+    }
+  ],
+  "prompts": [
+    {
+      "id": "code_lru_cache",
+      "category": "code",
+      "prompt_tokens": 47,
+      "trajectory_steps": 25,
+      "trajectory_sha256": "dff33b1ceba66a677b4757d4e1c802375a1e4e2698a719bc4e9fcb255dbd903b",
+      "initial_token": 71093,
+      "final_token": 198,
+      "repeats": 3,
+      "token_exact": true,
+      "hidden_comparisons": 3000,
+      "hidden_mismatches": 0,
+      "initial_state_mismatches": 0,
+      "final_state_mismatches": 0,
+      "passed": true
+    },
+    {
+      "id": "code_markdown_table",
+      "category": "code",
+      "prompt_tokens": 52,
+      "trajectory_steps": 25,
+      "trajectory_sha256": "0fdf8903b2ae5bb53c6b2fad671c78e4b0b10e9d5b799eb5a9719d598cec99a4",
+      "initial_token": 71093,
+      "final_token": 55588,
+      "repeats": 3,
+      "token_exact": true,
+      "hidden_comparisons": 3000,
+      "hidden_mismatches": 0,
+      "initial_state_mismatches": 0,
+      "final_state_mismatches": 0,
+      "passed": true
+    },
+    {
+      "id": "code_merge_intervals",
+      "category": "code",
+      "prompt_tokens": 40,
+      "trajectory_steps": 25,
+      "trajectory_sha256": "b3e424ee10488a90cea4e1733d9f4ec3cb3bdba70407f54bc28af3e9c3ce45b2",
+      "initial_token": 71093,
+      "final_token": 25,
+      "repeats": 3,
+      "token_exact": true,
+      "hidden_comparisons": 3000,
+      "hidden_mismatches": 0,
+      "initial_state_mismatches": 0,
+      "final_state_mismatches": 0,
+      "passed": true
+    },
+    {
+      "id": "code_topological_sort",
+      "category": "code",
+      "prompt_tokens": 50,
+      "trajectory_steps": 25,
+      "trajectory_sha256": "e3073422307915f5ebbed4361104b03ac7110a63a93f395c992a1e96e1674551",
+      "initial_token": 71093,
+      "final_token": 198,
+      "repeats": 3,
+      "token_exact": true,
+      "hidden_comparisons": 3000,
+      "hidden_mismatches": 0,
+      "initial_state_mismatches": 0,
+      "final_state_mismatches": 0,
+      "passed": true
+    },
+    {
+      "id": "general_en_explain",
+      "category": "general_en",
+      "prompt_tokens": 40,
+      "trajectory_steps": 25,
+      "trajectory_sha256": "b542518ccba78fcd2fd28b476b2306c5e0ff83483ad25990b07bfc361f1c1a08",
+      "initial_token": 44812,
+      "final_token": 12204,
+      "repeats": 3,
+      "token_exact": true,
+      "hidden_comparisons": 3000,
+      "hidden_mismatches": 0,
+      "initial_state_mismatches": 0,
+      "final_state_mismatches": 0,
+      "passed": true
+    },
+    {
+      "id": "general_en_plan",
+      "category": "general_en",
+      "prompt_tokens": 39,
+      "trajectory_steps": 25,
+      "trajectory_sha256": "ba0ae0576193c996d96130f62a302943a2e9f87913499613069ae7252129db28",
+      "initial_token": 2,
+      "final_token": 1630,
+      "repeats": 3,
+      "token_exact": true,
+      "hidden_comparisons": 3000,
+      "hidden_mismatches": 0,
+      "initial_state_mismatches": 0,
+      "final_state_mismatches": 0,
+      "passed": true
+    },
+    {
+      "id": "general_ja_explain",
+      "category": "general_ja",
+      "prompt_tokens": 43,
+      "trajectory_steps": 25,
+      "trajectory_sha256": "a3d453ff5cfd242709e6d4edb9b750e03f692b6c848ec47a4b943032c1541cc4",
+      "initial_token": 150110,
+      "final_token": 44,
+      "repeats": 3,
+      "token_exact": true,
+      "hidden_comparisons": 3000,
+      "hidden_mismatches": 0,
+      "initial_state_mismatches": 0,
+      "final_state_mismatches": 0,
+      "passed": true
+    },
+    {
+      "id": "general_ja_plan",
+      "category": "general_ja",
+      "prompt_tokens": 43,
+      "trajectory_steps": 25,
+      "trajectory_sha256": "88f8a54242c57436a4560ee0b20022b35ea21f5abaa7051efc909d8df34ecc2b",
+      "initial_token": 95872,
+      "final_token": 34610,
+      "repeats": 3,
+      "token_exact": true,
+      "hidden_comparisons": 3000,
+      "hidden_mismatches": 0,
+      "initial_state_mismatches": 0,
+      "final_state_mismatches": 0,
+      "passed": true
+    },
+    {
+      "id": "heldout_code_interval_schedule",
+      "category": "code",
+      "prompt_tokens": 52,
+      "trajectory_steps": 25,
+      "trajectory_sha256": "4b45c05777c0a75554662c5b95affb41f54363928cdd8c40017dd9cde002b33f",
+      "initial_token": 71093,
+      "final_token": 87502,
+      "repeats": 3,
+      "token_exact": true,
+      "hidden_comparisons": 3000,
+      "hidden_mismatches": 0,
+      "initial_state_mismatches": 0,
+      "final_state_mismatches": 0,
+      "passed": true
+    },
+    {
+      "id": "heldout_code_rate_limiter",
+      "category": "code",
+      "prompt_tokens": 55,
+      "trajectory_steps": 25,
+      "trajectory_sha256": "47e4343f108a32a1b2fd62d87f6205245b6dafe2b7331e828e1ed8bfaee72758",
+      "initial_token": 71093,
+      "final_token": 11231,
+      "repeats": 3,
+      "token_exact": true,
+      "hidden_comparisons": 3000,
+      "hidden_mismatches": 0,
+      "initial_state_mismatches": 0,
+      "final_state_mismatches": 0,
+      "passed": true
+    },
+    {
+      "id": "heldout_general_en_incident",
+      "category": "general_en",
+      "prompt_tokens": 45,
+      "trajectory_steps": 25,
+      "trajectory_sha256": "8b345021e5d286606de93b7d9d5b970362fca5875331319caa4457f3575fb883",
+      "initial_token": 13962,
+      "final_token": 198,
+      "repeats": 3,
+      "token_exact": true,
+      "hidden_comparisons": 3000,
+      "hidden_mismatches": 0,
+      "initial_state_mismatches": 0,
+      "final_state_mismatches": 0,
+      "passed": true
+    },
+    {
+      "id": "heldout_general_en_quant",
+      "category": "general_en",
+      "prompt_tokens": 56,
+      "trajectory_steps": 25,
+      "trajectory_sha256": "8163bbeedb5315ae583f20cff7b77dd4fae219cd627768d1b655afb002e55031",
+      "initial_token": 1206,
+      "final_token": 19,
+      "repeats": 3,
+      "token_exact": true,
+      "hidden_comparisons": 3000,
+      "hidden_mismatches": 0,
+      "initial_state_mismatches": 0,
+      "final_state_mismatches": 0,
+      "passed": true
+    },
+    {
+      "id": "heldout_general_ja_migration",
+      "category": "general_ja",
+      "prompt_tokens": 53,
+      "trajectory_steps": 25,
+      "trajectory_sha256": "66d054340b32f95fa69df782441df8bf1e2c824ec98f7091396ea13c453fb718",
+      "initial_token": 2,
+      "final_token": 220,
+      "repeats": 3,
+      "token_exact": true,
+      "hidden_comparisons": 3000,
+      "hidden_mismatches": 0,
+      "initial_state_mismatches": 0,
+      "final_state_mismatches": 0,
+      "passed": true
+    },
+    {
+      "id": "heldout_general_ja_speculative",
+      "category": "general_ja",
+      "prompt_tokens": 45,
+      "trajectory_steps": 25,
+      "trajectory_sha256": "348ade17d9d03566028dd286b76432a9209d96e7008c5cf520b5202a01dea461",
+      "initial_token": 96259,
+      "final_token": 247726,
+      "repeats": 3,
+      "token_exact": true,
+      "hidden_comparisons": 3000,
+      "hidden_mismatches": 0,
+      "initial_state_mismatches": 0,
+      "final_state_mismatches": 0,
+      "passed": true
+    },
+    {
+      "id": "heldout_mixed_review",
+      "category": "mixed_ja_en",
+      "prompt_tokens": 56,
+      "trajectory_steps": 25,
+      "trajectory_sha256": "6a504a4738c764b85f664d29ed032967299b24d5cd4a39d008f3b2b267a44137",
+      "initial_token": 9,
+      "final_token": 256,
+      "repeats": 3,
+      "token_exact": true,
+      "hidden_comparisons": 3000,
+      "hidden_mismatches": 0,
+      "initial_state_mismatches": 0,
+      "final_state_mismatches": 0,
+      "passed": true
+    },
+    {
+      "id": "heldout_mixed_summary",
+      "category": "mixed_ja_en",
+      "prompt_tokens": 52,
+      "trajectory_steps": 25,
+      "trajectory_sha256": "8bc5606ac0980af0c455c568f002625b78f96c344d8b8f457f32aa46fe345bb5",
+      "initial_token": 239228,
+      "final_token": 244702,
+      "repeats": 3,
+      "token_exact": true,
+      "hidden_comparisons": 3000,
+      "hidden_mismatches": 0,
+      "initial_state_mismatches": 0,
+      "final_state_mismatches": 0,
+      "passed": true
+    },
+    {
+      "id": "mixed_ja_en_review",
+      "category": "mixed_ja_en",
+      "prompt_tokens": 71,
+      "trajectory_steps": 25,
+      "trajectory_sha256": "b1c2f3908cd244391a934ecd0048b1392beb4f6e9a3016fb944526f3f18cf24b",
+      "initial_token": 12,
+      "final_token": 36353,
+      "repeats": 3,
+      "token_exact": true,
+      "hidden_comparisons": 3000,
+      "hidden_mismatches": 0,
+      "initial_state_mismatches": 0,
+      "final_state_mismatches": 0,
+      "passed": true
+    },
+    {
+      "id": "mixed_ja_en_translate",
+      "category": "mixed_ja_en",
+      "prompt_tokens": 64,
+      "trajectory_steps": 25,
+      "trajectory_sha256": "2c7ec904f3aef60840846eafc51b31b6b4f9c94137f52e6d4b9ba010daf621c5",
+      "initial_token": 332,
+      "final_token": 11,
+      "repeats": 3,
+      "token_exact": true,
+      "hidden_comparisons": 3000,
+      "hidden_mismatches": 0,
+      "initial_state_mismatches": 0,
+      "final_state_mismatches": 0,
+      "passed": true
+    }
+  ],
+  "first_divergence": null,
+  "limitations": [
+    "Phase-B correctness closure only; no throughput, scaling, profiler, or fully-native model-step claim.",
+    "The byte-exact anchor selects strict-exact GDN instead of gfx1100 package-auto peer-wave arithmetic.",
+    "Natural category prompts are 39-71 tokens and fit one packed slab; B3 separately proves all-row c4 p512 chunking.",
+    "Live admission/cancellation and Phase-C hybrid-boundary removal remain pending."
+  ]
+}

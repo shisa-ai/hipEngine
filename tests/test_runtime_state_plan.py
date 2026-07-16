@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -9,6 +10,7 @@ from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free
 from hipengine.kernels.hip_gfx1100.runtime import (
     advance_decode_position_i64,
     advance_decode_positions_i64,
+    commit_packed_decode_graph_step,
     embedding_lookup_batch_bf16_i64,
     embedding_lookup_batch_fp16_i64,
     embedding_lookup_batch_mapped_bf16_i64,
@@ -16,7 +18,10 @@ from hipengine.kernels.hip_gfx1100.runtime import (
     embedding_lookup_bf16_i64,
     embedding_lookup_fp16_i64,
     plan_runtime_state_build,
+    prepare_packed_decode_metadata,
+    prepare_packed_decode_metadata_from_positions,
     prepare_prefill_chunk_metadata,
+    record_u16_rows_indexed,
     record_f32_row_indexed,
     record_i64_scalar_indexed,
     register_runtime_state_kernels,
@@ -108,6 +113,60 @@ def test_runtime_state_registers_graph_friendly_helpers() -> None:
         )
         is prepare_prefill_chunk_metadata
     )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="decode_metadata",
+            quant="gguf_qwen35",
+            variant="packed_c4_i64",
+        )
+        is prepare_packed_decode_metadata
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="decode_metadata",
+            quant="gguf_qwen35",
+            variant="packed_c4_device_positions_i64",
+        )
+        is prepare_packed_decode_metadata_from_positions
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="decode_graph_commit",
+            quant="gguf_qwen35",
+            variant="packed_c4_i32_i64",
+        )
+        is commit_packed_decode_graph_step
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="decode_metadata",
+            quant="gguf_qwen35",
+            variant="packed_c8_device_positions_i64",
+        )
+        is prepare_packed_decode_metadata_from_positions
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="decode_graph_commit",
+            quant="gguf_qwen35",
+            variant="packed_c8_i32_i64",
+        )
+        is commit_packed_decode_graph_step
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="decode_graph_record",
+            quant="gguf_qwen35",
+            variant="packed_u16_rows_indexed",
+        )
+        is record_u16_rows_indexed
+    )
 
 
 def test_runtime_state_build_plan_is_dry_run_safe(tmp_path) -> None:
@@ -154,6 +213,61 @@ def test_record_f32_row_indexed_copies_row_without_advancing_index() -> None:
     assert int(index[0]) == 1
 
 
+def test_masked_packed_graph_helpers_forward_active_mask_pointer() -> None:
+    class FakeFunction:
+        def __init__(self) -> None:
+            self.calls: list[tuple[object, ...]] = []
+            self.argtypes = None
+            self.restype = None
+
+        def __call__(self, *args):
+            self.calls.append(args)
+            return 0
+
+    metadata = FakeFunction()
+    commit = FakeFunction()
+    library = SimpleNamespace(
+        hipengine_prepare_packed_decode_metadata_from_positions=metadata,
+        hipengine_commit_packed_decode_graph_step=commit,
+    )
+
+    prepare_packed_decode_metadata_from_positions(
+        0x1000,
+        0x2000,
+        0x3000,
+        0x4000,
+        0x5000,
+        0x6000,
+        0x7000,
+        0x8000,
+        4,
+        2,
+        active_mask_u8_ptr=0x9000,
+        library=library,
+        runtime=object(),
+    )
+    commit_packed_decode_graph_step(
+        0xA000,
+        0xB000,
+        0xC000,
+        0xD000,
+        4,
+        active_mask_u8_ptr=0xE000,
+        recorded_token_ids_i32_ptr=0xF000,
+        record_index_i64_ptr=0x11000,
+        record_capacity=7,
+        library=library,
+        runtime=object(),
+    )
+
+    assert metadata.calls[0][8].value == 0x9000
+    assert metadata.calls[0][9].value == 4
+    assert metadata.calls[0][10].value == 2
+    assert commit.calls[0][4].value == 0xE000
+    assert commit.calls[0][5].value == 0xF000
+    assert commit.calls[0][8].value == 4
+
+
 def test_embedding_lookup_validates_shape_before_gpu_load() -> None:
     with pytest.raises(ValueError, match="hidden_size"):
         embedding_lookup_bf16_i64(0, 0, 0, 0, 8)
@@ -189,3 +303,21 @@ def test_embedding_lookup_validates_shape_before_gpu_load() -> None:
         prepare_prefill_chunk_metadata(0, 0, 0, 0, 0, 0, -1, 1)
     with pytest.raises(ValueError, match="rows"):
         prepare_prefill_chunk_metadata(0, 0, 0, 0, 0, 0, 0, 0)
+    with pytest.raises(ValueError, match="non-empty"):
+        prepare_packed_decode_metadata(0, 0, 0, 0, 0, 0, 0, 0, (), 4)
+    with pytest.raises(ValueError, match="at most four"):
+        prepare_packed_decode_metadata(0, 0, 0, 0, 0, 0, 0, 0, (1, 2, 3, 4, 5), 4)
+    with pytest.raises(ValueError, match="non-negative"):
+        prepare_packed_decode_metadata(0, 0, 0, 0, 0, 0, 0, 0, (1, -1), 4)
+    with pytest.raises(ValueError, match="blocks_per_slot"):
+        prepare_packed_decode_metadata(0, 0, 0, 0, 0, 0, 0, 0, (1,), 0)
+    with pytest.raises(ValueError, match="rows"):
+        prepare_packed_decode_metadata_from_positions(0, 0, 0, 0, 0, 0, 0, 0, 0, 4)
+    with pytest.raises(ValueError, match="rows"):
+        prepare_packed_decode_metadata_from_positions(0, 0, 0, 0, 0, 0, 0, 0, 9, 4)
+    with pytest.raises(ValueError, match="rows"):
+        commit_packed_decode_graph_step(0, 0, 0, 0, 0)
+    with pytest.raises(ValueError, match="rows"):
+        commit_packed_decode_graph_step(0, 0, 0, 0, 9)
+    with pytest.raises(ValueError, match="elements"):
+        record_u16_rows_indexed(0, 0, 0, 0, 1, 1)

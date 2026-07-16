@@ -8,14 +8,18 @@ import numpy as np
 import pytest
 
 import hipengine.generation.qwen35_gguf as qwen35_gguf
+from hipengine.dispatch import WorkItem, WorkKind
 from hipengine.generation import (
+    EngineLoopConfig,
     GenerationCancellationToken,
     GenerationCancelled,
     GenerationDeadlineExceeded,
     GenerationRequest,
     GenerationStreamChunk,
+    SubmitPollTextGenerator,
     TokenLogprob,
 )
+from hipengine.kvcache import DeviceChunkedKVPool
 
 
 class _FakeTokenizer:
@@ -32,7 +36,7 @@ class _FakeTokenizer:
         }[prompt]
 
     def decode(self, ids) -> str:
-        table = {1: "B", 2: "C", 3: "D", 4: "}", 5: "{", 6: "X", 16: "Q", 99: "<eos>"}
+        table = {1: "B", 2: "C", 3: "D", 4: "}", 5: "{", 6: "X", 16: "Q", 99: "<eos>", 114: "T114"}
         return "".join(table[int(token)] for token in ids)
 
 
@@ -1549,6 +1553,503 @@ def test_gguf_mtp_metadata_reports_packed_slot_batch() -> None:
     assert mtp["hidden_seed_extra_rows"] == 3
 
 
+def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) -> None:
+    calls: list[tuple] = []
+
+    class FakeFullStackRunner:
+        def __init__(self, model_path, **kwargs):
+            self.model_path = str(model_path)
+            self.runtime = SimpleNamespace()
+            self.backend = kwargs.get("backend", "hip_gfx1100")
+            self.target_arch = "gfx1100"
+            self.vocab_size = 128
+            self.weights = SimpleNamespace(config=SimpleNamespace(ssm_conv_kernel=4))
+            calls.append(("runner_init", self.model_path))
+
+    class FakeSession:
+        next_slot = 0
+
+        def __init__(self, model_path, **kwargs):
+            self.slot_id = FakeSession.next_slot
+            FakeSession.next_slot += 1
+            self.runtime = kwargs["runtime"]
+            self.runner = kwargs["shared_runner"]
+            self.position = 0
+            self._packed_decode_state_dirty = False
+            self._packed_decode_sessions = ()
+            calls.append(("session_init", self.slot_id, kwargs.get("max_sequence_length")))
+
+        def reset(self):
+            self.position = 0
+            calls.append(("reset", self.slot_id))
+
+        def prefill(self, token_ids, **kwargs):
+            self.position = len(token_ids)
+            calls.append(("prefill", self.slot_id, tuple(token_ids), dict(kwargs)))
+            logits = None
+            if kwargs.get("return_logits"):
+                logits = np.full((1, 128), -100.0, dtype=np.float32)
+                logits[0, 1] = 100.0
+            return SimpleNamespace(token_id=1, logits=logits)
+
+        def step(self, token_id, **kwargs):
+            self.position += 1
+            calls.append(("step", self.slot_id, int(token_id), dict(kwargs)))
+            next_token = int(token_id) + 1
+            logits = None
+            if kwargs.get("return_logits"):
+                logits = np.full((1, 128), -100.0, dtype=np.float32)
+                logits[0, next_token] = 100.0
+            return SimpleNamespace(token_id=next_token, logits=logits)
+
+        def step_batch_native(self, token_ids, *, sessions, positions, **kwargs):
+            physical_rows = int(kwargs.get("physical_rows", len(token_ids)))
+            active_slots = tuple(
+                int(index)
+                for index in kwargs.get("active_slot_indices", range(len(token_ids)))
+            )
+            self.last_packed_execution_manifest = {
+                "schema": 1,
+                "kind": "gguf_packed_ar_execution_manifest",
+                "rows": physical_rows,
+                "physical_rows": physical_rows,
+                "active_rows": len(token_ids),
+                "active_mask": [index in active_slots for index in range(physical_rows)],
+                "model_step": {"complete_c1_session_replays": 0},
+            }
+            calls.append(
+                (
+                    "step_batch_native",
+                    self.slot_id,
+                    tuple(int(token) for token in token_ids),
+                    tuple(session.slot_id for session in sessions),
+                    tuple(int(position) for position in positions),
+                    dict(kwargs),
+                )
+            )
+            for session in sessions:
+                session.position += 1
+            self._packed_decode_state_dirty = True
+            self._packed_decode_sessions = tuple(sessions)
+            return [SimpleNamespace(token_id=int(token) + 1) for token in token_ids]
+
+        def flush_packed_decode_state(self):
+            calls.append(("flush", self.slot_id))
+            self._packed_decode_state_dirty = False
+            return True
+
+        def close(self):
+            calls.append(("close", self.slot_id))
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFFullStackRunner", FakeFullStackRunner)
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+    generator = _generator()
+    generator.backend = "hip_gfx1100"
+    generator._shared_runner = None
+    generator._shared_runner_lock = threading.Lock()
+    generator._prepared_max_sequence_length = 64
+    generator._shared_session_pool = {}
+    generator._shared_session_pool_lock = threading.Lock()
+    generator._shared_mtp_draft_pool = {}
+    generator._shared_mtp_draft_pool_lock = threading.Lock()
+
+    adapter = SubmitPollTextGenerator(generator, capacity=2)
+    runner = adapter._runner
+    assert isinstance(runner, qwen35_gguf.Qwen35GGUFResidentModelRunner)
+    assert [call[0] for call in calls].count("runner_init") == 1
+    assert [call[0] for call in calls].count("session_init") == 2
+
+    adapter.prepare(max_sequence_length=128)
+    assert [call[0] for call in calls].count("runner_init") == 1
+    assert [call[0] for call in calls].count("session_init") == 4
+    assert [call[2] for call in calls if call[0] == "session_init"][-2:] == [128, 128]
+
+    first = adapter.generate_detailed(_request(prompts=("first", "second"), max_tokens=3))
+    second = adapter.generate_detailed(_request(prompts=("first",), max_tokens=2))
+    greedy_last = dict(generator.last_batch_generation or {})
+    sampled = adapter.generate_detailed(
+        _request(prompts=("first",), max_tokens=2, temperature=0.7, seed=17)
+    )
+    zero = adapter.generate_detailed(_request(prompts=("first",), max_tokens=0))
+
+    assert [output.text for output in first] == ["BCD", "BCD"]
+    assert [output.generated_token_ids for output in first] == [(1, 2, 3), (1, 2, 3)]
+    assert [output.text for output in second] == ["BC"]
+    assert [output.generated_token_ids for output in sampled] == [(1, 2)]
+    assert [output.generated_token_ids for output in zero] == [()]
+    assert [call[0] for call in calls].count("runner_init") == 1
+    assert [call[0] for call in calls].count("session_init") == 4
+    packed_calls = [call for call in calls if call[0] == "step_batch_native"]
+    assert [call[2] for call in packed_calls] == [(1, 1), (2, 2), (1,)]
+    assert [call[5]["physical_rows"] for call in packed_calls] == [2, 2, 2]
+    assert [call[5]["active_slot_indices"] for call in packed_calls] == [
+        (0, 1),
+        (0, 1),
+        (0,),
+    ]
+    assert [call for call in calls if call[0] == "step"][-1][2] == 1
+    assert runner.active_request_ids == ()
+    assert runner.available_session_count == 2
+    assert greedy_last["path"] == "gguf_packed_ar_server_decode"
+    assert greedy_last["serial_decode_fallback"] is False
+    assert generator.last_batch_generation is not None
+    assert generator.last_batch_generation["path"] == "gguf_resident_model_loop"
+    assert generator.last_batch_generation["serial_decode_fallback"] is True
+
+    observability = adapter.live_loop_snapshot()["runner"]
+    assert observability["model_runner"] == {
+        "capacity": 2,
+        "active_request_ids": [],
+        "active_requests": 0,
+        "available_sessions": 2,
+    }
+    assert observability["routes"]["counts"] == {
+        "native_full_prefill_rows": 3,
+        "native_incremental_prefill_chunks": 0,
+        "native_packed_decode_steps": 3,
+        "native_c1_decode_steps": 0,
+        "serial_decode_fallback_steps": 0,
+        "resident_fallback_requests": 2,
+    }
+    assert observability["routes"]["last_execution_manifest"] == {
+        "schema": 1,
+        "kind": "gguf_packed_ar_execution_manifest",
+        "rows": 2,
+        "physical_rows": 2,
+        "active_rows": 1,
+        "active_mask": [True, False],
+        "model_step": {"complete_c1_session_replays": 0},
+    }
+    assert observability["routes"]["fallback_reasons"]
+    assert len(observability["routes"]["recent_completed"]) == 5
+    assert observability["graph_buckets"]["captures_total"] == 0
+    assert observability["graph_buckets"]["buckets"] == {}
+
+
+def test_gguf_resident_runner_device_kv_admission_is_atomic_at_high_water() -> None:
+    class FakeSession:
+        def __init__(self, slot_id: int) -> None:
+            self.slot_id = int(slot_id)
+            self.scratch = SimpleNamespace(max_positions=513)
+            self.allocation = None
+            self.pool = None
+
+        def create_device_kv_pool(self, **config):
+            return DeviceChunkedKVPool(
+                page_bytes=4096,
+                initial_pages=int(config["initial_pages"]),
+                low_water_pages=int(config["low_water_pages"]),
+                high_water_pages=(
+                    None
+                    if config["high_water_pages"] is None
+                    else int(config["high_water_pages"])
+                ),
+                chunk_pages=int(config["chunk_pages"]),
+                idle_grace_seconds=float(config["idle_grace_seconds"]),
+                allocate_chunk=lambda start, pages: {
+                    "ptr": 0xA0000000 + int(start) * 4096,
+                    "pages": int(pages),
+                },
+                free_chunk=lambda backing: None,
+                page_pointer=lambda backing, local_page: int(backing["ptr"]) + int(local_page) * 4096,
+            )
+
+        def bind_device_kv_allocation(self, pool, allocation) -> None:
+            assert self.allocation is None
+            self.pool = pool
+            self.allocation = allocation
+
+        def invalidate_device_kv_graphs(self) -> int:
+            return 0
+
+        def unbind_device_kv_allocation(self):
+            allocation = self.allocation
+            assert allocation is not None
+            self.pool = None
+            self.allocation = None
+            return allocation
+
+        def reset(self) -> None:
+            pass
+
+        def close(self) -> None:
+            pass
+
+    class FakeOwner:
+        backend = "hip_gfx1100"
+        target_arch = "gfx1100"
+        tokenizer = _FakeTokenizer()
+        _prepared_max_sequence_length = 256
+
+        def __init__(self) -> None:
+            self.sessions = [FakeSession(index) for index in range(3)]
+
+        def _get_shared_runner(self):
+            return SimpleNamespace(runtime=SimpleNamespace(mem_get_info=lambda: (100, 200)))
+
+        def _acquire_shared_session(self, shared_runner, **kwargs):
+            del shared_runner, kwargs
+            session = self.sessions.pop(0)
+            return session, ("continuous_ar_dynamic_kv", True, True, 256), False
+
+        def _release_shared_session(self, key, session) -> None:
+            del key
+            self.sessions.append(session)
+
+    owner = FakeOwner()
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner(owner, capacity=3)
+    runner.configure_engine_loop(
+        EngineLoopConfig(
+            max_active_requests=3,
+            kv_pool_initial_pages=1,
+            kv_pool_low_water_pages=1,
+            kv_pool_high_water_pages=2,
+            kv_pool_chunk_pages=1,
+            kv_pool_idle_grace_seconds=0.0,
+        )
+    )
+    request = _request(prompts=("first", "first", "first"), max_tokens=2, ignore_eos=True)
+    runner.register_batch((1, 2, 3), request, prompt_rows=((10, 11), (10, 11), (10, 11)))
+
+    runner.reserve_admission(SimpleNamespace(request_id=1))
+    runner.reserve_admission(SimpleNamespace(request_id=2))
+    before = runner.kv_pool_stats
+    assert before is not None
+
+    with pytest.raises(MemoryError, match="high-water"):
+        runner.reserve_admission(SimpleNamespace(request_id=3))
+
+    after = runner.kv_pool_stats
+    assert after is not None
+    assert after.current_pages == before.current_pages == 2
+    assert after.refcounted_pages == before.refcounted_pages == 2
+    assert after.grow_failures == before.grow_failures + 1
+    assert runner._rows[3].lease is None
+    assert runner._rows[3].kv_allocation is None
+
+    runner.rollback_admission(SimpleNamespace(request_id=1))
+    runner.reserve_admission(SimpleNamespace(request_id=3))
+    assert runner._rows[3].lease is not None
+    assert runner._rows[3].kv_allocation is not None
+    assert runner.kv_pool_memory_snapshot()["dynamic_pool"]["refcounted_pages"] == 2
+    observability = runner.observability_snapshot()
+    assert observability["kv_pool"] == runner.kv_pool_stats.to_json_dict()
+    assert observability["kv_pool"]["current_pages"] == 2
+    assert observability["kv_pool"]["high_water_observed_pages"] == 2
+    assert observability["kv_pool"]["refcounted_pages"] == 2
+    assert observability["kv_pool"]["pinned_pages"] == 0
+    assert observability["kv_pool"]["grow_events"] == 1
+    assert observability["kv_pool"]["grow_failures"] == 1
+    assert observability["kv_pool"]["shrink_events"] == 0
+
+    runner.rollback_admission(SimpleNamespace(request_id=2))
+    runner.rollback_admission(SimpleNamespace(request_id=3))
+    runner.close()
+
+    ceiling_runner = qwen35_gguf.Qwen35GGUFResidentModelRunner(owner, capacity=3)
+    ceiling_runner.configure_engine_loop(EngineLoopConfig(max_active_requests=3))
+    assert ceiling_runner.kv_pool is not None
+    assert ceiling_runner.kv_pool.high_water_pages is None
+    assert ceiling_runner.kv_pool.current_pages == 9
+    assert ceiling_runner.kv_pool.low_water_pages == 9
+    assert ceiling_runner.kv_pool.chunk_pages == 9
+    ceiling_runner.close()
+
+
+def test_gguf_resident_runner_graph_observability_is_bucketed_and_cumulative() -> None:
+    class FakeGraphKey:
+        key_sha256 = "bucket-c2"
+
+        def as_dict(self):
+            return {
+                "key_sha256": self.key_sha256,
+                "physical_rows": 2,
+                "active_rows": 2,
+                "active_mask": [True, True],
+            }
+
+    class FakeGraph:
+        def __init__(self) -> None:
+            self.bucket_key = FakeGraphKey()
+            # Match the real Qwen35GGUFDecodeGraph replay ABI.
+            self.replayed_steps = 0
+            self.steps_per_replay = 2
+            self.closed = False
+
+    class FakeSession:
+        def __init__(self) -> None:
+            self._decode_graphs = []
+            self._device_kv_graph_handles = {}
+
+        def invalidate_device_kv_graphs(self) -> int:
+            invalidated = 0
+            for handle in self._decode_graphs:
+                if not handle.closed:
+                    handle.closed = True
+                    invalidated += 1
+            return invalidated
+
+        def reset(self) -> None:
+            pass
+
+        def close(self) -> None:
+            pass
+
+    class FakeOwner:
+        backend = "hip_gfx1100"
+        target_arch = "gfx1100"
+        tokenizer = _FakeTokenizer()
+        _prepared_max_sequence_length = 64
+
+        def __init__(self) -> None:
+            self.session = FakeSession()
+
+        def _get_shared_runner(self):
+            return SimpleNamespace(runtime=SimpleNamespace(mem_get_info=lambda: (100, 200)))
+
+        def _acquire_shared_session(self, shared_runner, **kwargs):
+            del shared_runner, kwargs
+            return self.session, ("continuous_ar_dynamic_kv", True, True, 64), False
+
+        def _release_shared_session(self, key, session) -> None:
+            del key, session
+
+    owner = FakeOwner()
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner(owner, capacity=1)
+    handle = FakeGraph()
+    owner.session._decode_graphs.append(handle)
+
+    captured = runner.observability_snapshot()["graph_buckets"]
+    assert captured["entries"] == 1
+    assert captured["captures_total"] == 1
+    assert captured["hits_total"] == 0
+    assert captured["replays_total"] == 0
+    assert captured["invalidations_total"] == 0
+    assert captured["buckets"]["bucket-c2"] == {
+        "bucket_key": {
+            "key_sha256": "bucket-c2",
+            "physical_rows": 2,
+            "active_rows": 2,
+            "active_mask": [True, True],
+        },
+        "entries": 1,
+        "captures": 1,
+        "hits": 0,
+        "replays": 0,
+        "invalidations": 0,
+    }
+
+    handle.replayed_steps = 4
+    replayed = runner.observability_snapshot()["graph_buckets"]
+    assert replayed["hits_total"] == 2
+    assert replayed["replays_total"] == 2
+    assert replayed["buckets"]["bucket-c2"]["hits"] == 2
+    assert replayed["buckets"]["bucket-c2"]["replays"] == 2
+
+    request = _request(prompts=("first",), max_tokens=1, ignore_eos=True)
+    runner.register_batch((1,), request, prompt_rows=((10, 11),))
+    runner._rows[1].lease = runner._available.pop()
+    runner.rollback_admission(SimpleNamespace(request_id=1))
+
+    invalidated = runner.observability_snapshot()["graph_buckets"]
+    assert invalidated["entries"] == 0
+    assert invalidated["captures_total"] == 1
+    assert invalidated["replays_total"] == 2
+    assert invalidated["invalidations_total"] == 1
+    assert invalidated["buckets"]["bucket-c2"]["invalidations"] == 1
+    runner.close()
+
+
+def test_gguf_resident_runner_commits_incremental_prefill_chunks() -> None:
+    calls: list[tuple] = []
+
+    class FakeSession:
+        def __init__(self) -> None:
+            self.position = 0
+
+        def reset(self) -> None:
+            self.position = 0
+            calls.append(("reset",))
+
+        def prefill(self, token_ids, **kwargs):
+            raise AssertionError(f"incremental prefill must not replay the full prompt: {token_ids!r} {kwargs!r}")
+
+        def prefill_batch_native(self, prompt_token_ids, *, sessions, **kwargs):
+            assert sessions == [self]
+            chunk = tuple(int(token) for token in prompt_token_ids[0])
+            start = self.position
+            self.position += len(chunk)
+            calls.append(("prefill_batch_native", chunk, start, self.position, dict(kwargs)))
+            return [SimpleNamespace(token_id=100 + chunk[-1])]
+
+        def close(self) -> None:
+            calls.append(("close",))
+
+    class FakeOwner:
+        backend = "hip_gfx1100"
+        target_arch = "gfx1100"
+        tokenizer = _FakeTokenizer()
+        _prepared_max_sequence_length = 64
+
+        def __init__(self) -> None:
+            self.session = FakeSession()
+
+        def _get_shared_runner(self):
+            return SimpleNamespace()
+
+        def _acquire_shared_session(self, shared_runner, **kwargs):
+            del shared_runner, kwargs
+            return self.session, ("continuous_ar", True, True, 64), False
+
+        def _release_shared_session(self, key, session) -> None:
+            del key, session
+
+    owner = FakeOwner()
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner(owner, capacity=1)
+    request = _request(prompts=((10, 11, 12, 13, 14),), max_tokens=2, ignore_eos=True)
+    runner.register_batch((7,), request, prompt_rows=((10, 11, 12, 13, 14),))
+
+    for chunk in ((10, 11), (12, 13), (14,)):
+        runner.prefill_batch(
+            WorkItem(
+                kind=WorkKind.PREFILL,
+                request_ids=(7,),
+                row_to_request=(7,),
+                token_rows=(chunk,),
+            ),
+            commit=True,
+        )
+
+    assert [call[1] for call in calls if call[0] == "prefill_batch_native"] == [
+        (10, 11),
+        (12, 13),
+        (14,),
+    ]
+    assert [call[2:4] for call in calls if call[0] == "prefill_batch_native"] == [
+        (0, 2),
+        (2, 4),
+        (4, 5),
+    ]
+    assert [call[4]["full_prompt_lengths"] for call in calls if call[0] == "prefill_batch_native"] == [
+        [5],
+        [5],
+        [5],
+    ]
+    row = runner._rows[7]
+    assert row.slot is not None
+    assert row.slot.generated_ids == [114]
+    assert row.slot.seq_position == 5
+    generated = runner.decode_batch(
+        WorkItem(kind=WorkKind.DECODE, request_ids=(7,), row_to_request=(7,)),
+        commit=True,
+    )
+    assert [(token.request_id, token.token_id, token.finished) for token in generated] == [(7, 114, False)]
+    assert generated[0].stream_chunk is not None
+    assert generated[0].stream_chunk.text == "T114"
+    assert generated[0].stream_chunk.telemetry is not None
+    assert generated[0].stream_chunk.telemetry.decode_state.request_id == "7"
+
+
 def test_gguf_prepare_reuses_shared_runner_for_ar(monkeypatch) -> None:
     calls: list[tuple] = []
 
@@ -1566,7 +2067,14 @@ def test_gguf_prepare_reuses_shared_runner_for_ar(monkeypatch) -> None:
         def __init__(self, model_path, **kwargs):
             self.runtime = kwargs["runtime"]
             self.runner = kwargs["shared_runner"]
-            calls.append(("session_init", str(model_path), kwargs["shared_runner"]))
+            calls.append(
+                (
+                    "session_init",
+                    str(model_path),
+                    kwargs["shared_runner"],
+                    kwargs.get("max_sequence_length"),
+                )
+            )
 
         def __enter__(self):
             return self
@@ -1586,7 +2094,7 @@ def test_gguf_prepare_reuses_shared_runner_for_ar(monkeypatch) -> None:
     monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
 
     generator = _generator()
-    assert generator.prepare() is None
+    assert generator.prepare(max_sequence_length=1024) == 1024
     outputs = generator.generate_detailed(_request(max_tokens=2))
 
     assert outputs[0].text == "BC"
@@ -1595,6 +2103,7 @@ def test_gguf_prepare_reuses_shared_runner_for_ar(monkeypatch) -> None:
     session_inits = [call for call in calls if call[0] == "session_init"]
     assert len(session_inits) == 1
     assert session_inits[0][2] is generator._shared_runner
+    assert session_inits[0][3] == 1024
 
 
 def test_gguf_generate_preserves_exact_token_prompt(monkeypatch) -> None:
@@ -2042,10 +2551,12 @@ def test_gguf_ar_packed_prefill_uses_batch_prompt_path(monkeypatch) -> None:
     ]
     assert os.environ.get("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN") is None
     assert generator.last_batch_generation is not None
+    assert generator.last_batch_generation["native_compact_prefill"] is True
     assert generator.last_batch_generation["native_caware_decode"] is True
+    assert all(_decode_state(output)["native_compact_prefill"] is True for output in outputs)
 
 
-def test_gguf_ar_packed_prefill_chunks_above_four_slots(monkeypatch) -> None:
+def test_gguf_ar_packed_prefill_runs_one_native_c8_slab(monkeypatch) -> None:
     calls: list[tuple] = []
 
     class FakeRuntime:
@@ -2073,8 +2584,6 @@ def test_gguf_ar_packed_prefill_chunks_above_four_slots(monkeypatch) -> None:
             raise AssertionError("chunked packed prompt prefill should bypass scalar prefill")
 
         def prefill_batch_native(self, prompt_token_ids, *, sessions, return_logits=False):
-            if len(prompt_token_ids) > 4:
-                raise AssertionError("AR packed prefill should chunk above four slots")
             calls.append(
                 (
                     "prefill_batch",
@@ -2110,27 +2619,18 @@ def test_gguf_ar_packed_prefill_chunks_above_four_slots(monkeypatch) -> None:
                 (20, 21, 22, 23),
                 (10, 11, 12, 13),
                 (20, 21, 22, 23),
-            ),
-            (0, 1, 2, 3),
-            "1",
-            False,
-        ),
-        (
-            "prefill_batch",
-            4,
-            (
                 (10, 11, 12, 13),
                 (20, 21, 22, 23),
                 (10, 11, 12, 13),
                 (20, 21, 22, 23),
             ),
-            (4, 5, 6, 7),
+            (0, 1, 2, 3, 4, 5, 6, 7),
             "1",
             False,
         ),
     ]
     assert all("prefill_batch_ms" in output.telemetry.to_json_dict()["timing"] for output in outputs)
-    assert all("prefill_batch_chunk_ms" in output.telemetry.to_json_dict()["timing"] for output in outputs)
+    assert all("prefill_batch_chunk_ms" not in output.telemetry.to_json_dict()["timing"] for output in outputs)
     assert os.environ.get("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN") is None
 
 
@@ -2595,7 +3095,7 @@ def test_gguf_ar_batch_decode_fallback_advances_each_slot_once_per_cycle(monkeyp
     assert [slot.serial_decode_steps for slot in slots] == [1, 1]
 
 
-def test_gguf_ar_batch_decode_chunks_above_four_slots(monkeypatch) -> None:
+def test_gguf_ar_batch_decode_runs_one_native_c8_group(monkeypatch) -> None:
     calls: list[tuple] = []
 
     class FakeSession:
@@ -2631,14 +3131,13 @@ def test_gguf_ar_batch_decode_chunks_above_four_slots(monkeypatch) -> None:
 
     assert [slot.generated_ids for slot in slots] == [[1, 2]] * 8
     assert [call for call in calls if call[0] == "step_batch"] == [
-        ("step_batch", 0, (0, 1, 2, 3), False),
-        ("step_batch", 4, (4, 5, 6, 7), False),
+        ("step_batch", 0, (0, 1, 2, 3, 4, 5, 6, 7), False),
     ]
     assert all(slot.native_decode_steps == 1 for slot in slots)
     assert all("decode_batch_ms" in slot.timing for slot in slots)
 
 
-def test_gguf_ar_batch_decode_streams_chunks_above_four_slots(monkeypatch) -> None:
+def test_gguf_ar_batch_decode_streams_chunks_above_native_c8(monkeypatch) -> None:
     calls: list[tuple] = []
 
     class FakeRuntime:
@@ -2693,22 +3192,22 @@ def test_gguf_ar_batch_decode_streams_chunks_above_four_slots(monkeypatch) -> No
             seq_position=4,
             generated_ids=[1],
         )
-        for slot_id in range(8)
+        for slot_id in range(10)
     ]
 
     generator = _generator()
     monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", "1")
     monkeypatch.setenv("HIPENGINE_GGUF_AR_STREAM_DECODE", "1")
-    generator._run_ar_serving_slots(slots, _request(prompts=("long",) * 8, max_tokens=2))
+    generator._run_ar_serving_slots(slots, _request(prompts=("long",) * 10, max_tokens=2))
 
-    assert [slot.generated_ids for slot in slots] == [[1, 2]] * 8
+    assert [slot.generated_ids for slot in slots] == [[1, 2]] * 10
     assert [call for call in calls if call[0] == "stream_create"] == [
         ("stream_create", 500, True),
         ("stream_create", 501, True),
     ]
     assert sorted(call for call in calls if call[0] == "step_batch") == [
-        ("step_batch", 0, 500, (0, 1, 2, 3), (4, 4, 4, 4), False, "1"),
-        ("step_batch", 4, 501, (4, 5, 6, 7), (4, 4, 4, 4), False, "1"),
+        ("step_batch", 0, 500, (0, 1, 2, 3, 4, 5, 6, 7), (4, 4, 4, 4, 4, 4, 4, 4), False, "1"),
+        ("step_batch", 8, 501, (8, 9), (4, 4), False, "1"),
     ]
     assert all(slot.native_decode_steps == 1 for slot in slots)
     assert all("decode_batch_ms" in slot.timing for slot in slots)

@@ -244,6 +244,28 @@ class LLM:
         for text in generator.generate(request):
             yield GenerationStreamChunk(text=str(text))
 
+    def live_loop_snapshot(self) -> dict[str, object] | None:
+        """Return live resident-loop observability without forcing model load."""
+
+        generator = self._text_generator
+        if generator is None:
+            return None
+        snapshot = getattr(generator, "live_loop_snapshot", None)
+        if not callable(snapshot):
+            return None
+        payload = snapshot()
+        return dict(payload) if isinstance(payload, dict) else None
+
+    @property
+    def supports_controlled_streaming(self) -> bool:
+        """Whether streaming is driven by the shared submit/poll model loop."""
+
+        generator = self._text_generator
+        return bool(
+            generator is not None
+            and getattr(generator, "supports_controlled_streaming", False)
+        )
+
     @property
     def supports_stream_many(self) -> bool:
         """Whether the resolved generator advertises public multi-row streaming."""
@@ -275,6 +297,14 @@ class LLM:
 
         for chunk in detailed_streamer(request):
             yield GenerationStreamChunk.from_value(chunk)
+
+    def close(self) -> None:
+        """Release the resolved generator's long-lived model resources."""
+
+        generator = self._text_generator
+        closer = None if generator is None else getattr(generator, "close", None)
+        if callable(closer):
+            closer()
 
     def prepare(
         self,
@@ -367,7 +397,12 @@ class LLM:
         if self._text_generator is not None:
             return self._text_generator
 
-        from hipengine.generation import SubmitPollTextGenerator, register_builtin_generators, resolve_text_generator
+        from hipengine.generation import (
+            SubmitPollTextGenerator,
+            engine_loop_config_from_env,
+            register_builtin_generators,
+            resolve_text_generator,
+        )
 
         register_builtin_generators()
         weight_index, model_plugin = self._load_model_metadata()
@@ -383,7 +418,8 @@ class LLM:
                 model_path=self.model,
                 weight_index=weight_index,
                 model_plugin=model_plugin,
-            )
+            ),
+            config=engine_loop_config_from_env(),
         )
         return self._text_generator
 

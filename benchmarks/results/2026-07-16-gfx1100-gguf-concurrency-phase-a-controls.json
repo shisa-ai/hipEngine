@@ -1,0 +1,1501 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_gguf_concurrency_phase_a_baseline",
+  "created_at": "2026-07-16T04:12:39.688206+00:00",
+  "status": "diagnostic_complete",
+  "passed": true,
+  "performance_claim": false,
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-16T04:12:39.688051+00:00",
+    "repo_root": "/home/lhl/hipEngine-main",
+    "hipengine_commit": "47cc1381b24e1e9ce13282f74fb0f223de272916",
+    "git_branch": "gfx1100-concurrency",
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "configured_backend": "hip_gfx1100",
+    "resolved_backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        11331169424,
+        22662338848
+      ],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "command": [
+      "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+      "scripts/gguf_concurrency_baseline.py",
+      "--model",
+      "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1100",
+      "--quant",
+      "gguf_q4_k_m",
+      "--concurrencies",
+      "1,2,4",
+      "--prompt-token-id",
+      "9707",
+      "--prompt-length",
+      "512",
+      "--max-new-tokens",
+      "128",
+      "--prepare-context-tokens",
+      "1024",
+      "--warmup-runs",
+      "1",
+      "--measured-runs",
+      "3",
+      "--include-package-c4",
+      "--json",
+      "benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-phase-a-controls.json"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": "hip_gfx1100",
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/gfx1100-concurrency/hipcc-version.txt",
+      "HIP_VISIBLE_DEVICES": "0",
+      "ROCR_VISIBLE_DEVICES": null,
+      "GPU_MAX_HW_QUEUES": null,
+      "HIPENGINE_GGUF_AR_PACKED_PREFILL": "controlled per artifact row",
+      "HIPENGINE_GGUF_AR_PACKED_DECODE": "controlled per artifact row",
+      "HIPENGINE_GGUF_AR_STREAM_PREFILL": "controlled per artifact row",
+      "HIPENGINE_GGUF_AR_STREAM_DECODE": "controlled per artifact row"
+    },
+    "rocm_version": "HIP version: 7.15.0-0000000 (hermetic TheRock stack; host /opt/rocm 7.2.4 was not selected)",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "build_profile": "public GGUF package defaults; explicit serial route controls",
+    "timing_protocol": "one model load/prepare; per-width discarded warmups; measured c1/serial-c2/serial-c4 choice-owned prefill/decode timing; package c4 is route inventory only",
+    "warmups": 1,
+    "repetitions": 3,
+    "profiler": {
+      "used": false,
+      "reason": "Phase A control; profiler begins at Phase B1/C1"
+    }
+  },
+  "workload": {
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "backend": "hip_gfx1100",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "prompt_token_id": 9707,
+    "prompt_length": 512,
+    "max_new_tokens": 128,
+    "continuation_decode_tokens_per_row": 127,
+    "sampling": "greedy_top1_ignore_eos",
+    "prepare_context_tokens": 1024,
+    "prepared_context_tokens": 1024,
+    "concurrencies": [
+      1,
+      2,
+      4
+    ],
+    "warmup_runs": 1,
+    "measured_runs": 3
+  },
+  "controls": [
+    {
+      "mode": "serial",
+      "concurrency": 1,
+      "environment": {
+        "HIPENGINE_GGUF_AR_PACKED_PREFILL": "0",
+        "HIPENGINE_GGUF_AR_PACKED_DECODE": "0",
+        "HIPENGINE_GGUF_AR_STREAM_PREFILL": "0",
+        "HIPENGINE_GGUF_AR_STREAM_DECODE": "0"
+      },
+      "route_ok": true,
+      "exact_accounting": true,
+      "sample_count": 3,
+      "wall_seconds": {
+        "samples": [
+          1.615005906962324,
+          1.6005208950373344,
+          1.6025458129588515
+        ],
+        "median": 1.6025458129588515,
+        "min": 1.6005208950373344,
+        "max": 1.615005906962324
+      },
+      "rates": {
+        "prefill_tok_s": {
+          "samples": [
+            2803.298255603859,
+            2797.0194261739834,
+            2803.4978015539705
+          ],
+          "median": 2803.298255603859,
+          "min": 2797.0194261739834,
+          "max": 2803.4978015539705
+        },
+        "decode_tok_s": {
+          "samples": [
+            89.32050306432623,
+            90.26470301846588,
+            90.10153094561912
+          ],
+          "median": 90.10153094561912,
+          "min": 89.32050306432623,
+          "max": 90.26470301846588
+        },
+        "generated_wall_tok_s": {
+          "samples": [
+            79.25667605808087,
+            79.97396372448748,
+            79.87291156667024
+          ],
+          "median": 79.87291156667024,
+          "min": 79.25667605808087,
+          "max": 79.97396372448748
+        }
+      },
+      "repeatable_trajectories": true,
+      "stable_route_manifest": true,
+      "route": {
+        "path": "gguf_serial_greedy_decode",
+        "batch_size": 1,
+        "prompt_lengths": [
+          512
+        ],
+        "decode_steps": 128,
+        "native_decode_steps": 0,
+        "serial_decode_fallback": false,
+        "native_compact_prefill": false,
+        "native_caware_decode": false,
+        "native_sampler_rows": false,
+        "throughput_claim_eligible": false
+      },
+      "samples": [
+        {
+          "wall_seconds": 1.615005906962324,
+          "accounting": {
+            "prompt_tokens": 512,
+            "generated_tokens": 128,
+            "continuation_decode_tokens": 127,
+            "rows": 1
+          },
+          "timing_ownership": {
+            "timed_rows": 1,
+            "owned_timing_rows": 1,
+            "timing_scopes": [
+              "choice"
+            ],
+            "batch_ids": []
+          },
+          "owned_timing_ms": {
+            "decode_ms": 1421.846,
+            "decode_text_ms": 0.072,
+            "prefill_ms": 182.642,
+            "request_total_ms": 1604.704,
+            "session_open_ms": 1.513,
+            "tokenize_ms": 0.016
+          },
+          "rates": {
+            "prefill_tok_s": 2803.298255603859,
+            "decode_tok_s": 89.32050306432623,
+            "generated_wall_tok_s": 79.25667605808087
+          },
+          "row_trajectories": [
+            {
+              "length": 128,
+              "token_ids_sha256": "71bdbeb4baded3bd539d02a963cd0c75cb780ff4537643ce62abea70c48a7f6d",
+              "first_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "last_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "final_token_id": 9707
+            }
+          ],
+          "all_rows_same_trajectory": true,
+          "route": {
+            "path": "gguf_serial_greedy_decode",
+            "batch_size": 1,
+            "prompt_lengths": [
+              512
+            ],
+            "decode_steps": 128,
+            "native_decode_steps": 0,
+            "serial_decode_fallback": false,
+            "native_compact_prefill": false,
+            "native_caware_decode": false,
+            "native_sampler_rows": false,
+            "throughput_claim_eligible": false
+          }
+        },
+        {
+          "wall_seconds": 1.6005208950373344,
+          "accounting": {
+            "prompt_tokens": 512,
+            "generated_tokens": 128,
+            "continuation_decode_tokens": 127,
+            "rows": 1
+          },
+          "timing_ownership": {
+            "timed_rows": 1,
+            "owned_timing_rows": 1,
+            "timing_scopes": [
+              "choice"
+            ],
+            "batch_ids": []
+          },
+          "owned_timing_ms": {
+            "decode_ms": 1406.973,
+            "decode_text_ms": 0.063,
+            "prefill_ms": 183.052,
+            "request_total_ms": 1590.224,
+            "session_open_ms": 1.502,
+            "tokenize_ms": 0.015
+          },
+          "rates": {
+            "prefill_tok_s": 2797.0194261739834,
+            "decode_tok_s": 90.26470301846588,
+            "generated_wall_tok_s": 79.97396372448748
+          },
+          "row_trajectories": [
+            {
+              "length": 128,
+              "token_ids_sha256": "71bdbeb4baded3bd539d02a963cd0c75cb780ff4537643ce62abea70c48a7f6d",
+              "first_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "last_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "final_token_id": 9707
+            }
+          ],
+          "all_rows_same_trajectory": true,
+          "route": {
+            "path": "gguf_serial_greedy_decode",
+            "batch_size": 1,
+            "prompt_lengths": [
+              512
+            ],
+            "decode_steps": 128,
+            "native_decode_steps": 0,
+            "serial_decode_fallback": false,
+            "native_compact_prefill": false,
+            "native_caware_decode": false,
+            "native_sampler_rows": false,
+            "throughput_claim_eligible": false
+          }
+        },
+        {
+          "wall_seconds": 1.6025458129588515,
+          "accounting": {
+            "prompt_tokens": 512,
+            "generated_tokens": 128,
+            "continuation_decode_tokens": 127,
+            "rows": 1
+          },
+          "timing_ownership": {
+            "timed_rows": 1,
+            "owned_timing_rows": 1,
+            "timing_scopes": [
+              "choice"
+            ],
+            "batch_ids": []
+          },
+          "owned_timing_ms": {
+            "decode_ms": 1409.521,
+            "decode_text_ms": 0.069,
+            "prefill_ms": 182.629,
+            "request_total_ms": 1592.365,
+            "session_open_ms": 1.52,
+            "tokenize_ms": 0.016
+          },
+          "rates": {
+            "prefill_tok_s": 2803.4978015539705,
+            "decode_tok_s": 90.10153094561912,
+            "generated_wall_tok_s": 79.87291156667024
+          },
+          "row_trajectories": [
+            {
+              "length": 128,
+              "token_ids_sha256": "71bdbeb4baded3bd539d02a963cd0c75cb780ff4537643ce62abea70c48a7f6d",
+              "first_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "last_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "final_token_id": 9707
+            }
+          ],
+          "all_rows_same_trajectory": true,
+          "route": {
+            "path": "gguf_serial_greedy_decode",
+            "batch_size": 1,
+            "prompt_lengths": [
+              512
+            ],
+            "decode_steps": 128,
+            "native_decode_steps": 0,
+            "serial_decode_fallback": false,
+            "native_compact_prefill": false,
+            "native_caware_decode": false,
+            "native_sampler_rows": false,
+            "throughput_claim_eligible": false
+          }
+        }
+      ],
+      "matches_c1_trajectory": true
+    },
+    {
+      "mode": "serial",
+      "concurrency": 2,
+      "environment": {
+        "HIPENGINE_GGUF_AR_PACKED_PREFILL": "0",
+        "HIPENGINE_GGUF_AR_PACKED_DECODE": "0",
+        "HIPENGINE_GGUF_AR_STREAM_PREFILL": "0",
+        "HIPENGINE_GGUF_AR_STREAM_DECODE": "0"
+      },
+      "route_ok": true,
+      "exact_accounting": true,
+      "sample_count": 3,
+      "wall_seconds": {
+        "samples": [
+          3.2009247270179912,
+          3.202066764002666,
+          3.1965019700000994
+        ],
+        "median": 3.2009247270179912,
+        "min": 3.1965019700000994,
+        "max": 3.202066764002666
+      },
+      "rates": {
+        "prefill_tok_s": {
+          "samples": [
+            2782.27603221354,
+            2767.919168110544,
+            2776.1586531292783
+          ],
+          "median": 2776.1586531292783,
+          "min": 2767.919168110544,
+          "max": 2782.27603221354
+        },
+        "decode_tok_s": {
+          "samples": [
+            90.18794244020876,
+            90.2047576972359,
+            90.33516837017218
+          ],
+          "median": 90.2047576972359,
+          "min": 90.18794244020876,
+          "max": 90.33516837017218
+        },
+        "generated_wall_tok_s": {
+          "samples": [
+            79.97688850324568,
+            79.94836424959279,
+            80.08754645003145
+          ],
+          "median": 79.97688850324568,
+          "min": 79.94836424959279,
+          "max": 80.08754645003145
+        }
+      },
+      "repeatable_trajectories": true,
+      "stable_route_manifest": true,
+      "route": {
+        "path": "gguf_serial_greedy_decode",
+        "batch_size": 2,
+        "prompt_lengths": [
+          512,
+          512
+        ],
+        "decode_steps": 128,
+        "native_decode_steps": 0,
+        "serial_decode_fallback": true,
+        "native_compact_prefill": false,
+        "native_caware_decode": false,
+        "native_sampler_rows": false,
+        "throughput_claim_eligible": false
+      },
+      "samples": [
+        {
+          "wall_seconds": 3.2009247270179912,
+          "accounting": {
+            "prompt_tokens": 1024,
+            "generated_tokens": 256,
+            "continuation_decode_tokens": 254,
+            "rows": 2
+          },
+          "timing_ownership": {
+            "timed_rows": 2,
+            "owned_timing_rows": 2,
+            "timing_scopes": [
+              "choice"
+            ],
+            "batch_ids": []
+          },
+          "owned_timing_ms": {
+            "decode_ms": 2816.3410000000003,
+            "decode_text_ms": 0.126,
+            "prefill_ms": 368.044,
+            "request_total_ms": 3184.7870000000003,
+            "session_open_ms": 3.04,
+            "tokenize_ms": 0.034
+          },
+          "rates": {
+            "prefill_tok_s": 2782.27603221354,
+            "decode_tok_s": 90.18794244020876,
+            "generated_wall_tok_s": 79.97688850324568
+          },
+          "row_trajectories": [
+            {
+              "length": 128,
+              "token_ids_sha256": "71bdbeb4baded3bd539d02a963cd0c75cb780ff4537643ce62abea70c48a7f6d",
+              "first_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "last_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "final_token_id": 9707
+            },
+            {
+              "length": 128,
+              "token_ids_sha256": "71bdbeb4baded3bd539d02a963cd0c75cb780ff4537643ce62abea70c48a7f6d",
+              "first_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "last_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "final_token_id": 9707
+            }
+          ],
+          "all_rows_same_trajectory": true,
+          "route": {
+            "path": "gguf_serial_greedy_decode",
+            "batch_size": 2,
+            "prompt_lengths": [
+              512,
+              512
+            ],
+            "decode_steps": 128,
+            "native_decode_steps": 0,
+            "serial_decode_fallback": true,
+            "native_compact_prefill": false,
+            "native_caware_decode": false,
+            "native_sampler_rows": false,
+            "throughput_claim_eligible": false
+          }
+        },
+        {
+          "wall_seconds": 3.202066764002666,
+          "accounting": {
+            "prompt_tokens": 1024,
+            "generated_tokens": 256,
+            "continuation_decode_tokens": 254,
+            "rows": 2
+          },
+          "timing_ownership": {
+            "timed_rows": 2,
+            "owned_timing_rows": 2,
+            "timing_scopes": [
+              "choice"
+            ],
+            "batch_ids": []
+          },
+          "owned_timing_ms": {
+            "decode_ms": 2815.816,
+            "decode_text_ms": 0.14200000000000002,
+            "prefill_ms": 369.953,
+            "request_total_ms": 3186.201,
+            "session_open_ms": 2.99,
+            "tokenize_ms": 0.037000000000000005
+          },
+          "rates": {
+            "prefill_tok_s": 2767.919168110544,
+            "decode_tok_s": 90.2047576972359,
+            "generated_wall_tok_s": 79.94836424959279
+          },
+          "row_trajectories": [
+            {
+              "length": 128,
+              "token_ids_sha256": "71bdbeb4baded3bd539d02a963cd0c75cb780ff4537643ce62abea70c48a7f6d",
+              "first_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "last_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "final_token_id": 9707
+            },
+            {
+              "length": 128,
+              "token_ids_sha256": "71bdbeb4baded3bd539d02a963cd0c75cb780ff4537643ce62abea70c48a7f6d",
+              "first_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "last_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "final_token_id": 9707
+            }
+          ],
+          "all_rows_same_trajectory": true,
+          "route": {
+            "path": "gguf_serial_greedy_decode",
+            "batch_size": 2,
+            "prompt_lengths": [
+              512,
+              512
+            ],
+            "decode_steps": 128,
+            "native_decode_steps": 0,
+            "serial_decode_fallback": true,
+            "native_compact_prefill": false,
+            "native_caware_decode": false,
+            "native_sampler_rows": false,
+            "throughput_claim_eligible": false
+          }
+        },
+        {
+          "wall_seconds": 3.1965019700000994,
+          "accounting": {
+            "prompt_tokens": 1024,
+            "generated_tokens": 256,
+            "continuation_decode_tokens": 254,
+            "rows": 2
+          },
+          "timing_ownership": {
+            "timed_rows": 2,
+            "owned_timing_rows": 2,
+            "timing_scopes": [
+              "choice"
+            ],
+            "batch_ids": []
+          },
+          "owned_timing_ms": {
+            "decode_ms": 2811.751,
+            "decode_text_ms": 0.11699999999999999,
+            "prefill_ms": 368.855,
+            "request_total_ms": 3180.9840000000004,
+            "session_open_ms": 2.98,
+            "tokenize_ms": 0.031
+          },
+          "rates": {
+            "prefill_tok_s": 2776.1586531292783,
+            "decode_tok_s": 90.33516837017218,
+            "generated_wall_tok_s": 80.08754645003145
+          },
+          "row_trajectories": [
+            {
+              "length": 128,
+              "token_ids_sha256": "71bdbeb4baded3bd539d02a963cd0c75cb780ff4537643ce62abea70c48a7f6d",
+              "first_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "last_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "final_token_id": 9707
+            },
+            {
+              "length": 128,
+              "token_ids_sha256": "71bdbeb4baded3bd539d02a963cd0c75cb780ff4537643ce62abea70c48a7f6d",
+              "first_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "last_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "final_token_id": 9707
+            }
+          ],
+          "all_rows_same_trajectory": true,
+          "route": {
+            "path": "gguf_serial_greedy_decode",
+            "batch_size": 2,
+            "prompt_lengths": [
+              512,
+              512
+            ],
+            "decode_steps": 128,
+            "native_decode_steps": 0,
+            "serial_decode_fallback": true,
+            "native_compact_prefill": false,
+            "native_caware_decode": false,
+            "native_sampler_rows": false,
+            "throughput_claim_eligible": false
+          }
+        }
+      ],
+      "matches_c1_trajectory": true
+    },
+    {
+      "mode": "serial",
+      "concurrency": 4,
+      "environment": {
+        "HIPENGINE_GGUF_AR_PACKED_PREFILL": "0",
+        "HIPENGINE_GGUF_AR_PACKED_DECODE": "0",
+        "HIPENGINE_GGUF_AR_STREAM_PREFILL": "0",
+        "HIPENGINE_GGUF_AR_STREAM_DECODE": "0"
+      },
+      "route_ok": true,
+      "exact_accounting": true,
+      "sample_count": 3,
+      "wall_seconds": {
+        "samples": [
+          6.438035938015673,
+          6.425037639972288,
+          6.433825973013882
+        ],
+        "median": 6.433825973013882,
+        "min": 6.425037639972288,
+        "max": 6.438035938015673
+      },
+      "rates": {
+        "prefill_tok_s": {
+          "samples": [
+            2718.9461959314053,
+            2695.9535685184237,
+            2687.97446424259
+          ],
+          "median": 2695.9535685184237,
+          "min": 2687.97446424259,
+          "max": 2718.9461959314053
+        },
+        "decode_tok_s": {
+          "samples": [
+            89.8353431338741,
+            90.11345425802037,
+            90.02665887853365
+          ],
+          "median": 90.02665887853365,
+          "min": 89.8353431338741,
+          "max": 90.11345425802037
+        },
+        "generated_wall_tok_s": {
+          "samples": [
+            79.52735973042863,
+            79.68824911074114,
+            79.57939834672854
+          ],
+          "median": 79.57939834672854,
+          "min": 79.52735973042863,
+          "max": 79.68824911074114
+        }
+      },
+      "repeatable_trajectories": true,
+      "stable_route_manifest": true,
+      "route": {
+        "path": "gguf_serial_greedy_decode",
+        "batch_size": 4,
+        "prompt_lengths": [
+          512,
+          512,
+          512,
+          512
+        ],
+        "decode_steps": 128,
+        "native_decode_steps": 0,
+        "serial_decode_fallback": true,
+        "native_compact_prefill": false,
+        "native_caware_decode": false,
+        "native_sampler_rows": false,
+        "throughput_claim_eligible": false
+      },
+      "samples": [
+        {
+          "wall_seconds": 6.438035938015673,
+          "accounting": {
+            "prompt_tokens": 2048,
+            "generated_tokens": 512,
+            "continuation_decode_tokens": 508,
+            "rows": 4
+          },
+          "timing_ownership": {
+            "timed_rows": 4,
+            "owned_timing_rows": 4,
+            "timing_scopes": [
+              "choice"
+            ],
+            "batch_ids": []
+          },
+          "owned_timing_ms": {
+            "decode_ms": 5654.79,
+            "decode_text_ms": 0.262,
+            "prefill_ms": 753.233,
+            "request_total_ms": 6408.852,
+            "session_open_ms": 6.4,
+            "tokenize_ms": 0.07400000000000001
+          },
+          "rates": {
+            "prefill_tok_s": 2718.9461959314053,
+            "decode_tok_s": 89.8353431338741,
+            "generated_wall_tok_s": 79.52735973042863
+          },
+          "row_trajectories": [
+            {
+              "length": 128,
+              "token_ids_sha256": "71bdbeb4baded3bd539d02a963cd0c75cb780ff4537643ce62abea70c48a7f6d",
+              "first_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "last_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "final_token_id": 9707
+            },
+            {
+              "length": 128,
+              "token_ids_sha256": "71bdbeb4baded3bd539d02a963cd0c75cb780ff4537643ce62abea70c48a7f6d",
+              "first_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "last_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "final_token_id": 9707
+            },
+            {
+              "length": 128,
+              "token_ids_sha256": "71bdbeb4baded3bd539d02a963cd0c75cb780ff4537643ce62abea70c48a7f6d",
+              "first_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "last_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "final_token_id": 9707
+            },
+            {
+              "length": 128,
+              "token_ids_sha256": "71bdbeb4baded3bd539d02a963cd0c75cb780ff4537643ce62abea70c48a7f6d",
+              "first_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "last_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "final_token_id": 9707
+            }
+          ],
+          "all_rows_same_trajectory": true,
+          "route": {
+            "path": "gguf_serial_greedy_decode",
+            "batch_size": 4,
+            "prompt_lengths": [
+              512,
+              512,
+              512,
+              512
+            ],
+            "decode_steps": 128,
+            "native_decode_steps": 0,
+            "serial_decode_fallback": true,
+            "native_compact_prefill": false,
+            "native_caware_decode": false,
+            "native_sampler_rows": false,
+            "throughput_claim_eligible": false
+          }
+        },
+        {
+          "wall_seconds": 6.425037639972288,
+          "accounting": {
+            "prompt_tokens": 2048,
+            "generated_tokens": 512,
+            "continuation_decode_tokens": 508,
+            "rows": 4
+          },
+          "timing_ownership": {
+            "timed_rows": 4,
+            "owned_timing_rows": 4,
+            "timing_scopes": [
+              "choice"
+            ],
+            "batch_ids": []
+          },
+          "owned_timing_ms": {
+            "decode_ms": 5637.338,
+            "decode_text_ms": 0.265,
+            "prefill_ms": 759.6569999999999,
+            "request_total_ms": 6397.826999999999,
+            "session_open_ms": 6.308,
+            "tokenize_ms": 0.076
+          },
+          "rates": {
+            "prefill_tok_s": 2695.9535685184237,
+            "decode_tok_s": 90.11345425802037,
+            "generated_wall_tok_s": 79.68824911074114
+          },
+          "row_trajectories": [
+            {
+              "length": 128,
+              "token_ids_sha256": "71bdbeb4baded3bd539d02a963cd0c75cb780ff4537643ce62abea70c48a7f6d",
+              "first_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "last_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "final_token_id": 9707
+            },
+            {
+              "length": 128,
+              "token_ids_sha256": "71bdbeb4baded3bd539d02a963cd0c75cb780ff4537643ce62abea70c48a7f6d",
+              "first_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "last_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "final_token_id": 9707
+            },
+            {
+              "length": 128,
+              "token_ids_sha256": "71bdbeb4baded3bd539d02a963cd0c75cb780ff4537643ce62abea70c48a7f6d",
+              "first_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "last_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "final_token_id": 9707
+            },
+            {
+              "length": 128,
+              "token_ids_sha256": "71bdbeb4baded3bd539d02a963cd0c75cb780ff4537643ce62abea70c48a7f6d",
+              "first_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "last_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "final_token_id": 9707
+            }
+          ],
+          "all_rows_same_trajectory": true,
+          "route": {
+            "path": "gguf_serial_greedy_decode",
+            "batch_size": 4,
+            "prompt_lengths": [
+              512,
+              512,
+              512,
+              512
+            ],
+            "decode_steps": 128,
+            "native_decode_steps": 0,
+            "serial_decode_fallback": true,
+            "native_compact_prefill": false,
+            "native_caware_decode": false,
+            "native_sampler_rows": false,
+            "throughput_claim_eligible": false
+          }
+        },
+        {
+          "wall_seconds": 6.433825973013882,
+          "accounting": {
+            "prompt_tokens": 2048,
+            "generated_tokens": 512,
+            "continuation_decode_tokens": 508,
+            "rows": 4
+          },
+          "timing_ownership": {
+            "timed_rows": 4,
+            "owned_timing_rows": 4,
+            "timing_scopes": [
+              "choice"
+            ],
+            "batch_ids": []
+          },
+          "owned_timing_ms": {
+            "decode_ms": 5642.773,
+            "decode_text_ms": 0.276,
+            "prefill_ms": 761.9119999999999,
+            "request_total_ms": 6405.571,
+            "session_open_ms": 6.432,
+            "tokenize_ms": 0.07500000000000001
+          },
+          "rates": {
+            "prefill_tok_s": 2687.97446424259,
+            "decode_tok_s": 90.02665887853365,
+            "generated_wall_tok_s": 79.57939834672854
+          },
+          "row_trajectories": [
+            {
+              "length": 128,
+              "token_ids_sha256": "71bdbeb4baded3bd539d02a963cd0c75cb780ff4537643ce62abea70c48a7f6d",
+              "first_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "last_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "final_token_id": 9707
+            },
+            {
+              "length": 128,
+              "token_ids_sha256": "71bdbeb4baded3bd539d02a963cd0c75cb780ff4537643ce62abea70c48a7f6d",
+              "first_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "last_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "final_token_id": 9707
+            },
+            {
+              "length": 128,
+              "token_ids_sha256": "71bdbeb4baded3bd539d02a963cd0c75cb780ff4537643ce62abea70c48a7f6d",
+              "first_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "last_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "final_token_id": 9707
+            },
+            {
+              "length": 128,
+              "token_ids_sha256": "71bdbeb4baded3bd539d02a963cd0c75cb780ff4537643ce62abea70c48a7f6d",
+              "first_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "last_token_ids": [
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707,
+                9707
+              ],
+              "final_token_id": 9707
+            }
+          ],
+          "all_rows_same_trajectory": true,
+          "route": {
+            "path": "gguf_serial_greedy_decode",
+            "batch_size": 4,
+            "prompt_lengths": [
+              512,
+              512,
+              512,
+              512
+            ],
+            "decode_steps": 128,
+            "native_decode_steps": 0,
+            "serial_decode_fallback": true,
+            "native_compact_prefill": false,
+            "native_caware_decode": false,
+            "native_sampler_rows": false,
+            "throughput_claim_eligible": false
+          }
+        }
+      ],
+      "matches_c1_trajectory": true
+    }
+  ],
+  "package_c4_route_inventory": {
+    "mode": "package_inventory",
+    "concurrency": 4,
+    "environment": {
+      "HIPENGINE_GGUF_AR_PACKED_PREFILL": "1",
+      "HIPENGINE_GGUF_AR_PACKED_DECODE": "1",
+      "HIPENGINE_GGUF_AR_STREAM_PREFILL": "0",
+      "HIPENGINE_GGUF_AR_STREAM_DECODE": "1"
+    },
+    "timing_eligible": false,
+    "timing_note": "Route inventory only: packed timing ownership may intentionally collapse batch-shared fields and is not compared with serial controls.",
+    "sample": {
+      "wall_seconds": 8.768719187006354,
+      "accounting": {
+        "prompt_tokens": 2048,
+        "generated_tokens": 512,
+        "continuation_decode_tokens": 508,
+        "rows": 4
+      },
+      "timing_ownership": {
+        "timed_rows": 4,
+        "owned_timing_rows": 1,
+        "timing_scopes": [
+          "batch"
+        ],
+        "batch_ids": [
+          "gguf-ar-1f2935e439764028b575014dac5a1518"
+        ]
+      },
+      "owned_timing_ms": {
+        "decode_batch_ms": 7931.71,
+        "decode_text_ms": 0.053,
+        "prefill_ms": 195.514,
+        "session_open_ms": 9.543,
+        "slots_decode_phase_ms": 7935.111,
+        "tokenize_ms": 0.015
+      },
+      "rates": {
+        "prefill_tok_s": 10474.95320028233,
+        "decode_tok_s": null,
+        "generated_wall_tok_s": 58.38937125032933
+      },
+      "row_trajectories": [
+        {
+          "length": 128,
+          "token_ids_sha256": "71bdbeb4baded3bd539d02a963cd0c75cb780ff4537643ce62abea70c48a7f6d",
+          "first_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "last_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "final_token_id": 9707
+        },
+        {
+          "length": 128,
+          "token_ids_sha256": "71bdbeb4baded3bd539d02a963cd0c75cb780ff4537643ce62abea70c48a7f6d",
+          "first_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "last_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "final_token_id": 9707
+        },
+        {
+          "length": 128,
+          "token_ids_sha256": "71bdbeb4baded3bd539d02a963cd0c75cb780ff4537643ce62abea70c48a7f6d",
+          "first_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "last_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "final_token_id": 9707
+        },
+        {
+          "length": 128,
+          "token_ids_sha256": "71bdbeb4baded3bd539d02a963cd0c75cb780ff4537643ce62abea70c48a7f6d",
+          "first_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "last_token_ids": [
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707,
+            9707
+          ],
+          "final_token_id": 9707
+        }
+      ],
+      "all_rows_same_trajectory": true,
+      "route": {
+        "path": "gguf_packed_ar_server_decode",
+        "batch_size": 4,
+        "prompt_lengths": [
+          512,
+          512,
+          512,
+          512
+        ],
+        "decode_steps": 128,
+        "native_decode_steps": 127,
+        "serial_decode_fallback": false,
+        "native_compact_prefill": false,
+        "native_caware_decode": true,
+        "native_sampler_rows": false,
+        "throughput_claim_eligible": false,
+        "group_rows": 4,
+        "timing_scope": "batch",
+        "timing_owner": true,
+        "batch_id": "gguf-ar-1f2935e439764028b575014dac5a1518"
+      }
+    },
+    "matches_c1_trajectory": true
+  },
+  "correctness": {
+    "c1_trajectory_sha256": "71bdbeb4baded3bd539d02a963cd0c75cb780ff4537643ce62abea70c48a7f6d",
+    "all_serial_controls_exact_accounting": true,
+    "all_serial_controls_repeatable": true,
+    "all_serial_controls_match_c1": true,
+    "all_serial_routes_explicit": true
+  },
+  "memory": {
+    "scope": "hipengine tracked allocator; excludes driver/AOTriton internal allocations",
+    "after_prepare": {
+      "current_allocated_bytes": 22614272512,
+      "peak_allocated_bytes": 22614272512,
+      "total_allocated_bytes": 0,
+      "total_freed_bytes": 0,
+      "active_allocations": 733,
+      "peak_allocations": 733
+    },
+    "final": {
+      "current_allocated_bytes": 24058529416,
+      "peak_allocated_bytes": 24058529416,
+      "total_allocated_bytes": 1444256904,
+      "total_freed_bytes": 0,
+      "active_allocations": 1703,
+      "peak_allocations": 1703
+    }
+  },
+  "notes": [
+    "Serial controls disable packed and per-slot-stream prefill/decode routes.",
+    "Decode rate counts only continuation steps after the prompt-final token: C*(max_new_tokens-1).",
+    "Generated-wall rate counts all returned tokens and includes public generation overhead, but excludes model load/prepare.",
+    "The repeated-token workload is a Phase A control, not prompt-diversity or promotion evidence.",
+    "Automatic provenance initially read host /opt/rocm 7.2.4 despite the hermetic TheRock PATH/LD_LIBRARY_PATH; this compact artifact corrects rocm_version from the recorded HIP 7.15 hipcc and environment."
+  ]
+}
