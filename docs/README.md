@@ -46,7 +46,7 @@ working on.
 
 | Document | Use it for |
 | --- | --- |
-| [`CONCURRENCY.md`](CONCURRENCY.md) | c>N serving readiness, diagnostic evidence, and server/scheduler/kernel/KV punchlist. |
+| [`CONCURRENCY.md`](CONCURRENCY.md) | c=N serving roadmap, readiness ledger, architecture contract, and active punchlist. |
 | [`SAMPLING.md`](SAMPLING.md) | Normal sampling parameter support plan, sampler-state contract, and CPU/GPU rollout tracks. |
 | [`AGENTIC.md`](AGENTIC.md) | Serving features for local agent harnesses built on top of sampling/decode-state primitives. |
 | [`TENSOR_PARALLEL.md`](TENSOR_PARALLEL.md) | Tensor-parallel serving design gate, current disabled manifest contract, and multi-GPU validation plan. |
