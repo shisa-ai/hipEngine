@@ -158513,3 +158513,55 @@ through 4K. Peer-wave GDN production is unchanged; only the strict-exact
 rollback converged to nonvolatile direct-LDS32. Per the bounded protocol, no
 six-shape or broad-suite rerun was performed. Artifact:
 `benchmarks/results/2026-07-16-gfx1100-gguf-convergence-final-confirmation.json`.
+
+## 2026-07-16 — Persistent recorder captures the gfx1151 128K stall
+
+- Ran one clean detached `d697b971` HIP 7.15 / gfx1151 production 128K/128
+  process with `GPU_MAX_HW_QUEUES=1`, cached builds, chunk-granularity flight
+  recording, external one-second recorder decoding, five-second `amd-smi`
+  telemetry, two-second `amdgpu_fence_info` samples, and an 1,800-second bound.
+  Recorder instrumentation did not suppress the failure. Warmup completed at
+  **503.875659 prefill / 27.970192 decode tok/s**, tracked peak **25.492502
+  GiB**; measured prefill 1 produced no result and the process timed out after
+  1,805 seconds (`rc=124`). This incomplete diagnostic has no performance or
+  correctness claim.
+- Telemetry enters the characteristic persistent state at 02:07:12: **100%
+  reported gfx activity**, fixed **2,900 MHz**, median **49 W** socket power
+  (46-65 W sampled) for the remaining **1,436 seconds**. VRAM stays at 26,662
+  MiB. After timeout terminates the process, the next sample drops to 24 W and
+  17 MiB VRAM.
+- The same-stream completion cursor stops at sequence **1603**, the chunk marker
+  for `[24576,28672)`. Chunk markers are enqueued after all 40 layers, so all
+  device work through token 28,672 definitely retired. Host checkpoints reach
+  sequence **1658**, layer **11** (full attention) in chunk `[28672,32768)`,
+  and never advance.
+- Important ordering caveat: at this captured source, `recorder.submit()` runs
+  before `for_chunk()`, and `for_chunk()` performs synchronous H2D metadata
+  copies before invoking the layer. Therefore sequence 1658 proves host entry,
+  not that layer-11 kernels launched. The strongest safe localization is:
+  layers 0-9 of the current chunk retired; layer 10 linear attention was
+  enqueued; no progress/return occurred across layer-10 retirement, layer-11
+  metadata preparation, or layer-11 full-attention/post-attention-MoE work.
+  This materially narrows the failure but does not establish a nonterminating
+  named kernel or exclude KFD/MES queue/fence state.
+- Recovered the kernel-journal interval after the wrapper's nanosecond timestamp
+  was rejected by `journalctl`. It contains zero amdgpu/KFD/MES fault, timeout,
+  hang, or reset messages; one spurious PCIe PME interrupt occurs before the
+  persistent state and has no demonstrated connection. `amdgpu_fence_info`
+  keeps sampled emitted/signaled values equal; gfx ring 0 is unchanged at
+  `0x9889` while MES/SDMA monitor activity continues. This is consistent with
+  the documented KFD user-queue blind spot and is not evidence that the user
+  queue retired.
+- The capture predates merged gfx1100 commit `e03e5a34`, which moves identical
+  chunk metadata preparation outside the 40-layer loop. At 128K/32 outer 4K
+  chunks, that changes the approximate synchronous metadata-copy topology from
+  7,680 calls to 192 (about 7,488 barriers removed). The merged path is now a
+  distinct lifecycle experiment; completion would be a scheduler mitigation,
+  not proof of root cause, and the changed submission lag requires post-metadata
+  or layer-granularity retirement markers for further localization.
+- Compact retained evidence:
+  `benchmarks/results/2026-07-16-gfx1151-128k-prefill-flight-recorder-stall.json`.
+  Raw local bundle:
+  `/tmp/gfx1151-flight-d697b971-20260715T170112Z`; the compact artifact records
+  SHA-256 hashes for the final ring, telemetry, fence samples, recovered journal,
+  run log, and provenance.
