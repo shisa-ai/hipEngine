@@ -17,6 +17,7 @@ from hipengine.runtime.qwen35_gguf_runner import (
     _GGUFFullAttentionPrefillScratch,
     _HipEventStageRecorder,
     _build_gguf_packed_verify_layout,
+    _packed_ar_prefill_linear_state_plan,
 )
 
 
@@ -170,6 +171,26 @@ def test_gguf_packed_prefill_uses_slot_local_full_attention_at_c1_threshold() ->
         layout,
         aotriton_threshold=0,
     )
+
+
+def test_gguf_packed_ar_prefill_keeps_only_final_segment_state() -> None:
+    layout = _build_gguf_packed_verify_layout(
+        (
+            _GGUFPackedVerifySlotBlock(input_token_ids=(1,) * 512, start_position=0),
+            _GGUFPackedVerifySlotBlock(input_token_ids=(2,) * 64, start_position=0),
+            _GGUFPackedVerifySlotBlock(input_token_ids=(3,) * 64, start_position=0),
+            _GGUFPackedVerifySlotBlock(input_token_ids=(4,) * 64, start_position=0),
+        )
+    )
+
+    plan = _packed_ar_prefill_linear_state_plan(layout)
+
+    assert layout.rows == 704
+    assert plan.route == "segmented_in_place_final_state"
+    assert plan.state_slots == 4
+    assert plan.transient_state_rows == 0
+    assert not plan.capture_token_state_rows
+    assert not plan.commit_captured_state_rows
 
 
 def test_gguf_packed_verify_layout_honors_slot_capacity() -> None:

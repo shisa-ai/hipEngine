@@ -158766,3 +158766,43 @@ hashes, trace route census, and profiler-safety checks are in
 `benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-b1-preflight.json`.
 Next is B2 steady c2/c4, sparse c4→c3→c2→c1, ragged prompts, and per-layer hidden
 capture.
+
+## 2026-07-16 — Bound packed AR prefill state storage by slot count
+
+The first gfx1100 packed-prefill B2 run exposed a route-contract mismatch rather
+than a scatter bug. With package defaults, tokens stayed exact through four
+decode transitions, but the initial state comparison reported 156 mismatches:
+60 recurrent, 56 downstream Conv, and 40 live-KV hashes. The first divergence
+was layer-0 recurrent state. Packed prompt capture uses decode-order-exact
+segmented state rows, while gfx1100 c1 production prefill intentionally uses the
+quality-admitted, non-byte-identical `chain_peer_wave32` route. An explicit
+`HIPENGINE_GGUF_GDN_PREFILL_MODE=exact` rerun had zero mismatches, proving the
+state-row commit/scatter path correct.
+
+`scripts/gguf_packed_ar_state_oracle.py` now defaults both sides to the declared
+strict-exact GDN prefill contract, scopes the selector itself, and records the
+selector plus state-row route in its artifact. `--gdn-prefill-mode auto` remains
+available to diagnose package-policy drift instead of silently inheriting an
+unreported shell variable.
+
+The subsequent `[512,64,64,64]` run failed before execution with HIP OOM because
+AR prefill allocated every recurrent-state snapshot for all 704 prompt rows and
+30 linear-attention layers. Those O(tokens x layers) rows are required by the
+speculative accept-row verifier, not by an all-accepted AR prompt. Packed AR
+prefill now runs the existing segmented Conv/GDN kernels directly against one
+packed final-state slot per request and skips the verifier-only row capture and
+commit. The verifier path is unchanged. The explicit storage-plan fixture
+requires four persistent state slots and zero transient state rows for the
+704-row ragged shape.
+
+Dirty-tree W7900/gfx1100 validation used Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV,
+TheRock HIP 7.15, a precomputed compiler key, and `require_cached_build=true`.
+After prebuilding the exact missing AOTriton wrapper outside any profiler,
+steady c2, steady c4, sparse c4→c3→c2→c1 (`[0,1,2,3]`, `[0,2,3]`, `[0,3]`,
+`[3]`), and ragged `[512,64,64,64]` all pass four decode transitions with exact
+token trajectories, zero initial/final mismatches across all 30 Conv/GDN and 10
+live-KV families, and exact state at every sparse checkpoint. Focused layout and
+oracle tests pass **17/17**; GGUF generation/runner tests pass **53 passed, 9
+skipped**; Python compilation and `git diff --check` pass. This is correctness
+and capacity evidence only (`performance_claim=false`). Per-layer packed hidden
+capture remains the next B2 unit.

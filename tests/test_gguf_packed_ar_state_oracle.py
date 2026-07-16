@@ -55,6 +55,7 @@ def test_gguf_packed_ar_state_oracle_defaults_to_decode_isolation() -> None:
     args = build_parser().parse_args(["--model", "/tmp/model.gguf"])
 
     assert args.prefill_mode == "independent_c1"
+    assert args.gdn_prefill_mode == "exact"
     assert args.rows == 2
     assert args.lifecycle == "steady"
     assert args.prompt_length == 16

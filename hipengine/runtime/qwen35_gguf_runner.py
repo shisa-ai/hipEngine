@@ -648,6 +648,38 @@ class _GGUFPackedVerifyLayout:
 
 
 @dataclass(frozen=True)
+class _GGUFPackedARPrefillLinearStatePlan:
+    """Linear-state storage contract for an all-accepted packed AR prompt."""
+
+    route: str
+    state_slots: int
+    transient_state_rows: int
+    capture_token_state_rows: bool
+    commit_captured_state_rows: bool
+
+
+def _packed_ar_prefill_linear_state_plan(
+    layout: _GGUFPackedVerifyLayout,
+) -> _GGUFPackedARPrefillLinearStatePlan:
+    """Keep one in-place final Conv/GDN state per slot, never per prompt row.
+
+    The speculative verifier needs every candidate row for later accept-row
+    selection. AR prompt prefill accepts every row, so its segmented Conv/GDN
+    kernels can update the packed per-slot state directly. Materializing
+    ``layout.rows`` recurrent snapshots would scale as O(tokens * layers) and
+    exhaust VRAM for the B2 ragged 512/64/64/64 gate.
+    """
+
+    return _GGUFPackedARPrefillLinearStatePlan(
+        route="segmented_in_place_final_state",
+        state_slots=int(layout.slot_count),
+        transient_state_rows=0,
+        capture_token_state_rows=False,
+        commit_captured_state_rows=False,
+    )
+
+
+@dataclass(frozen=True)
 class _GGUFPackedVerifyDeferredState:
     """Owner-side packed verifier state kept live until accept-row commit."""
 
@@ -10529,7 +10561,6 @@ class Qwen35GGUFResidentSession:
             if self._verify_hidden_seed_buf is None:
                 raise RuntimeError("GGUF packed prefill hidden-seed buffer is closed")
             hidden_seed_buf = self._verify_hidden_seed_buf
-        self._ensure_verify_linear_state_row_buffers(rows, runtime=runtime)
         self._sync_packed_decode_initial_state(
             session_tuple,
             layout,
@@ -10538,6 +10569,12 @@ class Qwen35GGUFResidentSession:
             stream=stream,
         )
         packed_scratch = packed_scratch_base.for_packed_verify_layout(layout, runtime=runtime, stream=stream)
+        linear_state_plan = _packed_ar_prefill_linear_state_plan(layout)
+        if linear_state_plan.capture_token_state_rows:
+            self._ensure_verify_linear_state_row_buffers(
+                int(linear_state_plan.transient_state_rows),
+                runtime=runtime,
+            )
         token_array = np.ascontiguousarray(layout.input_token_ids, dtype=np.int64)
         copy_host_to_device(self._prefill_token_buf, host_array_ptr(token_array), token_array.nbytes, runtime=runtime)
 
@@ -10573,8 +10610,14 @@ class Qwen35GGUFResidentSession:
                         stream=stream,
                         decode_scratch=linear_decode_scratch,
                         expert_sidecar=None,
-                        linear_state_rows=self._verify_linear_state_row_pair(layer_id),
-                        commit_final_linear_state=False,
+                        linear_state_rows=(
+                            self._verify_linear_state_row_pair(layer_id)
+                            if linear_state_plan.capture_token_state_rows
+                            else None
+                        ),
+                        commit_final_linear_state=bool(
+                            linear_state_plan.commit_captured_state_rows
+                        ),
                         hidden_f32_ptr=None,
                         out_f32_ptr=None,
                         stage_timings=None,
@@ -10644,12 +10687,13 @@ class Qwen35GGUFResidentSession:
                     raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
                 src, dst = dst, src
 
-            self._commit_packed_decode_linear_state_rows(
-                layout,
-                packed_state,
-                runtime=runtime,
-                stream=stream,
-            )
+            if linear_state_plan.commit_captured_state_rows:
+                self._commit_packed_decode_linear_state_rows(
+                    layout,
+                    packed_state,
+                    runtime=runtime,
+                    stream=stream,
+                )
             output_norm_weight_ptr = self.runner.weights.root("output_norm").allocation().tensor.ptr
             gguf_rmsnorm_bf16_f32_weight(
                 src.ptr,
