@@ -158592,3 +158592,35 @@ the PARO/GGUF transfer reference to remove stale C4/C5/history wording. The ENVS
 already-retained gfx1100 peer-wave GDN, shared-X Q4T16, 128-thread router-select,
 and device-metadata-through-4K defaults with backend package policy. This is a
 docs-only unit; no GPU or performance run is required or claimed.
+
+## 2026-07-16 — Add the gfx1100 GGUF Phase-A control harness
+
+The first concurrency-roadmap audit found no suitable GGUF baseline harness.
+`scripts/qwen35_batch_serial_bench.py` is PARO-specific, while
+`scripts/qwen35_batch_gguf_diagnostic.py` checks generated IDs but does not
+record standard 512/128 timing ownership. Added
+`scripts/gguf_concurrency_baseline.py` for one prepared public GGUF runner with
+per-width warmups and measured c1/explicit-serial-c2/c4 controls. Serial mode
+disables packed and per-slot-stream prefill/decode, requires the
+`gguf_serial_greedy_decode` manifest, counts prompt tokens as `C*prompt_length`,
+and counts decode only after the prompt-final token as
+`C*(max_new_tokens-1)`. The compact artifact carries canonical git/model/device/
+compiler provenance, per-repeat token fingerprints, owned timing fields, tracked
+memory, and an optional package-c4 route inventory; it never makes a performance
+claim.
+
+RED/GREEN also corrected a route-observability bug exposed by the new inventory:
+packed AR prompt prefill executed `prefill_batch_native(...)` but public telemetry
+hardcoded `native_compact_prefill=false`. `_GGUFARServingSlot` now records packed
+prefill ownership, propagates it to output decode state, scheduler token chunks,
+and `last_batch_generation`, and preserves false for stream/scalar fallback.
+
+A reduced dirty-tree W7900/gfx1100 smoke under the hermetic TheRock HIP 7.15
+environment ran prompt16/decode4 for c1/c2 plus package c4. Both serial controls
+reported the exact serial route, exact denominators, repeatable c1 trajectories,
+and the Radeon Pro W7900 device. Package c4 matched c1 and now truthfully reports
+`native_compact_prefill=true`, `native_caware_decode=true`, and no serial decode
+fallback. This is implementation smoke only; the clean 512/128 Phase-A control
+is the next commit. Validation: the focused GGUF sampling plus new harness suite
+passes **57/57**; Python compilation and `git diff --check` pass. Ruff is not
+installed in the current dev environment.
