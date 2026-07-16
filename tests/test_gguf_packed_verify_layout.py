@@ -663,6 +663,105 @@ def test_gguf_packed_ar_exact_linear_attention_slices_slot_state() -> None:
     assert ffn_calls == [(0, 0x8000, 0x6000, 2)]
 
 
+def test_gguf_packed_ar_exact_linear_attention_dispatches_indexed_batch_plan() -> None:
+    cfg = SimpleNamespace(
+        hidden_size=8,
+        ssm_group_count=1,
+        ssm_conv_kernel=4,
+        ssm_time_step_rank=2,
+        ssm_state_size=2,
+        ssm_inner_size=6,
+    )
+    runner = object.__new__(gguf_runner.Qwen35GGUFFullStackRunner)
+    runner.weights = SimpleNamespace(config=cfg)
+    conv_row_nbytes = 10 * 4 * 4
+    recurrent_row_nbytes = 2 * 2 * 3 * 4
+
+    @dataclass(frozen=True)
+    class DecodeScratch:
+        layer_conv_states: tuple[DeviceBuffer | None, ...]
+        layer_recurrent_states: tuple[DeviceBuffer | None, ...]
+
+    decode_scratch = DecodeScratch(
+        layer_conv_states=(DeviceBuffer(0x2000, 2 * conv_row_nbytes),),
+        layer_recurrent_states=(DeviceBuffer(0x4000, 2 * recurrent_row_nbytes),),
+    )
+    scratch = SimpleNamespace(attn_out=DeviceBuffer(0x6000, 2 * 8 * 2))
+    batch_calls: list[tuple[int, ...]] = []
+    ffn_calls: list[tuple[int, int, int, int]] = []
+    batch_plan = SimpleNamespace(
+        available=True,
+        conv_indexed=object(),
+        gdn_segments=object(),
+    )
+
+    def reject_scalar(*args, **kwargs):
+        raise AssertionError("indexed batch plan must not replay scalar attention rows")
+
+    def fake_indexed_attention(
+        self,
+        layer_id,
+        hidden_ptr,
+        attn_out_ptr,
+        scratch_arg,
+        *,
+        rows,
+        decode_scratch,
+        batch_plan,
+        gdn_cu_seqlens_ptr,
+        state_indices_ptr,
+        hidden_f32_ptr=None,
+        stream=0,
+    ):
+        assert scratch_arg is scratch
+        batch_calls.append(
+            (
+                int(layer_id),
+                int(hidden_ptr),
+                int(attn_out_ptr),
+                int(rows),
+                int(decode_scratch.layer_conv_states[layer_id].ptr),
+                int(decode_scratch.layer_recurrent_states[layer_id].ptr),
+                int(gdn_cu_seqlens_ptr),
+                int(state_indices_ptr),
+                int(hidden_f32_ptr),
+                int(stream),
+            )
+        )
+
+    def fake_ffn(self, layer_id, hidden_ptr, attn_out_ptr, out_ptr, scratch_arg, *, rows, **kwargs):
+        assert scratch_arg is scratch
+        ffn_calls.append((int(layer_id), int(hidden_ptr), int(attn_out_ptr), int(rows)))
+
+    runner._run_linear_attention_attn_only = MethodType(reject_scalar, runner)
+    runner._run_linear_attention_attn_rows_indexed_exact = MethodType(
+        fake_indexed_attention,
+        runner,
+    )
+    runner._run_post_attention_ffn_rows = MethodType(fake_ffn, runner)
+
+    path = runner._run_linear_attention_decode_slot_rows_exact(
+        0,
+        0x8000,
+        0x9000,
+        scratch,
+        rows=2,
+        state_indices=(1, 0),
+        decode_scratch=decode_scratch,
+        batch_plan=batch_plan,
+        gdn_cu_seqlens_ptr=0xA000,
+        state_indices_ptr=0xB000,
+        hidden_f32_ptr=0xC000,
+        stream=7,
+    )
+
+    assert path == "indexed_batch"
+    assert batch_calls == [
+        (0, 0x8000, 0x6000, 2, 0x2000, 0x4000, 0xA000, 0xB000, 0xC000, 7)
+    ]
+    assert ffn_calls == [(0, 0x8000, 0x6000, 2)]
+
+
 def test_gguf_deferred_packed_decode_flush_copies_full_live_kv(monkeypatch) -> None:
     cfg = SimpleNamespace(
         layer_types=(FULL_ATTENTION,),

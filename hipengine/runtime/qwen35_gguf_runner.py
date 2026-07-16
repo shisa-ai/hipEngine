@@ -1744,6 +1744,15 @@ class Qwen35GGUFFullStackRunner:
             self._gguf_linear_attn_conv_prefill_kernel_cache = kernel
         return kernel
 
+    def _linear_attention_decode_batch_plan(self) -> _GGUFLinearAttentionDecodeBatchPlan:
+        """Resolve the optional exact indexed Conv/GDN decode capability."""
+
+        plan = getattr(self, "_gguf_linear_attention_decode_batch_plan_cache", None)
+        if not isinstance(plan, _GGUFLinearAttentionDecodeBatchPlan):
+            plan = _resolve_gguf_linear_attention_decode_batch_plan(self.backend)
+            self._gguf_linear_attention_decode_batch_plan_cache = plan
+        return plan
+
     def _run_gdn_prefill(
         self,
         *,
@@ -3531,6 +3540,149 @@ class Qwen35GGUFFullStackRunner:
             runtime=runtime,
         )
 
+    def _run_linear_attention_attn_rows_indexed_exact(
+        self,
+        layer_id: int,
+        hidden_ptr: int,
+        attn_out_ptr: int,
+        scratch,
+        *,
+        rows: int,
+        decode_scratch,
+        batch_plan,
+        gdn_cu_seqlens_ptr: int,
+        state_indices_ptr: int,
+        hidden_f32_ptr: int | None = None,
+        stream: int = 0,
+    ) -> None:
+        """Run independent packed decode rows without rounding GDN output.
+
+        Norm and GGUF projections use their existing row-shaped launch ABIs.
+        Conv indexes the canonical packed state slab directly, while segmented
+        GDN preserves the scalar kernel's FP32 output for the ``ssm_out``
+        projection.  Every segment contains exactly one decode token.
+        """
+
+        if rows <= 0:
+            raise ValueError("rows must be positive")
+        if not bool(getattr(batch_plan, "available", False)):
+            raise ValueError("indexed linear-attention decode plan is incomplete")
+        if int(gdn_cu_seqlens_ptr) == 0 or int(state_indices_ptr) == 0:
+            raise ValueError("indexed linear-attention decode requires segment metadata")
+        if self.weights is None:
+            raise RuntimeError("GGUF weights are not materialized")
+        layer = self.weights.layer(layer_id)
+        cfg = self.weights.config
+        runtime = self.runtime or get_hip_runtime()
+        conv_state = decode_scratch.layer_conv_states[layer_id]
+        recurrent_state = decode_scratch.layer_recurrent_states[layer_id]
+        if conv_state is None or recurrent_state is None:
+            raise ValueError(f"layer {layer_id} has no linear-attention state")
+
+        attn_norm_f32_ptr = self._run_attention_norm_rows(
+            hidden_ptr=hidden_ptr,
+            hidden_f32_ptr=hidden_f32_ptr,
+            weight_ptr=layer.weight("attn_norm").allocation().tensor.ptr,
+            out_ptr=scratch.norm.ptr,
+            out_f32_ptr=(
+                scratch.post_norm_f32.ptr
+                if hasattr(scratch, "post_norm_f32")
+                else None
+            ),
+            rows=rows,
+            eps=cfg.rms_norm_eps,
+            stream=stream,
+            runtime=runtime,
+        )
+        pair_fused = launch_gguf_linear_pair(
+            layer.weight("attn_qkv"),
+            layer.weight("attn_gate"),
+            scratch.norm.ptr,
+            scratch.linear_qkv.ptr,
+            scratch.linear_z.ptr,
+            rows=rows,
+            in_features=self.hidden_size,
+            out_features=self.linear_qkv_width,
+            out_features_b=cfg.ssm_inner_size,
+            stream=stream,
+            runtime=runtime,
+        )
+        if not pair_fused:
+            launch_gguf_linear(
+                layer.weight("attn_qkv"),
+                scratch.norm.ptr,
+                scratch.linear_qkv.ptr,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features=self.linear_qkv_width,
+                stream=stream,
+                runtime=runtime,
+            )
+            launch_gguf_linear(
+                layer.weight("attn_gate"),
+                scratch.norm.ptr,
+                scratch.linear_z.ptr,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features=cfg.ssm_inner_size,
+                stream=stream,
+                runtime=runtime,
+            )
+        self._run_linear_attention_alpha_beta_rows(
+            layer,
+            scratch.norm.ptr,
+            attn_norm_f32_ptr,
+            scratch,
+            rows=rows,
+            stream=stream,
+            runtime=runtime,
+        )
+        batch_plan.conv_indexed(
+            scratch.linear_qkv.ptr,
+            conv_state.ptr,
+            layer.weight("ssm_conv1d").allocation().tensor.ptr,
+            scratch.conv_out.ptr,
+            state_indices_ptr,
+            rows,
+            self.linear_qkv_width,
+            cfg.ssm_conv_kernel,
+            stream=stream,
+            runtime=runtime,
+        )
+        batch_plan.gdn_segments(
+            scratch.conv_out.ptr,
+            scratch.linear_z.ptr,
+            scratch.linear_alpha.ptr,
+            scratch.linear_beta.ptr,
+            layer.weight("ssm_dt_bias").allocation().tensor.ptr,
+            layer.weight("ssm_a").allocation().tensor.ptr,
+            layer.weight("ssm_norm").allocation().tensor.ptr,
+            recurrent_state.ptr,
+            scratch.recurrent_out.ptr,
+            gdn_cu_seqlens_ptr,
+            state_indices_ptr,
+            rows,
+            rows,
+            cfg.rms_norm_eps,
+            cfg.ssm_group_count,
+            cfg.ssm_time_step_rank,
+            cfg.ssm_state_size,
+            self.ssm_value_dim,
+            stream=stream,
+            runtime=runtime,
+        )
+        launch_gguf_linear(
+            layer.weight("ssm_out"),
+            scratch.recurrent_out.ptr,
+            attn_out_ptr,
+            rows=rows,
+            in_features=cfg.ssm_inner_size,
+            out_features=self.hidden_size,
+            activation_dtype=GGUF_ACTIVATION_F32,
+            stream=stream,
+            runtime=runtime,
+        )
+
     def _run_linear_attention_decode_slot_rows_exact(
         self,
         layer_id: int,
@@ -3541,6 +3693,9 @@ class Qwen35GGUFFullStackRunner:
         rows: int,
         state_indices: tuple[int, ...],
         decode_scratch,
+        batch_plan=None,
+        gdn_cu_seqlens_ptr: int | None = None,
+        state_indices_ptr: int | None = None,
         stream: int = 0,
         expert_sidecar: _DeviceExpertLayerSidecar | None = None,
         hidden_f32_ptr: int | None = None,
@@ -3548,17 +3703,8 @@ class Qwen35GGUFFullStackRunner:
         stage_timings: dict[str, float] | None = None,
         sync_stage_timings: bool = False,
         stage_prefix: str = "ar_batch_linear_attn",
-    ) -> None:
-        """Run c1-exact linear attention per slot, then the row-bulk FFN.
-
-        Packed AR decode has one token row per independent resident slot.  The
-        segmented prefill-GDN kernel writes a BF16 decode-order output, whereas
-        scalar decode projects the GDN kernel's FP32 output.  That rounding is
-        enough to perturb the next layer's persistent state.  Slice the packed
-        Conv/GDN slabs by slot and reuse the scalar attention kernels so each
-        row updates its own canonical state with c1 math.  MoE/FFN remains a
-        single multi-row launch chain.
-        """
+    ) -> str:
+        """Run exact indexed linear attention or its scalar row fallback."""
 
         if rows <= 0:
             raise ValueError("rows must be positive")
@@ -3590,36 +3736,60 @@ class Qwen35GGUFFullStackRunner:
         if int(base_recurrent.nbytes) < (max_state_index + 1) * recurrent_row_nbytes:
             raise ValueError("packed recurrent state slab is smaller than the requested slot rows")
 
-        hidden_row_nbytes = int(self.hidden_size) * DType.BF16.itemsize
-        hidden_f32_row_nbytes = int(self.hidden_size) * DType.FP32.itemsize
-        for row, state_index in enumerate(state_indices):
-            conv_states = list(decode_scratch.layer_conv_states)
-            recurrent_states = list(decode_scratch.layer_recurrent_states)
-            conv_states[layer_id] = DeviceBuffer(
-                int(base_conv.ptr) + int(state_index) * conv_row_nbytes,
-                conv_row_nbytes,
-            )
-            recurrent_states[layer_id] = DeviceBuffer(
-                int(base_recurrent.ptr) + int(state_index) * recurrent_row_nbytes,
-                recurrent_row_nbytes,
-            )
-            row_scratch = replace(
-                decode_scratch,
-                layer_conv_states=tuple(conv_states),
-                layer_recurrent_states=tuple(recurrent_states),
-            )
-            self._run_linear_attention_attn_only(
+        use_indexed_batch = rows > 1 and bool(
+            getattr(batch_plan, "available", False)
+        )
+        if use_indexed_batch:
+            if gdn_cu_seqlens_ptr is None or state_indices_ptr is None:
+                raise ValueError(
+                    "indexed linear-attention decode requires segment metadata pointers"
+                )
+            self._run_linear_attention_attn_rows_indexed_exact(
                 layer_id,
-                int(hidden_ptr) + row * hidden_row_nbytes,
-                int(scratch.attn_out.ptr) + row * hidden_row_nbytes,
-                row_scratch,
-                hidden_f32_ptr=(
-                    None
-                    if hidden_f32_ptr is None
-                    else int(hidden_f32_ptr) + row * hidden_f32_row_nbytes
-                ),
+                hidden_ptr,
+                scratch.attn_out.ptr,
+                scratch,
+                rows=rows,
+                decode_scratch=decode_scratch,
+                batch_plan=batch_plan,
+                gdn_cu_seqlens_ptr=gdn_cu_seqlens_ptr,
+                state_indices_ptr=state_indices_ptr,
+                hidden_f32_ptr=hidden_f32_ptr,
                 stream=stream,
             )
+            execution_path = "indexed_batch"
+        else:
+            hidden_row_nbytes = int(self.hidden_size) * DType.BF16.itemsize
+            hidden_f32_row_nbytes = int(self.hidden_size) * DType.FP32.itemsize
+            for row, state_index in enumerate(state_indices):
+                conv_states = list(decode_scratch.layer_conv_states)
+                recurrent_states = list(decode_scratch.layer_recurrent_states)
+                conv_states[layer_id] = DeviceBuffer(
+                    int(base_conv.ptr) + int(state_index) * conv_row_nbytes,
+                    conv_row_nbytes,
+                )
+                recurrent_states[layer_id] = DeviceBuffer(
+                    int(base_recurrent.ptr) + int(state_index) * recurrent_row_nbytes,
+                    recurrent_row_nbytes,
+                )
+                row_scratch = replace(
+                    decode_scratch,
+                    layer_conv_states=tuple(conv_states),
+                    layer_recurrent_states=tuple(recurrent_states),
+                )
+                self._run_linear_attention_attn_only(
+                    layer_id,
+                    int(hidden_ptr) + row * hidden_row_nbytes,
+                    int(scratch.attn_out.ptr) + row * hidden_row_nbytes,
+                    row_scratch,
+                    hidden_f32_ptr=(
+                        None
+                        if hidden_f32_ptr is None
+                        else int(hidden_f32_ptr) + row * hidden_f32_row_nbytes
+                    ),
+                    stream=stream,
+                )
+            execution_path = "exact_row_local"
 
         self._run_post_attention_ffn_rows(
             layer_id,
@@ -3636,6 +3806,7 @@ class Qwen35GGUFFullStackRunner:
             sync_stage_timings=sync_stage_timings,
             stage_prefix=f"{stage_prefix}_ffn",
         )
+        return execution_path
 
     def _run_native_attention_bulk_ffn_layer_rows(
         self,
@@ -11291,26 +11462,35 @@ class Qwen35GGUFResidentSession:
             layer_conv_states=packed_state.layer_conv_states,
             layer_recurrent_states=packed_state.layer_recurrent_states,
         )
+        linear_attention_decode_paths: set[str] = set()
+        linear_attention_decode_batch_plan = (
+            self.runner._linear_attention_decode_batch_plan()
+        )
         with wmma_prefill_session(False), gemv_decode_session(self.use_gemv_decode):
             for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
                 if layer_type == LINEAR_ATTENTION:
-                    self.runner._run_linear_attention_decode_slot_rows_exact(
-                        layer_id,
-                        src.ptr,
-                        dst.ptr,
-                        packed_scratch,
-                        rows=rows,
-                        state_indices=tuple(
-                            int(index) for index in layout.row_slot_indices.tolist()
-                        ),
-                        stream=stream,
-                        decode_scratch=linear_decode_scratch,
-                        expert_sidecar=None,
-                        hidden_f32_ptr=None,
-                        out_f32_ptr=None,
-                        stage_timings=None,
-                        sync_stage_timings=False,
-                        stage_prefix="ar_batch_linear_attn",
+                    linear_attention_decode_paths.add(
+                        self.runner._run_linear_attention_decode_slot_rows_exact(
+                            layer_id,
+                            src.ptr,
+                            dst.ptr,
+                            packed_scratch,
+                            rows=rows,
+                            state_indices=tuple(
+                                int(index) for index in layout.row_slot_indices.tolist()
+                            ),
+                            stream=stream,
+                            decode_scratch=linear_decode_scratch,
+                            batch_plan=linear_attention_decode_batch_plan,
+                            gdn_cu_seqlens_ptr=packed_scratch.gdn_cu_seqlens.ptr,
+                            state_indices_ptr=packed_scratch.gdn_state_indices.ptr,
+                            expert_sidecar=None,
+                            hidden_f32_ptr=None,
+                            out_f32_ptr=None,
+                            stage_timings=None,
+                            sync_stage_timings=False,
+                            stage_prefix="ar_batch_linear_attn",
+                        )
                     )
                 elif layer_type == FULL_ATTENTION:
                     key_cache, value_cache = packed_state.full_cache(layer_id)
@@ -11389,6 +11569,16 @@ class Qwen35GGUFResidentSession:
             runtime.stream_synchronize(stream)
         else:
             runtime.device_synchronize()
+        if len(linear_attention_decode_paths) > 1:
+            raise RuntimeError(
+                "packed linear-attention layers used inconsistent decode paths: "
+                f"{sorted(linear_attention_decode_paths)!r}"
+            )
+        linear_attention_decode_path = (
+            next(iter(linear_attention_decode_paths))
+            if linear_attention_decode_paths
+            else "not_applicable"
+        )
         self.last_packed_execution_manifest = build_packed_decode_execution_manifest(
             rows=rows,
             layer_types=self.runner.weights.config.layer_types,
@@ -11397,6 +11587,7 @@ class Qwen35GGUFResidentSession:
             scatter_state=bool(scatter_state),
             blocks_per_slot=int(layout.blocks_per_slot),
             capture_layer_count=len(capture_layer_ids),
+            linear_attention_decode_path=linear_attention_decode_path,
         )
         return [
             Qwen35GGUFNextTokenProbeResult(
@@ -15195,6 +15386,18 @@ _COMPACT_MOE_REQUIRED_SCRATCH = (
     "moe_wmma_total_host",
 )
 
+_LINEAR_ATTN_DECODE_INDEXED_BF16_KEY = KernelKey(
+    "hip_gfx1100",
+    "linear_attn_conv_decode",
+    "gguf_qwen35",
+    "bf16_indexed",
+)
+_GDN_DECODE_SEGMENTS_BF16_KEY = KernelKey(
+    "hip_gfx1100",
+    "gdn_recurrent_rmsnorm_gate",
+    "gguf_qwen35",
+    "bf16_segments",
+)
 _GDN_PREFILL_PREPARE_KEY = KernelKey(
     "hip_gfx1100", "linear_attn_prefill_prepare", "gguf_qwen35", "f32_bf16"
 )
@@ -15419,6 +15622,18 @@ class _CompactMoeWmmaPlan:
     up_allocation: str
     down_allocation: str
     gate_up_requires_ds4_input: bool = False
+
+
+@dataclass(frozen=True)
+class _GGUFLinearAttentionDecodeBatchPlan:
+    """Optional c-aware decode state kernels resolved through the registry."""
+
+    conv_indexed: object | None
+    gdn_segments: object | None
+
+    @property
+    def available(self) -> bool:
+        return callable(self.conv_indexed) and callable(self.gdn_segments)
 
 
 @dataclass(frozen=True)
@@ -15800,6 +16015,26 @@ def _gguf_full_attention_split_gate_bf16_fn(
         if _gguf_paged_attn_warp_split_enabled():
             return qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_spans
     return qwen35_paged_full_attn_decode_split_k_gate_bf16_spans
+
+
+def _resolve_gguf_linear_attention_decode_batch_plan(
+    backend: str = "hip_gfx1100",
+) -> _GGUFLinearAttentionDecodeBatchPlan:
+    load_backend_kernel_package(backend)
+
+    def _resolve(key: KernelKey):
+        return resolve(
+            backend=backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+            missing="none",
+        )
+
+    return _GGUFLinearAttentionDecodeBatchPlan(
+        conv_indexed=_resolve(_LINEAR_ATTN_DECODE_INDEXED_BF16_KEY),
+        gdn_segments=_resolve(_GDN_DECODE_SEGMENTS_BF16_KEY),
+    )
 
 
 def _resolve_gguf_gdn_prefill_plan(

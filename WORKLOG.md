@@ -159242,3 +159242,80 @@ still uses the C1 row loop at this commit; the next logical unit wires these
 registry keys together with already row-shaped RMSNorm/projection/`ssm_out`
 kernels, keeps the scalar chain as a missing-key fallback, and reruns the full
 model lifecycle oracle.
+
+## 2026-07-16 — Wire C2 indexed recurrent decode into packed GGUF AR
+
+Wired the registered `gguf_qwen35` indexed Conv and segmented FP32-output GDN
+capabilities into `Qwen35GGUFFullStackRunner.step_batch_native()`. The packed
+linear-attention route now executes one row-shaped attention RMSNorm, row-shaped
+QKV/gate and alpha/beta projections, one sparse indexed Conv launch, one
+segment-aware GDN launch, and one row-shaped FP32-input `ssm_out` projection per
+linear layer. Conv/GDN mutate the canonical packed slabs directly through the
+already-uploaded `(cu_seqlens,state_indices)` metadata; there is no complete
+state scatter in a steady `scatter_state=False` step.
+
+Resolution is registry-driven. `_GGUFLinearAttentionDecodeBatchPlan` is complete
+only when both `linear_attn_conv_decode/gguf_qwen35/bf16_indexed` and
+`gdn_recurrent_rmsnorm_gate/gguf_qwen35/bf16_segments` resolve for the selected
+backend. A missing/incomplete plan retains the previous scalar row loop as the
+required exact unfused fallback. The runtime records the path returned by every
+linear layer and rejects mixed accounting. The execution manifest now reports
+`indexed_batch`, zero host model-row loops/iterations, and zero expected exact
+row-local launches only when that route actually ran; the overall claim remains
+`exact_hybrid` pending clean C2 evidence and later C3/C4 closure.
+
+The host dispatch contract was RED before implementation:
+
+```bash
+python3 -m pytest -q \
+  tests/test_gguf_packed_verify_layout.py::test_gguf_packed_ar_exact_linear_attention_dispatches_indexed_batch_plan
+# RED: unexpected keyword argument 'batch_plan'; GREEN after implementation
+```
+
+Focused host/CPU regression gate:
+
+```bash
+python3 -m pytest -q \
+  tests/test_generation_qwen35_gguf_sampling.py \
+  tests/test_qwen35_gguf_hidden_seed_contract.py \
+  tests/test_gguf_packed_ar_state_oracle.py \
+  tests/test_gguf_packed_verify_layout.py \
+  tests/test_qwen35_gguf_runner.py \
+  tests/test_gguf_packed_execution_manifest.py \
+  tests/test_qwen35_linear_attn_decode_batch_indexed.py
+# GREEN: 106 passed, 9 skipped
+```
+
+Real dirty-tree W7900/gfx1100 gates used Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV,
+strict-exact GDN prefill, the precomputed TheRock HIP 7.15 compiler key, and
+cached builds required. A direct profiler leaf at p512/c4 emitted
+`linear_attention_decode_path=indexed_batch`, zero host row-loop sites, zero
+row iterations/subgraph invocations, zero expected exact-row-local launches,
+unchanged 9 H2D input/metadata copies, zero steady state import/scatter, and
+exact warmup/profile tokens before a successful flush.
+
+The all-layer state oracle then passed:
+
+```bash
+python3 scripts/gguf_packed_ar_state_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --rows 4 --lifecycle steady --prefill-mode packed \
+  --prompt-length 512 --decode-steps 4 --capture-layer-hidden \
+  --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt \
+  --require-cached-build --json /tmp/gfx1100-c2-indexed-p512-d4-hidden.json
+# exact tokens/state/KV; 800/800 exact layer-hidden comparisons
+python3 scripts/gguf_packed_ar_state_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --rows 4 --lifecycle shrink_sparse --prefill-mode packed \
+  --prompt-length 512 --decode-steps 4 --capture-layer-hidden \
+  --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt \
+  --require-cached-build --json /tmp/gfx1100-c2-indexed-shrink-p512-d4-hidden.json
+# c4->c3->c2->c1 exact at every step; 560/560 exact layer-hidden comparisons
+```
+
+Python compilation, changed-file Ruff checks, and `git diff --check` pass. Full
+GGUF-runner Ruff still contains its pre-existing F401/F841/F821 baseline, so the
+runner was checked with those existing codes excluded. These are correctness
+and route observations, not a throughput or fully-native-c4 claim. The next
+logical unit reruns the retained clean p512/d128 lifecycle and marker-sliced
+profiler census from the committed implementation revision.

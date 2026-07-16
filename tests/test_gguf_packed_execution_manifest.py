@@ -26,6 +26,7 @@ def test_packed_decode_manifest_counts_steady_c4_hybrid_boundary() -> None:
     assert manifest["kind"] == "gguf_packed_ar_execution_manifest"
     assert manifest["mode"] == "decode"
     assert manifest["rows"] == 4
+    assert manifest["linear_attention_decode_path"] == "exact_row_local"
     assert manifest["model_step"] == {
         "complete_c1_session_replays": 0,
         "complete_c1_layer_replays": 0,
@@ -60,6 +61,45 @@ def test_packed_decode_manifest_counts_steady_c4_hybrid_boundary() -> None:
     assert manifest["synchronizations"] == 2
     assert manifest["scalar_fallbacks"] == 0
     assert manifest["steady_packed_state_reused"] is True
+
+
+def test_packed_decode_manifest_accounts_indexed_recurrent_closure() -> None:
+    manifest = build_packed_decode_execution_manifest(
+        rows=4,
+        layer_types=_layer_types(),
+        imported_slot_indices=(),
+        import_positions=(513, 513, 513, 513),
+        scatter_state=False,
+        blocks_per_slot=4,
+        linear_attention_decode_path="indexed_batch",
+    )
+
+    assert manifest["linear_attention_decode_path"] == "indexed_batch"
+    assert manifest["claim_level"] == "exact_hybrid"
+    assert manifest["model_step"] == {
+        "complete_c1_session_replays": 0,
+        "complete_c1_layer_replays": 0,
+        "host_model_row_loop_sites": 0,
+        "host_model_row_iterations": 0,
+        "per_row_model_subgraph_invocations": 0,
+        "expected_exact_row_local_kernel_launches": 0,
+    }
+    families = manifest["layer_families"]
+    for name in ("projection", "conv_gdn", "normalization"):
+        assert families[name]["execution"] == "packed_native"
+        assert families[name]["host_row_loop_sites"] == 0
+        assert families[name]["host_row_iterations"] == 0
+        assert families[name]["exact_row_local_kernel_launches"] == 0
+        assert families[name]["exact_row_local_work"] == []
+    assert families["conv_gdn"]["packed_native_work"] == [
+        "conv_decode_indexed",
+        "gdn_recurrent_decode_segments_fp32_out",
+    ]
+    assert manifest["profiler_contract"] == {
+        "expected_execution_buckets": ["packed_native"],
+        "expected_exact_row_local_kernel_launches": 0,
+        "require_cached_build": True,
+    }
 
 
 def test_packed_decode_manifest_separates_import_and_scatter_from_steady_step() -> None:
