@@ -158964,3 +158964,42 @@ both accounting views and trajectory hashes, complete chunk membership, and
 does not promote gfx1100 to `exact_hybrid`; B4 full-category prompt diversity
 remains the next gate. No throughput, scaling, profiler, or native-model-step
 claim is made.
+
+## 2026-07-16 — Add the packed GGUF B4 category lifecycle oracle
+
+Added `scripts/gguf_packed_ar_category_oracle.py` because the existing
+`gguf_true_ar_category_bench.py` is a c1 timing/MTP baseline and does not compare
+packed c4 hidden/state/KV lifecycle. The new harness reuses the canonical
+`build_chat_prompt()` tokenizer contract and strict `load_prompt_rows()` loader.
+It requires the complete committed 10-prompt
+`mtpbench-code-general-ja.jsonl` ID/order and the existing frozen 8-prompt
+`gdn-prefill-category-heldouts.jsonl` coverage across `code`, `general_en`,
+`general_ja`, and `mixed_ja_en`.
+
+The harness groups the primary suite as c4+c4+c2 and the heldouts as c4+c4;
+it never duplicates prompts to fill a tail group. For each group it compares
+packed strict-exact AR against independent c1 for every sampled token, every
+post-layer BF16 row, all 30 Conv/GDN state families, and all 10 live BF16 K/V
+families before and after decode. Packed state must become dirty and flush
+successfully. At least three repeats are mandatory, and each prompt's complete
+trajectory hash must be deterministic across repeats. Canonical provenance,
+source hashes, prompt hashes/categories, group plans, cached-build policy, and
+all mismatch counts are retained; `performance_claim=false` is unconditional.
+
+A dirty-tree W7900/gfx1100 smoke exercised all 18 prompts, all 15 group
+executions, and three repeats at one packed transition:
+
+```bash
+python3 scripts/gguf_packed_ar_category_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --decode-steps 1 --repeats 3 --group-size 4 \
+  --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/gfx1100-b4-harness-smoke-dirty/category-smoke.json
+```
+
+All 15 groups and 54 prompt-repeat executions pass, with exact tokens,
+**4,320/4,320** hidden comparisons, zero initial/final state or live-KV
+mismatches, and deterministic trajectories. Focused category/state/layout tests
+pass **29/29**; Python compilation and `git diff --check` pass. This is harness
+validation only; the retained clean B4 run uses the default 24 transitions.
