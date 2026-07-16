@@ -3940,7 +3940,13 @@ class Qwen35GGUFResidentModelRunner:
                     self._graph_handle_refs[handle_id] = lambda handle=handle: handle
                 bucket["captures"] += 1
                 self._graph_handle_replays[handle_id] = 0
-            replay_count = max(0, int(getattr(handle, "replay_count", 0)))
+            raw_replay_count = getattr(handle, "replay_count", None)
+            if raw_replay_count is None:
+                replayed_steps = max(0, int(getattr(handle, "replayed_steps", 0)))
+                steps_per_replay = max(1, int(getattr(handle, "steps_per_replay", 1)))
+                replay_count = replayed_steps // steps_per_replay
+            else:
+                replay_count = max(0, int(raw_replay_count))
             previous = self._graph_handle_replays.get(handle_id, 0)
             if replay_count > previous:
                 delta = replay_count - previous

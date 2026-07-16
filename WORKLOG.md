@@ -160493,3 +160493,20 @@ Ruff,
 Python compilation, and diff checks pass. `docs/API.md` and `docs/ENVS.md`
 document the expanded public metric surface. A clean real W7900 scrape/artifact
 is still required before D5 closes.
+
+## 2026-07-16 — Fix D5 real GGUF graph replay accounting
+
+The pre-hardware D5 gate audit found that the resident graph observer counted a
+synthetic test-double `replay_count`, while the real
+`Qwen35GGUFDecodeGraph` ABI records `replayed_steps` and
+`steps_per_replay`. Real W7900 graph captures and invalidations could therefore
+be visible while every replay/hit counter remained zero.
+
+The RED graph-observability fixture now uses the real handle fields and first
+failed with `hits_total == 0`. The observer derives launch count as
+`replayed_steps // steps_per_replay` for real handles while retaining support
+for third-party/test handles that expose `replay_count`. GREEN validation is
+**57 passed** for `tests/test_generation_qwen35_gguf_sampling.py`; focused Ruff,
+Python compilation, and diff checks pass. The clean W7900 D5 gate must now prove
+that these corrected counters advance through a real capture/replay/invalidation
+lifecycle.

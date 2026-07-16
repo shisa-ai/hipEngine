@@ -1852,7 +1852,9 @@ def test_gguf_resident_runner_graph_observability_is_bucketed_and_cumulative() -
     class FakeGraph:
         def __init__(self) -> None:
             self.bucket_key = FakeGraphKey()
-            self.replay_count = 0
+            # Match the real Qwen35GGUFDecodeGraph replay ABI.
+            self.replayed_steps = 0
+            self.steps_per_replay = 2
             self.closed = False
 
     class FakeSession:
@@ -1918,7 +1920,7 @@ def test_gguf_resident_runner_graph_observability_is_bucketed_and_cumulative() -
         "invalidations": 0,
     }
 
-    handle.replay_count = 2
+    handle.replayed_steps = 4
     replayed = runner.observability_snapshot()["graph_buckets"]
     assert replayed["hits_total"] == 2
     assert replayed["replays_total"] == 2
