@@ -95,7 +95,7 @@ requests are not admitted into a live model step loop mid-generation.
 | Model path | Backend | Current c>N status | Production behavior | First missing gate |
 | --- | --- | --- | --- | --- |
 | GGUF Q4_K_M / BF16 KV | gfx1151 | Packed exact hybrid in groups of at most c4; short natural c10 runs as c4+c4+c2 | Packed server AR route is available; not a retained c>N throughput row | Per-layer hidden capture, standard all-row 512/128 gate, live admission/cancel, profiler/scaling |
-| GGUF Q4_K_M / BF16 KV | gfx1100 | B2 strict-exact packed c2/c4, sparse c4→c1, and ragged `[512,64,64,64]` are token/hidden/state/KV-exact; package-auto c1 peer-wave is not byte-identical | Retained c1 plus a non-performance direct exact anchor; not yet promoted to `exact_hybrid` | All-row c4 prompt-512 capacity, standard 512/128, and prompt diversity |
+| GGUF Q4_K_M / BF16 KV | gfx1100 | B3 strict-exact all-row c4 prompt-512 plus 128 packed transitions is token/hidden/state/KV-exact in three all-slot prefill rounds; package-auto c1 peer-wave is not byte-identical | Retained c1 plus a non-performance standard-lifecycle anchor; not yet promoted to `exact_hybrid` pending B4 | Full prompt-category diversity, then C1 hybrid-boundary trace |
 | GGUF Q5_K/Q6_K/Q8_0 / BF16 KV | gfx1100/gfx1151 | Not executed end to end under c>N | c1 | Q4_K_M c4 closure first |
 | PARO W4 / BF16 KV | gfx1151 | Exact greedy c2 hybrid below 1024 total context; not fully native or retained | Unsupported groups fail closed to true width-1 sessions | Lifecycle/hidden/profiler/repetition gates, then remove row-local hybrid boundaries |
 | PARO W4 / BF16 KV | gfx1100 | Historical primitive/token diagnostics only; no current retained native route | Width-1 sessions | Re-establish the current-HEAD c2 correctness baseline on W7900 |
@@ -420,11 +420,11 @@ B2. Direct lifecycle oracle:
 
 B3. Standard protocol capacity:
 
-- [ ] Make all-row c4 prompt-512/decode-128 fit through a correct chunked packed
+- [x] Make all-row c4 prompt-512/decode-128 fit through a correct chunked packed
       prefill path. The old 768-row hidden-slab ceiling is not an acceptable
       substitute for the standard gate.
-- [ ] Prove no row is silently serialized because the packed slab is full.
-- [ ] Pass the complete 512/128 lifecycle gate with exact accounting.
+- [x] Prove no row is silently serialized because the packed slab is full.
+- [x] Pass the complete 512/128 lifecycle gate with exact accounting.
 
 B4. Prompt diversity:
 
