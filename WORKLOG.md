@@ -158920,3 +158920,47 @@ This is a dirty-tree implementation/correctness gate, not the clean standard
 512/128 packet and not a performance claim. `docs/REFACTOR.md` records the
 remaining intermediate chunk-tail output-norm/LM-head sampling debt. The next
 logical unit is the clean complete p512/decode128 lifecycle gate.
+
+## 2026-07-16 — Close the clean gfx1100 GGUF B3 standard lifecycle
+
+Ran the standard all-row gate from clean `5c939671` on Radeon Pro W7900/gfx1100
+with Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, strict-exact GDN prefill,
+TheRock HIP 7.15, the precomputed compiler key, and every resident build
+required cached. The command used c4 prompt-512, 128 packed decode transitions,
+and all-40-layer hidden capture:
+
+```bash
+python3 scripts/gguf_packed_ar_state_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --rows 4 --lifecycle steady --prefill-mode packed \
+  --prompt-length 512 --decode-steps 128 --capture-layer-hidden \
+  --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/gfx1100-concurrency-b3-clean-5c939671/standard-c4-p512-d128.json
+```
+
+The run passes exact token trajectories and **20,640/20,640** post-layer row
+comparisons (40 layers x c4 x prefill plus 128 transitions), with zero initial
+or final mismatches across all 30 Conv/GDN and 10 live-KV families. Packed state
+became dirty, flushed successfully, and remained exact afterward. Prefill used
+three all-slot rounds: total rows `[768,768,512]`, per-slot rows
+`[192,192,128]`, slot indices c4 in every round, and preserved AOTriton
+eligibility for every original p512 slot. `slot_serial_fallback=false`.
+
+Accounting is explicit because prefill produces the first sampled token. The
+extended run consumes **512** packed transition inputs and produces **516** total
+sampled outputs across c4 (4 prompt-final + 512 transition outputs), for 129
+trajectory steps per slot including the prefill sample. The standard
+128-return-token endpoint is fully contained at trajectory step 127: one
+prefill output plus 127 transitions per slot, **508** transition inputs and
+**512** sampled outputs across c4. The retained gate executes one additional
+exact transition beyond that endpoint.
+
+Compact clean evidence is
+`benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-b3-standard-lifecycle.json`.
+It records canonical clean model/device/compiler provenance, the source hash,
+both accounting views and trajectory hashes, complete chunk membership, and
+`performance_claim=false`. `docs/CONCURRENCY.md` closes all three B3 boxes but
+does not promote gfx1100 to `exact_hybrid`; B4 full-category prompt diversity
+remains the next gate. No throughput, scaling, profiler, or native-model-step
+claim is made.
