@@ -355,15 +355,19 @@ def test_run_gdn_prefill_explicit_direct_lds32_uses_compact_abi(
     ("rows", "expected_recurrent"),
     [(64, "exact_lds32_nonvolatile"), (1025, "exact_segments_lds32_nonvolatile")],
 )
+@pytest.mark.parametrize(
+    "requested_mode",
+    ("chain_lds32_direct_nonvolatile", "exact"),
+)
 def test_run_gdn_prefill_explicit_nonvolatile_direct_uses_compact_abi(
     monkeypatch: pytest.MonkeyPatch,
     rows: int,
     expected_recurrent: str,
+    requested_mode: str,
 ) -> None:
-    monkeypatch.setenv(
-        "HIPENGINE_GGUF_GDN_PREFILL_MODE", "chain_lds32_direct_nonvolatile"
-    )
+    monkeypatch.setenv("HIPENGINE_GGUF_GDN_PREFILL_MODE", requested_mode)
     runner = _new_runner()
+    runner.backend = "hip_gfx1100"
     calls: list[tuple[str, object]] = []
     runner._gguf_gdn_prefill_plan_cache = qgr._GGUFGDNPrefillPlan(
         prepare=None,
@@ -830,6 +834,18 @@ def test_gdn_prefill_mode_rejects_invalid_value(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setenv("HIPENGINE_GGUF_GDN_PREFILL_MODE", "maybe")
     with pytest.raises(ValueError, match="HIPENGINE_GGUF_GDN_PREFILL_MODE"):
         qgr._gguf_gdn_prefill_mode()
+
+
+def test_gdn_prefill_exact_mode_rejects_quality_admitted_backend_route(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        qgr,
+        "backend_package_capability",
+        lambda *_args, **_kwargs: "chain_peer_wave32",
+    )
+    with pytest.raises(RuntimeError, match="exact mode must be one of"):
+        qgr._gguf_gdn_prefill_backend_exact_mode("hip_gfx1100")
 
 
 def test_run_gdn_prefill_uses_chain_under_threshold_when_fused_missing() -> None:

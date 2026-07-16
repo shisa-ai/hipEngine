@@ -158348,6 +158348,172 @@ bundle **66 passed**; `tests/test_benchmark_readme_sync.py` **6 passed**;
   `expected_selected`, not the runner's required top-level `expected`); the
   schema-aware `smoke.py --mode cpu-fixtures` passes all standard fixtures.
 
+## 2026-07-16 — Predeclare gfx1151-to-gfx1100 convergence screens
+
+Bounded W7900 screens will evaluate, in order: (1) the existing exact
+256-thread BF16-hidden/F32-weight bulk router-logits wrapper, (2) the existing
+128-thread bulk router-select wrapper, (3) their retained stack, (4) residual
+short-prefill host/device metadata copies only if a cached `rocprofv3` trace
+still exposes them, and (5) the nonvolatile exact direct-LDS32 GDN body as an
+exact rollback only. Existing gfx1151 implementations are reused; no upstream
+kernel is being ported.
+
+The frozen protocol is Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, repeated token
+9707, W7900/gfx1100, the complete hermetic therock HIP 7.15 stack, independent
+right-sized 512/128 and 4K/128 resident processes, one discarded warmup plus
+three measured resets, production automatic chunks/WMMA/GEMV/graph replay,
+and cached builds required. Independent candidates must preserve full-state
+or primitive exactness and final token IDs, then improve prefill without a
+material decode or memory regression. Negative candidates stop after the
+focused gate; no six-shape or broad-suite rerun is authorized by this screen.
+
+Current clean merged-main control at `1355fc8d` measured 512/128 at
+**2699.283 prefill / 92.941 decode tok/s** (prefill min/max
+2699.116/2709.475) and 4K/128 at **2972.935 / 100.663 tok/s** (prefill min/max
+2967.070/2985.508). All three measured final IDs were 9707. While those
+processes were running, `origin/main` advanced to `3ef3926f` with the
+runtime-gated gfx1151 prefill flight recorder; candidate acceptance will use
+same-process/interleaved controls on the live commit so that unrelated default-
+off instrumentation cannot bias the decision.
+
+## 2026-07-16 — Promote 256-thread gfx1100 F32 router logits
+
+The first transfer screen passes decisively. The existing in-tree LCP-4A
+wrapper changes only launch geometry: for Qwen3.6's `hidden_size=2048`, the
+upper 256 lanes of the former 512-thread block contributed zero partials.
+A W7900 primitive at `tokens=4096, hidden=2048, rows=256` compared 1,048,576
+FP32 outputs with **zero bit mismatches** between 512 and 256 threads.
+
+Hermetic therock HIP 7.15 balanced same-session 1+3 results on clean
+`d05bdb75`:
+
+- 512/128 prefill: **2689.171 -> 2795.242 tok/s (+3.94%)**; graph decode
+  **92.966 -> 92.945 tok/s (-0.022%)**.
+- 4K/128 prefill: **2955.867 -> 3070.905 tok/s (+3.89%)**; graph decode
+  **100.432 -> 100.592 tok/s (+0.159%)**.
+- All 12 measured final IDs are 9707 and tracked peak is unchanged at
+  21.228/21.670 GiB.
+
+Promoted `qwen35_router_logits_bf16_f32w_auto_256` as the gfx1100
+`router_logits/f32/bf16_hidden` registry default and added the matching backend
+capability. RED first failed on the missing gfx1100 capability; the focused
+backend/router bundle then passed **8/8**. Artifact:
+`benchmarks/results/2026-07-16-gfx1100-gguf-router-threads256-promotion.json`.
+
+## 2026-07-16 — Promote 128-thread gfx1100 prefill router select
+
+The second transfer screen also passes. On clean `cd4cfa8c`, hermetic therock
+HIP 7.15 same-session 1+3 A/Bs on top of the retained 256-thread logits default
+measure:
+
+- 512/128 aggregate prefill **2789.516 -> 2798.564 tok/s (+0.32%)**,
+  balanced paired median **+0.30%**; graph decode **-0.068%**.
+- 4K/128 aggregate prefill **3055.119 -> 3079.801 tok/s (+0.81%)**,
+  balanced paired median **+0.12%**; graph decode **+0.216%**.
+- All measured final IDs remain 9707 and tracked peak remains 21.228/21.670
+  GiB. A 4K x 256-expert primitive compares 32,768 selected IDs and 32,768
+  FP32 routing weights with zero integer or bit mismatch between 512 and 128
+  threads.
+
+RED first asserted the missing gfx1100 package policy and failed 512 versus
+128. GREEN adds `GGUF_PREFILL_ROUTER_SELECT_THREADS=128`; the focused policy and
+backend tests pass **4/4**. Keep explicit 512-thread rollback for one release.
+Artifact:
+`benchmarks/results/2026-07-16-gfx1100-gguf-router-select-threads128-promotion.json`.
+
+Follow-up on the gfx1151 Conv question: the promoted `tile32x128` body already
+contains the same explicit separately rounded `v_mul_f32_e32` technique later
+used by gfx1100 LCP-4A and was promoted with zero private scratch/spills. The
+remaining separate state update measured only 0.241 ms across 120 launches in
+the 4K trace. There is no missing tiled-plus-no-scratch combination; reopening
+Conv would target only that negligible state-update tail and is not selected.
+
+## 2026-07-16 — Confirm the retained gfx1100 router stack
+
+A direct same-session legacy-versus-package gate at clean `76104cd4` compares
+512-thread logits plus 512-thread select against the newly retained 256/128
+package defaults. Hermetic therock HIP 7.15 balanced 1+3 paired prefill deltas
+are **+3.87%** at 512 and **+4.16%** at 4K. Aggregate medians move
+**2705.881 -> 2805.542 tok/s** and **2945.327 -> 3081.822 tok/s**. Graph decode
+is **+0.11%/+0.07%**, tracked peak is unchanged, and all 12 measured final IDs
+are 9707. This confirms that the two independently retained paths compose
+without interference. Artifact:
+`benchmarks/results/2026-07-16-gfx1100-gguf-router-stack-promotion.json`.
+
+## 2026-07-16 — Promote gfx1100 device-prepared prefill metadata through 4K
+
+A cached 512-token `rocprofv3` HIP/API trace on clean `df253cf8` confirms the
+remaining outer-chunk boundary: six consecutive synchronous `hipMemcpy` calls
+for cu-q, cu-k, atomic, GDN cu-seqlens, positions, and context counts consume
+**167.213 us** of host API wall. A cached candidate primitive trace confirms
+`prepare_prefill_chunk_metadata_kernel` at **4.160 us**, 256 threads, 16 VGPR,
+and zero LDS/scratch. The six resulting arrays match the CPU reference exactly.
+
+Hermetic therock HIP 7.15 balanced same-session 1+3 A/Bs on the retained router
+stack measure:
+
+- 512/128 prefill **2793.871 -> 2805.451 tok/s (+0.41%)**, paired median
+  **+0.26%**; graph decode **+0.032%**.
+- 4K/128 prefill **3069.782 -> 3144.263 tok/s (+2.43%)**, paired median
+  **+2.26%**; graph decode **+0.163%**.
+- Tracked peak remains 21.228/21.670 GiB and all 12 measured final IDs remain
+  9707.
+
+RED first expected the missing gfx1100 4K package ceiling and failed. GREEN adds
+`GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS=4096`; focused primitive/policy/backend
+validation passes. Retain the synchronous path and explicit `=0` rollback above
+4K pending independent long-context evidence. Artifact:
+`benchmarks/results/2026-07-16-gfx1100-gguf-prefill-device-metadata-promotion.json`.
+
+## 2026-07-16 — Converge the gfx1100 strict-exact GDN rollback
+
+The final candidate passes without changing production. On clean `d2d1c6fc`, a
+compact-scratch same-session gate compares volatile
+`chain_lds32_direct` against `chain_lds32_direct_nonvolatile`; gfx1100 automatic
+production remains quality-admitted `chain_peer_wave32`.
+
+Hermetic therock HIP 7.15 balanced 1+3 results:
+
+- 512/128 prefill **1400.079 -> 2422.276 tok/s (+73.01%)**, paired median
+  **+72.33%**; graph decode **-0.062%**.
+- 4K/128 prefill **1487.611 -> 2714.284 tok/s (+82.46%)**, paired median
+  **+81.48%**; graph decode **-0.003%**.
+- Tracked peak is identical within each A/B at 21.204/21.544 GiB and all 12
+  measured final IDs remain 9707.
+
+A cached 512 profile records 120 calls per route: nonvolatile cuts family total
+**856.870 -> 219.641 ms** and median **7.172 -> 1.837 ms (-74.39%, 3.90x)**,
+while halving VGPR **64 -> 32** with the same 16 KiB LDS and zero scratch. GPU
+plain/segment fixtures preserve output and final FP32 state byte-exact.
+
+RED first showed that nonvolatile direct did not receive compact liveness and
+that `HIPENGINE_GGUF_GDN_PREFILL_MODE=exact` was unrecognized. GREEN adds the
+architecture-scoped `GGUF_GDN_PREFILL_EXACT_MODE` capability on both gfx11
+packages, resolves the `exact` alias fail-closed, and gives nonvolatile exact the
+same compact liveness as volatile direct. A cached `exact` alias 512/1
+integration smoke returns token 9707 at 21.204 GiB tracked peak. Keep the long
+explicit nonvolatile name and volatile symbol for one rollback release. Artifact:
+`benchmarks/results/2026-07-16-gfx1100-gguf-gdn-nonvolatile-exact-rollback.json`.
+
+## 2026-07-16 — Close the bounded gfx1100 convergence screen
+
+Clean selector-unset package-default confirmation on `666a72db`, hermetic
+therock HIP 7.15, one independent right-sized process per shape, and one warmup
+plus three measured runs:
+
+- 512/128: **2808.249 prefill / 92.697 graph-decode tok/s**, 21.228 GiB tracked
+  peak, IDs 9707/9707/9707.
+- 4K/128: **3173.723 / 100.905 tok/s**, 21.670 GiB, IDs 9707/9707/9707.
+
+Against the same-protocol pre-screen `1355fc8d` baseline, package prefill is
+**+4.04%/+6.75%** at 512/4K, graph decode is **-0.26%/+0.24%** (flat), and
+tracked memory is unchanged. The retained automatic changes are 256-thread F32
+router logits, 128-thread bulk router select, and device-prepared metadata
+through 4K. Peer-wave GDN production is unchanged; only the strict-exact
+rollback converged to nonvolatile direct-LDS32. Per the bounded protocol, no
+six-shape or broad-suite rerun was performed. Artifact:
+`benchmarks/results/2026-07-16-gfx1100-gguf-convergence-final-confirmation.json`.
+
 ## 2026-07-16 — Persistent recorder captures the gfx1151 128K stall
 
 - Ran one clean detached `d697b971` HIP 7.15 / gfx1151 production 128K/128

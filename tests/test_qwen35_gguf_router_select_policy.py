@@ -6,7 +6,7 @@ from hipengine.runtime import qwen35_gguf_runner as runner_module
 
 
 def test_prefill_router_select_threads_use_scoped_backend_policy() -> None:
-    assert runner_module._gguf_prefill_router_select_threads("hip_gfx1100") == 512
+    assert runner_module._gguf_prefill_router_select_threads("hip_gfx1100") == 128
     assert runner_module._gguf_prefill_router_select_threads("hip_gfx1151") == 128
 
 

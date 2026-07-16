@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from hipengine.core.memory import DeviceBuffer
 from hipengine.runtime import qwen35_gguf_runner as gguf_runner
 from hipengine.runtime.qwen35_gguf_runner import _GGUFFullAttentionPrefillScratch
@@ -117,10 +119,16 @@ def test_gfx1100_peer_prefill_scratch_uses_bounded_liveness_arena(monkeypatch) -
         assert field.nbytes == size
 
 
-def test_gfx1100_explicit_exact_direct_liveness_omits_materialized_qkv(monkeypatch) -> None:
+@pytest.mark.parametrize(
+    "mode",
+    ("chain_lds32_direct", "chain_lds32_direct_nonvolatile", "exact"),
+)
+def test_gfx1100_explicit_exact_direct_liveness_omits_materialized_qkv(
+    monkeypatch, mode: str
+) -> None:
     _install_fake_device(monkeypatch)
     _clear_diagnostic_environment(monkeypatch)
-    monkeypatch.setenv("HIPENGINE_GGUF_GDN_PREFILL_MODE", "chain_lds32_direct")
+    monkeypatch.setenv("HIPENGINE_GGUF_GDN_PREFILL_MODE", mode)
 
     scratch = _GGUFFullAttentionPrefillScratch.allocate(
         _fake_runner(),

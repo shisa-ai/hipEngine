@@ -231,7 +231,7 @@ def qwen35_router_logits_bf16_f32w_auto_256(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Launch the exact F32-weight router with the gfx1151-optimal workgroup."""
+    """Launch the exact F32-weight router with the gfx11-optimal workgroup."""
 
     qwen35_router_logits_bf16_f32w(
         hidden_ptr,
@@ -740,7 +740,7 @@ def register_qwen35_router_kernels(*, replace: bool = True) -> None:
     )
     register(
         KernelKey("hip_gfx1100", "router_logits", "f32", "bf16_hidden"),
-        qwen35_router_logits_bf16_f32w,
+        qwen35_router_logits_bf16_f32w_auto_256,
         replace=replace,
     )
     register(
