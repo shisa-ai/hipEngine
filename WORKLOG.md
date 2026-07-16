@@ -158565,3 +158565,30 @@ six-shape or broad-suite rerun was performed. Artifact:
   `/tmp/gfx1151-flight-d697b971-20260715T170112Z`; the compact artifact records
   SHA-256 hashes for the final ring, telemetry, fence samples, recovered journal,
   run log, and provenance.
+
+## 2026-07-16 — Reset the concurrency roadmap around first-class c=N
+
+Replaced the 4,777-line `docs/CONCURRENCY.md` experiment notebook with an
+827-line roadmap, architecture contract, backend/model coverage ledger, evidence
+gates, and ordered punchlist. The current claim is now explicit: host scheduler,
+KV, sampler, metrics, and API scaffolding plus gfx1151 GGUF/PARO exact hybrids
+exist, but no long-lived production model-owning loop or retained native c=N row
+exists. Historical results are single-line pointers to `WORKLOG.md` or compact
+artifacts rather than duplicated chronology.
+
+The implementation order is GGUF Q4_K_M/BF16 on W7900: transfer the c4 exact
+lifecycle oracle, close the all-row 512/128 and hidden/state/KV gates, remove
+row-local model replay, publish the direct c1/c2/c4 plus chunked-c8 profiler and
+scaling packet, and only then attach the long-lived gfx1100 loop. gfx1151
+symmetry/native c8 follows; PARO reuses the proven loop afterward. The end state
+requires GGUF and PARO on gfx1100/gfx1151 to treat c=1 as the C=1 instance of the
+same first-class pipeline.
+
+Resolved the old pointer contradiction as stable logical block ids plus pinned
+resident pointers while graph-referenced, with invalidation/rebinding on future
+tier movement. Clarified that diagnostic c>N graph capture/replay exists but is
+not retained production evidence. Updated `docs/ENVS.md`, `docs/README.md`, and
+the PARO/GGUF transfer reference to remove stale C4/C5/history wording. The ENVS consistency pass also aligns the
+already-retained gfx1100 peer-wave GDN, shared-X Q4T16, 128-thread router-select,
+and device-metadata-through-4K defaults with backend package policy. This is a
+docs-only unit; no GPU or performance run is required or claimed.
