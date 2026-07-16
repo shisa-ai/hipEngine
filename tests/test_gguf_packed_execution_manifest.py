@@ -163,6 +163,21 @@ def test_packed_profiler_classifier_separates_exact_row_local_from_native() -> N
     ]
     native_rows = [
         KernelTraceRow(
+            kernel="q8_0_t16_dual_split_gemv_kernel<unsigned short>",
+            duration_ns=61,
+            grid_y=4,
+        ),
+        KernelTraceRow(
+            kernel="dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*)",
+            duration_ns=62,
+            grid_y=4,
+        ),
+        KernelTraceRow(
+            kernel="q8_0_t16_gemv_kernel<float>(float const*)",
+            duration_ns=63,
+            grid_y=4,
+        ),
+        KernelTraceRow(
             kernel="qwen35_paged_full_attn_decode_context_tensor_batch_kernel",
             duration_ns=70,
             grid_y=4,
@@ -176,6 +191,37 @@ def test_packed_profiler_classifier_separates_exact_row_local_from_native() -> N
 
     assert all(classify_packed_execution_bucket(row) == "exact_row_local" for row in exact_rows)
     assert all(classify_packed_execution_bucket(row) == "packed_native" for row in native_rows)
+
+
+def test_profiler_census_accepts_zero_row_local_indexed_boundary() -> None:
+    manifest = build_packed_decode_execution_manifest(
+        rows=4,
+        layer_types=("linear_attention",),
+        imported_slot_indices=(),
+        import_positions=(1, 1, 1, 1),
+        scatter_state=False,
+        blocks_per_slot=4,
+        linear_attention_decode_path="indexed_batch",
+    )
+    c1 = [KernelTraceRow(kernel="c1_kernel", duration_ns=5, grid_y=1)]
+    c4 = [
+        KernelTraceRow(
+            kernel="q8_0_t16_dual_split_gemv_kernel<unsigned short>",
+            duration_ns=10,
+            grid_y=4,
+        ),
+        KernelTraceRow(
+            kernel="qwen35_linear_attn_conv_decode_indexed_lowp_kernel<unsigned short>",
+            duration_ns=20,
+            grid_y=4,
+        ),
+    ]
+
+    census = build_execution_census(c1, c4, manifest=manifest)
+
+    assert census["route_check_passed"] is True
+    assert census["c4"]["buckets"]["exact_row_local"]["dispatches"] == 0
+    assert census["c4"]["buckets"]["packed_native"]["dispatches"] == 2
 
 
 def test_profiler_census_requires_runtime_manifest_launch_accounting() -> None:

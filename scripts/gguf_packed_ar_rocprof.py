@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-"""Profile the observable c1/c4 GGUF exact-hybrid boundary.
+"""Profile the observable c1/c4 GGUF exact-hybrid execution boundary.
 
 The parent warm-builds both leaf workloads outside rocprofv3, then profiles one
 synchronized steady decode transition for c1 and packed c4 in separate cached-
-only children.  The c4 runtime manifest counts host row loops, metadata/state
-movement, synchronizations, and scalar fallbacks.  This script checks its
-structural row-local launch count against the trace and buckets all c4 GPU work
-as ``exact_row_local`` or ``packed_native``.
+only children. The c4 runtime manifest counts host row loops, metadata/state
+movement, synchronizations, and scalar fallbacks. This script checks its
+route-dependent row-local launch count against the trace and buckets all c4 GPU
+work as ``exact_row_local`` or ``packed_native``.
 
-This is a C1 diagnostic, never a throughput claim.  Model load, prefill, the
-first packed state import, and warmup are excluded by one ROCTX marker window.
+This is a C1/C2 route diagnostic, never a throughput claim. Model load, prefill,
+the first packed state import, and warmup are excluded by one ROCTX marker
+window.
 """
 
 from __future__ import annotations
@@ -38,6 +39,7 @@ from hipengine.benchmark.provenance import collect_artifact_provenance
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 KIND = "gfx1100_gguf_concurrency_c1_hybrid_census"
+C2_KIND = "gfx1100_gguf_concurrency_c2_recurrent_census"
 SCHEMA = 1
 MARKER_PREFIX = "hipengine_gguf_packed_c1_profile_c"
 _CAPTURE_PREFILL_GDN_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"
@@ -102,15 +104,32 @@ def classify_packed_execution_bucket(row: KernelTraceRow) -> str:
     """Classify current packed-c4 kernels by the known exact row boundary."""
 
     name = row.kernel.lower()
-    exact_substrings = (
+    scalar_only_substrings = (
         "linear_attn_conv_decode_lowp_kernel",
         "gdn_recurrent_rmsnorm_gate_lowp_kernel",
+    )
+    if any(part in name for part in scalar_only_substrings):
+        return "exact_row_local"
+
+    # These projection bodies serve both scalar and row-shaped decode. rocprof
+    # exposes the independent row count in grid-Y, so kernel name alone is not
+    # sufficient after C2 removes the host row loop.
+    row_extent = (
+        int(row.grid[1])
+        if row.grid is not None
+        else None if row.grid_y is None else int(row.grid_y)
+    )
+    row_shaped_substrings = (
         "q8_0_t16_dual_split_gemv_kernel",
         "dense_gemv_bf16_f32w_bf16_out_kernel",
     )
-    if any(part in name for part in exact_substrings):
+    if any(part in name for part in row_shaped_substrings) and row_extent in {None, 1}:
         return "exact_row_local"
-    if "q8_0_t16_gemv_kernel" in name and "float const*" in name:
+    if (
+        "q8_0_t16_gemv_kernel" in name
+        and "float const*" in name
+        and row_extent in {None, 1}
+    ):
         return "exact_row_local"
     if "gguf_rmsnorm_bf16_f32_weight_kernel" in name:
         if row.grid is not None and row.workgroup is not None:
@@ -616,6 +635,11 @@ def _run_parent(args: argparse.Namespace) -> dict[str, Any]:
     if not isinstance(manifest, Mapping):
         raise ValueError("c4 child did not emit an execution manifest")
     census = build_execution_census(c1["rows"], c4["rows"], manifest=manifest)
+    c2_recurrent_closed = (
+        manifest.get("linear_attention_decode_path") == "indexed_batch"
+        and manifest.get("model_step", {}).get("host_model_row_loop_sites") == 0
+        and manifest.get("model_step", {}).get("expected_exact_row_local_kernel_launches") == 0
+    )
     passed = (
         census["route_check_passed"] is True
         and c1["child"]["all_tokens_exact"] is True
@@ -654,12 +678,20 @@ def _run_parent(args: argparse.Namespace) -> dict[str, Any]:
     )
     return {
         "schema": SCHEMA,
-        "kind": KIND,
+        "kind": C2_KIND if c2_recurrent_closed else KIND,
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "status": "c1_census_complete" if passed else "failed",
+        "status": (
+            "c2_recurrent_census_complete"
+            if passed and c2_recurrent_closed
+            else "c1_census_complete" if passed else "failed"
+        ),
         "passed": passed,
         "performance_claim": False,
-        "claim_level": "exact_hybrid_profiler_census",
+        "claim_level": (
+            "exact_hybrid_recurrent_closed_profiler_census"
+            if c2_recurrent_closed
+            else "exact_hybrid_profiler_census"
+        ),
         "workload": {
             "model": str(model),
             "quant": "Q4_K_M",
@@ -696,7 +728,13 @@ def _run_parent(args: argparse.Namespace) -> dict[str, Any]:
         "provenance": provenance,
         "limitations": [
             "One synchronized steady decode transition is a route census, not a throughput sample.",
-            "The c4 route remains exact_hybrid because recurrent linear attention replays a c1-exact row subgraph.",
+            (
+                "C2 closes the recurrent linear-attention row loop, but the route remains exact_hybrid "
+                "until the later C3/C4 correctness, replay, and scaling gates complete."
+                if c2_recurrent_closed
+                else "The c4 route remains exact_hybrid because recurrent linear attention replays a "
+                "c1-exact row subgraph."
+            ),
             "Profiler instrumentation and marker synchronization make all durations diagnostic only.",
         ],
     }
