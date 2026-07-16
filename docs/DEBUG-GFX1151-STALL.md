@@ -201,6 +201,7 @@ change incidence.
 | Jul 16 | Layer markers, first process | Entire exact warmup+3 completed; cursor 5,392/5,392 | Instrumentation perturbs timing; one completion is not stability evidence |
 | Jul 16 | Two independent layer-marker repeats | Both stalled with two pending checkpoints | Layer markers are not a reliable workaround; two-layer retirement window repeats |
 | Jul 16 | rocprofv3 inline queue interception | First prefill stalled; injected profiler signal also stopped; no trace finalized | Ambiguous instrumentation result; no last user kernel recovered |
+| Jul 16 | Current-boot KFD controls | Two independent chunk-recorder warmup+3 gates completed exactly; healthy MQD/sysfs snapshots captured | Establishes a healthy queue baseline but no stall/HQD comparison; `kfd/rls` is not a usable discriminator by itself |
 
 ## Flight-recorder localization
 
@@ -277,7 +278,8 @@ Evidence supporting this interpretation:
 
 Missing proof:
 
-- no active-stall KFD runlist/MQD/HQD dump has been captured;
+- two healthy-active KFD MQD/sysfs baselines exist, but no active-stall
+  runlist/MQD/HQD dump has been captured;
 - MES event logging is currently disabled;
 - no firmware-decoded MES trace has been collected;
 - no KFD queue rptr/wptr comparison is available;
@@ -312,9 +314,20 @@ before excluding a silent fault or permanently running shader.
 
 ## Debugging plan
 
-### Priority 0: capture KFD user-queue state on the current boot
+### Priority 0 result: healthy KFD baseline captured; stalled HQD pending
 
-This kernel already exposes:
+Two current-boot processes complete exact warmup+3 gates at merged commit
+`babbc8c6`, so idle, healthy-active, and post-termination snapshots are now
+preserved. Both healthy snapshots coincide with 97-99% activity, 128-129 W, and
+advancing recorder markers. KFD sysfs/MQDs show two compute queue objects plus
+one SDMA queue, zero fault/page-in/page-out counters, and 3-4 ms cumulative
+eviction time. Nevertheless, `kfd/rls` reports `No active runlist` in both
+healthy snapshots. Treat that view as unsupported or insufficient for this MES
+configuration; never infer an idle user queue from it alone. No HQD dump was
+captured because the predeclared protocol reserves that large, potentially
+perturbing read for an established stall.
+
+The kernel exposes:
 
 ```text
 /sys/kernel/debug/kfd/rls
@@ -389,7 +402,12 @@ Do not infer stability if tracing suppresses the failure.
 
 ### Priority 2: diagnostic MES-logging boot
 
-After preserving the current-boot KFD evidence, test a separate boot with:
+The current-boot KFD evidence is preserved and this boot is now prepared in
+Limine, but the parameters are not active until reboot. `/boot/limine.conf` was
+regenerated successfully; the previous source config is backed up at
+`/etc/default/limine.pre-gfx1151-debug-20260716T054023Z`.
+
+Test the prepared boot with:
 
 ```text
 amdgpu.mes_log_enable=1 amdgpu.gpu_recovery=1 amdgpu.send_sigterm=1
@@ -647,11 +665,14 @@ State that:
 | [`2026-07-16-gfx1151-128k-layer-marker-completion.json`](../benchmarks/results/2026-07-16-gfx1151-128k-layer-marker-completion.json) | One complete instrumentation-sensitive layer-marker gate |
 | [`2026-07-16-gfx1151-128k-layer-marker-repeat-stalls.json`](../benchmarks/results/2026-07-16-gfx1151-128k-layer-marker-repeat-stalls.json) | Two independent failed layer-marker repeats |
 | [`2026-07-16-gfx1151-128k-rocprof-inline-interposition-stall.json`](../benchmarks/results/2026-07-16-gfx1151-128k-rocprof-inline-interposition-stall.json) | Ambiguous inline-profiler signal stall and missing trace finalization |
+| [`2026-07-16-gfx1151-128k-kfd-healthy-controls.json`](../benchmarks/results/2026-07-16-gfx1151-128k-kfd-healthy-controls.json) | Two complete current-boot healthy MQD/sysfs controls and prepared MES-debug boot |
 
 Raw telemetry, recorder mmaps, process stacks, fence samples, journals, and
-profiler logs remain local under the `/tmp/gfx1151-*` directories named and
-hashed by the compact artifacts. They are not durable/public evidence until an
-issue attachment bundle is created.
+profiler logs normally remain local under the `/tmp/gfx1151-*` directories named
+and hashed by the compact artifacts. The two pre-reboot KFD bundles are also
+compressed and checksum-preserved under
+`/home/lhl/gfx1151-debug/2026-07-16-current-boot`; they are not public evidence
+until an issue attachment bundle is created.
 
 ## Closure criteria
 
