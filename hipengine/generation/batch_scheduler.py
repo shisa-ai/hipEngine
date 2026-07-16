@@ -996,13 +996,33 @@ class ResidentBatchScheduler:
         )
         return rid
 
-    def admit_pending(self) -> tuple[int, ...]:
-        """Fill free slots from the pending queue and return admitted request ids."""
+    def admit_pending(
+        self,
+        *,
+        reserve_callback: Callable[[RequestState], None] | None = None,
+        rollback_callback: Callable[[RequestState], None] | None = None,
+    ) -> tuple[int, ...]:
+        """Fill free slots from the pending queue and return admitted request ids.
+
+        A scheduler-owned resource reservation may run immediately before the
+        request becomes active.  Reservation failures leave the request at the
+        head of the pending queue and do not publish a physical slot.  If the
+        slot commit itself fails, the paired rollback callback releases the
+        unpublished reservation before the exception escapes.
+        """
 
         admitted: list[int] = []
         while self._pending and self.active_batch.active_count < self.capacity:
-            request = self._pending.popleft()
-            self.active_batch.admit(request)
+            request = self._pending[0]
+            if reserve_callback is not None:
+                reserve_callback(request)
+            try:
+                self.active_batch.admit(request)
+            except Exception:
+                if reserve_callback is not None and rollback_callback is not None:
+                    rollback_callback(request)
+                raise
+            self._pending.popleft()
             state = self._observability.get(request.request_id)
             if state is not None:
                 now = self._clock()

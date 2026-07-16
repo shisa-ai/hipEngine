@@ -160136,3 +160136,29 @@ c4→c1 replay, a c4 native-family marker census, same-protocol c1/c2/c4/serial
 scaling, and the exact D2 A/B/C/D live lifecycle under `hip_gfx1151`. Until
 then, the recorded hardware blocker permits work on the still-open gfx1100 D3
 real device-KV-pool boundary without skipping or pretending to close E1.
+
+## 2026-07-16 — Add the D3 atomic admission barrier
+
+Started gfx1100 GGUF D3 with the scheduler/allocator ownership boundary rather
+than attaching the host-only `ChunkedKVPool` after slot publication.
+`ResidentBatchScheduler.admit_pending()` now accepts a reservation callback that
+runs while the request is still the head of the pending queue. A reservation
+failure leaves pending count, active slots, and request identity unchanged; if
+physical-slot commit itself fails, the paired rollback callback releases the
+unpublished reservation. `ResidentEngineLoop` discovers this capability on the
+model runner without backend/quant branches.
+
+The RED test first proved the old loop admitted despite a synthetic KV
+high-water failure. It is now green and verifies zero partial mutation before a
+retry succeeds at the same request id. Focused engine-loop/config validation is
+**5 passed**:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py \
+  -k 'resident_engine_loop or engine_loop_config'
+# 5 passed
+```
+
+This is only the D3 admission commit point. Real GGUF device-page allocation,
+idle unpinned-tail shrink, allocator/HIP memory evidence, and the
+burst-to-steady-to-idle-to-burst gate remain open.
