@@ -159548,3 +159548,83 @@ python3 -m ruff check scripts/gguf_packed_ar_rocprof.py \
 git diff --check
 # GREEN
 ```
+
+## 2026-07-16 — Close gfx1100 GGUF C3 model boundaries
+
+Closed C3 from clean `db1ce640` on Radeon Pro W7900/gfx1100 with
+Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, strict-exact GDN prefill, TheRock HIP
+7.15, the precomputed compiler key, and cached builds required.
+
+The clean paired marker census emits the explicit
+`gfx1100_gguf_concurrency_c3_model_boundaries_census` kind with clean provenance
+and passes every runtime/trace cross-check. One steady p512 c4 transition has
+**749 packed-native** and **zero exact-row-local** dispatches, versus C2's 756.
+The family proof records:
+
+- 10/10 full-attention context and 10/10 KV-write launches at row extent four,
+  consuming `KVLiveSpans` positions/live counts;
+- 40/40 selected gate-up, selected down, and c4 combine launches, with 32 routed
+  lanes (`c4 x top-k 8`);
+- one c4 Q6 lm-head rowtile, one row-argmax stage1, one stage2, no full-vocab
+  host readback, and one four-i32 token-vector D2H;
+- zero metadata H2D uploads, one device metadata-preparation launch, and exactly
+  two copy dispatches for token H2D plus token-vector D2H.
+
+`prepare_packed_decode_metadata_kernel` executes once at **2.840 us** in the
+instrumented model window with 64 threads, 16 VGPR, zero scratch, and zero LDS.
+The c4 raw kernel/marker trace SHA-256 values are
+`86a00e0528ffc03e21ba0a19f70c246f30d61b355247030c8fff1bf57af02519`
+and `a746cac261cde74acd437aec6ebc3b382df1a6a2090a2d8cef6357714d9339ff`;
+the compact census source is 81,192 bytes with SHA-256
+`16e188753daadd120bdaad5b24a22fe87909b07108026dfaa974259439105fe9`.
+Durations are diagnostic only.
+
+The standard and sparse Phase-B equality scopes were rerun from the same clean
+commit:
+
+- p512/c4/d128: **516/516** token positions and **20,640/20,640** layer-hidden
+  rows exact, with initial/lifecycle/final Conv/GDN and live-KV bytes exact;
+  source SHA-256
+  `41fe56a44fd8e249bd49088f97562b4aea26757a2eb04d6760a3292116934f8e`;
+- p512 sparse c4->c3->c2->c1: **560/560** layer-hidden rows and every
+  post-membership state/KV checkpoint exact; source SHA-256
+  `23e508da37186a02751a9f3069e55efb88abfc6d50925975d45309281154d7b8`.
+
+The clean 18-prompt 24x3 category source at `799d29b9` is inherited rather than
+rerun: C3 changes token-independent metadata production only, leaves all
+family/sampler arithmetic routes unchanged, and the new metadata bytes are
+covered by the ragged primitive plus standard and sparse lifecycle gates. That
+source remains **1,350/1,350** tokens and **54,000/54,000** hidden rows exact
+with deterministic trajectories and zero state/KV mismatches.
+
+Compact retained evidence is
+`benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-c3-model-boundaries-closure.json`
+(SHA-256 `022350d44dd02e317393b3ce3ee4aaba29ee08130b657f19dc5cb01618627da5`).
+The roadmap closes all C3 boxes and advances the active queue to C4. Coverage
+remains correctness-only `exact_hybrid`: no throughput, latency, memory,
+graph-replay, or fully-native-c4 claim is made.
+
+```bash
+python3 scripts/gguf_packed_ar_rocprof.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --prompt-length 512 \
+  --prompt-token-id 9707 --expected-token-id 9707 \
+  --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt \
+  --raw-root /tmp/gfx1100-concurrency-c3-clean-db1ce640/raw \
+  --rocprofv3 /home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin/rocprofv3 \
+  --out /tmp/gfx1100-concurrency-c3-clean-db1ce640/c3-census.json
+python3 scripts/gguf_packed_ar_state_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --rows 4 --lifecycle steady --prefill-mode packed \
+  --prompt-length 512 --decode-steps 128 --capture-layer-hidden \
+  --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/gfx1100-concurrency-c3-clean-db1ce640/standard-c4-p512-d128.json
+python3 scripts/gguf_packed_ar_state_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --rows 4 --lifecycle shrink_sparse --prefill-mode packed \
+  --prompt-length 512 --decode-steps 4 --capture-layer-hidden \
+  --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/gfx1100-concurrency-c3-clean-db1ce640/sparse-c4-p512-d4.json
+```

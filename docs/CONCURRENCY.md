@@ -95,7 +95,7 @@ requests are not admitted into a live model step loop mid-generation.
 | Model path | Backend | Current c>N status | Production behavior | First missing gate |
 | --- | --- | --- | --- | --- |
 | GGUF Q4_K_M / BF16 KV | gfx1151 | Packed exact hybrid in groups of at most c4; short natural c10 runs as c4+c4+c2 | Packed server AR route is available; not a retained c>N throughput row | Per-layer hidden capture, standard all-row 512/128 gate, live admission/cancel, profiler/scaling |
-| GGUF Q4_K_M / BF16 KV | gfx1100 | `exact_hybrid`: C2 reruns B3/B4 token/hidden/state/KV equality and removes the recurrent host row loop; one steady c4 census has 756 packed-native and zero exact-row-local dispatches; package-auto c1 peer-wave is not byte-identical | Retained c1 plus correctness-only c4 exact-hybrid anchors; not a retained c>N throughput row | C3 remaining per-row model work and metadata/readback closure |
+| GGUF Q4_K_M / BF16 KV | gfx1100 | `exact_hybrid`: C3 reruns the standard and sparse token/hidden/state/KV gates, proves full-attention/MoE/LM-head/sampler c4 geometry, and moves steady metadata preparation on device; one steady c4 census has 749 packed-native and zero exact-row-local dispatches; package-auto c1 peer-wave is not byte-identical | Retained c1 plus correctness-only c4 exact-hybrid anchors; not a retained c>N throughput row | C4 replay/equality and direct c1/c2/c4 scaling |
 | GGUF Q5_K/Q6_K/Q8_0 / BF16 KV | gfx1100/gfx1151 | Not executed end to end under c>N | c1 | Q4_K_M c4 closure first |
 | PARO W4 / BF16 KV | gfx1151 | Exact greedy c2 hybrid below 1024 total context; not fully native or retained | Unsupported groups fail closed to true width-1 sessions | Lifecycle/hidden/profiler/repetition gates, then remove row-local hybrid boundaries |
 | PARO W4 / BF16 KV | gfx1100 | Historical primitive/token diagnostics only; no current retained native route | Width-1 sessions | Re-establish the current-HEAD c2 correctness baseline on W7900 |
@@ -152,6 +152,9 @@ runner owns real device state and exercises them while requests remain live.
   `WORKLOG.md`, **2026-07-16 — Close gfx1100 GGUF C2 recurrent linear
   attention**, and
   `benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-c2-recurrent-closure.json`.
+- gfx1100 C3 c-aware family census and copy-free steady metadata closure:
+  `WORKLOG.md`, **2026-07-16 — Close gfx1100 GGUF C3 model boundaries**, and
+  `benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-c3-model-boundaries-closure.json`.
 - Historical PARO c1-c8 catalog and lifecycle: `docs/BENCHMARK.md` §PARO c1-c8
   exact concurrency matrix.
 - Historical c>N graph replay and output-tiled GEMV: `WORKLOG.md`, **2026-06-08
@@ -445,7 +448,7 @@ B4. Prompt diversity:
 
 Exit: gfx1100 GGUF c4 qualifies as `exact_hybrid` for
 tokens/hidden/state/KV/lifecycle. It must remain `performance_claim=false` until
-Phase C.
+C4 replay and scaling pass.
 
 ### Phase C — fully native GGUF c4
 
@@ -491,13 +494,26 @@ claim is made. See the compact [C2 closure artifact](../benchmarks/results/2026-
 
 C3. Close remaining per-row model work:
 
-- [ ] Make full-attention append/context/O/post consume sparse c4 spans without
+- [x] Make full-attention append/context/O/post consume sparse c4 spans without
       complete row replay.
-- [ ] Confirm MoE routing, selected experts, expert dispatch, and reduction are
+- [x] Confirm MoE routing, selected experts, expert dispatch, and reduction are
       truly c-aware at c4.
-- [ ] Make LM head and greedy sampler return one token per live row without
+- [x] Make LM head and greedy sampler return one token per live row without
       full-vocab host readback.
-- [ ] Move steady-step metadata preparation to persistent device buffers.
+- [x] Move steady-step metadata preparation to persistent device buffers.
+
+Clean `db1ce640` profiles one p512 steady c4 transition as **749 packed-native**
+dispatches and **zero exact-row-local** dispatches. Full attention launches 10
+context plus 10 KV-write kernels at row extent four; all 40 MoE layers launch
+32 selected lanes for gate-up/down plus one c4 combine; one c4 Q6 rowtile feeds
+two row-wise argmax stages and a single four-i32 D2H read. The new registry-
+resolved metadata producer replaces eight H2D uploads with one 64-thread,
+16-VGPR, zero-scratch/LDS kernel, leaving exactly the token H2D and token-vector
+D2H copy dispatches. Clean p512/c4/d128 and sparse c4→c1 gates pass
+**20,640/20,640** and **560/560** layer-hidden comparisons with exact tokens,
+Conv/GDN state, and live KV. The route remains correctness-only `exact_hybrid`;
+C4 owns graph replay, repeated replay equality, scaling, and any native-c4 or
+performance claim. See the compact [C3 closure artifact](../benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-c3-model-boundaries-closure.json).
 
 C4. Replay, measure, and prove:
 
@@ -703,16 +719,15 @@ multi-prompt acceptance suite. Speculative work never weakens the AR c=N gates.
 Work this list in order unless a measured blocker is recorded in `WORKLOG.md`.
 The active lane is deliberately narrow.
 
-1. **C3:** close remaining host row loops and scalar readbacks.
-2. **C4:** prove one fully native replayable c4 model step.
-3. **C4:** publish the direct c1/c2/c4 and chunked-c8 performance packet.
-4. **D1:** attach that c4 step to one long-lived gfx1100 model runner.
-5. **D2:** close live admission, retirement, and cancellation on W7900.
-6. **E1:** run the same model-step and loop gates unchanged on gfx1151.
-7. **E2:** generalize from native c4 to one true native c8 group.
+1. **C4:** prove one fully native replayable c4 model step.
+2. **C4:** publish the direct c1/c2/c4 and chunked-c8 performance packet.
+3. **D1:** attach that c4 step to one long-lived gfx1100 model runner.
+4. **D2:** close live admission, retirement, and cancellation on W7900.
+5. **E1:** run the same model-step and loop gates unchanged on gfx1151.
+6. **E2:** generalize from native c4 to one true native c8 group.
 
 Do not start broad c8 tuning, PARO c4/c8, prefix caching, DMS, or speculative
-integration before item 7 unless the current blocker explicitly depends on it.
+integration before item 6 unless the current blocker explicitly depends on it.
 
 ## Coverage ledger
 

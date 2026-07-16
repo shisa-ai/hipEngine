@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-16
 
+- [closed gfx1100 GGUF concurrency C3 model boundaries] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV p512 steady c4 moves C2 **756 -> 749 dispatches (-0.93%)**, **8 -> 0 metadata H2D uploads (-100%)**, and **10 -> 2 copy dispatches (-80.00%)** by replacing the uploads with one 64-thread/16-VGPR/zero-scratch device metadata kernel; full-attention, selected-MoE, LM-head, and row-argmax census checks pass, while clean p512/d128 and sparse-shrink equality remain exact and no throughput/native-c4 claim is made; `benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-c3-model-boundaries-closure.json`.
+
 - [closed gfx1100 GGUF concurrency C2 recurrent boundary] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV p512 steady c4 moves **1,386 -> 756 dispatches (-45.45%)**, **840 -> 0 exact-row-local launches (-100%)**, and **30 -> 0 host row-loop sites (-100%)** via registry-resolved indexed Conv plus segmented FP32-output GDN; the clean p512/d128, sparse shrink, and 18-prompt 24x3 gates remain bit-exact, with no throughput/native-c4 claim; `benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-c2-recurrent-closure.json`.
 
 - [closed gfx1100 GGUF concurrency C1 observability] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV p512 steady c4 hybrid boundary moves **unquantified -> 840 exact-row-local + 546 packed-native dispatches** (**% delta n/a for route attribution; no throughput claim**): exact-row-local work is **41.10%** of instrumented GPU duration, with 30 host row-loop sites/120 iterations, zero steady state import/scatter, and zero scalar fallback; `benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-c1-hybrid-census.json`.
