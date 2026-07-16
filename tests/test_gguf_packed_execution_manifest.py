@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from copy import deepcopy
+
 from hipengine.runtime.gguf_packed_manifest import build_packed_decode_execution_manifest
 from scripts.gguf_packed_ar_rocprof import (
     KernelTraceRow,
@@ -230,10 +232,27 @@ def test_profiler_artifact_classifies_the_highest_closed_boundary() -> None:
         linear_attention_decode_path="indexed_batch",
         **_c3_routes(metadata_prepare_path="device_prepare_persistent"),
     )
+    replay_manifest = deepcopy(device_manifest)
+    replay_manifest["mode"] = "decode_graph_replay"
+    replay_manifest["host_device_movement"].update(
+        {
+            "host_to_device_total_copies": 0,
+            "device_to_host_vector_copies": 0,
+        }
+    )
+    replay_manifest["synchronizations"] = 0
+    replay_manifest["graph"] = {
+        "captured": True,
+        "replay_count": 1,
+        "replayed_steps": 1,
+    }
     complete_families = {"c3_family_census": {"route_check_passed": True}}
 
     assert execution_census_closure_level(recurrent_manifest, complete_families) == "c2"
     assert execution_census_closure_level(device_manifest, complete_families) == "c3"
+    assert execution_census_closure_level(replay_manifest, complete_families) == "c4"
+    replay_manifest["graph"]["replay_count"] = 0
+    assert execution_census_closure_level(replay_manifest, complete_families) == "c3"
     assert (
         execution_census_closure_level(
             device_manifest,
