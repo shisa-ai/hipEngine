@@ -36,7 +36,7 @@ class _FakeTokenizer:
         }[prompt]
 
     def decode(self, ids) -> str:
-        table = {1: "B", 2: "C", 3: "D", 4: "}", 5: "{", 6: "X", 16: "Q", 99: "<eos>"}
+        table = {1: "B", 2: "C", 3: "D", 4: "}", 5: "{", 6: "X", 16: "Q", 99: "<eos>", 114: "T114"}
         return "".join(table[int(token)] for token in ids)
 
 
@@ -1875,10 +1875,15 @@ def test_gguf_resident_runner_commits_incremental_prefill_chunks() -> None:
     assert row.slot is not None
     assert row.slot.generated_ids == [114]
     assert row.slot.seq_position == 5
-    assert runner.decode_batch(
+    generated = runner.decode_batch(
         WorkItem(kind=WorkKind.DECODE, request_ids=(7,), row_to_request=(7,)),
         commit=True,
-    ) == (qwen35_gguf.GeneratedToken(7, 114, finished=False),)
+    )
+    assert [(token.request_id, token.token_id, token.finished) for token in generated] == [(7, 114, False)]
+    assert generated[0].stream_chunk is not None
+    assert generated[0].stream_chunk.text == "T114"
+    assert generated[0].stream_chunk.telemetry is not None
+    assert generated[0].stream_chunk.telemetry.decode_state.request_id == "7"
 
 
 def test_gguf_prepare_reuses_shared_runner_for_ar(monkeypatch) -> None:

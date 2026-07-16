@@ -4084,7 +4084,19 @@ class Qwen35GGUFResidentModelRunner:
                         raise RuntimeError("GGUF resident fallback output is not ready")
                     token_ids = output.generated_token_ids or ()
                     token_id = int(token_ids[-1]) if token_ids else 0
-                    generated.append(GeneratedToken(request_id, token_id, finished=True))
+                    generated.append(
+                        GeneratedToken(
+                            request_id,
+                            token_id,
+                            finished=True,
+                            stream_chunk=GenerationStreamChunk(
+                                text=output.text,
+                                token_logprobs=output.token_logprobs,
+                                finish_details=output.finish_details,
+                                telemetry=output.telemetry,
+                            ),
+                        )
+                    )
                     continue
                 slot = row.slot
                 if slot is None or not slot.generated_ids:
@@ -4095,7 +4107,12 @@ class Qwen35GGUFResidentModelRunner:
                     GeneratedToken(
                         request_id,
                         int(slot.generated_ids[-1]),
-                        finished=bool(slot.done),
+                        finished=_gguf_finished(
+                            slot.generated_ids,
+                            self.generator.tokenizer,
+                            row.request,
+                        ),
+                        stream_chunk=self._native_stream_chunk(row),
                     )
                 )
             return tuple(generated)
@@ -4480,6 +4497,32 @@ class Qwen35GGUFResidentModelRunner:
         slots = [row.slot for row in self._rows.values() if row.slot is not None]
         if slots:
             self.generator._flush_ar_packed_decode_owners(slots)
+
+    def _native_stream_chunk(self, row: _GGUFResidentLoopRow) -> GenerationStreamChunk:
+        slot = row.slot
+        if slot is None or not slot.generated_ids:
+            raise RuntimeError("GGUF resident greedy row has no token to stream")
+        generated_ids = tuple(int(token) for token in slot.generated_ids)
+        return GenerationStreamChunk(
+            text=self.generator.tokenizer.decode((generated_ids[-1],)),
+            finish_details=(
+                _gguf_finish_details(generated_ids, self.generator.tokenizer, row.request)
+                if slot.done
+                else None
+            ),
+            telemetry=_gguf_telemetry(
+                row.prompt_ids,
+                generated_ids,
+                row.request,
+                row_index=row.row_index,
+                request_id=str(row.request_id),
+                execution_path="gguf_packed_ar_server_decode",
+                native_compact_prefill=slot.native_compact_prefill,
+                native_caware_decode=slot.native_decode_steps > 0,
+                serial_decode_fallback=slot.serial_decode_steps > 0,
+                native_sampler_rows=False,
+            ),
+        )
 
     def _native_output(
         self,

@@ -511,6 +511,7 @@ class GeneratedToken:
     request_id: int
     token_id: int
     finished: bool = False
+    stream_chunk: GenerationStreamChunk | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1694,7 +1695,7 @@ class ResidentBatchScheduler:
         updated = request.append_generated(token.token_id, finished=token.finished)
         self.active_batch.update_request(updated)
         self._update_kv_pages(updated)
-        stream_chunk = self._stream_chunk_for_generated_token(
+        scheduler_chunk = self._stream_chunk_for_generated_token(
             token,
             updated,
             sampler_state=sampler_state,
@@ -1706,13 +1707,36 @@ class ResidentBatchScheduler:
             native_caware_decode=native_caware_decode,
             serial_decode_fallback=serial_decode_fallback,
         )
+        provided_chunk = token.stream_chunk
+        stream_chunk = (
+            scheduler_chunk
+            if provided_chunk is None
+            else GenerationStreamChunk(
+                text=provided_chunk.text,
+                token_logprobs=(
+                    provided_chunk.token_logprobs
+                    if provided_chunk.token_logprobs
+                    else scheduler_chunk.token_logprobs
+                ),
+                finish_details=provided_chunk.finish_details,
+                telemetry=(
+                    provided_chunk.telemetry
+                    if provided_chunk.telemetry is not None
+                    else scheduler_chunk.telemetry
+                ),
+            )
+        )
         if not updated.finished:
             return None, stream_chunk
         done = self._reclaim_active_request(updated.request_id, finish_reason=finish_reason)
         return done, GenerationStreamChunk(
             text=stream_chunk.text,
             token_logprobs=stream_chunk.token_logprobs,
-            finish_details=done.finish_details,
+            finish_details=(
+                stream_chunk.finish_details
+                if stream_chunk.finish_details is not None
+                else done.finish_details
+            ),
             telemetry=stream_chunk.telemetry,
         )
 

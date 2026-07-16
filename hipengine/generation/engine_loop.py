@@ -12,8 +12,9 @@ import argparse
 import os
 import threading
 import time
+from collections import deque
 from collections.abc import Iterator, Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Any, Iterable, Protocol, Sequence
 
 from hipengine.dispatch import RequestState, SlotMove, WorkItem, WorkKind
@@ -79,6 +80,14 @@ class GenerationSubmission:
     max_ticks: int
 
 
+@dataclass(slots=True)
+class _ResidentStreamState:
+    submission: GenerationSubmission
+    events: deque[tuple[int, GenerationStreamChunk]] = field(default_factory=deque)
+    emitted_text_request_ids: set[int] = field(default_factory=set)
+    overflowed_request_ids: set[int] = field(default_factory=set)
+
+
 @dataclass(frozen=True, slots=True)
 class EngineLoopEvent:
     """One externally visible event produced by ``ResidentEngineLoop.poll``."""
@@ -138,11 +147,14 @@ class SubmitPollTextGenerator:
         prefill_chunk_size: int = 1024,
         context_bucket_size: int = 256,
         config: EngineLoopConfig | None = None,
+        stream_queue_max_chunks: int = 16,
     ) -> None:
         if capacity is not None and capacity <= 0:
             raise ValueError("capacity must be positive")
         if prefill_chunk_size <= 0:
             raise ValueError("prefill_chunk_size must be positive")
+        if stream_queue_max_chunks <= 0:
+            raise ValueError("stream_queue_max_chunks must be positive")
         if (
             config is not None
             and capacity is not None
@@ -159,6 +171,7 @@ class SubmitPollTextGenerator:
         )
         resident_runner_factory = getattr(self._inner, "create_resident_model_runner", None)
         has_resident_runner = callable(resident_runner_factory)
+        self._has_resident_runner = bool(has_resident_runner)
         if has_resident_runner:
             self._runner = resident_runner_factory(capacity=configured_capacity)
             resolved_capacity = int(self._runner.capacity)
@@ -199,6 +212,8 @@ class SubmitPollTextGenerator:
         # Native runners therefore release it after each model transition so a
         # later D2 admission worker can enqueue between decode steps.
         self._loop_lock = threading.Lock()
+        self._stream_queue_max_chunks = int(stream_queue_max_chunks)
+        self._stream_states_by_request: dict[int, _ResidentStreamState] = {}
 
     @property
     def inner(self) -> TextGenerator:
@@ -255,6 +270,10 @@ class SubmitPollTextGenerator:
     def submit_detailed(self, request: GenerationRequest) -> GenerationSubmission:
         """Submit rows without driving the shared loop to completion."""
 
+        with self._loop_lock:
+            return self._submit_detailed_locked(request)
+
+    def _submit_detailed_locked(self, request: GenerationRequest) -> GenerationSubmission:
         prompts = tuple(request.prompts)
         if not prompts:
             raise ValueError("submit_detailed requires at least one prompt")
@@ -262,23 +281,22 @@ class SubmitPollTextGenerator:
         prompt_rows = tuple(self._runner.prompt_tokens(prompt) for prompt in prompts)
         max_new_tokens = int(self._runner.scheduler_max_new_tokens(normalized))
         request_ids: list[int] = []
-        with self._loop_lock:
-            try:
-                for prompt_row in prompt_rows:
-                    request_ids.append(
-                        self._loop.submit(prompt_row, max_new_tokens=max_new_tokens)
-                    )
-                self._runner.register_batch(
-                    request_ids,
-                    normalized,
-                    prompt_rows=prompt_rows,
+        try:
+            for prompt_row in prompt_rows:
+                request_ids.append(
+                    self._loop.submit(prompt_row, max_new_tokens=max_new_tokens)
                 )
-            except Exception:
-                for request_id in request_ids:
-                    self._loop.cancel(request_id)
-                    self._loop.release_completed(request_id)
-                self._runner.discard(request_ids)
-                raise
+            self._runner.register_batch(
+                request_ids,
+                normalized,
+                prompt_rows=prompt_rows,
+            )
+        except Exception:
+            for request_id in request_ids:
+                self._loop.cancel(request_id)
+                self._loop.release_completed(request_id)
+            self._runner.discard(request_ids)
+            raise
         return GenerationSubmission(
             request_ids=tuple(request_ids),
             request=normalized,
@@ -289,7 +307,9 @@ class SubmitPollTextGenerator:
         """Advance shared model work without owning a request-lifetime lock."""
 
         with self._loop_lock:
-            return self._loop.poll(max_ticks=max_ticks)
+            events = self._loop.poll(max_ticks=max_ticks)
+            self._route_stream_events_locked(events)
+            return events
 
     def generation_complete(self, submission: GenerationSubmission) -> bool:
         with self._loop_lock:
@@ -334,41 +354,130 @@ class SubmitPollTextGenerator:
 
     def _abort_submission(self, submission: GenerationSubmission) -> None:
         with self._loop_lock:
-            for request_id in submission.request_ids:
-                self._loop.cancel(request_id)
-                self._loop.release_completed(request_id)
-            self._runner.discard(submission.request_ids)
+            self._abort_submission_locked(submission, reason="cancel")
+
+    @property
+    def supports_stream_many(self) -> bool:
+        return True
+
+    @property
+    def supports_controlled_streaming(self) -> bool:
+        return True
+
+    @property
+    def stream_queue_max_chunks(self) -> int:
+        return self._stream_queue_max_chunks
 
     def stream(self, request: GenerationRequest) -> Iterator[str]:
         for chunk in self.stream_detailed(request):
             yield str(chunk)
 
     def stream_detailed(self, request: GenerationRequest) -> Iterator[GenerationStreamChunk]:
-        detailed_streamer = getattr(self._inner, "stream_detailed", None)
-        if callable(detailed_streamer):
-            for chunk in detailed_streamer(request):
-                yield GenerationStreamChunk.from_value(chunk)
-            return
-        streamer = getattr(self._inner, "stream", None)
-        if callable(streamer):
-            for chunk in streamer(request):
-                yield GenerationStreamChunk.from_value(chunk)
-            return
-        detailed = getattr(self._inner, "generate_detailed", None)
-        if callable(detailed):
-            for output in self.generate_detailed(request):
+        yield from self.stream_many_detailed(request)
+
+    def stream_many_detailed(self, request: GenerationRequest) -> Iterator[GenerationStreamChunk]:
+        """Stream row-indexed events from the shared resident loop.
+
+        Every iterator owns only its subscription. Any iterator may advance one
+        scheduler tick; emitted events are routed to the matching subscription
+        before the tick lock is released, so concurrent callers cannot consume
+        one another's rows.
+        """
+
+        with self._loop_lock:
+            submission = self._submit_detailed_locked(request)
+            state = _ResidentStreamState(submission)
+            for request_id in submission.request_ids:
+                if request_id in self._stream_states_by_request:
+                    self._abort_submission_locked(submission, reason="cancel")
+                    raise RuntimeError(f"request_id {request_id} already has a stream subscription")
+                self._stream_states_by_request[request_id] = state
+
+        consumed = False
+        ticks = 0
+        try:
+            while True:
+                queued: tuple[int, GenerationStreamChunk] | None = None
+                with self._loop_lock:
+                    if state.events:
+                        queued = state.events.popleft()
+                    complete = self._runner.has_outputs(submission.request_ids)
+                if queued is not None:
+                    request_id, chunk = queued
+                    if chunk.text:
+                        state.emitted_text_request_ids.add(request_id)
+                    if chunk.text or chunk.token_logprobs:
+                        yield chunk
+                    continue
+                if complete:
+                    break
+                events = self.poll(max_ticks=1)
+                ticks += 1
+                if not events:
+                    missing = self._runner.missing_outputs(submission.request_ids)
+                    raise RuntimeError(
+                        f"resident stream stalled; missing request_ids={missing}"
+                    )
+                if ticks > submission.max_ticks:
+                    missing = self._runner.missing_outputs(submission.request_ids)
+                    raise RuntimeError(
+                        f"resident stream exceeded {submission.max_ticks} ticks; "
+                        f"missing request_ids={missing}"
+                    )
+
+            outputs = self.take_result(submission)
+            with self._loop_lock:
+                self._unregister_stream_state_locked(state)
+            for request_id, output in zip(submission.request_ids, outputs, strict=True):
                 generation_output = (
-                    output if isinstance(output, GenerationOutput) else GenerationOutput(text=str(output))
+                    output
+                    if isinstance(output, GenerationOutput)
+                    else GenerationOutput(text=str(output))
                 )
+                if request_id in state.emitted_text_request_ids:
+                    continue
                 yield GenerationStreamChunk(
                     text=generation_output.text,
                     token_logprobs=generation_output.token_logprobs,
                     finish_details=generation_output.finish_details,
                     telemetry=generation_output.telemetry,
                 )
-            return
-        for text in self.generate(request):
-            yield GenerationStreamChunk(text=str(text))
+            consumed = True
+        finally:
+            if not consumed:
+                with self._loop_lock:
+                    self._abort_submission_locked(submission, reason="disconnect")
+                    self._unregister_stream_state_locked(state)
+
+    def _route_stream_events_locked(self, events: Sequence[EngineLoopEvent]) -> None:
+        for event in events:
+            if event.kind != "token" or event.request_id is None or event.stream_chunk is None:
+                continue
+            request_id = int(event.request_id)
+            state = self._stream_states_by_request.get(request_id)
+            if state is None:
+                continue
+            if len(state.events) >= self._stream_queue_max_chunks:
+                state.overflowed_request_ids.add(request_id)
+                self._loop.cancel(request_id, reason="cancel")
+                continue
+            state.events.append((request_id, event.stream_chunk))
+
+    def _unregister_stream_state_locked(self, state: _ResidentStreamState) -> None:
+        for request_id in state.submission.request_ids:
+            if self._stream_states_by_request.get(request_id) is state:
+                self._stream_states_by_request.pop(request_id, None)
+
+    def _abort_submission_locked(
+        self,
+        submission: GenerationSubmission,
+        *,
+        reason: str,
+    ) -> None:
+        for request_id in submission.request_ids:
+            self._loop.cancel(request_id, reason=reason)
+            self._loop.release_completed(request_id)
+        self._runner.discard(submission.request_ids)
 
 
 @dataclass(frozen=True, slots=True)
