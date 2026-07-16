@@ -507,8 +507,9 @@ the batch; *per-sequence* is tok/s seen by one request. See
 
 ### gfx1100 / W7900 direct GGUF concurrency (Qwen3.6 35B-A3B, 512/128)
 
-**Status: retained direct decode-model-step packet; not production continuous
-batching.** All rows use the same `UD-Q4_K_M`, BF16 KV, greedy-top1,
+**Status: retained direct native-c4/c8 decode-model-step packet with exact c1/c2
+controls, plus correctness-retained live membership; no server throughput
+claim.** All rows use the same `UD-Q4_K_M`, BF16 KV, greedy-top1,
 W7900/gfx1100, and synchronized graph-step timing. Aggregate counts every row
 advanced by each logical transition; per-request is aggregate divided by live
 rows. ITL excludes streaming-token D2H.
@@ -516,22 +517,24 @@ rows. ITL excludes streaming-token D2H.
 <!-- BEGIN TOPLINE:W7900_CONCURRENCY -->
 | Route | Logical C | Native groups | Aggregate decode tok/s | Per-request tok/s | Aggregate / c1 | Aggregate / serial-c4 | TTFT p50 / p95 | Model-step ITL p50 / p95 | Tracked peak |
 | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| direct c1 | 1 | 1x c1 | 84.907 | 84.907 | 1.000x | 1.009x | 0.209 / 0.209 s | 11.768 / 12.105 ms | 21.783 GiB |
-| direct c2 | 2 | 1x c2 | 126.909 | 63.455 | 1.495x | 1.508x | 0.954 / 0.957 s | 15.802 / 16.024 ms | 22.394 GiB |
-| **direct c4** | **4** | **1x c4** | **184.993** | **46.248** | **2.179x** | **2.199x** | **2.027 / 2.031 s** | **21.641 / 21.888 ms** | **23.396 GiB** |
-| chunked c8 (historical pre-E2 control) | 8 | 2x c4, serialized | 183.900 | 22.987 | 2.166x | 2.186x | 3.055 / 4.079 s | 43.487 / 44.014 ms | 25.731 GiB |
-| serial-c4 control | 4 | 4x c1, serialized | 84.140 | 21.035 | 0.991x | 1.000x | 0.547 / 0.875 s | 47.481 / 48.465 ms | 26.646 GiB* |
+| direct c1 | 1 | 1x c1 | 85.469 | 85.469 | 1.000x | 1.009x | 0.209 / 0.209 s | 11.693 / 11.955 ms | 21.783 GiB |
+| direct c2 | 2 | 1x c2 | 127.427 | 63.714 | 1.491x | 1.504x | 0.951 / 0.954 s | 15.765 / 16.023 ms | 22.394 GiB |
+| direct c4 | 4 | 1x c4 | 184.575 | 46.144 | 2.160x | 2.178x | 2.020 / 2.023 s | 21.715 / 22.021 ms | 23.396 GiB |
+| **direct c8** | **8** | **1x c8** | **246.872** | **30.859** | **2.888x** | **2.913x** | **3.475 / 3.479 s** | **32.414 / 32.749 ms** | **25.401 GiB** |
+| chunked c8 control | 8 | 2x c4, serialized | 183.020 | 22.878 | 2.141x | 2.160x | 3.055 / 4.084 s | 43.767 / 44.281 ms | 26.069 GiB* |
+| serial-c4 rate control | 4 | 4x c1, serialized | 84.738 | 21.185 | 0.991x | 1.000x | 0.548 / 0.877 s | 47.225 / 48.142 ms | 26.985 GiB* |
 <!-- END TOPLINE:W7900_CONCURRENCY -->
 
 Protocol: prompt 512 per row, 128 decode transitions, one discarded full-route
 warmup and median of three, one shared model load. Resident sessions grow
-c1→c2→c4→c8 so c4 memory is scoped to four sessions. `serial-c4` runs after c8
-and its starred memory retains eight resident slabs; it is a throughput control,
-not the c4 memory row. C4 improves aggregate decode **117.88%** over c1 and
-**119.86%** over serial-c4, while per-request rate is **45.53% lower** than c1;
-Phase D has not admitted this tradeoff as a live server route.
+c1→c2→c4→c8; starred controls execute after native c8 and retain later
+allocations. One physical c8 improves aggregate decode **188.84%** over c1 and
+**34.89%** over c4+c4, while per-request rate is **63.89% lower** than c1. The
+c8 trace is **748 packed-native / 0 row-local / 0 copies**. Direct throughput
+does not imply server-wall performance.
 
-Artifact: [`retained C4 closure`](benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-c4-native-graph-scaling-closure.json).
+Artifacts: [`retained C4 closure`](benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-c4-native-graph-scaling-closure.json) and
+[`retained native-c8 closure`](benchmarks/results/2026-07-17-gfx1100-gguf-concurrency-e2-native-c8-scaling-closure.json).
 Historical mixed-quant/mixed-scope results remain in
 [`benchmarks/HISTORY.md`](benchmarks/HISTORY.md).
 

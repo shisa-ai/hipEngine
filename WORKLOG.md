@@ -160941,3 +160941,83 @@ execution-manifest files; Python compilation, focused Ruff, raw-trace
 reprocessing assertions, and `git diff --check` pass. The next step is a clean
 commit followed by the same full scaling packet, cached-only profiler census,
 and current c8 primitive gate before retention.
+
+## 2026-07-17 — Retain clean native c8 profiler and scaling
+
+Ran the E2 retention sources from clean `52b0db25` on W7900/gfx1100 with
+Qwen3.6-35B-A3B UD-Q4_K_M, BF16 KV, exact GDN, TheRock HIP 7.15, and cached
+builds. GPU workloads ran strictly sequentially.
+
+The current c8 primitive initially stopped on an expected cache miss before
+kernel execution. Prebuilding the exact HIP-7.15/gfx1100 artifact outside the
+profiler and rerunning with `--require-cached-build` passes with zero K/V append
+mismatch, exact batch-vs-c1 attention, `5.960464477539063e-08` maximum error
+versus NumPy, and exact A/A output. The accepted 2,332-byte source is
+`/tmp/gfx1100-e2-native-c8-clean-52b0db25/primitive-c8.json`, SHA-256
+`5896149e2425fefa54d9d9c2df50ea289e991a56d8b6ab17244f5903c3457b58`.
+
+The paired cached-only profiler command was:
+
+```bash
+/home/lhl/mambaforge/envs/therock/bin/python3.12 \
+  scripts/gguf_packed_ar_rocprof.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --decode-mode graph --packed-concurrency 8 \
+  --prompt-length 512 --prompt-token-id 9707 --expected-token-id 9707 \
+  --compiler-version-file /tmp/gfx1100-concurrency/hipcc-version.txt \
+  --raw-root /tmp/gfx1100-e2-native-c8-clean-52b0db25/profiler-raw \
+  --skip-warmbuild \
+  --rocprofv3 /home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin/rocprofv3 \
+  --out /tmp/gfx1100-e2-native-c8-clean-52b0db25/profiler.json
+```
+
+It records one physical-c8 graph capture/replay with exact warmup/profile tokens,
+**748 packed-native / 0 exact-row-local / 0 copy dispatches**, one metadata
+producer, and **26.456 ms** instrumented GPU time. Full attention is 10 context
+plus 10 KV-write launches at row extent eight; selected MoE is 40 gate/up, 40
+down, and 40 combine launches over 64 lanes; Q6 LM head is the declared exact
+`6+2` two-launch lowering; sampler is one stage-1 plus one stage-2 launch. Raw c8
+kernel/marker hashes are
+`b608c2d48c89d7fcf78032e3f6eddfa359e28c3f9ebd4e58caed42bd3c1fd608` and
+`dcb8811966dbc3ebd79cb16891b3daec2f8b4210405bdd6f2f1a91a5c45f1584`.
+The 84,350-byte joined profiler JSON SHA-256 is
+`a4be088aa84c186d6dd7f597cbf94c87422e7c0e7cfa2576bcf731adc4e922d7`.
+Profiler durations remain diagnostic.
+
+The clean same-session scaling command was:
+
+```bash
+/home/lhl/mambaforge/envs/therock/bin/python3.12 \
+  scripts/gguf_packed_ar_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 \
+  --configurations c1,c2,c4,native_c8,chunked_c8,serial_c4 \
+  --prompt-token-id 9707 --prompt-length 512 --decode-steps 128 \
+  --warmup-runs 1 --measured-runs 3 \
+  --compiler-version-file /tmp/gfx1100-concurrency/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/gfx1100-e2-native-c8-clean-52b0db25/scaling.json
+```
+
+Median aggregate decode is **85.469/127.427/184.575/246.872/183.020/84.738
+tok/s** for c1/c2/c4/native-c8/chunked-c8/serial-c4. One physical c8 is
+**2.888x c1**, **1.349x c4+c4 (+34.89%)**, and **2.913x the serial-c4 rate**.
+All measured trajectories repeat and match their cross-route controls; maximum
+decode stdev/median is **0.466%**. Native-c8 per-request decode is **30.859
+tok/s**, model-step ITL p50/p95 is **32.414/32.749 ms**, packed-prefill TTFT is
+**3.475/3.479 s**, and tracked/HIP-used peak is **25.401/25.881 GiB**. Relative
+to c1, per-request rate is 63.89% lower and tracked peak is 3.617 GiB higher;
+those tradeoffs are part of the retained claim. The 1,341,650-byte source
+SHA-256 is `ecd6a7ebf6da9e930e09944f7a3f86f26894b8220e538381edcdd3b06c0a6bc1`.
+
+Joined the clean primitive, profiler, and scaling sources with the retained
+**87,440**-comparison E2 equality packet in
+`benchmarks/results/2026-07-17-gfx1100-gguf-concurrency-e2-native-c8-scaling-closure.json`.
+Source/hash/value assertions and JSON parsing pass. The final compact artifact is
+19,375 bytes, SHA-256
+`751c792de955b0e7dcb718065364e5c4e776a360495d2d6799911a1175fe3a5d`.
+`tests/test_benchmark_readme_sync.py` passes **6/6**; README export sync and
+`git diff --check` pass. Updated the benchmark scoreboard/changelog and
+`docs/CONCURRENCY.md`; the claim remains direct model-step throughput only. Optional compaction, arbitrary C/C>8 lowering,
+server-wall burst/live-admission performance, gfx1151 symmetry, and PARO remain
+separate gates.
