@@ -160009,3 +160009,41 @@ as an acceptance gate. D1 remains supported by its complete focused host and
 clean W7900 gates. D2 still needs genuinely incremental GGUF prompt execution,
 real resident-session admission/reuse/cancel evidence, and survivor
 state/KV equality before any roadmap checkbox moves.
+
+## 2026-07-16 — Commit incremental GGUF scheduler prefill chunks
+
+The D2 GGUF model owner now consumes each committed scheduler prompt chunk once
+instead of waiting for the final cursor and replaying the complete prompt. The
+first chunk acquires the resident-session lease; every subsequent chunk advances
+that same session's Conv/GDN, full-attention KV, and position state through
+`prefill_batch_native`; only the final chunk publishes the prompt's top-1 token
+and creates the decode slot. Unsupported packed shapes reset the partially
+mutated session and retain the explicit final full-prompt fallback.
+
+The RED owner fixture required a five-token prompt to advance as `2+2+1` across
+three independent commits and prohibited `session.prefill(full_prompt)`. A
+second RED runtime fixture exposed an important route hazard: scheduler chunks
+below 512 tokens lost the full prompt's AOTriton eligibility. The packed-prefill
+API now accepts `full_prompt_lengths`, validates chunk bounds against the live
+session cursor, and forces the same full-attention route across outer scheduler
+chunks that its existing internal row-capacity chunker already preserved.
+
+Host GREEN is **55 passed** for the complete GGUF generation file and **23
+passed** for the packed-layout file; the focused submit/poll engine-loop bundle
+is **9 passed**. Python compilation and diff checks pass. Ruff passes with the
+runtime file's pre-existing unrelated F401/F841 and the generation-test file's
+pre-existing F821 excluded; no unrelated import cleanup is folded into D2.
+
+A dirty-tree W7900/gfx1100 gate compared direct c1 bulk p512 against scheduler
+incremental `256+256` prefill on Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, strict
+exact GDN prefill, TheRock HIP 7.15, and cached builds required. All **40/40**
+final prompt layer rows are bit-exact, prefill and post-d4 Conv/GDN plus live-KV
+hashes are exact, positions both finish at 516, and trajectories are identical
+`[9707,9707,9707,9707,9707]`. The final plan records full prompt length 512,
+AOTriton slot 0 preserved across the two scheduler chunks, and no serial slot
+fallback. Wall is **77.846 s**; this is correctness evidence, not a throughput
+claim. Raw result:
+`/tmp/gfx1100-d2-incremental-prefill-dirty.json` (1,138 bytes, SHA-256
+`ce4179b326afc3ac4ad273a0e4828ab16d6ad533cfaf4c4a1309ce4b9b0a96dd`).
+D2 remains open for a genuinely live A-decode/B-prefill lifecycle, row-local
+retirement/cancellation/reuse, and survivor token/state/KV equality.

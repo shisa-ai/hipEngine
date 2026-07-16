@@ -3791,6 +3791,9 @@ class _GGUFResidentLoopRow:
     native_greedy: bool
     submitted_at: float
     prefill_tokens_seen: int = 0
+    incremental_prefill: bool | None = None
+    prefill_chunk_count: int = 0
+    prefill_ms: float = 0.0
     lease: _GGUFResidentSessionLease | None = None
     slot: _GGUFARServingSlot | None = None
     first_token_emitted: bool = False
@@ -3911,16 +3914,22 @@ class Qwen35GGUFResidentModelRunner:
                         f"expected {expected!r}, got {chunk!r}"
                     )
                 row.prefill_tokens_seen += len(chunk)
-                if row.prefill_tokens_seen < len(row.prompt_ids):
-                    continue
-                if row.prefill_tokens_seen != len(row.prompt_ids):
+                if row.prefill_tokens_seen > len(row.prompt_ids):
                     raise RuntimeError("GGUF prefill consumed beyond the registered prompt")
-                raise_if_generation_deadline_expired(row.request)
+                final_chunk = row.prefill_tokens_seen == len(row.prompt_ids)
                 if row.native_greedy:
-                    self._prefill_native_row(row)
-                else:
+                    if row.incremental_prefill is None:
+                        row.incremental_prefill = not (start == 0 and final_chunk)
+                    raise_if_generation_deadline_expired(row.request)
+                    if row.incremental_prefill:
+                        self._prefill_native_chunk(row, chunk, final_chunk=final_chunk)
+                    elif final_chunk:
+                        self._prefill_native_row(row)
+                    raise_if_generation_deadline_expired(row.request)
+                elif final_chunk:
+                    raise_if_generation_deadline_expired(row.request)
                     self._run_resident_fallback(row)
-                raise_if_generation_deadline_expired(row.request)
+                    raise_if_generation_deadline_expired(row.request)
 
     def decode_batch(self, work: WorkItem, *, commit: bool) -> tuple[GeneratedToken, ...]:
         if not commit:
@@ -4099,15 +4108,86 @@ class Qwen35GGUFResidentModelRunner:
     def _prefill_native_row(self, row: _GGUFResidentLoopRow) -> None:
         if row.slot is not None:
             return
-        lease = self._acquire_lease()
+        lease = row.lease or self._acquire_lease()
         row.lease = lease
         start = time.perf_counter()
         result = lease.session.prefill(row.prompt_ids, return_logits=False)
+        row.prefill_ms += _timing_ms_since(start)
+        row.prefill_chunk_count += 1
+        self._finish_native_prefill(row, result, native_compact_prefill=False)
+
+    def _prefill_native_chunk(
+        self,
+        row: _GGUFResidentLoopRow,
+        chunk: tuple[int, ...],
+        *,
+        final_chunk: bool,
+    ) -> None:
+        if row.slot is not None:
+            raise RuntimeError("GGUF resident row was prefilled more than once")
+        lease = row.lease or self._acquire_lease()
+        row.lease = lease
+        prefill_batch = getattr(lease.session, "prefill_batch_native", None)
+        if not callable(prefill_batch):
+            self._disable_incremental_prefill(row, final_chunk=final_chunk)
+            return
+        start = time.perf_counter()
+        try:
+            with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
+                results = prefill_batch(
+                    [chunk],
+                    sessions=[lease.session],
+                    full_prompt_lengths=[len(row.prompt_ids)],
+                    return_logits=False,
+                    return_hidden_seeds=False,
+                )
+        except NotImplementedError:
+            self._disable_incremental_prefill(row, final_chunk=final_chunk)
+            return
+        result_list = [] if results is None else list(results)
+        if len(result_list) != 1:
+            raise RuntimeError(
+                f"GGUF incremental prefill returned {len(result_list)} result(s) for one row"
+            )
+        row.prefill_ms += _timing_ms_since(start)
+        row.prefill_chunk_count += 1
+        if final_chunk:
+            self._finish_native_prefill(
+                row,
+                result_list[0],
+                native_compact_prefill=True,
+            )
+
+    def _disable_incremental_prefill(
+        self,
+        row: _GGUFResidentLoopRow,
+        *,
+        final_chunk: bool,
+    ) -> None:
+        row.incremental_prefill = False
+        if row.lease is not None:
+            row.lease.session.reset()
+        row.prefill_chunk_count = 0
+        row.prefill_ms = 0.0
+        if final_chunk:
+            self._prefill_native_row(row)
+
+    def _finish_native_prefill(
+        self,
+        row: _GGUFResidentLoopRow,
+        result: Any,
+        *,
+        native_compact_prefill: bool,
+    ) -> None:
+        lease = row.lease
+        if lease is None:
+            raise RuntimeError("GGUF resident prefill finished without a session lease")
+        token = int(getattr(result, "token_id"))
         timing = {
-            "prefill_ms": _timing_ms_since(start),
+            "prefill_ms": float(row.prefill_ms),
+            "prefill_chunk_count": float(row.prefill_chunk_count),
             "request_total_ms": _timing_ms_since(row.submitted_at),
         }
-        token = int(getattr(result, "token_id"))
         row.slot = _GGUFARServingSlot(
             request_id=row.request_id,
             prompt_ids=list(row.prompt_ids),
@@ -4121,6 +4201,7 @@ class Qwen35GGUFResidentModelRunner:
                 int(row.request.max_tokens) <= 1
                 or _gguf_finished((token,), self.generator.tokenizer, row.request)
             ),
+            native_compact_prefill=bool(native_compact_prefill),
         )
 
     def _run_resident_fallback(self, row: _GGUFResidentLoopRow) -> None:

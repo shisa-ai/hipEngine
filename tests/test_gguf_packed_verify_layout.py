@@ -326,6 +326,51 @@ def test_gguf_packed_ar_prefill_executes_each_round_with_all_active_slots(
     assert owner.last_packed_prefill_plan["all_active_slots_represented"] is True
 
 
+def test_gguf_packed_ar_prefill_preserves_full_prompt_attention_route_across_scheduler_chunks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    routes: list[tuple[bool | None, tuple[int, ...]]] = []
+    session = SimpleNamespace(position=0)
+
+    def fake_single_slab(self, prompt_token_ids, *, sessions, **kwargs):
+        routes.append(
+            (
+                kwargs.get("_slot_local_full_attention"),
+                tuple(kwargs.get("_force_aotriton_slot_indices", ())),
+            )
+        )
+        prompt = tuple(int(token) for token in prompt_token_ids[0])
+        sessions[0].position += len(prompt)
+        return [SimpleNamespace(token_id=prompt[-1])]
+
+    monkeypatch.setattr(
+        gguf_runner.Qwen35GGUFResidentSession,
+        "_prefill_batch_native_single_slab",
+        fake_single_slab,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        gguf_runner,
+        "PrefillConfig",
+        lambda: SimpleNamespace(attn_aotriton_min_tokens=4),
+    )
+    owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner._bulk_prefill_scratch = SimpleNamespace(rows=8)
+
+    for chunk in ((10, 11), (12, 13), (14, 15)):
+        owner.prefill_batch_native(
+            (chunk,),
+            sessions=(session,),
+            full_prompt_lengths=(6,),
+        )
+
+    assert routes == [(True, (0,))] * 3
+    assert session.position == 6
+    assert owner.last_packed_prefill_plan["full_prompt_lengths"] == [6]
+    assert owner.last_packed_prefill_plan["aotriton_eligible_slots"] == [0]
+    assert owner.last_packed_prefill_plan["aotriton_eligibility_preserved_across_chunks"] is True
+
+
 def test_gguf_packed_ar_prefill_concatenates_hidden_seed_rounds(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
