@@ -159801,3 +159801,17 @@ record the resident count per route, and summarize tracked-current,
 tracked-high-water, and `hipMemGetInfo` phase peaks per configuration. The
 complete packet now rejects reordered routes that would invalidate that memory
 scope; partial diagnostics remain allowed and disclose their resident count.
+
+The resulting clean `adf918c9` 1+3 execution completed every GPU transition and
+all token/route/variance/memory gates, but correctly exited non-retained because
+`stable_graph_bucket_keys` compared the full pointer-bound instance identity.
+C4 and chunked-c8 recapture fresh diagnostic recording buffers, so two safe
+instance hashes appeared even though every model/width/context/state/layout
+shape axis was unchanged. Rates were **85.281/127.035/185.507/184.159/84.448
+tok/s** for c1/c2/c4/chunked-c8/serial-c4, cross-route trajectories were exact,
+and maximum decode stdev/median was **0.279%**; these remain a rejected harness
+run. Preserve buffer identity in the runtime key for safety, but separate it
+from a pointer-independent bucket-shape fingerprint in the benchmark. Offline
+revalidation of the raw manifests confirms one stable shape for every route
+while honestly retaining 1/1/2/2/4 unique c1/c2/c4/chunked/serial instance
+hashes. Focused gate is **17 passed** plus compile/Ruff/diff checks; rerun clean.
