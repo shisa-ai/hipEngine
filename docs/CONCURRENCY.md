@@ -1,6 +1,6 @@
 # Concurrency and Continuous Batching
 
-Last updated: 2026-07-16.
+Last updated: 2026-07-17.
 
 This document is the source-of-truth roadmap and punchlist for making `c=N` a
 first-class model pipeline in hipEngine. The destination is fully native
@@ -726,11 +726,20 @@ E1. gfx1151 symmetry:
 E2. Native widths:
 
 - [ ] Support physical buckets c1/c2/c4/c8 with active masks.
-- [ ] Run one true native c8 model step; c4+c4 may remain an explicit fallback
+- [x] Run one true native c8 model step; c4+c4 may remain an explicit fallback
       but cannot qualify as c8.
 - [ ] Pass c8 steady, ragged, sparse, cancellation, and 512/128 equality.
 - [ ] Validate non-edge survivors through c8→c1 retirement without compaction.
 - [ ] Validate optional compaction separately with state/KV hashes at every move.
+
+Clean `4089de11` eager and this E2 graph-control probe use one physical eight-row
+model step rather than c4+c4. The graph probe captures and replays one c8 bucket
+twice with exact tokens, Conv/GDN/live-KV, and **960/960** all-layer hidden
+comparisons versus eight independent c1 references. Its manifest reports
+`physical_rows=8`, all eight lanes active, zero complete-c1 session/layer replay,
+zero host model-row loops/subgraph invocations, and zero steady metadata copies.
+This satisfies only the true-native-step item: masked physical buckets, ragged/
+sparse/cancellation retirement, and the standard p512/d128 gate remain open.
 
 E3. Arbitrary request counts:
 
