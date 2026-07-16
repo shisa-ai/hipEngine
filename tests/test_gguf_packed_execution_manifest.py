@@ -3,6 +3,7 @@ from __future__ import annotations
 from hipengine.runtime.gguf_packed_manifest import build_packed_decode_execution_manifest
 from scripts.gguf_packed_ar_rocprof import (
     KernelTraceRow,
+    build_c3_family_census,
     build_execution_census,
     classify_packed_execution_bucket,
 )
@@ -10,6 +11,19 @@ from scripts.gguf_packed_ar_rocprof import (
 
 def _layer_types() -> tuple[str, ...]:
     return ("linear_attention",) * 30 + ("full_attention",) * 10
+
+
+def _c3_routes(*, full_attention: bool = True) -> dict[str, object]:
+    return {
+        "full_attention_decode_path": (
+            "kv_live_spans_batch" if full_attention else "not_applicable"
+        ),
+        "moe_decode_path": "selected_rows_batch",
+        "moe_top_k": 8,
+        "lm_head_decode_path": "q6_rowtile_f32_logits",
+        "sampler_decode_path": "argmax_i32_rows",
+        "metadata_prepare_path": "host_upload",
+    }
 
 
 def test_packed_decode_manifest_counts_steady_c4_hybrid_boundary() -> None:
@@ -20,6 +34,7 @@ def test_packed_decode_manifest_counts_steady_c4_hybrid_boundary() -> None:
         import_positions=(513, 513, 513, 513),
         scatter_state=False,
         blocks_per_slot=4,
+        **_c3_routes(),
     )
 
     assert manifest["schema"] == 1
@@ -72,6 +87,7 @@ def test_packed_decode_manifest_accounts_indexed_recurrent_closure() -> None:
         scatter_state=False,
         blocks_per_slot=4,
         linear_attention_decode_path="indexed_batch",
+        **_c3_routes(),
     )
 
     assert manifest["linear_attention_decode_path"] == "indexed_batch"
@@ -102,6 +118,42 @@ def test_packed_decode_manifest_accounts_indexed_recurrent_closure() -> None:
     }
 
 
+def test_packed_decode_manifest_requires_explicit_c3_family_routes() -> None:
+    manifest = build_packed_decode_execution_manifest(
+        rows=4,
+        layer_types=_layer_types(),
+        imported_slot_indices=(),
+        import_positions=(513, 517, 521, 525),
+        scatter_state=False,
+        blocks_per_slot=4,
+        linear_attention_decode_path="indexed_batch",
+        full_attention_decode_path="kv_live_spans_batch",
+        moe_decode_path="selected_rows_batch",
+        moe_top_k=8,
+        lm_head_decode_path="q6_rowtile_f32_logits",
+        sampler_decode_path="argmax_i32_rows",
+        metadata_prepare_path="host_upload",
+    )
+
+    assert manifest["full_attention_decode_path"] == "kv_live_spans_batch"
+    assert manifest["moe_decode_path"] == "selected_rows_batch"
+    assert manifest["lm_head_decode_path"] == "q6_rowtile_f32_logits"
+    assert manifest["sampler_decode_path"] == "argmax_i32_rows"
+    assert manifest["metadata_prepare_path"] == "host_upload"
+
+    families = manifest["layer_families"]
+    assert families["full_attention"]["kv_abi"] == "KVLiveSpans"
+    assert families["full_attention"]["row_positions"] == 4
+    assert families["full_attention"]["live_counts"] == [514, 518, 522, 526]
+    assert families["moe_ffn"]["router_rows"] == 4
+    assert families["moe_ffn"]["selected_lanes"] == 32
+    assert families["moe_ffn"]["lane_to_row"] == "selected_lane // top_k"
+    assert families["lm_head"]["output_rows"] == 4
+    assert families["lm_head"]["full_vocab_host_readback"] is False
+    assert families["sampler"]["device_result"] == "argmax_i32_rows"
+    assert families["sampler"]["host_readback"] == "one_i32_vector"
+
+
 def test_packed_decode_manifest_separates_import_and_scatter_from_steady_step() -> None:
     imported = build_packed_decode_execution_manifest(
         rows=4,
@@ -110,6 +162,7 @@ def test_packed_decode_manifest_separates_import_and_scatter_from_steady_step() 
         import_positions=(512, 512, 512, 512),
         scatter_state=False,
         blocks_per_slot=4,
+        **_c3_routes(),
     )
     scattered = build_packed_decode_execution_manifest(
         rows=4,
@@ -118,6 +171,7 @@ def test_packed_decode_manifest_separates_import_and_scatter_from_steady_step() 
         import_positions=(513, 513, 513, 513),
         scatter_state=True,
         blocks_per_slot=4,
+        **_c3_routes(),
     )
 
     assert imported["host_device_movement"]["device_to_device_state_import_copies"] == 320
@@ -126,6 +180,92 @@ def test_packed_decode_manifest_separates_import_and_scatter_from_steady_step() 
     assert scattered["host_device_movement"]["device_to_device_state_import_copies"] == 0
     assert scattered["host_device_movement"]["device_to_device_state_scatter_copies"] == 320
     assert scattered["steady_packed_state_reused"] is False
+
+
+def test_packed_c3_profiler_census_requires_each_caware_family() -> None:
+    manifest = build_packed_decode_execution_manifest(
+        rows=4,
+        layer_types=_layer_types(),
+        imported_slot_indices=(),
+        import_positions=(513, 517, 521, 525),
+        scatter_state=False,
+        blocks_per_slot=4,
+        linear_attention_decode_path="indexed_batch",
+        **_c3_routes(),
+    )
+    rows = [
+        *[
+            KernelTraceRow(
+                kernel="qwen35_paged_full_attn_decode_context_tensor_batch_kernel",
+                duration_ns=10,
+                grid_y=4,
+            )
+            for _ in range(10)
+        ],
+        *[
+            KernelTraceRow(
+                kernel="qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel",
+                duration_ns=10,
+                grid_y=4,
+            )
+            for _ in range(10)
+        ],
+        *[
+            KernelTraceRow(
+                kernel="q4_k_t16_selected_dual_direct_gemv_kernel",
+                duration_ns=10,
+                grid_y=32,
+            )
+            for _ in range(40)
+        ],
+        *[
+            KernelTraceRow(
+                kernel="qk_t16_selected_direct_gemv_kernel",
+                duration_ns=10,
+                grid_y=32,
+            )
+            for _ in range(40)
+        ],
+        *[
+            KernelTraceRow(
+                kernel="weighted_sum_shared_gate_combine_residual_batch_out_kernel",
+                duration_ns=10,
+                grid_y=4,
+            )
+            for _ in range(40)
+        ],
+        KernelTraceRow(
+            kernel="q6_k_t16_gemv_rowtile_kernel",
+            duration_ns=10,
+            grid_y=1,
+        ),
+        KernelTraceRow(
+            kernel="argmax_rows_stage1_i32_kernel",
+            duration_ns=10,
+            grid_y=4,
+        ),
+        KernelTraceRow(
+            kernel="argmax_rows_stage2_i32_kernel",
+            duration_ns=10,
+            grid_y=1,
+        ),
+        *[
+            KernelTraceRow(kernel="__amd_rocclr_copyBuffer", duration_ns=10)
+            for _ in range(10)
+        ],
+    ]
+
+    census = build_c3_family_census(rows, manifest=manifest)
+
+    assert census["route_check_passed"] is True
+    assert census["full_attention"]["context_dispatches"] == 10
+    assert census["full_attention"]["kv_write_dispatches"] == 10
+    assert census["moe_ffn"]["selected_gate_up_dispatches"] == 40
+    assert census["moe_ffn"]["selected_down_dispatches"] == 40
+    assert census["moe_ffn"]["combine_dispatches"] == 40
+    assert census["lm_head_sampler"]["lm_head_dispatches"] == 1
+    assert census["lm_head_sampler"]["argmax_stage1_dispatches"] == 1
+    assert census["host_device_movement"]["observed_copy_dispatches"] == 10
 
 
 def test_packed_profiler_classifier_separates_exact_row_local_from_native() -> None:
@@ -202,6 +342,7 @@ def test_profiler_census_accepts_zero_row_local_indexed_boundary() -> None:
         scatter_state=False,
         blocks_per_slot=4,
         linear_attention_decode_path="indexed_batch",
+        **_c3_routes(full_attention=False),
     )
     c1 = [KernelTraceRow(kernel="c1_kernel", duration_ns=5, grid_y=1)]
     c4 = [
@@ -232,6 +373,7 @@ def test_profiler_census_requires_runtime_manifest_launch_accounting() -> None:
         import_positions=(1, 1, 1, 1),
         scatter_state=False,
         blocks_per_slot=4,
+        **_c3_routes(full_attention=False),
     )
     exact_count = manifest["model_step"]["expected_exact_row_local_kernel_launches"]
     c1 = [KernelTraceRow(kernel="c1_kernel", duration_ns=5, grid_y=1)]

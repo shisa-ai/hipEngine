@@ -193,6 +193,158 @@ def _summary(rows: Sequence[KernelTraceRow]) -> dict[str, Any]:
     }
 
 
+def _rows_matching(
+    rows: Sequence[KernelTraceRow],
+    substring: str,
+) -> list[KernelTraceRow]:
+    needle = str(substring).lower()
+    return [row for row in rows if needle in row.kernel.lower()]
+
+
+def _row_extent(row: KernelTraceRow) -> int | None:
+    if row.grid is not None:
+        return int(row.grid[1])
+    return None if row.grid_y is None else int(row.grid_y)
+
+
+def _all_row_extent(rows: Sequence[KernelTraceRow], expected: int) -> bool:
+    return bool(rows) and all(_row_extent(row) == int(expected) for row in rows)
+
+
+def build_c3_family_census(
+    c4_rows: Sequence[KernelTraceRow],
+    *,
+    manifest: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Prove the C3 c-aware families and steady movement from one c4 trace."""
+
+    row_count = int(manifest["rows"])
+    layers = manifest["layers"]
+    full_layers = int(layers["full_attention"])  # type: ignore[index]
+    total_layers = int(layers["total"])  # type: ignore[index]
+    families = manifest["layer_families"]
+    selected_lanes = int(families["moe_ffn"]["selected_lanes"])  # type: ignore[index]
+
+    full_context = _rows_matching(
+        c4_rows,
+        "qwen35_paged_full_attn_decode_context_tensor_batch_kernel",
+    )
+    full_kv_write = _rows_matching(
+        c4_rows,
+        "qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel",
+    )
+    full_passed = (
+        len(full_context) == full_layers
+        and len(full_kv_write) == full_layers
+        and (full_layers == 0 or _all_row_extent(full_context, row_count))
+        and (full_layers == 0 or _all_row_extent(full_kv_write, row_count))
+    )
+
+    selected_gate_up = _rows_matching(
+        c4_rows,
+        "selected_dual_direct_gemv_kernel",
+    )
+    selected_down = _rows_matching(
+        c4_rows,
+        "qk_t16_selected_direct_gemv_kernel",
+    )
+    moe_combine = _rows_matching(
+        c4_rows,
+        "weighted_sum_shared_gate_combine_residual_batch_out_kernel",
+    )
+    moe_passed = (
+        len(selected_gate_up) == total_layers
+        and len(selected_down) == total_layers
+        and len(moe_combine) == total_layers
+        and _all_row_extent(selected_gate_up, selected_lanes)
+        and _all_row_extent(selected_down, selected_lanes)
+        and _all_row_extent(moe_combine, row_count)
+    )
+
+    lm_head_path = str(manifest["lm_head_decode_path"])
+    if lm_head_path == "q6_rowtile_f32_logits":
+        lm_head_rows = _rows_matching(c4_rows, "q6_k_t16_gemv_rowtile_kernel")
+    elif lm_head_path == "direct_top1_rows":
+        lm_head_rows = _rows_matching(c4_rows, "top1_gather")
+    else:
+        lm_head_rows = [
+            row
+            for row in c4_rows
+            if "gemv_kernel" in row.kernel.lower()
+            and _row_extent(row) == row_count
+        ]
+    sampler_path = str(manifest["sampler_decode_path"])
+    argmax_stage1 = _rows_matching(c4_rows, "argmax_rows_stage1_i32_kernel")
+    argmax_stage2 = _rows_matching(c4_rows, "argmax_rows_stage2_i32_kernel")
+    sampler_passed = (
+        len(lm_head_rows) == 1
+        and (
+            sampler_path == "fused_top1_i32_rows"
+            or (
+                len(argmax_stage1) == 1
+                and len(argmax_stage2) == 1
+                and _all_row_extent(argmax_stage1, row_count)
+            )
+        )
+        and manifest["layer_families"]["lm_head"]["full_vocab_host_readback"] is False  # type: ignore[index]
+    )
+
+    movement = manifest["host_device_movement"]
+    expected_copies = (
+        int(movement["host_to_device_total_copies"])  # type: ignore[index]
+        + int(movement["device_to_device_state_import_copies"])  # type: ignore[index]
+        + int(movement["device_to_device_state_scatter_copies"])  # type: ignore[index]
+        + int(movement["device_to_host_vector_copies"])  # type: ignore[index]
+    )
+    copy_rows = _rows_matching(c4_rows, "__amd_rocclr_copybuffer")
+    metadata_prepare_rows = _rows_matching(
+        c4_rows,
+        "prepare_packed_decode_metadata_kernel",
+    )
+    expected_metadata_launches = int(movement["device_metadata_prepare_launches"])  # type: ignore[index]
+    movement_passed = (
+        len(copy_rows) == expected_copies
+        and len(metadata_prepare_rows) == expected_metadata_launches
+    )
+
+    return {
+        "route_check_passed": bool(
+            full_passed and moe_passed and sampler_passed and movement_passed
+        ),
+        "full_attention": {
+            "passed": full_passed,
+            "path": manifest["full_attention_decode_path"],
+            "context_dispatches": len(full_context),
+            "kv_write_dispatches": len(full_kv_write),
+            "row_extent": row_count,
+        },
+        "moe_ffn": {
+            "passed": moe_passed,
+            "path": manifest["moe_decode_path"],
+            "selected_lanes": selected_lanes,
+            "selected_gate_up_dispatches": len(selected_gate_up),
+            "selected_down_dispatches": len(selected_down),
+            "combine_dispatches": len(moe_combine),
+        },
+        "lm_head_sampler": {
+            "passed": sampler_passed,
+            "lm_head_path": lm_head_path,
+            "sampler_path": sampler_path,
+            "lm_head_dispatches": len(lm_head_rows),
+            "argmax_stage1_dispatches": len(argmax_stage1),
+            "argmax_stage2_dispatches": len(argmax_stage2),
+            "full_vocab_host_readback": False,
+        },
+        "host_device_movement": {
+            "passed": movement_passed,
+            "expected_copy_dispatches": expected_copies,
+            "observed_copy_dispatches": len(copy_rows),
+            "expected_metadata_prepare_dispatches": expected_metadata_launches,
+            "observed_metadata_prepare_dispatches": len(metadata_prepare_rows),
+        },
+    }
+
+
 def build_execution_census(
     c1_rows: Sequence[KernelTraceRow],
     c4_rows: Sequence[KernelTraceRow],
@@ -225,6 +377,7 @@ def build_execution_census(
     )
     return {
         "route_check_passed": route_check_passed,
+        "c3_family_census": build_c3_family_census(c4_rows, manifest=manifest),
         "c1_reference": _summary(c1_rows),
         "c4": {
             "all": _summary(c4_rows),

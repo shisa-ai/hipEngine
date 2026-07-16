@@ -159432,3 +159432,52 @@ contracts, the runtime manifest, named kernel execution, and all correctness
 rollups. `docs/CONCURRENCY.md` closes all C2 boxes and advances the active queue
 to C3. The route remains correctness-only `exact_hybrid`; no throughput,
 latency, memory, graph-replay, or fully-native-c4 claim is made.
+
+## 2026-07-16 — Make gfx1100 GGUF C3 family routes auditable
+
+Audited the first three C3 boundaries against the untouched clean C2 c4 marker
+window before changing device metadata. The runtime already executes these
+families c-aware, but the C2 profiler's single `packed_native` bucket did not
+prove that claim:
+
+- full attention: all 10 context and KV-write kernels execute once per layer
+  with grid-Y 4 and consume per-row `KVLiveSpans` positions/live counts;
+- MoE/FFN: all 40 layers execute selected gate-up and down with 32 routed lanes
+  (c4 x top-k 8), then one c4 batch combine per layer;
+- LM head/sampler: one c4 Q6 rowtile computes device logits, row-wise argmax
+  runs one stage1 plus one stage2 launch, and only one four-i32 vector is read
+  back; no full-vocabulary host readback occurs;
+- movement: the trace has exactly 10 copy dispatches, matching eight metadata
+  H2D uploads, one token-vector H2D upload, and one token-vector D2H readback.
+
+Added an explicit runtime manifest contract for full-attention, MoE, LM-head,
+sampler, and metadata preparation paths. The runner now records the actual
+LM-head/sampler branch and full-attention span route. Added a family-specific
+profiler census that rejects missing dispatch families, wrong c4/selected-lane
+geometry, or copy counts inconsistent with the runtime manifest. The RED
+fixture initially failed because these route arguments and census did not
+exist; it is now GREEN, and reprocessing the unchanged C2 raw trace passes every
+family check. This is observability only: C3 remains open until the eight
+steady metadata H2D uploads are replaced and the resulting runtime/trace is
+rerun clean.
+
+```bash
+python3 -m pytest -q tests/test_gguf_packed_execution_manifest.py \
+  tests/test_gguf_packed_verify_layout.py \
+  tests/test_gguf_packed_ar_state_oracle.py \
+  tests/test_gguf_packed_ar_category_oracle.py
+# GREEN: 38 passed
+python3 -m pytest -q tests/test_generation_qwen35_gguf_sampling.py \
+  -k 'packed and (batch or native or lifecycle)'
+# GREEN: 2 passed
+python3 -m py_compile scripts/gguf_packed_ar_rocprof.py \
+  hipengine/runtime/gguf_packed_manifest.py \
+  hipengine/runtime/qwen35_gguf_runner.py \
+  tests/test_gguf_packed_execution_manifest.py
+python3 -m ruff check scripts/gguf_packed_ar_rocprof.py \
+  hipengine/runtime/gguf_packed_manifest.py \
+  tests/test_gguf_packed_execution_manifest.py
+# GREEN
+git diff --check
+# GREEN
+```

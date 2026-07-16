@@ -45,6 +45,12 @@ def build_packed_decode_execution_manifest(
     import_positions: Sequence[int],
     scatter_state: bool,
     blocks_per_slot: int,
+    full_attention_decode_path: str,
+    moe_decode_path: str,
+    moe_top_k: int,
+    lm_head_decode_path: str,
+    sampler_decode_path: str,
+    metadata_prepare_path: str,
     capture_layer_count: int = 0,
     linear_attention_decode_path: str = "exact_row_local",
 ) -> dict[str, Any]:
@@ -98,6 +104,65 @@ def build_packed_decode_execution_manifest(
             "linear_attention_decode_path must be not_applicable without linear layers"
         )
     indexed_linear_decode = linear_path == "indexed_batch"
+
+    full_attention_path = str(full_attention_decode_path)
+    supported_full_attention_paths = {"kv_live_spans_batch", "not_applicable"}
+    if full_attention_path not in supported_full_attention_paths:
+        raise ValueError(
+            "unsupported full_attention_decode_path "
+            f"{full_attention_path!r}; expected one of {sorted(supported_full_attention_paths)!r}"
+        )
+    if full_layers and full_attention_path != "kv_live_spans_batch":
+        raise ValueError(
+            "full_attention_decode_path must be kv_live_spans_batch when full-attention layers are present"
+        )
+    if not full_layers and full_attention_path != "not_applicable":
+        raise ValueError(
+            "full_attention_decode_path must be not_applicable without full-attention layers"
+        )
+
+    moe_path = str(moe_decode_path)
+    supported_moe_paths = {"dense_ffn_rows", "selected_rows_batch"}
+    if moe_path not in supported_moe_paths:
+        raise ValueError(
+            f"unsupported moe_decode_path {moe_path!r}; "
+            f"expected one of {sorted(supported_moe_paths)!r}"
+        )
+    top_k = int(moe_top_k)
+    if moe_path == "selected_rows_batch":
+        top_k = _positive_int(top_k, name="moe_top_k")
+    elif top_k != 0:
+        raise ValueError("dense_ffn_rows requires moe_top_k=0")
+    lm_head_path = str(lm_head_decode_path)
+    supported_lm_head_paths = {
+        "direct_top1_rows",
+        "q6_rowtile_f32_logits",
+        "row_linear_f32_logits",
+    }
+    if lm_head_path not in supported_lm_head_paths:
+        raise ValueError(
+            f"unsupported lm_head_decode_path {lm_head_path!r}; "
+            f"expected one of {sorted(supported_lm_head_paths)!r}"
+        )
+    sampler_path = str(sampler_decode_path)
+    supported_sampler_paths = {"argmax_i32_rows", "fused_top1_i32_rows"}
+    if sampler_path not in supported_sampler_paths:
+        raise ValueError(
+            f"unsupported sampler_decode_path {sampler_path!r}; "
+            f"expected one of {sorted(supported_sampler_paths)!r}"
+        )
+    if lm_head_path == "direct_top1_rows" and sampler_path != "fused_top1_i32_rows":
+        raise ValueError("direct_top1_rows requires fused_top1_i32_rows sampling")
+    if lm_head_path != "direct_top1_rows" and sampler_path != "argmax_i32_rows":
+        raise ValueError("logit-producing lm-head paths require argmax_i32_rows sampling")
+    metadata_path = str(metadata_prepare_path)
+    supported_metadata_paths = {"device_prepare_persistent", "host_upload"}
+    if metadata_path not in supported_metadata_paths:
+        raise ValueError(
+            f"unsupported metadata_prepare_path {metadata_path!r}; "
+            f"expected one of {sorted(supported_metadata_paths)!r}"
+        )
+
     row_loop_iterations = 0 if indexed_linear_decode else linear_layers * row_count
     projection_row_launches = row_loop_iterations * _ROW_LOCAL_PROJECTION_LAUNCHES
     conv_gdn_row_launches = row_loop_iterations * _ROW_LOCAL_CONV_GDN_LAUNCHES
@@ -120,6 +185,11 @@ def build_packed_decode_execution_manifest(
         + row_count * 8  # GDN state indices, int64[C]
     )
     input_bytes = row_count * 8  # packed token ids, int64[C]
+    metadata_host_copies = 8 if metadata_path == "host_upload" else 0
+    metadata_host_bytes = metadata_bytes if metadata_host_copies else 0
+    metadata_device_prepare_launches = (
+        1 if metadata_path == "device_prepare_persistent" else 0
+    )
 
     imported_positions = tuple(positions[index] for index in imported_indices)
     state_import_copies = sum(
@@ -195,32 +265,45 @@ def build_packed_decode_execution_manifest(
         },
         "full_attention": {
             "execution": "packed_native",
+            "decode_path": full_attention_path,
+            "kv_abi": "KVLiveSpans" if full_layers else "not_applicable",
             "layer_invocations": full_layers,
+            "row_positions": row_count,
+            "live_counts": [position + 1 for position in positions],
             "host_row_loop_sites": 0,
             "host_row_iterations": 0,
             "exact_row_local_kernel_launches": 0,
         },
         "moe_ffn": {
             "execution": "packed_native",
+            "decode_path": moe_path,
             "layer_invocations": len(layer_tuple),
+            "router_rows": row_count,
+            "top_k": top_k,
+            "selected_lanes": row_count * top_k,
+            "lane_to_row": "selected_lane // top_k",
             "host_row_loop_sites": 0,
             "host_row_iterations": 0,
             "exact_row_local_kernel_launches": 0,
         },
         "lm_head": {
             "execution": "packed_native",
+            "decode_path": lm_head_path,
             "layer_invocations": 1,
+            "output_rows": row_count,
+            "full_vocab_host_readback": False,
             "host_row_loop_sites": 0,
             "host_row_iterations": 0,
             "exact_row_local_kernel_launches": 0,
         },
         "sampler": {
             "execution": "packed_native",
+            "decode_path": sampler_path,
             "layer_invocations": 1,
             "host_row_loop_sites": 0,
             "host_row_iterations": 0,
             "exact_row_local_kernel_launches": 0,
-            "device_result": "argmax_i32_rows",
+            "device_result": sampler_path,
             "host_readback": "one_i32_vector",
         },
     }
@@ -232,6 +315,11 @@ def build_packed_decode_execution_manifest(
         "claim_level": "exact_hybrid",
         "rows": row_count,
         "linear_attention_decode_path": linear_path,
+        "full_attention_decode_path": full_attention_path,
+        "moe_decode_path": moe_path,
+        "lm_head_decode_path": lm_head_path,
+        "sampler_decode_path": sampler_path,
+        "metadata_prepare_path": metadata_path,
         "layers": {
             "total": len(layer_tuple),
             "linear_attention": linear_layers,
@@ -247,12 +335,13 @@ def build_packed_decode_execution_manifest(
         },
         "layer_families": layer_families,
         "host_device_movement": {
-            "host_to_device_metadata_copies": 8,
-            "host_to_device_metadata_bytes": metadata_bytes,
+            "host_to_device_metadata_copies": metadata_host_copies,
+            "host_to_device_metadata_bytes": metadata_host_bytes,
+            "device_metadata_prepare_launches": metadata_device_prepare_launches,
             "host_to_device_input_copies": 1,
             "host_to_device_input_bytes": input_bytes,
-            "host_to_device_total_copies": 9,
-            "host_to_device_total_bytes": metadata_bytes + input_bytes,
+            "host_to_device_total_copies": metadata_host_copies + 1,
+            "host_to_device_total_bytes": metadata_host_bytes + input_bytes,
             "device_to_device_state_import_copies": state_import_copies,
             "device_to_device_state_scatter_copies": state_scatter_copies,
             "diagnostic_layer_capture_device_to_host_copies": captures,
