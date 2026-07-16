@@ -159035,3 +159035,57 @@ six-shape or broad-suite rerun was performed. Artifact:
   and application-stream controls, linked the public #5107 answer, and changed
   the evolving runbook links from old commit `35d3d0e7` to `main`; compact raw
   evidence links remain commit-pinned.
+
+## 2026-07-16 — Reject non-HWS before prefill on a gfxhub VM fault
+
+- Before reboot, screened but did not retain the proposed pre-GPF-2D/2E fused
+  recurrence rollback. Its exact 512/1 preflight returned token `9707` and finite
+  logits but only **450.633 prefill tok/s** versus the current-path
+  **1160.229 tok/s** control. The human explicitly rejected rollback as an
+  option; the 128K process was terminated before its recorder began, all child
+  processes/KFD clients were removed, and no repository change was made.
+- Rebooted into boot ID `8987147d-fa6a-4f85-a14a-4623d614b88d` and verified
+  `sched_policy=2`, `mes_log_enable=1`, `gpu_recovery=1`, `send_sigterm=1`, and
+  `cwsr_enable=1`. The journal confirms `amdgpu: SW scheduler is used`; HIP sees
+  gfx1151 and the GPU was idle with no KFD client. `ee932fb9` matched
+  `origin/main`, had no staged/unstaged/tracked changes, and differs from tagged
+  runtime source `a7b4fe4b` only in docs/rollup files. There were 255 pre-existing
+  untracked files, all under `benchmarks/results/`; left untouched.
+- Regenerated the reboot-cleared compiler-version file (SHA-256
+  `4575f2f1...`), required cached builds, kept `GPU_MAX_HW_QUEUES=1`, and unset
+  GDN/AOTriton-stream/SDMA diagnostic selectors. The fresh-process 512/1
+  preflight passed exactly at **1163.527/48.350 prefill/decode tok/s**, token
+  `9707`, finite logits, and 21.478 GiB tracked peak.
+- The matched 128K warmup+3 process failed before creating the flight recorder
+  or entering prefill. At 19:23:32 the kernel reported a gfxhub page fault at
+  `0x00007ff3409ae000`, ring 24, VMID 8, PASID 31, faulty client CPF,
+  status `0x00800830`, permission faults 3, no walker/mapping error, and a read.
+  ROCr reported page-not-present/supervisor privilege and aborted; the capture
+  returned 134 after seven seconds. A later `Debugging does not support
+  sched_policy 2` line and secondary CPC/null fault at VMID/PASID 0 occurred
+  during abort/debug teardown and are not assigned as the primary cause.
+- Preserved the 22.9 MiB compressed coredump locally only. The abort thread is
+  `Runtime::VMFaultHandler`; the main native path is `hipMemcpy ->
+  hsa_executable_freeze -> RegionMemory::Freeze ->
+  GpuAgent::InvalidateCodeCaches -> AqlQueue::ExecutePM4 -> signal wait`. This
+  identifies an observation/wait path, not a faulty app buffer, copy, or named
+  kernel. The core can contain model/process memory and must never be published.
+- The process disappeared and the GPU returned idle without reset. A focused
+  post-fault fresh-process 512/1 control passed exactly at
+  **1199.181/48.177 tok/s**, token `9707`, and finite logits. Bracketing short
+  controls reject a persistent wedge and simple all-subsequent-process failure,
+  but one 128K attempt neither proves determinism nor answers whether non-HWS
+  would prevent the original HWS/MES retirement stall.
+- Posted the bounded result and three AMD questions at
+  `https://github.com/ROCm/ROCm/issues/6437#issuecomment-4990825784`; updated the
+  issue control matrix and public-evidence links. Compact artifact:
+  `benchmarks/results/2026-07-16-gfx1151-sched-policy2-128k-vm-fault.json`.
+  Checksummed raw evidence is under
+  `/home/lhl/gfx1151-debug/2026-07-16-sched-policy2-boot-20260716T102012Z`;
+  compressed core remains local-only.
+- Rejected `sched_policy=2` on this stack. Restored
+  `/etc/default/limine.pre-gfx1151-sched-policy2-20260716T092026Z`, reran
+  `limine-update`, and verified both current generated CachyOS entries retain
+  MES logging/recovery/SIGTERM with no `sched_policy=2`. The running kernel stays
+  policy 2 until reboot; reboot before production work. Emergency backup:
+  `/etc/default/limine.pre-policy0-restore-20260716T103433Z`.

@@ -1,0 +1,216 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1151_sched_policy2_128k_isolation",
+  "status": "non_hws_policy_rejected_before_prefill_due_gfxhub_vm_fault",
+  "created_at": "2026-07-16T19:26:09+09:00",
+  "performance_claim": false,
+  "correctness_claim": false,
+  "topline_eligible": false,
+  "conclusion": "The fixed-stack amdgpu.sched_policy=2 isolation boot cannot test whether non-HWS avoids the original intermittent 128K queue-retirement stall because the matched 128K process fails earlier. Exact current-production 512/1 controls pass both before and after the attempt, but the 128K process receives a gfxhub page fault during session initialization, before the prefill flight recorder is created, and ROCr aborts with status 134. The primary fault is a CPF read at address 0x00007ff3409ae000 on ring 24, VMID 8, PASID 31. The coredump places the main thread in hipMemcpy through HSA executable freeze, RegionMemory::Freeze, GpuAgent::InvalidateCodeCaches, and AqlQueue::ExecutePM4 while the ROCr async VM-fault handler aborts. A secondary CPC/null fault appears during abort/debug teardown. sched_policy=2 is therefore rejected as a production or diagnostic workaround on this kernel/firmware/userspace combination. This single attempt does not prove that the software scheduler itself caused the primary fault, does not identify an application buffer or kernel, and does not establish whether non-HWS would affect the original HWS stall if 128K initialization succeeded.",
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "pci": "0000:c1:00.0",
+    "bios": "03.04 (2025-11-19)",
+    "vbios": "113-STRXLGEN-001",
+    "kernel": "7.1.3-2-cachyos",
+    "firmware_package": "linux-firmware-amdgpu 1:20260622-1",
+    "mes_firmware": "0x00000088",
+    "mes_kiq_firmware": "0x0000006f"
+  },
+  "software": {
+    "hipengine_commit": "ee932fb930af0d6d2df894d9997abda4fe940b6a",
+    "runtime_source_equivalent_reproducer_commit": "a7b4fe4b213c5afcbe1be2b13cb33464f251a06e",
+    "runtime_source_equivalent_reproducer_tag": "rocm-6437-reproducer-v1",
+    "diff_from_reproducer_commit": [
+      "WORKLOG.md",
+      "benchmarks/CHANGELOG.md",
+      "benchmarks/README.md",
+      "benchmarks/results/2026-07-16-gfx1151-128k-mes-kfd-stall-capture.json",
+      "docs/DEBUG-GFX1151-STALL.md"
+    ],
+    "tracked_tree_clean": true,
+    "untracked_benchmark_files_present": 255,
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+    "compiler_version_file_sha256": "4575f2f128d68d1d1c7e99436d20ecac67a363d6d300f6dde6b2fb83a86f8987",
+    "gpu_max_hw_queues": 1,
+    "experimental_application_selectors": {
+      "HIPENGINE_GGUF_GDN_PREFILL_MODE": "unset",
+      "HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM": "unset",
+      "HSA_ENABLE_SDMA": "unset"
+    }
+  },
+  "boot": {
+    "boot_id": "8987147d-fa6a-4f85-a14a-4623d614b88d",
+    "kernel_cmdline_redacted": "amdgpu.sched_policy=2 amdgpu.mes_log_enable=1 amdgpu.gpu_recovery=1 amdgpu.send_sigterm=1 quiet nowatchdog splash rw rootflags=subvol=/@ root=UUID=<redacted>",
+    "kernel_scheduler_message": "amdgpu: SW scheduler is used",
+    "amdgpu": {
+      "sched_policy": 2,
+      "mes_log_enable": 1,
+      "gpu_recovery": 1,
+      "send_sigterm": 1,
+      "cwsr_enable": 1,
+      "debug_evictions": false,
+      "halt_if_hws_hang": 0,
+      "lockup_timeout": "unset",
+      "timeout_period": 0,
+      "noretry": -1,
+      "vm_fault_stop": 0,
+      "no_queue_eviction_on_vm_fault": 0,
+      "runpm": -1
+    },
+    "only_intended_behavioral_change_from_stalled_hqd_boot": "sched_policy 0 -> 2"
+  },
+  "model": {
+    "public_source": "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF?show_file_info=Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "size_bytes": 22663387424,
+    "fingerprint_algorithm": "sha256-sampled-v1",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "prompt": "repetitions of token 9707"
+  },
+  "protocol": {
+    "preflight_command": "GPU_MAX_HW_QUEUES=1 python3 scripts/qwen35_readme_sweep.py --engine gguf --model <model> --quant gguf_q4_k_m --backend hip_gfx1151 --workloads 512/1 --warmup-runs 0 --measured-runs 1 --warmup-decode-tokens 0 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file <precomputed> --require-cached-build --json <out>",
+    "gate_command": "GPU_MAX_HW_QUEUES=1 python3 scripts/qwen35_readme_sweep.py --engine gguf --model <model> --quant gguf_q4_k_m --backend hip_gfx1151 --workloads 128K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file <precomputed> --require-cached-build --prefill-flight-recorder <out>/prefill.flight --prefill-flight-recorder-granularity chunk --json <out>/result.json",
+    "process_bound_seconds": 1800,
+    "stall_detector": "completed flight-recorder cursor unchanged for 120 seconds while submitted exceeds completed",
+    "capture_before_gate": "idle MES/KFD/MQD/VM/fence snapshot; no HQD read",
+    "post_fault_control": "repeat exact 512/1 command in a fresh process"
+  },
+  "controls": {
+    "pre_fault_512_1": {
+      "status": "completed_exactly",
+      "prefill_tok_s": 1163.5272961743149,
+      "decode_tok_s": 48.3504985662039,
+      "final_token_id": 9707,
+      "finite_final_logits": true,
+      "tracked_peak_gib": 21.477776303887367
+    },
+    "post_fault_512_1": {
+      "status": "completed_exactly",
+      "prefill_tok_s": 1199.180734712049,
+      "decode_tok_s": 48.17741235749976,
+      "final_token_id": 9707,
+      "finite_final_logits": true
+    },
+    "interpretation": "Two successful fresh-process 512 controls bracket the fault. This rejects a persistent post-fault GPU wedge and makes a simple all-subsequent-process lifecycle failure unsupported. It does not establish the exact 128K-specific trigger or prove that the fault is deterministic."
+  },
+  "fault": {
+    "process_start": "2026-07-16T19:23:31.859339744+09:00",
+    "primary_kernel_log_timestamp": "2026-07-16T19:23:32+09:00",
+    "capture_script_elapsed_seconds": 7,
+    "process_return_code": 134,
+    "signal": "SIGABRT",
+    "rocr_message": "Memory access fault by GPU node-1 on address 0x7ff3409ae000. Reason: Page not present or supervisor privilege.",
+    "prefill_started": false,
+    "flight_recorder_created": false,
+    "result_json_created": false,
+    "primary": {
+      "address": "0x00007ff3409ae000",
+      "source_id": 0,
+      "ring": 24,
+      "vmid": 8,
+      "pasid": 31,
+      "process": "python",
+      "fault_status": "0x00800830",
+      "utcl2_client": "CPF (0x4)",
+      "more_faults": 0,
+      "walker_error": 0,
+      "permission_faults": 3,
+      "mapping_error": 0,
+      "rw": 0
+    },
+    "secondary_during_abort_or_debug_teardown": {
+      "address": "0x0000000000000000",
+      "ring": 169,
+      "vmid": 0,
+      "pasid": 0,
+      "fault_status": "0x00040B52",
+      "utcl2_client": "CPC (0x5)",
+      "walker_error": 1,
+      "permission_faults": 5,
+      "mapping_error": 1,
+      "rw": 1
+    },
+    "kernel_debug_message_between_faults": "amdgpu: Debugging does not support sched_policy 2"
+  },
+  "coredump": {
+    "present": true,
+    "compressed_size_bytes": 24018746,
+    "compressed_sha256": "bcb3b88ac42b63f3d6e8c6a1c388a9c32417ed6e2c9914d046b9cb8490968de7",
+    "publication": "local only because arbitrary process memory may contain model data or private state",
+    "abort_thread": "rocr::core::Runtime::VMFaultHandler -> raise -> abort",
+    "main_thread_native_path": [
+      "hipMemcpy",
+      "HIP internal module/code-object path",
+      "hsa_executable_freeze",
+      "AmdHsaCodeLoader::FreezeExecutable",
+      "ExecutableImpl::Freeze",
+      "RegionMemory::Freeze",
+      "GpuAgent::InvalidateCodeCaches",
+      "AqlQueue::ExecutePM4",
+      "hsa_signal_wait_scacquire"
+    ],
+    "interpretation": "The stack identifies the host-side wait and lower-level HSA code-cache invalidation path at the fault. It does not prove that the user-visible hipMemcpy, a named application allocation, or a named kernel is faulty."
+  },
+  "recovery": {
+    "gpu_reset_observed": false,
+    "autonomous_send_sigterm_observed": false,
+    "process_abort_removed_kfd_client": true,
+    "post_abort_gpu_use_percent": 0,
+    "post_abort_kfd_clients": 0,
+    "post_abort_512_control_passed": true
+  },
+  "rollback": {
+    "prepared": true,
+    "prepared_at": "2026-07-16T19:34:40+09:00",
+    "restored_source": "/etc/default/limine.pre-gfx1151-sched-policy2-20260716T092026Z",
+    "emergency_sched_policy2_backup": "/etc/default/limine.pre-policy0-restore-20260716T103433Z",
+    "generated_current_entries_contain_sched_policy2": false,
+    "generated_current_entries_retain_mes_log_recovery_sigterm": true,
+    "running_kernel_sched_policy_until_reboot": 2,
+    "next_boot_expected_sched_policy": 0
+  },
+  "evidence_boundaries": [
+    "This is one 128K attempt under sched_policy=2, bracketed by two exact 512 controls.",
+    "The process fails before prefill, so this run does not reproduce or eliminate the original long-prefill queue-retirement stall.",
+    "No active-fault HQD snapshot exists because the ROCr process aborted before the 120-second stall monitor could declare and capture a persistent state.",
+    "The kernel debug-support message occurs after the primary CPF fault and is not treated as the cause of that primary fault.",
+    "The idle debugfs snapshot is not a sufficient trigger because the post-fault 512 control passes after the same reads; interaction at 128K is not independently excluded.",
+    "The coredump stack is an observation path, not root-cause proof."
+  ],
+  "decision": {
+    "sched_policy2_is_workaround": false,
+    "sched_policy2_is_usable_128k_isolation_on_this_stack": false,
+    "original_hws_stall_cause_proven": false,
+    "lifecycle_fix_claim": false,
+    "performance_claim_eligible": false,
+    "upstream_issue_url": "https://github.com/ROCm/ROCm/issues/6437",
+    "upstream_followup_url": "https://github.com/ROCm/ROCm/issues/6437#issuecomment-4990825784",
+    "next_steps": [
+      "await AMD guidance on whether sched_policy=2 is supported on gfx1151 and on a supported HWS/MES isolation method",
+      "reboot into the prepared sched_policy=0 configuration; do not use the software-scheduler boot for production",
+      "ask AMD whether the ring-24 CPF fault in AqlQueue::ExecutePM4 / InvalidateCodeCaches identifies a known static-queue VMID or code-cache invalidation issue",
+      "do not infer that HWS/MES caused the original stall because the non-HWS path never reached prefill"
+    ]
+  },
+  "source_hashes": {
+    "boot_provenance": "0fe394ab495dd6e93975246d372c142fc88ada00fc233384cf2faf1178b7d683",
+    "pre_fault_512_json": "00a6978055e71ccbc57212051191e9c0a6c4e8307620611889999b8077d03faf",
+    "pre_fault_512_log": "3d67ba3bfe70856d0063216bf3d23b83e57b04d09c0bfbf52071a1077d33b1ce",
+    "post_fault_512_json": "ac668ea1304a75d8a32a28ccb5c924e1687a3e610fbc39093345a72d30cd9603",
+    "post_fault_512_kernel_journal": "21ccae28aaf470aa757918a9e1362c700200a17a6a2b6641cb91af88a739db0b",
+    "capture_script": "dc0b2919febefd8a89be3fbc1160aa1d2bca3e4b166800a7b7c418aa14c9f891",
+    "fault_run_log": "f5c5d9afc9ac38dd08dde0b80fbe1d3856d9354f5dfbc468b73d1d85baf5979f",
+    "fault_kernel_journal": "ae73c9983705a724a7a58281e47ecb62cdb9fb2d01ba8b627759b2f95e371ae8",
+    "fault_system_journal_window": "26a5fafd0cc1bbc563582ef889dbbbec991e889b0a785fc1fefb23ae7acea0c0",
+    "coredump_info": "d475bac78cbce639b550e491f4a078e9b6633bdf624da3ffccc14512c7814ff7",
+    "policy0_restore_summary": "aff5d6a56a612afdf49e3bd6479c97e1d4d7912cc5b3a341c2855b63e2151795",
+    "limine_policy0_restore_log": "880c06af53c6cb406ab929ad04fe32b6ad9b3b9cf586233654ef5d758d0f5a40",
+    "local_manifest": "a50c030a5144aeaede6c442042f330d4db42f919696baf20a7e2774ba0239759"
+  },
+  "durable_raw_directory": "/home/lhl/gfx1151-debug/2026-07-16-sched-policy2-boot-20260716T102012Z"
+}
