@@ -85,18 +85,22 @@ profiler to show that the route scales better than the serial bridge.
 ## Current truth
 
 **hipEngine does not yet have production continuous batching.** It has useful
-host-side scheduler, KV, sampler, metrics, and API scaffolding, plus one
-retained direct gfx1100 native-c4 decode model step and model-specific exact
-hybrids. The public `SubmitPollTextGenerator` still creates
-one loop per API call and delegates a complete inner model generation. New
-requests are not admitted into a live model step loop mid-generation.
+host-side scheduler, KV, sampler, metrics, and API scaffolding, one retained
+direct gfx1100 native-c4 decode model step, and now one long-lived GGUF model
+runner with a fixed reusable resident-session pool. Public non-streaming
+`LLM.generate()` calls share that runner and `ResidentEngineLoop`; greedy GGUF
+prefill/decode/reclaim therefore mutate real model state one committed
+transition at a time instead of delegating a complete inner generation. D2 is
+still open: new requests are not yet admitted while another row is decoding,
+and bounded mixed prefill/decode, row-local cancellation, and live slot reuse
+are not production claims.
 
 ### Model/backend coverage
 
 | Model path | Backend | Current c>N status | Production behavior | First missing gate |
 | --- | --- | --- | --- | --- |
 | GGUF Q4_K_M / BF16 KV | gfx1151 | Packed exact hybrid in groups of at most c4; short natural c10 runs as c4+c4+c2 | Packed server AR route is available; not a retained c>N throughput row | Per-layer hidden capture, standard all-row 512/128 gate, live admission/cancel, profiler/scaling |
-| GGUF Q4_K_M / BF16 KV | gfx1100 | `retained` direct native-c4 decode model step: graph/eager p512/d128 and sparse c4→c1 token/hidden/state/KV gates are exact; marker-sliced replay has 747 packed-native, zero exact-row-local, and zero copy dispatches; same-session c4 is 184.993 aggregate tok/s (2.179x c1, 2.199x serial-c4) | Retained c1 production route plus retained direct c4 model-step packet; no live continuous-batching or streaming-delivery claim | D1 long-lived model runner and live admission/reclaim |
+| GGUF Q4_K_M / BF16 KV | gfx1100 | `retained` direct native-c4 decode model step plus D1 long-lived model/session ownership: graph/eager p512/d128 and sparse c4→c1 token/hidden/state/KV gates are exact; same-session c4 is 184.993 aggregate tok/s (2.179x c1, 2.199x serial-c4); clean D1 direct/first/repeat c2 trajectories and all four resident session identities are exact/stable across API calls | Public non-streaming calls share one model-owning loop and reusable c4 session pool; no live admission, continuous-batching, or streaming-delivery claim | D2 live admission/cancel, bounded prefill/decode interleave, and exact neighbor-preserving slot reuse |
 | GGUF Q5_K/Q6_K/Q8_0 / BF16 KV | gfx1100/gfx1151 | Not executed end to end under c>N | c1 | Q4_K_M c4 closure first |
 | PARO W4 / BF16 KV | gfx1151 | Exact greedy c2 hybrid below 1024 total context; not fully native or retained | Unsupported groups fail closed to true width-1 sessions | Lifecycle/hidden/profiler/repetition gates, then remove row-local hybrid boundaries |
 | PARO W4 / BF16 KV | gfx1100 | Historical primitive/token diagnostics only; no current retained native route | Width-1 sessions | Re-establish the current-HEAD c2 correctness baseline on W7900 |
@@ -117,8 +121,11 @@ The following components exist and have focused CPU/host tests:
 - graph-bucket, request, and pool observability schemas;
 - Prometheus endpoint plumbing.
 
-These pieces become production features only when one long-lived GGUF/PARO
-runner owns real device state and exercises them while requests remain live.
+The GGUF D1 runner now owns real device state and exercises committed
+prefill/decode/reclaim transitions. The remaining scaffolding becomes a
+production continuous-batching feature only after D2 proves requests can enter,
+leave, cancel, and reuse slots while neighbors remain live; PARO still lacks an
+equivalent model-owning runner.
 
 ### Result pointers
 
@@ -159,6 +166,10 @@ runner owns real device state and exercises them while requests remain live.
 - gfx1100 C4 state-bound graph replay and retained direct native-c4 scaling:
   `WORKLOG.md`, **2026-07-16 — Close gfx1100 GGUF C4 native graph scaling**, and
   `benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-c4-native-graph-scaling-closure.json`.
+- gfx1100 D1 long-lived GGUF model/session ownership and clean cross-call c2
+  equality: `WORKLOG.md`, **2026-07-16 — Attach D1 to persistent GGUF
+  model/session state**, and
+  `benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-d1-resident-model-runner-closure.json`.
 - Historical PARO c1-c8 catalog and lifecycle: `docs/BENCHMARK.md` §PARO c1-c8
   exact concurrency matrix.
 - Historical c>N graph replay and output-tiled GEMV: `WORKLOG.md`, **2026-06-08
@@ -553,12 +564,24 @@ loop that survives API calls and changes membership while generation is active.
 
 D1. Runner ownership:
 
-- [ ] Add one long-lived GGUF runner implementing the scheduler-facing prefill,
+- [x] Add one long-lived GGUF runner implementing the scheduler-facing prefill,
       decode, compact, and reclaim contracts.
-- [ ] Move model/session creation outside `generate()` calls.
-- [ ] Remove the request-lifetime generation lock from the model execution path.
-- [ ] Make `SubmitPollTextGenerator` adapt to the shared loop rather than create
+- [x] Move model/session creation outside `generate()` calls.
+- [x] Remove the request-lifetime generation lock from the model execution path.
+- [x] Make `SubmitPollTextGenerator` adapt to the shared loop rather than create
       a loop per call.
+
+Clean `285c20b4` W7900 evidence compares the old direct resident control, the
+first shared-loop call, and a second call for two independent 16-token/d4 rows.
+All three trajectories are exact (`[9707,9707,9707,9707]` and
+`[9708,9709,9708,9709]`); all four preallocated session identities remain
+stable and all four return idle after each call. The final route records three
+native c2 model steps with no serial fallback. Focused host validation is **78
+passed, 4 skipped** and includes context-pool rebuild, greedy packed/c1,
+sampled and zero-token compatibility, commit, compact, and reclaim contracts. D1 does
+not claim live admission: each synchronous caller still drives loop ticks, and
+real prompt execution occurs at the final prefill commit rather than being
+interleaved with live decode. See the compact [D1 closure artifact](../benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-d1-resident-model-runner-closure.json).
 
 D2. Real scheduling:
 
@@ -736,10 +759,10 @@ multi-prompt acceptance suite. Speculative work never weakens the AR c=N gates.
 Work this list in order unless a measured blocker is recorded in `WORKLOG.md`.
 The active lane is deliberately narrow.
 
-1. **C4:** prove one fully native replayable c4 model step.
-2. **C4:** publish the direct c1/c2/c4 and chunked-c8 performance packet.
-3. **D1:** attach that c4 step to one long-lived gfx1100 model runner.
-4. **D2:** close live admission, retirement, and cancellation on W7900.
+1. **Completed — C4:** prove one fully native replayable c4 model step.
+2. **Completed — C4:** publish the direct c1/c2/c4 and chunked-c8 performance packet.
+3. **Completed — D1:** attach that c4 step to one long-lived gfx1100 model runner.
+4. **Active — D2:** close live admission, retirement, and cancellation on W7900.
 5. **E1:** run the same model-step and loop gates unchanged on gfx1151.
 6. **E2:** generalize from native c4 to one true native c8 group.
 

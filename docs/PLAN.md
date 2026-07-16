@@ -476,7 +476,7 @@ Design rule: **every new runtime, scheduler, KV, and kernel ABI must stay batch-
 |---|---|
 | Can current hipEngine run real c=8 PARO decode? | No retained c8 route. gfx1151 now has a generated-token-exact greedy-BF16 c2 hybrid below 1024 context tokens, but c3-c8, sampled, longer-context, other-KV, and gfx1100 groups still fail closed to width-1 sessions. The c2 hybrid is not yet fully native c-aware or throughput-retained. |
 | Can current hipEngine run native GGUF c>N AR? | As a correctness diagnostic, yes. The production route caps native groups at c4 and now matches independent c1 tokens plus all 30 Conv/GDN and 10 live-KV families for steady c4, ragged `[512,64,64,64]`, and c4→c3→c2→c1 middle-hole retirement on gfx1151. The public c10 gate remains token-exact for three repeats through c4+c4+c2 chunks. Per-layer hidden capture, live server cancellation/admission, one-native-group c5-c8, profiler evidence, and retained exact-accounting throughput remain open. |
-| Does current hipEngine implement continuous batching? | No production continuous loop yet. The host scheduler types are batch-shaped and the OpenAI worker coalesces a static arrival group, but `SubmitPollTextGenerator` creates a per-call scaffold whose inner model generation completes as one batch. Requests are not admitted into or reclaimed from a live model step loop mid-generation. |
+| Does current hipEngine implement continuous batching? | Not yet. D1 now gives public non-streaming GGUF calls one long-lived `SubmitPollTextGenerator`/`ResidentEngineLoop` and a real model-owning c4 session pool with committed prefill, one-step decode, compact, and reclaim hooks. The loop and session identities survive API calls, but synchronous callers still drive ticks and D2 has not proved mid-generation admission, bounded prefill/decode interleave, row-local cancellation, or live-neighbor slot reuse. |
 | Is current SpecDec wired into generation? | Partially. GGUF llama-compat MTP has a guarded non-streaming greedy server route with resident slots and packed target verify; exact/default MTP serving, streaming, and broad SpecDec pluginization remain future work. |
 | Is the design cleaner for adding c>1 than `nano-vllm-amd`? | Yes. |
 | Would just setting `tokens=8` work? | No. |
@@ -499,11 +499,11 @@ Why the design is better positioned:
 
 Current blockers that keep c>N diagnostic rather than retained:
 
-- The public loop adapter remains a host lifecycle scaffold around a complete
-  inner generation call. Production serving still needs one model-owning
-  continuous-batching loop for mid-generation admission, mixed prefill/decode
-  work, slot compaction/reclaim, per-row cancellation, sampler/output routing,
-  and metrics.
+- The public non-streaming GGUF adapter now owns one persistent real model loop
+  and reusable c4 resident-session pool rather than wrapping a complete inner
+  generation call. Production continuous batching still needs D2/D4 evidence
+  for mid-generation admission, bounded mixed prefill/decode work, live slot
+  reuse, per-row cancellation, sampler/output routing, streaming, and metrics.
 - PARO has a narrow exact gfx1151 greedy-BF16 c2 hybrid, but broader widths,
   modes, and retained profiling remain open. GGUF now has byte-exact
   Conv/GDN/live-KV evidence through its production c4 chunk, ragged long/short

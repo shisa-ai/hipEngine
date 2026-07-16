@@ -159953,3 +159953,29 @@ is the hermetic gfx1100 invocation of
 `/tmp/gfx1100-d1-resident-loop-dirty.json` and wall was **75.959 s**. This is a
 correctness/ownership gate only, not a throughput or live-admission claim. A
 clean exact-revision rerun follows the atomic code commit.
+
+## 2026-07-16 — Close gfx1100 GGUF D1 runner ownership
+
+The clean exact-revision rerun passes at `285c20b4802e2505046b9abfa11a9d92a5399e71`
+on W7900 with the hermetic TheRock HIP 7.15 environment and
+`HIP_VISIBLE_DEVICES=0`. The direct resident control, first shared-loop call,
+and second shared-loop call again produce exactly
+`[[9707,9707,9707,9707],[9708,9709,9708,9709]]`. All four checks that distinguish
+ownership from token-only coincidence pass: the four session identities are
+stable across calls, every session is returned, no request remains active, and
+the manifest records three native c2 steps with no serial fallback. Wall is
+**76.231 s**; no speed claim is made.
+
+Raw clean evidence is
+`/tmp/gfx1100-d1-resident-loop-clean-285c20b4.json` (9,166 bytes, SHA-256
+`2eee6f5ab4476e6501b2cbba1f7df037ec815062488c636a587fbdeac1966ebe`).
+The compact closure is
+`benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-d1-resident-model-runner-closure.json`
+(7,300 bytes before this append, SHA-256
+`93f6eb4c8079d44d68e890be897a1fc561514908dbe421826421afa581c86924`).
+`docs/CONCURRENCY.md` marks all four D1 ownership items complete and updates the
+current-truth/coverage narrative without advancing live admission:
+`GGUF Q4_K_M / BF16, live admission` remains `not_started`. `docs/PLAN.md`
+now distinguishes the persistent real GGUF loop from production continuous
+batching. The next gate is D2: admission during decode, bounded prefill/decode,
+row-local retirement/cancel/reuse, and exact survivor token/state/KV evidence.
