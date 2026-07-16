@@ -160406,3 +160406,30 @@ bounded gfx1100 GGUF OpenAI path to correctness-only `continuous_eq_ok`; it does
 not claim server throughput, TTFT, ITL, concurrent GPU execution, native c8, or
 project-wide backend/model coverage. D5 full live-loop observability is the
 remaining Phase-D gate. gfx1151 E1 remains hardware-blocked on this host.
+
+## 2026-07-16 — Add the D5 scheduler observability snapshot
+
+Started D5 at the model-owning loop rather than extending the existing
+HTTP-only counters. `ResidentBatchScheduler.observability_snapshot()` now emits
+current pending/admitted/active ownership, cumulative admissions/reclaims,
+physical bucket capacity/active mask/slot map/occupancy, executed
+prefill/decode/reclaim counts, and a bounded 1,024-completion metadata history.
+The history deliberately excludes prompt/generated text and retains structured
+finish plus request timing/KV/bucket metadata only.
+
+Per-request completion metadata now distinguishes queue, submitted-to-first-token
+TTFT, per-row inter-token intervals, admitted-to-completion service time, and
+submitted-to-completion wall time. Live summaries expose count/sum/max/p50/p95
+plus bounded samples for closure artifacts; requests cancelled before admission
+or before a first token keep the unavailable service/TTFT fields null rather
+than manufacturing zero latency. `ResidentEngineLoop` adds the selected
+prefill/decode policy and last executed work class, while
+`SubmitPollTextGenerator` and the public `LLM` expose one lock-consistent
+snapshot without forcing model load.
+
+The RED fixture first failed because no live snapshot existed. GREEN validation
+is **316 passed** for the complete scheduler file and **14 passed / 4 skipped**
+for public LLM generation files; focused compilation and diff checks pass. This
+is the first D5 logical unit only. The next unit must attach real GGUF KV/graph
+and route/fallback manifests, then render the combined snapshot through the
+Prometheus endpoint.

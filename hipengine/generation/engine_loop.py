@@ -358,6 +358,22 @@ class SubmitPollTextGenerator:
         with self._loop_lock:
             self._abort_submission_locked(submission, reason="cancel")
 
+    def live_loop_snapshot(self) -> dict[str, object]:
+        """Return one lock-consistent scheduler plus model-runner snapshot."""
+
+        with self._loop_lock:
+            runner_snapshot = getattr(self._runner, "observability_snapshot", None)
+            return {
+                "schema": 1,
+                "kind": "resident_engine_loop_observability",
+                "loop": self._loop.observability_snapshot(),
+                "runner": (
+                    runner_snapshot()
+                    if callable(runner_snapshot)
+                    else {}
+                ),
+            }
+
     @property
     def supports_stream_many(self) -> bool:
         return bool(
@@ -919,6 +935,19 @@ class ResidentEngineLoop:
     @property
     def completed(self) -> dict[int, CompletedRequest]:
         return dict(self.scheduler.completed)
+
+    def observability_snapshot(self) -> dict[str, object]:
+        """Return scheduler ownership, work, policy, and latency evidence."""
+
+        snapshot = self.scheduler.observability_snapshot()
+        snapshot["scheduler_policy"] = {
+            "prefill_decode_policy": self.prefill_decode_policy,
+            "prefill_chunk_tokens": int(self.prefill_chunk_size),
+            "last_work_kind": (
+                None if self._last_work_kind is None else self._last_work_kind.value
+            ),
+        }
+        return snapshot
 
     def submit(self, prompt_tokens: Iterable[int], *, max_new_tokens: int, request_id: int | None = None) -> int:
         return self.scheduler.submit(prompt_tokens, max_new_tokens=max_new_tokens, request_id=request_id)

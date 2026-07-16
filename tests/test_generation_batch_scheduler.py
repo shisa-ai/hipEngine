@@ -16861,6 +16861,108 @@ def test_resident_scheduler_completion_observability_and_pool_counters() -> None
     assert counters["grow_events"] == 1
 
 
+def test_resident_scheduler_live_observability_snapshot_covers_d5_contract() -> None:
+    now = 10.0
+
+    def clock() -> float:
+        return now
+
+    scheduler = ResidentBatchScheduler(capacity=2, context_bucket_size=4, clock=clock)
+    request_id = scheduler.submit([1, 2, 3], max_new_tokens=2)
+    now = 11.0
+    assert scheduler.admit_pending() == (request_id,)
+
+    live = scheduler.observability_snapshot()
+    assert live["requests"] == {
+        "pending": 0,
+        "admitted_current": 1,
+        "active": 1,
+        "admitted_total": 1,
+        "completed_buffered": 0,
+        "reclaimed_total": 0,
+    }
+    assert live["physical_bucket"] == {
+        "capacity": 2,
+        "active_c": 1,
+        "occupied_slots": 1,
+        "free_slots": 1,
+        "active_mask": [True, False],
+        "slot_to_request": [request_id, None],
+        "occupancy_ratio": 0.5,
+    }
+
+    prefill = scheduler.next_prefill_work(chunk_size=8)
+    assert prefill is not None
+    scheduler.record_work_duration(prefill, 0.25)
+    now = 12.0
+    decode0 = scheduler.next_decode_work()
+    assert decode0 is not None
+    scheduler.record_work_duration(decode0, 0.5)
+    assert scheduler.record_generated([GeneratedToken(request_id, 9)]) == ()
+    now = 12.5
+    decode1 = scheduler.next_decode_work()
+    assert decode1 is not None
+    scheduler.record_work_duration(decode1, 0.4)
+    done = scheduler.record_generated([GeneratedToken(request_id, 10)])[0]
+
+    observed = done.observability.to_json_dict()
+    assert observed["queue_seconds"] == 1.0
+    assert observed["time_to_first_token_seconds"] == 2.0
+    assert observed["inter_token_seconds"] == [0.5]
+    assert observed["service_seconds"] == 1.5
+    assert observed["completion_seconds"] == 2.5
+
+    final = scheduler.observability_snapshot()
+    assert final["requests"] == {
+        "pending": 0,
+        "admitted_current": 0,
+        "active": 0,
+        "admitted_total": 1,
+        "completed_buffered": 1,
+        "reclaimed_total": 1,
+    }
+    assert final["work_counts"] == {"prefill": 1, "decode": 2, "reclaim": 1}
+    assert final["latency_seconds"]["queue"]["samples"] == [1.0]
+    assert final["latency_seconds"]["time_to_first_token"]["samples"] == [2.0]
+    assert final["latency_seconds"]["inter_token"]["samples"] == [0.5]
+    assert final["latency_seconds"]["service"]["samples"] == [1.5]
+    assert final["latency_seconds"]["completion"]["samples"] == [2.5]
+    assert final["recent_completed"][0]["request_id"] == request_id
+
+    loop = ResidentEngineLoop(
+        _FakeSerialBridgeRunner(),
+        capacity=2,
+        prefill_chunk_size=2,
+        prefill_decode_policy="fair",
+    )
+    loop_request = loop.submit([1, 2], max_new_tokens=1)
+    assert loop.tick()
+    loop_snapshot = loop.observability_snapshot()
+    assert loop_snapshot["scheduler_policy"] == {
+        "prefill_decode_policy": "fair",
+        "prefill_chunk_tokens": 2,
+        "last_work_kind": "prefill",
+    }
+    assert loop_snapshot["physical_bucket"]["slot_to_request"] == [loop_request, None]
+
+    adapter = SubmitPollTextGenerator(_FakeTextGenerator(), capacity=2, prefill_chunk_size=2)
+    outputs = adapter.generate_detailed(
+        GenerationRequest(
+            prompts=("hello",),
+            max_tokens=1,
+            temperature=0.0,
+            top_p=1.0,
+            ignore_eos=False,
+        )
+    )
+    assert [output.text for output in outputs] == ["generated:hello:-1"]
+    adapter_snapshot = adapter.live_loop_snapshot()
+    assert adapter_snapshot["schema"] == 1
+    assert adapter_snapshot["kind"] == "resident_engine_loop_observability"
+    assert adapter_snapshot["loop"]["requests"]["reclaimed_total"] == 1
+    assert adapter_snapshot["runner"] == {}
+
+
 def test_resident_scheduler_decode_bucket_key_uses_workload_axes() -> None:
     scheduler = ResidentBatchScheduler(capacity=1, context_bucket_size=4)
     request_id = scheduler.submit([1, 2, 3], max_new_tokens=1)

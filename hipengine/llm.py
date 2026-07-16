@@ -244,6 +244,18 @@ class LLM:
         for text in generator.generate(request):
             yield GenerationStreamChunk(text=str(text))
 
+    def live_loop_snapshot(self) -> dict[str, object] | None:
+        """Return live resident-loop observability without forcing model load."""
+
+        generator = self._text_generator
+        if generator is None:
+            return None
+        snapshot = getattr(generator, "live_loop_snapshot", None)
+        if not callable(snapshot):
+            return None
+        payload = snapshot()
+        return dict(payload) if isinstance(payload, dict) else None
+
     @property
     def supports_controlled_streaming(self) -> bool:
         """Whether streaming is driven by the shared submit/poll model loop."""
