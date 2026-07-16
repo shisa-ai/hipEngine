@@ -95,7 +95,7 @@ requests are not admitted into a live model step loop mid-generation.
 | Model path | Backend | Current c>N status | Production behavior | First missing gate |
 | --- | --- | --- | --- | --- |
 | GGUF Q4_K_M / BF16 KV | gfx1151 | Packed exact hybrid in groups of at most c4; short natural c10 runs as c4+c4+c2 | Packed server AR route is available; not a retained c>N throughput row | Per-layer hidden capture, standard all-row 512/128 gate, live admission/cancel, profiler/scaling |
-| GGUF Q4_K_M / BF16 KV | gfx1100 | `exact_hybrid`: B3 all-row c4 512/128 plus B4 10-prompt/8-heldout category lifecycle are token/hidden/state/KV-exact; package-auto c1 peer-wave is not byte-identical | Retained c1 plus correctness-only c4 exact-hybrid anchors; not a retained c>N throughput row | C1 profiler census and hybrid-boundary removal |
+| GGUF Q4_K_M / BF16 KV | gfx1100 | `exact_hybrid`: B3/B4 lifecycle is token/hidden/state/KV-exact; C1 attributes one steady c4 step to 840 exact-row-local and 546 packed-native launches; package-auto c1 peer-wave is not byte-identical | Retained c1 plus correctness-only c4 exact-hybrid anchors; not a retained c>N throughput row | C2 recurrent linear-attention closure |
 | GGUF Q5_K/Q6_K/Q8_0 / BF16 KV | gfx1100/gfx1151 | Not executed end to end under c>N | c1 | Q4_K_M c4 closure first |
 | PARO W4 / BF16 KV | gfx1151 | Exact greedy c2 hybrid below 1024 total context; not fully native or retained | Unsupported groups fail closed to true width-1 sessions | Lifecycle/hidden/profiler/repetition gates, then remove row-local hybrid boundaries |
 | PARO W4 / BF16 KV | gfx1100 | Historical primitive/token diagnostics only; no current retained native route | Width-1 sessions | Re-establish the current-HEAD c2 correctness baseline on W7900 |
@@ -140,6 +140,14 @@ runner owns real device state and exercises them while requests remain live.
 - gfx1100 B2 strict-exact c2/c4, sparse, ragged, and all-layer lifecycle:
   `WORKLOG.md`, **2026-07-16 — Retain clean gfx1100 GGUF B2 direct lifecycle**,
   and `benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-b2-direct-lifecycle.json`.
+- gfx1100 B3/B4 all-row 512/128 and prompt-diversity closure: `WORKLOG.md`,
+  **2026-07-16 — Close gfx1100 GGUF B3 standard lifecycle** and **Close
+  gfx1100 GGUF B4 prompt diversity and Phase B**, plus
+  `benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-b3-standard-lifecycle.json`
+  and `benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-b4-category-lifecycle.json`.
+- gfx1100 C1 runtime/profiler hybrid census: `WORKLOG.md`, **2026-07-16 — Close
+  gfx1100 GGUF C1 hybrid-boundary census**, and
+  `benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-c1-hybrid-census.json`.
 - Historical PARO c1-c8 catalog and lifecycle: `docs/BENCHMARK.md` §PARO c1-c8
   exact concurrency matrix.
 - Historical c>N graph replay and output-tiled GEMV: `WORKLOG.md`, **2026-06-08
@@ -442,11 +450,19 @@ preserving Phase B equality.
 
 C1. Make the fallback boundary observable:
 
-- [ ] Emit one execution manifest per layer family: projection, Conv/GDN,
+- [x] Emit one execution manifest per layer family: projection, Conv/GDN,
       full-attention, MoE/FFN, LM head, and sampler.
-- [ ] Count host row loops, per-row launches, metadata copies, synchronizations,
+- [x] Count host row loops, per-row launches, metadata copies, synchronizations,
       and scalar fallbacks.
-- [ ] Add profiler buckets for packed native work versus exact row-local work.
+- [x] Add profiler buckets for packed native work versus exact row-local work.
+
+Clean `88f10724` attributes one p512 steady c4 transition's 1,386 dispatches to
+**840 exact-row-local** launches (480 projection, 240 Conv/GDN, 120 RMSNorm) and
+**546 packed-native** launches. The exact-row-local bucket accounts for 41.10%
+of instrumented GPU duration. The runtime manifest reports 30 host row-loop
+sites/120 row iterations, nine H2D copies, one four-value D2H token read, two
+synchronizations, and zero steady state import/scatter or scalar fallback. The
+single profiled transition is a route census, not a throughput measurement.
 
 C2. Close recurrent linear attention:
 
@@ -671,18 +687,17 @@ multi-prompt acceptance suite. Speculative work never weakens the AR c=N gates.
 Work this list in order unless a measured blocker is recorded in `WORKLOG.md`.
 The active lane is deliberately narrow.
 
-1. **C1:** trace and quantify every exact-hybrid boundary.
-2. **C2:** implement the first RED-proven c-aware Conv/GDN closure.
-3. **C3:** close remaining host row loops and scalar readbacks.
-4. **C4:** prove one fully native replayable c4 model step.
-5. **C4:** publish the direct c1/c2/c4 and chunked-c8 performance packet.
-6. **D1:** attach that c4 step to one long-lived gfx1100 model runner.
-7. **D2:** close live admission, retirement, and cancellation on W7900.
-8. **E1:** run the same model-step and loop gates unchanged on gfx1151.
-9. **E2:** generalize from native c4 to one true native c8 group.
+1. **C2:** implement the first RED-proven c-aware Conv/GDN closure.
+2. **C3:** close remaining host row loops and scalar readbacks.
+3. **C4:** prove one fully native replayable c4 model step.
+4. **C4:** publish the direct c1/c2/c4 and chunked-c8 performance packet.
+5. **D1:** attach that c4 step to one long-lived gfx1100 model runner.
+6. **D2:** close live admission, retirement, and cancellation on W7900.
+7. **E1:** run the same model-step and loop gates unchanged on gfx1151.
+8. **E2:** generalize from native c4 to one true native c8 group.
 
 Do not start broad c8 tuning, PARO c4/c8, prefix caching, DMS, or speculative
-integration before item 9 unless the current blocker explicitly depends on it.
+integration before item 8 unless the current blocker explicitly depends on it.
 
 ## Coverage ledger
 
