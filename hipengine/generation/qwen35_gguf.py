@@ -111,6 +111,7 @@ _LLAMA_COMPAT_MTP_ENV = {
 }
 _GGUF_MTP_CONTEXT_REPLAY_MIN_PROMPT_TOKENS = 4
 _MTP_SERVING_TARGET_BATCH_MAX_SLOTS = 4
+_GGUF_AR_NATIVE_MAX_SLOTS = 8
 _GGUF_RESIDENT_MODEL_LOOP_DEFAULT_CAPACITY = 4
 _GGUFSessionPoolKey = tuple[str, bool | None, bool | None, int | None]
 _GGUF_AR_PACKED_DECODE_ENV = "HIPENGINE_GGUF_AR_PACKED_DECODE"
@@ -676,7 +677,7 @@ class Qwen35GGUFBringupGenerator:
             result["packed_ar_prefill_reason"] = "backend_hook_unavailable"
             result["reason"] = "backend_hook_unavailable"
         else:
-            ar_widths = [width for width in (2, 4) if width <= max_batch]
+            ar_widths = [width for width in (2, 4, 8) if width <= max_batch]
             for width in sorted(set(ar_widths)):
                 for target_len in warm_prompt_lengths:
                     sessions: list[Qwen35GGUFResidentSession] = []
@@ -1555,8 +1556,8 @@ class Qwen35GGUFBringupGenerator:
         index = 0
         while index < len(live_slots):
             remaining = len(live_slots) - index
-            take = min(_MTP_SERVING_TARGET_BATCH_MAX_SLOTS, remaining)
-            if remaining > _MTP_SERVING_TARGET_BATCH_MAX_SLOTS and remaining - take == 1:
+            take = min(_GGUF_AR_NATIVE_MAX_SLOTS, remaining)
+            if remaining > _GGUF_AR_NATIVE_MAX_SLOTS and remaining - take == 1:
                 take -= 1
             chunks.append(live_slots[index:index + take])
             index += take
@@ -4598,7 +4599,7 @@ class Qwen35GGUFResidentModelRunner:
 
     def _step_native_rows(self, rows: Sequence[_GGUFResidentLoopRow]) -> None:
         row_list = list(rows)
-        width = _GGUF_RESIDENT_MODEL_LOOP_DEFAULT_CAPACITY
+        width = _GGUF_AR_NATIVE_MAX_SLOTS
         for start in range(0, len(row_list), width):
             chunk = row_list[start:start + width]
             if len(chunk) > 1 and _gguf_ar_packed_decode_enabled():
