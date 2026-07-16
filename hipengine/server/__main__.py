@@ -192,6 +192,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="Milliseconds to opt into cold-path coalescing for compatible requests (default: 0 = off)",
     )
     parser.add_argument(
+        "--stream-queue-max-chunks",
+        type=_positive_int,
+        default=int(os.environ.get("HIPENGINE_STREAM_QUEUE_MAX_CHUNKS", "16")),
+        help=(
+            "Maximum buffered token chunks per streaming HTTP request "
+            "(env HIPENGINE_STREAM_QUEUE_MAX_CHUNKS; default: 16)"
+        ),
+    )
+    parser.add_argument(
+        "--shutdown-grace-seconds",
+        type=_nonnegative_float,
+        default=_env_nonnegative_float("HIPENGINE_SHUTDOWN_GRACE_SECONDS", 5.0),
+        help=(
+            "Seconds to drain generation before cooperative forced cancellation "
+            "(env HIPENGINE_SHUTDOWN_GRACE_SECONDS; default: 5.0)"
+        ),
+    )
+    parser.add_argument(
         "--max-queued-requests",
         type=_positive_int,
         default=_env_positive_int("HIPENGINE_MAX_QUEUED_REQUESTS"),
@@ -295,6 +313,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         kv_scale_dtype=args.kv_scale_dtype,
         kv_scale_granularity=args.kv_scale_granularity,
         generation_batch_window_ms=args.generation_batch_window_ms,
+        stream_queue_max_chunks=args.stream_queue_max_chunks,
+        shutdown_grace_seconds=args.shutdown_grace_seconds,
         request_timeout_ms=args.request_timeout_ms,
         metrics=args.metrics,
         prefix_cache=args.prefix_cache,

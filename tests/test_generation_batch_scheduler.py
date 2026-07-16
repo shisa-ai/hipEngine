@@ -32,6 +32,7 @@ from hipengine.generation import (
     CompactPromptSlab,
     EngineLoopConfig,
     GeneratedToken,
+    GenerationCancelled,
     GenerationRequest,
     GenerationOutput,
     GenerationStreamChunk,
@@ -16317,23 +16318,21 @@ def test_resident_engine_loop_uses_batch_commit_compact_and_reclaim_contract() -
 
 def test_submit_poll_text_generator_preserves_stream_detailed_telemetry() -> None:
     class DetailedStreamGenerator(_FakeTextGenerator):
-        def generate_detailed(self, request: GenerationRequest):
+        def stream_detailed(self, request: GenerationRequest):
             self.requests.append(request)
-            return [
-                GenerationOutput(
-                    "alpha",
-                    telemetry=GenerationTelemetry.from_decode_counts(
-                        prompt_tokens=2,
-                        generated_tokens=1,
-                        phase="answer",
-                        sampler_mode="processed_argmax",
-                        request_id="row-0",
-                    ),
-                )
-            ]
+            yield GenerationStreamChunk(
+                "alpha",
+                telemetry=GenerationTelemetry.from_decode_counts(
+                    prompt_tokens=2,
+                    generated_tokens=1,
+                    phase="answer",
+                    sampler_mode="processed_argmax",
+                    request_id="row-0",
+                ),
+            )
 
         def stream(self, request: GenerationRequest):  # pragma: no cover
-            raise AssertionError("resident streaming must not call the legacy inner streamer")
+            raise AssertionError("stream_detailed should be preferred")
 
     inner = DetailedStreamGenerator()
     adapter = SubmitPollTextGenerator(inner)
@@ -16665,6 +16664,33 @@ def test_submit_poll_text_generator_routes_concurrent_streams_and_reclaims_close
     assert adapter._loop.pending_count == 0
     assert adapter._loop.active_count == 0
     assert adapter._loop.completed == {}
+
+    overflow_adapter = SubmitPollTextGenerator(
+        ConcurrentInner(),
+        capacity=2,
+        prefill_chunk_size=2,
+        stream_queue_max_chunks=1,
+    )
+    slow = overflow_adapter.stream_detailed(replace(first_request, max_tokens=8))
+    neighbor = overflow_adapter.stream_detailed(replace(second_request, max_tokens=3))
+    assert next(slow).text == "request0:1"
+    assert [chunk.text for chunk in neighbor] == [
+        "request1:1",
+        "request1:2",
+        "request1:3",
+    ]
+    assert next(slow).text == "request0:2"
+    with pytest.raises(GenerationCancelled) as overflow:
+        next(slow)
+    assert overflow.value.finish_details.to_json_dict() == {
+        "reason": "cancelled",
+        "cancelled": True,
+        "budget_pressure": "client_backpressure",
+    }
+    assert overflow_adapter._runner.reclaims == [(0, "cancel"), (1, "length")]
+    assert overflow_adapter._loop.pending_count == 0
+    assert overflow_adapter._loop.active_count == 0
+    assert overflow_adapter._loop.completed == {}
 
 
 def test_engine_loop_cli_env_defaults_match_docs() -> None:

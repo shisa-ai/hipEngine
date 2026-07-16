@@ -160298,3 +160298,54 @@ This is the first D4 logical unit, not D4 closure. The OpenAI batcher still
 serializes active stream producers, uses unbounded per-request queues, and has
 no explicit graceful/forced shutdown drain. Those server ownership changes and
 a clean W7900 HTTP lifecycle gate remain next.
+
+## 2026-07-16 — Add D4 bounded HTTP producers and shutdown drain
+
+Connected the OpenAI generation batcher to the controlled-stream capability
+introduced in `0d158a1d`. A controlled stream is now launched as an independent
+async producer rather than awaited by the single queue worker, so later HTTP
+requests can submit while a neighbor is still decoding. Producers share the
+same model-loop tick lock underneath; this is continuous membership, not
+concurrent GPU kernel execution.
+
+Each HTTP stream now has an explicit bounded queue (default 16 chunks, minimum
+2). A blocked producer does not block another row's producer. The resident
+subscription queue is independently bounded; if a neighbor advances far enough
+to overflow a slow row, only that row is cancelled and the stream reports
+`budget_pressure=client_backpressure`. Closing the HTTP iterator marks its
+request token cancelled and cancels only its producer. The capability manifest
+now distinguishes controlled continuous membership from the legacy prompt-list
+coalescer fallback.
+
+Added server shutdown ownership: admission closes, queued and active work drain
+for the configured grace period, then all remaining request tokens are tripped
+before producer tasks are cancelled. The long-lived `LLM`/resident runner is
+closed after the batcher reaches its graceful or forced terminal state. New
+public knobs are `HIPENGINE_STREAM_QUEUE_MAX_CHUNKS` /
+`--stream-queue-max-chunks` and `HIPENGINE_SHUTDOWN_GRACE_SECONDS` /
+`--shutdown-grace-seconds`; `docs/API.md` and `docs/ENVS.md` record the exact
+scope. A regression in generic fake/third-party stream hooks showed that the
+controlled contract must be capability-scoped: non-resident generators retain
+their existing detailed streamer, while gfx1100 GGUF advertises and uses the
+resident path.
+
+RED tests prove live-neighbor admission, bounded slow-client isolation,
+disconnect token propagation, forced cancellation after grace, app shutdown
+runner close, and capability/config reporting. Full host validation is green:
+
+```bash
+python3 -m pytest -q tests/test_server_api.py
+# 486 passed
+python3 -m pytest -q tests/test_generation_batch_scheduler.py \
+  tests/test_llm_generate.py tests/test_llm_gguf_generate_path.py
+# 329 passed, 4 skipped
+python3 -m pytest -q tests/test_generation_qwen35_gguf_sampling.py \
+  tests/test_qwen35_gguf_runner.py tests/test_qwen35_gguf_decode_graph.py \
+  tests/test_gguf_packed_decode_graph.py tests/test_gguf_decode_graph_g5.py
+# 68 passed, 9 skipped
+```
+
+D4 is not yet closed. The host ownership contracts are complete, but a clean
+W7900 OpenAI SSE gate must still prove real GGUF live admission, per-token row
+routing, disconnect/timeout reclaim with survivor equality, bounded
+backpressure, and graceful/forced device-resource drain.
