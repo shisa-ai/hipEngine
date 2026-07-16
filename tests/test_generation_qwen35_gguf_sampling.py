@@ -10,6 +10,7 @@ import pytest
 import hipengine.generation.qwen35_gguf as qwen35_gguf
 from hipengine.dispatch import WorkItem, WorkKind
 from hipengine.generation import (
+    EngineLoopConfig,
     GenerationCancellationToken,
     GenerationCancelled,
     GenerationDeadlineExceeded,
@@ -18,6 +19,7 @@ from hipengine.generation import (
     SubmitPollTextGenerator,
     TokenLogprob,
 )
+from hipengine.kvcache import DeviceChunkedKVPool
 
 
 class _FakeTokenizer:
@@ -1671,6 +1673,127 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
     assert generator.last_batch_generation is not None
     assert generator.last_batch_generation["path"] == "gguf_resident_model_loop"
     assert generator.last_batch_generation["serial_decode_fallback"] is True
+
+
+def test_gguf_resident_runner_device_kv_admission_is_atomic_at_high_water() -> None:
+    class FakeSession:
+        def __init__(self, slot_id: int) -> None:
+            self.slot_id = int(slot_id)
+            self.scratch = SimpleNamespace(max_positions=513)
+            self.allocation = None
+            self.pool = None
+
+        def create_device_kv_pool(self, **config):
+            return DeviceChunkedKVPool(
+                page_bytes=4096,
+                initial_pages=int(config["initial_pages"]),
+                low_water_pages=int(config["low_water_pages"]),
+                high_water_pages=(
+                    None
+                    if config["high_water_pages"] is None
+                    else int(config["high_water_pages"])
+                ),
+                chunk_pages=int(config["chunk_pages"]),
+                idle_grace_seconds=float(config["idle_grace_seconds"]),
+                allocate_chunk=lambda start, pages: {
+                    "ptr": 0xA0000000 + int(start) * 4096,
+                    "pages": int(pages),
+                },
+                free_chunk=lambda backing: None,
+                page_pointer=lambda backing, local_page: int(backing["ptr"]) + int(local_page) * 4096,
+            )
+
+        def bind_device_kv_allocation(self, pool, allocation) -> None:
+            assert self.allocation is None
+            self.pool = pool
+            self.allocation = allocation
+
+        def invalidate_device_kv_graphs(self) -> int:
+            return 0
+
+        def unbind_device_kv_allocation(self):
+            allocation = self.allocation
+            assert allocation is not None
+            self.pool = None
+            self.allocation = None
+            return allocation
+
+        def reset(self) -> None:
+            pass
+
+        def close(self) -> None:
+            pass
+
+    class FakeOwner:
+        backend = "hip_gfx1100"
+        target_arch = "gfx1100"
+        tokenizer = _FakeTokenizer()
+        _prepared_max_sequence_length = 256
+
+        def __init__(self) -> None:
+            self.sessions = [FakeSession(index) for index in range(3)]
+
+        def _get_shared_runner(self):
+            return SimpleNamespace(runtime=SimpleNamespace(mem_get_info=lambda: (100, 200)))
+
+        def _acquire_shared_session(self, shared_runner, **kwargs):
+            del shared_runner, kwargs
+            session = self.sessions.pop(0)
+            return session, ("continuous_ar_dynamic_kv", True, True, 256), False
+
+        def _release_shared_session(self, key, session) -> None:
+            del key
+            self.sessions.append(session)
+
+    owner = FakeOwner()
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner(owner, capacity=3)
+    runner.configure_engine_loop(
+        EngineLoopConfig(
+            max_active_requests=3,
+            kv_pool_initial_pages=1,
+            kv_pool_low_water_pages=1,
+            kv_pool_high_water_pages=2,
+            kv_pool_chunk_pages=1,
+            kv_pool_idle_grace_seconds=0.0,
+        )
+    )
+    request = _request(prompts=("first", "first", "first"), max_tokens=2, ignore_eos=True)
+    runner.register_batch((1, 2, 3), request, prompt_rows=((10, 11), (10, 11), (10, 11)))
+
+    runner.reserve_admission(SimpleNamespace(request_id=1))
+    runner.reserve_admission(SimpleNamespace(request_id=2))
+    before = runner.kv_pool_stats
+    assert before is not None
+
+    with pytest.raises(MemoryError, match="high-water"):
+        runner.reserve_admission(SimpleNamespace(request_id=3))
+
+    after = runner.kv_pool_stats
+    assert after is not None
+    assert after.current_pages == before.current_pages == 2
+    assert after.refcounted_pages == before.refcounted_pages == 2
+    assert after.grow_failures == before.grow_failures + 1
+    assert runner._rows[3].lease is None
+    assert runner._rows[3].kv_allocation is None
+
+    runner.rollback_admission(SimpleNamespace(request_id=1))
+    runner.reserve_admission(SimpleNamespace(request_id=3))
+    assert runner._rows[3].lease is not None
+    assert runner._rows[3].kv_allocation is not None
+    assert runner.kv_pool_memory_snapshot()["dynamic_pool"]["refcounted_pages"] == 2
+
+    runner.rollback_admission(SimpleNamespace(request_id=2))
+    runner.rollback_admission(SimpleNamespace(request_id=3))
+    runner.close()
+
+    ceiling_runner = qwen35_gguf.Qwen35GGUFResidentModelRunner(owner, capacity=3)
+    ceiling_runner.configure_engine_loop(EngineLoopConfig(max_active_requests=3))
+    assert ceiling_runner.kv_pool is not None
+    assert ceiling_runner.kv_pool.high_water_pages is None
+    assert ceiling_runner.kv_pool.current_pages == 9
+    assert ceiling_runner.kv_pool.low_water_pages == 9
+    assert ceiling_runner.kv_pool.chunk_pages == 9
+    ceiling_runner.close()
 
 
 def test_gguf_resident_runner_commits_incremental_prefill_chunks() -> None:

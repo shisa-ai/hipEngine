@@ -16091,6 +16091,50 @@ def test_submit_poll_text_generator_reuses_one_loop_across_generate_calls() -> N
     assert [request.prompts for request in inner.requests] == [("one", "two"), ("three",)]
 
 
+def test_submit_poll_text_generator_applies_resolved_loop_config_to_runner() -> None:
+    class ConfiguredRunner:
+        def __init__(self, capacity: int) -> None:
+            self.capacity = int(capacity)
+            self.configured: EngineLoopConfig | None = None
+
+        def configure_engine_loop(self, config: EngineLoopConfig) -> None:
+            self.configured = config
+
+    class ConfiguredInner:
+        def __init__(self) -> None:
+            self.runner: ConfiguredRunner | None = None
+
+        def create_resident_model_runner(self, *, capacity):
+            self.runner = ConfiguredRunner(capacity)
+            return self.runner
+
+    config = EngineLoopConfig(
+        prefill_decode_policy="fair",
+        max_active_requests=3,
+        max_prefill_chunk_tokens=7,
+        kv_pool_initial_pages=6,
+        kv_pool_low_water_pages=3,
+        kv_pool_high_water_pages=12,
+        kv_pool_chunk_pages=3,
+        kv_pool_idle_grace_seconds=1.5,
+        max_pending_requests=5,
+    )
+    inner = ConfiguredInner()
+    adapter = SubmitPollTextGenerator(inner, config=config)
+
+    assert inner.runner is adapter._runner
+    assert inner.runner is not None
+    assert inner.runner.capacity == 3
+    assert inner.runner.configured == config
+    assert adapter._loop.config == config
+    assert adapter._loop.prefill_chunk_size == 7
+    assert adapter._loop.prefill_decode_policy == "fair"
+    assert adapter._prefill_chunk_size == 7
+
+    with pytest.raises(ValueError, match="capacity conflicts"):
+        SubmitPollTextGenerator(inner, capacity=2, config=config)
+
+
 def test_submit_poll_text_generator_exposes_live_submit_poll_and_row_cancel() -> None:
     class StepwiseRunner:
         capacity = 2

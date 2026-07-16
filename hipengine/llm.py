@@ -367,7 +367,12 @@ class LLM:
         if self._text_generator is not None:
             return self._text_generator
 
-        from hipengine.generation import SubmitPollTextGenerator, register_builtin_generators, resolve_text_generator
+        from hipengine.generation import (
+            SubmitPollTextGenerator,
+            engine_loop_config_from_env,
+            register_builtin_generators,
+            resolve_text_generator,
+        )
 
         register_builtin_generators()
         weight_index, model_plugin = self._load_model_metadata()
@@ -383,7 +388,8 @@ class LLM:
                 model_path=self.model,
                 weight_index=weight_index,
                 model_plugin=model_plugin,
-            )
+            ),
+            config=engine_loop_config_from_env(),
         )
         return self._text_generator
 
