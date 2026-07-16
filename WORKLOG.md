@@ -160433,3 +160433,35 @@ for public LLM generation files; focused compilation and diff checks pass. This
 is the first D5 logical unit only. The next unit must attach real GGUF KV/graph
 and route/fallback manifests, then render the combined snapshot through the
 Prometheus endpoint.
+
+## 2026-07-16 — Attach D5 GGUF resource and route observability
+
+The second D5 unit attaches the abstract loop snapshot to the actual long-lived
+GGUF owner. `Qwen35GGUFResidentModelRunner.observability_snapshot()` now reports
+resident capacity/active ids/session availability; the complete dynamic-pool
+stats payload including current/high-water bytes and pages, free/refcounted/
+pinned pages, and grow/failure/shrink counts; and cumulative route/fallback
+metadata.
+
+Route counters distinguish full-row and incremental native prefill, packed
+native decode transitions, c1 decode transitions, multi-row serial fallback,
+and resident sampler/zero-token fallback. The last detailed packed execution
+manifest is retained verbatim, and a bounded completion history keeps only
+request id plus execution-shape/fallback metadata. Fallback reasons are additive
+and explicit; no backend or quant branch was added outside the existing GGUF
+plugin owner.
+
+Real graph handles are now observed by their full stable bucket key before
+invalidation. Each bucket retains current entries plus cumulative captures,
+hits, replay calls, and invalidations; aggregate totals are derived from those
+bucket rows. The graph observer samples replay deltas rather than counting
+object lookups, and the existing device-KV release path records the handle before
+closing it so capture/replay evidence survives page reclaim.
+
+RED fixtures first found the missing runner snapshot. GREEN covers route
+counters/manifests across native c2, c1, sampled, and zero-token requests;
+atomic dynamic-KV high-water metrics; and one bucket's capture→two replay
+hits→invalidation lifecycle. The complete GGUF generation file is **57 passed**;
+the focused real-runner file is HIP-skipped on the host interpreter as expected.
+Python compilation and diff checks pass. Prometheus rendering and a real W7900
+live scrape remain open.
