@@ -1566,7 +1566,14 @@ def test_gguf_prepare_reuses_shared_runner_for_ar(monkeypatch) -> None:
         def __init__(self, model_path, **kwargs):
             self.runtime = kwargs["runtime"]
             self.runner = kwargs["shared_runner"]
-            calls.append(("session_init", str(model_path), kwargs["shared_runner"]))
+            calls.append(
+                (
+                    "session_init",
+                    str(model_path),
+                    kwargs["shared_runner"],
+                    kwargs.get("max_sequence_length"),
+                )
+            )
 
         def __enter__(self):
             return self
@@ -1586,7 +1593,7 @@ def test_gguf_prepare_reuses_shared_runner_for_ar(monkeypatch) -> None:
     monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
 
     generator = _generator()
-    assert generator.prepare() is None
+    assert generator.prepare(max_sequence_length=1024) == 1024
     outputs = generator.generate_detailed(_request(max_tokens=2))
 
     assert outputs[0].text == "BC"
@@ -1595,6 +1602,7 @@ def test_gguf_prepare_reuses_shared_runner_for_ar(monkeypatch) -> None:
     session_inits = [call for call in calls if call[0] == "session_init"]
     assert len(session_inits) == 1
     assert session_inits[0][2] is generator._shared_runner
+    assert session_inits[0][3] == 1024
 
 
 def test_gguf_generate_preserves_exact_token_prompt(monkeypatch) -> None:
