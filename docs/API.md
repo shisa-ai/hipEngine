@@ -625,7 +625,14 @@ Set `HIPENGINE_MAX_QUEUED_REQUESTS` or `--max-queued-requests` to enable an
 OpenAI-server generation queue cap. Set `HIPENGINE_MAX_ACTIVE_REQUESTS` or
 `--max-active-requests` to limit how many HTTP requests can be coalesced into
 one active backend generation batch; overflow remains queued and is still
-bounded by the queue cap when configured. Set `HIPENGINE_MAX_CHAT_SESSIONS` or
+bounded by the queue cap when configured. Streaming requests use bounded
+per-client token queues (`HIPENGINE_STREAM_QUEUE_MAX_CHUNKS`, default 16).
+Backpressure blocks only that producer; if another resident request advances
+far enough to fill the model-loop subscription queue, the slow row is cancelled
+with `budget_pressure=client_backpressure` rather than stalling its neighbors.
+On process shutdown, admission closes and work drains for
+`HIPENGINE_SHUTDOWN_GRACE_SECONDS` (default 5.0) before cooperative cancellation
+and long-lived runner close. Set `HIPENGINE_MAX_CHAT_SESSIONS` or
 `--max-chat-sessions` to cap app-local chat transcript sessions. When a
 rejecting admission cap is full, new work fails before enqueue/generation with
 HTTP 429 `engine_busy` and `Retry-After: 1`; rejected requests do not allocate
@@ -1200,12 +1207,15 @@ in local, non-sensitive debugging sessions.
   Already-running GPU kernels or a captured graph replay are not preempted
   mid-call.
 - HTTP generation requests route through the in-process generation batcher.
-  Compatible queued prompts can coalesce into one prompt-list engine call, but
-  true continuous decode, concurrent backend execution, and scheduler fairness
-  remain later runtime work. Backend batch width can be capped with
-  `--max-active-requests`; app-local chat transcript sessions can be capped with
-  `--max-chat-sessions`. These are admission/batching limits, not resident KV
-  fairness schedulers.
+  A generator advertising `supports_controlled_streaming` launches independent
+  bounded stream producers against the same submit/poll model loop, so a new
+  request can be admitted while a neighbor is decoding and a disconnected row
+  can be reclaimed independently. Model transitions remain deliberately
+  serialized by the resident loop's tick lock; this is continuous membership,
+  not concurrent kernel execution. Generators without that contract retain the
+  compatible prompt-list coalescer fallback. Backend batch width can be capped
+  with `--max-active-requests`; app-local chat transcript sessions can be capped
+  with `--max-chat-sessions`.
   Prometheus mode exposes `hipengine_generation_queue_depth`,
   `hipengine_generation_queue_max_depth`, and
   `hipengine_generation_worker_active` gauges plus

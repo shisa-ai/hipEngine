@@ -245,6 +245,16 @@ class LLM:
             yield GenerationStreamChunk(text=str(text))
 
     @property
+    def supports_controlled_streaming(self) -> bool:
+        """Whether streaming is driven by the shared submit/poll model loop."""
+
+        generator = self._text_generator
+        return bool(
+            generator is not None
+            and getattr(generator, "supports_controlled_streaming", False)
+        )
+
+    @property
     def supports_stream_many(self) -> bool:
         """Whether the resolved generator advertises public multi-row streaming."""
 
@@ -275,6 +285,14 @@ class LLM:
 
         for chunk in detailed_streamer(request):
             yield GenerationStreamChunk.from_value(chunk)
+
+    def close(self) -> None:
+        """Release the resolved generator's long-lived model resources."""
+
+        generator = self._text_generator
+        closer = None if generator is None else getattr(generator, "close", None)
+        if callable(closer):
+            closer()
 
     def prepare(
         self,

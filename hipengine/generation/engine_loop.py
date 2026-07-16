@@ -19,7 +19,9 @@ from typing import Any, Iterable, Protocol, Sequence
 
 from hipengine.dispatch import RequestState, SlotMove, WorkItem, WorkKind
 from hipengine.generation.batch_scheduler import CompletedRequest, GeneratedToken, ResidentBatchScheduler
+from hipengine.generation.deadline import GenerationCancelled
 from hipengine.generation.registry import (
+    FinishDetails,
     GenerationOutput,
     GenerationRequest,
     GenerationStreamChunk,
@@ -358,11 +360,15 @@ class SubmitPollTextGenerator:
 
     @property
     def supports_stream_many(self) -> bool:
-        return True
+        return bool(
+            self._has_resident_runner
+            or getattr(self._inner, "supports_stream_many", False)
+            or getattr(self._inner, "supports_stream_many_detailed", False)
+        )
 
     @property
     def supports_controlled_streaming(self) -> bool:
-        return True
+        return self._has_resident_runner
 
     @property
     def stream_queue_max_chunks(self) -> int:
@@ -373,7 +379,29 @@ class SubmitPollTextGenerator:
             yield str(chunk)
 
     def stream_detailed(self, request: GenerationRequest) -> Iterator[GenerationStreamChunk]:
-        yield from self.stream_many_detailed(request)
+        if self._has_resident_runner:
+            yield from self.stream_many_detailed(request)
+            return
+        detailed_streamer = getattr(self._inner, "stream_detailed", None)
+        if callable(detailed_streamer):
+            for chunk in detailed_streamer(request):
+                yield GenerationStreamChunk.from_value(chunk)
+            return
+        streamer = getattr(self._inner, "stream", None)
+        if callable(streamer):
+            for chunk in streamer(request):
+                yield GenerationStreamChunk.from_value(chunk)
+            return
+        for output in self.generate_detailed(request):
+            generation_output = (
+                output if isinstance(output, GenerationOutput) else GenerationOutput(text=str(output))
+            )
+            yield GenerationStreamChunk(
+                text=generation_output.text,
+                token_logprobs=generation_output.token_logprobs,
+                finish_details=generation_output.finish_details,
+                telemetry=generation_output.telemetry,
+            )
 
     def stream_many_detailed(self, request: GenerationRequest) -> Iterator[GenerationStreamChunk]:
         """Stream row-indexed events from the shared resident loop.
@@ -383,6 +411,14 @@ class SubmitPollTextGenerator:
         before the tick lock is released, so concurrent callers cannot consume
         one another's rows.
         """
+
+        if not self._has_resident_runner:
+            detailed_streamer = getattr(self._inner, "stream_many_detailed", None)
+            if not callable(detailed_streamer):
+                raise NotImplementedError("multi-row streaming is not supported by this generator")
+            for chunk in detailed_streamer(request):
+                yield GenerationStreamChunk.from_value(chunk)
+            return
 
         with self._loop_lock:
             submission = self._submit_detailed_locked(request)
@@ -409,6 +445,14 @@ class SubmitPollTextGenerator:
                     if chunk.text or chunk.token_logprobs:
                         yield chunk
                     continue
+                if state.overflowed_request_ids:
+                    raise GenerationCancelled(
+                        FinishDetails(
+                            reason="cancelled",
+                            cancelled=True,
+                            budget_pressure="client_backpressure",
+                        )
+                    )
                 if complete:
                     break
                 events = self.poll(max_ticks=1)
@@ -479,6 +523,24 @@ class SubmitPollTextGenerator:
             self._loop.release_completed(request_id)
         self._runner.discard(submission.request_ids)
 
+    def close(self) -> None:
+        """Force-reclaim any remaining rows and release long-lived resources."""
+
+        with self._loop_lock:
+            states = {id(state): state for state in self._stream_states_by_request.values()}
+            for state in states.values():
+                self._abort_submission_locked(state.submission, reason="cancel")
+            self._stream_states_by_request.clear()
+            active_request_ids = tuple(getattr(self._runner, "active_request_ids", ()))
+            for request_id in active_request_ids:
+                self._loop.cancel(int(request_id), reason="cancel")
+                self._loop.release_completed(int(request_id))
+            if active_request_ids:
+                self._runner.discard(active_request_ids)
+            closer = getattr(self._runner, "close", None)
+            if callable(closer):
+                closer()
+
 
 @dataclass(frozen=True, slots=True)
 class _SubmitPollTextRow:
@@ -500,6 +562,10 @@ class _SubmitPollTextRunner:
     @property
     def outputs(self) -> dict[int, GenerationOutput]:
         return dict(self._outputs)
+
+    @property
+    def active_request_ids(self) -> tuple[int, ...]:
+        return tuple(self._rows)
 
     def prompt_tokens(self, prompt: Any) -> tuple[int, ...]:
         return _surrogate_prompt_tokens(prompt)

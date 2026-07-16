@@ -293,6 +293,8 @@ class ServerConfig:
     kv_scale_dtype: str = "fp16"
     kv_scale_granularity: str = "per_token_head"
     generation_batch_window_ms: float = 0.0
+    stream_queue_max_chunks: int = 16
+    shutdown_grace_seconds: float = 5.0
     request_timeout_ms: float | None = None
     metrics: str = "off"
     prefix_cache: str = "off"
@@ -314,6 +316,12 @@ class ServerConfig:
                 + ", ".join(_SPECULATIVE_MTP_SERVING_MODES)
             )
         object.__setattr__(self, "speculative_mtp_serving", mode)
+        if int(self.stream_queue_max_chunks) < 2:
+            raise ValueError("stream_queue_max_chunks must be at least 2")
+        if float(self.shutdown_grace_seconds) < 0.0:
+            raise ValueError("shutdown_grace_seconds must be non-negative")
+        object.__setattr__(self, "stream_queue_max_chunks", int(self.stream_queue_max_chunks))
+        object.__setattr__(self, "shutdown_grace_seconds", float(self.shutdown_grace_seconds))
 
     @property
     def model_id(self) -> str:
@@ -1094,7 +1102,8 @@ def _known_unsupported_fields() -> list[str]:
     return list(_UNSUPPORTED_GRAMMAR_FIELDS)
 
 
-def _admission_capability(config: ServerConfig) -> dict[str, Any]:
+def _admission_capability(config: ServerConfig, *, engine: Any | None = None) -> dict[str, Any]:
+    controlled_streaming = _engine_supports_controlled_streaming(engine)
     return {
         "queue": {
             "max_queued_requests": config.max_queued_requests,
@@ -1109,15 +1118,23 @@ def _admission_capability(config: ServerConfig) -> dict[str, Any]:
             "max_active": config.max_chat_sessions,
             "rejects_new_sessions_when_full": config.max_chat_sessions is not None,
         },
-        "scheduler_fairness": _scheduler_fairness_capability(),
+        "streaming": {
+            "controlled_model_loop": controlled_streaming,
+            "queue_max_chunks": int(config.stream_queue_max_chunks),
+            "backpressure_scope": "per_request",
+            "shutdown_grace_seconds": float(config.shutdown_grace_seconds),
+        },
+        "scheduler_fairness": _scheduler_fairness_capability(
+            continuous_decode=controlled_streaming
+        ),
     }
 
 
-def _scheduler_fairness_capability() -> dict[str, Any]:
+def _scheduler_fairness_capability(*, continuous_decode: bool = False) -> dict[str, Any]:
     return {
         "policy": _GENERATION_SCHEDULER_FAIRNESS_POLICY,
         "compatible_sampling_coalescing": True,
-        "continuous_decode": False,
+        "continuous_decode": bool(continuous_decode),
         "preemptive_fairness": False,
     }
 
@@ -1234,7 +1251,7 @@ def _replay_capability_snapshot(config: ServerConfig, *, engine: Any | None = No
             "continuations": _session_continuation_capability(),
             "metadata": _session_metadata_capability(config.max_chat_sessions),
         },
-        "admission": _admission_capability(config),
+        "admission": _admission_capability(config, engine=engine),
         "parallelism": _parallelism_capability(),
         "unsupported_fields": _known_unsupported_fields(),
     }
@@ -1883,6 +1900,8 @@ class _QueuedGeneration:
     include_batch_metadata: bool = False
     route: str = _SPECULATIVE_MTP_DEFAULT_ROUTE
     cancelled: bool = False
+    finished: bool = False
+    producer_task: asyncio.Task[None] | None = None
 
 
 class _CompositeGenerationCancellationToken:
@@ -1930,6 +1949,7 @@ class _GenerationBatcher:
         max_active_requests: int | None = None,
         route_max_active_requests: Mapping[str, int] | None = None,
         retry_after_seconds: int = 1,
+        stream_queue_max_chunks: int = 16,
     ) -> None:
         self._engine_factory = engine_factory
         self._batch_window_seconds = max(0.0, float(batch_window_seconds))
@@ -1946,9 +1966,16 @@ class _GenerationBatcher:
                 raise ValueError("route max_active_requests limits must be positive")
             self._route_max_active_requests[str(route)] = route_limit
         self._retry_after_seconds = max(1, int(retry_after_seconds))
+        self._stream_queue_max_chunks = int(stream_queue_max_chunks)
+        if self._stream_queue_max_chunks < 2:
+            raise ValueError("stream_queue_max_chunks must be at least 2")
         self._queue: deque[_QueuedGeneration] = deque()
         self._worker: asyncio.Task[None] | None = None
+        self._stream_tasks: set[asyncio.Task[None]] = set()
+        self._stream_items: dict[int, _QueuedGeneration] = {}
+        self._active_items: dict[int, _QueuedGeneration] = {}
         self._active_requests = 0
+        self._accepting = True
 
     def queue_depth(self) -> int:
         return len(self._queue)
@@ -1963,7 +1990,20 @@ class _GenerationBatcher:
         return self._max_active_requests
 
     def active(self) -> bool:
-        return self._worker is not None and not self._worker.done()
+        worker_active = self._worker is not None and not self._worker.done()
+        return worker_active or any(not task.done() for task in self._stream_tasks)
+
+    def stream_queue_max_chunks(self) -> int:
+        return self._stream_queue_max_chunks
+
+    def stream_queue_depths(self) -> tuple[int, ...]:
+        items = [*self._queue, *self._stream_items.values()]
+        queues = {
+            id(item.stream_queue): item.stream_queue
+            for item in items
+            if item.stream_queue is not None
+        }
+        return tuple(queue.qsize() for queue in queues.values())
 
     def _route_request_cap(self, route: str) -> int | None:
         limit = self._max_active_requests
@@ -2005,6 +2045,15 @@ class _GenerationBatcher:
         )
 
     def _raise_if_full(self, *, error_extra: Mapping[str, Any] | None = None) -> None:
+        if not self._accepting:
+            raise OpenAIHTTPError(
+                429,
+                "generation engine is draining",
+                error_type="rate_limit_error",
+                code="engine_busy",
+                extra=error_extra,
+                headers={"Retry-After": str(self._retry_after_seconds)},
+            )
         if self._max_queue_size is None:
             return
         if len(self._queue) < self._max_queue_size:
@@ -2057,7 +2106,7 @@ class _GenerationBatcher:
 
         prompt_tuple = tuple(normalize_prompt_input(prompt) for prompt in prompts)
         loop = asyncio.get_running_loop()
-        queue: asyncio.Queue[object] = asyncio.Queue()
+        queue: asyncio.Queue[object] = asyncio.Queue(maxsize=self._stream_queue_max_chunks)
         self._raise_if_full(error_extra=error_extra)
         item = _QueuedGeneration(
             prompts=prompt_tuple,
@@ -2076,7 +2125,13 @@ class _GenerationBatcher:
                     raise event
                 yield event
         finally:
-            item.cancelled = True
+            if not item.finished:
+                _cancel_queued_generation(item, reason="disconnect")
+                producer = item.producer_task
+                if producer is not None and producer is not asyncio.current_task() and not producer.done():
+                    producer.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await producer
 
     async def _run(self) -> None:
         try:
@@ -2086,6 +2141,11 @@ class _GenerationBatcher:
                 first = self._queue.popleft()
                 if _queued_generation_cancelled(first):
                     continue
+                if first.stream_queue is not None:
+                    engine = self._engine_factory()
+                    if _engine_supports_controlled_streaming(engine):
+                        self._launch_controlled_stream(first, engine)
+                        continue
                 key = self._group_key(first)
                 group = [first]
                 deferred: deque[_QueuedGeneration] = deque()
@@ -2106,11 +2166,43 @@ class _GenerationBatcher:
             if self._queue:
                 self._worker = asyncio.create_task(self._run())
 
+    def _launch_controlled_stream(self, item: _QueuedGeneration, engine: Any) -> None:
+        task = asyncio.create_task(self._run_controlled_stream(item, engine))
+        item.producer_task = task
+        self._stream_tasks.add(task)
+        self._stream_items[id(item)] = item
+
+        def finished(done: asyncio.Task[None]) -> None:
+            self._stream_tasks.discard(done)
+            self._stream_items.pop(id(item), None)
+
+        task.add_done_callback(finished)
+
+    async def _run_controlled_stream(self, item: _QueuedGeneration, engine: Any) -> None:
+        self._active_requests += 1
+        self._active_items[id(item)] = item
+        try:
+            if len(item.prompts) == 1:
+                await self._stream_single(item, engine=engine)
+            elif _engine_supports_stream_many(engine):
+                await self._stream_many(item, engine)
+            else:
+                raise NotImplementedError("controlled multi-row streaming is not supported by this generator")
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            await _finish_stream_queued_generation(item, exception=exc)
+        finally:
+            self._active_items.pop(id(item), None)
+            self._active_requests = max(0, self._active_requests - 1)
+
     async def _run_group(self, group: Sequence[_QueuedGeneration]) -> None:
         if not group:
             return
+        self._active_requests += len(group)
+        for item in group:
+            self._active_items[id(item)] = item
         try:
-            self._active_requests = len(group)
             if len(group) == 1 and group[0].stream_queue is not None:
                 if len(group[0].prompts) == 1:
                     await self._stream_single(group[0])
@@ -2178,7 +2270,9 @@ class _GenerationBatcher:
                 else:
                     _finish_queued_generation(item, outputs=item_outputs)
         finally:
-            self._active_requests = 0
+            for item in group:
+                self._active_items.pop(id(item), None)
+            self._active_requests = max(0, self._active_requests - len(group))
 
     async def _generate_prompts(
         self,
@@ -2208,33 +2302,123 @@ class _GenerationBatcher:
             ),
         )
 
-    async def _stream_single(self, item: _QueuedGeneration) -> None:
+    async def _stream_single(self, item: _QueuedGeneration, *, engine: Any | None = None) -> None:
         assert item.stream_queue is not None
         try:
-            async for chunk in _stream_engine_text(self._engine_factory(), item.prompts[0], item.sampling):
+            async for chunk in _stream_engine_text(
+                self._engine_factory() if engine is None else engine,
+                item.prompts[0],
+                item.sampling,
+            ):
                 if _queued_generation_cancelled(item):
-                    break
-                item.stream_queue.put_nowait(chunk)
+                    raise GenerationCancelled(_queued_generation_finish_details(item))
+                await item.stream_queue.put(chunk)
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
-            _finish_queued_generation(item, exception=exc)
+            await _finish_stream_queued_generation(item, exception=exc)
             return
-        _finish_queued_generation(item, outputs=())
+        await _finish_stream_queued_generation(item)
 
     async def _stream_many(self, item: _QueuedGeneration, engine: Any) -> None:
         assert item.stream_queue is not None
         try:
             async for chunk in _stream_engine_many(engine, item.prompts, item.sampling):
                 if _queued_generation_cancelled(item):
-                    break
-                item.stream_queue.put_nowait(chunk)
+                    raise GenerationCancelled(_queued_generation_finish_details(item))
+                await item.stream_queue.put(chunk)
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
-            _finish_queued_generation(item, exception=exc)
+            await _finish_stream_queued_generation(item, exception=exc)
             return
-        _finish_queued_generation(item, outputs=())
+        await _finish_stream_queued_generation(item)
+
+    async def shutdown(self, *, grace_seconds: float = 5.0) -> dict[str, Any]:
+        """Stop admission, drain active work, then cooperatively force-cancel."""
+
+        grace = max(0.0, float(grace_seconds))
+        self._accepting = False
+        forced = False
+        try:
+            await asyncio.wait_for(self._wait_until_idle(), timeout=grace)
+        except TimeoutError:
+            forced = True
+            finish_details = FinishDetails(reason="cancelled", cancelled=True)
+            error = GenerationCancelled(finish_details)
+            for item in [*self._queue, *self._active_items.values()]:
+                _cancel_queued_generation(item, reason="cancel")
+                _finish_queued_generation(item, exception=error)
+            self._queue.clear()
+            tasks = [
+                task
+                for task in (self._worker, *tuple(self._stream_tasks))
+                if task is not None and not task.done()
+            ]
+            for task in tasks:
+                task.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            self._worker = None
+            self._stream_tasks.clear()
+            self._stream_items.clear()
+            self._active_items.clear()
+            self._active_requests = 0
+        return {
+            "forced": forced,
+            "grace_seconds": grace,
+            "active_requests": self._active_requests,
+            "queued_requests": len(self._queue),
+        }
+
+    async def _wait_until_idle(self) -> None:
+        # Poll rather than awaiting producer tasks directly: wait_for() must not
+        # cancel a model thread before the force path trips its cooperative token.
+        while self._queue or self.active() or self._active_requests:
+            await asyncio.sleep(0.001)
+
+
+def _queued_generation_finish_details(item: _QueuedGeneration) -> FinishDetails:
+    token = item.sampling.cancellation_token
+    if token is not None and bool(getattr(token, "cancelled", False)):
+        return FinishDetails.from_value(getattr(token, "finish_details", None))
+    return FinishDetails(reason="cancelled", cancelled=True)
+
+
+def _cancel_queued_generation(item: _QueuedGeneration, *, reason: str) -> None:
+    item.cancelled = True
+    token = item.sampling.cancellation_token
+    if token is None:
+        return
+    if reason == "timeout":
+        details = FinishDetails(reason="deadline_exceeded", deadline_exceeded=True)
+    else:
+        details = FinishDetails(reason="cancelled", cancelled=True)
+    cancel = getattr(token, "cancel", None)
+    if callable(cancel):
+        cancel(details)
 
 
 def _queued_generation_cancelled(item: _QueuedGeneration) -> bool:
-    return item.cancelled or (item.future is not None and item.future.cancelled())
+    token = item.sampling.cancellation_token
+    token_cancelled = token is not None and bool(getattr(token, "cancelled", False))
+    return item.cancelled or token_cancelled or (item.future is not None and item.future.cancelled())
+
+
+async def _finish_stream_queued_generation(
+    item: _QueuedGeneration,
+    *,
+    exception: Exception | None = None,
+) -> None:
+    queue = item.stream_queue
+    if queue is None or item.finished:
+        return
+    item.finished = True
+    if item.cancelled and exception is None:
+        return
+    if exception is not None:
+        await queue.put(exception)
+    await queue.put(_STREAM_DONE)
 
 
 def _finish_queued_generation(
@@ -2244,6 +2428,9 @@ def _finish_queued_generation(
     result: Any | None = None,
     exception: Exception | None = None,
 ) -> None:
+    if item.finished:
+        return
+    item.finished = True
     if item.future is not None and not item.future.done():
         if exception is not None:
             item.future.set_exception(exception)
@@ -2253,12 +2440,21 @@ def _finish_queued_generation(
             item.future.set_result(list(outputs or ()))
     if item.stream_queue is None:
         return
+    terminal: list[object] = []
     if exception is not None:
-        item.stream_queue.put_nowait(exception)
+        terminal.append(exception)
     else:
-        for output in outputs or ():
-            item.stream_queue.put_nowait(_coerce_generation_stream_chunk(output))
-    item.stream_queue.put_nowait(_STREAM_DONE)
+        terminal.extend(_coerce_generation_stream_chunk(output) for output in outputs or ())
+    terminal.append(_STREAM_DONE)
+    if len(terminal) > item.stream_queue.maxsize:
+        terminal = [GenerationCancelled(FinishDetails(reason="cancelled", cancelled=True)), _STREAM_DONE]
+    if item.stream_queue.qsize() + len(terminal) > item.stream_queue.maxsize:
+        while not item.stream_queue.empty():
+            with suppress(asyncio.QueueEmpty):
+                item.stream_queue.get_nowait()
+        terminal = [GenerationCancelled(FinishDetails(reason="cancelled", cancelled=True)), _STREAM_DONE]
+    for event in terminal:
+        item.stream_queue.put_nowait(event)
 
 
 async def _stream_engine_text(engine: Any, prompt: PromptInput, sampling: SamplingParams) -> AsyncIterator[Any]:
@@ -3073,6 +3269,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             else None
         ),
         retry_after_seconds=config.queue_retry_after_seconds,
+        stream_queue_max_chunks=config.stream_queue_max_chunks,
     )
     app.state.hipengine_generation_batcher = generation_batcher
 
@@ -3474,10 +3671,26 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         )
         _LOGGER.info("hipEngine is ready.")
 
+    async def shutdown_model() -> None:
+        readiness: _ReadinessState = app.state.hipengine_readiness
+        readiness.ready = False
+        readiness.status = "draining"
+        shutdown_result = await generation_batcher.shutdown(
+            grace_seconds=config.shutdown_grace_seconds
+        )
+        engine = getattr(app.state, "hipengine_llm", None)
+        closer = None if engine is None else getattr(engine, "close", None)
+        if callable(closer):
+            await run_in_threadpool(closer)
+        app.state.hipengine_shutdown = shutdown_result
+        readiness.status = "stopped"
+
     if hasattr(app, "add_event_handler"):
         app.add_event_handler("startup", eager_load_model)
+        app.add_event_handler("shutdown", shutdown_model)
     else:  # FastAPI-lite compatibility in minimal test/runtime environments.
         app.router.on_startup.append(eager_load_model)
+        app.router.on_shutdown.append(shutdown_model)
 
     async def require_auth(request: Request) -> str:
         if not config.api_key:
@@ -4813,7 +5026,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "continuations": _session_continuation_capability(),
                 "metadata": _session_metadata_capability(config.max_chat_sessions),
             },
-            "admission": _admission_capability(config),
+            "admission": _admission_capability(config, engine=engine),
             "routing": {
                 "loaded_model_count": 0 if engine is None else 1,
                 "multiple_models": False,
@@ -7945,6 +8158,15 @@ def _engine_stream_many_callable(engine: Any | None) -> Callable[[tuple[str, ...
     if callable(streamer):
         return streamer
     return None
+
+
+def _engine_supports_controlled_streaming(engine: Any | None) -> bool:
+    if engine is None:
+        return False
+    for target in (engine, getattr(engine, "_text_generator", None)):
+        if target is not None and bool(getattr(target, "supports_controlled_streaming", False)):
+            return True
+    return False
 
 
 def _engine_supports_stream_many(engine: Any | None) -> bool:
