@@ -300,7 +300,7 @@ def build_c3_family_census(
     copy_rows = _rows_matching(c4_rows, "__amd_rocclr_copybuffer")
     metadata_prepare_rows = _rows_matching(
         c4_rows,
-        "prepare_packed_decode_metadata_kernel",
+        "prepare_packed_decode_metadata",
     )
     expected_metadata_launches = int(movement["device_metadata_prepare_launches"])  # type: ignore[index]
     movement_passed = (
@@ -404,7 +404,8 @@ def execution_census_closure_level(
     c3_model_boundaries_closed = (
         c2_recurrent_closed
         and census.get("c3_family_census", {}).get("route_check_passed") is True
-        and manifest.get("metadata_prepare_path") == "device_prepare_persistent"
+        and manifest.get("metadata_prepare_path")
+        in {"device_positions_persistent", "device_prepare_persistent"}
         and movement.get("host_to_device_metadata_copies") == 0
         and movement.get("device_metadata_prepare_launches") == 1
     )

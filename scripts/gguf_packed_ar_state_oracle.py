@@ -253,6 +253,72 @@ def _compare_layer_hidden_sessions(
     return comparisons, mismatches
 
 
+def _compare_recorded_layer_hidden(
+    recorded: np.ndarray,
+    reference_sessions: Sequence[Any],
+    *,
+    row_indices: Sequence[int],
+    layer_ids: Sequence[int],
+    phase: str,
+    step: int,
+) -> tuple[int, list[dict[str, Any]]]:
+    """Compare one graph-recorded ``[layers, rows, hidden]`` BF16-derived slab."""
+
+    mismatches: list[dict[str, Any]] = []
+    comparisons = 0
+    for local_row, (reference, row_index) in enumerate(
+        zip(reference_sessions, row_indices, strict=True)
+    ):
+        reference_layers = reference.last_layer_output_hidden
+        for layer_slot, layer_id in enumerate(layer_ids):
+            layer_id = int(layer_id)
+            comparisons += 1
+            actual = np.ascontiguousarray(recorded[layer_slot, local_row], dtype=np.float32)
+            expected = reference_layers.get(layer_id)
+            record: dict[str, Any] = {
+                "phase": str(phase),
+                "step": int(step),
+                "row": int(row_index),
+                "layer": layer_id,
+            }
+            if expected is None:
+                mismatches.append({**record, "reason": "missing_c1_capture"})
+                continue
+            expected_f32 = np.ascontiguousarray(expected, dtype=np.float32)
+            if actual.shape != expected_f32.shape and actual.size == expected_f32.size:
+                actual = np.ascontiguousarray(actual.reshape(expected_f32.shape))
+            if actual.shape != expected_f32.shape:
+                mismatches.append(
+                    {
+                        **record,
+                        "reason": "shape",
+                        "packed_shape": list(actual.shape),
+                        "c1_shape": list(expected_f32.shape),
+                    }
+                )
+                continue
+            mismatch_elements = int(
+                np.count_nonzero(actual.view(np.uint32) != expected_f32.view(np.uint32))
+            )
+            if mismatch_elements:
+                delta = np.abs(actual - expected_f32)
+                mismatches.append(
+                    {
+                        **record,
+                        "reason": "values",
+                        "mismatch_elements": mismatch_elements,
+                        "max_abs": float(np.max(delta)),
+                        "packed_hash": hashlib.blake2b(
+                            actual.tobytes(), digest_size=16
+                        ).hexdigest(),
+                        "c1_hash": hashlib.blake2b(
+                            expected_f32.tobytes(), digest_size=16
+                        ).hexdigest(),
+                    }
+                )
+    return comparisons, mismatches
+
+
 def _session_build_policy(args: argparse.Namespace) -> dict[str, Any]:
     compiler_version = None
     if args.compiler_version_file is not None:
@@ -274,6 +340,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if rows < 2 or rows > 4:
         raise ValueError("rows must be between 2 and the production packed-chunk cap (4)")
     lifecycle = str(args.lifecycle)
+    decode_mode = str(getattr(args, "decode_mode", "eager"))
+    if decode_mode not in {"eager", "graph"}:
+        raise ValueError("decode_mode must be eager or graph")
     if lifecycle == "shrink_sparse" and (rows != 4 or int(args.decode_steps) != 4):
         raise ValueError("shrink_sparse lifecycle requires --rows 4 --decode-steps 4")
     alternate_prompt_length = (
@@ -390,53 +459,138 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         packed_trajectory = [list(packed_tokens)]
         reference_trajectory = [list(reference_tokens)]
         lifecycle_events: list[dict[str, Any]] = []
+        graph_manifests: list[dict[str, Any]] = []
         dirty_before_flush = False
         flushed = False
         if lifecycle == "steady":
-            for step_index in range(1, int(args.decode_steps) + 1):
-                with _temporary_env({_CAPTURE_PREFILL_GDN_ENV: "1"}):
-                    packed_tokens = [
-                        int(result.token_id)
-                        for result in owner.step_batch_native(
-                            packed_tokens,
-                            sessions=packed_sessions,
-                            positions=[int(session.position) for session in packed_sessions],
-                            return_logits=False,
-                            scatter_state=False,
-                            capture_layer_output_hidden=capture_layer_ids,
+            if decode_mode == "eager":
+                for step_index in range(1, int(args.decode_steps) + 1):
+                    with _temporary_env({_CAPTURE_PREFILL_GDN_ENV: "1"}):
+                        packed_tokens = [
+                            int(result.token_id)
+                            for result in owner.step_batch_native(
+                                packed_tokens,
+                                sessions=packed_sessions,
+                                positions=[int(session.position) for session in packed_sessions],
+                                return_logits=False,
+                                scatter_state=False,
+                                capture_layer_output_hidden=capture_layer_ids,
+                            )
+                        ]
+                    reference_tokens = [
+                        int(
+                            session.step(
+                                token,
+                                return_logits=False,
+                                capture_layer_output_hidden=capture_layer_ids,
+                            ).token_id
                         )
+                        for session, token in zip(reference_sessions, reference_tokens, strict=True)
                     ]
-                reference_tokens = [
-                    int(
-                        session.step(
-                            token,
-                            return_logits=False,
-                            capture_layer_output_hidden=capture_layer_ids,
-                        ).token_id
+                    if capture_layer_ids:
+                        compared, mismatches = _compare_layer_hidden_sessions(
+                            packed_sessions,
+                            reference_sessions,
+                            row_indices=tuple(range(rows)),
+                            layer_ids=capture_layer_ids,
+                            phase="decode_hidden",
+                            step=step_index,
+                        )
+                        hidden_comparisons += compared
+                        hidden_mismatches.extend(mismatches)
+                    packed_trajectory.append(list(packed_tokens))
+                    reference_trajectory.append(list(reference_tokens))
+                dirty_before_flush = bool(owner._packed_decode_state_dirty)
+                flushed = bool(owner.flush_packed_decode_state())
+            else:
+                with _temporary_env({_CAPTURE_PREFILL_GDN_ENV: "1"}):
+                    graph = owner.capture_packed_decode_graph(
+                        packed_tokens,
+                        sessions=packed_sessions,
+                        steps_per_replay=1,
+                        max_replay_steps=int(args.decode_steps),
+                        record_steps=int(args.decode_steps),
+                        record_layer_output_hidden=capture_layer_ids,
                     )
-                    for session, token in zip(reference_sessions, reference_tokens, strict=True)
-                ]
-                if capture_layer_ids:
-                    compared, mismatches = _compare_layer_hidden_sessions(
-                        packed_sessions,
-                        reference_sessions,
-                        row_indices=tuple(range(rows)),
-                        layer_ids=capture_layer_ids,
-                        phase="decode_hidden",
-                        step=step_index,
+                try:
+                    graph.replay(int(args.decode_steps))
+                    recorded_tokens = graph.read_generated_token_ids()
+                    recorded_hidden = (
+                        graph.read_generated_layer_hidden()
+                        if capture_layer_ids
+                        else None
                     )
-                    hidden_comparisons += compared
-                    hidden_mismatches.extend(mismatches)
-                packed_trajectory.append(list(packed_tokens))
-                reference_trajectory.append(list(reference_tokens))
-            dirty_before_flush = bool(owner._packed_decode_state_dirty)
-            flushed = bool(owner.flush_packed_decode_state())
+                    for step_index, step_tokens in enumerate(recorded_tokens, start=1):
+                        packed_tokens = [int(token) for token in step_tokens]
+                        reference_tokens = [
+                            int(
+                                session.step(
+                                    token,
+                                    return_logits=False,
+                                    capture_layer_output_hidden=capture_layer_ids,
+                                ).token_id
+                            )
+                            for session, token in zip(
+                                reference_sessions,
+                                reference_tokens,
+                                strict=True,
+                            )
+                        ]
+                        if capture_layer_ids and recorded_hidden is not None:
+                            compared, mismatches = _compare_recorded_layer_hidden(
+                                recorded_hidden[step_index - 1],
+                                reference_sessions,
+                                row_indices=tuple(range(rows)),
+                                layer_ids=capture_layer_ids,
+                                phase="decode_hidden_graph",
+                                step=step_index,
+                            )
+                            hidden_comparisons += compared
+                            hidden_mismatches.extend(mismatches)
+                        packed_trajectory.append(list(packed_tokens))
+                        reference_trajectory.append(list(reference_tokens))
+                    dirty_before_flush = bool(owner._packed_decode_state_dirty)
+                    flushed = bool(graph.flush_packed_state())
+                    graph_manifests.append(
+                        json.loads(json.dumps(graph.execution_manifest))
+                    )
+                finally:
+                    graph.close()
         else:
             live_groups = ((0, 1, 2, 3), (0, 2, 3), (0, 3), (3,))
             for step_index, live_indices in enumerate(live_groups, start=1):
                 group_sessions = tuple(packed_sessions[index] for index in live_indices)
-                if len(live_indices) > 1:
-                    group_owner = group_sessions[0]
+                group_owner = group_sessions[0]
+                if decode_mode == "graph":
+                    with _temporary_env({_CAPTURE_PREFILL_GDN_ENV: "1"}):
+                        graph = group_owner.capture_packed_decode_graph(
+                            [packed_tokens[index] for index in live_indices],
+                            sessions=group_sessions,
+                            steps_per_replay=1,
+                            max_replay_steps=1,
+                            record_steps=1,
+                            record_layer_output_hidden=capture_layer_ids,
+                        )
+                    try:
+                        graph.replay(1)
+                        step_tokens = graph.read_generated_token_ids(1)[0]
+                        for index, token in zip(live_indices, step_tokens, strict=True):
+                            packed_tokens[index] = int(token)
+                        recorded_hidden = (
+                            graph.read_generated_layer_hidden(count=1)[0]
+                            if capture_layer_ids
+                            else None
+                        )
+                        dirty_before_flush = dirty_before_flush or bool(
+                            group_owner._packed_decode_state_dirty
+                        )
+                        flushed = bool(graph.flush_packed_state()) or flushed
+                        graph_manifests.append(
+                            json.loads(json.dumps(graph.execution_manifest))
+                        )
+                    finally:
+                        graph.close()
+                elif len(live_indices) > 1:
                     with _temporary_env({_CAPTURE_PREFILL_GDN_ENV: "1"}):
                         results = group_owner.step_batch_native(
                             [packed_tokens[index] for index in live_indices],
@@ -470,14 +624,24 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         ).token_id
                     )
                 if capture_layer_ids:
-                    compared, mismatches = _compare_layer_hidden_sessions(
-                        tuple(packed_sessions[index] for index in live_indices),
-                        tuple(reference_sessions[index] for index in live_indices),
-                        row_indices=live_indices,
-                        layer_ids=capture_layer_ids,
-                        phase="decode_hidden",
-                        step=step_index,
-                    )
+                    if decode_mode == "graph" and recorded_hidden is not None:
+                        compared, mismatches = _compare_recorded_layer_hidden(
+                            recorded_hidden,
+                            tuple(reference_sessions[index] for index in live_indices),
+                            row_indices=live_indices,
+                            layer_ids=capture_layer_ids,
+                            phase="decode_hidden_graph",
+                            step=step_index,
+                        )
+                    else:
+                        compared, mismatches = _compare_layer_hidden_sessions(
+                            tuple(packed_sessions[index] for index in live_indices),
+                            tuple(reference_sessions[index] for index in live_indices),
+                            row_indices=live_indices,
+                            layer_ids=capture_layer_ids,
+                            phase="decode_hidden",
+                            step=step_index,
+                        )
                     hidden_comparisons += compared
                     hidden_mismatches.extend(mismatches)
                 event_packed = [_capture_state(packed_sessions[index]) for index in live_indices]
@@ -551,6 +715,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "require_cached_build": build_policy["require_cached_build"],
         },
         "prefill_mode": str(args.prefill_mode),
+        "decode_mode": decode_mode,
         "prefill_arithmetic": {
             "gdn_prefill_mode": str(args.gdn_prefill_mode),
             "packed_linear_state_route": "segmented_in_place_final_state",
@@ -588,6 +753,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "flush_executed": flushed,
         "lifecycle_state_exact": lifecycle_state_exact,
         "lifecycle_events": lifecycle_events,
+        "graph_manifests": graph_manifests,
         "final_state_exact": not final_mismatches,
         "final_mismatches": final_mismatches,
         "first_divergence": first_divergence,
@@ -624,9 +790,15 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--decode-mode",
+        choices=("eager", "graph"),
+        default="eager",
+        help="run packed decode eagerly or through a fixed-width HIP graph",
+    )
+    parser.add_argument(
         "--capture-layer-hidden",
         action="store_true",
-        help="compare every packed prefill/decode layer output with c1 (diagnostic D2H)",
+        help="compare every packed prefill/decode layer output with c1",
     )
     parser.add_argument("--prompt-token-id", type=int, default=9707)
     parser.add_argument("--alternate-token-id", type=int, default=9708)

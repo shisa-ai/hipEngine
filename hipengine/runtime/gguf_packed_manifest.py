@@ -156,7 +156,11 @@ def build_packed_decode_execution_manifest(
     if lm_head_path != "direct_top1_rows" and sampler_path != "argmax_i32_rows":
         raise ValueError("logit-producing lm-head paths require argmax_i32_rows sampling")
     metadata_path = str(metadata_prepare_path)
-    supported_metadata_paths = {"device_prepare_persistent", "host_upload"}
+    supported_metadata_paths = {
+        "device_positions_persistent",
+        "device_prepare_persistent",
+        "host_upload",
+    }
     if metadata_path not in supported_metadata_paths:
         raise ValueError(
             f"unsupported metadata_prepare_path {metadata_path!r}; "
@@ -188,7 +192,7 @@ def build_packed_decode_execution_manifest(
     metadata_host_copies = 8 if metadata_path == "host_upload" else 0
     metadata_host_bytes = metadata_bytes if metadata_host_copies else 0
     metadata_device_prepare_launches = (
-        1 if metadata_path == "device_prepare_persistent" else 0
+        1 if metadata_path in {"device_positions_persistent", "device_prepare_persistent"} else 0
     )
 
     imported_positions = tuple(positions[index] for index in imported_indices)

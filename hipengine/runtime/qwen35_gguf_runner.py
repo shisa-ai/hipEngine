@@ -11383,6 +11383,110 @@ class Qwen35GGUFResidentSession:
             for token in token_host.tolist()
         ]
 
+    def _enqueue_packed_decode_model_step(
+        self,
+        *,
+        rows: int,
+        state_indices: tuple[int, ...],
+        packed_scratch,
+        packed_state,
+        linear_decode_scratch,
+        stream: int,
+        layer_output_callback=None,
+    ) -> tuple[set[str], set[str]]:
+        """Enqueue one c-aware packed model step without host synchronization."""
+
+        if self.runner is None or self.runner.weights is None or self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        if self._prefill_token_buf is None or self._prefill_hidden_a is None or self._prefill_hidden_b is None:
+            raise RuntimeError("GGUF resident packed decode buffers are closed")
+        runtime = self.runtime or get_hip_runtime()
+        launch_gguf_embedding(
+            self.runner.weights.root("token_embedding"),
+            self._prefill_token_buf.ptr,
+            self._prefill_hidden_a.ptr,
+            rows=rows,
+            hidden_size=self.runner.hidden_size,
+            vocab_size=self.runner.vocab_size,
+            stream=stream,
+            runtime=runtime,
+        )
+        src = self._prefill_hidden_a
+        dst = self._prefill_hidden_b
+        linear_attention_decode_paths: set[str] = set()
+        full_attention_decode_paths: set[str] = set()
+        linear_attention_decode_batch_plan = self.runner._linear_attention_decode_batch_plan()
+        with wmma_prefill_session(False), gemv_decode_session(self.use_gemv_decode):
+            for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
+                if layer_type == LINEAR_ATTENTION:
+                    linear_attention_decode_paths.add(
+                        self.runner._run_linear_attention_decode_slot_rows_exact(
+                            layer_id,
+                            src.ptr,
+                            dst.ptr,
+                            packed_scratch,
+                            rows=rows,
+                            state_indices=state_indices,
+                            stream=stream,
+                            decode_scratch=linear_decode_scratch,
+                            batch_plan=linear_attention_decode_batch_plan,
+                            gdn_cu_seqlens_ptr=packed_scratch.gdn_cu_seqlens.ptr,
+                            state_indices_ptr=packed_scratch.gdn_state_indices.ptr,
+                            expert_sidecar=None,
+                            hidden_f32_ptr=None,
+                            out_f32_ptr=None,
+                            stage_timings=None,
+                            sync_stage_timings=False,
+                            stage_prefix="ar_batch_linear_attn",
+                        )
+                    )
+                elif layer_type == FULL_ATTENTION:
+                    key_cache, value_cache = packed_state.full_cache(layer_id)
+                    layer_scratch = replace(
+                        packed_scratch,
+                        key_cache=key_cache,
+                        value_cache=value_cache,
+                        cos_table=self.scratch.cos_table,
+                        sin_table=self.scratch.sin_table,
+                    )
+                    full_attention_decode_paths.add(
+                        self.runner._run_full_attention_decode_batch_layer_rows(
+                            layer_id,
+                            src.ptr,
+                            dst.ptr,
+                            layer_scratch,
+                            stream=stream,
+                            expert_sidecar=None,
+                            stage_timings=None,
+                            sync_stage_timings=False,
+                            stage_prefix="ar_batch_full_attn",
+                        )
+                    )
+                else:
+                    raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+                src, dst = dst, src
+                if layer_output_callback is not None:
+                    layer_output_callback(layer_id, src.ptr)
+
+            output_norm_weight_ptr = self.runner.weights.root("output_norm").allocation().tensor.ptr
+            gguf_rmsnorm_bf16_f32_weight(
+                src.ptr,
+                output_norm_weight_ptr,
+                packed_scratch.norm.ptr,
+                rows=rows,
+                hidden_size=self.runner.hidden_size,
+                eps=self.runner.weights.config.rms_norm_eps,
+                stream=stream,
+                runtime=runtime,
+            )
+            self._enqueue_target_block_rows_from_hidden(
+                packed_scratch.norm.ptr,
+                rows,
+                activation_dtype=GGUF_ACTIVATION_BF16,
+                stream=stream,
+            )
+        return linear_attention_decode_paths, full_attention_decode_paths
+
     def step_batch_native(
         self,
         token_ids: list[int] | tuple[int, ...],
@@ -11495,109 +11599,43 @@ class Qwen35GGUFResidentSession:
         token_array = np.ascontiguousarray(layout.input_token_ids, dtype=np.int64)
         copy_host_to_device(self._prefill_token_buf, host_array_ptr(token_array), token_array.nbytes, runtime=runtime)
 
-        launch_gguf_embedding(
-            self.runner.weights.root("token_embedding"),
-            self._prefill_token_buf.ptr,
-            self._prefill_hidden_a.ptr,
-            rows=rows,
-            hidden_size=self.runner.hidden_size,
-            vocab_size=self.runner.vocab_size,
-            stream=stream,
-            runtime=runtime,
-        )
-        src = self._prefill_hidden_a
-        dst = self._prefill_hidden_b
         linear_decode_scratch = replace(
             self.scratch,
             layer_conv_states=packed_state.layer_conv_states,
             layer_recurrent_states=packed_state.layer_recurrent_states,
         )
-        linear_attention_decode_paths: set[str] = set()
-        full_attention_decode_paths: set[str] = set()
-        linear_attention_decode_batch_plan = (
-            self.runner._linear_attention_decode_batch_plan()
-        )
-        with wmma_prefill_session(False), gemv_decode_session(self.use_gemv_decode):
-            for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
-                if layer_type == LINEAR_ATTENTION:
-                    linear_attention_decode_paths.add(
-                        self.runner._run_linear_attention_decode_slot_rows_exact(
-                            layer_id,
-                            src.ptr,
-                            dst.ptr,
-                            packed_scratch,
-                            rows=rows,
-                            state_indices=tuple(
-                                int(index) for index in layout.row_slot_indices.tolist()
-                            ),
-                            stream=stream,
-                            decode_scratch=linear_decode_scratch,
-                            batch_plan=linear_attention_decode_batch_plan,
-                            gdn_cu_seqlens_ptr=packed_scratch.gdn_cu_seqlens.ptr,
-                            state_indices_ptr=packed_scratch.gdn_state_indices.ptr,
-                            expert_sidecar=None,
-                            hidden_f32_ptr=None,
-                            out_f32_ptr=None,
-                            stage_timings=None,
-                            sync_stage_timings=False,
-                            stage_prefix="ar_batch_linear_attn",
-                        )
-                    )
-                elif layer_type == FULL_ATTENTION:
-                    key_cache, value_cache = packed_state.full_cache(layer_id)
-                    layer_scratch = replace(
-                        packed_scratch,
-                        key_cache=key_cache,
-                        value_cache=value_cache,
-                        cos_table=self.scratch.cos_table,
-                        sin_table=self.scratch.sin_table,
-                    )
-                    full_attention_decode_paths.add(
-                        self.runner._run_full_attention_decode_batch_layer_rows(
-                            layer_id,
-                            src.ptr,
-                            dst.ptr,
-                            layer_scratch,
-                            stream=stream,
-                            expert_sidecar=None,
-                            stage_timings=None,
-                            sync_stage_timings=False,
-                            stage_prefix="ar_batch_full_attn",
-                        )
-                    )
-                else:
-                    raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
-                src, dst = dst, src
-                if layer_id in capture_layer_ids:
-                    hidden_rows = _copy_bf16_rows_to_host_f32(
-                        src.ptr,
-                        rows,
-                        self.runner.hidden_size,
-                        runtime=runtime,
-                    )
-                    _scatter_packed_layer_output_hidden(
-                        session_tuple,
-                        layer_id=layer_id,
-                        hidden_rows=hidden_rows,
-                    )
 
-            output_norm_weight_ptr = self.runner.weights.root("output_norm").allocation().tensor.ptr
-            gguf_rmsnorm_bf16_f32_weight(
-                src.ptr,
-                output_norm_weight_ptr,
-                packed_scratch.norm.ptr,
-                rows=rows,
-                hidden_size=self.runner.hidden_size,
-                eps=self.runner.weights.config.rms_norm_eps,
-                stream=stream,
+        def capture_layer_output(layer_id: int, hidden_ptr: int) -> None:
+            if layer_id not in capture_layer_ids:
+                return
+            hidden_rows = _copy_bf16_rows_to_host_f32(
+                hidden_ptr,
+                rows,
+                self.runner.hidden_size,
                 runtime=runtime,
             )
-            token_host = self._sample_target_block_rows_from_hidden(
-                packed_scratch.norm.ptr,
-                rows,
-                activation_dtype=GGUF_ACTIVATION_BF16,
-                stream=stream,
+            _scatter_packed_layer_output_hidden(
+                session_tuple,
+                layer_id=layer_id,
+                hidden_rows=hidden_rows,
             )
+
+        linear_attention_decode_paths, full_attention_decode_paths = (
+            self._enqueue_packed_decode_model_step(
+                rows=rows,
+                state_indices=tuple(
+                    int(index) for index in layout.row_slot_indices.tolist()
+                ),
+                packed_scratch=packed_scratch,
+                packed_state=packed_state,
+                linear_decode_scratch=linear_decode_scratch,
+                stream=stream,
+                layer_output_callback=(
+                    capture_layer_output if capture_layer_ids else None
+                ),
+            )
+        )
+        token_host = self._read_target_block_row_tokens(rows, stream=stream)
 
         session_ids = tuple(id(session) for session in session_tuple)
         if scatter_state:
@@ -13769,14 +13807,16 @@ class Qwen35GGUFResidentSession:
         )
         return True
 
-    def _sample_target_block_rows_from_hidden(
+    def _enqueue_target_block_rows_from_hidden(
         self,
         hidden_ptr: int,
         rows: int,
         *,
         activation_dtype: str = GGUF_ACTIVATION_BF16,
         stream: int = 0,
-    ) -> np.ndarray:
+    ) -> None:
+        """Enqueue packed lm-head and sampler work without host synchronization."""
+
         if self.runner is None or self.runner.weights is None:
             raise RuntimeError("GGUF resident session is closed")
         runtime = self.runtime or get_hip_runtime()
@@ -13800,44 +13840,52 @@ class Qwen35GGUFResidentSession:
         if direct_top1:
             self._last_packed_lm_head_decode_path = "direct_top1_rows"
             self._last_packed_sampler_decode_path = "fused_top1_i32_rows"
-        else:
-            if activation_dtype != GGUF_ACTIVATION_BF16:
-                raise ValueError(
-                    "non-dp4a verifier lm-head fallback expects BF16 hidden rows, "
-                    f"got {activation_dtype!r}"
-                )
-            rowtile = self._verify_lm_head_rowtile_chunked(
-                hidden_ptr, self._verify_logits_buf.ptr, rows, stream=stream, runtime=runtime
+            return
+        if activation_dtype != GGUF_ACTIVATION_BF16:
+            raise ValueError(
+                "non-dp4a verifier lm-head fallback expects BF16 hidden rows, "
+                f"got {activation_dtype!r}"
             )
-            if not rowtile:
-                launch_gguf_linear(
-                    self.runner.weights.root("lm_head"),
-                    hidden_ptr,
-                    self._verify_logits_buf.ptr,
-                    rows=rows,
-                    in_features=self.runner.hidden_size,
-                    out_features=self.runner.vocab_size,
-                    output_dtype=GGUF_OUTPUT_F32,
-                    stream=stream,
-                    runtime=runtime,
-                )
-            self._last_packed_lm_head_decode_path = (
-                "q6_rowtile_f32_logits" if rowtile else "row_linear_f32_logits"
-            )
-            self._last_packed_sampler_decode_path = "argmax_i32_rows"
-            argmax_f32_rows_i32(
+        rowtile = self._verify_lm_head_rowtile_chunked(
+            hidden_ptr, self._verify_logits_buf.ptr, rows, stream=stream, runtime=runtime
+        )
+        if not rowtile:
+            launch_gguf_linear(
+                self.runner.weights.root("lm_head"),
+                hidden_ptr,
                 self._verify_logits_buf.ptr,
-                self._verify_lm_block_values.ptr,
-                self._verify_lm_block_indices_i32.ptr,
-                self._verify_lm_out_indices_i32.ptr,
-                self._verify_lm_out_values.ptr,
-                rows,
-                self.runner.vocab_size,
-                threads=self._lm_head_threads,
+                rows=rows,
+                in_features=self.runner.hidden_size,
+                out_features=self.runner.vocab_size,
+                output_dtype=GGUF_OUTPUT_F32,
                 stream=stream,
-                library=self._lm_head_library,
                 runtime=runtime,
             )
+        self._last_packed_lm_head_decode_path = (
+            "q6_rowtile_f32_logits" if rowtile else "row_linear_f32_logits"
+        )
+        self._last_packed_sampler_decode_path = "argmax_i32_rows"
+        argmax_f32_rows_i32(
+            self._verify_logits_buf.ptr,
+            self._verify_lm_block_values.ptr,
+            self._verify_lm_block_indices_i32.ptr,
+            self._verify_lm_out_indices_i32.ptr,
+            self._verify_lm_out_values.ptr,
+            rows,
+            self.runner.vocab_size,
+            threads=self._lm_head_threads,
+            stream=stream,
+            library=self._lm_head_library,
+            runtime=runtime,
+        )
+
+    def _read_target_block_row_tokens(self, rows: int, *, stream: int = 0) -> np.ndarray:
+        """Synchronize and read one sampled int32 token per packed row."""
+
+        runtime = self.runtime or get_hip_runtime()
+        rows = int(rows)
+        if self._verify_lm_out_indices_i32 is None:
+            raise RuntimeError("GGUF verifier lm-head token buffer is closed")
         if stream:
             runtime.stream_synchronize(stream)
         else:
@@ -13858,6 +13906,22 @@ class Qwen35GGUFResidentSession:
                 runtime=runtime,
             )
         return np.ascontiguousarray(token_i64, dtype=np.int64)
+
+    def _sample_target_block_rows_from_hidden(
+        self,
+        hidden_ptr: int,
+        rows: int,
+        *,
+        activation_dtype: str = GGUF_ACTIVATION_BF16,
+        stream: int = 0,
+    ) -> np.ndarray:
+        self._enqueue_target_block_rows_from_hidden(
+            hidden_ptr,
+            rows,
+            activation_dtype=activation_dtype,
+            stream=stream,
+        )
+        return self._read_target_block_row_tokens(rows, stream=stream)
 
     def _sample_from_hidden(
         self,
@@ -13930,6 +13994,34 @@ class Qwen35GGUFResidentSession:
             attention_max_context_len=attention_max_context_len,
             capture_hidden_seed_fp32=bool(capture_hidden_seed_fp32),
             record_hidden_seeds=bool(record_hidden_seeds),
+        )
+
+    def capture_packed_decode_graph(
+        self,
+        token_ids: list[int] | tuple[int, ...],
+        *,
+        sessions: list["Qwen35GGUFResidentSession"] | tuple["Qwen35GGUFResidentSession", ...] | None = None,
+        steps_per_replay: int = 1,
+        max_replay_steps: int | None = None,
+        record_steps: int = 0,
+        record_layer_output_hidden: list[int] | tuple[int, ...] | set[int] = (),
+    ):
+        """Capture one fixed-width packed decode bucket with device feedback."""
+
+        from hipengine.runtime.gguf_packed_decode_graph import (
+            capture_qwen35_gguf_packed_decode_graph,
+        )
+
+        return capture_qwen35_gguf_packed_decode_graph(
+            self,
+            token_ids=tuple(int(token) for token in token_ids),
+            sessions=(self,) if sessions is None else tuple(sessions),
+            steps_per_replay=int(steps_per_replay),
+            max_replay_steps=max_replay_steps,
+            record_steps=int(record_steps),
+            record_layer_output_hidden=tuple(
+                int(layer_id) for layer_id in record_layer_output_hidden
+            ),
         )
 
     def close(self) -> None:

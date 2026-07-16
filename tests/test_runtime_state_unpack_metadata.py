@@ -152,6 +152,175 @@ def test_prepare_packed_decode_metadata_matches_ragged_c4_reference() -> None:
             free(buffer, runtime=runtime)
 
 
+def test_packed_decode_graph_control_kernels_match_two_step_reference() -> None:
+    from hipengine.core.dtype import DType
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        DeviceBuffer,
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.runtime import (
+        build_runtime_state,
+        commit_packed_decode_graph_step,
+        prepare_packed_decode_metadata_from_positions,
+        record_u16_rows_indexed,
+    )
+
+    runtime = get_hip_runtime()
+    library = build_runtime_state(load=True)
+    rows = 4
+    blocks_per_slot = 4
+    record_steps = 2
+    hidden_elements = 8
+    hidden_layers = 2
+    hidden_step_stride = hidden_layers * hidden_elements
+    positions_host = np.asarray([513, 517, 521, 525], dtype=np.int64)
+    token_steps = (
+        np.asarray([11, 22, 33, 44], dtype=np.int32),
+        np.asarray([12, 23, 34, 45], dtype=np.int32),
+    )
+    hidden_steps = (
+        np.arange(100, 100 + hidden_elements, dtype=np.uint16),
+        np.arange(200, 200 + hidden_elements, dtype=np.uint16),
+    )
+    buffers = [
+        malloc(rows * blocks_per_slot * DType.INT32.itemsize, runtime=runtime),
+        malloc(rows * DType.INT64.itemsize, runtime=runtime),
+        malloc(rows * DType.INT64.itemsize, runtime=runtime),
+        malloc(2 * DType.INT32.itemsize, runtime=runtime),
+        malloc(2 * DType.INT32.itemsize, runtime=runtime),
+        malloc(DType.INT32.itemsize, runtime=runtime),
+        malloc((rows + 1) * DType.INT32.itemsize, runtime=runtime),
+        malloc(rows * DType.INT64.itemsize, runtime=runtime),
+        malloc(rows * DType.INT32.itemsize, runtime=runtime),
+        malloc(rows * DType.INT64.itemsize, runtime=runtime),
+        malloc(record_steps * rows * DType.INT32.itemsize, runtime=runtime),
+        malloc(DType.INT64.itemsize, runtime=runtime),
+        malloc(hidden_elements * DType.BF16.itemsize, runtime=runtime),
+        malloc(record_steps * hidden_step_stride * DType.BF16.itemsize, runtime=runtime),
+    ]
+    try:
+        (
+            block_table,
+            positions,
+            contexts,
+            cu_q,
+            cu_k,
+            atomic,
+            gdn_cu,
+            state_indices,
+            token_i32,
+            token_i64,
+            recorded_tokens,
+            record_index,
+            hidden,
+            recorded_hidden,
+        ) = buffers
+        copy_host_to_device(positions, host_array_ptr(positions_host), positions_host.nbytes, runtime=runtime)
+        zero_index = np.zeros((1,), dtype=np.int64)
+        copy_host_to_device(record_index, host_array_ptr(zero_index), zero_index.nbytes, runtime=runtime)
+
+        for step, (tokens, hidden_values) in enumerate(zip(token_steps, hidden_steps, strict=True)):
+            copy_host_to_device(token_i32, host_array_ptr(tokens), tokens.nbytes, runtime=runtime)
+            copy_host_to_device(hidden, host_array_ptr(hidden_values), hidden_values.nbytes, runtime=runtime)
+            prepare_packed_decode_metadata_from_positions(
+                block_table.ptr,
+                positions.ptr,
+                contexts.ptr,
+                cu_q.ptr,
+                cu_k.ptr,
+                atomic.ptr,
+                gdn_cu.ptr,
+                state_indices.ptr,
+                rows,
+                blocks_per_slot,
+                library=library,
+                runtime=runtime,
+            )
+            for layer_id in range(hidden_layers):
+                record_u16_rows_indexed(
+                    hidden.ptr,
+                    recorded_hidden.ptr + layer_id * hidden_elements * DType.BF16.itemsize,
+                    record_index.ptr,
+                    hidden_elements,
+                    hidden_step_stride,
+                    record_steps,
+                    library=library,
+                    runtime=runtime,
+                )
+            commit_packed_decode_graph_step(
+                token_i32.ptr,
+                token_i64.ptr,
+                positions.ptr,
+                contexts.ptr,
+                rows,
+                recorded_token_ids_i32_ptr=recorded_tokens.ptr,
+                record_index_i64_ptr=record_index.ptr,
+                record_capacity=record_steps,
+                library=library,
+                runtime=runtime,
+            )
+        runtime.device_synchronize()
+
+        outputs = [
+            np.empty((rows, blocks_per_slot), dtype=np.int32),
+            np.empty(rows, dtype=np.int64),
+            np.empty(rows, dtype=np.int64),
+            np.empty(2, dtype=np.int32),
+            np.empty(2, dtype=np.int32),
+            np.empty(1, dtype=np.int32),
+            np.empty(rows + 1, dtype=np.int32),
+            np.empty(rows, dtype=np.int64),
+            np.empty(rows, dtype=np.int64),
+            np.empty((record_steps, rows), dtype=np.int32),
+            np.empty(1, dtype=np.int64),
+            np.empty((record_steps, hidden_layers, hidden_elements), dtype=np.uint16),
+        ]
+        output_buffers = (
+            block_table,
+            positions,
+            contexts,
+            cu_q,
+            cu_k,
+            atomic,
+            gdn_cu,
+            state_indices,
+            token_i64,
+            recorded_tokens,
+            record_index,
+            recorded_hidden,
+        )
+        for host, buffer in zip(outputs, output_buffers, strict=True):
+            copy_device_to_host(
+                host_array_ptr(host),
+                DeviceBuffer(buffer.ptr, host.nbytes),
+                runtime=runtime,
+            )
+
+        np.testing.assert_array_equal(outputs[0], np.arange(16, dtype=np.int32).reshape(4, 4))
+        np.testing.assert_array_equal(outputs[1], positions_host + 2)
+        np.testing.assert_array_equal(outputs[2], positions_host + 3)
+        np.testing.assert_array_equal(outputs[3], np.asarray([0, rows], dtype=np.int32))
+        np.testing.assert_array_equal(outputs[4], np.asarray([0, 527], dtype=np.int32))
+        np.testing.assert_array_equal(outputs[5], np.asarray([0], dtype=np.int32))
+        np.testing.assert_array_equal(outputs[6], np.arange(rows + 1, dtype=np.int32))
+        np.testing.assert_array_equal(outputs[7], np.arange(rows, dtype=np.int64))
+        np.testing.assert_array_equal(outputs[8], token_steps[-1].astype(np.int64))
+        np.testing.assert_array_equal(outputs[9], np.stack(token_steps))
+        np.testing.assert_array_equal(outputs[10], np.asarray([2], dtype=np.int64))
+        expected_hidden = np.stack(
+            [np.stack([values, values]) for values in hidden_steps]
+        )
+        np.testing.assert_array_equal(outputs[11], expected_hidden)
+    finally:
+        for buffer in buffers:
+            free(buffer, runtime=runtime)
+
+
 def test_unpack_verify_chain_dynamic_metadata_matches_reference() -> None:
     from hipengine.core.dtype import DType
     from hipengine.core.hip import get_hip_runtime

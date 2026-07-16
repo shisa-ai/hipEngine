@@ -9,6 +9,7 @@ from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free
 from hipengine.kernels.hip_gfx1100.runtime import (
     advance_decode_position_i64,
     advance_decode_positions_i64,
+    commit_packed_decode_graph_step,
     embedding_lookup_batch_bf16_i64,
     embedding_lookup_batch_fp16_i64,
     embedding_lookup_batch_mapped_bf16_i64,
@@ -17,7 +18,9 @@ from hipengine.kernels.hip_gfx1100.runtime import (
     embedding_lookup_fp16_i64,
     plan_runtime_state_build,
     prepare_packed_decode_metadata,
+    prepare_packed_decode_metadata_from_positions,
     prepare_prefill_chunk_metadata,
+    record_u16_rows_indexed,
     record_f32_row_indexed,
     record_i64_scalar_indexed,
     register_runtime_state_kernels,
@@ -118,6 +121,33 @@ def test_runtime_state_registers_graph_friendly_helpers() -> None:
         )
         is prepare_packed_decode_metadata
     )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="decode_metadata",
+            quant="gguf_qwen35",
+            variant="packed_c4_device_positions_i64",
+        )
+        is prepare_packed_decode_metadata_from_positions
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="decode_graph_commit",
+            quant="gguf_qwen35",
+            variant="packed_c4_i32_i64",
+        )
+        is commit_packed_decode_graph_step
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="decode_graph_record",
+            quant="gguf_qwen35",
+            variant="packed_u16_rows_indexed",
+        )
+        is record_u16_rows_indexed
+    )
 
 
 def test_runtime_state_build_plan_is_dry_run_safe(tmp_path) -> None:
@@ -207,3 +237,9 @@ def test_embedding_lookup_validates_shape_before_gpu_load() -> None:
         prepare_packed_decode_metadata(0, 0, 0, 0, 0, 0, 0, 0, (1, -1), 4)
     with pytest.raises(ValueError, match="blocks_per_slot"):
         prepare_packed_decode_metadata(0, 0, 0, 0, 0, 0, 0, 0, (1,), 0)
+    with pytest.raises(ValueError, match="rows"):
+        prepare_packed_decode_metadata_from_positions(0, 0, 0, 0, 0, 0, 0, 0, 0, 4)
+    with pytest.raises(ValueError, match="rows"):
+        commit_packed_decode_graph_step(0, 0, 0, 0, 0)
+    with pytest.raises(ValueError, match="elements"):
+        record_u16_rows_indexed(0, 0, 0, 0, 1, 1)
