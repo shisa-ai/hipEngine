@@ -18,6 +18,7 @@ from hipengine.runtime.qwen35_gguf_runner import (
     _HipEventStageRecorder,
     _build_gguf_packed_verify_layout,
     _packed_ar_prefill_linear_state_plan,
+    _scatter_packed_layer_output_hidden,
 )
 
 
@@ -171,6 +172,25 @@ def test_gguf_packed_prefill_uses_slot_local_full_attention_at_c1_threshold() ->
         layout,
         aotriton_threshold=0,
     )
+
+
+def test_gguf_packed_layer_output_hidden_scatter_selects_slot_rows() -> None:
+    sessions = tuple(SimpleNamespace(_last_layer_output_hidden={}) for _ in range(3))
+    hidden = np.arange(6 * 4, dtype=np.float32).reshape(6, 4)
+
+    _scatter_packed_layer_output_hidden(
+        sessions,
+        layer_id=7,
+        hidden_rows=hidden,
+        row_indices=(1, 3, 5),
+    )
+
+    for session, row_index in zip(sessions, (1, 3, 5), strict=True):
+        np.testing.assert_array_equal(
+            session._last_layer_output_hidden[7],
+            hidden[row_index : row_index + 1],
+        )
+        assert session._last_layer_output_hidden[7].shape == (1, 4)
 
 
 def test_gguf_packed_ar_prefill_keeps_only_final_segment_state() -> None:

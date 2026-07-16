@@ -157,6 +157,102 @@ def _prefill_c1(session: Any, prompt: Sequence[int]) -> int:
     return int(result.token_id)
 
 
+def _prefill_c1_with_layer_hidden(
+    session: Any,
+    prompt: Sequence[int],
+    layer_ids: Sequence[int],
+) -> int:
+    """Run public c1 prefill and expose each final prompt layer row."""
+
+    result = session.prefill(
+        [int(token) for token in prompt],
+        use_bulk=True,
+        bulk_attention_mode="bulk",
+        return_logits=False,
+        capture_layer_output_hidden=tuple(int(layer) for layer in layer_ids),
+    )
+    captured = session.last_layer_output_hidden
+    if sorted(captured) != sorted(int(layer) for layer in layer_ids):
+        raise RuntimeError("c1 prefill layer-output capture was not populated")
+    return int(result.token_id)
+
+
+def _compare_layer_hidden_sessions(
+    packed_sessions: Sequence[Any],
+    reference_sessions: Sequence[Any],
+    *,
+    row_indices: Sequence[int],
+    layer_ids: Sequence[int],
+    phase: str,
+    step: int,
+) -> tuple[int, list[dict[str, Any]]]:
+    """Compare captured BF16 layer outputs after exact conversion to FP32."""
+
+    mismatches: list[dict[str, Any]] = []
+    comparisons = 0
+    for packed, reference, row_index in zip(
+        packed_sessions,
+        reference_sessions,
+        row_indices,
+        strict=True,
+    ):
+        packed_layers = packed.last_layer_output_hidden
+        reference_layers = reference.last_layer_output_hidden
+        for layer_id in layer_ids:
+            layer_id = int(layer_id)
+            comparisons += 1
+            actual = packed_layers.get(layer_id)
+            expected = reference_layers.get(layer_id)
+            record: dict[str, Any] = {
+                "phase": str(phase),
+                "step": int(step),
+                "row": int(row_index),
+                "layer": layer_id,
+            }
+            if actual is None or expected is None:
+                mismatches.append(
+                    {
+                        **record,
+                        "reason": "missing_capture",
+                        "packed_present": actual is not None,
+                        "c1_present": expected is not None,
+                    }
+                )
+                continue
+            actual_f32 = np.ascontiguousarray(actual, dtype=np.float32)
+            expected_f32 = np.ascontiguousarray(expected, dtype=np.float32)
+            if actual_f32.shape != expected_f32.shape:
+                mismatches.append(
+                    {
+                        **record,
+                        "reason": "shape",
+                        "packed_shape": list(actual_f32.shape),
+                        "c1_shape": list(expected_f32.shape),
+                    }
+                )
+                continue
+            actual_bits = actual_f32.view(np.uint32)
+            expected_bits = expected_f32.view(np.uint32)
+            mismatch_elements = int(np.count_nonzero(actual_bits != expected_bits))
+            if mismatch_elements:
+                delta = np.abs(actual_f32 - expected_f32)
+                mismatches.append(
+                    {
+                        **record,
+                        "reason": "values",
+                        "mismatch_elements": mismatch_elements,
+                        "max_abs": float(np.max(delta)),
+                        "packed_hash": hashlib.blake2b(
+                            actual_f32.tobytes(), digest_size=16
+                        ).hexdigest(),
+                        "c1_hash": hashlib.blake2b(
+                            expected_f32.tobytes(), digest_size=16
+                        ).hexdigest(),
+                    }
+                )
+    return comparisons, mismatches
+
+
 def _session_build_policy(args: argparse.Namespace) -> dict[str, Any]:
     compiler_version = None
     if args.compiler_version_file is not None:
@@ -236,6 +332,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             )
         packed_sessions = tuple(sessions[:rows])
         reference_sessions = tuple(sessions[rows:])
+        capture_layer_ids = (
+            tuple(range(len(shared_runner.weights.config.layer_types)))
+            if bool(args.capture_layer_hidden)
+            else ()
+        )
+        compare_prefill_hidden = bool(
+            capture_layer_ids and str(args.prefill_mode) == "packed"
+        )
 
         # Packed prefill captures the decode-order-exact Conv/GDN state row for
         # every prompt token.  Keep both sides on the declared GDN arithmetic
@@ -248,6 +352,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         prompts,
                         sessions=packed_sessions,
                         return_logits=False,
+                        capture_layer_output_hidden=capture_layer_ids,
                     )
                     packed_tokens = [int(result.token_id) for result in prefill_results]
                 else:
@@ -256,12 +361,29 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         for session, prompt in zip(packed_sessions, prompts, strict=True)
                     ]
             reference_tokens = [
-                _prefill_c1(session, prompt)
+                (
+                    _prefill_c1_with_layer_hidden(session, prompt, capture_layer_ids)
+                    if compare_prefill_hidden
+                    else _prefill_c1(session, prompt)
+                )
                 for session, prompt in zip(reference_sessions, prompts, strict=True)
             ]
         initial_packed = [_capture_state(session) for session in packed_sessions]
         initial_reference = [_capture_state(session) for session in reference_sessions]
         initial_mismatches = _compare_state_rows(initial_packed, initial_reference)
+        hidden_comparisons = 0
+        hidden_mismatches: list[dict[str, Any]] = []
+        if compare_prefill_hidden:
+            compared, mismatches = _compare_layer_hidden_sessions(
+                packed_sessions,
+                reference_sessions,
+                row_indices=tuple(range(rows)),
+                layer_ids=capture_layer_ids,
+                phase="prefill_hidden",
+                step=0,
+            )
+            hidden_comparisons += compared
+            hidden_mismatches.extend(mismatches)
 
         packed_trajectory = [list(packed_tokens)]
         reference_trajectory = [list(reference_tokens)]
@@ -269,7 +391,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         dirty_before_flush = False
         flushed = False
         if lifecycle == "steady":
-            for _step in range(int(args.decode_steps)):
+            for step_index in range(1, int(args.decode_steps) + 1):
                 with _temporary_env({_CAPTURE_PREFILL_GDN_ENV: "1"}):
                     packed_tokens = [
                         int(result.token_id)
@@ -279,12 +401,30 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                             positions=[int(session.position) for session in packed_sessions],
                             return_logits=False,
                             scatter_state=False,
+                            capture_layer_output_hidden=capture_layer_ids,
                         )
                     ]
                 reference_tokens = [
-                    int(session.step(token, return_logits=False).token_id)
+                    int(
+                        session.step(
+                            token,
+                            return_logits=False,
+                            capture_layer_output_hidden=capture_layer_ids,
+                        ).token_id
+                    )
                     for session, token in zip(reference_sessions, reference_tokens, strict=True)
                 ]
+                if capture_layer_ids:
+                    compared, mismatches = _compare_layer_hidden_sessions(
+                        packed_sessions,
+                        reference_sessions,
+                        row_indices=tuple(range(rows)),
+                        layer_ids=capture_layer_ids,
+                        phase="decode_hidden",
+                        step=step_index,
+                    )
+                    hidden_comparisons += compared
+                    hidden_mismatches.extend(mismatches)
                 packed_trajectory.append(list(packed_tokens))
                 reference_trajectory.append(list(reference_tokens))
             dirty_before_flush = bool(owner._packed_decode_state_dirty)
@@ -302,6 +442,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                             positions=[int(session.position) for session in group_sessions],
                             return_logits=False,
                             scatter_state=False,
+                            capture_layer_output_hidden=capture_layer_ids,
                         )
                     for index, result in zip(live_indices, results, strict=True):
                         packed_tokens[index] = int(result.token_id)
@@ -315,6 +456,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         packed_sessions[index].step(
                             packed_tokens[index],
                             return_logits=False,
+                            capture_layer_output_hidden=capture_layer_ids,
                         ).token_id
                     )
                 for index in live_indices:
@@ -322,8 +464,20 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         reference_sessions[index].step(
                             reference_tokens[index],
                             return_logits=False,
+                            capture_layer_output_hidden=capture_layer_ids,
                         ).token_id
                     )
+                if capture_layer_ids:
+                    compared, mismatches = _compare_layer_hidden_sessions(
+                        tuple(packed_sessions[index] for index in live_indices),
+                        tuple(reference_sessions[index] for index in live_indices),
+                        row_indices=live_indices,
+                        layer_ids=capture_layer_ids,
+                        phase="decode_hidden",
+                        step=step_index,
+                    )
+                    hidden_comparisons += compared
+                    hidden_mismatches.extend(mismatches)
                 event_packed = [_capture_state(packed_sessions[index]) for index in live_indices]
                 event_reference = [_capture_state(reference_sessions[index]) for index in live_indices]
                 event_mismatches = _compare_state_rows(event_packed, event_reference)
@@ -346,6 +500,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
     tokens_exact = packed_trajectory == reference_trajectory
     lifecycle_state_exact = all(bool(event["state_exact"]) for event in lifecycle_events)
+    layer_hidden_exact = not hidden_mismatches
     passed = bool(
         tokens_exact
         and not initial_mismatches
@@ -353,9 +508,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         and flushed
         and lifecycle_state_exact
         and not final_mismatches
+        and layer_hidden_exact
     )
     first_divergence = None
-    if initial_mismatches:
+    if hidden_mismatches:
+        first_divergence = {
+            "component": "layer_output_hidden",
+            **hidden_mismatches[0],
+        }
+    elif initial_mismatches:
         first_divergence = {"phase": "prefill", **initial_mismatches[0]}
     elif not tokens_exact:
         first_divergence = {"phase": "decode_tokens"}
@@ -390,7 +551,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "prefill_mode": str(args.prefill_mode),
         "prefill_arithmetic": {
             "gdn_prefill_mode": str(args.gdn_prefill_mode),
-            "packed_state_row_route": "decode_order_bf16_segments_state_rows_no_copy",
+            "packed_linear_state_route": "segmented_in_place_final_state",
+            "packed_gdn_kernel_route": "decode_order_bf16_segments",
             "package_default_overridden": str(args.gdn_prefill_mode) != "auto",
         },
         "lifecycle": lifecycle,
@@ -411,6 +573,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "tokens_exact": tokens_exact,
         "initial_state_exact": not initial_mismatches,
         "initial_mismatches": initial_mismatches,
+        "layer_hidden": {
+            "enabled": bool(capture_layer_ids),
+            "prefill_compared": bool(compare_prefill_hidden),
+            "layers": list(capture_layer_ids),
+            "comparisons": int(hidden_comparisons),
+            "exact": bool(layer_hidden_exact),
+            "mismatches": hidden_mismatches,
+        },
         "dirty_before_flush": dirty_before_flush,
         "flush_executed": flushed,
         "lifecycle_state_exact": lifecycle_state_exact,
@@ -449,6 +619,11 @@ def build_parser() -> argparse.ArgumentParser:
             "GDN arithmetic used by both packed and c1 prefills; exact is the "
             "byte-equality contract, while auto diagnoses package-policy drift"
         ),
+    )
+    parser.add_argument(
+        "--capture-layer-hidden",
+        action="store_true",
+        help="compare every packed prefill/decode layer output with c1 (diagnostic D2H)",
     )
     parser.add_argument("--prompt-token-id", type=int, default=9707)
     parser.add_argument("--alternate-token-id", type=int, default=9708)

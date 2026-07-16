@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
+import numpy as np
+
 from scripts.gguf_packed_ar_state_oracle import (
+    _compare_layer_hidden_sessions,
     _compare_state_rows,
     _session_build_policy,
     build_parser,
@@ -32,6 +37,39 @@ def test_gguf_packed_ar_state_oracle_compares_every_state_part() -> None:
     ]
 
 
+def test_gguf_packed_ar_state_oracle_compares_layer_hidden_rows() -> None:
+    packed = SimpleNamespace(
+        last_layer_output_hidden={
+            0: np.asarray([[1.0, 2.0]], dtype=np.float32),
+            1: np.asarray([[3.0, 4.0]], dtype=np.float32),
+        }
+    )
+    reference = SimpleNamespace(
+        last_layer_output_hidden={
+            0: np.asarray([[1.0, 2.0]], dtype=np.float32),
+            1: np.asarray([[3.0, 4.5]], dtype=np.float32),
+        }
+    )
+
+    comparisons, mismatches = _compare_layer_hidden_sessions(
+        (packed,),
+        (reference,),
+        row_indices=(3,),
+        layer_ids=(0, 1),
+        phase="decode_hidden",
+        step=2,
+    )
+
+    assert comparisons == 2
+    assert len(mismatches) == 1
+    assert mismatches[0]["row"] == 3
+    assert mismatches[0]["layer"] == 1
+    assert mismatches[0]["phase"] == "decode_hidden"
+    assert mismatches[0]["step"] == 2
+    assert mismatches[0]["mismatch_elements"] == 1
+    assert mismatches[0]["max_abs"] == 0.5
+
+
 def test_gguf_packed_ar_state_oracle_cached_build_policy_reads_compiler_file(tmp_path) -> None:
     compiler_version_file = tmp_path / "hipcc-version.txt"
     compiler_version_file.write_text("HIP version: test\n", encoding="utf-8")
@@ -56,6 +94,7 @@ def test_gguf_packed_ar_state_oracle_defaults_to_decode_isolation() -> None:
 
     assert args.prefill_mode == "independent_c1"
     assert args.gdn_prefill_mode == "exact"
+    assert not args.capture_layer_hidden
     assert args.rows == 2
     assert args.lifecycle == "steady"
     assert args.prompt_length == 16
