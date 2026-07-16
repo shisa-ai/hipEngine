@@ -11,7 +11,7 @@ from __future__ import annotations
 import time
 from collections import Counter, deque
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from math import ceil, isfinite
 from numbers import Integral
 from typing import Iterable, Mapping, Sequence
@@ -1241,20 +1241,29 @@ class ResidentBatchScheduler:
         )
         if not request_ids:
             return None
-        self._set_bucket_key(
-            request_ids,
-            self._bucket_key(
-                self.shape_key(
-                    mode=WorkKind.DECODE,
-                    top_k=top_k,
-                    experts_per_token=experts_per_token,
-                    replay_steps=replay_steps,
-                    kv_storage_dtype=kv_storage_dtype,
-                    layer_plan=layer_plan,
-                )
+        slot_ids = tuple(self.active_batch.slot_for(request_id) for request_id in request_ids)
+        slot_set = set(slot_ids)
+        active_mask = tuple(slot in slot_set for slot in range(self.capacity))
+        shape = replace(
+            self.shape_key(
+                mode=WorkKind.DECODE,
+                top_k=top_k,
+                experts_per_token=experts_per_token,
+                replay_steps=replay_steps,
+                kv_storage_dtype=kv_storage_dtype,
+                layer_plan=layer_plan,
             ),
+            active_c=len(request_ids),
+            active_mask=active_mask,
         )
-        return WorkItem(kind=WorkKind.DECODE, request_ids=request_ids, row_to_request=request_ids)
+        self._set_bucket_key(request_ids, self._bucket_key(shape))
+        return WorkItem(
+            kind=WorkKind.DECODE,
+            request_ids=request_ids,
+            row_to_request=request_ids,
+            slot_ids=slot_ids,
+            active_mask=active_mask,
+        )
 
     def sampler_params_block(self, request_ids: Sequence[int]) -> SamplerParamsBlock:
         """Return a columnar per-row sampler block for a native decode launch."""

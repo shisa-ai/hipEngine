@@ -17542,6 +17542,8 @@ def test_resident_scheduler_per_row_eos_reclaims_finished_rows_only() -> None:
 
     decode = scheduler.next_decode_work()
     assert decode is not None and decode.request_ids == (r0, r1, r2)
+    assert decode.slot_ids == (0, 1, 2)
+    assert decode.active_mask == (True, True, True)
     completed = scheduler.record_generated(
         [
             GeneratedToken(r0, 100, finished=True),
@@ -17558,6 +17560,8 @@ def test_resident_scheduler_per_row_eos_reclaims_finished_rows_only() -> None:
 
     decode = scheduler.next_decode_work()
     assert decode is not None and decode.request_ids == (r1, r2)
+    assert decode.slot_ids == (1, 2)
+    assert decode.active_mask == (False, True, True)
     completed = scheduler.record_generated([GeneratedToken(r1, 201), GeneratedToken(r2, 301)])
 
     assert [(item.request_id, item.finish_reason) for item in completed] == [(r1, "length")]
@@ -17567,6 +17571,8 @@ def test_resident_scheduler_per_row_eos_reclaims_finished_rows_only() -> None:
 
     decode = scheduler.next_decode_work()
     assert decode is not None and decode.request_ids == (r2,)
+    assert decode.slot_ids == (2,)
+    assert decode.active_mask == (False, False, True)
     completed = scheduler.record_generated([GeneratedToken(r2, 302, finished=True)])
 
     assert [(item.request_id, item.finish_reason) for item in completed] == [(r2, "stop")]
