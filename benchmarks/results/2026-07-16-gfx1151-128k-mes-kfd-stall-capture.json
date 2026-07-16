@@ -256,9 +256,11 @@
     "redacted_evidence_bundle_url": "https://gist.github.com/lhl/dcdc0eb2e7a8f1bede6088130c383f72",
     "existing_issue_followup_url": "https://github.com/ROCm/ROCm/issues/5107#issuecomment-4990158250",
     "oversubscription_timer_stream_topology_response_url": "https://github.com/ROCm/ROCm/issues/5107#issuecomment-4990476677",
+    "sched_policy2_followup_artifact": "benchmarks/results/2026-07-16-gfx1151-sched-policy2-128k-vm-fault.json",
+    "sched_policy2_followup_url": "https://github.com/ROCm/ROCm/issues/6437#issuecomment-4990825784",
     "routing_reason": "The symptom crosses TheRock HIP user space, ROCr/KFD, amdgpu, CP, MES firmware, and kernel hang detection. It is not established as a TheRock build/package regression. ROCm/ROCm is the stack-wide issue tracker and TheRock MES issue 2655 itself routes related gfx115x scheduler hangs to ROCm/ROCm reports.",
     "next_steps": [
-      "run one separate amdgpu.sched_policy=2 isolation boot with MES logging, preserving the same protocol, and post the result to ROCm/ROCm#6437",
+      "sched_policy=2 was rejected after the matched 128K process faulted before prefill; restore sched_policy=0 and ask AMD for a supported HWS/MES isolation method",
       "ask AMD for the supported MES-event decoder and a low-perturbation second-sample user-HQD/last-retired-packet method",
       "cross-file to TheRock or drm/amd only if an AMD maintainer requests it or a future A/B establishes a tracker-specific boundary"
     ]

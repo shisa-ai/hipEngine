@@ -65,10 +65,13 @@ process teardown. This is direct evidence of a mapped user queue with unread
 work; one HQD sample does not prove temporal pointer immobility, identify an
 unread packet, or prove MES firmware is the faulty component.
 
-The dedicated stack-wide report and redacted bundle are now public. The next
-experiment is a separate `sched_policy=2` scheduler-isolation boot; its result
-will be added to ROCm/ROCm#6437. A legacy-interposition or streaming rocprofiler
-retry remains lower priority.
+The dedicated stack-wide report and redacted bundle are now public. The separate
+`sched_policy=2` scheduler-isolation boot is complete and **rejected** on this
+stack: exact 512 controls pass, but the matched 128K process faults before
+prefill in the ROCr/HSA code-cache invalidation path. It therefore does not
+answer whether non-HWS would prevent the original HWS/MES retirement stall. The
+result is posted to ROCm/ROCm#6437; restore `sched_policy=0`. A
+legacy-interposition or streaming rocprofiler retry remains lower priority.
 
 ## User-visible impact and scope
 
@@ -135,10 +138,10 @@ The main evidence set uses:
 | Comparison HIP stack | HIP `7.13.60980-c76140fa27` |
 | Main compiler | AMD clang 23, `aa451e1f...+PATCHED:440716f8...` |
 | Queue policy | `GPU_MAX_HW_QUEUES=1` unless a row explicitly says default/four; this does not mean only one KFD queue object |
-| amdgpu scheduler policy | `sched_policy=0` (hardware scheduling enabled) |
+| Primary stalled-HQD scheduler policy | `sched_policy=0` (hardware scheduling enabled); the rejected non-HWS follow-up used `2` |
 | CWSR | `cwsr_enable=1` |
 
-Current relevant values on the MES-debug boot are:
+Relevant values on the primary stalled-HQD MES-debug boot were:
 
 ```text
 mes_log_enable=1
@@ -273,6 +276,7 @@ change incidence.
 | Jul 16 | Current-boot KFD controls | Two independent chunk-recorder warmup+3 gates completed exactly; healthy MQD/sysfs snapshots captured | Establishes a healthy queue baseline; `kfd/rls` is not a usable discriminator by itself |
 | Jul 16 | MES-log boot plus stalled HQD | First 128K prefill stops at cursor 389/339; 36 samples hold 100%/2.9 GHz/median 43 W; active 1 MiB HQD has 32 unread AQL packets and zero error/dequeue state; MES-log bytes change only during teardown | Direct mapped-queue backlog evidence; debug parameters are not a workaround, while one HQD sample and an undecoded MES buffer still do not name the failed packet/component |
 | Jul 16 | AMD oversubscription-timer / stream-topology audit | Exact CachyOS source submits timer 50; no override; failing prefill uses one application thread and default stream 0; experimental AOTriton stream is off | Disabled timer and current application multistream submission are not supported as necessary triggers; firmware field still lacks live readback |
+| Jul 16 | Non-HWS `sched_policy=2` boot | Exact 512/1 passes before and after; intervening 128K process aborts before prefill with CPF gfxhub fault at ring 24 / VMID 8 / PASID 31; coredump reaches `AqlQueue::ExecutePM4` during code-cache invalidation | Reject policy 2 on this stack; no conclusion about the original HWS stall because 128K never reaches prefill |
 
 ## Flight-recorder localization
 
@@ -314,6 +318,7 @@ the tested protocol.” It does not mean the component can never affect incidenc
 | ROCm's default four hardware queues cause the failure | Default vs one-queue matched A/B | Default failed; first one-queue gate passed; later one-queue gates failed | Queue count affects risk but one queue does not eliminate the bug |
 | MES oversubscription timer is disabled | Audit exact CachyOS source, module parameters, command line, modprobe state, and hipEngine source | Kernel path sets 50; no override or app MES packet path exists | Timer zero is unsupported by configured-source evidence; live firmware value is not independently readable |
 | Multiple hipEngine threads/streams heavily oversubscribe CP | Audit exact README sweep and effective backend policy | Main Python thread submits bulk prefill on default stream 0; isolated AOTriton stream is off | Current failure does not require multiple application submission threads/streams; ROCr internal queues remain |
+| `sched_policy=2` is a usable workaround/isolation | Fixed-stack non-HWS boot, exact 512/1 before/after, one matched 128K gate | 512 controls pass; 128K faults before prefill in CPF/code-cache invalidation path | Reject on this stack; non-HWS effect on the original retirement stall remains unknown |
 | HIP 7.15 regression | Five-process HIP 7.13/7.15 lifecycle matrix | Both stacks reproduced | HIP 7.15 alone is not the root cause; user-space version can still affect incidence |
 | SDMA copy engine deadlock | `HSA_ENABLE_SDMA=0` full gate | Reproduced after warmup | SDMA is not necessary and disabling it is not a safe workaround |
 | Scoped stream-ordered metadata preparation | Explicit metadata-off control | Reproduced | LCP-M2 metadata path is not necessary |
@@ -361,7 +366,8 @@ Missing proof:
 - the MES event buffer has not been firmware-decoded;
 - no last-retired AQL packet or named user dispatch has been recovered;
 - no minimal standalone reproducer exists;
-- no fixed-stack `sched_policy=2` A/B has been completed.
+- the fixed-stack `sched_policy=2` A/B cannot answer the HWS question because
+  its 128K process faults before prefill.
 
 ### Application dispatch sequence as a trigger
 
@@ -518,35 +524,75 @@ identifier or secret pattern. The existing umbrella report was updated in
 Future evidence should be posted to #6437 first and cross-linked only when it
 changes the broader #5107 scheduler-family picture.
 
-### Priority 2: non-HWS scheduler-isolation boot
+### Priority 2 result: non-HWS boot rejected before prefill
 
-The separate boot is prepared but not yet loaded:
+The reboot loaded the intended one-variable scheduler change:
 
 ```text
 amdgpu.sched_policy=2 amdgpu.mes_log_enable=1 \
   amdgpu.gpu_recovery=1 amdgpu.send_sigterm=1
 ```
 
-`/etc/default/limine` and both current top-level CachyOS kernel entries contain
-those four tokens exactly once. `limine-update` completed successfully. The
-one-variable A/B rollback is
-`/etc/default/limine.pre-gfx1151-sched-policy2-20260716T092026Z`; the full
-pre-investigation backup remains
-`/etc/default/limine.pre-gfx1151-debug-20260716T054023Z`. The current running
-boot remains at default `sched_policy=0` until reboot. Preparation logs and
-checksums are under
-`/home/lhl/gfx1151-debug/2026-07-16-sched-policy2-boot-prep-20260716T092026Z`.
+The kernel confirms `amdgpu: SW scheduler is used`; `cwsr_enable=1`, all other
+debug/fault values, kernel, firmware, HIP/compiler, model, runtime source,
+one-queue policy, and cached-build requirement remain matched. The app rollback
+selectors are unset.
 
-After reboot and before any GPU workload, verify `/proc/cmdline` plus loaded
-`sched_policy=2`, `mes_log_enable=1`, `gpu_recovery=1`, `send_sigterm=1`, and
-`cwsr_enable=1`. Keep the kernel, firmware, HIP stack, compiler, application
-commit, one-queue environment, model, and capture protocol unchanged.
-`sched_policy=2` disables HWS and statically assigns queues. If the exact 128K
-warmup+3 gate becomes repeatedly reliable, that strongly implicates the HWS/MES
-scheduling plane. If
-it still fails, capture one HQD and all MES/KFD controls and do not conclude
-that firmware is exonerated. This policy is debug-only, system-wide, can affect
-TTY responsiveness/power/performance, and is not a production hipEngine fix.
+A fresh-process 512/1 control completes exactly at **1163.527/48.350
+prefill/decode tok/s**, final token `9707`, finite logits, and 21.478 GiB tracked
+peak. The matched 128K warmup+3 process then aborts before creating its flight
+recorder or entering prefill. The capture script returns 134 after seven seconds.
+The primary journal event is:
+
+```text
+[gfxhub] page fault (src_id:0 ring:24 vmid:8 pasid:31)
+in page starting at address 0x00007ff3409ae000 from client 10
+GCVM_L2_PROTECTION_FAULT_STATUS:0x00800830
+Faulty UTCL2 client ID: CPF (0x4)
+MORE_FAULTS: 0x0  WALKER_ERROR: 0x0
+PERMISSION_FAULTS: 0x3  MAPPING_ERROR: 0x0  RW: 0x0
+```
+
+ROCr reports page-not-present or supervisor privilege and aborts through
+`Runtime::VMFaultHandler`. The coredump places the main thread in the following
+native path:
+
+```text
+hipMemcpy
+  -> hsa_executable_freeze / AmdHsaCodeLoader::FreezeExecutable
+  -> RegionMemory::Freeze
+  -> GpuAgent::InvalidateCodeCaches
+  -> AqlQueue::ExecutePM4
+  -> hsa_signal_wait_scacquire
+```
+
+This identifies the host/lower-level wait path, not a proven faulty app buffer,
+`hipMemcpy`, or named kernel. After the primary fault, the journal says
+`Debugging does not support sched_policy 2`, then records a secondary CPC/null
+fault at VMID/PASID 0 during abort/debug teardown. The later debug message and
+secondary fault are not treated as the primary cause.
+
+The abort removes the KFD process and returns the GPU idle without a reset. A
+fresh post-fault 512/1 control again completes exactly at
+**1199.181/48.177 tok/s**, token `9707`, and finite logits. These bracketing
+controls reject a persistent post-fault wedge or simple all-subsequent-process
+failure; one 128K attempt does not prove determinism or identify the
+max-context-specific trigger.
+
+Decision: **do not use `sched_policy=2` on this stack**. Because the process never
+enters prefill, the run neither reproduces nor eliminates the original HWS/MES
+queue-retirement failure. Preserve the local core but never publish it: it can
+contain arbitrary process/model memory. Reviewed evidence is in
+[`2026-07-16-gfx1151-sched-policy2-128k-vm-fault.json`](../benchmarks/results/2026-07-16-gfx1151-sched-policy2-128k-vm-fault.json)
+and [ROCm/ROCm#6437 comment 4990825784](https://github.com/ROCm/ROCm/issues/6437#issuecomment-4990825784).
+Raw checksummed evidence remains under
+`/home/lhl/gfx1151-debug/2026-07-16-sched-policy2-boot-20260716T102012Z`.
+The one-variable backup
+`/etc/default/limine.pre-gfx1151-sched-policy2-20260716T092026Z` has been
+restored and `limine-update` completed. Both current generated CachyOS entries
+retain MES logging/recovery/SIGTERM and contain no `sched_policy=2`; the running
+kernel remains policy 2 until reboot. Reboot to `sched_policy=0` before
+production work.
 
 ### Priority 3: retry tracing with legacy queue interception
 
@@ -607,7 +653,7 @@ all recorded locations have moved.
 | Parameter / change | Why not yet |
 | --- | --- |
 | `halt_if_hws_hang=1` | Can preserve a detected HWS hang but may require a hard reboot; use only with remote capture and recovery plan |
-| `vm_fault_stop`, `noretry`, `no_queue_eviction_on_vm_fault` | No VM fault is currently observed; these alter failure/recovery behavior before the relevant evidence exists |
+| `vm_fault_stop`, `noretry`, `no_queue_eviction_on_vm_fault` | No VM fault is observed in the primary `sched_policy=0` stall; the separate policy-2 initialization fault does not justify changing primary-stall recovery semantics without AMD guidance |
 | `timeout_period` | Controls SQ watchdog/fatal behavior and can be destructive; use only under AMD guidance |
 | `lockup_timeout` tuning | The state already persists far beyond ordinary timeout values; the observed KFD/MES queue is apparently not covered by the normal DRM scheduler timeout |
 | Disable CWSR, clock gating, or power gating | Large behavioral changes with no current causal signal; would obscure the smaller scheduler tests |
@@ -652,7 +698,10 @@ dedicated report:
 
 The dedicated [ROCm/ROCm#6437](https://github.com/ROCm/ROCm/issues/6437)
 contains the complete environment, reproducer, controls, HQD decode, raw MES
-snapshot links, and questions for AMD.
+snapshot links, and questions for AMD. The
+[`sched_policy=2` follow-up](https://github.com/ROCm/ROCm/issues/6437#issuecomment-4990825784)
+rejects that debug policy after the matched 128K process faults before prefill;
+it explicitly does not answer whether non-HWS changes the original stall.
 
 ### Closest existing reports
 
@@ -660,7 +709,7 @@ snapshot links, and questions for AMD.
 | --- | --- | --- |
 | [ROCm/ROCm#5107](https://github.com/ROCm/ROCm/issues/5107) | Queue-count sensitivity, 100% state, AMD says gfx11 MES/CP fix is under development | Primarily multi-model/idle utilization; our direct symptom is one-process long-prefill no-progress |
 | [ROCm/ROCm#6165](https://github.com/ROCm/ROCm/issues/6165) | Same Framework gfx1151 platform, sustained long prefill, silent hang, no hangcheck/reset | Their MES is 0x86 and the whole host later freezes; ours uses MES 0x88, host remains responsive, and killing one process immediately recovers |
-| [ROCm/ROCm#2625](https://github.com/ROCm/ROCm/issues/2625) / [ROCm/amdgpu#153](https://github.com/ROCm/amdgpu/issues/153) | RDNA hardware queues/MES, 100% activity, `sched_policy=2` workaround | Their minimal stream/memory reproducer does not trigger our symptom; their primary issue is persistent idle power, not halted prefill retirement |
+| [ROCm/ROCm#2625](https://github.com/ROCm/ROCm/issues/2625) / [ROCm/amdgpu#153](https://github.com/ROCm/amdgpu/issues/153) | RDNA hardware queues/MES, 100% activity, `sched_policy=2` workaround | Their minimal stream/memory reproducer does not trigger our symptom; our policy-2 128K process faults before prefill, and their primary issue is persistent idle power |
 
 The existing links support a scheduler-family relationship. They do not prove
 all reports have the same root cause.
@@ -770,8 +819,8 @@ Published package:
 4. explicit one-HQD-sample, stale-MQD, and undecoded-MES boundaries;
 5. public model URL/fingerprint, never model weights.
 
-The `sched_policy=2` and legacy-profiler results remain follow-up comments rather
-than blockers for filing.
+The `sched_policy=2` result is now posted as a follow-up and rejected on this
+stack. A legacy-profiler retry remains a follow-up rather than a blocker.
 
 ### Submitted issue content
 
@@ -841,7 +890,10 @@ State that:
 5. How should `amdgpu_mes_event_log` be decoded on MES `0x88`, and what does it
    imply that the exposed bytes are identical from healthy-active through two
    stalled snapshots but change during process teardown?
-6. Is `sched_policy=2` the preferred scheduler-isolation test on this kernel?
+6. Is `sched_policy=2` supported for gfx1151 KFD compute on this stack? If so,
+   does the ring-24/VMID-8/PASID-31 CPF fault during
+   `AqlQueue::ExecutePM4` code-cache invalidation match a known static-queue
+   issue; if not, what scheduler-isolation method should replace it?
 7. Is the single temporally coincident `PME: Spurious native interrupt!` worth a
    PCIe/platform trace, or should it be treated as unrelated absent repetition?
 8. Can AMD provide a debug kernel/patch that logs HWS runlist progress, MES queue
@@ -862,6 +914,7 @@ State that:
 | [`2026-07-16-gfx1151-128k-rocprof-inline-interposition-stall.json`](../benchmarks/results/2026-07-16-gfx1151-128k-rocprof-inline-interposition-stall.json) | Ambiguous inline-profiler signal stall and missing trace finalization |
 | [`2026-07-16-gfx1151-128k-kfd-healthy-controls.json`](../benchmarks/results/2026-07-16-gfx1151-128k-kfd-healthy-controls.json) | Two complete pre-reboot healthy MQD/sysfs controls and prepared MES-debug boot |
 | [`2026-07-16-gfx1151-128k-mes-kfd-stall-capture.json`](../benchmarks/results/2026-07-16-gfx1151-128k-mes-kfd-stall-capture.json) | First MES-debug-boot stall with recorder cursor, telemetry, active non-empty HQD decode, MES-log control, firmware hashes, and evidence boundaries |
+| [`2026-07-16-gfx1151-sched-policy2-128k-vm-fault.json`](../benchmarks/results/2026-07-16-gfx1151-sched-policy2-128k-vm-fault.json) | Non-HWS boot rejection: exact bracketing 512 controls plus the pre-prefill 128K CPF VM fault and coredump stack |
 
 Public reporting links:
 
@@ -869,7 +922,8 @@ Public reporting links:
 - immutable source: [`rocm-6437-reproducer-v1`](https://github.com/shisa-ai/hipEngine/tree/rocm-6437-reproducer-v1) -> `a7b4fe4b213c5afcbe1be2b13cb33464f251a06e`;
 - redacted raw bundle: [gist `dcdc0eb2e7a8f1bede6088130c383f72`](https://gist.github.com/lhl/dcdc0eb2e7a8f1bede6088130c383f72);
 - #5107 evidence cross-link: [comment 4990158250](https://github.com/ROCm/ROCm/issues/5107#issuecomment-4990158250);
-- #5107 timer/stream answer: [comment 4990476677](https://github.com/ROCm/ROCm/issues/5107#issuecomment-4990476677).
+- #5107 timer/stream answer: [comment 4990476677](https://github.com/ROCm/ROCm/issues/5107#issuecomment-4990476677);
+- #6437 non-HWS result: [comment 4990825784](https://github.com/ROCm/ROCm/issues/6437#issuecomment-4990825784).
 
 Raw telemetry, recorder mmaps, process stacks, fence samples, journals, and
 profiler logs normally remain local under the `/tmp/gfx1151-*` directories named
@@ -877,9 +931,12 @@ and hashed by the compact artifacts. The two pre-reboot KFD bundles are also
 compressed and checksum-preserved under
 `/home/lhl/gfx1151-debug/2026-07-16-current-boot`. The MES-debug-boot preflight
 and stalled capture are checksum-preserved under
-`/home/lhl/gfx1151-debug/2026-07-16-mes-log-boot-b254b1d7`. The selected,
-redacted subset listed above is public in the gist; excluded raw files remain
-local and are not upstream evidence.
+`/home/lhl/gfx1151-debug/2026-07-16-mes-log-boot-b254b1d7`. The policy-2 fault,
+bracketing controls, rollback logs, and local-only compressed core are preserved
+under
+`/home/lhl/gfx1151-debug/2026-07-16-sched-policy2-boot-20260716T102012Z`.
+The selected, redacted subset listed above is public in the gist; excluded raw
+files and the core remain local and are not upstream evidence.
 
 ## Closure criteria
 
