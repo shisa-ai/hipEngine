@@ -3,11 +3,11 @@
 Last reviewed: **2026-07-16**
 
 Latest retained hipEngine revisions in this scoreboard:
-`28b37356ee27a874fe510d50a0c2f92eeaa4cf9c` for the final gfx1100 GGUF sweep
-and `61a27d7279549843bb3fb0464cb8b120689b9ff1` for the current gfx1151 GGUF
-refresh. The gfx1151 production refresh is retained through 64K; repeated 128K
-is explicitly blocked by the residual gfx11 scheduler lifecycle failure rather
-than carrying a stale number.
+`666a72dbac0af1d27661860e7f09facb77dd1299` for the focused post-sweep gfx1100
+GGUF router convergence gates and `61a27d7279549843bb3fb0464cb8b120689b9ff1`
+for the current gfx1151 GGUF refresh. The gfx1151 production refresh is retained
+through 64K; repeated 128K is explicitly blocked by the residual gfx11 scheduler
+lifecycle failure rather than carrying a stale number.
 
 This file is the source of truth for repository-level performance tables. It
 records which snapshots are eligible for use, the exact protocol behind each
@@ -462,14 +462,35 @@ eager warmup plus three measured runs in an independent resident process; every
 measurement captures and closes a fresh state-bound decode graph. Package
 automatic policy selects peer-wave GDN, spill-free selected prefill, the
 persistent cooperative router, and the long-context parallel reducer while KV
-remains default BF16.
+remains default BF16. Focused post-sweep transfers now also select the exact
+256-thread F32-weight router-logits wrapper and 128-thread bulk router selector
+on gfx1100.
 
 Prefill is now
 **2716.648/3052.541/2953.101/2078.038/1559.878/1037.378 tok/s**, graph decode is
 **92.833/98.148/100.522/88.240/76.691/62.669 tok/s**, and tracked right-sized
 memory is **21.228/21.295/21.670/22.234/22.879/24.168 GiB** from 512 through
 128K. All 18 final IDs are `9707`; the largest prefill/decode stdev over median
-is **0.658%/0.223%**.
+is **0.658%/0.223%**. The six-shape values remain the last clean publication
+sweep. A same-session balanced W7900 gate for the newly retained router default
+moves focused 512/4K prefill **2689.171 -> 2795.242 (+3.94%)** and **2955.867 ->
+3070.905 tok/s (+3.89%)**; graph decode is **-0.022%/+0.159%**, tracked memory
+is unchanged, the 4K primitive is bit-exact, and all timed final IDs match. An
+incremental 128-thread selector gate on top improves aggregate 512/4K medians
+another **+0.32%/+0.81%** (paired medians **+0.30%/+0.12%**), with graph decode
+**-0.068%/+0.216%**, unchanged memory, bit-exact selected IDs/routing weights,
+and matching final IDs. A direct legacy-512/512 versus final-package stack gate
+confirms paired prefill gains of **+3.87%/+4.16%** at 512/4K, graph decode
+**+0.11%/+0.07%**, and unchanged memory/IDs. The subsequently retained
+stream-ordered metadata path adds aggregate **+0.41%/+2.43%** at 512/4K
+(paired **+0.26%/+2.26%**), with non-regressive decode, unchanged memory/IDs,
+and an exact metadata primitive. Production peer-wave GDN remains unchanged;
+the strict-exact rollback now resolves to nonvolatile direct-LDS32, which moves
+volatile-direct 512/4K prefill **+73.01%/+82.46%**, halves VGPR **64 -> 32**,
+and preserves byte-exact state, decode, and compact-scratch memory. A final clean
+selector-unset confirmation moves the pre-screen 512/4K package baseline
+**2699.283/2972.935 -> 2808.249/3173.723 tok/s (+4.04%/+6.75%)**; graph decode
+is **-0.26%/+0.24%**, tracked memory unchanged, and all IDs exact.
 
 Relative to the July 14 GGUF table, prefill improves **+35.27% to +118.78%**
 and decode improves **+2.24% to +3.46%**. Prefill now beats llama.cpp HIP at
@@ -481,7 +502,13 @@ ahead by **2.47-13.87%**. The tracked-memory count is within **-0.378 to
 practical parity but small cross-scope differences are not allocator-efficiency
 claims.
 
-Evidence: [`final optimization sweep`](results/2026-07-16-gfx1100-gguf-final-optimization-sweep.json),
+Evidence: [`focused convergence confirmation`](results/2026-07-16-gfx1100-gguf-convergence-final-confirmation.json),
+[`final optimization sweep`](results/2026-07-16-gfx1100-gguf-final-optimization-sweep.json),
+[`256-thread router transfer`](results/2026-07-16-gfx1100-gguf-router-threads256-promotion.json),
+[`128-thread router-select transfer`](results/2026-07-16-gfx1100-gguf-router-select-threads128-promotion.json),
+[`retained router stack`](results/2026-07-16-gfx1100-gguf-router-stack-promotion.json),
+[`device-metadata transfer`](results/2026-07-16-gfx1100-gguf-prefill-device-metadata-promotion.json),
+[`nonvolatile exact rollback`](results/2026-07-16-gfx1100-gguf-gdn-nonvolatile-exact-rollback.json),
 [`peer-GDN promotion`](results/2026-07-15-gfx1100-gguf-prefill-lcp5a-spill-free-peer-promotion.json),
 [`decode attribution`](results/2026-07-15-gfx1100-gguf-decode-lcpd3-attribution.json),
 [`LCP-D2 gate`](results/2026-07-14-gfx1100-gguf-decode-lcp-d2-parallel-reduce.json),

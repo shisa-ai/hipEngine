@@ -1,0 +1,108 @@
+{
+  "kind": "hipengine_gfx1100_gguf_convergence_screen",
+  "schema_version": 1,
+  "date": "2026-07-16",
+  "candidate": {
+    "id": "LCP-4B-gfx1100",
+    "description": "Use 128 rather than 512 threads for the existing bulk-prefill router top-k selector",
+    "scope": "hip_gfx1100 GGUF_PREFILL_ROUTER_SELECT_THREADS backend capability",
+    "source": "existing in-tree gfx1151 LCP-4B selector; no kernel-body change",
+    "rollback": "HIPENGINE_GGUF_PREFILL_ROUTER_SELECT_THREADS=512"
+  },
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "arch": "gfx1100"
+  },
+  "software": {
+    "hipengine_measurement_commit": "cd4cfa8c468d01f3c5e5487daaf2dba5415a4887",
+    "stack": "therock",
+    "hipcc": "HIP version: 7.15.0-0000000; AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "fingerprint_algorithm": "sha256-sampled-v1",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+  },
+  "protocol": {
+    "prompt": "repeated token 9707",
+    "workloads": ["512/128", "4096/128"],
+    "session": "one right-sized resident process per shape; control and candidate interleaved in the same session on top of the retained 256-thread logits default",
+    "warmups": "one full discarded run per mode",
+    "measured_repetitions": 3,
+    "order": ["control,candidate", "candidate,control", "control,candidate"],
+    "prefill": "production bulk attention, automatic chunks, WMMA requested/effective",
+    "decode": "one eager warmup token; fresh state-bound graph per measured reset; capture excluded",
+    "build": "all kernels prebuilt; cached builds required",
+    "environment": "hermetic therock HIP 7.15; HIP_VISIBLE_DEVICES=0; HIPENGINE_BACKEND=hip_gfx1100; HIPENGINE_HIP_ARCH=gfx1100"
+  },
+  "correctness": {
+    "primitive": {
+      "tokens": 4096,
+      "logits_stride": 256,
+      "num_experts": 256,
+      "top_k": 8,
+      "control_threads": 512,
+      "candidate_threads": 128,
+      "selected_elements": 32768,
+      "routing_elements": 32768,
+      "selected_mismatch": 0,
+      "routing_bit_mismatch": 0,
+      "routing_max_abs": 0.0,
+      "exact": true
+    },
+    "control_final_ids": {
+      "512": [9707, 9707, 9707],
+      "4096": [9707, 9707, 9707]
+    },
+    "candidate_final_ids": {
+      "512": [9707, 9707, 9707],
+      "4096": [9707, 9707, 9707]
+    },
+    "finite_final_logits": true
+  },
+  "measurements": {
+    "512": {
+      "control_prefill_tok_s": [2788.465366865729, 2789.516493598206, 2795.603725652785],
+      "candidate_prefill_tok_s": [2812.041246771504, 2797.8711443104085, 2798.564054727473],
+      "control_prefill_median": 2789.516493598206,
+      "candidate_prefill_median": 2798.564054727473,
+      "prefill_delta_percent": 0.32434155345668625,
+      "paired_prefill_delta_percent": [0.8454786703079975, 0.2995017499045405, 0.10589229966762037],
+      "paired_prefill_delta_median_percent": 0.2995017499045405,
+      "control_decode_median_tok_s": 92.76210648356385,
+      "candidate_decode_median_tok_s": 92.698567223816,
+      "decode_delta_percent": -0.06849699964404099,
+      "tracked_peak_gib": 21.228173956274986
+    },
+    "4096": {
+      "control_prefill_tok_s": [3083.0839828524377, 3055.1190102281507, 3049.8074206023593],
+      "candidate_prefill_tok_s": [3081.315789825086, 3079.800652302749, 3053.5371730919587],
+      "control_prefill_median": 3055.1190102281507,
+      "candidate_prefill_median": 3079.800652302749,
+      "prefill_delta_percent": 0.8078782525972716,
+      "paired_prefill_delta_percent": [-0.057351438922392806, 0.8078782525972716, 0.12229468865490034],
+      "paired_prefill_delta_median_percent": 0.12229468865490034,
+      "control_decode_median_tok_s": 100.36250191093899,
+      "candidate_decode_median_tok_s": 100.57967674313677,
+      "decode_delta_percent": 0.2163904128162475,
+      "tracked_peak_gib": 21.670319117605686
+    }
+  },
+  "decision": "Promote 128 threads for gfx1100 bulk-prefill router select. Aggregate median prefill improves by 0.32%/0.81% at 512/4K; balanced paired medians are +0.30%/+0.12%, decode is flat/non-regressive, memory is unchanged, primitive selected IDs and routing weights are bit-exact, and all timed final IDs match.",
+  "sources": {
+    "ab_512": {
+      "path": "/tmp/gfx1100-router-select128-ab-512.json",
+      "sha256": "8ada9a55c102f80d2a732dd1bd76da81534d2cb63e650b48d0af26c0e5361e79"
+    },
+    "ab_4096": {
+      "path": "/tmp/gfx1100-router-select128-ab-4k.json",
+      "sha256": "98605fbe6d7ad5dedc4913aeec22c3043c22563a4e7fd60512ec6baa710eb158"
+    },
+    "primitive": {
+      "path": "/tmp/gfx1100-router-select128-primitive.json",
+      "sha256": "83860cd7e0d15162550c785e0ac08b2378ac3f369485e2b133d0d28182d16229"
+    }
+  }
+}

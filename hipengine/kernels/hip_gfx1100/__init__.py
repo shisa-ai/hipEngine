@@ -7,6 +7,9 @@ GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 24
 # the llama.cpp-HIP-shaped normalized-Q/K wave32 recurrence on gfx1100.
 # Scalar-exact direct LDS32 remains available through the explicit selector.
 GGUF_GDN_PREFILL_AUTO_MODE = "chain_peer_wave32"
+# Strict-exact rollback/oracle stays architecture-scoped and does not replace
+# the quality-admitted peer-wave production default.
+GGUF_GDN_PREFILL_EXACT_MODE = "chain_lds32_direct_nonvolatile"
 # Clean W7900 GPF-3A full-model 512/4K evidence admits byte-exact shared-X
 # selected-dual Q4T16 prefill after the predeclared borderline-decode repeat.
 GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE = "shared_x"
@@ -18,6 +21,15 @@ GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS = 4096
 # boundary using a routing-independent tight padded-row upper bound. Larger
 # selected-row shapes keep the exact scalar read until independently measured.
 GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS = 4096
+# Clean W7900 LCP-4A transfer evidence admits the exact 256-thread
+# BF16-hidden/F32-weight router-logits geometry for bulk prefill and decode.
+GGUF_ROUTER_F32_BF16_HIDDEN_THREADS = 256
+# Clean W7900 LCP-4B transfer evidence admits 128 threads for the bulk-prefill
+# top-k selector. Decode keeps its independently selected launch geometry.
+GGUF_PREFILL_ROUTER_SELECT_THREADS = 128
+# Clean W7900 LCP-M2 transfer evidence admits one stream-ordered metadata
+# preparation kernel in place of six synchronous H2D copies through 4K.
+GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS = 4096
 # Clean W7900 LCP-D2 correctness and 32K/64K/128K graph-decode gates admit the
 # split-parallel gated reduction from 32K onward. Shorter contexts retain the
 # single-launch serial reducer because the extra prepare launch is neutral/down.
@@ -34,11 +46,15 @@ __all__ = [
     "GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS",
     "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
     "GGUF_GDN_PREFILL_AUTO_MODE",
+    "GGUF_GDN_PREFILL_EXACT_MODE",
     "GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE",
     "GGUF_PAGED_ATTN_PARALLEL_REDUCE",
     "GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT",
+    "GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS",
+    "GGUF_PREFILL_ROUTER_SELECT_THREADS",
     "GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS",
     "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS",
+    "GGUF_ROUTER_F32_BF16_HIDDEN_THREADS",
 ]
