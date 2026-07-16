@@ -158825,3 +158825,50 @@ six-shape or broad-suite rerun was performed. Artifact:
 - Linked the handoff from `docs/README.md` and the gfx1151 recorder protocol in
   `docs/BENCHMARK.md`. Docs/process change only; no GPU measurement or
   performance/correctness claim.
+
+## 2026-07-16 — Capture healthy KFD controls and prepare MES-debug boot
+
+- Synced local main with fetched `origin/main@03a69a68`. The branch was ahead 6
+  and behind 8; merge `babbc8c6` preserves both gfx1100 convergence and gfx1151
+  stall histories. The only content conflict was the July-16 benchmark
+  changelog and both sides were retained. `resolve_worklog_conflict.py --check`,
+  benchmark README sync, diff checks, and the 114-test router/metadata/GDN/
+  recorder/rollup bundle pass. Local main is now ahead 7 / behind 0; not pushed.
+- Cached merged-tree 512/1 preflight is exact: ID `9707`, finite logits,
+  **1214.592/47.822 prefill/decode tok/s**. No JIT build ran inside the long
+  controls.
+- Ran two independent current-boot KFD-instrumented 128K warmup+3 processes at
+  clean tracked `babbc8c6`. Both complete exactly rather than reproducing the
+  intermittent stall:
+  - process A: warmup **487.820/28.088**, measured prefill
+    **488.431/488.278/488.446** and decode
+    **28.230/28.215/28.199 tok/s**;
+  - process B: warmup **509.123/28.064**, measured prefill
+    **509.188/509.332/510.077** and decode
+    **28.199/28.207/28.186 tok/s**;
+  - all six measured IDs are `9707`, all logits finite, tracked peak unchanged
+    at 25.493 GiB, both final recorder cursors **5,392/5,392**, and both kernel
+    journals have zero relevant lines.
+- Healthy snapshots were taken during real work: process A at 97% / 2,744 MHz /
+  129 W and process B at 99% / 2,795 MHz / 128 W. In both, KFD sysfs/MQDs expose
+  the same three queue objects: compute 4 KiB, compute 1 MiB, and SDMA 8 MiB.
+  Fault/page-in/page-out counters are zero and cumulative eviction is only 3/4
+  ms. `GPU_MAX_HW_QUEUES=1` therefore does not mean one total KFD queue object.
+- Crucially, `/sys/kernel/debug/kfd/rls` says `No active runlist` in both healthy
+  snapshots despite the high-power active telemetry and advancing same-stream
+  markers. That view alone is not a valid healthy/stalled discriminator on this
+  MES-managed configuration. No HQD dump was taken because the predeclared
+  protocol reserves that large/potentially perturbing read for a confirmed
+  stall. The two complete processes are healthy controls, not a lifecycle-fix or
+  performance claim.
+- Preserved both raw bundles, capture script, preflight, Limine update log, and
+  checksums under `/home/lhl/gfx1151-debug/2026-07-16-current-boot` before
+  reboot. Compact artifact:
+  `benchmarks/results/2026-07-16-gfx1151-128k-kfd-healthy-controls.json`.
+- Prepared but did not activate the next Limine observation boot. Added
+  `amdgpu.mes_log_enable=1 amdgpu.gpu_recovery=1 amdgpu.send_sigterm=1` to
+  `/etc/default/limine`, backed up the original at
+  `/etc/default/limine.pre-gfx1151-debug-20260716T054023Z`, ran
+  `sudo limine-update`, and verified both generated CachyOS entries in
+  `/boot/limine.conf`. Keep `sched_policy=0` for this boot; non-HWS remains a
+  separate later A/B.

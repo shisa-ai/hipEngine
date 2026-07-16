@@ -1,0 +1,220 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1151_128k_kfd_healthy_controls",
+  "status": "two_complete_controls_no_stall_capture",
+  "created_at": "2026-07-16T15:20:00+09:00",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "topline_eligible": false,
+  "conclusion": "Two independent current-boot KFD-instrumented 128K warmup-plus-three processes complete exactly at merged commit babbc8c6, so this campaign establishes idle, healthy-active, and post-termination KFD baselines but does not capture the intermittent stall. During both healthy-active snapshots the GPU is doing real work at 97-99% reported activity and 128-129 W, yet /sys/kernel/debug/kfd/rls says 'No active runlist'. Therefore rls alone is not a usable active-versus-stalled discriminator on this MES-managed gfx1151 configuration. KFD mqds and sysfs do expose the process and the same three queue objects in both runs: two compute queues (4 KiB and 1 MiB rings) and one SDMA queue (8 MiB ring), with zero fault/page-in/page-out counters and only 3-4 ms cumulative eviction time. No HQD dump is taken because the predeclared protocol reserves that large, potentially perturbing read for an established stall. The two completions do not prove lifecycle stability or a merged-code fix after the prior repeated failures; timing-sensitive debugfs reads and the chunk recorder can perturb incidence. Proceed to the prepared MES-log diagnostic boot, retaining these snapshots as the healthy control and capturing HQDs only if no-progress reproduces.",
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "pci": "0000:c1:00.0",
+    "kernel": "7.1.3-2-cachyos",
+    "mes_firmware": "0x00000088",
+    "mes_kiq_firmware": "0x0000006f",
+    "vbios": "113-STRXLGEN-001"
+  },
+  "software": {
+    "hipengine_commit": "babbc8c6ac97875df54e076535480d05bafafc90",
+    "git_branch": "main",
+    "tracked_tree_clean": true,
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+    "gpu_max_hw_queues": 1,
+    "amdgpu": {
+      "mes_log_enable": 0,
+      "sched_policy": 0,
+      "gpu_recovery": -1,
+      "send_sigterm": 0,
+      "debug_evictions": false,
+      "halt_if_hws_hang": 0,
+      "timeout_period": 0,
+      "cwsr_enable": 1
+    }
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "size_bytes": 22663387424,
+    "fingerprint_algorithm": "sha256-sampled-v1",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "prompt": "131072 repetitions of token 9707"
+  },
+  "protocol": {
+    "processes": 2,
+    "warmups_per_process": 1,
+    "measured_runs_per_process": 3,
+    "decode_tokens": 128,
+    "process_bound_seconds": 1800,
+    "prefill_flight_recorder_granularity": "chunk",
+    "snapshots": [
+      "idle before process",
+      "healthy_active after the first submitted/retired chunk markers",
+      "after process termination"
+    ],
+    "healthy_snapshot_reads": [
+      "/sys/kernel/debug/kfd/rls",
+      "/sys/kernel/debug/kfd/mqds",
+      "/sys/kernel/debug/kfd/proc tree",
+      "/sys/class/kfd/kfd/proc tree and text attributes",
+      "amdgpu_vm_info",
+      "amdgpu_fence_info"
+    ],
+    "stalled_only_read_not_executed": "/sys/kernel/debug/kfd/hqds plus raw MES/MES-KIQ MQD/ring snapshots",
+    "stall_detector": "completed flight-recorder cursor unchanged for 120 seconds while submitted exceeds completed",
+    "command": "GPU_MAX_HW_QUEUES=1 python3 scripts/qwen35_readme_sweep.py --engine gguf --model <model> --quant gguf_q4_k_m --backend hip_gfx1151 --workloads 128K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file /tmp/hipengine-flight-recorder-hipcc-version.txt --require-cached-build --prefill-flight-recorder <out>/prefill.flight --prefill-flight-recorder-granularity chunk --json <out>/result.json"
+  },
+  "processes": [
+    {
+      "name": "current_boot_a",
+      "raw_directory": "/tmp/gfx1151-kfd-queue-babbc8c6-20260716T053958Z",
+      "elapsed_seconds": 1154,
+      "status": "completed",
+      "warmup_prefill_tok_s": 487.8196220193347,
+      "warmup_decode_tok_s": 28.088358696222205,
+      "measured_prefill_tok_s": [
+        488.4307857000877,
+        488.27821928954506,
+        488.44613415939773
+      ],
+      "median_prefill_tok_s": 488.4307857000877,
+      "measured_decode_tok_s": [
+        28.230146317213034,
+        28.214845661485057,
+        28.198720424917607
+      ],
+      "median_decode_tok_s": 28.214845661485057,
+      "final_token_ids": [9707, 9707, 9707],
+      "all_final_logits_finite": true,
+      "tracked_peak_gib": 25.492501743137836,
+      "final_recorder_cursor": "5392/5392",
+      "healthy_snapshot": {
+        "timestamp": "2026-07-16T14:40:59.583336548+09:00",
+        "nearest_telemetry": {
+          "gfx_activity_percent": 97,
+          "gfx_clock_mhz": 2744,
+          "socket_power_w": 129,
+          "vram_used_mib": 26662
+        },
+        "flight_cursor_before_snapshot": {
+          "prefill_id": 1,
+          "submitted": 52,
+          "completed": 3,
+          "lag": 49
+        },
+        "evicted_ms": 3
+      },
+      "relevant_kernel_journal_lines": 0
+    },
+    {
+      "name": "current_boot_b",
+      "raw_directory": "/tmp/gfx1151-kfd-queue-babbc8c6-20260716T055953Z",
+      "elapsed_seconds": 1109,
+      "status": "completed",
+      "warmup_prefill_tok_s": 509.12349615667455,
+      "warmup_decode_tok_s": 28.064068051249276,
+      "measured_prefill_tok_s": [
+        509.1876747932603,
+        509.3322601231161,
+        510.0770776301856
+      ],
+      "median_prefill_tok_s": 509.3322601231161,
+      "measured_decode_tok_s": [
+        28.198520137288575,
+        28.206946356448228,
+        28.18604774317559
+      ],
+      "median_decode_tok_s": 28.198520137288575,
+      "final_token_ids": [9707, 9707, 9707],
+      "all_final_logits_finite": true,
+      "tracked_peak_gib": 25.492501743137836,
+      "final_recorder_cursor": "5392/5392",
+      "healthy_snapshot": {
+        "timestamp": "2026-07-16T15:00:54.693905026+09:00",
+        "nearest_telemetry": {
+          "gfx_activity_percent": 99,
+          "gfx_clock_mhz": 2795,
+          "socket_power_w": 128,
+          "vram_used_mib": 26662
+        },
+        "flight_cursor_before_snapshot": {
+          "prefill_id": 1,
+          "submitted": 60,
+          "completed": 3,
+          "lag": 57
+        },
+        "evicted_ms": 4
+      },
+      "relevant_kernel_journal_lines": 0
+    }
+  ],
+  "healthy_kfd_baseline": {
+    "rls_both": "Node 1, gpu_id d566: No active runlist",
+    "rls_interpretation": "The rls view cannot be treated as proof that no user queue is active on this MES configuration because both snapshots coincide with 97-99% activity, 128-129 W, advancing same-stream markers, and populated process MQDs.",
+    "process_sysfs_pasid": 0,
+    "mqds_header_pasid": "reported as the process PID in each debugfs dump",
+    "queue_objects": [
+      {"queue_id": 0, "type": "compute", "type_code": 0, "ring_size_bytes": 4096},
+      {"queue_id": 1, "type": "compute", "type_code": 0, "ring_size_bytes": 1048576},
+      {"queue_id": 2, "type": "sdma", "type_code": 1, "ring_size_bytes": 8388608}
+    ],
+    "faults": 0,
+    "page_in": 0,
+    "page_out": 0,
+    "sdma_accounting_bytes": 0,
+    "vram_accounting_bytes": 27932229632,
+    "caution": "GPU_MAX_HW_QUEUES=1 does not imply only one KFD queue object; it limits the runtime's hardware queue policy while internal/small compute and SDMA queues remain visible. MQDs can be stale for mapped queues and require HQD correlation in a real stall."
+  },
+  "correctness": {
+    "completed_prefills": 8,
+    "completed_measured_runs": 6,
+    "all_measured_final_ids_9707": true,
+    "all_final_logits_finite": true,
+    "both_recorder_cursors_fully_retired": true,
+    "memory_unchanged": true
+  },
+  "decision": {
+    "stall_captured": false,
+    "hqd_dump_captured": false,
+    "lifecycle_fix_claim": false,
+    "performance_claim_eligible": false,
+    "next_step": "Reboot into the already prepared amdgpu.mes_log_enable=1 amdgpu.gpu_recovery=1 amdgpu.send_sigterm=1 observation boot, verify loaded values and amdgpu_mes_event_log, then run the same bounded capture. Compare any stalled MQD/HQD/MES state against these healthy controls."
+  },
+  "source_hashes": {
+    "run_a_result_json": "a8dd012ab7452e9f5814694274e1db7a74438ce296ac5b72d8dcbe7ed43fb1af",
+    "run_a_flight_final_json": "3ecb06c62e7ea14760487f3fcd39744f970fe7a58c04fe916125759961a0c0d2",
+    "run_a_telemetry_csv": "4d9daf34e45dd5161e3c9cadd3af0898a7367b8e8a17d3cb780d8673f0d47516",
+    "run_a_kfd_rls": "374736a457fc3afe1e5c5325017c1ad0c4facf71190e2b06436d0f27b8c5931c",
+    "run_a_kfd_mqds": "d241d0f059a3e9ba7622981362667dfef7f3db8d6b48774fac3ad8bce246c5ef",
+    "run_a_amdgpu_vm_info": "5072f37c6995bf2b02381c45744739ed12a173fdba524a3d8eae690b16c2a8e2",
+    "run_a_kernel_journal": "602de469a50390ccfd70d980b952674f29ae6a61e4b9b4548de9f0f1a66f8fa3",
+    "run_b_result_json": "90182795f21ffd7fb9a0cc49136b5d4bfa9b80a62715d377baebf75aad3afeec",
+    "run_b_flight_final_json": "177df807d301fc8f108ba3e3ee489bdb534bc7f073cb841e59a3638c8b896fd0",
+    "run_b_telemetry_csv": "9e5aa656356abd183a9d85ce25f647e34f8b9331da228a8ecf2201658414bd57",
+    "run_b_kfd_rls": "374736a457fc3afe1e5c5325017c1ad0c4facf71190e2b06436d0f27b8c5931c",
+    "run_b_kfd_mqds": "5ad96d9af993ee15d84820679e64c7db0f66ad8c1c8f533595575cf084b626f7",
+    "run_b_amdgpu_vm_info": "970b04865ea64645f9877e9ceb31a6295ec28eb2094db1b1ea41b428e3a475a8",
+    "run_b_kernel_journal": "1bf5758ee9b35e8beeeb5415f0b78e05350e7bbe00d3a0c9b8e88daea475e79c",
+    "durable_run_a_archive": "756d79314ef924e130a90b8f35a830a5f9449b7ca33aea173f584de3936eef53",
+    "durable_run_b_archive": "3aad7c016962f91fedf513bf3185224c416a0fed42973bc9690e20a936ce9215",
+    "capture_script": "614f27dc0bcbfb59fdac6e510e3763f4c4173b3e8b529f20e48710aec9afb90d"
+  },
+  "durable_raw_directory": "/home/lhl/gfx1151-debug/2026-07-16-current-boot",
+  "boot_preparation": {
+    "bootloader": "Limine 12.4.2",
+    "config": "/etc/default/limine",
+    "backup": "/etc/default/limine.pre-gfx1151-debug-20260716T054023Z",
+    "prepared_parameters": [
+      "amdgpu.mes_log_enable=1",
+      "amdgpu.gpu_recovery=1",
+      "amdgpu.send_sigterm=1"
+    ],
+    "limine_update": "completed successfully",
+    "generated_config_verified": "/boot/limine.conf contains all three parameters for linux-cachyos and linux-cachyos-lts",
+    "not_active_until_reboot": true
+  }
+}
