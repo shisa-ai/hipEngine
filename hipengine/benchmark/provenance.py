@@ -279,6 +279,13 @@ def _command_output(command: Sequence[str]) -> str | None:
 
 
 def _detect_rocm_version(hipcc_version: str | None) -> str | None:
+    # The hipcc resolved from PATH identifies the active toolchain. This must
+    # win over an unrelated host /opt/rocm tree when benchmarks run inside a
+    # hermetic TheRock environment.
+    if hipcc_version:
+        for line in hipcc_version.splitlines():
+            if "HIP version" in line or "ROCm" in line:
+                return line.strip()
     for candidate in (
         Path("/opt/rocm/.info/version"),
         Path("/opt/rocm/.info/version-dev"),
@@ -289,10 +296,6 @@ def _detect_rocm_version(hipcc_version: str | None) -> str | None:
             continue
         if text:
             return text
-    if hipcc_version:
-        for line in hipcc_version.splitlines():
-            if "HIP version" in line or "ROCm" in line:
-                return line.strip()
     return None
 
 
