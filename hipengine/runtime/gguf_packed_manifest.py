@@ -1,14 +1,15 @@
 """Observable execution contract for GGUF packed autoregressive decode.
 
-The packed Q4_K_M route is currently an exact hybrid: full attention, MoE/FFN,
-LM head, and greedy argmax consume all live rows together, while each recurrent
-linear-attention row replays the c1-exact attention subgraph.  This module keeps
-that boundary explicit without enabling expensive tracing on the hot path.
+The packed Q4_K_M route remains an exact-hybrid bring-up path. Full attention,
+MoE/FFN, LM head, and greedy argmax consume all live rows together. Recurrent
+linear attention either uses the registered indexed Conv/GDN closure or falls
+back to the c1-exact row subgraph when that capability is absent. This module
+keeps the selected boundary explicit without expensive hot-path tracing.
 
-The structural launch counts describe the current exact packed GGUF route and
-are checked against a backend-specific real rocprof trace by
-``scripts/gguf_packed_ar_rocprof.py``.  A dispatch change therefore fails the
-census instead of silently making this manifest stale.
+The route-dependent structural launch counts are checked against a
+backend-specific real rocprof trace by ``scripts/gguf_packed_ar_rocprof.py``. A
+dispatch change therefore fails the census instead of silently making this
+manifest stale.
 """
 
 from __future__ import annotations
@@ -45,6 +46,7 @@ def build_packed_decode_execution_manifest(
     scatter_state: bool,
     blocks_per_slot: int,
     capture_layer_count: int = 0,
+    linear_attention_decode_path: str = "exact_row_local",
 ) -> dict[str, Any]:
     """Build the auditable host/runtime contract for one packed decode step.
 
@@ -80,7 +82,23 @@ def build_packed_decode_execution_manifest(
 
     linear_layers = layer_tuple.count(LINEAR_ATTENTION)
     full_layers = layer_tuple.count(FULL_ATTENTION)
-    row_loop_iterations = linear_layers * row_count
+    linear_path = str(linear_attention_decode_path)
+    supported_linear_paths = {"exact_row_local", "indexed_batch", "not_applicable"}
+    if linear_path not in supported_linear_paths:
+        raise ValueError(
+            "unsupported linear_attention_decode_path "
+            f"{linear_path!r}; expected one of {sorted(supported_linear_paths)!r}"
+        )
+    if linear_layers and linear_path == "not_applicable":
+        raise ValueError(
+            "linear_attention_decode_path cannot be not_applicable when linear layers are present"
+        )
+    if not linear_layers and linear_path != "not_applicable":
+        raise ValueError(
+            "linear_attention_decode_path must be not_applicable without linear layers"
+        )
+    indexed_linear_decode = linear_path == "indexed_batch"
+    row_loop_iterations = 0 if indexed_linear_decode else linear_layers * row_count
     projection_row_launches = row_loop_iterations * _ROW_LOCAL_PROJECTION_LAUNCHES
     conv_gdn_row_launches = row_loop_iterations * _ROW_LOCAL_CONV_GDN_LAUNCHES
     normalization_row_launches = row_loop_iterations * _ROW_LOCAL_NORMALIZATION_LAUNCHES
@@ -116,35 +134,62 @@ def build_packed_decode_execution_manifest(
 
     layer_families: dict[str, dict[str, Any]] = {
         "projection": {
-            "execution": "hybrid",
+            "execution": "packed_native" if indexed_linear_decode else "hybrid",
             "packed_native_work": [
                 "embedding",
                 "full_attention_qkv_o",
                 "moe_selected_and_shared_projections",
+                *(
+                    [
+                        "linear_attention_qkv_gate",
+                        "linear_attention_alpha",
+                        "linear_attention_beta",
+                        "linear_attention_ssm_out_fp32_input",
+                    ]
+                    if indexed_linear_decode
+                    else []
+                ),
             ],
-            "exact_row_local_work": [
-                "linear_attention_qkv_gate",
-                "linear_attention_alpha",
-                "linear_attention_beta",
-                "linear_attention_ssm_out",
-            ],
-            "host_row_loop_sites": linear_layers,
+            "exact_row_local_work": (
+                []
+                if indexed_linear_decode
+                else [
+                    "linear_attention_qkv_gate",
+                    "linear_attention_alpha",
+                    "linear_attention_beta",
+                    "linear_attention_ssm_out",
+                ]
+            ),
+            "host_row_loop_sites": 0 if indexed_linear_decode else linear_layers,
             "host_row_iterations": row_loop_iterations,
             "exact_row_local_kernel_launches": projection_row_launches,
         },
         "conv_gdn": {
-            "execution": "exact_row_local",
-            "packed_native_work": [],
-            "exact_row_local_work": ["conv_decode", "gdn_recurrent_decode"],
-            "host_row_loop_sites": linear_layers,
+            "execution": "packed_native" if indexed_linear_decode else "exact_row_local",
+            "packed_native_work": (
+                ["conv_decode_indexed", "gdn_recurrent_decode_segments_fp32_out"]
+                if indexed_linear_decode
+                else []
+            ),
+            "exact_row_local_work": (
+                []
+                if indexed_linear_decode
+                else ["conv_decode", "gdn_recurrent_decode"]
+            ),
+            "host_row_loop_sites": 0 if indexed_linear_decode else linear_layers,
             "host_row_iterations": row_loop_iterations,
             "exact_row_local_kernel_launches": conv_gdn_row_launches,
         },
         "normalization": {
-            "execution": "hybrid",
-            "packed_native_work": ["packed_layer_and_output_norms"],
-            "exact_row_local_work": ["linear_attention_attn_norm"],
-            "host_row_loop_sites": linear_layers,
+            "execution": "packed_native" if indexed_linear_decode else "hybrid",
+            "packed_native_work": [
+                "packed_layer_and_output_norms",
+                *(["linear_attention_attn_norm"] if indexed_linear_decode else []),
+            ],
+            "exact_row_local_work": (
+                [] if indexed_linear_decode else ["linear_attention_attn_norm"]
+            ),
+            "host_row_loop_sites": 0 if indexed_linear_decode else linear_layers,
             "host_row_iterations": row_loop_iterations,
             "exact_row_local_kernel_launches": normalization_row_launches,
         },
@@ -186,6 +231,7 @@ def build_packed_decode_execution_manifest(
         "mode": "decode",
         "claim_level": "exact_hybrid",
         "rows": row_count,
+        "linear_attention_decode_path": linear_path,
         "layers": {
             "total": len(layer_tuple),
             "linear_attention": linear_layers,
@@ -194,7 +240,7 @@ def build_packed_decode_execution_manifest(
         "model_step": {
             "complete_c1_session_replays": 0,
             "complete_c1_layer_replays": 0,
-            "host_model_row_loop_sites": linear_layers,
+            "host_model_row_loop_sites": 0 if indexed_linear_decode else linear_layers,
             "host_model_row_iterations": row_loop_iterations,
             "per_row_model_subgraph_invocations": row_loop_iterations,
             "expected_exact_row_local_kernel_launches": exact_row_launches,
@@ -222,7 +268,11 @@ def build_packed_decode_execution_manifest(
         "scatter_state": bool(scatter_state),
         "steady_packed_state_reused": not imported_indices and not bool(scatter_state),
         "profiler_contract": {
-            "expected_execution_buckets": ["exact_row_local", "packed_native"],
+            "expected_execution_buckets": (
+                ["packed_native"]
+                if exact_row_launches == 0
+                else ["exact_row_local", "packed_native"]
+            ),
             "expected_exact_row_local_kernel_launches": exact_row_launches,
             "require_cached_build": True,
         },
