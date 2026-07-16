@@ -159003,3 +159003,43 @@ All 15 groups and 54 prompt-repeat executions pass, with exact tokens,
 mismatches, and deterministic trajectories. Focused category/state/layout tests
 pass **29/29**; Python compilation and `git diff --check` pass. This is harness
 validation only; the retained clean B4 run uses the default 24 transitions.
+
+## 2026-07-16 — Close gfx1100 GGUF B4 prompt diversity and Phase B
+
+Ran the category lifecycle oracle from clean `a55e81c2` on Radeon Pro
+W7900/gfx1100 with Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, strict-exact
+GDN prefill, TheRock HIP 7.15, the precomputed compiler key, and cached builds
+required:
+
+```bash
+python3 scripts/gguf_packed_ar_category_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --decode-steps 24 --repeats 3 --group-size 4 \
+  --compiler-version-file /tmp/gfx1100-concurrency-b1-clean-c553631e/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/gfx1100-concurrency-b4-clean-a55e81c2/category-24x3.json
+```
+
+The retained matrix covers all 10 canonical mtp-bench prompts plus all 8 frozen
+category-heldouts across `code`, `general_en`, `general_ja`, and `mixed_ja_en`.
+Each repeat executes primary c4+c4+c2 and heldout c4+c4 groups, for **15** group
+executions and **54** prompt-repeat executions. Prompt lengths are 39-71 tokens;
+every group fits one declared packed slab, uses all active slots, and reports
+`slot_serial_fallback=false`. No prompt is duplicated to fill the c2 tail.
+
+All groups/prompts pass. The rollup has **1,350/1,350** exact sampled-token
+comparisons and **54,000/54,000** exact post-layer row comparisons, zero initial
+or final mismatches across all 30 Conv/GDN and 10 live-KV families, successful
+packed-state dirty/flush lifecycle in every group, and identical per-prompt
+trajectory hashes across all three repeats. Every category is independently
+exact; `first_divergence=null`.
+
+Compact clean evidence is
+`benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-b4-category-lifecycle.json`.
+It retains canonical clean provenance, both prompt-source and per-prompt hashes,
+category/group manifests, deterministic trajectory hashes, and the complete
+mismatch rollup. Together with the B3 standard-lifecycle artifact, this closes
+Phase B and advances gfx1100 GGUF c4 to correctness-only `exact_hybrid`.
+`performance_claim=false`: no throughput, scaling, profiler, or fully native
+model-step claim is made. The active queue advances to C1 hybrid-boundary
+tracing.

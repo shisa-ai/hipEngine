@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-16
 
+- [closed gfx1100 GGUF concurrency Phase B] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV c4 correctness scope moves **one repeated-token B3 gate -> 10 canonical prompts + 8 frozen heldouts x3 repeats** (**% delta n/a for coverage expansion; no throughput claim**): **1,350/1,350** tokens and **54,000/54,000** hidden rows are exact with zero Conv/GDN/live-KV mismatches and deterministic trajectories, qualifying correctness-only `exact_hybrid`; `benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-b4-category-lifecycle.json`.
+
 - [closed gfx1100 GGUF concurrency B3 correctness] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV c4 512/128: packed-prefill capacity moves **2,048 rows rejected -> 768/768/512-row all-slot rounds** (**% delta n/a for blocked→exact structural gate; no throughput claim**), with **20,640/20,640** exact layer rows, exact tokens, and zero Conv/GDN/live-KV mismatches through 128 transitions; `benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-b3-standard-lifecycle.json`.
 
 - [closed the bounded gfx1151-to-gfx1100 convergence screen] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV clean selector-unset therock-7.15 1+3: retained 256-thread logits, 128-thread bulk select, and device metadata through 4K move the pre-screen 512/4K package baseline **2699.283/2972.935 -> 2808.249/3173.723 tok/s (+4.04%/+6.75%)**; graph decode is **-0.26%/+0.24%**, memory unchanged, all IDs exact, and peer-wave production remains unchanged; `benchmarks/results/2026-07-16-gfx1100-gguf-convergence-final-confirmation.json`.

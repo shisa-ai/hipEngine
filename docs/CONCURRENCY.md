@@ -95,7 +95,7 @@ requests are not admitted into a live model step loop mid-generation.
 | Model path | Backend | Current c>N status | Production behavior | First missing gate |
 | --- | --- | --- | --- | --- |
 | GGUF Q4_K_M / BF16 KV | gfx1151 | Packed exact hybrid in groups of at most c4; short natural c10 runs as c4+c4+c2 | Packed server AR route is available; not a retained c>N throughput row | Per-layer hidden capture, standard all-row 512/128 gate, live admission/cancel, profiler/scaling |
-| GGUF Q4_K_M / BF16 KV | gfx1100 | B3 strict-exact all-row c4 prompt-512 plus 128 packed transitions is token/hidden/state/KV-exact in three all-slot prefill rounds; package-auto c1 peer-wave is not byte-identical | Retained c1 plus a non-performance standard-lifecycle anchor; not yet promoted to `exact_hybrid` pending B4 | Full prompt-category diversity, then C1 hybrid-boundary trace |
+| GGUF Q4_K_M / BF16 KV | gfx1100 | `exact_hybrid`: B3 all-row c4 512/128 plus B4 10-prompt/8-heldout category lifecycle are token/hidden/state/KV-exact; package-auto c1 peer-wave is not byte-identical | Retained c1 plus correctness-only c4 exact-hybrid anchors; not a retained c>N throughput row | C1 profiler census and hybrid-boundary removal |
 | GGUF Q5_K/Q6_K/Q8_0 / BF16 KV | gfx1100/gfx1151 | Not executed end to end under c>N | c1 | Q4_K_M c4 closure first |
 | PARO W4 / BF16 KV | gfx1151 | Exact greedy c2 hybrid below 1024 total context; not fully native or retained | Unsupported groups fail closed to true width-1 sessions | Lifecycle/hidden/profiler/repetition gates, then remove row-local hybrid boundaries |
 | PARO W4 / BF16 KV | gfx1100 | Historical primitive/token diagnostics only; no current retained native route | Width-1 sessions | Re-establish the current-HEAD c2 correctness baseline on W7900 |
@@ -428,8 +428,8 @@ B3. Standard protocol capacity:
 
 B4. Prompt diversity:
 
-- [ ] Run the full 10-prompt category suite for at least three repeats.
-- [ ] Add heldouts if route selection or sampling behavior changes.
+- [x] Run the full 10-prompt category suite for at least three repeats.
+- [x] Add heldouts if route selection or sampling behavior changes.
 
 Exit: gfx1100 GGUF c4 qualifies as `exact_hybrid` for
 tokens/hidden/state/KV/lifecycle. It must remain `performance_claim=false` until
@@ -671,20 +671,18 @@ multi-prompt acceptance suite. Speculative work never weakens the AR c=N gates.
 Work this list in order unless a measured blocker is recorded in `WORKLOG.md`.
 The active lane is deliberately narrow.
 
-1. **B3:** remove the all-row p512 packed-prefill capacity blocker.
-2. **B3/B4:** close standard 512/128 and category-suite equality.
-3. **C1:** trace and quantify every exact-hybrid boundary.
-4. **C2:** implement the first RED-proven c-aware Conv/GDN closure.
-5. **C3:** close remaining host row loops and scalar readbacks.
-6. **C4:** prove one fully native replayable c4 model step.
-7. **C4:** publish the direct c1/c2/c4 and chunked-c8 performance packet.
-8. **D1:** attach that c4 step to one long-lived gfx1100 model runner.
-9. **D2:** close live admission, retirement, and cancellation on W7900.
-10. **E1:** run the same model-step and loop gates unchanged on gfx1151.
-11. **E2:** generalize from native c4 to one true native c8 group.
+1. **C1:** trace and quantify every exact-hybrid boundary.
+2. **C2:** implement the first RED-proven c-aware Conv/GDN closure.
+3. **C3:** close remaining host row loops and scalar readbacks.
+4. **C4:** prove one fully native replayable c4 model step.
+5. **C4:** publish the direct c1/c2/c4 and chunked-c8 performance packet.
+6. **D1:** attach that c4 step to one long-lived gfx1100 model runner.
+7. **D2:** close live admission, retirement, and cancellation on W7900.
+8. **E1:** run the same model-step and loop gates unchanged on gfx1151.
+9. **E2:** generalize from native c4 to one true native c8 group.
 
 Do not start broad c8 tuning, PARO c4/c8, prefix caching, DMS, or speculative
-integration before item 11 unless the current blocker explicitly depends on it.
+integration before item 9 unless the current blocker explicitly depends on it.
 
 ## Coverage ledger
 
@@ -703,7 +701,7 @@ Use only these status values:
 | Path | gfx1100 | gfx1151 | Target |
 | --- | --- | --- | --- |
 | GGUF Q4_K_M / BF16, c2 | `direct_eq_ok` | `exact_hybrid` | `retained` |
-| GGUF Q4_K_M / BF16, c4 | `direct_eq_ok` | `exact_hybrid` | `retained` |
+| GGUF Q4_K_M / BF16, c4 | `exact_hybrid` | `exact_hybrid` | `retained` |
 | GGUF Q4_K_M / BF16, c8 native group | `not_started` | `not_started` | `retained` |
 | GGUF Q4_K_M / BF16, live admission | `not_started` | `not_started` | `retained` |
 | PARO W4 / BF16, c2 | `token_diag` | `exact_hybrid` | `retained` |
