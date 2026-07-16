@@ -158872,3 +158872,66 @@ six-shape or broad-suite rerun was performed. Artifact:
   `sudo limine-update`, and verified both generated CachyOS entries in
   `/boot/limine.conf`. Keep `sched_policy=0` for this boot; non-HWS remains a
   separate later A/B.
+
+## 2026-07-16 — Capture stalled gfx1151 HQD/MES state and choose ROCm/ROCm
+
+- Rebooted into the prepared observation kernel and verified the exact command
+  line and loaded values: `mes_log_enable=1`, `sched_policy=0`,
+  `gpu_recovery=1`, `send_sigterm=1`, `cwsr_enable=1`; destructive fault/watchdog
+  controls remain unchanged. Kernel is `7.1.3-2-cachyos`, firmware package is
+  `linux-firmware-amdgpu 1:20260622-1`, MES/MES-KIQ are `0x88`/`0x6f`, and SMC
+  is 100.6.0. Decompressed MES/MEC/RLC/ME firmware payload hashes are retained in
+  the compact artifact.
+- A cached exact 512/1 preflight at public tracked-clean `a7b4fe4b` passes with
+  ID `9707`, finite logits, and 21.478 GiB tracked peak. The first bounded 128K
+  attempt then reproduces in its first prefill. The layer recorder reaches
+  submitted/completed **389/339**; sequence 339 certifies chunk
+  `[32768,36864)`, while host submission reaches layer 6 of
+  `[36864,40960)`. The cursor is unchanged from the 17:11:20 sample through the
+  final 17:14:21 check.
+- All 36 telemetry samples from 17:11:23 through 17:14:18 are exactly 100%
+  reported activity and 2,900 MHz with **41/43/49 W min/median/max** and fixed
+  **26,662 MiB** residency. KFD fault/page-in/page-out counters are zero and
+  cumulative eviction is 10 ms. The filtered journal has no amdgpu/KFD fault,
+  timeout, or reset. One `PME: Spurious native interrupt!` occurs 37 seconds
+  after the last cursor change; treat it as temporally coincident, not causal.
+- A one-time established-stall `/sys/kernel/debug/kfd/hqds` dump directly finds
+  the primary 1 MiB AQL queue mapped on CP pipe 0 queue 2 with `ACTIVE=1`,
+  `PQ_EMPTY=0`, `rptr=0x32250`, `wptr=0x32450`,
+  `DEQUEUE_REQUEST=0`, and `ERROR=0`. GFX11 KFD shifts AQL pointers by four, so
+  the `0x200` hardware gap is **32 unread packets**. The auxiliary 4 KiB queue
+  is active but empty at `rptr=wptr=0x140`. Only the first stall snapshot
+  includes HQDs: backlog is proven at one instant, but temporal hardware-pointer
+  immobility is not. The byte-identical software MQD cannot supply that missing
+  proof because mapped MQDs may be stale.
+- The exposed MES event-log file is byte-identical in healthy-active,
+  first-stall, and +30-second snapshots (`b7a4abfb...`), then changes after
+  monitor-requested SIGTERM (`4a216fd8...`). No autonomous SIGTERM, recovery,
+  or reset fires; process termination removes the KFD queues and returns
+  residency to 17 MiB. Preserve the raw buffer for AMD decoding: unchanged
+  bytes do not by themselves prove MES firmware is hung.
+- Durable checksummed evidence is under
+  `/home/lhl/gfx1151-debug/2026-07-16-mes-log-boot-b254b1d7`. Compact artifact:
+  `benchmarks/results/2026-07-16-gfx1151-128k-mes-kfd-stall-capture.json`.
+- Researched issue scope and handling on 2026-07-16. ROCm/ROCm explicitly tracks
+  stack-wide ROCm bugs spanning drivers through APIs. TheRock is the
+  early-preview build/package/CI platform; it accepts system reports and has
+  better gfx1151/driver-fw labels, but its closest MES report (#2655) routes
+  related gfx115x hangs to ROCm/ROCm#5724/#5590 and a kernel patch. A small
+  response sample is mixed: ROCm#5107 responded in ~17 h, #5724/#6273 in
+  ~9 days; TheRock#1413 in ~9 days, #1271 in ~30 days, #5581 in <1 day, and
+  #5993 has no visible AMD response. There is no defensible responsiveness
+  winner independent of issue specificity/reproducer/hardware access.
+- Routing decision: file the dedicated issue in **ROCm/ROCm**, because this
+  reproduces across HIP 7.13/7.15 and now implicates the cross-layer user-queue,
+  CP/HQD, MES-log, firmware, and missing-recovery path rather than a TheRock
+  build/package boundary. Cross-link TheRock issues; file there only on AMD
+  request or a future TheRock-specific A/B. Next prepare a redacted public
+  bundle, then run the separate `sched_policy=2` isolation boot as a follow-up.
+- Validation: an independent register-index decoder reproduces the primary HQD
+  fields, 1 MiB ring size, non-empty bit, and 32-packet gap, and reproduces the
+  auxiliary 4 KiB empty queue. `python3 -m json.tool`, benchmark README sync,
+  `resolve_worklog_conflict.py --check`, `git diff --check`, all 36 local links
+  in `docs/DEBUG-GFX1151-STALL.md`, and all 6
+  `tests/test_benchmark_readme_sync.py` tests pass. This unit reports diagnostic
+  state only; no new performance or 128K correctness claim is made.
