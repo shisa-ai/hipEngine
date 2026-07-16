@@ -105,6 +105,7 @@ _LLAMA_COMPAT_MTP_ENV = {
 }
 _GGUF_MTP_CONTEXT_REPLAY_MIN_PROMPT_TOKENS = 4
 _MTP_SERVING_TARGET_BATCH_MAX_SLOTS = 4
+_GGUFSessionPoolKey = tuple[str, bool | None, bool | None, int | None]
 _GGUF_AR_PACKED_DECODE_ENV = "HIPENGINE_GGUF_AR_PACKED_DECODE"
 _GGUF_AR_PACKED_PREFILL_ENV = "HIPENGINE_GGUF_AR_PACKED_PREFILL"
 _GGUF_AR_STREAM_DECODE_ENV = "HIPENGINE_GGUF_AR_STREAM_DECODE"
@@ -236,7 +237,7 @@ class _GGUFMTPServingSlot:
     generated_ids: list[int]
     cycles: list[dict[str, Any]] = field(default_factory=list)
     timing: dict[str, float] = field(default_factory=dict)
-    session_pool_key: tuple[str, bool | None, bool | None] | None = None
+    session_pool_key: _GGUFSessionPoolKey | None = None
     draft_pool_key: int | None = None
     mtp_device_kv_len: int = 0
     draft_stream: int = 0
@@ -253,7 +254,7 @@ class _GGUFARServingSlot:
     seq_position: int
     generated_ids: list[int]
     timing: dict[str, float] = field(default_factory=dict)
-    session_pool_key: tuple[str, bool | None, bool | None] | None = None
+    session_pool_key: _GGUFSessionPoolKey | None = None
     done: bool = False
     native_compact_prefill: bool = False
     native_decode_steps: int = 0
@@ -563,8 +564,9 @@ class Qwen35GGUFBringupGenerator:
     _mtp_serving_lock: Any = field(default_factory=threading.Lock, init=False, repr=False)
     _shared_runner: Qwen35GGUFFullStackRunner | None = field(default=None, init=False, repr=False)
     _shared_runner_lock: Any = field(default_factory=threading.Lock, init=False, repr=False)
+    _prepared_max_sequence_length: int | None = field(default=None, init=False, repr=False)
     _shared_session_pool: dict[
-        tuple[str, bool | None, bool | None],
+        _GGUFSessionPoolKey,
         list[Qwen35GGUFResidentSession],
     ] = field(default_factory=dict, init=False, repr=False)
     _shared_session_pool_lock: Any = field(default_factory=threading.Lock, init=False, repr=False)
@@ -599,6 +601,13 @@ class Qwen35GGUFBringupGenerator:
 
         if max_sequence_length is not None and int(max_sequence_length) <= 0:
             raise ValueError("max_sequence_length must be positive")
+        if max_sequence_length is not None:
+            requested = int(max_sequence_length)
+            current = getattr(self, "_prepared_max_sequence_length", None)
+            self._prepared_max_sequence_length = max(
+                requested,
+                0 if current is None else int(current),
+            )
         self._get_shared_runner()
         return None if max_sequence_length is None else int(max_sequence_length)
 
@@ -664,7 +673,7 @@ class Qwen35GGUFBringupGenerator:
             for width in sorted(set(ar_widths)):
                 for target_len in warm_prompt_lengths:
                     sessions: list[Qwen35GGUFResidentSession] = []
-                    keys: list[tuple[str, bool | None, bool | None] | None] = []
+                    keys: list[_GGUFSessionPoolKey | None] = []
                     unsupported = False
                     try:
                         for _slot in range(width):
@@ -735,7 +744,7 @@ class Qwen35GGUFBringupGenerator:
             for width in sorted(set(mtp_widths)):
                 for target_len in warm_prompt_lengths:
                     sessions: list[Qwen35GGUFResidentSession] = []
-                    session_keys: list[tuple[str, bool | None, bool | None] | None] = []
+                    session_keys: list[_GGUFSessionPoolKey | None] = []
                     drafts: list[Any] = []
                     draft_keys: list[int | None] = []
                     unsupported = False
@@ -881,9 +890,10 @@ class Qwen35GGUFBringupGenerator:
         pool_name: str,
         use_wmma_prefill: bool | None = None,
         use_gemv_decode: bool | None = None,
-    ) -> tuple[Qwen35GGUFResidentSession, tuple[str, bool | None, bool | None], bool]:
+    ) -> tuple[Qwen35GGUFResidentSession, _GGUFSessionPoolKey, bool]:
         self._ensure_shared_pools()
-        key = (str(pool_name), use_wmma_prefill, use_gemv_decode)
+        max_sequence_length = getattr(self, "_prepared_max_sequence_length", None)
+        key = (str(pool_name), use_wmma_prefill, use_gemv_decode, max_sequence_length)
         with self._shared_session_pool_lock:
             pool = self._shared_session_pool.get(key)
             session = pool.pop() if pool else None
@@ -892,6 +902,11 @@ class Qwen35GGUFBringupGenerator:
             if callable(reset):
                 reset()
             return session, key, True
+        session_kwargs = (
+            {}
+            if max_sequence_length is None
+            else {"max_sequence_length": int(max_sequence_length)}
+        )
         return (
             Qwen35GGUFResidentSession(
                 self.model_path,
@@ -900,6 +915,7 @@ class Qwen35GGUFBringupGenerator:
                 shared_runner=shared_runner,
                 use_wmma_prefill=use_wmma_prefill,
                 use_gemv_decode=use_gemv_decode,
+                **session_kwargs,
             ),
             key,
             False,
@@ -907,7 +923,7 @@ class Qwen35GGUFBringupGenerator:
 
     def _release_shared_session(
         self,
-        key: tuple[str, bool | None, bool | None] | None,
+        key: _GGUFSessionPoolKey | None,
         session: Qwen35GGUFResidentSession,
     ) -> None:
         self._ensure_shared_pools()

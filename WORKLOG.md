@@ -158624,3 +158624,24 @@ fallback. This is implementation smoke only; the clean 512/128 Phase-A control
 is the next commit. Validation: the focused GGUF sampling plus new harness suite
 passes **57/57**; Python compilation and `git diff --check` pass. Ruff is not
 installed in the current dev environment.
+
+## 2026-07-16 — Propagate prepared GGUF context capacity to public sessions
+
+The first clean Phase-A 512/128 attempt stopped before measurement with
+`GGUF bulk prefill rows 512 exceed cache capacity 256`. The RED showed that
+`LLM.prepare(max_sequence_length=1024)` reached the GGUF generator but
+`prepare(...)` only materialized shared weights; later pooled AR sessions still
+used `Qwen35GGUFResidentSession`'s 256-token default.
+
+The generator now retains the largest prepared sequence length, includes it in
+the resident-session pool key, and passes it to every newly allocated public
+AR/MTP session. Including capacity in the key prevents a previously pooled
+smaller session from satisfying a larger prepared request. The focused fake
+runner gate now requires the 1024 capacity to reach session construction.
+
+A real dirty-tree W7900/TheRock HIP 7.15 p512/d1 run then completed through the
+public `LLM.generate_detailed()` serial control: prepared capacity 1024, exact
+512 prompt-token accounting, `gguf_serial_greedy_decode`, and 2222.43 prefill
+tok/s. This is a capacity GREEN smoke, not a retained rate. The full focused GGUF
+sampling plus baseline suite remains **57/57**; Python compilation and
+`git diff --check` pass. The clean 512/128 control is retried after this commit.
