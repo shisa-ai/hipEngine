@@ -3156,7 +3156,7 @@ class Qwen35GGUFFullStackRunner:
         stage_timings: dict[str, float] | None = None,
         sync_stage_timings: bool = False,
         stage_prefix: str = "target_block_full_attn",
-    ) -> None:
+    ) -> str:
         """Run row-bulk QKV/KV write with the c1-equivalent batch decode attention."""
 
         assert self.weights is not None
@@ -3421,6 +3421,7 @@ class Qwen35GGUFFullStackRunner:
             sync_stage_timings=sync_stage_timings,
             stage_prefix=f"{stage_prefix}_ffn",
         )
+        return "kv_live_spans_batch"
 
     def _run_linear_attention_layer(self, layer_id: int, hidden_ptr: int, out_ptr: int, scratch, *, stream: int = 0) -> None:
         self._run_linear_attention_attn_only(layer_id, hidden_ptr, scratch.attn_out.ptr, scratch, stream=stream)
@@ -8158,6 +8159,8 @@ class Qwen35GGUFResidentSession:
     prefill_chunk_tuning: dict[str, object] = field(default_factory=dict, init=False)
     last_packed_prefill_plan: dict[str, object] = field(default_factory=dict, init=False)
     last_packed_execution_manifest: dict[str, object] = field(default_factory=dict, init=False)
+    _last_packed_lm_head_decode_path: str = field(default="unobserved", init=False)
+    _last_packed_sampler_decode_path: str = field(default="unobserved", init=False)
     kv_storage_dtype: DType = field(default=DType.BF16, init=False)
     kv_storage_layout: str = field(default="uniform", init=False)
     int8_kv_value_bf16: bool = field(default=False, init=False)
@@ -8853,6 +8856,8 @@ class Qwen35GGUFResidentSession:
         self._packed_decode_session_ids = ()
         self._packed_decode_positions = ()
         self.last_packed_execution_manifest = {}
+        self._last_packed_lm_head_decode_path = "unobserved"
+        self._last_packed_sampler_decode_path = "unobserved"
 
     def _linear_state_snapshot(self) -> list[tuple[DeviceBuffer, DeviceBuffer]]:
         """D2D-copy linear-attention state for rollback-safe block verification.
@@ -11463,6 +11468,7 @@ class Qwen35GGUFResidentSession:
             layer_recurrent_states=packed_state.layer_recurrent_states,
         )
         linear_attention_decode_paths: set[str] = set()
+        full_attention_decode_paths: set[str] = set()
         linear_attention_decode_batch_plan = (
             self.runner._linear_attention_decode_batch_plan()
         )
@@ -11501,16 +11507,18 @@ class Qwen35GGUFResidentSession:
                         cos_table=self.scratch.cos_table,
                         sin_table=self.scratch.sin_table,
                     )
-                    self.runner._run_full_attention_decode_batch_layer_rows(
-                        layer_id,
-                        src.ptr,
-                        dst.ptr,
-                        layer_scratch,
-                        stream=stream,
-                        expert_sidecar=None,
-                        stage_timings=None,
-                        sync_stage_timings=False,
-                        stage_prefix="ar_batch_full_attn",
+                    full_attention_decode_paths.add(
+                        self.runner._run_full_attention_decode_batch_layer_rows(
+                            layer_id,
+                            src.ptr,
+                            dst.ptr,
+                            layer_scratch,
+                            stream=stream,
+                            expert_sidecar=None,
+                            stage_timings=None,
+                            sync_stage_timings=False,
+                            stage_prefix="ar_batch_full_attn",
+                        )
                     )
                 else:
                     raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
@@ -11579,6 +11587,16 @@ class Qwen35GGUFResidentSession:
             if linear_attention_decode_paths
             else "not_applicable"
         )
+        if len(full_attention_decode_paths) > 1:
+            raise RuntimeError(
+                "packed full-attention layers used inconsistent decode paths: "
+                f"{sorted(full_attention_decode_paths)!r}"
+            )
+        full_attention_decode_path = (
+            next(iter(full_attention_decode_paths))
+            if full_attention_decode_paths
+            else "not_applicable"
+        )
         self.last_packed_execution_manifest = build_packed_decode_execution_manifest(
             rows=rows,
             layer_types=self.runner.weights.config.layer_types,
@@ -11588,6 +11606,20 @@ class Qwen35GGUFResidentSession:
             blocks_per_slot=int(layout.blocks_per_slot),
             capture_layer_count=len(capture_layer_ids),
             linear_attention_decode_path=linear_attention_decode_path,
+            full_attention_decode_path=full_attention_decode_path,
+            moe_decode_path=(
+                "selected_rows_batch"
+                if self.runner.weights.config.is_moe
+                else "dense_ffn_rows"
+            ),
+            moe_top_k=(
+                int(self.runner.weights.config.expert_used_count)
+                if self.runner.weights.config.is_moe
+                else 0
+            ),
+            lm_head_decode_path=self._last_packed_lm_head_decode_path,
+            sampler_decode_path=self._last_packed_sampler_decode_path,
+            metadata_prepare_path=str(packed_scratch.metadata_prepare_path),
         )
         return [
             Qwen35GGUFNextTokenProbeResult(
@@ -13720,15 +13752,19 @@ class Qwen35GGUFResidentSession:
             stream=stream,
             runtime=runtime,
         )
-        if not direct_top1:
+        if direct_top1:
+            self._last_packed_lm_head_decode_path = "direct_top1_rows"
+            self._last_packed_sampler_decode_path = "fused_top1_i32_rows"
+        else:
             if activation_dtype != GGUF_ACTIVATION_BF16:
                 raise ValueError(
                     "non-dp4a verifier lm-head fallback expects BF16 hidden rows, "
                     f"got {activation_dtype!r}"
                 )
-            if not self._verify_lm_head_rowtile_chunked(
+            rowtile = self._verify_lm_head_rowtile_chunked(
                 hidden_ptr, self._verify_logits_buf.ptr, rows, stream=stream, runtime=runtime
-            ):
+            )
+            if not rowtile:
                 launch_gguf_linear(
                     self.runner.weights.root("lm_head"),
                     hidden_ptr,
@@ -13740,6 +13776,10 @@ class Qwen35GGUFResidentSession:
                     stream=stream,
                     runtime=runtime,
                 )
+            self._last_packed_lm_head_decode_path = (
+                "q6_rowtile_f32_logits" if rowtile else "row_linear_f32_logits"
+            )
+            self._last_packed_sampler_decode_path = "argmax_i32_rows"
             argmax_f32_rows_i32(
                 self._verify_logits_buf.ptr,
                 self._verify_lm_block_values.ptr,
@@ -14265,6 +14305,7 @@ class _GGUFFullAttentionPrefillScratch:
     moe_wmma_rows_capacity: int
     buffers: tuple[object, ...]
     runtime_state_library: object | None = None
+    metadata_prepare_path: str = "host_upload"
     allocation_mode: str = "dedicated"
     allocation_offsets: Mapping[str, tuple[int, int]] = field(
         default_factory=lambda: MappingProxyType({})
@@ -14713,6 +14754,7 @@ class _GGUFFullAttentionPrefillScratch:
             append_spans=append_spans,
             prefill_spans=prefill_spans,
             gdn_active_segments=int(layout.slot_count),
+            metadata_prepare_path="host_upload",
         )
 
     def for_rows(self, rows: int, *, runtime: HipRuntime, stream: int = 0):
