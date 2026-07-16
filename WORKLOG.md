@@ -159815,3 +159815,21 @@ from a pointer-independent bucket-shape fingerprint in the benchmark. Offline
 revalidation of the raw manifests confirms one stable shape for every route
 while honestly retaining 1/1/2/2/4 unique c1/c2/c4/chunked/serial instance
 hashes. Focused gate is **17 passed** plus compile/Ruff/diff checks; rerun clean.
+
+The clean `17185d53` rerun then passed every mechanical gate: exact
+cross-route trajectories, stable shape keys, <=**0.355%** variance, and c4
+**184.404 aggregate / 46.101 per-request tok/s**, **2.171x** c1 and **2.183x**
+serial-c4. Route-scoped c4 residency is four sessions with **23.396 GiB**
+tracked-current and **23.823 GiB** sampled HIP-used peaks; c4 TTFT p50/p95 is
+**2.026/2.027 s** and synchronized model-step ITL p50/p95 is
+**21.696/21.957 ms**. However, the shell pinned `HIP_VISIBLE_DEVICES=0` while
+the artifact whitelist omitted visible-device/queue variables, so this packet
+is provenance-incomplete and is not retained despite `status=measurement_complete`.
+Added `HIP_VISIBLE_DEVICES`, `ROCR_VISIBLE_DEVICES`, and `GPU_MAX_HW_QUEUES` to
+the captured environment contract and its unit test.
+
+A separate clean `17185d53` sparse graph refresh passes c4→c3→c2→c1 with
+**560/560** exact hidden rows, exact tokens/state/live-KV, no first divergence,
+and one positive replay for each width. Source SHA-256 is
+`98cfb454676e95669d1a61b8a18a768de00e8cf0ac77c3857a1704b460864e70`.
+The final scaling rerun follows after the provenance-only harness commit.

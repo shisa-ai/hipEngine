@@ -4,6 +4,7 @@ import pytest
 
 from scripts.gguf_packed_ar_bench import (
     CONFIGURATIONS,
+    _PROVENANCE_ENV_KEYS,
     _configuration_groups,
     _cross_configuration_correctness,
     _graph_bucket_shape_sha256,
@@ -12,6 +13,17 @@ from scripts.gguf_packed_ar_bench import (
     _parse_configurations,
     _stats,
 )
+
+
+def test_packed_ar_bench_records_visible_device_provenance_keys() -> None:
+    assert _PROVENANCE_ENV_KEYS == (
+        "HIPENGINE_BACKEND",
+        "HIPENGINE_HIP_ARCH",
+        "HIPENGINE_COMPILER_VERSION_FILE",
+        "HIP_VISIBLE_DEVICES",
+        "ROCR_VISIBLE_DEVICES",
+        "GPU_MAX_HW_QUEUES",
+    )
 
 
 def test_packed_ar_bench_parses_honest_native_and_chunked_widths() -> None:
