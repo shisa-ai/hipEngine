@@ -7,6 +7,7 @@
 **Current publication decision:** hipEngine GGUF rows through 64K are retained;
 the current repeated-128K row is blocked.<br>
 **Dedicated upstream issue:** [ROCm/ROCm#6437](https://github.com/ROCm/ROCm/issues/6437)<br>
+**Immutable reproducer:** [`rocm-6437-reproducer-v1`](https://github.com/shisa-ai/hipEngine/tree/rocm-6437-reproducer-v1) (`a7b4fe4b213c5afcbe1be2b13cb33464f251a06e`)<br>
 **Redacted evidence bundle:** [public gist](https://gist.github.com/lhl/dcdc0eb2e7a8f1bede6088130c383f72)
 
 This document is the handoff and escalation record for a silent long-prefill
@@ -159,12 +160,57 @@ The pre-reboot control differed only in `mes_log_enable=0`, `gpu_recovery=-1`,
 and `send_sigterm=0`. Record the full set again after every boot. Kernel/module
 behavior, not only HIP user-space version, is part of the reproduction identity.
 
+### MES oversubscription timer and application stream topology
+
+In response to AMD's
+[#5107 question](https://github.com/ROCm/ROCm/issues/5107#issuecomment-4981793551),
+the installed kernel and exact failing route were audited before the
+`sched_policy=2` reboot:
+
+- hipEngine does not construct or submit MES packets. The kernel amdgpu driver
+  constructs `SET_HW_RESOURCES` during MES initialization.
+- The exact CachyOS `cachyos-7.1.3-1` source used by installed
+  `linux-cachyos 7.1.3-2` sets
+  [`mes_set_hw_res_pkt.oversubscription_timer = 50`](https://github.com/CachyOS/linux/blob/0e558f948dfe28b50d2eb9ddda58900d7de01aac/drivers/gpu/drm/amd/amdgpu/mes_v11_0.c#L717-L723),
+  not zero. Package release `-2` is an NVIDIA rebuild of the same kernel source.
+- There is no exposed amdgpu timer parameter, command-line/modprobe override,
+  hipEngine reference, or local kernel patch. `mes_log_enable=1` sets adjacent
+  event-log fields but does not alter the timer assignment.
+- No available sysfs/debugfs view reads back the firmware's accepted live field.
+  The bounded conclusion is that the kernel source submits **50** with no
+  configured override, not that the firmware state was independently decoded.
+- The failing README sweep calls `session.prefill()` from the main Python thread
+  and queues the bulk prefill on HIP default stream 0. It does not use serving
+  worker pools.
+- The explicit event-linked AOTriton stream candidate is default-off on both
+  backends after it produced severe intermittent 32K/128K stalls. The capture
+  command did not enable it, the backend capability resolves false, and
+  AOTriton receives the same caller stream in the current failure.
+- ROCr helper/event threads and auxiliary KFD queue objects still exist. The
+  audit establishes one application launch thread/stream, not an absence of
+  runtime-internal queues or firmware scheduling.
+
+The verified answer was posted in
+[#5107 comment 4990476677](https://github.com/ROCm/ROCm/issues/5107#issuecomment-4990476677).
+
 ## Canonical reproduction
 
-Prebuild every JIT `.so` and the compiler-version cache file outside the bounded
-run. The direct command shape is:
+Use the immutable versioned tag, which resolves to the exact source commit used
+for the MES/KFD/HQD capture:
 
 ```bash
+git clone https://github.com/shisa-ai/hipEngine.git
+cd hipEngine
+git switch --detach rocm-6437-reproducer-v1
+test "$(git rev-parse HEAD)" = a7b4fe4b213c5afcbe1be2b13cb33464f251a06e
+```
+
+Prebuild every JIT `.so` and the compiler-version cache file outside the bounded
+run. On an empty cache, omit `--require-cached-build` for the cache-fill preflight
+and restore it for the evidence run. The direct command shape is:
+
+```bash
+hipcc --version > /tmp/hipengine-gfx1151-hipcc-version.txt
 export HIPENGINE_HIP_ARCH=gfx1151
 export HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-gfx1151-hipcc-version.txt
 export HIPENGINE_HIPCC_VERSION_FILE=/tmp/hipengine-gfx1151-hipcc-version.txt
@@ -226,6 +272,7 @@ change incidence.
 | Jul 16 | rocprofv3 inline queue interception | First prefill stalled; injected profiler signal also stopped; no trace finalized | Ambiguous instrumentation result; no last user kernel recovered |
 | Jul 16 | Current-boot KFD controls | Two independent chunk-recorder warmup+3 gates completed exactly; healthy MQD/sysfs snapshots captured | Establishes a healthy queue baseline; `kfd/rls` is not a usable discriminator by itself |
 | Jul 16 | MES-log boot plus stalled HQD | First 128K prefill stops at cursor 389/339; 36 samples hold 100%/2.9 GHz/median 43 W; active 1 MiB HQD has 32 unread AQL packets and zero error/dequeue state; MES-log bytes change only during teardown | Direct mapped-queue backlog evidence; debug parameters are not a workaround, while one HQD sample and an undecoded MES buffer still do not name the failed packet/component |
+| Jul 16 | AMD oversubscription-timer / stream-topology audit | Exact CachyOS source submits timer 50; no override; failing prefill uses one application thread and default stream 0; experimental AOTriton stream is off | Disabled timer and current application multistream submission are not supported as necessary triggers; firmware field still lacks live readback |
 
 ## Flight-recorder localization
 
@@ -265,6 +312,8 @@ the tested protocol.” It does not mean the component can never affect incidenc
 | Hypothesis / proposed fix | Probe | Outcome | Evidence-bounded conclusion |
 | --- | --- | --- | --- |
 | ROCm's default four hardware queues cause the failure | Default vs one-queue matched A/B | Default failed; first one-queue gate passed; later one-queue gates failed | Queue count affects risk but one queue does not eliminate the bug |
+| MES oversubscription timer is disabled | Audit exact CachyOS source, module parameters, command line, modprobe state, and hipEngine source | Kernel path sets 50; no override or app MES packet path exists | Timer zero is unsupported by configured-source evidence; live firmware value is not independently readable |
+| Multiple hipEngine threads/streams heavily oversubscribe CP | Audit exact README sweep and effective backend policy | Main Python thread submits bulk prefill on default stream 0; isolated AOTriton stream is off | Current failure does not require multiple application submission threads/streams; ROCr internal queues remain |
 | HIP 7.15 regression | Five-process HIP 7.13/7.15 lifecycle matrix | Both stacks reproduced | HIP 7.15 alone is not the root cause; user-space version can still affect incidence |
 | SDMA copy engine deadlock | `HSA_ENABLE_SDMA=0` full gate | Reproduced after warmup | SDMA is not necessary and disabling it is not a safe workaround |
 | Scoped stream-ordered metadata preparation | Explicit metadata-off control | Reproduced | LCP-M2 metadata path is not necessary |
@@ -594,6 +643,12 @@ dedicated report:
    - MES-log healthy/stall identity and teardown change;
    - explicit one-HQD-sample and undecoded-MES evidence boundaries;
    - link to the dedicated report and public redacted bundle.
+4. [Oversubscription-timer and stream-topology answer](https://github.com/ROCm/ROCm/issues/5107#issuecomment-4990476677)
+   - exact CachyOS source sets the MES oversubscription timer to 50;
+   - no app/kernel-parameter/configuration override exists;
+   - exact failing bulk prefill uses the main Python thread and default stream 0;
+   - rejected isolated-AOTriton-stream experiment is disabled;
+   - live firmware packet-field readback remains unavailable.
 
 The dedicated [ROCm/ROCm#6437](https://github.com/ROCm/ROCm/issues/6437)
 contains the complete environment, reproducer, controls, HQD decode, raw MES
@@ -811,8 +866,10 @@ State that:
 Public reporting links:
 
 - dedicated issue: [ROCm/ROCm#6437](https://github.com/ROCm/ROCm/issues/6437);
+- immutable source: [`rocm-6437-reproducer-v1`](https://github.com/shisa-ai/hipEngine/tree/rocm-6437-reproducer-v1) -> `a7b4fe4b213c5afcbe1be2b13cb33464f251a06e`;
 - redacted raw bundle: [gist `dcdc0eb2e7a8f1bede6088130c383f72`](https://gist.github.com/lhl/dcdc0eb2e7a8f1bede6088130c383f72);
-- #5107 cross-link: [comment 4990158250](https://github.com/ROCm/ROCm/issues/5107#issuecomment-4990158250).
+- #5107 evidence cross-link: [comment 4990158250](https://github.com/ROCm/ROCm/issues/5107#issuecomment-4990158250);
+- #5107 timer/stream answer: [comment 4990476677](https://github.com/ROCm/ROCm/issues/5107#issuecomment-4990476677).
 
 Raw telemetry, recorder mmaps, process stacks, fence samples, journals, and
 profiler logs normally remain local under the `/tmp/gfx1151-*` directories named

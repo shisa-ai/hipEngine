@@ -159001,3 +159001,37 @@ six-shape or broad-suite rerun was performed. Artifact:
   cached exact 512/1 preflight and bounded 128K warmup+3 gate. Post the result to
   ROCm/ROCm#6437 regardless of pass/fail; a pass is scheduler-plane evidence,
   not yet a production workaround.
+
+## 2026-07-16 — Pin the ROCm#6437 reproducer and answer the MES timer question
+
+- Audited AMD's #5107 hypothesis before changing scheduler policy. hipEngine has
+  no MES packet path; the exact failing sweep calls bulk prefill from the main
+  Python thread on HIP default stream 0. The serving worker pools are unused.
+  The rejected event-linked isolated AOTriton stream is absent from the command,
+  and both backend capabilities resolve false, so the capture did not create it.
+  ROCr helper threads and the observed auxiliary KFD queue remain runtime state;
+  this establishes one application submission thread/stream, not only one
+  mapped firmware queue.
+- Verified the exact CachyOS source tag for installed `linux-cachyos 7.1.3-2`
+  assigns `mes_set_hw_res_pkt.oversubscription_timer = 50`; package release `-2`
+  rebuilt the same kernel source for an NVIDIA package update. No exposed module
+  parameter, command-line/modprobe setting, hipEngine reference, or local patch
+  overrides it. Available sysfs/debugfs does not read the accepted firmware
+  field back, so the bounded statement is source/configuration value 50, not a
+  decoded live firmware value.
+- Posted the evidence-bounded response at
+  `https://github.com/ROCm/ROCm/issues/5107#issuecomment-4990476677`, including
+  the application stream topology, the earlier isolated-stream rejection, and
+  the distinction between `GPU_MAX_HW_QUEUES=1` and mapped KFD queue objects.
+- Created and explicitly pushed the annotated immutable tag
+  `rocm-6437-reproducer-v1`. Its peeled remote target is exactly
+  `a7b4fe4b213c5afcbe1be2b13cb33464f251a06e`, the tracked-clean source used for
+  the capture; the tag object is `271750828fa845a90a27f1e05b328515b0dabf49`.
+  A versioned issue tag is preferable to asking external reproducers to follow
+  moving `main`, while the full hash remains in the verification command.
+- Updated ROCm/ROCm#6437 to clone and detach at that tag, verify the full commit,
+  generate the compiler-version file, use a cache-fill preflight when needed,
+  and then restore `--require-cached-build` for evidence. Also added the timer
+  and application-stream controls, linked the public #5107 answer, and changed
+  the evolving runbook links from old commit `35d3d0e7` to `main`; compact raw
+  evidence links remain commit-pinned.
