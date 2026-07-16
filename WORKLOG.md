@@ -158935,3 +158935,39 @@ six-shape or broad-suite rerun was performed. Artifact:
   in `docs/DEBUG-GFX1151-STALL.md`, and all 6
   `tests/test_benchmark_readme_sync.py` tests pass. This unit reports diagnostic
   state only; no new performance or 128K correctness claim is made.
+
+## 2026-07-16 — Publish the dedicated gfx1151 upstream report
+
+- Pushed the complete capture/rollup commit `35d3d0e7` to public
+  `shisa-ai/hipEngine@main` after fetching and confirming local was ahead 1 /
+  behind 0.
+- Built a minimal text-only evidence bundle under
+  `/home/lhl/gfx1151-debug/issue-bundle-20260716-35d3d0e7`. It contains the
+  redacted environment and firmware hashes, full loaded firmware list, final
+  recorder JSON/cursor history, telemetry, one stalled HQD dump plus independent
+  decode, KFD summary, one shared healthy/stall MES hex view, changed teardown
+  MES hex view, kernel/process summaries, and `SHA256SUMS`.
+- Deliberately excluded model weights, hostname, root UUID, UFW/network lines,
+  unrelated process listings, full VM maps, local user paths, profiler dumps,
+  and secrets. All 15 files are text; the manifest verifies, and a prohibited
+  identifier/credential scan is clean. The local compressed archive is 67,903
+  bytes with SHA-256
+  `37fd65b7b920e04864f1d93d4776b189677226fc26fc644ef23a3dc3670561d8`.
+- Published the bundle as public gist
+  `https://gist.github.com/lhl/dcdc0eb2e7a8f1bede6088130c383f72` and verified
+  all 15 files plus public metadata through the GitHub API and rendered page.
+- Searched ROCm/ROCm for the specific gfx1151 AQL/128K/HQD/no-timeout symptom;
+  no duplicate dedicated open report was returned. Filed
+  `https://github.com/ROCm/ROCm/issues/6437` with the exact environment and
+  command, public model/commit, latest cursor/telemetry, HQD register decode,
+  MES hashes/raw bundle, complete control matrix, evidence boundaries, related
+  reports, and eight questions for AMD. Verified the public rendered issue and
+  full 13,142-character body.
+- Posted the concise umbrella cross-link at
+  `https://github.com/ROCm/ROCm/issues/5107#issuecomment-4990158250`. It adds the
+  new 389/339 cursor, active non-empty 32-packet HQD, unchanged-through-stall MES
+  buffer, missing autonomous recovery, both-HIP-stack result, and one-sample/
+  undecoded-buffer caveats, then directs future isolation evidence to #6437.
+- Next upstream action is the separate `sched_policy=2` boot; add its result to
+  #6437 rather than opening or duplicating a TheRock report unless AMD requests
+  rerouting.

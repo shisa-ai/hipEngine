@@ -246,12 +246,14 @@
     "lifecycle_fix_claim": false,
     "performance_claim_eligible": false,
     "primary_upstream_repository": "ROCm/ROCm",
+    "upstream_issue_url": "https://github.com/ROCm/ROCm/issues/6437",
+    "redacted_evidence_bundle_url": "https://gist.github.com/lhl/dcdc0eb2e7a8f1bede6088130c383f72",
+    "existing_issue_followup_url": "https://github.com/ROCm/ROCm/issues/5107#issuecomment-4990158250",
     "routing_reason": "The symptom crosses TheRock HIP user space, ROCr/KFD, amdgpu, CP, MES firmware, and kernel hang detection. It is not established as a TheRock build/package regression. ROCm/ROCm is the stack-wide issue tracker and TheRock MES issue 2655 itself routes related gfx115x scheduler hangs to ROCm/ROCm reports.",
     "next_steps": [
-      "prepare a redacted public attachment containing the compact artifact, exact command, recorder tail, telemetry, journal, HQD excerpt, MES-log hashes, firmware hashes, and raw MES event-log snapshots",
-      "file a dedicated ROCm/ROCm issue and cross-link ROCm/ROCm#5107, #6165, #5724, #5590, and ROCm/TheRock#2655 without claiming a shared root cause",
-      "run one separate amdgpu.sched_policy=2 isolation boot with MES logging, preserving the same protocol",
-      "ask AMD for the supported MES-event decoder and a low-perturbation second-sample user-HQD/last-retired-packet method"
+      "run one separate amdgpu.sched_policy=2 isolation boot with MES logging, preserving the same protocol, and post the result to ROCm/ROCm#6437",
+      "ask AMD for the supported MES-event decoder and a low-perturbation second-sample user-HQD/last-retired-packet method",
+      "cross-file to TheRock or drm/amd only if an AMD maintainer requests it or a future A/B establishes a tracker-specific boundary"
     ]
   },
   "source_hashes": {
