@@ -159105,3 +159105,18 @@ six-shape or broad-suite rerun was performed. Artifact:
   tracked changes. All application rollback/diagnostic environment selectors
   are unset. The machine is back on the normal HWS policy and ready for ordinary
   work; do not rerun the rejected policy-2 gate without new AMD guidance.
+
+## 2026-07-17 — Prepare the requested AMD-IOMMU-disabled boot
+
+- At the human's request, added a separate `amd_iommu=off` token to
+  `/etc/default/limine`; no amdgpu scheduler or application selector changed.
+  Preserved the previous source as
+  `/etc/default/limine.pre-amd-iommu-off-20260716T194912Z`.
+- `limine-update` completed successfully and rebuilt both current CachyOS
+  initramfs/kernel entries. `/boot/limine.conf` contains `amd_iommu=off` exactly
+  once in each current top-level entry (`linux-cachyos` and
+  `linux-cachyos-lts`); historical snapshot command lines remain unchanged.
+- The running kernel is intentionally unchanged until reboot: `/proc/cmdline`
+  does not contain `amd_iommu=off`, and the current boot exposes 28 IOMMU
+  groups. Verify the token and post-boot IOMMU state before any benchmark.
+  This preparation makes no correctness, stability, or performance claim.
