@@ -159979,3 +159979,33 @@ current-truth/coverage narrative without advancing live admission:
 now distinguishes the persistent real GGUF loop from production continuous
 batching. The next gate is D2: admission during decode, bounded prefill/decode,
 row-local retirement/cancel/reuse, and exact survivor token/state/KV evidence.
+
+## 2026-07-16 — Start D2 with controlled shared-loop submissions
+
+Added the first D2 host contract without advancing the live-admission coverage
+row. `SubmitPollTextGenerator` now exposes a stable `GenerationSubmission`
+handle plus `submit_detailed`, one-or-more-tick `poll`, completion inspection,
+row-local `cancel_submission`, and ordered `take_result`. Blocking
+`generate_detailed` is now only a compatibility driver over those same methods;
+it no longer owns a separate control flow. Submission and each poll retain the
+D1 per-transition lock scope, so there is still no request-lifetime model lock.
+Pending cancellation now produces an explicit empty compatibility result with
+the scheduler's finish details instead of leaving a controlled submission
+unconsumable.
+
+RED failed because `submit_detailed` was delegated to the inner generator and
+did not exist on the adapter. GREEN deterministically advances request A through
+prefill and one decode token, submits/admit-prefills request B while A remains
+active, executes one joined A+B decode, cancels only B, then completes A. The
+asserted runner history is `decode[(A),(A,B),(A)]`; B reports `cancelled`, A
+keeps all three tokens, active state returns to zero, and consumed completions
+are bounded. The focused loop bundle is **11 passed**; the complete scheduler +
+public LLM files are GREEN with **4 skips**. Ruff (with the test file's existing
+unrelated F821 excluded), Python compilation, and diff checks pass.
+
+The repository-wide D1 closure run showed no failures through **66%** but was
+stopped before completion to release an available GPU lane; it is not counted
+as an acceptance gate. D1 remains supported by its complete focused host and
+clean W7900 gates. D2 still needs genuinely incremental GGUF prompt execution,
+real resident-session admission/reuse/cancel evidence, and survivor
+state/KV equality before any roadmap checkbox moves.

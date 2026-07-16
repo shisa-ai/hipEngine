@@ -16091,6 +16091,142 @@ def test_submit_poll_text_generator_reuses_one_loop_across_generate_calls() -> N
     assert [request.prompts for request in inner.requests] == [("one", "two"), ("three",)]
 
 
+def test_submit_poll_text_generator_exposes_live_submit_poll_and_row_cancel() -> None:
+    class StepwiseRunner:
+        capacity = 2
+
+        def __init__(self) -> None:
+            self.rows: dict[int, tuple[GenerationRequest, int]] = {}
+            self.counts: dict[int, int] = {}
+            self.outputs: dict[int, GenerationOutput] = {}
+            self.prefills: list[tuple[int, ...]] = []
+            self.decodes: list[tuple[int, ...]] = []
+            self.reclaims: list[tuple[int, str]] = []
+
+        def prompt_tokens(self, prompt) -> tuple[int, ...]:
+            return tuple(int(token) for token in prompt)
+
+        def scheduler_max_new_tokens(self, request: GenerationRequest) -> int:
+            return int(request.max_tokens)
+
+        def register_batch(self, request_ids, request, *, prompt_rows) -> None:
+            assert len(request_ids) == len(prompt_rows) == len(request.prompts)
+            for row_index, request_id in enumerate(request_ids):
+                self.rows[int(request_id)] = (request, row_index)
+
+        def prefill_batch(self, work, *, commit: bool) -> None:
+            assert commit is True
+            self.prefills.append(tuple(work.request_ids))
+
+        def decode_batch(self, work, *, commit: bool) -> tuple[GeneratedToken, ...]:
+            assert commit is True
+            self.decodes.append(tuple(work.request_ids))
+            generated: list[GeneratedToken] = []
+            for request_id in work.request_ids:
+                count = self.counts.get(request_id, 0) + 1
+                self.counts[request_id] = count
+                request, _row_index = self.rows[request_id]
+                generated.append(
+                    GeneratedToken(
+                        request_id,
+                        1000 + request_id * 10 + count,
+                        finished=count >= request.max_tokens,
+                    )
+                )
+            return tuple(generated)
+
+        def compact_batch(self, moves) -> None:
+            del moves
+
+        def reclaim(self, completed) -> None:
+            self.reclaims.append((completed.request_id, completed.finish_reason))
+            self.outputs[completed.request_id] = GenerationOutput(
+                text=f"done:{completed.request_id}:{completed.finish_reason}",
+                generated_token_ids=completed.generated_tokens,
+                finish_details=completed.finish_details,
+            )
+            self.rows.pop(completed.request_id, None)
+
+        def has_outputs(self, request_ids) -> bool:
+            return all(int(request_id) in self.outputs for request_id in request_ids)
+
+        def missing_outputs(self, request_ids) -> list[int]:
+            return [int(request_id) for request_id in request_ids if int(request_id) not in self.outputs]
+
+        def take_outputs(self, request_ids) -> list[GenerationOutput]:
+            return [self.outputs.pop(int(request_id)) for request_id in request_ids]
+
+        def discard(self, request_ids) -> None:
+            for request_id in request_ids:
+                self.rows.pop(int(request_id), None)
+                self.outputs.pop(int(request_id), None)
+
+    class StepwiseInner:
+        def __init__(self) -> None:
+            self.runner = StepwiseRunner()
+
+        def create_resident_model_runner(self, *, capacity):
+            assert capacity in {None, 2}
+            return self.runner
+
+    inner = StepwiseInner()
+    adapter = SubmitPollTextGenerator(inner, capacity=2, prefill_chunk_size=2)
+    first_request = GenerationRequest(
+        prompts=((10, 11),),
+        max_tokens=3,
+        temperature=0.0,
+        top_p=1.0,
+        ignore_eos=True,
+    )
+    second_request = replace(first_request, prompts=((20,),), max_tokens=2)
+
+    first = adapter.submit_detailed(first_request)
+    assert adapter.poll(max_ticks=1)[-1].work_kind is WorkKind.PREFILL
+    first_decode = adapter.poll(max_ticks=1)
+    assert [event.token_id for event in first_decode if event.kind == "token"] == [1001]
+
+    second = adapter.submit_detailed(second_request)
+    admission = adapter.poll(max_ticks=1)
+    assert any(event.kind == "admitted" and event.request_id == second.request_ids[0] for event in admission)
+    assert admission[-1].work_kind is WorkKind.PREFILL
+    assert adapter._loop.active_count == 2
+
+    joined_decode = adapter.poll(max_ticks=1)
+    assert [event.request_id for event in joined_decode if event.kind == "token"] == [
+        first.request_ids[0],
+        second.request_ids[0],
+    ]
+    assert adapter.cancel_submission(second, row_index=0, reason="cancel") == (True,)
+    assert adapter.generation_complete(second) is True
+    assert adapter._loop.active_count == 1
+
+    final_decode = adapter.poll(max_ticks=1)
+    assert any(event.kind == "completed" and event.request_id == first.request_ids[0] for event in final_decode)
+    assert adapter.generation_complete(first) is True
+
+    first_output = adapter.take_result(first)
+    second_output = adapter.take_result(second)
+    assert first_output[0].generated_token_ids == (1001, 1002, 1003)
+    assert second_output[0].generated_token_ids == (1011,)
+    assert second_output[0].finish_details is not None
+    assert second_output[0].finish_details.to_json_dict() == {
+        "reason": "cancelled",
+        "cancelled": True,
+    }
+    assert inner.runner.prefills == [(first.request_ids[0],), (second.request_ids[0],)]
+    assert inner.runner.decodes == [
+        (first.request_ids[0],),
+        (first.request_ids[0], second.request_ids[0]),
+        (first.request_ids[0],),
+    ]
+    assert inner.runner.reclaims == [
+        (second.request_ids[0], "cancel"),
+        (first.request_ids[0], "stop"),
+    ]
+    assert adapter._loop.active_count == 0
+    assert adapter._loop.completed == {}
+
+
 def test_resident_engine_loop_uses_batch_commit_compact_and_reclaim_contract() -> None:
     class BatchContractRunner:
         def __init__(self) -> None:
