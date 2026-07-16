@@ -158681,3 +158681,15 @@ slot-local prefills. This directly confirms the Phase-B3 capacity blocker and
 prevents a false c4 prefill claim. Tracked allocator peak is **22.406 GiB**.
 No profiler or performance promotion is claimed. Phase A is closed; next is the
 c2/c4 primitive append/attention gate and package-route trace.
+
+## 2026-07-16 — Prefer active hipcc in ROCm provenance
+
+Fixed the canonical provenance ordering exposed by the Phase-A hermetic run.
+`_detect_rocm_version(...)` previously read `/opt/rocm/.info/version` before the
+resolved `hipcc --version`, so a process whose PATH/LD_LIBRARY_PATH selected
+TheRock HIP 7.15 could be mislabeled with an unused host ROCm 7.2.4. RED mocks a
+stale host version beside an active HIP 7.15 compiler and reproduced the wrong
+selection. GREEN makes the active compiler's HIP/ROCm version line authoritative
+and uses `/opt/rocm` only when the compiler reports no version. Provenance plus
+Phase-A harness tests pass **12/12**; Python compilation and `git diff --check`
+pass.

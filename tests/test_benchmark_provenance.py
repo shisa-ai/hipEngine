@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from hipengine.benchmark.provenance import (
+    _detect_rocm_version,
     collect_artifact_provenance,
     collect_model_identity,
     collect_repo_state,
@@ -79,6 +80,16 @@ def test_model_identity_is_content_derived_and_infers_snapshot_revision(tmp_path
     model.write_bytes(b"gguf-model-v2")
     second = collect_model_identity(model)
     assert second["fingerprint"]["value"] != first["fingerprint"]["value"]
+
+
+def test_rocm_version_prefers_active_hipcc_over_host_opt_rocm(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(Path, "read_text", lambda self, **kwargs: "host-rocm-7.2.4")
+
+    assert _detect_rocm_version(
+        "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git"
+    ) == "HIP version: 7.15.0-0000000"
 
 
 def test_artifact_provenance_resolves_auto_backend_and_validates_schema(tmp_path: Path) -> None:
