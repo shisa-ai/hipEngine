@@ -2537,7 +2537,7 @@ def test_gguf_ar_packed_prefill_uses_batch_prompt_path(monkeypatch) -> None:
     assert all(_decode_state(output)["native_compact_prefill"] is True for output in outputs)
 
 
-def test_gguf_ar_packed_prefill_chunks_above_four_slots(monkeypatch) -> None:
+def test_gguf_ar_packed_prefill_runs_one_native_c8_slab(monkeypatch) -> None:
     calls: list[tuple] = []
 
     class FakeRuntime:
@@ -2565,8 +2565,6 @@ def test_gguf_ar_packed_prefill_chunks_above_four_slots(monkeypatch) -> None:
             raise AssertionError("chunked packed prompt prefill should bypass scalar prefill")
 
         def prefill_batch_native(self, prompt_token_ids, *, sessions, return_logits=False):
-            if len(prompt_token_ids) > 4:
-                raise AssertionError("AR packed prefill should chunk above four slots")
             calls.append(
                 (
                     "prefill_batch",
@@ -2602,27 +2600,18 @@ def test_gguf_ar_packed_prefill_chunks_above_four_slots(monkeypatch) -> None:
                 (20, 21, 22, 23),
                 (10, 11, 12, 13),
                 (20, 21, 22, 23),
-            ),
-            (0, 1, 2, 3),
-            "1",
-            False,
-        ),
-        (
-            "prefill_batch",
-            4,
-            (
                 (10, 11, 12, 13),
                 (20, 21, 22, 23),
                 (10, 11, 12, 13),
                 (20, 21, 22, 23),
             ),
-            (4, 5, 6, 7),
+            (0, 1, 2, 3, 4, 5, 6, 7),
             "1",
             False,
         ),
     ]
     assert all("prefill_batch_ms" in output.telemetry.to_json_dict()["timing"] for output in outputs)
-    assert all("prefill_batch_chunk_ms" in output.telemetry.to_json_dict()["timing"] for output in outputs)
+    assert all("prefill_batch_chunk_ms" not in output.telemetry.to_json_dict()["timing"] for output in outputs)
     assert os.environ.get("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN") is None
 
 
@@ -3087,7 +3076,7 @@ def test_gguf_ar_batch_decode_fallback_advances_each_slot_once_per_cycle(monkeyp
     assert [slot.serial_decode_steps for slot in slots] == [1, 1]
 
 
-def test_gguf_ar_batch_decode_chunks_above_four_slots(monkeypatch) -> None:
+def test_gguf_ar_batch_decode_runs_one_native_c8_group(monkeypatch) -> None:
     calls: list[tuple] = []
 
     class FakeSession:
@@ -3123,14 +3112,13 @@ def test_gguf_ar_batch_decode_chunks_above_four_slots(monkeypatch) -> None:
 
     assert [slot.generated_ids for slot in slots] == [[1, 2]] * 8
     assert [call for call in calls if call[0] == "step_batch"] == [
-        ("step_batch", 0, (0, 1, 2, 3), False),
-        ("step_batch", 4, (4, 5, 6, 7), False),
+        ("step_batch", 0, (0, 1, 2, 3, 4, 5, 6, 7), False),
     ]
     assert all(slot.native_decode_steps == 1 for slot in slots)
     assert all("decode_batch_ms" in slot.timing for slot in slots)
 
 
-def test_gguf_ar_batch_decode_streams_chunks_above_four_slots(monkeypatch) -> None:
+def test_gguf_ar_batch_decode_streams_chunks_above_native_c8(monkeypatch) -> None:
     calls: list[tuple] = []
 
     class FakeRuntime:
@@ -3185,22 +3173,22 @@ def test_gguf_ar_batch_decode_streams_chunks_above_four_slots(monkeypatch) -> No
             seq_position=4,
             generated_ids=[1],
         )
-        for slot_id in range(8)
+        for slot_id in range(10)
     ]
 
     generator = _generator()
     monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", "1")
     monkeypatch.setenv("HIPENGINE_GGUF_AR_STREAM_DECODE", "1")
-    generator._run_ar_serving_slots(slots, _request(prompts=("long",) * 8, max_tokens=2))
+    generator._run_ar_serving_slots(slots, _request(prompts=("long",) * 10, max_tokens=2))
 
-    assert [slot.generated_ids for slot in slots] == [[1, 2]] * 8
+    assert [slot.generated_ids for slot in slots] == [[1, 2]] * 10
     assert [call for call in calls if call[0] == "stream_create"] == [
         ("stream_create", 500, True),
         ("stream_create", 501, True),
     ]
     assert sorted(call for call in calls if call[0] == "step_batch") == [
-        ("step_batch", 0, 500, (0, 1, 2, 3), (4, 4, 4, 4), False, "1"),
-        ("step_batch", 4, 501, (4, 5, 6, 7), (4, 4, 4, 4), False, "1"),
+        ("step_batch", 0, 500, (0, 1, 2, 3, 4, 5, 6, 7), (4, 4, 4, 4, 4, 4, 4, 4), False, "1"),
+        ("step_batch", 8, 501, (8, 9), (4, 4), False, "1"),
     ]
     assert all(slot.native_decode_steps == 1 for slot in slots)
     assert all("decode_batch_ms" in slot.timing for slot in slots)

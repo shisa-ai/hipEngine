@@ -17,7 +17,7 @@ import sys
 from contextlib import ExitStack, contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterator, Sequence
+from typing import Any, Iterator, Mapping, Sequence
 
 import numpy as np
 
@@ -337,8 +337,8 @@ def _session_build_policy(args: argparse.Namespace) -> dict[str, Any]:
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
     rows = int(args.rows)
-    if rows < 2 or rows > 4:
-        raise ValueError("rows must be between 2 and the production packed-chunk cap (4)")
+    if rows < 2 or rows > 8:
+        raise ValueError("rows must be between 2 and the native packed-group cap (8)")
     lifecycle = str(args.lifecycle)
     decode_mode = str(getattr(args, "decode_mode", "eager"))
     if decode_mode not in {"eager", "graph"}:
@@ -460,6 +460,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         reference_trajectory = [list(reference_tokens)]
         lifecycle_events: list[dict[str, Any]] = []
         graph_manifests: list[dict[str, Any]] = []
+        eager_execution_manifest: dict[str, Any] | None = None
         dirty_before_flush = False
         flushed = False
         if lifecycle == "steady":
@@ -498,6 +499,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         )
                         hidden_comparisons += compared
                         hidden_mismatches.extend(mismatches)
+                    manifest = getattr(owner, "last_packed_execution_manifest", None)
+                    if eager_execution_manifest is None and isinstance(manifest, Mapping):
+                        eager_execution_manifest = json.loads(json.dumps(manifest))
                     packed_trajectory.append(list(packed_tokens))
                     reference_trajectory.append(list(reference_tokens))
                 dirty_before_flush = bool(owner._packed_decode_state_dirty)
@@ -602,6 +606,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         )
                     for index, result in zip(live_indices, results, strict=True):
                         packed_tokens[index] = int(result.token_id)
+                    manifest = getattr(group_owner, "last_packed_execution_manifest", None)
+                    if eager_execution_manifest is None and isinstance(manifest, Mapping):
+                        eager_execution_manifest = json.loads(json.dumps(manifest))
                     dirty_before_flush = dirty_before_flush or bool(
                         group_owner._packed_decode_state_dirty
                     )
@@ -667,6 +674,23 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     tokens_exact = packed_trajectory == reference_trajectory
     lifecycle_state_exact = all(bool(event["state_exact"]) for event in lifecycle_events)
     layer_hidden_exact = not hidden_mismatches
+    eager_model_step = (
+        eager_execution_manifest.get("model_step", {})
+        if eager_execution_manifest is not None
+        else {}
+    )
+    eager_native_model_step = bool(
+        decode_mode != "eager"
+        or (
+            eager_execution_manifest is not None
+            and eager_execution_manifest.get("rows") == rows
+            and eager_model_step.get("complete_c1_session_replays") == 0
+            and eager_model_step.get("complete_c1_layer_replays") == 0
+            and eager_model_step.get("host_model_row_loop_sites") == 0
+            and eager_model_step.get("host_model_row_iterations") == 0
+            and eager_model_step.get("per_row_model_subgraph_invocations") == 0
+        )
+    )
     passed = bool(
         tokens_exact
         and not initial_mismatches
@@ -675,6 +699,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         and lifecycle_state_exact
         and not final_mismatches
         and layer_hidden_exact
+        and eager_native_model_step
     )
     first_divergence = None
     if hidden_mismatches:
@@ -753,6 +778,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "flush_executed": flushed,
         "lifecycle_state_exact": lifecycle_state_exact,
         "lifecycle_events": lifecycle_events,
+        "eager_native_model_step": eager_native_model_step,
+        "eager_execution_manifest": eager_execution_manifest,
         "graph_manifests": graph_manifests,
         "final_state_exact": not final_mismatches,
         "final_mismatches": final_mismatches,

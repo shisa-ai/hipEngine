@@ -160585,3 +160585,44 @@ execution, server throughput/TTFT/ITL performance, project-wide continuous
 batching, gfx1151 symmetry, PARO loop support, or native c8. E1 remains
 hardware-blocked on this host; E2 true native c8 is the next executable gfx1100
 item.
+
+## 2026-07-17 — Open E2 with one eager native-c8 GGUF model step
+
+RED host contracts replaced the historical c8→c4+c4 AR lowering with one direct
+eight-row packed prefill/decode call while preserving honest c10→c8+c2 lowering.
+The AR width is now independent of the still-c4 MTP target-verifier cap, and the
+resident runner can use c8 when explicitly provisioned above its unchanged c4
+default capacity. The packed lifecycle oracle now admits c8 and retains a
+representative eager execution manifest as a required native-step check.
+
+A hermetic W7900 probe used Qwen3.6-35B-A3B UD-Q4_K_M, BF16 KV, TheRock HIP
+7.15, eight packed rows, eight independent c1 references, p16/d2, all 40 layer
+hidden taps, strict exact GDN prefill, and cached builds only:
+
+```bash
+/home/lhl/mambaforge/envs/therock/bin/python3.12 \
+  scripts/gguf_packed_ar_state_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --rows 8 --lifecycle steady \
+  --prefill-mode packed --decode-mode eager --prompt-length 16 \
+  --decode-steps 2 --capture-layer-hidden \
+  --compiler-version-file /tmp/gfx1100-concurrency/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/gfx1100-e2-native-c8-p16-d2-manifest.json
+```
+
+The gate passes exact token trajectories, initial/final Conv/GDN and live-KV
+state, and **960/960** layer-hidden comparisons. Its retained eager manifest is
+`rows=8` with zero complete-c1 session/layer replays, zero host model-row loop
+sites/iterations, and zero per-row model-subgraph invocations. Source JSON and
+stdout are byte-identical, SHA-256
+`971bb94930e46ef3bb8febe33bc07b7f05af46296f269c6e46f1862398c388ff`.
+Host validation is **61 passed** across the GGUF generation and state-oracle
+files; focused Ruff, Python compilation, JSON assertions, lineage review, and
+diff checks pass.
+
+This is the first E2 implementation unit, not E2 closure or a performance claim.
+C8 eager metadata still uses the explicit `host_upload` fallback; c8 graph
+metadata/feedback, physical c1/c2/c4/c8 active-mask buckets, sparse non-edge
+retirement, cancellation, p512/d128, and profiler evidence remain open. No
+kernel body or registry key changed in this unit.
