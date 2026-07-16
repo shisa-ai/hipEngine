@@ -1603,6 +1603,12 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
             return SimpleNamespace(token_id=next_token, logits=logits)
 
         def step_batch_native(self, token_ids, *, sessions, positions, **kwargs):
+            self.last_packed_execution_manifest = {
+                "schema": 1,
+                "kind": "gguf_packed_ar_execution_manifest",
+                "rows": len(token_ids),
+                "model_step": {"complete_c1_session_replays": 0},
+            }
             calls.append(
                 (
                     "step_batch_native",
@@ -1673,6 +1679,32 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
     assert generator.last_batch_generation is not None
     assert generator.last_batch_generation["path"] == "gguf_resident_model_loop"
     assert generator.last_batch_generation["serial_decode_fallback"] is True
+
+    observability = adapter.live_loop_snapshot()["runner"]
+    assert observability["model_runner"] == {
+        "capacity": 2,
+        "active_request_ids": [],
+        "active_requests": 0,
+        "available_sessions": 2,
+    }
+    assert observability["routes"]["counts"] == {
+        "native_full_prefill_rows": 3,
+        "native_incremental_prefill_chunks": 0,
+        "native_packed_decode_steps": 2,
+        "native_c1_decode_steps": 1,
+        "serial_decode_fallback_steps": 0,
+        "resident_fallback_requests": 2,
+    }
+    assert observability["routes"]["last_execution_manifest"] == {
+        "schema": 1,
+        "kind": "gguf_packed_ar_execution_manifest",
+        "rows": 2,
+        "model_step": {"complete_c1_session_replays": 0},
+    }
+    assert observability["routes"]["fallback_reasons"]
+    assert len(observability["routes"]["recent_completed"]) == 5
+    assert observability["graph_buckets"]["captures_total"] == 0
+    assert observability["graph_buckets"]["buckets"] == {}
 
 
 def test_gguf_resident_runner_device_kv_admission_is_atomic_at_high_water() -> None:
@@ -1781,6 +1813,15 @@ def test_gguf_resident_runner_device_kv_admission_is_atomic_at_high_water() -> N
     assert runner._rows[3].lease is not None
     assert runner._rows[3].kv_allocation is not None
     assert runner.kv_pool_memory_snapshot()["dynamic_pool"]["refcounted_pages"] == 2
+    observability = runner.observability_snapshot()
+    assert observability["kv_pool"] == runner.kv_pool_stats.to_json_dict()
+    assert observability["kv_pool"]["current_pages"] == 2
+    assert observability["kv_pool"]["high_water_observed_pages"] == 2
+    assert observability["kv_pool"]["refcounted_pages"] == 2
+    assert observability["kv_pool"]["pinned_pages"] == 0
+    assert observability["kv_pool"]["grow_events"] == 1
+    assert observability["kv_pool"]["grow_failures"] == 1
+    assert observability["kv_pool"]["shrink_events"] == 0
 
     runner.rollback_admission(SimpleNamespace(request_id=2))
     runner.rollback_admission(SimpleNamespace(request_id=3))
@@ -1794,6 +1835,108 @@ def test_gguf_resident_runner_device_kv_admission_is_atomic_at_high_water() -> N
     assert ceiling_runner.kv_pool.low_water_pages == 9
     assert ceiling_runner.kv_pool.chunk_pages == 9
     ceiling_runner.close()
+
+
+def test_gguf_resident_runner_graph_observability_is_bucketed_and_cumulative() -> None:
+    class FakeGraphKey:
+        key_sha256 = "bucket-c2"
+
+        def as_dict(self):
+            return {
+                "key_sha256": self.key_sha256,
+                "physical_rows": 2,
+                "active_rows": 2,
+                "active_mask": [True, True],
+            }
+
+    class FakeGraph:
+        def __init__(self) -> None:
+            self.bucket_key = FakeGraphKey()
+            self.replay_count = 0
+            self.closed = False
+
+    class FakeSession:
+        def __init__(self) -> None:
+            self._decode_graphs = []
+            self._device_kv_graph_handles = {}
+
+        def invalidate_device_kv_graphs(self) -> int:
+            invalidated = 0
+            for handle in self._decode_graphs:
+                if not handle.closed:
+                    handle.closed = True
+                    invalidated += 1
+            return invalidated
+
+        def reset(self) -> None:
+            pass
+
+        def close(self) -> None:
+            pass
+
+    class FakeOwner:
+        backend = "hip_gfx1100"
+        target_arch = "gfx1100"
+        tokenizer = _FakeTokenizer()
+        _prepared_max_sequence_length = 64
+
+        def __init__(self) -> None:
+            self.session = FakeSession()
+
+        def _get_shared_runner(self):
+            return SimpleNamespace(runtime=SimpleNamespace(mem_get_info=lambda: (100, 200)))
+
+        def _acquire_shared_session(self, shared_runner, **kwargs):
+            del shared_runner, kwargs
+            return self.session, ("continuous_ar_dynamic_kv", True, True, 64), False
+
+        def _release_shared_session(self, key, session) -> None:
+            del key, session
+
+    owner = FakeOwner()
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner(owner, capacity=1)
+    handle = FakeGraph()
+    owner.session._decode_graphs.append(handle)
+
+    captured = runner.observability_snapshot()["graph_buckets"]
+    assert captured["entries"] == 1
+    assert captured["captures_total"] == 1
+    assert captured["hits_total"] == 0
+    assert captured["replays_total"] == 0
+    assert captured["invalidations_total"] == 0
+    assert captured["buckets"]["bucket-c2"] == {
+        "bucket_key": {
+            "key_sha256": "bucket-c2",
+            "physical_rows": 2,
+            "active_rows": 2,
+            "active_mask": [True, True],
+        },
+        "entries": 1,
+        "captures": 1,
+        "hits": 0,
+        "replays": 0,
+        "invalidations": 0,
+    }
+
+    handle.replay_count = 2
+    replayed = runner.observability_snapshot()["graph_buckets"]
+    assert replayed["hits_total"] == 2
+    assert replayed["replays_total"] == 2
+    assert replayed["buckets"]["bucket-c2"]["hits"] == 2
+    assert replayed["buckets"]["bucket-c2"]["replays"] == 2
+
+    request = _request(prompts=("first",), max_tokens=1, ignore_eos=True)
+    runner.register_batch((1,), request, prompt_rows=((10, 11),))
+    runner._rows[1].lease = runner._available.pop()
+    runner.rollback_admission(SimpleNamespace(request_id=1))
+
+    invalidated = runner.observability_snapshot()["graph_buckets"]
+    assert invalidated["entries"] == 0
+    assert invalidated["captures_total"] == 1
+    assert invalidated["replays_total"] == 2
+    assert invalidated["invalidations_total"] == 1
+    assert invalidated["buckets"]["bucket-c2"]["invalidations"] == 1
+    runner.close()
 
 
 def test_gguf_resident_runner_commits_incremental_prefill_chunks() -> None:

@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import concurrent.futures
+import copy
 import os
 import threading
 import time
 import uuid
+import weakref
+from collections import Counter, deque
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from functools import wraps
 from pathlib import Path
-from typing import Any, ClassVar, Iterator, Sequence
+from typing import Any, ClassVar, Iterator, Mapping, Sequence
 
 import numpy as np
 
@@ -3835,6 +3838,14 @@ class Qwen35GGUFResidentModelRunner:
         self._engine_loop_config: Any | None = None
         self._kv_hip_used_peak_sampled_bytes = 0
         self._kv_graph_invalidation_count = 0
+        self._route_counts: Counter[str] = Counter()
+        self._fallback_reasons: Counter[str] = Counter()
+        self._last_execution_manifest: dict[str, Any] = {}
+        self._recent_completed_routes: deque[dict[str, Any]] = deque(maxlen=1024)
+        self._graph_handle_refs: dict[int, weakref.ReferenceType[Any]] = {}
+        self._graph_handle_buckets: dict[int, str] = {}
+        self._graph_handle_replays: dict[int, int] = {}
+        self._graph_buckets: dict[str, dict[str, Any]] = {}
         self._reserve_sessions()
 
     @property
@@ -3853,6 +3864,156 @@ class Qwen35GGUFResidentModelRunner:
     def kv_pool_stats(self):
         pool = self._kv_pool
         return None if pool is None else pool.stats
+
+    def _resident_sessions(self) -> tuple[Any, ...]:
+        sessions = [lease.session for lease in self._available]
+        sessions.extend(
+            row.lease.session
+            for row in self._rows.values()
+            if row.lease is not None
+        )
+        unique: dict[int, Any] = {}
+        for session in sessions:
+            unique[id(session)] = session
+        return tuple(unique.values())
+
+    def _graph_handles_for_sessions(self, sessions: Sequence[Any]) -> tuple[Any, ...]:
+        handles: dict[int, Any] = {}
+        for session in sessions:
+            for handle in tuple(getattr(session, "_decode_graphs", ())):
+                handles[id(handle)] = handle
+            device_handles = getattr(session, "_device_kv_graph_handles", {})
+            if isinstance(device_handles, Mapping):
+                for handle in device_handles.values():
+                    handles[id(handle)] = handle
+        return tuple(handles.values())
+
+    def _graph_bucket_label(self, handle: Any) -> str:
+        handle_id = id(handle)
+        previous_ref = self._graph_handle_refs.get(handle_id)
+        if previous_ref is not None and previous_ref() is not handle:
+            self._graph_handle_buckets.pop(handle_id, None)
+            self._graph_handle_replays.pop(handle_id, None)
+        known = self._graph_handle_buckets.get(handle_id)
+        if known is not None:
+            return known
+        key = getattr(handle, "bucket_key", None)
+        as_dict = getattr(key, "as_dict", None)
+        if callable(as_dict):
+            payload = as_dict()
+        elif isinstance(key, Mapping):
+            payload = copy.deepcopy(dict(key))
+        else:
+            payload = {}
+        label = str(
+            payload.get("key_sha256")
+            or getattr(key, "key_sha256", None)
+            or "unkeyed"
+        )
+        self._graph_handle_buckets[handle_id] = label
+        self._graph_buckets.setdefault(
+            label,
+            {
+                "bucket_key": payload,
+                "entries": 0,
+                "captures": 0,
+                "hits": 0,
+                "replays": 0,
+                "invalidations": 0,
+            },
+        )
+        return label
+
+    def _observe_graph_handles(self, sessions: Sequence[Any]) -> None:
+        for handle in self._graph_handles_for_sessions(sessions):
+            handle_id = id(handle)
+            label = self._graph_bucket_label(handle)
+            bucket = self._graph_buckets[label]
+            previous_ref = self._graph_handle_refs.get(handle_id)
+            is_new_handle = previous_ref is None or previous_ref() is not handle
+            if is_new_handle:
+                try:
+                    self._graph_handle_refs[handle_id] = weakref.ref(handle)
+                except TypeError:
+                    # Runtime graph handles are weak-referenceable; retain a
+                    # strong closure only for minimal third-party test doubles.
+                    self._graph_handle_refs[handle_id] = lambda handle=handle: handle
+                bucket["captures"] += 1
+                self._graph_handle_replays[handle_id] = 0
+            replay_count = max(0, int(getattr(handle, "replay_count", 0)))
+            previous = self._graph_handle_replays.get(handle_id, 0)
+            if replay_count > previous:
+                delta = replay_count - previous
+                bucket["hits"] += delta
+                bucket["replays"] += delta
+            self._graph_handle_replays[handle_id] = replay_count
+
+    def _record_graph_invalidations(self, handles: Sequence[Any], count: int) -> None:
+        remaining = max(0, int(count))
+        for handle in handles:
+            if remaining <= 0:
+                break
+            label = self._graph_bucket_label(handle)
+            self._graph_buckets[label]["invalidations"] += 1
+            remaining -= 1
+
+    def observability_snapshot(self) -> dict[str, Any]:
+        """Return real GGUF resource, graph, and route/fallback evidence."""
+
+        sessions = self._resident_sessions()
+        self._observe_graph_handles(sessions)
+        pool = self._kv_pool
+        pool_stats = None if pool is None else pool.stats.to_json_dict()
+        active_entries: Counter[str] = Counter()
+        for handle in self._graph_handles_for_sessions(sessions):
+            if bool(getattr(handle, "closed", False)):
+                continue
+            label = self._graph_bucket_label(handle)
+            active_entries[label] += 1
+        buckets = copy.deepcopy(self._graph_buckets)
+        for label, row in buckets.items():
+            row["entries"] = int(active_entries.get(label, 0))
+        return {
+            "model_runner": {
+                "capacity": int(self.capacity),
+                "active_request_ids": list(self.active_request_ids),
+                "active_requests": len(self._rows),
+                "available_sessions": len(self._available),
+            },
+            "kv_pool": pool_stats,
+            "graph_buckets": {
+                "entries": int(sum(active_entries.values())),
+                "captures_total": int(sum(row["captures"] for row in buckets.values())),
+                "hits_total": int(sum(row["hits"] for row in buckets.values())),
+                "replays_total": int(sum(row["replays"] for row in buckets.values())),
+                "invalidations_total": int(self._kv_graph_invalidation_count),
+                "buckets": buckets,
+            },
+            "routes": {
+                "counts": {
+                    "native_full_prefill_rows": int(self._route_counts["native_full_prefill_rows"]),
+                    "native_incremental_prefill_chunks": int(
+                        self._route_counts["native_incremental_prefill_chunks"]
+                    ),
+                    "native_packed_decode_steps": int(
+                        self._route_counts["native_packed_decode_steps"]
+                    ),
+                    "native_c1_decode_steps": int(self._route_counts["native_c1_decode_steps"]),
+                    "serial_decode_fallback_steps": int(
+                        self._route_counts["serial_decode_fallback_steps"]
+                    ),
+                    "resident_fallback_requests": int(
+                        self._route_counts["resident_fallback_requests"]
+                    ),
+                },
+                "fallback_reasons": {
+                    str(key): int(value)
+                    for key, value in sorted(self._fallback_reasons.items())
+                },
+                "last_execution_manifest": copy.deepcopy(self._last_execution_manifest),
+                "recent_completed": list(copy.deepcopy(self._recent_completed_routes)),
+            },
+        }
 
     def kv_pool_memory_snapshot(self) -> dict[str, Any]:
         """Return pool, tracked allocator, and sampled HIP current/peak evidence."""
@@ -4140,7 +4301,11 @@ class Qwen35GGUFResidentModelRunner:
             else:
                 output = row.fallback_output or self._empty_output(row, completed)
             self._outputs[request_id] = output
-            self._completed_metadata[request_id] = self._execution_metadata(row)
+            metadata = self._execution_metadata(row)
+            self._completed_metadata[request_id] = metadata
+            self._recent_completed_routes.append(
+                {"request_id": request_id, **copy.deepcopy(metadata)}
+            )
             self._release_row_resources(row)
             self._rows.pop(request_id, None)
 
@@ -4244,9 +4409,17 @@ class Qwen35GGUFResidentModelRunner:
                 raise RuntimeError("GGUF row retained KV without a session lease")
             return
         session = lease.session
+        graph_handles = tuple(
+            handle
+            for handle in self._graph_handles_for_sessions((session,))
+            if not bool(getattr(handle, "closed", False))
+        )
+        self._observe_graph_handles((session,))
         invalidate = getattr(session, "invalidate_device_kv_graphs", None)
         if callable(invalidate):
-            self._kv_graph_invalidation_count += int(invalidate())
+            invalidated = int(invalidate())
+            self._record_graph_invalidations(graph_handles, invalidated)
+            self._kv_graph_invalidation_count += invalidated
         reset = getattr(session, "reset", None)
         if callable(reset):
             reset()
@@ -4299,6 +4472,7 @@ class Qwen35GGUFResidentModelRunner:
         row.lease = lease
         start = time.perf_counter()
         result = lease.session.prefill(row.prompt_ids, return_logits=False)
+        self._route_counts["native_full_prefill_rows"] += 1
         row.prefill_ms += _timing_ms_since(start)
         row.prefill_chunk_count += 1
         self._finish_native_prefill(row, result, native_compact_prefill=False)
@@ -4336,6 +4510,7 @@ class Qwen35GGUFResidentModelRunner:
             raise RuntimeError(
                 f"GGUF incremental prefill returned {len(result_list)} result(s) for one row"
             )
+        self._route_counts["native_incremental_prefill_chunks"] += 1
         row.prefill_ms += _timing_ms_since(start)
         row.prefill_chunk_count += 1
         if final_chunk:
@@ -4352,6 +4527,7 @@ class Qwen35GGUFResidentModelRunner:
         final_chunk: bool,
     ) -> None:
         row.incremental_prefill = False
+        self._fallback_reasons["incremental_prefill_unsupported"] += 1
         if row.lease is not None:
             row.lease.session.reset()
         row.prefill_chunk_count = 0
@@ -4394,6 +4570,14 @@ class Qwen35GGUFResidentModelRunner:
     def _run_resident_fallback(self, row: _GGUFResidentLoopRow) -> None:
         if row.fallback_output is not None:
             return
+        self._route_counts["resident_fallback_requests"] += 1
+        plan = _gguf_sampler_plan(row.request)
+        fallback_reason = (
+            "zero_max_tokens"
+            if int(row.request.max_tokens) == 0
+            else (plan.fallback_reason or plan.mode.value)
+        )
+        self._fallback_reasons[str(fallback_reason)] += 1
         if int(row.request.max_tokens) == 0:
             row.fallback_output = self._empty_output(row, None)
             return
@@ -4446,6 +4630,10 @@ class Qwen35GGUFResidentModelRunner:
                 f"for {len(concrete)} row(s)"
             )
         owner = owner_slot.session
+        self._route_counts["native_packed_decode_steps"] += 1
+        manifest = getattr(owner, "last_packed_execution_manifest", None)
+        if isinstance(manifest, Mapping):
+            self._last_execution_manifest = copy.deepcopy(dict(manifest))
         for row, slot, result in zip(rows, concrete, result_list, strict=True):
             self._record_native_token(row, int(getattr(result, "token_id")))
             slot.packed_decode_owner = owner
@@ -4454,6 +4642,11 @@ class Qwen35GGUFResidentModelRunner:
 
     def _step_native_serial(self, rows: Sequence[_GGUFResidentLoopRow]) -> None:
         self._flush_rows(rows)
+        if len(rows) == 1:
+            self._route_counts["native_c1_decode_steps"] += 1
+        else:
+            self._route_counts["serial_decode_fallback_steps"] += 1
+            self._fallback_reasons["packed_decode_unavailable"] += 1
         for row in rows:
             slot = row.slot
             if slot is None:
