@@ -159319,3 +159319,35 @@ runner was checked with those existing codes excluded. These are correctness
 and route observations, not a throughput or fully-native-c4 claim. The next
 logical unit reruns the retained clean p512/d128 lifecycle and marker-sliced
 profiler census from the committed implementation revision.
+
+## 2026-07-16 — Make the GGUF profiler census C2-aware
+
+The first clean marker-sliced run from implementation revision `8695b51d`
+proved the C2 kernels executed but correctly failed the old C1 classifier:
+c4 fell from 1,386 to **756** dispatches and both indexed kernels ran 30 times,
+yet 120 row-shaped projections were still labeled `exact_row_local` solely by
+kernel name. Their launch geometry is unambiguous: c4 QKV/gate, alpha/beta, and
+FP32-input `ssm_out` projection bodies use grid-Y 4; the scalar c1 bodies use
+grid-Y 1.
+
+Added a RED geometry fixture for those three shared projection kernel families,
+then made classification require row extent 1 for the row-local bucket. Added a
+zero-row-local census contract and made the artifact identity/limitation text
+route-aware: an indexed manifest emits the C2 recurrent-census kind while still
+refusing a throughput or fully-native-c4 claim.
+
+```bash
+python3 -m pytest -q tests/test_gguf_packed_execution_manifest.py
+# GREEN: 6 passed
+python3 -m py_compile scripts/gguf_packed_ar_rocprof.py \
+  tests/test_gguf_packed_execution_manifest.py
+python3 -m ruff check scripts/gguf_packed_ar_rocprof.py \
+  tests/test_gguf_packed_execution_manifest.py
+# GREEN
+```
+
+Reclassifying the untouched clean raw marker windows from `8695b51d` now gives
+c1 **628**, c4 **756**, expected/observed row-local **0/0**, and all **756** c4
+dispatches in the packed-native bucket. The original failed JSON is diagnostic
+only; the canonical profiler run will be repeated after this classifier unit is
+committed so implementation and summarizer provenance are both clean.
