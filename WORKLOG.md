@@ -158645,3 +158645,39 @@ public `LLM.generate_detailed()` serial control: prepared capacity 1024, exact
 tok/s. This is a capacity GREEN smoke, not a retained rate. The full focused GGUF
 sampling plus baseline suite remains **57/57**; Python compilation and
 `git diff --check` pass. The clean 512/128 control is retried after this commit.
+
+## 2026-07-16 — Close gfx1100 GGUF Phase-A controls
+
+Ran the new harness from clean `47cc1381` on Radeon Pro W7900/gfx1100 with the
+Qwen3.6-35B-A3B `UD-Q4_K_M` file, BF16 KV, repeated token 9707, prompt 512,
+128 returned tokens, greedy/ignore-EOS, TheRock HIP 7.15, fixed compiler-version
+cache key, one discarded warmup, and three measured repetitions. The exact
+hermetic command and sampled model fingerprint are embedded in
+`benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-phase-a-controls.json`;
+provenance reports clean commit `47cc1381`, W7900, gfx1100, and
+`performance_claim=false`. The canonical collector initially read the unused
+host `/opt/rocm` 7.2.4 version before the active HIP 7.15 compiler line; the
+compact artifact corrects `rocm_version` transparently from its recorded
+hermetic environment/hipcc, and the collector ordering is a follow-up fix.
+
+Explicit serial controls all report `gguf_serial_greedy_decode`, exact token
+accounting, stable route manifests, repeatable trajectories, and every c2/c4 row
+matching c1 across all repeats:
+
+- c1: **2803.298 prefill / 90.102 continuation-decode tok/s**;
+- serial c2: **2776.159 / 90.205 tok/s aggregate**;
+- serial c4: **2695.954 / 90.027 tok/s aggregate**.
+
+The flat aggregate decode rate is the expected complete-c1-row serial control,
+not c>N scaling. Denominators are explicit: prefill counts `C*512`; decode counts
+`C*127` because each prompt-final sample is produced by prefill.
+
+The separate package-c4 route inventory also matches the complete c1 128-token
+trajectory. Decode is packed for all 127 continuation steps
+(`native_caware_decode=true`, no serial decode fallback), but all-row p512 prompt
+prefill is **not packed**: `native_compact_prefill=false` and no
+`prefill_batch_ms` field is present, so the public route falls back to four
+slot-local prefills. This directly confirms the Phase-B3 capacity blocker and
+prevents a false c4 prefill claim. Tracked allocator peak is **22.406 GiB**.
+No profiler or performance promotion is claimed. Phase A is closed; next is the
+c2/c4 primitive append/attention gate and package-route trace.

@@ -95,7 +95,7 @@ requests are not admitted into a live model step loop mid-generation.
 | Model path | Backend | Current c>N status | Production behavior | First missing gate |
 | --- | --- | --- | --- | --- |
 | GGUF Q4_K_M / BF16 KV | gfx1151 | Packed exact hybrid in groups of at most c4; short natural c10 runs as c4+c4+c2 | Packed server AR route is available; not a retained c>N throughput row | Per-layer hidden capture, standard all-row 512/128 gate, live admission/cancel, profiler/scaling |
-| GGUF Q4_K_M / BF16 KV | gfx1100 | Not independently validated | Retained c1 GGUF path only for concurrency claims | Transfer the exact c4 lifecycle oracle and run W7900 correctness |
+| GGUF Q4_K_M / BF16 KV | gfx1100 | p512/d128 c4 generated-token diagnostic passes; packed decode is active but packed prefill falls back slot-locally | Retained c1 plus non-retained c4 token diagnostic | Primitive, hidden/state/KV, packed-prefill capacity, lifecycle, and profiler gates |
 | GGUF Q5_K/Q6_K/Q8_0 / BF16 KV | gfx1100/gfx1151 | Not executed end to end under c>N | c1 | Q4_K_M c4 closure first |
 | PARO W4 / BF16 KV | gfx1151 | Exact greedy c2 hybrid below 1024 total context; not fully native or retained | Unsupported groups fail closed to true width-1 sessions | Lifecycle/hidden/profiler/repetition gates, then remove row-local hybrid boundaries |
 | PARO W4 / BF16 KV | gfx1100 | Historical primitive/token diagnostics only; no current retained native route | Width-1 sessions | Re-establish the current-HEAD c2 correctness baseline on W7900 |
@@ -130,6 +130,9 @@ runner owns real device state and exercises them while requests remain live.
   `benchmarks/results/2026-07-13-gfx1151-gguf-packed-ar-exact-lifecycle.json`.
 - gfx1151 PARO exact c2 hybrid: `WORKLOG.md`, **2026-07-13 — Re-baseline PARO
   and GGUF concurrency**.
+- gfx1100 Phase-A c1/serial-c2/c4 controls and package-c4 route inventory:
+  `WORKLOG.md`, **2026-07-16 — Close gfx1100 GGUF Phase-A controls**, and
+  `benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-phase-a-controls.json`.
 - Historical PARO c1-c8 catalog and lifecycle: `docs/BENCHMARK.md` §PARO c1-c8
   exact concurrency matrix.
 - Historical c>N graph replay and output-tiled GEMV: `WORKLOG.md`, **2026-06-08
@@ -378,10 +381,10 @@ same pipeline once the GGUF contracts are proven.
 Punchlist:
 
 - [x] Replace the historical concurrency notebook with this roadmap.
-- [ ] Record clean gfx1100 c1 GGUF 512/128 package-default baseline.
-- [ ] Record gfx1100 c2/c4 serial-bridge controls with exact accounting.
-- [ ] Capture a current packed c4 route/dispatch inventory before modifying it.
-- [ ] Confirm ROCm/compiler/model fingerprint and cached-build discipline.
+- [x] Record clean gfx1100 c1 GGUF 512/128 package-default baseline.
+- [x] Record gfx1100 c2/c4 serial-bridge controls with exact accounting.
+- [x] Capture a current packed c4 route/dispatch inventory before modifying it.
+- [x] Confirm ROCm/compiler/model fingerprint and cached-build discipline.
 - [x] Add a compact branch kickoff entry to `WORKLOG.md`.
 
 Exit: one compact baseline artifact names every current fallback and supplies the
@@ -661,25 +664,23 @@ multi-prompt acceptance suite. Speculative work never weakens the AR c=N gates.
 Work this list in order unless a measured blocker is recorded in `WORKLOG.md`.
 The active lane is deliberately narrow.
 
-1. **A1:** record current gfx1100 c1 and serial c2/c4 GGUF controls.
-2. **A2:** inventory the packed c4 route and fallbacks on gfx1100.
-3. **B1:** run gfx1100 c2/c4 primitive append/attention gates.
-4. **B2:** parameterize and run the GGUF state/KV lifecycle oracle on gfx1100.
-5. **B2:** add per-layer hidden capture before changing model math.
-6. **B3:** remove the all-row p512 packed-prefill capacity blocker.
-7. **B3/B4:** close standard 512/128 and category-suite equality.
-8. **C1:** trace and quantify every exact-hybrid boundary.
-9. **C2:** implement the first RED-proven c-aware Conv/GDN closure.
-10. **C3:** close remaining host row loops and scalar readbacks.
-11. **C4:** prove one fully native replayable c4 model step.
-12. **C4:** publish the direct c1/c2/c4 and chunked-c8 performance packet.
-13. **D1:** attach that c4 step to one long-lived gfx1100 model runner.
-14. **D2:** close live admission, retirement, and cancellation on W7900.
-15. **E1:** run the same model-step and loop gates unchanged on gfx1151.
-16. **E2:** generalize from native c4 to one true native c8 group.
+1. **B1:** run gfx1100 c2/c4 primitive append/attention gates.
+2. **B2:** parameterize and run the GGUF state/KV lifecycle oracle on gfx1100.
+3. **B2:** add per-layer hidden capture before changing model math.
+4. **B3:** remove the all-row p512 packed-prefill capacity blocker.
+5. **B3/B4:** close standard 512/128 and category-suite equality.
+6. **C1:** trace and quantify every exact-hybrid boundary.
+7. **C2:** implement the first RED-proven c-aware Conv/GDN closure.
+8. **C3:** close remaining host row loops and scalar readbacks.
+9. **C4:** prove one fully native replayable c4 model step.
+10. **C4:** publish the direct c1/c2/c4 and chunked-c8 performance packet.
+11. **D1:** attach that c4 step to one long-lived gfx1100 model runner.
+12. **D2:** close live admission, retirement, and cancellation on W7900.
+13. **E1:** run the same model-step and loop gates unchanged on gfx1151.
+14. **E2:** generalize from native c4 to one true native c8 group.
 
 Do not start broad c8 tuning, PARO c4/c8, prefix caching, DMS, or speculative
-integration before item 15 unless the current blocker explicitly depends on it.
+integration before item 13 unless the current blocker explicitly depends on it.
 
 ## Coverage ledger
 
@@ -687,7 +688,7 @@ Use only these status values:
 
 - `not_started` — no current-HEAD evidence on that backend;
 - `primitive_ok` — kernel primitives pass, no model equality;
-- `token_diag` — short token equality only;
+- `token_diag` — generated-token equality only; no hidden/state/KV lifecycle proof;
 - `exact_hybrid` — direct state/KV lifecycle passes with declared row-local work;
 - `native_eq_ok` — native direct/lifecycle equality passes;
 - `continuous_eq_ok` — live admission/reclaim equality passes;
@@ -696,7 +697,7 @@ Use only these status values:
 | Path | gfx1100 | gfx1151 | Target |
 | --- | --- | --- | --- |
 | GGUF Q4_K_M / BF16, c2 | `not_started` | `exact_hybrid` | `retained` |
-| GGUF Q4_K_M / BF16, c4 | `not_started` | `exact_hybrid` | `retained` |
+| GGUF Q4_K_M / BF16, c4 | `token_diag` | `exact_hybrid` | `retained` |
 | GGUF Q4_K_M / BF16, c8 native group | `not_started` | `not_started` | `retained` |
 | GGUF Q4_K_M / BF16, live admission | `not_started` | `not_started` | `retained` |
 | PARO W4 / BF16, c2 | `token_diag` | `exact_hybrid` | `retained` |
