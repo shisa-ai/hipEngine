@@ -29,6 +29,8 @@ def test_packed_ar_bench_parses_honest_native_and_chunked_widths() -> None:
         _parse_configurations("c1,native_c8")
     with pytest.raises(ValueError, match="unique"):
         _parse_configurations("c1,c1")
+    with pytest.raises(ValueError, match="canonical"):
+        _parse_configurations("c4,c1,c2,chunked_c8,serial_c4")
 
 
 def test_packed_ar_bench_builds_declared_group_boundaries() -> None:
