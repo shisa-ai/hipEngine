@@ -160901,3 +160901,43 @@ Across the short steady, ragged, eager/graph sparse, and eager/graph standard
 gates it records **87,440** exact hidden comparisons with zero token/state/KV
 mismatches. This closes E2's complete equality-suite item. Native-c8 scaling,
 optional compaction, arbitrary C>8 lowering, and gfx1151 symmetry remain open.
+
+## 2026-07-17 — Add native c8 scaling and profiler harness
+
+Extended `scripts/gguf_packed_ar_bench.py` from the retained C4 packet to the
+canonical `c1,c2,c4,native_c8,chunked_c8,serial_c4` order. `native_c8` is one
+physical eight-row graph group; `chunked_c8` remains two serial c4 groups. The
+harness now requires physical width/active-mask agreement, cross-route native-c8
+trajectory equality, and native-c8 scaling against c1, chunked-c8, and the
+serial-c4 control.
+
+A dirty-tree implementation validation on W7900, Qwen3.6-35B-A3B UD-Q4_K_M,
+BF16 KV, p512/d128, TheRock HIP 7.15, exact GDN, cached builds, one warmup, and
+three measured runs produced **252.545 aggregate tok/s** for one native c8 graph
+(**31.568 per request**), versus c1 **85.501**, c4 **184.773**, chunked-c8
+**183.460**, and serial-c4 **84.716 aggregate tok/s**. Native c8 is **2.954x
+c1**, **1.377x chunked-c8 (+37.66%)**, and **2.981x serial-c4**. All measured
+trajectories repeat and cross-route hashes match. This run is implementation
+evidence only because provenance correctly records `unstaged_dirty=true`; it is
+not the retained publication source.
+
+Generalized `scripts/gguf_packed_ar_rocprof.py` with a default-preserving
+`--packed-concurrency {4,8}` target, width-specific markers/artifact keys, and
+physical width/mask validation. The first shell launch failed before model/GPU
+work because repository `PYTHONPATH` was absent. The corrected launch produced
+one real c8 graph marker window with **748 dispatches / 26.370 ms**, all packed
+native, zero exact-row-local work, and zero copies. Its initial census rejected
+only because the old C4 oracle required one LM-head dispatch; c8 deliberately
+uses two exact c-aware Q6 row-tile groups (`6+2`). The corrected oracle validates
+the declared chunk count. Reprocessing the same raw trace passes full-attention
+(10 context + 10 KV-write), selected MoE (40 gate/up + 40 down + 40 combine,
+64 lanes), LM-head (2/2), sampler (1+1), and metadata (1) checks at closure
+level C4. Raw c8 kernel/marker CSV SHA-256 values are
+`c1dd5c24da92c85b19864ac1667fc4599fcc77b1f5c4197a8619f3d9873b2412` and
+`f47219fb8c44ec86852bfd11eebbb8a732d03f2199bcfaab098ad97883aef027`.
+
+Implementation validation is **22 passed** across the packed benchmark and
+execution-manifest files; Python compilation, focused Ruff, raw-trace
+reprocessing assertions, and `git diff --check` pass. The next step is a clean
+commit followed by the same full scaling packet, cached-only profiler census,
+and current c8 primitive gate before retention.

@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """Measure direct gfx1100 GGUF packed graph groups and honest controls.
 
-The default packet runs one state-bound c1, c2, and c4 graph bucket, an explicit
-chunked-c8 route made of two serial c4 groups, and a serial-c4 bridge made of
-four c1 groups.  Every logical decode transition advances each live row once.
+The default packet runs one state-bound c1, c2, c4, and native-c8 graph bucket,
+an explicit chunked-c8 control made of two serial c4 groups, and a serial-c4
+bridge made of four c1 groups. Every logical decode transition advances each
+live row once.
 Graph capture, diagnostic token readback, and final state flush are excluded
 from decode throughput; each one-step replay is synchronized so the reported
 inter-token distribution is a model-step completion latency rather than enqueue
-latency.  This harness is a raw C4 measurement packet, not by itself a retained
-performance claim.
+latency. This harness is a raw native-c8 measurement packet, not by itself a
+retained performance claim.
 """
 
 from __future__ import annotations
@@ -60,6 +61,7 @@ CONFIGURATIONS: dict[str, PackedARConfiguration] = {
     "c1": PackedARConfiguration("c1", 1, 1, 1, "direct_native_group"),
     "c2": PackedARConfiguration("c2", 2, 2, 1, "direct_native_group"),
     "c4": PackedARConfiguration("c4", 4, 4, 1, "direct_native_group"),
+    "native_c8": PackedARConfiguration("native_c8", 8, 8, 1, "direct_native_group"),
     "chunked_c8": PackedARConfiguration("chunked_c8", 8, 4, 2, "chunked_native_groups"),
     "serial_c4": PackedARConfiguration("serial_c4", 4, 1, 4, "serial_bridge"),
 }
@@ -77,7 +79,7 @@ def _parse_configurations(raw: str) -> tuple[str, ...]:
     canonical = tuple(CONFIGURATIONS)
     if set(names) == set(canonical) and names != canonical:
         raise ValueError(
-            "the complete packet must use canonical c1,c2,c4,chunked_c8,serial_c4 order "
+            "the complete packet must use canonical c1,c2,c4,native_c8,chunked_c8,serial_c4 order "
             "so route-specific residency grows monotonically"
         )
     return names
@@ -150,8 +152,8 @@ def _prompt_rows(*, rows: int, prompt_length: int, token_id: int) -> tuple[tuple
     prompts: list[tuple[int, ...]] = []
     for row in range(int(rows)):
         prompt = [int(token_id)] * int(prompt_length)
-        # Repeat the four-row deterministic fixture for chunked-c8 so each c4
-        # group has a direct c4 trajectory oracle without token-conditioned code.
+        # Repeat the four-row deterministic fixture for both c8 routes so each
+        # half has a direct c4 trajectory oracle without token-conditioned code.
         prompt[-1] = int(token_id) + (row % 4)
         prompts.append(tuple(prompt))
     return tuple(prompts)
@@ -243,6 +245,9 @@ def _graph_manifest_matches_configuration(
     movement = manifest.get("host_device_movement", {})
     return bool(
         manifest.get("mode") == "decode_graph_replay"
+        and manifest.get("physical_rows") == config.native_group_width
+        and manifest.get("active_rows") == config.native_group_width
+        and manifest.get("active_mask") == [True] * config.native_group_width
         and graph.get("captured") is True
         and graph.get("replay_count") == int(decode_steps)
         and graph.get("replayed_steps") == int(decode_steps)
@@ -394,7 +399,7 @@ def _run_sample(
             "active_masks": [[True] * len(group) for group in groups],
             "serial_bridge": config.execution_class == "serial_bridge",
             "chunked": config.execution_class == "chunked_native_groups",
-            "native_c8_claim": False,
+            "native_c8_claim": config.name == "native_c8",
         },
         "accounting": {
             "prompt_tokens": config.logical_rows * len(prompts[0]),
@@ -571,18 +576,27 @@ def _cross_configuration_correctness(summaries: Mapping[str, Mapping[str, Any]])
     c1 = hashes.get("c1")
     c2 = hashes.get("c2")
     c4 = hashes.get("c4")
+    native = hashes.get("native_c8")
     chunked = hashes.get("chunked_c8")
     serial = hashes.get("serial_c4")
     prefix_exact = bool(c1 and c2 and c4 and c1 == c4[:1] and c2 == c4[:2])
     serial_exact = bool(c4 and serial and c4 == serial)
-    chunked_exact = bool(c4 and chunked and len(chunked) == 8 and chunked[:4] == c4 and chunked[4:] == c4)
+    native_exact = bool(
+        c4 and native and len(native) == 8
+        and native[:4] == c4 and native[4:] == c4
+    )
+    chunked_exact = bool(
+        c4 and chunked and len(chunked) == 8
+        and chunked[:4] == c4 and chunked[4:] == c4
+    )
     repeatable = all(summary.get("repeatable_trajectories") is True for summary in summaries.values())
-    passed = not missing and prefix_exact and serial_exact and chunked_exact and repeatable
+    passed = not missing and prefix_exact and serial_exact and native_exact and chunked_exact and repeatable
     return {
         "passed": bool(passed),
         "missing_configurations": missing,
         "c1_c2_c4_prefix_exact": prefix_exact,
         "c4_matches_serial_c4": serial_exact,
+        "native_c8_rows_match_c4": native_exact,
         "chunked_c8_groups_match_c4": chunked_exact,
         "all_measured_runs_repeatable": repeatable,
     }
@@ -600,19 +614,30 @@ def _scaling_summary(summaries: Mapping[str, Mapping[str, Any]]) -> dict[str, An
     serial_aggregate = median("serial_c4", "decode_tok_s_aggregate")
     c4_aggregate = median("c4", "decode_tok_s_aggregate")
     c4_per_request = median("c4", "decode_tok_s_per_request")
+    native_aggregate = median("native_c8", "decode_tok_s_aggregate")
+    native_per_request = median("native_c8", "decode_tok_s_per_request")
     chunked_aggregate = median("chunked_c8", "decode_tok_s_aggregate")
     c4_vs_c1 = _safe_ratio(c4_aggregate, c1_aggregate)
     c4_vs_serial = _safe_ratio(c4_aggregate, serial_aggregate)
+    native_vs_c1 = _safe_ratio(native_aggregate, c1_aggregate)
+    native_vs_chunked = _safe_ratio(native_aggregate, chunked_aggregate)
+    native_vs_serial = _safe_ratio(native_aggregate, serial_aggregate)
     return {
         "c1_baseline_decode_tok_s": c1_aggregate,
         "serial_c4_baseline_decode_tok_s_aggregate": serial_aggregate,
         "c4_decode_tok_s_aggregate": c4_aggregate,
         "c4_decode_tok_s_per_request": c4_per_request,
+        "native_c8_decode_tok_s_aggregate": native_aggregate,
+        "native_c8_decode_tok_s_per_request": native_per_request,
         "chunked_c8_decode_tok_s_aggregate": chunked_aggregate,
         "ratios": {
             "c4_aggregate_vs_c1": c4_vs_c1,
             "c4_per_request_vs_c1": _safe_ratio(c4_per_request, c1_aggregate),
             "c4_aggregate_vs_serial_c4": c4_vs_serial,
+            "native_c8_aggregate_vs_c1": native_vs_c1,
+            "native_c8_per_request_vs_c1": _safe_ratio(native_per_request, c1_aggregate),
+            "native_c8_aggregate_vs_chunked_c8": native_vs_chunked,
+            "native_c8_aggregate_vs_serial_c4": native_vs_serial,
             "chunked_c8_aggregate_vs_c1": _safe_ratio(chunked_aggregate, c1_aggregate),
         },
         "c4_scaling_gate_passed": bool(
@@ -621,6 +646,15 @@ def _scaling_summary(summaries: Mapping[str, Mapping[str, Any]]) -> dict[str, An
             and c4_vs_c1 > 1.0
             and c4_vs_serial > 1.0
         ),
+        "native_c8_scaling_gate_passed": bool(
+            native_vs_c1 is not None
+            and native_vs_chunked is not None
+            and native_vs_serial is not None
+            and native_vs_c1 > 1.0
+            and native_vs_chunked > 1.0
+            and native_vs_serial > 1.0
+        ),
+        "native_c8_is_one_physical_group": True,
         "chunked_c8_is_native_c8": False,
     }
 
@@ -762,7 +796,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             **{key: os.environ.get(key) for key in _PROVENANCE_ENV_KEYS},
             **_EXACT_ENV,
         },
-        build_profile="gfx1100_gguf_packed_graph_c1_c2_c4_chunked_c8",
+        build_profile="gfx1100_gguf_packed_graph_c1_c2_c4_native_c8_controls",
         timing_protocol=(
             "one shared model load; one discarded run and measured repeats per route; "
             "one synchronized graph replay per native group per logical decode transition"
@@ -775,7 +809,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     peak_hip_used = max(int(row["hip_used_bytes"]) for row in memory.values())
     return {
         "schema": 1,
-        "kind": "gfx1100_gguf_packed_graph_scaling_packet",
+        "kind": "gfx1100_gguf_native_c8_graph_scaling_packet",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "status": (
             "measurement_complete"
@@ -820,10 +854,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         },
         "command": shlex.join(command),
         "limitations": [
-            "Raw C4 measurement packet; correctness and marker-profiler artifacts are joined separately before promotion.",
+            "Raw native-c8 measurement packet; correctness and marker-profiler artifacts are joined separately before promotion.",
             "Inter-token latency is synchronized model-step completion latency; streaming token delivery and per-token D2H are Phase D.",
-            "chunked_c8 is two serial c4 groups and is never labeled native c8.",
-            "The deterministic four-row raw-token fixture repeats once for chunked-c8; category diversity is gated separately.",
+            "native_c8 is one physical eight-row graph; chunked_c8 remains two serial c4 groups as an honest control.",
+            "The deterministic four-row raw-token fixture repeats once across both c8 halves; category diversity is gated separately.",
         ],
     }
 
@@ -835,8 +869,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--quant", default="gguf_q4_k_m")
     parser.add_argument(
         "--configurations",
-        default="c1,c2,c4,chunked_c8,serial_c4",
-        help="Comma-separated subset of c1,c2,c4,chunked_c8,serial_c4.",
+        default="c1,c2,c4,native_c8,chunked_c8,serial_c4",
+        help="Comma-separated subset of c1,c2,c4,native_c8,chunked_c8,serial_c4.",
     )
     parser.add_argument("--prompt-token-id", type=int, default=9707)
     parser.add_argument("--prompt-length", type=int, default=512)
