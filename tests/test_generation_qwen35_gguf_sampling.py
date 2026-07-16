@@ -1603,10 +1603,18 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
             return SimpleNamespace(token_id=next_token, logits=logits)
 
         def step_batch_native(self, token_ids, *, sessions, positions, **kwargs):
+            physical_rows = int(kwargs.get("physical_rows", len(token_ids)))
+            active_slots = tuple(
+                int(index)
+                for index in kwargs.get("active_slot_indices", range(len(token_ids)))
+            )
             self.last_packed_execution_manifest = {
                 "schema": 1,
                 "kind": "gguf_packed_ar_execution_manifest",
-                "rows": len(token_ids),
+                "rows": physical_rows,
+                "physical_rows": physical_rows,
+                "active_rows": len(token_ids),
+                "active_mask": [index in active_slots for index in range(physical_rows)],
                 "model_step": {"complete_c1_session_replays": 0},
             }
             calls.append(
@@ -1671,11 +1679,19 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
     assert [output.generated_token_ids for output in zero] == [()]
     assert [call[0] for call in calls].count("runner_init") == 1
     assert [call[0] for call in calls].count("session_init") == 4
-    assert [call[2] for call in calls if call[0] == "step_batch_native"] == [(1, 1), (2, 2)]
+    packed_calls = [call for call in calls if call[0] == "step_batch_native"]
+    assert [call[2] for call in packed_calls] == [(1, 1), (2, 2), (1,)]
+    assert [call[5]["physical_rows"] for call in packed_calls] == [2, 2, 2]
+    assert [call[5]["active_slot_indices"] for call in packed_calls] == [
+        (0, 1),
+        (0, 1),
+        (0,),
+    ]
     assert [call for call in calls if call[0] == "step"][-1][2] == 1
     assert runner.active_request_ids == ()
     assert runner.available_session_count == 2
     assert greedy_last["path"] == "gguf_packed_ar_server_decode"
+    assert greedy_last["serial_decode_fallback"] is False
     assert generator.last_batch_generation is not None
     assert generator.last_batch_generation["path"] == "gguf_resident_model_loop"
     assert generator.last_batch_generation["serial_decode_fallback"] is True
@@ -1690,8 +1706,8 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
     assert observability["routes"]["counts"] == {
         "native_full_prefill_rows": 3,
         "native_incremental_prefill_chunks": 0,
-        "native_packed_decode_steps": 2,
-        "native_c1_decode_steps": 1,
+        "native_packed_decode_steps": 3,
+        "native_c1_decode_steps": 0,
         "serial_decode_fallback_steps": 0,
         "resident_fallback_requests": 2,
     }
@@ -1699,6 +1715,9 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
         "schema": 1,
         "kind": "gguf_packed_ar_execution_manifest",
         "rows": 2,
+        "physical_rows": 2,
+        "active_rows": 1,
+        "active_mask": [True, False],
         "model_step": {"complete_c1_session_replays": 0},
     }
     assert observability["routes"]["fallback_reasons"]

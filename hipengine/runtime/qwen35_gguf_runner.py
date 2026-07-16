@@ -627,12 +627,17 @@ class _GGUFPackedVerifySlotBlock:
 
     input_token_ids: tuple[int, ...]
     start_position: int
+    active: bool = True
 
     def __post_init__(self) -> None:
         if not self.input_token_ids:
             raise ValueError("packed verify slot block input_token_ids must be non-empty")
-        if int(self.start_position) < 0:
+        if self.active and int(self.start_position) < 0:
             raise ValueError("packed verify slot block start_position must be non-negative")
+        if not self.active and (
+            int(self.start_position) != -1 or len(self.input_token_ids) != 1
+        ):
+            raise ValueError("inactive packed verify slots require one dummy row at position -1")
 
 
 @dataclass(frozen=True)
@@ -647,6 +652,7 @@ class _GGUFPackedVerifyLayout:
     block_table: np.ndarray
     cu_seqlens: np.ndarray
     state_indices: np.ndarray
+    active_mask: np.ndarray
     blocks_per_slot: int
     block_size: int
     max_live_count: int
@@ -840,6 +846,8 @@ def _build_gguf_packed_verify_layout(
     blocks = tuple(slot_blocks)
     if not blocks:
         raise ValueError("packed verify layout requires at least one slot block")
+    if not any(block.active for block in blocks):
+        raise ValueError("packed verify layout requires at least one active slot")
     block_size = int(block_size)
     if block_size <= 0:
         raise ValueError("block_size must be positive")
@@ -847,6 +855,7 @@ def _build_gguf_packed_verify_layout(
     max_live_count = max(
         int(block.start_position) + len(block.input_token_ids)
         for block in blocks
+        if block.active
     )
     slot_capacity = max_live_count if slot_capacity is None else int(slot_capacity)
     if slot_capacity < max_live_count:
@@ -862,6 +871,7 @@ def _build_gguf_packed_verify_layout(
     block_table = np.empty((row_count, blocks_per_slot), dtype=np.int32)
     cu_seqlens = np.empty((len(blocks) + 1,), dtype=np.int32)
     state_indices = np.arange(len(blocks), dtype=np.int64)
+    active_mask = np.asarray([bool(block.active) for block in blocks], dtype=np.bool_)
 
     row_cursor = 0
     cu_seqlens[0] = 0
@@ -876,13 +886,13 @@ def _build_gguf_packed_verify_layout(
         )
         for row_offset, token_id in enumerate(block.input_token_ids):
             row = row_cursor + row_offset
-            position = slot_start + row_offset
+            position = slot_start + row_offset if block.active else -1
             input_token_ids[row] = int(token_id)
             row_slot_indices[row] = int(slot_index)
             row_positions[row] = int(position)
             row_offsets_in_slot[row] = int(row_offset)
             live_counts[row] = int(position) + 1
-            block_table[row, :] = slot_block_table
+            block_table[row, :] = slot_block_table if block.active else -1
         row_cursor += slot_rows
         cu_seqlens[slot_index + 1] = row_cursor
 
@@ -895,6 +905,7 @@ def _build_gguf_packed_verify_layout(
         block_table=block_table,
         cu_seqlens=cu_seqlens,
         state_indices=state_indices,
+        active_mask=active_mask,
         blocks_per_slot=blocks_per_slot,
         block_size=block_size,
         max_live_count=max_live_count,
@@ -908,7 +919,12 @@ def _packed_decode_metadata_device_eligible(
     """Return whether the c4 device kernel can rebuild this layout exactly."""
 
     rows = int(layout.rows)
-    if rows <= 0 or rows > 4 or int(layout.slot_count) != rows:
+    if (
+        rows <= 0
+        or rows > 4
+        or int(layout.slot_count) != rows
+        or not bool(np.all(layout.active_mask))
+    ):
         return False
     expected_rows = np.arange(rows, dtype=np.int64)
     expected_blocks = np.arange(
@@ -1017,6 +1033,10 @@ class _GGUFPackedTargetState:
             if layer_type == LINEAR_ATTENTION:
                 conv_state = buf(conv_state_nbytes)
                 recurrent_state = buf(recurrent_state_nbytes)
+                memset = getattr(runtime, "memset", None)
+                if callable(memset):
+                    memset(conv_state.ptr, 0, conv_state.nbytes)
+                    memset(recurrent_state.ptr, 0, recurrent_state.nbytes)
                 buffers.extend((conv_state, recurrent_state))
                 layer_conv_states.append(conv_state)
                 layer_recurrent_states.append(recurrent_state)
@@ -8266,7 +8286,7 @@ class Qwen35GGUFResidentSession:
     _packed_verify_scratch: object | None = field(default=None, init=False)
     _packed_verify_session_ids: tuple[int, ...] = field(default=(), init=False)
     _packed_verify_max_written_positions: tuple[int, ...] = field(default=(), init=False)
-    _packed_decode_sessions: tuple["Qwen35GGUFResidentSession", ...] = field(default=(), init=False)
+    _packed_decode_sessions: tuple["Qwen35GGUFResidentSession | None", ...] = field(default=(), init=False)
     _packed_decode_last_layout: _GGUFPackedVerifyLayout | None = field(default=None, init=False)
     _packed_decode_state_dirty: bool = field(default=False, init=False)
     _packed_decode_session_ids: tuple[int, ...] = field(default=(), init=False)
@@ -11813,6 +11833,8 @@ class Qwen35GGUFResidentSession:
         stream: int = 0,
         scatter_state: bool = True,
         capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
+        physical_rows: int | None = None,
+        active_slot_indices: list[int] | tuple[int, ...] | None = None,
     ) -> list[Qwen35GGUFNextTokenProbeResult]:
         """Consume one decode token for each resident session in one packed pass.
 
@@ -11865,16 +11887,49 @@ class Qwen35GGUFResidentSession:
             if session.kv_storage_dtype != DType.BF16:
                 raise NotImplementedError("packed AR decode currently supports BF16 KV only")
 
+        active_rows = len(session_tuple)
+        row_count = active_rows if physical_rows is None else int(physical_rows)
+        if row_count <= 0 or row_count > 8 or row_count < active_rows:
+            raise ValueError("physical_rows must be in [active_rows, 8]")
+        active_slots = (
+            tuple(range(active_rows))
+            if active_slot_indices is None
+            else tuple(int(index) for index in active_slot_indices)
+        )
+        if len(active_slots) != active_rows:
+            raise ValueError("active_slot_indices must align with token_ids and sessions")
+        if (
+            len(set(active_slots)) != len(active_slots)
+            or any(index < 0 or index >= row_count for index in active_slots)
+        ):
+            raise ValueError("active_slot_indices must be unique lanes within physical_rows")
+        physical_sessions: list[Qwen35GGUFResidentSession | None] = [None] * row_count
+        physical_tokens = [0] * row_count
+        physical_positions = [-1] * row_count
+        for token, session, position, slot_index in zip(
+            token_tuple,
+            session_tuple,
+            position_tuple,
+            active_slots,
+            strict=True,
+        ):
+            physical_sessions[slot_index] = session
+            physical_tokens[slot_index] = token
+            physical_positions[slot_index] = position
+        physical_session_tuple = tuple(physical_sessions)
+        active_mask = tuple(session is not None for session in physical_session_tuple)
         slot_blocks = tuple(
             _GGUFPackedVerifySlotBlock(
-                input_token_ids=(token,),
-                start_position=int(session.position),
+                input_token_ids=(physical_tokens[index],),
+                start_position=physical_positions[index],
+                active=active_mask[index],
             )
-            for token, session in zip(token_tuple, session_tuple, strict=True)
+            for index in range(row_count)
         )
         max_live_count = max(
             int(block.start_position) + len(block.input_token_ids)
             for block in slot_blocks
+            if block.active
         )
         slot_capacity = max(1024, max_live_count)
         layout = _build_gguf_packed_verify_layout(slot_blocks, slot_capacity=slot_capacity)
@@ -11887,6 +11942,8 @@ class Qwen35GGUFResidentSession:
             for session in session_tuple:
                 session._last_layer_output_hidden = {}
         rows = int(layout.rows)
+        if rows != row_count:
+            raise RuntimeError("packed AR physical layout row count drift")
         if rows > int(self._bulk_prefill_scratch.rows):
             raise NotImplementedError(
                 f"packed AR rows {rows} exceed resident hidden-buffer capacity {self._bulk_prefill_scratch.rows}"
@@ -11900,7 +11957,7 @@ class Qwen35GGUFResidentSession:
             runtime=runtime,
         )
         imported_slot_indices = self._sync_packed_decode_initial_state(
-            session_tuple,
+            physical_session_tuple,
             layout,
             packed_state,
             runtime=runtime,
@@ -11934,6 +11991,7 @@ class Qwen35GGUFResidentSession:
                 session_tuple,
                 layer_id=layer_id,
                 hidden_rows=hidden_rows,
+                row_indices=active_slots,
             )
 
         linear_attention_decode_paths, full_attention_decode_paths = (
@@ -11953,10 +12011,13 @@ class Qwen35GGUFResidentSession:
         )
         token_host = self._read_target_block_row_tokens(rows, stream=stream)
 
-        session_ids = tuple(id(session) for session in session_tuple)
+        session_ids = tuple(
+            0 if session is None else id(session)
+            for session in physical_session_tuple
+        )
         if scatter_state:
             self._scatter_packed_decode_state(
-                session_tuple,
+                physical_session_tuple,
                 layout,
                 packed_state,
                 runtime=runtime,
@@ -11966,12 +12027,15 @@ class Qwen35GGUFResidentSession:
             self._packed_decode_last_layout = None
             self._packed_decode_state_dirty = False
         else:
-            self._advance_packed_decode_session_cursors(session_tuple, layout)
-            self._packed_decode_sessions = session_tuple
+            self._advance_packed_decode_session_cursors(physical_session_tuple, layout)
+            self._packed_decode_sessions = physical_session_tuple
             self._packed_decode_last_layout = layout
             self._packed_decode_state_dirty = True
         self._packed_decode_session_ids = session_ids
-        self._packed_decode_positions = tuple(int(session.position) for session in session_tuple)
+        self._packed_decode_positions = tuple(
+            -1 if session is None else int(session.position)
+            for session in physical_session_tuple
+        )
         if stream:
             runtime.stream_synchronize(stream)
         else:
@@ -12000,8 +12064,9 @@ class Qwen35GGUFResidentSession:
             rows=rows,
             layer_types=self.runner.weights.config.layer_types,
             imported_slot_indices=imported_slot_indices,
-            import_positions=position_tuple,
+            import_positions=tuple(physical_positions),
             scatter_state=bool(scatter_state),
+            active_mask=active_mask,
             blocks_per_slot=int(layout.blocks_per_slot),
             capture_layer_count=len(capture_layer_ids),
             linear_attention_decode_path=linear_attention_decode_path,
@@ -12020,13 +12085,14 @@ class Qwen35GGUFResidentSession:
             sampler_decode_path=self._last_packed_sampler_decode_path,
             metadata_prepare_path=str(packed_scratch.metadata_prepare_path),
         )
+        self.last_packed_execution_manifest["active_slot_indices"] = list(active_slots)
         return [
             Qwen35GGUFNextTokenProbeResult(
-                token_id=int(token),
+                token_id=int(token_host[slot_index]),
                 logit=0.0,
                 logits=np.empty((0,), dtype=np.float32),
             )
-            for token in token_host.tolist()
+            for slot_index in active_slots
         ]
 
     def _run_token_to_final_hidden(
@@ -12991,7 +13057,7 @@ class Qwen35GGUFResidentSession:
 
     def _sync_packed_decode_initial_state(
         self,
-        sessions: tuple["Qwen35GGUFResidentSession", ...],
+        sessions: tuple["Qwen35GGUFResidentSession | None", ...],
         layout: _GGUFPackedVerifyLayout,
         packed_state: _GGUFPackedTargetState,
         *,
@@ -13000,7 +13066,7 @@ class Qwen35GGUFResidentSession:
     ) -> tuple[int, ...]:
         if self.runner is None or self.runner.weights is None:
             raise RuntimeError("GGUF resident session is closed")
-        session_ids = tuple(id(session) for session in sessions)
+        session_ids = tuple(0 if session is None else id(session) for session in sessions)
         prior_positions = self._packed_decode_positions
         can_reuse = (
             self._packed_decode_session_ids == session_ids
@@ -13010,6 +13076,8 @@ class Qwen35GGUFResidentSession:
         cfg = self.runner.weights.config
         imported_slot_indices: list[int] = []
         for slot_index, session in enumerate(sessions):
+            if session is None:
+                continue
             if session.scratch is None:
                 raise RuntimeError("packed AR decode job session is closed")
             row_start = int(layout.cu_seqlens[slot_index])
@@ -13262,7 +13330,7 @@ class Qwen35GGUFResidentSession:
 
     def _scatter_packed_decode_state(
         self,
-        sessions: tuple["Qwen35GGUFResidentSession", ...],
+        sessions: tuple["Qwen35GGUFResidentSession | None", ...],
         layout: _GGUFPackedVerifyLayout,
         packed_state: _GGUFPackedTargetState,
         *,
@@ -13276,6 +13344,8 @@ class Qwen35GGUFResidentSession:
         cfg = self.runner.weights.config
         row_nbytes = self._packed_full_kv_row_nbytes()
         for slot_index, session in enumerate(sessions):
+            if session is None:
+                continue
             if session.scratch is None:
                 raise RuntimeError("packed AR decode job session is closed")
             row_start = int(layout.cu_seqlens[slot_index])
@@ -13342,10 +13412,12 @@ class Qwen35GGUFResidentSession:
 
     def _advance_packed_decode_session_cursors(
         self,
-        sessions: tuple["Qwen35GGUFResidentSession", ...],
+        sessions: tuple["Qwen35GGUFResidentSession | None", ...],
         layout: _GGUFPackedVerifyLayout,
     ) -> None:
         for slot_index, session in enumerate(sessions):
+            if session is None:
+                continue
             if session.scratch is None:
                 raise RuntimeError("packed AR decode job session is closed")
             row_start = int(layout.cu_seqlens[slot_index])
@@ -13384,7 +13456,10 @@ class Qwen35GGUFResidentSession:
             runtime.stream_synchronize(stream)
         else:
             runtime.device_synchronize()
-        self._packed_decode_positions = tuple(int(session.position) for session in self._packed_decode_sessions)
+        self._packed_decode_positions = tuple(
+            -1 if session is None else int(session.position)
+            for session in self._packed_decode_sessions
+        )
         self._packed_decode_state_dirty = False
         return True
 

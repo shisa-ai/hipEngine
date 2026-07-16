@@ -343,8 +343,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     decode_mode = str(getattr(args, "decode_mode", "eager"))
     if decode_mode not in {"eager", "graph"}:
         raise ValueError("decode_mode must be eager or graph")
-    if lifecycle == "shrink_sparse" and (rows != 4 or int(args.decode_steps) != 4):
-        raise ValueError("shrink_sparse lifecycle requires --rows 4 --decode-steps 4")
+    if lifecycle == "shrink_sparse":
+        supported_shape = (
+            (rows == 4 and int(args.decode_steps) == 4)
+            or (rows == 8 and int(args.decode_steps) == 5)
+        )
+        if not supported_shape:
+            raise ValueError(
+                "shrink_sparse lifecycle requires rows/decode-steps 4/4 or 8/5"
+            )
+        if rows == 8 and decode_mode == "graph":
+            raise ValueError("masked c8 graph lifecycle is not implemented yet")
     alternate_prompt_length = (
         int(args.prompt_length)
         if args.alternate_prompt_length is None
@@ -461,6 +470,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         lifecycle_events: list[dict[str, Any]] = []
         graph_manifests: list[dict[str, Any]] = []
         eager_execution_manifest: dict[str, Any] | None = None
+        eager_execution_manifests: list[dict[str, Any]] = []
         dirty_before_flush = False
         flushed = False
         if lifecycle == "steady":
@@ -500,8 +510,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         hidden_comparisons += compared
                         hidden_mismatches.extend(mismatches)
                     manifest = getattr(owner, "last_packed_execution_manifest", None)
-                    if eager_execution_manifest is None and isinstance(manifest, Mapping):
-                        eager_execution_manifest = json.loads(json.dumps(manifest))
+                    if isinstance(manifest, Mapping):
+                        retained_manifest = json.loads(json.dumps(manifest))
+                        eager_execution_manifests.append(retained_manifest)
+                        if eager_execution_manifest is None:
+                            eager_execution_manifest = retained_manifest
                     packed_trajectory.append(list(packed_tokens))
                     reference_trajectory.append(list(reference_tokens))
                 dirty_before_flush = bool(owner._packed_decode_state_dirty)
@@ -561,7 +574,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 finally:
                     graph.close()
         else:
-            live_groups = ((0, 1, 2, 3), (0, 2, 3), (0, 3), (3,))
+            live_groups = (
+                ((0, 1, 2, 3), (0, 2, 3), (0, 3), (3,))
+                if rows == 4
+                else (
+                    tuple(range(8)),
+                    (0, 2, 3, 5, 6, 7),
+                    (0, 2, 5, 7),
+                    (2, 5),
+                    (5,),
+                )
+            )
             for step_index, live_indices in enumerate(live_groups, start=1):
                 group_sessions = tuple(packed_sessions[index] for index in live_indices)
                 group_owner = group_sessions[0]
@@ -594,7 +617,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         )
                     finally:
                         graph.close()
-                elif len(live_indices) > 1:
+                else:
                     with _temporary_env({_CAPTURE_PREFILL_GDN_ENV: "1"}):
                         results = group_owner.step_batch_native(
                             [packed_tokens[index] for index in live_indices],
@@ -603,25 +626,21 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                             return_logits=False,
                             scatter_state=False,
                             capture_layer_output_hidden=capture_layer_ids,
+                            physical_rows=rows,
+                            active_slot_indices=live_indices,
                         )
                     for index, result in zip(live_indices, results, strict=True):
                         packed_tokens[index] = int(result.token_id)
                     manifest = getattr(group_owner, "last_packed_execution_manifest", None)
-                    if eager_execution_manifest is None and isinstance(manifest, Mapping):
-                        eager_execution_manifest = json.loads(json.dumps(manifest))
+                    if isinstance(manifest, Mapping):
+                        retained_manifest = json.loads(json.dumps(manifest))
+                        eager_execution_manifests.append(retained_manifest)
+                        if eager_execution_manifest is None:
+                            eager_execution_manifest = retained_manifest
                     dirty_before_flush = dirty_before_flush or bool(
                         group_owner._packed_decode_state_dirty
                     )
                     flushed = bool(group_owner.flush_packed_decode_state()) or flushed
-                else:
-                    index = live_indices[0]
-                    packed_tokens[index] = int(
-                        packed_sessions[index].step(
-                            packed_tokens[index],
-                            return_logits=False,
-                            capture_layer_output_hidden=capture_layer_ids,
-                        ).token_id
-                    )
                 for index in live_indices:
                     reference_tokens[index] = int(
                         reference_sessions[index].step(
@@ -651,13 +670,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         )
                     hidden_comparisons += compared
                     hidden_mismatches.extend(mismatches)
-                event_packed = [_capture_state(packed_sessions[index]) for index in live_indices]
-                event_reference = [_capture_state(reference_sessions[index]) for index in live_indices]
+                event_packed = [_capture_state(session) for session in packed_sessions]
+                event_reference = [_capture_state(session) for session in reference_sessions]
                 event_mismatches = _compare_state_rows(event_packed, event_reference)
                 lifecycle_events.append(
                     {
                         "step": step_index,
                         "live_indices": list(live_indices),
+                        "active_mask": [index in live_indices for index in range(rows)],
                         "state_exact": not event_mismatches,
                         "mismatches": event_mismatches,
                     }
@@ -780,6 +800,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "lifecycle_events": lifecycle_events,
         "eager_native_model_step": eager_native_model_step,
         "eager_execution_manifest": eager_execution_manifest,
+        "eager_execution_manifests": eager_execution_manifests,
         "graph_manifests": graph_manifests,
         "final_state_exact": not final_mismatches,
         "final_mismatches": final_mismatches,

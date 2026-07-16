@@ -729,7 +729,7 @@ E2. Native widths:
 - [x] Run one true native c8 model step; c4+c4 may remain an explicit fallback
       but cannot qualify as c8.
 - [ ] Pass c8 steady, ragged, sparse, cancellation, and 512/128 equality.
-- [ ] Validate non-edge survivors through c8→c1 retirement without compaction.
+- [x] Validate non-edge survivors through c8→c1 retirement without compaction.
 - [ ] Validate optional compaction separately with state/KV hashes at every move.
 
 Clean `4089de11` eager and this E2 graph-control probe use one physical eight-row
@@ -738,8 +738,16 @@ twice with exact tokens, Conv/GDN/live-KV, and **960/960** all-layer hidden
 comparisons versus eight independent c1 references. Its manifest reports
 `physical_rows=8`, all eight lanes active, zero complete-c1 session/layer replay,
 zero host model-row loops/subgraph invocations, and zero steady metadata copies.
-This satisfies only the true-native-step item: masked physical buckets, ragged/
-sparse/cancellation retirement, and the standard p512/d128 gate remain open.
+This satisfies only the true-native-step item. The subsequent eager masked-
+bucket probe keeps one physical c8 workspace across active masks
+`11111111 → 10110111 → 10100101 → 00100100 → 00000100`, covering non-edge
+c8→c6→c4→c2→c1 retirement without compaction. Tokens, every survivor's
+all-layer hidden output, and every physical session's Conv/GDN/live-KV state—including
+all retired lanes—remain exact across **1,160/1,160** comparisons. Inactive
+lanes carry `-1` positions, zero live counts, and no state import/scatter. The
+all-active c8 graph regression remains **960/960** exact. This closes only the
+no-compaction retirement item: masked graph capture/replay, ragged/cancellation,
+and the standard p512/d128 gate remain open.
 
 E3. Arbitrary request counts:
 

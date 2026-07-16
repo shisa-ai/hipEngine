@@ -53,6 +53,7 @@ def build_packed_decode_execution_manifest(
     metadata_prepare_path: str,
     capture_layer_count: int = 0,
     linear_attention_decode_path: str = "exact_row_local",
+    active_mask: Sequence[bool] | None = None,
 ) -> dict[str, Any]:
     """Build the auditable host/runtime contract for one packed decode step.
 
@@ -75,13 +76,25 @@ def build_packed_decode_execution_manifest(
     positions = tuple(int(position) for position in import_positions)
     if len(positions) != row_count:
         raise ValueError("import_positions must contain one entry per row")
-    if any(position < 0 for position in positions):
-        raise ValueError("import_positions must be non-negative")
+    mask = (
+        (True,) * row_count
+        if active_mask is None
+        else tuple(bool(active) for active in active_mask)
+    )
+    if len(mask) != row_count or not any(mask):
+        raise ValueError("active_mask must contain one entry per row and at least one active lane")
+    if any(position < 0 for position, active in zip(positions, mask, strict=True) if active):
+        raise ValueError("active import_positions must be non-negative")
+    if any(position != -1 for position, active in zip(positions, mask, strict=True) if not active):
+        raise ValueError("inactive import_positions must use the -1 sentinel")
+    active_count = sum(mask)
     imported_indices = tuple(int(index) for index in imported_slot_indices)
     if len(set(imported_indices)) != len(imported_indices):
         raise ValueError("imported_slot_indices must be unique")
     if any(index < 0 or index >= row_count for index in imported_indices):
         raise ValueError("imported_slot_indices are outside the packed rows")
+    if any(not mask[index] for index in imported_indices):
+        raise ValueError("imported_slot_indices cannot include inactive lanes")
     captures = int(capture_layer_count)
     if captures < 0 or captures > len(layer_tuple):
         raise ValueError("capture_layer_count is outside the model layer range")
@@ -167,7 +180,7 @@ def build_packed_decode_execution_manifest(
             f"expected one of {sorted(supported_metadata_paths)!r}"
         )
 
-    row_loop_iterations = 0 if indexed_linear_decode else linear_layers * row_count
+    row_loop_iterations = 0 if indexed_linear_decode else linear_layers * active_count
     projection_row_launches = row_loop_iterations * _ROW_LOCAL_PROJECTION_LAUNCHES
     conv_gdn_row_launches = row_loop_iterations * _ROW_LOCAL_CONV_GDN_LAUNCHES
     normalization_row_launches = row_loop_iterations * _ROW_LOCAL_NORMALIZATION_LAUNCHES
@@ -201,7 +214,7 @@ def build_packed_decode_execution_manifest(
         for position in imported_positions
     )
     state_scatter_copies = (
-        row_count * (2 * linear_layers + 2 * full_layers)
+        active_count * (2 * linear_layers + 2 * full_layers)
         if bool(scatter_state)
         else 0
     )
@@ -273,7 +286,10 @@ def build_packed_decode_execution_manifest(
             "kv_abi": "KVLiveSpans" if full_layers else "not_applicable",
             "layer_invocations": full_layers,
             "row_positions": row_count,
-            "live_counts": [position + 1 for position in positions],
+            "live_counts": [
+                position + 1 if active else 0
+                for position, active in zip(positions, mask, strict=True)
+            ],
             "host_row_loop_sites": 0,
             "host_row_iterations": 0,
             "exact_row_local_kernel_launches": 0,
@@ -318,6 +334,9 @@ def build_packed_decode_execution_manifest(
         "mode": "decode",
         "claim_level": "exact_hybrid",
         "rows": row_count,
+        "physical_rows": row_count,
+        "active_rows": active_count,
+        "active_mask": list(mask),
         "linear_attention_decode_path": linear_path,
         "full_attention_decode_path": full_attention_path,
         "moe_decode_path": moe_path,

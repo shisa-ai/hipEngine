@@ -113,6 +113,7 @@ _GGUF_MTP_CONTEXT_REPLAY_MIN_PROMPT_TOKENS = 4
 _MTP_SERVING_TARGET_BATCH_MAX_SLOTS = 4
 _GGUF_AR_NATIVE_MAX_SLOTS = 8
 _GGUF_RESIDENT_MODEL_LOOP_DEFAULT_CAPACITY = 4
+_GGUF_AR_PHYSICAL_BUCKET_WIDTHS = (1, 2, 4, 8)
 _GGUFSessionPoolKey = tuple[str, bool | None, bool | None, int | None]
 _GGUF_AR_PACKED_DECODE_ENV = "HIPENGINE_GGUF_AR_PACKED_DECODE"
 _GGUF_AR_PACKED_PREFILL_ENV = "HIPENGINE_GGUF_AR_PACKED_PREFILL"
@@ -4240,7 +4241,25 @@ class Qwen35GGUFResidentModelRunner:
                 if row.native_greedy and row.first_token_emitted
             ]
             if step_rows:
-                self._step_native_rows(step_rows)
+                step_slot_ids: tuple[int, ...] = ()
+                step_active_mask: tuple[bool, ...] = ()
+                if work.slot_ids and work.active_mask and len(work.active_mask) <= 8:
+                    slot_by_request = dict(zip(request_ids, work.slot_ids, strict=True))
+                    step_slot_ids = tuple(slot_by_request[row.request_id] for row in step_rows)
+                    physical_rows = next(
+                        width
+                        for width in _GGUF_AR_PHYSICAL_BUCKET_WIDTHS
+                        if width >= len(work.active_mask)
+                    )
+                    step_slot_set = set(step_slot_ids)
+                    step_active_mask = tuple(
+                        slot in step_slot_set for slot in range(physical_rows)
+                    )
+                self._step_native_rows(
+                    step_rows,
+                    physical_slot_ids=step_slot_ids,
+                    physical_active_mask=step_active_mask,
+                )
             for row in rows:
                 raise_if_generation_deadline_expired(row.request)
 
@@ -4597,8 +4616,33 @@ class Qwen35GGUFResidentModelRunner:
             row_index=row.row_index,
         )
 
-    def _step_native_rows(self, rows: Sequence[_GGUFResidentLoopRow]) -> None:
+    def _step_native_rows(
+        self,
+        rows: Sequence[_GGUFResidentLoopRow],
+        *,
+        physical_slot_ids: Sequence[int] = (),
+        physical_active_mask: Sequence[bool] = (),
+    ) -> None:
         row_list = list(rows)
+        slot_ids = tuple(int(slot) for slot in physical_slot_ids)
+        active_mask = tuple(bool(active) for active in physical_active_mask)
+        if active_mask:
+            if len(slot_ids) != len(row_list):
+                raise ValueError("physical_slot_ids must align with native decode rows")
+            if tuple(index for index, active in enumerate(active_mask) if active) != slot_ids:
+                raise ValueError("physical_active_mask active lanes must equal physical_slot_ids")
+            if _gguf_ar_packed_decode_enabled() and (
+                len(row_list) > 1 or len(active_mask) > 1
+            ):
+                if self._step_native_chunk(
+                    row_list,
+                    physical_rows=len(active_mask),
+                    active_slot_indices=slot_ids,
+                ):
+                    return
+            self._step_native_serial(row_list)
+            return
+
         width = _GGUF_AR_NATIVE_MAX_SLOTS
         for start in range(0, len(row_list), width):
             chunk = row_list[start:start + width]
@@ -4607,7 +4651,13 @@ class Qwen35GGUFResidentModelRunner:
                     continue
             self._step_native_serial(chunk)
 
-    def _step_native_chunk(self, rows: Sequence[_GGUFResidentLoopRow]) -> bool:
+    def _step_native_chunk(
+        self,
+        rows: Sequence[_GGUFResidentLoopRow],
+        *,
+        physical_rows: int | None = None,
+        active_slot_indices: Sequence[int] = (),
+    ) -> bool:
         slots = [row.slot for row in rows]
         if any(slot is None for slot in slots):
             raise RuntimeError("GGUF resident packed decode row is missing its session slot")
@@ -4617,14 +4667,24 @@ class Qwen35GGUFResidentModelRunner:
         if not callable(step_batch):
             return False
         self.generator._flush_ar_packed_decode_owners_if_chunk_changed(concrete)
+        batch_kwargs: dict[str, Any] = {
+            "sessions": [slot.session for slot in concrete],
+            "positions": [int(slot.seq_position) for slot in concrete],
+            "return_logits": False,
+            "scatter_state": False,
+        }
+        if physical_rows is not None:
+            batch_kwargs.update(
+                {
+                    "physical_rows": int(physical_rows),
+                    "active_slot_indices": tuple(int(index) for index in active_slot_indices),
+                }
+            )
         try:
             with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
                 results = step_batch(
                     [int(slot.prev_token) for slot in concrete],
-                    sessions=[slot.session for slot in concrete],
-                    positions=[int(slot.seq_position) for slot in concrete],
-                    return_logits=False,
-                    scatter_state=False,
+                    **batch_kwargs,
                 )
         except NotImplementedError:
             return False
