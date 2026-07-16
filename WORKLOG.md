@@ -159721,3 +159721,61 @@ This commits the graph primitive/runtime unit only. C4 remains open for the
 clean standard d128 replay/eager gates, marker-sliced graph execution proof, and
 same-protocol c1/c2/c4/chunked-c8 timing/memory/latency packet. No throughput or
 fully-native-c4 claim is made here.
+
+## 2026-07-16 — Add the C4 graph census and direct-scaling harness
+
+Closed the clean standard equality rerun at graph-runtime commit `6f7851f3`.
+Both packed eager and graph p512/c4/d128 runs pass exact tokens,
+**20,640/20,640** prefill+decode layer rows, initial/final Conv/GDN state, and
+all live KV bytes. Graph mode records one physical c4 bucket, 128 launches, 128
+replayed transitions, and zero steady H2D/D2H; eager remains the explicit
+control. Source artifact SHA-256s are
+`b6ee8dc8a8f650f6f88f92b3ae831dee89088185754c4811056a023659d95ae8`
+(graph) and
+`00c69f34095730024dea32de8243ca44a6d5c692679d625ed828ef12f68285eb`
+(eager). The first background launch transiently imported a constructor without
+its current `backend` field and stopped before model load. Immediate normal and
+`PYTHONPATH=.` signature preflights both resolved the live checkout and exposed
+the field; the explicit clean rerun passed without a source change.
+
+Extended `scripts/gguf_packed_ar_rocprof.py` with an opt-in graph child and C4
+closure classification while preserving eager C1/C2/C3 behavior by default.
+Capture, state import, diagnostic readback, and flush remain outside ROCTX. A
+dirty-tree cached-only W7900 validation selects **747 dispatches**, all
+`packed_native`, with zero exact-row-local or copy dispatches, one
+`prepare_packed_decode_metadata_from_positions_kernel`, one
+`commit_packed_decode_graph_step_kernel`, and positive replay metadata. Raw c4
+kernel/marker SHA-256s are
+`1c24196e7e6fe54efa13c9bf2671a2cb83c0fe78dfe6cf23132194fa922cb6fa`
+and
+`b299d1bd4617314c8e864f16526c1e7a5d4a1a3fa03ee2bc7f1658a3467b449b`.
+A clean rerun is still required for retained evidence.
+
+Added `scripts/gguf_packed_ar_bench.py` as the same-protocol raw scaling packet.
+It encodes c1/c2/c4 as one native group, `chunked_c8` as two serial c4 groups,
+and `serial_c4` as four c1 groups. Every logical transition synchronizes each
+declared group once; capture/readback/flush are excluded from decode timing.
+The artifact records aggregate/per-request rate, per-request TTFT, model-step
+ITL p50/p95, graph keys/replay counts, active masks, tracked/HIP memory, and
+cross-route trajectory hashes. A p16/d2 all-route GPU smoke is trajectory-exact
+across c1/c2/c4/serial and both c8 groups. Its one-run rates
+(`105.52/149.57/213.74/214.28/105.91 tok/s` for
+c1/c2/c4/chunked-c8/serial-c4) are harness plausibility only, not performance
+evidence. The smoke exposed and fixed an over-strict validator: deliberate
+width-1 c1 controls may report row-local layer work, while every native width
+above one must report zero host model-row loops.
+
+```bash
+python3 -m pytest -q tests/test_gguf_packed_ar_bench.py \
+  tests/test_gguf_packed_execution_manifest.py \
+  tests/test_gguf_packed_decode_graph.py tests/test_runtime_state_plan.py
+# GREEN: 23 passed
+python3 -m ruff check scripts/gguf_packed_ar_bench.py \
+  scripts/gguf_packed_ar_rocprof.py tests/test_gguf_packed_ar_bench.py \
+  tests/test_gguf_packed_execution_manifest.py
+# GREEN
+```
+
+This is the evidence-tool unit, not C4 closure. Next: commit it, rerun the graph
+marker census clean, then run one clean p512/d128 1+3 packet and join its
+correctness/profiler/scaling evidence. No native-c4 or performance claim yet.

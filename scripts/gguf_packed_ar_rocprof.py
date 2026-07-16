@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Profile the observable c1/c4 GGUF exact-hybrid execution boundary.
+"""Profile the observable c1/c4 GGUF execution boundary.
 
 The parent warm-builds both leaf workloads outside rocprofv3, then profiles one
 synchronized steady decode transition for c1 and packed c4 in separate cached-
 only children. The c4 runtime manifest counts host row loops, metadata/state
-movement, synchronizations, and scalar fallbacks. This script checks its
-route-dependent row-local launch count against the trace and buckets all c4 GPU
-work as ``exact_row_local`` or ``packed_native``.
+movement, synchronizations, scalar fallbacks, and graph replay. This script
+checks its route-dependent row-local launch count against the trace and buckets
+all c4 GPU work as ``exact_row_local`` or ``packed_native``.
 
-This is a C1/C2/C3 route diagnostic, never a throughput claim. Model load,
-prefill, the first packed state import, and warmup are excluded by one ROCTX
-marker window.
+Eager mode retains the C1/C2/C3 route census. Graph mode proves one captured C4
+replay window, never throughput. Model load, prefill, packed-state import, graph
+capture, diagnostic readback, and flush are excluded by one ROCTX marker window.
 """
 
 from __future__ import annotations
@@ -41,6 +41,7 @@ DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 KIND = "gfx1100_gguf_concurrency_c1_hybrid_census"
 C2_KIND = "gfx1100_gguf_concurrency_c2_recurrent_census"
 C3_KIND = "gfx1100_gguf_concurrency_c3_model_boundaries_census"
+C4_KIND = "gfx1100_gguf_concurrency_c4_graph_replay_census"
 SCHEMA = 1
 MARKER_PREFIX = "hipengine_gguf_packed_c1_profile_c"
 _CAPTURE_PREFILL_GDN_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"
@@ -409,6 +410,19 @@ def execution_census_closure_level(
         and movement.get("host_to_device_metadata_copies") == 0
         and movement.get("device_metadata_prepare_launches") == 1
     )
+    graph = manifest.get("graph", {})
+    c4_graph_replay_closed = (
+        c3_model_boundaries_closed
+        and manifest.get("mode") == "decode_graph_replay"
+        and graph.get("captured") is True
+        and int(graph.get("replay_count", 0)) > 0
+        and int(graph.get("replayed_steps", 0)) > 0
+        and movement.get("host_to_device_total_copies") == 0
+        and movement.get("device_to_host_vector_copies") == 0
+        and manifest.get("synchronizations") == 0
+    )
+    if c4_graph_replay_closed:
+        return "c4"
     if c3_model_boundaries_closed:
         return "c3"
     if c2_recurrent_closed:
@@ -545,37 +559,63 @@ def _run_c4_child(owner: Any, sessions: Sequence[Any], args: argparse.Namespace,
         tuple([int(args.prompt_token_id)] * int(args.prompt_length))
         for _ in sessions
     )
-    first = owner.prefill_batch_native(prompts, sessions=tuple(sessions), return_logits=False)
+    session_tuple = tuple(sessions)
+    first = owner.prefill_batch_native(prompts, sessions=session_tuple, return_logits=False)
     current = [int(result.token_id) for result in first]
     warm = owner.step_batch_native(
         current,
-        sessions=tuple(sessions),
+        sessions=session_tuple,
         positions=[int(session.position) for session in sessions],
         return_logits=False,
         scatter_state=False,
     )
     current = [int(result.token_id) for result in warm]
     owner.runtime.device_synchronize()
-    if marker is not None:
-        marker.push(_marker_name(4))
-    try:
-        result = owner.step_batch_native(
+
+    if str(args.decode_mode) == "graph":
+        graph = owner.capture_packed_decode_graph(
             current,
-            sessions=tuple(sessions),
-            positions=[int(session.position) for session in sessions],
-            return_logits=False,
-            scatter_state=False,
+            sessions=session_tuple,
+            steps_per_replay=1,
+            max_replay_steps=1,
+            record_steps=1,
         )
-        owner.runtime.device_synchronize()
-    finally:
+        try:
+            if marker is not None:
+                marker.push(_marker_name(4))
+            try:
+                graph.replay(1)
+            finally:
+                if marker is not None:
+                    marker.pop()
+            final = graph.read_generated_token_ids(1)[0]
+            manifest = dict(graph.execution_manifest)
+            flushed = bool(graph.flush_packed_state())
+        finally:
+            graph.close()
+    else:
         if marker is not None:
-            marker.pop()
-    final = [int(item.token_id) for item in result]
-    manifest = dict(owner.last_packed_execution_manifest)
-    flushed = bool(owner.flush_packed_decode_state())
+            marker.push(_marker_name(4))
+        try:
+            result = owner.step_batch_native(
+                current,
+                sessions=session_tuple,
+                positions=[int(session.position) for session in sessions],
+                return_logits=False,
+                scatter_state=False,
+            )
+            owner.runtime.device_synchronize()
+        finally:
+            if marker is not None:
+                marker.pop()
+        final = [int(item.token_id) for item in result]
+        manifest = dict(owner.last_packed_execution_manifest)
+        flushed = bool(owner.flush_packed_decode_state())
+
     observed = [*[int(item.token_id) for item in first], *current, *final]
     return {
         "concurrency": 4,
+        "decode_mode": str(args.decode_mode),
         "prefill_plan": dict(owner.last_packed_prefill_plan),
         "warmup_token_ids": current,
         "profile_token_ids": final,
@@ -637,6 +677,7 @@ def _run_child(args: argparse.Namespace) -> int:
                 "child_mode": str(args.child_mode),
                 "backend": str(owner.backend),
                 "target_arch": str(owner.runner.target_arch),
+                "decode_mode": str(args.decode_mode),
                 "require_cached_build": bool(args.require_cached_build),
             }
         )
@@ -692,6 +733,8 @@ def _child_command(
         str(args.model),
         "--backend",
         str(args.backend),
+        "--decode-mode",
+        str(args.decode_mode),
         "--prompt-length",
         str(args.prompt_length),
         "--prompt-token-id",
@@ -824,6 +867,7 @@ def _run_parent(args: argparse.Namespace) -> dict[str, Any]:
         and manifest.get("steady_packed_state_reused") is True
         and manifest.get("host_device_movement", {}).get("device_to_device_state_import_copies") == 0
         and manifest.get("host_device_movement", {}).get("device_to_device_state_scatter_copies") == 0
+        and (str(args.decode_mode) != "graph" or closure_level == "c4")
     )
 
     command = [sys.executable, "scripts/gguf_packed_ar_rocprof.py", *sys.argv[1:]]
@@ -843,7 +887,9 @@ def _run_parent(args: argparse.Namespace) -> dict[str, Any]:
             "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact",
         },
         build_profile="cached_only_paired_c1_c4_leaf_rocprof",
-        timing_protocol="single_synchronized_steady_decode_marker_window_nonperformance",
+        timing_protocol=(
+            f"single_synchronized_{args.decode_mode}_steady_decode_marker_window_nonperformance"
+        ),
         warmups=1,
         repetitions=1,
         profiler={
@@ -855,10 +901,20 @@ def _run_parent(args: argparse.Namespace) -> dict[str, Any]:
     )
     return {
         "schema": SCHEMA,
-        "kind": C3_KIND if closure_level == "c3" else C2_KIND if closure_level == "c2" else KIND,
+        "kind": (
+            C4_KIND
+            if closure_level == "c4"
+            else C3_KIND
+            if closure_level == "c3"
+            else C2_KIND
+            if closure_level == "c2"
+            else KIND
+        ),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "status": (
-            f"{closure_level}_model_boundaries_census_complete"
+            "c4_graph_replay_census_complete"
+            if passed and closure_level == "c4"
+            else "c3_model_boundaries_census_complete"
             if passed and closure_level == "c3"
             else "c2_recurrent_census_complete"
             if passed and closure_level == "c2"
@@ -869,7 +925,9 @@ def _run_parent(args: argparse.Namespace) -> dict[str, Any]:
         "passed": passed,
         "performance_claim": False,
         "claim_level": (
-            "exact_hybrid_model_boundaries_closed_profiler_census"
+            "c4_graph_replay_profiler_census"
+            if closure_level == "c4"
+            else "exact_hybrid_model_boundaries_closed_profiler_census"
             if closure_level == "c3"
             else "exact_hybrid_recurrent_closed_profiler_census"
             if closure_level == "c2"
@@ -884,6 +942,8 @@ def _run_parent(args: argparse.Namespace) -> dict[str, Any]:
             "profiled_decode_transitions": 1,
             "c1_rows": 1,
             "c4_rows": 4,
+            "c1_decode_mode": "eager",
+            "c4_decode_mode": str(args.decode_mode),
             "sampling": "greedy_top1",
             "speculative_decode": False,
         },
@@ -912,7 +972,10 @@ def _run_parent(args: argparse.Namespace) -> dict[str, Any]:
         "limitations": [
             "One synchronized steady decode transition is a route census, not a throughput sample.",
             (
-                "C3 closes the declared per-row model and metadata boundaries, but the route remains "
+                "C4 proves one real graph replay with zero undeclared c1 work or steady transfer; "
+                "native/scaling promotion still requires the d128 and direct performance packet."
+                if closure_level == "c4"
+                else "C3 closes the declared per-row model and metadata boundaries, but the route remains "
                 "exact_hybrid until the C4 replay, equality, and scaling gates complete."
                 if closure_level == "c3"
                 else "C2 closes the recurrent linear-attention row loop, but the route remains "
@@ -930,6 +993,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     parser.add_argument("--backend", choices=("hip_gfx1100", "hip_gfx1151"), default="hip_gfx1100")
+    parser.add_argument("--decode-mode", choices=("eager", "graph"), default="eager")
     parser.add_argument("--prompt-length", type=int, default=512)
     parser.add_argument("--prompt-token-id", type=int, default=9707)
     parser.add_argument("--expected-token-id", type=int, default=9707)
