@@ -160685,3 +160685,21 @@ checks pass. This closes c8 graph-control/replay for an all-active short steady
 group only. Physical masked buckets, ragged/sparse non-edge retirement,
 cancellation, p512/d128, and retained profiler/scaling evidence remain open; no
 performance claim is made.
+
+## 2026-07-17 — Preserve sparse physical slots in decode work
+
+The first masked-bucket RED contract showed that `ResidentBatchScheduler`
+already owned the correct sparse physical slots but discarded them when building
+`WorkItem`: model runners received only compact request ids. Decode work now
+carries ordered `slot_ids` plus a work-specific `active_mask`; validation requires
+one unique non-negative active lane per request and exact mask/slot agreement.
+The scheduler's graph-shape key uses that same decode mask rather than counting
+prefill-only neighbors as decode rows.
+
+A three-slot retirement fixture now emits `(0,1,2)/(1,1,1)`, then
+`(1,2)/(0,1,1)`, then `(2)/(0,0,1)` without compaction. The complete dispatch
+and scheduler suite is **321 passed**. Focused source/test Ruff and Python
+compilation pass; the large scheduler file requires the existing scoped
+`--ignore F821` for the pre-existing unimported `Any` at line 15869, unchanged
+from D5. This is host ownership plumbing only: the GGUF model runner still must
+consume these physical lanes and prove inactive session state/KV immutability.
