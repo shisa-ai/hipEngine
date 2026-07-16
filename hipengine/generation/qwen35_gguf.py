@@ -255,6 +255,7 @@ class _GGUFARServingSlot:
     timing: dict[str, float] = field(default_factory=dict)
     session_pool_key: tuple[str, bool | None, bool | None] | None = None
     done: bool = False
+    native_compact_prefill: bool = False
     native_decode_steps: int = 0
     serial_decode_steps: int = 0
     decode_stream: int = 0
@@ -1212,7 +1213,7 @@ class Qwen35GGUFBringupGenerator:
                             row_index=slot.request_id,
                             timing=row_timing,
                             execution_path="gguf_packed_ar_server_decode",
-                            native_compact_prefill=False,
+                            native_compact_prefill=slot.native_compact_prefill,
                             native_caware_decode=slot.native_decode_steps > 0,
                             serial_decode_fallback=slot.serial_decode_steps > 0,
                             native_sampler_rows=False,
@@ -1222,6 +1223,7 @@ class Qwen35GGUFBringupGenerator:
             batch_id = _new_gguf_timing_batch_id("ar")
             outputs = _with_batch_timing_ownership(outputs, batch_id=batch_id)
             self.last_generation_outputs = tuple(outputs)
+            native_compact_prefill = bool(slots) and all(slot.native_compact_prefill for slot in slots)
             native_decode_steps = max((slot.native_decode_steps for slot in slots), default=0)
             serial_decode_fallback = any(slot.serial_decode_steps > 0 for slot in slots)
             self.last_batch_generation = _gguf_last_batch_generation(
@@ -1233,6 +1235,7 @@ class Qwen35GGUFBringupGenerator:
                 token_logprobs_by_request,
                 outputs=self.last_generation_outputs,
                 execution_path="gguf_packed_ar_server_decode",
+                native_compact_prefill=native_compact_prefill,
                 native_decode_steps=native_decode_steps,
                 native_caware_decode=native_decode_steps > 0,
                 serial_decode_fallback=serial_decode_fallback,
@@ -1361,6 +1364,7 @@ class Qwen35GGUFBringupGenerator:
                     "prefill_batch_chunk_ms",
                     float(chunk_ms_by_request.get(int(slot.request_id), 0.0)),
                 )
+            slot.native_compact_prefill = True
             self._finish_ar_serving_slot_prefill(slot, int(getattr(result, "token_id")), request)
         return True
 
@@ -3887,6 +3891,7 @@ def _gguf_last_batch_generation(
     *,
     outputs: tuple[GenerationOutput, ...],
     execution_path: str | None = None,
+    native_compact_prefill: bool = False,
     native_decode_steps: int = 0,
     native_caware_decode: bool = False,
     serial_decode_fallback: bool | None = None,
@@ -3904,7 +3909,7 @@ def _gguf_last_batch_generation(
         "decode_steps": decode_steps,
         "native_decode_steps": int(native_decode_steps),
         "serial_decode_fallback": serial_fallback,
-        "native_compact_prefill": False,
+        "native_compact_prefill": bool(native_compact_prefill),
         "native_caware_decode": bool(native_caware_decode),
         "native_sampler_rows": False,
         "throughput_claim_eligible": False,
@@ -3932,6 +3937,7 @@ def _gguf_last_batch_generation(
         request=request,
         plan=plan,
         execution_path=path,
+        native_compact_prefill=bool(native_compact_prefill),
         native_caware_decode=bool(native_caware_decode),
         serial_decode_fallback=serial_fallback,
     )
@@ -4054,6 +4060,7 @@ def _gguf_scheduler_token_chunks(
     request: GenerationRequest,
     plan: Any,
     execution_path: str,
+    native_compact_prefill: bool = False,
     native_caware_decode: bool = False,
     serial_decode_fallback: bool | None = None,
 ) -> list[dict[str, Any]]:
@@ -4092,7 +4099,7 @@ def _gguf_scheduler_token_chunks(
                     request_id=str(request_id),
                     phase="answer",
                     execution_path=execution_path,
-                    native_compact_prefill=False,
+                    native_compact_prefill=bool(native_compact_prefill),
                     native_caware_decode=bool(native_caware_decode),
                     serial_decode_fallback=serial_fallback,
                     native_sampler_rows=False,

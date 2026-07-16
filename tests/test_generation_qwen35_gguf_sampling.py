@@ -2042,7 +2042,9 @@ def test_gguf_ar_packed_prefill_uses_batch_prompt_path(monkeypatch) -> None:
     ]
     assert os.environ.get("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN") is None
     assert generator.last_batch_generation is not None
+    assert generator.last_batch_generation["native_compact_prefill"] is True
     assert generator.last_batch_generation["native_caware_decode"] is True
+    assert all(_decode_state(output)["native_compact_prefill"] is True for output in outputs)
 
 
 def test_gguf_ar_packed_prefill_chunks_above_four_slots(monkeypatch) -> None:
