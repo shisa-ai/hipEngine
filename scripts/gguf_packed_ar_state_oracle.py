@@ -303,6 +303,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         prompts[row_index][-1] = int(args.alternate_token_id) + row_index - 1
     max_sequence_length = max(len(prompt) for prompt in prompts) + int(args.decode_steps) + 2
     build_policy = _session_build_policy(args)
+    packed_prefill_plan: dict[str, Any] | None = None
 
     with ExitStack() as stack:
         owner = stack.enter_context(
@@ -355,6 +356,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         capture_layer_output_hidden=capture_layer_ids,
                     )
                     packed_tokens = [int(result.token_id) for result in prefill_results]
+                    packed_prefill_plan = dict(owner.last_packed_prefill_plan)
                 else:
                     packed_tokens = [
                         _prefill_c1(session, prompt)
@@ -555,6 +557,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "packed_gdn_kernel_route": "decode_order_bf16_segments",
             "package_default_overridden": str(args.gdn_prefill_mode) != "auto",
         },
+        "packed_prefill_plan": packed_prefill_plan,
         "lifecycle": lifecycle,
         "workload": {
             "rows": rows,
