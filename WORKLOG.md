@@ -160259,3 +160259,42 @@ throughput claim, does not enable request-sized INT8/mixed KV, and does not make
 production-server continuous batching complete. D4 still owns OpenAI streaming,
 per-row backpressure, disconnect, and shutdown drain; gfx1151 E1 remains
 hardware-blocked and native c8 remains open.
+
+## 2026-07-16 — Route D4 token streams through the resident loop
+
+Started D4 by removing the remaining stream-only bypass in
+`SubmitPollTextGenerator`. Streaming calls now submit to the same long-lived
+`ResidentEngineLoop` used by blocking `LLM.generate()`, advance only one locked
+model transition at a time, and route token events to request-owned
+subscriptions before releasing that tick lock. Concurrent iterators may each
+advance the shared loop without consuming one another's rows; a closed iterator
+cancels only its own request ids as `disconnect` and consumes the same unified
+reclaim path.
+
+Extended scheduler `GeneratedToken` reports with an optional model-produced
+`GenerationStreamChunk`. The scheduler still owns request state, finish, and
+telemetry fallback, while native runners can supply exact detokenized text,
+logprobs, and richer row metadata. The GGUF resident runner now emits one such
+chunk for each native token and no longer marks a max-token boundary as an EOS
+stop. Compatibility generators stream their final detailed output through the
+resident lifecycle rather than calling an independent inner streamer.
+
+RED-first contracts cover native per-token text/telemetry, two concurrent
+subscriptions joining one decode group, row-correct routing, and closing one
+live stream while its neighbor completes. Validation is green:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py
+# 315 passed
+python3 -m pytest -q tests/test_generation_qwen35_gguf_sampling.py \
+  tests/test_qwen35_gguf_runner.py
+# 56 passed, 9 skipped
+python3 -m pytest -q tests/test_qwen35_gguf_decode_graph.py \
+  tests/test_gguf_packed_decode_graph.py tests/test_gguf_decode_graph_g5.py
+# 12 passed
+```
+
+This is the first D4 logical unit, not D4 closure. The OpenAI batcher still
+serializes active stream producers, uses unbounded per-request queues, and has
+no explicit graceful/forced shutdown drain. Those server ownership changes and
+a clean W7900 HTTP lifecycle gate remain next.
