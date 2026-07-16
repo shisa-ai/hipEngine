@@ -6,6 +6,7 @@ from scripts.gguf_packed_ar_bench import (
     CONFIGURATIONS,
     _configuration_groups,
     _cross_configuration_correctness,
+    _graph_bucket_shape_sha256,
     _graph_manifest_matches_configuration,
     _occupancy_event,
     _parse_configurations,
@@ -85,6 +86,26 @@ def test_packed_ar_bench_stats_report_latency_distribution_and_variance() -> Non
     assert stats["max"] == pytest.approx(4.0)
     assert stats["stdev"] is not None
     assert stats["stdev_pct_of_median"] is not None
+
+
+def test_packed_ar_bench_shape_key_excludes_pointer_bound_instance_identity() -> None:
+    first = {
+        "physical_rows": 4,
+        "active_rows": 4,
+        "state_generations": [512, 512, 512, 512],
+        "context_bucket": 768,
+        "buffer_identity_sha256": "first-pointers",
+        "key_sha256": "first-instance",
+    }
+    next_instance = {
+        **first,
+        "buffer_identity_sha256": "next-pointers",
+        "key_sha256": "next-instance",
+    }
+    next_shape = {**first, "context_bucket": 1024}
+
+    assert _graph_bucket_shape_sha256(first) == _graph_bucket_shape_sha256(next_instance)
+    assert _graph_bucket_shape_sha256(first) != _graph_bucket_shape_sha256(next_shape)
 
 
 def test_packed_ar_bench_allows_explicit_c1_controls_but_not_c4_row_loops() -> None:

@@ -216,6 +216,14 @@ def _copy_json(value: Any) -> Any:
     return json.loads(json.dumps(value))
 
 
+def _graph_bucket_shape_sha256(bucket_key: Mapping[str, Any]) -> str:
+    payload = dict(bucket_key)
+    payload.pop("buffer_identity_sha256", None)
+    payload.pop("key_sha256", None)
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def _graph_manifest_matches_configuration(
     config: PackedARConfiguration,
     manifest: Mapping[str, Any],
@@ -422,8 +430,12 @@ def _run_sample(
         },
         "trajectory_fingerprints": fingerprints,
         "graph_manifests": graph_manifests,
-        "graph_bucket_key_sha256": [
+        "graph_bucket_instance_key_sha256": [
             manifest["graph"]["bucket_key"]["key_sha256"] for manifest in graph_manifests
+        ],
+        "graph_bucket_shape_sha256": [
+            _graph_bucket_shape_sha256(manifest["graph"]["bucket_key"])
+            for manifest in graph_manifests
         ],
         "flush_results": flush_results,
         "memory": memory,
@@ -439,7 +451,12 @@ def _summarize_configuration(
         [str(row["sha256"]) for row in sample["trajectory_fingerprints"]]
         for sample in measured
     ]
-    bucket_keys = [list(sample["graph_bucket_key_sha256"]) for sample in measured]
+    bucket_instance_keys = [
+        list(sample["graph_bucket_instance_key_sha256"]) for sample in measured
+    ]
+    bucket_shape_keys = [
+        list(sample["graph_bucket_shape_sha256"]) for sample in measured
+    ]
     ttft = [
         float(value)
         for sample in measured
@@ -482,11 +499,13 @@ def _summarize_configuration(
         "repeatable_trajectories": bool(
             trajectory_hashes and all(row == trajectory_hashes[0] for row in trajectory_hashes[1:])
         ),
-        "stable_graph_bucket_keys": bool(
-            bucket_keys and all(row == bucket_keys[0] for row in bucket_keys[1:])
+        "stable_graph_bucket_shape_keys": bool(
+            bucket_shape_keys
+            and all(row == bucket_shape_keys[0] for row in bucket_shape_keys[1:])
         ),
         "measured_trajectory_hashes": trajectory_hashes,
-        "graph_bucket_key_sha256": bucket_keys[0] if bucket_keys else [],
+        "graph_bucket_shape_sha256": bucket_shape_keys[0] if bucket_shape_keys else [],
+        "graph_bucket_instance_key_sha256_by_run": bucket_instance_keys,
         "rates": {
             "prefill_tok_s_aggregate": _stats(
                 [float(sample["throughput"]["prefill_tok_s_aggregate"]) for sample in measured]
@@ -712,7 +731,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     summaries_passed = all(
         summary["passed"] is True
         and summary["repeatable_trajectories"] is True
-        and summary["stable_graph_bucket_keys"] is True
+        and summary["stable_graph_bucket_shape_keys"] is True
         and summary["variance_guard"]["passed"] is True
         for summary in summaries.values()
     )
