@@ -158725,3 +158725,44 @@ required GGUF libraries outside the profiler, then reran with
 and final state comparisons; packed state becomes dirty and flushes correctly.
 This validates profiler-safe execution only; the clean B1 trace follows after
 this commit.
+
+## 2026-07-16 — Close gfx1100 GGUF B1 primitive and route preflight
+
+Closed Phase B1 from clean `c553631e` on Radeon Pro W7900/gfx1100, Qwen3.6
+35B-A3B `UD-Q4_K_M`, BF16 KV, and the hermetic TheRock HIP 7.15 toolchain.
+Both direct primitive runs required cached builds and passed at c2/c4: append
+K/V mismatch and batch A/A mismatch are zero, batch attention is bit-exact to
+independent c1, batch A/A is exact, and NumPy max-abs is
+`2.2351742e-08`/`2.9802322e-08`. The cached-only profiled c4 repeat also passes;
+its 39-dispatch trace contains two c4 batch append and two c4 batch-attention
+launches at grid Y=4 plus the four independent-c1 comparators for each family.
+
+The first packed-c2 profile was rejected: the command supplied
+`--compiler-version-file` to the lifecycle harness but omitted the global
+`HIPENGINE_COMPILER_VERSION_FILE`. Lazy wrapper lookups therefore probed
+`hipcc --version` under `rocprofv3`, profiler diagnostics changed the cache key,
+and the profiled process launched `hipcc`, clang, and linker children. The
+corrected launch exported the same precomputed compiler file globally and still
+passed `--require-cached-build`. Its profiler stderr contains one process id and
+zero compiler/linker child command; the primitive profile has the same
+cached-only proof.
+
+The corrected model trace contains 6,840 total dispatch rows including model
+setup, four c1 prompt prefills, state capture, the packed transition, two c1
+reference transitions, and final capture. The isolated eager packed-c2 model
+step is 955 dispatches and matches independent c1 tokens plus initial/final
+Conv/GDN and live-KV bytes. It exercises 10 c2 paged-KV writes and 10 c2 full
+attention launches, 40 c2 router/selected-expert/shared-expert/MoE-combine layer
+routes, one c2 row-tiled LM head, and one two-stage row argmax. Router logits use
+256 threads and router select uses 128, matching the gfx1100 package. Eager is
+expected for one transition because the package graph threshold is 24.
+
+The trace also makes the current exact-hybrid boundary explicit rather than
+calling it native: Conv and recurrent GDN each launch 60 times, exactly 30
+linear-attention layers x 2 rows. B1 therefore advances gfx1100 c2 to
+`primitive_ok`; it does not establish a fully native step or any throughput
+claim. Compact evidence, package-policy inventory, exact commands, source
+hashes, trace route census, and profiler-safety checks are in
+`benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-b1-preflight.json`.
+Next is B2 steady c2/c4, sparse c4→c3→c2→c1, ragged prompts, and per-layer hidden
+capture.
