@@ -20,16 +20,19 @@ defines what to capture and report next.
 ## Executive summary
 
 A single-process, single-GPU Qwen3.6 35B-A3B Q4_K_M 128K bulk prefill can stop
-making device-visible progress after previously completing one or more identical
-prefills. The process and machine remain alive, but the GPU remains indefinitely
-at approximately **100% reported activity, 2.9 GHz, and only 42-59 W** instead of
+making device-visible progress either in a fresh first prefill or after one or
+more identical prefills have completed. The process and machine remain alive,
+but the GPU remains indefinitely at approximately **100% reported activity,
+2.9 GHz, and only 41-59 W** instead of
 the roughly 120 W working regime. Device memory remains allocated and stable.
-The kernel journal remains clean. Terminating the process immediately returns
-the GPU to idle without a reset.
+No amdgpu/KFD fault, timeout, or reset is logged; one capture includes a single
+coincident PCIe PME line. Terminating the process immediately returns the GPU to
+idle without a reset.
 
 The failure:
 
-- occurs with one resident model and one HIP hardware queue;
+- occurs with one resident model and `GPU_MAX_HW_QUEUES=1`; KFD still exposes
+  one primary compute queue, one auxiliary compute queue, and one SDMA queue;
 - occurs under both tested HIP 7.13 and HIP 7.15 user-space stacks;
 - occurs with SDMA disabled;
 - occurs after restoring older router and metadata policies;
@@ -47,10 +50,22 @@ behind a linear-attention layer each time, but the exact layer and outer chunk
 move. This narrows the window; it does **not** identify the linear-attention
 kernel, marker kernel, or any other named dispatch as the cause.
 
-The highest-value current-boot next step is to snapshot KFD's existing
-`rls`, `mqds`, and `hqds` debugfs views during a healthy run and once after the
-persistent state begins. The next traced run should force rocprofiler's legacy
-queue interception. The next diagnostic boot should enable MES event logging.
+The first run after rebooting with MES event logging reproduced during its first
+128K prefill. Retirement stopped at sequence 339 after chunk `[32768,36864)`,
+while the host submitted through sequence 389 at layer 6 of `[36864,40960)`.
+One established-stall HQD snapshot found the 1 MiB AQL queue **active and
+non-empty**, with `rptr=0x32250`, `wptr=0x32450` (**32 unread AQL packets** after
+the gfx11 AQL pointer shift), and zero `CP_HQD_ERROR` and
+`CP_HQD_DEQUEUE_REQUEST`. The exposed MES event-log bytes were identical in the
+healthy-active, first-stall, and +30-second snapshots, then changed during
+process teardown. This is direct evidence of a mapped user queue with unread
+work; one HQD sample does not prove temporal pointer immobility, identify an
+unread packet, or prove MES firmware is the faulty component.
+
+The next steps are to file the dedicated stack-wide issue with a redacted
+capture bundle, then run a separate `sched_policy=2` scheduler-isolation boot.
+A legacy-interposition or streaming rocprofiler retry is lower priority than
+getting the current HQD/MES evidence in front of AMD.
 
 ## User-visible impact and scope
 
@@ -116,25 +131,31 @@ The main evidence set uses:
 | Main HIP stack | TheRock HIP `7.15.0-0000000` |
 | Comparison HIP stack | HIP `7.13.60980-c76140fa27` |
 | Main compiler | AMD clang 23, `aa451e1f...+PATCHED:440716f8...` |
-| Queue policy | `GPU_MAX_HW_QUEUES=1` unless a row explicitly says default/four |
+| Queue policy | `GPU_MAX_HW_QUEUES=1` unless a row explicitly says default/four; this does not mean only one KFD queue object |
 | amdgpu scheduler policy | `sched_policy=0` (hardware scheduling enabled) |
 | CWSR | `cwsr_enable=1` |
 
-Current relevant amdgpu values are:
+Current relevant values on the MES-debug boot are:
 
 ```text
-mes_log_enable=0
+mes_log_enable=1
 sched_policy=0
-gpu_recovery=-1
-send_sigterm=0
+gpu_recovery=1
+send_sigterm=1
 debug_evictions=N
 halt_if_hws_hang=0
+lockup_timeout=<unset>
 timeout_period=0
 cwsr_enable=1
+noretry=-1
+vm_fault_stop=0
+no_queue_eviction_on_vm_fault=0
+runpm=-1
 ```
 
-Record these again after every boot. Kernel/module behavior, not only HIP
-user-space version, is part of the reproduction identity.
+The pre-reboot control differed only in `mes_log_enable=0`, `gpu_recovery=-1`,
+and `send_sigterm=0`. Record the full set again after every boot. Kernel/module
+behavior, not only HIP user-space version, is part of the reproduction identity.
 
 ## Canonical reproduction
 
@@ -201,7 +222,8 @@ change incidence.
 | Jul 16 | Layer markers, first process | Entire exact warmup+3 completed; cursor 5,392/5,392 | Instrumentation perturbs timing; one completion is not stability evidence |
 | Jul 16 | Two independent layer-marker repeats | Both stalled with two pending checkpoints | Layer markers are not a reliable workaround; two-layer retirement window repeats |
 | Jul 16 | rocprofv3 inline queue interception | First prefill stalled; injected profiler signal also stopped; no trace finalized | Ambiguous instrumentation result; no last user kernel recovered |
-| Jul 16 | Current-boot KFD controls | Two independent chunk-recorder warmup+3 gates completed exactly; healthy MQD/sysfs snapshots captured | Establishes a healthy queue baseline but no stall/HQD comparison; `kfd/rls` is not a usable discriminator by itself |
+| Jul 16 | Current-boot KFD controls | Two independent chunk-recorder warmup+3 gates completed exactly; healthy MQD/sysfs snapshots captured | Establishes a healthy queue baseline; `kfd/rls` is not a usable discriminator by itself |
+| Jul 16 | MES-log boot plus stalled HQD | First 128K prefill stops at cursor 389/339; 36 samples hold 100%/2.9 GHz/median 43 W; active 1 MiB HQD has 32 unread AQL packets and zero error/dequeue state; MES-log bytes change only during teardown | Direct mapped-queue backlog evidence; debug parameters are not a workaround, while one HQD sample and an undecoded MES buffer still do not name the failed packet/component |
 
 ## Flight-recorder localization
 
@@ -270,7 +292,12 @@ Evidence supporting this interpretation:
   noting that the related gfx10/gfx11 class also needs CP-logic changes rather
   than a firmware-only change;
 - same-stream markers stop retiring while the host remains alive;
+- the captured primary KFD compute HQD remains active and non-empty with 32
+  unread AQL packets, zero HQD error state, and no dequeue request;
+- the MES event-log view does not change between healthy-active and two stalled
+  snapshots but does change when the process is terminated;
 - no ordinary DRM scheduler timeout or reset occurs;
+- `gpu_recovery=1` and `send_sigterm=1` do not act autonomously;
 - the failure survives user-space HIP stack, SDMA, metadata, readback, and marker
   changes;
 - process termination immediately clears the condition without resetting the
@@ -278,13 +305,12 @@ Evidence supporting this interpretation:
 
 Missing proof:
 
-- two healthy-active KFD MQD/sysfs baselines exist, but no active-stall
-  runlist/MQD/HQD dump has been captured;
-- MES event logging is currently disabled;
-- no firmware-decoded MES trace has been collected;
-- no KFD queue rptr/wptr comparison is available;
+- only one stalled HQD register sample exists, so temporal hardware-pointer
+  immobility is not directly established;
+- the MES event buffer has not been firmware-decoded;
+- no last-retired AQL packet or named user dispatch has been recovered;
 - no minimal standalone reproducer exists;
-- no fixed-stack scheduler-policy A/B has been completed.
+- no fixed-stack `sched_policy=2` A/B has been completed.
 
 ### Application dispatch sequence as a trigger
 
@@ -308,24 +334,55 @@ instrumentation-induced failure. It is not counted as independent causality.
 
 ### VM, page-table, or wave-level fault without reporting
 
-Clean journals make these less likely but do not eliminate them. MES logging,
-KFD queue state, VM info, and an AMD-supported wave/queue debug path are needed
-before excluding a silent fault or permanently running shader.
+Clean journals, zero KFD fault/page counters, and the zero-error HQD make these
+less likely but do not eliminate them. The MES buffer still needs decoding, and
+an AMD-supported wave/last-retired-packet path is needed before excluding a
+silent fault or permanently running shader.
 
 ## Debugging plan
 
-### Priority 0 result: healthy KFD baseline captured; stalled HQD pending
+### Priority 0 result: healthy controls and stalled HQD/MES capture complete
 
-Two current-boot processes complete exact warmup+3 gates at merged commit
-`babbc8c6`, so idle, healthy-active, and post-termination snapshots are now
-preserved. Both healthy snapshots coincide with 97-99% activity, 128-129 W, and
-advancing recorder markers. KFD sysfs/MQDs show two compute queue objects plus
-one SDMA queue, zero fault/page-in/page-out counters, and 3-4 ms cumulative
-eviction time. Nevertheless, `kfd/rls` reports `No active runlist` in both
-healthy snapshots. Treat that view as unsupported or insufficient for this MES
-configuration; never infer an idle user queue from it alone. No HQD dump was
-captured because the predeclared protocol reserves that large, potentially
-perturbing read for an established stall.
+Two pre-reboot processes completed exact warmup+3 gates at merged commit
+`babbc8c6`, preserving idle, healthy-active, and post-termination controls. Both
+healthy snapshots coincided with 97-99% activity, 128-129 W, advancing recorder
+markers, two compute queue objects, one SDMA queue, zero fault/page counters,
+and only 3-4 ms cumulative eviction time.
+
+The first MES-debug-boot attempt at public commit `a7b4fe4b` then reproduced in
+its first 128K prefill:
+
+- the cursor reached submitted/completed **389/339** and remained unchanged from
+  17:11:20 through the final 17:14:21 check;
+- sequence 339 proves completion through chunk `[32768,36864)`; sequence 389
+  records host entry to linear-attention layer 6 of `[36864,40960)`;
+- all 36 telemetry samples from 17:11:23 through 17:14:18 are **100% / 2.9 GHz**,
+  with **41/43/49 W min/median/max** and fixed **26,662 MiB** residency;
+- KFD still exposes two compute queues and one SDMA queue, with zero faults,
+  page-ins, or page-outs and 10 ms cumulative eviction time;
+- the primary 1 MiB queue is mapped at CP pipe 0 queue 2 with
+  `ACTIVE=1`, `PQ_EMPTY=0`, `rptr=0x32250`, `wptr=0x32450`,
+  `DEQUEUE_REQUEST=0`, and `ERROR=0`; gfx11 uses a four-bit AQL pointer shift,
+  so the `0x200` gap represents **32 packets**;
+- the auxiliary 4 KiB queue is active but empty at `rptr=wptr=0x140`;
+- the MES event-log hashes are identical for healthy-active, first-stall, and
+  +30-second snapshots (`b7a4abfb...`), then change after SIGTERM
+  (`4a216fd8...`);
+- the kernel records no amdgpu/KFD fault, timeout, or reset. One
+  `PME: Spurious native interrupt!` appears 37 seconds after the last cursor
+  change; it is a coincident signal, not an established trigger;
+- the monitor sends SIGTERM only after all declared captures. The process exits,
+  memory returns to 17 MiB, and no GPU reset occurs.
+
+The HQD caveat matters: only `stalled_first` includes the large hardware-register
+dump. The backlog is proven at that instant, but there is no second HQD sample
+from which to claim that the hardware pointers stayed fixed. The byte-identical
+software MQD is not a substitute because mapped MQDs can be stale. The decode
+uses Linux's [56-register gfx11 HQD dump order](https://github.com/torvalds/linux/blob/37e2f878a7a660a216cc7a60459995fefd150f25/drivers/gpu/drm/amd/amdgpu/amdgpu_amdkfd_gfx_v11.c#L313-L341),
+[gfx11.5 CP register offsets](https://github.com/torvalds/linux/blob/37e2f878a7a660a216cc7a60459995fefd150f25/drivers/gpu/drm/amd/include/asic_reg/gc/gc_11_5_0_offset.h#L3573-L3688),
+and KFD's [four-bit AQL write-pointer shift](https://github.com/torvalds/linux/blob/37e2f878a7a660a216cc7a60459995fefd150f25/drivers/gpu/drm/amd/amdkfd/kfd_mqd_manager_v11.c#L190-L208).
+AMD should still confirm that this mainline map matches the running CachyOS
+kernel and MES path.
 
 The kernel exposes:
 
@@ -371,19 +428,58 @@ sudo timeout 10 cat /sys/kernel/debug/dri/0000:c1:00.0/amdgpu_fence_info \
 Do **not** write to `/sys/kernel/debug/kfd/hang_hws`; it deliberately induces a
 scheduler hang and is not an observation interface.
 
-Questions to answer from the snapshots:
+Answers and remaining questions:
 
-1. Is the hipEngine PASID still present and mapped in the runlist?
-2. How many compute and SDMA queues exist despite `GPU_MAX_HW_QUEUES=1`?
-3. Is the queue mapped into an HQD or only represented by an MQD?
-4. Do rptr/wptr/doorbell fields stop with unread packets?
-5. Does HWS consider the runlist active, evicted, or drained?
-6. Does repeated observation change any pointer or queue state?
+1. The PASID is present and two compute plus one SDMA software queue exist.
+2. Both compute queues are mapped into active HQDs; the primary queue is
+   non-empty with 32 unread AQL packets.
+3. `kfd/rls` still says `No active runlist`, so it is not a trustworthy state
+   discriminator on this MES configuration.
+4. KFD reports no fault, paging, or meaningful eviction activity.
+5. One HQD sample cannot answer whether the hardware rptr/wptr stopped changing;
+   AMD guidance is needed for a safe second sample or last-retired-packet query.
+6. The MES event-log bytes are static during the observation window but require
+   an AMD decoder before interpreting operation/state fields.
 
 MQDs can be stale for mapped queues; correlate them with HQDs rather than
 interpreting the software descriptor alone.
 
-### Priority 1: retry tracing with legacy queue interception
+### Priority 1: file the dedicated upstream issue
+
+Prepare one redacted attachment bundle containing:
+
+- the compact artifact and exact public commit/command;
+- `amdgpu_firmware_info`, decompressed firmware hashes, kernel version, command
+  line, and complete amdgpu parameter values;
+- recorder tail/cursor history, telemetry, process states, and filtered journal;
+- the primary/auxiliary HQD excerpt and register-map source;
+- healthy/stalled/+30-second/after-termination MES event-log snapshots plus
+  hashes;
+- the healthy-vs-stalled matrix and an explicit evidence-boundary note.
+
+Do not attach model weights, unrelated process listings, hostnames, root UUIDs,
+or an unredacted full VM map. File in **ROCm/ROCm** for stack-wide routing and
+cross-link the related reports without asserting a shared root cause. Post a
+short evidence update to #5107 after the dedicated URL exists.
+
+### Priority 2: non-HWS scheduler-isolation boot
+
+Use a separate boot:
+
+```text
+amdgpu.sched_policy=2 amdgpu.mes_log_enable=1 \
+  amdgpu.gpu_recovery=1 amdgpu.send_sigterm=1
+```
+
+Keep the kernel, firmware, HIP stack, compiler, application commit, one-queue
+environment, model, and capture protocol unchanged. `sched_policy=2` disables
+HWS and statically assigns queues. If the exact 128K warmup+3 gate becomes
+repeatedly reliable, that strongly implicates the HWS/MES scheduling plane. If
+it still fails, capture one HQD and all MES/KFD controls and do not conclude
+that firmware is exonerated. This policy is debug-only, system-wide, can affect
+TTY responsiveness/power/performance, and is not a production hipEngine fix.
+
+### Priority 3: retry tracing with legacy queue interception
 
 Use the same cached command and add:
 
@@ -399,54 +495,6 @@ recorder and implement a minimal rocprofiler-sdk callback that streams completed
 dispatch records to a preallocated mmap/file.
 
 Do not infer stability if tracing suppresses the failure.
-
-### Priority 2: diagnostic MES-logging boot
-
-The current-boot KFD evidence is preserved and this boot is now prepared in
-Limine, but the parameters are not active until reboot. `/boot/limine.conf` was
-regenerated successfully; the previous source config is backed up at
-`/etc/default/limine.pre-gfx1151-debug-20260716T054023Z`.
-
-Test the prepared boot with:
-
-```text
-amdgpu.mes_log_enable=1 amdgpu.gpu_recovery=1 amdgpu.send_sigterm=1
-```
-
-Rationale:
-
-- `mes_log_enable=1` enables the debugfs MES event log and is the most directly
-  relevant additional scheduler evidence;
-- `gpu_recovery=1` explicitly enables recovery if the driver recognizes a
-  timeout;
-- `send_sigterm=1` requests SIGTERM delivery for recognized unhandled HSA
-  exceptions instead of only logging them.
-
-Verify the loaded values after reboot. Locate the new debugfs node and capture
-it before the run, immediately after the persistent state, and after termination:
-
-```bash
-sudo find /sys/kernel/debug/dri -maxdepth 2 -name amdgpu_mes_event_log -print
-sudo dd if=/sys/kernel/debug/dri/0000:c1:00.0/amdgpu_mes_event_log \
-  of=/tmp/amdgpu-mes-event-log.bin status=none
-```
-
-The format may require an AMD decoder; preserve raw bytes and firmware identity
-exactly. MES logging can perturb timing, so this is never a performance run.
-
-### Priority 3: non-HWS scheduler-isolation boot
-
-Use a separate boot:
-
-```text
-amdgpu.sched_policy=2 amdgpu.mes_log_enable=1
-```
-
-`sched_policy=2` disables HWS and statically assigns queues. If the exact 128K
-warmup+3 gate becomes repeatedly reliable, that strongly implicates the HWS/MES
-scheduling plane. If it still fails, capture HQD/MQD state and do not conclude
-that firmware is exonerated. This policy is debug-only, system-wide, can affect
-TTY responsiveness/power/performance, and is not a production hipEngine fix.
 
 ### Priority 4: lightweight eviction diagnostics
 
@@ -532,6 +580,52 @@ Those comments are accurate but incomplete relative to current evidence.
 The existing links support a scheduler-family relationship. They do not prove
 all reports have the same root cause.
 
+### Tracker-selection research: ROCm/ROCm versus ROCm/TheRock
+
+**Decision: file the dedicated report in `ROCm/ROCm`.** Cross-link TheRock
+reports, but do not duplicate-file there unless an AMD maintainer requests it or
+a later A/B establishes a TheRock-package regression.
+
+Scope is the deciding factor:
+
+- [ROCm/ROCm's contribution guide](https://github.com/ROCm/ROCm/blob/develop/CONTRIBUTING.md#issue-tracking)
+  says that repository's issues track ROCm bugs across a stack described as
+  drivers through end-user APIs and explicitly says to file when uncertain;
+- [TheRock](https://github.com/ROCm/TheRock#therock) describes itself as an
+  early-preview build platform providing daily user-space packages, source
+  builds, and CI. Its
+  [FAQ](https://github.com/ROCm/TheRock/blob/main/docs/faq.md#what-does-therock-provide-compared-to-more-traditional-rocm-releases)
+  distinguishes those packages from traditional ROCm releases;
+- our trigger uses a TheRock HIP 7.15 user stack, but it also reproduces on HIP
+  7.13 and the strongest evidence is in kernel KFD/HQD, amdgpu CP registers, MES
+  logging, firmware, and missing hang recovery. No TheRock build, wheel,
+  packaging, or nightly-regression boundary is established;
+- [TheRock#2655](https://github.com/ROCm/TheRock/issues/2655), the closest
+  TheRock MES-scheduler issue, immediately points related gfx115x hangs to
+  ROCm/ROCm#5724 and #5590 and a kernel patch. That is the clearest observed
+  routing precedent.
+
+Both trackers accept end-to-end reports, and response time alone does not select
+a clear winner. This small, non-random snapshot was checked on 2026-07-16:
+
+| Tracker / issue | First observable AMD response | Subsequent handling |
+| --- | ---: | --- |
+| [ROCm/ROCm#5107](https://github.com/ROCm/ROCm/issues/5107) | about 17 hours | Assigned, labeled **Under Investigation**, and still active nearly a year later |
+| [ROCm/ROCm#5724](https://github.com/ROCm/ROCm/issues/5724) | about 9.4 days | AMD identified a MES firmware/KFD discrepancy and provided sustained firmware/kernel triage |
+| [ROCm/ROCm#6273](https://github.com/ROCm/ROCm/issues/6273) | about 8.6 days | Assigned; AMD proposed CWSR isolation and followed the result |
+| [ROCm/TheRock#1413](https://github.com/ROCm/TheRock/issues/1413) | about 8.9 days | AMD obtained hardware, attempted reproduction, and closed after the reporter confirmed recovery |
+| [ROCm/TheRock#1271](https://github.com/ROCm/TheRock/issues/1271) | about 29.8 days | Slow first response but months of active driver/firmware and hardware-reproduction follow-up |
+| [ROCm/TheRock#5581](https://github.com/ROCm/TheRock/issues/5581) | about 22.8 hours | Component-specific MIOpen report received a minimal reproducer and staging-build confirmation within a day |
+| [ROCm/TheRock#5993](https://github.com/ROCm/TheRock/issues/5993) | no AMD response visible by Jul 16 | Detailed gfx1150 MES/devcoredump report remained open |
+
+TheRock has useful `gfx1151` and `driver/fw update` labels and can be very fast
+when a bug maps to a component or staging build. ROCm/ROCm can also respond
+quickly, but some system issues take days or weeks. The sample is confounded by
+issue specificity, reporter/maintainer identity, reproducer quality, and whether
+hardware is available; it is evidence about handling patterns, not a service
+level. For this cross-layer silent queue-retirement failure, correct routing to
+the umbrella tracker is more important than the noisy timing difference.
+
 ## What should be reported next
 
 ### Update the existing #5107 thread
@@ -547,7 +641,12 @@ It should add only evidence not already in the correction:
   captures, without claiming that kernel family is faulty;
 - inline rocprof tracing is ambiguous because its own completion signal stalls
   and no trace finalizes;
-- KFD/MES state capture and a dedicated issue are now the tracking path.
+- the MES-debug boot reproduces in the first prefill with cursor 389/339;
+- the mapped 1 MiB HQD is active/non-empty with 32 unread AQL packets and zero
+  HQD error/dequeue state;
+- MES event-log bytes remain unchanged through the +30-second snapshot and
+  change during teardown;
+- a dedicated ROCm/ROCm issue is now the primary tracking path.
 
 Do not paste every benchmark number into #5107. Link this document and the
 compact artifacts.
@@ -559,13 +658,17 @@ possible workaround because:
 
 - the observed operation stops making forward progress, not merely reports a
   misleading utilization value;
-- one process and one queue are sufficient;
+- one process with the one-hardware-queue runtime policy is sufficient, even
+  though KFD exposes auxiliary compute and SDMA queue objects;
 - the issue survives both tested HIP stacks and multiple application controls;
 - current 128K production is blocked;
 - the symptom is related to, but materially different from, #5107 and #6165.
 
-Recommended repository: **ROCm/ROCm**, so AMD can route it across HIP, KFD,
-amdgpu, CP, and MES. Move or cross-file to drm/amd only if AMD requests it.
+Recommended repository: **ROCm/ROCm**, so AMD can route it across HIP, ROCr,
+KFD, amdgpu, CP, MES, firmware, and hang recovery. TheRock is not primary
+because no build/package/nightly regression is established; its closest MES
+report routes related gfx115x cases back to ROCm/ROCm. Move or cross-file to
+TheRock or drm/amd only if AMD requests it.
 
 Suggested title:
 
@@ -575,15 +678,19 @@ Suggested title:
 
 Before filing:
 
-1. push or otherwise make the exact reproducer/recorder commit reachable;
-2. run the current-boot KFD `rls`/`mqds`/`hqds` capture once;
-3. attach exact kernel cmdline, amdgpu parameter values, firmware hashes, and
-   `amdgpu_firmware_info`;
-4. redact hostnames and unrelated process data;
-5. include the public model URL/fingerprint, never model weights.
+1. use the already-public exact run commit `a7b4fe4b` and push the compact
+   capture artifact/document update;
+2. build a small redacted attachment from the completed `rls`/`mqds`/`hqds`,
+   MES-log, recorder, telemetry, task-state, and journal capture;
+3. attach exact kernel cmdline, amdgpu parameter values, decompressed firmware
+   hashes, and `amdgpu_firmware_info`;
+4. include the HQD register-map source and state explicitly that only one HQD
+   sample exists;
+5. redact hostnames, root UUIDs, unrelated process data, and full VM mappings;
+6. include the public model URL/fingerprint, never model weights.
 
-Do **not** delay the issue for the MES-logging or `sched_policy=2` boots. Add those
-as follow-up comments.
+Do **not** delay the issue for the `sched_policy=2` or legacy-profiler boots. Add
+those as follow-up comments.
 
 ### Dedicated issue content checklist
 
@@ -593,7 +700,8 @@ as follow-up comments.
   all same-stream markers.
 - Actual: intermittent indefinite no-progress with the exact telemetry signature;
   no fault/reset; process kill recovers.
-- Scope: one GPU, one process, one model, one hardware queue.
+- Scope: one GPU, one process, one model, and `GPU_MAX_HW_QUEUES=1`; disclose
+  the observed primary/auxiliary-compute/SDMA KFD queue objects.
 
 #### Exact environment
 
@@ -618,9 +726,11 @@ as follow-up comments.
 - timeline from normal 120 W work to low-power no-progress;
 - flight-recorder submitted/completed cursors;
 - the three layer-capture rows;
-- KFD runlist/MQD/HQD healthy-vs-stalled diff;
+- KFD runlist/MQD/HQD healthy-vs-stalled evidence, including the active
+  non-empty HQD and the one-sample limitation;
+- healthy/stalled/+30-second/teardown MES event-log bytes and hashes;
 - process task states/stacks;
-- kernel journal and `amdgpu_vm_info`;
+- kernel journal and a redacted `amdgpu_vm_info` summary;
 - telemetry and immediate post-kill recovery;
 - compact HIP 7.13/7.15 and workaround matrix.
 
@@ -636,21 +746,25 @@ State that:
 
 #### Questions for AMD
 
-1. Which KFD MQD/HQD fields should be decoded on gfx1151 to compare user-queue
-   rptr/wptr, mapping state, and doorbell progress?
-2. Is there an AMD-supported way to snapshot the active KFD user queue and last
-   retired packet without stopping or evicting it?
-3. Why does no user-queue hangcheck, timeout, or recovery fire during a
-   20-30-minute persistent state?
+1. Please confirm the gfx1151 HQD decode: why is the active 1 MiB AQL queue
+   non-empty at `rptr=0x32250` / `wptr=0x32450` with zero error/dequeue state,
+   and does the four-bit KFD AQL shift make this exactly 32 pending packets?
+2. Is there an AMD-supported, low-perturbation way to take a second active KFD
+   HQD sample and identify the last retired/unread AQL packet without stopping
+   or evicting the queue?
+3. Why does no user-queue hangcheck, timeout, recovery, or autonomous SIGTERM
+   fire while this state persists despite `gpu_recovery=1` and
+   `send_sigterm=1`?
 4. Is MES `0x88` known to contain the gfx11 CP/MES fix discussed in #5107, or is
    a newer firmware/kernel pair required?
-5. Is `amdgpu.mes_log_enable=1` sufficient for this path, and is a decoder
-   available for `amdgpu_mes_event_log`?
+5. How should `amdgpu_mes_event_log` be decoded on MES `0x88`, and what does it
+   imply that the exposed bytes are identical from healthy-active through two
+   stalled snapshots but change during process teardown?
 6. Is `sched_policy=2` the preferred scheduler-isolation test on this kernel?
-7. Are `gpu_recovery=1` and `send_sigterm=1` appropriate for this failure, or is
-   a different KFD exception/recovery option recommended?
+7. Is the single temporally coincident `PME: Spurious native interrupt!` worth a
+   PCIe/platform trace, or should it be treated as unrelated absent repetition?
 8. Can AMD provide a debug kernel/patch that logs HWS runlist progress, MES queue
-   map/unmap events, and user-queue timeout state?
+   map/unmap events, user-queue timeout state, and the last retired AQL packet?
 
 ## Evidence index
 
@@ -665,14 +779,17 @@ State that:
 | [`2026-07-16-gfx1151-128k-layer-marker-completion.json`](../benchmarks/results/2026-07-16-gfx1151-128k-layer-marker-completion.json) | One complete instrumentation-sensitive layer-marker gate |
 | [`2026-07-16-gfx1151-128k-layer-marker-repeat-stalls.json`](../benchmarks/results/2026-07-16-gfx1151-128k-layer-marker-repeat-stalls.json) | Two independent failed layer-marker repeats |
 | [`2026-07-16-gfx1151-128k-rocprof-inline-interposition-stall.json`](../benchmarks/results/2026-07-16-gfx1151-128k-rocprof-inline-interposition-stall.json) | Ambiguous inline-profiler signal stall and missing trace finalization |
-| [`2026-07-16-gfx1151-128k-kfd-healthy-controls.json`](../benchmarks/results/2026-07-16-gfx1151-128k-kfd-healthy-controls.json) | Two complete current-boot healthy MQD/sysfs controls and prepared MES-debug boot |
+| [`2026-07-16-gfx1151-128k-kfd-healthy-controls.json`](../benchmarks/results/2026-07-16-gfx1151-128k-kfd-healthy-controls.json) | Two complete pre-reboot healthy MQD/sysfs controls and prepared MES-debug boot |
+| [`2026-07-16-gfx1151-128k-mes-kfd-stall-capture.json`](../benchmarks/results/2026-07-16-gfx1151-128k-mes-kfd-stall-capture.json) | First MES-debug-boot stall with recorder cursor, telemetry, active non-empty HQD decode, MES-log control, firmware hashes, and evidence boundaries |
 
 Raw telemetry, recorder mmaps, process stacks, fence samples, journals, and
 profiler logs normally remain local under the `/tmp/gfx1151-*` directories named
 and hashed by the compact artifacts. The two pre-reboot KFD bundles are also
 compressed and checksum-preserved under
-`/home/lhl/gfx1151-debug/2026-07-16-current-boot`; they are not public evidence
-until an issue attachment bundle is created.
+`/home/lhl/gfx1151-debug/2026-07-16-current-boot`. The MES-debug-boot preflight
+and stalled capture are checksum-preserved under
+`/home/lhl/gfx1151-debug/2026-07-16-mes-log-boot-b254b1d7`. These local bundles
+are not public evidence until a redacted issue attachment is created.
 
 ## Closure criteria
 

@@ -1,0 +1,273 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1151_128k_mes_kfd_stall_capture",
+  "status": "stall_captured_with_active_hqd_backlog_and_mes_log_control",
+  "created_at": "2026-07-16T17:54:31+09:00",
+  "performance_claim": false,
+  "correctness_claim": false,
+  "topline_eligible": false,
+  "conclusion": "The first 128K attempt after rebooting with MES logging reproduces the silent no-progress state before completing any prefill. Same-stream retirement stops at sequence 339 after chunk [32768,36864), while host submission reaches sequence 389 at layer 6 of [36864,40960). For 175 seconds before termination, all 36 telemetry samples remain at 100% reported activity and 2.9 GHz with median 43 W and fixed 26,662 MiB residency. A one-time gfx11 HQD snapshot finds the 1 MiB AQL compute queue active and non-empty on CP pipe 0 queue 2: rptr=0x32250, wptr=0x32450, a 0x200 hardware-pointer gap equal to 32 AQL packets with the GFX11 AQL wptr shift of 4; CP_HQD_ERROR and CP_HQD_DEQUEUE_REQUEST are zero. The 4 KiB auxiliary compute queue is active but empty with rptr=wptr=0x140. KFD fault/page counters remain zero, the kernel journal has no amdgpu/KFD fault, timeout, or reset, and gpu_recovery/send_sigterm do not fire autonomously. The raw MES event-log view is byte-identical in the healthy-active, first-stall, and +30-second snapshots, then changes after the monitor sends SIGTERM and the process exits. This proves the debug boot did not fix the failure and captures a real mapped user queue with unread work, but one HQD sample does not prove temporal pointer immobility or identify the unread packet/kernel. The MES buffer remains undecoded, and the unchanged bytes do not by themselves prove MES firmware is hung.",
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "pci": "0000:c1:00.0",
+    "bios": "03.04 (2025-11-19)",
+    "vbios": "113-STRXLGEN-001",
+    "kernel": "7.1.3-2-cachyos",
+    "kernel_package": "linux-cachyos 7.1.3-2",
+    "firmware_package": "linux-firmware-amdgpu 1:20260622-1",
+    "mes_firmware": "0x00000088",
+    "mes_kiq_firmware": "0x0000006f",
+    "mec_firmware": "0x00000023",
+    "rlc_firmware": "0x11530506",
+    "smc_firmware": "100.6.0"
+  },
+  "firmware_hashes": {
+    "hash_contract": "sha256 of the decompressed firmware payload under /usr/lib/firmware/amdgpu",
+    "gc_11_5_1_mes_2.bin": "3c66d1dd045dbcbbb1e5179c0de70015feb2425176766f054e0275b6cbbd1747",
+    "gc_11_5_1_mes1.bin": "30fe0818d9a98196abef87b132c7432f552863f8313f86a7adc871dec36f5f9a",
+    "gc_11_5_1_mec.bin": "fbf96ce8d2720107b7bbd15a8d5fd0b91b30451eadd05dcdf25a150f91980f91",
+    "gc_11_5_1_rlc.bin": "92731ecabbeb77865fb71787b4268dc738a58779f1190bdc2056482cb88a08f6",
+    "gc_11_5_1_me.bin": "738248e5f62cff69ff3df741c5d93dc8630cbf97f4f4978287ed55fd5e12501b"
+  },
+  "software": {
+    "hipengine_commit": "a7b4fe4b213c5afcbe1be2b13cb33464f251a06e",
+    "git_branch": "main",
+    "tracked_tree_clean_at_run_start": true,
+    "public_commit_url": "https://github.com/shisa-ai/hipEngine/commit/a7b4fe4b213c5afcbe1be2b13cb33464f251a06e",
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+    "gpu_max_hw_queues": 1,
+    "kernel_cmdline": "amdgpu.mes_log_enable=1 amdgpu.gpu_recovery=1 amdgpu.send_sigterm=1 quiet nowatchdog splash rw rootflags=subvol=/@ root=UUID=<redacted>",
+    "amdgpu": {
+      "mes_log_enable": 1,
+      "sched_policy": 0,
+      "gpu_recovery": 1,
+      "send_sigterm": 1,
+      "debug_evictions": false,
+      "halt_if_hws_hang": 0,
+      "lockup_timeout": "unset",
+      "timeout_period": 0,
+      "cwsr_enable": 1,
+      "noretry": -1,
+      "vm_fault_stop": 0,
+      "no_queue_eviction_on_vm_fault": 0,
+      "runpm": -1
+    }
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "size_bytes": 22663387424,
+    "fingerprint_algorithm": "sha256-sampled-v1",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "prompt": "131072 repetitions of token 9707"
+  },
+  "protocol": {
+    "processes": 1,
+    "warmups_per_process": 1,
+    "measured_runs_per_process": 3,
+    "decode_tokens": 128,
+    "process_bound_seconds": 1800,
+    "prefill_flight_recorder_granularity": "layer",
+    "stall_detector": "completed flight-recorder cursor unchanged for 120 seconds while submitted exceeds completed",
+    "snapshot_order": [
+      "idle",
+      "healthy_active",
+      "stalled_first with one HQD dump",
+      "stalled_after_30s without a second HQD dump",
+      "after_termination"
+    ],
+    "command": "GPU_MAX_HW_QUEUES=1 python3 scripts/qwen35_readme_sweep.py --engine gguf --model <model> --quant gguf_q4_k_m --backend hip_gfx1151 --workloads 128K/128 --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file <precomputed> --require-cached-build --prefill-flight-recorder <out>/prefill.flight --prefill-flight-recorder-granularity layer --json <out>/result.json"
+  },
+  "boot_preflight": {
+    "workload": "512/1",
+    "status": "completed_exactly",
+    "prefill_tok_s": 1160.2293895884304,
+    "decode_tok_s": 47.38148362911196,
+    "final_token_id": 9707,
+    "finite_final_logits": true,
+    "tracked_peak_gib": 21.477776303887367,
+    "interpretation": "Confirms the loaded parameters, cached build, model, HIP path, and short exact workload operate after reboot. It is not a 128K stability or performance baseline."
+  },
+  "stall": {
+    "process_pid": 5883,
+    "process_return_code": 143,
+    "elapsed_seconds": 283,
+    "termination": "monitor-requested SIGTERM after all declared snapshots; no autonomous SIGTERM or GPU reset",
+    "timeline": {
+      "process_start": "2026-07-16T17:09:43+09:00",
+      "healthy_active_snapshot": "2026-07-16T17:10:38+09:00",
+      "first_sample_at_final_cursor": "2026-07-16T17:11:20+09:00",
+      "stall_declared_after_120_seconds": "2026-07-16T17:13:20+09:00",
+      "first_stall_snapshot": "2026-07-16T17:13:20+09:00",
+      "second_stall_snapshot": "2026-07-16T17:13:51+09:00",
+      "post_capture_cursor_check": "2026-07-16T17:14:21+09:00",
+      "process_end": "2026-07-16T17:14:26+09:00"
+    },
+    "flight_recorder": {
+      "prefill_id": 1,
+      "submitted_sequence": 389,
+      "completed_sequence": 339,
+      "retirement_lag": 50,
+      "last_completed": {
+        "sequence": 339,
+        "phase": "chunk",
+        "chunk_start": 32768,
+        "chunk_end": 36864,
+        "layer_id": -1
+      },
+      "last_submitted": {
+        "sequence": 389,
+        "phase": "linear_attention_layer",
+        "chunk_start": 36864,
+        "chunk_end": 40960,
+        "layer_id": 6
+      },
+      "cursor_unchanged_through_final_check": true,
+      "safe_interpretation": "All same-stream work through chunk [32768,36864) retired. Host submission reached layer 6 of the next chunk. The pending work spans many dispatches and does not identify one kernel or packet."
+    },
+    "telemetry": {
+      "window": "2026-07-16T17:11:23+09:00 through 2026-07-16T17:14:18+09:00",
+      "samples": 36,
+      "gfx_activity_percent": {"min": 100, "median": 100, "max": 100},
+      "gfx_clock_mhz": {"min": 2900, "median": 2900, "max": 2900},
+      "socket_power_w": {"min": 41, "median": 43, "max": 49},
+      "vram_used_mib": {"min": 26662, "median": 26662, "max": 26662}
+    },
+    "kernel_journal": {
+      "amdgpu_kfd_fault_timeout_reset_lines": 0,
+      "pcie_pme_spurious_lines": 1,
+      "pcie_pme_line": "2026-07-16T17:11:57+09:00 pcieport 0000:00:08.1: PME: Spurious native interrupt!",
+      "interpretation": "The single PME line is temporally coincident but not established as trigger, cause, or GPU fault."
+    }
+  },
+  "kfd_state": {
+    "process_pasid": 5883,
+    "gpu_id": "d566",
+    "queue_objects": [
+      {"queue_id": 0, "type": "compute", "ring_size_bytes": 4096},
+      {"queue_id": 1, "type": "compute", "ring_size_bytes": 1048576},
+      {"queue_id": 2, "type": "sdma", "ring_size_bytes": 8388608}
+    ],
+    "faults": 0,
+    "page_in": 0,
+    "page_out": 0,
+    "evicted_ms": 10,
+    "rls_all_snapshots": "Node 1, gpu_id d566: No active runlist",
+    "rls_interpretation": "Not a valid activity discriminator on this MES-managed configuration; both healthy and stalled snapshots have mapped active HQDs or advancing work despite this output.",
+    "mqd_first_and_plus_30_seconds_byte_identical": true,
+    "mqd_caution": "Mapped-queue MQDs can be stale and are not proof of hardware pointer progress."
+  },
+  "hqd_snapshot": {
+    "samples": 1,
+    "source": "/sys/kernel/debug/kfd/hqds",
+    "register_map": "gfx1151/gc_11_5_0 consecutive CP registers from CP_MQD_BASE_ADDR through CP_HQD_PQ_WPTR_HI",
+    "register_map_sources": {
+      "linux_commit": "37e2f878a7a660a216cc7a60459995fefd150f25",
+      "hqd_dump_order": "https://github.com/torvalds/linux/blob/37e2f878a7a660a216cc7a60459995fefd150f25/drivers/gpu/drm/amd/amdgpu/amdgpu_amdkfd_gfx_v11.c#L313-L341",
+      "gfx115x_offsets": "https://github.com/torvalds/linux/blob/37e2f878a7a660a216cc7a60459995fefd150f25/drivers/gpu/drm/amd/include/asic_reg/gc/gc_11_5_0_offset.h#L3573-L3688",
+      "aql_wptr_shift": "https://github.com/torvalds/linux/blob/37e2f878a7a660a216cc7a60459995fefd150f25/drivers/gpu/drm/amd/amdkfd/kfd_mqd_manager_v11.c#L190-L208",
+      "caution": "AMD should confirm the mainline register map and pointer semantics against the running CachyOS kernel build."
+    },
+    "primary_aql_queue": {
+      "location": "Inst 0, CP Pipe 0, Queue 2",
+      "ring_base_address": "0x00007f7dc4800000",
+      "ring_size_bytes": 1048576,
+      "cp_hqd_active": "0x00000001",
+      "cp_hqd_pq_rptr": "0x00032250",
+      "cp_hqd_pq_wptr": "0x00032450",
+      "hardware_pointer_gap": "0x200",
+      "gfx11_aql_wptr_shift": 4,
+      "unread_aql_packets": 32,
+      "cp_hqd_pq_control": "0x18084511",
+      "pq_empty": false,
+      "cp_hqd_pq_doorbell_control": "0xe000400a",
+      "doorbell_enabled": true,
+      "cp_hqd_dequeue_request": "0x00000000",
+      "cp_hqd_error": "0x00000000",
+      "cp_hqd_aql_control": "0x00000001"
+    },
+    "auxiliary_compute_queue": {
+      "location": "Inst 0, CP Pipe 1, Queue 2",
+      "ring_base_address": "0x00007f7e398ee000",
+      "ring_size_bytes": 4096,
+      "cp_hqd_active": "0x00000001",
+      "cp_hqd_pq_rptr": "0x00000140",
+      "cp_hqd_pq_wptr": "0x00000140",
+      "cp_hqd_pq_control": "0x1808c509",
+      "pq_empty": true,
+      "cp_hqd_dequeue_request": "0x00000000",
+      "cp_hqd_error": "0x00000000"
+    },
+    "evidence_boundary": "Only the first established-stall snapshot included HQDs. The backlog is real at that instant, but no second HQD sample exists to prove that hardware rptr/wptr were temporally frozen."
+  },
+  "mes_and_ring_state": {
+    "mes_event_log": {
+      "healthy_active_sha256": "b7a4abfb3aaab66601d7e8253934dd1fb6cae972a6df069f029f8ecb67e99259",
+      "stalled_first_sha256": "b7a4abfb3aaab66601d7e8253934dd1fb6cae972a6df069f029f8ecb67e99259",
+      "stalled_after_30s_sha256": "b7a4abfb3aaab66601d7e8253934dd1fb6cae972a6df069f029f8ecb67e99259",
+      "after_termination_sha256": "4a216fd8c29994f4b80600796283516f93f0cf060ae65f3cbf09880e9da32a20",
+      "decoded": false,
+      "interpretation": "The exposed buffer records no byte change from healthy-active through both stall snapshots and does change during process teardown. This is a useful control, not proof that MES firmware stopped executing."
+    },
+    "drm_fences": {
+      "all_kernel_ring_signaled_equal_emitted": true,
+      "mes_3_0_0_stalled_value": "0x00000bd4",
+      "mes_kiq_3_1_0_stalled_value": "0x00000000",
+      "caution": "amdgpu_fence_info does not expose the doorbell-driven KFD user queue. SDMA fence movement during snapshots can be caused by capture activity."
+    },
+    "raw_mes_mqd_reads": {
+      "mes_3_0_0_bytes": 0,
+      "mes_kiq_3_1_0_bytes": 0,
+      "interpretation": "The debugfs MQD files did not return payloads on this kernel. The MES and MES-KIQ ring files were preserved instead."
+    }
+  },
+  "recovery": {
+    "monitor_sent_sigterm": true,
+    "autonomous_gpu_recovery": false,
+    "autonomous_send_sigterm": false,
+    "gpu_reset_observed": false,
+    "process_removed_after_sigterm": true,
+    "post_termination_vram_used_mib": 17,
+    "mes_event_log_changed_during_teardown": true
+  },
+  "correctness": {
+    "short_preflight_final_id_9707": true,
+    "short_preflight_final_logits_finite": true,
+    "128k_prefill_completed": false,
+    "128k_output_available": false,
+    "correctness_claim": false
+  },
+  "decision": {
+    "debug_boot_is_workaround": false,
+    "lifecycle_fix_claim": false,
+    "performance_claim_eligible": false,
+    "primary_upstream_repository": "ROCm/ROCm",
+    "routing_reason": "The symptom crosses TheRock HIP user space, ROCr/KFD, amdgpu, CP, MES firmware, and kernel hang detection. It is not established as a TheRock build/package regression. ROCm/ROCm is the stack-wide issue tracker and TheRock MES issue 2655 itself routes related gfx115x scheduler hangs to ROCm/ROCm reports.",
+    "next_steps": [
+      "prepare a redacted public attachment containing the compact artifact, exact command, recorder tail, telemetry, journal, HQD excerpt, MES-log hashes, firmware hashes, and raw MES event-log snapshots",
+      "file a dedicated ROCm/ROCm issue and cross-link ROCm/ROCm#5107, #6165, #5724, #5590, and ROCm/TheRock#2655 without claiming a shared root cause",
+      "run one separate amdgpu.sched_policy=2 isolation boot with MES logging, preserving the same protocol",
+      "ask AMD for the supported MES-event decoder and a low-perturbation second-sample user-HQD/last-retired-packet method"
+    ]
+  },
+  "source_hashes": {
+    "boot_preflight_json": "b466f433664293eb34015c726cfb0a2926f7644a90c34354d46ff9274ce1d717",
+    "firmware_info": "30955d0d26b9dd78c568ddc1633883f1532f74c128de47a416c986786b03c8d5",
+    "boot_provenance": "b3a7a763d10dffcba85537089d70e215283e28e362cfebbb371031b9d9576af8",
+    "capture_script": "7bd7c2dcfa30b75e5248f606a5f1508a1235d2d5fdd4be46c923baf552f07714",
+    "stall_manifest": "7b6c628752e612872ba843b23474d1210880b98f3d2fded2c839bc0fe3679cd9",
+    "flight_final_json": "f3cc9f3d58ba94a26344660930270a80e16d2ca698696f5bd78a575eb0cb1157",
+    "flight_mmap": "05f6f2c142fef34dcf9321b0f893cdb856a5dfe82d7c04d01dbfc45121a224b2",
+    "telemetry_csv": "c2e9d1f086b03c2cd4ec270cccc33e2b81789a388a8d136c51d0c450d507a2a1",
+    "kernel_journal": "9495b5864ed5be33b0a1ddac513b465c453e0dcda67ed2b6b96b288364b51b33",
+    "process_stacks": "2b9f1a0409dacb41672690f044ad3846e56d53afec8001a3f12819d0fbb9a714",
+    "stalled_hqd_dump": "053c3d35d248ad456a35d4b6c78d19b571c7b79bf7a112956bdb1cd6fbe6535c",
+    "mes_ring": "938853ccd802c72a46fca9eb0d30d2451583e7877815e835dae3487045060246",
+    "mes_kiq_ring": "d774f45ad089b517527879e915799191cbab002d6bd77016c8656c4799fd27fe"
+  },
+  "durable_raw_directory": "/home/lhl/gfx1151-debug/2026-07-16-mes-log-boot-b254b1d7"
+}
