@@ -23,6 +23,7 @@ import numpy as np
 
 
 _CAPTURE_PREFILL_GDN_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"
+_GDN_PREFILL_MODE_ENV = "HIPENGINE_GGUF_GDN_PREFILL_MODE"
 
 
 @contextmanager
@@ -236,23 +237,28 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         packed_sessions = tuple(sessions[:rows])
         reference_sessions = tuple(sessions[rows:])
 
-        with _temporary_env({_CAPTURE_PREFILL_GDN_ENV: "1"}):
-            if str(args.prefill_mode) == "packed":
-                prefill_results = owner.prefill_batch_native(
-                    prompts,
-                    sessions=packed_sessions,
-                    return_logits=False,
-                )
-                packed_tokens = [int(result.token_id) for result in prefill_results]
-            else:
-                packed_tokens = [
-                    _prefill_c1(session, prompt)
-                    for session, prompt in zip(packed_sessions, prompts, strict=True)
-                ]
-        reference_tokens = [
-            _prefill_c1(session, prompt)
-            for session, prompt in zip(reference_sessions, prompts, strict=True)
-        ]
+        # Packed prefill captures the decode-order-exact Conv/GDN state row for
+        # every prompt token.  Keep both sides on the declared GDN arithmetic
+        # selector: gfx1100's package-default peer-wave route is quality-admitted
+        # but is intentionally not byte-identical to this strict state-row route.
+        with _temporary_env({_GDN_PREFILL_MODE_ENV: str(args.gdn_prefill_mode)}):
+            with _temporary_env({_CAPTURE_PREFILL_GDN_ENV: "1"}):
+                if str(args.prefill_mode) == "packed":
+                    prefill_results = owner.prefill_batch_native(
+                        prompts,
+                        sessions=packed_sessions,
+                        return_logits=False,
+                    )
+                    packed_tokens = [int(result.token_id) for result in prefill_results]
+                else:
+                    packed_tokens = [
+                        _prefill_c1(session, prompt)
+                        for session, prompt in zip(packed_sessions, prompts, strict=True)
+                    ]
+            reference_tokens = [
+                _prefill_c1(session, prompt)
+                for session, prompt in zip(reference_sessions, prompts, strict=True)
+            ]
         initial_packed = [_capture_state(session) for session in packed_sessions]
         initial_reference = [_capture_state(session) for session in reference_sessions]
         initial_mismatches = _compare_state_rows(initial_packed, initial_reference)
@@ -382,6 +388,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "require_cached_build": build_policy["require_cached_build"],
         },
         "prefill_mode": str(args.prefill_mode),
+        "prefill_arithmetic": {
+            "gdn_prefill_mode": str(args.gdn_prefill_mode),
+            "packed_state_row_route": "decode_order_bf16_segments_state_rows_no_copy",
+            "package_default_overridden": str(args.gdn_prefill_mode) != "auto",
+        },
         "lifecycle": lifecycle,
         "workload": {
             "rows": rows,
@@ -410,6 +421,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "notes": [
             "All Conv/GDN FP32 state bytes and all live BF16 K/V bytes are compared.",
             "independent_c1 prefill isolates packed decode; packed prefill covers the complete c>N lifecycle.",
+            "The default exact GDN selector aligns c1 with packed decode-order state-row arithmetic; auto remains a diagnostic for package-policy drift.",
         ],
     }
 
@@ -428,6 +440,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--prefill-mode",
         choices=("independent_c1", "packed"),
         default="independent_c1",
+    )
+    parser.add_argument(
+        "--gdn-prefill-mode",
+        choices=("exact", "auto"),
+        default="exact",
+        help=(
+            "GDN arithmetic used by both packed and c1 prefills; exact is the "
+            "byte-equality contract, while auto diagnoses package-policy drift"
+        ),
     )
     parser.add_argument("--prompt-token-id", type=int, default=9707)
     parser.add_argument("--alternate-token-id", type=int, default=9708)
@@ -462,6 +483,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "HIPENGINE_GGUF_DECODE_REPACK",
             "HIPENGINE_GGUF_WMMA_PREFILL",
             "HIPENGINE_GGUF_GEMV_DECODE",
+            "HIPENGINE_GGUF_GDN_PREFILL_MODE",
             "HIP_VISIBLE_DEVICES",
         )
     }
