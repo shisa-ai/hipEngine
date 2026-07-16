@@ -71,6 +71,15 @@ class EngineLoopConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class GenerationSubmission:
+    """Stable request ids for one batch submitted to a shared model loop."""
+
+    request_ids: tuple[int, ...]
+    request: GenerationRequest
+    max_ticks: int
+
+
+@dataclass(frozen=True, slots=True)
 class EngineLoopEvent:
     """One externally visible event produced by ``ResidentEngineLoop.poll``."""
 
@@ -181,48 +190,112 @@ class SubmitPollTextGenerator:
         prompts = tuple(request.prompts)
         if not prompts:
             return []
-        prompt_rows = tuple(self._runner.prompt_tokens(prompt) for prompt in prompts)
-        max_new_tokens = int(self._runner.scheduler_max_new_tokens(request))
-        with self._loop_lock:
-            request_ids = tuple(
-                self._loop.submit(prompt_row, max_new_tokens=max_new_tokens)
-                for prompt_row in prompt_rows
-            )
-            self._runner.register_batch(
-                request_ids,
-                replace(request, prompts=prompts),
-                prompt_rows=prompt_rows,
-            )
-        max_ticks = _submit_poll_max_ticks(prompts, self._prefill_chunk_size)
+        submission = self.submit_detailed(replace(request, prompts=prompts))
         ticks = 0
         try:
-            while not self._runner.has_outputs(request_ids):
-                with self._loop_lock:
-                    events = self._loop.poll(max_ticks=1)
+            while not self.generation_complete(submission):
+                events = self.poll(max_ticks=1)
                 ticks += 1
                 if not events:
-                    missing = self._runner.missing_outputs(request_ids)
+                    missing = self._runner.missing_outputs(submission.request_ids)
                     raise RuntimeError(f"submit+poll text generation stalled; missing request_ids={missing}")
-                if ticks > max_ticks:
-                    missing = self._runner.missing_outputs(request_ids)
+                if ticks > submission.max_ticks:
+                    missing = self._runner.missing_outputs(submission.request_ids)
                     raise RuntimeError(
-                        f"submit+poll text generation exceeded {max_ticks} ticks; missing request_ids={missing}"
+                        f"submit+poll text generation exceeded {submission.max_ticks} ticks; "
+                        f"missing request_ids={missing}"
                     )
-            with self._loop_lock:
-                outputs = self._runner.take_outputs(request_ids)
-                for request_id in request_ids:
-                    self._loop.release_completed(request_id)
-                finalize_batch = getattr(self._runner, "finalize_batch", None)
-                if callable(finalize_batch):
-                    finalize_batch(replace(request, prompts=prompts), request_ids, outputs)
-            return outputs
+            return self.take_result(submission)
         except Exception:
-            with self._loop_lock:
+            self._abort_submission(submission)
+            raise
+
+    def submit_detailed(self, request: GenerationRequest) -> GenerationSubmission:
+        """Submit rows without driving the shared loop to completion."""
+
+        prompts = tuple(request.prompts)
+        if not prompts:
+            raise ValueError("submit_detailed requires at least one prompt")
+        normalized = replace(request, prompts=prompts)
+        prompt_rows = tuple(self._runner.prompt_tokens(prompt) for prompt in prompts)
+        max_new_tokens = int(self._runner.scheduler_max_new_tokens(normalized))
+        request_ids: list[int] = []
+        with self._loop_lock:
+            try:
+                for prompt_row in prompt_rows:
+                    request_ids.append(
+                        self._loop.submit(prompt_row, max_new_tokens=max_new_tokens)
+                    )
+                self._runner.register_batch(
+                    request_ids,
+                    normalized,
+                    prompt_rows=prompt_rows,
+                )
+            except Exception:
                 for request_id in request_ids:
                     self._loop.cancel(request_id)
                     self._loop.release_completed(request_id)
                 self._runner.discard(request_ids)
-            raise
+                raise
+        return GenerationSubmission(
+            request_ids=tuple(request_ids),
+            request=normalized,
+            max_ticks=_submit_poll_max_ticks(prompts, self._prefill_chunk_size),
+        )
+
+    def poll(self, *, max_ticks: int = 1) -> tuple[EngineLoopEvent, ...]:
+        """Advance shared model work without owning a request-lifetime lock."""
+
+        with self._loop_lock:
+            return self._loop.poll(max_ticks=max_ticks)
+
+    def generation_complete(self, submission: GenerationSubmission) -> bool:
+        with self._loop_lock:
+            return self._runner.has_outputs(submission.request_ids)
+
+    def cancel_submission(
+        self,
+        submission: GenerationSubmission,
+        *,
+        row_index: int | None = None,
+        reason: str = "cancel",
+    ) -> tuple[bool, ...]:
+        """Cancel all rows or one local row through the unified reclaim path."""
+
+        if row_index is None:
+            request_ids = submission.request_ids
+        else:
+            index = int(row_index)
+            if index < 0 or index >= len(submission.request_ids):
+                raise IndexError("row_index is outside the submitted generation")
+            request_ids = (submission.request_ids[index],)
+        with self._loop_lock:
+            return tuple(
+                self._loop.cancel(request_id, reason=reason)
+                for request_id in request_ids
+            )
+
+    def take_result(self, submission: GenerationSubmission) -> list[GenerationOutput]:
+        """Consume one completed submission in original prompt order."""
+
+        with self._loop_lock:
+            if not self._runner.has_outputs(submission.request_ids):
+                missing = self._runner.missing_outputs(submission.request_ids)
+                raise RuntimeError(f"submitted generation is incomplete; missing request_ids={missing}")
+            outputs = self._runner.take_outputs(submission.request_ids)
+            for request_id in submission.request_ids:
+                self._loop.release_completed(request_id)
+            finalize_batch = getattr(self._runner, "finalize_batch", None)
+            if callable(finalize_batch):
+                finalize_batch(submission.request, submission.request_ids, outputs)
+            return outputs
+
+    def _abort_submission(self, submission: GenerationSubmission) -> None:
+        with self._loop_lock:
+            for request_id in submission.request_ids:
+                self._loop.cancel(request_id)
+                self._loop.release_completed(request_id)
+            self._runner.discard(submission.request_ids)
 
     def stream(self, request: GenerationRequest) -> Iterator[str]:
         for chunk in self.stream_detailed(request):
@@ -345,9 +418,15 @@ class _SubmitPollTextRunner:
         del moves
 
     def reclaim(self, completed: CompletedRequest) -> None:
-        # Output ownership remains with the adapter until the synchronous caller
-        # consumes it.  Model-native runners release device state here.
-        del completed
+        # A compatibility decode normally publishes its complete output before
+        # scheduler reclaim. Pending cancellation instead needs an explicit
+        # empty result so a controlled submission can be consumed normally.
+        if completed.request_id not in self._outputs and completed.request_id in self._rows:
+            self._outputs[completed.request_id] = GenerationOutput(
+                text="",
+                generated_token_ids=completed.generated_tokens,
+                finish_details=completed.finish_details,
+            )
 
     def has_outputs(self, request_ids: Sequence[int]) -> bool:
         return all(int(request_id) in self._outputs for request_id in request_ids)
@@ -764,6 +843,7 @@ __all__ = [
     "DEFAULT_KV_POOL_LOW_WATER_PAGES",
     "EngineLoopConfig",
     "EngineLoopEvent",
+    "GenerationSubmission",
     "EngineLoopRunner",
     "PREFILL_DECODE_POLICIES",
     "ResidentEngineLoop",
