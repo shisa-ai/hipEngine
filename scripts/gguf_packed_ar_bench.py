@@ -37,6 +37,14 @@ _EXACT_ENV = {
     "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
     "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact",
 }
+_PROVENANCE_ENV_KEYS = (
+    "HIPENGINE_BACKEND",
+    "HIPENGINE_HIP_ARCH",
+    "HIPENGINE_COMPILER_VERSION_FILE",
+    "HIP_VISIBLE_DEVICES",
+    "ROCR_VISIBLE_DEVICES",
+    "GPU_MAX_HW_QUEUES",
+)
 
 
 @dataclass(frozen=True)
@@ -751,9 +759,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         kv_dtype="bf16",
         command=command,
         environment={
-            "HIPENGINE_BACKEND": os.environ.get("HIPENGINE_BACKEND"),
-            "HIPENGINE_HIP_ARCH": os.environ.get("HIPENGINE_HIP_ARCH"),
-            "HIPENGINE_COMPILER_VERSION_FILE": os.environ.get("HIPENGINE_COMPILER_VERSION_FILE"),
+            **{key: os.environ.get(key) for key in _PROVENANCE_ENV_KEYS},
             **_EXACT_ENV,
         },
         build_profile="gfx1100_gguf_packed_graph_c1_c2_c4_chunked_c8",
