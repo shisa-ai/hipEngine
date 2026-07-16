@@ -85,8 +85,9 @@ profiler to show that the route scales better than the serial bridge.
 ## Current truth
 
 **hipEngine does not yet have production continuous batching.** It has useful
-host-side scheduler, KV, sampler, metrics, and API scaffolding, plus two
-model-specific exact hybrids. The public `SubmitPollTextGenerator` still creates
+host-side scheduler, KV, sampler, metrics, and API scaffolding, plus one
+retained direct gfx1100 native-c4 decode model step and model-specific exact
+hybrids. The public `SubmitPollTextGenerator` still creates
 one loop per API call and delegates a complete inner model generation. New
 requests are not admitted into a live model step loop mid-generation.
 
@@ -95,7 +96,7 @@ requests are not admitted into a live model step loop mid-generation.
 | Model path | Backend | Current c>N status | Production behavior | First missing gate |
 | --- | --- | --- | --- | --- |
 | GGUF Q4_K_M / BF16 KV | gfx1151 | Packed exact hybrid in groups of at most c4; short natural c10 runs as c4+c4+c2 | Packed server AR route is available; not a retained c>N throughput row | Per-layer hidden capture, standard all-row 512/128 gate, live admission/cancel, profiler/scaling |
-| GGUF Q4_K_M / BF16 KV | gfx1100 | `exact_hybrid`: C3 reruns the standard and sparse token/hidden/state/KV gates, proves full-attention/MoE/LM-head/sampler c4 geometry, and moves steady metadata preparation on device; one steady c4 census has 749 packed-native and zero exact-row-local dispatches; package-auto c1 peer-wave is not byte-identical | Retained c1 plus correctness-only c4 exact-hybrid anchors; not a retained c>N throughput row | C4 replay/equality and direct c1/c2/c4 scaling |
+| GGUF Q4_K_M / BF16 KV | gfx1100 | `retained` direct native-c4 decode model step: graph/eager p512/d128 and sparse c4→c1 token/hidden/state/KV gates are exact; marker-sliced replay has 747 packed-native, zero exact-row-local, and zero copy dispatches; same-session c4 is 184.993 aggregate tok/s (2.179x c1, 2.199x serial-c4) | Retained c1 production route plus retained direct c4 model-step packet; no live continuous-batching or streaming-delivery claim | D1 long-lived model runner and live admission/reclaim |
 | GGUF Q5_K/Q6_K/Q8_0 / BF16 KV | gfx1100/gfx1151 | Not executed end to end under c>N | c1 | Q4_K_M c4 closure first |
 | PARO W4 / BF16 KV | gfx1151 | Exact greedy c2 hybrid below 1024 total context; not fully native or retained | Unsupported groups fail closed to true width-1 sessions | Lifecycle/hidden/profiler/repetition gates, then remove row-local hybrid boundaries |
 | PARO W4 / BF16 KV | gfx1100 | Historical primitive/token diagnostics only; no current retained native route | Width-1 sessions | Re-establish the current-HEAD c2 correctness baseline on W7900 |
@@ -155,6 +156,9 @@ runner owns real device state and exercises them while requests remain live.
 - gfx1100 C3 c-aware family census and copy-free steady metadata closure:
   `WORKLOG.md`, **2026-07-16 — Close gfx1100 GGUF C3 model boundaries**, and
   `benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-c3-model-boundaries-closure.json`.
+- gfx1100 C4 state-bound graph replay and retained direct native-c4 scaling:
+  `WORKLOG.md`, **2026-07-16 — Close gfx1100 GGUF C4 native graph scaling**, and
+  `benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-c4-native-graph-scaling-closure.json`.
 - Historical PARO c1-c8 catalog and lifecycle: `docs/BENCHMARK.md` §PARO c1-c8
   exact concurrency matrix.
 - Historical c>N graph replay and output-tiled GEMV: `WORKLOG.md`, **2026-06-08
@@ -517,17 +521,30 @@ performance claim. See the compact [C3 closure artifact](../benchmarks/results/2
 
 C4. Replay, measure, and prove:
 
-- [ ] Capture/replay at least c1/c2/c4 decode buckets after eager equality passes.
-- [ ] Pass Phase B again with replay enabled and disabled.
-- [ ] Trace the full c4 step and prove zero undeclared c1 layer/session fallback.
-- [ ] Run same-protocol c1/c2/c4 plus explicit chunked-c8 controls.
-- [ ] Report aggregate/per-request throughput, TTFT/ITL, memory, occupancy, and
+- [x] Capture/replay at least c1/c2/c4 decode buckets after eager equality passes.
+- [x] Pass Phase B again with replay enabled and disabled.
+- [x] Trace the full c4 step and prove zero undeclared c1 layer/session fallback.
+- [x] Run same-protocol c1/c2/c4 plus explicit chunked-c8 controls.
+- [x] Report aggregate/per-request throughput, TTFT/ITL, memory, occupancy, and
       profiler family/launch accounting.
-- [ ] Compare native c4 against c1 and the serial bridge in one clean session.
+- [x] Compare native c4 against c1 and the serial bridge in one clean session.
 
-Exit: one gfx1100 GGUF c4 model step satisfies the native definition, passes all
-correctness/lifecycle gates, and has the first retained direct native-group
-packet. Chunked c8 remains labeled as multiple groups.
+Clean graph/eager p512/c4/d128 each pass **20,640/20,640** hidden comparisons
+plus exact tokens, Conv/GDN state, and live KV. Clean sparse graph replay is
+exact through c4→c3→c2→c1 (**560/560** hidden rows). The marker-sliced c4 graph
+launch contains **747 packed-native / 0 exact-row-local / 0 copy** dispatches,
+with one device-position metadata launch and one token-feedback commit. In one
+clean shared-runner 1+3 packet, c1/c2/c4/chunked-c8/serial-c4 aggregate decode
+is **84.907/126.909/184.993/183.900/84.140 tok/s**. Native c4 is **2.179x** c1
+and **2.199x** serial-c4; its per-request rate is **46.248 tok/s**. The tradeoff
+is explicit: c4 model-step ITL p50/p95 is **21.641/21.888 ms**, TTFT is
+**2.027/2.031 s**, and four-session tracked/HIP-used peaks are
+**23.396/23.823 GiB**. Chunked c8 remains two serialized c4 groups and is not a
+native-c8 claim. See the compact [C4 closure artifact](../benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-c4-native-graph-scaling-closure.json).
+
+Exit: satisfied for the direct gfx1100 GGUF c4 decode model step. Phase D still
+owns production model-loop admission, fairness, cancellation, reclaim, and
+streaming delivery.
 
 ### Phase D — gfx1100 production model-owning continuous loop
 
@@ -746,7 +763,7 @@ Use only these status values:
 | Path | gfx1100 | gfx1151 | Target |
 | --- | --- | --- | --- |
 | GGUF Q4_K_M / BF16, c2 | `direct_eq_ok` | `exact_hybrid` | `retained` |
-| GGUF Q4_K_M / BF16, c4 | `exact_hybrid` | `exact_hybrid` | `retained` |
+| GGUF Q4_K_M / BF16, c4 | `retained` | `exact_hybrid` | `retained` |
 | GGUF Q4_K_M / BF16, c8 native group | `not_started` | `not_started` | `retained` |
 | GGUF Q4_K_M / BF16, live admission | `not_started` | `not_started` | `retained` |
 | PARO W4 / BF16, c2 | `token_diag` | `exact_hybrid` | `retained` |

@@ -159833,3 +159833,52 @@ A separate clean `17185d53` sparse graph refresh passes c4→c3→c2→c1 with
 and one positive replay for each width. Source SHA-256 is
 `98cfb454676e95669d1a61b8a18a768de00e8cf0ac77c3857a1704b460864e70`.
 The final scaling rerun follows after the provenance-only harness commit.
+
+## 2026-07-16 — Close gfx1100 GGUF C4 native graph scaling
+
+Retained C4 after the final clean `d59d7cf0` p512/d128 1+3 packet. The artifact
+captures `HIP_VISIBLE_DEVICES=0`, TheRock HIP 7.15 compiler provenance, exact
+model/quant/KV identity, one shared model load, and route-scoped 1→2→4→8
+resident-session growth. Every measured trajectory is repeatable and exact
+across c1/c2/c4, serial-c4, and both chunked-c8 c4 groups; every bucket shape is
+stable; maximum decode stdev/median is **0.495%**.
+
+Same-protocol aggregate/per-request decode rates are:
+
+- c1: **84.907 / 84.907 tok/s**;
+- c2: **126.909 / 63.455 tok/s**;
+- native c4: **184.993 / 46.248 tok/s**;
+- chunked c8 (two serialized c4 groups): **183.900 / 22.987 tok/s**;
+- serial-c4 (four serialized c1 groups): **84.140 / 21.035 tok/s**.
+
+Native c4 is **2.179x c1 (+117.88%)** and **2.199x serial-c4 (+119.86%)**.
+The retained tradeoff is explicit: per-request decode is **45.53% below c1**,
+model-step ITL p50/p95 is **21.641/21.888 ms** versus c1
+**11.768/12.105 ms**, packed-prefill TTFT is **2.027/2.031 s**, and c4
+tracked-current/HIP-used peaks are **23.396/23.823 GiB** versus c1
+**21.783/22.237 GiB**. This promotes only the direct native-c4 decode model
+step; it does not admit the route into a production continuous loop or claim
+streaming-delivery latency.
+
+The complete evidence join also retains:
+
+- clean graph/eager p512/c4/d128 equality, each **20,640/20,640** hidden rows
+  plus exact tokens, Conv/GDN state, and live KV;
+- clean sparse graph c4→c3→c2→c1, **560/560** exact hidden rows and positive
+  replay per bucket;
+- inherited clean B4 category coverage, **1,350/1,350** tokens and
+  **54,000/54,000** hidden rows across 18 prompts x3;
+- clean marker census `a05c560b`, **747 packed-native / 0 row-local / 0 copy**
+  dispatches, one device-position metadata launch, one token-feedback commit,
+  and zero complete c1 layer/session fallback.
+
+The retained raw scaling packet is 1,138,763 bytes with SHA-256
+`1fb58feb9b25fda7eeaaa17af3f497d4d7b85055d02105758722dc0aa8b1f607`.
+The compact closure artifact is
+`benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-c4-native-graph-scaling-closure.json`
+(23,246 bytes before this WORKLOG append, SHA-256
+`ea7c07df2fdf68012e4ad20d66bd6d0033173323cfdd299d8e6ff36096a2084e`).
+`docs/CONCURRENCY.md` marks every C4 item complete and advances the next missing
+boundary to D1: one long-lived model-owning GGUF runner with live
+admission/reclaim. The W7900 concurrency topline now exports the direct
+c1/c2/c4/chunked/serial table; chunked c8 remains explicitly non-native.
