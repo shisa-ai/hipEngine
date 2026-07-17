@@ -131,6 +131,34 @@ def test_metric_summary_uses_nearest_rank_p95_and_variance() -> None:
     assert summary["stdev_pct_of_median"] == pytest.approx(100.0 / 11.0)
 
 
+def test_oracle_join_delay_supports_resident_request_total_residual() -> None:
+    delay = SCRIPT._oracle_join_delay_seconds(
+        [
+            {
+                "backend_timing_ms": {
+                    "prefill_ms": 60.0,
+                    "request_total_ms": 100.0,
+                }
+            }
+        ],
+        join_after_tokens=1,
+        expected_tokens=2,
+    )
+    assert delay == pytest.approx(0.1)
+
+
+def test_parse_ldd_local_paths_only_retains_build_tree(tmp_path: Path) -> None:
+    repo = tmp_path / "llama.cpp"
+    local = repo / "build" / "bin" / "libllama.so"
+    local.parent.mkdir(parents=True)
+    local.write_bytes(b"local")
+    external = tmp_path / "libsystem.so"
+    external.write_bytes(b"external")
+    text = f"libllama.so => {local} (0x1)\nlibsystem.so => {external} (0x2)\n"
+
+    assert SCRIPT.parse_ldd_local_paths(text, root=repo) == [local.resolve()]
+
+
 def test_correctness_summary_matches_each_prompt_to_c1_oracle() -> None:
     prompt_a = [1, 1, 1]
     prompt_b = [1, 1, 2]

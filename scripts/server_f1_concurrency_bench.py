@@ -516,6 +516,10 @@ def _oracle_join_delay_seconds(
         decode_steps = max(1, int(expected_tokens) - 1)
         if prompt_ms is None:
             prompt_ms = _number(timing.get("prompt_ms"))
+        if decode_ms is None and prompt_ms is not None:
+            request_total_ms = _number(timing.get("request_total_ms"))
+            if request_total_ms is not None and request_total_ms > prompt_ms:
+                decode_ms = request_total_ms - prompt_ms
         if decode_ms is None:
             decode_ms = _number(timing.get("predicted_ms"))
             decode_steps = max(1, int(expected_tokens))
@@ -659,6 +663,30 @@ def _sampled_file_fingerprint(path: Path, *, sample_bytes: int = 1 << 20) -> dic
 def _full_file_fingerprint(path: Path) -> dict[str, Any]:
     resolved = path.expanduser().resolve()
     return {"path": str(resolved), "size_bytes": resolved.stat().st_size, "sha256": file_sha256(resolved)}
+
+
+def parse_ldd_local_paths(text: str, *, root: Path) -> list[Path]:
+    """Return existing absolute ldd targets located under one build tree."""
+
+    resolved_root = root.expanduser().resolve()
+    paths: list[Path] = []
+    for raw_line in str(text).splitlines():
+        fields = raw_line.strip().split()
+        candidate = None
+        if len(fields) >= 3 and fields[1] == "=>" and fields[2].startswith("/"):
+            candidate = Path(fields[2])
+        elif fields and fields[0].startswith("/"):
+            candidate = Path(fields[0])
+        if candidate is None or not candidate.exists():
+            continue
+        resolved = candidate.resolve()
+        try:
+            resolved.relative_to(resolved_root)
+        except ValueError:
+            continue
+        if resolved not in paths:
+            paths.append(resolved)
+    return sorted(paths)
 
 
 def _server_paths(args: argparse.Namespace, engine: str) -> tuple[Path | None, Path | None]:
@@ -914,6 +942,7 @@ def _run_oracle(
 ) -> tuple[dict[str, list[int]], list[dict[str, Any]], dict[str, Any]]:
     sampler = _memory_sampler(args)
     process: subprocess.Popen[str] | None = None
+    server_metadata: dict[str, Any] = {}
     if sampler is not None:
         sampler.start()
     try:
@@ -946,15 +975,19 @@ def _run_oracle(
             prompt_hash = str(record["prompt_token_ids_sha256"])
             oracle[prompt_hash] = list(record["generated_token_ids"])
             records.append(record)
-        return oracle, records, {
-            "server_command": command,
-            "server_command_shell": shlex.join(command),
-            "server_startup_seconds": startup_seconds,
-            "server_log": _server_log_record(log_path),
-        }
+        server_metadata.update(
+            {
+                "server_command": command,
+                "server_command_shell": shlex.join(command),
+                "server_startup_seconds": startup_seconds,
+                "server_log": _server_log_record(log_path),
+            }
+        )
+        return oracle, records, server_metadata
     finally:
         if sampler is not None:
             sampler.stop()
+            server_metadata["memory"] = sampler.result().to_dict()
         if process is not None:
             _stop_server(process)
 
@@ -1137,11 +1170,16 @@ def _source_provenance(args: argparse.Namespace, engine: str) -> dict[str, Any]:
     if args.compiler_version_file is not None and args.compiler_version_file.exists():
         payload["compiler_version_file"] = _full_file_fingerprint(args.compiler_version_file)
     if engine.startswith("llamacpp") and repo is not None and server_bin is not None:
+        ldd = _capture(["ldd", str(server_bin)])
+        linked_paths = parse_ldd_local_paths(str(ldd.get("stdout") or ""), root=repo)
         payload["llamacpp"] = {
             "repo": str(repo),
             "head": _capture(["git", "rev-parse", "HEAD"], cwd=repo),
             "status": _capture(["git", "status", "-sb", "--untracked-files=no"], cwd=repo),
+            "version": _capture([str(server_bin), "--version"], cwd=repo),
             "server_binary": _full_file_fingerprint(server_bin),
+            "ldd": ldd,
+            "local_linked_libraries": [_full_file_fingerprint(path) for path in linked_paths],
         }
     return payload
 

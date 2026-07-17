@@ -162015,3 +162015,34 @@ git diff --check
 No production runtime, kernel, registry, PARO path, or external llama.cpp tree
 was changed. GPU measurement begins only after this harness unit is committed,
 so retained performance artifacts can identify a clean source commit.
+
+## 2026-07-18 — Repair F1 live-trigger telemetry after real API smoke
+
+The committed harness smoke used the real gfx1151 OpenAI server at p16/d2 and
+proved exact c1/c2 output accounting plus the intended native route. Measured
+HTTP rates were diagnostic-only **19.117/19.007 tok/s** for c1/c2; every warmup
+and measured row matched its same-engine c1 token oracle, execution path was
+`gguf_packed_ar_server_decode`, `serial_decode_fallback=false`, and
+`native_caware_decode=true`. The smoke then stopped before live admission
+because current resident telemetry exposes `prefill_ms` and `request_total_ms`,
+not the older packed-call `decode_batch_ms` field assumed only by the fallback
+offset calculator.
+
+The harness now derives the scheduling fallback as
+`request_total_ms - prefill_ms` when direct decode timing is absent. hipEngine's
+actual live gate remains stronger: rows B-H are released only after Prometheus
+observes row A in resident `decode`, so this fallback is only a timeout/planning
+anchor. The same repair also retains the oracle process's absolute gfx1151 GTT
+peak and fingerprints every llama.cpp shared library resolved under its build
+tree via `ldd`; the 16 KiB launcher hash alone was insufficient provenance.
+Focused GREEN is now **7/7** tests plus `py_compile` and `git diff --check`:
+
+```bash
+.venv/bin/python -m pytest tests/test_server_f1_concurrency_bench.py -q
+.venv/bin/python -m py_compile scripts/server_f1_concurrency_bench.py
+git diff --check
+```
+
+No runtime/kernel/model behavior changed. The failed smoke artifact remains
+under `/tmp/gfx1151-f1-96cb76a0/hip-smoke.json`; it is diagnostic and is not a
+retained performance row.
