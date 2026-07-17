@@ -79,9 +79,11 @@ _CANONICAL_CONFIGURATIONS = tuple(CONFIGURATIONS)
 @dataclass
 class _ReclaimedRow:
     request_id: int
+    prompt_ids: list[int]
     generated_ids: list[int]
     finish_reason: str
     finish_details: dict[str, Any]
+    observability: dict[str, Any]
     block_ids: list[int]
     completion_time: float
 
@@ -527,15 +529,29 @@ def _run_http_sample(
         expected = list(reference_tokens[int(prompt_rows[trace.row_index]["token_id"])])[
             : int(max_tokens)
         ]
+        expected_prompt_ids = [
+            int(token) for token in prompt_rows[trace.row_index]["token_ids"]
+        ]
         generated = [] if reclaimed_row is None else list(reclaimed_row.generated_ids)
+        actual_prompt_ids = (
+            [] if reclaimed_row is None else list(reclaimed_row.prompt_ids)
+        )
+        prompt_exact = actual_prompt_ids == expected_prompt_ids
+        generated_exact = generated == expected
         exact_rows.append(
             {
                 "row_index": int(trace.row_index),
                 "request_id": trace.request_id,
                 "prompt_token_id": int(prompt_rows[trace.row_index]["token_id"]),
+                "actual_prompt_ids": actual_prompt_ids,
+                "expected_prompt_token_ids_sha256": str(
+                    prompt_rows[trace.row_index]["token_ids_sha256"]
+                ),
+                "prompt_exact": prompt_exact,
                 "generated_ids": generated,
                 "expected_ids": expected,
-                "exact": generated == expected,
+                "generated_exact": generated_exact,
+                "exact": prompt_exact and generated_exact,
                 "generated_count": len(generated),
                 "finish_reason": (
                     trace.finish_reason
@@ -546,6 +562,9 @@ def _run_http_sample(
                     trace.finish_details
                     if reclaimed_row is None
                     else reclaimed_row.finish_details
+                ),
+                "observability": (
+                    None if reclaimed_row is None else reclaimed_row.observability
                 ),
                 "block_ids": [] if reclaimed_row is None else reclaimed_row.block_ids,
             }
@@ -619,6 +638,10 @@ def _run_http_sample(
         and trace.done_sentinel
         and trace.request_id is not None
         and len(trace.delta_times) == int(max_tokens)
+        and isinstance(trace.usage, dict)
+        and int(trace.usage.get("prompt_tokens", -1))
+        == int(prompt_rows[trace.row_index]["token_count"])
+        and int(trace.usage.get("completion_tokens", -1)) == int(max_tokens)
         for trace in traces
     )
     ownership_ok = bool(
@@ -948,9 +971,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     self._flush_row_owner(row)
                     reclaimed[request_id] = _ReclaimedRow(
                         request_id=request_id,
+                        prompt_ids=[int(token) for token in completed.prompt_tokens],
                         generated_ids=list(row.slot.generated_ids),
                         finish_reason=str(completed.finish_reason),
                         finish_details=completed.finish_details.to_json_dict(),
+                        observability=completed.observability.to_json_dict(),
                         block_ids=(
                             []
                             if row.kv_allocation is None
