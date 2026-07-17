@@ -16551,6 +16551,105 @@ def test_submit_poll_text_generator_streams_native_events_through_resident_loop(
     assert adapter._loop.completed == {}
 
 
+def test_resident_stream_rechecks_completion_after_empty_racing_poll(monkeypatch) -> None:
+    class RacingRunner:
+        capacity = 1
+
+        def __init__(self) -> None:
+            self.request: GenerationRequest | None = None
+            self.outputs: dict[int, GenerationOutput] = {}
+
+        def prompt_tokens(self, prompt) -> tuple[int, ...]:
+            return tuple(int(token) for token in prompt)
+
+        def scheduler_max_new_tokens(self, request: GenerationRequest) -> int:
+            return int(request.max_tokens)
+
+        def register_batch(self, request_ids, request, *, prompt_rows) -> None:
+            assert len(request_ids) == len(prompt_rows) == 1
+            self.request = request
+
+        def prefill_batch(self, work, *, commit: bool) -> None:
+            assert commit is True
+
+        def decode_batch(self, work, *, commit: bool) -> tuple[GeneratedToken, ...]:
+            assert commit is True
+            request_id = int(work.request_ids[0])
+            return (
+                GeneratedToken(
+                    request_id,
+                    2001,
+                    stream_chunk=GenerationStreamChunk(text="raced"),
+                ),
+            )
+
+        def compact_batch(self, moves) -> None:
+            del moves
+
+        def reclaim(self, completed) -> None:
+            self.outputs[int(completed.request_id)] = GenerationOutput(
+                text="raced",
+                generated_token_ids=completed.generated_tokens,
+                finish_details=completed.finish_details,
+            )
+
+        def has_outputs(self, request_ids) -> bool:
+            return all(int(request_id) in self.outputs for request_id in request_ids)
+
+        def missing_outputs(self, request_ids) -> list[int]:
+            return [
+                int(request_id)
+                for request_id in request_ids
+                if int(request_id) not in self.outputs
+            ]
+
+        def take_outputs(self, request_ids) -> list[GenerationOutput]:
+            return [self.outputs.pop(int(request_id)) for request_id in request_ids]
+
+        def discard(self, request_ids) -> None:
+            for request_id in request_ids:
+                self.outputs.pop(int(request_id), None)
+
+    class RacingInner:
+        def __init__(self) -> None:
+            self.runner = RacingRunner()
+
+        def create_resident_model_runner(self, *, capacity):
+            assert capacity in {None, 1}
+            return self.runner
+
+    adapter = SubmitPollTextGenerator(RacingInner(), capacity=1, prefill_chunk_size=2)
+    original_poll = adapter.poll
+    poll_calls = 0
+
+    def poll_with_neighbor_completion(*, max_ticks=1):
+        nonlocal poll_calls
+        poll_calls += 1
+        events = original_poll(max_ticks=max_ticks)
+        if poll_calls == 2:
+            # Model a neighbor consuming the shared poll return after it has
+            # already routed this stream's token/completion into owned state.
+            assert adapter._runner.has_outputs((0,))
+            return ()
+        return events
+
+    monkeypatch.setattr(adapter, "poll", poll_with_neighbor_completion)
+    request = GenerationRequest(
+        prompts=((10,),),
+        max_tokens=1,
+        temperature=0.0,
+        top_p=1.0,
+        ignore_eos=True,
+    )
+
+    chunks = list(adapter.stream_detailed(request))
+
+    assert [chunk.text for chunk in chunks] == ["raced"]
+    assert poll_calls == 2
+    assert adapter._loop.active_count == 0
+    assert adapter._loop.completed == {}
+
+
 def test_submit_poll_text_generator_routes_concurrent_streams_and_reclaims_closed_row() -> None:
     class ConcurrentRunner:
         capacity = 2
