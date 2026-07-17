@@ -3246,6 +3246,10 @@ def test_qwen35_decode_state_runs_grouped_moe_fp16_paro_w4_shared_then_combine(m
         "shared_single_gemv",
         "shared_combine_batch",
     ]
+    # Small grouped FP16 decode must match the selected-c1 GEMV reduction
+    # geometry; the wrapper's 128-thread default changes a few FP16 bits.
+    assert calls[2][2]["threads"] == 64
+    assert calls[4][2]["threads"] == 64
     shared_gate_logits_ptr = scratch.router_logits.ptr + 128 * 4
     final_combine = calls[-1][1]
     assert final_combine == (

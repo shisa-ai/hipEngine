@@ -1,0 +1,157 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_paro_native_c2_grouped_moe_stage_closure",
+  "created_at": "2026-07-17T16:48:00Z",
+  "status": "blocked_lifecycle_packet",
+  "performance_claim": false,
+  "decision": "retain_grouped_moe_correctness_progress_only",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "rocm_stack": "TheRock HIP 7.15 hermetic overlay"
+  },
+  "software": {
+    "hipengine_base_commit": "bb0a51a5cb044951ce3fce609bf3689d0ba89889",
+    "worktree_clean": false,
+    "change": "Use the selected-c1-exact 64-thread reduction geometry for the FP16 grouped-compact selected gate/up and down GEMVs at tokens<=8."
+  },
+  "model": {
+    "name": "shisa-ai/Qwen3.6-35B-A3B-PARO-packed",
+    "revision": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "quant": "packed_paro_w4",
+    "kv_storage_dtype": "bf16",
+    "layers": 40
+  },
+  "workload": {
+    "fixture": "temporary distinct 8x512 raw-ID fixture",
+    "fixture_sha256": "ebecaea08fcc72277ec9aae0e627190499ff3ef2bc551a8ffd7060d30223dbc4",
+    "batch_size": 2,
+    "prompt_tokens_per_request": 512,
+    "decode_tokens": 3,
+    "layer_limits": [4, 8, 16, 24, 32, 40],
+    "route": {
+      "prefill": "packed_segments+packed_varlen",
+      "linear_attention": "native_batch_projection+native_segments+batch_gemv_output",
+      "full_attention": "native_batch_context_dense_c1_order",
+      "full_attention_context_variant": "bf16_context_batch_c1_exact_spans",
+      "moe": "grouped_compact"
+    }
+  },
+  "commands": {
+    "first_boundary": "python3 scripts/qwen35_batch_hidden_bisect.py --model <model> --fixture /tmp/gfx1100-paro-g2-grouped-first-bb0a51a5/fixture.json --prompt-length 512 --batch-size 2 --decode-tokens 1 --max-layers 4 --layer-limits 1,2,4 --max-sequence-length 1024 --trace-decode-start 0 --trace-decode-end 1 --batch-decode-moe-path grouped_compact --batch-decode-linear-path batch_segments --batch-decode-linear-projection-path batch --batch-decode-linear-state-path batch_segments --batch-decode-linear-moe-path grouped_compact --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path native_batch --batch-decode-attn-input-path batch --batch-decode-attn-qkv-path batch --batch-decode-attn-scratch-path batch --batch-decode-attn-context-path batch --batch-decode-attn-gate-path batch --batch-decode-full-attn-kv-append-path batch --batch-decode-full-attn-output-path batch --batch-decode-full-attn-layer-copy batch --batch-decode-full-attn-moe-path grouped_compact --batch-decode-post-attn-path batch --compiler-version-file <file> --require-cached-build --json <json>",
+    "stage_probe": "Ad-hoc method wrapper on the first layer-0/tokens-2 grouped call: replay the same hidden/residual through persistent selected-c1 scratch, copy router/sorted-lane/selected/shared/output stages, reorder compact lanes by sorted_lanes, and compare FP16 bits.",
+    "layer_stage_green": "python3 scripts/qwen35_batch_hidden_bisect.py --model <model> --fixture /tmp/gfx1100-paro-g2-grouped-force64-dirty/fixture.json --prompt-length 512 --batch-size 2 --decode-tokens 3 --max-layers 4 --layer-limits 1,2,4 --max-sequence-length 1024 --trace-decode-start 0 --trace-decode-end 3 --batch-decode-moe-path grouped_compact --batch-decode-linear-path batch_segments --batch-decode-linear-projection-path batch --batch-decode-linear-state-path batch_segments --batch-decode-linear-moe-path grouped_compact --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path native_batch --batch-decode-attn-input-path batch --batch-decode-attn-qkv-path batch --batch-decode-attn-scratch-path batch --batch-decode-attn-context-path batch --batch-decode-attn-gate-path batch --batch-decode-full-attn-kv-append-path batch --batch-decode-full-attn-output-path batch --batch-decode-full-attn-layer-copy batch --batch-decode-full-attn-moe-path grouped_compact --batch-decode-post-attn-path batch --compiler-version-file <file> --require-cached-build --json <json>",
+    "full_state_kv_green": "python3 scripts/qwen35_batch_hidden_bisect.py --model <model> --fixture /tmp/gfx1100-paro-g2-grouped-force64-dirty/fixture.json --prompt-length 512 --batch-size 2 --decode-tokens 3 --max-layers 40 --layer-limits 4,8,16,24,32,40 --max-sequence-length 1024 --trace-decode-start 0 --trace-decode-end 3 --batch-decode-moe-path grouped_compact --batch-decode-linear-path batch_segments --batch-decode-linear-projection-path batch --batch-decode-linear-state-path batch_segments --batch-decode-linear-moe-path grouped_compact --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path native_batch --batch-decode-attn-input-path batch --batch-decode-attn-qkv-path batch --batch-decode-attn-scratch-path batch --batch-decode-attn-context-path batch --batch-decode-attn-gate-path batch --batch-decode-full-attn-kv-append-path batch --batch-decode-full-attn-output-path batch --batch-decode-full-attn-layer-copy batch --batch-decode-full-attn-moe-path grouped_compact --batch-decode-post-attn-path batch --compiler-version-file <file> --require-cached-build --json <json>"
+  },
+  "correctness": {
+    "first_boundary": {
+      "status": "mismatch_found",
+      "first_bit_drift": "layer 0 grouped-MoE output",
+      "layer0_output_bit_mismatch": 17,
+      "layer0_output_max_abs": 0.000030517578125,
+      "first_tolerance_failure": {
+        "layer_limit": 4,
+        "row": 0,
+        "final_hidden_max_abs": 0.009613037109375,
+        "elements_over_atol": 1409
+      }
+    },
+    "stage_localization": {
+      "router_logits_exact": true,
+      "selected_experts_exact": true,
+      "routing_weights_exact": true,
+      "sorted_experts_exact": true,
+      "sorted_weights_exact": true,
+      "packed_hidden_exact": true,
+      "packed_gate_up_input_exact": true,
+      "old_grouped_threads": 128,
+      "selected_c1_threads": 64,
+      "old_gate_up_bit_mismatch": 6,
+      "old_gate_up_max_abs": 0.00048828125,
+      "old_down_input_bit_mismatch": 7,
+      "old_down_input_max_abs": 0.0001220703125,
+      "old_down_out_bit_mismatch": 617,
+      "old_down_out_max_abs": 0.000030517578125,
+      "old_final_output_bit_mismatch": 18,
+      "old_final_output_max_abs": 0.000030517578125,
+      "force64_gate_up_exact": true,
+      "force64_down_input_exact": true,
+      "force64_down_out_exact": true,
+      "force64_final_output_exact": true
+    },
+    "layer_stage_gate": {
+      "status": "eq_ok",
+      "layer_limits": [1, 2, 4],
+      "decode_steps": 3,
+      "prefill_hidden_state_kv_passed": true,
+      "decode_linear_inputs_stages_state_passed": true,
+      "decode_full_attention_inputs_outputs_passed": true,
+      "decode_full_context_numpy_oracle_passed": true,
+      "decode_full_kv_passed": true,
+      "hidden_passed": true,
+      "tokens_passed": true,
+      "first_hidden_bit_drift": null
+    },
+    "full_state_kv_gate": {
+      "status": "eq_ok",
+      "layer_limits": [4, 8, 16, 24, 32, 40],
+      "decode_steps": 3,
+      "prefill_hidden_state_kv_passed": true,
+      "decode_linear_inputs_stages_state_passed": true,
+      "decode_full_attention_inputs_outputs_passed": true,
+      "decode_full_context_numpy_oracle_passed": true,
+      "decode_full_kv_passed": true,
+      "hidden_passed": true,
+      "tokens_passed": true,
+      "first_hidden_bit_drift": null,
+      "moe_decode_path": "grouped_compact",
+      "moe_grouped_compact_layers": 40,
+      "moe_selected_c1_fallback_layers": 0,
+      "native_caware_decode": true,
+      "blockers": []
+    }
+  },
+  "validation": {
+    "red": "Focused grouped-MoE orchestration test failed because selected GEMV calls did not pass threads=64.",
+    "green": [
+      "tests/test_qwen35_decode_state.py",
+      "tests/test_qwen35_resident_batch_layout.py -k grouped_moe/grouped_compact/run_layers_batch_decode",
+      "tests/test_paro_awq_gemv_plan.py tests/test_paro_combine_plan.py tests/test_qwen35_moe_group_scatter_plan.py",
+      "focused Ruff, compileall, and git diff checks"
+    ]
+  },
+  "raw_sources": {
+    "first_boundary": {
+      "path": "/tmp/gfx1100-paro-g2-grouped-first-bb0a51a5/grouped-first-boundary.json",
+      "bytes": 1211427,
+      "sha256": "c77b040bb4c43e20c1297b6248be2829d263cfbfabb09d63dd33e11d44f584c3"
+    },
+    "old_stage_probe": {
+      "path": "/tmp/gfx1100-paro-g2-grouped-moe-stage-probe-bb0a51a5/layer0-step0-summary.json",
+      "bytes": 1858,
+      "sha256": "d0f14818222fa2269ec89d8c4044833ce24990c241bcb32a5e98927c120c3042"
+    },
+    "force64_stage_probe": {
+      "path": "/tmp/gfx1100-paro-g2-grouped-moe-force64-probe-bb0a51a5/layer0-step0-summary.json",
+      "bytes": 1807,
+      "sha256": "e073017157c1f912d2f94bcba5fd751959c1339e9089dc5809e3076d129b7199"
+    },
+    "layer_stage_green": {
+      "path": "/tmp/gfx1100-paro-g2-grouped-force64-dirty/l4-d3.json",
+      "bytes": 1002866,
+      "sha256": "208761979a46f6898c1dc01153aed4ee1248965cbbdc9243fe53084388467a82"
+    },
+    "full_state_kv_green": {
+      "path": "/tmp/gfx1100-paro-g2-grouped-force64-dirty/full-state-kv-d3.json",
+      "bytes": 19889973,
+      "sha256": "c02f38f74683a8bb6158570a6e2dd9536a1b8ab8607075a9d620886c3123a398"
+    }
+  },
+  "blockers": [
+    "full p512/w8/d128 direct grouped-c2 repetition is not yet captured",
+    "shrinking lifecycle, cancellation, and inactive state/KV immutability are not yet captured",
+    "cached profiler and aggregate-vs-c1/serial scaling packet are not yet captured",
+    "public production routing continues to fail closed to true width-1 sessions"
+  ],
+  "next_action": "Promote grouped-compact as the evidence-backed gfx1100 c2 default, then run full direct, shrinking lifecycle/cancellation, repetition, profiler, and scaling gates before c4/c8."
+}
