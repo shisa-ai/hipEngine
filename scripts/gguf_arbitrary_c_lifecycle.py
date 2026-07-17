@@ -157,6 +157,40 @@ def _group_masks(plan: dict[str, Any] | None) -> list[str]:
     ]
 
 
+def _row_resource_identity(row: Any) -> dict[str, Any]:
+    lease = row.lease
+    if lease is None:
+        raise RuntimeError("active row has no resident session lease")
+    session = lease.session
+    scratch = session.scratch
+    if scratch is None:
+        raise RuntimeError("active row resident session is closed")
+    allocation = row.kv_allocation
+    return {
+        "session_id": id(session),
+        "allocation_id": None if allocation is None else id(allocation),
+        "block_ids": (
+            [] if allocation is None else [int(block) for block in allocation.block_ids]
+        ),
+        "conv_ptrs": [
+            None if buffer is None else int(buffer.ptr)
+            for buffer in scratch.layer_conv_states
+        ],
+        "recurrent_ptrs": [
+            None if buffer is None else int(buffer.ptr)
+            for buffer in scratch.layer_recurrent_states
+        ],
+        "key_ptrs": [
+            None if buffer is None else int(buffer.ptr)
+            for buffer in scratch.full_key_caches
+        ],
+        "value_ptrs": [
+            None if buffer is None else int(buffer.ptr)
+            for buffer in scratch.full_value_caches
+        ],
+    }
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     logical_c = int(args.rows)
     if logical_c <= 8:
@@ -358,6 +392,132 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 for session_id in cancelled_session_ids
             }
 
+            compaction_moves: tuple[Any, ...] = ()
+            moved_request_ids: tuple[int, ...] = ()
+            compaction_state_hashes_before: dict[str, dict[str, Any]] = {}
+            compaction_state_hashes_after: dict[str, dict[str, Any]] = {}
+            compaction_state_mismatches: dict[str, list[dict[str, Any]]] = {}
+            compaction_resources_before: dict[str, dict[str, Any]] = {}
+            compaction_resources_after: dict[str, dict[str, Any]] = {}
+            compaction_resource_mismatches: dict[str, dict[str, Any]] = {}
+            compaction_graph_handles: list[dict[str, Any]] = []
+            compaction_graph_invalidation_delta = 0
+            compaction_graphs_closed = True
+            compacted_slots: tuple[int, ...] = ()
+            if bool(args.compact_after_middle_hole):
+                survivor_sessions = tuple(
+                    runner._rows[request_id].lease.session
+                    for request_id in original_ids
+                    if request_id not in cancelled_ids
+                )
+                # The short production lifecycle intentionally stays eager, so
+                # pin real sparse physical-bucket graphs at the current state
+                # before moving slots.  Compaction must retire these handles;
+                # the pre/post hashes below also prove capture did not mutate
+                # request-owned state or KV.
+                for group in hole_plan["groups"]:
+                    group_request_ids = tuple(
+                        int(request_id) for request_id in group["request_ids"]
+                    )
+                    group_sessions = tuple(
+                        runner._rows[request_id].lease.session
+                        for request_id in group_request_ids
+                    )
+                    group_sessions[0].capture_packed_decode_graph(
+                        [
+                            int(runner._rows[request_id].slot.generated_ids[-1])
+                            for request_id in group_request_ids
+                        ],
+                        sessions=group_sessions,
+                        physical_rows=int(group["physical_rows"]),
+                        active_slot_indices=tuple(
+                            int(slot) for slot in group["active_slot_indices"]
+                        ),
+                        steps_per_replay=1,
+                        max_replay_steps=1,
+                        record_steps=1,
+                    )
+                active_graph_handles = tuple(
+                    handle
+                    for handle in runner._graph_handles_for_sessions(survivor_sessions)
+                    if not bool(getattr(handle, "closed", False))
+                )
+                survivor_resources_before = {
+                    request_id: _row_resource_identity(runner._rows[request_id])
+                    for request_id in original_ids
+                    if request_id not in cancelled_ids
+                }
+                graph_invalidations_before = int(
+                    runner.observability_snapshot()["graph_buckets"][
+                        "invalidations_total"
+                    ]
+                )
+                compaction_moves = tuple(adapter._loop.compact())
+                moved_request_ids = tuple(
+                    int(move.request_id)
+                    for move in compaction_moves
+                    if int(move.old_slot) != int(move.new_slot)
+                )
+                if not moved_request_ids:
+                    raise RuntimeError("requested compaction produced no physical moves")
+                compacted_slots = tuple(
+                    adapter._loop.scheduler.active_batch.slot_for(request_id)
+                    for request_id in original_ids
+                    if request_id not in cancelled_ids
+                )
+                for request_id in moved_request_ids:
+                    key = str(request_id)
+                    before = survivor_hole_states[request_id]
+                    row = runner._rows[request_id]
+                    after = _capture_state(row.lease.session)
+                    compaction_state_hashes_before[key] = before
+                    compaction_state_hashes_after[key] = after
+                    compaction_state_mismatches[key] = _compare_one(after, before)
+                    compaction_resources_before[key] = survivor_resources_before[
+                        request_id
+                    ]
+                # Resource identity is request-owned and must not change.  The
+                # pre/post calls intentionally bracket no model work.
+                compaction_resources_after = {
+                    str(request_id): _row_resource_identity(runner._rows[request_id])
+                    for request_id in moved_request_ids
+                }
+                compaction_resource_mismatches = {
+                    key: {
+                        "before": compaction_resources_before[key],
+                        "after": compaction_resources_after[key],
+                    }
+                    for key in compaction_resources_before
+                    if compaction_resources_before[key]
+                    != compaction_resources_after[key]
+                }
+                compaction_graph_handles = [
+                    {
+                        "handle_id": id(handle),
+                        "bucket": runner._graph_bucket_label(handle),
+                        "replay_count": int(
+                            getattr(handle, "replay_count", 0) or 0
+                        ),
+                        "closed_after_compaction": bool(
+                            getattr(handle, "closed", False)
+                        ),
+                    }
+                    for handle in active_graph_handles
+                ]
+                compaction_graphs_closed = bool(
+                    active_graph_handles
+                    and all(
+                        bool(getattr(handle, "closed", False))
+                        for handle in active_graph_handles
+                    )
+                )
+                compaction_graph_invalidation_delta = int(
+                    runner.observability_snapshot()["graph_buckets"][
+                        "invalidations_total"
+                    ]
+                    - graph_invalidations_before
+                )
+
             newcomers = adapter.submit_detailed(
                 _request(newcomer_prompts, max_tokens=newcomer_max_tokens)
             )
@@ -493,7 +653,24 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "11011000",
             ]
             expected_refill_masks = expected_initial_masks
-            routes = runner.observability_snapshot()["routes"]
+            expected_newcomer_slots = (
+                tuple(range(logical_c - len(cancel_slots), logical_c))
+                if bool(args.compact_after_middle_hole)
+                else cancel_slots
+            )
+            compaction_exact = bool(
+                not args.compact_after_middle_hole
+                or (
+                    compacted_slots == tuple(range(logical_c - len(cancel_slots)))
+                    and all(not rows for rows in compaction_state_mismatches.values())
+                    and not compaction_resource_mismatches
+                    and compaction_graphs_closed
+                    and compaction_graph_invalidation_delta
+                    == len(compaction_graph_handles)
+                )
+            )
+            observability = runner.observability_snapshot()
+            routes = observability["routes"]
             final_active = tuple(runner.active_request_ids)
             final_available = int(runner.available_session_count)
             scheduler_active = int(adapter._loop.active_count)
@@ -512,8 +689,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 and newcomer_tokens_exact
                 and state_exact
                 and cancelled_finish_ok
-                and newcomer_slots == cancel_slots
+                and newcomer_slots == expected_newcomer_slots
                 and session_reused
+                and compaction_exact
                 and _group_masks(initial_plan) == expected_initial_masks
                 and _group_masks(hole_plan) == expected_hole_masks
                 and _group_masks(refill_plan) == expected_refill_masks
@@ -525,7 +703,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 and scheduler_active == 0
             )
             return {
-                "schema": 1,
+                "schema": 2,
                 "kind": "gguf_arbitrary_c_lifecycle",
                 "status": "passed" if passed else "failed",
                 "passed": passed,
@@ -537,6 +715,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     "logical_c": logical_c,
                     "cancel_slots": list(cancel_slots),
                     "newcomer_slots": list(newcomer_slots),
+                    "compact_after_middle_hole": bool(
+                        args.compact_after_middle_hole
+                    ),
                     "prompt_lengths": [len(prompt) for prompt in original_prompts],
                     "newcomer_prompt_lengths": [len(prompt) for prompt in newcomer_prompts],
                     "original_max_tokens": original_max_tokens,
@@ -572,6 +753,30 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     newcomer_reclaimed_session_ids
                 ),
                 "cancelled_sessions_reused_by_newcomers": session_reused,
+                "compaction": {
+                    "enabled": bool(args.compact_after_middle_hole),
+                    "passed": compaction_exact,
+                    "moves": [
+                        {
+                            "request_id": int(move.request_id),
+                            "old_slot": int(move.old_slot),
+                            "new_slot": int(move.new_slot),
+                        }
+                        for move in compaction_moves
+                    ],
+                    "moved_request_ids": list(moved_request_ids),
+                    "compacted_slots": list(compacted_slots),
+                    "state_kv_hashes_before": compaction_state_hashes_before,
+                    "state_kv_hashes_after": compaction_state_hashes_after,
+                    "state_kv_mismatches": compaction_state_mismatches,
+                    "resource_identity_before": compaction_resources_before,
+                    "resource_identity_after": compaction_resources_after,
+                    "resource_identity_mismatches": compaction_resource_mismatches,
+                    "graph_handles_before": compaction_graph_handles,
+                    "graph_handles_closed": compaction_graphs_closed,
+                    "graph_invalidation_delta": compaction_graph_invalidation_delta,
+                },
+                "graph_buckets": observability["graph_buckets"],
                 "routes": routes,
                 "timeline": timeline,
                 "final_active_request_ids": list(final_active),
@@ -579,9 +784,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "final_scheduler_active": scheduler_active,
                 "elapsed_seconds": time.perf_counter() - started,
                 "notes": [
-                    "The gate preserves scheduler slot identity; no physical compaction is performed.",
+                    (
+                        "Optional compaction packs survivors after the middle-hole transition and preserves request-owned state/KV resources."
+                        if args.compact_after_middle_hole
+                        else "The gate preserves scheduler slot identity; no physical compaction is performed."
+                    ),
                     "Every decode group must use only declared c1/c2/c4/c8 physical widths.",
                     "Tokens, Conv/GDN state, and all live BF16 KV bytes are compared with c1 checkpoints.",
+                    "Compaction must invalidate every observed live slot-bound graph before post-move replay.",
                 ],
             }
         finally:
@@ -599,6 +809,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--original-max-tokens", type=int, default=5)
     parser.add_argument("--newcomer-max-tokens", type=int, default=3)
     parser.add_argument("--prefill-chunk-size", type=int, default=256)
+    parser.add_argument(
+        "--compact-after-middle-hole",
+        action="store_true",
+        help="compact survivor slots after the middle-hole transition",
+    )
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--json", type=Path)

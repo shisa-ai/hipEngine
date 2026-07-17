@@ -4321,12 +4321,34 @@ class Qwen35GGUFResidentModelRunner:
 
     def compact_batch(self, moves: Sequence[SlotMove]) -> None:
         move_tuple = tuple(moves)
-        if any(move.old_slot != move.new_slot for move in move_tuple):
+        moved = tuple(move for move in move_tuple if move.old_slot != move.new_slot)
+        if moved:
             with hip_target_arch_environment(self.generator.target_arch):
                 self._flush_all_packed_owners()
-        # Session state is request-owned, not physical-row-owned.  The scheduler
-        # move is nevertheless consumed here so future row-indexed slabs cannot
-        # silently conflate stable request ids with physical slots.
+                sessions: list[Any] = []
+                seen_sessions: set[int] = set()
+                for move in moved:
+                    row = self._row(move.request_id)
+                    lease = row.lease
+                    if lease is None or id(lease.session) in seen_sessions:
+                        continue
+                    seen_sessions.add(id(lease.session))
+                    sessions.append(lease.session)
+                session_tuple = tuple(sessions)
+                self._observe_graph_handles(session_tuple)
+                graph_handles = self._graph_handles_for_sessions(session_tuple)
+                invalidated = 0
+                if graph_handles:
+                    for session in session_tuple:
+                        invalidate = getattr(session, "invalidate_device_kv_graphs", None)
+                        if callable(invalidate):
+                            invalidated += int(invalidate())
+                if invalidated:
+                    self._record_graph_invalidations(graph_handles, invalidated)
+                    self._kv_graph_invalidation_count += invalidated
+        # Session state is request-owned, not physical-row-owned.  Compaction
+        # changes only the scheduler slot map; state/KV pointers remain attached
+        # to the request session after dirty state and slot-bound graphs retire.
         for move in move_tuple:
             self._row(move.request_id)
 
