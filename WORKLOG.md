@@ -161766,3 +161766,66 @@ native-family marker census; same-session c1/c2/c4/native-c8/chunked-c8/serial
 scaling; then the Phase-D live admission/cancel/reclaim and observability
 lifecycle. No throughput or gfx1151 native-cN claim is made until those gates
 pass. Implementation changes begin only at the first localized RED result.
+
+## 2026-07-17 — Retain gfx1151 GGUF direct concurrency correctness
+
+Completed the direct E1 baseline at clean tracked `80bdf6a3` on the Radeon
+8060S, TheRock HIP 7.15, normal HWS (`sched_policy=0`), one HIP hardware queue,
+TuneD `accelerator-performance`, and `amd_iommu=off` with zero IOMMU groups.
+All GPU jobs ran sequentially. The boot is part of the packet's provenance but
+is not a causal IOMMU A/B. The 255 pre-existing untracked benchmark artifacts
+were left untouched; the tracked runtime and scripts remained clean.
+
+The merged gfx1100 implementation transfers without a gfx1151-specific runtime,
+registration, or kernel edit:
+
+- Cached c2/c4/c8 paged-KV append and attention primitives pass with zero K/V
+  mismatch and exact batch-vs-c1 output; maximum NumPy error is
+  `5.960464477539063e-08`.
+- The short c2/c4/c8 matrix covers eager and graph steady decode, ragged c8
+  prompt lengths `[16,23,23,23,23,23,23,23]`, c4 sparse retirement, and physical
+  c8 active masks `11111111 → 10110111 → 10100101 → 00100100 → 00000100` in
+  eager and graph modes. All **9,680** hidden comparisons and every token,
+  Conv/GDN state byte, and live BF16 K/V byte are exact.
+- Standard p512/d128 c4 eager and graph pass **20,640/20,640** comparisons each;
+  physical c8 eager and graph pass **41,280/41,280** each. Both graphs capture
+  once and replay 128 transitions with zero steady H2D or D2D state copies. The
+  standard c4 sparse graph passes another **560/560** through four bucket masks.
+  The standard matrix total is **124,400/124,400**.
+- The complete 10 canonical + 8 category-heldout prompt gate ran 24 decode
+  transitions for three repeats: **54/54** prompt executions, **1,350/1,350**
+  token comparisons, and **54,000/54,000** hidden comparisons pass with zero
+  initial/final state or live-KV mismatch and deterministic repeat trajectories.
+  The model oracle completed and wrote a passing JSON. The wrapper then exited
+  nonzero only because its ad-hoc summary referenced an obsolete
+  `token_mismatches` rollup field; direct source validation establishes the
+  result, so the focused-repair rule correctly avoids an expensive rerun.
+
+Across the retained short, standard, and category sources, the direct packet has
+**188,080** exact hidden comparisons and zero token, hidden, Conv/GDN, or live-KV
+mismatch. Execution manifests report zero complete-c1 session/layer replay,
+zero host model-row loops/iterations, zero row-local subgraph invocation, and
+zero expected exact-row-local kernel launches. This raises gfx1151 c2/c4/c8 to
+correctness-only `native_eq_ok`; it does not retain throughput or continuous
+membership.
+
+Published
+`benchmarks/results/2026-07-17-gfx1151-gguf-concurrency-e1-direct-correctness.json`
+with every source hash/size, exact standard/category commands, hardware/boot,
+model/compiler provenance, and the reporting-only category wrapper issue.
+Updated `docs/CONCURRENCY.md`, the benchmark platform index/current gfx1151
+concurrency status, and `benchmarks/CHANGELOG.md`. Baseline validation includes
+**53** focused host tests and **8** focused indexed-state/masked-runtime GPU
+tests. External lineage comparison remains unavailable because this host lacks
+the read-only Atlas and nano-vllm-amd checkouts; because no kernel body changed,
+that blocks only a future port edit, not this unchanged transfer.
+
+Next: run one cached native-c8 marker census and the same-session
+c1/c2/c4/native-c8/chunked-c8/serial scaling packet. Only after that direct
+profiler/performance unit is retained should E1 proceed to the unchanged Phase-D
+live admission, cancellation, reclaim, OpenAI streaming, and observability gate.
+
+Publication validation parses the compact JSON, re-verifies all **18** retained
+source hashes/sizes, keeps root/canonical README exports synchronized, passes
+`tests/test_benchmark_readme_sync.py` (**6 passed**), and passes
+`git diff --check`.

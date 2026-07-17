@@ -577,7 +577,7 @@ the measured hipEngine commit, and the then-used per-run device properties could
 report gfx1100 even though the run forced `HIPENGINE_HIP_ARCH=gfx1151`.
 
 <!-- BEGIN TOPLINE:GFX1151_CONCURRENCY -->
-No eligible concurrency row; the `performance_claim=false` snapshot remains linked below pending rerun.
+No eligible throughput row yet; direct native c2/c4/c8 correctness is retained, with cached profiler/scaling and Phase-D live lifecycle still required.
 <!-- END TOPLINE:GFX1151_CONCURRENCY -->
 
 Protocol: prompt 512, decode 128, 8 warmup decode tokens, median of 3. Primitive
