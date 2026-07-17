@@ -161924,3 +161924,24 @@ Affected host validation is **62/62** plus **5/5** compaction scheduler tests;
 focused Ruff, Python compilation, and diff checks pass. This remains a dirty
 implementation diagnostic; commit the gate and rerun once from the clean
 revision before retaining optional-compaction evidence.
+
+## 2026-07-17 — Retain clean optional-compaction correctness
+
+Reran the exact C=13 optional-compaction command above from clean commit
+`be04fa31`; only the JSON/stdout destination changed to
+`/tmp/gfx1100-e3-clean-be04fa31-compaction.{json,stdout}`. The clean W7900 run
+passes in **87.303 s** with exact original/newcomer tokens and all final c1
+Conv/GDN/live-BF16-KV comparisons. All nine moved survivors preserve identical
+per-layer pre/post state/KV hashes, resident-session identity, KV allocation and
+block ids, and every Conv/recurrent/K/V device pointer. Slots compact to 0-10;
+newcomers enter 11/12; final ownership is 0 active / 13 available.
+
+The two pinned sparse physical-c8 graphs encode active masks `11011111` and
+`11011000`; both close before moved-slot reuse, telemetry records **2 captures,
+2 invalidations, 0 entries**, and no graph survives compaction. Every runtime
+decode group remains packed-native with zero c1, serial, or resident fallback.
+The 253,695-byte clean source SHA-256 is
+`33fadbc1a85db7e7eb364178a612ef1886ce3f16c290c12b3d27a82e80940a04`.
+Optional physical-slot compaction is therefore correctness-qualified but remains
+an explicit diagnostic operation; no automatic compaction policy or performance
+claim is implied. Next: F1 profiler/scaling and real server-workload retention.
