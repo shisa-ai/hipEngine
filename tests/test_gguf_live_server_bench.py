@@ -8,6 +8,8 @@ from scripts.gguf_live_server_bench import (
     CONFIGURATIONS,
     _counter_delta,
     _latency_delta,
+    _logical_shape_covers,
+    _owned_physical_plans,
     _parse_configurations,
     _parse_sse_data_line,
     _prompt_rows,
@@ -73,6 +75,72 @@ def test_live_server_bench_slices_append_only_scheduler_latency() -> None:
 
     with pytest.raises(RuntimeError, match="history changed"):
         _latency_delta(before, {**after, "inter_token": {"samples": [9.0]}})
+
+
+def test_live_server_bench_scopes_plans_to_sample_request_ownership() -> None:
+    timeline = [
+        {
+            "physical_group_plans": [
+                {
+                    "logical_c": 1,
+                    "groups": [
+                        {
+                            "request_ids": [8],
+                            "physical_rows": 8,
+                            "active_mask": [True] + [False] * 7,
+                            "execution_path": "serial_fallback",
+                        }
+                    ],
+                },
+                {
+                    "logical_c": 9,
+                    "groups": [
+                        {
+                            "request_ids": list(range(9, 17)),
+                            "physical_rows": 8,
+                            "active_mask": [True] * 8,
+                            "execution_path": "packed_native",
+                        },
+                        {
+                            "request_ids": [17],
+                            "physical_rows": 8,
+                            "active_mask": [True] + [False] * 7,
+                            "execution_path": "packed_native",
+                        },
+                    ],
+                },
+            ]
+        }
+    ]
+
+    plans, foreign = _owned_physical_plans(timeline, list(range(9, 18)))
+
+    assert len(plans) == 1
+    assert plans[0]["logical_c"] == 9
+    assert foreign == 1
+
+
+def test_live_server_bench_accepts_truthful_sparse_c9_without_compaction() -> None:
+    assert _logical_shape_covers(
+        (9, (8, 8), ("11111111", "10000000")),
+        logical_c=9,
+        group_count=2,
+    )
+    assert _logical_shape_covers(
+        (9, (8, 1), ("11111111", "1")),
+        logical_c=9,
+        group_count=2,
+    )
+    assert not _logical_shape_covers(
+        (9, (8,), ("11111111",)),
+        logical_c=9,
+        group_count=2,
+    )
+    assert not _logical_shape_covers(
+        (9, (8, 8), ("11111111", "11000000")),
+        logical_c=9,
+        group_count=2,
+    )
 
 
 def test_live_server_bench_parses_openai_sse_data() -> None:
