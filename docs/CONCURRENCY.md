@@ -207,6 +207,9 @@ runner and gfx1151 remains independently unverified.
   scaling: `WORKLOG.md`, **2026-07-17 — Retain real OpenAI arbitrary-C server
   scaling**, and
   `benchmarks/results/2026-07-17-gfx1100-gguf-concurrency-f1-server-scaling-closure.json`.
+- gfx1100 PARO native-c2 first divergence: `WORKLOG.md`, **2026-07-17 —
+  Localize the first W7900 PARO native-c2 divergence**, and
+  `benchmarks/results/2026-07-17-gfx1100-paro-g2-native-c2-first-divergence.json`.
 - Historical PARO c1-c8 catalog and lifecycle: `docs/BENCHMARK.md` §PARO c1-c8
   exact concurrency matrix.
 - Historical c>N graph replay and output-tiled GEMV: `WORKLOG.md`, **2026-06-08
@@ -879,7 +882,9 @@ G1. Re-establish c2 controls:
 
 G2. Fully native c2:
 
-- [ ] Bisect the first hidden divergence with a reusable layer/stage comparator.
+- [x] Bisect the first hidden divergence with a reusable layer/stage comparator.
+      On gfx1100, L1/L2 are green and full-attention layer 3 first fails at the
+      native batch context reduction; prepared Q/K/V, gate, and sampled KV pass.
 - [ ] Replace row-local full-attention and selected-c1 hybrid boundaries with
       exact c-aware routes.
 - [ ] Close batch-GEMV QKV/Z/O/FFN output projections.
