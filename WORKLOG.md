@@ -162153,3 +162153,18 @@ window, and optional compaction remains explicit/manual. Final validation is
 **422/422** affected tests plus focused Ruff, compilation, JSON/provenance/link
 checks, README synchronization, and diff checks. gfx1100 E3/F1 is retained;
 next project-wide blocker remains the independent gfx1151 E1/F1 packet.
+
+## 2026-07-17 — Kick off gfx1100 PARO native concurrency
+
+Created `gfx1100-paro-concurrency-g1` from retained gfx1100 GGUF concurrency
+commit `52f26eb8`. The worktree is clean and the branch deliberately inherits the
+shared resident-loop, physical-bucket, lifecycle, device-KV, observability, and
+server evidence contracts rather than creating a PARO-specific scheduler.
+
+The W7900 is visible as gfx1100 under ROCm and starts effectively idle. The first
+scope is `docs/CONCURRENCY.md` Phase G1 then G2: audit the current width-plan and
+row-local boundaries, run clean current-HEAD PARO c1/c2 exact and serial controls,
+add a reusable earliest-layer/stage comparator, and close the first true native
+c2 boundary. PARO will not be attached to the production loop until its direct
+c2 model step passes token/hidden/state/KV and profiler gates; wrapping width-1
+sessions in the server loop would remain only HTTP concurrency.
