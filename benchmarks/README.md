@@ -1331,8 +1331,8 @@ compatibility contract. The compact artifact is
 
 ### Radeon 8060S direct GGUF concurrency, 2026-07-17
 
-**Status: retained direct native-c2/c4/c8 decode-model-step throughput;
-live membership remains open.** The unchanged merged gfx11 stack passes
+**Status: retained direct native-c2/c4/c8 decode-model-step throughput plus
+correctness-only `continuous_eq_ok` OpenAI membership.** The unchanged merged gfx11 stack passes
 primitive, short eager/graph, ragged, sparse c8→c1, all-row p512/d128, and
 complete category/heldout equality with zero row-local model work. All
 **188,080** hidden comparisons and **1,350** category token comparisons are
@@ -1357,11 +1357,13 @@ warmup and median of three, one shared model load, and cached builds. Resident
 sessions grow c1→c2→c4→c8; starred controls execute later and retain later
 allocations. One physical c8 improves aggregate decode **154.39%** over c1 and
 **24.65%** over c4+c4, while per-request rate is **68.20% lower** than c1.
-Direct throughput does not imply server-wall performance; Phase-D live
-admission/cancel/reclaim/streaming/observability remains the final E1 gate.
+Direct throughput does not imply server-wall performance. The separate Phase-D
+live admission/cancel/reclaim/streaming/observability gate closes E1 at
+correctness-only `continuous_eq_ok` without adding a server timing claim.
 
-Artifacts: [E1 direct correctness](results/2026-07-17-gfx1151-gguf-concurrency-e1-direct-correctness.json)
-and [retained E1 direct scaling](results/2026-07-17-gfx1151-gguf-concurrency-e1-native-c8-scaling-closure.json).
+Artifacts: [E1 direct correctness](results/2026-07-17-gfx1151-gguf-concurrency-e1-direct-correctness.json),
+[retained E1 direct scaling](results/2026-07-17-gfx1151-gguf-concurrency-e1-native-c8-scaling-closure.json),
+and [E1 live-loop closure](results/2026-07-17-gfx1151-gguf-concurrency-e1-live-loop-closure.json).
 
 ### gfx1151 historical cross-engine concurrency, 2026-06-15
 
