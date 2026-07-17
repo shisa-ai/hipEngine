@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-18
+
+- [retained gfx1100 PARO direct native-c2 selected-batch] W7900/gfx1100 Qwen3.6-35B-A3B W4-PARO/BF16-KV p512/d128 moves serial c2 **100.925 -> native selected-batch 121.923 aggregate tok/s (+20.81%)**, also **+5.09%** over the same-protocol c1 graph reference at **116.022 tok/s**. Three fresh-process runs are <=0.276% stdev/median; primitive, all-layer hidden/Conv/GDN/context/KV, uniform/ragged EOS+cancel immutability, auto-default, cached profiler, and all **10/10 category+heldout prompts / 330/330 recorded IDs** pass with 40 selected-batch and zero fallback layers. The claim is explicit direct c2 only; public/OpenAI remains width-1. `benchmarks/results/2026-07-18-gfx1100-paro-g2-selected-batch-c2-retained.json`.
+
 ## 2026-07-17
 
 - [retained gfx1100 real OpenAI arbitrary-C server scaling] W7900/gfx1100 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV p512/128-output SSE cycle wall moves same-loop serial C13 **31.708 -> grouped physical-c8+sparse-c8 111.380 aggregate tok/s (+251.27%)**; logical-c1/c8/c9 are **25.583/136.122/88.592**, all **189** actual prompt/output rows and usage records are exact, static variance is <=1.299%, and the exact c8→c13 live trace reaches **107.284 tok/s** then drains ownership to zero; `benchmarks/results/2026-07-17-gfx1100-gguf-concurrency-f1-server-scaling-closure.json`.

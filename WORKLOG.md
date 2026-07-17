@@ -162657,3 +162657,90 @@ This is a classification/compatibility change, not a new speed or correctness
 claim. Next: commit it, rerun clean selected-batch p512/d128 and all-layer/
 lifecycle/profiler gates from that revision, then run prompt diversity before
 any production/default or benchmark-rollup promotion.
+
+## 2026-07-18 — Retain gfx1100 PARO selected-batch c2
+
+Completed the clean promotion packet on W7900/TheRock HIP 7.15 at measured
+revision `fcb65c470fd830918255b49f554fe70b08399272`. The model is
+`shisa-ai/Qwen3.6-35B-A3B-PARO-packed` revision
+`437eba06df05aad71a4dacdcaf3fff70ae1ee8a1`, fingerprint
+`995a8c67847cb2819588bec573a6d17ef04ae554504d040d4f2ea6b2c9c6d917`,
+PARO W4 with BF16 KV and all 40 layers. Every GPU child used GPU 0/gfx1100, the
+minimal hermetic TheRock `env -i` wrapper, the precomputed compiler-version
+file, and `--require-cached-build`; no profiled process invoked `hipcc`.
+
+The canonical selected-batch route passes the full packet:
+
+- three fresh p512/w8/d128 processes report **121.357, 121.923, 121.953
+  aggregate tok/s**, median **121.923** and stdev/median **0.275%**. Every run
+  matches both independent c1 sessions for **137/137 IDs per row (274/274)**,
+  remains finite and deterministic, and reports `native_caware_decode=true`,
+  **40 selected-batch layers**, zero grouped/per-row fallback layers, and empty
+  execution blockers;
+- a defaults-only `--batch-decode-moe-path auto` device run resolves canonical
+  `selected_batch`, remains 274/274 exact, and records 121.601 aggregate tok/s;
+- the clean L40/d3 gate is `eq_ok` at 4/8/16/24/32/40 layers for prefill
+  hidden/state/KV, every linear/full-attention stage, independent NumPy context,
+  final hidden, and tokens, with no first bit drift. Raw JSON 19,890,397 bytes,
+  SHA-256 `d1943c1830b9344dbc5f3bd1651940363c689b51df9edcae47fce2d3e4bd13e5`;
+- uniform tail cancel, uniform tail EOS, and ragged `[503,512]` front EOS all
+  traverse c2→c1 with exact generated tokens, all **30 linear + 10
+  full-attention** persistent-state families, and byte-identical retired-slot
+  hashes after the survivor continues. Raw SHA-256 values are
+  `57188db4005220e833c7da13d6af4a239b730db63cd6bbc162c0d5c3740a474a`,
+  `319a7bb5d54e3c7f5448878c8a88199486ad93cf95a5cb517016f49adba32b48`,
+  and `c69cf1b153d459fd62b22eb1784faec2064542d3603f4574956d8bbeafc3976a`;
+- all **10/10** prompts in `mtpbench-code-general-ja.jsonl` pass as five c2
+  pairs at p512/d32, including all code/general-English/general-Japanese/mixed
+  categories and all four heldouts. Every pair is finite, records 40
+  selected-batch and zero fallback layers, and matches **33/33 IDs per row,
+  330/330 total**;
+- the current primitive gate passes A/A, zero K/V append mismatches, batch-vs-c1
+  max abs 0, and batch/dense-c1-vs-NumPy max abs `2.235174e-08`;
+- a fresh cached L4/d1 trace is `eq_ok`, contains **1,306 dispatches / 76 unique
+  kernel names**, records
+  `qwen35_paged_full_attn_decode_context_tensor_batch_c1_exact_kernel` at
+  **201,802 ns**, and includes both selected output-tiled and fused
+  combine-residual projection families. CSV SHA-256 is
+  `9db5362f3ec0b57b84c99652d1ce2aaff6ce575220369d464148d569cc942033`.
+
+Same-revision fresh-process scaling is:
+
+| Route | Samples (aggregate tok/s) | Median | Relative result |
+| --- | --- | ---: | ---: |
+| c1 graph | 116.022, 116.162, 115.818 | **116.022** | reference |
+| serial c2 bridge | 100.813, 101.267, 100.925 | **100.925** | 0.870x c1 |
+| native selected-batch c2 | 121.357, 121.923, 121.953 | **121.923** | **1.0509x c1 / 1.2081x serial** |
+
+Thus native c2 is **+5.09%** over c1 aggregate and **+20.81%** over serial c2;
+per-request throughput is 60.962 tok/s (0.5254x c1), the expected latency/
+throughput tradeoff. The selected median is only **+0.20%** versus the prior
+121.679 control, so the reclassification did not materially alter performance.
+The fixed resident allocation peaks at 19,899,549,774 bytes (18.533 GiB), with
+stable block identity. Fresh-process TTFT includes load and is not presented as
+a steady server claim; raw request/queue/ITL distributions remain in the compact
+artifact.
+
+Retained evidence:
+`benchmarks/results/2026-07-18-gfx1100-paro-g2-selected-batch-c2-retained.json`.
+This promotes **only the explicit direct native-c2 model step** and its `auto`
+MoE selection. Public blocking/OpenAI PARO remains width-1 until G4; graph
+replay is not claimed; gfx1151 and one-physical c4/c8 remain independently open.
+Grouped-compact stays available as an exact but slower diagnostic.
+
+Final validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py \
+  tests/test_qwen35_resident_batch_layout.py \
+  tests/test_qwen35_batch_partition_bench.py
+python3 -m json.tool \
+  benchmarks/results/2026-07-18-gfx1100-paro-g2-selected-batch-c2-retained.json \
+  >/tmp/paro-selected-retained.pretty.json
+python3 scripts/sync_benchmark_readme.py --check
+git diff --check
+# pytest: 479 passed; JSON/source/statistic audit OK; README blocks synchronized
+```
+
+Next: build one physical c4 algorithm from the c2 primitives rather than
+stacking two c2 groups, then repeat this packet.

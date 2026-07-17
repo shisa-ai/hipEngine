@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last reviewed: **2026-07-17**
+Last reviewed: **2026-07-18**
 
 Latest retained hipEngine revisions in this scoreboard:
 `7ab8eb3b60de772f61b1b2d55785e7872586abcd` for real GGUF graph replay
@@ -14,11 +14,12 @@ runtime `6f7851f3`, clean profiler `a05c560b`, and category provenance
 `799d29b9`), `52b0db25a20607f51e08abc89c43d200d2fe0ea5` for the retained
 native-c8 profiler/scaling packet (correctness runtime `bbe6deb0`),
 `77279adfb42c1f106c0541b34239d083517136c5` for the retained real OpenAI
-arbitrary-C server packet (E3 state gate `1dc7076f`, compaction `be04fa31`), and
-`2edbb2ee3ca74d7757500b5eafe737d43748489c` for the current gfx1151 IOMMU-off
-model/MTP refresh. The gfx1151 GGUF refresh is retained through 64K; repeated
-128K is explicitly blocked by the residual gfx11 scheduler lifecycle failure
-rather than carrying a stale number.
+arbitrary-C server packet (E3 state gate `1dc7076f`, compaction `be04fa31`),
+`fcb65c470fd830918255b49f554fe70b08399272` for the retained explicit gfx1100
+PARO selected-batch c2 step, and `2edbb2ee3ca74d7757500b5eafe737d43748489c`
+for the current gfx1151 IOMMU-off model/MTP refresh. The gfx1151 GGUF refresh is
+retained through 64K; repeated 128K is explicitly blocked by the residual gfx11
+scheduler lifecycle failure rather than carrying a stale number.
 
 This file is the source of truth for repository-level performance tables. It
 records which snapshots are eligible for use, the exact protocol behind each
@@ -447,6 +448,7 @@ fallback; this is a correctness artifact with `performance_claim=false`.
 | Radeon Pro W7900 + Radeon RX 7900 XTX, gfx1100 | Native GGUF/PARO tail-four Hadamard-group32 mixed KV | 2026-07-15 | clean GGUF closure `c971262f`; therock HIP 7.15; exact Q4_K_M and prompt-suite identities; prior PARO/XTX outcome retained separately | **Quality-safe GGUF explicit diagnostic; no default promotion**: clean GGUF passes all 11 prompts at 512/8 and 4K/16 (**0.0001369/0.009926 mean/max KL, 99.47% aggregate and 94.12% minimum-prompt top-1** at 4K) plus bounded `mixed_v1` 128K/16. Persistent 128K K/V drops **2,689,597,440 -> 2,185,297,920 bytes (-18.75%)** with no persistent BF16 shadow, but production 4K prefill/decode regress **0.67%/0.75%**, 128K decode regresses **3.82%**, and a **1.002 GiB** prefill transient raises allocator high water **24.168 -> 24.700 GiB** despite lowering live owned memory by **0.470 GiB**. Prior PARO quality and 256 Ki capacity blockers remain. Explicit-only; unsupported/default status unchanged. [`clean GGUF gate`](results/2026-07-15-gfx1100-gguf-tail4-hadamard-clean-gate.json) · [`prior split outcome`](results/2026-07-14-gfx1100-native-tail4-hadamard-kv-outcome.json). | Diagnostic link only | Remove the inferred four-layer BF16 prefill transient and optimize long-context group32 attention, then repeat the clean GGUF gate; PARO requires its own quality-safe layout. |
 | Radeon Pro W7900, gfx1100 | Qwen3.6 35B model sweep | 2026-07-16 | clean GGUF `28b37356` on therock HIP 7.15; retained PARO `8116c453`; llama.cpp HIP `1ebf790cd` build 9648; Vulkan `263cc04a5` build 9600 | **Accepted current four-column topline**: the GGUF column is the final right-sized 1+3 defaults-only refresh; PARO and llama.cpp columns retain their clean July 12 protocols. All six GGUF shapes have clean provenance, finite/stable IDs, exact Q4_K_M identity, and <=0.658%/0.223% prefill/decode stdev over median. | Yes | Rerun after PARO/GGUF measured paths, graph policy, model, compiler/runtime, llama.cpp builds, or W7900 clock policy changes. |
 | Radeon Pro W7900, gfx1100 | GGUF Q4_K_M direct native-c1/c2/c4/c8 graph decode + real OpenAI arbitrary-C concurrency | 2026-07-17 | clean native-c4 graph/equality/profiler/scaling `6f7851f3`/`a05c560b`/`d59d7cf0`, category `799d29b9`, server lifecycle/metrics/accounting `f03957cc`/`b49bc0ef`/`7ab8eb3b`, native-c8 correctness/scaling `bbe6deb0`/`52b0db25`, arbitrary-C state/compaction `1dc7076f`/`be04fa31`, server F1 `77279adf`; TheRock HIP 7.15; exact Q4_K_M/prompt fingerprints; BF16 KV; cached builds | **Retained direct native-c8 and real OpenAI server scaling**: direct one-physical-c8 remains **246.872 aggregate tok/s**, **2.888x c1** and **+34.89%** over c4+c4, with a **748 packed-native / 0 row-local / 0 copy** trace. E3 adds exact C13 eager/graph p512/d128 (**66,560/66,560** hidden rows), sparse cancellation/admission, and nine-move optional compaction with **2/2** graph invalidations. The clean p512/128-output SSE packet retains logical c1/c8/c9/c13/serial-c13 at **25.583/136.122/88.592/111.380/31.708 aggregate tok/s**; grouped C13 is **4.354x** logical-c1 and **3.513x** serial, while all **189** prompt/output rows are exact and the c8→c13 live trace drains ownership to zero. C>8 is explicitly multiple physical buckets, never native c9/c13. [`E3`](results/2026-07-17-gfx1100-gguf-concurrency-e3-arbitrary-c-correctness.json) · [`F1`](results/2026-07-17-gfx1100-gguf-concurrency-f1-server-scaling-closure.json). | Yes, under separate direct graph-step and real SSE cycle-wall scopes | Rerun after physical-group planning, resident stream lifecycle, packed graph/model math, server timing/accounting, prompt/model, compiler/runtime, or device policy changes. |
+| Radeon Pro W7900, gfx1100 | PARO W4/BF16-KV explicit direct native-c2 selected-batch decode | 2026-07-18 | clean measured `fcb65c47`; TheRock HIP 7.15; exact packed-PARO/prompt fingerprints; cached builds | **Retained for the direct c2 model-step scope**: p512/d128 selected-batch is **121.923 aggregate / 60.962 per-request tok/s**, **+5.09% vs c1 graph** and **+20.81% vs serial c2**. Three fresh processes are <=0.276% stdev/median; primitive, all-layer hidden/Conv/GDN/context/KV, uniform/ragged EOS+cancel immutability, auto-default, and a **10/10 prompt / 330/330 ID** category+heldout gate pass. The fresh L4 trace is `eq_ok`, has **1,306 dispatches**, and records the exact c2 context plus selected fused projection families. Public/OpenAI PARO remains width-1; c4/c8 and gfx1151 are not implied. [`artifact`](results/2026-07-18-gfx1100-paro-g2-selected-batch-c2-retained.json). | Yes, for explicit direct native c2 only | Rerun after PARO c2 math/routing, model/prompt, compiler/runtime, KV policy, or device policy changes; require separate shared-loop and c4/c8 gates before broader production claims. |
 | Radeon Pro W7900, gfx1100 | GGUF final architecture-local prefill/decode/memory optimization | 2026-07-16 | clean right-sized rollup `28b37356`; therock HIP 7.15; exact Q4_K_M fingerprint; selector-unset BF16-KV package defaults | **Accepted final gfx1100 GGUF route**: six-shape prefill is **2716.648/3052.541/2953.101/2078.038/1559.878/1037.378 tok/s**, beating llama.cpp HIP by **12.62-30.95%** everywhere and Vulkan from 512-64K; graph decode is **92.833/98.148/100.522/88.240/76.691/62.669 tok/s**, ahead of llama.cpp HIP everywhere and closest to Vulkan at 4K (**-2.47%**). Tracked memory is within **-0.378 to +0.079 GiB** of llama.cpp HIP whole-device readings. All 18 IDs are exact. [`artifact`](results/2026-07-16-gfx1100-gguf-final-optimization-sweep.json). | Yes | Rerun after model/runtime/default-policy, compiler/runtime, or reference-engine changes; decode-to-Vulkan and 128K Vulkan prefill are the concrete residuals. |
 | Radeon Pro W7900, gfx1100 | GGUF pp512 request-scoped metadata reuse | 2026-07-15 | clean retained scheduler `e03e5a34`; matched HIP API/kernel traces around the identical source change; system HIP 7.2.53211; exact Q4_K_M fingerprint retained | **Retained scheduler / diagnostic GPF-9C row**: exactly **240 synchronous copies** are removed, matched queue idle falls **27.956 -> 15.163 ms (-45.76%)**, and clean `chain_peer_wave32` pp512 improves **2210.729 -> 2292.186 tok/s (+3.68%)** with stable IDs, unchanged **22.995 GiB** peak, and decode +0.51%. 4K is within -0.44%, but 512 remains **4.98% below** the frozen llama.cpp HIP floor, so exact direct-LDS32 remains production. [`artifact`](results/2026-07-15-gfx1100-gguf-prefill-chunk-metadata-reuse.json). | Diagnostic link only; scheduler code retained | Superseded for the next queue boundary by the compact-WMMA no-read row below; retain as the isolated 240-copy attribution. |
 | Radeon Pro W7900, gfx1100 | GGUF pp512 compact-WMMA tight no-read | 2026-07-15 | clean retained gfx1100 default `31c9cdc5`; matched HIP API/kernel traces against `e03e5a34`; system HIP 7.2.53211; exact Q4_K_M fingerprint retained | **Retained gfx1100 scheduler default / diagnostic GPF-9C row**: the tight routing-independent tile bound removes the remaining **40 synchronous D2H copies**, cuts matched queue idle **15.163 -> 11.634 ms (-23.27%)**, and improves clean `chain_peer_wave32` pp512 **2292.186 -> 2334.451 tok/s (+1.84%)** with stable IDs, unchanged **22.995 GiB** peak, and decode within -0.053%. 4K improves +0.70%; pp512 remains **3.23% below** the frozen llama.cpp HIP floor, so exact direct-LDS32 remains production. gfx1151 stays scalar pending its independent gate. [`artifact`](results/2026-07-15-gfx1100-gguf-compact-wmma-tight-no-read.json). | Diagnostic link only; scheduler code retained | Superseded as the final pp512 residual by the no-scratch Conv row below; retain as the isolated 40-copy attribution. |
@@ -878,6 +880,22 @@ Artifacts: [`Q8T16 wave/block production A/B`](results/2026-07-12-gfx1151-q8-t16
 and [`SOL-G5 production graph audit`](results/2026-07-11-sol-g5-gfx1151-gguf-decode-graph-production-audit.json).
 
 ### PARO concurrency and production routing
+
+The current gfx1100 retained row is deliberately narrower than the GGUF server
+claim: it is one explicit direct physical-c2 model step, not the public/OpenAI
+loop. Canonical `auto` resolves the exact selected-batch MoE route for this
+step; grouped-compact remains a slower exact diagnostic.
+
+| gfx1100 direct route | Median aggregate decode | Per-request decode | Classification |
+| --- | ---: | ---: | --- |
+| c1 graph | **116.022 tok/s** | 116.022 tok/s | independent reference |
+| serial c2 bridge | **100.925 tok/s** | 50.462 tok/s | exact fallback control |
+| native selected-batch c2 | **121.923 tok/s** | 60.962 tok/s | **retained direct c2; 1.0509x c1 / 1.2081x serial** |
+
+The three selected samples are 121.357/121.923/121.953 aggregate tok/s. All
+274 recorded IDs per run match independent c1, the ten-prompt category and
+heldout suite matches 330/330 IDs, and all-layer/lifecycle/profiler gates pass.
+Artifact: [`gfx1100 selected-batch c2`](results/2026-07-18-gfx1100-paro-g2-selected-batch-c2-retained.json).
 
 The current gfx1151 concurrency table publishes only the exact production
 classification. c1 has a retained exact-fixture timing; c2-c8 use independent
