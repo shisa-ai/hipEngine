@@ -162365,3 +162365,69 @@ Host validation passes **237/237** dispatch/paged-attention/state/layout tests
 and **25/25** retained-bench/hidden-bisect tests, plus focused Ruff, compileall,
 and diff checks. The code change closes only the first native-c2 context
 boundary; it does not promote full PARO c2, whose next RED is generated index 3.
+
+## 2026-07-17 — Close PARO c2 short-context arithmetic drift
+
+Localized the next current-HEAD W7900 failure without changing math first. From
+clean `c69a1512`, the same p512 fixture and hermetic HIP 7.15 environment traced
+three decode steps through layer limits 1/2/4/8/16/24/32/40. The optimized
+1,024-thread c2 context kernel first introduced arithmetic drift at full-attention
+layer 3 on decode step 0/generated index 1: prepared Q/K/V/gate, the complete
+BF16 KV prefix/current source, append metadata, and independent NumPy context
+were exact, while batch context differed from dense c1 by **4.828e-6 max abs**.
+That changed only 18/10 FP16 gated-attention bits initially, but by decode step 2
+the drift crossed the 1e-3 layer-3 MLP-input contract, then changed layer-4 Conv
+state by **0.0078125** and eventually the generated-index-3 token. A row-local
+paged-context control reduced but did not close the full-model drift, proving the
+issue was reduction order rather than state or KV ownership.
+
+Added RED coverage before implementation:
+
+- registry/dispatch/state tests required `PagedAttnDecodeKind.CONTEXT_BATCH` to
+  resolve a separately registered `bf16_context_batch_c1_exact_spans` route;
+  all three failed safely on the old route;
+- the existing model-shape GPU test now uses two distinct physical block rows at
+  context 513 and compares the c2 wrapper directly to two dense c1 launches.
+  The old nominal c1-exact wrapper differed in **6,164/8,192 FP32 elements**,
+  max abs **1.192e-6**, because it merely reused the paged warp-per-token body.
+
+Implemented a true c-aware dense-order kernel. It retains one c2 batch-grid
+launch and reads arbitrary physical rows through `KVLiveSpans`, but duplicates
+the dense c1 score, max, softmax-sum, normalization, and value accumulation
+order exactly. The four-axis registry now selects it as the BF16 batch-context
+default. The faster 1,024-thread variant remains registered only as an explicit
+kernel-level diagnostic; `docs/REFACTOR.md` records its removal/replacement
+trigger.
+
+Dirty-tree RED→GREEN evidence on the W7900:
+
+- host route/registry/state RED **0/3** becomes **3/3**; the broader KV dispatch
+  and decode-state set passes **81/81**; resident batch layout passes **151/151**;
+  the complete paged-attention plan passes **5/5** under the hermetic HIP stack;
+  focused Ruff, compileall, and diff checks pass;
+- the 513-token physical-c2 primitive is bit-exact to dense c1. The L4/d3 stage
+  gate is exact-zero for input, prepared Q/K/V, context, gate, O, residual,
+  MLP input/output, hidden, tokens, linear state, NumPy context, and KV on both
+  rows and all three steps;
+- the full L40/d3 comparator is `eq_ok` at every 4/8/16/24/32/40 limit: prefill
+  hidden/linear state/full-KV, decode linear inputs/stages/Conv+GDN state,
+  full-attention input/output/NumPy context/KV, final hidden, and tokens all pass
+  with no bit drift. Raw JSON: 19,890,755 bytes, SHA-256
+  `ad183e18980d3dc61ec5abae749f3d70e7686d22b9a20d02bac558980be569d3`;
+- full L40 p512/w8/d128 direct c2 now matches both independent c1 sessions for
+  **137/137 IDs per row (274/274 overall)**. Diagnostic decode is **122.004
+  aggregate / 61.002 per-request tok/s** over 2.098 s: **+21.05%** over the
+  100.789 serial-c2 bridge, but **-6.49%** versus the invalid 130.464 optimized
+  arithmetic-drift route. This is not a retained performance claim;
+- cached `rocprofv3 --kernel-trace` records one true c2
+  `qwen35_paged_full_attn_decode_context_tensor_batch_c1_exact_kernel` launch at
+  **200,082 ns**, grid Y **2**, workgroup X **256**, 24 VGPR, and zero reported
+  scratch/LDS. The profiled L4/d1 comparator is `eq_ok`; CSV is 280,135 bytes,
+  SHA-256 `3c88aaae71d48655410c8a260fe1c4108ab68666e05e58a389098a6946868815`.
+
+This closes the short-context attention arithmetic boundary, not G2 as a whole.
+The benchmark package remains correctly blocked because decode still declares
+`selected_c1_batch` MoE and lacks the grouped-compact/lifecycle/repetition
+packet. Production continues to fail closed to true width-1 sessions. The next
+native-c2 boundary is selected-expert MoE, followed by shrinking lifecycle and
+then c4/c8 generalization.

@@ -152,7 +152,7 @@ _PAGED_ATTN_PREFILL_GRANULARITY_ROUTES: dict[
 
 _PAGED_ATTN_DECODE_ROUTES: dict[tuple[DType, PagedAttnDecodeKind], _RouteTemplate] = {
     (DType.BF16, PagedAttnDecodeKind.CONTEXT_BATCH): _RouteTemplate(
-        "paged_attn_decode", "bf16_context_batch_spans"
+        "paged_attn_decode", "bf16_context_batch_c1_exact_spans"
     ),
     (DType.BF16, PagedAttnDecodeKind.GQA_SPLITK): _RouteTemplate(
         "paged_attn_decode", "bf16_split_k_gqa_spans"

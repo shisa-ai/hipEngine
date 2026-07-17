@@ -18,7 +18,7 @@ from hipengine.dispatch import (
 from hipengine.kernels.hip_gfx1100.attention import (
     qwen35_paged_attn_decode_int8_gqa_splitk_gate_fp16_spans,
     qwen35_paged_attn_prefill_int8_gqa_gate_fp16_spans,
-    qwen35_paged_full_attn_decode_context_bf16_batch_spans,
+    qwen35_paged_full_attn_decode_context_bf16_batch_c1_exact_spans,
     qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_spans,
     qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans,
     qwen35_write_paged_kv_int8_per_token_head_batch_spans,
@@ -167,7 +167,7 @@ def test_paged_attn_decode_resolves_batch_context() -> None:
         "hip_gfx1100",
         "paged_attn_decode",
         "w4_paro",
-        "bf16_context_batch_spans",
+        "bf16_context_batch_c1_exact_spans",
     )
     assert (
         resolve_paged_attn_decode(
@@ -176,7 +176,7 @@ def test_paged_attn_decode_resolves_batch_context() -> None:
             kind="context_batch",
             model_quant="w4_paro",
         )
-        is qwen35_paged_full_attn_decode_context_bf16_batch_spans
+        is qwen35_paged_full_attn_decode_context_bf16_batch_c1_exact_spans
     )
 
 
