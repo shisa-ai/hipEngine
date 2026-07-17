@@ -275,43 +275,44 @@ and [W7900 correctness oracle](benchmarks/results/2026-07-12-w7900-v030-gguf-eag
 
 > Thanks to Framework for sending a dedicated Framework Desktop Strix Halo motherboard for this profiling and tuning work.
 
-**Status: retained through 64K; repeated 128K blocked.** GGUF is the clean
-2026-07-15 selector-unset 1+3 production refresh at `61a27d72`, with the
-current LCP stack and automatic one-queue gfx1151 process policy. The five
-accepted shapes pass clean provenance, finite logits, exact final IDs, and the
-5% variance gate; prefill/decode stdev over median is at most
-**0.187%/0.049%**, all 15 measured IDs are `9707`, and tracked memory is
-unchanged. Repeated 128K production completes warmup but can still enter the
-100%/2.9 GHz, 44-46 W no-progress state on measured pass 1. Router rollback and
-SDMA-disabled full controls reproduce it, so no stale hipEngine GGUF 128K value
-is carried into the table. llama.cpp remains the clean July 11 reference; PARO
-retains its July 12 exact recovery and scoped queue-isolation rows. Bold marks
-the best raw value per row, but PARO is W4 PARO rather than Q4_K_M and memory
-scopes differ, so emphasis is descriptive rather than a controlled same-math
-allocator comparison.
+**Status: current IOMMU-off refresh retained through 64K; repeated GGUF 128K
+blocked.** The clean 2026-07-17 table at `2edbb2ee` refreshes PARO, GGUF, and
+both llama.cpp backends under `amd_iommu=off`. GGUF 512-64K passes clean
+provenance, finite logits, exact final IDs, and the 5% variance gate; maximum
+prefill/decode stdev over median is **0.122%/0.028%**, and all 15 IDs are
+`9707`.
+
+Relative to the previous published IOMMU-on rows, the arithmetic mean change
+across 11 eligible hipEngine cells is **+4.60% prefill / +6.20% decode**; GGUF
+alone averages **+8.84% / +5.84%**. This is directional, not causal, because
+the hipEngine revision/routing also changed; a same-commit reboot A/B remains
+necessary. The setting leaves zero IOMMU groups and disables the XDNA/NPU
+driver. GGUF 128K still times out after a 584.059 tok/s warmup and 583.464 tok/s
+measured pass, so no stale 128K number is carried forward. Bold values remain
+descriptive because quant/KV types and memory scopes differ.
 
 <!-- BEGIN TOPLINE:GFX1151_SWEEP -->
 #### Prefill tok/s
 
 | Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | 1140.101 | **1294.885** | 1061.260 | 1067.770 |
-| 1K/128 | 1208.343 | **1358.342** | 1043.230 | 1069.870 |
-| 4K/128 | 1089.031 | **1365.720** | 1009.240 | 1016.580 |
-| 32K/128 | 906.145 | **1034.845** | 743.547 | 814.923 |
-| 64K/128 | 716.775 | **796.083** | 573.611 | 660.974 |
-| 128K/128 | 474.641 | — (blocked) | 390.441 | **476.788** |
+| 512/128 | 1298.259 | **1395.379** | 1184.628 | 1161.498 |
+| 1K/128 | 1332.199 | **1481.943** | 1192.768 | 1154.327 |
+| 4K/128 | 977.252 | **1444.733** | 1148.155 | 1114.081 |
+| 32K/128 | 827.350 | **1132.215** | 843.252 | 873.573 |
+| 64K/128 | 690.642 | **892.663** | 632.774 | 702.742 |
+| 128K/128 | 498.101 | — (blocked) | 432.033 | **499.728** |
 
 #### Decode tok/s
 
 | Workload | hipEngine PARO | hipEngine GGUF | llama.cpp HIP | llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| 512/128 | **66.767** | 49.041 | 50.939 | 62.396 |
-| 1K/128 | 61.746 | 51.623 | 50.818 | **62.136** |
-| 4K/128 | **62.715** | 52.422 | 50.126 | 60.097 |
-| 32K/128 | 50.342 | 43.572 | 44.240 | **51.319** |
-| 64K/128 | 42.094 | 37.622 | 39.326 | **44.422** |
-| 128K/128 | 30.386 | — (blocked) | 32.114 | **34.948** |
+| 512/128 | **70.750** | 52.761 | 53.222 | 63.795 |
+| 1K/128 | **65.905** | 54.658 | 53.044 | 63.391 |
+| 4K/128 | **66.728** | 55.297 | 52.338 | 61.863 |
+| 32K/128 | **53.458** | 45.983 | 45.946 | 52.286 |
+| 64K/128 | 44.793 | 39.388 | 40.353 | **45.160** |
+| 128K/128 | 32.615 | — (blocked) | 32.728 | **35.569** |
 
 #### Peak memory GiB
 
@@ -320,22 +321,18 @@ allocator comparison.
 | 512/128 | **18.039** | 21.478 | 21.375 | 21.551 |
 | 1K/128 | **18.051** | 21.710 | 21.387 | 21.501 |
 | 4K/128 | **19.026** | 22.995 | 21.444 | 21.507 |
-| 32K/128 | **19.729** | 23.559 | 21.987 | 22.191 |
-| 64K/128 | **20.403** | 24.203 | 22.666 | 22.627 |
-| 128K/128 | **22.124** | — (blocked) | 23.862 | 24.254 |
+| 32K/128 | **19.716** | 23.559 | 21.987 | 22.191 |
+| 64K/128 | **20.344** | 24.203 | 22.666 | 22.627 |
+| 128K/128 | **21.881** | — (blocked) | 23.862 | 24.254 |
 <!-- END TOPLINE:GFX1151_SWEEP -->
 
 The memory columns have different scopes: hipEngine reports tracked allocator
 high-water, while llama.cpp reports absolute whole-device amdgpu GTT used,
 sampled every 10 ms. Use them for within-column context growth, not small
-cross-column allocator comparisons. Row sources: [`current hipEngine GGUF 512-64K refresh and 128K blocker`](benchmarks/results/2026-07-15-gfx1151-gguf-production-refresh-512-64k-128k-blocked.json),
-[`PARO exact recovery`](benchmarks/results/2026-07-12-gfx1151-paro-prefill-recovery.json),
-[`PARO 4K-128K AOTriton queue isolation`](benchmarks/results/2026-07-12-gfx1151-paro-aotriton-stream-isolation.json),
-[`previous GGUF LCP-1/LCP-D1 rollup`](benchmarks/results/2026-07-14-gfx1151-gguf-lcp1-lcpd1-right-sized-3run.json),
-[`queue-stall follow-up`](https://github.com/ROCm/ROCm/issues/5107#issuecomment-4979442043),
-[`accepted July 11 matched summary`](benchmarks/results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-summary.json),
-[`llama.cpp HIP`](benchmarks/results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-llamacpp-hip-q4km-f16kv.json), and
-[`llama.cpp Vulkan`](benchmarks/results/2026-07-11-gfx1151-readme-refresh-20260711-d1231ee0-llamacpp-vulkan-q4km-f16kv.json). Exact settings and gates are in the canonical [`benchmarks/README.md`](benchmarks/README.md#gfx1151-model-throughput).
+cross-column allocator comparisons. Row source: [`current IOMMU-off refresh and
+128K blocker`](benchmarks/results/2026-07-17-gfx1151-amd-iommu-off-topline-refresh.json).
+Exact settings and gates are in the canonical
+[`benchmarks/README.md`](benchmarks/README.md#gfx1151-model-throughput).
 
 ### Current gfx1151 GGUF decode baselines
 
@@ -420,44 +417,46 @@ the compatibility semantics. Artifact:
 | Metric | hipEngine GGUF exact/default | hipEngine GGUF `llama-compat` | llama.cpp HIP |
 | --- | ---: | ---: | ---: |
 | Route | B5, fixed 10 cycles | B2, natural24/cyclecap24 | B2, natural25 request / 24 timed transitions |
-| Canonical/native MTP decode | 51.81 tok/s (0.9571x own AR) | **69.50 tok/s (1.2776x own AR)** | 69.44 tok/s native (1.3752x own AR; not cross-engine comparable) |
-| Cross-engine MTP decode-transition rate | n/a: fixed-cycle horizon | **69.38 tok/s** | 66.66 tok/s |
-| Cross-engine own AR transition rate | n/a: fixed-cycle horizon | **54.40 tok/s** | 48.47 tok/s |
-| Cross-engine MTP / own AR | n/a | 1.2755x | 1.3752x |
+| Canonical/native MTP decode | 56.39 tok/s (0.9895x own AR) | **81.90 tok/s (1.4423x own AR)** | 70.99 tok/s native (1.3530x own AR; not cross-engine comparable) |
+| Cross-engine MTP decode-transition rate | n/a: fixed-cycle horizon | **81.75 tok/s** | 68.15 tok/s |
+| Cross-engine own AR transition rate | n/a: fixed-cycle horizon | **56.78 tok/s** | 50.37 tok/s |
+| Cross-engine MTP / own AR | n/a | 1.4396x | 1.3530x |
 | Draft acceptance | 72.33% | 77.72% | 79.56% |
 | Accepted draft/output | 53.49% | 59.58% | 57.60% |
-| Full-cycle/predicted wall per counted output or timed transition | 19.360 ms/output | 14.413 ms/output | 15.001 ms/transition |
+| Full-cycle/predicted wall per counted output or timed transition | 17.808 ms/output | 12.233 ms/output | 14.673 ms/transition |
 | State/commit contract | exact/default, serial-prefix preserving | direct partial commit/dp4a; accuracy-traded | native llama.cpp compatibility target |
 
-The current exact/default B5 route no longer beats true AR after the
-correctness/state-lifecycle pass: **51.81 vs 54.14 tok/s (0.9571x)**. Its old
-61.98 tok/s row is retained only as history. `llama-compat` remains a separate,
-explicit-only semantic contract and is not serial-prefix-equivalent.
+The IOMMU-off exact/default B5 route improves **51.81 -> 56.39 tok/s** but
+still narrowly trails true AR at **56.98 tok/s (0.9895x)**. Its train split is
+1.0161x AR, while heldout is only 0.9339x, so the aggregate negative remains
+the retained semantic-control result. `llama-compat` stays a separate,
+explicit-only contract and is not serial-prefix-equivalent.
 
-The cross-engine rows use the canonical transition-matched timing contract:
-hipEngine uses complete cycle wall; llama.cpp requests 25 outputs and counts
-the 24 transitions inside `predicted_ms`. This removes llama.cpp's native
-one-untimed-token numerator advantage. hipEngine uses BF16 KV while llama.cpp
-uses F16 KV, which remains a model-execution difference even with matched timer
-boundaries. The captured llama.cpp source is dirty but fully preserved in the
-repository patchset; the binary hash is authoritative and
-`performance_claim=false`.
+The cross-engine rows use the transition-matched timing contract: hipEngine
+uses complete cycle wall; llama.cpp requests 25 outputs and counts the 24
+transitions inside `predicted_ms`. hipEngine is **81.75 vs 68.15 tok/s
+(+19.94%)** on that boundary. hipEngine uses BF16 KV while llama.cpp uses F16
+KV. The llama.cpp server binary is byte-identical to the prior publication, but
+its source checkout remains dirty/preserved and `performance_claim=false`.
+As with the model sweep, hipEngine's prior IOMMU-on comparison is directional
+because the measured revision changed; this is not a same-commit reboot A/B.
 
 ##### gfx1151 `llama-compat` full-suite gate
 
 | Scope | Prompts | True AR tok/s | `llama-compat` tok/s | MTP / AR | Draft acceptance | Accepted/output | Cycle wall/output |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Full | 10 | 54.40 | **69.50** | **1.2776x** | 77.72% | 59.58% | 14.413 ms |
-| Train | 6 | 54.44 | **70.96** | **1.3034x** | **82.08%** | 60.42% | 14.116 ms |
-| Heldout | 4 | 54.33 | **67.42** | **1.2408x** | **71.79%** | 58.33% | 14.858 ms |
-| `code` | 4 | 54.42 | **74.81** | **1.3747x** | 91.04% | 63.54% | 13.387 ms |
-| `general_en` | 2 | 54.50 | **67.62** | **1.2407x** | 71.79% | 58.33% | 14.811 ms |
-| `general_ja` | 2 | 54.40 | **66.60** | **1.2242x** | 69.23% | 56.25% | 15.042 ms |
-| `mixed_ja_en` | 2 | 54.25 | **64.90** | **1.1964x** | 69.23% | 56.25% | 15.438 ms |
+| Full | 10 | 56.78 | **81.90** | **1.4423x** | 77.72% | 59.58% | 12.233 ms |
+| Train | 6 | 57.21 | **82.99** | **1.4504x** | **82.08%** | 60.42% | 12.073 ms |
+| Heldout | 4 | 56.15 | **80.32** | **1.4306x** | **71.79%** | 58.33% | 12.474 ms |
+| `code` | 4 | 56.66 | **89.13** | **1.5731x** | 91.04% | 63.54% | 11.239 ms |
+| `general_en` | 2 | 57.66 | **78.44** | **1.3605x** | 71.79% | 58.33% | 12.771 ms |
+| `general_ja` | 2 | 56.79 | **79.32** | **1.3968x** | 69.23% | 56.25% | 12.629 ms |
+| `mixed_ja_en` | 2 | 56.17 | **75.43** | **1.3430x** | 69.23% | 56.25% | 13.287 ms |
 
 All four categories and the heldout split beat their true same-protocol AR
-controls. Train/heldout draft acceptance is **82.08% / 71.79%**; the gap is
-kept visible rather than averaged away.
+controls. Train/heldout draft acceptance remains **82.08% / 71.79%**; the gap
+is kept visible rather than averaged away. The repeated-stream teacher-forced
+oracle also passes byte-exact hidden, Conv/GDN, live-KV, and token state.
 
 #### Dense PARO DFlash
 
@@ -468,10 +467,8 @@ kept visible rather than averaged away.
 
 Artifacts: [`W7900 GGUF MTP transfer`](benchmarks/results/2026-07-12-w7900-gfx1100-gguf-mtp-transfer.json),
 [`DFlash`](benchmarks/results/2026-06-11-hipengine-dflash-27b-dense-hardening-rerun.json),
-[`gfx1151 exact MTP`](benchmarks/results/2026-07-02-ar-mtp-default-parallelattn-full.json),
-and [`gfx1151 llama-compat` MTP](benchmarks/results/2026-07-03-ar-mtp-llama-compat-directcommit-nocopy-natural24-cyclecap24-f32head-full.json).
-The gfx1151 matched natural24 controls are [`exact/default B1-B5`](benchmarks/results/2026-07-03-ar-mtp-default-natural24-budget-sweep-c1.json)
-and [`llama.cpp HIP B2`](benchmarks/results/2026-07-02-llamacpp-mtp-stage-timing-b2-natural24-rerun.json).
+and [`current gfx1151 IOMMU-off MTP refresh`](benchmarks/results/2026-07-17-gfx1151-amd-iommu-off-mtp-refresh.json).
+Historical gfx1151 controls remain linked from the canonical benchmark record.
 Historical hipEngine OpenAI MTP server rows are excluded. The current raw-ID
 route counts exact completion IDs across every choice and owns batch timing
 once. The
