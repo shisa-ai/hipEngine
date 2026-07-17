@@ -162258,3 +162258,48 @@ c2 fails almost immediately on these distinct current-source prompts. This is a
 useful narrow RED boundary, not a regression claim against comparable retained
 evidence. G2 now runs the existing hidden/state/KV stage bisector only through
 the first two decode steps before changing kernels or dispatch.
+
+## 2026-07-17 — Localize the first W7900 PARO native-c2 divergence
+
+Reused the existing `scripts/qwen35_batch_hidden_bisect.py` without extending or
+forking it. From clean `70b85b7c`, the hermetic W7900 run used the same current
+model/fixture as G1, BF16 KV, c2, p512, two decode steps, layer limits
+`1,2,4,8,16,24,32,40`, the full NumPy context oracle, linear-state summaries,
+and the exact direct-native route switches. The raw command is retained in the
+compact artifact.
+
+The result is a narrow stage-level RED:
+
+- layer limits 1 and 2 are fully green for prefill hidden, prefill linear
+  inputs/state, prefill full-KV prefixes, decode linear inputs/handoffs/stages,
+  Conv/recurrent state, hidden, and tokens;
+- limit 4 first fails at full-attention layer 3, decode step 0, row 1;
+- every traced producer stage from layer input through prepared Q/K/V/gate is
+  green, as are sampled K/V cache contents, but `attn_context` disagrees with
+  independent c1 by **0.827461 max abs / 4,046 elements over 1e-3**;
+- the independent NumPy oracle independently rejects the batch context by
+  **0.827463 max abs / 4,093 elements over 1e-3**, localizing the root cause to
+  the native batch context reduction rather than its inputs, KV append, or the
+  downstream O/post/MoE work;
+- post-layer hidden differs by **0.041016 max abs**, 2,036 FP16 bit mismatches,
+  and 1,565 elements over tolerance. Row 1 then first changes token at generated
+  index 2 (`475` versus c1 `1947` in the L4 truncated-model probe), matching the
+  full L40 G1 first-failure index;
+- layer-7 current-token K/V/source differences in later limits are downstream
+  propagation after layer 3; cache writes still match their local producers and
+  are not the first bug.
+
+This proves the comparator already satisfies the G2 layer/stage/state/KV need;
+no new diagnostic code is justified. The smallest candidate fix is also already
+in-tree: the paged-attention library exposes a c-aware batch-grid
+`...context_bf16_batch_c1_exact_spans` entry that keeps the c1 256-thread
+reduction shape. GGUF already uses it, while PARO currently calls the 1,024-thread
+c2 context entry whose parallel value-reduction order is the failing boundary.
+The next RED/GREEN unit should register/resolve that exact batch variant for PARO
+rather than adding a per-row fallback or changing KV code.
+
+Raw JSON: 46,576,030 bytes, SHA-256
+`be182d5b62f1ec72950f9b54ea3c10d48515ec69a2b66c5d7a5ae34fa8c30b6e`.
+Compact diagnostic:
+`benchmarks/results/2026-07-17-gfx1100-paro-g2-native-c2-first-divergence.json`.
+No performance claim is made.
