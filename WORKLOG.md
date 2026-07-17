@@ -161726,3 +161726,43 @@ Validation after resolution: `tests/test_benchmark_readme_sync.py` passes **6/6*
 the three incoming gfx1151 artifacts and both final gfx1100 E2 artifacts parse as
 JSON; focused compilation, README export sync, conflict scan, and
 `git diff --check` pass. No runtime source changed in this second merge.
+
+## 2026-07-17 — Start gfx1151 GGUF concurrency symmetry audit
+
+Started Phase E1 from synchronized clean tracked commit `ddab579f` on the
+Radeon 8060S/gfx1151 host. The active boot is normal HWS (`sched_policy=0`)
+with `amd_iommu=off`, zero IOMMU groups, TheRock HIP/hipcc 7.15, and the
+repository's gfx1151 one-HIP-hardware-queue process default. The 22.66 GB
+Qwen3.6-35B-A3B UD-Q4_K_M model is readable. GPU jobs will remain sequential;
+all measurements must disclose this IOMMU-off boot and cannot be compared
+causally with IOMMU-on evidence without a same-commit reboot control.
+
+The merged gfx1100 concurrency stack is mechanically backend-capable before any
+new source change. Loading both backend packages yields **580/580** matching
+registry keys. gfx1151 resolves the indexed BF16 Conv/GDN pair, physical-c8
+device-position metadata, masked graph commit, and indexed hidden recorder to
+the shared proven gfx11 wrappers, while runner-owned target-arch scope compiles
+their code objects with `--offload-arch=gfx1151`. The state-bound graph policy
+remains architecture-scoped at 128 replay steps on gfx1151 versus 24 on gfx1100.
+The runner, packed graph, scheduler, KV pool, and server loop consume the
+resolved backend or backend capability metadata; no new backend branch or peer
+kernel tree copy is justified before a measured failure. Registry/package,
+batch-dispatch, state-plan, packed-graph, and execution-manifest host checks are
+green (**53 passed**).
+
+The required external-lineage command was attempted before considering kernel
+work. Both the broad and family-filtered invocations stop before comparison
+because this host lacks the manifest paths
+`/home/lhl/amd-gpu-tuning/reference/atlas` and
+`/home/lhl/amd-gpu-tuning/nano-vllm-amd`. This does not block unchanged
+in-tree cross-backend validation; if the first failure requires editing or
+porting a kernel body, restore or remap the read-only lineage checkout and rerun
+`scripts/check_lineage.py` before that edit.
+
+The unchanged E1 gate order is now fixed: c2/c4/c8 primitive equality; short
+steady/ragged/sparse eager and graph token/hidden/Conv/GDN/live-KV equality;
+standard all-row p512/d128 eager+graph; category/heldout repetition; cached-only
+native-family marker census; same-session c1/c2/c4/native-c8/chunked-c8/serial
+scaling; then the Phase-D live admission/cancel/reclaim and observability
+lifecycle. No throughput or gfx1151 native-cN claim is made until those gates
+pass. Implementation changes begin only at the first localized RED result.
