@@ -160,6 +160,52 @@ def _safe_ratio(numerator: Any, denominator: Any) -> float | None:
     return float(numerator) / float(denominator)
 
 
+def _owned_physical_plans(
+    timeline: Sequence[Mapping[str, Any]],
+    observed_request_ids: Sequence[int],
+) -> tuple[list[dict[str, Any]], int]:
+    """Keep plans owned by this HTTP sample, not a prior poll's last plan."""
+
+    owned = {int(request_id) for request_id in observed_request_ids}
+    selected: list[dict[str, Any]] = []
+    foreign = 0
+    for item in timeline:
+        for raw_plan in item.get("physical_group_plans", ()):
+            if not isinstance(raw_plan, dict) or not raw_plan:
+                continue
+            plan = copy.deepcopy(raw_plan)
+            plan_request_ids = {
+                int(request_id)
+                for group in plan.get("groups", ())
+                for request_id in group.get("request_ids", ())
+            }
+            if plan_request_ids and plan_request_ids <= owned:
+                selected.append(plan)
+            else:
+                foreign += 1
+    return selected, foreign
+
+
+def _logical_shape_covers(
+    shape: tuple[int, tuple[int, ...], tuple[str, ...]],
+    *,
+    logical_c: int,
+    group_count: int,
+) -> bool:
+    observed_c, widths, masks = shape
+    return bool(
+        observed_c == int(logical_c)
+        and len(widths) == int(group_count)
+        and len(masks) == int(group_count)
+        and all(width in {1, 2, 4, 8} for width in widths)
+        and all(
+            len(mask) == width and set(mask) <= {"0", "1"}
+            for width, mask in zip(widths, masks, strict=True)
+        )
+        and sum(mask.count("1") for mask in masks) == int(logical_c)
+    )
+
+
 def _parse_sse_data_line(line: str) -> dict[str, Any] | str | None:
     text = str(line).strip()
     if not text or not text.startswith("data:"):
@@ -570,12 +616,10 @@ def _run_http_sample(
             }
         )
     sample_timeline = copy.deepcopy(timeline[timeline_start:])
-    plans = [
-        plan
-        for item in sample_timeline
-        for plan in item.get("physical_group_plans", ())
-        if isinstance(plan, dict) and plan
-    ]
+    plans, foreign_plan_count = _owned_physical_plans(
+        sample_timeline,
+        [int(request_id) for request_id in observed_ids],
+    )
     declared_widths_only = all(
         int(group["physical_rows"]) in {1, 2, 4, 8}
         for plan in plans
@@ -660,14 +704,22 @@ def _run_http_sample(
         )
     elif config.name == "packed_c9":
         expected_group_shape_seen = any(
-            logical_c == 9 and widths == (8, 1) and masks == ("11111111", "1")
+            _logical_shape_covers(
+                (logical_c, widths, masks),
+                logical_c=9,
+                group_count=2,
+            )
+            and widths[0] == 8
             for logical_c, widths, masks in logical_shapes
         )
     elif config.name in {"packed_c13", "serial_c13"}:
         expected_group_shape_seen = any(
-            logical_c == 13
+            _logical_shape_covers(
+                (logical_c, widths, masks),
+                logical_c=13,
+                group_count=2,
+            )
             and widths == (8, 8)
-            and masks == ("11111111", "11111000")
             for logical_c, widths, masks in logical_shapes
         )
     live_shape_seen = bool(
@@ -765,6 +817,9 @@ def _run_http_sample(
                 }
                 for logical_c, widths, masks in logical_shapes
             ],
+            "sample_owned_plan_count": len(plans),
+            "foreign_plan_count": foreign_plan_count,
+            "plan_scope": "all group request_ids belong to this sample's HTTP request IDs",
             "live_trigger": live_trigger,
             "live_shape_seen": live_shape_seen,
         },

@@ -162010,3 +162010,35 @@ queue/TTFT/ITL/service/completion durations, KV ownership, bucket key, and finis
 metadata. Focused host tests remain **7/7** and Ruff/compilation/diff checks pass.
 Commit this evidence-contract fix and restart the full packet from that clean
 revision; the stopped partial run is diagnostic only and publishes no number.
+
+## 2026-07-17 — Reject cross-sample server-plan assumptions
+
+The first complete clean `275894b4` p512/d128 server packet is numerically and
+operationally exact but correctly remains **diagnostic** because two harness
+shape clauses were too strict. All **189** requests retained their actual
+512-token resident prompt IDs, exact 128-token c1 trajectories, OpenAI usage,
+finish metadata, and scheduler timestamps; all static rows passed the 5% variance
+guard; final request/session ownership is zero; and grouped C=13 measured
+**111.636 aggregate tok/s**, **4.299x** c1 (**25.970**) and **3.543x** the
+same-loop serial C=13 bridge (**31.505**). C8/C9 were **134.609/89.667 tok/s**.
+
+The packet failed because no-compaction slot reuse truthfully lowered C=9 as one
+full plus one sparse physical c8 (`11111111 + 10000000`), while the harness
+required idealized compact `c8+c1`. The live sample also inherited one
+already-finished serial request's last plan across the polling boundary; its
+sample-owned route deltas still record zero serial/resident fallback and all
+**1,664/1,664** generated IDs are exact. This is observation contamination, not
+live execution fallback.
+
+The harness now scopes physical plans to request IDs owned by the current HTTP
+sample, records the number of filtered foreign plans, and validates C=9 by nine
+active lanes across two declared groups rather than assuming automatic
+compaction. Re-evaluating the raw timelines selects 127-128 owned plans and
+filters exactly one prior-sample plan per C9 repetition; every C9 shape passes.
+The live trace selects 133 packed-native plans, filters the one prior serial
+plan, and retains real c8→c13 occupancy. Focused validation is **9/9** plus Ruff,
+compilation, and diff checks. Diagnostic source:
+`/tmp/gfx1100-f1-server-clean-275894b4-p512-d128.json`, 26,149,650 bytes,
+SHA-256 `5d9f81402f792d7327ab5bbf474a65189629be4c8942354ee81fa747830b3552`.
+Commit the corrected evidence gate, then rerun the complete packet clean before
+publishing any server number.
