@@ -107,7 +107,7 @@ PARO, normal sampling, and project-wide production promotion remain open.
 | GGUF Q4_K_M / BF16 KV | gfx1100 | `retained` direct native-c4/c8 graph model steps and real OpenAI server scaling: native-c8 eager/graph p512/d128, ragged, sparse c8→c1, and cancellation are exact; arbitrary C13 eager/graph adds 135,200 exact all-layer comparisons overall, middle-hole cancellation/admission keeps inactive state/KV exact, and nine optional compaction moves preserve hashes/pointers with 2/2 graph invalidations; direct c8 is 246.872 aggregate tok/s, while real p512/128-output logical c1/c8/c9/c13/serial-c13 SSE is 25.583/136.122/88.592/111.380/31.708 aggregate tok/s | Public blocking calls and OpenAI SSE share one configured model-owning loop, reusable c8-capable sessions, bounded queues, real BF16 device KV, arbitrary-C physical-group manifests, and lock-consistent observability; C>8 is multiple declared groups, never a wider native claim; optional compaction is explicit/manual | gfx1151 symmetry, F2 profile-directed tuning/rollback cleanup, normal sampling, and automatic-compaction policy if measurement ever justifies one |
 | GGUF Q5_K/Q6_K/Q8_0 / BF16 KV | gfx1100/gfx1151 | Not executed end to end under c>N | c1 | Q4_K_M c4 closure first |
 | PARO W4 / BF16 KV | gfx1151 | Exact greedy c2 hybrid below 1024 total context; not fully native or retained | Unsupported groups fail closed to true width-1 sessions | Lifecycle/hidden/profiler/repetition gates, then remove row-local hybrid boundaries |
-| PARO W4 / BF16 KV | gfx1100 | Serial-c2 is exact for 274/274 recorded IDs; separate append/decode physical block tables close the first native context alias, but full direct-c2 remains rejected after first divergence at generated index 3 | Width-1 sessions; direct native groups remain fail-closed | Bisect the next native-c2 layer/stage divergence at generated index 3 on W7900 |
+| PARO W4 / BF16 KV | gfx1100 | Direct c2 p512/w8/d128 now matches 274/274 recorded IDs, and the full L40/d3 comparator has exact hidden/Conv/GDN/KV/NumPy-context state at every 4/8/16/24/32/40 limit; the diagnostic route still declares selected-c1 MoE and is not retained | Width-1 sessions; direct native groups remain fail-closed | Replace selected-c1 MoE with grouped-compact c2, then pass shrinking lifecycle/cancellation/repetition and the complete profiler/scaling packet |
 | PARO W4 / INT8 KV | gfx1100/gfx1151 | Not started | Width-1 | BF16 native path first |
 
 ### Implemented scaffolding — not production-loop evidence
@@ -210,6 +210,10 @@ runner and gfx1151 remains independently unverified.
 - gfx1100 PARO native-c2 first divergence: `WORKLOG.md`, **2026-07-17 —
   Localize the first W7900 PARO native-c2 divergence**, and
   `benchmarks/results/2026-07-17-gfx1100-paro-g2-native-c2-first-divergence.json`.
+- gfx1100 PARO dense-order c2 token/hidden/state/KV progress and exact-kernel
+  trace: `WORKLOG.md`, **2026-07-17 — Close PARO c2 short-context arithmetic
+  drift**, and
+  `benchmarks/results/2026-07-17-gfx1100-paro-g2-native-c2-dense-order-progress.json`.
 - Historical PARO c1-c8 catalog and lifecycle: `docs/BENCHMARK.md` §PARO c1-c8
   exact concurrency matrix.
 - Historical c>N graph replay and output-tiled GEMV: `WORKLOG.md`, **2026-06-08
@@ -885,8 +889,13 @@ G2. Fully native c2:
 - [x] Bisect the first hidden divergence with a reusable layer/stage comparator.
       On gfx1100, L1/L2 were green and full-attention layer 3 first failed at
       native batch context because append-relative block rows were reused for
-      absolute decode addressing. Separate cached tables close L4; full L40 now
-      first diverges at generated index 3.
+      absolute decode addressing. Separate cached append/decode tables close
+      that physical-row alias.
+- [x] Close the next short-context arithmetic boundary with one physical-c2
+      batch-grid kernel that follows dense c1 reduction order. Clean `32de8d08`
+      p512/w8/d128 matches 274/274 IDs; the full L40/d3 hidden/Conv/GDN/KV and
+      NumPy-context gate is exact; cached rocprof records the expected c2 kernel.
+      This does not close selected-c1 MoE or lifecycle.
 - [ ] Replace row-local full-attention and selected-c1 hybrid boundaries with
       exact c-aware routes.
 - [ ] Close batch-GEMV QKV/Z/O/FFN output projections.
@@ -947,6 +956,8 @@ The active lane is deliberately narrow.
 7. **Completed on gfx1100 — E3/F1:** optional compaction, arbitrary-C lowering,
    repeated burst scaling, and live-admission latency are retained without
    weakening the direct gate; gfx1151 E1/F1 remains active.
+8. **Active W7900 lane — G2:** replace PARO selected-c1 MoE with exact
+   grouped-compact c2, then run shrinking lifecycle before c4/c8.
 
 Do not label C>8 grouping, gfx1151, PARO, prefix caching, DMS, or speculative
 integration from the gfx1100 c8 result; each keeps its own gate and artifact.
