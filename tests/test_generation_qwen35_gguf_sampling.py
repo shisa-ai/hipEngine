@@ -1711,6 +1711,19 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
         "serial_decode_fallback_steps": 0,
         "resident_fallback_requests": 2,
     }
+    physical_group = {
+        "logical_c": 1,
+        "group_index": 0,
+        "group_count": 1,
+        "physical_slot_base": 0,
+        "physical_slot_extent": 2,
+        "physical_rows": 2,
+        "active_rows": 1,
+        "request_ids": [2],
+        "global_slot_indices": [0],
+        "active_slot_indices": [0],
+        "active_mask": [True, False],
+    }
     assert observability["routes"]["last_execution_manifest"] == {
         "schema": 1,
         "kind": "gguf_packed_ar_execution_manifest",
@@ -1719,11 +1732,107 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
         "active_rows": 1,
         "active_mask": [True, False],
         "model_step": {"complete_c1_session_replays": 0},
+        "logical_c": 1,
+        "physical_group": physical_group,
+    }
+    assert observability["routes"]["last_physical_group_plan"] == {
+        "schema": 1,
+        "kind": "gguf_ar_physical_group_plan",
+        "logical_c": 1,
+        "physical_bucket_widths": [1, 2, 4, 8],
+        "group_count": 1,
+        "groups": [{**physical_group, "execution_path": "packed_native"}],
     }
     assert observability["routes"]["fallback_reasons"]
     assert len(observability["routes"]["recent_completed"]) == 5
     assert observability["graph_buckets"]["captures_total"] == 0
     assert observability["graph_buckets"]["buckets"] == {}
+
+
+def test_gguf_resident_runner_lowers_c13_to_declared_physical_groups(monkeypatch) -> None:
+    calls: list[tuple] = []
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    runner._last_execution_manifest = {}
+    runner._last_physical_group_plan = {}
+
+    def step_native_chunk(rows, *, physical_rows=None, active_slot_indices=()):
+        calls.append(
+            (
+                tuple(int(row.request_id) for row in rows),
+                int(physical_rows),
+                tuple(int(index) for index in active_slot_indices),
+            )
+        )
+        runner._last_execution_manifest = {
+            "schema": 1,
+            "kind": "gguf_packed_ar_execution_manifest",
+            "physical_rows": int(physical_rows),
+        }
+        return True
+
+    runner._step_native_chunk = step_native_chunk
+    runner._step_native_serial = lambda rows: pytest.fail(
+        f"unexpected serial fallback for {[row.request_id for row in rows]}"
+    )
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", "1")
+    rows = [SimpleNamespace(request_id=request_id) for request_id in range(100, 113)]
+    request_ids = tuple(row.request_id for row in rows)
+    work = WorkItem(
+        kind=WorkKind.DECODE,
+        request_ids=request_ids,
+        row_to_request=request_ids,
+        slot_ids=tuple(range(13)),
+        active_mask=(True,) * 13,
+    )
+
+    runner._step_native_rows(rows, work=work)
+
+    assert calls == [
+        (tuple(range(100, 108)), 8, tuple(range(8))),
+        (tuple(range(108, 113)), 8, tuple(range(5))),
+    ]
+    assert runner._last_physical_group_plan == {
+        "schema": 1,
+        "kind": "gguf_ar_physical_group_plan",
+        "logical_c": 13,
+        "physical_bucket_widths": [1, 2, 4, 8],
+        "group_count": 2,
+        "groups": [
+            {
+                "logical_c": 13,
+                "group_index": 0,
+                "group_count": 2,
+                "physical_slot_base": 0,
+                "physical_slot_extent": 8,
+                "physical_rows": 8,
+                "active_rows": 8,
+                "request_ids": list(range(100, 108)),
+                "global_slot_indices": list(range(8)),
+                "active_slot_indices": list(range(8)),
+                "active_mask": [True] * 8,
+                "execution_path": "packed_native",
+            },
+            {
+                "logical_c": 13,
+                "group_index": 1,
+                "group_count": 2,
+                "physical_slot_base": 8,
+                "physical_slot_extent": 5,
+                "physical_rows": 8,
+                "active_rows": 5,
+                "request_ids": list(range(108, 113)),
+                "global_slot_indices": list(range(8, 13)),
+                "active_slot_indices": list(range(5)),
+                "active_mask": [True, True, True, True, True, False, False, False],
+                "execution_path": "packed_native",
+            },
+        ],
+    }
+    assert runner._last_execution_manifest["logical_c"] == 13
+    assert runner._last_execution_manifest["physical_group"]["group_index"] == 1
+    assert runner._last_execution_manifest["physical_group"]["physical_rows"] == 8
 
 
 def test_gguf_resident_runner_device_kv_admission_is_atomic_at_high_water() -> None:

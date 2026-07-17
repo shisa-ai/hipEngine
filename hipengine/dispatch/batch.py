@@ -152,6 +152,157 @@ class WorkItem:
 
 
 @dataclass(frozen=True, slots=True)
+class PhysicalBatchGroup:
+    """One declared physical-width group for a logical scheduler work item.
+
+    Global scheduler slots are partitioned into stable max-width windows.  Each
+    populated window rounds to a declared physical bucket without compacting
+    request ownership; ``active_slot_indices`` are local to that physical
+    bucket while ``global_slot_indices`` retain scheduler identity.
+    """
+
+    logical_c: int
+    group_index: int
+    group_count: int
+    physical_slot_base: int
+    physical_slot_extent: int
+    physical_rows: int
+    request_ids: tuple[int, ...]
+    global_slot_indices: tuple[int, ...]
+    active_slot_indices: tuple[int, ...]
+    active_mask: tuple[bool, ...]
+
+    def __post_init__(self) -> None:
+        if self.logical_c <= 0:
+            raise ValueError("logical_c must be positive")
+        if self.group_count <= 0 or self.group_index < 0 or self.group_index >= self.group_count:
+            raise ValueError("group_index must be within group_count")
+        if self.physical_slot_base < 0:
+            raise ValueError("physical_slot_base must be non-negative")
+        if self.physical_rows <= 0:
+            raise ValueError("physical_rows must be positive")
+        if self.physical_slot_extent <= 0 or self.physical_slot_extent > self.physical_rows:
+            raise ValueError("physical_slot_extent must be within physical_rows")
+        active_rows = len(self.request_ids)
+        if active_rows <= 0:
+            raise ValueError("physical batch group must contain at least one request")
+        if len(self.global_slot_indices) != active_rows or len(self.active_slot_indices) != active_rows:
+            raise ValueError("slot indices must align with request_ids")
+        if len(set(self.request_ids)) != active_rows:
+            raise ValueError("request_ids must be unique within a physical group")
+        if len(set(self.global_slot_indices)) != active_rows:
+            raise ValueError("global_slot_indices must be unique within a physical group")
+        if len(set(self.active_slot_indices)) != active_rows:
+            raise ValueError("active_slot_indices must be unique within a physical group")
+        if len(self.active_mask) != self.physical_rows:
+            raise ValueError("active_mask must contain one entry per physical row")
+        mask_slots = tuple(index for index, active in enumerate(self.active_mask) if active)
+        if mask_slots != self.active_slot_indices:
+            raise ValueError("active_mask active lanes must equal active_slot_indices")
+        if any(index < 0 or index >= self.physical_slot_extent for index in self.active_slot_indices):
+            raise ValueError("active_slot_indices must be within physical_slot_extent")
+        expected_global = tuple(
+            self.physical_slot_base + index for index in self.active_slot_indices
+        )
+        if self.global_slot_indices != expected_global:
+            raise ValueError("global_slot_indices must equal physical base plus local slots")
+
+    @property
+    def active_rows(self) -> int:
+        return len(self.request_ids)
+
+    def to_json_dict(self) -> dict[str, object]:
+        return {
+            "logical_c": self.logical_c,
+            "group_index": self.group_index,
+            "group_count": self.group_count,
+            "physical_slot_base": self.physical_slot_base,
+            "physical_slot_extent": self.physical_slot_extent,
+            "physical_rows": self.physical_rows,
+            "active_rows": self.active_rows,
+            "request_ids": list(self.request_ids),
+            "global_slot_indices": list(self.global_slot_indices),
+            "active_slot_indices": list(self.active_slot_indices),
+            "active_mask": list(self.active_mask),
+        }
+
+
+def plan_physical_batch_groups(
+    work: WorkItem,
+    *,
+    physical_bucket_widths: Sequence[int],
+) -> tuple[PhysicalBatchGroup, ...]:
+    """Lower arbitrary logical work into declared no-compaction buckets.
+
+    The largest declared width defines stable global-slot windows.  Empty
+    windows are omitted, but populated windows retain their original extent so
+    retirement does not silently compact a c8 mask into a smaller bucket.
+    """
+
+    widths = tuple(int(width) for width in physical_bucket_widths)
+    if not widths:
+        raise ValueError("physical_bucket_widths must be non-empty")
+    if any(width <= 0 for width in widths):
+        raise ValueError("physical_bucket_widths must contain positive widths")
+    if any(left >= right for left, right in zip(widths, widths[1:], strict=False)):
+        raise ValueError("physical_bucket_widths must be strictly increasing")
+
+    request_ids = tuple(int(request_id) for request_id in work.request_ids)
+    global_slots = (
+        tuple(int(slot) for slot in work.slot_ids)
+        if work.slot_ids
+        else tuple(range(len(request_ids)))
+    )
+    logical_extent = len(work.active_mask) if work.active_mask else max(global_slots) + 1
+    request_by_slot = dict(zip(global_slots, request_ids, strict=True))
+    max_width = widths[-1]
+    provisional: list[dict[str, object]] = []
+    for physical_slot_base in range(0, logical_extent, max_width):
+        physical_slot_extent = min(max_width, logical_extent - physical_slot_base)
+        group_slots = tuple(
+            slot
+            for slot in sorted(request_by_slot)
+            if physical_slot_base <= slot < physical_slot_base + physical_slot_extent
+        )
+        if not group_slots:
+            continue
+        local_slots = tuple(slot - physical_slot_base for slot in group_slots)
+        try:
+            physical_rows = next(
+                width for width in widths if width >= physical_slot_extent
+            )
+        except StopIteration as exc:  # pragma: no cover - max-width windows make this defensive
+            raise ValueError("physical_bucket_widths cannot cover the slot extent") from exc
+        local_slot_set = set(local_slots)
+        provisional.append(
+            {
+                "physical_slot_base": physical_slot_base,
+                "physical_slot_extent": physical_slot_extent,
+                "physical_rows": physical_rows,
+                "request_ids": tuple(request_by_slot[slot] for slot in group_slots),
+                "global_slot_indices": group_slots,
+                "active_slot_indices": local_slots,
+                "active_mask": tuple(
+                    index in local_slot_set for index in range(physical_rows)
+                ),
+            }
+        )
+
+    group_count = len(provisional)
+    if group_count <= 0:  # WorkItem already requires requests; keep failure local and explicit.
+        raise ValueError("work item did not populate any physical batch group")
+    return tuple(
+        PhysicalBatchGroup(
+            logical_c=len(request_ids),
+            group_index=group_index,
+            group_count=group_count,
+            **group,
+        )
+        for group_index, group in enumerate(provisional)
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class BatchShapeKey:
     """Shape key for graph capture/replay caches.
 
@@ -343,8 +494,10 @@ __all__ = [
     "ActiveBatch",
     "BatchShapeKey",
     "BatchSlot",
+    "PhysicalBatchGroup",
     "RequestState",
     "SlotMove",
     "WorkItem",
     "WorkKind",
+    "plan_physical_batch_groups",
 ]

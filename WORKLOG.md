@@ -161752,3 +161752,33 @@ compaction, and F1 server walls remain separate follow-up units.
 Baseline validation is green: `tests/test_dispatch_batch.py` plus
 `tests/test_gguf_packed_execution_manifest.py` pass **18/18**, and the focused
 resident ownership/masked-bucket test passes **1/1**.
+
+## 2026-07-17 — Lower arbitrary logical C into declared physical groups
+
+Added host-only `PhysicalBatchGroup` and `plan_physical_batch_groups(...)` to the
+dispatch contract. The planner is parameterized by allowed widths, partitions
+scheduler slots into stable maximum-width windows, omits empty windows, rounds
+each populated window only to a declared bucket, and does not compact request
+ownership. Every group records total logical C, group index/count, global slot
+base/extent/indices, physical rows, local active slots, and the exact mask.
+
+The RED suite initially failed import because the planner did not exist, then
+covered contiguous C=3/5/6/7/9/13 and a sparse C=4 spread over global slots
+`0,2,8,12`. The resulting declared widths are c4, c8, c8, c8, c8+c1, and
+c8+masked-c8 respectively. The sparse two-window case remains
+`c8:10100000 + c8:10001000`; no slot compaction is implied.
+
+Wired the planner into `Qwen35GGUFResidentModelRunner.decode_batch()`. The runner
+now lowers the actual decode-ready subset from scheduler request/slot metadata,
+executes every group with its local physical mask, augments each direct packed
+manifest with logical/group identity, and publishes a complete
+`gguf_ar_physical_group_plan` in live observability. A C=13 host integration RED
+first reproduced the old unsupported `work` path and now proves two calls:
+physical c8 lanes `0..7`, then physical c8 lanes `0..4`; raw c5 is gone.
+Packed-unavailable groups retain explicit serial fallback labels, while a true
+physical c1 remains `native_c1`.
+
+Validation is green: dispatch + GGUF generation + execution-manifest suites pass
+**84/84**; resident/generation-batcher server tests pass **25/25**; focused Ruff,
+Python compilation, and `git diff --check` pass. This is planner/host execution
+evidence only; real W7900 token/hidden/state/KV equality remains the next gate.
