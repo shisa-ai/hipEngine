@@ -162206,3 +162206,15 @@ valid clean input. Reconstruct the exact eight-row temporary raw-ID fixture from
 the committed c8 diagnostic's retained prompt rows; raw fixture/output stays in
 `/tmp`. First run c1 graph, c2 serial, and c2 direct-native p512/d128 from the
 same clean revision, then use the existing hidden bisector on the first failure.
+
+Kernel-catalog/lineage audit does not justify a new port before those controls.
+`docs/KERNELS.md` shows the required PARO c1 projection, selected-MoE,
+full-attention/KV, Conv/GDN, compact-WMMA, and fallback primitives are already
+landed in-tree. `python3 scripts/check_lineage.py --kind kernel --diff stat`
+reports four drifted parent files: monolithic `qwen35_expert.hip`, `smoke.hip`,
+embedded `paroquant_kernels.py`, and `paroquant_fusedw4.py`. The drift includes
+compact WMMA, small-K safety, and tree/speculative work, but no parent code will
+be copied for G1. If the refreshed comparator later proves a missing kernel
+rather than an orchestration/reduction boundary, inspect those listed commits
+and parent evidence before an in-tree raw-pointer port with RED oracle and
+profiler gate.
