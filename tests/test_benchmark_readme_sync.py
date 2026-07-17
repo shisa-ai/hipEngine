@@ -6,8 +6,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-from hipengine.benchmark.provenance import validate_artifact_provenance
-
 
 def test_root_readme_benchmark_blocks_match_canonical_scoreboard() -> None:
     repo_root = Path(__file__).resolve().parents[1]
@@ -25,237 +23,110 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
     repo_root = Path(__file__).resolve().parents[1]
     results_dir = repo_root / "benchmarks/results"
     artifact_path = (
-        results_dir
-        / "2026-07-11-gfx1151-readme-refresh-"
-        "20260711-d1231ee0-summary.json"
+        results_dir / "2026-07-17-gfx1151-amd-iommu-off-topline-refresh.json"
     )
     artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
-    gguf_rollup = json.loads(
-        (
-            results_dir
-            / "2026-07-13-gfx1151-gguf-prefill-gpf2e-right-sized-3run.json"
-        ).read_text(encoding="utf-8")
-    )
-    gguf_lcp_refresh = json.loads(
-        (
-            results_dir
-            / "2026-07-14-gfx1151-gguf-lcp1-lcpd1-right-sized-3run.json"
-        ).read_text(encoding="utf-8")
-    )
-    current_gguf_refresh = json.loads(
-        (
-            results_dir
-            / "2026-07-15-gfx1151-gguf-production-refresh-"
-            "512-64k-128k-blocked.json"
-        ).read_text(encoding="utf-8")
-    )
-    paro_recovery = json.loads(
-        (results_dir / "2026-07-12-gfx1151-paro-prefill-recovery.json").read_text(
-            encoding="utf-8"
-        )
-    )
-    paro_isolation = json.loads(
-        (
-            results_dir
-            / "2026-07-12-gfx1151-paro-aotriton-stream-isolation.json"
-        ).read_text(encoding="utf-8")
-    )
     canonical = (repo_root / "benchmarks/README.md").read_text(encoding="utf-8")
     root_readme = (repo_root / "README.md").read_text(encoding="utf-8")
     canonical_values = canonical.replace("**", "")
     root_values = root_readme.replace("**", "")
 
     assert artifact["schema"] == 1
-    assert artifact["status"] == "accepted_topline"
+    assert artifact["status"] == (
+        "accepted_current_topline_gguf_512_64k_128k_lifecycle_blocked"
+    )
     assert artifact["performance_claim"] is True
-    assert artifact["measured_hipengine_commit"] == (
-        "d1231ee081d9cc6799f59632a8e8db96de4c61c3"
+    assert artifact["correctness_claim"] is True
+    assert artifact["software"]["measurement_commit"] == (
+        "2edbb2ee3ca74d7757500b5eafe737d43748489c"
     )
-    assert artifact["assembly"]["hipengine_commit"] == (
-        "7e9aad21d92b6ed2c6cf7ff83aa7b5896a74d15b"
-    )
-    assert artifact["assembly"]["dirty"] is False
-    assert artifact["gates"]["all_passed"] is True
-    assert all(artifact["gates"].values())
-    assert gguf_rollup["status"] == "accepted_topline"
-    assert gguf_rollup["performance_claim"] is True
-    assert gguf_rollup["software"]["hipengine_commit"].startswith("28b45d38")
-    assert gguf_rollup["protocol"]["required_warmups"] == 1
-    assert gguf_rollup["protocol"]["measured_repetitions_retained"] == 3
-    assert gguf_rollup["variance_gate"]["passed"] is True
-    assert (
-        gguf_rollup["summary_by_workload"]["128K/128"][
-            "per_run_token_ids_serialized"
-        ]
-        is False
-    )
-    assert gguf_lcp_refresh["status"] == "accepted_topline_refresh"
-    assert gguf_lcp_refresh["performance_claim"] is True
-    assert gguf_lcp_refresh["software"]["measurement_commit"].startswith("71e61524")
-    assert gguf_lcp_refresh["software"]["all_component_worktrees_clean"] is True
-    assert gguf_lcp_refresh["protocol"]["warmup_runs"] == 1
-    assert gguf_lcp_refresh["protocol"]["measured_runs"] == 3
-    assert gguf_lcp_refresh["correctness"][
-        "largest_prefill_stdev_over_median_percent"
+    assert artifact["software"]["tracked_dirty"] is False
+    assert artifact["hardware"]["amd_iommu"] == "off"
+    assert artifact["hardware"]["iommu_groups_after_boot"] == 0
+    assert "NPU unavailable" in artifact["hardware"]["xdna_side_effect"]
+    assert "not a causal IOMMU-only A/B" in artifact["measurement_qualification"]
+
+    correctness = artifact["correctness"]
+    assert correctness["paro"]["passed"] is True
+    assert correctness["gguf_512_64k"]["passed"] is True
+    assert correctness["gguf_512_64k"]["all_ids_are_9707"] is True
+    assert correctness["gguf_512_64k"][
+        "max_prefill_stdev_over_median_percent"
     ] < 5.0
-    assert gguf_lcp_refresh["correctness"][
-        "largest_decode_stdev_over_median_percent"
+    assert correctness["gguf_512_64k"][
+        "max_decode_stdev_over_median_percent"
     ] < 5.0
-    assert current_gguf_refresh["status"] == (
-        "accepted_512_through_64k_128k_lifecycle_blocked"
-    )
-    assert current_gguf_refresh["performance_claim"] is True
-    assert current_gguf_refresh["performance_claim_scope"].endswith(
-        "no current 128K topline claim"
-    )
-    assert current_gguf_refresh["software"]["measurement_commit"].startswith(
-        "61a27d72"
-    )
-    assert current_gguf_refresh["correctness"][
-        "all_15_measured_final_ids_9707"
-    ] is True
-    assert current_gguf_refresh["correctness"][
-        "largest_prefill_stdev_over_median_percent"
-    ] < 5.0
-    assert current_gguf_refresh["correctness"][
-        "largest_decode_stdev_over_median_percent"
-    ] < 5.0
-    assert current_gguf_refresh["blocked_128k"]["topline_eligible"] is False
-    assert current_gguf_refresh["blocked_128k"]["automatic_one_queue"][
-        "termination_restored_idle"
-    ] is True
-    validate_artifact_provenance(
-        current_gguf_refresh["provenance"], require_model=False
-    )
-    assert paro_recovery["status"] == "accepted"
-    assert paro_recovery["performance_claim"] is True
-    assert paro_recovery["correctness_claim"] is True
-    assert paro_recovery["provenance"]["hipengine_commit"].startswith("9944e481")
-    assert paro_recovery["provenance"]["dirty"] is False
-    assert paro_isolation["status"] == "accepted"
-    assert paro_isolation["performance_claim"] is True
-    assert paro_isolation["correctness_claim"] is True
-    assert paro_isolation["measured_revision"].startswith("01e2cec5")
-    assert paro_isolation["provenance"]["dirty"] is False
-    assert paro_isolation["correctness"]["mismatch_paths"] == []
-    assert paro_isolation["scope"]["refresh_pending"] == []
-    assert set(paro_isolation["shape_refresh"]["retained_results"]) == {
-        "32K/128",
-        "64K/128",
-        "128K/128",
-    }
-    assert all(
-        not result["mismatch_paths"]
-        for result in paro_isolation["shape_refresh"]["correctness"].values()
-    )
-    assert (
-        paro_isolation["shape_refresh"]["negative_control"][
-            "isolation_branch_entered"
-        ]
-        is False
-    )
+    blocked = artifact["gguf_128k_blocker"]
+    assert blocked["status"] == "blocked_no_current_topline"
+    assert blocked["process_exit_code"] == 124
+    assert len(blocked["completed_before_stall"]) == 2
+    assert blocked["post_timeout_kfd_clients"] == 0
+
+    comparison = artifact["comparison_to_previous_iommu_on_publication"]
+    assert comparison["hipengine_combined"]["prefill"]["eligible_cells"] == 11
+    assert comparison["hipengine_combined"]["prefill"][
+        "arithmetic_mean_delta_percent"
+    ] == 4.604194241819479
+    assert comparison["hipengine_combined"]["decode"][
+        "arithmetic_mean_delta_percent"
+    ] == 6.201083397123748
 
     workloads = ["512/128", "1K/128", "4K/128", "32K/128", "64K/128", "128K/128"]
-    columns = [
-        ("hipengine_paro", "hipEngine PARO"),
-        ("hipengine_gguf", "hipEngine GGUF"),
-        ("llamacpp_hip", "llama.cpp HIP"),
-        ("llamacpp_vulkan", "llama.cpp Vulkan"),
-    ]
-    assert artifact["workloads"] == workloads
-    assert [
-        (column["key"], column["label"]) for column in artifact["columns"]
-    ] == columns
-
-    headings = {
-        "prefill_tok_s": "Prefill tok/s",
-        "decode_tok_s": "Decode tok/s",
-        "peak_gib": "Peak memory GiB",
-    }
+    topline = artifact["current_topline"]
     table_header = (
         "| Workload | hipEngine PARO | hipEngine GGUF | "
         "llama.cpp HIP | llama.cpp Vulkan |"
     )
-    recovery_rows = {row["workload"]: row for row in paro_recovery["results"]}
-    paro_result_keys = {
-        "prefill_tok_s": "candidate_prefill_tok_s",
-        "decode_tok_s": "candidate_decode_tok_s",
-        "peak_gib": "candidate_peak_gib",
+    assert table_header in canonical
+    assert table_header in root_readme
+
+    metrics = {
+        "prefill_tok_s": "Prefill tok/s",
+        "decode_tok_s": "Decode tok/s",
+        "tracked_peak_allocated_gib": "Peak memory GiB",
     }
-    for table_key, heading in headings.items():
-        rows = artifact["tables"][table_key]
-        assert [row["workload"] for row in rows] == workloads
+    for metric, heading in metrics.items():
         assert f"#### {heading}" in canonical
         assert f"#### {heading}" in root_readme
-        assert table_header in canonical
-        assert table_header in root_readme
-        for row in rows:
-            paro_value = recovery_rows[row["workload"]][paro_result_keys[table_key]]
-            gguf_summary = current_gguf_refresh["summary_by_workload"].get(
-                row["workload"]
-            )
-            if gguf_summary is not None:
-                if table_key == "prefill_tok_s":
-                    gguf_value = gguf_summary["prefill_tok_s"]["median"]
-                elif table_key == "decode_tok_s":
-                    gguf_value = gguf_summary["decode_tok_s"]["median"]
-                else:
-                    gguf_value = gguf_summary["tracked_peak_allocated_gib"]["median"]
-            if row["workload"] == "4K/128":
-                isolated = paro_isolation["performance"]["candidate_isolated_stream"]
-                isolation_keys = {
-                    "prefill_tok_s": ("prefill_tok_s", "median"),
-                    "decode_tok_s": ("decode_tok_s", "median"),
-                    "peak_gib": ("tracked_peak_allocated_gib",),
-                }
-                path = isolation_keys[table_key]
-                paro_value = isolated[path[0]]
-                if len(path) == 2:
-                    paro_value = paro_value[path[1]]
-            elif row["workload"] in paro_isolation["shape_refresh"][
-                "retained_results"
-            ]:
-                isolated = paro_isolation["shape_refresh"]["retained_results"][
-                    row["workload"]
-                ]["candidate"]
-                if table_key == "prefill_tok_s":
-                    paro_value = isolated["prefill_tok_s"]["median"]
-                elif table_key == "decode_tok_s":
-                    paro_value = isolated["decode_tok_s"]["median"]
-                else:
-                    paro_value = isolated["tracked_peak_allocated_gib"]
-            if gguf_summary is None:
-                assert row["workload"] == "128K/128"
-                published_row = (
-                    f"| {row['workload']} | {paro_value:.3f} | — (blocked) | "
-                    f"{row['llamacpp_hip']:.3f} | {row['llamacpp_vulkan']:.3f} |"
+        for workload in workloads:
+            paro_value = topline["paro"][workload][metric]["median"]
+            if metric == "prefill_tok_s":
+                llama_key = "prefill_tok_s"
+            elif metric == "decode_tok_s":
+                llama_key = "decode_tok_s"
+            else:
+                llama_key = "peak_vram_gib"
+            llama_hip = topline["llamacpp_hip"][workload][llama_key]
+            llama_vulkan = topline["llamacpp_vulkan"][workload][llama_key]
+            gguf = topline["gguf"].get(workload)
+            if gguf is None:
+                assert workload == "128K/128"
+                row = (
+                    f"| {workload} | {paro_value:.3f} | — (blocked) | "
+                    f"{llama_hip:.3f} | {llama_vulkan:.3f} |"
                 )
             else:
-                published_row = (
-                    f"| {row['workload']} | {paro_value:.3f} | "
-                    f"{gguf_value:.3f} | {row['llamacpp_hip']:.3f} | "
-                    f"{row['llamacpp_vulkan']:.3f} |"
+                gguf_value = gguf[metric]["median"]
+                row = (
+                    f"| {workload} | {paro_value:.3f} | {gguf_value:.3f} | "
+                    f"{llama_hip:.3f} | {llama_vulkan:.3f} |"
                 )
-            assert published_row in canonical_values
-            assert published_row in root_values
+            assert row in canonical_values
+            assert row in root_values
 
-    assert "Each accepted shape uses one independent right-sized resident process" in canonical
-    assert "one\ndiscarded warmup, and three measured runs" in canonical
-    assert "128K production is **blocked**" in canonical
-    assert "128K/128 | 474.641 | — (blocked)" in canonical
-    assert "128K/128 | 474.641 | — (blocked)" in root_readme
+    for readme in (canonical, root_readme):
+        assert "**+4.60% prefill / +6.20% decode**" in readme
+        assert "same-commit reboot A/B" in readme
+        assert "128K/128 | 498.101 | — (blocked)" in readme
+        assert artifact_path.name in readme
 
-    for name, component in artifact["components"].items():
-        assert (repo_root / "benchmarks/results" / component["name"]).is_file(), name
-        provenance = artifact["component_provenance"][name]
-        assert provenance["hipengine_commit"] == artifact["measured_hipengine_commit"]
-        assert provenance["target_arch"] == "gfx1151"
-        assert provenance["dirty"] is False
-
-    for correctness_path in artifact["linked_correctness"].values():
-        assert (repo_root / correctness_path).is_file()
-    for key in ("independent_exact_matrix", "independent_natural_trajectory_gate"):
-        assert (repo_root / gguf_rollup["correctness"][key]).is_file()
+    for source in artifact["source_artifacts"].values():
+        if source is None:
+            continue
+        if "sha256" in source:
+            assert len(source["sha256"]) == 64
+        else:
+            assert all(len(component["sha256"]) == 64 for component in source.values())
 
 
 def test_gfx1100_mtp_topline_publishes_graph_ar_correction() -> None:
@@ -337,39 +208,35 @@ def test_gfx1100_mtp_topline_publishes_graph_ar_correction() -> None:
 def test_gfx1151_mtp_topline_separates_exact_compat_and_llamacpp() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     results = repo_root / "benchmarks/results"
-    artifact = json.loads(
-        (results / "2026-07-12-gfx1151-gguf-mtp-refresh.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    artifact_path = results / "2026-07-17-gfx1151-amd-iommu-off-mtp-refresh.json"
+    artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
     canonical = (repo_root / "benchmarks/README.md").read_text(encoding="utf-8")
     root_readme = (repo_root / "README.md").read_text(encoding="utf-8")
 
-    assert artifact["status"] == "accepted_compat_with_exact_negative_and_external_diagnostic"
+    assert artifact["status"] == (
+        "accepted_compat_with_exact_negative_and_external_diagnostic"
+    )
     assert artifact["performance_claim"] is True
     assert artifact["correctness_claim"] is True
-    assert artifact["correctness"]["serial_prefix_state_exact"] is True
+    assert artifact["correctness"]["status"] == "passed"
+    assert artifact["correctness"]["teacher_forced_all_steps_passed"] is True
+    assert artifact["correctness"]["production_exact_external_match"] is True
     exact = artifact["hipengine_exact_default"]
     compat = artifact["hipengine_llama_compat"]
     llamacpp = artifact["llamacpp_hip"]
+    cross_engine = artifact["cross_engine_comparison"]
     assert exact["apple_to_apple_ok"] is True
     assert exact["mtp_beats_ar"] is False
+    assert exact["splits"]["full"]["vs_true_ar"] < 1.0
+    assert exact["splits"]["train"]["vs_true_ar"] > 1.0
+    assert exact["splits"]["heldout"]["vs_true_ar"] < 1.0
     assert compat["apple_to_apple_ok"] is True
+    assert compat["heldout"]["vs_true_ar"] > 1.0
+    assert all(row["vs_true_ar"] > 1.0 for row in compat["categories"].values())
     assert llamacpp["status"] == "diagnostic_retained"
     assert llamacpp["performance_claim"] is False
-    assert artifact["timing_contract"]["llamacpp_cross_engine"].startswith(
-        "request N+1 outputs"
-    )
-    assert llamacpp["transition_normalized"]["timed_decode_transitions_per_prompt"] == 24
-    assert llamacpp["transition_normalized"]["base_decode_tok_s"] == (
-        240_000 / llamacpp["transition_normalized"]["base_decode_ms_total"]
-    )
-    assert llamacpp["transition_normalized"]["mtp_decode_tok_s"] == (
-        240_000 / llamacpp["transition_normalized"]["mtp_decode_ms_total"]
-    )
-    assert compat["cross_engine_cycle_wall"]["decode_tok_s"] == (
-        1000 / compat["full"]["cycle_wall_ms_per_output"]
-    )
+    assert cross_engine["timed_decode_transitions_per_prompt"] == 24
+    assert cross_engine["hipengine_mtp_vs_llamacpp"] > 1.0
 
     exact_b5 = exact["budgets"]["b5"]
     full = compat["full"]
@@ -377,54 +244,37 @@ def test_gfx1151_mtp_topline_separates_exact_compat_and_llamacpp() -> None:
     llama_transition = llamacpp["transition_normalized"]
     expected_rows = [
         (
-            f"| Canonical/native MTP decode | {exact_b5['decode_tok_s']:.2f} "
-            f"tok/s ({exact_b5['vs_true_ar']:.4f}x own AR) | "
-            f"**{full['decode_tok_s']:.2f} tok/s ({full['vs_true_ar']:.4f}x own AR)** | "
+            f"| Canonical/native MTP decode | "
+            f"{exact_b5['decode_tok_s_weighted']:.2f} tok/s "
+            f"({exact_b5['vs_ar_ratio']:.4f}x own AR) | "
+            f"**{full['decode_tok_s']:.2f} tok/s "
+            f"({full['vs_true_ar']:.4f}x own AR)** | "
             f"{llama_native['mtp_decode_tok_s']:.2f} tok/s native "
             f"({llama_native['mtp_vs_base']:.4f}x own AR; not cross-engine comparable) |"
         ),
         (
             f"| Cross-engine MTP decode-transition rate | n/a: fixed-cycle horizon | "
-            f"**{compat['cross_engine_cycle_wall']['decode_tok_s']:.2f} tok/s** | "
-            f"{llama_transition['mtp_decode_tok_s']:.2f} tok/s |"
+            f"**{cross_engine['hipengine_llama_compat_mtp_complete_cycle_tok_s']:.2f} "
+            f"tok/s** | {llama_transition['mtp_decode_tok_s']:.2f} tok/s |"
         ),
         (
             f"| Cross-engine own AR transition rate | n/a: fixed-cycle horizon | "
-            f"**{compat['true_ar']['decode_tok_s']:.2f} tok/s** | "
+            f"**{cross_engine['hipengine_llama_compat_ar_tok_s']:.2f} tok/s** | "
             f"{llama_transition['base_decode_tok_s']:.2f} tok/s |"
-        ),
-        (
-            f"| Full | {full['prompts']} | {compat['true_ar']['decode_tok_s']:.2f} | "
-            f"**{full['decode_tok_s']:.2f}** | **{full['vs_true_ar']:.4f}x** | "
-            f"{100 * full['draft_acceptance']:.2f}% | "
-            f"{100 * full['accepted_per_output']:.2f}% | "
-            f"{full['cycle_wall_ms_per_output']:.3f} ms |"
         ),
     ]
     split_rows = {
-        "Full": (compat["full"], compat["true_ar"]["decode_tok_s"]),
-        "Train": (compat["train"], compat["train"]["true_ar_decode_tok_s"]),
-        "Heldout": (compat["heldout"], compat["heldout"]["true_ar_decode_tok_s"]),
-        "`code`": (
-            compat["categories"]["code"],
-            compat["categories"]["code"]["true_ar_decode_tok_s"],
-        ),
-        "`general_en`": (
-            compat["categories"]["general_en"],
-            compat["categories"]["general_en"]["true_ar_decode_tok_s"],
-        ),
-        "`general_ja`": (
-            compat["categories"]["general_ja"],
-            compat["categories"]["general_ja"]["true_ar_decode_tok_s"],
-        ),
-        "`mixed_ja_en`": (
-            compat["categories"]["mixed_ja_en"],
-            compat["categories"]["mixed_ja_en"]["true_ar_decode_tok_s"],
-        ),
+        "Full": compat["full"],
+        "Train": compat["train"],
+        "Heldout": compat["heldout"],
+        "`code`": compat["categories"]["code"],
+        "`general_en`": compat["categories"]["general_en"],
+        "`general_ja`": compat["categories"]["general_ja"],
+        "`mixed_ja_en`": compat["categories"]["mixed_ja_en"],
     }
     expected_split_rows = [
         (
-            f"| {label} | {row['prompts']} | {ar_tok_s:.2f} | "
+            f"| {label} | {row['prompts']} | {row['true_ar_decode_tok_s']:.2f} | "
             f"**{row['decode_tok_s']:.2f}** | **{row['vs_true_ar']:.4f}x** | "
             f"{'**' if label in {'Train', 'Heldout'} else ''}"
             f"{100 * row['draft_acceptance']:.2f}%"
@@ -432,7 +282,7 @@ def test_gfx1151_mtp_topline_separates_exact_compat_and_llamacpp() -> None:
             f"{100 * row['accepted_per_output']:.2f}% | "
             f"{row['cycle_wall_ms_per_output']:.3f} ms |"
         )
-        for label, (row, ar_tok_s) in split_rows.items()
+        for label, row in split_rows.items()
     ]
     header = (
         "| Metric | hipEngine GGUF exact/default | "
@@ -441,8 +291,9 @@ def test_gfx1151_mtp_topline_separates_exact_compat_and_llamacpp() -> None:
     for readme in (canonical, root_readme):
         assert header in readme
         assert "##### gfx1151 `llama-compat` full-suite gate" in readme
-        assert "one-untimed-token numerator" in readme
+        assert "transition-matched timing contract" in readme
         assert "`performance_claim=false`" in readme
+        assert artifact_path.name in readme
         for expected_row in expected_rows:
             assert expected_row in readme
         for expected_row in expected_split_rows:

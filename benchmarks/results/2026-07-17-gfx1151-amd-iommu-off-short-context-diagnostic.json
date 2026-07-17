@@ -1,0 +1,244 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1151_amd_iommu_off_short_context_diagnostic",
+  "status": "directional_uplift_requires_same_commit_iommu_on_control",
+  "created_at": "2026-07-17T05:25:00+09:00",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "topline_eligible": false,
+  "conclusion": "With amd_iommu=off active, current-production gfx1151 GGUF completes independent right-sized 512/128 and 4K/128 warmup+3 processes exactly. Relative to the July 15 IOMMU-on publication, prefill is directionally higher by 7.41% and 7.44%, while graph decode is higher by 7.81% and 5.37%. The nearly identical prefill deltas are a promising signal, not an IOMMU-causal performance claim: the current runtime source differs materially from the publication commit and the source tree contains 255 disclosed pre-existing untracked benchmark files. A same-commit IOMMU-on control is required before attributing or retaining the uplift. Disabling the AMD IOMMU also makes the amdxdna/NPU driver fail initialization. No 128K workload was run and this result says nothing about the open 128K scheduler lifecycle failure.",
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "firmware_package": "linux-firmware-amdgpu 1:20260622-1",
+    "mes_firmware": "0x00000088",
+    "mes_kiq_firmware": "0x0000006f",
+    "tuned_profile": "accelerator-performance"
+  },
+  "boot": {
+    "boot_id": "fe9d6bbc-70a7-4bcc-aa63-78a83014c19b",
+    "kernel_cmdline_redacted": "amdgpu.mes_log_enable=1 amdgpu.gpu_recovery=1 amdgpu.send_sigterm=1 amd_iommu=off quiet nowatchdog splash rw rootflags=subvol=/@ root=UUID=<redacted>",
+    "amd_iommu": "off",
+    "iommu_group_count_before": 28,
+    "iommu_group_count_after": 0,
+    "amdgpu": {
+      "sched_policy": 0,
+      "mes_log_enable": 1,
+      "gpu_recovery": 1,
+      "send_sigterm": 1,
+      "cwsr_enable": 1
+    },
+    "hip_gfx1151_available": true,
+    "amdxdna_initialization": "failed: running without IOMMU not supported",
+    "gpu_fault_or_reset_during_benchmark": false
+  },
+  "software": {
+    "hipengine_commit": "2edbb2ee3ca74d7757500b5eafe737d43748489c",
+    "runtime_source_equivalent_reproducer_commit": "a7b4fe4b213c5afcbe1be2b13cb33464f251a06e",
+    "iommu_on_publication_commit": "61a27d7279549843bb3fb0464cb8b120689b9ff1",
+    "runtime_diff_from_publication": "21 measured-path files changed; 2,977 insertions and 203 deletions",
+    "tracked_tree_clean": true,
+    "pre_existing_untracked_benchmark_files": 255,
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+    "compiler_version_file_sha256": "4575f2f128d68d1d1c7e99436d20ecac67a363d6d300f6dde6b2fb83a86f8987",
+    "gpu_max_hw_queues": 1,
+    "application_experiment_selectors": "unset except explicit production HIPENGINE_HIP_ARCH=gfx1151 and HIPENGINE_GGUF_DECODE_REPACK=1"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "size_bytes": 22663387424,
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "fingerprint_algorithm": "sha256-sampled-v1",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "prompt": "repetitions of token 9707"
+  },
+  "protocol": {
+    "session": "one independent right-sized resident process per shape",
+    "warmup_runs": 1,
+    "measured_runs": 3,
+    "decode_tokens": 128,
+    "decode": "fresh state-bound graph per measured repetition; capture excluded",
+    "build": "precomputed compiler version and cached builds required",
+    "command_template": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 python3 scripts/qwen35_readme_sweep.py --engine gguf --model <model> --quant gguf_q4_k_m --backend hip_gfx1151 --workloads <one-shape> --warmup-runs 1 --measured-runs 3 --warmup-decode-tokens 1 --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --compiler-version-file <precomputed> --require-cached-build --json <component>"
+  },
+  "iommu_on_reference": {
+    "artifact": "benchmarks/results/2026-07-15-gfx1151-gguf-production-refresh-512-64k-128k-blocked.json",
+    "artifact_sha256": "ae2b535e8c192cc1aefa05d995fdf9fdac12133e5fae0a1d47582ecc0de22fbd",
+    "boot_iommu_state": "IOMMU groups present; amd_iommu=off absent",
+    "comparability_limit": "Same hardware/model/HIP/protocol, but hipEngine runtime commit differs materially; use only as a directional reference.",
+    "summary_by_workload": {
+      "512/128": {
+        "prefill_tok_s_median": 1294.8851973531912,
+        "decode_tok_s_median": 49.04124635449394,
+        "tracked_peak_allocated_gib": 21.477776296436787
+      },
+      "4K/128": {
+        "prefill_tok_s_median": 1365.7199841386443,
+        "decode_tok_s_median": 52.42195709823839,
+        "tracked_peak_allocated_gib": 22.99488216638565
+      }
+    }
+  },
+  "iommu_off_results": {
+    "512/128": {
+      "warmup_prefill_tok_s": 1123.5444421406091,
+      "warmup_decode_tok_s": 52.76728845043712,
+      "prefill_tok_s_samples": [
+        1391.0637504987837,
+        1387.7638868604186,
+        1390.865820683058
+      ],
+      "prefill_tok_s_median": 1390.865820683058,
+      "prefill_stdev_over_median_percent": 0.1330601175365493,
+      "decode_tok_s_samples": [
+        52.88519265040917,
+        52.8698117757615,
+        52.86213718041583
+      ],
+      "decode_tok_s_median": 52.8698117757615,
+      "decode_stdev_over_median_percent": 0.022206291607718448,
+      "tracked_peak_allocated_gib": 21.477776303887367,
+      "final_token_ids": [9707, 9707, 9707],
+      "finite_final_logits": true,
+      "final_logit": 28.27558135986328,
+      "versus_iommu_on_publication_percent": {
+        "prefill": 7.412288249649923,
+        "decode": 7.80682732570217
+      }
+    },
+    "4K/128": {
+      "warmup_prefill_tok_s": 1438.8653928675935,
+      "warmup_decode_tok_s": 54.502334953482084,
+      "prefill_tok_s_samples": [
+        1470.0943153149708,
+        1465.1297626675066,
+        1467.3378760178668
+      ],
+      "prefill_tok_s_median": 1467.3378760178668,
+      "prefill_stdev_over_median_percent": 0.16951228792799966,
+      "decode_tok_s_samples": [
+        55.28157663066957,
+        55.19942667943227,
+        55.23719035099358
+      ],
+      "decode_tok_s_median": 55.23719035099358,
+      "decode_stdev_over_median_percent": 0.07444158911927931,
+      "tracked_peak_allocated_gib": 22.99488217383623,
+      "final_token_ids": [9707, 9707, 9707],
+      "finite_final_logits": true,
+      "final_logit": 29.312543869018555,
+      "versus_iommu_on_publication_percent": {
+        "prefill": 7.440609572928869,
+        "decode": 5.370332220675134
+      }
+    }
+  },
+  "correctness": {
+    "all_six_measured_final_ids_9707": true,
+    "all_warmup_and_measured_final_logits_finite": true,
+    "variance_gate": "sample stdev <=5% of median",
+    "largest_prefill_stdev_over_median_percent": 0.16951228792799966,
+    "largest_decode_stdev_over_median_percent": 0.07444158911927931,
+    "tracked_memory_matches_iommu_on_reference_within_rounding": true
+  },
+  "evidence_boundaries": [
+    "The IOMMU-off run and July 15 IOMMU-on reference use the same machine, model fingerprint, HIP/compiler stack, one-queue process policy, workload shapes, and warmup+3 timing protocol.",
+    "The hipEngine measured runtime differs materially between the two commits, so the observed uplift cannot be assigned solely to IOMMU state.",
+    "The run occurred in a tracked-clean tree with 255 disclosed pre-existing untracked benchmark result files, so its canonical provenance is dirty and it is not topline eligible.",
+    "The 512/1 IOMMU-on current-runtime control at 1160.229 tok/s used a different single-run/no-graph timing shape and is not substituted for the matching publication protocol.",
+    "No 128K or larger workload was run; no inference is made about the open queue-retirement stall.",
+    "amd_iommu=off disables amdxdna/NPU initialization on this platform and therefore carries a functional tradeoff outside HIP GPU inference."
+  ],
+  "decision": {
+    "directional_speed_signal": true,
+    "iommu_causal_uplift_proven": false,
+    "topline_update": false,
+    "production_recommendation": "Do not promote based on this cross-commit diagnostic alone.",
+    "required_next_gate": "Reboot with IOMMU enabled and run the identical current-commit 512/128 and 4K/128 warmup+3 commands; if the delta remains material, optionally reboot back to IOMMU off for an ABA confirmation.",
+    "requires_user_approval": "Yes; another boot and benchmark are required."
+  },
+  "source_components": {
+    "512_json": {
+      "path": "/tmp/gfx1151-iommu-off-short-20260717/512-128.json",
+      "bytes": 161814,
+      "sha256": "dbbf881bdd59ac244fbbca81bc1d079ac644c97cf2ae02322fa8ecf54613f066"
+    },
+    "4k_json": {
+      "path": "/tmp/gfx1151-iommu-off-short-20260717/4K-128.json",
+      "bytes": 163161,
+      "sha256": "d5de7d1651260d39f3cfacbe2271aa874cccad6ac7d826938c7749129830481e"
+    }
+  },
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-16T20:23:37.313579+00:00",
+    "repo_root": "/home/lhl/hipEngine-main",
+    "hipengine_commit": "2edbb2ee3ca74d7757500b5eafe737d43748489c",
+    "git_branch": "main",
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": true,
+    "untracked_count": 255,
+    "dirty": true,
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [0, 11331169424, 22662338848],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "command": [
+      "scripts/qwen35_readme_sweep.py",
+      "--engine", "gguf",
+      "--model", "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--quant", "gguf_q4_k_m",
+      "--backend", "hip_gfx1151",
+      "--warmup-runs", "1",
+      "--measured-runs", "3",
+      "--warmup-decode-tokens", "1",
+      "--force-bulk-prefill",
+      "--bulk-prefill-attention-mode", "bulk",
+      "--use-wmma-prefill",
+      "--use-gemv-decode",
+      "--graph-replay-decode",
+      "--compiler-version-file", "/tmp/gfx1151-iommu-off-short-20260717/hipcc-version.txt",
+      "--require-cached-build",
+      "--workloads", "512/128",
+      "--json", "/tmp/gfx1151-iommu-off-short-20260717/512-128.json"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIP_VISIBLE_DEVICES": null,
+      "ROCR_VISIBLE_DEVICES": null,
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null
+    },
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "build_profile": "readme_resident_sweep",
+    "timing_protocol": "single resident max-context session; per-shape reset; separate prefill/decode wall; graph capture excluded where enabled",
+    "warmups": 1,
+    "repetitions": 3,
+    "profiler": {
+      "enabled": false,
+      "reason": "topline host-wall sweep"
+    }
+  }
+}

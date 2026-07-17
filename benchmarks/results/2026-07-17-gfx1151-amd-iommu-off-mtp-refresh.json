@@ -1,0 +1,466 @@
+{
+  "schema_version": 1,
+  "kind": "gfx1151_gguf_mtp_iommu_off_full_suite_refresh",
+  "created_at": "2026-07-17T00:18:00.448855+00:00",
+  "status": "accepted_compat_with_exact_negative_and_external_diagnostic",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "scope": "full ten-prompt GGUF true-AR/MTP exact and llama-compat suites plus transition-normalized llama.cpp HIP diagnostic under amd_iommu=off",
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "tuned_profile": "accelerator-performance",
+    "amdgpu_sched_policy": 0,
+    "kernel_cmdline": "amdgpu.mes_log_enable=1 amdgpu.gpu_recovery=1 amdgpu.send_sigterm=1 amd_iommu=off quiet nowatchdog splash rw rootflags=subvol=/@ root=UUID=56bc3cf2-994d-4561-a614-a8a16f7de8d8",
+    "amd_iommu": "off",
+    "iommu_groups_after_boot": 0,
+    "iommu_groups_before_boot": 28,
+    "xdna_side_effect": "amdxdna reports: Running without IOMMU not supported; NPU unavailable under this boot."
+  },
+  "software": {
+    "measurement_commit": "2edbb2ee3ca74d7757500b5eafe737d43748489c",
+    "tracked_dirty": false,
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23 aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+    "gpu_max_hw_queues": "1 (automatic gfx1151 default)"
+  },
+  "model": {
+    "gguf_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "gguf_quant": "gguf_q4_k_m",
+    "gguf_kv_dtype_hipengine": "bf16",
+    "gguf_kv_dtype_llamacpp": "f16",
+    "gguf_fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "paro_path": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1"
+  },
+  "prompt_suite": {
+    "path": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "train_prompts": 6,
+    "heldout_prompts": 4,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "reasoning": "off",
+    "sampling": "greedy"
+  },
+  "correctness": {
+    "status": "passed",
+    "oracle_classification": {
+      "conclusion": "The repeated 9707 stream is shared by llama.cpp and hipEngine; four eager transitions are byte-exact against fresh serial-prefix hidden, Conv/GDN, and live KV state.",
+      "first_divergence": null,
+      "passed": true,
+      "repeated_stream": true,
+      "status": "passed_repeated_stream_valid"
+    },
+    "correctness_claim": true,
+    "production_exact_external_match": true,
+    "teacher_forced_all_steps_passed": true,
+    "oracle_provenance": {
+      "build_profile": "gguf_eager_teacher_forced_oracle",
+      "collected_at": "2026-07-17T00:11:40.409819+00:00",
+      "command": [
+        "/home/lhl/miniforge3/envs/therock/bin/python3.12",
+        "scripts/gguf_eager_teacher_forced_oracle.py",
+        "--model",
+        "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "--backend",
+        "hip_gfx1151",
+        "--prompt-token-id",
+        "9707",
+        "--prompt-length",
+        "512",
+        "--decode-steps",
+        "4",
+        "--compiler-version-file",
+        "/home/lhl/gfx1151-benchmarks/2026-07-17-iommu-off-topline-2edbb2ee/model-refresh/hipcc-version-gfx1151.txt",
+        "--require-cached-build",
+        "--json",
+        "/home/lhl/gfx1151-benchmarks/2026-07-17-iommu-off-topline-2edbb2ee/mtp-refresh/oracle.json"
+      ],
+      "configured_backend": "hip_gfx1151",
+      "device_name": "AMD Radeon 8060S Graphics",
+      "dirty": false,
+      "environment": {
+        "HIPENGINE_BACKEND": null,
+        "HIPENGINE_GGUF_DECODE_REPACK": null,
+        "HIPENGINE_GGUF_GEMV_DECODE": null,
+        "HIPENGINE_GGUF_WMMA_PREFILL": null,
+        "HIPENGINE_HIP_ARCH": "gfx1151"
+      },
+      "git_branch": null,
+      "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+      "hipengine_commit": "2edbb2ee3ca74d7757500b5eafe737d43748489c",
+      "kind": "hipengine_artifact_provenance",
+      "kv_dtype": "bf16",
+      "model_fingerprint": {
+        "algorithm": "sha256-sampled-v1",
+        "exists": true,
+        "path_type": "file",
+        "sample_offsets": [
+          0,
+          11331169424,
+          22662338848
+        ],
+        "sampled_bytes": 3145728,
+        "size_bytes": 22663387424,
+        "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+      },
+      "model_path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "model_revision": null,
+      "profiler": {
+        "command": null,
+        "enabled": false,
+        "kind": null
+      },
+      "quant": "gguf_q4_k_m",
+      "repetitions": 1,
+      "repo_root": "/tmp/hipengine-gfx1151-iommuoff-2edbb2ee",
+      "resolved_backend": "hip_gfx1151",
+      "rocm_version": "HIP version: 7.15.0-0000000",
+      "schema_version": 1,
+      "staged_dirty": false,
+      "target_arch": "gfx1151",
+      "timing_protocol": "correctness_only_no_timing_claim",
+      "unstaged_dirty": false,
+      "untracked_count": 0,
+      "untracked_dirty": false,
+      "warmups": 0
+    },
+    "source": {
+      "filename": "oracle.json",
+      "sha256": "d0e01aeff70a4dbc41b2d04e18246057e0b94ce9bb0b2de918a2ba8fc07717d9",
+      "bytes": 307322
+    }
+  },
+  "hipengine_exact_default": {
+    "status": "accepted_current_negative",
+    "semantic_contract": "serial-prefix preserving exact/default",
+    "protocol": "full ten-prompt fixed 10-cycle suite; B1-B5",
+    "route": "resident-b1-probe-block-direct-cap32k-minrows2-pmin05",
+    "true_ar": {
+      "decode_tok_s_weighted": 56.98271779156898,
+      "total_output_tokens": 600,
+      "decode_ms": 10529.508301002352,
+      "prompts": 10,
+      "per_category": {
+        "code": 56.72669490087103,
+        "general_en": 57.4892705415044,
+        "general_ja": 56.999169429468594,
+        "mixed_ja_en": 56.97853860752674
+      }
+    },
+    "budgets": {
+      "b1": {
+        "decode_tok_s_weighted": 56.353902507748664,
+        "vs_ar_ratio": 0.989,
+        "draft_acceptance": 0.75,
+        "accepted_per_output": 0.375,
+        "cycle_wall_ms_per_output": 17.845818125
+      },
+      "b2": {
+        "decode_tok_s_weighted": 56.044907855577975,
+        "vs_ar_ratio": 0.9835,
+        "draft_acceptance": 0.7631578947368421,
+        "accepted_per_output": 0.46524064171123,
+        "cycle_wall_ms_per_output": 17.91380374331551
+      },
+      "b3": {
+        "decode_tok_s_weighted": 55.15765436559045,
+        "vs_ar_ratio": 0.968,
+        "draft_acceptance": 0.7092198581560284,
+        "accepted_per_output": 0.5,
+        "cycle_wall_ms_per_output": 18.201318
+      },
+      "b4": {
+        "decode_tok_s_weighted": 55.582556206853035,
+        "vs_ar_ratio": 0.9754,
+        "draft_acceptance": 0.7039473684210527,
+        "accepted_per_output": 0.5169082125603864,
+        "cycle_wall_ms_per_output": 18.060600483091786
+      },
+      "b5": {
+        "decode_tok_s_weighted": 56.3856040996268,
+        "vs_ar_ratio": 0.9895,
+        "draft_acceptance": 0.7232704402515723,
+        "accepted_per_output": 0.5348837209302325,
+        "cycle_wall_ms_per_output": 17.807995813953486
+      }
+    },
+    "best_budget": "b5",
+    "mtp_beats_ar": false,
+    "splits": {
+      "full": {
+        "prompts": 10,
+        "true_ar_decode_tok_s": 56.98271779156898,
+        "decode_tok_s": 56.3856040996268,
+        "vs_true_ar": 0.9895211440400878,
+        "draft_acceptance": 0.7232704402515723,
+        "accepted_per_output": 0.5348837209302325,
+        "cycle_wall_ms_per_output": 17.807995813953486
+      },
+      "train": {
+        "prompts": 6,
+        "true_ar_decode_tok_s": 56.90968775478636,
+        "decode_tok_s": 57.825528814461,
+        "vs_true_ar": 1.016092884986838,
+        "draft_acceptance": 0.743801652892562,
+        "accepted_per_output": 0.6,
+        "cycle_wall_ms_per_output": 17.358318666666666
+      },
+      "heldout": {
+        "prompts": 4,
+        "true_ar_decode_tok_s": 57.092614962029444,
+        "decode_tok_s": 53.32152056570032,
+        "vs_true_ar": 0.933947772424907,
+        "draft_acceptance": 0.6578947368421053,
+        "accepted_per_output": 0.38461538461538464,
+        "cycle_wall_ms_per_output": 18.845712307692306
+      }
+    },
+    "categories": {
+      "code": {
+        "prompts": 4,
+        "true_ar_decode_tok_s": 56.72669490087103,
+        "decode_tok_s": 58.27383452330954,
+        "vs_true_ar": 1.0272735724360833,
+        "draft_acceptance": 0.7473684210526316,
+        "accepted_per_output": 0.6396396396396397,
+        "cycle_wall_ms_per_output": 17.219424324324322
+      },
+      "general_en": {
+        "prompts": 2,
+        "true_ar_decode_tok_s": 57.4892705415044,
+        "decode_tok_s": 47.26952822384747,
+        "vs_true_ar": 0.8222321796503091,
+        "draft_acceptance": 0.64,
+        "accepted_per_output": 0.4444444444444444,
+        "cycle_wall_ms_per_output": 21.25875277777778
+      },
+      "general_ja": {
+        "prompts": 2,
+        "true_ar_decode_tok_s": 56.999169429468594,
+        "decode_tok_s": 45.7392860694044,
+        "vs_true_ar": 0.802455308160283,
+        "draft_acceptance": 0.3,
+        "accepted_per_output": 0.13043478260869565,
+        "cycle_wall_ms_per_output": 21.946426086956524
+      },
+      "mixed_ja_en": {
+        "prompts": 2,
+        "true_ar_decode_tok_s": 56.97853860752674,
+        "decode_tok_s": 69.89856940927943,
+        "vs_true_ar": 1.2267525829461339,
+        "draft_acceptance": 0.8620689655172413,
+        "accepted_per_output": 0.5555555555555556,
+        "cycle_wall_ms_per_output": 14.384002222222222
+      }
+    },
+    "apple_to_apple_ok": true,
+    "source": {
+      "filename": "exact-full.json",
+      "sha256": "aa5fbbbbac554b7d15f0686a9bd4382c33b9145b6485d7880a9d25e6b8c0b9e7",
+      "bytes": 35671
+    },
+    "comparison_to_previous_iommu_on_publication": {
+      "true_ar_delta_percent": 5.256144077772751,
+      "b5_delta_percent": 8.825002688150875,
+      "ratio_old": 0.9571,
+      "ratio_new": 0.9895,
+      "cycle_wall_delta_percent": -8.017931693078328
+    }
+  },
+  "hipengine_llama_compat": {
+    "status": "accepted_explicit_accuracy_traded",
+    "semantic_contract": "llama-compatible direct partial commit/dp4a; not serial-prefix-equivalent; explicit-only",
+    "protocol": "B2 natural24/cyclecap24; full ten-prompt suite and fixed heldouts",
+    "route": "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit",
+    "true_ar": {
+      "decode_tok_s_weighted": 56.78285548848169,
+      "total_output_tokens": 240,
+      "decode_ms": 4226.627877998908,
+      "prompts": 10,
+      "per_category": {
+        "code": 56.66040512527906,
+        "general_en": 57.6576193578529,
+        "general_ja": 56.78977059763879,
+        "mixed_ja_en": 56.16663962373452
+      }
+    },
+    "full": {
+      "prompts": 10,
+      "true_ar_decode_tok_s": 56.78285548848169,
+      "decode_tok_s": 81.89980241672667,
+      "vs_true_ar": 1.4423332837380805,
+      "draft_acceptance": 0.7771739130434783,
+      "accepted_per_output": 0.5958333333333333,
+      "cycle_wall_ms_per_output": 12.233106249999999
+    },
+    "train": {
+      "prompts": 6,
+      "true_ar_decode_tok_s": 57.214179476219996,
+      "decode_tok_s": 82.98611711415778,
+      "vs_true_ar": 1.4504466877594462,
+      "draft_acceptance": 0.8207547169811321,
+      "accepted_per_output": 0.6041666666666666,
+      "cycle_wall_ms_per_output": 12.072524305555554
+    },
+    "heldout": {
+      "prompts": 4,
+      "true_ar_decode_tok_s": 56.14792684150401,
+      "decode_tok_s": 80.3226292273967,
+      "vs_true_ar": 1.430553784365605,
+      "draft_acceptance": 0.717948717948718,
+      "accepted_per_output": 0.5833333333333334,
+      "cycle_wall_ms_per_output": 12.473979166666666
+    },
+    "categories": {
+      "code": {
+        "prompts": 4,
+        "true_ar_decode_tok_s": 56.66040512527906,
+        "decode_tok_s": 89.1331798261903,
+        "vs_true_ar": 1.5731122929515289,
+        "draft_acceptance": 0.9104477611940298,
+        "accepted_per_output": 0.6354166666666666,
+        "cycle_wall_ms_per_output": 11.239389583333335
+      },
+      "general_en": {
+        "prompts": 2,
+        "true_ar_decode_tok_s": 57.6576193578529,
+        "decode_tok_s": 78.44162635638646,
+        "vs_true_ar": 1.360472860829326,
+        "draft_acceptance": 0.717948717948718,
+        "accepted_per_output": 0.5833333333333334,
+        "cycle_wall_ms_per_output": 12.770558333333332
+      },
+      "general_ja": {
+        "prompts": 2,
+        "true_ar_decode_tok_s": 56.78977059763879,
+        "decode_tok_s": 79.32179862178376,
+        "vs_true_ar": 1.3967620891407828,
+        "draft_acceptance": 0.6923076923076923,
+        "accepted_per_output": 0.5625,
+        "cycle_wall_ms_per_output": 12.629222916666665
+      },
+      "mixed_ja_en": {
+        "prompts": 2,
+        "true_ar_decode_tok_s": 56.16663962373452,
+        "decode_tok_s": 75.43374402816193,
+        "vs_true_ar": 1.3430346649452327,
+        "draft_acceptance": 0.6923076923076923,
+        "accepted_per_output": 0.5625,
+        "cycle_wall_ms_per_output": 13.286970833333333
+      }
+    },
+    "canonical_decode_tok_s": 81.89980241672667,
+    "cross_engine_complete_cycle_decode_tok_s": 81.74538662246967,
+    "apple_to_apple_ok": true,
+    "source": {
+      "filename": "compat-full.json",
+      "sha256": "d0ebc5184d4f1174359eb997beda7e3e7724dc67f6b9aaaf6703d78c1837f865",
+      "bytes": 11934
+    },
+    "comparison_to_previous_iommu_on_publication": {
+      "true_ar_delta_percent": 4.385912087639587,
+      "b2_delta_percent": 17.84835569084189,
+      "ratio_old": 1.2775678920148046,
+      "ratio_new": 1.4423,
+      "cycle_wall_delta_percent": -15.124462630451585
+    }
+  },
+  "llamacpp_hip": {
+    "status": "diagnostic_retained",
+    "performance_claim": false,
+    "protocol": "llama-server c1, B2 draft-MTP, natural25 request / 24 timed post-first-token transitions, reasoning off, greedy, f16 KV",
+    "native_reported": {
+      "base_decode_tok_s": 52.4697071392802,
+      "mtp_decode_tok_s": 70.99279735475157,
+      "mtp_vs_base": 1.3530244635500261
+    },
+    "transition_normalized": {
+      "base_decode_tok_s": 50.37091885370899,
+      "mtp_decode_tok_s": 68.1530854605615,
+      "mtp_vs_base": 1.353024463550026
+    },
+    "client": {
+      "base_output_tok_s": 39.20473201730998,
+      "mtp_output_tok_s": 47.89819990647411,
+      "mtp_vs_base": 1.2217453720975755
+    },
+    "draft_acceptance": 0.7955801104972375,
+    "accepted_per_output": 0.576,
+    "binary": {
+      "path": "/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server",
+      "version": "9648",
+      "commit": "1ebf790cd",
+      "sha256": "105a8712fc0d91cf496faa4701970779ad0ead0561fa51cd096b0fa0aa1eb8c5"
+    },
+    "source": {
+      "filename": "llamacpp.json",
+      "sha256": "04f329082502e4b8d15fdb24e9da34189937749181460360879b04190d22394a",
+      "bytes": 39810
+    },
+    "comparison_to_previous_iommu_on_publication": {
+      "same_server_binary_sha256": true,
+      "base_transition_delta_percent": 3.9130228553846402,
+      "mtp_transition_delta_percent": 2.2395955795908584,
+      "ratio_old": 1.3751703653338243,
+      "ratio_new": 1.353024463550026
+    }
+  },
+  "cross_engine_comparison": {
+    "timed_decode_transitions_per_prompt": 24,
+    "hipengine_llama_compat_ar_tok_s": 56.78285548848169,
+    "hipengine_llama_compat_mtp_complete_cycle_tok_s": 81.74538662246967,
+    "llamacpp_base_tok_s": 50.37091885370899,
+    "llamacpp_mtp_tok_s": 68.1530854605615,
+    "hipengine_ar_vs_llamacpp": 1.1272944147275676,
+    "hipengine_mtp_vs_llamacpp": 1.1994377961035043,
+    "qualification": "decode-only transition wall; hipEngine BF16 vs llama.cpp F16 KV disclosed; client wall excluded"
+  },
+  "source_artifacts": {
+    "exact-smoke.json": {
+      "filename": "exact-smoke.json",
+      "sha256": "0ebb995d5fccbe82da256c6e4823f2afe0691a26f4d39aeacc405b785d92cf51",
+      "bytes": 10461
+    },
+    "compat-smoke.json": {
+      "filename": "compat-smoke.json",
+      "sha256": "2f6fd2d712d5ebc9583dbace6459f5768f3e944d65cdd2da98fe692ae8818d71",
+      "bytes": 10514
+    },
+    "exact-full.json": {
+      "filename": "exact-full.json",
+      "sha256": "aa5fbbbbac554b7d15f0686a9bd4382c33b9145b6485d7880a9d25e6b8c0b9e7",
+      "bytes": 35671
+    },
+    "compat-full.json": {
+      "filename": "compat-full.json",
+      "sha256": "d0ebc5184d4f1174359eb997beda7e3e7724dc67f6b9aaaf6703d78c1837f865",
+      "bytes": 11934
+    },
+    "llamacpp.json": {
+      "filename": "llamacpp.json",
+      "sha256": "04f329082502e4b8d15fdb24e9da34189937749181460360879b04190d22394a",
+      "bytes": 39810
+    },
+    "oracle.json": {
+      "filename": "oracle.json",
+      "sha256": "d0e01aeff70a4dbc41b2d04e18246057e0b94ce9bb0b2de918a2ba8fc07717d9",
+      "bytes": 307322
+    }
+  },
+  "measurement_qualification": "IOMMU-on deltas are directional for hipEngine because the measured source revision changed. The llama.cpp server binary hash is identical to the previous publication, but a reboot-alternating repetition was not run.",
+  "conclusions": [
+    "Exact/default B5 reaches 56.386 versus 56.983 true-AR tok/s (0.9895x), still a narrow aggregate loss; heldout is 0.9339x even though train is 1.0161x.",
+    "Explicit llama-compat B2 reaches 81.900 versus 56.783 true AR (1.4423x); heldout is 1.4306x and all four categories exceed true AR.",
+    "Transition-normalized llama.cpp reaches 68.153 versus 50.371 tok/s (1.3530x); it remains an external diagnostic.",
+    "The repeated-stream teacher-forced oracle is byte-exact through hidden, Conv/GDN, live KV, and token state.",
+    "llama-compat remains explicit-only and accuracy-traded despite its speed because it is not serial-prefix-equivalent."
+  ]
+}
