@@ -162444,3 +162444,56 @@ Compact blocked-progress artifact:
 `benchmarks/results/2026-07-17-gfx1100-paro-g2-native-c2-dense-order-progress.json`.
 No benchmark rollup/changelog row is added because selected-c1 MoE keeps this
 outside the retained native-c2 contract.
+
+## 2026-07-17 — Close PARO grouped-compact c2 arithmetic
+
+Changed only MoE from the clean `bb0a51a5` selected-c1 route to true
+`grouped_compact` on the same W7900/HIP 7.15 p512 fixture. The initial
+L1/L2/L4 one-step comparator was token-green but exposed immediate arithmetic
+drift: layer 0's grouped-MoE output differed by **17 FP16 bits / 3.052e-5 max
+abs**, and by L4 row 0 final hidden differed by **0.009613** with 1,409 elements
+over the 1e-3 contract. All upstream linear-attention and full-attention inputs,
+state, and KV were green, so this was a selected-MoE boundary rather than a new
+attention/state regression. Raw JSON: 1,211,427 bytes, SHA-256
+`c77b040bb4c43e20c1297b6248be2829d263cfbfabb09d63dd33e11d44f584c3`.
+
+An ad-hoc first-call stage replay compared grouped scratch to the same
+hidden/residual replayed through persistent selected-c1 batch scratch. Router
+logits, selected experts, routing weights, sorted experts/weights, packed hidden,
+and rotated gate/up input were exact. The first mismatch was selected gate/up:
+**6 bits / 4.883e-4 max**, followed by down input **7 bits / 1.221e-4**, down
+output **617 bits / 3.052e-5**, and final output **18 bits / 3.052e-5**. The
+cause was orchestration geometry, not metadata or a kernel body: the FP16 grouped
+path inherited each wrapper's 128-thread default, while the selected-c1 exact
+path explicitly uses 64 threads. A force-64 control made gate/up, down input,
+down output, and final output all bit-exact. Before/after stage-summary hashes:
+`d0f14818222fa2269ec89d8c4044833ce24990c241bcb32a5e98927c120c3042` /
+`e073017157c1f912d2f94bcba5fd751959c1339e9089dc5809e3076d129b7199`.
+
+Added RED coverage to require `threads=64` at both grouped FP16 selected GEMV
+calls; it failed safely with missing `threads` kwargs. The implementation adds
+those two launch arguments only. It remains one true grouped c2 launch per
+selected stage, uses the existing sorted-lane inverse/combine ABI, and adds no
+per-row model fallback or backend/quant dispatch branch.
+
+Dirty-tree RED→GREEN evidence:
+
+- the focused orchestration test becomes green; full decode-state, grouped/layout,
+  AWQ plan, combine plan, and group-scatter plan suites pass, plus focused Ruff,
+  compileall, and diff checks;
+- L1/L2/L4 d3 is `eq_ok` with exact-zero linear stages, full-attention stages,
+  NumPy context, Conv/GDN state, KV, hidden, and tokens; raw JSON 1,002,866 bytes,
+  SHA-256 `208761979a46f6898c1dc01153aed4ee1248965cbbdc9243fe53084388467a82`;
+- full L40 d3 is `eq_ok` at every 4/8/16/24/32/40 limit with no hidden bit drift.
+  Execution metadata declares `native_caware_decode=true`, 40
+  `grouped_compact` MoE layers, zero selected-c1 fallback layers, native full
+  attention, and no blockers. Raw JSON 19,889,973 bytes, SHA-256
+  `c02f38f74683a8bb6158570a6e2dd9536a1b8ab8607075a9d620886c3123a398`.
+
+Compact artifact:
+`benchmarks/results/2026-07-17-gfx1100-paro-g2-grouped-moe-stage-closure.json`.
+This closes selected-MoE arithmetic at c2, not the retained G2 packet. Full
+p512/w8/d128 grouped-c2 repetition, shrinking/cancellation lifecycle, inactive
+state/KV immutability, cached profiler, and scaling remain next. Production
+continues to fail closed to true width-1 sessions, and no benchmark rollup or
+performance claim is added.
