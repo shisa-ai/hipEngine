@@ -489,13 +489,12 @@ and the canonical
 
 ## Concurrency
 
-The current publishable gfx1151 table is the exact PARO production-routing
-catalog below. c1 has a retained timing; c2-c8 use width-1 sessions because
-every native candidate fails the independent-c1 oracle. P2 proves that serial
-route through ragged c8-to-c1 EOS/cancel transitions and front/middle/tail
-sparse slots. Native batching remains closed until a general c>N algorithm
-passes the same token/state/KV gates. See
-[`docs/CONCURRENCY.md`](docs/CONCURRENCY.md) for the design history.
+Current GGUF direct-model-step tables are retained separately for gfx1100 and
+gfx1151. Both have exact native c2/c4/c8 graph routes and direct throughput;
+only gfx1100 has also closed live OpenAI membership. The separate gfx1151 PARO
+catalog remains c1-only for native performance because its c2-c8 candidates
+fail the independent-c1 oracle and use width-1 sessions in production. See
+[`docs/CONCURRENCY.md`](docs/CONCURRENCY.md) for the exact boundaries.
 
 The linked records keep gfx1100 and gfx1151 separate because the model files,
 ROCm stacks, and comparison backends differ. *Aggregate* is total tok/s across
@@ -569,21 +568,43 @@ throughput claim. See the [P1 compact catalog](benchmarks/results/2026-07-11-sol
 [P2 lifecycle artifact](benchmarks/results/2026-07-11-sol-p2-gfx1151-paro-ragged-lifecycle.json),
 and [canonical run record](benchmarks/README.md#gfx1151-paro-exact-shaperouting-catalog-2026-07-11).
 
-### gfx1151 / Radeon 8060S historical cross-engine concurrency (2026-06-15)
+### gfx1151 / Radeon 8060S direct GGUF concurrency (Qwen3.6 35B-A3B, 512/128)
 
-**Status: stale diagnostic.** hipEngine uses PARO W4/BF16 KV; llama.cpp uses
-Vulkan Q4_K_S/f16 KV. vLLM did not produce a healthy server. The summary lacks
-the measured hipEngine commit, and the then-used per-run device properties could
-report gfx1100 even though the run forced `HIPENGINE_HIP_ARCH=gfx1151`.
+**Status: retained direct native-c2/c4/c8 decode-model-step throughput; no
+gfx1151 live-membership or server-throughput claim.** All rows use the same
+`UD-Q4_K_M`, BF16 KV, greedy top-1, synchronized graph-step timing, one HIP
+hardware queue, and the active `amd_iommu=off` boot. All 188,080 direct/category
+hidden comparisons are exact, and the c8 trace is 748 packed-native / 0
+row-local / 0 copies. No gfx1151-specific kernel/runtime edit was required.
 
 <!-- BEGIN TOPLINE:GFX1151_CONCURRENCY -->
-No eligible throughput row yet; direct native c2/c4/c8 correctness is retained, with cached profiler/scaling and Phase-D live lifecycle still required.
+| Route | Logical C | Native groups | Aggregate decode tok/s | Per-request tok/s | Aggregate / c1 | Aggregate / serial-c4 | TTFT p50 / p95 | Model-step ITL p50 / p95 | Tracked peak |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| direct c1 | 1 | 1x c1 | 50.277 | 50.277 | 1.000x | 1.001x | 0.367 / 0.368 s | 19.894 / 20.152 ms | 21.783 GiB |
+| direct c2 | 2 | 1x c2 | 72.104 | 36.052 | 1.434x | 1.436x | 2.175 / 2.177 s | 27.705 / 28.012 ms | 22.394 GiB |
+| direct c4 | 4 | 1x c4 | 102.597 | 25.649 | 2.041x | 2.044x | 3.393 / 3.395 s | 38.989 / 39.314 ms | 23.396 GiB |
+| **direct c8** | **8** | **1x c8** | **127.902** | **15.988** | **2.544x** | **2.548x** | **6.831 / 6.838 s** | **62.540 / 63.178 ms** | **25.401 GiB** |
+| chunked c8 control | 8 | 2x c4, serialized | 102.606 | 12.826 | 2.041x | 2.044x | 5.091 / 6.789 s | 77.994 / 78.634 ms | 26.069 GiB* |
+| serial-c4 rate control | 4 | 4x c1, serialized | 50.206 | 12.551 | 0.999x | 1.000x | 0.927 / 1.483 s | 79.657 / 80.663 ms | 26.985 GiB* |
 <!-- END TOPLINE:GFX1151_CONCURRENCY -->
 
-Protocol: prompt 512, decode 128, 8 warmup decode tokens, median of 3. Primitive
-c>1 attention/KV checks passed. The generated-token field used the older
-batch-shaped reference and is not independent-c1 evidence. Profiler, scaling,
-and provenance gates also did not pass.
+Protocol: prompt 512 per row, 128 decode transitions, one discarded full-route
+warmup and median of three, one shared model load, and cached builds. Resident
+sessions grow c1→c2→c4→c8; starred controls run later and retain later
+allocations. One physical c8 improves aggregate decode **154.39%** over c1 and
+**24.65%** over c4+c4, while per-request rate is **68.20% lower** than c1.
+TTFT, model-step ITL, and memory are reported explicitly. The unchanged Phase-D
+live admission/cancel/reclaim/streaming/observability gate remains open.
+
+Artifacts: [`E1 direct correctness`](benchmarks/results/2026-07-17-gfx1151-gguf-concurrency-e1-direct-correctness.json)
+and [`retained E1 direct scaling`](benchmarks/results/2026-07-17-gfx1151-gguf-concurrency-e1-native-c8-scaling-closure.json).
+
+### gfx1151 historical cross-engine concurrency (2026-06-15)
+
+**Status: stale diagnostic.** hipEngine used PARO W4/BF16 KV; llama.cpp used
+Vulkan Q4_K_S/f16 KV, and vLLM did not produce a healthy server. The summary
+lacks the measured hipEngine commit and has incomplete device provenance. No
+eligible historical row is inferred from the current direct GGUF table.
 
 Source artifacts: [`gfx1151 summary`](benchmarks/results/2026-06-15-gfx1151-readme-concurrency-20260615-213804-summary.json),
 [`hipEngine PARO`](benchmarks/results/2026-06-15-gfx1151-readme-concurrency-20260615-122207-hipengine-paro/summary.json),

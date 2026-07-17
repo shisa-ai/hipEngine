@@ -161883,3 +161883,53 @@ GREEN validation passes **24/24** focused profiler/scaling-manifest tests,
 fixed commit; no profiler rerun is needed for the scaling-harness-only fix, but
 it is required here because the source JSON's identity and correctness anchor
 were wrong.
+
+## 2026-07-17 — Retain gfx1151 native-c8 profiler and scaling
+
+The corrected clean detached `d0195221` profiler is mechanically green and now
+carries the right gfx1151 identity plus E1 correctness anchor. Its cached-only
+children record one physical eight-row graph replay with **748 packed-native,
+0 exact-row-local, and 0 copy dispatches**. Full attention is 10 context + 10
+KV-write launches at row extent eight; all 40 selected-MoE layers use 64 lanes;
+Q6 LM-head lowers as exact `6+2`; row argmax is one stage-1 plus one stage-2
+launch; and persistent metadata preparation appears once. The c1/c8
+instrumented kernel durations are **17.708/56.817 ms**; they are diagnostic,
+not throughput. The 86,115-byte profiler JSON SHA-256 is
+`f7b97db6852b1007b877bdce8f06375049a2a31a359a50cfd97da401daba6c92`.
+Raw c1 kernel/marker hashes are `7769907b...436d`/`a7bfb0bd...5af2`; raw c8
+kernel/marker hashes are `05258248...8c1b`/`ba57a175...ae5`.
+
+The clean same-session p512/d128 scaling command was:
+
+```bash
+/home/lhl/miniforge3/envs/therock/bin/python3 \
+  scripts/gguf_packed_ar_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1151 \
+  --configurations c1,c2,c4,native_c8,chunked_c8,serial_c4 \
+  --prompt-token-id 9707 --prompt-length 512 --decode-steps 128 \
+  --warmup-runs 1 --measured-runs 3 \
+  --compiler-version-file /tmp/gfx1151-concurrency-ab6c6d60/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/gfx1151-concurrency-ab6c6d60/scaling-clean.json
+```
+
+The packet runs under the normal-HWS, one-HIP-queue, `amd_iommu=off`, TuneD
+accelerator-performance boot and uses one shared model load. Median aggregate
+rates for c1/c2/c4/native-c8/chunked-c8/serial-c4 are
+**50.277/72.104/102.597/127.902/102.606/50.206 tok/s**. One physical c8 is
+**2.544x c1**, **1.247x c4+c4 (+24.65%)**, and **2.548x** the serial-c4 rate.
+All route trajectories repeat and match. Maximum decode stdev/median is
+**0.1072%**. Native-c8 per-request rate is **15.988 tok/s**; its TTFT is
+**6.831/6.838 s**, model-step ITL is **62.540/63.178 ms**, and tracked peak is
+**25.401 GiB**, so the lower per-request rate and higher latency/memory are
+reported rather than hidden. The 1,338,180-byte source SHA-256 is
+`bac4cf7c493ed77bf6778eac31aacda3072c6d894dae23b7df3931a36802e439`.
+
+Joined artifact
+`benchmarks/results/2026-07-17-gfx1151-gguf-concurrency-e1-native-c8-scaling-closure.json`
+retains the direct model-step performance claim against the separate
+188,080-comparison correctness packet. No gfx1151-specific model/runtime/kernel
+edit was required. This does not close E1 or claim server throughput: the
+unchanged Phase-D live admission/cancel/reclaim/streaming/observability gate is
+next. The active IOMMU-off state is characterization only, not a causal A/B.
