@@ -161872,3 +161872,55 @@ state-KV immutability, honest per-artifact logical/physical grouping, and
 middle-hole retirement/new admission at the correctness level. It does not yet
 establish the measured C>8 grouping policy, optional compaction, profiler
 attribution, server latency, or a performance claim.
+
+## 2026-07-17 — Add optional arbitrary-C physical-slot compaction gate
+
+Hardened `Qwen35GGUFResidentModelRunner.compact_batch()` so any real scheduler
+slot move first flushes all packed state owners, identifies the unique moved
+request sessions, observes and invalidates every graph pinning their state/KV,
+and records graph invalidation telemetry. The actual Conv/GDN slabs, KV pool
+allocation/block ids, and cache pointers remain request-owned; scheduler
+compaction changes only the logical request-to-physical-slot map. No-op moves do
+not flush or invalidate.
+
+Extended `scripts/gguf_arbitrary_c_lifecycle.py` with the explicit
+`--compact-after-middle-hole` gate. After cancelling slots 2 and 10, it captures
+actual sparse physical-c8 graphs for masks `11011111` and `11011000`, snapshots
+every moved survivor's per-layer Conv/GDN and live-BF16-KV hashes plus all
+session/allocation/block/device-buffer identities, compacts through the real
+engine loop, and requires exact pre/post identity before allowing another model
+step. It then admits newcomers into the compacted tail and retains all existing
+c1 token/state/KV and packed-route gates.
+
+The first dirty-tree W7900 run was usefully RED: all tokens, state/KV, nine
+moves, resource identities, masks, and routes were exact, but the short
+production lifecycle had executed eager packed decode and therefore exposed no
+live graph handle; the strict graph clause failed rather than silently passing.
+The strengthened gate pins the real sparse graphs immediately before compaction.
+The rerun passes in **87.825 s** on W7900/gfx1100, Qwen3.6-35B-A3B
+`UD-Q4_K_M`, BF16 KV, strict-exact GDN, TheRock HIP 7.15, and cached builds:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/gfx1100-concurrency/hipcc-version.txt \
+PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 \
+  scripts/gguf_arbitrary_c_lifecycle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --rows 13 --cancel-slots 2 10 \
+  --prompt-length 16 --original-max-tokens 5 --newcomer-max-tokens 3 \
+  --prefill-chunk-size 256 --compact-after-middle-hole \
+  --compiler-version-file /tmp/gfx1100-concurrency/hipcc-version.txt \
+  --require-cached-build --json /tmp/gfx1100-e3-compaction-dirty-v2.json
+```
+
+All nine nontrivial moves preserve byte hashes and pointers exactly; survivors
+occupy slots 0-10, newcomers enter 11/12, both sparse graphs close with **2/2**
+invalidations and zero remaining entries, initial/hole/refill masks are
+`11111111+11111000 -> 11011111+11011000 -> 11111111+11111000`, all decode is
+packed-native, and final ownership is 0 active / 13 available. The 253,689-byte
+raw result SHA-256 is
+`2454983f12d96f39761e478cbe568b115ca55701df8e8de364b827fcb3dbdb42`.
+Affected host validation is **62/62** plus **5/5** compaction scheduler tests;
+focused Ruff, Python compilation, and diff checks pass. This remains a dirty
+implementation diagnostic; commit the gate and rerun once from the clean
+revision before retaining optional-compaction evidence.

@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 import hipengine.generation.qwen35_gguf as qwen35_gguf
-from hipengine.dispatch import WorkItem, WorkKind
+from hipengine.dispatch import SlotMove, WorkItem, WorkKind
 from hipengine.generation import (
     EngineLoopConfig,
     GenerationCancellationToken,
@@ -1833,6 +1833,82 @@ def test_gguf_resident_runner_lowers_c13_to_declared_physical_groups(monkeypatch
     assert runner._last_execution_manifest["logical_c"] == 13
     assert runner._last_execution_manifest["physical_group"]["group_index"] == 1
     assert runner._last_execution_manifest["physical_group"]["physical_rows"] == 8
+
+
+def test_gguf_resident_runner_compaction_flushes_and_invalidates_slot_bound_graphs() -> None:
+    events: list[tuple] = []
+
+    class FakeGraph:
+        closed = False
+
+    graph = FakeGraph()
+
+    class FakeSession:
+        def __init__(self, session_id: int) -> None:
+            self.session_id = int(session_id)
+            self.allocation = SimpleNamespace(base_ptr=0xA000 + session_id)
+            self.state_identity = object()
+
+        def invalidate_device_kv_graphs(self) -> int:
+            events.append(("invalidate", self.session_id))
+            if graph.closed:
+                return 0
+            graph.closed = True
+            return 1
+
+    sessions = (FakeSession(0), FakeSession(1))
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    runner.generator = SimpleNamespace(target_arch="gfx1100")
+    runner._rows = {
+        10: SimpleNamespace(lease=SimpleNamespace(session=sessions[0])),
+        11: SimpleNamespace(lease=SimpleNamespace(session=sessions[1])),
+    }
+    runner._kv_graph_invalidation_count = 0
+    runner._flush_all_packed_owners = lambda: events.append(("flush",))
+    runner._graph_handles_for_sessions = lambda observed: (
+        events.append(("handles", tuple(session.session_id for session in observed)))
+        or (graph,)
+    )
+    runner._observe_graph_handles = lambda observed: events.append(
+        ("observe", tuple(session.session_id for session in observed))
+    )
+    runner._record_graph_invalidations = lambda handles, count: events.append(
+        ("record", tuple(handles), int(count))
+    )
+    identities_before = tuple(
+        (id(session), id(session.allocation), session.allocation.base_ptr, id(session.state_identity))
+        for session in sessions
+    )
+
+    runner.compact_batch(
+        (
+            SlotMove(request_id=10, old_slot=2, new_slot=0),
+            SlotMove(request_id=11, old_slot=4, new_slot=1),
+        )
+    )
+
+    assert events[0] == ("flush",)
+    assert ("handles", (0, 1)) in events
+    assert ("observe", (0, 1)) in events
+    assert [event for event in events if event[0] == "invalidate"] == [
+        ("invalidate", 0),
+        ("invalidate", 1),
+    ]
+    assert [event for event in events if event[0] == "record"] == [
+        ("record", (graph,), 1)
+    ]
+    assert graph.closed
+    assert runner._kv_graph_invalidation_count == 1
+    assert tuple(
+        (id(session), id(session.allocation), session.allocation.base_ptr, id(session.state_identity))
+        for session in sessions
+    ) == identities_before
+
+    events.clear()
+    runner.compact_batch((SlotMove(request_id=10, old_slot=0, new_slot=0),))
+    assert events == []
 
 
 def test_gguf_resident_runner_device_kv_admission_is_atomic_at_high_water() -> None:
