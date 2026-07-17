@@ -161855,3 +161855,31 @@ AOTriton wrapper cache entry was absent. The profiled child had
 omit `--skip-warmbuild`, allowing the harness's parent to prebuild outside
 `rocprofv3` before launching cached-only children. No profile result is inferred
 from the failed trace.
+
+## 2026-07-17 — Scope concurrency profiler evidence to gfx1151
+
+The warm-built clean profiler then completed mechanically on `6f48f0f0` and
+proved the expected gfx1151 runtime route: one physical c8 graph replay has
+**748 packed-native, 0 exact-row-local, and 0 copy dispatches**; full attention
+uses 10 context + 10 KV-write launches at row extent eight; all 40 MoE layers
+use 64 selected lanes; Q6 LM-head lowers as exactly two row tiles followed by
+one stage-1 and one stage-2 row argmax; and the metadata producer appears once.
+The synchronized diagnostic marker windows are **18.032 ms** for c1 and
+**56.961 ms** for c8. These instrumented durations are route census data, not a
+throughput claim.
+
+That first complete JSON was rejected as retained evidence because the host
+profiler still emitted a `gfx1100_...` artifact `kind` and linked the gfx1100 B4
+correctness gate even though its workload, graph key, target, device, and clean
+provenance correctly said gfx1151. Added a RED backend-provenance contract, then
+made artifact kinds target-scoped while preserving the existing gfx1100 schema,
+linked gfx1151 to its separate E1 direct-correctness artifact, and made the
+native-c8 phase wording target-aware (`E2` on gfx1100, `E1` on gfx1151). The
+default raw-output path is now gfx11-neutral. No trace classifier, runtime,
+model, or kernel changed.
+
+GREEN validation passes **24/24** focused profiler/scaling-manifest tests,
+`py_compile`, and `git diff --check`. The clean census will be rerun from the
+fixed commit; no profiler rerun is needed for the scaling-harness-only fix, but
+it is required here because the source JSON's identity and correctness anchor
+were wrong.
