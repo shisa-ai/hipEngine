@@ -1,0 +1,212 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_concurrency_e1_live_loop_closure",
+  "created_at": "2026-07-17T19:17:33+09:00",
+  "status": "accepted_continuous_eq_ok",
+  "passed": true,
+  "claim_level": "continuous_eq_ok",
+  "performance_claim": false,
+  "server_continuous_membership_claim": true,
+  "global_production_continuous_batching_claim": false,
+  "gfx1151_specific_kernel_or_runtime_change_required": false,
+  "provenance": {
+    "measurement_commit": "d01952211ebafba2bd9391174369f48450b254f9",
+    "measurement_branch": null,
+    "dirty": false,
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "compiler_version_file": "/tmp/gfx1151-concurrency-ab6c6d60/hipcc-version.txt",
+    "compiler_version_file_sha256": "4575f2f128d68d1d1c7e99436d20ecac67a363d6d300f6dde6b2fb83a86f8987",
+    "cached_build_required": false,
+    "environment": {
+      "HIPENGINE_BACKEND": "hip_gfx1151",
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact",
+      "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+      "HIPENGINE_PREFILL_DECODE_POLICY": "protect_ttft",
+      "HIPENGINE_MAX_ACTIVE_REQUESTS": "4",
+      "HIPENGINE_MAX_PREFILL_CHUNK_TOKENS": "256",
+      "HIPENGINE_KV_POOL_INITIAL_PAGES": "3",
+      "HIPENGINE_KV_POOL_LOW_WATER_PAGES": "3",
+      "HIPENGINE_KV_POOL_HIGH_WATER_PAGES": "12",
+      "HIPENGINE_KV_POOL_CHUNK_PAGES": "3",
+      "HIPENGINE_KV_POOL_IDLE_GRACE_SECONDS": "0"
+    },
+    "boot": {
+      "kernel_cmdline": "amdgpu.mes_log_enable=1 amdgpu.gpu_recovery=1 amdgpu.send_sigterm=1 amd_iommu=off quiet nowatchdog splash rw rootflags=subvol=/@ root=UUID=56bc3cf2-994d-4561-a614-a8a16f7de8d8",
+      "amdgpu_sched_policy": 0,
+      "amd_iommu": "off",
+      "tuned_profile": "accelerator-performance",
+      "gpu_max_hw_queues": 1,
+      "qualification": "The active IOMMU-off boot is characterization only; this gate is not a causal IOMMU A/B."
+    }
+  },
+  "joined_evidence": {
+    "broad_lifecycle_run": {
+      "outcome": "all lifecycle, streaming, route, and final-ownership assertions before OpenAI SSE passed; the process then stopped at the API request because the harness used an exact token-ID array with stream=true, which the OpenAI compatibility contract intentionally rejects",
+      "expected_reporting_boundary_status": 400,
+      "expected_reporting_boundary_code": "unsupported_parameter",
+      "expected_reporting_boundary_param": "stream",
+      "source_harness": {
+        "path": "/tmp/gfx1151_e1_live_loop.py",
+        "sha256": "a41fc063c4a00f884ebfde0f9c25b4caba39b87e935ba22e05b922f654bf010e",
+        "size_bytes": 19496
+      },
+      "stdout": {
+        "path": "/tmp/gfx1151-concurrency-ab6c6d60/e1-live-loop.stdout",
+        "sha256": "79f3625166dd1f5e252b891130b4ab0200f024ecdbea955051977207e74c3744",
+        "size_bytes": 953
+      },
+      "evidence_rule": "The failing SSE call occurs after every listed broad-run assertion in the hashed harness. Reaching that line proves the preceding assertions completed; the already-green GPU lifecycle path was not repeated after the isolated reporting-only failure."
+    },
+    "focused_openai_sse_run": {
+      "outcome": "passed",
+      "source_harness": {
+        "path": "/tmp/gfx1151_e1_sse.py",
+        "sha256": "3bacdff6edda84efb4052f95a81b0759a9ffd39fb456d12d73d3061af06e2ce5",
+        "size_bytes": 5429
+      },
+      "source_json": {
+        "path": "/tmp/gfx1151-concurrency-ab6c6d60/e1-sse.json",
+        "sha256": "704ab9c3bc3dfb7fea82ffd80af0d94061230048e1e552b525e76923314cf01f",
+        "size_bytes": 21909
+      },
+      "stdout": {
+        "path": "/tmp/gfx1151-concurrency-ab6c6d60/e1-sse.stdout",
+        "sha256": "7426eda877532202dcff8afa143f9b53529ccdb53e28da5918bed643237921f9",
+        "size_bytes": 22174
+      },
+      "elapsed_seconds": 55.72470649599563
+    }
+  },
+  "workload": {
+    "resident_capacity": 4,
+    "prompt_tokens_per_lifecycle_request": 512,
+    "prefill_chunk_tokens": 256,
+    "controlled_a_max_tokens": 8,
+    "controlled_b_disconnect_after_tokens": 2,
+    "stream_c_max_tokens": 4,
+    "stream_d_disconnect_after_tokens": 2,
+    "reference_mode": "independent c1 greedy BF16-KV trajectories with token and canonical state/KV capture",
+    "joined_route": "one masked physical-c4 model step with two active rows",
+    "sampling": "greedy_top1",
+    "speculative_decode": false
+  },
+  "controlled_lifecycle": {
+    "admit_b_while_a_decodes": true,
+    "bounded_two_chunk_prefill": true,
+    "joined_manifest": {
+      "physical_rows": 4,
+      "active_rows": 2,
+      "active_mask": [true, true, false, false],
+      "complete_c1_session_replays": 0,
+      "occupied_slots": 2,
+      "refcounted_kv_pages": 6
+    },
+    "b_disconnect_isolated": true,
+    "b_two_token_prefix_matches_independent_c1": true,
+    "a_state_kv_exact_at_four_tokens_after_b_disconnect": true,
+    "a_canonical_state_kv_exact_at_seven_tokens_after_packed_state_flush": true,
+    "a_all_eight_tokens_match_independent_c1": true
+  },
+  "streaming_lifecycle": {
+    "c_and_d_join_one_live_loop": true,
+    "d_disconnect_preserves_only_c": true,
+    "c_state_kv_exact_at_three_tokens_after_d_disconnect": true,
+    "c_all_four_streamed_chunks_match_independent_c1_token_decoding": true,
+    "d_two_chunk_prefix_matches_independent_c1_token_decoding": true,
+    "native_packed_decode_steps_positive": true,
+    "serial_decode_fallback_steps": 0,
+    "resident_fallback_requests": 0,
+    "idle_scheduler_active_requests": 0,
+    "idle_model_active_requests": 0,
+    "idle_refcounted_kv_pages": 0
+  },
+  "openai_sse": {
+    "endpoint": "/v1/completions",
+    "prompt": "Hello",
+    "prompt_tokens": 1,
+    "max_tokens": 2,
+    "stream": true,
+    "include_usage": true,
+    "status_code": 200,
+    "payload_count": 4,
+    "completion_event": true,
+    "usage_event": true,
+    "done_sentinel": true,
+    "body_sha256": "ba670a046d4fb86d33f1b21ed8974b8d30784fb21b8c2d2bb8bda463c9efe40d"
+  },
+  "observability_and_ownership": {
+    "prometheus": {
+      "hipengine_requests_total": 1.0,
+      "hipengine_request_completed_total": 1.0,
+      "hipengine_request_failed_total": 0.0,
+      "hipengine_prompt_tokens_total": 1.0,
+      "hipengine_completion_tokens_total": 2.0,
+      "hipengine_resident_requests_active": 0.0,
+      "hipengine_resident_requests_admitted_total": 1.0,
+      "hipengine_resident_requests_reclaimed_total": 1.0,
+      "hipengine_kv_pool_current_pages": 3.0,
+      "hipengine_kv_pool_refcounted_pages": 0.0
+    },
+    "pre_shutdown": {
+      "scheduler_active_requests": 0,
+      "occupied_slots": 0,
+      "model_active_requests": 0,
+      "available_sessions": 4,
+      "kv_current_pages": 3,
+      "kv_refcounted_pages": 0,
+      "native_packed_decode_steps": 1,
+      "serial_decode_fallback_steps": 0,
+      "resident_fallback_requests": 0
+    },
+    "post_shutdown": {
+      "scheduler_active_requests": 0,
+      "model_active_requests": 0,
+      "available_sessions": 0,
+      "kv_pool_is_none": true
+    }
+  },
+  "commands": {
+    "broad_lifecycle": "cd /tmp/hipengine-gfx1151-concurrency-d0195221 && env PYTHONPATH=/tmp/hipengine-gfx1151-concurrency-d0195221 HIPENGINE_BACKEND=hip_gfx1151 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/gfx1151-concurrency-ab6c6d60/hipcc-version.txt HIPENGINE_GGUF_GDN_PREFILL_MODE=exact HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 HIPENGINE_PREFILL_DECODE_POLICY=protect_ttft HIPENGINE_MAX_ACTIVE_REQUESTS=4 HIPENGINE_MAX_PREFILL_CHUNK_TOKENS=256 HIPENGINE_KV_POOL_INITIAL_PAGES=3 HIPENGINE_KV_POOL_LOW_WATER_PAGES=3 HIPENGINE_KV_POOL_HIGH_WATER_PAGES=12 HIPENGINE_KV_POOL_CHUNK_PAGES=3 HIPENGINE_KV_POOL_IDLE_GRACE_SECONDS=0 /home/lhl/hipEngine-main/.venv/bin/python /tmp/gfx1151_e1_live_loop.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --max-sequence-length 560 --out /tmp/gfx1151-concurrency-ab6c6d60/e1-live-loop.json",
+    "focused_openai_sse": "cd /tmp/hipengine-gfx1151-concurrency-d0195221 && env PYTHONPATH=/tmp/hipengine-gfx1151-concurrency-d0195221 HIPENGINE_BACKEND=hip_gfx1151 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/gfx1151-concurrency-ab6c6d60/hipcc-version.txt HIPENGINE_GGUF_GDN_PREFILL_MODE=exact HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 HIPENGINE_PREFILL_DECODE_POLICY=protect_ttft HIPENGINE_MAX_ACTIVE_REQUESTS=4 HIPENGINE_MAX_PREFILL_CHUNK_TOKENS=256 HIPENGINE_KV_POOL_INITIAL_PAGES=3 HIPENGINE_KV_POOL_LOW_WATER_PAGES=3 HIPENGINE_KV_POOL_HIGH_WATER_PAGES=12 HIPENGINE_KV_POOL_CHUNK_PAGES=3 HIPENGINE_KV_POOL_IDLE_GRACE_SECONDS=0 /home/lhl/hipEngine-main/.venv/bin/python /tmp/gfx1151_e1_sse.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --out /tmp/gfx1151-concurrency-ab6c6d60/e1-sse.json"
+  },
+  "completion_audit": {
+    "requirements": {
+      "admission_while_neighbor_decodes": true,
+      "bounded_prefill_chunks": true,
+      "masked_native_joined_decode": true,
+      "disconnect_and_reclaim_isolated": true,
+      "survivor_tokens_state_and_kv_exact": true,
+      "row_owned_streaming_exact": true,
+      "real_openai_sse_complete": true,
+      "prometheus_request_and_ownership_metrics": true,
+      "final_scheduler_session_and_kv_ownership_zero": true,
+      "serial_and_resident_fallback_zero": true
+    },
+    "e1_symmetry_objective_achieved": true,
+    "next_gate": "E3 optional compaction and arbitrary-C lowering, then F1 burst/live-admission server timing; PARO remains independently unqualified."
+  },
+  "known_non_claims": [
+    "This is a correctness-only continuous-membership gate; it adds no server throughput, TTFT, ITL, or concurrent-kernel performance claim.",
+    "The retained 127.902 tok/s native-c8 result remains a separate direct model-step timing scope.",
+    "The broad p512 run did not emit its planned JSON because its final exact-token OpenAI request was intentionally rejected; this artifact retains only assertions proven by execution order and the separately passed focused SSE payload.",
+    "The focused SSE request is one c1 text prompt and is not a live-c2 throughput measurement.",
+    "Optional compaction, arbitrary C, C>8 policy, normal sampling, prefix caching, MTP/DFlash, and PARO are not inferred.",
+    "This correctness-only live gate used the already-warm detached-worktree cache but did not enforce cached-only JIT execution.",
+    "The active amd_iommu=off boot is recorded but no causal IOMMU improvement is inferred."
+  ]
+}
