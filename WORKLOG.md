@@ -161822,3 +161822,53 @@ Affected host validation is **92 passed**; focused Ruff, compilation, and diff
 checks pass. These are deliberately dirty implementation diagnostics. Commit the
 reusable gates next, then rerun eager, graph, and membership from that clean
 revision before retaining E3 correctness evidence.
+
+## 2026-07-17 — Close arbitrary-C state/KV correctness on clean C=13
+
+Reran every E3 correctness gate from clean `1dc7076f` on Radeon Pro W7900 /
+gfx1100, Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, strict-exact GDN, TheRock HIP
+7.15, the precomputed compiler version file, and cached builds required. The
+standard state-oracle command is:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/gfx1100-concurrency/hipcc-version.txt \
+PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 \
+  scripts/gguf_packed_ar_state_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --rows 13 --lifecycle steady \
+  --prefill-mode independent_c1 --decode-mode graph \
+  --prompt-length 512 --decode-steps 128 --capture-layer-hidden \
+  --compiler-version-file /tmp/gfx1100-concurrency/hipcc-version.txt \
+  --require-cached-build --json /tmp/gfx1100-e3-clean-1dc7076f-c13-graph-p512-d128.json
+# repeated with --decode-mode eager and its output path
+```
+
+Clean outcomes:
+
+- Short p16/d2 eager and graph each pass **1,040/1,040** layer-hidden
+  comparisons, exact token trajectories, exact initial/final Conv/GDN and live
+  BF16 KV hashes, and physical groups c8 active-8 + c8 active-5. Eager retains
+  four group manifests; two graphs each replay twice. Raw sources are 36,233
+  bytes / SHA-256 `c7e86374f5135cec7f6e3a724fbee649439e8d5bc6e06839ba58454414c27618`
+  and 28,737 bytes / `0aeac6b412ac4b3b8859f7315d7962cb227321684f346840e37772e574d1f331`.
+- The clean production-loop membership gate passes in **87.100 s** with exact
+  tokens/state/KV, inactive-session immutability, middle-hole and restored masks,
+  exact slots 2/10 plus resident-session reuse, declared widths only, no serial
+  fallback, and final ownership 0 active / 13 available. Its 52,351-byte raw
+  source SHA-256 is
+  `d2e889f5d95931f013d9e282fb639be77864ca12eaaf76845a1cb2659ff8913c`.
+- Standard p512/d128 eager and graph each pass **66,560/66,560** layer-hidden
+  comparisons plus exact tokens/Conv/GDN/live KV. Eager executes 256 declared
+  group manifests; graph captures two physical-c8 groups and replays each 128
+  times. Raw eager is 1,594,467 bytes / SHA-256
+  `54fa6ce9d291b9a446ee8e2b151ad619316e0c7f407bae955d2b63c098446483`;
+  graph is 68,435 bytes /
+  `0024491cf9972444e19dc9f26005729714b669befcfa7f6a9d2cbf9a897e0eb2`.
+
+Across the short and standard eager/graph gates, **135,200/135,200** all-layer
+hidden comparisons are exact. This closes E3 arbitrary-C lowering, tail/masked
+state-KV immutability, honest per-artifact logical/physical grouping, and
+middle-hole retirement/new admission at the correctness level. It does not yet
+establish the measured C>8 grouping policy, optional compaction, profiler
+attribution, server latency, or a performance claim.
