@@ -162431,3 +162431,16 @@ The benchmark package remains correctly blocked because decode still declares
 packet. Production continues to fail closed to true width-1 sessions. The next
 native-c2 boundary is selected-expert MoE, followed by shrinking lifecycle and
 then c4/c8 generalization.
+
+Clean `32de8d08` revalidation reproduces the result. Full p512/w8/d128 remains
+exact for **274/274 IDs** at **122.317 aggregate / 61.159 per-request tok/s**
+over 2.093 s. The all-layer d3 state/KV comparator remains `eq_ok` with no hidden
+bit drift; raw JSON is 19,890,707 bytes, SHA-256
+`f4e77eaf22b82e46c37267c12e21ffbc5e90fae612b2b5c98e8fa66325b036e4`.
+The clean trace captures one exact c2 context launch at **190,841 ns**, grid Y 2,
+workgroup X 256, 24 VGPR, and zero scratch/LDS; CSV SHA-256 is
+`eed4c9fb361bb37e05e6733c51f1c4265962e77fba44cdbc8ea4bb421f8d4314`.
+Compact blocked-progress artifact:
+`benchmarks/results/2026-07-17-gfx1100-paro-g2-native-c2-dense-order-progress.json`.
+No benchmark rollup/changelog row is added because selected-c1 MoE keeps this
+outside the retained native-c2 contract.
