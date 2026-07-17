@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Measure direct gfx1100 GGUF packed graph groups and honest controls.
+"""Measure direct gfx11 GGUF packed graph groups and honest controls.
 
 The default packet runs one state-bound c1, c2, c4, and native-c8 graph bucket,
 an explicit chunked-c8 control made of two serial c4 groups, and a serial-c4
@@ -34,6 +34,7 @@ from hipengine.benchmark.provenance import collect_artifact_provenance
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
+SUPPORTED_BACKENDS = ("hip_gfx1100", "hip_gfx1151")
 _EXACT_ENV = {
     "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
     "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact",
@@ -692,7 +693,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     )
     samples_by_name: dict[str, list[dict[str, Any]]] = {name: [] for name in names}
     resolved_backend = str(args.backend)
-    target_arch = "gfx1100"
+    target_arch = resolved_backend.removeprefix("hip_")
 
     stack = ExitStack()
     try:
@@ -796,7 +797,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             **{key: os.environ.get(key) for key in _PROVENANCE_ENV_KEYS},
             **_EXACT_ENV,
         },
-        build_profile="gfx1100_gguf_packed_graph_c1_c2_c4_native_c8_controls",
+        build_profile=f"{target_arch}_gguf_packed_graph_c1_c2_c4_native_c8_controls",
         timing_protocol=(
             "one shared model load; one discarded run and measured repeats per route; "
             "one synchronized graph replay per native group per logical decode transition"
@@ -809,7 +810,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     peak_hip_used = max(int(row["hip_used_bytes"]) for row in memory.values())
     return {
         "schema": 1,
-        "kind": "gfx1100_gguf_native_c8_graph_scaling_packet",
+        "kind": f"{target_arch}_gguf_native_c8_graph_scaling_packet",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "status": (
             "measurement_complete"
@@ -865,7 +866,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
-    parser.add_argument("--backend", choices=("hip_gfx1100",), default="hip_gfx1100")
+    parser.add_argument("--backend", choices=SUPPORTED_BACKENDS, default="hip_gfx1100")
     parser.add_argument("--quant", default="gguf_q4_k_m")
     parser.add_argument(
         "--configurations",

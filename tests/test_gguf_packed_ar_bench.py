@@ -4,6 +4,7 @@ import pytest
 
 from scripts.gguf_packed_ar_bench import (
     CONFIGURATIONS,
+    SUPPORTED_BACKENDS,
     _PROVENANCE_ENV_KEYS,
     _configuration_groups,
     _cross_configuration_correctness,
@@ -13,7 +14,16 @@ from scripts.gguf_packed_ar_bench import (
     _parse_configurations,
     _scaling_summary,
     _stats,
+    build_parser,
 )
+
+
+def test_packed_ar_bench_accepts_both_gfx11_backends() -> None:
+    assert SUPPORTED_BACKENDS == ("hip_gfx1100", "hip_gfx1151")
+    parser = build_parser()
+
+    assert parser.parse_args(["--backend", "hip_gfx1100"]).backend == "hip_gfx1100"
+    assert parser.parse_args(["--backend", "hip_gfx1151"]).backend == "hip_gfx1151"
 
 
 def test_packed_ar_bench_records_visible_device_provenance_keys() -> None:
