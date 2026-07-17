@@ -207,6 +207,42 @@ def _state_snapshot_mismatches(batch: dict[str, Any], c1: dict[str, Any]) -> lis
     return mismatches
 
 
+def _inactive_snapshot_immutability(
+    retirement_by_slot: dict[int, dict[str, Any]],
+    post_lifecycle_by_slot: dict[int, dict[str, Any]],
+    *,
+    retired_slots: Sequence[int],
+) -> dict[str, Any]:
+    slots = [int(slot) for slot in retired_slots]
+    mismatch_components_by_slot: dict[str, list[str]] = {}
+    retirement_hashes: dict[str, str | None] = {}
+    post_lifecycle_hashes: dict[str, str | None] = {}
+    for slot in slots:
+        key = str(slot)
+        retirement = retirement_by_slot.get(slot)
+        post_lifecycle = post_lifecycle_by_slot.get(slot)
+        retirement_hashes[key] = (
+            None if retirement is None else retirement.get("aggregate_sha256")
+        )
+        post_lifecycle_hashes[key] = (
+            None if post_lifecycle is None else post_lifecycle.get("aggregate_sha256")
+        )
+        if retirement is None:
+            mismatches = ["missing_retirement_snapshot"]
+        elif post_lifecycle is None:
+            mismatches = ["missing_post_lifecycle_snapshot"]
+        else:
+            mismatches = _state_snapshot_mismatches(retirement, post_lifecycle)
+        mismatch_components_by_slot[key] = mismatches
+    return {
+        "passed": all(not mismatches for mismatches in mismatch_components_by_slot.values()),
+        "retired_slots": slots,
+        "mismatch_components_by_slot": mismatch_components_by_slot,
+        "retirement_aggregate_sha256_by_slot": retirement_hashes,
+        "post_lifecycle_aggregate_sha256_by_slot": post_lifecycle_hashes,
+    }
+
+
 def _run_c1_reference(
     runner: Qwen35ParoNextTokenRunner,
     prompts: Sequence[Sequence[int]],
@@ -318,6 +354,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
     decoded_count_by_request: dict[int, int] = {}
     transition_trace: list[dict[str, Any]] = []
     batch_state_by_slot: dict[int, dict[str, Any]] = {}
+    post_lifecycle_state_by_slot: dict[int, dict[str, Any]] = {}
     prefill_slab_trace: list[dict[str, Any]] = []
     eos_transition_observed = args.eos_slot is None
     lifecycle_widths_exact = True
@@ -508,6 +545,15 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
 
         if set(batch_state_by_slot) != set(range(args.batch_size)):
             raise RuntimeError("lifecycle gate did not snapshot every physical slot at retirement")
+        # Keep retired physical slots allocated while surviving rows continue,
+        # then prove no later sparse-width decode mutated their Conv/GDN or KV.
+        for slot in termination_order:
+            retirement = batch_state_by_slot[int(slot)]
+            post_lifecycle_state_by_slot[int(slot)] = _slot_state_snapshot(
+                session,
+                slot=int(slot),
+                live_count=int(retirement["live_count"]),
+            )
 
     decode_counts = [decoded_count_by_request[request_id] for request_id in request_ids]
     batch_state_snapshots = [batch_state_by_slot[slot] for slot in range(args.batch_size)]
@@ -518,11 +564,17 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
         for batch, c1 in zip(batch_state_snapshots, c1_state_snapshots, strict=True)
     ]
     state_row_equality = [not mismatches for mismatches in state_mismatches]
+    inactive_state_kv_immutability = _inactive_snapshot_immutability(
+        batch_state_by_slot,
+        post_lifecycle_state_by_slot,
+        retired_slots=termination_order,
+    )
     decode_counts_exact = decode_counts == expected_decode_counts
     eos_transition_passed = bool(eos_transition_observed and not eos_seed_collision)
     passed = bool(
         all(row_equality)
         and all(state_row_equality)
+        and inactive_state_kv_immutability["passed"]
         and decode_counts_exact
         and lifecycle_widths_exact
         and eos_transition_passed
@@ -577,6 +629,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
                 "linear_layer_count": len(c1_state_snapshots[0]["linear"]),
                 "full_attention_layer_count": len(c1_state_snapshots[0]["full_kv"]),
             },
+            "inactive_state_kv_immutability": inactive_state_kv_immutability,
             "decode_counts_exact": decode_counts_exact,
             "lifecycle_widths_exact": lifecycle_widths_exact,
             "no_group_wide_cancellation": lifecycle_widths_exact,

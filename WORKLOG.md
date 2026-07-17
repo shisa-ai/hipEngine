@@ -162497,3 +162497,46 @@ p512/w8/d128 grouped-c2 repetition, shrinking/cancellation lifecycle, inactive
 state/KV immutability, cached profiler, and scaling remain next. Production
 continues to fail closed to true width-1 sessions, and no benchmark rollup or
 performance claim is added.
+
+## 2026-07-18 — Make PARO c2-to-c1 lifecycle state exact
+
+Strengthened `scripts/qwen35_batch_shrinking_correctness.py` before accepting
+PARO lifecycle evidence. The gate now snapshots every retired physical slot at
+its retirement boundary, lets the surviving sparse rows continue through c1,
+and re-hashes all retired Conv/GDN state plus live full-attention K/V prefixes.
+A focused RED requires a changed component hash to fail the new
+`inactive_state_kv_immutability` result.
+
+The first W7900 grouped-c2 cancellation run proved the retired slot was already
+immutable, but exposed a separate survivor boundary. Both rows were exact for
+the seed and two c2 decode steps; after c2→c1, survivor slot 0 first changed at
+generated index 3 (`15` vs c1 `17`), and all 30 linear-state plus 10 full-KV
+layer hashes subsequently differed. Routing `step_batch_native(rows=1)` through
+the true scalar resident-slot path changed the wrong token but did not close the
+gate because the full-attention scratch retained row-count-derived c2 split-view
+offsets. The two RED artifacts are 11,465/11,472 bytes with SHA-256
+`0f4189f53e6c4d9e3e5a7a6fc60dbd0bae4e7a422ea255804df5bf606c6405d2` /
+`11341395f8dcbacb58601133db5a428d6802423fe7af388ad911619d8ded1913`.
+
+The implementation now makes eager rows=1 use `_set_slot_token_embedding()`,
+`_set_slot_position()`, scalar `_run_layers()`, and per-slot sampling, and
+labels that transition `true_c1_resident_slot`. Before scalar full-attention it
+re-reserves canonical token-1 scratch when wider batch scratch is current, just
+as the existing linear/MoE canonicalizers already do. This applies to any
+physical survivor slot and leaves device-resident c>N graph execution unchanged.
+
+Dirty-tree W7900/HIP 7.15 GREEN evidence on the distinct p512 fixture:
+
+- cancellation c2→c1 is `eq_ok`: all generated IDs and all persistent state/KV
+  hashes match independent c1; the cancelled slot's retirement and
+  post-lifecycle aggregate SHA-256 are identical. Raw JSON 8,367 bytes, SHA-256
+  `4ae6f43bbfb2d5a8b87d3ede7787a82f9db5cb8e0659b6260f269dc2a5e78408`;
+- EOS c2→c1 is also `eq_ok`, records `finish_reason=stop`, and preserves the
+  retired slot byte-for-byte. Raw JSON 8,325 bytes, SHA-256
+  `5a321db9bc54e28c9bb77dfb6077e1ea4ac40cb20d088e52cf2dde5f38903095`;
+- the full affected host suites pass **161/161**, plus focused Ruff, Python
+  compilation, and diff checks.
+
+These are dirty-tree implementation gates, not retained evidence. Commit the
+lifecycle fix, then rerun cancellation/EOS from the clean revision before the
+repetition, profiler, and scaling packet.

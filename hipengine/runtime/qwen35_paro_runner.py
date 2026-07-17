@@ -1958,6 +1958,31 @@ class Qwen35ParoResidentSession:
             raise NotImplementedError("native c>N decode currently requires slots in physical-slot order")
         for position in pos:
             self._check_position(position)
+        if rows == 1 and not device_resident:
+            # A shrinking native group must become the established scalar c1
+            # route, not a one-row invocation of batch-shaped full-attention,
+            # MoE, and sampler scratch left warm by the wider group.
+            slot = slot_ids[0]
+            self._set_slot_token_embedding(tokens[0], slot=slot)
+            self._set_slot_position(pos[0], slot=slot)
+            hidden = self._run_layers(
+                position=pos[0],
+                slot=slot,
+                persist_aliases=False,
+                stream=0,
+            )
+            self.last_batch_decode_execution = {
+                "rows": 1,
+                "slots": [int(slot)],
+                "row_execution": "true_c1_resident_slot",
+                "native_caware_decode": False,
+                "moe_decode_path": "selected_c1",
+                "blockers": [],
+            }
+            if not sample:
+                self.runtime.device_synchronize()
+                return (None,)
+            return (self._sample_from_hidden_for_slot(hidden, slot),)
         if device_resident:
             if exact_hybrid:
                 raise NotImplementedError("exact PARO hybrid decode is not graph-capture/device-resident")
@@ -7398,6 +7423,7 @@ class Qwen35ParoResidentSession:
                             stream=_stream,
                         )
 
+                attention_scratch = self._full_attention_decode_scratch(layer_id, state)
                 out = state.run_full_attention_moe_c1_layer_fp16(
                     hidden,
                     key_cache=key_cache,
@@ -7408,7 +7434,7 @@ class Qwen35ParoResidentSession:
                     sin_table=self.sin,
                     position=position_tensor,
                     max_positions=self.max_sequence_length,
-                    attention_scratch=self.full_scratch[layer_id],
+                    attention_scratch=attention_scratch,
                     moe_scratch=self._mlp_decode_scratch(layer_id, state),
                     chunk_size=self.decode_chunk_size,
                     num_splits=num_splits,
@@ -7420,9 +7446,9 @@ class Qwen35ParoResidentSession:
                 )
                 self._trace_decode_full_attention_scratch(
                     layer_id=layer_id,
-                    attention_scratch=self.full_scratch[layer_id],
+                    attention_scratch=attention_scratch,
                     rows=1,
-                    context=getattr(self.full_scratch[layer_id], "attn_out", None),
+                    context=getattr(attention_scratch, "attn_out", None),
                     stream=stream,
                 )
                 self._trace_decode_full_attention_moe_scratch(
@@ -12907,6 +12933,28 @@ class Qwen35ParoResidentSession:
         if hasattr(self, "_verify_graph_cache"):
             self._verify_graph_cache.clear()
 
+    def _full_attention_decode_scratch(
+        self,
+        layer_id: int,
+        state: Qwen35ParoDecodeState,
+    ) -> Qwen35ParoAttentionScratch:
+        """Return canonical c=1 full-attention scratch after wider batch work."""
+
+        scratch = self.full_scratch.get(layer_id)
+        if isinstance(scratch, Qwen35ParoAttentionScratch) and scratch.attn_input.shape[0] == 1:
+            return scratch
+        # Batch scratch split views use row-count-derived offsets. Re-reserve
+        # the canonical token-1 layout before entering the scalar c1 route.
+        self._invalidate_verify_graph_cache()
+        scratch = state.reserve_full_attention_scratch(
+            tokens=1,
+            num_splits=self.max_splits,
+            activation_dtype=DType.FP16,
+            gated_dtype=DType.FP16,
+        )
+        self.full_scratch[layer_id] = scratch
+        return scratch
+
     def _mlp_decode_scratch(
         self,
         layer_id: int,
@@ -12937,6 +12985,8 @@ class Qwen35ParoResidentSession:
             self.moe_scratch[layer_id] = self._mlp_decode_scratch(layer_id, state)
             if self.config.layer_types[layer_id] == "linear_attention":
                 self.linear_scratch[layer_id] = self._linear_decode_scratch(layer_id, state)
+            elif self.config.layer_types[layer_id] == "full_attention":
+                self.full_scratch[layer_id] = self._full_attention_decode_scratch(layer_id, state)
 
     def _linear_decode_scratch(self, layer_id: int, state: Qwen35ParoDecodeState) -> Qwen35ParoLinearAttentionScratch:
         """Return canonical c=1 linear-attention scratch for resident decode.
