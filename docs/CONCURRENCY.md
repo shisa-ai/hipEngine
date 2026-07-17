@@ -107,7 +107,7 @@ PARO, normal sampling, and project-wide production promotion remain open.
 | GGUF Q4_K_M / BF16 KV | gfx1100 | `retained` direct native-c4/c8 graph model steps and real OpenAI server scaling: native-c8 eager/graph p512/d128, ragged, sparse c8→c1, and cancellation are exact; arbitrary C13 eager/graph adds 135,200 exact all-layer comparisons overall, middle-hole cancellation/admission keeps inactive state/KV exact, and nine optional compaction moves preserve hashes/pointers with 2/2 graph invalidations; direct c8 is 246.872 aggregate tok/s, while real p512/128-output logical c1/c8/c9/c13/serial-c13 SSE is 25.583/136.122/88.592/111.380/31.708 aggregate tok/s | Public blocking calls and OpenAI SSE share one configured model-owning loop, reusable c8-capable sessions, bounded queues, real BF16 device KV, arbitrary-C physical-group manifests, and lock-consistent observability; C>8 is multiple declared groups, never a wider native claim; optional compaction is explicit/manual | gfx1151 symmetry, F2 profile-directed tuning/rollback cleanup, normal sampling, and automatic-compaction policy if measurement ever justifies one |
 | GGUF Q5_K/Q6_K/Q8_0 / BF16 KV | gfx1100/gfx1151 | Not executed end to end under c>N | c1 | Q4_K_M c4 closure first |
 | PARO W4 / BF16 KV | gfx1151 | Exact greedy c2 hybrid below 1024 total context; not fully native or retained | Unsupported groups fail closed to true width-1 sessions | Lifecycle/hidden/profiler/repetition gates, then remove row-local hybrid boundaries |
-| PARO W4 / BF16 KV | gfx1100 | Historical primitive/token diagnostics only; no current retained native route | Width-1 sessions | Re-establish the current-HEAD c2 correctness baseline on W7900 |
+| PARO W4 / BF16 KV | gfx1100 | Current-HEAD p512/d128 serial-c2 is exact for 274/274 recorded IDs; direct native-c2 is rejected after first divergence at generated index 2 | Width-1 sessions; direct native groups remain fail-closed | Bisect the first native-c2 hidden/state/KV stage divergence on W7900 |
 | PARO W4 / INT8 KV | gfx1100/gfx1151 | Not started | Width-1 | BF16 native path first |
 
 ### Implemented scaffolding — not production-loop evidence
@@ -869,7 +869,9 @@ set, but it must reuse rather than fork the production loop.
 
 G1. Re-establish c2 controls:
 
-- [ ] Run current-HEAD gfx1100 PARO c1 and c2 exact/serial controls.
+- [x] Run current-HEAD gfx1100 PARO c1 and c2 exact/serial controls. Clean
+      p512/d128 at `ff4e21d2`: serial c2 matches 274/274 recorded IDs; direct
+      native c2 first diverges at generated index 2 and remains rejected.
 - [ ] Re-run the gfx1151 exact c2 hybrid with lifecycle, hidden/state/KV, and
       repetition gates.
 - [ ] Separate graph/eager policy per backend using registered capabilities.
