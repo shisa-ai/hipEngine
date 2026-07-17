@@ -162046,3 +162046,23 @@ git diff --check
 No runtime/kernel/model behavior changed. The failed smoke artifact remains
 under `/tmp/gfx1151-f1-96cb76a0/hip-smoke.json`; it is diagnostic and is not a
 retained performance row.
+
+## 2026-07-18 — Make the F1 HTTP live trigger non-blocking
+
+The repaired p16/d2 smoke passed all c1/c2 warmup, measured, and live token
+rows against independent c1 oracles and kept
+`gguf_packed_ar_server_decode`, native c-aware decode, and zero serial
+fallback. Its tiny c2 rates were **18.967 tok/s** burst and **16.865 tok/s**
+staggered. The only failed predicate was admission timing: a synchronous
+`/metrics` GET was not serviced while the 108 ms request occupied generation,
+so the next Prometheus sample arrived after A completed.
+
+The live trigger now gives Prometheus only bounded, short polls before the
+same-engine c1-derived `prefill + 8 decode-token` time. If an active row-one
+decode sample is available it triggers immediately; otherwise the measured c1
+offset releases B-H and the gate requires A to remain in flight. This is the
+proper HTTP benchmark trigger. It is joined to the separate retained E1 direct
+lifecycle packet, which already proves admission during decode plus exact
+survivor token/state/KV and clean reclaim. The full p512/d128 c8 trace is the
+focused rerun; another three-start tiny smoke would add no stronger evidence.
+Focused validation remains **7/7**, `py_compile`, and `git diff --check`.

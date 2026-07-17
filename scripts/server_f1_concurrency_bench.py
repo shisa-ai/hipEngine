@@ -479,8 +479,8 @@ def _run_burst(
     return _batch_summary(records, batch_wall_seconds=completed - epoch[0])
 
 
-def _metrics_state(base_url: str) -> tuple[list[dict[str, Any]], str]:
-    text = _get_text(f"{base_url}/metrics", timeout=10.0)
+def _metrics_state(base_url: str, *, timeout: float = 10.0) -> tuple[list[dict[str, Any]], str]:
+    text = _get_text(f"{base_url}/metrics", timeout=timeout)
     return parse_prometheus(text), text
 
 
@@ -546,7 +546,11 @@ def _run_live_admission(
     epoch = [time.perf_counter()]
     poll_events: list[dict[str, Any]] = []
     trigger: dict[str, Any] | None = None
-    strategy = "observed_resident_decode_then_join" if engine == "hipengine" else "c1_oracle_prefill_plus_decode_offset"
+    strategy = (
+        "observed_resident_decode_or_c1_timed_decode_join"
+        if engine == "hipengine"
+        else "c1_oracle_prefill_plus_decode_offset"
+    )
     fallback_delay = _oracle_join_delay_seconds(
         oracle_records,
         join_after_tokens=int(args.live_join_after_tokens),
@@ -569,13 +573,17 @@ def _run_live_admission(
         epoch[0] = time.perf_counter()
         first_release.set()
         if engine == "hipengine":
-            deadline = epoch[0] + min(float(args.request_timeout), max(30.0, fallback_delay * 2.0 + 10.0))
+            planned_join_at = epoch[0] + fallback_delay
+            poll_seconds = max(0.005, float(args.metrics_poll_ms) / 1000.0)
             last_signature: tuple[Any, ...] | None = None
-            while time.perf_counter() < deadline and not futures[0].done():
+            while time.perf_counter() < planned_join_at and not futures[0].done():
+                remaining = max(0.001, planned_join_at - time.perf_counter())
                 try:
-                    samples, _ = _metrics_state(base_url)
+                    samples, _ = _metrics_state(
+                        base_url,
+                        timeout=min(poll_seconds, remaining),
+                    )
                 except Exception:
-                    time.sleep(float(args.metrics_poll_ms) / 1000.0)
                     continue
                 state = _compact_poll_state(samples, at_seconds=time.perf_counter() - epoch[0])
                 signature = tuple(state.get(key) for key in state if key != "at_seconds")
@@ -588,20 +596,23 @@ def _run_live_admission(
                     and float(state.get("decode_work_total") or 0.0) > 0.0
                 ):
                     trigger = dict(state)
+                    trigger["source"] = "observed_resident_decode"
                     trigger["first_request_done_before_join"] = futures[0].done()
                     break
-                time.sleep(float(args.metrics_poll_ms) / 1000.0)
+            if trigger is None:
+                remaining = planned_join_at - time.perf_counter()
+                if remaining > 0.0:
+                    time.sleep(remaining)
+                trigger = {
+                    "at_seconds": time.perf_counter() - epoch[0],
+                    "source": "c1_oracle_prefill_plus_decode_offset",
+                    "first_request_done_before_join": futures[0].done(),
+                }
         else:
             time.sleep(fallback_delay)
             trigger = {
                 "at_seconds": time.perf_counter() - epoch[0],
-                "source": "c1_oracle_native_timing",
-                "first_request_done_before_join": futures[0].done(),
-            }
-        if trigger is None:
-            trigger = {
-                "at_seconds": time.perf_counter() - epoch[0],
-                "source": "timing_fallback_after_missing_resident_decode_observation",
+                "source": "c1_oracle_prefill_plus_decode_offset",
                 "first_request_done_before_join": futures[0].done(),
             }
         join_release.set()
@@ -614,6 +625,7 @@ def _run_live_admission(
             "oracle_timing_fallback_seconds": fallback_delay,
             "join_after_decode_tokens_target": int(args.live_join_after_tokens),
             "join_trigger": trigger,
+            "observed_decode_trigger": trigger.get("source") == "observed_resident_decode",
             "poll_events": poll_events,
             "admission_during_first_request": not bool(trigger.get("first_request_done_before_join")),
         }
