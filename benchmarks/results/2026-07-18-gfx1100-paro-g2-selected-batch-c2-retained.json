@@ -1,0 +1,797 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_paro_g2_selected_batch_c2_retained",
+  "created_at": "2026-07-17T19:08:34.515344Z",
+  "run_date": "2026-07-18",
+  "status": "retained_direct_native_c2",
+  "performance_claim": true,
+  "claim_scope": "explicit retained direct native-c2 PARO model step only; not the public/OpenAI production loop and not c4/c8",
+  "decision": "retain_selected_batch_as_the_explicit_native_c2_moe_default; keep_grouped_compact_as_an_unpromoted_exact_diagnostic",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "visible_device": 0,
+    "rocm_stack": "TheRock HIP 7.15 hermetic overlay",
+    "source": {
+      "gpu": "AMD Radeon Pro W7900",
+      "arch": "gfx1100",
+      "detected_arches": [
+        "gfx1100"
+      ],
+      "target_arch": "gfx1100",
+      "default_hardware": true,
+      "visible_device": {
+        "env": {
+          "HIP_VISIBLE_DEVICES": "0"
+        },
+        "hipGetDeviceCount_error": 0,
+        "visible_device_count": 1,
+        "hipGetDevice_error": 0,
+        "current_device": 0,
+        "hipDeviceGetName_error": 0,
+        "device_name": "AMD Radeon Pro W7900"
+      },
+      "rocminfo": {
+        "command": "bash -lc 'rocminfo | grep -E '\"'\"'Name:|gfx'\"'\"' | head -4'",
+        "returncode": 0,
+        "output": "Name:                    AMD Ryzen 9 5950X 16-Core Processor\n  Marketing Name:          AMD Ryzen 9 5950X 16-Core Processor\n  Vendor Name:             CPU                                \n  Name:                    gfx1100"
+      },
+      "rocm_smi": {
+        "command": "rocm-smi --showmeminfo vram --showuse --showtemp",
+        "returncode": 0,
+        "output": "============================ ROCm System Management Interface ============================\n====================================== Temperature =======================================\nGPU[0]\t\t: Temperature (Sensor edge) (C): 31.0\nGPU[0]\t\t: Temperature (Sensor junction) (C): 38.0\nGPU[0]\t\t: Temperature (Sensor memory) (C): 43.0\nGPU[1]\t\t: Temperature (Sensor edge) (C): 38.0\nGPU[1]\t\t: Temperature (Sensor junction) (C): 45.0\nGPU[1]\t\t: Temperature (Sensor memory) (C): 52.0\n==========================================================================================\n=================================== % time GPU is busy ===================================\nGPU[0]\t\t: GPU use (%): 0\nGPU[1]\t\t: GPU use (%): 0\n==========================================================================================\n================================== Memory Usage (Bytes) ==================================\nGPU[0]\t\t: VRAM Total Memory (B): 48301604864\nGPU[0]\t\t: VRAM Total Used Memory (B): 479760384\nGPU[1]\t\t: VRAM Total Memory (B): 25753026560\nGPU[1]\t\t: VRAM Total Used Memory (B): 65044480\n==========================================================================================\n================================== End of ROCm SMI Log ==================================="
+      }
+    }
+  },
+  "software": {
+    "measured_commit": "fcb65c470fd830918255b49f554fe70b08399272",
+    "measured_tree_clean": true,
+    "python": "3.12.9",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "host_contract_tests": "487 passed at measured commit"
+  },
+  "model": {
+    "name": "shisa-ai/Qwen3.6-35B-A3B-PARO-packed",
+    "revision": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "value": "995a8c67847cb2819588bec573a6d17ef04ae554504d040d4f2ea6b2c9c6d917",
+      "size_bytes": 20497454388,
+      "sampled_bytes": 16442350,
+      "file_count": 18,
+      "exists": true,
+      "path_type": "directory"
+    },
+    "quant": "packed_paro_w4",
+    "kv_storage_dtype": "bf16",
+    "layers": 40
+  },
+  "workload": {
+    "direct": {
+      "batch_size": 2,
+      "prompt_tokens_per_request": 512,
+      "warmup_decode_tokens_per_request": 8,
+      "measured_decode_tokens_per_request": 128,
+      "recorded_ids_per_row": 137,
+      "fresh_process_repetitions": 3
+    },
+    "all_layer_state": {
+      "batch_size": 2,
+      "prompt_tokens_per_request": 512,
+      "decode_tokens": 3,
+      "layer_limits": [
+        4,
+        8,
+        16,
+        24,
+        32,
+        40
+      ]
+    },
+    "lifecycle": {
+      "initial_batch_size": 2,
+      "steps_per_width": 2,
+      "transitions": [
+        2,
+        1
+      ],
+      "prompt_lengths": [
+        [
+          512,
+          512
+        ],
+        [
+          512,
+          512
+        ],
+        [
+          503,
+          512
+        ]
+      ]
+    },
+    "prompt_category": {
+      "source": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "source_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+      "categories": [
+        "code",
+        "general_en",
+        "general_ja",
+        "mixed_ja_en"
+      ],
+      "prompt_count": 10,
+      "heldout_ids": [
+        "code_markdown_table",
+        "general_en_explain",
+        "general_ja_explain",
+        "mixed_ja_en_review"
+      ],
+      "prompt_tokens_per_request": 512,
+      "decode_tokens_per_request": 32,
+      "recorded_ids_total": 330,
+      "pairs": [
+        {
+          "pair": 1,
+          "prompts": [
+            {
+              "id": "code_merge_intervals",
+              "category": "code",
+              "split": "train"
+            },
+            {
+              "id": "code_topological_sort",
+              "category": "code",
+              "split": "train"
+            }
+          ],
+          "fixture": {
+            "path": "/tmp/gfx1100-paro-g2-selected-clean-fcb65c47/category-fixtures/pair1.json",
+            "bytes": 6272,
+            "sha256": "ce08e85cedaa3e5f6d66e789fbc6f31231983d407a9154b77053f3f64aa46548"
+          },
+          "result": {
+            "path": "/tmp/gfx1100-paro-g2-selected-clean-fcb65c47/category-pair1-selected-d32.json",
+            "bytes": 119411,
+            "sha256": "64d9443ca8d26f6a529152043099a6b2633c13c7a20fd776ca05efa691004e2b"
+          },
+          "recorded_ids_per_row": [
+            33,
+            33
+          ],
+          "decode_tok_s_aggregate_diagnostic": 114.15106352204374,
+          "exact": true
+        },
+        {
+          "pair": 2,
+          "prompts": [
+            {
+              "id": "code_lru_cache",
+              "category": "code",
+              "split": "train"
+            },
+            {
+              "id": "code_markdown_table",
+              "category": "code",
+              "split": "heldout"
+            }
+          ],
+          "fixture": {
+            "path": "/tmp/gfx1100-paro-g2-selected-clean-fcb65c47/category-fixtures/pair2.json",
+            "bytes": 6272,
+            "sha256": "a9f25441182c4ad32e1677c3144e0835624aa3aaa44baa8de61b673379d9b903"
+          },
+          "result": {
+            "path": "/tmp/gfx1100-paro-g2-selected-clean-fcb65c47/category-pair2-selected-d32.json",
+            "bytes": 119373,
+            "sha256": "2a562fc7be54935a6da39fb26d23df5a24b4a3f4d3404354633a3a522f4e8b3e"
+          },
+          "recorded_ids_per_row": [
+            33,
+            33
+          ],
+          "decode_tok_s_aggregate_diagnostic": 114.68612307026824,
+          "exact": true
+        },
+        {
+          "pair": 3,
+          "prompts": [
+            {
+              "id": "general_en_plan",
+              "category": "general_en",
+              "split": "train"
+            },
+            {
+              "id": "general_en_explain",
+              "category": "general_en",
+              "split": "heldout"
+            }
+          ],
+          "fixture": {
+            "path": "/tmp/gfx1100-paro-g2-selected-clean-fcb65c47/category-fixtures/pair3.json",
+            "bytes": 6291,
+            "sha256": "d3bb12f692aad20602f48d7b124a06ac1a639e8d4fd9d3ddff57e2abc725d752"
+          },
+          "result": {
+            "path": "/tmp/gfx1100-paro-g2-selected-clean-fcb65c47/category-pair3-selected-d32.json",
+            "bytes": 119500,
+            "sha256": "c4b3b50d53b80347ee1b4dfef13ad174fbb61cc212bd3059fc72a19adddb2cc5"
+          },
+          "recorded_ids_per_row": [
+            33,
+            33
+          ],
+          "decode_tok_s_aggregate_diagnostic": 115.25063458325137,
+          "exact": true
+        },
+        {
+          "pair": 4,
+          "prompts": [
+            {
+              "id": "general_ja_plan",
+              "category": "general_ja",
+              "split": "train"
+            },
+            {
+              "id": "general_ja_explain",
+              "category": "general_ja",
+              "split": "heldout"
+            }
+          ],
+          "fixture": {
+            "path": "/tmp/gfx1100-paro-g2-selected-clean-fcb65c47/category-fixtures/pair4.json",
+            "bytes": 6280,
+            "sha256": "d003424619a8eef8650b8ff713da7a4ad0d57116f637a1de0308b77cee5e128d"
+          },
+          "result": {
+            "path": "/tmp/gfx1100-paro-g2-selected-clean-fcb65c47/category-pair4-selected-d32.json",
+            "bytes": 119410,
+            "sha256": "a237299b57039a3eca9d2d017d9c32974e3caa00691637660e2699ac465b44a0"
+          },
+          "recorded_ids_per_row": [
+            33,
+            33
+          ],
+          "decode_tok_s_aggregate_diagnostic": 114.7076355943653,
+          "exact": true
+        },
+        {
+          "pair": 5,
+          "prompts": [
+            {
+              "id": "mixed_ja_en_translate",
+              "category": "mixed_ja_en",
+              "split": "train"
+            },
+            {
+              "id": "mixed_ja_en_review",
+              "category": "mixed_ja_en",
+              "split": "heldout"
+            }
+          ],
+          "fixture": {
+            "path": "/tmp/gfx1100-paro-g2-selected-clean-fcb65c47/category-fixtures/pair5.json",
+            "bytes": 6278,
+            "sha256": "1d447e167818c12f53c26213a5e8b31a995c8b55d2473243a79a287662534150"
+          },
+          "result": {
+            "path": "/tmp/gfx1100-paro-g2-selected-clean-fcb65c47/category-pair5-selected-d32.json",
+            "bytes": 119417,
+            "sha256": "b118d57dcf86ce9075566a4b2ab5826cf60c64e3212068f54cdba12c27035743"
+          },
+          "recorded_ids_per_row": [
+            33,
+            33
+          ],
+          "decode_tok_s_aggregate_diagnostic": 114.38294019277846,
+          "exact": true
+        }
+      ]
+    }
+  },
+  "route": {
+    "prefill": "packed_segments+packed_varlen",
+    "linear_attention": "native_batch_projection+native_segments+batch_gemv_output",
+    "full_attention": "native_batch_context_dense_c1_order",
+    "full_attention_context_variant": "bf16_context_batch_c1_exact_spans",
+    "moe": "selected_batch",
+    "moe_selected_batch_layers": 40,
+    "moe_grouped_compact_layers": 0,
+    "moe_selected_c1_fallback_layers": 0,
+    "sampler": "batched_lm_head",
+    "native_caware_decode": true,
+    "complete_c1_row_or_layer_replay": false,
+    "blockers": [],
+    "auto_default_confirmation": {
+      "requested_cli": "auto",
+      "resolved_moe_decode_path": "selected_batch",
+      "recorded_ids_per_row": [
+        137,
+        137
+      ],
+      "decode_tok_s_aggregate_diagnostic": 121.60147918797101,
+      "passed": true
+    }
+  },
+  "correctness": {
+    "passed": true,
+    "primitive": {
+      "passed": true,
+      "aa_passed": true,
+      "append_key_mismatch": 0,
+      "append_value_mismatch": 0,
+      "attn_batch_vs_c1_max_abs": 0.0,
+      "attn_batch_vs_numpy_max_abs": 2.2351741790771484e-08,
+      "dense_c1_included": true
+    },
+    "direct_repetition": {
+      "runs": 3,
+      "generated_ids_equal_independent_c1": true,
+      "recorded_ids_per_row": 137,
+      "recorded_ids_total_per_run": 274,
+      "deterministic_across_runs": true,
+      "finite_logits": true
+    },
+    "all_layer_state": {
+      "status": "eq_ok",
+      "prefill_hidden_state_kv_passed": true,
+      "decode_linear_inputs_stages_state_passed": true,
+      "decode_full_attention_inputs_outputs_passed": true,
+      "decode_full_context_numpy_oracle_passed": true,
+      "decode_full_kv_passed": true,
+      "hidden_and_tokens_passed": true,
+      "first_hidden_bit_drift": null
+    },
+    "lifecycle": {
+      "cancel_tail_uniform": "eq_ok",
+      "eos_tail_uniform": "eq_ok",
+      "eos_front_ragged": "eq_ok",
+      "generated_token_equality": true,
+      "persistent_linear_state_and_full_kv_identity": true,
+      "inactive_state_kv_immutability": true,
+      "lifecycle_widths_exact": true,
+      "no_group_wide_cancellation": true,
+      "finish_reasons": [
+        "cancel",
+        "stop"
+      ]
+    },
+    "prompt_category": {
+      "passed": true,
+      "prompts_passed": 10,
+      "prompts_total": 10,
+      "heldouts_passed": 4,
+      "recorded_ids_equal": 330,
+      "recorded_ids_total": 330,
+      "finite_logits": true,
+      "selected_batch_layers_each_run": 40,
+      "fallback_layers_each_run": 0
+    }
+  },
+  "scaling": {
+    "statistic": "median of three fresh processes; 8 warmup plus 128 measured decode tokens per request",
+    "c1_graph_tok_s": {
+      "samples": [
+        116.02213354376357,
+        116.16222215859656,
+        115.81803728434437
+      ],
+      "median": 116.02213354376357,
+      "stdev_over_median_percent": 0.14917976542913555
+    },
+    "serial_c2_aggregate_tok_s": {
+      "samples": [
+        100.81334827291951,
+        101.26667638191877,
+        100.92493161995652
+      ],
+      "median": 100.92493161995652,
+      "stdev_over_median_percent": 0.2340367524973254,
+      "per_request_median": 50.46246580997826
+    },
+    "selected_batch_c2_aggregate_tok_s": {
+      "samples": [
+        121.35739722054684,
+        121.92316899439075,
+        121.95299059439499
+      ],
+      "median": 121.92316899439075,
+      "stdev_over_median_percent": 0.27524601222392214,
+      "per_request_median": 60.961584497195375
+    },
+    "ratios": {
+      "aggregate_vs_c1": 1.05086129060367,
+      "aggregate_vs_serial_c2": 1.2080579797022335,
+      "per_request_vs_c1": 0.525430645301835,
+      "aggregate_percent_vs_c1": 5.086129060367006,
+      "aggregate_percent_vs_serial_c2": 20.80579797022335
+    },
+    "gate_5_throughput_passed": true,
+    "prior_classification_packet_selected_median_tok_s": 121.67916536986236,
+    "current_vs_prior_selected_percent": 0.2005303239767553
+  },
+  "latency_observability": {
+    "scope": "fresh-process retained-bench request wall; TTFT includes model load plus prefill and is not a steady server TTFT claim",
+    "queue_seconds": {
+      "p50": 0.00010701650171540678,
+      "p95": 0.000197103014215827,
+      "samples": [
+        0.00019300298299640417,
+        2.0070001482963562e-05,
+        0.000197103014215827,
+        2.103002043440938e-05,
+        0.00019407301442697644,
+        1.9840954337269068e-05
+      ]
+    },
+    "time_to_first_token_seconds": {
+      "p50": 22.365275376534555,
+      "p95": 22.46806489402661,
+      "samples": [
+        22.184904080990236,
+        22.184909830975812,
+        22.365297562035266,
+        22.365253191033844,
+        22.46806489402661,
+        22.468039443949237
+      ]
+    },
+    "inter_token_seconds": {
+      "p50": 0.016356761479983106,
+      "p95": 0.016908983991015702,
+      "sample_count": 810
+    },
+    "request_latency_seconds": {
+      "p50": 24.57774443650851,
+      "p95": 24.68105548300082,
+      "samples": [
+        24.408268202038016,
+        24.408448084956035,
+        24.57765863003442,
+        24.5778302429826,
+        24.680875709978864,
+        24.68105548300082
+      ]
+    },
+    "occupancy": {
+      "direct_active_rows": 2,
+      "lifecycle_width_transitions": [
+        2,
+        1
+      ],
+      "finish_reasons": [
+        "length",
+        "cancel",
+        "stop"
+      ]
+    }
+  },
+  "memory": {
+    "scope": "tracked fixed resident session allocation; weights, KV, and workspace are included rather than separately pooled",
+    "allocator_reserved_peak_bytes_samples": [
+      19899549774,
+      19899549774,
+      19899549774
+    ],
+    "allocator_reserved_peak_bytes_max": 19899549774,
+    "max_batch_size": 2,
+    "max_sequence_length": 649,
+    "kv_policy": {
+      "policy_class": "FixedPagedKVPolicy",
+      "spans_mode": "uniform",
+      "block_size": 256,
+      "requested_storage": "auto",
+      "resolved_storage_dtype": "bf16",
+      "storage_dtype": "bf16",
+      "requested_scale_dtype": "fp16",
+      "requested_scale_granularity": "per_token_head",
+      "scale_metadata_format": {
+        "present": false,
+        "scale_dtype": null,
+        "granularity": null,
+        "k_scale": null,
+        "v_scale": null
+      },
+      "int8_explicit": false,
+      "int8_admission_gated": false,
+      "selection_reason": "default_bf16",
+      "storage_layout": "uniform",
+      "quantized_tail_layers": 0
+    },
+    "dynamic_pool_enabled": false,
+    "stable_block_id_passed": true
+  },
+  "profiler": {
+    "status": "captured",
+    "correctness_status": "eq_ok",
+    "scope": "L4 one c2 decode plus independent-c1 oracle",
+    "trace_csv": "/tmp/gfx1100-paro-g2-selected-clean-fcb65c47/trace-selected-batch/epyc/1513538_kernel_trace.csv",
+    "trace_csv_sha256": "9db5362f3ec0b57b84c99652d1ce2aaff6ce575220369d464148d569cc942033",
+    "trace_dispatches": 1306,
+    "unique_kernel_names": 76,
+    "expected_context_kernel_present": true,
+    "expected_selected_projection_present": true,
+    "context_durations_ns": [
+      201802
+    ],
+    "kernel_names_matching": {
+      "context": [
+        "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_c1_exact_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)"
+      ],
+      "selected_projection": [
+        "void (anonymous namespace)::gemv_awq_pack8_output_tiled_combine_residual_kernel<_Float16, true, 2>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16 const*, float const*, float const*, _Float16 const*, _Float16*, long, long, long, int, long, long)",
+        "void (anonymous namespace)::gemv_awq_pack8_output_tiled_kernel<_Float16, true, 2>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, int)"
+      ],
+      "selected_gate_up": [
+        "void (anonymous namespace)::gemv_awq_pack8_output_tiled_combine_residual_kernel<_Float16, true, 2>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16 const*, float const*, float const*, _Float16 const*, _Float16*, long, long, long, int, long, long)",
+        "void (anonymous namespace)::gemv_awq_pack8_output_tiled_kernel<_Float16, true, 2>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, int)"
+      ]
+    },
+    "kernel_family_durations_ns": {
+      "exact_c2_context": {
+        "count": 1,
+        "total": 201802,
+        "median": 201802,
+        "min": 201802,
+        "max": 201802,
+        "workgroup_x": [
+          256
+        ],
+        "grid_y": [
+          2
+        ],
+        "scratch_bytes": [
+          0
+        ]
+      },
+      "selected_gate_up_dual": {
+        "count": 12,
+        "total": 271805,
+        "median": 21200.0,
+        "min": 18240,
+        "max": 29921,
+        "workgroup_x": [
+          64
+        ],
+        "grid_y": [
+          8,
+          16
+        ],
+        "scratch_bytes": [
+          0
+        ]
+      },
+      "selected_down_pack8": {
+        "count": 12,
+        "total": 168841,
+        "median": 13240.0,
+        "min": 11840,
+        "max": 17320,
+        "workgroup_x": [
+          64
+        ],
+        "grid_y": [
+          8,
+          16
+        ],
+        "scratch_bytes": [
+          0
+        ]
+      },
+      "fused_output_combine_residual": {
+        "count": 4,
+        "total": 32920,
+        "median": 7480.0,
+        "min": 7000,
+        "max": 10960,
+        "workgroup_x": [
+          128
+        ],
+        "grid_y": [
+          1
+        ],
+        "scratch_bytes": [
+          0
+        ]
+      },
+      "output_tiled": {
+        "count": 6,
+        "total": 110883,
+        "median": 17861.0,
+        "min": 12600,
+        "max": 26201,
+        "workgroup_x": [
+          128
+        ],
+        "grid_y": [
+          1
+        ],
+        "scratch_bytes": [
+          0
+        ]
+      },
+      "fused_silu_pair_rotate": {
+        "count": 3,
+        "total": 15120,
+        "median": 5040,
+        "min": 5000,
+        "max": 5080,
+        "workgroup_x": [
+          64
+        ],
+        "grid_y": [
+          4
+        ],
+        "scratch_bytes": [
+          0
+        ]
+      }
+    },
+    "selected_gemv_workgroup_x": 64,
+    "exact_context_geometry": {
+      "workgroup_x": 256,
+      "grid_y": 2,
+      "scratch_bytes": 0
+    }
+  },
+  "commands": {
+    "hermetic_wrapper": "env -i HOME=$HOME USER=$USER PATH=<therock>/bin:<therock>/llvm/bin:/usr/local/bin:/usr/bin:/bin LD_LIBRARY_PATH=<therock>/lib:<therock>/llvm/lib PYTHONPATH=/home/lhl/hipEngine-main HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100",
+    "selected_direct": "env HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1 python3 scripts/qwen35_batch_retained_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/gfx1100-paro-g2-selected-clean-fcb65c47/fixture.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --batch-decode-execution direct_native --batch-decode-moe-path selected_batch --batch-decode-linear-path batch_segments --batch-decode-linear-projection-path batch --batch-decode-linear-state-path batch_segments --batch-decode-linear-moe-path grouped_compact --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path native_batch --batch-decode-attn-input-path batch --batch-decode-attn-qkv-path batch --batch-decode-attn-scratch-path batch --batch-decode-attn-context-path batch --batch-decode-attn-gate-path batch --batch-decode-full-attn-kv-append-path batch --batch-decode-full-attn-output-path batch --batch-decode-full-attn-layer-copy batch --batch-decode-full-attn-moe-path grouped_compact --batch-decode-post-attn-path batch --compiler-version-file /tmp/gfx1100-paro-g2-selected-clean-fcb65c47/hipcc-version.txt --require-cached-build --json /tmp/gfx1100-paro-g2-selected-clean-fcb65c47/c2-selected-batch-p512-d128-run1.json",
+    "c1_graph": "env HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 python3 scripts/qwen35_paro_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --backend hip_gfx1100 --shared-expert-format packed_paro_w4 --prompt-fixture /tmp/gfx1100-paro-g2-selected-clean-fcb65c47/fixture.json --prompt-row 0 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --graph-replay-decode --compiler-version-file /tmp/gfx1100-paro-g2-selected-clean-fcb65c47/hipcc-version.txt --require-cached-build --json /tmp/gfx1100-paro-g2-selected-clean-fcb65c47/c1-graph-run1.json",
+    "serial_c2": "env HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1 python3 scripts/qwen35_batch_retained_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/gfx1100-paro-g2-selected-clean-fcb65c47/fixture.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --batch-decode-execution serial --batch-decode-moe-path selected_batch --compiler-version-file /tmp/gfx1100-paro-g2-selected-clean-fcb65c47/hipcc-version.txt --require-cached-build --json /tmp/gfx1100-paro-g2-selected-clean-fcb65c47/c2-serial-run1.json",
+    "all_layer_state": "python3 scripts/qwen35_batch_hidden_bisect.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/gfx1100-paro-g2-selected-clean-fcb65c47/fixture.json --prompt-length 512 --batch-size 2 --decode-tokens 3 --max-layers 40 --layer-limits 4,8,16,24,32,40 --max-sequence-length 1024 --trace-decode-start 0 --trace-decode-end 3 --batch-decode-moe-path selected_batch --batch-decode-linear-path batch_segments --batch-decode-linear-projection-path batch --batch-decode-linear-state-path batch_segments --batch-decode-linear-moe-path grouped_compact --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path native_batch --batch-decode-attn-input-path batch --batch-decode-attn-qkv-path batch --batch-decode-attn-scratch-path batch --batch-decode-attn-context-path batch --batch-decode-attn-gate-path batch --batch-decode-full-attn-kv-append-path batch --batch-decode-full-attn-output-path batch --batch-decode-full-attn-layer-copy batch --batch-decode-full-attn-moe-path grouped_compact --batch-decode-post-attn-path batch --compiler-version-file /tmp/gfx1100-paro-g2-selected-clean-fcb65c47/hipcc-version.txt --require-cached-build --json /tmp/gfx1100-paro-g2-selected-clean-fcb65c47/c2-selected-batch-l40-d3-state-kv.json",
+    "cancel_lifecycle": "python3 scripts/qwen35_batch_shrinking_correctness.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/gfx1100-paro-g2-selected-clean-fcb65c47/fixture.json --prompt-length 512 --batch-size 2 --steps-per-width 2 --max-layers 40 --max-sequence-length 1024 --survivor-slot 0 --decode-execution native --compiler-version-file /tmp/gfx1100-paro-g2-selected-clean-fcb65c47/hipcc-version.txt --require-cached-build --json /tmp/gfx1100-paro-g2-selected-clean-fcb65c47/c2-c1-selected-cancel.json",
+    "eos_lifecycle": "python3 scripts/qwen35_batch_shrinking_correctness.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/gfx1100-paro-g2-selected-clean-fcb65c47/fixture.json --prompt-length 512 --batch-size 2 --steps-per-width 2 --max-layers 40 --max-sequence-length 1024 --survivor-slot 0 --eos-slot 1 --decode-execution native --compiler-version-file /tmp/gfx1100-paro-g2-selected-clean-fcb65c47/hipcc-version.txt --require-cached-build --json /tmp/gfx1100-paro-g2-selected-clean-fcb65c47/c2-c1-selected-eos.json",
+    "ragged_front_lifecycle": "python3 scripts/qwen35_batch_shrinking_correctness.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/gfx1100-paro-g2-selected-clean-fcb65c47/fixture.json --prompt-lengths 503,512 --batch-size 2 --steps-per-width 2 --max-layers 40 --max-sequence-length 1024 --survivor-slot 1 --eos-slot 0 --decode-execution native --compiler-version-file /tmp/gfx1100-paro-g2-selected-clean-fcb65c47/hipcc-version.txt --require-cached-build --json /tmp/gfx1100-paro-g2-selected-clean-fcb65c47/c2-c1-selected-ragged-front-eos.json",
+    "primitive": "python3 scripts/qwen35_batch_correctness.py --rows 2 --seed 1234 --include-dense-c1 --compiler-version-file <file> --require-cached-build --json <json>",
+    "profiler": "rocprofv3 --kernel-trace --output-format csv -d <trace> -- python3 scripts/qwen35_batch_hidden_bisect.py <L4/d1 selected_batch exact-native flags> --compiler-version-file <file> --require-cached-build --json <json>",
+    "category_pair": "env HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1 python3 scripts/qwen35_batch_retained_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/gfx1100-paro-g2-selected-clean-fcb65c47/category-fixtures/pair<N>.json --prompt-length 512 --batch-size 2 --decode-tokens 32 --warmup-decode-tokens 0 --max-layers 40 --batch-decode-execution direct_native --batch-decode-moe-path selected_batch --batch-decode-linear-path batch_segments --batch-decode-linear-projection-path batch --batch-decode-linear-state-path batch_segments --batch-decode-linear-moe-path grouped_compact --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path native_batch --batch-decode-attn-input-path batch --batch-decode-attn-qkv-path batch --batch-decode-attn-scratch-path batch --batch-decode-attn-context-path batch --batch-decode-attn-gate-path batch --batch-decode-full-attn-kv-append-path batch --batch-decode-full-attn-output-path batch --batch-decode-full-attn-layer-copy batch --batch-decode-full-attn-moe-path grouped_compact --batch-decode-post-attn-path batch --compiler-version-file /tmp/gfx1100-paro-g2-selected-clean-fcb65c47/hipcc-version.txt --require-cached-build --json <category-pair-json>"
+  },
+  "raw_sources": {
+    "fixture": {
+      "path": "/tmp/gfx1100-paro-g2-selected-clean-fcb65c47/fixture.json",
+      "bytes": 39874,
+      "sha256": "ebecaea08fcc72277ec9aae0e627190499ff3ef2bc551a8ffd7060d30223dbc4"
+    },
+    "compiler_version": {
+      "path": "/tmp/gfx1100-paro-g2-selected-clean-fcb65c47/hipcc-version.txt",
+      "bytes": 203,
+      "sha256": "d9f2eb1c91e566e56a5cf684257ead1b7636f95406095c20a2c5542a8734a8d7"
+    },
+    "primitive": {
+      "path": "/tmp/gfx1100-paro-g2-selected-clean-fcb65c47/c2-primitive-correctness.json",
+      "bytes": 2137,
+      "sha256": "c7c6300f6e2a8fb31361f662290ad049b43142ecd12f15e98e16c367c65f684e"
+    },
+    "all_layer_state": {
+      "path": "/tmp/gfx1100-paro-g2-selected-clean-fcb65c47/c2-selected-batch-l40-d3-state-kv.json",
+      "bytes": 19890397,
+      "sha256": "d1943c1830b9344dbc5f3bd1651940363c689b51df9edcae47fce2d3e4bd13e5"
+    },
+    "auto_default": {
+      "path": "/tmp/gfx1100-paro-g2-selected-clean-fcb65c47/c2-auto-default-p512-d128.json",
+      "bytes": 166688,
+      "sha256": "930212527a5b9dea7cdbbf1f2d34a7f83f2ff73028dea02368f5fff50cfd588b"
+    },
+    "profiler_model": {
+      "path": "/tmp/gfx1100-paro-g2-selected-clean-fcb65c47/selected-batch-l4-d1-profile.json",
+      "bytes": 218465,
+      "sha256": "409323d41f0f23deee80419dbcb7f29b42ea6cddfe519bf1a7f82ef9e0f58771"
+    },
+    "profiler_summary": {
+      "path": "/tmp/gfx1100-paro-g2-selected-clean-fcb65c47/selected-batch-l4-d1-profiler-summary.json",
+      "bytes": 3580,
+      "sha256": "caf2973c2dd4c022d8cbebe00d146a20262be95b64216b5b0de0d14911b45795"
+    },
+    "selected_runs": [
+      {
+        "path": "/tmp/gfx1100-paro-g2-selected-clean-fcb65c47/c2-selected-batch-p512-d128-run1.json",
+        "bytes": 166607,
+        "sha256": "c63bb2d0a7f9ed166d9103920df439cb3792b314b30d7366c14ff55653148d17"
+      },
+      {
+        "path": "/tmp/gfx1100-paro-g2-selected-clean-fcb65c47/c2-selected-batch-p512-d128-run2.json",
+        "bytes": 166696,
+        "sha256": "0890c9915053896babe138f343feed540a1fe3f95df2c8b18b52e5763f27e754"
+      },
+      {
+        "path": "/tmp/gfx1100-paro-g2-selected-clean-fcb65c47/c2-selected-batch-p512-d128-run3.json",
+        "bytes": 166725,
+        "sha256": "fce35e06628b041aafeae33c794ef06494161775638bee781cd83abc9869a339"
+      }
+    ],
+    "c1_runs": [
+      {
+        "path": "/tmp/gfx1100-paro-g2-selected-clean-fcb65c47/c1-graph-run1.json",
+        "bytes": 190996,
+        "sha256": "42987be1945291d401b858ef5b8739d48c0286daa6a0267b94324035d535cd19"
+      },
+      {
+        "path": "/tmp/gfx1100-paro-g2-selected-clean-fcb65c47/c1-graph-run2.json",
+        "bytes": 191125,
+        "sha256": "2d27348766ea6ab3e9a011c8ca0577e1720e41dc3eb7b912e1ecfea7f59e4e38"
+      },
+      {
+        "path": "/tmp/gfx1100-paro-g2-selected-clean-fcb65c47/c1-graph-run3.json",
+        "bytes": 191123,
+        "sha256": "6456daaeccacb38a75f110ac66db34059f66171c200a7ef865097c9e9cf42198"
+      }
+    ],
+    "serial_runs": [
+      {
+        "path": "/tmp/gfx1100-paro-g2-selected-clean-fcb65c47/c2-serial-run1.json",
+        "bytes": 110213,
+        "sha256": "3f02d47d4894c79b75241bcc7093bd61ada2910ebe64cb7f1208d70917e2e5a2"
+      },
+      {
+        "path": "/tmp/gfx1100-paro-g2-selected-clean-fcb65c47/c2-serial-run2.json",
+        "bytes": 110227,
+        "sha256": "4acf97b5a4c4f57e835ba425358b9187720c03c8eb5a4e386629abd256478eae"
+      },
+      {
+        "path": "/tmp/gfx1100-paro-g2-selected-clean-fcb65c47/c2-serial-run3.json",
+        "bytes": 110233,
+        "sha256": "e24b2f7f9a02f5c1de5d8ad6a2754aaca83dedb289afaefc0a573ecc920394d7"
+      }
+    ],
+    "lifecycle": [
+      {
+        "path": "/tmp/gfx1100-paro-g2-selected-clean-fcb65c47/c2-c1-selected-cancel.json",
+        "bytes": 8516,
+        "sha256": "57188db4005220e833c7da13d6af4a239b730db63cd6bbc162c0d5c3740a474a"
+      },
+      {
+        "path": "/tmp/gfx1100-paro-g2-selected-clean-fcb65c47/c2-c1-selected-eos.json",
+        "bytes": 8482,
+        "sha256": "319a7bb5d54e3c7f5448878c8a88199486ad93cf95a5cb517016f49adba32b48"
+      },
+      {
+        "path": "/tmp/gfx1100-paro-g2-selected-clean-fcb65c47/c2-c1-selected-ragged-front-eos.json",
+        "bytes": 8688,
+        "sha256": "c69cf1b153d459fd62b22eb1784faec2064542d3603f4574956d8bbeafc3976a"
+      }
+    ],
+    "category_results": [
+      {
+        "path": "/tmp/gfx1100-paro-g2-selected-clean-fcb65c47/category-pair1-selected-d32.json",
+        "bytes": 119411,
+        "sha256": "64d9443ca8d26f6a529152043099a6b2633c13c7a20fd776ca05efa691004e2b"
+      },
+      {
+        "path": "/tmp/gfx1100-paro-g2-selected-clean-fcb65c47/category-pair2-selected-d32.json",
+        "bytes": 119373,
+        "sha256": "2a562fc7be54935a6da39fb26d23df5a24b4a3f4d3404354633a3a522f4e8b3e"
+      },
+      {
+        "path": "/tmp/gfx1100-paro-g2-selected-clean-fcb65c47/category-pair3-selected-d32.json",
+        "bytes": 119500,
+        "sha256": "c4b3b50d53b80347ee1b4dfef13ad174fbb61cc212bd3059fc72a19adddb2cc5"
+      },
+      {
+        "path": "/tmp/gfx1100-paro-g2-selected-clean-fcb65c47/category-pair4-selected-d32.json",
+        "bytes": 119410,
+        "sha256": "a237299b57039a3eca9d2d017d9c32974e3caa00691637660e2699ac465b44a0"
+      },
+      {
+        "path": "/tmp/gfx1100-paro-g2-selected-clean-fcb65c47/category-pair5-selected-d32.json",
+        "bytes": 119417,
+        "sha256": "b118d57dcf86ce9075566a4b2ab5826cf60c64e3212068f54cdba12c27035743"
+      }
+    ]
+  },
+  "validation": {
+    "host_tests": "487 passed at fcb65c47",
+    "primitive_gpu": "passed",
+    "all_layer_gpu": "eq_ok",
+    "lifecycle_gpu": "3/3 eq_ok",
+    "prompt_category_gpu": "10/10 exact",
+    "profiler": "captured expected exact context and selected projection kernels",
+    "json_validation": "passed: json.tool, raw-source SHA/size audit, statistic recomputation, benchmark README sync, and git diff --check"
+  },
+  "remaining_scope": [
+    "Public blocking/OpenAI PARO still uses width-1 sessions; attaching retained c2 to the shared model-owning loop is Phase G4.",
+    "gfx1151, c4, and c8 remain independently unverified.",
+    "Graph replay is not claimed by this direct native-c2 packet.",
+    "Legacy selected_c1 CLI/env compatibility aliases remain for one compatibility window."
+  ],
+  "next_action": "Generalize the exact c-aware algorithms to one physical c4 step without stacking two c2 groups, then run the same direct/all-layer/lifecycle/category/profiler/scaling packet."
+}
