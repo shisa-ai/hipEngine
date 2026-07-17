@@ -6,6 +6,8 @@ from dataclasses import replace
 from hipengine.runtime.gguf_packed_manifest import build_packed_decode_execution_manifest
 from scripts.gguf_packed_ar_rocprof import (
     KernelTraceRow,
+    _artifact_kind,
+    _correctness_gate,
     _marker_name,
     _q6_rowtile_dispatch_count,
     build_arg_parser,
@@ -28,10 +30,26 @@ def test_packed_rocprof_accepts_native_c8_target_and_marker() -> None:
     parser = build_arg_parser()
     assert parser.parse_args([]).packed_concurrency == 4
 
-    args = parser.parse_args(["--packed-concurrency", "8"])
+    args = parser.parse_args(["--backend", "hip_gfx1151", "--packed-concurrency", "8"])
+    assert args.backend == "hip_gfx1151"
     assert args.packed_concurrency == 8
     assert _marker_name(args.packed_concurrency) == (
         "hipengine_gguf_packed_c1_profile_c8_steady_decode_step"
+    )
+
+
+def test_packed_rocprof_scopes_kind_and_correctness_gate_to_backend() -> None:
+    assert _artifact_kind("gfx1100", closure_level="c4", packed_concurrency=8) == (
+        "gfx1100_gguf_concurrency_e2_native_c8_graph_profiler_census"
+    )
+    assert _artifact_kind("gfx1151", closure_level="c4", packed_concurrency=8) == (
+        "gfx1151_gguf_concurrency_e1_native_c8_graph_profiler_census"
+    )
+    assert _correctness_gate("hip_gfx1100").endswith(
+        "2026-07-16-gfx1100-gguf-concurrency-b4-category-lifecycle.json"
+    )
+    assert _correctness_gate("hip_gfx1151").endswith(
+        "2026-07-17-gfx1151-gguf-concurrency-e1-direct-correctness.json"
     )
 
 

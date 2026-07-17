@@ -40,15 +40,55 @@ from hipengine.benchmark.provenance import collect_artifact_provenance
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
-KIND = "gfx1100_gguf_concurrency_c1_hybrid_census"
-C2_KIND = "gfx1100_gguf_concurrency_c2_recurrent_census"
-C3_KIND = "gfx1100_gguf_concurrency_c3_model_boundaries_census"
-C4_KIND = "gfx1100_gguf_concurrency_c4_graph_replay_census"
-C8_KIND = "gfx1100_gguf_concurrency_e2_native_c8_graph_profiler_census"
+_NATIVE_C8_PHASE_BY_TARGET = {
+    "gfx1100": "e2",
+    "gfx1151": "e1",
+}
+_CORRECTNESS_GATE_BY_BACKEND = {
+    "hip_gfx1100": (
+        "benchmarks/results/"
+        "2026-07-16-gfx1100-gguf-concurrency-b4-category-lifecycle.json"
+    ),
+    "hip_gfx1151": (
+        "benchmarks/results/"
+        "2026-07-17-gfx1151-gguf-concurrency-e1-direct-correctness.json"
+    ),
+}
 SCHEMA = 1
 MARKER_PREFIX = "hipengine_gguf_packed_c1_profile_c"
 _CAPTURE_PREFILL_GDN_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"
 _GDN_PREFILL_MODE_ENV = "HIPENGINE_GGUF_GDN_PREFILL_MODE"
+
+
+def _artifact_kind(
+    target_arch: str,
+    *,
+    closure_level: str,
+    packed_concurrency: int,
+) -> str:
+    target = str(target_arch)
+    if packed_concurrency == 8 and closure_level == "c4":
+        try:
+            phase = _NATIVE_C8_PHASE_BY_TARGET[target]
+        except KeyError as exc:
+            raise ValueError(f"unsupported gfx11 profiler target: {target!r}") from exc
+        suffix = f"{phase}_native_c8_graph_profiler_census"
+    elif closure_level == "c4":
+        suffix = "c4_graph_replay_census"
+    elif closure_level == "c3":
+        suffix = "c3_model_boundaries_census"
+    elif closure_level == "c2":
+        suffix = "c2_recurrent_census"
+    else:
+        suffix = "c1_hybrid_census"
+    return f"{target}_gguf_concurrency_{suffix}"
+
+
+def _correctness_gate(backend: str) -> str:
+    try:
+        return _CORRECTNESS_GATE_BY_BACKEND[str(backend)]
+    except KeyError as exc:
+        raise ValueError(f"unsupported gfx11 profiler backend: {backend!r}") from exc
 
 
 @dataclass(frozen=True)
@@ -920,12 +960,13 @@ def _run_parent(args: argparse.Namespace) -> dict[str, Any]:
         and (str(args.decode_mode) != "graph" or closure_level == "c4")
     )
 
+    target_arch = str(packed["child"]["target_arch"])
     command = [sys.executable, "scripts/gguf_packed_ar_rocprof.py", *sys.argv[1:]]
     provenance = collect_artifact_provenance(
         repo_root=REPO_ROOT,
         configured_backend=str(args.backend),
         resolved_backend=str(packed["child"]["backend"]),
-        target_arch=str(packed["child"]["target_arch"]),
+        target_arch=target_arch,
         model_path=model,
         quant="gguf_q4_k_m",
         kv_dtype="bf16",
@@ -954,16 +995,10 @@ def _run_parent(args: argparse.Namespace) -> dict[str, Any]:
     )
     return {
         "schema": SCHEMA,
-        "kind": (
-            C8_KIND
-            if packed_concurrency == 8 and closure_level == "c4"
-            else C4_KIND
-            if closure_level == "c4"
-            else C3_KIND
-            if closure_level == "c3"
-            else C2_KIND
-            if closure_level == "c2"
-            else KIND
+        "kind": _artifact_kind(
+            target_arch,
+            closure_level=closure_level,
+            packed_concurrency=packed_concurrency,
         ),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "status": (
@@ -1016,7 +1051,7 @@ def _run_parent(args: argparse.Namespace) -> dict[str, Any]:
             "c1_generated_token_ids": c1["child"]["generated_token_ids"],
             f"{packed_label}_warmup_token_ids": packed["child"]["warmup_token_ids"],
             f"{packed_label}_profile_token_ids": packed["child"]["profile_token_ids"],
-            "phase_b_gate": "benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-b4-category-lifecycle.json",
+            "phase_b_gate": _correctness_gate(str(args.backend)),
         },
         "execution_manifest": dict(manifest),
         "profiler_census": census,
@@ -1035,7 +1070,7 @@ def _run_parent(args: argparse.Namespace) -> dict[str, Any]:
             "One synchronized steady decode transition is a route census, not a throughput sample.",
             (
                 (
-                    "E2 proves one real native-c8 graph replay with zero undeclared c1 work or "
+                    f"{_NATIVE_C8_PHASE_BY_TARGET[target_arch].upper()} proves one real native-c8 graph replay with zero undeclared c1 work or "
                     "steady transfer; retained scaling and d128 equality are joined separately."
                     if packed_concurrency == 8
                     else "C4 proves one real graph replay with zero undeclared c1 work or steady transfer; "
@@ -1072,7 +1107,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--prompt-token-id", type=int, default=9707)
     parser.add_argument("--expected-token-id", type=int, default=9707)
     parser.add_argument("--compiler-version-file", type=Path)
-    parser.add_argument("--raw-root", type=Path, default=Path("/tmp/hipengine-gfx1100-c1-census"))
+    parser.add_argument("--raw-root", type=Path, default=Path("/tmp/hipengine-gfx11-c1-census"))
     parser.add_argument("--rocprofv3", default=shutil.which("rocprofv3") or "rocprofv3")
     parser.add_argument("--roctx-sdk", type=Path, default=_default_roctx_sdk())
     parser.add_argument("--skip-warmbuild", action="store_true")
