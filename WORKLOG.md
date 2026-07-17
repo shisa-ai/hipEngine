@@ -162540,3 +162540,80 @@ Dirty-tree W7900/HIP 7.15 GREEN evidence on the distinct p512 fixture:
 These are dirty-tree implementation gates, not retained evidence. Commit the
 lifecycle fix, then rerun cancellation/EOS from the clean revision before the
 repetition, profiler, and scaling packet.
+
+## 2026-07-18 — Close gfx1100 PARO native-c2 correctness
+
+Completed the clean G2 packet on W7900/TheRock HIP 7.15. The direct/lifecycle
+and scaling runs use clean `7d60fe6c`; the unchanged grouped arithmetic's
+all-layer comparator was already clean at `4898f285`. Model revision is
+`437eba06df05aad71a4dacdcaf3fff70ae1ee8a1`, PARO W4 with BF16 KV, all 40
+layers, and the distinct raw-ID fixture SHA-256
+`ebecaea08fcc72277ec9aae0e627190499ff3ef2bc551a8ffd7060d30223dbc4`.
+Every command used the hermetic `env -i` wrapper, GPU 0/gfx1100, a precomputed
+HIP 7.15 compiler-version file, and `--require-cached-build`; the compact
+artifact records the exact route flags and raw hashes.
+
+Correctness is now `native_eq_ok` for gfx1100 c2:
+
+- three fresh grouped-compact p512/w8/d128 runs each match both independent c1
+  sessions for **137/137 IDs per row (274/274 total)**, remain finite, and are
+  deterministic across runs. Execution metadata reports native batch
+  projection/state/full-attention/context/sampler, **40 grouped MoE layers**,
+  zero selected fallback layers, and empty blockers;
+- clean L40/d3 remains `eq_ok` at 4/8/16/24/32/40 layers for prefill hidden,
+  Conv/GDN state, full KV, every traced decode stage, independent NumPy context,
+  final hidden, and tokens, with no first bit drift. Raw JSON 19,889,993 bytes,
+  SHA-256 `c4a7022c04e86f76918aa2babebfbdc2c12938f9d6c6310f6aba5c77f885816d`;
+- clean cancellation and EOS runs both traverse c2→c1 with exact tokens and all
+  **30 linear + 10 full-attention** persistent-state layers. Retired slot 1 has
+  identical retirement/post-lifecycle hashes while slot 0 continues. Raw hashes:
+  `e42dca5fb2e25baef389577380305c804f18df46d7399b2cb3dfa358a35979c0` /
+  `7c9e8d0de98747b9682d90c7069c0bee716ca658c018c88fdce06aa9391188d6`;
+- a clean ragged `[503,512]` front-EOS run leaves physical slot 1 alive, passes
+  both rows' token/state/KV oracles, and keeps retired slot 0 byte-identical.
+  Raw JSON 8,533 bytes, SHA-256
+  `99a7ec6dbb22ab1f6dcca2ec7b7506503d92ae8354b848a9c518b0a2447b973d`.
+
+Three fresh-process p512/d128 measurements (medians, aggregate generated tok/s)
+are:
+
+| Route | Samples | Median | vs c1 aggregate | vs serial c2 |
+| --- | --- | ---: | ---: | ---: |
+| c1 graph | 115.812, 115.935, 116.067 | **115.935** | 1.000x | — |
+| serial c2 bridge | 100.836, 101.023, 100.754 | **100.836** | 0.870x | 1.000x |
+| grouped-compact c2 | 109.056, 109.617, 108.959 | **109.056** | **0.941x (-5.93%)** | **1.082x (+8.15%)** |
+| selected-batch control | 122.214, 121.455, 121.679 | **121.679** | **1.050x (+4.95%)** | **1.207x (+20.67%)** |
+
+Maximum stdev/median is **0.326%**. Grouped compaction is exact and beats the
+serial bridge, but fails Gate 5 because aggregate throughput is below c1; it is
+therefore **not** promoted as the default and no benchmark README/changelog row
+is added.
+
+The selected control changes only MoE dispatch. Despite the legacy requested
+name `selected_c1`, execution metadata says `selected_c1_batch`,
+`native_caware_decode=true`, 40 rows=2 layer executions, zero
+`moe_selected_c1_fallback_layers`, and empty blockers. Inspection confirms one
+`run_moe_c1_fp16(..., tokens=2)` batch call per layer, not
+`run_moe_c1_rows_fp16()` or a complete c1 layer/session replay. Its three runs
+are token-exact and deterministic, while being **+11.58%** over grouped. The
+retained validator currently hard-codes only `grouped_compact` as native, so the
+faster route remains a candidate pending a truthful rename/classification audit.
+
+Paired cached L4/d1 `rocprofv3 --kernel-trace` runs are both `eq_ok` and record
+the expected exact c2 context kernel at **199,522/200,562 ns**, grid Y 2,
+workgroup X 256. Selected gate/up and down GEMVs use the exact **64-thread**
+geometry. The grouped trace has **1,353** dispatches versus **1,306** selected
+(**+47**): four extra launches each of group scatter, count, prefix, tile map,
+lane inverse, lane weighted-sum, and batch combine, plus three extra rotate1
+launches, while losing selected-batch fused combine families. This matches the
+E2E wall result and supplies the concrete reason not to promote grouped at c2.
+
+Published correctness/scaling evidence:
+`benchmarks/results/2026-07-18-gfx1100-paro-g2-native-c2-correctness-scaling.json`.
+This advances the gfx1100 c2 coverage ledger to correctness-only
+`native_eq_ok`, not `retained`. Production still fails closed to width-1; gfx1151,
+the prompt-category promotion suite, live-loop attachment, and c4/c8 remain
+open. Next: distinguish native selected-batch from the separately named per-row
+fallback in runtime metadata/validation, retain the faster exact c2 algorithm if
+the complete current-revision packet passes, then generalize rather than stack
+c2 groups for c4/c8.
