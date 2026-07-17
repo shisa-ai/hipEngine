@@ -162218,3 +162218,43 @@ be copied for G1. If the refreshed comparator later proves a missing kernel
 rather than an orchestration/reduction boundary, inspect those listed commits
 and parent evidence before an in-tree raw-pointer port with RED oracle and
 profiler gate.
+
+## 2026-07-17 — Re-establish clean W7900 PARO c1/c2 controls
+
+Ran the G1 control packet from clean `ff4e21d2` on the W7900/gfx1100 with the
+shisa Qwen3.6-35B-A3B PARO-packed snapshot
+`437eba06df05aad71a4dacdcaf3fff70ae1ee8a1`, BF16 KV, the exact temporary
+8x512 raw-ID fixture SHA-256
+`ebecaea08fcc72277ec9aae0e627190499ff3ef2bc551a8ffd7060d30223dbc4`, and the
+hermetic HIP 7.15 environment. All three commands used the precomputed compiler
+version file, `--require-cached-build`, prompt length 512, 40 layers, eight
+warmup decode tokens, and 128 measured decode tokens:
+
+- `scripts/qwen35_paro_bench.py ... --prompt-row 0 --graph-replay-decode`
+  establishes the width-1 graph control at **115.956 tok/s** over **1.104 s**
+  measured decode. Its graph route, BF16 KV audit, and close-to-baseline memory
+  lifecycle pass. Raw JSON: 191,123 bytes, SHA-256
+  `a685dfa842eb8f3b812c32ae22f812b38d4efc3266777dd1a5afba51f0ded247`.
+- `scripts/qwen35_batch_retained_bench.py ... --batch-size 2
+  --batch-decode-execution serial` establishes the packed-prefill/serial-c1
+  bridge control. Both rows match their independent c1 sessions for all
+  **137/137** recorded IDs each (seed + eight warmup + 128 measured), or
+  **274/274** overall. Aggregate measured decode is **100.789 tok/s** over
+  **2.540 s**; it remains an explicitly blocked serial bridge, not a native
+  claim. Raw JSON: 109,894 bytes, SHA-256
+  `94aced700ad90cbc94a3449f63aebe36455c72ccc885db31a387ecee0defa65f`.
+- The otherwise identical `--batch-decode-execution direct_native` control is
+  correctly rejected. Row 1 first diverges at generated index 2 and row 0 at
+  index 3, so its minimum equal prefix is only two IDs. It reports native batch
+  linear/full-attention/state/KV execution and stable block identity, but the
+  selected-c1-batch MoE boundary remains explicit and token correctness fails.
+  Diagnostic aggregate decode is **130.589 tok/s** over **1.960 s** (**+29.6%**
+  versus the serial bridge, **1.126x** the separate c1 graph rate), but carries
+  **no performance claim**. Raw JSON: 177,097 bytes, SHA-256
+  `6d872f0e315508ff153bbc1455fc58a4603af594ed4f5690f42952b024f90f23`.
+
+The old May index-87 divergence is therefore superseded: current default native
+c2 fails almost immediately on these distinct current-source prompts. This is a
+useful narrow RED boundary, not a regression claim against comparable retained
+evidence. G2 now runs the existing hidden/state/KV stage bisector only through
+the first two decode steps before changing kernels or dispatch.
