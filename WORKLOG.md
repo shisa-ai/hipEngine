@@ -161829,3 +161829,29 @@ Publication validation parses the compact JSON, re-verifies all **18** retained
 source hashes/sizes, keeps root/canonical README exports synchronized, passes
 `tests/test_benchmark_readme_sync.py` (**6 passed**), and passes
 `git diff --check`.
+
+## 2026-07-17 — Generalize the retained scaling harness to gfx1151
+
+The first performance-phase preflight found a host evidence gap rather than a
+model/kernel gap: `scripts/gguf_packed_ar_bench.py --help` exposed
+`--backend {hip_gfx1100}`, so the unchanged retained c1/c2/c4/native-c8/
+chunked-c8/serial-c4 protocol could not be invoked on the already-correct
+`hip_gfx1151` runtime. Added a RED parser contract; it failed at collection
+because `SUPPORTED_BACKENDS` did not exist. The focused fix declares both gfx11
+backend packages, keeps gfx1100 as the default, resolves the initial target from
+the selected package name until the resident runner reports its real target,
+and scopes artifact `kind` plus build-profile provenance to the resolved target.
+No backend branch, model math, route, or kernel changed.
+
+GREEN validation: `tests/test_gguf_packed_ar_bench.py` passes **10/10**,
+`py_compile` passes for the harness and test, and `git diff --check` passes. Ruff
+is not installed in either the active Python environment or `uv run`, so its
+absence is recorded rather than silently claimed.
+
+The independent cached-only profiler attempt from clean detached `ab6c6d60`
+correctly failed before a measured marker window because the clean-worktree
+AOTriton wrapper cache entry was absent. The profiled child had
+`--require-cached-build`; it did not spawn hipcc. The next profiler attempt will
+omit `--skip-warmbuild`, allowing the harness's parent to prebuild outside
+`rocprofv3` before launching cached-only children. No profile result is inferred
+from the failed trace.
