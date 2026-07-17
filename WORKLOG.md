@@ -162042,3 +162042,27 @@ compilation, and diff checks. Diagnostic source:
 SHA-256 `5d9f81402f792d7327ab5bbf474a65189629be4c8942354ee81fa747830b3552`.
 Commit the corrected evidence gate, then rerun the complete packet clean before
 publishing any server number.
+
+## 2026-07-17 — Fix empty-poll resident stream completion race
+
+Stopped the clean `a3de026c` packet after C13 rather than accepting a real API
+failure. One packed-C8 measured sample logged HTTP 500:
+`resident stream stalled; missing request_ids=[]`. Its resident work had
+actually generated and reclaimed every row; the empty missing list exposed a
+race in `SubmitPollTextGenerator.stream_many_detailed()`: the iterator checked
+`complete=False`, another concurrent iterator advanced the shared loop to
+completion, and then this iterator's own `poll()` found no new scheduler events
+and raised before re-reading its routed event/output state.
+
+The stream loop now rechecks its subscription queue and runner-owned completed
+outputs under `_loop_lock` after an empty poll. It continues when a neighbor made
+progress and retains the existing fail-closed stall exception only when the
+submission is still incomplete. A deterministic regression advances prefill
+normally, makes the decode/completion poll appear consumed by a neighbor, and
+requires the original stream to emit its owned token and drain without error.
+The full affected scheduler plus F1 harness suites pass **326/326**; focused
+Ruff (excluding the test file's pre-existing unrelated F821), compilation, and
+diff checks pass. The stopped stderr is 1,044 bytes, SHA-256
+`7f6a84f7e05488ec7645c206647211be09388ee58f2f19cb8a1366ebcf622f5c`.
+No timing from the stopped process is retained. Commit this race fix, then
+restart the complete clean packet.
