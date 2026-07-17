@@ -115,6 +115,8 @@ def extract_response(engine: str, response: Mapping[str, Any], *, prompt_tokens:
         timing = timing if isinstance(timing, Mapping) else {}
         decode_state = choice_hip.get("decode_state")
         decode_state = decode_state if isinstance(decode_state, Mapping) else {}
+        generation_shape = root_hip.get("generation_shape")
+        generation_shape = dict(generation_shape) if isinstance(generation_shape, Mapping) else None
         backend_timing = {
             str(key): float(value)
             for key, value in timing.items()
@@ -135,6 +137,7 @@ def extract_response(engine: str, response: Mapping[str, Any], *, prompt_tokens:
             "serial_decode_fallback": decode_state.get("serial_decode_fallback"),
             "native_caware_decode": decode_state.get("native_caware_decode"),
             "sampler_mode": decode_state.get("sampler_mode"),
+            "generation_shape": generation_shape,
         }
 
     if normalized_engine not in {"llamacpp-hip", "llamacpp-vulkan"}:
@@ -166,6 +169,75 @@ def extract_response(engine: str, response: Mapping[str, Any], *, prompt_tokens:
         "serial_decode_fallback": None,
         "native_caware_decode": None,
         "sampler_mode": "greedy_top_k_1",
+        "generation_shape": None,
+    }
+
+
+def generation_shape_proves_native_group(
+    records: Sequence[Mapping[str, Any]],
+    *,
+    concurrency: int,
+) -> dict[str, Any]:
+    expected = int(concurrency)
+    group_ids: list[str] = []
+    queue_counts: list[int | None] = []
+    queue_prompt_rows: list[int | None] = []
+    backend_input_rows: list[int | None] = []
+    backend_actual_rows: list[list[int]] = []
+    backend_max_rows: list[int | None] = []
+    row_passes: list[bool] = []
+    for record in records:
+        shape = record.get("generation_shape")
+        shape = shape if isinstance(shape, Mapping) else {}
+        queue = shape.get("queue_group")
+        queue = queue if isinstance(queue, Mapping) else {}
+        groups = shape.get("backend_groups")
+        groups = (
+            list(groups)
+            if isinstance(groups, Sequence) and not isinstance(groups, (str, bytes, bytearray))
+            else []
+        )
+        backend = groups[0] if len(groups) == 1 and isinstance(groups[0], Mapping) else {}
+        queue_count = int(queue["request_count"]) if _is_number(queue.get("request_count")) else None
+        prompt_rows = int(queue["prompt_rows"]) if _is_number(queue.get("prompt_rows")) else None
+        input_rows = int(backend["input_rows"]) if _is_number(backend.get("input_rows")) else None
+        max_rows = (
+            int(backend["max_actual_group_rows"])
+            if _is_number(backend.get("max_actual_group_rows"))
+            else None
+        )
+        raw_actual = backend.get("actual_group_rows")
+        actual = (
+            [int(value) for value in raw_actual if _is_number(value)]
+            if isinstance(raw_actual, Sequence) and not isinstance(raw_actual, (str, bytes, bytearray))
+            else []
+        )
+        group_ids.append(str(queue.get("id") or ""))
+        queue_counts.append(queue_count)
+        queue_prompt_rows.append(prompt_rows)
+        backend_input_rows.append(input_rows)
+        backend_actual_rows.append(actual)
+        backend_max_rows.append(max_rows)
+        row_passes.append(
+            queue_count == expected
+            and prompt_rows == expected
+            and input_rows == expected
+            and actual == [expected]
+            and max_rows == expected
+        )
+    nonempty_group_ids = [group_id for group_id in group_ids if group_id]
+    shared_group = len(nonempty_group_ids) == len(records) and len(set(nonempty_group_ids)) == 1
+    return {
+        "passed": len(records) == expected and all(row_passes) and shared_group,
+        "expected_rows": expected,
+        "record_count": len(records),
+        "shared_queue_group": shared_group,
+        "queue_group_ids": group_ids,
+        "queue_request_counts": queue_counts,
+        "queue_prompt_rows": queue_prompt_rows,
+        "backend_input_rows": backend_input_rows,
+        "backend_actual_group_rows": backend_actual_rows,
+        "backend_max_actual_group_rows": backend_max_rows,
     }
 
 
@@ -357,7 +429,7 @@ def _request_payload(args: argparse.Namespace, engine: str, prompt: Sequence[int
             "temperature": 0.0,
             "top_k": 1,
             "top_p": 1.0,
-            "seed": int(args.seed) + int(request_index),
+            "seed": int(args.seed),
             "ignore_eos": True,
             "stream": False,
         }
@@ -368,7 +440,7 @@ def _request_payload(args: argparse.Namespace, engine: str, prompt: Sequence[int
         "top_k": 1,
         "top_p": 1.0,
         "min_p": 0.0,
-        "seed": int(args.seed) + int(request_index),
+        "seed": int(args.seed),
         "ignore_eos": True,
         "cache_prompt": False,
         "stream": False,
@@ -1098,11 +1170,31 @@ def _run_width(
         route_paths = sorted({str(record.get("execution_path")) for record in measured_records})
         serial_values = [record.get("serial_decode_fallback") for record in measured_records]
         native_values = [record.get("native_caware_decode") for record in measured_records]
+        shape_evidence = None
+        resident_capacity = None
         route_ok = True
         if engine == "hipengine":
+            shape_runs = [
+                generation_shape_proves_native_group(
+                    sample["records"],
+                    concurrency=int(concurrency),
+                )
+                for sample in measured
+            ]
+            shape_evidence = {
+                "passed": all(bool(run["passed"]) for run in shape_runs),
+                "runs": shape_runs,
+            }
+            resident_capacity = (
+                None
+                if burst_metrics is None
+                else burst_metrics["scalars"].get("hipengine_resident_bucket_capacity")
+            )
             route_ok = (
                 all(value is False for value in serial_values)
                 and (int(concurrency) == 1 or all(value is True for value in native_values))
+                and bool(shape_evidence["passed"])
+                and resident_capacity == float(concurrency)
             )
         result = {
             "concurrency": int(concurrency),
@@ -1141,6 +1233,8 @@ def _run_width(
                 "native_caware_decode_values": sorted(
                     {value for value in native_values if isinstance(value, bool)}
                 ),
+                "generation_shape": shape_evidence,
+                "resident_capacity": resident_capacity,
             },
             "burst_metrics": burst_metrics,
             "live_admission": live,

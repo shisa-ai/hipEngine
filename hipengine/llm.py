@@ -7,7 +7,7 @@ through a registry at call time so backend/quant choices do not become engine br
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from numbers import Integral
 from pathlib import Path
 from typing import Any
@@ -127,10 +127,22 @@ class LLM:
     engine-level backend or quant conditionals.
     """
 
-    def __init__(self, model: str, *, backend: str = "auto", quant: str = AUTO_QUANT):
+    def __init__(
+        self,
+        model: str,
+        *,
+        backend: str = "auto",
+        quant: str = AUTO_QUANT,
+        max_active_requests: int | None = None,
+    ) -> None:
+        if max_active_requests is not None and int(max_active_requests) <= 0:
+            raise ValueError("max_active_requests must be positive when set")
         self.model = model
         self.backend = backend
         self.quant = quant
+        self.max_active_requests = (
+            None if max_active_requests is None else int(max_active_requests)
+        )
         self._resolved_backend: str | None = None
         self._resolved_quant: str | None = None
         self._weight_index: Any | None = None
@@ -413,13 +425,19 @@ class LLM:
             backend=backend,
             quant=quant,
         )
+        loop_config = engine_loop_config_from_env()
+        if self.max_active_requests is not None:
+            loop_config = replace(
+                loop_config,
+                max_active_requests=self.max_active_requests,
+            )
         self._text_generator = SubmitPollTextGenerator(
             factory(
                 model_path=self.model,
                 weight_index=weight_index,
                 model_plugin=model_plugin,
             ),
-            config=engine_loop_config_from_env(),
+            config=loop_config,
         )
         return self._text_generator
 

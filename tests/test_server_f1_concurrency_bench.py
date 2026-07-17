@@ -44,7 +44,13 @@ def test_extract_hipengine_response_retains_exact_ids_and_route() -> None:
             "token_accounting": {
                 "choice_generated_token_ids": [[11, 12, 13]],
                 "total_generated_tokens": 3,
-            }
+            },
+            "generation_shape": {
+                "queue_group": {"request_count": 2, "prompt_rows": 2},
+                "backend_groups": [
+                    {"input_rows": 2, "actual_group_rows": [2], "max_actual_group_rows": 2}
+                ],
+            },
         },
     }
 
@@ -57,6 +63,44 @@ def test_extract_hipengine_response_retains_exact_ids_and_route() -> None:
     assert record["execution_path"] == "gguf_packed_ar_server_decode"
     assert record["serial_decode_fallback"] is False
     assert record["native_caware_decode"] is True
+    assert record["generation_shape"]["queue_group"]["request_count"] == 2
+
+
+def test_greedy_requests_keep_one_compatible_seed() -> None:
+    args = type("Args", (), {"served_model_name": "model", "decode_tokens": 2, "seed": 12345})()
+
+    first = SCRIPT._request_payload(args, "hipengine", [1, 2], 0)
+    eighth = SCRIPT._request_payload(args, "hipengine", [3, 4], 7)
+
+    assert first["seed"] == eighth["seed"] == 12345
+
+
+def test_generation_shape_requires_one_real_backend_group() -> None:
+    good = [
+        {
+            "generation_shape": {
+                "queue_group": {"id": "group-4", "request_count": 4, "prompt_rows": 4},
+                "backend_groups": [
+                    {"input_rows": 4, "actual_group_rows": [4], "max_actual_group_rows": 4}
+                ],
+            }
+        }
+        for _ in range(4)
+    ]
+    bad = [
+        {
+            "generation_shape": {
+                "queue_group": {"id": "group-1", "request_count": 1, "prompt_rows": 1},
+                "backend_groups": [
+                    {"input_rows": 1, "actual_group_rows": [1], "max_actual_group_rows": 1}
+                ],
+            }
+        }
+        for _ in range(4)
+    ]
+
+    assert SCRIPT.generation_shape_proves_native_group(good, concurrency=4)["passed"] is True
+    assert SCRIPT.generation_shape_proves_native_group(bad, concurrency=4)["passed"] is False
 
 
 def test_extract_llamacpp_response_requires_returned_token_ids() -> None:

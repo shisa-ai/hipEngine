@@ -3250,7 +3250,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
 
     def get_llm() -> Any:
         if app.state.hipengine_llm is None:
-            app.state.hipengine_llm = LLM(config.model, backend=config.backend, quant=config.quant)
+            app.state.hipengine_llm = LLM(
+                config.model,
+                backend=config.backend,
+                quant=config.quant,
+                max_active_requests=config.max_active_requests,
+            )
         app.state.hipengine_readiness.model_loaded = True
         return app.state.hipengine_llm
 
