@@ -161945,3 +161945,50 @@ The 253,695-byte clean source SHA-256 is
 Optional physical-slot compaction is therefore correctness-qualified but remains
 an explicit diagnostic operation; no automatic compaction policy or performance
 claim is implied. Next: F1 profiler/scaling and real server-workload retention.
+
+## 2026-07-17 — Add the F1 real OpenAI concurrency harness
+
+Added `scripts/gguf_live_server_bench.py` to measure the real prepared GGUF
+FastAPI generation batcher rather than a synthetic host loop. Concurrent
+`/v1/completions` SSE requests use text that is first proven to round-trip to
+frozen raw token-ID rows. Authoritative generated IDs and finish metadata come
+from resident-runner reclaim, while per-sample queue/TTFT/ITL/service/completion
+samples come from the scheduler. The harness also retains client timing as a
+diagnostic, exact request/admission/completion ownership, every logical/physical
+group plan and mask, route/fallback deltas, KV/tracked/HIP memory, and final
+ownership.
+
+The static packet defines honest `c1`, packed eager c8/c9/c13
+`exact_hybrid`, and same-loop packed-off `serial_c13` rows. It never relabels the
+server eager route as fully native: the retained E2 graph/profiler packet is the
+separate native row. The live trace starts eight OpenAI requests, waits for an
+observed physical-c8 model step, then submits five newcomers and requires an
+actual c8→c13 transition. A 20 ms HTTP admission window is explicit workload
+policy, not hidden setup.
+
+The first p16/d4 C=9 dirty smoke was usefully RED. HTTP/reclaim tokens and
+latencies were exact, but short requests retired as c8 then c1 before all nine
+could decode together; the harness rejected the missing C=9 shape. The p16/d16
+rerun passes: one declared c8+c1 plan, **144/144** exact reclaimed tokens, all 16
+SSE deltas for each of nine requests, zero fallback, 82.886 aggregate tok/s,
+wall 1.737 s, scheduler TTFT p50/p95 373.1/610.2 ms, and ITL p50/p95
+69.85/83.16 ms. Source:
+`/tmp/gfx1100-f1-server-smoke-dirty-v2.json`, 192,782 bytes, SHA-256
+`dbc666767d9ef568dffa4406937271f7c619fd4aef6b914cff0d7d1675fed900`.
+
+The first live artifact assembly found that scheduler summaries sort latency
+samples, so an append-prefix delta was invalid. Replaced it with an exact
+multiset delta and added a host regression. The p16/d32 rerun then passes:
+physical c8 is observed before admission; all intermediate sparse shapes are
+truthful; full c13 executes as c8+masked-c8 `11111111+11111000`; **416/416**
+tokens and all 32 SSE deltas/request are exact; zero fallback; wall 3.755 s;
+110.784 aggregate tok/s; scheduler TTFT p50/p95 163.5/245.5 ms and ITL p50/p95
+83.41/163.87 ms; final active/pending are zero. Source:
+`/tmp/gfx1100-f1-live-smoke-dirty-v2.json`, 383,394 bytes, SHA-256
+`d7c7d8470ae950fb34a236d955b2a401b5d4855ff70ecd912885abda1f736e77`.
+
+Both hardware smokes used the hermetic TheRock HIP 7.15 W7900 environment,
+strict-exact GDN, cached builds required, and the precomputed compiler-version
+file. Host validation is **7/7** with focused Ruff, compilation, and diff checks.
+These are dirty harness diagnostics only; commit the reusable harness, then run
+the full p512/d128 packet from the clean revision before any performance claim.
