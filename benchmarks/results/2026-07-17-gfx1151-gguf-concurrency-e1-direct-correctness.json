@@ -1,0 +1,360 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_concurrency_e1_direct_correctness",
+  "created_at": "2026-07-17T18:19:21+09:00",
+  "status": "accepted_native_direct_correctness",
+  "passed": true,
+  "claim_level": "native_eq_ok",
+  "performance_claim": false,
+  "performance_claim_scope": null,
+  "native_c2_c4_c8_claim": true,
+  "continuous_membership_claim": false,
+  "optional_compaction_claim": false,
+  "hipengine_artifact_provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "repo_root": "/home/lhl/hipEngine-main",
+    "hipengine_commit": "80bdf6a3f75aa81d5b0c1fe977ba67e13a560014",
+    "git_branch": "main",
+    "tracked_dirty": false,
+    "untracked_dirty": true,
+    "untracked_count": 255,
+    "untracked_scope_note": "Pre-existing untracked benchmark artifacts were not read, modified, staged, or included in this claim; the tracked runtime and measurement scripts were clean.",
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        11331169424,
+        22662338848
+      ]
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "compiler_version_file": "/tmp/gfx1151-concurrency-ddab579f/hipcc-version.txt",
+    "compiler_version_file_sha256": "4575f2f128d68d1d1c7e99436d20ecac67a363d6d300f6dde6b2fb83a86f8987",
+    "build_profile": "decode correctness; strict-exact GDN; cached resident builds required after explicit prebuild",
+    "timing_protocol": "correctness only; no throughput timing retained",
+    "warmups": null,
+    "repetitions": 3,
+    "boot": {
+      "kernel_cmdline": "amdgpu.mes_log_enable=1 amdgpu.gpu_recovery=1 amdgpu.send_sigterm=1 amd_iommu=off quiet nowatchdog splash rw rootflags=subvol=/@ root=UUID=56bc3cf2-994d-4561-a614-a8a16f7de8d8",
+      "amdgpu_sched_policy": 0,
+      "amd_iommu": "off",
+      "iommu_groups": 0,
+      "tuned_profile": "accelerator-performance",
+      "gpu_max_hw_queues": 1,
+      "iommu_qualification": "This packet characterizes the active IOMMU-off boot only. It is not a causal IOMMU A/B and cannot be compared causally with IOMMU-on evidence without a same-commit reboot control."
+    }
+  },
+  "commands": {
+    "primitive_cached_template": "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/qwen35_batch_correctness.py --rows {2,4,8} --seed 1234 --include-dense-c1 --compiler-version-file /tmp/gfx1151-concurrency-ddab579f/hipcc-version.txt --require-cached-build --json /tmp/gfx1151-concurrency-ddab579f/primitive/c{2,4,8}-cached.json",
+    "short_state_oracle_template": "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_packed_ar_state_oracle.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --prefill-mode packed --capture-layer-hidden --compiler-version-file /tmp/gfx1151-concurrency-ddab579f/hipcc-version.txt --require-cached-build --rows {2,4,8} --lifecycle {steady,shrink_sparse} --decode-mode {eager,graph} --prompt-length 16 [--alternate-prompt-length 23] --decode-steps {4,5} --json /tmp/gfx1151-concurrency-ddab579f/state/<case>.json",
+    "standard_c4_eager": "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_packed_ar_state_oracle.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --prefill-mode packed --capture-layer-hidden --compiler-version-file /tmp/gfx1151-concurrency-ddab579f/hipcc-version.txt --require-cached-build --rows 4 --lifecycle steady --decode-mode eager --prompt-length 512 --decode-steps 128 --json /tmp/gfx1151-concurrency-ddab579f/standard/c4-steady-eager-p512-d128.json",
+    "standard_c4_graph": "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_packed_ar_state_oracle.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --prefill-mode packed --capture-layer-hidden --compiler-version-file /tmp/gfx1151-concurrency-ddab579f/hipcc-version.txt --require-cached-build --rows 4 --lifecycle steady --decode-mode graph --prompt-length 512 --decode-steps 128 --json /tmp/gfx1151-concurrency-ddab579f/standard/c4-steady-graph-p512-d128.json",
+    "standard_c8_eager": "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_packed_ar_state_oracle.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --prefill-mode packed --capture-layer-hidden --compiler-version-file /tmp/gfx1151-concurrency-ddab579f/hipcc-version.txt --require-cached-build --rows 8 --lifecycle steady --decode-mode eager --prompt-length 512 --decode-steps 128 --json /tmp/gfx1151-concurrency-ddab579f/standard/c8-steady-eager-p512-d128.json",
+    "standard_c8_graph": "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_packed_ar_state_oracle.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --prefill-mode packed --capture-layer-hidden --compiler-version-file /tmp/gfx1151-concurrency-ddab579f/hipcc-version.txt --require-cached-build --rows 8 --lifecycle steady --decode-mode graph --prompt-length 512 --decode-steps 128 --json /tmp/gfx1151-concurrency-ddab579f/standard/c8-steady-graph-p512-d128.json",
+    "standard_c4_sparse_graph": "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_packed_ar_state_oracle.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --prefill-mode packed --capture-layer-hidden --compiler-version-file /tmp/gfx1151-concurrency-ddab579f/hipcc-version.txt --require-cached-build --rows 4 --lifecycle shrink_sparse --decode-mode graph --prompt-length 512 --decode-steps 4 --json /tmp/gfx1151-concurrency-ddab579f/standard/c4-shrink-graph-p512-d4.json",
+    "category_24x3": "/home/lhl/miniforge3/envs/therock/bin/python3 scripts/gguf_packed_ar_category_oracle.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --decode-steps 24 --repeats 3 --group-size 4 --compiler-version-file /tmp/gfx1151-concurrency-ddab579f/hipcc-version.txt --require-cached-build --json /tmp/gfx1151-concurrency-ddab579f/category/category-24x3.json"
+  },
+  "implementation": {
+    "registry_key_parity": {
+      "gfx1100_keys": 580,
+      "gfx1151_keys": 580,
+      "matching_keys": 580
+    },
+    "physical_bucket_widths": [
+      1,
+      2,
+      4,
+      8
+    ],
+    "native_model_step": {
+      "complete_c1_session_replays": 0,
+      "complete_c1_layer_replays": 0,
+      "host_model_row_loop_sites": 0,
+      "host_model_row_iterations": 0,
+      "per_row_model_subgraph_invocations": 0,
+      "expected_exact_row_local_kernel_launches": 0
+    },
+    "family_routes": {
+      "linear_attention": "indexed_batch",
+      "full_attention": "kv_live_spans_batch",
+      "moe": "selected_rows_batch",
+      "lm_head": "q6_rowtile_f32_logits",
+      "sampler": "argmax_i32_rows",
+      "graph_metadata": "device_positions_persistent_masked",
+      "graph_token_feedback": "device_i32_to_i64_masked"
+    },
+    "gfx1151_specific_runtime_or_kernel_changes_required": false,
+    "transfer_result": "The merged shared-gfx11 wrappers and existing gfx1151 registrations satisfy the native c2/c4/c8 direct correctness contract unchanged."
+  },
+  "correctness": {
+    "primitive": {
+      "c2": {
+        "source": "/tmp/gfx1151-concurrency-ddab579f/primitive/c2-cached.json",
+        "source_sha256": "f9a0af8faf15b4ef619def74ede676c2811e5f1a2444984fb42cbc7e75bcd0e7",
+        "source_size_bytes": 2077,
+        "append_key_mismatch": 0,
+        "append_value_mismatch": 0,
+        "attention_batch_vs_c1_max_abs": 0.0,
+        "attention_batch_vs_numpy_max_abs": 2.2351741790771484e-08,
+        "passed": true
+      },
+      "c4": {
+        "source": "/tmp/gfx1151-concurrency-ddab579f/primitive/c4-cached.json",
+        "source_sha256": "70a314abd4ccf76b4df125df163baf9a90ad5606cd494a29d4a5d2169437d8a3",
+        "source_size_bytes": 2233,
+        "append_key_mismatch": 0,
+        "append_value_mismatch": 0,
+        "attention_batch_vs_c1_max_abs": 0.0,
+        "attention_batch_vs_numpy_max_abs": 2.9802322387695312e-08,
+        "passed": true
+      },
+      "c8": {
+        "source": "/tmp/gfx1151-concurrency-ddab579f/primitive/c8-cached.json",
+        "source_sha256": "d366baac8cb1d07c4bcbac45028a1743a22f313c97613e940bb91e82915056d9",
+        "source_size_bytes": 2273,
+        "append_key_mismatch": 0,
+        "append_value_mismatch": 0,
+        "attention_batch_vs_c1_max_abs": 0.0,
+        "attention_batch_vs_numpy_max_abs": 5.960464477539063e-08,
+        "passed": true
+      }
+    },
+    "short_direct_matrix": {
+      "cases": [
+        {
+          "case": "c2 steady eager p16/d4",
+          "source": "/tmp/gfx1151-concurrency-ddab579f/state/c2-steady-eager-p16-d4.json",
+          "source_sha256": "7e5b3040cd98434f97d13aff647a12517dcf1a645f4171a15261bf5fa9af5604",
+          "source_size_bytes": 28979,
+          "hidden_comparisons": 400
+        },
+        {
+          "case": "c4 steady eager p16/d4",
+          "source": "/tmp/gfx1151-concurrency-ddab579f/state/c4-steady-eager-p16-d4-prebuild.json",
+          "source_sha256": "6b2363ce362b2ac3d3c65d04978565b39582329032d72de1d0b7de8a469f3dad",
+          "source_size_bytes": 29717,
+          "hidden_comparisons": 800
+        },
+        {
+          "case": "c4 steady graph p16/d4",
+          "source": "/tmp/gfx1151-concurrency-ddab579f/state/c4-steady-graph-p16-d4.json",
+          "source_sha256": "e496eaf691a471dc31f4717392231323a47774d8889c6d1c26d50cbf8bc0754d",
+          "source_size_bytes": 14710,
+          "hidden_comparisons": 800,
+          "graph_replays": 4
+        },
+        {
+          "case": "c4 sparse eager p16/d4",
+          "source": "/tmp/gfx1151-concurrency-ddab579f/state/c4-shrink-eager-p16-d4.json",
+          "source_sha256": "d199de53b10ad322717173bf437268518b81605fd41348aa16bc207d93c37b5c",
+          "source_size_bytes": 30651,
+          "hidden_comparisons": 560,
+          "active_masks": [
+            "1111",
+            "1011",
+            "1001",
+            "0001"
+          ]
+        },
+        {
+          "case": "c8 steady eager p16/d4",
+          "source": "/tmp/gfx1151-concurrency-ddab579f/state/c8-steady-eager-p16-d4.json",
+          "source_sha256": "c4084c2fc51c773a958fcfad802dfd73c747438fe8915a94502cb3ac355c1c4e",
+          "source_size_bytes": 31188,
+          "hidden_comparisons": 1600
+        },
+        {
+          "case": "c8 steady graph p16/d4",
+          "source": "/tmp/gfx1151-concurrency-ddab579f/state/c8-steady-graph-p16-d4.json",
+          "source_sha256": "e61f8d49f77dbef6d4eed19b41b1ec6a75c578f876eb00b8cbc731a634bce956",
+          "source_size_bytes": 15683,
+          "hidden_comparisons": 1600,
+          "graph_replays": 4
+        },
+        {
+          "case": "c8 ragged graph p16/23/d4",
+          "source": "/tmp/gfx1151-concurrency-ddab579f/state/c8-ragged-graph-p16-23-d4.json",
+          "source_sha256": "a64ebe66e7ca446be33f80e8b0f6e52928457e536880982313db7faf492366b9",
+          "source_size_bytes": 15725,
+          "prompt_lengths": [
+            16,
+            23,
+            23,
+            23,
+            23,
+            23,
+            23,
+            23
+          ],
+          "hidden_comparisons": 1600,
+          "graph_replays": 4
+        },
+        {
+          "case": "c8 sparse eager p16/d5",
+          "source": "/tmp/gfx1151-concurrency-ddab579f/state/c8-shrink-eager-p16-d5.json",
+          "source_sha256": "3c8dbb5330405c1a9a64681202cbcd3b1d063a95427fcb5433d3893fe9953722",
+          "source_size_bytes": 38136,
+          "hidden_comparisons": 1160,
+          "active_masks": [
+            "11111111",
+            "10110111",
+            "10100101",
+            "00100100",
+            "00000100"
+          ]
+        },
+        {
+          "case": "c8 sparse graph p16/d5",
+          "source": "/tmp/gfx1151-concurrency-ddab579f/state/c8-shrink-graph-p16-d5.json",
+          "source_sha256": "d84ee81309eefd9fb2e67e1a9d6f8d67a5e4f24a5fac21bdef42be6471280c84",
+          "source_size_bytes": 58997,
+          "hidden_comparisons": 1160,
+          "graph_captures": 5,
+          "graph_replays": 5,
+          "active_masks": [
+            "11111111",
+            "10110111",
+            "10100101",
+            "00100100",
+            "00000100"
+          ]
+        }
+      ],
+      "hidden_comparisons": 9680,
+      "hidden_mismatches": 0,
+      "token_mismatches": 0,
+      "state_or_kv_mismatches": 0,
+      "all_cases_passed": true
+    },
+    "standard_p512_d128": {
+      "c4": {
+        "eager": {
+          "source": "/tmp/gfx1151-concurrency-ddab579f/standard/c4-steady-eager-p512-d128.json",
+          "source_sha256": "4450b16b414dde9195c8df52a82fd76af0f7cd7ceda7353bf9daf6c00efe4567",
+          "source_size_bytes": 675387,
+          "hidden_comparisons": 20640,
+          "tokens_exact": true,
+          "state_kv_exact": true
+        },
+        "graph": {
+          "source": "/tmp/gfx1151-concurrency-ddab579f/standard/c4-steady-graph-p512-d128.json",
+          "source_sha256": "6814a8609022691f394141dc7c912520ac8b05bbdb394d94e0b7c0838973fb5e",
+          "source_size_bytes": 29296,
+          "hidden_comparisons": 20640,
+          "graph_captures": 1,
+          "graph_replays": 128,
+          "tokens_exact": true,
+          "state_kv_exact": true,
+          "steady_host_to_device_copies": 0,
+          "steady_device_to_device_state_copies": 0
+        }
+      },
+      "c8": {
+        "eager": {
+          "source": "/tmp/gfx1151-concurrency-ddab579f/standard/c8-steady-eager-p512-d128.json",
+          "source_sha256": "b0d776e9a5b0cc51f2191f79400646225a48db680208b6883a42582aab913b58",
+          "source_size_bytes": 708872,
+          "hidden_comparisons": 41280,
+          "tokens_exact": true,
+          "state_kv_exact": true
+        },
+        "graph": {
+          "source": "/tmp/gfx1151-concurrency-ddab579f/standard/c8-steady-graph-p512-d128.json",
+          "source_sha256": "cd458af85cf22afc8c6c9e342c33a6d9a8a417ffb494d53f87ac97f77d645edd",
+          "source_size_bytes": 42789,
+          "hidden_comparisons": 41280,
+          "graph_captures": 1,
+          "graph_replays": 128,
+          "tokens_exact": true,
+          "state_kv_exact": true,
+          "steady_host_to_device_copies": 0,
+          "steady_device_to_device_state_copies": 0
+        }
+      },
+      "c4_sparse_graph": {
+        "source": "/tmp/gfx1151-concurrency-ddab579f/standard/c4-shrink-graph-p512-d4.json",
+        "source_sha256": "688bfec2d29147a1106fb21bd17a679edff895b9997d6fcac3ad32743047d01c",
+        "source_size_bytes": 46553,
+        "hidden_comparisons": 560,
+        "active_masks": [
+          "1111",
+          "1011",
+          "1001",
+          "0001"
+        ],
+        "tokens_exact": true,
+        "state_kv_exact": true
+      },
+      "hidden_comparisons": 124400,
+      "hidden_mismatches": 0,
+      "token_mismatches": 0,
+      "state_or_kv_mismatches": 0
+    },
+    "category_24x3": {
+      "source": "/tmp/gfx1151-concurrency-ddab579f/category/category-24x3.json",
+      "source_sha256": "44e67c4d7a96f827d2a30f1bc6d1047e6086eab0bb0808ebfad06e3e90274eed",
+      "source_size_bytes": 89391,
+      "prompt_count": 18,
+      "primary_prompt_count": 10,
+      "heldout_prompt_count": 8,
+      "prompt_repeat_executions": 54,
+      "group_executions": 15,
+      "group_widths_per_repeat": [
+        4,
+        4,
+        2,
+        4,
+        4
+      ],
+      "token_comparisons": 1350,
+      "hidden_comparisons": 54000,
+      "hidden_mismatches": 0,
+      "initial_state_mismatches": 0,
+      "final_state_mismatches": 0,
+      "repeat_deterministic": true,
+      "passed": true,
+      "reporting_note": "The model oracle completed and wrote this passing source JSON. A post-run shell summary then referenced the obsolete token_mismatches field and exited nonzero; the source result was validated directly and no expensive rerun was needed."
+    },
+    "total_retained_hidden_comparisons": 188080,
+    "hidden_mismatches": 0,
+    "token_mismatches": 0,
+    "state_or_kv_mismatches": 0
+  },
+  "validation": {
+    "focused_host_tests_passed": 53,
+    "focused_gpu_runtime_tests_passed": 8,
+    "focused_gpu_runtime_log_sha256": "06955fb47f16312e5d13266c774a2aa4648c46e423cbe6564a92e25b68e39131",
+    "lineage_check_status": "blocked_missing_read_only_external_checkouts",
+    "lineage_blocker": [
+      "/home/lhl/amd-gpu-tuning/reference/atlas",
+      "/home/lhl/amd-gpu-tuning/nano-vllm-amd"
+    ],
+    "lineage_qualification": "No kernel body or runtime source was changed, so the missing external checkout blocks a future port edit but not unchanged in-tree cross-backend validation.",
+    "retained_source_hashes_verified": 18,
+    "benchmark_readme_sync_passed": true,
+    "benchmark_readme_contract_tests_passed": 6,
+    "json_parse_passed": true,
+    "diff_check_passed": true
+  },
+  "known_non_claims": [
+    "No c2/c4/c8 throughput, TTFT, ITL, memory-scaling, profiler-family, or server-performance result is inferred from this correctness packet.",
+    "Phase-D live admission, cancellation, reclaim, OpenAI streaming, and observability remain separate gfx1151 gates.",
+    "Optional physical-slot compaction and arbitrary C>8 lowering are not exercised.",
+    "No architecture-specific kernel or runtime port was needed by the direct correctness matrix.",
+    "The active amd_iommu=off boot is disclosed but no causal IOMMU improvement is inferred."
+  ],
+  "next_gate": "Run cached-only native-c8 marker census and same-session c1/c2/c4/native-c8/chunked-c8/serial scaling, then run the unchanged Phase-D live lifecycle and observability gates on gfx1151."
+}
