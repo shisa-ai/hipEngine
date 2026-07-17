@@ -107,7 +107,7 @@ PARO, normal sampling, and project-wide production promotion remain open.
 | GGUF Q4_K_M / BF16 KV | gfx1100 | `retained` direct native-c4/c8 graph model steps and real OpenAI server scaling: native-c8 eager/graph p512/d128, ragged, sparse c8→c1, and cancellation are exact; arbitrary C13 eager/graph adds 135,200 exact all-layer comparisons overall, middle-hole cancellation/admission keeps inactive state/KV exact, and nine optional compaction moves preserve hashes/pointers with 2/2 graph invalidations; direct c8 is 246.872 aggregate tok/s, while real p512/128-output logical c1/c8/c9/c13/serial-c13 SSE is 25.583/136.122/88.592/111.380/31.708 aggregate tok/s | Public blocking calls and OpenAI SSE share one configured model-owning loop, reusable c8-capable sessions, bounded queues, real BF16 device KV, arbitrary-C physical-group manifests, and lock-consistent observability; C>8 is multiple declared groups, never a wider native claim; optional compaction is explicit/manual | gfx1151 symmetry, F2 profile-directed tuning/rollback cleanup, normal sampling, and automatic-compaction policy if measurement ever justifies one |
 | GGUF Q5_K/Q6_K/Q8_0 / BF16 KV | gfx1100/gfx1151 | Not executed end to end under c>N | c1 | Q4_K_M c4 closure first |
 | PARO W4 / BF16 KV | gfx1151 | Exact greedy c2 hybrid below 1024 total context; not fully native or retained | Unsupported groups fail closed to true width-1 sessions | Lifecycle/hidden/profiler/repetition gates, then remove row-local hybrid boundaries |
-| PARO W4 / BF16 KV | gfx1100 | Current-HEAD p512/d128 serial-c2 is exact for 274/274 recorded IDs; direct native-c2 is rejected after first divergence at generated index 2 | Width-1 sessions; direct native groups remain fail-closed | Bisect the first native-c2 hidden/state/KV stage divergence on W7900 |
+| PARO W4 / BF16 KV | gfx1100 | Serial-c2 is exact for 274/274 recorded IDs; separate append/decode physical block tables close the first native context alias, but full direct-c2 remains rejected after first divergence at generated index 3 | Width-1 sessions; direct native groups remain fail-closed | Bisect the next native-c2 layer/stage divergence at generated index 3 on W7900 |
 | PARO W4 / INT8 KV | gfx1100/gfx1151 | Not started | Width-1 | BF16 native path first |
 
 ### Implemented scaffolding — not production-loop evidence
@@ -883,8 +883,10 @@ G1. Re-establish c2 controls:
 G2. Fully native c2:
 
 - [x] Bisect the first hidden divergence with a reusable layer/stage comparator.
-      On gfx1100, L1/L2 are green and full-attention layer 3 first fails at the
-      native batch context reduction; prepared Q/K/V, gate, and sampled KV pass.
+      On gfx1100, L1/L2 were green and full-attention layer 3 first failed at
+      native batch context because append-relative block rows were reused for
+      absolute decode addressing. Separate cached tables close L4; full L40 now
+      first diverges at generated index 3.
 - [ ] Replace row-local full-attention and selected-c1 hybrid boundaries with
       exact c-aware routes.
 - [ ] Close batch-GEMV QKV/Z/O/FFN output projections.

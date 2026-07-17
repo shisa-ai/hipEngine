@@ -162303,3 +162303,65 @@ Raw JSON: 46,576,030 bytes, SHA-256
 Compact diagnostic:
 `benchmarks/results/2026-07-17-gfx1100-paro-g2-native-c2-first-divergence.json`.
 No performance claim is made.
+
+## 2026-07-17 — Close the first PARO native-c2 context boundary
+
+Added RED tests before changing runtime dispatch. The first test attempt exposed
+that the old PARO context path bypassed the registry and called the HIP wrapper
+directly; because the unit used fake pointers, it triggered a GPU memory-access
+fault before pytest could format the expected failure. ROCm immediately
+recovered (`libamdhip64.so`, `rocminfo`, and W7900 idle-memory checks passed).
+After the test also stubbed the legacy direct wrapper, the intended RED was two
+safe failures: no `PagedAttnDecodeKind.CONTEXT_BATCH` route and no
+registry-resolved state call. A separate sparse-slot RED expected distinct
+append/decode block tables and failed because only one table was built.
+
+Implemented the smallest orchestration fix without changing a kernel body:
+
+- registered the existing `bf16_context_batch_spans` wrapper under storage-aware
+  `PagedAttnDecodeKind.CONTEXT_BATCH` and resolved it in
+  `Qwen35ParoDecodeState.decode_full_attention_context_gate_fp16_batch()`;
+- split `_batch_full_spans()` metadata into a persistent append-relative table
+  and a persistent decode-absolute table per `(rows, slots)` key. The batch KV
+  writer adds `row * blocks` internally, while the context kernel does not. The
+  old shared table therefore made dense c2 row 1 read row 0's physical KV blocks;
+- kept both tables allocation/copy-free after eager warmup and exposed their
+  separate physical rows plus the resolved context-kernel variant in execution
+  metadata.
+
+A useful rejected intermediate prevented an unnecessary performance regression.
+Selecting the existing 256-thread c1-exact batch context while still sharing the
+old row-relative table reproduced the exact **0.827** row-1 failure. Combining
+that kernel with absolute decode rows closed L4 but reduced full-model diagnostic
+throughput to **120.290 aggregate tok/s**. The normal 1,024-thread batch variant
+with absolute decode rows also closes L4 and retains **130.464 aggregate tok/s**,
+within **-0.10%** of G1's 130.589 diagnostic. The c1-exact route is therefore not
+kept for PARO; physical addressing, not reduction geometry, was the root cause.
+
+Dirty-tree RED→GREEN evidence on W7900/HIP 7.15:
+
+- The original L4/c2/p512/d2 artifact failed context vs c1/NumPy by
+  **0.827461/0.827463**. The standard-kernel GREEN artifact is `eq_ok`: exact
+  generated IDs and final hidden under the 1e-3 contract, all prefill/linear
+  state/KV gates pass, both rows' NumPy context comparisons pass with worst
+  batch error **1.788e-6**, and batch/c1 NumPy oracles are identical. Raw GREEN:
+  867,493 bytes, SHA-256
+  `193aaeacdf86bc7305a5035dc5be11b4af9bf19fe70671a7937b5c3b6e9a4a2d`.
+- The full L40 p512/d128 direct diagnostic improves minimum equal prefix from
+  **2 to 3** and keeps both rows exact through generated index 2. Both now first
+  diverge at index 3, proving the layer-3 context alias is fixed while exposing
+  the next independent boundary. Throughput is **130.464 aggregate / 65.232 per
+  request tok/s** over 1.962 s; this remains rejected correctness and carries no
+  performance claim. Raw JSON: 180,932 bytes, SHA-256
+  `f0ed819287b0a46ddd5ad20c9a939c8a255258775f090a5961fdd80a969665e5`.
+- Cached `rocprofv3 --kernel-trace` records one true c2
+  `qwen35_paged_full_attn_decode_context_tensor_batch_kernel` launch at
+  **106,001 ns**, grid Y **2**, workgroup X **1,024**, 40 VGPR, and zero reported
+  scratch/LDS. The profiled L4/d1 route is `eq_ok` and explicitly names
+  `bf16_context_batch_spans`; CSV: 280,098 bytes, SHA-256
+  `ea813b0f509cc5529f6e0441790a5640400edad84d102ca04ffe80f67656b144`.
+
+Host validation passes **237/237** dispatch/paged-attention/state/layout tests
+and **25/25** retained-bench/hidden-bisect tests, plus focused Ruff, compileall,
+and diff checks. The code change closes only the first native-c2 context
+boundary; it does not promote full PARO c2, whose next RED is generated index 3.

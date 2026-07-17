@@ -2562,6 +2562,81 @@ def test_qwen35_decode_state_decodes_gqa_gate_with_scratch_pointers(monkeypatch)
     assert kwargs == {"stream": 0, "library": None, "runtime": runtime}
 
 
+def test_qwen35_decode_state_batch_context_resolves_registered_kernel(monkeypatch) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime)
+    scratch = state.reserve_full_attention_scratch(
+        tokens=2,
+        num_splits=1,
+        activation_dtype="fp16",
+        gated_dtype="fp16",
+    )
+    key_cache = _tensor(0xE000, (8, 256, 2, 256), "bf16")
+    value_cache = _tensor(0xF000, (8, 256, 2, 256), "bf16")
+    spans = KVLiveSpans.paged_uniform(
+        block_table=_tensor(0x1000, (2, 4), "int32"),
+        live_counts=_tensor(0x2000, (2,), "int64"),
+        max_live_count=513,
+        storage_dtype="bf16",
+    )
+    calls = []
+
+    def fake_context(*args, **kwargs):
+        calls.append(("context", args, kwargs))
+
+    def fake_resolve(**kwargs):
+        calls.append(("resolve", kwargs))
+        return fake_context
+
+    def fake_gate(*args, **kwargs):
+        calls.append(("gate", args, kwargs))
+
+    monkeypatch.setattr(qwen_runtime, "resolve_paged_attn_decode", fake_resolve)
+    monkeypatch.setattr(qwen_runtime, "qwen35_paged_full_attn_decode_context_bf16_batch_spans", fake_context)
+    monkeypatch.setattr(qwen_runtime, "qwen35_full_attn_gate_mul_fp16", fake_gate)
+
+    out = state.decode_full_attention_context_gate_fp16_batch(
+        scratch,
+        key_cache=key_cache,
+        value_cache=value_cache,
+        spans=spans,
+        rows=2,
+    )
+
+    assert out is scratch.gated_attn
+    assert state._last_full_attention_context_kernel_variant == "bf16_context_batch_spans"
+    assert calls[0] == (
+        "resolve",
+        {
+            "backend": "hip_gfx1100",
+            "spans": spans,
+            "kind": qwen_runtime.PagedAttnDecodeKind.CONTEXT_BATCH,
+        },
+    )
+    args, kwargs = calls[1][1], calls[1][2]
+    assert args[:7] == (
+        scratch.query.ptr,
+        key_cache.ptr,
+        value_cache.ptr,
+        scratch.query_raw.ptr,
+        spans,
+        2,
+        513,
+    )
+    assert args[7:12] == (256, 16, 2, 256, 256 ** -0.5)
+    assert kwargs == {"stream": 0, "library": None, "runtime": runtime}
+    assert calls[2] == (
+        "gate",
+        (
+            scratch.query_raw.ptr,
+            scratch.gate.ptr,
+            scratch.gated_attn.ptr,
+            2 * 16 * 256,
+        ),
+        {"stream": 0, "library": None, "runtime": runtime},
+    )
+
+
 def test_qwen35_decode_state_adaptive_split_gate_uses_warp_then_gqa(monkeypatch) -> None:
     runtime = FakeRuntime()
     state = _state(runtime)

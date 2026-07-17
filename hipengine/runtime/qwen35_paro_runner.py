@@ -5268,22 +5268,20 @@ class Qwen35ParoResidentSession:
         positions: tuple[int, ...],
         slots: tuple[int, ...],
     ) -> tuple[Tensor, KVLiveSpans, KVLiveSpans]:
-        # Batch append/decode kernels run compact active rows and add an
-        # active-row base internally.  Encode physical slot ids as row-relative
-        # block-table offsets so row ``r`` can address slot ``slots[r]`` without
-        # moving retained KV cache pages after reclaim/compaction.
+        # Batch append and context-decode kernels use different block-table
+        # addressing contracts over the same all-slot cache view. Append adds
+        # ``row * blocks`` internally, so its table stores the physical-slot
+        # delta ``(slot - row) * blocks``. Context decode does not add a row
+        # base, so its table stores absolute ``slot * blocks`` ids. Sharing the
+        # append-relative table with context decode aliases every compact slot
+        # to row-local blocks (for dense slots, row 1 reads row 0's KV).
         #
-        # The block table depends only on (rows, slots); it is identical across
-        # every decode step for a fixed active batch.  Cache one persistent
-        # decode-only device buffer *per distinct (rows, slots) key* so the host
-        # build + synchronous host->device copy happens once per key and never
-        # repeats on the decode hot path.  A single-key cache thrashed under the
-        # row-chunked full-attention path (which calls this with several
-        # (chunk_rows, chunk_slots) within one step) -- re-copying every call,
-        # which is both wasteful eagerly and *fatal under HIP graph capture*
-        # (a host->device copy on a capturing stream is illegal).  Keying per
-        # config means that once the eager warmup has touched every chunk key,
-        # capture performs no allocation or copy.
+        # Both tables depend only on (rows, slots). Cache one persistent pair
+        # *per distinct (rows, slots) key* so their host builds and synchronous
+        # host->device copies happen once per key and never repeat on the decode
+        # hot path. A single-key cache thrashed under row-chunked attention and
+        # host copies are illegal during HIP graph capture. Once eager warmup
+        # has touched every chunk key, capture performs no allocation or copy.
         slots_key = (int(rows),) + tuple(int(slot) for slot in slots)
         block_cache = getattr(self, "_decode_full_block_table_cache", None)
         if block_cache is None:
@@ -5292,23 +5290,50 @@ class Qwen35ParoResidentSession:
         block_entry = block_cache.get(slots_key)
         if block_entry is None:
             logical_blocks = np.arange(self.blocks, dtype=np.int32)
-            block_rows = np.empty((rows, self.blocks), dtype=np.int32)
+            append_block_rows = np.empty((rows, self.blocks), dtype=np.int32)
+            decode_block_rows = np.empty((rows, self.blocks), dtype=np.int32)
             for row, slot in enumerate(slots):
                 delta_blocks = (int(slot) - row) * self.blocks
                 if delta_blocks < 0:
                     raise ValueError("batch full-attention slots must be in physical-slot order")
-                block_rows[row] = logical_blocks + np.int32(delta_blocks)
-            block_buf = malloc(int(block_rows.nbytes), runtime=self.runtime)
-            self.buffers.append(block_buf)
-            copy_host_to_device(block_buf, host_array_ptr(block_rows), block_rows.nbytes, runtime=self.runtime)
+                append_block_rows[row] = logical_blocks + np.int32(delta_blocks)
+                decode_block_rows[row] = logical_blocks + np.int32(int(slot) * self.blocks)
+            append_block_buf = malloc(int(append_block_rows.nbytes), runtime=self.runtime)
+            decode_block_buf = malloc(int(decode_block_rows.nbytes), runtime=self.runtime)
+            self.buffers.extend((append_block_buf, decode_block_buf))
+            copy_host_to_device(
+                append_block_buf,
+                host_array_ptr(append_block_rows),
+                append_block_rows.nbytes,
+                runtime=self.runtime,
+            )
+            copy_host_to_device(
+                decode_block_buf,
+                host_array_ptr(decode_block_rows),
+                decode_block_rows.nbytes,
+                runtime=self.runtime,
+            )
             block_entry = {
-                "buf": block_buf,
-                "block_table": Tensor.from_handle(block_buf.ptr, (rows, self.blocks), DType.INT32, self.device),
-                "block_rows_list": block_rows.astype(np.int32, copy=False).tolist(),
+                "append_block_table": Tensor.from_handle(
+                    append_block_buf.ptr,
+                    (rows, self.blocks),
+                    DType.INT32,
+                    self.device,
+                ),
+                "decode_block_table": Tensor.from_handle(
+                    decode_block_buf.ptr,
+                    (rows, self.blocks),
+                    DType.INT32,
+                    self.device,
+                ),
+                "append_block_rows_list": append_block_rows.astype(np.int32, copy=False).tolist(),
+                "decode_block_rows_list": decode_block_rows.astype(np.int32, copy=False).tolist(),
             }
             block_cache[slots_key] = block_entry
-        block_table = block_entry["block_table"]
-        self._decode_full_block_rows_list = block_entry["block_rows_list"]
+        append_block_table = block_entry["append_block_table"]
+        decode_block_table = block_entry["decode_block_table"]
+        self._append_full_block_rows_list = block_entry["append_block_rows_list"]
+        self._decode_full_block_rows_list = block_entry["decode_block_rows_list"]
         position_tensor = Tensor.from_handle(self.position_buf.ptr, (rows,), DType.INT64, self.device)
         context_tensor = Tensor.from_handle(self.context_buf.ptr, (rows,), DType.INT64, self.device)
         append_live_counts = [int(position) for position in positions]
@@ -5316,14 +5341,14 @@ class Qwen35ParoResidentSession:
         storage_dtype = self._full_attention_storage_dtype(layer_id)
         scale_metadata = self._full_cache_scale_metadata_all_slots(layer_id)
         append_spans = KVLiveSpans.paged_uniform(
-            block_table=block_table,
+            block_table=append_block_table,
             live_counts=position_tensor,
             max_live_count=max(append_live_counts),
             storage_dtype=storage_dtype,
             scale_metadata=scale_metadata,
         )
         decode_spans = KVLiveSpans.paged_uniform(
-            block_table=block_table,
+            block_table=decode_block_table,
             live_counts=context_tensor,
             max_live_count=max(decode_live_counts),
             storage_dtype=storage_dtype,
@@ -5340,7 +5365,8 @@ class Qwen35ParoResidentSession:
             "decode_max_live_count": int(decode_spans.max_live_count),
             "block_size": int(getattr(self, "block_size", 256)),
             "block_table_len_per_row": int(self.blocks),
-            "block_table_rows": self._decode_full_block_rows_list,
+            "append_block_table_rows": self._append_full_block_rows_list,
+            "decode_block_table_rows": self._decode_full_block_rows_list,
             "storage_dtype": storage_dtype.value,
         }
         return position_tensor, append_spans, decode_spans
@@ -5412,6 +5438,7 @@ class Qwen35ParoResidentSession:
         full_attention_decode_path = "none"
         max_full_attention_context = 0
         native_full_attention_layers = 0
+        full_attention_context_kernel_variants: set[str] = set()
         row_chunked_full_attention_layers: list[int] = []
         dense_mlp = int(getattr(self.config, "num_experts", 1) or 0) <= 0
         force_selected_c1_moe_env = "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"
@@ -6784,6 +6811,18 @@ class Qwen35ParoResidentSession:
                                 moe_selected_c1_fallback_layers += 1
                             elif not force_selected_c1_moe:
                                 moe_grouped_compact_layers += 1
+                        context_kernel_variant = getattr(
+                            state,
+                            "_last_full_attention_context_kernel_variant",
+                            None,
+                        )
+                        if not (
+                            layer_force_full_attention_row_chunks
+                            or layer_full_attention_context_decode_path in {"native_batch", "native_context_row_chunks"}
+                        ):
+                            context_kernel_variant = None
+                        if isinstance(context_kernel_variant, str) and context_kernel_variant:
+                            full_attention_context_kernel_variants.add(context_kernel_variant)
                         layer_execution = {
                             "layer_index": int(layer_id),
                             "layer_type": "full_attention",
@@ -6825,6 +6864,8 @@ class Qwen35ParoResidentSession:
                             ),
                             "moe_decode_path": layer_moe_path,
                         }
+                        if isinstance(context_kernel_variant, str) and context_kernel_variant:
+                            layer_execution["full_attention_context_kernel_variant"] = context_kernel_variant
                         if isinstance(getattr(self, "_decode_full_attention_trace", None), list):
                             layer_execution["attn_context_trace_source"] = "attention_scratch.query_raw"
                         if layer_force_full_attention_row_chunks:
@@ -7182,6 +7223,10 @@ class Qwen35ParoResidentSession:
                 "layer_executions": layer_executions,
                 "blockers": decode_blockers,
             }
+            if full_attention_context_kernel_variants:
+                self.last_batch_decode_execution["full_attention_context_kernel_variants"] = sorted(
+                    full_attention_context_kernel_variants
+                )
             if exact_hybrid_c2:
                 self.last_batch_decode_execution["exact_hybrid_c2"] = True
             if row_chunked_linear_attention_layers:
