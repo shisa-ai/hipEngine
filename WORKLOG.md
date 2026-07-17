@@ -162168,3 +162168,41 @@ add a reusable earliest-layer/stage comparator, and close the first true native
 c2 boundary. PARO will not be attached to the production loop until its direct
 c2 model step passes token/hidden/state/KV and profiler gates; wrapping width-1
 sessions in the server loop would remain only HTTP concurrency.
+
+## 2026-07-17 — Audit current PARO c=N boundaries before W7900 controls
+
+The retained direct harness and runtime already contain more reusable G1/G2
+machinery than the roadmap summary implies, so this lane will refresh and narrow
+rather than create another parallel implementation:
+
+- `scripts/qwen35_batch_retained_bench.py` drives one packed prefill through the
+  scheduler and supports both `direct_native` and `serial` decode while comparing
+  every generated ID with independent `prefill_native()+step()` c1 sessions. It
+  is the narrowest same-fixture c2 control; the older serial benchmark checks
+  only finite logits plus stale equality provenance.
+- `scripts/qwen35_batch_hidden_bisect.py` is already a reusable layer/stage
+  comparator. It can capture final prefill hidden, per-layer decode hidden,
+  Conv/recurrent state, full-attention K/V samples, linear/full-attention stage
+  traces, c1 eager/graph controls, and the first green-to-red layer transition.
+  G2 should extend it only when a current run exposes a missing observation.
+- `Qwen35ParoResidentSession.step_batch_native()` is present for BF16 KV and
+  physical-slot-ordered rows but remains experimental. The nominal native path
+  still has selected-c1/rowchunk diagnostics and package evidence inherited from
+  the invalidated legacy batch-shaped oracle. `exact_hybrid=True` is explicitly
+  gfx1151-only and is not graph/device-resident; its full-attention pre-O work is
+  row-local and its execution metadata correctly says it is not fully c-aware.
+- Production routing remains fail-closed on gfx1100: the checked-in native-width
+  profile is gfx1151-specific and identity validation prevents it selecting a
+  W7900 group. This lane must not bypass that boundary before direct c2 closes.
+- The last retained W7900 c2 p512/d128 diagnostic (`8d15da9`, May 2026) matched
+  independent c1 through generated index 86 and first diverged at index 87. It
+  predates the independent-oracle repairs and current route stack, so it is only
+  a historical hypothesis, not a current baseline.
+
+Use the available shisa Qwen3.6-35B-A3B PARO-packed snapshot
+`437eba06df05aad71a4dacdcaf3fff70ae1ee8a1` for both W7900 and gfx1151 symmetry.
+The older MTP assembly points at a no-longer-present trunk snapshot and is not a
+valid clean input. Reconstruct the exact eight-row temporary raw-ID fixture from
+the committed c8 diagnostic's retained prompt rows; raw fixture/output stays in
+`/tmp`. First run c1 graph, c2 serial, and c2 direct-native p512/d128 from the
+same clean revision, then use the existing hidden bisector on the first failure.
