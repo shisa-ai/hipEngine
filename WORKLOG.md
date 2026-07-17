@@ -161977,3 +161977,41 @@ focused harness/source JSON/stdout as `3bacdff6...ce5` /
 throughput, TTFT, ITL, or concurrent-kernel claim; the 127.902 tok/s c8 result
 remains a separate direct model-step scope. E3 optional compaction/arbitrary-C
 and F1 burst/live-admission server timing are next; PARO remains independent.
+
+## 2026-07-17 — Lock the matched gfx1151 F1 server protocol
+
+The F1 HTTP comparison now has one backend-neutral, exact-token harness:
+`scripts/server_f1_concurrency_bench.py`. The primary cross-engine metric is
+`C * 128 returned tokens / barrier-to-last-response wall`, so hipEngine and
+llama.cpp HIP/Vulkan include the same prompt prefill, decode, server scheduling,
+and localhost HTTP boundary. Backend-native `decode_batch_ms` and
+`predicted_ms` remain diagnostics because their ownership differs. Every engine
+builds independent c1 token-ID oracles for four p512 rows (9707-filled, terminal
+token cycling 9707..9710); all discarded warmups, three measured c1/c2/c4/c8
+bursts, and the c8 live-admission trace must return the matching 128-ID c1
+trajectory. Retokenized text is never an oracle.
+
+Each width uses a fresh capacity-matched server. hipEngine runs Q4_K_M/BF16 KV,
+MTP/prefix-cache off, a 5 ms cold-path batch window, resident capacity C, and
+1024 context tokens per row. llama.cpp runs the same GGUF with F16 K/V, FA on,
+`-np C`, `-c 1024*C`, and prompt caches disabled. The shared promoted metric is
+HTTP wall; hipEngine additionally retains isolated resident TTFT/ITL p50/p95,
+route/fallback, graph, ownership, and KV metrics. llama.cpp has no equivalent
+non-streaming percentile summaries, so the harness records that gap rather
+than inferring them. The c8 hipEngine live trace releases rows B-H only after
+Prometheus observes row A in resident decode; llama.cpp uses its c1 native
+prompt/decode timing to schedule the analogous staggered control.
+
+RED was the focused test module failing collection before the script existed.
+GREEN is **5/5** tests plus `py_compile`, CLI help, and `git diff --check`:
+
+```bash
+.venv/bin/python -m pytest tests/test_server_f1_concurrency_bench.py -q
+.venv/bin/python -m py_compile scripts/server_f1_concurrency_bench.py
+.venv/bin/python scripts/server_f1_concurrency_bench.py --help
+git diff --check
+```
+
+No production runtime, kernel, registry, PARO path, or external llama.cpp tree
+was changed. GPU measurement begins only after this harness unit is committed,
+so retained performance artifacts can identify a clean source commit.
