@@ -161782,3 +161782,43 @@ Validation is green: dispatch + GGUF generation + execution-manifest suites pass
 **84/84**; resident/generation-batcher server tests pass **25/25**; focused Ruff,
 Python compilation, and `git diff --check` pass. This is planner/host execution
 evidence only; real W7900 token/hidden/state/KV equality remains the next gate.
+
+## 2026-07-17 — Add arbitrary-C state and live-membership gates
+
+Generalized `scripts/gguf_packed_ar_state_oracle.py` steady decode to execute the
+same declared physical-group plan used by production. Each group keeps its own
+persistent eager workspace or graph, records logical/group identity, and flushes
+independently. Packed prefill remains explicitly capped at c8; C>8 uses
+independent-c1 prefill so this gate isolates arbitrary-C decode. Added
+`scripts/gguf_arbitrary_c_lifecycle.py` for production-loop retirement and new
+admission, plus focused parser/mask/fail-closed tests.
+
+Dirty-tree W7900/gfx1100 diagnostics use Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV,
+strict-exact GDN, TheRock HIP 7.15, the precomputed compiler version file, and
+cached builds required:
+
+- C=13 eager p16/d2 passes exact tokens, all **1,040** layer-hidden comparisons,
+  all Conv/GDN hashes, and every live BF16 K/V hash. Four manifests prove two
+  physical groups per transition: c8 active-8 plus c8 active-5.
+- Matching C=13 graph p16/d2 passes the same 1,040 hidden/state/KV comparisons;
+  two physical-c8 graphs each replay twice with active rows 8 and 5.
+- The first live harness draft was stopped before a known pre-admission slot
+  lookup; the next four-token diagnostic admitted and completed both newcomers
+  but correctly had no post-admission C=13 model step because survivors retired
+  as newcomers emitted their first token. The fail-closed snapshot showed 15/15
+  admissions/reclaims and no admission blocker. Raising survivor length to five
+  created the intended full transition.
+- Corrected C=13 production lifecycle passes in **88.408 s**. It cancels global
+  slots 2 and 10, executes physical masks
+  `11111111+11111000 -> 11011111+11011000`, proves both reset/inactive session
+  state+KV hashes remain unchanged, admits newcomers into exact slots 2/10,
+  restores `11111111+11111000`, and drains to 13/13 available sessions with zero
+  active scheduler/runner rows. Original/newcomer tokens, removed/survivor/new
+  Conv/GDN, and all live KV bytes match independent c1; the two cancelled
+  resident sessions are reused; every group is declared c8 and packed-native;
+  there is no serial fallback.
+
+Affected host validation is **92 passed**; focused Ruff, compilation, and diff
+checks pass. These are deliberately dirty implementation diagnostics. Commit the
+reusable gates next, then rerun eager, graph, and membership from that clean
+revision before retaining E3 correctness evidence.
