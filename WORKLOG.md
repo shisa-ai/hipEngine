@@ -161726,3 +161726,29 @@ Validation after resolution: `tests/test_benchmark_readme_sync.py` passes **6/6*
 the three incoming gfx1151 artifacts and both final gfx1100 E2 artifacts parse as
 JSON; focused compilation, README export sync, conflict scan, and
 `git diff --check` pass. No runtime source changed in this second merge.
+
+## 2026-07-17 — Kick off gfx1100 GGUF E3 arbitrary-C lowering
+
+Created `gfx1100-concurrency-e3` from clean pushed `main` at `ddab579f`. ROCm is
+healthy and enumerates the W7900 and RX 7900 XTX as gfx1100. Audited the merged
+scheduler, resident GGUF runner, packed runtime/graph manifests, E3/F1 roadmap,
+and benchmark/testing contracts before changing behavior.
+
+The concrete E3 gap is above eight logical slots. C≤8 already rounds the
+scheduler capacity/mask to a declared c1/c2/c4/c8 physical bucket and preserves
+sparse slot identity. C>8 bypasses that mask route and uses an implicit
+`range(0, C, 8)` loop; a tail such as C=13 therefore executes as raw c8+c5, not
+as declared physical buckets, and observability retains only the final group's
+manifest. This cannot support an honest arbitrary-C claim.
+
+The first implementation unit will introduce a backend-neutral no-compaction
+physical-group plan parameterized by supported widths. It will preserve global
+slot windows, lower every populated tail to c1/c2/c4/c8, and record logical C,
+group index/count, global slot base/indices, physical width, local active slots,
+and active mask. Initial RED cases are C=3/5/6/7/9/13 plus sparse middle holes.
+Runtime execution/aggregate manifests, real state/KV equality, optional
+compaction, and F1 server walls remain separate follow-up units.
+
+Baseline validation is green: `tests/test_dispatch_batch.py` plus
+`tests/test_gguf_packed_execution_manifest.py` pass **18/18**, and the focused
+resident ownership/masked-bucket test passes **1/1**.
