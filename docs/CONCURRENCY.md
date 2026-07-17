@@ -1,6 +1,6 @@
 # Concurrency and Continuous Batching
 
-Last updated: 2026-07-17.
+Last updated: 2026-07-18.
 
 This document is the source-of-truth roadmap and punchlist for making `c=N` a
 first-class model pipeline in hipEngine. The destination is fully native
@@ -107,7 +107,7 @@ PARO, normal sampling, and project-wide production promotion remain open.
 | GGUF Q4_K_M / BF16 KV | gfx1100 | `retained` direct native-c4/c8 graph model steps and real OpenAI server scaling: native-c8 eager/graph p512/d128, ragged, sparse c8→c1, and cancellation are exact; arbitrary C13 eager/graph adds 135,200 exact all-layer comparisons overall, middle-hole cancellation/admission keeps inactive state/KV exact, and nine optional compaction moves preserve hashes/pointers with 2/2 graph invalidations; direct c8 is 246.872 aggregate tok/s, while real p512/128-output logical c1/c8/c9/c13/serial-c13 SSE is 25.583/136.122/88.592/111.380/31.708 aggregate tok/s | Public blocking calls and OpenAI SSE share one configured model-owning loop, reusable c8-capable sessions, bounded queues, real BF16 device KV, arbitrary-C physical-group manifests, and lock-consistent observability; C>8 is multiple declared groups, never a wider native claim; optional compaction is explicit/manual | gfx1151 symmetry, F2 profile-directed tuning/rollback cleanup, normal sampling, and automatic-compaction policy if measurement ever justifies one |
 | GGUF Q5_K/Q6_K/Q8_0 / BF16 KV | gfx1100/gfx1151 | Not executed end to end under c>N | c1 | Q4_K_M c4 closure first |
 | PARO W4 / BF16 KV | gfx1151 | Exact greedy c2 hybrid below 1024 total context; not fully native or retained | Unsupported groups fail closed to true width-1 sessions | Lifecycle/hidden/profiler/repetition gates, then remove row-local hybrid boundaries |
-| PARO W4 / BF16 KV | gfx1100 | Direct selected-c1 c2 p512/w8/d128 matches 274/274 recorded IDs; the grouped-compact c2 route is now bit-exact through all 40 layers for d3 hidden/Conv/GDN/KV/NumPy-context state with 40 grouped layers and zero selected-c1 fallback, but its full direct/lifecycle packet is not retained | Width-1 sessions; direct native groups remain fail-closed | Promote grouped-compact as the c2 default, then pass full direct, shrinking lifecycle/cancellation/repetition, profiler, and scaling gates |
+| PARO W4 / BF16 KV | gfx1100 | `native_eq_ok` at c2: grouped-compact passes repeated p512/d128, all-layer hidden/Conv/GDN/KV/NumPy-context, uniform/ragged EOS+cancel c2→c1, and inactive state/KV immutability with zero fallback layers; grouped median is 109.056 aggregate tok/s, below c1's 115.935, while the exact no-fallback selected-batch control is 121.679 | Width-1 sessions; direct native groups remain fail-closed | Audit/reclassify the faster `selected_c1_batch` implementation as native selected-batch rather than promote slower grouped compaction; then rerun the retained packet and continue to c4/c8 |
 | PARO W4 / INT8 KV | gfx1100/gfx1151 | Not started | Width-1 | BF16 native path first |
 
 ### Implemented scaffolding — not production-loop evidence
@@ -217,6 +217,9 @@ runner and gfx1151 remains independently unverified.
 - gfx1100 PARO grouped-compact c2 selected-MoE stage closure: `WORKLOG.md`,
   **2026-07-17 — Close PARO grouped-compact c2 arithmetic**, and
   `benchmarks/results/2026-07-17-gfx1100-paro-g2-grouped-moe-stage-closure.json`.
+- gfx1100 PARO c2 direct/lifecycle/repetition/scaling closure: `WORKLOG.md`,
+  **2026-07-18 — Close gfx1100 PARO native-c2 correctness**, and
+  `benchmarks/results/2026-07-18-gfx1100-paro-g2-native-c2-correctness-scaling.json`.
 - Historical PARO c1-c8 catalog and lifecycle: `docs/BENCHMARK.md` §PARO c1-c8
   exact concurrency matrix.
 - Historical c>N graph replay and output-tiled GEMV: `WORKLOG.md`, **2026-06-08
@@ -901,15 +904,21 @@ G2. Fully native c2:
       This left selected-c1 MoE and lifecycle open.
 - [x] Close grouped-compact selected-MoE arithmetic at c2. The old FP16 compact
       GEMV path inherited 128-thread wrapper defaults while selected-c1 uses 64;
-      matching that reduction geometry makes every routed stage bit-exact. The
-      full L40/d3 gate is `eq_ok` with 40 grouped layers, zero selected fallback,
-      and no hidden/state/KV bit drift. Full direct and lifecycle gates remain.
+      matching that reduction geometry makes every routed stage bit-exact. Clean
+      grouped p512/d128 repeats, full L40/d3, uniform/ragged EOS+cancel c2→c1,
+      and inactive state/KV immutability now pass with 40 grouped layers, zero
+      fallback layers, and no hidden/state/KV bit drift.
 - [ ] Replace row-local full-attention and selected-c1 hybrid boundaries with
-      exact c-aware routes.
+      exact c-aware routes. gfx1100 full attention is native; audit shows
+      `selected_c1_batch` itself is one rows=2 selected-kernel transition with
+      zero row/layer replay, unlike the separately named per-row fallback.
 - [ ] Close batch-GEMV QKV/Z/O/FFN output projections.
 - [x] Close Conv/GDN segmented state mutation and selected-expert MoE at c2.
 - [ ] Pass 512/128 direct and shrinking-lifecycle equality on both backends.
-- [ ] Trace one true c2 step with no rowchunk/serial model fallback.
+      gfx1100 is GREEN; gfx1151 remains open.
+- [x] Trace one true gfx1100 c2 grouped step with no rowchunk/serial model
+      fallback. The paired trace is `eq_ok`, records the exact c2 context kernel,
+      and localizes grouped compaction's 47-launch L4 overhead versus selected-batch.
 
 G3. Native c4/c8:
 
@@ -964,8 +973,9 @@ The active lane is deliberately narrow.
 7. **Completed on gfx1100 — E3/F1:** optional compaction, arbitrary-C lowering,
    repeated burst scaling, and live-admission latency are retained without
    weakening the direct gate; gfx1151 E1/F1 remains active.
-8. **Active W7900 lane — G2:** promote the now-exact grouped-compact PARO c2
-   route, then run full direct and shrinking lifecycle before c4/c8.
+8. **Active W7900 lane — G2:** c2 is correctness-only `native_eq_ok`; do not
+   promote grouped compaction because it misses c1 aggregate. Audit and retain
+   the faster exact selected-batch algorithm before moving to c4/c8.
 
 Do not label C>8 grouping, gfx1151, PARO, prefix caching, DMS, or speculative
 integration from the gfx1100 c8 result; each keeps its own gate and artifact.
@@ -991,7 +1001,7 @@ Use only these status values:
 | GGUF Q4_K_M / BF16, c8 native group | `retained` | `not_started` | `retained` |
 | GGUF Q4_K_M / BF16, live admission | `retained` | `not_started` | `retained` |
 | GGUF Q4_K_M / BF16, arbitrary-C lowering | `retained` | `not_started` | `retained` |
-| PARO W4 / BF16, c2 | `token_diag` | `exact_hybrid` | `retained` |
+| PARO W4 / BF16, c2 | `native_eq_ok` | `exact_hybrid` | `retained` |
 | PARO W4 / BF16, c4 | `not_started` | `not_started` | `retained` |
 | PARO W4 / BF16, c8 | `not_started` | `not_started` | `retained` |
 | PARO W4 / BF16, live admission | `not_started` | `not_started` | `retained` |
@@ -1117,6 +1127,7 @@ and PARO on both gfx1100 and gfx1151:
 
 Until then, the honest project claim is: **gfx1100 GGUF has retained native-c4
 and native-c8 direct model steps, honest arbitrary-C physical-group lowering,
-and real OpenAI burst/live-admission scaling; cross-backend GGUF, PARO, normal
-sampling, automatic compaction, and complete project-wide production continuous
-batching remain in progress.**
+and real OpenAI burst/live-admission scaling; gfx1100 PARO c2 has native direct
+and lifecycle equality but remains scaling/default-blocked; cross-backend GGUF,
+retained PARO, normal sampling, automatic compaction, and complete project-wide
+production continuous batching remain in progress.**
