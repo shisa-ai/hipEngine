@@ -162617,3 +162617,43 @@ open. Next: distinguish native selected-batch from the separately named per-row
 fallback in runtime metadata/validation, retain the faster exact c2 algorithm if
 the complete current-revision packet passes, then generalize rather than stack
 c2 groups for c4/c8.
+
+## 2026-07-18 — Classify PARO selected-batch MoE truthfully
+
+Closed the metadata/schema boundary exposed by the clean G2 packet without
+changing device arithmetic. The old `selected_c1_batch` label described one
+`run_moe_c1_fp16(..., tokens=rows)` batch transition per layer, while true
+per-row paths already carried explicit `selected_c1_per_row_*` names. Treating
+both as fallback blocked the faster exact c2 route from retained validation.
+
+The runtime now emits canonical `moe_decode_path=selected_batch` and an explicit
+`moe_selected_batch_layers` count. `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_BATCH_MOE`
+is the canonical selector; the old `...FORCE_SELECTED_C1_MOE` variable remains a
+lower-precedence compatibility alias. Retained-bench, hidden-bisect, and equality
+matrix CLIs accept `selected_batch`; legacy `selected_c1` normalizes to it.
+Grouped-compact remains independently countable. Both retained validators now
+accept either c-aware algorithm only when per-layer traces match the aggregate
+count, the unused native-MoE count is zero, and
+`moe_selected_c1_fallback_layers=0`. Per-row fallback labels remain rejected.
+Hidden-bisect also now classifies its already-admitted batch-GEMV projection
+paths as c-aware instead of marking them non-native solely because of stale
+metadata.
+
+RED/GREEN evidence:
+
+- the canonical env initially failed to select the route;
+- selected-batch runtime metadata initially remained `selected_c1_batch` and
+  lacked a selected-layer count;
+- both retained validators initially rejected an otherwise native selected-batch
+  artifact because they hard-coded positive grouped-compact layers;
+- after the implementation, the focused contracts pass and the complete
+  affected host set is **487/487 passed** across resident batch layout, PARO
+  serial bridge, partition bench, and generation/scheduler/schema tests;
+- focused Ruff passes (the pre-existing unrelated `Any` F821 in the large
+  scheduler test remains ignored), Python compilation and `git diff --check`
+  pass.
+
+This is a classification/compatibility change, not a new speed or correctness
+claim. Next: commit it, rerun clean selected-batch p512/d128 and all-layer/
+lifecycle/profiler gates from that revision, then run prompt diversity before
+any production/default or benchmark-rollup promotion.

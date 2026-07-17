@@ -147,6 +147,8 @@ _SERVER_STARTUP_NATIVE_BATCH_WARMUP_ENV = "HIPENGINE_QWEN35_SERVER_STARTUP_NATIV
 _SERVER_STARTUP_NATIVE_BATCH_WARMUP_TOKENS_ENV = "HIPENGINE_QWEN35_SERVER_STARTUP_NATIVE_BATCH_WARMUP_TOKENS"
 _SERVER_STARTUP_NATIVE_BATCH_WARMUP_TOKENS_DEFAULT = 64
 _RETAINED_BATCH_DEFAULTS_ENV = "HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS"
+_SELECTED_BATCH_MOE_ENV = "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_BATCH_MOE"
+_SELECTED_BATCH_MOE_LEGACY_ENV = "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"
 _MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT_ENV = "HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT"
 _DEFAULT_PROJECTION_DISPATCH_ARTIFACT = (
     "benchmarks/results/2026-07-09-hipengine-qwen35-native-c2468-projection-dispatch-catalog/summary.json"
@@ -177,6 +179,13 @@ def _env_flag(name: str, default: bool = False) -> bool:
 def _env_is_blank(name: str) -> bool:
     value = os.environ.get(name)
     return value is None or value.strip() == ""
+
+
+def _env_flag_override(name: str, *aliases: str) -> bool | None:
+    for key in (name, *aliases):
+        if not _env_is_blank(key):
+            return _env_flag(key)
+    return None
 
 
 def _retained_batch_defaults_enabled() -> bool:
@@ -255,7 +264,7 @@ def _retained_full_attention_row_chunk_layers(rows: int) -> set[int]:
     return set()
 
 
-def _retained_selected_c1_moe_rows(rows: int) -> bool:
+def _retained_selected_batch_moe_rows(rows: int) -> bool:
     return 2 <= int(rows) <= 8
 
 
@@ -5466,17 +5475,20 @@ class Qwen35ParoResidentSession:
         full_attention_context_kernel_variants: set[str] = set()
         row_chunked_full_attention_layers: list[int] = []
         dense_mlp = int(getattr(self.config, "num_experts", 1) or 0) <= 0
-        force_selected_c1_moe_env = "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"
+        selected_batch_moe_override = _env_flag_override(
+            _SELECTED_BATCH_MOE_ENV,
+            _SELECTED_BATCH_MOE_LEGACY_ENV,
+        )
         force_selected_c1_moe = (
             (not dense_mlp)
             and rows > 1
             and (
                 exact_hybrid_c2
-                or _env_flag(force_selected_c1_moe_env)
+                or selected_batch_moe_override is True
                 or (
-                    _retained_batch_defaults_enabled()
-                    and _env_is_blank(force_selected_c1_moe_env)
-                    and _retained_selected_c1_moe_rows(rows)
+                    selected_batch_moe_override is None
+                    and _retained_batch_defaults_enabled()
+                    and _retained_selected_batch_moe_rows(rows)
                 )
             )
         )
@@ -5889,10 +5901,11 @@ class Qwen35ParoResidentSession:
                     or force_per_row_full_attention_batch_scratch
                     or force_per_row_full_attention_persistent_scratch
                 )
-                else ("selected_c1_batch" if force_selected_c1_moe else "grouped_compact")
+                else ("selected_batch" if force_selected_c1_moe else "grouped_compact")
             )
         )
         moe_grouped_compact_layers = 0
+        moe_selected_batch_layers = 0
         moe_selected_c1_fallback_layers = 0
         row_chunked_linear_attention_layers: list[int] = []
         row_chunked_full_attention_context_layers: list[int] = []
@@ -6062,12 +6075,14 @@ class Qwen35ParoResidentSession:
                         layer_moe_path = "dense_mlp" if dense_mlp else (
                             "selected_c1"
                             if rows == 1
-                            else "selected_c1_per_row_moe_fallback" if force_per_row_linear_moe else ("selected_c1_batch" if force_selected_c1_moe else "grouped_compact")
+                            else "selected_c1_per_row_moe_fallback" if force_per_row_linear_moe else ("selected_batch" if force_selected_c1_moe else "grouped_compact")
                         )
                         if not dense_mlp and rows > 1:
                             if force_per_row_linear_moe:
                                 moe_selected_c1_fallback_layers += 1
-                            elif not force_selected_c1_moe:
+                            elif force_selected_c1_moe:
+                                moe_selected_batch_layers += 1
+                            else:
                                 moe_grouped_compact_layers += 1
                         layer_executions.append(
                             {
@@ -6142,12 +6157,14 @@ class Qwen35ParoResidentSession:
                         layer_moe_path = "dense_mlp" if dense_mlp else (
                             "selected_c1"
                             if rows == 1
-                            else "selected_c1_per_row_moe_fallback" if force_per_row_linear_moe else ("selected_c1_batch" if force_selected_c1_moe else "grouped_compact")
+                            else "selected_c1_per_row_moe_fallback" if force_per_row_linear_moe else ("selected_batch" if force_selected_c1_moe else "grouped_compact")
                         )
                         if not dense_mlp and rows > 1:
                             if force_per_row_linear_moe:
                                 moe_selected_c1_fallback_layers += 1
-                            elif not force_selected_c1_moe:
+                            elif force_selected_c1_moe:
+                                moe_selected_batch_layers += 1
+                            else:
                                 moe_grouped_compact_layers += 1
                         layer_executions.append(
                             {
@@ -6825,7 +6842,7 @@ class Qwen35ParoResidentSession:
                         layer_moe_path = "dense_mlp" if dense_mlp else (
                             "selected_c1"
                             if rows == 1
-                            else "selected_c1_per_row_moe_fallback" if force_per_row_full_attention_moe or force_per_row_full_attention_batch_scratch or force_per_row_full_attention_persistent_scratch else ("selected_c1_batch" if force_selected_c1_moe or layer_force_full_attention_suffix_row_chunks else "grouped_compact")
+                            else "selected_c1_per_row_moe_fallback" if force_per_row_full_attention_moe or force_per_row_full_attention_batch_scratch or force_per_row_full_attention_persistent_scratch else ("selected_batch" if force_selected_c1_moe or layer_force_full_attention_suffix_row_chunks else "grouped_compact")
                         )
                         if not dense_mlp and rows > 1:
                             if (
@@ -6834,7 +6851,9 @@ class Qwen35ParoResidentSession:
                                 or force_per_row_full_attention_persistent_scratch
                             ):
                                 moe_selected_c1_fallback_layers += 1
-                            elif not force_selected_c1_moe:
+                            elif force_selected_c1_moe or layer_force_full_attention_suffix_row_chunks:
+                                moe_selected_batch_layers += 1
+                            else:
                                 moe_grouped_compact_layers += 1
                         context_kernel_variant = getattr(
                             state,
@@ -6958,7 +6977,7 @@ class Qwen35ParoResidentSession:
                             layer_execution["full_attention_layer_copy_decode_path"] = full_attention_layer_copy_decode_path
                         if force_per_row_post_attention:
                             layer_execution["post_attention_decode_path"] = post_attention_decode_path
-                        if force_small_batch_shared_expert and layer_moe_path == "selected_c1_batch":
+                        if force_small_batch_shared_expert and layer_moe_path == "selected_batch":
                             layer_execution["moe_c1_shared_expert_decode_path"] = "small_batch_forced"
                         if force_per_row_full_attention_skip_batch_setup:
                             layer_execution["full_attention_batch_setup_decode_path"] = "skipped_for_persistent_c1"
@@ -7244,6 +7263,7 @@ class Qwen35ParoResidentSession:
                 "moe_decode_path": moe_decode_path,
                 "moe_decode_rows": int(rows),
                 "moe_grouped_compact_layers": int(moe_grouped_compact_layers),
+                "moe_selected_batch_layers": int(moe_selected_batch_layers),
                 "moe_selected_c1_fallback_layers": int(moe_selected_c1_fallback_layers),
                 "layer_executions": layer_executions,
                 "blockers": decode_blockers,
