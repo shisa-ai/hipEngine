@@ -2237,6 +2237,61 @@ def test_qwen35_resident_step_batch_native_accepts_sparse_slots(monkeypatch) -> 
     ]
 
 
+def test_qwen35_resident_step_batch_native_rows1_uses_true_c1_slot_path(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE", "1")
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.closed = False
+    session.kv_storage_dtype = DType.BF16
+    session.max_batch_size = 3
+    session.max_sequence_length = 16
+    calls: list[tuple[str, object]] = []
+
+    session._set_slot_token_embedding = lambda token, *, slot: calls.append(
+        ("slot_token", (int(token), int(slot)))
+    )
+    session._set_slot_position = lambda position, *, slot: calls.append(
+        ("slot_position", (int(position), int(slot)))
+    )
+
+    def fake_run_layers(*, position, slot, persist_aliases, stream=0):
+        calls.append(
+            (
+                "c1_layers",
+                (int(position), int(slot), bool(persist_aliases), int(stream)),
+            )
+        )
+        return Tensor.from_handle(0x7000, (1, 8), DType.FP16, Device("hip", 0))
+
+    session._run_layers = fake_run_layers
+    session._sample_from_hidden_for_slot = lambda hidden, slot: calls.append(
+        ("slot_sample", (hidden.ptr, int(slot)))
+    ) or SimpleNamespace(token_id=99)
+    session._set_batch_token_embeddings = lambda *args, **kwargs: pytest.fail(
+        "rows=1 must not use batch embedding"
+    )
+    session._run_layers_batch_decode = lambda *args, **kwargs: pytest.fail(
+        "rows=1 must not use batch-shaped layers"
+    )
+
+    results = session.step_batch_native([10], positions=[5], slots=[2], sample=True)
+
+    assert [result.token_id for result in results] == [99]
+    assert calls == [
+        ("slot_token", (10, 2)),
+        ("slot_position", (5, 2)),
+        ("c1_layers", (5, 2, False, 0)),
+        ("slot_sample", (0x7000, 2)),
+    ]
+    assert session.last_batch_decode_execution == {
+        "rows": 1,
+        "slots": [2],
+        "row_execution": "true_c1_resident_slot",
+        "native_caware_decode": False,
+        "moe_decode_path": "selected_c1",
+        "blockers": [],
+    }
+
+
 @pytest.mark.parametrize(
     ("slots", "match"),
     [
@@ -7755,6 +7810,42 @@ def test_qwen35_resident_linear_batch_decode_can_force_per_row_probe(monkeypatch
         ],
         "blockers": ["linear-attention decode forced to per-row diagnostic path"],
     }
+
+
+def test_qwen35_resident_full_attention_c1_scratch_recanonicalizes_after_batch() -> None:
+    device = Device("hip", 0)
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.full_scratch = {
+        3: SimpleNamespace(
+            attn_input=Tensor.from_handle(0x1000, (2, 8), DType.FP16, device)
+        )
+    }
+    session.max_splits = 4
+    invalidations: list[str] = []
+    session._invalidate_verify_graph_cache = lambda: invalidations.append("invalidate")
+    compact = SimpleNamespace(
+        attn_input=Tensor.from_handle(0x2000, (1, 8), DType.FP16, device)
+    )
+    reservations: list[dict[str, object]] = []
+
+    class FakeState:
+        def reserve_full_attention_scratch(self, **kwargs):
+            reservations.append(kwargs)
+            return compact
+
+    result = session._full_attention_decode_scratch(3, FakeState())
+
+    assert result is compact
+    assert session.full_scratch[3] is compact
+    assert invalidations == ["invalidate"]
+    assert reservations == [
+        {
+            "tokens": 1,
+            "num_splits": 4,
+            "activation_dtype": DType.FP16,
+            "gated_dtype": DType.FP16,
+        }
+    ]
 
 
 def test_qwen35_resident_linear_batch_decode_uses_single_row_c1_path() -> None:

@@ -10,6 +10,7 @@ from hipengine.runtime.qwen35_paro_runner import Qwen35ParoResidentSession
 from scripts.qwen35_batch_shrinking_correctness import (
     _cancellation_order,
     _decode_counts_for_order,
+    _inactive_snapshot_immutability,
     _parse_prompt_lengths,
     build_parser as build_shrinking_parser,
 )
@@ -170,3 +171,41 @@ def test_shrinking_correctness_parses_exact_ragged_prompt_vector() -> None:
         _parse_prompt_lengths("449,458", batch_size=3, fallback_length=512)
     with pytest.raises(ValueError, match="positive"):
         _parse_prompt_lengths("449,0,467", batch_size=3, fallback_length=512)
+
+
+def test_shrinking_correctness_reports_inactive_state_and_kv_mutation() -> None:
+    retirement = {
+        "live_count": 514,
+        "linear": {"0": {"conv_sha256": "conv", "recurrent_sha256": "state"}},
+        "full_kv": {"3": {"key_prefix_sha256": "key", "value_prefix_sha256": "value"}},
+        "aggregate_sha256": "retirement",
+    }
+    unchanged = dict(retirement)
+    changed = {
+        **retirement,
+        "linear": {"0": {"conv_sha256": "mutated", "recurrent_sha256": "state"}},
+        "aggregate_sha256": "post-lifecycle",
+    }
+
+    result = _inactive_snapshot_immutability(
+        {1: retirement, 2: retirement},
+        {1: unchanged, 2: changed},
+        retired_slots=(1, 2),
+    )
+
+    assert result == {
+        "passed": False,
+        "retired_slots": [1, 2],
+        "mismatch_components_by_slot": {
+            "1": [],
+            "2": ["linear.0.conv_sha256"],
+        },
+        "retirement_aggregate_sha256_by_slot": {
+            "1": "retirement",
+            "2": "retirement",
+        },
+        "post_lifecycle_aggregate_sha256_by_slot": {
+            "1": "retirement",
+            "2": "post-lifecycle",
+        },
+    }
