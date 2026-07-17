@@ -162066,3 +162066,90 @@ diff checks pass. The stopped stderr is 1,044 bytes, SHA-256
 `7f6a84f7e05488ec7645c206647211be09388ee58f2f19cb8a1366ebcf622f5c`.
 No timing from the stopped process is retained. Commit this race fix, then
 restart the complete clean packet.
+
+## 2026-07-17 — Retain real OpenAI arbitrary-C server scaling
+
+The final hermetic W7900 packet passes from clean `77279adf` in **478.108 s**.
+Environment: Radeon Pro W7900/gfx1100, Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV,
+greedy top-1 with EOS ignored for the fixed output horizon, TheRock HIP 7.15,
+strict-exact GDN, cached builds required, one prepared 13-slot runner, and a
+20 ms server admission window:
+
+```bash
+PY=/home/lhl/mambaforge/envs/therock/bin/python3.12
+ROOT=$($PY -m rocm_sdk path --root)
+env -i HOME=$HOME USER=$USER LOGNAME=$LOGNAME SHELL=$SHELL TERM=${TERM:-xterm} \
+  PATH=$ROOT/bin:/home/lhl/mambaforge/envs/therock/bin:/usr/local/bin:/usr/bin:/bin \
+  LD_LIBRARY_PATH=$ROOT/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx110X_all/lib \
+  HIP_PATH=$ROOT ROCM_PATH=$ROOT HIP_LIB_PATH=$ROOT/lib HIP_INCLUDE_PATH=$ROOT/include \
+  HSA_OVERRIDE_GFX_VERSION=11.0.0 HIP_VISIBLE_DEVICES=0 PYTHONPATH=. \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/gfx1100-concurrency/hipcc-version.txt \
+  $PY scripts/gguf_live_server_bench.py \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 \
+    --configurations c1,packed_c8,packed_c9,packed_c13,serial_c13 \
+    --prompt-length 512 --decode-tokens 128 \
+    --warmup-runs 1 --measured-runs 3 \
+    --live-decode-tokens 128 --live-initial-rows 8 --live-tail-rows 5 \
+    --prefill-chunk-size 256 --batch-window-ms 20 \
+    --compiler-version-file /tmp/gfx1100-concurrency/hipcc-version.txt \
+    --require-cached-build \
+    --json /tmp/gfx1100-f1-server-clean-77279adf-p512-d128.json
+```
+
+Static medians (aggregate/per-request generated tok/s, complete SSE cycle wall)
+are:
+
+- logical-c1 masked physical-c8 control: **25.583/25.583**, wall **5.003 s**,
+  scheduler TTFT p50/p95 **0.271/0.276 s**, ITL **36.499/39.809 ms**;
+- one physical c8: **136.122/17.015**, wall **7.523 s**, TTFT
+  **1.751/2.088 s**, ITL **41.712/45.068 ms**;
+- grouped C9 (`c8 + sparse c8`): **88.592/9.844**, wall **13.003 s**,
+  TTFT **1.709/2.235 s**, ITL **81.087/88.112 ms**;
+- grouped C13 (`c8 + sparse c8`): **111.380/8.568**, wall **14.940 s**,
+  TTFT **1.886/3.323 s**, ITL **87.502/93.631 ms**;
+- packed-off serial C13 bridge: **31.708/2.439**, wall **52.479 s**,
+  TTFT **2.424/3.390 s**, ITL **382.821/396.004 ms**.
+
+C8/C9/C13 are **5.321x/3.463x/4.354x** logical-c1 aggregate; grouped C13
+is **3.513x** serial (**+251.27%**). Every static rate passes the 5% guard;
+the maximum stdev/median is **1.299%**. Cumulative tracked peaks are
+**29.312/30.805/31.969/32.869/32.869 GiB** in fixed route order; they are not
+isolated allocation deltas. Every plan reports declared physical widths and
+sample-owned request IDs. Packed routes record zero serial/resident fallback;
+C9/C13 remain explicit grouped exact-hybrid rows, never native width claims.
+The unchanged physical-c8 body retains E2's **748 packed-native / 0 row-local /
+0 copy** profiler slice.
+
+All **189/189** HTTP requests preserve their actual 512 resident prompt IDs,
+direct-c1 generated IDs, exact OpenAI usage, finish metadata, and complete
+submitted/admitted/completion observability. The controlled live trace observes
+physical c8 before admitting five tails, reaches C13 as
+`11111111 + 11111000`, emits **1,664/1,664** exact IDs at **107.284 aggregate
+tok/s** over **15.510 s**, reports scheduler TTFT p50/p95 **1.427/2.210 s** and
+ITL **90.569/95.454 ms**, then ends at 0 pending/active requests and 13/13 free
+sessions. One completed prior-sample plan is explicitly filtered by request-id
+ownership; all 131 owned live plans are packed-native.
+
+Raw source: 26,128,247 bytes, SHA-256
+`0b197bcefd99cdc4751608b23d78cd3d55bc5681334e734df66d89c2bef4a331`.
+Published compact evidence:
+
+- `benchmarks/results/2026-07-17-gfx1100-gguf-concurrency-e3-arbitrary-c-correctness.json`
+  (17,499 bytes; SHA-256
+  `ab9694ccca44016472c8bee5562f680816fa30abac99c540e01e39b66572ab84`;
+  **135,200/135,200** all-layer comparisons overall, exact sparse
+  cancel/admission, nine exact compaction moves, 2/2 graph invalidations);
+- `benchmarks/results/2026-07-17-gfx1100-gguf-concurrency-f1-server-scaling-closure.json`
+  (471,499 bytes; SHA-256
+  `c54cab18786b27d6a834f3061411fd4fe1449a6da45a42dbafe24fc69b6b9677`;
+  clean canonical provenance, per-request identity/timestamp rollup, static/live
+  scaling, memory, route, and linked profiler/category gates).
+
+Updated `benchmarks/README.md`, root `README.md`, `benchmarks/CHANGELOG.md`,
+`docs/CONCURRENCY.md`, and `docs/REFACTOR.md`. The default-on packed route stays
+promoted; rollback envs remain only for the documented one-release/gfx1151
+window, and optional compaction remains explicit/manual. Final validation is
+**422/422** affected tests plus focused Ruff, compilation, JSON/provenance/link
+checks, README synchronization, and diff checks. gfx1100 E3/F1 is retained;
+next project-wide blocker remains the independent gfx1151 E1/F1 packet.

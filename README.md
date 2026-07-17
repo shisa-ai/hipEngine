@@ -502,17 +502,16 @@ ROCm stacks, and comparison backends differ. *Aggregate* is total tok/s across
 the batch; *per-sequence* is tok/s seen by one request. See
 [`docs/VLLM_RDNA3.md`](docs/VLLM_RDNA3.md) for vLLM RDNA3 setup notes.
 
-### gfx1100 / W7900 direct GGUF concurrency (Qwen3.6 35B-A3B, 512/128)
+### gfx1100 / W7900 direct and server GGUF concurrency (Qwen3.6 35B-A3B, 512/128)
 
-**Status: retained direct native-c4/c8 decode-model-step packet with exact c1/c2
-controls, plus correctness-retained live membership; no server throughput
-claim.** All rows use the same `UD-Q4_K_M`, BF16 KV, greedy-top1,
-W7900/gfx1100, and synchronized graph-step timing. Aggregate counts every row
-advanced by each logical transition; per-request is aggregate divided by live
-rows. ITL excludes streaming-token D2H.
+**Status: retained direct native-c4/c8 model-step throughput and retained real
+OpenAI SSE arbitrary-C server scaling.** All rows use `UD-Q4_K_M`, BF16 KV,
+greedy top-1, W7900/gfx1100, and TheRock HIP 7.15. Timing scopes stay separate:
+direct rows time synchronized graph steps; server rows time complete concurrent
+SSE cycles including admission, prompt work, decode, delivery, and completion.
 
 <!-- BEGIN TOPLINE:W7900_CONCURRENCY -->
-| Route | Logical C | Native groups | Aggregate decode tok/s | Per-request tok/s | Aggregate / c1 | Aggregate / serial-c4 | TTFT p50 / p95 | Model-step ITL p50 / p95 | Tracked peak |
+| Direct route | Logical C | Native groups | Aggregate decode tok/s | Per-request tok/s | Aggregate / c1 | Aggregate / serial-c4 | TTFT p50 / p95 | Model-step ITL p50 / p95 | Tracked peak |
 | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | direct c1 | 1 | 1x c1 | 85.469 | 85.469 | 1.000x | 1.009x | 0.209 / 0.209 s | 11.693 / 11.955 ms | 21.783 GiB |
 | direct c2 | 2 | 1x c2 | 127.427 | 63.714 | 1.491x | 1.504x | 0.951 / 0.954 s | 15.765 / 16.023 ms | 22.394 GiB |
@@ -520,18 +519,32 @@ rows. ITL excludes streaming-token D2H.
 | **direct c8** | **8** | **1x c8** | **246.872** | **30.859** | **2.888x** | **2.913x** | **3.475 / 3.479 s** | **32.414 / 32.749 ms** | **25.401 GiB** |
 | chunked c8 control | 8 | 2x c4, serialized | 183.020 | 22.878 | 2.141x | 2.160x | 3.055 / 4.084 s | 43.767 / 44.281 ms | 26.069 GiB* |
 | serial-c4 rate control | 4 | 4x c1, serialized | 84.738 | 21.185 | 0.991x | 1.000x | 0.548 / 0.877 s | 47.225 / 48.142 ms | 26.985 GiB* |
+
+| Real OpenAI SSE route | Logical C | Physical execution | Aggregate generated tok/s | Per-request tok/s | Aggregate / logical-c1 | Aggregate / serial-c13 | Cycle wall p50 | Scheduler TTFT p50 / p95 | Scheduler ITL p50 / p95 | Cumulative tracked peak |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| logical-c1 control | 1 | masked physical c8 | 25.583 | 25.583 | 1.000x | 0.807x | 5.003 s | 0.271 / 0.276 s | 36.499 / 39.809 ms | 29.312 GiB |
+| physical c8 | 8 | 1x c8 | **136.122** | 17.015 | **5.321x** | 4.293x | 7.523 s | 1.751 / 2.088 s | 41.712 / 45.068 ms | 30.805 GiB* |
+| grouped c9 | 9 | c8 + sparse c8 | 88.592 | 9.844 | 3.463x | 2.794x | 13.003 s | 1.709 / 2.235 s | 81.087 / 88.112 ms | 31.969 GiB* |
+| **grouped c13** | **13** | **c8 + sparse c8** | **111.380** | **8.568** | **4.354x** | **3.513x** | **14.940 s** | **1.886 / 3.323 s** | **87.502 / 93.631 ms** | **32.869 GiB*** |
+| serial-c13 bridge | 13 | 13x c1 serial | 31.708 | 2.439 | 1.239x | 1.000x | 52.479 s | 2.424 / 3.390 s | 382.821 / 396.004 ms | 32.869 GiB* |
 <!-- END TOPLINE:W7900_CONCURRENCY -->
 
-Protocol: prompt 512 per row, 128 decode transitions, one discarded full-route
-warmup and median of three, one shared model load. Resident sessions grow
-c1→c2→c4→c8; starred controls execute after native c8 and retain later
-allocations. One physical c8 improves aggregate decode **188.84%** over c1 and
-**34.89%** over c4+c4, while per-request rate is **63.89% lower** than c1. The
-c8 trace is **748 packed-native / 0 row-local / 0 copies**. Direct throughput
-does not imply server-wall performance.
+Direct protocol uses 128 decode transitions, one discarded warmup, and median
+of three; one physical c8 is **2.888x** c1 and **+34.89%** over c4+c4, with a
+**748 packed-native / 0 row-local / 0 copy** trace. Server protocol uses 512
+exact prompt IDs and 128 generated outputs/request, a 20 ms admission window,
+one discarded plus three measured bursts, and scheduler latency. Logical c1 is
+honestly a masked physical-c8 production control; C9/C13 are multiple declared
+buckets, never wider native widths. All **189/189** server requests match
+resident prompt IDs, direct-c1 outputs, usage, and finish metadata. Grouped C13
+is **4.354x** logical-c1 and **3.513x** serial; one exact c8→c13 live trace emits
+**1,664/1,664** IDs at **107.284 aggregate tok/s** and drains ownership to zero.
+Starred server memory is cumulative in one prepared process.
 
-Artifacts: [`retained C4 closure`](benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-c4-native-graph-scaling-closure.json) and
-[`retained native-c8 closure`](benchmarks/results/2026-07-17-gfx1100-gguf-concurrency-e2-native-c8-scaling-closure.json).
+Artifacts: [`C4`](benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-c4-native-graph-scaling-closure.json),
+[`E2 native c8`](benchmarks/results/2026-07-17-gfx1100-gguf-concurrency-e2-native-c8-scaling-closure.json),
+[`E3 arbitrary C`](benchmarks/results/2026-07-17-gfx1100-gguf-concurrency-e3-arbitrary-c-correctness.json), and
+[`F1 real server`](benchmarks/results/2026-07-17-gfx1100-gguf-concurrency-f1-server-scaling-closure.json).
 Historical mixed-quant/mixed-scope results remain in
 [`benchmarks/HISTORY.md`](benchmarks/HISTORY.md).
 
