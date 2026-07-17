@@ -161992,3 +161992,21 @@ strict-exact GDN, cached builds required, and the precomputed compiler-version
 file. Host validation is **7/7** with focused Ruff, compilation, and diff checks.
 These are dirty harness diagnostics only; commit the reusable harness, then run
 the full p512/d128 packet from the clean revision before any performance claim.
+
+## 2026-07-17 — Tighten F1 server identity before the full packet
+
+Stopped the first clean `ff1f1be8` p512/d128 packet after its c1 warmup and first
+two measurements rather than spending the C8/C13 wall budget on an incomplete
+evidence schema. The partial c1 aggregate samples were
+**25.741/26.200/25.910 tok/s**, but the artifact had only locally proven
+text→raw-ID roundtrip; it did not retain the resident runner's actual received
+prompt IDs or the scheduler's request timestamps per completion.
+
+The harness now records `CompletedRequest.prompt_tokens` verbatim at reclaim,
+requires them to equal each frozen 512-ID row, retains generated IDs separately,
+requires exact OpenAI usage prompt/completion counts, and embeds the complete
+request observability object including submitted/admitted/completion timestamps,
+queue/TTFT/ITL/service/completion durations, KV ownership, bucket key, and finish
+metadata. Focused host tests remain **7/7** and Ruff/compilation/diff checks pass.
+Commit this evidence-contract fix and restart the full packet from that clean
+revision; the stopped partial run is diagnostic only and publishes no number.
