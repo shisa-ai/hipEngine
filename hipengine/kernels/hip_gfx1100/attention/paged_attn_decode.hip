@@ -505,6 +505,103 @@ __global__ void qwen35_paged_full_attn_decode_context_tensor_batch_kernel(
   }
 }
 
+__global__ void qwen35_paged_full_attn_decode_context_tensor_batch_c1_exact_kernel(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    const int32_t* block_table,
+    const int64_t* context_len_ptr,
+    float* out,
+    int64_t rows,
+    int64_t max_context_len,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale) {
+  const int64_t row = static_cast<int64_t>(blockIdx.y);
+  if (row >= rows) {
+    return;
+  }
+  const int64_t context_len = context_len_ptr[row];
+  if (context_len <= 0 || context_len > max_context_len) {
+    return;
+  }
+
+  extern __shared__ float shared[];
+  float* scores = shared;
+  // Match qwen35_full_attn_decode_impl exactly: its reduction scratch begins
+  // after score_capacity, not after the row's live context length.
+  float* partial = scores + max_context_len;
+  const int64_t q_head = blockIdx.x;
+  if (q_head >= num_q_heads) {
+    return;
+  }
+  const int64_t kv_group = num_q_heads / num_kv_heads;
+  const int64_t kv_head = q_head / kv_group;
+  const int64_t q_offset = (row * num_q_heads + q_head) * head_dim;
+
+  float local_max = -3.4028234663852886e38f;
+  for (int64_t token = threadIdx.x; token < context_len; token += blockDim.x) {
+    const int64_t logical_block = token / block_size;
+    const int64_t block_offset = token - logical_block * block_size;
+    const int64_t physical_block = static_cast<int64_t>(block_table[row * block_table_len + logical_block]);
+    const int64_t token_offset = physical_block * block_size + block_offset;
+    const int64_t k_offset = (token_offset * num_kv_heads + kv_head) * head_dim;
+    float acc = 0.0f;
+    for (int64_t dim = 0; dim < head_dim; ++dim) {
+      acc += query[q_offset + dim] * bf16_bits_to_float(key_cache[k_offset + dim]);
+    }
+    const float score = acc * scale;
+    scores[token] = score;
+    local_max = fmaxf(local_max, score);
+  }
+  partial[threadIdx.x] = local_max;
+  __syncthreads();
+
+  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) {
+      partial[threadIdx.x] = fmaxf(partial[threadIdx.x], partial[threadIdx.x + stride]);
+    }
+    __syncthreads();
+  }
+  const float max_score = partial[0];
+
+  float local_sum = 0.0f;
+  for (int64_t token = threadIdx.x; token < context_len; token += blockDim.x) {
+    local_sum += expf(scores[token] - max_score);
+  }
+  partial[threadIdx.x] = local_sum;
+  __syncthreads();
+
+  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) {
+      partial[threadIdx.x] += partial[threadIdx.x + stride];
+    }
+    __syncthreads();
+  }
+  const float inv_denom = 1.0f / fmaxf(partial[0], 1.0e-20f);
+
+  for (int64_t token = threadIdx.x; token < context_len; token += blockDim.x) {
+    scores[token] = expf(scores[token] - max_score) * inv_denom;
+  }
+  __syncthreads();
+
+  for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
+    float acc = 0.0f;
+    for (int64_t token = 0; token < context_len; ++token) {
+      const int64_t logical_block = token / block_size;
+      const int64_t block_offset = token - logical_block * block_size;
+      const int64_t physical_block = static_cast<int64_t>(block_table[row * block_table_len + logical_block]);
+      const int64_t token_offset = physical_block * block_size + block_offset;
+      const int64_t v_offset = (token_offset * num_kv_heads + kv_head) * head_dim + dim;
+      acc += scores[token] * bf16_bits_to_float(value_cache[v_offset]);
+    }
+    out[q_offset + dim] = acc;
+  }
+}
+
 
 __global__ void qwen35_paged_full_attn_decode_split_k_ctx_tensor_kernel(
     const float* __restrict__ query,         // [1, num_q_heads, head_dim]
@@ -4646,11 +4743,9 @@ extern "C" int hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_c1_exa
     return static_cast<int>(hipErrorInvalidValue);
   }
   const int threads = 256;
-  const int max_warps = threads / 32;
-  const int value_groups = 1;
-  const size_t shared_bytes = static_cast<size_t>(max_context_len + max_warps + head_dim + value_groups * head_dim) * sizeof(float);
+  const size_t shared_bytes = static_cast<size_t>(max_context_len + threads) * sizeof(float);
   hipLaunchKernelGGL(
-      qwen35_paged_full_attn_decode_context_tensor_batch_kernel,
+      qwen35_paged_full_attn_decode_context_tensor_batch_c1_exact_kernel,
       dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(rows)),
       dim3(threads),
       shared_bytes,

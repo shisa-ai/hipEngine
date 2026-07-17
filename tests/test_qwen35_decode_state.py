@@ -2604,7 +2604,7 @@ def test_qwen35_decode_state_batch_context_resolves_registered_kernel(monkeypatc
     )
 
     assert out is scratch.gated_attn
-    assert state._last_full_attention_context_kernel_variant == "bf16_context_batch_spans"
+    assert state._last_full_attention_context_kernel_variant == "bf16_context_batch_c1_exact_spans"
     assert calls[0] == (
         "resolve",
         {
