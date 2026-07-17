@@ -3846,7 +3846,13 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_MOE"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_POST_ATTN"] == "1"
 
-    retained_bench._apply_runtime_env_args(SimpleNamespace(projection_dispatch_artifact=None, batch_decode_moe_path="selected_c1"))
+    assert retained_bench._resolved_batch_decode_moe_path(
+        SimpleNamespace(batch_decode_moe_path="selected_c1")
+    ) == "selected_batch"
+    retained_bench._apply_runtime_env_args(
+        SimpleNamespace(projection_dispatch_artifact=None, batch_decode_moe_path="selected_batch")
+    )
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_BATCH_MOE"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"] == "1"
     assert os.environ["HIPENGINE_QWEN35_SHARED_EXPERT_PARO_W4_FORCE_GEMV"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR_MOE"] == "0"
@@ -3859,6 +3865,7 @@ def test_retained_bench_full_attention_diagnostic_env(monkeypatch: pytest.Monkey
             batch_decode_linear_moe_path="per_row_c1",
         )
     )
+    assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_BATCH_MOE"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"] == "1"
     assert os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR_MOE"] == "1"
 
@@ -12793,7 +12800,7 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
     assert payload["workload"]["batch_decode_full_attention_layer_copy"] == "batch"
     assert payload["workload"]["batch_decode_full_attention_moe_path"] == "grouped_compact"
     assert payload["workload"]["batch_decode_post_attention_path"] == "batch"
-    assert payload["workload"]["native_caware_decode"] is False
+    assert payload["workload"]["native_caware_decode"] is True
     assert payload["workload"]["layer_limits"] == [1, 4, 8]
     assert len(payload["commands"]) == 3
     assert all("scripts/qwen35_batch_hidden_bisect.py" in command for command in payload["commands"])
@@ -13258,8 +13265,8 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
         selected_c1_moe,
         ["--dry-run", "--batch-decode-moe-path", "selected_c1", "--layer-limits", "8"],
     )
-    assert selected_c1_moe_payload["workload"]["batch_decode_moe_path"] == "selected_c1"
-    assert selected_c1_moe_payload["workload"]["native_caware_decode"] is False
+    assert selected_c1_moe_payload["workload"]["batch_decode_moe_path"] == "selected_batch"
+    assert selected_c1_moe_payload["workload"]["native_caware_decode"] is True
 
     selected_c1_projection = build_hidden_bisect_parser().parse_args(
         [
@@ -13427,7 +13434,7 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
         ["--dry-run", "--batch-decode-linear-output-path", "batch_gemv", "--layer-limits", "8"],
     )
     assert batch_gemv_output_payload["workload"]["batch_decode_linear_output_path"] == "batch_gemv"
-    assert batch_gemv_output_payload["workload"]["native_caware_decode"] is False
+    assert batch_gemv_output_payload["workload"]["native_caware_decode"] is True
 
     all_selected_c1 = build_hidden_bisect_parser().parse_args(
         [
@@ -13469,7 +13476,7 @@ def test_hidden_bisect_dry_run_records_layer_commands(tmp_path: Path) -> None:
         ],
     )
     assert all_selected_c1_payload["performance_claim"] is False
-    assert all_selected_c1_payload["workload"]["batch_decode_moe_path"] == "selected_c1"
+    assert all_selected_c1_payload["workload"]["batch_decode_moe_path"] == "selected_batch"
     assert all_selected_c1_payload["workload"]["batch_decode_linear_projection_path"] == "selected_c1"
     assert all_selected_c1_payload["workload"]["batch_decode_linear_state_path"] == "selected_c1"
     assert all_selected_c1_payload["workload"]["batch_decode_linear_output_path"] == "selected_c1"
@@ -21983,6 +21990,39 @@ def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_pat
     }
 
     assert retained_bench._batch_execution_blockers(valid, expected_max_layers=40, expected_concurrency=2, expected_prompt_length=512) == []
+    selected_batch = json.loads(json.dumps(valid))
+    selected_decode = selected_batch["decode_execution"]
+    selected_decode["moe_decode_path"] = "selected_batch"
+    selected_decode["moe_grouped_compact_layers"] = 0
+    selected_decode["moe_selected_batch_layers"] = 1
+    selected_decode["layer_executions"][0]["moe_decode_path"] = "selected_batch"
+    assert retained_bench._batch_execution_blockers(
+        selected_batch,
+        expected_max_layers=40,
+        expected_concurrency=2,
+        expected_prompt_length=512,
+    ) == []
+    selected_decode["moe_selected_batch_layers"] = 0
+    assert (
+        "execution.batch_execution.decode_execution.moe_selected_batch_layers must be a positive int for selected_batch"
+        in retained_bench._batch_execution_blockers(
+            selected_batch,
+            expected_max_layers=40,
+            expected_concurrency=2,
+            expected_prompt_length=512,
+        )
+    )
+    selected_decode["moe_selected_batch_layers"] = 1
+    selected_decode["moe_grouped_compact_layers"] = False
+    assert (
+        "execution.batch_execution.decode_execution.moe_grouped_compact_layers must be zero for selected_batch"
+        in retained_bench._batch_execution_blockers(
+            selected_batch,
+            expected_max_layers=40,
+            expected_concurrency=2,
+            expected_prompt_length=512,
+        )
+    )
     for field, diagnostic_value, expected_message in (
         (
             "full_attention_input_decode_path",
@@ -22173,9 +22213,8 @@ def test_qwen35_retained_batch_execution_blockers_reject_serial_and_fallback_pat
     assert "execution.batch_execution.decode_execution.rows must match workload.concurrency" in blockers
     assert "execution.batch_execution.decode_execution.slots entries must be unique" in blockers
     assert "execution.batch_execution.decode_execution.moe_decode_rows must match workload.concurrency" in blockers
-    assert "execution.batch_execution.decode_execution.moe_grouped_compact_layers must be a positive int" in blockers
     assert "execution.batch_execution.decode_execution.moe_selected_c1_fallback_layers must be zero" in blockers
-    assert "execution.batch_execution.decode_execution.moe_decode_path must be grouped_compact for retained c>N MoE decode" in blockers
+    assert "execution.batch_execution.decode_execution.moe_decode_path must be grouped_compact or selected_batch for retained c>N MoE decode" in blockers
     assert "execution.batch_execution.decode_execution.full_attention_decode_path must be native_batch" in blockers
     assert "execution.batch_execution.decode_execution.native_caware_decode must be true" in blockers
     assert "execution.batch_execution.decode_execution.layer_executions must be a non-empty list" in blockers
@@ -25471,6 +25510,21 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
     with pytest.raises(ValueError, match="decode_execution.moe_grouped_compact_layers must be a positive int"):
         validate_cn_diagnostic_artifact_payload(missing_grouped_moe_layers)
 
+    selected_batch_moe = json.loads(json.dumps(accepted))
+    selected_batch_decode = selected_batch_moe["execution"]["batch_execution"]["decode_execution"]
+    selected_batch_decode["moe_decode_path"] = "selected_batch"
+    selected_batch_decode["moe_grouped_compact_layers"] = 0
+    selected_batch_decode["moe_selected_batch_layers"] = 1
+    selected_batch_decode["layer_executions"][0]["moe_decode_path"] = "selected_batch"
+    validate_cn_diagnostic_artifact_payload(selected_batch_moe)
+    selected_batch_decode["moe_selected_batch_layers"] = 0
+    with pytest.raises(ValueError, match="decode_execution.moe_selected_batch_layers must be a positive int"):
+        validate_cn_diagnostic_artifact_payload(selected_batch_moe)
+    selected_batch_decode["moe_selected_batch_layers"] = 1
+    selected_batch_decode["moe_grouped_compact_layers"] = False
+    with pytest.raises(ValueError, match="decode_execution.moe_grouped_compact_layers must be zero"):
+        validate_cn_diagnostic_artifact_payload(selected_batch_moe)
+
     selected_c1_moe_fallback_layers = json.loads(json.dumps(accepted))
     selected_c1_moe_fallback_layers["execution"]["batch_execution"]["decode_execution"]["moe_selected_c1_fallback_layers"] = 1
     with pytest.raises(ValueError, match="decode_execution.moe_selected_c1_fallback_layers must be zero"):
@@ -25478,7 +25532,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
 
     selected_moe_decode_path = json.loads(json.dumps(accepted))
     selected_moe_decode_path["execution"]["batch_execution"]["decode_execution"]["moe_decode_path"] = "selected_c1"
-    with pytest.raises(ValueError, match="decode_execution.moe_decode_path must be grouped_compact"):
+    with pytest.raises(ValueError, match="decode_execution.moe_decode_path must be grouped_compact or selected_batch"):
         validate_cn_diagnostic_artifact_payload(selected_moe_decode_path)
 
     per_row_splitk = json.loads(json.dumps(accepted))
@@ -25498,7 +25552,7 @@ def test_qwen35_batch_diagnostic_artifact_schema_enforces_accepted_row_gates(
 
     fallback_layer_execution = json.loads(json.dumps(accepted))
     fallback_layer_execution["execution"]["batch_execution"]["decode_execution"]["layer_executions"][0]["moe_decode_path"] = "selected_c1_per_row_fallback"
-    with pytest.raises(ValueError, match=r"layer_executions\[0\].moe_decode_path must be grouped_compact"):
+    with pytest.raises(ValueError, match=r"layer_executions\[0\].moe_decode_path must be grouped_compact or selected_batch"):
         validate_cn_diagnostic_artifact_payload(fallback_layer_execution)
 
     diagnostic_full_attention_boundary_layer = json.loads(json.dumps(accepted))

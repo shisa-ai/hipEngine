@@ -104,8 +104,8 @@ def test_qwen35_retained_batch_defaults_select_rowchunk_layers() -> None:
     assert runner_module._retained_full_attention_row_chunk_layers(6) == {3, 7, 11, 15, 19, 23, 27, 31}
     assert runner_module._retained_full_attention_row_chunk_layers(7) == set()
     assert runner_module._retained_full_attention_row_chunk_layers(8) == set()
-    assert all(runner_module._retained_selected_c1_moe_rows(rows) for rows in range(2, 9))
-    assert not runner_module._retained_selected_c1_moe_rows(9)
+    assert all(runner_module._retained_selected_batch_moe_rows(rows) for rows in range(2, 9))
+    assert not runner_module._retained_selected_batch_moe_rows(9)
     assert not runner_module._retained_per_row_linear_moe_rows(6)
     assert all(
         runner_module._retained_force_small_batch_shared_expert_rows(rows)
@@ -116,6 +116,20 @@ def test_qwen35_retained_batch_defaults_select_rowchunk_layers() -> None:
     assert not runner_module._retained_force_small_batch_shared_expert_rows(8)
     assert runner_module._retained_linear_row_chunk_size(4) == 0
     assert runner_module._retained_linear_row_chunk_size(6) == 0
+
+
+def test_qwen35_selected_batch_moe_env_precedes_legacy_alias(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_BATCH_MOE", "0")
+    monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE", "1")
+    assert runner_module._env_flag_override(
+        runner_module._SELECTED_BATCH_MOE_ENV,
+        runner_module._SELECTED_BATCH_MOE_LEGACY_ENV,
+    ) is False
+    monkeypatch.delenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_BATCH_MOE")
+    assert runner_module._env_flag_override(
+        runner_module._SELECTED_BATCH_MOE_ENV,
+        runner_module._SELECTED_BATCH_MOE_LEGACY_ENV,
+    ) is True
 
 
 def test_qwen35_retained_batch_defaults_load_projection_artifact(
@@ -2461,6 +2475,7 @@ def test_qwen35_resident_run_layers_batch_decode_reports_native_batch_for_short_
         "moe_decode_path": "grouped_compact",
         "moe_decode_rows": 2,
         "moe_grouped_compact_layers": 1,
+        "moe_selected_batch_layers": 0,
         "moe_selected_c1_fallback_layers": 0,
         "layer_executions": [
             {
@@ -3705,8 +3720,9 @@ def test_qwen35_resident_exact_hybrid_c2_selects_certified_decode_split() -> Non
     assert execution["full_attention_scratch_decode_path"] == (
         "per_row_preqkv_append_context_gate_batch_o_post_moe_exact_hybrid"
     )
-    assert execution["moe_decode_path"] == "selected_c1_batch"
+    assert execution["moe_decode_path"] == "selected_batch"
     assert execution["moe_grouped_compact_layers"] == 0
+    assert execution["moe_selected_batch_layers"] == 1
     assert execution["layer_executions"][0]["full_attention_scratch_decode_path"] == (
         "per_row_preqkv_append_context_gate_batch_o_post_moe_exact_hybrid"
     )
@@ -3846,8 +3862,8 @@ def test_qwen35_resident_full_attention_native_branch_can_use_persistent_c1_scra
     assert "full-attention layer forced to persistent c1 scratch diagnostic path" in execution["blockers"]
     assert "full-attention native batch setup skipped for persistent c1 diagnostic path" in execution["blockers"]
 
-def test_qwen35_resident_run_layers_batch_decode_can_force_selected_c1_moe_probe(monkeypatch) -> None:
-    monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE", "1")
+def test_qwen35_resident_run_layers_batch_decode_can_force_selected_batch_moe(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_BATCH_MOE", "1")
     device = Device("hip", 0)
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
     session.device = device
@@ -3925,9 +3941,10 @@ def test_qwen35_resident_run_layers_batch_decode_can_force_selected_c1_moe_probe
         "linear_attention_projection_path": "native_batch",
         "linear_attention_state_path": "native_segments",
         "linear_attention_output_path": "native_batch",
-        "moe_decode_path": "selected_c1_batch",
+        "moe_decode_path": "selected_batch",
         "moe_decode_rows": 2,
         "moe_grouped_compact_layers": 0,
+        "moe_selected_batch_layers": 1,
         "moe_selected_c1_fallback_layers": 0,
         "layer_executions": [
             {
@@ -3939,7 +3956,7 @@ def test_qwen35_resident_run_layers_batch_decode_can_force_selected_c1_moe_probe
                 "full_attention_decode_path": "native_batch",
                 "full_attention_output_decode_path": "batch_gemv_auto",
                 "native_caware_decode": True,
-                "moe_decode_path": "selected_c1_batch",
+                "moe_decode_path": "selected_batch",
             }
         ],
         "blockers": [],
@@ -4166,6 +4183,7 @@ def test_qwen35_resident_run_layers_batch_decode_uses_per_row_splitk_fallback_fo
         "moe_decode_path": "mixed_grouped_compact_with_per_row_full_attention_fallback",
         "moe_decode_rows": 2,
         "moe_grouped_compact_layers": 0,
+        "moe_selected_batch_layers": 0,
         "moe_selected_c1_fallback_layers": 1,
         "layer_executions": [
             {
@@ -7173,10 +7191,11 @@ def test_qwen35_resident_linear_batch_decode_retained_c6_defaults(monkeypatch) -
     assert "linear_attention_decode_path" not in execution
     assert "linear_attention_row_chunk_size" not in execution
     assert execution["layer_executions"][0]["linear_attention_decode_path"] == "native_batch_segments"
-    assert execution["layer_executions"][0]["moe_decode_path"] == "selected_c1_batch"
-    assert execution["moe_decode_path"] == "selected_c1_batch"
+    assert execution["layer_executions"][0]["moe_decode_path"] == "selected_batch"
+    assert execution["moe_decode_path"] == "selected_batch"
     assert execution["moe_c1_shared_expert_decode_path"] == "small_batch_forced"
     assert execution["moe_grouped_compact_layers"] == 0
+    assert execution["moe_selected_batch_layers"] == 1
     assert execution["moe_selected_c1_fallback_layers"] == 0
 
     session, _metadata_calls, moe_rows, state = run_case(selected_c1_moe_env="0", linear_row_chunk_env=None)
@@ -7204,7 +7223,7 @@ def test_qwen35_resident_linear_batch_decode_retained_c6_defaults(monkeypatch) -
     assert execution["linear_attention_decode_path"] == "native_batch_row_chunks"
     assert execution["linear_attention_row_chunk_size"] == 2
     assert execution["linear_attention_row_chunked_layers"] == [0]
-    assert execution["moe_decode_path"] == "selected_c1_batch"
+    assert execution["moe_decode_path"] == "selected_batch"
 
     session, metadata_calls, moe_rows, state = run_case(selected_c1_moe_env=None, linear_row_chunk_env="0")
     assert metadata_calls == [(6, (0, 1, 2, 3, 4, 5))]
@@ -7216,7 +7235,7 @@ def test_qwen35_resident_linear_batch_decode_retained_c6_defaults(monkeypatch) -
     assert "linear_attention_decode_path" not in execution
     assert "linear_attention_row_chunk_size" not in execution
     assert execution["layer_executions"][0]["linear_attention_decode_path"] == "native_batch_segments"
-    assert execution["moe_decode_path"] == "selected_c1_batch"
+    assert execution["moe_decode_path"] == "selected_batch"
 
 
 def test_qwen35_resident_linear_batch_decode_can_force_per_row_moe_probe(monkeypatch) -> None:
@@ -7790,6 +7809,7 @@ def test_qwen35_resident_linear_batch_decode_can_force_per_row_probe(monkeypatch
         "moe_decode_path": "mixed_grouped_compact_with_per_row_linear_attention_fallback",
         "moe_decode_rows": 2,
         "moe_grouped_compact_layers": 0,
+        "moe_selected_batch_layers": 0,
         "moe_selected_c1_fallback_layers": 1,
         "layer_executions": [
             {
