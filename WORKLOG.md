@@ -161933,3 +161933,47 @@ retains the direct model-step performance claim against the separate
 edit was required. This does not close E1 or claim server throughput: the
 unchanged Phase-D live admission/cancel/reclaim/streaming/observability gate is
 next. The active IOMMU-off state is characterization only, not a causal A/B.
+
+## 2026-07-17 — Close gfx1151 E1 live-loop symmetry
+
+The unchanged backend-neutral resident loop passes the Phase-D lifecycle on the
+Radeon 8060S from clean detached `d0195221`, under the same normal-HWS,
+one-HIP-queue, `amd_iommu=off`, TuneD accelerator-performance boot as the direct
+packet. The controlled p512 gate admits B after A has begun decode, commits B in
+two 256-token chunks, and advances both active rows through one masked physical
+c4 bucket (`active_mask=1100`) with zero complete-c1 replay. Joined ownership is
+two slots and six referenced KV pages. B disconnects after two tokens; its
+prefix matches independent c1, A's token-4 state/KV remains exact immediately,
+and A's canonical token-7 state/KV remains exact after the required deferred
+packed-state flush. A then completes all eight tokens exactly.
+
+The public streaming leg similarly joins C and D, disconnects D after two
+row-owned chunks, keeps only C live, preserves C's independent-c1 token-3
+state/KV, and returns exact C/D decoded text. The loop records positive native
+packed decode, zero serial decode fallback, zero resident compatibility
+fallback, then reaches zero scheduler rows, model rows, and referenced KV
+pages. An initially apparent survivor-state RED was a harness observation of
+intentionally deferred packed scratch; `flush_packed_decode_state()` is the
+canonical comparison boundary already used by reclaim. No runtime/model/kernel
+change was needed.
+
+The broad harness reached its final OpenAI request only after all of those
+assertions passed, then correctly received HTTP 400 because it supplied an
+exact token-ID array with `stream=true`, an intentionally unsupported API
+combination. Per the focused-repair rule, the already-green p512 GPU lifecycle
+was not rerun. A focused text-prompt repair (`"Hello"`, one prompt token, two
+completion tokens) returned HTTP 200 with four SSE payloads, a completion event,
+a usage event, and `[DONE]`. Prometheus reported 1 admitted/completed/reclaimed,
+0 failed/active, 1 prompt token, 2 completion tokens, and 0 referenced KV pages;
+shutdown left zero sessions and no device KV pool. The focused run completed in
+**55.725 s**.
+
+The joined correctness-only artifact is
+`benchmarks/results/2026-07-17-gfx1151-gguf-concurrency-e1-live-loop-closure.json`.
+It hashes the broad harness/stdout as `a41fc063...10e` / `79f36251...744` and the
+focused harness/source JSON/stdout as `3bacdff6...ce5` /
+`704ab9c3...f01f` / `7426eda8...21f9`. It closes gfx1151 E1 at
+`continuous_eq_ok` without a gfx1151-specific code change. This adds no server
+throughput, TTFT, ITL, or concurrent-kernel claim; the 127.902 tok/s c8 result
+remains a separate direct model-step scope. E3 optional compaction/arbitrary-C
+and F1 burst/live-admission server timing are next; PARO remains independent.
