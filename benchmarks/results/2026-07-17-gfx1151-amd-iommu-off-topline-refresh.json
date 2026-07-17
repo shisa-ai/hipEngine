@@ -1,0 +1,1050 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_amd_iommu_off_topline_refresh",
+  "created_at": "2026-07-17T00:18:00.445043+00:00",
+  "status": "accepted_current_topline_gguf_512_64k_128k_lifecycle_blocked",
+  "performance_claim": true,
+  "performance_claim_scope": "Radeon 8060S/gfx1151 current IOMMU-off six-shape PARO and llama.cpp sweeps plus GGUF 512-64K; GGUF 128K remains blocked",
+  "correctness_claim": true,
+  "measurement_qualification": "The current values are retained as the latest topline. Deltas versus the previous IOMMU-on publication are directional cross-revision comparisons, not a causal IOMMU-only A/B, because hipEngine source/runtime routing changed between publications.",
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "tuned_profile": "accelerator-performance",
+    "amdgpu_sched_policy": 0,
+    "kernel_cmdline": "amdgpu.mes_log_enable=1 amdgpu.gpu_recovery=1 amdgpu.send_sigterm=1 amd_iommu=off quiet nowatchdog splash rw rootflags=subvol=/@ root=UUID=56bc3cf2-994d-4561-a614-a8a16f7de8d8",
+    "amd_iommu": "off",
+    "iommu_groups_after_boot": 0,
+    "iommu_groups_before_boot": 28,
+    "xdna_side_effect": "amdxdna reports: Running without IOMMU not supported; NPU unavailable under this boot."
+  },
+  "software": {
+    "measurement_commit": "2edbb2ee3ca74d7757500b5eafe737d43748489c",
+    "tracked_dirty": false,
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23 aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+    "gpu_max_hw_queues": "1 (automatic gfx1151 default)"
+  },
+  "model": {
+    "gguf_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "gguf_quant": "gguf_q4_k_m",
+    "gguf_kv_dtype_hipengine": "bf16",
+    "gguf_kv_dtype_llamacpp": "f16",
+    "gguf_fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "paro_path": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1"
+  },
+  "protocol": {
+    "hipengine_paro": "one right-sized resident process per shape; 2 warmups + 5 measured runs; graph decode; cached builds",
+    "hipengine_gguf": "one right-sized resident process per shape; 1 warmup + 3 measured runs; graph decode; cached builds; each workload bounded to 1800 seconds",
+    "llamacpp": "one six-shape llama-bench process per backend; 5 repetitions; f16 K/V; flash attention; 10 ms GTT peak polling",
+    "runner": "scripts/run_gfx1151_readme_refresh.sh with external GGUF per-workload 1800-second timeout only"
+  },
+  "source_artifacts": {
+    "paro": {
+      "filename": "2026-07-17-gfx1151-iommu-off-readme-refresh-2edbb2ee-hipengine-paro-packed-5run.json",
+      "sha256": "b8c500fed0438b0efcf68314e5ba2dd1df2730258436b1ac9316c00f47ce71f7",
+      "bytes": 458848
+    },
+    "llamacpp_hip": {
+      "filename": "2026-07-17-gfx1151-iommu-off-readme-refresh-2edbb2ee-llamacpp-hip-q4km-f16kv.json",
+      "sha256": "0250b013a0d7ab9b926ed9d70f097d60ff97e8b8178697bc6d8bace9640a43da",
+      "bytes": 45546
+    },
+    "llamacpp_vulkan": {
+      "filename": "2026-07-17-gfx1151-iommu-off-readme-refresh-2edbb2ee-llamacpp-vulkan-q4km-f16kv.json",
+      "sha256": "e7c327ce934c78e7a1b82370b6cd0b13e337fc926db0d772136eaec76cacab5d",
+      "bytes": 45766
+    },
+    "gguf_components": {
+      "512/128": {
+        "filename": "hipengine-gguf-512-128.json",
+        "sha256": "87709accffd55434a350ed6633de1bca90aa4bff970f58f6dd749df06ab433ab",
+        "bytes": 25255
+      },
+      "1K/128": {
+        "filename": "hipengine-gguf-1K-128.json",
+        "sha256": "bf0f4f89b3b5306fa428eb3dc855dd28f73361c3dabbc242a9986d4ac952e099",
+        "bytes": 26313
+      },
+      "4K/128": {
+        "filename": "hipengine-gguf-4K-128.json",
+        "sha256": "aec181db30c0ac0d903d31a165e740c206a4496dd9fd7ae1c90bb206b8ab4a97",
+        "bytes": 26294
+      },
+      "32K/128": {
+        "filename": "hipengine-gguf-32K-128.json",
+        "sha256": "a040b5e1230b162614d843137bbb29b0a741447a45b8f2b500c51a8d227d9066",
+        "bytes": 26320
+      },
+      "64K/128": {
+        "filename": "hipengine-gguf-64K-128.json",
+        "sha256": "4908f5080667a32aa9acb3258e6e875ae8c60088e0a0b865823e2e31f5aaea27",
+        "bytes": 26313
+      }
+    },
+    "preliminary_short_context": {
+      "filename": "2026-07-17-gfx1151-amd-iommu-off-short-context-diagnostic.json",
+      "sha256": "4980d7614656c572aabfc6bd664252710d085893a99cf09776a79f84572ac0df",
+      "bytes": 11926
+    }
+  },
+  "current_topline": {
+    "paro": {
+      "512/128": {
+        "prefill_tok_s": {
+          "count": 5,
+          "median": 1298.2589047292931,
+          "min": 1296.3759046918262,
+          "max": 1298.689242079282,
+          "mean": 1297.8982098243562,
+          "stdev": 0.9535428663063497,
+          "samples": [
+            1296.3759046918262,
+            1297.5859718188017,
+            1298.689242079282,
+            1298.5810258025779,
+            1298.2589047292931
+          ]
+        },
+        "decode_tok_s": {
+          "count": 5,
+          "median": 70.74966694207218,
+          "min": 70.61745340825222,
+          "max": 70.77738555415273,
+          "mean": 70.72687601040091,
+          "stdev": 0.06276058288053508,
+          "samples": [
+            70.61745340825222,
+            70.75037824077894,
+            70.74966694207218,
+            70.77738555415273,
+            70.73949590674847
+          ]
+        },
+        "tracked_peak_allocated_gib": {
+          "count": 5,
+          "median": 18.039150301367044,
+          "min": 18.039150301367044,
+          "max": 18.039150301367044,
+          "mean": 18.039150301367044,
+          "stdev": 0.0,
+          "samples": [
+            18.039150301367044,
+            18.039150301367044,
+            18.039150301367044,
+            18.039150301367044,
+            18.039150301367044
+          ]
+        },
+        "final_token_ids": [
+          220,
+          220,
+          220,
+          220,
+          220
+        ],
+        "final_logits_finite": true
+      },
+      "1K/128": {
+        "prefill_tok_s": {
+          "count": 5,
+          "median": 1332.1988931211565,
+          "min": 1329.0361872790816,
+          "max": 1332.9581715614747,
+          "mean": 1331.5149597662826,
+          "stdev": 1.527156090308692,
+          "samples": [
+            1331.1559539131601,
+            1332.9581715614747,
+            1332.1988931211565,
+            1329.0361872790816,
+            1332.2255929565404
+          ]
+        },
+        "decode_tok_s": {
+          "count": 5,
+          "median": 65.90478541335699,
+          "min": 65.88051730166936,
+          "max": 65.9167768485866,
+          "mean": 65.90356427655097,
+          "stdev": 0.014685950771435113,
+          "samples": [
+            65.9167768485866,
+            65.88051730166936,
+            65.90478541335699,
+            65.9001771413714,
+            65.91556467777052
+          ]
+        },
+        "tracked_peak_allocated_gib": {
+          "count": 5,
+          "median": 18.051434110850096,
+          "min": 18.051434110850096,
+          "max": 18.051434110850096,
+          "mean": 18.051434110850096,
+          "stdev": 0.0,
+          "samples": [
+            18.051434110850096,
+            18.051434110850096,
+            18.051434110850096,
+            18.051434110850096,
+            18.051434110850096
+          ]
+        },
+        "final_token_ids": [
+          15,
+          15,
+          15,
+          15,
+          15
+        ],
+        "final_logits_finite": true
+      },
+      "4K/128": {
+        "prefill_tok_s": {
+          "count": 5,
+          "median": 977.2523761915724,
+          "min": 973.585781778143,
+          "max": 978.92733650409,
+          "mean": 976.3161000909382,
+          "stdev": 2.3509638802373027,
+          "samples": [
+            977.2523761915724,
+            973.585781778143,
+            974.0875558960906,
+            978.92733650409,
+            977.7274500847949
+          ]
+        },
+        "decode_tok_s": {
+          "count": 5,
+          "median": 66.72827128409384,
+          "min": 66.58121477511986,
+          "max": 66.75527567256329,
+          "mean": 66.70556328786438,
+          "stdev": 0.07070346209112875,
+          "samples": [
+            66.75527567256329,
+            66.74148039006161,
+            66.58121477511986,
+            66.72827128409384,
+            66.72157431748329
+          ]
+        },
+        "tracked_peak_allocated_gib": {
+          "count": 5,
+          "median": 19.026058789342642,
+          "min": 19.026058789342642,
+          "max": 19.026058789342642,
+          "mean": 19.026058789342642,
+          "stdev": 0.0,
+          "samples": [
+            19.026058789342642,
+            19.026058789342642,
+            19.026058789342642,
+            19.026058789342642,
+            19.026058789342642
+          ]
+        },
+        "final_token_ids": [
+          17,
+          17,
+          17,
+          17,
+          17
+        ],
+        "final_logits_finite": true
+      },
+      "32K/128": {
+        "prefill_tok_s": {
+          "count": 5,
+          "median": 827.3498791301344,
+          "min": 826.4793044735345,
+          "max": 827.6983911620111,
+          "mean": 827.1539981928696,
+          "stdev": 0.5036019659756199,
+          "samples": [
+            826.4793044735345,
+            827.4546482879174,
+            827.6983911620111,
+            827.3498791301344,
+            826.7877679107504
+          ]
+        },
+        "decode_tok_s": {
+          "count": 5,
+          "median": 53.45798990394407,
+          "min": 53.451028533880304,
+          "max": 53.4611770954593,
+          "mean": 53.45628552489222,
+          "stdev": 0.004632379944696376,
+          "samples": [
+            53.451028533880304,
+            53.4611770954593,
+            53.451712774802054,
+            53.45798990394407,
+            53.45951931637538
+          ]
+        },
+        "tracked_peak_allocated_gib": {
+          "count": 5,
+          "median": 19.715554293245077,
+          "min": 19.715554293245077,
+          "max": 19.715554293245077,
+          "mean": 19.715554293245077,
+          "stdev": 0.0,
+          "samples": [
+            19.715554293245077,
+            19.715554293245077,
+            19.715554293245077,
+            19.715554293245077,
+            19.715554293245077
+          ]
+        },
+        "final_token_ids": [
+          220,
+          220,
+          220,
+          220,
+          220
+        ],
+        "final_logits_finite": true
+      },
+      "64K/128": {
+        "prefill_tok_s": {
+          "count": 5,
+          "median": 690.6421577434777,
+          "min": 690.0807331235844,
+          "max": 691.2893331281098,
+          "mean": 690.743422547922,
+          "stdev": 0.5305760004685051,
+          "samples": [
+            690.6421577434777,
+            691.2736580100785,
+            690.4312307343597,
+            691.2893331281098,
+            690.0807331235844
+          ]
+        },
+        "decode_tok_s": {
+          "count": 5,
+          "median": 44.792603258563,
+          "min": 44.761104187236334,
+          "max": 44.81972192139192,
+          "mean": 44.79060616102548,
+          "stdev": 0.02191162239704696,
+          "samples": [
+            44.792603258563,
+            44.79972787749209,
+            44.77987356044406,
+            44.81972192139192,
+            44.761104187236334
+          ]
+        },
+        "tracked_peak_allocated_gib": {
+          "count": 5,
+          "median": 20.344372291117907,
+          "min": 20.344372291117907,
+          "max": 20.344372291117907,
+          "mean": 20.344372291117907,
+          "stdev": 0.0,
+          "samples": [
+            20.344372291117907,
+            20.344372291117907,
+            20.344372291117907,
+            20.344372291117907,
+            20.344372291117907
+          ]
+        },
+        "final_token_ids": [
+          220,
+          220,
+          220,
+          220,
+          220
+        ],
+        "final_logits_finite": true
+      },
+      "128K/128": {
+        "prefill_tok_s": {
+          "count": 5,
+          "median": 498.1012365188036,
+          "min": 497.85457184872575,
+          "max": 499.1589242066173,
+          "mean": 498.2864548329386,
+          "stdev": 0.5237037913146287,
+          "samples": [
+            499.1589242066173,
+            497.85457184872575,
+            497.95576257715226,
+            498.1012365188036,
+            498.36177901339397
+          ]
+        },
+        "decode_tok_s": {
+          "count": 5,
+          "median": 32.61473746028261,
+          "min": 32.603272907822394,
+          "max": 32.63540590281179,
+          "mean": 32.61745856583103,
+          "stdev": 0.01222237951613411,
+          "samples": [
+            32.603272907822394,
+            32.63540590281179,
+            32.61473746028261,
+            32.62269417324503,
+            32.61118238499333
+          ]
+        },
+        "tracked_peak_allocated_gib": {
+          "count": 5,
+          "median": 21.880994338542223,
+          "min": 21.880994338542223,
+          "max": 21.880994338542223,
+          "mean": 21.880994338542223,
+          "stdev": 0.0,
+          "samples": [
+            21.880994338542223,
+            21.880994338542223,
+            21.880994338542223,
+            21.880994338542223,
+            21.880994338542223
+          ]
+        },
+        "final_token_ids": [
+          220,
+          220,
+          220,
+          220,
+          220
+        ],
+        "final_logits_finite": true
+      }
+    },
+    "gguf": {
+      "512/128": {
+        "prefill_tok_s": {
+          "count": 3,
+          "median": 1395.3785574533408,
+          "min": 1393.5403059671162,
+          "max": 1396.9400557392216,
+          "mean": 1395.2863063865595,
+          "stdev": 1.7017512517182056,
+          "samples": [
+            1395.3785574533408,
+            1393.5403059671162,
+            1396.9400557392216
+          ]
+        },
+        "decode_tok_s": {
+          "count": 3,
+          "median": 52.76146296017966,
+          "min": 52.75990650783686,
+          "max": 52.77053824741522,
+          "mean": 52.763969238477245,
+          "stdev": 0.005741911249246622,
+          "samples": [
+            52.76146296017966,
+            52.75990650783686,
+            52.77053824741522
+          ]
+        },
+        "tracked_peak_allocated_gib": {
+          "count": 3,
+          "median": 21.477776303887367,
+          "min": 21.477776303887367,
+          "max": 21.477776303887367,
+          "mean": 21.477776303887367,
+          "stdev": 0.0,
+          "samples": [
+            21.477776303887367,
+            21.477776303887367,
+            21.477776303887367
+          ]
+        },
+        "final_token_ids": [
+          9707,
+          9707,
+          9707
+        ],
+        "final_logits_finite": true
+      },
+      "1K/128": {
+        "prefill_tok_s": {
+          "count": 3,
+          "median": 1481.9431758167336,
+          "min": 1481.7817995513508,
+          "max": 1482.7516217077493,
+          "mean": 1482.1588656919446,
+          "stdev": 0.5196444413844639,
+          "samples": [
+            1481.7817995513508,
+            1481.9431758167336,
+            1482.7516217077493
+          ]
+        },
+        "decode_tok_s": {
+          "count": 3,
+          "median": 54.657727044668704,
+          "min": 54.63513962494369,
+          "max": 54.66411917465892,
+          "mean": 54.6523286147571,
+          "stdev": 0.015225336106543636,
+          "samples": [
+            54.66411917465892,
+            54.657727044668704,
+            54.63513962494369
+          ]
+        },
+        "tracked_peak_allocated_gib": {
+          "count": 3,
+          "median": 21.710381530225277,
+          "min": 21.710381530225277,
+          "max": 21.710381530225277,
+          "mean": 21.710381530225277,
+          "stdev": 0.0,
+          "samples": [
+            21.710381530225277,
+            21.710381530225277,
+            21.710381530225277
+          ]
+        },
+        "final_token_ids": [
+          9707,
+          9707,
+          9707
+        ],
+        "final_logits_finite": true
+      },
+      "4K/128": {
+        "prefill_tok_s": {
+          "count": 3,
+          "median": 1444.7331797631905,
+          "min": 1443.8199880306481,
+          "max": 1446.0651804043664,
+          "mean": 1444.872782732735,
+          "stdev": 1.1290876585012868,
+          "samples": [
+            1446.0651804043664,
+            1444.7331797631905,
+            1443.8199880306481
+          ]
+        },
+        "decode_tok_s": {
+          "count": 3,
+          "median": 55.29692239334596,
+          "min": 55.287513961047196,
+          "max": 55.305425725824676,
+          "mean": 55.29662069340594,
+          "stdev": 0.008959692879853598,
+          "samples": [
+            55.305425725824676,
+            55.287513961047196,
+            55.29692239334596
+          ]
+        },
+        "tracked_peak_allocated_gib": {
+          "count": 3,
+          "median": 22.99488217383623,
+          "min": 22.99488217383623,
+          "max": 22.99488217383623,
+          "mean": 22.99488217383623,
+          "stdev": 0.0,
+          "samples": [
+            22.99488217383623,
+            22.99488217383623,
+            22.99488217383623
+          ]
+        },
+        "final_token_ids": [
+          9707,
+          9707,
+          9707
+        ],
+        "final_logits_finite": true
+      },
+      "32K/128": {
+        "prefill_tok_s": {
+          "count": 3,
+          "median": 1132.2146729046242,
+          "min": 1131.9277640749524,
+          "max": 1133.0485386532434,
+          "mean": 1132.3969918776068,
+          "stdev": 0.5822062089740276,
+          "samples": [
+            1133.0485386532434,
+            1132.2146729046242,
+            1131.9277640749524
+          ]
+        },
+        "decode_tok_s": {
+          "count": 3,
+          "median": 45.983348326686475,
+          "min": 45.972378489097004,
+          "max": 45.99153376708137,
+          "mean": 45.98242019428828,
+          "stdev": 0.009611307974257641,
+          "samples": [
+            45.972378489097004,
+            45.99153376708137,
+            45.983348326686475
+          ]
+        },
+        "tracked_peak_allocated_gib": {
+          "count": 3,
+          "median": 23.558860786259174,
+          "min": 23.558860786259174,
+          "max": 23.558860786259174,
+          "mean": 23.558860786259174,
+          "stdev": 0.0,
+          "samples": [
+            23.558860786259174,
+            23.558860786259174,
+            23.558860786259174
+          ]
+        },
+        "final_token_ids": [
+          9707,
+          9707,
+          9707
+        ],
+        "final_logits_finite": true
+      },
+      "64K/128": {
+        "prefill_tok_s": {
+          "count": 3,
+          "median": 892.6626611152845,
+          "min": 892.5621615540754,
+          "max": 892.9371566604592,
+          "mean": 892.7206597766063,
+          "stdev": 0.19410877360206838,
+          "samples": [
+            892.5621615540754,
+            892.6626611152845,
+            892.9371566604592
+          ]
+        },
+        "decode_tok_s": {
+          "count": 3,
+          "median": 39.3878424850904,
+          "min": 39.38145610726891,
+          "max": 39.39855613334778,
+          "mean": 39.38928490856903,
+          "stdev": 0.008640784807718424,
+          "samples": [
+            39.3878424850904,
+            39.38145610726891,
+            39.39855613334778
+          ]
+        },
+        "tracked_peak_allocated_gib": {
+          "count": 3,
+          "median": 24.203407771885395,
+          "min": 24.203407771885395,
+          "max": 24.203407771885395,
+          "mean": 24.203407771885395,
+          "stdev": 0.0,
+          "samples": [
+            24.203407771885395,
+            24.203407771885395,
+            24.203407771885395
+          ]
+        },
+        "final_token_ids": [
+          9707,
+          9707,
+          9707
+        ],
+        "final_logits_finite": true
+      }
+    },
+    "llamacpp_hip": {
+      "512/128": {
+        "prefill_tok_s": 1184.628203,
+        "decode_tok_s": 53.221861,
+        "peak_vram_gib": 21.375377655029297,
+        "repetitions": null
+      },
+      "1K/128": {
+        "prefill_tok_s": 1192.768318,
+        "decode_tok_s": 53.044287,
+        "peak_vram_gib": 21.387096405029297,
+        "repetitions": null
+      },
+      "4K/128": {
+        "prefill_tok_s": 1148.154598,
+        "decode_tok_s": 52.338495,
+        "peak_vram_gib": 21.443737030029297,
+        "repetitions": null
+      },
+      "32K/128": {
+        "prefill_tok_s": 843.251831,
+        "decode_tok_s": 45.946265,
+        "peak_vram_gib": 21.986705780029297,
+        "repetitions": null
+      },
+      "64K/128": {
+        "prefill_tok_s": 632.773666,
+        "decode_tok_s": 40.353483,
+        "peak_vram_gib": 22.666393280029297,
+        "repetitions": null
+      },
+      "128K/128": {
+        "prefill_tok_s": 432.032855,
+        "decode_tok_s": 32.728487,
+        "peak_vram_gib": 23.861705780029297,
+        "repetitions": null
+      }
+    },
+    "llamacpp_vulkan": {
+      "512/128": {
+        "prefill_tok_s": 1161.498138,
+        "decode_tok_s": 63.794998,
+        "peak_vram_gib": 21.5509033203125,
+        "repetitions": null
+      },
+      "1K/128": {
+        "prefill_tok_s": 1154.32653,
+        "decode_tok_s": 63.390535,
+        "peak_vram_gib": 21.501007080078125,
+        "repetitions": null
+      },
+      "4K/128": {
+        "prefill_tok_s": 1114.081478,
+        "decode_tok_s": 61.863497,
+        "peak_vram_gib": 21.506866455078125,
+        "repetitions": null
+      },
+      "32K/128": {
+        "prefill_tok_s": 873.572591,
+        "decode_tok_s": 52.285862,
+        "peak_vram_gib": 22.191436767578125,
+        "repetitions": null
+      },
+      "64K/128": {
+        "prefill_tok_s": 702.741786,
+        "decode_tok_s": 45.160457,
+        "peak_vram_gib": 22.626556396484375,
+        "repetitions": null
+      },
+      "128K/128": {
+        "prefill_tok_s": 499.728474,
+        "decode_tok_s": 35.569298,
+        "peak_vram_gib": 24.253936767578125,
+        "repetitions": null
+      }
+    }
+  },
+  "comparison_to_previous_iommu_on_publication": {
+    "paro": {
+      "prefill": {
+        "prior": [
+          1140.101,
+          1208.343,
+          1089.031,
+          906.145,
+          716.775,
+          474.641
+        ],
+        "current": [
+          1298.2589047292931,
+          1332.1988931211565,
+          977.2523761915724,
+          827.3498791301344,
+          690.6421577434777,
+          498.1012365188036
+        ],
+        "delta_percent": [
+          13.872271380280598,
+          10.250060878505218,
+          -10.264044256630678,
+          -8.695641522037379,
+          -3.64589198235461,
+          4.942732827295493
+        ],
+        "arithmetic_mean_delta_percent": 1.0765812208431071,
+        "geometric_mean_delta_percent": 0.6575227856615573
+      },
+      "decode": {
+        "prior": [
+          66.767,
+          61.746,
+          62.715,
+          50.342,
+          42.094,
+          30.386
+        ],
+        "current": [
+          70.74966694207218,
+          65.90478541335699,
+          66.72827128409384,
+          53.45798990394407,
+          44.792603258563,
+          32.61473746028261
+        ],
+        "delta_percent": [
+          5.965023053412888,
+          6.735311458810278,
+          6.399220735220967,
+          6.1896426521474535,
+          6.410897654209613,
+          7.334751070501588
+        ],
+        "arithmetic_mean_delta_percent": 6.505807770717131,
+        "geometric_mean_delta_percent": 6.504907838609975
+      }
+    },
+    "gguf": {
+      "prefill": {
+        "prior": [
+          1294.885,
+          1358.342,
+          1365.72,
+          1034.845,
+          796.083
+        ],
+        "current": [
+          1395.3785574533408,
+          1481.9431758167336,
+          1444.7331797631905,
+          1132.2146729046242,
+          892.6626611152845
+        ],
+        "delta_percent": [
+          7.760809450518069,
+          9.099415008645352,
+          5.78545966692956,
+          9.409106958493707,
+          12.131858250368932
+        ],
+        "arithmetic_mean_delta_percent": 8.837329866991123,
+        "geometric_mean_delta_percent": 8.817400597597658
+      },
+      "decode": {
+        "prior": [
+          49.041,
+          51.623,
+          52.422,
+          43.572,
+          37.622
+        ],
+        "current": [
+          52.76146296017966,
+          54.657727044668704,
+          55.29692239334596,
+          45.983348326686475,
+          39.3878424850904
+        ],
+        "delta_percent": [
+          7.58643371909149,
+          5.878633641339537,
+          5.4841905943038505,
+          5.534169481975737,
+          4.693643307347828
+        ],
+        "arithmetic_mean_delta_percent": 5.835414148811688,
+        "geometric_mean_delta_percent": 5.831103601503673
+      }
+    },
+    "llamacpp_hip": {
+      "prefill": {
+        "prior": [
+          1061.26,
+          1043.23,
+          1009.24,
+          743.547,
+          573.611,
+          390.441
+        ],
+        "current": [
+          1184.628203,
+          1192.768318,
+          1148.154598,
+          843.251831,
+          632.773666,
+          432.032855
+        ],
+        "delta_percent": [
+          11.624691687239697,
+          14.334165811949418,
+          13.764277872458486,
+          13.409351527206749,
+          10.314074520886107,
+          10.652532648978985
+        ],
+        "arithmetic_mean_delta_percent": 12.349849011453239,
+        "geometric_mean_delta_percent": 12.339001902698232
+      },
+      "decode": {
+        "prior": [
+          50.939,
+          50.818,
+          50.126,
+          44.24,
+          39.326,
+          32.114
+        ],
+        "current": [
+          53.221861,
+          53.044287,
+          52.338495,
+          45.946265,
+          40.353483,
+          32.728487
+        ],
+        "delta_percent": [
+          4.481558334478497,
+          4.3809024361446625,
+          4.413867055021359,
+          3.8568377034357892,
+          2.612732034786136,
+          1.9134551908824848
+        ],
+        "arithmetic_mean_delta_percent": 3.609892125791488,
+        "geometric_mean_delta_percent": 3.6050974199356878
+      }
+    },
+    "llamacpp_vulkan": {
+      "prefill": {
+        "prior": [
+          1067.77,
+          1069.87,
+          1016.58,
+          814.923,
+          660.974,
+          476.788
+        ],
+        "current": [
+          1161.498138,
+          1154.32653,
+          1114.081478,
+          873.572591,
+          702.741786,
+          499.728474
+        ],
+        "delta_percent": [
+          8.777933262781312,
+          7.894092740239489,
+          9.591126915737092,
+          7.196948791480917,
+          6.319126924810958,
+          4.8114621173351635
+        ],
+        "arithmetic_mean_delta_percent": 7.431781792064155,
+        "geometric_mean_delta_percent": 7.420230034756203
+      },
+      "decode": {
+        "prior": [
+          62.396,
+          62.136,
+          60.097,
+          51.319,
+          44.422,
+          34.948
+        ],
+        "current": [
+          63.794998,
+          63.390535,
+          61.863497,
+          52.285862,
+          45.160457,
+          35.569298
+        ],
+        "delta_percent": [
+          2.2421277004936124,
+          2.019014741856573,
+          2.939409621112543,
+          1.8840234610962847,
+          1.6623677457116015,
+          1.7777784136431274
+        ],
+        "arithmetic_mean_delta_percent": 2.0874536139856237,
+        "geometric_mean_delta_percent": 2.0865808896554316
+      }
+    },
+    "hipengine_combined": {
+      "prefill": {
+        "eligible_cells": 11,
+        "arithmetic_mean_delta_percent": 4.604194241819479,
+        "geometric_mean_delta_percent": 4.287813104095117
+      },
+      "decode": {
+        "eligible_cells": 11,
+        "arithmetic_mean_delta_percent": 6.201083397123748,
+        "geometric_mean_delta_percent": 6.198103006332012
+      }
+    }
+  },
+  "preliminary_short_context_directional_comparison": null,
+  "gguf_128k_blocker": {
+    "status": "blocked_no_current_topline",
+    "timeout_seconds": 1800,
+    "process_exit_code": 124,
+    "completed_before_stall": [
+      {
+        "run": "warmup_1",
+        "prefill_tok_s": 584.058678,
+        "decode_tok_s": 29.656672,
+        "peak_gib": 25.492502
+      },
+      {
+        "run": "measured_1",
+        "prefill_tok_s": 583.463663,
+        "decode_tok_s": 29.656102,
+        "peak_gib": 25.492502
+      }
+    ],
+    "failure_point": "measured pass 2 did not complete before the workload timeout",
+    "kernel_journal_faults": 0,
+    "post_timeout_kfd_clients": 0,
+    "conclusion": "amd_iommu=off does not close the intermittent repeated-process 128K lifecycle gate; no 128K GGUF number is promoted."
+  },
+  "correctness": {
+    "paro": {
+      "passed": true,
+      "all_measured_final_logits_finite": true,
+      "all_workload_final_ids_stable": true,
+      "all_workload_variance_gates_passed": true,
+      "all_component_provenance_clean": true,
+      "target_arch_matches_platform": true,
+      "rollup_assembly_provenance_clean": true
+    },
+    "gguf_512_64k": {
+      "passed": true,
+      "all_measured_ids": [
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707,
+        9707
+      ],
+      "all_ids_are_9707": true,
+      "variance_gate_percent": 5.0,
+      "max_prefill_stdev_over_median_percent": 0.12195624209848942,
+      "max_decode_stdev_over_median_percent": 0.027855779831643605
+    },
+    "llamacpp_external": {
+      "status": "diagnostic_retained",
+      "hipengine_correctness_claim_implied": false
+    }
+  },
+  "conclusions": [
+    "Across the 11 eligible hipEngine table cells, the arithmetic mean cross-publication change is 4.60% prefill and 6.20% decode.",
+    "GGUF 512-64K changes average 8.84% prefill and 5.84% decode; PARO six-shape changes average 1.08% and 6.51%.",
+    "These averages are directional because current hipEngine source differs from the previous IOMMU-on publication; a same-commit reboot A/B is required for causal attribution.",
+    "amd_iommu=off leaves zero IOMMU groups and disables amdxdna/NPU support on this machine.",
+    "The setting improves short/current throughput directionally but does not eliminate the GGUF 128K lifecycle stall."
+  ]
+}

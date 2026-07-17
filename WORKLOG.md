@@ -161626,3 +161626,103 @@ other 6,383 full-suite tests, including real-model GPU gates, passed before the
 isolated compatibility correction. `compileall` for `hipengine`, `scripts`, and
 `tests`; README export sync; 16 new benchmark JSON parses; additive changelog
 ordering assertions; conflict scans; and staged/unstaged diff checks all pass.
+
+## 2026-07-17 — Refresh gfx1151 toplines and MTP under `amd_iommu=off`
+
+- Verified the reboot before measurement: `/proc/cmdline` contains
+  `amd_iommu=off`, IOMMU groups fell **28 -> 0**, amdgpu remains normal HWS at
+  `sched_policy=0`, TheRock HIP 7.15 sees gfx1151, TuneD remains
+  `accelerator-performance`, and no KFD client was active. The boot journal also
+  records the expected tradeoff: `amdxdna: Running without IOMMU not supported`,
+  so the XDNA/NPU is unavailable while this setting is active.
+- Ran the canonical model refresh from tracked-clean detached commit
+  `2edbb2ee3ca74d7757500b5eafe737d43748489c`. PARO used two warmups plus five
+  measured runs in one right-sized process per shape; GGUF used one plus three;
+  llama.cpp HIP/Vulkan used five repetitions across all six shapes. The GGUF
+  workload processes had a 1,800-second safety bound. Durable raw artifacts and
+  logs are under
+  `/home/lhl/gfx1151-benchmarks/2026-07-17-iommu-off-topline-2edbb2ee/`.
+- Current PARO prefill/decode medians are:
+  `512 1298.259/70.750`, `1K 1332.199/65.905`,
+  `4K 977.252/66.728`, `32K 827.350/53.458`,
+  `64K 690.642/44.793`, and `128K 498.101/32.615 tok/s`.
+  All six shapes pass finite-logit, stable-final-ID, clean-provenance, and 5%
+  variance gates.
+- Current GGUF prefill/decode medians are:
+  `512 1395.379/52.761`, `1K 1481.943/54.658`,
+  `4K 1444.733/55.297`, `32K 1132.215/45.983`, and
+  `64K 892.663/39.388 tok/s`. All 15 measured IDs are `9707`; maximum
+  prefill/decode stdev over median is **0.122%/0.028%**. Relative to the prior
+  IOMMU-on publication, these five rows average **+8.84% prefill / +5.84%
+  decode**.
+- Current llama.cpp HIP prefill/decode is
+  `1184.628/53.222`, `1192.768/53.044`, `1148.155/52.338`,
+  `843.252/45.946`, `632.774/40.353`, and `432.033/32.728 tok/s`;
+  Vulkan is `1161.498/63.795`, `1154.327/63.391`, `1114.081/61.863`,
+  `873.573/52.286`, `702.742/45.160`, and `499.728/35.569 tok/s`.
+- Across all 11 eligible hipEngine cells (six PARO plus five GGUF), the
+  arithmetic mean change versus the prior IOMMU-on publication is **+4.60%
+  prefill / +6.20% decode**. PARO alone is **+1.08%/+6.51%**, with prefill
+  regressions at 4K/32K/64K; GGUF is **+8.84%/+5.84%**. These are directional
+  cross-revision comparisons, not a causal IOMMU-only A/B: runtime source and
+  some routing differ. A same-commit IOMMU-on reboot is still required before
+  attributing the change solely to IOMMU.
+- IOMMU-off does **not** close the GGUF 128K lifecycle blocker. The bounded
+  process completes warmup at **584.059/29.657** and measured pass 1 at
+  **583.464/29.656 prefill/decode tok/s**, then measured pass 2 fails to finish
+  before 1,800 seconds. No amdgpu kernel fault/reset is logged; timeout cleanup
+  returns the GPU to zero KFD clients. The first-pass values remain diagnostic
+  and no 128K GGUF topline is promoted.
+- Ran the full ten-prompt `mtpbench-code-general-ja.jsonl` suite after the model
+  sweep, including true same-protocol AR, exact/default B1-B5,
+  explicit `llama-compat` B2, fixed train/heldout/category splits,
+  transition-normalized llama.cpp, and the repeated-stream teacher-forced state
+  oracle. All source artifacts are clean at `2edbb2ee`; the oracle passes exact
+  external tokens plus byte-exact hidden, 40 layer outputs, 30 Conv/GDN state
+  families, and 10 live-KV families across all four transitions.
+- Exact/default B5 improves **51.813 -> 56.386 tok/s (+8.83%)** versus the July
+  publication; its current true AR is **56.983 tok/s**, so the route moves
+  **0.9571x -> 0.9895x AR** but still loses overall. Train is **1.0161x**, while
+  heldout is **0.9339x**; the exact route therefore remains a negative semantic
+  control rather than an MTP win.
+- Explicit `llama-compat` B2 improves **69.496 -> 81.900 tok/s (+17.85%)**
+  versus **56.783 true-AR tok/s**, moving **1.2776x -> 1.4423x AR**. Train is
+  **1.4504x**, heldout **1.4306x**, and category ratios are code **1.5731x**,
+  general English **1.3605x**, general Japanese **1.3968x**, and mixed
+  Japanese/English **1.3430x**. Acceptance remains 77.72% overall and 59.58%
+  accepted drafts/output. Compatibility stays explicit-only because its direct
+  partial-commit contract is not serial-prefix-equivalent.
+- The byte-identical llama.cpp server binary reports transition-normalized
+  **68.153 vs 50.371 tok/s (1.3530x)** for MTP/base. At the matched complete
+  post-prefill transition wall, hipEngine compatibility is **81.745 tok/s**,
+  **+19.94%** versus llama.cpp MTP; BF16 versus F16 KV remains disclosed and the
+  dirty preserved llama.cpp source makes it an external diagnostic.
+- Published compact artifacts
+  `benchmarks/results/2026-07-17-gfx1151-amd-iommu-off-topline-refresh.json` and
+  `benchmarks/results/2026-07-17-gfx1151-amd-iommu-off-mtp-refresh.json`, updated
+  both README toplines plus the benchmark changelog, and retained the preliminary
+  short-context artifact as corroborating diagnostic evidence.
+- Publication validation: both compact artifacts pass `python -m json.tool`,
+  README export blocks pass `scripts/sync_benchmark_readme.py --check`, and the
+  focused contract test is green (`tests/test_benchmark_readme_sync.py`: **6
+  passed**). The first focused run supplied the expected RED because its two
+  gfx1151 tests still pinned the July artifacts; those tests now derive every
+  displayed model/MTP row from the July 17 compact artifacts. `git diff --check`
+  also passes.
+
+## 2026-07-17 — Integrate concurrent gfx1151 publication before main push
+
+The pre-push fetch found that `origin/main` advanced from `2edbb2ee` to
+`1c850fec` while the validated gfx1100 merge was running. Refused to force-push:
+local `main` was correctly reported as ahead 60/behind 1. Merged the new upstream
+commit into local `main`; code, tests, three gfx1151 artifacts, root README, and
+`WORKLOG.md` merged automatically. The only conflicts were the two benchmark
+rollups. Resolved them additively: current gfx1151 IOMMU-off model/MTP rows come
+first, retained gfx1100 native-c8/D5 rows remain present, and the scoreboard
+revision paragraph keeps both gfx1100 c4/c8 provenance and the new gfx1151
+`2edbb2ee` measurement revision.
+
+Validation after resolution: `tests/test_benchmark_readme_sync.py` passes **6/6**;
+the three incoming gfx1151 artifacts and both final gfx1100 E2 artifacts parse as
+JSON; focused compilation, README export sync, conflict scan, and
+`git diff --check` pass. No runtime source changed in this second merge.
