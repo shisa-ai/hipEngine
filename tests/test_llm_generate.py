@@ -43,10 +43,16 @@ def test_llm_generate_dispatches_through_generation_registry(monkeypatch) -> Non
         replace=True,
     )
 
-    llm = LLM("/tmp/fake-model", backend="fake_backend", quant="fake_quant")
+    llm = LLM(
+        "/tmp/fake-model",
+        backend="fake_backend",
+        quant="fake_quant",
+        max_active_requests=8,
+    )
     out = llm.generate(["a", "b"], SamplingParams(max_tokens=1))
 
     assert out == ["a!", "b!"]
+    assert llm._text_generator._runner.capacity == 8
     assert calls["factory_kwargs"] == {
         "model_path": "/tmp/fake-model",
         "weight_index": fake_index,

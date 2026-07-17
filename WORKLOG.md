@@ -162066,3 +162066,37 @@ lifecycle packet, which already proves admission during decode plus exact
 survivor token/state/KV and clean reclaim. The full p512/d128 c8 trace is the
 focused rerun; another three-start tiny smoke would add no stronger evidence.
 Focused validation remains **7/7**, `py_compile`, and `git diff --check`.
+
+## 2026-07-18 — Reject serialized F1 packet and repair capacity propagation
+
+The clean `83b86e68` p512/d128 HTTP packet is **INVALID as c=N performance**
+despite exact outputs. Median aggregate rates stayed flat at
+**23.868/23.872/23.851/23.846 tok/s** for c1/c2/c4/c8 while wall grew linearly
+**5.363/10.724/21.467/42.942 s**. All 60 measured rows and all warmups matched
+their independent c1 token-ID oracles; the staggered c8 rows were also exact,
+zero-fallback, and A remained live at join. This is useful negative scheduler
+evidence, not a retained throughput row.
+
+Two independent configuration defects caused complete-request serialization:
+
+1. The harness sent `seed + request_index`. Seed is irrelevant for greedy
+   top-k=1, but `_sampling_key()` correctly includes it, so the FIFO formed C
+   one-request groups.
+2. `ServerConfig.max_active_requests` capped only `_GenerationBatcher`.
+   Lazy `LLM` construction did not receive the value, so every server used the
+   GGUF resident default capacity 4; even the nominal c8 artifact reported
+   `hipengine_resident_bucket_capacity=4`.
+
+The narrow production fix adds an optional validated `LLM(max_active_requests=)`
+loop-capacity override and passes `ServerConfig.max_active_requests` into it.
+This makes the existing CLI/env contract in `docs/ENVS.md` true for both the
+HTTP queue group and the resident scheduler without backend-specific dispatch.
+The harness now uses one common greedy seed and requires each response's
+`generation_shape` to prove one shared C-request queue group, one backend call
+with `input_rows=C`, `actual_group_rows=[C]`, and resident capacity exactly C.
+Row-local `native_caware_decode=true` is no longer sufficient.
+
+RED covered all five missing predicates. GREEN is **11/11** focused tests, then
+**19/19** full `test_llm_generate.py` plus relevant server coalescing/cap/shape
+nodes, `py_compile`, and `git diff --check`. No model math or kernel changed;
+the rerun must still pass all exact token oracles.

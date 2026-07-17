@@ -2508,6 +2508,51 @@ def test_startup_scratch_probe_uses_max_active_request_width() -> None:
     assert fake.scratch_prepares[0]["max_batch_size"] == 4
 
 
+def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+    fake = FakeLLM(outputs=["ok"])
+
+    def build_llm(
+        model: str,
+        *,
+        backend: str,
+        quant: str,
+        max_active_requests: int | None = None,
+    ) -> FakeLLM:
+        captured.update(
+            {
+                "model": model,
+                "backend": backend,
+                "quant": quant,
+                "max_active_requests": max_active_requests,
+            }
+        )
+        return fake
+
+    monkeypatch.setattr("hipengine.server.api.LLM", build_llm)
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            max_active_requests=8,
+        )
+    )
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/completions",
+            json={"model": "fake-model", "prompt": "one", "max_tokens": 1},
+        )
+
+    assert response.status_code == 200
+    assert captured == {
+        "model": "fake-path",
+        "backend": "auto",
+        "quant": "auto",
+        "max_active_requests": 8,
+    }
+
+
 def test_startup_scratch_probe_runs_batch_width_when_context_unknown() -> None:
     class UnknownContextFakeLLM(FakeLLM):
         def prepare(self, *, max_sequence_length: int | None = None, sampling_params: SamplingParams) -> None:
