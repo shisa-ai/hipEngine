@@ -474,9 +474,9 @@ Design rule: **every new runtime, scheduler, KV, and kernel ABI must stay batch-
 
 | Question | Answer |
 |---|---|
-| Can current hipEngine run real c=8 PARO decode? | No retained c8 route. gfx1151 now has a generated-token-exact greedy-BF16 c2 hybrid below 1024 context tokens, but c3-c8, sampled, longer-context, other-KV, and gfx1100 groups still fail closed to width-1 sessions. The c2 hybrid is not yet fully native c-aware or throughput-retained. |
-| Can current hipEngine run native GGUF c>N AR? | Yes through one true physical c8 group on both gfx1100 and gfx1151. Direct eager/graph, ragged, sparse-retirement, cancellation, all-layer hidden, Conv/GDN/live-KV, profiler-family, and repeated same-session scaling gates are retained; gfx1151 c8 reaches 127.902 aggregate tok/s (2.544x c1, +24.65% over c4+c4) with 748 packed-native and zero row-local/copy dispatches. The public c10 diagnostic remains c4+c4+c2 rather than native c10. Optional compaction, arbitrary-C/C>8 lowering, broader quant/sampling, and server timing remain open. |
-| Does current hipEngine implement continuous batching? | Partially project-wide; correctness-retained for both gfx1100 and gfx1151 GGUF OpenAI paths. Blocking calls and SSE share one model-owning loop that admits during decode, executes bounded prompt chunks, binds request-sized BF16 device KV, streams row-owned tokens through bounded queues, cancels or retires rows, drains through runner close, and exports scheduler/latency/KV/graph/route observability while survivor token/Conv/GDN/KV state remains c1-exact. gfx1100 D4/D5 and gfx1151 E1 are closed at correctness-only `continuous_eq_ok`; PARO, optional compaction/arbitrary-C, broader sampling, and server performance remain open. |
+| Can current hipEngine run real c=8 PARO decode? | No retained c8 route. gfx1100 and gfx1151 now have independently retained explicit direct selected-batch c2 steps. c3-c8, sampled, longer-context, other-KV, and public/OpenAI attachment remain open. |
+| Can current hipEngine run native GGUF c>N AR? | Yes through one true physical c8 group on both gfx1100 and gfx1151. Direct eager/graph, ragged, sparse-retirement, cancellation, all-layer hidden, Conv/GDN/live-KV, profiler-family, and repeated same-session scaling gates are retained; gfx1151 c8 reaches 127.902 aggregate tok/s (2.544x c1, +24.65% over c4+c4) with 748 packed-native and zero row-local/copy dispatches. Both targets now retain honest arbitrary-C/C>8 lowering as multiple declared physical groups plus explicit optional-compaction correctness; neither claims native c9/c13 or automatic compaction. Broader quant/sampling remain open. |
+| Does current hipEngine implement continuous batching? | Partially project-wide; correctness and real server scaling are retained for both gfx1100 and gfx1151 GGUF OpenAI paths. Blocking calls and SSE share one model-owning loop that admits during decode, executes bounded prompt chunks, binds request-sized BF16 device KV, streams row-owned tokens through bounded queues, cancels or retires rows, drains through runner close, and exports scheduler/latency/KV/graph/route observability while survivor token/Conv/GDN/KV state remains c1-exact. Both targets also retain honest arbitrary-C lowering and explicit optional-compaction correctness; PARO attachment, broader sampling, and automatic-compaction policy remain open. |
 | Is current SpecDec wired into generation? | Partially. GGUF llama-compat MTP has a guarded non-streaming greedy server route with resident slots and packed target verify; exact/default MTP serving, streaming, and broad SpecDec pluginization remain future work. |
 | Is the design cleaner for adding c>1 than `nano-vllm-amd`? | Yes. |
 | Would just setting `tokens=8` work? | No. |
@@ -505,14 +505,16 @@ Current blockers that keep project-wide c>N incomplete:
   complete inner generation calls. gfx1100 D4/D5 and gfx1151 E1 pass mid-generation admission,
   bounded mixed prefill/decode, packed-group membership changes, independent-c1
   survivor state/KV, disconnect/reclaim, real SSE, metrics, and final ownership.
-  Both are correctness-only `continuous_eq_ok`; neither adds server throughput,
-  TTFT, ITL, or concurrent-kernel performance, and optional compaction,
-  arbitrary-C/C>8 lowering, broader sampling, and PARO coverage remain open.
-- PARO has a narrow exact gfx1151 greedy-BF16 c2 hybrid, but broader widths,
-  modes, and retained profiling remain open. GGUF now has retained direct native
-  c2/c4/c8 correctness, family profiling, repeated scaling, and live membership
-  on both gfx11 targets; long-context c>N, additional quant formats, optional
-  compaction, and arbitrary-C lowering remain independent gates.
+  Both are correctness-retained at `continuous_eq_ok`, have retained real server
+  throughput/latency, and retain arbitrary-C lowering plus explicit optional-
+  compaction correctness. Automatic-compaction policy, broader sampling, and
+  PARO production-loop coverage remain open.
+- PARO has independently retained explicit selected-batch c2 steps on gfx1100
+  and gfx1151, but broader widths, public-loop attachment, longer contexts,
+  sampled modes, and non-BF16 KV remain open. GGUF now has
+  retained direct native c2/c4/c8 correctness, family profiling, repeated
+  scaling, live membership, and arbitrary-C lowering on both gfx11 targets;
+  long-context c>N and additional quant formats remain independent gates.
 - Several decode kernels are row-parallel GEMV rather than true grouped/MMQ/WMMA
   batch kernels. They increase grid size but do not reliably reuse streamed
   weights across requests, which is visible in the weak gfx1151 c=1->c=8 scale
