@@ -42,6 +42,121 @@ def _tensor(ptr: int, shape: tuple[int, ...], dtype: str | DType) -> Tensor:
     return Tensor.from_handle(ptr, shape, dtype, Device("hip", 0))
 
 
+def test_resident_slot_reset_clears_only_reclaimed_state_and_kv(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.closed = False
+    session.max_batch_size = 3
+    session.config = SimpleNamespace(hidden_size=4)
+    session.position_arr = np.asarray([11, 22, 33], dtype=np.int64)
+    session.context_arr = np.asarray([12, 23, 34], dtype=np.int64)
+    session.token_id_arr = np.asarray([101, 202, 303], dtype=np.int64)
+    session.active_mask_arr = np.asarray([1, 1, 1], dtype=np.bool_)
+    session.position_buf = DeviceBuffer(0x1000, session.position_arr.nbytes)
+    session.context_buf = DeviceBuffer(0x1100, session.context_arr.nbytes)
+    session.batch_compact_position_buf = DeviceBuffer(0x1200, session.position_arr.nbytes)
+    session.batch_compact_context_buf = DeviceBuffer(0x1300, session.context_arr.nbytes)
+    session.token_id_buf = DeviceBuffer(0x1400, session.token_id_arr.nbytes)
+    session.active_mask_buf = DeviceBuffer(0x1500, session.active_mask_arr.nbytes)
+    session.batch_hidden = _tensor(0x2000, (3, 4), DType.FP16)
+    session.batch_next_hidden = _tensor(0x2100, (3, 4), DType.FP16)
+    session.batch_norm_out = _tensor(0x2200, (3, 4), DType.FP16)
+    session.batch_norm_out_bf16 = _tensor(0x2300, (3, 4), DType.BF16)
+    conv = _tensor(0x3000, (2, 2), DType.FP32)
+    recurrent = _tensor(0x3100, (1, 2, 1), DType.FP32)
+    session.linear_states = {
+        0: (
+            conv,
+            recurrent,
+            DeviceBuffer(0x3200, 3 * conv.numel * conv.dtype.itemsize),
+            DeviceBuffer(0x3300, 3 * recurrent.numel * recurrent.dtype.itemsize),
+            np.zeros(conv.shape, dtype=np.float32),
+            np.zeros(recurrent.shape, dtype=np.float32),
+        )
+    }
+    key = _tensor(0x4000, (2, 2, 1, 1), DType.BF16)
+    value = _tensor(0x4100, (2, 2, 1, 1), DType.BF16)
+    session.full_caches = {
+        3: (
+            key,
+            value,
+            DeviceBuffer(0x4200, 3 * key.numel * key.dtype.itemsize),
+            DeviceBuffer(0x4300, 3 * value.numel * value.dtype.itemsize),
+        )
+    }
+    key_scale = _tensor(0x5000, (2, 2, 1), DType.FP16)
+    value_scale = _tensor(0x5100, (2, 2, 1), DType.FP16)
+    session.full_cache_scales = {
+        3: (
+            key_scale,
+            value_scale,
+            DeviceBuffer(0x5200, 3 * key_scale.numel * key_scale.dtype.itemsize),
+            DeviceBuffer(0x5300, 3 * value_scale.numel * value_scale.dtype.itemsize),
+        )
+    }
+    state0 = object()
+    state1 = object()
+    state2 = object()
+    session._host_sampling_states_by_slot = {0: state0, 1: state1, 2: state2}
+    session._native_sampling_states_by_slot = {0: state0, 1: state1, 2: state2}
+
+    class FakeRuntime:
+        def __init__(self) -> None:
+            self.memsets: list[tuple[int, int, int]] = []
+            self.synchronizations = 0
+
+        def device_synchronize(self) -> None:
+            self.synchronizations += 1
+
+        def memset(self, ptr: int, value: int, nbytes: int) -> None:
+            self.memsets.append((int(ptr), int(value), int(nbytes)))
+
+    runtime = FakeRuntime()
+    session.runtime = runtime
+    metadata_copies: list[int] = []
+    monkeypatch.setattr(
+        runner_module,
+        "copy_host_to_device",
+        lambda buffer, host_ptr, nbytes, **kwargs: metadata_copies.append(int(buffer.ptr)),
+    )
+
+    session.reset_slots((1,))
+
+    assert session.position_arr.tolist() == [11, 0, 33]
+    assert session.context_arr.tolist() == [12, 1, 34]
+    assert session.token_id_arr.tolist() == [101, 0, 303]
+    assert session.active_mask_arr.tolist() == [True, False, True]
+    assert session._host_sampling_states_by_slot == {0: state0, 2: state2}
+    assert session._native_sampling_states_by_slot == {0: state0, 2: state2}
+    assert runtime.synchronizations == 2
+    assert metadata_copies == [0x1000, 0x1100, 0x1200, 0x1300, 0x1400, 0x1500]
+
+    reset_ranges = [range(ptr, ptr + nbytes) for ptr, value, nbytes in runtime.memsets if value == 0]
+    reclaimed_addresses = {
+        0x2000 + 8,
+        0x2100 + 8,
+        0x2200 + 8,
+        0x2300 + 8,
+        0x3200 + conv.numel * conv.dtype.itemsize,
+        0x3300 + recurrent.numel * recurrent.dtype.itemsize,
+        0x4200 + key.numel * key.dtype.itemsize,
+        0x4300 + value.numel * value.dtype.itemsize,
+        0x5200 + key_scale.numel * key_scale.dtype.itemsize,
+        0x5300 + value_scale.numel * value_scale.dtype.itemsize,
+    }
+    assert {item.start for item in reset_ranges} == reclaimed_addresses
+    survivor_addresses = {
+        0x2000,
+        0x2000 + 16,
+        0x3200,
+        0x3200 + 2 * conv.numel * conv.dtype.itemsize,
+        0x4200,
+        0x4200 + 2 * key.numel * key.dtype.itemsize,
+    }
+    assert all(address not in reset_range for address in survivor_addresses for reset_range in reset_ranges)
+
+
 def test_dflash_verify_sync_phases_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("HIPENGINE_DFLASH_VERIFY_SYNC_PHASES", raising=False)
     assert runner_module._dflash_verify_sync_phases_enabled() is False

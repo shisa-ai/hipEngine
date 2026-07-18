@@ -7,13 +7,14 @@ import numpy as np
 import pytest
 
 import hipengine.generation.qwen35_paro as qwen35
-from hipengine.dispatch import NativeBatchWidthProfile
+from hipengine.dispatch import NativeBatchWidthProfile, SlotMove
 from hipengine.generation import (
     GenerationCancellationToken,
     GenerationCancelled,
     GenerationDeadlineExceeded,
     GenerationRequest,
     GenerationStreamChunk,
+    SubmitPollTextGenerator,
     TokenLogprob,
 )
 from hipengine.generation.sampling import select_token
@@ -3076,6 +3077,334 @@ def test_qwen35_paro_generator_handles_zero_tokens_without_loading(monkeypatch) 
     )
 
     assert generator.generate(_request(prompts=("a", "b"), max_tokens=0)) == ["", ""]
+
+
+def test_qwen35_paro_resident_model_owner_keeps_stable_slots_and_native_c2(monkeypatch) -> None:
+    calls: list[tuple] = []
+    prompt_rows = {
+        "first": (10, 11, 12),
+        "second": (20, 21),
+    }
+    profile = NativeBatchWidthProfile(
+        source_artifact="benchmarks/results/paro-g4-host-profile.json",
+        native_step_ms=((2, 1.0), (4, 1.8), (8, 3.6)),
+        serial_row_step_ms=1.1,
+        min_position=0,
+        max_position=64,
+    )
+
+    class FakeTokenizer:
+        eos_token_id = None
+
+        @staticmethod
+        def token_to_id(token: str):
+            del token
+            return None
+
+    class FakeSession:
+        tokenizer = FakeTokenizer()
+        instances: list["FakeSession"] = []
+
+        def __init__(self, runner, *, max_sequence_length, max_batch_size, **kwargs):
+            del kwargs
+            self.runner = runner
+            self.max_sequence_length = int(max_sequence_length)
+            self.max_batch_size = int(max_batch_size)
+            self.block_size = 256
+            self.closed = False
+            self.configured_rows = None
+            self.instances.append(self)
+            calls.append(("session_init", self.max_sequence_length, self.max_batch_size))
+
+        def native_batch_width_profile(self):
+            return profile
+
+        def prefill_native_packed(self, slab, *, sample=True):
+            calls.append(
+                (
+                    "prefill",
+                    tuple(slab.request_ids),
+                    tuple(slab.token_ids),
+                    tuple(slab.positions),
+                    tuple(slab.physical_slot_ids),
+                    bool(sample),
+                )
+            )
+            if not sample:
+                return (None,) * slab.request_count
+            return tuple(
+                _result(100 + int(tokens[-1]), f"T{100 + int(tokens[-1])}")
+                for tokens in slab.token_rows
+            )
+
+        def step_batch_native(self, token_ids, *, positions, slots, sample=True):
+            calls.append(
+                (
+                    "native",
+                    tuple(int(token) for token in token_ids),
+                    tuple(int(position) for position in positions),
+                    tuple(int(slot) for slot in slots),
+                    bool(sample),
+                )
+            )
+            return tuple(_result(int(token) + 1, f"T{int(token) + 1}") for token in token_ids)
+
+        def step_batch_serial(self, token_ids, *, positions, slots, sample=True):
+            calls.append(
+                (
+                    "serial",
+                    tuple(int(token) for token in token_ids),
+                    tuple(int(position) for position in positions),
+                    tuple(int(slot) for slot in slots),
+                    bool(sample),
+                )
+            )
+            return tuple(_result(int(token) + 1, f"T{int(token) + 1}") for token in token_ids)
+
+        def configure_host_sampler_rows(self, params, states_by_slot):
+            self.configured_rows = states_by_slot
+            calls.append(
+                (
+                    "configure_host",
+                    params is not None,
+                    () if states_by_slot is None else tuple(sorted(states_by_slot)),
+                )
+            )
+
+        def reset_slots(self, slots):
+            calls.append(("reset_slots", tuple(int(slot) for slot in slots)))
+
+        def close(self):
+            self.closed = True
+            calls.append(("session_close",))
+
+    monkeypatch.setattr(
+        qwen35,
+        "_select_token",
+        lambda model, prompt, token_id: (prompt_rows[str(prompt)][-1], prompt_rows[str(prompt)]),
+    )
+    monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
+    generator = qwen35.Qwen35ParoOneTokenGenerator(
+        model_path="/tmp/model",
+        weight_index=SimpleNamespace(),
+        model_plugin=SimpleNamespace(),
+    )
+    generator._runner = SimpleNamespace(
+        backend="hip_gfx1151",
+        target_arch="gfx1151",
+        model=Path("/tmp/model"),
+        config=SimpleNamespace(max_position_embeddings=64),
+    )
+
+    adapter = SubmitPollTextGenerator(generator, capacity=4, prefill_chunk_size=2)
+    owner = adapter._runner
+    assert isinstance(owner, qwen35.Qwen35ParoResidentModelRunner)
+
+    outputs = adapter.generate_detailed(
+        _request(prompts=("first", "second"), max_tokens=3, ignore_eos=True)
+    )
+
+    assert [output.generated_token_ids for output in outputs] == [
+        (112, 113, 114),
+        (121, 122, 123),
+    ]
+    assert [output.text for output in outputs] == ["T112T113T114", "T121T122T123"]
+    assert calls[0] == ("session_init", 4096, 4)
+    assert [call for call in calls if call[0] == "prefill"] == [
+        ("prefill", (0,), (10, 11), (0, 1), (0,), False),
+        ("prefill", (0,), (12,), (2,), (0,), True),
+        ("prefill", (1,), (20, 21), (0, 1), (1,), True),
+    ]
+    assert [call[3] for call in calls if call[0] == "native"] == [(0, 1), (0, 1)]
+    assert [call for call in calls if call[0] == "serial"] == []
+    assert owner.active_request_ids == ()
+    assert owner.available_model_slots == (0, 1, 2, 3)
+
+    request = _request(prompts=("first", "second"), max_tokens=1, ignore_eos=True)
+    owner.register_batch((20, 21), request, prompt_rows=(prompt_rows["first"], prompt_rows["second"]))
+    owner.reserve_admission(SimpleNamespace(request_id=20))
+    owner.reserve_admission(SimpleNamespace(request_id=21))
+    assert (owner._rows[20].model_slot, owner._rows[21].model_slot) == (0, 1)
+    owner.compact_batch(
+        (
+            SlotMove(request_id=20, old_slot=3, new_slot=0),
+            SlotMove(request_id=21, old_slot=2, new_slot=1),
+        )
+    )
+    assert (owner._rows[20].model_slot, owner._rows[21].model_slot) == (0, 1)
+    owner.discard((20,))
+    owner.register_batch((22,), _request(prompts=("first",), max_tokens=1), prompt_rows=(prompt_rows["first"],))
+    owner.reserve_admission(SimpleNamespace(request_id=22))
+    assert owner._rows[21].model_slot == 1
+    assert owner._rows[22].model_slot == 0
+
+    snapshot = owner.observability_snapshot()
+    assert snapshot["model_runner"]["fixed_session"] is True
+    assert snapshot["model_runner"]["capacity"] == 4
+    assert snapshot["routes"]["counts"]["native_group_calls"] == 2
+    assert snapshot["routes"]["counts"]["serial_row_calls"] == 0
+    assert snapshot["routes"]["last_width_plan"]["path"] == "direct_native"
+
+    # The public submit/poll loop must admit and reclaim while a survivor stays
+    # live without changing that survivor's model slot.
+    owner.discard((21, 22))
+    first_live = adapter.submit_detailed(
+        _request(prompts=("first",), max_tokens=4, ignore_eos=True)
+    )
+    adapter.poll(max_ticks=1)  # first prompt chunk
+    adapter.poll(max_ticks=1)  # final prompt chunk
+    adapter.poll(max_ticks=1)  # publish the prefill token
+    assert owner._rows[first_live.request_ids[0]].model_slot == 0
+
+    second_live = adapter.submit_detailed(
+        _request(prompts=("second",), max_tokens=3, ignore_eos=True)
+    )
+    admitted = adapter.poll(max_ticks=1)
+    assert any(event.kind == "admitted" for event in admitted)
+    assert owner._rows[first_live.request_ids[0]].model_slot == 0
+    assert owner._rows[second_live.request_ids[0]].model_slot == 1
+    adapter.poll(max_ticks=1)  # survivor serial c1 + second prefill token
+    assert adapter.cancel_submission(second_live, reason="cancel") == (True,)
+    assert owner._rows[first_live.request_ids[0]].model_slot == 0
+    assert owner.available_model_slots[0] == 1
+
+    third_live = adapter.submit_detailed(
+        _request(prompts=("second",), max_tokens=2, ignore_eos=True)
+    )
+    adapter.poll(max_ticks=1)  # re-admit into reclaimed model slot 1
+    assert owner._rows[first_live.request_ids[0]].model_slot == 0
+    assert owner._rows[third_live.request_ids[0]].model_slot == 1
+    assert adapter.cancel_submission(third_live, reason="cancel") == (True,)
+
+    while not adapter.generation_complete(first_live):
+        adapter.poll(max_ticks=1)
+    first_output = adapter.take_result(first_live)
+    second_output = adapter.take_result(second_live)
+    third_output = adapter.take_result(third_live)
+    assert first_output[0].generated_token_ids == (112, 113, 114, 115)
+    assert second_output[0].generated_token_ids == (121,)
+    assert second_output[0].finish_details is not None
+    assert second_output[0].finish_details.cancelled is True
+    assert third_output[0].generated_token_ids == ()
+    assert third_output[0].finish_details is not None
+    assert third_output[0].finish_details.cancelled is True
+    owner.close()
+
+
+def test_qwen35_paro_resident_model_owner_samples_each_row_serially(monkeypatch) -> None:
+    calls: list[tuple] = []
+    prompt_rows = {"first": (10, 11), "second": (20, 21)}
+    profile = NativeBatchWidthProfile(
+        source_artifact="benchmarks/results/paro-g4-host-profile.json",
+        native_step_ms=((2, 1.0),),
+        serial_row_step_ms=1.1,
+        min_position=0,
+        max_position=64,
+    )
+
+    class FakeTokenizer:
+        eos_token_id = None
+
+        @staticmethod
+        def token_to_id(token: str):
+            del token
+            return None
+
+    class FakeSession:
+        tokenizer = FakeTokenizer()
+
+        def __init__(self, runner, *, max_sequence_length, max_batch_size, **kwargs):
+            del runner, kwargs
+            self.max_sequence_length = int(max_sequence_length)
+            self.max_batch_size = int(max_batch_size)
+            self.block_size = 256
+            self.states_by_slot = None
+
+        def native_batch_width_profile(self):
+            return profile
+
+        def configure_host_sampler_rows(self, params, states_by_slot):
+            self.states_by_slot = states_by_slot
+            calls.append(
+                (
+                    "configure_host",
+                    params is not None,
+                    () if states_by_slot is None else tuple(sorted(states_by_slot)),
+                )
+            )
+
+        def prefill_native_packed(self, slab, *, sample=True):
+            assert sample
+            slot = slab.physical_slot_ids[0]
+            assert self.states_by_slot is not None and tuple(self.states_by_slot) == (slot,)
+            token = 100 + int(slab.token_rows[0][-1])
+            self.states_by_slot[slot].observe(token)
+            calls.append(("prefill", slot, token))
+            return (_result(token, f"T{token}", logprob=-0.1),)
+
+        def step_batch_native(self, *args, **kwargs):
+            raise AssertionError(f"sampled rows must not use native greedy decode: {args!r} {kwargs!r}")
+
+        def step_batch_serial(self, token_ids, *, positions, slots, sample=True):
+            assert sample and len(token_ids) == len(slots) == 1
+            slot = int(slots[0])
+            assert self.states_by_slot is not None and tuple(self.states_by_slot) == (slot,)
+            token = int(token_ids[0]) + 1
+            self.states_by_slot[slot].observe(token)
+            calls.append(("serial", slot, int(positions[0]), token))
+            return (_result(token, f"T{token}", logprob=-0.2),)
+
+        def reset_slots(self, slots):
+            calls.append(("reset_slots", tuple(int(slot) for slot in slots)))
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(
+        qwen35,
+        "_select_token",
+        lambda model, prompt, token_id: (prompt_rows[str(prompt)][-1], prompt_rows[str(prompt)]),
+    )
+    monkeypatch.setattr(qwen35, "Qwen35ParoResidentSession", FakeSession)
+    generator = qwen35.Qwen35ParoOneTokenGenerator(
+        model_path="/tmp/model",
+        weight_index=SimpleNamespace(),
+        model_plugin=SimpleNamespace(),
+    )
+    generator._runner = SimpleNamespace(
+        backend="hip_gfx1151",
+        target_arch="gfx1151",
+        model=Path("/tmp/model"),
+        config=SimpleNamespace(max_position_embeddings=64),
+    )
+    adapter = SubmitPollTextGenerator(generator, capacity=2, prefill_chunk_size=8)
+
+    outputs = adapter.generate_detailed(
+        _request(
+            prompts=("first", "second"),
+            max_tokens=2,
+            ignore_eos=True,
+            temperature=0.7,
+            seed=7,
+            logprobs=True,
+        )
+    )
+
+    assert [output.generated_token_ids for output in outputs] == [(111, 112), (121, 122)]
+    assert [tuple(item.logprob for item in output.token_logprobs) for output in outputs] == [
+        (-0.1, -0.2),
+        (-0.1, -0.2),
+    ]
+    assert [call[:2] for call in calls if call[0] == "serial"] == [
+        ("serial", 0),
+        ("serial", 1),
+    ]
+    owner = adapter._runner
+    snapshot = owner.observability_snapshot()
+    assert snapshot["routes"]["counts"]["native_group_calls"] == 0
+    assert snapshot["routes"]["counts"]["serial_row_calls"] == 2
+    assert snapshot["routes"]["fallback_reasons"]["sampled_request"] == 2
+    adapter.close()
 
 
 def test_qwen35_paro_generator_stops_on_im_end_and_reports_eos(monkeypatch) -> None:

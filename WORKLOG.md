@@ -163599,3 +163599,77 @@ loop gate passes. Updated
 benchmark changelog. This claim remains explicit direct model steps only;
 public/OpenAI PARO is still width-1. Next: implement the shared resident model
 owner and close real blocking/SSE live admission before production promotion.
+
+## 2026-07-18 — Close gfx1151 PARO resident OpenAI correctness
+
+Implemented the Phase-G4 PARO owner behind the unchanged backend-neutral
+`SubmitPollTextGenerator` / `ResidentEngineLoop` contract; no PARO-only
+scheduler and no backend/quant branch was added. `Qwen35ParoOneTokenGenerator`
+now supplies one fixed-capacity `Qwen35ParoResidentModelRunner`. Each request
+keeps a stable model slot independent of scheduler compaction, prompt chunks
+commit through compact packed prefill, eligible equal-position greedy groups
+use the retained c2/c4/c8 width profile, and unsupported positions/widths or
+normal sampling remain explicit resident row-serial work. Reclaim calls a new
+slot-local session reset that clears only the selected hidden, Conv/GDN,
+full-attention KV/scale, and scalar metadata rows; survivor storage is untouched.
+The public `LLM` and OpenAI batcher therefore share the same long-lived model
+owner, stream subscriptions, cancellation, reclaim, and observability paths.
+
+RED/GREEN host coverage found and fixed two lifecycle/accounting edges. First,
+a token sampled by the final prefill chunk but cancelled before scheduler
+emission must not appear in the public result; cancelled output is now bounded
+by the scheduler's committed generated-token count. Second, tokenizer-counting
+individual SSE text fragments is not exact for generated IDs: the real sequence
+`[220,67,220,3966]` renders as space/`d`/space/NBSP and retokenized as two
+completion tokens. Completion SSE now prefers authoritative cumulative backend
+`decode_state.generated_tokens` for per-delta accounting and final usage while
+preserving the prior text-counter fallback for metadata-free generators. The
+focused RED case moved streamed counts from `[0,0]` to `[1,2]` and exact usage
+from zero retokenized completion tokens to two generated tokens.
+
+Validation and exact commands:
+
+- `PYTHONPATH=. uv run pytest -q tests/test_generation_qwen35_paro.py
+  tests/test_qwen35_resident_batch_layout.py
+  tests/test_generation_batch_scheduler.py tests/test_server_api.py -x` passes
+  all **1,018/1,018** collected host/server tests; focused Ruff and
+  `git diff --check` also pass.
+- On Radeon 8060S/gfx1151, TheRock HIP 7.15, packed model revision
+  `437eba06…`, W4/BF16 KV, `max_active_requests=2`, fair scheduling, 256-token
+  prompt chunks, and the existing retained/default plus experimental-native
+  opt-ins, the inline live-admission command emitted
+  `/tmp/hipengine-pi-paro-g4-live-admission.json` (**188,720 bytes**, SHA-256
+  `76c9c61026f4eeb15e26649bc8b7cd79a7e77927f73afea8cf15454abf42836b`).
+  A 512-token/16-output survivor is ID-exact to independent c1 while a second
+  row is cancelled after one visible token and its stable slot 1 is immediately
+  reused for an exact 512/8 result. Slots remain `{first:0, second:1, third:1}`;
+  seven native c2 calls / 14 rows and 30 truthful serial row calls execute with
+  no fallback reason; five admissions, ten prompt chunks, ten slot resets, and
+  five reclaims drain to zero ownership.
+- The exact OpenAI command was
+  `env HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151
+  HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1
+  HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1
+  HIPENGINE_PREFILL_DECODE_POLICY=fair
+  HIPENGINE_MAX_PREFILL_CHUNK_TOKENS=256 uv run --extra dev python3
+  /tmp/paro_g4_openai_gate.py`. It emitted
+  `/tmp/hipengine-pi-paro-g4-openai.json` (**199,388 bytes**, SHA-256
+  `5fd40d3a6b7d7948153d831b25954821541e4f9b2f35513bfb31ba22fd83525f`).
+  Blocking c2 reports exact usage `1024+16=1040`. Two concurrent 512/8 SSE
+  requests each emit eight deltas plus done/usage/`[DONE]`, report exact
+  `512+8=520`, count streamed tokens `1..8`, and match independent IDs
+  `[220,67,220,3966,220,220,220,220]`. Each records five native c2 plus two
+  serial steps because fair admission truthfully permits c1→c2→c1 transitions;
+  this is not hidden fallback. The owner exposes 160 MiB fixed-session BF16 KV
+  across two stable slots and drains active ownership to zero.
+
+Published compact correctness evidence at
+`benchmarks/results/2026-07-18-gfx1151-paro-g4-resident-openai-correctness.json`
+(**8,078 bytes**, SHA-256
+`8c628107b1539d72b15bac09407440471fce15b926d23597e413bbc9cf140d16`).
+This advances gfx1151 PARO live admission to `continuous_eq_ok`, not retained
+production: it carries no server throughput/TTFT/ITL claim, still requires the
+existing native opt-ins, covers normal sampling only through exact host-tested
+serial fallback, and does not close gfx1100 owner symmetry. Next: commit this
+logical unit, then run repeated real gfx1151 server burst/live-admission scaling
+before any production-default promotion.
