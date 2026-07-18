@@ -98,8 +98,8 @@ live-admission scaling on both gfx11 targets. gfx1151 independently closes
 direct native-c2/c4/c8 correctness/scaling, admission, two mid-flight
 disconnects, streaming, request/KV metrics, fallback accounting, final
 ownership, E3 arbitrary-C lowering, and the full F1 server packet. Direct
-native-c8 graph model steps are scaling-retained at 246.872 and 127.902
-aggregate tok/s; grouped C13 real SSE is 111.380 and 72.522 aggregate tok/s on
+native-c8 graph model steps are scaling-retained at 246.872 and 128.075
+aggregate tok/s; grouped C13 real SSE is 111.380 and 73.065 aggregate tok/s on
 gfx1100 and gfx1151 respectively. Explicit PARO direct c2 steps are retained at
 121.923 and 79.237 aggregate tok/s on gfx1100 and gfx1151; gfx1151 also retains
 true physical c4/c8 at 100.209/99.943 aggregate tok/s. gfx1151 now also retains
@@ -148,7 +148,7 @@ cache/memory economics, and SLO-based external evidence.
 
 | Model path | Backend | Current c>N status | Production behavior | First missing gate |
 | --- | --- | --- | --- | --- |
-| GGUF Q4_K_M / BF16 KV | gfx1151 | `retained` direct native-c2/c4/c8 graph model steps, continuous membership, honest arbitrary-C lowering, and real OpenAI server scaling: the prior 188,080 direct comparisons remain exact; E3 adds 134,160 exact C13 eager/graph comparisons, middle-hole cancellation/admission, and nine-move explicit compaction with 2/2 graph invalidations; one physical c8 is 127.902 aggregate tok/s with a 748 packed-native / 0 row-local / 0-copy trace; p512/128-output logical c1/c8/c9/c13/serial-c13 SSE is 15.701/86.338/57.127/72.522/42.764 aggregate tok/s | Public blocking calls and OpenAI SSE share one configured model-owning loop with reusable c8-capable sessions and real BF16 device KV; C>8 is multiple declared groups, never native c9/c13; optional compaction is explicit/manual | F0 current-main recertification, then F2 occupancy-adaptive c1 preservation before profile tuning and broader sampling |
+| GGUF Q4_K_M / BF16 KV | gfx1151 | `retained` direct native-c2/c4/c8 graph model steps, continuous membership, honest arbitrary-C lowering, and real OpenAI server scaling: F0 repairs and passes physical-c2 p512/d128 at 10,240/10,240 all-layer comparisons while the prior 188,080 direct/category and 134,160 E3 arbitrary-C comparisons remain retained; current direct c1/c2/c4/c8 is 50.291/72.262/102.663/128.075 aggregate tok/s with a 748 packed-native / 0 row-local / 0-copy c8 trace; current p512/128-output logical c1/c8/c9/c13/serial-c13 SSE is 15.798/86.358/57.691/73.065/43.116 aggregate tok/s | Public blocking calls and OpenAI SSE share one configured model-owning loop with reusable c8-capable sessions and real BF16 device KV; C>8 is multiple declared groups, never native c9/c13; optional compaction is explicit/manual; logical c1 is still masked physical c8 | F2 occupancy-adaptive c1 preservation before profile tuning and broader sampling |
 | GGUF Q4_K_M / BF16 KV | gfx1100 | `retained` direct native-c4/c8 graph model steps, observable continuous membership, honest arbitrary-C lowering, and real OpenAI server scaling: direct native-c8 is 246.872 aggregate tok/s; arbitrary C13 eager/graph adds 135,200 exact all-layer comparisons; middle-hole cancellation/admission preserves inactive state/KV; nine optional compaction moves preserve hashes/pointers with 2/2 graph invalidations; p512/128-output logical c1/c8/c9/c13/serial-c13 SSE is 25.583/136.122/88.592/111.380/31.708 aggregate tok/s | Public blocking calls and OpenAI SSE share one configured model-owning loop, reusable c8-capable sessions, bounded queues, real BF16 device KV, arbitrary-C physical-group manifests, and lock-consistent observability; C>8 is multiple declared groups, never a wider native claim; optional compaction is explicit/manual | Transfer retained occupancy-adaptive c1 policy after gfx1151, then profile tuning, normal sampling, and compaction only if justified |
 | GGUF Q5_K/Q6_K/Q8_0 / BF16 KV | gfx1100/gfx1151 | Not executed end to end under c>N | c1 | Run quant-specific direct, profiler, lifecycle, and scaling gates |
 | PARO W4 / BF16 KV | gfx1151 | `retained`: explicit direct native-c2/c4/c8 is **79.237/100.209/99.943 aggregate tok/s** with all 5,754 direct IDs exact; blocking OpenAI F1 is **47.124/51.962/60.323/61.253** at c1/c2/c4/c8 with 68/68 exact rows; real FastAPI SSE c1/c2/c4/c8/serial-c8 is **36.327/38.666/42.471/41.487/35.633** with 100/100 exact rows, plus 72/72 exact c8 stress rows | Public blocking/OpenAI requests share one fixed-capacity owner with chunked prefill, stable device-state/KV slots, authoritative generated-token accounting, profile partitions, and package-default native c2/c4/c8; explicit `=0` rollback flags preserve exact serial fallback | Close gfx1100 owner c4/c8 independently; broaden sampled groups, context/KV coverage, and only then consider graph replay |
@@ -214,6 +214,13 @@ remains open.
   `benchmarks/results/2026-07-17-gfx1151-gguf-concurrency-e1-direct-correctness.json`,
   `benchmarks/results/2026-07-17-gfx1151-gguf-concurrency-e1-native-c8-scaling-closure.json`,
   and `benchmarks/results/2026-07-17-gfx1151-gguf-concurrency-e1-live-loop-closure.json`.
+- Current-main gfx1151 GGUF F0 physical-c2 repair and focused direct/server/
+  profiler recertification: `WORKLOG.md`, **2026-07-19 — Repair gfx1151 GGUF
+  physical-c2 long-horizon exactness** and **Re-certify current-main gfx1151
+  GGUF serving**, plus
+  `benchmarks/results/2026-07-19-gfx1151-gguf-f0-c2-fixed256-correctness.json`
+  and
+  `benchmarks/results/2026-07-19-gfx1151-gguf-f0-current-main-recertification.json`.
 - gfx1151 E3 honest C13 eager/graph grouping, middle-hole cancellation/admission,
   inactive state/KV immutability, and explicit optional-compaction graph/resource
   safety: `WORKLOG.md`, **2026-07-18 — Retain gfx1151 E3 arbitrary-C
@@ -934,8 +941,9 @@ performs nine real moves, preserves every survivor hash, allocation, block id,
 and device pointer, closes both sparse graphs with **2/2** invalidations, and
 admits newcomers at slots 11/12. The real server packets retain logical
 c1/c8/c9/c13/serial-c13 at **25.583/136.122/88.592/111.380/31.708 aggregate
-tok/s** on gfx1100 and **15.701/86.338/57.127/72.522/42.764** on gfx1151.
-Grouped C13 is **4.354x/4.619x** logical-c1 and **3.513x/1.696x** serial. Both
+tok/s** on gfx1100 and, after current-main F0 recertification,
+**15.798/86.358/57.691/73.065/43.116** on gfx1151. Grouped C13 is
+**4.354x/4.625x** logical-c1 and **3.513x/1.695x** serial. Both
 C9 drops versus C8 establish the retained policy: multiple declared groups
 above eight, no wider native bucket yet. Compaction remains explicit and
 carries no automatic-policy/performance claim. Evidence:
@@ -957,12 +965,28 @@ goodput within explicit TTFT/ITL SLOs without benchmark gaming.
 
 F0. Current-tree freshness gate:
 
-- [ ] Re-run the narrow gfx1151 direct, lifecycle, real SSE, and profiler packet
+- [x] Re-run the narrow gfx1151 direct, lifecycle, real SSE, and profiler packet
       on current `main` after the shared PARO owner/API changes.
-- [ ] Record the realized occupancy-one physical route; masked c8 is a control,
+- [x] Record the realized occupancy-one physical route; masked c8 is a control,
       not the desired production c1 policy.
-- [ ] Preserve the completed F1 evidence if a focused repair is sufficient; do
+- [x] Preserve the completed F1 evidence if a focused repair is sufficient; do
       not rerun unrelated expensive gates automatically.
+
+Clean current-main `ef46ee8c` passes the focused F0 packet after repairing the
+physical-c2 gfx1151 attention reduction. Direct p512/d128
+c1/c2/c4/c8/chunked-c8/serial-c4 is
+**50.291/72.262/102.663/128.075/102.724/50.235 aggregate tok/s** with every
+cross-route trajectory exact and at most **0.039%** rate stdev/median. Current
+c8 remains one physical group, **2.547x c1** and **+24.68%** over c4+c4; the
+cached route census is **748 packed-native / 0 row-local / 0 copies**. Real SSE
+logical c1/c8/c9/c13/serial-c13 is
+**15.798/86.358/57.691/73.065/43.116 aggregate tok/s**, all **189/189** rows are
+exact, and live c8→c13 emits **1,664/1,664** exact IDs at **71.675 tok/s** before
+ownership drains. The occupancy-one server route is explicitly
+`physical_widths=[8]`, mask `10000000`, and **127 masked-c8 decode steps / zero
+native-c1 steps**. F0 therefore refreshes the retained baseline and closes
+freshness only; it does not satisfy F2. Evidence:
+`benchmarks/results/2026-07-19-gfx1151-gguf-f0-current-main-recertification.json`.
 
 F1. Retention packet:
 
@@ -977,9 +1001,10 @@ Both gfx11 F1 slices are retained: existing direct c1/c2/c4/c8 native/control
 rows and each 18-prompt category+heldout anchor join clean real SSE burst
 packets. Each packet preserves **189/189** exact resident prompt IDs, output
 IDs, usage, finish metadata, and scheduler timestamps. Maximum static variance
-is **1.299%** on gfx1100 and **0.581%** on gfx1151. Controlled live runs observe
-c8 before tail admission, reach C13, emit **1,664/1,664** exact IDs at
-**107.284/70.093 aggregate tok/s**, and drain request/session ownership to zero.
+is **1.299%** on gfx1100 and current F0 **0.485%** on gfx1151. Controlled live
+runs observe c8 before tail admission, reach C13, emit **1,664/1,664** exact IDs
+at **107.284/71.675 aggregate tok/s**, and drain request/session ownership to
+zero.
 Server timing is complete SSE cycle wall and remains separate from direct
 graph-step timing.
 
@@ -1199,9 +1224,9 @@ multiple later gates.
    direct gate.
 8. **Completed on gfx1151 — G3/G5:** retain PARO physical c2/c4/c8 and the
    package-default resident blocking/SSE owner; gfx1100 symmetry is separate.
-9. **Active — F0:** re-certify current-main gfx1151 GGUF after shared owner/API
-   changes and establish the physical occupancy-one route.
-10. **Next — F2:** implement c1-preserving occupancy-adaptive c1/c2/c4/c8
+9. **Completed — F0:** current-main gfx1151 GGUF direct/server/profiler is
+   recertified; occupancy one is confirmed as masked physical c8.
+10. **Active — F2:** implement c1-preserving occupancy-adaptive c1/c2/c4/c8
     execution in one long-lived GGUF owner.
 11. **Then — F3:** profile and tune host, graph, projection, state, attention,
     MoE, and sampler costs without c1 or c>N regression.

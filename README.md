@@ -618,20 +618,20 @@ packed-native / 0 row-local / 0 copies**.
 <!-- BEGIN TOPLINE:GFX1151_CONCURRENCY -->
 | Direct route | Logical C | Native groups | Aggregate decode tok/s | Per-request tok/s | Aggregate / c1 | Aggregate / serial-c4 | TTFT p50 / p95 | Model-step ITL p50 / p95 | Tracked peak |
 | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| direct c1 | 1 | 1x c1 | 50.277 | 50.277 | 1.000x | 1.001x | 0.367 / 0.368 s | 19.894 / 20.152 ms | 21.783 GiB |
-| direct c2 | 2 | 1x c2 | 72.104 | 36.052 | 1.434x | 1.436x | 2.175 / 2.177 s | 27.705 / 28.012 ms | 22.394 GiB |
-| direct c4 | 4 | 1x c4 | 102.597 | 25.649 | 2.041x | 2.044x | 3.393 / 3.395 s | 38.989 / 39.314 ms | 23.396 GiB |
-| **direct c8** | **8** | **1x c8** | **127.902** | **15.988** | **2.544x** | **2.548x** | **6.831 / 6.838 s** | **62.540 / 63.178 ms** | **25.401 GiB** |
-| chunked c8 control | 8 | 2x c4, serialized | 102.606 | 12.826 | 2.041x | 2.044x | 5.091 / 6.789 s | 77.994 / 78.634 ms | 26.069 GiB* |
-| serial-c4 rate control | 4 | 4x c1, serialized | 50.206 | 12.551 | 0.999x | 1.000x | 0.927 / 1.483 s | 79.657 / 80.663 ms | 26.985 GiB* |
+| direct c1 | 1 | 1x c1 | 50.291 | 50.291 | 1.000x | 1.001x | 0.367 / 0.368 s | 19.875 / 20.162 ms | 21.783 GiB |
+| direct c2 | 2 | 1x c2 | 72.262 | 36.131 | 1.437x | 1.439x | 2.176 / 2.176 s | 27.679 / 27.967 ms | 22.394 GiB |
+| direct c4 | 4 | 1x c4 | 102.663 | 25.666 | 2.041x | 2.044x | 3.393 / 3.393 s | 38.980 / 39.295 ms | 23.396 GiB |
+| **direct c8** | **8** | **1x c8** | **128.075** | **16.009** | **2.547x** | **2.550x** | **6.836 / 6.849 s** | **62.473 / 62.973 ms** | **25.401 GiB** |
+| chunked c8 control | 8 | 2x c4, serialized | 102.724 | 12.841 | 2.043x | 2.045x | 5.089 / 6.787 s | 77.902 / 78.467 ms | 26.069 GiB* |
+| serial-c4 rate control | 4 | 4x c1, serialized | 50.235 | 12.559 | 0.999x | 1.000x | 0.927 / 1.485 s | 79.643 / 80.637 ms | 26.985 GiB* |
 
 | Real OpenAI SSE route | Logical C | Physical execution | Aggregate generated tok/s | Per-request tok/s | Aggregate / logical-c1 | Aggregate / serial-c13 | Cycle wall p50 | Scheduler TTFT p50 / p95 | Scheduler ITL p50 / p95 | Cumulative tracked peak |
 | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| logical-c1 control | 1 | masked physical c8 | 15.701 | 15.701 | 1.000x | 0.367x | 8.152 s | 0.432 / 0.432 s | 60.196 / 61.164 ms | 29.312 GiB |
-| physical c8 | 8 | 1x c8 | **86.338** | 10.792 | **5.499x** | 2.019x | 11.860 s | 2.717 / 3.358 s | 65.558 / 69.928 ms | 31.758 GiB* |
-| grouped c9 | 9 | c8 + sparse c8 | 57.127 | 6.347 | 3.638x | 1.336x | 20.165 s | 2.506 / 3.372 s | 126.229 / 132.201 ms | 32.008 GiB* |
-| **grouped c13** | **13** | **c8 + sparse c8** | **72.522** | **5.579** | **4.619x** | **1.696x** | **22.945 s** | **3.599 / 5.321 s** | **134.323 / 144.014 ms** | **32.908 GiB*** |
-| serial-c13 bridge | 13 | 13x c1 serial | 42.764 | 3.290 | 2.724x | 1.000x | 38.911 s | 3.000 / 5.527 s | 259.951 / 273.179 ms | 32.908 GiB* |
+| logical-c1 control | 1 | masked physical c8 | 15.798 | 15.798 | 1.000x | 0.366x | 8.102 s | 0.432 / 0.434 s | 59.835 / 60.409 ms | 29.312 GiB |
+| physical c8 | 8 | 1x c8 | **86.358** | 10.795 | **5.467x** | 2.003x | 11.858 s | 2.283 / 3.216 s | 64.781 / 68.431 ms | 31.291 GiB* |
+| grouped c9 | 9 | c8 + sparse c8 | 57.691 | 6.410 | 3.652x | 1.338x | 19.969 s | 2.094 / 3.572 s | 125.097 / 132.002 ms | 32.008 GiB* |
+| **grouped c13** | **13** | **c8 + sparse c8** | **73.065** | **5.620** | **4.625x** | **1.695x** | **22.774 s** | **3.588 / 5.298 s** | **132.468 / 143.079 ms** | **32.889 GiB*** |
+| serial-c13 bridge | 13 | 13x c1 serial | 43.116 | 3.317 | 2.729x | 1.000x | 38.594 s | 3.599 / 5.319 s | 257.918 / 271.301 ms | 32.889 GiB* |
 <!-- END TOPLINE:GFX1151_CONCURRENCY -->
 
 Direct protocol uses 128 decode transitions, one discarded warmup, and the
