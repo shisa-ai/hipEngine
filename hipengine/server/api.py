@@ -4180,17 +4180,6 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     stream_started_at=stream_started_at,
                     routing=routing_metadata,
                 )
-        except asyncio.CancelledError:
-            # ASGI servers cancel the response task directly when a streaming
-            # client closes its socket. Preserve that cancellation for ASGI,
-            # but count the admitted request like the request-control path.
-            finish_details = FinishDetails(reason="cancelled", cancelled=True)
-            control.cancellation_token.cancel(finish_details)
-            _record_openai_error(
-                app.state.hipengine_server_metrics,
-                _request_cancelled_error(finish_details),
-            )
-            raise
         except GenerationDeadlineExceeded as exc:
             openai_exc = _deadline_exceeded_error(exc.finish_details)
             _record_openai_error(app.state.hipengine_server_metrics, openai_exc)
@@ -5169,6 +5158,24 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             response["thinking_budget"] = thinking_budget
         return response
 
+    async def account_active_stream_cancellation(
+        iterator: AsyncIterator[str],
+        control: _RequestControl,
+    ) -> AsyncIterator[str]:
+        """Record ASGI task cancellation after the active stream unwinds."""
+
+        try:
+            async for item in iterator:
+                yield item
+        except asyncio.CancelledError:
+            finish_details = FinishDetails(reason="cancelled", cancelled=True)
+            control.cancellation_token.cancel(finish_details)
+            _record_openai_error(
+                app.state.hipengine_server_metrics,
+                _request_cancelled_error(finish_details),
+            )
+            raise
+
     @app.post("/v1/completions", response_model=None)
     async def completions(
         request: CompletionRequest,
@@ -5202,7 +5209,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             and not _structured_result_validation(request)
         ):
             return StreamingResponse(
-                stream_completion_one(expanded_prompts[0], request, control, raw_request),
+                account_active_stream_cancellation(
+                    stream_completion_one(expanded_prompts[0], request, control, raw_request),
+                    control,
+                ),
                 media_type="text/event-stream",
             )
         batch = await generate_with_request_control(expanded_prompts, request, control)
@@ -5409,7 +5419,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     else stream_chat_completion
                 )
                 return StreamingResponse(
-                    streamer(prompt, request, control, raw_request),
+                    account_active_stream_cancellation(
+                        streamer(prompt, request, control, raw_request),
+                        control,
+                    ),
                     media_type="text/event-stream",
                 )
             n = _request_n(request)
@@ -6335,16 +6348,6 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         routing=routing_metadata,
                         phase=phase,
                     )
-        except asyncio.CancelledError:
-            # Match completion-stream accounting when ASGI cancels an active
-            # response task after a client disconnect.
-            finish_details = FinishDetails(reason="cancelled", cancelled=True)
-            control.cancellation_token.cancel(finish_details)
-            _record_openai_error(
-                app.state.hipengine_server_metrics,
-                _request_cancelled_error(finish_details),
-            )
-            raise
         except GenerationDeadlineExceeded as exc:
             openai_exc = _deadline_exceeded_error(exc.finish_details)
             _record_openai_error(app.state.hipengine_server_metrics, openai_exc)
