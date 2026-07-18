@@ -163804,3 +163804,31 @@ Validation:
 
 Next: commit/push the correction, recreate a clean remote checkout, and rerun
 the full one-warmup/three-measurement native-plus-serial SSE packet.
+
+
+## 2026-07-18 — Make SSE route gates lifecycle-aware
+
+The first exact-roundtrip full SSE attempt made every c1 and c2 HTTP/token gate
+green, but the harness still marked c2 false because it required zero serial
+steps and the final width plan to remain c2. Real independently arriving streams
+may execute truthful c1→c2→c1 edge transitions; the d128 samples each spent the
+steady window in native c2 but recorded one serial edge per row. This matches
+the already accepted G4 streaming lifecycle and is not a fallback: fallback
+reason deltas were empty, both rows were exact, and native c2 calls were
+observed. The attempt was stopped before c4/c8 because its route predicate was
+invalid, so it is not performance evidence.
+
+The route gate now inspects every reclaimed scheduler chunk's diagnostic width
+plan. A native configuration must reach every required physical width (static
+C, plus both initial and final C for live admission), every row must execute at
+least one native step, and native group counters must advance. Truthful serial
+edge steps are recorded rather than rejected; any fallback-reason delta still
+fails the sample. The serial control conversely requires zero native steps/calls
+and positive serial work. A focused c2 p512/d8 artifact with exact prompts,
+outputs, usage, and **7 c2 calls / 14 native rows / 0 serial calls** was reused to
+validate the corrected extractor: it reports observed widths `(2,)` instead of
+mistaking choice-scoped `group_rows=1` for physical width.
+
+Validation: focused host tests now pass **6/6**, Ruff and `git diff --check`
+pass, and the corrected extractor passes against the captured hardware route.
+Next: commit/push, recreate a clean checkout, and rerun the full SSE packet.
