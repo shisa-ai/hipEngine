@@ -80,6 +80,28 @@ def _config() -> Qwen35ParoConfig:
     )
 
 
+@pytest.mark.parametrize(
+    ("prefix", "expected"),
+    (
+        ("layers.0.self_attn.v_proj", True),
+        ("layers.0.self_attn.o_proj", True),
+        ("layers.0.linear_attn.out_proj", True),
+        ("layers.0.mlp.shared_expert.down_proj", True),
+        ("layers.0.mlp.down_proj", True),
+        ("layers.0.other_proj", False),
+    ),
+)
+def test_marlin_k_multi_row_exact_sites_are_default(
+    monkeypatch: pytest.MonkeyPatch,
+    prefix: str,
+    expected: bool,
+) -> None:
+    monkeypatch.delenv("HIPENGINE_W4_MULTI_ROW_SMALL_BATCH", raising=False)
+    monkeypatch.delenv("HIPENGINE_MARLIN_K_MULTI_ROW_SITES", raising=False)
+
+    assert qwen_runtime._marlin_k_multi_row_site_enabled(prefix) is expected
+
+
 def _allocation(name: str, ptr: int, shape: tuple[int, ...], dtype: str) -> DeviceTensorAllocation:
     return DeviceTensorAllocation(
         name=name,
@@ -1711,6 +1733,7 @@ def test_qwen35_decode_state_preserves_pack8_view_for_marlin_prefill(monkeypatch
     # the baseline fused-prefill path (M12.6 multi-row otherwise claims rows 2-8 at
     # safe sites like single_full_o). Variants are covered by their own kernel tests.
     monkeypatch.setenv("HIPENGINE_W4_MULTI_ROW_PACK8", "0")
+    monkeypatch.setenv("HIPENGINE_W4_MULTI_ROW_SMALL_BATCH", "0")
     monkeypatch.setattr(qwen_runtime, "_PACK8_OUTPUT_TILED_ROWS", frozenset())
     runtime = FakeRuntime()
     prefix = "layers.0.self_attn.o_proj"
@@ -1733,6 +1756,11 @@ def test_qwen35_decode_state_preserves_pack8_view_for_marlin_prefill(monkeypatch
 
     monkeypatch.setattr(qwen_runtime, "awq_fusedw4_prefill_fp16", lambda *a, **k: calls.append((a, k)))
     monkeypatch.setattr(qwen_runtime, "gemv_paro_marlin_k_fma_fp16", lambda *a, **k: pytest.fail("unexpected Marlin rows>1"))
+    monkeypatch.setattr(
+        qwen_runtime,
+        "gemv_paro_marlin_k_fma_multi_row_fp16",
+        lambda *a, **k: pytest.fail("unexpected multi-row Marlin prefill"),
+    )
 
     result = state.project_pack8_fp16(x, out, weight_prefix=prefix, rows=4, group_size=128, stream=0x55)
 

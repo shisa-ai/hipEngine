@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "kind": "packaged_qwen35_paro_native_batch_width_profile",
+  "source_artifact": "benchmarks/results/2026-07-18-gfx1151-paro-g3-native-c248-direct-retained.json",
+  "source_artifact_sha256": "8498a57b736dc9734e6b474e740166633d01e7925aa28f7536bddb65a7ad8e59",
+  "performance_claim": true,
+  "native_batch_width_profile": {
+    "schema": 2,
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "model_snapshot": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "quant": "w4_paro",
+    "kv_storage": "bf16",
+    "native_widths": [2, 4, 8],
+    "min_position": 512,
+    "max_position": 647
+  },
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151"
+  },
+  "model": {
+    "snapshot": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "quant": "w4_paro",
+    "kv_storage": "bf16"
+  },
+  "protocol": {
+    "native_partition_widths": [2, 4, 8],
+    "evidenced_decode_position_range": {
+      "min": 512,
+      "max": 647
+    },
+    "correctness_oracle": "independent_single_request_prefill_decode",
+    "packed_prefill_generated_token_equality": true,
+    "sparse_slot_generated_token_equality": true,
+    "shrinking_batch_generated_token_equality": true
+  },
+  "rows": {
+    "1": {
+      "status": "accepted_reference",
+      "decode_step_ms_median_of_run_medians": 14.122386023473155
+    },
+    "2": {
+      "status": "accepted_exact",
+      "generated_token_equality": true,
+      "primitive_correctness": true,
+      "decode_step_ms_median_of_run_medians": 25.243509007850662
+    },
+    "4": {
+      "status": "accepted_exact",
+      "generated_token_equality": true,
+      "primitive_correctness": true,
+      "decode_step_ms_median_of_run_medians": 39.91870199388359
+    },
+    "8": {
+      "status": "accepted_exact",
+      "generated_token_equality": true,
+      "primitive_correctness": true,
+      "decode_step_ms_median_of_run_medians": 79.69157400657423
+    }
+  }
+}

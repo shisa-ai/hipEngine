@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections import Counter
-from collections.abc import Iterator
+from collections import Counter, deque
+from collections.abc import Iterator, Mapping, Sequence
 import copy
 from dataclasses import dataclass, field, replace
 import os
@@ -12,8 +12,21 @@ import time
 from typing import Any, ClassVar
 import uuid
 
-from hipengine.dispatch import BatchWidthGroup, NativeBatchWidthProfile, plan_batch_width_partition
-from hipengine.generation.batch_scheduler import GeneratedToken, PerRowSamplingParams, ResidentBatchScheduler
+from hipengine.dispatch import (
+    BatchWidthGroup,
+    NativeBatchWidthProfile,
+    RequestState,
+    SlotMove,
+    WorkItem,
+    plan_batch_width_partition,
+)
+from hipengine.generation.batch_scheduler import (
+    CompactPromptSlab,
+    CompletedRequest,
+    GeneratedToken,
+    PerRowSamplingParams,
+    ResidentBatchScheduler,
+)
 from hipengine.generation.constraints import token_sequence_state_for_tokens
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
 from hipengine.generation.finish import finish_details_with_sampling_state
@@ -35,6 +48,7 @@ from hipengine.generation.sampling import (
     row_seed_for_index,
     thinking_budget_state_from_params,
 )
+from hipengine.kernels.backends import backend_package_capability
 from hipengine.kvcache import resolve_kv_policy
 from hipengine.loading import WeightIndex
 from hipengine.runtime.qwen35_paro_runner import (
@@ -116,9 +130,26 @@ class Qwen35ParoOneTokenGenerator:
     _session_capacity: int = field(default=0, init=False, repr=False)
     _session_batch_size: int = field(default=0, init=False, repr=False)
     _session_kv_key: tuple[str, str, str, int] | None = field(default=None, init=False, repr=False)
+    _resident_model_runner: "Qwen35ParoResidentModelRunner | None" = field(default=None, init=False, repr=False)
     last_batch_generation: dict[str, Any] | None = field(default=None, init=False, repr=False)
     last_generation_outputs: tuple[GenerationOutput, ...] = field(default=(), init=False, repr=False)
     supports_stream_logprobs: ClassVar[bool] = True
+
+    def create_resident_model_runner(
+        self,
+        *,
+        capacity: int | None = None,
+    ) -> "Qwen35ParoResidentModelRunner":
+        """Create one fixed-capacity scheduler-facing PARO model owner."""
+
+        if self._resident_model_runner is not None:
+            raise RuntimeError("Qwen3.5/PARO resident model runner already exists")
+        owner = Qwen35ParoResidentModelRunner(
+            self,
+            capacity=(8 if capacity is None else int(capacity)),
+        )
+        self._resident_model_runner = owner
+        return owner
 
     def generate(self, request: GenerationRequest) -> list[str]:
         outputs = self.generate_detailed(request)
@@ -753,6 +784,12 @@ class Qwen35ParoOneTokenGenerator:
         sampling_params: Any | None = None,
     ) -> int:
         params = sampling_params
+        resident_owner = self._resident_model_runner
+        if resident_owner is not None:
+            return resident_owner.prepare(
+                max_sequence_length=max_sequence_length,
+                sampling_params=params,
+            )
         runner = self._get_runner()
         kv_policy = resolve_kv_policy(
             getattr(params, "kv_storage", "auto"),
@@ -787,6 +824,15 @@ class Qwen35ParoOneTokenGenerator:
         release_after_probe: bool = True,
     ) -> dict[str, Any]:
         params = sampling_params
+        resident_owner = self._resident_model_runner
+        if resident_owner is not None:
+            return resident_owner.prepare_request_scratch(
+                max_prompt_tokens=max_prompt_tokens,
+                max_new_tokens=max_new_tokens,
+                sampling_params=params,
+                max_batch_size=max_batch_size,
+                release_after_probe=release_after_probe,
+            )
         runner = self._get_runner()
         kv_policy = resolve_kv_policy(
             getattr(params, "kv_storage", "auto"),
@@ -2119,6 +2165,950 @@ class Qwen35ParoOneTokenGenerator:
         self._session_kv_key = None
 
 
+@dataclass(slots=True)
+class _ParoResidentLoopRow:
+    request_id: int
+    batch_id: int
+    row_index: int
+    request: GenerationRequest
+    sampling_request: GenerationRequest
+    prompt_ids: tuple[int, ...]
+    sampler_plan: Any
+    native_greedy: bool
+    submitted_at: float
+    sampling_state: RowSamplingState | None = None
+    model_slot: int | None = None
+    prefill_tokens_seen: int = 0
+    generated_steps: list[Qwen35ParoAutoregressiveStepResult] = field(default_factory=list)
+    scheduler_chunks: list[dict[str, Any]] = field(default_factory=list)
+    first_token_emitted: bool = False
+    native_prefill: bool = False
+    native_decode_steps: int = 0
+    serial_decode_steps: int = 0
+    last_execution_path: str = "paro_resident_model_loop"
+
+
+class Qwen35ParoResidentModelRunner:
+    """Single fixed-capacity PARO session owned by the shared engine loop.
+
+    Scheduler slots are transient placement metadata. Each admitted request gets
+    one stable model slot in this owner's batch-shaped recurrent/KV allocation;
+    scheduler compaction therefore never copies or aliases model state. Greedy
+    decode uses only identity- and position-matched retained widths, while every
+    unsupported width, position, or sampler shape stays on the exact resident
+    row-serial path.
+    """
+
+    def __init__(
+        self,
+        generator: Qwen35ParoOneTokenGenerator,
+        *,
+        capacity: int = 8,
+    ) -> None:
+        if capacity <= 0:
+            raise ValueError("capacity must be positive")
+        self.generator = generator
+        self.capacity = int(capacity)
+        self._runner = generator._get_runner()
+        self._session: Qwen35ParoResidentSession | None = None
+        self._session_kv_policy: Any | None = None
+        self._session_kv_key: tuple[str, str, str, int] | None = None
+        self._rows: dict[int, _ParoResidentLoopRow] = {}
+        self._outputs: dict[int, GenerationOutput] = {}
+        self._completed_metadata: dict[int, dict[str, Any]] = {}
+        self._available_model_slots: list[int] = list(range(self.capacity))
+        self._next_batch_id = 0
+        self._route_counts: Counter[str] = Counter()
+        self._fallback_reasons: Counter[str] = Counter()
+        self._last_width_plan: dict[str, Any] = {}
+        self._last_execution_manifest: dict[str, Any] = {}
+        self._recent_completed_routes: deque[dict[str, Any]] = deque(maxlen=1024)
+        self._closed = False
+
+    @property
+    def active_request_ids(self) -> tuple[int, ...]:
+        return tuple(self._rows)
+
+    @property
+    def available_model_slots(self) -> tuple[int, ...]:
+        return tuple(self._available_model_slots)
+
+    def prompt_tokens(self, prompt: PromptInput) -> tuple[int, ...]:
+        tokens = _prompt_ids(Path(self.generator.model_path), prompt)
+        if not tokens:
+            raise ValueError("Qwen3.5/PARO prompt tokenization produced no token IDs")
+        return tokens
+
+    def scheduler_max_new_tokens(self, request: GenerationRequest) -> int:
+        return max(1, int(request.max_tokens))
+
+    def prepare(
+        self,
+        *,
+        max_sequence_length: int | None = None,
+        sampling_params: Any | None = None,
+    ) -> int:
+        self._ensure_open()
+        if max_sequence_length is not None and int(max_sequence_length) <= 0:
+            raise ValueError("max_sequence_length must be positive")
+        if sampling_params is None and self._session_kv_policy is not None:
+            kv_policy = self._session_kv_policy
+        else:
+            kv_policy = resolve_kv_policy(
+                getattr(sampling_params, "kv_storage", "auto"),
+                scale_dtype=getattr(sampling_params, "kv_scale_dtype", "fp16"),
+                scale_granularity=getattr(
+                    sampling_params,
+                    "kv_scale_granularity",
+                    "per_token_head",
+                ),
+            )
+        auto_context_length = max_sequence_length is None
+        requested = (
+            int(getattr(self._runner.config, "max_position_embeddings", 0) or 0)
+            if auto_context_length
+            else int(max_sequence_length)
+        )
+        if requested <= 0:
+            requested = _session_capacity_for(1)
+        self._ensure_session(
+            required_sequence_length=requested,
+            kv_policy=kv_policy,
+            auto_context_length=auto_context_length,
+        )
+        assert self._session is not None
+        return int(self._session.max_sequence_length)
+
+    def prepare_request_scratch(
+        self,
+        *,
+        max_prompt_tokens: int,
+        max_new_tokens: int = 0,
+        sampling_params: Any | None = None,
+        max_batch_size: int = 1,
+        release_after_probe: bool = True,
+    ) -> dict[str, Any]:
+        if int(max_batch_size) > self.capacity:
+            raise ValueError("scratch probe max_batch_size exceeds resident owner capacity")
+        if self._rows:
+            raise RuntimeError("cannot probe PARO request scratch while requests are registered")
+        kv_policy = resolve_kv_policy(
+            getattr(sampling_params, "kv_storage", "auto"),
+            scale_dtype=getattr(sampling_params, "kv_scale_dtype", "fp16"),
+            scale_granularity=getattr(
+                sampling_params,
+                "kv_scale_granularity",
+                "per_token_head",
+            ),
+        )
+        required = max(1, int(max_prompt_tokens)) + max(0, int(max_new_tokens)) + 1
+        self._ensure_session(required_sequence_length=required, kv_policy=kv_policy)
+        assert self._session is not None
+        prepare = getattr(self._session, "prepare_request_scratch", None)
+        if not callable(prepare):
+            return {
+                "max_prompt_tokens": int(max_prompt_tokens),
+                "max_new_tokens": int(max_new_tokens),
+                "max_batch_size": int(max_batch_size),
+                "release_after_probe": bool(release_after_probe),
+                "skipped": True,
+                "reason": "session_hook_unavailable",
+            }
+        return dict(
+            prepare(
+                max_prompt_tokens=max_prompt_tokens,
+                max_new_tokens=max_new_tokens,
+                max_batch_size=max_batch_size,
+                release_after_probe=release_after_probe,
+            )
+        )
+
+    def register_batch(
+        self,
+        request_ids: Sequence[int],
+        request: GenerationRequest,
+        *,
+        prompt_rows: Sequence[Sequence[int]],
+    ) -> None:
+        self._ensure_open()
+        ids = tuple(int(request_id) for request_id in request_ids)
+        prompts = tuple(tuple(int(token) for token in row) for row in prompt_rows)
+        if len(ids) != len(request.prompts) or len(prompts) != len(ids):
+            raise ValueError("request_ids, prompts, and prompt_rows must have the same length")
+        if request.row_seeds and len(request.row_seeds) != len(request.prompts):
+            raise ValueError("row_seeds must have one entry per prompt")
+        if any(not row for row in prompts):
+            raise ValueError("Qwen3.5/PARO prompt tokenization produced no token IDs")
+        kv_policy = resolve_kv_policy(
+            request.kv_storage,
+            scale_dtype=request.kv_scale_dtype,
+            scale_granularity=request.kv_scale_granularity,
+        )
+        required = max(len(row) for row in prompts) + max(0, int(request.max_tokens)) + 1
+        self._ensure_session(required_sequence_length=required, kv_policy=kv_policy)
+        assert self._session is not None
+        sampling_request = _request_with_tokenizer_eos(request, self._session.tokenizer)
+        sampler_plan = plan_sampler(
+            sampling_request,
+            native_gpu_available=False,
+            native_gpu_requested=False,
+        )
+        native_greedy = sampler_plan.mode is SamplingMode.GREEDY_FAST and int(request.max_tokens) > 0
+        batch_id = self._next_batch_id
+        self._next_batch_id += 1
+        now = time.perf_counter()
+        for row_index, (request_id, prompt_ids) in enumerate(zip(ids, prompts, strict=True)):
+            if request_id in self._rows or request_id in self._outputs:
+                raise ValueError(f"request_id {request_id} is already registered")
+            self._rows[request_id] = _ParoResidentLoopRow(
+                request_id=request_id,
+                batch_id=batch_id,
+                row_index=row_index,
+                request=request,
+                sampling_request=sampling_request,
+                prompt_ids=prompt_ids,
+                sampler_plan=sampler_plan,
+                native_greedy=native_greedy,
+                submitted_at=now,
+                sampling_state=(
+                    None
+                    if native_greedy or int(request.max_tokens) <= 0
+                    else _row_sampling_state(sampling_request, prompt_ids, row_index=row_index)
+                ),
+            )
+
+    def reserve_admission(self, request: RequestState) -> None:
+        row = self._row(request.request_id)
+        if row.model_slot is not None:
+            raise RuntimeError(f"request_id {row.request_id} already owns model slot {row.model_slot}")
+        if not self._available_model_slots:
+            raise MemoryError("PARO resident model owner has no free model slots")
+        slot = int(self._available_model_slots[0])
+        self._reset_session_slots((slot,))
+        self._available_model_slots.pop(0)
+        row.model_slot = slot
+        self._route_counts["admissions"] += 1
+
+    def rollback_admission(self, request: RequestState) -> None:
+        self._release_model_slot(self._row(request.request_id))
+
+    def prefill_batch(self, work: WorkItem, *, commit: bool) -> None:
+        if not commit:
+            raise ValueError("PARO resident prefill requires commit=True")
+        assert self._session is not None
+        for request_id, token_row in zip(work.request_ids, work.token_rows, strict=True):
+            row = self._row(request_id)
+            if row.model_slot is None:
+                raise RuntimeError("PARO prefill row has no admitted model slot")
+            start = int(row.prefill_tokens_seen)
+            chunk = tuple(int(token) for token in token_row)
+            expected = row.prompt_ids[start:start + len(chunk)]
+            if not chunk or chunk != expected:
+                raise RuntimeError(
+                    f"PARO prefill chunk drift for request_id {request_id}: "
+                    f"expected {expected!r}, got {chunk!r}"
+                )
+            row.prefill_tokens_seen += len(chunk)
+            final_chunk = row.prefill_tokens_seen == len(row.prompt_ids)
+            if row.prefill_tokens_seen > len(row.prompt_ids):
+                raise RuntimeError("PARO prefill consumed beyond the registered prompt")
+            if int(row.request.max_tokens) <= 0:
+                continue
+            raise_if_generation_deadline_expired(row.request)
+            result = self._prefill_row_chunk(
+                row,
+                chunk,
+                start_position=start,
+                final_chunk=final_chunk,
+            )
+            raise_if_generation_deadline_expired(row.request)
+            if final_chunk:
+                if result is None:
+                    raise RuntimeError("PARO final prefill chunk did not produce a token")
+                self._record_step(row, result)
+
+    def decode_batch(self, work: WorkItem, *, commit: bool) -> tuple[GeneratedToken, ...]:
+        if not commit:
+            raise ValueError("PARO resident decode requires commit=True")
+        rows = [self._row(request_id) for request_id in work.request_ids]
+        for row in rows:
+            raise_if_generation_deadline_expired(row.request)
+        greedy_step_rows = [
+            row
+            for row in rows
+            if row.native_greedy and row.first_token_emitted and not self._row_finished(row)
+        ]
+        if greedy_step_rows:
+            self._step_greedy_rows(greedy_step_rows)
+        for row in rows:
+            if (
+                not row.native_greedy
+                and row.first_token_emitted
+                and int(row.request.max_tokens) > 0
+                and not self._row_finished(row)
+            ):
+                self._step_sampled_row(row)
+            raise_if_generation_deadline_expired(row.request)
+
+        generated: list[GeneratedToken] = []
+        for row in rows:
+            if int(row.request.max_tokens) <= 0:
+                generated.append(
+                    GeneratedToken(
+                        row.request_id,
+                        0,
+                        finished=True,
+                        stream_chunk=GenerationStreamChunk(
+                            text="",
+                            finish_details=self._row_finish_details(row),
+                            telemetry=self._row_telemetry(row),
+                        ),
+                    )
+                )
+                continue
+            if not row.generated_steps:
+                raise RuntimeError("PARO resident decode row has no prefill token")
+            if not row.first_token_emitted:
+                row.first_token_emitted = True
+            result = row.generated_steps[-1]
+            finished = self._row_finished(row)
+            chunk = self._stream_chunk(row, result, finished=finished)
+            row.scheduler_chunks.append(
+                _scheduler_token_chunk_payload(
+                    row.request_id,
+                    len(row.generated_steps) - 1,
+                    int(result.token_id),
+                    chunk,
+                )
+            )
+            generated.append(
+                GeneratedToken(
+                    row.request_id,
+                    int(result.token_id),
+                    finished=finished,
+                    stream_chunk=chunk,
+                )
+            )
+        return tuple(generated)
+
+    def compact_batch(self, moves: Sequence[SlotMove]) -> None:
+        # Model state is keyed by stable owner slots, so scheduler compaction is
+        # deliberately metadata-only at this boundary.
+        for move in moves:
+            self._row(move.request_id)
+        if any(move.old_slot != move.new_slot for move in moves):
+            self._route_counts["scheduler_compactions"] += 1
+
+    def reclaim(self, completed: CompletedRequest) -> None:
+        request_id = int(completed.request_id)
+        row = self._rows.get(request_id)
+        if row is None:
+            return
+        output = self._output_for_row(row, completed)
+        self._outputs[request_id] = output
+        metadata = self._execution_metadata(row)
+        self._completed_metadata[request_id] = metadata
+        self._recent_completed_routes.append(
+            {"request_id": request_id, **copy.deepcopy(metadata)}
+        )
+        self._release_model_slot(row)
+        self._rows.pop(request_id, None)
+        self._route_counts["reclaims"] += 1
+
+    def has_outputs(self, request_ids: Sequence[int]) -> bool:
+        return all(int(request_id) in self._outputs for request_id in request_ids)
+
+    def missing_outputs(self, request_ids: Sequence[int]) -> list[int]:
+        return [
+            int(request_id)
+            for request_id in request_ids
+            if int(request_id) not in self._outputs
+        ]
+
+    def take_outputs(self, request_ids: Sequence[int]) -> list[GenerationOutput]:
+        return [self._outputs.pop(int(request_id)) for request_id in request_ids]
+
+    def discard(self, request_ids: Sequence[int]) -> None:
+        for request_id in request_ids:
+            rid = int(request_id)
+            row = self._rows.pop(rid, None)
+            if row is not None:
+                self._release_model_slot(row)
+            self._outputs.pop(rid, None)
+            self._completed_metadata.pop(rid, None)
+
+    def finalize_batch(
+        self,
+        request: GenerationRequest,
+        request_ids: Sequence[int],
+        outputs: Sequence[GenerationOutput],
+    ) -> None:
+        ids = tuple(int(request_id) for request_id in request_ids)
+        output_tuple = tuple(outputs)
+        metadata = [self._completed_metadata.pop(request_id, {}) for request_id in ids]
+        native_steps = max((int(item.get("native_decode_steps", 0)) for item in metadata), default=0)
+        serial_fallback = any(bool(item.get("serial_decode_fallback", False)) for item in metadata)
+        native_prefill = bool(metadata) and all(bool(item.get("native_compact_prefill", False)) for item in metadata)
+        scheduler_chunks = [
+            copy.deepcopy(chunk)
+            for item in metadata
+            for chunk in item.get("scheduler_chunks", [])
+        ]
+        path = (
+            "paro_resident_native_width_decode"
+            if native_steps > 0 and not serial_fallback
+            else "paro_resident_model_loop"
+        )
+        self.generator.last_generation_outputs = output_tuple
+        self.generator.last_batch_generation = {
+            "path": path,
+            "batch_size": len(ids),
+            "request_ids": list(ids),
+            "prompt_lengths": [len(self.prompt_tokens(prompt)) for prompt in request.prompts],
+            "native_decode_steps": native_steps,
+            "serial_decode_fallback": serial_fallback,
+            "native_compact_prefill": native_prefill,
+            "native_caware_decode": native_steps > 0,
+            "throughput_claim_eligible": native_steps > 0 and not serial_fallback,
+            "scheduler_token_chunks": scheduler_chunks,
+            "resident_model_owner": True,
+            "last_width_plan": copy.deepcopy(self._last_width_plan),
+        }
+
+    def observability_snapshot(self) -> dict[str, Any]:
+        session = self._session
+        slot_by_request = {
+            str(request_id): row.model_slot
+            for request_id, row in self._rows.items()
+            if row.model_slot is not None
+        }
+        owned_summary_provider = getattr(session, "owned_buffer_summary", None)
+        owned_summary = (
+            owned_summary_provider()
+            if callable(owned_summary_provider)
+            else {}
+        )
+        kv_total_bytes = int(owned_summary.get("full_attention_kv_total_bytes", 0))
+        return {
+            "model_runner": {
+                "fixed_session": True,
+                "capacity": int(self.capacity),
+                "active_request_ids": list(self.active_request_ids),
+                "active_requests": len(self._rows),
+                "available_model_slots": list(self._available_model_slots),
+                "stable_model_slot_by_request": slot_by_request,
+                "session_max_sequence_length": (
+                    None if session is None else int(session.max_sequence_length)
+                ),
+                "kv_storage": (
+                    None
+                    if self._session_kv_policy is None
+                    else self._session_kv_policy.storage_dtype.value
+                ),
+            },
+            "kv": {
+                "ownership": "fixed_session_model_slots",
+                "capacity_slots": int(self.capacity),
+                "active_slots": len(slot_by_request),
+                "available_slots": len(self._available_model_slots),
+                "resident_total_bytes": kv_total_bytes,
+                "resident_bytes_per_slot": (
+                    kv_total_bytes // self.capacity if kv_total_bytes else 0
+                ),
+                "storage_dtype": owned_summary.get("kv_storage_dtype"),
+                "storage_layout": owned_summary.get("kv_storage_layout"),
+                "scale_dtype": owned_summary.get("kv_scale_dtype"),
+                "scale_granularity": owned_summary.get("kv_scale_granularity"),
+            },
+            "routes": {
+                "counts": {
+                    "admissions": int(self._route_counts["admissions"]),
+                    "prefill_chunks": int(self._route_counts["prefill_chunks"]),
+                    "native_group_calls": int(self._route_counts["native_group_calls"]),
+                    "native_rows": int(self._route_counts["native_rows"]),
+                    "serial_row_calls": int(self._route_counts["serial_row_calls"]),
+                    "scheduler_compactions": int(
+                        self._route_counts["scheduler_compactions"]
+                    ),
+                    "slot_resets": int(self._route_counts["slot_resets"]),
+                    "reclaims": int(self._route_counts["reclaims"]),
+                },
+                "fallback_reasons": {
+                    str(key): int(value)
+                    for key, value in sorted(self._fallback_reasons.items())
+                },
+                "last_width_plan": copy.deepcopy(self._last_width_plan),
+                "last_execution_manifest": copy.deepcopy(
+                    self._last_execution_manifest
+                ),
+                "recent_completed": list(copy.deepcopy(self._recent_completed_routes)),
+            },
+        }
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        for row in tuple(self._rows.values()):
+            self._release_model_slot(row)
+        self._rows.clear()
+        self._outputs.clear()
+        self._completed_metadata.clear()
+        if self._session is not None:
+            self._clear_session_sampler()
+            self._session.close()
+            self._session = None
+        self._closed = True
+        if self.generator._resident_model_runner is self:
+            self.generator._resident_model_runner = None
+
+    def _ensure_open(self) -> None:
+        if self._closed:
+            raise RuntimeError("PARO resident model owner is closed")
+
+    @staticmethod
+    def _kv_key(kv_policy: Any) -> tuple[str, str, str, int]:
+        return (
+            kv_policy.storage_dtype.value,
+            kv_policy.scale_dtype.value,
+            kv_policy.scale_granularity,
+            int(kv_policy.block_size),
+        )
+
+    def _ensure_session(
+        self,
+        *,
+        required_sequence_length: int,
+        kv_policy: Any,
+        auto_context_length: bool = False,
+    ) -> None:
+        required = int(required_sequence_length)
+        if required <= 0:
+            raise ValueError("required_sequence_length must be positive")
+        key = self._kv_key(kv_policy)
+        session = self._session
+        capacity_ok = session is not None and int(session.max_sequence_length) >= required
+        key_ok = session is not None and self._session_kv_key == key
+        if key_ok and (capacity_ok or auto_context_length):
+            return
+        if self._rows:
+            reason = "KV policy" if not key_ok else "sequence capacity"
+            raise ValueError(
+                f"PARO resident {reason} cannot change while requests are registered"
+            )
+        if session is not None:
+            session.close()
+            self._session = None
+        # A direct pre-owner session would duplicate the full resident state and
+        # KV allocation. Release it before constructing the fixed-capacity owner.
+        if self.generator._session is not None:
+            self.generator.close()
+        requested_capacity = _session_capacity_for(required)
+        kwargs: dict[str, Any] = {
+            "max_sequence_length": requested_capacity,
+            "max_batch_size": self.capacity,
+            "kv_policy": kv_policy.create_policy(),
+            "kv_scale_dtype": kv_policy.scale_dtype,
+            "kv_scale_granularity": kv_policy.scale_granularity,
+        }
+        if auto_context_length:
+            kwargs["auto_context_length"] = True
+        self._session = Qwen35ParoResidentSession(self._runner, **kwargs)
+        self._session_kv_policy = kv_policy
+        self._session_kv_key = key
+        self._available_model_slots = list(range(self.capacity))
+        self._route_counts["session_builds"] += 1
+
+    def _row(self, request_id: int) -> _ParoResidentLoopRow:
+        rid = int(request_id)
+        if rid not in self._rows:
+            raise KeyError(f"request_id {rid} is not registered with the PARO resident owner")
+        return self._rows[rid]
+
+    def _prefill_row_chunk(
+        self,
+        row: _ParoResidentLoopRow,
+        chunk: tuple[int, ...],
+        *,
+        start_position: int,
+        final_chunk: bool,
+    ) -> Qwen35ParoAutoregressiveStepResult | None:
+        assert self._session is not None and row.model_slot is not None
+        end_position = int(start_position) + len(chunk)
+        block_count = max(
+            1,
+            (end_position + int(self._session.block_size) - 1)
+            // int(self._session.block_size),
+        )
+        slab = CompactPromptSlab.from_token_rows(
+            request_ids=(row.request_id,),
+            token_rows=(chunk,),
+            start_positions=(int(start_position),),
+            block_count=block_count,
+            block_size=int(self._session.block_size),
+            slot_ids=(int(row.model_slot),),
+        )
+        if final_chunk and not row.native_greedy:
+            self._configure_sampled_row(row)
+        else:
+            self._clear_session_sampler()
+        try:
+            try:
+                results = self._session.prefill_native_packed(
+                    slab,
+                    sample=bool(final_chunk),
+                )
+                row.native_prefill = True
+            except NotImplementedError:
+                self._fallback_reasons["packed_prefill_unavailable"] += 1
+                results = self._prefill_row_serial(
+                    row,
+                    chunk,
+                    start_position=int(start_position),
+                    sample_final=bool(final_chunk),
+                )
+            result_tuple = tuple(results)
+            if len(result_tuple) != 1:
+                raise RuntimeError(
+                    f"PARO prefill returned {len(result_tuple)} result(s) for one row"
+                )
+            self._route_counts["prefill_chunks"] += 1
+            return result_tuple[0]
+        finally:
+            self._clear_session_sampler()
+
+    def _prefill_row_serial(
+        self,
+        row: _ParoResidentLoopRow,
+        chunk: tuple[int, ...],
+        *,
+        start_position: int,
+        sample_final: bool,
+    ) -> tuple[Qwen35ParoAutoregressiveStepResult | None, ...]:
+        assert self._session is not None and row.model_slot is not None
+        final_result: Qwen35ParoAutoregressiveStepResult | None = None
+        for offset, token_id in enumerate(chunk):
+            sample = bool(sample_final and offset == len(chunk) - 1)
+            result = self._session.step_batch_serial(
+                (int(token_id),),
+                positions=(int(start_position) + offset,),
+                slots=(int(row.model_slot),),
+                sample=sample,
+            )[0]
+            if sample:
+                final_result = result
+        return (final_result,)
+
+    def _step_greedy_rows(self, rows: Sequence[_ParoResidentLoopRow]) -> None:
+        assert self._session is not None
+        ordered = sorted(rows, key=lambda row: int(row.model_slot))
+        positions = tuple(len(row.prompt_ids) + len(row.generated_steps) - 1 for row in ordered)
+        profile_provider = getattr(self._session, "native_batch_width_profile", None)
+        profile = profile_provider() if callable(profile_provider) else None
+        if profile is not None and not isinstance(profile, NativeBatchWidthProfile):
+            raise TypeError("native_batch_width_profile() must return NativeBatchWidthProfile or None")
+        width_plan = plan_batch_width_partition(
+            len(ordered),
+            profile=profile,
+            positions=positions,
+        )
+        self._last_width_plan = width_plan.to_json_dict()
+        if width_plan.blockers:
+            for blocker in width_plan.blockers:
+                self._fallback_reasons[str(blocker)] += len(ordered)
+        result_by_request: dict[int, Qwen35ParoAutoregressiveStepResult] = {}
+        cursor = 0
+        self._clear_session_sampler()
+        for group in width_plan.groups:
+            group_rows = ordered[cursor:cursor + int(group.width)]
+            cursor += int(group.width)
+            tokens = tuple(int(row.generated_steps[-1].token_id) for row in group_rows)
+            group_positions = tuple(
+                len(row.prompt_ids) + len(row.generated_steps) - 1
+                for row in group_rows
+            )
+            slots = tuple(int(row.model_slot) for row in group_rows)
+            results: tuple[Qwen35ParoAutoregressiveStepResult | None, ...]
+            if group.mode == "native":
+                try:
+                    results = tuple(
+                        self._session.step_batch_native(
+                            tokens,
+                            positions=group_positions,
+                            slots=slots,
+                            sample=True,
+                        )
+                    )
+                    self._route_counts["native_group_calls"] += 1
+                    self._route_counts["native_rows"] += len(group_rows)
+                    for row in group_rows:
+                        row.native_decode_steps += 1
+                        row.last_execution_path = "paro_resident_native_width_decode"
+                except NotImplementedError:
+                    self._fallback_reasons["native_width_runtime_unavailable"] += len(group_rows)
+                    results = self._serial_greedy_group(
+                        group_rows,
+                        tokens=tokens,
+                        positions=group_positions,
+                        slots=slots,
+                    )
+            else:
+                results = self._serial_greedy_group(
+                    group_rows,
+                    tokens=tokens,
+                    positions=group_positions,
+                    slots=slots,
+                )
+            if len(results) != len(group_rows):
+                raise RuntimeError(
+                    f"PARO decode group returned {len(results)} result(s) for {len(group_rows)} rows"
+                )
+            for row, result in zip(group_rows, results, strict=True):
+                if result is None:
+                    raise RuntimeError("PARO decode group did not sample a token")
+                result_by_request[row.request_id] = result
+        if cursor != len(ordered):
+            raise RuntimeError("PARO width plan did not consume every live row")
+        manifest = getattr(self._session, "last_batch_decode_execution", None)
+        if isinstance(manifest, Mapping):
+            self._last_execution_manifest = copy.deepcopy(dict(manifest))
+        for row in rows:
+            self._record_step(row, result_by_request[row.request_id])
+
+    def _serial_greedy_group(
+        self,
+        rows: Sequence[_ParoResidentLoopRow],
+        *,
+        tokens: tuple[int, ...],
+        positions: tuple[int, ...],
+        slots: tuple[int, ...],
+    ) -> tuple[Qwen35ParoAutoregressiveStepResult | None, ...]:
+        assert self._session is not None
+        results = tuple(
+            self._session.step_batch_serial(
+                tokens,
+                positions=positions,
+                slots=slots,
+                sample=True,
+            )
+        )
+        self._route_counts["serial_row_calls"] += len(rows)
+        for row in rows:
+            row.serial_decode_steps += 1
+            row.last_execution_path = "paro_resident_serial_decode"
+        return results
+
+    def _step_sampled_row(self, row: _ParoResidentLoopRow) -> None:
+        assert self._session is not None and row.model_slot is not None
+        self._configure_sampled_row(row)
+        try:
+            previous = int(row.generated_steps[-1].token_id)
+            position = len(row.prompt_ids) + len(row.generated_steps) - 1
+            result = self._session.step_batch_serial(
+                (previous,),
+                positions=(position,),
+                slots=(int(row.model_slot),),
+                sample=True,
+            )[0]
+        finally:
+            self._clear_session_sampler()
+        if result is None:
+            raise RuntimeError("PARO sampled serial row did not produce a token")
+        self._route_counts["serial_row_calls"] += 1
+        self._fallback_reasons["sampled_request"] += 1
+        row.serial_decode_steps += 1
+        row.last_execution_path = "paro_resident_sampled_serial_decode"
+        self._record_step(row, result)
+
+    def _configure_sampled_row(self, row: _ParoResidentLoopRow) -> None:
+        assert self._session is not None and row.model_slot is not None
+        if row.sampling_state is None:
+            raise RuntimeError("sampled PARO row has no sampling state")
+        configure = getattr(self._session, "configure_host_sampler_rows", None)
+        if not callable(configure):
+            raise NotImplementedError(
+                "PARO resident sampled fallback requires per-slot host sampler state"
+            )
+        configure(
+            row.sampling_request,
+            {int(row.model_slot): row.sampling_state},
+        )
+
+    def _clear_session_sampler(self) -> None:
+        session = self._session
+        if session is None:
+            return
+        configure = getattr(session, "configure_host_sampler_rows", None)
+        if callable(configure):
+            configure(None, None)
+
+    def _record_step(
+        self,
+        row: _ParoResidentLoopRow,
+        result: Qwen35ParoAutoregressiveStepResult,
+    ) -> None:
+        row.generated_steps.append(result)
+        if row.sampling_state is not None:
+            _queue_json_object_close_if_needed(
+                row.sampling_state,
+                self._session.tokenizer if self._session is not None else None,
+                result.token_text,
+                remaining_tokens=max(
+                    0,
+                    int(row.request.max_tokens) - len(row.generated_steps),
+                ),
+            )
+
+    def _row_finished(self, row: _ParoResidentLoopRow) -> bool:
+        if len(row.generated_steps) >= max(0, int(row.request.max_tokens)):
+            return True
+        return _is_finished(
+            self._session.tokenizer if self._session is not None else None,
+            tuple(step.token_id for step in row.generated_steps),
+            ignore_eos=row.sampling_request.ignore_eos,
+            stop_token_ids=row.sampling_request.stop_token_ids,
+            stop_token_sequences=row.sampling_request.stop_token_sequences,
+        )
+
+    def _row_finish_details(self, row: _ParoResidentLoopRow) -> FinishDetails:
+        return _finish_details_for_tokens(
+            self._session.tokenizer if self._session is not None else None,
+            tuple(step.token_id for step in row.generated_steps),
+            ignore_eos=row.sampling_request.ignore_eos,
+            stop_token_ids=row.sampling_request.stop_token_ids,
+            stop_token_sequences=row.sampling_request.stop_token_sequences,
+            max_tokens=row.request.max_tokens,
+            sampler_mode=row.sampler_plan.mode.value,
+            sampling_state=row.sampling_state,
+        )
+
+    def _stream_chunk(
+        self,
+        row: _ParoResidentLoopRow,
+        result: Qwen35ParoAutoregressiveStepResult,
+        *,
+        finished: bool,
+    ) -> GenerationStreamChunk:
+        assert self._session is not None
+        return GenerationStreamChunk(
+            text=result.token_text,
+            token_logprobs=_stream_token_logprobs_from_step(
+                self._session.tokenizer,
+                result,
+                row.sampling_request,
+            ),
+            finish_details=self._row_finish_details(row) if finished else None,
+            telemetry=self._row_telemetry(row, forced_sample=result),
+        )
+
+    def _row_telemetry(
+        self,
+        row: _ParoResidentLoopRow,
+        *,
+        forced_sample: Qwen35ParoAutoregressiveStepResult | None = None,
+        generated_steps: Sequence[Qwen35ParoAutoregressiveStepResult] | None = None,
+    ) -> GenerationTelemetry:
+        visible_steps = row.generated_steps if generated_steps is None else generated_steps
+        full_vocab_logits_d2h, logits_d2h_bytes = _sampler_logits_d2h_metadata(
+            row.sampler_plan,
+            vocab_size=getattr(self._session, "vocab_size", None),
+        )
+        return _telemetry_for_tokens(
+            row.prompt_ids,
+            tuple(step.token_id for step in visible_steps),
+            row_index=row.row_index,
+            request_id=str(row.request_id),
+            sampler_mode=row.sampler_plan.mode.value,
+            stop_token_sequences=row.sampling_request.stop_token_sequences,
+            active_processors=row.sampler_plan.active_processors,
+            sampler_fast_path_blockers=row.sampler_plan.fast_path_blockers,
+            sampler_fallback_reason=row.sampler_plan.fallback_reason,
+            sampling_state=row.sampling_state,
+            forced_sample=forced_sample,
+            full_vocab_logits_d2h=full_vocab_logits_d2h,
+            logits_d2h_bytes=logits_d2h_bytes,
+            execution_path=row.last_execution_path,
+            native_compact_prefill=row.native_prefill,
+            native_caware_decode=row.native_decode_steps > 0,
+            serial_decode_fallback=(
+                not row.native_greedy or row.serial_decode_steps > 0
+            ),
+            native_sampler_rows=False,
+            timing={"request_total_ms": (time.perf_counter() - row.submitted_at) * 1000.0},
+            diagnostics={
+                "stable_model_slot": row.model_slot,
+                "last_width_plan": copy.deepcopy(self._last_width_plan),
+            },
+        )
+
+    def _output_for_row(
+        self,
+        row: _ParoResidentLoopRow,
+        completed: CompletedRequest,
+    ) -> GenerationOutput:
+        assert self._session is not None
+        cancelled = completed.finish_reason in {"cancel", "disconnect", "timeout"}
+        visible_steps = (
+            row.generated_steps[:len(completed.generated_tokens)]
+            if cancelled
+            else row.generated_steps
+        )
+        ids = tuple(int(step.token_id) for step in visible_steps)
+        finish_details = completed.finish_details if cancelled else self._row_finish_details(row)
+        token_logprobs = (
+            tuple(_token_logprob_from_step(self._session.tokenizer, step) for step in visible_steps)
+            if row.sampling_request.logprobs or int(row.sampling_request.top_logprobs) > 0
+            else ()
+        )
+        return GenerationOutput(
+            text="".join(step.token_text for step in visible_steps),
+            generated_token_ids=ids,
+            token_logprobs=token_logprobs,
+            finish_details=finish_details,
+            telemetry=self._row_telemetry(
+                row,
+                forced_sample=visible_steps[-1] if visible_steps else None,
+                generated_steps=visible_steps,
+            ),
+        )
+
+    @staticmethod
+    def _execution_metadata(row: _ParoResidentLoopRow) -> dict[str, Any]:
+        return {
+            "native_greedy": bool(row.native_greedy),
+            "native_compact_prefill": bool(row.native_prefill),
+            "native_decode_steps": int(row.native_decode_steps),
+            "serial_decode_steps": int(row.serial_decode_steps),
+            "serial_decode_fallback": (
+                not row.native_greedy or row.serial_decode_steps > 0
+            ),
+            "stable_model_slot": row.model_slot,
+            "scheduler_chunks": copy.deepcopy(row.scheduler_chunks),
+        }
+
+    def _release_model_slot(self, row: _ParoResidentLoopRow) -> None:
+        slot = row.model_slot
+        if slot is None:
+            return
+        self._reset_session_slots((int(slot),))
+        if int(slot) in self._available_model_slots:
+            raise RuntimeError(f"PARO model slot {slot} was released twice")
+        self._available_model_slots.append(int(slot))
+        self._available_model_slots.sort()
+        row.model_slot = None
+
+    def _reset_session_slots(self, slots: Sequence[int]) -> None:
+        if self._session is None:
+            return
+        reset = getattr(self._session, "reset_slots", None)
+        if not callable(reset):
+            raise NotImplementedError(
+                "PARO fixed-capacity model owner requires slot-local reset support"
+            )
+        slot_tuple = tuple(int(slot) for slot in slots)
+        reset(slot_tuple)
+        self._route_counts["slot_resets"] += len(slot_tuple)
+
+
 def _per_row_sampling_params(request: GenerationRequest) -> PerRowSamplingParams:
     return PerRowSamplingParams(
         temperature=request.temperature,
@@ -2688,8 +3678,26 @@ def _native_batch_width_profile_for_runner(
     runner: Qwen35ParoNextTokenRunner,
     kv_policy: Any,
 ) -> NativeBatchWidthProfile | None:
-    if not _env_flag("HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS") or not _env_flag(
-        "HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"
+    retained_defaults = bool(
+        backend_package_capability(
+            runner.backend,
+            "PARO_RETAINED_BATCH_DEFAULTS",
+            False,
+        )
+    )
+    native_decode_default = bool(
+        backend_package_capability(
+            runner.backend,
+            "PARO_NATIVE_BATCH_DECODE_DEFAULT",
+            False,
+        )
+    )
+    if not _env_flag(
+        "HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS",
+        default=retained_defaults,
+    ) or not _env_flag(
+        "HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE",
+        default=native_decode_default,
     ):
         return None
     artifact = os.environ.get(QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE_ENV)

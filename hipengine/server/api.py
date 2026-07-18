@@ -4155,7 +4155,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     if _request_logprobs_enabled(request)
                     else None
                 )
-                token_payload = token_accounting.observe("answer", text) if token_accounting is not None else None
+                token_payload = (
+                    token_accounting.observe_stream_chunk("answer", stream_chunk)
+                    if token_accounting is not None
+                    else None
+                )
                 yield _completion_stream_delta(
                     response_id,
                     created,
@@ -4366,7 +4370,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         backend_detail = None if server_stop else _output_from_stream_chunk(last_stream_chunk, raw_text)
         done_stream_chunk = None if server_stop else last_stream_chunk
         finish_reason = _finish_reason_for_output(backend_detail, finish_reason, server_stop=server_stop)
-        usage = _usage(engine, (prompt,), [text])
+        usage = _usage(
+            engine,
+            (prompt,),
+            [text],
+            details=None if backend_detail is None else (backend_detail,),
+            prefer_telemetry_counts=True,
+        )
         app.state.hipengine_server_metrics.record_success(usage)
         cache_action = _session_cache_action(request)
         final_tokens = (
@@ -6509,7 +6519,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             finish_reason = "stop"
         else:
             finish_reason = _finish_reason_for_output(backend_detail, finish_reason)
-        usage = _usage(engine, (prompt,), [text])
+        usage = _usage(
+            engine,
+            (prompt,),
+            [text],
+            details=None if backend_detail is None else (backend_detail,),
+            prefer_telemetry_counts=True,
+        )
         app.state.hipengine_server_metrics.record_success(usage)
         cache_action = _session_cache_action(request)
         final_tokens = (
@@ -8247,6 +8263,10 @@ def _resident_session_for_engine(engine: Any) -> Any | None:
     generator = getattr(engine, "_text_generator", None)
     if generator is not None:
         session = getattr(generator, "_session", None)
+        if session is not None:
+            return session
+        resident_owner = getattr(generator, "_resident_model_runner", None)
+        session = getattr(resident_owner, "_session", None)
         if session is not None:
             return session
     session = getattr(engine, "_session", None)
@@ -11859,12 +11879,20 @@ def _usage(
     outputs: Sequence[str],
     *,
     details: Sequence[GenerationOutput] | None = None,
+    prefer_telemetry_counts: bool = False,
 ) -> dict[str, int]:
     counter = getattr(engine, "count_tokens", None)
     prompt_tokens = sum(_prompt_token_count(engine, prompt) for prompt in prompts)
     exact_rows = _exact_generated_token_rows(details, expected_rows=len(outputs))
+    telemetry_counts = (
+        _telemetry_generated_token_counts(details, expected_rows=len(outputs))
+        if prefer_telemetry_counts
+        else None
+    )
     if exact_rows is not None:
         completion_tokens = sum(len(row) for row in exact_rows)
+    elif telemetry_counts is not None:
+        completion_tokens = sum(telemetry_counts)
     elif callable(counter):
         completion_tokens = sum(_safe_count(counter, text) for text in outputs)
     else:
@@ -11903,6 +11931,41 @@ def _exact_generated_token_rows(
             return None
         rows.append(tuple(detail.generated_token_ids))
     return tuple(rows)
+
+
+def _telemetry_generated_token_count(telemetry: Any) -> int | None:
+    if telemetry is None:
+        return None
+    if isinstance(telemetry, Mapping):
+        decode_state = telemetry.get("decode_state")
+        if not isinstance(decode_state, Mapping):
+            return None
+        value = decode_state.get("generated_tokens")
+    else:
+        decode_state = getattr(telemetry, "decode_state", None)
+        value = getattr(decode_state, "generated_tokens", None)
+    if value is None:
+        return None
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _telemetry_generated_token_counts(
+    details: Sequence[GenerationOutput] | None,
+    *,
+    expected_rows: int,
+) -> tuple[int, ...] | None:
+    if details is None or len(details) != int(expected_rows):
+        return None
+    counts: list[int] = []
+    for detail in details:
+        count = _telemetry_generated_token_count(detail.telemetry)
+        if count is None:
+            return None
+        counts.append(count)
+    return tuple(counts)
 
 
 def _exact_generated_token_accounting(
@@ -13257,6 +13320,10 @@ def _stream_include_hipengine(request: CompletionRequest | ChatCompletionRequest
     return isinstance(options, Mapping) and bool(options.get("include_hipengine"))
 
 
+def _stream_chunk_generated_token_total(chunk: GenerationStreamChunk) -> int | None:
+    return _telemetry_generated_token_count(chunk.telemetry)
+
+
 @dataclass(slots=True)
 class _StreamTokenAccounting:
     counter: Any
@@ -13271,9 +13338,20 @@ class _StreamTokenAccounting:
         counter = getattr(engine, "count_tokens", None)
         return cls(counter) if callable(counter) else None
 
-    def observe(self, phase: str, text: str) -> dict[str, int]:
-        delta_tokens = _safe_count(self.counter, text)
-        self.streamed_tokens += delta_tokens
+    def observe(
+        self,
+        phase: str,
+        text: str,
+        *,
+        cumulative_tokens: int | None = None,
+    ) -> dict[str, int]:
+        if cumulative_tokens is None or int(cumulative_tokens) < self.streamed_tokens:
+            delta_tokens = _safe_count(self.counter, text)
+            self.streamed_tokens += delta_tokens
+        else:
+            exact_total = max(0, int(cumulative_tokens))
+            delta_tokens = exact_total - self.streamed_tokens
+            self.streamed_tokens = exact_total
         phase_name = str(phase)
         if phase_name == "think":
             self.reasoning_tokens += delta_tokens
@@ -13284,6 +13362,17 @@ class _StreamTokenAccounting:
         else:
             self.answer_tokens += delta_tokens
         return self.snapshot(delta_tokens=delta_tokens)
+
+    def observe_stream_chunk(
+        self,
+        phase: str,
+        chunk: GenerationStreamChunk,
+    ) -> dict[str, int]:
+        return self.observe(
+            phase,
+            chunk.text,
+            cumulative_tokens=_stream_chunk_generated_token_total(chunk),
+        )
 
     def snapshot(self, *, delta_tokens: int | None = None) -> dict[str, int]:
         payload: dict[str, int] = {"streamed_tokens": self.streamed_tokens}
@@ -13729,7 +13818,7 @@ def _completion_stream(
                 if stream_chunk is None:
                     continue
                 token_payload = (
-                    token_accounting.observe(phase, stream_chunk.text)
+                    token_accounting.observe_stream_chunk(phase, stream_chunk)
                     if include_hipengine and token_accounting is not None and len(choices) == 1
                     else None
                 )

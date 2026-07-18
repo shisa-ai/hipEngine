@@ -42,6 +42,121 @@ def _tensor(ptr: int, shape: tuple[int, ...], dtype: str | DType) -> Tensor:
     return Tensor.from_handle(ptr, shape, dtype, Device("hip", 0))
 
 
+def test_resident_slot_reset_clears_only_reclaimed_state_and_kv(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.closed = False
+    session.max_batch_size = 3
+    session.config = SimpleNamespace(hidden_size=4)
+    session.position_arr = np.asarray([11, 22, 33], dtype=np.int64)
+    session.context_arr = np.asarray([12, 23, 34], dtype=np.int64)
+    session.token_id_arr = np.asarray([101, 202, 303], dtype=np.int64)
+    session.active_mask_arr = np.asarray([1, 1, 1], dtype=np.bool_)
+    session.position_buf = DeviceBuffer(0x1000, session.position_arr.nbytes)
+    session.context_buf = DeviceBuffer(0x1100, session.context_arr.nbytes)
+    session.batch_compact_position_buf = DeviceBuffer(0x1200, session.position_arr.nbytes)
+    session.batch_compact_context_buf = DeviceBuffer(0x1300, session.context_arr.nbytes)
+    session.token_id_buf = DeviceBuffer(0x1400, session.token_id_arr.nbytes)
+    session.active_mask_buf = DeviceBuffer(0x1500, session.active_mask_arr.nbytes)
+    session.batch_hidden = _tensor(0x2000, (3, 4), DType.FP16)
+    session.batch_next_hidden = _tensor(0x2100, (3, 4), DType.FP16)
+    session.batch_norm_out = _tensor(0x2200, (3, 4), DType.FP16)
+    session.batch_norm_out_bf16 = _tensor(0x2300, (3, 4), DType.BF16)
+    conv = _tensor(0x3000, (2, 2), DType.FP32)
+    recurrent = _tensor(0x3100, (1, 2, 1), DType.FP32)
+    session.linear_states = {
+        0: (
+            conv,
+            recurrent,
+            DeviceBuffer(0x3200, 3 * conv.numel * conv.dtype.itemsize),
+            DeviceBuffer(0x3300, 3 * recurrent.numel * recurrent.dtype.itemsize),
+            np.zeros(conv.shape, dtype=np.float32),
+            np.zeros(recurrent.shape, dtype=np.float32),
+        )
+    }
+    key = _tensor(0x4000, (2, 2, 1, 1), DType.BF16)
+    value = _tensor(0x4100, (2, 2, 1, 1), DType.BF16)
+    session.full_caches = {
+        3: (
+            key,
+            value,
+            DeviceBuffer(0x4200, 3 * key.numel * key.dtype.itemsize),
+            DeviceBuffer(0x4300, 3 * value.numel * value.dtype.itemsize),
+        )
+    }
+    key_scale = _tensor(0x5000, (2, 2, 1), DType.FP16)
+    value_scale = _tensor(0x5100, (2, 2, 1), DType.FP16)
+    session.full_cache_scales = {
+        3: (
+            key_scale,
+            value_scale,
+            DeviceBuffer(0x5200, 3 * key_scale.numel * key_scale.dtype.itemsize),
+            DeviceBuffer(0x5300, 3 * value_scale.numel * value_scale.dtype.itemsize),
+        )
+    }
+    state0 = object()
+    state1 = object()
+    state2 = object()
+    session._host_sampling_states_by_slot = {0: state0, 1: state1, 2: state2}
+    session._native_sampling_states_by_slot = {0: state0, 1: state1, 2: state2}
+
+    class FakeRuntime:
+        def __init__(self) -> None:
+            self.memsets: list[tuple[int, int, int]] = []
+            self.synchronizations = 0
+
+        def device_synchronize(self) -> None:
+            self.synchronizations += 1
+
+        def memset(self, ptr: int, value: int, nbytes: int) -> None:
+            self.memsets.append((int(ptr), int(value), int(nbytes)))
+
+    runtime = FakeRuntime()
+    session.runtime = runtime
+    metadata_copies: list[int] = []
+    monkeypatch.setattr(
+        runner_module,
+        "copy_host_to_device",
+        lambda buffer, host_ptr, nbytes, **kwargs: metadata_copies.append(int(buffer.ptr)),
+    )
+
+    session.reset_slots((1,))
+
+    assert session.position_arr.tolist() == [11, 0, 33]
+    assert session.context_arr.tolist() == [12, 1, 34]
+    assert session.token_id_arr.tolist() == [101, 0, 303]
+    assert session.active_mask_arr.tolist() == [True, False, True]
+    assert session._host_sampling_states_by_slot == {0: state0, 2: state2}
+    assert session._native_sampling_states_by_slot == {0: state0, 2: state2}
+    assert runtime.synchronizations == 2
+    assert metadata_copies == [0x1000, 0x1100, 0x1200, 0x1300, 0x1400, 0x1500]
+
+    reset_ranges = [range(ptr, ptr + nbytes) for ptr, value, nbytes in runtime.memsets if value == 0]
+    reclaimed_addresses = {
+        0x2000 + 8,
+        0x2100 + 8,
+        0x2200 + 8,
+        0x2300 + 8,
+        0x3200 + conv.numel * conv.dtype.itemsize,
+        0x3300 + recurrent.numel * recurrent.dtype.itemsize,
+        0x4200 + key.numel * key.dtype.itemsize,
+        0x4300 + value.numel * value.dtype.itemsize,
+        0x5200 + key_scale.numel * key_scale.dtype.itemsize,
+        0x5300 + value_scale.numel * value_scale.dtype.itemsize,
+    }
+    assert {item.start for item in reset_ranges} == reclaimed_addresses
+    survivor_addresses = {
+        0x2000,
+        0x2000 + 16,
+        0x3200,
+        0x3200 + 2 * conv.numel * conv.dtype.itemsize,
+        0x4200,
+        0x4200 + 2 * key.numel * key.dtype.itemsize,
+    }
+    assert all(address not in reset_range for address in survivor_addresses for reset_range in reset_ranges)
+
+
 def test_dflash_verify_sync_phases_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("HIPENGINE_DFLASH_VERIFY_SYNC_PHASES", raising=False)
     assert runner_module._dflash_verify_sync_phases_enabled() is False
@@ -62,6 +177,27 @@ def test_aotriton_isolated_prefill_stream_skips_proven_safe_256_row_bucket(
     assert runner_module._aotriton_isolated_prefill_stream_applies(4096) is False
     monkeypatch.setenv("HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM", "1")
     assert runner_module._aotriton_isolated_prefill_stream_applies(4096) is True
+
+
+def test_gfx1151_paro_native_batch_defaults_are_backend_scoped_and_overridable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS", raising=False)
+    monkeypatch.delenv("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE", raising=False)
+
+    assert runner_module._retained_batch_defaults_enabled("hip_gfx1151") is True
+    assert runner_module._native_batch_decode_enabled("hip_gfx1151") is True
+    assert runner_module._retained_batch_defaults_enabled("hip_gfx1100") is False
+    assert runner_module._native_batch_decode_enabled("hip_gfx1100") is False
+    assert runner_module._batch_decode_linear_out_flags(
+        8,
+        backend="hip_gfx1151",
+    ) == (None, True)
+
+    monkeypatch.setenv("HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS", "0")
+    monkeypatch.setenv("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE", "0")
+    assert runner_module._retained_batch_defaults_enabled("hip_gfx1151") is False
+    assert runner_module._native_batch_decode_enabled("hip_gfx1151") is False
 
 
 def test_retained_batch_defaults_select_certified_linear_output_path(
@@ -97,6 +233,15 @@ def _sampler_equality_payload(*, rows: int, artifact_path: str) -> dict[str, obj
 
 
 def test_qwen35_retained_batch_defaults_select_rowchunk_layers() -> None:
+    assert runner_module._automatic_full_attention_row_chunk_size(2, backend="hip_gfx1151") == 0
+    assert runner_module._automatic_full_attention_row_chunk_size(3, backend="hip_gfx1151") == 2
+    assert runner_module._automatic_full_attention_row_chunk_size(4, backend="hip_gfx1151") == 0
+    assert runner_module._automatic_full_attention_row_chunk_size(5, backend="hip_gfx1151") == 2
+    assert runner_module._automatic_full_attention_row_chunk_size(6, backend="hip_gfx1151") == 2
+    assert runner_module._automatic_full_attention_row_chunk_size(7, backend="hip_gfx1151") == 2
+    assert runner_module._automatic_full_attention_row_chunk_size(8, backend="hip_gfx1151") == 0
+    assert runner_module._automatic_full_attention_row_chunk_size(4, backend="hip_gfx1100") == 2
+    assert runner_module._automatic_full_attention_row_chunk_size(8, backend="hip_gfx1100") == 2
     assert runner_module._retained_full_attention_row_chunk_layers(2) == set()
     assert runner_module._retained_full_attention_row_chunk_layers(3) == set()
     assert runner_module._retained_full_attention_row_chunk_layers(4) == set()
@@ -1986,7 +2131,10 @@ def test_qwen35_resident_batch_execution_metadata_keeps_native_diagnostics_ineli
     assert metadata.projection_dispatch["rows"] == 4
     assert metadata.projection_dispatch["path"] == "row_gemv_until_caware_benchmark"
     assert metadata.projection_dispatch["selected_candidate"] == "row_gemv"
-    assert any("generated-token equality" in blocker for blocker in metadata.blockers)
+    assert any(
+        "identity-matched resident width plan" in blocker
+        for blocker in metadata.blockers
+    )
     assert any("projection dispatch: no c-aware projection candidate applies" in blocker for blocker in metadata.blockers)
     assert metadata.to_json_dict()["projection_dispatch"] == metadata.projection_dispatch
 
@@ -2046,7 +2194,10 @@ def test_qwen35_resident_batch_execution_metadata_loads_projection_dispatch_cand
     assert metadata.projection_dispatch["selected_candidate"] == "wmma_caware"
     assert metadata.projection_dispatch["evidence"]["artifact_path"] == "benchmarks/results/projection-wmma-c4.json"
     assert not any("projection dispatch:" in blocker for blocker in metadata.blockers)
-    assert any("generated-token equality" in blocker for blocker in metadata.blockers)
+    assert any(
+        "identity-matched resident width plan" in blocker
+        for blocker in metadata.blockers
+    )
 
     candidate_artifact.write_text(
         json.dumps(
@@ -2325,11 +2476,44 @@ def test_qwen35_resident_step_batch_native_rejects_invalid_sparse_slots(monkeypa
         session.step_batch_native([1, 2], positions=[0, 0], slots=slots)
 
 
+def test_qwen35_resident_sparse_positions_update_slot_and_compact_metadata(monkeypatch) -> None:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.max_batch_size = 3
+    session.max_sequence_length = 16
+    session.position_arr = np.zeros((3,), dtype=np.int64)
+    session.context_arr = np.ones((3,), dtype=np.int64)
+    session.position_buf = DeviceBuffer(0x2000, 3 * DType.INT64.itemsize)
+    session.context_buf = DeviceBuffer(0x3000, 3 * DType.INT64.itemsize)
+    session.batch_compact_position_buf = DeviceBuffer(0x4000, 3 * DType.INT64.itemsize)
+    session.batch_compact_context_buf = DeviceBuffer(0x5000, 3 * DType.INT64.itemsize)
+    session.libraries = {"runtime_state": object()}
+    session.runtime = object()
+    calls = []
+
+    def fake_set_decode_position(position_ptr, context_ptr, position, **kwargs):
+        calls.append((int(position_ptr), int(context_ptr), int(position), int(kwargs["stream"])))
+
+    monkeypatch.setattr(runner_module, "set_decode_position_i64", fake_set_decode_position)
+
+    session._set_batch_positions((5, 6), slots=(0, 2), stream=7)
+
+    assert calls == [
+        (0x2000, 0x3000, 5, 7),
+        (0x4000, 0x5000, 5, 7),
+        (0x2010, 0x3010, 6, 7),
+        (0x4008, 0x5008, 6, 7),
+    ]
+    assert session.position_arr.tolist() == [5, 0, 6]
+    assert session.context_arr.tolist() == [6, 1, 7]
+
+
 def test_qwen35_resident_batch_full_spans_maps_sparse_slots(monkeypatch) -> None:
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
     session.blocks = 3
-    session.position_buf = DeviceBuffer(0x2000, 2 * DType.INT64.itemsize)
-    session.context_buf = DeviceBuffer(0x3000, 2 * DType.INT64.itemsize)
+    session.position_buf = DeviceBuffer(0x2000, 3 * DType.INT64.itemsize)
+    session.context_buf = DeviceBuffer(0x3000, 3 * DType.INT64.itemsize)
+    session.batch_compact_position_buf = DeviceBuffer(0x4000, 2 * DType.INT64.itemsize)
+    session.batch_compact_context_buf = DeviceBuffer(0x5000, 2 * DType.INT64.itemsize)
     session.device = Device("hip", 0)
     session.kv_storage_dtype = DType.BF16
     session.runtime = object()
@@ -2365,7 +2549,9 @@ def test_qwen35_resident_batch_full_spans_maps_sparse_slots(monkeypatch) -> None
     assert len(captured) == 2
     assert np.array_equal(captured[0], np.array([[0, 1, 2], [3, 4, 5]], dtype=np.int32))
     assert np.array_equal(captured[1], np.array([[0, 1, 2], [6, 7, 8]], dtype=np.int32))
-    assert position_tensor.ptr == 0x2000
+    assert position_tensor.ptr == 0x4000
+    assert append_spans.live_counts.ptr == 0x4000
+    assert decode_spans.live_counts.ptr == 0x5000
     assert append_spans.base_offsets.ptr == 0x7000
     assert decode_spans.base_offsets.ptr == 0x8000
     assert append_spans.max_live_count == 6

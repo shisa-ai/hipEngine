@@ -1,6 +1,6 @@
 # PARO Transfer Dashboard From GGUF/MTP Work
 
-Last reviewed: 2026-07-11.
+Last reviewed: 2026-07-18.
 
 This file is the current PARO transfer queue. The verbatim investigation and
 server-tuning notebook is preserved in
@@ -13,31 +13,34 @@ diagnostic unless the canonical scoreboard explicitly retains them.
 | Surface | Current state | Consequence |
 | --- | --- | --- |
 | gfx1151 PARO single request | Exact direct/HTTP 512/128 token parity passed on Radeon 8060S with the committed fixture. This was a correctness/identity gate, not a throughput run. | Use the shared exact-token route for future direct/server comparisons. |
-| gfx1151 native c2-c8 | Blocked by the independent-c1 oracle. Clean P1 (`a18ff7bc`) rejects every native width at generated token index 2 and localizes the first selected-c1 drift to layer-4 linear state/input; clean P2 (`6f1910c9`) proves ragged sparse c8-to-c1 on the serial route. | Production greedy and sampled batches use exact width-1 sessions. Schema-1 timing rows have `performance_claim=false` and cannot select routing. |
-| gfx1100 native c>N | Older direct retained evidence exists, but it predates the unified exact-ID/provenance/server matrix and is not a gfx1151 baseline. | Keep architectures separate and rerun the current contract on W7900 before changing gfx1100 claims. |
+| gfx1151 native c2-c8 | G3 supersedes P1 with independent-c1-exact physical c2/c4/c8, all-layer state/KV, sparse lifecycle, category/heldout, profiler, and repeated direct scaling. G4/G5 attach those widths to the shared resident owner; blocking F1 and native/serial SSE are retained, and a no-flag OpenAI c4 gate loads the packaged profile outside repository CWD. | Greedy W4/BF16-KV c2/c4/c8 are package-default. c3/c5/c6/c7 are exact profile partitions, not native-width claims. Sampled native groups, context >=1024, non-BF16 KV, and graph replay remain separate gates. |
+| gfx1100 native c>N | Direct selected-batch c2 is retained under the unified contract, but public/OpenAI remains width-1 and physical c4/c8 owner symmetry is not closed. | Keep architectures separate; transfer the gfx1151 owner/width gates on W7900 before changing gfx1100 public routing. |
 | PARO MTP/DFlash | Clean gfx1151 S4 evidence now covers coarse, synchronized, and graph-shape buckets on the curated 35B target/drafter pair. Exact replay is only 0.14825x AR; branch-copy is faster but correctness-red. | Keep exact replay and default-off DFlash. Do not transfer commit/fusion/group changes until drafter quality and exact native state change the premise. |
 
 The exact-token gate artifacts are
 [`direct`](../benchmarks/results/2026-07-11-sol-e5-gfx1151-paro-direct-exact-p512-d128.json)
 and
 [`HTTP`](../benchmarks/results/2026-07-11-sol-e5-gfx1151-paro-http-exact-p512-d128.json).
-The native-batch blocker is recorded in
-[`2026-07-10...true-c1-shrinking-gates.json`](../benchmarks/results/2026-07-10-gfx1151-paro-true-c1-shrinking-gates.json).
+The historical native-batch blocker is recorded in
+[`2026-07-10...true-c1-shrinking-gates.json`](../benchmarks/results/2026-07-10-gfx1151-paro-true-c1-shrinking-gates.json); current retained evidence is
+[`G3 direct`](../benchmarks/results/2026-07-18-gfx1151-paro-g3-native-c248-direct-retained.json),
+[`G5 F1`](../benchmarks/results/2026-07-18-gfx1151-paro-g5-f1-server-scaling.json), and
+[`G5 SSE`](../benchmarks/results/2026-07-18-gfx1151-paro-g5-sse-server-scaling.json).
 
 ## Active Queue
 
 | Order | Work | Status | Exit gate |
 | ---: | --- | --- | --- |
-| 1 | Localize the gfx1151 native c8 divergence (`SOL-P1`) | Accepted/closed | Clean P1 localizes the first state/input drift to layer-4 linear attention before the token-index-2 failure; P2 proves the production true-c1 lifecycle. |
+| 1 | Localize the gfx1151 native c8 divergence (`SOL-P1`) | Superseded/closed by G3 | Exact multi-row Marlin-K projections plus sparse compact metadata close physical c2/c4/c8; all direct gates are retained. |
 | 2 | Build the unified exact direct/server matrix (`SOL-M1`) | Accepted | Manifest/schema v1 joins exact tokens, scoped timings, route/backend/verifier shapes, request latency, memory, and profiler summaries for PARO/GGUF without manual denominators. |
-| 3 | Rerun PARO server c1/c2/c4/c8 with raw IDs | Covered by P1/P2 production classification; separate HTTP throughput remains diagnostic-only | Production c>N is explicitly width-1 until a general native algorithm changes P1. |
-| 4 | Reopen native c1-c8, sparse, ragged, and shrinking gates | Parked after P1/P2 | Reactivate only when a general native c>N algorithm passes independent-c1 state/token equality. |
+| 3 | Rerun PARO server c1/c2/c4/c8 with exact IDs | Accepted by G5 | Blocking F1 keeps 68/68 rows exact; SSE keeps 100/100 plus 72/72 c8 stress rows exact, with separate timing scopes. |
+| 4 | Reopen native c1-c8, sparse, ragged, and shrinking gates | Accepted for physical c2/c4/c8 on gfx1151 | Keep c3/c5/c6/c7 as exact partitions; next transfer is gfx1100 owner c4/c8, then broader sampling/context/KV. |
 | 5 | Profile PARO DFlash verifier buckets | Accepted as diagnostic evidence; speed rejected | Clean S4 artifact ranks all required buckets, records exact output, and reports graph misses/hits by shape. |
 | 6 | Revisit LM-head/sample fusion or graph shapes | Rejected/parked | Fused target LM-head is 5.16% slower; readbacks are immaterial. Exact replay prevents graph reuse, while graph-reusing branch-copy fails at token 1. |
 
-Do not resume width-specific c3/c5/c7 tuning or c>8 exploration before the
-common c8 divergence is fixed. Do not promote a native route from the legacy
-batch-shaped oracle.
+Do not relabel c3/c5/c6/c7 partitions as native widths or extend beyond the
+G3 position/KV/sampling envelope without independent-c1 state/token evidence.
+Never promote a route from the legacy batch-shaped oracle.
 
 ## Portable Lessons
 

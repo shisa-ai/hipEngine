@@ -1,0 +1,654 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_paro_g3_native_c248_direct_retained",
+  "created_at": "2026-07-18T11:04:35.472727+00:00",
+  "run_date": "2026-07-18",
+  "status": "retained_direct_native_c2_c4_c8",
+  "passed": true,
+  "performance_claim": true,
+  "claim_scope": "explicit direct native physical c2/c4/c8 PARO BF16-KV model steps at prompt 512/decode 128; not yet the public/OpenAI continuous loop",
+  "decision": "retain true physical c4/c8 and the exact multi-row Marlin-K projection defaults; c2 remains non-regressive",
+  "hipengine_artifact_provenance": {
+    "measured_commit": "e175e28f9ddd11daffe644dd7f7c85b01a47daa2",
+    "equivalent_pushed_commit": "8c8cc15ef657cd966ce16793c29ed2eba8533a14",
+    "tree_sha256": "cdc5173a251d682f3559b3e0cb4c0ea41b3bda2f",
+    "tracked_tree_clean": true,
+    "branch": "gfx1151-paro-g3-physical-c4",
+    "equivalent_pushed_branch": "gfx1151-paro-g3-candidate",
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics"
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "visible_device": 0,
+    "rocm_stack": "TheRock HIP 7.15",
+    "device_policy": {
+      "tuned_profile": "accelerator-performance",
+      "amd_iommu": "off",
+      "gpu_max_hw_queues": 1,
+      "hws": "normal"
+    },
+    "source": {
+      "gpu": "AMD Radeon 8060S Graphics",
+      "arch": "gfx1151",
+      "detected_arches": [
+        "gfx1151"
+      ],
+      "target_arch": "gfx1151",
+      "default_hardware": false,
+      "visible_device": {
+        "env": {
+          "HIP_VISIBLE_DEVICES": "0"
+        },
+        "hipGetDeviceCount_error": 0,
+        "visible_device_count": 1,
+        "hipGetDevice_error": 0,
+        "current_device": 0,
+        "hipDeviceGetName_error": 0,
+        "device_name": "AMD Radeon 8060S Graphics"
+      },
+      "rocminfo": {
+        "command": "bash -lc 'rocminfo | grep -E '\"'\"'Name:|gfx'\"'\"' | head -4'",
+        "returncode": 0,
+        "output": "Name:                    AMD RYZEN AI MAX+ 395 w/ Radeon 8060S\n  Marketing Name:          AMD RYZEN AI MAX+ 395 w/ Radeon 8060S\n  Vendor Name:             CPU                                \n  Name:                    gfx1151"
+      },
+      "rocm_smi": {
+        "command": "rocm-smi --showmeminfo vram --showuse --showtemp",
+        "returncode": 0,
+        "output": "============================ ROCm System Management Interface ============================\n====================================== Temperature =======================================\nGPU[0]\t\t: Temperature (Sensor edge) (C): 39.0\n==========================================================================================\n=================================== % time GPU is busy ===================================\nGPU[0]\t\t: GPU use (%): 78\n==========================================================================================\n================================== Memory Usage (Bytes) ==================================\nGPU[0]\t\t: VRAM Total Memory (B): 536870912\nGPU[0]\t\t: VRAM Total Used Memory (B): 156069888\n==========================================================================================\n================================== End of ROCm SMI Log ==================================="
+      }
+    }
+  },
+  "software": {
+    "python": "3.12.13",
+    "rocm_stack": "TheRock HIP 7.15",
+    "gpu_max_hw_queues": 1,
+    "compiler_version_file": "/tmp/gfx1151-paro-g2-transfer-778c7a70/hipcc-version.txt",
+    "require_cached_build": true
+  },
+  "model": {
+    "name": "shisa-ai/Qwen3.6-35B-A3B-PARO-packed",
+    "revision": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "snapshot": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "value": "995a8c67847cb2819588bec573a6d17ef04ae554504d040d4f2ea6b2c9c6d917",
+      "size_bytes": 20497454388,
+      "sampled_bytes": 16442350,
+      "file_count": 18,
+      "exists": true,
+      "path_type": "directory"
+    },
+    "quant": "w4_paro",
+    "source_quant": "packed_paro_w4",
+    "kv_storage": "bf16",
+    "kv_storage_dtype": "bf16",
+    "layers": 40
+  },
+  "workload": {
+    "prompt_tokens_per_request": 512,
+    "measured_decode_tokens_per_request": 128,
+    "warmup_decode_tokens": 8,
+    "greedy": true,
+    "kv_storage": "bf16",
+    "max_layers": 40,
+    "native_widths": [
+      2,
+      4,
+      8
+    ],
+    "row_chunk_size": 0,
+    "full_attention_max_context_exclusive": 1024
+  },
+  "commands": {
+    "direct_template": "env HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1 python3 scripts/qwen35_batch_retained_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/gfx1151-paro-g2-transfer-778c7a70/fixture.json --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --batch-decode-execution direct_native --batch-decode-moe-path selected_batch --batch-decode-linear-path batch_segments --batch-decode-linear-projection-path batch --batch-decode-linear-state-path batch_segments --batch-decode-linear-moe-path grouped_compact --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 0 --batch-decode-attn-input-path batch --batch-decode-attn-qkv-path batch --batch-decode-attn-scratch-path batch --batch-decode-attn-context-path batch --batch-decode-attn-gate-path batch --batch-decode-full-attn-kv-append-path batch --batch-decode-full-attn-output-path batch --batch-decode-full-attn-layer-copy batch --batch-decode-full-attn-moe-path grouped_compact --batch-decode-post-attn-path batch --compiler-version-file /tmp/gfx1151-paro-g2-transfer-778c7a70/hipcc-version.txt --require-cached-build --batch-size 4 --json /tmp/hipengine-pi-paro-g3-results/c4-p512-d128-e175e28f-run1.json",
+    "primitive_template": "python3 scripts/qwen35_batch_correctness.py --rows {4,8} --seed 1234 --include-dense-c1 --compiler-version-file /tmp/gfx1151-paro-g2-transfer-778c7a70/hipcc-version.txt --require-cached-build --json <json>",
+    "all_layer_state": "python3 scripts/qwen35_batch_hidden_bisect.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/gfx1151-paro-g2-transfer-778c7a70/fixture.json --prompt-length 512 --batch-size 8 --decode-tokens 3 --max-layers 40 --layer-limits 40 --max-sequence-length 1024 --trace-decode-start 0 --trace-decode-end 3 --batch-decode-moe-path selected_batch --batch-decode-linear-path batch_segments --batch-decode-linear-projection-path batch --batch-decode-linear-state-path batch_segments --batch-decode-linear-moe-path grouped_compact --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path native_batch --batch-decode-full-attn-row-chunk-size 0 --batch-decode-attn-input-path batch --batch-decode-attn-qkv-path batch --batch-decode-attn-scratch-path batch --batch-decode-attn-context-path batch --batch-decode-attn-gate-path batch --batch-decode-full-attn-kv-append-path batch --batch-decode-full-attn-output-path batch --batch-decode-full-attn-layer-copy batch --batch-decode-full-attn-moe-path grouped_compact --batch-decode-post-attn-path batch --compiler-version-file /tmp/gfx1151-paro-g2-transfer-778c7a70/hipcc-version.txt --require-cached-build --json /tmp/hipengine-pi-paro-g3-results/c8-l40-d3-default-full-oracle-7d33c0ca.json",
+    "lifecycle_templates": {
+      "cancel": "python3 scripts/qwen35_batch_shrinking_correctness.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/gfx1151-paro-g2-transfer-778c7a70/fixture.json --prompt-length 512 --batch-size 8 --steps-per-width 2 --max-layers 40 --max-sequence-length 1024 --survivor-slot 0 --decode-execution native --compiler-version-file /tmp/gfx1151-paro-g2-transfer-778c7a70/hipcc-version.txt --require-cached-build --json /tmp/hipengine-pi-paro-g3-results/c8-c1-default-cancel-e175e28f.json",
+      "eos": "python3 scripts/qwen35_batch_shrinking_correctness.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/gfx1151-paro-g2-transfer-778c7a70/fixture.json --batch-size 8 --steps-per-width 2 --max-layers 40 --max-sequence-length 1024 --decode-execution native --compiler-version-file /tmp/gfx1151-paro-g2-transfer-778c7a70/hipcc-version.txt --require-cached-build --prompt-length 512 --survivor-slot 0 --eos-slot 7 --json /tmp/hipengine-pi-paro-g3-results/c8-c1-default-eos-e175e28f.json",
+      "ragged-front-eos": "python3 scripts/qwen35_batch_shrinking_correctness.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/gfx1151-paro-g2-transfer-778c7a70/fixture.json --batch-size 8 --steps-per-width 2 --max-layers 40 --max-sequence-length 1024 --decode-execution native --compiler-version-file /tmp/gfx1151-paro-g2-transfer-778c7a70/hipcc-version.txt --require-cached-build --prompt-lengths 503,512,509,512,505,512,507,512 --survivor-slot 7 --eos-slot 0 --json /tmp/hipengine-pi-paro-g3-results/c8-c1-default-ragged-front-eos-e175e28f.json"
+    },
+    "category_template": "python3 scripts/qwen35_batch_retained_bench.py <same direct-native flags> --batch-size {4,8} --fixture /tmp/hipengine-pi-paro-g3-results/category-fixtures/<group>.json --decode-tokens 32 --warmup-decode-tokens 0 --require-cached-build",
+    "profiler": "rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-pi-paro-g3-results/trace-c8-e175e28f -- python3 scripts/qwen35_batch_hidden_bisect.py <c8 L4/d1 exact-native flags> --compiler-version-file /tmp/gfx1151-paro-g2-transfer-778c7a70/hipcc-version.txt --require-cached-build"
+  },
+  "correctness": {
+    "primitive": {
+      "c4": {
+        "passed": true,
+        "append_key_mismatch": 0,
+        "append_value_mismatch": 0,
+        "attention_batch_vs_c1_max_abs": 0.0,
+        "attention_batch_vs_numpy_max_abs": 2.9802322387695312e-08
+      },
+      "c8": {
+        "passed": true,
+        "append_key_mismatch": 0,
+        "append_value_mismatch": 0,
+        "attention_batch_vs_c1_max_abs": 0.0,
+        "attention_batch_vs_numpy_max_abs": 5.960464477539063e-08
+      }
+    },
+    "canonical_p512_d128": {
+      "all_runs_generated_token_equality_passed": true,
+      "recorded_ids_exact": 5754,
+      "selected_batch_layers_per_run": 40,
+      "fallback_layers_per_run": 0,
+      "native_physical_groups": true,
+      "row_chunks": 0
+    },
+    "all_layer_c8": {
+      "status": "eq_ok",
+      "passed": true,
+      "hidden_passed": true,
+      "token_passed": true,
+      "first_hidden_bit_drift": null,
+      "first_token_mismatch": null,
+      "layers": 40,
+      "decode_transitions": 3,
+      "includes_numpy_context": true,
+      "includes_linear_state": true,
+      "full_attention_row_chunk_size": 0
+    },
+    "lifecycle": {
+      "cancel": {
+        "status": "eq_ok",
+        "passed": true,
+        "generated_token_row_equality": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "persistent_state_row_equality": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "inactive_state_kv_immutability": true,
+        "retired_slots": [
+          4,
+          5,
+          3,
+          6,
+          2,
+          7,
+          1
+        ],
+        "decode_counts_exact": true,
+        "lifecycle_widths_exact": true,
+        "no_group_wide_cancellation": true,
+        "eos_transition": {
+          "requested": false,
+          "observed": true,
+          "seed_collision": false,
+          "passed": true
+        }
+      },
+      "eos": {
+        "status": "eq_ok",
+        "passed": true,
+        "generated_token_row_equality": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "persistent_state_row_equality": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "inactive_state_kv_immutability": true,
+        "retired_slots": [
+          4,
+          5,
+          3,
+          6,
+          2,
+          7,
+          1
+        ],
+        "decode_counts_exact": true,
+        "lifecycle_widths_exact": true,
+        "no_group_wide_cancellation": true,
+        "eos_transition": {
+          "requested": true,
+          "observed": true,
+          "seed_collision": false,
+          "passed": true
+        }
+      },
+      "ragged-front-eos": {
+        "status": "eq_ok",
+        "passed": true,
+        "generated_token_row_equality": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "persistent_state_row_equality": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "inactive_state_kv_immutability": true,
+        "retired_slots": [
+          3,
+          4,
+          2,
+          5,
+          1,
+          6,
+          0
+        ],
+        "decode_counts_exact": true,
+        "lifecycle_widths_exact": true,
+        "no_group_wide_cancellation": true,
+        "eos_transition": {
+          "requested": true,
+          "observed": true,
+          "seed_collision": false,
+          "passed": true
+        }
+      }
+    },
+    "category_and_heldout": {
+      "c4": {
+        "runs": 3,
+        "unique_prompts": [
+          "code_lru_cache",
+          "code_markdown_table",
+          "code_merge_intervals",
+          "code_topological_sort",
+          "general_en_explain",
+          "general_en_plan",
+          "general_ja_explain",
+          "general_ja_plan",
+          "mixed_ja_en_review",
+          "mixed_ja_en_translate"
+        ],
+        "unique_prompt_count": 10,
+        "recorded_ids_exact": 396,
+        "all_generated_token_equality_passed": true,
+        "all_native_caware_decode": true,
+        "selected_batch_layers_per_run": [
+          40,
+          40,
+          40
+        ],
+        "fallback_layers_per_run": [
+          0,
+          0,
+          0
+        ]
+      },
+      "c8": {
+        "runs": 2,
+        "unique_prompts": [
+          "code_lru_cache",
+          "code_markdown_table",
+          "code_merge_intervals",
+          "code_topological_sort",
+          "general_en_explain",
+          "general_en_plan",
+          "general_ja_explain",
+          "general_ja_plan",
+          "mixed_ja_en_review",
+          "mixed_ja_en_translate"
+        ],
+        "unique_prompt_count": 10,
+        "recorded_ids_exact": 528,
+        "all_generated_token_equality_passed": true,
+        "all_native_caware_decode": true,
+        "selected_batch_layers_per_run": [
+          40,
+          40
+        ],
+        "fallback_layers_per_run": [
+          0,
+          0
+        ]
+      }
+    }
+  },
+  "profiler": {
+    "status": "captured",
+    "correctness_status": "eq_ok",
+    "scope": "L4 one physical-c8 decode plus independent-c1 oracle",
+    "trace_csv": "/tmp/hipengine-pi-paro-g3-results/trace-c8-e175e28f/gfx1151/1467593_kernel_trace.csv",
+    "trace_dispatches": 4644,
+    "unique_kernel_names": 77,
+    "kernel_families": {
+      "exact_c8_context": {
+        "count": 1,
+        "total_ns": 1692818,
+        "median_ns": 1692818,
+        "min_ns": 1692818,
+        "max_ns": 1692818,
+        "workgroup_x": [
+          256
+        ],
+        "grid_y": [
+          8
+        ],
+        "kernel_names": [
+          "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_c1_exact_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)"
+        ]
+      },
+      "marlin_k_exact_multi_row_c8": {
+        "count": 4,
+        "total_ns": 651383,
+        "median_ns": 163647.0,
+        "min_ns": 155292,
+        "max_ns": 168797,
+        "workgroup_x": [
+          128
+        ],
+        "grid_y": [
+          1
+        ],
+        "kernel_names": [
+          "void (anonymous namespace)::gemv_paro_marlin_k_fma_multi_row_kernel<_Float16, 8>(_Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, int)"
+        ]
+      },
+      "selected_projection_c8": {
+        "count": 72,
+        "total_ns": 4718421,
+        "median_ns": 66725.0,
+        "min_ns": 23604,
+        "max_ns": 634432,
+        "workgroup_x": [
+          64
+        ],
+        "grid_y": [
+          8,
+          64
+        ],
+        "kernel_names": [
+          "void (anonymous namespace)::gemv_awq_selected_dual_pack8_strided_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, long, int)",
+          "void (anonymous namespace)::gemv_awq_selected_pack8_kernel<_Float16, true>(_Float16 const*, long const*, int const*, int const*, _Float16 const*, _Float16*, long, long, long, long, int)"
+        ]
+      }
+    }
+  },
+  "scaling": {
+    "statistic": "median of three fresh clean-tree processes; 8 warmup plus 128 measured decode tokens per request",
+    "c1_graph_reference_tok_s": 70.80956421513164,
+    "serial_c2_reference_aggregate_tok_s": 65.57428205206217,
+    "c2": {
+      "aggregate_tok_s_samples": [
+        79.23736745260864,
+        79.25562402168268,
+        79.16751212095497
+      ],
+      "aggregate_tok_s_median": 79.23736745260864,
+      "per_request_tok_s_median": 39.61868372630432,
+      "stdev_over_median_percent": 0.04792168974893618,
+      "decode_step_ms_run_medians": [
+        25.23563501017634,
+        25.250969993066974,
+        25.243509007850662
+      ],
+      "decode_step_ms_median_of_run_medians": 25.243509007850662,
+      "aggregate_ratio_vs_c1": 1.1190206906495268,
+      "aggregate_percent_vs_c1": 11.90206906495268,
+      "recorded_ids_exact": 822,
+      "aggregate_ratio_vs_serial_c2": 1.2083604268773964,
+      "aggregate_percent_vs_serial_c2": 20.836042687739642
+    },
+    "c4": {
+      "aggregate_tok_s_samples": [
+        100.11024674175272,
+        100.23555637678933,
+        100.20863900529675
+      ],
+      "aggregate_tok_s_median": 100.20863900529675,
+      "per_request_tok_s_median": 25.052159751324186,
+      "stdev_over_median_percent": 0.05374785136947168,
+      "decode_step_ms_run_medians": [
+        39.94531600619666,
+        39.8868964985013,
+        39.91870199388359
+      ],
+      "decode_step_ms_median_of_run_medians": 39.91870199388359,
+      "aggregate_ratio_vs_c1": 1.4151850829196697,
+      "aggregate_percent_vs_c1": 41.518508291966974,
+      "recorded_ids_exact": 1644
+    },
+    "c8": {
+      "aggregate_tok_s_samples": [
+        99.966469713308,
+        99.94306893369686,
+        99.89305290761604
+      ],
+      "aggregate_tok_s_median": 99.94306893369686,
+      "per_request_tok_s_median": 12.492883616712108,
+      "stdev_over_median_percent": 0.03063919785160631,
+      "decode_step_ms_run_medians": [
+        79.55415149626788,
+        79.70703449973371,
+        79.69157400657423
+      ],
+      "decode_step_ms_median_of_run_medians": 79.69157400657423,
+      "aggregate_ratio_vs_c1": 1.4114345998522546,
+      "aggregate_percent_vs_c1": 41.14345998522546,
+      "recorded_ids_exact": 3288,
+      "aggregate_percent_vs_c4": -0.2650171424699699,
+      "step_percent_vs_two_c4": -0.18265872123709448
+    }
+  },
+  "native_batch_width_profile": {
+    "schema": 2,
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "model_snapshot": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "quant": "w4_paro",
+    "kv_storage": "bf16",
+    "native_widths": [
+      2,
+      4,
+      8
+    ],
+    "min_position": 512,
+    "max_position": 647
+  },
+  "protocol": {
+    "native_partition_widths": [
+      2,
+      4,
+      8
+    ],
+    "evidenced_decode_position_range": {
+      "min": 512,
+      "max": 647
+    },
+    "correctness_oracle": "independent_single_request_prefill_decode",
+    "packed_prefill_generated_token_equality": true,
+    "sparse_slot_generated_token_equality": true,
+    "shrinking_batch_generated_token_equality": true
+  },
+  "rows": {
+    "1": {
+      "status": "accepted_reference",
+      "decode_step_ms_median_of_run_medians": 14.122386023473155
+    },
+    "2": {
+      "status": "accepted_exact",
+      "generated_token_equality": true,
+      "primitive_correctness": true,
+      "decode_step_ms_median_of_run_medians": 25.243509007850662
+    },
+    "4": {
+      "status": "accepted_exact",
+      "generated_token_equality": true,
+      "primitive_correctness": true,
+      "decode_step_ms_median_of_run_medians": 39.91870199388359
+    },
+    "8": {
+      "status": "accepted_exact",
+      "generated_token_equality": true,
+      "primitive_correctness": true,
+      "decode_step_ms_median_of_run_medians": 79.69157400657423
+    }
+  },
+  "raw_sources": [
+    {
+      "path": "/tmp/hipengine-pi-paro-g3-results/c4-primitive-e175e28f.json",
+      "size_bytes": 2278,
+      "sha256": "93a5075131856417069a9b5625b2493493512279c80a8e41fce8ed00eab3c37d"
+    },
+    {
+      "path": "/tmp/hipengine-pi-paro-g3-results/c8-primitive-e175e28f.json",
+      "size_bytes": 2318,
+      "sha256": "47b4c8059df364bd90efdc520b68a6a34e2ef94da6264ff6d6cd640de61c2d71"
+    },
+    {
+      "path": "/tmp/hipengine-pi-paro-g3-results/c2-p512-d128-e175e28f-run1.json",
+      "size_bytes": 168227,
+      "sha256": "07995f3f3fe956858a7e50e0a52aa34149db1e10033cdb25c009628ab383b840"
+    },
+    {
+      "path": "/tmp/hipengine-pi-paro-g3-results/c2-p512-d128-e175e28f-run2.json",
+      "size_bytes": 168224,
+      "sha256": "a666da23e6f8991acdb88dee10a10520b674588c9ef830f473fa46b728413de2"
+    },
+    {
+      "path": "/tmp/hipengine-pi-paro-g3-results/c2-p512-d128-e175e28f-run3.json",
+      "size_bytes": 168288,
+      "sha256": "ea105c8c7f43a64fbf4a8132682b3007e76539735ccd177ebeb5ae21ca8f8ca9"
+    },
+    {
+      "path": "/tmp/hipengine-pi-paro-g3-results/c4-p512-d128-e175e28f-run1.json",
+      "size_bytes": 265506,
+      "sha256": "a01265523572c8d5009d470302ff2a338306633b9a0f7c09070670ea138e4006"
+    },
+    {
+      "path": "/tmp/hipengine-pi-paro-g3-results/c4-p512-d128-e175e28f-run2.json",
+      "size_bytes": 265486,
+      "sha256": "402a2140227da4b3d45995771f227fc4a30e861a0a449e0a8d2987c645567fc0"
+    },
+    {
+      "path": "/tmp/hipengine-pi-paro-g3-results/c4-p512-d128-e175e28f-run3.json",
+      "size_bytes": 265539,
+      "sha256": "de77855fae2eeef25c0ae5a3fda720f9d5ef2649325eb61f6353b9c5cbafb77f"
+    },
+    {
+      "path": "/tmp/hipengine-pi-paro-g3-results/c8-p512-d128-e175e28f-run1.json",
+      "size_bytes": 461624,
+      "sha256": "f49fc1e80a9d92b320b47fb209e70dc989b13d9d15b22378b9a5ca3a2f3a4015"
+    },
+    {
+      "path": "/tmp/hipengine-pi-paro-g3-results/c8-p512-d128-e175e28f-run2.json",
+      "size_bytes": 461608,
+      "sha256": "7d39fa35aa375176912ec46d640b8176415a4357bbee5d9a6727dc9a7c5eb20f"
+    },
+    {
+      "path": "/tmp/hipengine-pi-paro-g3-results/c8-p512-d128-e175e28f-run3.json",
+      "size_bytes": 461649,
+      "sha256": "31683a5b34ee682ea3b9a5ae2278d1033f8eb6c3ea25d803ba6d16f95a2f5fdc"
+    },
+    {
+      "path": "/tmp/hipengine-pi-paro-g3-results/c4-category-group1-e175e28f.json",
+      "size_bytes": 170344,
+      "sha256": "34a2f56defaa6e540b6575ebe8b26810bdc20e34a08e439fa76b9fea09aff9a4"
+    },
+    {
+      "path": "/tmp/hipengine-pi-paro-g3-results/c4-category-group2-e175e28f.json",
+      "size_bytes": 170206,
+      "sha256": "b2156d8bc054e527072a672891ad41770e437fb3a801cf3bde110cd324f6c47d"
+    },
+    {
+      "path": "/tmp/hipengine-pi-paro-g3-results/c4-category-group3-e175e28f.json",
+      "size_bytes": 170331,
+      "sha256": "d8c1deb05b20464085af6694d58db3719dc6f4453954ef3ccd9579720834ac5d"
+    },
+    {
+      "path": "/tmp/hipengine-pi-paro-g3-results/c8-category-group1-e175e28f.json",
+      "size_bytes": 274887,
+      "sha256": "eeff15d4aa9157eb500bd1338838313fc99a863fc6af0fa9c9371c8995e0e39f"
+    },
+    {
+      "path": "/tmp/hipengine-pi-paro-g3-results/c8-category-group2-e175e28f.json",
+      "size_bytes": 275020,
+      "sha256": "067a67e45b06120c437f21c96a894fb96ec01592c670b4e3e8c1e849d9c8acdb"
+    },
+    {
+      "path": "/tmp/hipengine-pi-paro-g3-results/c8-l40-d3-default-full-oracle-7d33c0ca.json",
+      "size_bytes": 23623219,
+      "sha256": "ea785995b3b46319093ab86d71ff2b8853e487d20b1323eeb8e1d544b924ceb6"
+    },
+    {
+      "path": "/tmp/hipengine-pi-paro-g3-results/c8-c1-default-cancel-e175e28f.json",
+      "size_bytes": 18091,
+      "sha256": "9f94c45ee4c34dacc13265bcff9e942cec52927982c8319e8f1647b637a5ae04"
+    },
+    {
+      "path": "/tmp/hipengine-pi-paro-g3-results/c8-c1-default-eos-e175e28f.json",
+      "size_bytes": 18057,
+      "sha256": "c8e24477f1c3a56b100e5bd9c3cadad82c3828b28d797a029dd7abfd80b715f2"
+    },
+    {
+      "path": "/tmp/hipengine-pi-paro-g3-results/c8-c1-default-ragged-front-eos-e175e28f.json",
+      "size_bytes": 18360,
+      "sha256": "1269950821acb2a159d724d7e0b320c7cd5ddbde5b99bdbfe2222c1a1e958783"
+    },
+    {
+      "path": "/tmp/hipengine-pi-paro-g3-results/c8-l4-d1-profiler-e175e28f.json",
+      "size_bytes": 890760,
+      "sha256": "fc0b0482320190e66dc2142046192f3d2278646d66f2de6ee154967647a4c798"
+    },
+    {
+      "path": "/tmp/hipengine-pi-paro-g3-results/trace-c8-e175e28f/gfx1151/1467593_kernel_trace.csv",
+      "size_bytes": 1085417,
+      "sha256": "a6ea2972b8f62b7c9c285780828108007ac7c04aa7c3ac7a68857e31edec01b7"
+    }
+  ],
+  "remaining_scope": [
+    "public/OpenAI model ownership and live admission",
+    "normal sampling c>N",
+    "context >=1024",
+    "non-BF16 KV",
+    "gfx1100 physical c4/c8",
+    "capture/replay"
+  ],
+  "validation": {
+    "all_claimed_checks_passed": true,
+    "tracked_tree_clean": true,
+    "raw_source_hashes_recorded": true,
+    "profiling_process_used_precomputed_compiler_version_and_required_cached_builds": true
+  }
+}

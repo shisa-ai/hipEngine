@@ -41,6 +41,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from hipengine.benchmark.prompts import file_sha256, token_ids_sha256  # noqa: E402
+from hipengine.benchmark.provenance import collect_model_identity  # noqa: E402
 from hipengine.util.amdgpu_vram import VramSampler, select_card  # noqa: E402
 
 SCHEMA_VERSION = 1
@@ -572,6 +573,37 @@ def _compact_poll_state(samples: Sequence[Mapping[str, Any]], *, at_seconds: flo
     }
 
 
+def _hipengine_route_expectation_passes(
+    *,
+    concurrency: int,
+    expectation: str,
+    serial_values: Sequence[Any],
+    native_values: Sequence[Any],
+    shape_passed: bool,
+    resident_capacity: float | None,
+) -> bool:
+    rows = int(concurrency)
+    if resident_capacity != float(rows):
+        return False
+    if (
+        not serial_values
+        or len(serial_values) != len(native_values)
+        or len(serial_values) % rows != 0
+    ):
+        return False
+    if str(expectation) == "serial":
+        return all(value is True for value in serial_values) and all(
+            value is False for value in native_values
+        )
+    if str(expectation) != "native" or not bool(shape_passed):
+        return False
+    if rows == 1:
+        return all(value is False for value in native_values)
+    return all(value is False for value in serial_values) and all(
+        value is True for value in native_values
+    )
+
+
 def _oracle_join_delay_seconds(
     oracle_records: Sequence[Mapping[str, Any]],
     *,
@@ -596,6 +628,13 @@ def _oracle_join_delay_seconds(
             decode_ms = _number(timing.get("predicted_ms"))
             decode_steps = max(1, int(expected_tokens))
         if prompt_ms is None or decode_ms is None:
+            request_wall = _number(record.get("wall_seconds"))
+            if request_wall is not None and request_wall > 0.0:
+                # PARO's resident telemetry exposes authoritative request total
+                # but not a separate prefill/decode split. Keep the metrics poll
+                # alive through 90% of the observed c1 HTTP wall so it can join
+                # on an actual decode transition without racing completion.
+                delays.append(0.9 * request_wall)
             continue
         delays.append((prompt_ms + int(join_after_tokens) * decode_ms / decode_steps) / 1000.0)
     if not delays:
@@ -744,6 +783,21 @@ def _sampled_file_fingerprint(path: Path, *, sample_bytes: int = 1 << 20) -> dic
     }
 
 
+def _model_fingerprint(path: Path) -> dict[str, Any]:
+    resolved = path.expanduser().resolve()
+    if resolved.is_file():
+        return {**_sampled_file_fingerprint(resolved), "path_type": "file", "revision": None}
+    identity = collect_model_identity(resolved)
+    fingerprint = identity.get("fingerprint")
+    if not isinstance(fingerprint, Mapping):
+        raise ValueError(f"model fingerprint is unavailable: {resolved}")
+    return {
+        "path": str(identity.get("path") or resolved),
+        "revision": identity.get("revision"),
+        **dict(fingerprint),
+    }
+
+
 def _full_file_fingerprint(path: Path) -> dict[str, Any]:
     resolved = path.expanduser().resolve()
     return {"path": str(resolved), "size_bytes": resolved.stat().st_size, "sha256": file_sha256(resolved)}
@@ -794,6 +848,13 @@ def _server_command_and_env(
     if args.compiler_version_file is not None:
         env["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file)
     if engine == "hipengine":
+        env["HIPENGINE_PREFILL_DECODE_POLICY"] = str(
+            args.hipengine_prefill_decode_policy
+        )
+        env["HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS"] = "1"
+        env["HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"] = (
+            "1" if args.hipengine_route_expectation == "native" else "0"
+        )
         command = [
             str(args.hipengine_python),
             "-m",
@@ -1190,11 +1251,13 @@ def _run_width(
                 if burst_metrics is None
                 else burst_metrics["scalars"].get("hipengine_resident_bucket_capacity")
             )
-            route_ok = (
-                all(value is False for value in serial_values)
-                and (int(concurrency) == 1 or all(value is True for value in native_values))
-                and bool(shape_evidence["passed"])
-                and resident_capacity == float(concurrency)
+            route_ok = _hipengine_route_expectation_passes(
+                concurrency=int(concurrency),
+                expectation=str(args.hipengine_route_expectation),
+                serial_values=serial_values,
+                native_values=native_values,
+                shape_passed=bool(shape_evidence["passed"]),
+                resident_capacity=resident_capacity,
             )
         result = {
             "concurrency": int(concurrency),
@@ -1227,6 +1290,11 @@ def _run_width(
             "execution": {
                 "paths": route_paths,
                 "route_ok": route_ok,
+                "route_expectation": (
+                    str(args.hipengine_route_expectation)
+                    if engine == "hipengine"
+                    else None
+                ),
                 "serial_decode_fallback_values": sorted(
                     {value for value in serial_values if isinstance(value, bool)}
                 ),
@@ -1271,7 +1339,7 @@ def _source_provenance(args: argparse.Namespace, engine: str) -> dict[str, Any]:
             "head": _capture(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT),
             "status": _capture(["git", "status", "-sb", "--untracked-files=no"], cwd=REPO_ROOT),
         },
-        "model": _sampled_file_fingerprint(args.model),
+        "model": _model_fingerprint(args.model),
     }
     if args.compiler_version_file is not None and args.compiler_version_file.exists():
         payload["compiler_version_file"] = _full_file_fingerprint(args.compiler_version_file)
@@ -1304,7 +1372,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError("live-concurrency must appear in concurrencies")
     if max(concurrencies) > 8:
         raise ValueError("the F1 native packet is limited to c1/c2/c4/c8")
-    if not args.model.is_file():
+    if not args.model.exists():
         raise ValueError(f"model does not exist: {args.model}")
     args.work_dir.mkdir(parents=True, exist_ok=True)
     invocation = [sys.executable, str(Path(__file__).relative_to(REPO_ROOT)), *sys.argv[1:]]
@@ -1321,7 +1389,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "primary_metric_scope": "prefill + decode + server scheduling + localhost HTTP",
             "native_decode_metric_scope": "engine-specific diagnostic only; not cross-engine comparable",
             "model": str(args.model.resolve()),
-            "quant": "GGUF Q4_K_M",
+            "quant": str(args.quant),
             "kv_storage": "bf16" if engine == "hipengine" else "f16",
             "prompt_length": int(args.prompt_length),
             "decode_tokens": int(args.decode_tokens),
@@ -1337,6 +1405,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "server_capacity_matches_logical_concurrency": True,
             "context_tokens_per_sequence": int(args.ctx_per_seq),
             "hipengine_batch_window_ms": float(args.batch_window_ms),
+            "hipengine_prefill_decode_policy": (
+                str(args.hipengine_prefill_decode_policy)
+                if engine == "hipengine"
+                else None
+            ),
             "llamacpp_prompt_cache": False,
             "exact_output_contract": "every server row equals an independent same-engine c1 token-ID oracle",
             "live_admission_concurrency": int(args.live_concurrency),
@@ -1413,6 +1486,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--quant", default="gguf_q4_k_m")
     parser.add_argument("--served-model-name", default="qwen36-35b-q4km")
     parser.add_argument("--hipengine-python", type=Path, default=Path(sys.executable))
+    parser.add_argument(
+        "--hipengine-route-expectation",
+        choices=("native", "serial"),
+        default="native",
+        help="Expected hipEngine c>N route; serial also disables PARO native batch decode in child servers",
+    )
+    parser.add_argument(
+        "--hipengine-prefill-decode-policy",
+        choices=("protect_decode", "protect_ttft", "fair"),
+        default="protect_ttft",
+        help="Explicit hipEngine resident scheduling policy; retained F1 uses protect_ttft",
+    )
     parser.add_argument("--llamacpp-hip-repo", type=Path, default=DEFAULT_LLAMA_HIP_REPO)
     parser.add_argument(
         "--llamacpp-hip-server-bin",
