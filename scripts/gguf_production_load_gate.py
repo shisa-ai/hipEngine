@@ -158,6 +158,10 @@ class RequestResult:
     end_to_end_seconds: float | None
     finish_reason: str | None
     prompt_exact: bool = True
+    http_protocol_exact: bool = True
+    disconnect_triggered: bool = False
+    done_sentinel: bool = True
+    error_status_code: int | None = None
     generated_ids: tuple[int, ...] = ()
     expected_ids: tuple[int, ...] = ()
     client_ttft_seconds: float | None = None
@@ -419,7 +423,7 @@ def _build_workload_specs(
     cancellation[2] = replace(
         cancellation[2],
         action="disconnect",
-        disconnect_after_tokens=4,
+        disconnect_after_tokens=0,
         max_tokens=48,
     )
     cancellation[5] = replace(
@@ -515,9 +519,8 @@ def _evaluate_workload(
         int(row.generated_count) for row in rows if _request_meets_slo(row, slos)
     )
     correctness_passed = all(
-        row.exact and row.prompt_exact
+        row.exact and row.prompt_exact and row.http_protocol_exact
         for row in rows
-        if row.outcome not in {"rejected"}
     ) and all(
         row.outcome in ({"completed", "rejected"} if require_rejects else {"completed"})
         for row in rows
@@ -564,6 +567,8 @@ def _evaluate_workload(
     if not correctness_passed:
         if any(not row.exact or not row.prompt_exact for row in rows if row.outcome != "rejected"):
             reasons.append("generated_token_mismatch")
+        if any(not row.http_protocol_exact for row in rows):
+            reasons.append("http_sse_protocol_failed")
         allowed_complete_outcomes = {"completed", "rejected"} if require_rejects else {"completed"}
         if any(
             row.action == "complete" and row.outcome not in allowed_complete_outcomes
@@ -613,7 +618,11 @@ def _evaluate_workload(
         },
         "correctness": {
             "passed": correctness_passed,
-            "exact_rows": sum(1 for row in rows if row.exact and row.prompt_exact),
+            "exact_rows": sum(
+                1
+                for row in rows
+                if row.exact and row.prompt_exact and row.http_protocol_exact
+            ),
             "eligible_rows": sum(1 for row in rows if row.outcome != "rejected"),
         },
         "overload": {
@@ -763,6 +772,14 @@ def _stream_request(
                 error_message = str(error_payload.get("message", ""))
             except Exception:
                 error_message = raw.decode("utf-8", errors="replace")
+        elif (
+            spec.action == "disconnect"
+            and spec.disconnect_after_tokens is not None
+            and int(spec.disconnect_after_tokens) == 0
+        ):
+            disconnected = True
+            response.close()
+            connection.close()
         else:
             while True:
                 raw_line = response.readline()
@@ -995,20 +1012,69 @@ def _trace_outcome(trace: _HTTPTrace, reclaimed: _ReclaimedRow | None) -> str:
     return "failed"
 
 
+def _reclaimed_row_matches_action(row: _ReclaimedRow, action: str) -> bool:
+    if action == "timeout":
+        return row.finish_reason == "timeout"
+    if action == "disconnect":
+        return row.finish_reason in {"cancel", "disconnect"}
+    return row.finish_reason in {"length", "stop"}
+
+
+def _reclaimed_overrides(
+    traces: Sequence[_HTTPTrace],
+    *,
+    prompt_manifest: Mapping[str, Mapping[str, Any]],
+    reclaimed_rows: Mapping[int, _ReclaimedRow],
+    new_reclaimed_ids: Sequence[int],
+) -> dict[str, _ReclaimedRow]:
+    claimed = {
+        int(trace.request_id)
+        for trace in traces
+        if trace.request_id is not None
+    }
+    available = {
+        int(request_id): reclaimed_rows[int(request_id)]
+        for request_id in new_reclaimed_ids
+        if int(request_id) not in claimed
+    }
+    overrides: dict[str, _ReclaimedRow] = {}
+    for trace in traces:
+        if trace.request_id is not None:
+            continue
+        expected_prompt = tuple(
+            int(token)
+            for token in prompt_manifest[trace.spec.oracle_key]["token_ids"]
+        )
+        matches = [
+            row
+            for row in available.values()
+            if row.prompt_ids == expected_prompt
+            and _reclaimed_row_matches_action(row, trace.spec.action)
+        ]
+        if len(matches) == 1:
+            matched = matches[0]
+            overrides[trace.spec.label] = matched
+            available.pop(int(matched.request_id), None)
+    return overrides
+
+
 def _join_trace(
     trace: _HTTPTrace,
     *,
     prompt: Mapping[str, Any],
     expected: Sequence[int],
     reclaimed_rows: Mapping[int, _ReclaimedRow],
+    reclaimed_override: _ReclaimedRow | None = None,
 ) -> RequestResult:
-    reclaimed = None if trace.request_id is None else reclaimed_rows.get(int(trace.request_id))
+    reclaimed = reclaimed_override
+    if reclaimed is None and trace.request_id is not None:
+        reclaimed = reclaimed_rows.get(int(trace.request_id))
     outcome = _trace_outcome(trace, reclaimed)
     actual_prompt = () if reclaimed is None else reclaimed.prompt_ids
     generated = () if reclaimed is None else reclaimed.generated_ids
     expected_ids = tuple(int(token) for token in expected[: len(generated)])
     prompt_exact = bool(
-        outcome in {"rejected", "timeout"} and reclaimed is None
+        outcome in {"rejected", "timeout", "disconnected"} and reclaimed is None
         or actual_prompt == tuple(int(token) for token in prompt["token_ids"])
     )
     generated_exact = bool(
@@ -1021,6 +1087,38 @@ def _join_trace(
             )
         )
     )
+    effective_request_id = trace.request_id if reclaimed is None else int(reclaimed.request_id)
+    usage_exact = bool(
+        isinstance(trace.usage, Mapping)
+        and int(trace.usage.get("prompt_tokens", -1)) == int(prompt["prompt_tokens"])
+        and int(trace.usage.get("completion_tokens", -1)) == int(trace.spec.max_tokens)
+    )
+    if outcome == "completed":
+        http_protocol_exact = bool(
+            trace.status_code == 200
+            and trace.error_code is None
+            and trace.done_sentinel
+            and usage_exact
+        )
+    elif outcome == "rejected":
+        http_protocol_exact = bool(
+            trace.error_code == "engine_busy"
+            and (trace.status_code == 429 or trace.error_status_code == 429)
+        )
+    elif outcome == "timeout":
+        http_protocol_exact = bool(
+            trace.error_code == "deadline_exceeded"
+            and trace.error_status_code == 408
+            and trace.done_sentinel
+        )
+    elif outcome in {"cancelled", "disconnected"}:
+        http_protocol_exact = bool(
+            trace.spec.action == "disconnect"
+            and trace.disconnected_by_client
+            and trace.status_code == 200
+        )
+    else:
+        http_protocol_exact = False
     observability = {} if reclaimed is None else reclaimed.observability
     scheduler_ttft = observability.get("time_to_first_token_seconds")
     scheduler_itl = tuple(float(value) for value in observability.get("inter_token_seconds", ()))
@@ -1039,7 +1137,7 @@ def _join_trace(
         outcome=outcome,
         status_code=int(trace.status_code),
         error_code=trace.error_code,
-        request_id=trace.request_id,
+        request_id=effective_request_id,
         generated_count=len(generated),
         exact=generated_exact,
         queue_seconds=(
@@ -1054,6 +1152,10 @@ def _join_trace(
             trace.finish_reason if reclaimed is None else reclaimed.finish_reason
         ),
         prompt_exact=prompt_exact,
+        http_protocol_exact=http_protocol_exact,
+        disconnect_triggered=trace.disconnected_by_client,
+        done_sentinel=trace.done_sentinel,
+        error_status_code=trace.error_status_code,
         generated_ids=generated,
         expected_ids=expected_ids,
         client_ttft_seconds=client_ttft,
@@ -1133,12 +1235,19 @@ def _execute_workload(
     metrics_after = _metrics_snapshot(host, port)
     memory_after = _memory_snapshot(f"after_{name}", runner)
     new_reclaimed_ids = sorted(set(reclaimed) - before_ids)
+    overrides = _reclaimed_overrides(
+        traces,
+        prompt_manifest=prompt_manifest,
+        reclaimed_rows=reclaimed,
+        new_reclaimed_ids=new_reclaimed_ids,
+    )
     rows = [
         _join_trace(
             trace,
             prompt=prompt_manifest[trace.spec.oracle_key],
             expected=reference_tokens[trace.spec.oracle_key][: int(trace.spec.max_tokens)],
             reclaimed_rows=reclaimed,
+            reclaimed_override=overrides.get(trace.spec.label),
         )
         for trace in sorted(traces, key=lambda item: item.spec.label)
     ]
@@ -1155,6 +1264,15 @@ def _execute_workload(
         sample_timeline,
         stream_queue_limit=int(stream_queue_limit),
     )
+    metrics_delta = _counter_delta(metrics_before, metrics_after)
+    completed_rows = [row for row in rows if row.outcome == "completed"]
+    metrics_accounting_passed = bool(
+        metrics_delta.get("hipengine_requests_total", -1.0) == len(rows)
+        and metrics_delta.get("hipengine_request_completed_total", -1.0)
+        == len(completed_rows)
+        and metrics_delta.get("hipengine_completion_tokens_total", -1.0)
+        == sum(row.generated_count for row in completed_rows)
+    )
     final_snapshot = llm.live_loop_snapshot() or {}
     route_counts = final_snapshot.get("runner", {}).get("routes", {}).get("counts", {})
     # Workload-local route counts are reconstructed from the owned poll timeline;
@@ -1165,12 +1283,14 @@ def _execute_workload(
                 summary["passed"]
                 and occupancy["route_passed"]
                 and occupancy["stream_queue"]["bounded"]
+                and metrics_accounting_passed
             ),
             "occupancy": occupancy,
             "metrics": {
                 "before": metrics_before,
                 "after": metrics_after,
-                "counter_delta": _counter_delta(metrics_before, metrics_after),
+                "counter_delta": metrics_delta,
+                "accounting_passed": metrics_accounting_passed,
             },
             "memory": {
                 "before": memory_before,
@@ -1196,6 +1316,10 @@ def _execute_workload(
     if not occupancy["stream_queue"]["bounded"]:
         summary["failure_reasons"] = sorted(
             set([*summary["failure_reasons"], "stream_queue_bound_exceeded"])
+        )
+    if not metrics_accounting_passed:
+        summary["failure_reasons"] = sorted(
+            set([*summary["failure_reasons"], "server_counter_accounting_failed"])
         )
     return summary
 
@@ -1370,12 +1494,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             def capture_reclaim(self, completed):
                 request_id = int(completed.request_id)
                 row = self._rows.get(request_id)
-                if row is not None and row.lease is not None and row.slot is not None:
+                if row is not None:
                     self._flush_row_owner(row)
                     captured = _ReclaimedRow(
                         request_id=request_id,
                         prompt_ids=tuple(int(token) for token in completed.prompt_tokens),
-                        generated_ids=tuple(int(token) for token in row.slot.generated_ids),
+                        generated_ids=(
+                            ()
+                            if row.slot is None
+                            else tuple(int(token) for token in row.slot.generated_ids)
+                        ),
                         finish_reason=str(completed.finish_reason),
                         finish_details=completed.finish_details.to_json_dict(),
                         observability=completed.observability.to_json_dict(),
