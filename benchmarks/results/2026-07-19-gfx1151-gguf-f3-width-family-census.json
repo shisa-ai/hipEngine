@@ -1,0 +1,179 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_f3_clean_width_family_census",
+  "created_at": "2026-07-19T03:31:00+09:00",
+  "status": "accepted_profile_directed_tuning_baseline",
+  "passed": true,
+  "performance_claim": false,
+  "claim_scope": "clean cached single-transition profiler attribution for physical GGUF c1/c2/c4/c8 on gfx1151; durations are diagnostic and not throughput evidence",
+  "source": {
+    "commit": "3a0fe188dfcfec7c4350f053f724683acecc75c5",
+    "clean_detached_worktree": true,
+    "dirty": false
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "rocm": "HIP version: 7.15.0-0000000",
+    "hipcc": "AMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)",
+    "gpu_max_hw_queues": 1,
+    "tuned_profile": "accelerator-performance",
+    "amd_iommu": "off"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "Q4_K_M",
+    "kv_dtype": "bf16",
+    "sampling": "greedy_top1",
+    "speculative_decode": false
+  },
+  "workload": {
+    "prompt_tokens_per_row": 512,
+    "profiled_decode_transitions": 1,
+    "physical_widths": [1, 2, 4, 8],
+    "packed_decode_mode": "graph",
+    "paired_c1_decode_mode": "eager",
+    "cached_build_required": true,
+    "profiler": "rocprofv3 kernel+marker trace"
+  },
+  "paired_c1_reference": [
+    {
+      "paired_with": "c2",
+      "dispatches": 628,
+      "duration_ms_diagnostic": 17.712862,
+      "unknown_dispatches": 0
+    },
+    {
+      "paired_with": "c4",
+      "dispatches": 628,
+      "duration_ms_diagnostic": 17.64304,
+      "unknown_dispatches": 0
+    },
+    {
+      "paired_with": "c8",
+      "dispatches": 628,
+      "duration_ms_diagnostic": 17.645638,
+      "unknown_dispatches": 0
+    }
+  ],
+  "packed_widths": {
+    "c2": {
+      "passed": true,
+      "physical_rows": 2,
+      "graph_capture_count": 1,
+      "graph_replay_count": 1,
+      "all_tokens_exact": true,
+      "dispatches": 747,
+      "duration_ms_diagnostic": 25.667924,
+      "packed_native_dispatches": 747,
+      "row_local_dispatches": 0,
+      "copy_dispatches": 0,
+      "unknown_dispatches": 0,
+      "families": {
+        "dense_projection": {"dispatches": 220, "duration_ms": 10.392618, "share_pct": 40.489},
+        "moe_selected_combine": {"dispatches": 200, "duration_ms": 6.166807, "share_pct": 24.025},
+        "linear_attention_state": {"dispatches": 60, "duration_ms": 3.435209, "share_pct": 13.383},
+        "full_attention_core": {"dispatches": 60, "duration_ms": 2.413729, "share_pct": 9.404},
+        "lm_head_sampler": {"dispatches": 3, "duration_ms": 1.985566, "share_pct": 7.736},
+        "moe_router": {"dispatches": 120, "duration_ms": 0.777903, "share_pct": 3.031},
+        "norm_residual": {"dispatches": 81, "duration_ms": 0.47405, "share_pct": 1.847},
+        "metadata_lifecycle": {"dispatches": 2, "duration_ms": 0.013385, "share_pct": 0.052},
+        "embedding": {"dispatches": 1, "duration_ms": 0.008657, "share_pct": 0.034}
+      },
+      "projection_plus_selected_moe_share_pct": 64.514,
+      "raw": {
+        "size_bytes": 106741,
+        "sha256": "a2172ded0e9cbe5b0175b535332594bc2b21fdd5d2d6c0fcf201e50c06e3b76f"
+      },
+      "command": "/home/lhl/hipEngine-main/.venv/bin/python scripts/gguf_packed_ar_rocprof.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --decode-mode graph --packed-concurrency 2 --prompt-length 512 --prompt-token-id 9707 --expected-token-id 9707 --compiler-version-file /tmp/gfx1151-gguf-f3-clean-3a0fe188/hipcc-version.txt --raw-root /tmp/gfx1151-gguf-f3-clean-3a0fe188/c2-raw --rocprofv3 /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/bin/rocprofv3 --roctx-sdk /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib/librocprofiler-sdk-roctx.so.1 --out /tmp/gfx1151-gguf-f3-clean-3a0fe188/c2.json"
+    },
+    "c4": {
+      "passed": true,
+      "physical_rows": 4,
+      "graph_capture_count": 1,
+      "graph_replay_count": 1,
+      "all_tokens_exact": true,
+      "dispatches": 747,
+      "duration_ms_diagnostic": 35.98566,
+      "packed_native_dispatches": 747,
+      "row_local_dispatches": 0,
+      "copy_dispatches": 0,
+      "unknown_dispatches": 0,
+      "families": {
+        "dense_projection": {"dispatches": 220, "duration_ms": 14.087121, "share_pct": 39.146},
+        "moe_selected_combine": {"dispatches": 200, "duration_ms": 10.469537, "share_pct": 29.094},
+        "linear_attention_state": {"dispatches": 60, "duration_ms": 4.624641, "share_pct": 12.851},
+        "lm_head_sampler": {"dispatches": 3, "duration_ms": 2.904292, "share_pct": 8.071},
+        "full_attention_core": {"dispatches": 60, "duration_ms": 2.532993, "share_pct": 7.039},
+        "moe_router": {"dispatches": 120, "duration_ms": 0.871305, "share_pct": 2.421},
+        "norm_residual": {"dispatches": 81, "duration_ms": 0.472247, "share_pct": 1.312},
+        "metadata_lifecycle": {"dispatches": 2, "duration_ms": 0.014507, "share_pct": 0.04},
+        "embedding": {"dispatches": 1, "duration_ms": 0.009017, "share_pct": 0.025}
+      },
+      "projection_plus_selected_moe_share_pct": 68.24,
+      "raw": {
+        "size_bytes": 106997,
+        "sha256": "71422e1d9a03a9e205d0a24c99d759ff2383e91c4c6c51d20654a8f0efdbb617"
+      },
+      "command": "/home/lhl/hipEngine-main/.venv/bin/python scripts/gguf_packed_ar_rocprof.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --decode-mode graph --packed-concurrency 4 --prompt-length 512 --prompt-token-id 9707 --expected-token-id 9707 --compiler-version-file /tmp/gfx1151-gguf-f3-clean-3a0fe188/hipcc-version.txt --raw-root /tmp/gfx1151-gguf-f3-clean-3a0fe188/c4-raw --rocprofv3 /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/bin/rocprofv3 --roctx-sdk /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib/librocprofiler-sdk-roctx.so.1 --out /tmp/gfx1151-gguf-f3-clean-3a0fe188/c4.json"
+    },
+    "c8": {
+      "passed": true,
+      "physical_rows": 8,
+      "graph_capture_count": 1,
+      "graph_replay_count": 1,
+      "all_tokens_exact": true,
+      "dispatches": 748,
+      "duration_ms_diagnostic": 56.759989,
+      "packed_native_dispatches": 748,
+      "row_local_dispatches": 0,
+      "copy_dispatches": 0,
+      "unknown_dispatches": 0,
+      "families": {
+        "dense_projection": {"dispatches": 220, "duration_ms": 20.344619, "share_pct": 35.843},
+        "moe_selected_combine": {"dispatches": 200, "duration_ms": 18.697212, "share_pct": 32.941},
+        "linear_attention_state": {"dispatches": 60, "duration_ms": 8.229523, "share_pct": 14.499},
+        "lm_head_sampler": {"dispatches": 4, "duration_ms": 4.837438, "share_pct": 8.523},
+        "full_attention_core": {"dispatches": 60, "duration_ms": 3.202689, "share_pct": 5.643},
+        "moe_router": {"dispatches": 120, "duration_ms": 0.965325, "share_pct": 1.701},
+        "norm_residual": {"dispatches": 81, "duration_ms": 0.457976, "share_pct": 0.807},
+        "metadata_lifecycle": {"dispatches": 2, "duration_ms": 0.016952, "share_pct": 0.03},
+        "embedding": {"dispatches": 1, "duration_ms": 0.008255, "share_pct": 0.015}
+      },
+      "projection_plus_selected_moe_share_pct": 68.784,
+      "raw": {
+        "size_bytes": 108189,
+        "sha256": "c554956ccffb42c3a68aac4c011c30d2a9eef43d5506f5fa5154f5aa1d0d93dd"
+      },
+      "command": "/home/lhl/hipEngine-main/.venv/bin/python scripts/gguf_packed_ar_rocprof.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --decode-mode graph --packed-concurrency 8 --prompt-length 512 --prompt-token-id 9707 --expected-token-id 9707 --compiler-version-file /tmp/gfx1151-gguf-f3-clean-3a0fe188/hipcc-version.txt --raw-root /tmp/gfx1151-gguf-f3-clean-3a0fe188/c8-raw --rocprofv3 /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/bin/rocprofv3 --roctx-sdk /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib/librocprofiler-sdk-roctx.so.1 --out /tmp/gfx1151-gguf-f3-clean-3a0fe188/c8.json"
+    }
+  },
+  "conclusions": {
+    "movement_priority_closed_for_this_scope": "all packed widths have zero steady copy dispatches and zero row-local fallback",
+    "dominant_families": "dense_projection plus moe_selected_combine account for 64.51%-68.78% of packed GPU time",
+    "next_tuning_order": [
+      "dense_projection geometry/reuse",
+      "selected-MoE projection and combine utilization",
+      "c-aware Conv/GDN state",
+      "LM-head geometry",
+      "full attention"
+    ],
+    "not_a_throughput_claim": true
+  },
+  "validation": {
+    "c2_c4_c8_route_checks": true,
+    "all_tokens_exact": true,
+    "all_dispatches_classified": true,
+    "raw_sha256_verified": true,
+    "focused_host_tests": "15 passed before clean packet",
+    "python_compile": true,
+    "git_diff_check": true
+  },
+  "limitations": [
+    "Each row is one instrumented synchronized replay; durations are diagnostic only.",
+    "The c1 reference is rerun separately for each width and is not merged into one timing sample.",
+    "This packet selects tuning targets; any implementation change still requires independent-c1 correctness and repeated direct/server performance gates.",
+    "Normal sampling, mixed lengths, long context, and external-engine comparisons are outside this packet."
+  ]
+}

@@ -1048,11 +1048,18 @@ F3. Profile-directed tuning order:
 5. improve MoE grouping/routing/selected-expert utilization;
 6. overlap pool/admission work only after exact ownership is stable.
 
-- [ ] Attribute launch count and GPU time by family for c1/c2/c4/c8.
+- [x] Attribute launch count and GPU time by family for c1/c2/c4/c8.
 - [ ] Keep exact non-regressive wins and promote them to package defaults.
 - [ ] Record rejected and neutral probes in `WORKLOG.md`, not this roadmap.
 - [ ] Remove obsolete experiment flags through `docs/REFACTOR.md` after defaults
       settle.
+
+Clean `3a0fe188` closes the width-family census. Physical c2/c4/c8 record
+**747/747/748 packed-native dispatches**, zero row-local or steady-copy work,
+and zero unclassified kernels. Dense projections plus selected-MoE/combine
+account for **64.51%/68.24%/68.78%** of diagnostic GPU time, so F3 proceeds to
+those kernel families rather than more host-movement work. Evidence:
+`benchmarks/results/2026-07-19-gfx1151-gguf-f3-width-family-census.json`.
 
 F4. Production workload and SLO gate:
 
