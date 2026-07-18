@@ -51,12 +51,24 @@ from hipengine.server.api import (
     _SPECULATIVE_MTP_AUTO_ROUTE,
     _SPECULATIVE_MTP_BATCH_ROUTE,
     _SPECULATIVE_MTP_DEFAULT_ROUTE,
+    _prepared_context_tokens,
     _request_control,
     _startup_memory_summary,
 )
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_prepared_context_tokens_finds_resident_model_owner_session() -> None:
+    session = SimpleNamespace(max_sequence_length=8192)
+    generator = SimpleNamespace(
+        _session=None,
+        _resident_model_runner=SimpleNamespace(_session=session),
+    )
+    engine = SimpleNamespace(_text_generator=generator)
+
+    assert _prepared_context_tokens(engine) == 8192
 
 
 def _api_error_taxonomy_table() -> dict[str, dict[str, Any]]:

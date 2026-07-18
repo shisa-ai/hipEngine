@@ -163832,3 +163832,34 @@ mistaking choice-scoped `group_rows=1` for physical width.
 Validation: focused host tests now pass **6/6**, Ruff and `git diff --check`
 pass, and the corrected extractor passes against the captured hardware route.
 Next: commit/push, recreate a clean checkout, and rerun the full SSE packet.
+
+
+## 2026-07-18 — Make PARO resident preparation concurrency-idempotent
+
+The corrected native-width SSE packet exposed a production request-lifecycle
+failure before any c4/c8 result could be retained. Concurrent completion
+streams prepare under the API session lock, then register with the persistent
+model loop after releasing it. The first request therefore became active before
+the next request's preparation. PARO kept its session under
+`generator._resident_model_runner._session`, which server resident-session
+introspection did not inspect, and its owner rejected every `prepare()` while
+rows existed even when the requested capacity and KV policy already matched.
+Completed rows remained token-exact; failed peers returned HTTP 500 with
+`cannot resize the PARO resident model owner while requests are registered`.
+The stopped packet is diagnostic only.
+
+Two RED regressions captured the boundary: server context discovery returned
+no capacity for an owner-held 8,192-token session, and an active owner rejected
+a no-op BF16 512-token prepare against its existing 1,024-token session. The
+owner now delegates active preparation to `_ensure_session()`, whose existing
+contract returns for matching policy/capacity and still rejects a real KV-policy
+or capacity change while rows are registered. Server session discovery now
+follows the resident owner as well, avoiding redundant per-request threadpool
+preparation and making readiness/KV reporting truthful.
+
+Validation: both RED tests fail on `e51f248a` and pass after the fix; full
+`tests/test_generation_qwen35_paro.py` plus `tests/test_server_api.py` pass
+**547/547** under `uv run --extra dev`. `git diff --check` passes. No c=N
+performance result is claimed yet. Next: commit/push this host fix, rerun a
+clean c4 SSE smoke, then restart only the stopped full native/serial packet if
+every stream and reclaimed owner route is exact.
