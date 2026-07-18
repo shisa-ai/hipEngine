@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
 import pytest
 
+import hipengine.runtime.qwen35_paro_batch_width as profile_module
 from hipengine.runtime.qwen35_paro_batch_width import (
     DEFAULT_QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE,
     load_qwen35_paro_native_batch_width_profile,
@@ -70,7 +72,12 @@ def _write_profile(tmp_path: Path, payload: dict[str, object]) -> str:
     return relative
 
 
-def test_qwen35_paro_default_batch_width_profile_is_retained_c248() -> None:
+def test_qwen35_paro_default_batch_width_profile_is_retained_c248_outside_repo(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
     profile = load_qwen35_paro_native_batch_width_profile(
         DEFAULT_QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE,
         backend="hip_gfx1151",
@@ -83,6 +90,36 @@ def test_qwen35_paro_default_batch_width_profile_is_retained_c248() -> None:
     assert tuple(width for width, _cost_ms in profile.native_step_ms) == (2, 4, 8)
     assert profile.min_position == 512
     assert profile.max_position == 647
+
+
+def test_packaged_qwen35_paro_profile_matches_retained_source() -> None:
+    source_path = Path(__file__).resolve().parents[1] / DEFAULT_QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE
+    source = json.loads(source_path.read_text(encoding="utf-8"))
+    packaged_path = profile_module._DEFAULT_QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE_PACKAGE
+    packaged = json.loads(packaged_path.read_text(encoding="utf-8"))
+
+    assert packaged["source_artifact"] == DEFAULT_QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE
+    assert packaged["source_artifact_sha256"] == hashlib.sha256(source_path.read_bytes()).hexdigest()
+    for field in (
+        "performance_claim",
+        "native_batch_width_profile",
+        "protocol",
+    ):
+        assert packaged[field] == source[field]
+    assert packaged["hardware"] == {
+        "backend": source["hardware"]["backend"],
+        "target_arch": source["hardware"]["target_arch"],
+    }
+    assert packaged["model"] == {
+        "snapshot": source["model"]["snapshot"],
+        "quant": source["model"]["quant"],
+        "kv_storage": source["model"]["kv_storage"],
+    }
+    for width in ("1", "2", "4", "8"):
+        assert packaged["rows"][width] == {
+            field: source["rows"][width][field]
+            for field in packaged["rows"][width]
+        }
 
 
 def test_qwen35_paro_batch_width_profile_requires_matching_full_identity(

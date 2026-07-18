@@ -549,12 +549,12 @@ Historical mixed-quant/mixed-scope results remain in
 
 ### gfx1151 / Radeon 8060S PARO direct c2/c4/c8 and production shape catalog (Qwen3.6 35B-A3B, 512/128)
 
-**Status: explicit direct selected-batch c2/c4/c8 is retained; opt-in resident
-OpenAI membership is correctness-green.** Equivalent clean tree `e175e28f`
-(pushed as `8c8cc15e`) generalizes the exact c2 route into true physical c4/c8
-without c2 stacking. G4 adds one shared stable-slot owner for public `LLM`,
-blocking OpenAI, and concurrent SSE; repeated server throughput and production-
-default promotion remain open.
+**Status: direct and resident OpenAI c2/c4/c8 are retained; gfx1151 selects
+them by package default.** Equivalent clean tree `e175e28f` (pushed as
+`8c8cc15e`) generalizes the exact c2 route into true physical c4/c8 without c2
+stacking. G5 attaches those identity-matched widths to one shared stable-slot
+owner for public `LLM`, blocking OpenAI, and concurrent SSE. Explicit legacy
+`=0` flags remain rollback opt-outs.
 
 Three p512/d128 processes per width pass all **5,754/5,754** recorded IDs plus
 all-layer state/KV, sparse lifecycle, ten-prompt category/heldout, primitive,
@@ -568,20 +568,28 @@ and cached-profiler gates.
 | true physical c4 | **100.209 tok/s** | 25.052 tok/s | **retained direct c4; 1.4152x c1** |
 | true physical c8 | **99.943 tok/s** | 12.493 tok/s | **retained direct c8; 1.4114x c1** |
 
-The production table below remains separate because G4 attaches the retained
-widths only under the existing opt-ins and makes no retained server-speed claim.
+The production table below uses the clean blocking F1 wall: 512 raw prompt IDs,
+128 generated IDs/request, one warmup plus three measured bursts, and a fresh
+server per width. All **68/68** warmup/measured/live rows are exact; c1/c2/c4/c8
+scale to **47.124/51.962/60.323/61.253 aggregate tok/s** with <=0.994% variance.
+The complementary exact-roundtrip SSE packet keeps all **100/100** rows exact at
+**36.327/38.666/42.471/41.487/35.633 tok/s** for c1/c2/c4/c8/serial-c8; native
+c8 is **1.164x** serial and live c4->c8 admission is **38.191 tok/s**. A 1+7 c8
+stress adds **72/72** exact rows, and a no-native-flag OpenAI c4 gate run from
+`/tmp` loads the packaged profile, observes physical widths 2/4, and records no
+fallback.
 
 <!-- BEGIN TOPLINE:GFX1151_PARO_CURRENT -->
-| Client c | Production backend groups | Exact classification | Retained aggregate decode |
+| Client c | Production backend groups | Exact classification | Retained OpenAI aggregate |
 | ---: | --- | --- | ---: |
-| 1 | `1` | c1 oracle / accepted | **66.910 tok/s** (`14.946 ms/token`) |
-| 2 | `1+1` | explicitly serial | no separate c>N claim |
-| 3 | `1+1+1` | explicitly serial | no separate c>N claim |
-| 4 | `1+1+1+1` | explicitly serial | no separate c>N claim |
-| 5 | five width-1 groups | explicitly serial | no separate c>N claim |
-| 6 | six width-1 groups | explicitly serial | no separate c>N claim |
-| 7 | seven width-1 groups | explicitly serial | no separate c>N claim |
-| 8 | eight width-1 groups | explicitly serial | no separate c>N claim |
+| 1 | `1` | c1 oracle / accepted | **47.124 tok/s** |
+| 2 | native `2` | retained physical width | **51.962 tok/s** |
+| 3 | `2+1` | exact partition; not native c3 | no separate claim |
+| 4 | native `4` | retained physical width | **60.323 tok/s** |
+| 5 | `4+1` | exact partition; not native c5 | no separate claim |
+| 6 | `4+2` | exact partition; not native c6 | no separate claim |
+| 7 | `4+2+1` | exact partition; not native c7 | no separate claim |
+| 8 | native `8` | retained physical width | **61.253 tok/s** |
 <!-- END TOPLINE:GFX1151_PARO_CURRENT -->
 
 Protocol: W4 PARO/BF16 KV, 40 layers, 8 warmup decode steps, 128 measured
@@ -591,10 +599,11 @@ variance is <=0.054%. c4/c8 are **+41.52%/+41.14% vs c1**; c8 aggregate is
 **0.265% below c4**, while its median model-step time is **0.183% faster than
 two c4 steps**. c3/c5/c6/c7 retain no native-width claim. See the
 [retained direct-c2/c4/c8 artifact](benchmarks/results/2026-07-18-gfx1151-paro-g3-native-c248-direct-retained.json),
-[P1 compact catalog](benchmarks/results/2026-07-11-sol-p1-gfx1151-paro-c1-c8-exact-catalog.json),
-[P2 lifecycle artifact](benchmarks/results/2026-07-11-sol-p2-gfx1151-paro-ragged-lifecycle.json),
-[G4 resident OpenAI correctness artifact](benchmarks/results/2026-07-18-gfx1151-paro-g4-resident-openai-correctness.json),
-and [canonical run record](benchmarks/README.md#paro-concurrency-and-production-routing).
+[G5 blocking F1](benchmarks/results/2026-07-18-gfx1151-paro-g5-f1-server-scaling.json),
+[G5 SSE](benchmarks/results/2026-07-18-gfx1151-paro-g5-sse-server-scaling.json),
+[c8 repeatability](benchmarks/results/2026-07-18-gfx1151-paro-g5-c8-sse-repeatability.json),
+[package-default OpenAI c4](benchmarks/results/2026-07-18-gfx1151-paro-g5-default-openai-c4.json),
+and the [canonical run record](benchmarks/README.md#paro-concurrency-and-production-routing).
 
 ### gfx1151 / Radeon 8060S direct and server GGUF concurrency (Qwen3.6 35B-A3B, 512/128)
 

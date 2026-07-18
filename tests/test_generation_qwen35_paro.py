@@ -65,6 +65,40 @@ def _decode_state(output):
     return output.telemetry.to_json_dict()["decode_state"]
 
 
+def test_gfx1151_native_width_profile_is_package_default_with_env_opt_out(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS", raising=False)
+    monkeypatch.delenv("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE", raising=False)
+    loaded = object()
+    calls: list[dict[str, object]] = []
+
+    def fake_load(_artifact: str, **kwargs):
+        calls.append(dict(kwargs))
+        return loaded
+
+    monkeypatch.setattr(qwen35, "load_qwen35_paro_native_batch_width_profile", fake_load)
+    runner = SimpleNamespace(
+        backend="hip_gfx1151",
+        target_arch="gfx1151",
+        model=Path("/tmp/model"),
+    )
+    kv_policy = resolve_kv_policy("bf16")
+
+    assert qwen35._native_batch_width_profile_for_runner(runner, kv_policy) is loaded
+    assert calls == [
+        {
+            "backend": "hip_gfx1151",
+            "target_arch": "gfx1151",
+            "model_path": Path("/tmp/model"),
+            "kv_dtype": "bf16",
+        }
+    ]
+
+    monkeypatch.setenv("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE", "0")
+    assert qwen35._native_batch_width_profile_for_runner(runner, kv_policy) is None
+
+
 def test_paro_resident_prepare_is_idempotent_while_requests_are_registered() -> None:
     owner = qwen35.Qwen35ParoResidentModelRunner.__new__(
         qwen35.Qwen35ParoResidentModelRunner

@@ -6,13 +6,15 @@ import json
 import math
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
 
 from hipengine.dispatch import NativeBatchWidthProfile
 
 
 DEFAULT_QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE = (
     "benchmarks/results/2026-07-18-gfx1151-paro-g3-native-c248-direct-retained.json"
+)
+_DEFAULT_QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE_PACKAGE = (
+    Path(__file__).with_name("profiles") / "gfx1151_paro_native_c248.json"
 )
 QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE_ENV = "HIPENGINE_QWEN35_NATIVE_BATCH_WIDTH_PROFILE"
 QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE_SCHEMA = 2
@@ -85,12 +87,24 @@ def load_qwen35_paro_native_batch_width_profile(
     """
 
     path = _retained_results_path(artifact_path)
-    if not path.is_file():
+    profile_path = path
+    packaged_default = False
+    if not profile_path.is_file() and artifact_path == DEFAULT_QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE:
+        profile_path = _DEFAULT_QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE_PACKAGE
+        packaged_default = True
+    if not profile_path.is_file():
         return _blocked_profile(artifact_path, ["native batch width profile does not exist"])
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload = json.loads(profile_path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         return _blocked_profile(artifact_path, [f"native batch width profile is not readable JSON: {exc}"])
+    if packaged_default and (
+        not isinstance(payload, Mapping) or payload.get("source_artifact") != artifact_path
+    ):
+        return _blocked_profile(
+            artifact_path,
+            ["packaged native batch width profile source artifact does not match the default"],
+        )
     if not isinstance(payload, Mapping):
         return _blocked_profile(artifact_path, ["native batch width profile must contain a JSON object"])
 

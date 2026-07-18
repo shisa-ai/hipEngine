@@ -75,6 +75,12 @@ GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT = 32768
 # full-attention execution. Diagnostic c2 row chunking changes row-local
 # numerics at these widths and must therefore remain an explicit override.
 PARO_FULL_ATTN_NATIVE_EXACT_WIDTHS = frozenset({4, 8})
+# G5 retains p512/d128 blocking and SSE c1/c2/c4/c8 scaling, delayed c4->c8
+# admission, serial-c8 control, and repeated c8 exactness. Package capabilities
+# select those identity-matched widths by default without branching in model or
+# engine code; the legacy env flags remain explicit rollback opt-outs.
+PARO_RETAINED_BATCH_DEFAULTS = True
+PARO_NATIVE_BATCH_DECODE_DEFAULT = True
 _SOURCE_BACKEND = "hip_gfx1100"
 _GFX1151_OVERRIDES = {
     # The new scalar-tree c1-exact context kernel retained for gfx1100/PARO
@@ -162,6 +168,8 @@ __all__ = [
     "GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS",
     "GGUF_ROUTER_F32_BF16_HIDDEN_THREADS",
     "PARO_FULL_ATTN_NATIVE_EXACT_WIDTHS",
+    "PARO_NATIVE_BATCH_DECODE_DEFAULT",
+    "PARO_RETAINED_BATCH_DEFAULTS",
     "TARGET_ARCH",
     "register_backend_kernels",
     "register_gfx1151_kernels",
