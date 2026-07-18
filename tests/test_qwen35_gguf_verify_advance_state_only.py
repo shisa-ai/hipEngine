@@ -1,11 +1,12 @@
-"""Exactness gate for verify_target_block(advance_state_only=True).
+"""GGUF verifier state-advance and direct-commit contract gates.
 
-Partial-accept rollback (task #4) replays the accepted prefix only to advance the
-GDN linear / KV state; its target tokens are already known from the first
-full-block pass and discarded. ``advance_state_only=True`` skips the replay's
-per-row LM-head vocab GEMV + greedy sampling (~16% of the forward). This test
-asserts that skip is EXACT: the committed linear state and the FP32 hidden rows
-are bit-identical to a full replay, and the reused first-pass tokens match.
+``advance_state_only=True`` must be byte-identical to the corresponding full
+replay because it skips only LM-head sampling. Serial-exact and native verifier
+modes remain byte-exact to scalar decode. The optimized bulk verifier uses the
+repository's peer-aligned reassociated GDN contract, so its rollback-slot gate
+is prefix equivalence: a captured row committed from a wider block must match
+an independently executed bulk prefix under the production no-copy capture
+mode, including hidden seed and every Conv/GDN state element.
 """
 
 from __future__ import annotations
@@ -144,8 +145,9 @@ def test_serial_exact_advance_state_only_matches_full_replay(monkeypatch) -> Non
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
 @pytest.mark.skipif(not MODEL.exists(), reason=f"model {MODEL} not present")
-def test_direct_block_state_commit_row0_matches_serial(monkeypatch) -> None:
+def test_bulk_direct_commit_row0_matches_independent_bulk_prefix(monkeypatch) -> None:
     monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "1")
+    monkeypatch.setenv("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN", "1")
     prompt_ids = [760, 4087, 369, 220, 16, 17, 18, 19]
     block_rows = 5
 
@@ -162,27 +164,34 @@ def test_direct_block_state_commit_row0_matches_serial(monkeypatch) -> None:
             current = int(step.token_id)
 
         session._restore_linear_state_snapshot(snapshot, position=prefix_position)
-        ref = session.step(int(first.token_id), return_logits=False, capture_hidden_seed_fp32=True)
-        ref_hidden = _read_hidden_seed(session)
-        ref_state = _read_linear_state(session)
+        prefix = session.verify_target_block(
+            block_inputs[:1],
+            capture_linear_state_rows=True,
+        )
+        prefix_state = _read_linear_state(session)
 
         session._restore_linear_state_snapshot(snapshot, position=prefix_position)
-        block = session.verify_target_block(block_inputs, capture_linear_state_rows=True)
+        block = session.verify_target_block(
+            block_inputs,
+            capture_linear_state_rows=True,
+            defer_linear_state_commit=True,
+        )
         assert block.linear_state_rows_captured
         session._commit_verify_linear_state_row(0, position=prefix_position + 1)
         direct_state = _read_linear_state(session)
 
         session._free_linear_state_snapshot(snapshot)
 
-    assert int(block.token_ids[0]) == int(ref.token_id)
-    np.testing.assert_array_equal(block.hidden_seeds[0], ref_hidden)
-    np.testing.assert_array_equal(ref_state, direct_state)
+    assert int(block.token_ids[0]) == int(prefix.token_ids[0])
+    np.testing.assert_array_equal(block.hidden_seeds[0], prefix.hidden_seeds[0])
+    np.testing.assert_array_equal(prefix_state, direct_state)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
 @pytest.mark.skipif(not MODEL.exists(), reason=f"model {MODEL} not present")
 def test_branch_block_restore_replay_supports_corrective_step(monkeypatch) -> None:
     monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "1")
+    monkeypatch.setenv("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN", "1")
     prompt_ids = [760, 4087, 369, 220, 16, 17, 18, 19]
 
     with Qwen35GGUFResidentSession(MODEL, max_sequence_length=256) as session:
@@ -258,6 +267,7 @@ def test_serial_exact_direct_commit_matches_wrong_branch(monkeypatch) -> None:
 @pytest.mark.skipif(not MODEL.exists(), reason=f"model {MODEL} not present")
 def test_bulk_direct_commit_matches_wrong_branch(monkeypatch) -> None:
     monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "1")
+    monkeypatch.setenv("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN", "1")
     prompt_ids = [760, 4087, 369, 220, 16, 17, 18, 19]
 
     with Qwen35GGUFResidentSession(MODEL, max_sequence_length=256) as session:
@@ -265,32 +275,43 @@ def test_bulk_direct_commit_matches_wrong_branch(monkeypatch) -> None:
         prefix_position = int(session.position)
         snapshot = session._linear_state_snapshot()
 
-        ref0 = session.step(int(first.token_id), return_logits=False, capture_hidden_seed_fp32=True)
-        branch_token = int(ref0.token_id)
+        prefix = session.verify_target_block(
+            [int(first.token_id)],
+            capture_linear_state_rows=True,
+        )
+        branch_token = int(prefix.token_ids[0])
         wrong_draft_child = (branch_token + 1) % int(session.runner.vocab_size)
-        ref0_hidden = _read_hidden_seed(session)
-        ref0_state = _read_linear_state(session)
-        ref1 = session.step(branch_token, return_logits=False, capture_hidden_seed_fp32=True)
-        ref1_state = _read_linear_state(session)
+        prefix_state = _read_linear_state(session)
+        prefix_next = session.step(
+            branch_token,
+            return_logits=False,
+            capture_hidden_seed_fp32=True,
+        )
+        prefix_next_state = _read_linear_state(session)
 
         session._restore_linear_state_snapshot(snapshot, position=prefix_position)
         block = session.verify_target_block(
             [int(first.token_id), wrong_draft_child],
             capture_linear_state_rows=True,
+            defer_linear_state_commit=True,
         )
         assert block.linear_state_rows_captured
         assert int(block.token_ids[0]) == branch_token
         session._commit_verify_linear_state_row(0, position=prefix_position + 1)
-        direct0_state = _read_linear_state(session)
-        direct1 = session.step(branch_token, return_logits=False, capture_hidden_seed_fp32=True)
-        direct1_state = _read_linear_state(session)
+        direct_state = _read_linear_state(session)
+        direct_next = session.step(
+            branch_token,
+            return_logits=False,
+            capture_hidden_seed_fp32=True,
+        )
+        direct_next_state = _read_linear_state(session)
 
         session._free_linear_state_snapshot(snapshot)
 
-    np.testing.assert_array_equal(block.hidden_seeds[0], ref0_hidden)
-    np.testing.assert_array_equal(ref0_state, direct0_state)
-    assert int(direct1.token_id) == int(ref1.token_id)
-    np.testing.assert_array_equal(ref1_state, direct1_state)
+    np.testing.assert_array_equal(block.hidden_seeds[0], prefix.hidden_seeds[0])
+    np.testing.assert_array_equal(prefix_state, direct_state)
+    assert int(direct_next.token_id) == int(prefix_next.token_id)
+    np.testing.assert_array_equal(prefix_next_state, direct_next_state)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
@@ -337,8 +358,9 @@ def test_native_bulk_direct_commit_row1_matches_serial(monkeypatch) -> None:
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
 @pytest.mark.skipif(not MODEL.exists(), reason=f"model {MODEL} not present")
-def test_bulk_direct_commit_row1_matches_serial(monkeypatch) -> None:
+def test_bulk_direct_commit_row1_matches_bulk_final_state(monkeypatch) -> None:
     monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "1")
+    monkeypatch.setenv("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN", "1")
     prompt_ids = [760, 4087, 369, 220, 16, 17, 18, 19]
 
     with Qwen35GGUFResidentSession(MODEL, max_sequence_length=256) as session:
@@ -346,31 +368,42 @@ def test_bulk_direct_commit_row1_matches_serial(monkeypatch) -> None:
         prefix_position = int(session.position)
         snapshot = session._linear_state_snapshot()
 
-        ref0 = session.step(int(first.token_id), return_logits=False, capture_hidden_seed_fp32=True)
-        ref0_hidden = _read_hidden_seed(session)
-        ref1 = session.step(int(ref0.token_id), return_logits=False, capture_hidden_seed_fp32=True)
-        ref1_hidden = _read_hidden_seed(session)
-        ref1_state = _read_linear_state(session)
-        ref2 = session.step(int(ref1.token_id), return_logits=False, capture_hidden_seed_fp32=True)
-        ref2_state = _read_linear_state(session)
+        first_step = session.step(int(first.token_id), return_logits=False)
+        block_inputs = [int(first.token_id), int(first_step.token_id)]
 
-        block_inputs = [int(first.token_id), int(ref0.token_id)]
         session._restore_linear_state_snapshot(snapshot, position=prefix_position)
-        block = session.verify_target_block(
+        full = session.verify_target_block(
             block_inputs,
             capture_linear_state_rows=True,
         )
-        assert block.linear_state_rows_captured
+        full_state = _read_linear_state(session)
+        full_next = session.step(
+            int(full.token_ids[-1]),
+            return_logits=False,
+            capture_hidden_seed_fp32=True,
+        )
+        full_next_state = _read_linear_state(session)
+
+        session._restore_linear_state_snapshot(snapshot, position=prefix_position)
+        direct = session.verify_target_block(
+            block_inputs,
+            capture_linear_state_rows=True,
+            defer_linear_state_commit=True,
+        )
+        assert direct.linear_state_rows_captured
         session._commit_verify_linear_state_row(1, position=prefix_position + 2)
-        direct1_state = _read_linear_state(session)
-        direct2 = session.step(int(ref1.token_id), return_logits=False, capture_hidden_seed_fp32=True)
-        direct2_state = _read_linear_state(session)
+        direct_state = _read_linear_state(session)
+        direct_next = session.step(
+            int(direct.token_ids[-1]),
+            return_logits=False,
+            capture_hidden_seed_fp32=True,
+        )
+        direct_next_state = _read_linear_state(session)
 
         session._free_linear_state_snapshot(snapshot)
 
-    assert [int(token) for token in block.token_ids] == [int(ref0.token_id), int(ref1.token_id)]
-    np.testing.assert_array_equal(block.hidden_seeds[0], ref0_hidden)
-    np.testing.assert_array_equal(block.hidden_seeds[1], ref1_hidden)
-    np.testing.assert_array_equal(ref1_state, direct1_state)
-    assert int(direct2.token_id) == int(ref2.token_id)
-    np.testing.assert_array_equal(ref2_state, direct2_state)
+    assert [int(token) for token in direct.token_ids] == [int(token) for token in full.token_ids]
+    np.testing.assert_array_equal(direct.hidden_seeds, full.hidden_seeds)
+    np.testing.assert_array_equal(full_state, direct_state)
+    assert int(direct_next.token_id) == int(full_next.token_id)
+    np.testing.assert_array_equal(full_next_state, direct_next_state)
