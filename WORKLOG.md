@@ -164123,3 +164123,68 @@ prior gfx1151 work. Updated `docs/KERNELS.md` and compact correctness artifact
 `benchmarks/results/2026-07-19-gfx1151-gguf-f0-c2-fixed256-correctness.json`.
 No performance row is promoted. Next: commit this correctness unit, then rerun
 only the interrupted clean F0 direct/server/profiler packet from that revision.
+
+## 2026-07-19 — Re-certify current-main gfx1151 GGUF serving
+
+Completed focused F0 on a clean detached worktree at repaired commit
+`ef46ee8cb100c291495c233024aa9ca492aea5b6` under Radeon 8060S/gfx1151,
+TheRock HIP 7.15, TuneD `accelerator-performance`, normal HWS,
+`GPU_MAX_HW_QUEUES=1`, and `amd_iommu=off`. The model is
+Qwen3.6-35B-A3B UD-Q4_K_M, sampled SHA-256
+`936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb`,
+with BF16 KV, greedy decode, and cached-only JIT builds. This rerun is a
+current-tree freshness packet after shared PARO owner/API changes and the
+focused c2 correctness repair; it preserves the prior complete category,
+lifecycle, arbitrary-C, and compaction evidence instead of repeating unrelated
+expensive gates.
+
+The direct command was:
+
+```text
+/home/lhl/hipEngine-main/.venv/bin/python scripts/gguf_packed_ar_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --configurations c1,c2,c4,native_c8,chunked_c8,serial_c4 --prompt-token-id 9707 --prompt-length 512 --decode-steps 128 --warmup-runs 1 --measured-runs 3 --compiler-version-file /tmp/gfx1151-gguf-f0-clean-ef46ee8c/hipcc-version.txt --require-cached-build --json /tmp/gfx1151-gguf-f0-clean-ef46ee8c/direct.json
+```
+
+All cross-route and repeated trajectories pass. Aggregate decode is
+**50.291/72.262/102.663/128.075/102.724/50.235 tok/s** for
+c1/c2/c4/native-c8/chunked-c8/serial-c4. Native c8 is **2.547x c1**,
+**1.247x c4+c4 (+24.68%)**, and **2.550x** the serial-c4 aggregate rate; its
+per-request rate is **16.009 tok/s**. Maximum rate stdev/median is **0.039%**.
+The raw direct source is 1,338,491 bytes, SHA-256
+`324a8f09777c911cac0f2afb11f522722a6d6c276df87daff9ac3b1656e67341`.
+
+The real in-process FastAPI SSE command was:
+
+```text
+/home/lhl/hipEngine-main/.venv/bin/python scripts/gguf_live_server_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --configurations c1,packed_c8,packed_c9,packed_c13,serial_c13 --prompt-length 512 --decode-tokens 128 --warmup-runs 1 --measured-runs 3 --live-decode-tokens 128 --live-initial-rows 8 --live-tail-rows 5 --prefill-chunk-size 256 --batch-window-ms 20 --compiler-version-file /tmp/gfx1151-gguf-f0-clean-ef46ee8c/hipcc-version.txt --require-cached-build --json /tmp/gfx1151-gguf-f0-clean-ef46ee8c/server.json
+```
+
+Logical c1/c8/c9/c13/serial-c13 is
+**15.798/86.358/57.691/73.065/43.116 aggregate generated tok/s**. Grouped C13
+is **4.625x logical c1** and **1.695x serial (+69.46%)**. All **189/189** static
+request rows preserve exact resident prompt IDs, generated IDs, usage, finish
+metadata, and ownership; maximum static rate stdev/median is **0.485%**. The
+live c8-to-c13 trace emits **1,664/1,664** exact generated IDs at
+**71.675 tok/s**, observes logical occupancy 5/8/13, and drains final ownership
+to zero. Crucially, logical c1 records `physical_widths=[8]`, active mask
+`10000000`, **127 packed decode steps**, and zero native-c1 decode steps. It is
+the honest masked-c8 F0 control, not the F2 production target. The raw server
+source is 26,128,753 bytes, SHA-256
+`e38f0c2e4701c9f880f5d546944c7d636e293dd5497824e0ec2fc1f7c5cc3f18`.
+
+The cached-only paired c1/c8 `rocprofv3 --kernel-trace --marker-trace` route
+census used `scripts/gguf_packed_ar_rocprof.py` with the explicit TheRock
+`rocprofv3` and ROCTX SDK paths after same-worktree warmbuild. The retained c8
+marker window contains one capture, one replay, **748 packed-native / 0
+row-local / 0 steady-copy dispatches**, zero complete-c1 session/layer replays,
+and ten full-attention context launches at workgroup X 256 / grid Y 8. Profiler
+durations are diagnostic only. Raw profiler JSON is 86,371 bytes, SHA-256
+`bfc1df47f9ccf689b5ce136070fccbe11a838b197f24ee00230d4a065fae26ca`.
+
+Compared with the prior retained packet, direct c8 moves **127.902 -> 128.075
+(+0.14%)**, grouped C13 **72.522 -> 73.065 (+0.75%)**, and serial C13
+**42.764 -> 43.116 (+0.82%)**. These are within ordinary run variance and are
+not causally attributed to the c2 repair. Added compact artifact
+`benchmarks/results/2026-07-19-gfx1151-gguf-f0-current-main-recertification.json`
+and refreshed `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, root README
+exports, and `docs/CONCURRENCY.md`. F0 is closed; F2 occupancy-adaptive
+c1/c2/c4/c8 selection is next.

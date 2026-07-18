@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-19
+
+- [current-main gfx1151 GGUF F0 recertification] Radeon 8060S/gfx1151 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV p512/d128 direct native-c8 **127.902 -> 128.075 aggregate tok/s (+0.14%)** and real SSE grouped C13 **72.522 -> 73.065 (+0.75%)** after the focused physical-c2 exactness repair; direct c1/c2/c4/c8 is **50.291/72.262/102.663/128.075**, all cross-route trajectories and **189/189** server rows are exact, c8 remains **2.547x c1 / +24.68% over c4+c4**, live c8->c13 is **71.675** with **1,664/1,664** exact IDs, and the cached census is **748 packed-native / 0 row-local / 0 copies**. The changes versus prior retained rows are within ordinary variance and are not attributed causally to the repair; logical c1 remains masked physical c8 pending F2. `benchmarks/results/2026-07-19-gfx1151-gguf-f0-current-main-recertification.json`.
+
 ## 2026-07-18
 
 - [retained gfx1151 PARO resident server scaling and package default] Radeon 8060S/gfx1151 Qwen3.6-35B-A3B W4-PARO/BF16-KV p512/d128 moves public/OpenAI **width-1-only -> native c2/c4/c8**: blocking c1 **47.124 -> 51.962/60.323/61.253 aggregate tok/s (+10.27%/+28.01%/+29.98%)** with <=0.994% variance and **68/68** exact rows; real FastAPI SSE c1/c2/c4/c8/serial-c8 is **36.327/38.666/42.471/41.487/35.633**, so c8 is **+16.43%** over serial, all **100/100** rows plus **72/72** c8 stress rows are exact, and live c4->c8 reaches **38.191**. Backend-package capabilities now select the retained profile by default; a no-flag c4 OpenAI gate from `/tmp` loads the packaged profile, observes native widths 2/4, keeps 4/4 rows exact, and drains with no fallback. `benchmarks/results/2026-07-18-gfx1151-paro-g5-f1-server-scaling.json`, `benchmarks/results/2026-07-18-gfx1151-paro-g5-sse-server-scaling.json`, `benchmarks/results/2026-07-18-gfx1151-paro-g5-c8-sse-repeatability.json`, `benchmarks/results/2026-07-18-gfx1151-paro-g5-default-openai-c4.json`.
