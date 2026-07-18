@@ -164697,3 +164697,9 @@ completion, and generated-token counter disagreement. RED is the clean smoke's
 single `generated_token_mismatch`; GREEN host validation is **8 passed** plus
 Python compilation and `git diff --check`. A clean focused GPU rerun remains
 required.
+
+Added `--workloads` plus `--skip-tuning` so the repaired cancellation node can
+be rerun without repeating the already-passing 114-second broad matrix. A
+subset can pass for focused validation but is explicitly
+`complete_packet=false`, `performance_claim=false`, and never `accepted`.
+Selector RED was the missing import; GREEN host validation is **9 passed**.
