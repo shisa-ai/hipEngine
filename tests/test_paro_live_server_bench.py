@@ -81,6 +81,43 @@ def test_sse_parser_accepts_payload_and_done() -> None:
     assert SCRIPT._parse_sse_line("event: ignored") is None
 
 
+def test_observed_native_widths_ignore_truthful_serial_edges() -> None:
+    exact_rows = [
+        {
+            "route": {
+                "scheduler_chunks": [
+                    {
+                        "chunk": {
+                            "telemetry": {
+                                "decode_state": {"native_caware_decode": False},
+                                "diagnostics": {"last_width_plan": {"groups": [{"mode": "serial", "width": 1}]}},
+                            }
+                        }
+                    },
+                    {
+                        "chunk": {
+                            "telemetry": {
+                                "decode_state": {"native_caware_decode": True},
+                                "diagnostics": {"last_width_plan": {"groups": [{"mode": "native", "width": 4}]}},
+                            }
+                        }
+                    },
+                    {
+                        "chunk": {
+                            "telemetry": {
+                                "decode_state": {"native_caware_decode": True},
+                                "diagnostics": {"last_width_plan": {"groups": [{"mode": "native", "width": 8}]}},
+                            }
+                        }
+                    },
+                ]
+            }
+        },
+        {"route": {"scheduler_chunks": []}},
+    ]
+    assert SCRIPT._observed_native_widths(exact_rows) == (4, 8)
+
+
 def test_counter_delta_includes_new_and_removed_keys() -> None:
     assert SCRIPT._counter_delta({"a": 2, "b": 1}, {"a": 5, "c": 4}) == {
         "a": 3,

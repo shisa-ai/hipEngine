@@ -184,6 +184,34 @@ def _parse_sse_line(line: str | bytes) -> Any | None:
     return "[DONE]" if data == "[DONE]" else json.loads(data)
 
 
+def _observed_native_widths(exact_rows: Sequence[Mapping[str, Any]]) -> tuple[int, ...]:
+    widths: set[int] = set()
+    for exact_row in exact_rows:
+        route = exact_row.get("route")
+        if not isinstance(route, Mapping):
+            continue
+        for item in route.get("scheduler_chunks", ()):
+            if not isinstance(item, Mapping):
+                continue
+            chunk = item.get("chunk")
+            telemetry = chunk.get("telemetry") if isinstance(chunk, Mapping) else None
+            if not isinstance(telemetry, Mapping):
+                continue
+            decode_state = telemetry.get("decode_state")
+            if not isinstance(decode_state, Mapping) or decode_state.get("native_caware_decode") is not True:
+                continue
+            diagnostics = telemetry.get("diagnostics")
+            plan = diagnostics.get("last_width_plan") if isinstance(diagnostics, Mapping) else None
+            if not isinstance(plan, Mapping):
+                continue
+            for group in plan.get("groups", ()):
+                if isinstance(group, Mapping) and group.get("mode") == "native":
+                    width = int(group.get("width", 0))
+                    if width > 1:
+                        widths.add(width)
+    return tuple(sorted(widths))
+
+
 def _stream_one(
     client: TestClient,
     *,
@@ -447,25 +475,40 @@ def _run_sample(
         and int(after["runner"]["model_runner"]["active_requests"]) == 0
     )
     last_plan = after["runner"]["routes"]["last_width_plan"]
-    if live_initial_rows is not None:
-        route_ok = int(route_delta["native_group_calls"]) > 0
-    elif config.native and rows > 1:
+    observed_native_widths = _observed_native_widths(exact_rows)
+    native_steps_by_row = [
+        int(row["route"].get("native_decode_steps", 0))
+        for row in exact_rows
+        if isinstance(row.get("route"), Mapping)
+    ]
+    serial_steps_by_row = [
+        int(row["route"].get("serial_decode_steps", 0))
+        for row in exact_rows
+        if isinstance(row.get("route"), Mapping)
+    ]
+    if config.native and rows > 1:
+        required_native_widths = {rows}
+        if live_initial_rows is not None and int(live_initial_rows) > 1:
+            required_native_widths.add(int(live_initial_rows))
         route_ok = bool(
             int(route_delta["native_group_calls"]) > 0
-            and int(route_delta["serial_row_calls"]) == 0
-            and list(last_plan.get("group_widths", ())) == [rows]
-            and all(not bool(row["route"]["serial_decode_fallback"]) for row in exact_rows)
+            and required_native_widths.issubset(observed_native_widths)
+            and len(native_steps_by_row) == rows
+            and all(value > 0 for value in native_steps_by_row)
         )
     elif config.native:
         route_ok = bool(
             int(route_delta["native_group_calls"]) == 0
             and int(route_delta["serial_row_calls"]) > 0
+            and native_steps_by_row == [0]
         )
     else:
         route_ok = bool(
             int(route_delta["native_group_calls"]) == 0
             and int(route_delta["serial_row_calls"]) > 0
-            and all(bool(row["route"]["serial_decode_fallback"]) for row in exact_rows)
+            and len(native_steps_by_row) == rows
+            and all(value == 0 for value in native_steps_by_row)
+            and all(value > 0 for value in serial_steps_by_row)
         )
     latency = _latency_delta(before_latency, after["loop"]["latency_seconds"])
     passed = bool(
@@ -504,6 +547,10 @@ def _run_sample(
             "passed": route_ok,
             "counts_delta": route_delta,
             "fallback_reasons_delta": fallback_delta,
+            "observed_native_widths": list(observed_native_widths),
+            "native_decode_steps_by_row": native_steps_by_row,
+            "serial_decode_steps_by_row": serial_steps_by_row,
+            "truthful_edge_serial_steps": sum(serial_steps_by_row),
             "last_width_plan": copy.deepcopy(last_plan),
             "last_execution_manifest": copy.deepcopy(
                 after["runner"]["routes"]["last_execution_manifest"]
