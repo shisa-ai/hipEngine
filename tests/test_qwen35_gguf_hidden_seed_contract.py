@@ -1197,6 +1197,32 @@ def test_resident_session_stages_current_hidden_seed_as_verify_row_without_gpu_i
         session.fp32_verify_hidden_seed_ptr(3)
 
 
+def test_resident_session_describes_external_native_verify_seed_rows() -> None:
+    session = object.__new__(Qwen35GGUFResidentSession)
+    session.runner = SimpleNamespace(hidden_size=8)
+    session._verify_hidden_seed_rows_populated = 0
+
+    seed = session.mtp_verify_seed(
+        2,
+        token_id=123,
+        position=45,
+        hidden_seed_base_ptr=0x4000,
+        hidden_seed_row_count=3,
+    )
+
+    assert seed.hidden_ptr == 0x4000 + 2 * 8 * 4
+    assert seed.hidden_contract.ready_for_mtp
+    assert seed.hidden_contract.source_buffer == "Qwen35GGUFNativeAcceptCommitResult.hidden_seed_rows_ptr"
+    with pytest.raises(ValueError, match="outside external hidden rows"):
+        session.mtp_verify_seed(
+            3,
+            token_id=123,
+            position=45,
+            hidden_seed_base_ptr=0x4000,
+            hidden_seed_row_count=3,
+        )
+
+
 def test_hidden_seed_contract_rejects_pre_norm_or_wrong_compatibility() -> None:
     with pytest.raises(ValueError, match="provenance must be post_output_norm"):
         Qwen35GGUFHiddenSeedContract(

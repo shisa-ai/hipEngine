@@ -6,8 +6,9 @@ provider owns a state-generation-bound graph executable and its allocations.
 The launcher owns nothing; it performs one native call that submits the graph
 and synchronizes the control block's session-owned stream.
 
-Proposal and accept/commit remain on the exact Python path.  Broader shapes,
-dynamic position/cursor handling, cancellation, deadlines, and complete cycles
+The N2 bucket may also capture device acceptance, selected state/hidden commit,
+and cursor update behind the same submission. Proposal remains on the exact
+Python path. Broader shapes, cancellation, deadlines, and complete cycles
 belong to later ABI stages and must fall back instead of being approximated.
 """
 
@@ -242,8 +243,14 @@ def create_native_spec_target_graph_launcher(
 
 def _validate_small_chain_target(control: NativeSpecCycleControl) -> None:
     shape = control.shape
-    if control.stages != NativeSpecCycleStage.VERIFY:
-        raise ValueError("native target graph supports VERIFY only")
+    n2_stages = (
+        NativeSpecCycleStage.VERIFY
+        | NativeSpecCycleStage.ACCEPT
+        | NativeSpecCycleStage.COMMIT
+        | NativeSpecCycleStage.UPDATE_CURSORS
+    )
+    if control.stages not in {NativeSpecCycleStage.VERIFY, n2_stages}:
+        raise ValueError("native target graph supports VERIFY or N2 accept/commit stages")
     candidate_rows = int(shape.row_count) - 1
     if (
         shape.request_count != 1
@@ -254,8 +261,15 @@ def _validate_small_chain_target(control: NativeSpecCycleControl) -> None:
         or shape.candidate_budget != candidate_rows
     ):
         raise ValueError("native target graph supports one B1/B2 chain bucket (1 request, 2-3 rows)")
-    if shape.metadata_dtype is not NativeSpecCycleDType.INT64:
-        raise ValueError("native target graph requires INT64 metadata")
+    expected_metadata_dtype = (
+        NativeSpecCycleDType.INT64
+        if control.stages == NativeSpecCycleStage.VERIFY
+        else NativeSpecCycleDType.INT32
+    )
+    if shape.metadata_dtype is not expected_metadata_dtype:
+        raise ValueError(
+            f"native target graph {control.stages!s} requires {expected_metadata_dtype.name} metadata"
+        )
     if shape.hidden_dtype is not NativeSpecCycleDType.FP32:
         raise ValueError("native target graph requires FP32 hidden rows")
     if shape.kv_dtype is not NativeSpecCycleDType.BF16:

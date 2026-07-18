@@ -904,6 +904,22 @@ def test_arg_parser_exposes_native_spec_target_cycle_diagnostic() -> None:
     assert args.native_spec_target_cycle is True
 
 
+def test_arg_parser_exposes_native_spec_n2_device_accept_commit() -> None:
+    args = build_arg_parser().parse_args(
+        [
+            "--target-block-verify",
+            "--native-spec-target-cycle",
+            "--native-spec-device-accept-commit",
+            "--resident-mtp-draft",
+            "--resident-mtp-device-seed",
+        ]
+    )
+
+    assert args.native_spec_target_cycle is True
+    assert args.native_spec_device_accept_commit is True
+    assert args.resident_mtp_device_seed is True
+
+
 def test_arg_parser_exposes_record_draft_confidence_diagnostic() -> None:
     args = build_arg_parser().parse_args(["--record-draft-confidence"])
 

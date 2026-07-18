@@ -45,6 +45,9 @@ __global__ void dflash_accept_chain_i32_kernel(
     int32_t* __restrict__ packed_payload,
     int64_t* __restrict__ resident_positions,
     int64_t* __restrict__ resident_contexts,
+    int32_t* __restrict__ visible_output_ids,
+    int32_t* __restrict__ visible_output_lengths,
+    int32_t cursor_offset,
     int64_t rows,
     int64_t request_count,
     int64_t output_stride) {
@@ -63,6 +66,9 @@ __global__ void dflash_accept_chain_i32_kernel(
 
   for (int64_t slot = 0; slot < output_stride; ++slot) {
     committed_output_ids[output_base + slot] = -1;
+    if (visible_output_ids != nullptr) {
+      visible_output_ids[output_base + slot] = -1;
+    }
   }
   committed_output_ids[output_base] = token_ids[root_row];
 
@@ -103,6 +109,9 @@ __global__ void dflash_accept_chain_i32_kernel(
     if (accepted < output_stride) {
       committed_output_ids[output_base + accepted] = token_ids[row];
     }
+    if (visible_output_ids != nullptr && accepted <= output_stride) {
+      visible_output_ids[output_base + accepted - 1] = token_ids[row];
+    }
   }
 
   accepted_counts[request_index] = accepted;
@@ -113,8 +122,15 @@ __global__ void dflash_accept_chain_i32_kernel(
   next_tokens[request_index] = (budget >= 0 && accepted >= budget) ? -1 : target_top1[row];
   full_accept[request_index] = accepted == max_depth ? 1 : 0;
   committed_output_lengths[request_index] = accepted + 1;
+  const bool append_next = next_tokens[request_index] >= 0 && accepted < output_stride;
+  if (visible_output_ids != nullptr && append_next) {
+    visible_output_ids[output_base + accepted] = next_tokens[request_index];
+  }
+  if (visible_output_lengths != nullptr) {
+    visible_output_lengths[request_index] = accepted + (append_next ? 1 : 0);
+  }
   if (resident_positions != nullptr && resident_contexts != nullptr) {
-    const int64_t position = static_cast<int64_t>(commit_position);
+    const int64_t position = static_cast<int64_t>(commit_position) + static_cast<int64_t>(cursor_offset);
     resident_positions[request_index] = position;
     resident_contexts[request_index] = position + 1;
   }
@@ -185,6 +201,9 @@ extern "C" int hipengine_dflash_accept_chain_i32(
       nullptr,
       nullptr,
       nullptr,
+      nullptr,
+      nullptr,
+      0,
       rows,
       request_count,
       output_stride);
@@ -241,6 +260,9 @@ extern "C" int hipengine_dflash_accept_chain_i32_packed(
       packed_payload,
       nullptr,
       nullptr,
+      nullptr,
+      nullptr,
+      0,
       rows,
       request_count,
       output_stride);
@@ -300,6 +322,75 @@ extern "C" int hipengine_dflash_accept_chain_i32_packed_update_state(
       packed_payload,
       resident_positions,
       resident_contexts,
+      nullptr,
+      nullptr,
+      0,
+      rows,
+      request_count,
+      output_stride);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dflash_accept_chain_i32_native_cycle(
+    const int32_t* token_ids,
+    const int32_t* positions,
+    const int32_t* parent_rows,
+    const int32_t* draft_depths,
+    const uint8_t* active_mask,
+    const int32_t* target_top1,
+    const int32_t* remaining_decode,
+    int32_t* accepted_counts,
+    int32_t* commit_rows,
+    int32_t* commit_tokens,
+    int32_t* commit_positions,
+    int32_t* next_tokens,
+    uint8_t* full_accept,
+    int32_t* committed_output_ids,
+    int32_t* committed_output_lengths,
+    int32_t* packed_payload,
+    int32_t* visible_output_ids,
+    int32_t* visible_output_lengths,
+    int64_t* resident_positions,
+    int64_t* resident_contexts,
+    int32_t cursor_offset,
+    int64_t rows,
+    int64_t request_count,
+    int64_t output_stride,
+    hipStream_t stream) {
+  if (!valid_accept_shape(rows, request_count, output_stride) || packed_payload == nullptr ||
+      visible_output_ids == nullptr || visible_output_lengths == nullptr || resident_positions == nullptr ||
+      resident_contexts == nullptr || cursor_offset < 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 128;
+  const int blocks = static_cast<int>((request_count + threads - 1) / threads);
+  hipLaunchKernelGGL(
+      dflash_accept_chain_i32_kernel,
+      dim3(static_cast<unsigned int>(blocks)),
+      dim3(threads),
+      0,
+      stream,
+      token_ids,
+      positions,
+      parent_rows,
+      draft_depths,
+      active_mask,
+      target_top1,
+      remaining_decode,
+      accepted_counts,
+      commit_rows,
+      commit_tokens,
+      commit_positions,
+      next_tokens,
+      full_accept,
+      committed_output_ids,
+      committed_output_lengths,
+      packed_payload,
+      resident_positions,
+      resident_contexts,
+      visible_output_ids,
+      visible_output_lengths,
+      cursor_offset,
       rows,
       request_count,
       output_stride);

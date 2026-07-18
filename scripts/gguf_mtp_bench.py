@@ -918,6 +918,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--native-spec-device-accept-commit",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "N2 extension: keep strict-chain acceptance, selected recurrent/hidden commit, "
+            "target KV cursor transaction, and bounded visible output summary inside the "
+            "reusable native graph. Requires the device-seed llama-compat route."
+        ),
+    )
+    parser.add_argument(
         "--target-block-verify-mode",
         choices=("bulk", "native", "serial-exact"),
         default="bulk",
@@ -1824,6 +1834,12 @@ def main(argv: list[str] | None = None):
         parser.error("--native-spec-target-cycle does not support target logits readback")
     if args.native_spec_target_cycle and args.target_block_sync_stage_timings:
         parser.error("--native-spec-target-cycle does not support synchronized stage timings")
+    if args.native_spec_device_accept_commit and not args.native_spec_target_cycle:
+        parser.error("--native-spec-device-accept-commit requires --native-spec-target-cycle")
+    if args.native_spec_device_accept_commit and not args.resident_mtp_device_seed:
+        parser.error("--native-spec-device-accept-commit requires --resident-mtp-device-seed")
+    if args.native_spec_device_accept_commit and not args.target_block_direct_state_commit:
+        parser.error("--native-spec-device-accept-commit requires --target-block-direct-state-commit")
     if args.target_block_sync_stage_timings and not args.target_block_verify:
         parser.error("--target-block-sync-stage-timings requires --target-block-verify")
     if args.target_block_sync_stage_timings and not args.record_cycle_stage_timings:
@@ -2525,6 +2541,7 @@ def main(argv: list[str] | None = None):
             batched_verify_used = False
             block_verify_used = False
             native_spec_target_cycle_used = False
+            native_spec_device_accept_commit_used = False
             serial_hidden_host_required = not bool(args.resident_mtp_device_seed)
             device_verify_rows_required = bool(args.resident_mtp_device_seed and args.mtp_device_kv_cache)
             b1_branch_safe_block_verify_used = False
@@ -2682,6 +2699,12 @@ def main(argv: list[str] | None = None):
                                 record_stage_timings=bool(args.record_cycle_stage_timings),
                                 sync_stage_timings=bool(args.target_block_sync_stage_timings),
                                 defer_linear_state_commit=direct_state_commit,
+                                device_accept_commit=bool(args.native_spec_device_accept_commit),
+                                remaining_decode=(
+                                    int(remaining_output_tokens)
+                                    if args.native_spec_device_accept_commit
+                                    else None
+                                ),
                             )
                         else:
                             block_result = session.verify_target_block(
@@ -2903,6 +2926,12 @@ def main(argv: list[str] | None = None):
                                 record_stage_timings=bool(args.record_cycle_stage_timings),
                                 sync_stage_timings=bool(args.target_block_sync_stage_timings),
                                 defer_linear_state_commit=direct_state_commit,
+                                device_accept_commit=bool(args.native_spec_device_accept_commit),
+                                remaining_decode=(
+                                    int(remaining_output_tokens)
+                                    if args.native_spec_device_accept_commit
+                                    else None
+                                ),
                             )
                         else:
                             block_result = session.verify_target_block(
@@ -2953,6 +2982,19 @@ def main(argv: list[str] | None = None):
                             topk_branch_depths.append(0)
                             topk_branch_accept_count = 1
                     consumed_rows = int(block_acceptance["accepted_draft_tokens"]) + 1
+                    device_accept_commit_applied = bool(
+                        getattr(block_result, "device_accept_commit", False)
+                    )
+                    native_spec_device_accept_commit_used = bool(
+                        native_spec_device_accept_commit_used or device_accept_commit_applied
+                    )
+                    if device_accept_commit_applied:
+                        if not direct_state_commit:
+                            raise RuntimeError("N2 device accept/commit requires direct state commit policy")
+                        if int(block_result.accepted_draft_tokens) != consumed_rows - 1:
+                            raise RuntimeError("N2 device acceptance diverged from host oracle")
+                        if int(block_result.end_position) != seq_position + consumed_rows:
+                            raise RuntimeError("N2 device cursor diverged from accepted target prefix")
                     target_block_consumed_rows = int(consumed_rows)
                     if consumed_rows < len(block_inputs):
                         record_target_verify(0, discarded_rows=len(block_inputs) - consumed_rows)
@@ -2964,16 +3006,21 @@ def main(argv: list[str] | None = None):
                         if direct_state_commit and direct_partial_commit_supported:
                             if not block_result.linear_state_rows_captured:
                                 raise RuntimeError("direct block commit requested without captured linear-state rows")
-                            session._commit_verify_linear_state_row(
-                                consumed_rows - 1,
-                                position=seq_position + consumed_rows,
-                            )
+                            if not device_accept_commit_applied:
+                                session._commit_verify_linear_state_row(
+                                    consumed_rows - 1,
+                                    position=seq_position + consumed_rows,
+                                )
                             record_direct_commit()
                             replay_tokens = [int(token) for token in block_target_tokens[:consumed_rows]]
-                            replay_hidden = [
-                                np.ascontiguousarray(block_result.hidden_seeds[row:row + 1], dtype=np.float32)
-                                for row in range(len(replay_tokens))
-                            ]
+                            replay_hidden = (
+                                []
+                                if device_accept_commit_applied
+                                else [
+                                    np.ascontiguousarray(block_result.hidden_seeds[row:row + 1], dtype=np.float32)
+                                    for row in range(len(replay_tokens))
+                                ]
+                            )
                         else:
                             if snapshot is None:
                                 raise RuntimeError("target block replay requested without a linear-state snapshot")
@@ -3042,16 +3089,18 @@ def main(argv: list[str] | None = None):
                         if direct_state_commit and direct_state_commit_exact_mode:
                             if not block_result.linear_state_rows_captured:
                                 raise RuntimeError("direct block commit requested without captured linear-state rows")
-                            session._commit_verify_linear_state_row(
-                                len(block_inputs) - 1,
-                                position=seq_position + len(block_inputs),
-                            )
+                            if not device_accept_commit_applied:
+                                session._commit_verify_linear_state_row(
+                                    len(block_inputs) - 1,
+                                    position=seq_position + len(block_inputs),
+                                )
                             record_direct_commit()
                             target_tokens.extend(block_target_tokens)
-                            target_hidden_seeds.extend(
-                                np.ascontiguousarray(block_result.hidden_seeds[row:row + 1], dtype=np.float32)
-                                for row in range(len(block_target_tokens))
-                            )
+                            if not device_accept_commit_applied:
+                                target_hidden_seeds.extend(
+                                    np.ascontiguousarray(block_result.hidden_seeds[row:row + 1], dtype=np.float32)
+                                    for row in range(len(block_target_tokens))
+                                )
                         elif replay_state_commit:
                             if snapshot is None:
                                 raise RuntimeError("target block state replay requested without a linear-state snapshot")
@@ -3096,6 +3145,17 @@ def main(argv: list[str] | None = None):
                                 np.ascontiguousarray(block_result.hidden_seeds[row:row + 1], dtype=np.float32)
                                 for row in range(len(block_target_tokens))
                             )
+                    if device_accept_commit_applied:
+                        target_verify_seed_rows.extend(
+                            session.mtp_verify_seed(
+                                row,
+                                token_id=int(block_target_tokens[row]),
+                                position=seq_position + row,
+                                hidden_seed_base_ptr=int(block_result.hidden_seed_rows_ptr),
+                                hidden_seed_row_count=int(block_result.hidden_seed_row_count),
+                            )
+                            for row in range(consumed_rows)
+                        )
                     add_cycle_stage("target_block_replay_or_commit", (time.perf_counter() - t_commit0) * 1000)
                     current_device_token = int(target_tokens[-1])
                     block_verify_used = True
@@ -3692,6 +3752,7 @@ def main(argv: list[str] | None = None):
                 "target_prefill_mode": target_prefill_mode,
                 "target_block_verify": bool(block_verify_used),
                 "native_spec_target_cycle": bool(native_spec_target_cycle_used),
+                "native_spec_device_accept_commit": bool(native_spec_device_accept_commit_used),
                 "native_spec_target_fallback_reason": (
                     session.last_native_spec_target_fallback_reason
                     if args.native_spec_target_cycle and block_verify_used
@@ -3908,6 +3969,7 @@ def main(argv: list[str] | None = None):
             "record_cycle_stage_timings": bool(args.record_cycle_stage_timings),
             "target_block_sync_stage_timings": bool(args.target_block_sync_stage_timings),
             "native_spec_target_cycle": bool(args.native_spec_target_cycle),
+            "native_spec_device_accept_commit": bool(args.native_spec_device_accept_commit),
             "llama_compat": bool(args.llama_compat),
             "verify_dp4a": bool(args.verify_dp4a),
             "verify_dense_q8_dp4a": bool(args.verify_dense_q8_dp4a),

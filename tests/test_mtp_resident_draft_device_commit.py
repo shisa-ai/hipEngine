@@ -29,9 +29,16 @@ def test_write_kv_rows_from_device_seed_base_uses_d2d_hidden_rows(monkeypatch) -
     class Runtime:
         def __init__(self) -> None:
             self.memcpy_calls = []
+            self.synchronized_streams = []
 
         def memcpy(self, dst, src, nbytes, kind) -> None:
-            self.memcpy_calls.append((int(dst), int(src), int(nbytes), int(kind)))
+            self.memcpy_calls.append(("sync", int(dst), int(src), int(nbytes), int(kind), None))
+
+        def memcpy_async(self, dst, src, nbytes, kind, stream) -> None:
+            self.memcpy_calls.append(("async", int(dst), int(src), int(nbytes), int(kind), int(stream)))
+
+        def stream_synchronize(self, stream) -> None:
+            self.synchronized_streams.append(int(stream))
 
     runtime = Runtime()
     runner = object.__new__(Qwen35GGUFResidentMTPDraftRunner)
@@ -68,12 +75,18 @@ def test_write_kv_rows_from_device_seed_base_uses_d2d_hidden_rows(monkeypatch) -
     assert result_len == 9
     d2d_calls = [
         call for call in runtime.memcpy_calls
-        if call[3] == int(HipMemcpyKind.DEVICE_TO_DEVICE)
+        if call[4] == int(HipMemcpyKind.DEVICE_TO_DEVICE)
     ]
     assert d2d_calls == [
-        (0x1000, 0x5000, 16, int(HipMemcpyKind.DEVICE_TO_DEVICE)),
-        (0x1000, 0x5010, 16, int(HipMemcpyKind.DEVICE_TO_DEVICE)),
+        ("async", 0x1000, 0x5000, 16, int(HipMemcpyKind.DEVICE_TO_DEVICE), 0),
+        ("async", 0x1000, 0x5010, 16, int(HipMemcpyKind.DEVICE_TO_DEVICE), 0),
     ]
+    h2d_calls = [
+        call for call in runtime.memcpy_calls
+        if call[4] == int(HipMemcpyKind.HOST_TO_DEVICE)
+    ]
+    assert all(call[0] == "async" and call[-1] == 0 for call in h2d_calls)
+    assert runtime.synchronized_streams == [0]
     assert [item[0] for item in writes] == [7, 8]
     np.testing.assert_array_equal(writes[0][1], np.asarray([[4, 5, 6, 7]], dtype=np.float32))
     np.testing.assert_array_equal(writes[1][1], np.asarray([[8, 9, 10, 11]], dtype=np.float32))

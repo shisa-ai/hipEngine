@@ -164502,3 +164502,79 @@ Retained compact artifact:
 The explicit gfx1100 parity target is closed. `llama-compat` stays
 accuracy-traded and explicit; exact/default and gfx1151 are unchanged. Proceed
 to N2 device accept/commit, then N3 complete-cycle/public-adapter ownership.
+
+## 2026-07-19 — N2 device acceptance and selected-state commit
+
+Extended the reusable B1/B2 target graph with the exact
+`VERIFY|ACCEPT|COMMIT|UPDATE_CURSORS` native-cycle stage mask. The N2 graph now
+runs strict-chain acceptance from int32 target top-1 rows, commits the selected
+Conv/GDN row and FP32 hidden seed, updates target position/context cursors, and
+returns one bounded int32 payload containing accepted count, commit metadata,
+and visible output IDs. N1 and N2 use separate graph buckets; unsupported
+one-row/output-cap tails preserve the existing eager/AR fallback before graph
+submission.
+
+The first real 35B oracle was byte-exact for reject and guaranteed full-accept
+B2 cases: selected hidden, all 60 resident Conv/GDN buffers, all 20 full K/V
+buffers, cursor, and visible payload match the host-policy oracle. Primitive
+reject/partial/full smokes return exactly `[correction]`,
+`[draft0, correction]`, and `[draft0, draft1, correction]`.
+
+The first full suite exposed two real ownership/order bugs rather than accept
+kernel math:
+
+1. `write_kv_rows_from_device_seed_base()` mixed synchronous D2D copies with
+   default-stream projections. A forced D2H barrier restored the exact
+   trajectory. The retained fix keeps hidden/embed/concat/RoPE/final-KV copies
+   and their consumers on one stream, preserves host staging until completion,
+   and synchronizes before returning committed KV.
+2. The cached N2 graph copied graph-owned verifier rows into
+   `session._verify_hidden_seed_buf`. Prompt prefill grows that buffer to the
+   prompt row count, so a later longer prompt freed/reallocated the captured
+   destination. The first prompt and same-prompt reset were exact; later
+   category prompts consumed stale rows. N2 now exposes its graph-owned hidden
+   row base directly through `Qwen35GGUFNativeAcceptCommitResult`, and MTP seed
+   descriptors bind that stable base. The redundant D2D bridge is gone.
+
+Validation:
+
+```bash
+python3 -m pytest \
+  tests/test_qwen35_gguf_hidden_seed_contract.py::test_resident_session_describes_external_native_verify_seed_rows \
+  tests/test_mtp_resident_draft_device_commit.py \
+  tests/test_gguf_native_spec_cycle.py -q -k 'not matches_eager_hidden_state_and_kv'
+# 19 passed
+
+python3 -m pytest \
+  tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_ar_mtp_suite.py \
+  tests/test_native_spec_cycle_graph.py tests/test_dflash_accept_kernels.py -q
+# 147 passed
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+uv run --extra dev pytest -q \
+  tests/test_gguf_native_spec_cycle.py::test_native_b2_target_graph_matches_eager_hidden_state_and_kv
+# 1 passed (real W7900 / Qwen3.6-35B-A3B Q4_K_M)
+```
+
+The corrected dirty-tree full category+heldout gate is semantically identical
+to retained N1 for all **240 IDs / 96 cycles**: **144/179 drafts accepted
+(80.45%)**, **144/240 accepted-output (60.00%)**. First N2 run measured
+**117.977 tok/s**, **8.499 ms/output**, and **1.281x** its true-AR control. A
+same-tree N1/N2 pair measured **117.773 / 117.240 tok/s** (N2 -0.45%, within
+current aggregate run variance). N2 still removes the intended host boundary:
+versus the retained N1 stage accounting, MTP KV commit falls **0.192 -> 0.104
+ms/output**, target replay/commit **0.054 -> 0.007**, draft seed upload **0.017
+-> 0.002**, and host context append **0.016 -> 0.0001**. Keep N2 explicit until
+a clean committed repeat; this is an ownership milestone, not a new topline
+claim.
+
+A cached `rocprofv3 --kernel-trace` smoke ran eight N2 graph launches after a
+non-profiled require-cached warm build. The trace contains eight each of
+`dflash_accept_chain_i32_kernel` (**5.920 us average**),
+`linear_state_pair_commit_chunked_i32_kernel` (**201.187 us**), and
+`dflash_commit_chain_i32_kernel` (**12.800 us**), plus eight dynamic metadata
+unpacks. Trace:
+`/tmp/w7900-native-n2-rocprof/epyc/3710894_kernel_trace.csv`, 8,892 rows,
+SHA-256 `d6410553dfdd1c03f7afb1151353a925ed63e23bf3f150971f0b6ec6ab818529`.
+Proceed to N3 complete-cycle/public-adapter ownership after committing N2 and
+recording a clean full-suite confirmation.
