@@ -610,22 +610,27 @@ and the [canonical run record](benchmarks/README.md#paro-concurrency-and-product
 **Status: retained direct native-c2/c4/c8 model steps and c1-preserving
 occupancy-adaptive OpenAI SSE serving.** F2 maps only ephemeral execution rows
 into c1/c2/c4/c8 while stable scheduler, state, and KV ownership stays fixed.
-Occupancy-one transitions reach **50.610 vs 52.926 direct tok/s (95.625%)**;
-complete SSE c1 improves **15.798 -> 43.033 (+172.40%)**. All rows use
-`UD-Q4_K_M`, BF16 KV, greedy top-1, one HIP queue, and the active
-`amd_iommu=off` boot. Direct/category and E3 gates retain **188,080** and
+F3 adds exact singleton-indexed packed-AR GDN: direct c2/c4/c8 improve
+**+8.71%/+5.25%/+4.04%**, while c1 is structurally unchanged. The prior F2
+server packet remains retained but was not remeasured for this direct-only F3
+refresh. All rows use `UD-Q4_K_M`, BF16 KV, greedy top-1, one HIP queue, and the
+active `amd_iommu=off` boot. Direct/category and E3 gates retain **188,080** and
 **134,160** exact hidden comparisons; the c8 trace is **748 packed-native / 0
-row-local / 0 copies**.
+row-local / 0 copies**, with diagnostic Conv/GDN time down **50.94%**.
 
 <!-- BEGIN TOPLINE:GFX1151_CONCURRENCY -->
-| Direct route | Logical C | Native groups | Aggregate decode tok/s | Per-request tok/s | Aggregate / c1 | Aggregate / serial-c4 | TTFT p50 / p95 | Model-step ITL p50 / p95 | Tracked peak |
+| Direct route | Logical C | Native groups | Aggregate decode tok/s | Per-request tok/s | Aggregate / c1 | Aggregate / retained serial-c4† | TTFT p50 / p95 | Model-step ITL p50 / p95 | Tracked peak |
 | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| direct c1 | 1 | 1x c1 | 50.291 | 50.291 | 1.000x | 1.001x | 0.367 / 0.368 s | 19.875 / 20.162 ms | 21.783 GiB |
-| direct c2 | 2 | 1x c2 | 72.262 | 36.131 | 1.437x | 1.439x | 2.176 / 2.176 s | 27.679 / 27.967 ms | 22.394 GiB |
-| direct c4 | 4 | 1x c4 | 102.663 | 25.666 | 2.041x | 2.044x | 3.393 / 3.393 s | 38.980 / 39.295 ms | 23.396 GiB |
-| **direct c8** | **8** | **1x c8** | **128.075** | **16.009** | **2.547x** | **2.550x** | **6.836 / 6.849 s** | **62.473 / 62.973 ms** | **25.401 GiB** |
-| chunked c8 control | 8 | 2x c4, serialized | 102.724 | 12.841 | 2.043x | 2.045x | 5.089 / 6.787 s | 77.902 / 78.467 ms | 26.069 GiB* |
-| serial-c4 rate control | 4 | 4x c1, serialized | 50.235 | 12.559 | 0.999x | 1.000x | 0.927 / 1.485 s | 79.643 / 80.637 ms | 26.985 GiB* |
+| direct c1 | 1 | 1x c1 | 50.335 | 50.335 | 1.000x | 1.002x | 0.370 / 0.372 s | 19.874 / 20.160 ms | 21.783 GiB |
+| direct c2 | 2 | 1x c2 | 78.552 | 39.276 | 1.561x | 1.564x | 2.177 / 2.177 s | 25.459 / 25.820 ms | 22.394 GiB |
+| direct c4 | 4 | 1x c4 | 108.050 | 27.013 | 2.147x | 2.151x | 3.394 / 3.403 s | 37.026 / 37.399 ms | 23.396 GiB |
+| **direct c8** | **8** | **1x c8** | **133.251** | **16.656** | **2.647x** | **2.653x** | **6.841 / 6.841 s** | **60.004 / 60.641 ms** | **25.401 GiB** |
+| chunked c8 control† | 8 | 2x c4, serialized | 102.724 | 12.841 | 2.043x | 2.045x | 5.089 / 6.787 s | 77.902 / 78.467 ms | 26.069 GiB* |
+| serial-c4 rate control† | 4 | 4x c1, serialized | 50.235 | 12.559 | 0.999x | 1.000x | 0.927 / 1.485 s | 79.643 / 80.637 ms | 26.985 GiB* |
+
+† Controls are retained from clean pre-F3 `ef46ee8c`. The serial-c4 c1 path is
+structurally unchanged and remains the ratio reference; chunked c8 is historical
+because the F3 candidate would also change each physical c4 group.
 
 | Real OpenAI SSE route | Logical C | Physical execution | Aggregate generated tok/s | Per-request tok/s | Aggregate / logical-c1 | Aggregate / serial-c13 | Cycle wall p50 | Scheduler TTFT p50 / p95 | Scheduler ITL p50 / p95 | Cumulative tracked peak |
 | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -637,17 +642,21 @@ row-local / 0 copies**.
 <!-- END TOPLINE:GFX1151_CONCURRENCY -->
 
 Direct protocol uses 128 decode transitions, one discarded warmup, and the
-median of three; one physical c8 is **2.547x** c1 and **+24.68%** over c4+c4.
-Server protocol uses 512 exact prompt IDs and 128 generated outputs/request, a
-20 ms admission window, one discarded plus three measured bursts, and scheduler
-latency. C9/C13 are multiple declared buckets, never wider native widths. All
-**189/189** requests match resident prompt IDs, direct-c1 outputs, usage, and
-finish metadata. Grouped C13 is **1.702x** logical-c1 and **1.701x** serial; one
-exact c8→c13 live trace emits **1,664/1,664** IDs at **71.891 aggregate tok/s**
-and drains ownership. Clean C2→C8 and C4→C8 traces preserve **256/256** IDs
-each. Starred server memory is cumulative.
+median of three. F3 direct c1/c2/c4/c8 is
+**50.335/78.552/108.050/133.251 aggregate tok/s** with maximum rate
+stdev/median **0.096%**; one physical c8 is **2.647x** c1 and **+23.32%** over
+the current direct-c4 rate. Server protocol remains the clean F2 packet: 512
+exact prompt IDs and 128 generated outputs/request, a 20 ms admission window,
+one discarded plus three measured bursts, and scheduler latency. C9/C13 are
+multiple declared buckets, never wider native widths. All **189/189** requests
+match resident prompt IDs, direct-c1 outputs, usage, and finish metadata.
+Grouped C13 is **1.702x** logical-c1 and **1.701x** serial; one exact c8→c13
+live trace emits **1,664/1,664** IDs at **71.891 aggregate tok/s** and drains
+ownership. Clean C2→C8 and C4→C8 traces preserve **256/256** IDs each. Starred
+server memory is cumulative.
 
-Artifacts: [`F2 occupancy-adaptive serving`](benchmarks/results/2026-07-19-gfx1151-gguf-f2-occupancy-adaptive-serving.json),
+Artifacts: [`F3 singleton-indexed GDN`](benchmarks/results/2026-07-19-gfx1151-gguf-f3-singleton-gdn-retained.json),
+[`F2 occupancy-adaptive serving`](benchmarks/results/2026-07-19-gfx1151-gguf-f2-occupancy-adaptive-serving.json),
 [`E1 direct correctness`](benchmarks/results/2026-07-17-gfx1151-gguf-concurrency-e1-direct-correctness.json),
 [`E1 direct scaling`](benchmarks/results/2026-07-17-gfx1151-gguf-concurrency-e1-native-c8-scaling-closure.json),
 [`E3 arbitrary C`](benchmarks/results/2026-07-18-gfx1151-gguf-concurrency-e3-arbitrary-c-correctness.json), and
