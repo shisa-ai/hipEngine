@@ -164188,3 +164188,70 @@ not causally attributed to the c2 repair. Added compact artifact
 and refreshed `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, root README
 exports, and `docs/CONCURRENCY.md`. F0 is closed; F2 occupancy-adaptive
 c1/c2/c4/c8 selection is next.
+
+## 2026-07-19 — Implement occupancy-adaptive GGUF execution rows
+
+Replaced the resident GGUF owner's capacity-window lowering with an
+occupancy-adaptive execution-row policy while leaving stable scheduler slots,
+request IDs, session state, and device-KV allocations untouched. The generic
+physical-group planner retains its prior no-compaction default; a new explicit
+`compact_active_rows=True` mode sorts the active scheduler slots, records those
+original slots in `global_slot_indices`, and maps only the ephemeral model rows
+densely into the smallest declared c1/c2/c4/c8 bucket. The production GGUF
+owner now uses that mode. Occupancy 1 executes exact c1, 2 executes c2, 3-4
+execute c4, 5-8 execute c8, and C>8 uses c8 plus the smallest truthful tail
+bucket. For example, C9 is now c8+c1 rather than c8+masked-c8; C13 remains
+c8+masked-c8(5). No scheduler compaction, state copy, KV rebind, backend branch,
+or quant branch was added.
+
+Separated true c1 transitions from serial fallback accounting. A c1 step now
+increments `native_c1_decode_steps`, leaves `serial_decode_fallback=false`, and
+emits an honest c1 execution manifest. Width-specific route counters expose
+c1/c2/c4/c8 calls. The c1 route uses exact eager GEMV below the package's graph
+break-even and captures/replays the existing state-bound c1 graph when the
+remaining horizon meets it. A route change closes the request's c1 graph before
+packed state import; reclaim observes and closes it before session/KV reset.
+Stable identity and ownership therefore survive c1<->c2/c4/c8 changes.
+
+Updated `scripts/gguf_live_server_bench.py` to accept the new
+`native_c1_eager`/`native_c1_graph` route labels, require occupancy-one
+transition rate to be at least 95% of a timed same-process synchronized direct
+c1 reference, and record the direct-reference prefill/decode distributions.
+The harness continues to reject serial or resident fallback on native rows and
+keeps physical widths/masks explicit.
+
+RED/GREEN host coverage adds sparse scheduler slots `(0,2,7)` -> dense physical
+c4 execution without ownership movement, C9 -> c8+c1, true c1 graph accounting,
+and updated C13 manifests. The focused dispatch/generation/scheduler/server/
+harness/API bundle passes **892 tests with 4 hardware skips**; Python compilation
+and `git diff --check` pass. Ruff is unavailable in the declared venv.
+
+Three dirty-tree hardware diagnostics on Radeon 8060S/gfx1151, TheRock HIP
+7.15, `GPU_MAX_HW_QUEUES=1`, and `amd_iommu=off` establish the implementation
+before a clean retained packet:
+
+- p16/d32 static c1/c8/c9/c13 and live c8->c13 preserve every generated row and
+  final ownership. C1 uses physical c1; C8 uses c8; C9 is exactly c8+c1; C13 is
+  c8+sparse-c8. The stale pre-F2 harness label initially marked native c1 plans
+  false despite exact rows; the RED harness update above fixes that claim gate.
+- Complete one-pass p512/d128 c1/c8/c9/c13/serial-c13 passes every static row,
+  route, and ownership gate at **42.498/85.464/77.272/73.089/41.178 aggregate
+  generated tok/s**. Occupancy-one scheduler ITL is **19.844 ms**, within
+  **0.16%** of F0 direct-c1 graph ITL **19.875 ms**, while complete SSE c1 rises
+  **15.798 -> 42.498 tok/s (2.690x)**. C8/C13 remain near F0 and C9 improves
+  **57.691 -> 77.272 (+33.95%)** because its tail is c1 instead of masked c8.
+  Live C13 emits all 1,664 expected IDs at **73.036 tok/s**.
+- A separate p16/130-output c1 gate crosses gfx1151's 128-transition graph
+  threshold, preserves all IDs, captures once, replays **129/129**, and drains
+  the graph entry. Occupancy-one ITL is **18.352 ms / 54.489 tok/s**, versus the
+  same-process eager reference **17.497 ms / 57.152 tok/s (95.34%)**; complete
+  SSE is **51.996 tok/s**. A host manifest fix now reads the real graph's
+  `replayed_steps/steps_per_replay` fields rather than the fake-test
+  `replay_count` convenience field.
+
+These hardware files are diagnostic because the implementation tree is dirty:
+`/tmp/gfx1151-gguf-f2-adaptive-p16-d32-main.json`,
+`/tmp/gfx1151-gguf-f2-adaptive-p512-d128-main.json`, and
+`/tmp/gfx1151-gguf-f2-c1-graph-p16-d130-main.json`. Next: commit the validated
+implementation, then run the clean one-warmup/three-repeat p512/d128 server
+packet plus cached route profiler from that exact revision before promotion.

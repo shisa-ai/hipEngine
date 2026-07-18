@@ -272,6 +272,61 @@ def test_physical_batch_group_plan_preserves_sparse_global_slots_without_compact
     }
 
 
+def test_physical_batch_group_plan_compacts_only_execution_rows_for_adaptive_widths() -> None:
+    work = WorkItem(
+        kind=WorkKind.DECODE,
+        request_ids=(10, 12, 18),
+        row_to_request=(10, 12, 18),
+        slot_ids=(0, 2, 7),
+        active_mask=(True, False, True, False, False, False, False, True),
+    )
+
+    groups = plan_physical_batch_groups(
+        work,
+        physical_bucket_widths=(1, 2, 4, 8),
+        compact_active_rows=True,
+    )
+
+    assert groups == (
+        PhysicalBatchGroup(
+            logical_c=3,
+            group_index=0,
+            group_count=1,
+            physical_slot_base=0,
+            physical_slot_extent=3,
+            physical_rows=4,
+            request_ids=(10, 12, 18),
+            global_slot_indices=(0, 2, 7),
+            active_slot_indices=(0, 1, 2),
+            active_mask=(True, True, True, False),
+            dense_execution_rows=True,
+        ),
+    )
+    assert groups[0].to_json_dict()["execution_row_mapping"] == "dense_active_rows"
+
+
+def test_physical_batch_group_plan_adaptive_c9_uses_c8_plus_c1() -> None:
+    request_ids = tuple(range(100, 109))
+    work = WorkItem(
+        kind=WorkKind.DECODE,
+        request_ids=request_ids,
+        row_to_request=request_ids,
+        slot_ids=tuple(range(9)),
+        active_mask=(True,) * 9,
+    )
+
+    groups = plan_physical_batch_groups(
+        work,
+        physical_bucket_widths=(1, 2, 4, 8),
+        compact_active_rows=True,
+    )
+
+    assert tuple(group.physical_rows for group in groups) == (8, 1)
+    assert tuple(group.request_ids for group in groups) == (request_ids[:8], request_ids[8:])
+    assert tuple(group.active_mask for group in groups) == ((True,) * 8, (True,))
+    assert all(group.dense_execution_rows for group in groups)
+
+
 def test_physical_batch_group_plan_validates_declared_widths_and_slot_metadata() -> None:
     work = WorkItem(
         kind=WorkKind.DECODE,
