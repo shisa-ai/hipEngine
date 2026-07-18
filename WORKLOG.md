@@ -164729,3 +164729,18 @@ Validation: the focused RED and adjacent backpressure/forced-shutdown nodes are
 **3 passed**, all generation-batcher nodes are **23 passed**, the production
 load-gate contract is **10 passed**, and Python compilation plus
 `git diff --check` pass. A clean focused gfx1151 socket rerun remains required.
+
+Clean detached `6dce71d4` rejected that first repair: the same focused socket
+workload still produced four cancelled rows, two completions, one disconnect,
+one timeout, and `aclose(): asynchronous generator is already running` in
+**66.058 s**. Exact metrics and final ownership/memory still passed. Raw RED:
+`/tmp/gfx1151-f4-cancellation-6dce71d4.json`. The remaining race was above the
+batcher: caller cancellation of `_await_with_request_control()` left its
+internally-created `__anext__` task running because `asyncio.wait()` does not
+propagate cancellation. `_iterate_with_request_control()` then concurrently
+called `aclose()` on that same async generator. A second RED verifies caller
+cancellation closes the child task. GREEN now cancels and awaits the child on
+both request-control errors and caller cancellation before iterator teardown.
+Validation: request-control plus generation-batcher bundle **25 passed**,
+production load-gate contract **10 passed**, and Python compilation plus
+`git diff --check` pass. Another clean focused gfx1151 socket rerun is required.

@@ -4875,6 +4875,38 @@ def test_generation_batcher_live_neighbor_survives_member_cancellation() -> None
     asyncio.run(run())
 
 
+def test_await_with_request_control_caller_cancel_closes_child_task() -> None:
+    async def run() -> None:
+        started = asyncio.Event()
+        closed = asyncio.Event()
+        never = asyncio.Event()
+
+        async def child() -> None:
+            started.set()
+            try:
+                await never.wait()
+            finally:
+                closed.set()
+
+        async def connected() -> bool:
+            return False
+
+        control = SimpleNamespace(
+            deadline_at=None,
+            disconnected=connected,
+            poll_interval_s=0.001,
+            cancellation_token=GenerationCancellationToken(),
+        )
+        waiter = asyncio.create_task(_await_with_request_control(child(), control))
+        await started.wait()
+        waiter.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiter
+        assert closed.is_set()
+
+    asyncio.run(run())
+
+
 def test_request_control_maps_http_disconnect_to_cancelled_error() -> None:
     async def run() -> None:
         async def receive() -> dict[str, object]:

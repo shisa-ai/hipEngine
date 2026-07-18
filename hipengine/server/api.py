@@ -8996,7 +8996,10 @@ async def _await_with_request_control(awaitable, control: _RequestControl | None
             if task in done:
                 return await task
             await _raise_for_request_control(control)
-    except OpenAIHTTPError:
+    except (OpenAIHTTPError, asyncio.CancelledError):
+        # ``asyncio.wait`` does not propagate caller cancellation to the child.
+        # Finish that child before the iterator wrapper calls ``aclose()``;
+        # otherwise ``__anext__`` and ``aclose`` can run concurrently.
         task.cancel()
         with suppress(asyncio.CancelledError):
             await task
