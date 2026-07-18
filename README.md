@@ -547,14 +547,23 @@ Artifacts: [`C4`](benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-c4-nati
 Historical mixed-quant/mixed-scope results remain in
 [`benchmarks/HISTORY.md`](benchmarks/HISTORY.md).
 
-### gfx1151 / Radeon 8060S PARO exact shape catalog (2026-07-11, Qwen3.6 35B-A3B, 512/128)
+### gfx1151 / Radeon 8060S PARO direct c2 and production shape catalog (Qwen3.6 35B-A3B, 512/128)
 
-**Status: retained c1 performance, c1-c8 routing correctness, and production
-lifecycle safety.** Clean `a18ff7bc` uses the same exact 512-token fixture at
-every width. c1 graph replay is retained; every c2-c8 native candidate fails
-independent-c1 equality at generated index 2 and is explicitly routed through
-width-1 sessions. Clean `6f1910c9` then passes ragged c8-to-c1 EOS/cancel
-lifecycle coverage without compacting physical slots.
+**Status: explicit direct selected-batch c2 is retained; public/OpenAI remains
+width-1.** The historical clean `a18ff7bc` catalog established the c1 oracle
+and fail-closed public routing. Clean detached `778c7a70` now transfers the
+merged selected-batch algorithm unchanged to gfx1151: three p512/d128 runs pass
+all **274/274** independent-c1 IDs, and all-layer state/KV, lifecycle,
+canonical ten-prompt, primitive, auto-default, and cached-profiler gates pass.
+
+| Explicit direct route | Median aggregate decode | Per-request decode | Classification |
+| --- | ---: | ---: | --- |
+| c1 graph | **70.810 tok/s** | 70.810 tok/s | independent reference |
+| serial c2 bridge | **65.574 tok/s** | 32.787 tok/s | exact fallback control |
+| native selected-batch c2 | **79.218 tok/s** | 39.609 tok/s | **retained direct c2; 1.1187x c1 / 1.2081x serial** |
+
+The production table below remains separate because the retained direct step is
+not yet attached to the shared model-owning PARO loop.
 
 <!-- BEGIN TOPLINE:GFX1151_PARO_CURRENT -->
 | Client c | Production backend groups | Exact classification | Retained aggregate decode |
@@ -569,17 +578,16 @@ lifecycle coverage without compacting physical slots.
 | 8 | eight width-1 groups | explicitly serial | no separate c>N claim |
 <!-- END TOPLINE:GFX1151_PARO_CURRENT -->
 
-Protocol: W4 PARO/BF16 KV, 40 layers, exact prompt-ID SHA-256
-`b162b2d0...2388`, 8 warmup decode steps, 128 measured decode steps, and greedy
-sampling. c1 is a clean median of three (`66.948/66.754/66.910 tok/s`). Native
-c2-c8 diagnostic rates are withheld from the topline because all rows fail the
-137-token oracle. The P2 gate uses prompt lengths 449 through 512 and matches
-all eight generated sequences, 30 linear-state families, and 10 live K/V
-families through EOS plus front/middle/tail sparse cancellation. Ragged prefill
-uses the correctness-first `per_segment_ragged_exact` fallback and makes no
-throughput claim. See the [P1 compact catalog](benchmarks/results/2026-07-11-sol-p1-gfx1151-paro-c1-c8-exact-catalog.json),
+Protocol: W4 PARO/BF16 KV, 40 layers, 8 warmup decode steps, 128 measured
+decode steps, greedy sampling, TheRock HIP 7.15, one hardware queue, TuneD
+`accelerator-performance`, and `amd_iommu=off`. The new direct-c2 medians come
+from three fresh processes; selected-batch is **+11.87% vs c1** and
+**+20.81% vs serial c2** with 0.045% stdev/median. c3-c8 still have no retained native
+model-step claim. The historical P2 gate remains the broader public fail-closed
+ragged c8-to-c1 lifecycle anchor. See the [retained direct-c2 artifact](benchmarks/results/2026-07-18-gfx1151-paro-g2-selected-batch-c2-retained.json),
+[P1 compact catalog](benchmarks/results/2026-07-11-sol-p1-gfx1151-paro-c1-c8-exact-catalog.json),
 [P2 lifecycle artifact](benchmarks/results/2026-07-11-sol-p2-gfx1151-paro-ragged-lifecycle.json),
-and [canonical run record](benchmarks/README.md#gfx1151-paro-exact-shaperouting-catalog-2026-07-11).
+and [canonical run record](benchmarks/README.md#paro-concurrency-and-production-routing).
 
 ### gfx1151 / Radeon 8060S direct and server GGUF concurrency (Qwen3.6 35B-A3B, 512/128)
 

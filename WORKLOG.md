@@ -163404,3 +163404,64 @@ E1/category plus profiler packets. Updated the benchmark/root tables,
 `benchmarks/CHANGELOG.md`, `docs/CONCURRENCY.md`, and rollback cleanup triggers.
 F1 is now retained on both gfx11 targets. Next: transfer the retained gfx1100
 PARO selected-batch direct c2 packet to gfx1151.
+
+## 2026-07-18 — Retain gfx1151 PARO selected-batch c2
+
+Transferred the retained gfx1100 selected-batch c2 algorithm unchanged from a
+clean detached `778c7a70a13c849d9fe23475baae6b4b2ce16523` worktree to Ryzen AI
+MAX+ 395 / Radeon 8060S gfx1151. The protocol uses the exact packed
+Qwen3.6-35B-A3B-PARO revision `437eba06…`, W4 PARO, BF16 KV, p512/d128, greedy
+decode, TheRock HIP 7.15, TuneD `accelerator-performance`, normal HWS, one HIP
+hardware queue, `amd_iommu=off`, a precomputed compiler-version file, and cached
+builds for measured/profiled runs. No target-specific kernel or runtime edit was
+required.
+
+Three fresh direct selected-batch runs are
+**79.163/79.228/79.218 aggregate tok/s** (median **79.218**, **39.609 per
+request**, 0.045% sample stdev/median). Matched medians are **70.810 tok/s** for
+c1 graph and **65.574 aggregate tok/s** for serial c2, so direct c2 is
+**1.1187x c1 (+11.87%)** and **1.2081x serial (+20.81%)**. Every direct and
+serial run matches the independent-c1 sequence; selected-batch records
+**274/274 IDs/run**, all 40 MoE layers use the selected route, and zero layers
+fall back. The selector-unset retained-default confirmation independently
+resolves selected-batch for 40/40 layers, matches all IDs, and measures 79.051
+aggregate tok/s diagnostically.
+
+Correctness and lifecycle packet:
+
+- primitive c2 paged append has zero K/V mismatches, batch-vs-c1 attention is
+  exact, and batch-vs-NumPy max error is `2.2351741790771484e-08`;
+- full L40/d3 hidden, linear-stage, Conv/GDN, full-attention, live-KV, and NumPy
+  context checks are `eq_ok` with no hidden/state/KV bit drift;
+- uniform cancellation, uniform EOS, and ragged-front EOS all shrink c2→c1 with
+  exact tokens/state/KV, immutable retired rows, exact widths, and no group-wide
+  cancellation;
+- all **10/10** canonical code/general-en/general-ja/mixed-ja-en prompts,
+  including four heldouts, match **330/330** recorded IDs through five physical
+  c2 runs;
+- cached `rocprofv3 --kernel-trace` L4/d1 is `eq_ok`, contains **1,598**
+  dispatches, one exact c2 context kernel at **208,672 ns**, and ten selected
+  projection-family dispatches.
+
+The first clean all-layer attempt stopped before GPU execution on a missing
+worktree-specific JIT cache; the uncached prebuild rerun passed, after which the
+required-cached profiler passed. Intermediate category/scaling packet wrappers
+also stopped only in result-summary field lookups after their completed GPU
+runs; corrected continuations reused those valid outputs and did not repeat
+measurements.
+
+Published compact evidence at
+`benchmarks/results/2026-07-18-gfx1151-paro-g2-selected-batch-c2-retained.json`
+(**39,755 bytes**, SHA-256
+`1857675fc1c4fb13d639d1afca596f3615c57510c35ca1c67103fd9228911f14`).
+The artifact embeds clean canonical provenance, exact commands, all raw-source
+sizes/SHA-256 values, profiler names/durations, repeated statistics, and
+remaining scope. Independent validation passed canonical provenance, raw-source
+hash/size audit, statistic recomputation, prompt/lifecycle/profiler assertions,
+JSON parsing, documentation-link synchronization, and `git diff --check`.
+Updated `docs/PLAN.md`, `docs/CONCURRENCY.md`, `benchmarks/README.md`, the root
+README, and `benchmarks/CHANGELOG.md`. This retains only the explicit direct c2
+model step: public/OpenAI PARO remains width-1; c4/c8, longer context, sampled
+decode, graph replay, and non-BF16 KV remain separate gates. Next: generalize
+one true physical c4 algorithm, then attach retained PARO widths to the shared
+model-owning loop.
