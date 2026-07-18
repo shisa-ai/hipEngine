@@ -164649,3 +164649,29 @@ Validation after rollback: the focused backend/dispatch bundle is **66 passed**;
 artifact provenance validation, Python compilation, and `git diff --check`
 pass. No GPU rerun is needed for the false capability: it restores the exact
 `e99b228b` route whose clean p512/d128 packet is already retained above.
+
+## 2026-07-19 — Add the GGUF production serving load/SLO contract
+
+Added `scripts/gguf_production_load_gate.py` as the Phase-F4 driver rather than
+forking the scheduler. It serves one prepared GGUF owner over a real localhost
+Uvicorn socket and reuses resident reclaim for authoritative prompt/generated
+IDs. The matrix covers static c1/c8, mixed ragged bursts, deterministic fixed
+and seeded-Poisson arrivals, cooperative timeout, client disconnect,
+queue-overload accepts plus `engine_busy` rejects, idle recovery, and a
+rate/duration-qualified soak. Every workload retains queue/TTFT/ITL/end-to-end
+p50/p95/p99, exact generated-token goodput, physical occupancy/routes,
+bounded stream-queue observations, metrics deltas, KV/tracked/HIP memory, and
+final request/session ownership.
+
+The harness also measures a bounded `(prefill_decode_policy,
+prefill_chunk_tokens)` sweep on one frozen mixed continuous workload. Selection
+is constrained to candidates that pass correctness, native-route,
+backpressure, and all four declared SLOs, then maximizes exact SLO-qualified
+generated-token goodput. This is measurement policy, not a prompt-conditioned
+runtime branch. `docs/BENCHMARK.md` now defines the denominator, workload, and
+selection contract.
+
+RED was the missing harness import. GREEN validation is **31 passed** across
+the new pure contract tests plus the existing GGUF/F1 server harness tests;
+Python compilation and `git diff --check` pass. No performance claim exists
+until a clean committed gfx1151 socket smoke and full gate complete.
