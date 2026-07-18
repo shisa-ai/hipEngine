@@ -164830,3 +164830,21 @@ Non-streaming/precomputed generation retains request polling. The RED now sees
 **0** competing receives. Host validation: **26** server control/batcher,
 **8** submit/poll adapter, and **10** load-gate tests pass; Python compilation
 and `git diff --check` pass. A clean warm-sequence GPU gate is required.
+
+Clean warm-sequence `cf139e3e` validates the single-owner ASGI fix: static c8,
+ragged, fixed, and Poisson pass; cancellation now preserves all **6/6** normal
+neighbors, keeps metrics exact, and drains ownership/memory. The only failure is
+the intended disconnect row receiving a server 499 before its client observes
+token 1 (`outcomes={completed:6,cancelled:1,timeout:1}`), so
+`http_sse_protocol_failed` remains. Raw focused artifact:
+`/tmp/gfx1151-f4-warm-cancellation-cf139e3e.json`.
+
+This separates the two bugs: duplicate receive ownership caused group-wide
+cancellation, while the original 16-event resident routing cap can still cancel
+the temporarily unscheduled disconnect consumer before its first read. The
+prior 64-event run was confounded by the still-present receive race and did not
+reject the buffer repair. GREEN therefore combines sole ASGI receive ownership
+with the bounded **64-event internal** scheduling buffer; the external HTTP
+queue stays at 16 and the explicit cap-1 slow-client test still cancels only its
+row. Host validation remains **8 + 26 + 10 passed** with Python compilation and
+`git diff --check`. A clean combined warm-sequence GPU gate is required.
