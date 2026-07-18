@@ -164774,3 +164774,13 @@ both use the wrapper; precomputed streams remain outside it because success is
 already accounted. Host validation remains **26 passed** plus the **10 passed**
 load-gate contract, Python compilation, and `git diff --check`. A clean focused
 socket rerun is required.
+
+Clean detached `d9c9f6d0` passes the final focused socket gate in **67.713 s**:
+**6 completed + 1 active disconnect + 1 distinct 408 timeout**, all completed
+trajectories/prompt joins/SSE semantics exact, no neighbor cancellation or
+async-generator error, and exact HTTP/resident accounting (**8 requests, 6
+completed, 2 failed, 1 cancelled, 8 admitted, 8 reclaimed**). Final scheduler,
+runner, KV-pool, and tracked-memory ownership are zero. The artifact correctly
+remains focused `measurement_complete` with `complete_packet=false` and
+`performance_claim=false`: `/tmp/gfx1151-f4-cancellation-d9c9f6d0.json`.
+The complete all-workload, all-candidate, 60-second-soak F4 packet remains next.
