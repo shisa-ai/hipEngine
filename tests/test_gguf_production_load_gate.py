@@ -83,6 +83,12 @@ def test_workload_plan_covers_required_production_modes() -> None:
         "disconnect",
         "timeout",
     }
+    disconnect = next(
+        item
+        for item in workloads["cancellation_disconnect"]
+        if item.action == "disconnect"
+    )
+    assert disconnect.disconnect_after_tokens == 0
     assert len(workloads["overload"]) > 16
     assert workloads["continuous_fixed"][0].arrival_offset_seconds == 0.0
     assert workloads["continuous_fixed"][-1].arrival_offset_seconds > 0.0
@@ -101,6 +107,7 @@ def _result(
     itl: tuple[float, ...] = (0.02, 0.03),
     e2e: float = 0.5,
     error_code: str | None = None,
+    http_protocol_exact: bool = True,
 ) -> RequestResult:
     return RequestResult(
         label=label,
@@ -116,6 +123,7 @@ def _result(
         inter_token_seconds=itl,
         end_to_end_seconds=e2e,
         finish_reason="length" if outcome == "completed" else outcome,
+        http_protocol_exact=http_protocol_exact,
     )
 
 
@@ -147,6 +155,19 @@ def test_workload_evaluation_derives_exact_generated_token_goodput_and_slos() ->
     assert summary["slo"]["passed"] is False
     assert summary["correctness"]["passed"] is False
     assert "generated_token_mismatch" in summary["failure_reasons"]
+
+
+def test_http_protocol_failure_rejects_an_otherwise_exact_workload() -> None:
+    summary = _evaluate_workload(
+        "static_c1",
+        [_result("missing-done-or-usage", http_protocol_exact=False)],
+        wall_seconds=1.0,
+        slos=SLOThresholds(5.0, 5.0, 1.0, 20.0),
+    )
+
+    assert summary["correctness"]["passed"] is False
+    assert summary["passed"] is False
+    assert "http_sse_protocol_failed" in summary["failure_reasons"]
 
 
 def test_overload_requires_both_exact_accepts_and_engine_busy_rejects() -> None:

@@ -164675,3 +164675,25 @@ RED was the missing harness import. GREEN validation is **31 passed** across
 the new pure contract tests plus the existing GGUF/F1 server harness tests;
 Python compilation and `git diff --check` pass. No performance claim exists
 until a clean committed gfx1151 socket smoke and full gate complete.
+
+Clean detached `97a81d08` then ran the complete short socket matrix with one
+`fair:128` tuning candidate, 4 req/s controlled arrivals, and a 2-second
+(minimum-eight-request) soak. In **114.485 s**, tuning and static c1/c8, ragged,
+fixed, Poisson, overload, recovery, and soak all passed. Exact SLO goodput was
+**47.445 tok/s** for the tuning row; overload produced exactly **16 completed +
+16 `engine_busy` rejected**, with exact server reject counters; final ownership
+and memory recovery passed. The cancellation workload observed six exact
+completions plus one cooperative timeout and one cancellation, but the harness
+marked the no-first-token cancellation's prompt inexact because its capture hook
+ignored reclaimed rows without a materialized slot. This is an attribution bug,
+not a neighbor-token mismatch. Raw smoke:
+`/tmp/gfx1151-f4-load-smoke-97a81d08.json`.
+
+The focused repair captures every runner row before reclaim, joins pre-token
+cancel/timeout rows by unique prompt plus finish reason when SSE has no backend
+request id, and makes zero-token disconnect explicit at the real socket. It also
+fails closed on missing SSE DONE/usage/error semantics and server request,
+completion, and generated-token counter disagreement. RED is the clean smoke's
+single `generated_token_mismatch`; GREEN host validation is **8 passed** plus
+Python compilation and `git diff --check`. A clean focused GPU rerun remains
+required.
