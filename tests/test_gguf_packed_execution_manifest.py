@@ -146,10 +146,12 @@ def test_packed_decode_manifest_accounts_indexed_recurrent_closure() -> None:
         scatter_state=False,
         blocks_per_slot=4,
         linear_attention_decode_path="indexed_batch",
+        gdn_recurrent_decode_path="indexed_singleton",
         **_c3_routes(),
     )
 
     assert manifest["linear_attention_decode_path"] == "indexed_batch"
+    assert manifest["gdn_recurrent_decode_path"] == "indexed_singleton"
     assert manifest["claim_level"] == "exact_hybrid"
     assert manifest["model_step"] == {
         "complete_c1_session_replays": 0,
@@ -168,7 +170,7 @@ def test_packed_decode_manifest_accounts_indexed_recurrent_closure() -> None:
         assert families[name]["exact_row_local_work"] == []
     assert families["conv_gdn"]["packed_native_work"] == [
         "conv_decode_indexed",
-        "gdn_recurrent_decode_segments_fp32_out",
+        "gdn_recurrent_decode_indexed_fp32_out",
     ]
     assert manifest["profiler_contract"] == {
         "expected_execution_buckets": ["packed_native"],
@@ -553,6 +555,11 @@ def test_packed_profiler_classifier_separates_exact_row_local_from_native() -> N
             kernel="qwen35_paged_full_attn_decode_context_tensor_batch_kernel",
             duration_ns=70,
             grid_y=4,
+        ),
+        KernelTraceRow(
+            kernel="qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_kernel<unsigned short>",
+            duration_ns=75,
+            grid_y=32,
         ),
         KernelTraceRow(
             kernel="argmax_rows_stage1_i32_kernel",

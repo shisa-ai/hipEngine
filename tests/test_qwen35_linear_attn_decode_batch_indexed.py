@@ -20,6 +20,7 @@ from hipengine.kernels.cpu_reference import (
 from hipengine.kernels.hip_gfx1100.linear_attn import (
     build_qwen35_linear_attn_conv,
     build_qwen35_linear_attn_gdn,
+    qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_bf16,
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16,
     qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16,
     qwen35_linear_attn_conv_decode_bf16,
@@ -28,6 +29,9 @@ from hipengine.kernels.hip_gfx1100.linear_attn import (
     register_qwen35_linear_attn_gdn_kernels,
 )
 from hipengine.kernels.registry import clear_registry_for_tests, resolve
+from hipengine.runtime.qwen35_gguf_runner import (
+    _resolve_gguf_linear_attention_decode_batch_plan,
+)
 
 
 def _hip_available() -> bool:
@@ -217,6 +221,27 @@ def test_indexed_decode_kernels_register_gguf_batch_variants() -> None:
         )
         is qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16
     )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gdn_recurrent_rmsnorm_gate",
+            quant="gguf_qwen35",
+            variant="bf16_indexed_singleton",
+        )
+        is qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_bf16
+    )
+
+    gfx1100_plan = _resolve_gguf_linear_attention_decode_batch_plan("hip_gfx1100")
+    gfx1151_plan = _resolve_gguf_linear_attention_decode_batch_plan("hip_gfx1151")
+    assert gfx1100_plan.gdn_indexed_singleton is None
+    assert gfx1100_plan.gdn_decode_path == "segments"
+    assert (
+        gfx1151_plan.gdn_indexed_singleton
+        is qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_bf16
+    )
+    assert gfx1151_plan.gdn_decode_path == "indexed_singleton"
+    assert callable(gfx1100_plan.gdn_segments)
+    assert callable(gfx1151_plan.gdn_segments)
 
 
 def test_indexed_decode_wrappers_validate_before_gpu_load() -> None:
@@ -225,6 +250,10 @@ def test_indexed_decode_wrappers_validate_before_gpu_load() -> None:
     with pytest.raises(ValueError, match="segments must be positive"):
         qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16(
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1.0e-6, 1, 2, 8, 4
+        )
+    with pytest.raises(ValueError, match="rows must be positive"):
+        qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_bf16(
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1.0e-6, 1, 2, 8, 4
         )
 
 
@@ -324,10 +353,14 @@ def test_sparse_indexed_conv_gdn_matches_independent_c1_and_cpu_reference() -> N
         norm_weight_dev = buffers.from_host(norm_weight)
         serial_recurrent_state_dev = buffers.from_host(recurrent_state)
         batch_recurrent_state_dev = buffers.from_host(recurrent_state)
+        indexed_recurrent_state_dev = buffers.from_host(recurrent_state)
         serial_gdn_out_dev = buffers.empty(
             rows * num_v_heads * head_v_dim * np.dtype(np.float32).itemsize
         )
         batch_gdn_out_dev = buffers.empty(
+            rows * num_v_heads * head_v_dim * np.dtype(np.float32).itemsize
+        )
+        indexed_gdn_out_dev = buffers.empty(
             rows * num_v_heads * head_v_dim * np.dtype(np.float32).itemsize
         )
         gdn_library = build_qwen35_linear_attn_gdn(
@@ -379,6 +412,25 @@ def test_sparse_indexed_conv_gdn_matches_independent_c1_and_cpu_reference() -> N
             head_v_dim,
             library=gdn_library,
         )
+        qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_bf16(
+            batch_conv_out_dev.ptr,
+            gate_dev.ptr,
+            a_dev.ptr,
+            b_dev.ptr,
+            dt_bias_dev.ptr,
+            a_log_dev.ptr,
+            norm_weight_dev.ptr,
+            indexed_recurrent_state_dev.ptr,
+            indexed_gdn_out_dev.ptr,
+            state_indices_dev.ptr,
+            rows,
+            eps,
+            num_k_heads,
+            num_v_heads,
+            head_k_dim,
+            head_v_dim,
+            library=gdn_library,
+        )
 
         ctypes.CDLL("libamdhip64.so").hipDeviceSynchronize()
         serial_conv_out = _from_device(serial_conv_out_dev, (rows, channels), np.float32)
@@ -393,11 +445,17 @@ def test_sparse_indexed_conv_gdn_matches_independent_c1_and_cpu_reference() -> N
         batch_gdn_out = _from_device(
             batch_gdn_out_dev, (rows, num_v_heads * head_v_dim), np.float32
         )
+        indexed_gdn_out = _from_device(
+            indexed_gdn_out_dev, (rows, num_v_heads * head_v_dim), np.float32
+        )
         serial_recurrent_after = _from_device(
             serial_recurrent_state_dev, recurrent_state.shape, np.float32
         )
         batch_recurrent_after = _from_device(
             batch_recurrent_state_dev, recurrent_state.shape, np.float32
+        )
+        indexed_recurrent_after = _from_device(
+            indexed_recurrent_state_dev, recurrent_state.shape, np.float32
         )
     finally:
         buffers.close()
@@ -406,6 +464,8 @@ def test_sparse_indexed_conv_gdn_matches_independent_c1_and_cpu_reference() -> N
     np.testing.assert_array_equal(batch_conv_after, serial_conv_after)
     np.testing.assert_array_equal(batch_gdn_out, serial_gdn_out)
     np.testing.assert_array_equal(batch_recurrent_after, serial_recurrent_after)
+    np.testing.assert_array_equal(indexed_gdn_out, serial_gdn_out)
+    np.testing.assert_array_equal(indexed_recurrent_after, serial_recurrent_after)
 
     cpu_conv_out, cpu_conv_after = linear_attn_conv_prefill_segments(
         hidden_quantized,

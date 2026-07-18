@@ -164432,3 +164432,75 @@ Added compact diagnostic artifact
 `benchmarks/results/2026-07-19-gfx1151-gguf-f3-width-family-census.json` and
 closed the first F3 roadmap checkbox. No benchmark topline changes because
 `performance_claim=false`.
+
+## 2026-07-19 — Add gfx1151 singleton-indexed packed-AR GDN
+
+The F3 census exposed a c-aware state anomaly: Conv/GDN grew from **0.663 ms**
+at c1 to **3.435/4.625/8.230 ms** at c2/c4/c8. Packed AR always advances one
+token per active row, while the retained indexed route called the general
+arbitrary-length segmented GDN kernel, including its token loop, segment
+metadata reads, final barrier, and volatile state pointer.
+
+Added registered `gguf_qwen35/bf16_indexed_singleton` under
+`gdn_recurrent_rmsnorm_gate`. The sibling preserves the scalar c1 arithmetic
+and state-index ownership but makes the one-token-per-row contract explicit.
+`GGUF_GDN_INDEXED_SINGLETON_DECODE` selects it through backend package metadata:
+gfx1151 is enabled after this gate, while gfx1100 keeps the independently
+proven segmented route. The segmented implementation remains the general
+fallback. Packed manifests now report `gdn_recurrent_decode_path` as
+`indexed_singleton`, `segments`, `exact_row_local`, or `not_applicable`.
+
+RED was the missing import/registry variant. GREEN validation:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python -m pytest -q \
+  tests/test_qwen35_linear_attn_decode_batch_indexed.py::test_sparse_indexed_conv_gdn_matches_independent_c1_and_cpu_reference
+# 1 passed; indexed output and recurrent state byte-exact to independent c1
+
+PYTHONPATH=. .venv/bin/python -m pytest -q \
+  tests/test_gguf_packed_execution_manifest.py \
+  tests/test_gguf_packed_decode_graph.py \
+  tests/test_gguf_packed_verify_layout.py \
+  tests/test_gfx1151_backend.py \
+  tests/test_qwen35_linear_attn_decode_batch_indexed.py \
+  -k 'not sparse_indexed_conv_gdn_matches_independent_c1_and_cpu_reference'
+# 71 passed
+```
+
+A matched preliminary p512/d64 direct-width probe used Qwen3.6-35B-A3B
+Q4_K_M, BF16 KV, greedy top-1, gfx1151/Radeon 8060S, HIP 7.15, one HIP queue,
+TuneD accelerator-performance, `amd_iommu=off`, cached builds, one warmup, and
+two measured repeats. Baseline was clean committed `5b5b0d59`; candidate was
+the same source plus this scoped kernel change:
+
+```bash
+.venv/bin/python scripts/gguf_packed_ar_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1151 --configurations c1,c2,c4,native_c8 \
+  --prompt-token-id 9707 --prompt-length 512 --decode-steps 64 \
+  --warmup-runs 1 --measured-runs 2 \
+  --compiler-version-file /tmp/gfx1151-gguf-f3-clean-3a0fe188/hipcc-version.txt \
+  --require-cached-build
+```
+
+Median aggregate decode moved **50.744 -> 50.543 tok/s (-0.40%)** at c1,
+**72.646 -> 78.943 (+8.67%)** at c2, **102.924 -> 108.175 (+5.10%)** at c4,
+and **127.902 -> 133.461 (+4.35%)** at c8. The candidate route is unreachable
+at c1, so its small c1 movement is run-order variance. Every measured trajectory
+hash matches the baseline. Raw SHA-256 values are
+`61dcb7471fbee73a4ceb8eb6eec5cebf9397027a65d4ce8322d67ab462e1d92f`
+(control) and
+`984dc5a65f58e41b664a7c75cfc484724f1a4ae37053e28bb4dceaa44f7c71af`
+(candidate). This is implementation-selection evidence; a clean committed
+recertification will carry the retained performance claim.
+
+The required cached c8 `rocprofv3` trace passes exact token, route, and movement
+checks with **748 packed-native / 0 row-local / 0 copy dispatches**. It records
+30 `qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_kernel` launches at
+**3.706 ms** total, grid Y 32, 128 threads, 56 VGPR, and zero scratch. Conv/GDN
+family time falls from the prior clean diagnostic **8.230 -> 4.038 ms
+(-50.94%)**; whole replay time is diagnostic only. Profile SHA-256 is
+`8e7d7b5fbadd9c8c8ae95c16129b73f5661a33bffe4d5211a4463e1e187ba49c`.
+The first profile attempt exposed a manifest-only out-of-scope local variable;
+the focused fix was followed by the 71-test bundle and the successful complete
+trace above.
