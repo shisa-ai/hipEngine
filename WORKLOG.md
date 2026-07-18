@@ -164361,3 +164361,22 @@ argmax. Diagnostic kernel time was **26.105 ms** versus the paired c1 replay's
 **17.706 ms**; durations are not throughput evidence. This proves the harness
 can collect the missing width, not yet the complete clean c1/c2/c4/c8 F3
 attribution packet.
+
+## 2026-07-19 — Add explicit GGUF decode-family attribution
+
+Added a tested family classifier and lossless aggregate to the packed replay
+harness so F3 can compare c1/c2/c4/c8 by both dispatch count and diagnostic GPU
+time. The report separates metadata/lifecycle, LM head/sampler, embedding, MoE
+router, Conv/GDN state, full-attention core, selected-MoE/combine,
+norm/residual, and dense projections; unknown kernels remain visible under
+`other` with names and duration rather than disappearing into a total.
+
+RED was an import failure before the classifier existed. GREEN is **15 passed**
+under `tests/test_gguf_packed_execution_manifest.py`, plus `py_compile` and
+`git diff --check`. Reclassifying the successful dirty c2 diagnostic accounts
+for all kernels with zero unknown names. Diagnostic c1/c2 family time (ms) is:
+dense projection **8.435/10.402**, selected-MoE/combine **4.084/6.560**,
+full attention **1.576/2.391**, Conv/GDN state **0.663/3.436**, LM head/sampler
+**1.834/1.984**, router **0.665/0.821**, and norm/residual **0.441/0.489**.
+The next gate is a clean committed c1/c2/c4/c8 packet; these single-replay
+numbers are attribution evidence only, not throughput claims.
