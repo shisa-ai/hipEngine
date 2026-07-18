@@ -163507,3 +163507,26 @@ This is the implementation promotion, not yet a retained c4/c8 claim. Next:
 run default-no-env c4/c8 p512/d128 repetition, all-layer NumPy/state/KV,
 shrinking lifecycle/inactive immutability, prompt-category, and profiler gates;
 then attach the retained physical widths to the model-owning OpenAI loop.
+
+The first c8→c1 cancellation gate then exposed a separate sparse-membership
+RED. Dense c8 and the first retired slot were exact, while final token/state/KV
+identity was `[true,true,true,true,true,false,false,false]` by slot; all retired
+rows nevertheless remained immutable, widths/counters were exact, and no
+cancellation leaked across the group. Uniform EOS and ragged-front EOS repeated
+the same failure. The first non-prefix membership was c7 slots
+`[0,1,2,3,5,6,7]`, and only slots after the hole diverged.
+
+Root cause: `_set_batch_positions()` correctly wrote live counts at persistent
+physical-slot indices, but `_batch_full_spans()` still exposed
+`position_buf[:rows]` / `context_buf[:rows]` to compact attention rows. Added
+persistent compact position/context mirrors, update them alongside slot-owned
+metadata for sparse batches, select them in paged-attention spans, and advance
+both views for sparse graph replay. RED/GREEN host tests cover the exact sparse
+pointer/update contract and sparse block-table span selection (`2 passed`);
+full resident-layout and decode-state modules pass `155/155` and `82/82`.
+The first full decode-state run exposed an old fake-pointer prefill test that
+disabled the AWQ multi-row umbrella but not the independently promoted Marlin
+site gate, so it reached a real HIP wrapper and the test process faulted. The
+fixture now disables/mocks both routes; the focused and full reruns pass, and a
+fresh HIP load/device probe is healthy. A clean gfx1151 lifecycle rerun is
+required before this fix is promoted.
