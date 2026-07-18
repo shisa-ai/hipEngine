@@ -1696,13 +1696,31 @@ def _validate_accepted_execution_gates(payload: Mapping[str, Any], errors: list[
             errors.append("execution.batch_execution.decode_execution.moe_decode_rows must be an int for accepted artifacts")
         elif isinstance(concurrency, int) and not isinstance(concurrency, bool) and moe_decode_rows != concurrency:
             errors.append("execution.batch_execution.decode_execution.moe_decode_rows must match workload.concurrency for accepted artifacts")
+        moe_decode_path = decode_execution.get("moe_decode_path")
         moe_grouped_compact_layers = decode_execution.get("moe_grouped_compact_layers")
-        if isinstance(moe_grouped_compact_layers, bool) or not isinstance(moe_grouped_compact_layers, int) or moe_grouped_compact_layers <= 0:
-            errors.append("execution.batch_execution.decode_execution.moe_grouped_compact_layers must be a positive int for accepted artifacts")
+        moe_selected_batch_layers = decode_execution.get("moe_selected_batch_layers")
+        if moe_decode_path == "grouped_compact":
+            if isinstance(moe_grouped_compact_layers, bool) or not isinstance(moe_grouped_compact_layers, int) or moe_grouped_compact_layers <= 0:
+                errors.append("execution.batch_execution.decode_execution.moe_grouped_compact_layers must be a positive int for accepted artifacts")
+            if moe_selected_batch_layers is not None and (
+                isinstance(moe_selected_batch_layers, bool) or not isinstance(moe_selected_batch_layers, int)
+            ):
+                errors.append("execution.batch_execution.decode_execution.moe_selected_batch_layers must be an int when present for accepted artifacts")
+            elif moe_selected_batch_layers not in {None, 0}:
+                errors.append("execution.batch_execution.decode_execution.moe_selected_batch_layers must be zero for grouped_compact accepted artifacts")
+        elif moe_decode_path == "selected_batch":
+            if (
+                isinstance(moe_grouped_compact_layers, bool)
+                or not isinstance(moe_grouped_compact_layers, int)
+                or moe_grouped_compact_layers != 0
+            ):
+                errors.append("execution.batch_execution.decode_execution.moe_grouped_compact_layers must be zero for selected_batch accepted artifacts")
+            if isinstance(moe_selected_batch_layers, bool) or not isinstance(moe_selected_batch_layers, int) or moe_selected_batch_layers <= 0:
+                errors.append("execution.batch_execution.decode_execution.moe_selected_batch_layers must be a positive int for accepted artifacts")
+        else:
+            errors.append("execution.batch_execution.decode_execution.moe_decode_path must be grouped_compact or selected_batch for accepted artifacts")
         if decode_execution.get("moe_selected_c1_fallback_layers") != 0:
             errors.append("execution.batch_execution.decode_execution.moe_selected_c1_fallback_layers must be zero for accepted artifacts")
-        if decode_execution.get("moe_decode_path") != "grouped_compact":
-            errors.append("execution.batch_execution.decode_execution.moe_decode_path must be grouped_compact for accepted artifacts")
         if decode_execution.get("full_attention_decode_path") != "native_batch":
             errors.append("execution.batch_execution.decode_execution.full_attention_decode_path must be native_batch for accepted artifacts")
         full_attention_input_path = decode_execution.get("full_attention_input_decode_path")
@@ -1772,8 +1790,10 @@ def _validate_accepted_decode_layer_executions(
     prompt_tokens_per_request = workload.get("prompt_tokens_per_request")
     native_full_attention_layers = decode_execution.get("native_full_attention_layers")
     moe_grouped_compact_layers = decode_execution.get("moe_grouped_compact_layers")
+    moe_selected_batch_layers = decode_execution.get("moe_selected_batch_layers", 0)
     traced_native_full_attention_layers = 0
     traced_grouped_moe_layers = 0
+    traced_selected_batch_moe_layers = 0
     for index, layer in enumerate(layer_executions):
         label = f"execution.batch_execution.decode_execution.layer_executions[{index}]"
         if not isinstance(layer, Mapping):
@@ -1798,10 +1818,12 @@ def _validate_accepted_decode_layer_executions(
         if layer.get("native_caware_decode") is not True:
             errors.append(f"{label}.native_caware_decode must be true for accepted artifacts")
         moe_path = layer.get("moe_decode_path")
-        if moe_path != "grouped_compact":
-            errors.append(f"{label}.moe_decode_path must be grouped_compact for accepted artifacts")
-        else:
+        if moe_path == "grouped_compact":
             traced_grouped_moe_layers += 1
+        elif moe_path == "selected_batch":
+            traced_selected_batch_moe_layers += 1
+        else:
+            errors.append(f"{label}.moe_decode_path must be grouped_compact or selected_batch for accepted artifacts")
         full_attention_path = layer.get("full_attention_decode_path")
         if layer_type == "full_attention":
             if full_attention_path != "native_batch":
@@ -1850,6 +1872,9 @@ def _validate_accepted_decode_layer_executions(
     if isinstance(moe_grouped_compact_layers, int) and not isinstance(moe_grouped_compact_layers, bool):
         if traced_grouped_moe_layers != moe_grouped_compact_layers:
             errors.append("execution.batch_execution.decode_execution.layer_executions grouped MoE count must match moe_grouped_compact_layers for accepted artifacts")
+    if isinstance(moe_selected_batch_layers, int) and not isinstance(moe_selected_batch_layers, bool):
+        if traced_selected_batch_moe_layers != moe_selected_batch_layers:
+            errors.append("execution.batch_execution.decode_execution.layer_executions selected-batch MoE count must match moe_selected_batch_layers for accepted artifacts")
 
 
 def _validate_accepted_projection_dispatch(

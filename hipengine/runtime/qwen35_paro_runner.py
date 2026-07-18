@@ -147,6 +147,8 @@ _SERVER_STARTUP_NATIVE_BATCH_WARMUP_ENV = "HIPENGINE_QWEN35_SERVER_STARTUP_NATIV
 _SERVER_STARTUP_NATIVE_BATCH_WARMUP_TOKENS_ENV = "HIPENGINE_QWEN35_SERVER_STARTUP_NATIVE_BATCH_WARMUP_TOKENS"
 _SERVER_STARTUP_NATIVE_BATCH_WARMUP_TOKENS_DEFAULT = 64
 _RETAINED_BATCH_DEFAULTS_ENV = "HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS"
+_SELECTED_BATCH_MOE_ENV = "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_BATCH_MOE"
+_SELECTED_BATCH_MOE_LEGACY_ENV = "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"
 _MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT_ENV = "HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT"
 _DEFAULT_PROJECTION_DISPATCH_ARTIFACT = (
     "benchmarks/results/2026-07-09-hipengine-qwen35-native-c2468-projection-dispatch-catalog/summary.json"
@@ -177,6 +179,13 @@ def _env_flag(name: str, default: bool = False) -> bool:
 def _env_is_blank(name: str) -> bool:
     value = os.environ.get(name)
     return value is None or value.strip() == ""
+
+
+def _env_flag_override(name: str, *aliases: str) -> bool | None:
+    for key in (name, *aliases):
+        if not _env_is_blank(key):
+            return _env_flag(key)
+    return None
 
 
 def _retained_batch_defaults_enabled() -> bool:
@@ -255,7 +264,7 @@ def _retained_full_attention_row_chunk_layers(rows: int) -> set[int]:
     return set()
 
 
-def _retained_selected_c1_moe_rows(rows: int) -> bool:
+def _retained_selected_batch_moe_rows(rows: int) -> bool:
     return 2 <= int(rows) <= 8
 
 
@@ -1958,6 +1967,31 @@ class Qwen35ParoResidentSession:
             raise NotImplementedError("native c>N decode currently requires slots in physical-slot order")
         for position in pos:
             self._check_position(position)
+        if rows == 1 and not device_resident:
+            # A shrinking native group must become the established scalar c1
+            # route, not a one-row invocation of batch-shaped full-attention,
+            # MoE, and sampler scratch left warm by the wider group.
+            slot = slot_ids[0]
+            self._set_slot_token_embedding(tokens[0], slot=slot)
+            self._set_slot_position(pos[0], slot=slot)
+            hidden = self._run_layers(
+                position=pos[0],
+                slot=slot,
+                persist_aliases=False,
+                stream=0,
+            )
+            self.last_batch_decode_execution = {
+                "rows": 1,
+                "slots": [int(slot)],
+                "row_execution": "true_c1_resident_slot",
+                "native_caware_decode": False,
+                "moe_decode_path": "selected_c1",
+                "blockers": [],
+            }
+            if not sample:
+                self.runtime.device_synchronize()
+                return (None,)
+            return (self._sample_from_hidden_for_slot(hidden, slot),)
         if device_resident:
             if exact_hybrid:
                 raise NotImplementedError("exact PARO hybrid decode is not graph-capture/device-resident")
@@ -5268,22 +5302,20 @@ class Qwen35ParoResidentSession:
         positions: tuple[int, ...],
         slots: tuple[int, ...],
     ) -> tuple[Tensor, KVLiveSpans, KVLiveSpans]:
-        # Batch append/decode kernels run compact active rows and add an
-        # active-row base internally.  Encode physical slot ids as row-relative
-        # block-table offsets so row ``r`` can address slot ``slots[r]`` without
-        # moving retained KV cache pages after reclaim/compaction.
+        # Batch append and context-decode kernels use different block-table
+        # addressing contracts over the same all-slot cache view. Append adds
+        # ``row * blocks`` internally, so its table stores the physical-slot
+        # delta ``(slot - row) * blocks``. Context decode does not add a row
+        # base, so its table stores absolute ``slot * blocks`` ids. Sharing the
+        # append-relative table with context decode aliases every compact slot
+        # to row-local blocks (for dense slots, row 1 reads row 0's KV).
         #
-        # The block table depends only on (rows, slots); it is identical across
-        # every decode step for a fixed active batch.  Cache one persistent
-        # decode-only device buffer *per distinct (rows, slots) key* so the host
-        # build + synchronous host->device copy happens once per key and never
-        # repeats on the decode hot path.  A single-key cache thrashed under the
-        # row-chunked full-attention path (which calls this with several
-        # (chunk_rows, chunk_slots) within one step) -- re-copying every call,
-        # which is both wasteful eagerly and *fatal under HIP graph capture*
-        # (a host->device copy on a capturing stream is illegal).  Keying per
-        # config means that once the eager warmup has touched every chunk key,
-        # capture performs no allocation or copy.
+        # Both tables depend only on (rows, slots). Cache one persistent pair
+        # *per distinct (rows, slots) key* so their host builds and synchronous
+        # host->device copies happen once per key and never repeat on the decode
+        # hot path. A single-key cache thrashed under row-chunked attention and
+        # host copies are illegal during HIP graph capture. Once eager warmup
+        # has touched every chunk key, capture performs no allocation or copy.
         slots_key = (int(rows),) + tuple(int(slot) for slot in slots)
         block_cache = getattr(self, "_decode_full_block_table_cache", None)
         if block_cache is None:
@@ -5292,23 +5324,50 @@ class Qwen35ParoResidentSession:
         block_entry = block_cache.get(slots_key)
         if block_entry is None:
             logical_blocks = np.arange(self.blocks, dtype=np.int32)
-            block_rows = np.empty((rows, self.blocks), dtype=np.int32)
+            append_block_rows = np.empty((rows, self.blocks), dtype=np.int32)
+            decode_block_rows = np.empty((rows, self.blocks), dtype=np.int32)
             for row, slot in enumerate(slots):
                 delta_blocks = (int(slot) - row) * self.blocks
                 if delta_blocks < 0:
                     raise ValueError("batch full-attention slots must be in physical-slot order")
-                block_rows[row] = logical_blocks + np.int32(delta_blocks)
-            block_buf = malloc(int(block_rows.nbytes), runtime=self.runtime)
-            self.buffers.append(block_buf)
-            copy_host_to_device(block_buf, host_array_ptr(block_rows), block_rows.nbytes, runtime=self.runtime)
+                append_block_rows[row] = logical_blocks + np.int32(delta_blocks)
+                decode_block_rows[row] = logical_blocks + np.int32(int(slot) * self.blocks)
+            append_block_buf = malloc(int(append_block_rows.nbytes), runtime=self.runtime)
+            decode_block_buf = malloc(int(decode_block_rows.nbytes), runtime=self.runtime)
+            self.buffers.extend((append_block_buf, decode_block_buf))
+            copy_host_to_device(
+                append_block_buf,
+                host_array_ptr(append_block_rows),
+                append_block_rows.nbytes,
+                runtime=self.runtime,
+            )
+            copy_host_to_device(
+                decode_block_buf,
+                host_array_ptr(decode_block_rows),
+                decode_block_rows.nbytes,
+                runtime=self.runtime,
+            )
             block_entry = {
-                "buf": block_buf,
-                "block_table": Tensor.from_handle(block_buf.ptr, (rows, self.blocks), DType.INT32, self.device),
-                "block_rows_list": block_rows.astype(np.int32, copy=False).tolist(),
+                "append_block_table": Tensor.from_handle(
+                    append_block_buf.ptr,
+                    (rows, self.blocks),
+                    DType.INT32,
+                    self.device,
+                ),
+                "decode_block_table": Tensor.from_handle(
+                    decode_block_buf.ptr,
+                    (rows, self.blocks),
+                    DType.INT32,
+                    self.device,
+                ),
+                "append_block_rows_list": append_block_rows.astype(np.int32, copy=False).tolist(),
+                "decode_block_rows_list": decode_block_rows.astype(np.int32, copy=False).tolist(),
             }
             block_cache[slots_key] = block_entry
-        block_table = block_entry["block_table"]
-        self._decode_full_block_rows_list = block_entry["block_rows_list"]
+        append_block_table = block_entry["append_block_table"]
+        decode_block_table = block_entry["decode_block_table"]
+        self._append_full_block_rows_list = block_entry["append_block_rows_list"]
+        self._decode_full_block_rows_list = block_entry["decode_block_rows_list"]
         position_tensor = Tensor.from_handle(self.position_buf.ptr, (rows,), DType.INT64, self.device)
         context_tensor = Tensor.from_handle(self.context_buf.ptr, (rows,), DType.INT64, self.device)
         append_live_counts = [int(position) for position in positions]
@@ -5316,14 +5375,14 @@ class Qwen35ParoResidentSession:
         storage_dtype = self._full_attention_storage_dtype(layer_id)
         scale_metadata = self._full_cache_scale_metadata_all_slots(layer_id)
         append_spans = KVLiveSpans.paged_uniform(
-            block_table=block_table,
+            block_table=append_block_table,
             live_counts=position_tensor,
             max_live_count=max(append_live_counts),
             storage_dtype=storage_dtype,
             scale_metadata=scale_metadata,
         )
         decode_spans = KVLiveSpans.paged_uniform(
-            block_table=block_table,
+            block_table=decode_block_table,
             live_counts=context_tensor,
             max_live_count=max(decode_live_counts),
             storage_dtype=storage_dtype,
@@ -5340,7 +5399,8 @@ class Qwen35ParoResidentSession:
             "decode_max_live_count": int(decode_spans.max_live_count),
             "block_size": int(getattr(self, "block_size", 256)),
             "block_table_len_per_row": int(self.blocks),
-            "block_table_rows": self._decode_full_block_rows_list,
+            "append_block_table_rows": self._append_full_block_rows_list,
+            "decode_block_table_rows": self._decode_full_block_rows_list,
             "storage_dtype": storage_dtype.value,
         }
         return position_tensor, append_spans, decode_spans
@@ -5412,19 +5472,23 @@ class Qwen35ParoResidentSession:
         full_attention_decode_path = "none"
         max_full_attention_context = 0
         native_full_attention_layers = 0
+        full_attention_context_kernel_variants: set[str] = set()
         row_chunked_full_attention_layers: list[int] = []
         dense_mlp = int(getattr(self.config, "num_experts", 1) or 0) <= 0
-        force_selected_c1_moe_env = "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"
+        selected_batch_moe_override = _env_flag_override(
+            _SELECTED_BATCH_MOE_ENV,
+            _SELECTED_BATCH_MOE_LEGACY_ENV,
+        )
         force_selected_c1_moe = (
             (not dense_mlp)
             and rows > 1
             and (
                 exact_hybrid_c2
-                or _env_flag(force_selected_c1_moe_env)
+                or selected_batch_moe_override is True
                 or (
-                    _retained_batch_defaults_enabled()
-                    and _env_is_blank(force_selected_c1_moe_env)
-                    and _retained_selected_c1_moe_rows(rows)
+                    selected_batch_moe_override is None
+                    and _retained_batch_defaults_enabled()
+                    and _retained_selected_batch_moe_rows(rows)
                 )
             )
         )
@@ -5837,10 +5901,11 @@ class Qwen35ParoResidentSession:
                     or force_per_row_full_attention_batch_scratch
                     or force_per_row_full_attention_persistent_scratch
                 )
-                else ("selected_c1_batch" if force_selected_c1_moe else "grouped_compact")
+                else ("selected_batch" if force_selected_c1_moe else "grouped_compact")
             )
         )
         moe_grouped_compact_layers = 0
+        moe_selected_batch_layers = 0
         moe_selected_c1_fallback_layers = 0
         row_chunked_linear_attention_layers: list[int] = []
         row_chunked_full_attention_context_layers: list[int] = []
@@ -6010,12 +6075,14 @@ class Qwen35ParoResidentSession:
                         layer_moe_path = "dense_mlp" if dense_mlp else (
                             "selected_c1"
                             if rows == 1
-                            else "selected_c1_per_row_moe_fallback" if force_per_row_linear_moe else ("selected_c1_batch" if force_selected_c1_moe else "grouped_compact")
+                            else "selected_c1_per_row_moe_fallback" if force_per_row_linear_moe else ("selected_batch" if force_selected_c1_moe else "grouped_compact")
                         )
                         if not dense_mlp and rows > 1:
                             if force_per_row_linear_moe:
                                 moe_selected_c1_fallback_layers += 1
-                            elif not force_selected_c1_moe:
+                            elif force_selected_c1_moe:
+                                moe_selected_batch_layers += 1
+                            else:
                                 moe_grouped_compact_layers += 1
                         layer_executions.append(
                             {
@@ -6090,12 +6157,14 @@ class Qwen35ParoResidentSession:
                         layer_moe_path = "dense_mlp" if dense_mlp else (
                             "selected_c1"
                             if rows == 1
-                            else "selected_c1_per_row_moe_fallback" if force_per_row_linear_moe else ("selected_c1_batch" if force_selected_c1_moe else "grouped_compact")
+                            else "selected_c1_per_row_moe_fallback" if force_per_row_linear_moe else ("selected_batch" if force_selected_c1_moe else "grouped_compact")
                         )
                         if not dense_mlp and rows > 1:
                             if force_per_row_linear_moe:
                                 moe_selected_c1_fallback_layers += 1
-                            elif not force_selected_c1_moe:
+                            elif force_selected_c1_moe:
+                                moe_selected_batch_layers += 1
+                            else:
                                 moe_grouped_compact_layers += 1
                         layer_executions.append(
                             {
@@ -6773,7 +6842,7 @@ class Qwen35ParoResidentSession:
                         layer_moe_path = "dense_mlp" if dense_mlp else (
                             "selected_c1"
                             if rows == 1
-                            else "selected_c1_per_row_moe_fallback" if force_per_row_full_attention_moe or force_per_row_full_attention_batch_scratch or force_per_row_full_attention_persistent_scratch else ("selected_c1_batch" if force_selected_c1_moe or layer_force_full_attention_suffix_row_chunks else "grouped_compact")
+                            else "selected_c1_per_row_moe_fallback" if force_per_row_full_attention_moe or force_per_row_full_attention_batch_scratch or force_per_row_full_attention_persistent_scratch else ("selected_batch" if force_selected_c1_moe or layer_force_full_attention_suffix_row_chunks else "grouped_compact")
                         )
                         if not dense_mlp and rows > 1:
                             if (
@@ -6782,8 +6851,22 @@ class Qwen35ParoResidentSession:
                                 or force_per_row_full_attention_persistent_scratch
                             ):
                                 moe_selected_c1_fallback_layers += 1
-                            elif not force_selected_c1_moe:
+                            elif force_selected_c1_moe or layer_force_full_attention_suffix_row_chunks:
+                                moe_selected_batch_layers += 1
+                            else:
                                 moe_grouped_compact_layers += 1
+                        context_kernel_variant = getattr(
+                            state,
+                            "_last_full_attention_context_kernel_variant",
+                            None,
+                        )
+                        if not (
+                            layer_force_full_attention_row_chunks
+                            or layer_full_attention_context_decode_path in {"native_batch", "native_context_row_chunks"}
+                        ):
+                            context_kernel_variant = None
+                        if isinstance(context_kernel_variant, str) and context_kernel_variant:
+                            full_attention_context_kernel_variants.add(context_kernel_variant)
                         layer_execution = {
                             "layer_index": int(layer_id),
                             "layer_type": "full_attention",
@@ -6825,6 +6908,8 @@ class Qwen35ParoResidentSession:
                             ),
                             "moe_decode_path": layer_moe_path,
                         }
+                        if isinstance(context_kernel_variant, str) and context_kernel_variant:
+                            layer_execution["full_attention_context_kernel_variant"] = context_kernel_variant
                         if isinstance(getattr(self, "_decode_full_attention_trace", None), list):
                             layer_execution["attn_context_trace_source"] = "attention_scratch.query_raw"
                         if layer_force_full_attention_row_chunks:
@@ -6892,7 +6977,7 @@ class Qwen35ParoResidentSession:
                             layer_execution["full_attention_layer_copy_decode_path"] = full_attention_layer_copy_decode_path
                         if force_per_row_post_attention:
                             layer_execution["post_attention_decode_path"] = post_attention_decode_path
-                        if force_small_batch_shared_expert and layer_moe_path == "selected_c1_batch":
+                        if force_small_batch_shared_expert and layer_moe_path == "selected_batch":
                             layer_execution["moe_c1_shared_expert_decode_path"] = "small_batch_forced"
                         if force_per_row_full_attention_skip_batch_setup:
                             layer_execution["full_attention_batch_setup_decode_path"] = "skipped_for_persistent_c1"
@@ -7178,10 +7263,15 @@ class Qwen35ParoResidentSession:
                 "moe_decode_path": moe_decode_path,
                 "moe_decode_rows": int(rows),
                 "moe_grouped_compact_layers": int(moe_grouped_compact_layers),
+                "moe_selected_batch_layers": int(moe_selected_batch_layers),
                 "moe_selected_c1_fallback_layers": int(moe_selected_c1_fallback_layers),
                 "layer_executions": layer_executions,
                 "blockers": decode_blockers,
             }
+            if full_attention_context_kernel_variants:
+                self.last_batch_decode_execution["full_attention_context_kernel_variants"] = sorted(
+                    full_attention_context_kernel_variants
+                )
             if exact_hybrid_c2:
                 self.last_batch_decode_execution["exact_hybrid_c2"] = True
             if row_chunked_linear_attention_layers:
@@ -7353,6 +7443,7 @@ class Qwen35ParoResidentSession:
                             stream=_stream,
                         )
 
+                attention_scratch = self._full_attention_decode_scratch(layer_id, state)
                 out = state.run_full_attention_moe_c1_layer_fp16(
                     hidden,
                     key_cache=key_cache,
@@ -7363,7 +7454,7 @@ class Qwen35ParoResidentSession:
                     sin_table=self.sin,
                     position=position_tensor,
                     max_positions=self.max_sequence_length,
-                    attention_scratch=self.full_scratch[layer_id],
+                    attention_scratch=attention_scratch,
                     moe_scratch=self._mlp_decode_scratch(layer_id, state),
                     chunk_size=self.decode_chunk_size,
                     num_splits=num_splits,
@@ -7375,9 +7466,9 @@ class Qwen35ParoResidentSession:
                 )
                 self._trace_decode_full_attention_scratch(
                     layer_id=layer_id,
-                    attention_scratch=self.full_scratch[layer_id],
+                    attention_scratch=attention_scratch,
                     rows=1,
-                    context=getattr(self.full_scratch[layer_id], "attn_out", None),
+                    context=getattr(attention_scratch, "attn_out", None),
                     stream=stream,
                 )
                 self._trace_decode_full_attention_moe_scratch(
@@ -12862,6 +12953,28 @@ class Qwen35ParoResidentSession:
         if hasattr(self, "_verify_graph_cache"):
             self._verify_graph_cache.clear()
 
+    def _full_attention_decode_scratch(
+        self,
+        layer_id: int,
+        state: Qwen35ParoDecodeState,
+    ) -> Qwen35ParoAttentionScratch:
+        """Return canonical c=1 full-attention scratch after wider batch work."""
+
+        scratch = self.full_scratch.get(layer_id)
+        if isinstance(scratch, Qwen35ParoAttentionScratch) and scratch.attn_input.shape[0] == 1:
+            return scratch
+        # Batch scratch split views use row-count-derived offsets. Re-reserve
+        # the canonical token-1 layout before entering the scalar c1 route.
+        self._invalidate_verify_graph_cache()
+        scratch = state.reserve_full_attention_scratch(
+            tokens=1,
+            num_splits=self.max_splits,
+            activation_dtype=DType.FP16,
+            gated_dtype=DType.FP16,
+        )
+        self.full_scratch[layer_id] = scratch
+        return scratch
+
     def _mlp_decode_scratch(
         self,
         layer_id: int,
@@ -12892,6 +13005,8 @@ class Qwen35ParoResidentSession:
             self.moe_scratch[layer_id] = self._mlp_decode_scratch(layer_id, state)
             if self.config.layer_types[layer_id] == "linear_attention":
                 self.linear_scratch[layer_id] = self._linear_decode_scratch(layer_id, state)
+            elif self.config.layer_types[layer_id] == "full_attention":
+                self.full_scratch[layer_id] = self._full_attention_decode_scratch(layer_id, state)
 
     def _linear_decode_scratch(self, layer_id: int, state: Qwen35ParoDecodeState) -> Qwen35ParoLinearAttentionScratch:
         """Return canonical c=1 linear-attention scratch for resident decode.

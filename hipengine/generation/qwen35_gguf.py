@@ -19,7 +19,13 @@ from typing import Any, ClassVar, Iterator, Mapping, Sequence
 import numpy as np
 
 from hipengine.core.memory import memory_stats
-from hipengine.dispatch import RequestState, SlotMove, WorkItem
+from hipengine.dispatch import (
+    RequestState,
+    SlotMove,
+    WorkItem,
+    WorkKind,
+    plan_physical_batch_groups,
+)
 from hipengine.generation.batch_scheduler import CompletedRequest, GeneratedToken
 from hipengine.generation.constraints import token_sequence_state_for_tokens
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
@@ -3843,6 +3849,7 @@ class Qwen35GGUFResidentModelRunner:
         self._route_counts: Counter[str] = Counter()
         self._fallback_reasons: Counter[str] = Counter()
         self._last_execution_manifest: dict[str, Any] = {}
+        self._last_physical_group_plan: dict[str, Any] = {}
         self._recent_completed_routes: deque[dict[str, Any]] = deque(maxlen=1024)
         self._graph_handle_refs: dict[int, weakref.ReferenceType[Any]] = {}
         self._graph_handle_buckets: dict[int, str] = {}
@@ -4019,6 +4026,9 @@ class Qwen35GGUFResidentModelRunner:
                     for key, value in sorted(self._fallback_reasons.items())
                 },
                 "last_execution_manifest": copy.deepcopy(self._last_execution_manifest),
+                "last_physical_group_plan": copy.deepcopy(
+                    self._last_physical_group_plan
+                ),
                 "recent_completed": list(copy.deepcopy(self._recent_completed_routes)),
             },
         }
@@ -4241,25 +4251,30 @@ class Qwen35GGUFResidentModelRunner:
                 if row.native_greedy and row.first_token_emitted
             ]
             if step_rows:
-                step_slot_ids: tuple[int, ...] = ()
-                step_active_mask: tuple[bool, ...] = ()
-                if work.slot_ids and work.active_mask and len(work.active_mask) <= 8:
+                step_request_ids = tuple(row.request_id for row in step_rows)
+                if work.slot_ids and work.active_mask:
                     slot_by_request = dict(zip(request_ids, work.slot_ids, strict=True))
-                    step_slot_ids = tuple(slot_by_request[row.request_id] for row in step_rows)
-                    physical_rows = next(
-                        width
-                        for width in _GGUF_AR_PHYSICAL_BUCKET_WIDTHS
-                        if width >= len(work.active_mask)
+                    step_slot_ids = tuple(
+                        slot_by_request[request_id] for request_id in step_request_ids
                     )
                     step_slot_set = set(step_slot_ids)
                     step_active_mask = tuple(
-                        slot in step_slot_set for slot in range(physical_rows)
+                        slot in step_slot_set for slot in range(len(work.active_mask))
                     )
-                self._step_native_rows(
-                    step_rows,
-                    physical_slot_ids=step_slot_ids,
-                    physical_active_mask=step_active_mask,
-                )
+                    step_work = WorkItem(
+                        kind=work.kind,
+                        request_ids=step_request_ids,
+                        row_to_request=step_request_ids,
+                        slot_ids=step_slot_ids,
+                        active_mask=step_active_mask,
+                    )
+                else:
+                    step_work = WorkItem(
+                        kind=work.kind,
+                        request_ids=step_request_ids,
+                        row_to_request=step_request_ids,
+                    )
+                self._step_native_rows(step_rows, work=step_work)
             for row in rows:
                 raise_if_generation_deadline_expired(row.request)
 
@@ -4306,12 +4321,34 @@ class Qwen35GGUFResidentModelRunner:
 
     def compact_batch(self, moves: Sequence[SlotMove]) -> None:
         move_tuple = tuple(moves)
-        if any(move.old_slot != move.new_slot for move in move_tuple):
+        moved = tuple(move for move in move_tuple if move.old_slot != move.new_slot)
+        if moved:
             with hip_target_arch_environment(self.generator.target_arch):
                 self._flush_all_packed_owners()
-        # Session state is request-owned, not physical-row-owned.  The scheduler
-        # move is nevertheless consumed here so future row-indexed slabs cannot
-        # silently conflate stable request ids with physical slots.
+                sessions: list[Any] = []
+                seen_sessions: set[int] = set()
+                for move in moved:
+                    row = self._row(move.request_id)
+                    lease = row.lease
+                    if lease is None or id(lease.session) in seen_sessions:
+                        continue
+                    seen_sessions.add(id(lease.session))
+                    sessions.append(lease.session)
+                session_tuple = tuple(sessions)
+                self._observe_graph_handles(session_tuple)
+                graph_handles = self._graph_handles_for_sessions(session_tuple)
+                invalidated = 0
+                if graph_handles:
+                    for session in session_tuple:
+                        invalidate = getattr(session, "invalidate_device_kv_graphs", None)
+                        if callable(invalidate):
+                            invalidated += int(invalidate())
+                if invalidated:
+                    self._record_graph_invalidations(graph_handles, invalidated)
+                    self._kv_graph_invalidation_count += invalidated
+        # Session state is request-owned, not physical-row-owned.  Compaction
+        # changes only the scheduler slot map; state/KV pointers remain attached
+        # to the request session after dirty state and slot-bound graphs retire.
         for move in move_tuple:
             self._row(move.request_id)
 
@@ -4620,36 +4657,66 @@ class Qwen35GGUFResidentModelRunner:
         self,
         rows: Sequence[_GGUFResidentLoopRow],
         *,
-        physical_slot_ids: Sequence[int] = (),
-        physical_active_mask: Sequence[bool] = (),
+        work: WorkItem | None = None,
     ) -> None:
         row_list = list(rows)
-        slot_ids = tuple(int(slot) for slot in physical_slot_ids)
-        active_mask = tuple(bool(active) for active in physical_active_mask)
-        if active_mask:
-            if len(slot_ids) != len(row_list):
-                raise ValueError("physical_slot_ids must align with native decode rows")
-            if tuple(index for index, active in enumerate(active_mask) if active) != slot_ids:
-                raise ValueError("physical_active_mask active lanes must equal physical_slot_ids")
-            if _gguf_ar_packed_decode_enabled() and (
-                len(row_list) > 1 or len(active_mask) > 1
-            ):
-                if self._step_native_chunk(
-                    row_list,
-                    physical_rows=len(active_mask),
-                    active_slot_indices=slot_ids,
-                ):
-                    return
-            self._step_native_serial(row_list)
+        if not row_list:
             return
+        request_ids = tuple(int(row.request_id) for row in row_list)
+        if len(set(request_ids)) != len(request_ids):
+            raise ValueError("native decode rows must have unique request ids")
+        if work is None:
+            work = WorkItem(
+                kind=WorkKind.DECODE,
+                request_ids=request_ids,
+                row_to_request=request_ids,
+            )
+        elif set(work.request_ids) != set(request_ids):
+            raise ValueError("physical-group work must contain exactly the native decode rows")
 
-        width = _GGUF_AR_NATIVE_MAX_SLOTS
-        for start in range(0, len(row_list), width):
-            chunk = row_list[start:start + width]
-            if len(chunk) > 1 and _gguf_ar_packed_decode_enabled():
-                if self._step_native_chunk(chunk):
-                    continue
-            self._step_native_serial(chunk)
+        groups = plan_physical_batch_groups(
+            work,
+            physical_bucket_widths=_GGUF_AR_PHYSICAL_BUCKET_WIDTHS,
+        )
+        row_by_request = {int(row.request_id): row for row in row_list}
+        group_payloads: list[dict[str, Any]] = []
+        for group in groups:
+            group_rows = [row_by_request[request_id] for request_id in group.request_ids]
+            packed = False
+            if _gguf_ar_packed_decode_enabled() and (
+                group.active_rows > 1 or group.physical_rows > 1
+            ):
+                packed = self._step_native_chunk(
+                    group_rows,
+                    physical_rows=group.physical_rows,
+                    active_slot_indices=group.active_slot_indices,
+                )
+            if packed:
+                execution_path = "packed_native"
+                if isinstance(self._last_execution_manifest, Mapping):
+                    direct_manifest = copy.deepcopy(dict(self._last_execution_manifest))
+                    direct_manifest["logical_c"] = group.logical_c
+                    direct_manifest["physical_group"] = group.to_json_dict()
+                    self._last_execution_manifest = direct_manifest
+            else:
+                self._step_native_serial(group_rows)
+                execution_path = (
+                    "native_c1"
+                    if group.active_rows == 1 and group.physical_rows == 1
+                    else "serial_fallback"
+                )
+            group_payload = group.to_json_dict()
+            group_payload["execution_path"] = execution_path
+            group_payloads.append(group_payload)
+
+        self._last_physical_group_plan = {
+            "schema": 1,
+            "kind": "gguf_ar_physical_group_plan",
+            "logical_c": len(request_ids),
+            "physical_bucket_widths": list(_GGUF_AR_PHYSICAL_BUCKET_WIDTHS),
+            "group_count": len(groups),
+            "groups": group_payloads,
+        }
 
     def _step_native_chunk(
         self,

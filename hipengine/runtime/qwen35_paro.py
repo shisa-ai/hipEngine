@@ -14,6 +14,7 @@ from hipengine.dispatch import (
     PagedAttnDecodeKind,
     PagedAttnPrefillKind,
     PagedKVWriteKind,
+    plan_paged_attn_decode,
     resolve_paged_attn_decode,
     resolve_paged_attn_prefill,
     resolve_paged_kv_write,
@@ -4205,7 +4206,15 @@ class Qwen35ParoDecodeState:
         if spans.max_live_count >= 1024:
             raise NotImplementedError("native batch split-K full-attention decode is not wired")
         gate_tensor = scratch.gate if gate is None else gate
-        qwen35_paged_full_attn_decode_context_bf16_batch_spans(
+        context_kind = PagedAttnDecodeKind.CONTEXT_BATCH
+        context_selection = plan_paged_attn_decode(spans, kind=context_kind)
+        context_fn = resolve_paged_attn_decode(
+            backend=_PAGED_KV_REGISTRY_BACKEND,
+            spans=spans,
+            kind=context_kind,
+        )
+        self._last_full_attention_context_kernel_variant = context_selection.variant
+        context_fn(
             scratch.query.ptr,
             key_cache.ptr,
             value_cache.ptr,
@@ -9802,6 +9811,7 @@ class Qwen35ParoDecodeState:
                 _out_packed_from_transposed_qweight(up_qweight),
                 cfg.num_experts,
                 group_size,
+                threads=64,
                 stream=stream,
                 library=_library_for(library, "awq"),
                 runtime=self.runtime,
@@ -9860,6 +9870,7 @@ class Qwen35ParoDecodeState:
                 _out_packed_from_transposed_qweight(down_qweight),
                 cfg.num_experts,
                 group_size,
+                threads=64,
                 stream=stream,
                 library=_library_for(library, "awq"),
                 runtime=self.runtime,

@@ -144,6 +144,15 @@ def test_qwen35_paged_attn_decode_registers_span_variant() -> None:
             backend="hip_gfx1100",
             layer="paged_attn_decode",
             quant="w4_paro",
+            variant="bf16_context_batch_c1_exact_spans",
+        )
+        is qwen35_paged_full_attn_decode_context_bf16_batch_c1_exact_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="paged_attn_decode",
+            quant="w4_paro",
             variant="bf16_split_k_spans",
         )
         is qwen35_paged_full_attn_decode_split_k_bf16_spans
@@ -630,23 +639,24 @@ def test_qwen35_paged_attn_decode_batch_c1_exact_matches_c1_model_shape() -> Non
     runtime = get_hip_runtime()
     rows = 2
     block_size = 256
-    blocks = 2
+    blocks_per_row = 3
     num_q_heads = 16
     num_kv_heads = 2
     head_dim = 256
-    max_context_len = 10
+    max_context_len = 513
     scale = head_dim ** -0.5
     rng = np.random.default_rng(20260630)
 
     query = rng.normal(0.0, 0.25, size=(rows, num_q_heads, head_dim)).astype(np.float32)
-    key_f32 = rng.normal(0.0, 0.25, size=(blocks, block_size, num_kv_heads, head_dim)).astype(np.float32)
-    value_f32 = rng.normal(0.0, 0.25, size=(blocks, block_size, num_kv_heads, head_dim)).astype(np.float32)
-    key_f32[1] += 2.0
-    value_f32[1] -= 2.0
+    cache_shape = (rows * blocks_per_row, block_size, num_kv_heads, head_dim)
+    key_f32 = rng.normal(0.0, 0.25, size=cache_shape).astype(np.float32)
+    value_f32 = rng.normal(0.0, 0.25, size=cache_shape).astype(np.float32)
+    key_f32[blocks_per_row:] += 2.0
+    value_f32[blocks_per_row:] -= 2.0
     key_cache = float_array_to_bf16_bits(key_f32)
     value_cache = float_array_to_bf16_bits(value_f32)
-    block_table = np.zeros((rows, 1), dtype=np.int32)
-    live_counts = np.asarray([9, 10], dtype=np.int64)
+    block_table = np.arange(rows * blocks_per_row, dtype=np.int32).reshape(rows, blocks_per_row)
+    live_counts = np.full((rows,), max_context_len, dtype=np.int64)
     batch_out = np.empty((rows, num_q_heads, head_dim), dtype=np.float32)
     c1_out = np.empty_like(batch_out)
 
@@ -690,23 +700,16 @@ def test_qwen35_paged_attn_decode_batch_c1_exact_matches_c1_model_shape() -> Non
 
         row_query_nbytes = num_q_heads * head_dim * DType.FP32.itemsize
         row_out_nbytes = row_query_nbytes
-        row_table_nbytes = DType.INT32.itemsize
+        row_cache_nbytes = blocks_per_row * block_size * num_kv_heads * head_dim * DType.BF16.itemsize
         row_live_nbytes = DType.INT64.itemsize
         for row in range(rows):
-            row_spans = KVLiveSpans.paged_uniform(
-                block_table=_tensor(table_b.ptr + row * row_table_nbytes, (1,), "int32"),
-                live_counts=_tensor(live_b.ptr + row * row_live_nbytes, (1,), "int64"),
-                max_live_count=int(live_counts[row]),
-                storage_dtype=DType.BF16,
-            )
-            qwen35_paged_full_attn_decode_context_bf16_spans(
+            qwen35_full_attn_decode_context_bf16(
                 query_b.ptr + row * row_query_nbytes,
-                key_b.ptr,
-                value_b.ptr,
+                key_b.ptr + row * row_cache_nbytes,
+                value_b.ptr + row * row_cache_nbytes,
                 c1_out_b.ptr + row * row_out_nbytes,
-                row_spans,
+                live_b.ptr + row * row_live_nbytes,
                 int(live_counts[row]),
-                block_size,
                 num_q_heads,
                 num_kv_heads,
                 head_dim,

@@ -2,7 +2,15 @@ from __future__ import annotations
 
 import pytest
 
-from hipengine.dispatch import ActiveBatch, BatchShapeKey, RequestState, WorkItem, WorkKind
+from hipengine.dispatch import (
+    ActiveBatch,
+    BatchShapeKey,
+    PhysicalBatchGroup,
+    RequestState,
+    WorkItem,
+    WorkKind,
+    plan_physical_batch_groups,
+)
 
 
 def test_request_state_tracks_prefill_and_decode_progress() -> None:
@@ -160,3 +168,144 @@ def test_work_item_validates_request_and_verify_metadata() -> None:
         )
     with pytest.raises(ValueError, match="positive draft_depth"):
         WorkItem(kind=WorkKind.VERIFY_CHAIN, request_ids=(1,), row_to_request=(1,))
+
+
+@pytest.mark.parametrize(
+    ("logical_c", "expected_widths", "expected_masks"),
+    [
+        (3, (4,), ((True, True, True, False),)),
+        (5, (8,), ((True, True, True, True, True, False, False, False),)),
+        (6, (8,), ((True, True, True, True, True, True, False, False),)),
+        (7, (8,), ((True, True, True, True, True, True, True, False),)),
+        (9, (8, 1), ((True,) * 8, (True,))),
+        (13, (8, 8), ((True,) * 8, (True, True, True, True, True, False, False, False))),
+    ],
+)
+def test_physical_batch_group_plan_lowers_arbitrary_c_to_declared_buckets(
+    logical_c: int,
+    expected_widths: tuple[int, ...],
+    expected_masks: tuple[tuple[bool, ...], ...],
+) -> None:
+    request_ids = tuple(range(100, 100 + logical_c))
+    work = WorkItem(
+        kind=WorkKind.DECODE,
+        request_ids=request_ids,
+        row_to_request=request_ids,
+        slot_ids=tuple(range(logical_c)),
+        active_mask=(True,) * logical_c,
+    )
+
+    groups = plan_physical_batch_groups(work, physical_bucket_widths=(1, 2, 4, 8))
+
+    assert tuple(group.physical_rows for group in groups) == expected_widths
+    assert tuple(group.active_mask for group in groups) == expected_masks
+    assert tuple(group.logical_c for group in groups) == (logical_c,) * len(groups)
+    assert tuple(group.group_index for group in groups) == tuple(range(len(groups)))
+    assert tuple(group.group_count for group in groups) == (len(groups),) * len(groups)
+    assert tuple(request_id for group in groups for request_id in group.request_ids) == request_ids
+    assert set(group.physical_rows for group in groups) <= {1, 2, 4, 8}
+
+
+def test_physical_batch_group_plan_preserves_sparse_global_slots_without_compaction() -> None:
+    work = WorkItem(
+        kind=WorkKind.DECODE,
+        request_ids=(10, 12, 18, 22),
+        row_to_request=(10, 12, 18, 22),
+        slot_ids=(0, 2, 8, 12),
+        active_mask=(
+            True,
+            False,
+            True,
+            False,
+            False,
+            False,
+            False,
+            False,
+            True,
+            False,
+            False,
+            False,
+            True,
+        ),
+    )
+
+    groups = plan_physical_batch_groups(work, physical_bucket_widths=(1, 2, 4, 8))
+
+    assert groups == (
+        PhysicalBatchGroup(
+            logical_c=4,
+            group_index=0,
+            group_count=2,
+            physical_slot_base=0,
+            physical_slot_extent=8,
+            physical_rows=8,
+            request_ids=(10, 12),
+            global_slot_indices=(0, 2),
+            active_slot_indices=(0, 2),
+            active_mask=(True, False, True, False, False, False, False, False),
+        ),
+        PhysicalBatchGroup(
+            logical_c=4,
+            group_index=1,
+            group_count=2,
+            physical_slot_base=8,
+            physical_slot_extent=5,
+            physical_rows=8,
+            request_ids=(18, 22),
+            global_slot_indices=(8, 12),
+            active_slot_indices=(0, 4),
+            active_mask=(True, False, False, False, True, False, False, False),
+        ),
+    )
+    assert groups[1].to_json_dict() == {
+        "logical_c": 4,
+        "group_index": 1,
+        "group_count": 2,
+        "physical_slot_base": 8,
+        "physical_slot_extent": 5,
+        "physical_rows": 8,
+        "active_rows": 2,
+        "request_ids": [18, 22],
+        "global_slot_indices": [8, 12],
+        "active_slot_indices": [0, 4],
+        "active_mask": [True, False, False, False, True, False, False, False],
+    }
+
+
+def test_physical_batch_group_plan_validates_declared_widths_and_slot_metadata() -> None:
+    work = WorkItem(
+        kind=WorkKind.DECODE,
+        request_ids=(1, 2),
+        row_to_request=(1, 2),
+        slot_ids=(0, 1),
+        active_mask=(True, True),
+    )
+
+    with pytest.raises(ValueError, match="physical_bucket_widths"):
+        plan_physical_batch_groups(work, physical_bucket_widths=())
+    with pytest.raises(ValueError, match="strictly increasing"):
+        plan_physical_batch_groups(work, physical_bucket_widths=(1, 4, 2))
+    with pytest.raises(ValueError, match="positive"):
+        plan_physical_batch_groups(work, physical_bucket_widths=(0, 1, 2))
+
+    without_slots = WorkItem(
+        kind=WorkKind.DECODE,
+        request_ids=(3, 4, 5),
+        row_to_request=(3, 4, 5),
+    )
+    assert plan_physical_batch_groups(
+        without_slots,
+        physical_bucket_widths=(1, 2, 4, 8),
+    )[0].to_json_dict() == {
+        "logical_c": 3,
+        "group_index": 0,
+        "group_count": 1,
+        "physical_slot_base": 0,
+        "physical_slot_extent": 3,
+        "physical_rows": 4,
+        "active_rows": 3,
+        "request_ids": [3, 4, 5],
+        "global_slot_indices": [0, 1, 2],
+        "active_slot_indices": [0, 1, 2],
+        "active_mask": [True, True, True, False],
+    }

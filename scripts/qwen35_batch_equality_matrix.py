@@ -377,7 +377,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-dir", type=Path, default=Path("/tmp/hipengine-e2e-native-equality-matrix"))
     parser.add_argument("--json", type=Path, required=True)
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--batch-decode-moe-path", choices=("default", "grouped_compact", "selected_c1"), default="default")
+    parser.add_argument("--batch-decode-moe-path", choices=("default", "grouped_compact", "selected_batch", "selected_c1"), default="default")
     parser.add_argument("--batch-decode-linear-path", choices=("default", "batch_segments", "per_row"), default="default")
     parser.add_argument(
         "--batch-decode-linear-projection-path",

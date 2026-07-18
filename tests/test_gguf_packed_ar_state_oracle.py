@@ -3,12 +3,14 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from scripts.gguf_packed_ar_state_oracle import (
     _compare_layer_hidden_sessions,
     _compare_state_rows,
     _session_build_policy,
     build_parser,
+    run,
 )
 
 
@@ -101,3 +103,19 @@ def test_gguf_packed_ar_state_oracle_defaults_to_decode_isolation() -> None:
     assert args.alternate_prompt_length is None
     assert args.decode_steps == 4
     assert args.backend == "hip_gfx1151"
+
+
+def test_gguf_packed_ar_state_oracle_requires_grouped_decode_isolation_above_c8() -> None:
+    args = build_parser().parse_args(
+        [
+            "--model",
+            "/missing/model.gguf",
+            "--rows",
+            "13",
+            "--prefill-mode",
+            "packed",
+        ]
+    )
+
+    with pytest.raises(ValueError, match="packed prefill above 8"):
+        run(args)

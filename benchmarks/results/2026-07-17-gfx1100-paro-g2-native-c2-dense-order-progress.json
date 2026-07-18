@@ -1,0 +1,128 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_paro_native_c2_dense_order_progress",
+  "created_at": "2026-07-17T16:25:55Z",
+  "status": "blocked_selected_c1_moe",
+  "performance_claim": false,
+  "decision": "retain_correctness_progress_diagnostic_only",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "rocm_stack": "TheRock HIP 7.15 hermetic overlay"
+  },
+  "software": {
+    "hipengine_commit": "32de8d08d1d24685465aad043ff2dd41c5f74991",
+    "worktree_clean": true
+  },
+  "model": {
+    "name": "shisa-ai/Qwen3.6-35B-A3B-PARO-packed",
+    "revision": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "quant": "packed_paro_w4",
+    "kv_storage_dtype": "bf16",
+    "layers": 40
+  },
+  "workload": {
+    "fixture": "temporary distinct 8x512 raw-ID fixture",
+    "fixture_sha256": "ebecaea08fcc72277ec9aae0e627190499ff3ef2bc551a8ffd7060d30223dbc4",
+    "batch_size": 2,
+    "prompt_tokens_per_request": 512,
+    "warmup_decode_tokens": 8,
+    "measured_decode_tokens_per_request": 128,
+    "state_kv_decode_tokens": 3,
+    "state_kv_layer_limits": [4, 8, 16, 24, 32, 40],
+    "route": {
+      "prefill": "packed_segments+packed_varlen",
+      "linear_attention": "native_batch_projection+native_segments+batch_gemv_output",
+      "full_attention": "native_batch_context_dense_c1_order",
+      "full_attention_context_variant": "bf16_context_batch_c1_exact_spans",
+      "moe": "selected_c1_batch"
+    }
+  },
+  "commands": {
+    "benchmark": "env HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1 python3 scripts/qwen35_batch_retained_bench.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/gfx1100-paro-g2-clean-32de8d08/fixture.json --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --batch-decode-execution direct_native --compiler-version-file /tmp/gfx1100-paro-g2-clean-32de8d08/hipcc-version.txt --require-cached-build --json /tmp/gfx1100-paro-g2-clean-32de8d08/c2-direct-native-p512-d128.json",
+    "state_kv": "python3 scripts/qwen35_batch_hidden_bisect.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/gfx1100-paro-g2-clean-32de8d08/fixture.json --prompt-length 512 --batch-size 2 --decode-tokens 3 --max-layers 40 --layer-limits 4,8,16,24,32,40 --max-sequence-length 1024 --trace-decode-start 0 --trace-decode-end 3 --batch-decode-moe-path selected_c1 --batch-decode-linear-path batch_segments --batch-decode-linear-projection-path batch --batch-decode-linear-state-path batch_segments --batch-decode-linear-moe-path grouped_compact --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path native_batch --batch-decode-attn-input-path batch --batch-decode-attn-qkv-path batch --batch-decode-attn-scratch-path batch --batch-decode-attn-context-path batch --batch-decode-attn-gate-path batch --batch-decode-full-attn-kv-append-path batch --batch-decode-full-attn-output-path batch --batch-decode-full-attn-layer-copy batch --batch-decode-full-attn-moe-path grouped_compact --batch-decode-post-attn-path batch --compiler-version-file /tmp/gfx1100-paro-g2-clean-32de8d08/hipcc-version.txt --require-cached-build --json /tmp/gfx1100-paro-g2-clean-32de8d08/full-state-kv-gate.json",
+    "profiler": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/gfx1100-paro-g2-clean-32de8d08/trace -- python3 scripts/qwen35_batch_hidden_bisect.py --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --fixture /tmp/gfx1100-paro-g2-clean-32de8d08/fixture.json --prompt-length 512 --batch-size 2 --decode-tokens 1 --max-layers 4 --layer-limits 4 --max-sequence-length 1024 --trace-decode-start 0 --trace-decode-end 1 --skip-full-context-oracle --skip-linear-state-summary --batch-decode-moe-path selected_c1 --batch-decode-linear-path batch_segments --batch-decode-linear-projection-path batch --batch-decode-linear-state-path batch_segments --batch-decode-linear-moe-path grouped_compact --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path native_batch --batch-decode-attn-input-path batch --batch-decode-attn-qkv-path batch --batch-decode-attn-scratch-path batch --batch-decode-attn-context-path batch --batch-decode-attn-gate-path batch --batch-decode-full-attn-kv-append-path batch --batch-decode-full-attn-output-path batch --batch-decode-full-attn-layer-copy batch --batch-decode-full-attn-moe-path grouped_compact --batch-decode-post-attn-path batch --compiler-version-file /tmp/gfx1100-paro-g2-clean-32de8d08/hipcc-version.txt --require-cached-build --json /tmp/gfx1100-paro-g2-clean-32de8d08/profiled-l4-d1.json"
+  },
+  "correctness": {
+    "passed_for_declared_diagnostic_route": true,
+    "generated_token_equality": {
+      "passed": true,
+      "comparison": "direct_c2_vs_two_independent_c1_sessions",
+      "recorded_ids_per_row": 137,
+      "prefix_lengths": [137, 137],
+      "first_mismatch_indices": [null, null],
+      "total_matching_ids": 274
+    },
+    "state_kv_gate": {
+      "status": "eq_ok",
+      "layer_limits": [4, 8, 16, 24, 32, 40],
+      "prefill_hidden_passed": true,
+      "prefill_linear_state_passed": true,
+      "prefill_full_kv_prefix_passed": true,
+      "decode_linear_inputs_stages_state_passed": true,
+      "decode_full_attention_inputs_outputs_passed": true,
+      "decode_full_context_numpy_oracle_passed": true,
+      "decode_full_kv_samples_passed": true,
+      "hidden_passed": true,
+      "tokens_passed": true,
+      "first_hidden_bit_drift": null
+    },
+    "primitive": {
+      "shape": "rows=2, context=513, q_heads=16, kv_heads=2, head_dim=256, distinct physical block rows",
+      "oracle": "two dense c1 context launches",
+      "bit_exact": true
+    }
+  },
+  "diagnostic_scaling": {
+    "decode_seconds": 2.0929151049931534,
+    "aggregate_tok_s": 122.31743150462735,
+    "per_request_tok_s": 61.158715752313675,
+    "serial_c2_control_tok_s": 100.789,
+    "versus_serial_c2_percent": 21.35990187880359,
+    "c1_graph_control_tok_s": 115.956,
+    "versus_c1_graph_rate_percent": 5.486073600872188,
+    "invalid_optimized_context_tok_s": 130.464,
+    "versus_invalid_optimized_context_percent": -6.244303789070282,
+    "claim": "diagnostic only; selected-c1 MoE and the complete retained packet remain open"
+  },
+  "profiler": {
+    "status": "captured",
+    "correctness_status": "eq_ok",
+    "kernel_name": "qwen35_paged_full_attn_decode_context_tensor_batch_c1_exact_kernel",
+    "launches": 1,
+    "duration_ns": 190841,
+    "grid_size_y": 2,
+    "workgroup_size_x": 256,
+    "vgpr_count": 24,
+    "scratch_size": 0,
+    "lds_block_size": 0
+  },
+  "raw_sources": {
+    "benchmark": {
+      "path": "/tmp/gfx1100-paro-g2-clean-32de8d08/c2-direct-native-p512-d128.json",
+      "bytes": 169168,
+      "sha256": "543a8d8925a461046c07afa9f0faa973f0ad57793b1b064043b68c22adb4f106"
+    },
+    "state_kv": {
+      "path": "/tmp/gfx1100-paro-g2-clean-32de8d08/full-state-kv-gate.json",
+      "bytes": 19890707,
+      "sha256": "f4e77eaf22b82e46c37267c12e21ffbc5e90fae612b2b5c98e8fa66325b036e4"
+    },
+    "profiled_comparator": {
+      "path": "/tmp/gfx1100-paro-g2-clean-32de8d08/profiled-l4-d1.json",
+      "bytes": 218381,
+      "sha256": "8ab75d96543bbd893d39e9bce8feb8bcc960d1075bf4e00622f0662dd390506d"
+    },
+    "kernel_trace": {
+      "path": "/tmp/gfx1100-paro-g2-clean-32de8d08/trace/epyc/1306325_kernel_trace.csv",
+      "bytes": 280077,
+      "sha256": "eed4c9fb361bb37e05e6733c51f1c4265962e77fba44cdbc8ea4bb421f8d4314"
+    }
+  },
+  "blockers": [
+    "decode still declares selected_c1_batch MoE rather than grouped_compact",
+    "shrinking lifecycle, cancellation, repetition, and complete retained package are not yet captured",
+    "public production routing continues to fail closed to true width-1 sessions"
+  ],
+  "next_action": "Run grouped-compact MoE as the only changed c2 route, localize its first layer/stage divergence, and close that boundary before shrinking lifecycle or c4/c8 work."
+}

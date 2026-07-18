@@ -5710,9 +5710,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--batch-decode-moe-path",
-        choices=("grouped_compact", "selected_c1"),
+        choices=("grouped_compact", "selected_batch", "selected_c1"),
         default="grouped_compact",
-        help="Diagnostic MoE path for native c>N batch decode; selected_c1 forces the non-retained selected-c1 probe.",
+        help="MoE path for native c>N batch decode; selected_batch is c-aware and selected_c1 is its deprecated compatibility alias.",
     )
     parser.add_argument(
         "--batch-decode-linear-path",
@@ -5916,6 +5916,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str, Any]:
+    batch_decode_moe_path = (
+        "selected_batch"
+        if str(args.batch_decode_moe_path) in {"selected_batch", "selected_c1"}
+        else str(args.batch_decode_moe_path)
+    )
     repeat_runs = int(getattr(args, "repeat_runs", 1))
     if repeat_runs <= 0:
         raise ValueError("repeat-runs must be positive")
@@ -6017,7 +6022,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "linear_state_atol": float(args.state_atol),
             "batch_prefill_linear_path": str(args.batch_prefill_linear_path),
             "batch_prefill_full_attention_path": str(args.batch_prefill_full_attn_path),
-            "batch_decode_moe_path": str(args.batch_decode_moe_path),
+            "batch_decode_moe_path": batch_decode_moe_path,
             "batch_decode_linear_path": str(args.batch_decode_linear_path),
             "batch_decode_linear_projection_path": resolved_linear_projection_path,
             "batch_decode_linear_state_path": str(args.batch_decode_linear_state_path),
@@ -6058,12 +6063,12 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
             "batch_decode_post_attention_path": str(args.batch_decode_post_attn_path),
             "native_caware_decode": bool(
                 args.prompt_length + args.decode_tokens < 1024
-                and args.batch_decode_moe_path == "grouped_compact"
+                and batch_decode_moe_path in {"grouped_compact", "selected_batch"}
                 and args.batch_decode_linear_path == "batch_segments"
                 and resolved_linear_projection_path == "batch"
                 and args.batch_decode_linear_state_path == "batch_segments"
                 and args.batch_decode_linear_moe_path == "grouped_compact"
-                and args.batch_decode_linear_output_path not in {"batch_gemv", "selected_c1"}
+                and args.batch_decode_linear_output_path != "selected_c1"
                 and linear_row_chunk_size == 0
                 and args.batch_decode_full_attn_path == "native_batch"
                 and not force_full_attention_row_chunks
@@ -6079,7 +6084,7 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
                 and args.batch_decode_full_attn_kv_append_path == "batch"
                 and args.batch_decode_attn_append_context_order == "phased"
                 and args.batch_decode_attn_suffix_order == "phased"
-                and args.batch_decode_full_attn_output_path == "batch"
+                and args.batch_decode_full_attn_output_path in {"batch", "batch_gemv"}
                 and args.batch_decode_full_attn_layer_copy == "batch"
                 and args.batch_decode_full_attn_moe_path == "grouped_compact"
                 and args.batch_decode_post_attn_path == "batch"
@@ -6148,9 +6153,9 @@ def run(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str
         return payload
 
     os.environ.setdefault("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE", "1")
-    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"] = (
-        "1" if args.batch_decode_moe_path == "selected_c1" else "0"
-    )
+    selected_batch_env_value = "1" if batch_decode_moe_path == "selected_batch" else "0"
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_BATCH_MOE"] = selected_batch_env_value
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"] = selected_batch_env_value
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_LINEAR"] = (
         "1" if args.batch_decode_linear_path == "per_row" else "0"
     )
