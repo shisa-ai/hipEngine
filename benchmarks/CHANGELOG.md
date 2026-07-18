@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-18
 
+- [closed gfx1151 GGUF E3 arbitrary-C and explicit-compaction correctness] Radeon 8060S/gfx1151 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV moves **native c8 / no arbitrary-C claim -> honest C13 as physical c8+sparse-c8** (**% delta n/a for correctness**): short graph plus p512/d128 eager/graph pass **134,160/134,160** all-layer comparisons, middle-hole cancellation/tail admission keeps inactive state/KV exact with zero fallback, and nine real explicit-compaction moves preserve every hash/resource identity while invalidating **2/2** pinned graphs; C13 is not native, compaction is not automatic, and no server-throughput claim is made. `benchmarks/results/2026-07-18-gfx1151-gguf-concurrency-e3-arbitrary-c-correctness.json`.
+
 - [retained gfx1100 PARO direct native-c2 selected-batch] W7900/gfx1100 Qwen3.6-35B-A3B W4-PARO/BF16-KV p512/d128 moves serial c2 **100.925 -> native selected-batch 121.923 aggregate tok/s (+20.81%)**, also **+5.09%** over the same-protocol c1 graph reference at **116.022 tok/s**. Three fresh-process runs are <=0.276% stdev/median; primitive, all-layer hidden/Conv/GDN/context/KV, uniform/ragged EOS+cancel immutability, auto-default, cached profiler, and all **10/10 category+heldout prompts / 330/330 recorded IDs** pass with 40 selected-batch and zero fallback layers. The claim is explicit direct c2 only; public/OpenAI remains width-1. `benchmarks/results/2026-07-18-gfx1100-paro-g2-selected-batch-c2-retained.json`.
 
 ## 2026-07-17
