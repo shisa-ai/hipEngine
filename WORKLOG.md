@@ -164467,3 +164467,38 @@ llama.cpp 8.662 ms/transition floor; the rate is **6.60% above** llama.cpp's
 eager-target baseline on every category/heldout prompt in both repeats. Commit
 the implementation, then rerun from the clean committed tree before promoting
 or updating the canonical benchmark row.
+
+### Clean retained gate at `0d7b86e7`
+
+Committed the implementation as `0d7b86e7` and reran the exact full protocol
+twice from a clean tree:
+
+- run 1: **96.909 AR, 123.332 MTP tok/s (1.2727x), 8.143 ms/output**;
+- run 2: **96.746 AR, 122.667 MTP tok/s (1.2679x), 8.186 ms/output**;
+- clean-run max/min spread: **0.542%**;
+- both: **144/179 drafts accepted (80.45%)**, 144/240 accepted-output (60.00%);
+- conservative train/heldout: **124.704/119.734 tok/s**, **1.2973x/1.2257x AR**;
+- conservative code/general-en/general-ja/mixed: **127.814/123.374/118.419/
+  116.783 tok/s**, all **1.1990x-1.3168x AR**.
+
+Both clean runs again match all **240 output IDs and 96 cycle semantics** from
+the eager-target baseline. The conservative 122.667 tok/s result is **+123.52%**
+over the corrected 54.880 tok/s baseline, reduces complete wall **55.17%**, and
+is **6.26% above** llama.cpp's 115.444 tok/s / **5.50% below** its 8.662
+ms-transition floor. The real-model byte-parity test was rerun clean and passed
+in 75.6 seconds.
+
+Captured the reusable B2 target under cached `rocprofv3` after two warmups and
+six measured steps. Every measured step reports **0.0 ms capture**. Profiled
+host/kernel/residual is **18.671/13.670/5.001 ms/step**, versus the prior eager
+**52.419/14.013/38.405 ms** split. Each measured graph replay contains exactly
+one dynamic metadata unpack (**6 total**), three cursor advances (**18**), and
+two i32-to-i64 top-1 widenings (**12**); all three leaves use zero scratch/LDS.
+The trace records 940 child-kernel calls/step, but one native graph submission
+owns them rather than Python/ctypes dispatching each leaf.
+
+Retained compact artifact:
+`benchmarks/results/2026-07-19-w7900-llama-compat-reusable-native-cycle.json`.
+The explicit gfx1100 parity target is closed. `llama-compat` stays
+accuracy-traded and explicit; exact/default and gfx1151 are unchanged. Proceed
+to N2 device accept/commit, then N3 complete-cycle/public-adapter ownership.
