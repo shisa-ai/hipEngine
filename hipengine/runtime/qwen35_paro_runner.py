@@ -148,6 +148,7 @@ _SERVER_STARTUP_NATIVE_BATCH_WARMUP_ENV = "HIPENGINE_QWEN35_SERVER_STARTUP_NATIV
 _SERVER_STARTUP_NATIVE_BATCH_WARMUP_TOKENS_ENV = "HIPENGINE_QWEN35_SERVER_STARTUP_NATIVE_BATCH_WARMUP_TOKENS"
 _SERVER_STARTUP_NATIVE_BATCH_WARMUP_TOKENS_DEFAULT = 64
 _RETAINED_BATCH_DEFAULTS_ENV = "HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS"
+_NATIVE_BATCH_DECODE_ENV = "HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"
 _SELECTED_BATCH_MOE_ENV = "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_BATCH_MOE"
 _SELECTED_BATCH_MOE_LEGACY_ENV = "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"
 _MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT_ENV = "HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT"
@@ -189,8 +190,34 @@ def _env_flag_override(name: str, *aliases: str) -> bool | None:
     return None
 
 
-def _retained_batch_defaults_enabled() -> bool:
-    return _env_flag(_RETAINED_BATCH_DEFAULTS_ENV, default=False)
+def _retained_batch_defaults_enabled(backend: str | None = None) -> bool:
+    override = _env_flag_override(_RETAINED_BATCH_DEFAULTS_ENV)
+    if override is not None:
+        return override
+    if backend is None:
+        return False
+    return bool(
+        backend_package_capability(
+            backend,
+            "PARO_RETAINED_BATCH_DEFAULTS",
+            False,
+        )
+    )
+
+
+def _native_batch_decode_enabled(backend: str | None = None) -> bool:
+    override = _env_flag_override(_NATIVE_BATCH_DECODE_ENV)
+    if override is not None:
+        return override
+    if backend is None:
+        return False
+    return bool(
+        backend_package_capability(
+            backend,
+            "PARO_NATIVE_BATCH_DECODE_DEFAULT",
+            False,
+        )
+    )
 
 
 def _aotriton_isolated_prefill_stream_enabled() -> bool:
@@ -298,11 +325,17 @@ def _retained_linear_row_chunk_size(rows: int) -> int:
     return 0
 
 
-def _batch_decode_linear_out_flags(rows: int) -> tuple[bool | None, bool]:
+def _batch_decode_linear_out_flags(
+    rows: int,
+    *,
+    backend: str | None = None,
+) -> tuple[bool | None, bool]:
     env_name = "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_OUT"
     mode = (os.environ.get(env_name, "auto").strip() or "auto").lower()
     if mode == "auto":
-        return None, bool(_retained_batch_defaults_enabled() and 2 <= int(rows) <= 8)
+        return None, bool(
+            _retained_batch_defaults_enabled(backend) and 2 <= int(rows) <= 8
+        )
     if mode in {"1", "true", "on", "yes", "selected_c1"}:
         return int(rows) > 1, False
     if mode in {"0", "false", "off", "no", "batch"}:
@@ -447,10 +480,13 @@ def _projection_candidate_evidence_blockers(candidate: Any) -> tuple[str, ...]:
     return tuple(blockers)
 
 
-def _env_projection_dispatch_candidates() -> tuple[tuple[Any, ...], tuple[str, ...]]:
+def _env_projection_dispatch_candidates(
+    *,
+    backend: str | None = None,
+) -> tuple[tuple[Any, ...], tuple[str, ...]]:
     raw = os.environ.get(_PROJECTION_DISPATCH_ARTIFACT_ENV)
     if raw is None or not raw.strip():
-        if not _retained_batch_defaults_enabled():
+        if not _retained_batch_defaults_enabled(backend):
             return (), ()
         raw = _default_projection_dispatch_artifact()
         if raw is None:
@@ -1778,8 +1814,8 @@ class Qwen35ParoResidentSession:
             free(buffer, runtime=self.runtime)
 
     def _load_native_batch_width_profile(self) -> NativeBatchWidthProfile | None:
-        if not _retained_batch_defaults_enabled() or not _env_flag(
-            "HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"
+        if not _retained_batch_defaults_enabled(self.backend) or not _native_batch_decode_enabled(
+            self.backend
         ):
             return None
         artifact = os.environ.get(QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE_ENV)
@@ -2039,10 +2075,12 @@ class Qwen35ParoResidentSession:
             raise RuntimeError("session is closed")
         if exact_hybrid and str(self.target_arch).split(":", 1)[0] != "gfx1151":
             raise NotImplementedError("exact PARO c2 hybrid is currently certified only on gfx1151")
-        if not exact_hybrid and not _env_flag("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"):
+        if not exact_hybrid and not _native_batch_decode_enabled(
+            getattr(self, "backend", None)
+        ):
             raise NotImplementedError(
-                "native c>N decode is experimental and currently blocked on generated-token equality; "
-                "set HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1 for diagnostics"
+                "native c>N decode is disabled for this backend; set "
+                f"{_NATIVE_BATCH_DECODE_ENV}=1 for diagnostics"
             )
         if self.kv_storage_dtype != DType.BF16:
             raise NotImplementedError("native c>N decode currently requires BF16 KV")
@@ -2452,7 +2490,8 @@ class Qwen35ParoResidentSession:
                     [
                         "native c>N decode currently supports compact physical-slot-ordered rows; "
                         "full-attention batch context is native only for BF16 KV and context < 1024",
-                        "native c>N decode is experimental and blocked until generated-token equality passes",
+                        "batch_execution_metadata is diagnostic; production eligibility comes from "
+                        "the identity-matched resident width plan",
                     ]
                 )
                 path = "scheduler_native_compact_batch" if scheduler_owned else "native_compact_batch"
@@ -2487,7 +2526,9 @@ class Qwen35ParoResidentSession:
                 row_execution = "native_compact_caware_layers"
                 native_caware_decode = True
             if projection_rows is not None:
-                projection_candidates, projection_candidate_blockers = _env_projection_dispatch_candidates()
+                projection_candidates, projection_candidate_blockers = _env_projection_dispatch_candidates(
+                    backend=getattr(self, "backend", None)
+                )
                 projection_decision = plan_projection_dispatch(
                     rows=int(projection_rows),
                     row_gemv=ProjectionKernelSelection("linear", "w4_paro", "row_gemv"),
@@ -4391,7 +4432,7 @@ class Qwen35ParoResidentSession:
                 ),
             ),
         )
-        decode_enabled = _env_flag("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE")
+        decode_enabled = _native_batch_decode_enabled(getattr(self, "backend", None))
         if not decode_enabled:
             result["native_batch_decode_skipped"] = True
             result["native_batch_decode_skip_reason"] = "experimental_native_batch_decode_disabled"
@@ -5591,7 +5632,7 @@ class Qwen35ParoResidentSession:
                 or selected_batch_moe_override is True
                 or (
                     selected_batch_moe_override is None
-                    and _retained_batch_defaults_enabled()
+                    and _retained_batch_defaults_enabled(getattr(self, "backend", None))
                     and _retained_selected_batch_moe_rows(rows)
                 )
             )
@@ -5604,7 +5645,7 @@ class Qwen35ParoResidentSession:
                 _env_flag(force_per_row_linear_moe_env)
                 or (
                     force_selected_c1_moe
-                    and _retained_batch_defaults_enabled()
+                    and _retained_batch_defaults_enabled(getattr(self, "backend", None))
                     and _env_is_blank(force_per_row_linear_moe_env)
                     and _env_is_blank("HIPENGINE_QWEN35_BATCH_DECODE_LINEAR_ROW_CHUNK_SIZE")
                     and _retained_per_row_linear_moe_rows(rows)
@@ -5618,7 +5659,7 @@ class Qwen35ParoResidentSession:
                 _env_flag(_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT_ENV)
                 or (
                     force_selected_c1_moe
-                    and _retained_batch_defaults_enabled()
+                    and _retained_batch_defaults_enabled(getattr(self, "backend", None))
                     and _env_is_blank(_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT_ENV)
                     and _retained_force_small_batch_shared_expert_rows(rows)
                 )
@@ -5669,7 +5710,10 @@ class Qwen35ParoResidentSession:
         force_selected_c1_linear_state = rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_STATE"
         )
-        force_selected_c1_linear_out, force_batch_gemv_linear_out = _batch_decode_linear_out_flags(rows)
+        force_selected_c1_linear_out, force_batch_gemv_linear_out = _batch_decode_linear_out_flags(
+            rows,
+            backend=getattr(self, "backend", None),
+        )
         if exact_hybrid_c2:
             # The generated-token-green c2 split requires the row-aware GEMV
             # linear-output reduction. The generic auto path can select a
@@ -5858,7 +5902,11 @@ class Qwen35ParoResidentSession:
             full_attention_row_chunk_layers = set()
         elif full_attention_row_chunk_layers_raw is not None and full_attention_row_chunk_layers_raw.strip() != "":
             full_attention_row_chunk_layers = _env_int_set(full_attention_row_chunk_layers_env)
-        elif force_full_attention_row_chunks and auto_full_attention_row_chunks and _retained_batch_defaults_enabled():
+        elif (
+            force_full_attention_row_chunks
+            and auto_full_attention_row_chunks
+            and _retained_batch_defaults_enabled(getattr(self, "backend", None))
+        ):
             full_attention_row_chunk_layers = _retained_full_attention_row_chunk_layers(rows)
         else:
             full_attention_row_chunk_layers = set()
@@ -5985,7 +6033,7 @@ class Qwen35ParoResidentSession:
         linear_row_chunk_size = _env_int(linear_row_chunk_env, 0)
         if (
             linear_row_chunk_size == 0
-            and _retained_batch_defaults_enabled()
+            and _retained_batch_defaults_enabled(getattr(self, "backend", None))
             and _env_is_blank(linear_row_chunk_env)
         ):
             linear_row_chunk_size = _retained_linear_row_chunk_size(rows)
@@ -9614,7 +9662,9 @@ class Qwen35ParoResidentSession:
         default_sample_eq_artifact: str | None = None
         default_sample_eq_rows: int | None = None
         default_sample_stabilize_elems: int | None = None
-        if (sample_mode_raw is None or sample_mode_raw.strip() == "") and _retained_batch_defaults_enabled():
+        if (
+            sample_mode_raw is None or sample_mode_raw.strip() == ""
+        ) and _retained_batch_defaults_enabled(getattr(self, "backend", None)):
             (
                 sample_mode,
                 default_sample_eq_ok,

@@ -48,6 +48,7 @@ from hipengine.generation.sampling import (
     row_seed_for_index,
     thinking_budget_state_from_params,
 )
+from hipengine.kernels.backends import backend_package_capability
 from hipengine.kvcache import resolve_kv_policy
 from hipengine.loading import WeightIndex
 from hipengine.runtime.qwen35_paro_runner import (
@@ -3677,8 +3678,26 @@ def _native_batch_width_profile_for_runner(
     runner: Qwen35ParoNextTokenRunner,
     kv_policy: Any,
 ) -> NativeBatchWidthProfile | None:
-    if not _env_flag("HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS") or not _env_flag(
-        "HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"
+    retained_defaults = bool(
+        backend_package_capability(
+            runner.backend,
+            "PARO_RETAINED_BATCH_DEFAULTS",
+            False,
+        )
+    )
+    native_decode_default = bool(
+        backend_package_capability(
+            runner.backend,
+            "PARO_NATIVE_BATCH_DECODE_DEFAULT",
+            False,
+        )
+    )
+    if not _env_flag(
+        "HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS",
+        default=retained_defaults,
+    ) or not _env_flag(
+        "HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE",
+        default=native_decode_default,
     ):
         return None
     artifact = os.environ.get(QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE_ENV)

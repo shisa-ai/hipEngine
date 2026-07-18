@@ -163888,3 +163888,122 @@ were exact. Raw diagnostic `/tmp/paro-g5-sse-retained-16ab00f8/result.json` is
 `aa1ed431d42f5f59078c27d646c4d9b740f47caba0bf93000de4ba816f3d5538`.
 Next: reproduce and close that staggered-admission state boundary before rerunning
 any retained packet.
+
+
+## 2026-07-18 — Retain gfx1151 PARO resident server scaling
+
+Closed G5 on Radeon 8060S/gfx1151, TheRock HIP 7.15, TuneD
+`accelerator-performance`, normal HWS/one HIP queue, `amd_iommu=off`, exact
+packed model revision `437eba06…`, W4 PARO, BF16 KV, greedy p512/d128, 256-token
+prompt chunks, and the `protect_ttft` server policy. Blocking and streaming
+measurements use separate explicit walls and never mix direct model-step timing
+with HTTP/SSE timing.
+
+The single prior c8 SSE row divergence did not reproduce. Repeated owner-level
+probes covered deterministic staggered admission, explicit decode gaps, d128,
+and the exact failed physical-slot prompt order: the two 12-repetition screens
+alone add **192/192** exact rows, and the d128/focused gap controls are also all
+exact. A clean real-FastAPI native-c8 stress packet at `ee8b417e` then passed one
+warmup, seven measured repetitions, and delayed live admission: **72/72** rows
+are prompt/generated-ID/text/usage exact, every sample observes native c8 with
+no fallback reason, and ownership drains. Its seven measured rates are
+42.283/41.771/41.297/41.097/40.411/40.085/39.563 tok/s (median 41.097); this
+stress trend is repeatability evidence, not the retained topline. Raw source is
+203,815,161 bytes, SHA-256
+`6c5e1e48e295725df2eb9d483bd41c444ed9fd0552a248d407e9be590219697b`;
+compact artifact:
+`benchmarks/results/2026-07-18-gfx1151-paro-g5-c8-sse-repeatability.json`
+(155,785 bytes, SHA-256
+`04f8d338b281a956ba9b5404509b815419d7c07c8da34f6beb79795774774f0f`).
+The earlier outlier remains disclosed but is classified as non-reproducible,
+not silently discarded or attributed to a deterministic state/KV defect.
+
+The clean blocking F1 packet at `c0e3318c` uses a fresh socket server per width,
+512 raw prompt IDs, 128 generated IDs/request, one warmup and three measured
+barrier-to-last-response localhost HTTP bursts. Static medians are:
+
+- c1 **47.124 aggregate / 47.124 per-request tok/s**;
+- native c2 **51.962 / 25.981**, **1.103x c1**;
+- native c4 **60.323 / 15.081**, **1.280x c1**;
+- native c8 **61.253 / 7.657**, **1.300x c1**.
+
+Rate stdev/median is <=0.994%. All **68/68** warmup/measured/live requests match
+independent c1 generated IDs, actual resident prompt IDs, exact usage, finish
+metadata, and declared routes. Delayed c8 admission occurs before the first
+request completes and remains 8/8 exact. GTT peak is
+**18.373/18.840/19.461/20.594 GiB** at c1/c2/c4/c8. Artifact:
+`benchmarks/results/2026-07-18-gfx1151-paro-g5-f1-server-scaling.json`
+(484,731 bytes, SHA-256
+`1119231d026c7c4be2cfc02ba2261fb963e001e8ecd735109eef71d8b855de74`).
+
+The final clean in-process FastAPI SSE packet at `ee8b417e` uses exact-roundtrip
+text prompts and authoritative resident-reclaim IDs. Median c1/native-c2/c4/c8/
+serial-c8 rates are **36.327/38.666/42.471/41.487/35.633 aggregate tok/s**.
+Native c2/c4/c8 are **1.064x/1.169x/1.142x c1**; native c8 is **1.164x
+serial-c8**. Delayed c4->c8 admission is exact at **38.191 tok/s**. Every one of
+**100/100** warmup/measured/live rows passes HTTP, prompt, generated-ID, text,
+usage, finish, route, and ownership gates; native rows have no fallback reason,
+and serial-c8 records only the declared `no native batch width profile`
+blocker. Raw source is 194,441,530 bytes, SHA-256
+`b484641353bac1f3cec705af97b39ba524265cc89ee1714bf1e08817c9450f43`;
+compact artifact:
+`benchmarks/results/2026-07-18-gfx1151-paro-g5-sse-server-scaling.json`
+(321,414 bytes, SHA-256
+`d3aaeb835bd4e7d89f04f028c56f33f8d1187d48801f66db0ef816581ad3ad93`).
+
+Representative commands were:
+
+```bash
+# Blocking F1
+uv run --extra dev python scripts/server_f1_concurrency_bench.py \
+  --engine hipengine --model <packed-model> --backend hip_gfx1151 \
+  --quant w4_paro --hipengine-route-expectation native \
+  --hipengine-prefill-decode-policy protect_ttft \
+  --concurrencies 1,2,4,8 --oracle-rows 4 \
+  --prompt-token-id 9707 --prompt-length 512 --decode-tokens 128 \
+  --warmup-runs 1 --measured-runs 3 --batch-window-ms 5 \
+  --ctx-per-seq 1024 --live-concurrency 8 --live-join-after-tokens 8 \
+  --gpu-max-hw-queues 1 --compiler-version-file /tmp/paro-g5-hipcc-version.txt \
+  --memory-domain gtt --drm-card-index 0 --memory-poll-ms 10 \
+  --json /tmp/paro-g5-f1-retained-c0e3318c/result.json
+
+# Native plus serial SSE
+uv run --extra dev python scripts/paro_live_server_bench.py \
+  --configurations c1,native_c2,native_c4,native_c8,serial_c8 \
+  --prompt-length 512 --decode-tokens 128 \
+  --warmup-runs 1 --measured-runs 3 \
+  --prefill-chunk-size 256 --batch-window-ms 20 \
+  --max-sequence-length 1024 --live-configuration native_c8 \
+  --live-initial-rows 4 --live-trigger-native-steps 8 \
+  --json /tmp/paro-g5-sse-final-ee8b417e/result.json
+```
+
+Promoted the retained route through gfx1151 backend-package capabilities,
+without an engine/model backend branch. The minimal evidence-derived profile is
+packaged under `hipengine/runtime/profiles/` and hash/sync-checked against the
+retained G3 source artifact, so installed wheels do not depend on repository
+CWD. With both legacy native flags absent, one real OpenAI SSE c4 d16
+confirmation runs from `/tmp` against measured runtime-candidate archive SHA-256
+`858488bffb30e513d8e73ad492ce8d888e91883218635611889372dc97e3a5e2`.
+It therefore requires the packaged profile fallback rather than the repository
+artifact. The gate passes 4/4 rows, observes physical widths 2 and 4, records no
+fallback reason, and drains ownership. Its 9.271 tok/s zero-warmup short wall is
+routing evidence only. Raw source is 1,117,951 bytes, SHA-256
+`efa4e43f7447009aa05a7956d2eaf6297b9689a2da9bce8d5a5eafa1464f9110`;
+compact correctness artifact:
+`benchmarks/results/2026-07-18-gfx1151-paro-g5-default-openai-c4.json`.
+Explicit `HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=0` and
+`HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=0` remain rollback opt-outs
+for one release window; gfx1100 stays package-default off.
+
+Validation on the final tree: generation, resident-layout, scheduler, server,
+F1/SSE harness, profile-loader, and benchmark-sync suites pass **1,062/1,062**
+(including the focused **215/215** generation/resident set); focused Ruff,
+Python compilation, README block synchronization, artifact/hash assertions,
+and `git diff --check` pass. `uv build` succeeds and the wheel contains the
+1,917-byte packaged profile. The no-flag hardware route above is exact. Updated
+the root/benchmark toplines, benchmark changelog, `docs/PLAN.md`,
+`docs/CONCURRENCY.md`, `docs/REFACTOR.md`, and the PARO transfer/SOL dashboards.
+Remaining PARO concurrency scope is gfx1100 owner c4/c8 symmetry, broader
+sampled/native contexts and KV formats,
+and any independently justified graph path.

@@ -179,6 +179,27 @@ def test_aotriton_isolated_prefill_stream_skips_proven_safe_256_row_bucket(
     assert runner_module._aotriton_isolated_prefill_stream_applies(4096) is True
 
 
+def test_gfx1151_paro_native_batch_defaults_are_backend_scoped_and_overridable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS", raising=False)
+    monkeypatch.delenv("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE", raising=False)
+
+    assert runner_module._retained_batch_defaults_enabled("hip_gfx1151") is True
+    assert runner_module._native_batch_decode_enabled("hip_gfx1151") is True
+    assert runner_module._retained_batch_defaults_enabled("hip_gfx1100") is False
+    assert runner_module._native_batch_decode_enabled("hip_gfx1100") is False
+    assert runner_module._batch_decode_linear_out_flags(
+        8,
+        backend="hip_gfx1151",
+    ) == (None, True)
+
+    monkeypatch.setenv("HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS", "0")
+    monkeypatch.setenv("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE", "0")
+    assert runner_module._retained_batch_defaults_enabled("hip_gfx1151") is False
+    assert runner_module._native_batch_decode_enabled("hip_gfx1151") is False
+
+
 def test_retained_batch_defaults_select_certified_linear_output_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2110,7 +2131,10 @@ def test_qwen35_resident_batch_execution_metadata_keeps_native_diagnostics_ineli
     assert metadata.projection_dispatch["rows"] == 4
     assert metadata.projection_dispatch["path"] == "row_gemv_until_caware_benchmark"
     assert metadata.projection_dispatch["selected_candidate"] == "row_gemv"
-    assert any("generated-token equality" in blocker for blocker in metadata.blockers)
+    assert any(
+        "identity-matched resident width plan" in blocker
+        for blocker in metadata.blockers
+    )
     assert any("projection dispatch: no c-aware projection candidate applies" in blocker for blocker in metadata.blockers)
     assert metadata.to_json_dict()["projection_dispatch"] == metadata.projection_dispatch
 
@@ -2170,7 +2194,10 @@ def test_qwen35_resident_batch_execution_metadata_loads_projection_dispatch_cand
     assert metadata.projection_dispatch["selected_candidate"] == "wmma_caware"
     assert metadata.projection_dispatch["evidence"]["artifact_path"] == "benchmarks/results/projection-wmma-c4.json"
     assert not any("projection dispatch:" in blocker for blocker in metadata.blockers)
-    assert any("generated-token equality" in blocker for blocker in metadata.blockers)
+    assert any(
+        "identity-matched resident width plan" in blocker
+        for blocker in metadata.blockers
+    )
 
     candidate_artifact.write_text(
         json.dumps(
