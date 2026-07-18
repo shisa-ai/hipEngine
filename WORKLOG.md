@@ -164760,3 +164760,17 @@ streams by cancelling the row token, recording one cancelled request, and
 re-raising to ASGI. Validation: focused server control/batcher bundle **26
 passed**, production load-gate contract **10 passed**, and Python compilation
 plus `git diff --check` pass. A final clean focused socket rerun is required.
+
+Clean detached `94c8e1dc` rejected the first accounting placement. Catching
+`CancelledError` inside the model stream changed unwind ordering: seven rows
+were reclaimed as disconnects, the intended disconnected row remained resident,
+and the focused driver timed out without an artifact after 120 seconds. This is
+not a retainable result; raw diagnostic log is
+`/tmp/vstack-pi-bg/bg-175-1784408521317.log`. The accounting handler now wraps
+the complete active response iterator instead. Inner model/batcher teardown
+therefore follows the proven `aae0c04b` order before the wrapper records one
+ASGI cancellation and re-raises it. Completion and chat live-stream endpoints
+both use the wrapper; precomputed streams remain outside it because success is
+already accounted. Host validation remains **26 passed** plus the **10 passed**
+load-gate contract, Python compilation, and `git diff --check`. A clean focused
+socket rerun is required.
