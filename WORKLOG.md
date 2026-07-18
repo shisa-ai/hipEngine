@@ -164354,3 +164354,55 @@ than an acceptance target. Compact artifact:
 raw JSON SHA-256 is `09315833...a303b`. llama.cpp remains an external
 `performance_claim=false` comparator because it uses F16 KV and a preserved
 dirty instrumentation patchset.
+
+## 2026-07-19 — Correct the current W7900 hipEngine `llama-compat` baseline
+
+Reran the canonical clean full-suite wrapper at `637be21d`, W7900/gfx1100,
+system HIP 7.2.53211, cached builds, exact UD-Q4_K_M/BF16 KV, B2 natural24,
+greedy/reasoning-off, and all ten category+heldout prompts:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-mtp-w7900-hipcc-version.txt \
+PYTHONPATH=. python3 scripts/gguf_ar_mtp_suite.py \
+  --scope full \
+  --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit \
+  --budgets 2 --cycles 24 --max-output-tokens 24 \
+  --record-cycle-stage-timings --require-cached-build \
+  --output /tmp/w7900-hipengine-llama-compat-natural24-637be21d.json
+```
+
+Current graph AR is **92.262 tok/s**. `llama-compat` is **54.880 tok/s
+(0.5948x AR)**, 80.45% draft acceptance, 60.00% accepted/output, and
+**18.259 ms/output** complete cycle wall. Train/heldout are **57.137/51.810
+tok/s** with 87.25%/71.43% draft acceptance; code/general-en/general-ja/mixed
+are **60.341/53.098/50.635/51.599 tok/s**. Every split and category remains
+below true graph AR. Raw wrapper SHA-256 is `6af18857...0cf7`; raw category and
+AR SHA-256 are `3bd2d19a...809b6` and `b39396d7...c3f2`.
+
+This supersedes the immediately preceding use of the historical 79.701 tok/s
+hipEngine row as the current gap. Against llama.cpp's current 115.444 tok/s,
+hipEngine is **0.4754x** and needs **+110.36%**, reducing wall by **52.56%** to
+at most 8.662 ms/output.
+
+The stage split is decisive: target verify consumes **41.319 of 45.649
+ms/cycle (90.5%)**; draft initial is 2.413 ms, device-chain drain 1.683 ms,
+KV commit 0.527 ms, and accept accounting 0.005 ms. A cached six-step
+`rocprofv3 --kernel-trace --marker-trace` run records **52.419 ms host vs
+14.013 ms kernels**, **38.405 ms residual**, and **977 launches/step**. Largest
+kernel buckets are selected MoE 4.722, dense Q8 3.934, GDN 1.132, router 1.101,
+and LM head 0.943 ms/step. Raw trace SHA-256 is `c0cb7b1b...62d75`.
+
+To avoid falsely calling the 79.701->54.880 difference a code regression, ran
+six-step child controls under today's same hardware/model/flags/cache contract:
+current source is **43.219 ms**, while detached clean July source `202bd2f0` is
+**48.204 ms**. Current code is 10.34% faster in that matched micro protocol;
+the historical full-suite delta remains unresolved measurement/runtime-state
+drift and is not a revert basis.
+
+Compact artifact:
+`benchmarks/results/2026-07-19-w7900-hipengine-llama-compat-current-baseline.json`.
+N2 device accept/commit remains useful ownership work but is far too small to
+close parity alone. N3 must make the exact N1 target graph dynamic/reusable and
+then own the complete cycle; N1 already proves graph submit+sync can collapse
+the target boundary once per-cycle capture is removed.

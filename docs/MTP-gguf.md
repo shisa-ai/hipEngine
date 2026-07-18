@@ -356,10 +356,10 @@ accept/commit metadata, and scheduler-facing results.
   against their own current outputs.
 - Standard new-kernel gate: KL `<= 0.05`, top-1 `>= 90%`, plus a profiler trace
   proving the expected registered kernels ran.
-- gfx1100 primary break-even: `llama-compat` complete cycle
-  `<= 27.36 ms/cycle` at current density, then beat the current **93.30 tok/s**
-  graph AR control. Exact/default requires its own same-protocol break-even.
-- Required cross-engine target: close the current **12.578 -> <=8.662
+- gfx1100 primary break-even: `llama-compat` complete wall must first beat the
+  current **92.26 tok/s** graph AR control. Exact/default requires its own
+  same-protocol break-even.
+- Required cross-engine target: close the current **18.259 -> <=8.662
   ms/output** gap and meet or beat the refreshed W7900 llama.cpp B2 MTP floor
   of **115.44 transition-normalized tok/s** on the complete category+heldout
   suite, without reducing acceptance or changing the route contract.
@@ -1318,6 +1318,17 @@ is now answered by the M1 required/optional table.)
 
 ## Decision Log
 
+- 2026-07-19: Established the clean current W7900 `llama-compat` baseline at
+  `637be21d`: graph AR **92.26 tok/s**, B2 **54.88 tok/s (0.5948x)**,
+  80.45% draft acceptance, and 18.259 ms/output. Target verification is
+  **41.319/45.649 ms per cycle**. A cached rocprof trace measures **52.42 ms
+  host / 14.01 ms kernels / 38.41 ms residual** and **977 launches/step**;
+  accept/commit is below 0.22 ms/output. A same-environment child comparison
+  makes current source faster than the July source (43.22 vs 48.20 ms), so the
+  old 79.70 tok/s difference is not attributed to a source regression. N2 is
+  useful state ownership but cannot close parity alone; reusable N3 submission
+  is required. Artifact:
+  `benchmarks/results/2026-07-19-w7900-hipengine-llama-compat-current-baseline.json`.
 - 2026-07-19: Refreshed the W7900 llama.cpp B2 natural25 external floor on all
   ten category prompts at clean hipEngine `8d67f072`: transition-normalized
   **78.05 AR -> 115.44 MTP tok/s (1.4791x)**, 81.56% draft acceptance, and
