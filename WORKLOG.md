@@ -164504,3 +164504,64 @@ family time falls from the prior clean diagnostic **8.230 -> 4.038 ms
 The first profile attempt exposed a manifest-only out-of-scope local variable;
 the focused fix was followed by the 71-test bundle and the successful complete
 trace above.
+
+## 2026-07-19 — Retain gfx1151 singleton-indexed GDN scaling
+
+Committed the scoped kernel/runtime change as `e99b228b` and recertified it from
+clean detached `/tmp/gfx1151-gguf-f3-gdn-e99b228b` on Radeon 8060S/gfx1151,
+TheRock HIP 7.15, TuneD accelerator-performance, one HIP queue, and the active
+`amd_iommu=off` boot. The model is Qwen3.6-35B-A3B UD-Q4_K_M with BF16 KV and
+greedy top-1. Builds were warmed outside measurement and all measured commands
+used the precomputed compiler-version file plus `--require-cached-build`.
+
+The clean p512/d64 confirmation records
+**50.642/78.995/108.143/133.268 aggregate tok/s** at c1/c2/c4/c8 with one
+warmup and two measured repeats. All four summaries pass and every trajectory
+repeats. Its raw JSON is 412,622 bytes, SHA-256
+`23a16cd6f62a2e614d7a4f750b955a6a329a959211d687354ece2376a3ca4b21`.
+
+The canonical direct refresh uses the established p512/d128, one-warmup,
+three-repeat protocol:
+
+```bash
+/home/lhl/hipEngine-main/.venv/bin/python scripts/gguf_packed_ar_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1151 --configurations c1,c2,c4,native_c8 \
+  --prompt-token-id 9707 --prompt-length 512 --decode-steps 128 \
+  --warmup-runs 1 --measured-runs 3 \
+  --compiler-version-file /tmp/gfx1151-gguf-f3-clean-3a0fe188/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/gfx1151-gguf-f3-gdn-e99b228b-results/canonical-p512-d128.json
+```
+
+All four requested configurations pass with repeatable trajectories;
+c1/c2/c4 prefixes are exact and native-c8 rows match c4. Aggregate decode is
+**50.335/78.552/108.050/133.251 tok/s** at c1/c2/c4/c8. Versus the prior clean
+F0 direct row this is **+0.09%/+8.71%/+5.25%/+4.04%**. The candidate is
+unreachable at c1, so its movement is ordinary run variance. c8 is now
+**2.647x c1** and **+23.32%** over the current c4 aggregate rate. Maximum
+rate stdev/median is **0.096%**. Raw JSON is 713,782 bytes, SHA-256
+`232bf5b2f5a3ce1243cb96d0a8f5e6382102f2c6454d2f3314a4c551c3d5fbd7`.
+The focused raw harness labels the result `partial_measurement_complete` because
+`serial_c4` and `chunked_c8` were intentionally omitted; all requested rows
+still set `passed=true`. The retained rollup joins the unchanged serial-c1
+control and prior complete direct/category correctness. The old chunked-c8 row
+is now explicitly historical because the candidate would also change each c4
+group.
+
+The required c8 trace was captured immediately before the implementation
+commit, so its provenance honestly records baseline HEAD plus a dirty source
+diff. It is used only for expected-kernel, route, and movement validation, not
+performance. The clean detached throughput packets above carry the performance
+claim. The trace observes 30 indexed GDN launches under the expected symbol,
+**748 packed-native / 0 row-local / 0-copy / 0-unclassified dispatches**, exact
+c8 tokens, and diagnostic Conv/GDN time **8.230 -> 4.038 ms (-50.94%)**.
+
+Added compact retained artifact
+`benchmarks/results/2026-07-19-gfx1151-gguf-f3-singleton-gdn-retained.json` and
+updated `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, root exports,
+`docs/CONCURRENCY.md`, and the current-status row in `docs/PLAN.md`. Existing F2
+OpenAI SSE rates remain retained but were not remeasured or changed by this
+direct-only F3 refresh. F3 remains active: the next candidate is the already
+screened row-amortized Q8T16 dense-projection route, followed by selected-MoE
+utilization if it survives a clean post-GDN A/B.
