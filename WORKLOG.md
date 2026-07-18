@@ -164608,3 +164608,44 @@ trajectory gate establish byte-exact math; no kernel body changed. Updated
 Next: commit this validated dispatch unit, then run a no-env clean canonical
 p512/d128 candidate and cached c8 profiler from that exact revision before
 updating the topline again.
+
+## 2026-07-19 — Reject Q8T16 packed-AR default at the full horizon
+
+The required clean committed p512/d128 gate overturns the preceding d64 screen.
+At clean detached `bdbd435d`, one warmup plus three measured repeats give
+c1/c2/c4/c8 **50.387/78.691/109.189/136.727 tok/s**, or
+**+0.10%/+0.18%/+1.05%/+2.61%** versus retained singleton-GDN
+**50.335/78.552/108.050/133.251**. The candidate is stable (maximum
+stdev/median **0.077%**) and the c8 trace passes route checks with **748
+packed-native** dispatches, including 30 dual and 10 triple rowtile launches.
+Performance and dispatch are therefore real.
+
+Correctness fails. The second canonical prompt's retained 129-token trajectory
+hash is `c74a91f8f2977053f245ab1e10bb5f11ba1517e4ba45964899ccdb62d5a3c3b4`;
+all-rowtile changes it deterministically to
+`60f7baabec9db069633021fa809b83c860034c19710b4ff9a2c495ddac6f3d27`
+at c2, c4, and both matching rows of native c8. Its first eight IDs match, but
+the retained last eight `[11,220,16,24,781,513,310,4300]` become
+`[682,10839,264,3777,16319,1973,21531,310]`. The d64 gate simply ended before
+the divergence became visible. A focused pair-only p512/d128 c2 isolation with
+`ROWTILE_ALL=0` and `PAIR_ROWTILE=1` also fails, producing a third stable hash
+`745e4e13427639902788d997e5cb2891c3e0758450df0327c426377b58c06061`.
+There is no exact narrower pair-only promotion.
+
+RED changed the gfx1151 package-policy assertion to false and failed against
+the pushed true capability. GREEN restores
+`GGUF_Q8_T16_DECODE_ROWTILE_ALL = False` on gfx1151, matching gfx1100 and
+returning production to the retained exact per-row Q8T16 route. The rowtile
+bodies and explicit env selectors remain diagnostic-only. Added rejected
+artifact
+`benchmarks/results/2026-07-19-gfx1151-gguf-f3-q8t16-rowtile-rejected.json`
+and corrected `docs/KERNELS.md` / `docs/REFACTOR.md`. Raw canonical candidate
+JSON is 714,006 bytes, SHA-256
+`cb3dd43f2df53dccfae20b781b95d02e0028946843d4202e187e7c02ad4273ca`;
+pair-only JSON is 92,814 bytes, SHA-256
+`838583fdce26d259eecb5adabf98b6ba6afda784d0348da8ac202b208fae7680`.
+
+Validation after rollback: the focused backend/dispatch bundle is **66 passed**;
+artifact provenance validation, Python compilation, and `git diff --check`
+pass. No GPU rerun is needed for the false capability: it restores the exact
+`e99b228b` route whose clean p512/d128 packet is already retained above.

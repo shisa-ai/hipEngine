@@ -422,11 +422,11 @@ should be boring.
   **13.178 -> 13.697 ms/output**.
 - Remove when: the parity sprint moves Q8 verifier work to a true llama-style
   layout/scheduler port, or after another full-suite row confirms this exact
-  verifier route remains non-retainable. Default llama-compat remains on the
-  existing exact pair wrapper; gfx1151 packed AR can select the same rowtile
-  body only through the separately gated all-projection session below.
+  verifier route remains non-retainable. Default llama-compat and packed AR
+  remain on the existing exact pair wrapper; packed AR may select this body
+  only through the explicit diagnostic env hook.
 
-## `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL` (gfx1151 packed-AR default; verifier rejected)
+## `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL` (diagnostic rejected)
 - Added 2026-07-01 as a default-off runtime hook for broad exact Q8T16 verifier
   row-amortization. Setting `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL=1` routes qwen35
   `rows>1, in=2048` singleton, pair, and triple Q8T16 projections through
@@ -437,19 +437,19 @@ should be boring.
   the exact singleton/pair/triple wrappers and its B2 profile moved dense Q8
   **11.420 -> 10.811 ms/block**, but async llama-compat moved **68.78 -> 68.54
   tok/s** with identical acceptance.
-- F3 re-evaluated the same exact bodies for a different execution shape: native
-  packed AR c2/c4/c8. `GGUF_Q8_T16_DECODE_ROWTILE_ALL` is now true only in the
-  gfx1151 backend package, false on gfx1100, and is applied by a scoped context
-  around `_enqueue_packed_decode_model_step`; normal MTP verifier execution is
-  unchanged. On top of retained singleton GDN, a clean p512/d64 probe keeps all
-  trajectories exact and moves c2 **78.995 -> 79.066 (+0.09%, neutral)**, c4
-  **108.143 -> 109.467 (+1.22%)**, and c8 **133.268 -> 136.887 (+2.72%)**; c1
-  cannot take the route and moves +0.17% from run variance.
-- Explicit `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL=0` overrides the scoped default
-  for rollback. Remove the env rollback after one release window if retained
-  server and profiler refreshes stay exact/non-regressive. Keep the backend
-  capability split until gfx1100 passes its own physical-width gate. Do not
-  promote the MTP suite route without a new full-suite win.
+- F3 re-evaluated the same bodies for native packed AR c2/c4/c8. A clean
+  p512/d64 screen looked positive and exact: c4 **108.143 -> 109.467 (+1.22%)**
+  and c8 **133.268 -> 136.887 (+2.72%)**. The required clean p512/d128 gate then
+  rejected promotion. Candidate c4/c8 reached **109.189/136.727 tok/s**, but the
+  second canonical prompt changed from trajectory hash `c74a91f8...` to
+  `60f7baab...` consistently at c2/c4/c8. Pair-only rowtiling also diverged to
+  a third hash, `745e4e13...`, so there is no exact narrower promotion.
+- `GGUF_Q8_T16_DECODE_ROWTILE_ALL` is false on both gfx11 backend packages.
+  `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL=1` and
+  `HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE=1` remain explicit diagnostics only.
+  Remove the hooks when the rowtile bodies are replaced by a trajectory-exact
+  schedule, or when this investigation is archived. Do not promote either AR
+  or MTP without a new full-horizon correctness gate.
 
 ## `HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE=row` / row Q6 top-1 routes (diagnostic rejected)
 - Added 2026-07-01. Bench flag
