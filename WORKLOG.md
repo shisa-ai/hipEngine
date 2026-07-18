@@ -164565,3 +164565,46 @@ OpenAI SSE rates remain retained but were not remeasured or changed by this
 direct-only F3 refresh. F3 remains active: the next candidate is the already
 screened row-amortized Q8T16 dense-projection route, followed by selected-MoE
 utilization if it survives a clean post-GDN A/B.
+
+## 2026-07-19 — Scope Q8T16 row amortization to gfx1151 packed AR
+
+Re-evaluated the existing exact Q8T16 singleton/pair/triple rowtile4 bodies for
+native packed AR rather than the previously rejected llama-compat verifier
+shape. The clean probe used detached `52a2a661`, Qwen3.6-35B-A3B UD-Q4_K_M,
+BF16 KV, greedy top-1, p512/d64, one warmup, two measured repeats, TheRock HIP
+7.15, TuneD accelerator-performance, one HIP queue, `amd_iommu=off`, and cached
+builds. Candidate invocation set `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL=1`; its
+source stayed clean and all four summaries passed:
+
+| Width | Singleton-GDN baseline | Q8T16 rowtile | Delta |
+| --- | ---: | ---: | ---: |
+| c1 | 50.642 | 50.726 | +0.17% run variance; route unreachable |
+| c2 | 78.995 | 79.066 | +0.09% neutral |
+| c4 | 108.143 | 109.467 | **+1.22%** |
+| c8 | 133.268 | 136.887 | **+2.72%** |
+
+Every measured trajectory hash matches the clean singleton-GDN baseline. Raw
+candidate JSON is 412,538 bytes, SHA-256
+`827d838f77ef501f7023d65d7e47c3cba990aa84c57a76fbca5c64b5804ae315`.
+This confirms the projection win is additive to GDN rather than a superseded
+baseline effect.
+
+RED added backend capability and scoped-dispatch expectations; collection
+failed because `GGUF_Q8_T16_DECODE_ROWTILE_ALL` did not exist. GREEN adds that
+capability as true only on gfx1151 and false on gfx1100. Crucially, package
+metadata is not read as a global `gguf_linear` default: a new
+`q8_t16_rowtile_all_session()` wraps only
+`_enqueue_packed_decode_model_step`. Therefore the prior MTP verifier rejection
+remains unchanged, while explicit `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL=0`
+overrides the packed context for rollback. Singleton, pair, and triple launch
+helpers all share the same scoped policy; rows==1 remains structurally
+unaffected.
+
+Focused validation is **66 passed** across `tests/test_gfx1151_backend.py` and
+`tests/test_gguf_linear_dispatch.py`, plus Python compilation and
+`git diff --check`. Existing Q8T16 primitive fixtures and the clean full-model
+trajectory gate establish byte-exact math; no kernel body changed. Updated
+`docs/KERNELS.md` and `docs/REFACTOR.md` with the packed-AR/MTP scope split.
+Next: commit this validated dispatch unit, then run a no-env clean canonical
+p512/d128 candidate and cached c8 profiler from that exact revision before
+updating the topline again.

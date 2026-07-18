@@ -422,30 +422,34 @@ should be boring.
   **13.178 -> 13.697 ms/output**.
 - Remove when: the parity sprint moves Q8 verifier work to a true llama-style
   layout/scheduler port, or after another full-suite row confirms this exact
-  rowtile route remains non-retainable. It is an evidence hook only; default and
-  llama-compat runtime paths stay on the existing exact pair wrapper.
+  verifier route remains non-retainable. Default llama-compat remains on the
+  existing exact pair wrapper; gfx1151 packed AR can select the same rowtile
+  body only through the separately gated all-projection session below.
 
-## `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL` (diagnostic rejected)
-- Added 2026-07-01. Default-off runtime hook for broad exact Q8T16 verifier
+## `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL` (gfx1151 packed-AR default; verifier rejected)
+- Added 2026-07-01 as a default-off runtime hook for broad exact Q8T16 verifier
   row-amortization. Setting `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL=1` routes qwen35
   `rows>1, in=2048` singleton, pair, and triple Q8T16 projections through
   rowtile4 wrappers where available. It also enables the pair rowtile diagnostic
   unless `HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE=0` is set explicitly. Suite route:
   `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-q8rowtileall`.
-- Purpose: test whether the isolated exact pair-rowtile win can be extended over
-  the full retained llama-compat verifier shape. Correctness passes against the
-  existing exact singleton/pair/triple wrappers. The B2 block profile moved the
-  dense-Q8 bucket **11.420 -> 10.811 ms/block** and total kernel time
-  **26.053 -> 25.276 ms/block**, mostly by cutting the Q8 pair body
-  **6.025 -> 5.316 ms/block**. The async smoke rejected promotion:
-  same-session retained `x8q6` reached **68.78 tok/s / 14.561 ms/output** while
-  q8rowtileall reached **68.54 tok/s / 14.614 ms/output** with identical
-  acceptance.
-- Remove when: the parity sprint replaces the current T16 Q8 verifier layout
-  with a true llama.cpp-style Q8_0 x Q8_1 MMVQ layout/scheduler, or after the
-  dense-Q8 verifier target is resolved another way. This is evidence only; it
-  should not become default or update the retained llama-compat lane without a
-  future full-suite win.
+- The original verifier decision remains rejected. Correctness passes against
+  the exact singleton/pair/triple wrappers and its B2 profile moved dense Q8
+  **11.420 -> 10.811 ms/block**, but async llama-compat moved **68.78 -> 68.54
+  tok/s** with identical acceptance.
+- F3 re-evaluated the same exact bodies for a different execution shape: native
+  packed AR c2/c4/c8. `GGUF_Q8_T16_DECODE_ROWTILE_ALL` is now true only in the
+  gfx1151 backend package, false on gfx1100, and is applied by a scoped context
+  around `_enqueue_packed_decode_model_step`; normal MTP verifier execution is
+  unchanged. On top of retained singleton GDN, a clean p512/d64 probe keeps all
+  trajectories exact and moves c2 **78.995 -> 79.066 (+0.09%, neutral)**, c4
+  **108.143 -> 109.467 (+1.22%)**, and c8 **133.268 -> 136.887 (+2.72%)**; c1
+  cannot take the route and moves +0.17% from run variance.
+- Explicit `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL=0` overrides the scoped default
+  for rollback. Remove the env rollback after one release window if retained
+  server and profiler refreshes stay exact/non-regressive. Keep the backend
+  capability split until gfx1100 passes its own physical-width gate. Do not
+  promote the MTP suite route without a new full-suite win.
 
 ## `HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE=row` / row Q6 top-1 routes (diagnostic rejected)
 - Added 2026-07-01. Bench flag
