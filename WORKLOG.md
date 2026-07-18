@@ -163673,3 +163673,24 @@ existing native opt-ins, covers normal sampling only through exact host-tested
 serial fallback, and does not close gfx1100 owner symmetry. Next: commit this
 logical unit, then run repeated real gfx1151 server burst/live-admission scaling
 before any production-default promotion.
+
+## 2026-07-18 — Generalize the F1 harness for PARO checkpoints
+
+Extended `scripts/server_f1_concurrency_bench.py` without changing its primary
+barrier-to-last-response HTTP timing boundary. The harness now fingerprints
+model directories as well as GGUF files, reports the requested quant, configures
+explicit native/serial PARO child-server modes, treats c1 serial execution as
+the width-1 control rather than a failure, and falls back to 90% of observed c1
+HTTP wall for live-admission scheduling when backend telemetry exposes only
+`request_total_ms`. Twelve focused tests pass, including RED/GREEN directory
+fingerprinting, route expectations, and the PARO timing fallback.
+
+A dirty-harness c1/c2 p512/d8 smoke on clean runtime commit `24d4b070` is
+correctness-green: c1 and c2 measured rows and delayed live-admission rows all
+match their independent c1 ID oracles; c1 resolves the explicit resident serial
+path and static c2 resolves `paro_resident_native_width_decode` with one real
+backend c2 group. The short wall is intentionally non-claimable (c1/c2 aggregate
+9.357/9.433 tok/s, dominated by two serial 512-token prefills), and the zero-
+warmup wrapper correctly leaves the overall smoke at `failed_gate`. Next:
+commit the harness, rerun from a clean commit with one warmup plus three p512/d128
+repetitions at c1/c2/c4/c8, and retain only exact routes with bounded variance.

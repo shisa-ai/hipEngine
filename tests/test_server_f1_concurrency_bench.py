@@ -191,6 +191,70 @@ def test_oracle_join_delay_supports_resident_request_total_residual() -> None:
     assert delay == pytest.approx(0.1)
 
 
+def test_model_fingerprint_supports_directory_checkpoints(tmp_path: Path) -> None:
+    model = tmp_path / "model"
+    model.mkdir()
+    (model / "config.json").write_text("{}", encoding="utf-8")
+    (model / "weights.bin").write_bytes(b"weights")
+
+    fingerprint = SCRIPT._model_fingerprint(model)
+
+    assert fingerprint["path"] == str(model.resolve())
+    assert fingerprint["path_type"] == "directory"
+    assert fingerprint["file_count"] == 2
+    assert fingerprint["size_bytes"] == 9
+    assert fingerprint["revision"] is None
+
+
+def test_paro_oracle_join_delay_uses_http_wall_without_prefill_breakdown() -> None:
+    delay = SCRIPT._oracle_join_delay_seconds(
+        [
+            {
+                "backend_timing_ms": {"request_total_ms": 600.0},
+                "wall_seconds": 0.8,
+            }
+        ],
+        join_after_tokens=2,
+        expected_tokens=8,
+    )
+    assert delay == pytest.approx(0.72)
+
+
+def test_hipengine_route_expectation_accepts_width1_and_native_or_serial_cn() -> None:
+    assert SCRIPT._hipengine_route_expectation_passes(
+        concurrency=1,
+        expectation="native",
+        serial_values=[True],
+        native_values=[False],
+        shape_passed=True,
+        resident_capacity=1.0,
+    )
+    assert SCRIPT._hipengine_route_expectation_passes(
+        concurrency=2,
+        expectation="native",
+        serial_values=[False, False],
+        native_values=[True, True],
+        shape_passed=True,
+        resident_capacity=2.0,
+    )
+    assert SCRIPT._hipengine_route_expectation_passes(
+        concurrency=8,
+        expectation="serial",
+        serial_values=[True] * 8,
+        native_values=[False] * 8,
+        shape_passed=False,
+        resident_capacity=8.0,
+    )
+    assert not SCRIPT._hipengine_route_expectation_passes(
+        concurrency=4,
+        expectation="native",
+        serial_values=[True] * 4,
+        native_values=[False] * 4,
+        shape_passed=False,
+        resident_capacity=4.0,
+    )
+
+
 def test_parse_ldd_local_paths_only_retains_build_tree(tmp_path: Path) -> None:
     repo = tmp_path / "llama.cpp"
     local = repo / "build" / "bin" / "libllama.so"
