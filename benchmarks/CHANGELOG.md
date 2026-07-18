@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-19
 
+- [corrected current gfx1100 hipEngine `llama-compat` baseline] W7900 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV B2 natural24 full-suite **79.701 -> 54.880 tok/s (-31.14%)** and complete wall **12.578 -> 18.259 ms/output (+45.17%)** under the current clean tree; same-environment current-vs-July source child timing is actually **43.22 vs 48.20 ms**, so no source-regression cause is claimed. Target verify owns **41.319/45.649 ms/cycle** and rocprof measures **52.42 ms host / 14.01 ms kernels / 977 launches**, requiring reusable native submission rather than accept accounting; `benchmarks/results/2026-07-19-w7900-hipengine-llama-compat-current-baseline.json`.
+
 - [refreshed external gfx1100 llama.cpp MTP floor] W7900 Qwen3.6-35B-A3B UD-Q4_K_M/F16-KV B2 natural25 full-suite transition rate **116.878 -> 115.444 tok/s (-1.23%)**, while its same-run AR is **78.053 tok/s** and MTP remains **1.4791x** with **81.56%** draft acceptance; this establishes a current **115.44 tok/s / 8.662 ms-output** floor that hipEngine `llama-compat` must meet without category/heldout regression; `benchmarks/results/2026-07-19-w7900-llamacpp-mtp-natural25-refresh.json`.
 
 - [rejected gfx1100 GGUF NativeSpecCycle N1 performance route] W7900 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV fixed B2 target forward submit+sync moves **29.589 -> 15.493 ms/cycle (-47.64%)**, but required position-bound capture adds **32.755 ms/cycle** and the same-tree three-cycle diagnostic regresses **84.35 -> 52.48 tok/s (-37.78%)** with identical 6/6 acceptance; all top-1/hidden/Conv/GDN/KV/cursor parity is byte-exact, so N1 lands default-off as correctness infrastructure and N3 graph reuse is required; `benchmarks/results/2026-07-19-gfx1100-native-spec-cycle-n1-b2.json`.

@@ -365,12 +365,12 @@ B2 natural24 structure used by the llama.cpp comparison.
 | Metric | hipEngine GGUF true AR | hipEngine GGUF exact/default | hipEngine GGUF `llama-compat` | llama.cpp HIP base AR | llama.cpp HIP bundled MTP |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Route | State-bound graph, no MTP | B3, fixed 10 cycles | B2, natural24/cyclecap24 | Natural25 request / 24 timed transitions | B2, natural25 request / 24 timed transitions |
-| Decode | **98.75 tok/s fixed / 93.30 tok/s natural24** | 68.50 tok/s | 79.70 tok/s | 78.05 tok/s transition-normalized | **115.44 tok/s transition-normalized** |
-| Own true AR | same route | 98.75 tok/s | 93.30 tok/s | same route | 78.05 tok/s |
-| MTP / own AR | 1.0000x | **0.6936x** | **0.8542x** | n/a | **1.4791x** |
-| Draft acceptance | n/a | 73.53% | 82.95% | n/a | 81.56% |
-| Accepted draft/output | n/a | 50.00% | 60.83% | n/a | 58.40% |
-| Complete wall per output/transition | 10.718 ms natural24 | 14.696 ms | 12.578 ms | 12.812 ms | **8.662 ms** |
+| Decode | **98.75 tok/s fixed / 92.26 tok/s natural24** | 68.50 tok/s | 54.88 tok/s | 78.05 tok/s transition-normalized | **115.44 tok/s transition-normalized** |
+| Own true AR | same route | 98.75 tok/s | 92.26 tok/s | same route | 78.05 tok/s |
+| MTP / own AR | 1.0000x | **0.6936x** | **0.5948x** | n/a | **1.4791x** |
+| Draft acceptance | n/a | 73.53% | 80.45% | n/a | 81.56% |
+| Accepted draft/output | n/a | 50.00% | 60.00% | n/a | 58.40% |
+| Complete wall per output/transition | 10.838 ms natural24 | 14.696 ms | 18.259 ms | 12.812 ms | **8.662 ms** |
 | State/commit contract | serial autoregressive | serial-prefix preserving | direct partial commit/dp4a; accuracy-traded | native llama.cpp autoregressive | native llama.cpp compatibility target |
 
 The old `34.28-34.49 tok/s` true-AR denominator was an eager-only benchmark
@@ -384,14 +384,17 @@ preview/tail and moves **34.28 -> 93.30 tok/s** in the same MTP wrapper.
 At the matched cross-engine boundary, hipEngine counts 240 complete post-prefill
 transitions including graph capture/instantiate/close; llama.cpp build 9648
 requests 25 outputs and counts the 240 timed transitions inside `predicted_ms`.
-hipEngine AR is **93.30 versus 78.05 tok/s (+19.54%)**. The refreshed external
-B2 MTP route is instead **115.44 tok/s**, **1.4791x** its own AR and **1.4485x**
-hipEngine `llama-compat`. Its 81.56% draft acceptance is slightly below
-hipEngine's 82.95%, so the remaining **+44.85%** hipEngine requirement is an
-orchestration/complete-cycle wall target rather than an acceptance target.
-BF16 versus F16 KV remains disclosed. llama.cpp stays an external diagnostic
-with `performance_claim=false` because its local instrumentation patchset is
-dirty but preserved.
+Current hipEngine AR is **92.26 versus 78.05 tok/s (+18.21%)**. The refreshed
+external B2 MTP route is instead **115.44 tok/s**, **1.4791x** its own AR and
+**2.1036x** current hipEngine `llama-compat`. hipEngine therefore needs
+**+110.36%**, reducing complete wall from **18.259 to <=8.662 ms/output**.
+Current target verification consumes **41.319 of 45.649 ms/cycle (90.5%)**;
+rocprof records **52.42 ms host wall, 14.01 ms kernels, 38.41 ms residual, and
+977 launches/step**. Device accept/commit is below 0.22 ms/output, so reusable
+native target/complete-cycle submission is the measured blocker. BF16 versus
+F16 KV remains disclosed. llama.cpp stays an external diagnostic with
+`performance_claim=false` because its local instrumentation patchset is dirty
+but preserved.
 
 Neither hipEngine MTP route beats the corrected production AR control. Exact/default
 remains the semantic control; `llama-compat` remains explicit-only because
@@ -403,18 +406,21 @@ against each other.
 
 | Scope | Prompts | True AR tok/s | `llama-compat` tok/s | MTP / AR | Draft acceptance | Accepted/output | Cycle wall/output |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Full | 10 | **93.30** | 79.70 | **0.8542x** | 82.95% | 60.83% | 12.578 ms |
-| Train | 6 | **93.73** | 82.01 | **0.8749x** | **88.12%** | 61.81% | 12.224 ms |
-| Heldout | 4 | **92.67** | 76.47 | **0.8252x** | **76.00%** | 59.38% | 13.110 ms |
-| `code` | 4 | **93.63** | 86.99 | **0.9291x** | 95.38% | 64.58% | 11.523 ms |
-| `general_en` | 2 | **90.99** | 75.87 | **0.8338x** | 75.68% | 58.33% | 13.212 ms |
-| `general_ja` | 2 | **94.38** | 72.17 | **0.7647x** | 69.23% | 56.25% | 13.889 ms |
-| `mixed_ja_en` | 2 | **93.98** | 78.71 | **0.8375x** | 82.86% | 60.42% | 12.744 ms |
+| Full | 10 | **92.26** | 54.88 | **0.5948x** | 80.45% | 60.00% | 18.259 ms |
+| Train | 6 | **91.68** | 57.14 | **0.6232x** | **87.25%** | 61.81% | 17.537 ms |
+| Heldout | 4 | **93.15** | 51.81 | **0.5562x** | **71.43%** | 57.29% | 19.343 ms |
+| `code` | 4 | **92.78** | 60.34 | **0.6503x** | 93.94% | 64.58% | 16.607 ms |
+| `general_en` | 2 | **89.75** | 53.10 | **0.5916x** | 75.68% | 58.33% | 18.869 ms |
+| `general_ja` | 2 | **93.27** | 50.63 | **0.5429x** | 69.23% | 56.25% | 19.790 ms |
+| `mixed_ja_en` | 2 | **92.82** | 51.60 | **0.5559x** | 72.97% | 56.25% | 19.424 ms |
 
-All four categories and heldout lose to graph AR despite unchanged strong draft
-acceptance. This corrects the earlier false MTP-win conclusion without changing
-the compatibility semantics. Artifact:
-[`2026-07-12-w7900-gfx1100-gguf-graph-ar-refresh.json`](results/2026-07-12-w7900-gfx1100-gguf-graph-ar-refresh.json).
+All four categories and heldout lose to graph AR. The earlier 79.70 tok/s row
+is retained as historical evidence only: a same-environment six-step child
+control measures current source **43.22 ms** versus the July source **48.20
+ms**, so the full-suite difference is not valid evidence of a source
+regression. The current 54.88 tok/s row is the optimization baseline. Artifacts:
+[`current baseline`](results/2026-07-19-w7900-hipengine-llama-compat-current-baseline.json)
+and [`historical refresh`](results/2026-07-12-w7900-gfx1100-gguf-graph-ar-refresh.json).
 
 #### GGUF MTP comparison, Radeon 8060S/gfx1151
 
