@@ -801,6 +801,65 @@ def test_t16_single_qwen35_rows_gt1_routes_to_rowtile4_when_all_opted_in(monkeyp
     ]
 
 
+def test_t16_rowtile_all_uses_packed_session_with_explicit_opt_out(monkeypatch) -> None:
+    weight = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
+    import hipengine.runtime.gguf_linear as gl
+
+    monkeypatch.delenv("HIPENGINE_GGUF_Q8_T16_THREADS", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL", raising=False)
+    gl.clear_gguf_linear_dispatch_cache()
+    calls: list[str] = []
+
+    def fake_exact(*args, **kwargs):
+        calls.append("exact")
+
+    def fake_rowtile(*args, **kwargs):
+        calls.append("rowtile4")
+
+    original_exact = gl._LAUNCH_ABI["t16"]
+    original_rowtile = gl.gguf_q8_0_t16_gemv_decode_rowtile4_bf16_bf16_out
+    gl._LAUNCH_ABI["t16"] = fake_exact
+    gl.gguf_q8_0_t16_gemv_decode_rowtile4_bf16_bf16_out = fake_rowtile  # type: ignore[assignment]
+    try:
+        with gl.q8_t16_rowtile_all_session(True):
+            launch_gguf_linear(
+                weight,
+                x_ptr=100,
+                out_ptr=200,
+                rows=4,
+                in_features=2048,
+                out_features=4096,
+                backend="hip_gfx1151",
+            )
+        launch_gguf_linear(
+            weight,
+            x_ptr=100,
+            out_ptr=200,
+            rows=4,
+            in_features=2048,
+            out_features=4096,
+            backend="hip_gfx1151",
+        )
+        monkeypatch.setenv("HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL", "0")
+        gl.clear_gguf_linear_dispatch_cache()
+        with gl.q8_t16_rowtile_all_session(True):
+            launch_gguf_linear(
+                weight,
+                x_ptr=100,
+                out_ptr=200,
+                rows=4,
+                in_features=2048,
+                out_features=4096,
+                backend="hip_gfx1151",
+            )
+    finally:
+        gl._LAUNCH_ABI["t16"] = original_exact
+        gl.gguf_q8_0_t16_gemv_decode_rowtile4_bf16_bf16_out = original_rowtile  # type: ignore[assignment]
+        gl.clear_gguf_linear_dispatch_cache()
+
+    assert calls == ["rowtile4", "exact", "exact"]
+
+
 def test_t16_triple_fuses_q8_separate_outputs() -> None:
     """Resident Q8T16 full-attention Q/K/V can share one split-output launch."""
 

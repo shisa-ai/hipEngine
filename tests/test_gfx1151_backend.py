@@ -33,6 +33,7 @@ from hipengine.kernels.hip_gfx1100 import (
     GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS as GFX1100_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS,
     GGUF_GDN_INDEXED_SINGLETON_DECODE as GFX1100_GGUF_GDN_INDEXED_SINGLETON_DECODE,
     GGUF_GDN_PREFILL_AUTO_MODE as GFX1100_GGUF_GDN_PREFILL_AUTO_MODE,
+    GGUF_Q8_T16_DECODE_ROWTILE_ALL as GFX1100_GGUF_Q8_T16_DECODE_ROWTILE_ALL,
     GGUF_GDN_PREFILL_EXACT_MODE as GFX1100_GGUF_GDN_PREFILL_EXACT_MODE,
     GGUF_PAGED_ATTN_PARALLEL_REDUCE as GFX1100_GGUF_PAGED_ATTN_PARALLEL_REDUCE,
     GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT as GFX1100_GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT,
@@ -50,6 +51,7 @@ from hipengine.kernels.hip_gfx1151 import (
     GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT,
     GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS,
     GGUF_PREFILL_ROUTER_SELECT_THREADS,
+    GGUF_Q8_T16_DECODE_ROWTILE_ALL,
     GGUF_Q8_T16_PREFILL_FOUR_WAVE,
     GGUF_Q8_T16_PREFILL_TWO_WAVE,
     GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS,
@@ -172,6 +174,8 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS == 0
     assert GFX1100_GGUF_GDN_INDEXED_SINGLETON_DECODE is False
     assert GGUF_GDN_INDEXED_SINGLETON_DECODE is True
+    assert GFX1100_GGUF_Q8_T16_DECODE_ROWTILE_ALL is False
+    assert GGUF_Q8_T16_DECODE_ROWTILE_ALL is True
     assert GFX1100_GGUF_GDN_PREFILL_AUTO_MODE == "chain_peer_wave32"
     assert GFX1100_GGUF_GDN_PREFILL_EXACT_MODE == "chain_lds32_direct_nonvolatile"
     assert GGUF_GDN_PREFILL_AUTO_MODE == "chain_lds32_direct_nonvolatile"
@@ -275,6 +279,20 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             "GGUF_GDN_INDEXED_SINGLETON_DECODE",
         )
         is False
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "GGUF_Q8_T16_DECODE_ROWTILE_ALL",
+        )
+        is False
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1151",
+            "GGUF_Q8_T16_DECODE_ROWTILE_ALL",
+        )
+        is True
     )
     assert (
         backend_package_capability(

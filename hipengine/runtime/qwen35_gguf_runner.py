@@ -275,6 +275,7 @@ from hipengine.runtime.gguf_linear import (
     launch_gguf_linear_pair,
     launch_gguf_linear_pair_concat,
     launch_gguf_linear_triple,
+    q8_t16_rowtile_all_session,
     resolve_gguf_linear_dispatch,
     wmma_prefill_session,
 )
@@ -11783,7 +11784,18 @@ class Qwen35GGUFResidentSession:
         linear_attention_decode_paths: set[str] = set()
         full_attention_decode_paths: set[str] = set()
         linear_attention_decode_batch_plan = self.runner._linear_attention_decode_batch_plan()
-        with wmma_prefill_session(False), gemv_decode_session(self.use_gemv_decode):
+        q8_t16_rowtile_all = bool(
+            backend_package_capability(
+                self.runner.backend,
+                "GGUF_Q8_T16_DECODE_ROWTILE_ALL",
+                False,
+            )
+        )
+        with (
+            wmma_prefill_session(False),
+            gemv_decode_session(self.use_gemv_decode),
+            q8_t16_rowtile_all_session(q8_t16_rowtile_all),
+        ):
             for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
                 if layer_type == LINEAR_ATTENTION:
                     linear_attention_decode_paths.add(

@@ -111,13 +111,14 @@ _WMMA_PREFILL_QUANT_BLOCKS: Mapping[str, int] = {
     "gguf_q8_0_t16_v1": 32,
 }
 
-# Diagnostic scheduler knob for Q8_0 T16 GEMV verifier projections. Default is
-# wrapper-local 128 threads; set the env var to 64 for the current llama-compat
-# pair-projection A/B. Kept separate from selected-MoE T16 dp4a scheduling.
+# Q8_0 T16 decode scheduling. Backend packages select independently retained
+# defaults; explicit env values remain diagnostic/rollback overrides. The
+# thread-width hook stays separate from selected-MoE T16 dp4a scheduling.
 _Q8_T16_THREADS_ENV = "HIPENGINE_GGUF_Q8_T16_THREADS"
 _Q8_T16_ALLOWED_THREADS = frozenset({64, 128})
 _Q8_T16_PAIR_ROWTILE_ENV = "HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE"
 _Q8_T16_ROWTILE_ALL_ENV = "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL"
+_q8_t16_rowtile_all_session_enabled: bool | None = None
 _Q8_T16_QWEN35_ATTN_QKV_OUT = 8192
 _Q8_T16_QWEN35_ATTN_GATE_OUT = 4096
 _Q8_T16_QWEN35_ATTN_IN = 2048
@@ -294,18 +295,39 @@ def _q8_t16_threads_override_active(threads: int = 0) -> bool:
     return int(threads) != 0 or bool(os.environ.get(_Q8_T16_THREADS_ENV, "").strip())
 
 
-def _resolve_use_q8_t16_pair_rowtile() -> bool:
-    raw = os.environ.get(_Q8_T16_PAIR_ROWTILE_ENV, "")
-    if not raw:
-        return _resolve_use_q8_t16_all_rowtile()
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
+def set_q8_t16_rowtile_all_enabled(enabled: bool | None) -> None:
+    """Set the packed-AR scoped Q8T16 row-amortized decode policy."""
+
+    global _q8_t16_rowtile_all_session_enabled
+    _q8_t16_rowtile_all_session_enabled = None if enabled is None else bool(enabled)
+
+
+@contextlib.contextmanager
+def q8_t16_rowtile_all_session(enabled: bool | None) -> Iterator[None]:
+    """Temporarily select Q8T16 row amortization for one execution owner."""
+
+    previous = _q8_t16_rowtile_all_session_enabled
+    set_q8_t16_rowtile_all_enabled(enabled)
+    try:
+        yield
+    finally:
+        set_q8_t16_rowtile_all_enabled(previous)
 
 
 def _resolve_use_q8_t16_all_rowtile() -> bool:
     raw = os.environ.get(_Q8_T16_ROWTILE_ALL_ENV, "")
-    if not raw:
-        return False
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
+    if raw:
+        return raw.strip().lower() in {"1", "true", "yes", "on"}
+    if _q8_t16_rowtile_all_session_enabled is not None:
+        return _q8_t16_rowtile_all_session_enabled
+    return False
+
+
+def _resolve_use_q8_t16_pair_rowtile() -> bool:
+    raw = os.environ.get(_Q8_T16_PAIR_ROWTILE_ENV, "")
+    if raw:
+        return raw.strip().lower() in {"1", "true", "yes", "on"}
+    return _resolve_use_q8_t16_all_rowtile()
 
 
 def _use_q8_t16_all_rowtile(
@@ -621,7 +643,11 @@ def launch_gguf_linear(
         and quant == "gguf_q8_0_t16_v1"
         and activation_dtype == GGUF_ACTIVATION_BF16
         and output_dtype == GGUF_OUTPUT_BF16
-        and _use_q8_t16_all_rowtile(rows=rows, in_features=in_features, threads=threads)
+        and _use_q8_t16_all_rowtile(
+            rows=rows,
+            in_features=in_features,
+            threads=threads,
+        )
     ):
         gguf_q8_0_t16_gemv_decode_rowtile4_bf16_bf16_out(
             x_ptr,
@@ -993,7 +1019,11 @@ def launch_gguf_linear_triple(
         and dispatch_c.key.quant == "gguf_q8_0_t16_v1"
         and is_registered(q8_t16_triple)
     ):
-        if _use_q8_t16_all_rowtile(rows=rows, in_features=in_features, threads=threads):
+        if _use_q8_t16_all_rowtile(
+            rows=rows,
+            in_features=in_features,
+            threads=threads,
+        ):
             gguf_q8_0_t16_triple_gemv_decode_rowtile4_bf16_bf16_out(
                 x_ptr,
                 weight_a.allocation("tiles").tensor.ptr,
