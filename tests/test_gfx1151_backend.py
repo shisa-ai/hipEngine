@@ -490,6 +490,22 @@ def test_qwen35_gguf_gfx1151_generation_factory_sets_backend(monkeypatch) -> Non
 
     assert getattr(generator, "backend") == "hip_gfx1151"
     assert generator.target_arch == "gfx1151"
+    assert generator.engine_loop_config_defaults == {
+        "prefill_decode_policy": "fair",
+        "max_prefill_chunk_tokens": 256,
+    }
+
+    other_quant_factory = resolve_text_generator(
+        model="qwen3_5_moe_gguf",
+        backend="hip_gfx1151",
+        quant="gguf_q8_0",
+    )
+    other_quant_generator = other_quant_factory(
+        model_path="/tmp/fake-q8.gguf",
+        weight_index=object(),
+        model_plugin=object(),
+    )
+    assert other_quant_generator.engine_loop_config_defaults == {}
 
 
 def test_gguf_weight_backend_drives_embedding_and_linear_dispatch() -> None:

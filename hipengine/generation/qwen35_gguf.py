@@ -50,6 +50,7 @@ from hipengine.generation.sampling import (
 )
 from hipengine.loading.gguf import GGUFModelInfo, GGUFReader
 from hipengine.kernels.backends import (
+    backend_package_capability,
     hip_target_arch_environment,
     hip_target_arch_for_backend,
     resolve_backend,
@@ -574,6 +575,7 @@ class Qwen35GGUFBringupGenerator:
     weight_index: GGUFModelInfo
     model_plugin: Any
     backend: str = "auto"
+    engine_loop_config_defaults: Mapping[str, Any] = field(default_factory=dict, repr=False)
     tokenizer: Qwen35GGUFTokenizer = field(init=False)
     last_batch_generation: dict[str, Any] | None = field(default=None, init=False, repr=False)
     last_generation_outputs: tuple[GenerationOutput, ...] = field(default=(), init=False, repr=False)
@@ -5671,17 +5673,55 @@ def make_qwen35_gguf_bringup_generator_gfx1151(
     )
 
 
+def make_qwen35_gguf_q4_k_m_generator_gfx1151(
+    *,
+    model_path: str | Path,
+    weight_index: GGUFModelInfo,
+    model_plugin: Any,
+) -> Qwen35GGUFBringupGenerator:
+    """Create the gfx1151 Q4_K_M generator with F4-retained loop defaults."""
+
+    backend = "hip_gfx1151"
+    return Qwen35GGUFBringupGenerator(
+        model_path=model_path,
+        weight_index=weight_index,
+        model_plugin=model_plugin,
+        backend=backend,
+        engine_loop_config_defaults={
+            "prefill_decode_policy": backend_package_capability(
+                backend,
+                "GGUF_Q4_K_M_PREFILL_DECODE_POLICY",
+                "protect_decode",
+            ),
+            "max_prefill_chunk_tokens": int(
+                backend_package_capability(
+                    backend,
+                    "GGUF_Q4_K_M_MAX_PREFILL_CHUNK_TOKENS",
+                    256,
+                )
+            ),
+        },
+    )
+
+
+_GGUF_GENERATOR_FACTORIES_BY_BACKEND = {
+    "hip_gfx1100": make_qwen35_gguf_bringup_generator,
+    "hip_gfx1151": make_qwen35_gguf_bringup_generator_gfx1151,
+}
+_GGUF_GENERATOR_FACTORY_OVERRIDES = {
+    ("hip_gfx1151", "gguf_q4_k_m"): make_qwen35_gguf_q4_k_m_generator_gfx1151,
+}
 for _model in ("qwen3_5_gguf", "qwen3_5_moe_gguf"):
     for _quant in ("gguf_q4_k_m", "gguf_q8_0", "gguf_q4_1", "gguf_ud_q4_k_xl"):
-        for _backend, _factory in (
-            ("hip_gfx1100", make_qwen35_gguf_bringup_generator),
-            ("hip_gfx1151", make_qwen35_gguf_bringup_generator_gfx1151),
-        ):
+        for _backend, _default_factory in _GGUF_GENERATOR_FACTORIES_BY_BACKEND.items():
             register_text_generator(
                 model=_model,
                 backend=_backend,
                 quant=_quant,
-                factory=_factory,
+                factory=_GGUF_GENERATOR_FACTORY_OVERRIDES.get(
+                    (_backend, _quant),
+                    _default_factory,
+                ),
             )
 
 
