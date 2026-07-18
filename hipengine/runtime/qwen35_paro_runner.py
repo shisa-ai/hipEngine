@@ -5368,8 +5368,11 @@ class Qwen35ParoResidentSession:
         decode_block_table = block_entry["decode_block_table"]
         self._append_full_block_rows_list = block_entry["append_block_rows_list"]
         self._decode_full_block_rows_list = block_entry["decode_block_rows_list"]
-        position_tensor = Tensor.from_handle(self.position_buf.ptr, (rows,), DType.INT64, self.device)
-        context_tensor = Tensor.from_handle(self.context_buf.ptr, (rows,), DType.INT64, self.device)
+        dense_slots = slots == tuple(range(rows))
+        position_buf = self.position_buf if dense_slots else self.batch_compact_position_buf
+        context_buf = self.context_buf if dense_slots else self.batch_compact_context_buf
+        position_tensor = Tensor.from_handle(position_buf.ptr, (rows,), DType.INT64, self.device)
+        context_tensor = Tensor.from_handle(context_buf.ptr, (rows,), DType.INT64, self.device)
         append_live_counts = [int(position) for position in positions]
         decode_live_counts = [int(position) + 1 for position in positions]
         storage_dtype = self._full_attention_storage_dtype(layer_id)
@@ -7766,6 +7769,11 @@ class Qwen35ParoResidentSession:
         self.prefill_context_count_buf = self._dev(prefill_context_count_arr)
         self.position_buf = self._dev(self.position_arr)
         self.context_buf = self._dev(self.context_arr)
+        # Sparse active slot ids still execute as compact batch rows. Keep a
+        # compact live-count mirror for paged attention while the slot-indexed
+        # vectors remain the resident ownership/source-of-truth metadata.
+        self.batch_compact_position_buf = self._dev(self.position_arr.copy())
+        self.batch_compact_context_buf = self._dev(self.context_arr.copy())
         self.token_id_buf = self._dev(self.token_id_arr)
         self.active_mask_buf = self._dev(self.active_mask_arr)
         self.block_table = Tensor.from_handle(self.block_table_buf.ptr, block_table_arr.shape, DType.INT32, self.device)
@@ -8429,6 +8437,14 @@ class Qwen35ParoResidentSession:
                 set_decode_position_i64(
                     self.position_buf.ptr + int(slot) * DType.INT64.itemsize,
                     self.context_buf.ptr + int(slot) * DType.INT64.itemsize,
+                    int(position),
+                    stream=stream,
+                    library=self.libraries["runtime_state"],
+                    runtime=self.runtime,
+                )
+                set_decode_position_i64(
+                    self.batch_compact_position_buf.ptr + index * DType.INT64.itemsize,
+                    self.batch_compact_context_buf.ptr + index * DType.INT64.itemsize,
                     int(position),
                     stream=stream,
                     library=self.libraries["runtime_state"],
@@ -9376,6 +9392,14 @@ class Qwen35ParoResidentSession:
                         library=self.libraries["runtime_state"],
                         runtime=self.runtime,
                     )
+                advance_decode_positions_i64(
+                    self.batch_compact_position_buf.ptr,
+                    self.batch_compact_context_buf.ptr,
+                    rows,
+                    stream=stream,
+                    library=self.libraries["runtime_state"],
+                    runtime=self.runtime,
+                )
 
     def _read_batch_next_tokens(self, *, rows: int) -> tuple[Qwen35ParoAutoregressiveStepResult, ...]:
         """Read the device-resident next-token argmax back into host step results.
