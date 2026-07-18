@@ -25,8 +25,8 @@ transfer (correctness packet `ab6c6d60`), and
 arbitrary-C/explicit-compaction correctness, and
 `71e2ea9a355fee8502b12d2b0d2210ec50ce6859` for retained real OpenAI
 gfx1151 arbitrary-C server scaling, and
-`778c7a70a13c849d9fe23475baae6b4b2ce16523` for the retained explicit
-gfx1151 PARO selected-batch c2 transfer. The gfx1151 GGUF refresh is retained
+`8c8cc15ef657cd966ce16793c29ed2eba8533a14` for retained explicit gfx1151
+PARO direct native-c2/c4/c8 (c2 transfer parent `778c7a70`). The gfx1151 GGUF refresh is retained
 through 64K; repeated 128K is explicitly blocked by the residual gfx11 scheduler
 lifecycle failure rather than carrying a stale number.
 
@@ -470,7 +470,7 @@ fallback; this is a correctness artifact with `performance_claim=false`.
 | Radeon Pro W7900, gfx1100 | Dense 27B DFlash | 2026-06-11 | hipEngine `9faa731c`; ROCm 7.2; artifact records a dirty tree | **Retained under the recorded DFlash gate**, with legacy dirty-source provenance | Yes, qualified | Refresh on a clean tree before changing the public claim |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | Qwen3.6 35B current four-engine model refresh | 2026-07-17 | clean hipEngine `2edbb2ee`; TheRock HIP 7.15; TuneD accelerator-performance; `amd_iommu=off`; current PARO/GGUF routes; llama.cpp HIP/Vulkan five-repetition sweeps | **Accepted current topline through 64K**: PARO and both llama.cpp lanes complete all six shapes; GGUF 512-64K is **1395.379/1481.943/1444.733/1132.215/892.663 prefill** and **52.761/54.658/55.297/45.983/39.388 decode tok/s**, with all 15 IDs exact and <=0.122%/0.028% variance. Across the 11 eligible hipEngine cells, the directional cross-publication average is **+4.60% prefill/+6.20% decode**. GGUF 128K completes warmup plus measured pass 1, then times out and remains blocked. [`artifact`](results/2026-07-17-gfx1151-amd-iommu-off-topline-refresh.json). | Yes through 64K; GGUF 128K blocked | Rerun after model/runtime/default-policy, compiler/runtime, comparison-engine build, or boot IOMMU state changes. A same-commit IOMMU-on reboot is required for causal attribution; IOMMU-off disables XDNA/NPU support. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF Q4_K_M direct native-c1/c2/c4/c8 graph decode + real OpenAI arbitrary-C concurrency | 2026-07-18 | clean correctness runtime `80bdf6a3`; clean profiler/scaling/live-loop measurement `d0195221`; clean E3 transfer/fix `c6e5443d`; clean server F1 `71e2ea9a`; TheRock HIP 7.15; TuneD accelerator-performance; normal HWS with one HIP hardware queue; `amd_iommu=off`; exact Q4_K_M fingerprint; BF16 KV; cached builds | **Retained direct native-c8 and real OpenAI server scaling**: one physical c8 remains **127.902 aggregate tok/s**, **2.544x c1** and **+24.65%** over c4+c4, with a **748 packed-native / 0 row-local / 0-copy** trace. E3 retains honest C13 as physical `c8 + sparse-c8(5)` with **134,160/134,160** exact hidden comparisons, middle-hole replacement, and nine exact explicit-compaction moves with **2/2** graph invalidations. The clean p512/128-output SSE packet retains logical c1/c8/c9/c13/serial-c13 at **15.701/86.338/57.127/72.522/42.764 aggregate tok/s**; grouped C13 is **4.619x** logical-c1 and **1.696x** serial (**+69.59%**), all **189** prompt/output/usage rows are exact, and the c8→c13 live trace emits **1,664/1,664** exact IDs at **70.093 tok/s** before draining ownership to zero. C>8 remains multiple physical buckets, never native c9/c13; compaction remains explicit. [`E1 correctness`](results/2026-07-17-gfx1151-gguf-concurrency-e1-direct-correctness.json) · [`E1 scaling`](results/2026-07-17-gfx1151-gguf-concurrency-e1-native-c8-scaling-closure.json) · [`E1 live loop`](results/2026-07-17-gfx1151-gguf-concurrency-e1-live-loop-closure.json) · [`E3`](results/2026-07-18-gfx1151-gguf-concurrency-e3-arbitrary-c-correctness.json) · [`F1`](results/2026-07-18-gfx1151-gguf-concurrency-f1-server-scaling-closure.json). | Yes, under separate direct graph-step and real SSE cycle-wall scopes | Rerun after packed context math/graph, physical grouping, resident stream lifecycle, server timing/accounting, compaction/resource ownership, model/prompt, compiler/runtime, or device/boot policy changes. |
-| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | PARO W4/BF16-KV explicit direct native-c2 selected-batch decode | 2026-07-18 | clean measured `778c7a70`; TheRock HIP 7.15; TuneD accelerator-performance; normal HWS with one HIP hardware queue; `amd_iommu=off`; exact packed-PARO/canonical prompt-suite fingerprints; cached builds | **Retained for the direct c2 model-step scope**: p512/d128 selected-batch is **79.218 aggregate / 39.609 per-request tok/s**, **+11.87% vs c1 graph** and **+20.81% vs serial c2**. Three fresh processes have **0.045% stdev/median**; all **274/274 IDs/run**, primitive, all-layer hidden/Conv/GDN/context/KV, three uniform/ragged EOS+cancel gates, auto-default, and all **10/10 prompts / 330/330 IDs** pass. The fresh L4 trace is `eq_ok`, has **1,598 dispatches**, and records exact c2 context plus selected projection families. Public/OpenAI PARO remains width-1; c4/c8 are not implied. [`artifact`](results/2026-07-18-gfx1151-paro-g2-selected-batch-c2-retained.json). | Yes, for explicit direct native c2 only | Rerun after PARO c2 math/routing, model/prompt, compiler/runtime, KV policy, or device/boot policy changes; require separate shared-loop and c4/c8 gates before broader production claims. |
+| Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | PARO W4/BF16-KV explicit direct native-c2/c4/c8 selected-batch decode | 2026-07-18 | clean equivalent tree measured `e175e28f`, pushed `8c8cc15e`; TheRock HIP 7.15; TuneD accelerator-performance; normal HWS with one HIP hardware queue; `amd_iommu=off`; exact packed-PARO/canonical prompt-suite fingerprints; cached builds | **Retained for explicit direct c2/c4/c8 model steps**: p512/d128 is **79.237/100.209/99.943 aggregate tok/s**, with c4/c8 **+41.52%/+41.14% vs c1**. Three fresh processes per width have <=**0.054% stdev/median** and all **5,754/5,754 IDs** exact. True physical c4/c8 use 40/40 selected-batch layers and zero fallback/row chunks; primitive, all-layer hidden/Conv/GDN/context/KV, sparse c8->c1 cancel/EOS/ragged immutability, both ten-prompt category+heldout gates, and the cached **4,644-dispatch** c8 trace pass. c8 is -0.265% aggregate vs c4 but -0.183% step time vs c4+c4. Public/OpenAI remains width-1. [`artifact`](results/2026-07-18-gfx1151-paro-g3-native-c248-direct-retained.json). | Yes, for explicit direct native c2/c4/c8 only | Attach the retained profile to the shared model-owning loop, then rerun real blocking/SSE live-admission scaling; rerun direct gates after PARO math/routing, model/prompt, compiler/runtime, KV policy, or device/boot changes. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | PARO exact c1 prefill recovery | 2026-07-12 | clean control `240c5daf` and candidate `9944e481`; TheRock HIP `7.15.0-0000000`; TuneD accelerator-performance; exact PARO model fingerprint retained | **Retained historical promotion gate**: exact linear/MoE 256-row architecture profile improves all six prefill shapes by **14.35%-51.11%**, leaves decode within **-0.25%..+0.26%**, and matches final hidden plus all Conv/GDN/KV state at 512/4K/128K. The July 17 current-default sweep supersedes its public numeric column. | Superseded as topline; retained promotion evidence | Rerun after PARO prefill chunk/staging/math, compiler, model, prompt, or tuned/clock policy changes; validate separately on gfx1100 before transfer. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | PARO 4K-128K AOTriton queue isolation | 2026-07-12 | clean same-commit control/candidate `01e2cec5`; TheRock HIP `7.15.0-0000000`; TuneD accelerator-performance; exact PARO model fingerprint retained | **Retained historical scoped gate**: event-linked isolated AOTriton queue improves matched prefill by **13.32%-23.03%**, leaves decode within **-0.16%..+0.12%**, holds tracked peak unchanged, and matches final hidden plus all 30 Conv/GDN and 10 K/V families at every retained shape. The July 17 current-default sweep supersedes its public numeric column. | Superseded as topline; retained scoped evidence | Validate separately on gfx1100 before transfer; 512/1K remain on the proven-safe caller-stream route. |
 | Ryzen AI MAX+ 395 / Radeon 8060S, gfx1151 | GGUF eager token/state oracle | 2026-07-12 | clean detached hipEngine `3ce60e56`; TheRock HIP `7.15.0-0000000`; exact Q4_K_M fingerprint and llama binary hashes retained | **Accepted correctness-only gate**: the repeated external and production token stream matches; four hidden/layer/30-Conv-GDN/10-KV transitions are finite and byte-exact. `performance_claim=false`. | Diagnostic link only | Rerun after eager math/state/KV, model, compiler/runtime, or device changes. |
@@ -908,27 +908,31 @@ The three selected samples are 121.357/121.923/121.953 aggregate tok/s. All
 heldout suite matches 330/330 IDs, and all-layer/lifecycle/profiler gates pass.
 Artifact: [`gfx1100 selected-batch c2`](results/2026-07-18-gfx1100-paro-g2-selected-batch-c2-retained.json).
 
-The merged selected-batch c2 algorithm is now independently retained on
-Radeon 8060S/gfx1151 for the same explicit direct model-step scope. It does not
-change public/OpenAI ownership, which remains width-1.
+Radeon 8060S/gfx1151 now retains true physical c2/c4/c8 for the same explicit
+direct model-step scope. Physical c4/c8 generalize the selected-batch algorithm;
+they do not stack c2 groups. Public/OpenAI ownership remains width-1 pending G4.
 
 | gfx1151 direct route | Median aggregate decode | Per-request decode | Classification |
 | --- | ---: | ---: | --- |
 | c1 graph | **70.810 tok/s** | 70.810 tok/s | independent reference |
 | serial c2 bridge | **65.574 tok/s** | 32.787 tok/s | exact fallback control |
-| native selected-batch c2 | **79.218 tok/s** | 39.609 tok/s | **retained direct c2; 1.1187x c1 / 1.2081x serial** |
+| native selected-batch c2 | **79.237 tok/s** | 39.619 tok/s | **retained direct c2; 1.1190x c1 / 1.2084x serial** |
+| true physical c4 | **100.209 tok/s** | 25.052 tok/s | **retained direct c4; 1.4152x c1** |
+| true physical c8 | **99.943 tok/s** | 12.493 tok/s | **retained direct c8; 1.4114x c1** |
 
-The three selected samples are 79.163/79.228/79.218 aggregate tok/s with only
-0.045% sample stdev/median. Every run matches **274/274** independent-c1 IDs;
-the all-layer hidden/Conv/GDN/NumPy-context/KV gate, three uniform/ragged
-lifecycle gates, primitive gate, auto-default route, and cached profiler pass.
-The canonical ten-prompt category+heldout suite matches **330/330** IDs.
-Artifact: [`gfx1151 selected-batch c2`](results/2026-07-18-gfx1151-paro-g2-selected-batch-c2-retained.json).
+Three fresh-process c2/c4/c8 samples have at most **0.054%** stdev/median and
+match **5,754/5,754** recorded independent-c1 IDs. c8 aggregate throughput is
+**0.265% below c4**, exposing a genuine c4 bandwidth plateau, while its median
+model-step time is still **0.183% faster than two sequential c4 steps**. The
+all-layer hidden/Conv/GDN/NumPy-context/KV gate, sparse c8->c1 cancel/EOS/ragged
+immutability, c4/c8 primitives, both ten-prompt category+heldout gates, and the
+cached 4,644-dispatch c8 profiler pass with 40 selected-batch and zero fallback
+layers. Artifact: [`gfx1151 direct c2/c4/c8`](results/2026-07-18-gfx1151-paro-g3-native-c248-direct-retained.json).
 
 The production table below remains deliberately separate: c1 has a retained
 exact-fixture timing, while public c2-c8 still use independent width-1 sessions.
-c3-c8 have no retained native model-step claim. This is not a cross-engine
-concurrency-speed claim.
+c3/c5/c6/c7 have no retained native-width claim and exact partitioning remains
+fail-closed. This is not yet a cross-engine concurrency-speed claim.
 
 <!-- BEGIN TOPLINE:GFX1151_PARO_CURRENT -->
 | Client c | Production backend groups | Exact classification | Retained aggregate decode |

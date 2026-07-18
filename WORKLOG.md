@@ -163530,3 +163530,72 @@ site gate, so it reached a real HIP wrapper and the test process faulted. The
 fixture now disables/mocks both routes; the focused and full reruns pass, and a
 fresh HIP load/device probe is healthy. A clean gfx1151 lifecycle rerun is
 required before this fix is promoted.
+
+## 2026-07-18 — Retain gfx1151 PARO direct native c2/c4/c8
+
+Promoted the sparse live-count fix on clean equivalent trees `e175e28f`
+(gfx1151 measured branch) and `8c8cc15e` (pushed candidate), both tree
+`cdc5173a`. The required final sparse c8→c1 cancellation, uniform EOS, and
+ragged-front EOS gates are all `eq_ok`: every token sequence and every aggregate
+hash across 30 Conv/GDN state plus 10 full-attention K/V families matches
+independent c1 for all eight slots. All seven retired rows per run remain
+immutable, lifecycle widths/decode counts are exact, EOS is observed where
+requested, and no cancellation leaks group-wide.
+
+The complete direct-width packet is now retained on Radeon 8060S/gfx1151,
+TheRock HIP 7.15, TuneD `accelerator-performance`, normal HWS/one HIP queue,
+`amd_iommu=off`, exact packed model revision `437eba06…`, W4 PARO, BF16 KV,
+greedy p512/d128, 40 layers, eight warmup steps, cached builds, and no row
+chunks. Three fresh processes per width measure:
+
+- c2: **79.237 aggregate / 39.619 per-request tok/s**, 0.048% stdev/median,
+  **822/822** recorded IDs exact;
+- true physical c4: **100.209 / 25.052 tok/s**, 0.054% variance,
+  **1,644/1,644** IDs exact, **+41.52%** over c1;
+- true physical c8: **99.943 / 12.493 tok/s**, 0.031% variance,
+  **3,288/3,288** IDs exact, **+41.14%** over c1.
+
+c2 is non-regressive versus retained 79.218 (+0.02%). c8 aggregate throughput
+is 0.265% below c4, a real c4 bandwidth plateau rather than hidden scaling, but
+its median **79.692 ms** model step is still 0.183% faster than two sequential
+c4 steps (**2 × 39.919 ms**). The evidence-backed width profile therefore
+retains honest c2/c4/c8 costs and positions 512..647; other widths/positions
+remain exact serial partitions.
+
+Broader gates:
+
+- c4/c8 primitives have zero append mismatches, zero batch-vs-c1 attention
+  error, and at most `5.960464477539063e-08` batch-vs-NumPy error;
+- physical c8 L40/d3 is bit-exact for hidden, all linear stages, all Conv/GDN,
+  full-attention stages, live K/V, generated tokens, and the NumPy context
+  oracle, with no row chunks;
+- all ten canonical code/general-en/general-ja/mixed-ja-en prompts, including
+  heldouts, pass at both physical c4 (**396/396** recorded IDs) and c8
+  (**528/528**), with 40 selected-batch and zero fallback layers in every run;
+- cached `rocprofv3 --kernel-trace` L4/d1 is `eq_ok` with **4,644** dispatches,
+  one physical-c8 exact context kernel (`grid_y=8`, **1,692,818 ns**), four
+  exact multi-row Marlin-K dispatches, and 72 selected projection dispatches.
+
+The category wrapper's first result parser looked for a nonexistent
+`workload.batch_size`; the c4 GPU output was already complete and exact, so the
+corrected continuation reused it. The profiler parser expected the wrapper
+name suffix `...fp16`, while rocprof demangled the actual kernel as
+`gemv_paro_marlin_k_fma_multi_row_kernel<_Float16, 8>`; inspection of the
+captured CSV confirmed the route without rerunning GPU work. The first primitive
+wrapper likewise looked for a nonexistent top-level `status`; corrected
+validation reused the completed c4 result and ran c8 once.
+
+Published
+`benchmarks/results/2026-07-18-gfx1151-paro-g3-native-c248-direct-retained.json`
+(**26,498 bytes**, SHA-256
+`8498a57b736dc9734e6b474e740166633d01e7925aa28f7536bddb65a7ad8e59`)
+with every raw source size/SHA-256, clean equivalent-tree provenance, exact
+commands, recomputed repetition statistics, the loadable schema-2 width profile,
+all lifecycle/category assertions, and profiler names/durations. The default
+profile path now resolves this accepted c2/c4/c8 packet; existing retained-
+default and experimental-native opt-in guards remain unchanged until the shared
+loop gate passes. Updated
+`docs/PLAN.md`, `docs/CONCURRENCY.md`, both benchmark/root rollups, and the
+benchmark changelog. This claim remains explicit direct model steps only;
+public/OpenAI PARO is still width-1. Next: implement the shared resident model
+owner and close real blocking/SSE live admission before production promotion.
