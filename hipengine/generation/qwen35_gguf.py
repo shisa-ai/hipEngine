@@ -273,8 +273,10 @@ class _GGUFARServingSlot:
     done: bool = False
     native_compact_prefill: bool = False
     native_decode_steps: int = 0
+    native_c1_decode_steps: int = 0
     serial_decode_steps: int = 0
     decode_stream: int = 0
+    c1_decode_graph: Any | None = None
     packed_decode_owner: Any | None = None
 
 
@@ -4021,6 +4023,16 @@ class Qwen35GGUFResidentModelRunner:
                         self._route_counts["resident_fallback_requests"]
                     ),
                 },
+                "physical_width_decode_steps": {
+                    str(width): int(
+                        self._route_counts[
+                            "native_c1_decode_steps"
+                            if width == 1
+                            else f"native_c{width}_decode_steps"
+                        ]
+                    )
+                    for width in _GGUF_AR_PHYSICAL_BUCKET_WIDTHS
+                },
                 "fallback_reasons": {
                     str(key): int(value)
                     for key, value in sorted(self._fallback_reasons.items())
@@ -4408,6 +4420,10 @@ class Qwen35GGUFResidentModelRunner:
         }
         metadata = [self._completed_metadata.pop(request_id, {}) for request_id in ids]
         native_steps = max((int(item.get("native_decode_steps", 0)) for item in metadata), default=0)
+        native_c1_steps = max(
+            (int(item.get("native_c1_decode_steps", 0)) for item in metadata),
+            default=0,
+        )
         native_prefill = bool(metadata) and all(bool(item.get("native_compact_prefill", False)) for item in metadata)
         all_native_greedy = bool(metadata) and all(bool(item.get("native_greedy", False)) for item in metadata)
         serial_fallback = any(bool(item.get("serial_decode_fallback", False)) for item in metadata)
@@ -4427,6 +4443,7 @@ class Qwen35GGUFResidentModelRunner:
             ),
             native_compact_prefill=native_prefill,
             native_decode_steps=native_steps,
+            native_c1_decode_steps=native_c1_steps,
             native_caware_decode=native_steps > 0,
             serial_decode_fallback=serial_fallback,
         )
@@ -4472,6 +4489,7 @@ class Qwen35GGUFResidentModelRunner:
                 raise RuntimeError("GGUF row retained KV without a session lease")
             return
         session = lease.session
+        self._close_c1_decode_graph(row)
         graph_handles = tuple(
             handle
             for handle in self._graph_handles_for_sessions((session,))
@@ -4677,6 +4695,7 @@ class Qwen35GGUFResidentModelRunner:
         groups = plan_physical_batch_groups(
             work,
             physical_bucket_widths=_GGUF_AR_PHYSICAL_BUCKET_WIDTHS,
+            compact_active_rows=True,
         )
         row_by_request = {int(row.request_id): row for row in row_list}
         group_payloads: list[dict[str, Any]] = []
@@ -4693,18 +4712,62 @@ class Qwen35GGUFResidentModelRunner:
                 )
             if packed:
                 execution_path = "packed_native"
-                if isinstance(self._last_execution_manifest, Mapping):
-                    direct_manifest = copy.deepcopy(dict(self._last_execution_manifest))
-                    direct_manifest["logical_c"] = group.logical_c
-                    direct_manifest["physical_group"] = group.to_json_dict()
-                    self._last_execution_manifest = direct_manifest
             else:
                 self._step_native_serial(group_rows)
-                execution_path = (
-                    "native_c1"
-                    if group.active_rows == 1 and group.physical_rows == 1
-                    else "serial_fallback"
-                )
+                if group.active_rows == 1 and group.physical_rows == 1:
+                    slot = group_rows[0].slot
+                    graph = None if slot is None else slot.c1_decode_graph
+                    raw_replay_count = getattr(graph, "replay_count", None)
+                    graph_replays = (
+                        max(0, int(raw_replay_count))
+                        if raw_replay_count is not None
+                        else max(0, int(getattr(graph, "replayed_steps", 0)))
+                        // max(1, int(getattr(graph, "steps_per_replay", 1)))
+                    )
+                    execution_path = (
+                        "native_c1_graph" if graph_replays > 0 else "native_c1_eager"
+                    )
+                    self._last_execution_manifest = {
+                        "schema": 1,
+                        "kind": "gguf_ar_c1_execution_manifest",
+                        "mode": execution_path,
+                        "rows": 1,
+                        "physical_rows": 1,
+                        "active_rows": 1,
+                        "active_mask": [True],
+                        "model_step": {
+                            "complete_c1_session_replays": 0,
+                            "complete_c1_layer_replays": 0,
+                            "host_model_row_loop_sites": 0,
+                            "host_model_row_iterations": 0,
+                        },
+                        "graph": {
+                            "captured": graph is not None,
+                            "replay_count": graph_replays,
+                        },
+                    }
+                else:
+                    execution_path = "serial_fallback"
+                    self._last_execution_manifest = {
+                        "schema": 1,
+                        "kind": "gguf_ar_serial_fallback_execution_manifest",
+                        "mode": "serial_fallback",
+                        "rows": group.active_rows,
+                        "physical_rows": group.physical_rows,
+                        "active_rows": group.active_rows,
+                        "active_mask": list(group.active_mask),
+                        "model_step": {
+                            "complete_c1_session_replays": group.active_rows,
+                            "complete_c1_layer_replays": 0,
+                            "host_model_row_loop_sites": 1,
+                            "host_model_row_iterations": group.active_rows,
+                        },
+                    }
+            if isinstance(self._last_execution_manifest, Mapping):
+                direct_manifest = copy.deepcopy(dict(self._last_execution_manifest))
+                direct_manifest["logical_c"] = group.logical_c
+                direct_manifest["physical_group"] = group.to_json_dict()
+                self._last_execution_manifest = direct_manifest
             group_payload = group.to_json_dict()
             group_payload["execution_path"] = execution_path
             group_payloads.append(group_payload)
@@ -4714,6 +4777,7 @@ class Qwen35GGUFResidentModelRunner:
             "kind": "gguf_ar_physical_group_plan",
             "logical_c": len(request_ids),
             "physical_bucket_widths": list(_GGUF_AR_PHYSICAL_BUCKET_WIDTHS),
+            "policy": "occupancy_adaptive_dense_execution",
             "group_count": len(groups),
             "groups": group_payloads,
         }
@@ -4725,6 +4789,8 @@ class Qwen35GGUFResidentModelRunner:
         physical_rows: int | None = None,
         active_slot_indices: Sequence[int] = (),
     ) -> bool:
+        for row in rows:
+            self._close_c1_decode_graph(row)
         slots = [row.slot for row in rows]
         if any(slot is None for slot in slots):
             raise RuntimeError("GGUF resident packed decode row is missing its session slot")
@@ -4765,6 +4831,7 @@ class Qwen35GGUFResidentModelRunner:
             )
         owner = owner_slot.session
         self._route_counts["native_packed_decode_steps"] += 1
+        self._route_counts[f"native_c{int(physical_rows or len(concrete))}_decode_steps"] += 1
         manifest = getattr(owner, "last_packed_execution_manifest", None)
         if isinstance(manifest, Mapping):
             self._last_execution_manifest = copy.deepcopy(dict(manifest))
@@ -4776,7 +4843,8 @@ class Qwen35GGUFResidentModelRunner:
 
     def _step_native_serial(self, rows: Sequence[_GGUFResidentLoopRow]) -> None:
         self._flush_rows(rows)
-        if len(rows) == 1:
+        native_c1 = len(rows) == 1
+        if native_c1:
             self._route_counts["native_c1_decode_steps"] += 1
         else:
             self._route_counts["serial_decode_fallback_steps"] += 1
@@ -4785,9 +4853,55 @@ class Qwen35GGUFResidentModelRunner:
             slot = row.slot
             if slot is None:
                 raise RuntimeError("GGUF resident serial decode row is missing its session slot")
-            result = slot.session.step(int(slot.prev_token), return_logits=False)
+            result = (
+                self._step_native_c1_graph(row)
+                if native_c1
+                else slot.session.step(int(slot.prev_token), return_logits=False)
+            )
             self._record_native_token(row, int(getattr(result, "token_id")))
-            slot.serial_decode_steps += 1
+            if native_c1:
+                slot.native_c1_decode_steps += 1
+            else:
+                slot.serial_decode_steps += 1
+
+    def _step_native_c1_graph(self, row: _GGUFResidentLoopRow) -> Any:
+        slot = row.slot
+        if slot is None:
+            raise RuntimeError("GGUF resident c1 decode row is missing its session slot")
+        graph = slot.c1_decode_graph
+        if graph is None:
+            minimum_fn = getattr(slot.session, "decode_graph_min_replay_steps", None)
+            minimum = minimum_fn() if callable(minimum_fn) else None
+            remaining = max(0, int(row.request.max_tokens) - len(slot.generated_ids))
+            use_graph = bool(
+                _gguf_decode_graph_enabled()
+                and minimum is not None
+                and remaining >= int(minimum)
+                and callable(getattr(slot.session, "capture_decode_graph", None))
+            )
+            if use_graph:
+                graph = slot.session.capture_decode_graph(
+                    position=int(slot.seq_position),
+                    steps_per_replay=1,
+                    max_replay_steps=remaining,
+                    attention_max_context_len=int(slot.seq_position) + remaining,
+                )
+                slot.c1_decode_graph = graph
+        if graph is None:
+            return slot.session.step(int(slot.prev_token), return_logits=False)
+        graph.replay(1)
+        return graph.read_sample(return_logits=False)
+
+    def _close_c1_decode_graph(self, row: _GGUFResidentLoopRow) -> None:
+        slot = row.slot
+        if slot is None or slot.c1_decode_graph is None:
+            return
+        graph = slot.c1_decode_graph
+        lease = row.lease
+        if lease is not None:
+            self._observe_graph_handles((lease.session,))
+        graph.close()
+        slot.c1_decode_graph = None
 
     def _record_native_token(self, row: _GGUFResidentLoopRow, token_id: int) -> None:
         slot = row.slot
@@ -4920,6 +5034,9 @@ class Qwen35GGUFResidentModelRunner:
             "native_greedy": bool(row.native_greedy),
             "native_compact_prefill": bool(slot is not None and slot.native_compact_prefill),
             "native_decode_steps": 0 if slot is None else int(slot.native_decode_steps),
+            "native_c1_decode_steps": (
+                0 if slot is None else int(slot.native_c1_decode_steps)
+            ),
             "serial_decode_fallback": (
                 not row.native_greedy
                 or bool(slot is not None and slot.serial_decode_steps > 0)
@@ -5081,6 +5198,7 @@ def _gguf_last_batch_generation(
     execution_path: str | None = None,
     native_compact_prefill: bool = False,
     native_decode_steps: int = 0,
+    native_c1_decode_steps: int = 0,
     native_caware_decode: bool = False,
     serial_decode_fallback: bool | None = None,
 ) -> dict[str, Any]:
@@ -5096,6 +5214,7 @@ def _gguf_last_batch_generation(
         "prompt_lengths": prompt_lengths,
         "decode_steps": decode_steps,
         "native_decode_steps": int(native_decode_steps),
+        "native_c1_decode_steps": int(native_c1_decode_steps),
         "serial_decode_fallback": serial_fallback,
         "native_compact_prefill": bool(native_compact_prefill),
         "native_caware_decode": bool(native_caware_decode),

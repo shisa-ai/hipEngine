@@ -67,7 +67,7 @@ class ServerConfiguration:
 
 
 CONFIGURATIONS: dict[str, ServerConfiguration] = {
-    "c1": ServerConfiguration("c1", 1, True, "width1_control"),
+    "c1": ServerConfiguration("c1", 1, True, "occupancy_adaptive_c1"),
     "packed_c8": ServerConfiguration("packed_c8", 8, True, "exact_hybrid"),
     "packed_c9": ServerConfiguration("packed_c9", 9, True, "grouped_exact_hybrid"),
     "packed_c13": ServerConfiguration("packed_c13", 13, True, "grouped_exact_hybrid"),
@@ -75,6 +75,9 @@ CONFIGURATIONS: dict[str, ServerConfiguration] = {
 }
 _CANONICAL_CONFIGURATIONS = tuple(CONFIGURATIONS)
 _SUPPORTED_BACKENDS = ("hip_gfx1100", "hip_gfx1151")
+_NATIVE_EXECUTION_PATHS = frozenset(
+    {"packed_native", "native_c1", "native_c1_eager", "native_c1_graph"}
+)
 
 
 def _artifact_backend_scope(resolved_backend: str, target_arch: str) -> str:
@@ -98,6 +101,13 @@ class _ReclaimedRow:
     observability: dict[str, Any]
     block_ids: list[int]
     completion_time: float
+
+
+@dataclass(frozen=True)
+class _ReferenceRun:
+    generated_tokens: list[int]
+    prefill_seconds: float
+    decode_step_seconds: list[float]
 
 
 @dataclass
@@ -228,6 +238,50 @@ def _parse_sse_data_line(line: str) -> dict[str, Any] | str | None:
     return json.loads(payload)
 
 
+def _reference_c1_summary(
+    reference_runs: Mapping[int, _ReferenceRun],
+    summaries: Mapping[str, Mapping[str, Any]],
+) -> dict[str, Any]:
+    prefill = [float(run.prefill_seconds) for run in reference_runs.values()]
+    decode_steps = [
+        float(seconds)
+        for run in reference_runs.values()
+        for seconds in run.decode_step_seconds
+    ]
+    prefill_stats = _stats(prefill)
+    decode_stats = _stats(decode_steps)
+    direct_itl = decode_stats["median"]
+    c1_summary = summaries.get("c1")
+    occupancy_itl = (
+        None
+        if c1_summary is None
+        else c1_summary["scheduler_latency_seconds"]["inter_token"]["median"]
+    )
+    direct_rate = (
+        None if direct_itl is None or float(direct_itl) <= 0.0 else 1.0 / float(direct_itl)
+    )
+    occupancy_rate = (
+        None
+        if occupancy_itl is None or float(occupancy_itl) <= 0.0
+        else 1.0 / float(occupancy_itl)
+    )
+    ratio = (
+        None
+        if direct_rate is None or occupancy_rate is None
+        else float(occupancy_rate) / float(direct_rate)
+    )
+    return {
+        "timing_scope": "same-process synchronized eager c1 transition versus scheduler ITL",
+        "prompt_count": len(reference_runs),
+        "prefill_seconds": prefill_stats,
+        "decode_step_seconds": decode_stats,
+        "same_process_direct_c1_decode_tok_s": direct_rate,
+        "occupancy_one_transition_tok_s": occupancy_rate,
+        "occupancy_one_vs_direct_c1": ratio,
+        "within_five_percent": bool(ratio is not None and float(ratio) >= 0.95),
+    }
+
+
 def _latency_delta(
     before: Mapping[str, Any],
     after: Mapping[str, Any],
@@ -333,18 +387,27 @@ def _temporary_environment(updates: Mapping[str, str]) -> Iterator[None]:
                 os.environ[key] = value
 
 
-def _run_reference(session: Any, prompt: Sequence[int], max_tokens: int) -> list[int]:
+def _run_reference(session: Any, prompt: Sequence[int], max_tokens: int) -> _ReferenceRun:
     session.reset()
+    prefill_started = time.perf_counter()
     first = session.prefill(
         tuple(int(token) for token in prompt),
         use_bulk=True,
         bulk_attention_mode="bulk",
         return_logits=False,
     )
+    prefill_seconds = time.perf_counter() - prefill_started
     generated = [int(first.token_id)]
+    decode_step_seconds: list[float] = []
     while len(generated) < int(max_tokens):
+        decode_started = time.perf_counter()
         generated.append(int(session.step(generated[-1], return_logits=False).token_id))
-    return generated
+        decode_step_seconds.append(time.perf_counter() - decode_started)
+    return _ReferenceRun(
+        generated_tokens=generated,
+        prefill_seconds=prefill_seconds,
+        decode_step_seconds=decode_step_seconds,
+    )
 
 
 def _stream_completion(
@@ -638,7 +701,7 @@ def _run_http_sample(
         for group in plan.get("groups", ())
     )
     packed_plans_only = all(
-        group.get("execution_path") in {"packed_native", "native_c1"}
+        group.get("execution_path") in _NATIVE_EXECUTION_PATHS
         for plan in plans
         for group in plan.get("groups", ())
     )
@@ -761,7 +824,9 @@ def _run_http_sample(
         "route": {
             **asdict(config),
             "claim_level": (
-                "serial_bridge" if expected_serial else "exact_hybrid"
+                "serial_bridge"
+                if expected_serial
+                else ("native_c1" if config.name == "c1" else "exact_hybrid")
             ),
             "route_counts_delta": route_delta,
             "fallback_reasons_delta": fallback_delta,
@@ -1015,7 +1080,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 require_cached_build=bool(args.require_cached_build),
             )
             try:
-                reference_tokens = {
+                reference_runs = {
                     int(token_id): _run_reference(
                         reference_session,
                         tuple([int(token_id)] * int(args.prompt_length)),
@@ -1024,6 +1089,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     for token_id in sorted(
                         {int(row["token_id"]) for row in prompt_rows}
                     )
+                }
+                reference_tokens = {
+                    token_id: run.generated_tokens
+                    for token_id, run in reference_runs.items()
                 }
             finally:
                 reference_session.close()
@@ -1175,11 +1244,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         for name in names
     }
     scaling = _scaling_summary(summaries)
+    reference_c1 = _reference_c1_summary(reference_runs, summaries)
     complete_packet = tuple(names) == _CANONICAL_CONFIGURATIONS
     static_passed = all(
         summary["passed"] is True and summary["variance_guard"]["passed"] is True
         for summary in summaries.values()
     )
+    if "c1" in names:
+        static_passed = static_passed and bool(reference_c1["within_five_percent"])
     passed = bool(
         static_passed
         and (live_sample is None or live_sample["passed"] is True)
@@ -1251,6 +1323,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "reference_tokens": {
             str(key): list(value) for key, value in sorted(reference_tokens.items())
         },
+        "reference_c1": reference_c1,
         "summaries": summaries,
         "scaling": scaling,
         "live_admission": live_sample,
@@ -1262,10 +1335,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "command": shlex.join(command),
         "elapsed_seconds": time.perf_counter() - started,
         "limitations": [
-            "Packed live-server rows are exact_hybrid eager execution, not a fully native graph claim.",
+            "Occupancy-adaptive c1 uses the exact eager GEMV route unless the backend graph break-even is met.",
+            "Packed c2/c4/c8 groups are eager in this server packet; graph and profiler claims remain separate.",
             "The same-loop packed-off route is an explicit serial bridge and is expected to report fallback reasons.",
             "TestClient may buffer ASGI chunks; scheduler-owned latency samples are authoritative for TTFT/ITL.",
-            "The fully native graph row and profiler census are joined from the retained E2 packet.",
         ],
     }
 

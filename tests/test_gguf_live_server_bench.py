@@ -10,10 +10,13 @@ from scripts.gguf_live_server_bench import (
     _counter_delta,
     _latency_delta,
     _logical_shape_covers,
+    _NATIVE_EXECUTION_PATHS,
     _owned_physical_plans,
     _parse_configurations,
     _parse_sse_data_line,
     _prompt_rows,
+    _ReferenceRun,
+    _reference_c1_summary,
     _scaling_summary,
     _stats,
     _wait_for_live_admission_trigger,
@@ -44,6 +47,8 @@ def test_live_server_bench_declares_honest_c13_routes() -> None:
         "packed_c13",
         "serial_c13",
     )
+    assert CONFIGURATIONS["c1"].execution_class == "occupancy_adaptive_c1"
+    assert {"native_c1_eager", "native_c1_graph", "packed_native"} <= _NATIVE_EXECUTION_PATHS
     assert CONFIGURATIONS["packed_c13"].logical_rows == 13
     assert CONFIGURATIONS["packed_c13"].execution_class == "grouped_exact_hybrid"
     assert CONFIGURATIONS["serial_c13"].packed_decode is False
@@ -181,6 +186,30 @@ def test_live_server_bench_requires_exact_text_token_roundtrip() -> None:
     assert [row["token_id"] for row in rows] == [100, 101, 102, 103, 100]
     assert all(row["token_count"] == 3 for row in rows)
     assert all(row["roundtrip_exact"] is True for row in rows)
+
+
+def test_live_server_bench_compares_occupancy_one_with_same_process_c1() -> None:
+    summary = _reference_c1_summary(
+        {
+            9707: _ReferenceRun(
+                generated_tokens=[9707, 9707, 9707],
+                prefill_seconds=0.4,
+                decode_step_seconds=[0.020, 0.021],
+            )
+        },
+        {
+            "c1": {
+                "scheduler_latency_seconds": {
+                    "inter_token": {"median": 0.0205},
+                }
+            }
+        },
+    )
+
+    assert summary["same_process_direct_c1_decode_tok_s"] == pytest.approx(1.0 / 0.0205)
+    assert summary["occupancy_one_transition_tok_s"] == pytest.approx(1.0 / 0.0205)
+    assert summary["occupancy_one_vs_direct_c1"] == pytest.approx(1.0)
+    assert summary["within_five_percent"] is True
 
 
 def test_live_server_bench_scaling_compares_grouped_c13_with_c1_and_serial() -> None:
