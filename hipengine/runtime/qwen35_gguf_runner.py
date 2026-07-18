@@ -42,7 +42,6 @@ from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
     qwen35_paged_attn_decode_int8_hadamard_group32_gqa_splitk_gate_bf16_spans,
     qwen35_paged_attn_decode_int8_key_bf16_value_gqa_splitk_gate_bf16_spans,
     qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_spans,
-    qwen35_paged_full_attn_decode_context_bf16_batch_c1_exact_spans,
     qwen35_paged_full_attn_decode_context_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_gate_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_parallel_reduce_spans,
@@ -1694,6 +1693,7 @@ class Qwen35GGUFFullStackRunner:
     backend: str = "auto"
     target_arch: str = field(default="", init=False)
     weights: Qwen35GGUFResidentWeights | None = field(default=None, init=False)
+    _paged_attn_context_batch: object | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         self.backend = resolve_backend(self.backend)
@@ -1702,6 +1702,12 @@ class Qwen35GGUFFullStackRunner:
         except ValueError as exc:
             raise RuntimeError("Qwen35GGUFFullStackRunner requires a HIP backend") from exc
         load_backend_kernel_package(self.backend)
+        self._paged_attn_context_batch = resolve(
+            backend=self.backend,
+            layer="paged_attn_decode",
+            quant="w4_paro",
+            variant="bf16_context_batch_c1_exact_spans",
+        )
         self.runtime = self.runtime or get_hip_runtime()
         self.require_cached_build = bool(self.require_cached_build)
         self.weights = materialize_qwen35_gguf_weights(
@@ -3427,7 +3433,10 @@ class Qwen35GGUFFullStackRunner:
             f"{stage_prefix}_kv_write",
             t_stage,
         )
-        qwen35_paged_full_attn_decode_context_bf16_batch_c1_exact_spans(
+        context_batch = self._paged_attn_context_batch
+        if not callable(context_batch):  # pragma: no cover - registry resolve is fail-closed
+            raise RuntimeError("paged context-batch attention kernel is unavailable")
+        context_batch(
             scratch.full_query.ptr,
             scratch.key_cache.ptr,
             scratch.value_cache.ptr,

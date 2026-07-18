@@ -163225,3 +163225,43 @@ git diff --check
 
 This is a correctness-contract/test repair, not a performance claim and not a
 production kernel change. The earlier two-failure full-suite blocker is closed.
+
+## 2026-07-18 — Preserve gfx1151 packed attention after the concurrency merge
+
+Started the merged gfx1100 E3 transfer on current `main` `c255a16d`, using the
+Qwen3.6-35B-A3B UD-Q4_K_M GGUF, BF16 KV, gfx1151, TheRock HIP 7.15, one HIP
+hardware queue, IOMMU off, the precomputed compiler-version file, and cached
+builds. The first unchanged C13 eager p16/d2 gate lowered correctly to physical
+`c8 + masked-c8(5)` and kept generated tokens exact, but failed final state/KV.
+A narrower physical-c8 control reproduced the same first divergence at decode
+step 1, row 0, full-attention layer 35: 359 hidden elements, max abs
+`0.001953125`, followed by 576 final state/KV mismatches. Raw RED artifact:
+`/tmp/gfx1151-transfer-c255a16d/e3-c8-eager-p16-d2-control.json`, 312,244 bytes,
+SHA-256 `19bb208bf6d89f45167a5f434184cb09801529c4f3627066ac0f4b5eb8c17a93`.
+This proved arbitrary-C grouping was not the cause.
+
+The merge's only relevant arithmetic change replaced the shared
+`bf16_context_batch_c1_exact_spans` symbol body with a new scalar-tree reduction
+needed by the retained gfx1100 PARO route. A no-source-edit gfx1151 diagnostic
+bound that logical key back to the previously retained generic context-batch
+kernel and passed tokens, 640/640 all-layer hidden comparisons, Conv/GDN state,
+and live KV exactly. Raw diagnostic SHA-256:
+`9dd3bfe0e4a4be6eda20bedd6d7fad0440e74da3fb19ca009fdf521297207e0e`.
+
+Implemented the target-profile fix without a backend branch in model code:
+`hip_gfx1151` overrides the four-axis context-batch key with the generic batch
+kernel, while gfx1100 keeps the new scalar-tree implementation. The GGUF runner
+now resolves that key once from the plugin registry at initialization instead
+of directly importing one implementation or resolving it on every layer.
+RED/GREEN host coverage asserts gfx1100 retains scalar-tree and gfx1151 selects
+generic; the five affected dispatch/attention/runtime suites pass **300/300**,
+Python compilation and `git diff --check` pass. Ruff is unavailable in the repo
+venv, unchanged from the prior merge validation.
+
+Final-source cached C13 p16/d2 is `passed`: physical groups are c8 masks
+`11111111` and `11111000`, generated tokens and all **1,040/1,040** layer-hidden
+comparisons are exact, final Conv/GDN and live-KV mismatch counts are zero, and
+both groups report packed-native execution. Raw JSON is 36,267 bytes, SHA-256
+`6027359aa2346da2d70b5c1a8153d078d2c16829c2df32029fde824bff6f0ed0`.
+Next: commit this merge-regression fix, then run the full gfx1151 E3 lifecycle,
+optional-compaction, and p512/d128 eager/graph packet from the clean revision.
