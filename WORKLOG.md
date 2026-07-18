@@ -164309,3 +164309,48 @@ silently enable an unvalidated backend. `tests/test_gfx1151_backend.py` passes
 **23/23**, including a synthetic late-provider registration case; the backend
 module is Ruff/compile clean, and the test file adds no finding beyond its one
 pre-existing unused import.
+
+## 2026-07-19 — Refresh the W7900 llama.cpp bundled-MTP floor
+
+Reran the preserved instrumented llama.cpp HIP `1ebf790cd` / build 9648 binary
+on the idle Radeon Pro W7900 at clean hipEngine `8d67f072`, system HIP
+7.2.53211, exact Qwen3.6-35B-A3B UD-Q4_K_M, F16 KV, flash attention, B2,
+reasoning off, greedy sampling, and the committed ten-prompt
+`mtpbench-code-general-ja.jsonl` category+heldout suite. The authoritative
+binary SHA-256 is `da974ab3...1edd2`; model sampled SHA-256 remains
+`936659d6...89fb`.
+
+The transition-matched natural25 command requested 25 outputs per prompt and
+counted exactly 24 timed post-first-output transitions, 240 total:
+
+```bash
+HIP_VISIBLE_DEVICES=0 python3 scripts/llamacpp_mtp_bench.py \
+  --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build-gfx1100-therock715/bin/llama-server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --ctx-size 8192 --concurrency 1 --gpu-layers 99 \
+  --flash-attn on --cache-type-k f16 --cache-type-v f16 \
+  --draft-max 2 --mode both --protocol natural \
+  --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl \
+  --max-tokens 25 --seed 12345 --temperature 0 --top-k 1 --top-p 1 --min-p 0 \
+  --server-extra-arg=--reasoning --server-extra-arg=off --port 18011 \
+  --output /tmp/w7900-llamacpp-mtp-natural25-8d67f072.json
+```
+
+Results are **78.053 AR -> 115.444 MTP transition tok/s (1.4791x)**,
+81.56% draft acceptance, 58.40% accepted/output, and **8.662 ms/timed
+transition**. Train/heldout MTP is **116.867/113.374 tok/s**; code/general-en/
+general-ja/mixed categories are **126.349/114.046/104.746/109.092 tok/s**.
+All ten prompt/category rows, 250 requested outputs, 240 transitions, and the
+fixed six-train/four-heldout split are present and internally consistent. The
+prior July 12 MTP row was 116.878 tok/s, so the refresh is within **-1.23%** and
+the architectural conclusion is stable.
+
+The retained hipEngine `llama-compat` row is 79.701 tok/s, only **0.6904x** the
+current external MTP rate. It needs **+44.85%**, reducing complete cycle wall
+from 12.578 to at most 8.662 ms/output, before parity. Slightly higher hipEngine
+draft acceptance (82.95%) means this remains an orchestration target rather
+than an acceptance target. Compact artifact:
+`benchmarks/results/2026-07-19-w7900-llamacpp-mtp-natural25-refresh.json`;
+raw JSON SHA-256 is `09315833...a303b`. llama.cpp remains an external
+`performance_claim=false` comparator because it uses F16 KV and a preserved
+dirty instrumentation patchset.

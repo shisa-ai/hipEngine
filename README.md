@@ -362,16 +362,16 @@ B2 natural24 structure used by the llama.cpp comparison.
 <!-- BEGIN TOPLINE:SPECULATIVE -->
 #### GGUF MTP comparison, Radeon Pro W7900/gfx1100
 
-| Metric | hipEngine GGUF true AR | hipEngine GGUF exact/default | hipEngine GGUF `llama-compat` | llama.cpp HIP base AR |
-| --- | ---: | ---: | ---: | ---: |
-| Route | State-bound graph, no MTP | B3, fixed 10 cycles | B2, natural24/cyclecap24 | Natural25 request / 24 timed transitions |
-| Decode | **98.75 tok/s fixed / 93.30 tok/s natural24** | 68.50 tok/s | 79.70 tok/s | 78.29 tok/s transition-normalized |
-| Own true AR | same route | 98.75 tok/s | 93.30 tok/s | same route |
-| MTP / own AR | 1.0000x | **0.6936x** | **0.8542x** | n/a |
-| Draft acceptance | n/a | 73.53% | 82.95% | n/a |
-| Accepted draft/output | n/a | 50.00% | 60.83% | n/a |
-| Complete wall per output/transition | 10.718 ms natural24 | 14.696 ms | 12.578 ms | 12.774 ms |
-| State/commit contract | serial autoregressive | serial-prefix preserving | direct partial commit/dp4a; accuracy-traded | native llama.cpp autoregressive |
+| Metric | hipEngine GGUF true AR | hipEngine GGUF exact/default | hipEngine GGUF `llama-compat` | llama.cpp HIP base AR | llama.cpp HIP bundled MTP |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Route | State-bound graph, no MTP | B3, fixed 10 cycles | B2, natural24/cyclecap24 | Natural25 request / 24 timed transitions | B2, natural25 request / 24 timed transitions |
+| Decode | **98.75 tok/s fixed / 93.30 tok/s natural24** | 68.50 tok/s | 79.70 tok/s | 78.05 tok/s transition-normalized | **115.44 tok/s transition-normalized** |
+| Own true AR | same route | 98.75 tok/s | 93.30 tok/s | same route | 78.05 tok/s |
+| MTP / own AR | 1.0000x | **0.6936x** | **0.8542x** | n/a | **1.4791x** |
+| Draft acceptance | n/a | 73.53% | 82.95% | n/a | 81.56% |
+| Accepted draft/output | n/a | 50.00% | 60.83% | n/a | 58.40% |
+| Complete wall per output/transition | 10.718 ms natural24 | 14.696 ms | 12.578 ms | 12.812 ms | **8.662 ms** |
+| State/commit contract | serial autoregressive | serial-prefix preserving | direct partial commit/dp4a; accuracy-traded | native llama.cpp autoregressive | native llama.cpp compatibility target |
 
 The old `34.28-34.49 tok/s` true-AR denominator was an eager-only benchmark
 path, not the fastest production no-MTP route. gfx1100 had no backend graph
@@ -384,12 +384,16 @@ preview/tail and moves **34.28 -> 93.30 tok/s** in the same MTP wrapper.
 At the matched cross-engine boundary, hipEngine counts 240 complete post-prefill
 transitions including graph capture/instantiate/close; llama.cpp build 9648
 requests 25 outputs and counts the 240 timed transitions inside `predicted_ms`.
-hipEngine is **93.30 versus 78.29 tok/s (+19.19%)**. BF16 versus F16 KV remains
-disclosed. llama.cpp stays an external diagnostic with
-`performance_claim=false` because its local instrumentation patchset is dirty
-but preserved.
+hipEngine AR is **93.30 versus 78.05 tok/s (+19.54%)**. The refreshed external
+B2 MTP route is instead **115.44 tok/s**, **1.4791x** its own AR and **1.4485x**
+hipEngine `llama-compat`. Its 81.56% draft acceptance is slightly below
+hipEngine's 82.95%, so the remaining **+44.85%** hipEngine requirement is an
+orchestration/complete-cycle wall target rather than an acceptance target.
+BF16 versus F16 KV remains disclosed. llama.cpp stays an external diagnostic
+with `performance_claim=false` because its local instrumentation patchset is
+dirty but preserved.
 
-Neither MTP route beats the corrected production AR control. Exact/default
+Neither hipEngine MTP route beats the corrected production AR control. Exact/default
 remains the semantic control; `llama-compat` remains explicit-only because
 direct partial commit is not serial-prefix-equivalent. The fixed-cycle exact
 and natural24 compatibility rows are different protocols and are not ranked

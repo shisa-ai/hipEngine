@@ -359,8 +359,10 @@ accept/commit metadata, and scheduler-facing results.
 - gfx1100 primary break-even: `llama-compat` complete cycle
   `<= 27.36 ms/cycle` at current density, then beat the current **93.30 tok/s**
   graph AR control. Exact/default requires its own same-protocol break-even.
-- Stretch target: close the current **12.578 -> 8.556 ms/output** gap to
-  llama.cpp MTP without reducing acceptance or changing the route contract.
+- Required cross-engine target: close the current **12.578 -> <=8.662
+  ms/output** gap and meet or beat the refreshed W7900 llama.cpp B2 MTP floor
+  of **115.44 transition-normalized tok/s** on the complete category+heldout
+  suite, without reducing acceptance or changing the route contract.
 - gfx1151 must be non-regressive on its full suite even if host submission is a
   smaller fraction there. A gfx1100 win does not transfer automatically.
 - Retain as default only when exact/non-regressive for the provider/backend;
@@ -1316,6 +1318,13 @@ is now answered by the M1 required/optional table.)
 
 ## Decision Log
 
+- 2026-07-19: Refreshed the W7900 llama.cpp B2 natural25 external floor on all
+  ten category prompts at clean hipEngine `8d67f072`: transition-normalized
+  **78.05 AR -> 115.44 MTP tok/s (1.4791x)**, 81.56% draft acceptance, and
+  58.40% accepted/output. The prior 116.88 tok/s row is within 1.23%.
+  hipEngine `llama-compat` remains 79.70 tok/s and therefore needs **+44.85%**
+  to meet the current floor. Artifact:
+  `benchmarks/results/2026-07-19-w7900-llamacpp-mtp-natural25-refresh.json`.
 - 2026-07-19: Landed N1 as a correctness-accepted, performance-rejected gfx1100
   diagnostic under registry key
   `(hip_gfx1100, speculative_cycle, w4_gguf,
