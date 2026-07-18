@@ -163316,3 +163316,17 @@ and advanced the benchmark/docs coverage from gfx1151 `not_started` to
 C>8 uses multiple declared physical groups; never label C13 native. Automatic
 compaction and gfx1151 F1 server throughput remain open. Next: run the canonical
 real OpenAI F1 burst/live-admission packet on gfx1151.
+
+## 2026-07-18 — Make the F1 harness gfx11-target scoped
+
+The merged canonical `scripts/gguf_live_server_bench.py` still rejected
+`--backend hip_gfx1151` and hardcoded both its artifact kind and build profile to
+gfx1100. Added a RED parser test, then admitted the two registered gfx11 peer
+backends and derived artifact scope from the resolved `(backend, target_arch)`
+pair. Mismatched pairs now fail closed. Artifact kind and build profile use the
+validated target scope, so a gfx1151 F1 packet cannot be mislabeled gfx1100;
+the default remains gfx1100 and benchmark arithmetic/requests are unchanged.
+The focused harness suite passes **10/10**, Python compilation and `git
+diff --check` pass, and `.venv` help exposes
+`--backend {hip_gfx1100,hip_gfx1151}`. Next: commit this harness-only unit, then
+run a clean gfx1151 API smoke before the full p512/d128 F1 packet.
