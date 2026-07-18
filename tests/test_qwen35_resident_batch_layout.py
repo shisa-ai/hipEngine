@@ -212,6 +212,15 @@ def _sampler_equality_payload(*, rows: int, artifact_path: str) -> dict[str, obj
 
 
 def test_qwen35_retained_batch_defaults_select_rowchunk_layers() -> None:
+    assert runner_module._automatic_full_attention_row_chunk_size(2, backend="hip_gfx1151") == 0
+    assert runner_module._automatic_full_attention_row_chunk_size(3, backend="hip_gfx1151") == 2
+    assert runner_module._automatic_full_attention_row_chunk_size(4, backend="hip_gfx1151") == 0
+    assert runner_module._automatic_full_attention_row_chunk_size(5, backend="hip_gfx1151") == 2
+    assert runner_module._automatic_full_attention_row_chunk_size(6, backend="hip_gfx1151") == 2
+    assert runner_module._automatic_full_attention_row_chunk_size(7, backend="hip_gfx1151") == 2
+    assert runner_module._automatic_full_attention_row_chunk_size(8, backend="hip_gfx1151") == 0
+    assert runner_module._automatic_full_attention_row_chunk_size(4, backend="hip_gfx1100") == 2
+    assert runner_module._automatic_full_attention_row_chunk_size(8, backend="hip_gfx1100") == 2
     assert runner_module._retained_full_attention_row_chunk_layers(2) == set()
     assert runner_module._retained_full_attention_row_chunk_layers(3) == set()
     assert runner_module._retained_full_attention_row_chunk_layers(4) == set()

@@ -585,7 +585,11 @@ def _hipengine_route_expectation_passes(
     rows = int(concurrency)
     if resident_capacity != float(rows):
         return False
-    if len(serial_values) != rows or len(native_values) != rows:
+    if (
+        not serial_values
+        or len(serial_values) != len(native_values)
+        or len(serial_values) % rows != 0
+    ):
         return False
     if str(expectation) == "serial":
         return all(value is True for value in serial_values) and all(
@@ -844,6 +848,9 @@ def _server_command_and_env(
     if args.compiler_version_file is not None:
         env["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file)
     if engine == "hipengine":
+        env["HIPENGINE_PREFILL_DECODE_POLICY"] = str(
+            args.hipengine_prefill_decode_policy
+        )
         env["HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS"] = "1"
         env["HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"] = (
             "1" if args.hipengine_route_expectation == "native" else "0"
@@ -1398,6 +1405,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "server_capacity_matches_logical_concurrency": True,
             "context_tokens_per_sequence": int(args.ctx_per_seq),
             "hipengine_batch_window_ms": float(args.batch_window_ms),
+            "hipengine_prefill_decode_policy": (
+                str(args.hipengine_prefill_decode_policy)
+                if engine == "hipengine"
+                else None
+            ),
             "llamacpp_prompt_cache": False,
             "exact_output_contract": "every server row equals an independent same-engine c1 token-ID oracle",
             "live_admission_concurrency": int(args.live_concurrency),
@@ -1479,6 +1491,12 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("native", "serial"),
         default="native",
         help="Expected hipEngine c>N route; serial also disables PARO native batch decode in child servers",
+    )
+    parser.add_argument(
+        "--hipengine-prefill-decode-policy",
+        choices=("protect_decode", "protect_ttft", "fair"),
+        default="protect_ttft",
+        help="Explicit hipEngine resident scheduling policy; retained F1 uses protect_ttft",
     )
     parser.add_argument("--llamacpp-hip-repo", type=Path, default=DEFAULT_LLAMA_HIP_REPO)
     parser.add_argument(

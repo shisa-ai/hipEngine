@@ -71,6 +71,10 @@ GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS = 0
 # until it receives an independent long-context correctness/performance gate.
 GGUF_PAGED_ATTN_PARALLEL_REDUCE = False
 GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT = 32768
+# Clean PARO G3/G5 physical-width and server gates certify c4/c8 with whole-row
+# full-attention execution. Diagnostic c2 row chunking changes row-local
+# numerics at these widths and must therefore remain an explicit override.
+PARO_FULL_ATTN_NATIVE_EXACT_WIDTHS = frozenset({4, 8})
 _SOURCE_BACKEND = "hip_gfx1100"
 _GFX1151_OVERRIDES = {
     # The new scalar-tree c1-exact context kernel retained for gfx1100/PARO
@@ -157,6 +161,7 @@ __all__ = [
     "GGUF_Q8_T16_PREFILL_TWO_WAVE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS",
     "GGUF_ROUTER_F32_BF16_HIDDEN_THREADS",
+    "PARO_FULL_ATTN_NATIVE_EXACT_WIDTHS",
     "TARGET_ARCH",
     "register_backend_kernels",
     "register_gfx1151_kernels",

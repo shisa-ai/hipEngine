@@ -163694,3 +163694,48 @@ backend c2 group. The short wall is intentionally non-claimable (c1/c2 aggregate
 warmup wrapper correctly leaves the overall smoke at `failed_gate`. Next:
 commit the harness, rerun from a clean commit with one warmup plus three p512/d128
 repetitions at c1/c2/c4/c8, and retain only exact routes with bounded variance.
+
+
+## 2026-07-18 — Keep certified gfx1151 PARO c4/c8 full-attention widths whole
+
+The first clean F1 p512/d128 packet on Radeon 8060S/gfx1151 exposed a real
+correctness failure behind otherwise strong diagnostic server scaling. The
+static c1/c2/c4/c8 medians were **47.157/51.792/61.434/67.427 aggregate
+tok/s**, but c4 matched only 2/4 independent c1 rows and c8 only 2/8; the live
+c8 row matched 6/8. A reduced resident control proved row-serial c4 exact while
+one native c4 step diverged only physical rows 2/3 at the first generated token.
+The existing layer comparator then isolated the difference: production retained
+defaults silently lowered every c4/c8 full-attention layer into c2 row chunks,
+while explicit `HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE=0`
+kept the physical width whole and made c4/c8 first-step output **8/8 exact**.
+
+The automatic policy now comes from backend package metadata rather than model
+or dispatch branching. `hip_gfx1151` certifies physical widths `{4,8}` as
+whole-row exact; gfx1100 and intermediate c3/c5/c6/c7 retain the prior diagnostic
+c2 chunk policy, and an explicit row-chunk environment override still wins.
+The F1 harness also now (1) accepts route records for every row of every
+repetition instead of requiring exactly one repetition and (2) explicitly sets
+and records `HIPENGINE_PREFILL_DECODE_POLICY=protect_ttft`, closing a
+reproducibility gap that had made a diagnostic smoke inherit `protect_decode`
+and exhaust its finite submit/poll watchdog while serially completing row 0.
+
+Validation:
+
+- `PYTHONPATH=. uv run pytest -q tests/test_qwen35_resident_batch_layout.py
+  tests/test_server_f1_concurrency_bench.py` passes all **169/169** tests;
+  focused Ruff and `git diff --check` pass.
+- The corrected zero-warmup F1 smoke used the committed p512/d128 raw-token
+  protocol at c1/c4/c8 plus live c8 and exact command recorded in
+  `/tmp/paro-g5-f1-c148-corrected-smoke/result.json` (**211,483 bytes**, SHA-256
+  `9a5cfd3507dab629776616b853253d3296706445b6dee58e169d6352157f619b`).
+  Measured c1/c4/c8 aggregate walls are **47.128/60.378/61.827 tok/s**;
+  measured correctness is 1/1, 4/4, and 8/8 exact, both c4/c8 execute
+  `paro_resident_native_width_decode` with one physical-width backend group and
+  zero serial decode calls, and delayed live c8 is 8/8 exact with admission
+  before the first request completes (**37.042 aggregate tok/s**). Its wrapper
+  status is intentionally `failed_gate` solely because this surgical smoke used
+  `--warmup-runs 0`; it is correctness evidence, not the retained speed row.
+
+Next: commit this correctness/policy unit, commit the dedicated SSE measurement
+harness separately, then run clean one-warmup/three-measurement c1/c2/c4/c8 F1
+and SSE packets before publishing or promoting any performance result.
