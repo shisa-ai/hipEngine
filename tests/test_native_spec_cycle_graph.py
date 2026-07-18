@@ -79,6 +79,21 @@ def _b2_control(*, cycle_id: int = 7) -> NativeSpecCycleControl:
     )
 
 
+def _b1_control(*, cycle_id: int = 9) -> NativeSpecCycleControl:
+    control = _b2_control(cycle_id=cycle_id)
+    return replace(
+        control,
+        shape=replace(
+            control.shape,
+            row_count=2,
+            active_row_count=2,
+            candidate_count=1,
+            active_candidate_count=1,
+            candidate_budget=1,
+        ),
+    )
+
+
 class _FakeNativeLibrary:
     def __init__(self, *, status: NativeSpecCycleStatus = NativeSpecCycleStatus.COMPLETE) -> None:
         self.status = status
@@ -154,6 +169,24 @@ def test_native_target_graph_launcher_calls_one_pre_resolved_submission_boundary
     assert result.cycle_id == 7
     assert launcher.launch_count == 1
     assert library.calls == [(0x6000, 0x7000, 0x8000)]
+
+
+def test_native_target_graph_launcher_accepts_b1_and_b2_shape_buckets() -> None:
+    library = _FakeNativeLibrary()
+    launcher = NativeSpecTargetGraphLauncher(
+        graph_exec=0x6000,
+        graph_launch_fn=0x7000,
+        stream_synchronize_fn=0x8000,
+        library=library,
+    )
+
+    b1 = launcher.launch(_b1_control())
+    b2 = launcher.launch(_b2_control())
+
+    assert b1.status is NativeSpecCycleStatus.COMPLETE
+    assert b2.status is NativeSpecCycleStatus.COMPLETE
+    assert b1.request_count == b2.request_count == 1
+    assert launcher.launch_count == 2
 
 
 def test_native_target_graph_launcher_rejects_control_that_drifted_from_bound_graph() -> None:
@@ -259,7 +292,14 @@ def test_native_target_graph_cpp_launcher_calls_fake_hip_functions(
         stream_synchronize_fn=ctypes.cast(stream_synchronize, ctypes.c_void_p).value or 0,
         library=library,
     )
-    result = launcher.launch(_b2_control())
+    b1 = launcher.launch(_b1_control())
+    b2 = launcher.launch(_b2_control())
 
-    assert result.status is NativeSpecCycleStatus.COMPLETE
-    assert calls == [("launch", 0x6000, 0x5000), ("sync", 0x5000, 0)]
+    assert b1.status is NativeSpecCycleStatus.COMPLETE
+    assert b2.status is NativeSpecCycleStatus.COMPLETE
+    assert calls == [
+        ("launch", 0x6000, 0x5000),
+        ("sync", 0x5000, 0),
+        ("launch", 0x6000, 0x5000),
+        ("sync", 0x5000, 0),
+    ]

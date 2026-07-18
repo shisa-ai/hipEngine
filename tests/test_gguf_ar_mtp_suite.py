@@ -348,6 +348,15 @@ def test_suite_exposes_llama_compat_routes() -> None:
         "--target-block-direct-partial-replay-mode",
         "direct-commit",
     ]
+    native_cycle_route = suite.MTP_ROUTES["llama-compat-native-cycle"]
+    assert native_cycle_route[:-1] == suite.MTP_ROUTES[
+        "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit"
+    ]
+    assert native_cycle_route[-1] == "--native-spec-target-cycle"
+    assert suite.MTP_ROUTE_DEFAULT_BUDGETS["llama-compat-native-cycle"] == [2]
+    assert suite.MTP_ROUTE_ENVS["llama-compat-native-cycle"] == {
+        "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+    }
     assert suite.MTP_ROUTES[
         "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit-vlmheadtop1"
     ] == [

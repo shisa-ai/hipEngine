@@ -952,8 +952,18 @@ MTP_ROUTES: dict[str, list[str]] = {
     "resident-block": ["--resident-mtp-draft", "--target-block-verify"],
 }
 
+_NATIVE_CYCLE_BASE_ROUTE = (
+    "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-"
+    "x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit"
+)
+MTP_ROUTES["llama-compat-native-cycle"] = [
+    *MTP_ROUTES[_NATIVE_CYCLE_BASE_ROUTE],
+    "--native-spec-target-cycle",
+]
+
 MTP_ROUTE_DEFAULT_BUDGETS: dict[str, list[int]] = {
     "llama-compat": [2],
+    "llama-compat-native-cycle": [2],
     "llama-compat-dp4a": [2],
     "llama-compat-device-chain": [2],
     "llama-compat-device-chain-dp4a": [2],
@@ -1007,6 +1017,9 @@ MTP_ROUTE_DEFAULT_BUDGETS: dict[str, list[int]] = {
 }
 
 MTP_ROUTE_ENVS: dict[str, dict[str, str]] = {
+    "llama-compat-native-cycle": {
+        "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+    },
     "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-q8rowtileall": {
         "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL": "1",
     },

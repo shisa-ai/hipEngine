@@ -164406,3 +164406,64 @@ N2 device accept/commit remains useful ownership work but is far too small to
 close parity alone. N3 must make the exact N1 target graph dynamic/reusable and
 then own the complete cycle; N1 already proves graph submit+sync can collapse
 the target boundary once per-cycle capture is removed.
+
+## 2026-07-19 — Reuse dynamic B1/B2 GGUF MTP target graphs
+
+Implemented the measured reusable-target boundary before N2 accept/commit,
+because accept/commit was below 0.22 ms/output while the target verifier carried
+38.41 ms of profiled host residual. The native GGUF adapter now captures one
+fixed-address graph per B1/B2 shape bucket, stages live token/position/context
+metadata into graph-owned device buffers, reads the live cursor from session
+state, advances it on device, and replays the same graph executable across
+positions and cycles. Graph-owned hidden/F32 residual scratch prevents mutable
+session-buffer addresses from invalidating the capture. Allocation/configuration
+fingerprints fail closed; unsupported one-row tails use the existing eager/AR
+path before graph launch, and post-launch failures never silently re-execute.
+
+The first full gate exposed a truthful output-cap B1/two-row tail. Generalized
+the existing ABI launcher from fixed B2/three-row to one B1/B2 chain request,
+added a separate reusable B1 graph bucket, and preserved the four true one-row
+cycles on AR. Added the explicit `llama-compat-native-cycle` suite route; the
+runtime remains opt-in pending committed clean evidence.
+
+Correctness and focused validation:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 uv run --extra dev pytest -q \
+  tests/test_gguf_native_spec_cycle.py::test_native_b2_target_graph_matches_eager_hidden_state_and_kv
+# 1 passed in 77.5 s on the real W7900/35B model
+
+python3 -m pytest \
+  tests/test_native_spec_cycle_graph.py \
+  tests/test_gguf_native_spec_cycle.py \
+  tests/test_gguf_ar_mtp_suite.py -q
+# 44 passed
+```
+
+The real-model oracle replays one B2 graph over positions 8-10 and 11-13 and
+checks exact target top-1, all 12,288 FP32 hidden values, 60 captured Conv/GDN
+row buffers per cycle, all 60 resident Conv/GDN buffers, all 20 full K/V
+buffers, and cursor movement. It separately checks the B1 graph for two target
+rows, hidden/state/KV, and cursor equality. All comparisons are byte-exact.
+
+Two dirty-tree full-suite measurements are preliminary implementation evidence,
+not the retained publication row:
+
+```bash
+PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+python3 scripts/gguf_ar_mtp_suite.py \
+  --scope full --mtp-route llama-compat-native-cycle \
+  --budgets 2 --cycles 24 --max-output-tokens 24 \
+  --record-cycle-stage-timings --require-cached-build \
+  --output /tmp/w7900-hipengine-llama-compat-native-cycle-b1b2-full.json
+# repeat output: ...-full-repeat.json
+```
+
+Results are **123.058 and 123.257 tok/s**, **1.2722x and 1.2689x** their true
+AR controls, at unchanged **80.45% draft acceptance / 60.00% accepted-output**.
+The first run's complete wall is **8.158 ms/output**, already 5.81% below the
+llama.cpp 8.662 ms/transition floor; the rate is **6.60% above** llama.cpp's
+115.444 tok/s. All 96 cycle semantics and all 240 output IDs match the prior
+eager-target baseline on every category/heldout prompt in both repeats. Commit
+the implementation, then rerun from the clean committed tree before promoting
+or updating the canonical benchmark row.
