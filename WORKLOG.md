@@ -164784,3 +164784,28 @@ runner, KV-pool, and tracked-memory ownership are zero. The artifact correctly
 remains focused `measurement_complete` with `complete_packet=false` and
 `performance_claim=false`: `/tmp/gfx1151-f4-cancellation-d9c9f6d0.json`.
 The complete all-workload, all-candidate, 60-second-soak F4 packet remains next.
+
+The first complete clean `7200dcf3` selection run rejected `fair:256` despite
+its tuning **46.419 tok/s** versus `fair:128` **43.448**: cancellation aborted
+seven rows and left one resident, so the stuck no-artifact diagnostic was
+stopped after seven minutes (`bg-177`). A fresh `fair:256` cancellation
+isolation reproduces seven disconnect reclaims plus one resident leak even with
+a 30-second drain timeout (`bg-178`). The lifecycle-green `fair:128` complete
+run then finishes in **173.854 s**: tuning, static c1/c8, ragged, fixed, Poisson,
+overload (**16 completed + 16 rejected**), recovery, and the **120/120-request
+60-second soak at 41.707 goodput tok/s** all pass, but warmed cancellation still
+cancels four normal neighbors. Raw failed packet is 6.8 MiB, SHA-256
+`c52eb3d2a40f4e94c689b55a3d8f0b39e9a734bcdf9ed1b4816a8d86214e0d0f`, at
+`/tmp/gfx1151-f4-production-load-fair128-7200dcf3.json`.
+
+The failure is resident-event backpressure, not the bounded HTTP client queue:
+that queue's maximum observed depth is zero, while the resident adapter's
+separate 16-chunk routing queue can fill when one warmed peer advances up to 48
+tokens before Python schedules another normal consumer. A host RED lets one
+48-token peer burst while the other consumer is temporarily unscheduled; the
+old default cancels it at 16. GREEN raises only this internal bounded scheduling
+buffer to **64**; the explicit cap-1 slow-client test still cancels that row and
+preserves its neighbor. External HTTP queues remain bounded at the configured
+16. Validation: **8** submit/poll adapter, **26** server control/batcher, and
+**10** load-gate tests pass; Python compilation and `git diff --check` pass. A
+clean focused GPU gate is required before repeating the complete packet.
