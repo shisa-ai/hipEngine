@@ -51,12 +51,24 @@ from hipengine.server.api import (
     _SPECULATIVE_MTP_AUTO_ROUTE,
     _SPECULATIVE_MTP_BATCH_ROUTE,
     _SPECULATIVE_MTP_DEFAULT_ROUTE,
+    _prepared_context_tokens,
     _request_control,
     _startup_memory_summary,
 )
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_prepared_context_tokens_finds_resident_model_owner_session() -> None:
+    session = SimpleNamespace(max_sequence_length=8192)
+    generator = SimpleNamespace(
+        _session=None,
+        _resident_model_runner=SimpleNamespace(_session=session),
+    )
+    engine = SimpleNamespace(_text_generator=generator)
+
+    assert _prepared_context_tokens(engine) == 8192
 
 
 def _api_error_taxonomy_table() -> dict[str, dict[str, Any]]:
@@ -16473,9 +16485,9 @@ def test_streaming_completion_prefers_backend_chunk_decode_state() -> None:
         "timing_owner": True,
         "usage": {"prompt_tokens": 5, "completion_tokens": 4, "total_tokens": 9},
         "tokens": {
-            "streamed_tokens": 1,
-            "delta_tokens": 1,
-            "answer_tokens": 1,
+            "streamed_tokens": 4,
+            "delta_tokens": 4,
+            "answer_tokens": 4,
         },
     }
     assert payloads[0]["hipengine"]["timing"]["backend_prefill_ms"] == 4.0
@@ -16484,6 +16496,60 @@ def test_streaming_completion_prefers_backend_chunk_decode_state() -> None:
     assert done["choices"][0]["hipengine"]["timing"] == {"prefill_ms": 4.0, "decode_ms": 2.0}
     assert done["hipengine"]["timing"]["backend_prefill_ms"] == 4.0
     assert done["hipengine"]["timing"]["backend_decode_ms"] == 2.0
+
+
+def test_streaming_completion_uses_backend_decode_counts_for_exact_usage() -> None:
+    fake = FakeLLM(
+        outputs=["should-not-buffer"],
+        stream_chunks=[
+            GenerationStreamChunk(
+                " ",
+                telemetry=GenerationTelemetry.from_decode_counts(
+                    prompt_tokens=1,
+                    generated_tokens=1,
+                    phase="answer",
+                ),
+            ),
+            GenerationStreamChunk(
+                "\u00a0",
+                finish_details=FinishDetails(reason="length", length_limit=2),
+                telemetry=GenerationTelemetry.from_decode_counts(
+                    prompt_tokens=1,
+                    generated_tokens=2,
+                    phase="done",
+                ),
+            ),
+        ],
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "hello",
+            "max_tokens": 2,
+            "stream": True,
+            "stream_options": {"include_hipengine": True, "include_usage": True},
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    deltas = [payload for payload in payloads if payload.get("hipengine", {}).get("event") == "delta"]
+    assert [payload["choices"][0]["text"] for payload in deltas] == [" ", "\u00a0"]
+    assert [payload["choices"][0]["hipengine"]["tokens"]["streamed_tokens"] for payload in deltas] == [1, 2]
+    usage = next(payload["usage"] for payload in payloads if payload.get("usage") is not None)
+    assert usage == {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3}
+    done = next(payload for payload in payloads if payload.get("hipengine", {}).get("event") == "done")
+    assert done["choices"][0]["hipengine"]["tokens"] == {
+        "prompt_tokens": 1,
+        "completion_tokens": 2,
+        "total_tokens": 3,
+        "streamed_tokens": 2,
+        "answer_tokens": 2,
+    }
 
 
 def test_streaming_completion_prefers_backend_chunk_finish_details() -> None:

@@ -29,6 +29,7 @@ from hipengine.core.memory import (
 )
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.backends import (
+    backend_package_capability,
     hip_target_arch_environment,
     hip_target_arch_for_backend,
     resolve_backend,
@@ -147,6 +148,7 @@ _SERVER_STARTUP_NATIVE_BATCH_WARMUP_ENV = "HIPENGINE_QWEN35_SERVER_STARTUP_NATIV
 _SERVER_STARTUP_NATIVE_BATCH_WARMUP_TOKENS_ENV = "HIPENGINE_QWEN35_SERVER_STARTUP_NATIVE_BATCH_WARMUP_TOKENS"
 _SERVER_STARTUP_NATIVE_BATCH_WARMUP_TOKENS_DEFAULT = 64
 _RETAINED_BATCH_DEFAULTS_ENV = "HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS"
+_NATIVE_BATCH_DECODE_ENV = "HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"
 _SELECTED_BATCH_MOE_ENV = "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_BATCH_MOE"
 _SELECTED_BATCH_MOE_LEGACY_ENV = "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"
 _MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT_ENV = "HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT"
@@ -188,8 +190,34 @@ def _env_flag_override(name: str, *aliases: str) -> bool | None:
     return None
 
 
-def _retained_batch_defaults_enabled() -> bool:
-    return _env_flag(_RETAINED_BATCH_DEFAULTS_ENV, default=False)
+def _retained_batch_defaults_enabled(backend: str | None = None) -> bool:
+    override = _env_flag_override(_RETAINED_BATCH_DEFAULTS_ENV)
+    if override is not None:
+        return override
+    if backend is None:
+        return False
+    return bool(
+        backend_package_capability(
+            backend,
+            "PARO_RETAINED_BATCH_DEFAULTS",
+            False,
+        )
+    )
+
+
+def _native_batch_decode_enabled(backend: str | None = None) -> bool:
+    override = _env_flag_override(_NATIVE_BATCH_DECODE_ENV)
+    if override is not None:
+        return override
+    if backend is None:
+        return False
+    return bool(
+        backend_package_capability(
+            backend,
+            "PARO_NATIVE_BATCH_DECODE_DEFAULT",
+            False,
+        )
+    )
 
 
 def _aotriton_isolated_prefill_stream_enabled() -> bool:
@@ -251,6 +279,23 @@ def _env_int_set(name: str) -> set[int]:
     return parsed
 
 
+def _automatic_full_attention_row_chunk_size(rows: int, *, backend: str) -> int:
+    """Return the backend package's diagnostic row-chunk default."""
+
+    width = int(rows)
+    native_exact_widths = frozenset(
+        int(value)
+        for value in backend_package_capability(
+            backend,
+            "PARO_FULL_ATTN_NATIVE_EXACT_WIDTHS",
+            (),
+        )
+    )
+    if width in native_exact_widths:
+        return 0
+    return 2 if width in {3, 4, 5, 6, 7, 8} else 0
+
+
 def _retained_full_attention_row_chunk_layers(rows: int) -> set[int]:
     """Evidence-backed rowchunk layer scope for native c>N PARO decode.
 
@@ -280,11 +325,17 @@ def _retained_linear_row_chunk_size(rows: int) -> int:
     return 0
 
 
-def _batch_decode_linear_out_flags(rows: int) -> tuple[bool | None, bool]:
+def _batch_decode_linear_out_flags(
+    rows: int,
+    *,
+    backend: str | None = None,
+) -> tuple[bool | None, bool]:
     env_name = "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_OUT"
     mode = (os.environ.get(env_name, "auto").strip() or "auto").lower()
     if mode == "auto":
-        return None, bool(_retained_batch_defaults_enabled() and 2 <= int(rows) <= 8)
+        return None, bool(
+            _retained_batch_defaults_enabled(backend) and 2 <= int(rows) <= 8
+        )
     if mode in {"1", "true", "on", "yes", "selected_c1"}:
         return int(rows) > 1, False
     if mode in {"0", "false", "off", "no", "batch"}:
@@ -429,10 +480,13 @@ def _projection_candidate_evidence_blockers(candidate: Any) -> tuple[str, ...]:
     return tuple(blockers)
 
 
-def _env_projection_dispatch_candidates() -> tuple[tuple[Any, ...], tuple[str, ...]]:
+def _env_projection_dispatch_candidates(
+    *,
+    backend: str | None = None,
+) -> tuple[tuple[Any, ...], tuple[str, ...]]:
     raw = os.environ.get(_PROJECTION_DISPATCH_ARTIFACT_ENV)
     if raw is None or not raw.strip():
-        if not _retained_batch_defaults_enabled():
+        if not _retained_batch_defaults_enabled(backend):
             return (), ()
         raw = _default_projection_dispatch_artifact()
         if raw is None:
@@ -1760,8 +1814,8 @@ class Qwen35ParoResidentSession:
             free(buffer, runtime=self.runtime)
 
     def _load_native_batch_width_profile(self) -> NativeBatchWidthProfile | None:
-        if not _retained_batch_defaults_enabled() or not _env_flag(
-            "HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"
+        if not _retained_batch_defaults_enabled(self.backend) or not _native_batch_decode_enabled(
+            self.backend
         ):
             return None
         artifact = os.environ.get(QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE_ENV)
@@ -1848,6 +1902,89 @@ class Qwen35ParoResidentSession:
         self._decode_full_block_table_key = None
         self.last_prefill_execution = None
         self.last_batch_decode_execution = None
+
+    def reset_slots(self, slots: Sequence[int]) -> None:
+        """Clear only the selected persistent model slots for safe reuse.
+
+        The continuous owner keeps one fixed-capacity session, so reclaim must
+        not call :meth:`reset`, which would mutate surviving rows. This method
+        zeroes the selected rows' hidden/recurrent/KV storage and restores only
+        their scalar metadata while leaving every other physical slot bitwise
+        unchanged.
+        """
+
+        if self.closed:
+            raise RuntimeError("session is closed")
+        slot_ids = tuple(sorted({int(slot) for slot in slots}))
+        for slot in slot_ids:
+            self._check_slot(slot)
+        if not slot_ids:
+            return
+        self.runtime.device_synchronize()
+        for slot in slot_ids:
+            self.position_arr[slot] = 0
+            self.context_arr[slot] = 1
+            self.token_id_arr[slot] = 0
+            self.active_mask_arr[slot] = 0
+            for tensor in (
+                self.batch_hidden,
+                self.batch_next_hidden,
+                self.batch_norm_out,
+                self.batch_norm_out_bf16,
+            ):
+                stride = int(self.config.hidden_size) * tensor.dtype.itemsize
+                self.runtime.memset(tensor.ptr + slot * stride, 0, stride)
+            for state_buffers in self.linear_states.values():
+                conv_state, recurrent_state, conv_buf, recurrent_buf, _conv_zero, _recurrent_zero = state_buffers
+                conv_stride = int(np.prod(conv_state.shape)) * conv_state.dtype.itemsize
+                recurrent_stride = int(np.prod(recurrent_state.shape)) * recurrent_state.dtype.itemsize
+                self.runtime.memset(conv_buf.ptr + slot * conv_stride, 0, conv_stride)
+                self.runtime.memset(
+                    recurrent_buf.ptr + slot * recurrent_stride,
+                    0,
+                    recurrent_stride,
+                )
+            for cache_buffers in self.full_caches.values():
+                key_cache, value_cache, key_buf, value_buf = cache_buffers
+                key_stride = int(np.prod(key_cache.shape)) * key_cache.dtype.itemsize
+                value_stride = int(np.prod(value_cache.shape)) * value_cache.dtype.itemsize
+                self.runtime.memset(key_buf.ptr + slot * key_stride, 0, key_stride)
+                self.runtime.memset(value_buf.ptr + slot * value_stride, 0, value_stride)
+            for scale_buffers in self.full_cache_scales.values():
+                key_scale, value_scale, key_scale_buf, value_scale_buf = scale_buffers
+                key_stride = int(np.prod(key_scale.shape)) * key_scale.dtype.itemsize
+                value_stride = int(np.prod(value_scale.shape)) * value_scale.dtype.itemsize
+                self.runtime.memset(
+                    key_scale_buf.ptr + slot * key_stride,
+                    0,
+                    key_stride,
+                )
+                self.runtime.memset(
+                    value_scale_buf.ptr + slot * value_stride,
+                    0,
+                    value_stride,
+                )
+        for host, buffer in (
+            (self.position_arr, self.position_buf),
+            (self.context_arr, self.context_buf),
+            (self.position_arr, self.batch_compact_position_buf),
+            (self.context_arr, self.batch_compact_context_buf),
+            (self.token_id_arr, self.token_id_buf),
+            (self.active_mask_arr, self.active_mask_buf),
+        ):
+            copy_host_to_device(
+                buffer,
+                host_array_ptr(host),
+                host.nbytes,
+                runtime=self.runtime,
+            )
+        if self._host_sampling_states_by_slot is not None:
+            for slot in slot_ids:
+                self._host_sampling_states_by_slot.pop(slot, None)
+        if self._native_sampling_states_by_slot is not None:
+            for slot in slot_ids:
+                self._native_sampling_states_by_slot.pop(slot, None)
+        self.runtime.device_synchronize()
 
     def step(self, token_id: int, *, position: int, sample: bool = True) -> Qwen35ParoAutoregressiveStepResult | None:
         if self.closed:
@@ -1938,10 +2075,12 @@ class Qwen35ParoResidentSession:
             raise RuntimeError("session is closed")
         if exact_hybrid and str(self.target_arch).split(":", 1)[0] != "gfx1151":
             raise NotImplementedError("exact PARO c2 hybrid is currently certified only on gfx1151")
-        if not exact_hybrid and not _env_flag("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"):
+        if not exact_hybrid and not _native_batch_decode_enabled(
+            getattr(self, "backend", None)
+        ):
             raise NotImplementedError(
-                "native c>N decode is experimental and currently blocked on generated-token equality; "
-                "set HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1 for diagnostics"
+                "native c>N decode is disabled for this backend; set "
+                f"{_NATIVE_BATCH_DECODE_ENV}=1 for diagnostics"
             )
         if self.kv_storage_dtype != DType.BF16:
             raise NotImplementedError("native c>N decode currently requires BF16 KV")
@@ -2351,7 +2490,8 @@ class Qwen35ParoResidentSession:
                     [
                         "native c>N decode currently supports compact physical-slot-ordered rows; "
                         "full-attention batch context is native only for BF16 KV and context < 1024",
-                        "native c>N decode is experimental and blocked until generated-token equality passes",
+                        "batch_execution_metadata is diagnostic; production eligibility comes from "
+                        "the identity-matched resident width plan",
                     ]
                 )
                 path = "scheduler_native_compact_batch" if scheduler_owned else "native_compact_batch"
@@ -2386,7 +2526,9 @@ class Qwen35ParoResidentSession:
                 row_execution = "native_compact_caware_layers"
                 native_caware_decode = True
             if projection_rows is not None:
-                projection_candidates, projection_candidate_blockers = _env_projection_dispatch_candidates()
+                projection_candidates, projection_candidate_blockers = _env_projection_dispatch_candidates(
+                    backend=getattr(self, "backend", None)
+                )
                 projection_decision = plan_projection_dispatch(
                     rows=int(projection_rows),
                     row_gemv=ProjectionKernelSelection("linear", "w4_paro", "row_gemv"),
@@ -4290,7 +4432,7 @@ class Qwen35ParoResidentSession:
                 ),
             ),
         )
-        decode_enabled = _env_flag("HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE")
+        decode_enabled = _native_batch_decode_enabled(getattr(self, "backend", None))
         if not decode_enabled:
             result["native_batch_decode_skipped"] = True
             result["native_batch_decode_skip_reason"] = "experimental_native_batch_decode_disabled"
@@ -5368,8 +5510,11 @@ class Qwen35ParoResidentSession:
         decode_block_table = block_entry["decode_block_table"]
         self._append_full_block_rows_list = block_entry["append_block_rows_list"]
         self._decode_full_block_rows_list = block_entry["decode_block_rows_list"]
-        position_tensor = Tensor.from_handle(self.position_buf.ptr, (rows,), DType.INT64, self.device)
-        context_tensor = Tensor.from_handle(self.context_buf.ptr, (rows,), DType.INT64, self.device)
+        dense_slots = slots == tuple(range(rows))
+        position_buf = self.position_buf if dense_slots else self.batch_compact_position_buf
+        context_buf = self.context_buf if dense_slots else self.batch_compact_context_buf
+        position_tensor = Tensor.from_handle(position_buf.ptr, (rows,), DType.INT64, self.device)
+        context_tensor = Tensor.from_handle(context_buf.ptr, (rows,), DType.INT64, self.device)
         append_live_counts = [int(position) for position in positions]
         decode_live_counts = [int(position) + 1 for position in positions]
         storage_dtype = self._full_attention_storage_dtype(layer_id)
@@ -5487,7 +5632,7 @@ class Qwen35ParoResidentSession:
                 or selected_batch_moe_override is True
                 or (
                     selected_batch_moe_override is None
-                    and _retained_batch_defaults_enabled()
+                    and _retained_batch_defaults_enabled(getattr(self, "backend", None))
                     and _retained_selected_batch_moe_rows(rows)
                 )
             )
@@ -5500,7 +5645,7 @@ class Qwen35ParoResidentSession:
                 _env_flag(force_per_row_linear_moe_env)
                 or (
                     force_selected_c1_moe
-                    and _retained_batch_defaults_enabled()
+                    and _retained_batch_defaults_enabled(getattr(self, "backend", None))
                     and _env_is_blank(force_per_row_linear_moe_env)
                     and _env_is_blank("HIPENGINE_QWEN35_BATCH_DECODE_LINEAR_ROW_CHUNK_SIZE")
                     and _retained_per_row_linear_moe_rows(rows)
@@ -5514,7 +5659,7 @@ class Qwen35ParoResidentSession:
                 _env_flag(_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT_ENV)
                 or (
                     force_selected_c1_moe
-                    and _retained_batch_defaults_enabled()
+                    and _retained_batch_defaults_enabled(getattr(self, "backend", None))
                     and _env_is_blank(_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT_ENV)
                     and _retained_force_small_batch_shared_expert_rows(rows)
                 )
@@ -5565,7 +5710,10 @@ class Qwen35ParoResidentSession:
         force_selected_c1_linear_state = rows > 1 and _env_flag(
             "HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_LINEAR_STATE"
         )
-        force_selected_c1_linear_out, force_batch_gemv_linear_out = _batch_decode_linear_out_flags(rows)
+        force_selected_c1_linear_out, force_batch_gemv_linear_out = _batch_decode_linear_out_flags(
+            rows,
+            backend=getattr(self, "backend", None),
+        )
         if exact_hybrid_c2:
             # The generated-token-green c2 split requires the row-aware GEMV
             # linear-output reduction. The generic auto path can select a
@@ -5735,13 +5883,17 @@ class Qwen35ParoResidentSession:
         if full_attention_row_chunk_size < 0:
             raise ValueError("HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE must be non-negative")
         full_attention_row_chunk_env_value = os.environ.get(full_attention_row_chunk_env)
+        automatic_full_attention_row_chunk_size = _automatic_full_attention_row_chunk_size(
+            rows,
+            backend=str(getattr(self, "backend", "hip_gfx1100")),
+        )
         auto_full_attention_row_chunks = (
-            rows in {3, 4, 5, 6, 7, 8}
+            automatic_full_attention_row_chunk_size > 0
             and full_attention_row_chunk_size == 0
             and (full_attention_row_chunk_env_value is None or full_attention_row_chunk_env_value.strip() == "")
         )
         if auto_full_attention_row_chunks:
-            full_attention_row_chunk_size = 2
+            full_attention_row_chunk_size = automatic_full_attention_row_chunk_size
         force_full_attention_row_chunks = rows > 1 and 0 < full_attention_row_chunk_size < rows
         full_attention_row_chunk_source = "auto" if auto_full_attention_row_chunks else "env"
         full_attention_row_chunk_layers_env = "HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_LAYERS"
@@ -5750,7 +5902,11 @@ class Qwen35ParoResidentSession:
             full_attention_row_chunk_layers = set()
         elif full_attention_row_chunk_layers_raw is not None and full_attention_row_chunk_layers_raw.strip() != "":
             full_attention_row_chunk_layers = _env_int_set(full_attention_row_chunk_layers_env)
-        elif force_full_attention_row_chunks and auto_full_attention_row_chunks and _retained_batch_defaults_enabled():
+        elif (
+            force_full_attention_row_chunks
+            and auto_full_attention_row_chunks
+            and _retained_batch_defaults_enabled(getattr(self, "backend", None))
+        ):
             full_attention_row_chunk_layers = _retained_full_attention_row_chunk_layers(rows)
         else:
             full_attention_row_chunk_layers = set()
@@ -5877,7 +6033,7 @@ class Qwen35ParoResidentSession:
         linear_row_chunk_size = _env_int(linear_row_chunk_env, 0)
         if (
             linear_row_chunk_size == 0
-            and _retained_batch_defaults_enabled()
+            and _retained_batch_defaults_enabled(getattr(self, "backend", None))
             and _env_is_blank(linear_row_chunk_env)
         ):
             linear_row_chunk_size = _retained_linear_row_chunk_size(rows)
@@ -7766,6 +7922,11 @@ class Qwen35ParoResidentSession:
         self.prefill_context_count_buf = self._dev(prefill_context_count_arr)
         self.position_buf = self._dev(self.position_arr)
         self.context_buf = self._dev(self.context_arr)
+        # Sparse active slot ids still execute as compact batch rows. Keep a
+        # compact live-count mirror for paged attention while the slot-indexed
+        # vectors remain the resident ownership/source-of-truth metadata.
+        self.batch_compact_position_buf = self._dev(self.position_arr.copy())
+        self.batch_compact_context_buf = self._dev(self.context_arr.copy())
         self.token_id_buf = self._dev(self.token_id_arr)
         self.active_mask_buf = self._dev(self.active_mask_arr)
         self.block_table = Tensor.from_handle(self.block_table_buf.ptr, block_table_arr.shape, DType.INT32, self.device)
@@ -8429,6 +8590,14 @@ class Qwen35ParoResidentSession:
                 set_decode_position_i64(
                     self.position_buf.ptr + int(slot) * DType.INT64.itemsize,
                     self.context_buf.ptr + int(slot) * DType.INT64.itemsize,
+                    int(position),
+                    stream=stream,
+                    library=self.libraries["runtime_state"],
+                    runtime=self.runtime,
+                )
+                set_decode_position_i64(
+                    self.batch_compact_position_buf.ptr + index * DType.INT64.itemsize,
+                    self.batch_compact_context_buf.ptr + index * DType.INT64.itemsize,
                     int(position),
                     stream=stream,
                     library=self.libraries["runtime_state"],
@@ -9376,6 +9545,14 @@ class Qwen35ParoResidentSession:
                         library=self.libraries["runtime_state"],
                         runtime=self.runtime,
                     )
+                advance_decode_positions_i64(
+                    self.batch_compact_position_buf.ptr,
+                    self.batch_compact_context_buf.ptr,
+                    rows,
+                    stream=stream,
+                    library=self.libraries["runtime_state"],
+                    runtime=self.runtime,
+                )
 
     def _read_batch_next_tokens(self, *, rows: int) -> tuple[Qwen35ParoAutoregressiveStepResult, ...]:
         """Read the device-resident next-token argmax back into host step results.
@@ -9485,7 +9662,9 @@ class Qwen35ParoResidentSession:
         default_sample_eq_artifact: str | None = None
         default_sample_eq_rows: int | None = None
         default_sample_stabilize_elems: int | None = None
-        if (sample_mode_raw is None or sample_mode_raw.strip() == "") and _retained_batch_defaults_enabled():
+        if (
+            sample_mode_raw is None or sample_mode_raw.strip() == ""
+        ) and _retained_batch_defaults_enabled(getattr(self, "backend", None)):
             (
                 sample_mode,
                 default_sample_eq_ok,

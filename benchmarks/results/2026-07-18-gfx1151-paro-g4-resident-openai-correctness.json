@@ -1,0 +1,188 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_paro_g4_resident_openai_correctness",
+  "created_at": "2026-07-18T21:03:00+09:00",
+  "run_date": "2026-07-18",
+  "status": "continuous_eq_ok",
+  "passed": true,
+  "performance_claim": false,
+  "claim_scope": "Correctness-only gfx1151 PARO W4/BF16-KV resident model ownership through public LLM, blocking OpenAI completions, and concurrent OpenAI SSE; no server throughput, TTFT, ITL, gfx1100, sampled-native, graph, or production-default claim.",
+  "decision": "Retain the shared-loop PARO owner and exact SSE accounting; keep native-width production promotion pending repeated server scaling and the gfx1100 symmetry gate.",
+  "provenance": {
+    "base_commit": "6355708d30a42c3e5ab147c6d85a3dca737b716f",
+    "branch": "gfx1151-paro-g3-candidate",
+    "candidate_tracked_tree_clean": false,
+    "implementation_and_test_patch_sha256": "5009faa4f5a524b87dd2c52fd3e202620d4701d0a338aa30c67050ec928142d3",
+    "implementation_and_test_patch_bytes": 82700,
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151"
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "backend": "hip_gfx1151",
+    "visible_device": 0,
+    "rocm_stack": "TheRock HIP 7.15",
+    "device_policy": {
+      "tuned_profile": "accelerator-performance",
+      "amd_iommu": "off",
+      "gpu_max_hw_queues": 1,
+      "hws": "normal"
+    }
+  },
+  "model": {
+    "name": "shisa-ai/Qwen3.6-35B-A3B-PARO-packed",
+    "revision": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "quant": "w4_paro",
+    "kv_storage": "bf16",
+    "layers": 40
+  },
+  "configuration": {
+    "max_active_requests": 2,
+    "prefill_decode_policy": "fair",
+    "max_prefill_chunk_tokens": 256,
+    "retained_batch_defaults": true,
+    "experimental_native_batch_decode": true,
+    "retained_width_profile": "benchmarks/results/2026-07-18-gfx1151-paro-g3-native-c248-direct-retained.json",
+    "session_ownership": "one fixed-capacity model owner with stable model slots independent of scheduler slots",
+    "fallback_policy": "retained exact native widths for eligible greedy rows; explicit resident row-serial fallback for unsupported positions, widths, and sampling"
+  },
+  "commands": {
+    "host_gate": "PYTHONPATH=. uv run pytest -q tests/test_generation_qwen35_paro.py tests/test_qwen35_resident_batch_layout.py tests/test_generation_batch_scheduler.py tests/test_server_api.py -x",
+    "live_admission": "env HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1 HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1 HIPENGINE_PREFILL_DECODE_POLICY=fair HIPENGINE_MAX_PREFILL_CHUNK_TOKENS=256 python3 <inline resident live-admission gate>",
+    "openai": "env HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1 HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1 HIPENGINE_PREFILL_DECODE_POLICY=fair HIPENGINE_MAX_PREFILL_CHUNK_TOKENS=256 uv run --extra dev python3 /tmp/paro_g4_openai_gate.py"
+  },
+  "validation": {
+    "host": {
+      "status": "passed",
+      "tests_collected_and_passed": 1018,
+      "modules": [
+        "tests/test_generation_qwen35_paro.py",
+        "tests/test_qwen35_resident_batch_layout.py",
+        "tests/test_generation_batch_scheduler.py",
+        "tests/test_server_api.py"
+      ],
+      "contracts": [
+        "fixed-capacity owner and stable slots",
+        "chunked compact prefill",
+        "retained native c2 decode",
+        "scheduler compaction independent of model slots",
+        "slot-local state/KV reset with survivor immutability",
+        "cancellation before first emission",
+        "exact sampled row-serial fallback",
+        "backend decode-count SSE accounting"
+      ]
+    },
+    "live_admission": {
+      "status": "eq_ok",
+      "elapsed_s": 20.440481545985676,
+      "prompt_tokens": 512,
+      "baseline_16": [220, 248068, 248068, 248068, 220, 220, 196, 5513, 196, 196, 196, 196, 220, 220, 220, 5513],
+      "survivor_16": [220, 248068, 248068, 248068, 220, 220, 196, 5513, 196, 196, 196, 196, 220, 220, 220, 5513],
+      "baseline_8": [220, 248068, 248068, 248068, 220, 220, 196, 5513],
+      "reused_slot_8": [220, 248068, 248068, 248068, 220, 220, 196, 5513],
+      "cancelled_row_visible_prefix": [220],
+      "stable_model_slots": {
+        "survivor": 0,
+        "cancelled": 1,
+        "reused": 1
+      },
+      "route_counts": {
+        "admissions": 5,
+        "prefill_chunks": 10,
+        "native_group_calls": 7,
+        "native_rows": 14,
+        "serial_row_calls": 30,
+        "scheduler_compactions": 0,
+        "slot_resets": 10,
+        "reclaims": 5
+      },
+      "fallback_reasons": {},
+      "final_active_requests": 0,
+      "final_available_model_slots": [0, 1]
+    },
+    "openai": {
+      "status": "eq_ok",
+      "elapsed_s": 31.656858059985097,
+      "blocking": {
+        "prompt_rows": 2,
+        "prompt_tokens_per_row": 512,
+        "generated_tokens_per_row": 8,
+        "generated_rows_equal": true,
+        "usage": {
+          "prompt_tokens": 1024,
+          "completion_tokens": 16,
+          "total_tokens": 1040
+        }
+      },
+      "concurrent_sse": {
+        "requests": 2,
+        "prompt_tokens_per_request": 512,
+        "delta_events_per_request": 8,
+        "event_count_per_request": 10,
+        "done_event_present": true,
+        "usage_event_present": true,
+        "done_marker_present": true,
+        "baseline_generated_token_ids": [220, 67, 220, 3966, 220, 220, 220, 220],
+        "request_generated_token_ids": [
+          [220, 67, 220, 3966, 220, 220, 220, 220],
+          [220, 67, 220, 3966, 220, 220, 220, 220]
+        ],
+        "usage_per_request": {
+          "prompt_tokens": 512,
+          "completion_tokens": 8,
+          "total_tokens": 520
+        },
+        "cumulative_streamed_tokens_per_request": [1, 2, 3, 4, 5, 6, 7, 8],
+        "native_decode_steps_per_request": [5, 5],
+        "serial_decode_steps_per_request": [2, 2],
+        "serial_to_native_transition_expected_under_fair_admission": true
+      },
+      "route_counts": {
+        "admissions": 5,
+        "prefill_chunks": 10,
+        "native_group_calls": 10,
+        "native_rows": 20,
+        "serial_row_calls": 15,
+        "scheduler_compactions": 0,
+        "slot_resets": 10,
+        "reclaims": 5
+      },
+      "fallback_reasons": {},
+      "controlled_model_loop_capability": true,
+      "continuous_decode_capability": true,
+      "final_active_requests": 0,
+      "final_available_model_slots": [0, 1]
+    },
+    "resident_device_kv": {
+      "ownership": "fixed_session_model_slots",
+      "capacity_slots": 2,
+      "active_slots_after_gate": 0,
+      "resident_total_bytes": 167772160,
+      "resident_bytes_per_slot": 83886080,
+      "storage_dtype": "bf16",
+      "storage_layout": "uniform"
+    }
+  },
+  "raw_sources": {
+    "live_admission": {
+      "path": "/tmp/hipengine-pi-paro-g4-live-admission.json",
+      "bytes": 188720,
+      "sha256": "76c9c61026f4eeb15e26649bc8b7cd79a7e77927f73afea8cf15454abf42836b"
+    },
+    "openai": {
+      "path": "/tmp/hipengine-pi-paro-g4-openai.json",
+      "bytes": 199388,
+      "sha256": "5fd40d3a6b7d7948153d831b25954821541e4f9b2f35513bfb31ba22fd83525f"
+    }
+  },
+  "limitations": [
+    "Correctness-only candidate measurement; task G5/F-style repeated server scaling remains open.",
+    "The native-width route was exercised under the existing retained-default and experimental-native opt-ins; production-default promotion remains open.",
+    "Only gfx1151 is closed here; gfx1100 resident-owner symmetry remains open.",
+    "Greedy BF16-KV rows are covered. Normal per-row sampling remains exact resident serial fallback and has host-only coverage in this packet.",
+    "The fixed session owns resident device KV by stable model slot; this is not a claim of prefix reuse or dynamic request-sized KV pooling.",
+    "Fair admission intentionally permits truthful c1-to-c2 and c2-to-c1 transitions; the packet does not claim every decode step is native c2."
+  ]
+}

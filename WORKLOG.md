@@ -163503,3 +163503,545 @@ model step: public/OpenAI PARO remains width-1; c4/c8, longer context, sampled
 decode, graph replay, and non-BF16 KV remain separate gates. Next: generalize
 one true physical c4 algorithm, then attach retained PARO widths to the shared
 model-owning loop.
+
+## 2026-07-13 — Promote exact multi-row Marlin-K for PARO c>N
+
+Merged the five new `origin/main` commits through `32e78f78`, including the
+retained gfx1151 selected-batch c2 packet, then resumed G3 from separate clean
+worktrees on W7900 and the accessible `gfx1151` host. The unchanged physical c4
+route was genuinely red at p512/d8: all rows diverged from independent c1 at
+generated index 2 despite one native c4 step, 40/40 selected-batch MoE layers,
+and no row chunk/fallback; aggregate decode was `92.620 tok/s`.
+
+A narrow L1-L4 hidden trace localized the first arithmetic drift to layer-3
+full-attention O projection. QKV, append, exact batch context, gate, and all
+three preceding linear-attention layers were bit-identical. The c4 path used
+AWQ output-tiled math there while c1 used Marlin-K. Enabling the existing
+`gemv_paro_marlin_k_fma_multi_row_fp16` route at its eligible sites made the L4
+transition bit-exact, then made the L8/L16/L24/L32/L40 d2 trace `eq_ok` with no
+hidden, Conv/GDN, full-attention, state, KV, or token drift.
+
+Current clean-tree diagnostics with `HIPENGINE_MARLIN_K_MULTI_ROW_SITES=all`:
+
+- gfx1151 physical c4 p512/d128: **100.245 aggregate tok/s**, **548/548**
+  recorded IDs exact;
+- gfx1151 physical c8 p512/d8: **101.213 aggregate tok/s**, **136/136** IDs
+  exact;
+- gfx1151 c2 p512/d128: **79.240 aggregate tok/s**, **274/274** IDs exact,
+  versus retained `79.218` (+0.03%);
+- W7900 c2 p512/d128: **122.202 aggregate tok/s**, **274/274** IDs exact,
+  versus retained `121.923` (+0.23%).
+
+Promoted only the five known exact projection sites (`single_full_v`,
+`single_full_o`, `single_linear_out`, `single_shared_down`, and
+`single_dense_down`) in `_MARLIN_K_MULTI_ROW_DEFAULT_SITES`; unknown sites
+remain fail-closed and the existing env override remains available for
+rollback/bisection. RED/GREEN policy coverage now asserts those five defaults
+and rejects an unknown projection. Validation: focused policy `6 passed`,
+multi-row Marlin-K GPU bit-exact c2/c3/c4/c5/c6/c8 x 64/128-thread matrix
+`12 passed`, Python compilation, and `git diff --check`.
+
+This is the implementation promotion, not yet a retained c4/c8 claim. Next:
+run default-no-env c4/c8 p512/d128 repetition, all-layer NumPy/state/KV,
+shrinking lifecycle/inactive immutability, prompt-category, and profiler gates;
+then attach the retained physical widths to the model-owning OpenAI loop.
+
+The first c8→c1 cancellation gate then exposed a separate sparse-membership
+RED. Dense c8 and the first retired slot were exact, while final token/state/KV
+identity was `[true,true,true,true,true,false,false,false]` by slot; all retired
+rows nevertheless remained immutable, widths/counters were exact, and no
+cancellation leaked across the group. Uniform EOS and ragged-front EOS repeated
+the same failure. The first non-prefix membership was c7 slots
+`[0,1,2,3,5,6,7]`, and only slots after the hole diverged.
+
+Root cause: `_set_batch_positions()` correctly wrote live counts at persistent
+physical-slot indices, but `_batch_full_spans()` still exposed
+`position_buf[:rows]` / `context_buf[:rows]` to compact attention rows. Added
+persistent compact position/context mirrors, update them alongside slot-owned
+metadata for sparse batches, select them in paged-attention spans, and advance
+both views for sparse graph replay. RED/GREEN host tests cover the exact sparse
+pointer/update contract and sparse block-table span selection (`2 passed`);
+full resident-layout and decode-state modules pass `155/155` and `82/82`.
+The first full decode-state run exposed an old fake-pointer prefill test that
+disabled the AWQ multi-row umbrella but not the independently promoted Marlin
+site gate, so it reached a real HIP wrapper and the test process faulted. The
+fixture now disables/mocks both routes; the focused and full reruns pass, and a
+fresh HIP load/device probe is healthy. A clean gfx1151 lifecycle rerun is
+required before this fix is promoted.
+
+## 2026-07-18 — Retain gfx1151 PARO direct native c2/c4/c8
+
+Promoted the sparse live-count fix on clean equivalent trees `e175e28f`
+(gfx1151 measured branch) and `8c8cc15e` (pushed candidate), both tree
+`cdc5173a`. The required final sparse c8→c1 cancellation, uniform EOS, and
+ragged-front EOS gates are all `eq_ok`: every token sequence and every aggregate
+hash across 30 Conv/GDN state plus 10 full-attention K/V families matches
+independent c1 for all eight slots. All seven retired rows per run remain
+immutable, lifecycle widths/decode counts are exact, EOS is observed where
+requested, and no cancellation leaks group-wide.
+
+The complete direct-width packet is now retained on Radeon 8060S/gfx1151,
+TheRock HIP 7.15, TuneD `accelerator-performance`, normal HWS/one HIP queue,
+`amd_iommu=off`, exact packed model revision `437eba06…`, W4 PARO, BF16 KV,
+greedy p512/d128, 40 layers, eight warmup steps, cached builds, and no row
+chunks. Three fresh processes per width measure:
+
+- c2: **79.237 aggregate / 39.619 per-request tok/s**, 0.048% stdev/median,
+  **822/822** recorded IDs exact;
+- true physical c4: **100.209 / 25.052 tok/s**, 0.054% variance,
+  **1,644/1,644** IDs exact, **+41.52%** over c1;
+- true physical c8: **99.943 / 12.493 tok/s**, 0.031% variance,
+  **3,288/3,288** IDs exact, **+41.14%** over c1.
+
+c2 is non-regressive versus retained 79.218 (+0.02%). c8 aggregate throughput
+is 0.265% below c4, a real c4 bandwidth plateau rather than hidden scaling, but
+its median **79.692 ms** model step is still 0.183% faster than two sequential
+c4 steps (**2 × 39.919 ms**). The evidence-backed width profile therefore
+retains honest c2/c4/c8 costs and positions 512..647; other widths/positions
+remain exact serial partitions.
+
+Broader gates:
+
+- c4/c8 primitives have zero append mismatches, zero batch-vs-c1 attention
+  error, and at most `5.960464477539063e-08` batch-vs-NumPy error;
+- physical c8 L40/d3 is bit-exact for hidden, all linear stages, all Conv/GDN,
+  full-attention stages, live K/V, generated tokens, and the NumPy context
+  oracle, with no row chunks;
+- all ten canonical code/general-en/general-ja/mixed-ja-en prompts, including
+  heldouts, pass at both physical c4 (**396/396** recorded IDs) and c8
+  (**528/528**), with 40 selected-batch and zero fallback layers in every run;
+- cached `rocprofv3 --kernel-trace` L4/d1 is `eq_ok` with **4,644** dispatches,
+  one physical-c8 exact context kernel (`grid_y=8`, **1,692,818 ns**), four
+  exact multi-row Marlin-K dispatches, and 72 selected projection dispatches.
+
+The category wrapper's first result parser looked for a nonexistent
+`workload.batch_size`; the c4 GPU output was already complete and exact, so the
+corrected continuation reused it. The profiler parser expected the wrapper
+name suffix `...fp16`, while rocprof demangled the actual kernel as
+`gemv_paro_marlin_k_fma_multi_row_kernel<_Float16, 8>`; inspection of the
+captured CSV confirmed the route without rerunning GPU work. The first primitive
+wrapper likewise looked for a nonexistent top-level `status`; corrected
+validation reused the completed c4 result and ran c8 once.
+
+Published
+`benchmarks/results/2026-07-18-gfx1151-paro-g3-native-c248-direct-retained.json`
+(**26,498 bytes**, SHA-256
+`8498a57b736dc9734e6b474e740166633d01e7925aa28f7536bddb65a7ad8e59`)
+with every raw source size/SHA-256, clean equivalent-tree provenance, exact
+commands, recomputed repetition statistics, the loadable schema-2 width profile,
+all lifecycle/category assertions, and profiler names/durations. The default
+profile path now resolves this accepted c2/c4/c8 packet; existing retained-
+default and experimental-native opt-in guards remain unchanged until the shared
+loop gate passes. Updated
+`docs/PLAN.md`, `docs/CONCURRENCY.md`, both benchmark/root rollups, and the
+benchmark changelog. This claim remains explicit direct model steps only;
+public/OpenAI PARO is still width-1. Next: implement the shared resident model
+owner and close real blocking/SSE live admission before production promotion.
+
+## 2026-07-18 — Close gfx1151 PARO resident OpenAI correctness
+
+Implemented the Phase-G4 PARO owner behind the unchanged backend-neutral
+`SubmitPollTextGenerator` / `ResidentEngineLoop` contract; no PARO-only
+scheduler and no backend/quant branch was added. `Qwen35ParoOneTokenGenerator`
+now supplies one fixed-capacity `Qwen35ParoResidentModelRunner`. Each request
+keeps a stable model slot independent of scheduler compaction, prompt chunks
+commit through compact packed prefill, eligible equal-position greedy groups
+use the retained c2/c4/c8 width profile, and unsupported positions/widths or
+normal sampling remain explicit resident row-serial work. Reclaim calls a new
+slot-local session reset that clears only the selected hidden, Conv/GDN,
+full-attention KV/scale, and scalar metadata rows; survivor storage is untouched.
+The public `LLM` and OpenAI batcher therefore share the same long-lived model
+owner, stream subscriptions, cancellation, reclaim, and observability paths.
+
+RED/GREEN host coverage found and fixed two lifecycle/accounting edges. First,
+a token sampled by the final prefill chunk but cancelled before scheduler
+emission must not appear in the public result; cancelled output is now bounded
+by the scheduler's committed generated-token count. Second, tokenizer-counting
+individual SSE text fragments is not exact for generated IDs: the real sequence
+`[220,67,220,3966]` renders as space/`d`/space/NBSP and retokenized as two
+completion tokens. Completion SSE now prefers authoritative cumulative backend
+`decode_state.generated_tokens` for per-delta accounting and final usage while
+preserving the prior text-counter fallback for metadata-free generators. The
+focused RED case moved streamed counts from `[0,0]` to `[1,2]` and exact usage
+from zero retokenized completion tokens to two generated tokens.
+
+Validation and exact commands:
+
+- `PYTHONPATH=. uv run pytest -q tests/test_generation_qwen35_paro.py
+  tests/test_qwen35_resident_batch_layout.py
+  tests/test_generation_batch_scheduler.py tests/test_server_api.py -x` passes
+  all **1,018/1,018** collected host/server tests; focused Ruff and
+  `git diff --check` also pass.
+- On Radeon 8060S/gfx1151, TheRock HIP 7.15, packed model revision
+  `437eba06…`, W4/BF16 KV, `max_active_requests=2`, fair scheduling, 256-token
+  prompt chunks, and the existing retained/default plus experimental-native
+  opt-ins, the inline live-admission command emitted
+  `/tmp/hipengine-pi-paro-g4-live-admission.json` (**188,720 bytes**, SHA-256
+  `76c9c61026f4eeb15e26649bc8b7cd79a7e77927f73afea8cf15454abf42836b`).
+  A 512-token/16-output survivor is ID-exact to independent c1 while a second
+  row is cancelled after one visible token and its stable slot 1 is immediately
+  reused for an exact 512/8 result. Slots remain `{first:0, second:1, third:1}`;
+  seven native c2 calls / 14 rows and 30 truthful serial row calls execute with
+  no fallback reason; five admissions, ten prompt chunks, ten slot resets, and
+  five reclaims drain to zero ownership.
+- The exact OpenAI command was
+  `env HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151
+  HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1
+  HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=1
+  HIPENGINE_PREFILL_DECODE_POLICY=fair
+  HIPENGINE_MAX_PREFILL_CHUNK_TOKENS=256 uv run --extra dev python3
+  /tmp/paro_g4_openai_gate.py`. It emitted
+  `/tmp/hipengine-pi-paro-g4-openai.json` (**199,388 bytes**, SHA-256
+  `5fd40d3a6b7d7948153d831b25954821541e4f9b2f35513bfb31ba22fd83525f`).
+  Blocking c2 reports exact usage `1024+16=1040`. Two concurrent 512/8 SSE
+  requests each emit eight deltas plus done/usage/`[DONE]`, report exact
+  `512+8=520`, count streamed tokens `1..8`, and match independent IDs
+  `[220,67,220,3966,220,220,220,220]`. Each records five native c2 plus two
+  serial steps because fair admission truthfully permits c1→c2→c1 transitions;
+  this is not hidden fallback. The owner exposes 160 MiB fixed-session BF16 KV
+  across two stable slots and drains active ownership to zero.
+
+Published compact correctness evidence at
+`benchmarks/results/2026-07-18-gfx1151-paro-g4-resident-openai-correctness.json`
+(**8,078 bytes**, SHA-256
+`8c628107b1539d72b15bac09407440471fce15b926d23597e413bbc9cf140d16`).
+This advances gfx1151 PARO live admission to `continuous_eq_ok`, not retained
+production: it carries no server throughput/TTFT/ITL claim, still requires the
+existing native opt-ins, covers normal sampling only through exact host-tested
+serial fallback, and does not close gfx1100 owner symmetry. Next: commit this
+logical unit, then run repeated real gfx1151 server burst/live-admission scaling
+before any production-default promotion.
+
+## 2026-07-18 — Generalize the F1 harness for PARO checkpoints
+
+Extended `scripts/server_f1_concurrency_bench.py` without changing its primary
+barrier-to-last-response HTTP timing boundary. The harness now fingerprints
+model directories as well as GGUF files, reports the requested quant, configures
+explicit native/serial PARO child-server modes, treats c1 serial execution as
+the width-1 control rather than a failure, and falls back to 90% of observed c1
+HTTP wall for live-admission scheduling when backend telemetry exposes only
+`request_total_ms`. Twelve focused tests pass, including RED/GREEN directory
+fingerprinting, route expectations, and the PARO timing fallback.
+
+A dirty-harness c1/c2 p512/d8 smoke on clean runtime commit `24d4b070` is
+correctness-green: c1 and c2 measured rows and delayed live-admission rows all
+match their independent c1 ID oracles; c1 resolves the explicit resident serial
+path and static c2 resolves `paro_resident_native_width_decode` with one real
+backend c2 group. The short wall is intentionally non-claimable (c1/c2 aggregate
+9.357/9.433 tok/s, dominated by two serial 512-token prefills), and the zero-
+warmup wrapper correctly leaves the overall smoke at `failed_gate`. Next:
+commit the harness, rerun from a clean commit with one warmup plus three p512/d128
+repetitions at c1/c2/c4/c8, and retain only exact routes with bounded variance.
+
+
+## 2026-07-18 — Keep certified gfx1151 PARO c4/c8 full-attention widths whole
+
+The first clean F1 p512/d128 packet on Radeon 8060S/gfx1151 exposed a real
+correctness failure behind otherwise strong diagnostic server scaling. The
+static c1/c2/c4/c8 medians were **47.157/51.792/61.434/67.427 aggregate
+tok/s**, but c4 matched only 2/4 independent c1 rows and c8 only 2/8; the live
+c8 row matched 6/8. A reduced resident control proved row-serial c4 exact while
+one native c4 step diverged only physical rows 2/3 at the first generated token.
+The existing layer comparator then isolated the difference: production retained
+defaults silently lowered every c4/c8 full-attention layer into c2 row chunks,
+while explicit `HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE=0`
+kept the physical width whole and made c4/c8 first-step output **8/8 exact**.
+
+The automatic policy now comes from backend package metadata rather than model
+or dispatch branching. `hip_gfx1151` certifies physical widths `{4,8}` as
+whole-row exact; gfx1100 and intermediate c3/c5/c6/c7 retain the prior diagnostic
+c2 chunk policy, and an explicit row-chunk environment override still wins.
+The F1 harness also now (1) accepts route records for every row of every
+repetition instead of requiring exactly one repetition and (2) explicitly sets
+and records `HIPENGINE_PREFILL_DECODE_POLICY=protect_ttft`, closing a
+reproducibility gap that had made a diagnostic smoke inherit `protect_decode`
+and exhaust its finite submit/poll watchdog while serially completing row 0.
+
+Validation:
+
+- `PYTHONPATH=. uv run pytest -q tests/test_qwen35_resident_batch_layout.py
+  tests/test_server_f1_concurrency_bench.py` passes all **169/169** tests;
+  focused Ruff and `git diff --check` pass.
+- The corrected zero-warmup F1 smoke used the committed p512/d128 raw-token
+  protocol at c1/c4/c8 plus live c8 and exact command recorded in
+  `/tmp/paro-g5-f1-c148-corrected-smoke/result.json` (**211,483 bytes**, SHA-256
+  `9a5cfd3507dab629776616b853253d3296706445b6dee58e169d6352157f619b`).
+  Measured c1/c4/c8 aggregate walls are **47.128/60.378/61.827 tok/s**;
+  measured correctness is 1/1, 4/4, and 8/8 exact, both c4/c8 execute
+  `paro_resident_native_width_decode` with one physical-width backend group and
+  zero serial decode calls, and delayed live c8 is 8/8 exact with admission
+  before the first request completes (**37.042 aggregate tok/s**). Its wrapper
+  status is intentionally `failed_gate` solely because this surgical smoke used
+  `--warmup-runs 0`; it is correctness evidence, not the retained speed row.
+
+Next: commit this correctness/policy unit, commit the dedicated SSE measurement
+harness separately, then run clean one-warmup/three-measurement c1/c2/c4/c8 F1
+and SSE packets before publishing or promoting any performance result.
+
+
+## 2026-07-18 — Add a dedicated PARO resident OpenAI SSE scaling harness
+
+Added `scripts/paro_live_server_bench.py` as the streaming counterpart to the
+socket-level blocking F1 harness. Each configuration owns one prepared,
+fixed-capacity PARO model session and drives the real FastAPI
+`/v1/completions` SSE route through `TestClient`; this deliberately measures the
+server/streaming lifecycle without process startup. The default packet covers
+c1, native c2/c4/c8, and an explicit serial-c8 control with one warmup plus
+three measured p512/d128 repetitions. Native c8 also starts four requests,
+waits for observed native decode progress, and admits four more while the first
+requests remain live.
+
+The harness captures authoritative prompt/generated token IDs at resident-row
+reclaim and rejects any sample unless every HTTP stream has exact usage,
+requested delta count, `length` finish, `[DONE]`, unique ownership, and exact
+text/token equality to independent same-session c1 oracles. It additionally
+requires the expected native/serial manifest, no fallback-reason deltas, full
+ownership drain, generated-token wall denominators, scheduler and client
+TTFT/ITL distributions, allocator/HIP memory snapshots, backend route counters,
+and repository/model/environment provenance. TestClient transport buffering is
+recorded as a limitation; scheduler latency remains authoritative.
+
+Validation before the first hardware run:
+
+- `PYTHONPATH=. uv run pytest -q tests/test_paro_live_server_bench.py` passes
+  **5/5** focused parser/prompt/statistics/SSE/counter tests.
+- `PYTHONPATH=. uv run ruff check scripts/paro_live_server_bench.py
+  tests/test_paro_live_server_bench.py` and `git diff --check` pass.
+
+No performance result is claimed by this commit. Next: push the two clean
+commits to the gfx1151 candidate, run the full clean F1 and SSE packets, and
+retain only if every repeated and delayed-admission row is exact.
+
+
+## 2026-07-18 — Correct the PARO SSE prompt transport contract
+
+The first clean hardware invocation of `paro_live_server_bench.py` failed its
+c1 request immediately with HTTP 400: OpenAI streaming intentionally rejects
+exact token-ID prompts (`unsupported_parameter`, `param=stream`). The failed
+attempt produced no usable timing row and was stopped before loading the
+remaining configurations. This was a harness-contract error, not a PARO model,
+server lifecycle, or generated-token failure.
+
+The harness now constructs the same 512-ID rows as F1, decodes each to text,
+and requires tokenizer encode(decode(ids)) to reproduce every ID before sending
+the text through SSE. The independent c1 oracle still consumes the exact ID
+row, resident reclaim captures the actual server-tokenized prompt row, and each
+sample requires those two rows plus all generated IDs/text/usage to match. This
+preserves an exact prompt identity gate while honoring the public streaming API.
+
+Validation:
+
+- Focused host tests and Ruff pass (**5/5**), including exact-roundtrip prompt
+  construction.
+- A Radeon 8060S/gfx1151 c1 p512/d8 zero-warmup hardware smoke passed the real
+  SSE route with exact prompt/generated IDs, eight deltas, exact usage, length
+  finish, done sentinel, ownership drain, and expected serial c1 route. Raw
+  diagnostic: `/tmp/paro-g5-sse-roundtrip-smoke/result.json` (**129,600 bytes**,
+  SHA-256 `61475c0dae05859703217e2021c65f2c5979dfe9bdd09f2c3ed3d630782ef2cf`),
+  **4.878 aggregate tok/s**. This short smoke is contract validation only.
+
+Next: commit/push the correction, recreate a clean remote checkout, and rerun
+the full one-warmup/three-measurement native-plus-serial SSE packet.
+
+
+## 2026-07-18 — Make SSE route gates lifecycle-aware
+
+The first exact-roundtrip full SSE attempt made every c1 and c2 HTTP/token gate
+green, but the harness still marked c2 false because it required zero serial
+steps and the final width plan to remain c2. Real independently arriving streams
+may execute truthful c1→c2→c1 edge transitions; the d128 samples each spent the
+steady window in native c2 but recorded one serial edge per row. This matches
+the already accepted G4 streaming lifecycle and is not a fallback: fallback
+reason deltas were empty, both rows were exact, and native c2 calls were
+observed. The attempt was stopped before c4/c8 because its route predicate was
+invalid, so it is not performance evidence.
+
+The route gate now inspects every reclaimed scheduler chunk's diagnostic width
+plan. A native configuration must reach every required physical width (static
+C, plus both initial and final C for live admission), every row must execute at
+least one native step, and native group counters must advance. Truthful serial
+edge steps are recorded rather than rejected; any fallback-reason delta still
+fails the sample. The serial control conversely requires zero native steps/calls
+and positive serial work. A focused c2 p512/d8 artifact with exact prompts,
+outputs, usage, and **7 c2 calls / 14 native rows / 0 serial calls** was reused to
+validate the corrected extractor: it reports observed widths `(2,)` instead of
+mistaking choice-scoped `group_rows=1` for physical width.
+
+Validation: focused host tests now pass **6/6**, Ruff and `git diff --check`
+pass, and the corrected extractor passes against the captured hardware route.
+Next: commit/push, recreate a clean checkout, and rerun the full SSE packet.
+
+
+## 2026-07-18 — Make PARO resident preparation concurrency-idempotent
+
+The corrected native-width SSE packet exposed a production request-lifecycle
+failure before any c4/c8 result could be retained. Concurrent completion
+streams prepare under the API session lock, then register with the persistent
+model loop after releasing it. The first request therefore became active before
+the next request's preparation. PARO kept its session under
+`generator._resident_model_runner._session`, which server resident-session
+introspection did not inspect, and its owner rejected every `prepare()` while
+rows existed even when the requested capacity and KV policy already matched.
+Completed rows remained token-exact; failed peers returned HTTP 500 with
+`cannot resize the PARO resident model owner while requests are registered`.
+The stopped packet is diagnostic only.
+
+Two RED regressions captured the boundary: server context discovery returned
+no capacity for an owner-held 8,192-token session, and an active owner rejected
+a no-op BF16 512-token prepare against its existing 1,024-token session. The
+owner now delegates active preparation to `_ensure_session()`, whose existing
+contract returns for matching policy/capacity and still rejects a real KV-policy
+or capacity change while rows are registered. Server session discovery now
+follows the resident owner as well, avoiding redundant per-request threadpool
+preparation and making readiness/KV reporting truthful.
+
+Validation: both RED tests fail on `e51f248a` and pass after the fix; full
+`tests/test_generation_qwen35_paro.py` plus `tests/test_server_api.py` pass
+**547/547** under `uv run --extra dev`. `git diff --check` passes. No c=N
+performance result is claimed yet. Next: commit/push this host fix, rerun a
+clean c4 SSE smoke, then restart only the stopped full native/serial packet if
+every stream and reclaimed owner route is exact.
+
+
+## 2026-07-18 — Admit the declared PARO serial SSE control
+
+The first complete post-prepare-fix SSE packet made every serial-c8 prompt,
+generated ID, text stream, usage record, finish marker, and ownership gate
+exact. It also recorded zero native calls, 1,016 serial row calls/sample, and
+127 serial decode steps on every row. The harness nevertheless rejected all
+four serial samples because it applied the native-route requirement of zero
+fallback-reason deltas. Disabling the native width profile intentionally emits
+`no native batch width profile`; that blocker is the declaration that makes the
+serial control truthful rather than an undeclared fallback.
+
+The harness now accepts that one positive blocker only for an explicitly serial
+configuration. Native configurations still require no blocker, and the serial
+control rejects empty, negative, or runtime-unavailable deltas. The focused
+host suite passes **7/7**, Ruff and `git diff --check` pass. This correction does
+not make the full packet retainable: one separate native-c8 measured row changed
+at generated index 2 after joining in stable slot 7, while its prompt, request
+ownership, HTTP accounting, native route, and every other static/live c8 row
+were exact. Raw diagnostic `/tmp/paro-g5-sse-retained-16ab00f8/result.json` is
+194,439,755 bytes, SHA-256
+`aa1ed431d42f5f59078c27d646c4d9b740f47caba0bf93000de4ba816f3d5538`.
+Next: reproduce and close that staggered-admission state boundary before rerunning
+any retained packet.
+
+
+## 2026-07-18 — Retain gfx1151 PARO resident server scaling
+
+Closed G5 on Radeon 8060S/gfx1151, TheRock HIP 7.15, TuneD
+`accelerator-performance`, normal HWS/one HIP queue, `amd_iommu=off`, exact
+packed model revision `437eba06…`, W4 PARO, BF16 KV, greedy p512/d128, 256-token
+prompt chunks, and the `protect_ttft` server policy. Blocking and streaming
+measurements use separate explicit walls and never mix direct model-step timing
+with HTTP/SSE timing.
+
+The single prior c8 SSE row divergence did not reproduce. Repeated owner-level
+probes covered deterministic staggered admission, explicit decode gaps, d128,
+and the exact failed physical-slot prompt order: the two 12-repetition screens
+alone add **192/192** exact rows, and the d128/focused gap controls are also all
+exact. A clean real-FastAPI native-c8 stress packet at `ee8b417e` then passed one
+warmup, seven measured repetitions, and delayed live admission: **72/72** rows
+are prompt/generated-ID/text/usage exact, every sample observes native c8 with
+no fallback reason, and ownership drains. Its seven measured rates are
+42.283/41.771/41.297/41.097/40.411/40.085/39.563 tok/s (median 41.097); this
+stress trend is repeatability evidence, not the retained topline. Raw source is
+203,815,161 bytes, SHA-256
+`6c5e1e48e295725df2eb9d483bd41c444ed9fd0552a248d407e9be590219697b`;
+compact artifact:
+`benchmarks/results/2026-07-18-gfx1151-paro-g5-c8-sse-repeatability.json`
+(155,785 bytes, SHA-256
+`04f8d338b281a956ba9b5404509b815419d7c07c8da34f6beb79795774774f0f`).
+The earlier outlier remains disclosed but is classified as non-reproducible,
+not silently discarded or attributed to a deterministic state/KV defect.
+
+The clean blocking F1 packet at `c0e3318c` uses a fresh socket server per width,
+512 raw prompt IDs, 128 generated IDs/request, one warmup and three measured
+barrier-to-last-response localhost HTTP bursts. Static medians are:
+
+- c1 **47.124 aggregate / 47.124 per-request tok/s**;
+- native c2 **51.962 / 25.981**, **1.103x c1**;
+- native c4 **60.323 / 15.081**, **1.280x c1**;
+- native c8 **61.253 / 7.657**, **1.300x c1**.
+
+Rate stdev/median is <=0.994%. All **68/68** warmup/measured/live requests match
+independent c1 generated IDs, actual resident prompt IDs, exact usage, finish
+metadata, and declared routes. Delayed c8 admission occurs before the first
+request completes and remains 8/8 exact. GTT peak is
+**18.373/18.840/19.461/20.594 GiB** at c1/c2/c4/c8. Artifact:
+`benchmarks/results/2026-07-18-gfx1151-paro-g5-f1-server-scaling.json`
+(484,731 bytes, SHA-256
+`1119231d026c7c4be2cfc02ba2261fb963e001e8ecd735109eef71d8b855de74`).
+
+The final clean in-process FastAPI SSE packet at `ee8b417e` uses exact-roundtrip
+text prompts and authoritative resident-reclaim IDs. Median c1/native-c2/c4/c8/
+serial-c8 rates are **36.327/38.666/42.471/41.487/35.633 aggregate tok/s**.
+Native c2/c4/c8 are **1.064x/1.169x/1.142x c1**; native c8 is **1.164x
+serial-c8**. Delayed c4->c8 admission is exact at **38.191 tok/s**. Every one of
+**100/100** warmup/measured/live rows passes HTTP, prompt, generated-ID, text,
+usage, finish, route, and ownership gates; native rows have no fallback reason,
+and serial-c8 records only the declared `no native batch width profile`
+blocker. Raw source is 194,441,530 bytes, SHA-256
+`b484641353bac1f3cec705af97b39ba524265cc89ee1714bf1e08817c9450f43`;
+compact artifact:
+`benchmarks/results/2026-07-18-gfx1151-paro-g5-sse-server-scaling.json`
+(321,414 bytes, SHA-256
+`d3aaeb835bd4e7d89f04f028c56f33f8d1187d48801f66db0ef816581ad3ad93`).
+
+Representative commands were:
+
+```bash
+# Blocking F1
+uv run --extra dev python scripts/server_f1_concurrency_bench.py \
+  --engine hipengine --model <packed-model> --backend hip_gfx1151 \
+  --quant w4_paro --hipengine-route-expectation native \
+  --hipengine-prefill-decode-policy protect_ttft \
+  --concurrencies 1,2,4,8 --oracle-rows 4 \
+  --prompt-token-id 9707 --prompt-length 512 --decode-tokens 128 \
+  --warmup-runs 1 --measured-runs 3 --batch-window-ms 5 \
+  --ctx-per-seq 1024 --live-concurrency 8 --live-join-after-tokens 8 \
+  --gpu-max-hw-queues 1 --compiler-version-file /tmp/paro-g5-hipcc-version.txt \
+  --memory-domain gtt --drm-card-index 0 --memory-poll-ms 10 \
+  --json /tmp/paro-g5-f1-retained-c0e3318c/result.json
+
+# Native plus serial SSE
+uv run --extra dev python scripts/paro_live_server_bench.py \
+  --configurations c1,native_c2,native_c4,native_c8,serial_c8 \
+  --prompt-length 512 --decode-tokens 128 \
+  --warmup-runs 1 --measured-runs 3 \
+  --prefill-chunk-size 256 --batch-window-ms 20 \
+  --max-sequence-length 1024 --live-configuration native_c8 \
+  --live-initial-rows 4 --live-trigger-native-steps 8 \
+  --json /tmp/paro-g5-sse-final-ee8b417e/result.json
+```
+
+Promoted the retained route through gfx1151 backend-package capabilities,
+without an engine/model backend branch. The minimal evidence-derived profile is
+packaged under `hipengine/runtime/profiles/` and hash/sync-checked against the
+retained G3 source artifact, so installed wheels do not depend on repository
+CWD. With both legacy native flags absent, one real OpenAI SSE c4 d16
+confirmation runs from `/tmp` against measured runtime-candidate archive SHA-256
+`858488bffb30e513d8e73ad492ce8d888e91883218635611889372dc97e3a5e2`.
+It therefore requires the packaged profile fallback rather than the repository
+artifact. The gate passes 4/4 rows, observes physical widths 2 and 4, records no
+fallback reason, and drains ownership. Its 9.271 tok/s zero-warmup short wall is
+routing evidence only. Raw source is 1,117,951 bytes, SHA-256
+`efa4e43f7447009aa05a7956d2eaf6297b9689a2da9bce8d5a5eafa1464f9110`;
+compact correctness artifact:
+`benchmarks/results/2026-07-18-gfx1151-paro-g5-default-openai-c4.json`.
+Explicit `HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=0` and
+`HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE=0` remain rollback opt-outs
+for one release window; gfx1100 stays package-default off.
+
+Validation on the final tree: generation, resident-layout, scheduler, server,
+F1/SSE harness, profile-loader, and benchmark-sync suites pass **1,062/1,062**
+(including the focused **215/215** generation/resident set); focused Ruff,
+Python compilation, README block synchronization, artifact/hash assertions,
+and `git diff --check` pass. `uv build` succeeds and the wheel contains the
+1,917-byte packaged profile. The no-flag hardware route above is exact. Updated
+the root/benchmark toplines, benchmark changelog, `docs/PLAN.md`,
+`docs/CONCURRENCY.md`, `docs/REFACTOR.md`, and the PARO transfer/SOL dashboards.
+Remaining PARO concurrency scope is gfx1100 owner c4/c8 symmetry, broader
+sampled/native contexts and KV formats,
+and any independently justified graph path.

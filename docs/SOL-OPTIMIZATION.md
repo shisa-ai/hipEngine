@@ -1,15 +1,15 @@
 # gfx1151 PARO/GGUF Optimization Ledger
 
-Last updated: 2026-07-15.
+Last updated: 2026-07-18.
 
-Status: v0.3.0 is published, so the unreproduced `SOL-R0` report is no longer a
-release blocker. Reactivate it only with a named matched known-good/current A/B.
-The active pickup is now exact production concurrency: finish `SOL-R3` controls,
-then make `SOL-R4` exact path by path, starting with PARO c2 and GGUF lifecycle
-coverage. PARO native c2 still diverges on the first decode transition. GGUF's
-production packed route now passes a three-repeat, full-natural-suite generated-
-token diagnostic, but deeper state/KV/lifecycle and retained throughput gates
-remain open.
+Status: the newer `docs/CONCURRENCY.md` G1-G5 work supersedes this ledger's
+`SOL-R3/R4` PARO premise. gfx1151 now retains direct physical c2/c4/c8 and real
+blocking/SSE resident server scaling, and selects the identity-matched packaged
+profile by backend capability. The remaining current PARO concurrency pickup is
+gfx1100 owner c4/c8 symmetry plus broader sampling/context/KV; detailed P1/P2
+and R3/R4 entries below remain the dated investigation record rather than the
+current routing decision. The unreproduced `SOL-R0` report is not a release
+blocker and should reactivate only with a named matched known-good/current A/B.
 
 The local gfx1151 evidence sprint is otherwise closed, and the post-topline
 recovery phase is ready for pickup. Every evidence-sprint item is accepted,
@@ -92,7 +92,7 @@ The table names the source revision for each result.
 | Exact server measurement | `SOL-E1` carries exact IDs through every choice; `SOL-E2` gives timing payloads explicit scope/row/owner metadata; `SOL-S2` separately records the request-scoped route cap, queue request/prompt grouping, actual backend calls/widths, and target verifier rows. | `mtp-bench.py` fails closed on incomplete shape groups and counts each timing owner and queue group once. Retokenized visible text remains non-authoritative; historical server rows predate these contracts. |
 | Canonical artifact provenance | `SOL-E3` gives server, retained PARO, GGUF category/true-AR, and HIP/Vulkan micro artifacts one torch-free schema with dynamic backend/arch/device identity, separate staged/unstaged/untracked state, and content-derived model fingerprints. | New retained rows must contain a valid `hipengine_artifact_provenance` v1 block and an existing model fingerprint where a model ran. Legacy provenance remains diagnostic until rerun. |
 | gfx1151 c1 model toplines | The clean `d1231ee0` comparison refresh remains the llama.cpp HIP/Vulkan reference. Clean `9944e481`/`01e2cec5` supply PARO; clean `61a27d72` supplies current GGUF 512-64K. GGUF prefill is `1294.885/1358.342/1365.720/1034.845/796.083 tok/s`; repeated 128K is blocked with no current numeric cell. | The repository and benchmark README tables use the retained PARO column, the current five-shape GGUF refresh, and July 11 llama columns. The PARO-vs-Q4_K_M cells are throughput targets, not a same-math A/B. Restore 128K only after the gfx11 scheduler lifecycle gate passes. A clean HIP 7.13 versus 7.15 matrix reproduces the stall under both user-space stacks, so ROCm downgrade is not a supported workaround. |
-| PARO c>N | `SOL-P1` closes the clean gfx1151 c1-c8 p512/d128 catalog at `a18ff7bc`: c1 graph replay is retained at `66.910 tok/s`; every c2-c8 native row fails the independent-c1 sequence at index 2 (`17` vs `220`) and is explicitly serial. `SOL-P2` closes ragged c8-to-c1 lifecycle safety at clean `6f1910c9`: all generated IDs, 30 linear-state families, and 10 full-KV families match independent c1 through EOS plus front/middle/tail sparse cancellation. | Production greedy and sampled batches use exact width-1 sessions; ragged packed prefill uses the explicit `per_segment_ragged_exact` fallback. gfx1100 is stale/non-selecting pending W7900 hardware. P3/P4/P7-P9 are parked behind a general exact native c>N algorithm; P6's invalid splitter is removed. |
+| PARO c>N | G3 supersedes P1 on gfx1151: direct physical c2/c4/c8 is **79.237/100.209/99.943 aggregate tok/s** with 5,754 exact IDs plus all-layer/lifecycle/category/profiler gates. G5 retains blocking OpenAI c1/c2/c4/c8 at **47.124/51.962/60.323/61.253** (68/68 exact) and SSE c1/c2/c4/c8/serial-c8 at **36.327/38.666/42.471/41.487/35.633** (100/100 exact), with another 72/72 c8 stress rows. | gfx1151 greedy W4/BF16-KV uses package-default c2/c4/c8; c3/c5/c6/c7 are exact partitions. Sampled native groups, context >=1024, non-BF16 KV, graph replay, and gfx1100 owner c4/c8 remain open. P1/P2 entries below are historical lineage, not current production routing. |
 | GGUF c>N | The production packed-prefill/packed-decode route now has an executable independent-c1 gate. On gfx1151, all 10 `mtpbench-code-general-ja` rows match for three c10 repeats at eight output tokens, using packed c4+c4+c2 chunks with no serial fallback. | This is generated-token evidence only (`performance_claim=false`). It does not clear hidden/Conv/GDN/KV identity, shrinking/sparse slots, long context, server cancellation/admission, or retained profiler/scaling gates. Artifact: [`2026-07-13...token-equality.json`](../benchmarks/results/2026-07-13-gfx1151-gguf-natural10-cn-token-equality.json). |
 | PARO DFlash | Clean `8eb27215` S4 runs the curated 35B pair with same-session AR, exact output, coarse/fine phase buckets, and verifier graph shapes. Exact replay is `9.676` versus `65.266 tok/s` AR (`0.14825x`). | S5 branch-copy is correctness-red, S6 has no wider-group premise at 1/114 accepted proposals, and S7 fused LM-head is 5.16% slower. DFlash stays default-off. |
 | GGUF eager correctness / gfx1100 refresh | On gfx1151, SOL-G1 proves the exact Q4_K_M `[9707] * 512` continuation matches llama.cpp and is byte-exact for four eager hidden/Conv/GDN/KV transitions. The last W7900 diagnostic remains about `654 prefill / 35.8 decode tok/s`. | Repetition of `9707` is valid model behavior, but the W7900 row is still `performance_claim=false` and predates the hardware-local oracle/provenance contract. Rerun both gates on W7900 before using the rate. |
