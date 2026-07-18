@@ -1733,6 +1733,7 @@ def test_qwen35_decode_state_preserves_pack8_view_for_marlin_prefill(monkeypatch
     # the baseline fused-prefill path (M12.6 multi-row otherwise claims rows 2-8 at
     # safe sites like single_full_o). Variants are covered by their own kernel tests.
     monkeypatch.setenv("HIPENGINE_W4_MULTI_ROW_PACK8", "0")
+    monkeypatch.setenv("HIPENGINE_W4_MULTI_ROW_SMALL_BATCH", "0")
     monkeypatch.setattr(qwen_runtime, "_PACK8_OUTPUT_TILED_ROWS", frozenset())
     runtime = FakeRuntime()
     prefix = "layers.0.self_attn.o_proj"
@@ -1755,6 +1756,11 @@ def test_qwen35_decode_state_preserves_pack8_view_for_marlin_prefill(monkeypatch
 
     monkeypatch.setattr(qwen_runtime, "awq_fusedw4_prefill_fp16", lambda *a, **k: calls.append((a, k)))
     monkeypatch.setattr(qwen_runtime, "gemv_paro_marlin_k_fma_fp16", lambda *a, **k: pytest.fail("unexpected Marlin rows>1"))
+    monkeypatch.setattr(
+        qwen_runtime,
+        "gemv_paro_marlin_k_fma_multi_row_fp16",
+        lambda *a, **k: pytest.fail("unexpected multi-row Marlin prefill"),
+    )
 
     result = state.project_pack8_fp16(x, out, weight_prefix=prefix, rows=4, group_size=128, stream=0x55)
 

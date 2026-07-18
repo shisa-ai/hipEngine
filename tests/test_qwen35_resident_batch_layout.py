@@ -2325,11 +2325,44 @@ def test_qwen35_resident_step_batch_native_rejects_invalid_sparse_slots(monkeypa
         session.step_batch_native([1, 2], positions=[0, 0], slots=slots)
 
 
+def test_qwen35_resident_sparse_positions_update_slot_and_compact_metadata(monkeypatch) -> None:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.max_batch_size = 3
+    session.max_sequence_length = 16
+    session.position_arr = np.zeros((3,), dtype=np.int64)
+    session.context_arr = np.ones((3,), dtype=np.int64)
+    session.position_buf = DeviceBuffer(0x2000, 3 * DType.INT64.itemsize)
+    session.context_buf = DeviceBuffer(0x3000, 3 * DType.INT64.itemsize)
+    session.batch_compact_position_buf = DeviceBuffer(0x4000, 3 * DType.INT64.itemsize)
+    session.batch_compact_context_buf = DeviceBuffer(0x5000, 3 * DType.INT64.itemsize)
+    session.libraries = {"runtime_state": object()}
+    session.runtime = object()
+    calls = []
+
+    def fake_set_decode_position(position_ptr, context_ptr, position, **kwargs):
+        calls.append((int(position_ptr), int(context_ptr), int(position), int(kwargs["stream"])))
+
+    monkeypatch.setattr(runner_module, "set_decode_position_i64", fake_set_decode_position)
+
+    session._set_batch_positions((5, 6), slots=(0, 2), stream=7)
+
+    assert calls == [
+        (0x2000, 0x3000, 5, 7),
+        (0x4000, 0x5000, 5, 7),
+        (0x2010, 0x3010, 6, 7),
+        (0x4008, 0x5008, 6, 7),
+    ]
+    assert session.position_arr.tolist() == [5, 0, 6]
+    assert session.context_arr.tolist() == [6, 1, 7]
+
+
 def test_qwen35_resident_batch_full_spans_maps_sparse_slots(monkeypatch) -> None:
     session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
     session.blocks = 3
-    session.position_buf = DeviceBuffer(0x2000, 2 * DType.INT64.itemsize)
-    session.context_buf = DeviceBuffer(0x3000, 2 * DType.INT64.itemsize)
+    session.position_buf = DeviceBuffer(0x2000, 3 * DType.INT64.itemsize)
+    session.context_buf = DeviceBuffer(0x3000, 3 * DType.INT64.itemsize)
+    session.batch_compact_position_buf = DeviceBuffer(0x4000, 2 * DType.INT64.itemsize)
+    session.batch_compact_context_buf = DeviceBuffer(0x5000, 2 * DType.INT64.itemsize)
     session.device = Device("hip", 0)
     session.kv_storage_dtype = DType.BF16
     session.runtime = object()
@@ -2365,7 +2398,9 @@ def test_qwen35_resident_batch_full_spans_maps_sparse_slots(monkeypatch) -> None
     assert len(captured) == 2
     assert np.array_equal(captured[0], np.array([[0, 1, 2], [3, 4, 5]], dtype=np.int32))
     assert np.array_equal(captured[1], np.array([[0, 1, 2], [6, 7, 8]], dtype=np.int32))
-    assert position_tensor.ptr == 0x2000
+    assert position_tensor.ptr == 0x4000
+    assert append_spans.live_counts.ptr == 0x4000
+    assert decode_spans.live_counts.ptr == 0x5000
     assert append_spans.base_offsets.ptr == 0x7000
     assert decode_spans.base_offsets.ptr == 0x8000
     assert append_spans.max_live_count == 6
