@@ -1,0 +1,185 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_f3_q8t16_rowtile_rejected",
+  "created_at": "2026-07-19T04:56:20+09:00",
+  "status": "rejected_trajectory_regression",
+  "passed": false,
+  "performance_claim": false,
+  "claim_scope": "rejected clean cached p512/d128 Q8T16 row-amortized packed-AR candidate on gfx1151",
+  "decision": "keep exact per-row Q8T16 decode as the gfx1151 package default; retain all-rowtile and pair-rowtile only as explicit diagnostics",
+  "hipengine_artifact_provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-18T19:47:24.740630+00:00",
+    "repo_root": "/tmp/gfx1151-gguf-f3-q8rowtile-bdbd435d",
+    "hipengine_commit": "bdbd435d052a56c5622c0df61f005652d608f66f",
+    "git_branch": null,
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [0, 11331169424, 22662338848],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "command": [
+      "/home/lhl/hipEngine-main/.venv/bin/python",
+      "scripts/gguf_packed_ar_bench.py",
+      "--model",
+      "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1151",
+      "--configurations",
+      "c1,c2,c4,native_c8",
+      "--prompt-token-id",
+      "9707",
+      "--prompt-length",
+      "512",
+      "--decode-steps",
+      "128",
+      "--warmup-runs",
+      "1",
+      "--measured-runs",
+      "3",
+      "--compiler-version-file",
+      "/tmp/gfx1151-gguf-f3-clean-3a0fe188/hipcc-version.txt",
+      "--require-cached-build"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": "hip_gfx1151",
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIP_VISIBLE_DEVICES": "0",
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL": null
+    },
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "hipcc_version": "AMD clang version 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+    "build_profile": "cached_only_gfx1151_packed_ar",
+    "timing_protocol": "one shared model load; one discarded run and three measured repeats per route",
+    "warmups": 1,
+    "repetitions": 3,
+    "profiler": {
+      "kind": "rocprofv3_kernel_and_marker_trace",
+      "artifact_sha256": "164fe11b3bca1769357bc10f015e119298aefd910130bc36307f6457c0daf38a"
+    }
+  },
+  "workload": {
+    "prompt_tokens_per_row": 512,
+    "generated_tokens_per_row": 128,
+    "configurations": ["c1", "c2", "c4", "native_c8"],
+    "sampling": "greedy_top1",
+    "speculative_decode": false
+  },
+  "short_screen": {
+    "status": "superseded_insufficient_horizon",
+    "decode_steps": 64,
+    "all_trajectories_matched": true,
+    "aggregate_decode_tok_s": {
+      "control": {"c1": 50.642291, "c2": 78.995424, "c4": 108.142875, "native_c8": 133.268446},
+      "candidate": {"c1": 50.725938, "c2": 79.066192, "c4": 109.467215, "native_c8": 136.887386}
+    },
+    "delta_pct": {"c1": 0.17, "c2": 0.09, "c4": 1.22, "native_c8": 2.72}
+  },
+  "canonical_gate": {
+    "passed": false,
+    "baseline_commit": "e99b228b724c6519d5079d5d51c33326e01bdba3",
+    "candidate_commit": "bdbd435d052a56c5622c0df61f005652d608f66f",
+    "aggregate_decode_tok_s": {
+      "baseline": {
+        "c1": 50.334793602019964,
+        "c2": 78.55249199645833,
+        "c4": 108.05048774468624,
+        "native_c8": 133.2505268407924
+      },
+      "candidate": {
+        "c1": 50.38746168871427,
+        "c2": 78.69116146202298,
+        "c4": 109.18900294807109,
+        "native_c8": 136.7272767459122
+      },
+      "delta_pct": {
+        "c1": 0.10463554715398615,
+        "c2": 0.17653095661294138,
+        "c4": 1.0536881666606268,
+        "native_c8": 2.609182858446668
+      }
+    },
+    "repeatability": {
+      "candidate_max_stdev_pct_of_median": 0.07664477916637685,
+      "candidate_runs_repeat_the_same_trajectory": true
+    },
+    "trajectory_regression": {
+      "affected_canonical_row": 1,
+      "affected_configurations": ["c2", "c4", "native_c8"],
+      "baseline_sha256": "c74a91f8f2977053f245ab1e10bb5f11ba1517e4ba45964899ccdb62d5a3c3b4",
+      "all_rowtile_sha256": "60f7baabec9db069633021fa809b83c860034c19710b4ff9a2c495ddac6f3d27",
+      "first_eight_token_ids_unchanged": [310, 279, 9910, 11, 321, 279, 26217, 4723],
+      "baseline_last_eight_token_ids": [11, 220, 16, 24, 781, 513, 310, 4300],
+      "candidate_last_eight_token_ids": [682, 10839, 264, 3777, 16319, 1973, 21531, 310],
+      "interpretation": "The short d64 gate ended before the deterministic divergence became visible. Stable candidate hashes do not satisfy independent-c1 trajectory equality."
+    }
+  },
+  "pair_only_isolation": {
+    "passed": false,
+    "configuration": "c2",
+    "decode_steps": 128,
+    "environment": {
+      "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL": "0",
+      "HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE": "1"
+    },
+    "aggregate_decode_tok_s": 78.73519417471317,
+    "row_1_trajectory_sha256": "745e4e13427639902788d997e5cb2891c3e0758450df0327c426377b58c06061",
+    "baseline_row_1_trajectory_sha256": "c74a91f8f2977053f245ab1e10bb5f11ba1517e4ba45964899ccdb62d5a3c3b4",
+    "interpretation": "Pair-only row amortization also changes the trajectory and cannot be retained as a narrower default."
+  },
+  "profiler_gate": {
+    "route_passed": true,
+    "physical_rows": 8,
+    "packed_native_dispatches": 748,
+    "all_rowtile_dual_dispatches": 30,
+    "all_rowtile_triple_dispatches": 10,
+    "steady_row_local_or_copy_dispatches": 0,
+    "interpretation": "The intended kernels executed, but route evidence cannot override failed generated-trajectory correctness."
+  },
+  "raw_sources": {
+    "baseline_canonical": {
+      "path": "/tmp/gfx1151-gguf-f3-gdn-e99b228b-results/canonical-p512-d128.json",
+      "size_bytes": 713782,
+      "sha256": "232bf5b2f5a3ce1243cb96d0a8f5e6382102f2c6454d2f3314a4c551c3d5fbd7"
+    },
+    "candidate_canonical": {
+      "path": "/tmp/gfx1151-gguf-f3-q8rowtile-bdbd435d-results/canonical-p512-d128.json",
+      "size_bytes": 714006,
+      "sha256": "cb3dd43f2df53dccfae20b781b95d02e0028946843d4202e187e7c02ad4273ca"
+    },
+    "candidate_profile": {
+      "path": "/tmp/gfx1151-gguf-f3-q8rowtile-bdbd435d-results/profile-c8.json",
+      "size_bytes": 108569,
+      "sha256": "164fe11b3bca1769357bc10f015e119298aefd910130bc36307f6457c0daf38a"
+    },
+    "pair_only_c2": {
+      "path": "/tmp/gfx1151-gguf-f3-q8rowtile-pair-only-c2-d128.json",
+      "size_bytes": 92814,
+      "sha256": "838583fdce26d259eecb5adabf98b6ba6afda784d0348da8ac202b208fae7680"
+    }
+  },
+  "limitations": [
+    "The harness stores trajectory fingerprints plus first/last token IDs rather than every generated ID.",
+    "Profiler durations are diagnostic only.",
+    "No server-wall refresh is valid for a rejected direct candidate."
+  ]
+}

@@ -43,10 +43,10 @@ GGUF_GDN_PREFILL_EXACT_MODE = "chain_lds32_direct_nonvolatile"
 # F3's independent-c1 and physical-width gates admit the one-token-per-row
 # indexed GDN sibling for packed AR while retaining segmented GDN as fallback.
 GGUF_GDN_INDEXED_SINGLETON_DECODE = True
-# F3's exact post-GDN physical-width gate admits the existing weight-amortized
-# Q8T16 singleton/pair/triple schedule for packed AR rows>1. The env override
-# remains an explicit rollback; gfx1100 stays independently scoped.
-GGUF_Q8_T16_DECODE_ROWTILE_ALL = True
+# F3's canonical p512/d128 gate rejects automatic Q8T16 row amortization:
+# one non-repeated prompt trajectory diverges consistently at c2/c4/c8 even
+# though the shorter d64 screen passed. Keep the env-only diagnostic available.
+GGUF_Q8_T16_DECODE_ROWTILE_ALL = False
 # Clean LCP-M2 512/1K/4K full-state and balanced-wall gates admit stream-ordered
 # device metadata through 4K. Explicit opt-in remains available for diagnosis;
 # the 128K one-queue escalation still enters the low-power GPU-active state.

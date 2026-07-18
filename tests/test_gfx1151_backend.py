@@ -175,7 +175,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert GFX1100_GGUF_GDN_INDEXED_SINGLETON_DECODE is False
     assert GGUF_GDN_INDEXED_SINGLETON_DECODE is True
     assert GFX1100_GGUF_Q8_T16_DECODE_ROWTILE_ALL is False
-    assert GGUF_Q8_T16_DECODE_ROWTILE_ALL is True
+    assert GGUF_Q8_T16_DECODE_ROWTILE_ALL is False
     assert GFX1100_GGUF_GDN_PREFILL_AUTO_MODE == "chain_peer_wave32"
     assert GFX1100_GGUF_GDN_PREFILL_EXACT_MODE == "chain_lds32_direct_nonvolatile"
     assert GGUF_GDN_PREFILL_AUTO_MODE == "chain_lds32_direct_nonvolatile"
@@ -292,7 +292,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             "hip_gfx1151",
             "GGUF_Q8_T16_DECODE_ROWTILE_ALL",
         )
-        is True
+        is False
     )
     assert (
         backend_package_capability(
