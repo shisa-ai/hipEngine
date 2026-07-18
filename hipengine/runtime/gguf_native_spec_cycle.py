@@ -12,7 +12,7 @@ fall back silently because the graph may already have mutated state/KV.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field as dataclass_field, replace
 import os
 import time
 from typing import Any, Sequence
@@ -24,14 +24,29 @@ from hipengine.core.hip import HipMemcpyKind
 from hipengine.core.memory import DeviceBuffer, copy_device_to_host, copy_host_to_device, host_array_ptr
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.hip_gfx1100.runtime import unpack_verify_chain_dynamic_metadata_i64
+from hipengine.kernels.hip_gfx1100.speculative import (
+    ACCEPT_PACKED_PAYLOAD_FIELDS,
+    build_dflash_accept,
+    build_dflash_commit,
+    dflash_accept_chain_i32_native_cycle,
+    dflash_commit_chain_i32,
+    linear_state_pair_commit_chunked_i32,
+    linear_state_pair_commit_i32,
+)
 from hipengine.kernels.registry import resolve
 from hipengine.kvcache import KVLiveSpans
 from hipengine.runtime.workspace import RuntimeWorkspace
 from hipengine.speculative.buffers import TargetVerifyBufferOwner, TargetVerifyBufferSpec
-from hipengine.speculative.interfaces import DraftBatch, TargetVerifyBatch, TargetVerifyBuffers
+from hipengine.speculative.interfaces import (
+    DraftBatch,
+    TargetStateCommitBuffers,
+    TargetVerifyBatch,
+    TargetVerifyBuffers,
+)
 from hipengine.speculative.native_cycle import (
     NativeSpecCycleControl,
     NativeSpecCycleResult,
+    NativeSpecCycleStage,
     NativeSpecCycleStatus,
 )
 # Importing the provider registers the four-axis launcher factory.  Runtime
@@ -40,7 +55,58 @@ from hipengine.speculative.native_cycle_graph import NativeSpecTargetGraphLaunch
 
 
 class NativeSpecTargetGraphUnsupportedError(RuntimeError):
-    """The fixed N1 bucket cannot safely represent this verifier invocation."""
+    """The fixed native bucket cannot safely represent this verifier invocation."""
+
+
+@dataclass(frozen=True)
+class Qwen35GGUFNativeAcceptCommitResult:
+    """Bounded host payload after device-resident N2 accept and state commit."""
+
+    input_token_ids: list[int]
+    token_ids: list[int]
+    accepted_draft_tokens: int
+    commit_row: int
+    commit_token: int
+    commit_position: int
+    next_token: int
+    full_accept: bool
+    start_position: int
+    end_position: int
+    hidden_seed_rows_ptr: int
+    hidden_seed_row_count: int
+    hidden_size: int
+    linear_state_rows_captured: bool = True
+    final_linear_state_committed: bool = True
+    device_accept_commit: bool = True
+    hidden_seeds: np.ndarray = dataclass_field(
+        default_factory=lambda: np.empty((0, 0), dtype=np.float32)
+    )
+    lm_head_logits_f32: np.ndarray | None = None
+
+    def __post_init__(self) -> None:
+        rows = len(self.input_token_ids)
+        if rows not in {2, 3}:
+            raise ValueError("native accept/commit result requires B1/B2 input rows")
+        if self.accepted_draft_tokens < 0 or self.accepted_draft_tokens >= rows:
+            raise ValueError("accepted_draft_tokens is outside the target bucket")
+        if len(self.token_ids) != self.accepted_draft_tokens + 1:
+            raise ValueError("token_ids must contain accepted drafts plus one correction")
+        if self.commit_row != self.accepted_draft_tokens:
+            raise ValueError("strict-chain commit_row must equal accepted_draft_tokens")
+        if self.commit_token != self.input_token_ids[self.commit_row]:
+            raise ValueError("commit_token must match the selected target input row")
+        if self.commit_position != self.start_position + self.commit_row:
+            raise ValueError("commit_position must match the selected target row position")
+        if self.end_position != self.commit_position + 1:
+            raise ValueError("end_position must be the next cursor after the committed row")
+        if self.next_token != self.token_ids[-1]:
+            raise ValueError("next_token must be the final visible correction")
+        if self.hidden_seed_rows_ptr <= 0 or self.hidden_seed_row_count != rows:
+            raise ValueError("native accept/commit result requires all device hidden rows")
+        if self.hidden_size <= 0:
+            raise ValueError("hidden_size must be positive")
+        if self.hidden_seeds.shape != (0, 0) or self.hidden_seeds.dtype != np.float32:
+            raise ValueError("device accept/commit must not return host hidden rows")
 
 
 def build_native_b2_target_batch(
@@ -209,6 +275,7 @@ def _native_target_configuration_key(
     use_wmma_prefill: bool,
     capture_linear_state_rows: bool,
     defer_linear_state_commit: bool,
+    device_accept_commit: bool,
 ) -> tuple[object, ...]:
     env = tuple(
         sorted(
@@ -222,6 +289,7 @@ def _native_target_configuration_key(
         bool(use_wmma_prefill),
         bool(capture_linear_state_rows),
         bool(defer_linear_state_commit),
+        bool(device_accept_commit),
         env,
     )
 
@@ -373,6 +441,14 @@ class Qwen35GGUFNativeB2TargetGraph:
     dynamic_metadata: Tensor
     token_ids_i32: Tensor
     positions_i32: Tensor
+    accept_buffers: TargetVerifyBuffers | None
+    remaining_decode: Tensor | None
+    result_payload: Tensor | None
+    visible_output_ids: Tensor | None
+    visible_output_lengths: Tensor | None
+    accept_library: Any | None
+    commit_library: Any | None
+    device_accept_commit: bool
     start_position: int
     end_position: int
     context_limit: int
@@ -394,6 +470,7 @@ class Qwen35GGUFNativeB2TargetGraph:
         use_wmma_prefill: bool,
         capture_linear_state_rows: bool,
         defer_linear_state_commit: bool,
+        device_accept_commit: bool,
     ) -> bool:
         if self.closed or session is not self.session:
             return False
@@ -402,6 +479,7 @@ class Qwen35GGUFNativeB2TargetGraph:
             use_wmma_prefill=use_wmma_prefill,
             capture_linear_state_rows=capture_linear_state_rows,
             defer_linear_state_commit=defer_linear_state_commit,
+            device_accept_commit=device_accept_commit,
         )
         return (
             expected_key == self.configuration_key
@@ -415,8 +493,9 @@ class Qwen35GGUFNativeB2TargetGraph:
         cycle_id: int | None = None,
         transaction_id: int | None = None,
         request_id: int = 0,
+        remaining_decode: int | None = None,
     ):
-        """Stage live chain metadata, replay once, and return the block result."""
+        """Stage live metadata, replay once, and return one bounded result."""
 
         if self.closed:
             raise RuntimeError("native target graph is closed")
@@ -428,14 +507,28 @@ class Qwen35GGUFNativeB2TargetGraph:
                 f"native target graph B{self.rows - 1} bucket requires {self.rows} rows"
             )
         start = int(self.session.position)
-        end = start + int(self.rows)
-        if end > int(self.context_limit):
+        bucket_end = start + int(self.rows)
+        if bucket_end > int(self.context_limit):
             raise NativeSpecTargetGraphUnsupportedError(
                 "native target graph dynamic context exceeds the captured below-1024 bucket"
             )
         batch = build_native_b2_target_batch(tokens, start_position=start, request_id=request_id)
         runtime = self.session.runtime
         _stage_dynamic_metadata(self.dynamic_metadata, batch, runtime=runtime)
+        if self.device_accept_commit:
+            if remaining_decode is None or int(remaining_decode) < int(self.rows):
+                raise ValueError(
+                    "N2 native accept/commit requires remaining_decode to cover drafts plus correction"
+                )
+            if self.remaining_decode is None:
+                raise RuntimeError("N2 native accept/commit remaining-decode buffer is missing")
+            _copy_array_to_tensor(
+                self.remaining_decode,
+                np.asarray([int(remaining_decode)], dtype=np.int32),
+                runtime=runtime,
+            )
+        elif remaining_decode is not None:
+            raise ValueError("remaining_decode is only valid for N2 native accept/commit")
         control = replace(
             self.control,
             cycle_id=self.control.cycle_id if cycle_id is None else int(cycle_id),
@@ -449,10 +542,10 @@ class Qwen35GGUFNativeB2TargetGraph:
         self.session.last_native_spec_target_submit_ms = (
             time.perf_counter() - submit_start
         ) * 1000.0
-        self.native_result = result
         self.batch = batch
         self.control = control
         if result.status is not NativeSpecCycleStatus.COMPLETE:
+            self.native_result = result
             raise RuntimeError(
                 "native target graph failed: "
                 f"status={result.status.name} error={result.error.name} "
@@ -460,32 +553,103 @@ class Qwen35GGUFNativeB2TargetGraph:
             )
 
         readback_start = time.perf_counter()
-        token_host = np.empty((self.rows,), dtype=np.int64)
-        copy_device_to_host(
-            host_array_ptr(token_host),
-            _tensor_buffer(self.buffers.target_top1),
-            token_host.nbytes,
-            runtime=runtime,
-        )
         hidden_size = int(self.session.runner.hidden_size)
-        hidden_host = np.empty((self.rows, hidden_size), dtype=np.float32)
-        copy_device_to_host(
-            host_array_ptr(hidden_host),
-            _tensor_buffer(self.hidden_seed_rows),
-            hidden_host.nbytes,
-            runtime=runtime,
-        )
-        session_hidden = self.session._verify_hidden_seed_buf
-        if session_hidden is None or int(session_hidden.nbytes) < hidden_host.nbytes:
-            raise RuntimeError("GGUF verifier hidden-seed destination is closed or undersized")
-        runtime.memcpy(
-            session_hidden.ptr,
-            self.hidden_seed_rows.ptr,
-            hidden_host.nbytes,
-            HipMemcpyKind.DEVICE_TO_DEVICE,
-        )
+        if self.device_accept_commit:
+            if self.result_payload is None:
+                raise RuntimeError("N2 native accept/commit result payload is missing")
+            payload = np.empty((self.result_payload.numel,), dtype=np.int32)
+            copy_device_to_host(
+                host_array_ptr(payload),
+                _tensor_buffer(self.result_payload),
+                payload.nbytes,
+                runtime=runtime,
+            )
+            accepted = int(payload[0])
+            commit_row = int(payload[1])
+            commit_token = int(payload[2])
+            commit_position = int(payload[3])
+            next_token = int(payload[4])
+            full_accept = bool(payload[5])
+            committed_length = int(payload[6])
+            visible_length = int(payload[ACCEPT_PACKED_PAYLOAD_FIELDS])
+            output_start = ACCEPT_PACKED_PAYLOAD_FIELDS + 1
+            if (
+                accepted < 0
+                or accepted >= self.rows
+                or commit_row != accepted
+                or committed_length != accepted + 1
+                or visible_length != accepted + 1
+                or next_token < 0
+                or output_start + visible_length > payload.size
+            ):
+                raise RuntimeError("N2 native accept/commit returned an invalid bounded payload")
+            output_tokens = [
+                int(token)
+                for token in payload[output_start:output_start + visible_length].tolist()
+            ]
+            end = start + visible_length
+            result = replace(result, visible_output_count=visible_length)
+            result.validate_for(control)
+            self.native_result = result
+            block_result = Qwen35GGUFNativeAcceptCommitResult(
+                input_token_ids=[int(token) for token in batch.tokens],
+                token_ids=output_tokens,
+                accepted_draft_tokens=accepted,
+                commit_row=commit_row,
+                commit_token=commit_token,
+                commit_position=commit_position,
+                next_token=next_token,
+                full_accept=full_accept,
+                start_position=start,
+                end_position=end,
+                hidden_seed_rows_ptr=int(self.hidden_seed_rows.ptr),
+                hidden_seed_row_count=self.rows,
+                hidden_size=hidden_size,
+            )
+        else:
+            token_host = np.empty((self.rows,), dtype=np.int64)
+            copy_device_to_host(
+                host_array_ptr(token_host),
+                _tensor_buffer(self.buffers.target_top1),
+                token_host.nbytes,
+                runtime=runtime,
+            )
+            hidden_host = np.empty((self.rows, hidden_size), dtype=np.float32)
+            copy_device_to_host(
+                host_array_ptr(hidden_host),
+                _tensor_buffer(self.hidden_seed_rows),
+                hidden_host.nbytes,
+                runtime=runtime,
+            )
+            session_hidden = self.session._verify_hidden_seed_buf
+            if session_hidden is None or int(session_hidden.nbytes) < hidden_host.nbytes:
+                raise RuntimeError("GGUF verifier hidden-seed destination is closed or undersized")
+            runtime.memcpy(
+                session_hidden.ptr,
+                self.hidden_seed_rows.ptr,
+                hidden_host.nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+            )
+            end = bucket_end
+            self.native_result = result
+            from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFBlockVerifyResult
 
-        self.session._verify_hidden_seed_rows_populated = self.rows
+            block_result = Qwen35GGUFBlockVerifyResult(
+                input_token_ids=[int(token) for token in batch.tokens],
+                token_ids=[int(token) for token in token_host.tolist()],
+                hidden_seeds=np.ascontiguousarray(hidden_host, dtype=np.float32),
+                start_position=start,
+                pre_output_norm_hidden=None,
+                layer_output_hidden=None,
+                layer_boundary_hidden=None,
+                lm_head_logits_f32=None,
+                linear_state_rows_captured=bool(self.capture_linear_state_rows),
+                final_linear_state_committed=not bool(self.defer_linear_state_commit),
+            )
+
+        self.session._verify_hidden_seed_rows_populated = (
+            0 if self.device_accept_commit else self.rows
+        )
         self.session._hidden_seed_fp32_populated = True
         self.session.last_native_spec_target_submitted = True
         self.session.last_native_spec_target_fallback_reason = None
@@ -500,21 +664,7 @@ class Qwen35GGUFNativeB2TargetGraph:
         self.session.scratch.position_host[0] = end
         self.session.scratch.context_host[0] = end + 1
         self.session.last_verify_stage_timings_ms = {}
-
-        from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFBlockVerifyResult
-
-        return Qwen35GGUFBlockVerifyResult(
-            input_token_ids=[int(token) for token in batch.tokens],
-            token_ids=[int(token) for token in token_host.tolist()],
-            hidden_seeds=np.ascontiguousarray(hidden_host, dtype=np.float32),
-            start_position=start,
-            pre_output_norm_hidden=None,
-            layer_output_hidden=None,
-            layer_boundary_hidden=None,
-            lm_head_logits_f32=None,
-            linear_state_rows_captured=bool(self.capture_linear_state_rows),
-            final_linear_state_committed=not bool(self.defer_linear_state_commit),
-        )
+        return block_result
 
     @property
     def launch_count(self) -> int:
@@ -542,7 +692,12 @@ class Qwen35GGUFNativeB2TargetGraph:
         unpin = getattr(self.session, "_unpin_device_kv_graph", None)
         if callable(unpin):
             unpin(self)
-        for cache_name in ("_native_spec_b1_target_graph", "_native_spec_b2_target_graph"):
+        for cache_name in (
+            "_native_spec_b1_target_graph",
+            "_native_spec_b2_target_graph",
+            "_native_spec_b1_target_graph_n2",
+            "_native_spec_b2_target_graph_n2",
+        ):
             if getattr(self.session, cache_name, None) is self:
                 setattr(self.session, cache_name, None)
 
@@ -567,6 +722,7 @@ def capture_qwen35_gguf_native_b2_target_graph(
     record_stage_timings: bool = False,
     sync_stage_timings: bool = False,
     defer_linear_state_commit: bool = False,
+    device_accept_commit: bool = False,
 ) -> Qwen35GGUFNativeB2TargetGraph:
     """Capture one fixed B1/B2 target forward without executing it."""
 
@@ -582,6 +738,12 @@ def capture_qwen35_gguf_native_b2_target_graph(
         record_stage_timings=bool(record_stage_timings),
         sync_stage_timings=bool(sync_stage_timings),
     )
+    if device_accept_commit and not (
+        bool(capture_linear_state_rows) and bool(defer_linear_state_commit)
+    ):
+        raise NativeSpecTargetGraphUnsupportedError(
+            "N2 device accept/commit requires captured deferred linear-state rows"
+        )
     start = int(session.position)
     end = start + rows
     if end > int(session.scratch.max_positions):
@@ -592,10 +754,54 @@ def capture_qwen35_gguf_native_b2_target_graph(
     session._ensure_verify_lm_head_buffers(rows, runtime=runtime)
     if capture_linear_state_rows:
         session._ensure_verify_linear_state_row_buffers(rows, runtime=runtime)
-    hidden = session._verify_hidden_seed_buf
-    if hidden is None:
-        raise RuntimeError("GGUF verifier hidden-seed buffer is closed")
-
+    accept_library = None
+    commit_library = None
+    accept_kernel = None
+    hidden_commit_kernel = None
+    linear_commit_kernel = None
+    if device_accept_commit:
+        if not session._ensure_verify_linear_state_commit_tables(runtime=runtime):
+            raise NativeSpecTargetGraphUnsupportedError(
+                "N2 device accept/commit requires uniform fused linear-state commit tables"
+            )
+        accept_kernel = resolve(
+            backend=str(session.backend),
+            layer="speculative_accept_commit",
+            quant="w4_gguf",
+            variant="native_v1_i32",
+            missing="none",
+        )
+        hidden_commit_kernel = resolve(
+            backend=str(session.backend),
+            layer="dflash_commit_chain",
+            quant="w4_paro",
+            variant="i32",
+            missing="none",
+        )
+        linear_commit_variant = (
+            "chunked_i32" if session._chunked_linear_state_commit_enabled() else "i32"
+        )
+        linear_commit_kernel = resolve(
+            backend=str(session.backend),
+            layer="linear_state_pair_commit",
+            quant="w4_paro",
+            variant=linear_commit_variant,
+            missing="none",
+        )
+        if accept_kernel is None or hidden_commit_kernel is None or linear_commit_kernel is None:
+            raise NativeSpecTargetGraphUnsupportedError(
+                "N2 device accept/commit registered primitives are unavailable"
+            )
+        accept_library = build_dflash_accept(
+            load=True,
+            compiler_version=getattr(session, "compiler_version", None),
+            require_cached=bool(getattr(session, "require_cached_build", False)),
+        )
+        commit_library = build_dflash_commit(
+            load=True,
+            compiler_version=getattr(session, "compiler_version", None),
+            require_cached=bool(getattr(session, "require_cached_build", False)),
+        )
     workspace = RuntimeWorkspace(device=session.scratch.block_table_tensor.device, runtime=runtime)
     graph = 0
     graph_exec = 0
@@ -653,18 +859,149 @@ def capture_qwen35_gguf_native_b2_target_graph(
             (rows,),
             DType.INT32,
         )
+        accept_buffers = None
+        remaining_decode_tensor = None
+        result_payload = None
+        visible_output_ids = None
+        visible_output_lengths = None
+        commit_buffers = None
+        candidate_counts = None
+        if device_accept_commit:
+            accept_owner = TargetVerifyBufferOwner.allocate(
+                TargetVerifyBufferSpec(
+                    backend=str(session.backend),
+                    bucket=f"native_v1_b{rows - 1}_accept_commit",
+                    device=workspace.device,
+                    max_rows=rows,
+                    max_requests=1,
+                    mode="verify_chain",
+                    metadata_dtype=DType.INT32,
+                ),
+                workspace=workspace,
+            )
+            accept_buffers = accept_owner.bind(batch, transaction_id=int(transaction_id))
+            if session._verify_lm_out_indices_i32 is None:
+                raise RuntimeError("GGUF verifier int32 top1 rows are closed")
+            target_top1_i32 = Tensor.from_handle(
+                int(session._verify_lm_out_indices_i32.ptr),
+                (rows,),
+                DType.INT32,
+                workspace.device,
+            )
+            accept_buffers = replace(
+                accept_buffers,
+                token_ids=token_ids_i32,
+                positions=positions_i32,
+                target_top1=target_top1_i32,
+            )
+            _stage_target_batch(batch, accept_buffers, runtime=runtime)
+            candidate_counts = workspace.reserve_tensor(
+                "native_spec_candidate_counts",
+                (1,),
+                DType.INT32,
+            )
+            remaining_decode_tensor = workspace.reserve_tensor(
+                "native_spec_remaining_decode",
+                (1,),
+                DType.INT32,
+            )
+            _copy_array_to_tensor(
+                candidate_counts,
+                np.asarray([rows - 1], dtype=np.int32),
+                runtime=runtime,
+            )
+            _copy_array_to_tensor(
+                remaining_decode_tensor,
+                np.asarray([rows], dtype=np.int32),
+                runtime=runtime,
+            )
+            result_payload = workspace.reserve_tensor(
+                "native_spec_result_payload",
+                (ACCEPT_PACKED_PAYLOAD_FIELDS + 1 + rows,),
+                DType.INT32,
+            )
+            visible_output_lengths = Tensor.from_handle(
+                result_payload.ptr + ACCEPT_PACKED_PAYLOAD_FIELDS * DType.INT32.itemsize,
+                (1,),
+                DType.INT32,
+                workspace.device,
+            )
+            visible_output_ids = Tensor.from_handle(
+                result_payload.ptr + (ACCEPT_PACKED_PAYLOAD_FIELDS + 1) * DType.INT32.itemsize,
+                (rows,),
+                DType.INT32,
+                workspace.device,
+            )
+            hidden_src = Tensor.from_handle(
+                hidden_rows.ptr,
+                (1, rows, hidden_size),
+                DType.FP32,
+                workspace.device,
+            )
+            hidden_dst = Tensor.from_handle(
+                session.scratch.hidden_seed_fp32.ptr,
+                (1, 1, hidden_size),
+                DType.FP32,
+                workspace.device,
+            )
+            commit_buffers = TargetStateCommitBuffers(
+                request_ids=batch.request_ids,
+                transaction_id=int(transaction_id),
+                accepted_counts=accept_buffers.accepted_counts,
+                commit_rows=accept_buffers.commit_rows,
+                commit_positions=accept_buffers.commit_positions,
+                hidden_taps_src=hidden_src,
+                hidden_taps_dst=hidden_dst,
+                mode="verify_chain",
+            )
         _stage_dynamic_metadata(dynamic_metadata, batch, runtime=runtime)
         runtime.device_synchronize()
         stream = runtime.stream_create()
+        control_buffers = buffers if accept_buffers is None else accept_buffers
         control = NativeSpecCycleControl.for_target_verify(
             cycle_id=int(cycle_id),
-            buffers=buffers,
+            buffers=control_buffers,
             kv_live_spans=dynamic_scratch.prefill_spans,
             hidden_seed_rows=hidden_rows,
             context_bucket=_context_bucket(context_limit),
             stream=stream,
             output_stride=rows,
+            candidate_counts_ptr=0 if candidate_counts is None else candidate_counts.ptr,
+            remaining_decode_ptr=(
+                0 if remaining_decode_tensor is None else remaining_decode_tensor.ptr
+            ),
         )
+        if device_accept_commit:
+            assert accept_buffers is not None
+            assert visible_output_ids is not None and visible_output_lengths is not None
+            assert session._verify_linear_state_src_conv_table_buf is not None
+            assert session._verify_linear_state_dst_conv_table_buf is not None
+            stages = (
+                NativeSpecCycleStage.VERIFY
+                | NativeSpecCycleStage.ACCEPT
+                | NativeSpecCycleStage.COMMIT
+                | NativeSpecCycleStage.UPDATE_CURSORS
+            )
+            control = replace(
+                control,
+                stages=stages,
+                pointers=replace(
+                    control.pointers,
+                    state=replace(
+                        control.pointers.state,
+                        linear_state_rows=session._verify_linear_state_src_conv_table_buf.ptr,
+                        linear_state_dst=session._verify_linear_state_dst_conv_table_buf.ptr,
+                        hidden_seed_dst=session.scratch.hidden_seed_fp32.ptr,
+                    ),
+                    outputs=replace(
+                        control.pointers.outputs,
+                        output_ids=visible_output_ids.ptr,
+                        output_lengths=visible_output_lengths.ptr,
+                        last_positions=session.scratch.position_buf.ptr,
+                        context_lengths=session.scratch.context_buf.ptr,
+                    ),
+                ),
+            )
 
         runtime.stream_begin_capture(stream)
         try:
@@ -688,7 +1025,14 @@ def capture_qwen35_gguf_native_b2_target_graph(
                 capture_linear_state_rows=bool(capture_linear_state_rows),
                 defer_linear_state_commit=bool(defer_linear_state_commit),
                 _pre_staged_token_ids_ptr=buffers.token_ids.ptr,
-                _target_top1_i64_ptr=buffers.target_top1.ptr,
+                _target_top1_i64_ptr=(
+                    None if device_accept_commit else buffers.target_top1.ptr
+                ),
+                _target_top1_i32_ptr=(
+                    None
+                    if accept_buffers is None
+                    else accept_buffers.target_top1.ptr
+                ),
                 _enqueue_only=True,
                 _prebuilt_bulk_scratch=dynamic_scratch,
                 _dynamic_cursor_advance=True,
@@ -696,6 +1040,65 @@ def capture_qwen35_gguf_native_b2_target_graph(
                 _graph_hidden_f32_a=hidden_f32_a,
                 _graph_hidden_f32_b=hidden_f32_b,
             )
+            if device_accept_commit:
+                assert accept_buffers is not None
+                assert remaining_decode_tensor is not None
+                assert result_payload is not None
+                assert visible_output_ids is not None and visible_output_lengths is not None
+                assert commit_buffers is not None
+                assert accept_kernel is not None
+                assert linear_commit_kernel is not None
+                assert hidden_commit_kernel is not None
+                assert accept_library is not None and commit_library is not None
+                accept_kernel(
+                    token_ids_i32.ptr,
+                    positions_i32.ptr,
+                    accept_buffers.parent_rows.ptr,
+                    accept_buffers.draft_depths.ptr,
+                    accept_buffers.active_mask.ptr,
+                    accept_buffers.target_top1.ptr,
+                    remaining_decode_tensor.ptr,
+                    accept_buffers.accepted_counts.ptr,
+                    accept_buffers.commit_rows.ptr,
+                    accept_buffers.commit_tokens.ptr,
+                    accept_buffers.commit_positions.ptr,
+                    accept_buffers.next_tokens.ptr,
+                    accept_buffers.full_accept.ptr,
+                    accept_buffers.committed_output_ids.ptr,
+                    accept_buffers.committed_output_lengths.ptr,
+                    result_payload.ptr,
+                    visible_output_ids.ptr,
+                    visible_output_lengths.ptr,
+                    session.scratch.position_buf.ptr,
+                    session.scratch.context_buf.ptr,
+                    1,
+                    rows,
+                    1,
+                    rows,
+                    stream=stream,
+                    library=accept_library,
+                    runtime=runtime,
+                )
+                linear_commit_kernel(
+                    session._verify_linear_state_src_conv_table_buf.ptr,
+                    session._verify_linear_state_dst_conv_table_buf.ptr,
+                    int(session._verify_linear_state_conv_row_nbytes),
+                    session._verify_linear_state_src_recurrent_table_buf.ptr,
+                    session._verify_linear_state_dst_recurrent_table_buf.ptr,
+                    int(session._verify_linear_state_recurrent_row_nbytes),
+                    accept_buffers.commit_rows.ptr,
+                    int(session._verify_linear_state_layer_count),
+                    stream=stream,
+                    library=commit_library,
+                    runtime=runtime,
+                )
+                hidden_commit_kernel(
+                    commit_buffers,
+                    target_rows=rows,
+                    stream=stream,
+                    library=commit_library,
+                    runtime=runtime,
+                )
             graph = runtime.stream_end_capture(stream)
         except Exception:
             try:
@@ -740,6 +1143,14 @@ def capture_qwen35_gguf_native_b2_target_graph(
             dynamic_metadata=dynamic_metadata,
             token_ids_i32=token_ids_i32,
             positions_i32=positions_i32,
+            accept_buffers=accept_buffers,
+            remaining_decode=remaining_decode_tensor,
+            result_payload=result_payload,
+            visible_output_ids=visible_output_ids,
+            visible_output_lengths=visible_output_lengths,
+            accept_library=accept_library,
+            commit_library=commit_library,
+            device_accept_commit=bool(device_accept_commit),
             start_position=start,
             end_position=end,
             context_limit=context_limit,
@@ -751,6 +1162,7 @@ def capture_qwen35_gguf_native_b2_target_graph(
                 use_wmma_prefill=bool(use_wmma_prefill),
                 capture_linear_state_rows=bool(capture_linear_state_rows),
                 defer_linear_state_commit=bool(defer_linear_state_commit),
+                device_accept_commit=bool(device_accept_commit),
             ),
             binding_signature=_native_target_binding_signature(session),
             capture_wall_ms=(time.perf_counter() - capture_start) * 1000.0,
@@ -795,8 +1207,10 @@ def verify_qwen35_gguf_native_b2_target(
     record_stage_timings: bool = False,
     sync_stage_timings: bool = False,
     defer_linear_state_commit: bool = False,
+    device_accept_commit: bool = False,
+    remaining_decode: int | None = None,
 ):
-    """Run N1 when admitted, otherwise preserve the exact Python verifier."""
+    """Run reusable N1/N2 when admitted, otherwise preserve the eager verifier."""
 
     session.last_native_spec_target_submitted = False
     session.last_native_spec_target_fallback_reason = None
@@ -822,7 +1236,8 @@ def verify_qwen35_gguf_native_b2_target(
         if not fallback:
             raise NativeSpecTargetGraphUnsupportedError(reason)
         return session.verify_target_block(input_token_ids, **eager_kwargs)
-    cache_name = f"_native_spec_b{rows - 1}_target_graph"
+    cache_suffix = "_n2" if device_accept_commit else ""
+    cache_name = f"_native_spec_b{rows - 1}_target_graph{cache_suffix}"
     graph = getattr(session, cache_name, None)
     if graph is not None and not graph.compatible_with(
         session,
@@ -830,6 +1245,7 @@ def verify_qwen35_gguf_native_b2_target(
         use_wmma_prefill=bool(use_wmma_prefill),
         capture_linear_state_rows=bool(capture_linear_state_rows),
         defer_linear_state_commit=bool(defer_linear_state_commit),
+        device_accept_commit=bool(device_accept_commit),
     ):
         graph.close()
         graph = None
@@ -848,6 +1264,7 @@ def verify_qwen35_gguf_native_b2_target(
                 record_stage_timings=record_stage_timings,
                 sync_stage_timings=sync_stage_timings,
                 defer_linear_state_commit=defer_linear_state_commit,
+                device_accept_commit=device_accept_commit,
             )
             setattr(session, cache_name, graph)
     except NativeSpecTargetGraphUnsupportedError as exc:
@@ -856,12 +1273,16 @@ def verify_qwen35_gguf_native_b2_target(
             raise
         return session.verify_target_block(input_token_ids, **eager_kwargs)
     try:
-        return graph.launch(
-            input_token_ids,
-            cycle_id=int(cycle_id),
-            transaction_id=int(transaction_id),
-            request_id=int(request_id),
-        )
+        launch_kwargs = {
+            "cycle_id": int(cycle_id),
+            "transaction_id": int(transaction_id),
+            "request_id": int(request_id),
+        }
+        if device_accept_commit:
+            launch_kwargs["remaining_decode"] = (
+                None if remaining_decode is None else int(remaining_decode)
+            )
+        return graph.launch(input_token_ids, **launch_kwargs)
     except NativeSpecTargetGraphUnsupportedError as exc:
         session.last_native_spec_target_fallback_reason = str(exc)
         if not fallback:
@@ -877,6 +1298,7 @@ def verify_qwen35_gguf_native_b2_target(
 
 __all__ = [
     "NativeSpecTargetGraphUnsupportedError",
+    "Qwen35GGUFNativeAcceptCommitResult",
     "Qwen35GGUFNativeB2TargetGraph",
     "build_native_b2_target_batch",
     "capture_qwen35_gguf_native_b2_target_graph",

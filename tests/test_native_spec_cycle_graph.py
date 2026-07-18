@@ -94,6 +94,50 @@ def _b1_control(*, cycle_id: int = 9) -> NativeSpecCycleControl:
     )
 
 
+def _n2_control(*, cycle_id: int = 11) -> NativeSpecCycleControl:
+    control = _b2_control(cycle_id=cycle_id)
+    stages = (
+        NativeSpecCycleStage.VERIFY
+        | NativeSpecCycleStage.ACCEPT
+        | NativeSpecCycleStage.COMMIT
+        | NativeSpecCycleStage.UPDATE_CURSORS
+    )
+    return replace(
+        control,
+        stages=stages,
+        shape=replace(control.shape, metadata_dtype=NativeSpecCycleDType.INT32),
+        pointers=replace(
+            control.pointers,
+            metadata=replace(
+                control.pointers.metadata,
+                candidate_counts=0x1600,
+                remaining_decode=0x1700,
+            ),
+            state=replace(
+                control.pointers.state,
+                linear_state_rows=0x3100,
+                linear_state_dst=0x3200,
+                hidden_seed_dst=0x3300,
+            ),
+            outputs=replace(
+                control.pointers.outputs,
+                accepted_counts=0x4100,
+                commit_rows=0x4200,
+                commit_tokens=0x4300,
+                commit_positions=0x4400,
+                next_tokens=0x4500,
+                full_accept=0x4600,
+                committed_output_ids=0x4700,
+                committed_output_lengths=0x4800,
+                output_ids=0x4900,
+                output_lengths=0x4A00,
+                last_positions=0x4B00,
+                context_lengths=0x4C00,
+            ),
+        ),
+    )
+
+
 class _FakeNativeLibrary:
     def __init__(self, *, status: NativeSpecCycleStatus = NativeSpecCycleStatus.COMPLETE) -> None:
         self.status = status
@@ -116,7 +160,7 @@ class _FakeNativeLibrary:
             else NativeSpecCycleError.KERNEL_LAUNCH
         )
         result.completed_stage_mask = (
-            int(NativeSpecCycleStage.VERIFY)
+            int(control.stage_mask)
             if self.status is NativeSpecCycleStatus.COMPLETE
             else 0
         )
@@ -169,6 +213,27 @@ def test_native_target_graph_launcher_calls_one_pre_resolved_submission_boundary
     assert result.cycle_id == 7
     assert launcher.launch_count == 1
     assert library.calls == [(0x6000, 0x7000, 0x8000)]
+
+
+def test_native_target_graph_launcher_accepts_n2_device_accept_commit_control() -> None:
+    library = _FakeNativeLibrary()
+    launcher = NativeSpecTargetGraphLauncher(
+        graph_exec=0x6000,
+        graph_launch_fn=0x7000,
+        stream_synchronize_fn=0x8000,
+        library=library,
+    )
+
+    result = launcher.launch(_n2_control())
+
+    assert result.status is NativeSpecCycleStatus.COMPLETE
+    assert result.completed_stages == (
+        NativeSpecCycleStage.VERIFY
+        | NativeSpecCycleStage.ACCEPT
+        | NativeSpecCycleStage.COMMIT
+        | NativeSpecCycleStage.UPDATE_CURSORS
+    )
+    assert launcher.launch_count == 1
 
 
 def test_native_target_graph_launcher_accepts_b1_and_b2_shape_buckets() -> None:

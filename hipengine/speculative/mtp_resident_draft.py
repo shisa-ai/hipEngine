@@ -1573,7 +1573,9 @@ class Qwen35GGUFResidentMTPDraftRunner:
             raise ValueError("hidden_seed_rows must have shape [rows, hidden_size]")
         if hidden.shape[0] != tokens.shape[0] or tokens.shape[0] != pos.shape[0]:
             raise ValueError("hidden rows, token ids, and positions must have the same length")
+        runtime = self.runtime or get_hip_runtime()
         current_len = int(dense_cache_len)
+        host_staging: list[np.ndarray] = []
         for row in range(int(tokens.shape[0])):
             token = int(tokens[row])
             if token < 0 or token >= int(self.token_embd_f32.shape[0]):
@@ -1582,8 +1584,21 @@ class Qwen35GGUFResidentMTPDraftRunner:
             embed = np.ascontiguousarray(self.token_embd_f32[token:token + 1], dtype=np.float32)
             cos = np.ascontiguousarray(rope_cos[pos[row:row + 1]], dtype=np.float32)
             sin = np.ascontiguousarray(rope_sin[pos[row:row + 1]], dtype=np.float32)
-            copy_host_to_device(self.seed_a, host_array_ptr(hidden_row), hidden_row.nbytes, runtime=self.runtime)
-            copy_host_to_device(self.token_embed, host_array_ptr(embed), embed.nbytes, runtime=self.runtime)
+            host_staging.extend((hidden_row, embed, cos, sin))
+            runtime.memcpy_async(
+                self.seed_a.ptr,
+                host_array_ptr(hidden_row),
+                hidden_row.nbytes,
+                HipMemcpyKind.HOST_TO_DEVICE,
+                stream,
+            )
+            runtime.memcpy_async(
+                self.token_embed.ptr,
+                host_array_ptr(embed),
+                embed.nbytes,
+                HipMemcpyKind.HOST_TO_DEVICE,
+                stream,
+            )
             self._write_one_kv(
                 dense_key_cache=dense_key_cache,
                 dense_value_cache=dense_value_cache,
@@ -1593,6 +1608,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 stream=stream,
             )
             current_len += 1
+        runtime.stream_synchronize(stream)
         return current_len
 
     def write_kv_rows_from_device_seed_base(
@@ -1623,6 +1639,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             raise ValueError("hidden_stride_bytes is smaller than one fp32 hidden row")
         runtime = self.runtime or get_hip_runtime()
         current_len = int(dense_cache_len)
+        host_staging: list[np.ndarray] = []
         for row in range(int(tokens.shape[0])):
             token = int(tokens[row])
             if token < 0 or token >= int(self.token_embd_f32.shape[0]):
@@ -1630,22 +1647,24 @@ class Qwen35GGUFResidentMTPDraftRunner:
             embed = np.ascontiguousarray(self.token_embd_f32[token:token + 1], dtype=np.float32)
             cos = np.ascontiguousarray(rope_cos[pos[row:row + 1]], dtype=np.float32)
             sin = np.ascontiguousarray(rope_sin[pos[row:row + 1]], dtype=np.float32)
-            if stream:
-                runtime.memcpy_async(
-                    self.seed_a.ptr,
-                    base_ptr + row * stride,
-                    self.hidden_size * 4,
-                    HipMemcpyKind.DEVICE_TO_DEVICE,
-                    stream,
-                )
-            else:
-                runtime.memcpy(
-                    self.seed_a.ptr,
-                    base_ptr + row * stride,
-                    self.hidden_size * 4,
-                    HipMemcpyKind.DEVICE_TO_DEVICE,
-                )
-            copy_host_to_device(self.token_embed, host_array_ptr(embed), embed.nbytes, runtime=self.runtime)
+            host_staging.extend((embed, cos, sin))
+            # Keep every copy and consumer on one stream.  Synchronous D2D
+            # copies do not reliably establish ordering against default-stream
+            # launches on every ROCm stream mode.
+            runtime.memcpy_async(
+                self.seed_a.ptr,
+                base_ptr + row * stride,
+                self.hidden_size * 4,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+            runtime.memcpy_async(
+                self.token_embed.ptr,
+                host_array_ptr(embed),
+                embed.nbytes,
+                HipMemcpyKind.HOST_TO_DEVICE,
+                stream,
+            )
             self._write_one_kv(
                 dense_key_cache=dense_key_cache,
                 dense_value_cache=dense_value_cache,
@@ -1655,6 +1674,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 stream=stream,
             )
             current_len += 1
+        runtime.stream_synchronize(stream)
         return current_len
 
     def _project_current_to_attn_normed(
@@ -1669,12 +1689,20 @@ class Qwen35GGUFResidentMTPDraftRunner:
         h = self.hidden_size
         mtp_rmsnorm_f32(self.token_embed.ptr, self.enorm.ptr, self.e_norm.ptr, 1, h, eps=self.eps, stream=stream, library=self._mtp_lib, runtime=runtime)
         mtp_rmsnorm_f32(hidden_seed.ptr, self.hnorm.ptr, self.h_norm.ptr, 1, h, eps=self.eps, stream=stream, library=self._mtp_lib, runtime=runtime)
-        if stream:
-            runtime.memcpy_async(self.concat.ptr, self.e_norm.ptr, h * 4, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
-            runtime.memcpy_async(self.concat.ptr + h * 4, self.h_norm.ptr, h * 4, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
-        else:
-            runtime.memcpy(self.concat.ptr, self.e_norm.ptr, h * 4, HipMemcpyKind.DEVICE_TO_DEVICE)
-            runtime.memcpy(self.concat.ptr + h * 4, self.h_norm.ptr, h * 4, HipMemcpyKind.DEVICE_TO_DEVICE)
+        runtime.memcpy_async(
+            self.concat.ptr,
+            self.e_norm.ptr,
+            h * 4,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            stream,
+        )
+        runtime.memcpy_async(
+            self.concat.ptr + h * 4,
+            self.h_norm.ptr,
+            h * 4,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            stream,
+        )
         if stage_marker is not None:
             stage_marker("draft_run_project_norm_concat")
         if not self._try_dense_q8_dp4a_f32(
@@ -1736,8 +1764,20 @@ class Qwen35GGUFResidentMTPDraftRunner:
             gguf_q8_0_gemv_f32_f32_out(self.attn_normed.ptr, self.wv.ptr, self.value_cur.ptr, 1, h, kv_heads * d, stream=stream, library=self._k_lib, runtime=runtime)
         mtp_rmsnorm_f32(self.key_cur.ptr, self.k_norm.ptr, self.key_cur.ptr, kv_heads, d, eps=self.eps, stream=stream, library=self._mtp_lib, runtime=runtime)
         rotary_dim = self._rotary_dim_from_rope_table(cos)
-        copy_host_to_device(self.cos, host_array_ptr(cos), cos.nbytes, runtime=runtime)
-        copy_host_to_device(self.sin, host_array_ptr(sin), sin.nbytes, runtime=runtime)
+        runtime.memcpy_async(
+            self.cos.ptr,
+            host_array_ptr(cos),
+            cos.nbytes,
+            HipMemcpyKind.HOST_TO_DEVICE,
+            stream,
+        )
+        runtime.memcpy_async(
+            self.sin.ptr,
+            host_array_ptr(sin),
+            sin.nbytes,
+            HipMemcpyKind.HOST_TO_DEVICE,
+            stream,
+        )
         mtp_rope_f32(
             self.key_cur.ptr,
             self.cos.ptr,
@@ -1753,34 +1793,20 @@ class Qwen35GGUFResidentMTPDraftRunner:
         )
         key_row_bytes = kv_heads * d * 4
         value_row_bytes = kv_heads * d * 4
-        if stream:
-            runtime.memcpy_async(
-                dense_key_cache.ptr + int(dense_cache_len) * key_row_bytes,
-                self.key_cur.ptr,
-                key_row_bytes,
-                HipMemcpyKind.DEVICE_TO_DEVICE,
-                stream,
-            )
-            runtime.memcpy_async(
-                dense_value_cache.ptr + int(dense_cache_len) * value_row_bytes,
-                self.value_cur.ptr,
-                value_row_bytes,
-                HipMemcpyKind.DEVICE_TO_DEVICE,
-                stream,
-            )
-        else:
-            runtime.memcpy(
-                dense_key_cache.ptr + int(dense_cache_len) * key_row_bytes,
-                self.key_cur.ptr,
-                key_row_bytes,
-                HipMemcpyKind.DEVICE_TO_DEVICE,
-            )
-            runtime.memcpy(
-                dense_value_cache.ptr + int(dense_cache_len) * value_row_bytes,
-                self.value_cur.ptr,
-                value_row_bytes,
-                HipMemcpyKind.DEVICE_TO_DEVICE,
-            )
+        runtime.memcpy_async(
+            dense_key_cache.ptr + int(dense_cache_len) * key_row_bytes,
+            self.key_cur.ptr,
+            key_row_bytes,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            stream,
+        )
+        runtime.memcpy_async(
+            dense_value_cache.ptr + int(dense_cache_len) * value_row_bytes,
+            self.value_cur.ptr,
+            value_row_bytes,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            stream,
+        )
 
     def _run_one(
         self,

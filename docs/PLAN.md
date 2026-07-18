@@ -532,13 +532,18 @@ Current blockers that keep project-wide c>N incomplete:
   for grouped GEMV versus compact/WMMA execution.
 - GGUF MTP serving is phase-serial at the slot level: draft, target verify, then
   commit. Target verify is packed up to four slots. The provider-neutral
-  `NativeSpecCycleLauncher` N0 ABI and gfx1100 N1 fixed-B2 target submission are
-  landed. N1 is byte-exact and halves target submit+sync wall, but remains an
-  explicit default-off diagnostic because position-bound graph recapture costs
-  more than the saved host launches (`84.35 -> 52.48 tok/s` in its three-cycle
-  screen). N2 device accept/commit, N3 reusable dynamic complete-cycle launch,
-  draft-side batching, rows>=16 verifier tuning, streaming, and exact/default
-  MTP serving remain open.
+  `NativeSpecCycleLauncher` N0 ABI plus gfx1100 reusable B1/B2 N1 target graphs
+  are landed. N1 is byte-exact across dynamic positions and cached-session
+  resets; the retained accuracy-traded llama-compat suite reaches 122.667 tok/s
+  versus llama.cpp's 115.444 tok/s W7900 floor. N2 device acceptance, selected
+  hidden/Conv/GDN commit, cursor update, and bounded summary readback are also
+  landed behind the explicit llama-compat native-cycle route. N2 keeps verifier
+  hidden rows graph-owned so prompt-prefill scratch growth cannot invalidate a
+  captured pointer, and matches all 240 IDs / 96 cycle semantics in the full
+  category+heldout suite. Its first same-tree aggregate screen is neutral within
+  run variance, while state/KV commit and host-seed sub-windows shrink. N3
+  complete-cycle/public-adapter ownership, draft-side batching, rows>=16
+  verifier tuning, streaming, and exact/default MTP serving remain open.
 - Exact all-choice generated-token accounting and batch timing ownership are
   available for non-streaming responses. Benchmark coverage still needs
   aggregate tok/s, per-request tok/s, latency, memory, active occupancy,

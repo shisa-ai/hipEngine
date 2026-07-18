@@ -960,10 +960,17 @@ MTP_ROUTES["llama-compat-native-cycle"] = [
     *MTP_ROUTES[_NATIVE_CYCLE_BASE_ROUTE],
     "--native-spec-target-cycle",
 ]
+MTP_ROUTES["llama-compat-native-cycle-n2"] = [
+    *MTP_ROUTES[_NATIVE_CYCLE_BASE_ROUTE],
+    "--native-spec-target-cycle",
+    "--native-spec-device-accept-commit",
+    "--resident-mtp-device-seed",
+]
 
 MTP_ROUTE_DEFAULT_BUDGETS: dict[str, list[int]] = {
     "llama-compat": [2],
     "llama-compat-native-cycle": [2],
+    "llama-compat-native-cycle-n2": [2],
     "llama-compat-dp4a": [2],
     "llama-compat-device-chain": [2],
     "llama-compat-device-chain-dp4a": [2],
@@ -1018,6 +1025,9 @@ MTP_ROUTE_DEFAULT_BUDGETS: dict[str, list[int]] = {
 
 MTP_ROUTE_ENVS: dict[str, dict[str, str]] = {
     "llama-compat-native-cycle": {
+        "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+    },
+    "llama-compat-native-cycle-n2": {
         "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
     },
     "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-q8rowtileall": {

@@ -505,15 +505,16 @@ def qwen35_gguf_fp32_verify_hidden_seed_contract(
     *,
     rows: int = 1,
     populated_by_decode: bool = False,
+    source_buffer: str = "Qwen35GGUFResidentSession._verify_hidden_seed_buf",
 ) -> Qwen35GGUFHiddenSeedContract:
-    """Describe the fp32 verifier-row hidden-seed staging buffer."""
+    """Describe an fp32 verifier-row hidden-seed buffer."""
 
     return Qwen35GGUFHiddenSeedContract(
         provenance="post_output_norm",
         dtype=DType.FP32,
         rows=int(rows),
         hidden_size=int(hidden_size),
-        source_buffer="Qwen35GGUFResidentSession._verify_hidden_seed_buf",
+        source_buffer=str(source_buffer),
         populated_by_decode=bool(populated_by_decode),
         llama_cpp_compatible=bool(populated_by_decode),
     )
@@ -8357,6 +8358,8 @@ class Qwen35GGUFResidentSession:
     _decode_graph_min_replay_steps_cache: int | None = field(default=None, init=False)
     _native_spec_b1_target_graph: object | None = field(default=None, init=False, repr=False)
     _native_spec_b2_target_graph: object | None = field(default=None, init=False, repr=False)
+    _native_spec_b1_target_graph_n2: object | None = field(default=None, init=False, repr=False)
+    _native_spec_b2_target_graph_n2: object | None = field(default=None, init=False, repr=False)
     _device_kv_pool: DeviceChunkedKVPool | None = field(default=None, init=False, repr=False)
     _device_kv_allocation: DeviceKVPoolAllocation | None = field(default=None, init=False, repr=False)
     _device_kv_graph_handles: dict[int, object] = field(default_factory=dict, init=False, repr=False)
@@ -9138,6 +9141,42 @@ class Qwen35GGUFResidentSession:
             raise RuntimeError("GGUF verifier hidden seed row is not populated")
         row_nbytes = self.runner.hidden_size * DType.FP32.itemsize
         return int(self._verify_hidden_seed_buf.ptr + row * row_nbytes)
+
+    def mtp_verify_seed(
+        self,
+        row_index: int,
+        *,
+        token_id: int,
+        position: int,
+        hidden_seed_base_ptr: int | None = None,
+        hidden_seed_row_count: int | None = None,
+    ) -> Qwen35GGUFMTPDraftSeed:
+        """Describe one already-populated FP32 verifier row without copying it."""
+
+        row = int(row_index)
+        if hidden_seed_base_ptr is None:
+            hidden_ptr = self.fp32_verify_hidden_seed_ptr(row)
+            contract = self.fp32_verify_hidden_seed_contract(rows=1)
+        else:
+            base_ptr = int(hidden_seed_base_ptr)
+            row_count = int(hidden_seed_row_count or 0)
+            if base_ptr <= 0:
+                raise ValueError("hidden_seed_base_ptr must be a non-zero device pointer")
+            if row < 0 or row >= row_count:
+                raise ValueError("row_index is outside external hidden rows")
+            hidden_ptr = base_ptr + row * self.runner.hidden_size * DType.FP32.itemsize
+            contract = qwen35_gguf_fp32_verify_hidden_seed_contract(
+                self.runner.hidden_size,
+                rows=1,
+                populated_by_decode=True,
+                source_buffer="Qwen35GGUFNativeAcceptCommitResult.hidden_seed_rows_ptr",
+            )
+        return Qwen35GGUFMTPDraftSeed(
+            token_id=int(token_id),
+            position=int(position),
+            hidden_ptr=hidden_ptr,
+            hidden_contract=contract,
+        )
 
     def stage_current_hidden_seed_as_verify_row(
         self,
@@ -10475,6 +10514,7 @@ class Qwen35GGUFResidentSession:
         defer_linear_state_commit: bool = False,
         _pre_staged_token_ids_ptr: int | None = None,
         _target_top1_i64_ptr: int | None = None,
+        _target_top1_i32_ptr: int | None = None,
         _enqueue_only: bool = False,
         _prebuilt_bulk_scratch: object | None = None,
         _dynamic_cursor_advance: bool = False,
@@ -10536,8 +10576,12 @@ class Qwen35GGUFResidentSession:
                 raise ValueError("enqueue-only target verification requires a non-default capture stream")
             if _pre_staged_token_ids_ptr is None or int(_pre_staged_token_ids_ptr) <= 0:
                 raise ValueError("enqueue-only target verification requires pre-staged token ids")
-            if _target_top1_i64_ptr is None or int(_target_top1_i64_ptr) <= 0:
-                raise ValueError("enqueue-only target verification requires an int64 target-top1 destination")
+            has_i64_top1 = _target_top1_i64_ptr is not None and int(_target_top1_i64_ptr) > 0
+            has_i32_top1 = _target_top1_i32_ptr is not None and int(_target_top1_i32_ptr) > 0
+            if has_i64_top1 == has_i32_top1:
+                raise ValueError(
+                    "enqueue-only target verification requires exactly one int32/int64 target-top1 destination"
+                )
             if rows not in {2, 3}:
                 raise ValueError("enqueue-only native target verification supports B1/B2 rows=2-3")
             if advance_state_only or capture_pre_output_norm_hidden or capture_lm_head_logits:
@@ -10565,6 +10609,7 @@ class Qwen35GGUFResidentSession:
         elif (
             _pre_staged_token_ids_ptr is not None
             or _target_top1_i64_ptr is not None
+            or _target_top1_i32_ptr is not None
             or _prebuilt_bulk_scratch is not None
             or _dynamic_cursor_advance
             or _graph_hidden_seed_buf is not None
@@ -10940,14 +10985,23 @@ class Qwen35GGUFResidentSession:
                         )
                         if self._verify_lm_out_indices_i32 is None:
                             raise RuntimeError("GGUF verifier int32 top1 rows are closed")
-                        copy_i32_to_i64(
-                            self._verify_lm_out_indices_i32.ptr,
-                            int(_target_top1_i64_ptr),
-                            rows,
-                            stream=stream,
-                            library=self._runtime_state_library,
-                            runtime=runtime,
-                        )
+                        if _target_top1_i64_ptr is not None:
+                            copy_i32_to_i64(
+                                self._verify_lm_out_indices_i32.ptr,
+                                int(_target_top1_i64_ptr),
+                                rows,
+                                stream=stream,
+                                library=self._runtime_state_library,
+                                runtime=runtime,
+                            )
+                        elif int(_target_top1_i32_ptr) != int(self._verify_lm_out_indices_i32.ptr):
+                            runtime.memcpy_async(
+                                int(_target_top1_i32_ptr),
+                                self._verify_lm_out_indices_i32.ptr,
+                                rows * DType.INT32.itemsize,
+                                HipMemcpyKind.DEVICE_TO_DEVICE,
+                                stream,
+                            )
                         if self._lm_out_index is None:
                             raise RuntimeError("GGUF resident lm-head token buffer is closed")
                         copy_i32_to_i64(
@@ -14516,8 +14570,9 @@ class Qwen35GGUFResidentSession:
         use_wmma_prefill: bool = False,
         capture_linear_state_rows: bool = False,
         defer_linear_state_commit: bool = False,
+        device_accept_commit: bool = False,
     ):
-        """Capture the one-shot N1 B2 target verifier for native submission."""
+        """Capture a reusable B1/B2 N1 or N2 native target graph."""
 
         from hipengine.runtime.gguf_native_spec_cycle import (
             capture_qwen35_gguf_native_b2_target_graph,
@@ -14533,6 +14588,7 @@ class Qwen35GGUFResidentSession:
             use_wmma_prefill=bool(use_wmma_prefill),
             capture_linear_state_rows=bool(capture_linear_state_rows),
             defer_linear_state_commit=bool(defer_linear_state_commit),
+            device_accept_commit=bool(device_accept_commit),
         )
 
     def verify_target_block_native_cycle(
@@ -14550,8 +14606,10 @@ class Qwen35GGUFResidentSession:
         record_stage_timings: bool = False,
         sync_stage_timings: bool = False,
         defer_linear_state_commit: bool = False,
-    ) -> Qwen35GGUFBlockVerifyResult:
-        """Run fixed-B2 native submission or preserve the exact Python fallback."""
+        device_accept_commit: bool = False,
+        remaining_decode: int | None = None,
+    ):
+        """Run reusable B1/B2 N1/N2 submission or preserve the eager fallback."""
 
         from hipengine.runtime.gguf_native_spec_cycle import (
             verify_qwen35_gguf_native_b2_target,
@@ -14571,6 +14629,8 @@ class Qwen35GGUFResidentSession:
             record_stage_timings=bool(record_stage_timings),
             sync_stage_timings=bool(sync_stage_timings),
             defer_linear_state_commit=bool(defer_linear_state_commit),
+            device_accept_commit=bool(device_accept_commit),
+            remaining_decode=(None if remaining_decode is None else int(remaining_decode)),
         )
 
     def capture_decode_graph(

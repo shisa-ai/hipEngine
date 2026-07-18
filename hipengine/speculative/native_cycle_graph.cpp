@@ -58,10 +58,38 @@ bool has_required_verify_pointers(const HipengineNativeSpecCycleControlV1* contr
          control->output_target_top1 != 0;
 }
 
+bool has_required_n2_pointers(const HipengineNativeSpecCycleControlV1* control) {
+  return control->metadata_candidate_counts != 0 &&
+         control->metadata_remaining_decode != 0 &&
+         control->state_hidden_seed_dst != 0 &&
+         control->output_accepted_counts != 0 &&
+         control->output_commit_rows != 0 &&
+         control->output_commit_tokens != 0 &&
+         control->output_commit_positions != 0 &&
+         control->output_next_tokens != 0 &&
+         control->output_full_accept != 0 &&
+         control->output_committed_output_ids != 0 &&
+         control->output_committed_output_lengths != 0 &&
+         control->output_output_ids != 0 &&
+         control->output_output_lengths != 0 &&
+         control->output_last_positions != 0 &&
+         control->output_context_lengths != 0 &&
+         ((control->state_linear_state_rows != 0 && control->state_linear_state_dst != 0) ||
+          (control->state_key_rows != 0 && control->state_value_rows != 0 &&
+           control->kv_key_cache != 0 && control->kv_value_cache != 0) ||
+          control->state_hidden_seed_dst != 0);
+}
+
 bool is_small_chain_target(const HipengineNativeSpecCycleControlV1* control) {
+  constexpr uint32_t kN2Stages = HIPENGINE_NATIVE_SPEC_STAGE_VERIFY |
+                                 HIPENGINE_NATIVE_SPEC_STAGE_ACCEPT |
+                                 HIPENGINE_NATIVE_SPEC_STAGE_COMMIT |
+                                 HIPENGINE_NATIVE_SPEC_STAGE_UPDATE_CURSORS;
+  const bool verify_only = control->stage_mask == HIPENGINE_NATIVE_SPEC_STAGE_VERIFY;
+  const bool n2 = control->stage_mask == kN2Stages;
   const uint32_t rows = control->row_count;
   const uint32_t candidates = rows - 1;
-  return control->stage_mask == HIPENGINE_NATIVE_SPEC_STAGE_VERIFY &&
+  return (verify_only || n2) &&
          control->mode == HIPENGINE_NATIVE_SPEC_MODE_CHAIN &&
          control->request_count == 1 &&
          control->request_capacity >= 1 &&
@@ -78,9 +106,11 @@ bool is_small_chain_target(const HipengineNativeSpecCycleControlV1* control) {
          control->hidden_size > 0 &&
          control->hidden_row_capacity >= rows &&
          control->output_stride >= rows &&
-         control->metadata_dtype == HIPENGINE_NATIVE_SPEC_DTYPE_INT64 &&
+         control->metadata_dtype == (verify_only ? HIPENGINE_NATIVE_SPEC_DTYPE_INT64
+                                                 : HIPENGINE_NATIVE_SPEC_DTYPE_INT32) &&
          control->hidden_dtype == HIPENGINE_NATIVE_SPEC_DTYPE_FP32 &&
-         control->kv_dtype == HIPENGINE_NATIVE_SPEC_DTYPE_BF16;
+         control->kv_dtype == HIPENGINE_NATIVE_SPEC_DTYPE_BF16 &&
+         (!n2 || has_required_n2_pointers(control));
 }
 
 }  // namespace
@@ -122,7 +152,7 @@ extern "C" int32_t hipengine_native_spec_target_graph_launch_v1(
 
   result->status = HIPENGINE_NATIVE_SPEC_STATUS_COMPLETE;
   result->error_code = HIPENGINE_NATIVE_SPEC_ERROR_NONE;
-  result->completed_stage_mask = HIPENGINE_NATIVE_SPEC_STAGE_VERIFY;
+  result->completed_stage_mask = control->stage_mask;
   result->failed_stage = 0;
   result->visible_output_count = 0;
   result->backend_error_code = 0;

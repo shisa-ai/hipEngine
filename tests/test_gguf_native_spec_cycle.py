@@ -435,6 +435,102 @@ def test_native_b2_target_graph_matches_eager_hidden_state_and_kv(monkeypatch) -
             native_b1_rows = _read_linear_state_row_prefix(session, 2)
             native_b1_state = _read_resident_linear_state(session)
             native_b1_kv = _read_full_kv(session)
+
+            # N2 oracle: target rows stay on device, acceptance selects one
+            # captured recurrent/hidden row, and one bounded payload is returned.
+            session._restore_linear_state_snapshot(snapshot, position=start_position)
+            _write_full_kv(session, kv_snapshot)
+            eager_n2 = session.verify_target_block(
+                block_inputs,
+                use_wmma_prefill=False,
+                capture_linear_state_rows=True,
+                defer_linear_state_commit=True,
+            )
+            n2_accepted = 0
+            for draft_token, target_token in zip(block_inputs[1:], eager_n2.token_ids, strict=False):
+                if int(draft_token) != int(target_token):
+                    break
+                n2_accepted += 1
+            n2_visible_tokens = [int(token) for token in eager_n2.token_ids[:n2_accepted + 1]]
+            session._commit_verify_linear_state_row(
+                n2_accepted,
+                position=start_position + n2_accepted + 1,
+            )
+            eager_n2_state = _read_resident_linear_state(session)
+            eager_n2_kv = _read_full_kv(session)
+            eager_n2_hidden = _read_buffer(session.runtime, session.scratch.hidden_seed_fp32)
+
+            session._restore_linear_state_snapshot(snapshot, position=start_position)
+            _write_full_kv(session, kv_snapshot)
+            with session.capture_native_spec_target_graph(
+                block_inputs,
+                cycle_id=34,
+                transaction_id=44,
+                capture_linear_state_rows=True,
+                defer_linear_state_commit=True,
+                device_accept_commit=True,
+            ) as n2_graph:
+                native_n2 = n2_graph.launch(remaining_decode=3)
+                assert n2_graph.launch_count == 1
+                assert n2_graph.native_result is not None
+                assert n2_graph.native_result.visible_output_count == n2_accepted + 1
+            native_n2_state = _read_resident_linear_state(session)
+            native_n2_kv = _read_full_kv(session)
+            native_n2_hidden = _read_buffer(session.runtime, session.scratch.hidden_seed_fp32)
+
+            # Construct a guaranteed full-accept B2 chain from target samples,
+            # then require dynamic row-2 commit parity as well as reject parity.
+            session._restore_linear_state_snapshot(snapshot, position=start_position)
+            _write_full_kv(session, kv_snapshot)
+            full_probe0 = session.verify_target_block(block_inputs, use_wmma_prefill=False)
+            full_draft0 = int(full_probe0.token_ids[0])
+            session._restore_linear_state_snapshot(snapshot, position=start_position)
+            _write_full_kv(session, kv_snapshot)
+            full_probe1 = session.verify_target_block(
+                [block_inputs[0], full_draft0, block_inputs[2]],
+                use_wmma_prefill=False,
+            )
+            full_draft1 = int(full_probe1.token_ids[1])
+            full_inputs = [block_inputs[0], full_draft0, full_draft1]
+
+            session._restore_linear_state_snapshot(snapshot, position=start_position)
+            _write_full_kv(session, kv_snapshot)
+            eager_n2_full = session.verify_target_block(
+                full_inputs,
+                use_wmma_prefill=False,
+                capture_linear_state_rows=True,
+                defer_linear_state_commit=True,
+            )
+            assert eager_n2_full.token_ids[:2] == full_inputs[1:]
+            session._commit_verify_linear_state_row(2, position=start_position + 3)
+            eager_n2_full_state = _read_resident_linear_state(session)
+            eager_n2_full_kv = _read_full_kv(session)
+            eager_n2_full_hidden = _read_buffer(session.runtime, session.scratch.hidden_seed_fp32)
+
+            session._restore_linear_state_snapshot(snapshot, position=start_position)
+            _write_full_kv(session, kv_snapshot)
+            with session.capture_native_spec_target_graph(
+                full_inputs,
+                cycle_id=35,
+                transaction_id=45,
+                capture_linear_state_rows=True,
+                defer_linear_state_commit=True,
+                device_accept_commit=True,
+            ) as n2_full_graph:
+                native_n2_full = n2_full_graph.launch(remaining_decode=3)
+                native_n2_full_hidden_rows = np.empty_like(eager_n2_full.hidden_seeds)
+                copy_device_to_host(
+                    host_array_ptr(native_n2_full_hidden_rows),
+                    DeviceBuffer(
+                        int(native_n2_full.hidden_seed_rows_ptr),
+                        int(native_n2_full_hidden_rows.nbytes),
+                    ),
+                    native_n2_full_hidden_rows.nbytes,
+                    runtime=session.runtime,
+                )
+            native_n2_full_state = _read_resident_linear_state(session)
+            native_n2_full_kv = _read_full_kv(session)
+            native_n2_full_hidden = _read_buffer(session.runtime, session.scratch.hidden_seed_fp32)
         finally:
             session._free_linear_state_snapshot(snapshot)
 
@@ -484,4 +580,31 @@ def test_native_b2_target_graph_matches_eager_hidden_state_and_kv(monkeypatch) -
     assert native.start_position == start_position
     assert replayed_native.start_position == start_position + 3
     assert native_b1.start_position == start_position
-    assert session.position == start_position + 2
+    assert native_n2.device_accept_commit is True
+    assert native_n2.token_ids == n2_visible_tokens
+    assert native_n2.accepted_draft_tokens == n2_accepted
+    assert native_n2.commit_row == n2_accepted
+    assert native_n2.end_position == start_position + n2_accepted + 1
+    assert native_n2.hidden_seeds.shape == (0, 0)
+    assert all(
+        np.array_equal(expected, actual)
+        for expected, actual in zip(eager_n2_state, native_n2_state, strict=True)
+    )
+    assert all(
+        np.array_equal(expected, actual)
+        for expected, actual in zip(eager_n2_kv, native_n2_kv, strict=True)
+    )
+    np.testing.assert_array_equal(native_n2_hidden, eager_n2_hidden)
+    assert native_n2_full.accepted_draft_tokens == 2
+    assert native_n2_full.token_ids == [int(token) for token in eager_n2_full.token_ids]
+    assert all(
+        np.array_equal(expected, actual)
+        for expected, actual in zip(eager_n2_full_state, native_n2_full_state, strict=True)
+    )
+    assert all(
+        np.array_equal(expected, actual)
+        for expected, actual in zip(eager_n2_full_kv, native_n2_full_kv, strict=True)
+    )
+    np.testing.assert_array_equal(native_n2_full_hidden, eager_n2_full_hidden)
+    np.testing.assert_array_equal(native_n2_full_hidden_rows, eager_n2_full.hidden_seeds)
+    assert session.position == start_position + 3

@@ -27,7 +27,12 @@ from hipengine.kernels.hip_gfx1100.linear import (
     lm_head_argmax_stage1_blocks,
     lm_head_fp16_argmax_bf16_rows_i32,
 )
-from hipengine.kernels.hip_gfx1100.speculative import build_dflash_accept, dflash_accept_chain_i32
+from hipengine.kernels.hip_gfx1100.speculative import (
+    ACCEPT_PACKED_PAYLOAD_FIELDS,
+    build_dflash_accept,
+    dflash_accept_chain_i32,
+    dflash_accept_chain_i32_native_cycle,
+)
 from hipengine.speculative import DFlashDraftRequest, TargetAcceptSummary, TargetVerifyBatch, compile_dflash_chain
 
 
@@ -58,6 +63,7 @@ def main() -> int:
 
     _run_lm_head_rows_top1_case(runtime, lm_head_lib)
     _run_single_request_accept_patterns(runtime, lm_head_lib, accept_lib, debug_top1=args.debug_top1_readback)
+    _run_native_cycle_accept_patterns(runtime, lm_head_lib, accept_lib, debug_top1=args.debug_top1_readback)
     _run_multi_request_real_layout_case(runtime, lm_head_lib, accept_lib, debug_top1=args.debug_top1_readback)
     _run_budgeted_accept_case(runtime, lm_head_lib, accept_lib, debug_top1=args.debug_top1_readback)
     print("dflash_accept_chain_smoke passed")
@@ -142,6 +148,33 @@ def _run_single_request_accept_patterns(runtime, lm_head_lib, accept_lib, *, deb
         )
 
 
+def _run_native_cycle_accept_patterns(runtime, lm_head_lib, accept_lib, *, debug_top1: bool) -> None:
+    target = _single_request_target()
+    for name, top1 in {
+        "reject": (99, 31, 32),
+        "partial": (31, 99, 44),
+        "full": (31, 32, 44),
+    }.items():
+        observed = _run_accept_from_top1(
+            runtime,
+            lm_head_lib,
+            accept_lib,
+            target,
+            top1,
+            remaining_decode=(target.rows,),
+            debug_top1=debug_top1,
+            native_cycle=True,
+        )
+        expected = target.accept_from_top1(top1, remaining_decode=(target.rows,))
+        assert observed["accepted_counts"].tolist() == [expected.accepted_counts[0]]
+        assert observed["resident_positions"].tolist() == [target.positions[expected.selected_candidate_rows[0]] + 1]
+        assert observed["resident_contexts"].tolist() == [target.positions[expected.selected_candidate_rows[0]] + 2]
+        print(
+            f"native_cycle_{name} accepted={observed['accepted_counts'].tolist()} "
+            f"visible={observed['visible_output_ids'][0, :observed['visible_output_lengths'][0]].tolist()}"
+        )
+
+
 def _run_multi_request_real_layout_case(runtime, lm_head_lib, accept_lib, *, debug_top1: bool) -> None:
     draft = compile_dflash_chain(
         [
@@ -205,6 +238,7 @@ def _run_accept_from_top1(
     *,
     remaining_decode: Sequence[int] | None,
     debug_top1: bool,
+    native_cycle: bool = False,
 ) -> dict[str, np.ndarray]:
     rows = target.rows
     request_count = len(target.request_ids)
@@ -232,6 +266,11 @@ def _run_accept_from_top1(
     output_stride = rows
     committed_output_ids = np.empty((request_count, output_stride), dtype=np.int32)
     committed_output_lengths = np.empty((request_count,), dtype=np.int32)
+    packed_payload = np.empty((request_count, ACCEPT_PACKED_PAYLOAD_FIELDS), dtype=np.int32)
+    visible_output_ids = np.empty((request_count, output_stride), dtype=np.int32)
+    visible_output_lengths = np.empty((request_count,), dtype=np.int32)
+    resident_positions = np.empty((request_count,), dtype=np.int64)
+    resident_contexts = np.empty((request_count,), dtype=np.int64)
 
     buffers = []
     try:
@@ -265,7 +304,13 @@ def _run_accept_from_top1(
         full_accept_dev = _empty_dev(runtime, buffers, full_accept)
         committed_output_ids_dev = _empty_dev(runtime, buffers, committed_output_ids)
         committed_output_lengths_dev = _empty_dev(runtime, buffers, committed_output_lengths)
-        dflash_accept_chain_i32(
+        packed_payload_dev = _empty_dev(runtime, buffers, packed_payload)
+        visible_output_ids_dev = _empty_dev(runtime, buffers, visible_output_ids)
+        visible_output_lengths_dev = _empty_dev(runtime, buffers, visible_output_lengths)
+        resident_positions_dev = _empty_dev(runtime, buffers, resident_positions)
+        resident_contexts_dev = _empty_dev(runtime, buffers, resident_contexts)
+        accept_fn = dflash_accept_chain_i32_native_cycle if native_cycle else dflash_accept_chain_i32
+        accept_args = [
             token_ids_dev.ptr,
             positions_dev.ptr,
             parent_rows_dev.ptr,
@@ -284,9 +329,17 @@ def _run_accept_from_top1(
             rows,
             request_count,
             output_stride,
-            library=accept_lib,
-            runtime=runtime,
-        )
+        ]
+        if native_cycle:
+            accept_args[15:15] = [
+                packed_payload_dev.ptr,
+                visible_output_ids_dev.ptr,
+                visible_output_lengths_dev.ptr,
+                resident_positions_dev.ptr,
+                resident_contexts_dev.ptr,
+                1,
+            ]
+        accept_fn(*accept_args, library=accept_lib, runtime=runtime)
         runtime.device_synchronize()
         if debug_top1:
             copy_device_to_host(host_array_ptr(target_top1_out), target_top1_dev, runtime=runtime)
@@ -298,6 +351,12 @@ def _run_accept_from_top1(
         copy_device_to_host(host_array_ptr(full_accept), full_accept_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(committed_output_ids), committed_output_ids_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(committed_output_lengths), committed_output_lengths_dev, runtime=runtime)
+        if native_cycle:
+            copy_device_to_host(host_array_ptr(packed_payload), packed_payload_dev, runtime=runtime)
+            copy_device_to_host(host_array_ptr(visible_output_ids), visible_output_ids_dev, runtime=runtime)
+            copy_device_to_host(host_array_ptr(visible_output_lengths), visible_output_lengths_dev, runtime=runtime)
+            copy_device_to_host(host_array_ptr(resident_positions), resident_positions_dev, runtime=runtime)
+            copy_device_to_host(host_array_ptr(resident_contexts), resident_contexts_dev, runtime=runtime)
     finally:
         _free_all(runtime, buffers)
 
@@ -320,6 +379,34 @@ def _run_accept_from_top1(
         length = len(expected_ids)
         np.testing.assert_array_equal(committed_output_ids[request_index, :length], np.asarray(expected_ids, dtype=np.int32))
         np.testing.assert_array_equal(committed_output_ids[request_index, length:], np.full(output_stride - length, -1, dtype=np.int32))
+        if native_cycle:
+            next_token = summary.next_tokens[request_index] if summary.next_tokens is not None else None
+            expected_visible = [*accepted, *(() if next_token is None else (next_token,))]
+            visible_length = len(expected_visible)
+            assert int(visible_output_lengths[request_index]) == visible_length
+            np.testing.assert_array_equal(
+                visible_output_ids[request_index, :visible_length],
+                np.asarray(expected_visible, dtype=np.int32),
+            )
+            np.testing.assert_array_equal(
+                visible_output_ids[request_index, visible_length:],
+                np.full(output_stride - visible_length, -1, dtype=np.int32),
+            )
+            np.testing.assert_array_equal(
+                packed_payload[request_index],
+                np.asarray(
+                    [
+                        summary.accepted_counts[request_index],
+                        summary.commit_rows[request_index],
+                        summary.commit_tokens[request_index],
+                        summary.commit_positions[request_index],
+                        expected_next[request_index],
+                        int(summary.full_accept[request_index]),
+                        summary.accepted_counts[request_index] + 1,
+                    ],
+                    dtype=np.int32,
+                ),
+            )
 
     return {
         "accepted_counts": accepted_counts,
@@ -330,6 +417,10 @@ def _run_accept_from_top1(
         "full_accept": full_accept.astype(np.bool_),
         "committed_output_ids": committed_output_ids,
         "committed_output_lengths": committed_output_lengths,
+        "visible_output_ids": visible_output_ids,
+        "visible_output_lengths": visible_output_lengths,
+        "resident_positions": resident_positions,
+        "resident_contexts": resident_contexts,
     }
 
 
