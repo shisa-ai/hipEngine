@@ -142,12 +142,37 @@ def _latency_delta(before: Mapping[str, Any], after: Mapping[str, Any]) -> dict[
     return result
 
 
-def _prompt_rows(rows: int, prompt_length: int, token_id: int) -> tuple[tuple[int, ...], ...]:
-    result: list[tuple[int, ...]] = []
+def _prompt_rows(
+    tokenizer: Any,
+    rows: int,
+    prompt_length: int,
+    token_id: int,
+) -> tuple[dict[str, Any], ...]:
+    """Build exact-roundtrip text prompts for the streaming API."""
+
+    result: list[dict[str, Any]] = []
     for row in range(int(rows)):
-        tokens = [int(token_id)] * int(prompt_length)
-        tokens[-1] = int(token_id) + (row % 4)
-        result.append(tuple(tokens))
+        token_ids = tuple(
+            [int(token_id)] * max(0, int(prompt_length) - 1)
+            + [int(token_id) + (row % 4)]
+        )
+        text = str(tokenizer.decode(list(token_ids)))
+        encoded = tokenizer.encode(text)
+        roundtrip = tuple(int(token) for token in getattr(encoded, "ids", encoded))
+        if roundtrip != token_ids:
+            raise RuntimeError(
+                f"prompt row {row} failed exact tokenizer roundtrip: "
+                f"expected={len(token_ids)} observed={len(roundtrip)}"
+            )
+        result.append(
+            {
+                "row_index": int(row),
+                "token_ids": token_ids,
+                "token_ids_sha256": token_ids_sha256(token_ids),
+                "text": text,
+                "roundtrip_exact": True,
+            }
+        )
     return tuple(result)
 
 
@@ -164,7 +189,7 @@ def _stream_one(
     *,
     served_model: str,
     row_index: int,
-    prompt: Sequence[int],
+    prompt: str,
     max_tokens: int,
     gate: threading.Barrier | threading.Event,
 ) -> StreamTrace:
@@ -184,7 +209,7 @@ def _stream_one(
             "/v1/completions",
             json={
                 "model": str(served_model),
-                "prompt": [int(token) for token in prompt],
+                "prompt": str(prompt),
                 "max_tokens": int(max_tokens),
                 "temperature": 0.0,
                 "top_p": 1.0,
@@ -307,7 +332,7 @@ def _run_sample(
     llm: LLM,
     owner: Any,
     config: Configuration,
-    prompts: Sequence[Sequence[int]],
+    prompts: Sequence[Mapping[str, Any]],
     references: Mapping[str, Mapping[str, Any]],
     captured: Mapping[int, ReclaimedRow],
     max_tokens: int,
@@ -334,7 +359,7 @@ def _run_sample(
                     client,
                     served_model="paro-live",
                     row_index=index,
-                    prompt=prompts[index],
+                    prompt=str(prompts[index]["text"]),
                     max_tokens=max_tokens,
                     gate=gate,
                 )
@@ -351,7 +376,7 @@ def _run_sample(
                     client,
                     served_model="paro-live",
                     row_index=index,
-                    prompt=prompts[index],
+                    prompt=str(prompts[index]["text"]),
                     max_tokens=max_tokens,
                     gate=initial_gate if index < initial else tail_gate,
                 )
@@ -374,14 +399,16 @@ def _run_sample(
     exact_rows: list[dict[str, Any]] = []
     for trace in sorted(traces, key=lambda item: item.row_index):
         reclaimed = None if trace.request_id is None else captured.get(int(trace.request_id))
-        reference = references[token_ids_sha256(prompts[trace.row_index])]
+        prompt = prompts[trace.row_index]
+        prompt_ids = [int(token) for token in prompt["token_ids"]]
+        reference = references[str(prompt["token_ids_sha256"])]
         generated = [] if reclaimed is None else list(reclaimed.generated_ids)
         exact_rows.append(
             {
                 "row_index": int(trace.row_index),
                 "request_id": trace.request_id,
-                "prompt_ids_sha256": token_ids_sha256(prompts[trace.row_index]),
-                "prompt_exact": reclaimed is not None and reclaimed.prompt_ids == list(prompts[trace.row_index]),
+                "prompt_ids_sha256": str(prompt["token_ids_sha256"]),
+                "prompt_exact": reclaimed is not None and reclaimed.prompt_ids == prompt_ids,
                 "generated_ids": generated,
                 "expected_ids": list(reference["generated_ids"]),
                 "generated_exact": generated == list(reference["generated_ids"]),
@@ -406,7 +433,8 @@ def _run_sample(
         and len(trace.delta_times) == int(max_tokens)
         and trace.finish_reason == "length"
         and isinstance(trace.usage, Mapping)
-        and int(trace.usage.get("prompt_tokens", -1)) == len(prompts[trace.row_index])
+        and int(trace.usage.get("prompt_tokens", -1))
+        == len(prompts[trace.row_index]["token_ids"])
         and int(trace.usage.get("completion_tokens", -1)) == int(max_tokens)
         for trace in traces
     )
@@ -456,7 +484,7 @@ def _run_sample(
         "passed": passed,
         "workload": {
             "rows": rows,
-            "prompt_tokens_per_request": len(prompts[0]),
+            "prompt_tokens_per_request": len(prompts[0]["token_ids"]),
             "generated_tokens_per_request": int(max_tokens),
             "live_initial_rows": live_initial_rows,
         },
@@ -532,13 +560,22 @@ def _run_configuration(args: argparse.Namespace, config: Configuration) -> dict[
             llm.prepare(max_sequence_length=int(args.max_sequence_length), sampling_params=params)
             adapter = llm._get_text_generator()
             owner = adapter._runner
-            prompts = _prompt_rows(config.rows, args.prompt_length, args.prompt_token_id)
+            session = owner._session
+            if session is None or session.tokenizer is None:
+                raise RuntimeError("prepared PARO owner did not expose its tokenizer")
+            prompts = _prompt_rows(
+                session.tokenizer,
+                config.rows,
+                args.prompt_length,
+                args.prompt_token_id,
+            )
             references: dict[str, dict[str, Any]] = {}
             for prompt in prompts:
-                digest = token_ids_sha256(prompt)
+                digest = str(prompt["token_ids_sha256"])
                 if digest in references:
                     continue
-                output = llm.generate_detailed((prompt,), params)[0]
+                prompt_ids = tuple(int(token) for token in prompt["token_ids"])
+                output = llm.generate_detailed((prompt_ids,), params)[0]
                 references[digest] = {
                     "generated_ids": list(output.generated_token_ids or ()),
                     "text": output.text,
@@ -681,7 +718,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         },
         build_profile="gfx1151_paro_resident_openai_sse_native_and_serial",
         timing_protocol=(
-            "one fixed-capacity prepared model per width; exact raw-token prompts; "
+            "one fixed-capacity prepared model per width; exact-roundtrip text prompts; "
             "concurrent OpenAI SSE; resident reclaim token-ID oracle; client cycle wall"
         ),
         warmups=int(args.warmup_runs),

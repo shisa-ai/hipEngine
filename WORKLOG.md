@@ -163773,3 +163773,34 @@ Validation before the first hardware run:
 No performance result is claimed by this commit. Next: push the two clean
 commits to the gfx1151 candidate, run the full clean F1 and SSE packets, and
 retain only if every repeated and delayed-admission row is exact.
+
+
+## 2026-07-18 — Correct the PARO SSE prompt transport contract
+
+The first clean hardware invocation of `paro_live_server_bench.py` failed its
+c1 request immediately with HTTP 400: OpenAI streaming intentionally rejects
+exact token-ID prompts (`unsupported_parameter`, `param=stream`). The failed
+attempt produced no usable timing row and was stopped before loading the
+remaining configurations. This was a harness-contract error, not a PARO model,
+server lifecycle, or generated-token failure.
+
+The harness now constructs the same 512-ID rows as F1, decodes each to text,
+and requires tokenizer encode(decode(ids)) to reproduce every ID before sending
+the text through SSE. The independent c1 oracle still consumes the exact ID
+row, resident reclaim captures the actual server-tokenized prompt row, and each
+sample requires those two rows plus all generated IDs/text/usage to match. This
+preserves an exact prompt identity gate while honoring the public streaming API.
+
+Validation:
+
+- Focused host tests and Ruff pass (**5/5**), including exact-roundtrip prompt
+  construction.
+- A Radeon 8060S/gfx1151 c1 p512/d8 zero-warmup hardware smoke passed the real
+  SSE route with exact prompt/generated IDs, eight deltas, exact usage, length
+  finish, done sentinel, ownership drain, and expected serial c1 route. Raw
+  diagnostic: `/tmp/paro-g5-sse-roundtrip-smoke/result.json` (**129,600 bytes**,
+  SHA-256 `61475c0dae05859703217e2021c65f2c5979dfe9bdd09f2c3ed3d630782ef2cf`),
+  **4.878 aggregate tok/s**. This short smoke is contract validation only.
+
+Next: commit/push the correction, recreate a clean remote checkout, and rerun
+the full one-warmup/three-measurement native-plus-serial SSE packet.

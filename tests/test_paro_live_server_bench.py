@@ -36,15 +36,30 @@ def test_parse_configurations_keeps_explicit_native_and_serial_order() -> None:
         SCRIPT._parse_configurations("c1,c1")
 
 
-def test_prompt_rows_change_only_the_final_token() -> None:
-    rows = SCRIPT._prompt_rows(5, 4, 9707)
-    assert rows == (
+def test_prompt_rows_change_only_the_final_token_and_roundtrip_text() -> None:
+    class Encoding:
+        def __init__(self, ids):
+            self.ids = ids
+
+    class Tokenizer:
+        @staticmethod
+        def decode(ids):
+            return ",".join(str(token) for token in ids)
+
+        @staticmethod
+        def encode(text):
+            return Encoding([int(token) for token in text.split(",")])
+
+    rows = SCRIPT._prompt_rows(Tokenizer(), 5, 4, 9707)
+    assert tuple(row["token_ids"] for row in rows) == (
         (9707, 9707, 9707, 9707),
         (9707, 9707, 9707, 9708),
         (9707, 9707, 9707, 9709),
         (9707, 9707, 9707, 9710),
         (9707, 9707, 9707, 9707),
     )
+    assert all(row["roundtrip_exact"] for row in rows)
+    assert rows[1]["text"] == "9707,9707,9707,9708"
 
 
 def test_stats_and_latency_delta_are_recomputed_from_new_samples() -> None:
