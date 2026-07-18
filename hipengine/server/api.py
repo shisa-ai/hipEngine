@@ -5208,6 +5208,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             and (not _request_logprobs_enabled(request) or live_completion_logprobs)
             and not _structured_result_validation(request)
         ):
+            # StreamingResponse owns the ASGI receive channel and cancels its
+            # body iterator on disconnect. Avoid a competing receive through
+            # Request.is_disconnected() while that response is active.
+            control = replace(control, disconnected=None)
             return StreamingResponse(
                 account_active_stream_cancellation(
                     stream_completion_one(expanded_prompts[0], request, control, raw_request),
@@ -5406,6 +5410,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             prompt = prepared_prompt.prompt
             fit_context_extra = prepared_prompt.fit_context_extra
             if request.stream:
+                control = replace(control, disconnected=None)
                 live_chat_logprobs = (
                     bool(request.logprobs)
                     and not request.tools

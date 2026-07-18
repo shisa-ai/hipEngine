@@ -34,7 +34,6 @@ DEFAULT_KV_POOL_LOW_WATER_PAGES = 128
 DEFAULT_KV_POOL_CHUNK_PAGES = 128
 DEFAULT_KV_POOL_IDLE_GRACE_SECONDS = 30.0
 DEFAULT_MAX_PREFILL_CHUNK_TOKENS = 256
-DEFAULT_RESIDENT_STREAM_QUEUE_MAX_CHUNKS = 64
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,7 +149,7 @@ class SubmitPollTextGenerator:
         prefill_chunk_size: int = 1024,
         context_bucket_size: int = 256,
         config: EngineLoopConfig | None = None,
-        stream_queue_max_chunks: int = DEFAULT_RESIDENT_STREAM_QUEUE_MAX_CHUNKS,
+        stream_queue_max_chunks: int = 16,
     ) -> None:
         if capacity is not None and capacity <= 0:
             raise ValueError("capacity must be positive")
