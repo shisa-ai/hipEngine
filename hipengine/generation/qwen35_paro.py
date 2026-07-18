@@ -2250,8 +2250,6 @@ class Qwen35ParoResidentModelRunner:
         self._ensure_open()
         if max_sequence_length is not None and int(max_sequence_length) <= 0:
             raise ValueError("max_sequence_length must be positive")
-        if self._rows:
-            raise RuntimeError("cannot resize the PARO resident model owner while requests are registered")
         if sampling_params is None and self._session_kv_policy is not None:
             kv_policy = self._session_kv_policy
         else:

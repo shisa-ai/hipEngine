@@ -8265,6 +8265,10 @@ def _resident_session_for_engine(engine: Any) -> Any | None:
         session = getattr(generator, "_session", None)
         if session is not None:
             return session
+        resident_owner = getattr(generator, "_resident_model_runner", None)
+        session = getattr(resident_owner, "_session", None)
+        if session is not None:
+            return session
     session = getattr(engine, "_session", None)
     if session is not None:
         return session

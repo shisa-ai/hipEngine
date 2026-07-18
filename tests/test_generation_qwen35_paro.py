@@ -18,6 +18,7 @@ from hipengine.generation import (
     TokenLogprob,
 )
 from hipengine.generation.sampling import select_token
+from hipengine.kvcache import resolve_kv_policy
 from hipengine.runtime.qwen35_paro_runner import (
     Qwen35ParoAutoregressiveStepResult,
     estimate_qwen35_paro_kv_capacity,
@@ -62,6 +63,40 @@ def _result(
 def _decode_state(output):
     assert output.telemetry is not None
     return output.telemetry.to_json_dict()["decode_state"]
+
+
+def test_paro_resident_prepare_is_idempotent_while_requests_are_registered() -> None:
+    owner = qwen35.Qwen35ParoResidentModelRunner.__new__(
+        qwen35.Qwen35ParoResidentModelRunner
+    )
+    owner._closed = False
+    owner._rows = {7: object()}
+    owner._runner = SimpleNamespace(
+        config=SimpleNamespace(max_position_embeddings=4096)
+    )
+    owner._session = SimpleNamespace(max_sequence_length=1024)
+    owner._session_kv_policy = resolve_kv_policy("bf16")
+    owner._session_kv_key = owner._kv_key(owner._session_kv_policy)
+    bf16_sampling = SimpleNamespace(
+        kv_storage="bf16",
+        kv_scale_dtype="fp16",
+        kv_scale_granularity="per_token_head",
+    )
+
+    assert owner.prepare(
+        max_sequence_length=512,
+        sampling_params=bf16_sampling,
+    ) == 1024
+
+    with pytest.raises(ValueError, match="KV policy cannot change"):
+        owner.prepare(
+            max_sequence_length=512,
+            sampling_params=SimpleNamespace(
+                kv_storage="int8_per_token_head",
+                kv_scale_dtype="fp16",
+                kv_scale_granularity="per_token_head",
+            ),
+        )
 
 
 def test_qwen35_paro_short_prompt_prefill_uses_serial_c1_steps() -> None:
