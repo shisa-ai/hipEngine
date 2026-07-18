@@ -163225,3 +163225,42 @@ git diff --check
 
 This is a correctness-contract/test repair, not a performance claim and not a
 production kernel change. The earlier two-failure full-suite blocker is closed.
+
+## 2026-07-13 — Audit gfx1151 PARO concurrency and OpenAI integration boundary
+
+Audited current `main` at `fcdef74e` before resuming PARO concurrency. The
+existing PARO prompt-list path is a static scheduler-owned batch, not the shared
+model-owning continuous loop:
+
+- `Qwen35ParoOneTokenGenerator.generate_detailed()` can run one coalesced prompt
+  list through packed prefill and partitioned decode. The default gfx1151 c>N
+  route is only the exact BF16 c2 hybrid below 1,024 total context; it keeps a
+  row-local full-attention pre-O boundary, is not graph-capturable, and reports
+  `native_caware_decode=false`/`throughput_claim_eligible=false`.
+- The default c2-c8 width artifact is intentionally fail-closed. It has
+  `performance_claim=false`, an invalid legacy batch-shaped c1 oracle, and
+  embedded schema 1 while the loader requires schema 2. Consequently c4/c8 do
+  not enter native production dispatch, and unsupported groups use independent
+  width-1 sessions.
+- The current session ABI already owns physical-slot-shaped hidden, Conv/GDN,
+  and KV state, accepts sparse ordered slot ids in `step_batch_native()`, and
+  can commit packed prefill into explicit `CompactPromptSlab.slot_ids`. This is
+  the reusable state substrate for a PARO resident model runner.
+- `Qwen35ParoOneTokenGenerator` does not implement
+  `create_resident_model_runner()`. `SubmitPollTextGenerator` therefore uses its
+  compatibility runner: non-stream OpenAI calls may be window-coalesced into one
+  static prompt list, but there is no mid-flight admission/reclaim; controlled
+  SSE is false and PARO `stream_detailed()` executes one c1 request at a time.
+- GGUF's `Qwen35GGUFResidentModelRunner` is the production contract to reuse:
+  `prefill_batch`, `decode_batch`, `reserve_admission`, `rollback_admission`,
+  `compact_batch`, `reclaim`, output ownership, route manifests, and
+  observability. PARO must attach to this shared loop rather than add another
+  scheduler.
+
+Execution order remains correctness-first: transfer the exact c2 algorithms to
+current gfx1151 and generalize one physical c4/c8 step; then add the PARO model
+owner and route blocking/SSE through it; finally run p512/d128 direct and OpenAI
+repetition, lifecycle, profiler, scaling, memory, and cancellation gates on a
+real gfx1151. The current host exposes only W7900 and RX 7900 XTX (`gfx1100`),
+so no gfx1151 performance or retention claim can be made here without a gfx1151
+runner.
