@@ -58,6 +58,17 @@ _SUPPORTED_BACKENDS = ("hip_gfx1100", "hip_gfx1151")
 _NATIVE_EXECUTION_PATHS = frozenset(
     {"packed_native", "native_c1", "native_c1_eager", "native_c1_graph"}
 )
+_CANONICAL_WORKLOADS = (
+    "static_c1",
+    "static_c8",
+    "ragged_burst",
+    "continuous_fixed",
+    "continuous_poisson",
+    "cancellation_disconnect",
+    "overload",
+    "idle_recovery",
+    "soak",
+)
 _PROVENANCE_ENV_KEYS = (
     "HIPENGINE_BACKEND",
     "HIPENGINE_HIP_ARCH",
@@ -1324,6 +1335,22 @@ def _execute_workload(
     return summary
 
 
+def _parse_workload_names(
+    raw: str,
+    *,
+    available: Sequence[str] = _CANONICAL_WORKLOADS,
+) -> tuple[str, ...]:
+    names = tuple(part.strip() for part in str(raw).split(",") if part.strip())
+    if not names:
+        raise ValueError("workloads must not be empty")
+    unknown = sorted(set(names) - set(available))
+    if unknown:
+        raise ValueError(f"unknown workloads: {unknown!r}")
+    if len(set(names)) != len(names):
+        raise ValueError("workloads must be unique")
+    return names
+
+
 def _parse_tuning_candidates(raw: str) -> tuple[tuple[str, int], ...]:
     result: list[tuple[str, int]] = []
     for item in str(raw).split(","):
@@ -1398,15 +1425,25 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         itl_p99_seconds=float(args.slo_itl_p99_seconds),
         end_to_end_p95_seconds=float(args.slo_end_to_end_p95_seconds),
     )
-    workloads = _build_workload_specs(
+    all_workloads = _build_workload_specs(
         fixed_rate_per_second=float(args.fixed_rate_per_second),
         poisson_rate_per_second=float(args.poisson_rate_per_second),
         poisson_seed=int(args.poisson_seed),
         soak_seconds=float(args.soak_seconds),
         soak_rate_per_second=float(args.soak_rate_per_second),
     )
+    workload_names = _parse_workload_names(
+        args.workloads,
+        available=tuple(all_workloads),
+    )
+    workloads = {name: all_workloads[name] for name in workload_names}
+    complete_packet = bool(
+        workload_names == _CANONICAL_WORKLOADS and not args.skip_tuning
+    )
+    tuning_specs = all_workloads["continuous_fixed"]
     all_specs = [spec for rows in workloads.values() for spec in rows]
-    tuning_specs = workloads["continuous_fixed"]
+    if not args.skip_tuning:
+        all_specs.extend(tuning_specs)
     compiler_version = _read_compiler_version(args.compiler_version_file)
     if args.require_cached_build and compiler_version is None:
         raise ValueError("require-cached-build requires compiler-version-file")
@@ -1589,7 +1626,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 ready = _http_json("127.0.0.1", server.port, "GET", "/ready")
                 if not bool(ready.get("ready")):
                     raise RuntimeError(f"server readiness failed: {ready}")
-                for policy, chunk in candidates:
+                if args.skip_tuning:
+                    selected = TuningCandidate(
+                        prefill_decode_policy=str(args.initial_policy),
+                        prefill_chunk_tokens=int(args.initial_prefill_chunk_tokens),
+                        goodput_generated_tokens_per_second=0.0,
+                        ttft_p95_seconds=0.0,
+                        itl_p99_seconds=0.0,
+                        passed=True,
+                    )
+                for policy, chunk in (() if args.skip_tuning else candidates):
                     adapter._loop.prefill_decode_policy = str(policy)
                     adapter._loop.prefill_chunk_size = int(chunk)
                     name = f"tuning_{policy}_{chunk}"
@@ -1634,12 +1680,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         file=sys.stderr,
                         flush=True,
                     )
-                try:
-                    selected = _select_tuning_candidate(
-                        [TuningCandidate(**row["candidate"]) for row in tuning_runs]
-                    )
-                except ValueError as exc:
-                    selection_error = str(exc)
+                if not args.skip_tuning:
+                    try:
+                        selected = _select_tuning_candidate(
+                            [TuningCandidate(**row["candidate"]) for row in tuning_runs]
+                        )
+                    except ValueError as exc:
+                        selection_error = str(exc)
                 if selected is not None:
                     adapter._loop.prefill_decode_policy = selected.prefill_decode_policy
                     adapter._loop.prefill_chunk_size = selected.prefill_chunk_tokens
@@ -1695,11 +1742,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         and all(row["passed"] is True for row in workload_results.values())
     )
     overload_metrics_ok = bool(
-        workload_results.get("overload", {})
-        .get("metrics", {})
-        .get("counter_delta", {})
-        .get("hipengine_request_rejected_total", 0.0)
-        == workload_results.get("overload", {}).get("overload", {}).get("rejected", -1)
+        "overload" not in workload_results
+        or (
+            workload_results.get("overload", {})
+            .get("metrics", {})
+            .get("counter_delta", {})
+            .get("hipengine_request_rejected_total", 0.0)
+            == workload_results.get("overload", {})
+            .get("overload", {})
+            .get("rejected", -1)
+        )
     )
     final_ownership_passed = bool(
         int(final_idle["snapshot"]["loop"]["requests"]["active"]) == 0
@@ -1747,9 +1799,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "schema": 1,
         "kind": f"{scope}_gguf_production_serving_load_gate",
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "status": "accepted" if passed else "failed",
+        "status": (
+            "accepted"
+            if passed and complete_packet
+            else "measurement_complete"
+            if passed
+            else "failed"
+        ),
         "passed": passed,
-        "performance_claim": passed,
+        "complete_packet": complete_packet,
+        "performance_claim": bool(passed and complete_packet),
         "source": {"commit": source_commit, "dirty": source_dirty},
         "provenance": provenance,
         "configuration": {
@@ -1769,8 +1828,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         },
         "tuning": {
             "method": (
-                "maximize exact generated-token SLO goodput; tie-break lower TTFT p95, ITL p99, "
-                "then smaller prefill chunk"
+                "configured focused validation; no selection claim"
+                if args.skip_tuning
+                else "maximize exact generated-token SLO goodput; tie-break lower TTFT p95, "
+                "ITL p99, then smaller prefill chunk"
             ),
             "candidates": tuning_runs,
             "selected": None if selected is None else asdict(selected),
@@ -1811,6 +1872,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     parser.add_argument("--backend", choices=_SUPPORTED_BACKENDS, default="hip_gfx1151")
     parser.add_argument("--quant", default="gguf_q4_k_m")
+    parser.add_argument(
+        "--workloads",
+        default=",".join(_CANONICAL_WORKLOADS),
+        help="Comma-separated workload subset; subsets are diagnostic and not performance claims.",
+    )
     parser.add_argument("--max-active-requests", type=int, default=8)
     parser.add_argument("--max-pending-requests", type=int, default=16)
     parser.add_argument("--max-queued-requests", type=int, default=16)
@@ -1822,6 +1888,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--tuning-candidates",
         default="protect_decode:128,protect_ttft:128,fair:128,fair:256",
+    )
+    parser.add_argument(
+        "--skip-tuning",
+        action="store_true",
+        help="Use the initial policy/chunk for a focused diagnostic workload subset.",
     )
     parser.add_argument("--fixed-rate-per-second", type=float, default=2.0)
     parser.add_argument("--poisson-rate-per-second", type=float, default=2.0)

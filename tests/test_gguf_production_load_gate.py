@@ -12,6 +12,7 @@ from scripts.gguf_production_load_gate import (
     _evaluate_workload,
     _http_json,
     _LocalUvicorn,
+    _parse_workload_names,
     _poisson_arrival_offsets,
     _select_tuning_candidate,
 )
@@ -53,6 +54,19 @@ def test_poisson_offsets_are_seeded_monotonic_and_start_at_zero() -> None:
     assert all(left < right for left, right in zip(first, first[1:]))
     with pytest.raises(ValueError, match="positive"):
         _poisson_arrival_offsets(count=2, rate_per_second=0.0, seed=1)
+
+
+def test_workload_selector_is_ordered_unique_and_fail_closed() -> None:
+    available = ("static_c1", "cancellation_disconnect", "soak")
+
+    assert _parse_workload_names(
+        "cancellation_disconnect",
+        available=available,
+    ) == ("cancellation_disconnect",)
+    with pytest.raises(ValueError, match="unknown"):
+        _parse_workload_names("overload", available=available)
+    with pytest.raises(ValueError, match="unique"):
+        _parse_workload_names("soak,soak", available=available)
 
 
 def test_workload_plan_covers_required_production_modes() -> None:
