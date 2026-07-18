@@ -163465,3 +163465,45 @@ model step: public/OpenAI PARO remains width-1; c4/c8, longer context, sampled
 decode, graph replay, and non-BF16 KV remain separate gates. Next: generalize
 one true physical c4 algorithm, then attach retained PARO widths to the shared
 model-owning loop.
+
+## 2026-07-13 — Promote exact multi-row Marlin-K for PARO c>N
+
+Merged the five new `origin/main` commits through `32e78f78`, including the
+retained gfx1151 selected-batch c2 packet, then resumed G3 from separate clean
+worktrees on W7900 and the accessible `gfx1151` host. The unchanged physical c4
+route was genuinely red at p512/d8: all rows diverged from independent c1 at
+generated index 2 despite one native c4 step, 40/40 selected-batch MoE layers,
+and no row chunk/fallback; aggregate decode was `92.620 tok/s`.
+
+A narrow L1-L4 hidden trace localized the first arithmetic drift to layer-3
+full-attention O projection. QKV, append, exact batch context, gate, and all
+three preceding linear-attention layers were bit-identical. The c4 path used
+AWQ output-tiled math there while c1 used Marlin-K. Enabling the existing
+`gemv_paro_marlin_k_fma_multi_row_fp16` route at its eligible sites made the L4
+transition bit-exact, then made the L8/L16/L24/L32/L40 d2 trace `eq_ok` with no
+hidden, Conv/GDN, full-attention, state, KV, or token drift.
+
+Current clean-tree diagnostics with `HIPENGINE_MARLIN_K_MULTI_ROW_SITES=all`:
+
+- gfx1151 physical c4 p512/d128: **100.245 aggregate tok/s**, **548/548**
+  recorded IDs exact;
+- gfx1151 physical c8 p512/d8: **101.213 aggregate tok/s**, **136/136** IDs
+  exact;
+- gfx1151 c2 p512/d128: **79.240 aggregate tok/s**, **274/274** IDs exact,
+  versus retained `79.218` (+0.03%);
+- W7900 c2 p512/d128: **122.202 aggregate tok/s**, **274/274** IDs exact,
+  versus retained `121.923` (+0.23%).
+
+Promoted only the five known exact projection sites (`single_full_v`,
+`single_full_o`, `single_linear_out`, `single_shared_down`, and
+`single_dense_down`) in `_MARLIN_K_MULTI_ROW_DEFAULT_SITES`; unknown sites
+remain fail-closed and the existing env override remains available for
+rollback/bisection. RED/GREEN policy coverage now asserts those five defaults
+and rejects an unknown projection. Validation: focused policy `6 passed`,
+multi-row Marlin-K GPU bit-exact c2/c3/c4/c5/c6/c8 x 64/128-thread matrix
+`12 passed`, Python compilation, and `git diff --check`.
+
+This is the implementation promotion, not yet a retained c4/c8 claim. Next:
+run default-no-env c4/c8 p512/d128 repetition, all-layer NumPy/state/KV,
+shrinking lifecycle/inactive immutability, prompt-category, and profiler gates;
+then attach the retained physical widths to the model-owning OpenAI loop.
