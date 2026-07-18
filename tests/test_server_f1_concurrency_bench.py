@@ -220,6 +220,13 @@ def test_paro_oracle_join_delay_uses_http_wall_without_prefill_breakdown() -> No
     assert delay == pytest.approx(0.72)
 
 
+def test_hipengine_parser_locks_the_retained_prefill_decode_policy(tmp_path: Path) -> None:
+    args = SCRIPT.build_parser().parse_args(
+        ["--engine", "hipengine", "--json", str(tmp_path / "result.json")]
+    )
+    assert args.hipengine_prefill_decode_policy == "protect_ttft"
+
+
 def test_hipengine_route_expectation_accepts_width1_and_native_or_serial_cn() -> None:
     assert SCRIPT._hipengine_route_expectation_passes(
         concurrency=1,
@@ -232,8 +239,8 @@ def test_hipengine_route_expectation_accepts_width1_and_native_or_serial_cn() ->
     assert SCRIPT._hipengine_route_expectation_passes(
         concurrency=2,
         expectation="native",
-        serial_values=[False, False],
-        native_values=[True, True],
+        serial_values=[False] * 6,
+        native_values=[True] * 6,
         shape_passed=True,
         resident_capacity=2.0,
     )

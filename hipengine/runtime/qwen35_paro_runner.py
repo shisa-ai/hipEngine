@@ -29,6 +29,7 @@ from hipengine.core.memory import (
 )
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.backends import (
+    backend_package_capability,
     hip_target_arch_environment,
     hip_target_arch_for_backend,
     resolve_backend,
@@ -249,6 +250,23 @@ def _env_int_set(name: str) -> set[int]:
     if any(layer < 0 for layer in parsed):
         raise ValueError(f"{name} layer ids must be non-negative")
     return parsed
+
+
+def _automatic_full_attention_row_chunk_size(rows: int, *, backend: str) -> int:
+    """Return the backend package's diagnostic row-chunk default."""
+
+    width = int(rows)
+    native_exact_widths = frozenset(
+        int(value)
+        for value in backend_package_capability(
+            backend,
+            "PARO_FULL_ATTN_NATIVE_EXACT_WIDTHS",
+            (),
+        )
+    )
+    if width in native_exact_widths:
+        return 0
+    return 2 if width in {3, 4, 5, 6, 7, 8} else 0
 
 
 def _retained_full_attention_row_chunk_layers(rows: int) -> set[int]:
@@ -5821,13 +5839,17 @@ class Qwen35ParoResidentSession:
         if full_attention_row_chunk_size < 0:
             raise ValueError("HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_SIZE must be non-negative")
         full_attention_row_chunk_env_value = os.environ.get(full_attention_row_chunk_env)
+        automatic_full_attention_row_chunk_size = _automatic_full_attention_row_chunk_size(
+            rows,
+            backend=str(getattr(self, "backend", "hip_gfx1100")),
+        )
         auto_full_attention_row_chunks = (
-            rows in {3, 4, 5, 6, 7, 8}
+            automatic_full_attention_row_chunk_size > 0
             and full_attention_row_chunk_size == 0
             and (full_attention_row_chunk_env_value is None or full_attention_row_chunk_env_value.strip() == "")
         )
         if auto_full_attention_row_chunks:
-            full_attention_row_chunk_size = 2
+            full_attention_row_chunk_size = automatic_full_attention_row_chunk_size
         force_full_attention_row_chunks = rows > 1 and 0 < full_attention_row_chunk_size < rows
         full_attention_row_chunk_source = "auto" if auto_full_attention_row_chunks else "env"
         full_attention_row_chunk_layers_env = "HIPENGINE_QWEN35_BATCH_DECODE_FULL_ATTN_ROW_CHUNK_LAYERS"
