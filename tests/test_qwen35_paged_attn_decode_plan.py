@@ -20,6 +20,7 @@ from hipengine.kernels.hip_gfx1100.attention import (
     qwen35_full_attn_decode_context_bf16,
     qwen35_full_attn_gate_mul_bf16,
     qwen35_full_attn_gate_mul_fp16,
+    qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans,
     qwen35_paged_full_attn_decode_context_bf16_batch_spans,
     qwen35_paged_full_attn_decode_context_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_bf16_spans,
@@ -535,7 +536,15 @@ def test_qwen35_paged_attn_decode_wrapper_validates_before_gpu_load() -> None:
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
-def test_qwen35_paged_attn_decode_batch_honors_shared_physical_blocks() -> None:
+@pytest.mark.parametrize(
+    "batch_kernel",
+    (
+        qwen35_paged_full_attn_decode_context_bf16_batch_spans,
+        qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans,
+    ),
+    ids=("adaptive", "fixed256"),
+)
+def test_qwen35_paged_attn_decode_batch_honors_shared_physical_blocks(batch_kernel) -> None:
     """Batch row block tables contain physical block IDs, not row-local IDs."""
 
     runtime = get_hip_runtime()
@@ -583,7 +592,7 @@ def test_qwen35_paged_attn_decode_batch_honors_shared_physical_blocks() -> None:
             max_live_count=max_context_len,
             storage_dtype=DType.BF16,
         )
-        qwen35_paged_full_attn_decode_context_bf16_batch_spans(
+        batch_kernel(
             query_b.ptr,
             key_b.ptr,
             value_b.ptr,

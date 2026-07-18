@@ -164075,3 +164075,51 @@ Validation for this docs/process unit: re-read `docs/CONCURRENCY.md`, ran
 tree was clean before the edits. No GPU benchmark was required and no new
 performance claim is made. Next: commit this roadmap unit, then execute F0 on a
 clean current-main checkout before changing the occupancy policy.
+
+## 2026-07-19 — Repair gfx1151 GGUF physical-c2 long-horizon exactness
+
+F0 exposed a real current-tree correctness regression before occupancy-policy
+work began. The first packet in the main checkout was stopped after its artifact
+reported 255 unrelated untracked files; those rows are diagnostic only. A clean
+detached `32c72f9c` worktree then prebuilt its own AOTriton/JIT keys and ran the
+complete direct p512/d128 c1/c2/c4/native-c8/chunked-c8/serial-c4 packet. Every
+configuration repeated internally and c4/c8 agreed, but the cross-route gate
+failed: c1/c2/c4 prefix equality and c4-vs-serial-c4 were false. The failed
+packet still measured diagnostic c1/c2/c4/c8 at
+**54.171/76.2/102.677/127.985 aggregate tok/s**; none is retained because the
+correctness gate failed. Raw JSON is 1,270,126 bytes, SHA-256
+`c9a8de970fa1e018c7ca7fedf8c627d5037510fb8583185afeb2540a93b95b1e`.
+
+The independent-c1 physical-c2 p512/d128 graph oracle localized the first drift
+to decode step 1, row 0, full-attention layer 7: **63** BF16 hidden elements,
+max abs **0.000244140625**. The clean RED artifact is 3,196,122 bytes, SHA-256
+`8b550f149fceab5e06cd02ceafc785549b96759d578e1e3caebc8216e8bbac94`.
+This closes the ambiguity left by the short p16/d2 E3 gate: arbitrary-C grouping
+was not at fault. The gfx1151 registry override selected the generic batch
+attention reduction, whose rows<=2/context<1024 fast path changes workgroup
+geometry from 256 to 1024 threads. c4/c8 use 256 threads and remained exact.
+
+Added a separate raw-pointer `bf16_context_batch_fixed256_spans` wrapper over the
+same generic device reduction. Only the gfx1151 four-axis
+`paged_attn_decode/w4_paro/bf16_context_batch_c1_exact_spans` override resolves
+to it. The generic entrypoint and its 1024-thread small-row PARO path are
+unchanged; gfx1100's scalar-tree target is unchanged. The host RED asserted the
+new resolution before implementation. The fixed primitive is bit-exact against
+independent scalar paged BF16 attention. The real c2 graph gate then passes
+p512/d2 **160/160** and p512/d128 **10,240/10,240** all-layer comparisons,
+exact generated tokens, exact Conv/GDN state, exact live BF16 KV, and 128 graph
+replays with no first divergence. The d128 artifact is 24,223 bytes, SHA-256
+`1040c955988fcede0bf6709f4dc60499a2f06f433c6509451bbcf80c139d7426`.
+
+A cached-only `rocprofv3 --kernel-trace` of the final c2 path records **20**
+`qwen35_paged_full_attn_decode_context_tensor_batch_kernel` launches at
+workgroup X **256**, grid Y **2**, median **231855 ns** (min/max
+228268/235241 ns), all positive. Raw CSV SHA-256 is
+`e8f2c70a1653e6989ea980c194fcd495b4c95c1d9c794167ddef12f7f69028e3`.
+The focused attention/dispatch/decode/GGUF host bundle passes **153/153**; the
+new GPU primitive and Python compilation pass; `git diff --check` passes. Ruff
+is unavailable in the declared venv (`Failed to spawn: ruff`), unchanged from
+prior gfx1151 work. Updated `docs/KERNELS.md` and compact correctness artifact
+`benchmarks/results/2026-07-19-gfx1151-gguf-f0-c2-fixed256-correctness.json`.
+No performance row is promoted. Next: commit this correctness unit, then rerun
+only the interrupted clean F0 direct/server/profiler packet from that revision.
