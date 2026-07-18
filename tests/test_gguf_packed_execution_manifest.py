@@ -26,16 +26,19 @@ def test_packed_profiler_counts_exact_q6_rowtile_groups() -> None:
     assert _q6_rowtile_dispatch_count(13) == 3
 
 
-def test_packed_rocprof_accepts_native_c8_target_and_marker() -> None:
+def test_packed_rocprof_accepts_declared_c2_c4_c8_targets_and_markers() -> None:
     parser = build_arg_parser()
     assert parser.parse_args([]).packed_concurrency == 4
 
-    args = parser.parse_args(["--backend", "hip_gfx1151", "--packed-concurrency", "8"])
-    assert args.backend == "hip_gfx1151"
-    assert args.packed_concurrency == 8
-    assert _marker_name(args.packed_concurrency) == (
-        "hipengine_gguf_packed_c1_profile_c8_steady_decode_step"
-    )
+    for width in (2, 4, 8):
+        args = parser.parse_args(
+            ["--backend", "hip_gfx1151", "--packed-concurrency", str(width)]
+        )
+        assert args.backend == "hip_gfx1151"
+        assert args.packed_concurrency == width
+        assert _marker_name(args.packed_concurrency) == (
+            f"hipengine_gguf_packed_c1_profile_c{width}_steady_decode_step"
+        )
 
 
 def test_packed_rocprof_scopes_kind_and_correctness_gate_to_backend() -> None:
@@ -44,6 +47,12 @@ def test_packed_rocprof_scopes_kind_and_correctness_gate_to_backend() -> None:
     )
     assert _artifact_kind("gfx1151", closure_level="c4", packed_concurrency=8) == (
         "gfx1151_gguf_concurrency_e1_native_c8_graph_profiler_census"
+    )
+    assert _artifact_kind("gfx1151", closure_level="c4", packed_concurrency=4) == (
+        "gfx1151_gguf_concurrency_c4_graph_replay_census"
+    )
+    assert _artifact_kind("gfx1151", closure_level="c4", packed_concurrency=2) == (
+        "gfx1151_gguf_concurrency_c2_graph_replay_census"
     )
     assert _correctness_gate("hip_gfx1100").endswith(
         "2026-07-16-gfx1100-gguf-concurrency-b4-category-lifecycle.json"
