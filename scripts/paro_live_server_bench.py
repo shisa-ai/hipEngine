@@ -131,6 +131,22 @@ def _counter_delta(before: Mapping[str, Any], after: Mapping[str, Any]) -> dict[
     }
 
 
+def _fallback_reasons_ok(
+    config: Configuration,
+    fallback_delta: Mapping[str, Any],
+) -> bool:
+    active = {
+        str(key): int(value)
+        for key, value in fallback_delta.items()
+        if int(value) != 0
+    }
+    if config.native:
+        return not active
+    return bool(active) and set(active) == {"no native batch width profile"} and all(
+        value > 0 for value in active.values()
+    )
+
+
 def _latency_delta(before: Mapping[str, Any], after: Mapping[str, Any]) -> dict[str, list[float]]:
     result: dict[str, list[float]] = {}
     for name in sorted(set(before) | set(after)):
@@ -510,12 +526,13 @@ def _run_sample(
             and all(value == 0 for value in native_steps_by_row)
             and all(value > 0 for value in serial_steps_by_row)
         )
+    fallback_reasons_ok = _fallback_reasons_ok(config, fallback_delta)
     latency = _latency_delta(before_latency, after["loop"]["latency_seconds"])
     passed = bool(
         http_ok
         and ownership_ok
         and route_ok
-        and not any(int(value) for value in fallback_delta.values())
+        and fallback_reasons_ok
         and all(row["prompt_exact"] and row["generated_exact"] and row["text_exact"] for row in exact_rows)
         and generated_tokens == rows * int(max_tokens)
     )
@@ -547,6 +564,7 @@ def _run_sample(
             "passed": route_ok,
             "counts_delta": route_delta,
             "fallback_reasons_delta": fallback_delta,
+            "fallback_reasons_passed": fallback_reasons_ok,
             "observed_native_widths": list(observed_native_widths),
             "native_decode_steps_by_row": native_steps_by_row,
             "serial_decode_steps_by_row": serial_steps_by_row,

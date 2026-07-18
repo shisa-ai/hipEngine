@@ -81,6 +81,20 @@ def test_sse_parser_accepts_payload_and_done() -> None:
     assert SCRIPT._parse_sse_line("event: ignored") is None
 
 
+def test_fallback_gate_accepts_only_the_declared_serial_control_blocker() -> None:
+    serial = SCRIPT.CONFIGURATIONS["serial_c8"]
+    native = SCRIPT.CONFIGURATIONS["native_c8"]
+    expected = {"no native batch width profile": 1016}
+
+    assert SCRIPT._fallback_reasons_ok(serial, expected) is True
+    assert SCRIPT._fallback_reasons_ok(native, expected) is False
+    assert SCRIPT._fallback_reasons_ok(serial, {}) is False
+    assert SCRIPT._fallback_reasons_ok(
+        serial,
+        {"native_width_runtime_unavailable": 1},
+    ) is False
+
+
 def test_observed_native_widths_ignore_truthful_serial_edges() -> None:
     exact_rows = [
         {

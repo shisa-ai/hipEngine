@@ -163863,3 +163863,28 @@ Validation: both RED tests fail on `e51f248a` and pass after the fix; full
 performance result is claimed yet. Next: commit/push this host fix, rerun a
 clean c4 SSE smoke, then restart only the stopped full native/serial packet if
 every stream and reclaimed owner route is exact.
+
+
+## 2026-07-18 — Admit the declared PARO serial SSE control
+
+The first complete post-prepare-fix SSE packet made every serial-c8 prompt,
+generated ID, text stream, usage record, finish marker, and ownership gate
+exact. It also recorded zero native calls, 1,016 serial row calls/sample, and
+127 serial decode steps on every row. The harness nevertheless rejected all
+four serial samples because it applied the native-route requirement of zero
+fallback-reason deltas. Disabling the native width profile intentionally emits
+`no native batch width profile`; that blocker is the declaration that makes the
+serial control truthful rather than an undeclared fallback.
+
+The harness now accepts that one positive blocker only for an explicitly serial
+configuration. Native configurations still require no blocker, and the serial
+control rejects empty, negative, or runtime-unavailable deltas. The focused
+host suite passes **7/7**, Ruff and `git diff --check` pass. This correction does
+not make the full packet retainable: one separate native-c8 measured row changed
+at generated index 2 after joining in stable slot 7, while its prompt, request
+ownership, HTTP accounting, native route, and every other static/live c8 row
+were exact. Raw diagnostic `/tmp/paro-g5-sse-retained-16ab00f8/result.json` is
+194,439,755 bytes, SHA-256
+`aa1ed431d42f5f59078c27d646c4d9b740f47caba0bf93000de4ba816f3d5538`.
+Next: reproduce and close that staggered-admission state boundary before rerunning
+any retained packet.
