@@ -11,6 +11,7 @@ from hipengine.kernels.hip_gfx1100.runtime import (
     advance_decode_position_i64,
     advance_decode_positions_i64,
     commit_packed_decode_graph_step,
+    copy_i32_to_i64,
     embedding_lookup_batch_bf16_i64,
     embedding_lookup_batch_fp16_i64,
     embedding_lookup_batch_mapped_bf16_i64,
@@ -87,6 +88,15 @@ def test_runtime_state_registers_graph_friendly_helpers() -> None:
     )
     assert resolve(backend="hip_gfx1100", layer="scalar_state", quant="w4_paro", variant="set_i64") is set_i64_scalar
     assert resolve(backend="hip_gfx1100", layer="scalar_state", quant="w4_paro", variant="set_vector_i64") is set_i64_vector
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="metadata_cast",
+            quant="gguf_qwen35",
+            variant="i32_to_i64",
+        )
+        is copy_i32_to_i64
+    )
     assert (
         resolve(backend="hip_gfx1100", layer="scalar_state", quant="w4_paro", variant="record_i64_indexed")
         is record_i64_scalar_indexed
@@ -180,6 +190,30 @@ def test_runtime_state_build_plan_is_dry_run_safe(tmp_path) -> None:
     assert artifact.output_path.name == "runtime_state.so"
     assert any(str(path).endswith("state.hip") for path in artifact.sources)
     assert "hipcc" in artifact.command[0]
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_copy_i32_to_i64_matches_exact_cpu_cast() -> None:
+    from hipengine.core.hip import get_hip_runtime
+
+    runtime = get_hip_runtime()
+    source = np.asarray([0, -1, 7, np.iinfo(np.int32).max], dtype=np.int32)
+    expected = source.astype(np.int64)
+    actual = np.zeros(source.shape, dtype=np.int64)
+    bufs = []
+    try:
+        d_source = malloc(source.nbytes, runtime=runtime)
+        d_actual = malloc(actual.nbytes, runtime=runtime)
+        bufs.extend((d_source, d_actual))
+        copy_host_to_device(d_source, host_array_ptr(source), runtime=runtime)
+        copy_i32_to_i64(d_source.ptr, d_actual.ptr, source.size, runtime=runtime)
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(actual), d_actual, runtime=runtime)
+    finally:
+        for buf in reversed(bufs):
+            free(buf, runtime=runtime)
+
+    np.testing.assert_array_equal(actual, expected)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
@@ -287,6 +321,8 @@ def test_embedding_lookup_validates_shape_before_gpu_load() -> None:
         embedding_lookup_batch_mapped_fp16_i64(0, 0, 0, 0, 8, 16, 1)
     with pytest.raises(ValueError, match="rows"):
         set_i64_vector(0, 0, 0)
+    with pytest.raises(ValueError, match="rows"):
+        copy_i32_to_i64(0, 0, 0)
     with pytest.raises(ValueError, match="rows"):
         set_decode_positions_i64(0, 0, 0, 0)
     with pytest.raises(ValueError, match="rows"):

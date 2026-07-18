@@ -82,6 +82,18 @@ PARO_FULL_ATTN_NATIVE_EXACT_WIDTHS = frozenset({4, 8})
 PARO_RETAINED_BATCH_DEFAULTS = True
 PARO_NATIVE_BATCH_DECODE_DEFAULT = True
 _SOURCE_BACKEND = "hip_gfx1100"
+# Native speculative-cycle providers require independent backend correctness and
+# performance gates (N4). Do not inherit a newly imported gfx1100 provider via
+# the generic shared-body alias refresh before that gate lands.
+_GFX1151_ALIAS_EXCLUSIONS = frozenset(
+    {
+        (
+            "speculative_cycle",
+            "w4_gguf",
+            "native_v1_b2_target_graph",
+        ),
+    }
+)
 _GFX1151_OVERRIDES = {
     # The new scalar-tree c1-exact context kernel retained for gfx1100/PARO
     # diverges from gfx1151's established paged-c1 arithmetic at model scale.
@@ -132,6 +144,8 @@ def register_gfx1151_kernels(*, replace: bool = False) -> None:
         import_module(module_name)
     source_keys = [key for key in registered_keys() if key.backend == _SOURCE_BACKEND]
     for key in source_keys:
+        if (key.layer, key.quant, key.variant) in _GFX1151_ALIAS_EXCLUSIONS:
+            continue
         target_key = KernelKey(BACKEND, key.layer, key.quant, key.variant)
         if not replace and is_registered(target_key):
             continue

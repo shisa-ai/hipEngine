@@ -1,0 +1,253 @@
+{
+  "schema": "hipengine.native_spec_cycle_n1.v1",
+  "date": "2026-07-19",
+  "status": "correctness_accepted_performance_rejected",
+  "performance_claim": false,
+  "scope": "GGUF MTP NativeSpecCycle N1 fixed single-request B2/three-row target graph",
+  "git_base_commit": "b96fd44c19f72d27c8e5a33506ba82b0e48f2750",
+  "hipengine_artifact_provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-18T18:15:19.373718+00:00",
+    "repo_root": "/home/lhl/hipEngine-main",
+    "hipengine_commit": "b96fd44c19f72d27c8e5a33506ba82b0e48f2750",
+    "git_branch": "main",
+    "staged_dirty": false,
+    "unstaged_dirty": true,
+    "untracked_dirty": true,
+    "untracked_count": 6,
+    "dirty": true,
+    "configured_backend": "hip_gfx1100",
+    "resolved_backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        11331169424,
+        22662338848
+      ],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "UD-Q4_K_M",
+    "kv_dtype": "bf16",
+    "command": [
+      "uv",
+      "run",
+      "--extra",
+      "dev",
+      "pytest",
+      "-q",
+      "tests/test_gguf_native_spec_cycle.py::test_native_b2_target_graph_matches_eager_hidden_state_and_kv"
+    ],
+    "environment": {
+      "HIPENGINE_GGUF_DECODE_REPACK": "1",
+      "HIPENGINE_GGUF_PREFILL_DEVICE_METADATA": "1",
+      "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+      "HIPENGINE_HIP_ARCH": "gfx1100"
+    },
+    "rocm_version": "HIP version: 7.2.53211-3d9ef42",
+    "hipcc_version": "HIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+    "build_profile": "baseline",
+    "timing_protocol": "Dirty-tree N1 fixed-B2 correctness gate plus one same-tree three-cycle single-prompt control/native diagnostic and matched cached rocprof traces; component commands and raw hashes are embedded in the parent artifact.",
+    "warmups": 0,
+    "repetitions": 1,
+    "profiler": {
+      "tool": "rocprofv3 --kernel-trace",
+      "command": "HIPENGINE_HIP_ARCH=gfx1100 uv run --extra dev python scripts/gguf_mtp_verifier_rocprof.py --mode block-verify --block-rows 3 --native-spec-target-cycle --steps 3 --warmup 1 --max-seq 256 --compiler-version-file /tmp/native-spec-n1-hipcc-version.txt --raw-root /tmp/hipengine-native-spec-n1-rocprof-final --roctx-sdk /home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib/librocprofiler-sdk-roctx.so.1",
+      "measured_steps": 3,
+      "warmup_steps": 1
+    }
+  },
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "kv_dtype": "bf16"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "UD-Q4_K_M",
+    "hidden_size": 2048
+  },
+  "route": {
+    "launcher_registry_key": [
+      "hip_gfx1100",
+      "speculative_cycle",
+      "w4_gguf",
+      "native_v1_b2_target_graph"
+    ],
+    "shape": {
+      "requests": 1,
+      "candidate_budget": 2,
+      "rows": 3
+    },
+    "ownership": "state-generation-bound one-shot graph; borrowed ABI pointers",
+    "fallback": "exact Python verify_target_block for unsupported shapes/configurations/backends",
+    "default_enabled": false
+  },
+  "correctness": {
+    "real_model_parity_command": "uv run --extra dev pytest -q tests/test_gguf_native_spec_cycle.py::test_native_b2_target_graph_matches_eager_hidden_state_and_kv",
+    "write_coverage": "Before native launch, full-attention KV is restored to its pre-eager image and hidden/captured-state output buffers are poisoned, preventing inherited eager bytes from satisfying parity.",
+    "target_top1": {
+      "equal": true,
+      "rows": 3,
+      "agreement": 1.0
+    },
+    "hidden_seed_fp32": {
+      "equal": true,
+      "elements": 6144,
+      "max_abs": 0.0,
+      "finite": true
+    },
+    "captured_conv_gdn_state_rows": {
+      "equal": true,
+      "buffers": 60
+    },
+    "resident_conv_gdn_state": {
+      "equal": true,
+      "buffers": 60
+    },
+    "full_attention_kv": {
+      "equal": true,
+      "buffers": 20
+    },
+    "cursor": {
+      "equal": true,
+      "start": 8,
+      "end": 11
+    },
+    "copy_i32_to_i64_cpu_oracle": {
+      "equal": true,
+      "values": [
+        0,
+        -1,
+        7,
+        2147483647
+      ]
+    }
+  },
+  "same_tree_single_prompt_diagnostic": {
+    "warning": "Three-cycle fixed-prompt diagnostic only; not a retainable full-suite speed claim.",
+    "shared_command": "HIPENGINE_GGUF_PREFILL_DEVICE_METADATA=1 uv run --extra dev python scripts/gguf_mtp_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --llama-compat --cycles 3 --no-mtp-draft-warmup --record-cycle-stage-timings",
+    "control_extra_args": [],
+    "native_extra_args": [
+      "--native-spec-target-cycle"
+    ],
+    "control": {
+      "tokens_per_sec": 84.35,
+      "avg_cycle_ms": 35.57,
+      "warm_tokens_per_sec": 92.31,
+      "accept_per_draft": 1.0,
+      "accepted_per_output": 0.6667,
+      "target_graph_rows": 0
+    },
+    "native": {
+      "tokens_per_sec": 52.48,
+      "avg_cycle_ms": 57.17,
+      "warm_tokens_per_sec": 58.7,
+      "accept_per_draft": 1.0,
+      "accepted_per_output": 0.6667,
+      "target_graph_rows": 9,
+      "native_cycles": 3,
+      "fallback_reasons": [
+        null,
+        null,
+        null
+      ]
+    },
+    "delta": {
+      "tokens_per_sec_pct": -37.78304682868998,
+      "avg_cycle_ms_pct": 60.725330334551586,
+      "warm_tokens_per_sec_pct": -36.4099230852562
+    },
+    "target_wall_ms_per_cycle": {
+      "eager_forward": 29.5887,
+      "native_submit_and_sync": 15.4926,
+      "native_capture": 32.7552,
+      "native_readback": 0.1134,
+      "eager_verify_total": 30.261900000000004,
+      "native_verify_total": 51.825900000000004,
+      "native_submit_vs_eager_forward_pct": -47.640146407243314
+    },
+    "raw_sources": {
+      "control": {
+        "path": "/tmp/hipengine-native-spec-n1-final-control.json",
+        "sha256": "7d1e8e0c37d94b474e4f99045ca269cf85686329dae397414b3e763721b96b28"
+      },
+      "native": {
+        "path": "/tmp/hipengine-native-spec-n1-final-native.json",
+        "sha256": "5401d17baeeb8a9225c549a6562ca212defd9513ffa98acf0d2a11bb13264d21"
+      }
+    }
+  },
+  "profiler": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1100 uv run --extra dev python scripts/gguf_mtp_verifier_rocprof.py --mode block-verify --block-rows 3 --native-spec-target-cycle --steps 3 --warmup 1 --max-seq 256 --compiler-version-file /tmp/native-spec-n1-hipcc-version.txt --raw-root /tmp/hipengine-native-spec-n1-rocprof-final --roctx-sdk /home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib/librocprofiler-sdk-roctx.so.1",
+    "native_summary": {
+      "avg_host_ms": 69.15897072758526,
+      "avg_kernel_ms": 13.118345333333332,
+      "kernel_time_share_of_host_wall": 0.1896839295802425,
+      "host_residual_ms_per_step": 56.040625394251926,
+      "kernel_calls_per_step": 834.0
+    },
+    "eager_summary": {
+      "avg_host_ms": 52.954609699857734,
+      "avg_kernel_ms": 13.192438666666668,
+      "kernel_time_share_of_host_wall": 0.24912729489350027,
+      "host_residual_ms_per_step": 39.762171033191066,
+      "kernel_calls_per_step": 827.0
+    },
+    "native_unprofiled_component_ms": {
+      "capture": 49.90101900572578,
+      "submit_and_sync": 16.48719795048237,
+      "readback": 0.10411099841197331
+    },
+    "copy_i32_to_i64_leaf": {
+      "needle": "copy_i32_to_i64_kernel",
+      "count": 6,
+      "total_duration_ns": 11121,
+      "min_duration_ns": 1601,
+      "max_duration_ns": 2080,
+      "workgroup_sizes_x": [
+        256
+      ],
+      "grid_sizes_x": [
+        256
+      ],
+      "vgpr_counts": [
+        8
+      ],
+      "sgpr_counts": [
+        128
+      ],
+      "scratch_sizes": [
+        0
+      ],
+      "lds_block_sizes": [
+        0
+      ]
+    },
+    "raw_sources": {
+      "native": {
+        "path": "/tmp/hipengine-native-spec-n1-rocprof-final.json",
+        "sha256": "fef7beac6b7426fd3679a2471a42133b1fd52ea5fff6801cc8e52575672f9e85"
+      },
+      "eager": {
+        "path": "/tmp/hipengine-native-spec-n1-eager-rocprof.json",
+        "sha256": "a7b7402483c456e5f8d52bd65ba281d10048a2ec809bb4f25ac3cc2ca2cb49d2"
+      }
+    }
+  },
+  "decision": {
+    "n1_correctness": "accepted",
+    "performance_route": "rejected/default_off",
+    "reason": "The one-call submit halves target forward host wall, but per-cycle state-bound HIP graph capture is larger than the saved launch wall.",
+    "next": "N2 device accept/commit, then N3 dynamic position/cursor metadata and reusable complete-cycle graph/launcher without per-cycle recapture."
+  }
+}

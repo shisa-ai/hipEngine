@@ -48,6 +48,9 @@ def _marker_prefix(mode: str) -> str:
 
 def _apply_route_env(args: argparse.Namespace) -> None:
     os.environ.setdefault("HIPENGINE_GGUF_DECODE_REPACK", "1")
+    if getattr(args, "native_spec_target_cycle", False):
+        os.environ["HIPENGINE_GGUF_PREFILL_DEVICE_METADATA"] = "1"
+        os.environ["HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"] = "1"
     if getattr(args, "verify_dp4a", False):
         for flag in (
             "HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A",
@@ -156,6 +159,9 @@ def _run_child(args: argparse.Namespace) -> int:
     host_ms: list[float] = []
     token_ids: list[int] = []
     stage_timings: list[dict[str, float]] = []
+    native_capture_ms: list[float] = []
+    native_submit_ms: list[float] = []
+    native_readback_ms: list[float] = []
     with Qwen35GGUFResidentSession(
         args.model,
         max_sequence_length=args.max_seq,
@@ -201,15 +207,28 @@ def _run_child(args: argparse.Namespace) -> int:
                 if index is not None:
                     roctx.push(f"{BLOCK_MARKER_PREFIX}{index}")
                 t0 = time.perf_counter()
-                result = session.verify_target_block(
-                    block_inputs,
-                    bulk_attention_mode=str(args.block_verify_mode),
-                    use_wmma_prefill=bool(args.block_wmma_prefill),
-                    capture_linear_state_rows=bool(args.direct_state_commit),
-                    record_stage_timings=bool(args.record_stage_timings),
-                    sync_stage_timings=bool(args.sync_stage_timings),
-                    defer_linear_state_commit=bool(args.direct_state_commit),
-                )
+                if args.native_spec_target_cycle:
+                    result = session.verify_target_block_native_cycle(
+                        block_inputs,
+                        fallback=False,
+                        cycle_id=0 if index is None else int(index),
+                        bulk_attention_mode=str(args.block_verify_mode),
+                        use_wmma_prefill=bool(args.block_wmma_prefill),
+                        capture_linear_state_rows=bool(args.direct_state_commit),
+                        record_stage_timings=bool(args.record_stage_timings),
+                        sync_stage_timings=bool(args.sync_stage_timings),
+                        defer_linear_state_commit=bool(args.direct_state_commit),
+                    )
+                else:
+                    result = session.verify_target_block(
+                        block_inputs,
+                        bulk_attention_mode=str(args.block_verify_mode),
+                        use_wmma_prefill=bool(args.block_wmma_prefill),
+                        capture_linear_state_rows=bool(args.direct_state_commit),
+                        record_stage_timings=bool(args.record_stage_timings),
+                        sync_stage_timings=bool(args.sync_stage_timings),
+                        defer_linear_state_commit=bool(args.direct_state_commit),
+                    )
                 if args.direct_state_commit:
                     if not result.linear_state_rows_captured:
                         raise RuntimeError("direct-state block profile did not capture linear-state rows")
@@ -222,6 +241,10 @@ def _run_child(args: argparse.Namespace) -> int:
                     token_ids.append(int(result.token_ids[-1]))
                     if args.record_stage_timings:
                         stage_timings.append(dict(session.last_verify_stage_timings_ms))
+                    if args.native_spec_target_cycle:
+                        native_capture_ms.append(float(session.last_native_spec_target_capture_ms))
+                        native_submit_ms.append(float(session.last_native_spec_target_submit_ms))
+                        native_readback_ms.append(float(session.last_native_spec_target_readback_ms))
                 cur = int(result.token_ids[-1])
                 return cur
 
@@ -240,6 +263,7 @@ def _run_child(args: argparse.Namespace) -> int:
         "block_verify_mode": str(args.block_verify_mode) if args.mode == "block-verify" else None,
         "block_wmma_prefill": bool(args.block_wmma_prefill) if args.mode == "block-verify" else None,
         "direct_state_commit": bool(args.direct_state_commit) if args.mode == "block-verify" else None,
+        "native_spec_target_cycle": bool(args.native_spec_target_cycle),
         "verify_dp4a": bool(args.verify_dp4a),
         "verify_dense_q8_dp4a": bool(args.verify_dense_q8_dp4a),
         "verify_dense_q8_dp4a_all": bool(args.verify_dense_q8_dp4a_all),
@@ -254,6 +278,9 @@ def _run_child(args: argparse.Namespace) -> int:
         "token_ids": token_ids,
         "stage_timings_ms": stage_timings if stage_timings else None,
         "stage_timing_totals_ms": _sum_stage_timings(stage_timings) if stage_timings else None,
+        "native_capture_ms": native_capture_ms if native_capture_ms else None,
+        "native_submit_ms": native_submit_ms if native_submit_ms else None,
+        "native_readback_ms": native_readback_ms if native_readback_ms else None,
     }
     if args.child_json:
         args.child_json.parent.mkdir(parents=True, exist_ok=True)
@@ -277,7 +304,6 @@ def _run_parent(args: argparse.Namespace) -> int:
 
     env = os.environ.copy()
     env.setdefault("HIPENGINE_GGUF_DECODE_REPACK", "1")
-    env.setdefault("HIPENGINE_HIP_ARCH", "gfx1151")
     env["HIPENGINE_COMPILER_VERSION_FILE"] = str(cvf)
     roctx_override = _prepare_roctx_override(args.roctx_sdk)
     dep_paths = _roctx_sdk_dep_paths(args.roctx_sdk)
@@ -310,6 +336,8 @@ def _run_parent(args: argparse.Namespace) -> int:
         "--child-json",
         str(child_json),
     ]
+    if args.native_spec_target_cycle:
+        child_base.append("--native-spec-target-cycle")
     if args.return_logits:
         child_base.append("--return-logits")
     else:
@@ -381,12 +409,13 @@ def _run_parent(args: argparse.Namespace) -> int:
         "performance_claim": False,
         "purpose": "Current GGUF MTP target verifier host/GPU split.",
         "model": str(args.model),
-        "hardware": "AMD Radeon 8060S / Ryzen AI Max+ 395 (gfx1151)",
+        "hardware": _hardware_label(),
         "mode": str(args.mode),
         "block_rows": int(args.block_rows) if args.mode == "block-verify" else None,
         "block_verify_mode": str(args.block_verify_mode) if args.mode == "block-verify" else None,
         "block_wmma_prefill": bool(args.block_wmma_prefill) if args.mode == "block-verify" else None,
         "direct_state_commit": bool(args.direct_state_commit) if args.mode == "block-verify" else None,
+        "native_spec_target_cycle": bool(args.native_spec_target_cycle),
         "return_logits": bool(args.return_logits),
         "verify_dp4a": bool(args.verify_dp4a),
         "verify_dense_q8_dp4a": bool(args.verify_dense_q8_dp4a),
@@ -408,6 +437,10 @@ def _run_parent(args: argparse.Namespace) -> int:
         "marker_trace_csv": str(marker_csv),
         "child": child,
         "summary": summary,
+        "native_spec_leaf_evidence": _kernel_match_evidence(
+            selected,
+            "copy_i32_to_i64_kernel",
+        ),
     }
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)
@@ -415,6 +448,30 @@ def _run_parent(args: argparse.Namespace) -> int:
         print(f"[gguf-mtp-verifier-rocprof] wrote {args.out}")
     _print_summary(summary)
     return 0
+
+
+def _hardware_label() -> str:
+    result = subprocess.run(
+        ["rocminfo"],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=15,
+    )
+    marketing = "unknown AMD GPU"
+    arch = "unknown"
+    waiting_for_marketing = False
+    for line in result.stdout.splitlines():
+        text = line.strip()
+        if text.startswith("Name:") and arch == "unknown":
+            candidate = text.split(":", 1)[1].strip()
+            if candidate.startswith("gfx"):
+                arch = candidate
+                waiting_for_marketing = True
+        elif text.startswith("Marketing Name:") and waiting_for_marketing:
+            marketing = text.split(":", 1)[1].strip()
+            break
+    return f"{marketing} ({arch})"
 
 
 def _prepare_roctx_override(sdk_path: Path) -> Path:
@@ -491,6 +548,17 @@ def _read_kernels(path: Path) -> list[dict[str, Any]]:
                     "start_ns": start,
                     "end_ns": end,
                     "duration_ns": end - start,
+                    **{
+                        field: int(float(row.get(field, 0) or 0))
+                        for field in (
+                            "LDS_Block_Size",
+                            "Scratch_Size",
+                            "VGPR_Count",
+                            "SGPR_Count",
+                            "Workgroup_Size_X",
+                            "Grid_Size_X",
+                        )
+                    },
                 }
             )
     return rows
@@ -506,6 +574,24 @@ def _filter_kernels_by_windows(
         if any(start >= ws and end <= we for ws, we in windows):
             kept.append(row)
     return kept
+
+
+def _kernel_match_evidence(rows: list[dict[str, Any]], needle: str) -> dict[str, Any]:
+    matches = [row for row in rows if needle in str(row["kernel"])]
+    durations = [int(row["duration_ns"]) for row in matches]
+    return {
+        "needle": needle,
+        "count": len(matches),
+        "total_duration_ns": sum(durations),
+        "min_duration_ns": min(durations) if durations else None,
+        "max_duration_ns": max(durations) if durations else None,
+        "workgroup_sizes_x": sorted({int(row["Workgroup_Size_X"]) for row in matches}),
+        "grid_sizes_x": sorted({int(row["Grid_Size_X"]) for row in matches}),
+        "vgpr_counts": sorted({int(row["VGPR_Count"]) for row in matches}),
+        "sgpr_counts": sorted({int(row["SGPR_Count"]) for row in matches}),
+        "scratch_sizes": sorted({int(row["Scratch_Size"]) for row in matches}),
+        "lds_block_sizes": sorted({int(row["LDS_Block_Size"]) for row in matches}),
+    }
 
 
 def _family(name: str) -> str:
@@ -620,6 +706,11 @@ def main() -> int:
     parser.add_argument("--block-verify-mode", choices=("bulk", "native"), default="bulk")
     parser.add_argument("--block-wmma-prefill", action="store_true")
     parser.add_argument(
+        "--native-spec-target-cycle",
+        action="store_true",
+        help="Submit fixed three-row block verification through NativeSpecCycle N1.",
+    )
+    parser.add_argument(
         "--direct-state-commit",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -684,6 +775,13 @@ def main() -> int:
         default=REPO_ROOT / "benchmarks" / "results" / f"{date.today().isoformat()}-gguf-mtp-verifier-rocprof.json",
     )
     args = parser.parse_args()
+    if args.native_spec_target_cycle:
+        if args.mode != "block-verify" or int(args.block_rows) != 3:
+            parser.error("--native-spec-target-cycle requires --mode block-verify --block-rows 3")
+        if args.block_verify_mode != "bulk" or args.block_wmma_prefill:
+            parser.error("--native-spec-target-cycle requires bulk non-WMMA block verification")
+        if args.return_logits or args.sync_stage_timings:
+            parser.error("--native-spec-target-cycle does not support logits or synchronized timings")
     return _run_child(args) if args.child else _run_parent(args)
 
 

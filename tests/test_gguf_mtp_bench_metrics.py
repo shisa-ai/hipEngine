@@ -895,6 +895,15 @@ def test_arg_parser_exposes_target_block_sync_stage_timings() -> None:
     assert args.target_block_sync_stage_timings is True
 
 
+def test_arg_parser_exposes_native_spec_target_cycle_diagnostic() -> None:
+    args = build_arg_parser().parse_args(
+        ["--target-block-verify", "--native-spec-target-cycle"]
+    )
+
+    assert args.target_block_verify is True
+    assert args.native_spec_target_cycle is True
+
+
 def test_arg_parser_exposes_record_draft_confidence_diagnostic() -> None:
     args = build_arg_parser().parse_args(["--record-draft-confidence"])
 
