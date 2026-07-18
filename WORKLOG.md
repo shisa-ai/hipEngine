@@ -163264,3 +163264,242 @@ repetition, lifecycle, profiler, scaling, memory, and cancellation gates on a
 real gfx1151. The current host exposes only W7900 and RX 7900 XTX (`gfx1100`),
 so no gfx1151 performance or retention claim can be made here without a gfx1151
 runner.
+## 2026-07-18 — Preserve gfx1151 packed attention after the concurrency merge
+
+Started the merged gfx1100 E3 transfer on current `main` `c255a16d`, using the
+Qwen3.6-35B-A3B UD-Q4_K_M GGUF, BF16 KV, gfx1151, TheRock HIP 7.15, one HIP
+hardware queue, IOMMU off, the precomputed compiler-version file, and cached
+builds. The first unchanged C13 eager p16/d2 gate lowered correctly to physical
+`c8 + masked-c8(5)` and kept generated tokens exact, but failed final state/KV.
+A narrower physical-c8 control reproduced the same first divergence at decode
+step 1, row 0, full-attention layer 35: 359 hidden elements, max abs
+`0.001953125`, followed by 576 final state/KV mismatches. Raw RED artifact:
+`/tmp/gfx1151-transfer-c255a16d/e3-c8-eager-p16-d2-control.json`, 312,244 bytes,
+SHA-256 `19bb208bf6d89f45167a5f434184cb09801529c4f3627066ac0f4b5eb8c17a93`.
+This proved arbitrary-C grouping was not the cause.
+
+The merge's only relevant arithmetic change replaced the shared
+`bf16_context_batch_c1_exact_spans` symbol body with a new scalar-tree reduction
+needed by the retained gfx1100 PARO route. A no-source-edit gfx1151 diagnostic
+bound that logical key back to the previously retained generic context-batch
+kernel and passed tokens, 640/640 all-layer hidden comparisons, Conv/GDN state,
+and live KV exactly. Raw diagnostic SHA-256:
+`9dd3bfe0e4a4be6eda20bedd6d7fad0440e74da3fb19ca009fdf521297207e0e`.
+
+Implemented the target-profile fix without a backend branch in model code:
+`hip_gfx1151` overrides the four-axis context-batch key with the generic batch
+kernel, while gfx1100 keeps the new scalar-tree implementation. The GGUF runner
+now resolves that key once from the plugin registry at initialization instead
+of directly importing one implementation or resolving it on every layer.
+RED/GREEN host coverage asserts gfx1100 retains scalar-tree and gfx1151 selects
+generic; the five affected dispatch/attention/runtime suites pass **300/300**,
+Python compilation and `git diff --check` pass. Ruff is unavailable in the repo
+venv, unchanged from the prior merge validation.
+
+Final-source cached C13 p16/d2 is `passed`: physical groups are c8 masks
+`11111111` and `11111000`, generated tokens and all **1,040/1,040** layer-hidden
+comparisons are exact, final Conv/GDN and live-KV mismatch counts are zero, and
+both groups report packed-native execution. Raw JSON is 36,267 bytes, SHA-256
+`6027359aa2346da2d70b5c1a8153d078d2c16829c2df32029fde824bff6f0ed0`.
+Next: commit this merge-regression fix, then run the full gfx1151 E3 lifecycle,
+optional-compaction, and p512/d128 eager/graph packet from the clean revision.
+
+## 2026-07-18 — Retain gfx1151 E3 arbitrary-C correctness
+
+Ran the complete merged gfx1100 E3 packet unchanged from clean pushed `main`
+`c6e5443d86e873772d7432dc136170ef5a99916a` on the Ryzen AI MAX+ 395 / Radeon
+8060S gfx1151. The protocol uses Qwen3.6-35B-A3B UD-Q4_K_M, BF16 KV, greedy
+raw-token rows, TheRock HIP 7.15, one HIP hardware queue, TuneD
+`accelerator-performance`, `amd_iommu=off`, the precomputed compiler-version
+file, and required cached builds. It is a correctness packet, not a server wall
+or performance claim.
+
+All five clean gates pass:
+
+- C13 short graph p16/d2 lowers to physical c8 masks
+  `11111111 + 11111000` and passes **1,040/1,040** all-layer hidden comparisons,
+  generated tokens, Conv/GDN state, and live BF16 KV exactly.
+- The 63.587-second middle-hole run cancels slots 2/10, observes physical masks
+  `11011111 + 11011000`, reuses both cancelled sessions for newcomers at those
+  slots, restores C13, uses only declared c8 groups, records zero serial/resident
+  fallback, and drains 13 reusable sessions with scheduler activity zero.
+- Explicit optional compaction performs nine nontrivial moves, packs survivors
+  into slots 0..10, preserves every survivor state/KV hash and allocation/block/
+  device-resource identity, closes both sparse graph handles with **2/2** graph
+  invalidations, leaves zero graph entries, admits newcomers at 11/12, and ends
+  token/state/KV exact. It is not an automatic policy or speed claim.
+- C13 p512/d128 eager passes **66,560/66,560** all-layer comparisons with 256
+  packed group manifests; graph passes another **66,560/66,560**, capturing the
+  all-active and sparse-c8 buckets once each and replaying each 128 times with
+  zero steady host/device copies. Both keep tokens, Conv/GDN, and live KV exact.
+- The clean E3 total is **134,160/134,160** all-layer hidden comparisons with
+  zero hidden, token, state, or KV mismatch. The prior 18-prompt gfx1151 E1
+  category/heldout packet remains the input-diversity anchor; the prior E1 trace
+  remains applicable because this transfer restores that same generic physical-
+  c8 context reduction (**748 packed-native / 0 row-local / 0 copies**).
+
+Raw source artifacts and SHA-256 values:
+
+- short graph: `1d408c3baf3319e23793be881ec3b4ef7aaff4f13b24a00dc046213729b4706a`;
+- middle hole: `1099a5ee9cca99f2bca2915a2696a21c5c0fb2b8d94d3ef7b72432242bbc9e23`;
+- compaction: `6518b2e2f74d108231c6bc814c186c11de4badcc6a918aa22741768d953b2171`;
+- standard eager: `a6729f3364485c0a4066f341f451d2906ca8167c489cb9bba664f685e1f6c8fd`;
+- standard graph: `480ab86d85f981093f11a5bd3e1376c2fce10f43da3c9b5259e1d98ed7e4d158`.
+
+Published compact evidence at
+`benchmarks/results/2026-07-18-gfx1151-gguf-concurrency-e3-arbitrary-c-correctness.json`
+(SHA-256 `d02930fd442568455b39488b18efe19d00465e3314ea0a274f8a68b7e9cdf996`)
+and advanced the benchmark/docs coverage from gfx1151 `not_started` to
+`retained` for honest arbitrary-C lowering. Retained policy matches gfx1100:
+C>8 uses multiple declared physical groups; never label C13 native. Automatic
+compaction and gfx1151 F1 server throughput remain open. Next: run the canonical
+real OpenAI F1 burst/live-admission packet on gfx1151.
+
+## 2026-07-18 — Make the F1 harness gfx11-target scoped
+
+The merged canonical `scripts/gguf_live_server_bench.py` still rejected
+`--backend hip_gfx1151` and hardcoded both its artifact kind and build profile to
+gfx1100. Added a RED parser test, then admitted the two registered gfx11 peer
+backends and derived artifact scope from the resolved `(backend, target_arch)`
+pair. Mismatched pairs now fail closed. Artifact kind and build profile use the
+validated target scope, so a gfx1151 F1 packet cannot be mislabeled gfx1100;
+the default remains gfx1100 and benchmark arithmetic/requests are unchanged.
+The focused harness suite passes **10/10**, Python compilation and `git
+diff --check` pass, and `.venv` help exposes
+`--backend {hip_gfx1100,hip_gfx1151}`. Next: commit this harness-only unit, then
+run a clean gfx1151 API smoke before the full p512/d128 F1 packet.
+
+## 2026-07-18 — Retain gfx1151 real OpenAI arbitrary-C server scaling
+
+The target-scoped F1 harness first ran a p16/d2 API smoke on clean tracked
+`71e2ea9a`. Every prompt/output/usage/ownership check was exact, but the strict
+physical-route gate correctly rejected the smoke because `protect_ttft`
+completed early rows before all eight staggered prefills could form a full c8
+plan. The focused p16/d8 replacement passed, observed full physical c8, and
+measured **52.256 aggregate tok/s**. This was a smoke-horizon repair, not a
+runtime change.
+
+The canonical detached clean packet then passed from `71e2ea9a` in **500.599
+s** on Radeon 8060S/gfx1151, Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, greedy top-1
+with EOS ignored, TheRock HIP 7.15, TuneD `accelerator-performance`, normal HWS,
+one HIP hardware queue, `amd_iommu=off`, exact GDN, and cached builds required:
+
+```bash
+HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 \
+HIPENGINE_BACKEND=hip_gfx1151 HIPENGINE_HIP_ARCH=gfx1151 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/gfx1151-f1-96cb76a0/hipcc-version.txt \
+PYTHONPATH=/tmp/hipengine-gfx1151-f1-71e2ea9a \
+/home/lhl/hipEngine-main/.venv/bin/python \
+  /tmp/hipengine-gfx1151-f1-71e2ea9a/scripts/gguf_live_server_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1151 \
+  --configurations c1,packed_c8,packed_c9,packed_c13,serial_c13 \
+  --prompt-length 512 --decode-tokens 128 \
+  --warmup-runs 1 --measured-runs 3 \
+  --live-decode-tokens 128 --live-initial-rows 8 --live-tail-rows 5 \
+  --prefill-chunk-size 256 --batch-window-ms 20 \
+  --compiler-version-file /tmp/gfx1151-f1-96cb76a0/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/gfx1151-f1-71e2ea9a/gfx1151-f1-server-clean-71e2ea9a-p512-d128.json
+```
+
+Static median aggregate/per-request generated rates, complete SSE cycle walls,
+and maximum rate stdev/median are:
+
+- logical c1 masked physical-c8 control: **15.701/15.701 tok/s**, **8.152 s**;
+- one physical c8: **86.338/10.792 tok/s**, **11.860 s**;
+- grouped C9 (`c8 + sparse c8`): **57.127/6.347 tok/s**, **20.165 s**;
+- grouped C13 (`c8 + sparse c8`): **72.522/5.579 tok/s**, **22.945 s**;
+- packed-off serial C13 bridge: **42.764/3.290 tok/s**, **38.911 s**;
+- maximum rate variance: **0.581%**.
+
+C8/C9/C13 are **5.499x/3.638x/4.619x** logical c1 aggregate. Grouped C13
+beats the same-loop serial bridge by **1.696x (+69.59%)**. Every packed static
+route uses only declared physical c8 groups and records zero serial/resident
+fallback; C9/C13 remain grouped exact-hybrid rows, never native-width claims.
+The retained direct physical-c8 census remains applicable at **748
+packed-native / 0 row-local / 0 copies**.
+
+All **189/189** warmup/measured/live requests preserve their actual 512 resident
+prompt IDs, independent c1 generated IDs, OpenAI usage, finish metadata, and
+scheduler timestamps. The controlled live trace observes active physical c8
+before admitting five tail requests, reaches C13 as
+`11111111 + 11111000`, emits **1,664/1,664** exact IDs at **70.093 aggregate
+tok/s** over **23.740 s**, owns 135 sample-scoped plans, filters one foreign
+completed plan, and drains to zero pending/active requests with 189 reclaimed.
+Server timing is complete in-process FastAPI SSE cycle wall and stays separate
+from direct synchronized graph-step timing. Explicit compaction remains a
+correctness-only operation.
+
+Raw source is 26,143,282 bytes, SHA-256
+`5fb696007f4d87e7686f4ece1e6880a7039a584ee3cb2368d9b55cdb1344fddf`.
+Published compact evidence at
+`benchmarks/results/2026-07-18-gfx1151-gguf-concurrency-f1-server-scaling-closure.json`
+(**472,281 bytes**, SHA-256
+`34478f6f14d6cd89f5cc61e03c892ba39fa70a50ac41be495110572138fe5451`),
+linked to the retained **134,160-comparison** E3 packet and **188,080-comparison**
+E1/category plus profiler packets. Updated the benchmark/root tables,
+`benchmarks/CHANGELOG.md`, `docs/CONCURRENCY.md`, and rollback cleanup triggers.
+F1 is now retained on both gfx11 targets. Next: transfer the retained gfx1100
+PARO selected-batch direct c2 packet to gfx1151.
+
+## 2026-07-18 — Retain gfx1151 PARO selected-batch c2
+
+Transferred the retained gfx1100 selected-batch c2 algorithm unchanged from a
+clean detached `778c7a70a13c849d9fe23475baae6b4b2ce16523` worktree to Ryzen AI
+MAX+ 395 / Radeon 8060S gfx1151. The protocol uses the exact packed
+Qwen3.6-35B-A3B-PARO revision `437eba06…`, W4 PARO, BF16 KV, p512/d128, greedy
+decode, TheRock HIP 7.15, TuneD `accelerator-performance`, normal HWS, one HIP
+hardware queue, `amd_iommu=off`, a precomputed compiler-version file, and cached
+builds for measured/profiled runs. No target-specific kernel or runtime edit was
+required.
+
+Three fresh direct selected-batch runs are
+**79.163/79.228/79.218 aggregate tok/s** (median **79.218**, **39.609 per
+request**, 0.045% sample stdev/median). Matched medians are **70.810 tok/s** for
+c1 graph and **65.574 aggregate tok/s** for serial c2, so direct c2 is
+**1.1187x c1 (+11.87%)** and **1.2081x serial (+20.81%)**. Every direct and
+serial run matches the independent-c1 sequence; selected-batch records
+**274/274 IDs/run**, all 40 MoE layers use the selected route, and zero layers
+fall back. The selector-unset retained-default confirmation independently
+resolves selected-batch for 40/40 layers, matches all IDs, and measures 79.051
+aggregate tok/s diagnostically.
+
+Correctness and lifecycle packet:
+
+- primitive c2 paged append has zero K/V mismatches, batch-vs-c1 attention is
+  exact, and batch-vs-NumPy max error is `2.2351741790771484e-08`;
+- full L40/d3 hidden, linear-stage, Conv/GDN, full-attention, live-KV, and NumPy
+  context checks are `eq_ok` with no hidden/state/KV bit drift;
+- uniform cancellation, uniform EOS, and ragged-front EOS all shrink c2→c1 with
+  exact tokens/state/KV, immutable retired rows, exact widths, and no group-wide
+  cancellation;
+- all **10/10** canonical code/general-en/general-ja/mixed-ja-en prompts,
+  including four heldouts, match **330/330** recorded IDs through five physical
+  c2 runs;
+- cached `rocprofv3 --kernel-trace` L4/d1 is `eq_ok`, contains **1,598**
+  dispatches, one exact c2 context kernel at **208,672 ns**, and ten selected
+  projection-family dispatches.
+
+The first clean all-layer attempt stopped before GPU execution on a missing
+worktree-specific JIT cache; the uncached prebuild rerun passed, after which the
+required-cached profiler passed. Intermediate category/scaling packet wrappers
+also stopped only in result-summary field lookups after their completed GPU
+runs; corrected continuations reused those valid outputs and did not repeat
+measurements.
+
+Published compact evidence at
+`benchmarks/results/2026-07-18-gfx1151-paro-g2-selected-batch-c2-retained.json`
+(**39,755 bytes**, SHA-256
+`1857675fc1c4fb13d639d1afca596f3615c57510c35ca1c67103fd9228911f14`).
+The artifact embeds clean canonical provenance, exact commands, all raw-source
+sizes/SHA-256 values, profiler names/durations, repeated statistics, and
+remaining scope. Independent validation passed canonical provenance, raw-source
+hash/size audit, statistic recomputation, prompt/lifecycle/profiler assertions,
+JSON parsing, documentation-link synchronization, and `git diff --check`.
+Updated `docs/PLAN.md`, `docs/CONCURRENCY.md`, `benchmarks/README.md`, the root
+README, and `benchmarks/CHANGELOG.md`. This retains only the explicit direct c2
+model step: public/OpenAI PARO remains width-1; c4/c8, longer context, sampled
+decode, graph replay, and non-BF16 KV remain separate gates. Next: generalize
+one true physical c4 algorithm, then attach retained PARO widths to the shared
+model-owning loop.

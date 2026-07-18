@@ -12,6 +12,9 @@ from __future__ import annotations
 from importlib import import_module
 
 from hipengine.kernels.backends import hip_target_arch_for_backend
+from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
+    qwen35_paged_full_attn_decode_context_bf16_batch_spans,
+)
 from hipengine.kernels.hip_gfx1100.moe.router import (
     qwen35_router_logits_bf16_f32w_auto_256,
 )
@@ -70,6 +73,14 @@ GGUF_PAGED_ATTN_PARALLEL_REDUCE = False
 GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT = 32768
 _SOURCE_BACKEND = "hip_gfx1100"
 _GFX1151_OVERRIDES = {
+    # The new scalar-tree c1-exact context kernel retained for gfx1100/PARO
+    # diverges from gfx1151's established paged-c1 arithmetic at model scale.
+    # Keep gfx1151 on the independently retained generic batch reduction.
+    (
+        "paged_attn_decode",
+        "w4_paro",
+        "bf16_context_batch_c1_exact_spans",
+    ): qwen35_paged_full_attn_decode_context_bf16_batch_spans,
     (
         "router_logits",
         "f32",

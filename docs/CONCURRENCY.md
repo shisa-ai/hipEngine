@@ -94,26 +94,26 @@ state remains c1-exact. Public blocking `LLM.generate()` and OpenAI SSE drive
 the same configured loop. gfx1100 D4/D5 close streaming, lifecycle, and full
 live-loop observability; E3/F1 retain arbitrary-C physical-group lowering,
 optional compaction correctness, and real OpenAI p512/128-output burst plus
-live-admission scaling. gfx1151 E1 independently closes direct native-c2/c4/c8
-correctness and scaling plus admission, two mid-flight disconnects, streaming,
-request/KV metrics, fallback accounting, and final ownership at
-`continuous_eq_ok`; no gfx1151 server-throughput claim is attached. Direct
-native-c8 graph model steps are scaling-retained on both backends at 246.872
-and 127.902 aggregate tok/s. The explicit gfx1100 PARO direct c2 step is also
-retained at 121.923 aggregate tok/s, but its public/OpenAI path remains width-1.
-Automatic compaction, gfx1151 arbitrary-C/server performance, PARO c4/c8/live
-admission and gfx1151 parity, normal sampling, and project-wide production
-promotion remain open.
+live-admission scaling on both gfx11 targets. gfx1151 independently closes
+direct native-c2/c4/c8 correctness/scaling, admission, two mid-flight
+disconnects, streaming, request/KV metrics, fallback accounting, final
+ownership, E3 arbitrary-C lowering, and the full F1 server packet. Direct
+native-c8 graph model steps are scaling-retained at 246.872 and 127.902
+aggregate tok/s; grouped C13 real SSE is 111.380 and 72.522 aggregate tok/s on
+gfx1100 and gfx1151 respectively. Explicit PARO direct c2 steps are retained at
+121.923 and 79.218 aggregate tok/s on gfx1100 and gfx1151, while both
+public/OpenAI PARO paths remain width-1. Automatic compaction, PARO c4/c8/live
+admission, normal sampling, and project-wide production promotion remain open.
 
 ### Model/backend coverage
 
 | Model path | Backend | Current c>N status | Production behavior | First missing gate |
 | --- | --- | --- | --- | --- |
-| GGUF Q4_K_M / BF16 KV | gfx1151 | `retained` direct native-c2/c4/c8 graph model steps plus correctness-only `continuous_eq_ok`: 188,080 hidden comparisons and all direct token/state/KV gates are exact; one physical c8 is 127.902 aggregate tok/s (2.544x c1, +24.65% over c4+c4); the trace is 748 packed-native / 0 row-local / 0 copies; live join/disconnect/stream/SSE/metrics/final-ownership checks pass without serial or resident fallback | Packed server AR and OpenAI continuous membership are correctness-retained; direct model-step throughput is retained, but no server throughput claim is attached | Optional compaction, arbitrary-C lowering, burst/live-admission performance, and broader sampling |
+| GGUF Q4_K_M / BF16 KV | gfx1151 | `retained` direct native-c2/c4/c8 graph model steps, continuous membership, honest arbitrary-C lowering, and real OpenAI server scaling: the prior 188,080 direct comparisons remain exact; E3 adds 134,160 exact C13 eager/graph comparisons, middle-hole cancellation/admission, and nine-move explicit compaction with 2/2 graph invalidations; one physical c8 is 127.902 aggregate tok/s with a 748 packed-native / 0 row-local / 0-copy trace; p512/128-output logical c1/c8/c9/c13/serial-c13 SSE is 15.701/86.338/57.127/72.522/42.764 aggregate tok/s | Public blocking calls and OpenAI SSE share one configured model-owning loop with reusable c8-capable sessions and real BF16 device KV; C>8 is multiple declared groups, never native c9/c13; optional compaction is explicit/manual | F2 profile-directed tuning/rollback cleanup, broader sampling, and automatic-compaction policy only if independently justified |
 | GGUF Q4_K_M / BF16 KV | gfx1100 | `retained` direct native-c4/c8 graph model steps, observable continuous membership, honest arbitrary-C lowering, and real OpenAI server scaling: direct native-c8 is 246.872 aggregate tok/s; arbitrary C13 eager/graph adds 135,200 exact all-layer comparisons; middle-hole cancellation/admission preserves inactive state/KV; nine optional compaction moves preserve hashes/pointers with 2/2 graph invalidations; p512/128-output logical c1/c8/c9/c13/serial-c13 SSE is 25.583/136.122/88.592/111.380/31.708 aggregate tok/s | Public blocking calls and OpenAI SSE share one configured model-owning loop, reusable c8-capable sessions, bounded queues, real BF16 device KV, arbitrary-C physical-group manifests, and lock-consistent observability; C>8 is multiple declared groups, never a wider native claim; optional compaction is explicit/manual | F2 profile-directed tuning/rollback cleanup, normal sampling, and automatic-compaction policy if measurement ever justifies one |
 | GGUF Q5_K/Q6_K/Q8_0 / BF16 KV | gfx1100/gfx1151 | Not executed end to end under c>N | c1 | Run quant-specific direct, profiler, lifecycle, and scaling gates |
-| PARO W4 / BF16 KV | gfx1151 | Exact greedy c2 hybrid below 1024 total context; not fully native or retained | Unsupported groups fail closed to true width-1 sessions | Lifecycle/hidden/profiler/repetition gates, then remove row-local hybrid boundaries |
-| PARO W4 / BF16 KV | gfx1100 | `retained` for the explicit direct c2 model step: canonical selected-batch passes p512/d128 repetition, all-layer hidden/Conv/GDN/KV/NumPy-context, uniform/ragged EOS+cancel c2→c1 with inactive state/KV immutability, the ten-prompt category/heldout suite, primitive and profiler gates, and zero fallback layers; median is **121.923 aggregate tok/s**, **+5.09% vs c1** and **+20.81% vs serial c2** | Public blocking/OpenAI sessions remain width-1; the explicit native-c2 retained/default route resolves selected-batch, while grouped-compact remains an exact slower diagnostic | Generalize one physical c4/c8 algorithm without stacking c2 groups, then attach retained widths to the shared model-owning loop; gfx1151 remains independent |
+| PARO W4 / BF16 KV | gfx1151 | `retained` for the explicit direct c2 model step: unchanged selected-batch passes p512/d128 repetition, all-layer hidden/Conv/GDN/KV/NumPy-context, uniform/ragged EOS+cancel c2→c1 with inactive state/KV immutability, canonical ten-prompt category+heldout, primitive, auto-default, and cached profiler gates with zero fallback layers; median is **79.218 aggregate tok/s**, **+11.87% vs c1** and **+20.81% vs serial c2** | Public blocking/OpenAI sessions remain width-1; the explicit native-c2 retained/default route resolves selected-batch | Generalize one physical c4/c8 algorithm without stacking c2 groups, then attach retained widths to the shared model-owning loop |
+| PARO W4 / BF16 KV | gfx1100 | `retained` for the explicit direct c2 model step: canonical selected-batch passes p512/d128 repetition, all-layer hidden/Conv/GDN/KV/NumPy-context, uniform/ragged EOS+cancel c2→c1 with inactive state/KV immutability, the ten-prompt category/heldout suite, primitive and profiler gates, and zero fallback layers; median is **121.923 aggregate tok/s**, **+5.09% vs c1** and **+20.81% vs serial c2** | Public blocking/OpenAI sessions remain width-1; the explicit native-c2 retained/default route resolves selected-batch, while grouped-compact remains an exact slower diagnostic | Generalize one physical c4/c8 algorithm without stacking c2 groups, then attach retained widths to the shared model-owning loop |
 | PARO W4 / INT8 KV | gfx1100/gfx1151 | Not started | Width-1 | BF16 native path first |
 
 ### Implemented scaffolding — not production-loop evidence
@@ -141,9 +141,8 @@ c8→c13 live-admission trace. The unchanged backend-neutral loop independently
 passes gfx1151 E1 admission, masked joined decode, disconnect/reclaim, row-owned
 streaming, real OpenAI SSE, request/KV metrics, fallback accounting, and final
 shutdown ownership while survivor state/KV remains independent-c1 exact.
-Both backends retain continuous-membership correctness; only gfx1100 currently
-has retained server-throughput scaling. PARO still lacks an equivalent
-model-owning runner.
+Both GGUF backends retain continuous-membership correctness and real server
+throughput scaling. PARO still lacks an equivalent model-owning runner.
 
 ### Result pointers
 
@@ -154,8 +153,9 @@ model-owning runner.
 - gfx1151 GGUF exact packed state/KV lifecycle: `WORKLOG.md`, **2026-07-13 —
   Make GGUF packed AR state/KV exact through c4 lifecycle**, and
   `benchmarks/results/2026-07-13-gfx1151-gguf-packed-ar-exact-lifecycle.json`.
-- gfx1151 PARO exact c2 hybrid: `WORKLOG.md`, **2026-07-13 — Re-baseline PARO
-  and GGUF concurrency**.
+- gfx1151 PARO selected-batch c2 retained transfer: `WORKLOG.md`, **2026-07-18
+  — Retain gfx1151 PARO selected-batch c2**, and
+  `benchmarks/results/2026-07-18-gfx1151-paro-g2-selected-batch-c2-retained.json`.
 - gfx1151 GGUF unchanged native-c2/c4/c8 direct correctness, retained
   profiler/scaling, and live-loop symmetry: `WORKLOG.md`, **2026-07-17 — Retain
   gfx1151 GGUF direct concurrency correctness**, **Retain gfx1151 native-c8
@@ -163,6 +163,11 @@ model-owning runner.
   `benchmarks/results/2026-07-17-gfx1151-gguf-concurrency-e1-direct-correctness.json`,
   `benchmarks/results/2026-07-17-gfx1151-gguf-concurrency-e1-native-c8-scaling-closure.json`,
   and `benchmarks/results/2026-07-17-gfx1151-gguf-concurrency-e1-live-loop-closure.json`.
+- gfx1151 E3 honest C13 eager/graph grouping, middle-hole cancellation/admission,
+  inactive state/KV immutability, and explicit optional-compaction graph/resource
+  safety: `WORKLOG.md`, **2026-07-18 — Retain gfx1151 E3 arbitrary-C
+  correctness**, and
+  `benchmarks/results/2026-07-18-gfx1151-gguf-concurrency-e3-arbitrary-c-correctness.json`.
 - gfx1100 Phase-A c1/serial-c2/c4 controls and package-c4 route inventory:
   `WORKLOG.md`, **2026-07-16 — Close gfx1100 GGUF Phase-A controls**, and
   `benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-phase-a-controls.json`.
@@ -225,6 +230,15 @@ model-owning runner.
   scaling: `WORKLOG.md`, **2026-07-17 — Retain real OpenAI arbitrary-C server
   scaling**, and
   `benchmarks/results/2026-07-17-gfx1100-gguf-concurrency-f1-server-scaling-closure.json`.
+- gfx1151 E1/E3/F1 direct native-c8, continuous membership, arbitrary-C plus
+  explicit-compaction correctness, and real OpenAI p512/128-output burst/live
+  scaling: `WORKLOG.md`, **2026-07-17 — Retain gfx1151 native c8 scaling** plus
+  **2026-07-18 — Preserve gfx1151 packed attention after the concurrency merge**
+  and **Retain gfx1151 real OpenAI arbitrary-C server scaling**, with
+  `benchmarks/results/2026-07-17-gfx1151-gguf-concurrency-e1-native-c8-scaling-closure.json`,
+  `benchmarks/results/2026-07-18-gfx1151-gguf-concurrency-e3-arbitrary-c-correctness.json`,
+  and
+  `benchmarks/results/2026-07-18-gfx1151-gguf-concurrency-f1-server-scaling-closure.json`.
 - gfx1100 PARO native-c2 first divergence: `WORKLOG.md`, **2026-07-17 —
   Localize the first W7900 PARO native-c2 divergence**, and
   `benchmarks/results/2026-07-17-gfx1100-paro-g2-native-c2-first-divergence.json`.
@@ -858,27 +872,31 @@ E3. Arbitrary request counts:
 - [x] Establish policy for C>8 from measurement: wider native buckets, multiple
       groups, or both. Never report multiple groups as one native width.
 
-Clean gfx1100 E3 lowers logical C13 as physical c8 plus sparse physical c8
-(`11111111 + 11111000`), never native c13. Short and p512/d128 eager/graph paths
-pass **135,200/135,200** all-layer comparisons overall with exact tokens,
-Conv/GDN, and live BF16 KV. Middle-hole cancellation at slots 2/10 produces
-`11011111 + 11011000`; tail admission restores C13 without fallback. Explicit
-compaction performs nine real moves, preserves every survivor hash, allocation,
-block id, and device pointer, closes both sparse graphs with **2/2**
-invalidations, and admits newcomers at slots 11/12. The real server packet then
-retains logical c1/c8/c9/c13/serial-c13 at
-**25.583/136.122/88.592/111.380/31.708 aggregate tok/s**. C13 is **4.354x**
-logical-c1 and **3.513x** serial; the C9 drop versus C8 establishes the retained
-policy: multiple declared groups above eight, no wider native bucket yet.
-Compaction remains explicit and carries no automatic-policy/performance claim.
-Evidence:
-`benchmarks/results/2026-07-17-gfx1100-gguf-concurrency-e3-arbitrary-c-correctness.json`
+Both gfx11 E3 packets lower logical C13 as physical c8 plus sparse physical c8
+(`11111111 + 11111000`), never native c13. gfx1100 short and p512/d128
+eager/graph paths pass **135,200/135,200** all-layer comparisons overall;
+gfx1151's clean transfer passes **134,160/134,160** across short graph plus
+p512/d128 eager/graph. Tokens, Conv/GDN, and live BF16 KV are exact on both.
+Middle-hole cancellation at slots 2/10 produces `11011111 + 11011000`; tail
+admission restores C13 without fallback. On each backend, explicit compaction
+performs nine real moves, preserves every survivor hash, allocation, block id,
+and device pointer, closes both sparse graphs with **2/2** invalidations, and
+admits newcomers at slots 11/12. The real server packets retain logical
+c1/c8/c9/c13/serial-c13 at **25.583/136.122/88.592/111.380/31.708 aggregate
+tok/s** on gfx1100 and **15.701/86.338/57.127/72.522/42.764** on gfx1151.
+Grouped C13 is **4.354x/4.619x** logical-c1 and **3.513x/1.696x** serial. Both
+C9 drops versus C8 establish the retained policy: multiple declared groups
+above eight, no wider native bucket yet. Compaction remains explicit and
+carries no automatic-policy/performance claim. Evidence:
+`benchmarks/results/2026-07-17-gfx1100-gguf-concurrency-e3-arbitrary-c-correctness.json`,
+`benchmarks/results/2026-07-18-gfx1151-gguf-concurrency-e3-arbitrary-c-correctness.json`,
+`benchmarks/results/2026-07-17-gfx1100-gguf-concurrency-f1-server-scaling-closure.json`,
 and
-`benchmarks/results/2026-07-17-gfx1100-gguf-concurrency-f1-server-scaling-closure.json`.
+`benchmarks/results/2026-07-18-gfx1151-gguf-concurrency-f1-server-scaling-closure.json`.
 
-Exit: GGUF Q4_K_M/BF16 has exact native c1/c2/c4/c8 model steps and live
-admission on gfx1100 and gfx1151, with honest arbitrary-C lowering. The gfx1100
-side is retained; gfx1151 still blocks the cross-backend exit.
+Exit: GGUF Q4_K_M/BF16 has exact native c1/c2/c4/c8 model steps, live admission,
+honest arbitrary-C lowering, and retained real OpenAI burst/live-admission
+scaling on both gfx1100 and gfx1151.
 
 ### Phase F — retain and tune GGUF concurrency
 
@@ -887,22 +905,22 @@ walls without benchmark gaming.
 
 F1. Retention packet:
 
-- [ ] Run c1/c2/c4/c8 prompt-512/decode-128 on gfx1100 and gfx1151.
-- [ ] Include same-protocol c1, serial bridge, exact hybrid, and native rows.
-- [ ] Run burst/live-admission traces with per-request latency percentiles.
-- [ ] Run the complete prompt-category suite plus heldouts.
-- [ ] Update `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, compact artifacts,
+- [x] Run c1/c2/c4/c8 prompt-512/decode-128 on gfx1100 and gfx1151.
+- [x] Include same-protocol c1, serial bridge, exact hybrid, and native rows.
+- [x] Run burst/live-admission traces with per-request latency percentiles.
+- [x] Run the complete prompt-category suite plus heldouts.
+- [x] Update `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, compact artifacts,
       and `WORKLOG.md` for every retained promotion.
 
-The gfx1100 F1 slice is retained: existing direct c1/c2/c4/c8 native/control
-rows and the 18-prompt category+heldout anchor join the clean real SSE burst
-packet above. All **189/189** server requests retain exact resident prompt IDs,
-output IDs, usage, finish metadata, and scheduler timestamps; static variance is
-at most **1.299%**. One controlled live run observes c8 before tail admission,
-reaches C13, emits **1,664/1,664** exact IDs at **107.284 aggregate tok/s**, and
-drains request/session ownership to zero. Server timing is complete SSE cycle
-wall and remains separate from direct graph-step timing. F1 checkboxes stay open
-until the same packet passes gfx1151.
+Both gfx11 F1 slices are retained: existing direct c1/c2/c4/c8 native/control
+rows and each 18-prompt category+heldout anchor join clean real SSE burst
+packets. Each packet preserves **189/189** exact resident prompt IDs, output
+IDs, usage, finish metadata, and scheduler timestamps. Maximum static variance
+is **1.299%** on gfx1100 and **0.581%** on gfx1151. Controlled live runs observe
+c8 before tail admission, reach C13, emit **1,664/1,664** exact IDs at
+**107.284/70.093 aggregate tok/s**, and drain request/session ownership to zero.
+Server timing is complete SSE cycle wall and remains separate from direct
+graph-step timing.
 
 F2. Profile-directed tuning order:
 
@@ -935,8 +953,11 @@ G1. Re-establish c2 controls:
 - [x] Run current-HEAD gfx1100 PARO c1 and c2 exact/serial controls. Clean
       p512/d128 at `ff4e21d2`: serial c2 matches 274/274 recorded IDs; direct
       native c2 first diverges at generated index 2 and remains rejected.
-- [ ] Re-run the gfx1151 exact c2 hybrid with lifecycle, hidden/state/KV, and
-      repetition gates.
+- [x] Re-run the gfx1151 c2 route through the full retained packet. Clean
+      `778c7a70` selected-batch passes direct p512/d128 repetition, all-layer
+      hidden/Conv/GDN/KV/NumPy-context, uniform/ragged lifecycle, ten prompts,
+      primitive, auto-default, profiler, and scaling without a target-specific
+      code change.
 - [ ] Separate graph/eager policy per backend using registered capabilities.
 - [ ] Preserve true width-1 fail-closed behavior for unsupported groups.
 
@@ -966,12 +987,22 @@ G2. Fully native c2:
       all-layer gate and retained validator name every admitted batch path and
       report no row chunks or fallback layers.
 - [x] Close Conv/GDN segmented state mutation and selected-expert MoE at c2.
-- [ ] Pass 512/128 direct and shrinking-lifecycle equality on both backends.
-      gfx1100 is retained; gfx1151 remains open.
-- [x] Trace true gfx1100 c2 grouped and selected-batch steps with no
-      rowchunk/serial model fallback. Both are `eq_ok` and record the exact c2
-      context kernel; grouped adds 47 L4 launches, while the retained
-      selected-batch trace has 1,306 dispatches and the fused selected families.
+- [x] Pass 512/128 direct and shrinking-lifecycle equality on both backends.
+- [x] Trace true c2 selected-batch steps with no rowchunk/serial model fallback
+      on both gfx11 backends. gfx1100 records 1,306 dispatches; gfx1151 records
+      1,598. Both are `eq_ok` and contain the exact c2 context plus selected
+      projection families.
+
+Clean detached `778c7a70` transfers the retained algorithm unchanged to the
+Radeon 8060S. Three direct p512/d128 runs are
+**79.163/79.228/79.218 aggregate tok/s** (median **79.218**, **+11.87%** over
+c1 graph and **+20.81%** over serial c2), all **274/274** recorded IDs per run
+are exact, and auto resolves all 40 layers to selected-batch with zero fallback.
+The all-layer, three lifecycle, primitive, ten-prompt/**330/330 ID**, and cached
+profiler gates pass. The trace contains one exact c2 context dispatch and ten
+selected projection dispatches. This is still a direct model-step claim: PARO
+public/OpenAI ownership remains width-1 and c4/c8 remain unverified. Evidence:
+`benchmarks/results/2026-07-18-gfx1151-paro-g2-selected-batch-c2-retained.json`.
 
 G3. Native c4/c8:
 
@@ -1023,10 +1054,10 @@ The active lane is deliberately narrow.
 4. **Completed — D2:** close live admission, retirement, and cancellation on W7900.
 5. **Completed — E1:** retain the same model-step and live-loop gates on gfx1151.
 6. **Completed — E2:** retain one true physical-c8 gfx1100 model step.
-7. **Completed on gfx1100 — E3/F1:** optional compaction, arbitrary-C lowering,
-   repeated burst scaling, and live-admission latency are retained without
-   weakening the direct gate; gfx1151 E1 is complete and F1 performance remains
-   active.
+7. **Completed on both gfx11 targets — E3/F1:** arbitrary-C lowering, explicit
+   optional-compaction correctness, repeated real SSE burst scaling, and
+   live-admission latency are retained on both targets without weakening the
+   direct gate.
 8. **Completed on W7900 — G2; active next lane G3:** explicit direct c2 is
    retained with selected-batch as its exact default. Grouped compaction remains
    an exact slower diagnostic; generalize the same algorithms to one physical
@@ -1054,8 +1085,8 @@ Use only these status values:
 | GGUF Q4_K_M / BF16, c2 | `direct_eq_ok` | `retained` | `retained` |
 | GGUF Q4_K_M / BF16, c4 | `retained` | `retained` | `retained` |
 | GGUF Q4_K_M / BF16, c8 native group | `retained` | `retained` | `retained` |
-| GGUF Q4_K_M / BF16, live admission | `retained` | `continuous_eq_ok` | `retained` |
-| GGUF Q4_K_M / BF16, arbitrary-C lowering | `retained` | `not_started` | `retained` |
+| GGUF Q4_K_M / BF16, live admission | `retained` | `retained` | `retained` |
+| GGUF Q4_K_M / BF16, arbitrary-C lowering | `retained` | `retained` | `retained` |
 | PARO W4 / BF16, c2 | `retained` | `exact_hybrid` | `retained` |
 | PARO W4 / BF16, c4 | `not_started` | `not_started` | `retained` |
 | PARO W4 / BF16, c8 | `not_started` | `not_started` | `retained` |
@@ -1180,12 +1211,10 @@ and PARO on both gfx1100 and gfx1151:
 - [ ] The first-class path is package-default; obsolete bridges/flags are removed
       or have concrete blockers in `docs/REFACTOR.md`.
 
-Until then, the honest project claim is: **gfx1100 GGUF has retained native-c4
-and native-c8 direct model steps, honest arbitrary-C physical-group lowering,
-and real OpenAI burst/live-admission scaling; gfx1151 GGUF has retained direct
-native-c2/c4/c8 model steps and correctness-retained continuous membership but
-no retained server-throughput or arbitrary-C claim; gfx1100 PARO has a retained
-explicit direct native-c2 model step but its public/OpenAI loop remains width-1;
-PARO c4/c8/live admission and gfx1151 parity, normal sampling, automatic
+Until then, the honest project claim is: **gfx1100 and gfx1151 GGUF have
+retained native-c4/c8 direct model steps, honest arbitrary-C physical-group
+lowering, and real OpenAI burst/live-admission scaling. Both gfx11 PARO targets
+have retained explicit direct native-c2 model steps, but their public/OpenAI
+loops remain width-1; PARO c4/c8/live admission, normal sampling, automatic
 compaction, and complete project-wide production continuous batching remain in
 progress.**

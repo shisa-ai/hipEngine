@@ -6,6 +6,7 @@ import pytest
 
 from scripts.gguf_live_server_bench import (
     CONFIGURATIONS,
+    _artifact_backend_scope,
     _counter_delta,
     _latency_delta,
     _logical_shape_covers,
@@ -16,7 +17,19 @@ from scripts.gguf_live_server_bench import (
     _scaling_summary,
     _stats,
     _wait_for_live_admission_trigger,
+    build_parser,
 )
+
+
+def test_live_server_bench_accepts_both_gfx11_backends() -> None:
+    parser = build_parser()
+
+    assert parser.parse_args(["--backend", "hip_gfx1100"]).backend == "hip_gfx1100"
+    assert parser.parse_args(["--backend", "hip_gfx1151"]).backend == "hip_gfx1151"
+    assert _artifact_backend_scope("hip_gfx1100", "gfx1100") == "gfx1100"
+    assert _artifact_backend_scope("hip_gfx1151", "gfx1151") == "gfx1151"
+    with pytest.raises(RuntimeError, match="mismatch"):
+        _artifact_backend_scope("hip_gfx1151", "gfx1100")
 
 
 def test_live_server_bench_declares_honest_c13_routes() -> None:

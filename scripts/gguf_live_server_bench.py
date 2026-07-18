@@ -74,6 +74,18 @@ CONFIGURATIONS: dict[str, ServerConfiguration] = {
     "serial_c13": ServerConfiguration("serial_c13", 13, False, "serial_bridge"),
 }
 _CANONICAL_CONFIGURATIONS = tuple(CONFIGURATIONS)
+_SUPPORTED_BACKENDS = ("hip_gfx1100", "hip_gfx1151")
+
+
+def _artifact_backend_scope(resolved_backend: str, target_arch: str) -> str:
+    backend_scope = str(resolved_backend).removeprefix("hip_")
+    arch_scope = str(target_arch).strip()
+    if backend_scope not in {"gfx1100", "gfx1151"} or arch_scope != backend_scope:
+        raise RuntimeError(
+            "live-server artifact backend/target mismatch: "
+            f"backend={resolved_backend!r}, target_arch={target_arch!r}"
+        )
+    return arch_scope
 
 
 @dataclass
@@ -1175,6 +1187,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         and int(final_snapshot["loop"]["requests"]["pending"]) == 0
     )
     command = [sys.executable, "scripts/gguf_live_server_bench.py", *sys.argv[1:]]
+    artifact_scope = _artifact_backend_scope(resolved_backend, target_arch)
     provenance = collect_artifact_provenance(
         repo_root=REPO_ROOT,
         configured_backend=str(args.backend),
@@ -1188,7 +1201,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             **{key: os.environ.get(key) for key in _PROVENANCE_ENV_KEYS},
             **env,
         },
-        build_profile="gfx1100_gguf_openai_live_concurrency_exact_hybrid_and_serial",
+        build_profile=(
+            f"{artifact_scope}_gguf_openai_live_concurrency_exact_hybrid_and_serial"
+        ),
         timing_protocol=(
             "one prepared model; exact text/raw-token roundtrip prompts; concurrent OpenAI SSE; "
             "scheduler latency samples; resident reclaim token accounting"
@@ -1200,7 +1215,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     )
     return {
         "schema": 1,
-        "kind": "gfx1100_gguf_live_server_concurrency_packet",
+        "kind": f"{artifact_scope}_gguf_live_server_concurrency_packet",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "status": "measurement_complete" if passed else "failed",
         "passed": passed,
@@ -1258,7 +1273,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
-    parser.add_argument("--backend", choices=("hip_gfx1100",), default="hip_gfx1100")
+    parser.add_argument("--backend", choices=_SUPPORTED_BACKENDS, default="hip_gfx1100")
     parser.add_argument("--quant", default="gguf_q4_k_m")
     parser.add_argument(
         "--configurations",
