@@ -164744,3 +164744,19 @@ both request-control errors and caller cancellation before iterator teardown.
 Validation: request-control plus generation-batcher bundle **25 passed**,
 production load-gate contract **10 passed**, and Python compilation plus
 `git diff --check` pass. Another clean focused gfx1151 socket rerun is required.
+
+Clean detached `aae0c04b` proves the teardown repair itself: in **67.756 s** the
+focused socket workload has exactly **6 completed + 1 active disconnect + 1
+408 timeout**, all six neighbor trajectories, prompt attribution, and SSE
+protocol rows are exact, no generator-close error appears, and ownership/KV/
+tracked memory drain. It fails only `server_counter_accounting_failed`: Uvicorn
+cancels the active response task directly, bypassing the stream generator's
+OpenAI exception handlers, so metrics report seven HTTP requests while all
+eight resident rows admit/reclaim. Raw near-GREEN:
+`/tmp/gfx1151-f4-cancellation-aae0c04b.json`. A new endpoint-level RED cancels
+an active completion body iterator and requires one request/failed/cancelled
+counter. GREEN handles external `asyncio.CancelledError` in completion and chat
+streams by cancelling the row token, recording one cancelled request, and
+re-raising to ASGI. Validation: focused server control/batcher bundle **26
+passed**, production load-gate contract **10 passed**, and Python compilation
+plus `git diff --check` pass. A final clean focused socket rerun is required.

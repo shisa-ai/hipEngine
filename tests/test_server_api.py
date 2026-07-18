@@ -4907,6 +4907,75 @@ def test_await_with_request_control_caller_cancel_closes_child_task() -> None:
     asyncio.run(run())
 
 
+def test_stream_completion_caller_cancel_records_one_cancelled_request() -> None:
+    class CooperativeStreamLLM(FakeLLM):
+        supports_controlled_streaming = True
+
+        def stream_detailed(self, prompt: str, sampling_params: SamplingParams):
+            yield GenerationStreamChunk(text=f"{prompt}:0")
+            token = sampling_params.cancellation_token
+            assert token is not None
+            while not token.cancelled:
+                time.sleep(0.001)
+            token.raise_if_cancelled()
+
+    async def run() -> None:
+        fake = CooperativeStreamLLM()
+        app = create_app(
+            ServerConfig(
+                model="fake-path",
+                served_model_name="fake-model",
+                eager_load=False,
+                metrics="prometheus",
+                generation_batch_window_ms=0.0,
+            ),
+            llm=fake,
+        )
+
+        async def connected_receive() -> dict[str, object]:
+            await asyncio.sleep(3600)
+            return {"type": "http.disconnect"}
+
+        raw_request = Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/v1/completions",
+                "headers": [],
+                "query_string": b"",
+            },
+            connected_receive,
+        )
+        endpoint = next(route.endpoint for route in app.routes if route.path == "/v1/completions")
+        response = await endpoint(
+            CompletionRequest(
+                model="fake-model",
+                prompt="active-disconnect",
+                max_tokens=8,
+                stream=True,
+            ),
+            raw_request,
+            "anonymous",
+        )
+        stream = response.body_iterator
+        first = await anext(stream)
+        assert "active-disconnect:0" in first
+
+        pending = asyncio.create_task(anext(stream))
+        await asyncio.sleep(0.01)
+        pending.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await pending
+
+        metrics = app.state.hipengine_server_metrics
+        assert metrics.request_total == 1
+        assert metrics.request_failed_total == 1
+        assert metrics.request_cancelled_total == 1
+        assert app.state.hipengine_generation_batcher.active_requests() == 0
+
+    asyncio.run(run())
+
+
 def test_request_control_maps_http_disconnect_to_cancelled_error() -> None:
     async def run() -> None:
         async def receive() -> dict[str, object]:
