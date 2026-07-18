@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-19
+
+- [rejected gfx1100 GGUF NativeSpecCycle N1 performance route] W7900 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV fixed B2 target forward submit+sync moves **29.589 -> 15.493 ms/cycle (-47.64%)**, but required position-bound capture adds **32.755 ms/cycle** and the same-tree three-cycle diagnostic regresses **84.35 -> 52.48 tok/s (-37.78%)** with identical 6/6 acceptance; all top-1/hidden/Conv/GDN/KV/cursor parity is byte-exact, so N1 lands default-off as correctness infrastructure and N3 graph reuse is required; `benchmarks/results/2026-07-19-gfx1100-native-spec-cycle-n1-b2.json`.
+
 ## 2026-07-18
 
 - [retained gfx1151 PARO resident server scaling and package default] Radeon 8060S/gfx1151 Qwen3.6-35B-A3B W4-PARO/BF16-KV p512/d128 moves public/OpenAI **width-1-only -> native c2/c4/c8**: blocking c1 **47.124 -> 51.962/60.323/61.253 aggregate tok/s (+10.27%/+28.01%/+29.98%)** with <=0.994% variance and **68/68** exact rows; real FastAPI SSE c1/c2/c4/c8/serial-c8 is **36.327/38.666/42.471/41.487/35.633**, so c8 is **+16.43%** over serial, all **100/100** rows plus **72/72** c8 stress rows are exact, and live c4->c8 reaches **38.191**. Backend-package capabilities now select the retained profile by default; a no-flag c4 OpenAI gate from `/tmp` loads the packaged profile, observes native widths 2/4, keeps 4/4 rows exact, and drains with no fallback. `benchmarks/results/2026-07-18-gfx1151-paro-g5-f1-server-scaling.json`, `benchmarks/results/2026-07-18-gfx1151-paro-g5-sse-server-scaling.json`, `benchmarks/results/2026-07-18-gfx1151-paro-g5-c8-sse-repeatability.json`, `benchmarks/results/2026-07-18-gfx1151-paro-g5-default-openai-c4.json`.

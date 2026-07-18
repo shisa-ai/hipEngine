@@ -106,6 +106,7 @@ from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import qwen35_split_qgat
 from hipengine.kernels.hip_gfx1100.runtime import (
     advance_decode_position_i64,
     build_runtime_state,
+    copy_i32_to_i64,
     prepare_prefill_chunk_metadata,
     record_f32_row_indexed,
     record_i64_scalar_indexed,
@@ -8336,6 +8337,11 @@ class Qwen35GGUFResidentSession:
     _lm_head_stage1_blocks: int = field(default=0, init=False)
     last_verify_stage_timings_ms: dict[str, float] = field(default_factory=dict, init=False)
     last_packed_verify_stage_timings_ms: dict[str, float] = field(default_factory=dict, init=False)
+    last_native_spec_target_submitted: bool = field(default=False, init=False)
+    last_native_spec_target_fallback_reason: str | None = field(default=None, init=False)
+    last_native_spec_target_capture_ms: float = field(default=0.0, init=False)
+    last_native_spec_target_submit_ms: float = field(default=0.0, init=False)
+    last_native_spec_target_readback_ms: float = field(default=0.0, init=False)
     fastpath_safety: Qwen35GGUFFastPathSafety | None = field(default=None, init=False)
     prefill_chunk_tuning: dict[str, object] = field(default_factory=dict, init=False)
     last_packed_prefill_plan: dict[str, object] = field(default_factory=dict, init=False)
@@ -10465,7 +10471,10 @@ class Qwen35GGUFResidentSession:
         record_stage_timings: bool = False,
         sync_stage_timings: bool = False,
         defer_linear_state_commit: bool = False,
-    ) -> Qwen35GGUFBlockVerifyResult:
+        _pre_staged_token_ids_ptr: int | None = None,
+        _target_top1_i64_ptr: int | None = None,
+        _enqueue_only: bool = False,
+    ) -> Qwen35GGUFBlockVerifyResult | None:
         """Consume a continuation block and return greedy target rows.
 
         The current resident decode state is treated as the prefix state.  The
@@ -10515,6 +10524,23 @@ class Qwen35GGUFResidentSession:
         rows = int(len(input_token_ids))
         if rows <= 0:
             raise ValueError("input_token_ids must be non-empty")
+        if _enqueue_only:
+            if stream == 0:
+                raise ValueError("enqueue-only target verification requires a non-default capture stream")
+            if _pre_staged_token_ids_ptr is None or int(_pre_staged_token_ids_ptr) <= 0:
+                raise ValueError("enqueue-only target verification requires pre-staged token ids")
+            if _target_top1_i64_ptr is None or int(_target_top1_i64_ptr) <= 0:
+                raise ValueError("enqueue-only target verification requires an int64 target-top1 destination")
+            if rows != 3:
+                raise ValueError("enqueue-only N1 target verification supports the fixed B2 rows=3 bucket")
+            if advance_state_only or capture_pre_output_norm_hidden or capture_lm_head_logits:
+                raise ValueError("enqueue-only target verification does not support host diagnostic outputs")
+            if capture_layer_output_hidden or capture_layer_boundary_hidden:
+                raise ValueError("enqueue-only target verification does not support layer host captures")
+            if record_stage_timings or sync_stage_timings:
+                raise ValueError("enqueue-only target verification does not support host stage timings")
+        elif _pre_staged_token_ids_ptr is not None or _target_top1_i64_ptr is not None:
+            raise ValueError("private target graph pointers require enqueue-only mode")
         if rows > int(self._bulk_prefill_scratch.rows):
             raise ValueError(
                 f"target block rows {rows} exceed resident bulk scratch rows {self._bulk_prefill_scratch.rows}"
@@ -10549,15 +10575,21 @@ class Qwen35GGUFResidentSession:
         token_counter_buf = self._verify_token_counter_i64
         if token_ids_buf is None or token_counter_buf is None:
             raise RuntimeError("GGUF verifier token buffers are closed")
-        zero_index = np.zeros((1,), dtype=np.int64)
-        copy_host_to_device(token_counter_buf, host_array_ptr(zero_index), zero_index.nbytes, runtime=runtime)
-        copy_host_to_device(self._prefill_token_buf, host_array_ptr(tokens), tokens.nbytes, runtime=runtime)
+        if not _enqueue_only:
+            zero_index = np.zeros((1,), dtype=np.int64)
+            copy_host_to_device(token_counter_buf, host_array_ptr(zero_index), zero_index.nbytes, runtime=runtime)
+            copy_host_to_device(self._prefill_token_buf, host_array_ptr(tokens), tokens.nbytes, runtime=runtime)
+        input_token_ids_ptr = (
+            self._prefill_token_buf.ptr
+            if _pre_staged_token_ids_ptr is None
+            else int(_pre_staged_token_ids_ptr)
+        )
         add_verify_stage("target_block_setup", (time.perf_counter() - t_setup0) * 1000 if stage_timings is not None else 0.0)
         try:
             t_embedding0 = time.perf_counter() if stage_timings is not None else 0.0
             launch_gguf_embedding(
                 self.runner.weights.root("token_embedding"),
-                self._prefill_token_buf.ptr,
+                input_token_ids_ptr,
                 self._prefill_hidden_a.ptr + start * row_nbytes,
                 rows=rows,
                 hidden_size=self.runner.hidden_size,
@@ -10843,12 +10875,43 @@ class Qwen35GGUFResidentSession:
                 direct_top1 = False
                 if row_lm_head:
                     direct_top1 = _gguf_verify_lm_head_q6_top1_dp4a_enabled()
-                    token_host = self._sample_target_block_rows_from_hidden(
-                        hidden_seed_buf.ptr if direct_top1 else final_scratch.norm.ptr,
-                        rows,
-                        activation_dtype=GGUF_ACTIVATION_F32 if direct_top1 else GGUF_ACTIVATION_BF16,
-                        stream=stream,
-                    )
+                    sample_hidden_ptr = hidden_seed_buf.ptr if direct_top1 else final_scratch.norm.ptr
+                    sample_dtype = GGUF_ACTIVATION_F32 if direct_top1 else GGUF_ACTIVATION_BF16
+                    if _enqueue_only:
+                        self._enqueue_target_block_rows_from_hidden(
+                            sample_hidden_ptr,
+                            rows,
+                            activation_dtype=sample_dtype,
+                            stream=stream,
+                        )
+                        if self._verify_lm_out_indices_i32 is None:
+                            raise RuntimeError("GGUF verifier int32 top1 rows are closed")
+                        copy_i32_to_i64(
+                            self._verify_lm_out_indices_i32.ptr,
+                            int(_target_top1_i64_ptr),
+                            rows,
+                            stream=stream,
+                            library=self._runtime_state_library,
+                            runtime=runtime,
+                        )
+                        if self._lm_out_index is None:
+                            raise RuntimeError("GGUF resident lm-head token buffer is closed")
+                        copy_i32_to_i64(
+                            self._verify_lm_out_indices_i32.ptr + (rows - 1) * DType.INT32.itemsize,
+                            self._lm_out_index.ptr,
+                            1,
+                            stream=stream,
+                            library=self._runtime_state_library,
+                            runtime=runtime,
+                        )
+                        token_host = None
+                    else:
+                        token_host = self._sample_target_block_rows_from_hidden(
+                            sample_hidden_ptr,
+                            rows,
+                            activation_dtype=sample_dtype,
+                            stream=stream,
+                        )
                 else:
                     token_host = np.empty((rows,), dtype=np.int64)
                     for row in range(rows):
@@ -10865,11 +10928,13 @@ class Qwen35GGUFResidentSession:
                             library=self._runtime_state_library,
                             runtime=runtime,
                         )
-                runtime.device_synchronize()
-                if not row_lm_head:
-                    copy_device_to_host(host_array_ptr(token_host), token_ids_buf, token_host.nbytes, runtime=runtime)
+                if not _enqueue_only:
+                    runtime.device_synchronize()
+                    if not row_lm_head:
+                        copy_device_to_host(host_array_ptr(token_host), token_ids_buf, token_host.nbytes, runtime=runtime)
                 if (
-                    capture_lm_head_logits
+                    not _enqueue_only
+                    and capture_lm_head_logits
                     and row_lm_head
                     and not direct_top1
                     and self._verify_logits_buf is not None
@@ -10885,15 +10950,28 @@ class Qwen35GGUFResidentSession:
                     "target_block_lm_head_sample",
                     (time.perf_counter() - t_sample0) * 1000 if stage_timings is not None else 0.0,
                 )
-            t_hidden0 = time.perf_counter() if stage_timings is not None else 0.0
-            hidden_host = np.empty((rows, self.runner.hidden_size), dtype=np.float32)
-            copy_device_to_host(host_array_ptr(hidden_host), hidden_seed_buf, hidden_host.nbytes, runtime=runtime)
-            add_verify_stage(
-                "target_block_hidden_readback",
-                (time.perf_counter() - t_hidden0) * 1000 if stage_timings is not None else 0.0,
-            )
+            if _enqueue_only:
+                hidden_host = None
+            else:
+                t_hidden0 = time.perf_counter() if stage_timings is not None else 0.0
+                hidden_host = np.empty((rows, self.runner.hidden_size), dtype=np.float32)
+                copy_device_to_host(host_array_ptr(hidden_host), hidden_seed_buf, hidden_host.nbytes, runtime=runtime)
+                add_verify_stage(
+                    "target_block_hidden_readback",
+                    (time.perf_counter() - t_hidden0) * 1000 if stage_timings is not None else 0.0,
+                )
         finally:
             pass
+        if _enqueue_only:
+            set_decode_position_i64(
+                self.scratch.position_buf.ptr,
+                self.scratch.context_buf.ptr,
+                end,
+                stream=stream,
+                library=self._runtime_state_library,
+                runtime=runtime,
+            )
+            return None
         t_cursor0 = time.perf_counter() if stage_timings is not None else 0.0
         self._verify_hidden_seed_rows_populated = rows
         self._position = end
@@ -14361,6 +14439,74 @@ class Qwen35GGUFResidentSession:
             token_id=token_id,
             logit=logit,
             logits=logits,
+        )
+
+    def capture_native_spec_target_graph(
+        self,
+        input_token_ids: list[int] | tuple[int, ...],
+        *,
+        cycle_id: int = 0,
+        transaction_id: int = 0,
+        request_id: int = 0,
+        bulk_attention_mode: str = "bulk",
+        use_wmma_prefill: bool = False,
+        capture_linear_state_rows: bool = False,
+        defer_linear_state_commit: bool = False,
+    ):
+        """Capture the one-shot N1 B2 target verifier for native submission."""
+
+        from hipengine.runtime.gguf_native_spec_cycle import (
+            capture_qwen35_gguf_native_b2_target_graph,
+        )
+
+        return capture_qwen35_gguf_native_b2_target_graph(
+            self,
+            input_token_ids,
+            cycle_id=int(cycle_id),
+            transaction_id=int(transaction_id),
+            request_id=int(request_id),
+            bulk_attention_mode=bulk_attention_mode,
+            use_wmma_prefill=bool(use_wmma_prefill),
+            capture_linear_state_rows=bool(capture_linear_state_rows),
+            defer_linear_state_commit=bool(defer_linear_state_commit),
+        )
+
+    def verify_target_block_native_cycle(
+        self,
+        input_token_ids: list[int] | tuple[int, ...],
+        *,
+        fallback: bool = True,
+        cycle_id: int = 0,
+        transaction_id: int = 0,
+        request_id: int = 0,
+        bulk_attention_mode: str = "bulk",
+        use_wmma_prefill: bool = False,
+        capture_linear_state_rows: bool = False,
+        capture_lm_head_logits: bool = False,
+        record_stage_timings: bool = False,
+        sync_stage_timings: bool = False,
+        defer_linear_state_commit: bool = False,
+    ) -> Qwen35GGUFBlockVerifyResult:
+        """Run fixed-B2 native submission or preserve the exact Python fallback."""
+
+        from hipengine.runtime.gguf_native_spec_cycle import (
+            verify_qwen35_gguf_native_b2_target,
+        )
+
+        return verify_qwen35_gguf_native_b2_target(
+            self,
+            input_token_ids,
+            fallback=bool(fallback),
+            cycle_id=int(cycle_id),
+            transaction_id=int(transaction_id),
+            request_id=int(request_id),
+            bulk_attention_mode=bulk_attention_mode,
+            use_wmma_prefill=bool(use_wmma_prefill),
+            capture_linear_state_rows=bool(capture_linear_state_rows),
+            capture_lm_head_logits=bool(capture_lm_head_logits),
+            record_stage_timings=bool(record_stage_timings),
+            sync_stage_timings=bool(sync_stage_timings),
+            defer_linear_state_commit=bool(defer_linear_state_commit),
         )
 
     def capture_decode_graph(

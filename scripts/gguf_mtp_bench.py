@@ -908,6 +908,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--native-spec-target-cycle",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Diagnostic N1 route: submit admitted B2/three-row target blocks through the "
+            "versioned NativeSpecCycle C++ launcher. Unsupported rows/configurations retain "
+            "the exact Python target-block fallback. Capture remains state-generation-bound."
+        ),
+    )
+    parser.add_argument(
         "--target-block-verify-mode",
         choices=("bulk", "native", "serial-exact"),
         default="bulk",
@@ -1804,6 +1814,16 @@ def main(argv: list[str] | None = None):
         parser.error("--resident-mtp-draft-gpu-event-stage-timings requires --resident-mtp-device-chain")
     if args.resident_mtp_draft_gpu_event_stage_timings and not args.record_cycle_stage_timings:
         parser.error("--resident-mtp-draft-gpu-event-stage-timings requires --record-cycle-stage-timings")
+    if args.native_spec_target_cycle and not args.target_block_verify:
+        parser.error("--native-spec-target-cycle requires --target-block-verify")
+    if args.native_spec_target_cycle and args.target_block_verify_mode != "bulk":
+        parser.error("--native-spec-target-cycle requires --target-block-verify-mode bulk")
+    if args.native_spec_target_cycle and args.target_block_wmma_prefill:
+        parser.error("--native-spec-target-cycle requires --no-target-block-wmma-prefill")
+    if args.native_spec_target_cycle and args.record_target_topk_scores:
+        parser.error("--native-spec-target-cycle does not support target logits readback")
+    if args.native_spec_target_cycle and args.target_block_sync_stage_timings:
+        parser.error("--native-spec-target-cycle does not support synchronized stage timings")
     if args.target_block_sync_stage_timings and not args.target_block_verify:
         parser.error("--target-block-sync-stage-timings requires --target-block-verify")
     if args.target_block_sync_stage_timings and not args.record_cycle_stage_timings:
@@ -2504,6 +2524,7 @@ def main(argv: list[str] | None = None):
             redraft_ms = 0.0
             batched_verify_used = False
             block_verify_used = False
+            native_spec_target_cycle_used = False
             serial_hidden_host_required = not bool(args.resident_mtp_device_seed)
             device_verify_rows_required = bool(args.resident_mtp_device_seed and args.mtp_device_kv_cache)
             b1_branch_safe_block_verify_used = False
@@ -2559,6 +2580,22 @@ def main(argv: list[str] | None = None):
             def record_direct_commit(rows: int = 1) -> None:
                 nonlocal target_verify_direct_commit_rows
                 target_verify_direct_commit_rows += int(rows)
+
+            def record_native_spec_target_timings() -> None:
+                if not session.last_native_spec_target_submitted:
+                    return
+                add_cycle_stage(
+                    "native_spec_target_capture",
+                    float(session.last_native_spec_target_capture_ms),
+                )
+                add_cycle_stage(
+                    "native_spec_target_submit",
+                    float(session.last_native_spec_target_submit_ms),
+                )
+                add_cycle_stage(
+                    "native_spec_target_readback",
+                    float(session.last_native_spec_target_readback_ms),
+                )
 
             def record_target_lm_head_scores(
                 block_result,
@@ -2634,19 +2671,42 @@ def main(argv: list[str] | None = None):
                             serial_rows=len(block_inputs),
                         )
                     else:
-                        block_result = session.verify_target_block(
-                            block_inputs,
-                            bulk_attention_mode=args.target_block_verify_mode,
-                            use_wmma_prefill=bool(args.target_block_wmma_prefill),
-                            capture_linear_state_rows=direct_state_commit,
-                            capture_lm_head_logits=bool(args.record_target_topk_scores),
-                            record_stage_timings=bool(args.record_cycle_stage_timings),
-                            sync_stage_timings=bool(args.target_block_sync_stage_timings),
-                            defer_linear_state_commit=direct_state_commit,
+                        if args.native_spec_target_cycle:
+                            block_result = session.verify_target_block_native_cycle(
+                                block_inputs,
+                                cycle_id=int(cycle),
+                                bulk_attention_mode=args.target_block_verify_mode,
+                                use_wmma_prefill=bool(args.target_block_wmma_prefill),
+                                capture_linear_state_rows=direct_state_commit,
+                                capture_lm_head_logits=bool(args.record_target_topk_scores),
+                                record_stage_timings=bool(args.record_cycle_stage_timings),
+                                sync_stage_timings=bool(args.target_block_sync_stage_timings),
+                                defer_linear_state_commit=direct_state_commit,
+                            )
+                        else:
+                            block_result = session.verify_target_block(
+                                block_inputs,
+                                bulk_attention_mode=args.target_block_verify_mode,
+                                use_wmma_prefill=bool(args.target_block_wmma_prefill),
+                                capture_linear_state_rows=direct_state_commit,
+                                capture_lm_head_logits=bool(args.record_target_topk_scores),
+                                record_stage_timings=bool(args.record_cycle_stage_timings),
+                                sync_stage_timings=bool(args.target_block_sync_stage_timings),
+                                defer_linear_state_commit=direct_state_commit,
+                            )
+                        native_spec_target_cycle_used = bool(
+                            native_spec_target_cycle_used
+                            or session.last_native_spec_target_submitted
                         )
+                        record_native_spec_target_timings()
                         record_target_verify(
                             len(block_inputs),
                             layer_passes=1,
+                            graph_rows=(
+                                len(block_inputs)
+                                if session.last_native_spec_target_submitted
+                                else 0
+                            ),
                             block_passes=1,
                             block_rows=len(block_inputs),
                         )
@@ -2832,19 +2892,42 @@ def main(argv: list[str] | None = None):
                             serial_rows=len(block_inputs),
                         )
                     else:
-                        block_result = session.verify_target_block(
-                            block_inputs,
-                            bulk_attention_mode=args.target_block_verify_mode,
-                            use_wmma_prefill=bool(args.target_block_wmma_prefill),
-                            capture_linear_state_rows=direct_state_commit,
-                            capture_lm_head_logits=bool(args.record_target_topk_scores),
-                            record_stage_timings=bool(args.record_cycle_stage_timings),
-                            sync_stage_timings=bool(args.target_block_sync_stage_timings),
-                            defer_linear_state_commit=direct_state_commit,
+                        if args.native_spec_target_cycle:
+                            block_result = session.verify_target_block_native_cycle(
+                                block_inputs,
+                                cycle_id=int(cycle),
+                                bulk_attention_mode=args.target_block_verify_mode,
+                                use_wmma_prefill=bool(args.target_block_wmma_prefill),
+                                capture_linear_state_rows=direct_state_commit,
+                                capture_lm_head_logits=bool(args.record_target_topk_scores),
+                                record_stage_timings=bool(args.record_cycle_stage_timings),
+                                sync_stage_timings=bool(args.target_block_sync_stage_timings),
+                                defer_linear_state_commit=direct_state_commit,
+                            )
+                        else:
+                            block_result = session.verify_target_block(
+                                block_inputs,
+                                bulk_attention_mode=args.target_block_verify_mode,
+                                use_wmma_prefill=bool(args.target_block_wmma_prefill),
+                                capture_linear_state_rows=direct_state_commit,
+                                capture_lm_head_logits=bool(args.record_target_topk_scores),
+                                record_stage_timings=bool(args.record_cycle_stage_timings),
+                                sync_stage_timings=bool(args.target_block_sync_stage_timings),
+                                defer_linear_state_commit=direct_state_commit,
+                            )
+                        native_spec_target_cycle_used = bool(
+                            native_spec_target_cycle_used
+                            or session.last_native_spec_target_submitted
                         )
+                        record_native_spec_target_timings()
                         record_target_verify(
                             len(block_inputs),
                             layer_passes=1,
+                            graph_rows=(
+                                len(block_inputs)
+                                if session.last_native_spec_target_submitted
+                                else 0
+                            ),
                             block_passes=1,
                             block_rows=len(block_inputs),
                         )
@@ -3608,6 +3691,12 @@ def main(argv: list[str] | None = None):
                 "mtp_device_kv_commit_ms": round(mtp_device_kv_commit_ms, 2),
                 "target_prefill_mode": target_prefill_mode,
                 "target_block_verify": bool(block_verify_used),
+                "native_spec_target_cycle": bool(native_spec_target_cycle_used),
+                "native_spec_target_fallback_reason": (
+                    session.last_native_spec_target_fallback_reason
+                    if args.native_spec_target_cycle and block_verify_used
+                    else None
+                ),
                 "target_block_direct_state_commit": bool(
                     target_block_direct_state_commit_effective and block_verify_used
                 ),
@@ -3818,6 +3907,7 @@ def main(argv: list[str] | None = None):
             "record_draft_attention_debug": bool(args.record_draft_attention_debug),
             "record_cycle_stage_timings": bool(args.record_cycle_stage_timings),
             "target_block_sync_stage_timings": bool(args.target_block_sync_stage_timings),
+            "native_spec_target_cycle": bool(args.native_spec_target_cycle),
             "llama_compat": bool(args.llama_compat),
             "verify_dp4a": bool(args.verify_dp4a),
             "verify_dense_q8_dp4a": bool(args.verify_dense_q8_dp4a),

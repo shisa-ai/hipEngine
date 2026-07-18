@@ -326,9 +326,15 @@ accept/commit metadata, and scheduler-facing results.
    bounded capacities, explicit dtypes, stage-dependent validation, and a
    CPU/fake launcher. The target-only adapter consumes the existing
    `TargetVerifyBuffers` plus `KVLiveSpans`; the Python chain remains unchanged.
-2. **N1 — Native target block:** move one fixed B2/B3 target verifier bucket to a
-   C++ launcher while leaving proposal and commit unchanged. Prove identical
-   target rows, logits/top-1, hidden seeds, recurrent state, and KV.
+2. **N1 — Native target block (landed diagnostic 2026-07-19):** the gfx1100
+   GGUF single-request B2 (`rows=3`) adapter captures the existing target
+   verifier and submits it through one versioned C++ ABI call while proposal and
+   accept/commit remain unchanged. W7900 parity is byte-exact for all three
+   top-1 IDs, 6,144 FP32 hidden values, 60 captured and 60 resident Conv/GDN
+   buffers, and 20 full-attention K/V buffers. The graph is position/pointer
+   bound and currently recaptured every cycle, so it is explicit/default-off:
+   submit+sync improves `29.589 -> 15.493 ms/cycle` but `32.755 ms/cycle`
+   capture cost regresses the three-cycle diagnostic `84.35 -> 52.48 tok/s`.
 3. **N2 — Device accept/commit:** consume target top-1 on device and produce the
    accepted count, commit rows, reseed row, recurrent/KV transaction, and output
    summary without intermediate host reads.
@@ -1292,17 +1298,38 @@ is now answered by the M1 required/optional table.)
       exact `TargetVerifyBuffers` + `KVLiveSpans` adapter, and CPU/fake-launcher
       oracle tests. This is contract infrastructure only: no native math is
       enabled and no performance result is claimed.
-- [ ] Implement a native C++ target-block launcher plus device-resident
-      accept/commit summary for one GGUF B2/B3 bucket (N1/N2), then close the
-      full natural-prompt correctness and profiler gates.
+- [x] Implement the N1 native C++ target-block launcher for one GGUF B2 bucket.
+      The default-off gfx1100 route is byte-exact for top-1, hidden rows, all
+      captured/resident Conv/GDN state, full-attention KV, and cursors; the
+      cached `rocprofv3` trace proves its `copy_i32_to_i64_kernel` leaf. The
+      performance route is rejected until graph reuse removes per-cycle capture.
+- [ ] Implement N2 device-resident accept/commit summary for the admitted GGUF
+      B2 bucket, then close the full natural-prompt correctness gates.
 - [ ] Extend the complete native cycle to shared GGUF MTP, PARO MTP, and DFlash
       provider adapters; validate gfx1100 and gfx1151 independently before any
       default promotion (N3/N4).
-- [ ] Profile best exact row with `rocprofv3 --kernel-trace` after cached build
-      warmup.
+- [x] Profile the N1 exact B2 target row with `rocprofv3 --kernel-trace` after
+      cached build warmup. N1 averages **13.118 ms** of kernels and **834
+      calls/step** inside a **69.159 ms** host window; the two widening leaves
+      per step are **1.601-2.080 us**, 8 VGPR, zero scratch/LDS. Repeat this gate
+      for the complete N3 cycle rather than treating N1 as a retained speed row.
 
 ## Decision Log
 
+- 2026-07-19: Landed N1 as a correctness-accepted, performance-rejected gfx1100
+  diagnostic under registry key
+  `(hip_gfx1100, speculative_cycle, w4_gguf,
+  native_v1_b2_target_graph)`. One host-only C++ call launches and synchronizes
+  the captured three-row target graph; unsupported backends/configurations fall
+  back before capture, while launch-time failures never silently re-execute a
+  potentially mutating verifier. W7900 target/state/KV parity is byte-exact.
+  Collapsed submission cuts target forward host wall **47.64%**, but the
+  required position-bound recapture costs **32.755 ms/cycle** and regresses the
+  same-tree three-cycle diagnostic **84.35 -> 52.48 tok/s (-37.78%)** with
+  identical 6/6 acceptance. Keep `--native-spec-target-cycle` default-off;
+  proceed through N2, then make position/cursor metadata dynamic and reuse the
+  complete-cycle graph/launcher in N3. Artifact:
+  `benchmarks/results/2026-07-19-gfx1100-native-spec-cycle-n1-b2.json`.
 - 2026-07-13: Landed N0 as provider-neutral contract infrastructure in
   `hipengine.speculative.native_cycle`. Version 1 carries explicit live counts
   and capacities, chain/tree and stage masks, metadata/hidden/KV dtypes,

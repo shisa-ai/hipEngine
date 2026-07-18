@@ -164117,3 +164117,195 @@ route.
 Updated `docs/MTP-gguf.md` and `docs/PLAN.md` to mark N0 landed and N1 still
 open. This slice adds no GPU kernel, changes no runtime default, and makes no
 performance claim; the new-kernel correctness/profiler gates begin with N1.
+
+## 2026-07-19 — Land NativeSpecCycleLauncher N1 fixed-B2 target diagnostic
+
+Implemented the first real `NativeSpecCycle` execution slice for the existing
+single-request GGUF B2 target verifier (`rows=3`). The new provider is registered
+at `(hip_gfx1100, speculative_cycle, w4_gguf,
+native_v1_b2_target_graph)`. It captures the unchanged target forward on a
+session-owned stream, binds every pointer/shape/stream field to the version-1
+control block, and performs graph launch plus stream synchronization through one
+host-only C++ ABI call. Proposal, host acceptance, partial-accept rollback, and
+state/KV commit remain on the existing Python path.
+
+The ownership/safety contract is deliberately narrow:
+
+- the provider handle retains its session and launches only once; no borrowed
+  model/state allocation is transferred or freed;
+- graph/exec/stream and target-metadata workspace live until explicit close;
+- launch rejects pointer, stream, mode, shape, or dtype drift from capture;
+- unsupported shapes/configurations/backends fall back before capture;
+- launch/result/readback failures never silently rerun a verifier that may have
+  mutated state or KV;
+- only gfx1100 is registered; gfx1151 remains exact eager fallback until its own
+  N4 provider gate;
+- `scripts/gguf_mtp_bench.py --native-spec-target-cycle` is explicit and
+  default-off.
+
+The captured target path required one new device adapter because the retained
+row argmax emits int32 IDs while the N0 ABI uses uniform int64 metadata.
+`copy_i32_to_i64_kernel` widens the three row IDs and final resident token
+without a host read. Its CPU oracle is exact for `[0, -1, 7, INT32_MAX]`. The
+launcher JIT build identity includes the SHA-256 of its included ABI header, so
+an ABI-header edit cannot reuse a stale host `.so`.
+
+RED/GREEN included a bound-control test that initially failed because
+`NativeSpecTargetGraphLauncher.__init__` did not accept a captured control:
+
+```text
+FAILED tests/test_native_spec_cycle_graph.py::
+  test_native_target_graph_launcher_rejects_control_that_drifted_from_bound_graph
+TypeError: NativeSpecTargetGraphLauncher.__init__() got an unexpected keyword
+argument 'bound_control'
+```
+
+The implemented launcher now accepts and validates the bound control, permits
+cycle/transaction bookkeeping changes only, rejects embedded pointer drift,
+enforces one in-flight call, and surfaces terminal backend failures.
+
+### W7900 correctness
+
+The live gate uses Qwen3.6-35B-A3B UD-Q4_K_M, BF16 KV, device metadata, and the
+production finite prefill-GDN direct-commit route:
+
+```bash
+uv run --extra dev pytest -q \
+  tests/test_gguf_native_spec_cycle.py::test_native_b2_target_graph_matches_eager_hidden_state_and_kv
+```
+
+The final oracle restores the complete pre-eager K/V image and poisons hidden
+and captured-state output buffers before native launch, so inherited eager bytes
+cannot satisfy parity. The native graph is byte-exact to eager for all **3/3
+target top-1 IDs**, all **6,144/6,144 FP32 hidden values** (`max_abs=0`,
+finite), all **60** captured Conv/GDN row buffers, all **60** resident Conv/GDN
+buffers, all **20** full-
+attention K/V buffers, and cursor **8 -> 11**. An earlier diagnostic combination
+that enabled deferred linear rows outside the production prefill-GDN contract
+produced non-finite rows in both eager and graph controls; it was discarded as
+an invalid oracle rather than misreported as graph divergence.
+
+### W7900 profiler and performance decision
+
+Cached `rocprofv3 --kernel-trace` command:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 uv run --extra dev python \
+  scripts/gguf_mtp_verifier_rocprof.py \
+  --mode block-verify --block-rows 3 --native-spec-target-cycle \
+  --steps 3 --warmup 1 --max-seq 256 \
+  --compiler-version-file /tmp/native-spec-n1-hipcc-version.txt \
+  --raw-root /tmp/hipengine-native-spec-n1-rocprof-final \
+  --roctx-sdk /home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib/librocprofiler-sdk-roctx.so.1
+```
+
+Across three measured target steps, native records **13.118 ms kernels** inside
+a **69.159 ms host window**, versus eager **13.192 ms** inside **52.955 ms**.
+Native executes 834 kernel calls/step versus eager 827. The six measured
+`copy_i32_to_i64_kernel` leaves (two per step) are **1.601-2.080 us**, 8 VGPR,
+128 SGPR, zero scratch/LDS, and workgroup/grid X 256. Unprofiled native
+components are **49.901 ms capture**, **16.487 ms submit+sync**, and **0.104 ms
+readback**. Raw profiler artifacts are SHA-256
+`fef7beac6b7426fd3679a2471a42133b1fd52ea5fff6801cc8e52575672f9e85`
+(native) and
+`a7b7402483c456e5f8d52bd65ba281d10048a2ec809bb4f25ac3cc2ca2cb49d2`
+(eager).
+
+The final same-tree three-cycle diagnostic used:
+
+```bash
+HIPENGINE_GGUF_PREFILL_DEVICE_METADATA=1 uv run --extra dev python \
+  scripts/gguf_mtp_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --llama-compat --cycles 3 --no-mtp-draft-warmup \
+  --record-cycle-stage-timings [--native-spec-target-cycle]
+```
+
+The architectural split is decisive:
+
+- eager target forward: **29.589 ms/cycle**;
+- native submit+sync: **15.493 ms/cycle**, **-47.64%**;
+- native graph capture: **32.755 ms/cycle**;
+- native readback: **0.113 ms/cycle**;
+- complete diagnostic: **84.35 -> 52.48 tok/s (-37.78%)** and **35.57 ->
+  57.17 ms/cycle (+60.73%)**, with identical tokens and **6/6 acceptance**.
+
+This is a single fixed-prompt diagnostic, not a retainable suite claim. N1 is
+therefore **correctness accepted / performance rejected**, stays default-off,
+and does not replace the retained MTP topline. It proves that collapsed target
+submission is useful, but per-cycle graph construction is the wrong ownership
+boundary. Proceed to N2 device accept/commit, then N3 dynamic position/cursor
+metadata and a reusable complete-cycle graph/launcher before running the full
+category+heldout promotion suite.
+
+Compact artifact (canonical dirty-tree provenance plus raw-source hashes):
+`benchmarks/results/2026-07-19-gfx1100-native-spec-cycle-n1-b2.json`.
+Control/native raw sources are SHA-256
+`7d1e8e0c37d94b474e4f99045ca269cf85686329dae397414b3e763721b96b28` and
+`5401d17baeeb8a9225c549a6562ca212defd9513ffa98acf0d2a11bb13264d21`.
+
+Current focused audit gate passes **17/17** non-model tests plus focused Ruff,
+Python compilation, `git diff --check`, and the C++ fake-HIP callback. The
+lineage check reports only the already-catalogued external nano-vllm-amd drift;
+this adapter/kernel is original in-tree work and ports no external source.
+
+Final-tree validation before commit:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 uv run --extra dev pytest -q \
+  tests/test_gguf_native_spec_cycle.py::test_native_b2_target_graph_matches_eager_hidden_state_and_kv
+# 1 passed (real 35B W7900 byte-parity gate)
+
+uv run --extra dev pytest \
+  tests/test_native_spec_cycle.py \
+  tests/test_native_spec_cycle_graph.py \
+  tests/test_gguf_native_spec_cycle.py \
+  tests/test_runtime_state_plan.py \
+  tests/test_speculative_buffer_owner.py \
+  tests/test_speculative_interfaces.py \
+  tests/test_generation_qwen35_gguf_sampling.py \
+  tests/test_gguf_mtp_bench_metrics.py \
+  tests/test_gguf_mtp_bench_prompt.py \
+  tests/test_gfx1151_backend.py \
+  -k 'not test_native_b2_target_graph_matches_eager_hidden_state_and_kv'
+# 237 passed, 1 deselected
+
+python3 -m compileall -q hipengine tests scripts
+python3 scripts/smoke.py --mode registry
+python3 scripts/smoke.py --mode cpu-fixtures
+python3 scripts/smoke.py --mode smoke-add-plan
+# passed; all seven compatible CPU fixtures pass
+
+uv build
+# sdist + manylinux wheel pass; wheel contains native_cycle.py,
+# native_cycle_abi.h, native_cycle_graph.py/.cpp, and gguf_native_spec_cycle.py
+
+python3 scripts/sync_benchmark_readme.py --check
+# synchronized
+```
+
+Focused Ruff passes for every new file, the runtime-state wrapper, profiler,
+and tests. A mechanical current-vs-`HEAD` Ruff comparison proves this unit adds
+no diagnostic to `qwen35_gguf_runner.py` or `gguf_mtp_bench.py`; those files
+retain **16** and **2** pre-existing findings respectively. Artifact provenance
+validation, raw source SHA-256 checks, Python compilation, profiler `--help`,
+and `git diff --check` pass.
+
+The documented broad `python3 scripts/check_fixtures.py` wrapper still stops
+after four passes on unchanged specialized fixture
+`tests/fixtures/cpu_reference/moe/moe_ffn_selected_gguf_q4_k.json`, whose schema
+uses `expected_block`/`expected_selected` rather than the wrapper's assumed
+`expected`. This is the same `origin/main` baseline issue recorded in N0; the
+fixture/wrapper are untouched and `smoke.py --mode cpu-fixtures` passes all
+seven compatible fixtures. The nominal repository-wide pytest command is also
+not rerun as a CPU gate because N0 established that it enters local 35B/W7900
+tests; the explicit 237-test host bundle plus the isolated live parity gate
+keeps hardware scope deterministic.
+
+Final review also closed an import-order hazard in gfx1151's generic gfx1100
+alias refresh: `native_v1_b2_target_graph` is explicitly excluded until its N4
+backend gate, so importing the gfx1100 provider before refreshing gfx1151 cannot
+silently enable an unvalidated backend. `tests/test_gfx1151_backend.py` passes
+**23/23**, including a synthetic late-provider registration case; the backend
+module is Ruff/compile clean, and the test file adds no finding beyond its one
+pre-existing unused import.
