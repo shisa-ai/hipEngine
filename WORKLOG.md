@@ -164866,3 +164866,31 @@ luck without changing any model prompt/token branch or throughput denominator.
 A host contract assertion freezes the offset. Validation remains **10 + 26 + 8
 passed**, Python compilation, and `git diff --check`. A clean warm-sequence GPU
 gate is required before the complete packet.
+
+Clean `ee8d4e31` rejects the +0.5-second workload change: the warm sequence still
+cancels five rows. The offset and its assertion are restored to the original
+all-at-once protocol. Subsequent diagnostics isolate the true F4 blocker:
+
+- Timeout-only with the disconnect row converted to a completion still cancels
+  peers at the timeout boundary with 16-chunk queues.
+- Instrumentation proves every request has a distinct control/batcher token;
+  only the intended timeout/disconnect token receives `cancel()`. Failed peers
+  can return 499 without `_queued_generation_cancelled` or resident-overflow
+  firing.
+- Warm timeout-only passes **7 completed + 1 timeout** with aligned 64-chunk
+  queues (`478d0d9c…`). Warm disconnect-only passes **7 completed + 1 active
+  disconnect** with aligned 256-chunk queues (`27ed87b6…`).
+- Combining both controls fails even at aligned 256, producing **6 cancelled +
+  1 disconnect + 1 timeout** (`27f22439…`). Delaying disconnect to +3 seconds
+  still fails (`2f798957…`). Queue samples remain bounded at depth 0-1, and
+  final ownership/memory drain.
+
+Per the predeclared neighbor-survival gate, no F4 performance claim is retained.
+The ineffective queue/offset experiment is removed from final source. Added
+compact blocked artifact
+`benchmarks/results/2026-07-19-gfx1151-gguf-f4-production-load-blocked.json`;
+the complete failed raw packet is 7,056,082 bytes, SHA-256
+`c52eb3d2a40f4e94c689b55a3d8f0b39e9a734bcdf9ed1b4816a8d86214e0d0f`.
+The next required implementation is a scheduler-owned row cancel command/ack
+path that atomically cancels one request ID without closing peer HTTP/model
+stream subscriptions. F5 and later production gates remain blocked on F4.
