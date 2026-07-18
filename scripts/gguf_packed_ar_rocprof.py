@@ -2,8 +2,8 @@
 """Profile the observable c1/packed GGUF execution boundary.
 
 The parent warm-builds both leaf workloads outside rocprofv3, then profiles one
-synchronized steady decode transition for c1 and a declared packed c4 or c8
-lane in separate cached-only children. The packed runtime manifest counts host
+synchronized steady decode transition for c1 and a declared packed c2, c4, or
+c8 lane in separate cached-only children. The packed runtime manifest counts host
 row loops, metadata/state movement, synchronizations, scalar fallbacks, and
 graph replay. This script checks its route-dependent row-local launch count
 against the trace and buckets all packed GPU work as ``exact_row_local`` or
@@ -74,7 +74,7 @@ def _artifact_kind(
             raise ValueError(f"unsupported gfx11 profiler target: {target!r}") from exc
         suffix = f"{phase}_native_c8_graph_profiler_census"
     elif closure_level == "c4":
-        suffix = "c4_graph_replay_census"
+        suffix = f"c{int(packed_concurrency)}_graph_replay_census"
     elif closure_level == "c3":
         suffix = "c3_model_boundaries_census"
     elif closure_level == "c2":
@@ -723,7 +723,7 @@ def _run_child(args: argparse.Namespace) -> int:
         owner = stack.enter_context(Qwen35GGUFResidentSession(args.model, **kwargs))
         if int(args.concurrency) == 1:
             payload = _run_c1_child(owner, args, marker)
-        elif int(args.concurrency) in {4, 8}:
+        elif int(args.concurrency) in {2, 4, 8}:
             if owner.runner is None:
                 raise RuntimeError("GGUF owner did not materialize a shared runner")
             sessions = [owner]
@@ -740,7 +740,7 @@ def _run_child(args: argparse.Namespace) -> int:
                 )
             payload = _run_packed_child(owner, sessions, args, marker)
         else:
-            raise ValueError("GGUF profiler child supports only c1, c4, and c8")
+            raise ValueError("GGUF profiler child supports only c1, c2, c4, and c8")
         payload.update(
             {
                 "schema": 1,
@@ -1004,7 +1004,7 @@ def _run_parent(args: argparse.Namespace) -> dict[str, Any]:
         "status": (
             "native_c8_graph_profiler_census_complete"
             if passed and packed_concurrency == 8 and closure_level == "c4"
-            else "c4_graph_replay_census_complete"
+            else f"c{packed_concurrency}_graph_replay_census_complete"
             if passed and closure_level == "c4"
             else "c3_model_boundaries_census_complete"
             if passed and closure_level == "c3"
@@ -1019,7 +1019,7 @@ def _run_parent(args: argparse.Namespace) -> dict[str, Any]:
         "claim_level": (
             "native_c8_graph_replay_profiler_census"
             if packed_concurrency == 8 and closure_level == "c4"
-            else "c4_graph_replay_profiler_census"
+            else f"native_c{packed_concurrency}_graph_replay_profiler_census"
             if closure_level == "c4"
             else "exact_hybrid_model_boundaries_closed_profiler_census"
             if closure_level == "c3"
@@ -1073,8 +1073,9 @@ def _run_parent(args: argparse.Namespace) -> dict[str, Any]:
                     f"{_NATIVE_C8_PHASE_BY_TARGET[target_arch].upper()} proves one real native-c8 graph replay with zero undeclared c1 work or "
                     "steady transfer; retained scaling and d128 equality are joined separately."
                     if packed_concurrency == 8
-                    else "C4 proves one real graph replay with zero undeclared c1 work or steady transfer; "
-                    "native/scaling promotion still requires the d128 and direct performance packet."
+                    else f"Physical c{packed_concurrency} proves one real graph replay with zero "
+                    "undeclared c1 work or steady transfer; native/scaling promotion still requires "
+                    "the d128 and direct performance packet."
                 )
                 if closure_level == "c4"
                 else "C3 closes the declared per-row model and metadata boundaries, but the route remains "
@@ -1083,8 +1084,8 @@ def _run_parent(args: argparse.Namespace) -> dict[str, Any]:
                 else "C2 closes the recurrent linear-attention row loop, but the route remains "
                 "exact_hybrid until the later C3/C4 correctness, replay, and scaling gates complete."
                 if closure_level == "c2"
-                else "The c4 route remains exact_hybrid because recurrent linear attention replays a "
-                "c1-exact row subgraph."
+                else f"The c{packed_concurrency} route remains exact_hybrid because recurrent linear "
+                "attention replays a c1-exact row subgraph."
             ),
             "Profiler instrumentation and marker synchronization make all durations diagnostic only.",
         ],
@@ -1099,7 +1100,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--packed-concurrency",
         type=int,
-        choices=(4, 8),
+        choices=(2, 4, 8),
         default=4,
         help="Physical packed lane to compare against c1 (default: c4).",
     )
@@ -1124,8 +1125,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if int(args.prompt_length) <= 0 or int(args.prompt_length) + 2 >= 1024:
         raise ValueError("prompt-length must be positive and leave two decode positions below 1024")
     if args.child_mode is not None:
-        if args.concurrency not in {1, 4, 8} or args.child_json is None:
-            raise ValueError("child mode requires --concurrency 1|4|8 and --child-json")
+        if args.concurrency not in {1, 2, 4, 8} or args.child_json is None:
+            raise ValueError("child mode requires --concurrency 1|2|4|8 and --child-json")
         return _run_child(args)
     payload = _run_parent(args)
     if args.out is not None:

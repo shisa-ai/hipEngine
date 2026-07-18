@@ -164322,3 +164322,42 @@ traces and the owner-graph process exited 0. Added compact artifact
 `benchmarks/results/2026-07-19-gfx1151-gguf-f2-occupancy-adaptive-serving.json`,
 updated benchmark rollups and architecture/concurrency truth, and closed F2.
 F3 current-width family profiling is next.
+
+## 2026-07-19 — Extend the GGUF replay census to physical c2
+
+Started F3 by extending `scripts/gguf_packed_ar_rocprof.py` from physical
+c4/c8 to the complete packed-width set c2/c4/c8. The harness now accepts c2 in
+parent and child modes, emits width-scoped artifact/status/claim labels, and
+keeps the same cached-only paired-c1 replay and exact route/movement gates.
+Targeted validation passed:
+
+```bash
+.venv/bin/python -m pytest -q tests/test_gguf_packed_execution_manifest.py
+# 14 passed
+python3 -m py_compile scripts/gguf_packed_ar_rocprof.py \
+  tests/test_gguf_packed_execution_manifest.py
+git diff --check
+```
+
+The dirty-tree gfx1151 hardware diagnostic used one same-worktree warmbuild per
+leaf and cached `rocprofv3` children:
+
+```bash
+.venv/bin/python scripts/gguf_packed_ar_rocprof.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1151 --decode-mode graph --packed-concurrency 2 \
+  --prompt-length 512 --prompt-token-id 9707 --expected-token-id 9707 \
+  --compiler-version-file /tmp/gfx1151-gguf-f2-clean-190f208c/hipcc-version.txt \
+  --raw-root /tmp/gfx1151-f3-c2-profiler-dirty \
+  --rocprofv3 /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/bin/rocprofv3 \
+  --roctx-sdk /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib/librocprofiler-sdk-roctx.so.1 \
+  --out /tmp/gfx1151-f3-c2-profiler-dirty.json
+```
+
+It passed one real c2 graph replay with **747 packed-native / 0 row-local / 0
+steady copies**, 10/10 row-shaped full-attention context and KV writes, 40/40
+selected gate-up/down/combine families, and one row-tiled LM head plus two-stage
+argmax. Diagnostic kernel time was **26.105 ms** versus the paired c1 replay's
+**17.706 ms**; durations are not throughput evidence. This proves the harness
+can collect the missing width, not yet the complete clean c1/c2/c4/c8 F3
+attribution packet.
