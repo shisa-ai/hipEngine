@@ -163330,3 +163330,77 @@ The focused harness suite passes **10/10**, Python compilation and `git
 diff --check` pass, and `.venv` help exposes
 `--backend {hip_gfx1100,hip_gfx1151}`. Next: commit this harness-only unit, then
 run a clean gfx1151 API smoke before the full p512/d128 F1 packet.
+
+## 2026-07-18 — Retain gfx1151 real OpenAI arbitrary-C server scaling
+
+The target-scoped F1 harness first ran a p16/d2 API smoke on clean tracked
+`71e2ea9a`. Every prompt/output/usage/ownership check was exact, but the strict
+physical-route gate correctly rejected the smoke because `protect_ttft`
+completed early rows before all eight staggered prefills could form a full c8
+plan. The focused p16/d8 replacement passed, observed full physical c8, and
+measured **52.256 aggregate tok/s**. This was a smoke-horizon repair, not a
+runtime change.
+
+The canonical detached clean packet then passed from `71e2ea9a` in **500.599
+s** on Radeon 8060S/gfx1151, Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, greedy top-1
+with EOS ignored, TheRock HIP 7.15, TuneD `accelerator-performance`, normal HWS,
+one HIP hardware queue, `amd_iommu=off`, exact GDN, and cached builds required:
+
+```bash
+HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 \
+HIPENGINE_BACKEND=hip_gfx1151 HIPENGINE_HIP_ARCH=gfx1151 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/gfx1151-f1-96cb76a0/hipcc-version.txt \
+PYTHONPATH=/tmp/hipengine-gfx1151-f1-71e2ea9a \
+/home/lhl/hipEngine-main/.venv/bin/python \
+  /tmp/hipengine-gfx1151-f1-71e2ea9a/scripts/gguf_live_server_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1151 \
+  --configurations c1,packed_c8,packed_c9,packed_c13,serial_c13 \
+  --prompt-length 512 --decode-tokens 128 \
+  --warmup-runs 1 --measured-runs 3 \
+  --live-decode-tokens 128 --live-initial-rows 8 --live-tail-rows 5 \
+  --prefill-chunk-size 256 --batch-window-ms 20 \
+  --compiler-version-file /tmp/gfx1151-f1-96cb76a0/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/gfx1151-f1-71e2ea9a/gfx1151-f1-server-clean-71e2ea9a-p512-d128.json
+```
+
+Static median aggregate/per-request generated rates, complete SSE cycle walls,
+and maximum rate stdev/median are:
+
+- logical c1 masked physical-c8 control: **15.701/15.701 tok/s**, **8.152 s**;
+- one physical c8: **86.338/10.792 tok/s**, **11.860 s**;
+- grouped C9 (`c8 + sparse c8`): **57.127/6.347 tok/s**, **20.165 s**;
+- grouped C13 (`c8 + sparse c8`): **72.522/5.579 tok/s**, **22.945 s**;
+- packed-off serial C13 bridge: **42.764/3.290 tok/s**, **38.911 s**;
+- maximum rate variance: **0.581%**.
+
+C8/C9/C13 are **5.499x/3.638x/4.619x** logical c1 aggregate. Grouped C13
+beats the same-loop serial bridge by **1.696x (+69.59%)**. Every packed static
+route uses only declared physical c8 groups and records zero serial/resident
+fallback; C9/C13 remain grouped exact-hybrid rows, never native-width claims.
+The retained direct physical-c8 census remains applicable at **748
+packed-native / 0 row-local / 0 copies**.
+
+All **189/189** warmup/measured/live requests preserve their actual 512 resident
+prompt IDs, independent c1 generated IDs, OpenAI usage, finish metadata, and
+scheduler timestamps. The controlled live trace observes active physical c8
+before admitting five tail requests, reaches C13 as
+`11111111 + 11111000`, emits **1,664/1,664** exact IDs at **70.093 aggregate
+tok/s** over **23.740 s**, owns 135 sample-scoped plans, filters one foreign
+completed plan, and drains to zero pending/active requests with 189 reclaimed.
+Server timing is complete in-process FastAPI SSE cycle wall and stays separate
+from direct synchronized graph-step timing. Explicit compaction remains a
+correctness-only operation.
+
+Raw source is 26,143,282 bytes, SHA-256
+`5fb696007f4d87e7686f4ece1e6880a7039a584ee3cb2368d9b55cdb1344fddf`.
+Published compact evidence at
+`benchmarks/results/2026-07-18-gfx1151-gguf-concurrency-f1-server-scaling-closure.json`
+(**472,281 bytes**, SHA-256
+`34478f6f14d6cd89f5cc61e03c892ba39fa70a50ac41be495110572138fe5451`),
+linked to the retained **134,160-comparison** E3 packet and **188,080-comparison**
+E1/category plus profiler packets. Updated the benchmark/root tables,
+`benchmarks/CHANGELOG.md`, `docs/CONCURRENCY.md`, and rollback cleanup triggers.
+F1 is now retained on both gfx11 targets. Next: transfer the retained gfx1100
+PARO selected-batch direct c2 packet to gfx1151.

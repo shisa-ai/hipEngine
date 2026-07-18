@@ -581,17 +581,18 @@ throughput claim. See the [P1 compact catalog](benchmarks/results/2026-07-11-sol
 [P2 lifecycle artifact](benchmarks/results/2026-07-11-sol-p2-gfx1151-paro-ragged-lifecycle.json),
 and [canonical run record](benchmarks/README.md#gfx1151-paro-exact-shaperouting-catalog-2026-07-11).
 
-### gfx1151 / Radeon 8060S direct GGUF concurrency (Qwen3.6 35B-A3B, 512/128)
+### gfx1151 / Radeon 8060S direct and server GGUF concurrency (Qwen3.6 35B-A3B, 512/128)
 
-**Status: retained direct native-c2/c4/c8 decode-model-step throughput; no
-gfx1151 live-membership or server-throughput claim.** All rows use the same
-`UD-Q4_K_M`, BF16 KV, greedy top-1, synchronized graph-step timing, one HIP
-hardware queue, and the active `amd_iommu=off` boot. All 188,080 direct/category
-hidden comparisons are exact, and the c8 trace is 748 packed-native / 0
-row-local / 0 copies. No gfx1151-specific kernel/runtime edit was required.
+**Status: retained direct native-c2/c4/c8 model-step throughput and retained real
+OpenAI SSE arbitrary-C server scaling.** All rows use `UD-Q4_K_M`, BF16 KV,
+greedy top-1, one HIP hardware queue, and the active `amd_iommu=off` boot. Timing
+scopes stay separate: direct rows time synchronized graph steps; server rows
+time complete concurrent SSE cycles. The direct/category and E3 gates retain
+**188,080** and **134,160** exact hidden comparisons, and the c8 trace is **748
+packed-native / 0 row-local / 0 copies**.
 
 <!-- BEGIN TOPLINE:GFX1151_CONCURRENCY -->
-| Route | Logical C | Native groups | Aggregate decode tok/s | Per-request tok/s | Aggregate / c1 | Aggregate / serial-c4 | TTFT p50 / p95 | Model-step ITL p50 / p95 | Tracked peak |
+| Direct route | Logical C | Native groups | Aggregate decode tok/s | Per-request tok/s | Aggregate / c1 | Aggregate / serial-c4 | TTFT p50 / p95 | Model-step ITL p50 / p95 | Tracked peak |
 | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | direct c1 | 1 | 1x c1 | 50.277 | 50.277 | 1.000x | 1.001x | 0.367 / 0.368 s | 19.894 / 20.152 ms | 21.783 GiB |
 | direct c2 | 2 | 1x c2 | 72.104 | 36.052 | 1.434x | 1.436x | 2.175 / 2.177 s | 27.705 / 28.012 ms | 22.394 GiB |
@@ -599,18 +600,30 @@ row-local / 0 copies. No gfx1151-specific kernel/runtime edit was required.
 | **direct c8** | **8** | **1x c8** | **127.902** | **15.988** | **2.544x** | **2.548x** | **6.831 / 6.838 s** | **62.540 / 63.178 ms** | **25.401 GiB** |
 | chunked c8 control | 8 | 2x c4, serialized | 102.606 | 12.826 | 2.041x | 2.044x | 5.091 / 6.789 s | 77.994 / 78.634 ms | 26.069 GiB* |
 | serial-c4 rate control | 4 | 4x c1, serialized | 50.206 | 12.551 | 0.999x | 1.000x | 0.927 / 1.483 s | 79.657 / 80.663 ms | 26.985 GiB* |
+
+| Real OpenAI SSE route | Logical C | Physical execution | Aggregate generated tok/s | Per-request tok/s | Aggregate / logical-c1 | Aggregate / serial-c13 | Cycle wall p50 | Scheduler TTFT p50 / p95 | Scheduler ITL p50 / p95 | Cumulative tracked peak |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| logical-c1 control | 1 | masked physical c8 | 15.701 | 15.701 | 1.000x | 0.367x | 8.152 s | 0.432 / 0.432 s | 60.196 / 61.164 ms | 29.312 GiB |
+| physical c8 | 8 | 1x c8 | **86.338** | 10.792 | **5.499x** | 2.019x | 11.860 s | 2.717 / 3.358 s | 65.558 / 69.928 ms | 31.758 GiB* |
+| grouped c9 | 9 | c8 + sparse c8 | 57.127 | 6.347 | 3.638x | 1.336x | 20.165 s | 2.506 / 3.372 s | 126.229 / 132.201 ms | 32.008 GiB* |
+| **grouped c13** | **13** | **c8 + sparse c8** | **72.522** | **5.579** | **4.619x** | **1.696x** | **22.945 s** | **3.599 / 5.321 s** | **134.323 / 144.014 ms** | **32.908 GiB*** |
+| serial-c13 bridge | 13 | 13x c1 serial | 42.764 | 3.290 | 2.724x | 1.000x | 38.911 s | 3.000 / 5.527 s | 259.951 / 273.179 ms | 32.908 GiB* |
 <!-- END TOPLINE:GFX1151_CONCURRENCY -->
 
-Protocol: prompt 512 per row, 128 decode transitions, one discarded full-route
-warmup and median of three, one shared model load, and cached builds. Resident
-sessions grow c1→c2→c4→c8; starred controls run later and retain later
-allocations. One physical c8 improves aggregate decode **154.39%** over c1 and
-**24.65%** over c4+c4, while per-request rate is **68.20% lower** than c1.
-TTFT, model-step ITL, and memory are reported explicitly. The unchanged Phase-D
-live admission/cancel/reclaim/streaming/observability gate remains open.
+Direct protocol uses 128 decode transitions, one discarded warmup, and the
+median of three; one physical c8 is **2.544x** c1 and **+24.65%** over c4+c4.
+Server protocol uses 512 exact prompt IDs and 128 generated outputs/request, a
+20 ms admission window, one discarded plus three measured bursts, and scheduler
+latency. C9/C13 are multiple declared buckets, never wider native widths. All
+**189/189** requests match resident prompt IDs, direct-c1 outputs, usage, and
+finish metadata. Grouped C13 is **4.619x** logical-c1 and **1.696x** serial; one
+exact c8→c13 live trace emits **1,664/1,664** IDs at **70.093 aggregate tok/s**
+and drains ownership to zero. Starred server memory is cumulative.
 
-Artifacts: [`E1 direct correctness`](benchmarks/results/2026-07-17-gfx1151-gguf-concurrency-e1-direct-correctness.json)
-and [`retained E1 direct scaling`](benchmarks/results/2026-07-17-gfx1151-gguf-concurrency-e1-native-c8-scaling-closure.json).
+Artifacts: [`E1 direct correctness`](benchmarks/results/2026-07-17-gfx1151-gguf-concurrency-e1-direct-correctness.json),
+[`E1 direct scaling`](benchmarks/results/2026-07-17-gfx1151-gguf-concurrency-e1-native-c8-scaling-closure.json),
+[`E3 arbitrary C`](benchmarks/results/2026-07-18-gfx1151-gguf-concurrency-e3-arbitrary-c-correctness.json), and
+[`F1 real server`](benchmarks/results/2026-07-18-gfx1151-gguf-concurrency-f1-server-scaling-closure.json).
 
 ### gfx1151 historical cross-engine concurrency (2026-06-15)
 
