@@ -164578,3 +164578,32 @@ unpacks. Trace:
 SHA-256 `d6410553dfdd1c03f7afb1151353a925ed63e23bf3f150971f0b6ec6ab818529`.
 Proceed to N3 complete-cycle/public-adapter ownership after committing N2 and
 recording a clean full-suite confirmation.
+
+### Clean N2 confirmation at `8893e06a`
+
+After committing N2, reran the exact full category+heldout protocol from a clean
+tree:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-mtp-w7900-hipcc-version.txt \
+PYTHONPATH=. python3 scripts/gguf_ar_mtp_suite.py \
+  --scope full --mtp-route llama-compat-native-cycle-n2 \
+  --budgets 2 --cycles 24 --max-output-tokens 24 \
+  --record-cycle-stage-timings --require-cached-build \
+  --output /tmp/w7900-llama-compat-native-cycle-n2-8893e06a-full.json
+```
+
+Clean result: **92.395 true AR, 117.557 N2 MTP tok/s (1.2723x), 8.529
+ms/output**. It preserves **144/179 accepted drafts (80.45%)**, **144/240
+accepted-output (60.00%)**, and all **240 IDs / 96 cycle semantics**. Clean
+train/heldout are **118.315/116.438 tok/s**. N2 does not replace the faster
+retained N1 122.667 tok/s topline; its status is correctness/ownership and
+sub-window infrastructure for N3.
+
+Published diagnostic artifact
+`benchmarks/results/2026-07-19-w7900-llama-compat-native-cycle-n2.json` with
+clean wrapper/category/true-AR hashes, real-model and primitive correctness,
+same-tree N1/N2 attribution, and the final-child profiler census. Updated
+`benchmarks/README.md`, `benchmarks/CHANGELOG.md`, `docs/PLAN.md`, and
+`docs/REFACTOR.md`; N1 remains the canonical performance row.
