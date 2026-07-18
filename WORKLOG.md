@@ -163739,3 +163739,37 @@ Validation:
 Next: commit this correctness/policy unit, commit the dedicated SSE measurement
 harness separately, then run clean one-warmup/three-measurement c1/c2/c4/c8 F1
 and SSE packets before publishing or promoting any performance result.
+
+
+## 2026-07-18 — Add a dedicated PARO resident OpenAI SSE scaling harness
+
+Added `scripts/paro_live_server_bench.py` as the streaming counterpart to the
+socket-level blocking F1 harness. Each configuration owns one prepared,
+fixed-capacity PARO model session and drives the real FastAPI
+`/v1/completions` SSE route through `TestClient`; this deliberately measures the
+server/streaming lifecycle without process startup. The default packet covers
+c1, native c2/c4/c8, and an explicit serial-c8 control with one warmup plus
+three measured p512/d128 repetitions. Native c8 also starts four requests,
+waits for observed native decode progress, and admits four more while the first
+requests remain live.
+
+The harness captures authoritative prompt/generated token IDs at resident-row
+reclaim and rejects any sample unless every HTTP stream has exact usage,
+requested delta count, `length` finish, `[DONE]`, unique ownership, and exact
+text/token equality to independent same-session c1 oracles. It additionally
+requires the expected native/serial manifest, no fallback-reason deltas, full
+ownership drain, generated-token wall denominators, scheduler and client
+TTFT/ITL distributions, allocator/HIP memory snapshots, backend route counters,
+and repository/model/environment provenance. TestClient transport buffering is
+recorded as a limitation; scheduler latency remains authoritative.
+
+Validation before the first hardware run:
+
+- `PYTHONPATH=. uv run pytest -q tests/test_paro_live_server_bench.py` passes
+  **5/5** focused parser/prompt/statistics/SSE/counter tests.
+- `PYTHONPATH=. uv run ruff check scripts/paro_live_server_bench.py
+  tests/test_paro_live_server_bench.py` and `git diff --check` pass.
+
+No performance result is claimed by this commit. Next: push the two clean
+commits to the gfx1151 candidate, run the full clean F1 and SSE packets, and
+retain only if every repeated and delayed-admission row is exact.
