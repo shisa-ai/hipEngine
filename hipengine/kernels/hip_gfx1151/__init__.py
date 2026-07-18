@@ -47,6 +47,12 @@ GGUF_GDN_INDEXED_SINGLETON_DECODE = True
 # one non-repeated prompt trajectory diverges consistently at c2/c4/c8 even
 # though the shorter d64 screen passed. Keep the env-only diagnostic available.
 GGUF_Q8_T16_DECODE_ROWTILE_ALL = False
+# F4's clean all-candidate, all-workload production gate selects fair:256 at
+# +5.90% exact mixed-load SLO goodput over fair:128. Scope the default to the
+# measured Q4_K_M generator registry entry; other quants/backends retain their
+# prior engine-loop defaults until independently gated.
+GGUF_Q4_K_M_PREFILL_DECODE_POLICY = "fair"
+GGUF_Q4_K_M_MAX_PREFILL_CHUNK_TOKENS = 256
 # Clean LCP-M2 512/1K/4K full-state and balanced-wall gates admit stream-ordered
 # device metadata through 4K. Explicit opt-in remains available for diagnosis;
 # the 128K one-queue escalation still enters the low-power GPU-active state.

@@ -402,8 +402,9 @@ Each loop tick performs one work class:
 | `PACK_STEP` | Future DMS compaction | Compact KV only |
 
 Default ordering is `RECLAIM → ADMIT → choose(PREFILL_CHUNK, DECODE_STEP)`.
-`protect_decode` remains the default policy until latency evidence justifies
-another default.
+The generic policy remains `protect_decode`; registry-selected model/backend/
+quant defaults may refine it only after an independent production load gate.
+The gfx1151 Qwen GGUF Q4_K_M F4 packet supplies that evidence for `fair:256`.
 
 Cancellation, disconnect, EOS, max-tokens, timeout, and errors all converge on
 `RECLAIM`. Mid-kernel cancellation never mutates canonical state.

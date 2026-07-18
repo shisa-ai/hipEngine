@@ -164956,3 +164956,46 @@ intentionally dirty (`clean_source_passed=false`); `workloads_passed`,
 performance claim is made from this focused dirty run. Next: commit the
 validated logical unit, rerun the same gate on clean source, then unblock and
 repeat the complete F4 selection/load/SLO packet.
+
+Clean detached commit `1e104111` then passes the identical focused workload in
+**97.256 s** with clean provenance. The complete canonical command (default
+four-candidate sweep, all nine workloads, 60-second soak, and declared
+10/10/0.5/30-second queue-p99/TTFT-p95/ITL-p99/end-to-end-p95 SLOs) is also
+accepted in **194.575 s**:
+
+```bash
+/home/lhl/hipEngine-main/.venv/bin/python3 \
+  scripts/gguf_production_load_gate.py \
+  --backend hip_gfx1151 \
+  --compiler-version-file /tmp/hipengine-gfx1151-f4-hipcc-version.txt \
+  --json /tmp/gfx1151-f4-production-load-complete-1e104111.json
+```
+
+Candidate selection:
+
+| Policy/chunk | Passed | Exact SLO goodput | TTFT p95 | ITL p99 |
+| --- | --- | ---: | ---: | ---: |
+| protect_decode:128 | no, output/protocol outcomes | 23.799 tok/s | 1.140 s | 0.024 s |
+| protect_ttft:128 | no, ITL p99 | 14.559 tok/s | 0.950 s | 0.729 s |
+| fair:128 | yes | 43.695 tok/s | 1.115 s | 0.217 s |
+| **fair:256** | **yes** | **46.275 tok/s** | **0.573 s** | **0.301 s** |
+
+`fair:256` is **+5.90%** over the other passing candidate. Under that selected
+policy, static c1/c8, ragged, fixed, Poisson, cancellation, overload, recovery,
+and soak all pass. Key exact goodput is **32.480/59.344/52.616/45.894/38.294/
+41.749/39.396/27.315/43.312 tok/s**, respectively. Cancellation remains **6
+completed + 1 post-token disconnect + 1 timeout**; overload is **16 completed +
+16 exact `429 engine_busy` rejects**; soak is **120/120 completed in 60 s**.
+Every workload meets all four SLOs, memory recovery and final ownership pass,
+and source provenance is clean. The 11,296,480-byte raw artifact SHA-256 is
+`acc75c04e3a4b158f34667a20bead067af108b369235347727d36b51520598ec`.
+
+Because generic `protect_decode` affects unmeasured gfx1100, PARO, and other
+GGUF quants, the retained default is not changed globally. The generator
+registry now supplies `fair:256` only for `(hip_gfx1151, Qwen GGUF,
+gguf_q4_k_m)` when both env knobs are unset; explicit env values win, and every
+other registry key keeps its prior behavior. Six focused registry/config/LLM
+nodes and the broader three-file **45-test** LLM/gfx1151/quant bundle pass;
+Python compilation and `git diff --check` pass. A final clean
+complete packet on the scoped package-default source is required before F4
+publication.

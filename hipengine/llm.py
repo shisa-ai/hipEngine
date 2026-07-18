@@ -6,13 +6,44 @@ through a registry at call time so backend/quant choices do not become engine br
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator
+import os
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field, replace
 from numbers import Integral
 from pathlib import Path
 from typing import Any
 
 AUTO_QUANT = "auto"
+
+_ENGINE_LOOP_GENERATOR_DEFAULT_ENVS = {
+    "prefill_decode_policy": "HIPENGINE_PREFILL_DECODE_POLICY",
+    "max_prefill_chunk_tokens": "HIPENGINE_MAX_PREFILL_CHUNK_TOKENS",
+}
+
+
+def _engine_loop_config_with_generator_defaults(
+    config: Any,
+    generator: Any,
+    *,
+    environ: Mapping[str, str] | None = None,
+):
+    """Apply registry-selected defaults without overriding explicit env knobs."""
+
+    defaults = getattr(generator, "engine_loop_config_defaults", None)
+    if not defaults:
+        return config
+    if not isinstance(defaults, Mapping):
+        raise TypeError("engine_loop_config_defaults must be a mapping")
+    unknown = set(defaults) - set(_ENGINE_LOOP_GENERATOR_DEFAULT_ENVS)
+    if unknown:
+        raise ValueError(f"unsupported generator engine-loop defaults: {sorted(unknown)!r}")
+    env = os.environ if environ is None else environ
+    overrides = {
+        name: value
+        for name, value in defaults.items()
+        if not str(env.get(_ENGINE_LOOP_GENERATOR_DEFAULT_ENVS[name], "")).strip()
+    }
+    return config if not overrides else replace(config, **overrides)
 
 
 @dataclass(frozen=True)
@@ -425,18 +456,22 @@ class LLM:
             backend=backend,
             quant=quant,
         )
-        loop_config = engine_loop_config_from_env()
+        generator = factory(
+            model_path=self.model,
+            weight_index=weight_index,
+            model_plugin=model_plugin,
+        )
+        loop_config = _engine_loop_config_with_generator_defaults(
+            engine_loop_config_from_env(),
+            generator,
+        )
         if self.max_active_requests is not None:
             loop_config = replace(
                 loop_config,
                 max_active_requests=self.max_active_requests,
             )
         self._text_generator = SubmitPollTextGenerator(
-            factory(
-                model_path=self.model,
-                weight_index=weight_index,
-                model_plugin=model_plugin,
-            ),
+            generator,
             config=loop_config,
         )
         return self._text_generator
