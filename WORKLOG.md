@@ -164715,3 +164715,17 @@ the disconnecting socket after its first token so the request is an active,
 server-counted cancellation. Raw focused RED:
 `/tmp/gfx1151-f4-cancellation-dacbe6e9.json`. Host GREEN is **10 passed** plus
 Python compilation and `git diff --check`.
+
+The active-disconnect rerun at clean `7a9fe27e` then exposed a server teardown
+race: one disconnected row caused three neighbors to cancel and one request to
+fail with `aclose(): asynchronous generator is already running`. A focused RED
+proved `_GenerationBatcher.stream().aclose()` cancelled its producer task while
+the synchronous backend generator was still executing in a worker thread, so
+the backend never observed its cooperative row token. GREEN now cancels that
+row token, drains the abandoned bounded client queue to release backpressure,
+and awaits the producer's cooperative exit; a disconnected item no longer
+blocks while writing terminal exception/DONE events to an unconsumed queue.
+Validation: the focused RED and adjacent backpressure/forced-shutdown nodes are
+**3 passed**, all generation-batcher nodes are **23 passed**, the production
+load-gate contract is **10 passed**, and Python compilation plus
+`git diff --check` pass. A clean focused gfx1151 socket rerun remains required.

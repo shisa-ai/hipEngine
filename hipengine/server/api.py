@@ -2127,9 +2127,17 @@ class _GenerationBatcher:
         finally:
             if not item.finished:
                 _cancel_queued_generation(item, reason="disconnect")
+                # The client no longer consumes this queue.  Release a producer
+                # blocked on backpressure, then let the backend observe its
+                # cooperative cancellation token before closing its iterator.
+                # Cancelling the producer task here can race a synchronous
+                # generator still executing in a worker thread and raise
+                # ``aclose(): asynchronous generator is already running``.
+                while not queue.empty():
+                    with suppress(asyncio.QueueEmpty):
+                        queue.get_nowait()
                 producer = item.producer_task
                 if producer is not None and producer is not asyncio.current_task() and not producer.done():
-                    producer.cancel()
                     with suppress(asyncio.CancelledError):
                         await producer
 
@@ -2414,7 +2422,7 @@ async def _finish_stream_queued_generation(
     if queue is None or item.finished:
         return
     item.finished = True
-    if item.cancelled and exception is None:
+    if item.cancelled:
         return
     if exception is not None:
         await queue.put(exception)
