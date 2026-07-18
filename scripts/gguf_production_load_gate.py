@@ -434,7 +434,7 @@ def _build_workload_specs(
     cancellation[2] = replace(
         cancellation[2],
         action="disconnect",
-        disconnect_after_tokens=0,
+        disconnect_after_tokens=1,
         max_tokens=48,
     )
     cancellation[5] = replace(
@@ -720,6 +720,22 @@ def _http_json(host: str, port: int, method: str, path: str, *, timeout: float =
         connection.close()
 
 
+def _openai_error_fields(
+    payload: Mapping[str, Any],
+    *,
+    fallback_status: int | None = None,
+) -> tuple[str | None, int | None, str]:
+    extension = payload.get("hipengine")
+    extension = extension if isinstance(extension, Mapping) else {}
+    raw_code = payload.get("code", extension.get("code"))
+    raw_status = payload.get("status_code", extension.get("status_code", fallback_status))
+    return (
+        None if raw_code is None else str(raw_code),
+        None if raw_status is None else int(raw_status),
+        str(payload.get("message", "")),
+    )
+
+
 def _stream_request(
     host: str,
     port: int,
@@ -778,9 +794,10 @@ def _stream_request(
             raw = response.read()
             try:
                 error_payload = json.loads(raw).get("error", {})
-                error_code = error_payload.get("code")
-                error_status = int(error_payload.get("status_code", status_code))
-                error_message = str(error_payload.get("message", ""))
+                error_code, error_status, error_message = _openai_error_fields(
+                    error_payload,
+                    fallback_status=status_code,
+                )
             except Exception:
                 error_message = raw.decode("utf-8", errors="replace")
         elif (
@@ -809,10 +826,9 @@ def _stream_request(
                     usage = copy.deepcopy(item["usage"])
                 raw_error = item.get("error")
                 if isinstance(raw_error, dict):
-                    error_code = None if raw_error.get("code") is None else str(raw_error.get("code"))
-                    raw_status = raw_error.get("status_code")
-                    error_status = None if raw_status is None else int(raw_status)
-                    error_message = str(raw_error.get("message", ""))
+                    error_code, error_status, error_message = _openai_error_fields(
+                        raw_error
+                    )
                 choices = item.get("choices")
                 if not isinstance(choices, list) or not choices:
                     continue
