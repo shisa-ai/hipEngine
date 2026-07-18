@@ -1264,12 +1264,14 @@ multiple later gates.
    recertified; occupancy one is confirmed as masked physical c8.
 10. **Completed — F2:** retain c1-preserving occupancy-adaptive c1/c2/c4/c8
     execution in one long-lived gfx1151 GGUF owner.
-11. **Active — F3:** profile and tune host, graph, projection, state, attention,
-    MoE, and sampler costs without c1 or c>N regression.
-12. **Then — F4:** pass mixed-length continuous-arrival, overload, cancellation,
-    recovery, and soak SLO gates.
-13. **Then — F5/H:** close sampled/API paths, prefix/continuation KV reuse,
-    long-context/memory pressure, and matched external serving comparisons.
+11. **Completed — F3:** singleton-indexed packed-AR GDN is retained without c1
+    or c>N regression; broader Q8T16 rowtiling was rejected as inexact.
+12. **Blocked — F4:** static/ragged/fixed/Poisson, exact overload, recovery, and
+    a 120-request/60-second soak pass, but concurrent timeout plus active socket
+    disconnect can still cancel warmed peers. No production SLO claim is
+    retained; see `benchmarks/results/2026-07-19-gfx1151-gguf-f4-production-load-blocked.json`.
+13. **Blocked by F4 — F5/H:** close sampled/API paths, prefix/continuation KV
+    reuse, long-context/memory pressure, and matched external serving comparisons.
 
 Do not label C>8 grouping, prefix caching, DMS, speculative integration, or
 external-engine parity from the retained gfx11 GGUF results; each keeps its own
@@ -1425,7 +1427,8 @@ retained native-c4/c8 direct model steps, honest arbitrary-C physical-group
 lowering, and real OpenAI burst/live-admission scaling. Both gfx11 PARO targets
 have retained explicit direct native-c2 model steps; gfx1151 additionally
 retains true physical c4/c8 and a package-default resident blocking/SSE owner.
-gfx1151 GGUF occupancy-adaptive c1/c2/c4/c8 serving is retained. Its gfx1100
-transfer, gfx1100 PARO owner c4/c8, normal sampled groups, production load/SLO
-gates, prefix/KV reuse, long-context memory-pressure coverage, and complete
+gfx1151 GGUF occupancy-adaptive c1/c2/c4/c8 serving is retained. Its production
+load/SLO gate is explicitly blocked by concurrent timeout/disconnect peer
+cancellation. The gfx1100 transfer, gfx1100 PARO owner c4/c8, normal sampled
+groups, prefix/KV reuse, long-context memory-pressure coverage, and complete
 project-wide production continuous batching remain in progress.**

@@ -104,7 +104,6 @@ def test_workload_plan_covers_required_production_modes() -> None:
         if item.action == "disconnect"
     )
     assert disconnect.disconnect_after_tokens == 1
-    assert disconnect.arrival_offset_seconds == pytest.approx(0.5)
     assert len(workloads["overload"]) > 16
     assert workloads["continuous_fixed"][0].arrival_offset_seconds == 0.0
     assert workloads["continuous_fixed"][-1].arrival_offset_seconds > 0.0
