@@ -1,6 +1,6 @@
 # GGUF MTP / llama.cpp Parity Dashboard
 
-Last reviewed: 2026-07-12.
+Last reviewed: 2026-07-19.
 
 This file is the current decision surface for GGUF MTP parity. The verbatim
 experiment notebook is preserved in
@@ -19,15 +19,15 @@ comparator, not a promoted hipEngine topline.
 
 ### gfx1100 current refresh, Radeon Pro W7900
 
-| Metric | hipEngine GGUF true AR | hipEngine GGUF exact/default | hipEngine GGUF `llama-compat` | llama.cpp HIP base AR |
-| --- | ---: | ---: | ---: | ---: |
-| Route | State-bound graph, no MTP | B3, fixed 10 cycles | B2, natural24/cyclecap24 | Natural25 request / 24 timed transitions |
-| Decode | **98.75 fixed / 93.30 natural24 tok/s** | 68.50 tok/s | 79.70 tok/s | 78.29 tok/s transition-normalized |
-| MTP / own AR | 1.0000x | 0.6936x | 0.8542x | n/a |
-| Draft acceptance | n/a | 73.53% | 82.95% | n/a |
-| Accepted draft/output | n/a | 50.00% | 60.83% | n/a |
-| Complete wall per output/transition | 10.718 ms natural24 | 14.696 ms | 12.578 ms | 12.774 ms |
-| State/commit contract | serial autoregressive | serial-prefix preserving | direct partial commit/dp4a; accuracy-traded | native autoregressive |
+| Metric | hipEngine GGUF true AR | hipEngine GGUF exact/default | hipEngine GGUF `llama-compat` | llama.cpp HIP base AR | llama.cpp HIP bundled MTP |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Route | State-bound graph, no MTP | B3, fixed 10 cycles | B2, natural24/cyclecap24 | Natural25 request / 24 timed transitions | B2, natural25 request / 24 timed transitions |
+| Decode | **98.75 fixed / 93.30 natural24 tok/s** | 68.50 tok/s | 79.70 tok/s | 78.05 tok/s transition-normalized | **115.44 tok/s transition-normalized** |
+| MTP / own AR | 1.0000x | 0.6936x | 0.8542x | n/a | **1.4791x** |
+| Draft acceptance | n/a | 73.53% | 82.95% | n/a | 81.56% |
+| Accepted draft/output | n/a | 50.00% | 60.83% | n/a | 58.40% |
+| Complete wall per output/transition | 10.718 ms natural24 | 14.696 ms | 12.578 ms | 12.812 ms | **8.662 ms** |
+| State/commit contract | serial autoregressive | serial-prefix preserving | direct partial commit/dp4a; accuracy-traded | native autoregressive | native compatibility target |
 
 The previous W7900 AR denominator was not the production graph route. gfx1100
 lacked `GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS`, and the category harness ignored
@@ -37,18 +37,24 @@ implementation itself was already present. Clean p512/d24 evidence passes all
 **30.536 -> 12.514 ms/token (2.4402x)**. The full natural suite matches every
 prior eager generated preview/tail and moves **34.28 -> 93.30 tok/s**.
 
-At the canonical cross-engine boundary, hipEngine is **93.30 tok/s** and the
-rebuilt instrumented llama.cpp `1ebf790cd`/build 9648 is **78.29 tok/s** over
-240 timed transitions, so hipEngine leads by **19.19%**. BF16/F16 KV remains
-disclosed and llama.cpp remains `performance_claim=false`.
+At the canonical cross-engine boundary, hipEngine AR is **93.30 tok/s** and the
+rebuilt instrumented llama.cpp `1ebf790cd`/build 9648 base is **78.05 tok/s**
+over 240 timed transitions, so hipEngine AR leads by **19.54%**. The current
+llama.cpp B2 MTP rerun is instead **115.44 tok/s (1.4791x own AR)**, with
+**81.56%** draft acceptance and **58.40%** accepted/output. It is **1.4485x**
+hipEngine `llama-compat`, even though hipEngine acceptance is slightly higher.
+The hipEngine route therefore needs **+44.85%**, or complete wall at most
+**8.662 ms/output**, to meet the external floor. BF16/F16 KV remains disclosed
+and llama.cpp remains `performance_claim=false`.
 
-The correction reverses the MTP economics: neither exact/default nor
+The correction reverses the hipEngine MTP economics: neither exact/default nor
 `llama-compat` beats production graph AR, and every natural24 category plus
 heldout is below AR. Exact remains the semantic control; `llama-compat` remains
 explicit and accuracy-traded. Fixed-cycle exact and natural24 remain separate
 protocols.
 
-Artifact: [W7900 graph-AR refresh](../benchmarks/results/2026-07-12-w7900-gfx1100-gguf-graph-ar-refresh.json).
+Artifacts: [W7900 graph-AR refresh](../benchmarks/results/2026-07-12-w7900-gfx1100-gguf-graph-ar-refresh.json)
+and [current llama.cpp MTP floor](../benchmarks/results/2026-07-19-w7900-llamacpp-mtp-natural25-refresh.json).
 
 ### gfx1151 current refresh, Radeon 8060S
 
@@ -128,6 +134,7 @@ not reconstruct completion counts from decoded text.
 
 | Priority | Item | Current state | Exit gate |
 | ---: | --- | --- | --- |
+| 0 | W7900 `llama-compat` vs llama.cpp MTP | Open: **79.70 vs 115.44 tok/s** | Meet or beat the current **115.44 tok/s / 8.662 ms-output** full-suite floor without heldout/category correctness or draft-acceptance regression; then rerun against true graph AR. |
 | 0 | Exact natural-horizon economics | Open | The full multi-prompt category suite beats the true same-protocol AR control at the requested output horizon with exact/default state semantics. |
 | 0 | Exact-ID OpenAI c1/c2/c4/c8 refresh | Awaiting rerun | One clean artifact joins exact IDs, provenance, queue/backend/verifier shapes, owned timing, request wall, and same-server AR/MTP controls. |
 | 1 | Current verifier-stage attribution | Awaiting the corrected rerun | Profile the final child process after cache warmup; rank target verify, LM-head/sample, proposal/update, commit/scatter, and host synchronization by owned wall. |

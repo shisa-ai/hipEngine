@@ -1,0 +1,161 @@
+{
+  "schema": "hipengine.llamacpp_mtp_external_comparison.v2",
+  "date": "2026-07-19",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "purpose": "Refresh the transition-matched W7900 llama.cpp bundled-MTP floor that hipEngine llama-compat must meet or beat before native speculative-cycle promotion.",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "hip_visible_devices": "0",
+    "vram_bytes": 48301604864,
+    "kernel": "Linux 7.1.3-2-cachyos x86_64"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "UD-Q4_K_M GGUF",
+    "kv_dtype": "f16",
+    "size_bytes": 22663387424,
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+  },
+  "software": {
+    "hipengine_commit": "8d67f0723c12b409ce2c77a6be296db75d9f12e9",
+    "hipengine_dirty": false,
+    "llamacpp_commit": "1ebf790cda38d827559548f67b0469189690cc8c",
+    "llamacpp_describe": "gguf-v0.19.0-602-g1ebf790cd-dirty",
+    "llamacpp_build": 9648,
+    "llamacpp_binary": "/home/lhl/llama.cpp/llama.cpp-hip/build-gfx1100-therock715/bin/llama-server",
+    "llamacpp_binary_sha256": "da974ab33ccff887d3da292716ccdb231ddf274c19832c69744028fa1817edd2",
+    "llamacpp_patch_manifest": "benchmarks/llama.cpp/manifest.json",
+    "runtime_hip_version": "7.2.53211-3d9ef42",
+    "runtime_amd_clang": "22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e"
+  },
+  "protocol": {
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompt_count": 10,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "heldout_prompt_ids": [
+      "code_markdown_table",
+      "general_en_explain",
+      "general_ja_explain",
+      "mixed_ja_en_review"
+    ],
+    "concurrency": 1,
+    "ctx_size": 8192,
+    "request_outputs_per_prompt": 25,
+    "timed_transitions_per_prompt": 24,
+    "timed_transitions_total": 240,
+    "reasoning": "off",
+    "temperature": 0.0,
+    "top_k": 1,
+    "top_p": 1.0,
+    "min_p": 0.0,
+    "seed": 12345,
+    "flash_attention": true,
+    "draft_max": 2,
+    "prompt_cache": false,
+    "timing": "llama.cpp predicted_ms starts after the first sampled output; cross-engine transition rates use sum(predicted_n - 1) / sum(predicted_ms)"
+  },
+  "results": {
+    "base": {
+      "native_tok_s": 81.3050435144593,
+      "transition_normalized_tok_s": 78.05284177388093,
+      "client_output_tok_s": 58.55438968185724,
+      "aggregate_decode_ms": 3074.84
+    },
+    "mtp": {
+      "native_tok_s": 120.25440058953515,
+      "transition_normalized_tok_s": 115.44422456595375,
+      "client_output_tok_s": 74.78649557434464,
+      "aggregate_decode_ms": 2078.926,
+      "draft_tokens": 179,
+      "accepted_draft_tokens": 146,
+      "draft_acceptance": 0.8156424581005587,
+      "accepted_per_output": 0.584,
+      "ms_per_timed_transition": 8.662191666666669
+    },
+    "transition_speedup": 1.4790521644349048,
+    "transition_delta_pct": 47.90521644349048,
+    "splits": {
+      "train": {
+        "prompts": 6,
+        "base_transition_tok_s": 78.17627773425603,
+        "mtp_transition_tok_s": 116.86708560270546,
+        "mtp_draft_acceptance": 0.8461538461538461,
+        "mtp_accepted_per_output": 0.5866666666666667
+      },
+      "heldout": {
+        "prompts": 4,
+        "base_transition_tok_s": 77.86841697563935,
+        "mtp_transition_tok_s": 113.37373059803461,
+        "mtp_draft_acceptance": 0.7733333333333333,
+        "mtp_accepted_per_output": 0.58
+      }
+    },
+    "categories": {
+      "code": {
+        "base_transition_tok_s": 78.19232379441281,
+        "mtp_transition_tok_s": 126.34937180671704,
+        "mtp_draft_acceptance": 0.9393939393939394,
+        "mtp_accepted_per_output": 0.62
+      },
+      "general_en": {
+        "base_transition_tok_s": 77.96815001072062,
+        "mtp_transition_tok_s": 114.04621722953226,
+        "mtp_draft_acceptance": 0.7837837837837838,
+        "mtp_accepted_per_output": 0.58
+      },
+      "general_ja": {
+        "base_transition_tok_s": 77.74676905484225,
+        "mtp_transition_tok_s": 104.74608893379393,
+        "mtp_draft_acceptance": 0.6923076923076923,
+        "mtp_accepted_per_output": 0.54
+      },
+      "mixed_ja_en": {
+        "base_transition_tok_s": 78.16660234206681,
+        "mtp_transition_tok_s": 109.0921487744179,
+        "mtp_draft_acceptance": 0.7567567567567568,
+        "mtp_accepted_per_output": 0.56
+      }
+    }
+  },
+  "repeatability": {
+    "prior_artifact": "benchmarks/results/2026-07-12-w7900-llamacpp-mtp-natural25-diagnostic.json",
+    "prior_mtp_transition_tok_s": 116.8779560383048,
+    "current_mtp_transition_tok_s": 115.44422456595375,
+    "delta_pct": -1.226691089533749,
+    "prior_transition_speedup": 1.4936447611404176,
+    "current_transition_speedup": 1.4790521644349048
+  },
+  "hipengine_gate": {
+    "existing_llama_compat_artifact": "benchmarks/results/2026-07-12-w7900-gfx1100-gguf-graph-ar-refresh.json",
+    "existing_llama_compat_tok_s": 79.70112079701121,
+    "llamacpp_mtp_tok_s": 115.44422456595375,
+    "hipengine_relative_to_llamacpp": 0.6903863843918641,
+    "hipengine_gap_pct": -30.961361560813593,
+    "required_hipengine_improvement_pct": 44.84642551009508,
+    "promotion_floor": "hipEngine llama-compat full-suite complete-cycle tok/s >= 115.44422456595375 with no heldout/category correctness or draft-acceptance regression"
+  },
+  "command": "HIP_VISIBLE_DEVICES=0 python3 scripts/llamacpp_mtp_bench.py --server-bin /home/lhl/llama.cpp/llama.cpp-hip/build-gfx1100-therock715/bin/llama-server --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --ctx-size 8192 --concurrency 1 --gpu-layers 99 --flash-attn on --cache-type-k f16 --cache-type-v f16 --draft-max 2 --mode both --protocol natural --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-tokens 25 --seed 12345 --temperature 0 --top-k 1 --top-p 1 --min-p 0 --server-extra-arg=--reasoning --server-extra-arg=off --port 18011 --request-timeout 900 --server-start-timeout 600 --log-dir /tmp/w7900-llamacpp-mtp-natural25-8d67f072-logs --output /tmp/w7900-llamacpp-mtp-natural25-8d67f072.json",
+  "source_artifact": {
+    "path": "/tmp/w7900-llamacpp-mtp-natural25-8d67f072.json",
+    "sha256": "0931583330467bab093c13b30bb13151f107a078000b62a3ef80b019ccda303b",
+    "size_bytes": 39656
+  },
+  "source_logs": {
+    "base_sha256": "50e121a304348fc5076af6035abe0c4815e638c2ace7262782ca604865782f11",
+    "mtp_sha256": "c0ee05f95c1ad01cd1d25eb5c1ff8f7f49cf18fa490b9c197d0705e52608b1be"
+  },
+  "notes": [
+    "External diagnostic only: llama.cpp uses F16 KV and a preserved dirty instrumentation patchset, while hipEngine uses BF16 KV.",
+    "The 1.23% change from the prior July 12 MTP rate leaves the architectural conclusion unchanged.",
+    "All ten prompts, all four categories, the fixed six-train/four-heldout split, 250 requested outputs, and 240 timed transitions are present and internally consistent.",
+    "Raw logs and the raw benchmark JSON remain uncommitted; hashes make the compact artifact auditable."
+  ]
+}
