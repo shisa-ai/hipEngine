@@ -1,6 +1,6 @@
 # MTP-GGUF Plan
 
-Last updated: 2026-07-12
+Last updated: 2026-07-13
 Branch: `mtp-gguf`
 
 This document is the working plan for making hipEngine's **GGUF** inference path
@@ -319,9 +319,13 @@ accept/commit metadata, and scheduler-facing results.
 
 ### Delivery Order
 
-1. **N0 — ABI and oracle:** define the versioned control/result blocks, lifecycle,
-   error/status contract, pointer ownership, and a CPU/fake-launcher test. Add a
-   mechanical validator for every nested shape/pointer/count field.
+1. **N0 — ABI and oracle (landed 2026-07-13):** the public
+   `hipengine.speculative.native_cycle` contract and
+   `hipengine/speculative/native_cycle_abi.h` define matching version-1 control
+   and result layouts, lifecycle/error enums, borrowed-pointer ownership,
+   bounded capacities, explicit dtypes, stage-dependent validation, and a
+   CPU/fake launcher. The target-only adapter consumes the existing
+   `TargetVerifyBuffers` plus `KVLiveSpans`; the Python chain remains unchanged.
 2. **N1 — Native target block:** move one fixed B2/B3 target verifier bucket to a
    C++ launcher while leaving proposal and commit unchanged. Prove identical
    target rows, logits/top-1, hidden seeds, recurrent state, and KV.
@@ -1281,9 +1285,13 @@ is now answered by the M1 required/optional table.)
       resolves through the four-axis registry on gfx1100/gfx1151 to the native
       bounded top-k sampler wrapper; runtime integration still waits on native
       NextN execution.
-- [ ] Define and validate the provider-neutral native speculative cycle
+- [x] Define and validate the provider-neutral native speculative cycle
       control/result ABI, raw-pointer ownership, shape buckets, and exact
-      Python fallback contract (N0).
+      Python fallback contract (N0). Landed 2026-07-13 with a **496-byte**
+      control block, **64-byte** result, C-header/ctypes field-order guard,
+      exact `TargetVerifyBuffers` + `KVLiveSpans` adapter, and CPU/fake-launcher
+      oracle tests. This is contract infrastructure only: no native math is
+      enabled and no performance result is claimed.
 - [ ] Implement a native C++ target-block launcher plus device-resident
       accept/commit summary for one GGUF B2/B3 bucket (N1/N2), then close the
       full natural-prompt correctness and profiler gates.
@@ -1295,6 +1303,16 @@ is now answered by the M1 required/optional table.)
 
 ## Decision Log
 
+- 2026-07-13: Landed N0 as provider-neutral contract infrastructure in
+  `hipengine.speculative.native_cycle`. Version 1 carries explicit live counts
+  and capacities, chain/tree and stage masks, metadata/hidden/KV dtypes,
+  `KVLiveSpans`, proposal/verifier/accept/commit/cursor pointers, cancellation
+  and deadline fields, and terminal/yield status. All pointers are borrowed;
+  launchers may mutate only output/state destinations and never retain/free
+  caller storage. The C header and ctypes mirrors are **496/64 bytes** and are
+  field-order tested. Selected N1 as the existing single-request B2
+  (`rows=3`) GGUF target verifier, leaving proposal and commit on the exact
+  Python fallback.
 - 2026-07-12: W7900 graph AR corrected the production denominator to
   `93.30 tok/s`; hipEngine `llama-compat` MTP is `79.70 tok/s (0.8542x)`, while
   transition-normalized llama.cpp on the same W7900 reaches

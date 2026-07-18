@@ -531,8 +531,10 @@ Current blockers that keep project-wide c>N incomplete:
   retained performance still needs routed-lane profiling and c-aware thresholds
   for grouped GEMV versus compact/WMMA execution.
 - GGUF MTP serving is phase-serial at the slot level: draft, target verify, then
-  commit. Target verify is packed up to four slots; draft-side batching, rows>=16
-  verifier tuning, streaming, and exact/default MTP serving remain open.
+  commit. Target verify is packed up to four slots. The provider-neutral
+  `NativeSpecCycleLauncher` N0 control/result ABI is landed as contract-only
+  infrastructure; its first native B2 target block, draft-side batching,
+  rows>=16 verifier tuning, streaming, and exact/default MTP serving remain open.
 - Exact all-choice generated-token accounting and batch timing ownership are
   available for non-streaming responses. Benchmark coverage still needs
   aggregate tok/s, per-request tok/s, latency, memory, active occupancy,

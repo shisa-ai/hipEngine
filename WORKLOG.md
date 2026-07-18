@@ -164045,3 +164045,75 @@ the root/benchmark toplines, benchmark changelog, `docs/PLAN.md`,
 Remaining PARO concurrency scope is gfx1100 owner c4/c8 symmetry, broader
 sampled/native contexts and KV formats,
 and any independently justified graph path.
+
+## 2026-07-13 — Land NativeSpecCycleLauncher N0 ABI and CPU oracle
+
+Started the cross-backend native speculative-cycle work at the documented N0
+boundary rather than mixing a new C++ target path with an unversioned pointer
+contract. The current GGUF llama-compat c=1 cycle is still the exact fallback:
+resident NextN proposal, `verify_target_block`, host acceptance, and state/KV
+commit are unchanged. The first N1 execution target is the existing
+single-request B2 target block (`rows=3`); packed server routing remains outside
+that first slice.
+
+Added `hipengine/speculative/native_cycle.py` and the matching
+`native_cycle_abi.h` version-1 C layout. The control block is **496 bytes** and
+carries stage/mode masks, cycle/transaction/stream/deadline identity, separate
+live counts and capacities, explicit metadata/hidden/KV dtypes, the complete
+`KVLiveSpans` pointer family, proposal/verifier/state/KV/accept/commit/cursor
+pointers, and an optional cancellation flag. The terminal/yield result is
+**64 bytes** with status/error, completed/failed stage, bounded visible output,
+and backend error fields. All addresses are borrowed: launchers may mutate only
+output/state destinations and never retain or free caller allocations.
+
+The Python adapter strips existing `TargetVerifyBuffers` plus `KVLiveSpans` to
+raw pointers only after device, dtype, contiguous-view, shape, active-count,
+capacity, context-bucket, pointer-pair, and stage-dependency validation. The
+fake launcher enforces one in-flight invocation, validates terminal results,
+and is exercised against the existing `TargetVerifyBatch.accept_from_top1` CPU
+oracle. A header/ctypes field-order test prevents silent C/Python drift.
+
+RED/GREEN and focused validation:
+
+```bash
+uv run --extra dev pytest -q tests/test_native_spec_cycle.py
+# RED: collection failed because hipengine.speculative.native_cycle did not exist.
+# GREEN: 10/10.
+
+uv run --extra dev pytest -q \
+  tests/test_native_spec_cycle.py \
+  tests/test_speculative_buffer_owner.py \
+  tests/test_speculative_interfaces.py
+# 29/29.
+
+uv run --extra dev ruff check \
+  hipengine/speculative/native_cycle.py \
+  hipengine/speculative/__init__.py \
+  tests/test_native_spec_cycle.py
+# passed
+
+python3 -m py_compile \
+  hipengine/speculative/native_cycle.py \
+  hipengine/speculative/__init__.py \
+  tests/test_native_spec_cycle.py
+git diff --check
+# passed
+```
+
+Additional final-tree gates: C++17 compilation exercised the header static
+asserts; `python3 -m compileall -q hipengine tests scripts`, registry,
+CPU-fixture, and smoke-add build-plan smokes passed; all seven generic
+CPU-reference fixtures passed. `uv build` succeeded and the wheel contains both
+`native_cycle.py` and `native_cycle_abi.h`. The repository-wide fixture wrapper
+still trips on pre-existing specialized fixture
+`tests/fixtures/cpu_reference/moe/moe_ffn_selected_gguf_q4_k.json`, whose schema
+uses `expected_block`/`expected_selected` rather than its assumed `expected`;
+the file and wrapper are unchanged from `origin/main`. An over-broad full
+`pytest -q` run showed no failures through 66%, then was intentionally stopped
+when it opened the 35B GGUF and live W7900 despite being the documented “CPU”
+bundle. No GPU gate applies to N0 because it adds no native math or runtime
+route.
+
+Updated `docs/MTP-gguf.md` and `docs/PLAN.md` to mark N0 landed and N1 still
+open. This slice adds no GPU kernel, changes no runtime default, and makes no
+performance claim; the new-kernel correctness/profiler gates begin with N1.
