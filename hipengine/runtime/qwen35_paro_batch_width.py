@@ -12,7 +12,7 @@ from hipengine.dispatch import NativeBatchWidthProfile
 
 
 DEFAULT_QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE = (
-    "benchmarks/results/2026-07-10-gfx1151-paro-cn-current-diagnostic-summary.json"
+    "benchmarks/results/2026-07-18-gfx1151-paro-g3-native-c248-direct-retained.json"
 )
 QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE_ENV = "HIPENGINE_QWEN35_NATIVE_BATCH_WIDTH_PROFILE"
 QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE_SCHEMA = 2

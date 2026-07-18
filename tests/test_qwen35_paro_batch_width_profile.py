@@ -5,7 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from hipengine.runtime.qwen35_paro_batch_width import load_qwen35_paro_native_batch_width_profile
+from hipengine.runtime.qwen35_paro_batch_width import (
+    DEFAULT_QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE,
+    load_qwen35_paro_native_batch_width_profile,
+)
 
 
 def _profile_payload() -> dict[str, object]:
@@ -65,6 +68,21 @@ def _write_profile(tmp_path: Path, payload: dict[str, object]) -> str:
     path.parent.mkdir(parents=True)
     path.write_text(json.dumps(payload), encoding="utf-8")
     return relative
+
+
+def test_qwen35_paro_default_batch_width_profile_is_retained_c248() -> None:
+    profile = load_qwen35_paro_native_batch_width_profile(
+        DEFAULT_QWEN35_PARO_NATIVE_BATCH_WIDTH_PROFILE,
+        backend="hip_gfx1151",
+        target_arch="gfx1151",
+        model_path=Path("/models/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1"),
+        kv_dtype="bf16",
+    )
+
+    assert profile.blockers == ()
+    assert tuple(width for width, _cost_ms in profile.native_step_ms) == (2, 4, 8)
+    assert profile.min_position == 512
+    assert profile.max_position == 647
 
 
 def test_qwen35_paro_batch_width_profile_requires_matching_full_identity(

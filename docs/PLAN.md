@@ -474,7 +474,7 @@ Design rule: **every new runtime, scheduler, KV, and kernel ABI must stay batch-
 
 | Question | Answer |
 |---|---|
-| Can current hipEngine run real c=8 PARO decode? | No retained c8 route. gfx1100 and gfx1151 now have independently retained explicit direct selected-batch c2 steps. c3-c8, sampled, longer-context, other-KV, and public/OpenAI attachment remain open. |
+| Can current hipEngine run real c=8 PARO decode? | Yes for the retained explicit direct gfx1151 W4/BF16 route: c4 and one true physical c8 step are independent-c1 exact at p512/d128, use 40/40 selected-batch layers, and never stack c2 groups or row-chunk. gfx1100 remains retained only at direct c2; sampled, context >=1024, other-KV, capture/replay, and public/OpenAI attachment remain open. |
 | Can current hipEngine run native GGUF c>N AR? | Yes through one true physical c8 group on both gfx1100 and gfx1151. Direct eager/graph, ragged, sparse-retirement, cancellation, all-layer hidden, Conv/GDN/live-KV, profiler-family, and repeated same-session scaling gates are retained; gfx1151 c8 reaches 127.902 aggregate tok/s (2.544x c1, +24.65% over c4+c4) with 748 packed-native and zero row-local/copy dispatches. Both targets now retain honest arbitrary-C/C>8 lowering as multiple declared physical groups plus explicit optional-compaction correctness; neither claims native c9/c13 or automatic compaction. Broader quant/sampling remain open. |
 | Does current hipEngine implement continuous batching? | Partially project-wide; correctness and real server scaling are retained for both gfx1100 and gfx1151 GGUF OpenAI paths. Blocking calls and SSE share one model-owning loop that admits during decode, executes bounded prompt chunks, binds request-sized BF16 device KV, streams row-owned tokens through bounded queues, cancels or retires rows, drains through runner close, and exports scheduler/latency/KV/graph/route observability while survivor token/Conv/GDN/KV state remains c1-exact. Both targets also retain honest arbitrary-C lowering and explicit optional-compaction correctness; PARO attachment, broader sampling, and automatic-compaction policy remain open. |
 | Is current SpecDec wired into generation? | Partially. GGUF llama-compat MTP has a guarded non-streaming greedy server route with resident slots and packed target verify; exact/default MTP serving, streaming, and broad SpecDec pluginization remain future work. |
@@ -510,8 +510,11 @@ Current blockers that keep project-wide c>N incomplete:
   compaction correctness. Automatic-compaction policy, broader sampling, and
   PARO production-loop coverage remain open.
 - PARO has independently retained explicit selected-batch c2 steps on gfx1100
-  and gfx1151, but broader widths, public-loop attachment, longer contexts,
-  sampled modes, and non-BF16 KV remain open. GGUF now has
+  and gfx1151. gfx1151 additionally retains true physical c4/c8 direct steps,
+  including all-layer state/KV/NumPy-context, sparse c8->c1 immutability,
+  category/heldout, primitive, profiler, and repeated p512/d128 gates. Public-
+  loop attachment, gfx1100 c4/c8, longer contexts, sampled modes, graph replay,
+  and non-BF16 KV remain open. GGUF now has
   retained direct native c2/c4/c8 correctness, family profiling, repeated
   scaling, live membership, and arbitrary-C lowering on both gfx11 targets;
   long-context c>N and additional quant formats remain independent gates.
