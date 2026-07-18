@@ -164703,3 +164703,15 @@ be rerun without repeating the already-passing 114-second broad matrix. A
 subset can pass for focused validation but is explicitly
 `complete_packet=false`, `performance_claim=false`, and never `accepted`.
 Selector RED was the missing import; GREEN host validation is **9 passed**.
+
+Clean detached focused `dacbe6e9` confirms all six non-cancelled neighbors are
+exact and separately observes one timeout plus one explicit client disconnect;
+final ownership and memory recovery pass. The focused artifact correctly
+remains non-retainable. It exposed two final protocol details: OpenAI SSE error
+status lives at `error.hipengine.status_code`, and a socket closed before the
+response generator starts is intentionally absent from server generation
+counters. The next repair parses the canonical nested 408/429 status and closes
+the disconnecting socket after its first token so the request is an active,
+server-counted cancellation. Raw focused RED:
+`/tmp/gfx1151-f4-cancellation-dacbe6e9.json`. Host GREEN is **10 passed** plus
+Python compilation and `git diff --check`.

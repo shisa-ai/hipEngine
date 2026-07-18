@@ -12,6 +12,7 @@ from scripts.gguf_production_load_gate import (
     _evaluate_workload,
     _http_json,
     _LocalUvicorn,
+    _openai_error_fields,
     _parse_workload_names,
     _poisson_arrival_offsets,
     _select_tuning_candidate,
@@ -102,7 +103,7 @@ def test_workload_plan_covers_required_production_modes() -> None:
         for item in workloads["cancellation_disconnect"]
         if item.action == "disconnect"
     )
-    assert disconnect.disconnect_after_tokens == 0
+    assert disconnect.disconnect_after_tokens == 1
     assert len(workloads["overload"]) > 16
     assert workloads["continuous_fixed"][0].arrival_offset_seconds == 0.0
     assert workloads["continuous_fixed"][-1].arrival_offset_seconds > 0.0
@@ -169,6 +170,20 @@ def test_workload_evaluation_derives_exact_generated_token_goodput_and_slos() ->
     assert summary["slo"]["passed"] is False
     assert summary["correctness"]["passed"] is False
     assert "generated_token_mismatch" in summary["failure_reasons"]
+
+
+def test_openai_error_fields_reads_canonical_nested_status() -> None:
+    assert _openai_error_fields(
+        {
+            "message": "request deadline exceeded",
+            "code": "deadline_exceeded",
+            "hipengine": {
+                "code": "deadline_exceeded",
+                "status_code": 408,
+                "retryable": True,
+            },
+        }
+    ) == ("deadline_exceeded", 408, "request deadline exceeded")
 
 
 def test_http_protocol_failure_rejects_an_otherwise_exact_workload() -> None:
