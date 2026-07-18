@@ -4313,6 +4313,53 @@ def test_generation_batcher_bounds_slow_stream_queue_without_blocking_neighbor()
     asyncio.run(run())
 
 
+def test_generation_batcher_stream_close_waits_for_cooperative_backend_cancel() -> None:
+    class CooperativeCloseLLM(FakeLLM):
+        supports_controlled_streaming = True
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.cancel_seen = threading.Event()
+            self.release_cancel = threading.Event()
+
+        def stream_detailed(self, prompt: str, sampling_params: SamplingParams):
+            yield GenerationStreamChunk(text=f"{prompt}:0")
+            token = sampling_params.cancellation_token
+            assert token is not None
+            while not token.cancelled:
+                time.sleep(0.001)
+            self.cancel_seen.set()
+            assert self.release_cancel.wait(timeout=5.0)
+            token.raise_if_cancelled()
+
+    async def run() -> None:
+        fake = CooperativeCloseLLM()
+        token = GenerationCancellationToken()
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.0,
+        )
+        stream = batcher.stream(
+            ("cooperative",),
+            SamplingParams(max_tokens=8, cancellation_token=token),
+        )
+
+        assert (await anext(stream)).text == "cooperative:0"
+        release = threading.Timer(0.05, fake.release_cancel.set)
+        release.start()
+        try:
+            await stream.aclose()
+        finally:
+            release.cancel()
+            fake.release_cancel.set()
+        assert fake.cancel_seen.is_set()
+        assert token.cancelled is True
+        assert batcher.active_requests() == 0
+        assert batcher.active() is False
+
+    asyncio.run(run())
+
+
 def test_generation_batcher_shutdown_forces_cancel_after_grace() -> None:
     class CooperativeBlockingStreamLLM(FakeLLM):
         supports_controlled_streaming = True
