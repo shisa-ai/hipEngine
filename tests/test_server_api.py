@@ -12,6 +12,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Mapping
 
+import anyio
 import pytest
 from fastapi import Request
 from fastapi.testclient import TestClient
@@ -4877,32 +4878,114 @@ def test_generation_batcher_live_neighbor_survives_member_cancellation() -> None
 
 def test_await_with_request_control_caller_cancel_closes_child_task() -> None:
     async def run() -> None:
+        token = GenerationCancellationToken()
         started = asyncio.Event()
+        cancel_seen = asyncio.Event()
         closed = asyncio.Event()
-        never = asyncio.Event()
 
         async def child() -> None:
             started.set()
             try:
-                await never.wait()
+                while not token.cancelled:
+                    await asyncio.sleep(0.001)
+                cancel_seen.set()
             finally:
                 closed.set()
 
-        async def connected() -> bool:
-            return False
-
         control = SimpleNamespace(
             deadline_at=None,
-            disconnected=connected,
+            disconnected=None,
             poll_interval_s=0.001,
-            cancellation_token=GenerationCancellationToken(),
+            cancellation_token=token,
         )
         waiter = asyncio.create_task(_await_with_request_control(child(), control))
         await started.wait()
         waiter.cancel()
         with pytest.raises(asyncio.CancelledError):
             await waiter
+        assert token.cancelled
+        assert token.finish_details == FinishDetails(reason="cancelled", cancelled=True)
+        assert cancel_seen.is_set()
         assert closed.is_set()
+
+    asyncio.run(run())
+
+
+def test_await_with_request_control_caller_cancel_shields_child_ack_from_level_cancellation() -> None:
+    async def run() -> None:
+        token = GenerationCancellationToken()
+        started = asyncio.Event()
+        cancel_seen = asyncio.Event()
+        release = asyncio.Event()
+        closed = asyncio.Event()
+        waiter_done = asyncio.Event()
+        scopes: list[anyio.CancelScope] = []
+
+        async def child() -> None:
+            started.set()
+            try:
+                while not token.cancelled:
+                    await asyncio.sleep(0.001)
+                cancel_seen.set()
+                await release.wait()
+            finally:
+                closed.set()
+
+        async def waiter() -> None:
+            with anyio.CancelScope() as scope:
+                scopes.append(scope)
+                await _await_with_request_control(
+                    child(),
+                    SimpleNamespace(
+                        deadline_at=None,
+                        disconnected=None,
+                        poll_interval_s=0.001,
+                        cancellation_token=token,
+                    ),
+                )
+            waiter_done.set()
+
+        async with anyio.create_task_group() as tasks:
+            tasks.start_soon(waiter)
+            await started.wait()
+            scopes[0].cancel()
+            await cancel_seen.wait()
+            try:
+                await asyncio.sleep(0.01)
+                assert not waiter_done.is_set()
+            finally:
+                release.set()
+            await waiter_done.wait()
+
+        assert closed.is_set()
+
+    anyio.run(run)
+
+
+def test_await_with_request_control_deadline_waits_for_child_cancel_ack() -> None:
+    async def run() -> None:
+        token = GenerationCancellationToken()
+        started = asyncio.Event()
+        cancel_seen = asyncio.Event()
+
+        async def child() -> None:
+            started.set()
+            while not token.cancelled:
+                await asyncio.sleep(0.001)
+            cancel_seen.set()
+
+        control = SimpleNamespace(
+            deadline_at=time.perf_counter() + 0.01,
+            disconnected=None,
+            poll_interval_s=0.001,
+            cancellation_token=token,
+        )
+        with pytest.raises(OpenAIHTTPError) as error:
+            await _await_with_request_control(child(), control)
+        assert error.value.status_code == 408
+        assert error.value.code == "deadline_exceeded"
+        assert started.is_set()
+        assert cancel_seen.is_set()
 
     asyncio.run(run())
 

@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote
 
+from anyio import CancelScope
 from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
@@ -9007,10 +9008,33 @@ def _request_control_poll_interval(control: _RequestControl) -> float:
     return min(interval, remaining)
 
 
+async def _await_controlled_task_exit(task: asyncio.Task[Any], *, timeout_s: float = 5.0) -> None:
+    """Wait for one controlled child to acknowledge cancellation, then force it."""
+
+    # Starlette cancels response bodies through an AnyIO cancel scope. AnyIO's
+    # level cancellation would otherwise interrupt every cleanup await again,
+    # leaving ``__anext__`` live when the iterator wrapper calls ``aclose()``.
+    with CancelScope(shield=True):
+        done, _pending = await asyncio.wait({task}, timeout=max(0.0, float(timeout_s)))
+        if task not in done:
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
 async def _await_with_request_control(awaitable, control: _RequestControl | None = None):
-    control = control or _RequestControl()
-    if control.deadline_at is None and control.disconnected is None:
+    if control is None:
         return await awaitable
+    if control.deadline_at is None and control.disconnected is None:
+        # Active StreamingResponse bodies deliberately leave request polling to
+        # Starlette. Shield the in-flight child so Starlette's caller
+        # cancellation can become a cooperative row-token signal first.
+        task = asyncio.ensure_future(awaitable)
+        try:
+            return await asyncio.shield(task)
+        except asyncio.CancelledError:
+            control.cancellation_token.cancel(FinishDetails(reason="cancelled", cancelled=True))
+            await _await_controlled_task_exit(task)
+            raise
     try:
         await _raise_for_request_control(control)
     except OpenAIHTTPError:
@@ -9025,13 +9049,20 @@ async def _await_with_request_control(awaitable, control: _RequestControl | None
             if task in done:
                 return await task
             await _raise_for_request_control(control)
-    except (OpenAIHTTPError, asyncio.CancelledError):
-        # ``asyncio.wait`` does not propagate caller cancellation to the child.
-        # Finish that child before the iterator wrapper calls ``aclose()``;
-        # otherwise ``__anext__`` and ``aclose`` can run concurrently.
-        task.cancel()
-        with suppress(asyncio.CancelledError):
-            await task
+    except OpenAIHTTPError:
+        # The control token is already tripped. Give controlled generation a
+        # bounded opportunity to acknowledge it and reclaim its own row before
+        # forcing task cancellation; abrupt ``__anext__`` cancellation closes
+        # the generator and can interfere with concurrently subscribed rows.
+        await _await_controlled_task_exit(task)
+        raise
+    except asyncio.CancelledError:
+        # ASGI servers cancel the response task when a streaming client closes
+        # its socket. Signal only this row, then let the child acknowledge and
+        # unwind before the iterator wrapper calls ``aclose()``. This avoids an
+        # abrupt ``__anext__`` cancellation propagating into peer subscriptions.
+        control.cancellation_token.cancel(FinishDetails(reason="cancelled", cancelled=True))
+        await _await_controlled_task_exit(task)
         raise
 
 

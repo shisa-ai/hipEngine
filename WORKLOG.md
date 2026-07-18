@@ -164894,3 +164894,65 @@ the complete failed raw packet is 7,056,082 bytes, SHA-256
 The next required implementation is a scheduler-owned row cancel command/ack
 path that atomically cancels one request ID without closing peer HTTP/model
 stream subscriptions. F5 and later production gates remain blocked on F4.
+
+## 2026-07-19 gfx1151 scheduler-owned row cancellation acknowledgement
+
+The traced fan-out was below HTTP teardown: a timeout/cancel exception for one
+row escaped `Qwen35GGUFResidentModelRunner.decode_batch()` while it was
+processing a shared physical batch, so whichever peer happened to call global
+`poll()` inherited that row's `GenerationCancelled`. The repair moves native
+resident control ownership into `SubmitPollTextGenerator`:
+
+- `GenerationCancellationToken.cancel()` queues a scheduler command and does
+  not expose `cancelled=True` until the scheduler acknowledges row reclamation.
+- The adapter drains and coalesces cancellation commands under the resident
+  loop lock before model work, removes only the affected submission, preserves
+  its exact `disconnect`/`timeout` reclaim reason, and then acknowledges the
+  token.
+- Native resident runner requests no longer carry per-row deadlines into a
+  shared model batch. The adapter retains each deadline and converts expiry to
+  the same locked command/ack path before polling the model.
+- HTTP timeout and ASGI cancellation signal the row token, shield the in-flight
+  iterator child from AnyIO level cancellation while it acknowledges, and only
+  force-cancel after a bounded five-second grace. This removes concurrent
+  `__anext__()`/`aclose()` teardown.
+- The new ownership path is deliberately native-resident-only. A pre-existing
+  LLM plumbing test caught an initial scope regression where the serial
+  compatibility bridge also lost its direct token/deadline contract; the final
+  implementation preserves that bridge unchanged.
+
+Focused host validation:
+
+```text
+3 passed: serial LLM plumbing + direct PARO/GGUF cancellation nodes
+8 passed: tests/test_generation_batch_scheduler.py -k submit_poll_text_generator
+28 passed: tests/test_server_api.py -k generation_batcher/request-control bundle
+python3 -m py_compile ...: passed
+git diff --check: passed
+```
+
+The first complete dirty-source gfx1151 run is runtime-GREEN. Exact command:
+
+```bash
+uv run python scripts/gguf_production_load_gate.py \
+  --backend hip_gfx1151 \
+  --compiler-version-file /tmp/hipengine-gfx1151-f4-hipcc-version.txt \
+  --workloads static_c8,ragged_burst,continuous_fixed,continuous_poisson,cancellation_disconnect \
+  --skip-tuning --initial-policy fair --initial-prefill-chunk-tokens 128 \
+  --slo-queue-p99-seconds 20 --slo-ttft-p95-seconds 20 \
+  --slo-itl-p99-seconds 1 --slo-end-to-end-p95-seconds 60 \
+  --idle-timeout-seconds 60 --request-timeout-seconds 90 \
+  --json /tmp/gfx1151-f4-warm-cancellation-final-command-ack16.json
+```
+
+Result in **98.129 s**: static c8, ragged, fixed, and Poisson all pass; the
+simultaneous control workload passes with **6/6 exact normal completions + 1
+post-token active disconnect + 1 distinct 408 timeout**. All **48** requests are
+accounted (**46 completed, 2 failed, 1 cancelled**), scheduler/runner/KV
+ownership drains to zero, and no async-generator teardown error appears. The
+artifact reports overall `status=failed` only because the measured source was
+intentionally dirty (`clean_source_passed=false`); `workloads_passed`,
+`overload_metrics_exact`, and `final_ownership_passed` are all true. No
+performance claim is made from this focused dirty run. Next: commit the
+validated logical unit, rerun the same gate on clean source, then unblock and
+repeat the complete F4 selection/load/SLO packet.
