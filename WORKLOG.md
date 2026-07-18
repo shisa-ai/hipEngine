@@ -164380,3 +164380,55 @@ full attention **1.576/2.391**, Conv/GDN state **0.663/3.436**, LM head/sampler
 **1.834/1.984**, router **0.665/0.821**, and norm/residual **0.441/0.489**.
 The next gate is a clean committed c1/c2/c4/c8 packet; these single-replay
 numbers are attribution evidence only, not throughput claims.
+
+## 2026-07-19 — Retain clean gfx1151 GGUF width-family census
+
+Measured the committed F3 harness from clean detached `3a0fe188` on Radeon
+8060S/gfx1151, TheRock HIP 7.15, TuneD accelerator-performance, one HIP queue,
+and the active `amd_iommu=off` boot. Each physical width used a same-worktree
+warmbuild, a precomputed compiler-version file, cached-only `rocprofv3` kernel
+and marker children, and one synchronized graph replay at prompt length 512.
+The command pattern was:
+
+```bash
+.venv/bin/python scripts/gguf_packed_ar_rocprof.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1151 --decode-mode graph --packed-concurrency {2,4,8} \
+  --prompt-length 512 --prompt-token-id 9707 --expected-token-id 9707 \
+  --compiler-version-file /tmp/gfx1151-gguf-f3-clean-3a0fe188/hipcc-version.txt \
+  --raw-root /tmp/gfx1151-gguf-f3-clean-3a0fe188/c{2,4,8}-raw \
+  --rocprofv3 /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/bin/rocprofv3 \
+  --roctx-sdk /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib/librocprofiler-sdk-roctx.so.1 \
+  --out /tmp/gfx1151-gguf-f3-clean-3a0fe188/c{2,4,8}.json
+```
+
+All widths pass exact token, physical-shape, route, and movement checks. The
+three paired c1 controls are **628 dispatches** and
+**17.713/17.643/17.646 ms**. Physical c2/c4/c8 are
+**747/747/748 packed-native dispatches**, **0 row-local**, **0 steady copies**,
+and **0 unknown kernels**, with diagnostic total GPU time
+**25.668/35.986/56.760 ms**. Family time is:
+
+| Family | c2 ms / share | c4 ms / share | c8 ms / share |
+| --- | ---: | ---: | ---: |
+| Dense projection | 10.393 / 40.49% | 14.087 / 39.15% | 20.345 / 35.84% |
+| Selected-MoE/combine | 6.167 / 24.03% | 10.470 / 29.09% | 18.697 / 32.94% |
+| Conv/GDN state | 3.435 / 13.38% | 4.625 / 12.85% | 8.230 / 14.50% |
+| LM head/sampler | 1.986 / 7.74% | 2.904 / 8.07% | 4.837 / 8.52% |
+| Full attention | 2.414 / 9.40% | 2.533 / 7.04% | 3.203 / 5.64% |
+| Router | 0.778 / 3.03% | 0.871 / 2.42% | 0.965 / 1.70% |
+| Norm/residual | 0.474 / 1.85% | 0.472 / 1.31% | 0.458 / 0.81% |
+
+Dense projections plus selected-MoE/combine account for
+**64.51%/68.24%/68.78%** at c2/c4/c8. Host/metadata movement is already closed
+for this replay scope, so the next F3 work targets projection geometry/reuse and
+selected-expert utilization before Conv/GDN, LM head, or attention. These
+instrumented single-replay durations select work; they are not throughput
+claims. Raw c2/c4/c8 SHA-256 values are
+`a2172ded0e9cbe5b0175b535332594bc2b21fdd5d2d6c0fcf201e50c06e3b76f`,
+`71422e1d9a03a9e205d0a24c99d759ff2383e91c4c6c51d20654a8f0efdbb617`,
+and `c554956ccffb42c3a68aac4c011c30d2a9eef43d5506f5fa5154f5aa1d0d93dd`.
+Added compact diagnostic artifact
+`benchmarks/results/2026-07-19-gfx1151-gguf-f3-width-family-census.json` and
+closed the first F3 roadmap checkbox. No benchmark topline changes because
+`performance_claim=false`.
