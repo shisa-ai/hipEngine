@@ -11645,9 +11645,18 @@ def _w4_multi_row_small_batch_site_enabled(site: str) -> bool:
 # across the B+1 rows in ``project_pack8_fp16``.  This is exact for *every*
 # prompt (unlike the decode-dequant multi-row, which matches AR's dequant
 # formula but reorders the fp32 reduction and flips top-1 on fragile prompts
-# such as ``translation`` for single_full_v/single_linear_out).  A site is added
-# here (default-on) only after exact-AR passes on the 9-prompt suite.
-_MARLIN_K_MULTI_ROW_DEFAULT_SITES: frozenset[str] = frozenset()
+# such as ``translation`` for single_full_v/single_linear_out).  Direct c2/c4
+# model gates on both gfx11 targets make the exact named sites the default;
+# unknown projection sites remain fail-closed.
+_MARLIN_K_MULTI_ROW_DEFAULT_SITES: frozenset[str] = frozenset(
+    {
+        "single_full_v",
+        "single_full_o",
+        "single_linear_out",
+        "single_shared_down",
+        "single_dense_down",
+    }
+)
 
 
 def _marlin_k_multi_row_site_enabled(prefix: str) -> bool:
