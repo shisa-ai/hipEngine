@@ -302,7 +302,11 @@ class SubmitPollTextGenerator:
         return GenerationSubmission(
             request_ids=tuple(request_ids),
             request=normalized,
-            max_ticks=_submit_poll_max_ticks(prompts, self._prefill_chunk_size),
+            max_ticks=_submit_poll_max_ticks(
+                prompt_rows,
+                self._prefill_chunk_size,
+                max_new_tokens=max_new_tokens,
+            ),
         )
 
     def poll(self, *, max_ticks: int = 1) -> tuple[EngineLoopEvent, ...]:
@@ -711,11 +715,26 @@ def _surrogate_prompt_tokens(prompt: Any) -> tuple[int, ...]:
     return (len(prompt),)
 
 
-def _submit_poll_max_ticks(prompts: Sequence[Any], prefill_chunk_size: int) -> int:
-    # One admission+prefill tick per prompt plus one decode tick is expected for
-    # the current surrogate rows.  Keep a loose bound so future larger surrogate
-    # rows fail loudly instead of hanging tests or server requests.
-    return max(8, len(prompts) * (int(prefill_chunk_size) + 2) + 4)
+def _submit_poll_max_ticks(
+    prompt_rows: Sequence[Sequence[int]],
+    prefill_chunk_size: int,
+    *,
+    max_new_tokens: int,
+) -> int:
+    """Return a finite bound that covers real chunked prefill and token decode."""
+
+    chunk_size = int(prefill_chunk_size)
+    if chunk_size <= 0:
+        raise ValueError("prefill_chunk_size must be positive")
+    prefill_ticks = sum(
+        max(1, (len(row) + chunk_size - 1) // chunk_size)
+        for row in prompt_rows
+    )
+    # Decode advances every ready row once per tick, so the longest request—not
+    # the sum across rows—sets the decode bound. Admission and reclaim events
+    # share those work ticks; retain a small diagnostic margin for cancellation
+    # or a late concurrent admission without allowing an infinite server loop.
+    return max(8, prefill_ticks + max(1, int(max_new_tokens)) + len(prompt_rows) + 4)
 
 
 def add_engine_loop_config_args(

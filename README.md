@@ -549,9 +549,13 @@ Historical mixed-quant/mixed-scope results remain in
 
 ### gfx1151 / Radeon 8060S PARO direct c2/c4/c8 and production shape catalog (Qwen3.6 35B-A3B, 512/128)
 
-**Status: explicit direct selected-batch c2/c4/c8 is retained; public/OpenAI
-remains width-1.** Equivalent clean tree `e175e28f` (pushed as `8c8cc15e`)
-generalizes the exact c2 route into true physical c4/c8 without c2 stacking.
+**Status: explicit direct selected-batch c2/c4/c8 is retained; opt-in resident
+OpenAI membership is correctness-green.** Equivalent clean tree `e175e28f`
+(pushed as `8c8cc15e`) generalizes the exact c2 route into true physical c4/c8
+without c2 stacking. G4 adds one shared stable-slot owner for public `LLM`,
+blocking OpenAI, and concurrent SSE; repeated server throughput and production-
+default promotion remain open.
+
 Three p512/d128 processes per width pass all **5,754/5,754** recorded IDs plus
 all-layer state/KV, sparse lifecycle, ten-prompt category/heldout, primitive,
 and cached-profiler gates.
@@ -564,8 +568,8 @@ and cached-profiler gates.
 | true physical c4 | **100.209 tok/s** | 25.052 tok/s | **retained direct c4; 1.4152x c1** |
 | true physical c8 | **99.943 tok/s** | 12.493 tok/s | **retained direct c8; 1.4114x c1** |
 
-The production table below remains separate because the retained direct widths
-are not yet attached to the shared model-owning PARO loop.
+The production table below remains separate because G4 attaches the retained
+widths only under the existing opt-ins and makes no retained server-speed claim.
 
 <!-- BEGIN TOPLINE:GFX1151_PARO_CURRENT -->
 | Client c | Production backend groups | Exact classification | Retained aggregate decode |
@@ -589,6 +593,7 @@ two c4 steps**. c3/c5/c6/c7 retain no native-width claim. See the
 [retained direct-c2/c4/c8 artifact](benchmarks/results/2026-07-18-gfx1151-paro-g3-native-c248-direct-retained.json),
 [P1 compact catalog](benchmarks/results/2026-07-11-sol-p1-gfx1151-paro-c1-c8-exact-catalog.json),
 [P2 lifecycle artifact](benchmarks/results/2026-07-11-sol-p2-gfx1151-paro-ragged-lifecycle.json),
+[G4 resident OpenAI correctness artifact](benchmarks/results/2026-07-18-gfx1151-paro-g4-resident-openai-correctness.json),
 and [canonical run record](benchmarks/README.md#paro-concurrency-and-production-routing).
 
 ### gfx1151 / Radeon 8060S direct and server GGUF concurrency (Qwen3.6 35B-A3B, 512/128)

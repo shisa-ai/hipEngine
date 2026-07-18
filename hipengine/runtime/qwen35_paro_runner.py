@@ -1849,6 +1849,89 @@ class Qwen35ParoResidentSession:
         self.last_prefill_execution = None
         self.last_batch_decode_execution = None
 
+    def reset_slots(self, slots: Sequence[int]) -> None:
+        """Clear only the selected persistent model slots for safe reuse.
+
+        The continuous owner keeps one fixed-capacity session, so reclaim must
+        not call :meth:`reset`, which would mutate surviving rows. This method
+        zeroes the selected rows' hidden/recurrent/KV storage and restores only
+        their scalar metadata while leaving every other physical slot bitwise
+        unchanged.
+        """
+
+        if self.closed:
+            raise RuntimeError("session is closed")
+        slot_ids = tuple(sorted({int(slot) for slot in slots}))
+        for slot in slot_ids:
+            self._check_slot(slot)
+        if not slot_ids:
+            return
+        self.runtime.device_synchronize()
+        for slot in slot_ids:
+            self.position_arr[slot] = 0
+            self.context_arr[slot] = 1
+            self.token_id_arr[slot] = 0
+            self.active_mask_arr[slot] = 0
+            for tensor in (
+                self.batch_hidden,
+                self.batch_next_hidden,
+                self.batch_norm_out,
+                self.batch_norm_out_bf16,
+            ):
+                stride = int(self.config.hidden_size) * tensor.dtype.itemsize
+                self.runtime.memset(tensor.ptr + slot * stride, 0, stride)
+            for state_buffers in self.linear_states.values():
+                conv_state, recurrent_state, conv_buf, recurrent_buf, _conv_zero, _recurrent_zero = state_buffers
+                conv_stride = int(np.prod(conv_state.shape)) * conv_state.dtype.itemsize
+                recurrent_stride = int(np.prod(recurrent_state.shape)) * recurrent_state.dtype.itemsize
+                self.runtime.memset(conv_buf.ptr + slot * conv_stride, 0, conv_stride)
+                self.runtime.memset(
+                    recurrent_buf.ptr + slot * recurrent_stride,
+                    0,
+                    recurrent_stride,
+                )
+            for cache_buffers in self.full_caches.values():
+                key_cache, value_cache, key_buf, value_buf = cache_buffers
+                key_stride = int(np.prod(key_cache.shape)) * key_cache.dtype.itemsize
+                value_stride = int(np.prod(value_cache.shape)) * value_cache.dtype.itemsize
+                self.runtime.memset(key_buf.ptr + slot * key_stride, 0, key_stride)
+                self.runtime.memset(value_buf.ptr + slot * value_stride, 0, value_stride)
+            for scale_buffers in self.full_cache_scales.values():
+                key_scale, value_scale, key_scale_buf, value_scale_buf = scale_buffers
+                key_stride = int(np.prod(key_scale.shape)) * key_scale.dtype.itemsize
+                value_stride = int(np.prod(value_scale.shape)) * value_scale.dtype.itemsize
+                self.runtime.memset(
+                    key_scale_buf.ptr + slot * key_stride,
+                    0,
+                    key_stride,
+                )
+                self.runtime.memset(
+                    value_scale_buf.ptr + slot * value_stride,
+                    0,
+                    value_stride,
+                )
+        for host, buffer in (
+            (self.position_arr, self.position_buf),
+            (self.context_arr, self.context_buf),
+            (self.position_arr, self.batch_compact_position_buf),
+            (self.context_arr, self.batch_compact_context_buf),
+            (self.token_id_arr, self.token_id_buf),
+            (self.active_mask_arr, self.active_mask_buf),
+        ):
+            copy_host_to_device(
+                buffer,
+                host_array_ptr(host),
+                host.nbytes,
+                runtime=self.runtime,
+            )
+        if self._host_sampling_states_by_slot is not None:
+            for slot in slot_ids:
+                self._host_sampling_states_by_slot.pop(slot, None)
+        if self._native_sampling_states_by_slot is not None:
+            for slot in slot_ids:
+                self._native_sampling_states_by_slot.pop(slot, None)
+        self.runtime.device_synchronize()
+
     def step(self, token_id: int, *, position: int, sample: bool = True) -> Qwen35ParoAutoregressiveStepResult | None:
         if self.closed:
             raise RuntimeError("session is closed")
