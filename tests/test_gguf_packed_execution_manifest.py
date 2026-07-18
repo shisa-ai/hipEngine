@@ -13,8 +13,10 @@ from scripts.gguf_packed_ar_rocprof import (
     build_arg_parser,
     build_c3_family_census,
     build_execution_census,
+    classify_decode_kernel_family,
     classify_packed_execution_bucket,
     execution_census_closure_level,
+    summarize_decode_kernel_families,
 )
 
 
@@ -563,6 +565,48 @@ def test_packed_profiler_classifier_separates_exact_row_local_from_native() -> N
     assert all(classify_packed_execution_bucket(row) == "packed_native" for row in native_rows)
 
 
+def test_packed_profiler_attributes_every_decode_kernel_family() -> None:
+    rows = [
+        KernelTraceRow(kernel="prepare_packed_decode_metadata_kernel", duration_ns=10),
+        KernelTraceRow(kernel="q6_k_t16_gemv_rowtile_kernel", duration_ns=20),
+        KernelTraceRow(kernel="gguf_q8_0_embedding_bf16_out_kernel", duration_ns=30),
+        KernelTraceRow(kernel="qwen35_router_select_kernel", duration_ns=40),
+        KernelTraceRow(kernel="qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel", duration_ns=50),
+        KernelTraceRow(kernel="qwen35_paged_full_attn_decode_context_tensor_batch_kernel", duration_ns=60),
+        KernelTraceRow(kernel="q4_k_t16_selected_dual_direct_gemv_kernel", duration_ns=70),
+        KernelTraceRow(kernel="gguf_add_rmsnorm_bf16_f32_weight_kernel", duration_ns=80),
+        KernelTraceRow(kernel="q8_0_t16_dual_split_gemv_kernel", duration_ns=90),
+        KernelTraceRow(kernel="future_unclassified_kernel", duration_ns=100),
+    ]
+    expected = [
+        "metadata_lifecycle",
+        "lm_head_sampler",
+        "embedding",
+        "moe_router",
+        "linear_attention_state",
+        "full_attention_core",
+        "moe_selected_combine",
+        "norm_residual",
+        "dense_projection",
+        "other",
+    ]
+
+    assert [classify_decode_kernel_family(row.kernel) for row in rows] == expected
+    summary = summarize_decode_kernel_families(rows)
+    by_name = {record["family"]: record for record in summary["families"]}
+    assert summary["total_dispatches"] == 10
+    assert summary["total_duration_ns"] == 550
+    assert sum(record["dispatches"] for record in summary["families"]) == 10
+    assert sum(record["total_duration_ns"] for record in summary["families"]) == 550
+    assert by_name["dense_projection"]["dispatches"] == 1
+    assert by_name["dense_projection"]["share_of_gpu_duration"] == 90 / 550
+    assert summary["unclassified"] == {
+        "dispatches": 1,
+        "total_duration_ns": 100,
+        "kernel_names": ["future_unclassified_kernel"],
+    }
+
+
 def test_profiler_census_accepts_zero_row_local_indexed_boundary() -> None:
     manifest = build_packed_decode_execution_manifest(
         rows=4,
@@ -594,6 +638,8 @@ def test_profiler_census_accepts_zero_row_local_indexed_boundary() -> None:
     assert census["packed_concurrency"] == 4
     assert census["c4"]["buckets"]["exact_row_local"]["dispatches"] == 0
     assert census["c4"]["buckets"]["packed_native"]["dispatches"] == 2
+    assert census["family_attribution"]["c1"]["total_dispatches"] == 1
+    assert census["family_attribution"]["c4"]["total_dispatches"] == 2
 
     c8_manifest = deepcopy(manifest)
     c8_manifest.update({"rows": 8, "physical_rows": 8, "active_rows": 8})

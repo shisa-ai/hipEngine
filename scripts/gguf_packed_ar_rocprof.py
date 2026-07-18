@@ -186,6 +186,117 @@ def classify_packed_execution_bucket(row: KernelTraceRow) -> str:
     return "packed_native"
 
 
+def classify_decode_kernel_family(kernel: str) -> str:
+    """Bucket one steady GGUF decode kernel by its optimization boundary."""
+
+    name = str(kernel).lower()
+    if any(
+        part in name
+        for part in (
+            "prepare_packed_decode_metadata",
+            "commit_packed_decode_graph_step",
+            "set_decode_position",
+            "set_i64_scalar",
+            "record_i64_scalar",
+            "token_feedback",
+            "copybuffer",
+            "fillbuffer",
+            "memcpy",
+            "rocclr",
+        )
+    ):
+        return "metadata_lifecycle"
+    if "q6_k_t16_gemv" in name or "lm_head" in name or "argmax" in name:
+        return "lm_head_sampler"
+    if "embedding" in name:
+        return "embedding"
+    if "router" in name:
+        return "moe_router"
+    if any(part in name for part in ("linear_attn", "gdn", "ssm", "_conv_")):
+        return "linear_attention_state"
+    if any(
+        part in name
+        for part in (
+            "paged_full_attn",
+            "write_paged_kv",
+            "head_rmsnorm_partial_rotary",
+            "split_qgate",
+            "full_attn_gate",
+            "bf16_to_f32",
+        )
+    ):
+        return "full_attention_core"
+    if any(
+        part in name
+        for part in (
+            "selected",
+            "silu_mul",
+            "weighted_sum",
+            "shared_gate_combine",
+        )
+    ):
+        return "moe_selected_combine"
+    if any(part in name for part in ("rmsnorm", "residual", "bf16_add")):
+        return "norm_residual"
+    if "gemv" in name:
+        return "dense_projection"
+    return "other"
+
+
+def summarize_decode_kernel_families(
+    rows: Sequence[KernelTraceRow],
+) -> dict[str, Any]:
+    """Attribute dispatch count and diagnostic GPU time without hiding unknowns."""
+
+    total_ns = sum(int(row.duration_ns) for row in rows)
+    by_family: dict[str, list[KernelTraceRow]] = collections.defaultdict(list)
+    for row in rows:
+        by_family[classify_decode_kernel_family(row.kernel)].append(row)
+
+    families: list[dict[str, Any]] = []
+    for family, family_rows in sorted(
+        by_family.items(),
+        key=lambda item: (-sum(int(row.duration_ns) for row in item[1]), item[0]),
+    ):
+        duration_ns = sum(int(row.duration_ns) for row in family_rows)
+        by_kernel: dict[str, list[int]] = collections.defaultdict(lambda: [0, 0])
+        for row in family_rows:
+            kernel = _normalise_kernel(row.kernel)
+            by_kernel[kernel][0] += 1
+            by_kernel[kernel][1] += int(row.duration_ns)
+        families.append(
+            {
+                "family": family,
+                "dispatches": len(family_rows),
+                "total_duration_ns": duration_ns,
+                "total_duration_ms": duration_ns / 1.0e6,
+                "share_of_gpu_duration": duration_ns / total_ns if total_ns else None,
+                "kernels": [
+                    {
+                        "kernel": kernel,
+                        "dispatches": values[0],
+                        "total_duration_ns": values[1],
+                    }
+                    for kernel, values in sorted(
+                        by_kernel.items(), key=lambda item: (-item[1][1], item[0])
+                    )
+                ],
+            }
+        )
+
+    unclassified = by_family.get("other", [])
+    return {
+        "total_dispatches": len(rows),
+        "total_duration_ns": total_ns,
+        "families": families,
+        "unclassified": {
+            "dispatches": len(unclassified),
+            "total_duration_ns": sum(int(row.duration_ns) for row in unclassified),
+            "kernel_names": sorted({_normalise_kernel(row.kernel) for row in unclassified}),
+        },
+    }
+
+
 def _summary(rows: Sequence[KernelTraceRow]) -> dict[str, Any]:
     dispatches = len(rows)
     total_ns = sum(int(row.duration_ns) for row in rows)
@@ -451,6 +562,10 @@ def build_execution_census(
         "route_check_passed": route_check_passed,
         "packed_concurrency": int(packed_concurrency),
         "c3_family_census": build_c3_family_census(packed_rows, manifest=manifest),
+        "family_attribution": {
+            "c1": summarize_decode_kernel_families(c1_rows),
+            packed_label: summarize_decode_kernel_families(packed_rows),
+        },
         "c1_reference": _summary(c1_rows),
         packed_label: {
             "all": _summary(packed_rows),
