@@ -164848,3 +164848,21 @@ with the bounded **64-event internal** scheduling buffer; the external HTTP
 queue stays at 16 and the explicit cap-1 slow-client test still cancels only its
 row. Host validation remains **8 + 26 + 10 passed** with Python compilation and
 `git diff --check`. A clean combined warm-sequence GPU gate is required.
+
+Clean combined `1438caea` rejects the larger-buffer promotion: after all four
+warmup workloads pass, cancellation again emits six normal-row 499s and hangs
+without an artifact (`bg-182`). The internal buffer is restored to 16 and the
+extra diagnostic test removed; the explicit cap-1 neighbor-preservation
+contract remains authoritative.
+
+The remaining `cf139e3e` failure is deterministic workload orchestration, not a
+reason to weaken active-disconnect semantics. All eight cancellation clients
+were released simultaneously, so the designated disconnect client's Python
+consumer could be classified as slow before reading token 1. The frozen
+workload now admits that one row at **+0.5 s** while the other rows remain live,
+then still requires one observed SSE token before the real socket close. This
+adds a stronger late-admission transition and removes host thread-scheduling
+luck without changing any model prompt/token branch or throughput denominator.
+A host contract assertion freezes the offset. Validation remains **10 + 26 + 8
+passed**, Python compilation, and `git diff --check`. A clean warm-sequence GPU
+gate is required before the complete packet.

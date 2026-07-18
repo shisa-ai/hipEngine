@@ -434,6 +434,7 @@ def _build_workload_specs(
     cancellation[2] = replace(
         cancellation[2],
         action="disconnect",
+        arrival_offset_seconds=0.5,
         disconnect_after_tokens=1,
         max_tokens=48,
     )
