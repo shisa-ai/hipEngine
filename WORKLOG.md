@@ -164255,3 +164255,70 @@ These hardware files are diagnostic because the implementation tree is dirty:
 `/tmp/gfx1151-gguf-f2-c1-graph-p16-d130-main.json`. Next: commit the validated
 implementation, then run the clean one-warmup/three-repeat p512/d128 server
 packet plus cached route profiler from that exact revision before promotion.
+
+## 2026-07-19 — Retain occupancy-adaptive GGUF serving
+
+Committed the implementation as `190f208c` and measured it from clean detached
+`/tmp/hipengine-gfx1151-gguf-f2-190f208c` on Radeon 8060S/gfx1151, TheRock HIP
+7.15, TuneD accelerator-performance, one HIP hardware queue, and
+`amd_iommu=off`. All profiled children used a same-worktree warmbuild, the
+precomputed `hipcc-version.txt`, and `--require-cached-build`.
+
+The retained real SSE command is:
+
+```bash
+/home/lhl/hipEngine-main/.venv/bin/python scripts/gguf_live_server_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1151 \
+  --configurations c1,packed_c8,packed_c9,packed_c13,serial_c13 \
+  --prompt-length 512 --decode-tokens 128 \
+  --warmup-runs 1 --measured-runs 3 \
+  --live-decode-tokens 128 --live-initial-rows 8 --live-tail-rows 5 \
+  --prefill-chunk-size 256 --batch-window-ms 20 \
+  --compiler-version-file /tmp/gfx1151-gguf-f2-clean-190f208c/hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/gfx1151-gguf-f2-clean-190f208c/server.json
+```
+
+Logical c1/c8/c9/c13/serial-c13 is
+**43.033/86.942/77.302/73.235/43.066 aggregate generated tok/s**, with maximum
+rate stdev/median **0.524%**. All **189/189** prompt IDs, output IDs, usage,
+finish metadata, and ownership rows are exact. Occupancy one is physical c1,
+not masked c8: its scheduler ITL is **19.759 ms / 50.610 tok/s**, versus the
+same-process synchronized eager reference **18.894 ms / 52.926 tok/s**, so the
+backend transition preserves **95.625%** of direct c1. Complete SSE c1 improves
+**15.798 -> 43.033 (+172.40%)** versus F0. C9 is now c8+c1 and improves
+**57.691 -> 77.302 (+33.99%)**. C8/C13 remain non-regressive at
+**+0.68%/+0.23%**; serial C13 changes **-0.12%**, ordinary variance. The live
+C8->C13 trace preserves **1,664/1,664** IDs at **71.891 tok/s** and drains all
+ownership. Raw server JSON is 26,414,917 bytes, SHA-256
+`567d8e5ced06109961aff9b5732fd39dcc61932cda0822fbdaa5c76a1d07701f`.
+
+Two additional clean short live traces prove the intermediate owner widths
+rather than inferring them from host tests. C2->C8 observes physical widths 2/8,
+preserves **256/256** IDs at **84.210 tok/s**, and drains ownership; raw SHA-256
+is `377e8c86863574db40bd0ca9cd2bdb8f503ebd82126dd7dd534fd12eee3bb427`.
+C4->C8 observes widths 4/8, preserves **256/256** IDs at **84.250 tok/s**, and
+drains ownership; raw SHA-256 is
+`8d319d8d880fc8f14ebde43bca5537ab567ef24f1cf48a4d1f4f3a20bfed4808`.
+Stable scheduler slots, state, and KV are unchanged in both traces.
+
+A clean p16/130-output owner gate crosses the c1 graph threshold, preserves all
+IDs, records **129 native-c1 steps**, captures once, replays **129/129**, leaves
+zero graph entries after reclaim, and retains **95.708%** of its same-process
+eager c1 reference. Raw SHA-256 is
+`3e6297fef495b0976f255a34b5ac6d5ff8a06484cf48fbca106a0e30b83ca524`.
+The cached c1/c8 `rocprofv3` census passes with one c8 capture/replay,
+**748 packed-native / 0 row-local / 0 steady H2D/D2H/state-copy dispatches**, and
+zero complete-c1 session/layer replays. Raw profiler SHA-256 is
+`26c2b62968a9b9150cc7b08ad8792b000797886e7a581351478e2a696345d569`;
+durations are diagnostic only.
+
+The combined server/profiler shell's final status is exit 1 solely because its
+post-gate convenience printer queried the obsolete top-level
+`aggregate_generated_tok_s` key. `server.json` and `profiler.json` were already
+written and independently set `passed=true`; both subsequent clean transition
+traces and the owner-graph process exited 0. Added compact artifact
+`benchmarks/results/2026-07-19-gfx1151-gguf-f2-occupancy-adaptive-serving.json`,
+updated benchmark rollups and architecture/concurrency truth, and closed F2.
+F3 current-width family profiling is next.
