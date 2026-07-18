@@ -163265,3 +163265,54 @@ both groups report packed-native execution. Raw JSON is 36,267 bytes, SHA-256
 `6027359aa2346da2d70b5c1a8153d078d2c16829c2df32029fde824bff6f0ed0`.
 Next: commit this merge-regression fix, then run the full gfx1151 E3 lifecycle,
 optional-compaction, and p512/d128 eager/graph packet from the clean revision.
+
+## 2026-07-18 — Retain gfx1151 E3 arbitrary-C correctness
+
+Ran the complete merged gfx1100 E3 packet unchanged from clean pushed `main`
+`c6e5443d86e873772d7432dc136170ef5a99916a` on the Ryzen AI MAX+ 395 / Radeon
+8060S gfx1151. The protocol uses Qwen3.6-35B-A3B UD-Q4_K_M, BF16 KV, greedy
+raw-token rows, TheRock HIP 7.15, one HIP hardware queue, TuneD
+`accelerator-performance`, `amd_iommu=off`, the precomputed compiler-version
+file, and required cached builds. It is a correctness packet, not a server wall
+or performance claim.
+
+All five clean gates pass:
+
+- C13 short graph p16/d2 lowers to physical c8 masks
+  `11111111 + 11111000` and passes **1,040/1,040** all-layer hidden comparisons,
+  generated tokens, Conv/GDN state, and live BF16 KV exactly.
+- The 63.587-second middle-hole run cancels slots 2/10, observes physical masks
+  `11011111 + 11011000`, reuses both cancelled sessions for newcomers at those
+  slots, restores C13, uses only declared c8 groups, records zero serial/resident
+  fallback, and drains 13 reusable sessions with scheduler activity zero.
+- Explicit optional compaction performs nine nontrivial moves, packs survivors
+  into slots 0..10, preserves every survivor state/KV hash and allocation/block/
+  device-resource identity, closes both sparse graph handles with **2/2** graph
+  invalidations, leaves zero graph entries, admits newcomers at 11/12, and ends
+  token/state/KV exact. It is not an automatic policy or speed claim.
+- C13 p512/d128 eager passes **66,560/66,560** all-layer comparisons with 256
+  packed group manifests; graph passes another **66,560/66,560**, capturing the
+  all-active and sparse-c8 buckets once each and replaying each 128 times with
+  zero steady host/device copies. Both keep tokens, Conv/GDN, and live KV exact.
+- The clean E3 total is **134,160/134,160** all-layer hidden comparisons with
+  zero hidden, token, state, or KV mismatch. The prior 18-prompt gfx1151 E1
+  category/heldout packet remains the input-diversity anchor; the prior E1 trace
+  remains applicable because this transfer restores that same generic physical-
+  c8 context reduction (**748 packed-native / 0 row-local / 0 copies**).
+
+Raw source artifacts and SHA-256 values:
+
+- short graph: `1d408c3baf3319e23793be881ec3b4ef7aaff4f13b24a00dc046213729b4706a`;
+- middle hole: `1099a5ee9cca99f2bca2915a2696a21c5c0fb2b8d94d3ef7b72432242bbc9e23`;
+- compaction: `6518b2e2f74d108231c6bc814c186c11de4badcc6a918aa22741768d953b2171`;
+- standard eager: `a6729f3364485c0a4066f341f451d2906ca8167c489cb9bba664f685e1f6c8fd`;
+- standard graph: `480ab86d85f981093f11a5bd3e1376c2fce10f43da3c9b5259e1d98ed7e4d158`.
+
+Published compact evidence at
+`benchmarks/results/2026-07-18-gfx1151-gguf-concurrency-e3-arbitrary-c-correctness.json`
+(SHA-256 `d02930fd442568455b39488b18efe19d00465e3314ea0a274f8a68b7e9cdf996`)
+and advanced the benchmark/docs coverage from gfx1151 `not_started` to
+`retained` for honest arbitrary-C lowering. Retained policy matches gfx1100:
+C>8 uses multiple declared physical groups; never label C13 native. Automatic
+compaction and gfx1151 F1 server throughput remain open. Next: run the canonical
+real OpenAI F1 burst/live-admission packet on gfx1151.
