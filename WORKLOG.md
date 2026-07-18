@@ -164809,3 +164809,24 @@ preserves its neighbor. External HTTP queues remain bounded at the configured
 16. Validation: **8** submit/poll adapter, **26** server control/batcher, and
 **10** load-gate tests pass; Python compilation and `git diff --check` pass. A
 clean focused GPU gate is required before repeating the complete packet.
+
+Clean warm-sequence `96674d6d` rejects the 64-chunk hypothesis: static c8,
+ragged, fixed, and Poisson all pass, then cancellation again emits six 499s and
+fails to return an artifact (`bg-180`). Since every normal row has at most 48
+output tokens, a 64-event resident buffer cannot overflow; the host burst RED
+was valid backpressure coverage but not this GPU failure's cause. The internal
+queue default and extra test are therefore restored to 16/the prior explicit
+cap-1 contract.
+
+The actual race is duplicate ASGI receive ownership. FastAPI live streaming
+constructed `_RequestControl` with `raw_request.is_disconnected()` while
+Starlette `StreamingResponse` simultaneously owned the same receive channel and
+cancelled its body iterator on disconnect. The endpoint RED observes **3**
+direct receive polls during one active stream. GREEN removes the competing
+callback only after choosing a live completion/chat StreamingResponse; deadline
+control remains active, StreamingResponse cancellation still unwinds the
+batcher cooperatively, and the outer wrapper records the one cancelled request.
+Non-streaming/precomputed generation retains request polling. The RED now sees
+**0** competing receives. Host validation: **26** server control/batcher,
+**8** submit/poll adapter, and **10** load-gate tests pass; Python compilation
+and `git diff --check` pass. A clean warm-sequence GPU gate is required.

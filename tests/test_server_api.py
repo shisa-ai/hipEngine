@@ -4932,7 +4932,11 @@ def test_stream_completion_caller_cancel_records_one_cancelled_request() -> None
             llm=fake,
         )
 
+        receive_calls = 0
+
         async def connected_receive() -> dict[str, object]:
+            nonlocal receive_calls
+            receive_calls += 1
             await asyncio.sleep(3600)
             return {"type": "http.disconnect"}
 
@@ -4971,6 +4975,7 @@ def test_stream_completion_caller_cancel_records_one_cancelled_request() -> None
         assert metrics.request_total == 1
         assert metrics.request_failed_total == 1
         assert metrics.request_cancelled_total == 1
+        assert receive_calls == 0
         assert app.state.hipengine_generation_batcher.active_requests() == 0
 
     asyncio.run(run())
