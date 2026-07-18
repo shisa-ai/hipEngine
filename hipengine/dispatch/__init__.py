@@ -1,6 +1,16 @@
 """Dispatch, batching, and fusion planning."""
 
-from hipengine.dispatch.batch import ActiveBatch, BatchShapeKey, BatchSlot, RequestState, SlotMove, WorkItem, WorkKind
+from hipengine.dispatch.batch import (
+    ActiveBatch,
+    BatchShapeKey,
+    BatchSlot,
+    PhysicalBatchGroup,
+    RequestState,
+    SlotMove,
+    WorkItem,
+    WorkKind,
+    plan_physical_batch_groups,
+)
 from hipengine.dispatch.batch_width import (
     BatchWidthGroup,
     BatchWidthPartitionPlan,
@@ -56,6 +66,7 @@ __all__ = [
     "PagedAttnDecodeKind",
     "PagedAttnPrefillKind",
     "PagedKVWriteKind",
+    "PhysicalBatchGroup",
     "ProjectionDispatchCandidate",
     "ProjectionDispatchDecision",
     "ProjectionDispatchEvidence",
@@ -79,6 +90,7 @@ __all__ = [
     "projection_dispatch_evidence_payload_blockers",
     "plan_batch_sampler_dispatch",
     "plan_batch_width_partition",
+    "plan_physical_batch_groups",
     "resolve_paged_attn_decode",
     "resolve_paged_attn_prefill",
     "resolve_paged_kv_write",

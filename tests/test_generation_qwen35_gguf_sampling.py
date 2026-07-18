@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 import hipengine.generation.qwen35_gguf as qwen35_gguf
-from hipengine.dispatch import WorkItem, WorkKind
+from hipengine.dispatch import SlotMove, WorkItem, WorkKind
 from hipengine.generation import (
     EngineLoopConfig,
     GenerationCancellationToken,
@@ -1711,6 +1711,19 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
         "serial_decode_fallback_steps": 0,
         "resident_fallback_requests": 2,
     }
+    physical_group = {
+        "logical_c": 1,
+        "group_index": 0,
+        "group_count": 1,
+        "physical_slot_base": 0,
+        "physical_slot_extent": 2,
+        "physical_rows": 2,
+        "active_rows": 1,
+        "request_ids": [2],
+        "global_slot_indices": [0],
+        "active_slot_indices": [0],
+        "active_mask": [True, False],
+    }
     assert observability["routes"]["last_execution_manifest"] == {
         "schema": 1,
         "kind": "gguf_packed_ar_execution_manifest",
@@ -1719,11 +1732,183 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
         "active_rows": 1,
         "active_mask": [True, False],
         "model_step": {"complete_c1_session_replays": 0},
+        "logical_c": 1,
+        "physical_group": physical_group,
+    }
+    assert observability["routes"]["last_physical_group_plan"] == {
+        "schema": 1,
+        "kind": "gguf_ar_physical_group_plan",
+        "logical_c": 1,
+        "physical_bucket_widths": [1, 2, 4, 8],
+        "group_count": 1,
+        "groups": [{**physical_group, "execution_path": "packed_native"}],
     }
     assert observability["routes"]["fallback_reasons"]
     assert len(observability["routes"]["recent_completed"]) == 5
     assert observability["graph_buckets"]["captures_total"] == 0
     assert observability["graph_buckets"]["buckets"] == {}
+
+
+def test_gguf_resident_runner_lowers_c13_to_declared_physical_groups(monkeypatch) -> None:
+    calls: list[tuple] = []
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    runner._last_execution_manifest = {}
+    runner._last_physical_group_plan = {}
+
+    def step_native_chunk(rows, *, physical_rows=None, active_slot_indices=()):
+        calls.append(
+            (
+                tuple(int(row.request_id) for row in rows),
+                int(physical_rows),
+                tuple(int(index) for index in active_slot_indices),
+            )
+        )
+        runner._last_execution_manifest = {
+            "schema": 1,
+            "kind": "gguf_packed_ar_execution_manifest",
+            "physical_rows": int(physical_rows),
+        }
+        return True
+
+    runner._step_native_chunk = step_native_chunk
+    runner._step_native_serial = lambda rows: pytest.fail(
+        f"unexpected serial fallback for {[row.request_id for row in rows]}"
+    )
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", "1")
+    rows = [SimpleNamespace(request_id=request_id) for request_id in range(100, 113)]
+    request_ids = tuple(row.request_id for row in rows)
+    work = WorkItem(
+        kind=WorkKind.DECODE,
+        request_ids=request_ids,
+        row_to_request=request_ids,
+        slot_ids=tuple(range(13)),
+        active_mask=(True,) * 13,
+    )
+
+    runner._step_native_rows(rows, work=work)
+
+    assert calls == [
+        (tuple(range(100, 108)), 8, tuple(range(8))),
+        (tuple(range(108, 113)), 8, tuple(range(5))),
+    ]
+    assert runner._last_physical_group_plan == {
+        "schema": 1,
+        "kind": "gguf_ar_physical_group_plan",
+        "logical_c": 13,
+        "physical_bucket_widths": [1, 2, 4, 8],
+        "group_count": 2,
+        "groups": [
+            {
+                "logical_c": 13,
+                "group_index": 0,
+                "group_count": 2,
+                "physical_slot_base": 0,
+                "physical_slot_extent": 8,
+                "physical_rows": 8,
+                "active_rows": 8,
+                "request_ids": list(range(100, 108)),
+                "global_slot_indices": list(range(8)),
+                "active_slot_indices": list(range(8)),
+                "active_mask": [True] * 8,
+                "execution_path": "packed_native",
+            },
+            {
+                "logical_c": 13,
+                "group_index": 1,
+                "group_count": 2,
+                "physical_slot_base": 8,
+                "physical_slot_extent": 5,
+                "physical_rows": 8,
+                "active_rows": 5,
+                "request_ids": list(range(108, 113)),
+                "global_slot_indices": list(range(8, 13)),
+                "active_slot_indices": list(range(5)),
+                "active_mask": [True, True, True, True, True, False, False, False],
+                "execution_path": "packed_native",
+            },
+        ],
+    }
+    assert runner._last_execution_manifest["logical_c"] == 13
+    assert runner._last_execution_manifest["physical_group"]["group_index"] == 1
+    assert runner._last_execution_manifest["physical_group"]["physical_rows"] == 8
+
+
+def test_gguf_resident_runner_compaction_flushes_and_invalidates_slot_bound_graphs() -> None:
+    events: list[tuple] = []
+
+    class FakeGraph:
+        closed = False
+
+    graph = FakeGraph()
+
+    class FakeSession:
+        def __init__(self, session_id: int) -> None:
+            self.session_id = int(session_id)
+            self.allocation = SimpleNamespace(base_ptr=0xA000 + session_id)
+            self.state_identity = object()
+
+        def invalidate_device_kv_graphs(self) -> int:
+            events.append(("invalidate", self.session_id))
+            if graph.closed:
+                return 0
+            graph.closed = True
+            return 1
+
+    sessions = (FakeSession(0), FakeSession(1))
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    runner.generator = SimpleNamespace(target_arch="gfx1100")
+    runner._rows = {
+        10: SimpleNamespace(lease=SimpleNamespace(session=sessions[0])),
+        11: SimpleNamespace(lease=SimpleNamespace(session=sessions[1])),
+    }
+    runner._kv_graph_invalidation_count = 0
+    runner._flush_all_packed_owners = lambda: events.append(("flush",))
+    runner._graph_handles_for_sessions = lambda observed: (
+        events.append(("handles", tuple(session.session_id for session in observed)))
+        or (graph,)
+    )
+    runner._observe_graph_handles = lambda observed: events.append(
+        ("observe", tuple(session.session_id for session in observed))
+    )
+    runner._record_graph_invalidations = lambda handles, count: events.append(
+        ("record", tuple(handles), int(count))
+    )
+    identities_before = tuple(
+        (id(session), id(session.allocation), session.allocation.base_ptr, id(session.state_identity))
+        for session in sessions
+    )
+
+    runner.compact_batch(
+        (
+            SlotMove(request_id=10, old_slot=2, new_slot=0),
+            SlotMove(request_id=11, old_slot=4, new_slot=1),
+        )
+    )
+
+    assert events[0] == ("flush",)
+    assert ("handles", (0, 1)) in events
+    assert ("observe", (0, 1)) in events
+    assert [event for event in events if event[0] == "invalidate"] == [
+        ("invalidate", 0),
+        ("invalidate", 1),
+    ]
+    assert [event for event in events if event[0] == "record"] == [
+        ("record", (graph,), 1)
+    ]
+    assert graph.closed
+    assert runner._kv_graph_invalidation_count == 1
+    assert tuple(
+        (id(session), id(session.allocation), session.allocation.base_ptr, id(session.state_identity))
+        for session in sessions
+    ) == identities_before
+
+    events.clear()
+    runner.compact_batch((SlotMove(request_id=10, old_slot=0, new_slot=0),))
+    assert events == []
 
 
 def test_gguf_resident_runner_device_kv_admission_is_atomic_at_high_water() -> None:

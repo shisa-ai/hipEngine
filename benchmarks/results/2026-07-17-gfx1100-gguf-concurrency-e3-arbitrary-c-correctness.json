@@ -1,0 +1,573 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_gguf_concurrency_e3_arbitrary_c_correctness",
+  "created_at": "2026-07-17T10:56:56.034071+00:00",
+  "status": "accepted_arbitrary_c_correctness",
+  "passed": true,
+  "claim_level": "arbitrary_c_eq_ok",
+  "performance_claim": false,
+  "native_c13_claim": false,
+  "automatic_compaction_claim": false,
+  "hipengine_artifact_provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-17T09:56:32.932685+00:00",
+    "repo_root": "/home/lhl/hipEngine-main",
+    "hipengine_commit": "be04fa316ea403787ca5af158c2d4afabadb51a1",
+    "git_branch": "gfx1100-concurrency-e3",
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "configured_backend": "hip_gfx1100",
+    "resolved_backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        11331169424,
+        22662338848
+      ],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "command": [
+      "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+      "scripts/gguf_arbitrary_c_lifecycle.py",
+      "--model",
+      "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1100",
+      "--rows",
+      "13",
+      "--cancel-slots",
+      "2",
+      "10",
+      "--prompt-length",
+      "16",
+      "--original-max-tokens",
+      "5",
+      "--newcomer-max-tokens",
+      "3",
+      "--prefill-chunk-size",
+      "256",
+      "--compact-after-middle-hole",
+      "--compiler-version-file",
+      "/tmp/gfx1100-concurrency/hipcc-version.txt",
+      "--require-cached-build",
+      "--json",
+      "/tmp/gfx1100-e3-clean-be04fa31-compaction.json"
+    ],
+    "environment": {
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HIP_VISIBLE_DEVICES": "0",
+      "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/gfx1100-concurrency/hipcc-version.txt"
+    },
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+    "build_profile": "gfx1100 arbitrary-C exact eager/graph lifecycle and optional compaction",
+    "timing_protocol": "correctness only; independent-c1 token/hidden/Conv/GDN/live-BF16-KV equality; sparse graph invalidation",
+    "warmups": 0,
+    "repetitions": 1,
+    "profiler": {
+      "used": true,
+      "performance_measurement": false,
+      "linked_artifact": "benchmarks/results/2026-07-17-gfx1100-gguf-concurrency-e2-native-c8-scaling-closure.json",
+      "linked_artifact_sha256": "751c792de955b0e7dcb718065364e5c4e776a360495d2d6799911a1175fe3a5d",
+      "scope": "unchanged physical-c8 model body; E3 separately proves sparse active masks and grouping manifests"
+    }
+  },
+  "source_commits": {
+    "arbitrary_c_lowering": "8fc07952455b5f1e7eecf3fc17b18708756f3820",
+    "state_lifecycle_gate": "1dc7076f3b23003821620e5694be3371c11aecdb",
+    "compaction_gate": "be04fa316ea403787ca5af158c2d4afabadb51a1",
+    "compaction_clean_retention": "b87a48c05837b32906f529ae4b8d6a03d8358b3e"
+  },
+  "sources": {
+    "short_eager": {
+      "path": "/tmp/gfx1100-e3-clean-1dc7076f-c13-eager-p16-d2.json",
+      "size_bytes": 36233,
+      "sha256": "c7e86374f5135cec7f6e3a724fbee649439e8d5bc6e06839ba58454414c27618",
+      "commit": "1dc7076f3b23003821620e5694be3371c11aecdb",
+      "passed": true,
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_packed_ar_state_oracle.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --rows 13 --lifecycle steady --prefill-mode independent_c1 --prompt-length 16 --decode-steps 2 --capture-layer-hidden --compiler-version-file /tmp/gfx1100-concurrency/hipcc-version.txt --require-cached-build --decode-mode eager --json /tmp/gfx1100-e3-clean-1dc7076f-c13-eager-p16-d2.json"
+    },
+    "short_graph": {
+      "path": "/tmp/gfx1100-e3-clean-1dc7076f-c13-graph-p16-d2.json",
+      "size_bytes": 28737,
+      "sha256": "0aeac6b412ac4b3b8859f7315d7962cb227321684f346840e37772e574d1f331",
+      "commit": "1dc7076f3b23003821620e5694be3371c11aecdb",
+      "passed": true,
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_packed_ar_state_oracle.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --rows 13 --lifecycle steady --prefill-mode independent_c1 --prompt-length 16 --decode-steps 2 --capture-layer-hidden --compiler-version-file /tmp/gfx1100-concurrency/hipcc-version.txt --require-cached-build --decode-mode graph --json /tmp/gfx1100-e3-clean-1dc7076f-c13-graph-p16-d2.json"
+    },
+    "middle_hole_admission": {
+      "path": "/tmp/gfx1100-e3-clean-1dc7076f-c13-middle-hole-admission.json",
+      "size_bytes": 52351,
+      "sha256": "d2e889f5d95931f013d9e282fb639be77864ca12eaaf76845a1cb2659ff8913c",
+      "commit": "1dc7076f3b23003821620e5694be3371c11aecdb",
+      "passed": true,
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_arbitrary_c_lifecycle.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --rows 13 --cancel-slots 2 10 --prompt-length 16 --original-max-tokens 5 --newcomer-max-tokens 3 --prefill-chunk-size 256 --compiler-version-file /tmp/gfx1100-concurrency/hipcc-version.txt --require-cached-build --json /tmp/gfx1100-e3-clean-1dc7076f-c13-middle-hole-admission.json"
+    },
+    "standard_eager": {
+      "path": "/tmp/gfx1100-e3-clean-1dc7076f-c13-eager-p512-d128.json",
+      "size_bytes": 1594467,
+      "sha256": "54fa6ce9d291b9a446ee8e2b151ad619316e0c7f407bae955d2b63c098446483",
+      "commit": "1dc7076f3b23003821620e5694be3371c11aecdb",
+      "passed": true,
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_packed_ar_state_oracle.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --rows 13 --lifecycle steady --prefill-mode independent_c1 --prompt-length 512 --decode-steps 128 --capture-layer-hidden --compiler-version-file /tmp/gfx1100-concurrency/hipcc-version.txt --require-cached-build --decode-mode eager --json /tmp/gfx1100-e3-clean-1dc7076f-c13-eager-p512-d128.json"
+    },
+    "standard_graph": {
+      "path": "/tmp/gfx1100-e3-clean-1dc7076f-c13-graph-p512-d128.json",
+      "size_bytes": 68435,
+      "sha256": "0024491cf9972444e19dc9f26005729714b669befcfa7f6a9d2cbf9a897e0eb2",
+      "commit": "1dc7076f3b23003821620e5694be3371c11aecdb",
+      "passed": true,
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_packed_ar_state_oracle.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --rows 13 --lifecycle steady --prefill-mode independent_c1 --prompt-length 512 --decode-steps 128 --capture-layer-hidden --compiler-version-file /tmp/gfx1100-concurrency/hipcc-version.txt --require-cached-build --decode-mode graph --json /tmp/gfx1100-e3-clean-1dc7076f-c13-graph-p512-d128.json"
+    },
+    "optional_compaction": {
+      "path": "/tmp/gfx1100-e3-clean-be04fa31-compaction.json",
+      "size_bytes": 253695,
+      "sha256": "33fadbc1a85db7e7eb364178a612ef1886ce3f16c290c12b3d27a82e80940a04",
+      "commit": "be04fa316ea403787ca5af158c2d4afabadb51a1",
+      "passed": true,
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/gguf_arbitrary_c_lifecycle.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --rows 13 --cancel-slots 2 10 --prompt-length 16 --original-max-tokens 5 --newcomer-max-tokens 3 --prefill-chunk-size 256 --compact-after-middle-hole --compiler-version-file /tmp/gfx1100-concurrency/hipcc-version.txt --require-cached-build --json /tmp/gfx1100-e3-clean-be04fa31-compaction.json"
+    }
+  },
+  "implementation": {
+    "declared_physical_bucket_widths": [
+      1,
+      2,
+      4,
+      8
+    ],
+    "logical_c13_policy": "two physical c8 groups; second group is sparse active-5",
+    "logical_c13_shape": {
+      "logical_c": 13,
+      "group_count": 2,
+      "physical_rows": [
+        8,
+        8
+      ],
+      "active_rows": [
+        8,
+        5
+      ],
+      "active_masks": [
+        "11111111",
+        "11111000"
+      ],
+      "active_slot_indices": [
+        [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      ],
+      "execution_paths": [
+        "packed_native",
+        "packed_native"
+      ]
+    },
+    "inactive_lane_contract": {
+      "position": -1,
+      "live_count": 0,
+      "block_row": -1,
+      "token_feedback": false,
+      "state_or_kv_mutation": false
+    }
+  },
+  "correctness": {
+    "short_eager": {
+      "hidden_comparisons": 1040,
+      "tokens_exact": true,
+      "state_kv_exact": true,
+      "group_shape": {
+        "logical_c": 13,
+        "group_count": 2,
+        "physical_rows": [
+          8,
+          8
+        ],
+        "active_rows": [
+          8,
+          5
+        ],
+        "active_masks": [
+          "11111111",
+          "11111000"
+        ],
+        "active_slot_indices": [
+          [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          [
+            0,
+            1,
+            2,
+            3,
+            4
+          ]
+        ],
+        "execution_paths": [
+          "packed_native",
+          "packed_native"
+        ]
+      }
+    },
+    "short_graph": {
+      "hidden_comparisons": 1040,
+      "tokens_exact": true,
+      "state_kv_exact": true,
+      "group_shape": {
+        "logical_c": 13,
+        "group_count": 2,
+        "physical_rows": [
+          8,
+          8
+        ],
+        "active_rows": [
+          8,
+          5
+        ],
+        "active_masks": [
+          "11111111",
+          "11111000"
+        ],
+        "active_slot_indices": [
+          [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          [
+            0,
+            1,
+            2,
+            3,
+            4
+          ]
+        ],
+        "execution_paths": [
+          "packed_native",
+          "packed_native"
+        ]
+      }
+    },
+    "middle_hole_cancel_and_admission": {
+      "elapsed_seconds": 87.10013704601442,
+      "initial_shape": {
+        "logical_c": 13,
+        "group_count": 2,
+        "physical_rows": [
+          8,
+          8
+        ],
+        "active_rows": [
+          8,
+          5
+        ],
+        "active_masks": [
+          "11111111",
+          "11111000"
+        ],
+        "active_slot_indices": [
+          [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          [
+            0,
+            1,
+            2,
+            3,
+            4
+          ]
+        ],
+        "execution_paths": [
+          "packed_native",
+          "packed_native"
+        ]
+      },
+      "middle_hole_shape": {
+        "logical_c": 11,
+        "group_count": 2,
+        "physical_rows": [
+          8,
+          8
+        ],
+        "active_rows": [
+          7,
+          4
+        ],
+        "active_masks": [
+          "11011111",
+          "11011000"
+        ],
+        "active_slot_indices": [
+          [
+            0,
+            1,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          [
+            0,
+            1,
+            3,
+            4
+          ]
+        ],
+        "execution_paths": [
+          "packed_native",
+          "packed_native"
+        ]
+      },
+      "new_admission_shape": {
+        "logical_c": 13,
+        "group_count": 2,
+        "physical_rows": [
+          8,
+          8
+        ],
+        "active_rows": [
+          8,
+          5
+        ],
+        "active_masks": [
+          "11111111",
+          "11111000"
+        ],
+        "active_slot_indices": [
+          [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          [
+            0,
+            1,
+            2,
+            3,
+            4
+          ]
+        ],
+        "execution_paths": [
+          "packed_native",
+          "packed_native"
+        ]
+      },
+      "cancelled_slots": [
+        2,
+        10
+      ],
+      "newcomer_slots": [
+        2,
+        10
+      ],
+      "cancelled_sessions_reused": true,
+      "original_tokens_exact": true,
+      "newcomer_tokens_exact": true,
+      "state_kv_exact": true,
+      "declared_widths_only": true,
+      "no_serial_fallback": true,
+      "final_active_requests": 0,
+      "final_available_sessions": 13,
+      "final_scheduler_active": 0
+    },
+    "standard_p512_d128": {
+      "prompt_tokens_per_row": 512,
+      "decode_transitions_per_row": 128,
+      "eager_hidden_comparisons": 66560,
+      "graph_hidden_comparisons": 66560,
+      "eager_tokens_state_kv_exact": true,
+      "graph_tokens_state_kv_exact": true,
+      "eager_group_manifests": 256,
+      "graph_groups": [
+        {
+          "physical_rows": 8,
+          "active_rows": 8,
+          "active_mask": "11111111",
+          "capture_count": 1,
+          "replay_count": 128,
+          "replayed_steps": 128,
+          "bucket_key_sha256": "a148db7cb862b4d8f2900b547be3e3f2d15e7187d2ad93fe5c40506952b57042",
+          "physical_group": {
+            "logical_c": 13,
+            "group_count": 1,
+            "physical_rows": [
+              8
+            ],
+            "active_rows": [
+              8
+            ],
+            "active_masks": [
+              "11111111"
+            ],
+            "active_slot_indices": [
+              [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7
+              ]
+            ],
+            "execution_paths": [
+              "packed_native"
+            ]
+          }
+        },
+        {
+          "physical_rows": 8,
+          "active_rows": 5,
+          "active_mask": "11111000",
+          "capture_count": 1,
+          "replay_count": 128,
+          "replayed_steps": 128,
+          "bucket_key_sha256": "0149281e6366ce0a107437df9421344817c0495fee285ac71efe994f878dfc53",
+          "physical_group": {
+            "logical_c": 13,
+            "group_count": 1,
+            "physical_rows": [
+              8
+            ],
+            "active_rows": [
+              5
+            ],
+            "active_masks": [
+              "11111000"
+            ],
+            "active_slot_indices": [
+              [
+                0,
+                1,
+                2,
+                3,
+                4
+              ]
+            ],
+            "execution_paths": [
+              "packed_native"
+            ]
+          }
+        }
+      ]
+    },
+    "optional_compaction": {
+      "elapsed_seconds": 87.30257413099753,
+      "nontrivial_moves": 9,
+      "moved_request_ids": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        11,
+        12
+      ],
+      "compacted_slots": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "state_kv_hashes_exact": true,
+      "resource_identity_exact": true,
+      "graph_handles_before": 2,
+      "graph_handles_closed": true,
+      "graph_invalidation_delta": 2,
+      "graph_entries_after": 0,
+      "newcomer_slots": [
+        11,
+        12
+      ],
+      "tokens_state_kv_exact": true,
+      "automatic_policy": false
+    },
+    "total_hidden_comparisons": 135200,
+    "hidden_mismatches": 0,
+    "token_mismatches": 0,
+    "state_or_kv_mismatches": 0,
+    "category_anchor": {
+      "artifact": "benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-b4-category-lifecycle.json",
+      "artifact_sha256": "992eb6762d5b0468901d4f923ea39791b3031734b158ae180c155d3554030e7f",
+      "prompt_count": 18,
+      "prompt_repeat_executions": 54,
+      "token_comparisons": 1350,
+      "hidden_comparisons": 54000,
+      "scope": "same input-independent packed math at c4; E3 sources separately cover C13 grouping, sparse c8 masks, and inactive state/KV"
+    }
+  },
+  "profiler": {
+    "artifact": "benchmarks/results/2026-07-17-gfx1100-gguf-concurrency-e2-native-c8-scaling-closure.json",
+    "artifact_sha256": "751c792de955b0e7dcb718065364e5c4e776a360495d2d6799911a1175fe3a5d",
+    "physical_c8_packed_native_dispatches": 748,
+    "exact_row_local_dispatches": 0,
+    "copy_dispatches": 0,
+    "applicability": "E3 changes host physical-group lowering only; the profiled physical-c8 model body is unchanged."
+  },
+  "decision": {
+    "arbitrary_c_policy": "retain multiple declared physical groups above C8; do not claim wider native buckets",
+    "optional_compaction": "correctness-qualified explicit diagnostic only; no automatic policy or performance claim"
+  }
+}

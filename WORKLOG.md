@@ -162100,3 +162100,1065 @@ RED covered all five missing predicates. GREEN is **11/11** focused tests, then
 **19/19** full `test_llm_generate.py` plus relevant server coalescing/cap/shape
 nodes, `py_compile`, and `git diff --check`. No model math or kernel changed;
 the rerun must still pass all exact token oracles.
+## 2026-07-17 — Kick off gfx1100 GGUF E3 arbitrary-C lowering
+
+Created `gfx1100-concurrency-e3` from clean pushed `main` at `ddab579f`. ROCm is
+healthy and enumerates the W7900 and RX 7900 XTX as gfx1100. Audited the merged
+scheduler, resident GGUF runner, packed runtime/graph manifests, E3/F1 roadmap,
+and benchmark/testing contracts before changing behavior.
+
+The concrete E3 gap is above eight logical slots. C≤8 already rounds the
+scheduler capacity/mask to a declared c1/c2/c4/c8 physical bucket and preserves
+sparse slot identity. C>8 bypasses that mask route and uses an implicit
+`range(0, C, 8)` loop; a tail such as C=13 therefore executes as raw c8+c5, not
+as declared physical buckets, and observability retains only the final group's
+manifest. This cannot support an honest arbitrary-C claim.
+
+The first implementation unit will introduce a backend-neutral no-compaction
+physical-group plan parameterized by supported widths. It will preserve global
+slot windows, lower every populated tail to c1/c2/c4/c8, and record logical C,
+group index/count, global slot base/indices, physical width, local active slots,
+and active mask. Initial RED cases are C=3/5/6/7/9/13 plus sparse middle holes.
+Runtime execution/aggregate manifests, real state/KV equality, optional
+compaction, and F1 server walls remain separate follow-up units.
+
+Baseline validation is green: `tests/test_dispatch_batch.py` plus
+`tests/test_gguf_packed_execution_manifest.py` pass **18/18**, and the focused
+resident ownership/masked-bucket test passes **1/1**.
+
+## 2026-07-17 — Lower arbitrary logical C into declared physical groups
+
+Added host-only `PhysicalBatchGroup` and `plan_physical_batch_groups(...)` to the
+dispatch contract. The planner is parameterized by allowed widths, partitions
+scheduler slots into stable maximum-width windows, omits empty windows, rounds
+each populated window only to a declared bucket, and does not compact request
+ownership. Every group records total logical C, group index/count, global slot
+base/extent/indices, physical rows, local active slots, and the exact mask.
+
+The RED suite initially failed import because the planner did not exist, then
+covered contiguous C=3/5/6/7/9/13 and a sparse C=4 spread over global slots
+`0,2,8,12`. The resulting declared widths are c4, c8, c8, c8, c8+c1, and
+c8+masked-c8 respectively. The sparse two-window case remains
+`c8:10100000 + c8:10001000`; no slot compaction is implied.
+
+Wired the planner into `Qwen35GGUFResidentModelRunner.decode_batch()`. The runner
+now lowers the actual decode-ready subset from scheduler request/slot metadata,
+executes every group with its local physical mask, augments each direct packed
+manifest with logical/group identity, and publishes a complete
+`gguf_ar_physical_group_plan` in live observability. A C=13 host integration RED
+first reproduced the old unsupported `work` path and now proves two calls:
+physical c8 lanes `0..7`, then physical c8 lanes `0..4`; raw c5 is gone.
+Packed-unavailable groups retain explicit serial fallback labels, while a true
+physical c1 remains `native_c1`.
+
+Validation is green: dispatch + GGUF generation + execution-manifest suites pass
+**84/84**; resident/generation-batcher server tests pass **25/25**; focused Ruff,
+Python compilation, and `git diff --check` pass. This is planner/host execution
+evidence only; real W7900 token/hidden/state/KV equality remains the next gate.
+
+## 2026-07-17 — Add arbitrary-C state and live-membership gates
+
+Generalized `scripts/gguf_packed_ar_state_oracle.py` steady decode to execute the
+same declared physical-group plan used by production. Each group keeps its own
+persistent eager workspace or graph, records logical/group identity, and flushes
+independently. Packed prefill remains explicitly capped at c8; C>8 uses
+independent-c1 prefill so this gate isolates arbitrary-C decode. Added
+`scripts/gguf_arbitrary_c_lifecycle.py` for production-loop retirement and new
+admission, plus focused parser/mask/fail-closed tests.
+
+Dirty-tree W7900/gfx1100 diagnostics use Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV,
+strict-exact GDN, TheRock HIP 7.15, the precomputed compiler version file, and
+cached builds required:
+
+- C=13 eager p16/d2 passes exact tokens, all **1,040** layer-hidden comparisons,
+  all Conv/GDN hashes, and every live BF16 K/V hash. Four manifests prove two
+  physical groups per transition: c8 active-8 plus c8 active-5.
+- Matching C=13 graph p16/d2 passes the same 1,040 hidden/state/KV comparisons;
+  two physical-c8 graphs each replay twice with active rows 8 and 5.
+- The first live harness draft was stopped before a known pre-admission slot
+  lookup; the next four-token diagnostic admitted and completed both newcomers
+  but correctly had no post-admission C=13 model step because survivors retired
+  as newcomers emitted their first token. The fail-closed snapshot showed 15/15
+  admissions/reclaims and no admission blocker. Raising survivor length to five
+  created the intended full transition.
+- Corrected C=13 production lifecycle passes in **88.408 s**. It cancels global
+  slots 2 and 10, executes physical masks
+  `11111111+11111000 -> 11011111+11011000`, proves both reset/inactive session
+  state+KV hashes remain unchanged, admits newcomers into exact slots 2/10,
+  restores `11111111+11111000`, and drains to 13/13 available sessions with zero
+  active scheduler/runner rows. Original/newcomer tokens, removed/survivor/new
+  Conv/GDN, and all live KV bytes match independent c1; the two cancelled
+  resident sessions are reused; every group is declared c8 and packed-native;
+  there is no serial fallback.
+
+Affected host validation is **92 passed**; focused Ruff, compilation, and diff
+checks pass. These are deliberately dirty implementation diagnostics. Commit the
+reusable gates next, then rerun eager, graph, and membership from that clean
+revision before retaining E3 correctness evidence.
+
+## 2026-07-17 — Close arbitrary-C state/KV correctness on clean C=13
+
+Reran every E3 correctness gate from clean `1dc7076f` on Radeon Pro W7900 /
+gfx1100, Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, strict-exact GDN, TheRock HIP
+7.15, the precomputed compiler version file, and cached builds required. The
+standard state-oracle command is:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/gfx1100-concurrency/hipcc-version.txt \
+PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 \
+  scripts/gguf_packed_ar_state_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --rows 13 --lifecycle steady \
+  --prefill-mode independent_c1 --decode-mode graph \
+  --prompt-length 512 --decode-steps 128 --capture-layer-hidden \
+  --compiler-version-file /tmp/gfx1100-concurrency/hipcc-version.txt \
+  --require-cached-build --json /tmp/gfx1100-e3-clean-1dc7076f-c13-graph-p512-d128.json
+# repeated with --decode-mode eager and its output path
+```
+
+Clean outcomes:
+
+- Short p16/d2 eager and graph each pass **1,040/1,040** layer-hidden
+  comparisons, exact token trajectories, exact initial/final Conv/GDN and live
+  BF16 KV hashes, and physical groups c8 active-8 + c8 active-5. Eager retains
+  four group manifests; two graphs each replay twice. Raw sources are 36,233
+  bytes / SHA-256 `c7e86374f5135cec7f6e3a724fbee649439e8d5bc6e06839ba58454414c27618`
+  and 28,737 bytes / `0aeac6b412ac4b3b8859f7315d7962cb227321684f346840e37772e574d1f331`.
+- The clean production-loop membership gate passes in **87.100 s** with exact
+  tokens/state/KV, inactive-session immutability, middle-hole and restored masks,
+  exact slots 2/10 plus resident-session reuse, declared widths only, no serial
+  fallback, and final ownership 0 active / 13 available. Its 52,351-byte raw
+  source SHA-256 is
+  `d2e889f5d95931f013d9e282fb639be77864ca12eaaf76845a1cb2659ff8913c`.
+- Standard p512/d128 eager and graph each pass **66,560/66,560** layer-hidden
+  comparisons plus exact tokens/Conv/GDN/live KV. Eager executes 256 declared
+  group manifests; graph captures two physical-c8 groups and replays each 128
+  times. Raw eager is 1,594,467 bytes / SHA-256
+  `54fa6ce9d291b9a446ee8e2b151ad619316e0c7f407bae955d2b63c098446483`;
+  graph is 68,435 bytes /
+  `0024491cf9972444e19dc9f26005729714b669befcfa7f6a9d2cbf9a897e0eb2`.
+
+Across the short and standard eager/graph gates, **135,200/135,200** all-layer
+hidden comparisons are exact. This closes E3 arbitrary-C lowering, tail/masked
+state-KV immutability, honest per-artifact logical/physical grouping, and
+middle-hole retirement/new admission at the correctness level. It does not yet
+establish the measured C>8 grouping policy, optional compaction, profiler
+attribution, server latency, or a performance claim.
+
+## 2026-07-17 — Add optional arbitrary-C physical-slot compaction gate
+
+Hardened `Qwen35GGUFResidentModelRunner.compact_batch()` so any real scheduler
+slot move first flushes all packed state owners, identifies the unique moved
+request sessions, observes and invalidates every graph pinning their state/KV,
+and records graph invalidation telemetry. The actual Conv/GDN slabs, KV pool
+allocation/block ids, and cache pointers remain request-owned; scheduler
+compaction changes only the logical request-to-physical-slot map. No-op moves do
+not flush or invalidate.
+
+Extended `scripts/gguf_arbitrary_c_lifecycle.py` with the explicit
+`--compact-after-middle-hole` gate. After cancelling slots 2 and 10, it captures
+actual sparse physical-c8 graphs for masks `11011111` and `11011000`, snapshots
+every moved survivor's per-layer Conv/GDN and live-BF16-KV hashes plus all
+session/allocation/block/device-buffer identities, compacts through the real
+engine loop, and requires exact pre/post identity before allowing another model
+step. It then admits newcomers into the compacted tail and retains all existing
+c1 token/state/KV and packed-route gates.
+
+The first dirty-tree W7900 run was usefully RED: all tokens, state/KV, nine
+moves, resource identities, masks, and routes were exact, but the short
+production lifecycle had executed eager packed decode and therefore exposed no
+live graph handle; the strict graph clause failed rather than silently passing.
+The strengthened gate pins the real sparse graphs immediately before compaction.
+The rerun passes in **87.825 s** on W7900/gfx1100, Qwen3.6-35B-A3B
+`UD-Q4_K_M`, BF16 KV, strict-exact GDN, TheRock HIP 7.15, and cached builds:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/gfx1100-concurrency/hipcc-version.txt \
+PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 \
+  scripts/gguf_arbitrary_c_lifecycle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --rows 13 --cancel-slots 2 10 \
+  --prompt-length 16 --original-max-tokens 5 --newcomer-max-tokens 3 \
+  --prefill-chunk-size 256 --compact-after-middle-hole \
+  --compiler-version-file /tmp/gfx1100-concurrency/hipcc-version.txt \
+  --require-cached-build --json /tmp/gfx1100-e3-compaction-dirty-v2.json
+```
+
+All nine nontrivial moves preserve byte hashes and pointers exactly; survivors
+occupy slots 0-10, newcomers enter 11/12, both sparse graphs close with **2/2**
+invalidations and zero remaining entries, initial/hole/refill masks are
+`11111111+11111000 -> 11011111+11011000 -> 11111111+11111000`, all decode is
+packed-native, and final ownership is 0 active / 13 available. The 253,689-byte
+raw result SHA-256 is
+`2454983f12d96f39761e478cbe568b115ca55701df8e8de364b827fcb3dbdb42`.
+Affected host validation is **62/62** plus **5/5** compaction scheduler tests;
+focused Ruff, Python compilation, and diff checks pass. This remains a dirty
+implementation diagnostic; commit the gate and rerun once from the clean
+revision before retaining optional-compaction evidence.
+
+## 2026-07-17 — Retain clean optional-compaction correctness
+
+Reran the exact C=13 optional-compaction command above from clean commit
+`be04fa31`; only the JSON/stdout destination changed to
+`/tmp/gfx1100-e3-clean-be04fa31-compaction.{json,stdout}`. The clean W7900 run
+passes in **87.303 s** with exact original/newcomer tokens and all final c1
+Conv/GDN/live-BF16-KV comparisons. All nine moved survivors preserve identical
+per-layer pre/post state/KV hashes, resident-session identity, KV allocation and
+block ids, and every Conv/recurrent/K/V device pointer. Slots compact to 0-10;
+newcomers enter 11/12; final ownership is 0 active / 13 available.
+
+The two pinned sparse physical-c8 graphs encode active masks `11011111` and
+`11011000`; both close before moved-slot reuse, telemetry records **2 captures,
+2 invalidations, 0 entries**, and no graph survives compaction. Every runtime
+decode group remains packed-native with zero c1, serial, or resident fallback.
+The 253,695-byte clean source SHA-256 is
+`33fadbc1a85db7e7eb364178a612ef1886ce3f16c290c12b3d27a82e80940a04`.
+Optional physical-slot compaction is therefore correctness-qualified but remains
+an explicit diagnostic operation; no automatic compaction policy or performance
+claim is implied. Next: F1 profiler/scaling and real server-workload retention.
+
+## 2026-07-17 — Add the F1 real OpenAI concurrency harness
+
+Added `scripts/gguf_live_server_bench.py` to measure the real prepared GGUF
+FastAPI generation batcher rather than a synthetic host loop. Concurrent
+`/v1/completions` SSE requests use text that is first proven to round-trip to
+frozen raw token-ID rows. Authoritative generated IDs and finish metadata come
+from resident-runner reclaim, while per-sample queue/TTFT/ITL/service/completion
+samples come from the scheduler. The harness also retains client timing as a
+diagnostic, exact request/admission/completion ownership, every logical/physical
+group plan and mask, route/fallback deltas, KV/tracked/HIP memory, and final
+ownership.
+
+The static packet defines honest `c1`, packed eager c8/c9/c13
+`exact_hybrid`, and same-loop packed-off `serial_c13` rows. It never relabels the
+server eager route as fully native: the retained E2 graph/profiler packet is the
+separate native row. The live trace starts eight OpenAI requests, waits for an
+observed physical-c8 model step, then submits five newcomers and requires an
+actual c8→c13 transition. A 20 ms HTTP admission window is explicit workload
+policy, not hidden setup.
+
+The first p16/d4 C=9 dirty smoke was usefully RED. HTTP/reclaim tokens and
+latencies were exact, but short requests retired as c8 then c1 before all nine
+could decode together; the harness rejected the missing C=9 shape. The p16/d16
+rerun passes: one declared c8+c1 plan, **144/144** exact reclaimed tokens, all 16
+SSE deltas for each of nine requests, zero fallback, 82.886 aggregate tok/s,
+wall 1.737 s, scheduler TTFT p50/p95 373.1/610.2 ms, and ITL p50/p95
+69.85/83.16 ms. Source:
+`/tmp/gfx1100-f1-server-smoke-dirty-v2.json`, 192,782 bytes, SHA-256
+`dbc666767d9ef568dffa4406937271f7c619fd4aef6b914cff0d7d1675fed900`.
+
+The first live artifact assembly found that scheduler summaries sort latency
+samples, so an append-prefix delta was invalid. Replaced it with an exact
+multiset delta and added a host regression. The p16/d32 rerun then passes:
+physical c8 is observed before admission; all intermediate sparse shapes are
+truthful; full c13 executes as c8+masked-c8 `11111111+11111000`; **416/416**
+tokens and all 32 SSE deltas/request are exact; zero fallback; wall 3.755 s;
+110.784 aggregate tok/s; scheduler TTFT p50/p95 163.5/245.5 ms and ITL p50/p95
+83.41/163.87 ms; final active/pending are zero. Source:
+`/tmp/gfx1100-f1-live-smoke-dirty-v2.json`, 383,394 bytes, SHA-256
+`d7c7d8470ae950fb34a236d955b2a401b5d4855ff70ecd912885abda1f736e77`.
+
+Both hardware smokes used the hermetic TheRock HIP 7.15 W7900 environment,
+strict-exact GDN, cached builds required, and the precomputed compiler-version
+file. Host validation is **7/7** with focused Ruff, compilation, and diff checks.
+These are dirty harness diagnostics only; commit the reusable harness, then run
+the full p512/d128 packet from the clean revision before any performance claim.
+
+## 2026-07-17 — Tighten F1 server identity before the full packet
+
+Stopped the first clean `ff1f1be8` p512/d128 packet after its c1 warmup and first
+two measurements rather than spending the C8/C13 wall budget on an incomplete
+evidence schema. The partial c1 aggregate samples were
+**25.741/26.200/25.910 tok/s**, but the artifact had only locally proven
+text→raw-ID roundtrip; it did not retain the resident runner's actual received
+prompt IDs or the scheduler's request timestamps per completion.
+
+The harness now records `CompletedRequest.prompt_tokens` verbatim at reclaim,
+requires them to equal each frozen 512-ID row, retains generated IDs separately,
+requires exact OpenAI usage prompt/completion counts, and embeds the complete
+request observability object including submitted/admitted/completion timestamps,
+queue/TTFT/ITL/service/completion durations, KV ownership, bucket key, and finish
+metadata. Focused host tests remain **7/7** and Ruff/compilation/diff checks pass.
+Commit this evidence-contract fix and restart the full packet from that clean
+revision; the stopped partial run is diagnostic only and publishes no number.
+
+## 2026-07-17 — Reject cross-sample server-plan assumptions
+
+The first complete clean `275894b4` p512/d128 server packet is numerically and
+operationally exact but correctly remains **diagnostic** because two harness
+shape clauses were too strict. All **189** requests retained their actual
+512-token resident prompt IDs, exact 128-token c1 trajectories, OpenAI usage,
+finish metadata, and scheduler timestamps; all static rows passed the 5% variance
+guard; final request/session ownership is zero; and grouped C=13 measured
+**111.636 aggregate tok/s**, **4.299x** c1 (**25.970**) and **3.543x** the
+same-loop serial C=13 bridge (**31.505**). C8/C9 were **134.609/89.667 tok/s**.
+
+The packet failed because no-compaction slot reuse truthfully lowered C=9 as one
+full plus one sparse physical c8 (`11111111 + 10000000`), while the harness
+required idealized compact `c8+c1`. The live sample also inherited one
+already-finished serial request's last plan across the polling boundary; its
+sample-owned route deltas still record zero serial/resident fallback and all
+**1,664/1,664** generated IDs are exact. This is observation contamination, not
+live execution fallback.
+
+The harness now scopes physical plans to request IDs owned by the current HTTP
+sample, records the number of filtered foreign plans, and validates C=9 by nine
+active lanes across two declared groups rather than assuming automatic
+compaction. Re-evaluating the raw timelines selects 127-128 owned plans and
+filters exactly one prior-sample plan per C9 repetition; every C9 shape passes.
+The live trace selects 133 packed-native plans, filters the one prior serial
+plan, and retains real c8→c13 occupancy. Focused validation is **9/9** plus Ruff,
+compilation, and diff checks. Diagnostic source:
+`/tmp/gfx1100-f1-server-clean-275894b4-p512-d128.json`, 26,149,650 bytes,
+SHA-256 `5d9f81402f792d7327ab5bbf474a65189629be4c8942354ee81fa747830b3552`.
+Commit the corrected evidence gate, then rerun the complete packet clean before
+publishing any server number.
+
+## 2026-07-17 — Fix empty-poll resident stream completion race
+
+Stopped the clean `a3de026c` packet after C13 rather than accepting a real API
+failure. One packed-C8 measured sample logged HTTP 500:
+`resident stream stalled; missing request_ids=[]`. Its resident work had
+actually generated and reclaimed every row; the empty missing list exposed a
+race in `SubmitPollTextGenerator.stream_many_detailed()`: the iterator checked
+`complete=False`, another concurrent iterator advanced the shared loop to
+completion, and then this iterator's own `poll()` found no new scheduler events
+and raised before re-reading its routed event/output state.
+
+The stream loop now rechecks its subscription queue and runner-owned completed
+outputs under `_loop_lock` after an empty poll. It continues when a neighbor made
+progress and retains the existing fail-closed stall exception only when the
+submission is still incomplete. A deterministic regression advances prefill
+normally, makes the decode/completion poll appear consumed by a neighbor, and
+requires the original stream to emit its owned token and drain without error.
+The full affected scheduler plus F1 harness suites pass **326/326**; focused
+Ruff (excluding the test file's pre-existing unrelated F821), compilation, and
+diff checks pass. The stopped stderr is 1,044 bytes, SHA-256
+`7f6a84f7e05488ec7645c206647211be09388ee58f2f19cb8a1366ebcf622f5c`.
+No timing from the stopped process is retained. Commit this race fix, then
+restart the complete clean packet.
+
+## 2026-07-17 — Retain real OpenAI arbitrary-C server scaling
+
+The final hermetic W7900 packet passes from clean `77279adf` in **478.108 s**.
+Environment: Radeon Pro W7900/gfx1100, Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV,
+greedy top-1 with EOS ignored for the fixed output horizon, TheRock HIP 7.15,
+strict-exact GDN, cached builds required, one prepared 13-slot runner, and a
+20 ms server admission window:
+
+```bash
+PY=/home/lhl/mambaforge/envs/therock/bin/python3.12
+ROOT=$($PY -m rocm_sdk path --root)
+env -i HOME=$HOME USER=$USER LOGNAME=$LOGNAME SHELL=$SHELL TERM=${TERM:-xterm} \
+  PATH=$ROOT/bin:/home/lhl/mambaforge/envs/therock/bin:/usr/local/bin:/usr/bin:/bin \
+  LD_LIBRARY_PATH=$ROOT/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx110X_all/lib \
+  HIP_PATH=$ROOT ROCM_PATH=$ROOT HIP_LIB_PATH=$ROOT/lib HIP_INCLUDE_PATH=$ROOT/include \
+  HSA_OVERRIDE_GFX_VERSION=11.0.0 HIP_VISIBLE_DEVICES=0 PYTHONPATH=. \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/gfx1100-concurrency/hipcc-version.txt \
+  $PY scripts/gguf_live_server_bench.py \
+    --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+    --backend hip_gfx1100 \
+    --configurations c1,packed_c8,packed_c9,packed_c13,serial_c13 \
+    --prompt-length 512 --decode-tokens 128 \
+    --warmup-runs 1 --measured-runs 3 \
+    --live-decode-tokens 128 --live-initial-rows 8 --live-tail-rows 5 \
+    --prefill-chunk-size 256 --batch-window-ms 20 \
+    --compiler-version-file /tmp/gfx1100-concurrency/hipcc-version.txt \
+    --require-cached-build \
+    --json /tmp/gfx1100-f1-server-clean-77279adf-p512-d128.json
+```
+
+Static medians (aggregate/per-request generated tok/s, complete SSE cycle wall)
+are:
+
+- logical-c1 masked physical-c8 control: **25.583/25.583**, wall **5.003 s**,
+  scheduler TTFT p50/p95 **0.271/0.276 s**, ITL **36.499/39.809 ms**;
+- one physical c8: **136.122/17.015**, wall **7.523 s**, TTFT
+  **1.751/2.088 s**, ITL **41.712/45.068 ms**;
+- grouped C9 (`c8 + sparse c8`): **88.592/9.844**, wall **13.003 s**,
+  TTFT **1.709/2.235 s**, ITL **81.087/88.112 ms**;
+- grouped C13 (`c8 + sparse c8`): **111.380/8.568**, wall **14.940 s**,
+  TTFT **1.886/3.323 s**, ITL **87.502/93.631 ms**;
+- packed-off serial C13 bridge: **31.708/2.439**, wall **52.479 s**,
+  TTFT **2.424/3.390 s**, ITL **382.821/396.004 ms**.
+
+C8/C9/C13 are **5.321x/3.463x/4.354x** logical-c1 aggregate; grouped C13
+is **3.513x** serial (**+251.27%**). Every static rate passes the 5% guard;
+the maximum stdev/median is **1.299%**. Cumulative tracked peaks are
+**29.312/30.805/31.969/32.869/32.869 GiB** in fixed route order; they are not
+isolated allocation deltas. Every plan reports declared physical widths and
+sample-owned request IDs. Packed routes record zero serial/resident fallback;
+C9/C13 remain explicit grouped exact-hybrid rows, never native width claims.
+The unchanged physical-c8 body retains E2's **748 packed-native / 0 row-local /
+0 copy** profiler slice.
+
+All **189/189** HTTP requests preserve their actual 512 resident prompt IDs,
+direct-c1 generated IDs, exact OpenAI usage, finish metadata, and complete
+submitted/admitted/completion observability. The controlled live trace observes
+physical c8 before admitting five tails, reaches C13 as
+`11111111 + 11111000`, emits **1,664/1,664** exact IDs at **107.284 aggregate
+tok/s** over **15.510 s**, reports scheduler TTFT p50/p95 **1.427/2.210 s** and
+ITL **90.569/95.454 ms**, then ends at 0 pending/active requests and 13/13 free
+sessions. One completed prior-sample plan is explicitly filtered by request-id
+ownership; all 131 owned live plans are packed-native.
+
+Raw source: 26,128,247 bytes, SHA-256
+`0b197bcefd99cdc4751608b23d78cd3d55bc5681334e734df66d89c2bef4a331`.
+Published compact evidence:
+
+- `benchmarks/results/2026-07-17-gfx1100-gguf-concurrency-e3-arbitrary-c-correctness.json`
+  (17,499 bytes; SHA-256
+  `ab9694ccca44016472c8bee5562f680816fa30abac99c540e01e39b66572ab84`;
+  **135,200/135,200** all-layer comparisons overall, exact sparse
+  cancel/admission, nine exact compaction moves, 2/2 graph invalidations);
+- `benchmarks/results/2026-07-17-gfx1100-gguf-concurrency-f1-server-scaling-closure.json`
+  (471,499 bytes; SHA-256
+  `c54cab18786b27d6a834f3061411fd4fe1449a6da45a42dbafe24fc69b6b9677`;
+  clean canonical provenance, per-request identity/timestamp rollup, static/live
+  scaling, memory, route, and linked profiler/category gates).
+
+Updated `benchmarks/README.md`, root `README.md`, `benchmarks/CHANGELOG.md`,
+`docs/CONCURRENCY.md`, and `docs/REFACTOR.md`. The default-on packed route stays
+promoted; rollback envs remain only for the documented one-release/gfx1151
+window, and optional compaction remains explicit/manual. Final validation is
+**422/422** affected tests plus focused Ruff, compilation, JSON/provenance/link
+checks, README synchronization, and diff checks. gfx1100 E3/F1 is retained;
+next project-wide blocker remains the independent gfx1151 E1/F1 packet.
+
+## 2026-07-17 — Kick off gfx1100 PARO native concurrency
+
+Created `gfx1100-paro-concurrency-g1` from retained gfx1100 GGUF concurrency
+commit `52f26eb8`. The worktree is clean and the branch deliberately inherits the
+shared resident-loop, physical-bucket, lifecycle, device-KV, observability, and
+server evidence contracts rather than creating a PARO-specific scheduler.
+
+The W7900 is visible as gfx1100 under ROCm and starts effectively idle. The first
+scope is `docs/CONCURRENCY.md` Phase G1 then G2: audit the current width-plan and
+row-local boundaries, run clean current-HEAD PARO c1/c2 exact and serial controls,
+add a reusable earliest-layer/stage comparator, and close the first true native
+c2 boundary. PARO will not be attached to the production loop until its direct
+c2 model step passes token/hidden/state/KV and profiler gates; wrapping width-1
+sessions in the server loop would remain only HTTP concurrency.
+
+## 2026-07-17 — Audit current PARO c=N boundaries before W7900 controls
+
+The retained direct harness and runtime already contain more reusable G1/G2
+machinery than the roadmap summary implies, so this lane will refresh and narrow
+rather than create another parallel implementation:
+
+- `scripts/qwen35_batch_retained_bench.py` drives one packed prefill through the
+  scheduler and supports both `direct_native` and `serial` decode while comparing
+  every generated ID with independent `prefill_native()+step()` c1 sessions. It
+  is the narrowest same-fixture c2 control; the older serial benchmark checks
+  only finite logits plus stale equality provenance.
+- `scripts/qwen35_batch_hidden_bisect.py` is already a reusable layer/stage
+  comparator. It can capture final prefill hidden, per-layer decode hidden,
+  Conv/recurrent state, full-attention K/V samples, linear/full-attention stage
+  traces, c1 eager/graph controls, and the first green-to-red layer transition.
+  G2 should extend it only when a current run exposes a missing observation.
+- `Qwen35ParoResidentSession.step_batch_native()` is present for BF16 KV and
+  physical-slot-ordered rows but remains experimental. The nominal native path
+  still has selected-c1/rowchunk diagnostics and package evidence inherited from
+  the invalidated legacy batch-shaped oracle. `exact_hybrid=True` is explicitly
+  gfx1151-only and is not graph/device-resident; its full-attention pre-O work is
+  row-local and its execution metadata correctly says it is not fully c-aware.
+- Production routing remains fail-closed on gfx1100: the checked-in native-width
+  profile is gfx1151-specific and identity validation prevents it selecting a
+  W7900 group. This lane must not bypass that boundary before direct c2 closes.
+- The last retained W7900 c2 p512/d128 diagnostic (`8d15da9`, May 2026) matched
+  independent c1 through generated index 86 and first diverged at index 87. It
+  predates the independent-oracle repairs and current route stack, so it is only
+  a historical hypothesis, not a current baseline.
+
+Use the available shisa Qwen3.6-35B-A3B PARO-packed snapshot
+`437eba06df05aad71a4dacdcaf3fff70ae1ee8a1` for both W7900 and gfx1151 symmetry.
+The older MTP assembly points at a no-longer-present trunk snapshot and is not a
+valid clean input. Reconstruct the exact eight-row temporary raw-ID fixture from
+the committed c8 diagnostic's retained prompt rows; raw fixture/output stays in
+`/tmp`. First run c1 graph, c2 serial, and c2 direct-native p512/d128 from the
+same clean revision, then use the existing hidden bisector on the first failure.
+
+Kernel-catalog/lineage audit does not justify a new port before those controls.
+`docs/KERNELS.md` shows the required PARO c1 projection, selected-MoE,
+full-attention/KV, Conv/GDN, compact-WMMA, and fallback primitives are already
+landed in-tree. `python3 scripts/check_lineage.py --kind kernel --diff stat`
+reports four drifted parent files: monolithic `qwen35_expert.hip`, `smoke.hip`,
+embedded `paroquant_kernels.py`, and `paroquant_fusedw4.py`. The drift includes
+compact WMMA, small-K safety, and tree/speculative work, but no parent code will
+be copied for G1. If the refreshed comparator later proves a missing kernel
+rather than an orchestration/reduction boundary, inspect those listed commits
+and parent evidence before an in-tree raw-pointer port with RED oracle and
+profiler gate.
+
+## 2026-07-17 — Re-establish clean W7900 PARO c1/c2 controls
+
+Ran the G1 control packet from clean `ff4e21d2` on the W7900/gfx1100 with the
+shisa Qwen3.6-35B-A3B PARO-packed snapshot
+`437eba06df05aad71a4dacdcaf3fff70ae1ee8a1`, BF16 KV, the exact temporary
+8x512 raw-ID fixture SHA-256
+`ebecaea08fcc72277ec9aae0e627190499ff3ef2bc551a8ffd7060d30223dbc4`, and the
+hermetic HIP 7.15 environment. All three commands used the precomputed compiler
+version file, `--require-cached-build`, prompt length 512, 40 layers, eight
+warmup decode tokens, and 128 measured decode tokens:
+
+- `scripts/qwen35_paro_bench.py ... --prompt-row 0 --graph-replay-decode`
+  establishes the width-1 graph control at **115.956 tok/s** over **1.104 s**
+  measured decode. Its graph route, BF16 KV audit, and close-to-baseline memory
+  lifecycle pass. Raw JSON: 191,123 bytes, SHA-256
+  `a685dfa842eb8f3b812c32ae22f812b38d4efc3266777dd1a5afba51f0ded247`.
+- `scripts/qwen35_batch_retained_bench.py ... --batch-size 2
+  --batch-decode-execution serial` establishes the packed-prefill/serial-c1
+  bridge control. Both rows match their independent c1 sessions for all
+  **137/137** recorded IDs each (seed + eight warmup + 128 measured), or
+  **274/274** overall. Aggregate measured decode is **100.789 tok/s** over
+  **2.540 s**; it remains an explicitly blocked serial bridge, not a native
+  claim. Raw JSON: 109,894 bytes, SHA-256
+  `94aced700ad90cbc94a3449f63aebe36455c72ccc885db31a387ecee0defa65f`.
+- The otherwise identical `--batch-decode-execution direct_native` control is
+  correctly rejected. Row 1 first diverges at generated index 2 and row 0 at
+  index 3, so its minimum equal prefix is only two IDs. It reports native batch
+  linear/full-attention/state/KV execution and stable block identity, but the
+  selected-c1-batch MoE boundary remains explicit and token correctness fails.
+  Diagnostic aggregate decode is **130.589 tok/s** over **1.960 s** (**+29.6%**
+  versus the serial bridge, **1.126x** the separate c1 graph rate), but carries
+  **no performance claim**. Raw JSON: 177,097 bytes, SHA-256
+  `6d872f0e315508ff153bbc1455fc58a4603af594ed4f5690f42952b024f90f23`.
+
+The old May index-87 divergence is therefore superseded: current default native
+c2 fails almost immediately on these distinct current-source prompts. This is a
+useful narrow RED boundary, not a regression claim against comparable retained
+evidence. G2 now runs the existing hidden/state/KV stage bisector only through
+the first two decode steps before changing kernels or dispatch.
+
+## 2026-07-17 — Localize the first W7900 PARO native-c2 divergence
+
+Reused the existing `scripts/qwen35_batch_hidden_bisect.py` without extending or
+forking it. From clean `70b85b7c`, the hermetic W7900 run used the same current
+model/fixture as G1, BF16 KV, c2, p512, two decode steps, layer limits
+`1,2,4,8,16,24,32,40`, the full NumPy context oracle, linear-state summaries,
+and the exact direct-native route switches. The raw command is retained in the
+compact artifact.
+
+The result is a narrow stage-level RED:
+
+- layer limits 1 and 2 are fully green for prefill hidden, prefill linear
+  inputs/state, prefill full-KV prefixes, decode linear inputs/handoffs/stages,
+  Conv/recurrent state, hidden, and tokens;
+- limit 4 first fails at full-attention layer 3, decode step 0, row 1;
+- every traced producer stage from layer input through prepared Q/K/V/gate is
+  green, as are sampled K/V cache contents, but `attn_context` disagrees with
+  independent c1 by **0.827461 max abs / 4,046 elements over 1e-3**;
+- the independent NumPy oracle independently rejects the batch context by
+  **0.827463 max abs / 4,093 elements over 1e-3**, localizing the root cause to
+  the native batch context reduction rather than its inputs, KV append, or the
+  downstream O/post/MoE work;
+- post-layer hidden differs by **0.041016 max abs**, 2,036 FP16 bit mismatches,
+  and 1,565 elements over tolerance. Row 1 then first changes token at generated
+  index 2 (`475` versus c1 `1947` in the L4 truncated-model probe), matching the
+  full L40 G1 first-failure index;
+- layer-7 current-token K/V/source differences in later limits are downstream
+  propagation after layer 3; cache writes still match their local producers and
+  are not the first bug.
+
+This proves the comparator already satisfies the G2 layer/stage/state/KV need;
+no new diagnostic code is justified. The smallest candidate fix is also already
+in-tree: the paged-attention library exposes a c-aware batch-grid
+`...context_bf16_batch_c1_exact_spans` entry that keeps the c1 256-thread
+reduction shape. GGUF already uses it, while PARO currently calls the 1,024-thread
+c2 context entry whose parallel value-reduction order is the failing boundary.
+The next RED/GREEN unit should register/resolve that exact batch variant for PARO
+rather than adding a per-row fallback or changing KV code.
+
+Raw JSON: 46,576,030 bytes, SHA-256
+`be182d5b62f1ec72950f9b54ea3c10d48515ec69a2b66c5d7a5ae34fa8c30b6e`.
+Compact diagnostic:
+`benchmarks/results/2026-07-17-gfx1100-paro-g2-native-c2-first-divergence.json`.
+No performance claim is made.
+
+## 2026-07-17 — Close the first PARO native-c2 context boundary
+
+Added RED tests before changing runtime dispatch. The first test attempt exposed
+that the old PARO context path bypassed the registry and called the HIP wrapper
+directly; because the unit used fake pointers, it triggered a GPU memory-access
+fault before pytest could format the expected failure. ROCm immediately
+recovered (`libamdhip64.so`, `rocminfo`, and W7900 idle-memory checks passed).
+After the test also stubbed the legacy direct wrapper, the intended RED was two
+safe failures: no `PagedAttnDecodeKind.CONTEXT_BATCH` route and no
+registry-resolved state call. A separate sparse-slot RED expected distinct
+append/decode block tables and failed because only one table was built.
+
+Implemented the smallest orchestration fix without changing a kernel body:
+
+- registered the existing `bf16_context_batch_spans` wrapper under storage-aware
+  `PagedAttnDecodeKind.CONTEXT_BATCH` and resolved it in
+  `Qwen35ParoDecodeState.decode_full_attention_context_gate_fp16_batch()`;
+- split `_batch_full_spans()` metadata into a persistent append-relative table
+  and a persistent decode-absolute table per `(rows, slots)` key. The batch KV
+  writer adds `row * blocks` internally, while the context kernel does not. The
+  old shared table therefore made dense c2 row 1 read row 0's physical KV blocks;
+- kept both tables allocation/copy-free after eager warmup and exposed their
+  separate physical rows plus the resolved context-kernel variant in execution
+  metadata.
+
+A useful rejected intermediate prevented an unnecessary performance regression.
+Selecting the existing 256-thread c1-exact batch context while still sharing the
+old row-relative table reproduced the exact **0.827** row-1 failure. Combining
+that kernel with absolute decode rows closed L4 but reduced full-model diagnostic
+throughput to **120.290 aggregate tok/s**. The normal 1,024-thread batch variant
+with absolute decode rows also closes L4 and retains **130.464 aggregate tok/s**,
+within **-0.10%** of G1's 130.589 diagnostic. The c1-exact route is therefore not
+kept for PARO; physical addressing, not reduction geometry, was the root cause.
+
+Dirty-tree RED→GREEN evidence on W7900/HIP 7.15:
+
+- The original L4/c2/p512/d2 artifact failed context vs c1/NumPy by
+  **0.827461/0.827463**. The standard-kernel GREEN artifact is `eq_ok`: exact
+  generated IDs and final hidden under the 1e-3 contract, all prefill/linear
+  state/KV gates pass, both rows' NumPy context comparisons pass with worst
+  batch error **1.788e-6**, and batch/c1 NumPy oracles are identical. Raw GREEN:
+  867,493 bytes, SHA-256
+  `193aaeacdf86bc7305a5035dc5be11b4af9bf19fe70671a7937b5c3b6e9a4a2d`.
+- The full L40 p512/d128 direct diagnostic improves minimum equal prefix from
+  **2 to 3** and keeps both rows exact through generated index 2. Both now first
+  diverge at index 3, proving the layer-3 context alias is fixed while exposing
+  the next independent boundary. Throughput is **130.464 aggregate / 65.232 per
+  request tok/s** over 1.962 s; this remains rejected correctness and carries no
+  performance claim. Raw JSON: 180,932 bytes, SHA-256
+  `f0ed819287b0a46ddd5ad20c9a939c8a255258775f090a5961fdd80a969665e5`.
+- Cached `rocprofv3 --kernel-trace` records one true c2
+  `qwen35_paged_full_attn_decode_context_tensor_batch_kernel` launch at
+  **106,001 ns**, grid Y **2**, workgroup X **1,024**, 40 VGPR, and zero reported
+  scratch/LDS. The profiled L4/d1 route is `eq_ok` and explicitly names
+  `bf16_context_batch_spans`; CSV: 280,098 bytes, SHA-256
+  `ea813b0f509cc5529f6e0441790a5640400edad84d102ca04ffe80f67656b144`.
+
+Host validation passes **237/237** dispatch/paged-attention/state/layout tests
+and **25/25** retained-bench/hidden-bisect tests, plus focused Ruff, compileall,
+and diff checks. The code change closes only the first native-c2 context
+boundary; it does not promote full PARO c2, whose next RED is generated index 3.
+
+## 2026-07-17 — Close PARO c2 short-context arithmetic drift
+
+Localized the next current-HEAD W7900 failure without changing math first. From
+clean `c69a1512`, the same p512 fixture and hermetic HIP 7.15 environment traced
+three decode steps through layer limits 1/2/4/8/16/24/32/40. The optimized
+1,024-thread c2 context kernel first introduced arithmetic drift at full-attention
+layer 3 on decode step 0/generated index 1: prepared Q/K/V/gate, the complete
+BF16 KV prefix/current source, append metadata, and independent NumPy context
+were exact, while batch context differed from dense c1 by **4.828e-6 max abs**.
+That changed only 18/10 FP16 gated-attention bits initially, but by decode step 2
+the drift crossed the 1e-3 layer-3 MLP-input contract, then changed layer-4 Conv
+state by **0.0078125** and eventually the generated-index-3 token. A row-local
+paged-context control reduced but did not close the full-model drift, proving the
+issue was reduction order rather than state or KV ownership.
+
+Added RED coverage before implementation:
+
+- registry/dispatch/state tests required `PagedAttnDecodeKind.CONTEXT_BATCH` to
+  resolve a separately registered `bf16_context_batch_c1_exact_spans` route;
+  all three failed safely on the old route;
+- the existing model-shape GPU test now uses two distinct physical block rows at
+  context 513 and compares the c2 wrapper directly to two dense c1 launches.
+  The old nominal c1-exact wrapper differed in **6,164/8,192 FP32 elements**,
+  max abs **1.192e-6**, because it merely reused the paged warp-per-token body.
+
+Implemented a true c-aware dense-order kernel. It retains one c2 batch-grid
+launch and reads arbitrary physical rows through `KVLiveSpans`, but duplicates
+the dense c1 score, max, softmax-sum, normalization, and value accumulation
+order exactly. The four-axis registry now selects it as the BF16 batch-context
+default. The faster 1,024-thread variant remains registered only as an explicit
+kernel-level diagnostic; `docs/REFACTOR.md` records its removal/replacement
+trigger.
+
+Dirty-tree RED→GREEN evidence on the W7900:
+
+- host route/registry/state RED **0/3** becomes **3/3**; the broader KV dispatch
+  and decode-state set passes **81/81**; resident batch layout passes **151/151**;
+  the complete paged-attention plan passes **5/5** under the hermetic HIP stack;
+  focused Ruff, compileall, and diff checks pass;
+- the 513-token physical-c2 primitive is bit-exact to dense c1. The L4/d3 stage
+  gate is exact-zero for input, prepared Q/K/V, context, gate, O, residual,
+  MLP input/output, hidden, tokens, linear state, NumPy context, and KV on both
+  rows and all three steps;
+- the full L40/d3 comparator is `eq_ok` at every 4/8/16/24/32/40 limit: prefill
+  hidden/linear state/full-KV, decode linear inputs/stages/Conv+GDN state,
+  full-attention input/output/NumPy context/KV, final hidden, and tokens all pass
+  with no bit drift. Raw JSON: 19,890,755 bytes, SHA-256
+  `ad183e18980d3dc61ec5abae749f3d70e7686d22b9a20d02bac558980be569d3`;
+- full L40 p512/w8/d128 direct c2 now matches both independent c1 sessions for
+  **137/137 IDs per row (274/274 overall)**. Diagnostic decode is **122.004
+  aggregate / 61.002 per-request tok/s** over 2.098 s: **+21.05%** over the
+  100.789 serial-c2 bridge, but **-6.49%** versus the invalid 130.464 optimized
+  arithmetic-drift route. This is not a retained performance claim;
+- cached `rocprofv3 --kernel-trace` records one true c2
+  `qwen35_paged_full_attn_decode_context_tensor_batch_c1_exact_kernel` launch at
+  **200,082 ns**, grid Y **2**, workgroup X **256**, 24 VGPR, and zero reported
+  scratch/LDS. The profiled L4/d1 comparator is `eq_ok`; CSV is 280,135 bytes,
+  SHA-256 `3c88aaae71d48655410c8a260fe1c4108ab68666e05e58a389098a6946868815`.
+
+This closes the short-context attention arithmetic boundary, not G2 as a whole.
+The benchmark package remains correctly blocked because decode still declares
+`selected_c1_batch` MoE and lacks the grouped-compact/lifecycle/repetition
+packet. Production continues to fail closed to true width-1 sessions. The next
+native-c2 boundary is selected-expert MoE, followed by shrinking lifecycle and
+then c4/c8 generalization.
+
+Clean `32de8d08` revalidation reproduces the result. Full p512/w8/d128 remains
+exact for **274/274 IDs** at **122.317 aggregate / 61.159 per-request tok/s**
+over 2.093 s. The all-layer d3 state/KV comparator remains `eq_ok` with no hidden
+bit drift; raw JSON is 19,890,707 bytes, SHA-256
+`f4e77eaf22b82e46c37267c12e21ffbc5e90fae612b2b5c98e8fa66325b036e4`.
+The clean trace captures one exact c2 context launch at **190,841 ns**, grid Y 2,
+workgroup X 256, 24 VGPR, and zero scratch/LDS; CSV SHA-256 is
+`eed4c9fb361bb37e05e6733c51f1c4265962e77fba44cdbc8ea4bb421f8d4314`.
+Compact blocked-progress artifact:
+`benchmarks/results/2026-07-17-gfx1100-paro-g2-native-c2-dense-order-progress.json`.
+No benchmark rollup/changelog row is added because selected-c1 MoE keeps this
+outside the retained native-c2 contract.
+
+## 2026-07-17 — Close PARO grouped-compact c2 arithmetic
+
+Changed only MoE from the clean `bb0a51a5` selected-c1 route to true
+`grouped_compact` on the same W7900/HIP 7.15 p512 fixture. The initial
+L1/L2/L4 one-step comparator was token-green but exposed immediate arithmetic
+drift: layer 0's grouped-MoE output differed by **17 FP16 bits / 3.052e-5 max
+abs**, and by L4 row 0 final hidden differed by **0.009613** with 1,409 elements
+over the 1e-3 contract. All upstream linear-attention and full-attention inputs,
+state, and KV were green, so this was a selected-MoE boundary rather than a new
+attention/state regression. Raw JSON: 1,211,427 bytes, SHA-256
+`c77b040bb4c43e20c1297b6248be2829d263cfbfabb09d63dd33e11d44f584c3`.
+
+An ad-hoc first-call stage replay compared grouped scratch to the same
+hidden/residual replayed through persistent selected-c1 batch scratch. Router
+logits, selected experts, routing weights, sorted experts/weights, packed hidden,
+and rotated gate/up input were exact. The first mismatch was selected gate/up:
+**6 bits / 4.883e-4 max**, followed by down input **7 bits / 1.221e-4**, down
+output **617 bits / 3.052e-5**, and final output **18 bits / 3.052e-5**. The
+cause was orchestration geometry, not metadata or a kernel body: the FP16 grouped
+path inherited each wrapper's 128-thread default, while the selected-c1 exact
+path explicitly uses 64 threads. A force-64 control made gate/up, down input,
+down output, and final output all bit-exact. Before/after stage-summary hashes:
+`d0f14818222fa2269ec89d8c4044833ce24990c241bcb32a5e98927c120c3042` /
+`e073017157c1f912d2f94bcba5fd751959c1339e9089dc5809e3076d129b7199`.
+
+Added RED coverage to require `threads=64` at both grouped FP16 selected GEMV
+calls; it failed safely with missing `threads` kwargs. The implementation adds
+those two launch arguments only. It remains one true grouped c2 launch per
+selected stage, uses the existing sorted-lane inverse/combine ABI, and adds no
+per-row model fallback or backend/quant dispatch branch.
+
+Dirty-tree RED→GREEN evidence:
+
+- the focused orchestration test becomes green; full decode-state, grouped/layout,
+  AWQ plan, combine plan, and group-scatter plan suites pass, plus focused Ruff,
+  compileall, and diff checks;
+- L1/L2/L4 d3 is `eq_ok` with exact-zero linear stages, full-attention stages,
+  NumPy context, Conv/GDN state, KV, hidden, and tokens; raw JSON 1,002,866 bytes,
+  SHA-256 `208761979a46f6898c1dc01153aed4ee1248965cbbdc9243fe53084388467a82`;
+- full L40 d3 is `eq_ok` at every 4/8/16/24/32/40 limit with no hidden bit drift.
+  Execution metadata declares `native_caware_decode=true`, 40
+  `grouped_compact` MoE layers, zero selected-c1 fallback layers, native full
+  attention, and no blockers. Raw JSON 19,889,973 bytes, SHA-256
+  `c02f38f74683a8bb6158570a6e2dd9536a1b8ab8607075a9d620886c3123a398`.
+
+Compact artifact:
+`benchmarks/results/2026-07-17-gfx1100-paro-g2-grouped-moe-stage-closure.json`.
+This closes selected-MoE arithmetic at c2, not the retained G2 packet. Full
+p512/w8/d128 grouped-c2 repetition, shrinking/cancellation lifecycle, inactive
+state/KV immutability, cached profiler, and scaling remain next. Production
+continues to fail closed to true width-1 sessions, and no benchmark rollup or
+performance claim is added.
+
+## 2026-07-18 — Make PARO c2-to-c1 lifecycle state exact
+
+Strengthened `scripts/qwen35_batch_shrinking_correctness.py` before accepting
+PARO lifecycle evidence. The gate now snapshots every retired physical slot at
+its retirement boundary, lets the surviving sparse rows continue through c1,
+and re-hashes all retired Conv/GDN state plus live full-attention K/V prefixes.
+A focused RED requires a changed component hash to fail the new
+`inactive_state_kv_immutability` result.
+
+The first W7900 grouped-c2 cancellation run proved the retired slot was already
+immutable, but exposed a separate survivor boundary. Both rows were exact for
+the seed and two c2 decode steps; after c2→c1, survivor slot 0 first changed at
+generated index 3 (`15` vs c1 `17`), and all 30 linear-state plus 10 full-KV
+layer hashes subsequently differed. Routing `step_batch_native(rows=1)` through
+the true scalar resident-slot path changed the wrong token but did not close the
+gate because the full-attention scratch retained row-count-derived c2 split-view
+offsets. The two RED artifacts are 11,465/11,472 bytes with SHA-256
+`0f4189f53e6c4d9e3e5a7a6fc60dbd0bae4e7a422ea255804df5bf606c6405d2` /
+`11341395f8dcbacb58601133db5a428d6802423fe7af388ad911619d8ded1913`.
+
+The implementation now makes eager rows=1 use `_set_slot_token_embedding()`,
+`_set_slot_position()`, scalar `_run_layers()`, and per-slot sampling, and
+labels that transition `true_c1_resident_slot`. Before scalar full-attention it
+re-reserves canonical token-1 scratch when wider batch scratch is current, just
+as the existing linear/MoE canonicalizers already do. This applies to any
+physical survivor slot and leaves device-resident c>N graph execution unchanged.
+
+Dirty-tree W7900/HIP 7.15 GREEN evidence on the distinct p512 fixture:
+
+- cancellation c2→c1 is `eq_ok`: all generated IDs and all persistent state/KV
+  hashes match independent c1; the cancelled slot's retirement and
+  post-lifecycle aggregate SHA-256 are identical. Raw JSON 8,367 bytes, SHA-256
+  `4ae6f43bbfb2d5a8b87d3ede7787a82f9db5cb8e0659b6260f269dc2a5e78408`;
+- EOS c2→c1 is also `eq_ok`, records `finish_reason=stop`, and preserves the
+  retired slot byte-for-byte. Raw JSON 8,325 bytes, SHA-256
+  `5a321db9bc54e28c9bb77dfb6077e1ea4ac40cb20d088e52cf2dde5f38903095`;
+- the full affected host suites pass **161/161**, plus focused Ruff, Python
+  compilation, and diff checks.
+
+These are dirty-tree implementation gates, not retained evidence. Commit the
+lifecycle fix, then rerun cancellation/EOS from the clean revision before the
+repetition, profiler, and scaling packet.
+
+## 2026-07-18 — Close gfx1100 PARO native-c2 correctness
+
+Completed the clean G2 packet on W7900/TheRock HIP 7.15. The direct/lifecycle
+and scaling runs use clean `7d60fe6c`; the unchanged grouped arithmetic's
+all-layer comparator was already clean at `4898f285`. Model revision is
+`437eba06df05aad71a4dacdcaf3fff70ae1ee8a1`, PARO W4 with BF16 KV, all 40
+layers, and the distinct raw-ID fixture SHA-256
+`ebecaea08fcc72277ec9aae0e627190499ff3ef2bc551a8ffd7060d30223dbc4`.
+Every command used the hermetic `env -i` wrapper, GPU 0/gfx1100, a precomputed
+HIP 7.15 compiler-version file, and `--require-cached-build`; the compact
+artifact records the exact route flags and raw hashes.
+
+Correctness is now `native_eq_ok` for gfx1100 c2:
+
+- three fresh grouped-compact p512/w8/d128 runs each match both independent c1
+  sessions for **137/137 IDs per row (274/274 total)**, remain finite, and are
+  deterministic across runs. Execution metadata reports native batch
+  projection/state/full-attention/context/sampler, **40 grouped MoE layers**,
+  zero selected fallback layers, and empty blockers;
+- clean L40/d3 remains `eq_ok` at 4/8/16/24/32/40 layers for prefill hidden,
+  Conv/GDN state, full KV, every traced decode stage, independent NumPy context,
+  final hidden, and tokens, with no first bit drift. Raw JSON 19,889,993 bytes,
+  SHA-256 `c4a7022c04e86f76918aa2babebfbdc2c12938f9d6c6310f6aba5c77f885816d`;
+- clean cancellation and EOS runs both traverse c2→c1 with exact tokens and all
+  **30 linear + 10 full-attention** persistent-state layers. Retired slot 1 has
+  identical retirement/post-lifecycle hashes while slot 0 continues. Raw hashes:
+  `e42dca5fb2e25baef389577380305c804f18df46d7399b2cb3dfa358a35979c0` /
+  `7c9e8d0de98747b9682d90c7069c0bee716ca658c018c88fdce06aa9391188d6`;
+- a clean ragged `[503,512]` front-EOS run leaves physical slot 1 alive, passes
+  both rows' token/state/KV oracles, and keeps retired slot 0 byte-identical.
+  Raw JSON 8,533 bytes, SHA-256
+  `99a7ec6dbb22ab1f6dcca2ec7b7506503d92ae8354b848a9c518b0a2447b973d`.
+
+Three fresh-process p512/d128 measurements (medians, aggregate generated tok/s)
+are:
+
+| Route | Samples | Median | vs c1 aggregate | vs serial c2 |
+| --- | --- | ---: | ---: | ---: |
+| c1 graph | 115.812, 115.935, 116.067 | **115.935** | 1.000x | — |
+| serial c2 bridge | 100.836, 101.023, 100.754 | **100.836** | 0.870x | 1.000x |
+| grouped-compact c2 | 109.056, 109.617, 108.959 | **109.056** | **0.941x (-5.93%)** | **1.082x (+8.15%)** |
+| selected-batch control | 122.214, 121.455, 121.679 | **121.679** | **1.050x (+4.95%)** | **1.207x (+20.67%)** |
+
+Maximum stdev/median is **0.326%**. Grouped compaction is exact and beats the
+serial bridge, but fails Gate 5 because aggregate throughput is below c1; it is
+therefore **not** promoted as the default and no benchmark README/changelog row
+is added.
+
+The selected control changes only MoE dispatch. Despite the legacy requested
+name `selected_c1`, execution metadata says `selected_c1_batch`,
+`native_caware_decode=true`, 40 rows=2 layer executions, zero
+`moe_selected_c1_fallback_layers`, and empty blockers. Inspection confirms one
+`run_moe_c1_fp16(..., tokens=2)` batch call per layer, not
+`run_moe_c1_rows_fp16()` or a complete c1 layer/session replay. Its three runs
+are token-exact and deterministic, while being **+11.58%** over grouped. The
+retained validator currently hard-codes only `grouped_compact` as native, so the
+faster route remains a candidate pending a truthful rename/classification audit.
+
+Paired cached L4/d1 `rocprofv3 --kernel-trace` runs are both `eq_ok` and record
+the expected exact c2 context kernel at **199,522/200,562 ns**, grid Y 2,
+workgroup X 256. Selected gate/up and down GEMVs use the exact **64-thread**
+geometry. The grouped trace has **1,353** dispatches versus **1,306** selected
+(**+47**): four extra launches each of group scatter, count, prefix, tile map,
+lane inverse, lane weighted-sum, and batch combine, plus three extra rotate1
+launches, while losing selected-batch fused combine families. This matches the
+E2E wall result and supplies the concrete reason not to promote grouped at c2.
+
+Published correctness/scaling evidence:
+`benchmarks/results/2026-07-18-gfx1100-paro-g2-native-c2-correctness-scaling.json`.
+This advances the gfx1100 c2 coverage ledger to correctness-only
+`native_eq_ok`, not `retained`. Production still fails closed to width-1; gfx1151,
+the prompt-category promotion suite, live-loop attachment, and c4/c8 remain
+open. Next: distinguish native selected-batch from the separately named per-row
+fallback in runtime metadata/validation, retain the faster exact c2 algorithm if
+the complete current-revision packet passes, then generalize rather than stack
+c2 groups for c4/c8.
+
+## 2026-07-18 — Classify PARO selected-batch MoE truthfully
+
+Closed the metadata/schema boundary exposed by the clean G2 packet without
+changing device arithmetic. The old `selected_c1_batch` label described one
+`run_moe_c1_fp16(..., tokens=rows)` batch transition per layer, while true
+per-row paths already carried explicit `selected_c1_per_row_*` names. Treating
+both as fallback blocked the faster exact c2 route from retained validation.
+
+The runtime now emits canonical `moe_decode_path=selected_batch` and an explicit
+`moe_selected_batch_layers` count. `HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_BATCH_MOE`
+is the canonical selector; the old `...FORCE_SELECTED_C1_MOE` variable remains a
+lower-precedence compatibility alias. Retained-bench, hidden-bisect, and equality
+matrix CLIs accept `selected_batch`; legacy `selected_c1` normalizes to it.
+Grouped-compact remains independently countable. Both retained validators now
+accept either c-aware algorithm only when per-layer traces match the aggregate
+count, the unused native-MoE count is zero, and
+`moe_selected_c1_fallback_layers=0`. Per-row fallback labels remain rejected.
+Hidden-bisect also now classifies its already-admitted batch-GEMV projection
+paths as c-aware instead of marking them non-native solely because of stale
+metadata.
+
+RED/GREEN evidence:
+
+- the canonical env initially failed to select the route;
+- selected-batch runtime metadata initially remained `selected_c1_batch` and
+  lacked a selected-layer count;
+- both retained validators initially rejected an otherwise native selected-batch
+  artifact because they hard-coded positive grouped-compact layers;
+- after the implementation, the focused contracts pass and the complete
+  affected host set is **487/487 passed** across resident batch layout, PARO
+  serial bridge, partition bench, and generation/scheduler/schema tests;
+- focused Ruff passes (the pre-existing unrelated `Any` F821 in the large
+  scheduler test remains ignored), Python compilation and `git diff --check`
+  pass.
+
+This is a classification/compatibility change, not a new speed or correctness
+claim. Next: commit it, rerun clean selected-batch p512/d128 and all-layer/
+lifecycle/profiler gates from that revision, then run prompt diversity before
+any production/default or benchmark-rollup promotion.
+
+## 2026-07-18 — Retain gfx1100 PARO selected-batch c2
+
+Completed the clean promotion packet on W7900/TheRock HIP 7.15 at measured
+revision `fcb65c470fd830918255b49f554fe70b08399272`. The model is
+`shisa-ai/Qwen3.6-35B-A3B-PARO-packed` revision
+`437eba06df05aad71a4dacdcaf3fff70ae1ee8a1`, fingerprint
+`995a8c67847cb2819588bec573a6d17ef04ae554504d040d4f2ea6b2c9c6d917`,
+PARO W4 with BF16 KV and all 40 layers. Every GPU child used GPU 0/gfx1100, the
+minimal hermetic TheRock `env -i` wrapper, the precomputed compiler-version
+file, and `--require-cached-build`; no profiled process invoked `hipcc`.
+
+The canonical selected-batch route passes the full packet:
+
+- three fresh p512/w8/d128 processes report **121.357, 121.923, 121.953
+  aggregate tok/s**, median **121.923** and stdev/median **0.275%**. Every run
+  matches both independent c1 sessions for **137/137 IDs per row (274/274)**,
+  remains finite and deterministic, and reports `native_caware_decode=true`,
+  **40 selected-batch layers**, zero grouped/per-row fallback layers, and empty
+  execution blockers;
+- a defaults-only `--batch-decode-moe-path auto` device run resolves canonical
+  `selected_batch`, remains 274/274 exact, and records 121.601 aggregate tok/s;
+- the clean L40/d3 gate is `eq_ok` at 4/8/16/24/32/40 layers for prefill
+  hidden/state/KV, every linear/full-attention stage, independent NumPy context,
+  final hidden, and tokens, with no first bit drift. Raw JSON 19,890,397 bytes,
+  SHA-256 `d1943c1830b9344dbc5f3bd1651940363c689b51df9edcae47fce2d3e4bd13e5`;
+- uniform tail cancel, uniform tail EOS, and ragged `[503,512]` front EOS all
+  traverse c2→c1 with exact generated tokens, all **30 linear + 10
+  full-attention** persistent-state families, and byte-identical retired-slot
+  hashes after the survivor continues. Raw SHA-256 values are
+  `57188db4005220e833c7da13d6af4a239b730db63cd6bbc162c0d5c3740a474a`,
+  `319a7bb5d54e3c7f5448878c8a88199486ad93cf95a5cb517016f49adba32b48`,
+  and `c69cf1b153d459fd62b22eb1784faec2064542d3603f4574956d8bbeafc3976a`;
+- all **10/10** prompts in `mtpbench-code-general-ja.jsonl` pass as five c2
+  pairs at p512/d32, including all code/general-English/general-Japanese/mixed
+  categories and all four heldouts. Every pair is finite, records 40
+  selected-batch and zero fallback layers, and matches **33/33 IDs per row,
+  330/330 total**;
+- the current primitive gate passes A/A, zero K/V append mismatches, batch-vs-c1
+  max abs 0, and batch/dense-c1-vs-NumPy max abs `2.235174e-08`;
+- a fresh cached L4/d1 trace is `eq_ok`, contains **1,306 dispatches / 76 unique
+  kernel names**, records
+  `qwen35_paged_full_attn_decode_context_tensor_batch_c1_exact_kernel` at
+  **201,802 ns**, and includes both selected output-tiled and fused
+  combine-residual projection families. CSV SHA-256 is
+  `9db5362f3ec0b57b84c99652d1ce2aaff6ce575220369d464148d569cc942033`.
+
+Same-revision fresh-process scaling is:
+
+| Route | Samples (aggregate tok/s) | Median | Relative result |
+| --- | --- | ---: | ---: |
+| c1 graph | 116.022, 116.162, 115.818 | **116.022** | reference |
+| serial c2 bridge | 100.813, 101.267, 100.925 | **100.925** | 0.870x c1 |
+| native selected-batch c2 | 121.357, 121.923, 121.953 | **121.923** | **1.0509x c1 / 1.2081x serial** |
+
+Thus native c2 is **+5.09%** over c1 aggregate and **+20.81%** over serial c2;
+per-request throughput is 60.962 tok/s (0.5254x c1), the expected latency/
+throughput tradeoff. The selected median is only **+0.20%** versus the prior
+121.679 control, so the reclassification did not materially alter performance.
+The fixed resident allocation peaks at 19,899,549,774 bytes (18.533 GiB), with
+stable block identity. Fresh-process TTFT includes load and is not presented as
+a steady server claim; raw request/queue/ITL distributions remain in the compact
+artifact.
+
+Retained evidence:
+`benchmarks/results/2026-07-18-gfx1100-paro-g2-selected-batch-c2-retained.json`.
+This promotes **only the explicit direct native-c2 model step** and its `auto`
+MoE selection. Public blocking/OpenAI PARO remains width-1 until G4; graph
+replay is not claimed; gfx1151 and one-physical c4/c8 remain independently open.
+Grouped-compact stays available as an exact but slower diagnostic.
+
+Final validation:
+
+```bash
+python3 -m pytest -q tests/test_generation_batch_scheduler.py \
+  tests/test_qwen35_resident_batch_layout.py \
+  tests/test_qwen35_batch_partition_bench.py
+python3 -m json.tool \
+  benchmarks/results/2026-07-18-gfx1100-paro-g2-selected-batch-c2-retained.json \
+  >/tmp/paro-selected-retained.pretty.json
+python3 scripts/sync_benchmark_readme.py --check
+git diff --check
+# pytest: 479 passed; JSON/source/statistic audit OK; README blocks synchronized
+```
+
+Next: build one physical c4 algorithm from the c2 primitives rather than
+stacking two c2 groups, then repeat this packet.
+
+## 2026-07-18 — Merge gfx1100 E3/F1 and PARO G2 into current main
+
+Audited remote ancestry before merging. `gfx1100-paro-concurrency-g1` was
+already pushed at `5f238f3ae77a85284774aeb4db392658562ddc84`; local main was
+`ddab579f`, while a fresh fetch advanced `origin/main` to `9c4cba3e`. Contrary
+to the earlier assumption, E3/F1 commits `1dc7076f`, `be04fa31`, and `77279adf`
+were not ancestors of either local or remote main. They are ancestors of the
+PARO branch, so one merge carries both the 24-commit E3/F1+PARO line and the 11
+new gfx1151/server commits on current main. No separate E3 merge is required.
+
+Fast-forwarded local main to `9c4cba3e`, then merged
+`gfx1100-paro-concurrency-g1` without rewriting history. Code merged cleanly.
+Resolved documentation conflicts in `benchmarks/CHANGELOG.md`,
+`benchmarks/README.md`, and `docs/CONCURRENCY.md` by retaining both sides:
+gfx1100 arbitrary-C/server scaling and PARO direct-c2, plus gfx1151 direct
+native-c2/c4/c8 scaling and correctness-only `continuous_eq_ok`. The combined
+coverage ledger now records gfx1100 live admission and arbitrary-C as retained,
+gfx1151 live admission as `continuous_eq_ok`, and gfx1100 PARO c2 as retained.
+Root/benchmark README export blocks remain synchronized.
+
+Post-merge validation:
+
+- `python3 -m compileall -q hipengine scripts tests` passed;
+- the combined 16-file dispatch/scheduler/arbitrary-C/live-server/PARO/LLM/API
+  gate passed **1,189/1,189** tests;
+- all **3,278** benchmark JSON files parse, benchmark README synchronization
+  passes, conflict/newline audit passes, and `git diff --check` is clean;
+- `python3 scripts/check_lineage.py --kind kernel --diff stat` completed with the
+  same four already-cataloged external-reference drift entries and no new merge
+  issue;
+- a full `python3 -m pytest -q` attempt reached **5,421 passed / 53 skipped**
+  before the 30-minute background cap. It exposed two old
+  `test_qwen35_gguf_verify_advance_state_only.py` direct-commit failures. Exact
+  detached-parent controls at `origin/main` `9c4cba3e` reproduce both before the
+  merge: parent main returns sentinel token `2147483647` instead of `21`; the
+  merge candidate advances token equality but then shows the existing 2,048/
+  2,048 hidden-seed mismatch. Neither merge side changes
+  `hipengine/runtime/qwen35_gguf_runner.py`. Follow-up is tracked as task #165;
+  this inherited full-suite blocker is not presented as a green milestone gate.
+
+Decision: retain the merge because every concurrency/server/PARO integration
+gate is green and exact parent A/B proves the two broad-suite failures predate
+this branch. Push the resulting two-parent merge to `origin/main`; continue PARO
+at one physical c4, while handling verifier direct-commit exactness separately.

@@ -1904,8 +1904,10 @@ def _decode_layer_execution_blockers(
     decode_slots = decode_execution.get("slots")
     native_full_attention_layers = decode_execution.get("native_full_attention_layers")
     moe_grouped_compact_layers = decode_execution.get("moe_grouped_compact_layers")
+    moe_selected_batch_layers = decode_execution.get("moe_selected_batch_layers", 0)
     traced_native_full_attention_layers = 0
     traced_grouped_moe_layers = 0
+    traced_selected_batch_moe_layers = 0
     for index, layer in enumerate(layer_executions):
         label = f"execution.batch_execution.decode_execution.layer_executions[{index}]"
         if not isinstance(layer, Mapping):
@@ -1931,10 +1933,12 @@ def _decode_layer_execution_blockers(
         if layer.get("native_caware_decode") is not True:
             blockers.append(f"{label}.native_caware_decode must be true")
         moe_path = layer.get("moe_decode_path")
-        if moe_path != "grouped_compact":
-            blockers.append(f"{label}.moe_decode_path must be grouped_compact")
-        else:
+        if moe_path == "grouped_compact":
             traced_grouped_moe_layers += 1
+        elif moe_path == "selected_batch":
+            traced_selected_batch_moe_layers += 1
+        else:
+            blockers.append(f"{label}.moe_decode_path must be grouped_compact or selected_batch")
         full_attention_path = layer.get("full_attention_decode_path")
         if layer_type == "full_attention":
             if full_attention_path != "native_batch":
@@ -1979,6 +1983,9 @@ def _decode_layer_execution_blockers(
     if isinstance(moe_grouped_compact_layers, int) and not isinstance(moe_grouped_compact_layers, bool):
         if traced_grouped_moe_layers != moe_grouped_compact_layers:
             blockers.append("execution.batch_execution.decode_execution.layer_executions grouped MoE count must match moe_grouped_compact_layers")
+    if isinstance(moe_selected_batch_layers, int) and not isinstance(moe_selected_batch_layers, bool):
+        if traced_selected_batch_moe_layers != moe_selected_batch_layers:
+            blockers.append("execution.batch_execution.decode_execution.layer_executions selected-batch MoE count must match moe_selected_batch_layers")
     return blockers
 
 
@@ -2068,13 +2075,31 @@ def _batch_execution_blockers(
                 blockers.append("execution.batch_execution.decode_execution.moe_decode_rows must be an int")
             elif moe_decode_rows != int(expected_concurrency):
                 blockers.append("execution.batch_execution.decode_execution.moe_decode_rows must match workload.concurrency")
+        moe_decode_path = decode_execution.get("moe_decode_path")
         moe_grouped_compact_layers = decode_execution.get("moe_grouped_compact_layers")
-        if isinstance(moe_grouped_compact_layers, bool) or not isinstance(moe_grouped_compact_layers, int) or moe_grouped_compact_layers <= 0:
-            blockers.append("execution.batch_execution.decode_execution.moe_grouped_compact_layers must be a positive int")
+        moe_selected_batch_layers = decode_execution.get("moe_selected_batch_layers")
+        if moe_decode_path == "grouped_compact":
+            if isinstance(moe_grouped_compact_layers, bool) or not isinstance(moe_grouped_compact_layers, int) or moe_grouped_compact_layers <= 0:
+                blockers.append("execution.batch_execution.decode_execution.moe_grouped_compact_layers must be a positive int")
+            if moe_selected_batch_layers is not None and (
+                isinstance(moe_selected_batch_layers, bool) or not isinstance(moe_selected_batch_layers, int)
+            ):
+                blockers.append("execution.batch_execution.decode_execution.moe_selected_batch_layers must be an int when present")
+            elif moe_selected_batch_layers not in {None, 0}:
+                blockers.append("execution.batch_execution.decode_execution.moe_selected_batch_layers must be zero for grouped_compact")
+        elif moe_decode_path == "selected_batch":
+            if (
+                isinstance(moe_grouped_compact_layers, bool)
+                or not isinstance(moe_grouped_compact_layers, int)
+                or moe_grouped_compact_layers != 0
+            ):
+                blockers.append("execution.batch_execution.decode_execution.moe_grouped_compact_layers must be zero for selected_batch")
+            if isinstance(moe_selected_batch_layers, bool) or not isinstance(moe_selected_batch_layers, int) or moe_selected_batch_layers <= 0:
+                blockers.append("execution.batch_execution.decode_execution.moe_selected_batch_layers must be a positive int for selected_batch")
+        else:
+            blockers.append("execution.batch_execution.decode_execution.moe_decode_path must be grouped_compact or selected_batch for retained c>N MoE decode")
         if decode_execution.get("moe_selected_c1_fallback_layers") != 0:
             blockers.append("execution.batch_execution.decode_execution.moe_selected_c1_fallback_layers must be zero")
-        if decode_execution.get("moe_decode_path") != "grouped_compact":
-            blockers.append("execution.batch_execution.decode_execution.moe_decode_path must be grouped_compact for retained c>N MoE decode")
         if decode_execution.get("full_attention_decode_path") != "native_batch":
             blockers.append("execution.batch_execution.decode_execution.full_attention_decode_path must be native_batch")
         full_attention_input_path = decode_execution.get("full_attention_input_decode_path")
@@ -4272,15 +4297,16 @@ def _resolved_batch_decode_moe_path(args: argparse.Namespace) -> str:
     if not hasattr(args, "batch_decode_moe_path"):
         return "grouped_compact"
     path = str(getattr(args, "batch_decode_moe_path", "grouped_compact"))
+    if path == "selected_c1":
+        return "selected_batch"
     if path != "auto":
         return path
     batch_size = getattr(args, "batch_size", 0)
     if isinstance(batch_size, bool) or not isinstance(batch_size, int):
         batch_size = 0
-    # Local gfx1151/shisa generated-token equality is green for c=2..c=8 when
-    # grouped-compact MoE is replaced by selected-c1 MoE. Odd widths and c6 also
-    # require the retained small-batch shared-expert route in the runtime.
-    return "selected_c1" if 2 <= int(batch_size) <= 8 else "grouped_compact"
+    # The selected route executes one c-aware batch MoE transition per layer;
+    # selected_c1 remains only a compatibility CLI spelling for that route.
+    return "selected_batch" if 2 <= int(batch_size) <= 8 else "grouped_compact"
 
 
 def _resolved_batch_decode_full_attn_path(args: argparse.Namespace) -> str:
@@ -4451,9 +4477,11 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
             os.environ[_PROJECTION_DISPATCH_ARTIFACT_ENV] = projection_dispatch_artifact
         return
     batch_decode_moe_path = _resolved_batch_decode_moe_path(args)
-    force_selected_c1_moe = batch_decode_moe_path == "selected_c1"
-    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"] = "1" if force_selected_c1_moe else "0"
-    os.environ["HIPENGINE_QWEN35_SHARED_EXPERT_PARO_W4_FORCE_GEMV"] = "1" if force_selected_c1_moe else "0"
+    force_selected_batch_moe = batch_decode_moe_path == "selected_batch"
+    selected_batch_env_value = "1" if force_selected_batch_moe else "0"
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_BATCH_MOE"] = selected_batch_env_value
+    os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE"] = selected_batch_env_value
+    os.environ["HIPENGINE_QWEN35_SHARED_EXPERT_PARO_W4_FORCE_GEMV"] = selected_batch_env_value
     os.environ["HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_LINEAR"] = (
         "1" if getattr(args, "batch_prefill_linear_path", "packed_segments") == "per_segment" else "0"
     )
@@ -4605,7 +4633,7 @@ def _apply_runtime_env_args(args: argparse.Namespace) -> None:
         "1" if getattr(args, "batch_decode_full_attn_layer_copy", "batch") == "per_row" else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_FULL_ATTN_MOE"] = (
-        "1" if (not force_selected_c1_moe and getattr(args, "batch_decode_full_attn_moe_path", "grouped_compact") == "per_row_c1") else "0"
+        "1" if (not force_selected_batch_moe and getattr(args, "batch_decode_full_attn_moe_path", "grouped_compact") == "per_row_c1") else "0"
     )
     os.environ["HIPENGINE_QWEN35_BATCH_DECODE_FORCE_PER_ROW_POST_ATTN"] = (
         "1" if getattr(args, "batch_decode_post_attn_path", "batch") == "per_row" else "0"
@@ -5280,9 +5308,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--batch-decode-moe-path",
-        choices=("auto", "grouped_compact", "selected_c1"),
+        choices=("auto", "grouped_compact", "selected_batch", "selected_c1"),
         default="auto",
-        help="Global MoE path for c>N batch decode; auto selects the local generated-token equality frontier (selected_c1 for c=2..c=8, grouped_compact elsewhere).",
+        help="Global MoE path for c>N batch decode; selected_batch is one c-aware selected-MoE batch transition, while selected_c1 is its deprecated compatibility alias.",
     )
     parser.add_argument(
         "--batch-decode-linear-path",

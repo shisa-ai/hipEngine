@@ -3306,6 +3306,11 @@ def register_qwen35_paged_attn_decode_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "paged_attn_decode", "w4_paro", "bf16_context_batch_c1_exact_spans"),
+        qwen35_paged_full_attn_decode_context_bf16_batch_c1_exact_spans,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "paged_attn_decode", "w4_paro", "bf16_split_k_spans"),
         qwen35_paged_full_attn_decode_split_k_bf16_spans,
         replace=replace,

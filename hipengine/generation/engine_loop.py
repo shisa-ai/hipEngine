@@ -474,6 +474,16 @@ class SubmitPollTextGenerator:
                 events = self.poll(max_ticks=1)
                 ticks += 1
                 if not events:
+                    # Another stream may complete this subscription after the
+                    # pre-poll check but before our shared-loop poll acquires
+                    # the lock. Re-read routed events/output ownership before
+                    # diagnosing a stall; an empty missing list is progress.
+                    with self._loop_lock:
+                        progressed = bool(state.events) or self._runner.has_outputs(
+                            submission.request_ids
+                        )
+                    if progressed:
+                        continue
                     missing = self._runner.missing_outputs(submission.request_ids)
                     raise RuntimeError(
                         f"resident stream stalled; missing request_ids={missing}"

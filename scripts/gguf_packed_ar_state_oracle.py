@@ -337,12 +337,16 @@ def _session_build_policy(args: argparse.Namespace) -> dict[str, Any]:
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
     rows = int(args.rows)
-    if rows < 2 or rows > 8:
-        raise ValueError("rows must be between 2 and the native packed-group cap (8)")
+    if rows < 2:
+        raise ValueError("rows must be at least 2")
     lifecycle = str(args.lifecycle)
     decode_mode = str(getattr(args, "decode_mode", "eager"))
     if decode_mode not in {"eager", "graph"}:
         raise ValueError("decode_mode must be eager or graph")
+    if rows > 8 and lifecycle != "steady":
+        raise ValueError("rows above 8 currently require the steady grouped lifecycle")
+    if rows > 8 and str(args.prefill_mode) == "packed":
+        raise ValueError("packed prefill above 8 rows requires separate arbitrary-C lowering")
     if lifecycle == "shrink_sparse":
         supported_shape = (
             (rows == 4 and int(args.decode_steps) == 4)
@@ -367,6 +371,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if not model.is_file():
         raise ValueError(f"model does not exist: {model}")
 
+    from hipengine.dispatch import WorkItem, WorkKind, plan_physical_batch_groups
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
     prompts: tuple[list[int], ...] = tuple(
@@ -380,6 +385,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     max_sequence_length = max(len(prompt) for prompt in prompts) + int(args.decode_steps) + 2
     build_policy = _session_build_policy(args)
     packed_prefill_plan: dict[str, Any] | None = None
+    logical_request_ids = tuple(range(rows))
+    physical_groups = plan_physical_batch_groups(
+        WorkItem(
+            kind=WorkKind.DECODE,
+            request_ids=logical_request_ids,
+            row_to_request=logical_request_ids,
+            slot_ids=logical_request_ids,
+            active_mask=(True,) * rows,
+        ),
+        physical_bucket_widths=(1, 2, 4, 8),
+    )
 
     with ExitStack() as stack:
         owner = stack.enter_context(
@@ -472,20 +488,52 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         dirty_before_flush = False
         flushed = False
         if lifecycle == "steady":
+            group_owners = tuple(
+                packed_sessions[group.global_slot_indices[0]]
+                for group in physical_groups
+            )
             if decode_mode == "eager":
                 for step_index in range(1, int(args.decode_steps) + 1):
-                    with _temporary_env({_CAPTURE_PREFILL_GDN_ENV: "1"}):
-                        packed_tokens = [
-                            int(result.token_id)
-                            for result in owner.step_batch_native(
-                                packed_tokens,
-                                sessions=packed_sessions,
-                                positions=[int(session.position) for session in packed_sessions],
+                    for group, group_owner in zip(
+                        physical_groups,
+                        group_owners,
+                        strict=True,
+                    ):
+                        group_indices = group.global_slot_indices
+                        group_sessions = tuple(
+                            packed_sessions[index] for index in group_indices
+                        )
+                        with _temporary_env({_CAPTURE_PREFILL_GDN_ENV: "1"}):
+                            group_results = group_owner.step_batch_native(
+                                [packed_tokens[index] for index in group_indices],
+                                sessions=group_sessions,
+                                positions=[
+                                    int(session.position) for session in group_sessions
+                                ],
                                 return_logits=False,
                                 scatter_state=False,
                                 capture_layer_output_hidden=capture_layer_ids,
+                                physical_rows=group.physical_rows,
+                                active_slot_indices=group.active_slot_indices,
                             )
-                        ]
+                        for index, result in zip(
+                            group_indices,
+                            group_results,
+                            strict=True,
+                        ):
+                            packed_tokens[index] = int(result.token_id)
+                        manifest = getattr(
+                            group_owner,
+                            "last_packed_execution_manifest",
+                            None,
+                        )
+                        if isinstance(manifest, Mapping):
+                            retained_manifest = json.loads(json.dumps(manifest))
+                            retained_manifest["logical_c"] = rows
+                            retained_manifest["physical_group"] = group.to_json_dict()
+                            eager_execution_manifests.append(retained_manifest)
+                            if eager_execution_manifest is None:
+                                eager_execution_manifest = retained_manifest
                     reference_tokens = [
                         int(
                             session.step(
@@ -494,7 +542,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                                 capture_layer_output_hidden=capture_layer_ids,
                             ).token_id
                         )
-                        for session, token in zip(reference_sessions, reference_tokens, strict=True)
+                        for session, token in zip(
+                            reference_sessions,
+                            reference_tokens,
+                            strict=True,
+                        )
                     ]
                     if capture_layer_ids:
                         compared, mismatches = _compare_layer_hidden_sessions(
@@ -507,36 +559,74 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         )
                         hidden_comparisons += compared
                         hidden_mismatches.extend(mismatches)
-                    manifest = getattr(owner, "last_packed_execution_manifest", None)
-                    if isinstance(manifest, Mapping):
-                        retained_manifest = json.loads(json.dumps(manifest))
-                        eager_execution_manifests.append(retained_manifest)
-                        if eager_execution_manifest is None:
-                            eager_execution_manifest = retained_manifest
                     packed_trajectory.append(list(packed_tokens))
                     reference_trajectory.append(list(reference_tokens))
-                dirty_before_flush = bool(owner._packed_decode_state_dirty)
-                flushed = bool(owner.flush_packed_decode_state())
+                dirty_before_flush = all(
+                    bool(group_owner._packed_decode_state_dirty)
+                    for group_owner in group_owners
+                )
+                flush_results = [
+                    bool(group_owner.flush_packed_decode_state())
+                    for group_owner in group_owners
+                ]
+                flushed = all(flush_results)
             else:
-                with _temporary_env({_CAPTURE_PREFILL_GDN_ENV: "1"}):
-                    graph = owner.capture_packed_decode_graph(
-                        packed_tokens,
-                        sessions=packed_sessions,
-                        steps_per_replay=1,
-                        max_replay_steps=int(args.decode_steps),
-                        record_steps=int(args.decode_steps),
-                        record_layer_output_hidden=capture_layer_ids,
-                    )
+                group_graphs: list[tuple[Any, Any]] = []
                 try:
-                    graph.replay(int(args.decode_steps))
-                    recorded_tokens = graph.read_generated_token_ids()
-                    recorded_hidden = (
-                        graph.read_generated_layer_hidden()
-                        if capture_layer_ids
-                        else None
-                    )
-                    for step_index, step_tokens in enumerate(recorded_tokens, start=1):
-                        packed_tokens = [int(token) for token in step_tokens]
+                    with _temporary_env({_CAPTURE_PREFILL_GDN_ENV: "1"}):
+                        for group, group_owner in zip(
+                            physical_groups,
+                            group_owners,
+                            strict=True,
+                        ):
+                            group_indices = group.global_slot_indices
+                            group_graphs.append(
+                                (
+                                    group,
+                                    group_owner.capture_packed_decode_graph(
+                                        [packed_tokens[index] for index in group_indices],
+                                        sessions=tuple(
+                                            packed_sessions[index]
+                                            for index in group_indices
+                                        ),
+                                        physical_rows=group.physical_rows,
+                                        active_slot_indices=group.active_slot_indices,
+                                        steps_per_replay=1,
+                                        max_replay_steps=int(args.decode_steps),
+                                        record_steps=int(args.decode_steps),
+                                        record_layer_output_hidden=capture_layer_ids,
+                                    ),
+                                )
+                            )
+                    recorded_tokens_by_group: list[Any] = []
+                    recorded_hidden_by_group: list[Any] = []
+                    for group, graph in group_graphs:
+                        graph.replay(int(args.decode_steps))
+                        recorded_tokens_by_group.append(
+                            graph.read_generated_token_ids()
+                        )
+                        recorded_hidden_by_group.append(
+                            graph.read_generated_layer_hidden()
+                            if capture_layer_ids
+                            else None
+                        )
+                        retained_manifest = json.loads(
+                            json.dumps(graph.execution_manifest)
+                        )
+                        retained_manifest["logical_c"] = rows
+                        retained_manifest["physical_group"] = group.to_json_dict()
+                        graph_manifests.append(retained_manifest)
+                    for step_index in range(1, int(args.decode_steps) + 1):
+                        for group_slot, (group, _graph) in enumerate(group_graphs):
+                            step_tokens = recorded_tokens_by_group[group_slot][
+                                step_index - 1
+                            ]
+                            for local_slot, global_slot in zip(
+                                group.active_slot_indices,
+                                group.global_slot_indices,
+                                strict=True,
+                            ):
+                                packed_tokens[global_slot] = int(step_tokens[local_slot])
                         reference_tokens = [
                             int(
                                 session.step(
@@ -551,26 +641,40 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                                 strict=True,
                             )
                         ]
-                        if capture_layer_ids and recorded_hidden is not None:
-                            compared, mismatches = _compare_recorded_layer_hidden(
-                                recorded_hidden[step_index - 1],
-                                reference_sessions,
-                                row_indices=tuple(range(rows)),
-                                layer_ids=capture_layer_ids,
-                                phase="decode_hidden_graph",
-                                step=step_index,
-                            )
-                            hidden_comparisons += compared
-                            hidden_mismatches.extend(mismatches)
+                        if capture_layer_ids:
+                            for group_slot, (group, _graph) in enumerate(
+                                group_graphs
+                            ):
+                                recorded_hidden = recorded_hidden_by_group[group_slot]
+                                compared, mismatches = _compare_recorded_layer_hidden(
+                                    recorded_hidden[step_index - 1][
+                                        :, group.active_slot_indices, :
+                                    ],
+                                    tuple(
+                                        reference_sessions[index]
+                                        for index in group.global_slot_indices
+                                    ),
+                                    row_indices=group.global_slot_indices,
+                                    layer_ids=capture_layer_ids,
+                                    phase="decode_hidden_graph",
+                                    step=step_index,
+                                )
+                                hidden_comparisons += compared
+                                hidden_mismatches.extend(mismatches)
                         packed_trajectory.append(list(packed_tokens))
                         reference_trajectory.append(list(reference_tokens))
-                    dirty_before_flush = bool(owner._packed_decode_state_dirty)
-                    flushed = bool(graph.flush_packed_state())
-                    graph_manifests.append(
-                        json.loads(json.dumps(graph.execution_manifest))
+                    dirty_before_flush = all(
+                        bool(group_owner._packed_decode_state_dirty)
+                        for group_owner in group_owners
                     )
+                    flush_results = [
+                        bool(graph.flush_packed_state())
+                        for _group, graph in group_graphs
+                    ]
+                    flushed = all(flush_results)
                 finally:
-                    graph.close()
+                    for _group, graph in reversed(group_graphs):
+                        graph.close()
         else:
             live_groups = (
                 ((0, 1, 2, 3), (0, 2, 3), (0, 3), (3,))
@@ -694,23 +798,39 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     tokens_exact = packed_trajectory == reference_trajectory
     lifecycle_state_exact = all(bool(event["state_exact"]) for event in lifecycle_events)
     layer_hidden_exact = not hidden_mismatches
-    eager_model_step = (
-        eager_execution_manifest.get("model_step", {})
-        if eager_execution_manifest is not None
-        else {}
-    )
-    eager_native_model_step = bool(
-        decode_mode != "eager"
-        or (
-            eager_execution_manifest is not None
-            and eager_execution_manifest.get("rows") == rows
-            and eager_model_step.get("complete_c1_session_replays") == 0
-            and eager_model_step.get("complete_c1_layer_replays") == 0
-            and eager_model_step.get("host_model_row_loop_sites") == 0
-            and eager_model_step.get("host_model_row_iterations") == 0
-            and eager_model_step.get("per_row_model_subgraph_invocations") == 0
+    def eager_manifest_is_native(manifest: Mapping[str, Any]) -> bool:
+        model_step = manifest.get("model_step", {})
+        physical_group = manifest.get("physical_group", {})
+        expected_rows = (
+            int(physical_group.get("physical_rows", -1))
+            if physical_group
+            else rows
         )
-    )
+        return bool(
+            manifest.get("rows") == expected_rows
+            and model_step.get("complete_c1_session_replays") == 0
+            and model_step.get("complete_c1_layer_replays") == 0
+            and model_step.get("host_model_row_loop_sites") == 0
+            and model_step.get("host_model_row_iterations") == 0
+            and model_step.get("per_row_model_subgraph_invocations") == 0
+        )
+
+    if decode_mode != "eager":
+        eager_native_model_step = True
+    elif lifecycle == "steady":
+        eager_native_model_step = bool(
+            len(eager_execution_manifests)
+            == int(args.decode_steps) * len(physical_groups)
+            and all(
+                eager_manifest_is_native(manifest)
+                for manifest in eager_execution_manifests
+            )
+        )
+    else:
+        eager_native_model_step = bool(
+            eager_execution_manifest is not None
+            and eager_manifest_is_native(eager_execution_manifest)
+        )
     passed = bool(
         tokens_exact
         and not initial_mismatches
@@ -768,6 +888,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "package_default_overridden": str(args.gdn_prefill_mode) != "auto",
         },
         "packed_prefill_plan": packed_prefill_plan,
+        "physical_group_plan": {
+            "logical_c": rows,
+            "physical_bucket_widths": [1, 2, 4, 8],
+            "group_count": len(physical_groups),
+            "groups": [group.to_json_dict() for group in physical_groups],
+        },
         "lifecycle": lifecycle,
         "workload": {
             "rows": rows,
@@ -809,6 +935,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "All Conv/GDN FP32 state bytes and all live BF16 K/V bytes are compared.",
             "independent_c1 prefill isolates packed decode; packed prefill covers the complete c>N lifecycle.",
             "The default exact GDN selector aligns c1 with packed decode-order state-row arithmetic; auto remains a diagnostic for package-policy drift.",
+            "Logical C is lowered into stable no-compaction c1/c2/c4/c8 physical groups; grouped work is never labeled as one wider native step.",
         ],
     }
 

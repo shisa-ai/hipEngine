@@ -1,0 +1,283 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_paro_g2_native_c2_correctness_scaling",
+  "created_at": "2026-07-17T17:41:02Z",
+  "status": "native_eq_ok_blocked_scaling",
+  "performance_claim": false,
+  "decision": "retain_native_c2_correctness_do_not_promote_grouped_default",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "visible_device": 0,
+    "rocm_stack": "TheRock HIP 7.15 hermetic overlay"
+  },
+  "software": {
+    "direct_lifecycle_scaling_commit": "7d60fe6cffe009fbc4e611ffa363e19488e5651d",
+    "grouped_all_layer_state_commit": "4898f285ef2347bcae01002fdfad866131ee4098",
+    "worktrees_clean": true,
+    "python": "3.12.9",
+    "hipcc": "HIP version: 7.15.0-0000000"
+  },
+  "model": {
+    "name": "shisa-ai/Qwen3.6-35B-A3B-PARO-packed",
+    "revision": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+    "fingerprint_sha256_directory_manifest_v1": "995a8c67847cb2819588bec573a6d17ef04ae554504d040d4f2ea6b2c9c6d917",
+    "quant": "packed_paro_w4",
+    "kv_storage_dtype": "bf16",
+    "layers": 40
+  },
+  "workload": {
+    "fixture": "distinct 8x512 raw-ID fixture reconstructed from the retained equality matrix",
+    "fixture_sha256": "ebecaea08fcc72277ec9aae0e627190499ff3ef2bc551a8ffd7060d30223dbc4",
+    "direct": {
+      "batch_size": 2,
+      "prompt_tokens_per_request": 512,
+      "warmup_decode_tokens": 8,
+      "measured_decode_tokens_per_request": 128,
+      "recorded_ids_per_row": 137
+    },
+    "all_layer_state": {
+      "batch_size": 2,
+      "prompt_tokens_per_request": 512,
+      "decode_tokens": 3,
+      "layer_limits": [4, 8, 16, 24, 32, 40]
+    },
+    "lifecycle": {
+      "initial_batch_size": 2,
+      "steps_per_width": 2,
+      "transitions": [2, 1],
+      "uniform_prompt_lengths": [512, 512],
+      "ragged_prompt_lengths": [503, 512]
+    }
+  },
+  "routes": {
+    "grouped_native_c2": {
+      "prefill": "packed_segments+packed_varlen",
+      "linear_attention": "native_batch_projection+native_segments+batch_gemv_output",
+      "full_attention": "native_batch_context_dense_c1_order",
+      "full_attention_context_variant": "bf16_context_batch_c1_exact_spans",
+      "moe": "grouped_compact",
+      "moe_grouped_compact_layers": 40,
+      "moe_selected_c1_fallback_layers": 0,
+      "sampler": "batched_lm_head",
+      "native_caware_decode": true,
+      "blockers": []
+    },
+    "shrunk_c1": {
+      "row_execution": "true_c1_resident_slot",
+      "scratch": "canonical token-1 linear/MoE/full-attention views",
+      "blockers": []
+    },
+    "faster_control": {
+      "requested_name": "selected_c1",
+      "execution_name": "selected_c1_batch",
+      "native_caware_decode": true,
+      "layer_executions": 40,
+      "complete_row_or_layer_replay": false,
+      "moe_selected_c1_fallback_layers": 0,
+      "blockers": [],
+      "classification": "native selected-batch candidate; retained validator still hard-codes grouped_compact"
+    }
+  },
+  "commands": {
+    "grouped_direct": "env -i <TheRock-HIP-7.15> HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1 python3 scripts/qwen35_batch_retained_bench.py --model <model> --fixture <fixture> --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --batch-decode-execution direct_native --batch-decode-moe-path grouped_compact --batch-decode-linear-path batch_segments --batch-decode-linear-projection-path batch --batch-decode-linear-state-path batch_segments --batch-decode-linear-moe-path grouped_compact --batch-decode-linear-output-path batch_gemv --batch-decode-full-attn-path native_batch --batch-decode-attn-input-path batch --batch-decode-attn-qkv-path batch --batch-decode-attn-scratch-path batch --batch-decode-attn-context-path batch --batch-decode-attn-gate-path batch --batch-decode-full-attn-kv-append-path batch --batch-decode-full-attn-output-path batch --batch-decode-full-attn-layer-copy batch --batch-decode-full-attn-moe-path grouped_compact --batch-decode-post-attn-path batch --compiler-version-file <file> --require-cached-build --json <json>",
+    "c1_graph": "env -i <TheRock-HIP-7.15> HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 python3 scripts/qwen35_paro_bench.py --model <model> --backend hip_gfx1100 --shared-expert-format packed_paro_w4 --prompt-fixture <fixture> --prompt-row 0 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --graph-replay-decode --compiler-version-file <file> --require-cached-build --json <json>",
+    "serial_c2": "env -i <TheRock-HIP-7.15> HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1 python3 scripts/qwen35_batch_retained_bench.py --model <model> --fixture <fixture> --prompt-length 512 --batch-size 2 --decode-tokens 128 --warmup-decode-tokens 8 --max-layers 40 --batch-decode-execution serial --batch-decode-moe-path selected_c1 --compiler-version-file <file> --require-cached-build --json <json>",
+    "selected_batch_control": "same as grouped_direct with --batch-decode-moe-path selected_c1",
+    "cancel_lifecycle": "env -i <TheRock-HIP-7.15> HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS=1 HIPENGINE_QWEN35_BATCH_DECODE_FORCE_SELECTED_C1_MOE=0 python3 scripts/qwen35_batch_shrinking_correctness.py --model <model> --fixture <fixture> --prompt-length 512 --batch-size 2 --steps-per-width 2 --max-layers 40 --max-sequence-length 1024 --survivor-slot 0 --decode-execution native --compiler-version-file <file> --require-cached-build --json <json>",
+    "eos_lifecycle": "cancel_lifecycle plus --eos-slot 1",
+    "ragged_front_lifecycle": "cancel_lifecycle with --prompt-lengths 503,512 --survivor-slot 1 --eos-slot 0",
+    "profiler": "env -i <TheRock-HIP-7.15> rocprofv3 --kernel-trace --output-format csv -d <trace> -- python3 scripts/qwen35_batch_hidden_bisect.py --model <model> --fixture <fixture> --prompt-length 512 --batch-size 2 --decode-tokens 1 --max-layers 4 --layer-limits 4 --max-sequence-length 1024 --trace-decode-start 0 --trace-decode-end 1 --skip-full-context-oracle --skip-linear-state-summary --batch-decode-moe-path <selected_c1|grouped_compact> <explicit-native-route-flags> --compiler-version-file <file> --require-cached-build --json <json>"
+  },
+  "correctness": {
+    "passed_for_native_c2": true,
+    "grouped_direct_repetition": {
+      "runs": 3,
+      "generated_ids_equal_independent_c1": true,
+      "recorded_ids_per_row": 137,
+      "total_ids_per_run": 274,
+      "deterministic_across_runs": true,
+      "finite_logits": true
+    },
+    "grouped_all_layer_state": {
+      "status": "eq_ok",
+      "prefill_hidden_state_kv_passed": true,
+      "decode_linear_inputs_stages_state_passed": true,
+      "decode_full_attention_inputs_outputs_passed": true,
+      "decode_full_context_numpy_oracle_passed": true,
+      "decode_full_kv_passed": true,
+      "hidden_passed": true,
+      "tokens_passed": true,
+      "first_hidden_bit_drift": null
+    },
+    "lifecycle": {
+      "cancel_tail_uniform": "eq_ok",
+      "eos_tail_uniform": "eq_ok",
+      "eos_front_ragged": "eq_ok",
+      "generated_token_equality": true,
+      "persistent_linear_state_identity": true,
+      "full_attention_kv_prefix_identity": true,
+      "inactive_state_kv_immutability": true,
+      "lifecycle_widths_exact": true,
+      "no_group_wide_cancellation": true,
+      "finish_reasons": ["cancel", "stop"]
+    },
+    "selected_batch_control": {
+      "runs": 3,
+      "generated_ids_equal_independent_c1": true,
+      "deterministic_across_runs": true,
+      "native_caware_decode": true,
+      "per_row_model_loop": false,
+      "declared_fallback_layers": 0
+    }
+  },
+  "scaling": {
+    "statistic": "median of three fresh processes; each run uses 8 warmup and 128 measured decode tokens per request",
+    "c1_graph_tok_s": {
+      "samples": [115.81212239935823, 115.93512948453352, 116.06718673396136],
+      "median": 115.93512948453352,
+      "stdev_over_median_percent": 0.11002611961102693
+    },
+    "serial_c2_aggregate_tok_s": {
+      "samples": [100.83619553522243, 101.02336100430004, 100.75389158216797],
+      "median": 100.83619553522243,
+      "per_request_median": 50.418097767611215,
+      "stdev_over_median_percent": 0.1369481851808491
+    },
+    "grouped_c2_aggregate_tok_s": {
+      "samples": [109.0559392956503, 109.61728166978418, 108.95860724861562],
+      "median": 109.0559392956503,
+      "per_request_median": 54.52796964782515,
+      "stdev_over_median_percent": 0.32601158074354447
+    },
+    "selected_batch_c2_aggregate_tok_s": {
+      "samples": [122.21399993156616, 121.45499543375125, 121.67916536986236],
+      "median": 121.67916536986236,
+      "per_request_median": 60.83958268493118,
+      "stdev_over_median_percent": 0.32047778784375636
+    },
+    "ratios": {
+      "grouped_aggregate_vs_c1": 0.9406634536100558,
+      "grouped_aggregate_vs_serial": 1.0815158060733925,
+      "grouped_vs_selected_batch": 0.8962581142314558,
+      "selected_batch_aggregate_vs_c1": 1.0495452578598718,
+      "selected_batch_aggregate_vs_serial": 1.2067012715425127,
+      "selected_batch_aggregate_vs_grouped": 1.115750010093357
+    },
+    "gate_5_passed_by_grouped": false,
+    "interpretation": "Grouped c2 beats the serial bridge but is 5.93% below c1 aggregate, so it cannot be a retained scaling/default claim. The exact no-fallback selected-batch control is 4.95% above c1, 20.67% above serial, and 11.58% above grouped; its execution classification must be audited instead of promoting the slower grouped route."
+  },
+  "profiler": {
+    "status": "captured",
+    "correctness_status": {
+      "selected_c1": "eq_ok",
+      "grouped_compact": "eq_ok"
+    },
+    "scope": "L4, one decode transition, batch plus independent-c1 oracle runs",
+    "selected_trace_dispatches": 1306,
+    "grouped_trace_dispatches": 1353,
+    "grouped_extra_dispatches": 47,
+    "exact_c2_context": {
+      "kernel": "qwen35_paged_full_attn_decode_context_tensor_batch_c1_exact_kernel",
+      "grouped_duration_ns": 199522,
+      "selected_duration_ns": 200562,
+      "grid_y": 2,
+      "workgroup_x": 256
+    },
+    "selected_gemv_geometry": {
+      "workgroup_x": 64,
+      "gate_up_and_down_present": true
+    },
+    "grouped_extra_decode_launch_families": {
+      "qwen35_moe_group_scatter_gather": 4,
+      "qwen35_moe_group_count": 4,
+      "qwen35_moe_group_prefix": 4,
+      "qwen35_moe_wmma_tile_map": 4,
+      "weighted_lanes_inverse": 4,
+      "weighted_lanes_sum_out": 4,
+      "shared_gate_combine_residual_batch_out": 4,
+      "paro_rotate1": 3
+    },
+    "selected_only_fused_decode_families": {
+      "gemv_awq_pack8_output_tiled_combine_residual": 4,
+      "silu_mul_pair_rotate_out": 3
+    },
+    "interpretation": "The c2 selected expert GEMVs use the same exact 64-thread geometry. Grouped compaction adds sorting/scatter/inverse/combine launches that are unnecessary for two-row decode and removes selected-batch fused families, matching the measured wall regression."
+  },
+  "raw_sources": {
+    "grouped_all_layer_state": {
+      "path": "/tmp/gfx1100-paro-g2-grouped-clean-4898f285/c2-grouped-l40-d3-state-kv-clean.json",
+      "bytes": 19889993,
+      "sha256": "c4a7022c04e86f76918aa2babebfbdc2c12938f9d6c6310f6aba5c77f885816d"
+    },
+    "cancel_lifecycle": {
+      "path": "/tmp/gfx1100-paro-g2-lifecycle-clean-7d60fe6c/c2-c1-cancel.json",
+      "bytes": 8341,
+      "sha256": "e42dca5fb2e25baef389577380305c804f18df46d7399b2cb3dfa358a35979c0"
+    },
+    "eos_lifecycle": {
+      "path": "/tmp/gfx1100-paro-g2-lifecycle-clean-7d60fe6c/c2-c1-eos.json",
+      "bytes": 8307,
+      "sha256": "7c9e8d0de98747b9682d90c7069c0bee716ca658c018c88fdce06aa9391188d6"
+    },
+    "ragged_front_lifecycle": {
+      "path": "/tmp/gfx1100-paro-g2-lifecycle-clean-7d60fe6c/c2-c1-ragged-front-eos.json",
+      "bytes": 8533,
+      "sha256": "99a7ec6dbb22ab1f6dcca2ec7b7506503d92ae8354b848a9c518b0a2447b973d"
+    },
+    "c1_graph_runs_sha256": [
+      "f57ac9fde7ae0436bae8ae3dfedaaea3e49693e2422f7e41ab91ae3fe1e8c0b9",
+      "bc43f7b82450bf4b7eb37c3f6d892112af9ba034a6eba61bb8380759625a72c5",
+      "c88475913294ffbefc9acdfd9097413ec8764a5b4ada9816e1c2b86892e86933"
+    ],
+    "serial_c2_runs_sha256": [
+      "32fc23b255a7dd0697a71c2bc51ae7188b438376c2528236ecb4da16e1721be6",
+      "a7d61bf9ef422a9e2d68ba1980c4c3c90462150414697b08fafa39081fae0203",
+      "1b5f840950101ef23b0feaec75d81c850a333f9634094710fbc571e68e139fa7"
+    ],
+    "grouped_c2_runs_sha256": [
+      "d8e2774dc5eb5ca1ac1591e48f8fd2445cbc540dbd16ac769e04ba01398ea698",
+      "966e6ba17dc71ad6cccd3447e7877461f808f49eedd16940954946416158dfb7",
+      "d8d619f571478c82829f21d872933128d6d23dd5b6fd95b3700ed528f7e93a7e"
+    ],
+    "selected_batch_c2_runs_sha256": [
+      "32816d35e342eada71da9fce19baeb6c829863f941543e32d5f35caccfa64d77",
+      "abdce22596476efeb62911a15be017d6b3ecff0a8b24e7818376f7e33d4f496e",
+      "3bc3ddb71ad409f26c4ca6f9dfb2f8a9a7e724a662134c0ceeb6a31760dd7587"
+    ],
+    "selected_profile_json": {
+      "path": "/tmp/gfx1100-paro-g2-profile-clean-7d60fe6c/selected_c1-l4-d1.json",
+      "bytes": 218416,
+      "sha256": "0a3c1f60857e79e867651c5879ff2bb26caa4ffe3acee2595fb2fd4602da01f9"
+    },
+    "selected_profile_csv": {
+      "path": "/tmp/gfx1100-paro-g2-profile-clean-7d60fe6c/trace-selected_c1/epyc/1407833_kernel_trace.csv",
+      "bytes": 279243,
+      "sha256": "9e0f0848dcfc45da257ca7be76a970dc4aa32568f8159a7a21d1af1407055021"
+    },
+    "grouped_profile_json": {
+      "path": "/tmp/gfx1100-paro-g2-profile-clean-7d60fe6c/grouped_compact-l4-d1.json",
+      "bytes": 218418,
+      "sha256": "98f14ed2d54e0ff9d5611cf9dad3e1d7e41ba69e9fca63e7d1942dfcbda933e6"
+    },
+    "grouped_profile_csv": {
+      "path": "/tmp/gfx1100-paro-g2-profile-clean-7d60fe6c/trace-grouped_compact/epyc/1409048_kernel_trace.csv",
+      "bytes": 288189,
+      "sha256": "5de44bff09b7aacba171475545f33e0bab935b13d6080e1bb4b10cbddf104633"
+    }
+  },
+  "validation": {
+    "host_tests": "161 passed",
+    "ruff": "passed with pre-existing script E402 ignored",
+    "python_compile": "passed",
+    "json_validation": "passed",
+    "worktree_diff_check": "passed"
+  },
+  "blockers": [
+    "The grouped-compact c2 median is below c1 aggregate, so Gate 5 forbids default/performance promotion.",
+    "The faster exact selected_c1_batch route is already one native rows=2 model transition with zero fallback layers, but retained validation and naming still classify only grouped_compact as native MoE.",
+    "The full prompt-category promotion suite and production model-owning PARO loop remain open.",
+    "gfx1151 and c4/c8 remain independently unverified."
+  ],
+  "next_action": "Audit and rename selected_c1_batch as the native selected-batch c2 algorithm, update the retained validator to distinguish it from selected_c1_per_row_moe_fallback, and rerun the exact current-revision packet before c4/c8."
+}
