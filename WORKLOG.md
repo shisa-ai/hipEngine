@@ -163162,3 +163162,66 @@ Decision: retain the merge because every concurrency/server/PARO integration
 gate is green and exact parent A/B proves the two broad-suite failures predate
 this branch. Push the resulting two-parent merge to `origin/main`; continue PARO
 at one physical c4, while handling verifier direct-commit exactness separately.
+
+## 2026-07-18 — Correct the W7900 GGUF verifier direct-commit gate
+
+Resolved task #165 and the two inherited full-suite failures without rolling
+back PARO's exact dense-order c2 attention kernel. The old tests mixed two
+contracts that are no longer equivalent: they exercised the default-off legacy
+chain row-capture path, then required optimized bulk verifier arithmetic to be
+byte-identical to scalar decode. The tests were introduced and validated only
+on gfx1151 before the repository adopted the peer-aligned reassociated GDN
+product contract; exact resident state and free-running scalar trajectory are
+now diagnostics, while serial-exact/native modes remain the byte-exact controls.
+
+W7900 localization separated the kernel from the stale test contract. A
+scratch split of the shared batch-context export made the historical paged-c1
+body bit-exact to its tiny paged primitive, but real GGUF blocks still produced
+sentinel/NaN output; that scratch change was fully removed. The retained
+PARO/dense-order body produced finite target tokens. The decisive production-
+shape control enabled the existing llama-compatible no-copy capture mode,
+`HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1`: a B5 row-0 captured commit was
+bit-identical to an independently executed B1 bulk prefix across the target
+token, all **2,048** FP32 hidden values, and all **16,711,680** Conv/GDN state
+floats. The same default-off legacy chain-capture control produced sentinel/NaN
+state and remains tracked for removal in `docs/REFACTOR.md`.
+
+Updated `tests/test_qwen35_gguf_verify_advance_state_only.py` accordingly:
+
+- state-only replay remains byte-exact to its corresponding full replay;
+- serial-exact and native verifier tests remain byte-exact to scalar decode;
+- optimized bulk direct commit now runs the production no-copy capture mode and
+  gates the transaction invariants it actually needs: B5 row 0 equals an
+  independent B1 bulk prefix, wrong-child B2 row 0 plus the corrective scalar
+  step equals the independent B1 transaction, and deferred B2 row-1 commit
+  equals normal B2 final state plus the next scalar step.
+
+Validation on Radeon Pro W7900/gfx1100:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1100 python3 -m pytest -vv \
+  tests/test_qwen35_gguf_verify_advance_state_only.py::test_bulk_direct_commit_row0_matches_independent_bulk_prefix \
+  tests/test_qwen35_gguf_verify_advance_state_only.py::test_bulk_direct_commit_matches_wrong_branch
+# 2 passed in 151.34s
+
+HIPENGINE_HIP_ARCH=gfx1100 python3 -m pytest -vv \
+  tests/test_qwen35_gguf_verify_advance_state_only.py
+# 8 passed in 603.10s
+
+python3 -m pytest -q tests/test_gguf_mtp_bench_metrics.py \
+  tests/test_qwen35_gguf_hidden_seed_contract.py \
+  tests/test_gguf_mtp_forced_target_probe.py \
+  tests/test_gguf_block_verify_low_rows.py
+# 144 passed
+
+python3 -m pytest -q
+# 6,426 passed, 53 skipped, 0 failed; exit 0, reached 100%
+
+ruff check tests/test_qwen35_gguf_verify_advance_state_only.py
+python3 -m compileall -q tests/test_qwen35_gguf_verify_advance_state_only.py
+git diff --check
+# all passed
+```
+
+This is a correctness-contract/test repair, not a performance claim and not a
+production kernel change. The earlier two-failure full-suite blocker is closed.
