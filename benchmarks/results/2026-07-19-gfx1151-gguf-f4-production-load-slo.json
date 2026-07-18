@@ -1,0 +1,261 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_production_serving_load_slo",
+  "created_at": "2026-07-18T23:45:02.287732+00:00",
+  "status": "accepted",
+  "passed": true,
+  "complete_packet": true,
+  "performance_claim": true,
+  "scope": "Phase-F4 real localhost Uvicorn OpenAI SSE production load/SLO closure",
+  "source": {
+    "commit": "ecaf14d53799d487efdb27e07eb4342e69b3e574",
+    "clean": true,
+    "scheduler_row_ack_commit": "1e1041114c2e6bf17e8849d510aa621f4690400e",
+    "package_default_commit": "ecaf14d53799d487efdb27e07eb4342e69b3e574"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "rocm": "HIP version: 7.15.0-0000000",
+    "hipcc": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+    "gpu_max_hw_queues": 1,
+    "amd_iommu": "off",
+    "power_profile": "TuneD accelerator-performance"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424
+    }
+  },
+  "configuration": {
+    "max_sequence_length": 562,
+    "max_active_requests": 8,
+    "max_pending_requests": 16,
+    "max_queued_requests": 16,
+    "stream_queue_max_chunks": 16,
+    "generation_batch_window_ms": 100.0,
+    "sampling": "greedy_top1_ignore_eos",
+    "speculative_decode": false,
+    "selected_prefill_decode_policy": "fair",
+    "selected_prefill_chunk_tokens": 256,
+    "package_default_scope": [
+      "hip_gfx1151",
+      "qwen3_5_gguf|qwen3_5_moe_gguf",
+      "gguf_q4_k_m"
+    ],
+    "explicit_env_overrides_preserved": true,
+    "slo_thresholds_seconds": {
+      "queue_p99": 10.0,
+      "ttft_p95": 10.0,
+      "itl_p99": 0.5,
+      "end_to_end_p95": 30.0
+    },
+    "soak_seconds": 60.0,
+    "soak_rate_requests_per_second": 2.0
+  },
+  "tuning": {
+    "method": "highest exact generated-token SLO goodput among passing candidates; TTFT p95, ITL p99, then smaller chunk tie-breaks",
+    "selected": {
+      "policy": "fair",
+      "prefill_chunk_tokens": 256,
+      "goodput_generated_tokens_per_second": 46.52729002058453,
+      "ttft_p95_seconds": 0.5384993180050515,
+      "itl_p99_seconds": 0.2969864900223911,
+      "passed": true,
+      "goodput_delta_vs_fair_128_percent": 6.730771501358279
+    },
+    "candidates": [
+      {
+        "policy": "protect_decode",
+        "prefill_chunk_tokens": 128,
+        "passed": false,
+        "goodput_generated_tokens_per_second": 19.463014,
+        "ttft_p95_seconds": 1.165003,
+        "itl_p99_seconds": 0.024162,
+        "failure_reasons": [
+          "generated_token_mismatch",
+          "http_sse_protocol_failed",
+          "unexpected_request_outcome"
+        ]
+      },
+      {
+        "policy": "protect_ttft",
+        "prefill_chunk_tokens": 128,
+        "passed": false,
+        "goodput_generated_tokens_per_second": 12.749141,
+        "ttft_p95_seconds": 0.812339,
+        "itl_p99_seconds": 0.626033,
+        "failure_reasons": [
+          "slo_itl_p99_failed"
+        ]
+      },
+      {
+        "policy": "fair",
+        "prefill_chunk_tokens": 128,
+        "passed": true,
+        "goodput_generated_tokens_per_second": 43.593136,
+        "ttft_p95_seconds": 1.149911,
+        "itl_p99_seconds": 0.223374,
+        "failure_reasons": []
+      },
+      {
+        "policy": "fair",
+        "prefill_chunk_tokens": 256,
+        "passed": true,
+        "goodput_generated_tokens_per_second": 46.52729002058453,
+        "ttft_p95_seconds": 0.5384993180050515,
+        "itl_p99_seconds": 0.2969864900223911,
+        "failure_reasons": []
+      }
+    ]
+  },
+  "workloads": {
+    "static_c1": {
+      "passed": true,
+      "requests": 1,
+      "outcomes": {"completed": 1},
+      "exact_generated_tokens": 32,
+      "goodput_generated_tokens_per_second": 33.055821,
+      "latency_seconds": {"queue_p99": 0.001572, "ttft_p95": 0.225791, "itl_p99": 0.022086, "end_to_end_p95": 0.967992},
+      "max_active_rows": 1,
+      "stream_queue_max_observed": 0
+    },
+    "static_c8": {
+      "passed": true,
+      "requests": 8,
+      "outcomes": {"completed": 8},
+      "exact_generated_tokens": 256,
+      "goodput_generated_tokens_per_second": 59.540431,
+      "latency_seconds": {"queue_p99": 0.001695, "ttft_p95": 1.173318, "itl_p99": 0.324027, "end_to_end_p95": 4.299493},
+      "max_active_rows": 8,
+      "stream_queue_max_observed": 1
+    },
+    "ragged_burst": {
+      "passed": true,
+      "requests": 8,
+      "outcomes": {"completed": 8},
+      "exact_generated_tokens": 240,
+      "goodput_generated_tokens_per_second": 51.101675,
+      "latency_seconds": {"queue_p99": 0.001325, "ttft_p95": 1.411279, "itl_p99": 0.321593, "end_to_end_p95": 4.695633},
+      "max_active_rows": 8,
+      "stream_queue_max_observed": 0
+    },
+    "continuous_fixed": {
+      "passed": true,
+      "requests": 12,
+      "outcomes": {"completed": 12},
+      "exact_generated_tokens": 360,
+      "goodput_generated_tokens_per_second": 46.345724,
+      "latency_seconds": {"queue_p99": 0.003424, "ttft_p95": 0.522384, "itl_p99": 0.293252, "end_to_end_p95": 5.085715},
+      "max_active_rows": 8,
+      "stream_queue_max_observed": 1
+    },
+    "continuous_poisson": {
+      "passed": true,
+      "requests": 12,
+      "outcomes": {"completed": 12},
+      "exact_generated_tokens": 360,
+      "goodput_generated_tokens_per_second": 38.320581,
+      "latency_seconds": {"queue_p99": 0.002011, "ttft_p95": 0.901437, "itl_p99": 0.326463, "end_to_end_p95": 3.462081},
+      "max_active_rows": 7,
+      "stream_queue_max_observed": 0
+    },
+    "cancellation_disconnect": {
+      "passed": true,
+      "requests": 8,
+      "outcomes": {"completed": 6, "disconnected": 1, "timeout": 1},
+      "normal_neighbors_exact": 6,
+      "post_token_active_disconnects": 1,
+      "distinct_http_408_timeouts": 1,
+      "exact_generated_tokens": 180,
+      "qualifying_generated_tokens": 176,
+      "goodput_generated_tokens_per_second": 42.331083,
+      "latency_seconds": {"queue_p99": 0.001743, "ttft_p95": 0.961558, "itl_p99": 0.327567, "end_to_end_p95": 4.157463},
+      "max_active_rows": 7,
+      "stream_queue_max_observed": 0
+    },
+    "overload": {
+      "passed": true,
+      "requests": 32,
+      "outcomes": {"completed": 16, "rejected": 16},
+      "engine_busy_429_rejected": 16,
+      "exact_generated_tokens": 128,
+      "goodput_generated_tokens_per_second": 40.596646,
+      "latency_seconds": {"queue_p99": 1.409053, "ttft_p95": 1.578752, "itl_p99": 0.187931, "end_to_end_p95": 3.152592},
+      "max_active_rows": 8,
+      "stream_queue_max_observed": 1
+    },
+    "idle_recovery": {
+      "passed": true,
+      "requests": 1,
+      "outcomes": {"completed": 1},
+      "exact_generated_tokens": 16,
+      "goodput_generated_tokens_per_second": 28.029054,
+      "latency_seconds": {"queue_p99": 0.001316, "ttft_p95": 0.145463, "itl_p99": 0.021088, "end_to_end_p95": 0.570772},
+      "max_active_rows": 1,
+      "stream_queue_max_observed": 0
+    },
+    "soak": {
+      "passed": true,
+      "requests": 120,
+      "outcomes": {"completed": 120},
+      "exact_generated_tokens": 2640,
+      "goodput_generated_tokens_per_second": 43.313941,
+      "latency_seconds": {"queue_p99": 0.007733, "ttft_p95": 0.528906, "itl_p99": 0.279756, "end_to_end_p95": 2.787631},
+      "max_active_rows": 5,
+      "stream_queue_max_observed": 1,
+      "duration_seconds": 60.0
+    }
+  },
+  "gates": {
+    "all_workloads_passed": true,
+    "all_completed_rows_exact": true,
+    "all_workload_slos_passed": true,
+    "native_route_passed": true,
+    "stream_queues_bounded": true,
+    "overload_metrics_exact": true,
+    "final_ownership_passed": true,
+    "memory_recovery_passed": true,
+    "clean_source_passed": true
+  },
+  "final_ownership": {
+    "resident_pending": 0,
+    "resident_active": 0,
+    "generation_queue_depth": 0,
+    "generation_active_requests": 0,
+    "generation_batcher_active": false,
+    "kv_pool_refcounted_pages": 0,
+    "kv_pool_pinned_pages": 0
+  },
+  "memory": {
+    "prepared_baseline_tracked_current_bytes": 27621257920,
+    "observed_peak_tracked_bytes": 32981527032,
+    "final_pre_close_tracked_current_bytes": 31020901484,
+    "prepared_baseline_hip_used_bytes": 28053184512,
+    "final_pre_close_hip_used_bytes": 31553441792,
+    "post_close_tracked_current_bytes": 0,
+    "post_close_kv_pool_current_pages": 0,
+    "recovery_tolerance_bytes": 67108864,
+    "recovery_passed": true
+  },
+  "command": "/home/lhl/hipEngine-main/.venv/bin/python3 scripts/gguf_production_load_gate.py --backend hip_gfx1151 --compiler-version-file /tmp/hipengine-gfx1151-f4-hipcc-version.txt --json /tmp/gfx1151-f4-production-load-final-ecaf14d5.json",
+  "elapsed_seconds": 194.3664231019793,
+  "raw_artifact": {
+    "path": "/tmp/gfx1151-f4-production-load-final-ecaf14d5.json",
+    "size_bytes": 11292319,
+    "sha256": "bba859ce6b3a31c0470f71cefa6129445c7c11b3156e4330e662c7244d545c7d"
+  },
+  "supersedes": "benchmarks/results/2026-07-19-gfx1151-gguf-f4-production-load-blocked.json",
+  "limitations": [
+    "The retained path is greedy exact Q4_K_M with BF16 KV; sampled/API-path closure is F5.",
+    "The selected fair:256 default is scoped to the measured gfx1151 Qwen GGUF Q4_K_M registry key; other quants and backends are not implied.",
+    "Timing is a real localhost Uvicorn SSE wall and is not a remote-network claim.",
+    "The soak is duration/rate-qualified at 60 seconds and 2 requests/s; it is not a multi-day reliability claim.",
+    "Prefix/continuation KV reuse, mixed long-context pressure, and matched external-engine serving comparisons remain later gates."
+  ]
+}

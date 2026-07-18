@@ -164999,3 +164999,27 @@ nodes and the broader three-file **45-test** LLM/gfx1151/quant bundle pass;
 Python compilation and `git diff --check` pass. A final clean
 complete packet on the scoped package-default source is required before F4
 publication.
+
+Final clean package-default `ecaf14d5` is accepted in **194.366 s**. The selected
+`fair:256` candidate measures **46.527 exact SLO-goodput tok/s**, **+6.73%**
+over passing `fair:128` at **43.593**. Static c1/c8, ragged, fixed, Poisson,
+cancellation, overload, recovery, and soak goodput is **33.056/59.540/51.102/
+46.346/38.321/42.331/40.597/28.029/43.314 tok/s**. Every workload passes all
+four declared SLOs and exact-ID/protocol/route/accounting gates. Cancellation is
+**6/6 exact normal neighbors + one post-token disconnect + one distinct 408
+timeout**; overload is **16 exact completions + 16 exact 429 rejects**; soak is
+**120/120 completions over 60 seconds**. Bounded queues peak at one event,
+memory recovery passes, and final scheduler, batcher, runner, KV-refcount, and
+graph-pin ownership is zero.
+
+Final raw packet:
+`/tmp/gfx1151-f4-production-load-final-ecaf14d5.json`, 11,292,319 bytes,
+SHA-256 `bba859ce6b3a31c0470f71cefa6129445c7c11b3156e4330e662c7244d545c7d`.
+Published compact artifact:
+`benchmarks/results/2026-07-19-gfx1151-gguf-f4-production-load-slo.json`.
+A mechanical compact-vs-raw comparison validates source, selection, all nine
+request/outcome/exact-token/goodput summaries, raw size/hash, and every gate;
+JSON validation and `git diff --check` pass. `docs/CONCURRENCY.md`,
+`benchmarks/README.md`, and `benchmarks/CHANGELOG.md` now retain the F4 closure.
+F5 sampled/API-path concurrency is next; prefix reuse, long-context pressure,
+and matched external serving comparisons remain explicitly separate gates.

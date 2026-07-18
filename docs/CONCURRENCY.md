@@ -151,7 +151,7 @@ cache/memory economics, and SLO-based external evidence.
 
 | Model path | Backend | Current c>N status | Production behavior | First missing gate |
 | --- | --- | --- | --- | --- |
-| GGUF Q4_K_M / BF16 KV | gfx1151 | `retained` direct native-c2/c4/c8 graph model steps, continuous membership, honest arbitrary-C lowering, and occupancy-adaptive OpenAI scaling: F0 physical-c2 repair passes 10,240/10,240 all-layer comparisons while prior 188,080 direct/category and 134,160 E3 comparisons remain retained; F3 singleton-indexed GDN refreshes direct c1/c2/c4/c8 to 50.335/78.552/108.050/133.251 aggregate tok/s with repeatable exact trajectories and 748 packed-native / 0 row-local / 0-copy c8 dispatches; F2 p512/128-output c1/c8/c9/c13/serial-c13 SSE remains 43.033/86.942/77.302/73.235/43.066 aggregate tok/s and was not remeasured for F3 | Public blocking calls and OpenAI SSE share one configured model-owning loop with reusable c8-capable sessions and real BF16 device KV; occupancy selects physical c1/c2/c4/c8 while stable request/state/KV ownership is unchanged; backend c1 reaches 95.625% of same-process direct; gfx1151 packed AR selects exact singleton-indexed GDN with segmented fallback and gfx1100 stays segmented pending transfer; C>8 remains multiple declared groups, never native c9/c13 | Continue F3 projection/MoE tuning and refresh server wall, then production load/SLO and broader sampling/KV/context gates |
+| GGUF Q4_K_M / BF16 KV | gfx1151 | `retained` direct native-c2/c4/c8 graph model steps, continuous membership, honest arbitrary-C lowering, and occupancy-adaptive OpenAI scaling: F0 physical-c2 repair passes 10,240/10,240 all-layer comparisons while prior 188,080 direct/category and 134,160 E3 comparisons remain retained; F3 singleton-indexed GDN refreshes direct c1/c2/c4/c8 to 50.335/78.552/108.050/133.251 aggregate tok/s with repeatable exact trajectories and 748 packed-native / 0 row-local / 0-copy c8 dispatches; F2 p512/128-output c1/c8/c9/c13/serial-c13 SSE remains 43.033/86.942/77.302/73.235/43.066 aggregate tok/s; F4 selects scoped package-default `fair:256`, passes all nine real-Uvicorn workloads, and sustains 120/120 soak requests at 43.314 exact SLO-goodput tok/s | Public blocking calls and OpenAI SSE share one configured model-owning loop with reusable c8-capable sessions and real BF16 device KV; occupancy selects physical c1/c2/c4/c8 while stable request/state/KV ownership is unchanged; backend c1 reaches 95.625% of same-process direct; gfx1151 packed AR selects exact singleton-indexed GDN with segmented fallback and gfx1100 stays segmented pending transfer; C>8 remains multiple declared groups, never native c9/c13 | Close F5 native sampled/API paths, then prefix/continuation KV reuse, long-context pressure, and matched external serving comparisons |
 | GGUF Q4_K_M / BF16 KV | gfx1100 | `retained` direct native-c4/c8 graph model steps, observable continuous membership, honest arbitrary-C lowering, and real OpenAI server scaling: direct native-c8 is 246.872 aggregate tok/s; arbitrary C13 eager/graph adds 135,200 exact all-layer comparisons; middle-hole cancellation/admission preserves inactive state/KV; nine optional compaction moves preserve hashes/pointers with 2/2 graph invalidations; p512/128-output logical c1/c8/c9/c13/serial-c13 SSE is 25.583/136.122/88.592/111.380/31.708 aggregate tok/s | Public blocking calls and OpenAI SSE share one configured model-owning loop, reusable c8-capable sessions, bounded queues, real BF16 device KV, arbitrary-C physical-group manifests, and lock-consistent observability; C>8 is multiple declared groups, never a wider native claim; optional compaction is explicit/manual | Transfer retained occupancy-adaptive c1 policy after gfx1151, then profile tuning, normal sampling, and compaction only if justified |
 | GGUF Q5_K/Q6_K/Q8_0 / BF16 KV | gfx1100/gfx1151 | Not executed end to end under c>N | c1 | Run quant-specific direct, profiler, lifecycle, and scaling gates |
 | PARO W4 / BF16 KV | gfx1151 | `retained`: explicit direct native-c2/c4/c8 is **79.237/100.209/99.943 aggregate tok/s** with all 5,754 direct IDs exact; blocking OpenAI F1 is **47.124/51.962/60.323/61.253** at c1/c2/c4/c8 with 68/68 exact rows; real FastAPI SSE c1/c2/c4/c8/serial-c8 is **36.327/38.666/42.471/41.487/35.633** with 100/100 exact rows, plus 72/72 exact c8 stress rows | Public blocking/OpenAI requests share one fixed-capacity owner with chunked prefill, stable device-state/KV slots, authoritative generated-token accounting, profile partitions, and package-default native c2/c4/c8; explicit `=0` rollback flags preserve exact serial fallback | Close gfx1100 owner c4/c8 independently; broaden sampled groups, context/KV coverage, and only then consider graph replay |
@@ -1075,14 +1075,25 @@ rows remain retained but were not remeasured. Evidence:
 
 F4. Production workload and SLO gate:
 
-- [ ] Add static, ragged, burst, and controlled continuous-arrival workloads
+- [x] Add static, ragged, burst, and controlled continuous-arrival workloads
       with mixed prompt/output lengths and generated-token correctness.
-- [ ] Report goodput, queue delay, TTFT, ITL, and end-to-end p50/p95/p99 together
+- [x] Report goodput, queue delay, TTFT, ITL, and end-to-end p50/p95/p99 together
       with occupancy, KV/workspace memory, rejects, and finish reasons.
-- [ ] Exercise cancellation, disconnect, overload, bounded backpressure, idle
+- [x] Exercise cancellation, disconnect, overload, bounded backpressure, idle
       recovery, and a sustained soak without leaking request/session ownership.
-- [ ] Tune prefill/decode token budgets and fairness from measured SLO curves,
+- [x] Tune prefill/decode token budgets and fairness from measured SLO curves,
       not one fixed prompt or one headline aggregate rate.
+
+Clean `ecaf14d5` closes F4 on Radeon 8060S/gfx1151, Qwen3.6-35B-A3B
+Q4_K_M/BF16-KV, and real localhost Uvicorn SSE. The four-candidate frozen sweep
+selects scoped package-default `fair:256` at **46.527 exact SLO-goodput tok/s**,
+**+6.73%** over passing `fair:128`. All nine workloads pass the declared
+queue-p99/TTFT-p95/ITL-p99/end-to-end-p95 SLOs: cancellation preserves **6/6**
+normal neighbors plus one post-token disconnect and one distinct 408 timeout;
+overload returns **16 exact completions + 16 exact 429 rejects**; and the
+60-second soak completes **120/120 at 43.314 goodput tok/s**. Memory and all
+scheduler/runner/KV ownership drain. Evidence:
+`benchmarks/results/2026-07-19-gfx1151-gguf-f4-production-load-slo.json`.
 
 F5. Serving economics and comparison closure:
 
@@ -1267,12 +1278,11 @@ multiple later gates.
     execution in one long-lived gfx1151 GGUF owner.
 11. **Completed — F3:** singleton-indexed packed-AR GDN is retained without c1
     or c>N regression; broader Q8T16 rowtiling was rejected as inexact.
-12. **Blocked — F4:** static/ragged/fixed/Poisson, exact overload, recovery, and
-    a 120-request/60-second soak pass, but concurrent timeout plus active socket
-    disconnect can still cancel warmed peers. No production SLO claim is
-    retained; see `benchmarks/results/2026-07-19-gfx1151-gguf-f4-production-load-blocked.json`.
-13. **Blocked by F4 — F5/H:** close sampled/API paths, prefix/continuation KV
-    reuse, long-context/memory pressure, and matched external serving comparisons.
+12. **Completed — F4:** clean real-Uvicorn static/ragged/fixed/Poisson,
+    scheduler-owned timeout/disconnect isolation, exact overload, recovery, and
+    120-request/60-second soak all pass under scoped package-default `fair:256`.
+13. **Ready — F5/H:** close sampled/API paths, prefix/continuation KV reuse,
+    long-context/memory pressure, and matched external serving comparisons.
 
 Do not label C>8 grouping, prefix caching, DMS, speculative integration, or
 external-engine parity from the retained gfx11 GGUF results; each keeps its own
@@ -1428,8 +1438,8 @@ retained native-c4/c8 direct model steps, honest arbitrary-C physical-group
 lowering, and real OpenAI burst/live-admission scaling. Both gfx11 PARO targets
 have retained explicit direct native-c2 model steps; gfx1151 additionally
 retains true physical c4/c8 and a package-default resident blocking/SSE owner.
-gfx1151 GGUF occupancy-adaptive c1/c2/c4/c8 serving is retained. Its production
-load/SLO gate is explicitly blocked by concurrent timeout/disconnect peer
-cancellation. The gfx1100 transfer, gfx1100 PARO owner c4/c8, normal sampled
-groups, prefix/KV reuse, long-context memory-pressure coverage, and complete
-project-wide production continuous batching remain in progress.**
+gfx1151 GGUF occupancy-adaptive c1/c2/c4/c8 serving and its production
+load/SLO gate are retained, including scheduler-owned timeout/disconnect row
+isolation and a 120-request soak. The gfx1100 transfer, gfx1100 PARO owner c4/c8,
+normal sampled groups, prefix/KV reuse, long-context memory-pressure coverage,
+and complete project-wide production continuous batching remain in progress.**
