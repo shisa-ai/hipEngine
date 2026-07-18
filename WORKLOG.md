@@ -164045,3 +164045,33 @@ the root/benchmark toplines, benchmark changelog, `docs/PLAN.md`,
 Remaining PARO concurrency scope is gfx1100 owner c4/c8 symmetry, broader
 sampled/native contexts and KV formats,
 and any independently justified graph path.
+
+## 2026-07-18 — Define c1-preserving production concurrency closure
+
+Promoted the next concurrency objective from “prove a wider exact batch” to one
+production OpenAI owner that preserves the fastest c1 route at occupancy one and
+selects exact c2/c4/c8 physical work only as live occupancy and SLO policy
+justify it. The retained GGUF loop already performs real admission-during-decode,
+chunked prefill, cancellation/reclaim, arbitrary-C grouping, and bounded SSE;
+this decision does not relabel that evidence or claim broad vLLM/SGLang parity.
+It makes the remaining low-occupancy gap explicit: the retained GGUF F1 logical
+c1 server control is masked physical c8, while the production target is a real
+c1 graph/GEMV route in the same long-lived owner that can later widen without
+re-prefill or state/KV rebinding.
+
+Updated `docs/CONCURRENCY.md` with the ordered F0–F5 closure: current-main
+gfx1151 GGUF recertification after shared PARO owner/API changes;
+occupancy-adaptive c1/c2/c4/c8 execution with occupancy-one backend transition
+performance within 5% of same-process direct c1; profile-directed host/graph and
+kernel tuning; mixed-length continuous-arrival, overload, cancellation, and
+soak SLO gates; sampled/API-path coverage; prefix/continuation device-KV reuse;
+long-context/memory-pressure coverage; and matched same-GGUF llama.cpp plus
+qualified vLLM/SGLang comparisons. Also corrected the stale active queue,
+gfx1151 PARO live-admission ledger (`retained` after G5), G4/G5 status summary,
+and final honest project claim. No architecture or benchmark result changed.
+
+Validation for this docs/process unit: re-read `docs/CONCURRENCY.md`, ran
+`git diff --check -- docs/CONCURRENCY.md WORKLOG.md`, and confirmed the tracked
+tree was clean before the edits. No GPU benchmark was required and no new
+performance claim is made. Next: commit this roadmap unit, then execute F0 on a
+clean current-main checkout before changing the occupancy policy.
