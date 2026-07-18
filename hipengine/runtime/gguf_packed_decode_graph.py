@@ -639,6 +639,11 @@ def capture_qwen35_gguf_packed_decode_graph(
         blocks_per_slot=int(layout.blocks_per_slot),
         capture_layer_count=0,
         linear_attention_decode_path=linear_path,
+        gdn_recurrent_decode_path=(
+            owner.runner._linear_attention_decode_batch_plan().gdn_decode_path
+            if linear_path == "indexed_batch"
+            else None
+        ),
         full_attention_decode_path=full_path,
         moe_decode_path=(
             "selected_rows_batch" if owner.runner.weights.config.is_moe else "dense_ffn_rows"

@@ -31,6 +31,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
 )
 from hipengine.kernels.hip_gfx1100 import (
     GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS as GFX1100_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS,
+    GGUF_GDN_INDEXED_SINGLETON_DECODE as GFX1100_GGUF_GDN_INDEXED_SINGLETON_DECODE,
     GGUF_GDN_PREFILL_AUTO_MODE as GFX1100_GGUF_GDN_PREFILL_AUTO_MODE,
     GGUF_GDN_PREFILL_EXACT_MODE as GFX1100_GGUF_GDN_PREFILL_EXACT_MODE,
     GGUF_PAGED_ATTN_PARALLEL_REDUCE as GFX1100_GGUF_PAGED_ATTN_PARALLEL_REDUCE,
@@ -53,6 +54,7 @@ from hipengine.kernels.hip_gfx1151 import (
     GGUF_Q8_T16_PREFILL_TWO_WAVE,
     GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS,
     GGUF_ROUTER_F32_BF16_HIDDEN_THREADS,
+    GGUF_GDN_INDEXED_SINGLETON_DECODE,
     GGUF_GDN_PREFILL_AUTO_MODE,
     GGUF_GDN_PREFILL_EXACT_MODE,
     GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE,
@@ -168,6 +170,8 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert GFX1100_GGUF_ROUTER_F32_BF16_HIDDEN_THREADS == 256
     assert GFX1100_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS == 4096
     assert GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS == 0
+    assert GFX1100_GGUF_GDN_INDEXED_SINGLETON_DECODE is False
+    assert GGUF_GDN_INDEXED_SINGLETON_DECODE is True
     assert GFX1100_GGUF_GDN_PREFILL_AUTO_MODE == "chain_peer_wave32"
     assert GFX1100_GGUF_GDN_PREFILL_EXACT_MODE == "chain_lds32_direct_nonvolatile"
     assert GGUF_GDN_PREFILL_AUTO_MODE == "chain_lds32_direct_nonvolatile"
@@ -257,6 +261,20 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
         )
         == 128
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1151",
+            "GGUF_GDN_INDEXED_SINGLETON_DECODE",
+        )
+        is True
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1100",
+            "GGUF_GDN_INDEXED_SINGLETON_DECODE",
+        )
+        is False
     )
     assert (
         backend_package_capability(
