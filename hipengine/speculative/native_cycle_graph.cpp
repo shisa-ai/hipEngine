@@ -58,24 +58,26 @@ bool has_required_verify_pointers(const HipengineNativeSpecCycleControlV1* contr
          control->output_target_top1 != 0;
 }
 
-bool is_fixed_b2_target(const HipengineNativeSpecCycleControlV1* control) {
+bool is_small_chain_target(const HipengineNativeSpecCycleControlV1* control) {
+  const uint32_t rows = control->row_count;
+  const uint32_t candidates = rows - 1;
   return control->stage_mask == HIPENGINE_NATIVE_SPEC_STAGE_VERIFY &&
          control->mode == HIPENGINE_NATIVE_SPEC_MODE_CHAIN &&
          control->request_count == 1 &&
          control->request_capacity >= 1 &&
-         control->row_count == 3 &&
-         control->active_row_count == 3 &&
-         control->row_capacity >= 3 &&
-         control->candidate_count == 2 &&
-         control->active_candidate_count == 2 &&
-         control->candidate_capacity >= 2 &&
-         control->candidate_budget == 2 &&
+         (rows == 2 || rows == 3) &&
+         control->active_row_count == rows &&
+         control->row_capacity >= rows &&
+         control->candidate_count == candidates &&
+         control->active_candidate_count == candidates &&
+         control->candidate_capacity >= candidates &&
+         control->candidate_budget == candidates &&
          control->span_count > 0 &&
          control->span_capacity >= control->span_count &&
          control->context_bucket >= control->max_live_count &&
          control->hidden_size > 0 &&
-         control->hidden_row_capacity >= 3 &&
-         control->output_stride >= 3 &&
+         control->hidden_row_capacity >= rows &&
+         control->output_stride >= rows &&
          control->metadata_dtype == HIPENGINE_NATIVE_SPEC_DTYPE_INT64 &&
          control->hidden_dtype == HIPENGINE_NATIVE_SPEC_DTYPE_FP32 &&
          control->kv_dtype == HIPENGINE_NATIVE_SPEC_DTYPE_BF16;
@@ -97,7 +99,7 @@ extern "C" int32_t hipengine_native_spec_target_graph_launch_v1(
       control->struct_size != sizeof(*control)) {
     return fail(result, HIPENGINE_NATIVE_SPEC_ERROR_ABI_MISMATCH);
   }
-  if (!is_fixed_b2_target(control)) {
+  if (!is_small_chain_target(control)) {
     return fail(result, HIPENGINE_NATIVE_SPEC_ERROR_UNSUPPORTED_SHAPE);
   }
   if (!has_required_verify_pointers(control) || control->stream == 0 ||

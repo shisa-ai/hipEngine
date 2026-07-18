@@ -8355,6 +8355,8 @@ class Qwen35GGUFResidentSession:
     int8_bf16_full_attention_layer_indices: tuple[int, ...] = field(default=(), init=False)
     _decode_graphs: list[object] = field(default_factory=list, init=False)
     _decode_graph_min_replay_steps_cache: int | None = field(default=None, init=False)
+    _native_spec_b1_target_graph: object | None = field(default=None, init=False, repr=False)
+    _native_spec_b2_target_graph: object | None = field(default=None, init=False, repr=False)
     _device_kv_pool: DeviceChunkedKVPool | None = field(default=None, init=False, repr=False)
     _device_kv_allocation: DeviceKVPoolAllocation | None = field(default=None, init=False, repr=False)
     _device_kv_graph_handles: dict[int, object] = field(default_factory=dict, init=False, repr=False)
@@ -10474,6 +10476,11 @@ class Qwen35GGUFResidentSession:
         _pre_staged_token_ids_ptr: int | None = None,
         _target_top1_i64_ptr: int | None = None,
         _enqueue_only: bool = False,
+        _prebuilt_bulk_scratch: object | None = None,
+        _dynamic_cursor_advance: bool = False,
+        _graph_hidden_seed_buf: object | None = None,
+        _graph_hidden_f32_a: object | None = None,
+        _graph_hidden_f32_b: object | None = None,
     ) -> Qwen35GGUFBlockVerifyResult | None:
         """Consume a continuation block and return greedy target rows.
 
@@ -10531,16 +10538,40 @@ class Qwen35GGUFResidentSession:
                 raise ValueError("enqueue-only target verification requires pre-staged token ids")
             if _target_top1_i64_ptr is None or int(_target_top1_i64_ptr) <= 0:
                 raise ValueError("enqueue-only target verification requires an int64 target-top1 destination")
-            if rows != 3:
-                raise ValueError("enqueue-only N1 target verification supports the fixed B2 rows=3 bucket")
+            if rows not in {2, 3}:
+                raise ValueError("enqueue-only native target verification supports B1/B2 rows=2-3")
             if advance_state_only or capture_pre_output_norm_hidden or capture_lm_head_logits:
                 raise ValueError("enqueue-only target verification does not support host diagnostic outputs")
             if capture_layer_output_hidden or capture_layer_boundary_hidden:
                 raise ValueError("enqueue-only target verification does not support layer host captures")
             if record_stage_timings or sync_stage_timings:
                 raise ValueError("enqueue-only target verification does not support host stage timings")
-        elif _pre_staged_token_ids_ptr is not None or _target_top1_i64_ptr is not None:
-            raise ValueError("private target graph pointers require enqueue-only mode")
+            graph_hidden = (
+                _graph_hidden_seed_buf,
+                _graph_hidden_f32_a,
+                _graph_hidden_f32_b,
+            )
+            if _prebuilt_bulk_scratch is not None:
+                if int(getattr(_prebuilt_bulk_scratch, "start", -1)) != 0:
+                    raise ValueError("reusable target graph scratch must use fixed row offset zero")
+                if int(getattr(_prebuilt_bulk_scratch, "rows", 0)) != rows:
+                    raise ValueError("reusable target graph scratch rows must match verifier rows")
+                if not _dynamic_cursor_advance:
+                    raise ValueError("reusable target graph scratch requires device-driven cursor advance")
+                if any(buffer is None for buffer in graph_hidden):
+                    raise ValueError("reusable target graph requires graph-owned hidden buffers")
+            elif _dynamic_cursor_advance or any(buffer is not None for buffer in graph_hidden):
+                raise ValueError("device-driven graph state requires reusable target graph scratch")
+        elif (
+            _pre_staged_token_ids_ptr is not None
+            or _target_top1_i64_ptr is not None
+            or _prebuilt_bulk_scratch is not None
+            or _dynamic_cursor_advance
+            or _graph_hidden_seed_buf is not None
+            or _graph_hidden_f32_a is not None
+            or _graph_hidden_f32_b is not None
+        ):
+            raise ValueError("private target graph controls require enqueue-only mode")
         if rows > int(self._bulk_prefill_scratch.rows):
             raise ValueError(
                 f"target block rows {rows} exceed resident bulk scratch rows {self._bulk_prefill_scratch.rows}"
@@ -10565,12 +10596,26 @@ class Qwen35GGUFResidentSession:
         self._ensure_verify_block_buffers(rows, runtime=runtime)
         if capture_linear_state_rows:
             self._ensure_verify_linear_state_row_buffers(rows, runtime=runtime)
-        if self._verify_hidden_seed_buf is None:
+        hidden_seed_buf = (
+            self._verify_hidden_seed_buf
+            if _graph_hidden_seed_buf is None
+            else _graph_hidden_seed_buf
+        )
+        if hidden_seed_buf is None:
             raise RuntimeError("GGUF verifier hidden-seed buffer is closed")
+        verify_hidden_f32_a = (
+            self._verify_hidden_f32_a
+            if _graph_hidden_f32_a is None
+            else _graph_hidden_f32_a
+        )
+        verify_hidden_f32_b = (
+            self._verify_hidden_f32_b
+            if _graph_hidden_f32_b is None
+            else _graph_hidden_f32_b
+        )
         use_f32_residual = _gguf_verify_f32_residual_enabled()
-        if use_f32_residual and (self._verify_hidden_f32_a is None or self._verify_hidden_f32_b is None):
+        if use_f32_residual and (verify_hidden_f32_a is None or verify_hidden_f32_b is None):
             raise RuntimeError("GGUF verifier F32 residual buffers are closed")
-        hidden_seed_buf = self._verify_hidden_seed_buf
         token_ids_buf = self._verify_token_ids_i64
         token_counter_buf = self._verify_token_counter_i64
         if token_ids_buf is None or token_counter_buf is None:
@@ -10585,12 +10630,13 @@ class Qwen35GGUFResidentSession:
             else int(_pre_staged_token_ids_ptr)
         )
         add_verify_stage("target_block_setup", (time.perf_counter() - t_setup0) * 1000 if stage_timings is not None else 0.0)
+        scratch_row_start = 0 if _prebuilt_bulk_scratch is not None else start
         try:
             t_embedding0 = time.perf_counter() if stage_timings is not None else 0.0
             launch_gguf_embedding(
                 self.runner.weights.root("token_embedding"),
                 input_token_ids_ptr,
-                self._prefill_hidden_a.ptr + start * row_nbytes,
+                self._prefill_hidden_a.ptr + scratch_row_start * row_nbytes,
                 rows=rows,
                 hidden_size=self.runner.hidden_size,
                 vocab_size=self.runner.vocab_size,
@@ -10609,8 +10655,8 @@ class Qwen35GGUFResidentSession:
                     )
                 else:
                     bf16_to_f32(
-                        self._prefill_hidden_a.ptr + start * row_nbytes,
-                        self._verify_hidden_f32_a.ptr,
+                        self._prefill_hidden_a.ptr + scratch_row_start * row_nbytes,
+                        verify_hidden_f32_a.ptr,
                         rows * self.runner.hidden_size,
                         stream=stream,
                         library=self.runner._cast_library(),
@@ -10624,8 +10670,8 @@ class Qwen35GGUFResidentSession:
             )
             src = self._prefill_hidden_a
             dst = self._prefill_hidden_b
-            src_f32 = self._verify_hidden_f32_a if use_f32_residual else None
-            dst_f32 = self._verify_hidden_f32_b if use_f32_residual else None
+            src_f32 = verify_hidden_f32_a if use_f32_residual else None
+            dst_f32 = verify_hidden_f32_b if use_f32_residual else None
             block_wmma_prefill = gguf_wmma_prefill_enabled(
                 self.use_wmma_prefill if use_wmma_prefill is None else use_wmma_prefill
             )
@@ -10643,15 +10689,19 @@ class Qwen35GGUFResidentSession:
                     ):
                         expert_sidecar = self._load_expert_sidecar_device_layer(layer_id, runtime=runtime)
                     try:
-                        bulk_scratch = self._bulk_prefill_scratch.for_chunk(
-                            start,
-                            rows,
-                            total_tokens=end,
-                            runtime=runtime,
-                            stream=stream,
+                        bulk_scratch = (
+                            _prebuilt_bulk_scratch
+                            if _prebuilt_bulk_scratch is not None
+                            else self._bulk_prefill_scratch.for_chunk(
+                                start,
+                                rows,
+                                total_tokens=end,
+                                runtime=runtime,
+                                stream=stream,
+                            )
                         )
-                        src_chunk_ptr = src.ptr + start * row_nbytes
-                        dst_chunk_ptr = dst.ptr + start * row_nbytes
+                        src_chunk_ptr = src.ptr + scratch_row_start * row_nbytes
+                        dst_chunk_ptr = dst.ptr + scratch_row_start * row_nbytes
                         src_f32_chunk_ptr = None if src_f32 is None else int(src_f32.ptr)
                         dst_f32_chunk_ptr = None if dst_f32 is None else int(dst_f32.ptr)
                         if bulk_attention_mode == "native":
@@ -10776,12 +10826,16 @@ class Qwen35GGUFResidentSession:
                                 runtime=runtime,
                             )
                 t_output0 = time.perf_counter() if stage_timings is not None else 0.0
-                final_scratch = self._bulk_prefill_scratch.for_chunk(
-                    start,
-                    rows,
-                    total_tokens=end,
-                    runtime=runtime,
-                    stream=stream,
+                final_scratch = (
+                    _prebuilt_bulk_scratch
+                    if _prebuilt_bulk_scratch is not None
+                    else self._bulk_prefill_scratch.for_chunk(
+                        start,
+                        rows,
+                        total_tokens=end,
+                        runtime=runtime,
+                        stream=stream,
+                    )
                 )
                 output_norm_weight_ptr = self.runner.weights.root("output_norm").allocation().tensor.ptr
                 if capture_pre_output_norm_hidden:
@@ -10793,7 +10847,7 @@ class Qwen35GGUFResidentSession:
                         ).reshape(rows, self.runner.hidden_size)
                     else:
                         pre_output_norm_hidden_host = _copy_bf16_rows_to_host_f32(
-                            src.ptr + start * row_nbytes,
+                            src.ptr + scratch_row_start * row_nbytes,
                             rows,
                             self.runner.hidden_size,
                             runtime=runtime,
@@ -10821,7 +10875,7 @@ class Qwen35GGUFResidentSession:
                     )
                 else:
                     gguf_rmsnorm_bf16_f32_weight(
-                        src.ptr + start * row_nbytes,
+                        src.ptr + scratch_row_start * row_nbytes,
                         output_norm_weight_ptr,
                         final_scratch.norm.ptr,
                         rows=rows,
@@ -10831,7 +10885,7 @@ class Qwen35GGUFResidentSession:
                         runtime=runtime,
                     )
                     gguf_rmsnorm_bf16_f32_weight_out_f32(
-                        src.ptr + start * row_nbytes,
+                        src.ptr + scratch_row_start * row_nbytes,
                         output_norm_weight_ptr,
                         hidden_seed_buf.ptr,
                         rows=rows,
@@ -10963,14 +11017,24 @@ class Qwen35GGUFResidentSession:
         finally:
             pass
         if _enqueue_only:
-            set_decode_position_i64(
-                self.scratch.position_buf.ptr,
-                self.scratch.context_buf.ptr,
-                end,
-                stream=stream,
-                library=self._runtime_state_library,
-                runtime=runtime,
-            )
+            if _dynamic_cursor_advance:
+                for _ in range(rows):
+                    advance_decode_position_i64(
+                        self.scratch.position_buf.ptr,
+                        self.scratch.context_buf.ptr,
+                        stream=stream,
+                        library=self._runtime_state_library,
+                        runtime=runtime,
+                    )
+            else:
+                set_decode_position_i64(
+                    self.scratch.position_buf.ptr,
+                    self.scratch.context_buf.ptr,
+                    end,
+                    stream=stream,
+                    library=self._runtime_state_library,
+                    runtime=runtime,
+                )
             return None
         t_cursor0 = time.perf_counter() if stage_timings is not None else 0.0
         self._verify_hidden_seed_rows_populated = rows

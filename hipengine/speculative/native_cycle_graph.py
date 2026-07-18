@@ -1,7 +1,7 @@
-"""Fixed-B2 target graph submission through NativeSpecCycle ABI v1.
+"""Reusable small-chain target graph submission through NativeSpecCycle ABI v1.
 
-This N1 launcher is intentionally narrow: one chain request, two candidates,
-three active target rows, int64 metadata, FP32 hidden rows, and BF16 KV.  The
+This launcher is intentionally narrow: one chain request, one or two candidates,
+two or three active target rows, int64 metadata, FP32 hidden rows, and BF16 KV.  The
 provider owns a state-generation-bound graph executable and its allocations.
 The launcher owns nothing; it performs one native call that submits the graph
 and synchronizes the control block's session-owned stream.
@@ -119,7 +119,7 @@ class NativeSpecTargetGraphLauncher:
             if not isinstance(bound_control, NativeSpecCycleControl):
                 raise TypeError("bound_control must be NativeSpecCycleControl")
             bound_control.validate()
-            _validate_fixed_b2_target(bound_control)
+            _validate_small_chain_target(bound_control)
         self._bound_signature = (
             None if bound_control is None else _graph_binding_signature(bound_control)
         )
@@ -173,7 +173,7 @@ class NativeSpecTargetGraphLauncher:
         if not isinstance(control, NativeSpecCycleControl):
             raise TypeError("control must be NativeSpecCycleControl")
         control.validate()
-        _validate_fixed_b2_target(control)
+        _validate_small_chain_target(control)
         if (
             self._bound_signature is not None
             and _graph_binding_signature(control) != self._bound_signature
@@ -240,31 +240,32 @@ def create_native_spec_target_graph_launcher(
     )
 
 
-def _validate_fixed_b2_target(control: NativeSpecCycleControl) -> None:
+def _validate_small_chain_target(control: NativeSpecCycleControl) -> None:
     shape = control.shape
     if control.stages != NativeSpecCycleStage.VERIFY:
-        raise ValueError("native target graph N1 supports VERIFY only")
+        raise ValueError("native target graph supports VERIFY only")
+    candidate_rows = int(shape.row_count) - 1
     if (
         shape.request_count != 1
-        or shape.row_count != 3
-        or shape.active_row_count != 3
-        or shape.candidate_count != 2
-        or shape.active_candidate_count != 2
-        or shape.candidate_budget != 2
+        or shape.row_count not in {2, 3}
+        or shape.active_row_count != shape.row_count
+        or shape.candidate_count != candidate_rows
+        or shape.active_candidate_count != candidate_rows
+        or shape.candidate_budget != candidate_rows
     ):
-        raise ValueError("native target graph N1 supports exactly one B2 chain bucket (1 request, 3 rows)")
+        raise ValueError("native target graph supports one B1/B2 chain bucket (1 request, 2-3 rows)")
     if shape.metadata_dtype is not NativeSpecCycleDType.INT64:
-        raise ValueError("native target graph N1 requires INT64 metadata")
+        raise ValueError("native target graph requires INT64 metadata")
     if shape.hidden_dtype is not NativeSpecCycleDType.FP32:
-        raise ValueError("native target graph N1 requires FP32 hidden rows")
+        raise ValueError("native target graph requires FP32 hidden rows")
     if shape.kv_dtype is not NativeSpecCycleDType.BF16:
-        raise ValueError("native target graph N1 requires BF16 KV")
+        raise ValueError("native target graph requires BF16 KV")
     if control.stream == 0:
-        raise ValueError("native target graph N1 requires a session-owned stream")
+        raise ValueError("native target graph requires a session-owned stream")
     if control.deadline_ns != 0:
-        raise ValueError("native target graph N1 does not yet support a deadline")
+        raise ValueError("native target graph does not yet support a deadline")
     if control.pointers.outputs.cancel_flag != 0:
-        raise ValueError("native target graph N1 does not yet support cancellation")
+        raise ValueError("native target graph does not yet support cancellation")
 
 
 def _graph_binding_signature(control: NativeSpecCycleControl) -> tuple[object, ...]:
