@@ -165280,3 +165280,41 @@ python3 -m py_compile + git diff --check: passed
 This is addressability/correctness scaffolding only, with no performance claim.
 The next boundary is cloning the exact hybrid linear-attention state at a
 block-aligned cached prefix before the resident loop skips that prefill prefix.
+
+## 2026-07-19 — Clone exact-current GGUF hybrid prefix state
+
+Added the resident-session D2D clone needed before a shared full-attention KV
+prefix can skip model work on Qwen3.6. The contract copies every Conv and GDN
+recurrent buffer, restores the destination decode cursor on device and host,
+and clears stale hidden/packed diagnostics. It fails closed unless source and
+destination use the same runner/runtime/KV layout, the destination is reset and
+graph-free, the source packed state is flushed, and the destination allocation
+shares exactly the source's leading pages in the same backing.
+
+The first supported boundary is intentionally narrow: it must be the source's
+**current**, positive, 256-token-aligned state. Historical prefixes remain
+unsupported because the current session has already advanced its hybrid linear
+state; those require separately retained per-boundary snapshots. This avoids
+reporting a KV hit while silently combining old full-attention pages with newer
+Conv/GDN state.
+
+RED:
+
+```text
+uv run pytest -q tests/test_gguf_device_kv_binding.py -k prefix_state_clone
+1 failed: Qwen35GGUFResidentSession had no clone_prefix_state_from contract
+```
+
+GREEN:
+
+```text
+30 passed: tests/test_gguf_device_kv_binding.py +
+           tests/test_qwen35_gguf_linear_state_commit.py +
+           tests/test_kvcache_policy.py
+python3 -m py_compile + git diff --check: passed
+```
+
+No model or performance claim is made yet. The resident model runner must now
+index exact-current boundaries, perform atomic shared admission + state clone,
+skip only the matched prefix, and preserve source/destination lifecycle before
+the mandatory real-model teacher-forced and TTFT/memory gates.
