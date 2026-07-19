@@ -16660,6 +16660,30 @@ def test_resident_stream_rechecks_completion_after_empty_racing_poll(monkeypatch
     assert adapter._loop.completed == {}
 
 
+def test_submission_tick_budget_ignores_peer_only_engine_events() -> None:
+    from hipengine.generation.engine_loop import (
+        EngineLoopEvent,
+        _events_advance_submission_tick,
+    )
+
+    submission_ids = (2,)
+    assert not _events_advance_submission_tick(
+        (EngineLoopEvent(kind="work", request_ids=(3, 4), work_kind=WorkKind.PREFILL),),
+        submission_ids,
+    )
+    assert _events_advance_submission_tick(
+        (
+            EngineLoopEvent(kind="admitted", request_id=2, request_ids=(2,)),
+            EngineLoopEvent(kind="work", request_ids=(3, 4), work_kind=WorkKind.PREFILL),
+        ),
+        submission_ids,
+    )
+    assert _events_advance_submission_tick(
+        (EngineLoopEvent(kind="work", request_ids=(2, 4), work_kind=WorkKind.DECODE),),
+        submission_ids,
+    )
+
+
 def test_submit_poll_text_generator_routes_concurrent_streams_and_reclaims_closed_row() -> None:
     class ConcurrentRunner:
         capacity = 2
@@ -16781,6 +16805,25 @@ def test_submit_poll_text_generator_routes_concurrent_streams_and_reclaims_close
     assert adapter._loop.pending_count == 0
     assert adapter._loop.active_count == 0
     assert adapter._loop.completed == {}
+
+    burst_adapter = SubmitPollTextGenerator(
+        ConcurrentInner(),
+        capacity=2,
+        prefill_chunk_size=2,
+    )
+    burst_slow = burst_adapter.stream_detailed(replace(first_request, max_tokens=48))
+    burst_neighbor = burst_adapter.stream_detailed(replace(second_request, max_tokens=48))
+    assert next(burst_slow).text == "request0:1"
+    assert [chunk.text for chunk in burst_neighbor] == [
+        f"request1:{index}" for index in range(1, 49)
+    ]
+    assert [chunk.text for chunk in burst_slow] == [
+        f"request0:{index}" for index in range(2, 49)
+    ]
+    assert burst_adapter._runner.reclaims == [(0, "length"), (1, "length")]
+    assert burst_adapter._loop.pending_count == 0
+    assert burst_adapter._loop.active_count == 0
+    assert burst_adapter._loop.completed == {}
 
     overflow_adapter = SubmitPollTextGenerator(
         ConcurrentInner(),
@@ -16970,6 +17013,7 @@ def test_engine_loop_cli_env_defaults_match_docs() -> None:
     assert config.kv_pool_chunk_pages == 128
     assert config.kv_pool_idle_grace_seconds == 30.0
     assert config.max_pending_requests is None
+    assert config.prefix_cache == "off"
 
     docs = Path("docs/ENVS.md").read_text()
     for text in [
@@ -16982,6 +17026,7 @@ def test_engine_loop_cli_env_defaults_match_docs() -> None:
         "HIPENGINE_KV_POOL_CHUNK_PAGES",
         "HIPENGINE_KV_POOL_IDLE_GRACE_SECONDS",
         "HIPENGINE_MAX_PENDING_REQUESTS",
+        "HIPENGINE_PREFIX_CACHE",
         "protect_decode",
         "128",
         "256",
@@ -17001,6 +17046,7 @@ def test_engine_loop_cli_env_overrides() -> None:
         "HIPENGINE_KV_POOL_CHUNK_PAGES": "4",
         "HIPENGINE_KV_POOL_IDLE_GRACE_SECONDS": "1.5",
         "HIPENGINE_MAX_PENDING_REQUESTS": "6",
+        "HIPENGINE_PREFIX_CACHE": "radix",
     }
     env_config = engine_loop_config_from_env(env)
     assert env_config == EngineLoopConfig(
@@ -17013,6 +17059,7 @@ def test_engine_loop_cli_env_overrides() -> None:
         kv_pool_chunk_pages=4,
         kv_pool_idle_grace_seconds=1.5,
         max_pending_requests=6,
+        prefix_cache="radix",
     )
 
     parser = argparse.ArgumentParser()
@@ -17038,6 +17085,8 @@ def test_engine_loop_cli_env_overrides() -> None:
                 "2.5",
                 "--max-pending-requests",
                 "9",
+                "--prefix-cache",
+                "off",
             ]
         )
     )
@@ -17050,6 +17099,7 @@ def test_engine_loop_cli_env_overrides() -> None:
     assert cli_config.kv_pool_chunk_pages == 8
     assert cli_config.kv_pool_idle_grace_seconds == 2.5
     assert cli_config.max_pending_requests == 9
+    assert cli_config.prefix_cache == "off"
 
     with pytest.raises(ValueError, match="max_active_requests"):
         EngineLoopConfig(max_active_requests=0)

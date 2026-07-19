@@ -521,15 +521,19 @@ Current blockers that keep project-wide c>N incomplete:
   gfx1100 owner c4/c8, longer contexts, sampled native groups, graph replay, and
   non-BF16 KV remain open. GGUF now has
   retained direct native c2/c4/c8 correctness, family profiling, repeated
-  scaling, live membership, and arbitrary-C lowering on both gfx11 targets;
-  long-context c>N and additional quant formats remain independent gates.
+  scaling, live membership, and arbitrary-C lowering on both gfx11 targets.
+  gfx1151 additionally retains exact BF16-KV real-Uvicorn c2 through 64K,
+  mixed 1K/4K/32K membership, bounded grow/shrink, retryable pressure rejection,
+  and stale-pointer-safe graph regrow. gfx1100 long-context transfer and
+  non-BF16 continuous-owner allocation/binding remain independent gates.
 - Several decode kernels are row-parallel GEMV rather than true grouped/MMQ/WMMA
   batch kernels. They increase grid size but do not reliably reuse streamed
   weights across requests, which is visible in the weak gfx1151 c=1->c=8 scale
   versus llama.cpp Vulkan.
-- GQA split-K and full-attention paths still need row-count-specific profiler
-  evidence and per-sequence `KVLiveSpans` coverage before long-context c>N can be
-  promoted beyond diagnostic rows.
+- GQA split-K and full-attention now have primitive trace/parity plus exact
+  per-sequence `KVLiveSpans` server coverage for gfx1151 BF16-KV c2 through 64K.
+  Equivalent gfx1100 server transfer and non-BF16 payload/scale-backed dynamic
+  spans still need independent row-count-specific evidence.
 - Selected MoE decode has row-aware/grouped diagnostic coverage for c<=8, but
   retained performance still needs routed-lane profiling and c-aware thresholds
   for grouped GEMV versus compact/WMMA execution.
@@ -554,7 +558,13 @@ Current blockers that keep project-wide c>N incomplete:
   exact prior loop otherwise. The clean committed N3 gate matches all 240 IDs /
   96 cycle semantics at 118.592 tok/s / 1.2858x true AR versus clean N2's
   117.557 tok/s (+0.88%, aggregate-neutral); the faster N1 topline remains
-  unchanged. N3P additionally replays strict B1/B2 NextN proposal through one
+  unchanged. The independent gfx1151 transfer registers the same backend-neutral
+  B1/B2 target launcher under its peer backend key: N1 reaches **80.132 tok/s**
+  and public N3 reaches **80.099 tok/s**, versus a clean same-commit direct-commit
+  control at **70.020 tok/s (+14.39%)**. All 240 IDs / 97 cycle semantics match,
+  every train/heldout/category row improves, and the real-model hidden/Conv/GDN/
+  KV/cursor plus cached-profiler gates pass. N3P additionally replays strict
+  B1/B2 NextN proposal through one
   native graph launch and is profiler-proven to replace 542 `hipLaunchKernel`
   plus 80 synchronous `hipMemcpy` host calls over eight matched cycles, while
   remaining aggregate-neutral and diagnostic. N4 has started with one shared
@@ -567,9 +577,9 @@ Current blockers that keep project-wide c>N incomplete:
   full8192 packed target plus MTP-BF16 sidecar passes strict B1 exactness for all
   240 IDs in the 10-prompt category+heldout suite and clean B2 native-off/on
   equality; B2 resident Conv/GDN/KV and selected-state oracles also pass.
-  Complete PARO/DFlash proposal+commit ownership, independent gfx1151 admission,
-  draft-side batching, rows>=16 verifier tuning, streaming, and exact/default
-  MTP serving remain open.
+  Complete PARO/DFlash proposal+commit ownership, independent gfx1151 N4
+  admission, gfx1151 N3P proposal-graph admission, draft-side batching, rows>=16
+  verifier tuning, streaming, and exact/default MTP serving remain open.
 - Exact all-choice generated-token accounting and batch timing ownership are
   available for non-streaming responses. Benchmark coverage still needs
   aggregate tok/s, per-request tok/s, latency, memory, active occupancy,

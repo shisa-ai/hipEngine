@@ -21,6 +21,7 @@ from hipengine import SamplingParams
 from hipengine.generation import (
     GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS,
     FinishDetails,
+    GenerationAdmissionRejected,
     GenerationCancellationToken,
     GenerationCancelled,
     GenerationDeadlineExceeded,
@@ -379,6 +380,28 @@ class BackendDeadlineFakeLLM(FakeLLM):
         self.calls.append(((prompt,), sampling_params))
         assert sampling_params.deadline_at is not None
         raise GenerationDeadlineExceeded(deadline_at=sampling_params.deadline_at)
+        yield  # pragma: no cover - keeps this method a generator
+
+
+class AdmissionRejectedFakeLLM(FakeLLM):
+    def _reject(self, prompts, sampling_params: SamplingParams) -> None:
+        prompts = tuple(prompts)
+        self.calls.append((prompts, sampling_params))
+        raise GenerationAdmissionRejected(
+            "device KV pool high-water rejection",
+            resource="device_kv_pool",
+            requested_units=17,
+            current_units=129,
+            capacity_units=129,
+        )
+
+    def generate_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
+        self._reject(prompts, sampling_params)
+        raise AssertionError("unreachable")
+
+    def stream(self, prompt: str, sampling_params: SamplingParams):
+        self.stream_calls.append((str(prompt), sampling_params))
+        self._reject((prompt,), sampling_params)
         yield  # pragma: no cover - keeps this method a generator
 
 
@@ -2531,6 +2554,7 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
         backend: str,
         quant: str,
         max_active_requests: int | None = None,
+        prefix_cache: str | None = None,
     ) -> FakeLLM:
         captured.update(
             {
@@ -2538,6 +2562,7 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
                 "backend": backend,
                 "quant": quant,
                 "max_active_requests": max_active_requests,
+                "prefix_cache": prefix_cache,
             }
         )
         return fake
@@ -2549,6 +2574,7 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
             served_model_name="fake-model",
             eager_load=False,
             max_active_requests=8,
+            prefix_cache="radix",
         )
     )
     with TestClient(app) as client:
@@ -2563,6 +2589,7 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
         "backend": "auto",
         "quant": "auto",
         "max_active_requests": 8,
+        "prefix_cache": "radix",
     }
 
 
@@ -5206,28 +5233,43 @@ def test_completions_exact_token_prompt_preserves_ids_and_identity() -> None:
     capabilities = client.get("/v1/hipengine/capabilities").json()
     exact = capabilities["features"]["exact_token_prompts"]
     assert exact["completions"] is True
-    assert exact["streaming"] is False
+    assert exact["streaming"] is True
     assert exact["response_identity"] == "hipengine.prompt_token_accounting"
 
 
-def test_completions_exact_token_prompt_rejects_stream_and_mixed_rows() -> None:
+def test_completions_exact_token_prompt_streams_without_retokenizing_and_rejects_mixed_rows() -> None:
+    fake = FakeLLM(stream_chunks=["alpha", " beta"])
     app = create_app(
         ServerConfig(model="fake-path", served_model_name="fake-model"),
-        llm=FakeLLM(),
+        llm=fake,
     )
     client = TestClient(app)
 
     streamed = client.post(
         "/v1/completions",
-        json={"model": "fake-model", "prompt": [10, 11], "stream": True},
+        json={
+            "model": "fake-model",
+            "prompt": [10, 11],
+            "max_tokens": 2,
+            "stream": True,
+            "stream_options": {"include_hipengine": True, "include_usage": True},
+        },
     )
     mixed = client.post(
         "/v1/completions",
         json={"model": "fake-model", "prompt": [[10, 11], "text"]},
     )
 
-    assert streamed.status_code == 400
-    assert streamed.json()["error"]["param"] == "stream"
+    assert streamed.status_code == 200
+    payloads = _sse_payloads(streamed.text)
+    assert "".join(
+        payload["choices"][0]["text"]
+        for payload in payloads
+        if payload.get("choices") and payload["choices"][0]["finish_reason"] is None
+    ) == "alpha beta"
+    assert fake.calls[0][0] == ((10, 11),)
+    usage = next(payload["usage"] for payload in payloads if payload.get("usage"))
+    assert usage == {"prompt_tokens": 2, "completion_tokens": 2, "total_tokens": 4}
     assert mixed.status_code in {400, 422}
 
 
@@ -9301,6 +9343,38 @@ def test_backend_deadline_exception_maps_to_completion_408() -> None:
     assert error["finish_details"] == {"reason": "deadline_exceeded", "deadline_exceeded": True}
 
 
+def test_kv_admission_rejection_maps_to_retryable_completion_429() -> None:
+    fake = AdmissionRejectedFakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            queue_retry_after_seconds=3,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "pressure", "max_tokens": 4},
+    )
+
+    assert response.status_code == 429
+    assert response.headers["retry-after"] == "3"
+    error = response.json()["error"]
+    assert error["type"] == "rate_limit_error"
+    assert error["code"] == "engine_busy"
+    assert error["hipengine"]["retryable"] is True
+    assert error["hipengine"]["routing"]["overload_source"] == "kv_pool_capacity"
+    assert error["hipengine"]["routing"]["admission"] == {
+        "resource": "device_kv_pool",
+        "requested_units": 17,
+        "current_units": 129,
+        "capacity_units": 129,
+    }
+
+
 def test_backend_cancelled_exception_maps_to_completion_499() -> None:
     fake = BackendCancelledFakeLLM()
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
@@ -9439,6 +9513,27 @@ def test_streaming_chat_backend_deadline_exception_emits_error_and_done() -> Non
     assert payload["error"]["type"] == "timeout_error"
     assert payload["error"]["code"] == "deadline_exceeded"
     assert payload["error"]["param"] == "timeout_ms"
+
+
+def test_streaming_kv_admission_rejection_emits_retryable_429_and_done() -> None:
+    fake = AdmissionRejectedFakeLLM()
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "pressure", "max_tokens": 4, "stream": True},
+    )
+
+    assert response.status_code == 200
+    assert "data: [DONE]" in response.text
+    payload = next(item for item in _sse_payloads(response.text) if item.get("error"))
+    assert payload["choices"][0]["finish_reason"] == "error"
+    assert payload["error"]["type"] == "rate_limit_error"
+    assert payload["error"]["code"] == "engine_busy"
+    assert payload["error"]["hipengine"]["status_code"] == 429
+    assert payload["error"]["hipengine"]["retryable"] is True
+    assert payload["error"]["hipengine"]["routing"]["overload_source"] == "kv_pool_capacity"
 
 
 def test_streaming_completion_backend_cancelled_exception_emits_error_and_done() -> None:
@@ -12363,6 +12458,43 @@ def test_chat_completion_response_format_length_rejects_invalid_json_continuatio
     assert choice["finish_details"] == _stateless_finish_details(
         "schema_violation",
         length_limit=9,
+        phase="structured",
+        continuation_eligible=False,
+    )
+    assert "continuation_id" not in choice
+
+
+def test_chat_completion_response_format_json_schema_length_rejects_non_object_prefix() -> None:
+    fake = FakeLLM(
+        detailed_outputs=[
+            GenerationOutput(
+                text='<|im_end|> {"ok":true,"path":"README.md"}',
+                finish_details=FinishDetails(reason="length", length_limit=16),
+            )
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "return json"}],
+            "response_format": {"type": "json_schema", "json_schema": _response_json_schema()},
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["message"] == {
+        "role": "assistant",
+        "content": '<|im_end|> {"ok":true,"path":"README.md"}',
+    }
+    assert choice["finish_reason"] == "length"
+    assert choice["finish_details"] == _stateless_finish_details(
+        "schema_violation",
+        length_limit=16,
         phase="structured",
         continuation_eligible=False,
     )
@@ -18073,6 +18205,9 @@ def test_metrics_endpoint_exports_resident_loop_d5_observability() -> None:
                 "active_request_ids": [10, 12],
                 "active_requests": 2,
                 "available_sessions": 2,
+                "packed_workspace_current_bytes": 0,
+                "packed_workspace_release_events": 4,
+                "packed_workspace_released_bytes": 3330000000,
             },
             "kv_pool": {
                 "current_bytes": 15728640,
@@ -18146,6 +18281,9 @@ def test_metrics_endpoint_exports_resident_loop_d5_observability() -> None:
     assert _metric_value(body, "hipengine_resident_work_prefill_total") == 3
     assert _metric_value(body, "hipengine_resident_work_decode_total") == 9
     assert _metric_value(body, "hipengine_resident_work_reclaim_total") == 5
+    assert _metric_value(body, "hipengine_resident_packed_workspace_current_bytes") == 0
+    assert _metric_value(body, "hipengine_resident_packed_workspace_release_events_total") == 4
+    assert _metric_value(body, "hipengine_resident_packed_workspace_released_bytes_total") == 3330000000
     assert (
         'hipengine_resident_bucket_info{active_mask="1010",last_work_kind="decode",'
         'policy="protect_ttft"} 1'

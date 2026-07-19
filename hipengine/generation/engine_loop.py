@@ -20,6 +20,7 @@ from typing import Any, Callable, Iterable, Protocol, Sequence
 from hipengine.dispatch import RequestState, SlotMove, WorkItem, WorkKind
 from hipengine.generation.batch_scheduler import CompletedRequest, GeneratedToken, ResidentBatchScheduler
 from hipengine.generation.deadline import GenerationCancelled, generation_deadline_expired
+from hipengine.kvcache import PREFIX_CACHE_CHOICES, resolve_prefix_cache_mode
 from hipengine.generation.registry import (
     FinishDetails,
     GenerationOutput,
@@ -34,6 +35,9 @@ DEFAULT_KV_POOL_LOW_WATER_PAGES = 128
 DEFAULT_KV_POOL_CHUNK_PAGES = 128
 DEFAULT_KV_POOL_IDLE_GRACE_SECONDS = 30.0
 DEFAULT_MAX_PREFILL_CHUNK_TOKENS = 256
+# Internal cross-thread routing absorbs transient scheduler bursts; the HTTP
+# client-facing queue remains independently bounded by ServerConfig (default 16).
+DEFAULT_RESIDENT_STREAM_QUEUE_MAX_CHUNKS = 64
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +53,7 @@ class EngineLoopConfig:
     kv_pool_chunk_pages: int = DEFAULT_KV_POOL_CHUNK_PAGES
     kv_pool_idle_grace_seconds: float = DEFAULT_KV_POOL_IDLE_GRACE_SECONDS
     max_pending_requests: int | None = None
+    prefix_cache: str = "off"
 
     def __post_init__(self) -> None:
         if self.prefill_decode_policy not in PREFILL_DECODE_POLICIES:
@@ -71,6 +76,45 @@ class EngineLoopConfig:
             raise ValueError("kv_pool_idle_grace_seconds must be non-negative")
         if self.max_pending_requests is not None and self.max_pending_requests <= 0:
             raise ValueError("max_pending_requests must be positive when set")
+        object.__setattr__(self, "prefix_cache", resolve_prefix_cache_mode(self.prefix_cache))
+
+
+class GenerationAdmissionRejected(MemoryError):
+    """Retryable failure to reserve bounded generation resources at admission."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        resource: str,
+        requested_units: int | None = None,
+        current_units: int | None = None,
+        capacity_units: int | None = None,
+    ) -> None:
+        if not str(message):
+            raise ValueError("admission rejection message must not be empty")
+        if not str(resource):
+            raise ValueError("admission rejection resource must not be empty")
+        for label, value in (
+            ("requested_units", requested_units),
+            ("current_units", current_units),
+            ("capacity_units", capacity_units),
+        ):
+            if value is not None and int(value) < 0:
+                raise ValueError(f"{label} must be non-negative when set")
+        self.resource = str(resource)
+        self.requested_units = None if requested_units is None else int(requested_units)
+        self.current_units = None if current_units is None else int(current_units)
+        self.capacity_units = None if capacity_units is None else int(capacity_units)
+        super().__init__(str(message))
+
+    def to_json_dict(self) -> dict[str, Any]:
+        return {
+            "resource": self.resource,
+            "requested_units": self.requested_units,
+            "current_units": self.current_units,
+            "capacity_units": self.capacity_units,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,7 +194,7 @@ class SubmitPollTextGenerator:
         prefill_chunk_size: int = 1024,
         context_bucket_size: int = 256,
         config: EngineLoopConfig | None = None,
-        stream_queue_max_chunks: int = 16,
+        stream_queue_max_chunks: int = DEFAULT_RESIDENT_STREAM_QUEUE_MAX_CHUNKS,
     ) -> None:
         if capacity is not None and capacity <= 0:
             raise ValueError("capacity must be positive")
@@ -262,7 +306,8 @@ class SubmitPollTextGenerator:
         try:
             while not self.generation_complete(submission):
                 events = self.poll(max_ticks=1)
-                ticks += 1
+                if _events_advance_submission_tick(events, submission.request_ids):
+                    ticks += 1
                 if not events:
                     if self.generation_complete(submission):
                         continue
@@ -620,7 +665,8 @@ class SubmitPollTextGenerator:
                 if complete:
                     break
                 events = self.poll(max_ticks=1)
-                ticks += 1
+                if _events_advance_submission_tick(events, submission.request_ids):
+                    ticks += 1
                 if not events:
                     # Another stream may complete this subscription after the
                     # pre-poll check but before our shared-loop poll acquires
@@ -868,6 +914,25 @@ def _surrogate_prompt_tokens(prompt: Any) -> tuple[int, ...]:
     return (len(prompt),)
 
 
+def _events_advance_submission_tick(
+    events: Sequence[EngineLoopEvent],
+    request_ids: Sequence[int],
+) -> bool:
+    """Return whether one shared-loop poll advanced this submission's work.
+
+    Concurrent streams may drive scheduler ticks that contain only a longer or
+    otherwise preferred peer. Those peer-only ticks cannot consume the local
+    finite-work budget derived from this submission's own prompt and decode
+    lengths.
+    """
+
+    owned = frozenset(int(request_id) for request_id in request_ids)
+    return bool(owned) and any(
+        not owned.isdisjoint(int(request_id) for request_id in event.request_ids)
+        for event in events
+    )
+
+
 def _submit_poll_max_ticks(
     prompt_rows: Sequence[Sequence[int]],
     prefill_chunk_size: int,
@@ -960,6 +1025,12 @@ def add_engine_loop_config_args(
         default=_env_optional_positive_int(env, "HIPENGINE_MAX_PENDING_REQUESTS"),
         help="Optional pending request queue cap (env HIPENGINE_MAX_PENDING_REQUESTS; default: unset)",
     )
+    parser.add_argument(
+        "--prefix-cache",
+        choices=PREFIX_CACHE_CHOICES,
+        default=resolve_prefix_cache_mode(env.get("HIPENGINE_PREFIX_CACHE")),
+        help="Prefix-cache mode (env HIPENGINE_PREFIX_CACHE; default: off)",
+    )
 
 
 def engine_loop_config_from_args(args: object) -> EngineLoopConfig:
@@ -987,6 +1058,7 @@ def engine_loop_config_from_args(args: object) -> EngineLoopConfig:
             if getattr(args, "max_pending_requests") is None
             else int(getattr(args, "max_pending_requests"))
         ),
+        prefix_cache=resolve_prefix_cache_mode(getattr(args, "prefix_cache", "off")),
     )
 
 
@@ -1284,6 +1356,7 @@ __all__ = [
     "DEFAULT_KV_POOL_LOW_WATER_PAGES",
     "EngineLoopConfig",
     "EngineLoopEvent",
+    "GenerationAdmissionRejected",
     "GenerationSubmission",
     "EngineLoopRunner",
     "PREFILL_DECODE_POLICIES",

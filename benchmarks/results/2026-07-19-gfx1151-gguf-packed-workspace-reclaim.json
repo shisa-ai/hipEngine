@@ -1,0 +1,493 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_packed_workspace_lifecycle_repair",
+  "created_at": "2026-07-19T13:29:42.005967+00:00",
+  "status": "accepted_reduced_high_concurrency_memory",
+  "passed": true,
+  "performance_claim": true,
+  "performance_claim_scope": "hipEngine exact own-engine p512/d128 real-Uvicorn C1/C2/C4/C8/C13 packed-workspace lifecycle and whole-card GTT; no new external-engine comparison",
+  "hipengine_artifact_provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-19T13:29:41.973868+00:00",
+    "repo_root": "/tmp/hipengine-packed-memory-0d276fdf-clean",
+    "hipengine_commit": "0d276fdfa5681f8255e11cad1bd9de9a514a8b71",
+    "git_branch": null,
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        11331169424,
+        22662338848
+      ],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "command": [
+      "/home/lhl/hipEngine-main/.venv/bin/python",
+      "scripts/server_f1_concurrency_bench.py",
+      "--engine",
+      "hipengine",
+      "--model",
+      "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1151",
+      "--quant",
+      "gguf_q4_k_m",
+      "--hipengine-python",
+      "/home/lhl/hipEngine-main/.venv/bin/python",
+      "--compiler-version-file",
+      "/tmp/gfx1151-concurrency-ddab579f/hipcc-version.txt",
+      "--concurrencies",
+      "1,2,4,8,13",
+      "--live-concurrency",
+      "13",
+      "--prompt-length",
+      "512",
+      "--decode-tokens",
+      "128",
+      "--ctx-per-seq",
+      "1024",
+      "--warmup-runs",
+      "1",
+      "--measured-runs",
+      "3",
+      "--streaming-primary",
+      "--stream-warmup-runs",
+      "0",
+      "--stream-measured-runs",
+      "3",
+      "--batch-window-ms",
+      "5",
+      "--hipengine-prefill-decode-policy",
+      "fair",
+      "--live-join-after-tokens",
+      "8",
+      "--memory-domain",
+      "gtt",
+      "--drm-card-index",
+      "0",
+      "--memory-poll-ms",
+      "10",
+      "--work-dir",
+      "/tmp/gfx1151-packed-memory-0d276fdf-p128/work",
+      "--json",
+      "/tmp/gfx1151-packed-memory-0d276fdf-p128/result.json"
+    ],
+    "environment": {
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_BACKEND": "hip_gfx1151",
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIPENGINE_PREFILL_DECODE_POLICY": "fair",
+      "HIPENGINE_MAX_PREFILL_CHUNK_TOKENS": "256",
+      "HIPENGINE_RESIDENT_EVENT_QUEUE_CAPACITY": "64",
+      "AMD_IOMMU": "off",
+      "TUNED_PROFILE": "accelerator-performance"
+    },
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "build_profile": "gfx1151_gguf_packed_workspace_reclaim_fair256",
+    "timing_protocol": "clean detached source; fresh real localhost Uvicorn server per C; one warmup, three blocking, and three SSE p512/d128 measurements; delayed C13 admission; 10 ms whole-card GTT sampling",
+    "warmups": 1,
+    "repetitions": 3,
+    "profiler": {
+      "used": false,
+      "reason": "client-observed localhost serving and whole-card GTT lifecycle gate"
+    }
+  },
+  "source_artifacts": {
+    "baseline_raw": {
+      "path": "/tmp/gfx1151-external-f1-standard-8405c467-fair256/hipengine/result.json",
+      "size_bytes": 1911329,
+      "sha256": "adc8e3d33e271d38ece8b22c27f0360fc893735bfe322b163e882dc758f20457",
+      "commit": "8405c46723efb136df279e03500bbe2425e40384",
+      "status": "accepted_backend_packet",
+      "passed": true
+    },
+    "reclaimed_raw": {
+      "path": "/tmp/gfx1151-packed-memory-0d276fdf-p128/result.json",
+      "size_bytes": 1912048,
+      "sha256": "8d87b0c05caf59f4f005a2356b7b8b59f8d12cc211afd202235e2993361b628b",
+      "commit": "0d276fdfa5681f8255e11cad1bd9de9a514a8b71",
+      "status": "accepted_backend_packet",
+      "passed": true
+    },
+    "prior_matched_comparison": {
+      "path": "/home/lhl/hipEngine-main/benchmarks/results/2026-07-19-gfx1151-gguf-matched-concurrency-comparison.json",
+      "size_bytes": 61321,
+      "sha256": "acea6c64241453c8af267d47d9a10b8344e2d288caf6a9afe6225305bac6df0c"
+    }
+  },
+  "hardware": {
+    "host": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+    "device": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "rocm": "HIP version: 7.15.0-0000000",
+    "tuned_profile": "accelerator-performance",
+    "amd_iommu": "off",
+    "gpu_max_hw_queues": 1,
+    "memory_domain": "whole-card GTT"
+  },
+  "protocol": {
+    "primary_metric": "exact SLO-qualified returned completion tokens / barrier-to-last-SSE-completion wall",
+    "primary_metric_scope": "prefill + decode + server scheduling + localhost HTTP/SSE",
+    "blocking_control_metric": "C*returned_completion_tokens / barrier-to-last-response HTTP wall",
+    "native_decode_metric_scope": "engine-specific diagnostic only; not cross-engine comparable",
+    "model": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_storage": "bf16",
+    "prompt_length": 512,
+    "decode_tokens": 128,
+    "prompt_row_construction": "512-token rows filled with 9707; final token cycles 9707..9710",
+    "sampling": "temperature=0, top_k=1, top_p=1, ignore_eos=true, MTP disabled",
+    "concurrencies": [
+      1,
+      2,
+      4,
+      8,
+      13
+    ],
+    "warmup_runs_per_width": 1,
+    "measured_runs_per_width": 3,
+    "streaming_primary": true,
+    "stream_warmup_runs_per_width": 0,
+    "stream_measured_runs_per_width": 3,
+    "stream_client_slo_seconds": {
+      "ttft_p95": 10.0,
+      "itl_p99": 0.5,
+      "end_to_end_p95": 30.0
+    },
+    "fresh_server_per_width": true,
+    "server_capacity_matches_logical_concurrency": true,
+    "context_tokens_per_sequence": 1024,
+    "hipengine_batch_window_ms": 5.0,
+    "hipengine_prefill_decode_policy": "fair",
+    "llamacpp_prompt_cache": false,
+    "exact_output_contract": "blocking rows equal independent same-engine c1 generated token IDs; llama.cpp SSE returns those IDs directly; hipEngine SSE reconstructs the blocking-oracle text with the exact completion count",
+    "live_admission_concurrency": 13
+  },
+  "attribution": {
+    "dynamic_bf16_kv_bytes_per_request": 20971520,
+    "tracked_bytes_per_reserved_session": 551220628,
+    "tracked_prefill_slab_bytes_per_reserved_session": 471778376,
+    "first_rotated_packed_owner_tracked_delta_bytes": 834980004,
+    "packed_state_component_bytes": 351272960,
+    "packed_scratch_component_bytes": 471778436,
+    "root_cause": "reset retained owner-only packed state/scratch after graph invalidation, so repeated waves accumulated slabs as ownership rotated through the fixed session pool"
+  },
+  "policy": {
+    "c1_c2": "retain warm packed workspace to preserve accepted low-occupancy path",
+    "c4_plus": "after packed-state scatter and graph invalidation, reclaim owner-only packed attention/verify state/scratch before session reuse",
+    "fail_closed": "dirty packed state or any live binding graph rejects release"
+  },
+  "rows": [
+    {
+      "concurrency": 1,
+      "blocking_tok_s": {
+        "baseline": 44.076805032495415,
+        "reclaimed": 44.1931582182361,
+        "delta_percent": 0.26397826624435794
+      },
+      "sse_tok_s": {
+        "baseline": 42.771758374301356,
+        "reclaimed": 42.42775113497707,
+        "delta_percent": -0.8042859410030134
+      },
+      "slo_passed_runs": {
+        "baseline": 3,
+        "reclaimed": 3,
+        "measured_runs": 3
+      },
+      "whole_card_gtt_peak_gib": {
+        "baseline": 22.406349182128906,
+        "reclaimed": 22.406349182128906,
+        "delta_gib": 0.0,
+        "delta_percent": 0.0
+      },
+      "workspace_lifecycle": {
+        "burst_release_events": 0,
+        "burst_released_bytes": 0,
+        "final_release_events": 0,
+        "final_released_bytes": 0,
+        "final_current_bytes": 207440968
+      },
+      "correctness": {
+        "warmup_exact_rows": 1,
+        "warmup_rows": 1,
+        "blocking_exact_rows": 3,
+        "blocking_rows": 3,
+        "sse_rows": 3,
+        "sse_passed": true,
+        "delayed_exact_rows": 0,
+        "delayed_rows": 0
+      },
+      "execution": {
+        "blocking_route_passed": true,
+        "streaming_route_passed": true,
+        "serial_decode_fallback": [
+          false
+        ],
+        "physical_group_rows": [
+          1
+        ]
+      }
+    },
+    {
+      "concurrency": 2,
+      "blocking_tok_s": {
+        "baseline": 60.61665200265116,
+        "reclaimed": 60.52486807207904,
+        "delta_percent": -0.15141702410107483
+      },
+      "sse_tok_s": {
+        "baseline": 56.20166024538145,
+        "reclaimed": 55.224207244161214,
+        "delta_percent": -1.7391888370425157
+      },
+      "slo_passed_runs": {
+        "baseline": 3,
+        "reclaimed": 2,
+        "measured_runs": 3
+      },
+      "whole_card_gtt_peak_gib": {
+        "baseline": 24.087989807128906,
+        "reclaimed": 24.087989807128906,
+        "delta_gib": 0.0,
+        "delta_percent": 0.0
+      },
+      "workspace_lifecycle": {
+        "burst_release_events": 0,
+        "burst_released_bytes": 0,
+        "final_release_events": 0,
+        "final_released_bytes": 0,
+        "final_current_bytes": 386232052
+      },
+      "correctness": {
+        "warmup_exact_rows": 2,
+        "warmup_rows": 2,
+        "blocking_exact_rows": 6,
+        "blocking_rows": 6,
+        "sse_rows": 6,
+        "sse_passed": true,
+        "delayed_exact_rows": 0,
+        "delayed_rows": 0
+      },
+      "execution": {
+        "blocking_route_passed": true,
+        "streaming_route_passed": true,
+        "serial_decode_fallback": [
+          false
+        ],
+        "physical_group_rows": [
+          2
+        ]
+      }
+    },
+    {
+      "concurrency": 4,
+      "blocking_tok_s": {
+        "baseline": 75.29835146272215,
+        "reclaimed": 75.33869353559439,
+        "delta_percent": 0.0535763029184011
+      },
+      "sse_tok_s": {
+        "baseline": 72.82981646752143,
+        "reclaimed": 72.10913982410447,
+        "delta_percent": -0.9895351634427563
+      },
+      "slo_passed_runs": {
+        "baseline": 0,
+        "reclaimed": 1,
+        "measured_runs": 3
+      },
+      "whole_card_gtt_peak_gib": {
+        "baseline": 27.601661682128906,
+        "reclaimed": 27.295021057128906,
+        "delta_gib": -0.306640625,
+        "delta_percent": -1.110949871538125
+      },
+      "workspace_lifecycle": {
+        "burst_release_events": 28,
+        "burst_released_bytes": 7678449828,
+        "final_release_events": 28,
+        "final_released_bytes": 7678449828,
+        "final_current_bytes": 0
+      },
+      "correctness": {
+        "warmup_exact_rows": 4,
+        "warmup_rows": 4,
+        "blocking_exact_rows": 12,
+        "blocking_rows": 12,
+        "sse_rows": 12,
+        "sse_passed": true,
+        "delayed_exact_rows": 0,
+        "delayed_rows": 0
+      },
+      "execution": {
+        "blocking_route_passed": true,
+        "streaming_route_passed": true,
+        "serial_decode_fallback": [
+          false
+        ],
+        "physical_group_rows": [
+          4
+        ]
+      }
+    },
+    {
+      "concurrency": 8,
+      "blocking_tok_s": {
+        "baseline": 75.70151135312733,
+        "reclaimed": 75.50805968495345,
+        "delta_percent": -0.25554531833780203
+      },
+      "sse_tok_s": {
+        "baseline": 82.03466107297572,
+        "reclaimed": 82.23998674196979,
+        "delta_percent": 0.25029136015009
+      },
+      "slo_passed_runs": {
+        "baseline": 0,
+        "reclaimed": 0,
+        "measured_runs": 3
+      },
+      "whole_card_gtt_peak_gib": {
+        "baseline": 35.125099182128906,
+        "reclaimed": 32.543067932128906,
+        "delta_gib": -2.58203125,
+        "delta_percent": -7.350957890856846
+      },
+      "workspace_lifecycle": {
+        "burst_release_events": 56,
+        "burst_released_bytes": 20567557764,
+        "final_release_events": 56,
+        "final_released_bytes": 20567557764,
+        "final_current_bytes": 0
+      },
+      "correctness": {
+        "warmup_exact_rows": 8,
+        "warmup_rows": 8,
+        "blocking_exact_rows": 24,
+        "blocking_rows": 24,
+        "sse_rows": 24,
+        "sse_passed": true,
+        "delayed_exact_rows": 0,
+        "delayed_rows": 0
+      },
+      "execution": {
+        "blocking_route_passed": true,
+        "streaming_route_passed": true,
+        "serial_decode_fallback": [
+          false
+        ],
+        "physical_group_rows": [
+          4
+        ]
+      }
+    },
+    {
+      "concurrency": 13,
+      "blocking_tok_s": {
+        "baseline": 71.73290481746703,
+        "reclaimed": 71.90366151971826,
+        "delta_percent": 0.23804515192258346
+      },
+      "sse_tok_s": {
+        "baseline": 72.4409208561333,
+        "reclaimed": 72.3468605929537,
+        "delta_percent": -0.12984410201852814
+      },
+      "slo_passed_runs": {
+        "baseline": 0,
+        "reclaimed": 0,
+        "measured_runs": 3
+      },
+      "whole_card_gtt_peak_gib": {
+        "baseline": 44.267677307128906,
+        "reclaimed": 39.755958557128906,
+        "delta_gib": -4.51171875,
+        "delta_percent": -10.191903041801176
+      },
+      "workspace_lifecycle": {
+        "burst_release_events": 91,
+        "burst_released_bytes": 36411785152,
+        "final_release_events": 104,
+        "final_released_bytes": 39909990332,
+        "final_current_bytes": 0
+      },
+      "correctness": {
+        "warmup_exact_rows": 13,
+        "warmup_rows": 13,
+        "blocking_exact_rows": 39,
+        "blocking_rows": 39,
+        "sse_rows": 39,
+        "sse_passed": true,
+        "delayed_exact_rows": 13,
+        "delayed_rows": 13
+      },
+      "execution": {
+        "blocking_route_passed": true,
+        "streaming_route_passed": true,
+        "serial_decode_fallback": [
+          false
+        ],
+        "physical_group_rows": [
+          1,
+          4
+        ]
+      }
+    }
+  ],
+  "summary": {
+    "c13_peak_gtt_gib": {
+      "baseline": 44.267677307128906,
+      "reclaimed": 39.755958557128906,
+      "delta_gib": -4.51171875,
+      "delta_percent": -10.191903041801176
+    },
+    "c1_to_c13_peak_growth_gib": {
+      "baseline": 21.861328125,
+      "reclaimed": 17.349609375,
+      "delta_gib": -4.51171875,
+      "delta_percent": -20.63789868667918
+    },
+    "blocking_exact_rows": 112,
+    "blocking_rows": 112,
+    "sse_exact_rows": 84,
+    "sse_rows": 84,
+    "delayed_c13_exact_rows": 13,
+    "delayed_c13_rows": 13,
+    "max_abs_blocking_delta_percent": 0.26397826624435794,
+    "max_abs_sse_delta_percent": 1.7391888370425157
+  },
+  "correctness_gate": {
+    "passed": true,
+    "blocking_exact": true,
+    "sse_exact": true,
+    "delayed_c13_exact": true,
+    "all_routes_passed": true,
+    "serial_decode_fallback_observed": false
+  },
+  "limitations": [
+    "Whole-card GTT includes runtime and driver residency; tracked release counters independently prove the intended allocation lifecycle.",
+    "The structurally unchanged C2 path records 2/3 strict whole-wave SSE SLO passes versus 3/3 in the baseline despite sub-2% median-rate movement; no causal SLO improvement is claimed.",
+    "No llama.cpp lane was rerun because this change is hipEngine allocation lifecycle only; the prior artifact remains the external comparison.",
+    "This gate covers BF16 KV only; non-BF16 continuous concurrency remains fail-closed."
+  ]
+}

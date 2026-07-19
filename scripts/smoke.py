@@ -1389,6 +1389,8 @@ def qwen35_paged_attn_gqa_batch_hip_smoke(
     from hipengine.core.tensor import Tensor
     from hipengine.kernels.hip_gfx1100.attention import (
         build_qwen35_paged_attn_decode,
+        qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_batch_spans,
+        qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans,
         qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_batch_spans,
         qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_spans,
     )
@@ -1396,18 +1398,20 @@ def qwen35_paged_attn_gqa_batch_hip_smoke(
 
     rows = 4
     block_size = 256
-    blocks = 1
-    context_counts = np.asarray([17, 18, 19, 20], dtype=np.int64)
+    blocks = 5
+    context_counts = np.asarray([1017, 1021, 1024, 1025], dtype=np.int64)
     chunk_size = 256
-    num_splits = 1
+    num_splits = 5
     num_q_heads = 16
     num_kv_heads = 2
     head_dim = 256
     scale = head_dim ** -0.5
-    block_tables = np.tile(np.asarray([0], dtype=np.int32), (rows, 1)).reshape(-1)
+    block_tables = np.tile(np.arange(blocks, dtype=np.int32), (rows, 1)).reshape(-1)
     query_grid = np.arange(rows * num_q_heads * head_dim, dtype=np.float32).reshape(rows, num_q_heads, head_dim)
     query = ((query_grid % 97.0) - 48.0) / 128.0
-    gate = (((query_grid % 31.0) - 15.0) / 8.0).astype(np.float16)
+    gate_f32 = ((query_grid % 31.0) - 15.0) / 8.0
+    gate = gate_f32.astype(np.float16)
+    gate_bf16 = _float32_to_bf16_bits(gate_f32)
     token_grid = np.arange(blocks * block_size * num_kv_heads * head_dim, dtype=np.float32).reshape(
         blocks, block_size, num_kv_heads, head_dim
     )
@@ -1415,6 +1419,8 @@ def qwen35_paged_attn_gqa_batch_hip_smoke(
     value_cache = _float32_to_bf16_bits((37.0 - (token_grid % 83.0)) / 80.0)
     batch_out = np.empty((rows, num_q_heads, head_dim), dtype=np.float16)
     row_out = np.empty_like(batch_out)
+    batch_out_bf16 = np.empty((rows, num_q_heads, head_dim), dtype=np.uint16)
+    row_out_bf16 = np.empty_like(batch_out_bf16)
     batch_partial_out = np.zeros((rows, num_q_heads, num_splits, head_dim), dtype=np.float32)
     batch_partial_m = np.zeros((rows, num_q_heads, num_splits), dtype=np.float32)
     batch_partial_l = np.zeros_like(batch_partial_m)
@@ -1447,10 +1453,13 @@ def qwen35_paged_attn_gqa_batch_hip_smoke(
         live_counts_dev = dev(context_counts)
         query_dev = dev(query)
         gate_dev = dev(gate)
+        gate_bf16_dev = dev(gate_bf16)
         key_cache_dev = dev(key_cache)
         value_cache_dev = dev(value_cache)
         batch_out_dev = out_dev(batch_out)
         row_out_dev = out_dev(row_out)
+        batch_out_bf16_dev = out_dev(batch_out_bf16)
+        row_out_bf16_dev = out_dev(row_out_bf16)
         batch_partial_out_dev = out_dev(batch_partial_out)
         batch_partial_m_dev = out_dev(batch_partial_m)
         batch_partial_l_dev = out_dev(batch_partial_l)
@@ -1462,6 +1471,29 @@ def qwen35_paged_attn_gqa_batch_hip_smoke(
             live_counts=Tensor.from_handle(live_counts_dev.ptr, context_counts.shape, "int64", Device("hip", 0)),
             max_live_count=int(chunk_size * num_splits),
             storage_dtype="bf16",
+        )
+        qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_batch_spans(
+            query_dev.ptr,
+            key_cache_dev.ptr,
+            value_cache_dev.ptr,
+            gate_bf16_dev.ptr,
+            batch_out_bf16_dev.ptr,
+            batch_partial_out_dev.ptr,
+            batch_partial_m_dev.ptr,
+            batch_partial_l_dev.ptr,
+            spans,
+            rows,
+            chunk_size,
+            num_splits,
+            block_size,
+            num_q_heads,
+            num_kv_heads,
+            head_dim,
+            head_dim,
+            1,
+            scale,
+            library=library,
+            runtime=runtime,
         )
         qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_batch_spans(
             query_dev.ptr,
@@ -1498,6 +1530,28 @@ def qwen35_paged_attn_gqa_batch_hip_smoke(
                 max_live_count=int(chunk_size * num_splits),
                 storage_dtype="bf16",
             )
+            qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans(
+                query_dev.ptr + row * row_query_bytes,
+                key_cache_dev.ptr,
+                value_cache_dev.ptr,
+                gate_bf16_dev.ptr + row * row_gate_bytes,
+                row_out_bf16_dev.ptr + row * row_out_bytes,
+                row_partial_out_dev.ptr,
+                row_partial_m_dev.ptr,
+                row_partial_l_dev.ptr,
+                row_spans,
+                chunk_size,
+                num_splits,
+                block_size,
+                num_q_heads,
+                num_kv_heads,
+                head_dim,
+                head_dim,
+                1,
+                scale,
+                library=library,
+                runtime=runtime,
+            )
             qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_spans(
                 query_dev.ptr + row * row_query_bytes,
                 key_cache_dev.ptr,
@@ -1523,18 +1577,22 @@ def qwen35_paged_attn_gqa_batch_hip_smoke(
         runtime.device_synchronize()
         copy_device_to_host(host_array_ptr(batch_out), batch_out_dev, runtime=runtime)
         copy_device_to_host(host_array_ptr(row_out), row_out_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(batch_out_bf16), batch_out_bf16_dev, runtime=runtime)
+        copy_device_to_host(host_array_ptr(row_out_bf16), row_out_bf16_dev, runtime=runtime)
     finally:
         for buffer in reversed(buffers):
             free(buffer, runtime=runtime)
 
     mismatch = int(np.count_nonzero(batch_out.view(np.uint16) != row_out.view(np.uint16)))
     max_abs = float(np.max(np.abs(batch_out.astype(np.float32) - row_out.astype(np.float32))))
+    bf16_mismatch = int(np.count_nonzero(batch_out_bf16 != row_out_bf16))
     print(
         f"rows={rows} context_counts={context_counts.tolist()} shape={num_q_heads}x{head_dim}/{num_kv_heads} "
-        f"gqa_gate_fp16_batch_vs_c1_mismatch={mismatch} gqa_gate_fp16_batch_vs_c1_max_abs={max_abs:.3g}"
+        f"gqa_gate_fp16_batch_vs_c1_mismatch={mismatch} gqa_gate_fp16_batch_vs_c1_max_abs={max_abs:.3g} "
+        f"gqa_gate_bf16_batch_vs_c1_mismatch={bf16_mismatch}"
     )
     print("gqa_batch_row3_head0=", batch_out[3, 0, :8].astype(np.float32).tolist())
-    return 0 if mismatch == 0 else 1
+    return 0 if mismatch == 0 and bf16_mismatch == 0 else 1
 
 
 def qwen35_paged_attn_prefill_hip_smoke(

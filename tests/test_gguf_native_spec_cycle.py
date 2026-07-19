@@ -454,7 +454,13 @@ _MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 @pytest.mark.skipif(not _MODEL.exists(), reason=f"local GGUF fixture not found: {_MODEL}")
-def test_native_b2_target_graph_matches_eager_hidden_state_and_kv(monkeypatch) -> None:
+def test_native_b2_target_graph_matches_eager_hidden_state_and_kv(
+    monkeypatch,
+    hip_test_target_arch: str,
+) -> None:
+    if hip_test_target_arch not in {"gfx1100", "gfx1151"}:
+        pytest.skip(f"native target graph is not registered for {hip_test_target_arch}")
+
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
     monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "1")
