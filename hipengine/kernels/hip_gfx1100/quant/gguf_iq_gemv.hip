@@ -2,9 +2,9 @@
 //
 // Quant decoding follows llama.cpp@1ebf790cd.  Decode scheduling starts from
 // qwen-kernel@52e240f: IQ3 maps one 8-value group to each work item and fuses
-// gate+up+SiLU; IQ4 weighted down maps (selected slot, 32-value subblock)
-// tasks into one all-route output reduction.  hipEngine keeps single selected
-// primitives as the required unfused fallback.
+// gate+up+SiLU; IQ4 weighted down reduces and BF16-rounds each selected route
+// before applying its routing weight in fallback order.  hipEngine keeps single
+// selected primitives as the required unfused fallback.
 
 #include <hip/hip_runtime.h>
 #include <math.h>
@@ -392,30 +392,40 @@ __global__ void gguf_iq4_xs_weighted_selected_down_kernel(
   const int row_bytes = (in_features / QK_K) * IQ4_XS_BLOCK_BYTES;
   const int64_t expert_bytes = static_cast<int64_t>(out_features) * row_bytes;
   const int subblocks = in_features / 32;
-  const int tasks = top_k * subblocks;
   const int64_t route_base = static_cast<int64_t>(token) * top_k;
 
-  float acc = 0.0f;
-  for (int task = threadIdx.x; task < tasks; task += blockDim.x) {
-    const int slot = task / subblocks;
-    const int unit = task - slot * subblocks;
+  // Preserve the selected-single fallback's numerical boundary: each route
+  // projection is reduced and rounded to BF16 before its routing weight is
+  // applied. Reusing the block reduction requires a trailing barrier so the
+  // next route cannot overwrite wave_sums while thread 0 is consuming it.
+  float weighted_total = 0.0f;
+  for (int slot = 0; slot < top_k; ++slot) {
     const int64_t expert_id = selected[route_base + slot];
-    if (expert_id < 0 || expert_id >= num_experts) continue;
-    const int block_idx = unit >> 3;
-    const int subblock = unit & 7;
-    const uint8_t* __restrict__ weight_row =
-        qweight + expert_id * expert_bytes + static_cast<int64_t>(out_col) * row_bytes;
-    const uint8_t* __restrict__ block =
-        weight_row + static_cast<int64_t>(block_idx) * IQ4_XS_BLOCK_BYTES;
-    const uint16_t* __restrict__ x_subblock =
-        x + (route_base + slot) * in_features + block_idx * QK_K + subblock * 32;
-    acc += routing_weights[route_base + slot] *
-           iq4_xs_subblock_dot(block, subblock, x_subblock);
+    float route_acc = 0.0f;
+    if (expert_id >= 0 && expert_id < num_experts) {
+      const uint8_t* __restrict__ weight_row =
+          qweight + expert_id * expert_bytes + static_cast<int64_t>(out_col) * row_bytes;
+      for (int unit = threadIdx.x; unit < subblocks; unit += blockDim.x) {
+        const int block_idx = unit >> 3;
+        const int subblock = unit & 7;
+        const uint8_t* __restrict__ block =
+            weight_row + static_cast<int64_t>(block_idx) * IQ4_XS_BLOCK_BYTES;
+        const uint16_t* __restrict__ x_subblock =
+            x + (route_base + slot) * in_features + block_idx * QK_K + subblock * 32;
+        route_acc += iq4_xs_subblock_dot(block, subblock, x_subblock);
+      }
+    }
+    const float route_total = reduce_block_sum(route_acc);
+    if (threadIdx.x == 0) {
+      const float route_bf16 =
+          bf16_bits_to_float(float_to_bf16_bits(route_total));
+      weighted_total += routing_weights[route_base + slot] * route_bf16;
+    }
+    __syncthreads();
   }
-  const float total = reduce_block_sum(acc);
   if (threadIdx.x == 0) {
     out[static_cast<int64_t>(token) * out_features + out_col] =
-        float_to_bf16_bits(total);
+        float_to_bf16_bits(weighted_total);
   }
 }
 

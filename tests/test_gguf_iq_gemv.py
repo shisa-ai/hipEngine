@@ -537,8 +537,8 @@ def test_iq3_fused_matches_single_primitives_and_bf16_silu(
     np.testing.assert_array_equal(actual, expected)
 
 
-def test_iq4_weighted_down_matches_selected_single_fallback(iq_library) -> None:
-    tokens = 2
+@pytest.mark.parametrize("tokens", [1, 2])
+def test_iq4_weighted_down_matches_selected_single_fallback(iq_library, tokens: int) -> None:
     top_k = 8
     in_features = 512
     out_features = 17
@@ -546,14 +546,14 @@ def test_iq4_weighted_down_matches_selected_single_fallback(iq_library) -> None:
     x_bf16 = _f32_to_bf16_u16(_make_x(tokens * top_k, in_features))
     selected = np.asarray(
         [[3, 0, 3, 1, 2, 1, -1, 2], [1, 4, 3, 0, 2, 3, 2, 0]], dtype=np.int64
-    )
+    )[:tokens]
     routing = np.asarray(
         [
             [0.18, 0.16, 0.14, 0.13, 0.12, 0.11, 0.09, 0.07],
             [0.22, 0.18, 0.15, 0.12, 0.11, 0.09, 0.08, 0.05],
         ],
         dtype=np.float32,
-    )
+    )[:tokens]
     single = _run_selected(
         gguf_iq4_xs_selected_gemv_bf16_bf16_out,
         iq_library,
@@ -575,11 +575,4 @@ def test_iq4_weighted_down_matches_selected_single_fallback(iq_library) -> None:
         routing=routing,
         qweight=qweight,
     )
-    actual_f32 = _bf16_u16_to_f32(actual)
-    fallback_f32 = _bf16_u16_to_f32(fallback_bf16)
-    max_rel = float(
-        np.max(np.abs(actual_f32 - fallback_f32) / np.maximum(np.abs(fallback_f32), 1.0))
-    )
-    assert max_rel <= 0.03
-    result = evaluate_logits(fallback_f32, actual_f32)
-    assert result.passed, result
+    np.testing.assert_array_equal(actual, fallback_bf16)
