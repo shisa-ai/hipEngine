@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Benchmark active-current GGUF continuation reuse against prefix-cache off.
+"""Benchmark GGUF continuation reuse against prefix-cache off.
 
-An already-live 256-token source is outside the timed window.  Each continuation
-contains the exact source prefix plus a non-empty suffix and is processed through
-the production resident runner in two scheduler chunks.  ``off`` privately
-processes both chunks; ``radix`` shares the source page, clones hybrid state,
-skips the prefix chunk, and executes only the suffix.  One warmup per mode is
-discarded and measured mode order alternates across repetitions.
+Source preparation is outside the timed window.  The source may remain live or
+be released before continuation admission.  Each continuation contains the
+exact source prefix plus a non-empty suffix and runs through the production
+resident runner in two scheduler chunks.  ``off`` privately processes both;
+``radix`` shares the cached page, restores hybrid state, skips the prefix, and
+executes only the suffix.  One warmup per mode is discarded and measured mode
+order alternates across repetitions.
 """
 
 from __future__ import annotations
@@ -80,6 +81,7 @@ def _summarize_comparison(
     radix: Sequence[Mapping[str, Any]],
     *,
     prefix_tokens: int,
+    source_lifecycle: str = "active",
 ) -> dict[str, Any]:
     baseline_rows = list(baseline)
     radix_rows = list(radix)
@@ -122,12 +124,27 @@ def _summarize_comparison(
         int(row["final_refcounted_pages"]) == 0
         for row in (*baseline_rows, *radix_rows)
     )
+    if source_lifecycle == "active":
+        snapshot_lifecycle_exact = True
+        capacity_contract_exact = saved_live_pages >= 1
+    elif source_lifecycle == "completed":
+        snapshot_lifecycle_exact = all(
+            bool(row.get("prefix_snapshot_hit"))
+            and int(row.get("cache_refcount_after_source_release", -1)) == 1
+            and int(row.get("cache_refcount_after_continuation_release", -1)) == 1
+            and bool(row.get("snapshot_evicted"))
+            for row in radix_rows
+        )
+        capacity_contract_exact = saved_live_pages == 0
+    else:
+        raise ValueError(f"unsupported source_lifecycle {source_lifecycle!r}")
     passed = bool(
         correctness_exact
         and hit_rate == 1.0
         and fallback_free
         and reuse_exact
-        and saved_live_pages >= 1
+        and capacity_contract_exact
+        and snapshot_lifecycle_exact
         and final_drain
         and math.isfinite(speedup)
         and speedup > 1.0
@@ -140,6 +157,8 @@ def _summarize_comparison(
         "fallback_free": fallback_free,
         "reuse_exact": reuse_exact,
         "final_drain": final_drain,
+        "snapshot_lifecycle_exact": snapshot_lifecycle_exact,
+        "capacity_contract_exact": capacity_contract_exact,
         "baseline_live_pages": baseline_live_pages,
         "radix_live_pages": radix_live_pages,
         "saved_live_pages": saved_live_pages,
@@ -148,6 +167,24 @@ def _summarize_comparison(
         "ttft_speedup": speedup,
         "ttft_reduction_percent": reduction,
     }
+
+
+def _correctness_prerequisite_matches(
+    correctness: Mapping[str, Any],
+    source_lifecycle: str,
+) -> bool:
+    if correctness.get("passed") is not True:
+        return False
+    if source_lifecycle == "active":
+        return correctness.get("kind") == "gguf_active_prefix_reuse_correctness_gate"
+    if source_lifecycle == "completed":
+        return bool(
+            correctness.get("kind")
+            == "gguf_completed_prefix_reuse_correctness_gate"
+            and correctness.get("workload", {}).get("source_lifecycle")
+            == "completed"
+        )
+    raise ValueError(f"unsupported source_lifecycle {source_lifecycle!r}")
 
 
 def _request(prompt: tuple[int, ...], *, max_tokens: int) -> Any:
@@ -185,6 +222,7 @@ def _run_case(
     prefix: tuple[int, ...],
     suffix: tuple[int, ...],
     request_id_base: int,
+    source_lifecycle: str = "active",
 ) -> dict[str, Any]:
     source_id = int(request_id_base)
     continuation_id = source_id + 1
@@ -196,15 +234,46 @@ def _run_case(
     pool = runner.kv_pool
     if runtime is None or pool is None:
         raise RuntimeError("GGUF prefix benchmark requires a live HIP runtime/device KV pool")
+    source_released = False
+    cache_refcount_after_source_release = 0
+    source_session_reset_before_admission = False
     try:
         source_request = _request(prefix, max_tokens=2)
         runner.register_batch((source_id,), source_request, prompt_rows=(prefix,))
         runner.reserve_admission(source_state)
         runner.prefill_batch(_prefill_work(source_id, prefix), commit=True)
         source_row = runner._rows[source_id]
-        if source_row.slot is None or source_row.kv_allocation is None:
+        if (
+            source_row.slot is None
+            or source_row.lease is None
+            or source_row.kv_allocation is None
+        ):
             raise RuntimeError("GGUF prefix benchmark source did not become resident")
+        source_token_id = int(source_row.slot.prev_token)
+        source_session = source_row.lease.session
+        source_block_ids = tuple(
+            int(block_id) for block_id in source_row.kv_allocation.block_ids
+        )
         runtime.device_synchronize()
+        if source_lifecycle == "completed":
+            if mode == "radix":
+                runner._release_row_resources(
+                    source_row,
+                    retain_prefix_snapshots=True,
+                )
+                runner._rows.pop(source_id)
+                cache_refcount_after_source_release = int(
+                    pool.refcount(source_block_ids[0])
+                )
+            else:
+                runner.discard((source_id,))
+            source_released = True
+            source_session_reset_before_admission = bool(
+                int(source_session.position) == 0
+                and source_session.device_kv_allocation is None
+                and any(lease.session is source_session for lease in runner._available)
+            )
+            runtime.device_synchronize()
 
         before_prefix = runner.observability_snapshot()
         memory_before = runner.kv_pool_memory_snapshot()
@@ -237,8 +306,12 @@ def _run_case(
             "mode": str(mode),
             "source_request_id": source_id,
             "continuation_request_id": continuation_id,
-            "source_token_id": int(source_row.slot.prev_token),
+            "source_token_id": source_token_id,
             "continuation_token_id": int(continuation_row.slot.prev_token),
+            "source_lifecycle": source_lifecycle,
+            "source_session_reset_before_admission": (
+                source_session_reset_before_admission
+            ),
             "admission_ms": (admission_end - admission_start) * 1000.0,
             "prefill_to_first_token_ms": (prefill_end - admission_end) * 1000.0,
             "continuation_ttft_ms": (prefill_end - total_start) * 1000.0,
@@ -252,6 +325,16 @@ def _run_case(
             ),
             "prefix_reused_tokens": int(continuation_row.prefix_reused_tokens),
             "prefix_state_clone_bytes": int(continuation_row.prefix_state_clone_bytes),
+            "prefix_snapshot_hit": bool(continuation_row.prefix_snapshot_hit),
+            "prefix_snapshot_hits_delta": (
+                _counter(after_prefix, "snapshot_hits")
+                - _counter(before_prefix, "snapshot_hits")
+            ),
+            "snapshot_entries": _counter(after_prefix, "snapshot_entries"),
+            "snapshot_bytes": _counter(after_prefix, "snapshot_bytes"),
+            "cache_refcount_after_source_release": (
+                cache_refcount_after_source_release
+            ),
             "continuation_block_ids": [int(block_id) for block_id in allocation.block_ids],
             "continuation_reused_block_ids": [
                 int(block_id) for block_id in allocation.reused_block_ids
@@ -274,18 +357,39 @@ def _run_case(
             ),
             "route_counts": after_prefix.get("routes", {}).get("counts", {}),
         }
+        row["cache_resident_bytes"] = int(row["snapshot_bytes"]) + (
+            int(pool.page_bytes)
+            if int(row["cache_refcount_after_source_release"]) > 0
+            else 0
+        )
 
-        runner.discard((source_id,))
-        row["shared_refcount_after_source_release"] = (
+        if not source_released:
+            runner.discard((source_id,))
+            source_released = True
+            cache_refcount_after_source_release = (
+                0
+                if not allocation.reused_block_ids
+                else int(pool.refcount(allocation.reused_block_ids[0]))
+            )
+            row["cache_refcount_after_source_release"] = (
+                cache_refcount_after_source_release
+            )
+        runner.discard((continuation_id,))
+        row["cache_refcount_after_continuation_release"] = (
             0
             if not allocation.reused_block_ids
             else int(pool.refcount(allocation.reused_block_ids[0]))
         )
-        runner.discard((continuation_id,))
+        row["snapshot_evicted"] = False
+        if source_lifecycle == "completed" and mode == "radix":
+            row["snapshot_evicted"] = bool(
+                runner._evict_prefix_snapshot(prefix)
+            )
         row["final_refcounted_pages"] = int(pool.stats.refcounted_pages)
         return row
     finally:
         runner.discard((source_id, continuation_id))
+        runner._clear_prefix_snapshots()
 
 
 def _repo_state() -> dict[str, Any]:
@@ -319,8 +423,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         raise FileNotFoundError(model)
     correctness_path = args.correctness_artifact.expanduser().resolve()
     correctness = json.loads(correctness_path.read_text(encoding="utf-8"))
-    if correctness.get("passed") is not True:
-        raise RuntimeError("prefix benchmark correctness prerequisite is not passed")
+    source_lifecycle = str(args.source_lifecycle)
+    if not _correctness_prerequisite_matches(correctness, source_lifecycle):
+        raise RuntimeError(
+            "prefix benchmark correctness prerequisite does not match source lifecycle"
+        )
     prefix_tokens = int(args.prefix_tokens)
     suffix_tokens = int(args.suffix_tokens)
     warmups = int(args.warmups)
@@ -361,6 +468,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         prefix=prefix,
                         suffix=suffix,
                         request_id_base=10_000 + case_index * 10,
+                        source_lifecycle=source_lifecycle,
                     )
                 )
                 case_index += 1
@@ -377,6 +485,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         prefix=prefix,
                         suffix=suffix,
                         request_id_base=20_000 + case_index * 10,
+                        source_lifecycle=source_lifecycle,
                     )
                 )
                 case_index += 1
@@ -387,6 +496,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         measured["off"],
         measured["radix"],
         prefix_tokens=prefix_tokens,
+        source_lifecycle=source_lifecycle,
     )
     page_bytes = int(measured["radix"][0]["page_bytes"])
     saved_live_bytes = int(comparison["saved_live_pages"]) * page_bytes
@@ -406,6 +516,18 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         mode: {
             "refcounted_pages": _distribution(
                 [float(row["refcounted_pages"]) for row in rows]
+            ),
+            "snapshot_entries": _distribution(
+                [float(row["snapshot_entries"]) for row in rows]
+            ),
+            "snapshot_bytes": _distribution(
+                [float(row["snapshot_bytes"]) for row in rows]
+            ),
+            "cache_resident_bytes": _distribution(
+                [float(row["cache_resident_bytes"]) for row in rows]
+            ),
+            "tracked_current_before_bytes": _distribution(
+                [float(row["tracked_current_before_bytes"]) for row in rows]
             ),
             "tracked_current_after_bytes": _distribution(
                 [float(row["tracked_current_after_bytes"]) for row in rows]
@@ -436,7 +558,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     passed = bool(comparison["passed"] and repo["tracked_clean"])
     return {
         "schema": 1,
-        "kind": "gguf_active_prefix_reuse_economics",
+        "kind": (
+            "gguf_active_prefix_reuse_economics"
+            if source_lifecycle == "active"
+            else "gguf_completed_prefix_reuse_economics"
+        ),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "status": "passed" if passed else "failed",
         "passed": passed,
@@ -469,12 +595,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "prefill_chunks": [prefix_tokens, suffix_tokens],
             "sampling": "greedy_top1_ignore_eos",
             "kv_dtype": "bf16",
+            "source_lifecycle": source_lifecycle,
             "warmups_per_mode": warmups,
             "measured_repetitions_per_mode": repetitions,
             "measured_order": measured_order,
         },
         "timing_protocol": {
-            "scope": "already-live source; synchronized continuation admission through first token",
+            "scope": (
+                "already-live source; synchronized continuation admission through first token"
+                if source_lifecycle == "active"
+                else "completed cache-ready source; synchronized continuation admission through first token"
+            ),
             "source_prefill_timed": False,
             "mode_reconfiguration_timed": False,
             "synchronize": "HIP device synchronize before/after admission and after suffix first-token work",
@@ -494,8 +625,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "hip_used_current_paired_delta_bytes": hip_current_paired_delta,
             "physical_current_reduction_claim": physical_current_reduction_claim,
             "scope_note": (
-                "Default fixed-capacity pool backing is preallocated for both modes; "
-                "live-page headroom is the retained memory benefit unless HIP current also falls."
+                "Default fixed-capacity pool backing is preallocated for both modes. "
+                + (
+                    "Live-page headroom is the retained memory benefit unless HIP current also falls."
+                    if source_lifecycle == "active"
+                    else "Completed reuse trades a retained hybrid snapshot plus one idle cache page for TTFT; during continuation its unique live-page count must equal off."
+                )
             ),
         },
         "warmup_rows": warmup_rows,
@@ -510,10 +645,18 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "HIP_VISIBLE_DEVICES": os.environ.get("HIP_VISIBLE_DEVICES"),
         },
         "notes": [
-            "The source prefill is intentionally outside continuation TTFT: reuse economics begin at a cacheable live source.",
+            (
+                "The source prefill is outside continuation TTFT: reuse economics begin at a cacheable live source."
+                if source_lifecycle == "active"
+                else "Source prefill, snapshot capture, and normal cache promotion are outside continuation TTFT; the source session is reset before timing."
+            ),
             "No prompt-conditioned runtime branch or expected-token rerank is used.",
-            "Live-page savings and process/GPU-visible current bytes are reported separately.",
-            "The first production slice is active-current, greedy, BF16-KV, and non-empty-suffix only.",
+            "Snapshot bytes, live pages, and process/GPU-visible current bytes are reported separately.",
+            (
+                "The first production slice is active-current, greedy, BF16-KV, and non-empty-suffix only."
+                if source_lifecycle == "active"
+                else "This slice is completed-source, greedy, BF16-KV, positive aligned prefix, and non-empty suffix only."
+            ),
         ],
     }
 
@@ -534,6 +677,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-sequence-length", type=int, default=512)
     parser.add_argument("--warmups", type=int, default=1)
     parser.add_argument("--repetitions", type=int, default=3)
+    parser.add_argument(
+        "--source-lifecycle",
+        choices=("active", "completed"),
+        default="active",
+    )
     parser.add_argument(
         "--correctness-artifact",
         type=Path,
