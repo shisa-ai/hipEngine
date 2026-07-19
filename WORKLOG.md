@@ -166163,3 +166163,66 @@ is **72.722 tok/s**, but SLO-goodput median is only **11.144 tok/s** and no C13
 repetition passes every SLO. Diagnostic artifact:
 `/tmp/gfx1151-external-f1-c1-c13-resident64-dirty/result.json`. Next is a
 committed-clean five-width packet; no external-engine win is claimed yet.
+
+## 2026-07-19 — Retain exact matched gfx1151 GGUF concurrency; block external C>1
+
+Ran the required tracked-clean matched publication packet at `8405c467` on the
+Ryzen AI MAX+ 395 / Radeon 8060S (`gfx1151`), TheRock HIP 7.15, TuneD
+`accelerator-performance`, `amd_iommu=off`, normal HWS with
+`GPU_MAX_HW_QUEUES=1`, and whole-card GTT sampling. All lanes use the same
+Qwen3.6-35B-A3B UD-Q4_K_M file, exact 512-ID prompts, 128 generated tokens,
+C1/C2/C4/C8/C13, one warmup, three blocking measurements, three SSE
+measurements, prompt cache off, and delayed C13 admission. hipEngine uses BF16
+KV; llama.cpp uses F16 KV.
+
+Exact commands:
+
+```bash
+.venv/bin/python scripts/server_f1_concurrency_bench.py --engine hipengine --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --hipengine-python /home/lhl/hipEngine-main/.venv/bin/python --compiler-version-file /tmp/gfx1151-concurrency-ddab579f/hipcc-version.txt --concurrencies 1,2,4,8,13 --live-concurrency 13 --prompt-length 512 --decode-tokens 128 --ctx-per-seq 1024 --warmup-runs 1 --measured-runs 3 --streaming-primary --stream-warmup-runs 0 --stream-measured-runs 3 --batch-window-ms 5 --hipengine-prefill-decode-policy fair --live-join-after-tokens 8 --memory-domain gtt --drm-card-index 0 --memory-poll-ms 10 --work-dir /tmp/gfx1151-external-f1-standard-8405c467-fair256/hipengine/work --json /tmp/gfx1151-external-f1-standard-8405c467-fair256/hipengine/result.json
+
+.venv/bin/python scripts/server_f1_concurrency_bench.py --engine llamacpp-hip --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --llamacpp-hip-repo /home/lhl/llama.cpp/llama.cpp-hip --llamacpp-hip-server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server --concurrencies 1,2,4,8,13 --live-concurrency 13 --prompt-length 512 --decode-tokens 128 --ctx-per-seq 1024 --warmup-runs 1 --measured-runs 3 --streaming-primary --stream-warmup-runs 0 --stream-measured-runs 3 --live-join-after-tokens 8 --memory-domain gtt --drm-card-index 0 --memory-poll-ms 10 --work-dir /tmp/gfx1151-external-f1-standard-8405c467-fair256/llamacpp-hip/work --json /tmp/gfx1151-external-f1-standard-8405c467-fair256/llamacpp-hip/result.json
+
+.venv/bin/python scripts/server_f1_concurrency_bench.py --engine llamacpp-vulkan --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --llamacpp-vulkan-repo /home/lhl/llama.cpp/llama.cpp-vulkan --llamacpp-vulkan-server-bin /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server --concurrencies 1,2,4,8,13 --live-concurrency 13 --prompt-length 512 --decode-tokens 128 --ctx-per-seq 1024 --warmup-runs 1 --measured-runs 3 --streaming-primary --stream-warmup-runs 0 --stream-measured-runs 3 --live-join-after-tokens 8 --memory-domain gtt --drm-card-index 0 --memory-poll-ms 10 --work-dir /tmp/gfx1151-external-f1-standard-8405c467-fair256/llamacpp-vulkan/work --json /tmp/gfx1151-external-f1-standard-8405c467-fair256/llamacpp-vulkan/result.json
+```
+
+hipEngine passes the complete packet. Blocking C1/C2/C4/C8/C13 medians are
+**44.076805/60.616652/75.298351/75.701511/71.732905 aggregate tok/s**;
+exact SSE medians are
+**42.771758/56.201660/72.829816/82.034661/72.440921 tok/s**. Thus C8 exact
+SSE is **1.91796x C1 (+91.80%)**, but C13 is **11.69% below C8**. All
+**28/28 warmup + 84/84 measured blocking token-ID rows**, **84/84 SSE exact
+text/count rows**, and **13/13 delayed-C13 token-ID rows** pass. Every route
+check passes, no serial fallback appears, C13 delayed admission occurs before
+the first completion, and the resident-buffer cancellation does not recur.
+Blocking lowers C8 as `[4,4]` and C13 as `[4,4,4,1]`; live SSE observes native
+c>N packed execution, so logical C13 is not mislabelled as physical native C13.
+
+The strict 10/0.5/30-second TTFT-p95/ITL-p99/end-to-end-p95 whole-wave SLO is
+fully green only at C1 and C2: passed repetitions are **3/3, 3/3, 0/3, 0/3,
+0/3**. Median exact SLO-goodput is
+**42.771758/56.201660/54.193219/20.433782/11.144757 tok/s**. C13's median
+client ITL-p99 is **0.888367 s**, above the 0.5-second limit. Sampled whole-card
+GTT delta grows **12.367298/24.070595/27.584267/35.107704/44.250282 GiB**, a
+second concrete high-concurrency residual.
+
+The answer to whether hipEngine beats llama.cpp is **no** under the valid part
+of this protocol. C1 is exact for all engines: hipEngine trails llama.cpp HIP
+by **4.37% blocking / 7.31% SSE** and clean llama.cpp Vulkan by **17.78% /
+19.92%**. The HIP external tree is locally dirty but its executed binary and
+linked libraries are hashed; the Vulkan tree is clean. At every C>1 width,
+both llama.cpp lanes fail their own independently generated C1 token oracle in
+warmup, blocking, and SSE. For example, measured blocking exactness at
+C2/C4/C8/C13 is **3/6, 4/12, 8/24, 19/39** for HIP and **3/6, 3/12, 7/24,
+12/39** for Vulkan. Their larger raw rates are diagnostic only: there is no
+eligible C>1 ratio and no retained hipEngine win.
+
+Published compact evidence at
+`benchmarks/results/2026-07-19-gfx1151-gguf-matched-concurrency-comparison.json`;
+it fingerprints the raw hipEngine/HIP/Vulkan packets as
+`adc8e3d3`/`7212a083`/`4f088040`, embeds the exact commands, binary/build
+provenance, per-width correctness/SLO/memory summaries, and explicitly limits
+the performance claim to hipEngine own-engine scaling plus C1 comparison.
+Updated `benchmarks/README.md` and `benchmarks/CHANGELOG.md`. The current state
+is correctness- and lifecycle-good but not high-C SLO/memory competitive; next
+performance work should target C4+ tail latency, GTT workspace growth, and the
+C8-to-C13 saturation rather than claiming a blocked external win.
