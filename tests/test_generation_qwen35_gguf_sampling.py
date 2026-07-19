@@ -2347,6 +2347,45 @@ def test_gguf_resident_runner_device_kv_admission_is_atomic_at_high_water() -> N
     ceiling_runner.close()
 
 
+def test_gguf_resident_runner_counts_c1_graph_close_as_invalidation() -> None:
+    events: list[tuple] = []
+
+    class FakeGraph:
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+            events.append(("close",))
+
+    graph = FakeGraph()
+    session = SimpleNamespace()
+    row = SimpleNamespace(
+        slot=SimpleNamespace(c1_decode_graph=graph),
+        lease=SimpleNamespace(session=session),
+    )
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    runner._kv_graph_invalidation_count = 0
+    runner._graph_handles_for_sessions = lambda sessions: (graph,)
+    runner._observe_graph_handles = lambda sessions: events.append(
+        ("observe", tuple(sessions))
+    )
+    runner._record_graph_invalidations = lambda handles, count: events.append(
+        ("record", tuple(handles), int(count))
+    )
+
+    runner._close_c1_decode_graph(row)
+
+    assert events == [
+        ("observe", (session,)),
+        ("close",),
+        ("record", (graph,), 1),
+    ]
+    assert runner._kv_graph_invalidation_count == 1
+    assert row.slot.c1_decode_graph is None
+
+
 def test_gguf_resident_runner_graph_observability_is_bucketed_and_cumulative() -> None:
     class FakeGraphKey:
         key_sha256 = "bucket-c2"
