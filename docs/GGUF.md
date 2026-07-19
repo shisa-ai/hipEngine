@@ -13,12 +13,22 @@ Primary references: local llama.cpp checkouts under `~/llama.cpp/` and parent ev
 
 ## Executive summary
 
+Q3 update (2026-07-19): the W7900/gfx1100 development path now supports the
+40-layer autoregressive target in
+`Qwen3.6-35B-A3B-UD-Q3_K_M.gguf`. `IQ3_XXS` and `IQ4_XS` selected-expert tensors
+remain compressed in raw GGUF layout and execute through canonical-oracle-gated
+HIP gate/up and down kernels; bulk prefill and one-step graph decode both run.
+The first clean three-shape baseline and its limitations are recorded in
+[`2026-07-19-w7900-qwen36-q3-k-m-benchmark.json`](../benchmarks/results/2026-07-19-w7900-qwen36-q3-k-m-benchmark.json).
+This is a correctness-first gfx1100 result, not yet a gfx1151/public-route or
+qwen-kernel parity claim.
+
 Implementation status as of 2026-05-17: the first intake slice has landed in
 `hipengine/loading/gguf.py`, `hipengine/quant/gguf.py`, and
 `scripts/inspect_gguf.py`. hipENGINE can now scan local GGUF v3 files, expose
 lazy raw tensor views, and CPU-dequantize tiny fallback samples for the target
-local tensor types (`BF16`, `Q8_0`, `Q4_1`, `Q4_K`, `Q5_K`, `Q6_K`, `IQ4_XS`,
-`MXFP4`, plus dense `F16/F32`). Native GGUF GEMV correctness spikes now cover
+local tensor types (`BF16`, `Q8_0`, `Q4_1`, `Q4_K`, `Q5_K`, `Q6_K`,
+`IQ3_XXS`, `IQ4_XS`, `MXFP4`, plus dense `F16/F32`). Native GGUF GEMV correctness spikes now cover
 `Q8_0`, `Q5_K`, `Q6_K`, and `Q4_K` raw bytes, plus a lossless PARO-style pack8
 repack for `Q4_K`, on gfx1100 while preserving GGML quant math. Full Qwen GGUF
 model materialization and E2E correctness now work for the local Q4_K_M, Q8_0,

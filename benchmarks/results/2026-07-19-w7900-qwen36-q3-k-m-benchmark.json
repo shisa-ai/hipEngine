@@ -1,0 +1,203 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1100_qwen36_q3_k_m_three_shape_baseline",
+  "status": "accepted_local_baseline",
+  "performance_claim": true,
+  "performance_claim_scope": "W7900/gfx1100 Qwen3.6-35B-A3B UD-Q3_K_M BF16-KV 512/128, 1K/128, and 4K/128 resident prefill plus graph decode",
+  "correctness_claim": true,
+  "measured_commit": "44a1f96362ab09c3a1afa24cd30c9ff25e4d046a",
+  "implementation_commits": [
+    "b84547ef feat: add Q3 GGUF host materialization support",
+    "8ece5a57 feat: add Q3 selected decode kernels",
+    "44a1f963 feat: enable Q3 selected expert prefill"
+  ],
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf",
+    "size_bytes": 17104402720,
+    "sha256": "8966dd0cd8c543c4228490a2a8b0e0814fc4f1e6a8e199ceed4de6754ae7b8e1",
+    "sampled_sha256_v1": "0e7a765bcaca900d3c0dc3176da1c7754a94e20f6983e92dd20832468c3a11cb",
+    "scope": "40-layer autoregressive target; trailing MTP block 40 is not enabled"
+  },
+  "hardware": {
+    "host": "epyc",
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "hip_visible_devices": "0",
+    "sysfs_card": "card1"
+  },
+  "software": {
+    "backend": "hip_gfx1100",
+    "rocm": "TheRock HIP 7.15.0",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "prompt": "token ID 9707 repeated to the requested length",
+    "session_scope": "one independent right-sized resident process per shape",
+    "warmup_runs": 1,
+    "measured_runs": 3,
+    "summary_statistic": "median",
+    "gpu_idle_gate": "card1 gpu_busy_percent <= 2 for three consecutive one-second samples before each process",
+    "prefill": "forced production bulk attention, WMMA prefill, GEMV decode enabled",
+    "decode": "128 one-step production HIP graph replays; graph capture excluded from steady decode timing",
+    "build": "new IQ library prebuilt outside timing, then --require-cached-build",
+    "command_template": [
+      "python3",
+      "scripts/qwen35_readme_sweep.py",
+      "--engine", "gguf",
+      "--model", "/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf",
+      "--quant", "gguf_q3_k_m",
+      "--backend", "hip_gfx1100",
+      "--token-id", "9707",
+      "--workloads", "SHAPE/128",
+      "--warmup-runs", "1",
+      "--measured-runs", "3",
+      "--warmup-decode-tokens", "1",
+      "--force-bulk-prefill",
+      "--bulk-prefill-attention-mode", "bulk",
+      "--use-wmma-prefill",
+      "--use-gemv-decode",
+      "--graph-replay-decode",
+      "--graph-steps-per-replay", "1",
+      "--compiler-version-file", "/tmp/q3-hipcc-version-715.txt",
+      "--require-cached-build",
+      "--json", "RESULT.json"
+    ]
+  },
+  "results": {
+    "rows": [
+      {
+        "workload": "512/128",
+        "hipengine_q3": {
+          "prefill_tok_s": 614.088632273666,
+          "decode_tok_s": 92.28498917814208,
+          "tracked_peak_gib": 15.691591009497643,
+          "sampled_hip_used_peak_gib": 16.14905548095703,
+          "load_s": 8.868892867001705
+        },
+        "qwen_kernel_vulkan_q3_baseline": {
+          "prefill_tok_s": 756.05,
+          "decode_tok_s": 161.56
+        },
+        "hipengine_vs_qwen_kernel_pct": {
+          "prefill": -18.78,
+          "decode": -42.88
+        },
+        "qwen_kernel_decode_over_hipengine": 1.751,
+        "prior_hipengine_q4_context": {
+          "prefill_tok_s": 2771.65,
+          "decode_tok_s": 92.707,
+          "q3_vs_q4_prefill_pct": -77.84,
+          "q3_vs_q4_decode_pct": -0.46
+        }
+      },
+      {
+        "workload": "1K/128",
+        "hipengine_q3": {
+          "prefill_tok_s": 623.5831721497469,
+          "decode_tok_s": 97.37253082257959,
+          "tracked_peak_gib": 15.758817665278912,
+          "sampled_hip_used_peak_gib": 16.245376586914062,
+          "load_s": 8.837123902980238
+        },
+        "qwen_kernel_vulkan_q3_baseline": {
+          "prefill_tok_s": 736.44,
+          "decode_tok_s": 158.71
+        },
+        "hipengine_vs_qwen_kernel_pct": {
+          "prefill": -15.32,
+          "decode": -38.65
+        },
+        "qwen_kernel_decode_over_hipengine": 1.63,
+        "prior_hipengine_q4_context": {
+          "prefill_tok_s": 3190.423,
+          "decode_tok_s": 98.099,
+          "q3_vs_q4_prefill_pct": -80.45,
+          "q3_vs_q4_decode_pct": -0.74
+        }
+      },
+      {
+        "workload": "4K/128",
+        "hipengine_q3": {
+          "prefill_tok_s": 616.1354543769665,
+          "decode_tok_s": 98.11084058674618,
+          "tracked_peak_gib": 16.133736170828342,
+          "sampled_hip_used_peak_gib": 16.638671875,
+          "load_s": 8.852031504968181
+        },
+        "qwen_kernel_vulkan_q3_baseline": {
+          "prefill_tok_s": 624.32,
+          "decode_tok_s": 146.61
+        },
+        "hipengine_vs_qwen_kernel_pct": {
+          "prefill": -1.31,
+          "decode": -33.08
+        },
+        "qwen_kernel_decode_over_hipengine": 1.494,
+        "prior_hipengine_q4_context": {
+          "prefill_tok_s": 3149.192,
+          "decode_tok_s": 100.474,
+          "q3_vs_q4_prefill_pct": -80.44,
+          "q3_vs_q4_decode_pct": -2.35
+        }
+      }
+    ],
+    "gates": {
+      "clean_measured_provenance": true,
+      "all_measured_final_logits_finite": true,
+      "all_measured_final_logits_exact_within_shape": true,
+      "all_final_token_ids": [9707, 9707, 9707, 9707, 9707, 9707, 9707, 9707, 9707],
+      "all_workload_final_ids_stable": true,
+      "effective_graph_replay_all_runs": true,
+      "max_prefill_stdev_over_median_pct": 0.4541384205629726,
+      "max_decode_stdev_over_median_pct": 0.22571315578617934,
+      "variance_below_five_percent": true
+    }
+  },
+  "correctness_evidence": [
+    {
+      "path": "benchmarks/results/2026-07-19-gfx1100-qwen36-q3-selected-decode-kernels.json",
+      "result": "76 focused regressions pass; canonical CPU-oracle agreement at real shapes; all-40-layer eager output finite; eager and graph next token both 513; IQ3 gate/up, IQ4 gate/up, and IQ4 down kernels all report zero scratch"
+    },
+    {
+      "path": "benchmarks/results/2026-07-19-gfx1100-qwen36-q3-prefill-correctness.json",
+      "result": "multi-token IQ3/IQ4 CPU-oracle agreement; bulk and serial top-1 both 16 with KL 0.000571618; 512, 1K, and 4K bulk prompts reach exact final positions"
+    },
+    {
+      "path": "WORKLOG.md#2026-07-19--qwen36-ud-q3_k_m-host-oracle-and-compressed-materialization",
+      "result": "733 AR tensors materialize; all 117 IQ expert tensors remain raw compressed blocks; zero IQ dense-BF16 records"
+    }
+  ],
+  "baseline": {
+    "source": "/home/lhl/qwen-kernel/BASELINE-PERF.md",
+    "qwen_kernel_revision": "52e240f9c6d91750d0e5e692976cfb67fd9bc603 plus the documented trailing-MTP clamp",
+    "note": "The primary comparison matches model file, GPU, workload labels, and date, but remains a HIP-versus-Vulkan and harness comparison. qwen-kernel times prompt_length-1 prefill tokens while hipEngine times the full requested prompt, so the deltas are descriptive rather than a causal backend attribution."
+  },
+  "raw_components": [
+    {
+      "workload": "512/128",
+      "path": "benchmarks/results/2026-07-19-w7900-qwen36-q3-k-m-512-128-raw.json",
+      "sha256": "5937fd9b183de752e8b7a0cf858bcef80910e4f5f14d57a1fecf3f434972c0c8",
+      "bytes": 157542
+    },
+    {
+      "workload": "1K/128",
+      "path": "benchmarks/results/2026-07-19-w7900-qwen36-q3-k-m-1k-128-raw.json",
+      "sha256": "5bbb1135f5e955b8f2fc9293a20d5c0e27695fbacb0fd3e380ef8b3ec22f70cd",
+      "bytes": 158872
+    },
+    {
+      "workload": "4K/128",
+      "path": "benchmarks/results/2026-07-19-w7900-qwen36-q3-k-m-4k-128-raw.json",
+      "sha256": "a63ea9067c7321b1bfca3e9a219deb4e4d57c4a0c857a4c3299c5c9f335cc9c8",
+      "bytes": 158610
+    }
+  ],
+  "limitations": [
+    "The correctness-first selected IQ gate/up kernel uses a four-row mapping. Bulk prefill reuses it with rows=tokens*top_k and has no grouped-expert weight reuse, so Q3 prefill does not approach the optimized Q4 path.",
+    "IQ3_XXS and IQ4_XS selected-expert weights intentionally remain in raw GGUF layout with no resident IQ repack. Decode therefore does not yet realize the 6.77% ideal active-byte advantage previously calculated for Q3 over Q4.",
+    "This baseline covers one W7900/gfx1100 system, BF16 KV, greedy repeated-token traffic, and the 40-layer AR target only. It does not validate gfx1151, RX 7900 XTX, server concurrency, MTP, quality across a prompt corpus, or long context.",
+    "The three source sweeps label themselves diagnostic_retained_pending_rollup_gate because the generic README rollup expects a different six-shape publication protocol. This artifact accepts only the explicit three-shape local Q3 baseline requested here."
+  ],
+  "conclusion": "Native Q3 execution is correct and reproducibly benchmarkable, but the first correctness-oriented kernels do not reproduce qwen-kernel's decode advantage. qwen-kernel remains 1.49x to 1.75x faster in decode; grouped expert reuse and IQ row-tile/codegen work remain optimization candidates rather than accepted transfers."
+}
