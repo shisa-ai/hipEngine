@@ -546,9 +546,10 @@ Current blockers that keep project-wide c>N incomplete:
   rollback/accepted-row repair, reseed, and cursor/result accounting behind one
   GGUF scheduler-facing call. The public single-request GGUF MTP loop uses that
   adapter when the registered B1/B2 graph admits the shape and preserves the
-  exact prior loop otherwise. The first full N3 gate matches all 240 IDs / 96
-  cycle semantics at 117.318 tok/s versus the clean N2 117.557 tok/s, neutral
-  within run variance; the faster N1 topline remains unchanged. Shared PARO/
+  exact prior loop otherwise. The clean committed N3 gate matches all 240 IDs /
+  96 cycle semantics at 118.592 tok/s / 1.2858x true AR versus clean N2's
+  117.557 tok/s (+0.88%, aggregate-neutral); the faster N1 topline remains
+  unchanged. Shared PARO/
   DFlash adapters, draft-side batching/native submission collapse, rows>=16
   verifier tuning, streaming, and exact/default MTP serving remain open.
 - Exact all-choice generated-token accounting and batch timing ownership are

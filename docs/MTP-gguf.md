@@ -345,10 +345,11 @@ accept/commit metadata, and scheduler-facing results.
    accepted-row repair, reseed, and target/MTP cursor accounting. The public
    single-request MTP path uses it when the registered B1/B2 target graph admits
    the shape, with the prior exact loop retained as the unsupported-shape/
-   backend fallback. The first full W7900 gate matches N2 for all 240 IDs / 96
-   cycles at **117.318 tok/s** versus clean N2 **117.557 tok/s** (neutral within
-   run variance), while preserving separate proposal, target, MTP-KV, complete-
-   call, and cycle-wall measurements. Proposal leaves still submit through the
+   backend fallback. The clean committed W7900 gate matches N2 for all 240 IDs /
+   96 cycles at **118.592 tok/s / 1.2858x true AR**, versus clean N2 **117.557
+   tok/s** (+0.88%, aggregate-neutral); cycle wall is **8.497 ms/output** versus
+   N2's 8.529 ms. It preserves separate proposal, target, MTP-KV, complete-call,
+   and cycle-wall measurements. Proposal leaves still submit through the
    retained Python device-chain implementation; moving those submissions into
    the native launcher remains the next launch-collapse step rather than being
    implied by this ownership milestone.
