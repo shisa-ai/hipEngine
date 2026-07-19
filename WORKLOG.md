@@ -168394,3 +168394,45 @@ the clean cached profiler's launch/API evidence, while correctness, ownership,
 and complete wall are non-regressive. Raw graph-on/off SHA-256 values are
 `4b36046e9d2056ad2de68329bb7f284510fb8fe0c4ac5d24b0357fd39e0c18ab` and
 `3a049cb9f4415b88ad7536d1ebcb04bd0bc93d1d26d73597cee183a2bebe6ba8`.
+
+## 2026-07-20 — Prove clean resident packed graph execution
+
+The clean `33e22d85` cached profiler first warm-built C1/C8 successfully, then
+stopped before profiling because its Python-3.10 `.venv` auto-detection pointed
+at an absent ROCTX SDK library. The installed rocprofiler SDK is owned by the
+TheRock Python-3.12 environment. The replacement reused the completed global JIT
+warmup, passed explicit TheRock `rocprofv3` and
+`librocprofiler-sdk-roctx.so.1` paths, and wrapped only cached leaf children:
+
+```bash
+HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 .venv/bin/python \
+  scripts/gguf_packed_ar_rocprof.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1151 --decode-mode graph --packed-concurrency 8 \
+  --prompt-length 512 --prompt-token-id 9707 --expected-token-id 9707 \
+  --compiler-version-file /tmp/hipengine-gfx1151-native-cycle-hipcc-version.txt \
+  --rocprofv3 /home/lhl/miniforge3/envs/therock/bin/rocprofv3 \
+  --roctx-sdk /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib/librocprofiler-sdk-roctx.so.1 \
+  --skip-warmbuild \
+  --raw-root /tmp/gfx1151-resident-c8-graph-prof-33e22d85/raw \
+  --out /tmp/gfx1151-resident-c8-graph-prof-33e22d85/result.json
+```
+
+The census passes on clean tracked source with cached-only children. C1 and
+physical C8 tokens are exact; C8 is one all-active graph replay with **748
+packed-native / 0 exact-row-local / 0 copy dispatches**. All 40 model layers use
+the admitted batch families: 30 indexed/singleton-GDN linear layers, 10
+row-extent-eight KVLiveSpans attention + KV-write layers, and 40 selected-MoE
+layers with 64 routed lanes. Q6 LM-head remains exact `6+2` row tiling and the
+device argmax path has no full-vocab host readback. The graph manifest records
+one device metadata-prepare launch, one device token-feedback launch, no steady
+H2D metadata/input copies, no D2D state import/scatter, no scalar fallback, and
+one `hipGraph` replay boundary around the 748 kernels.
+
+Decision: keep resident c>N graph replay default-on. Complete server wall is
+non-regressive/neutral, while the clean marker proves the intended one-call
+submission boundary and zero steady host/state movement. This is a causal
+launch-overhead keep, not an aggregate tok/s claim. The 106,560-byte profiler
+JSON has SHA-256
+`4a9eb68b6a0f45e7ceafd29dee050a7511ca38c681a8b75d471eaabaf45369f6`;
+raw CSV remains under `/tmp`.
