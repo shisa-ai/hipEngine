@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # ruff: noqa: E402
-"""Native BF16-vs-tail4-Hadamard KV fidelity suite for GGUF and PARO.
+"""Native BF16-vs-compressed KV fidelity suite for GGUF and PARO.
 
 The harness runs the committed ten-prompt mtpbench category corpus plus the
 ``mixed_v1`` control at one exact prompt/decode shape. Reference tokens are
-teacher-forced into the mixed-layout candidate so every compared logit row has
-an identical token history. Timings are diagnostic only; performance claims use
-the dedicated matched benchmark harnesses.
+teacher-forced into the candidate so every compared logit row has an identical
+token history. Timings are diagnostic only; performance claims use the
+dedicated matched benchmark harnesses.
 """
 
 from __future__ import annotations
@@ -435,6 +435,7 @@ def _command(args: argparse.Namespace) -> str:
     command = (
         "python3 scripts/qwen35_native_mixed_kv_suite.py"
         f" --engine {args.engine}"
+        f" --backend {args.backend}"
         f" --gguf-model {args.gguf_model}"
         f" --paro-model {args.paro_model}"
         f" --prompts {args.prompts}"
@@ -480,7 +481,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             args.gguf_model,
             compiler_version=compiler_version,
             require_cached_build=args.require_cached_build,
-            backend="hip_gfx1100",
+            backend=args.backend,
         )
         try:
             gguf_reference = _run_gguf_policy(
@@ -517,7 +518,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         paro_runner = Qwen35ParoNextTokenRunner(
             args.paro_model,
             shared_expert_format="packed_paro_w4",
-            backend="hip_gfx1100",
+            backend=args.backend,
         )
         paro_reference = _run_paro_policy(
             runner=paro_runner,
@@ -555,7 +556,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "passed": passed,
         "performance_claim": False,
         "command": _command(args),
-        "hardware": "AMD Radeon Pro W7900 / gfx1100",
+        "hardware": f"configured backend {args.backend}",
+        "backend": args.backend,
         "environment": {
             "hip_visible_devices": os.environ.get("HIP_VISIBLE_DEVICES"),
             "hipengine_hip_arch": os.environ.get("HIPENGINE_HIP_ARCH"),
@@ -585,9 +587,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
-def main(argv: list[str] | None = None) -> int:
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--engine", choices=("gguf", "paro", "both"), default="both")
+    parser.add_argument(
+        "--backend",
+        choices=("hip_gfx1100", "hip_gfx1151"),
+        default="hip_gfx1100",
+    )
     parser.add_argument("--gguf-model", type=Path, default=DEFAULT_GGUF_MODEL)
     parser.add_argument("--paro-model", type=Path, default=DEFAULT_PARO_MODEL)
     parser.add_argument("--prompts", type=Path, default=DEFAULT_PROMPTS)
@@ -595,7 +602,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--decode-steps", type=int, default=8)
     parser.add_argument(
         "--candidate-kv-storage",
-        choices=("tail4_hadamard_group32",),
+        choices=("int8_per_token_head", "tail4_hadamard_group32"),
         default="tail4_hadamard_group32",
     )
     parser.add_argument("--kl-threshold", type=float, default=0.05)
@@ -603,7 +610,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--json", type=Path)
-    args = parser.parse_args(argv)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _build_parser().parse_args(argv)
     payload = run(args)
     text = json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
     if args.json is not None:

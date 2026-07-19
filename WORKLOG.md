@@ -167572,3 +167572,25 @@ and **417,935,092** retained low-occupancy packed-workspace bytes. Whole-card
 GTT peaks are **22.233/23.166 GiB** at C1/C2. These one-repeat rates and memory
 values are implementation evidence; clean broader-width publication follows
 from the implementation commit.
+
+## 2026-07-19 — Generalize compressed-KV quality harness to gfx1151 INT8
+
+Extended the existing 11-prompt teacher-forced native compressed-KV suite so it
+can validate `int8_per_token_head` and select `hip_gfx1151`; the prior CLI only
+accepted `tail4_hadamard_group32` and hardcoded `hip_gfx1100`. Both GGUF and
+PARO runner construction now receive the selected backend, and the emitted
+command/payload records it. Runtime and kernel behavior are unchanged.
+
+RED was the focused parser fixture failing collection because `_build_parser`
+did not exist. GREEN is **3 passed**:
+
+```bash
+.venv/bin/python -m pytest tests/test_qwen35_native_mixed_kv_suite.py -q --tb=short
+python3 -m py_compile scripts/qwen35_native_mixed_kv_suite.py \
+  tests/test_qwen35_native_mixed_kv_suite.py
+.venv/bin/python scripts/qwen35_native_mixed_kv_suite.py --help
+# git diff --check also passes
+```
+
+No GPU result or quality claim is attached to this harness-only unit. The clean
+gfx1151 INT8 multi-prompt run follows after the production C4 lifecycle gate.
