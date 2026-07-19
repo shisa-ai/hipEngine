@@ -521,15 +521,19 @@ Current blockers that keep project-wide c>N incomplete:
   gfx1100 owner c4/c8, longer contexts, sampled native groups, graph replay, and
   non-BF16 KV remain open. GGUF now has
   retained direct native c2/c4/c8 correctness, family profiling, repeated
-  scaling, live membership, and arbitrary-C lowering on both gfx11 targets;
-  long-context c>N and additional quant formats remain independent gates.
+  scaling, live membership, and arbitrary-C lowering on both gfx11 targets.
+  gfx1151 additionally retains exact BF16-KV real-Uvicorn c2 through 64K,
+  mixed 1K/4K/32K membership, bounded grow/shrink, retryable pressure rejection,
+  and stale-pointer-safe graph regrow. gfx1100 long-context transfer and
+  non-BF16 continuous-owner allocation/binding remain independent gates.
 - Several decode kernels are row-parallel GEMV rather than true grouped/MMQ/WMMA
   batch kernels. They increase grid size but do not reliably reuse streamed
   weights across requests, which is visible in the weak gfx1151 c=1->c=8 scale
   versus llama.cpp Vulkan.
-- GQA split-K and full-attention paths still need row-count-specific profiler
-  evidence and per-sequence `KVLiveSpans` coverage before long-context c>N can be
-  promoted beyond diagnostic rows.
+- GQA split-K and full-attention now have primitive trace/parity plus exact
+  per-sequence `KVLiveSpans` server coverage for gfx1151 BF16-KV c2 through 64K.
+  Equivalent gfx1100 server transfer and non-BF16 payload/scale-backed dynamic
+  spans still need independent row-count-specific evidence.
 - Selected MoE decode has row-aware/grouped diagnostic coverage for c<=8, but
   retained performance still needs routed-lane profiling and c-aware thresholds
   for grouped GEMV versus compact/WMMA execution.

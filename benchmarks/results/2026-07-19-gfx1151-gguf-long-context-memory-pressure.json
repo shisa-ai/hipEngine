@@ -1,0 +1,920 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_long_context_memory_pressure_retained",
+  "created_at": "2026-07-19T04:53:50.695576+00:00",
+  "status": "accepted_after_focused_host_reevaluation",
+  "passed": true,
+  "performance_claim": true,
+  "measurement": {
+    "runtime_commit": "7c243ed174a90d5b9c99b843ffa30f37a07da2f3",
+    "runtime_dirty": false,
+    "harness_reevaluation_commit": "c142730ae480f2ccf92a39018f78e4352d267fff",
+    "command": "/home/lhl/hipEngine-main/.venv/bin/python scripts/gguf_long_context_pressure_gate.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --longer-context-tokens 65536 --compiler-version-file /tmp/gfx1151-concurrency-ddab579f/hipcc-version.txt --require-cached-build --json /tmp/gfx1151-long-pressure-64k-complete-v1-clean.json",
+    "elapsed_seconds": 708.5579293140036,
+    "raw_artifact": {
+      "path": "/tmp/gfx1151-long-pressure-64k-complete-v1-clean.json",
+      "size_bytes": 2705224,
+      "sha256": "849dc9cf4282423e0aed9a8c3d5d1b27e016c0e52a6bae6ccc33fa1b3d6e3a9b",
+      "original_status": "failed",
+      "original_passed": false,
+      "original_failure_reasons": [
+        "final_pool_lifecycle_failed"
+      ]
+    },
+    "focused_repair": {
+      "reason": "the post-Uvicorn dynamic-pool query observed a retired owner and serialized an empty final pool",
+      "repair": "deep-copy the dynamic pool from the already-captured live idle observability snapshot",
+      "gpu_packet_repeated": false,
+      "policy": "preserve the completed broad run and re-evaluate only the repaired host predicate",
+      "reevaluated_packet_gate": {
+        "passed": true,
+        "failure_reasons": []
+      }
+    }
+  },
+  "provenance": {
+    "build_profile": "gfx1151_gguf_long_context_pressure",
+    "collected_at": "2026-07-19T04:53:50.695432+00:00",
+    "command": [
+      "/home/lhl/hipEngine-main/.venv/bin/python",
+      "scripts/gguf_long_context_pressure_gate.py",
+      "--model",
+      "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1151",
+      "--quant",
+      "gguf_q4_k_m",
+      "--longer-context-tokens",
+      "65536",
+      "--compiler-version-file",
+      "/tmp/gfx1151-concurrency-ddab579f/hipcc-version.txt",
+      "--require-cached-build",
+      "--json",
+      "/tmp/gfx1151-long-pressure-64k-complete-v1-clean.json"
+    ],
+    "configured_backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "dirty": false,
+    "environment": {
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_COMPILER_VERSION_FILE": null,
+      "HIPENGINE_GGUF_AR_PACKED_DECODE": "1",
+      "HIPENGINE_GGUF_AR_STREAM_DECODE": "0",
+      "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact",
+      "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+      "HIPENGINE_HIP_ARCH": null,
+      "HIPENGINE_KV_POOL_CHUNK_PAGES": "5",
+      "HIPENGINE_KV_POOL_HIGH_WATER_PAGES": "519",
+      "HIPENGINE_KV_POOL_IDLE_GRACE_SECONDS": "0",
+      "HIPENGINE_KV_POOL_INITIAL_PAGES": "5",
+      "HIPENGINE_KV_POOL_LOW_WATER_PAGES": "5",
+      "HIPENGINE_MAX_ACTIVE_REQUESTS": "3",
+      "HIPENGINE_MAX_PENDING_REQUESTS": "8",
+      "HIPENGINE_MAX_PREFILL_CHUNK_TOKENS": "256",
+      "HIPENGINE_PREFILL_DECODE_POLICY": "protect_ttft",
+      "HIPENGINE_PREFIX_CACHE": "off",
+      "HIP_VISIBLE_DEVICES": null,
+      "ROCR_VISIBLE_DEVICES": null
+    },
+    "git_branch": null,
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "hipengine_commit": "7c243ed174a90d5b9c99b843ffa30f37a07da2f3",
+    "kind": "hipengine_artifact_provenance",
+    "kv_dtype": "bf16",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        11331169424,
+        22662338848
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 22663387424,
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+    },
+    "model_path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_revision": null,
+    "profiler": {
+      "reason": "server-wall correctness/memory-pressure gate",
+      "used": false
+    },
+    "quant": "gguf_q4_k_m",
+    "repetitions": 1,
+    "repo_root": "/tmp/hipengine-long-pressure-45cb4631",
+    "resolved_backend": "hip_gfx1151",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "schema_version": 1,
+    "staged_dirty": false,
+    "target_arch": "gfx1151",
+    "timing_protocol": "one prepared model; real localhost Uvicorn SSE; independent c1 token oracle; concurrent 1K/4K/32K/mixed/longer rows; forced device-KV reject; shrink/regrow",
+    "unstaged_dirty": false,
+    "untracked_count": 0,
+    "untracked_dirty": false,
+    "warmups": 0
+  },
+  "configuration": {
+    "backend": "hip_gfx1151",
+    "decode_tokens": 32,
+    "graph_decode_tokens": 129,
+    "kv_dtype": "bf16",
+    "max_active_requests": 3,
+    "max_sequence_length": 65667,
+    "model": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "pool_plan": {
+      "block_size": 256,
+      "chunk_pages": 5,
+      "decode_tokens": 32,
+      "initial_pages": 5,
+      "longer_context_tokens": 65536,
+      "low_water_pages": 5,
+      "mixed_high_water_pages": 519,
+      "pages_by_context": {
+        "1024": 5,
+        "32768": 129,
+        "4096": 17,
+        "65536": 257
+      },
+      "pressure_high_water_pages": 134
+    },
+    "prefill_chunk_tokens": 256,
+    "prefill_decode_policy": "protect_ttft",
+    "quant": "gguf_q4_k_m",
+    "slo_thresholds": {
+      "end_to_end_p95_seconds": 300.0,
+      "itl_p99_seconds": 5.0,
+      "queue_p99_seconds": 120.0,
+      "ttft_p95_seconds": 240.0
+    }
+  },
+  "protocol": {
+    "server": "real localhost Uvicorn SSE with one prepared model",
+    "oracle": "independent c1 exact generated-token trajectories for every request shape",
+    "timing": "barrier-to-complete exact generated tokens; no discarded warmup; one packet",
+    "memory": "dynamic device-KV grow/shrink plus HIP/tracked allocator snapshots",
+    "pressure": "one live 32K survivor; concurrent 4K candidate must receive retryable 429 engine_busy",
+    "graph": "32K c1 seed and post-shrink regrow must capture, replay, invalidate, and use fresh logical ids"
+  },
+  "workloads": {
+    "context_1k_c2": {
+      "passed": true,
+      "request_count": 2,
+      "wall_seconds": 3.6285020930226892,
+      "correctness": {
+        "eligible_rows": 2,
+        "exact_rows": 2,
+        "passed": true
+      },
+      "accounting": {
+        "authoritative_source": "resident runner reclaim generated_ids",
+        "exact_generated_tokens": 64,
+        "observed_generated_tokens": 64
+      },
+      "exact_generated_tokens_per_second": 17.638132308940026,
+      "slo_goodput_tokens_per_second": 17.638132308940026,
+      "latency_seconds": {
+        "end_to_end": {
+          "p95": 3.6283976880076807,
+          "p99": 3.6283976880076807,
+          "max": 3.6283976880076807
+        },
+        "itl": {
+          "p95": 0.026889815024333075,
+          "p99": 0.04611434999969788,
+          "max": 0.04611434999969788
+        },
+        "queue": {
+          "p95": 0.001514050003606826,
+          "p99": 0.001514050003606826,
+          "max": 0.001514050003606826
+        },
+        "ttft": {
+          "p95": 2.676202048023697,
+          "p99": 2.676202048023697,
+          "max": 2.676202048023697
+        }
+      },
+      "slo": {
+        "passed": true,
+        "checks": {
+          "end_to_end_p95": true,
+          "itl_p99": true,
+          "queue_p99": true,
+          "ttft_p95": true
+        }
+      },
+      "execution_paths": [
+        "packed_native"
+      ],
+      "route_passed": true,
+      "logical_physical_shapes": [
+        {
+          "active_masks": [
+            "11"
+          ],
+          "logical_c": 2,
+          "physical_widths": [
+            2
+          ]
+        }
+      ],
+      "pool_after": {
+        "current_pages": 5,
+        "free_pages": 5,
+        "high_water_observed_pages": 10,
+        "grow_events": 1,
+        "grow_failures": 0,
+        "shrink_events": 1,
+        "refcounted_pages": 0,
+        "pinned_pages": 0,
+        "hip_used_current_bytes": 30256906240,
+        "hip_used_peak_sampled_bytes": 30286266368
+      },
+      "failure_reasons": []
+    },
+    "context_32k_c2": {
+      "passed": true,
+      "request_count": 2,
+      "wall_seconds": 61.700024167017546,
+      "correctness": {
+        "eligible_rows": 2,
+        "exact_rows": 2,
+        "passed": true
+      },
+      "accounting": {
+        "authoritative_source": "resident runner reclaim generated_ids",
+        "exact_generated_tokens": 64,
+        "observed_generated_tokens": 64
+      },
+      "exact_generated_tokens_per_second": 1.0372767412012123,
+      "slo_goodput_tokens_per_second": 1.0372767412012123,
+      "latency_seconds": {
+        "end_to_end": {
+          "p95": 61.699918508995324,
+          "p99": 61.699918508995324,
+          "max": 61.699918508995324
+        },
+        "itl": {
+          "p95": 0.03561162599362433,
+          "p99": 0.11849870000150986,
+          "max": 0.11849870000150986
+        },
+        "queue": {
+          "p95": 0.03179660000023432,
+          "p99": 0.03179660000023432,
+          "max": 0.03179660000023432
+        },
+        "ttft": {
+          "p95": 59.90920502497465,
+          "p99": 59.90920502497465,
+          "max": 59.90920502497465
+        }
+      },
+      "slo": {
+        "passed": true,
+        "checks": {
+          "end_to_end_p95": true,
+          "itl_p99": true,
+          "queue_p99": true,
+          "ttft_p95": true
+        }
+      },
+      "execution_paths": [
+        "packed_native"
+      ],
+      "route_passed": true,
+      "logical_physical_shapes": [
+        {
+          "active_masks": [
+            "11"
+          ],
+          "logical_c": 2,
+          "physical_widths": [
+            2
+          ]
+        }
+      ],
+      "pool_after": {
+        "current_pages": 5,
+        "free_pages": 5,
+        "high_water_observed_pages": 263,
+        "grow_events": 5,
+        "grow_failures": 0,
+        "shrink_events": 5,
+        "refcounted_pages": 0,
+        "pinned_pages": 0,
+        "hip_used_current_bytes": 31552946176,
+        "hip_used_peak_sampled_bytes": 32979009536
+      },
+      "failure_reasons": []
+    },
+    "context_4k_c2": {
+      "passed": true,
+      "request_count": 2,
+      "wall_seconds": 7.906558643997414,
+      "correctness": {
+        "eligible_rows": 2,
+        "exact_rows": 2,
+        "passed": true
+      },
+      "accounting": {
+        "authoritative_source": "resident runner reclaim generated_ids",
+        "exact_generated_tokens": 64,
+        "observed_generated_tokens": 64
+      },
+      "exact_generated_tokens_per_second": 8.094545665399979,
+      "slo_goodput_tokens_per_second": 8.094545665399979,
+      "latency_seconds": {
+        "end_to_end": {
+          "p95": 7.9063475290022325,
+          "p99": 7.9063475290022325,
+          "max": 7.9063475290022325
+        },
+        "itl": {
+          "p95": 0.03495564599870704,
+          "p99": 0.04975431799539365,
+          "max": 0.04975431799539365
+        },
+        "queue": {
+          "p95": 0.007048662984743714,
+          "p99": 0.007048662984743714,
+          "max": 0.007048662984743714
+        },
+        "ttft": {
+          "p95": 6.909888061985839,
+          "p99": 6.909888061985839,
+          "max": 6.909888061985839
+        }
+      },
+      "slo": {
+        "passed": true,
+        "checks": {
+          "end_to_end_p95": true,
+          "itl_p99": true,
+          "queue_p99": true,
+          "ttft_p95": true
+        }
+      },
+      "execution_paths": [
+        "packed_native"
+      ],
+      "route_passed": true,
+      "logical_physical_shapes": [
+        {
+          "active_masks": [
+            "11"
+          ],
+          "logical_c": 2,
+          "physical_widths": [
+            2
+          ]
+        }
+      ],
+      "pool_after": {
+        "current_pages": 5,
+        "free_pages": 5,
+        "high_water_observed_pages": 39,
+        "grow_events": 3,
+        "grow_failures": 0,
+        "shrink_events": 3,
+        "refcounted_pages": 0,
+        "pinned_pages": 0,
+        "hip_used_current_bytes": 30372249600,
+        "hip_used_peak_sampled_bytes": 30623907840
+      },
+      "failure_reasons": []
+    },
+    "context_64k_c2": {
+      "passed": true,
+      "request_count": 2,
+      "wall_seconds": 153.82118983002147,
+      "correctness": {
+        "eligible_rows": 2,
+        "exact_rows": 2,
+        "passed": true
+      },
+      "accounting": {
+        "authoritative_source": "resident runner reclaim generated_ids",
+        "exact_generated_tokens": 64,
+        "observed_generated_tokens": 64
+      },
+      "exact_generated_tokens_per_second": 0.41606751365479977,
+      "slo_goodput_tokens_per_second": 0.41606751365479977,
+      "latency_seconds": {
+        "end_to_end": {
+          "p95": 153.82107830198947,
+          "p99": 153.82107830198947,
+          "max": 153.82107830198947
+        },
+        "itl": {
+          "p95": 0.05850339098833501,
+          "p99": 0.21960170500096865,
+          "max": 0.21960170500096865
+        },
+        "queue": {
+          "p95": 0.054470435017719865,
+          "p99": 0.054470435017719865,
+          "max": 0.054470435017719865
+        },
+        "ttft": {
+          "p95": 151.09412711299956,
+          "p99": 151.09412711299956,
+          "max": 151.09412711299956
+        }
+      },
+      "slo": {
+        "passed": true,
+        "checks": {
+          "end_to_end_p95": true,
+          "itl_p99": true,
+          "queue_p99": true,
+          "ttft_p95": true
+        }
+      },
+      "execution_paths": [
+        "packed_native"
+      ],
+      "route_passed": true,
+      "logical_physical_shapes": [
+        {
+          "active_masks": [
+            "11"
+          ],
+          "logical_c": 2,
+          "physical_widths": [
+            2
+          ]
+        },
+        {
+          "active_masks": [
+            "1110"
+          ],
+          "logical_c": 3,
+          "physical_widths": [
+            4
+          ]
+        }
+      ],
+      "pool_after": {
+        "current_pages": 5,
+        "free_pages": 5,
+        "high_water_observed_pages": 519,
+        "grow_events": 9,
+        "grow_failures": 0,
+        "shrink_events": 9,
+        "refcounted_pages": 0,
+        "pinned_pages": 0,
+        "hip_used_current_bytes": 35904536576,
+        "hip_used_peak_sampled_bytes": 38672777216
+      },
+      "failure_reasons": []
+    },
+    "graph_regrow_32k_c1": {
+      "passed": true,
+      "request_count": 1,
+      "wall_seconds": 33.71326652501011,
+      "correctness": {
+        "eligible_rows": 1,
+        "exact_rows": 1,
+        "passed": true
+      },
+      "accounting": {
+        "authoritative_source": "resident runner reclaim generated_ids",
+        "exact_generated_tokens": 129,
+        "observed_generated_tokens": 129
+      },
+      "exact_generated_tokens_per_second": 3.8263868588438807,
+      "slo_goodput_tokens_per_second": 3.8263868588438807,
+      "latency_seconds": {
+        "end_to_end": {
+          "p95": 33.713152723008534,
+          "p99": 33.713152723008534,
+          "max": 33.713152723008534
+        },
+        "itl": {
+          "p95": 0.02804922900395468,
+          "p99": 0.0326204450102523,
+          "max": 0.06512610398931429
+        },
+        "queue": {
+          "p95": 0.03061238702503033,
+          "p99": 0.03061238702503033,
+          "max": 0.03061238702503033
+        },
+        "ttft": {
+          "p95": 30.168745869013947,
+          "p99": 30.168745869013947,
+          "max": 30.168745869013947
+        }
+      },
+      "slo": {
+        "passed": true,
+        "checks": {
+          "end_to_end_p95": true,
+          "itl_p99": true,
+          "queue_p99": true,
+          "ttft_p95": true
+        }
+      },
+      "execution_paths": [
+        "native_c1_eager",
+        "native_c1_graph"
+      ],
+      "route_passed": true,
+      "logical_physical_shapes": [
+        {
+          "active_masks": [
+            "1"
+          ],
+          "logical_c": 1,
+          "physical_widths": [
+            1
+          ]
+        }
+      ],
+      "pool_after": {
+        "current_pages": 5,
+        "free_pages": 5,
+        "high_water_observed_pages": 134,
+        "grow_events": 2,
+        "grow_failures": 1,
+        "shrink_events": 2,
+        "refcounted_pages": 0,
+        "pinned_pages": 0,
+        "hip_used_current_bytes": 35902439424,
+        "hip_used_peak_sampled_bytes": 38672777216
+      },
+      "failure_reasons": []
+    },
+    "graph_seed_32k_c1": {
+      "passed": true,
+      "request_count": 1,
+      "wall_seconds": 33.535703892004676,
+      "correctness": {
+        "eligible_rows": 1,
+        "exact_rows": 1,
+        "passed": true
+      },
+      "accounting": {
+        "authoritative_source": "resident runner reclaim generated_ids",
+        "exact_generated_tokens": 129,
+        "observed_generated_tokens": 129
+      },
+      "exact_generated_tokens_per_second": 3.8466465596016666,
+      "slo_goodput_tokens_per_second": 3.8466465596016666,
+      "latency_seconds": {
+        "end_to_end": {
+          "p95": 33.53559410601156,
+          "p99": 33.53559410601156,
+          "max": 33.53559410601156
+        },
+        "itl": {
+          "p95": 0.027491943998029456,
+          "p99": 0.02913487600744702,
+          "max": 0.06716531899292022
+        },
+        "queue": {
+          "p95": 0.03277715801959857,
+          "p99": 0.03277715801959857,
+          "max": 0.03277715801959857
+        },
+        "ttft": {
+          "p95": 30.142868955008453,
+          "p99": 30.142868955008453,
+          "max": 30.142868955008453
+        }
+      },
+      "slo": {
+        "passed": true,
+        "checks": {
+          "end_to_end_p95": true,
+          "itl_p99": true,
+          "queue_p99": true,
+          "ttft_p95": true
+        }
+      },
+      "execution_paths": [
+        "native_c1_graph",
+        "packed_native"
+      ],
+      "route_passed": true,
+      "logical_physical_shapes": [
+        {
+          "active_masks": [
+            "1"
+          ],
+          "logical_c": 1,
+          "physical_widths": [
+            1
+          ]
+        },
+        {
+          "active_masks": [
+            "11"
+          ],
+          "logical_c": 2,
+          "physical_widths": [
+            2
+          ]
+        }
+      ],
+      "pool_after": {
+        "current_pages": 5,
+        "free_pages": 5,
+        "high_water_observed_pages": 519,
+        "grow_events": 10,
+        "grow_failures": 0,
+        "shrink_events": 10,
+        "refcounted_pages": 0,
+        "pinned_pages": 0,
+        "hip_used_current_bytes": 35904536576,
+        "hip_used_peak_sampled_bytes": 38672777216
+      },
+      "failure_reasons": []
+    },
+    "mixed_1k_4k_32k": {
+      "passed": true,
+      "request_count": 3,
+      "wall_seconds": 37.14033743899199,
+      "correctness": {
+        "eligible_rows": 3,
+        "exact_rows": 3,
+        "passed": true
+      },
+      "accounting": {
+        "authoritative_source": "resident runner reclaim generated_ids",
+        "exact_generated_tokens": 96,
+        "observed_generated_tokens": 96
+      },
+      "exact_generated_tokens_per_second": 2.5847907321168777,
+      "slo_goodput_tokens_per_second": 2.5847907321168777,
+      "latency_seconds": {
+        "end_to_end": {
+          "p95": 37.14023394600372,
+          "p99": 37.14023394600372,
+          "max": 37.14023394600372
+        },
+        "itl": {
+          "p95": 0.07987322998815216,
+          "p99": 0.17147900999407284,
+          "max": 0.17147900999407284
+        },
+        "queue": {
+          "p95": 0.030339416000060737,
+          "p99": 0.030339416000060737,
+          "max": 0.030339416000060737
+        },
+        "ttft": {
+          "p95": 34.80493998801103,
+          "p99": 34.80493998801103,
+          "max": 34.80493998801103
+        }
+      },
+      "slo": {
+        "passed": true,
+        "checks": {
+          "end_to_end_p95": true,
+          "itl_p99": true,
+          "queue_p99": true,
+          "ttft_p95": true
+        }
+      },
+      "execution_paths": [
+        "packed_native"
+      ],
+      "route_passed": true,
+      "logical_physical_shapes": [
+        {
+          "active_masks": [
+            "11"
+          ],
+          "logical_c": 2,
+          "physical_widths": [
+            2
+          ]
+        },
+        {
+          "active_masks": [
+            "1110"
+          ],
+          "logical_c": 3,
+          "physical_widths": [
+            4
+          ]
+        }
+      ],
+      "pool_after": {
+        "current_pages": 5,
+        "free_pages": 5,
+        "high_water_observed_pages": 263,
+        "grow_events": 7,
+        "grow_failures": 0,
+        "shrink_events": 7,
+        "refcounted_pages": 0,
+        "pinned_pages": 0,
+        "hip_used_current_bytes": 33245347840,
+        "hip_used_peak_sampled_bytes": 34084208640
+      },
+      "failure_reasons": []
+    }
+  },
+  "pressure": {
+    "passed": true,
+    "outcomes": {
+      "completed": 1,
+      "rejected": 1
+    },
+    "long_outcome": "completed",
+    "candidate_outcome": "rejected",
+    "candidate_error_code": "engine_busy",
+    "candidate_error_status_code": 429,
+    "candidate_done_sentinel": true,
+    "candidate_admission": {
+      "capacity_units": 134,
+      "current_units": 134,
+      "requested_units": 17,
+      "resource": "device_kv_pool"
+    },
+    "correctness": {
+      "eligible_rows": 1,
+      "exact_rows": 2,
+      "passed": true
+    },
+    "accounting": {
+      "authoritative_source": "resident runner reclaim generated_ids",
+      "exact_generated_tokens": 32,
+      "observed_generated_tokens": 32
+    },
+    "exact_generated_tokens_per_second": 1.027089729120371,
+    "slo_goodput_tokens_per_second": 1.027089729120371,
+    "latency_seconds": {
+      "end_to_end": {
+        "p95": 31.155885739979567,
+        "p99": 31.155885739979567,
+        "max": 31.155885739979567
+      },
+      "itl": {
+        "p95": 0.04608048501540907,
+        "p99": 0.04929495500982739,
+        "max": 0.04929495500982739
+      },
+      "queue": {
+        "p95": 0.031440991995623335,
+        "p99": 0.031440991995623335,
+        "max": 0.031440991995623335
+      },
+      "ttft": {
+        "p95": 30.167862083995715,
+        "p99": 30.167862083995715,
+        "max": 30.167862083995715
+      }
+    },
+    "pool_at_admission": {
+      "cow_fork_events": 0,
+      "cow_forked_pages": 0,
+      "current_bytes": 702545920,
+      "current_pages": 134,
+      "free_pages": 5,
+      "grow_events": 1,
+      "grow_failures": 0,
+      "high_water_observed_bytes": 702545920,
+      "high_water_observed_pages": 134,
+      "pinned_pages": 0,
+      "prefix_reuse_events": 0,
+      "prefix_reused_pages": 0,
+      "refcounted_pages": 129,
+      "shrink_events": 0
+    },
+    "pool_after": {
+      "current_pages": 5,
+      "free_pages": 5,
+      "high_water_observed_pages": 134,
+      "grow_events": 1,
+      "grow_failures": 1,
+      "shrink_events": 1,
+      "refcounted_pages": 0,
+      "pinned_pages": 0,
+      "hip_used_current_bytes": 35902439424,
+      "hip_used_peak_sampled_bytes": 38672777216
+    },
+    "failure_reasons": []
+  },
+  "lifecycle": {
+    "final_pool": {
+      "cow_fork_events": 0,
+      "cow_forked_pages": 0,
+      "current_bytes": 26214400,
+      "current_pages": 5,
+      "free_pages": 5,
+      "grow_events": 2,
+      "grow_failures": 1,
+      "high_water_observed_bytes": 702545920,
+      "high_water_observed_pages": 134,
+      "pinned_pages": 0,
+      "prefix_reuse_events": 0,
+      "prefix_reused_pages": 0,
+      "refcounted_pages": 0,
+      "shrink_events": 2
+    },
+    "pressure_logical_block_ids": {
+      "count": 129,
+      "minimum": 5,
+      "maximum": 133,
+      "sha256_json": "1c8d6e13435ea79fda59f96372d175cd338317cc57ef173f075d7ae093824a3b"
+    },
+    "regrow_logical_block_ids": {
+      "count": 129,
+      "minimum": 134,
+      "maximum": 262,
+      "sha256_json": "019bd1441bcf0a77e78ce16fc07671f6488b270761775030ec2ddec26961ce1d"
+    },
+    "retired_logical_ids_disjoint": true,
+    "graph": {
+      "captures": 2,
+      "invalidations": 2,
+      "replays": 256
+    },
+    "final_ownership": {
+      "generation_active_requests": 0,
+      "generation_batcher_active": false,
+      "generation_queue_depth": 0,
+      "loop_requests": {
+        "active": 0,
+        "admitted_current": 0,
+        "admitted_total": 14,
+        "completed_buffered": 0,
+        "pending": 0,
+        "reclaimed_total": 15
+      },
+      "model_runner_active_requests": 0
+    },
+    "final_metrics": {
+      "hipengine_requests_total": 15.0,
+      "hipengine_request_completed_total": 14.0,
+      "hipengine_request_failed_total": 1.0,
+      "hipengine_request_rejected_total": 1.0,
+      "hipengine_prompt_tokens_total": 343040.0,
+      "hipengine_completion_tokens_total": 642.0,
+      "hipengine_kv_pool_current_bytes": 26214400.0,
+      "hipengine_kv_pool_current_pages": 5.0,
+      "hipengine_kv_pool_free_pages": 5.0,
+      "hipengine_kv_pool_grow_events_total": 2.0,
+      "hipengine_kv_pool_grow_failures_total": 1.0,
+      "hipengine_kv_pool_high_water_observed_bytes": 702545920.0,
+      "hipengine_kv_pool_high_water_observed_pages": 134.0,
+      "hipengine_kv_pool_refcounted_pages": 0.0,
+      "hipengine_kv_pool_pinned_pages": 0.0,
+      "hipengine_kv_pool_shrink_events_total": 2.0,
+      "hipengine_graph_bucket_captures_total": 2.0,
+      "hipengine_graph_bucket_replays_total": 256.0,
+      "hipengine_graph_bucket_invalidations_total": 2.0
+    }
+  },
+  "gates": {
+    "all_workloads_exact_and_slo_green": true,
+    "pressure_green": true,
+    "final_ownership_green": true,
+    "memory_recovery": {
+      "baseline_tracked_current_bytes": 0,
+      "final_tracked_current_bytes": 0,
+      "kv_pool_current_pages": 0,
+      "kv_pool_free_pages": 0,
+      "kv_pool_pinned_pages": 0,
+      "kv_pool_refcounted_pages": 0,
+      "passed": true,
+      "tracked_delta_bytes": 0,
+      "tracked_tolerance_bytes": 134217728
+    },
+    "clean_source_green": true,
+    "original_packet_gate": {
+      "failure_reasons": [
+        "final_pool_lifecycle_failed"
+      ],
+      "passed": false
+    },
+    "reevaluated_packet_gate": {
+      "passed": true,
+      "failure_reasons": []
+    }
+  },
+  "limitations": [
+    "This packet covers greedy Q4_K_M with BF16 device KV only.",
+    "Uniform INT8 and tail4 Hadamard INT8 remain fail-closed in the continuous owner because deferred dynamic KV and packed c>N kernels currently require BF16.",
+    "128K is not retried: the retained gfx1151 production artifact documents a repeated-lifecycle firmware/runtime stall; 64K is the default feasible longer-context row.",
+    "Protect-TTFT is used to force joined long-context decode membership; production fair-policy SLO selection remains the separate F4 artifact.",
+    "The production continuous owner is BF16-KV only. INT8/tail4 remain fixed-session c1/direct diagnostics and are tracked separately in task #93.",
+    "Rates are one-pass long-context serving evidence, not a variance-qualified comparison against another engine."
+  ],
+  "validation": {
+    "focused_tests": ".venv/bin/python -m pytest tests/test_gguf_long_context_pressure_gate.py -q",
+    "focused_tests_result": "6 passed",
+    "syntax": ".venv/bin/python -m py_compile scripts/gguf_long_context_pressure_gate.py",
+    "raw_reevaluation": "evaluate_packet(raw workloads/pressure/graph/ids, _final_pool_from_idle_snapshot(raw final_ownership))",
+    "raw_reevaluation_result": {
+      "passed": true,
+      "failure_reasons": []
+    }
+  }
+}
