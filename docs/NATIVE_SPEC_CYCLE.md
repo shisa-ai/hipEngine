@@ -87,7 +87,7 @@ single-native-submission boundary.
 | `N2` | Device acceptance and selected-state commit | `VERIFY + ACCEPT + selected COMMIT + target cursors` | Proposal invocation and remaining MTP-KV repair/reseed/accounting | Exact ownership diagnostic |
 | `N3` | Complete GGUF cycle adapter | One scheduler-facing call owns `PROPOSE` through cursor/result accounting | Proposal child kernels still Python-submitted | Exact API-ownership diagnostic |
 | `N3P` | Reusable proposal graph | One proposal graph plus the existing target graph per cycle | Combined proposal+target submission; provider-general path | Exact submission-ownership diagnostic |
-| `N4` | Shared PARO MTP / DFlash adapters | Current slice wraps shared target `VERIFY + ACCEPT` through the common ABI | Provider proposal, selected state/KV/hidden commit, full-cycle ownership | gfx1100 default-off; correctness promotion blocked by available artifact |
+| `N4` | Shared PARO MTP / DFlash adapters | Current slice wraps shared target `VERIFY + ACCEPT` through the common ABI | Provider proposal, selected state/KV/hidden commit, full-cycle ownership | gfx1100 strict B1/B2 correctness admitted; default-off; no speed, DFlash, or gfx1151 promotion |
 | `N5` | Multi-cycle native option | Native loop may continue to EOS, cancellation/deadline, output limit, or scheduler yield | Future work | Planned only after provider/backend gates |
 
 ## Milestone Details
@@ -315,7 +315,7 @@ The requested external floor is closed:
 | N2 device accept/selected commit | 92.395 | 117.557 | 1.2723x | 8.529 ms/output | -4.17% | exact ownership diagnostic |
 | N3 complete public adapter | 92.233 | 118.592 | 1.2858x | 8.497 ms/output | -3.32% | exact API-ownership diagnostic |
 | N3P proposal graph | 92.187 | 118.183 | 1.2820x | 8.610 ms/output | -3.66% | exact submission diagnostic |
-| N4 shared PARO/DFlash target adapter | not admissible | not admissible | not admissible | not admissible | not comparable | blocked by available target+sidecar correctness |
+| N4 shared PARO/DFlash target adapter | no retained row | no retained row | no retained row | no retained row | not comparable | strict gfx1100 PARO B1/B2 correctness admitted; performance unclaimed |
 
 `N1R` repeated at **123.332 and 122.667 tok/s** (0.54% max/min spread).
 The old route to `N1R` change is **+123.52% rate / -55.17% complete wall** with
@@ -426,23 +426,56 @@ versus N3P **117.589 / 8.653**. Excluding first capture, proposal wall improves
 8.610 ms-output**. This is useful submission infrastructure, not a new topline
 or evidence for one combined proposal+target native call.
 
-### N4 blocker and non-result
+### N4 verifier correction and strict admission
 
-The clean `7bf3439e` PARO B3 flag-off/on pair:
+The original `7bf3439e` B3 flag-off/on packet correctly proved adapter equality:
+it matched **265/265** non-timing/non-route leaves and all eight IDs while the
+N4 arm submitted four `VERIFY|ACCEPT` replays. Its conclusion was wrong,
+however. Both arms emitted verifier token `59` instead of target-AR token `19`
+after rejecting the draft. Rejection must use the target correction, so this
+was verifier semantics, not target/sidecar incompatibility. The historical
+**39.898 -> 39.085 tok/s** observation remains invalid as speed evidence.
 
-- matches **265/265** compared non-timing/non-route leaves;
-- emits the same eight MTP IDs and seven zero-accept decisions;
-- records four native `VERIFY|ACCEPT` replays in the N4 arm;
-- preserves GPU/CPU acceptance agreement.
+The model audit keeps the current artifact:
 
-Both arms mismatch target AR beginning at output token 2 because the only
-complete local packed PARO target + MTP-BF16 sidecar pairing is not an admissible
-oracle. A B2/c1-loop screen diverges before the first steady native replay too.
-The observed one-run **39.898 -> 39.085 tok/s (-2.04%)** is therefore explicitly
-invalid as a speed claim. N4 remains default-off, DFlash remains ungated, and
-gfx1151 remains unregistered.
+- the target is the later full8192-old+fresh, 149-hour packed PARO checkpoint;
+  versus full4096-e5 its held-out PPL/KL/top-1/max-KL improve from
+  **6.6216/0.034684/92.000%/11.0422** to
+  **6.6090/0.027939/92.856%/6.3961**;
+- the live target blob is `a5c9100b…cc60`;
+- the BF16 sidecar is `556c607c…26f`, passes all **19/19** config/dtype/shape
+  checks, and has the same 19 tensor payloads as the older assembly.
 
-[`N4 blocked artifact`](../benchmarks/results/2026-07-19-w7900-paro-mtp-native-target-graph-n4-blocked.json)
+The strict GDN and linear-output controls first reduced B3 to exact AR, then a
+B2 RED localized the remaining mismatch: serial and verifier row 0 were exact
+through linear attention, routing, and selected experts, but **253/2048** BF16
+post-MoE values differed at the linear layer's shared expert. The chain/tree
+t-loop called `run_moe_c1_fp16()` without forwarding the existing
+`HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT` control. Forwarding it
+restores the serial-c1 shared-expert path without changing default fast behavior
+or any model byte.
+
+Clean `5ef02aff` W7900 evidence under the complete explicit strict stack now
+passes:
+
+- B2 native-off/on: identical eight target-AR IDs, target top-1 paths,
+  acceptance, and GPU/CPU decisions; five steady native `VERIFY|ACCEPT` replays;
+- B2 three-cycle state: exact **60/60** resident and selected Conv/GDN buffers,
+  **20/20** live/selected K/V cells, and **60/60** scratch-state commits each
+  cycle;
+- canonical B1 category+heldout suite: **10/10 prompts and 240/240 IDs exact**,
+  **16/214** draft accepts overall, **13/125** train, and **3/89** heldout; all
+  **150/150** retained trace records use native `VERIFY|ACCEPT` and GPU/CPU
+  acceptance agrees.
+
+This closes the model-artifact blocker and admits the existing target+sidecar
+for strict gfx1100 PARO N4 correctness. It does **not** retain a speed row: B1
+acceptance is low, the strict fallbacks are costly, provider proposal/commit is
+still outside N4, DFlash is ungated, and gfx1151 remains unregistered. N4 stays
+explicit/default-off.
+
+[`N4 corrected artifact`](../benchmarks/results/2026-07-19-w7900-paro-mtp-native-target-graph-n4-correctness.json)
+· [`superseded diagnosis`](../benchmarks/results/2026-07-19-w7900-paro-mtp-native-target-graph-n4-blocked.json)
 
 ## gfx1151 Status
 
@@ -544,8 +577,9 @@ category+heldout, correctness, and timing protocol.
 3. **Do not claim a combined native cycle yet.** N3P still submits separate
    proposal and target graphs. Combining them is worthwhile only if the measured
    complete wall improves without changing semantics.
-4. **Repair N4 evidence before more tuning.** Obtain/rebuild a compatible PARO
-   target+MTP sidecar, then run full PARO MTP and DFlash category+heldout gates.
+4. **Keep the current PARO target+sidecar and optimize the strict N4 route.**
+   The artifact blocker is closed; next profile strict verifier wall, then extend
+   provider proposal/commit ownership. Run DFlash category+heldout independently.
 5. **Validate gfx1151 independently.** Existing `llama-compat` already reaches
    81.900 tok/s; no gfx1100 alias or result automatically admits N1–N4 there.
 6. **Use vLLM main, not v0.25.1, for the next comparison**, and require the
@@ -561,5 +595,6 @@ category+heldout, correctness, and timing protocol.
 - [`2026-07-19 W7900 N2`](../benchmarks/results/2026-07-19-w7900-llama-compat-native-cycle-n2.json)
 - [`2026-07-19 W7900 N3`](../benchmarks/results/2026-07-19-w7900-llama-compat-native-cycle-n3.json)
 - [`2026-07-19 W7900 N3P`](../benchmarks/results/2026-07-19-w7900-llama-compat-native-cycle-n3p.json)
-- [`2026-07-19 W7900 N4 blocker`](../benchmarks/results/2026-07-19-w7900-paro-mtp-native-target-graph-n4-blocked.json)
+- [`2026-07-19 W7900 N4 strict correction`](../benchmarks/results/2026-07-19-w7900-paro-mtp-native-target-graph-n4-correctness.json)
+- [`2026-07-19 W7900 N4 superseded diagnosis`](../benchmarks/results/2026-07-19-w7900-paro-mtp-native-target-graph-n4-blocked.json)
 - [`2026-07-17 gfx1151 MTP refresh`](../benchmarks/results/2026-07-17-gfx1151-amd-iommu-off-mtp-refresh.json)

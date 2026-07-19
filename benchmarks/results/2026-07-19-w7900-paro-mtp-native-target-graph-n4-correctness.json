@@ -1,0 +1,308 @@
+{
+  "schema": "hipengine.paro_mtp_native_target_graph_n4_correctness.v2",
+  "date": "2026-07-19",
+  "status": "correctness_admitted_strict",
+  "performance_claim": false,
+  "speed_claim_eligible": false,
+  "purpose": "Correct the prior model-incompatibility diagnosis and admit the current packed PARO target plus MTP-BF16 sidecar for strict gfx1100 N4 target+accept correctness work.",
+  "correction": {
+    "supersedes": "benchmarks/results/2026-07-19-w7900-paro-mtp-native-target-graph-n4-blocked.json",
+    "prior_conclusion_valid": false,
+    "reason": "A rejected speculative draft must emit the target verifier correction. The prior token-2 mismatch was therefore a verifier-semantics defect, not evidence that the model or MTP sidecar was incompatible.",
+    "prior_fast_screen": {
+      "candidate_budget": 3,
+      "chain_attn_mode": "batched",
+      "strict_exactness_flags_complete": false,
+      "target_ar_token_2": 19,
+      "fast_verifier_token_2": 59,
+      "native_off_on_equal": true,
+      "interpretation": "N4 preserved the existing fast verifier exactly; both arms inherited its wrong correction. The historical 39.898 -> 39.085 tok/s observation remains invalid as performance evidence."
+    }
+  },
+  "hipengine_artifact_provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-19T13:49:16.259949+00:00",
+    "repo_root": "/home/lhl/hipEngine-main",
+    "hipengine_commit": "5ef02aff4f97563b867f0ca3945b3a6cf050edf7",
+    "git_branch": "main",
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "configured_backend": "hip_gfx1100",
+    "resolved_backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "model_path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "value": "1a4745ce8a8734324e62c14aa2545cb7cc1b8ea23a7489b05658f619cc1bdaac",
+      "size_bytes": 22176626792,
+      "sampled_bytes": 9476610,
+      "file_count": 9,
+      "exists": true,
+      "path_type": "directory"
+    },
+    "quant": "w4_paro+mtp_bf16",
+    "kv_dtype": "bf16",
+    "command": [
+      "python3",
+      "scripts/mtp-bench.py",
+      "--mode",
+      "hipengine-current",
+      "--prompts-file",
+      "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "--max-tokens",
+      "24",
+      "--candidate-budgets",
+      "1",
+      "--runs",
+      "1",
+      "--prompt-render",
+      "raw",
+      "--proposal-impl",
+      "persistent_device",
+      "--backend",
+      "hip_gfx1100",
+      "--hip-arch",
+      "gfx1100",
+      "--chain-attn-mode",
+      "c1_loop",
+      "--graph-mode",
+      "auto",
+      "--engine-model",
+      "/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16",
+      "--raw-root",
+      "/tmp/w7900-current-packed-n4-strict-b1-canonical-raw",
+      "--out",
+      "/tmp/w7900-current-packed-n4-strict-b1-canonical.json"
+    ],
+    "environment": {
+      "HIP_VISIBLE_DEVICES": "0",
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HIPENGINE_BACKEND": "hip_gfx1100",
+      "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-mtp-w7900-hipcc-version.txt",
+      "HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH": "1",
+      "HIPENGINE_GDN_TLOOP_C1_EXACT": "1",
+      "HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS": "1",
+      "HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT": "1",
+      "HIPENGINE_VERIFY_GPU_ACCEPT": "validate",
+      "PYTHONPATH": "."
+    },
+    "rocm_version": "HIP version: 7.2.53211-3d9ef42",
+    "hipcc_version": "HIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+    "build_profile": "require_cached verifier graphs and native-cycle launcher",
+    "timing_protocol": "one clean process per prompt; 24 requested IDs; verifier-economics diagnostic only",
+    "warmups": 0,
+    "repetitions": 1,
+    "profiler": null
+  },
+  "model_review": {
+    "target": {
+      "source": "shisa-ai/Qwen3.6-35B-A3B-PARO-packed",
+      "snapshot": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+      "model_blob_sha256": "a5c9100b17846ff0b2b507dc16dfc3ff1d622adbfc4782f30b4f1b9fac58cc60",
+      "assembly_symlink_live": true,
+      "training": "full8192-oldfresh-rbparams-e5; 8192 x 2048-token 50/50 old+fresh calibration; five epochs per stage; about 149h 11m",
+      "quality_vs_bf16": {
+        "ppl": 6.6090,
+        "kl_nats": 0.027939,
+        "top1_pct": 92.856,
+        "max_kl": 6.396052,
+        "gate_kl_le_0_05": true,
+        "gate_top1_ge_90_pct": true
+      },
+      "quality_vs_full4096_e5": {
+        "old_ppl": 6.6216,
+        "new_ppl": 6.6090,
+        "old_kl_nats": 0.034684,
+        "new_kl_nats": 0.027939,
+        "old_top1_pct": 92.000,
+        "new_top1_pct": 92.856,
+        "old_max_kl": 11.042196,
+        "new_max_kl": 6.396052,
+        "conclusion": "The current packed target is the later and better-qualified quant; replacing it with full4096-e5 would be a regression."
+      }
+    },
+    "mtp_sidecar": {
+      "source": "official Qwen/Qwen3.6-35B-A3B-FP8 MTP shard dequantized to BF16",
+      "path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16/mtp-bf16.safetensors",
+      "bytes": 1689283872,
+      "sha256": "556c607cce302d3c529f0a4a3d1439cd206eca01421dc7b8b370f9a37a23426f",
+      "tensor_count": 19,
+      "validation": {
+        "passed": true,
+        "expected_count": 19,
+        "present_count": 19,
+        "config_errors": [],
+        "dtype_errors": [],
+        "shape_errors": [],
+        "missing": [],
+        "unexpected_mtp": []
+      },
+      "older_full4096_assembly_comparison": "All 19 tensor payloads are identical; only safetensors metadata serialization differs. No sidecar regeneration is indicated."
+    },
+    "conclusion": "No target or sidecar corruption, dangling dependency, config mismatch, dtype mismatch, shape mismatch, or tensor-lineage problem was found."
+  },
+  "verifier_defect": {
+    "red": {
+      "candidate_budget": 2,
+      "serial_target_correction": 19,
+      "verifier_correction": 22,
+      "exact_through": "layer-0 input, QKV/AB, Conv, GDN, linear out projection, router, selected-expert gate/up/down, and selected Conv/GDN state",
+      "first_semantic_divergence": "linear-attention layer shared expert",
+      "post_moe_bf16_mismatches": 253,
+      "post_moe_bf16_elements": 2048
+    },
+    "root_cause": "The B+1 chain/tree linear-attention t-loop called run_moe_c1_fp16() directly without forwarding the existing HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT exactness control. Serial c1 used the small-batch shared-expert GEMV path; the verifier did not.",
+    "repair": "Pass _force_small_batch_shared_expert() through both chain and tree linear-attention t-loop MoE calls. Default fast behavior remains unchanged; the existing explicit strict control now reaches the verifier paths it names.",
+    "green": {
+      "layer0_all_compared_producers_match": true,
+      "post_moe_bf16_match": true,
+      "correction_token": 19,
+      "b1_b2_b3_target_ar_smokes_exact": true
+    }
+  },
+  "validation": {
+    "host": {
+      "command": "python3 -m pytest -q tests/test_native_spec_cycle.py tests/test_native_spec_cycle_graph.py tests/test_qwen35_decode_state.py tests/test_qwen35_resident_batch_layout.py",
+      "passed": 267,
+      "failed": 0,
+      "compileall": true,
+      "git_diff_check": true
+    },
+    "clean_b2_control_native_ab": {
+      "status": "passed",
+      "candidate_budget": 2,
+      "decode_tokens": 8,
+      "strict_control_native_outputs_equal": true,
+      "exact_ar_both": true,
+      "ar_tokens_both": [248050, 19, 19, 5137, 58, 58, 58, 220],
+      "mtp_tokens_both": [248050, 19, 19, 5137, 58, 58, 58, 220],
+      "accepted_lengths_both": [0, 0, 0, 0, 0, 0, 0],
+      "target_top1_paths_equal": true,
+      "gpu_accept_matches_cpu_both": true,
+      "control_native_route_absent": true,
+      "candidate_native_verify_accept_replays": 5
+    },
+    "b2_three_cycle_state_oracle": {
+      "status": "passed",
+      "corrections_match_ar_each_cycle": true,
+      "resident_conv_gdn_checked_each_cycle": 60,
+      "resident_live_kv_checked_each_cycle": 20,
+      "selected_conv_gdn_checked_each_cycle": 60,
+      "selected_kv_checked_each_cycle": 20,
+      "scratch_to_resident_state_checked_each_cycle": 60,
+      "first_mismatch": null
+    },
+    "canonical_b1_category_suite": {
+      "status": "passed",
+      "prompt_suite": {
+        "source": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "source_format": "jsonl",
+        "sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+        "category_counts": {
+          "code": 4,
+          "general_en": 2,
+          "general_ja": 2,
+          "mixed_ja_en": 2
+        },
+        "split_counts": {
+          "train": 6,
+          "heldout": 4
+        }
+      },
+      "protocol": {
+        "candidate_budget": 1,
+        "decode_tokens_per_prompt": 24,
+        "prompt_render": "raw",
+        "proposal_impl": "persistent_device",
+        "chain_attn_mode": "c1_loop",
+        "graph_mode": "auto",
+        "strict_exactness": true,
+        "n4_native_target_accept": true
+      },
+      "full": {
+        "prompts": 10,
+        "exact_prompts": 10,
+        "exact_ids": 240,
+        "cycles": 214,
+        "accepted_drafts": 16,
+        "draft_acceptance": 0.07476635514018691,
+        "accepted_per_generated_id": 0.06666666666666667,
+        "native_verify_accept_trace_records": 150,
+        "native_trace_records_checked": 150,
+        "gpu_accept_matches_cpu": true
+      },
+      "train": {
+        "prompts": 6,
+        "exact_prompts": 6,
+        "exact_ids": 144,
+        "cycles": 125,
+        "accepted_drafts": 13,
+        "draft_acceptance": 0.104
+      },
+      "heldout": {
+        "prompts": 4,
+        "exact_prompts": 4,
+        "exact_ids": 96,
+        "cycles": 89,
+        "accepted_drafts": 3,
+        "draft_acceptance": 0.033707865168539325
+      },
+      "categories": {
+        "code": {"prompts": 4, "exact_ids": 96, "cycles": 84, "accepted_drafts": 8, "draft_acceptance": 0.09523809523809523},
+        "general_en": {"prompts": 2, "exact_ids": 48, "cycles": 45, "accepted_drafts": 1, "draft_acceptance": 0.022222222222222223},
+        "general_ja": {"prompts": 2, "exact_ids": 48, "cycles": 45, "accepted_drafts": 1, "draft_acceptance": 0.022222222222222223},
+        "mixed_ja_en": {"prompts": 2, "exact_ids": 48, "cycles": 40, "accepted_drafts": 6, "draft_acceptance": 0.15}
+      },
+      "interpretation": "Nonzero train, heldout, and full-suite acceptance proves the sidecar is operational. Low strict B1 acceptance is an economics concern, not semantic incompatibility; strict-route performance is unmeasured here and no promotion is made."
+    }
+  },
+  "source_artifacts": {
+    "canonical_suite_summary": {
+      "path": "/tmp/w7900-current-packed-n4-strict-b1-canonical.json",
+      "bytes": 44468,
+      "sha256": "da118230c314fc5c01dbd835ce662952a525d894c155a69ea59a42fdfe7513ca"
+    },
+    "canonical_raw_children": {
+      "count": 10,
+      "bytes": 272855,
+      "manifest_sha256": "9b3c7aa0d19d2da48e75e5af60f494729abfc740c81461f3e32cbfbaebf45fe6"
+    },
+    "clean_b2_control": {
+      "path": "/tmp/w7900-current-packed-n4-strict-b2-control-clean.json",
+      "bytes": 12593,
+      "sha256": "696959249e8563844423428c090fc5fb869d735b263bd69c28bd42f7db2ae03d"
+    },
+    "clean_b2_native": {
+      "path": "/tmp/w7900-current-packed-n4-strict-b2-native-clean.json",
+      "bytes": 12860,
+      "sha256": "84b1bdd7fdb340e8522784e3e83098a6a95ad1d5b24aed3f9244e29da957fd21"
+    },
+    "b2_state_oracle": {
+      "path": "/tmp/w7900-current-packed-exact-n4-b2-state-audit.json",
+      "bytes": 6605,
+      "sha256": "2a38640f5b517ea207d5d72d8dfeb4e0f8ef12a33110dc7f79462fa86e663a11"
+    },
+    "layer0_red": {
+      "path": "/tmp/w7900-current-packed-b2-cycle1-layer0-strict-parity-v2.json",
+      "bytes": 6881,
+      "sha256": "e348ed05d9c6b3a7bf6136b165190d1131136924c8526e2301abb123d7a0f591"
+    },
+    "layer0_green": {
+      "path": "/tmp/w7900-current-packed-b2-cycle1-layer0-strict-smallshared-green.json",
+      "bytes": 10446,
+      "sha256": "db66a08b2a76a72dbb4bafe44188cba29a10315a0b06fd1ec2c853f6a0b56db5"
+    }
+  },
+  "decision": {
+    "model": "Keep the current full8192-oldfresh-rbparams-e5 packed PARO target and existing MTP-BF16 sidecar. Do not rebuild or downgrade either artifact.",
+    "n4_correctness": "The gfx1100 N4 target+accept slice is admitted under the complete explicit strict verifier stack for B1 full-suite correctness and clean B2 control/native equality. The prior model-artifact blocker is closed.",
+    "promotion": "Keep N4 explicit/default-off. This artifact is not a speed claim, does not admit the fast approximate verifier, does not complete PARO proposal/commit ownership, and does not admit DFlash or gfx1151.",
+    "next_gate": "Profile and optimize the strict verifier without changing corrections; then evaluate complete PARO proposal/selected-state/KV/hidden commit ownership. Gate DFlash and gfx1151 independently."
+  }
+}

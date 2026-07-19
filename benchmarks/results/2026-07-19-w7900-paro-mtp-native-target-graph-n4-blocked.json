@@ -1,11 +1,12 @@
 {
   "schema": "hipengine.paro_mtp_native_target_graph_n4.v1",
   "date": "2026-07-19",
-  "status": "blocked_correctness",
+  "status": "superseded_incorrect_model_diagnosis",
   "performance_claim": false,
   "speed_claim_eligible": false,
-  "purpose": "Clean committed-source A/B evidence for the first shared PARO MTP / DFlash NativeSpecCycle N4 target+accept adapter.",
-  "blocked_reason": "The only complete local packed PARO+MTP artifact mismatches its own true-AR target on the unchanged direct control, beginning at output token 2. The adapter is semantically identical to that control, but no full-suite correctness or performance promotion is valid until a target/sidecar artifact passes the AR gate.",
+  "purpose": "Historical clean committed-source A/B evidence for the first shared PARO MTP / DFlash NativeSpecCycle N4 target+accept adapter.",
+  "superseded_by": "benchmarks/results/2026-07-19-w7900-paro-mtp-native-target-graph-n4-correctness.json",
+  "superseded_reason": "This packet correctly proved native-off/on adapter equality, but incorrectly attributed the shared token-2 mismatch to the model assembly. Rejected drafts must use the target correction; the later strict verifier audit localized and repaired a verifier shared-expert exactness defect without changing model or sidecar bytes.",
   "hipengine_artifact_provenance": {
     "kind": "hipengine_artifact_provenance",
     "schema_version": 1,
@@ -185,7 +186,7 @@
       "first_mtp_vs_ar_difference_output_token_1_indexed": 2,
       "control_acceptance_rate": 0.0,
       "candidate_acceptance_rate": 0.0,
-      "conclusion": "The native adapter preserves the existing implementation exactly, but the available target/sidecar pair is not an admissible correctness oracle. Do not run or publish a full-suite speed gate from this model artifact."
+      "conclusion": "Historical observation only: the native adapter preserved the selected fast verifier exactly, but that verifier was not serial-AR-equivalent. This does not diagnose the target/sidecar pair; see superseded_by for the strict verifier repair and full-suite correction."
     },
     "timing_diagnostic_only": {
       "control_mtp_decode_tok_s": 39.89830542153125,
@@ -208,8 +209,8 @@
     }
   },
   "decision": {
-    "implementation": "Keep the exact, fallback-safe adapter as default-off N4 infrastructure.",
-    "promotion": "Blocked; no performance row and no gfx1151 or DFlash admission claim.",
-    "next_gate": "Obtain or rebuild a target trunk plus BF16 MTP sidecar that matches true AR, then run full category+heldout PARO MTP and DFlash correctness/non-regression gates independently before any default promotion or complete-cycle ownership claim."
+    "implementation": "Keep the fallback-safe adapter as default-off N4 infrastructure.",
+    "promotion": "Historical packet superseded; no performance row and no gfx1151 or DFlash admission claim.",
+    "next_gate": "Use the existing target and sidecar with the complete strict verifier stack documented in superseded_by; do not rebuild or downgrade the model based on this packet."
   }
 }
