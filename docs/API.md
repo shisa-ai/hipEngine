@@ -630,9 +630,11 @@ OpenAI-server generation queue cap. Set `HIPENGINE_MAX_ACTIVE_REQUESTS` or
 one active backend generation batch; overflow remains queued and is still
 bounded by the queue cap when configured. Streaming requests use bounded
 per-client token queues (`HIPENGINE_STREAM_QUEUE_MAX_CHUNKS`, default 16).
-Backpressure blocks only that producer; if another resident request advances
-far enough to fill the model-loop subscription queue, the slow row is cancelled
-with `budget_pressure=client_backpressure` rather than stalling its neighbors.
+The resident model loop separately keeps a bounded 64-event scheduling buffer
+per subscription so transient cross-thread bursts do not look like slow
+clients. Backpressure blocks only the affected producer; if a client remains
+slow enough to fill that model-loop buffer, its row is cancelled with
+`budget_pressure=client_backpressure` rather than stalling its neighbors.
 On process shutdown, admission closes and work drains for
 `HIPENGINE_SHUTDOWN_GRACE_SECONDS` (default 5.0) before cooperative cancellation
 and long-lived runner close. Set `HIPENGINE_MAX_CHAT_SESSIONS` or

@@ -166115,3 +166115,51 @@ and the artifact status is `accepted_backend_packet`:
 `/tmp/gfx1151-external-f1-c2-rebase-green/result.json`. This is correctness
 repair evidence, not yet the five-width external performance publication; that
 packet must be rerun from the committed fix.
+
+## 2026-07-19 — Absorb healthy resident C13 stream bursts
+
+The clean `0fa58f7e` five-width `fair:256` publication packet proved that the
+shifted contiguous-KV repair holds beyond c2: every blocking warmup/measured row
+and delayed C13 admission row is exact, and c1/c2/c4/c8 SSE is exact. It still
+failed because four C13 SSE rows ended after only 17-21 tokens with structured
+499 cancellation. C13 blocking remained **39/39 exact at 71.883 median tok/s**;
+the failed SSE repetitions returned 1553/1557/1443 of 1664 tokens. Server
+metrics recorded exactly four failed/cancelled requests and no rejects. Raw
+artifact:
+`/tmp/gfx1151-external-f1-standard-0fa58f7e-fair256/hipengine/result.json`.
+
+This is resident-event pressure, not an actual client disconnect or model
+mismatch. The failing token counts cross the resident adapter's separate
+16-event subscription limit; the client-facing HTTP queues remain independently
+bounded and healthy. Reintroduced the prior deterministic RED in which one
+48-token peer advances while its healthy neighbor is temporarily unscheduled.
+The old default cancels that neighbor with
+`budget_pressure=client_backpressure`. The earlier 64-event experiment predated
+the scheduler-owned row cancellation acknowledgement and was confounded by the
+then-unfixed timeout/disconnect fan-out; that fan-out is now closed by
+`1e104111` and the accepted F4 packet.
+
+Raised only the internal cross-thread resident scheduling buffer to **64**.
+External per-client HTTP queues remain configurable and default to **16**; the
+explicit cap-1 slow-client contract still cancels only its row. Updated the API
+and env references to state the two independent bounds. Host validation:
+
+```text
+tests/test_generation_batch_scheduler.py: full file passed
+submit/poll adapter focus: 8 passed
+server generation-batcher/request-control focus: 28 passed
+py_compile + git diff --check: passed
+```
+
+A real-Uvicorn dirty-source correctness gate used p512/d128, c1+C13, one
+blocking measurement, three SSE measurements, and delayed C13 admission. The
+packet intentionally set zero warmups, so its top-level publication gate remains
+false; every measured correctness/route/stream predicate passes. C13 is
+**13/13 blocking exact at 71.454 tok/s**, **39/39 SSE exact at
+73.070/72.722/72.438 tok/s**, and **13/13 delayed-admission exact at 71.591
+tok/s**. Failed/cancelled/rejected server requests are all zero. The strict
+0.5-second every-client ITL SLO remains a real limitation: C13 exact-SSE median
+is **72.722 tok/s**, but SLO-goodput median is only **11.144 tok/s** and no C13
+repetition passes every SLO. Diagnostic artifact:
+`/tmp/gfx1151-external-f1-c1-c13-resident64-dirty/result.json`. Next is a
+committed-clean five-width packet; no external-engine win is claimed yet.
