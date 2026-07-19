@@ -166099,3 +166099,25 @@ based on clean-main `01e9af84` produce:
 Focused host tests for the new chain-tloop env wiring pass in both unset/set
 cases, together with the existing force-small-shared tests (`4 passed`); Python
 compilation and `git diff --check` pass. No model or sidecar bytes changed.
+
+## 2026-07-19 — Run PARO MTP economics directly from canonical JSONL
+
+The first current-packed strict B1 category screen exposed a benchmark-harness
+contract bug before publication: `scripts/mtp-bench.py` accepts the canonical
+committed JSONL suite, but its `hipengine-current` child
+`mtp_prompt_suite_economics.py` only parsed the legacy JSON-object fixture. The
+failed direct command raised `JSONDecodeError: Extra data`; converting the same
+10 prompts to an untracked JSON file allowed a diagnostic run but is not
+retainable under `docs/BENCHMARK.md`.
+
+Added direct canonical JSONL parsing/normalization to the child while preserving
+legacy JSON input. Canonical `id` plus one user `messages` row becomes the
+existing internal `name`/`prompt` shape; category and inferred six-train /
+four-heldout identities survive selection. Output now records committed source
+path, source format, SHA-256, prompt IDs, category counts, and split IDs/counts.
+RED/GREEN loader coverage includes canonical JSONL, legacy JSON, and invalid
+message role. Validation: **24 passed** across the new loader tests and existing
+`test_mtp_bench_tool.py`; `py_compile`, canonical one-prompt dry-run, and
+`git diff --check` pass. The complete GPU suite will be rerun directly from
+`benchmarks/prompts/mtpbench-code-general-ja.jsonl`; the converted diagnostic is
+not used as retained evidence.

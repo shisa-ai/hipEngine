@@ -14,6 +14,7 @@ JSON output always carries ``performance_claim=false``.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import statistics
@@ -57,6 +58,14 @@ SUMMARY_FIELDS = (
 )
 
 PROMPT_RENDER_MODES = ("raw", "qwen_chat_thinking_off", "qwen_chat_thinking_on")
+DEFAULT_HELDOUT_PROMPT_NAMES = frozenset(
+    {
+        "code_markdown_table",
+        "general_en_explain",
+        "general_ja_explain",
+        "mixed_ja_en_review",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -156,25 +165,115 @@ def _safe_name(name: str) -> str:
     return "".join(ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in name)
 
 
+def _prompt_text_from_messages(messages: Any, *, path: Path, name: str) -> str:
+    if not isinstance(messages, list) or len(messages) != 1:
+        raise ValueError(f"{path} prompt {name!r} must contain exactly one user message")
+    message = messages[0]
+    if not isinstance(message, dict) or message.get("role") != "user":
+        raise ValueError(f"{path} prompt {name!r} must contain one user message")
+    content = message.get("content")
+    if not isinstance(content, str) or not content:
+        raise ValueError(f"{path} prompt {name!r} user content must be non-empty text")
+    return content
+
+
+def _normalize_prompt_entry(item: Any, *, path: Path) -> dict[str, str]:
+    if not isinstance(item, dict):
+        raise ValueError(f"invalid prompt entry in {path}: {item!r}")
+    name = str(item.get("name") or item.get("id") or "")
+    if not name:
+        raise ValueError(f"prompt entries require a non-empty name/id: {item!r}")
+    text = item.get("prompt")
+    if not isinstance(text, str) or not text:
+        text = _prompt_text_from_messages(item.get("messages"), path=path, name=name)
+
+    normalized = {"name": name, "prompt": text}
+    category = item.get("category")
+    if category is not None:
+        if not isinstance(category, str) or not category:
+            raise ValueError(f"{path} prompt {name!r} category must be non-empty text")
+        normalized["category"] = category
+    split = item.get("split")
+    if split is not None:
+        if split not in {"train", "heldout"}:
+            raise ValueError(f"{path} prompt {name!r} split must be train or heldout")
+        normalized["split"] = str(split)
+    elif category is not None:
+        normalized["split"] = "heldout" if name in DEFAULT_HELDOUT_PROMPT_NAMES else "train"
+    return normalized
+
+
 def _load_prompt_suite(path: Path) -> dict[str, Any]:
-    suite = json.loads(path.read_text(encoding="utf-8"))
-    prompts = suite.get("prompts") or []
+    raw_text = path.read_text(encoding="utf-8")
+    try:
+        loaded = json.loads(raw_text)
+    except json.JSONDecodeError:
+        raw_prompts: list[Any] = []
+        for line_number, line in enumerate(raw_text.splitlines(), start=1):
+            if not line.strip():
+                continue
+            try:
+                raw_prompts.append(json.loads(line))
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"invalid JSONL in {path} at line {line_number}: {exc}") from exc
+        suite: dict[str, Any] = {"prompts": raw_prompts, "source_format": "jsonl"}
+    else:
+        if not isinstance(loaded, dict):
+            raise ValueError(f"{path} must contain a JSON object or JSONL prompt rows")
+        if "prompts" not in loaded and (loaded.get("id") or loaded.get("name")):
+            suite = {"prompts": [loaded], "source_format": "jsonl"}
+        else:
+            suite = dict(loaded)
+            suite["source_format"] = "json"
+
+    prompts = suite.get("prompts")
     if not isinstance(prompts, list) or not prompts:
         raise ValueError(f"{path} contains no prompts")
     names: set[str] = set()
-    for prompt in prompts:
-        name = str(prompt.get("name") or "")
-        text = str(prompt.get("prompt") or "")
-        if not name or not text:
-            raise ValueError(f"invalid prompt entry in {path}: {prompt!r}")
+    normalized_prompts: list[dict[str, str]] = []
+    for item in prompts:
+        prompt = _normalize_prompt_entry(item, path=path)
+        name = prompt["name"]
         if name in names:
             raise ValueError(f"duplicate prompt name in {path}: {name}")
         names.add(name)
+        normalized_prompts.append(prompt)
+    suite["prompts"] = normalized_prompts
     return suite
 
 
+def _prompt_suite_metadata(
+    path: Path,
+    suite: dict[str, Any],
+    prompts: list[dict[str, str]],
+) -> dict[str, Any]:
+    try:
+        source = str(path.resolve().relative_to(REPO_ROOT.resolve()))
+    except ValueError:
+        source = str(path.resolve())
+    category_counts: dict[str, int] = {}
+    split_counts: dict[str, int] = {}
+    for prompt in prompts:
+        category = prompt.get("category")
+        if category:
+            category_counts[category] = category_counts.get(category, 0) + 1
+        split = prompt.get("split")
+        if split:
+            split_counts[split] = split_counts.get(split, 0) + 1
+    return {
+        "source": source,
+        "source_format": str(suite["source_format"]),
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "prompt_ids": [str(prompt["name"]) for prompt in prompts],
+        "category_counts": category_counts,
+        "split_counts": split_counts,
+        "train_ids": [str(prompt["name"]) for prompt in prompts if prompt.get("split") == "train"],
+        "heldout_ids": [str(prompt["name"]) for prompt in prompts if prompt.get("split") == "heldout"],
+    }
+
+
 def _select_prompts(suite: dict[str, Any], *, names_csv: str | None, limit: int | None) -> list[dict[str, str]]:
-    prompts = [{"name": str(p["name"]), "prompt": str(p["prompt"])} for p in suite["prompts"]]
+    prompts = [dict(prompt) for prompt in suite["prompts"]]
     names = _split_csv(names_csv)
     if names:
         by_name = {p["name"]: p for p in prompts}
@@ -572,6 +671,7 @@ def main() -> int:
         "date": date.today().isoformat(),
         "purpose": "hipEngine MTP verifier economics over the llama.cpp mtp-bench prompt suite.",
         "source_prompt_suite": suite.get("source"),
+        "prompt_suite": _prompt_suite_metadata(args.prompts_file, suite, prompts),
         "prompts_file": str(args.prompts_file),
         "model": str(args.model),
         "prompt_render_mode": str(args.prompt_render),
