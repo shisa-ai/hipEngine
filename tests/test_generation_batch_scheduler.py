@@ -16806,6 +16806,25 @@ def test_submit_poll_text_generator_routes_concurrent_streams_and_reclaims_close
     assert adapter._loop.active_count == 0
     assert adapter._loop.completed == {}
 
+    burst_adapter = SubmitPollTextGenerator(
+        ConcurrentInner(),
+        capacity=2,
+        prefill_chunk_size=2,
+    )
+    burst_slow = burst_adapter.stream_detailed(replace(first_request, max_tokens=48))
+    burst_neighbor = burst_adapter.stream_detailed(replace(second_request, max_tokens=48))
+    assert next(burst_slow).text == "request0:1"
+    assert [chunk.text for chunk in burst_neighbor] == [
+        f"request1:{index}" for index in range(1, 49)
+    ]
+    assert [chunk.text for chunk in burst_slow] == [
+        f"request0:{index}" for index in range(2, 49)
+    ]
+    assert burst_adapter._runner.reclaims == [(0, "length"), (1, "length")]
+    assert burst_adapter._loop.pending_count == 0
+    assert burst_adapter._loop.active_count == 0
+    assert burst_adapter._loop.completed == {}
+
     overflow_adapter = SubmitPollTextGenerator(
         ConcurrentInner(),
         capacity=2,
