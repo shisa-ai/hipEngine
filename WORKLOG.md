@@ -165991,3 +165991,26 @@ INT8/tail4 is not claimed: the continuous owner still requires BF16 for deferred
 allocation/binding and packed prefill/decode; task #93 tracks that separate
 implementation rather than mislabelling existing fixed-session c1/direct
 support.
+
+## 2026-07-19 — Preserve exact token-ID prompts through completion SSE
+
+The matched external-engine streaming smoke failed before model measurement with
+HTTP 400 because `/v1/completions` rejected `stream=true` whenever `prompt` was
+an exact token-ID row. This was an API validator restriction, not a backend
+limitation: `PromptInput`, the generation batcher, `LLM.stream_detailed()`, and
+both Qwen PARO/GGUF generators already preserve tuple token IDs without
+retokenization.
+
+Removed only the `stream` rejection and changed the live completion helper to
+accept `PromptInput`. Single exact rows now use live SSE; multiple exact rows
+retain the existing buffered SSE path. `echo`, continuations, and sessions stay
+rejected. The capabilities manifest and `docs/API.md` now state the boundary;
+stream clients receive exact token counts/timing with
+`stream_options.include_hipengine`, while exact generated-ID identity remains a
+non-streaming oracle.
+
+RED was the focused API contract observing HTTP 400 and
+`features.exact_token_prompts.streaming=false`. GREEN is seven focused exact-ID,
+stream usage/metadata, backend-count, and finish-detail tests, plus `py_compile`
+and `git diff --check`. No GPU rate or external comparison is claimed by this
+API-only unit; next is the bounded p16/d4 real-Uvicorn streaming smoke.
