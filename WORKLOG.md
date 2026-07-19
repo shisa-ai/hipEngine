@@ -166014,3 +166014,45 @@ RED was the focused API contract observing HTTP 400 and
 stream usage/metadata, backend-count, and finish-detail tests, plus `py_compile`
 and `git diff --check`. No GPU rate or external comparison is claimed by this
 API-only unit; next is the bounded p16/d4 real-Uvicorn streaming smoke.
+
+## 2026-07-19 — Extend the matched F1 harness through C13 streaming
+
+Extended `scripts/server_f1_concurrency_bench.py` with a matched client-observed
+SSE protocol. Both engines now retain barrier-to-last-completion exact throughput,
+SLO-qualified goodput, TTFT p95, ITL p99, and end-to-end p95 from the same
+localhost client clock. hipEngine exact-ID prompts stream live after `fdc97cfb`;
+llama.cpp `/completion` retains returned IDs. hipEngine stream exactness is
+explicitly the exact blocking-c1 text plus completion count because its public
+SSE metadata does not expose generated IDs; the blocking ID oracle remains in
+the same artifact.
+
+The harness now accepts logical C13 and validates either one complete backend
+call lowered as physical `[8,5]` or the production non-streaming AR route cap as
+complete queue groups `[4,4,4,1]`. The latter is four HTTP queue groups, not
+native C13; its singleton tail is the only response allowed to report
+`native_caware_decode=false`. Stream route checks independently require
+`gguf_packed_ar_server_decode`, zero serial fallback, and native c>N metadata.
+The primary/secondary timing scopes and this asymmetric generated-ID limitation
+are embedded in every artifact.
+
+Real p16/d4 smokes were intentionally diagnostic and exposed useful strict
+correctness evidence rather than a publishable result:
+
+- hipEngine c1/c2 blocking and SSE are exact at **23.849/29.861** and
+  **23.455/29.205 tok/s**. C13 SSE is **13/13 exact** at **34.553 exact tok/s**;
+  its strict 0.5 s every-ITL goodput is **21.264 tok/s** because short-wave ITL
+  p99 is 1.025 s. Delayed C13 blocking admission is 13/13 exact. Static C13
+  warmup and measured controls are each 12/13: one repeated prompt diverges only
+  at token four (`1788 -> 999`).
+- llama.cpp HIP c1/c2 blocking and SSE are exact at **36.422/55.342** and
+  **36.173/54.912 tok/s**. C13 warmup is exact, but measured blocking, SSE, and
+  delayed admission are 11/13: the same repeated prompt diverges only at token
+  four (`1788 -> 4108`) for two rows. The harness therefore fails closed rather
+  than promoting the **81.658 blocking / 81.581 partial SLO-goodput tok/s**.
+
+These short failures do not predict the standard p512/d128 result; they prove
+that C13 equality must be measured, not assumed. RED covered the missing C13
+route-cap aggregation/native-tail and stream-route contracts. GREEN is **19/19**
+focused tests, `py_compile`, CLI help, and `git diff --check`. No short-smoke
+performance claim is retained. Next is one clean standard packet per engine;
+failed widths remain correctness evidence and are not eligible wins.

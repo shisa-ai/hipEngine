@@ -103,6 +103,204 @@ def test_generation_shape_requires_one_real_backend_group() -> None:
     assert SCRIPT.generation_shape_proves_native_group(bad, concurrency=4)["passed"] is False
 
 
+def test_generation_shape_accepts_grouped_c13_as_physical_c8_plus_c5() -> None:
+    grouped = [
+        {
+            "generation_shape": {
+                "queue_group": {
+                    "id": "group-13",
+                    "request_count": 13,
+                    "prompt_rows": 13,
+                    "item_index": index,
+                    "item_prompt_offset": index,
+                    "item_prompt_rows": 1,
+                },
+                "backend_groups": [
+                    {
+                        "input_rows": 13,
+                        "actual_group_rows": [8, 5],
+                        "max_actual_group_rows": 8,
+                    }
+                ],
+            }
+        }
+        for index in range(13)
+    ]
+
+    summary = SCRIPT.generation_shape_proves_native_group(grouped, concurrency=13)
+
+    assert summary["passed"] is True
+    assert summary["queue_group_count"] == 1
+    assert summary["backend_group_rows"] == [8, 5]
+    assert summary["max_backend_group_rows"] == 8
+    assert summary["native_false_records_expected"] == 0
+
+
+def test_generation_shape_accepts_c13_as_complete_route_cap_four_groups() -> None:
+    records = []
+    for group_index, rows in enumerate((4, 4, 4, 1)):
+        for item_index in range(rows):
+            records.append(
+                {
+                    "generation_shape": {
+                        "queue_group": {
+                            "id": f"group-{group_index}",
+                            "request_count": rows,
+                            "prompt_rows": rows,
+                            "item_index": item_index,
+                            "item_prompt_offset": item_index,
+                            "item_prompt_rows": 1,
+                        },
+                        "backend_groups": [
+                            {
+                                "input_rows": rows,
+                                "actual_group_rows": [rows],
+                                "max_actual_group_rows": rows,
+                            }
+                        ],
+                    }
+                }
+            )
+
+    summary = SCRIPT.generation_shape_proves_native_group(records, concurrency=13)
+
+    assert summary["passed"] is True
+    assert summary["shared_queue_group"] is False
+    assert summary["queue_group_request_counts"] == [4, 4, 4, 1]
+    assert summary["backend_group_rows"] == [4, 4, 4, 1]
+    assert summary["native_false_records_expected"] == 1
+
+
+def test_matched_concurrency_plan_is_bounded_at_c13() -> None:
+    assert SCRIPT._validate_concurrency_plan([1, 2, 4, 8, 13], live_concurrency=13) == [1, 2, 4, 8, 13]
+    with pytest.raises(ValueError, match="limited to c1/c2/c4/c8/c13"):
+        SCRIPT._validate_concurrency_plan([1, 2, 16], live_concurrency=2)
+
+
+def test_extract_stream_responses_records_client_ttft_itl_and_tokens() -> None:
+    hip = SCRIPT.extract_stream_response(
+        "hipengine",
+        [
+            (
+                10.2,
+                {
+                    "choices": [
+                        {
+                            "text": "A",
+                            "finish_reason": None,
+                            "hipengine": {"tokens": {"delta_tokens": 1, "streamed_tokens": 1}},
+                        }
+                    ]
+                },
+            ),
+            (
+                10.5,
+                {
+                    "choices": [
+                        {
+                            "text": "B",
+                            "finish_reason": None,
+                            "hipengine": {"tokens": {"delta_tokens": 1, "streamed_tokens": 2}},
+                        }
+                    ]
+                },
+            ),
+            (10.6, {"choices": [{"text": "", "finish_reason": "length"}]}),
+            (10.7, {"choices": [], "usage": {"prompt_tokens": 512, "completion_tokens": 2}}),
+            (10.8, "[DONE]"),
+        ],
+        started_at=10.0,
+        completed_at=10.8,
+        prompt_tokens=512,
+    )
+    llama = SCRIPT.extract_stream_response(
+        "llamacpp-hip",
+        [
+            (20.4, {"content": "A", "tokens": [21], "stop": False}),
+            (20.7, {"content": "B", "tokens": [22], "stop": False}),
+            (
+                20.9,
+                {
+                    "content": "",
+                    "stop": True,
+                    "stop_type": "limit",
+                    "timings": {"prompt_n": 512, "predicted_n": 2, "predicted_ms": 500.0},
+                },
+            ),
+        ],
+        started_at=20.0,
+        completed_at=20.9,
+        prompt_tokens=512,
+    )
+
+    assert hip["text"] == llama["text"] == "AB"
+    assert hip["completion_tokens"] == llama["completion_tokens"] == 2
+    assert hip["generated_token_ids"] is None
+    assert llama["generated_token_ids"] == [21, 22]
+    assert hip["client_ttft_seconds"] == pytest.approx(0.2)
+    assert hip["client_inter_token_seconds"] == pytest.approx([0.3])
+    assert hip["done_sentinel"] is True
+    assert llama["client_ttft_seconds"] == pytest.approx(0.4)
+    assert llama["client_inter_token_seconds"] == pytest.approx([0.3])
+
+
+def test_stream_route_summary_requires_native_nonserial_hipengine_cn() -> None:
+    sample = {
+        "records": [
+            {
+                "execution_path": "gguf_packed_ar_server_decode",
+                "serial_decode_fallback": False,
+                "native_caware_decode": True,
+            }
+            for _ in range(13)
+        ]
+    }
+
+    summary = SCRIPT._stream_route_summary("hipengine", concurrency=13, samples=[sample])
+
+    assert summary["passed"] is True
+    sample["records"][0]["serial_decode_fallback"] = True
+    assert SCRIPT._stream_route_summary(
+        "hipengine", concurrency=13, samples=[sample]
+    )["passed"] is False
+
+
+def test_stream_batch_summary_applies_per_request_slo_goodput() -> None:
+    records = [
+        {
+            "completion_tokens": 2,
+            "client_ttft_seconds": 0.5,
+            "client_inter_token_seconds": [0.1],
+            "wall_seconds": 1.5,
+            "stream_exact": True,
+            "stream_protocol_complete": True,
+        },
+        {
+            "completion_tokens": 2,
+            "client_ttft_seconds": 0.7,
+            "client_inter_token_seconds": [0.2],
+            "wall_seconds": 1.6,
+            "stream_exact": True,
+            "stream_protocol_complete": True,
+        },
+    ]
+
+    summary = SCRIPT._stream_batch_summary(
+        records,
+        batch_wall_seconds=2.0,
+        ttft_p95_limit=1.0,
+        itl_p99_limit=0.25,
+        e2e_p95_limit=2.0,
+    )
+
+    assert summary["passed"] is True
+    assert summary["exact_generated_tok_s_aggregate"] == pytest.approx(2.0)
+    assert summary["slo_goodput_tok_s_aggregate"] == pytest.approx(2.0)
+    assert summary["slo"]["qualifying_requests"] == 2
+    assert summary["latency_seconds"]["ttft"]["p95"] == pytest.approx(0.7)
+    assert summary["latency_seconds"]["itl"]["p99"] == pytest.approx(0.2)
+
+
 def test_extract_llamacpp_response_requires_returned_token_ids() -> None:
     payload = {
         "tokens": [21, 22],
@@ -243,6 +441,15 @@ def test_hipengine_route_expectation_accepts_width1_and_native_or_serial_cn() ->
         native_values=[True] * 6,
         shape_passed=True,
         resident_capacity=2.0,
+    )
+    assert SCRIPT._hipengine_route_expectation_passes(
+        concurrency=13,
+        expectation="native",
+        serial_values=[False] * 13,
+        native_values=[True] * 12 + [False],
+        shape_passed=True,
+        resident_capacity=13.0,
+        native_false_records_expected=1,
     )
     assert SCRIPT._hipengine_route_expectation_passes(
         concurrency=8,
