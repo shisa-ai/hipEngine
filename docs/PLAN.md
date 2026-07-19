@@ -572,23 +572,27 @@ Current blockers that keep project-wide c>N incomplete:
   B1/B2 NextN proposal through one
   native graph launch and is profiler-proven to replace 542 `hipLaunchKernel`
   plus 80 synchronous `hipMemcpy` host calls over eight matched cycles, while
-  remaining aggregate-neutral and diagnostic. N4 has started with one shared
-  gfx1100 `w4_paro` target+accept graph adapter used by both PARO MTP and
-  DFlash; it declares only `VERIFY|ACCEPT`, preserves provider commit and exact
-  fallback, and remains default-off after the uncontended performance gate.
-  Strict B1/B2/B3 is exact for all 720 canonical IDs, but pooled MTP/AR is only
-  0.5767x/0.4242x/0.3568x. A B1 on/off/on bracket localizes a reproducible
-  0.216-0.447 ms/cycle N4 regression to repeated ABI control/marshalling plus
-  one extra stream synchronization, with target/proposer kernels unchanged.
-  Cached state-bound control reuse is therefore required before complete-provider
-  ownership. The initial model-incompatibility diagnosis was wrong: a
-  wider verifier t-loop did not honor the existing exact shared-expert control.
-  After repairing that verifier path without changing model bytes, the current
-  full8192 packed target plus MTP-BF16 sidecar passes strict B1 exactness for all
-  240 IDs in the 10-prompt category+heldout suite and clean B2 native-off/on
-  equality; B2 resident Conv/GDN/KV and selected-state oracles also pass.
-  Cached PARO control/ctypes reuse and duplicate-sync removal, complete
-  PARO/DFlash proposal+commit ownership, independent gfx1151 N4
+  remaining aggregate-neutral and diagnostic. N4 has one shared gfx1100
+  `w4_paro` target+accept graph adapter used by both PARO MTP and DFlash; it
+  declares only `VERIFY|ACCEPT`, preserves provider commit and exact fallback,
+  and remains default-off. Strict B1/B2/B3 is exact for all 720 canonical IDs,
+  but pooled MTP/AR is only 0.5767x/0.4242x/0.3568x. The first B1 on/off/on
+  bracket localized a reproducible 0.216-0.447 ms/cycle regression to repeated
+  ABI control/marshalling plus one extra stream synchronization, with target and
+  proposer kernels unchanged. N4+ now reuses one validated state-bound ctypes
+  slab on stable pointer/shape/stream/all-active replays and removes only the
+  duplicate post-native sync. The clean merged gate is exact for all 240 B1 IDs,
+  every train/heldout/category split, 150/150 native records, and the B2 resident
+  Conv/GDN/KV/selected-state/hidden/cursor oracles. Its matched residual is only
+  +0.028 to +0.105 ms/cycle (+0.17% to +0.64%), while cached final-child tracing
+  is non-regressive at 16.418 ms/pass on versus 16.490 off with identical
+  81.6875 API calls, 2 synchronizations, 1 graph launch, and 1248.5 kernels/pass.
+  Old N4 was 16.744 ms, 82.6875 calls, and 3 synchronizations. This retains the
+  wrapper-overhead improvement but does not promote N4: strict B1 remains far
+  below AR and has no advantage over the direct graph. The initial model-
+  incompatibility diagnosis was also wrong; a wider verifier t-loop had failed
+  to forward the exact shared-expert control, and its repair did not change model
+  bytes. Complete PARO/DFlash proposal+commit ownership, independent gfx1151 N4
   admission, gfx1151 N3P proposal-graph admission, draft-side batching, rows>=16
   verifier tuning, streaming, and exact/default MTP serving remain open.
 - Exact all-choice generated-token accounting and batch timing ownership are

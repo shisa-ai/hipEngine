@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-20
 
+- [retained gfx1100 PARO N4+ adapter-overhead improvement; default remains off] W7900 Qwen3.6-35B-A3B full8192 W4-PARO+MTP-BF16 cached bound-control replay moves profiled N4 complete host wall **16.744 -> 16.418 ms/pass (-1.95%)**, HIP API calls **82.6875 -> 81.6875**, and verifier synchronizations **3 -> 2** by reusing the validated ctypes control slab and removing the duplicate post-native sync; clean matched canonical residual falls from old **+0.216 to +0.447 ms/cycle** to **+0.028 to +0.105 (+0.17% to +0.64%)**, with **3 x 240 IDs / 214 cycles / 16 accepts** unchanged, all train/heldout/categories exact, and B2 state/KV/hidden/commit oracles clean. `benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-bound-control.json`.
+
 - [diagnostic gfx1100 PARO N4 uncontended baseline; default remains off] W7900 Qwen3.6-35B-A3B full8192 W4-PARO+MTP-BF16 strict B1 on/off/on moves **65.584 tok/s off -> 63.736/64.511 on (-2.82%/-1.64%)** and **16.115 ms/cycle -> 16.562/16.330 (+2.77%/+1.34%)** with identical **240 IDs / 214 cycles / 16 accepts**; the complete B1/B2/B3 matrix is **720/720 IDs exact** but only **0.5767x/0.4242x/0.3568x true AR**, and cached final-child tracing localizes N4's **+0.312 ms verify host wall** to repeated ABI control/marshalling plus one extra `hipStreamSynchronize` (**2 -> 3**) while kernels/proposer are unchanged. `benchmarks/results/2026-07-20-w7900-paro-mtp-n4-uncontended-baseline.json`.
 
 ## 2026-07-19
