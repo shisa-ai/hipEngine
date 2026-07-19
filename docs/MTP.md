@@ -27,6 +27,16 @@
 > GDN/out exact flags (`0.860x`, `15.51 ms/cycle`). This is a real retained
 > correctness fallback and a small win over exact `c1_loop`, but it is still
 > slower than the retained D32 fast row, so it also remains default-off.
+> A 2026-07-19 current-packed N4 audit extends that strict contract to wider
+> B+1 verifier rows: chain/tree linear-attention t-loops must also honor
+> `HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT=1`. Before the fix,
+> B2 was exact through linear attention, routing, and selected experts but
+> diverged in 253/2048 layer-0 post-MoE BF16 values and corrected to token `22`
+> instead of serial-AR `19`. Forwarding the existing control restores exact B2
+> correction and state without changing default fast behavior or model bytes.
+> The complete c1-loop strict stack now passes the canonical B1 category suite
+> at 10/10 prompts / 240/240 IDs plus clean B2 native-off/on equality; it remains
+> default-off and is not a speed row.
 > This is the sister document to [`DFLASH.md`](DFLASH.md). MTP must reuse the
 > shared native verifier/commit infrastructure from DFlash, not fork a separate
 > c=1 native-loop tuning lane.
@@ -41,10 +51,11 @@
 > an explicit/default-off `w4_paro/native_v1_target_graph` adapter. Eligible
 > single-request B1/B2/B3/B4/B5/B8 graph replays submit `VERIFY|ACCEPT` through
 > NativeSpecCycle ABI v1 while provider commit, graph-off/tree/inactive shapes,
-> and unsupported backends retain the exact existing path. The current local
-> packed PARO+MTP artifact already mismatches true AR on the unchanged B3
-> control, so this is an ownership diagnostic—not a new correctness or speed
-> row—and gfx1151 remains unregistered pending an independent gate.
+> and unsupported backends retain the exact existing path. The initial B3
+> model-incompatibility conclusion is superseded by the strict-verifier repair
+> above: the current full8192 target+sidecar is admitted for strict gfx1100 PARO
+> B1/B2 correctness. N4 remains an ownership/correctness diagnostic—not a speed
+> row—and DFlash/gfx1151 still require independent gates.
 >
 > **Top priority for the next push:** MTP break-even sprint. Hold every exact
 > same-suite improvement, use `0.758x / 27.8 ms` as the locked sprint baseline,

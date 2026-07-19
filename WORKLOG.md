@@ -166121,3 +166121,54 @@ message role. Validation: **24 passed** across the new loader tests and existing
 `git diff --check` pass. The complete GPU suite will be rerun directly from
 `benchmarks/prompts/mtpbench-code-general-ja.jsonl`; the converted diagnostic is
 not used as retained evidence.
+
+## 2026-07-19 — Current packed PARO N4 strict correctness admitted
+
+Committed the verifier repair as `b3599958` and canonical JSONL harness support
+as `5ef02aff`, then captured clean W7900 provenance at `5ef02aff` with model
+directory fingerprint `1a4745ce…daac`. No model or sidecar byte changed.
+
+A clean strict B2 native-off/on pair now passes every declared semantic check:
+both arms emit exact target AR
+`[248050,19,19,5137,58,58,58,220]`, with identical target top-1 paths,
+active budgets, seven zero-accept decisions, and GPU/CPU acceptance. The N4 arm
+records five steady `VERIFY|ACCEPT` replays and the control records none. Raw
+control/native SHA-256 is `69695924…e03d` / `84b1bdd7…fd21`.
+
+The directly committed canonical B1 suite uses
+`benchmarks/prompts/mtpbench-code-general-ja.jsonl` SHA-256 `fac920be…084a`,
+raw prompt rendering, 24 IDs/prompt, `c1_loop`, graph auto, and the complete
+explicit strict stack. Result:
+
+- full: **10/10 prompts, 240/240 IDs exact**, 16 accepts / 214 draft cycles;
+- train: **6/6, 144/144 IDs exact**, 13/125 accepts;
+- heldout: **4/4, 96/96 IDs exact**, 3/89 accepts;
+- categories: code/general-en/general-ja/mixed-ja-en acceptance is
+  **8/84, 1/45, 1/45, 6/40**, with every output exact;
+- all **150/150** retained trace records use N4 `VERIFY|ACCEPT`, and every
+  retained GPU acceptance result matches CPU.
+
+Nonzero full/train/heldout acceptance proves the existing MTP sidecar operates
+with the target. The low strict B1 acceptance is an economics concern, not model
+incompatibility. The suite summary is 44,468 bytes, SHA-256 `da118230…13ca`;
+10 raw children total 272,855 bytes with manifest SHA-256 `9b3c7aa0…5fe6`.
+The 267-test NativeSpecCycle/PARO host bundle, compileall, provenance validation,
+JSON validation, and `git diff --check` pass.
+
+GPU0 may have had concurrent work during some correctness runs. No keep/revert,
+speed, or promotion decision uses their timing: the artifact sets both
+`performance_claim` and `speed_claim_eligible` false, and all timing fields are
+excluded from the retained conclusion. Exact IDs, state bytes, and acceptance
+choices are deterministic, so no correctness rerun is required; any future
+strict-verifier performance gate will run with sole W7900 access.
+
+Published compact correction
+`benchmarks/results/2026-07-19-w7900-paro-mtp-native-target-graph-n4-correctness.json`
+and marked the old blocked packet's model diagnosis superseded. Updated
+`docs/PLAN.md`, `docs/NATIVE_SPEC_CYCLE.md`, `docs/MTP-gguf.md`, `docs/MTP.md`,
+`docs/DFLASH.md`, `docs/REFACTOR.md`, the benchmark rollup, and changelog. Decision: keep the
+current later/better full8192 packed target and existing sidecar; close the
+model-artifact blocker; keep N4 explicit/default-off with no speed, DFlash, or
+gfx1151 promotion. Next profile strict verifier wall on uncontended GPU0, then
+extend PARO proposal/selected-state/KV/hidden commit ownership and gate DFlash
+separately.
