@@ -423,6 +423,35 @@ def test_hipengine_parser_locks_the_retained_prefill_decode_policy(tmp_path: Pat
         ["--engine", "hipengine", "--json", str(tmp_path / "result.json")]
     )
     assert args.hipengine_prefill_decode_policy == "protect_ttft"
+    assert args.hipengine_kv_storage == "bf16"
+    assert args.hipengine_kv_scale_dtype == "fp16"
+    assert args.hipengine_kv_scale_granularity == "per_token_head"
+
+
+def test_hipengine_command_forwards_explicit_int8_kv_policy(tmp_path: Path) -> None:
+    args = SCRIPT.build_parser().parse_args(
+        [
+            "--engine",
+            "hipengine",
+            "--hipengine-kv-storage",
+            "int8_per_token_head",
+            "--hipengine-kv-scale-dtype",
+            "fp32",
+            "--json",
+            str(tmp_path / "result.json"),
+        ]
+    )
+
+    command, _env, _cwd = SCRIPT._server_command_and_env(
+        args,
+        engine="hipengine",
+        concurrency=2,
+        port=19123,
+    )
+
+    assert command[command.index("--kv-storage") + 1] == "int8_per_token_head"
+    assert command[command.index("--kv-scale-dtype") + 1] == "fp32"
+    assert command[command.index("--kv-scale-granularity") + 1] == "per_token_head"
 
 
 def test_hipengine_route_expectation_accepts_width1_and_native_or_serial_cn() -> None:
