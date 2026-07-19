@@ -293,6 +293,33 @@ def test_iq_selected_fused_gate_up_silu_matches_cpu_oracle(
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.parametrize("builder,qtype,fn", _GATE_UP_CASES)
+def test_iq_selected_fused_gate_up_silu_multirow_prefill_matches_cpu_oracle(
+    builder,
+    qtype: GGMLQuantizationType,
+    fn,
+    iq_selected_library,
+) -> None:
+    x_rows = 3
+    selected = np.asarray(
+        [4, 1, 3, 0, 2, 4, 1, 0] * x_rows,
+        dtype=np.int64,
+    )
+    gate = _stack_experts(builder, 11, 512, 5, shift=2)
+    up = _stack_experts(builder, 11, 512, 5, shift=7)
+    rng = np.random.default_rng(2309 + int(qtype))
+    x_f32 = rng.normal(0.0, 0.2, size=(x_rows, 512)).astype(np.float32)
+    x = _f32_to_bf16_u16(x_f32)
+    x_ref = _bf16_u16_to_f32(x)
+
+    actual = _bf16_u16_to_f32(_run_gate_up(fn, x, selected, gate, up, iq_selected_library))
+    expected = _expected_gate_up_silu(x_ref, selected, gate, up, qtype)
+    expected_bf16 = _bf16_u16_to_f32(_f32_to_bf16_u16(expected))
+
+    np.testing.assert_allclose(actual, expected_bf16, atol=5.0e-2, rtol=2.0e-2)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
 @pytest.mark.parametrize("in_features,out_features", [(256, 8), (512, 2048)])
 def test_iq4_xs_selected_down_matches_cpu_oracle(
     in_features: int,

@@ -49,6 +49,72 @@ def test_qwen35moe_compact_wmma_off_by_default_routes_raw_selected_fallback(monk
     assert "compact_gate_up" not in [name for name, _ in calls]
 
 
+def test_qwen36_q3_prefill_routes_fused_raw_iq_gate_up_and_selected_down(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner, scratch = _fake_runner_and_scratch()
+    layer = runner.weights.layer(0)
+    layer._weights["ffn_gate_exps"] = _FakeWeight(
+        "ffn_gate_exps", "gguf_iq3_xxs", 12, experts=4, out_features=256, in_features=256
+    )
+    layer._weights["ffn_up_exps"] = _FakeWeight(
+        "ffn_up_exps", "gguf_iq3_xxs", 13, experts=4, out_features=256, in_features=256
+    )
+    layer._weights["ffn_down_exps"] = _FakeWeight(
+        "ffn_down_exps", "gguf_iq4_xs", 14, experts=4, out_features=256, in_features=256
+    )
+    calls: list[tuple[str, object]] = []
+    _patch_common_moe_kernels(monkeypatch, calls)
+    monkeypatch.setattr(qgr, "qwen35_moe_group_count", _fail_if_called("group_count"))
+    monkeypatch.setattr(
+        qgr,
+        "_launch_selected_raw_gguf_moe_pair_silu",
+        lambda *args, **kwargs: calls.append(
+            (
+                "iq_pair_silu",
+                (
+                    args[0].spec.quant_key,
+                    args[1].spec.quant_key,
+                    kwargs["x_rows"],
+                    kwargs["rows"],
+                    kwargs["in_features"],
+                    kwargs["out_features"],
+                ),
+            )
+        )
+        or True,
+    )
+    monkeypatch.setattr(
+        qgr,
+        "_launch_selected_raw_gguf_moe_pair",
+        _fail_if_called("split IQ pair"),
+    )
+    monkeypatch.setattr(
+        qgr,
+        "_launch_selected_raw_gguf_moe_linear",
+        lambda weight, *args, **kwargs: calls.append(
+            (
+                "raw_linear",
+                (
+                    weight.spec.quant_key,
+                    kwargs["x_rows"],
+                    kwargs["rows"],
+                    kwargs["in_features"],
+                    kwargs["out_features"],
+                ),
+            )
+        ),
+    )
+
+    runner._run_post_attention_moe_rows(0, 9000, scratch, rows=3, stream=7)
+
+    assert ("iq_pair_silu", ("gguf_iq3_xxs", "gguf_iq3_xxs", 3, 6, 256, 256)) in calls
+    assert ("raw_linear", ("gguf_iq4_xs", 6, 6, 256, 256)) in calls
+    # Only the shared expert needs the standalone SiLU launch; routed gate/up
+    # arrived in ffn_intermediate already fused.
+    assert [name for name, _ in calls].count("silu_separate") == 1
+
+
 def test_qwen35moe_compact_wmma_opt_in_routes_grouped_scheduler(monkeypatch: pytest.MonkeyPatch) -> None:
     runner, scratch = _fake_runner_and_scratch()
     calls: list[tuple[str, object]] = []
