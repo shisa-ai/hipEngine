@@ -47,6 +47,19 @@ class GGUFQ5KQuant:
 
 
 @dataclass(frozen=True)
+class GGUFIQ3XXSQuant:
+    """GGUF iq3_xxs weight-only quantization contract."""
+
+    name: str = "gguf_iq3_xxs"
+    weight_storage: str = "gguf_iq3_xxs"
+    activation_preprocess: str = "none"
+    compute_dtype: str = "fp32_accum"
+    scale_granularity: str = "block256_iq3_xxs"
+    calibration_artifact: str = "gguf"
+    kernel_family: str = "gguf_iq3_xxs_gemv"
+
+
+@dataclass(frozen=True)
 class GGUFIQ4XSQuant:
     """GGUF iq4_xs weight-only quantization contract."""
 
@@ -76,6 +89,7 @@ GGUF_Q8_0 = register_quant(GGUFQ80Quant())
 GGUF_Q4_1 = register_quant(GGUFQ41Quant())
 GGUF_Q5_K = register_quant(GGUFQ5KQuant())
 GGUF_Q6_K = register_quant(GGUFQ6KQuant())
+GGUF_IQ3_XXS = register_quant(GGUFIQ3XXSQuant())
 GGUF_IQ4_XS = register_quant(GGUFIQ4XSQuant())
 
 
@@ -84,7 +98,9 @@ __all__ = [
     "GGUFQ41Quant",
     "GGUFQ5KQuant",
     "GGUFQ6KQuant",
+    "GGUFIQ3XXSQuant",
     "GGUFIQ4XSQuant",
+    "GGUF_IQ3_XXS",
     "GGUF_IQ4_XS",
     "GGUF_Q4_1",
     "GGUF_Q5_K",

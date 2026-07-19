@@ -165032,3 +165032,119 @@ Linked the canonical guide from `docs/README.md`, `README.md`, `docs/PLAN.md`,
 `docs/MTP-LLAMACPP-PARITY.md`, and `docs/VLLM_RDNA3.md`. No runtime, registry,
 kernel, benchmark claim, or default changed; this is documentation consolidation
 of committed evidence through `66f29757`.
+
+## 2026-07-19 — Qwen3.6 UD-Q3_K_M host oracle and compressed materialization
+
+### Scope and model inventory
+
+Started the correctness-first prerequisite for native Q3 execution from clean
+worktree `/home/lhl/hipEngine-q3-k-m` at `fb9a6e45`. The target file is
+`/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf` (17,104,402,720 bytes). Header and
+AR-map inspection finds 753 file tensors, 733 tensors in the intended 40-layer
+AR target, and 20 intentionally ignored tensors in trailing MTP block 40.
+The AR quant inventory is F32=361, Q8_0=250, IQ3_XXS=78, IQ4_XS=39, and Q6_K=5.
+The exact expert mix is more nuanced than the initial shorthand:
+
+- IQ3_XXS: 39 gate plus 39 up tensors (layers 0-38);
+- IQ4_XS: 37 down tensors plus layer-39 gate and up;
+- Q6_K: selected down in layers 34, 38, and 39, plus two root tensors.
+
+Host planning therefore stays projection-agnostic: every rank-3 IQ3_XXS or
+IQ4_XS selected-expert tensor remains raw GGUF bytes. Existing Q6_K handling is
+unchanged.
+
+### Oracle and RED/GREEN implementation
+
+Added a deterministic two-case fixture under
+`tests/fixtures/gguf/iq3_xxs_iq4_xs_dequant.json`. Expected FP32 values were
+generated outside hipEngine by compiling `/home/lhl/qwen-kernel/src/quants.h`
+at `52e240f9c6d91750d0e5e692976cfb67fd9bc603`; that header is the faithful
+llama.cpp `ggml-quants.c` port, cross-checked against local llama.cpp commit
+`1ebf790cda38d827559548f67b0469189690cc8c`.
+
+```bash
+g++ -std=c++17 -O2 /tmp/generate_hipengine_iq_fixture.cpp \
+  -o /tmp/generate_hipengine_iq_fixture
+/tmp/generate_hipengine_iq_fixture > /tmp/hipengine_iq_fixture.txt
+```
+
+RED was explicit. The IQ3 golden-oracle and partial-block tests failed with
+`NotImplementedError`; plugin resolution failed for `gguf_iq3_xxs`; and after
+placing the real-model tests in their own file (so the old missing 0.8B fixture's
+module skip could not hide them), both plan modes and device materialization
+failed on `blk.0.ffn_gate_exps.weight` as unsupported:
+
+```bash
+PYTHONPATH=. python3 -m pytest -q tests/test_gguf_quant_layout.py \
+  tests/test_model_quant_and_imports.py::test_builtin_mixed_gguf_quant_plugins_are_registered
+# 4 failed for the new IQ3 contracts; existing IQ4 external oracle passed
+
+PYTHONPATH=. python3 -m pytest -q tests/test_qwen36_q3_gguf_materialize.py
+# 3 failed at unsupported IQ3_XXS planning
+```
+
+GREEN adds:
+
+- canonical 256-entry IQ3_XXS grid and even-parity sign decoding in the
+  torch-free NumPy GGUF oracle;
+- `dequant_supported=True`, partial-block rejection, and exact FP32 output for
+  IQ3_XXS while retaining the existing exact IQ4_XS oracle;
+- registered `gguf_iq3_xxs` quant metadata;
+- raw `DType.INT8` resident planning/materialization for rank-3 IQ3_XXS and
+  IQ4_XS experts in both `decode_repack=False` and `True`; non-expert IQ
+  fallback behavior remains dense BF16;
+- tests for the exact 733-tensor AR boundary, 78/39 IQ inventory, compressed
+  device shape/byte count, plugin metadata, and GGML golden values.
+
+The copied IQ3 codebook was mechanically checked against all 256 source words:
+
+```text
+iq3_grid_words_exact 256
+```
+
+### Validation
+
+Focused CPU/reader/plugin plus real-model selected-device gate:
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+PYTHONPATH=. python3 -m pytest -q \
+  tests/test_gguf_reader.py tests/test_gguf_quant_layout.py \
+  tests/test_model_quant_and_imports.py \
+  tests/test_qwen36_q3_gguf_materialize.py
+# 22 passed
+```
+
+A full W7900 device materialization, using
+`HIP_VISIBLE_DEVICES=0 PYTHONPATH=. python3` and
+`materialize_qwen35_gguf_weights(model, decode_repack=True)`, asserted every
+resident record and then freed it:
+
+```text
+materialized_weights 733
+layouts {'dense_f32': 361, 'gguf_q6_k_t16_v1': 4, 'gguf_q8_0_t16_v1': 250, 'raw_gguf': 118}
+allocation_bytes 16669411840
+iq_raw_records 117
+iq_raw_bytes 13576962048
+iq_dense_bf16_records 0
+elapsed=13.900 user=8.388 sys=5.567
+```
+
+The registry, CPU-fixture, and dry-run build smokes pass. `git diff --check`
+passes. No HIP kernel changed, so a kernel trace is not applicable to this host
+unit.
+
+The repository-wide `PYTHONPATH=. python3 -m pytest -q` guard was attempted once
+and reached 83% in 30 minutes before the harness timeout. It showed one early,
+unrelated baseline failure; focused rerun identifies
+`tests/test_benchmark_readme_sync.py::test_gfx1100_mtp_topline_publishes_graph_ar_correction`
+(5 passed, 1 failed) because the unchanged benchmark README lacks an expected
+heading. Per the focused-repair rule, the expensive broad suite was not restarted.
+The standard `scripts/check_fixtures.py` also retains an unrelated pre-existing
+schema failure on `tests/fixtures/cpu_reference/moe/moe_ffn_selected_gguf_q4_k.json`;
+`scripts/smoke.py --mode cpu-fixtures` passes all seven fixtures it owns. Neither
+baseline issue is in this change's files.
+
+No generation or performance claim is made yet. Next is native selected-expert
+IQ3_XXS/IQ4_XS decode, starting with exact single-row kernels and the CPU oracle
+above before any row-tile sweep.

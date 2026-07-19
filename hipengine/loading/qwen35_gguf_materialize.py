@@ -571,8 +571,19 @@ def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo, *, decode_repack: b
             layout=LAYOUT_RAW_GGUF,
             allocation_names=("raw",),
         )
+    if qtype in (GGMLQuantizationType.IQ3_XXS, GGMLQuantizationType.IQ4_XS) and _is_selected_expert_tensor(
+        slot_path, tensor
+    ):
+        return Qwen35GGUFWeightSpec(
+            slot_path=slot_path,
+            source=tensor,
+            quant_key=f"gguf_{tensor.ggml_type_name.lower()}",
+            layout=LAYOUT_RAW_GGUF,
+            allocation_names=("raw",),
+        )
     if qtype in (
         GGMLQuantizationType.Q4_1,
+        GGMLQuantizationType.IQ3_XXS,
         GGMLQuantizationType.IQ4_XS,
         GGMLQuantizationType.F16,
         GGMLQuantizationType.BF16,

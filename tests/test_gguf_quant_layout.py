@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -15,6 +18,9 @@ from hipengine.quant.gguf import (
 )
 
 
+IQ_DEQUANT_FIXTURE = Path(__file__).parent / "fixtures/gguf/iq3_xxs_iq4_xs_dequant.json"
+
+
 def _f16_bytes(value: float) -> np.ndarray:
     return np.asarray([value], dtype=np.float16).view(np.uint8)
 
@@ -28,6 +34,7 @@ def test_gguf_quant_layout_sizes_match_ggml_block_contracts() -> None:
     assert quant_layout(GGMLQuantizationType.Q4_K).type_size == 144
     assert quant_layout(GGMLQuantizationType.Q5_K).type_size == 176
     assert quant_layout(GGMLQuantizationType.Q6_K).type_size == 210
+    assert quant_layout(GGMLQuantizationType.IQ3_XXS).type_size == 98
     assert quant_layout(GGMLQuantizationType.IQ4_XS).type_size == 136
     assert quant_layout(GGMLQuantizationType.MXFP4).type_size == 17
 
@@ -80,6 +87,33 @@ def test_q4_k_dequantizes_one_superblock_scale_group() -> None:
     np.testing.assert_allclose(out[0, 32:], 0.0)
 
 
+@pytest.mark.parametrize("quant_name", ["IQ3_XXS", "IQ4_XS"])
+def test_iq_dequantization_matches_external_ggml_oracle(quant_name: str) -> None:
+    fixture = json.loads(IQ_DEQUANT_FIXTURE.read_text())
+    case = next(item for item in fixture["cases"] if item["quant"] == quant_name)
+    qtype = GGMLQuantizationType[quant_name]
+    raw = np.asarray(case["raw_bytes"], dtype=np.uint8).reshape(case["raw_shape"])
+    expected = np.asarray(case["expected_f32"], dtype=np.float32).reshape(
+        case["expected_shape"]
+    )
+
+    actual = dequantize_gguf_data(raw, qtype)
+
+    assert actual.dtype == np.float32
+    assert actual.shape == tuple(case["expected_shape"])
+    np.testing.assert_allclose(
+        actual,
+        expected,
+        atol=float(case["atol"]),
+        rtol=float(case["rtol"]),
+    )
+
+
+def test_iq3_xxs_rejects_partial_blocks() -> None:
+    with pytest.raises(ValueError, match="not a multiple"):
+        dequantize_gguf_data(np.zeros((1, 97), dtype=np.uint8), GGMLQuantizationType.IQ3_XXS)
+
+
 def test_target_local_model_tensor_types_have_fallback_dequant_support() -> None:
     for qtype in (
         GGMLQuantizationType.F32,
@@ -90,6 +124,7 @@ def test_target_local_model_tensor_types_have_fallback_dequant_support() -> None
         GGMLQuantizationType.Q4_K,
         GGMLQuantizationType.Q5_K,
         GGMLQuantizationType.Q6_K,
+        GGMLQuantizationType.IQ3_XXS,
         GGMLQuantizationType.IQ4_XS,
         GGMLQuantizationType.MXFP4,
     ):

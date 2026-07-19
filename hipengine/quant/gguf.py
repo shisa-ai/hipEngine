@@ -222,6 +222,7 @@ GGUF_QUANT_LAYOUTS: dict[GGMLQuantizationType, GGUFQuantLayout] = {
         256,
         2 + QK_K // 4 + QK_K // 8,
         "uint8_blocks",
+        dequant_supported=True,
     ),
     GGMLQuantizationType.IQ1_S: _layout(
         GGMLQuantizationType.IQ1_S,
@@ -304,6 +305,43 @@ _NUMPY_STORAGE_DTYPES = {
     "uint8_blocks": np.uint8,
 }
 
+# Canonical GGML IQ3_XXS codebook from llama.cpp ggml/src/ggml-common.h.
+_IQ3_XXS_GRID_WORDS = (
+    0x04040404, 0x04040414, 0x04040424, 0x04040C0C, 0x04040C1C, 0x04040C3E, 0x04041404, 0x04041414,
+    0x04041C0C, 0x04042414, 0x04043E1C, 0x04043E2C, 0x040C040C, 0x040C041C, 0x040C0C04, 0x040C0C14,
+    0x040C140C, 0x040C142C, 0x040C1C04, 0x040C1C14, 0x040C240C, 0x040C2C24, 0x040C3E04, 0x04140404,
+    0x04140414, 0x04140424, 0x04140C0C, 0x04141404, 0x04141414, 0x04141C0C, 0x04141C1C, 0x04141C3E,
+    0x04142C0C, 0x04142C3E, 0x04143E2C, 0x041C040C, 0x041C043E, 0x041C0C04, 0x041C0C14, 0x041C142C,
+    0x041C3E04, 0x04240C1C, 0x04241C3E, 0x04242424, 0x04242C3E, 0x04243E1C, 0x04243E2C, 0x042C040C,
+    0x042C043E, 0x042C1C14, 0x042C2C14, 0x04341C2C, 0x04343424, 0x043E0C04, 0x043E0C24, 0x043E0C34,
+    0x043E241C, 0x043E340C, 0x0C04040C, 0x0C04041C, 0x0C040C04, 0x0C040C14, 0x0C04140C, 0x0C04141C,
+    0x0C041C04, 0x0C041C14, 0x0C041C24, 0x0C04243E, 0x0C042C04, 0x0C0C0404, 0x0C0C0414, 0x0C0C0C0C,
+    0x0C0C1404, 0x0C0C1414, 0x0C14040C, 0x0C14041C, 0x0C140C04, 0x0C140C14, 0x0C14140C, 0x0C141C04,
+    0x0C143E14, 0x0C1C0404, 0x0C1C0414, 0x0C1C1404, 0x0C1C1C0C, 0x0C1C2434, 0x0C1C3434, 0x0C24040C,
+    0x0C24042C, 0x0C242C04, 0x0C2C1404, 0x0C2C1424, 0x0C2C2434, 0x0C2C3E0C, 0x0C34042C, 0x0C3E1414,
+    0x0C3E2404, 0x14040404, 0x14040414, 0x14040C0C, 0x14040C1C, 0x14041404, 0x14041414, 0x14041434,
+    0x14041C0C, 0x14042414, 0x140C040C, 0x140C041C, 0x140C042C, 0x140C0C04, 0x140C0C14, 0x140C140C,
+    0x140C1C04, 0x140C341C, 0x140C343E, 0x140C3E04, 0x14140404, 0x14140414, 0x14140C0C, 0x14140C3E,
+    0x14141404, 0x14141414, 0x14141C3E, 0x14142404, 0x14142C2C, 0x141C040C, 0x141C0C04, 0x141C0C24,
+    0x141C3E04, 0x141C3E24, 0x14241C2C, 0x14242C1C, 0x142C041C, 0x142C143E, 0x142C240C, 0x142C3E24,
+    0x143E040C, 0x143E041C, 0x143E0C34, 0x143E242C, 0x1C04040C, 0x1C040C04, 0x1C040C14, 0x1C04140C,
+    0x1C04141C, 0x1C042C04, 0x1C04342C, 0x1C043E14, 0x1C0C0404, 0x1C0C0414, 0x1C0C1404, 0x1C0C1C0C,
+    0x1C0C2424, 0x1C0C2434, 0x1C14040C, 0x1C14041C, 0x1C140C04, 0x1C14142C, 0x1C142C14, 0x1C143E14,
+    0x1C1C0C0C, 0x1C1C1C1C, 0x1C241C04, 0x1C24243E, 0x1C243E14, 0x1C2C0404, 0x1C2C0434, 0x1C2C1414,
+    0x1C2C2C2C, 0x1C340C24, 0x1C341C34, 0x1C34341C, 0x1C3E1C1C, 0x1C3E3404, 0x24040424, 0x24040C3E,
+    0x24041C2C, 0x24041C3E, 0x24042C1C, 0x24042C3E, 0x240C3E24, 0x24141404, 0x24141C3E, 0x24142404,
+    0x24143404, 0x24143434, 0x241C043E, 0x241C242C, 0x24240424, 0x24242C0C, 0x24243424, 0x242C142C,
+    0x242C241C, 0x242C3E04, 0x243E042C, 0x243E0C04, 0x243E0C14, 0x243E1C04, 0x2C040C14, 0x2C04240C,
+    0x2C043E04, 0x2C0C0404, 0x2C0C0434, 0x2C0C1434, 0x2C0C2C2C, 0x2C140C24, 0x2C141C14, 0x2C143E14,
+    0x2C1C0414, 0x2C1C2C1C, 0x2C240C04, 0x2C24141C, 0x2C24143E, 0x2C243E14, 0x2C2C0414, 0x2C2C1C0C,
+    0x2C342C04, 0x2C3E1424, 0x2C3E2414, 0x34041424, 0x34042424, 0x34042434, 0x34043424, 0x340C140C,
+    0x340C340C, 0x34140C3E, 0x34143424, 0x341C1C04, 0x341C1C34, 0x34242424, 0x342C042C, 0x342C2C14,
+    0x34341C1C, 0x343E041C, 0x343E140C, 0x3E04041C, 0x3E04042C, 0x3E04043E, 0x3E040C04, 0x3E041C14,
+    0x3E042C14, 0x3E0C1434, 0x3E0C2404, 0x3E140C14, 0x3E14242C, 0x3E142C14, 0x3E1C0404, 0x3E1C0C2C,
+    0x3E1C1C1C, 0x3E1C3404, 0x3E24140C, 0x3E24240C, 0x3E2C0404, 0x3E2C0414, 0x3E2C1424, 0x3E341C04,
+)
+# The canonical 128-entry sign table stores seven sign bits plus an even-parity eighth bit.
+_IQ2_XS_SIGN_MASKS = tuple(index | ((index.bit_count() & 1) << 7) for index in range(128))
 _IQ4_NL_KVALUES = (-127, -104, -83, -65, -49, -35, -22, -10, 1, 13, 25, 38, 53, 69, 89, 113)
 _MXFP4_KVALUES = (0, 1, 2, 3, 4, 6, 8, 12, 0, -1, -2, -3, -4, -6, -8, -12)
 
@@ -589,6 +627,41 @@ def _dequant_q6_k_blocks(blocks: np.ndarray) -> np.ndarray:
     return (d * q).reshape((n_blocks, QK_K))
 
 
+def _dequant_iq3_xxs_blocks(blocks: np.ndarray) -> np.ndarray:
+    n_blocks = blocks.shape[0]
+    d, payload = _split(blocks, [2])
+    grid_indices, aux_bytes = _split(payload, [QK_K // 4])
+    d = d.view(np.float16).astype(np.float32).reshape((n_blocks, 1, 1, 1))
+
+    byte_shifts = (np.arange(4, dtype=np.uint32) * np.uint32(8)).reshape((1, 1, 4))
+    aux = (
+        aux_bytes.reshape((n_blocks, QK_K // 32, 4)).astype(np.uint32) << byte_shifts
+    ).sum(axis=-1, dtype=np.uint32)
+    scales = (
+        np.float32(0.5)
+        + (aux >> np.uint32(28)).astype(np.float32)
+    ) * np.float32(0.5)
+
+    sign_shifts = (np.arange(4, dtype=np.uint32) * np.uint32(7)).reshape((1, 1, 4))
+    sign_indices = (aux[..., None] >> sign_shifts) & np.uint32(0x7F)
+    sign_masks = np.asarray(_IQ2_XS_SIGN_MASKS, dtype=np.uint8)[sign_indices]
+    value_masks = (np.uint8(1) << np.arange(8, dtype=np.uint8)).reshape((1, 1, 1, 8))
+    signs = np.where(
+        (sign_masks[..., None] & value_masks) != 0,
+        np.float32(-1.0),
+        np.float32(1.0),
+    )
+
+    grid_words = np.asarray(_IQ3_XXS_GRID_WORDS, dtype=np.uint32)
+    grid_shifts = (np.arange(4, dtype=np.uint32) * np.uint32(8)).reshape((1, 4))
+    grid = ((grid_words[:, None] >> grid_shifts) & np.uint32(0xFF)).astype(np.float32)
+    values = grid[grid_indices.reshape((n_blocks, QK_K // 32, 8))]
+    values = values.reshape((n_blocks, QK_K // 32, 4, 8))
+    return (d * scales.reshape((n_blocks, QK_K // 32, 1, 1)) * values * signs).reshape(
+        (n_blocks, QK_K)
+    )
+
+
 def _dequant_iq4_nl_blocks(blocks: np.ndarray) -> np.ndarray:
     n_blocks = blocks.shape[0]
     d, qs = _split(blocks, [2])
@@ -650,6 +723,7 @@ _DEQUANT_BLOCKS: dict[GGMLQuantizationType, Callable[[np.ndarray], np.ndarray]] 
     GGMLQuantizationType.Q4_K: _dequant_q4_k_blocks,
     GGMLQuantizationType.Q5_K: _dequant_q5_k_blocks,
     GGMLQuantizationType.Q6_K: _dequant_q6_k_blocks,
+    GGMLQuantizationType.IQ3_XXS: _dequant_iq3_xxs_blocks,
     GGMLQuantizationType.IQ4_NL: _dequant_iq4_nl_blocks,
     GGMLQuantizationType.IQ4_XS: _dequant_iq4_xs_blocks,
     GGMLQuantizationType.MXFP4: _dequant_mxfp4_blocks,
