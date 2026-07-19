@@ -5233,28 +5233,43 @@ def test_completions_exact_token_prompt_preserves_ids_and_identity() -> None:
     capabilities = client.get("/v1/hipengine/capabilities").json()
     exact = capabilities["features"]["exact_token_prompts"]
     assert exact["completions"] is True
-    assert exact["streaming"] is False
+    assert exact["streaming"] is True
     assert exact["response_identity"] == "hipengine.prompt_token_accounting"
 
 
-def test_completions_exact_token_prompt_rejects_stream_and_mixed_rows() -> None:
+def test_completions_exact_token_prompt_streams_without_retokenizing_and_rejects_mixed_rows() -> None:
+    fake = FakeLLM(stream_chunks=["alpha", " beta"])
     app = create_app(
         ServerConfig(model="fake-path", served_model_name="fake-model"),
-        llm=FakeLLM(),
+        llm=fake,
     )
     client = TestClient(app)
 
     streamed = client.post(
         "/v1/completions",
-        json={"model": "fake-model", "prompt": [10, 11], "stream": True},
+        json={
+            "model": "fake-model",
+            "prompt": [10, 11],
+            "max_tokens": 2,
+            "stream": True,
+            "stream_options": {"include_hipengine": True, "include_usage": True},
+        },
     )
     mixed = client.post(
         "/v1/completions",
         json={"model": "fake-model", "prompt": [[10, 11], "text"]},
     )
 
-    assert streamed.status_code == 400
-    assert streamed.json()["error"]["param"] == "stream"
+    assert streamed.status_code == 200
+    payloads = _sse_payloads(streamed.text)
+    assert "".join(
+        payload["choices"][0]["text"]
+        for payload in payloads
+        if payload.get("choices") and payload["choices"][0]["finish_reason"] is None
+    ) == "alpha beta"
+    assert fake.calls[0][0] == ((10, 11),)
+    usage = next(payload["usage"] for payload in payloads if payload.get("usage"))
+    assert usage == {"prompt_tokens": 2, "completion_tokens": 2, "total_tokens": 4}
     assert mixed.status_code in {400, 422}
 
 

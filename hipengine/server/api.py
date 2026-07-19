@@ -4107,7 +4107,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             raise
 
     async def stream_completion_one(
-        prompt: str,
+        prompt: PromptInput,
         request: CompletionRequest,
         control: _RequestControl,
         raw_request: Request,
@@ -4980,8 +4980,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "exact_token_prompts": {
                     "completions": True,
                     "request_forms": ["token_ids", "token_id_rows"],
-                    "direct_api": "LLM.generate_detailed(token_id_rows, sampling_params)",
-                    "streaming": False,
+                    "direct_api": "LLM.generate_detailed/stream_detailed(token_id_rows, sampling_params)",
+                    "streaming": True,
+                    "streaming_mode": {
+                        "single_row": "live",
+                        "multiple_rows": "buffered",
+                    },
                     "echo": False,
                     "response_identity": "hipengine.prompt_token_accounting",
                     "generated_id_oracle": "hipengine.token_accounting.choice_generated_token_ids",
@@ -9159,7 +9163,7 @@ def _validate_generation_request(
 ) -> None:
     _request_n(request)
     if _completion_prompt_uses_token_ids(request):
-        for param in ("stream", "echo", "continuation_id", "session"):
+        for param in ("echo", "continuation_id", "session"):
             value = getattr(request, param, None)
             if value not in (None, False):
                 raise OpenAIHTTPError(
