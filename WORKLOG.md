@@ -165377,3 +165377,73 @@ Per the focused-repair rule, the already-passing 61 nodes were not rerun. No
 model correctness or performance claim is made yet. Next is a clean gfx1151
 real-model exact-current prefix packet against fresh full-prefill output/state,
 then TTFT/page-memory economics if correctness passes.
+
+## 2026-07-19 — Pass real gfx1151 active-prefix state/KV correctness
+
+Added `scripts/gguf_prefix_reuse_gate.py` plus a HIP-free helper test. The gate
+holds a real 256-token Qwen3.6 Q4_K_M source live, admits a 257-token greedy
+continuation through the production `Qwen35GGUFResidentModelRunner`, fingerprints
+logical block-table-ordered K/V plus every Conv/GDN buffer, reclaims the source
+first, and then compares four matched-context teacher-forced survivor steps to
+an independent c1 oracle. It is correctness-only and makes no timing claim.
+
+The first real probe found a production defect rather than accepting top-1
+alone. A COW allocation `(0, 2)` retained exact clone metadata and source
+immutability, but packed prefill copied K/V as raw contiguous rows, so its suffix
+landed in local page 1 instead of block-table page 2. One-shot and private
+scheduler controls initially showed all 20 K/V components wrong and
+teacher-forced KL `0.134`/`0.152` despite identical top-1. Added a focused RED at
+the 255→257 boundary:
+
+```text
+uv run pytest -q \
+  tests/test_gguf_packed_verify_layout.py::test_gguf_deferred_packed_state_scatter_follows_noncontiguous_device_pages
+1 failed: one contiguous 2-row copy targeted local page 0 instead of page 0 + page 2
+```
+
+`hipengine/runtime/qwen35_gguf_runner.py` now gathers/scatters packed K/V by
+logical page for deferred non-identity allocations and disables slot-local raw
+AOTriton cache writes for those layouts. Identity layouts retain their existing
+single-copy/direct path. The independent oracle uses its own identity backing,
+so it cannot overwrite the production shared chunk.
+
+After the page fix, scheduler-chunk output/KV was exact and KL fell to
+`0.0074387` with top-1 `100%`, but packed one-row suffix arithmetic still was
+not byte-identical to the independent c1 persistent-state contract. The first
+safe shared-prefix slice therefore executes only the unmatched suffix through
+exact c1 `step()` calls; reused prefix chunks remain no-op transitions. Packed
+shared-prefix suffix prefill stays blocked until its persistent state/KV is
+byte-exact.
+
+Final command:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/gfx1151-concurrency-ddab579f/hipcc-version.txt \
+  uv run python scripts/gguf_prefix_reuse_gate.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1151 --quant gguf_q4_k_m \
+  --prefix-tokens 256 --suffix-tokens 1 --teacher-forced-steps 4 \
+  --max-sequence-length 512 \
+  --json /tmp/gfx1151-prefix-reuse-correctness-v5.json
+```
+
+Result: `passed=true`; clone boundary, continuation output, all 60 Conv/GDN and
+20 live K/V components, source immutability, source-first survivor trajectory,
+and final state are byte-exact. Teacher-forced KL mean/max are `0.0/0.0`, top-1
+is `1.0`, refcount transitions are `2→1→0`, one radix hit reuses 256 tokens,
+and the 66,846,720-byte D2D hybrid-state clone avoids one 5,242,880-byte KV
+page. The one-shot 257-row and packed one-row suffix arithmetic differences are
+retained as explicitly non-gating diagnostics in the artifact rather than
+hidden. Artifact:
+`benchmarks/results/2026-07-19-gfx1151-gguf-active-prefix-reuse-correctness.json`.
+
+Validation:
+
+```text
+30 passed: packed layout + device binding + gate helpers + prefix runner
+python3 -m py_compile + git diff --check: passed
+```
+
+No TTFT or process/GPU peak-memory claim is made yet. Next is a clean one-warmup,
+three-repetition matched no-reuse versus radix continuation benchmark, including
+admission/TTFT samples, hit rate, pool bytes, and HIP current/peak observations.
