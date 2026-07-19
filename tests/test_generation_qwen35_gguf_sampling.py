@@ -2033,6 +2033,7 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
     assert observability["routes"]["counts"] == {
         "native_full_prefill_rows": 3,
         "native_incremental_prefill_chunks": 0,
+        "native_incremental_prefill_unsampled_chunks": 0,
         "native_packed_decode_steps": 2,
         "native_packed_graph_captures": 0,
         "native_packed_graph_replays": 0,
@@ -2783,6 +2784,51 @@ def test_gguf_resident_runner_graph_observability_is_bucketed_and_cumulative() -
     assert invalidated["invalidations_total"] == 1
     assert invalidated["buckets"]["bucket-c2"]["invalidations"] == 1
     runner.close()
+
+
+def test_gguf_resident_runner_skips_sampling_for_nonfinal_prefill_chunks() -> None:
+    calls: list[dict[str, object]] = []
+
+    class FakeSession:
+        def prefill_batch_native(self, prompts, **kwargs):
+            calls.append({"prompts": prompts, **kwargs})
+            return [None]
+
+    row = qwen35_gguf._GGUFResidentLoopRow(
+        request_id=1,
+        batch_id=1,
+        row_index=0,
+        request=_request(prompts=("long",), max_tokens=8, ignore_eos=True),
+        prompt_ids=(10, 11, 12, 13),
+        native_greedy=True,
+        native_sampled=False,
+        submitted_at=0.0,
+        lease=qwen35_gguf._GGUFResidentSessionLease(
+            session=FakeSession(),
+            pool_key=("continuous_ar_dynamic_kv", True, True, 256),
+        ),
+    )
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    runner._route_counts = Counter()
+    runner._refresh_prefix_cache = lambda row: None
+
+    runner._prefill_native_chunk(row, (10, 11), final_chunk=False)
+
+    assert calls == [
+        {
+            "prompts": [(10, 11)],
+            "sessions": [row.lease.session],
+            "full_prompt_lengths": [4],
+            "return_logits": False,
+            "return_hidden_seeds": False,
+            "sample_output": False,
+        }
+    ]
+    assert runner._route_counts["native_incremental_prefill_chunks"] == 1
+    assert runner._route_counts["native_incremental_prefill_unsampled_chunks"] == 1
+    assert row.slot is None
 
 
 def test_gguf_resident_runner_commits_incremental_prefill_chunks() -> None:

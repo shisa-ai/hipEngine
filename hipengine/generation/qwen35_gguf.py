@@ -4249,6 +4249,11 @@ class Qwen35GGUFResidentModelRunner:
                     "native_incremental_prefill_chunks": int(
                         self._route_counts["native_incremental_prefill_chunks"]
                     ),
+                    "native_incremental_prefill_unsampled_chunks": int(
+                        self._route_counts[
+                            "native_incremental_prefill_unsampled_chunks"
+                        ]
+                    ),
                     "native_packed_decode_steps": int(
                         self._route_counts["native_packed_decode_steps"]
                     ),
@@ -5268,6 +5273,7 @@ class Qwen35GGUFResidentModelRunner:
             self._disable_incremental_prefill(row, final_chunk=final_chunk)
             return
         start = time.perf_counter()
+        sample_kwargs = {} if final_chunk else {"sample_output": False}
         try:
             with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
                 results = prefill_batch(
@@ -5276,6 +5282,7 @@ class Qwen35GGUFResidentModelRunner:
                     full_prompt_lengths=[len(row.prompt_ids)],
                     return_logits=False,
                     return_hidden_seeds=False,
+                    **sample_kwargs,
                 )
         except NotImplementedError:
             self._disable_incremental_prefill(row, final_chunk=final_chunk)
@@ -5286,6 +5293,8 @@ class Qwen35GGUFResidentModelRunner:
                 f"GGUF incremental prefill returned {len(result_list)} result(s) for one row"
             )
         self._route_counts["native_incremental_prefill_chunks"] += 1
+        if not final_chunk:
+            self._route_counts["native_incremental_prefill_unsampled_chunks"] += 1
         row.prefill_ms += _timing_ms_since(start)
         row.prefill_chunk_count += 1
         self._refresh_prefix_cache(row)

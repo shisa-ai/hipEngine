@@ -12453,9 +12453,10 @@ class Qwen35GGUFResidentSession:
         full_prompt_lengths: list[int] | tuple[int, ...] | None = None,
         return_logits: bool = False,
         return_hidden_seeds: bool = False,
+        sample_output: bool = True,
         capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
         stream: int = 0,
-    ) -> list[Qwen35GGUFNextTokenProbeResult | Qwen35GGUFPackedPrefillResult]:
+    ) -> list[Qwen35GGUFNextTokenProbeResult | Qwen35GGUFPackedPrefillResult | None]:
         """Consume one prompt per session through row-bounded packed rounds.
 
         A prompt slab that fits runs unchanged.  Larger slabs are split fairly
@@ -12464,8 +12465,10 @@ class Qwen35GGUFResidentSession:
         continuity crosses rounds through the normal packed state contract.
         ``full_prompt_lengths`` preserves the full-prompt attention route when
         an outer scheduler supplies one logical prompt over multiple calls.
-        Chunk-tail samples are internal; only each prompt's final result is
-        returned. ``return_hidden_seeds=True`` concatenates all per-round FP32
+        ``sample_output=False`` commits model/KV state without output norm or
+        LM-head work and returns one ``None`` per prompt. Chunk-tail samples are
+        internal; only each prompt's final result is returned when sampling.
+        ``return_hidden_seeds=True`` concatenates all per-round FP32
         rows for the llama-compatible MTP draft catch-up path.
         """
 
@@ -12473,6 +12476,8 @@ class Qwen35GGUFResidentSession:
         session_tuple = (self,) if sessions is None else tuple(sessions)
         if not prompt_tuple:
             raise ValueError("prompt_token_ids must be non-empty")
+        if return_hidden_seeds and not sample_output:
+            raise ValueError("return_hidden_seeds requires sample_output")
         if len(prompt_tuple) != len(session_tuple):
             raise ValueError("prompt_token_ids and sessions must have the same length")
         logical_lengths_supplied = full_prompt_lengths is not None
@@ -12543,6 +12548,9 @@ class Qwen35GGUFResidentSession:
                 0,
                 sum(len(chunk.slot_indices) for chunk in chunks) - len(prompt_tuple),
             ),
+            "sample_output": bool(sample_output),
+            "output_norm_rows": 0,
+            "lm_head_sample_rows": 0,
         }
         if len(chunks) == 1:
             return self._prefill_batch_native_single_slab(
@@ -12550,6 +12558,7 @@ class Qwen35GGUFResidentSession:
                 sessions=session_tuple,
                 return_logits=return_logits,
                 return_hidden_seeds=return_hidden_seeds,
+                sample_output=sample_output,
                 capture_layer_output_hidden=capture_layer_output_hidden,
                 stream=stream,
                 _slot_local_full_attention=bool(aotriton_eligible_slots),
@@ -12574,6 +12583,7 @@ class Qwen35GGUFResidentSession:
                 sessions=chunk_sessions,
                 return_logits=return_logits,
                 return_hidden_seeds=return_hidden_seeds,
+                sample_output=sample_output,
                 capture_layer_output_hidden=capture_layer_output_hidden,
                 stream=stream,
                 _slot_local_full_attention=bool(force_aotriton_slot_indices),
@@ -12589,6 +12599,8 @@ class Qwen35GGUFResidentSession:
                     hidden_parts[slot_index].append(
                         np.ascontiguousarray(result.hidden_seeds, dtype=np.float32)
                     )
+        if not sample_output:
+            return [None for _ in prompt_tuple]
         if any(result is None for result in final_results):
             raise RuntimeError("packed AR prefill did not produce a final result for every slot")
         if not return_hidden_seeds:
@@ -12623,11 +12635,12 @@ class Qwen35GGUFResidentSession:
         sessions: list["Qwen35GGUFResidentSession"] | tuple["Qwen35GGUFResidentSession", ...] | None = None,
         return_logits: bool = False,
         return_hidden_seeds: bool = False,
+        sample_output: bool = True,
         capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
         stream: int = 0,
         _slot_local_full_attention: bool | None = None,
         _force_aotriton_slot_indices: tuple[int, ...] = (),
-    ) -> list[Qwen35GGUFNextTokenProbeResult | Qwen35GGUFPackedPrefillResult]:
+    ) -> list[Qwen35GGUFNextTokenProbeResult | Qwen35GGUFPackedPrefillResult | None]:
         """Execute one packed prompt slab that already fits resident scratch."""
 
         prompt_tuple = tuple(tuple(int(token) for token in prompt) for prompt in prompt_token_ids)
@@ -12638,6 +12651,8 @@ class Qwen35GGUFResidentSession:
             raise ValueError("prompt_token_ids and sessions must have the same length")
         if return_logits:
             raise NotImplementedError("GGUF packed AR prefill currently supports top-1 sampling only")
+        if return_hidden_seeds and not sample_output:
+            raise ValueError("return_hidden_seeds requires sample_output")
         if self.runner is None or self.runner.weights is None or self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
         if self._prefill_token_buf is None or self._prefill_hidden_a is None or self._prefill_hidden_b is None:
@@ -12920,46 +12935,86 @@ class Qwen35GGUFResidentSession:
                     runtime=runtime,
                     stream=stream,
                 )
-            output_norm_weight_ptr = self.runner.weights.root("output_norm").allocation().tensor.ptr
-            gguf_rmsnorm_bf16_f32_weight(
-                src.ptr,
-                output_norm_weight_ptr,
-                packed_scratch.norm.ptr,
-                rows=rows,
-                hidden_size=self.runner.hidden_size,
-                eps=self.runner.weights.config.rms_norm_eps,
-                stream=stream,
-                runtime=runtime,
-            )
-            if hidden_seed_buf is not None:
-                gguf_rmsnorm_bf16_f32_weight_out_f32(
-                    src.ptr,
-                    output_norm_weight_ptr,
-                    hidden_seed_buf.ptr,
-                    rows=rows,
-                    hidden_size=self.runner.hidden_size,
-                    eps=self.runner.weights.config.rms_norm_eps,
+            token_host: np.ndarray | None = None
+            if sample_output:
+                output_norm_weight_ptr = (
+                    self.runner.weights.root("output_norm").allocation().tensor.ptr
+                )
+                row_nbytes = self.runner.hidden_size * DType.BF16.itemsize
+                if hidden_seed_buf is not None:
+                    gguf_rmsnorm_bf16_f32_weight(
+                        src.ptr,
+                        output_norm_weight_ptr,
+                        packed_scratch.norm.ptr,
+                        rows=rows,
+                        hidden_size=self.runner.hidden_size,
+                        eps=self.runner.weights.config.rms_norm_eps,
+                        stream=stream,
+                        runtime=runtime,
+                    )
+                    gguf_rmsnorm_bf16_f32_weight_out_f32(
+                        src.ptr,
+                        output_norm_weight_ptr,
+                        hidden_seed_buf.ptr,
+                        rows=rows,
+                        hidden_size=self.runner.hidden_size,
+                        eps=self.runner.weights.config.rms_norm_eps,
+                        stream=stream,
+                        runtime=runtime,
+                    )
+                    for slot_index in range(int(layout.slot_count)):
+                        final_row = int(layout.cu_seqlens[slot_index + 1]) - 1
+                        if final_row < int(layout.cu_seqlens[slot_index]):
+                            raise RuntimeError(
+                                "packed AR prefill slot has no final row to sample"
+                            )
+                        runtime.memcpy_async(
+                            self._prefill_hidden_a.ptr + slot_index * row_nbytes,
+                            packed_scratch.norm.ptr + final_row * row_nbytes,
+                            row_nbytes,
+                            HipMemcpyKind.DEVICE_TO_DEVICE,
+                            stream,
+                        )
+                    output_norm_rows = rows
+                else:
+                    # RMSNorm is row-independent. Gather only the raw slot tails
+                    # and normalize the rows that the LM head will consume.
+                    for slot_index in range(int(layout.slot_count)):
+                        final_row = int(layout.cu_seqlens[slot_index + 1]) - 1
+                        if final_row < int(layout.cu_seqlens[slot_index]):
+                            raise RuntimeError(
+                                "packed AR prefill slot has no final row to sample"
+                            )
+                        runtime.memcpy_async(
+                            packed_scratch.norm.ptr + slot_index * row_nbytes,
+                            src.ptr + final_row * row_nbytes,
+                            row_nbytes,
+                            HipMemcpyKind.DEVICE_TO_DEVICE,
+                            stream,
+                        )
+                    gguf_rmsnorm_bf16_f32_weight(
+                        packed_scratch.norm.ptr,
+                        output_norm_weight_ptr,
+                        self._prefill_hidden_a.ptr,
+                        rows=int(layout.slot_count),
+                        hidden_size=self.runner.hidden_size,
+                        eps=self.runner.weights.config.rms_norm_eps,
+                        stream=stream,
+                        runtime=runtime,
+                    )
+                    output_norm_rows = int(layout.slot_count)
+                self.last_packed_prefill_plan["output_norm_rows"] = int(
+                    output_norm_rows
+                )
+                self.last_packed_prefill_plan["lm_head_sample_rows"] = int(
+                    layout.slot_count
+                )
+                token_host = self._sample_target_block_rows_from_hidden(
+                    self._prefill_hidden_a.ptr,
+                    int(layout.slot_count),
+                    activation_dtype=GGUF_ACTIVATION_BF16,
                     stream=stream,
-                    runtime=runtime,
                 )
-            row_nbytes = self.runner.hidden_size * DType.BF16.itemsize
-            for slot_index in range(int(layout.slot_count)):
-                final_row = int(layout.cu_seqlens[slot_index + 1]) - 1
-                if final_row < int(layout.cu_seqlens[slot_index]):
-                    raise RuntimeError("packed AR prefill slot has no final row to sample")
-                runtime.memcpy_async(
-                    self._prefill_hidden_a.ptr + slot_index * row_nbytes,
-                    packed_scratch.norm.ptr + final_row * row_nbytes,
-                    row_nbytes,
-                    HipMemcpyKind.DEVICE_TO_DEVICE,
-                    stream,
-                )
-            token_host = self._sample_target_block_rows_from_hidden(
-                self._prefill_hidden_a.ptr,
-                int(layout.slot_count),
-                activation_dtype=GGUF_ACTIVATION_BF16,
-                stream=stream,
-            )
 
         hidden_host = None
         if hidden_seed_buf is not None:
@@ -13022,6 +13077,10 @@ class Qwen35GGUFResidentSession:
             runtime.stream_synchronize(stream)
         else:
             runtime.device_synchronize()
+        if not sample_output:
+            return [None for _ in range(int(layout.slot_count))]
+        if token_host is None:
+            raise RuntimeError("packed prefill sampling did not produce token IDs")
         if return_hidden_seeds:
             if hidden_host is None:
                 raise RuntimeError("packed prefill hidden rows were not captured")
