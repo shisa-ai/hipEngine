@@ -1,0 +1,125 @@
+{
+  "schema": 1,
+  "status": "accepted_diagnostic_attribution",
+  "performance_claim": false,
+  "date": "2026-07-20",
+  "purpose": "Task-21 D0 bound for fusing each non-final MoE tail with the next layer's input RMSNorm on Qwen3.6-35B-A3B UD-Q3_K_M decode.",
+  "hipengine_source_commit": "b2ae2943",
+  "analysis_commit": "777abe40",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf",
+    "sha256": "8966dd0cd8c543c4228490a2a8b0e0814fc4f1e6a8e199ceed4de6754ae7b8e1",
+    "quant": "gguf_ud_q3_k_m",
+    "layers": 40,
+    "activation_dtype": "bf16",
+    "hidden_size": 2048
+  },
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "visible_device": 1,
+    "rocprof_agent": 2,
+    "bdf": "0000:10:00.0",
+    "architecture": "gfx1100",
+    "wavefront_size": 32
+  },
+  "source_profile": {
+    "prompt_tokens": 512,
+    "decode_tokens": 16,
+    "graph_steps_per_replay": 1,
+    "dispatches_total": 11328,
+    "dispatches_per_token": 708,
+    "summed_kernel_ms": 141.46397,
+    "kernel_ms_per_token": 8.841498125,
+    "profiled_decode_tok_s": 86.9585104140243,
+    "final_token_id": 68,
+    "tracked_peak_gib": 15.804706819355488,
+    "selected_region_memory_copy_events": 0
+  },
+  "sequence_accounting": {
+    "method": "Split each repeated 708-dispatch token sequence by launch order. Each token has 40 layer-input gguf_rmsnorm launches, 40 MoE-tail combine launches, and one final output_norm launch. Pair layer-tail combines 0..38 with input norms 1..39; leave first-layer input norm, layer-39 tail, and output_norm separate.",
+    "first_layer_input_rmsnorm": {
+      "dispatches": 16,
+      "sum_ms": 0.08176,
+      "ms_per_token": 0.00511,
+      "median_us": 4.68
+    },
+    "fusable_next_layer_input_rmsnorm": {
+      "dispatches": 624,
+      "launches_per_token": 39,
+      "sum_ms": 3.11692,
+      "ms_per_token": 0.1948075,
+      "median_us": 4.76,
+      "mean_us": 4.995064,
+      "min_us": 4.44,
+      "max_us": 11.8
+    },
+    "final_output_rmsnorm": {
+      "dispatches": 16,
+      "sum_ms": 0.079681,
+      "ms_per_token": 0.0049800625,
+      "median_us": 4.86
+    },
+    "fusable_moe_tail_combine": {
+      "dispatches": 624,
+      "launches_per_token": 39,
+      "sum_ms": 1.041334,
+      "ms_per_token": 0.065083375,
+      "median_us": 1.52,
+      "mean_us": 1.668804,
+      "min_us": 1.36,
+      "max_us": 3.64,
+      "already_weighted_selected_sum_layers": [34, 38],
+      "slot_weighted_layers": 37
+    },
+    "final_layer_moe_tail_combine": {
+      "dispatches": 16,
+      "sum_ms": 0.02672,
+      "ms_per_token": 0.00167,
+      "median_us": 1.48,
+      "already_weighted_selected_sum": false
+    }
+  },
+  "bound": {
+    "current_fusable_dispatches_per_token": 78,
+    "candidate_fused_dispatches_per_token": 39,
+    "dispatches_removed_per_token": 39,
+    "dispatch_reduction_pct_of_step": 5.508474576271186,
+    "current_fusable_kernel_ms_per_token": 0.259890875,
+    "current_fusable_kernel_share_pct": 2.9394438739418955,
+    "unprofiled_512_graph_ms_per_token_control": 9.946665312781988,
+    "impossible_full-window_wall_upper_bound_pct": 2.612844273206082,
+    "realistic_target_pct": "0.3-1.0",
+    "interpretation": "The fused kernel cannot remove the whole 0.2599 ms/token window because combine arithmetic and normalized output remain. It can remove 39 launches and the first RMSNorm reread of each rounded residual. A 0.3-1.0% graph-wall target remains appropriately bounded."
+  },
+  "numerical_contract": {
+    "selected_sum": "Preserve the current variant: consume either a BF16 selected aggregate or slot-ordered BF16 rows plus F32 routing weights, including the intermediate activation-dtype selected-sum rounding.",
+    "combine_order": "residual + selected + sigmoid(shared_gate) * shared",
+    "rounding_boundary": "Store the combined activation to BF16/FP16 first; compute sum-of-squares and normalization from that rounded activation.",
+    "outputs": ["raw rounded residual", "next-layer normalized activation"],
+    "final_layer_policy": "Keep the final MoE tail and output_norm separate initially."
+  },
+  "implementation_gate": {
+    "decode_only_first": true,
+    "one_workgroup_per_token": true,
+    "required_variants": [
+      "BF16 activation + F32 GGUF norm weight, already-weighted selected aggregate",
+      "BF16 activation + F32 GGUF norm weight, slot-weighted selected rows",
+      "FP16 activation + FP16 PARO norm weight, already-weighted selected aggregate",
+      "FP16 activation + FP16 PARO norm weight, slot-weighted selected rows"
+    ],
+    "required_correctness": "Bit-exact raw residual and normalized buffers against the unfused combine then RMSNorm chain, plus exact Q3/Q4/PARO trajectories and transition coverage.",
+    "required_resources": "Zero private/scratch bytes; acceptable VGPR/LDS.",
+    "required_performance": "Repeatable 512/4K graph decode gain; no prefill path change for decode-only promotion."
+  },
+  "command": "LD_LIBRARY_PATH=/tmp/hipengine-roctx-sdk-override-gguf-direct:<ROCm-sysdeps> HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --memory-copy-trace --selected-regions true --output-format csv -d /tmp/hipengine-q3-iq3-wavebase-decode16-20260720-024554 -o q3-iq3-wavebase-decode16 -- python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --quant gguf_ud_q3_k_m --token-id 9707 --prompt-length 512 --decode-tokens 16 --warmup-decode-tokens 1 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode native --no-use-wmma-prefill --no-use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --rocprof-selected-region measured_decode_graph --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build --json <out>/bench.json",
+  "raw_evidence": {
+    "bench_json": {
+      "path": "/tmp/hipengine-q3-iq3-wavebase-decode16-20260720-024554/bench.json",
+      "sha256": "b11b8fd724b1d8b2bf4409782fda4970d93fd5e7bb930c9b07cda989c70f6419"
+    },
+    "kernel_trace_csv": {
+      "path": "/tmp/hipengine-q3-iq3-wavebase-decode16-20260720-024554/q3-iq3-wavebase-decode16_kernel_trace.csv",
+      "sha256": "0882983436de7926f91e8ee4e7cca08120cf570e520511e924fbadd2df626c9d"
+    }
+  }
+}
