@@ -16660,6 +16660,30 @@ def test_resident_stream_rechecks_completion_after_empty_racing_poll(monkeypatch
     assert adapter._loop.completed == {}
 
 
+def test_submission_tick_budget_ignores_peer_only_engine_events() -> None:
+    from hipengine.generation.engine_loop import (
+        EngineLoopEvent,
+        _events_advance_submission_tick,
+    )
+
+    submission_ids = (2,)
+    assert not _events_advance_submission_tick(
+        (EngineLoopEvent(kind="work", request_ids=(3, 4), work_kind=WorkKind.PREFILL),),
+        submission_ids,
+    )
+    assert _events_advance_submission_tick(
+        (
+            EngineLoopEvent(kind="admitted", request_id=2, request_ids=(2,)),
+            EngineLoopEvent(kind="work", request_ids=(3, 4), work_kind=WorkKind.PREFILL),
+        ),
+        submission_ids,
+    )
+    assert _events_advance_submission_tick(
+        (EngineLoopEvent(kind="work", request_ids=(2, 4), work_kind=WorkKind.DECODE),),
+        submission_ids,
+    )
+
+
 def test_submit_poll_text_generator_routes_concurrent_streams_and_reclaims_closed_row() -> None:
     class ConcurrentRunner:
         capacity = 2
