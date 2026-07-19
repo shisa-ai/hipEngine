@@ -368,6 +368,9 @@ accept/commit metadata, and scheduler-facing results.
    proposal wall improves **0.964 -> 0.953 ms/output**. Matched cached eight-cycle
    tracing replaces 542 `hipLaunchKernel` and 80 synchronous `hipMemcpy` host
    calls with eight proposal `hipGraphLaunch` calls while preserving all 22 IDs.
+   The clean detached confirmation at `2395ad33` is **118.183 tok/s / 1.2820x
+   true AR / 8.610 ms-output**, matches clean N3 across 97 non-timing fields for
+   every cycle, and remains diagnostic because N1 is faster.
 7. **N4 — Shared provider adapters:** migrate GGUF MTP first, then PARO MTP and
    DFlash without duplicating the launcher. Add gfx1100 and gfx1151 gates for
    each provider before default promotion.
@@ -1369,7 +1372,9 @@ is now answered by the M1 required/optional table.)
   capture-excluded proposal wall improves **0.964 -> 0.953 ms/output**. For the
   same eight cycles and 22 IDs, cached HIP API tracing changes
   `hipLaunchKernel` **3273 -> 2731**, synchronous `hipMemcpy` **1204 -> 1124**,
-  and `hipGraphLaunch` **8 -> 16**. N1 remains the **122.667 tok/s** canonical
+  and `hipGraphLaunch` **8 -> 16**. A detached clean `2395ad33` publication is
+  **118.183 tok/s / 1.2820x AR / 8.610 ms-output** and matches all 97 common
+  non-timing fields across 96 cycles. N1 remains the **122.667 tok/s** canonical
   llama-compat row. N3P retains exact N3/unsupported-shape fallback and does not
   claim one combined proposal+target native submission or gfx1151 admission.
 - 2026-07-19: Retained reusable gfx1100 B1/B2 native target graphs at clean
