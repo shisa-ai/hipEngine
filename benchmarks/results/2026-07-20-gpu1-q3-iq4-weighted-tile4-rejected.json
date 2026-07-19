@@ -1,0 +1,100 @@
+{
+  "schema": 1,
+  "status": "rejected",
+  "performance_claim": false,
+  "date": "2026-07-20",
+  "purpose": "Evaluate revised D1B: exact wave-per-slot, four-output tiling of the existing top-8 weighted IQ4_XS down composite.",
+  "hipengine_base_commit": "955fbb66",
+  "candidate_retained": false,
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf",
+    "sha256": "8966dd0cd8c543c4228490a2a8b0e0814fc4f1e6a8e199ceed4de6754ae7b8e1",
+    "quant": "gguf_ud_q3_k_m"
+  },
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "visible_device": 1,
+    "bdf": "0000:10:00.0",
+    "architecture": "gfx1100",
+    "wavefront_size": 32
+  },
+  "candidate": {
+    "shape": "top_k=8, in_features=512, out_features=2048",
+    "schedule": "local256; one wave per selected slot; four adjacent outputs per workgroup; slot projections reduced with the current wave32 tree, BF16-rounded per slot, then routing FMAs applied in slot order.",
+    "current_grid": {"workgroups": 2048, "threads": 128, "slot_schedule": "sequential"},
+    "candidate_grid": {"workgroups": 512, "threads": 256, "slot_schedule": "eight concurrent waves", "output_tile": 4},
+    "post_decision": "Candidate kernel, registry key, Python wrapper, runtime env selector, and candidate-only tests were removed. Production source is byte-identical to base before this artifact/docs closure."
+  },
+  "correctness": {
+    "primitive": "17 GPU tests passed; tile4 was BF16-bit exact to the current weighted composite for token counts 1/2, output tails 17/19, production N=2048, duplicate/invalid experts, and zero/negative/extreme routing weights.",
+    "runtime_dispatch": "14 registry/dispatch tests passed, including opt-in sibling resolution and fallback to the current composite when absent.",
+    "real_model": {
+      "current_preview_ids": [107561, 11],
+      "candidate_preview_ids": [107561, 11],
+      "current_final_id": 11,
+      "candidate_final_id": 11,
+      "current_final_logit": 13.857003211975098,
+      "candidate_final_logit": 13.857003211975098,
+      "current_peak_gib": 15.804706819355488,
+      "candidate_peak_gib": 15.804706819355488
+    },
+    "profiled_decode16_final_id_current": 68,
+    "profiled_decode16_final_id_candidate": 68
+  },
+  "cache_hot_microprofile": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-iq4-tile4-repeat-20260720-022740 -o repeat -- python3 /tmp/hipengine_iq4_tile4_bench.py",
+    "warmup_launches_discarded": 10,
+    "measured_launches_per_symbol": 100,
+    "current": {"median_us": 46.7605, "mean_us": 46.67986, "min_us": 45.44, "max_us": 47.6, "vgpr": 80, "scratch_bytes": 0},
+    "tile4": {"median_us": 28.24, "mean_us": 26.62973, "min_us": 16.16, "max_us": 34.0, "vgpr": 32, "scratch_bytes": 0},
+    "median_delta_pct": -39.607147057880056,
+    "mean_delta_pct": -42.95242102268516,
+    "interpretation": "The repeated same-weight synthetic microbenchmark is cache-hot and is not representative of 37 sequential layers with distinct expert weights."
+  },
+  "production_decode16_profile": {
+    "command_difference": "Same cached selected measured_decode_graph command as the D0 artifact, with HIPENGINE_GGUF_IQ4_WEIGHTED_DOWN_TILE4=1 for the candidate.",
+    "current": {
+      "total_kernel_ms": 142.173458,
+      "kernel_ms_per_token": 8.885841125,
+      "iq4_weighted_ms": 16.057443,
+      "iq4_weighted_ms_per_token": 1.0035901875,
+      "iq4_weighted_duration_us": {"min": 24.48, "median": 25.12, "mean": 27.12405912162162, "max": 60.6},
+      "profiled_wall_tok_s": 86.78981500908758
+    },
+    "tile4": {
+      "total_kernel_ms": 145.553683,
+      "kernel_ms_per_token": 9.0971051875,
+      "iq4_weighted_ms": 18.064919,
+      "iq4_weighted_ms_per_token": 1.1290574375,
+      "iq4_weighted_duration_us": {"min": 27.481, "median": 28.6205, "mean": 30.51506587837838, "max": 64.92},
+      "profiled_wall_tok_s": 85.18871333357644,
+      "vgpr": 32,
+      "scratch_bytes": 0
+    },
+    "delta": {
+      "iq4_weighted_ms_pct": 12.501841046547701,
+      "total_kernel_ms_pct": 2.3775358970308025,
+      "profiled_wall_tok_s_pct": -1.8448036504553955
+    },
+    "dispatches_current": 11328,
+    "dispatches_tile4": 11328,
+    "note": "The same number of launches is expected: output tiling changes workgroups inside each of 37 layer launches."
+  },
+  "decision": {
+    "accepted": false,
+    "reason": "The production family itself regressed 12.50% despite exact math, zero scratch, lower VGPR, and the cache-hot micro win. This triggers D1B's leaf stop gate before repeated non-profiled 512/1K/4K wall tests.",
+    "diagnosis": "Inferred from the A/B: reducing the grid fourfold removes latency-hiding parallelism for cold, distinct per-layer IQ4 weights; activation reuse does not compensate. The cache-hot repeated-weight microbenchmark masked this cost.",
+    "next": "Retain task-19 local128 sequential-slot weighted down. Continue only with bounded D1C IQ3 HSACO/address/codebook inspection because D0 still attributes 0.7185 ms/token to IQ3 gate/up."
+  },
+  "raw_evidence": {
+    "current_decode16_bench": {"path": "/tmp/hipengine-q3-d0-decode16-20260720-021235/bench.json", "sha256": "b1ab75df6d97da926ac37f8ae3f5fad253dd77f5d39b2506323b08d165eef133"},
+    "current_decode16_trace": {"path": "/tmp/hipengine-q3-d0-decode16-20260720-021235/q3-d0-decode16_kernel_trace.csv", "sha256": "d354ecc42cc96b3fb8c3be64cb3e9f5ab768ce850b0814895e30bb57ee24976d"},
+    "candidate_decode16_bench": {"path": "/tmp/hipengine-q3-iq4-tile4-decode16-20260720-023121/bench.json", "sha256": "4e0e065e632c92e0299294ade26b2432f057c7bd0e298ae87d5ff0f35f202004"},
+    "candidate_decode16_trace": {"path": "/tmp/hipengine-q3-iq4-tile4-decode16-20260720-023121/q3-iq4-tile4-decode16_kernel_trace.csv", "sha256": "05a581f04e60d5be0ad720e3c06af94ba4f9670c148825ba4d325359079520b9"},
+    "candidate_decode16_summary": {"path": "/tmp/hipengine-q3-iq4-tile4-decode16-20260720-023121/summary.json", "sha256": "fc591a1394ae186c4ed6a00348b3642b6058de0ca5c4bb64fa537183be0ccb19"},
+    "cache_hot_microtrace": {"path": "/tmp/hipengine-iq4-tile4-repeat-20260720-022740/repeat_kernel_trace.csv", "sha256": "84de5dd9f39e19db38edd2e703634fa0762d064de4c538e785154f884b278e24"},
+    "correctness_trace": {"path": "/tmp/hipengine-iq4-tile4-correctness-trace-20260720-022701/iq4-tile4_kernel_trace.csv", "sha256": "b94be61d19c8eff86e010afff8e6ca919f4a032793aea03e7465d9cb2fcd1de8"},
+    "current_512x1": {"path": "/tmp/hipengine-q3-iq4-current-512x1.json", "sha256": "8dc5cf990a8c010a4f19b7ad5103e93da3459b4f401a82a01c231b0dba23acb3"},
+    "candidate_512x1": {"path": "/tmp/hipengine-q3-iq4-tile4-512x1.json", "sha256": "dc9bd7aa8146eb82844a701dac7fedf63dbeb3093e3954dbbea6b714a3a1a205"}
+  }
+}

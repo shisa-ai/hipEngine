@@ -1628,6 +1628,32 @@ is 1.0036 ms/token, not the review's isolated 3 ms extrapolation.
 Evidence:
 `benchmarks/results/2026-07-20-gpu1-q3-decode-d0-profile.json`.
 
+### 12.9 IQ4 weighted tile4: cache-hot win, production loss
+
+The revised D1B candidate exactly matched the task-19 weighted composite while
+assigning one wave to each slot and computing four outputs per local256 block.
+It reduced the grid from 2,048 to 512 blocks, used 32 VGPR with zero scratch,
+and preserved model IDs/logits and peak memory.
+
+A 100-launch repeated-weight microbenchmark was misleadingly strong:
+
+| IQ4 weighted down | Current local128 | Tile4 local256 | Delta |
+| --- | ---: | ---: | ---: |
+| Cache-hot median | 46.7605 us | 28.2400 us | **-39.61%** |
+| Cache-hot mean | 46.6799 us | 26.6297 us | **-42.95%** |
+| Real 37-layer family | 16.0574 ms | 18.0649 ms | **+12.50%** |
+| Total decode16 kernels | 142.1735 ms | 145.5537 ms | **+2.38%** |
+
+The production A/B is authoritative. Each layer streams distinct selected IQ4
+weights; reducing the grid fourfold removes latency-hiding parallelism, while
+the repeated synthetic launch keeps the same small expert-weight set hot. The
+candidate therefore failed at the named family before formal full-wall runs.
+It was removed completely. Tile2 is not warranted: tile4 had no spill and lost
+on production work distribution, not register pressure.
+
+Evidence:
+`benchmarks/results/2026-07-20-gpu1-q3-iq4-weighted-tile4-rejected.json`.
+
 ---
 
 ## Summary
