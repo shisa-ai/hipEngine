@@ -165832,3 +165832,57 @@ so these rates are diagnostics, not retained performance. Host RED failed on
 the missing BF16 wrapper/workspace; focused runner, kernel-plan, layout,
 generation, and script contracts are GREEN. Next is a clean-commit short rerun,
 then the mixed/32K/pressure/regrow packet; no 32K/64K claim exists yet.
+
+## 2026-07-19 — Fix mixed-length shared-loop tick accounting
+
+The committed-clean short real-Uvicorn rerun at `ef3142c7` is now valid rather
+than importing the dirty main editable tree: `PYTHONPATH=.` resolves
+`repo_root=/tmp/hipengine-long-pressure-45cb4631`, source/provenance are clean,
+and the canonical Qwen3.6-35B-A3B UD-Q4_K_M BF16-KV 1K/c2 and 4K/c2 rows pass
+exact output, server accounting, native-route, memory-recovery, and final-owner
+gates at **17.883214** and **8.122908 exact generated tok/s**. Both use only
+`packed_native`; the pool records three grow/three shrink events and returns to
+5/5 free pages with zero refs/pins. This selected diagnostic is not a retained
+performance packet.
+
+The first clean 32K/mixed/pressure diagnostic then exposed a host watchdog bug,
+not a model/KV failure. Independent results that pass are:
+
+```text
+32K/c2:                         1.036109 exact generated tok/s, packed_native
+32K c1 graph-seed diagnostic:  1.037496 exact generated tok/s
+KV pressure:                   32K completed; 4K rejected as 429 engine_busy
+32K c1 regrow diagnostic:      1.034493 exact generated tok/s
+pool:                          134-page high water -> 5/5 free, zero refs/pins
+logical IDs:                   pressure 5..133, regrow 134..262, disjoint
+final ownership/memory:        passed
+```
+
+The mixed 1K/4K/32K row failed only because the 1K and 4K HTTP streams consumed
+their local finite budgets while shared-loop polls were doing the 32K peer's
+prefill. The errors at exactly 41 and 53 ticks equal each short submission's
+own `prefill_ticks + decode + row + margin` bound. `_submit_poll_max_ticks()` is
+correctly local, but both blocking and streaming drivers incremented it for all
+peer-only work events.
+
+Added `_events_advance_submission_tick()` and changed both drivers to charge a
+submission only when a poll event contains one of its request ids. RED was the
+missing helper contract; GREEN covers peer-only prefill, own admission, and
+joined decode. Validation passed across the complete shared scheduler, GGUF and
+PARO generation, production-load harness, and server API bundle:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/test_generation_batch_scheduler.py \
+  tests/test_generation_qwen35_gguf_sampling.py \
+  tests/test_generation_qwen35_paro.py \
+  tests/test_gguf_production_load_gate.py \
+  tests/test_server_api.py -q
+```
+
+The failed hardware artifact remains diagnostic at
+`/tmp/gfx1151-long-pressure-32k-mixed-v1-clean.json`; no numeric mixed or 64K
+claim is retained. A separate harness audit also found that gfx1151 c1 graph
+admission requires 128 remaining transitions, so the gate's d32 graph rows
+cannot satisfy its eventual complete-packet graph lifecycle check; repair that
+mechanical graph-row budget before the clean mixed rerun.

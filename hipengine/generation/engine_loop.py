@@ -303,7 +303,8 @@ class SubmitPollTextGenerator:
         try:
             while not self.generation_complete(submission):
                 events = self.poll(max_ticks=1)
-                ticks += 1
+                if _events_advance_submission_tick(events, submission.request_ids):
+                    ticks += 1
                 if not events:
                     if self.generation_complete(submission):
                         continue
@@ -661,7 +662,8 @@ class SubmitPollTextGenerator:
                 if complete:
                     break
                 events = self.poll(max_ticks=1)
-                ticks += 1
+                if _events_advance_submission_tick(events, submission.request_ids):
+                    ticks += 1
                 if not events:
                     # Another stream may complete this subscription after the
                     # pre-poll check but before our shared-loop poll acquires
@@ -907,6 +909,25 @@ def _surrogate_prompt_tokens(prompt: Any) -> tuple[int, ...]:
     if isinstance(prompt, str):
         return (len(prompt.encode("utf-8")),)
     return (len(prompt),)
+
+
+def _events_advance_submission_tick(
+    events: Sequence[EngineLoopEvent],
+    request_ids: Sequence[int],
+) -> bool:
+    """Return whether one shared-loop poll advanced this submission's work.
+
+    Concurrent streams may drive scheduler ticks that contain only a longer or
+    otherwise preferred peer. Those peer-only ticks cannot consume the local
+    finite-work budget derived from this submission's own prompt and decode
+    lengths.
+    """
+
+    owned = frozenset(int(request_id) for request_id in request_ids)
+    return bool(owned) and any(
+        not owned.isdisjoint(int(request_id) for request_id in event.request_ids)
+        for event in events
+    )
 
 
 def _submit_poll_max_ticks(
