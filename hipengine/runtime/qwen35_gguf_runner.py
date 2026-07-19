@@ -6197,6 +6197,29 @@ class Qwen35GGUFFullStackRunner:
                 runtime=runtime,
                 library=getattr(self, "_expert_pack8_library", None),
             )
+        elif (
+            not f32_selected_intermediate
+            and gate_weight.spec.quant_key == up_weight.spec.quant_key
+            and gate_weight.spec.quant_key in {"gguf_iq3_xxs", "gguf_iq4_xs"}
+            and _launch_selected_raw_gguf_moe_pair_silu(
+                gate_weight,
+                up_weight,
+                scratch.post_norm.ptr,
+                scratch.moe_selected_experts.ptr,
+                scratch.ffn_intermediate.ptr,
+                x_rows=rows,
+                rows=selected_rows,
+                num_experts=cfg.expert_count,
+                in_features=self.hidden_size,
+                out_features=cfg.expert_feed_forward_length,
+                stream=stream,
+                runtime=runtime,
+            )
+        ):
+            # Qwen3.6 Q3 keeps routed IQ experts raw. The decode kernels also
+            # implement the bulk selected ABI (rows=tokens*top_k), so their
+            # four-row activation reuse is the correctness-first prefill path.
+            expert_silu_ready = True
         else:
             # The Q4T16 dual+SiLU fusion is decode-only for now.  In rows>1
             # bulk prefill the extra exp/rounding work in the GEMV accumulator
