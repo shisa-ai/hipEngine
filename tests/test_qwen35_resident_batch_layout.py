@@ -8306,6 +8306,87 @@ def test_paro_native_spec_target_replay_reuses_bound_control() -> None:
     assert bound_launches == [(4, 14)]
 
 
+def test_paro_native_spec_target_commit_request_is_paro_registered_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.backend = "hip_gfx1100"
+    session.linear_layer_ids = (0, 2)
+    session.linear_state_dst_conv_table_buf = DeviceBuffer(0x1000, 16)
+    session.linear_state_dst_recurrent_table_buf = DeviceBuffer(0x1100, 16)
+    session._verify_gpu_accept_enabled = lambda: True
+    session._verify_accept_packed_payload_enabled = lambda: True
+    session._fused_linear_state_commit_enabled = lambda: True
+    session._native_spec_provider_target_factory = lambda: object()
+    batch = SimpleNamespace(
+        mode="verify_chain",
+        request_ids=(7,),
+        rows=3,
+        candidate_count=2,
+        draft_depth=2,
+        active_mask=(True, True, True),
+    )
+    monkeypatch.setenv("HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH", "1")
+    monkeypatch.setenv("HIPENGINE_PARO_NATIVE_SPEC_TARGET_COMMIT", "1")
+
+    assert session._native_spec_provider_target_commit_requested(
+        batch,
+        capture_hidden_concat=_tensor(0x2000, (3, 0), DType.BF16),
+        base_slot=0,
+    )
+    assert not session._native_spec_provider_target_commit_requested(
+        batch,
+        capture_hidden_concat=_tensor(0x3000, (3, 16), DType.BF16),
+        base_slot=0,
+    )
+    inactive = SimpleNamespace(**{**vars(batch), "active_mask": (True, True, False)})
+    assert not session._native_spec_provider_target_commit_requested(
+        inactive,
+        capture_hidden_concat=_tensor(0x2000, (3, 0), DType.BF16),
+        base_slot=0,
+    )
+    session._native_spec_provider_target_factory = lambda: None
+    assert not session._native_spec_provider_target_commit_requested(
+        batch,
+        capture_hidden_concat=_tensor(0x2000, (3, 0), DType.BF16),
+        base_slot=0,
+    )
+
+
+def test_paro_native_spec_target_commit_uses_combined_graph_owned_tables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.linear_layer_ids = (0, 2)
+    session.linear_state_conv_row_nbytes = 64
+    session.linear_state_recurrent_row_nbytes = 128
+    session.libraries = {"dflash_commit": object()}
+    session.runtime = object()
+    session._chunked_linear_state_commit_enabled = lambda: True
+    monkeypatch.setattr(
+        runner_module,
+        "linear_state_pair_commit_chunked_i32",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+
+    session._launch_native_spec_provider_target_commit(
+        source_table_ptr=0x1000,
+        destination_table_ptr=0x2000,
+        commit_row_ptr=0x3000,
+        stream=7,
+    )
+
+    assert len(calls) == 1
+    args, kwargs = calls[0]
+    assert args == (0x1000, 0x2000, 64, 0x1010, 0x2010, 128, 0x3000, 2)
+    assert kwargs == {
+        "stream": 7,
+        "library": session.libraries["dflash_commit"],
+        "runtime": session.runtime,
+    }
+
+
 def test_verify_accept_payload_can_skip_known_native_synchronization(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -8407,6 +8488,33 @@ def test_paro_native_spec_target_control_binds_shared_verify_accept_buffers() ->
     assert paro_control.shape.hidden_dtype is NativeSpecCycleDType.FP16
     assert paro_control.shape.hidden_size == 32
     assert paro_control.pointers.state.hidden_seed_rows == 0x4000
+
+    session.position_buf = DeviceBuffer(0x7000, DType.INT64.itemsize)
+    session.context_buf = DeviceBuffer(0x7100, DType.INT64.itemsize)
+    commit_stages = (
+        NativeSpecCycleStage.VERIFY
+        | NativeSpecCycleStage.ACCEPT
+        | NativeSpecCycleStage.COMMIT
+        | NativeSpecCycleStage.UPDATE_CURSORS
+    )
+    commit_control = session._native_spec_provider_target_control(
+        batch,
+        capture_hidden_concat=_tensor(0x6000, (8, 0), DType.BF16),
+        capture_row_start=0,
+        rows=3,
+        stream=0,
+        cycle_id=7,
+        stages=commit_stages,
+        linear_state_rows_ptr=0x7200,
+        linear_state_dst_ptr=0x7300,
+    )
+    assert commit_control.stages == commit_stages
+    assert commit_control.pointers.state.linear_state_rows == 0x7200
+    assert commit_control.pointers.state.linear_state_dst == 0x7300
+    assert commit_control.pointers.outputs.output_ids == 0x1E00
+    assert commit_control.pointers.outputs.output_lengths == 0x1F00
+    assert commit_control.pointers.outputs.last_positions == 0x7000
+    assert commit_control.pointers.outputs.context_lengths == 0x7100
 
     signature = session._native_spec_provider_target_replay_signature(
         batch,

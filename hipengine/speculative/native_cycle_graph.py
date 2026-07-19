@@ -11,7 +11,9 @@ and cursor update behind the same submission. A separate proposal-only bucket
 can submit an existing strict B1/B2 NextN device chain through the same ABI.
 The provider-target variant reuses the launcher for the shared PARO MTP/DFlash
 single-request B1/B2/B3/B4/B5/B8 target+accept graph, with FP16 verifier rows
-or BF16 sidecar hidden taps and the provider's existing Python commit path.
+or BF16 sidecar hidden taps. An opt-in FP16/PARO bucket may also capture selected
+linear-state commit and target cursor update; BF16/DFlash keeps its provider
+hidden/KV commit path outside this boundary.
 Unsupported shapes remain on the exact Python chain. Cancellation, deadlines,
 and multi-cycle execution belong
 to later ABI stages and must fall back instead of being approximated.
@@ -414,13 +416,22 @@ def _validate_small_chain_proposal(control: NativeSpecCycleControl) -> None:
 
 def _validate_provider_chain_target(control: NativeSpecCycleControl) -> None:
     shape = control.shape
+    commit_stages = (
+        NativeSpecCycleStage.VERIFY
+        | NativeSpecCycleStage.ACCEPT
+        | NativeSpecCycleStage.COMMIT
+        | NativeSpecCycleStage.UPDATE_CURSORS
+    )
     supported_stages = {
         NativeSpecCycleStage.VERIFY,
         NativeSpecCycleStage.VERIFY | NativeSpecCycleStage.ACCEPT,
+        commit_stages,
     }
     candidate_rows = int(shape.row_count) - 1
     if control.stages not in supported_stages:
-        raise ValueError("provider target graph supports VERIFY or VERIFY|ACCEPT")
+        raise ValueError(
+            "provider target graph supports VERIFY, VERIFY|ACCEPT, or PARO commit/cursor stages"
+        )
     if (
         control.mode.name != "CHAIN"
         or shape.request_count != 1
@@ -440,6 +451,8 @@ def _validate_provider_chain_target(control: NativeSpecCycleControl) -> None:
         NativeSpecCycleDType.BF16,
     }:
         raise ValueError("provider target graph requires FP16/BF16 hidden rows")
+    if control.stages == commit_stages and shape.hidden_dtype is not NativeSpecCycleDType.FP16:
+        raise ValueError("provider commit/cursor graph requires FP16 PARO hidden rows")
     if shape.kv_dtype is not NativeSpecCycleDType.BF16:
         raise ValueError("provider target graph requires BF16 target KV")
     if control.deadline_ns != 0:
