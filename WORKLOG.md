@@ -167772,3 +167772,97 @@ Published diagnostic
 (compact SHA-256
 `47fd94ad27a44ba53f1383a529d56481f5f8361ad3a265f243028187597e01f6`).
 N4 remains explicit/default-off, and no MTP speedup over AR is claimed.
+
+## 2026-07-20 — PARO N4+ bound-control replay and duplicate-sync removal
+
+Implemented the first N4+ step selected by the uncontended profiler rather than
+expanding provider ownership. Eligible fixed-address provider target replays now
+reuse the launcher's validated `NativeSpecCycleControlC` slab, updating only the
+bounded `cycle_id` and `transaction_id` result identities. The resident PARO
+entry keeps a conservative replay signature over rows, hidden output
+pointer/shape/dtype, row offset, stream, and the all-active strict-chain
+contract. Pointer/shape/active-mask drift rebuilds and validates a full Python
+control, then retains the existing pre-launch direct fallback if it does not
+match the captured graph. gfx1151 remains unregistered, and N4 still owns only
+`VERIFY|ACCEPT`.
+
+The C++ launcher already synchronizes the graph stream before returning a
+terminal result. The packed accept-payload reader now skips only the duplicate
+Python `stream_synchronize` when the graph info proves that this native boundary
+completed; direct graph, graph-off, fallback, tree, and ordinary payload readers
+retain their prior synchronization. The subsequent synchronous D2H payload copy
+is unchanged.
+
+RED before runtime edits:
+
+```text
+python3 -m pytest -q \
+  tests/test_native_spec_cycle_graph.py::test_bound_provider_launcher_reuses_marshaled_control_identity \
+  tests/test_qwen35_resident_batch_layout.py::test_paro_native_spec_target_replay_reuses_bound_control \
+  tests/test_qwen35_resident_batch_layout.py::test_verify_accept_payload_can_skip_known_native_synchronization
+  -> 3 failed (missing bound replay, cached control path, and sync proof)
+```
+
+GREEN host/runtime gates:
+
+```text
+python3 -m pytest -q tests/test_native_spec_cycle.py \
+  tests/test_native_spec_cycle_graph.py tests/test_qwen35_resident_batch_layout.py
+  -> 187 passed
+python3 -m compileall -q hipengine tests scripts
+  -> pass
+python3 scripts/check_fixtures.py
+  -> unrelated pre-existing schema failure at
+     tests/fixtures/cpu_reference/moe/moe_ffn_selected_gguf_q4_k.json
+     (`expected_block`/`expected_selected`, no generic `expected` field)
+git diff --check
+  -> pass
+```
+
+Exclusive GPU0/W7900 strict B1 validation used the current full8192 W4-PARO
+model plus matching MTP-BF16 sidecar, the canonical `code_lru_cache` prompt,
+production `c1_loop`/graph-auto route, cached builds, and the CPU accept oracle:
+
+```bash
+PROMPT=$(tr -d '\n' \
+  </tmp/w7900-n4-strict-b123-gpuaccept-uncontended-184bc4e8/code_lru_cache/prompt-tokens.txt)
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_BACKEND=hip_gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-mtp-w7900-hipcc-version.txt \
+  HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH=1 \
+  HIPENGINE_GDN_TLOOP_C1_EXACT=1 \
+  HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS=1 \
+  HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT=1 \
+  HIPENGINE_VERIFY_GPU_ACCEPT=validate PYTHONPATH=. \
+  python3 scripts/mtp_chain_e2e_smoke.py \
+    --model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 \
+    --prompt-tokens "$PROMPT" --decode-tokens 8 --candidate-budget 1 \
+    --proposal-impl persistent_device --backend hip_gfx1100 \
+    --chain-attn-mode c1_loop --graph-mode auto --require-cached-build \
+    --json /tmp/w7900-n4-bound-control-green-d8.json
+```
+
+Result: exact **8/8 AR IDs**, accept counts `[0,0,0,0,0,0,1]`, all sampled
+`gpu_accept_match_cpu=true`, and all six post-capture replay records use the
+native `VERIFY|ACCEPT` graph with no fallback.
+
+A dirty-tree causal profile repeated the exact cached B1/D24 final-child command
+from the preceding off/on profile, changing only the output root to
+`/tmp/w7900-n4-bound-prof-on-dirty`. It is development evidence, not a retained
+clean performance claim. Across the same 16 steady marker windows:
+
+| Window | N4 off | old N4 | N4+ bound replay |
+| --- | ---: | ---: | ---: |
+| complete host ms/pass | 16.437 | 16.744 | **16.468** |
+| verify host ms/pass | 14.923 | 15.235 | **14.953** |
+| complete kernel ms/pass | 11.165 | 11.169 | 11.158 |
+| verify `hipStreamSynchronize` calls/pass | 2 | 3 | **2** |
+| complete HIP API calls/pass | 81.6875 | 82.6875 | **81.6875** |
+
+The child is exact. N4+ removes the one attributed duplicate API call and
+recovers **0.276 ms/pass (89.9%)** of old N4's 0.307 ms complete-window penalty;
+its residual **+0.031 ms/pass** versus N4-off is too small for a dirty one-run
+claim. Next gate is a clean merged commit, full canonical strict B1 correctness,
+and matched N4-off/on wall plus cached final-child profiles before publication
+or any promotion decision.

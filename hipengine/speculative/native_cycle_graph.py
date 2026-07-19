@@ -29,6 +29,7 @@ from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.kernels.registry import KernelKey, register
 from hipengine.speculative.native_cycle import (
     NativeSpecCycleControl,
+    NativeSpecCycleControlC,
     NativeSpecCycleDType,
     NativeSpecCycleResult,
     NativeSpecCycleResultC,
@@ -138,6 +139,10 @@ class NativeSpecTargetGraphLauncher:
         self._bound_signature = (
             None if bound_control is None else _graph_binding_signature(bound_control)
         )
+        self._bound_control = bound_control
+        self._raw_bound_control = (
+            None if bound_control is None else bound_control.to_ctypes()
+        )
         self._library = library or build_native_spec_cycle_graph_launcher(
             load=True,
             compiler_version=compiler_version,
@@ -148,6 +153,20 @@ class NativeSpecTargetGraphLauncher:
         self._runtime = runtime
         self._lock = threading.Lock()
         self._launch_count = 0
+        self._fn = getattr(self._library, self._symbol)
+        try:
+            self._fn.argtypes = [
+                ctypes.POINTER(NativeSpecCycleControlC),
+                ctypes.POINTER(NativeSpecCycleResultC),
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+            ]
+            self._fn.restype = ctypes.c_int32
+        except (AttributeError, TypeError):
+            # Unit-test doubles are ordinary Python callables. Real CDLL
+            # symbols always take the exact fixed signature above.
+            pass
 
     @classmethod
     def from_hip_graph(
@@ -199,39 +218,57 @@ class NativeSpecTargetGraphLauncher:
         if not self._lock.acquire(blocking=False):
             raise RuntimeError(f"native {self._kind} graph launcher already in flight")
         try:
-            raw_control = control.to_ctypes()
-            raw_result = NativeSpecCycleResultC()
-            fn = getattr(self._library, self._symbol)
-            try:
-                fn.argtypes = [
-                    ctypes.POINTER(type(raw_control)),
-                    ctypes.POINTER(NativeSpecCycleResultC),
-                    ctypes.c_void_p,
-                    ctypes.c_void_p,
-                    ctypes.c_void_p,
-                ]
-                fn.restype = ctypes.c_int32
-            except (AttributeError, TypeError):
-                # Unit-test doubles are ordinary Python callables.  Real CDLL
-                # symbols always take the exact fixed signature above.
-                pass
-            error = fn(
-                ctypes.byref(raw_control),
-                ctypes.byref(raw_result),
-                ctypes.c_void_p(self._graph_exec),
-                ctypes.c_void_p(self._graph_launch_fn),
-                ctypes.c_void_p(self._stream_synchronize_fn),
-            )
-            if int(error) != 0:
-                raise RuntimeError(
-                    f"native {self._kind} graph launcher rejected its call boundary: {int(error)}"
-                )
-            result = NativeSpecCycleResult.from_ctypes(raw_result)
+            result = self._invoke(control.to_ctypes())
             result.validate_for(control)
             self._launch_count += 1
             return result
         finally:
             self._lock.release()
+
+    def launch_bound(
+        self,
+        *,
+        cycle_id: int,
+        transaction_id: int,
+    ) -> NativeSpecCycleResult:
+        """Replay a validated binding while mutating only result identity fields."""
+
+        if self._raw_bound_control is None or self._bound_control is None:
+            raise RuntimeError("native graph launcher has no bound control")
+        cycle = _uint64_identity("cycle_id", cycle_id)
+        transaction = _uint64_identity("transaction_id", transaction_id)
+        if not self._lock.acquire(blocking=False):
+            raise RuntimeError(f"native {self._kind} graph launcher already in flight")
+        try:
+            self._raw_bound_control.cycle_id = cycle
+            self._raw_bound_control.transaction_id = transaction
+            result = self._invoke(self._raw_bound_control)
+            result._validate_for_binding(
+                cycle_id=cycle,
+                transaction_id=transaction,
+                request_count=self._bound_control.shape.request_count,
+                stages=self._bound_control.stages,
+                output_stride=self._bound_control.shape.output_stride,
+            )
+            self._launch_count += 1
+            return result
+        finally:
+            self._lock.release()
+
+    def _invoke(self, raw_control: NativeSpecCycleControlC) -> NativeSpecCycleResult:
+        raw_result = NativeSpecCycleResultC()
+        error = self._fn(
+            ctypes.byref(raw_control),
+            ctypes.byref(raw_result),
+            ctypes.c_void_p(self._graph_exec),
+            ctypes.c_void_p(self._graph_launch_fn),
+            ctypes.c_void_p(self._stream_synchronize_fn),
+        )
+        if int(error) != 0:
+            raise RuntimeError(
+                f"native {self._kind} graph launcher rejected its call boundary: {int(error)}"
+            )
+        return NativeSpecCycleResult.from_ctypes(raw_result)
 
 
 class NativeSpecProposalGraphLauncher(NativeSpecTargetGraphLauncher):
@@ -463,6 +500,14 @@ def _graph_binding_signature(control: NativeSpecCycleControl) -> tuple[object, .
         control.pointers,
         control.stream,
     )
+
+
+def _uint64_identity(name: str, value: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"{name} must be an integer")
+    if value < 0 or value >= 1 << 64:
+        raise ValueError(f"{name} must fit uint64")
+    return value
 
 
 def _positive_address(name: str, value: int) -> int:

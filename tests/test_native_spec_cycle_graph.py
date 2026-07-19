@@ -368,6 +368,41 @@ def test_provider_target_graph_launcher_accepts_paro_b4_verify_accept_bucket() -
     assert fp16.status is NativeSpecCycleStatus.COMPLETE
 
 
+def test_bound_provider_launcher_reuses_marshaled_control_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    library = _FakeNativeLibrary()
+    control = _provider_b4_control(cycle_id=20)
+    marshal_calls = 0
+    original = NativeSpecCycleControl.to_ctypes
+
+    def counted_to_ctypes(observed: NativeSpecCycleControl):
+        nonlocal marshal_calls
+        marshal_calls += 1
+        return original(observed)
+
+    monkeypatch.setattr(NativeSpecCycleControl, "to_ctypes", counted_to_ctypes)
+    launcher = NativeSpecProviderTargetGraphLauncher(
+        graph_exec=0x6000,
+        graph_launch_fn=0x7000,
+        stream_synchronize_fn=0x8000,
+        bound_control=control,
+        library=library,
+    )
+
+    first = launcher.launch_bound(cycle_id=21, transaction_id=31)
+    second = launcher.launch_bound(cycle_id=22, transaction_id=32)
+
+    assert (first.cycle_id, first.transaction_id) == (21, 31)
+    assert (second.cycle_id, second.transaction_id) == (22, 32)
+    assert marshal_calls == 1
+    assert launcher.launch_count == 2
+    assert library.calls == [
+        (0x6000, 0x7000, 0x8000),
+        (0x6000, 0x7000, 0x8000),
+    ]
+
+
 def test_provider_target_graph_has_registered_w4_paro_plugin_boundary() -> None:
     register_native_spec_provider_target_graph()
     assert not is_registered(
