@@ -165002,3 +165002,33 @@ Published the explicit `blocked_correctness`, `performance_claim=false` packet
 plus the benchmark index/changelog link. Keep the exact adapter default-off;
 the next gate is a compatible target+MTP artifact followed by full category+
 heldout PARO and DFlash gates, with gfx1151 independent.
+
+## 2026-07-19 — Canonical NativeSpecCycle glossary and scorecard
+
+The existing documentation had all NativeSpecCycle facts but split them across
+`docs/MTP-gguf.md`, `docs/MTP.md`, `docs/DFLASH.md`, `docs/PLAN.md`, and compact
+benchmark artifacts. That made `N1` versus reusable `N1R`, scheduler-facing N3
+ownership versus actual native submission, and N4's cross-provider scope too
+easy to misread. Added `docs/NATIVE_SPEC_CYCLE.md` as the canonical reader
+surface.
+
+The document now records:
+
+- one-cycle `PROPOSE`/`VERIFY`/`ACCEPT`/`COMMIT`/`UPDATE_CURSORS` semantics;
+- the distinct API-ownership, native-submission, and device-state boundaries;
+- a precise N0/N1/N1R/N2/N3/N3P/N4/N5 map, including why retained N1R is often
+  shortened to N1 and why a larger milestone number is not a speed rank;
+- the complete qualified W7900 route/category table, N1R cycle/profiler
+  attribution, N2 sub-window reductions, N3/N3P host-submission evidence, and
+  the N4 blocked result;
+- current gfx1151 exact/default, explicit llama-compat, llama.cpp, direct c=N,
+  and real server floors that any NativeSpecCycle transfer must preserve;
+- the current vLLM upstream-fix status and the rule that the stale cross-quant
+  row is not a current comparator;
+- explicit current decisions and an artifact evidence index.
+
+Linked the canonical guide from `docs/README.md`, `README.md`, `docs/PLAN.md`,
+`docs/CONCURRENCY.md`, `docs/MTP-gguf.md`, `docs/MTP.md`, `docs/DFLASH.md`,
+`docs/MTP-LLAMACPP-PARITY.md`, and `docs/VLLM_RDNA3.md`. No runtime, registry,
+kernel, benchmark claim, or default changed; this is documentation consolidation
+of committed evidence through `66f29757`.
