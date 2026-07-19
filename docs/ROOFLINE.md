@@ -1654,6 +1654,39 @@ on production work distribution, not register pressure.
 Evidence:
 `benchmarks/results/2026-07-20-gpu1-q3-iq4-weighted-tile4-rejected.json`.
 
+### 12.10 IQ3 wave-uniform block bases: small retained D1C win
+
+The production IQ3 dual gate/up kernel maps exactly one 256-value super-block
+per wave at `K=2048`, but the original HIP source left `threadIdx.x >> 5` as a
+vector expression. The generated HSACO consequently repeated two 64-bit
+`v_mad_u64` weight-address chains in every lane. Aux reconstruction was already
+a packed dword load, and the four indexed codebook loads were already the
+expected irreducible traffic; neither was the remaining cleanup.
+
+One explicit `__builtin_amdgcn_readfirstlane` keeps the gate/up block bases in
+SGPRs. It changes no arithmetic or memory-load count:
+
+| IQ3 dual gate/up | Current | Wave-uniform base | Delta |
+| --- | ---: | ---: | ---: |
+| Logical / allocated VGPR | 42 / 48 | 37 / 40 | -5 / -8 |
+| Vector `mad_u64` address ops | 2 | 0 | -2 |
+| Global loads / function bytes | 11 / 2,788 | 11 / 2,788 | unchanged |
+| Real decode16 IQ3 family | 11.4966 ms | 11.2614 ms | **-2.05%** |
+| Total decode16 kernels | 142.1735 ms | 141.4640 ms | **-0.50%** |
+| Counterbalanced 512/128 graph wall | 100.334 tok/s | 100.536 tok/s | **+0.20%** |
+
+The family saves `0.01470 ms/token`. That predicts about `+0.148%` at the
+measured 512 wall and accounts for 73% of the observed `0.0201 ms/token` wall
+saving, so the small topline movement is Amdahl-consistent. One-run 1K and 4K
+controls are exact/non-regressive; eager wall is host-dominated noise while
+eager/graph logits remain bit-exact. This is a verified sub-window/default
+cleanup, not evidence for another broad IQ3 tile or thread sweep. W7900
+throughput was not rerun because current testing was explicitly pinned to
+GPU1/RX 7900 XTX.
+
+Evidence:
+`benchmarks/results/2026-07-20-gpu1-q3-iq3-wave-base-retained.json`.
+
 ---
 
 ## Summary
