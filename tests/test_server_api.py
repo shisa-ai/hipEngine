@@ -18205,6 +18205,9 @@ def test_metrics_endpoint_exports_resident_loop_d5_observability() -> None:
                 "active_request_ids": [10, 12],
                 "active_requests": 2,
                 "available_sessions": 2,
+                "packed_workspace_current_bytes": 0,
+                "packed_workspace_release_events": 4,
+                "packed_workspace_released_bytes": 3330000000,
             },
             "kv_pool": {
                 "current_bytes": 15728640,
@@ -18278,6 +18281,9 @@ def test_metrics_endpoint_exports_resident_loop_d5_observability() -> None:
     assert _metric_value(body, "hipengine_resident_work_prefill_total") == 3
     assert _metric_value(body, "hipengine_resident_work_decode_total") == 9
     assert _metric_value(body, "hipengine_resident_work_reclaim_total") == 5
+    assert _metric_value(body, "hipengine_resident_packed_workspace_current_bytes") == 0
+    assert _metric_value(body, "hipengine_resident_packed_workspace_release_events_total") == 4
+    assert _metric_value(body, "hipengine_resident_packed_workspace_released_bytes_total") == 3330000000
     assert (
         'hipengine_resident_bucket_info{active_mask="1010",last_work_kind="decode",'
         'policy="protect_ttft"} 1'

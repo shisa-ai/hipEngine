@@ -6789,6 +6789,7 @@ def _resident_loop_metric_values(snapshot: Mapping[str, Any] | None) -> dict[str
     policy = _nested_mapping(loop, "scheduler_policy")
     latency = _nested_mapping(loop, "latency_seconds")
     runner = _nested_mapping(snapshot, "runner")
+    model_runner = _nested_mapping(runner, "model_runner")
     routes = _nested_mapping(runner, "routes")
 
     active_mask_value = bucket.get("active_mask")
@@ -6826,6 +6827,17 @@ def _resident_loop_metric_values(snapshot: Mapping[str, Any] | None) -> dict[str
             "prefill": _non_negative_metric_value(work.get("prefill")),
             "decode": _non_negative_metric_value(work.get("decode")),
             "reclaim": _non_negative_metric_value(work.get("reclaim")),
+        },
+        "packed_workspace": {
+            "current_bytes": _non_negative_metric_value(
+                model_runner.get("packed_workspace_current_bytes")
+            ),
+            "release_events": _non_negative_metric_value(
+                model_runner.get("packed_workspace_release_events")
+            ),
+            "released_bytes": _non_negative_metric_value(
+                model_runner.get("packed_workspace_released_bytes")
+            ),
         },
         "policy": {
             "name": str(policy.get("prefill_decode_policy") or "unavailable"),
@@ -6873,6 +6885,9 @@ def _render_prometheus_metrics(
         "hipengine_resident_work_prefill_total": resident["work"]["prefill"],
         "hipengine_resident_work_decode_total": resident["work"]["decode"],
         "hipengine_resident_work_reclaim_total": resident["work"]["reclaim"],
+        "hipengine_resident_packed_workspace_current_bytes": resident["packed_workspace"]["current_bytes"],
+        "hipengine_resident_packed_workspace_release_events_total": resident["packed_workspace"]["release_events"],
+        "hipengine_resident_packed_workspace_released_bytes_total": resident["packed_workspace"]["released_bytes"],
         "hipengine_kv_pool_current_bytes": pool["current_bytes"],
         "hipengine_kv_pool_high_water_observed_bytes": pool["high_water_observed_bytes"],
         "hipengine_kv_pool_grow_events_total": pool["grow_events"],
@@ -6924,6 +6939,9 @@ def _render_prometheus_metrics(
         "hipengine_resident_work_prefill_total": "Executed resident prefill work items.",
         "hipengine_resident_work_decode_total": "Executed resident decode work items.",
         "hipengine_resident_work_reclaim_total": "Executed resident reclaim transitions.",
+        "hipengine_resident_packed_workspace_current_bytes": "Current owner-only packed GGUF workspace bytes.",
+        "hipengine_resident_packed_workspace_release_events_total": "Reclaimed packed GGUF workspace owners.",
+        "hipengine_resident_packed_workspace_released_bytes_total": "Cumulative owner-only packed GGUF workspace bytes reclaimed.",
         "hipengine_kv_pool_current_bytes": "Current dynamic KV pool bytes, or 0 when unavailable.",
         "hipengine_kv_pool_high_water_observed_bytes": "Peak observed dynamic KV pool bytes, or 0 when unavailable.",
         "hipengine_kv_pool_grow_events_total": "Dynamic KV pool grow events, or 0 when unavailable.",
@@ -6963,6 +6981,8 @@ def _render_prometheus_metrics(
         "hipengine_resident_work_prefill_total",
         "hipengine_resident_work_decode_total",
         "hipengine_resident_work_reclaim_total",
+        "hipengine_resident_packed_workspace_release_events_total",
+        "hipengine_resident_packed_workspace_released_bytes_total",
         "hipengine_kv_pool_grow_events_total",
         "hipengine_kv_pool_grow_failures_total",
         "hipengine_kv_pool_shrink_events_total",
