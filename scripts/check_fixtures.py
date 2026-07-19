@@ -11,8 +11,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from hipengine.kernels.cpu_reference import register_cpu_reference_kernels
-from hipengine.kernels.cpu_reference.fixtures import load_fixture, run_fixture
+from hipengine.kernels.cpu_reference import register_cpu_reference_kernels  # noqa: E402
+from hipengine.kernels.cpu_reference.fixtures import load_fixture, run_fixture  # noqa: E402
 
 
 def main() -> int:
@@ -48,7 +48,9 @@ def main() -> int:
 def _iter_fixture_paths(paths: list[Path]):
     for path in paths:
         if path.is_dir():
-            yield from sorted(path.rglob("*.json"))
+            # Generic LayerFixture JSON lives directly in this directory.
+            # Nested directories hold specialized goldens with their own pytest runners.
+            yield from sorted(path.glob("*.json"))
         else:
             yield path
 
