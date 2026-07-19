@@ -124,6 +124,7 @@ _QWEN36_35B_A3B_DEFAULT_FOOTPRINTS_PER_DISPATCH: dict[str, int | None] = {
     "moe_scheduler": None,
     "silu_mul": None,
     "moe_combine": None,
+    "moe_tail_next_rms": None,
     "rmsnorm": None,
     "kv_write": None,
     "copy": None,
@@ -357,6 +358,8 @@ def classify_kernel(name: str) -> str:
     # ------------------------------------------------------------- Combine + SiLU
     if "silu" in base:
         return "silu_mul"
+    if "moe_tail_next_rmsnorm" in base:
+        return "moe_tail_next_rms"
     if "weighted_lanes" in base or "weighted_sum" in base or "shared_gate_combine" in base or "combine_residual" in base:
         return "moe_combine"
     # --------------------------------------------------------------- RMSNorm

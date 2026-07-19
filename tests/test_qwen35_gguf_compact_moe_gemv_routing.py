@@ -12,7 +12,7 @@ opt-in branch in ``_run_post_attention_moe_c1``:
 * When any registry key for the new GEMV decode chain is missing, the
   c=1 path falls back to the legacy decoder without raising.
 * The shared-expert and combine paths reuse the same primitives as the
-  bulk WMMA compact path.
+  bulk WMMA compact path, including the aggregate-tail + next-RMS decode ABI.
 
 Mirrors :mod:`tests/test_qwen35_gguf_compact_moe_wmma_routing.py`. The
 fake-scratch / fake-layer / fake-resolve harness keeps the tests no-GPU
@@ -119,6 +119,40 @@ def test_compact_gemv_opt_in_routes_grouped_scheduler(monkeypatch: pytest.Monkey
     # Weighted lane combine and shared-gate residual combine fire at rows=1.
     assert ("weighted_lanes", (1, 2, 256)) in calls
     assert ("shared_batch", (1, 256, 1)) in calls
+
+
+def test_compact_gemv_fuses_already_weighted_tail_with_next_rms(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_COMPACT_MOE_C1", "1")
+    runner, scratch = _fake_runner_and_scratch()
+    runner.weights.config.rms_norm_eps = 1e-6
+    calls: list[tuple[str, object]] = []
+    _patch_common_moe_kernels(monkeypatch, calls)
+    _patch_compact_scheduler(monkeypatch, calls)
+    _patch_compact_gemv_registry(monkeypatch, calls, down_quant="gguf_q6_k")
+    monkeypatch.setattr(qgr, "_launch_selected_raw_gguf_moe_pair", _fail_if_called("legacy_pair"))
+    monkeypatch.setattr(qgr, "_launch_selected_raw_gguf_moe_linear", _fail_if_called("legacy_linear"))
+    monkeypatch.setattr(
+        qgr,
+        "shared_gate_combine_residual_rmsnorm_gguf_bf16_out",
+        lambda *args, **kwargs: calls.append(("shared_next_rms", (args, kwargs))),
+    )
+    set_gemv_decode_enabled(True)
+
+    runner._run_post_attention_moe_c1(
+        0,
+        out_ptr=9000,
+        scratch=scratch,
+        next_norm_weight_ptr=8000,
+        next_norm_out_ptr=8100,
+        stream=7,
+    )
+
+    fused_args, fused_kwargs = next(payload for name, payload in calls if name == "shared_next_rms")
+    assert fused_args[4:10] == (8000, 8100, 9000, 1, 256, 1)
+    assert fused_kwargs["stream"] == 7
+    assert "shared_batch" not in [name for name, _ in calls]
 
 
 def test_t16_weights_route_direct_selected_tiles_allocations(monkeypatch: pytest.MonkeyPatch) -> None:

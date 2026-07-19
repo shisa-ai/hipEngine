@@ -1687,6 +1687,40 @@ GPU1/RX 7900 XTX.
 Evidence:
 `benchmarks/results/2026-07-20-gpu1-q3-iq3-wave-base-retained.json`.
 
+### 12.11 MoE-tail plus next-input RMSNorm: retain the aggregate ABI only
+
+The post-D1 Q3 trace exposes 39 non-final MoE/input-norm boundaries, but only
+37 already have the stable BF16 selected-aggregate ABI. Layers 34 and 38 still
+carry eight slot rows plus F32 routing weights; layer 39 and `output_norm`
+remain final-layer boundaries. Production traces select the two schedules
+rather than forcing one fused body across both:
+
+| Q3 decode boundary / wall | Unfused | Retained / screened | Delta |
+| --- | ---: | ---: | ---: |
+| 37 aggregate combines + next norms, decode16 | 3.893327 ms | 3.696835 ms | **-5.05%** |
+| 2 slot-weighted combines + next norms, decode16 | 0.249685 ms | 0.446607 ms | **+78.87%** |
+| Dispatches per token | 708 | 671 | **-37** |
+| Counterbalanced 512/128 graph decode | 100.195 tok/s | 101.216 tok/s | **+1.02%** |
+| Counterbalanced 4K/128 graph decode | 107.366 tok/s | 108.383 tok/s | **+0.95%** |
+
+The retained local256 aggregate kernel is one block/token, uses 24 allocated
+VGPRs, 1 KiB LDS, and zero scratch. It stores the BF16 residual before reducing
+RMS squares, emits both residual and normalized output, and replaces 37 pairs
+of graph nodes with 37 fused nodes. The one-block slot-weighted specialization
+serializes all eight routes and loses cold production-layer parallelism, so
+those two Q3 boundaries and the slot-weighted Q4/PARO decode paths retain the
+exact feature-parallel combine followed by RMSNorm fallback.
+
+All three 512 pairs and both 4K pairs favor the retained route. IDs, final
+logits, and tracked memory are identical; layer-limit 1/4/40 hidden buffers are
+bit-exact, and eager/graph generation remains `[11,11,264]` with KL `0`. Bulk
+prefill does not enter this decode-only chain, so its noisy contemporaneous
+samples are not a prefill claim. The current headline is GPU1/RX 7900 XTX only;
+W7900 throughput remains unverified.
+
+Evidence:
+`benchmarks/results/2026-07-20-gpu1-q3-moe-tail-next-rms-retained.json`.
+
 ---
 
 ## Summary

@@ -68,8 +68,8 @@
       "mean_us": 1.668804,
       "min_us": 1.36,
       "max_us": 3.64,
-      "already_weighted_selected_sum_layers": [34, 38],
-      "slot_weighted_layers": 37
+      "already_weighted_selected_sum_layer_count": 37,
+      "slot_weighted_layers": [34, 38]
     },
     "final_layer_moe_tail_combine": {
       "dispatches": 16,

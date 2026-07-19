@@ -155,6 +155,7 @@ def _write_csv(path: Path, rows: Sequence[dict[str, object]]) -> None:
         ("silu_mul_dual_out_kernel<unsigned short>", "silu_mul"),
         ("weighted_lanes_sum_out_kernel<unsigned short, float>", "moe_combine"),
         ("shared_gate_combine_residual_batch_out_kernel<unsigned short>", "moe_combine"),
+        ("moe_tail_next_rmsnorm_out_kernel<unsigned short, float, false, false>", "moe_tail_next_rms"),
         ("gguf_rmsnorm_bf16_f32_weight_kernel<unsigned short>", "rmsnorm"),
         # KV + runtime
         ("qwen35_write_paged_kv_cache_kernel", "kv_write"),

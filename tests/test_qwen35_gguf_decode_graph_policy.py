@@ -117,6 +117,18 @@ def test_decode_graph_iq_roles_require_fused_single_and_weighted_groups(use_gemv
     }
 
 
+def test_decode_graph_iq_roles_require_tail_fusion_group_when_enabled() -> None:
+    groups = qwen35_gguf_decode_graph_active_symbol_groups(
+        is_moe=True,
+        layer_types=(LINEAR_ATTENTION, FULL_ATTENTION),
+        weight_roles=_iq_roles(),
+        use_gemv_decode=False,
+        moe_tail_next_rms_enabled=True,
+    )
+
+    assert "moe_tail_next_rms" in groups
+
+
 def test_decode_graph_bucket_requires_dense_q4_only_when_active() -> None:
     roles = _roles() + (Qwen35GGUFDecodeGraphWeightRole("layers.0.attn_output", "gguf_q4_k", 2),)
 
@@ -225,6 +237,20 @@ def test_decode_graph_symbol_coverage_accepts_iq_groups() -> None:
     assert coverage["passed"] is True
     assert coverage["missing_symbol_groups"] == []
     assert set(coverage["observed_symbol_groups"]) == set(expected)
+
+
+def test_decode_graph_symbol_coverage_accepts_tail_fusion_group() -> None:
+    coverage = SMOKE.validate_decode_graph_symbol_coverage(
+        [
+            "void (anonymous namespace)::moe_tail_next_rmsnorm_out_kernel"
+            "<unsigned short, float, false, false>(...)"
+        ],
+        expected_groups=("moe_tail_next_rms",),
+    )
+
+    assert coverage["passed"] is True
+    assert coverage["missing_symbol_groups"] == []
+    assert coverage["observed_symbol_groups"] == ["moe_tail_next_rms"]
 
 
 def test_decode_graph_symbol_coverage_accepts_raw_legacy_fallback_groups() -> None:

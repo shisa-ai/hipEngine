@@ -59,6 +59,7 @@ from hipengine.kernels.hip_gfx1100.fused import (
     register_paro_silu_kernels,
     shared_gate_combine_residual_batch_out_bf16,
     shared_gate_combine_residual_out_bf16,
+    shared_gate_combine_residual_rmsnorm_gguf_bf16_out,
     silu_mul_dual_out_bf16,
     silu_mul_separate_out_bf16,
     weighted_lanes_sum_out_bf16_f32w,
@@ -250,6 +251,7 @@ def qwen35_gguf_decode_graph_active_symbol_groups(
     layer_types: tuple[str, ...],
     weight_roles: tuple[Qwen35GGUFDecodeGraphWeightRole, ...],
     use_gemv_decode: bool,
+    moe_tail_next_rms_enabled: bool = False,
 ) -> tuple[str, ...]:
     """Derive the active decode kernel-symbol groups for a GGUF graph trace.
 
@@ -283,6 +285,8 @@ def qwen35_gguf_decode_graph_active_symbol_groups(
             add("moe_iq4_xs_selected")
         if _has_role(weight_roles, quant_key="gguf_iq4_xs", rank=3, slot_contains="ffn_down_exps"):
             add("moe_iq4_xs_weighted_down")
+            if moe_tail_next_rms_enabled and len(layer_types) > 1:
+                add("moe_tail_next_rms")
 
         if _has_role(weight_roles, quant_key="gguf_q4_k_t16_v1", slot_contains="ffn_gate_exps") or _has_role(
             weight_roles,
@@ -346,6 +350,7 @@ def build_qwen35_gguf_decode_graph_bucket_key(
     layer_types: tuple[str, ...],
     weight_roles: tuple[Qwen35GGUFDecodeGraphWeightRole, ...],
     use_gemv_decode: bool,
+    moe_tail_next_rms_enabled: bool = False,
 ) -> Qwen35GGUFDecodeGraphBucketKey:
     """Build the c=1 GGUF decode graph bucket key for a replay budget."""
 
@@ -376,6 +381,7 @@ def build_qwen35_gguf_decode_graph_bucket_key(
             layer_types=tuple(layer_types),
             weight_roles=tuple(weight_roles),
             use_gemv_decode=bool(use_gemv_decode),
+            moe_tail_next_rms_enabled=bool(moe_tail_next_rms_enabled),
         ),
     )
 
@@ -928,13 +934,41 @@ class Qwen35GGUFFullStackRunner:
                 )
                 src = hidden_a
                 dst = hidden_b
-                for layer_id, layer_type in enumerate(self.weights.config.layer_types[:layer_count]):
+                active_layer_types = self.weights.config.layer_types[:layer_count]
+                chain_next_rms = self.weights.config.is_moe and _gguf_moe_tail_next_rms_enabled()
+                input_norm_ptr: int | None = None
+                for layer_id, layer_type in enumerate(active_layer_types):
+                    next_norm_weight_ptr = None
+                    next_norm_out_ptr = None
+                    if chain_next_rms and layer_id + 1 < len(active_layer_types):
+                        next_norm_weight_ptr = (
+                            self.weights.layer(layer_id + 1).weight("attn_norm").allocation().tensor.ptr
+                        )
+                        next_norm_out_ptr = scratch.norm.ptr
                     if layer_type == LINEAR_ATTENTION:
-                        self._run_linear_attention_layer(layer_id, src.ptr, dst.ptr, scratch)
+                        self._run_linear_attention_layer(
+                            layer_id,
+                            src.ptr,
+                            dst.ptr,
+                            scratch,
+                            input_norm_ptr=input_norm_ptr,
+                            next_norm_weight_ptr=next_norm_weight_ptr,
+                            next_norm_out_ptr=next_norm_out_ptr,
+                        )
                     elif layer_type == FULL_ATTENTION:
-                        self._run_full_attention_layer(layer_id, src.ptr, dst.ptr, scratch, position=position)
+                        self._run_full_attention_layer(
+                            layer_id,
+                            src.ptr,
+                            dst.ptr,
+                            scratch,
+                            position=position,
+                            input_norm_ptr=input_norm_ptr,
+                            next_norm_weight_ptr=next_norm_weight_ptr,
+                            next_norm_out_ptr=next_norm_out_ptr,
+                        )
                     else:
                         raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+                    input_norm_ptr = next_norm_out_ptr
                     src, dst = dst, src
             gguf_rmsnorm_bf16_f32_weight(
                 src.ptr,
@@ -1409,9 +1443,36 @@ class Qwen35GGUFFullStackRunner:
         )
         return used_aotriton
 
-    def _run_linear_attention_layer(self, layer_id: int, hidden_ptr: int, out_ptr: int, scratch, *, stream: int = 0) -> None:
-        self._run_linear_attention_attn_only(layer_id, hidden_ptr, scratch.attn_out.ptr, scratch, stream=stream)
-        self._run_post_attention_ffn(layer_id, hidden_ptr, scratch.attn_out.ptr, out_ptr, scratch, stream=stream)
+    def _run_linear_attention_layer(
+        self,
+        layer_id: int,
+        hidden_ptr: int,
+        out_ptr: int,
+        scratch,
+        *,
+        input_norm_ptr: int | None = None,
+        next_norm_weight_ptr: int | None = None,
+        next_norm_out_ptr: int | None = None,
+        stream: int = 0,
+    ) -> None:
+        self._run_linear_attention_attn_only(
+            layer_id,
+            hidden_ptr,
+            scratch.attn_out.ptr,
+            scratch,
+            input_norm_ptr=input_norm_ptr,
+            stream=stream,
+        )
+        self._run_post_attention_ffn(
+            layer_id,
+            hidden_ptr,
+            scratch.attn_out.ptr,
+            out_ptr,
+            scratch,
+            next_norm_weight_ptr=next_norm_weight_ptr,
+            next_norm_out_ptr=next_norm_out_ptr,
+            stream=stream,
+        )
 
     def _run_linear_attention_attn_only(
         self,
@@ -1420,6 +1481,7 @@ class Qwen35GGUFFullStackRunner:
         attn_out_ptr: int,
         scratch,
         *,
+        input_norm_ptr: int | None = None,
         stream: int = 0,
     ) -> None:
         assert self.weights is not None
@@ -1430,16 +1492,19 @@ class Qwen35GGUFFullStackRunner:
         recurrent_state = scratch.layer_recurrent_states[layer_id]
         if conv_state is None or recurrent_state is None:
             raise ValueError(f"layer {layer_id} has no linear-attention state")
-        gguf_rmsnorm_bf16_f32_weight(
-            hidden_ptr,
-            layer.weight("attn_norm").allocation().tensor.ptr,
-            scratch.norm.ptr,
-            rows=1,
-            hidden_size=self.hidden_size,
-            eps=cfg.rms_norm_eps,
-            stream=stream,
-            runtime=runtime,
-        )
+        if input_norm_ptr is None:
+            gguf_rmsnorm_bf16_f32_weight(
+                hidden_ptr,
+                layer.weight("attn_norm").allocation().tensor.ptr,
+                scratch.norm.ptr,
+                rows=1,
+                hidden_size=self.hidden_size,
+                eps=cfg.rms_norm_eps,
+                stream=stream,
+                runtime=runtime,
+            )
+        elif int(input_norm_ptr) != int(scratch.norm.ptr):
+            raise ValueError("prefused linear-attention input norm must use scratch.norm")
         if not launch_gguf_linear_pair(
             layer.weight("attn_qkv"),
             layer.weight("attn_gate"),
@@ -1781,6 +1846,9 @@ class Qwen35GGUFFullStackRunner:
         *,
         position: int,
         max_context_len: int | None = None,
+        input_norm_ptr: int | None = None,
+        next_norm_weight_ptr: int | None = None,
+        next_norm_out_ptr: int | None = None,
         stream: int = 0,
     ) -> None:
         self._run_full_attention_attn_only(
@@ -1790,9 +1858,19 @@ class Qwen35GGUFFullStackRunner:
             scratch,
             position=position,
             max_context_len=max_context_len,
+            input_norm_ptr=input_norm_ptr,
             stream=stream,
         )
-        self._run_post_attention_ffn(layer_id, hidden_ptr, scratch.attn_out.ptr, out_ptr, scratch, stream=stream)
+        self._run_post_attention_ffn(
+            layer_id,
+            hidden_ptr,
+            scratch.attn_out.ptr,
+            out_ptr,
+            scratch,
+            next_norm_weight_ptr=next_norm_weight_ptr,
+            next_norm_out_ptr=next_norm_out_ptr,
+            stream=stream,
+        )
 
     def _run_full_attention_attn_only(
         self,
@@ -1803,6 +1881,7 @@ class Qwen35GGUFFullStackRunner:
         *,
         position: int,
         max_context_len: int | None = None,
+        input_norm_ptr: int | None = None,
         stream: int = 0,
     ) -> None:
         assert self.weights is not None
@@ -1813,16 +1892,19 @@ class Qwen35GGUFFullStackRunner:
         kv_write_library = self._paged_kv_write_library()
         if int(scratch.position_host[0]) != int(position):
             scratch.set_full_attention_position(position, runtime)
-        gguf_rmsnorm_bf16_f32_weight(
-            hidden_ptr,
-            layer.weight("attn_norm").allocation().tensor.ptr,
-            scratch.norm.ptr,
-            rows=1,
-            hidden_size=self.hidden_size,
-            eps=cfg.rms_norm_eps,
-            stream=stream,
-            runtime=runtime,
-        )
+        if input_norm_ptr is None:
+            gguf_rmsnorm_bf16_f32_weight(
+                hidden_ptr,
+                layer.weight("attn_norm").allocation().tensor.ptr,
+                scratch.norm.ptr,
+                rows=1,
+                hidden_size=self.hidden_size,
+                eps=cfg.rms_norm_eps,
+                stream=stream,
+                runtime=runtime,
+            )
+        elif int(input_norm_ptr) != int(scratch.norm.ptr):
+            raise ValueError("prefused full-attention input norm must use scratch.norm")
         if not launch_gguf_linear_triple(
             layer.weight("attn_q"),
             layer.weight("attn_k"),
@@ -2140,8 +2222,29 @@ class Qwen35GGUFFullStackRunner:
             runtime=runtime,
         )
 
-    def _run_post_attention_ffn(self, layer_id: int, hidden_ptr: int, attn_out_ptr: int, out_ptr: int, scratch, *, stream: int = 0) -> None:
-        self._run_post_attention_ffn_rows(layer_id, hidden_ptr, attn_out_ptr, out_ptr, scratch, rows=1, stream=stream)
+    def _run_post_attention_ffn(
+        self,
+        layer_id: int,
+        hidden_ptr: int,
+        attn_out_ptr: int,
+        out_ptr: int,
+        scratch,
+        *,
+        next_norm_weight_ptr: int | None = None,
+        next_norm_out_ptr: int | None = None,
+        stream: int = 0,
+    ) -> None:
+        self._run_post_attention_ffn_rows(
+            layer_id,
+            hidden_ptr,
+            attn_out_ptr,
+            out_ptr,
+            scratch,
+            rows=1,
+            next_norm_weight_ptr=next_norm_weight_ptr,
+            next_norm_out_ptr=next_norm_out_ptr,
+            stream=stream,
+        )
 
     def _run_post_attention_ffn_rows(
         self,
@@ -2152,12 +2255,18 @@ class Qwen35GGUFFullStackRunner:
         scratch,
         *,
         rows: int,
+        next_norm_weight_ptr: int | None = None,
+        next_norm_out_ptr: int | None = None,
         stream: int = 0,
         expert_sidecar: _DeviceExpertLayerSidecar | None = None,
     ) -> None:
         assert self.weights is not None
         layer = self.weights.layer(layer_id)
         runtime = self.runtime or get_hip_runtime()
+        if (next_norm_weight_ptr is None) != (next_norm_out_ptr is None):
+            raise ValueError("next norm weight and output pointers must be provided together")
+        if rows != 1 and next_norm_weight_ptr is not None:
+            raise ValueError("MoE-tail next RMSNorm fusion is decode-only")
         gguf_add_rmsnorm_bf16_f32_weight(
             hidden_ptr,
             attn_out_ptr,
@@ -2172,7 +2281,14 @@ class Qwen35GGUFFullStackRunner:
         )
         if self.weights.config.is_moe:
             if rows == 1:
-                self._run_post_attention_moe_c1(layer_id, out_ptr, scratch, stream=stream)
+                self._run_post_attention_moe_c1(
+                    layer_id,
+                    out_ptr,
+                    scratch,
+                    next_norm_weight_ptr=next_norm_weight_ptr,
+                    next_norm_out_ptr=next_norm_out_ptr,
+                    stream=stream,
+                )
             else:
                 self._run_post_attention_moe_rows(
                     layer_id,
@@ -2183,6 +2299,8 @@ class Qwen35GGUFFullStackRunner:
                     expert_sidecar=expert_sidecar,
                 )
             return
+        if next_norm_weight_ptr is not None:
+            raise ValueError("MoE-tail next RMSNorm fusion requires an MoE layer")
         if not launch_gguf_linear_pair(
             layer.weight("ffn_gate"),
             layer.weight("ffn_up"),
@@ -2243,9 +2361,20 @@ class Qwen35GGUFFullStackRunner:
             runtime=runtime,
         )
 
-    def _run_post_attention_moe_c1(self, layer_id: int, out_ptr: int, scratch, *, stream: int = 0) -> None:
+    def _run_post_attention_moe_c1(
+        self,
+        layer_id: int,
+        out_ptr: int,
+        scratch,
+        *,
+        next_norm_weight_ptr: int | None = None,
+        next_norm_out_ptr: int | None = None,
+        stream: int = 0,
+    ) -> None:
         assert self.weights is not None
         cfg = self.weights.config
+        if (next_norm_weight_ptr is None) != (next_norm_out_ptr is None):
+            raise ValueError("next norm weight and output pointers must be provided together")
         if not cfg.is_moe:
             raise ValueError("MoE path requires qwen35moe GGUF config")
         layer = self.weights.layer(layer_id)
@@ -2289,6 +2418,8 @@ class Qwen35GGUFFullStackRunner:
                 out_ptr,
                 scratch,
                 top_k=top_k,
+                next_norm_weight_ptr=next_norm_weight_ptr,
+                next_norm_out_ptr=next_norm_out_ptr,
                 stream=stream,
                 runtime=runtime,
             )
@@ -2392,17 +2523,34 @@ class Qwen35GGUFFullStackRunner:
             runtime=runtime,
         )
         if expert_down_weighted:
-            shared_gate_combine_residual_out_bf16(
-                scratch.moe_down_out.ptr,
-                scratch.moe_shared_out.ptr,
-                scratch.moe_router_logits.ptr + cfg.expert_count * 4,
-                scratch.residual.ptr,
-                out_ptr,
-                self.hidden_size,
-                stream=stream,
-                runtime=runtime,
-            )
-        else:
+            if next_norm_weight_ptr is None:
+                shared_gate_combine_residual_out_bf16(
+                    scratch.moe_down_out.ptr,
+                    scratch.moe_shared_out.ptr,
+                    scratch.moe_router_logits.ptr + cfg.expert_count * 4,
+                    scratch.residual.ptr,
+                    out_ptr,
+                    self.hidden_size,
+                    stream=stream,
+                    runtime=runtime,
+                )
+            else:
+                shared_gate_combine_residual_rmsnorm_gguf_bf16_out(
+                    scratch.moe_down_out.ptr,
+                    scratch.moe_shared_out.ptr,
+                    scratch.moe_router_logits.ptr + cfg.expert_count * 4,
+                    scratch.residual.ptr,
+                    next_norm_weight_ptr,
+                    next_norm_out_ptr,
+                    out_ptr,
+                    1,
+                    self.hidden_size,
+                    1,
+                    eps=cfg.rms_norm_eps,
+                    stream=stream,
+                    runtime=runtime,
+                )
+        elif next_norm_weight_ptr is None:
             weighted_sum_shared_gate_combine_residual_out_bf16_f32w(
                 scratch.moe_down_out.ptr,
                 scratch.moe_routing_weights.ptr,
@@ -2412,6 +2560,33 @@ class Qwen35GGUFFullStackRunner:
                 out_ptr,
                 top_k,
                 self.hidden_size,
+                stream=stream,
+                runtime=runtime,
+            )
+        else:
+            # One-block weighted fusion serializes all top-k rows and loses to
+            # the existing feature-parallel combine at production shapes. Keep
+            # this ABI on the exact two-kernel fallback while still publishing
+            # the normalized buffer for the next layer to consume.
+            weighted_sum_shared_gate_combine_residual_out_bf16_f32w(
+                scratch.moe_down_out.ptr,
+                scratch.moe_routing_weights.ptr,
+                scratch.moe_shared_out.ptr,
+                scratch.moe_router_logits.ptr + cfg.expert_count * 4,
+                scratch.residual.ptr,
+                out_ptr,
+                top_k,
+                self.hidden_size,
+                stream=stream,
+                runtime=runtime,
+            )
+            gguf_rmsnorm_bf16_f32_weight(
+                out_ptr,
+                next_norm_weight_ptr,
+                next_norm_out_ptr,
+                rows=1,
+                hidden_size=self.hidden_size,
+                eps=cfg.rms_norm_eps,
                 stream=stream,
                 runtime=runtime,
             )
@@ -2901,6 +3076,7 @@ _GGUF_INT8_KV_BLOCK16_ENV = "HIPENGINE_GGUF_INT8_KV_BLOCK16"
 _GGUF_FUSED_MOE_FFN_ENV = "HIPENGINE_GGUF_FUSED_MOE_FFN"
 _GGUF_HOST_TOKEN_EMBEDDING_ENV = "HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING"
 _GGUF_IQ_GROUPED_PREFILL_ENV = "HIPENGINE_GGUF_IQ_GROUPED_PREFILL"
+_GGUF_MOE_TAIL_NEXT_RMS_ENV = "HIPENGINE_GGUF_MOE_TAIL_NEXT_RMS"
 
 
 @dataclass(frozen=True)
@@ -2943,6 +3119,10 @@ def _env_flag(name: str, default: bool, *aliases: str) -> bool:
 
 def _iq_grouped_prefill_enabled() -> bool:
     return _env_flag(_GGUF_IQ_GROUPED_PREFILL_ENV, True)
+
+
+def _gguf_moe_tail_next_rms_enabled() -> bool:
+    return _env_flag(_GGUF_MOE_TAIL_NEXT_RMS_ENV, True)
 
 
 def _env_int(name: str, default: int, *aliases: str) -> int:
@@ -4055,9 +4235,28 @@ class Qwen35GGUFResidentSession:
         self.scratch.context_host[0] = int(position) + 1
         src = self._hidden_a
         dst = self._hidden_b
-        for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
+        layer_types = self.runner.weights.config.layer_types
+        chain_next_rms = self.runner.weights.config.is_moe and _gguf_moe_tail_next_rms_enabled()
+        input_norm_ptr: int | None = None
+        for layer_id, layer_type in enumerate(layer_types):
+            next_norm_weight_ptr = None
+            next_norm_out_ptr = None
+            if chain_next_rms and layer_id + 1 < len(layer_types):
+                next_norm_weight_ptr = (
+                    self.runner.weights.layer(layer_id + 1).weight("attn_norm").allocation().tensor.ptr
+                )
+                next_norm_out_ptr = self.scratch.norm.ptr
             if layer_type == LINEAR_ATTENTION:
-                self.runner._run_linear_attention_layer(layer_id, src.ptr, dst.ptr, self.scratch, stream=stream)
+                self.runner._run_linear_attention_layer(
+                    layer_id,
+                    src.ptr,
+                    dst.ptr,
+                    self.scratch,
+                    input_norm_ptr=input_norm_ptr,
+                    next_norm_weight_ptr=next_norm_weight_ptr,
+                    next_norm_out_ptr=next_norm_out_ptr,
+                    stream=stream,
+                )
             elif layer_type == FULL_ATTENTION:
                 self.runner._run_full_attention_layer(
                     layer_id,
@@ -4066,10 +4265,14 @@ class Qwen35GGUFResidentSession:
                     self.scratch,
                     position=position,
                     max_context_len=max_context_len,
+                    input_norm_ptr=input_norm_ptr,
+                    next_norm_weight_ptr=next_norm_weight_ptr,
+                    next_norm_out_ptr=next_norm_out_ptr,
                     stream=stream,
                 )
             else:
                 raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+            input_norm_ptr = next_norm_out_ptr
             src, dst = dst, src
         gguf_rmsnorm_bf16_f32_weight(
             src.ptr,
@@ -4252,6 +4455,7 @@ class Qwen35GGUFResidentSession:
             layer_types=tuple(self.runner.weights.config.layer_types),
             weight_roles=qwen35_gguf_decode_graph_weight_roles(self.runner.weights),
             use_gemv_decode=bool(self.use_gemv_decode),
+            moe_tail_next_rms_enabled=_gguf_moe_tail_next_rms_enabled(),
         )
 
         runtime = self.runtime or get_hip_runtime()
@@ -6386,6 +6590,8 @@ def _try_run_post_attention_moe_c1_compact_gemv(
     scratch,
     *,
     top_k: int,
+    next_norm_weight_ptr: int | None = None,
+    next_norm_out_ptr: int | None = None,
     stream: int,
     runtime: HipRuntime,
 ) -> bool:
@@ -6601,18 +6807,37 @@ def _try_run_post_attention_moe_c1_compact_gemv(
         stream=stream,
         runtime=runtime,
     )
-    shared_gate_combine_residual_batch_out_bf16(
-        scratch.ffn_down.ptr,
-        scratch.moe_shared_out.ptr,
-        scratch.moe_router_logits.ptr + num_experts * 4,
-        scratch.residual.ptr,
-        out_ptr,
-        1,
-        hidden_size,
-        1,
-        stream=stream,
-        runtime=runtime,
-    )
+    if (next_norm_weight_ptr is None) != (next_norm_out_ptr is None):
+        raise ValueError("next norm weight and output pointers must be provided together")
+    if next_norm_weight_ptr is None:
+        shared_gate_combine_residual_batch_out_bf16(
+            scratch.ffn_down.ptr,
+            scratch.moe_shared_out.ptr,
+            scratch.moe_router_logits.ptr + num_experts * 4,
+            scratch.residual.ptr,
+            out_ptr,
+            1,
+            hidden_size,
+            1,
+            stream=stream,
+            runtime=runtime,
+        )
+    else:
+        shared_gate_combine_residual_rmsnorm_gguf_bf16_out(
+            scratch.ffn_down.ptr,
+            scratch.moe_shared_out.ptr,
+            scratch.moe_router_logits.ptr + num_experts * 4,
+            scratch.residual.ptr,
+            next_norm_weight_ptr,
+            next_norm_out_ptr,
+            out_ptr,
+            1,
+            hidden_size,
+            1,
+            eps=cfg.rms_norm_eps,
+            stream=stream,
+            runtime=runtime,
+        )
     return True
 
 

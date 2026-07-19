@@ -345,6 +345,45 @@ def test_main_iq_layer_uses_fused_gate_up_and_weighted_down(
     assert ("shared_only", None) in calls
 
 
+def test_main_iq_layer_fuses_already_weighted_tail_with_next_rms(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner, scratch = _fake_runner_and_scratch()
+    runner.weights.config.rms_norm_eps = 1e-6
+    _set_expert_weights(runner, gate_quant="gguf_iq3_xxs", up_quant="gguf_iq3_xxs", down_quant="gguf_iq4_xs")
+    calls: list[tuple[str, object]] = []
+    _patch_common_moe_kernels(monkeypatch, calls)
+    monkeypatch.delenv("HIPENGINE_GGUF_COMPACT_MOE_C1", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_FUSED_MOE_FFN", raising=False)
+    monkeypatch.setattr(qgr, "launch_gguf_linear_pair_concat", lambda *args, **kwargs: False)
+    monkeypatch.setattr(qgr, "_launch_selected_raw_gguf_moe_pair_silu", lambda *args, **kwargs: True)
+    monkeypatch.setattr(qgr, "_launch_weighted_selected_raw_gguf_moe_linear", lambda *args, **kwargs: True)
+    monkeypatch.setattr(
+        qgr,
+        "shared_gate_combine_residual_out_bf16",
+        _fail_if_called("unfused shared combine"),
+    )
+    monkeypatch.setattr(
+        qgr,
+        "shared_gate_combine_residual_rmsnorm_gguf_bf16_out",
+        lambda *args, **kwargs: calls.append(("shared_next_rms", (args, kwargs))),
+        raising=False,
+    )
+
+    runner._run_post_attention_moe_c1(
+        0,
+        out_ptr=9000,
+        scratch=scratch,
+        next_norm_weight_ptr=8000,
+        next_norm_out_ptr=8100,
+        stream=7,
+    )
+
+    fused_args, fused_kwargs = next(payload for name, payload in calls if name == "shared_next_rms")
+    assert fused_args[4:10] == (8000, 8100, 9000, 1, 256, 1)
+    assert fused_kwargs["stream"] == 7
+
+
 def test_missing_iq4_weighted_composite_uses_selected_and_weighted_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -373,6 +412,50 @@ def test_missing_iq4_weighted_composite_uses_selected_and_weighted_fallback(
 
     assert [payload for name, payload in calls if name == "selected_single"] == ["gguf_iq4_xs"]
     assert ("weighted_shared", None) in calls
+
+
+def test_slot_weighted_tail_keeps_feature_parallel_combine_before_next_rms(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner, scratch = _fake_runner_and_scratch()
+    runner.weights.config.rms_norm_eps = 1e-6
+    _set_expert_weights(runner, gate_quant="gguf_iq3_xxs", up_quant="gguf_iq3_xxs", down_quant="gguf_iq4_xs")
+    calls: list[tuple[str, object]] = []
+    _patch_common_moe_kernels(monkeypatch, calls)
+    monkeypatch.delenv("HIPENGINE_GGUF_COMPACT_MOE_C1", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_FUSED_MOE_FFN", raising=False)
+    monkeypatch.setattr(qgr, "launch_gguf_linear_pair_concat", lambda *args, **kwargs: False)
+    monkeypatch.setattr(qgr, "_launch_selected_raw_gguf_moe_pair_silu", lambda *args, **kwargs: True)
+    monkeypatch.setattr(qgr, "_launch_weighted_selected_raw_gguf_moe_linear", lambda *args, **kwargs: False)
+    monkeypatch.setattr(qgr, "_launch_selected_raw_gguf_moe_linear", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        qgr,
+        "weighted_sum_shared_gate_combine_residual_out_bf16_f32w",
+        lambda *args, **kwargs: calls.append(("weighted_combine", (args, kwargs))),
+    )
+    monkeypatch.setattr(
+        qgr,
+        "gguf_rmsnorm_bf16_f32_weight",
+        lambda *args, **kwargs: calls.append(("next_rms", (args, kwargs))),
+    )
+
+    runner._run_post_attention_moe_c1(
+        0,
+        out_ptr=9000,
+        scratch=scratch,
+        next_norm_weight_ptr=8000,
+        next_norm_out_ptr=8100,
+        stream=7,
+    )
+
+    combine_args, combine_kwargs = next(payload for name, payload in calls if name == "weighted_combine")
+    norm_args, norm_kwargs = next(payload for name, payload in calls if name == "next_rms")
+    assert combine_args[4:8] == (scratch.residual.ptr, 9000, 2, 256)
+    assert combine_kwargs["stream"] == 7
+    assert norm_args[:3] == (9000, 8000, 8100)
+    assert norm_kwargs["rows"] == 1
+    assert norm_kwargs["hidden_size"] == 256
+    assert norm_kwargs["stream"] == 7
 
 
 def test_bulk_iq_layer_uses_direct_x_rows_fused_and_weighted_paths(

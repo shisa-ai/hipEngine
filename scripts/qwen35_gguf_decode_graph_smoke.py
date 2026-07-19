@@ -269,6 +269,7 @@ _DECODE_GRAPH_SYMBOL_GROUP_REGEX: dict[str, tuple[str, ...]] = {
     ),
     "moe_iq4_xs_selected": (r"gguf_iq4_xs_selected_gemv_kernel",),
     "moe_iq4_xs_weighted_down": (r"gguf_iq4_xs_weighted_selected_down_kernel",),
+    "moe_tail_next_rms": (r"moe_tail_next_rmsnorm_out_kernel",),
     "moe_q4_k_selected_dual": (
         r"q4_k_t16_selected_dual.*gemv",
         r"gguf_q4_k_selected_dual_pack8_gemv_decode",
