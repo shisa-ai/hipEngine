@@ -168526,3 +168526,66 @@ prefill sum is **3404.672 -> 3390.239 ms (-0.424%)** and delayed C8 prefill is
 **44.263 -> 43.797 (-1.05%)**, so no C1 wall win is claimed; the required final
 clean three-repeat packet will decide aggregate publication. Raw server SHA-256
 is `51dc060d25fe6258ef6017113eb9587b1ad7c684d8fe913a45f8dd7424d2ddd3`.
+
+## 2026-07-20 — Keep short resident C2/C4 graph capture eager
+
+The first detached-clean final publication packet at `8e61b9f9` passed every
+correctness, route, SLO-accounting, memory, and lifecycle gate, but exposed a
+low-width amortization regression before publication. Relative to the retained
+pre-graph matched packet, blocking C2/C4 moved
+**60.617 -> 59.258 (-2.24%)** and **75.298 -> 74.105 (-1.58%)** while C8
+improved **75.702 -> 83.771 (+10.66%)** through the new physical-C8 route.
+SSE C2/C4 moved **56.202 -> 58.579 (+4.23%)** and
+**72.830 -> 72.872 (+0.06%)**. The accepted raw packet records seven graph
+captures at each low width and **875/847 C2/C4 replays**; its SHA-256 is
+`e28218b83c393687b7e566f549be6b68d1b260f9bb821684d21fb4db69a607b6`.
+It is diagnostic and does not replace the public row.
+
+A matched detached-clean graph-off control then isolated the fixed per-wave
+capture cost. It used the same model, BF16 KV, p512/d128, 5 ms/fair:256, one
+warmup and three blocking measurements at C1/C2/C4, plus delayed C4:
+
+```bash
+HIPENGINE_GGUF_DECODE_GRAPH=0 HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 \
+  /home/lhl/hipEngine-main/.venv/bin/python \
+  scripts/server_f1_concurrency_bench.py \
+  --engine hipengine \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1151 --quant gguf_q4_k_m \
+  --hipengine-python /home/lhl/hipEngine-main/.venv/bin/python \
+  --hipengine-kv-storage bf16 --hipengine-route-expectation native \
+  --hipengine-prefill-decode-policy fair \
+  --generation-batch-window-ms 5 --hipengine-prefill-chunk-tokens 256 \
+  --concurrencies 1,2,4 --live-concurrency 4 \
+  --prompt-length 512 --decode-tokens 128 --ctx-per-seq 1024 \
+  --warmup-runs 1 --measured-runs 3 \
+  --stream-warmup-runs 0 --stream-measured-runs 0 \
+  --live-join-after-tokens 8 \
+  --compiler-version-file /tmp/hipengine-gfx1151-native-cycle-hipcc-version.txt \
+  --memory-domain gtt --drm-card-index 0 --memory-poll-ms 10 \
+  --work-dir /tmp/gfx1151-bf16-server-graph-off-c124-8e61b9f9/work \
+  --json /tmp/gfx1151-bf16-server-graph-off-c124-8e61b9f9/result.json
+```
+
+The control is accepted/exact and restores C2 **59.258 -> 60.638 (+2.33%)**,
+matching the prior **60.617** row, while C4 improves
+**74.105 -> 74.893 (+1.06%)**. C1 remains effectively unchanged at **44.049**.
+Raw SHA-256 is
+`2c593fcadac5a5cb6abd7165e77744b10ec34a064eae8c4e036fd4797bb363cc`.
+
+RED added a horizon contract and failed because no width-aware resident
+amortization policy existed. GREEN requires the complete session minimum
+(**128 remaining steps**) for C2/C4 resident graphs, so p512/d128 stays eager;
+physical C8 retains its separately measured width-scaled **16-step** minimum and
+one-submit profiler evidence. Longer C2/C4 requests can still capture after they
+have enough remaining work. The long-horizon C2 lifecycle test now uses d256 and
+still proves capture/replay/flush/close/invalidation. Validation is **72 passed**:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/test_generation_qwen35_gguf_sampling.py \
+  -q --tb=short
+.venv/bin/python -m py_compile hipengine/generation/qwen35_gguf.py \
+  tests/test_generation_qwen35_gguf_sampling.py
+git diff --check
+```
