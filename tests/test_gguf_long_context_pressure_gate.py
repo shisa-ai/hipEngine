@@ -3,6 +3,10 @@ from __future__ import annotations
 from scripts import gguf_long_context_pressure_gate as gate
 
 
+def test_server_identity_matches_reused_production_workload_driver() -> None:
+    assert gate._SERVED_MODEL_NAME == "qwen35-production-load"
+
+
 def test_pool_plan_covers_mixed_and_forces_pressure_rejection() -> None:
     plan = gate.build_pool_plan(
         decode_tokens=32,
