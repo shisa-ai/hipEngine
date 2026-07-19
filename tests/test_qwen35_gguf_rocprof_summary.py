@@ -83,6 +83,18 @@ def _write_csv(path: Path, rows: Sequence[dict[str, object]]) -> None:
         ("gguf_iq3_xxs_selected_dual_silu_gemv_kernel", "moe_iq3_xxs_selected_dual_silu"),
         ("gguf_iq4_xs_selected_gemv_kernel", "moe_iq4_xs_selected_single"),
         ("gguf_iq4_xs_weighted_selected_down_kernel", "moe_iq4_xs_weighted_down"),
+        (
+            "gguf_iq3_xxs_selected_dual_grouped_prefill_compact_kernel",
+            "moe_iq3_xxs_grouped_dual_prefill",
+        ),
+        (
+            "gguf_iq4_xs_selected_dual_grouped_prefill_compact_kernel",
+            "moe_iq4_xs_grouped_dual_prefill",
+        ),
+        (
+            "gguf_iq4_xs_selected_grouped_prefill_compact_kernel",
+            "moe_iq4_xs_grouped_down_prefill",
+        ),
         # MoE compact selected -- P8 WMMA prefill and P9.B GEMV decode + legacy
         ("gguf_q4_k_selected_dual_wmma_prefill_compact_kernel<unsigned short>", "moe_q4_k_selected_dual_wmma_prefill"),
         ("gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel<unsigned short>", "moe_q4_k_selected_dual_wmma_prefill"),
@@ -292,6 +304,9 @@ def test_iq_default_footprints_use_exact_encoded_block_bytes() -> None:
     assert footprints["moe_iq3_xxs_selected_dual_silu"] == 8 * 2 * 512 * (2048 // 256) * 98
     assert footprints["moe_iq4_xs_selected_single"] == 8 * 2048 * (512 // 256) * 136
     assert footprints["moe_iq4_xs_weighted_down"] == 8 * 2048 * (512 // 256) * 136
+    assert footprints["moe_iq3_xxs_grouped_dual_prefill"] is None
+    assert footprints["moe_iq4_xs_grouped_dual_prefill"] is None
+    assert footprints["moe_iq4_xs_grouped_down_prefill"] is None
 
 
 def test_summary_effective_gb_s_uses_footprint_overrides(tmp_path: Path) -> None:

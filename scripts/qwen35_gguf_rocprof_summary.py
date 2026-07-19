@@ -68,6 +68,12 @@ _QWEN36_35B_A3B_DEFAULT_FOOTPRINTS_PER_DISPATCH: dict[str, int | None] = {
     "moe_iq3_xxs_selected_dual_silu": 8 * 2 * 512 * (2048 // 256) * 98,
     "moe_iq4_xs_selected_single": 8 * 2048 * (512 // 256) * 136,
     "moe_iq4_xs_weighted_down": 8 * 2048 * (512 // 256) * 136,
+    # Grouped scalar kernels read each active expert's weight tensor once per
+    # dispatch. Active-expert count is route-dependent, so callers must supply
+    # an exact per-phase footprint override rather than assume all 256 experts.
+    "moe_iq3_xxs_grouped_dual_prefill": None,
+    "moe_iq4_xs_grouped_dual_prefill": None,
+    "moe_iq4_xs_grouped_down_prefill": None,
     # ------------------------------------------------------------------ MoE
     # Compact selected dual gate+up (P9.B1) and the matching WMMA prefill
     # (P8.4). One dispatch processes one compact tile across all active
@@ -239,6 +245,12 @@ def classify_kernel(name: str) -> str:
     lower = name.lower()
     base = _normalise_kernel_name(lower)
     # -------------------------------------------- GGUF raw IQ3_XXS / IQ4_XS
+    if "gguf_iq3_xxs_selected_dual_grouped_prefill_compact" in base:
+        return "moe_iq3_xxs_grouped_dual_prefill"
+    if "gguf_iq4_xs_selected_dual_grouped_prefill_compact" in base:
+        return "moe_iq4_xs_grouped_dual_prefill"
+    if "gguf_iq4_xs_selected_grouped_prefill_compact" in base:
+        return "moe_iq4_xs_grouped_down_prefill"
     if "gguf_iq3_xxs_selected_dual_silu_gemv" in base:
         return "moe_iq3_xxs_selected_dual_silu"
     if "gguf_iq3_xxs_selected_gemv" in base:
