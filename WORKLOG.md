@@ -164856,3 +164856,106 @@ The clean wrapper/category/true-AR SHA-256 values are
 Published compact diagnostic
 `benchmarks/results/2026-07-19-w7900-llama-compat-native-cycle-n3p.json` and
 updated the benchmark rollup/changelog while leaving N1 canonical.
+
+## 2026-07-19 — N4 PARO MTP / DFlash provider-boundary audit
+
+Audited the provider-neutral N4 step after N3P. PARO MTP and dense DFlash have
+different proposal owners (`NativeMtpChainProposer` versus the DFlash drafter),
+but both converge on
+`Qwen35ParoResidentSession.verify_chain_bulk_and_commit()`. That shared target
+path already uses fixed resident metadata/state buffers, `KVLiveSpans`, a
+root-prefixed `TargetVerifyBatch`, device top-1/accept summaries, and reusable
+verifier graph buckets. Its graph currently submits directly through the HIP
+runtime; linear-state/KV/hidden-context commit and scheduler-facing result
+construction remain provider-owned after the graph.
+
+The lowest-risk first N4 adapter is therefore one registered
+`(backend, speculative_cycle, w4_paro, native_v1_target_graph)` boundary, not
+two proposal rewrites. It should submit the existing chain target+accept graph
+through NativeSpecCycle ABI v1 for one request and the provider's stable B+1
+bucket, while accurately declaring only `VERIFY|ACCEPT`. Existing Python commit,
+hidden-tap prefix copy, cursor handling, graph-off execution, tree mode, and
+unsupported shapes remain the oracle/fallback. The control must bind real
+verify-chain `KVLiveSpans`, fixed metadata/accept buffers, real FP16 verifier
+rows or BF16 sidecar hidden taps, and bounded capacities; it may not synthesize
+`(block_table, context_len)` metadata.
+
+Initial admission stays explicit/default-off until a real W7900 multi-cycle
+PARO MTP gate proves exact IDs, hidden/state/KV, and aggregate-neutral wall.
+The concurrent gfx1151 backend work intentionally excludes all native
+speculative-cycle aliases; N4 must not touch or bypass that exclusion. After the
+shared target adapter is proven on gfx1100, PARO proposal/commit ownership and
+then DFlash proposal/context-KV ownership can migrate independently through the
+same common launcher.
+
+## 2026-07-19 — N4 shared gfx1100 provider target+accept adapter
+
+Implemented the first N4 provider adapter behind explicit/default-off
+`HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH=1`:
+
+- registered `(hip_gfx1100, speculative_cycle, w4_paro,
+  native_v1_target_graph)` without registering gfx1151;
+- generalized the host-only graph launcher for single-request active
+  B1/B2/B3/B4/B5/B8 chain buckets and exact `VERIFY` or `VERIFY|ACCEPT` stage
+  masks while preserving the stricter GGUF B1/B2 validator;
+- extended `NativeSpecCycleControl.for_target_verify()` to accept an explicit
+  valid stage mask and bound the resident verifier's fixed INT32 metadata,
+  candidate counts, accept outputs, real verify-chain `KVLiveSpans`, and either
+  BF16 DFlash sidecar taps or PARO MTP's final resident FP16 verifier rows;
+- reused each existing verifier graph executable through one native call on
+  replay. The graph body/model math is unchanged. Provider linear/KV/hidden
+  commit, cursor/result construction, graph capture/miss, graph-off/tree/
+  inactive shapes, and unsupported registry/control cases retain direct
+  fallback;
+- made control construction itself fallback-safe. A real first run exposed
+  PARO's zero-width sidecar capture (it reads the resident FP16 trunk instead);
+  after binding that real output, unsupported layouts no longer escape before
+  fallback.
+
+RED/GREEN contract:
+
+```bash
+python3 -m pytest -q \
+  tests/test_native_spec_cycle.py \
+  tests/test_native_spec_cycle_graph.py \
+  tests/test_qwen35_resident_batch_layout.py
+# 183 passed
+```
+
+The C++ callback test exercises the new B4/default-stream target+accept branch;
+the runtime tests cover FP16 and BF16 controls, real `KVLiveSpans`, one launcher
+call, stage telemetry, and control-build fallback. The initial RED failed at
+collection because `NativeSpecProviderTargetGraphLauncher` did not exist.
+
+Current-source W7900 screen used the only complete local trunk+sidecar artifact
+still present (`/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16`); the
+historical `...full4096-e5...` directory now contains only its MTP sidecar and
+assembly manifest because its target snapshot is absent.
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+HIPENGINE_BACKEND=hip_gfx1100 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-mtp-w7900-hipcc-version.txt \
+HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH={0,1} PYTHONPATH=. \
+python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 \
+  --prompt-tokens 151646 --decode-tokens 8 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode batched --graph-mode auto --json <output>
+```
+
+The N4 process records native `VERIFY|ACCEPT` submission on four steady B3
+replays. Versus the exact same source/workload with the flag off, all non-timing
+and non-route-telemetry fields match: same eight MTP ids
+`[248050, 59, 36757, 25088, 65827, 3642, 1088, 585]`, seven accepted lengths
+(all zero), candidate/root/bonus/commit metadata, and GPU/CPU accept agreement;
+a recursive normalized comparison reports **0 semantic differences**.
+
+This does **not** clear provider promotion: both unchanged control and N4 route
+mismatch true AR identically beginning at token 2 (AR
+`[248050, 19, 19, 5137, 58, 58, 58, 220]`). A B2/c1-loop confirmation also
+mismatches this local target's AR before the first native replay. Separate-process
+B3 timing is control **39.73** versus N4 **38.50 decode tok/s**, which is neither
+same-session nor non-regressive evidence; no performance claim is made. Keep N4
+default-off and treat current local PARO artifact correctness as the concrete
+blocker before full-suite/default admission. DFlash and gfx1151 remain ungated.

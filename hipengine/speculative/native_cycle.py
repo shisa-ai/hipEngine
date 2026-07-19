@@ -515,6 +515,7 @@ class NativeSpecCycleControl:
         context_bucket: int,
         stream: int = 0,
         deadline_ns: int = 0,
+        stages: NativeSpecCycleStage = NativeSpecCycleStage.VERIFY,
         active_row_count: int | None = None,
         output_stride: int | None = None,
         candidate_counts_ptr: int = 0,
@@ -703,7 +704,7 @@ class NativeSpecCycleControl:
         return cls(
             cycle_id=int(cycle_id),
             transaction_id=0 if buffers.transaction_id is None else int(buffers.transaction_id),
-            stages=NativeSpecCycleStage.VERIFY,
+            stages=stages,
             mode=mode,
             shape=shape,
             pointers=pointer_groups,

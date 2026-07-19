@@ -24,11 +24,15 @@ from hipengine.speculative.native_cycle import (
     NativeSpecCycleStatePointers,
     NativeSpecCycleStatus,
 )
+from hipengine.kernels.registry import KernelKey, is_registered, resolve
 from hipengine.speculative.native_cycle_graph import (
     NativeSpecProposalGraphLauncher,
+    NativeSpecProviderTargetGraphLauncher,
     NativeSpecTargetGraphLauncher,
     build_native_spec_cycle_graph_launcher,
+    create_native_spec_provider_target_graph_launcher,
     plan_native_spec_cycle_graph_launcher_build,
+    register_native_spec_provider_target_graph,
 )
 
 
@@ -110,6 +114,46 @@ def _proposal_control(*, cycle_id: int = 10) -> NativeSpecCycleControl:
                 draft_value_cache=0x3300,
             ),
         ),
+    )
+
+
+def _provider_b4_control(*, cycle_id: int = 13) -> NativeSpecCycleControl:
+    control = _b2_control(cycle_id=cycle_id)
+    return replace(
+        control,
+        stages=NativeSpecCycleStage.VERIFY | NativeSpecCycleStage.ACCEPT,
+        shape=replace(
+            control.shape,
+            row_count=5,
+            active_row_count=5,
+            row_capacity=5,
+            candidate_count=4,
+            active_candidate_count=4,
+            candidate_capacity=4,
+            candidate_budget=4,
+            span_count=5,
+            span_capacity=5,
+            hidden_row_capacity=5,
+            output_stride=5,
+            metadata_dtype=NativeSpecCycleDType.INT32,
+            hidden_dtype=NativeSpecCycleDType.BF16,
+        ),
+        pointers=replace(
+            control.pointers,
+            metadata=replace(control.pointers.metadata, candidate_counts=0x1600),
+            outputs=replace(
+                control.pointers.outputs,
+                accepted_counts=0x4100,
+                commit_rows=0x4200,
+                commit_tokens=0x4300,
+                commit_positions=0x4400,
+                next_tokens=0x4500,
+                full_accept=0x4600,
+                committed_output_ids=0x4700,
+                committed_output_lengths=0x4800,
+            ),
+        ),
+        stream=0,
     )
 
 
@@ -253,6 +297,74 @@ def test_native_proposal_graph_launcher_calls_one_pre_resolved_submission_bounda
     assert result.cycle_id == 12
     assert launcher.launch_count == 1
     assert library.calls == [(0x6000, 0x7000, 0x8000)]
+
+
+def test_provider_target_graph_launcher_accepts_paro_b4_verify_accept_bucket() -> None:
+    library = _FakeNativeLibrary()
+    control = _provider_b4_control()
+    launcher = NativeSpecProviderTargetGraphLauncher(
+        graph_exec=0x6000,
+        graph_launch_fn=0x7000,
+        stream_synchronize_fn=0x8000,
+        bound_control=control,
+        library=library,
+    )
+
+    result = launcher.launch(replace(control, cycle_id=14))
+
+    assert result.status is NativeSpecCycleStatus.COMPLETE
+    assert result.completed_stages == (
+        NativeSpecCycleStage.VERIFY | NativeSpecCycleStage.ACCEPT
+    )
+    assert result.cycle_id == 14
+    assert launcher.launch_count == 1
+    assert library.calls == [(0x6000, 0x7000, 0x8000)]
+
+    fp16_launcher = NativeSpecProviderTargetGraphLauncher(
+        graph_exec=0x6001,
+        graph_launch_fn=0x7000,
+        stream_synchronize_fn=0x8000,
+        library=library,
+    )
+    fp16 = fp16_launcher.launch(
+        replace(control, shape=replace(control.shape, hidden_dtype=NativeSpecCycleDType.FP16))
+    )
+    assert fp16.status is NativeSpecCycleStatus.COMPLETE
+
+
+def test_provider_target_graph_has_registered_w4_paro_plugin_boundary() -> None:
+    register_native_spec_provider_target_graph()
+    assert not is_registered(
+        KernelKey(
+            "hip_gfx1151",
+            "speculative_cycle",
+            "w4_paro",
+            "native_v1_target_graph",
+        )
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="speculative_cycle",
+            quant="w4_paro",
+            variant="native_v1_target_graph",
+        )
+        is create_native_spec_provider_target_graph_launcher
+    )
+
+
+def test_gguf_target_graph_keeps_strict_b1_b2_contract() -> None:
+    launcher = NativeSpecTargetGraphLauncher(
+        graph_exec=0x6000,
+        graph_launch_fn=0x7000,
+        stream_synchronize_fn=0x8000,
+        library=_FakeNativeLibrary(),
+    )
+
+    with pytest.raises(ValueError, match="B1/B2"):
+        launcher.launch(
+            replace(_provider_b4_control(), stages=NativeSpecCycleStage.VERIFY)
+        )
 
 
 def test_native_target_graph_launcher_accepts_n2_device_accept_commit_control() -> None:
@@ -406,11 +518,22 @@ def test_native_target_graph_cpp_launcher_calls_fake_hip_functions(
         library=library,
     )
     proposal = proposal_launcher.launch(_proposal_control())
+    provider_launcher = NativeSpecProviderTargetGraphLauncher(
+        graph_exec=0x6002,
+        graph_launch_fn=ctypes.cast(graph_launch, ctypes.c_void_p).value or 0,
+        stream_synchronize_fn=ctypes.cast(stream_synchronize, ctypes.c_void_p).value or 0,
+        library=library,
+    )
+    provider = provider_launcher.launch(_provider_b4_control())
 
     assert b1.status is NativeSpecCycleStatus.COMPLETE
     assert b2.status is NativeSpecCycleStatus.COMPLETE
     assert proposal.status is NativeSpecCycleStatus.COMPLETE
     assert proposal.completed_stages is NativeSpecCycleStage.PROPOSE
+    assert provider.status is NativeSpecCycleStatus.COMPLETE
+    assert provider.completed_stages == (
+        NativeSpecCycleStage.VERIFY | NativeSpecCycleStage.ACCEPT
+    )
     assert calls == [
         ("launch", 0x6000, 0x5000),
         ("sync", 0x5000, 0),
@@ -418,4 +541,6 @@ def test_native_target_graph_cpp_launcher_calls_fake_hip_functions(
         ("sync", 0x5000, 0),
         ("launch", 0x6001, 0x5000),
         ("sync", 0x5000, 0),
+        ("launch", 0x6002, 0),
+        ("sync", 0, 0),
     ]

@@ -549,9 +549,17 @@ Current blockers that keep project-wide c>N incomplete:
   exact prior loop otherwise. The clean committed N3 gate matches all 240 IDs /
   96 cycle semantics at 118.592 tok/s / 1.2858x true AR versus clean N2's
   117.557 tok/s (+0.88%, aggregate-neutral); the faster N1 topline remains
-  unchanged. Shared PARO/
-  DFlash adapters, draft-side batching/native submission collapse, rows>=16
-  verifier tuning, streaming, and exact/default MTP serving remain open.
+  unchanged. N3P additionally replays strict B1/B2 NextN proposal through one
+  native graph launch and is profiler-proven to replace 542 `hipLaunchKernel`
+  plus 80 synchronous `hipMemcpy` host calls over eight matched cycles, while
+  remaining aggregate-neutral and diagnostic. N4 has started with one shared
+  gfx1100 `w4_paro` target+accept graph adapter used by both PARO MTP and
+  DFlash; it declares only `VERIFY|ACCEPT`, preserves provider commit and exact
+  fallback, and remains default-off because the currently available packed
+  PARO+MTP local artifact already mismatches true AR on the unchanged control.
+  Complete PARO/DFlash proposal+commit ownership, independent gfx1151 admission,
+  draft-side batching, rows>=16 verifier tuning, streaming, and exact/default
+  MTP serving remain open.
 - Exact all-choice generated-token accounting and batch timing ownership are
   available for non-streaming responses. Benchmark coverage still needs
   aggregate tok/s, per-request tok/s, latency, memory, active occupancy,
