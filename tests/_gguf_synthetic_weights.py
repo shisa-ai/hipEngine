@@ -21,6 +21,8 @@ QK_K = 256
 Q4_K_BLOCK_BYTES = 144
 Q5_K_BLOCK_BYTES = 176
 Q6_K_BLOCK_BYTES = 210
+IQ3_XXS_BLOCK_BYTES = 98
+IQ4_XS_BLOCK_BYTES = 136
 Q8_0_BLOCK_BYTES = 34
 
 
@@ -166,6 +168,96 @@ def make_q6_k_weight(out_features: int, in_features: int) -> np.ndarray:
         for block_idx in range(blocks_per_row):
             start = block_idx * Q6_K_BLOCK_BYTES
             data[out_idx, start : start + Q6_K_BLOCK_BYTES] = _make_q6_k_block(out_idx, block_idx)
+    return data
+
+
+def _make_iq3_xxs_block(out_idx: int, block_idx: int) -> np.ndarray:
+    """Build one canonical 98-byte GGUF ``block_iq3_xxs`` payload."""
+
+    d = np.float16(0.000244140625 * (1 + (out_idx % 5)))
+    grid_indices = (
+        np.arange(64, dtype=np.int64) * 29 + out_idx * 17 + block_idx * 11
+    ).astype(np.uint8)
+    aux = np.empty(8, dtype=np.uint32)
+    for group32 in range(8):
+        sign_indices = [
+            (group32 * 19 + lane * 23 + out_idx * 7 + block_idx * 13) & 0x7F
+            for lane in range(4)
+        ]
+        scale = (group32 + out_idx + 3 * block_idx) & 0x0F
+        aux[group32] = np.uint32(
+            sign_indices[0]
+            | (sign_indices[1] << 7)
+            | (sign_indices[2] << 14)
+            | (sign_indices[3] << 21)
+            | (scale << 28)
+        )
+    return np.concatenate(
+        [
+            np.asarray([d], dtype=np.float16).view(np.uint8),
+            grid_indices,
+            aux.view(np.uint8),
+        ]
+    )
+
+
+def make_iq3_xxs_weight(out_features: int, in_features: int) -> np.ndarray:
+    """Build raw IQ3_XXS bytes ``[out_features, row_bytes]``."""
+
+    if in_features % QK_K:
+        raise ValueError("in_features must be a multiple of 256")
+    blocks_per_row = in_features // QK_K
+    data = np.empty((out_features, blocks_per_row * IQ3_XXS_BLOCK_BYTES), dtype=np.uint8)
+    for out_idx in range(out_features):
+        for block_idx in range(blocks_per_row):
+            start = block_idx * IQ3_XXS_BLOCK_BYTES
+            data[out_idx, start : start + IQ3_XXS_BLOCK_BYTES] = _make_iq3_xxs_block(
+                out_idx, block_idx
+            )
+    return data
+
+
+def _make_iq4_xs_block(out_idx: int, block_idx: int) -> np.ndarray:
+    """Build one canonical 136-byte GGUF ``block_iq4_xs`` payload."""
+
+    d = np.float16(0.0001220703125 * (1 + (out_idx % 7)))
+    encoded_scales = (
+        (np.arange(8, dtype=np.int64) * 7 + out_idx * 3 + block_idx * 5) % 64
+    ).astype(np.uint8)
+    scales_l = np.empty(4, dtype=np.uint8)
+    for pair in range(4):
+        scales_l[pair] = (encoded_scales[2 * pair] & 0x0F) | (
+            (encoded_scales[2 * pair + 1] & 0x0F) << 4
+        )
+    scales_h = np.uint16(0)
+    for subblock in range(8):
+        scales_h |= np.uint16((int(encoded_scales[subblock]) >> 4) << (2 * subblock))
+    qs = (
+        np.arange(128, dtype=np.int64) * 11 + out_idx * 13 + block_idx * 17
+    ).astype(np.uint8)
+    return np.concatenate(
+        [
+            np.asarray([d], dtype=np.float16).view(np.uint8),
+            np.asarray([scales_h], dtype=np.uint16).view(np.uint8),
+            scales_l,
+            qs,
+        ]
+    )
+
+
+def make_iq4_xs_weight(out_features: int, in_features: int) -> np.ndarray:
+    """Build raw IQ4_XS bytes ``[out_features, row_bytes]``."""
+
+    if in_features % QK_K:
+        raise ValueError("in_features must be a multiple of 256")
+    blocks_per_row = in_features // QK_K
+    data = np.empty((out_features, blocks_per_row * IQ4_XS_BLOCK_BYTES), dtype=np.uint8)
+    for out_idx in range(out_features):
+        for block_idx in range(blocks_per_row):
+            start = block_idx * IQ4_XS_BLOCK_BYTES
+            data[out_idx, start : start + IQ4_XS_BLOCK_BYTES] = _make_iq4_xs_block(
+                out_idx, block_idx
+            )
     return data
 
 

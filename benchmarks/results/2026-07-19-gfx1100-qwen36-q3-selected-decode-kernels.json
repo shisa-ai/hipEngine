@@ -1,0 +1,106 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1100_qwen36_q3_selected_decode_kernel_gate",
+  "status": "accepted",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "base_commit": "b84547ef",
+  "candidate": {
+    "scope": "raw resident IQ3_XXS/IQ4_XS selected-expert c=1 decode",
+    "gate_up": "four-row fused gate/up + SiLU with the existing BF16 materialization boundary",
+    "down": "four-row IQ4_XS selected GEMV",
+    "abi": "BF16 x[x_rows,in], device int64 selected[rows], raw rank-3 GGUF weights, BF16 row-major output",
+    "resident_repack": false,
+    "q6_reuse": "layers 34, 38, and 39 continue to use the existing Q6_K selected-down kernel"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf",
+    "hidden_size": 2048,
+    "expert_feed_forward_length": 512,
+    "expert_count": 256,
+    "expert_used_count": 8,
+    "layers": 40
+  },
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "cu_count": 96,
+    "wavefront_size": 32
+  },
+  "software": {
+    "hip_version": "7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e"
+  },
+  "correctness": {
+    "red": "tests/test_gguf_iq_selected_gemv_decode.py failed collection because gguf_iq_selected_gemv did not exist",
+    "cpu_oracle_command": "HIP_VISIBLE_DEVICES=0 python3 -m pytest -q tests/test_gguf_iq_selected_gemv_decode.py -k matches_cpu_oracle",
+    "cpu_oracle_result": "6 passed: IQ3_XXS and IQ4_XS fused gate/up at 256x8 and 2048x512, plus IQ4_XS down at 256x8 and 512x2048",
+    "focused_guard_command": "HIP_VISIBLE_DEVICES=0 python3 -m pytest -q tests/test_gguf_iq_selected_gemv_decode.py tests/test_qwen36_q3_selected_moe_dispatch.py tests/test_qwen35_gguf_selected_moe_stage_timing.py tests/test_qwen35_gguf_compact_moe_gemv_routing.py tests/test_qwen35_gguf_compact_moe_wmma_resolver.py tests/test_qwen35_gguf_compact_moe_wmma_routing.py tests/test_qwen35_gguf_verify_f32_moe_combine.py tests/test_qwen36_q3_gguf_materialize.py tests/test_model_quant_and_imports.py",
+    "focused_guard_result": "76 passed",
+    "full_stack_eager": {
+      "command_scope": "Qwen35GGUFFullStackRunner.run_token_hidden(760), all 40 layers",
+      "load_s": 10.31385090306867,
+      "run_s": 0.07069101091474295,
+      "shape": [1, 2048],
+      "finite": true,
+      "nonzero": 2048,
+      "min": -26.375,
+      "max": 34.5
+    },
+    "resident_graph": {
+      "prompt_tokens": [760],
+      "serial_prefill_token": 2614,
+      "graph_decode_token": 513,
+      "independent_eager_decode_token": 513,
+      "token_match": true,
+      "final_position": 2,
+      "capture_s": 0.03765213105361909,
+      "single_replay_s": 0.009596936986781657
+    }
+  },
+  "profiler": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-q3-iq-rocprof-final -- python3 -m pytest -q tests/test_gguf_iq_selected_gemv_decode.py -k matches_cpu_oracle",
+    "trace": "/tmp/hipengine-q3-iq-rocprof-final/epyc/251951_kernel_trace.csv",
+    "real_shape_dispatches": [
+      {
+        "kernel": "iq_selected_gate_up_silu_kernel<3>",
+        "shape": "rows=8,in=2048,out=512",
+        "duration_ns": 22000,
+        "vgpr_count": 64,
+        "scratch_size": 0,
+        "lds_block_size": 512,
+        "workgroup_size_x": 256,
+        "grid_size_x": 32768,
+        "grid_size_y": 8
+      },
+      {
+        "kernel": "iq_selected_gate_up_silu_kernel<4>",
+        "shape": "rows=8,in=2048,out=512",
+        "duration_ns": 19320,
+        "vgpr_count": 56,
+        "scratch_size": 0,
+        "lds_block_size": 512,
+        "workgroup_size_x": 256,
+        "grid_size_x": 32768,
+        "grid_size_y": 8
+      },
+      {
+        "kernel": "iq4_xs_selected_gemv_kernel",
+        "shape": "rows=8,in=512,out=2048",
+        "duration_ns": 82921,
+        "vgpr_count": 40,
+        "scratch_size": 0,
+        "lds_block_size": 512,
+        "workgroup_size_x": 256,
+        "grid_size_x": 131072,
+        "grid_size_y": 8
+      }
+    ],
+    "resource_gate": "passed: all expected kernels appear, Scratch_Size=0, and VGPR_Count is below 128"
+  },
+  "decision": {
+    "result": "accept_decode_kernel_unit",
+    "reason": "canonical CPU-oracle parity, real model all-layer execution, exact eager/graph token agreement, raw resident ownership, and zero-scratch profiler evidence all pass",
+    "next": "implement the IQ selected-expert bulk-prefill path before end-to-end Q3 benchmark validation"
+  }
+}

@@ -152,6 +152,11 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_expert_pack8_gemv import (
     build_gguf_expert_pack8_gemv,
     register_gguf_expert_pack8_gemv_kernels,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_iq_selected_gemv import (
+    gguf_iq3_xxs_selected_fused_gate_up_silu_bf16_bf16_out,
+    gguf_iq4_xs_selected_fused_gate_up_silu_bf16_bf16_out,
+    gguf_iq4_xs_selected_gemv_bf16_bf16_out,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_selected_prefill import (
     register_gguf_k_selected_prefill_kernels,
 )
@@ -18390,6 +18395,27 @@ def _launch_selected_raw_gguf_moe_pair_silu(
     stream: int,
     runtime: HipRuntime,
 ) -> bool:
+    iq_gate_up_fn = None
+    if weight_a.spec.quant_key == weight_b.spec.quant_key == "gguf_iq3_xxs":
+        iq_gate_up_fn = gguf_iq3_xxs_selected_fused_gate_up_silu_bf16_bf16_out
+    elif weight_a.spec.quant_key == weight_b.spec.quant_key == "gguf_iq4_xs":
+        iq_gate_up_fn = gguf_iq4_xs_selected_fused_gate_up_silu_bf16_bf16_out
+    if iq_gate_up_fn is not None:
+        iq_gate_up_fn(
+            x_ptr,
+            selected_ptr,
+            weight_a.allocation("raw").tensor.ptr,
+            weight_b.allocation("raw").tensor.ptr,
+            out_ptr,
+            x_rows,
+            rows,
+            num_experts,
+            in_features,
+            out_features,
+            stream=stream,
+            runtime=runtime,
+        )
+        return True
     if weight_a.spec.quant_key == "gguf_q4_k_t16_v1" and weight_b.spec.quant_key == "gguf_q4_k_t16_v1":
         # The q8_1+sudot4 fused-SiLU T16 diagnostic is callable, but the
         # production c1 trace regressed it on gfx1151. Keep c1 on the exact
@@ -18759,6 +18785,8 @@ def _launch_selected_raw_gguf_moe_linear(
         )
         fn = gguf_q6_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out
         use_q8_1_input = True
+    elif quant_key == "gguf_iq4_xs":
+        fn = gguf_iq4_xs_selected_gemv_bf16_bf16_out
     elif quant_key == "gguf_q4_k":
         fn = gguf_q4_k_selected_gemv_bf16_bf16_out
     elif quant_key == "gguf_q5_k" and out_features % 8 == 0:
