@@ -655,6 +655,13 @@ def _parse_concurrencies(raw: str) -> list[int]:
     return values
 
 
+def _positive_int(raw: str) -> int:
+    value = int(raw)
+    if value <= 0:
+        raise argparse.ArgumentTypeError("value must be a positive integer")
+    return value
+
+
 def _validate_concurrency_plan(
     concurrencies: Sequence[int],
     *,
@@ -1420,6 +1427,10 @@ def _server_command_and_env(
         env["HIPENGINE_PREFILL_DECODE_POLICY"] = str(
             args.hipengine_prefill_decode_policy
         )
+        if args.hipengine_prefill_chunk_tokens is not None:
+            env["HIPENGINE_MAX_PREFILL_CHUNK_TOKENS"] = str(
+                args.hipengine_prefill_chunk_tokens
+            )
         env["HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS"] = "1"
         env["HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"] = (
             "1" if args.hipengine_route_expectation == "native" else "0"
@@ -2075,10 +2086,23 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "fresh_server_per_width": True,
             "server_capacity_matches_logical_concurrency": True,
             "context_tokens_per_sequence": int(args.ctx_per_seq),
-            "hipengine_batch_window_ms": float(args.batch_window_ms),
+            "hipengine_batch_window_ms": (
+                float(args.batch_window_ms) if engine == "hipengine" else None
+            ),
+            "hipengine_generation_batch_window_ms": (
+                float(args.batch_window_ms) if engine == "hipengine" else None
+            ),
             "hipengine_prefill_decode_policy": (
                 str(args.hipengine_prefill_decode_policy)
                 if engine == "hipengine"
+                else None
+            ),
+            "hipengine_prefill_chunk_tokens": (
+                int(args.hipengine_prefill_chunk_tokens)
+                if (
+                    engine == "hipengine"
+                    and args.hipengine_prefill_chunk_tokens is not None
+                )
                 else None
             ),
             "llamacpp_prompt_cache": False,
@@ -2226,7 +2250,26 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--slo-ttft-p95-seconds", type=float, default=10.0)
     parser.add_argument("--slo-itl-p99-seconds", type=float, default=0.5)
     parser.add_argument("--slo-end-to-end-p95-seconds", type=float, default=30.0)
-    parser.add_argument("--batch-window-ms", type=float, default=5.0)
+    parser.add_argument(
+        "--generation-batch-window-ms",
+        "--batch-window-ms",
+        dest="batch_window_ms",
+        type=float,
+        default=5.0,
+        help=(
+            "Milliseconds to coalesce compatible HTTP requests before generation; "
+            "this is independent of the resident prefill chunk size"
+        ),
+    )
+    parser.add_argument(
+        "--hipengine-prefill-chunk-tokens",
+        type=_positive_int,
+        default=None,
+        help=(
+            "Explicit HIPENGINE_MAX_PREFILL_CHUNK_TOKENS override; unset uses the "
+            "registry/package policy"
+        ),
+    )
     parser.add_argument("--ctx-per-seq", type=int, default=1024)
     parser.add_argument("--live-concurrency", type=int, default=13)
     parser.add_argument("--live-join-after-tokens", type=int, default=8)

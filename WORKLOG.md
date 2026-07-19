@@ -168205,3 +168205,34 @@ Published compact artifact:
 `benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-bound-control.json`, 24,215
 bytes, SHA-256
 `6941dafc9daf628c1febecc30ac82821ce4a2767322feeedb85308cbc0b269cb`.
+
+## 2026-07-20 — Separate server coalescing delay from prefill chunk size
+
+The mirrored-INT8 publication command incorrectly described
+`--batch-window-ms 256` as the retained `fair:256` policy. The F4 policy name
+means fair prefill/decode scheduling with a 256-token prefill chunk; the F1
+harness flag instead forwarded a 256 **millisecond** generation-request
+coalescing delay. This made the INT8 server packet valid for exact scaling but
+unnecessarily pessimistic and not timing-matched to the prior BF16 packet's
+5 ms window.
+
+The matched-server harness now exposes unambiguous
+`--generation-batch-window-ms` spelling while retaining `--batch-window-ms` as
+a compatibility alias. A separate `--hipengine-prefill-chunk-tokens` option
+sets `HIPENGINE_MAX_PREFILL_CHUNK_TOKENS`; artifacts record both the generation
+window and prefill chunk independently. RED rejected both new options; GREEN
+passes the focused node and the complete harness file (**21 passed**):
+
+```bash
+.venv/bin/python -m pytest \
+  tests/test_server_f1_concurrency_bench.py::test_hipengine_command_separates_generation_window_from_prefill_chunk \
+  -q --tb=short
+.venv/bin/python -m pytest tests/test_server_f1_concurrency_bench.py -q --tb=short
+python3 -m py_compile scripts/server_f1_concurrency_bench.py \
+  tests/test_server_f1_concurrency_bench.py
+git diff --check
+```
+
+No performance result is attached to this harness-only unit. The first clean
+5 ms fair/256-token baseline follows from the committed harness before changing
+plain-AR route width.
