@@ -26,6 +26,8 @@ Related source-of-truth documents:
 - [`KVCACHE.md`](KVCACHE.md) — KV policy and future DMS work.
 - [`PREFILL.md`](PREFILL.md) — prefill implementations and boundaries.
 - [`SAMPLING.md`](SAMPLING.md) — normal sampling support.
+- [`NATIVE_SPEC_CYCLE.md`](NATIVE_SPEC_CYCLE.md) — canonical speculative-cycle
+  milestone glossary and current MTP/provider performance scorecard.
 - [`ENVS.md`](ENVS.md) — supported runtime knobs.
 
 ## Goal

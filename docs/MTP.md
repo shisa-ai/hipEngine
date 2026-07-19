@@ -30,6 +30,12 @@
 > This is the sister document to [`DFLASH.md`](DFLASH.md). MTP must reuse the
 > shared native verifier/commit infrastructure from DFlash, not fork a separate
 > c=1 native-loop tuning lane.
+>
+> For the current cross-provider milestone definitions and consolidated W7900/
+> gfx1151 performance status, use
+> [`NATIVE_SPEC_CYCLE.md`](NATIVE_SPEC_CYCLE.md). The `0.758x / 27.8 ms`
+> baseline above is the locked historical PARO sprint baseline, not the current
+> GGUF `N1R` result or a project-wide MTP topline.
 
 > N4 update (2026-07-19): the shared gfx1100 PARO/DFlash target verifier now has
 > an explicit/default-off `w4_paro/native_v1_target_graph` adapter. Eligible

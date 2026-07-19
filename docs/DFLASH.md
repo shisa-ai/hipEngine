@@ -40,7 +40,11 @@ chain `DraftBatch` compilation, target-attached `mtp.*` metadata/loading, and a
 local PARO+MTP-BF16 artifact assembled from the packed PARO trunk plus Qwen's
 MTP sidecar. DFlash remains the first native block-verifier target; see
 [`MTP.md`](MTP.md) for the target-attached multi-token predictor plan that
-reuses this verifier/commit path rather than forking it.
+reuses this verifier/commit path rather than forking it. The canonical
+NativeSpecCycle milestone glossary, ownership distinctions, current performance
+scorecard, and N4 blocker are in
+[`NATIVE_SPEC_CYCLE.md`](NATIVE_SPEC_CYCLE.md); the dated DFlash history below
+must not be read as the current cross-provider topline.
 
 ## Current hipEngine status (2026-05-18)
 

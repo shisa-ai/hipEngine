@@ -877,6 +877,7 @@ request examples, feature contracts, diagnostics, and current limitations.
 | [`docs/PREFILL.md`](docs/PREFILL.md) | Native prefill implementation spec |
 | [`docs/SAMPLING.md`](docs/SAMPLING.md) | Normal sampling parameter support plan |
 | [`docs/MTP.md`](docs/MTP.md) | Multi-token prediction plan |
+| [`docs/NATIVE_SPEC_CYCLE.md`](docs/NATIVE_SPEC_CYCLE.md) | Canonical N0-N5 milestone glossary, ownership distinctions, current speculative performance scorecard, and evidence index |
 | [`docs/DFLASH.md`](docs/DFLASH.md) | DFlash draft-model speculative decode plan |
 | [`docs/SOL-OPTIMIZATION.md`](docs/SOL-OPTIMIZATION.md) | gfx1151 PARO/GGUF optimization ledger and completion gates |
 | [`docs/MTP-LLAMACPP-PARITY.md`](docs/MTP-LLAMACPP-PARITY.md) | Current GGUF MTP parity results and open reruns |

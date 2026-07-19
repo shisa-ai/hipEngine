@@ -531,7 +531,9 @@ Current blockers that keep project-wide c>N incomplete:
   retained performance still needs routed-lane profiling and c-aware thresholds
   for grouped GEMV versus compact/WMMA execution.
 - GGUF MTP serving is phase-serial at the slot level: draft, target verify, then
-  commit. Target verify is packed up to four slots. The provider-neutral
+  commit. Target verify is packed up to four slots. The canonical milestone
+  glossary, ownership distinctions, and qualified scorecard are in
+  [`NATIVE_SPEC_CYCLE.md`](NATIVE_SPEC_CYCLE.md). The provider-neutral
   `NativeSpecCycleLauncher` N0 ABI plus gfx1100 reusable B1/B2 N1 target graphs
   are landed. N1 is byte-exact across dynamic positions and cached-session
   resets; the retained accuracy-traded llama-compat suite reaches 122.667 tok/s

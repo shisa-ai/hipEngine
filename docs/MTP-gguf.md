@@ -263,6 +263,12 @@ separately per backend/provider.
 
 ### Target Architecture: Native Speculative Cycle Launcher
 
+> [`NATIVE_SPEC_CYCLE.md`](NATIVE_SPEC_CYCLE.md) is the canonical glossary and
+> current qualified scorecard for `N0`/`N1`/`N1R`/`N2`/`N3`/`N3P`/`N4`/`N5`.
+> It distinguishes API ownership, native submission ownership, and device-state
+> ownership, and explains why milestone numbers are not a monotonic speed rank.
+> The delivery order below preserves the detailed design history.
+
 Build a native C/C++ launcher (working name `NativeSpecCycleLauncher`) that
 reduces the hot loop to one host-language boundary per speculative cycle, with
 a later option to run multiple cycles per call. It is an orchestration layer,

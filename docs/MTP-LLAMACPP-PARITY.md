@@ -7,7 +7,10 @@ experiment notebook is preserved in
 [`MTP-LLAMACPP-PARITY-HISTORY.md`](MTP-LLAMACPP-PARITY-HISTORY.md). Labels such
 as “current,” completion checklists, and concurrency rates inside that dated
 notebook describe the revision at which they were written; they do not override
-this dashboard or [`benchmarks/README.md`](../benchmarks/README.md).
+this dashboard or [`benchmarks/README.md`](../benchmarks/README.md). For the
+canonical `N0`-`N5` milestone definitions, API/submission/device ownership
+boundaries, and the consolidated cross-provider scorecard, see
+[`NATIVE_SPEC_CYCLE.md`](NATIVE_SPEC_CYCLE.md).
 
 ## Current Status
 
