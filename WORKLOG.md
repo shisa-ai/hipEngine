@@ -165087,3 +165087,35 @@ This is a correctness/serving-path result, not a throughput claim. The remaining
 F5 work is a reusable real-OpenAI sampled/API packet and its compact retained
 artifact; prefix reuse, long-context pressure, and external comparisons remain
 separate tasks.
+
+## 2026-07-19 Add the F5 sampled OpenAI API gate
+
+Added `scripts/gguf_sampled_api_gate.py` as a focused correctness/serving-path
+packet rather than widening the greedy F4 throughput/SLO gate. It owns one
+prepared GGUF model behind a real localhost Uvicorn socket and fails closed on:
+
+- two repeated concurrent c4 blocking waves and two repeated concurrent c4 SSE
+  waves with temperature/top-k/top-p/repetition penalty, a fixed seed, exact
+  blocking generated-token IDs, finite selected/top logprobs, and exact
+  blocking-to-SSE text/logprob reconstruction;
+- repeated `n=3` derived-row sampling and exact choice indexes;
+- dynamically derived but tokenizer-exact stop and explicit-EOS fixtures;
+- one specific strict forced tool call and one strict JSON-schema result;
+- `host_sampling_required`, full-vocab-logits metadata, zero serial model or
+  resident-request fallback, at least one physical c>1 sampled model step,
+  memory recovery, final owner drain, and clean source provenance.
+
+The gate explicitly unsets scheduler policy/chunk environment overrides so the
+final packet validates the package-default gfx1151 registry route. It records a
+compact JSON-ready artifact with source/model/hardware provenance and marks
+`performance_claim=false`; prefix reuse, long-context pressure, and external
+comparisons remain separate gates.
+
+Host validation:
+
+```text
+5 passed: tests/test_gguf_sampled_api_gate.py
+15 passed: tests/test_gguf_production_load_gate.py +
+           tests/test_gguf_sampled_api_gate.py
+CLI --help/import, python3 -m py_compile, git diff --check: passed
+```
