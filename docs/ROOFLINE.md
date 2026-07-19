@@ -1473,6 +1473,69 @@ validation. The likely losses are dequantization overhead, reduction stalls,
 workgroup geometry, access pattern inefficiency, and activation/scale/zero
 traffic.
 
+### 12.5 UD-Q3_K_M direct baseline: bytes do not explain the gap
+
+The first correctness-safe raw-IQ baseline is now measured on GPU1 (RX 7900
+XTX/gfx1100) with
+`Qwen3.6-35B-A3B-UD-Q3_K_M.gguf` (15.930 GiB), native-attention plus direct
+`x_rows` MoE prefill, BF16 KV, and one-step graph decode. The unprofiled
+512/128 run used one warmup plus three measured repetitions; graph capture is
+excluded from decode:
+
+| Metric | Result |
+| --- | ---: |
+| 512 prefill | **19.452 tok/s** median (`19.313-19.577`) |
+| 128-token graph decode | **99.015 tok/s** median (`98.927-99.929`) |
+| Decode cycle wall | **10.099 ms/token** |
+| Tracked / sampled peak | **15.805 / 16.297 GiB** |
+
+Selected-region `rocprofv3` separates the direct control's two very different
+regimes:
+
+| Window | Dispatches | Kernel sum | Trace span / host wall | IQ kernel time |
+| --- | ---: | ---: | ---: | ---: |
+| 512 direct prefill | 185,078 (361.48/token) | 4,396.145 ms | 30,432.076 / 30,433.417 ms | 994.668 ms |
+| 16 one-step graph replays | 11,328 (708/token) | 8.892 ms/token | 11.461 / 11.926 ms/token | 1.747 ms/token |
+
+The exact encoded-IQ ledger is 250,478,592 bytes/token for 39 IQ3_XXS fused
+gate/up launches plus 173,801,472 bytes/token for 37 IQ4_XS weighted-down and
+two IQ4_XS selected-single launches: **424,280,064 bytes/token**. Direct
+`x_rows=512` therefore streams **217,231,392,768 bytes (202.3125 GiB)** of IQ
+weights. Back-calculated *encoded-weight-only* bandwidth is 218.4 GB/s for the
+combined prefill IQ bucket and 242.8 GB/s for decode; these are not hardware
+counter measurements and exclude activations, metadata, outputs, overfetch,
+and all non-IQ weights.
+
+The profile changes the attribution:
+
+- **Prefill is primarily a scheduling/algorithm problem, not just an IQ
+  kernel problem.** The IQ kernels already use only 78 launches (one per
+  applicable layer) and consume 22.6% of summed kernel time, but only 3.3% of
+  the profiled 30.43 s host window. Most launches come from the parity-safe
+  row scheduler around dense Q8, GDN, attention, norms, and glue. Grouped IQ
+  reuse is still required, but it cannot close the 42.6x gap to the contextual
+  qwen-kernel 829.30 tok/s row unless it also enables a parity-safe broader
+  bulk schedule or removes synchronization.
+- **Decode is not submission overhead alone.** The selected graph window has
+  8.892 ms/token of summed kernels before its 11.461 ms trace span. The
+  same-model qwen-kernel row is already 5.264 ms/token, so even eliminating
+  hipEngine's entire traced inter-kernel gap would not close the 1.918x
+  topline difference.
+- **The smaller model file is not a same-model explanation.** UD-Q3_K_M is
+  1.325x smaller than the contextual 21.107 GiB hipEngine UD-Q4_K_M file, yet
+  current Q3 decode is 6.4% slower than that Q4 row. qwen-kernel uses the same
+  Q3 file, removing file size entirely from that comparison.
+- **No gross HIP occupancy failure is visible.** Active IQ kernels allocate
+  48/72/80 VGPRs with zero scratch. IQ3's four-byte aux reconstruction lowers
+  to packed dword loads. IQ4 weighted down still has 32 indexed i8 codebook
+  loads, a dense wait schedule, route serialization, and two barriers; that is
+  a targeted task-15 source/codegen hypothesis, not evidence for a broad ACO,
+  wave64, LDS, or hand-ISA campaign.
+
+Full commands, phase-specific byte footprints, per-family timings/resources,
+raw-trace hashes, and the contextual comparisons are in
+`benchmarks/results/2026-07-19-gpu1-hipengine-qwen36-35b-a3b-ud-q3km-direct-baseline.json`.
+
 ---
 
 ## Summary

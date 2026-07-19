@@ -25,9 +25,12 @@ Outputs (per phase):
 
 Single-CSV mode produces only a ``"prefill"`` phase block. Paired mode
 produces both ``"prefill"`` and ``"decode"`` blocks (the typical 512/0 vs
-512/128 split). The decode CSV is expected to include the prefill prefix
-too (rocprofv3 traces both phases when the bench runs end-to-end); per-token
-metrics divide by ``--tokens-decode`` only.
+512/128 split). The decode CSV may be a decode-only selected-region trace or
+an end-to-end trace whose prefill prefix is removed with
+``--strip-prefill-prefix``; per-token metrics divide by ``--tokens-decode``
+only. ``--prefill-config-json`` and ``--decode-config-json`` can override
+footprints independently when a direct multi-row prefill launch rereads more
+encoded weights than a c=1 decode launch.
 """
 
 from __future__ import annotations
@@ -542,14 +545,25 @@ def build_summary(
     footprints: dict[str, int | None],
     top: int,
     prefill_dispatches_from_single: bool,
+    prefill_footprints: dict[str, int | None] | None = None,
+    decode_footprints: dict[str, int | None] | None = None,
 ) -> dict[str, Any]:
     phases: dict[str, Any] = {}
     notes: list[str] = []
+    phase_prefill_footprints = (
+        footprints if prefill_footprints is None else prefill_footprints
+    )
+    phase_decode_footprints = (
+        footprints if decode_footprints is None else decode_footprints
+    )
 
     if single_csv is not None:
         kernels = read_kernel_trace(single_csv)
         phases["prefill"] = _summarise_phase(
-            kernels, tokens=tokens_prefill, footprints=footprints, top=top
+            kernels,
+            tokens=tokens_prefill,
+            footprints=phase_prefill_footprints,
+            top=top,
         )
         inputs = {"csv": str(single_csv)}
         notes.append(
@@ -561,7 +575,10 @@ def build_summary(
         prefill_kernels = read_kernel_trace(prefill_csv)
         decode_kernels_all = read_kernel_trace(decode_csv)
         phases["prefill"] = _summarise_phase(
-            prefill_kernels, tokens=tokens_prefill, footprints=footprints, top=top
+            prefill_kernels,
+            tokens=tokens_prefill,
+            footprints=phase_prefill_footprints,
+            top=top,
         )
         prefill_dispatches_used: int
         if prefill_dispatches_from_single:
@@ -569,9 +586,10 @@ def build_summary(
         else:
             prefill_dispatches_used = 0
             notes.append(
-                "decode phase reported over the full --decode-csv (prefill prefix "
-                "not subtracted). Pass --strip-prefill-prefix to subtract the "
-                "leading prefill dispatch count from the prefill-only CSV."
+                "decode phase reported over the full --decode-csv; no prefill-prefix "
+                "subtraction was requested. This is correct for a decode-only "
+                "selected-region CSV; pass --strip-prefill-prefix for an end-to-end "
+                "CSV that includes a leading prefill window."
             )
         prefill_prefix, decode_kernels = split_prefill_decode(
             decode_kernels_all, prefill_dispatches=prefill_dispatches_used
@@ -582,7 +600,10 @@ def build_summary(
                 "decode CSV as the prefill prefix."
             )
         phases["decode"] = _summarise_phase(
-            decode_kernels, tokens=tokens_decode, footprints=footprints, top=top
+            decode_kernels,
+            tokens=tokens_decode,
+            footprints=phase_decode_footprints,
+            top=top,
         )
         inputs = {
             "prefill_csv": str(prefill_csv),
@@ -597,13 +618,25 @@ def build_summary(
         "tokens_prefill": tokens_prefill,
         "tokens_decode": tokens_decode,
         "footprints_used": footprints,
+        "phase_footprints_used": {
+            "prefill": phase_prefill_footprints,
+            "decode": None if single_csv is not None else phase_decode_footprints,
+        },
         "phases": phases,
         "notes": notes,
     }
 
 
-def _load_footprint_overrides(path: Path | None) -> dict[str, int | None]:
-    footprints = dict(_QWEN36_35B_A3B_DEFAULT_FOOTPRINTS_PER_DISPATCH)
+def _load_footprint_overrides(
+    path: Path | None,
+    *,
+    base: dict[str, int | None] | None = None,
+) -> dict[str, int | None]:
+    footprints = dict(
+        _QWEN36_35B_A3B_DEFAULT_FOOTPRINTS_PER_DISPATCH
+        if base is None
+        else base
+    )
     if path is None:
         return footprints
     raw = json.loads(path.read_text())
@@ -661,9 +694,9 @@ def main(argv: list[str] | None = None) -> int:
         "--decode-csv",
         type=Path,
         default=None,
-        help="Full prefill+decode rocprofv3 CSV (paired mode). Prefill prefix is "
-        "stripped using the dispatch count from --prefill-csv when "
-        "--strip-prefill-prefix is set.",
+        help="Decode-only selected-region or full prefill+decode rocprofv3 CSV "
+        "(paired mode). For a full trace, strip its prefill prefix using the "
+        "dispatch count from --prefill-csv with --strip-prefill-prefix.",
     )
     parser.add_argument(
         "--strip-prefill-prefix",
@@ -689,7 +722,19 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         default=None,
         help="Optional JSON config that overrides the built-in footprints "
-        "(bucket -> bytes-per-dispatch, null to mark unknown).",
+        "for every phase (bucket -> bytes-per-dispatch, null to mark unknown).",
+    )
+    parser.add_argument(
+        "--prefill-config-json",
+        type=Path,
+        default=None,
+        help="Optional prefill-only footprint overrides, applied after --config-json.",
+    )
+    parser.add_argument(
+        "--decode-config-json",
+        type=Path,
+        default=None,
+        help="Optional decode-only footprint overrides in paired mode, applied after --config-json.",
     )
     parser.add_argument(
         "--json",
@@ -717,8 +762,25 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(f"--prefill-csv {args.prefill_csv} does not exist or is not a file")
     if args.decode_csv is not None and not args.decode_csv.is_file():
         parser.error(f"--decode-csv {args.decode_csv} does not exist or is not a file")
+    for option, path in (
+        ("--config-json", args.config_json),
+        ("--prefill-config-json", args.prefill_config_json),
+        ("--decode-config-json", args.decode_config_json),
+    ):
+        if path is not None and not path.is_file():
+            parser.error(f"{option} {path} does not exist or is not a file")
+    if args.csv is not None and args.decode_config_json is not None:
+        parser.error("--decode-config-json requires paired --prefill-csv/--decode-csv mode")
 
     footprints = _load_footprint_overrides(args.config_json)
+    prefill_footprints = _load_footprint_overrides(
+        args.prefill_config_json,
+        base=footprints,
+    )
+    decode_footprints = _load_footprint_overrides(
+        args.decode_config_json,
+        base=footprints,
+    )
 
     summary = build_summary(
         prefill_csv=args.prefill_csv,
@@ -729,6 +791,8 @@ def main(argv: list[str] | None = None) -> int:
         footprints=footprints,
         top=args.top,
         prefill_dispatches_from_single=args.strip_prefill_prefix,
+        prefill_footprints=prefill_footprints,
+        decode_footprints=decode_footprints,
     )
 
     if args.json is not None:

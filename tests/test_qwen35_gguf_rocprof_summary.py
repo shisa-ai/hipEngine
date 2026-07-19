@@ -403,6 +403,59 @@ def test_paired_mode_strips_prefill_prefix(tmp_path: Path) -> None:
     assert decode["ms_per_token"] == pytest.approx(6.0 / 128, abs=1e-6)
 
 
+def test_paired_mode_applies_phase_specific_footprints(tmp_path: Path) -> None:
+    prefill_csv = tmp_path / "prefill.csv"
+    decode_csv = tmp_path / "decode.csv"
+    kernel = "gguf_iq3_xxs_selected_dual_silu_gemv_kernel"
+    row = {
+        "Kernel_Name": kernel,
+        "Start_Timestamp": 0,
+        "End_Timestamp": 1_000_000,
+    }
+    _write_csv(prefill_csv, [row])
+    _write_csv(decode_csv, [row])
+    prefill_config = tmp_path / "prefill-config.json"
+    decode_config = tmp_path / "decode-config.json"
+    prefill_config.write_text(
+        json.dumps({"moe_iq3_xxs_selected_dual_silu": 512_000_000})
+    )
+    decode_config.write_text(
+        json.dumps({"moe_iq3_xxs_selected_dual_silu": 1_000_000})
+    )
+    out_path = tmp_path / "out.json"
+
+    rc = SCRIPT.main(
+        [
+            "--prefill-csv",
+            str(prefill_csv),
+            "--decode-csv",
+            str(decode_csv),
+            "--prefill-config-json",
+            str(prefill_config),
+            "--decode-config-json",
+            str(decode_config),
+            "--json",
+            str(out_path),
+            "--quiet",
+        ]
+    )
+
+    assert rc == 0
+    summary = json.loads(out_path.read_text())
+    prefill_bucket = summary["phases"]["prefill"]["buckets"][0]
+    decode_bucket = summary["phases"]["decode"]["buckets"][0]
+    assert prefill_bucket["footprint_bytes_per_dispatch"] == 512_000_000
+    assert prefill_bucket["effective_gb_s"] == pytest.approx(512.0)
+    assert decode_bucket["footprint_bytes_per_dispatch"] == 1_000_000
+    assert decode_bucket["effective_gb_s"] == pytest.approx(1.0)
+    assert summary["phase_footprints_used"]["prefill"][
+        "moe_iq3_xxs_selected_dual_silu"
+    ] == 512_000_000
+    assert summary["phase_footprints_used"]["decode"][
+        "moe_iq3_xxs_selected_dual_silu"
+    ] == 1_000_000
+
+
 def test_paired_mode_without_strip_keeps_prefix(tmp_path: Path) -> None:
     prefill_csv = tmp_path / "prefill.csv"
     paired_csv = tmp_path / "paired.csv"
@@ -432,7 +485,8 @@ def test_paired_mode_without_strip_keeps_prefix(tmp_path: Path) -> None:
     # Without the strip flag, the decode phase reports the full CSV.
     assert decode["total_dispatches"] == 2
     assert any(
-        "prefill prefix not subtracted" in note for note in summary["notes"]
+        "no prefill-prefix subtraction was requested" in note
+        for note in summary["notes"]
     )
 
 

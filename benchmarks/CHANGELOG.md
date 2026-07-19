@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-19
+
+- [diagnostic baseline] Qwen3.6-35B-A3B GGUF / gguf_ud_q3_k_m / GPU1 512/128 direct path: no accepted baseline -> `19.452/99.015 tok/s` at `15.805 GiB` tracked peak with exact eager/graph `[11,11,264]`; selected profiles show `185,078` prefill launches, `708` dispatches/decode token, `424,280,064` encoded IQ bytes/token, and zero IQ scratch, so retain as the grouped-prefill/rowtile control rather than a speed promotion; `benchmarks/results/2026-07-19-gpu1-hipengine-qwen36-35b-a3b-ud-q3km-direct-baseline.json`.
+
 ## 2026-06-24
 
 - [matched diagnostic] Qwen3.6-35B-A3B GGUF / gguf_q4_k_m / W7900 pure INT8 KV vs llama.cpp Q8 KV: same generated corpus/model/GPU shows llama.cpp ROCm `q8_0` K+V fails hipEngine-like rows at `128` (`KL=0.09076`, same-top `0.984`), `512` (`0.9097`, `0.839`), and `4K` (`1.4249`, `0.846`); hipEngine pure per-token/head FP32 INT8 is mixed at `128/1` (`KL=0.2265`, top-1 `1.0`) and `512/1` (`0.02564`, top-1 `0.5`) but passes `4K/1` (`0.00126`, top-1 `1.0`) and `4K/16` (`0.00781`, top-1 `0.941`) with no BF16 mirrors/all 10 full-attention layers INT8; keep diagnostic as long-context relaxed candidate, not user-facing yet; `benchmarks/results/2026-06-24-w7900-gguf-q4km-matched-int8kv-quality-sweep.json`.
