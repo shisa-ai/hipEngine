@@ -30,7 +30,9 @@ from hipengine.speculative.native_cycle_graph import (
     NativeSpecProviderTargetGraphLauncher,
     NativeSpecTargetGraphLauncher,
     build_native_spec_cycle_graph_launcher,
+    create_native_spec_proposal_graph_launcher,
     create_native_spec_provider_target_graph_launcher,
+    create_native_spec_target_graph_launcher,
     plan_native_spec_cycle_graph_launcher_build,
     register_native_spec_provider_target_graph,
 )
@@ -260,6 +262,40 @@ def test_native_target_graph_build_plan_is_host_only_and_versioned(tmp_path: Pat
     assert "hipengine_native_spec_target_graph_launch_v1" in source
     assert "hipengine_native_spec_proposal_graph_launch_v1" in source
     assert "__global__" not in source
+
+
+def test_gguf_native_target_graph_has_dedicated_gfx11_backend_registrations() -> None:
+    for backend in ("hip_gfx1100", "hip_gfx1151"):
+        assert (
+            resolve(
+                backend=backend,
+                layer="speculative_cycle",
+                quant="w4_gguf",
+                variant="native_v1_b2_target_graph",
+                missing="none",
+            )
+            is create_native_spec_target_graph_launcher
+        )
+
+    assert (
+        resolve(
+            backend="hip_gfx1151",
+            layer="speculative_cycle",
+            quant="w4_gguf",
+            variant="native_v1_b2_proposal_graph",
+            missing="none",
+        )
+        is None
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="speculative_cycle",
+            quant="w4_gguf",
+            variant="native_v1_b2_proposal_graph",
+        )
+        is create_native_spec_proposal_graph_launcher
+    )
 
 
 def test_native_target_graph_launcher_calls_one_pre_resolved_submission_boundary() -> None:

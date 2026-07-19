@@ -40,6 +40,7 @@ _ABI_HEADER = Path(__file__).with_name("native_cycle_abi.h")
 _OUTPUT_NAME = "native_spec_cycle_graph.so"
 _TARGET_SYMBOL = "hipengine_native_spec_target_graph_launch_v1"
 _PROPOSAL_SYMBOL = "hipengine_native_spec_proposal_graph_launch_v1"
+_GGUF_TARGET_GRAPH_BACKENDS = ("hip_gfx1100", "hip_gfx1151")
 
 
 def _abi_header_cache_flag() -> str:
@@ -258,7 +259,7 @@ def create_native_spec_proposal_graph_launcher(
     target_arch: str | None = None,
     require_cached: bool = False,
 ) -> NativeSpecProposalGraphLauncher:
-    """Registry factory for a gfx1100 GGUF B1/B2 NextN proposal graph."""
+    """Registry factory for a gfx11 GGUF B1/B2 NextN proposal graph."""
 
     runtime = runtime or get_hip_runtime()
     return NativeSpecProposalGraphLauncher(
@@ -314,7 +315,7 @@ def create_native_spec_target_graph_launcher(
     target_arch: str | None = None,
     require_cached: bool = False,
 ) -> NativeSpecTargetGraphLauncher:
-    """Registry factory for the gfx1100 GGUF fixed-B2 target graph route."""
+    """Registry factory for the gfx11 GGUF fixed-B2 target graph route."""
 
     return NativeSpecTargetGraphLauncher.from_hip_graph(
         graph_exec=graph_exec,
@@ -479,26 +480,33 @@ def _function_address(fn) -> int:
     return int(value)
 
 
-register(
-    KernelKey(
-        "hip_gfx1100",
-        "speculative_cycle",
-        "w4_gguf",
-        "native_v1_b2_target_graph",
-    ),
-    create_native_spec_target_graph_launcher,
-    replace=True,
-)
-register(
-    KernelKey(
-        "hip_gfx1100",
-        "speculative_cycle",
-        "w4_gguf",
-        "native_v1_b2_proposal_graph",
-    ),
-    create_native_spec_proposal_graph_launcher,
-    replace=True,
-)
+def register_native_spec_gguf_graphs(*, replace: bool = True) -> None:
+    """Register backend-neutral GGUF graph launchers for admitted gfx11 peers."""
+
+    for backend in _GGUF_TARGET_GRAPH_BACKENDS:
+        register(
+            KernelKey(
+                backend,
+                "speculative_cycle",
+                "w4_gguf",
+                "native_v1_b2_target_graph",
+            ),
+            create_native_spec_target_graph_launcher,
+            replace=replace,
+        )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "speculative_cycle",
+            "w4_gguf",
+            "native_v1_b2_proposal_graph",
+        ),
+        create_native_spec_proposal_graph_launcher,
+        replace=replace,
+    )
+
+
+register_native_spec_gguf_graphs()
 
 
 def register_native_spec_provider_target_graph(*, replace: bool = True) -> None:
@@ -530,5 +538,6 @@ __all__ = [
     "create_native_spec_provider_target_graph_launcher",
     "create_native_spec_target_graph_launcher",
     "plan_native_spec_cycle_graph_launcher_build",
+    "register_native_spec_gguf_graphs",
     "register_native_spec_provider_target_graph",
 ]
