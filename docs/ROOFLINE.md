@@ -1721,6 +1721,43 @@ W7900 throughput remains unverified.
 Evidence:
 `benchmarks/results/2026-07-20-gpu1-q3-moe-tail-next-rms-retained.json`.
 
+### 12.12 Routed/shared stream overlap: two queues, zero concurrent kernels
+
+The stabilized Q3 decode graph leaves a real algorithmic fork: 39 IQ3 selected
+branches and their shared experts read the same normalized activation, write
+disjoint scratch, and join only at the MoE tail. Their shared gate/up, SiLU,
+and down kernels account for roughly `0.51 ms/token` in the serial graph trace,
+so the perfect-overlap bound was large enough to test rather than dismiss by
+Amdahl analysis.
+
+The required eager probe used a reusable nonblocking auxiliary HIP stream and
+explicit event fork/join. Rocprof assigned `1,872` shared dispatches (`624`
+branches over decode16) to queue 2 and kept `8,897` dispatches on queue 1, but
+found **zero** overlapping cross-queue kernel intervals (`0 ns`, `0/624`
+branches). The queues only interleaved work across Python/ctypes submission
+gaps. Matched selected-region results therefore moved in the wrong direction:
+
+| GPU1 512/16 eager decode | Serial | Two-stream | Delta |
+| --- | ---: | ---: | ---: |
+| Dispatches | 10,769 | 10,769 | 0 |
+| Summed kernels | 250.552 ms | 251.991 ms | +0.57% |
+| Trace span | 1,771.216 ms | 1,815.139 ms | **+2.48%** |
+| Wall | 110.790 ms/token | 113.538 ms/token | **+2.48%** |
+| Throughput | 9.0261 tok/s | 8.8077 tok/s | **-2.42%** |
+
+The generated sequence, final logit, and memory were identical; an independent
+eager-overlap versus serial-graph smoke remained exact `[11,11,264]`, KL `0`.
+This is a **decode rejection**, not a prefill result: the candidate was eager
+`c=1` only and never entered row-bulk prefill. The profiler-visible-overlap stop
+gate fired before graph-DAG integration, repeated 512/128 or 4K/128 runs, and
+Q4/PARO transfer. All experimental runtime/event/flag code was removed. Reopen
+only for a device-side or C submission design that first shows concurrent real
+kernel timestamps; distinct stream labels are insufficient. GPU0/W7900 was not
+used.
+
+Evidence:
+`benchmarks/results/2026-07-20-gpu1-q3-moe-branch-overlap-rejected.json`.
+
 ---
 
 ## Summary

@@ -1,6 +1,6 @@
 # hipEngine Benchmark Rollup
 
-Last updated: 2026-07-20 (GPU1 UD-Q3_K_M aggregate MoE-tail + next-RMS decode fusion retained at +1.02% for 512/128 and +0.95% for 4K/128, exact and zero-scratch.)
+Last updated: 2026-07-20 (GPU1 UD-Q3_K_M routed/shared eager overlap rejected: 0/624 branches had concurrent kernel timestamps and 512/16 decode regressed 2.42%; current 101.216 tok/s graph row is unchanged.)
 
 Human-readable scoreboard for hipEngine performance. Machine-readable benchmark
 attempts live under [`benchmarks/results/`](results/); this file tracks the
