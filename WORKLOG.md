@@ -167290,3 +167290,73 @@ llama-compat B2 tok/s (1.2144x AR)** with unchanged **77.72% draft acceptance /
 checkout contains 255 unrelated untracked paths. Next is a committed-clean full
 category+heldout `llama-compat-native-cycle` run; proposal-graph admission stays
 blocked until an independent N3P gate.
+
+## 2026-07-19 — Retain the gfx1151 N1/N3 transfer
+
+Created detached clean worktree
+`/tmp/hipengine-native-gfx1151-1163e1bb-clean` at the committed target admission
+`1163e1bb`. All three full category+heldout runs use the exact UD-Q4_K_M model,
+BF16 KV, greedy/reasoning-off, B2, 24 visible outputs/prompt, one AR warmup,
+cycle-stage timing, cached builds, `amd_iommu=off`, TuneD
+`accelerator-performance`, and the automatic one-HIP-hardware-queue policy:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-gfx1151-native-cycle-hipcc-version.txt \
+PYTHONPATH=. python3 scripts/gguf_ar_mtp_suite.py --scope full \
+  --mtp-route <control|llama-compat-native-cycle|llama-compat-native-cycle-n3> \
+  --budgets 2 --cycles 24 --max-output-tokens 24 \
+  --record-cycle-stage-timings --require-cached-build --output /tmp/<route>.json
+```
+
+The clean direct-commit control is **70.019635 tok/s / 14.314042 ms-output**
+against **56.236407 true AR (1.2451x)**. Reusable target-only N1 is
+**80.131951 / 12.512462 / 1.4441x**: **+14.44% rate / -12.59% wall**, with
+target verify **11.764735 -> 9.906714 ms/output (-15.79%)**. Public complete-
+cycle N3 is **80.098521 / 12.550954 / 1.4282x**, retaining all but **0.042%**
+of N1 and improving the control **+14.39% rate / -12.32% wall**.
+
+All **240 output IDs / 97 cycle semantics** match across control, N1, and N3.
+Acceptance remains **143 accepted drafts, 77.72% draft acceptance, 59.58%
+accepted/output**. N3 train/heldout improve **+11.37%/+18.83%** versus control;
+category improvements are code **+9.91%**, general English **+19.45%**,
+general Japanese **+12.65%**, and mixed JA/EN **+19.20%**. Every split/category
+also beats its own true AR denominator. The prior `2edbb2ee` absolute
+**81.900 tok/s** is 2.20% above current N3 but comes from a different source
+revision/run, so no regression cause is attributed.
+
+Cached profiler command:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 \
+HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 PYTHONPATH=. \
+python3 scripts/gguf_mtp_verifier_rocprof.py --mode block-verify --block-rows 3 \
+  --native-spec-target-cycle --direct-state-commit --verify-dp4a \
+  --selected-down-x8-repack q6 --verify-dense-q8-dp4a-all \
+  --verify-dense-q8-dp4a-f32 --record-stage-timings --steps 6 --warmup 2 \
+  --max-seq 512 --require-cached \
+  --compiler-version-file /tmp/hipengine-gfx1151-native-cycle-hipcc-version.txt \
+  --raw-root /tmp/gfx1151-native-cycle-n1-rocprof-1163e1bb \
+  --out /tmp/gfx1151-native-cycle-n1-rocprof-1163e1bb/summary.json
+```
+
+The six measured B2 steps have **24.891 ms host / 21.674 ms kernels / 3.218 ms
+residual**, **87.1%** kernel share, 940 calls/step, and zero recaptures. The
+expected `copy_i32_to_i64_kernel` appears 12 times at **1.002-1.323 us**, 8
+VGPR, 128 SGPR, zero scratch/LDS. This independently proves the gfx1151 graph
+ran and that remaining verifier work is kernel-dominated.
+
+Published compact evidence at
+`benchmarks/results/2026-07-19-gfx1151-llama-compat-native-cycle-transfer.json`
+and updated the benchmark rollup/changelog plus NativeSpecCycle, plan, kernel,
+and refactor status. The artifact's eight raw/profiler hashes and every primary
+metric cross-check against the source packets. Final publication validation is
+**40 passed** across benchmark synchronization, NativeSpecCycle ABI/graph/GGUF
+host tests, and gfx1151 alias isolation (excluding only the already-passed real-
+model node); README synchronization, JSON parsing, `py_compile`, WORKLOG
+conflict checks, and `git diff --check` also pass. Ruff is not installed in the
+current environment, so no Ruff result is claimed.
+
+N3P remains deliberately unregistered on gfx1151: it was not the gfx1100
+performance topline and is not needed for this exact N3 win. Exact/default MTP
+remains unchanged.

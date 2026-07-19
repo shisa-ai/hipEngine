@@ -428,47 +428,53 @@ and [`llama.cpp floor`](results/2026-07-19-w7900-llamacpp-mtp-natural25-refresh.
 
 | Metric | hipEngine GGUF exact/default | hipEngine GGUF `llama-compat` | llama.cpp HIP |
 | --- | ---: | ---: | ---: |
-| Route | B5, fixed 10 cycles | B2, natural24/cyclecap24 | B2, natural25 request / 24 timed transitions |
-| Canonical/native MTP decode | 56.39 tok/s (0.9895x own AR) | **81.90 tok/s (1.4423x own AR)** | 70.99 tok/s native (1.3530x own AR; not cross-engine comparable) |
-| Cross-engine MTP decode-transition rate | n/a: fixed-cycle horizon | **81.75 tok/s** | 68.15 tok/s |
-| Cross-engine own AR transition rate | n/a: fixed-cycle horizon | **56.78 tok/s** | 50.37 tok/s |
-| Cross-engine MTP / own AR | n/a | 1.4396x | 1.3530x |
+| Route | B5, fixed 10 cycles | B2 natural24, NativeSpecCycle N3 | B2, natural25 request / 24 timed transitions |
+| Canonical/native MTP decode | 56.39 tok/s (0.9895x own AR) | **80.10 tok/s (1.4282x own AR)** | 70.99 tok/s native (1.3530x own AR; not cross-engine comparable) |
+| Cross-engine MTP decode-transition rate | n/a: fixed-cycle horizon | **80.10 tok/s** | 68.15 tok/s |
+| Cross-engine own AR transition rate | n/a: fixed-cycle horizon | **56.09 tok/s** | 50.37 tok/s |
+| Cross-engine MTP / own AR | n/a | 1.4282x | 1.3530x |
 | Draft acceptance | 72.33% | 77.72% | 79.56% |
 | Accepted draft/output | 53.49% | 59.58% | 57.60% |
-| Full-cycle/predicted wall per counted output or timed transition | 17.808 ms/output | 12.233 ms/output | 14.673 ms/transition |
-| State/commit contract | exact/default, serial-prefix preserving | direct partial commit/dp4a; accuracy-traded | native llama.cpp compatibility target |
+| Full-cycle/predicted wall per counted output or timed transition | 17.808 ms/output | 12.551 ms/output | 14.673 ms/transition |
+| State/commit contract | exact/default, serial-prefix preserving | N3 complete public cycle; accuracy-traded | native llama.cpp compatibility target |
 
-The IOMMU-off exact/default B5 route improves **51.81 -> 56.39 tok/s** but
-still narrowly trails true AR at **56.98 tok/s (0.9895x)**. Its train split is
-1.0161x AR, while heldout is only 0.9339x, so the aggregate negative remains
-the retained semantic-control result. `llama-compat` stays a separate,
-explicit-only contract and is not serial-prefix-equivalent.
+The IOMMU-off exact/default B5 route remains the current semantic control at
+**56.39 vs 56.98 true-AR tok/s (0.9895x)**. `llama-compat` is separate,
+explicit-only, and not serial-prefix-equivalent. On current main, registering
+the reusable gfx1151 target graph moves the clean direct-commit control
+**70.020 -> 80.132 tok/s (+14.44%)**; N3 public complete-cycle ownership retains
+**80.099 tok/s (+14.39%)** and cuts complete wall **14.314 -> 12.551 ms/output
+(-12.32%)**. N3 is only **0.042%** below target-only N1.
 
-The cross-engine rows use the transition-matched timing contract: hipEngine
-uses complete cycle wall; llama.cpp requests 25 outputs and counts the 24
-transitions inside `predicted_ms`. hipEngine is **81.75 vs 68.15 tok/s
-(+19.94%)** on that boundary. hipEngine uses BF16 KV while llama.cpp uses F16
-KV. The llama.cpp server binary is byte-identical to the prior publication, but
-its source checkout remains dirty/preserved and `performance_claim=false`.
-As with the model sweep, hipEngine's prior IOMMU-on comparison is directional
-because the measured revision changed; this is not a same-commit reboot A/B.
+All **240 output IDs / 97 cycle semantics** match across clean control, N1, and
+N3, with unchanged **77.72% draft acceptance / 59.58% accepted-output**. The
+prior clean `2edbb2ee` direct-commit row remains slightly higher at **81.90
+tok/s** (-2.20% versus current N3), but it is a different revision/run and no
+source regression is attributed. Against the preserved transition-normalized
+llama.cpp context, current N3 is **80.10 vs 68.15 tok/s (+17.53%)**; BF16 versus
+F16 KV and the dirty preserved llama.cpp source remain disclosed.
 
-##### gfx1151 `llama-compat` full-suite gate
+##### gfx1151 NativeSpecCycle N3 `llama-compat` full-suite gate
 
-| Scope | Prompts | True AR tok/s | `llama-compat` tok/s | MTP / AR | Draft acceptance | Accepted/output | Cycle wall/output |
+| Scope | Prompts | True AR tok/s | N3 tok/s | N3 / AR | Draft acceptance | Accepted/output | Cycle wall/output |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Full | 10 | 56.78 | **81.90** | **1.4423x** | 77.72% | 59.58% | 12.233 ms |
-| Train | 6 | 57.21 | **82.99** | **1.4504x** | **82.08%** | 60.42% | 12.073 ms |
-| Heldout | 4 | 56.15 | **80.32** | **1.4306x** | **71.79%** | 58.33% | 12.474 ms |
-| `code` | 4 | 56.66 | **89.13** | **1.5731x** | 91.04% | 63.54% | 11.239 ms |
-| `general_en` | 2 | 57.66 | **78.44** | **1.3605x** | 71.79% | 58.33% | 12.771 ms |
-| `general_ja` | 2 | 56.79 | **79.32** | **1.3968x** | 69.23% | 56.25% | 12.629 ms |
-| `mixed_ja_en` | 2 | 56.17 | **75.43** | **1.3430x** | 69.23% | 56.25% | 13.287 ms |
+| Full | 10 | 56.09 | **80.10** | **1.4282x** | 77.72% | 59.58% | 12.551 ms |
+| Train | 6 | 55.97 | **80.91** | **1.4457x** | **82.08%** | 60.42% | 12.429 ms |
+| Heldout | 4 | 56.26 | **78.91** | **1.4025x** | **71.79%** | 58.33% | 12.733 ms |
+| `code` | 4 | 56.12 | **86.08** | **1.5338x** | 91.04% | 63.54% | 11.684 ms |
+| `general_en` | 2 | 57.26 | **78.98** | **1.3795x** | 71.79% | 58.33% | 12.716 ms |
+| `general_ja` | 2 | 55.61 | **75.12** | **1.3509x** | 69.23% | 56.25% | 13.388 ms |
+| `mixed_ja_en` | 2 | 55.35 | **75.66** | **1.3669x** | 69.23% | 56.25% | 13.282 ms |
 
-All four categories and the heldout split beat their true same-protocol AR
-controls. Train/heldout draft acceptance remains **82.08% / 71.79%**; the gap
-is kept visible rather than averaged away. The repeated-stream teacher-forced
-oracle also passes byte-exact hidden, Conv/GDN, live-KV, and token state.
+Every category and the heldout split beats its true same-protocol AR control and
+improves versus the clean current-main direct-commit route by **9.91% to
+19.45%**. The real 35B N1/N2 oracle passes target IDs, FP32 hidden rows, all 60
+Conv/GDN and 20 full-KV buffers, selected commits, and cursors. The six-step
+cached trace records zero recaptures, **24.891 ms host / 21.674 ms kernels /
+3.218 ms residual**, 940 calls/step, and the expected zero-scratch metadata
+leaf. N3P remains unregistered on gfx1151 because it is not needed for this win
+and was not the gfx1100 topline. Artifact:
+[`gfx1151 NativeSpecCycle transfer`](results/2026-07-19-gfx1151-llama-compat-native-cycle-transfer.json).
 
 #### Dense PARO DFlash
 

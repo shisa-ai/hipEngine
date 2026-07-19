@@ -131,64 +131,70 @@ def test_gfx1151_model_topline_is_accepted_and_published_from_artifact() -> None
 
 def test_gfx1100_mtp_topline_publishes_graph_ar_correction() -> None:
     repo_root = Path(__file__).resolve().parents[1]
-    artifact = json.loads(
-        (
-            repo_root
-            / "benchmarks/results/2026-07-12-w7900-gfx1100-gguf-graph-ar-refresh.json"
-        ).read_text(encoding="utf-8")
+    results = repo_root / "benchmarks/results"
+    exact_artifact = json.loads(
+        (results / "2026-07-12-w7900-gfx1100-gguf-graph-ar-refresh.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    native = json.loads(
+        (results / "2026-07-19-w7900-llama-compat-reusable-native-cycle.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    llamacpp = json.loads(
+        (results / "2026-07-19-w7900-llamacpp-mtp-natural25-refresh.json").read_text(
+            encoding="utf-8"
+        )
     )
     canonical = (repo_root / "benchmarks/README.md").read_text(encoding="utf-8")
     root_readme = (repo_root / "README.md").read_text(encoding="utf-8")
 
-    assert artifact["status"] == "accepted"
-    assert artifact["performance_claim"] is True
-    assert artifact["correctness_claim"] is True
-    assert artifact["hardware"]["target_arch"] == "gfx1100"
-    assert artifact["hardware"]["device"] == "AMD Radeon Pro W7900"
-    gate = artifact["graph_correctness_and_break_even"]
-    assert gate["checked_transitions"] == 24
-    assert gate["hidden_gdn_kv_token_exact"] is True
-    assert gate["minimum_admitted_transitions"] == 24
-
-    natural = artifact["matched_natural24"]
-    graph = natural["state_bound_graph"]
-    llamacpp = natural["llamacpp_base"]
-    exact = artifact["mtp_reclassification"]["exact_default_fixed_10_cycles"]
-    compat = artifact["mtp_reclassification"]["llama_compat_natural24"]
-    assert natural["all_graph_outputs_match_prior_eager_preview_and_tail"] is True
-    assert graph["tok_s"] > llamacpp["transition_normalized_tok_s"]
-    assert exact["apple_to_apple_ok"] is True
-    assert compat["apple_to_apple_ok"] is True
-    assert exact["mtp_vs_ar"] < 1.0
-    assert compat["mtp_vs_ar"] < 1.0
+    assert exact_artifact["status"] == "accepted"
+    assert native["status"] == "retained"
+    assert native["speed_claim_eligible"] is True
+    assert native["correctness"]["full_suite_semantic_oracle"]["exact_output_ids"] is True
     assert llamacpp["performance_claim"] is False
 
+    exact = exact_artifact["mtp_reclassification"]["exact_default_fixed_10_cycles"]
+    compat = native["results"]["conservative_r2"]
+    llama_results = llamacpp["results"]
     expected_main_rows = [
         (
             f"| Decode | **{exact['true_ar_tok_s']:.2f} tok/s fixed / "
-            f"{graph['tok_s']:.2f} tok/s natural24** | "
+            f"{compat['full']['true_ar_tok_s']:.2f} tok/s natural24** | "
             f"{exact['mtp_tok_s']:.2f} tok/s | "
-            f"{compat['mtp_tok_s']:.2f} tok/s | "
-            f"{llamacpp['transition_normalized_tok_s']:.2f} tok/s transition-normalized |"
+            f"**{compat['full']['mtp_tok_s']:.2f} tok/s** | "
+            f"{llama_results['base']['transition_normalized_tok_s']:.2f} tok/s "
+            f"transition-normalized | "
+            f"{llama_results['mtp']['transition_normalized_tok_s']:.2f} tok/s "
+            f"transition-normalized |"
         ),
         (
             f"| MTP / own AR | 1.0000x | **{exact['mtp_vs_ar']:.4f}x** | "
-            f"**{compat['mtp_vs_ar']:.4f}x** | n/a |"
+            f"**{compat['full']['mtp_vs_true_ar']:.4f}x** | n/a | "
+            f"**{llama_results['transition_speedup']:.4f}x** |"
         ),
     ]
     expected_split_rows = [
         (
-            f"| Train | 6 | **{compat['splits']['train']['ar_tok_s']:.2f}** | "
-            f"{compat['splits']['train']['mtp_tok_s']:.2f} | "
-            f"**{compat['splits']['train']['ratio']:.4f}x** | "
-            f"**{100 * compat['splits']['train']['draft_acceptance']:.2f}%**"
-        ),
-        (
-            f"| Heldout | 4 | **{compat['splits']['heldout']['ar_tok_s']:.2f}** | "
-            f"{compat['splits']['heldout']['mtp_tok_s']:.2f} | "
-            f"**{compat['splits']['heldout']['ratio']:.4f}x** | "
-            f"**{100 * compat['splits']['heldout']['draft_acceptance']:.2f}%**"
-        ),
+            f"| {label} | {row['prompts']} | {row['true_ar_tok_s']:.2f} | "
+            f"**{row['mtp_tok_s']:.2f}** | **{row['mtp_vs_true_ar']:.4f}x** | "
+            f"{'**' if label in {'Train', 'Heldout'} else ''}"
+            f"{100 * row['draft_acceptance']:.2f}%"
+            f"{'**' if label in {'Train', 'Heldout'} else ''} | "
+            f"{100 * row['accepted_per_output']:.2f}% | "
+            f"{row['cycle_wall_ms_per_output']:.3f} ms |"
+        )
+        for label, row in {
+            "Full": compat["full"],
+            "Train": compat["train"],
+            "Heldout": compat["heldout"],
+            "`code`": compat["categories"]["code"],
+            "`general_en`": compat["categories"]["general_en"],
+            "`general_ja`": compat["categories"]["general_ja"],
+            "`mixed_ja_en`": compat["categories"]["mixed_ja_en"],
+        }.items()
     ]
     header = (
         "| Metric | hipEngine GGUF true AR | hipEngine GGUF exact/default | "
@@ -197,8 +203,8 @@ def test_gfx1100_mtp_topline_publishes_graph_ar_correction() -> None:
     for readme in (canonical, root_readme):
         assert "#### GGUF MTP comparison, Radeon Pro W7900/gfx1100" in readme
         assert header in readme
-        assert "##### W7900 `llama-compat` full-suite gate against graph AR" in readme
-        assert "hipEngine is **93.30 versus 78.29 tok/s (+19.19%)**" in readme
+        assert "##### W7900 reusable-native `llama-compat` full-suite gate" in readme
+        assert "**6.26% faster** than llama.cpp" in readme
         for expected in expected_main_rows:
             assert expected in readme
         for expected in expected_split_rows:
@@ -208,74 +214,74 @@ def test_gfx1100_mtp_topline_publishes_graph_ar_correction() -> None:
 def test_gfx1151_mtp_topline_separates_exact_compat_and_llamacpp() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     results = repo_root / "benchmarks/results"
-    artifact_path = results / "2026-07-17-gfx1151-amd-iommu-off-mtp-refresh.json"
-    artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+    prior_path = results / "2026-07-17-gfx1151-amd-iommu-off-mtp-refresh.json"
+    transfer_path = results / "2026-07-19-gfx1151-llama-compat-native-cycle-transfer.json"
+    prior = json.loads(prior_path.read_text(encoding="utf-8"))
+    transfer = json.loads(transfer_path.read_text(encoding="utf-8"))
     canonical = (repo_root / "benchmarks/README.md").read_text(encoding="utf-8")
     root_readme = (repo_root / "README.md").read_text(encoding="utf-8")
 
-    assert artifact["status"] == (
-        "accepted_compat_with_exact_negative_and_external_diagnostic"
-    )
-    assert artifact["performance_claim"] is True
-    assert artifact["correctness_claim"] is True
-    assert artifact["correctness"]["status"] == "passed"
-    assert artifact["correctness"]["teacher_forced_all_steps_passed"] is True
-    assert artifact["correctness"]["production_exact_external_match"] is True
-    exact = artifact["hipengine_exact_default"]
-    compat = artifact["hipengine_llama_compat"]
-    llamacpp = artifact["llamacpp_hip"]
-    cross_engine = artifact["cross_engine_comparison"]
-    assert exact["apple_to_apple_ok"] is True
-    assert exact["mtp_beats_ar"] is False
-    assert exact["splits"]["full"]["vs_true_ar"] < 1.0
-    assert exact["splits"]["train"]["vs_true_ar"] > 1.0
-    assert exact["splits"]["heldout"]["vs_true_ar"] < 1.0
-    assert compat["apple_to_apple_ok"] is True
-    assert compat["heldout"]["vs_true_ar"] > 1.0
-    assert all(row["vs_true_ar"] > 1.0 for row in compat["categories"].values())
-    assert llamacpp["status"] == "diagnostic_retained"
-    assert llamacpp["performance_claim"] is False
-    assert cross_engine["timed_decode_transitions_per_prompt"] == 24
-    assert cross_engine["hipengine_mtp_vs_llamacpp"] > 1.0
+    assert prior["status"] == "accepted_compat_with_exact_negative_and_external_diagnostic"
+    assert prior["correctness"]["teacher_forced_all_steps_passed"] is True
+    assert prior["correctness"]["production_exact_external_match"] is True
+    assert transfer["status"] == "retained"
+    assert transfer["performance_claim"] is True
+    assert transfer["correctness_claim"] is True
+    assert transfer["correctness"]["full_suite"]["output_ids_compared"] == 240
+    assert transfer["correctness"]["full_suite"]["cycles_compared"] == 97
+    assert transfer["correctness"]["full_suite"]["cycle_semantics_exact"] is True
 
+    exact = prior["hipengine_exact_default"]
+    llamacpp = prior["llamacpp_hip"]
     exact_b5 = exact["budgets"]["b5"]
-    full = compat["full"]
+    n3 = transfer["results"]["n3_complete_cycle"]
+    full = transfer["n3_splits"]["full"]
     llama_native = llamacpp["native_reported"]
     llama_transition = llamacpp["transition_normalized"]
+    assert exact["mtp_beats_ar"] is False
+    assert full["mtp_vs_true_ar"] > 1.0
+    assert transfer["n3_splits"]["heldout"]["mtp_vs_true_ar"] > 1.0
+    assert all(
+        row["mtp_vs_true_ar"] > 1.0
+        for row in transfer["n3_splits"]["categories"].values()
+    )
+    assert llamacpp["performance_claim"] is False
+
     expected_rows = [
         (
             f"| Canonical/native MTP decode | "
             f"{exact_b5['decode_tok_s_weighted']:.2f} tok/s "
             f"({exact_b5['vs_ar_ratio']:.4f}x own AR) | "
-            f"**{full['decode_tok_s']:.2f} tok/s "
-            f"({full['vs_true_ar']:.4f}x own AR)** | "
+            f"**{n3['mtp_tok_s']:.2f} tok/s "
+            f"({n3['mtp_vs_true_ar']:.4f}x own AR)** | "
             f"{llama_native['mtp_decode_tok_s']:.2f} tok/s native "
             f"({llama_native['mtp_vs_base']:.4f}x own AR; not cross-engine comparable) |"
         ),
         (
             f"| Cross-engine MTP decode-transition rate | n/a: fixed-cycle horizon | "
-            f"**{cross_engine['hipengine_llama_compat_mtp_complete_cycle_tok_s']:.2f} "
-            f"tok/s** | {llama_transition['mtp_decode_tok_s']:.2f} tok/s |"
+            f"**{n3['mtp_tok_s']:.2f} tok/s** | "
+            f"{llama_transition['mtp_decode_tok_s']:.2f} tok/s |"
         ),
         (
             f"| Cross-engine own AR transition rate | n/a: fixed-cycle horizon | "
-            f"**{cross_engine['hipengine_llama_compat_ar_tok_s']:.2f} tok/s** | "
+            f"**{n3['true_ar_tok_s']:.2f} tok/s** | "
             f"{llama_transition['base_decode_tok_s']:.2f} tok/s |"
         ),
     ]
     split_rows = {
-        "Full": compat["full"],
-        "Train": compat["train"],
-        "Heldout": compat["heldout"],
-        "`code`": compat["categories"]["code"],
-        "`general_en`": compat["categories"]["general_en"],
-        "`general_ja`": compat["categories"]["general_ja"],
-        "`mixed_ja_en`": compat["categories"]["mixed_ja_en"],
+        "Full": full,
+        "Train": transfer["n3_splits"]["train"],
+        "Heldout": transfer["n3_splits"]["heldout"],
+        "`code`": transfer["n3_splits"]["categories"]["code"],
+        "`general_en`": transfer["n3_splits"]["categories"]["general_en"],
+        "`general_ja`": transfer["n3_splits"]["categories"]["general_ja"],
+        "`mixed_ja_en`": transfer["n3_splits"]["categories"]["mixed_ja_en"],
     }
     expected_split_rows = [
         (
-            f"| {label} | {row['prompts']} | {row['true_ar_decode_tok_s']:.2f} | "
-            f"**{row['decode_tok_s']:.2f}** | **{row['vs_true_ar']:.4f}x** | "
+            f"| {label} | {row['prompts']} | "
+            f"{row['true_ar_tok_s']:.2f} | **{row['mtp_tok_s']:.2f}** | "
+            f"**{row['mtp_vs_true_ar']:.4f}x** | "
             f"{'**' if label in {'Train', 'Heldout'} else ''}"
             f"{100 * row['draft_acceptance']:.2f}%"
             f"{'**' if label in {'Train', 'Heldout'} else ''} | "
@@ -290,10 +296,10 @@ def test_gfx1151_mtp_topline_separates_exact_compat_and_llamacpp() -> None:
     )
     for readme in (canonical, root_readme):
         assert header in readme
-        assert "##### gfx1151 `llama-compat` full-suite gate" in readme
-        assert "transition-matched timing contract" in readme
+        assert "##### gfx1151 NativeSpecCycle N3 `llama-compat` full-suite gate" in readme
         assert "`performance_claim=false`" in readme
-        assert artifact_path.name in readme
+        assert prior_path.name in readme
+        assert transfer_path.name in readme
         for expected_row in expected_rows:
             assert expected_row in readme
         for expected_row in expected_split_rows:
