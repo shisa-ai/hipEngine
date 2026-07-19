@@ -992,6 +992,74 @@ def test_gguf_deferred_packed_decode_flush_copies_full_live_kv(monkeypatch) -> N
     assert positions == [6, 8]
 
 
+def test_gguf_deferred_packed_state_scatter_follows_noncontiguous_device_pages(
+    monkeypatch,
+) -> None:
+    cfg = SimpleNamespace(
+        layer_types=(FULL_ATTENTION,),
+        head_count_kv=2,
+        key_length=4,
+    )
+    owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.runner = SimpleNamespace(weights=SimpleNamespace(config=cfg))
+    layout = _build_gguf_packed_verify_layout(
+        (_GGUFPackedVerifySlotBlock(input_token_ids=(11, 12), start_position=255),),
+        block_size=256,
+    )
+    row_nbytes = 16
+    packed_key = DeviceBuffer(0x10000, layout.total_physical_positions * row_nbytes)
+    packed_value = DeviceBuffer(0x20000, layout.total_physical_positions * row_nbytes)
+    packed_state = SimpleNamespace(
+        blocks_per_slot=layout.blocks_per_slot,
+        block_size=layout.block_size,
+        full_cache=lambda layer_id: (packed_key, packed_value),
+    )
+    key = DeviceBuffer(0x30000, 3 * 256 * row_nbytes)
+    value = DeviceBuffer(0x40000, 3 * 256 * row_nbytes)
+    scratch = SimpleNamespace(
+        full_cache=lambda layer_id: (key, value),
+        position_host=np.zeros((1,), dtype=np.int64),
+        context_host=np.zeros((1,), dtype=np.int64),
+        position_buf=DeviceBuffer(0x50000, 8),
+        context_buf=DeviceBuffer(0x60000, 8),
+    )
+    session = SimpleNamespace(
+        scratch=scratch,
+        _position=255,
+        _runtime_state_library=object(),
+        _device_kv_allocation=SimpleNamespace(
+            block_ids=(8, 10),
+            chunk_start_block_id=8,
+        ),
+    )
+
+    class FakeRuntime:
+        def __init__(self) -> None:
+            self.copies: list[tuple[int, int, int]] = []
+
+        def memcpy_async(self, dst, src, nbytes, kind, stream) -> None:
+            self.copies.append((int(dst), int(src), int(nbytes)))
+
+    runtime = FakeRuntime()
+    monkeypatch.setattr(gguf_runner, "set_decode_position_i64", lambda *args, **kwargs: None)
+
+    owner._scatter_packed_decode_state(
+        (session,),
+        layout,
+        packed_state,
+        runtime=runtime,
+        stream=0,
+    )
+
+    assert runtime.copies == [
+        (0x30000 + 255 * row_nbytes, 0x10000 + 255 * row_nbytes, row_nbytes),
+        (0x40000 + 255 * row_nbytes, 0x20000 + 255 * row_nbytes, row_nbytes),
+        (0x30000 + 512 * row_nbytes, 0x10000 + 256 * row_nbytes, row_nbytes),
+        (0x40000 + 512 * row_nbytes, 0x20000 + 256 * row_nbytes, row_nbytes),
+    ]
+    assert session._position == 257
+
+
 def test_hip_event_stage_recorder_accumulates_aliases_and_closes() -> None:
     class FakeRuntime:
         def __init__(self) -> None:

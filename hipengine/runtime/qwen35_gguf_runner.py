@@ -8237,6 +8237,54 @@ def _free_qwen35_gguf_bf16_kv_chunk(
         free(buffer, runtime=runtime)
 
 
+def _gguf_device_kv_layout_is_identity(session: object) -> bool:
+    allocation = getattr(session, "_device_kv_allocation", None)
+    if allocation is None:
+        return True
+    chunk_start = int(allocation.chunk_start_block_id)
+    return tuple(int(block_id) for block_id in allocation.block_ids) == tuple(
+        chunk_start + index for index in range(len(allocation.block_ids))
+    )
+
+
+def _gguf_device_kv_copy_segments(
+    session: object,
+    *,
+    start_position: int,
+    rows: int,
+    block_size: int = 256,
+) -> tuple[tuple[int, int, int], ...]:
+    """Map logical K/V rows to physical backing rows for D2D gather/scatter."""
+
+    start = int(start_position)
+    remaining = int(rows)
+    page_tokens = int(block_size)
+    if start < 0 or remaining < 0:
+        raise ValueError("GGUF device KV copy range must be non-negative")
+    if page_tokens <= 0:
+        raise ValueError("GGUF device KV block size must be positive")
+    allocation = getattr(session, "_device_kv_allocation", None)
+    if allocation is None or remaining == 0:
+        return () if remaining == 0 else ((start, start, remaining),)
+    block_ids = tuple(int(block_id) for block_id in allocation.block_ids)
+    chunk_start = int(allocation.chunk_start_block_id)
+    segments: list[tuple[int, int, int]] = []
+    logical = start
+    while remaining:
+        logical_page, in_page = divmod(logical, page_tokens)
+        if logical_page >= len(block_ids):
+            raise ValueError("GGUF device KV allocation does not cover the copy range")
+        local_page = block_ids[logical_page] - chunk_start
+        if local_page < 0:
+            raise ValueError("GGUF device KV block precedes its backing chunk")
+        take = min(remaining, page_tokens - in_page)
+        physical = local_page * page_tokens + in_page
+        segments.append((logical, physical, take))
+        logical += take
+        remaining -= take
+    return tuple(segments)
+
+
 @dataclass
 class Qwen35GGUFResidentSession:
     """Persistent GGUF Qwen3.5 session for public greedy generation.
@@ -11629,6 +11677,20 @@ class Qwen35GGUFResidentSession:
         force_aotriton_slots = set(int(index) for index in _force_aotriton_slot_indices)
         if any(index < 0 or index >= len(session_tuple) for index in force_aotriton_slots):
             raise ValueError("forced AOTriton slot index is outside the packed slab")
+        device_kv_nonidentity_scatter = any(
+            not _gguf_device_kv_layout_is_identity(session)
+            for session in session_tuple
+        )
+        if device_kv_nonidentity_scatter:
+            # Slot-local prefill writes raw contiguous cache rows and therefore
+            # cannot represent a shared prefix plus non-contiguous COW suffix.
+            # Keep those sessions in packed scratch and scatter through their
+            # scheduler-owned block table below.
+            slot_local_full_prefill = False
+            force_aotriton_slots.clear()
+        self.last_packed_prefill_plan["device_kv_nonidentity_scatter"] = bool(
+            device_kv_nonidentity_scatter
+        )
         if force_aotriton_slots and not slot_local_full_prefill:
             raise ValueError("forced AOTriton slots require slot-local full attention")
         with wmma_prefill_session(self.use_wmma_prefill), gemv_decode_session(self.use_gemv_decode):
@@ -13245,18 +13307,22 @@ class Qwen35GGUFResidentSession:
                     src_key, src_value = session.scratch.full_cache(layer_id)
                     dst_key, dst_value = packed_state.full_cache(layer_id)
                     physical_base = slot_index * int(packed_state.blocks_per_slot) * int(packed_state.block_size)
-                    nbytes = start_position * row_nbytes
-                    if nbytes > 0:
+                    for logical_start, physical_start, copy_rows in _gguf_device_kv_copy_segments(
+                        session,
+                        start_position=0,
+                        rows=start_position,
+                    ):
+                        nbytes = copy_rows * row_nbytes
                         runtime.memcpy_async(
-                            dst_key.ptr + physical_base * row_nbytes,
-                            src_key.ptr,
+                            dst_key.ptr + (physical_base + logical_start) * row_nbytes,
+                            src_key.ptr + physical_start * row_nbytes,
                             nbytes,
                             HipMemcpyKind.DEVICE_TO_DEVICE,
                             stream,
                         )
                         runtime.memcpy_async(
-                            dst_value.ptr + physical_base * row_nbytes,
-                            src_value.ptr,
+                            dst_value.ptr + (physical_base + logical_start) * row_nbytes,
+                            src_value.ptr + physical_start * row_nbytes,
                             nbytes,
                             HipMemcpyKind.DEVICE_TO_DEVICE,
                             stream,
@@ -13326,21 +13392,26 @@ class Qwen35GGUFResidentSession:
                     src_key, src_value = session.scratch.full_cache(layer_id)
                     dst_key, dst_value = packed_state.full_cache(layer_id)
                     physical_base = slot_index * int(packed_state.blocks_per_slot) * int(packed_state.block_size)
-                    nbytes = start_position * row_nbytes
-                    runtime.memcpy_async(
-                        dst_key.ptr + physical_base * row_nbytes,
-                        src_key.ptr,
-                        nbytes,
-                        HipMemcpyKind.DEVICE_TO_DEVICE,
-                        stream,
-                    )
-                    runtime.memcpy_async(
-                        dst_value.ptr + physical_base * row_nbytes,
-                        src_value.ptr,
-                        nbytes,
-                        HipMemcpyKind.DEVICE_TO_DEVICE,
-                        stream,
-                    )
+                    for logical_start, physical_start, copy_rows in _gguf_device_kv_copy_segments(
+                        session,
+                        start_position=0,
+                        rows=start_position,
+                    ):
+                        nbytes = copy_rows * row_nbytes
+                        runtime.memcpy_async(
+                            dst_key.ptr + (physical_base + logical_start) * row_nbytes,
+                            src_key.ptr + physical_start * row_nbytes,
+                            nbytes,
+                            HipMemcpyKind.DEVICE_TO_DEVICE,
+                            stream,
+                        )
+                        runtime.memcpy_async(
+                            dst_value.ptr + (physical_base + logical_start) * row_nbytes,
+                            src_value.ptr + physical_start * row_nbytes,
+                            nbytes,
+                            HipMemcpyKind.DEVICE_TO_DEVICE,
+                            stream,
+                        )
                 else:
                     raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
         return tuple(imported_slot_indices)
@@ -13591,21 +13662,26 @@ class Qwen35GGUFResidentSession:
                     physical_base = slot_index * int(packed_state.blocks_per_slot) * int(packed_state.block_size)
                     copy_start = 0 if copy_full_kv else start_position
                     copy_rows = end_position if copy_full_kv else slot_rows
-                    nbytes = copy_rows * row_nbytes
-                    runtime.memcpy_async(
-                        dst_key.ptr + copy_start * row_nbytes,
-                        src_key.ptr + (physical_base + copy_start) * row_nbytes,
-                        nbytes,
-                        HipMemcpyKind.DEVICE_TO_DEVICE,
-                        stream,
-                    )
-                    runtime.memcpy_async(
-                        dst_value.ptr + copy_start * row_nbytes,
-                        src_value.ptr + (physical_base + copy_start) * row_nbytes,
-                        nbytes,
-                        HipMemcpyKind.DEVICE_TO_DEVICE,
-                        stream,
-                    )
+                    for logical_start, physical_start, segment_rows in _gguf_device_kv_copy_segments(
+                        session,
+                        start_position=copy_start,
+                        rows=copy_rows,
+                    ):
+                        nbytes = segment_rows * row_nbytes
+                        runtime.memcpy_async(
+                            dst_key.ptr + physical_start * row_nbytes,
+                            src_key.ptr + (physical_base + logical_start) * row_nbytes,
+                            nbytes,
+                            HipMemcpyKind.DEVICE_TO_DEVICE,
+                            stream,
+                        )
+                        runtime.memcpy_async(
+                            dst_value.ptr + physical_start * row_nbytes,
+                            src_value.ptr + (physical_base + logical_start) * row_nbytes,
+                            nbytes,
+                            HipMemcpyKind.DEVICE_TO_DEVICE,
+                            stream,
+                        )
                 elif layer_type == FULL_ATTENTION:
                     continue
                 else:

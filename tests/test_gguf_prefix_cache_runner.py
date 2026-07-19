@@ -17,6 +17,7 @@ class _FakePrefixSession:
         self.allocation = None
         self.pool = None
         self.prefill_calls: list[tuple[tuple[int, ...], int, int]] = []
+        self.step_calls: list[tuple[int, int, int]] = []
         self.clone_calls: list[tuple[int, int]] = []
 
     def create_device_kv_pool(self, **config):
@@ -61,6 +62,13 @@ class _FakePrefixSession:
         self.position += len(prompt)
         self.prefill_calls.append((prompt, start, int(self.position)))
         return [SimpleNamespace(token_id=777)]
+
+    def step(self, token_id: int, *, return_logits: bool):
+        assert return_logits is False
+        start = int(self.position)
+        self.position += 1
+        self.step_calls.append((int(token_id), start, int(self.position)))
+        return SimpleNamespace(token_id=777)
 
     def invalidate_device_kv_graphs(self) -> int:
         return 0
@@ -171,7 +179,8 @@ def test_resident_runner_reuses_exact_current_prefix_and_reclaims_source_first()
         ),
         commit=True,
     )
-    assert continued_session.prefill_calls == [((999,), 256, 257)]
+    assert continued_session.prefill_calls == []
+    assert continued_session.step_calls == [(999, 256, 257)]
     assert continued_row.slot is not None
     assert continued_row.slot.generated_ids == [777]
 

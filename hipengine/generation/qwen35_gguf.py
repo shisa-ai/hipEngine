@@ -4821,6 +4821,25 @@ class Qwen35GGUFResidentModelRunner:
             raise RuntimeError("GGUF resident row was prefilled more than once")
         lease = row.lease or self._acquire_lease()
         row.lease = lease
+        if row.prefix_reused_tokens:
+            start = time.perf_counter()
+            result = None
+            for token_id in chunk:
+                result = lease.session.step(int(token_id), return_logits=False)
+            if result is None:
+                raise RuntimeError("GGUF shared-prefix suffix chunk must be non-empty")
+            self._route_counts["prefix_c1_suffix_prefill_chunks"] += 1
+            self._route_counts["prefix_c1_suffix_prefill_tokens"] += len(chunk)
+            row.prefill_ms += _timing_ms_since(start)
+            row.prefill_chunk_count += 1
+            self._refresh_prefix_cache(row)
+            if final_chunk:
+                self._finish_native_prefill(
+                    row,
+                    result,
+                    native_compact_prefill=False,
+                )
+            return
         prefill_batch = getattr(lease.session, "prefill_batch_native", None)
         if not callable(prefill_batch):
             self._disable_incremental_prefill(row, final_chunk=final_chunk)
