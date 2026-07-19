@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Gate active-current GGUF prefix reuse against an independent full prefill.
+"""Gate GGUF prefix reuse against an independent full prefill.
 
 The candidate goes through ``Qwen35GGUFResidentModelRunner`` with
-``prefix_cache=radix``.  A live source owns an exact page-aligned prefix, the
-continuation shares those device-KV pages and clones Conv/GDN state, and only
-its non-empty suffix executes.  A private session then full-prefills the same
-continuation as the reference.  The gate compares greedy output, every Conv/GDN
-state byte, logical block-table-ordered live K/V bytes, source immutability, and
-matched-context teacher-forced decode logits/state after source-first reclaim.
+``prefix_cache=radix``.  The source may remain active or be normally released
+before continuation admission.  The continuation shares exact page-aligned
+KV, restores live or cache-owned Conv/GDN state, and executes only its non-empty
+suffix.  A private session then rebuilds the same continuation as the reference.
+The gate compares greedy output, every Conv/GDN state byte, logical block-table-
+ordered live K/V bytes, lifecycle/refcounts, and matched-context teacher-forced
+decode logits/state.
 
 This is a correctness/lifecycle diagnostic, not a performance benchmark.
 """
@@ -268,6 +269,61 @@ def _summarize_mismatches(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _lifecycle_exact(
+    source_lifecycle: str,
+    *,
+    source_refcount_before_release: int,
+    source_refcount_after_release: int,
+    shared_refcount_after_admission: int,
+    shared_refcount_after_continuation_release: int,
+    final_refcounted_pages: int,
+    source_session_reset: bool,
+    snapshot_evicted: bool,
+) -> bool:
+    if source_lifecycle == "active":
+        return bool(
+            source_refcount_before_release == 2
+            and source_refcount_after_release == 1
+            and shared_refcount_after_admission == 2
+            and shared_refcount_after_continuation_release == 0
+            and final_refcounted_pages == 0
+        )
+    if source_lifecycle == "completed":
+        return bool(
+            source_refcount_before_release == 1
+            and source_refcount_after_release == 1
+            and shared_refcount_after_admission == 2
+            and shared_refcount_after_continuation_release == 1
+            and final_refcounted_pages == 0
+            and source_session_reset
+            and snapshot_evicted
+        )
+    raise ValueError(f"unsupported source_lifecycle {source_lifecycle!r}")
+
+
+def _production_metadata_exact(
+    source_lifecycle: str,
+    *,
+    boundary: int,
+    reused_tokens: int,
+    source_request_id: int | None,
+    source_id: int,
+    clone_bytes: int,
+    snapshot_hit: bool,
+) -> bool:
+    if source_lifecycle == "active":
+        source_exact = source_request_id == int(source_id) and not snapshot_hit
+    elif source_lifecycle == "completed":
+        source_exact = source_request_id is None and snapshot_hit
+    else:
+        raise ValueError(f"unsupported source_lifecycle {source_lifecycle!r}")
+    return bool(
+        int(reused_tokens) == int(boundary)
+        and int(clone_bytes) > 0
+        and source_exact
+    )
+
+
 def _request(prompt: tuple[int, ...], *, max_tokens: int) -> Any:
     from hipengine.generation.registry import GenerationRequest
 
@@ -298,6 +354,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     boundary = int(args.prefix_tokens)
     suffix_tokens = int(args.suffix_tokens)
     teacher_steps = int(args.teacher_forced_steps)
+    source_lifecycle = str(args.source_lifecycle)
     if boundary <= 0 or boundary % 256:
         raise ValueError("prefix_tokens must be a positive multiple of 256")
     if suffix_tokens <= 0:
@@ -337,6 +394,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     oracle_bound = False
     source_released = False
     continuation_released = False
+    source_refcount_before_release = -1
+    source_refcount_after_release = -1
+    shared_refcount_after_admission = -1
+    shared_refcount_after_continuation_release = -1
+    source_session_reset = False
+    snapshot_evicted = False
     payload: dict[str, Any] | None = None
     try:
         llm.prepare(max_sequence_length=max_sequence_length)
@@ -357,6 +420,25 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         source_allocation = source_row.kv_allocation
         source_before = _capture_state(source_session)
         source_token = int(source_row.slot.prev_token)
+        source_block_ids = tuple(
+            int(block_id) for block_id in source_allocation.block_ids
+        )
+        if not source_block_ids:
+            raise RuntimeError("GGUF prefix source has no device KV blocks")
+        if source_lifecycle == "completed":
+            source_refcount_before_release = int(pool.refcount(source_block_ids[0]))
+            runner._release_row_resources(
+                source_row,
+                retain_prefix_snapshots=True,
+            )
+            runner._rows.pop(source_id)
+            source_released = True
+            source_refcount_after_release = int(pool.refcount(source_block_ids[0]))
+            source_session_reset = bool(
+                int(source_session.position) == 0
+                and source_session.device_kv_allocation is None
+                and any(lease.session is source_session for lease in runner._available)
+            )
 
         continuation_request = _request(
             continued_prompt,
@@ -373,6 +455,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             raise RuntimeError("GGUF prefix continuation was not admitted")
         continuation_session = continuation_row.lease.session
         continuation_allocation = continuation_row.kv_allocation
+        shared_blocks = tuple(
+            int(block_id)
+            for block_id in continuation_allocation.reused_block_ids
+        )
+        if not shared_blocks:
+            raise RuntimeError("GGUF prefix continuation did not reuse a device KV page")
+        shared_refcount_after_admission = int(pool.refcount(shared_blocks[0]))
         candidate_boundary = _capture_state(continuation_session)
         clone_boundary_mismatches = _compare_states(candidate_boundary, source_before)
         runner.prefill_batch(_prefill_work(continuation_id, prefix), commit=True)
@@ -381,11 +470,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             raise RuntimeError("GGUF prefix continuation did not finish suffix prefill")
         continuation_token = int(continuation_row.slot.prev_token)
         candidate_initial = _capture_state(continuation_session)
-        source_after_candidate = _capture_state(source_session)
-        source_immutability_mismatches = _compare_states(
-            source_after_candidate,
-            source_before,
-        )
+        if source_lifecycle == "active":
+            source_after_candidate = _capture_state(source_session)
+            source_immutability_mismatches = _compare_states(
+                source_after_candidate,
+                source_before,
+            )
+            source_immutability_applicable = True
+        else:
+            source_immutability_mismatches = []
+            source_immutability_applicable = False
 
         pages = (required_positions + 255) // 256
         if not runner._available:
@@ -465,13 +559,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         reference_initial = _capture_state(oracle_session)
         initial_state_mismatches = _compare_states(candidate_initial, reference_initial)
 
-        shared_blocks = tuple(int(block_id) for block_id in continuation_allocation.reused_block_ids)
-        if not shared_blocks:
-            raise RuntimeError("GGUF prefix continuation did not reuse a device KV page")
-        shared_refcount_before_source_release = int(pool.refcount(shared_blocks[0]))
-        runner.rollback_admission(source_state)
-        source_released = True
-        shared_refcount_after_source_release = int(pool.refcount(shared_blocks[0]))
+        if source_lifecycle == "active":
+            source_refcount_before_release = int(pool.refcount(shared_blocks[0]))
+            runner.rollback_admission(source_state)
+            source_released = True
+            source_refcount_after_release = int(pool.refcount(shared_blocks[0]))
+            source_session_reset = bool(
+                int(source_session.position) == 0
+                and source_session.device_kv_allocation is None
+                and any(lease.session is source_session for lease in runner._available)
+            )
 
         candidate_logits: list[np.ndarray] = []
         reference_logits: list[np.ndarray] = []
@@ -511,6 +608,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         pool_before_final_release = pool.stats.to_json_dict()
         runner.rollback_admission(continuation_state)
         continuation_released = True
+        shared_refcount_after_continuation_release = int(
+            pool.refcount(shared_blocks[0])
+        )
+        pool_after_continuation_release = pool.stats.to_json_dict()
+        if source_lifecycle == "completed":
+            snapshot_evicted = bool(runner._evict_prefix_snapshot(prefix))
         oracle_session.reset()
         detached = oracle_session.unbind_device_kv_allocation()
         if detached is not oracle_allocation:
@@ -529,15 +632,26 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         initial_state_exact = not initial_state_mismatches
         final_state_exact = not final_state_mismatches
         source_immutable = not source_immutability_mismatches
-        lifecycle_exact = bool(
-            shared_refcount_before_source_release == 2
-            and shared_refcount_after_source_release == 1
-            and int(final_pool["refcounted_pages"]) == 0
+        lifecycle_exact = _lifecycle_exact(
+            source_lifecycle,
+            source_refcount_before_release=source_refcount_before_release,
+            source_refcount_after_release=source_refcount_after_release,
+            shared_refcount_after_admission=shared_refcount_after_admission,
+            shared_refcount_after_continuation_release=(
+                shared_refcount_after_continuation_release
+            ),
+            final_refcounted_pages=int(final_pool["refcounted_pages"]),
+            source_session_reset=source_session_reset,
+            snapshot_evicted=snapshot_evicted,
         )
-        production_metadata_exact = bool(
-            int(continuation_row.prefix_reused_tokens) == boundary
-            and continuation_row.prefix_source_request_id == source_id
-            and int(continuation_row.prefix_state_clone_bytes) > 0
+        production_metadata_exact = _production_metadata_exact(
+            source_lifecycle,
+            boundary=boundary,
+            reused_tokens=int(continuation_row.prefix_reused_tokens),
+            source_request_id=continuation_row.prefix_source_request_id,
+            source_id=source_id,
+            clone_bytes=int(continuation_row.prefix_state_clone_bytes),
+            snapshot_hit=bool(continuation_row.prefix_snapshot_hit),
         )
         clone_boundary_exact = not clone_boundary_mismatches
         semantic_boundary_exact = not semantic_boundary_mismatches
@@ -555,7 +669,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
         payload = {
             "schema": 1,
-            "kind": "gguf_active_prefix_reuse_correctness_gate",
+            "kind": (
+                "gguf_active_prefix_reuse_correctness_gate"
+                if source_lifecycle == "active"
+                else "gguf_completed_prefix_reuse_correctness_gate"
+            ),
             "created_at": datetime.now(timezone.utc).isoformat(),
             "status": "passed" if passed else "failed",
             "passed": passed,
@@ -578,13 +696,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "max_sequence_length": max_sequence_length,
                 "sampling": "greedy_top1_then_reference_teacher_forced",
                 "kv_dtype": "bf16",
+                "source_lifecycle": source_lifecycle,
             },
             "production_route": {
                 "prefix_cache_mode": "radix",
                 "prefix_reused_tokens": int(continuation_row.prefix_reused_tokens),
                 "prefix_source_request_id": continuation_row.prefix_source_request_id,
                 "prefix_state_clone_bytes": int(continuation_row.prefix_state_clone_bytes),
-                "source_block_ids": [int(block_id) for block_id in source_allocation.block_ids],
+                "prefix_snapshot_hit": bool(continuation_row.prefix_snapshot_hit),
+                "source_block_ids": list(source_block_ids),
                 "continuation_block_ids": [
                     int(block_id) for block_id in continuation_allocation.block_ids
                 ],
@@ -606,6 +726,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "initial_state_exact": initial_state_exact,
                 "initial_state_mismatches": initial_state_mismatches,
                 "source_immutable": source_immutable,
+                "source_immutability_applicable": source_immutability_applicable,
                 "source_immutability_mismatches": source_immutability_mismatches,
                 "one_shot_bulk_diagnostic": {
                     "predicted_token_id": one_shot_token,
@@ -641,9 +762,18 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "final_state_mismatches": final_state_mismatches,
             },
             "lifecycle": {
-                "source_released_first": True,
-                "shared_refcount_before_source_release": shared_refcount_before_source_release,
-                "shared_refcount_after_source_release": shared_refcount_after_source_release,
+                "source_lifecycle": source_lifecycle,
+                "source_released_before_continuation_admission": (
+                    source_lifecycle == "completed"
+                ),
+                "source_session_reset": source_session_reset,
+                "source_refcount_before_release": source_refcount_before_release,
+                "source_refcount_after_release": source_refcount_after_release,
+                "shared_refcount_after_admission": shared_refcount_after_admission,
+                "shared_refcount_after_continuation_release": (
+                    shared_refcount_after_continuation_release
+                ),
+                "snapshot_evicted": snapshot_evicted,
                 "final_refcounted_pages": int(final_pool["refcounted_pages"]),
                 "exact": lifecycle_exact,
             },
@@ -652,7 +782,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "reused_pages": len(shared_blocks),
                 "saved_live_bytes": len(shared_blocks) * int(pool.page_bytes),
                 "pool_before_final_release": pool_before_final_release,
-                "pool_after_final_release": final_pool,
+                "pool_after_continuation_release": pool_after_continuation_release,
+                "pool_after_snapshot_eviction": final_pool,
                 "timing_claim": False,
             },
             "observability": observability,
@@ -660,7 +791,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "Every Conv/GDN byte and logical block-table-ordered live BF16 K/V byte is compared.",
                 "The gating oracle independently rebuilds the active source and consumes the suffix through exact c1 steps.",
                 "One-shot bulk and private scheduler-chunk output/state remain non-gating row-shape diagnostics.",
-                "The source is reclaimed before teacher-forced survivor decode.",
+                (
+                    "The source session is reset before continuation admission; cache-owned state is mandatory."
+                    if source_lifecycle == "completed"
+                    else "The live source is reclaimed before teacher-forced survivor decode."
+                ),
                 "Saved live bytes are allocator accounting, not a process-wide peak-memory claim.",
                 "No timing from this correctness run is a performance claim.",
             ],
@@ -707,6 +842,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--suffix-token-id", type=int, default=9708)
     parser.add_argument("--suffix-tokens", type=int, default=1)
     parser.add_argument("--teacher-forced-steps", type=int, default=4)
+    parser.add_argument(
+        "--source-lifecycle",
+        choices=("active", "completed"),
+        default="active",
+        help="Keep the source live or release it into cache ownership before admission",
+    )
     parser.add_argument("--max-sequence-length", type=int, default=512)
     parser.add_argument("--hardware-label")
     parser.add_argument("--json", type=Path)

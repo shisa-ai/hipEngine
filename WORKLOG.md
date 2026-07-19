@@ -165585,3 +165585,23 @@ performance claim. Next is a gfx1151 completed-source gate that must release and
 reset the source session before continuation admission, then match an independent
 private c1 oracle for output, all Conv/GDN/live-KV state, teacher-forced steps,
 cache-owned refcount/eviction, and final zero ownership. Default remains `off`.
+
+## 2026-07-19 — Add completed-source GGUF prefix correctness mode
+
+Extended `scripts/gguf_prefix_reuse_gate.py` with
+`--source-lifecycle active|completed` without weakening the existing active
+contract. The completed mode releases the source through the same
+cache-promotion/resource-release helper used by normal reclaim, removes the row,
+and requires its session to be reset and unbound before continuation admission.
+Its fail-closed lifecycle is request ref -> cache ref `1->1`, snapshot admission
+`->2`, continuation release `->1`, explicit cache eviction `->0`. Production
+metadata must report `prefix_source_request_id=None`,
+`prefix_snapshot_hit=true`, exact reused tokens, and positive clone bytes.
+
+The independent private c1 oracle, byte comparisons for all Conv/GDN and logical
+live K/V, suffix output, teacher-forced logits/state, and non-gating one-shot/
+scheduler diagnostics are unchanged. Source immutability is applicable only to
+the active mode; completed mode instead gates the pre-admission reset plus exact
+snapshot boundary. RED failed at import because the completed lifecycle/metadata
+predicates did not exist; GREEN is `3 passed`, `--help` exposes both modes,
+`py_compile` and `git diff --check` pass. No real-model run or claim exists yet.
