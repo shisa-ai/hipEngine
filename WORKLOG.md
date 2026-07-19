@@ -165447,3 +165447,33 @@ python3 -m py_compile + git diff --check: passed
 No TTFT or process/GPU peak-memory claim is made yet. Next is a clean one-warmup,
 three-repetition matched no-reuse versus radix continuation benchmark, including
 admission/TTFT samples, hit rate, pool bytes, and HIP current/peak observations.
+
+## 2026-07-19 — Add matched active-prefix economics harness
+
+Added `scripts/gguf_prefix_reuse_bench.py` and a HIP-free statistics/acceptance
+test. The benchmark keeps source prefill and mode reconfiguration outside the
+timing window, then synchronously charges continuation admission through first
+token. It runs one discarded warmup per mode and three measured repetitions per
+mode with alternating `off/radix` order. Acceptance requires paired exact output
+tokens, one usable radix hit per measured continuation, zero admission fallback,
+exact 256-token reuse, at least one fewer live page, final zero refcount drain,
+and median TTFT improvement.
+
+Memory reporting is deliberately two-scope: live/refcounted pool pages and bytes
+are the capacity benefit, while tracked allocator and HIP current/cumulative
+sampled peak remain visible. The package-default fixed-capacity pool preallocates
+backing for both modes, so unchanged process-current bytes will be reported as
+such rather than relabeled as physical savings.
+
+RED/GREEN:
+
+```text
+uv run pytest -q tests/test_gguf_prefix_reuse_bench.py
+RED: ModuleNotFoundError: scripts.gguf_prefix_reuse_bench
+GREEN: 2 passed
+python3 -m py_compile + --help + git diff --check: passed
+```
+
+No benchmark has run yet. The next command is the clean gfx1151 canonical
+Qwen3.6 Q4_K_M `p256+s1`, warmup-1/repetition-3 matched packet using the retained
+real-model correctness artifact as a hard prerequisite.
