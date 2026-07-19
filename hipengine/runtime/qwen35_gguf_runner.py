@@ -8170,26 +8170,23 @@ class Qwen35GGUFBF16KVChunkBacking:
         self,
         block_ids: tuple[int, ...],
     ) -> tuple[tuple[DeviceBuffer | None, ...], tuple[DeviceBuffer | None, ...]]:
-        if not block_ids:
+        """Return the full backing after validating request-local page ids.
+
+        Shared-prefix COW allocations may list non-contiguous pages.  Kernels
+        select those pages through the session block table, so slicing the cache
+        base would make the table unable to address a shared prefix plus private
+        suffix without copying KV.
+        """
+
+        blocks = tuple(int(block_id) for block_id in block_ids)
+        if not blocks:
             raise ValueError("bound GGUF KV allocation must contain pages")
-        expected = tuple(range(int(block_ids[0]), int(block_ids[0]) + len(block_ids)))
-        if tuple(int(block_id) for block_id in block_ids) != expected:
-            raise ValueError("GGUF KV allocation pages must be contiguous")
-        local_start = int(block_ids[0]) - int(self.start_block_id)
-        if local_start < 0 or local_start + len(block_ids) > self.pages:
+        if len(set(blocks)) != len(blocks):
+            raise ValueError("bound GGUF KV allocation pages must be unique")
+        local_pages = tuple(block_id - int(self.start_block_id) for block_id in blocks)
+        if any(local_page < 0 or local_page >= self.pages for local_page in local_pages):
             raise ValueError("GGUF KV allocation is outside its backing chunk")
-        byte_offset = local_start * int(self.page_nbytes_per_tensor)
-        bound_nbytes = len(block_ids) * int(self.page_nbytes_per_tensor)
-
-        def bind(buffer: DeviceBuffer | None) -> DeviceBuffer | None:
-            if buffer is None:
-                return None
-            return DeviceBuffer(ptr=int(buffer.ptr) + byte_offset, nbytes=bound_nbytes)
-
-        return (
-            tuple(bind(buffer) for buffer in self.full_key_caches),
-            tuple(bind(buffer) for buffer in self.full_value_caches),
-        )
+        return self.full_key_caches, self.full_value_caches
 
 
 def _allocate_qwen35_gguf_bf16_kv_chunk(
@@ -8630,10 +8627,16 @@ class Qwen35GGUFResidentSession:
             raise TypeError("GGUF device KV allocation has incompatible backing")
         if len(allocation.block_ids) > int(self.scratch.block_table_tensor.numel):
             raise ValueError("GGUF device KV allocation exceeds the session block-table capacity")
+        if int(allocation.chunk_start_block_id) != int(backing.start_block_id):
+            raise ValueError("GGUF device KV allocation backing identity mismatch")
         key_caches, value_caches = backing.bound_caches(allocation.block_ids)
         local_block_table = np.zeros(self.scratch.block_table_tensor.shape, dtype=np.int32)
-        local_block_table[: len(allocation.block_ids)] = np.arange(
-            len(allocation.block_ids), dtype=np.int32
+        local_block_table[: len(allocation.block_ids)] = np.asarray(
+            [
+                int(block_id) - int(backing.start_block_id)
+                for block_id in allocation.block_ids
+            ],
+            dtype=np.int32,
         )
         copy_host_to_device(
             self.scratch.block_table,
