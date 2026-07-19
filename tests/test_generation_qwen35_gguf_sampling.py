@@ -2482,6 +2482,20 @@ def test_gguf_resident_runner_releases_packed_workspace_before_reusing_session()
     assert runner._packed_workspace_released_bytes == 1234
 
 
+@pytest.mark.parametrize(
+    ("physical_rows", "expected_remaining"),
+    ((2, 128), (4, 128), (8, 16)),
+)
+def test_gguf_resident_packed_graph_amortization_horizon(
+    physical_rows: int,
+    expected_remaining: int,
+) -> None:
+    assert qwen35_gguf._packed_graph_minimum_remaining(
+        minimum_replay_steps=128,
+        physical_rows=physical_rows,
+    ) == expected_remaining
+
+
 def test_gguf_resident_runner_waits_for_stable_membership_before_graph_capture() -> None:
     runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
         qwen35_gguf.Qwen35GGUFResidentModelRunner
@@ -2573,7 +2587,7 @@ def test_gguf_resident_runner_captures_replays_and_closes_packed_graph() -> None
         )
         for index, session in enumerate(sessions)
     ]
-    request = _request(prompts=("first", "second"), max_tokens=128, ignore_eos=True)
+    request = _request(prompts=("first", "second"), max_tokens=256, ignore_eos=True)
     rows = [
         SimpleNamespace(
             request_id=index + 1,
@@ -2618,8 +2632,8 @@ def test_gguf_resident_runner_captures_replays_and_closes_packed_graph() -> None
         "physical_rows": 2,
         "active_slot_indices": (0, 1),
         "steps_per_replay": 1,
-        "max_replay_steps": 127,
-        "record_steps": 127,
+        "max_replay_steps": 255,
+        "record_steps": 255,
     }
     assert [slot.generated_ids[-1] for slot in slots] == [41, 42]
     assert all(slot.packed_decode_graph is graph for slot in slots)

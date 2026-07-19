@@ -192,6 +192,22 @@ def _gguf_decode_graph_enabled() -> bool:
     return os.environ.get(_GGUF_DECODE_GRAPH_ENV, "1").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _packed_graph_minimum_remaining(
+    *,
+    minimum_replay_steps: int,
+    physical_rows: int,
+) -> int:
+    minimum = max(1, int(minimum_replay_steps))
+    width = max(1, int(physical_rows))
+    # Resident graphs are recaptured for every membership wave. At C2/C4 the
+    # fixed capture cost regresses a 128-token request, so require the complete
+    # session horizon. Physical C8 retains its separately measured width-scaled
+    # break-even and one-submit launch boundary.
+    if width == 8:
+        return max(1, (minimum + width - 1) // width)
+    return minimum
+
+
 def _gguf_mtp_server_packed_prefill_enabled() -> bool:
     return os.environ.get(_GGUF_MTP_SERVER_PACKED_PREFILL_ENV, "1").strip().lower() in {"1", "true", "yes", "on"}
 
@@ -5563,7 +5579,10 @@ class Qwen35GGUFResidentModelRunner:
             scaled_minimum = (
                 None
                 if minimum is None
-                else max(1, (int(minimum) + width - 1) // width)
+                else _packed_graph_minimum_remaining(
+                    minimum_replay_steps=int(minimum),
+                    physical_rows=width,
+                )
             )
             capture = getattr(owner_slot.session, "capture_packed_decode_graph", None)
             if (
