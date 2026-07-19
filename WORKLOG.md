@@ -165668,3 +165668,43 @@ economics did not exist. GREEN is `5 passed`; `--help`, `py_compile`, and
 `git diff --check` pass. No completed-session benchmark has run yet. The next
 packet is one warmup plus three alternating matched pairs using the retained
 completed-source correctness artifact as a hard prerequisite.
+
+## 2026-07-19 — Retain completed-source prefix economics
+
+Ran the matched packet from clean revision `f0a63059` on Radeon 8060S/gfx1151,
+TheRock HIP 7.15, TuneD `accelerator-performance`, one HIP queue, and
+`amd_iommu=off`:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/gfx1151-concurrency-ddab579f/hipcc-version.txt \
+  uv run python scripts/gguf_prefix_reuse_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1151 --quant gguf_q4_k_m \
+  --prefix-tokens 256 --suffix-tokens 1 --source-lifecycle completed \
+  --max-sequence-length 512 --warmups 1 --repetitions 3 \
+  --correctness-artifact \
+    benchmarks/results/2026-07-19-gfx1151-gguf-completed-prefix-reuse-correctness.json \
+  --json /tmp/gfx1151-completed-prefix-reuse-economics-v1.json
+```
+
+Result: `passed=true`; all three paired outputs are exact, all radix rows are
+snapshot hits with 256 reused tokens and no fallback, each source session is
+reset before timing, and each row proves cache refs `1` after source release,
+`1` after continuation release, explicit eviction, and final zero ownership.
+Median synchronized continuation TTFT is **249.446 ms off versus 22.013 ms
+radix** (**11.332x, -91.18%**). Samples are
+`248.702/249.446/249.562 ms` off and `21.398/22.013/22.043 ms` radix.
+
+The completed memory result is an explicit cost, not a saving. Both modes own
+**2** unique pages during continuation (`saved_live_pages=0`). Radix retains one
+**66,846,720-byte** hybrid snapshot plus one **5,242,880-byte** KV page between
+requests, exactly **72,089,600 bytes** of cache residency. Every paired tracked-
+current delta is **-66,846,720 bytes** under the artifact's off-minus-radix
+sign, and every paired HIP-current delta is **-62,914,560 bytes**: radix costs
+~60 MiB more physical current. `physical_current_reduction_claim=false`.
+
+Artifact:
+`benchmarks/results/2026-07-19-gfx1151-gguf-completed-prefix-reuse-economics.json`.
+Default remains `off`; next blockers are broader boundary/LRU/graph pressure,
+sampled reuse, gfx1100 transfer, and a policy decision that explicitly accepts
+or budgets the completed-cache residency tradeoff.
