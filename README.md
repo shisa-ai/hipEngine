@@ -418,6 +418,9 @@ even the slowest category remains above the aggregate external floor in the
 conservative run. The corrected 54.88 tok/s eager-target row remains the
 optimization baseline, not the current route. Artifacts:
 [`retained reusable route`](results/2026-07-19-w7900-llama-compat-reusable-native-cycle.json),
+[`N2 ownership diagnostic`](results/2026-07-19-w7900-llama-compat-native-cycle-n2.json),
+[`N3 complete-cycle diagnostic`](results/2026-07-19-w7900-llama-compat-native-cycle-n3.json),
+[`N3P proposal-submission diagnostic`](results/2026-07-19-w7900-llama-compat-native-cycle-n3p.json),
 [`prior baseline`](results/2026-07-19-w7900-hipengine-llama-compat-current-baseline.json),
 and [`llama.cpp floor`](results/2026-07-19-w7900-llamacpp-mtp-natural25-refresh.json).
 

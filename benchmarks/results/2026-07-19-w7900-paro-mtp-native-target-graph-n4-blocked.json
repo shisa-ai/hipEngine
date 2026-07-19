@@ -1,0 +1,215 @@
+{
+  "schema": "hipengine.paro_mtp_native_target_graph_n4.v1",
+  "date": "2026-07-19",
+  "status": "blocked_correctness",
+  "performance_claim": false,
+  "speed_claim_eligible": false,
+  "purpose": "Clean committed-source A/B evidence for the first shared PARO MTP / DFlash NativeSpecCycle N4 target+accept adapter.",
+  "blocked_reason": "The only complete local packed PARO+MTP artifact mismatches its own true-AR target on the unchanged direct control, beginning at output token 2. The adapter is semantically identical to that control, but no full-suite correctness or performance promotion is valid until a target/sidecar artifact passes the AR gate.",
+  "hipengine_artifact_provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-19T02:56:30.825818+00:00",
+    "repo_root": "/tmp/hipengine-n4-7bf3439e-clean",
+    "hipengine_commit": "7bf3439e1b96b5132aee3eee29404f25ba011ad3",
+    "git_branch": null,
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "configured_backend": "hip_gfx1100",
+    "resolved_backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "model_path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "value": "1a4745ce8a8734324e62c14aa2545cb7cc1b8ea23a7489b05658f619cc1bdaac",
+      "size_bytes": 22176626792,
+      "sampled_bytes": 9476610,
+      "file_count": 9,
+      "exists": true,
+      "path_type": "directory"
+    },
+    "quant": "w4_paro+mtp_bf16",
+    "kv_dtype": "bf16",
+    "command": [
+      "python3",
+      "scripts/mtp_chain_e2e_smoke.py",
+      "--model",
+      "/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16",
+      "--prompt-tokens",
+      "151646",
+      "--decode-tokens",
+      "8",
+      "--candidate-budget",
+      "3",
+      "--proposal-impl",
+      "persistent_device",
+      "--backend",
+      "hip_gfx1100",
+      "--chain-attn-mode",
+      "batched",
+      "--graph-mode",
+      "auto",
+      "--json",
+      "/tmp/w7900-n4-7bf3439e-native-b3.json"
+    ],
+    "environment": {
+      "HIP_VISIBLE_DEVICES": "0",
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HIPENGINE_BACKEND": "hip_gfx1100",
+      "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-mtp-w7900-hipcc-version.txt",
+      "HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH": "0|1 (separate clean processes)",
+      "PYTHONPATH": "."
+    },
+    "rocm_version": "HIP version: 7.2.53211-3d9ef42",
+    "hipcc_version": "HIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+    "build_profile": "require_cached verifier graphs and native-cycle launcher",
+    "timing_protocol": "single smoke process per arm; timing diagnostic only; correctness blocked before speed eligibility",
+    "warmups": 0,
+    "repetitions": 1,
+    "profiler": null
+  },
+  "protocol": {
+    "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16",
+    "prompt_tokens": [
+      151646
+    ],
+    "decode_tokens": 8,
+    "candidate_budget": 3,
+    "proposal_impl": "persistent_device",
+    "backend": "hip_gfx1100",
+    "chain_attn_mode": "batched",
+    "graph_mode": "auto",
+    "greedy": true,
+    "control_env": "HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH=0",
+    "candidate_env": "HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH=1",
+    "control_command": "cd /tmp/hipengine-n4-7bf3439e-clean && HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_BACKEND=hip_gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-mtp-w7900-hipcc-version.txt HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH=0 PYTHONPATH=. python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 --prompt-tokens 151646 --decode-tokens 8 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode batched --graph-mode auto --json /tmp/w7900-n4-7bf3439e-control-b3.json",
+    "candidate_command": "cd /tmp/hipengine-n4-7bf3439e-clean && HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_BACKEND=hip_gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-mtp-w7900-hipcc-version.txt HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH=1 PYTHONPATH=. python3 scripts/mtp_chain_e2e_smoke.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 --prompt-tokens 151646 --decode-tokens 8 --candidate-budget 3 --proposal-impl persistent_device --backend hip_gfx1100 --chain-attn-mode batched --graph-mode auto --json /tmp/w7900-n4-7bf3439e-native-b3.json"
+  },
+  "implementation": {
+    "shared_provider_boundary": "Qwen35ParoResidentSession.verify_chain_bulk_and_commit()",
+    "registry_key": [
+      "hip_gfx1100",
+      "speculative_cycle",
+      "w4_paro",
+      "native_v1_target_graph"
+    ],
+    "owned_stages": [
+      "VERIFY",
+      "ACCEPT"
+    ],
+    "supported_single_request_budgets": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      8
+    ],
+    "bound_state": "Fixed resident INT32 metadata/accept buffers, real verify-chain KVLiveSpans, and either resident FP16 verifier rows or BF16 sidecar hidden taps.",
+    "unchanged_provider_ownership": "Linear-state, KV, hidden-context, cursor, and scheduler result commit remain on the existing provider path.",
+    "fallback": "Graph capture/miss, graph-off, tree, inactive, unsupported shape/backend, registry miss, and pre-launch control-build failure use the exact existing direct graph path.",
+    "admission": "Explicit/default-off through HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH=1.",
+    "gfx1151": "Unregistered and unclaimed pending an independent gate."
+  },
+  "validation": {
+    "focused_tests": {
+      "command": "python3 -m pytest -q tests/test_native_spec_cycle.py tests/test_native_spec_cycle_graph.py tests/test_qwen35_resident_batch_layout.py",
+      "passed": 183,
+      "failed": 0,
+      "coverage": "Host ABI/control contracts, B4/default-stream C++ callback, FP16 and BF16 target controls, real KVLiveSpans, one native launcher call, stage telemetry, lifecycle cleanup, and exact pre-launch fallback."
+    },
+    "clean_ab": {
+      "semantic_comparison_passed": true,
+      "compared_leaf_values": 265,
+      "differences": 0,
+      "excluded_timing_or_route_telemetry_keys": [
+        "ar_fallback_proposer_update_seconds",
+        "ar_fallback_seconds",
+        "cycle_marker_ns",
+        "decode_seconds",
+        "decode_tok_s",
+        "native_spec_cycle_fallback_reason",
+        "native_spec_cycle_graph",
+        "native_spec_cycle_stages",
+        "prefill_seconds",
+        "proposal_decode_update_seconds",
+        "proposal_prefill_seconds",
+        "seconds",
+        "tok_s",
+        "verify_seconds"
+      ],
+      "target_ar_tokens_both": [
+        248050,
+        19,
+        19,
+        5137,
+        58,
+        58,
+        58,
+        220
+      ],
+      "mtp_tokens_both": [
+        248050,
+        59,
+        36757,
+        25088,
+        65827,
+        3642,
+        1088,
+        585
+      ],
+      "accepted_lengths_both": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "candidate_native_steady_b3_replays": 4,
+      "candidate_native_stage_mask_each_replay": [
+        "VERIFY",
+        "ACCEPT"
+      ],
+      "candidate_gpu_accept_matches_cpu_each_cycle": true
+    },
+    "correctness_blocker": {
+      "control_exact_ar_match": false,
+      "candidate_exact_ar_match": false,
+      "first_mtp_vs_ar_difference_output_token_1_indexed": 2,
+      "control_acceptance_rate": 0.0,
+      "candidate_acceptance_rate": 0.0,
+      "conclusion": "The native adapter preserves the existing implementation exactly, but the available target/sidecar pair is not an admissible correctness oracle. Do not run or publish a full-suite speed gate from this model artifact."
+    },
+    "timing_diagnostic_only": {
+      "control_mtp_decode_tok_s": 39.89830542153125,
+      "candidate_mtp_decode_tok_s": 39.084699271030566,
+      "candidate_delta_pct": -2.039199765265265,
+      "eligible_for_claim": false,
+      "reason": "One fresh process per arm, no repetition, and the shared model artifact fails correctness."
+    }
+  },
+  "source_artifacts": {
+    "clean_control": {
+      "path": "/tmp/w7900-n4-7bf3439e-control-b3.json",
+      "bytes": 11826,
+      "sha256": "732d2c49c7b397e9042012363062a0a64e2cbffd7d584102de92eaa108963fe7"
+    },
+    "clean_candidate": {
+      "path": "/tmp/w7900-n4-7bf3439e-native-b3.json",
+      "bytes": 12109,
+      "sha256": "c81866ccefa5b75aac4b4b7cc28a5d577d5a8c585ff3dbded882a849b433256b"
+    }
+  },
+  "decision": {
+    "implementation": "Keep the exact, fallback-safe adapter as default-off N4 infrastructure.",
+    "promotion": "Blocked; no performance row and no gfx1151 or DFlash admission claim.",
+    "next_gate": "Obtain or rebuild a target trunk plus BF16 MTP sidecar that matches true AR, then run full category+heldout PARO MTP and DFlash correctness/non-regression gates independently before any default promotion or complete-cycle ownership claim."
+  }
+}
