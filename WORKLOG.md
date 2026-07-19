@@ -168236,3 +168236,46 @@ git diff --check
 No performance result is attached to this harness-only unit. The first clean
 5 ms fair/256-token baseline follows from the committed harness before changing
 plain-AR route width.
+
+## 2026-07-20 — Measure corrected-window INT8 server baseline
+
+Clean `b2448f81` then established the pre-route-change control with explicit
+5 ms generation coalescing and a separate 256-token prefill chunk. The real
+Uvicorn p512/d128 mirrored-INT8 run used one warmup and one blocking measurement
+at c1/c2/c4/c8 plus delayed C8 admission:
+
+```bash
+HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 .venv/bin/python \
+  scripts/server_f1_concurrency_bench.py \
+  --engine hipengine \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1151 --quant gguf_q4_k_m \
+  --hipengine-kv-storage int8_per_token_head \
+  --hipengine-kv-scale-dtype fp16 \
+  --hipengine-kv-scale-granularity per_token_head \
+  --hipengine-route-expectation native \
+  --hipengine-prefill-decode-policy fair \
+  --generation-batch-window-ms 5 \
+  --hipengine-prefill-chunk-tokens 256 \
+  --concurrencies 1,2,4,8 --live-concurrency 8 \
+  --prompt-length 512 --decode-tokens 128 --ctx-per-seq 1024 \
+  --warmup-runs 1 --measured-runs 1 \
+  --live-join-after-tokens 8 \
+  --compiler-version-file /tmp/hipengine-gfx1151-native-cycle-hipcc-version.txt \
+  --memory-domain gtt --drm-card-index 0 --memory-poll-ms 10 \
+  --work-dir /tmp/gfx1151-int8-window5-b2448f81/work \
+  --json /tmp/gfx1151-int8-window5-b2448f81/result.json
+```
+
+The packet is `accepted_backend_packet`: every oracle, warmup, blocking, and
+delayed row is exact; delayed admission occurs while the first request is live.
+One-repeat aggregate rates are **43.979/60.724/74.219/75.513 tok/s** and delayed
+C8 is **62.188 tok/s**. Relative to the mismatched 256 ms publication row, those
+are **+8.68%/+6.14%/+3.03%/+4.14%** and **+5.85%**. The C8 shape still proves
+the stale boundary: `route_cap=4`, so eight requests execute as two sequential
+queue groups rather than one physical C8 call.
+
+This is the frozen diagnostic baseline for the route-cap iteration, not a
+replacement publication: it has one measurement per width. Raw JSON is 1,641
+lines, SHA-256
+`56798979b6c80cc2f6f56be28244de7de77baa2a6b618195fce0d029c8488999`.
