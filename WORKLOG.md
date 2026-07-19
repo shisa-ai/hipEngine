@@ -165477,3 +165477,19 @@ python3 -m py_compile + --help + git diff --check: passed
 No benchmark has run yet. The next command is the clean gfx1151 canonical
 Qwen3.6 Q4_K_M `p256+s1`, warmup-1/repetition-3 matched packet using the retained
 real-model correctness artifact as a hard prerequisite.
+
+## 2026-07-19 — Correct prefix economics physical-memory attribution
+
+The first clean economics run passed its exact/hit/TTFT/live-page gates, but a
+post-run audit rejected its unpaired process-memory subtraction. Separate mode
+medians suggested a 203,423,744-byte HIP-current reduction; paired repetition
+deltas were actually `0, 203423744, 0` bytes because an ordinary off case lazily
+materialized packed workspace on one resident lease. This is not a stable radix
+physical-memory benefit.
+
+Added `_paired_delta_distribution()` with a RED/GREEN pure test. The harness now
+reports paired tracked/HIP deltas and permits `physical_current_reduction_claim`
+only when **every** matched pair is positive and the paired median is positive.
+The exact live-capacity benefit remains one 5,242,880-byte page; process-current
+memory remains a separate diagnostic. The clean benchmark will be rerun from the
+corrected committed harness before any result is published.

@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from scripts.gguf_prefix_reuse_bench import _distribution, _summarize_comparison
+from scripts.gguf_prefix_reuse_bench import (
+    _distribution,
+    _paired_delta_distribution,
+    _summarize_comparison,
+)
 
 
 def _row(mode: str, ttft_ms: float, token_id: int, live_pages: int) -> dict:
@@ -28,6 +32,17 @@ def test_distribution_reports_required_e2e_statistics() -> None:
     assert summary["min"] == 10.0
     assert summary["max"] == 30.0
     assert summary["stdev"] == pytest.approx(8.16496580927726)
+
+
+def test_paired_delta_distribution_does_not_turn_one_lazy_growth_into_a_claim() -> None:
+    baseline = [{"bytes": value} for value in (100, 300, 300)]
+    radix = [{"bytes": value} for value in (100, 100, 300)]
+
+    summary = _paired_delta_distribution(baseline, radix, key="bytes")
+
+    assert summary["samples"] == [0.0, 200.0, 0.0]
+    assert summary["median"] == 0.0
+    assert summary["all_positive"] is False
 
 
 def test_comparison_requires_exact_outputs_hits_savings_and_final_drain() -> None:

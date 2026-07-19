@@ -55,6 +55,26 @@ def _distribution(values: Sequence[float]) -> dict[str, Any]:
     }
 
 
+def _paired_delta_distribution(
+    baseline: Sequence[Mapping[str, Any]],
+    radix: Sequence[Mapping[str, Any]],
+    *,
+    key: str,
+) -> dict[str, Any]:
+    baseline_rows = list(baseline)
+    radix_rows = list(radix)
+    if not baseline_rows or len(baseline_rows) != len(radix_rows):
+        raise ValueError("paired delta requires matched non-empty rows")
+    summary = _distribution(
+        [
+            float(off[key]) - float(hit[key])
+            for off, hit in zip(baseline_rows, radix_rows, strict=True)
+        ]
+    )
+    summary["all_positive"] = all(value > 0.0 for value in summary["samples"])
+    return summary
+
+
 def _summarize_comparison(
     baseline: Sequence[Mapping[str, Any]],
     radix: Sequence[Mapping[str, Any]],
@@ -399,9 +419,19 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         }
         for mode, rows in measured.items()
     }
-    physical_current_delta = (
-        float(memory["off"]["hip_used_after_bytes"]["median"])
-        - float(memory["radix"]["hip_used_after_bytes"]["median"])
+    tracked_current_paired_delta = _paired_delta_distribution(
+        measured["off"],
+        measured["radix"],
+        key="tracked_current_after_bytes",
+    )
+    hip_current_paired_delta = _paired_delta_distribution(
+        measured["off"],
+        measured["radix"],
+        key="hip_used_after_bytes",
+    )
+    physical_current_reduction_claim = bool(
+        hip_current_paired_delta["all_positive"]
+        and float(hip_current_paired_delta["median"]) > 0.0
     )
     passed = bool(comparison["passed"] and repo["tracked_clean"])
     return {
@@ -460,8 +490,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "page_bytes": page_bytes,
             "saved_live_pages": int(comparison["saved_live_pages"]),
             "saved_live_bytes": saved_live_bytes,
-            "hip_used_after_median_delta_bytes": physical_current_delta,
-            "physical_current_reduction_claim": physical_current_delta > 0.0,
+            "tracked_current_paired_delta_bytes": tracked_current_paired_delta,
+            "hip_used_current_paired_delta_bytes": hip_current_paired_delta,
+            "physical_current_reduction_claim": physical_current_reduction_claim,
             "scope_note": (
                 "Default fixed-capacity pool backing is preallocated for both modes; "
                 "live-page headroom is the retained memory benefit unless HIP current also falls."
