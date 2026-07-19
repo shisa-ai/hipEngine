@@ -1,0 +1,251 @@
+{
+  "schema": "hipengine.gguf_llama_compat_native_cycle_n3p.v1",
+  "date": "2026-07-19",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "speed_claim_eligible": false,
+  "purpose": "Clean committed-source correctness and host-submission evidence for reusable strict B1/B2 NextN proposal graphs. The faster N1 target-graph route remains the llama-compat topline.",
+  "scope": "Explicit accuracy-traded gfx1100 GGUF llama-compat B2 natural24 route; N3P adds one proposal-only graph submission before the unchanged N2 target graph",
+  "provenance": {
+    "hipengine_commit": "2395ad3319ba6b96fe1a066171c7f77b712ba452",
+    "git_branch": null,
+    "detached_clean_worktree": true,
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "hip_visible_devices": "0",
+    "rocm_version": "HIP version: 7.2.53211-3d9ef42",
+    "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_quant": "UD-Q4_K_M GGUF",
+    "model_sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "model_size_bytes": 22663387424,
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompt_count": 10,
+    "train_prompts": 6,
+    "heldout_prompts": 4,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "route": "llama-compat-native-cycle-n3p",
+    "candidate_budget": 2,
+    "cycles_cap": 24,
+    "max_output_tokens": 24,
+    "total_output_tokens": 240,
+    "reasoning": "off",
+    "greedy": true,
+    "record_cycle_stage_timings": true,
+    "require_cached_build": true,
+    "true_ar_path": "state_bound_graph",
+    "apple_to_apple_ok": true,
+    "command": "cd /tmp/hipengine-n3p-2395ad33-clean && HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-mtp-w7900-hipcc-version.txt PYTHONPATH=. python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route llama-compat-native-cycle-n3p --budgets 2 --cycles 24 --max-output-tokens 24 --record-cycle-stage-timings --require-cached-build --raw-root /tmp/w7900-native-n3p-2395ad33-clean2-raw --output /tmp/w7900-native-n3p-2395ad33-clean2-full.json"
+  },
+  "implementation": {
+    "public_boundary": "Qwen35GGUFResidentSession.run_native_spec_mtp_cycle()",
+    "proposal_registry_key": [
+      "hip_gfx1100",
+      "speculative_cycle",
+      "w4_gguf",
+      "native_v1_b2_proposal_graph"
+    ],
+    "dynamic_inputs": [
+      "fp32 hidden seed",
+      "root token embedding",
+      "RoPE cos/sin rows",
+      "positions",
+      "context counts",
+      "FP32 draft-KV row indices"
+    ],
+    "stable_ownership": "Runner-owned 1023-row FP32 key/value buckets and independent B1/B2 graph executables survive load-once prompt resets.",
+    "kv_writer": "Registered record_f32_row_indexed primitive replaces capture-bound destination offsets.",
+    "cycle_submissions": "One proposal hipGraphLaunch followed by one existing target hipGraphLaunch inside one scheduler-facing N3 call.",
+    "fallback": "Explicit pre-launch proposal admission failures use the retained exact device chain; graph/runtime failures surface because they may have mutated K/V.",
+    "default_scope": "Benchmark-only accuracy-traded gfx1100 route; N1/N2/N3, exact/default MTP, gfx1151, serving, and public automatic policies are unchanged.",
+    "explicit_limit": "This is proposal submission collapse, not one combined proposal+target native submission and not GPU child-kernel fusion."
+  },
+  "correctness": {
+    "proposal_kv_oracle": {
+      "passed": true,
+      "cycles": 5,
+      "trajectory": "B2 full-accept, full-accept, full-accept, reject, then B1 tail",
+      "candidate_ids_exact": true,
+      "committed_and_speculative_fp32_key_prefix_sha256_exact": true,
+      "committed_and_speculative_fp32_value_prefix_sha256_exact": true,
+      "control_artifact": {
+        "path": "/tmp/n3-kv-oracle-control.json",
+        "sha256": "7079a64ef6a97a00fbcefec80ca1901cb11a251702fb654fea1d174cbf2ab0fe"
+      },
+      "proposal_graph_artifact": {
+        "path": "/tmp/n3p-kv-oracle-graph.json",
+        "sha256": "e02a1ca3a5ab708fb10fdc4c9d095bc8f1097ac994ca8be950c9cfe9fcca66c7"
+      }
+    },
+    "full_suite_semantics": {
+      "reference": "benchmarks/results/2026-07-19-w7900-llama-compat-native-cycle-n3.json",
+      "reference_raw_root": "/tmp/hipengine-ar-mtp-suite-full-1784421442/mtp/b2",
+      "candidate_raw_root": "/tmp/w7900-native-n3p-2395ad33-clean2-raw/mtp/b2",
+      "prompts": 10,
+      "output_ids": 240,
+      "cycles": 96,
+      "accepted_drafts": 144,
+      "generated_drafts": 179,
+      "draft_acceptance": 0.8044692737430168,
+      "accepted_per_output": 0.6,
+      "common_non_timing_fields_per_cycle": 97,
+      "differences": 0,
+      "excluded_expected_differences": [
+        "native_spec_proposal_graph",
+        "ar_decode_ms",
+        "mtp_draft_ms",
+        "mtp_device_kv_commit_ms",
+        "cycle_wall_ms",
+        "stage_timings_ms"
+      ],
+      "candidate_raw_manifest_sha256": "32df8d7d8c73805ee3a9adf10a65b2b878708a9e6e4c68c6e8a69d2f31dadc9c",
+      "reference_raw_manifest_sha256": "ce5cfff6922812d9a2a127493b6f0468aaddd8b9d3cb27a511d1f48c738aae7a"
+    },
+    "focused_tests": {
+      "command": "python3 -m pytest -q tests/test_native_spec_cycle_graph.py tests/test_mtp_resident_draft_device_commit.py tests/test_gguf_native_spec_cycle.py tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_ar_mtp_suite.py",
+      "passed": 170,
+      "failed": 0,
+      "includes_real_w7900_target_state_kv_oracle": true
+    }
+  },
+  "clean_result": {
+    "true_ar_tok_s": 92.1865496496034,
+    "n3p_mtp_tok_s": 118.18293733842177,
+    "n3p_vs_true_ar": 1.282,
+    "cycle_wall_ms_total": 2066.3194,
+    "cycle_wall_ms_per_output": 8.609664166666667,
+    "draft_acceptance": 0.8044692737430168,
+    "accepted_per_output": 0.6,
+    "proposal_capture_ms_total": 14.326799999999999,
+    "proposal_submit_ms_per_output": 0.9269675,
+    "proposal_wall_excluding_capture_ms_per_output": 0.9468779166666664,
+    "train": {
+      "n3p_mtp_tok_s": 119.30109442184536,
+      "cycle_wall_ms_per_output": 8.59400625,
+      "draft_acceptance": 0.8725490196078431,
+      "accepted_per_output": 0.6180555555555556
+    },
+    "heldout": {
+      "n3p_mtp_tok_s": 116.54445685427086,
+      "cycle_wall_ms_per_output": 8.633151041666666,
+      "draft_acceptance": 0.7142857142857143,
+      "accepted_per_output": 0.5729166666666666
+    },
+    "categories": {
+      "code": {
+        "n3p_mtp_tok_s": 124.00056833593821,
+        "cycle_wall_ms_per_output": 8.353390625
+      },
+      "general_en": {
+        "n3p_mtp_tok_s": 118.84718233138557,
+        "cycle_wall_ms_per_output": 8.468512500000001
+      },
+      "general_ja": {
+        "n3p_mtp_tok_s": 114.89300588826656,
+        "cycle_wall_ms_per_output": 8.75913125
+      },
+      "mixed_ja_en": {
+        "n3p_mtp_tok_s": 110.37020004598759,
+        "cycle_wall_ms_per_output": 9.113895833333332
+      }
+    }
+  },
+  "comparison": {
+    "clean_n3_artifact": "benchmarks/results/2026-07-19-w7900-llama-compat-native-cycle-n3.json",
+    "clean_n3_tok_s": 118.59230928874263,
+    "clean_n3_cycle_wall_ms_per_output": 8.497209999999999,
+    "clean_n3_proposal_wall_ms_per_output": 0.9585500000000001,
+    "clean_n3p_vs_n3_tok_s_delta_pct": -0.3451926628093127,
+    "clean_n3p_vs_n3_cycle_wall_delta_pct": 1.3234245907382203,
+    "clean_n3p_vs_n3_proposal_wall_excluding_capture_delta_pct": -1.2176812198981368,
+    "same_source_n3_tok_s": 116.79343620888507,
+    "same_source_n3p_tok_s": 117.58884081900628,
+    "same_source_n3_cycle_wall_ms_per_output": 8.633905833333332,
+    "same_source_n3p_cycle_wall_ms_per_output": 8.652893333333335,
+    "same_source_n3p_vs_n3_tok_s_delta_pct": 0.6810353697433991,
+    "same_source_n3p_vs_n3_cycle_wall_delta_pct": 0.2199178490770448,
+    "same_source_n3_proposal_wall_ms_per_output": 0.9643841666666668,
+    "same_source_n3p_proposal_wall_excluding_capture_ms_per_output": 0.9529120833333332,
+    "same_source_proposal_wall_delta_pct": -1.1895760766154173,
+    "retained_n1_artifact": "benchmarks/results/2026-07-19-w7900-llama-compat-reusable-native-cycle.json",
+    "retained_n1_tok_s": 122.6674026710827,
+    "clean_n3p_vs_n1_tok_s_delta_pct": -3.65579219500185,
+    "llamacpp_floor_tok_s": 115.44422456595375,
+    "clean_n3p_vs_llamacpp_floor_delta_pct": 2.372325495506611,
+    "llamacpp_floor_ms_per_transition": 8.662,
+    "clean_n3p_vs_llamacpp_floor_wall_delta_pct": -0.6042003386438899,
+    "decision": "Retain N3P as exact host-submission ownership infrastructure. Aggregate timing is neutral across the matched pair and noisy across clean processes; do not replace the faster N1 topline."
+  },
+  "profiler": {
+    "tool": "rocprofv3 --hip-trace --kernel-trace",
+    "protocol": "Matched require-cached eight-cycle N3 and N3P children from the implementation-equivalent precommit tree. The final commit adds only pre-launch unsupported-shape fallback around the admitted graph call and the clean full suite confirms identical semantics.",
+    "trajectory": {
+      "cycles": 8,
+      "generated_drafts": 16,
+      "accepted_drafts": 14,
+      "visible_output_ids": 22,
+      "exact_between_routes": true
+    },
+    "hip_api_counts": {
+      "hipLaunchKernel": {
+        "n3": 3273,
+        "n3p": 2731,
+        "delta": -542
+      },
+      "hipMemcpy": {
+        "n3": 1204,
+        "n3p": 1124,
+        "delta": -80
+      },
+      "hipGraphLaunch": {
+        "n3": 8,
+        "n3p": 16,
+        "delta": 8
+      }
+    },
+    "kernel_census": {
+      "proposal_q6_x8_stage1": 16,
+      "target_accept": 8,
+      "selected_linear_state_commit": 8,
+      "hidden_cursor_commit": 8,
+      "note": "GPU child math dispatch count is intentionally unchanged apart from indexed K/V writers; the retained result is host submission collapse, not fusion."
+    },
+    "source_artifacts": {
+      "n3_profile_json_sha256": "d83507338ab59d96ad422a4ddb96a16cf5ce2f5b74bbc2b8e7b2cd8c94ea25a3",
+      "n3p_profile_json_sha256": "5a62b5e005ec07ee5d98ac280be4549f7937486a2a3435b4aad244f0be3ab1f8",
+      "n3_hip_api_trace_sha256": "ad8e68ec6dd12e0b94fa226e526b2d3ba0cd51971833fad754d14aa60fe2ec73",
+      "n3p_hip_api_trace_sha256": "b53e2fe6d6902977f9b363b550b0b262c69197af80c4fb5485c749598723597e",
+      "n3_kernel_trace_sha256": "6e4a955aeda928bada57e440c2a0ed9b0883d8012b768367bbbdf50137793290",
+      "n3p_kernel_trace_sha256": "dc0c1fddfc05ba4dc75d4ac0f81b2c4fe51f4263dc0555bf050f63b54af6af0d"
+    }
+  },
+  "source_artifacts": {
+    "clean_wrapper": {
+      "path": "/tmp/w7900-native-n3p-2395ad33-clean2-full.json",
+      "bytes": 10476,
+      "sha256": "3bfd250d873460874fbc66386e53f707c3781dd2af8554e011805ffc408d62cc"
+    },
+    "clean_category": {
+      "path": "/tmp/w7900-native-n3p-2395ad33-clean2-raw/mtp-category.json",
+      "bytes": 86430,
+      "sha256": "e82205cbad1fed61ba145aae6861c7693b6d1a38ff0e4387b35b55e9a51f2224"
+    },
+    "clean_true_ar": {
+      "path": "/tmp/w7900-native-n3p-2395ad33-clean2-raw/true-ar-baseline.json",
+      "bytes": 20451,
+      "sha256": "0557b8540a2b9053433b636eac8ce46b657900e83c525feee5ada2e27d766603"
+    }
+  }
+}
