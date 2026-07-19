@@ -333,6 +333,15 @@ def _pool_json(runner: Any) -> dict[str, Any]:
     return {} if stats is None else stats.to_json_dict()
 
 
+def _final_pool_from_idle_snapshot(final_idle: Mapping[str, Any]) -> dict[str, Any]:
+    snapshot = final_idle.get("snapshot")
+    snapshot = snapshot if isinstance(snapshot, Mapping) else {}
+    runner = snapshot.get("runner")
+    runner = runner if isinstance(runner, Mapping) else {}
+    pool = runner.get("kv_pool")
+    return copy.deepcopy(dict(pool)) if isinstance(pool, Mapping) else {}
+
+
 def _wait_for_pressure_allocation(
     llm: LLM,
     runner: Any,
@@ -836,7 +845,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 final_metrics = _metrics_snapshot("127.0.0.1", server.port)
             graph_after_snapshot = runner.observability_snapshot()
             graph_after = _graph_totals(graph_after_snapshot)
-            final_pool = _pool_json(runner)
+            final_pool = _final_pool_from_idle_snapshot(final_idle)
             final_memory = _memory_snapshot("final", runner)
             resolved_backend = str(runner.generator.backend)
             target_arch = str(runner._shared_runner.target_arch)
