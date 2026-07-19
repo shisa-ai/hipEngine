@@ -164959,3 +164959,46 @@ B3 timing is control **39.73** versus N4 **38.50 decode tok/s**, which is neithe
 same-session nor non-regressive evidence; no performance claim is made. Keep N4
 default-off and treat current local PARO artifact correctness as the concrete
 blocker before full-suite/default admission. DFlash and gfx1151 remain ungated.
+
+### Clean committed N4 confirmation and blocked publication
+
+Committed the implementation as `7bf3439e` and reran both arms from detached,
+globally clean `/tmp/hipengine-n4-7bf3439e-clean`. Canonical provenance records
+commit `7bf3439e1b96b5132aee3eee29404f25ba011ad3`, W7900/gfx1100, system HIP
+`7.2.53211-3d9ef42`, and the exact 22,176,626,792-byte local target+sidecar
+directory fingerprint
+`1a4745ce8a8734324e62c14aa2545cb7cc1b8ea23a7489b05658f619cc1bdaac`.
+
+```bash
+cd /tmp/hipengine-n4-7bf3439e-clean
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+HIPENGINE_BACKEND=hip_gfx1100 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-mtp-w7900-hipcc-version.txt \
+HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH={0,1} PYTHONPATH=. \
+python3 scripts/mtp_chain_e2e_smoke.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 \
+  --prompt-tokens 151646 --decode-tokens 8 --candidate-budget 3 \
+  --proposal-impl persistent_device --backend hip_gfx1100 \
+  --chain-attn-mode batched --graph-mode auto --json <arm-output>
+```
+
+The clean candidate again records four steady native `VERIFY|ACCEPT` B3
+replays. A recursive comparison checks **265 leaf values** after excluding only
+timing and native-route telemetry and finds **0 differences**: both arms emit
+MTP IDs `[248050, 59, 36757, 25088, 65827, 3642, 1088, 585]`, all seven
+accepted lengths are zero, and every candidate/root/bonus/commit and GPU/CPU
+accept field agrees. Source SHA-256 is
+`732d2c49c7b397e9042012363062a0a64e2cbffd7d584102de92eaa108963fe7`
+(control) and
+`c81866ccefa5b75aac4b4b7cc28a5d577d5a8c585ff3dbded882a849b433256b`
+(N4).
+
+Both clean arms still mismatch true AR `[248050, 19, 19, 5137, 58, 58, 58,
+220]` beginning at output token 2 and retain zero acceptance. Their one-run
+MTP decode rates are **39.898** and **39.085 tok/s** (-2.04%), but repetition
+and speed publication are invalid because the model artifact fails correctness.
+Published the explicit `blocked_correctness`, `performance_claim=false` packet
+`benchmarks/results/2026-07-19-w7900-paro-mtp-native-target-graph-n4-blocked.json`,
+plus the benchmark index/changelog link. Keep the exact adapter default-off;
+the next gate is a compatible target+MTP artifact followed by full category+
+heldout PARO and DFlash gates, with gfx1151 independent.

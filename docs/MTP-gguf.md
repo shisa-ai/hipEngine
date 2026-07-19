@@ -381,8 +381,14 @@ accept/commit metadata, and scheduler-facing results.
    commit remains the unchanged exact path. Graph-off, tree, inactive, unsupported,
    pre-launch failure, and unregistered-backend cases retain direct fallback.
    Admission is explicit/default-off via
-   `HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH=1`. Complete PARO/DFlash cycle
-   ownership and independent gfx1100/gfx1151 promotion gates remain open.
+   `HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH=1`. A clean detached `7bf3439e`
+   B3 pair matches all 265 compared non-timing/non-route leaves while recording
+   four native `VERIFY|ACCEPT` replays, but both arms inherit the available
+   packed artifact's token-2 true-AR mismatch and zero acceptance. The blocked
+   packet is
+   [`benchmarks/results/2026-07-19-w7900-paro-mtp-native-target-graph-n4-blocked.json`](../benchmarks/results/2026-07-19-w7900-paro-mtp-native-target-graph-n4-blocked.json);
+   complete PARO/DFlash cycle ownership and independent gfx1100/gfx1151
+   promotion gates remain open.
 8. **N5 — Multi-cycle option:** only after N3/N4 are exact, allow the native
    launcher to continue until EOS, cancellation/deadline, output-buffer limit,
    or an explicit scheduler yield point.
