@@ -1124,6 +1124,58 @@ def test_gguf_deferred_packed_decode_flush_copies_full_live_kv(monkeypatch) -> N
     assert positions == [6, 8]
 
 
+def test_gguf_contiguous_device_kv_cache_view_rebases_shifted_allocation() -> None:
+    cache = DeviceBuffer(0x10000, 8 * 256 * 16)
+    unbound = SimpleNamespace(_device_kv_allocation=None)
+    identity = SimpleNamespace(
+        _device_kv_allocation=SimpleNamespace(
+            block_ids=(8, 9, 10),
+            chunk_start_block_id=8,
+        )
+    )
+    shifted = SimpleNamespace(
+        _device_kv_allocation=SimpleNamespace(
+            block_ids=(11, 12, 13),
+            chunk_start_block_id=8,
+        )
+    )
+    noncontiguous = SimpleNamespace(
+        _device_kv_allocation=SimpleNamespace(
+            block_ids=(8, 10),
+            chunk_start_block_id=8,
+        )
+    )
+
+    assert gguf_runner._gguf_device_kv_contiguous_base_row(unbound) == 0
+    assert gguf_runner._gguf_device_kv_contiguous_base_row(identity) == 0
+    assert gguf_runner._gguf_device_kv_contiguous_base_row(shifted) == 3 * 256
+    assert gguf_runner._gguf_device_kv_contiguous_base_row(noncontiguous) is None
+    assert gguf_runner._gguf_device_kv_contiguous_cache_view(
+        unbound,
+        cache,
+        row_nbytes=16,
+    ) is cache
+    assert gguf_runner._gguf_device_kv_contiguous_cache_view(
+        identity,
+        cache,
+        row_nbytes=16,
+    ) is cache
+    shifted_view = gguf_runner._gguf_device_kv_contiguous_cache_view(
+        shifted,
+        cache,
+        row_nbytes=16,
+    )
+    assert shifted_view == DeviceBuffer(
+        0x10000 + 3 * 256 * 16,
+        5 * 256 * 16,
+    )
+    assert gguf_runner._gguf_device_kv_contiguous_cache_view(
+        noncontiguous,
+        cache,
+        row_nbytes=16,
+    ) is None
+
+
 def test_gguf_deferred_packed_state_scatter_follows_noncontiguous_device_pages(
     monkeypatch,
 ) -> None:

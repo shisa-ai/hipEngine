@@ -8374,13 +8374,56 @@ def _free_qwen35_gguf_bf16_kv_chunk(
         free(buffer, runtime=runtime)
 
 
-def _gguf_device_kv_layout_is_identity(session: object) -> bool:
+def _gguf_device_kv_contiguous_base_row(
+    session: object,
+    *,
+    block_size: int = 256,
+) -> int | None:
+    """Return the raw-cache row offset for one contiguous device-KV allocation."""
+
+    page_tokens = int(block_size)
+    if page_tokens <= 0:
+        raise ValueError("GGUF device KV block size must be positive")
     allocation = getattr(session, "_device_kv_allocation", None)
     if allocation is None:
-        return True
-    chunk_start = int(allocation.chunk_start_block_id)
-    return tuple(int(block_id) for block_id in allocation.block_ids) == tuple(
-        chunk_start + index for index in range(len(allocation.block_ids))
+        return 0
+    block_ids = tuple(int(block_id) for block_id in allocation.block_ids)
+    if not block_ids:
+        raise ValueError("GGUF device KV allocation must contain pages")
+    if block_ids != tuple(block_ids[0] + index for index in range(len(block_ids))):
+        return None
+    local_page = block_ids[0] - int(allocation.chunk_start_block_id)
+    if local_page < 0:
+        raise ValueError("GGUF device KV block precedes its backing chunk")
+    return local_page * page_tokens
+
+
+def _gguf_device_kv_contiguous_cache_view(
+    session: object,
+    cache: DeviceBuffer,
+    *,
+    row_nbytes: int,
+    block_size: int = 256,
+) -> DeviceBuffer | None:
+    """Rebase a raw contiguous cache to the request's first physical page."""
+
+    row_bytes = int(row_nbytes)
+    if row_bytes <= 0:
+        raise ValueError("GGUF device KV row bytes must be positive")
+    base_row = _gguf_device_kv_contiguous_base_row(
+        session,
+        block_size=block_size,
+    )
+    if base_row is None:
+        return None
+    offset = int(base_row) * row_bytes
+    if offset == 0:
+        return cache
+    if offset < 0 or offset >= int(cache.nbytes):
+        raise ValueError("GGUF contiguous device KV view exceeds its backing cache")
+    return DeviceBuffer(
+        ptr=int(cache.ptr) + offset,
+        nbytes=int(cache.nbytes) - offset,
     )
 
 
@@ -12056,22 +12099,33 @@ class Qwen35GGUFResidentSession:
         force_aotriton_slots = set(int(index) for index in _force_aotriton_slot_indices)
         if any(index < 0 or index >= len(session_tuple) for index in force_aotriton_slots):
             raise ValueError("forced AOTriton slot index is outside the packed slab")
-        device_kv_nonidentity_scatter = any(
-            not _gguf_device_kv_layout_is_identity(session)
+        device_kv_contiguous_base_rows = tuple(
+            _gguf_device_kv_contiguous_base_row(session)
             for session in session_tuple
         )
+        device_kv_nonidentity_scatter = any(
+            base_row is None for base_row in device_kv_contiguous_base_rows
+        )
         if device_kv_nonidentity_scatter:
-            # Slot-local prefill writes raw contiguous cache rows and therefore
-            # cannot represent a shared prefix plus non-contiguous COW suffix.
-            # Keep those sessions in packed scratch and scatter through their
-            # scheduler-owned block table below.
+            # Slot-local prefill cannot represent a shared prefix plus a
+            # non-contiguous COW suffix. Keep those sessions in packed scratch
+            # and scatter through their scheduler-owned block table below.
             slot_local_full_prefill = False
             force_aotriton_slots.clear()
         self.last_packed_prefill_plan["device_kv_nonidentity_scatter"] = bool(
             device_kv_nonidentity_scatter
         )
+        self.last_packed_prefill_plan["device_kv_contiguous_base_rows"] = [
+            None if base_row is None else int(base_row)
+            for base_row in device_kv_contiguous_base_rows
+        ]
+        self.last_packed_prefill_plan["device_kv_shifted_contiguous_rebase"] = any(
+            base_row not in {None, 0}
+            for base_row in device_kv_contiguous_base_rows
+        )
         if force_aotriton_slots and not slot_local_full_prefill:
             raise ValueError("forced AOTriton slots require slot-local full attention")
+        full_kv_row_nbytes = self._packed_full_kv_row_nbytes()
         with wmma_prefill_session(self.use_wmma_prefill), gemv_decode_session(self.use_gemv_decode):
             for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
                 if layer_type == LINEAR_ATTENTION:
@@ -12118,6 +12172,25 @@ class Qwen35GGUFResidentSession:
                             layer_scratch = session._full_attention_prefill_scratch_for_layer(
                                 slot_scratch,
                                 layer_id,
+                            )
+                            key_cache_view = _gguf_device_kv_contiguous_cache_view(
+                                session,
+                                layer_scratch.key_cache,
+                                row_nbytes=full_kv_row_nbytes,
+                            )
+                            value_cache_view = _gguf_device_kv_contiguous_cache_view(
+                                session,
+                                layer_scratch.value_cache,
+                                row_nbytes=full_kv_row_nbytes,
+                            )
+                            if key_cache_view is None or value_cache_view is None:
+                                raise RuntimeError(
+                                    "slot-local GGUF prefill requires contiguous device KV"
+                                )
+                            layer_scratch = replace(
+                                layer_scratch,
+                                key_cache=key_cache_view,
+                                value_cache=value_cache_view,
                             )
                             row_nbytes = self.runner.hidden_size * DType.BF16.itemsize
                             self.runner._run_full_attention_prefill_layer_aotriton(

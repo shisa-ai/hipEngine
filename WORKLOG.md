@@ -166056,3 +166056,62 @@ route-cap aggregation/native-tail and stream-route contracts. GREEN is **19/19**
 focused tests, `py_compile`, CLI help, and `git diff --check`. No short-smoke
 performance claim is retained. Next is one clean standard packet per engine;
 failed widths remain correctness evidence and are not eligible wins.
+
+## 2026-07-19 — Standard matched hipEngine packet finds packed-row correctness blocker
+
+Ran the first complete matched hipEngine real-Uvicorn p512/d128 packet from
+clean tracked commit `87ae81f0` with logical c1/c2/c4/c8/C13, one warmup, three
+blocking and three SSE measurements per width, delayed C13 admission, GTT
+sampling, exact blocking token-ID oracles, and declared 10/10/0.5/30 s
+queue/TTFT/ITL/end-to-end SLOs. Exact command and component provenance are in
+`/tmp/gfx1151-external-f1-standard-87ae81f0/hipengine/result.json`.
+
+The packet correctly failed closed. C1 is 3/3 exact at **44.013 median blocking
+/ 43.050 median exact SSE tok/s**. Blocking medians for c2/c4/c8/C13 are
+**59.994/75.365/75.426/72.483 aggregate tok/s**, but they are not retainable:
+a p512 row ending in token 9708 intermittently emits the short-context
+continuation beginning `264,6669,2020,314` instead of its independent p512 c1
+oracle beginning `310,279,9910,11`. Blocking equality is **4/6, 9/12, 20/24,
+and 31/39** at c2/c4/c8/C13. The failure correlates with a nonzero item position
+inside a physical packed group; position-zero instances stay exact. C13 delayed
+admission is only **10/13 exact**. SSE independently fails exact text equality
+for the same rows and the strict ITL gate under c8/C13; no c>N goodput or
+external win is claimed.
+
+This is not an HTTP/harness transport failure: all affected blocking responses
+return 128 token IDs, exact prompt hashes/counts, the declared
+`gguf_packed_ar_server_decode` route, native c>N metadata, and zero serial
+fallback. Next action is the existing byte-exact `gguf_packed_ar_state_oracle`
+at rows=2, p512, d4 with packed versus independent-c1 prefill to locate the first
+state/layer divergence before any full server rerun.
+
+The full packed-state oracle passed, while an instrumented resident-loop probe
+reproduced the bad 9708 row **8/8** times before decode. Alternating one-process
+controls isolated the boundary exactly: default 256-token scheduler chunks emit
+`264,6669,2020,314`, while one 512-token prefill emits the c1 oracle
+`310,279,9910,11`; the same physical sessions alternate without changing the
+outcome. Capacity one stays exact at 256. The differentiator is device-KV page
+placement: the first allocation starts at backing page zero and retains
+slot-local AOTriton, while a later but still contiguous allocation shifted
+inside the same pool chunk was conservatively classified as non-contiguous and
+sent through the COW paged-scatter arithmetic added by `f4c826e2`.
+
+The production repair distinguishes contiguous shifted allocations from truly
+non-contiguous COW layouts. Slot-local prefill now receives non-owning cache
+views rebased to the first physical page for contiguous allocations; COW block
+lists continue using block-table gather/scatter unchanged. The prototype and
+production source each pass four alternating 256/512 real-model rounds with the
+same exact two-row IDs. RED/GREEN host coverage checks unbound, identity,
+shifted-contiguous, and non-contiguous mappings; the existing COW scatter and
+full-prompt route tests remain green. Focused packed/prefix coverage is **38
+passed**, plus `py_compile` and `git diff --check`.
+
+A real-Uvicorn p512/d128 c1/c2 repair gate then passed end-to-end. C1 is exact at
+**44.005 blocking / 41.863 exact-SSE tok/s**. C2 is **2/2 blocking exact** at
+**61.263 tok/s**, **2/2 SSE exact and SLO-qualified** at **56.898 tok/s**, and
+delayed admission is **2/2 exact**. The route is
+`gguf_packed_ar_server_decode`, native c2 is observed, serial fallback is false,
+and the artifact status is `accepted_backend_packet`:
+`/tmp/gfx1151-external-f1-c2-rebase-green/result.json`. This is correctness
+repair evidence, not yet the five-width external performance publication; that
+packet must be rerun from the committed fix.
