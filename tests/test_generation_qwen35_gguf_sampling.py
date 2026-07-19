@@ -2034,6 +2034,8 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
         "native_full_prefill_rows": 3,
         "native_incremental_prefill_chunks": 0,
         "native_packed_decode_steps": 2,
+        "native_packed_graph_captures": 0,
+        "native_packed_graph_replays": 0,
         "native_c1_decode_steps": 2,
         "native_sampled_prefill_rows": 1,
         "host_sampler_requests": 1,
@@ -2477,6 +2479,167 @@ def test_gguf_resident_runner_releases_packed_workspace_before_reusing_session()
     assert events == ["invalidate", "reset"]
     assert runner._packed_workspace_release_events == 1
     assert runner._packed_workspace_released_bytes == 1234
+
+
+def test_gguf_resident_runner_waits_for_stable_membership_before_graph_capture() -> None:
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    pending = SimpleNamespace(native_greedy=True, native_sampled=False, slot=None)
+    runner._rows = {
+        1: SimpleNamespace(native_greedy=True, native_sampled=False, slot=object()),
+        2: pending,
+    }
+
+    assert runner._packed_graph_capture_membership_stable() is False
+    pending.slot = object()
+    assert runner._packed_graph_capture_membership_stable() is True
+
+
+def test_gguf_resident_runner_captures_replays_and_closes_packed_graph() -> None:
+    events: list[tuple] = []
+
+    class FakeGraph:
+        def __init__(self, sessions) -> None:
+            self.sessions = tuple(sessions)
+            self.closed = False
+            self.flushed = False
+            self.replay_count = 0
+            self.replayed_steps = 0
+            self.execution_manifest = {
+                "schema": 1,
+                "kind": "gguf_packed_ar_execution_manifest",
+                "mode": "decode_graph_replay",
+                "graph": {"captured": True, "replay_count": 0},
+            }
+
+        def replay(self, steps: int) -> None:
+            self.replay_count += int(steps)
+            self.replayed_steps += int(steps)
+            self.execution_manifest["graph"]["replay_count"] = self.replay_count
+            for session in self.sessions:
+                session.position += int(steps)
+            events.append(("replay", int(steps)))
+
+        def read_latest_generated_token_ids(self):
+            events.append(("read_latest",))
+            return [41, 42]
+
+        def flush_packed_state(self) -> bool:
+            self.flushed = True
+            events.append(("flush",))
+            return True
+
+        def close(self) -> None:
+            self.closed = True
+            events.append(("close",))
+
+    class FakeSession:
+        def __init__(self, position: int) -> None:
+            self.position = int(position)
+            self._decode_graphs = []
+            self.step_batch_native = lambda *args, **kwargs: pytest.fail(
+                "eager packed decode ran after graph admission"
+            )
+
+        @staticmethod
+        def decode_graph_min_replay_steps() -> int:
+            return 128
+
+    sessions = (FakeSession(512), FakeSession(512))
+    graph = FakeGraph(sessions)
+    capture_kwargs: dict[str, object] = {}
+
+    def capture(token_ids, **kwargs):
+        capture_kwargs["token_ids"] = tuple(token_ids)
+        capture_kwargs.update(kwargs)
+        for session in sessions:
+            session._decode_graphs.append(graph)
+        return graph
+
+    sessions[0].capture_packed_decode_graph = capture
+    slots = [
+        SimpleNamespace(
+            session=session,
+            prev_token=10 + index,
+            seq_position=512,
+            generated_ids=[20 + index],
+            c1_decode_graph=None,
+            packed_decode_graph=None,
+            packed_decode_graph_unavailable=False,
+            packed_decode_owner=None,
+            native_decode_steps=0,
+        )
+        for index, session in enumerate(sessions)
+    ]
+    request = _request(prompts=("first", "second"), max_tokens=128, ignore_eos=True)
+    rows = [
+        SimpleNamespace(
+            request_id=index + 1,
+            request=request,
+            native_greedy=True,
+            native_sampled=False,
+            slot=slot,
+            samples=[],
+            sampling_request=None,
+            sampling_state=None,
+        )
+        for index, slot in enumerate(slots)
+    ]
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    runner.generator = SimpleNamespace(
+        tokenizer=_FakeTokenizer(),
+        _flush_ar_packed_decode_owners_if_chunk_changed=lambda chunk: None,
+        _flush_ar_packed_decode_owners=lambda chunk: None,
+    )
+    runner._route_counts = Counter()
+    runner._last_execution_manifest = {}
+    runner._rows = {row.request_id: row for row in rows}
+    runner._kv_graph_invalidation_count = 0
+    runner._close_c1_decode_graph = lambda row: None
+    runner._observe_graph_handles = lambda sessions: events.append(
+        ("observe", tuple(sessions))
+    )
+    runner._record_graph_invalidations = lambda handles, count: events.append(
+        ("invalidate", tuple(handles), int(count))
+    )
+
+    assert runner._step_native_chunk(
+        rows,
+        physical_rows=2,
+        active_slot_indices=(0, 1),
+    ) is True
+    assert capture_kwargs == {
+        "token_ids": (10, 11),
+        "sessions": sessions,
+        "physical_rows": 2,
+        "active_slot_indices": (0, 1),
+        "steps_per_replay": 1,
+        "max_replay_steps": 127,
+        "record_steps": 127,
+    }
+    assert [slot.generated_ids[-1] for slot in slots] == [41, 42]
+    assert all(slot.packed_decode_graph is graph for slot in slots)
+    assert runner._route_counts["native_packed_graph_captures"] == 1
+    assert runner._route_counts["native_packed_graph_replays"] == 1
+
+    runner._close_packed_decode_graphs(rows)
+
+    assert graph.flushed is True
+    assert graph.closed is True
+    assert all(slot.packed_decode_graph is None for slot in slots)
+    assert runner._kv_graph_invalidation_count == 1
+    assert events == [
+        ("replay", 1),
+        ("read_latest",),
+        ("observe", sessions),
+        ("observe", sessions),
+        ("flush",),
+        ("close",),
+        ("invalidate", (graph,), 1),
+    ]
 
 
 def test_gguf_resident_runner_counts_c1_graph_close_as_invalidation() -> None:

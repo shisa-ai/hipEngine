@@ -168336,3 +168336,61 @@ serial/resident fallback. The one-repeat C8 SSE SLO-goodput is only
 **30.594 tok/s** because ITL qualification remains open; this is implementation
 evidence, not the final repeated publication. Raw SHA-256:
 `5d65b81ea1c899f86a97d9b1ce6f1cd35cb1205be05d5a8e4383b5d8dac567d5`.
+
+## 2026-07-20 — Attach packed graph replay to resident GGUF groups
+
+Wired the retained direct packed graph implementation into the long-lived GGUF
+owner for stable dense c2/c4/c8 greedy groups. The owner scales the existing
+128-transition capture break-even by physical width, captures one state-bound
+fixed-address graph only after every currently registered native row completes
+prefill, feeds tokens/positions/context on device, and reads back only the latest
+physical INT32 token row per replay. Membership change, cancellation, reclaim,
+compaction, scalar fallback, or shutdown flushes canonical packed state, closes
+the shared handle, clears every slot reference, records one invalidation, and
+then continues through the established eager path. Sampled rows, sparse/transient
+groups, unsupported graph ABIs, and explicit graph-off remain eager.
+
+RED first lacked both latest-row readback and resident graph admission. A second
+RED captured the initial policy's transient fair-admission waste: C2/C4 ramp
+buckets were captured for only two replays each before stable C8. Capture now
+requires stable registered membership, so independently stable C2/C4 still
+qualify while a forming C8 waits. GREEN is **9 packed-graph tests + 68 GGUF
+sampling/resident-loop tests**:
+
+```bash
+.venv/bin/python -m pytest tests/test_gguf_packed_decode_graph.py -q --tb=short
+.venv/bin/python -m pytest \
+  tests/test_generation_qwen35_gguf_sampling.py -q --tb=short
+python3 -m py_compile hipengine/runtime/gguf_packed_decode_graph.py \
+  hipengine/generation/qwen35_gguf.py \
+  tests/test_gguf_packed_decode_graph.py \
+  tests/test_generation_qwen35_gguf_sampling.py
+git diff --check
+```
+
+The first BF16 p512/d128 C1/C8 implementation run was output/state exact and
+showed the graph ABI working, but intentionally used zero warmups and therefore
+failed only the harness warmup-presence gate. Its transient policy captured
+three static buckets (2/2/113 replays); that observation selected the stable-
+membership repair. A subsequent rerun was stopped after its obsolete server
+child remained orphaned; the next C1 sample was GPU-contended and is invalid.
+Both task-owned PIDs were terminated, and `rocm-smi` then proved zero KFD owners
+before replacement evidence.
+
+The exclusive stable-membership packet is `accepted_backend_packet`. All C1/C8
+warmup, measured, and delayed rows are exact; shape telemetry remains one true
+physical C8. C1/C8 blocking is **44.263/84.032 tok/s** and delayed C8 is
+**67.242 tok/s**. Warmup+measurement capture exactly **2** stable C8 graphs and
+replay **226** transitions; both close as **2** invalidations, with zero active
+entries, graph-pinned/refcounted pages, packed-workspace bytes, failures,
+rejections, cancellations, or fallback at scrape. The delayed membership run
+stays exact and correctly avoids a short-lived capture.
+
+A matched exclusive `HIPENGINE_GGUF_DECODE_GRAPH=0` control is also accepted at
+**44.284/84.073 tok/s** and delayed C8 **67.031 tok/s**. Graph-on complete C8
+wall is neutral within one-run noise (**-0.05%**) while delayed wall is
+**+0.31%**; no aggregate speedup is claimed. The keep decision therefore awaits
+the clean cached profiler's launch/API evidence, while correctness, ownership,
+and complete wall are non-regressive. Raw graph-on/off SHA-256 values are
+`4b36046e9d2056ad2de68329bb7f284510fb8fe0c4ac5d24b0357fd39e0c18ab` and
+`3a049cb9f4415b88ad7536d1ebcb04bd0bc93d1d26d73597cee183a2bebe6ba8`.
