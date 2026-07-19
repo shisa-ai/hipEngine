@@ -164,6 +164,26 @@ def test_radix_cache_cancellation_removes_live_prefix_ownership() -> None:
     assert cache.stats.entries == 0
 
 
+def test_radix_cache_retained_entry_survives_request_cancel_until_eviction() -> None:
+    cache = RadixCache(block_size=2)
+    cache.insert(1, [1, 2, 3, 4], [10, 11])
+
+    retained = cache.retain_entry([1, 2], [10])
+    assert retained.cache_owned is True
+    assert retained.owner_request_ids == (1,)
+
+    cache.cancel(1)
+    cached = cache.entry_state([1, 2])
+    assert cached.cache_owned is True
+    assert cached.owner_request_ids == ()
+    assert cache.match([1, 2, 9]).block_ids == (10,)
+
+    evicted = cache.evict_entry([1, 2])
+    assert evicted.cache_owned is False
+    assert evicted.block_ids == ()
+    assert cache.match([1, 2, 9]).hit is False
+
+
 def test_radix_cache_entry_state_is_pointer_independent_kvtc_guardrail() -> None:
     cache = RadixCache(block_size=2)
     cache.insert(1, [1, 2, 3, 4], [10, 11])
@@ -190,6 +210,7 @@ def test_radix_cache_entry_state_is_pointer_independent_kvtc_guardrail() -> None
         "block_ids": [10],
         "owner_request_ids": [1, 2],
         "refcount": 2,
+        "cache_owned": False,
         "eviction_state": "tiered:host",
     }
 
@@ -387,6 +408,37 @@ def test_device_chunked_kv_pool_shared_prefix_cow_reclaims_after_last_ref_and_pi
     pool.unpin(right.block_ids)
     assert pool.stats.free_pages == 6
     assert pool.stats.pinned_pages == 0
+    pool.close()
+
+
+def test_device_chunked_kv_pool_cache_ref_survives_request_release() -> None:
+    pool = DeviceChunkedKVPool(
+        page_bytes=4096,
+        initial_pages=3,
+        low_water_pages=3,
+        high_water_pages=3,
+        chunk_pages=3,
+        allocate_chunk=lambda start, pages: {
+            "ptr": 0xAA000000 + int(start) * 4096,
+            "pages": int(pages),
+        },
+        free_chunk=lambda backing: None,
+        page_pointer=lambda backing, local_page: int(backing["ptr"]) + int(local_page) * 4096,
+    )
+    request = pool.allocate(10, 2)
+
+    pool.retain_blocks(request.block_ids[:1])
+    assert pool.refcount(request.block_ids[0]) == 2
+    pool.release(10)
+    assert pool.refcount(request.block_ids[0]) == 1
+    assert pool.refcount(request.block_ids[1]) == 0
+    assert pool.stats.free_pages == 2
+
+    with pytest.raises(RuntimeError, match="retained references"):
+        pool.close()
+    pool.release_blocks(request.block_ids[:1])
+    assert pool.refcount(request.block_ids[0]) == 0
+    assert pool.stats.free_pages == 3
     pool.close()
 
 

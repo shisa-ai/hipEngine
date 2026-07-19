@@ -480,6 +480,7 @@ class DeviceChunkedKVPool:
         self._page_pointer = page_pointer
         self._chunks: list[_DeviceKVPoolChunkState] = []
         self._refcounts: dict[int, int] = {}
+        self._retained_refcounts: dict[int, int] = {}
         self._pin_counts: dict[int, int] = {}
         self._request_allocations: dict[int, DeviceKVPoolAllocation] = {}
         self._next_block_id = 0
@@ -536,6 +537,43 @@ class DeviceChunkedKVPool:
 
     def pin_count(self, block_id: int) -> int:
         return int(self._pin_counts.get(int(block_id), 0))
+
+    def retain_blocks(self, block_ids: tuple[int, ...] | list[int]) -> None:
+        """Hold cache-owned references independent of request allocations."""
+
+        blocks = tuple(int(block_id) for block_id in block_ids)
+        if not blocks or len(set(blocks)) != len(blocks):
+            raise ValueError("retained device KV block ids must be non-empty and unique")
+        for block_id in blocks:
+            self._chunk_for_block(block_id)
+            if self._refcounts.get(block_id, 0) <= 0:
+                raise ValueError("cannot retain a free device KV page")
+        for block_id in blocks:
+            self._refcounts[block_id] += 1
+            self._retained_refcounts[block_id] = (
+                self._retained_refcounts.get(block_id, 0) + 1
+            )
+
+    def release_blocks(self, block_ids: tuple[int, ...] | list[int]) -> None:
+        """Drop cache-owned references and free pages after their last owner."""
+
+        blocks = tuple(int(block_id) for block_id in block_ids)
+        if not blocks or len(set(blocks)) != len(blocks):
+            raise ValueError("released device KV block ids must be non-empty and unique")
+        for block_id in blocks:
+            self._chunk_for_block(block_id)
+            if self._retained_refcounts.get(block_id, 0) <= 0:
+                raise ValueError("device KV page has no retained reference")
+            if self._refcounts.get(block_id, 0) <= 0:
+                raise RuntimeError("device KV retained refcount drift")
+        for block_id in blocks:
+            chunk = self._chunk_for_block(block_id)
+            retained = self._retained_refcounts[block_id]
+            total = self._refcounts[block_id]
+            self._retained_refcounts[block_id] = retained - 1
+            self._refcounts[block_id] = total - 1
+            if total == 1 and self._pin_counts.get(block_id, 0) == 0:
+                chunk.free_block_ids.add(block_id)
 
     def allocate(
         self,
@@ -735,6 +773,7 @@ class DeviceChunkedKVPool:
             self._chunks.pop()
             for block_id in tail_ids:
                 self._refcounts.pop(block_id, None)
+                self._retained_refcounts.pop(block_id, None)
                 self._pin_counts.pop(block_id, None)
             freed_pages += tail.descriptor.pages
             self._shrink_events += 1
@@ -743,12 +782,15 @@ class DeviceChunkedKVPool:
     def close(self) -> None:
         if self._request_allocations:
             raise RuntimeError("cannot close device KV pool with live request allocations")
+        if any(count > 0 for count in self._retained_refcounts.values()):
+            raise RuntimeError("cannot close device KV pool with retained references")
         if any(count > 0 for count in self._pin_counts.values()):
             raise RuntimeError("cannot close device KV pool with graph-pinned pages")
         while self._chunks:
             chunk = self._chunks.pop()
             self._free_chunk(chunk.backing)
         self._refcounts.clear()
+        self._retained_refcounts.clear()
         self._pin_counts.clear()
 
     def _find_chunk(self, pages: int) -> _DeviceKVPoolChunkState | None:
@@ -810,6 +852,7 @@ class DeviceChunkedKVPool:
         self._chunks.append(chunk)
         for block_id in descriptor.block_ids:
             self._refcounts[block_id] = 0
+            self._retained_refcounts[block_id] = 0
             self._pin_counts[block_id] = 0
         self._next_block_id += int(pages)
         if count_growth:

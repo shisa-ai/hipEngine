@@ -165542,3 +165542,46 @@ This closes only explicit active-current greedy p256+s1 reuse on gfx1151.
 snapshots, completed-session and sampled reuse, packed shared-suffix byte
 identity, broader boundaries, eviction, graph-safe lifecycle, gfx1100 transfer,
 and default-on promotion remain open.
+
+## 2026-07-19 — Add cache-owned GGUF boundary snapshots
+
+Started the next default-off RadixCache slice with REDs at all three ownership
+layers. `RadixCache` had no cache owner after request cancellation,
+`DeviceChunkedKVPool` had no non-request reference class, and the real GGUF
+session could only clone Conv/GDN state from a live source session. The focused
+REDs failed on missing `retain_entry`, `retain_blocks`, and
+`capture_prefix_state_snapshot` APIs; the completed-source runner RED found no
+snapshot after source release.
+
+GREEN adds pointer-independent durable radix ownership plus explicit eviction,
+cache-owned device-page refcounts that cannot be confused with request or graph
+refs, and dedicated device-resident Conv/GDN snapshots at exact positive
+256-token boundaries. Snapshot capture synchronizes before a source session may
+reset; historical restore validates runner/runtime/KV dtype/layout, exact shared
+block ids/backing, destination graph/reset state, and synchronizes before the
+snapshot may be evicted. The resident owner keeps at most its session capacity
+in LRU order, promotes only normally reclaimed greedy rows, drops rollback/
+cancel snapshots, preserves active-current live-session cloning first, and
+reports snapshot entries/hits/evictions/bytes separately.
+
+The host completed-session trajectory now retains one cache ref after the source
+request releases, restores the snapshot into a fresh session sharing the same KV
+page, releases the continuation without dropping cache ownership, then evicts
+the radix node, page ref, and 384-byte fake snapshot to final zero. Active-current
+source-first rollback remains unchanged.
+
+Validation:
+
+```text
+60 passed: kvcache policy + GGUF device binding + active/completed prefix runner
+           + prefix oracle helpers + packed non-contiguous KV layout
+2 passed: engine-loop prefix CLI/env propagation
+2 passed: selected dynamic/device-KV sampling nodes
+python3 -m py_compile + git diff --check: passed
+```
+
+This is host/runtime implementation evidence, not a real-model correctness or
+performance claim. Next is a gfx1151 completed-source gate that must release and
+reset the source session before continuation admission, then match an independent
+private c1 oracle for output, all Conv/GDN/live-KV state, teacher-forced steps,
+cache-owned refcount/eviction, and final zero ownership. Default remains `off`.
