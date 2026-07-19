@@ -165643,3 +165643,28 @@ Artifact:
 Default remains `off`. Next is a clean paired completed-session economics packet
 that excludes source creation but charges snapshot lookup/restore, followed by
 broader boundary/LRU pressure, sampled reuse, and gfx1100 transfer.
+
+## 2026-07-19 — Add completed-source prefix economics mode
+
+Extended `scripts/gguf_prefix_reuse_bench.py` with a fail-closed
+`--source-lifecycle completed` protocol. Source prefill, exact snapshot capture,
+cache ref promotion, source reset/unbind, and mode setup are outside the timing
+window. Synchronized continuation admission through first token charges radix
+lookup, shared-page binding, all 66,846,720 snapshot restore bytes, skipped
+prefix, exact c1 suffix, and first-token completion. The `off` control also
+releases the source before timing, then privately replays both prompt chunks.
+
+Completed mode deliberately does **not** reuse the active-current memory gate.
+Both modes should own two unique pages during continuation, so acceptance
+requires live-page delta zero rather than a false saving. Every radix row must
+instead prove a snapshot hit, cache ref after source release `1`, cache ref after
+continuation release `1`, explicit eviction, final zero ownership, exact paired
+token, no fallback, and faster median TTFT. Snapshot bytes, exact cache-resident
+bytes (snapshot + one idle page), tracked allocator, and HIP current/peak remain
+separate. Physical-current reduction retains the paired all-positive rule.
+
+RED failed at import because completed correctness matching and lifecycle-aware
+economics did not exist. GREEN is `5 passed`; `--help`, `py_compile`, and
+`git diff --check` pass. No completed-session benchmark has run yet. The next
+packet is one warmup plus three alternating matched pairs using the retained
+completed-source correctness artifact as a hard prerequisite.
