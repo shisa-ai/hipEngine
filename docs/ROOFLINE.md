@@ -1216,29 +1216,36 @@ globally.
 
 ### 9.7 Compiler Quality: LLVM-AMDGPU vs ACO
 
-The same RDNA3 ISA can have very different scheduling depending on the
-compiler:
+The same RDNA3 ISA can have different lowering and scheduling under ROCm
+LLVM-AMDGPU (HIP) and RADV/ACO (Vulkan), but current matched evidence does
+**not** support treating ACO as broadly superior. Keep compiler attribution
+shape- and mode-specific.
 
-- **ROCm LLVM-AMDGPU** (used by HIP/hipcc): general-purpose LLVM backend.
-  Tends to under-unroll tight loops, over-spill registers, and produce
-  suboptimal waitcnt placement on gfx1100.
-- **RADV/ACO** (used by Vulkan on open-source AMD drivers): purpose-built
-  compiler for GPU compute shaders. Better register allocation, waitcnt
-  scheduling, and VOPD pairing for this class of workload.
+**Current matched evidence (ROCm issue
+[#6409](https://github.com/ROCm/ROCm/issues/6409), timing contract v2):**
 
-**Measured evidence:**
-- `-mllvm -amdgpu-unroll-threshold-local=600` gave +166% on llama.cpp HIP
-  prefill for the same kernel (same ISA instructions, just better scheduling)
-- Vulkan's decode advantage over HIP is partly compiler-quality (same dp4a
-  instruction, better surrounding scheduling)
-- Our PARO v8 gets this flag automatically via the native extension build
-  profile, but it was neutral/negative for decode (decode is BW-bound, so
-  better scheduling doesn't help as much as for compute-bound prefill)
+- On gfx1100, Vulkan command-buffer replay has a real `2.44x-10.12x`
+  serialized tiny-dispatch advantage over HIP graph replay. This is a runtime /
+  submission result, not shader-compiler evidence.
+- Synthetic packed-integer loops favor Vulkan by only `1.05x-1.13x` when
+  serialized on gfx1100 (and more for genuinely independent work). Both
+  backends emit the expected dot4 instructions; the scalar no-dot4 control has
+  the same direction.
+- Production-shaped Q4 and Q6 quantize-plus-dot controls favor HIP on gfx1100.
+  Static controls also rule out a generic story based on missing HIP dot4,
+  HIP spills, RADV VOPD pairing, wave64, or runtime block indexing.
+- `-mllvm -amdgpu-unroll-threshold-local=600` remains a measured prefill win in
+  its original compute-bound llama.cpp kernel. hipEngine's decode profile uses
+  it, but it has been neutral/negative on bandwidth-bound decode controls.
 
-**Implication:** When a kernel appears to be at a fundamental hardware limit,
-check if the ISA output (`--save-temps` or `amdgcn-dis`) shows unnecessary
-spills, unrolling failures, or excessive waitcnt/nop insertion. The ceiling may
-be compiler-imposed, not hardware-imposed.
+**Implication:** Start from the shipped hot slice. Inspect saved LLVM/HSACO and
+RADV ISA for VGPR/SGPR allocation, scratch, loads/addressing, wait placement,
+and instruction count only after a matched correctness and timing result shows
+a transferable gap. Try a source rewrite or narrow builtin/inline-assembly
+sequence only for a concrete miss. Do not infer a Vulkan backend, wave64 sweep,
+or broad hand-ISA program from qwen-kernel's topline decode rate; model bytes,
+kernel geometry/fusion, and the Vulkan command-replay floor are separate
+contributors.
 
 ### 9.8 Pipe Parallelism (Largely Unused)
 
