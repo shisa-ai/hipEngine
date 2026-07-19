@@ -167,7 +167,16 @@ class NativeMtpChainProposer:
     pointer selection; this is explicitly a bring-up limitation.
     """
 
-    def __init__(self, model: str | Path, *, max_positions: int, max_mtp_tokens: int, runtime: HipRuntime | None = None) -> None:
+    def __init__(
+        self,
+        model: str | Path,
+        *,
+        max_positions: int,
+        max_mtp_tokens: int,
+        runtime: HipRuntime | None = None,
+        compiler_version: str | None = None,
+        require_cached_build: bool = False,
+    ) -> None:
         if max_positions <= 0:
             raise ValueError("max_positions must be positive")
         if max_mtp_tokens <= 0:
@@ -180,6 +189,8 @@ class NativeMtpChainProposer:
         self.config = qwen35_paro_config_from_hf(index.config)
         self.infos = infos
         self.runtime = runtime or get_hip_runtime()
+        self.compiler_version = compiler_version
+        self.require_cached_build = bool(require_cached_build)
         self.allocations: list[DeviceTensorAllocation] = []
         self.buffers: list[DeviceBuffer] = []
         self.closed = False
@@ -251,10 +262,15 @@ class NativeMtpChainProposer:
         self.cos_buf = _device_array(cos, self.buffers, runtime=self.runtime)
         self.sin_buf = _device_array(sin, self.buffers, runtime=self.runtime)
         self._allocate_scratch()
-        self.mtp_lib = build_mtp_speculative(load=True)
-        self.dflash_lib = build_dflash_drafter(load=True)
+        build_kwargs = {
+            "load": True,
+            "compiler_version": self.compiler_version,
+            "require_cached": self.require_cached_build,
+        }
+        self.mtp_lib = build_mtp_speculative(**build_kwargs)
+        self.dflash_lib = build_dflash_drafter(**build_kwargs)
         self.dense_lib = None
-        self.lm_lib = build_lm_head(load=True)
+        self.lm_lib = build_lm_head(**build_kwargs)
         self.gate_up_base = self.weights["mtp.layers.0.mlp.experts.gate_up_proj"].ptr
         self.down_base = self.weights["mtp.layers.0.mlp.experts.down_proj"].ptr
         self.gate_up_expert_bytes = (2 * self.intermediate) * self.hidden * DType.BF16.itemsize
@@ -323,7 +339,11 @@ class NativeMtpChainProposer:
         if self.shared_gate_up_proj_buf is None:
             _, self.shared_gate_up_proj_buf = _empty_device((1, 2 * self.shared_intermediate), np.uint16, self.buffers, runtime=self.runtime)
         if self.dense_lib is None:
-            self.dense_lib = build_dense_gemv(load=True)
+            self.dense_lib = build_dense_gemv(
+                load=True,
+                compiler_version=self.compiler_version,
+                require_cached=self.require_cached_build,
+            )
         return self.shared_gate_up_proj_buf
 
     def close(self) -> None:

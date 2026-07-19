@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """rocprofv3 kernel breakdown of MTP marker windows.
 
-Wraps ``scripts/mtp_chain_e2e_smoke.py`` under ``rocprofv3 --kernel-trace`` and
-processes the kernel CSV into a compact JSON artifact.  The default region is
+Wraps ``scripts/mtp_chain_e2e_smoke.py`` under ``rocprofv3 --kernel-trace`` plus
+``--hip-runtime-trace`` and processes both CSVs into a compact JSON artifact.
+The default region is
 the historical ``mtp_verify_pass_*`` verifier window, but ``--region`` can also
 slice the enclosing cycle or the proposer draft/update windows.
 
@@ -177,8 +178,10 @@ def main() -> int:
         )
 
     kernel_csv = _single_file(args.raw_root, "*_kernel_trace.csv")
+    hip_api_csv = _single_file(args.raw_root, "*_hip_api_trace.csv")
     smoke = json.loads(smoke_json.read_text())
     kernels = _read_kernels(kernel_csv)
+    hip_api_rows = _read_hip_api_rows(hip_api_csv)
     window = smoke.get("mtp", {}).get("rocprof_window", {}) or {}
     window_seconds = window.get("profiled_cycle_seconds")
     mtp = smoke.get("mtp", {}) or {}
@@ -216,7 +219,7 @@ def main() -> int:
             )
         if steady_windows:
             selected_windows = steady_windows
-            region_kernels = _filter_kernels_by_windows(kernels, steady_windows)
+            region_kernels = _filter_trace_rows_by_windows(kernels, steady_windows)
             used_cycle_count = len({idx for idx, _start, _end in cycle_windows if idx > cycle_skip})
             host_window_seconds = sum(end - start for start, end in steady_windows) / 1e9
     summary = _summarize_rows(
@@ -225,6 +228,13 @@ def main() -> int:
         host_window_seconds=host_window_seconds,
         verifier_passes=used_cycle_count,
     )
+    api_summary = None
+    if selected_windows:
+        api_summary = _summarize_api_rows(
+            _filter_trace_rows_by_windows(hip_api_rows, selected_windows),
+            verifier_passes=used_cycle_count,
+            top=args.top,
+        )
 
     artifact = {
         "schema": 1,
@@ -248,6 +258,7 @@ def main() -> int:
         "smoke_json": str(smoke_json),
         "rocprof_log": str(smoke_log),
         "kernel_trace_csv": str(kernel_csv),
+        "hip_api_trace_csv": str(hip_api_csv),
         "rocprof_window": window,
         "selected_marker_windows": len(selected_windows),
         "smoke_summary": {
@@ -263,12 +274,14 @@ def main() -> int:
             "proposal_impl": (smoke.get("mtp") or {}).get("proposal_impl"),
         },
         "summary": summary,
+        "hip_api_summary": api_summary,
     }
     args.out.write_text(json.dumps(artifact, indent=2) + "\n")
     print(
         f"[rocprof] region={args.region} window cycles={window.get('profiled_cycle_range')} "
         f"seconds={window_seconds!s} kernel_calls={summary['kernel_calls']} "
-        f"kernel_ms={summary['kernel_time_ms']:.3f}",
+        f"kernel_ms={summary['kernel_time_ms']:.3f} "
+        f"hip_api_calls={None if api_summary is None else api_summary['calls']}",
         flush=True,
     )
     print(f"wrote {args.out}")
@@ -299,6 +312,7 @@ def _smoke_command(args: argparse.Namespace, smoke_json: Path) -> list[str]:
         str(int(args.rocprof_warmup_cycles)),
         "--rocprof-verify-cycles",
         str(int(args.rocprof_verify_cycles)),
+        "--require-cached-build",
         "--json",
         str(smoke_json),
     ]
@@ -308,6 +322,7 @@ def _rocprof_command(args: argparse.Namespace, smoke_cmd: list[str]) -> list[str
     cmd = [
         args.rocprofv3,
         "--kernel-trace",
+        "--hip-runtime-trace",
         "--marker-trace",  # captures roctxRangePush/Pop boundaries for per-cycle slicing
         "--output-format",
         "csv",
@@ -397,11 +412,11 @@ def _read_marker_windows(path: Path, prefixes: tuple[str, ...]) -> list[tuple[in
     return windows
 
 
-def _filter_kernels_by_windows(
+def _filter_trace_rows_by_windows(
     rows: list[dict[str, Any]],
     windows: list[tuple[int, int]],
 ) -> list[dict[str, Any]]:
-    """Return only kernel rows whose start..end ns fully overlaps any cycle window."""
+    """Return trace rows fully contained in any selected marker window."""
 
     if not windows:
         return []
@@ -419,6 +434,73 @@ def _filter_kernels_by_windows(
             if end < window_start:
                 continue
     return kept
+
+
+def _read_hip_api_rows(path: Path) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    with path.open(newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            try:
+                start = int(float(row["Start_Timestamp"]))
+                end = int(float(row["End_Timestamp"]))
+            except (KeyError, ValueError):
+                continue
+            if end < start:
+                continue
+            rows.append(
+                {
+                    "function": (row.get("Function") or row.get("Name") or "").strip(),
+                    "start_ns": start,
+                    "end_ns": end,
+                    "duration_ns": end - start,
+                }
+            )
+    return rows
+
+
+def _summarize_api_rows(
+    rows: list[dict[str, Any]],
+    *,
+    verifier_passes: int,
+    top: int,
+) -> dict[str, Any]:
+    by_function: dict[str, dict[str, Any]] = {}
+    total_ns = 0
+    for row in rows:
+        duration = int(row["duration_ns"])
+        total_ns += duration
+        name = str(row["function"])
+        entry = by_function.setdefault(
+            name,
+            {"function": name, "calls": 0, "total_ns": 0, "max_ns": 0},
+        )
+        entry["calls"] += 1
+        entry["total_ns"] += duration
+        entry["max_ns"] = max(entry["max_ns"], duration)
+    passes = int(verifier_passes)
+    functions = []
+    for entry in by_function.values():
+        calls = int(entry["calls"])
+        function = {
+            **entry,
+            "total_ms": entry["total_ns"] / 1e6,
+            "avg_us": entry["total_ns"] / calls / 1e3 if calls else 0.0,
+            "max_us": entry["max_ns"] / 1e3,
+            "calls_per_pass": calls / passes if passes else None,
+            "ms_per_pass": entry["total_ns"] / 1e6 / passes if passes else None,
+        }
+        functions.append(function)
+    functions.sort(key=lambda item: item["total_ns"], reverse=True)
+    return {
+        "calls": len(rows),
+        "total_ns": total_ns,
+        "total_ms": total_ns / 1e6,
+        "verifier_passes": passes,
+        "calls_per_pass": len(rows) / passes if passes else None,
+        "ms_per_pass": total_ns / 1e6 / passes if passes else None,
+        "functions": functions[:top],
+    }
 
 
 def _read_kernels(path: Path) -> list[dict[str, Any]]:
