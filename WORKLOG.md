@@ -165964,3 +165964,30 @@ packet through `evaluate_packet(...)` with the preserved snapshot returns
 `passed=true` and no failure reasons. Per the focused-repair rule, the 12-minute
 GPU packet is not repeated: publication retains both the original failed
 mechanical verdict and the repaired pure host re-evaluation.
+
+## 2026-07-19 — Retain gfx1151 BF16 long-context concurrency through 64K
+
+Published the complete packet as
+`benchmarks/results/2026-07-19-gfx1151-gguf-long-context-memory-pressure.json`.
+The compact artifact fingerprints the 2.58 MiB raw packet, preserves its original
+`final_pool_lifecycle_failed` mechanical verdict, identifies clean measured
+runtime `7c243ed1` and harness repair `c142730a`, and records the focused
+host-only re-evaluation that passes with no failure reasons.
+
+The retained server scope is exact greedy Q4_K_M/BF16-KV through 64K, not a
+variance-qualified external-engine comparison. c2 1K/4K/32K/64K is
+**17.638132/8.094546/1.037277/0.416068 generated tok/s**; mixed
+1K/4K/32K is **3/3 exact at 2.584791 tok/s**. The packet accounts for **642
+exact returned tokens** across 14 completions plus the required retryable 4K
+pressure rejection. The 64K phase is bounded at **519 pages / 2.534 GiB device
+KV** and **36.017 GiB sampled whole-device peak**. Pressure/regrow ends at 5/5
+free pages, zero refs/pins, logical ids **5..133 -> 134..262**, and graph
+lifecycle **2 captures / 256 replays / 2 invalidations** with zero final owner.
+
+Updated `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, and `docs/PLAN.md`.
+The roadmap now distinguishes the retained gfx1151 BF16 long-context closure
+from open gfx1100 transfer and non-BF16 continuous-owner work. Production c>N
+INT8/tail4 is not claimed: the continuous owner still requires BF16 for deferred
+allocation/binding and packed prefill/decode; task #93 tracks that separate
+implementation rather than mislabelling existing fixed-session c1/direct
+support.
