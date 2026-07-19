@@ -353,10 +353,25 @@ accept/commit metadata, and scheduler-facing results.
    retained Python device-chain implementation; moving those submissions into
    the native launcher remains the next launch-collapse step rather than being
    implied by this ownership milestone.
-6. **N4 — Shared provider adapters:** migrate GGUF MTP first, then PARO MTP and
+6. **N3P — Reusable NextN proposal graph (retained 2026-07-19):** strict
+   gfx1100 B1/B2 proposal now stages the changing hidden seed, root embedding,
+   RoPE, position/context, and K/V row indices into fixed runner buffers and
+   replays the existing device chain through one proposal-only NativeSpecCycle
+   graph submission. Runner-owned 1,023-row FP32 draft K/V keeps capture
+   addresses stable across requests, and independent B1/B2 graph buckets
+   coexist. The N3 scheduler-facing adapter therefore owns two native graph
+   submissions per cycle—one proposal and one target—rather than dispatching
+   proposal leaves from Python. It is not yet one combined native submission.
+   A same-source W7900 full-suite pair is exact for all 240 IDs / 96 cycles and
+   aggregate-neutral: N3P **117.589 tok/s / 8.653 ms-output** versus N3
+   **116.793 / 8.634**. Excluding the one B1+B2 capture (**14.477 ms total**),
+   proposal wall improves **0.964 -> 0.953 ms/output**. Matched cached eight-cycle
+   tracing replaces 542 `hipLaunchKernel` and 80 synchronous `hipMemcpy` host
+   calls with eight proposal `hipGraphLaunch` calls while preserving all 22 IDs.
+7. **N4 — Shared provider adapters:** migrate GGUF MTP first, then PARO MTP and
    DFlash without duplicating the launcher. Add gfx1100 and gfx1151 gates for
    each provider before default promotion.
-7. **N5 — Multi-cycle option:** only after N3/N4 are exact, allow the native
+8. **N5 — Multi-cycle option:** only after N3/N4 are exact, allow the native
    launcher to continue until EOS, cancellation/deadline, output-buffer limit,
    or an explicit scheduler yield point.
 
@@ -1321,11 +1336,20 @@ is now answered by the M1 required/optional table.)
       above llama.cpp. The real-model oracle covers repeated B2 plus B1 hidden,
       Conv/GDN, K/V, and cursor state; cached rocprof sees zero measured capture
       plus the dynamic metadata/cursor/widening leaves.
-- [ ] Implement N2 device-resident accept/commit summary for the admitted GGUF
-      B2 bucket, then close the full natural-prompt correctness gates.
-- [ ] Extend the complete native cycle to shared GGUF MTP, PARO MTP, and DFlash
-      provider adapters; validate gfx1100 and gfx1151 independently before any
-      default promotion (N3/N4).
+- [x] Implement N2 device-resident accept/commit summary for the admitted GGUF
+      B1/B2 bucket. The clean W7900 full-suite packet preserves every 240-ID / 96-cycle
+      record at **117.557 tok/s / 8.529 ms-output**.
+- [x] Implement N3 complete single-request GGUF cycle ownership, including
+      proposal invocation, N2 target transaction, MTP-KV rollback/repair,
+      reseed, and cursor accounting. Clean W7900 N3 is exact at **118.592
+      tok/s / 1.2858x true AR**; proposal leaves remained Python-submitted.
+- [x] Collapse strict B1/B2 NextN proposal host submissions through reusable
+      proposal-only NativeSpecCycle graphs (N3P). The full-suite semantic gate,
+      proposal K/V byte oracle, aggregate-neutral same-source pair, and cached
+      host-submission trace pass. Keep N1/N2/N3 and unsupported-shape fallbacks.
+- [ ] Extend the complete native cycle to PARO MTP and DFlash provider adapters;
+      validate gfx1100 and gfx1151 independently before any default promotion
+      (N4).
 - [x] Profile N1 and reusable N1R after cached build warmup. The retained N1R
       windows average **18.671 ms host / 13.670 ms kernels / 5.001 ms residual**
       across six graph replays, with zero capture charged in every measured
@@ -1335,6 +1359,19 @@ is now answered by the M1 required/optional table.)
 
 ## Decision Log
 
+- 2026-07-19: Retained N3P reusable gfx1100 B1/B2 NextN proposal graphs as a
+  submission-ownership milestone, not a new topline. A five-cycle mixed
+  accept/reject/B1 oracle matches N3 candidate IDs and every committed/speculative
+  FP32 K/V prefix hash. The full category+heldout gate preserves all **240 IDs /
+  96 cycles**, **80.45% draft acceptance**, and **60.00% accepted-output**. A
+  same-source pair measures N3P **117.589 tok/s / 8.653 ms-output / 1.2743x AR**
+  versus N3 **116.793 / 8.634 / 1.2691x**; aggregate wall is neutral, while
+  capture-excluded proposal wall improves **0.964 -> 0.953 ms/output**. For the
+  same eight cycles and 22 IDs, cached HIP API tracing changes
+  `hipLaunchKernel` **3273 -> 2731**, synchronous `hipMemcpy` **1204 -> 1124**,
+  and `hipGraphLaunch` **8 -> 16**. N1 remains the **122.667 tok/s** canonical
+  llama-compat row. N3P retains exact N3/unsupported-shape fallback and does not
+  claim one combined proposal+target native submission or gfx1151 admission.
 - 2026-07-19: Retained reusable gfx1100 B1/B2 native target graphs at clean
   `0d7b86e7`. Two full category+heldout processes measure **123.33/122.67
   tok/s** versus **96.91/96.75 true AR**, with **8.143/8.186 ms/output** and

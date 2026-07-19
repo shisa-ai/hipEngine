@@ -7,9 +7,11 @@ The launcher owns nothing; it performs one native call that submits the graph
 and synchronizes the control block's session-owned stream.
 
 The N2 bucket may also capture device acceptance, selected state/hidden commit,
-and cursor update behind the same submission. Proposal remains on the exact
-Python path. Broader shapes, cancellation, deadlines, and complete cycles
-belong to later ABI stages and must fall back instead of being approximated.
+and cursor update behind the same submission. A separate proposal-only bucket
+can submit an existing strict B1/B2 NextN device chain through the same ABI;
+unsupported shapes remain on the exact Python chain. Broader shapes,
+cancellation, deadlines, and multi-cycle execution belong to later ABI stages
+and must fall back instead of being approximated.
 """
 
 from __future__ import annotations
@@ -33,7 +35,8 @@ from hipengine.speculative.native_cycle import (
 _SOURCE = Path(__file__).with_name("native_cycle_graph.cpp")
 _ABI_HEADER = Path(__file__).with_name("native_cycle_abi.h")
 _OUTPUT_NAME = "native_spec_cycle_graph.so"
-_SYMBOL = "hipengine_native_spec_target_graph_launch_v1"
+_TARGET_SYMBOL = "hipengine_native_spec_target_graph_launch_v1"
+_PROPOSAL_SYMBOL = "hipengine_native_spec_proposal_graph_launch_v1"
 
 
 def _abi_header_cache_flag() -> str:
@@ -109,7 +112,12 @@ class NativeSpecTargetGraphLauncher:
         profile: ProfileName = "baseline",
         target_arch: str | None = None,
         require_cached: bool = False,
+        _kind: str = "target",
     ) -> None:
+        if _kind not in {"target", "proposal"}:
+            raise ValueError("native graph launcher kind must be target or proposal")
+        self._kind = str(_kind)
+        self._symbol = _TARGET_SYMBOL if self._kind == "target" else _PROPOSAL_SYMBOL
         self._graph_exec = _positive_address("graph_exec", graph_exec)
         self._graph_launch_fn = _positive_address("graph_launch_fn", graph_launch_fn)
         self._stream_synchronize_fn = _positive_address(
@@ -120,7 +128,7 @@ class NativeSpecTargetGraphLauncher:
             if not isinstance(bound_control, NativeSpecCycleControl):
                 raise TypeError("bound_control must be NativeSpecCycleControl")
             bound_control.validate()
-            _validate_small_chain_target(bound_control)
+            _validate_graph_control(self._kind, bound_control)
         self._bound_signature = (
             None if bound_control is None else _graph_binding_signature(bound_control)
         )
@@ -174,18 +182,20 @@ class NativeSpecTargetGraphLauncher:
         if not isinstance(control, NativeSpecCycleControl):
             raise TypeError("control must be NativeSpecCycleControl")
         control.validate()
-        _validate_small_chain_target(control)
+        _validate_graph_control(self._kind, control)
         if (
             self._bound_signature is not None
             and _graph_binding_signature(control) != self._bound_signature
         ):
-            raise RuntimeError("native target graph control drifted from its state-bound capture")
+            raise RuntimeError(
+                f"native {self._kind} graph control drifted from its state-bound capture"
+            )
         if not self._lock.acquire(blocking=False):
-            raise RuntimeError("native target graph launcher already in flight")
+            raise RuntimeError(f"native {self._kind} graph launcher already in flight")
         try:
             raw_control = control.to_ctypes()
             raw_result = NativeSpecCycleResultC()
-            fn = getattr(self._library, _SYMBOL)
+            fn = getattr(self._library, self._symbol)
             try:
                 fn.argtypes = [
                     ctypes.POINTER(type(raw_control)),
@@ -207,13 +217,50 @@ class NativeSpecTargetGraphLauncher:
                 ctypes.c_void_p(self._stream_synchronize_fn),
             )
             if int(error) != 0:
-                raise RuntimeError(f"native target graph launcher rejected its call boundary: {int(error)}")
+                raise RuntimeError(
+                    f"native {self._kind} graph launcher rejected its call boundary: {int(error)}"
+                )
             result = NativeSpecCycleResult.from_ctypes(raw_result)
             result.validate_for(control)
             self._launch_count += 1
             return result
         finally:
             self._lock.release()
+
+
+class NativeSpecProposalGraphLauncher(NativeSpecTargetGraphLauncher):
+    """Submit one pre-bound B1/B2 NextN proposal graph through one C++ boundary."""
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs, _kind="proposal")
+
+
+def create_native_spec_proposal_graph_launcher(
+    *,
+    graph_exec: int,
+    runtime: HipRuntime | None = None,
+    bound_control: NativeSpecCycleControl | None = None,
+    library: ctypes.CDLL | object | None = None,
+    compiler_version: str | None = None,
+    profile: ProfileName = "baseline",
+    target_arch: str | None = None,
+    require_cached: bool = False,
+) -> NativeSpecProposalGraphLauncher:
+    """Registry factory for a gfx1100 GGUF B1/B2 NextN proposal graph."""
+
+    runtime = runtime or get_hip_runtime()
+    return NativeSpecProposalGraphLauncher(
+        graph_exec=graph_exec,
+        graph_launch_fn=_function_address(runtime.library.hipGraphLaunch),
+        stream_synchronize_fn=_function_address(runtime.library.hipStreamSynchronize),
+        bound_control=bound_control,
+        library=library,
+        runtime=runtime,
+        compiler_version=compiler_version,
+        profile=profile,
+        target_arch=target_arch,
+        require_cached=require_cached,
+    )
 
 
 def create_native_spec_target_graph_launcher(
@@ -239,6 +286,50 @@ def create_native_spec_target_graph_launcher(
         target_arch=target_arch,
         require_cached=require_cached,
     )
+
+
+def _validate_graph_control(kind: str, control: NativeSpecCycleControl) -> None:
+    if kind == "proposal":
+        _validate_small_chain_proposal(control)
+    else:
+        _validate_small_chain_target(control)
+
+
+def _validate_small_chain_proposal(control: NativeSpecCycleControl) -> None:
+    shape = control.shape
+    candidate_rows = int(shape.row_count) - 1
+    if control.stages != NativeSpecCycleStage.PROPOSE:
+        raise ValueError("native proposal graph supports only PROPOSE")
+    if (
+        shape.request_count != 1
+        or shape.row_count not in {2, 3}
+        or shape.active_row_count != shape.row_count
+        or shape.candidate_count != candidate_rows
+        or shape.active_candidate_count != candidate_rows
+        or shape.candidate_budget != candidate_rows
+    ):
+        raise ValueError("native proposal graph supports one B1/B2 chain bucket (1 request, 2-3 rows)")
+    if shape.metadata_dtype is not NativeSpecCycleDType.INT64:
+        raise ValueError("native proposal graph requires INT64 dynamic metadata")
+    if shape.hidden_dtype is not NativeSpecCycleDType.FP32:
+        raise ValueError("native proposal graph requires FP32 hidden state")
+    if shape.kv_dtype is not NativeSpecCycleDType.FP32:
+        raise ValueError("native proposal graph requires FP32 draft KV")
+    state = control.pointers.state
+    for name in (
+        "hidden_seed_in",
+        "candidate_token_ids",
+        "draft_key_cache",
+        "draft_value_cache",
+    ):
+        if int(getattr(state, name)) == 0:
+            raise ValueError(f"native proposal graph requires state.{name}")
+    if control.stream == 0:
+        raise ValueError("native proposal graph requires a runner-owned stream")
+    if control.deadline_ns != 0:
+        raise ValueError("native proposal graph does not yet support a deadline")
+    if control.pointers.outputs.cancel_flag != 0:
+        raise ValueError("native proposal graph does not yet support cancellation")
 
 
 def _validate_small_chain_target(control: NativeSpecCycleControl) -> None:
@@ -320,11 +411,23 @@ register(
     create_native_spec_target_graph_launcher,
     replace=True,
 )
+register(
+    KernelKey(
+        "hip_gfx1100",
+        "speculative_cycle",
+        "w4_gguf",
+        "native_v1_b2_proposal_graph",
+    ),
+    create_native_spec_proposal_graph_launcher,
+    replace=True,
+)
 
 
 __all__ = [
+    "NativeSpecProposalGraphLauncher",
     "NativeSpecTargetGraphLauncher",
     "build_native_spec_cycle_graph_launcher",
+    "create_native_spec_proposal_graph_launcher",
     "create_native_spec_target_graph_launcher",
     "plan_native_spec_cycle_graph_launcher_build",
 ]

@@ -25,6 +25,7 @@ from hipengine.speculative.native_cycle import (
     NativeSpecCycleStatus,
 )
 from hipengine.speculative.native_cycle_graph import (
+    NativeSpecProposalGraphLauncher,
     NativeSpecTargetGraphLauncher,
     build_native_spec_cycle_graph_launcher,
     plan_native_spec_cycle_graph_launcher_build,
@@ -94,6 +95,24 @@ def _b1_control(*, cycle_id: int = 9) -> NativeSpecCycleControl:
     )
 
 
+def _proposal_control(*, cycle_id: int = 10) -> NativeSpecCycleControl:
+    control = _b2_control(cycle_id=cycle_id)
+    return replace(
+        control,
+        stages=NativeSpecCycleStage.PROPOSE,
+        shape=replace(control.shape, kv_dtype=NativeSpecCycleDType.FP32),
+        pointers=replace(
+            control.pointers,
+            state=NativeSpecCycleStatePointers(
+                hidden_seed_in=0x3000,
+                candidate_token_ids=0x3100,
+                draft_key_cache=0x3200,
+                draft_value_cache=0x3300,
+            ),
+        ),
+    )
+
+
 def _n2_control(*, cycle_id: int = 11) -> NativeSpecCycleControl:
     control = _b2_control(cycle_id=cycle_id)
     stages = (
@@ -143,6 +162,7 @@ class _FakeNativeLibrary:
         self.status = status
         self.calls: list[tuple[int, int, int]] = []
         self.hipengine_native_spec_target_graph_launch_v1 = self._launch
+        self.hipengine_native_spec_proposal_graph_launch_v1 = self._launch
 
     def _launch(self, control_ptr, result_ptr, graph_exec, graph_launch_fn, stream_sync_fn):
         control = ctypes.cast(control_ptr, ctypes.POINTER(NativeSpecCycleControlC)).contents
@@ -194,6 +214,7 @@ def test_native_target_graph_build_plan_is_host_only_and_versioned(tmp_path: Pat
     source = artifact.sources[0].read_text()
     assert "native_cycle_abi.h" in source
     assert "hipengine_native_spec_target_graph_launch_v1" in source
+    assert "hipengine_native_spec_proposal_graph_launch_v1" in source
     assert "__global__" not in source
 
 
@@ -211,6 +232,25 @@ def test_native_target_graph_launcher_calls_one_pre_resolved_submission_boundary
     assert result.status is NativeSpecCycleStatus.COMPLETE
     assert result.completed_stages is NativeSpecCycleStage.VERIFY
     assert result.cycle_id == 7
+    assert launcher.launch_count == 1
+    assert library.calls == [(0x6000, 0x7000, 0x8000)]
+
+
+def test_native_proposal_graph_launcher_calls_one_pre_resolved_submission_boundary() -> None:
+    library = _FakeNativeLibrary()
+    launcher = NativeSpecProposalGraphLauncher(
+        graph_exec=0x6000,
+        graph_launch_fn=0x7000,
+        stream_synchronize_fn=0x8000,
+        bound_control=_proposal_control(),
+        library=library,
+    )
+
+    result = launcher.launch(_proposal_control(cycle_id=12))
+
+    assert result.status is NativeSpecCycleStatus.COMPLETE
+    assert result.completed_stages is NativeSpecCycleStage.PROPOSE
+    assert result.cycle_id == 12
     assert launcher.launch_count == 1
     assert library.calls == [(0x6000, 0x7000, 0x8000)]
 
@@ -359,12 +399,23 @@ def test_native_target_graph_cpp_launcher_calls_fake_hip_functions(
     )
     b1 = launcher.launch(_b1_control())
     b2 = launcher.launch(_b2_control())
+    proposal_launcher = NativeSpecProposalGraphLauncher(
+        graph_exec=0x6001,
+        graph_launch_fn=ctypes.cast(graph_launch, ctypes.c_void_p).value or 0,
+        stream_synchronize_fn=ctypes.cast(stream_synchronize, ctypes.c_void_p).value or 0,
+        library=library,
+    )
+    proposal = proposal_launcher.launch(_proposal_control())
 
     assert b1.status is NativeSpecCycleStatus.COMPLETE
     assert b2.status is NativeSpecCycleStatus.COMPLETE
+    assert proposal.status is NativeSpecCycleStatus.COMPLETE
+    assert proposal.completed_stages is NativeSpecCycleStage.PROPOSE
     assert calls == [
         ("launch", 0x6000, 0x5000),
         ("sync", 0x5000, 0),
         ("launch", 0x6000, 0x5000),
+        ("sync", 0x5000, 0),
+        ("launch", 0x6001, 0x5000),
         ("sync", 0x5000, 0),
     ]

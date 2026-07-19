@@ -973,12 +973,17 @@ MTP_ROUTES["llama-compat-native-cycle-n3"] = [
     "--resident-mtp-device-seed",
     "--native-spec-complete-cycle",
 ]
+MTP_ROUTES["llama-compat-native-cycle-n3p"] = [
+    *MTP_ROUTES["llama-compat-native-cycle-n3"],
+    "--native-spec-proposal-graph",
+]
 
 MTP_ROUTE_DEFAULT_BUDGETS: dict[str, list[int]] = {
     "llama-compat": [2],
     "llama-compat-native-cycle": [2],
     "llama-compat-native-cycle-n2": [2],
     "llama-compat-native-cycle-n3": [2],
+    "llama-compat-native-cycle-n3p": [2],
     "llama-compat-dp4a": [2],
     "llama-compat-device-chain": [2],
     "llama-compat-device-chain-dp4a": [2],
@@ -1039,6 +1044,9 @@ MTP_ROUTE_ENVS: dict[str, dict[str, str]] = {
         "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
     },
     "llama-compat-native-cycle-n3": {
+        "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+    },
+    "llama-compat-native-cycle-n3p": {
         "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
     },
     "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-q8rowtileall": {
@@ -1343,6 +1351,8 @@ def main() -> int:
         mtp_cmd.append(f"--extra-arg={a}")
     if args.record_cycle_stage_timings:
         mtp_cmd.append("--extra-arg=--record-cycle-stage-timings")
+    if args.require_cached_build:
+        mtp_cmd.append("--extra-arg=--require-cached-build")
     if limit is not None:
         mtp_cmd += ["--limit", str(limit)]
     if args.reuse_existing:

@@ -164717,3 +164717,103 @@ with clean wrapper/category/true-AR hashes, exact semantic comparison,
 implementation-equivalent cached profiler census, and the explicit remaining
 limit: proposal leaves still submit through Python and native proposal launch
 collapse is not complete.
+
+## 2026-07-19 — Native NextN proposal submission collapse
+
+Started the post-N3 launch-boundary audit from clean `65a602c5`. The retained
+strict B1/B2 device chain is graph-capturable except for one position-bound
+operation: `_run_one()` embeds `dense_cache_len` in K/V destination addresses
+and the attention launch's `cache_tokens`. The rest of the dynamic inputs
+(hidden seed, root embedding, RoPE, positions, contexts, and candidate IDs)
+already live in fixed runner buffers or can be staged there before replay.
+
+The exact reuse plan is therefore narrow and contains no new model math:
+
+1. capture one B1/B2 proposal graph per stable draft K/V allocation;
+2. replace capture-bound K/V memcpy offsets with the existing registered
+   `record_f32_row_indexed` device writer using staged per-depth indices;
+3. capture attention at the fixed K/V allocation capacity while its existing
+   device position/context inputs bound visible rows;
+4. submit the proposal graph through a proposal-only NativeSpecCycle control,
+   synchronize/read one bounded candidate-ID payload, then continue through the
+   unchanged N2 target transaction;
+5. retain the path only if real-model proposal/KV bytes, full 240-ID/96-cycle
+   semantics, and cached profiler submission counts are non-regressive.
+
+This should collapse dozens of Python draft kernel submissions to one native
+graph submission without altering N1/N2/N3 fallbacks. RED ABI/adapter contracts
+come before capture implementation.
+
+Implemented the proposal-only NativeSpecCycle graph boundary without changing
+NextN math. The resident draft runner stages hidden seed, root embedding, RoPE,
+positions, contexts, and device K/V row indices into fixed buffers; the existing
+B1/B2 device chain is captured once per bucket and writes FP32 K/V through the
+registered `record_f32_row_indexed` primitive. A runner-owned 1,023-row K/V
+allocation keeps addresses stable across load-once prompt resets, and B1/B2
+executables coexist instead of evicting each other. Unsupported budgets,
+confidence/diagnostic readbacks, streams, K/V capacities, and provider keys fail
+before launch and retain the N3 exact fallback.
+
+RED/GREEN and real-model gates:
+
+```bash
+python3 -m pytest -q \
+  tests/test_native_spec_cycle_graph.py \
+  tests/test_mtp_resident_draft_device_commit.py \
+  tests/test_gguf_native_spec_cycle.py \
+  tests/test_gguf_mtp_bench_metrics.py \
+  tests/test_gguf_ar_mtp_suite.py
+# 170 passed
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-mtp-w7900-hipcc-version.txt \
+PYTHONPATH=. python3 scripts/gguf_ar_mtp_suite.py \
+  --scope full --mtp-route llama-compat-native-cycle-n3p \
+  --budgets 2 --cycles 24 --max-output-tokens 24 \
+  --record-cycle-stage-timings --require-cached-build \
+  --output /tmp/w7900-native-n3p-full-buckets-dirty.json
+
+# matched N3 control: same command with
+# --mtp-route llama-compat-native-cycle-n3 and
+# --output /tmp/w7900-native-n3-currenttree-control-full.json
+```
+
+A separate five-cycle mixed accept/reject/B1 oracle compares N3 with N3P and
+finds identical candidate IDs plus identical SHA-256 for every live committed
+and speculative FP32 K/V prefix. The full category+heldout N3P run is exact for
+all **240 IDs / 96 cycles**, with unchanged **144/179 draft acceptance
+(80.45%)** and **144/240 accepted-output (60.00%)**. Same-source results are N3
+**116.793 tok/s / 8.634 ms-output / 1.2691x AR** and N3P **117.589 / 8.653 /
+1.2743x**: +0.68% rate but +0.22% measured cycle wall, so aggregate-neutral.
+Only the first B1+B2 capture remains (**14.477 ms total**); capture-excluded
+proposal wall improves **0.964 -> 0.953 ms/output**. N1 remains the canonical
+**122.667 tok/s** llama-compat row.
+
+After a non-profiled cache warmup, ran matched cached eight-cycle traces:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-mtp-w7900-hipcc-version.txt \
+HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 PYTHONPATH=. \
+rocprofv3 --hip-trace --kernel-trace -f csv \
+  -d /tmp/w7900-native-proposal-hiptrace-n3 -- \
+  python3 /tmp/hipengine_profile_native_proposal.py \
+  llama-compat-native-cycle-n3 /tmp/w7900-native-proposal-profile-n3.json
+# repeated with route n3p and output/trace suffix n3p
+```
+
+Both traces preserve the same 22 IDs, 16 proposal Q6-X8 leaves, and eight each
+of target accept/state/hidden commits. N3P changes host calls as follows:
+`hipLaunchKernel` **3273 -> 2731 (-542)**, synchronous `hipMemcpy`
+**1204 -> 1124 (-80)**, and `hipGraphLaunch` **8 -> 16 (+8, exactly one proposal
+launch/cycle)**. GPU child math dispatches are intentionally unchanged apart
+from indexed K/V writers. HIP API trace SHA-256 is
+`ad8e68ec6dd12e0b94fa226e526b2d3ba0cd51971833fad754d14aa60fe2ec73 ->
+b53e2fe6d6902977f9b363b550b0b262c69197af80c4fb5485c749598723597e`;
+kernel trace SHA-256 is
+`6e4a955aeda928bada57e440c2a0ed9b0883d8012b768367bbbdf50137793290 ->
+dc0c1fddfc05ba4dc75d4ac0f81b2c4fe51f4263dc0555bf050f63b54af6af0d`.
+Retain N3P as a mechanical submission-ownership milestone, not a new topline or
+one combined proposal+target native submission. Commit implementation first;
+then run the full publication gate from the committed source and emit the
+compact diagnostic packet.

@@ -88,6 +88,7 @@ class Qwen35GGUFNativeCompleteCycleResult:
     target_wall_ms: float
     mtp_kv_commit_wall_ms: float
     call_wall_ms: float
+    proposal_native_graph: bool = False
     completed_stages: NativeSpecCycleStage = _COMPLETE_CYCLE_STAGES
     complete_native_cycle: bool = True
 
@@ -1271,15 +1272,18 @@ def run_qwen35_gguf_native_mtp_cycle(
     transaction_id: int = 0,
     request_id: int = 0,
     record_stage_timings: bool = False,
+    native_proposal_graph: bool = False,
 ) -> Qwen35GGUFNativeCompleteCycleResult:
     """Own one strict llama-compatible GGUF MTP cycle behind one call.
 
-    The proposal remains the retained device-chained NextN implementation and
-    target mutation remains the byte-exact N2 reusable graph.  This N3 adapter
-    is the single GGUF boundary that joins those providers, repairs the MTP KV
+    The proposal uses the retained device-chained NextN implementation, with an
+    optional proposal-only reusable graph around that same chain; target
+    mutation remains the byte-exact N2 reusable graph. This N3 adapter is the
+    single GGUF boundary that joins those providers, repairs the MTP KV
     transaction after acceptance, advances the GGUF reseed context, and returns
-    only bounded scheduler metadata.  Unsupported shapes raise before target
-    mutation so callers can preserve the existing exact/eager fallback.
+    only bounded scheduler metadata. Unsupported proposal-graph shapes fall
+    back before target mutation; unsupported complete-cycle shapes raise so the
+    caller can preserve the established exact/eager loop.
     """
 
     call_start = time.perf_counter()
@@ -1324,20 +1328,53 @@ def run_qwen35_gguf_native_mtp_cycle(
         raise ValueError("native complete cycle exceeds the supplied RoPE table")
 
     proposal_start = time.perf_counter()
-    draft_tokens, draft_topk, proposed_cache_len = resident_draft.propose_chain_from_device_seed(
-        pending_seed_ptr,
-        start_token=root,
-        start_position=start,
-        draft_n_max=budget,
-        top_k=1,
-        rope_cos=rope_cos,
-        rope_sin=rope_sin,
-        dense_key_cache=draft_key_cache,
-        dense_value_cache=draft_value_cache,
-        dense_cache_len=cache_before,
-        draft_p_min=0.0,
-        record_stage_timings=bool(record_stage_timings),
+    proposal_kwargs = {
+        "start_token": root,
+        "start_position": start,
+        "draft_n_max": budget,
+        "top_k": 1,
+        "rope_cos": rope_cos,
+        "rope_sin": rope_sin,
+        "dense_key_cache": draft_key_cache,
+        "dense_value_cache": draft_value_cache,
+        "dense_cache_len": cache_before,
+        "draft_p_min": 0.0,
+        "record_stage_timings": bool(record_stage_timings),
+    }
+    proposal_graph_used = False
+    proposal_method = resident_draft.propose_chain_from_device_seed
+    graph_method = (
+        getattr(resident_draft, "propose_chain_from_device_seed_graph", None)
+        if native_proposal_graph
+        else None
     )
+    if callable(graph_method):
+        try:
+            draft_tokens, draft_topk, proposed_cache_len = graph_method(
+                pending_seed_ptr,
+                **proposal_kwargs,
+            )
+            proposal_graph_used = True
+        except Exception as exc:
+            # Import locally to avoid a module cycle: the resident draft provider
+            # imports NativeSpecCycle contracts from this package. Only explicit
+            # pre-launch admission failures may replay through the exact chain;
+            # graph/runtime failures can have mutated K/V and must surface.
+            from hipengine.speculative.mtp_resident_draft import (
+                NativeSpecProposalGraphUnsupportedError,
+            )
+
+            if not isinstance(exc, NativeSpecProposalGraphUnsupportedError):
+                raise
+            draft_tokens, draft_topk, proposed_cache_len = proposal_method(
+                pending_seed_ptr,
+                **proposal_kwargs,
+            )
+    else:
+        draft_tokens, draft_topk, proposed_cache_len = proposal_method(
+            pending_seed_ptr,
+            **proposal_kwargs,
+        )
     proposal_wall_ms = (time.perf_counter() - proposal_start) * 1000.0
     drafts = tuple(int(token) for token in draft_tokens)
     if len(drafts) != budget or any(token < 0 for token in drafts):
@@ -1428,6 +1465,7 @@ def run_qwen35_gguf_native_mtp_cycle(
         target_wall_ms=target_wall_ms,
         mtp_kv_commit_wall_ms=kv_commit_wall_ms,
         call_wall_ms=(time.perf_counter() - call_start) * 1000.0,
+        proposal_native_graph=proposal_graph_used,
     )
 
 
