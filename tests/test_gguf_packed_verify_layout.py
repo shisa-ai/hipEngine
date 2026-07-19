@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 import hipengine.runtime.qwen35_gguf_runner as gguf_runner
+from hipengine.core.dtype import DType
 from hipengine.core.memory import DeviceBuffer
 from hipengine.runtime.qwen35_gguf_runner import (
     FULL_ATTENTION,
@@ -845,10 +846,10 @@ def test_gguf_packed_target_state_allocates_per_slot_state(monkeypatch) -> None:
     assert [buffer.nbytes for buffer in allocations] == [
         conv_nbytes,
         recurrent_nbytes,
-        kv_nbytes,
-        kv_nbytes,
         conv_nbytes,
         recurrent_nbytes,
+        kv_nbytes,
+        kv_nbytes,
     ]
     assert state.linear_state_pair(0) == (state.layer_conv_states[0], state.layer_recurrent_states[0])
     assert state.full_cache(1) == (state.full_key_caches[1], state.full_value_caches[1])
@@ -856,6 +857,165 @@ def test_gguf_packed_target_state_allocates_per_slot_state(monkeypatch) -> None:
         state.full_cache(0)
     with pytest.raises(ValueError, match="no packed linear-attention"):
         state.linear_state_pair(1)
+
+
+def test_gguf_packed_target_state_allocates_mirrored_int8_payload_and_scales(monkeypatch) -> None:
+    next_ptr = 0x400000
+    allocations: list[DeviceBuffer] = []
+
+    def fake_malloc(nbytes: int, *, runtime):
+        nonlocal next_ptr
+        buffer = DeviceBuffer(ptr=next_ptr, nbytes=int(nbytes))
+        next_ptr += int(nbytes) + 8
+        allocations.append(buffer)
+        return buffer
+
+    monkeypatch.setattr(gguf_runner, "malloc", fake_malloc)
+    cfg = SimpleNamespace(
+        layer_types=(FULL_ATTENTION,),
+        ssm_conv_kernel=4,
+        ssm_time_step_rank=2,
+        ssm_state_size=3,
+        head_count_kv=2,
+        key_length=4,
+    )
+    runner = SimpleNamespace(
+        linear_qkv_width=10,
+        ssm_value_dim=2,
+        weights=SimpleNamespace(config=cfg),
+    )
+    kv_layout = gguf_runner.Qwen35GGUFKVChunkLayout(
+        storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+        storage_layout="uniform",
+        scale_dtype=DType.FP16,
+        scale_granularity="per_token_head",
+        int8_kv_value_bf16=False,
+        layer_storage_dtypes=(DType.INT8_PER_TOKEN_HEAD,),
+        bf16_mirror_layer_indices=(0,),
+    )
+
+    state = _GGUFPackedTargetState.allocate(
+        runner,
+        slot_count=2,
+        max_sequence_length=300,
+        runtime=SimpleNamespace(),
+        kv_layout=kv_layout,
+    )
+
+    assert state.total_positions == 1024
+    assert [buffer.nbytes for buffer in allocations] == [
+        8192,
+        8192,
+        16384,
+        16384,
+        4096,
+        4096,
+    ]
+    assert state.full_bf16_mirror_cache(0) == (
+        state.full_bf16_mirror_key_caches[0],
+        state.full_bf16_mirror_value_caches[0],
+    )
+    metadata = state.full_scale_metadata(0)
+    assert metadata is not None
+    assert metadata.k_scale.shape == (4, 256, 2)
+    assert metadata.v_scale.shape == (4, 256, 2)
+
+
+def test_gguf_packed_int8_copy_moves_payload_mirror_and_scale_planes() -> None:
+    cfg = SimpleNamespace(layer_types=(FULL_ATTENTION,), head_count_kv=2, key_length=4)
+    layout = gguf_runner.Qwen35GGUFKVChunkLayout(
+        storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+        storage_layout="uniform",
+        scale_dtype=DType.FP16,
+        scale_granularity="per_token_head",
+        int8_kv_value_bf16=False,
+        layer_storage_dtypes=(DType.INT8_PER_TOKEN_HEAD,),
+        bf16_mirror_layer_indices=(0,),
+    )
+    owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.runner = SimpleNamespace(weights=SimpleNamespace(config=cfg))
+    owner._device_kv_layout = layout
+
+    def state(base: int):
+        return SimpleNamespace(
+            kv_layout=layout,
+            full_key_caches=(DeviceBuffer(base + 0x0000, 8192),),
+            full_value_caches=(DeviceBuffer(base + 0x1000, 8192),),
+            full_bf16_mirror_key_caches=(DeviceBuffer(base + 0x2000, 16384),),
+            full_bf16_mirror_value_caches=(DeviceBuffer(base + 0x3000, 16384),),
+            full_k_scale_caches=(DeviceBuffer(base + 0x4000, 4096),),
+            full_v_scale_caches=(DeviceBuffer(base + 0x5000, 4096),),
+        )
+
+    source = state(0x100000)
+    destination = state(0x200000)
+
+    class FakeRuntime:
+        def __init__(self) -> None:
+            self.copies: list[tuple[int, int, int]] = []
+
+        def memcpy_async(self, dst, src, nbytes, kind, stream) -> None:
+            self.copies.append((int(dst), int(src), int(nbytes)))
+
+    runtime = FakeRuntime()
+    owner._copy_packed_kv_rows(
+        source,
+        destination,
+        0,
+        source_start=3,
+        destination_start=7,
+        rows=2,
+        runtime=runtime,
+        stream=9,
+    )
+
+    assert runtime.copies == [
+        (destination.full_key_caches[0].ptr + 7 * 8, source.full_key_caches[0].ptr + 3 * 8, 2 * 8),
+        (destination.full_value_caches[0].ptr + 7 * 8, source.full_value_caches[0].ptr + 3 * 8, 2 * 8),
+        (
+            destination.full_bf16_mirror_key_caches[0].ptr + 7 * 16,
+            source.full_bf16_mirror_key_caches[0].ptr + 3 * 16,
+            2 * 16,
+        ),
+        (
+            destination.full_bf16_mirror_value_caches[0].ptr + 7 * 16,
+            source.full_bf16_mirror_value_caches[0].ptr + 3 * 16,
+            2 * 16,
+        ),
+        (destination.full_k_scale_caches[0].ptr + 7 * 4, source.full_k_scale_caches[0].ptr + 3 * 4, 2 * 4),
+        (destination.full_v_scale_caches[0].ptr + 7 * 4, source.full_v_scale_caches[0].ptr + 3 * 4, 2 * 4),
+    ]
+
+
+def test_gguf_packed_ar_admits_mirrored_int8_and_fails_closed_without_mirror() -> None:
+    mirrored = gguf_runner.Qwen35GGUFKVChunkLayout(
+        storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+        storage_layout="uniform",
+        scale_dtype=DType.FP16,
+        scale_granularity="per_token_head",
+        int8_kv_value_bf16=False,
+        layer_storage_dtypes=(DType.INT8_PER_TOKEN_HEAD,),
+        bf16_mirror_layer_indices=(0,),
+    )
+    direct = gguf_runner.Qwen35GGUFKVChunkLayout(
+        storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+        storage_layout="uniform",
+        scale_dtype=DType.FP16,
+        scale_granularity="per_token_head",
+        int8_kv_value_bf16=False,
+        layer_storage_dtypes=(DType.INT8_PER_TOKEN_HEAD,),
+    )
+    owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    peer = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner._device_kv_layout = mirrored
+    peer._device_kv_layout = mirrored
+
+    assert owner._packed_ar_kv_layout_for_sessions((owner, peer)) == mirrored
+
+    owner._device_kv_layout = direct
+    peer._device_kv_layout = direct
+    with pytest.raises(NotImplementedError, match="without a bounded BF16 mirror"):
+        owner._packed_ar_kv_layout_for_sessions((owner, peer))
 
 
 def test_gguf_packed_target_state_rejects_invalid_inputs(monkeypatch) -> None:

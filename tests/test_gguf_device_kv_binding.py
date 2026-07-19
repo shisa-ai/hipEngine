@@ -7,9 +7,10 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from hipengine.core.device import Device
 from hipengine.core.memory import DeviceBuffer
-from hipengine.core.tensor import DType
-from hipengine.kvcache import DeviceChunkedKVPool, DeviceKVPoolAllocation
+from hipengine.core.tensor import DType, Tensor
+from hipengine.kvcache import DeviceChunkedKVPool, DeviceKVPoolAllocation, KVScaleMetadata
 from hipengine.runtime import qwen35_gguf_runner as gguf_runner
 
 
@@ -47,18 +48,36 @@ class _FakeScratch:
     block_table: DeviceBuffer
     full_key_caches: tuple[DeviceBuffer | None, ...]
     full_value_caches: tuple[DeviceBuffer | None, ...]
+    full_bf16_mirror_key_caches: tuple[DeviceBuffer | None, ...]
+    full_bf16_mirror_value_caches: tuple[DeviceBuffer | None, ...]
+    full_k_scale_caches: tuple[DeviceBuffer | None, ...]
+    full_v_scale_caches: tuple[DeviceBuffer | None, ...]
+    full_kv_scale_metadata: tuple[KVScaleMetadata | None, ...]
 
 
 def test_gguf_device_kv_binding_uses_full_backing_and_logical_block_table(monkeypatch) -> None:
     page_nbytes = 1024
     key_cache = DeviceBuffer(ptr=0x100000, nbytes=4 * page_nbytes)
     value_cache = DeviceBuffer(ptr=0x200000, nbytes=4 * page_nbytes)
-    backing = gguf_runner.Qwen35GGUFBF16KVChunkBacking(
+    layout = gguf_runner.Qwen35GGUFKVChunkLayout(
+        storage_dtype=DType.BF16,
+        storage_layout="uniform",
+        scale_dtype=DType.FP16,
+        scale_granularity="per_token_head",
+        int8_kv_value_bf16=False,
+        layer_storage_dtypes=(None, DType.BF16),
+    )
+    backing = gguf_runner.Qwen35GGUFKVChunkBacking(
+        layout=layout,
         start_block_id=8,
         pages=4,
-        page_nbytes_per_tensor=page_nbytes,
         full_key_caches=(None, key_cache),
         full_value_caches=(None, value_cache),
+        full_bf16_mirror_key_caches=(None, None),
+        full_bf16_mirror_value_caches=(None, None),
+        full_k_scale_caches=(None, None),
+        full_v_scale_caches=(None, None),
+        full_kv_scale_metadata=(None, None),
         buffers=(key_cache, value_cache),
     )
     allocation = DeviceKVPoolAllocation(
@@ -83,11 +102,17 @@ def test_gguf_device_kv_binding_uses_full_backing_and_logical_block_table(monkey
     session = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
     session.defer_kv_allocation = True
     session.kv_storage_dtype = DType.BF16
+    session._device_kv_layout = layout
     session.scratch = _FakeScratch(
         block_table_tensor=SimpleNamespace(numel=4, shape=(4,)),
         block_table=DeviceBuffer(ptr=0x300000, nbytes=16),
         full_key_caches=(None, None),
         full_value_caches=(None, None),
+        full_bf16_mirror_key_caches=(None, None),
+        full_bf16_mirror_value_caches=(None, None),
+        full_k_scale_caches=(None, None),
+        full_v_scale_caches=(None, None),
+        full_kv_scale_metadata=(None, None),
     )
     session.runtime = object()
     session._device_kv_pool = None
@@ -102,6 +127,180 @@ def test_gguf_device_kv_binding_uses_full_backing_and_logical_block_table(monkey
     assert np.array_equal(copied_tables[0], np.asarray([0, 1, 3, 0], dtype=np.int32))
     assert session.device_kv_allocation is allocation
     assert session.device_kv_capacity_tokens == 3 * 256
+
+
+def test_gguf_device_kv_chunk_allocates_policy_shaped_payload_and_scales() -> None:
+    runtime = _FakeRuntime()
+    runner = SimpleNamespace(
+        weights=SimpleNamespace(
+            config=SimpleNamespace(
+                layer_types=(gguf_runner.LINEAR_ATTENTION, gguf_runner.FULL_ATTENTION, gguf_runner.FULL_ATTENTION),
+                head_count_kv=2,
+                key_length=64,
+            )
+        )
+    )
+    layout = gguf_runner.Qwen35GGUFKVChunkLayout(
+        storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+        storage_layout="uniform",
+        scale_dtype=DType.FP16,
+        scale_granularity="per_token_head",
+        int8_kv_value_bf16=False,
+        layer_storage_dtypes=(None, DType.BF16, DType.INT8_PER_TOKEN_HEAD),
+    )
+
+    backing = gguf_runner._allocate_qwen35_gguf_kv_chunk(
+        runner,
+        runtime=runtime,
+        start_block_id=12,
+        pages=2,
+        layout=layout,
+    )
+
+    assert runtime.malloc_calls == [131072, 131072, 65536, 65536, 2048, 2048]
+    assert backing.layout == layout
+    assert backing.total_nbytes == sum(runtime.malloc_calls)
+    assert backing.page_pointer(1) == backing.full_key_caches[1].ptr + 65536
+    assert backing.full_kv_scale_metadata[1] is None
+    int8_metadata = backing.full_kv_scale_metadata[2]
+    assert int8_metadata is not None
+    assert int8_metadata.k_scale.shape == (2, 256, 2)
+    assert int8_metadata.v_scale.shape == (2, 256, 2)
+    assert backing.full_bf16_mirror_key_caches == (None, None, None)
+    assert backing.full_bf16_mirror_value_caches == (None, None, None)
+
+    gguf_runner._free_qwen35_gguf_kv_chunk(backing, runtime=runtime)
+    assert runtime.free_calls == [buffer.ptr for buffer in reversed(backing.buffers)]
+
+
+def test_gguf_device_kv_binding_binds_and_unbinds_int8_scale_backing(monkeypatch) -> None:
+    device = Device("hip", 0)
+    key_cache = DeviceBuffer(ptr=0x110000, nbytes=4096)
+    value_cache = DeviceBuffer(ptr=0x120000, nbytes=4096)
+    k_scale = DeviceBuffer(ptr=0x130000, nbytes=256)
+    v_scale = DeviceBuffer(ptr=0x140000, nbytes=256)
+    metadata = KVScaleMetadata(
+        k_scale=Tensor.from_handle(k_scale.ptr, (2, 256, 2), DType.FP16, device),
+        v_scale=Tensor.from_handle(v_scale.ptr, (2, 256, 2), DType.FP16, device),
+        scale_dtype=DType.FP16,
+        granularity="per_token_head",
+    )
+    layout = gguf_runner.Qwen35GGUFKVChunkLayout(
+        storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+        storage_layout="uniform",
+        scale_dtype=DType.FP16,
+        scale_granularity="per_token_head",
+        int8_kv_value_bf16=False,
+        layer_storage_dtypes=(None, DType.INT8_PER_TOKEN_HEAD),
+    )
+    backing = gguf_runner.Qwen35GGUFKVChunkBacking(
+        layout=layout,
+        start_block_id=4,
+        pages=2,
+        full_key_caches=(None, key_cache),
+        full_value_caches=(None, value_cache),
+        full_bf16_mirror_key_caches=(None, None),
+        full_bf16_mirror_value_caches=(None, None),
+        full_k_scale_caches=(None, k_scale),
+        full_v_scale_caches=(None, v_scale),
+        full_kv_scale_metadata=(None, metadata),
+        buffers=(key_cache, value_cache, k_scale, v_scale),
+    )
+    allocation = DeviceKVPoolAllocation(
+        request_id=7,
+        block_ids=(4, 5),
+        pointers=(key_cache.ptr, key_cache.ptr + 2048),
+        chunk_start_block_id=4,
+        backing=backing,
+    )
+    copied_tables: list[np.ndarray] = []
+    monkeypatch.setattr(
+        gguf_runner,
+        "copy_host_to_device",
+        lambda _buffer, host_ptr, nbytes, **_kwargs: copied_tables.append(
+            np.ctypeslib.as_array(
+                (ctypes.c_int32 * (int(nbytes) // 4)).from_address(int(host_ptr))
+            ).copy()
+        ),
+    )
+    session = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    session.defer_kv_allocation = True
+    session.kv_storage_dtype = DType.INT8_PER_TOKEN_HEAD
+    session._device_kv_layout = layout
+    session.scratch = _FakeScratch(
+        block_table_tensor=SimpleNamespace(numel=2, shape=(2,)),
+        block_table=DeviceBuffer(ptr=0x150000, nbytes=8),
+        full_key_caches=(None, None),
+        full_value_caches=(None, None),
+        full_bf16_mirror_key_caches=(None, None),
+        full_bf16_mirror_value_caches=(None, None),
+        full_k_scale_caches=(None, None),
+        full_v_scale_caches=(None, None),
+        full_kv_scale_metadata=(None, None),
+    )
+    session.runtime = object()
+    session._device_kv_pool = None
+    session._device_kv_allocation = None
+    session._device_kv_graph_handles = {}
+    pool = object.__new__(DeviceChunkedKVPool)
+
+    session.bind_device_kv_allocation(pool, allocation)
+
+    assert session.scratch.full_key_caches == (None, key_cache)
+    assert session.scratch.full_value_caches == (None, value_cache)
+    assert session.scratch.full_k_scale_caches == (None, k_scale)
+    assert session.scratch.full_v_scale_caches == (None, v_scale)
+    assert session.scratch.full_kv_scale_metadata == (None, metadata)
+    assert copied_tables[0].tolist() == [0, 1]
+
+    assert session.unbind_device_kv_allocation() is allocation
+    assert session.scratch.full_key_caches == (None, None)
+    assert session.scratch.full_value_caches == (None, None)
+    assert session.scratch.full_k_scale_caches == (None, None)
+    assert session.scratch.full_v_scale_caches == (None, None)
+    assert session.scratch.full_kv_scale_metadata == (None, None)
+    assert copied_tables[1].tolist() == [0, 0]
+
+
+def test_gguf_device_kv_binding_rejects_policy_mismatch_before_table_copy(monkeypatch) -> None:
+    expected = gguf_runner.Qwen35GGUFKVChunkLayout(
+        storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+        storage_layout="uniform",
+        scale_dtype=DType.FP16,
+        scale_granularity="per_token_head",
+        int8_kv_value_bf16=False,
+        layer_storage_dtypes=(DType.INT8_PER_TOKEN_HEAD,),
+    )
+    incompatible = gguf_runner.Qwen35GGUFKVChunkLayout(
+        storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+        storage_layout="uniform",
+        scale_dtype=DType.FP32,
+        scale_granularity="per_token_head",
+        int8_kv_value_bf16=False,
+        layer_storage_dtypes=(DType.INT8_PER_TOKEN_HEAD,),
+    )
+    backing = SimpleNamespace(layout=incompatible)
+    allocation = DeviceKVPoolAllocation(
+        request_id=8,
+        block_ids=(0,),
+        pointers=(0x1000,),
+        chunk_start_block_id=0,
+        backing=backing,
+    )
+    session = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    session.defer_kv_allocation = True
+    session.kv_storage_dtype = DType.INT8_PER_TOKEN_HEAD
+    session._device_kv_layout = expected
+    session.scratch = SimpleNamespace()
+    session._device_kv_allocation = None
+    monkeypatch.setattr(
+        gguf_runner,
+        "copy_host_to_device",
+        lambda *args, **kwargs: pytest.fail("policy mismatch touched the device block table"),
+    )
+
+    with pytest.raises(TypeError, match="layout does not match"):
+        session.bind_device_kv_allocation(object.__new__(DeviceChunkedKVPool), allocation)
 
 
 def test_gguf_prefix_state_clone_copies_exact_current_hybrid_boundary(monkeypatch) -> None:
