@@ -165605,3 +165605,41 @@ the active mode; completed mode instead gates the pre-admission reset plus exact
 snapshot boundary. RED failed at import because the completed lifecycle/metadata
 predicates did not exist; GREEN is `3 passed`, `--help` exposes both modes,
 `py_compile` and `git diff --check` pass. No real-model run or claim exists yet.
+
+## 2026-07-19 — Pass real completed-source GGUF prefix correctness
+
+Ran the committed completed-source gate from clean revision `74251bdb` on Radeon
+8060S/gfx1151, TheRock HIP 7.15, TuneD `accelerator-performance`, one HIP
+hardware queue, and `amd_iommu=off`:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/gfx1151-concurrency-ddab579f/hipcc-version.txt \
+  uv run python scripts/gguf_prefix_reuse_gate.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1151 --quant gguf_q4_k_m \
+  --prefix-tokens 256 --suffix-tokens 1 --teacher-forced-steps 4 \
+  --source-lifecycle completed --max-sequence-length 512 \
+  --json /tmp/gfx1151-completed-prefix-reuse-correctness-v1.json
+```
+
+Result: `passed=true`. The source is released, reset to position zero, unbound,
+and returned to the available pool before continuation admission. Production
+metadata then reports `prefix_source_request_id=null`,
+`prefix_snapshot_hit=true`, 256 reused tokens, and a **66,846,720-byte** hybrid
+snapshot clone. Clone and independent semantic boundaries, candidate output,
+all **60 Conv/GDN + 20 logical live K/V components**, initial/final state, and
+all four teacher-forced transitions are byte-exact; KL mean/max are `0.0/0.0`
+and top-1 is `100%`.
+
+Cache/page ownership follows the required **1->1->2->1->0** sequence: source
+request ref before release, cache ref after release, cache+continuation after
+admission, cache-only after continuation release, and zero after explicit
+snapshot/radix/page eviction. The six-page pool returns to 6/6 free pages with
+zero refcounted or pinned pages. One reused page is **5,242,880 bytes**. This is
+a correctness/lifecycle result; no timing or process-memory claim is made.
+Artifact:
+`benchmarks/results/2026-07-19-gfx1151-gguf-completed-prefix-reuse-correctness.json`.
+
+Default remains `off`. Next is a clean paired completed-session economics packet
+that excludes source creation but charges snapshot lookup/restore, followed by
+broader boundary/LRU pressure, sampled reuse, and gfx1100 transfer.
