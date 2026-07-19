@@ -1637,6 +1637,8 @@ class Qwen35ParoVerifierGraphEntry:
     linear_scratch: dict[int, Any] | None = None
     moe_scratch: dict[int, Any] | None = None
     native_spec_launcher: Any | None = None
+    native_spec_replay_signature: tuple[object, ...] | None = None
+    native_spec_transaction_offset: int = 0
 
 
 class Qwen35ParoResidentSession:
@@ -10873,7 +10875,11 @@ class Qwen35ParoResidentSession:
             elif graph_mode != "off" or not _dflash_verify_sync_phases_enabled():
                 _mark_bucket("target_verify_forward", t_bucket)
             t_bucket = time.perf_counter()
-            gpu_payload = self._read_verify_accept_payload(len(batch.request_ids), stream=stream)
+            gpu_payload = self._read_verify_accept_payload(
+                len(batch.request_ids),
+                stream=stream,
+                already_synchronized=bool(graph_info.get("native_spec_cycle_graph")),
+            )
             if self._verify_gpu_accept_enabled():
                 # Fast path: trust GPU accept-summary kernel, skip CPU top1 read + CPU accept.
                 summary = TargetAcceptSummary.from_gpu_payload(batch, gpu_payload)
@@ -11212,6 +11218,37 @@ class Qwen35ParoResidentSession:
             stream,
         )
 
+    def _native_spec_provider_target_replay_signature(
+        self,
+        batch: TargetVerifyBatch,
+        *,
+        capture_hidden_concat: Tensor,
+        capture_row_start: int,
+        rows: int,
+        stream: int,
+    ) -> tuple[object, ...] | None:
+        """Return the stable binding key for an eligible all-active replay."""
+
+        candidate_rows = int(rows) - 1
+        if (
+            batch.mode != "verify_chain"
+            or len(batch.request_ids) != 1
+            or int(batch.rows) != int(rows)
+            or candidate_rows not in {1, 2, 3, 4, 5, 8}
+            or int(batch.candidate_count) != candidate_rows
+            or int(batch.draft_depth) != candidate_rows
+            or sum(bool(flag) for flag in batch.active_mask) != int(rows)
+        ):
+            return None
+        return (
+            int(rows),
+            int(capture_hidden_concat.ptr),
+            tuple(int(dim) for dim in capture_hidden_concat.shape),
+            capture_hidden_concat.dtype,
+            int(capture_row_start),
+            int(stream),
+        )
+
     def _try_submit_native_spec_provider_target_graph(
         self,
         entry: Qwen35ParoVerifierGraphEntry,
@@ -11226,45 +11263,70 @@ class Qwen35ParoResidentSession:
 
         if not self._native_spec_provider_target_graph_enabled(batch):
             return False, None
-        try:
-            control = self._native_spec_provider_target_control(
-                batch,
-                capture_hidden_concat=capture_hidden_concat,
-                capture_row_start=capture_row_start,
-                rows=rows,
-                stream=stream,
-                cycle_id=entry.replay_count + 1,
-            )
-        except (RuntimeError, TypeError, ValueError) as exc:
-            return False, str(exc)
-        if entry.native_spec_launcher is None:
+        cycle_id = int(entry.replay_count) + 1
+        replay_signature = self._native_spec_provider_target_replay_signature(
+            batch,
+            capture_hidden_concat=capture_hidden_concat,
+            capture_row_start=capture_row_start,
+            rows=rows,
+            stream=stream,
+        )
+        if (
+            entry.native_spec_launcher is not None
+            and replay_signature is not None
+            and replay_signature == entry.native_spec_replay_signature
+        ):
             try:
-                # Lazy import registers only the gfx1100 provider key. gfx1151
-                # remains unresolved until its independent N4 gate explicitly
-                # admits and registers the provider.
-                from hipengine.speculative import native_cycle_graph as _native_cycle_graph
-
-                _native_cycle_graph.register_native_spec_provider_target_graph()
-                factory = resolve(
-                    backend=self.backend,
-                    layer="speculative_cycle",
-                    quant="w4_paro",
-                    variant="native_v1_target_graph",
+                native_result = entry.native_spec_launcher.launch_bound(
+                    cycle_id=cycle_id,
+                    transaction_id=cycle_id + int(entry.native_spec_transaction_offset),
                 )
-                entry.native_spec_launcher = factory(
-                    graph_exec=entry.graph_exec,
-                    runtime=self.runtime,
-                    bound_control=control,
-                    compiler_version=self.compiler_version,
-                    target_arch=self.target_arch,
-                    require_cached=self.require_cached_build,
-                )
-            except Exception as exc:
+            except (RuntimeError, TypeError, ValueError) as exc:
                 return False, str(exc)
-        try:
-            native_result = entry.native_spec_launcher.launch(control)
-        except (RuntimeError, TypeError, ValueError) as exc:
-            return False, str(exc)
+        else:
+            try:
+                control = self._native_spec_provider_target_control(
+                    batch,
+                    capture_hidden_concat=capture_hidden_concat,
+                    capture_row_start=capture_row_start,
+                    rows=rows,
+                    stream=stream,
+                    cycle_id=cycle_id,
+                )
+            except (RuntimeError, TypeError, ValueError) as exc:
+                return False, str(exc)
+            if entry.native_spec_launcher is None:
+                try:
+                    # Lazy import registers only the gfx1100 provider key. gfx1151
+                    # remains unresolved until its independent N4 gate explicitly
+                    # admits and registers the provider.
+                    from hipengine.speculative import native_cycle_graph as _native_cycle_graph
+
+                    _native_cycle_graph.register_native_spec_provider_target_graph()
+                    factory = resolve(
+                        backend=self.backend,
+                        layer="speculative_cycle",
+                        quant="w4_paro",
+                        variant="native_v1_target_graph",
+                    )
+                    entry.native_spec_launcher = factory(
+                        graph_exec=entry.graph_exec,
+                        runtime=self.runtime,
+                        bound_control=control,
+                        compiler_version=self.compiler_version,
+                        target_arch=self.target_arch,
+                        require_cached=self.require_cached_build,
+                    )
+                    entry.native_spec_replay_signature = replay_signature
+                    entry.native_spec_transaction_offset = (
+                        int(control.transaction_id) - int(control.cycle_id)
+                    )
+                except Exception as exc:
+                    return False, str(exc)
+            try:
+                native_result = entry.native_spec_launcher.launch(control)
+            except (RuntimeError, TypeError, ValueError) as exc:
+                return False, str(exc)
         if native_result.status is not NativeSpecCycleStatus.COMPLETE:
             raise RuntimeError(
                 "native provider target graph failed after submission: "
@@ -13046,8 +13108,15 @@ class Qwen35ParoResidentSession:
             runtime=self.runtime,
         )
 
-    def _read_verify_accept_payload(self, request_count: int, *, stream: int = 0) -> dict[str, tuple[int, ...] | tuple[bool, ...]]:
-        self.runtime.stream_synchronize(stream)
+    def _read_verify_accept_payload(
+        self,
+        request_count: int,
+        *,
+        stream: int = 0,
+        already_synchronized: bool = False,
+    ) -> dict[str, tuple[int, ...] | tuple[bool, ...]]:
+        if not already_synchronized:
+            self.runtime.stream_synchronize(stream)
         if not self._verify_accept_packed_payload_enabled():
             accepted = np.empty((request_count,), dtype=np.int32)
             commit_rows = np.empty((request_count,), dtype=np.int32)

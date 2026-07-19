@@ -8232,6 +8232,7 @@ def test_paro_native_spec_target_replay_uses_one_shared_launcher_boundary() -> N
     control = object()
     launches: list[object] = []
     session._native_spec_provider_target_graph_enabled = lambda _batch: True
+    session._native_spec_provider_target_replay_signature = lambda *_args, **_kwargs: None
     session._native_spec_provider_target_control = lambda *_args, **_kwargs: control
 
     class FakeLauncher:
@@ -8267,6 +8268,60 @@ def test_paro_native_spec_target_replay_uses_one_shared_launcher_boundary() -> N
     assert submitted is False
     assert fallback == "unsupported provider shape"
     assert launches == [control]
+
+
+def test_paro_native_spec_target_replay_reuses_bound_control() -> None:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    bound_launches: list[tuple[int, int]] = []
+    session._native_spec_provider_target_graph_enabled = lambda _batch: True
+    session._native_spec_provider_target_replay_signature = lambda *_args, **_kwargs: (
+        "stable",
+    )
+    session._native_spec_provider_target_control = lambda *_args, **_kwargs: (_ for _ in ()).throw(
+        AssertionError("cached replay rebuilt the provider control")
+    )
+
+    class FakeLauncher:
+        def launch_bound(self, *, cycle_id: int, transaction_id: int):
+            bound_launches.append((cycle_id, transaction_id))
+            return SimpleNamespace(status=NativeSpecCycleStatus.COMPLETE)
+
+    entry = SimpleNamespace(
+        replay_count=3,
+        native_spec_launcher=FakeLauncher(),
+        native_spec_replay_signature=("stable",),
+        native_spec_transaction_offset=10,
+    )
+    submitted, fallback = session._try_submit_native_spec_provider_target_graph(
+        entry,
+        SimpleNamespace(),
+        capture_hidden_concat=_tensor(0x3000, (3, 16), DType.BF16),
+        capture_row_start=0,
+        rows=3,
+        stream=0,
+    )
+
+    assert submitted is True
+    assert fallback is None
+    assert bound_launches == [(4, 14)]
+
+
+def test_verify_accept_payload_can_skip_known_native_synchronization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    synchronizations: list[int] = []
+    session.runtime = SimpleNamespace(
+        stream_synchronize=lambda stream: synchronizations.append(int(stream))
+    )
+    session.verify_accept_payload_i32 = DeviceBuffer(0x1000, 7 * DType.INT32.itemsize)
+    session._verify_accept_packed_payload_enabled = lambda: True
+    monkeypatch.setattr(runner_module, "copy_device_to_host", lambda *_args, **_kwargs: None)
+
+    session._read_verify_accept_payload(1, stream=7, already_synchronized=True)
+    session._read_verify_accept_payload(1, stream=7, already_synchronized=False)
+
+    assert synchronizations == [7]
 
 
 def test_paro_native_spec_target_control_binds_shared_verify_accept_buffers() -> None:
@@ -8352,6 +8407,29 @@ def test_paro_native_spec_target_control_binds_shared_verify_accept_buffers() ->
     assert paro_control.shape.hidden_dtype is NativeSpecCycleDType.FP16
     assert paro_control.shape.hidden_size == 32
     assert paro_control.pointers.state.hidden_seed_rows == 0x4000
+
+    signature = session._native_spec_provider_target_replay_signature(
+        batch,
+        capture_hidden_concat=capture,
+        capture_row_start=2,
+        rows=3,
+        stream=0,
+    )
+    assert signature is not None
+    assert session._native_spec_provider_target_replay_signature(
+        replace(batch, active_mask=(True, True, False)),
+        capture_hidden_concat=capture,
+        capture_row_start=2,
+        rows=3,
+        stream=0,
+    ) is None
+    assert session._native_spec_provider_target_replay_signature(
+        batch,
+        capture_hidden_concat=_tensor(0x7000, (8, 16), DType.BF16),
+        capture_row_start=2,
+        rows=3,
+        stream=0,
+    ) != signature
 
 
 @pytest.mark.parametrize(

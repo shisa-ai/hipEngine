@@ -842,13 +842,32 @@ class NativeSpecCycleResult:
 
     def validate_for(self, control: NativeSpecCycleControl) -> None:
         control.validate()
-        if self.cycle_id != control.cycle_id or self.transaction_id != control.transaction_id:
+        self._validate_for_binding(
+            cycle_id=control.cycle_id,
+            transaction_id=control.transaction_id,
+            request_count=control.shape.request_count,
+            stages=control.stages,
+            output_stride=control.shape.output_stride,
+        )
+
+    def _validate_for_binding(
+        self,
+        *,
+        cycle_id: int,
+        transaction_id: int,
+        request_count: int,
+        stages: NativeSpecCycleStage,
+        output_stride: int,
+    ) -> None:
+        """Validate against an already-validated state-bound graph descriptor."""
+
+        if self.cycle_id != cycle_id or self.transaction_id != transaction_id:
             raise ValueError("result cycle_id/transaction_id must match control")
-        if self.request_count != control.shape.request_count:
+        if self.request_count != request_count:
             raise ValueError("result request_count must match control")
-        if int(self.completed_stages) & ~int(control.stages):
+        if int(self.completed_stages) & ~int(stages):
             raise ValueError("result completed stages must be a subset of requested stages")
-        if self.status is NativeSpecCycleStatus.COMPLETE and self.completed_stages != control.stages:
+        if self.status is NativeSpecCycleStatus.COMPLETE and self.completed_stages != stages:
             raise ValueError("COMPLETE result completed stages must equal requested stages")
         if self.status in {NativeSpecCycleStatus.CREATED, NativeSpecCycleStatus.SUBMITTED, NativeSpecCycleStatus.RUNNING}:
             raise ValueError("launcher result must be terminal or yielded")
@@ -866,7 +885,7 @@ class NativeSpecCycleResult:
         elif self.status is NativeSpecCycleStatus.FAILED:
             if self.error is NativeSpecCycleError.NONE:
                 raise ValueError("failed result requires a non-NONE error")
-        max_outputs = control.shape.request_count * control.shape.output_stride
+        max_outputs = request_count * output_stride
         if self.visible_output_count > max_outputs:
             raise ValueError("visible_output_count exceeds the bounded output capacity")
 
