@@ -1,0 +1,615 @@
+{
+  "correctness": {
+    "direct_packed_smoke": {
+      "evidence": "WORKLOG.md 2026-07-19 \u2014 Admit mirrored INT8 KV continuous GGUF ownership",
+      "generated_ids_exact": "20/20",
+      "layers_with_int8_payload_scales_and_bounded_mirrors": 10,
+      "passed": true,
+      "route": "exact_hybrid",
+      "scalar_fallbacks": 0
+    },
+    "focused_host_bundle": {
+      "command": ".venv/bin/python -m pytest tests/test_qwen35_gguf_int8_kv_policy.py tests/test_qwen35_kv_int8_accuracy.py tests/test_generation_qwen35_gguf_sampling.py tests/test_gguf_device_kv_binding.py tests/test_gguf_packed_verify_layout.py tests/test_server_f1_concurrency_bench.py -q",
+      "covers": [
+        "policy-shaped payload/mirror/scale allocation and accounting",
+        "complete policy identity before table writes",
+        "six-plane bind/unbind and packed import/scatter copies",
+        "generic dynamic pool grow/high-water rejection/reclaim observability",
+        "mirrored INT8 packed admission and direct-INT8 fail-closed behavior",
+        "server policy locking and harness forwarding"
+      ],
+      "passed": true,
+      "tests_passed": 154
+    },
+    "multi_prompt_quality": {
+      "candidate_policy": {
+        "block_size": 256,
+        "int8_admission_gated": false,
+        "int8_explicit": true,
+        "policy_class": "FixedPagedKVPolicy",
+        "quantized_tail_layers": 0,
+        "requested_scale_dtype": "fp16",
+        "requested_scale_granularity": "per_token_head",
+        "requested_storage": "int8_per_token_head",
+        "resolved_storage_dtype": "int8_per_token_head",
+        "scale_metadata_format": {
+          "granularity": "per_token_head",
+          "k_scale": "per_token_head",
+          "present": true,
+          "scale_dtype": "fp16",
+          "v_scale": "per_token_head"
+        },
+        "selection_reason": "explicit_int8",
+        "spans_mode": "uniform",
+        "storage_dtype": "int8_per_token_head",
+        "storage_layout": "uniform"
+      },
+      "failing_prompt_ids": [],
+      "max_kl": 0.0,
+      "mean_kl": 0.0,
+      "minimum_prompt_top1_agreement": 1.0,
+      "passed": true,
+      "positions": 99,
+      "prompt_count": 11,
+      "teacher_forced_matched_history": true,
+      "top1_agreement": 1.0
+    },
+    "server": {
+      "all_routes_passed": true,
+      "all_rows_exact": true,
+      "blocking_rows": 45,
+      "delayed_rows": 8,
+      "oracle_rows": 4,
+      "passed": true,
+      "serial_or_resident_fallbacks": 0,
+      "sse_rows": 45,
+      "total_rows": 117,
+      "warmup_rows": 15
+    }
+  },
+  "created_at": "2026-07-19T15:14:04.848703+00:00",
+  "decision": {
+    "default_policy": "unchanged",
+    "direct_int8_attention_continuous_concurrency": "not admitted without bounded BF16 mirror",
+    "external_competitiveness": "unchanged; this packet makes no llama.cpp C>1 comparison",
+    "long_context_int8_continuous_concurrency": "not claimed; c1 long-context policy remains unchanged",
+    "slo": "C1 passes 3/3 and C2 2/3 whole-wave SLO runs; C4/C8 pass exactness but not the strict whole-wave SLO, so high-C SLO remains open",
+    "tail4_hadamard_group32_continuous_concurrency": "not admitted; fail closed before resident packed ownership",
+    "uniform_int8_short_continuous_concurrency": "accepted explicit policy on gfx1151"
+  },
+  "hardware": {
+    "amd_iommu": "off",
+    "device": "AMD Radeon 8060S Graphics",
+    "gpu_max_hw_queues": 1,
+    "host": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+    "memory_domain": "whole-card GTT",
+    "rocm": "HIP version: 7.15.0-0000000",
+    "target_arch": "gfx1151",
+    "tuned_profile": "accelerator-performance"
+  },
+  "kind": "gfx1151_gguf_mirrored_int8_continuous_concurrency",
+  "limitations": [
+    "The admitted route keeps a bounded BF16 attention mirror and therefore is not a KV-memory-saving mode.",
+    "Only explicit uniform int8_per_token_head with FP16 per-token/head scales and rounded contexts <=8192 is admitted for c>N.",
+    "tail4_hadamard_group32, direct INT8 attention without mirrors, and longer c>N INT8 contexts remain fail closed.",
+    "C4/C8 exact SSE scale, but strict whole-wave SLO does not pass; no production-SLO closure or external-engine win is claimed.",
+    "The first cached-only quality attempt stopped before logits because the gfx1151 AOTriton wrapper hash was absent; the accepted unprofiled clean run built it normally and performance_claim stayed false for quality timing.",
+    "No new kernels were added; existing INT8 writer/dequant primitives retain their prior CPU-reference and profiler evidence."
+  ],
+  "passed": true,
+  "performance_claim": true,
+  "performance_claim_scope": "hipEngine own-engine exact real-Uvicorn p512/d128 C1/C2/C4/C8 blocking and SSE cycle wall with explicit mirrored int8_per_token_head KV on Radeon 8060S/gfx1151; no external-engine, long-context, tail4, direct-INT8-attention, or memory-saving claim",
+  "policy": {
+    "attention_compute": "bounded BF16 correctness mirror; retained INT8 K/V and FP16 scales are written in the same packed batch",
+    "continuous_concurrency_scope": "rounded max context <=8192 positions",
+    "default_changed": false,
+    "dynamic_page_layout": {
+      "bf16_mirror_bytes_per_page": 5242880,
+      "block_tokens": 256,
+      "bytes_per_request_at_ctx1024": 31539200,
+      "fp16_scale_bytes_per_page": 20480,
+      "full_attention_layers": 10,
+      "head_dim": 256,
+      "int8_payload_bytes_per_page": 2621440,
+      "kv_heads": 2,
+      "pages_per_request_at_ctx1024": 4,
+      "total_bytes_per_page": 7884800
+    },
+    "fail_closed": {
+      "policy_switch_after_server_preparation": true,
+      "tail4_hadamard_group32_continuous_concurrency": true,
+      "uniform_direct_int8_attention_without_bounded_mirror": true,
+      "uniform_int8_continuous_context_above_8192": true
+    },
+    "memory_saving_claim": false,
+    "requested_storage": "int8_per_token_head",
+    "scale_dtype": "fp16",
+    "scale_granularity": "per_token_head",
+    "storage_layout": "uniform"
+  },
+  "protocol": {
+    "blocking_control_metric": "C*returned_completion_tokens / barrier-to-last-response HTTP wall",
+    "clean_detached_source": true,
+    "command": "/home/lhl/hipEngine-main/.venv/bin/python scripts/server_f1_concurrency_bench.py --engine hipengine --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --hipengine-python /home/lhl/hipEngine-main/.venv/bin/python --hipengine-kv-storage int8_per_token_head --hipengine-kv-scale-dtype fp16 --hipengine-kv-scale-granularity per_token_head --hipengine-route-expectation native --hipengine-prefill-decode-policy fair --batch-window-ms 256 --concurrencies 1,2,4,8 --live-concurrency 8 --prompt-length 512 --decode-tokens 128 --ctx-per-seq 1024 --warmup-runs 1 --measured-runs 3 --streaming-primary --stream-warmup-runs 0 --stream-measured-runs 3 --live-join-after-tokens 8 --compiler-version-file /tmp/hipengine-gfx1151-native-cycle-hipcc-version.txt --memory-domain gtt --drm-card-index 0 --memory-poll-ms 10 --work-dir /tmp/gfx1151-int8-continuous-c1248-fb926d8e/work --json /tmp/gfx1151-int8-continuous-c1248-fb926d8e/result.json",
+    "compiler_version_file": "/tmp/hipengine-gfx1151-native-cycle-hipcc-version.txt",
+    "concurrencies": [
+      1,
+      2,
+      4,
+      8
+    ],
+    "context_tokens_per_sequence": 1024,
+    "decode_tokens": 128,
+    "exact_output_contract": "blocking rows equal independent same-engine c1 generated token IDs; llama.cpp SSE returns those IDs directly; hipEngine SSE reconstructs the blocking-oracle text with the exact completion count",
+    "fresh_server_per_width": true,
+    "hipengine_batch_window_ms": 256.0,
+    "hipengine_prefill_decode_policy": "fair",
+    "kv_storage": "int8_per_token_head",
+    "live_admission_concurrency": 8,
+    "llamacpp_prompt_cache": false,
+    "measured_runs_per_width": 3,
+    "model": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "native_decode_metric_scope": "engine-specific diagnostic only; not cross-engine comparable",
+    "primary_metric": "exact SLO-qualified returned completion tokens / barrier-to-last-SSE-completion wall",
+    "primary_metric_scope": "prefill + decode + server scheduling + localhost HTTP/SSE",
+    "prompt_length": 512,
+    "prompt_row_construction": "512-token rows filled with 9707; final token cycles 9707..9710",
+    "quant": "gguf_q4_k_m",
+    "sampling": "temperature=0, top_k=1, top_p=1, ignore_eos=true, MTP disabled",
+    "server_capacity_matches_logical_concurrency": true,
+    "stream_client_slo_seconds": {
+      "end_to_end_p95": 30.0,
+      "itl_p99": 0.5,
+      "ttft_p95": 10.0
+    },
+    "stream_measured_runs_per_width": 3,
+    "stream_warmup_runs_per_width": 0,
+    "streaming_primary": true,
+    "warmup_runs_per_width": 1
+  },
+  "provenance": {
+    "compiler_version_file": {
+      "path": "/tmp/hipengine-gfx1151-native-cycle-hipcc-version.txt",
+      "sha256": "4575f2f128d68d1d1c7e99436d20ecac67a363d6d300f6dde6b2fb83a86f8987",
+      "size_bytes": 348
+    },
+    "hipengine": {
+      "head": {
+        "command": [
+          "git",
+          "rev-parse",
+          "HEAD"
+        ],
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "fb926d8e0cd619cf5e5a30296ca85947e4c013c9"
+      },
+      "status": {
+        "command": [
+          "git",
+          "status",
+          "-sb",
+          "--untracked-files=no"
+        ],
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "## HEAD (no branch)"
+      }
+    },
+    "model": {
+      "algorithm": "sha256-sampled-v1",
+      "path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "path_type": "file",
+      "revision": null,
+      "sample_offsets": [
+        0,
+        11331169424,
+        22662338848
+      ],
+      "sampled_bytes_per_offset": 1048576,
+      "size_bytes": 22663387424,
+      "value": "f24f72d469e5141b6a74086cdf094faf93726def47c5581b9d84acca03b24579"
+    }
+  },
+  "rows": [
+    {
+      "blocking": {
+        "aggregate_tok_s_median": 40.46737932547604,
+        "aggregate_tok_s_samples": [
+          40.418334779379364,
+          40.46737932547604,
+          40.58998992592752
+        ],
+        "relative_to_c1": 1.0,
+        "stdev_percent_of_median": 0.2184868160757179
+      },
+      "concurrency": 1,
+      "correctness": {
+        "blocking_exact_rows": 3,
+        "blocking_rows": 3,
+        "delayed_exact_rows": 0,
+        "delayed_rows": 0,
+        "sse_exact_rows": 3,
+        "sse_rows": 3,
+        "warmup_exact_rows": 1,
+        "warmup_rows": 1
+      },
+      "execution": {
+        "native_c1_decode_steps": 889,
+        "native_caware_decode": [
+          false
+        ],
+        "native_packed_decode_steps": 0,
+        "paths": [
+          "gguf_packed_ar_server_decode"
+        ],
+        "resident_fallback_requests": 0,
+        "route_passed": true,
+        "serial_decode_fallback": [
+          false
+        ],
+        "serial_decode_fallback_steps": 0
+      },
+      "lifecycle": {
+        "hipengine_kv_pool_current_bytes": 31539200.0,
+        "hipengine_kv_pool_current_pages": 4.0,
+        "hipengine_kv_pool_high_water_observed_bytes": 31539200.0,
+        "hipengine_kv_pool_high_water_observed_pages": 4.0,
+        "hipengine_kv_pool_pinned_pages": 0.0,
+        "hipengine_kv_pool_refcounted_pages": 0.0,
+        "hipengine_request_cancelled_total": 0.0,
+        "hipengine_request_completed_total": 7.0,
+        "hipengine_request_failed_total": 0.0,
+        "hipengine_request_rejected_total": 0.0,
+        "hipengine_resident_bucket_capacity": 1.0,
+        "hipengine_resident_bucket_free_slots": 1.0,
+        "hipengine_resident_bucket_occupied_slots": 0.0,
+        "hipengine_resident_packed_workspace_current_bytes": 218008648.0,
+        "hipengine_resident_packed_workspace_release_events_total": 0.0,
+        "hipengine_resident_packed_workspace_released_bytes_total": 0.0,
+        "hipengine_resident_requests_admitted_total": 8.0,
+        "hipengine_resident_requests_reclaimed_total": 8.0
+      },
+      "sse": {
+        "end_to_end_p95_seconds_median": 3.2255591709981672,
+        "exact_aggregate_tok_s_median": 39.664853358517625,
+        "exact_aggregate_tok_s_samples": [
+          40.08234858390885,
+          39.664853358517625,
+          39.193724363886375
+        ],
+        "itl_p99_seconds_median": 0.02919801400275901,
+        "measured_runs": 3,
+        "relative_to_c1": 1.0,
+        "slo_goodput_tok_s_median": 39.664853358517625,
+        "slo_goodput_tok_s_samples": [
+          40.08234858390885,
+          39.664853358517625,
+          39.193724363886375
+        ],
+        "slo_passed_runs": 3,
+        "stdev_percent_of_median": 1.1208456614244384,
+        "ttft_p95_seconds_median": 0.6795883910090197
+      },
+      "whole_card_gtt": {
+        "final_gib": 22.232521057128906,
+        "peak_gib": 22.232521057128906,
+        "poll_interval_seconds": 0.01,
+        "samples": 8102
+      }
+    },
+    {
+      "blocking": {
+        "aggregate_tok_s_median": 57.21058129241594,
+        "aggregate_tok_s_samples": [
+          57.07945359168854,
+          57.31865007792673,
+          57.21058129241594
+        ],
+        "relative_to_c1": 1.4137456451596633,
+        "stdev_percent_of_median": 0.20937270716698347
+      },
+      "concurrency": 2,
+      "correctness": {
+        "blocking_exact_rows": 6,
+        "blocking_rows": 6,
+        "delayed_exact_rows": 0,
+        "delayed_rows": 0,
+        "sse_exact_rows": 6,
+        "sse_rows": 6,
+        "warmup_exact_rows": 2,
+        "warmup_rows": 2
+      },
+      "execution": {
+        "native_c1_decode_steps": 28,
+        "native_caware_decode": [
+          true
+        ],
+        "native_packed_decode_steps": 875,
+        "paths": [
+          "gguf_packed_ar_server_decode"
+        ],
+        "resident_fallback_requests": 0,
+        "route_passed": true,
+        "serial_decode_fallback": [
+          false
+        ],
+        "serial_decode_fallback_steps": 0
+      },
+      "lifecycle": {
+        "hipengine_kv_pool_current_bytes": 63078400.0,
+        "hipengine_kv_pool_current_pages": 8.0,
+        "hipengine_kv_pool_high_water_observed_bytes": 63078400.0,
+        "hipengine_kv_pool_high_water_observed_pages": 8.0,
+        "hipengine_kv_pool_pinned_pages": 0.0,
+        "hipengine_kv_pool_refcounted_pages": 0.0,
+        "hipengine_request_cancelled_total": 0.0,
+        "hipengine_request_completed_total": 14.0,
+        "hipengine_request_failed_total": 0.0,
+        "hipengine_request_rejected_total": 0.0,
+        "hipengine_resident_bucket_capacity": 2.0,
+        "hipengine_resident_bucket_free_slots": 2.0,
+        "hipengine_resident_bucket_occupied_slots": 0.0,
+        "hipengine_resident_packed_workspace_current_bytes": 417935092.0,
+        "hipengine_resident_packed_workspace_release_events_total": 0.0,
+        "hipengine_resident_packed_workspace_released_bytes_total": 0.0,
+        "hipengine_resident_requests_admitted_total": 15.0,
+        "hipengine_resident_requests_reclaimed_total": 15.0
+      },
+      "sse": {
+        "end_to_end_p95_seconds_median": 4.899952409003163,
+        "exact_aggregate_tok_s_median": 52.225277966477876,
+        "exact_aggregate_tok_s_samples": [
+          53.30683883513175,
+          51.81588219738556,
+          52.225277966477876
+        ],
+        "itl_p99_seconds_median": 0.061352516000624746,
+        "measured_runs": 3,
+        "relative_to_c1": 1.3166638357245566,
+        "slo_goodput_tok_s_median": 51.81588219738556,
+        "slo_goodput_tok_s_samples": [
+          26.653419417565875,
+          51.81588219738556,
+          52.225277966477876
+        ],
+        "slo_passed_runs": 2,
+        "stdev_percent_of_median": 1.4749889685931787,
+        "ttft_p95_seconds_median": 1.1511447239900008
+      },
+      "whole_card_gtt": {
+        "final_gib": 23.761817932128906,
+        "peak_gib": 23.761817932128906,
+        "poll_interval_seconds": 0.01,
+        "samples": 9123
+      }
+    },
+    {
+      "blocking": {
+        "aggregate_tok_s_median": 72.0365224135251,
+        "aggregate_tok_s_samples": [
+          71.52978070966412,
+          72.1684013651358,
+          72.0365224135251
+        ],
+        "relative_to_c1": 1.780113355849927,
+        "stdev_percent_of_median": 0.46802470204127017
+      },
+      "concurrency": 4,
+      "correctness": {
+        "blocking_exact_rows": 12,
+        "blocking_rows": 12,
+        "delayed_exact_rows": 0,
+        "delayed_rows": 0,
+        "sse_exact_rows": 12,
+        "sse_rows": 12,
+        "warmup_exact_rows": 4,
+        "warmup_rows": 4
+      },
+      "execution": {
+        "native_c1_decode_steps": 29,
+        "native_caware_decode": [
+          true
+        ],
+        "native_packed_decode_steps": 903,
+        "paths": [
+          "gguf_packed_ar_server_decode"
+        ],
+        "resident_fallback_requests": 0,
+        "route_passed": true,
+        "serial_decode_fallback": [
+          false
+        ],
+        "serial_decode_fallback_steps": 0
+      },
+      "lifecycle": {
+        "hipengine_kv_pool_current_bytes": 126156800.0,
+        "hipengine_kv_pool_current_pages": 16.0,
+        "hipengine_kv_pool_high_water_observed_bytes": 126156800.0,
+        "hipengine_kv_pool_high_water_observed_pages": 16.0,
+        "hipengine_kv_pool_pinned_pages": 0.0,
+        "hipengine_kv_pool_refcounted_pages": 0.0,
+        "hipengine_request_cancelled_total": 0.0,
+        "hipengine_request_completed_total": 28.0,
+        "hipengine_request_failed_total": 0.0,
+        "hipengine_request_rejected_total": 0.0,
+        "hipengine_resident_bucket_capacity": 4.0,
+        "hipengine_resident_bucket_free_slots": 4.0,
+        "hipengine_resident_bucket_occupied_slots": 0.0,
+        "hipengine_resident_packed_workspace_current_bytes": 0.0,
+        "hipengine_resident_packed_workspace_release_events_total": 28.0,
+        "hipengine_resident_packed_workspace_released_bytes_total": 8492161188.0,
+        "hipengine_resident_requests_admitted_total": 29.0,
+        "hipengine_resident_requests_reclaimed_total": 29.0
+      },
+      "sse": {
+        "end_to_end_p95_seconds_median": 7.454658152011689,
+        "exact_aggregate_tok_s_median": 68.664643608253,
+        "exact_aggregate_tok_s_samples": [
+          67.96609748416692,
+          68.664643608253,
+          69.16736136263
+        ],
+        "itl_p99_seconds_median": 0.09776214000885375,
+        "measured_runs": 3,
+        "relative_to_c1": 1.7311205713434956,
+        "slo_goodput_tok_s_median": 34.583680681315,
+        "slo_goodput_tok_s_samples": [
+          50.97457311312519,
+          34.3323218041265,
+          34.583680681315
+        ],
+        "slo_passed_runs": 0,
+        "stdev_percent_of_median": 0.8785982825261338,
+        "ttft_p95_seconds_median": 2.285725633002585
+      },
+      "whole_card_gtt": {
+        "final_gib": 25.080177307128906,
+        "peak_gib": 26.033302307128906,
+        "poll_interval_seconds": 0.01,
+        "samples": 10997
+      }
+    },
+    {
+      "blocking": {
+        "aggregate_tok_s_median": 72.513717054573,
+        "aggregate_tok_s_samples": [
+          72.63091456694409,
+          72.33362983094636,
+          72.513717054573
+        ],
+        "relative_to_c1": 1.7919054374969703,
+        "stdev_percent_of_median": 0.20650843423095222
+      },
+      "concurrency": 8,
+      "correctness": {
+        "blocking_exact_rows": 24,
+        "blocking_rows": 24,
+        "delayed_exact_rows": 8,
+        "delayed_rows": 8,
+        "sse_exact_rows": 24,
+        "sse_rows": 24,
+        "warmup_exact_rows": 8,
+        "warmup_rows": 8
+      },
+      "delayed_admission": {
+        "admission_during_first_request": true,
+        "aggregate_tok_s": 58.75076314242962,
+        "exact_rows": 8,
+        "lifecycle_after": {
+          "hipengine_kv_pool_current_bytes": 252313600.0,
+          "hipengine_kv_pool_current_pages": 32.0,
+          "hipengine_kv_pool_high_water_observed_bytes": 252313600.0,
+          "hipengine_kv_pool_high_water_observed_pages": 32.0,
+          "hipengine_kv_pool_pinned_pages": 0.0,
+          "hipengine_kv_pool_refcounted_pages": 0.0,
+          "hipengine_request_cancelled_total": 0.0,
+          "hipengine_request_completed_total": 64.0,
+          "hipengine_request_failed_total": 0.0,
+          "hipengine_request_rejected_total": 0.0,
+          "hipengine_resident_bucket_capacity": 8.0,
+          "hipengine_resident_bucket_free_slots": 8.0,
+          "hipengine_resident_bucket_occupied_slots": 0.0,
+          "hipengine_resident_packed_workspace_current_bytes": 0.0,
+          "hipengine_resident_packed_workspace_release_events_total": 64.0,
+          "hipengine_resident_packed_workspace_released_bytes_total": 25107469344.0,
+          "hipengine_resident_requests_admitted_total": 65.0,
+          "hipengine_resident_requests_reclaimed_total": 65.0
+        },
+        "native_c1_decode_steps_total": 181,
+        "native_packed_decode_steps_total": 1699,
+        "rows": 8
+      },
+      "execution": {
+        "native_c1_decode_steps": 46,
+        "native_caware_decode": [
+          true
+        ],
+        "native_packed_decode_steps": 1443,
+        "paths": [
+          "gguf_packed_ar_server_decode"
+        ],
+        "resident_fallback_requests": 0,
+        "route_passed": true,
+        "serial_decode_fallback": [
+          false
+        ],
+        "serial_decode_fallback_steps": 0
+      },
+      "lifecycle": {
+        "hipengine_kv_pool_current_bytes": 252313600.0,
+        "hipengine_kv_pool_current_pages": 32.0,
+        "hipengine_kv_pool_high_water_observed_bytes": 252313600.0,
+        "hipengine_kv_pool_high_water_observed_pages": 32.0,
+        "hipengine_kv_pool_pinned_pages": 0.0,
+        "hipengine_kv_pool_refcounted_pages": 0.0,
+        "hipengine_request_cancelled_total": 0.0,
+        "hipengine_request_completed_total": 56.0,
+        "hipengine_request_failed_total": 0.0,
+        "hipengine_request_rejected_total": 0.0,
+        "hipengine_resident_bucket_capacity": 8.0,
+        "hipengine_resident_bucket_free_slots": 8.0,
+        "hipengine_resident_bucket_occupied_slots": 0.0,
+        "hipengine_resident_packed_workspace_current_bytes": 0.0,
+        "hipengine_resident_packed_workspace_release_events_total": 56.0,
+        "hipengine_resident_packed_workspace_released_bytes_total": 22860744324.0,
+        "hipengine_resident_requests_admitted_total": 57.0,
+        "hipengine_resident_requests_reclaimed_total": 57.0
+      },
+      "sse": {
+        "end_to_end_p95_seconds_median": 12.831898119999096,
+        "exact_aggregate_tok_s_median": 79.78898633774847,
+        "exact_aggregate_tok_s_samples": [
+          79.78898633774847,
+          79.16505193060253,
+          80.04096004828584
+        ],
+        "itl_p99_seconds_median": 0.36135158501565456,
+        "measured_runs": 3,
+        "relative_to_c1": 2.0115790071517963,
+        "slo_goodput_tok_s_median": 29.920869876655676,
+        "slo_goodput_tok_s_samples": [
+          29.920869876655676,
+          19.791262982650633,
+          30.015360018107188
+        ],
+        "slo_passed_runs": 0,
+        "stdev_percent_of_median": 0.5651468733660415,
+        "ttft_p95_seconds_median": 4.554487538000103
+      },
+      "whole_card_gtt": {
+        "final_gib": 27.898536682128906,
+        "peak_gib": 29.884864807128906,
+        "poll_interval_seconds": 0.01,
+        "samples": 17174
+      }
+    }
+  ],
+  "schema": 1,
+  "source": {
+    "c4_fail_fast": {
+      "path": "/tmp/gfx1151-int8-continuous-c4-fb926d8e/result.json",
+      "sha256": "d40588398dca94aabb037c0871fe04014a3141e43ee13da4fce3d5f916141d08",
+      "size_bytes": 245561
+    },
+    "implementation_commit": "fb926d8e0cd619cf5e5a30296ca85947e4c013c9",
+    "measured_git_status": "## HEAD (no branch)",
+    "prompt_suite": {
+      "path": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+      "size_bytes": 2900
+    },
+    "quality": {
+      "path": "/tmp/gfx1151-int8-quality-24d4ad42/result.json",
+      "sha256": "d6a63e2982dfada37cce354e98c9e2d59e97d6b150a6f388baee2d78e98857d3",
+      "size_bytes": 24506
+    },
+    "quality_harness_commit": "24d4ad42fee024b93a1c9d4b7f2c86bfa958c03f",
+    "server": {
+      "path": "/tmp/gfx1151-int8-continuous-c1248-fb926d8e/result.json",
+      "sha256": "7755aec5a6d3a3987a9876664f6e0328d85fe28e9e3b217503be227c9b2d87ac",
+      "size_bytes": 1099400
+    }
+  },
+  "status": "accepted_explicit_short_context_int8_continuous_concurrency"
+}
