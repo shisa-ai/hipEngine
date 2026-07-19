@@ -93,6 +93,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_expert_pack8_gemv import (
     build_gguf_expert_pack8_gemv,
     register_gguf_expert_pack8_gemv_kernels,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_iq_selected_prefill import (
+    register_gguf_iq_selected_prefill_kernels,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_selected_prefill import (
     register_gguf_k_selected_prefill_kernels,
 )
@@ -2897,6 +2900,7 @@ _GGUF_INT8_KV_BLOCK16_ENV = "HIPENGINE_GGUF_INT8_KV_BLOCK16"
 # B2: opt-in fused selected-expert MoE FFN megakernel for rows==1 raw-Q4_K decode.
 _GGUF_FUSED_MOE_FFN_ENV = "HIPENGINE_GGUF_FUSED_MOE_FFN"
 _GGUF_HOST_TOKEN_EMBEDDING_ENV = "HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING"
+_GGUF_IQ_GROUPED_PREFILL_ENV = "HIPENGINE_GGUF_IQ_GROUPED_PREFILL"
 
 
 @dataclass(frozen=True)
@@ -2935,6 +2939,10 @@ def _env_flag(name: str, default: bool, *aliases: str) -> bool:
     if raw is None:
         return default
     return raw.lower() not in {"0", "false", "off", "no"}
+
+
+def _iq_grouped_prefill_enabled() -> bool:
+    return _env_flag(_GGUF_IQ_GROUPED_PREFILL_ENV, False)
 
 
 def _env_int(name: str, default: int, *aliases: str) -> int:
@@ -5271,16 +5279,36 @@ _EXPERT_PACK8_DUAL_KEYS = {
         "expert_pack8_dual_selected_bf16_bf16_out",
     ),
 }
-_COMPACT_MOE_SCHEDULER_KEYS = (
+_COMPACT_MOE_GROUPED_SCHEDULER_KEYS = (
     KernelKey("hip_gfx1100", "moe_group_count", "w4_paro", "qwen35"),
     KernelKey("hip_gfx1100", "moe_group_prefix", "w4_paro", "qwen35"),
     KernelKey("hip_gfx1100", "moe_group_scatter_gather", "w4_paro", "qwen35_lowp"),
+)
+_COMPACT_MOE_SCHEDULER_KEYS = (
+    *_COMPACT_MOE_GROUPED_SCHEDULER_KEYS,
     KernelKey("hip_gfx1100", "moe_wmma_tile_map", "w4_paro", "qwen35"),
 )
 _COMPACT_MOE_FUSED_KEYS = (
     KernelKey("hip_gfx1100", "weighted_lanes_sum", "w4_paro", "out"),
     KernelKey("hip_gfx1100", "shared_gate_combine+residual", "w4_paro", "batch_out"),
 )
+_COMPACT_MOE_IQ_GROUPED_DUAL_KEYS = {
+    (quant, quant): KernelKey(
+        "hip_gfx1100",
+        "moe_linear",
+        quant,
+        "selected_dual_grouped_prefill_compact_bf16_bf16_out",
+    )
+    for quant in ("gguf_iq3_xxs", "gguf_iq4_xs")
+}
+_COMPACT_MOE_IQ_GROUPED_DOWN_KEYS = {
+    "gguf_iq4_xs": KernelKey(
+        "hip_gfx1100",
+        "moe_linear",
+        "gguf_iq4_xs",
+        "selected_grouped_prefill_compact_bf16_bf16_out",
+    )
+}
 _COMPACT_MOE_Q4_DUAL_KEYS = {
     ("gguf_q4_k", "gguf_q4_k"): KernelKey(
         "hip_gfx1100",
@@ -5439,6 +5467,15 @@ class _CompactMoeGemvPlan:
 class _CompactMoeWmmaPlan:
     gate_up_fn: object
     down_fn: object
+    gate_allocation: str
+    up_allocation: str
+    down_allocation: str
+
+
+@dataclass(frozen=True)
+class _CompactMoeGroupedPlan:
+    gate_up_fn: object
+    down_fn: object | None
     gate_allocation: str
     up_allocation: str
     down_allocation: str
@@ -5742,21 +5779,32 @@ def _try_run_post_attention_moe_rows_compact_wmma(
     stream: int,
     runtime: HipRuntime,
 ) -> bool:
-    """Run the opt-in P8.6 compact grouped-MoE WMMA path when available."""
+    """Run an enabled compact grouped-MoE prefill plan when available.
 
-    if not gguf_wmma_prefill_enabled(None):
-        return False
+    Raw-IQ scalar grouping is a temporary explicit experiment.  Otherwise the
+    established WMMA prefill switch selects the compact WMMA plan.  Both share
+    the resident count/prefix/scatter ABI; small route sets stay on the direct
+    selected fallback because they cannot amortize expert grouping.
+    """
+
     if not _scratch_has_compact_moe_fields(scratch):
         return False
     cfg = runner.weights.config if runner.weights is not None else None
     if cfg is None:
         return False
-    plan = _resolve_compact_moe_wmma_kernels(gate_weight, up_weight, down_weight)
+    num_experts = int(cfg.expert_count)
+    grouped_plan = None
+    if _iq_grouped_prefill_enabled() and selected_rows >= num_experts:
+        grouped_plan = _resolve_compact_moe_grouped_kernels(gate_weight, up_weight, down_weight)
+    wmma_plan = None
+    if grouped_plan is None and gguf_wmma_prefill_enabled(None):
+        wmma_plan = _resolve_compact_moe_wmma_kernels(gate_weight, up_weight, down_weight)
+    plan = grouped_plan if grouped_plan is not None else wmma_plan
     if plan is None:
         return False
+    use_wmma = wmma_plan is not None
     gate_up_fn = plan.gate_up_fn
     down_fn = plan.down_fn
-    num_experts = int(cfg.expert_count)
     hidden_size = int(runner.hidden_size)
     expert_ffn = int(cfg.expert_feed_forward_length)
     if selected_rows <= 0 or selected_rows > int(getattr(scratch, "moe_selected_rows_capacity", selected_rows)):
@@ -5819,41 +5867,58 @@ def _try_run_post_attention_moe_rows_compact_wmma(
         stream=stream,
         runtime=runtime,
     )
-    qwen35_moe_wmma_tile_map(
-        scratch.moe_expert_start_compact.ptr,
-        scratch.moe_expert_start_wmma.ptr,
-        scratch.moe_tile_expert.ptr,
-        scratch.moe_wmma_total.ptr,
-        num_experts,
-        stream=stream,
-        runtime=runtime,
-    )
-    wmma_total_rows = _read_i64_device_scalar(
-        scratch.moe_wmma_total,
-        scratch.moe_wmma_total_host,
-        stream=stream,
-        runtime=runtime,
-    )
-    if wmma_total_rows <= 0 or wmma_total_rows > int(getattr(scratch, "moe_wmma_rows_capacity", wmma_total_rows)):
-        return False
 
-    gate_up_fn(
-        scratch.moe_down_out.ptr,
-        scratch.moe_expert_start_compact.ptr,
-        scratch.moe_expert_start_wmma.ptr,
-        scratch.moe_tile_expert.ptr,
-        gate_weight.allocation(plan.gate_allocation).tensor.ptr,
-        up_weight.allocation(plan.up_allocation).tensor.ptr,
-        scratch.ffn_gate_up.ptr,
-        selected_rows,
-        hidden_size,
-        expert_ffn,
-        expert_ffn,
-        num_experts,
-        wmma_total_rows,
-        stream=stream,
-        runtime=runtime,
-    )
+    if use_wmma:
+        qwen35_moe_wmma_tile_map(
+            scratch.moe_expert_start_compact.ptr,
+            scratch.moe_expert_start_wmma.ptr,
+            scratch.moe_tile_expert.ptr,
+            scratch.moe_wmma_total.ptr,
+            num_experts,
+            stream=stream,
+            runtime=runtime,
+        )
+        wmma_total_rows = _read_i64_device_scalar(
+            scratch.moe_wmma_total,
+            scratch.moe_wmma_total_host,
+            stream=stream,
+            runtime=runtime,
+        )
+        if wmma_total_rows <= 0 or wmma_total_rows > int(
+            getattr(scratch, "moe_wmma_rows_capacity", wmma_total_rows)
+        ):
+            return False
+        gate_up_fn(
+            scratch.moe_down_out.ptr,
+            scratch.moe_expert_start_compact.ptr,
+            scratch.moe_expert_start_wmma.ptr,
+            scratch.moe_tile_expert.ptr,
+            gate_weight.allocation(plan.gate_allocation).tensor.ptr,
+            up_weight.allocation(plan.up_allocation).tensor.ptr,
+            scratch.ffn_gate_up.ptr,
+            compact_rows=selected_rows,
+            in_features=hidden_size,
+            gate_out_features=expert_ffn,
+            up_out_features=expert_ffn,
+            num_experts=num_experts,
+            wmma_total_rows=wmma_total_rows,
+            stream=stream,
+            runtime=runtime,
+        )
+    else:
+        gate_up_fn(
+            scratch.moe_down_out.ptr,
+            scratch.moe_expert_start_compact.ptr,
+            gate_weight.allocation(plan.gate_allocation).tensor.ptr,
+            up_weight.allocation(plan.up_allocation).tensor.ptr,
+            scratch.ffn_gate_up.ptr,
+            compact_rows=selected_rows,
+            in_features=hidden_size,
+            out_features=expert_ffn,
+            num_experts=num_experts,
+            stream=stream,
+            runtime=runtime,
+        )
     silu_mul_dual_out_bf16(
         scratch.ffn_gate_up.ptr,
         scratch.ffn_intermediate.ptr,
@@ -5862,21 +5927,50 @@ def _try_run_post_attention_moe_rows_compact_wmma(
         stream=stream,
         runtime=runtime,
     )
-    down_fn(
-        scratch.ffn_intermediate.ptr,
-        scratch.moe_expert_start_compact.ptr,
-        scratch.moe_expert_start_wmma.ptr,
-        scratch.moe_tile_expert.ptr,
-        down_weight.allocation(plan.down_allocation).tensor.ptr,
-        scratch.moe_down_out.ptr,
-        selected_rows,
-        expert_ffn,
-        hidden_size,
-        num_experts,
-        wmma_total_rows,
-        stream=stream,
-        runtime=runtime,
-    )
+    if use_wmma:
+        assert down_fn is not None
+        down_fn(
+            scratch.ffn_intermediate.ptr,
+            scratch.moe_expert_start_compact.ptr,
+            scratch.moe_expert_start_wmma.ptr,
+            scratch.moe_tile_expert.ptr,
+            down_weight.allocation(plan.down_allocation).tensor.ptr,
+            scratch.moe_down_out.ptr,
+            compact_rows=selected_rows,
+            in_features=expert_ffn,
+            out_features=hidden_size,
+            num_experts=num_experts,
+            wmma_total_rows=wmma_total_rows,
+            stream=stream,
+            runtime=runtime,
+        )
+    elif down_fn is not None:
+        down_fn(
+            scratch.ffn_intermediate.ptr,
+            scratch.moe_expert_start_compact.ptr,
+            down_weight.allocation(plan.down_allocation).tensor.ptr,
+            scratch.moe_down_out.ptr,
+            compact_rows=selected_rows,
+            in_features=expert_ffn,
+            out_features=hidden_size,
+            num_experts=num_experts,
+            stream=stream,
+            runtime=runtime,
+        )
+    else:
+        _launch_selected_raw_gguf_moe_linear(
+            down_weight,
+            scratch.ffn_intermediate.ptr,
+            scratch.moe_sorted_experts.ptr,
+            scratch.moe_down_out.ptr,
+            x_rows=selected_rows,
+            rows=selected_rows,
+            num_experts=num_experts,
+            in_features=expert_ffn,
+            out_features=hidden_size,
+            stream=stream,
+            runtime=runtime,
+        )
     weighted_lanes_sum_out_bf16_f32w(
         scratch.moe_down_out.ptr,
         scratch.moe_sorted_weights.ptr,
@@ -6522,6 +6616,42 @@ def _try_run_post_attention_moe_c1_compact_gemv(
     return True
 
 
+def _resolve_compact_moe_grouped_kernels(
+    gate_weight: Qwen35GGUFDeviceWeight,
+    up_weight: Qwen35GGUFDeviceWeight,
+    down_weight: Qwen35GGUFDeviceWeight,
+):
+    """Resolve raw-IQ expert-major scalar kernels on the compact scheduler.
+
+    A missing grouped down kernel intentionally uses the registered direct
+    selected primitive on the already sorted compact lanes.  This keeps the
+    three Q6_K down layers on their exact fallback while grouping their IQ4_XS
+    gate/up projections without adding a format branch to the caller.
+    """
+
+    gate_up_key = _COMPACT_MOE_IQ_GROUPED_DUAL_KEYS.get(
+        (gate_weight.spec.quant_key, up_weight.spec.quant_key)
+    )
+    if gate_up_key is None:
+        return None
+    down_key = _COMPACT_MOE_IQ_GROUPED_DOWN_KEYS.get(down_weight.spec.quant_key)
+    kernel_keys = (gate_up_key,) if down_key is None else (gate_up_key, down_key)
+    required = (*_COMPACT_MOE_GROUPED_SCHEDULER_KEYS, *_COMPACT_MOE_FUSED_KEYS, *kernel_keys)
+    resolved = _resolve_compact_moe_required_keys(required)
+    if any(fn is None for fn in resolved):
+        _ensure_compact_moe_wmma_registered()
+        resolved = _resolve_compact_moe_required_keys(required)
+    if any(fn is None for fn in resolved):
+        return None
+    return _CompactMoeGroupedPlan(
+        gate_up_fn=resolved[-1] if down_key is None else resolved[-2],
+        down_fn=None if down_key is None else resolved[-1],
+        gate_allocation="raw",
+        up_allocation="raw",
+        down_allocation="raw",
+    )
+
+
 def _resolve_compact_moe_wmma_kernels(
     gate_weight: Qwen35GGUFDeviceWeight,
     up_weight: Qwen35GGUFDeviceWeight,
@@ -6591,6 +6721,7 @@ def _ensure_compact_moe_wmma_registered() -> None:
     register_qwen35_moe_group_scatter_kernels()
     register_paro_silu_kernels()
     register_paro_combine_kernels()
+    register_gguf_iq_selected_prefill_kernels()
     register_gguf_q4_k_selected_prefill_kernels()
     register_gguf_q4_k_t16_selected_prefill_kernels()
     register_gguf_k_selected_prefill_kernels()
