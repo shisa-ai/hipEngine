@@ -1332,6 +1332,7 @@ __all__ = [
     "DEFAULT_KV_POOL_LOW_WATER_PAGES",
     "EngineLoopConfig",
     "EngineLoopEvent",
+    "GenerationAdmissionRejected",
     "GenerationSubmission",
     "EngineLoopRunner",
     "PREFILL_DECODE_POLICIES",

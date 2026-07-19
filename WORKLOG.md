@@ -165740,3 +165740,36 @@ No GPU run or performance claim is attached. The next unit is a real gfx1151
 mixed-context pressure harness that must force grow, rejection, release,
 shrink, regrow, graph invalidation/rebind, exact survivor output, and final zero
 ownership through this public contract.
+
+## 2026-07-19 — Add GGUF long-context memory-pressure gate
+
+Added `scripts/gguf_long_context_pressure_gate.py`, a dedicated real-Uvicorn
+packet that reuses the production load oracle/metrics machinery without changing
+the retained F4 protocol. It defines concurrent 1K/c2, 4K/c2, 32K/c2, mixed
+1K+4K+32K, default feasible 64K/c2, and 32K graph seed/regrow phases. Every row
+uses a repeated-token prompt with exact tokenizer roundtrip and an independent
+private c1 generated-ID trajectory; decode length defaults to 32 so c1 graph
+capture/replay can cross its admitted threshold.
+
+The pool plan follows the current device ABI rather than treating free pages as
+fungible across backings. One request may consume the five-page initial 1K
+chunk; larger concurrent requests each require a contiguous backing. The full
+mixed/64K ceiling is therefore 519 pages. The pressure phase reconfigures the
+same idle owner to 134 pages: five low-water pages plus one 129-page 32K
+allocation. After a barrier proves that live allocation, a 17-page 4K request
+must receive SSE `429 engine_busy` with exact requested/current/capacity page
+metadata while the 32K source completes exactly. Reclaim must invalidate graph
+pins, shrink to five pages, regrow a fresh 32K allocation with disjoint monotonic
+logical block IDs, replay exact output, and end with all pages free/unpinned.
+
+The shared production-load trace now retains raw OpenAI error payloads plus
+reclaimed allocation pointers for this gate; existing workload semantics are
+unchanged. RED failed because the new module did not exist. GREEN is `17 passed`
+across the new/production harness tests and focused runner/API pressure nodes;
+`py_compile`, `--help`, and `git diff --check` pass.
+
+No GPU run or performance claim exists yet. The harness records BF16 as the only
+continuous-owner KV policy and explicitly keeps uniform/tail4 INT8 fail-closed;
+that implementation/quality gate remains a later unit of task #87. The next
+step is a committed-clean cached gfx1151 diagnostic, followed by the complete
+64K packet only if the short/mixed lifecycle is green.
