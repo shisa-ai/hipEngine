@@ -13,6 +13,7 @@ import pytest
 from hipengine.loading.qwen35_gguf import FULL_ATTENTION, LINEAR_ATTENTION
 from hipengine.runtime.qwen35_gguf_runner import (
     Qwen35GGUFDecodeGraphWeightRole,
+    _resolve_gguf_attention_context_limit,
     build_qwen35_gguf_decode_graph_bucket_key,
     qwen35_gguf_decode_graph_active_symbol_groups,
 )
@@ -93,12 +94,13 @@ def test_decode_graph_bucket_key_tracks_replay_budget_and_active_p9_groups() -> 
     }
 
 
-def test_decode_graph_iq_roles_require_fused_single_and_weighted_groups() -> None:
+@pytest.mark.parametrize("use_gemv_decode", [False, True])
+def test_decode_graph_iq_roles_require_fused_single_and_weighted_groups(use_gemv_decode: bool) -> None:
     groups = qwen35_gguf_decode_graph_active_symbol_groups(
         is_moe=True,
         layer_types=(LINEAR_ATTENTION, FULL_ATTENTION),
         weight_roles=_iq_roles(),
-        use_gemv_decode=True,
+        use_gemv_decode=use_gemv_decode,
     )
 
     assert set(groups) == {
@@ -133,6 +135,31 @@ def test_decode_graph_bucket_requires_dense_q4_only_when_active() -> None:
 
     assert "dense_q4_k" not in without_opt_in
     assert "dense_q4_k" in with_opt_in
+
+
+def test_decode_graph_attention_scan_bound_covers_the_full_replay_span() -> None:
+    assert _resolve_gguf_attention_context_limit(
+        position=512,
+        max_context_len=None,
+        max_positions=768,
+    ) == (513, 513)
+    assert _resolve_gguf_attention_context_limit(
+        position=512,
+        max_context_len=640,
+        max_positions=768,
+    ) == (513, 640)
+    with pytest.raises(ValueError, match="smaller than the active context"):
+        _resolve_gguf_attention_context_limit(
+            position=512,
+            max_context_len=512,
+            max_positions=768,
+        )
+    with pytest.raises(ValueError, match="exceeds the resident cache"):
+        _resolve_gguf_attention_context_limit(
+            position=512,
+            max_context_len=769,
+            max_positions=768,
+        )
 
 
 def test_decode_graph_bucket_rejects_replay_budget_beyond_cache() -> None:
@@ -191,6 +218,27 @@ def test_decode_graph_symbol_coverage_accepts_iq_groups() -> None:
         "(anonymous namespace)::gguf_iq3_xxs_selected_dual_silu_gemv_kernel(...) ",
         "(anonymous namespace)::gguf_iq4_xs_selected_gemv_kernel(...) ",
         "(anonymous namespace)::gguf_iq4_xs_weighted_selected_down_kernel(...) ",
+    ]
+
+    coverage = SMOKE.validate_decode_graph_symbol_coverage(kernels, expected_groups=expected)
+
+    assert coverage["passed"] is True
+    assert coverage["missing_symbol_groups"] == []
+    assert set(coverage["observed_symbol_groups"]) == set(expected)
+
+
+def test_decode_graph_symbol_coverage_accepts_raw_legacy_fallback_groups() -> None:
+    expected = (
+        "moe_q6_k_selected",
+        "dense_q8_0_single",
+        "dense_q8_0_dual",
+        "dense_q6_k_lm_head",
+    )
+    kernels = [
+        "void (anonymous namespace)::gguf_k_selected_pack8_prefill_out_kernel<unsigned short, unsigned short, 6>(...)",
+        "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, unsigned short, 8>(...)",
+        "void (anonymous namespace)::gguf_k_dual_prefill_out_kernel<unsigned short, unsigned short, 8>(...)",
+        "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, float, 6>(...)",
     ]
 
     coverage = SMOKE.validate_decode_graph_symbol_coverage(kernels, expected_groups=expected)

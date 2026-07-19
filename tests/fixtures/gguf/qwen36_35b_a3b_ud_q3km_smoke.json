@@ -30,6 +30,12 @@
   },
   "expected_generated_text": ",",
   "expected_generated_token_ids": [11],
+  "decode_graph": {
+    "oracle": "resident eager direct decode",
+    "max_new_tokens": 3,
+    "expected_generated_text": ",, a",
+    "expected_generated_token_ids": [11, 11, 264]
+  },
   "acceptance": {
     "public_api": "hipengine.LLM.generate",
     "backend": "hip_gfx1100",

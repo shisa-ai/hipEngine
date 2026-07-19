@@ -64,11 +64,21 @@ def main(argv: list[str] | None = None) -> int:
 def run(args: argparse.Namespace) -> dict[str, Any]:
     fixture = json.loads(args.fixture.read_text())
     model = Path(args.model or fixture["model"]["path"])
-    max_new_tokens = int(args.max_new_tokens or fixture["sampling"]["max_new_tokens"])
+    graph_contract = fixture.get("decode_graph", {})
+    max_new_tokens = int(
+        args.max_new_tokens
+        or graph_contract.get("max_new_tokens", 0)
+        or fixture["sampling"]["max_new_tokens"]
+    )
     if max_new_tokens <= 0:
         raise ValueError("max_new_tokens must be positive")
     prompt_ids = [int(item) for item in fixture["prompt_ids"]]
-    expected_ids = [int(item) for item in fixture["expected_generated_token_ids"][:max_new_tokens]]
+    expected_source = graph_contract or fixture
+    expected_full = [int(item) for item in expected_source["expected_generated_token_ids"]]
+    if not expected_full:
+        raise ValueError("decode graph fixture must provide at least one expected token ID")
+    expected_ids = expected_full[:max_new_tokens]
+    expected_scope = "full" if len(expected_full) >= max_new_tokens else "prefix"
     compiler_version = args.compiler_version_file.read_text() if args.compiler_version_file else None
 
     eager = _run_eager(
@@ -100,7 +110,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     eager_text = tokenizer.decode(eager["generated_ids"])
 
     finite_logits = bool(np.all(np.isfinite(logits_graph)) and np.all(np.isfinite(logits_ref)))
-    ids_match = graph["generated_ids"] == eager["generated_ids"] == expected_ids
+    eager_graph_ids_equal = graph["generated_ids"] == eager["generated_ids"]
+    expected_prefix_match = (
+        graph["generated_ids"][: len(expected_ids)]
+        == eager["generated_ids"][: len(expected_ids)]
+        == expected_ids
+    )
+    ids_match = eager_graph_ids_equal and expected_prefix_match
     top1_equal = eager_top1 == graph_top1
     passed = bool(
         ids_match
@@ -116,6 +132,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "prompt_ids": prompt_ids,
         "max_new_tokens": max_new_tokens,
         "expected_generated_token_ids": expected_ids,
+        "expected_generated_token_ids_scope": expected_scope,
+        "expected_prefix_match": bool(expected_prefix_match),
+        "eager_graph_ids_equal": bool(eager_graph_ids_equal),
         "eager_generated_token_ids": eager["generated_ids"],
         "graph_generated_token_ids": graph["generated_ids"],
         "eager_text": eager_text,
@@ -253,27 +272,33 @@ _DECODE_GRAPH_SYMBOL_GROUP_REGEX: dict[str, tuple[str, ...]] = {
     "moe_q4_k_selected_dual": (
         r"q4_k_t16_selected_dual.*gemv",
         r"gguf_q4_k_selected_dual_pack8_gemv_decode",
+        r"gguf_q4_k_selected_(?:dual_|pack8_)?prefill_out",
     ),
     "moe_q5_k_selected": (
         r"qk_t16_selected.*<[^>]*,\s*5>",
         r"gguf_k_selected_pack8_gemv_decode.*<[^>]*,\s*5>",
+        r"gguf_k_selected_pack8_prefill_out.*<[^>]*,\s*5>",
     ),
     "moe_q6_k_selected": (
         r"qk_t16_selected.*<[^>]*,\s*6>",
         r"gguf_k_selected_pack8_gemv_decode.*<[^>]*,\s*6>",
+        r"gguf_k_selected_pack8_prefill_out.*<[^>]*,\s*6>",
     ),
     "dense_q8_0_single": (
         r"q8_0_t16_gemv_kernel",
         r"gguf_q8_0_pack8_gemv_decode",
+        r"gguf_k_pack8_prefill_out.*<[^>]*,\s*8>",
     ),
     "dense_q8_0_dual": (
         r"q8_0_t16_dual_gemv_kernel",
         r"gguf_q8_0_pack8_dual_gate_up_gemv_decode",
+        r"gguf_k_dual_prefill_out.*<[^>]*,\s*8>",
     ),
     "dense_q4_k": (r"gguf_q4_k_pack8_gemv_decode",),
     "dense_q6_k_lm_head": (
         r"q6_k_t16_gemv_kernel",
         r"gguf_q6_k_pack8_gemv_decode",
+        r"gguf_k_pack8_prefill_out.*<[^>]*,\s*6>",
     ),
     "gdn_decode": (r"qwen35_gdn_recurrent",),
     "paged_kv_write": (r"qwen35_write_paged_kv",),

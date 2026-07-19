@@ -281,40 +281,53 @@ def qwen35_gguf_decode_graph_active_symbol_groups(
         if _has_role(weight_roles, quant_key="gguf_iq4_xs", rank=3, slot_contains="ffn_down_exps"):
             add("moe_iq4_xs_weighted_down")
 
-        if _has_role(weight_roles, quant_key="gguf_q4_k_t16_v1", slot_contains="ffn_gate_exps"):
+        if _has_role(weight_roles, quant_key="gguf_q4_k_t16_v1", slot_contains="ffn_gate_exps") or _has_role(
+            weight_roles,
+            quant_key="gguf_q4_k",
+            rank=3,
+            slot_contains="ffn_gate_exps",
+        ):
             add("moe_q4_k_selected_dual")
-        elif use_gemv_decode and _has_role(weight_roles, quant_key="gguf_q4_k", rank=3, slot_contains="ffn_gate_exps"):
-            add("moe_q4_k_selected_dual")
 
-        if _has_role(weight_roles, quant_key="gguf_q5_k_t16_v1", slot_contains="ffn_down_exps"):
+        if _has_role(weight_roles, quant_key="gguf_q5_k_t16_v1", slot_contains="ffn_down_exps") or _has_role(
+            weight_roles,
+            quant_key="gguf_q5_k",
+            rank=3,
+            slot_contains="ffn_down_exps",
+        ):
             add("moe_q5_k_selected")
-        elif use_gemv_decode and _has_role(weight_roles, quant_key="gguf_q5_k", rank=3, slot_contains="ffn_down_exps"):
-            add("moe_q5_k_selected")
 
-        if _has_role(weight_roles, quant_key="gguf_q6_k_t16_v1", slot_contains="ffn_down_exps"):
-            add("moe_q6_k_selected")
-        elif use_gemv_decode and _has_role(weight_roles, quant_key="gguf_q6_k", rank=3, slot_contains="ffn_down_exps"):
+        if _has_role(weight_roles, quant_key="gguf_q6_k_t16_v1", slot_contains="ffn_down_exps") or _has_role(
+            weight_roles,
+            quant_key="gguf_q6_k",
+            rank=3,
+            slot_contains="ffn_down_exps",
+        ):
             add("moe_q6_k_selected")
 
-    if _has_role(weight_roles, quant_key="gguf_q8_0_t16_v1", rank=2):
-        add("dense_q8_0_single")
-    elif use_gemv_decode and _has_role(weight_roles, quant_key="gguf_q8_0", rank=2):
+    if _has_role(weight_roles, quant_key="gguf_q8_0_t16_v1", rank=2) or _has_role(
+        weight_roles,
+        quant_key="gguf_q8_0",
+        rank=2,
+    ):
         add("dense_q8_0_single")
     if (
         _has_role(weight_roles, quant_key="gguf_q8_0_t16_v1", rank=2, slot_contains="ffn_gate_shexp")
         and _has_role(weight_roles, quant_key="gguf_q8_0_t16_v1", rank=2, slot_contains="ffn_up_shexp")
     ) or (
-        use_gemv_decode
-        and _has_role(weight_roles, quant_key="gguf_q8_0", rank=2, slot_contains="ffn_gate_shexp")
+        _has_role(weight_roles, quant_key="gguf_q8_0", rank=2, slot_contains="ffn_gate_shexp")
         and _has_role(weight_roles, quant_key="gguf_q8_0", rank=2, slot_contains="ffn_up_shexp")
     ):
         add("dense_q8_0_dual")
 
     if use_gemv_decode and _has_role(weight_roles, quant_key="gguf_q4_k", rank=2):
         add("dense_q4_k")
-    if _has_role(weight_roles, quant_key="gguf_q6_k_t16_v1", rank=2, slot_contains="root.lm_head"):
-        add("dense_q6_k_lm_head")
-    elif use_gemv_decode and _has_role(weight_roles, quant_key="gguf_q6_k", rank=2, slot_contains="root.lm_head"):
+    if _has_role(weight_roles, quant_key="gguf_q6_k_t16_v1", rank=2, slot_contains="root.lm_head") or _has_role(
+        weight_roles,
+        quant_key="gguf_q6_k",
+        rank=2,
+        slot_contains="root.lm_head",
+    ):
         add("dense_q6_k_lm_head")
     return tuple(groups)
 
@@ -1764,9 +1777,18 @@ class Qwen35GGUFFullStackRunner:
         scratch,
         *,
         position: int,
+        max_context_len: int | None = None,
         stream: int = 0,
     ) -> None:
-        self._run_full_attention_attn_only(layer_id, hidden_ptr, scratch.attn_out.ptr, scratch, position=position, stream=stream)
+        self._run_full_attention_attn_only(
+            layer_id,
+            hidden_ptr,
+            scratch.attn_out.ptr,
+            scratch,
+            position=position,
+            max_context_len=max_context_len,
+            stream=stream,
+        )
         self._run_post_attention_ffn(layer_id, hidden_ptr, scratch.attn_out.ptr, out_ptr, scratch, stream=stream)
 
     def _run_full_attention_attn_only(
@@ -1777,6 +1799,7 @@ class Qwen35GGUFFullStackRunner:
         scratch,
         *,
         position: int,
+        max_context_len: int | None = None,
         stream: int = 0,
     ) -> None:
         assert self.weights is not None
@@ -1972,7 +1995,11 @@ class Qwen35GGUFFullStackRunner:
                 library=kv_write_library,
                 runtime=runtime,
             )
-        active_context = int(position) + 1
+        _active_context, attention_context_limit = _resolve_gguf_attention_context_limit(
+            position=position,
+            max_context_len=max_context_len,
+            max_positions=scratch.max_positions,
+        )
         if layer_uses_int8_kv and bf16_mirror_cache is None:
             metadata = decode_spans.scale_metadata
             if metadata is None:
@@ -1980,7 +2007,7 @@ class Qwen35GGUFFullStackRunner:
             chunk_size = int(scratch.block_size)
             num_splits = min(
                 int(scratch.full_attn_split_count),
-                max(1, (active_context + chunk_size - 1) // chunk_size),
+                max(1, (attention_context_limit + chunk_size - 1) // chunk_size),
             )
             if getattr(scratch, "int8_kv_value_bf16", False):
                 qwen35_paged_attn_decode_int8_key_bf16_value_gqa_splitk_gate_bf16_spans(
@@ -2038,17 +2065,17 @@ class Qwen35GGUFFullStackRunner:
             if bf16_mirror_cache is not None:
                 key_cache, value_cache = bf16_mirror_cache
                 decode_spans = scratch.decode_spans
-            if _use_gguf_full_attention_split_decode(active_context):
+            if _use_gguf_full_attention_split_decode(attention_context_limit):
                 chunk_size = int(scratch.block_size)
                 num_splits = min(
                     int(scratch.full_attn_split_count),
-                    max(1, (active_context + chunk_size - 1) // chunk_size),
+                    max(1, (attention_context_limit + chunk_size - 1) // chunk_size),
                 )
                 split_gate_fn = _gguf_full_attention_split_gate_bf16_fn(
                     cfg,
                     block_size=scratch.block_size,
                     num_splits=num_splits,
-                    active_context=active_context,
+                    active_context=attention_context_limit,
                 )
                 split_gate_fn(
                     scratch.full_query.ptr,
@@ -2080,7 +2107,7 @@ class Qwen35GGUFFullStackRunner:
                     value_cache.ptr,
                     scratch.full_attn_context.ptr,
                     decode_spans,
-                    active_context,
+                    attention_context_limit,
                     scratch.block_size,
                     cfg.head_count,
                     cfg.head_count_kv,
@@ -4003,7 +4030,13 @@ class Qwen35GGUFResidentSession:
         self._set_token_id_device(int(token_id), stream=stream)
         return self._run_current_hidden_to_final_hidden(position=position, stream=stream)
 
-    def _run_current_hidden_to_final_hidden(self, *, position: int, stream: int = 0) -> int:
+    def _run_current_hidden_to_final_hidden(
+        self,
+        *,
+        position: int,
+        max_context_len: int | None = None,
+        stream: int = 0,
+    ) -> int:
         if self.runner is None or self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
         if self._hidden_a is None or self._hidden_b is None:
@@ -4018,7 +4051,15 @@ class Qwen35GGUFResidentSession:
             if layer_type == LINEAR_ATTENTION:
                 self.runner._run_linear_attention_layer(layer_id, src.ptr, dst.ptr, self.scratch, stream=stream)
             elif layer_type == FULL_ATTENTION:
-                self.runner._run_full_attention_layer(layer_id, src.ptr, dst.ptr, self.scratch, position=position, stream=stream)
+                self.runner._run_full_attention_layer(
+                    layer_id,
+                    src.ptr,
+                    dst.ptr,
+                    self.scratch,
+                    position=position,
+                    max_context_len=max_context_len,
+                    stream=stream,
+                )
             else:
                 raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
             src, dst = dst, src
@@ -4173,7 +4214,9 @@ class Qwen35GGUFResidentSession:
         token back to ``_lm_out_index``, and advances the device position/context
         scalar.  Optional recording appends generated token IDs to a device
         int64 buffer so graph/eager correctness gates do not need host sampling
-        between replayed steps.
+        between replayed steps. The full replay span also sets a static attention
+        scan/split bound while ``KVLiveSpans.live_counts`` remains device-dynamic;
+        otherwise later one-step replays would be truncated to the capture context.
         """
 
         if self.runner is None or self.scratch is None:
@@ -4224,6 +4267,7 @@ class Qwen35GGUFResidentSession:
                     for offset in range(steps_per_replay):
                         self._step_from_device_token(
                             position=position + offset,
+                            max_context_len=bucket_key.replay_context_limit,
                             advance_position=True,
                             stream=stream,
                             record_output_ptr=None if generated_buf is None else generated_buf.ptr,
@@ -4268,6 +4312,7 @@ class Qwen35GGUFResidentSession:
         self,
         *,
         position: int,
+        max_context_len: int | None = None,
         advance_position: bool,
         stream: int,
         record_output_ptr: int | None = None,
@@ -4285,7 +4330,11 @@ class Qwen35GGUFResidentSession:
         self.scratch.position_host[0] = int(position)
         self.scratch.context_host[0] = int(position) + 1
         self._set_token_embedding_from_ptr(self._lm_out_index.ptr, stream=stream)
-        hidden_ptr = self._run_current_hidden_to_final_hidden(position=position, stream=stream)
+        hidden_ptr = self._run_current_hidden_to_final_hidden(
+            position=position,
+            max_context_len=max_context_len,
+            stream=stream,
+        )
         self._sample_device_from_hidden(hidden_ptr, stream=stream)
         if record_output_ptr is not None:
             if record_index_ptr is None:
@@ -5435,6 +5484,23 @@ def _gguf_gdn_prefill_segment_threshold() -> int:
     except ValueError:
         return _GDN_PREFILL_SEGMENT_THRESHOLD_DEFAULT
     return max(1, value)
+
+
+def _resolve_gguf_attention_context_limit(
+    *,
+    position: int,
+    max_context_len: int | None,
+    max_positions: int,
+) -> tuple[int, int]:
+    """Return dynamic live context and the static graph-safe scan bound."""
+
+    active_context = int(position) + 1
+    context_limit = active_context if max_context_len is None else int(max_context_len)
+    if context_limit < active_context:
+        raise ValueError("max_context_len cannot be smaller than the active context")
+    if context_limit > int(max_positions):
+        raise ValueError("max_context_len exceeds the resident cache capacity")
+    return active_context, context_limit
 
 
 def _gguf_full_attention_split_decode_min_context() -> int:

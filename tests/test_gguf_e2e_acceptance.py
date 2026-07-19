@@ -156,6 +156,12 @@ def test_qwen35moe_ud_q3km_e2e_fixture_pins_llamacpp_first_token() -> None:
     }
     assert fixture["expected_generated_text"] == ","
     assert fixture["expected_generated_token_ids"] == [11]
+    assert fixture["decode_graph"] == {
+        "oracle": "resident eager direct decode",
+        "max_new_tokens": 3,
+        "expected_generated_text": ",, a",
+        "expected_generated_token_ids": [11, 11, 264],
+    }
 
     acceptance = fixture["acceptance"]
     assert acceptance["public_api"] == "hipengine.LLM.generate"

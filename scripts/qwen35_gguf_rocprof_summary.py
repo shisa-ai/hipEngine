@@ -296,7 +296,9 @@ def classify_kernel(name: str) -> str:
         or "q8_0_t16_triple" in base
     ):
         return "dense_q8_0_t16_gemv_decode_p9"
-    if "gguf_k_pack8_prefill_out" in base and (", 8" in name or ",8" in name):
+    if (
+        "gguf_k_pack8_prefill_out" in base or "gguf_k_dual_prefill_out" in base
+    ) and (", 8" in name or ",8" in name):
         return "dense_q8_0_legacy_decode"
     if "gguf_q4_k_pack8_gemv_decode" in base:
         return "dense_q4_k_pack8_gemv_decode_p9"
