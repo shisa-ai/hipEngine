@@ -575,8 +575,13 @@ Current blockers that keep project-wide c>N incomplete:
   remaining aggregate-neutral and diagnostic. N4 has started with one shared
   gfx1100 `w4_paro` target+accept graph adapter used by both PARO MTP and
   DFlash; it declares only `VERIFY|ACCEPT`, preserves provider commit and exact
-  fallback, and remains default-off because the currently available packed
-  PARO+MTP local artifact already mismatches true AR on the unchanged control.
+  fallback, and remains default-off pending performance and complete-provider
+  ownership gates. The initial model-incompatibility diagnosis was wrong: a
+  wider verifier t-loop did not honor the existing exact shared-expert control.
+  After repairing that verifier path without changing model bytes, the current
+  full8192 packed target plus MTP-BF16 sidecar passes strict B1 exactness for all
+  240 IDs in the 10-prompt category+heldout suite and clean B2 native-off/on
+  equality; B2 resident Conv/GDN/KV and selected-state oracles also pass.
   Complete PARO/DFlash proposal+commit ownership, independent gfx1151 N4
   admission, gfx1151 N3P proposal-graph admission, draft-side batching, rows>=16
   verifier tuning, streaming, and exact/default MTP serving remain open.

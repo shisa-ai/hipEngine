@@ -23,9 +23,10 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from hipengine.core.device import Device
 from hipengine.core.dtype import DType
+from hipengine.core.memory import free, malloc
 from hipengine.core.tensor import Tensor
+from hipengine.kernels.hip_gfx1100.convert import fp16_to_bf16
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
 from hipengine.speculative import MTP_CHAIN_CANDIDATE_BUDGETS
 from scripts.mtp_prompt_suite_economics import DEFAULT_MODEL, DEFAULT_PROMPTS, PROMPT_RENDER_MODES
@@ -156,6 +157,65 @@ def _compare_layer0_intermediates(
     return records
 
 
+def _compare_layer0_moe_intermediates(
+    serial: Qwen35ParoResidentSession,
+    verifier: Qwen35ParoResidentSession,
+) -> list[dict[str, Any]]:
+    """Compare the first logical token's MoE scratch after layer 0.
+
+    The serial scratch is sized for one token while verifier scratch is sized
+    for B+1 rows. Every MoE field is token-major (selected-expert fields may
+    flatten token and route), so the serial tensor shape describes exactly the
+    first contiguous verifier-token slice.
+    """
+
+    serial_scratch = serial.moe_scratch[0]
+    verifier_scratch = verifier.moe_scratch[0]
+    stage_names = (
+        "normed",
+        "residual",
+        "gate_up_input",
+        "router_logits",
+        "routing_weights",
+        "selected_experts",
+        "gate_up",
+        "down_input",
+        "down_out",
+        "shared_gate_input",
+        "shared_up_input",
+        # The small-batch path writes packed gate||up to ``shared_up`` while
+        # some dispatcher variants also leave split-output auxiliaries live.
+        # Compare the semantic producer consumed by SiLU, not unused aliases.
+        "shared_up",
+        "shared_intermediate",
+        "shared_down_input",
+        "shared_out",
+    )
+    records: list[dict[str, Any]] = []
+    for name in stage_names:
+        serial_tensor = getattr(serial_scratch, name)
+        verifier_tensor = getattr(verifier_scratch, name)
+        if serial_tensor.dtype is not verifier_tensor.dtype:
+            raise ValueError(f"MoE scratch dtype mismatch for {name}")
+        if serial_tensor.numel > verifier_tensor.numel:
+            raise ValueError(f"verifier MoE scratch is too small for first-token {name}")
+        records.append(
+            _compare_named(
+                name=f"moe.{name}",
+                left=_copy_tensor_host(serial, serial_tensor),
+                right=_copy_tensor_slice_host(
+                    verifier,
+                    ptr=int(verifier_tensor.ptr),
+                    dtype=verifier_tensor.dtype,
+                    shape=serial_tensor.shape,
+                ),
+                left_label=f"serial_c1_moe_{name}_token_0",
+                right_label=f"verifier_moe_{name}_token_0",
+            )
+        )
+    return records
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     if int(args.candidate_budget) not in MTP_CHAIN_CANDIDATE_BUDGETS:
         raise ValueError(f"candidate budget must be one of {sorted(MTP_CHAIN_CANDIDATE_BUDGETS)}")
@@ -212,6 +272,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ),
         ]
 
+        hidden_size = int(serial_session.config.hidden_size)
+        capture_buf = malloc((rows + 1) * hidden_size * DType.BF16.itemsize, runtime=verifier_session.runtime)
+        verifier_capture = Tensor.from_handle(
+            capture_buf.ptr,
+            (rows + 1, hidden_size),
+            DType.BF16,
+            verifier_session.device,
+        )
+
         serial_session._set_token_embedding(serial_root)
         serial_session._set_position(context)
         serial_state = serial_session.states[0]
@@ -220,7 +289,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         serial_session.linear_scratch[0] = serial_scratch
         serial_moe_scratch = serial_session._mlp_decode_scratch(0, serial_state)
         serial_session.moe_scratch[0] = serial_moe_scratch
-        serial_state.run_linear_attention_moe_c1_layer_fp16(
+        serial_layer_out = serial_state.run_linear_attention_moe_c1_layer_fp16(
             serial_session.hidden,
             conv_state=serial_conv,
             recurrent_state=serial_recurrent,
@@ -237,18 +306,43 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             active_count,
             candidate_budget=candidate_budget,
         )
-        verifier_no_capture = Tensor.from_handle(0, (rows, 0), DType.BF16, Device("hip", 0))
         verify = verifier_session.verify_chain_bulk_and_commit(
             target_batch,
             base_slot=0,
-            capture_layer_ids=(),
-            capture_hidden_concat=verifier_no_capture,
+            capture_layer_ids=(0,),
+            capture_hidden_concat=verifier_capture,
             capture_row_start=0,
             chain_attn_mode=str(args.chain_attn_mode),
             graph_mode=str(args.graph_mode),
             canonicalize_after=False,
         )
         verifier_top1, verifier_values = verifier_session._read_verify_top1(int(verify.rows))
+        serial_capture_ptr = int(capture_buf.ptr) + rows * hidden_size * DType.BF16.itemsize
+        fp16_to_bf16(
+            serial_layer_out.ptr,
+            serial_capture_ptr,
+            hidden_size,
+            library=verifier_session.libraries["cast"],
+            runtime=verifier_session.runtime,
+        )
+        verifier_session.runtime.stream_synchronize(0)
+        layer_output_record = _compare_named(
+            name="layer_output_after_moe",
+            left=_copy_tensor_slice_host(
+                serial_session,
+                ptr=serial_capture_ptr,
+                dtype=DType.BF16,
+                shape=(hidden_size,),
+            ),
+            right=_copy_tensor_slice_host(
+                verifier_session,
+                ptr=int(capture_buf.ptr) + verifier_row * hidden_size * DType.BF16.itemsize,
+                dtype=DType.BF16,
+                shape=(hidden_size,),
+            ),
+            left_label="serial_c1_layer0_output_bf16",
+            right_label=f"verifier_layer0_output_row_{verifier_row}_bf16",
+        )
 
         state_records = _compare_layer0_states(
             serial_session,
@@ -262,9 +356,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             verifier_session,
             verifier_row=verifier_row,
         )
+        moe_records = _compare_layer0_moe_intermediates(serial_session, verifier_session)
+        free(capture_buf, runtime=verifier_session.runtime)
 
     seconds = time.perf_counter() - started
-    all_records = [*pre_state_records, *intermediate_records, *state_records]
+    all_records = [
+        *pre_state_records,
+        *intermediate_records,
+        *moe_records,
+        layer_output_record,
+        *state_records,
+    ]
     first = _first_failed(all_records)
     return {
         "status": "matched" if first is None else "mismatch",
@@ -307,13 +409,19 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "first_mismatch": _first_failed(intermediate_records),
             "records": intermediate_records,
         },
+        "moe_compare": {
+            "passed": _first_failed(moe_records) is None,
+            "first_mismatch": _first_failed(moe_records),
+            "records": moe_records,
+        },
+        "layer_output_compare": layer_output_record,
         "state_compare": {
             "passed": _first_failed(state_records) is None,
             "first_mismatch": _first_failed(state_records),
             "records": state_records,
         },
         "first_mismatch": first,
-        "note": "Correctness diagnostic only: compares serial c1 layer-0 producer outputs against verifier row-0 outputs after one clean prompt prefill.",
+        "note": "Correctness diagnostic only: compares serial c1 layer-0 linear/MoE producer intermediates, post-MoE output, and state against verifier row output after one clean prompt prefill.",
     }
 
 

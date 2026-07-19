@@ -3683,6 +3683,69 @@ def test_qwen35_decode_state_runs_linear_attention_fp16_out_proj_chain(monkeypat
     assert order == ["rotate2", "dual_pack8", "dense_dual", "conv", "gdn", "cast", "rotate1", "pack8"]
 
 
+@pytest.mark.parametrize("force_small_batch,expected", [(False, False), (True, True)])
+def test_qwen35_decode_state_chain_tloop_honors_small_batch_shared_expert(
+    monkeypatch,
+    force_small_batch: bool,
+    expected: bool,
+) -> None:
+    runtime = FakeRuntime()
+    state = _state(runtime, _linear_weights())
+    tokens = 3
+    hidden = _tensor(0xC000, (tokens, 4096), "fp16")
+    conv_state = _tensor(0xC100, (8192, 4), "fp32")
+    recurrent_state = _tensor(0xC200, (32, 128, 128), "fp32")
+    linear_scratch = state.reserve_linear_attention_scratch(tokens=tokens, activation_dtype="fp16")
+    moe_scratch = state.reserve_moe_c1_scratch(tokens=tokens, activation_dtype="fp16")
+    observed: list[bool] = []
+
+    if force_small_batch:
+        monkeypatch.setenv("HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT", "1")
+    else:
+        monkeypatch.delenv("HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT", raising=False)
+    monkeypatch.setenv("HIPENGINE_FUSED_RMSNORM_ROTATE", "0")
+    monkeypatch.setattr(state, "input_rmsnorm_fp16", lambda *args, **kwargs: linear_scratch.attn_input)
+    monkeypatch.setattr(state, "rotate_linear_attention_inputs_fp16", lambda *args, **kwargs: None)
+    monkeypatch.setattr(state, "project_linear_attention_qkv_z_fp16", lambda *args, **kwargs: None)
+    monkeypatch.setattr(state, "project_linear_attention_ab_fp16", lambda *args, **kwargs: None)
+    monkeypatch.setattr(qwen_runtime, "qwen35_linear_attn_chain_conv_decode_fp16_tloop", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        qwen_runtime,
+        "qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_fp16",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        state,
+        "project_linear_attention_out_fp16",
+        lambda *args, **kwargs: linear_scratch.out_proj,
+    )
+    monkeypatch.setattr(
+        state,
+        "post_attention_add_rmsnorm_fp16",
+        lambda *args, **kwargs: (moe_scratch.normed, moe_scratch.residual),
+    )
+
+    def fake_moe(*args, **kwargs):
+        observed.append(bool(kwargs["force_small_batch_shared_expert"]))
+        return moe_scratch.moe_out
+
+    monkeypatch.setattr(state, "run_moe_c1_fp16", fake_moe)
+
+    out = state.run_linear_attention_moe_chain_tloop_layer_fp16(
+        hidden,
+        conv_state=conv_state,
+        recurrent_state=recurrent_state,
+        chain_conv_state=linear_scratch.tree_conv_state,
+        chain_recurrent_state=linear_scratch.tree_recurrent_state,
+        linear_scratch=linear_scratch,
+        moe_scratch=moe_scratch,
+        tokens=tokens,
+    )
+
+    assert out is moe_scratch.moe_out
+    assert observed == [expected]
+
+
 def test_qwen35_decode_state_can_fuse_linear_attention_cast_rotate(monkeypatch) -> None:
     runtime = FakeRuntime()
     state = _state(runtime, _linear_weights())
