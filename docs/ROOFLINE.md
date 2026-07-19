@@ -1574,6 +1574,25 @@ benefit. Decode optimization proceeds through tasks #20 and #15.
 Full evidence is in
 `benchmarks/results/2026-07-20-gpu1-hipengine-qwen36-35b-a3b-ud-q3km-grouped-prefill.json`.
 
+### 12.7 Hierarchical exact top-k closes negative on HIP
+
+Task #20 implemented qwen-kernel's exact local-wave/global-candidate-union
+selector for 256/512 experts and top-k 1/8/10/16. After correcting a
+winner-broadcast bug, standalone and fused output buffers were bit-exact to the
+current selector and both code paths used 40 VGPR with zero scratch.
+
+The leaf result did not compose. The production hidden-2048 fused split router
+improved `16.1005 -> 13.36 us` median (-17.02%), but standalone 256x8 select
+regressed `14.10 -> 14.88 us` (+5.53%). More importantly, the 512/128 Q3 graph
+control moved decode `99.201 -> 98.057 tok/s` (-1.15%) and prefill
+`19.590 -> 19.352 tok/s` (-1.21%) with identical IDs and memory. The full-model
+stop gate therefore fired before 4K or cross-format expansion. Candidate code
+and its env selector were removed; the iterative selector remains unchanged.
+Task #15 can use this off/on pair to separate top-k from the raw-IQ D0 profile.
+
+Evidence:
+`benchmarks/results/2026-07-20-gpu1-q3-hierarchical-topk-rejected.json`.
+
 ---
 
 ## Summary
