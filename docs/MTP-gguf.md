@@ -387,14 +387,22 @@ accept/commit metadata, and scheduler-facing results.
    commit remains the unchanged exact path. Graph-off, tree, inactive, unsupported,
    pre-launch failure, and unregistered-backend cases retain direct fallback.
    Admission is explicit/default-off via
-   `HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH=1`. A clean detached `7bf3439e`
-   B3 pair matches all 265 compared non-timing/non-route leaves while recording
-   four native `VERIFY|ACCEPT` replays, but both arms inherit the available
-   packed artifact's token-2 true-AR mismatch and zero acceptance. The blocked
-   packet is
-   [`benchmarks/results/2026-07-19-w7900-paro-mtp-native-target-graph-n4-blocked.json`](../benchmarks/results/2026-07-19-w7900-paro-mtp-native-target-graph-n4-blocked.json);
-   complete PARO/DFlash cycle ownership and independent gfx1100/gfx1151
-   promotion gates remain open.
+   `HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH=1`. The initial `7bf3439e` B3 pair
+   correctly proved adapter equality across 265 non-timing/non-route leaves but
+   wrongly attributed a rejected-draft correction mismatch to the model. A B2
+   RED instead localized a verifier defect: the chain/tree linear-attention
+   t-loop did not forward the existing exact small-batch shared-expert control,
+   producing 253/2048 wrong layer-0 post-MoE BF16 values. The narrow forwarding
+   repair changes no model bytes. Under the complete explicit strict stack,
+   clean `5ef02aff` B2 native-off/on outputs and top-1 paths match, the
+   three-cycle Conv/GDN/KV/selected-state oracle passes, and canonical B1 is
+   exact for **10/10 prompts / 240/240 IDs** with nonzero train and heldout
+   acceptance. The current full8192 target is retained—it has better quality
+   than full4096-e5—and the existing sidecar passes all 19/19 tensor checks.
+   See the
+   [`corrected packet`](../benchmarks/results/2026-07-19-w7900-paro-mtp-native-target-graph-n4-correctness.json).
+   N4 remains default-off with no speed row; complete PARO/DFlash cycle ownership
+   and independent gfx1100/gfx1151 promotion gates remain open.
 8. **N5 — Multi-cycle option:** only after N3/N4 are exact, allow the native
    launcher to continue until EOS, cancellation/deadline, output-buffer limit,
    or an explicit scheduler yield point.
