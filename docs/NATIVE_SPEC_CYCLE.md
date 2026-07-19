@@ -89,7 +89,7 @@ single-native-submission boundary.
 | `N2` | Device acceptance and selected-state commit | `VERIFY + ACCEPT + selected COMMIT + target cursors` | Proposal invocation and remaining MTP-KV repair/reseed/accounting | Exact ownership diagnostic |
 | `N3` | Complete GGUF cycle adapter | One scheduler-facing call owns `PROPOSE` through cursor/result accounting | Proposal child kernels still Python-submitted | Exact API-ownership diagnostic |
 | `N3P` | Reusable proposal graph | One proposal graph plus the existing target graph per cycle | Combined proposal+target submission; provider-general path | Exact submission-ownership diagnostic |
-| `N4` | Shared PARO MTP / DFlash adapters | Current slice wraps shared target `VERIFY + ACCEPT` through the common ABI | Provider proposal, selected state/KV/hidden commit, full-cycle ownership | gfx1100 strict B1/B2 correctness admitted; default-off; no speed, DFlash, or gfx1151 promotion |
+| `N4` | Shared PARO MTP / DFlash adapters | Current slice wraps shared target `VERIFY + ACCEPT` through the common ABI | Provider proposal, selected state/KV/hidden commit, full-cycle ownership | gfx1100 strict B1/B2/B3 exact; default-off because current control/marshal path adds 0.216-0.447 ms/cycle; DFlash/gfx1151 ungated |
 | `N5` | Multi-cycle native option | Native loop may continue to EOS, cancellation/deadline, output limit, or scheduler yield | Future work | Planned only after provider/backend gates |
 
 ## Milestone Details
@@ -478,6 +478,39 @@ explicit/default-off.
 
 [`N4 corrected artifact`](../benchmarks/results/2026-07-19-w7900-paro-mtp-native-target-graph-n4-correctness.json)
 · [`superseded diagnosis`](../benchmarks/results/2026-07-19-w7900-paro-mtp-native-target-graph-n4-blocked.json)
+
+### Uncontended N4 economics and host attribution
+
+The 2026-07-20 exclusive-GPU0 production-GPU-accept rerun closes the timing
+ambiguity without promoting a speed row. The direct canonical B1/B2/B3 matrix
+passes all **30 prompt-budget rows / 720 IDs** exactly, while pooled MTP/true-AR
+falls from **0.5767x** at B1 to **0.4242x / 0.3568x** at B2/B3. Pooled draft
+acceptance is only **7.48% / 4.85% / 3.49%**; wider strict verification buys
+only **1.1215 -> 1.1429 -> 1.1483 visible tokens/cycle** while complete wall
+grows **16.562 -> 23.055 -> 28.019 ms/cycle**. B1 is the only sensible
+optimization budget, but it remains well below AR on every split/category.
+
+A matched B1 N4-on/off/on bracket holds **240 IDs, 214 cycles, and 16 accepts**
+constant. The direct graph control is **65.584 tok/s / 16.115 ms-cycle**; N4 is
+**63.736/64.511 tok/s / 16.562/16.330 ms-cycle**, a reproducible
+**1.64-2.82% rate loss / 0.216-0.447 ms-cycle regression**. Cached final-child
+HIP API+kernel tracing gives the mechanism rather than guessing:
+
+- cycle kernels are unchanged at **1248.5 calls and 11.165/11.169 ms/pass**;
+- proposal update is unchanged at **1.475/1.474 ms/pass**;
+- verify host wall moves **14.923 -> 15.235 ms/pass** while verify kernels move
+  only **9.912 -> 9.915 ms/pass**;
+- N4 adds exactly one `hipStreamSynchronize` per verifier (**2 -> 3**) and the
+  remaining pre-`hipGraphLaunch` gap is repeated Python control construction,
+  validation, binding-signature generation, and ctypes/result marshalling.
+
+N4+ therefore starts by caching/reusing the state-bound ABI/ctypes control and
+removing duplicate synchronization under exact pointer/shape/active-mask
+fallback. Expanding commit/proposal ownership before removing this adapter tax
+would hide the first causal result. N4 remains explicit/default-off; this is a
+retained diagnostic, not a speculative speed claim.
+
+[`N4 uncontended baseline`](../benchmarks/results/2026-07-20-w7900-paro-mtp-n4-uncontended-baseline.json)
 
 ## gfx1151 Status
 

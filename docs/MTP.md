@@ -54,8 +54,15 @@
 > and unsupported backends retain the exact existing path. The initial B3
 > model-incompatibility conclusion is superseded by the strict-verifier repair
 > above: the current full8192 target+sidecar is admitted for strict gfx1100 PARO
-> B1/B2 correctness. N4 remains an ownership/correctness diagnostic—not a speed
-> row—and DFlash/gfx1151 still require independent gates.
+> B1/B2 correctness. The 2026-07-20 uncontended extension passes all **720**
+> canonical B1/B2/B3 IDs, but pooled MTP/true-AR is only
+> **0.5767x/0.4242x/0.3568x**. A matched B1 N4 on/off/on bracket reproduces a
+> **0.216-0.447 ms/cycle** adapter regression with identical acceptance;
+> final-child tracing shows unchanged kernels/proposer, one extra
+> `hipStreamSynchronize` (**2 -> 3**), and repeated Python ABI control/ctypes
+> marshalling. N4 remains an ownership/correctness diagnostic—not a speed row.
+> Cache/reuse that state-bound control before extending provider commit/proposal;
+> DFlash/gfx1151 still require independent gates.
 >
 > **Top priority for the next push:** MTP break-even sprint. Hold every exact
 > same-suite improvement, use `0.758x / 27.8 ms` as the locked sprint baseline,
