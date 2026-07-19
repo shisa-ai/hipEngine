@@ -11761,6 +11761,7 @@ class Qwen35GGUFResidentSession:
         linear_decode_scratch,
         stream: int,
         layer_output_callback=None,
+        require_logits: bool = False,
     ) -> tuple[set[str], set[str]]:
         """Enqueue one c-aware packed model step without host synchronization."""
 
@@ -11863,6 +11864,7 @@ class Qwen35GGUFResidentSession:
                 rows,
                 activation_dtype=GGUF_ACTIVATION_BF16,
                 stream=stream,
+                require_logits=bool(require_logits),
             )
         return linear_attention_decode_paths, full_attention_decode_paths
 
@@ -11895,8 +11897,6 @@ class Qwen35GGUFResidentSession:
             raise ValueError("token_ids must be non-empty")
         if len(token_tuple) != len(session_tuple):
             raise ValueError("token_ids and sessions must have the same length")
-        if return_logits:
-            raise NotImplementedError("GGUF packed AR decode currently supports top-1 sampling only")
         if self.runner is None or self.runner.weights is None or self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
         if self._prefill_token_buf is None or self._prefill_hidden_a is None or self._prefill_hidden_b is None:
@@ -12050,9 +12050,23 @@ class Qwen35GGUFResidentSession:
                 layer_output_callback=(
                     capture_layer_output if capture_layer_ids else None
                 ),
+                require_logits=bool(return_logits),
             )
         )
         token_host = self._read_target_block_row_tokens(rows, stream=stream)
+        logits_host = None
+        if return_logits:
+            if self._verify_logits_buf is None:
+                raise RuntimeError("GGUF packed AR logits buffer is closed")
+            logits_host = np.empty((rows, self.runner.vocab_size), dtype=np.float32)
+            copy_device_to_host(
+                host_array_ptr(logits_host),
+                DeviceBuffer(self._verify_logits_buf.ptr, logits_host.nbytes),
+                logits_host.nbytes,
+                runtime=runtime,
+            )
+            if not np.all(np.isfinite(logits_host[np.asarray(active_slots, dtype=np.intp)])):
+                raise FloatingPointError("GGUF packed AR lm-head logits contain NaN or Inf")
 
         session_ids = tuple(
             0 if session is None else id(session)
@@ -12134,14 +12148,32 @@ class Qwen35GGUFResidentSession:
             metadata_prepare_path=str(packed_scratch.metadata_prepare_path),
         )
         self.last_packed_execution_manifest["active_slot_indices"] = list(active_slots)
-        return [
-            Qwen35GGUFNextTokenProbeResult(
-                token_id=int(token_host[slot_index]),
-                logit=0.0,
-                logits=np.empty((0,), dtype=np.float32),
+        self.last_packed_execution_manifest["host_logits_d2h"] = bool(return_logits)
+        self.last_packed_execution_manifest["host_logits_d2h_bytes"] = (
+            0
+            if logits_host is None
+            else int(rows * self.runner.vocab_size * DType.FP32.itemsize)
+        )
+        results: list[Qwen35GGUFNextTokenProbeResult] = []
+        for slot_index in active_slots:
+            token_id = int(token_host[slot_index])
+            row_logits = (
+                np.empty((0,), dtype=np.float32)
+                if logits_host is None
+                else np.ascontiguousarray(logits_host[slot_index : slot_index + 1])
             )
-            for slot_index in active_slots
-        ]
+            results.append(
+                Qwen35GGUFNextTokenProbeResult(
+                    token_id=token_id,
+                    logit=(
+                        0.0
+                        if logits_host is None
+                        else float(logits_host[slot_index, token_id])
+                    ),
+                    logits=row_logits,
+                )
+            )
+        return results
 
     def _run_token_to_final_hidden(
         self,
@@ -14253,6 +14285,7 @@ class Qwen35GGUFResidentSession:
         *,
         activation_dtype: str = GGUF_ACTIVATION_BF16,
         stream: int = 0,
+        require_logits: bool = False,
     ) -> None:
         """Enqueue packed lm-head and sampler work without host synchronization."""
 
@@ -14269,13 +14302,15 @@ class Qwen35GGUFResidentSession:
             or self._verify_lm_out_values is None
         ):
             raise RuntimeError("GGUF verifier lm-head buffers are closed")
-        direct_top1 = self._verify_lm_head_q6_top1_dp4a(
-            hidden_ptr,
-            rows,
-            activation_dtype=activation_dtype,
-            stream=stream,
-            runtime=runtime,
-        )
+        direct_top1 = False
+        if not require_logits:
+            direct_top1 = self._verify_lm_head_q6_top1_dp4a(
+                hidden_ptr,
+                rows,
+                activation_dtype=activation_dtype,
+                stream=stream,
+                runtime=runtime,
+            )
         if direct_top1:
             self._last_packed_lm_head_decode_path = "direct_top1_rows"
             self._last_packed_sampler_decode_path = "fused_top1_i32_rows"

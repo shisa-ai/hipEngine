@@ -165023,3 +165023,67 @@ JSON validation and `git diff --check` pass. `docs/CONCURRENCY.md`,
 `benchmarks/README.md`, and `benchmarks/CHANGELOG.md` now retain the F4 closure.
 F5 sampled/API-path concurrency is next; prefix reuse, long-context pressure,
 and matched external serving comparisons remain explicitly separate gates.
+
+## 2026-07-19 gfx1151 native sampled GGUF model ticks
+
+The F5 sampled-runner blocker is repaired without relabeling host sampling as a
+serial model fallback:
+
+- Non-greedy resident rows now keep one `RowSamplingState`, sampled-token list,
+  resident session, and scheduler token transition for the request lifetime.
+  Prefill selects only the first token; every later scheduler tick advances one
+  model token instead of completing the request inside the prefill callback.
+- `Qwen35GGUFResidentSession.step_batch_native(return_logits=True)` now reuses
+  the packed model pass, bypasses the Q6 direct-top1-only lm-head route, copies
+  the physical `[rows,vocab]` FP32 logits once, and returns each active row's
+  logits to the existing exact host sampler.
+- Packed c>1 sampled model steps report
+  `execution_path=gguf_packed_ar_host_sampler_decode`,
+  `sampler_fallback_reason=host_sampling_required`,
+  `native_sampler_rows=false`, and `serial_decode_fallback=false`. If a packed
+  model shape raises `NotImplementedError`, the same one-token scheduler tick
+  uses explicit row-serial model steps and reports
+  `serial_decode_fallback=true` plus `packed_decode_unavailable`.
+- Observability separates `host_sampler_requests`,
+  `native_sampled_prefill_rows`, packed/c1 model steps, serial model fallback,
+  and zero-token resident compatibility fallback.
+
+Focused validation:
+
+```text
+61 passed: tests/test_generation_qwen35_gguf_sampling.py
+26 passed: tests/test_generation_batch_scheduler.py -k 'submit_poll_text_generator or sampling'
+18 passed: targeted OpenAI stop, n>1, exact token accounting, live/buffered
+           logprobs, tool forcing/deltas, structured output, seeded rows, and
+           runtime-native live-chunk nodes in tests/test_server_api.py
+python3 -m py_compile ...: passed
+git diff --check: passed
+```
+
+Real-model gfx1151 validation used
+`/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, `gguf_q4_k_m`, BF16 KV,
+`HIPENGINE_BACKEND=hip_gfx1151`, `HIPENGINE_HIP_ARCH=gfx1151`, and
+`HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-gfx1151-f4-hipcc-version.txt`.
+Both probes ran through `PYTHONPATH=. uv run python` and closed the LLM in a
+`finally` block.
+
+1. Two 32-token rows, `max_tokens=3`, temperature `0.8`, top-k `20`, top-p
+   `0.95`, row seeds `(17,29)`, and top-3 logprobs repeated exact IDs/text/logprob
+   metadata. The route used one packed c2 step plus honest fair-scheduler c1
+   occupancy tails per run, copied exactly `993,280` bytes per active row's
+   full-vocab logits result, recorded zero serial model fallback, and drained
+   active runner/KV ownership.
+2. Natural prompt `Write a Python function that returns the first prime larger
+   than n.`, `max_tokens=4`, temperature `1.2`, top-k `64`, top-p `0.92`,
+   repetition penalty `1.08`, top-5 logprobs, and row seeds `(17,29)` produced
+   repeatable packed rows
+   `[[7054,11,1092,369],[271,248068,198,8160]]`. Independent c1 runs with the
+   same per-row seeds matched both trajectories exactly. Across the two batch
+   runs and two c1 oracles, route counts were 4 packed steps, 10 c1 occupancy
+   steps, 0 serial fallback steps, 6 host-sampler requests, and 0 resident
+   fallback requests; final ownership drained.
+
+This is a correctness/serving-path result, not a throughput claim. The remaining
+F5 work is a reusable real-OpenAI sampled/API packet and its compact retained
+artifact; prefix reuse, long-context pressure, and external comparisons remain
+separate tasks.
