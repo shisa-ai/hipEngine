@@ -5769,7 +5769,16 @@ def _gguf_finished(
     if not generated_ids:
         return False
     token_id = int(generated_ids[-1])
-    if not request.ignore_eos and int(token_id) == int(tokenizer.eos_token_id):
+    eos_token_id = (
+        getattr(tokenizer, "eos_token_id", None)
+        if request.eos_token_id is None
+        else request.eos_token_id
+    )
+    if (
+        not request.ignore_eos
+        and eos_token_id is not None
+        and token_id == int(eos_token_id)
+    ):
         return True
     if token_id in {int(stop_id) for stop_id in request.stop_token_ids}:
         return True
@@ -5790,7 +5799,16 @@ def _gguf_finish_details(
     details: FinishDetails
     if generated_ids:
         token_id = int(generated_ids[-1])
-        if not request.ignore_eos and int(token_id) == int(tokenizer.eos_token_id):
+        eos_token_id = (
+            getattr(tokenizer, "eos_token_id", None)
+            if request.eos_token_id is None
+            else request.eos_token_id
+        )
+        if (
+            not request.ignore_eos
+            and eos_token_id is not None
+            and token_id == int(eos_token_id)
+        ):
             details = FinishDetails(reason="eos", eos_token_id=token_id, sampler_mode=_sampler_mode_value(request))
             return finish_details_with_sampling_state(details, state)
         if token_id in {int(stop_id) for stop_id in request.stop_token_ids}:

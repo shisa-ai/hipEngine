@@ -10098,8 +10098,11 @@ def _mark_structured_length_failure(
 ) -> None:
     if structured_length_failure is None:
         return
-    if _structured_result_validation(request):
-        finish_details.setdefault("phase", "structured")
+    if (
+        _structured_result_validation(request)
+        and finish_details.get("phase") in (None, "", "answer")
+    ):
+        finish_details["phase"] = "structured"
     finish_details["continuation_eligible"] = False
 
 
@@ -11303,14 +11306,16 @@ def _structured_json_object_prefix_validation(
     request: CompletionRequest | ChatCompletionRequest,
     text: str,
 ) -> bool:
+    del text  # The constraint state decides whether the observed root prefix is valid.
     response_mode = _response_format_mode(request)
     guided_mode = _guided_json_mode_from_value(getattr(request, "guided_json", None), validate=False)
     if response_mode == "json_object" or guided_mode == "json_object":
         return True
-    if response_mode != "json_schema" and guided_mode != "json_schema":
-        return False
-    stripped = str(text).lstrip()
-    return stripped.startswith("{")
+    if response_mode == "json_schema":
+        return _json_schema_root_object(_response_format_json_schema(request))
+    if guided_mode == "json_schema":
+        return _json_schema_root_object(_guided_json_schema(request))
+    return False
 
 
 def _json_object_close_forcing(request: CompletionRequest | ChatCompletionRequest) -> bool:
