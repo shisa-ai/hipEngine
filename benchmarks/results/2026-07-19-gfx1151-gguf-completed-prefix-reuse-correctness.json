@@ -1,0 +1,312 @@
+{
+  "schema": 1,
+  "kind": "gguf_completed_prefix_reuse_correctness_gate",
+  "created_at": "2026-07-19T02:25:58.349321+00:00",
+  "status": "passed",
+  "passed": true,
+  "correctness_claim": true,
+  "performance_claim": false,
+  "model": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "backend": "hip_gfx1151",
+  "target_arch": "gfx1151",
+  "hardware": "AMD Radeon 8060S (gfx1151)",
+  "workload": {
+    "prefix_token_id": 9707,
+    "prefix_tokens": 256,
+    "suffix_token_id": 9708,
+    "suffix_tokens": 1,
+    "teacher_forced_steps": 4,
+    "max_sequence_length": 512,
+    "sampling": "greedy_top1_then_reference_teacher_forced",
+    "kv_dtype": "bf16",
+    "source_lifecycle": "completed"
+  },
+  "production_route": {
+    "prefix_cache_mode": "radix",
+    "prefix_reused_tokens": 256,
+    "prefix_source_request_id": null,
+    "prefix_state_clone_bytes": 66846720,
+    "prefix_snapshot_hit": true,
+    "source_block_ids": [
+      0,
+      1
+    ],
+    "continuation_block_ids": [
+      0,
+      1
+    ],
+    "continuation_reused_block_ids": [
+      0
+    ],
+    "oracle_block_ids": [
+      0,
+      1
+    ],
+    "metadata_exact": true
+  },
+  "prefill_oracle": {
+    "route": "private_active_source_then_c1_teacher_forced_suffix",
+    "source_predicted_token_id": 9707,
+    "semantic_source_predicted_token_id": 9707,
+    "candidate_predicted_token_id": 264,
+    "reference_predicted_token_id": 264,
+    "output_exact": true,
+    "clone_boundary_exact": true,
+    "clone_boundary_mismatches": [],
+    "semantic_boundary_exact": true,
+    "semantic_boundary_mismatches": [],
+    "initial_state_exact": true,
+    "initial_state_mismatches": [],
+    "source_immutable": true,
+    "source_immutability_applicable": false,
+    "source_immutability_mismatches": [],
+    "one_shot_bulk_diagnostic": {
+      "predicted_token_id": 264,
+      "output_exact": true,
+      "state_exact": false,
+      "state_mismatch_summary": {
+        "count": 80,
+        "component_counts": {
+          "kv.key": 10,
+          "kv.value": 10,
+          "linear.conv": 30,
+          "linear.recurrent": 30
+        },
+        "first": {
+          "component": "linear",
+          "layer": 0,
+          "part": "conv",
+          "candidate": {
+            "nbytes": 131072,
+            "blake2b_128": "df46b4cad8fa4ba13cab43648f7a06c1"
+          },
+          "reference": {
+            "nbytes": 131072,
+            "blake2b_128": "87a67707ad0b81d2ac2c0cb503e53ae5"
+          }
+        }
+      },
+      "gating": false
+    },
+    "scheduler_chunk_diagnostic": {
+      "predicted_token_id": 264,
+      "output_exact": true,
+      "boundary_state_mismatch_summary": {
+        "count": 0,
+        "component_counts": {},
+        "first": null
+      },
+      "final_state_mismatch_summary": {
+        "count": 78,
+        "component_counts": {
+          "kv.key": 10,
+          "kv.value": 10,
+          "linear.conv": 29,
+          "linear.recurrent": 29
+        },
+        "first": {
+          "component": "linear",
+          "layer": 1,
+          "part": "conv",
+          "candidate": {
+            "nbytes": 131072,
+            "blake2b_128": "f6556ffb8b5c089f621d86d80f3c3ca1"
+          },
+          "reference": {
+            "nbytes": 131072,
+            "blake2b_128": "56b89c36b24acd7404ea80dce4573810"
+          }
+        }
+      },
+      "gating": false
+    }
+  },
+  "teacher_forced": {
+    "forced_token_ids": [
+      264,
+      6669,
+      2020,
+      314
+    ],
+    "candidate_predicted_token_ids": [
+      264,
+      6669,
+      2020,
+      314,
+      3741
+    ],
+    "reference_predicted_token_ids": [
+      264,
+      6669,
+      2020,
+      314,
+      3741
+    ],
+    "trajectory_exact": true,
+    "kl_mean": 0.0,
+    "kl_max": 0.0,
+    "top1_agreement": 1.0,
+    "gate_passed": true,
+    "final_state_exact": true,
+    "final_state_mismatches": []
+  },
+  "lifecycle": {
+    "source_lifecycle": "completed",
+    "source_released_before_continuation_admission": true,
+    "source_session_reset": true,
+    "source_refcount_before_release": 1,
+    "source_refcount_after_release": 1,
+    "shared_refcount_after_admission": 2,
+    "shared_refcount_after_continuation_release": 1,
+    "snapshot_evicted": true,
+    "final_refcounted_pages": 0,
+    "exact": true
+  },
+  "memory_accounting": {
+    "page_bytes": 5242880,
+    "reused_pages": 1,
+    "saved_live_bytes": 5242880,
+    "pool_before_final_release": {
+      "current_pages": 6,
+      "current_bytes": 31457280,
+      "high_water_observed_pages": 6,
+      "high_water_observed_bytes": 31457280,
+      "free_pages": 4,
+      "refcounted_pages": 2,
+      "pinned_pages": 0,
+      "grow_events": 0,
+      "grow_failures": 0,
+      "shrink_events": 0,
+      "prefix_reuse_events": 1,
+      "prefix_reused_pages": 1,
+      "cow_fork_events": 0,
+      "cow_forked_pages": 0
+    },
+    "pool_after_continuation_release": {
+      "current_pages": 6,
+      "current_bytes": 31457280,
+      "high_water_observed_pages": 6,
+      "high_water_observed_bytes": 31457280,
+      "free_pages": 5,
+      "refcounted_pages": 1,
+      "pinned_pages": 0,
+      "grow_events": 0,
+      "grow_failures": 0,
+      "shrink_events": 0,
+      "prefix_reuse_events": 1,
+      "prefix_reused_pages": 1,
+      "cow_fork_events": 0,
+      "cow_forked_pages": 0
+    },
+    "pool_after_snapshot_eviction": {
+      "current_pages": 6,
+      "current_bytes": 31457280,
+      "high_water_observed_pages": 6,
+      "high_water_observed_bytes": 31457280,
+      "free_pages": 6,
+      "refcounted_pages": 0,
+      "pinned_pages": 0,
+      "grow_events": 0,
+      "grow_failures": 0,
+      "shrink_events": 0,
+      "prefix_reuse_events": 1,
+      "prefix_reused_pages": 1,
+      "cow_fork_events": 0,
+      "cow_forked_pages": 0
+    },
+    "timing_claim": false
+  },
+  "observability": {
+    "model_runner": {
+      "capacity": 3,
+      "active_request_ids": [
+        1002
+      ],
+      "active_requests": 1,
+      "available_sessions": 1
+    },
+    "kv_pool": {
+      "current_pages": 6,
+      "current_bytes": 31457280,
+      "high_water_observed_pages": 6,
+      "high_water_observed_bytes": 31457280,
+      "free_pages": 4,
+      "refcounted_pages": 2,
+      "pinned_pages": 0,
+      "grow_events": 0,
+      "grow_failures": 0,
+      "shrink_events": 0,
+      "prefix_reuse_events": 1,
+      "prefix_reused_pages": 1,
+      "cow_fork_events": 0,
+      "cow_forked_pages": 0
+    },
+    "prefix_cache": {
+      "mode": "radix",
+      "stats": {
+        "entries": 1,
+        "live_requests": 0,
+        "hits": 1,
+        "misses": 0,
+        "partial_block_misses": 0
+      },
+      "usable_hits": 1,
+      "unusable_hits": 0,
+      "admission_fallbacks": 0,
+      "reused_tokens": 256,
+      "state_clone_bytes": 66846720,
+      "snapshot_entries": 1,
+      "snapshot_hits": 1,
+      "snapshot_evictions": 0,
+      "snapshot_bytes": 66846720
+    },
+    "graph_buckets": {
+      "entries": 0,
+      "captures_total": 0,
+      "hits_total": 0,
+      "replays_total": 0,
+      "invalidations_total": 0,
+      "buckets": {}
+    },
+    "routes": {
+      "counts": {
+        "native_full_prefill_rows": 1,
+        "native_incremental_prefill_chunks": 0,
+        "native_packed_decode_steps": 0,
+        "native_c1_decode_steps": 0,
+        "native_sampled_prefill_rows": 0,
+        "host_sampler_requests": 0,
+        "serial_decode_fallback_steps": 0,
+        "resident_fallback_requests": 0
+      },
+      "physical_width_decode_steps": {
+        "1": 0,
+        "2": 0,
+        "4": 0,
+        "8": 0
+      },
+      "fallback_reasons": {},
+      "last_execution_manifest": {},
+      "last_physical_group_plan": {},
+      "recent_completed": []
+    }
+  },
+  "notes": [
+    "Every Conv/GDN byte and logical block-table-ordered live BF16 K/V byte is compared.",
+    "The gating oracle independently rebuilds the active source and consumes the suffix through exact c1 steps.",
+    "One-shot bulk and private scheduler-chunk output/state remain non-gating row-shape diagnostics.",
+    "The source session is reset before continuation admission; cache-owned state is mandatory.",
+    "Saved live bytes are allocator accounting, not a process-wide peak-memory claim.",
+    "No timing from this correctness run is a performance claim."
+  ],
+  "command": "/home/lhl/hipEngine-main/.venv/bin/python3 scripts/gguf_prefix_reuse_gate.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --prefix-tokens 256 --suffix-tokens 1 --teacher-forced-steps 4 --source-lifecycle completed --max-sequence-length 512 --json /tmp/gfx1151-completed-prefix-reuse-correctness-v1.json",
+  "environment": {
+    "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/gfx1151-concurrency-ddab579f/hipcc-version.txt",
+    "HIPENGINE_GGUF_DECODE_REPACK": null,
+    "HIPENGINE_GGUF_WMMA_PREFILL": null,
+    "HIPENGINE_GGUF_GEMV_DECODE": null,
+    "HIPENGINE_GGUF_GDN_PREFILL_MODE": null,
+    "HIP_VISIBLE_DEVICES": null
+  }
+}
