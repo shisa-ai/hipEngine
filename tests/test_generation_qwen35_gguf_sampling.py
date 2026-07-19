@@ -12,6 +12,7 @@ import hipengine.generation.qwen35_gguf as qwen35_gguf
 from hipengine.dispatch import SlotMove, WorkItem, WorkKind
 from hipengine.generation import (
     EngineLoopConfig,
+    GenerationAdmissionRejected,
     GenerationCancellationToken,
     GenerationCancelled,
     GenerationDeadlineExceeded,
@@ -2302,9 +2303,13 @@ def test_gguf_resident_runner_device_kv_admission_is_atomic_at_high_water() -> N
     before = runner.kv_pool_stats
     assert before is not None
 
-    with pytest.raises(MemoryError, match="high-water"):
+    with pytest.raises(GenerationAdmissionRejected, match="high-water") as rejected:
         runner.reserve_admission(SimpleNamespace(request_id=3))
 
+    assert rejected.value.resource == "device_kv_pool"
+    assert rejected.value.requested_units == 1
+    assert rejected.value.current_units == 2
+    assert rejected.value.capacity_units == 2
     after = runner.kv_pool_stats
     assert after is not None
     assert after.current_pages == before.current_pages == 2
