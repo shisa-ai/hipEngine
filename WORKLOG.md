@@ -164684,3 +164684,36 @@ It contains 16 measured NextN Q6-X8 top-1 stage-1 launches (**606.262 us
 average**) plus eight each of N2 accept (**7.165 us**), selected linear-state
 commit (**202.082 us**), and hidden/cursor commit (**12.750 us**). The profiled
 trajectory remains 14/16 accepted drafts and the same 22 visible IDs.
+
+### Clean N3 confirmation at `69b70808`
+
+Committed the complete-cycle/public-adapter implementation as `69b70808` and
+reran the exact full category+heldout protocol from a clean tree:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-mtp-w7900-hipcc-version.txt \
+PYTHONPATH=. python3 scripts/gguf_ar_mtp_suite.py \
+  --scope full --mtp-route llama-compat-native-cycle-n3 \
+  --budgets 2 --cycles 24 --max-output-tokens 24 \
+  --record-cycle-stage-timings --require-cached-build \
+  --output /tmp/w7900-llama-compat-native-cycle-n3-69b70808-full.json
+```
+
+Clean result: **92.233 true AR, 118.592 N3 MTP tok/s (1.2858x), 8.497
+ms/output**. It preserves **144/179 accepted drafts (80.45%)**, **144/240
+accepted-output (60.00%)**, and all **240 IDs / 96 cycle semantics**. An exact
+raw-child comparison against clean N2 checked 33 token/accept/cursor/KV/verifier
+fields per cycle and found zero differences. Clean train/heldout are
+**119.662/117.023 tok/s**; code/general-en/general-ja/mixed are
+**123.000/120.898/116.026/110.978 tok/s**, and every split/category beats its
+same-run true AR control.
+
+Versus clean N2, N3 is **+0.88% tok/s** and **-0.38% cycle wall**; this remains
+aggregate-neutral rather than a new speed claim. N3 is still **3.32% below** the
+retained **122.667 tok/s N1** route, so N1 stays canonical. Published diagnostic
+artifact `benchmarks/results/2026-07-19-w7900-llama-compat-native-cycle-n3.json`
+with clean wrapper/category/true-AR hashes, exact semantic comparison,
+implementation-equivalent cached profiler census, and the explicit remaining
+limit: proposal leaves still submit through Python and native proposal launch
+collapse is not complete.
