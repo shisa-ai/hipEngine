@@ -1,5 +1,7 @@
 // Ported from nano-vllm-amd/nanovllm/native/qwen35/paroquant_kernels.py @ 59195ed.
 // PARO weighted/shared-gate combine kernel bodies are preserved; wrappers are hipEngine C ABI.
+// The MoE-tail + next-RMS schedule follows qwen-kernel shaders/add_rms3.comp @ 52e240f,
+// while preserving hipEngine's activation-dtype selected-sum and residual rounding boundaries.
 
 #include <hip/hip_runtime.h>
 #include <stdint.h>
@@ -147,6 +149,149 @@ __global__ void weighted_sum_shared_gate_combine_residual_batch_out_kernel(
   const int64_t offset = token * features + col;
   const float value = scalar_to_float(residual[offset]) + scalar_to_float(selected) + gate * scalar_to_float(shared[offset]);
   out[offset] = float_to_scalar<scalar_t>(value);
+}
+
+template <typename scalar_t, bool weighted_selected>
+__device__ inline float rounded_moe_tail_value(
+    const scalar_t* __restrict__ selected_values,
+    const float* __restrict__ routing_weights,
+    const scalar_t* __restrict__ shared,
+    const scalar_t* __restrict__ residual,
+    int64_t token,
+    int64_t col,
+    int64_t rows_per_token,
+    int64_t features,
+    float gate) {
+  const int64_t offset = token * features + col;
+  float selected;
+  if constexpr (weighted_selected) {
+    float acc = 0.0f;
+    const int64_t lane_base = token * rows_per_token;
+    for (int64_t row = 0; row < rows_per_token; ++row) {
+      const int64_t lane = lane_base + row;
+      acc = fmaf(
+          scalar_to_float(selected_values[lane * features + col]),
+          routing_weights[lane],
+          acc);
+    }
+    selected = scalar_to_float(float_to_scalar<scalar_t>(acc));
+  } else {
+    selected = scalar_to_float(selected_values[offset]);
+  }
+  const float value =
+      scalar_to_float(residual[offset]) + selected + gate * scalar_to_float(shared[offset]);
+  return scalar_to_float(float_to_scalar<scalar_t>(value));
+}
+
+template <typename scalar_t, typename norm_weight_t, bool weighted_selected, bool paro_reduction>
+__global__ void moe_tail_next_rmsnorm_out_kernel(
+    const scalar_t* __restrict__ selected_values,
+    const float* __restrict__ routing_weights,
+    const scalar_t* __restrict__ shared,
+    const float* __restrict__ gate_logits,
+    const scalar_t* __restrict__ residual,
+    const norm_weight_t* __restrict__ norm_weight,
+    scalar_t* __restrict__ norm_out,
+    scalar_t* __restrict__ residual_out,
+    int64_t rows_per_token,
+    int64_t features,
+    int64_t gate_stride,
+    float eps) {
+  const int64_t token = blockIdx.x;
+  const int tid = threadIdx.x;
+  const int64_t row_base = token * features;
+  const float gate = 1.0f / (1.0f + expf(-gate_logits[token * gate_stride]));
+  float sumsq = 0.0f;
+
+  if constexpr (paro_reduction) {
+    const int64_t vec_stride = static_cast<int64_t>(blockDim.x) * 8;
+    const int64_t main_end = (features / vec_stride) * vec_stride;
+    for (int64_t idx = static_cast<int64_t>(tid) * 8; idx < main_end; idx += vec_stride) {
+      const int64_t off = row_base + idx;
+      const float v0 = rounded_moe_tail_value<scalar_t, weighted_selected>(
+          selected_values, routing_weights, shared, residual, token, idx + 0, rows_per_token, features, gate);
+      const float v1 = rounded_moe_tail_value<scalar_t, weighted_selected>(
+          selected_values, routing_weights, shared, residual, token, idx + 1, rows_per_token, features, gate);
+      const float v2 = rounded_moe_tail_value<scalar_t, weighted_selected>(
+          selected_values, routing_weights, shared, residual, token, idx + 2, rows_per_token, features, gate);
+      const float v3 = rounded_moe_tail_value<scalar_t, weighted_selected>(
+          selected_values, routing_weights, shared, residual, token, idx + 3, rows_per_token, features, gate);
+      const float v4 = rounded_moe_tail_value<scalar_t, weighted_selected>(
+          selected_values, routing_weights, shared, residual, token, idx + 4, rows_per_token, features, gate);
+      const float v5 = rounded_moe_tail_value<scalar_t, weighted_selected>(
+          selected_values, routing_weights, shared, residual, token, idx + 5, rows_per_token, features, gate);
+      const float v6 = rounded_moe_tail_value<scalar_t, weighted_selected>(
+          selected_values, routing_weights, shared, residual, token, idx + 6, rows_per_token, features, gate);
+      const float v7 = rounded_moe_tail_value<scalar_t, weighted_selected>(
+          selected_values, routing_weights, shared, residual, token, idx + 7, rows_per_token, features, gate);
+      residual_out[off + 0] = float_to_scalar<scalar_t>(v0);
+      residual_out[off + 1] = float_to_scalar<scalar_t>(v1);
+      residual_out[off + 2] = float_to_scalar<scalar_t>(v2);
+      residual_out[off + 3] = float_to_scalar<scalar_t>(v3);
+      residual_out[off + 4] = float_to_scalar<scalar_t>(v4);
+      residual_out[off + 5] = float_to_scalar<scalar_t>(v5);
+      residual_out[off + 6] = float_to_scalar<scalar_t>(v6);
+      residual_out[off + 7] = float_to_scalar<scalar_t>(v7);
+      sumsq += v0 * v0 + v1 * v1 + v2 * v2 + v3 * v3 + v4 * v4 + v5 * v5 + v6 * v6 + v7 * v7;
+    }
+    for (int64_t idx = main_end + tid; idx < features; idx += blockDim.x) {
+      const float value = rounded_moe_tail_value<scalar_t, weighted_selected>(
+          selected_values, routing_weights, shared, residual, token, idx, rows_per_token, features, gate);
+      residual_out[row_base + idx] = float_to_scalar<scalar_t>(value);
+      sumsq += value * value;
+    }
+  } else {
+    for (int64_t idx = tid; idx < features; idx += blockDim.x) {
+      const float value = rounded_moe_tail_value<scalar_t, weighted_selected>(
+          selected_values, routing_weights, shared, residual, token, idx, rows_per_token, features, gate);
+      residual_out[row_base + idx] = float_to_scalar<scalar_t>(value);
+      sumsq += value * value;
+    }
+  }
+
+  __shared__ float partial[256];
+  partial[tid] = sumsq;
+  __syncthreads();
+  for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+    if (tid < stride) {
+      partial[tid] += partial[tid + stride];
+    }
+    __syncthreads();
+  }
+  const float inv_rms = rsqrtf(partial[0] / static_cast<float>(features) + eps);
+
+  if constexpr (paro_reduction) {
+    const int64_t vec_stride = static_cast<int64_t>(blockDim.x) * 8;
+    const int64_t main_end = (features / vec_stride) * vec_stride;
+    for (int64_t idx = static_cast<int64_t>(tid) * 8; idx < main_end; idx += vec_stride) {
+      const int64_t off = row_base + idx;
+      norm_out[off + 0] = float_to_scalar<scalar_t>(
+          scalar_to_float(residual_out[off + 0]) * inv_rms * scalar_to_float(norm_weight[idx + 0]));
+      norm_out[off + 1] = float_to_scalar<scalar_t>(
+          scalar_to_float(residual_out[off + 1]) * inv_rms * scalar_to_float(norm_weight[idx + 1]));
+      norm_out[off + 2] = float_to_scalar<scalar_t>(
+          scalar_to_float(residual_out[off + 2]) * inv_rms * scalar_to_float(norm_weight[idx + 2]));
+      norm_out[off + 3] = float_to_scalar<scalar_t>(
+          scalar_to_float(residual_out[off + 3]) * inv_rms * scalar_to_float(norm_weight[idx + 3]));
+      norm_out[off + 4] = float_to_scalar<scalar_t>(
+          scalar_to_float(residual_out[off + 4]) * inv_rms * scalar_to_float(norm_weight[idx + 4]));
+      norm_out[off + 5] = float_to_scalar<scalar_t>(
+          scalar_to_float(residual_out[off + 5]) * inv_rms * scalar_to_float(norm_weight[idx + 5]));
+      norm_out[off + 6] = float_to_scalar<scalar_t>(
+          scalar_to_float(residual_out[off + 6]) * inv_rms * scalar_to_float(norm_weight[idx + 6]));
+      norm_out[off + 7] = float_to_scalar<scalar_t>(
+          scalar_to_float(residual_out[off + 7]) * inv_rms * scalar_to_float(norm_weight[idx + 7]));
+    }
+    for (int64_t idx = main_end + tid; idx < features; idx += blockDim.x) {
+      norm_out[row_base + idx] = float_to_scalar<scalar_t>(
+          scalar_to_float(residual_out[row_base + idx]) * inv_rms * scalar_to_float(norm_weight[idx]));
+    }
+  } else {
+    for (int64_t idx = tid; idx < features; idx += blockDim.x) {
+      norm_out[row_base + idx] = float_to_scalar<scalar_t>(
+          scalar_to_float(residual_out[row_base + idx]) * inv_rms * scalar_to_float(norm_weight[idx]));
+    }
+  }
 }
 
 template <typename scalar_t>
@@ -480,6 +625,234 @@ extern "C" int hipengine_weighted_sum_shared_gate_combine_residual_batch_out_fp1
       rows_per_token,
       features,
       gate_stride);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_shared_gate_combine_residual_rmsnorm_gguf_bf16_out(
+    const uint16_t* selected,
+    const uint16_t* shared,
+    const float* gate_logits,
+    const uint16_t* residual,
+    const float* norm_weight,
+    uint16_t* norm_out,
+    uint16_t* residual_out,
+    int64_t tokens,
+    int64_t features,
+    int64_t gate_stride,
+    float eps,
+    hipStream_t stream) {
+  if (tokens <= 0 || features <= 0 || gate_stride <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (moe_tail_next_rmsnorm_out_kernel<uint16_t, float, false, false>),
+      dim3(static_cast<unsigned int>(tokens)),
+      dim3(256),
+      0,
+      stream,
+      selected,
+      static_cast<const float*>(nullptr),
+      shared,
+      gate_logits,
+      residual,
+      norm_weight,
+      norm_out,
+      residual_out,
+      1,
+      features,
+      gate_stride,
+      eps);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_weighted_sum_shared_gate_combine_residual_rmsnorm_gguf_bf16_out(
+    const uint16_t* selected_values,
+    const float* routing_weights,
+    const uint16_t* shared,
+    const float* gate_logits,
+    const uint16_t* residual,
+    const float* norm_weight,
+    uint16_t* norm_out,
+    uint16_t* residual_out,
+    int64_t tokens,
+    int64_t rows_per_token,
+    int64_t features,
+    int64_t gate_stride,
+    float eps,
+    hipStream_t stream) {
+  if (tokens <= 0 || rows_per_token <= 0 || features <= 0 || gate_stride <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (moe_tail_next_rmsnorm_out_kernel<uint16_t, float, true, false>),
+      dim3(static_cast<unsigned int>(tokens)),
+      dim3(256),
+      0,
+      stream,
+      selected_values,
+      routing_weights,
+      shared,
+      gate_logits,
+      residual,
+      norm_weight,
+      norm_out,
+      residual_out,
+      rows_per_token,
+      features,
+      gate_stride,
+      eps);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_shared_gate_combine_residual_rmsnorm_paro_bf16_out(
+    const uint16_t* selected,
+    const uint16_t* shared,
+    const float* gate_logits,
+    const uint16_t* residual,
+    const uint16_t* norm_weight,
+    uint16_t* norm_out,
+    uint16_t* residual_out,
+    int64_t tokens,
+    int64_t features,
+    int64_t gate_stride,
+    float eps,
+    hipStream_t stream) {
+  if (tokens <= 0 || features <= 0 || gate_stride <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (moe_tail_next_rmsnorm_out_kernel<uint16_t, uint16_t, false, true>),
+      dim3(static_cast<unsigned int>(tokens)),
+      dim3(256),
+      0,
+      stream,
+      selected,
+      static_cast<const float*>(nullptr),
+      shared,
+      gate_logits,
+      residual,
+      norm_weight,
+      norm_out,
+      residual_out,
+      1,
+      features,
+      gate_stride,
+      eps);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_weighted_sum_shared_gate_combine_residual_rmsnorm_paro_bf16_out(
+    const uint16_t* selected_values,
+    const float* routing_weights,
+    const uint16_t* shared,
+    const float* gate_logits,
+    const uint16_t* residual,
+    const uint16_t* norm_weight,
+    uint16_t* norm_out,
+    uint16_t* residual_out,
+    int64_t tokens,
+    int64_t rows_per_token,
+    int64_t features,
+    int64_t gate_stride,
+    float eps,
+    hipStream_t stream) {
+  if (tokens <= 0 || rows_per_token <= 0 || features <= 0 || gate_stride <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (moe_tail_next_rmsnorm_out_kernel<uint16_t, uint16_t, true, true>),
+      dim3(static_cast<unsigned int>(tokens)),
+      dim3(256),
+      0,
+      stream,
+      selected_values,
+      routing_weights,
+      shared,
+      gate_logits,
+      residual,
+      norm_weight,
+      norm_out,
+      residual_out,
+      rows_per_token,
+      features,
+      gate_stride,
+      eps);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_shared_gate_combine_residual_rmsnorm_paro_fp16_out(
+    const half_t* selected,
+    const half_t* shared,
+    const float* gate_logits,
+    const half_t* residual,
+    const half_t* norm_weight,
+    half_t* norm_out,
+    half_t* residual_out,
+    int64_t tokens,
+    int64_t features,
+    int64_t gate_stride,
+    float eps,
+    hipStream_t stream) {
+  if (tokens <= 0 || features <= 0 || gate_stride <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (moe_tail_next_rmsnorm_out_kernel<half_t, half_t, false, true>),
+      dim3(static_cast<unsigned int>(tokens)),
+      dim3(256),
+      0,
+      stream,
+      selected,
+      static_cast<const float*>(nullptr),
+      shared,
+      gate_logits,
+      residual,
+      norm_weight,
+      norm_out,
+      residual_out,
+      1,
+      features,
+      gate_stride,
+      eps);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_weighted_sum_shared_gate_combine_residual_rmsnorm_paro_fp16_out(
+    const half_t* selected_values,
+    const float* routing_weights,
+    const half_t* shared,
+    const float* gate_logits,
+    const half_t* residual,
+    const half_t* norm_weight,
+    half_t* norm_out,
+    half_t* residual_out,
+    int64_t tokens,
+    int64_t rows_per_token,
+    int64_t features,
+    int64_t gate_stride,
+    float eps,
+    hipStream_t stream) {
+  if (tokens <= 0 || rows_per_token <= 0 || features <= 0 || gate_stride <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (moe_tail_next_rmsnorm_out_kernel<half_t, half_t, true, true>),
+      dim3(static_cast<unsigned int>(tokens)),
+      dim3(256),
+      0,
+      stream,
+      selected_values,
+      routing_weights,
+      shared,
+      gate_logits,
+      residual,
+      norm_weight,
+      norm_out,
+      residual_out,
+      rows_per_token,
+      features,
+      gate_stride,
+      eps);
   return static_cast<int>(hipGetLastError());
 }
 

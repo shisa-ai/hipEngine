@@ -30,6 +30,78 @@ def rmsnorm(x: ArrayLike, weight: ArrayLike, eps: float = 1e-6) -> np.ndarray:
     return (x_arr * np.reciprocal(np.sqrt(variance + eps))) * weight_arr
 
 
+def moe_tail_next_rmsnorm(
+    selected_values: ArrayLike,
+    shared: ArrayLike,
+    gate_logits: ArrayLike,
+    residual: ArrayLike,
+    norm_weight: ArrayLike,
+    *,
+    routing_weights: ArrayLike | None = None,
+    eps: float = 1e-6,
+    activation_dtype: str = "bf16",
+) -> tuple[np.ndarray, np.ndarray]:
+    """Reference MoE tail plus next-layer RMSNorm with a rounded boundary.
+
+    ``selected_values`` is either an already-rounded ``[tokens, hidden]``
+    selected aggregate or slot-major ``[tokens, top_k, hidden]`` values paired
+    with ``routing_weights``.  The selected aggregate and combined residual are
+    rounded to the activation dtype at the same boundaries as the HIP fallback.
+    Returns ``(rounded_residual, rounded_norm_out)``.
+    """
+
+    residual_arr = np.asarray(residual, dtype=np.float32)
+    shared_arr = np.asarray(shared, dtype=np.float32)
+    selected_arr = np.asarray(selected_values, dtype=np.float32)
+    weight_arr = np.asarray(norm_weight, dtype=np.float32)
+    if residual_arr.ndim != 2:
+        raise ValueError("residual must have shape [tokens, hidden]")
+    if shared_arr.shape != residual_arr.shape:
+        raise ValueError("shared must match residual shape")
+    tokens, hidden = residual_arr.shape
+    if weight_arr.shape != (hidden,):
+        raise ValueError("norm_weight must have shape [hidden]")
+    if activation_dtype not in {"bf16", "fp16"}:
+        raise ValueError("activation_dtype must be 'bf16' or 'fp16'")
+
+    def round_activation(value: ArrayLike) -> np.ndarray:
+        if activation_dtype == "bf16":
+            return _round_to_bf16_float(value)
+        return np.asarray(value, dtype=np.float16).astype(np.float32)
+
+    if routing_weights is None:
+        if selected_arr.shape != residual_arr.shape:
+            raise ValueError("already-weighted selected_values must match residual shape")
+        selected_sum = selected_arr
+    else:
+        routing_arr = np.asarray(routing_weights, dtype=np.float32)
+        if selected_arr.ndim != 3 or selected_arr.shape[0] != tokens or selected_arr.shape[2] != hidden:
+            raise ValueError("slot selected_values must have shape [tokens, top_k, hidden]")
+        if routing_arr.shape != selected_arr.shape[:2]:
+            raise ValueError("routing_weights must have shape [tokens, top_k]")
+        selected_sum = np.zeros_like(residual_arr, dtype=np.float32)
+        for slot in range(selected_arr.shape[1]):
+            selected_sum = (
+                selected_sum + selected_arr[:, slot] * routing_arr[:, slot, None]
+            ).astype(np.float32)
+        selected_sum = round_activation(selected_sum)
+
+    gate_arr = np.asarray(gate_logits, dtype=np.float32)
+    if gate_arr.ndim == 1:
+        if gate_arr.shape != (tokens,):
+            raise ValueError("gate_logits must have one value per token")
+        gate_first = gate_arr
+    elif gate_arr.ndim == 2 and gate_arr.shape[0] == tokens and gate_arr.shape[1] > 0:
+        gate_first = gate_arr[:, 0]
+    else:
+        raise ValueError("gate_logits must have shape [tokens] or [tokens, gate_stride]")
+    combined = (residual_arr + selected_sum).astype(np.float32)
+    combined = (combined + _sigmoid(gate_first)[:, None] * shared_arr).astype(np.float32)
+    rounded_residual = round_activation(combined)
+    norm_out = round_activation(rmsnorm(rounded_residual, weight_arr, eps))
+    return rounded_residual, norm_out
+
+
 def linear(x: ArrayLike, weight: ArrayLike, bias: ArrayLike | None = None) -> np.ndarray:
     x_arr = np.asarray(x, dtype=np.float32)
     weight_arr = np.asarray(weight, dtype=np.float32)
@@ -1323,6 +1395,17 @@ def register_cpu_reference_kernels(*, replace: bool = True) -> None:
     for layer, fn in kernels.items():
         quant = "int8_per_token_head" if layer in {"kv_dequant", "paged_attn_decode"} else "fp16"
         register(KernelKey("cpu_reference", layer, quant), fn, replace=replace)
+    for quant in ("bf16", "fp16"):
+        register(
+            KernelKey("cpu_reference", "shared_gate_combine+residual+rmsnorm", quant),
+            moe_tail_next_rmsnorm,
+            replace=replace,
+        )
+        register(
+            KernelKey("cpu_reference", "weighted_sum+shared_gate+residual+rmsnorm", quant),
+            moe_tail_next_rmsnorm,
+            replace=replace,
+        )
     register(
         KernelKey("cpu_reference", "paged_attn_decode", "int8_key_bf16_value"),
         paged_attn_decode_int8_key_bf16_value,

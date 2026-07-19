@@ -6,6 +6,9 @@ from hipengine.kernels.hip_gfx1100.fused import (
     plan_paro_combine_build,
     register_paro_combine_kernels,
     shared_gate_combine_out_bf16,
+    shared_gate_combine_residual_rmsnorm_gguf_bf16_out,
+    shared_gate_combine_residual_rmsnorm_paro_bf16_out,
+    shared_gate_combine_residual_rmsnorm_paro_fp16_out,
     shared_gate_combine_out_fp16,
     shared_gate_combine_residual_batch_out_bf16,
     shared_gate_combine_residual_batch_out_fp16,
@@ -16,6 +19,9 @@ from hipengine.kernels.hip_gfx1100.fused import (
     weighted_sum_out_bf16_f32w,
     weighted_sum_out_fp16_f32w,
     weighted_sum_shared_gate_combine_residual_batch_out_bf16_f32w,
+    weighted_sum_shared_gate_combine_residual_rmsnorm_gguf_bf16_out,
+    weighted_sum_shared_gate_combine_residual_rmsnorm_paro_bf16_out,
+    weighted_sum_shared_gate_combine_residual_rmsnorm_paro_fp16_out,
     weighted_sum_shared_gate_combine_residual_batch_out_fp16_f32w,
     weighted_sum_shared_gate_combine_residual_out_bf16_f32w,
     weighted_sum_shared_gate_combine_residual_out_fp16_f32w,
@@ -138,6 +144,61 @@ def test_paro_combine_registers_bf16_fp16_and_w4_paro_variants() -> None:
             is shared_gate_combine_residual_batch_out_fp16
         )
     assert resolve(backend="hip_gfx1100", layer="weighted_sum", quant="fp16", variant="out") is weighted_sum_out_fp16_f32w
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="shared_gate_combine+residual+rmsnorm",
+            quant="gguf_f32_weight",
+            variant="bf16_out",
+        )
+        is shared_gate_combine_residual_rmsnorm_gguf_bf16_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="weighted_sum+shared_gate+residual+rmsnorm",
+            quant="gguf_f32_weight",
+            variant="bf16_out",
+        )
+        is weighted_sum_shared_gate_combine_residual_rmsnorm_gguf_bf16_out
+    )
+    for quant in ("bf16", "w4_paro"):
+        assert (
+            resolve(
+                backend="hip_gfx1100",
+                layer="shared_gate_combine+residual+rmsnorm",
+                quant=quant,
+                variant="paro_out",
+            )
+            is shared_gate_combine_residual_rmsnorm_paro_bf16_out
+        )
+        assert (
+            resolve(
+                backend="hip_gfx1100",
+                layer="weighted_sum+shared_gate+residual+rmsnorm",
+                quant=quant,
+                variant="paro_out",
+            )
+            is weighted_sum_shared_gate_combine_residual_rmsnorm_paro_bf16_out
+        )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="shared_gate_combine+residual+rmsnorm",
+            quant="w4_paro",
+            variant="paro_out_fp16",
+        )
+        is shared_gate_combine_residual_rmsnorm_paro_fp16_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="weighted_sum+shared_gate+residual+rmsnorm",
+            quant="w4_paro",
+            variant="paro_out_fp16",
+        )
+        is weighted_sum_shared_gate_combine_residual_rmsnorm_paro_fp16_out
+    )
 
 
 def test_paro_combine_build_plan_is_dry_run_safe(tmp_path) -> None:
@@ -180,3 +241,9 @@ def test_paro_combine_wrappers_validate_before_gpu_load() -> None:
         weighted_sum_out_fp16_f32w(0, 0, 0, 0, 8)
     with pytest.raises(ValueError, match="gate_stride must be positive"):
         weighted_sum_shared_gate_combine_residual_batch_out_fp16_f32w(0, 0, 0, 0, 0, 0, 2, 8, 16, 0)
+    with pytest.raises(ValueError, match="tokens must be positive"):
+        shared_gate_combine_residual_rmsnorm_gguf_bf16_out(0, 0, 0, 0, 0, 0, 0, 0, 16, 1)
+    with pytest.raises(ValueError, match="rows_per_token must be positive"):
+        weighted_sum_shared_gate_combine_residual_rmsnorm_paro_fp16_out(
+            0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 16, 1
+        )
