@@ -2531,6 +2531,7 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
         backend: str,
         quant: str,
         max_active_requests: int | None = None,
+        prefix_cache: str | None = None,
     ) -> FakeLLM:
         captured.update(
             {
@@ -2538,6 +2539,7 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
                 "backend": backend,
                 "quant": quant,
                 "max_active_requests": max_active_requests,
+                "prefix_cache": prefix_cache,
             }
         )
         return fake
@@ -2549,6 +2551,7 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
             served_model_name="fake-model",
             eager_load=False,
             max_active_requests=8,
+            prefix_cache="radix",
         )
     )
     with TestClient(app) as client:
@@ -2563,6 +2566,7 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
         "backend": "auto",
         "quant": "auto",
         "max_active_requests": 8,
+        "prefix_cache": "radix",
     }
 
 

@@ -3264,6 +3264,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 backend=config.backend,
                 quant=config.quant,
                 max_active_requests=config.max_active_requests,
+                prefix_cache=prefix_cache_mode,
             )
         app.state.hipengine_readiness.model_loaded = True
         return app.state.hipengine_llm

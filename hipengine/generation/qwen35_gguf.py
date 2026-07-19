@@ -49,6 +49,7 @@ from hipengine.generation.sampling import (
     thinking_budget_state_from_params,
 )
 from hipengine.loading.gguf import GGUFModelInfo, GGUFReader
+from hipengine.kvcache import RadixCache, resolve_prefix_cache_mode
 from hipengine.kernels.backends import (
     backend_package_capability,
     hip_target_arch_environment,
@@ -3823,6 +3824,9 @@ class _GGUFResidentLoopRow:
     samples: list[Any] = field(default_factory=list)
     full_vocab_logits_d2h: bool | None = None
     logits_d2h_bytes: int | None = None
+    prefix_reused_tokens: int = 0
+    prefix_source_request_id: int | None = None
+    prefix_state_clone_bytes: int = 0
 
 
 class Qwen35GGUFResidentModelRunner:
@@ -3854,6 +3858,13 @@ class Qwen35GGUFResidentModelRunner:
         self._next_batch_id = 0
         self._kv_pool: Any | None = None
         self._engine_loop_config: Any | None = None
+        self._prefix_cache_mode = "off"
+        self._prefix_cache: RadixCache | None = None
+        self._prefix_usable_hits = 0
+        self._prefix_unusable_hits = 0
+        self._prefix_admission_fallbacks = 0
+        self._prefix_reused_tokens = 0
+        self._prefix_state_clone_bytes = 0
         self._kv_hip_used_peak_sampled_bytes = 0
         self._kv_graph_invalidation_count = 0
         self._route_counts: Counter[str] = Counter()
@@ -3998,6 +4009,7 @@ class Qwen35GGUFResidentModelRunner:
         buckets = copy.deepcopy(self._graph_buckets)
         for label, row in buckets.items():
             row["entries"] = int(active_entries.get(label, 0))
+        prefix_stats = None if self._prefix_cache is None else self._prefix_cache.stats.to_json_dict()
         return {
             "model_runner": {
                 "capacity": int(self.capacity),
@@ -4006,6 +4018,15 @@ class Qwen35GGUFResidentModelRunner:
                 "available_sessions": len(self._available),
             },
             "kv_pool": pool_stats,
+            "prefix_cache": {
+                "mode": self._prefix_cache_mode,
+                "stats": prefix_stats,
+                "usable_hits": int(self._prefix_usable_hits),
+                "unusable_hits": int(self._prefix_unusable_hits),
+                "admission_fallbacks": int(self._prefix_admission_fallbacks),
+                "reused_tokens": int(self._prefix_reused_tokens),
+                "state_clone_bytes": int(self._prefix_state_clone_bytes),
+            },
             "graph_buckets": {
                 "entries": int(sum(active_entries.values())),
                 "captures_total": int(sum(row["captures"] for row in buckets.values())),
@@ -4080,6 +4101,14 @@ class Qwen35GGUFResidentModelRunner:
         if self._rows:
             raise RuntimeError("cannot configure GGUF device KV pool while requests are active")
         self._engine_loop_config = config
+        self._prefix_cache_mode = resolve_prefix_cache_mode(
+            getattr(config, "prefix_cache", "off")
+        )
+        self._prefix_cache = (
+            RadixCache(block_size=256)
+            if self._prefix_cache_mode == "radix"
+            else None
+        )
         factory_session = self._available[-1].session if self._available else None
         create_pool = getattr(factory_session, "create_device_kv_pool", None)
         if not callable(create_pool):
@@ -4131,6 +4160,53 @@ class Qwen35GGUFResidentModelRunner:
                 f"GGUF request requires {positions} KV positions but resident capacity is {capacity}"
             )
         pages = (positions + 255) // 256
+        prefix_source = self._prefix_source_for(row)
+        if prefix_source is not None:
+            matched_tokens, source_row = prefix_source
+            prefix_pages = len(matched_tokens) // 256
+            try:
+                allocation = pool.admit_with_shared_prefix(
+                    row.request_id,
+                    source_row.kv_allocation.block_ids[:prefix_pages],
+                    suffix_pages=pages - prefix_pages,
+                    now_seconds=time.monotonic(),
+                )
+            except MemoryError:
+                self._prefix_admission_fallbacks += 1
+            else:
+                try:
+                    lease.session.bind_device_kv_allocation(pool, allocation)
+                    cloned_bytes = int(
+                        lease.session.clone_prefix_state_from(
+                            source_row.lease.session,
+                            position=len(matched_tokens),
+                        )
+                    )
+                except Exception:
+                    if getattr(lease.session, "device_kv_allocation", None) is not None or getattr(
+                        lease.session, "allocation", None
+                    ) is not None:
+                        lease.session.unbind_device_kv_allocation()
+                    pool.release(row.request_id, now_seconds=time.monotonic())
+                    raise
+                if not self._available or self._available[-1] is not lease:
+                    lease.session.invalidate_device_kv_graphs()
+                    lease.session.unbind_device_kv_allocation()
+                    pool.release(row.request_id, now_seconds=time.monotonic())
+                    raise RuntimeError("GGUF available-session order changed during shared admission")
+                self._available.pop()
+                row.lease = lease
+                row.kv_allocation = allocation
+                row.prefix_reused_tokens = len(matched_tokens)
+                row.prefix_source_request_id = int(source_row.request_id)
+                row.prefix_state_clone_bytes = cloned_bytes
+                self._prefix_usable_hits += 1
+                self._prefix_reused_tokens += len(matched_tokens)
+                self._prefix_state_clone_bytes += cloned_bytes
+                self._refresh_prefix_cache(row)
+                self._sample_kv_hip_memory()
+                return
+
         allocation = pool.allocate(row.request_id, pages, now_seconds=time.monotonic())
         try:
             lease.session.bind_device_kv_allocation(pool, allocation)
@@ -4146,6 +4222,77 @@ class Qwen35GGUFResidentModelRunner:
         row.lease = lease
         row.kv_allocation = allocation
         self._sample_kv_hip_memory()
+
+    def _prefix_source_for(
+        self,
+        row: _GGUFResidentLoopRow,
+    ) -> tuple[tuple[int, ...], _GGUFResidentLoopRow] | None:
+        cache = getattr(self, "_prefix_cache", None)
+        if cache is None or not row.native_greedy or len(row.prompt_ids) <= 256:
+            return None
+        self._flush_all_packed_owners()
+        for candidate in tuple(self._rows.values()):
+            if candidate.request_id != row.request_id:
+                self._refresh_prefix_cache(candidate)
+        match = cache.match(row.prompt_ids)
+        if not match.hit or match.matched_token_count >= len(row.prompt_ids):
+            if match.hit:
+                self._prefix_unusable_hits += 1
+            return None
+        state = cache.entry_state(match.matched_tokens)
+        for request_id in state.owner_request_ids:
+            source = self._rows.get(int(request_id))
+            if source is None or source.request_id == row.request_id:
+                continue
+            if source.lease is None or source.kv_allocation is None:
+                continue
+            if tuple(self._processed_tokens(source)) != match.matched_tokens:
+                continue
+            session = source.lease.session
+            if int(getattr(session, "position", -1)) != match.matched_token_count:
+                continue
+            if tuple(source.kv_allocation.block_ids[: match.matched_block_count]) != match.block_ids:
+                continue
+            return match.matched_tokens, source
+        self._prefix_unusable_hits += 1
+        return None
+
+    @staticmethod
+    def _processed_tokens(row: _GGUFResidentLoopRow) -> tuple[int, ...]:
+        lease = row.lease
+        if lease is None:
+            return ()
+        position = int(getattr(lease.session, "position", -1))
+        if position < 0:
+            return ()
+        generated = () if row.slot is None else tuple(int(token) for token in row.slot.generated_ids)
+        known = (*tuple(int(token) for token in row.prompt_ids), *generated)
+        if position > len(known):
+            return ()
+        return tuple(known[:position])
+
+    def _refresh_prefix_cache(self, row: _GGUFResidentLoopRow) -> bool:
+        cache = getattr(self, "_prefix_cache", None)
+        if cache is None:
+            return False
+        cache.cancel(row.request_id)
+        if row.lease is None or row.kv_allocation is None:
+            return False
+        tokens = self._processed_tokens(row)
+        if not tokens or len(tokens) % 256 != 0:
+            return False
+        block_count = len(tokens) // 256
+        block_ids = tuple(int(block_id) for block_id in row.kv_allocation.block_ids[:block_count])
+        if len(block_ids) != block_count:
+            return False
+        try:
+            cache.insert(row.request_id, tokens, block_ids)
+        except ValueError as exc:
+            if "conflicting block ids" not in str(exc):
+                raise
+            self._prefix_unusable_hits += 1
+            return False
+        return True
 
     def rollback_admission(self, request: RequestState) -> None:
         """Undo a bound KV/session lease that was never published active."""
@@ -4254,12 +4401,22 @@ class Qwen35GGUFResidentModelRunner:
                 if row.prefill_tokens_seen > len(row.prompt_ids):
                     raise RuntimeError("GGUF prefill consumed beyond the registered prompt")
                 final_chunk = row.prefill_tokens_seen == len(row.prompt_ids)
+                reused_in_chunk = max(
+                    0,
+                    min(len(chunk), int(row.prefix_reused_tokens) - start),
+                )
+                model_chunk = chunk[reused_in_chunk:]
                 if row.native_greedy:
                     if row.incremental_prefill is None:
-                        row.incremental_prefill = not (start == 0 and final_chunk)
+                        row.incremental_prefill = bool(row.prefix_reused_tokens) or not (
+                            start == 0 and final_chunk
+                        )
                     raise_if_generation_deadline_expired(row.request)
-                    if row.incremental_prefill:
-                        self._prefill_native_chunk(row, chunk, final_chunk=final_chunk)
+                    if not model_chunk:
+                        if final_chunk:
+                            raise RuntimeError("GGUF prefix reuse requires an unmatched prompt suffix")
+                    elif row.incremental_prefill:
+                        self._prefill_native_chunk(row, model_chunk, final_chunk=final_chunk)
                     elif final_chunk:
                         self._prefill_native_row(row)
                     raise_if_generation_deadline_expired(row.request)
@@ -4513,6 +4670,9 @@ class Qwen35GGUFResidentModelRunner:
             self.generator._release_shared_session(lease.pool_key, lease.session)
 
     def _release_row_resources(self, row: _GGUFResidentLoopRow) -> None:
+        prefix_cache = getattr(self, "_prefix_cache", None)
+        if prefix_cache is not None:
+            prefix_cache.cancel(row.request_id)
         lease = row.lease
         if lease is None:
             if row.kv_allocation is not None:
@@ -4586,6 +4746,7 @@ class Qwen35GGUFResidentModelRunner:
         self._route_counts["native_full_prefill_rows"] += 1
         row.prefill_ms += _timing_ms_since(start)
         row.prefill_chunk_count += 1
+        self._refresh_prefix_cache(row)
         self._finish_native_prefill(row, result, native_compact_prefill=False)
 
     def _prefill_sampled_row(self, row: _GGUFResidentLoopRow) -> None:
@@ -4625,6 +4786,7 @@ class Qwen35GGUFResidentModelRunner:
         prefill_ms = _timing_ms_since(start)
         row.prefill_ms += prefill_ms
         row.prefill_chunk_count += 1
+        self._refresh_prefix_cache(row)
         row.slot = _GGUFARServingSlot(
             request_id=row.request_id,
             prompt_ids=list(row.prompt_ids),
@@ -4684,6 +4846,7 @@ class Qwen35GGUFResidentModelRunner:
         self._route_counts["native_incremental_prefill_chunks"] += 1
         row.prefill_ms += _timing_ms_since(start)
         row.prefill_chunk_count += 1
+        self._refresh_prefix_cache(row)
         if final_chunk:
             self._finish_native_prefill(
                 row,
@@ -4697,6 +4860,8 @@ class Qwen35GGUFResidentModelRunner:
         *,
         final_chunk: bool,
     ) -> None:
+        if row.prefix_reused_tokens:
+            raise RuntimeError("GGUF shared-prefix admission requires incremental prefill support")
         row.incremental_prefill = False
         self._fallback_reasons["incremental_prefill_unsupported"] += 1
         if row.lease is not None:
@@ -4965,6 +5130,7 @@ class Qwen35GGUFResidentModelRunner:
                 slot.native_c1_decode_steps += 1
             else:
                 slot.serial_decode_steps += 1
+            self._refresh_prefix_cache(row)
 
     def _step_native_c1_graph(self, row: _GGUFResidentLoopRow) -> Any:
         slot = row.slot
@@ -5225,6 +5391,9 @@ class Qwen35GGUFResidentModelRunner:
             "serial_decode_fallback": bool(
                 slot is not None and slot.serial_decode_steps > 0
             ),
+            "prefix_reused_tokens": int(row.prefix_reused_tokens),
+            "prefix_source_request_id": row.prefix_source_request_id,
+            "prefix_state_clone_bytes": int(row.prefix_state_clone_bytes),
         }
 
 

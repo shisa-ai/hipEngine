@@ -165318,3 +165318,62 @@ No model or performance claim is made yet. The resident model runner must now
 index exact-current boundaries, perform atomic shared admission + state clone,
 skip only the matched prefix, and preserve source/destination lifecycle before
 the mandatory real-model teacher-forced and TTFT/memory gates.
+
+## 2026-07-19 — Integrate opt-in exact-current GGUF prefix reuse
+
+Wired `prefix_cache` through the backend-neutral engine-loop config, public
+`LLM`, and lazy server construction; package/server default remains `off`.
+`Qwen35GGUFResidentModelRunner` now indexes live exact-current 256-token
+boundaries with `RadixCache`, resolves only an active source whose current token
+history/position and block ids exactly match, atomically admits shared device
+pages plus a private suffix, clones hybrid state, and skips model execution for
+scheduler chunks wholly covered by the reused prefix. The first unmatched
+suffix still runs through normal incremental prefill before decode.
+
+Lifecycle is request-exact: cache ownership is refreshed only while a session's
+current state is page-aligned, stale historical ownership is cancelled as soon
+as state advances, source and continuation each own one pool reference, and
+either can reclaim first. A same-backing suffix capacity miss falls back to a
+private allocation; clone/layout mismatches fail closed. Shared-prefix rows may
+not fall back to full replay because that would overwrite source-owned KV.
+Observability reports radix host stats, usable/unusable hits, admission
+fallbacks, reused tokens, clone bytes, and per-completion source/reuse metadata.
+`docs/ENVS.md` now states the exact opt-in boundary, and `docs/REFACTOR.md`
+records the promotion/generalization trigger for the still-default-off path.
+
+This first production slice intentionally supports **greedy active-current
+continuation/fork prefixes with a non-empty suffix**. It does not claim arbitrary
+historical prompt reuse, completed-session persistence, sampled-prefix reuse,
+or API continuation-id resident reuse; those remain separate gates requiring
+per-boundary state snapshots/ownership.
+
+RED:
+
+```text
+uv run pytest -q tests/test_gguf_prefix_cache_runner.py
+1 failed: EngineLoopConfig had no prefix_cache production path
+```
+
+GREEN:
+
+```text
+31 passed: prefix runner + device binding + KV policy + linear-state commit
+3 passed: targeted engine-loop config nodes
+2 passed: targeted LLM config/dispatch nodes
+2 passed: targeted server lazy-construction/CLI nodes
+python3 -m py_compile + git diff --check: passed
+```
+
+The completed 62-node GGUF sampling regression run had 61 passing nodes and one
+isolated lightweight `__new__` fixture failure because absent cache fields were
+not treated as mode `off`. After the scoped repair:
+
+```text
+1 passed: test_gguf_sampled_packed_unavailable_reports_model_serial_fallback
+31 passed: focused cache/state bundle (unchanged)
+```
+
+Per the focused-repair rule, the already-passing 61 nodes were not rerun. No
+model correctness or performance claim is made yet. Next is a clean gfx1151
+real-model exact-current prefix packet against fresh full-prefill output/state,
+then TTFT/page-memory economics if correctness passes.

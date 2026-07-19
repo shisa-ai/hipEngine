@@ -20,6 +20,7 @@ from typing import Any, Callable, Iterable, Protocol, Sequence
 from hipengine.dispatch import RequestState, SlotMove, WorkItem, WorkKind
 from hipengine.generation.batch_scheduler import CompletedRequest, GeneratedToken, ResidentBatchScheduler
 from hipengine.generation.deadline import GenerationCancelled, generation_deadline_expired
+from hipengine.kvcache import PREFIX_CACHE_CHOICES, resolve_prefix_cache_mode
 from hipengine.generation.registry import (
     FinishDetails,
     GenerationOutput,
@@ -49,6 +50,7 @@ class EngineLoopConfig:
     kv_pool_chunk_pages: int = DEFAULT_KV_POOL_CHUNK_PAGES
     kv_pool_idle_grace_seconds: float = DEFAULT_KV_POOL_IDLE_GRACE_SECONDS
     max_pending_requests: int | None = None
+    prefix_cache: str = "off"
 
     def __post_init__(self) -> None:
         if self.prefill_decode_policy not in PREFILL_DECODE_POLICIES:
@@ -71,6 +73,7 @@ class EngineLoopConfig:
             raise ValueError("kv_pool_idle_grace_seconds must be non-negative")
         if self.max_pending_requests is not None and self.max_pending_requests <= 0:
             raise ValueError("max_pending_requests must be positive when set")
+        object.__setattr__(self, "prefix_cache", resolve_prefix_cache_mode(self.prefix_cache))
 
 
 @dataclass(frozen=True, slots=True)
@@ -960,6 +963,12 @@ def add_engine_loop_config_args(
         default=_env_optional_positive_int(env, "HIPENGINE_MAX_PENDING_REQUESTS"),
         help="Optional pending request queue cap (env HIPENGINE_MAX_PENDING_REQUESTS; default: unset)",
     )
+    parser.add_argument(
+        "--prefix-cache",
+        choices=PREFIX_CACHE_CHOICES,
+        default=resolve_prefix_cache_mode(env.get("HIPENGINE_PREFIX_CACHE")),
+        help="Prefix-cache mode (env HIPENGINE_PREFIX_CACHE; default: off)",
+    )
 
 
 def engine_loop_config_from_args(args: object) -> EngineLoopConfig:
@@ -987,6 +996,7 @@ def engine_loop_config_from_args(args: object) -> EngineLoopConfig:
             if getattr(args, "max_pending_requests") is None
             else int(getattr(args, "max_pending_requests"))
         ),
+        prefix_cache=resolve_prefix_cache_mode(getattr(args, "prefix_cache", "off")),
     )
 
 
