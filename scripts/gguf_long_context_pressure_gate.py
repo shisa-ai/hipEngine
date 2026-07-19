@@ -62,6 +62,9 @@ from scripts.gguf_production_load_gate import (
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 _SUPPORTED_BACKENDS = ("hip_gfx1100", "hip_gfx1151")
 _REQUIRED_CONTEXTS = (1_024, 4_096, 32_768)
+# _execute_workload is shared with the production packet and intentionally
+# sends this retained model id. Keep the focused pressure request identical.
+_SERVED_MODEL_NAME = "qwen35-production-load"
 _PROVENANCE_ENV_KEYS = (
     "HIPENGINE_BACKEND",
     "HIPENGINE_HIP_ARCH",
@@ -448,7 +451,7 @@ def _execute_pressure_workload(
                 prompt=prompt_manifest[long_spec.oracle_key],
                 start_event=start_event,
                 workload_start=workload_start,
-                served_model_name="qwen35-long-context-pressure",
+                served_model_name=_SERVED_MODEL_NAME,
                 request_timeout_seconds=float(request_timeout_seconds),
             )
             start_event.set()
@@ -468,7 +471,7 @@ def _execute_pressure_workload(
                 prompt=prompt_manifest[candidate_spec.oracle_key],
                 start_event=candidate_start,
                 workload_start=time.perf_counter(),
-                served_model_name="qwen35-long-context-pressure",
+                served_model_name=_SERVED_MODEL_NAME,
                 request_timeout_seconds=float(request_timeout_seconds),
             ).result(timeout=float(request_timeout_seconds))
             long_trace = long_future.result(timeout=float(request_timeout_seconds))
@@ -693,7 +696,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     model=str(model),
                     backend=str(args.backend),
                     quant=str(args.quant),
-                    served_model_name="qwen35-long-context-pressure",
+                    served_model_name=_SERVED_MODEL_NAME,
                     eager_load=False,
                     startup_chat_smoke=False,
                     startup_scratch_probe=False,

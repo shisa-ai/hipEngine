@@ -165773,3 +165773,18 @@ continuous-owner KV policy and explicitly keeps uniform/tail4 INT8 fail-closed;
 that implementation/quality gate remains a later unit of task #87. The next
 step is a committed-clean cached gfx1151 diagnostic, followed by the complete
 64K packet only if the short/mixed lifecycle is green.
+
+## 2026-07-19 — Repair long-pressure harness model identity
+
+The first clean gfx1151 short diagnostic at `45cb4631` failed before model work:
+all 1K/c2 and 4K/c2 requests returned `404 model_not_found`. The shared
+`_execute_workload` helper intentionally sends the retained production model id
+`qwen35-production-load`, while the new app advertised
+`qwen35-long-context-pressure`. Source provenance was clean, final ownership was
+zero, and no allocator/kernel conclusion is valid from this failed packet.
+
+Unified the app and both custom pressure requests under one harness constant
+matching the reused production driver, with a regression assertion. Focused
+new/production harness validation is `15 passed`; `py_compile` and
+`git diff --check` pass. Next is the same 1K/c2 + 4K/c2 clean diagnostic from
+the repaired commit; no 32K/64K run is justified until it is green.
