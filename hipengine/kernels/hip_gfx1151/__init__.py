@@ -53,6 +53,10 @@ GGUF_Q8_T16_DECODE_ROWTILE_ALL = False
 # prior engine-loop defaults until independently gated.
 GGUF_Q4_K_M_PREFILL_DECODE_POLICY = "fair"
 GGUF_Q4_K_M_MAX_PREFILL_CHUNK_TOKENS = 256
+# F3/F2 prove true physical-c8 GGUF AR and exact live ownership. The OpenAI
+# coalescer may therefore submit eight plain-AR requests to this registry entry;
+# speculative MTP keeps its separately certified four-request cap.
+GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS = 8
 # Clean LCP-M2 512/1K/4K full-state and balanced-wall gates admit stream-ordered
 # device metadata through 4K. Explicit opt-in remains available for diagnosis;
 # the 128K one-queue escalation still enters the low-power GPU-active state.
@@ -196,6 +200,9 @@ __all__ = [
     "GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT",
     "GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS",
     "GGUF_PREFILL_ROUTER_SELECT_THREADS",
+    "GGUF_Q4_K_M_MAX_PREFILL_CHUNK_TOKENS",
+    "GGUF_Q4_K_M_PREFILL_DECODE_POLICY",
+    "GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS",
     "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
     "GGUF_Q8_T16_DECODE_ROWTILE_ALL",
     "GGUF_Q8_T16_PREFILL_FOUR_WAVE",

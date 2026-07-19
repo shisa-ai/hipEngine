@@ -307,6 +307,21 @@ class LLM:
         return dict(payload) if isinstance(payload, dict) else None
 
     @property
+    def server_plain_ar_max_active_requests(self) -> int | None:
+        """Return the registry-selected plain-AR HTTP grouping capability."""
+
+        generator = self._text_generator
+        if generator is None:
+            return None
+        raw_limit = getattr(generator, "server_plain_ar_max_active_requests", None)
+        if raw_limit is None:
+            return None
+        limit = int(raw_limit)
+        if limit < 1:
+            raise ValueError("server_plain_ar_max_active_requests must be positive")
+        return limit
+
+    @property
     def supports_controlled_streaming(self) -> bool:
         """Whether streaming is driven by the shared submit/poll model loop."""
 

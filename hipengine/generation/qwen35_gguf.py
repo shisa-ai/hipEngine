@@ -597,6 +597,7 @@ class Qwen35GGUFBringupGenerator:
     model_plugin: Any
     backend: str = "auto"
     engine_loop_config_defaults: Mapping[str, Any] = field(default_factory=dict, repr=False)
+    server_plain_ar_max_active_requests: int | None = None
     tokenizer: Qwen35GGUFTokenizer = field(init=False)
     last_batch_generation: dict[str, Any] | None = field(default=None, init=False, repr=False)
     last_generation_outputs: tuple[GenerationOutput, ...] = field(default=(), init=False, repr=False)
@@ -6510,6 +6511,13 @@ def make_qwen35_gguf_q4_k_m_generator_gfx1151(
                 )
             ),
         },
+        server_plain_ar_max_active_requests=int(
+            backend_package_capability(
+                backend,
+                "GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS",
+                4,
+            )
+        ),
     )
 
 

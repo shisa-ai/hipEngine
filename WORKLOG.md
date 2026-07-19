@@ -168279,3 +168279,60 @@ This is the frozen diagnostic baseline for the route-cap iteration, not a
 replacement publication: it has one measurement per width. Raw JSON is 1,641
 lines, SHA-256
 `56798979b6c80cc2f6f56be28244de7de77baa2a6b618195fce0d029c8488999`.
+
+## 2026-07-20 — Route plain gfx1151 GGUF AR through physical C8
+
+Removed the stale server-only C4 barrier without widening unsupported routes.
+The gfx1151 backend package now advertises an eight-request plain-AR capability
+only through the registry-selected Q4_K_M generator factory. `LLM` exposes that
+resolved capability after generator preparation, and the generic OpenAI
+coalescer uses it only for the default plain-AR route. Generic/unsupported GGUF
+keeps the conservative C4 fallback, while speculative MTP and auto remain
+independently capped at four. No server backend/quant branch was added.
+
+RED first proved the factory lacked the capability and the batcher still split
+eight plain requests into C4+C4. The first valid real-Uvicorn C1+C8 attempt then
+found a separate width-eight lifecycle boundary: all eight clients failed after
+request 8 needed one more scheduler tick than the old finite bound. Fair
+scheduling can advance early rows between serial prompt chunks before the final
+row becomes ready; p512/fair:256/C8 therefore needed 157 work ticks while the
+old formula allowed 156. A focused RED captured `156 != 160`. The repaired
+bound adds one prefill-stagger span while retaining the historical row/cancel
+margin for short prompts; scheduler ordering and math are unchanged.
+
+GREEN host validation is **558 passed** across server API, gfx1151 factory,
+LLM, and matched-server harness tests, plus **10 passed** SubmitPoll-focused
+scheduler tests:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/test_server_api.py tests/test_gfx1151_backend.py \
+  tests/test_llm_generate.py tests/test_server_f1_concurrency_bench.py \
+  -q --tb=short
+.venv/bin/python -m pytest tests/test_generation_batch_scheduler.py \
+  -k submit_poll -q --tb=short
+python3 -m py_compile hipengine/generation/engine_loop.py hipengine/llm.py \
+  hipengine/server/api.py hipengine/generation/qwen35_gguf.py \
+  hipengine/kernels/hip_gfx1151/__init__.py \
+  tests/test_generation_batch_scheduler.py tests/test_server_api.py \
+  tests/test_gfx1151_backend.py
+git diff --check
+```
+
+The replacement tracked-dirty implementation gate used the corrected 5 ms /
+256-token protocol, mirrored INT8 KV, p512/d128, one warmup and one blocking +
+SSE measurement at C1/C8, and delayed C8 admission. It is
+`accepted_backend_packet`: all outputs/routes pass and shape telemetry records
+one queue group with `route_cap=8`, `request_count=8`, `input_rows=8`, and
+`actual_group_rows=[8]`. C8 is therefore a true physical group, not C4+C4.
+
+Blocking is **44.123 -> 83.535 tok/s** and exact SSE is
+**42.437 -> 81.584 tok/s** at C1->C8. Relative to the clean corrected-window
+C4+C4 baseline, physical C8 improves blocking **75.513 -> 83.535 (+10.62%)**.
+Delayed C8 improves **62.188 -> 65.383 (+5.14%)** and admits in flight. All
+**33/33 resident admissions/reclaims** drain to 8/8 free slots, zero refs/pins,
+zero packed-workspace bytes, zero failures/rejections/cancellations, and zero
+serial/resident fallback. The one-repeat C8 SSE SLO-goodput is only
+**30.594 tok/s** because ITL qualification remains open; this is implementation
+evidence, not the final repeated publication. Raw SHA-256:
+`5d65b81ea1c899f86a97d9b1ce6f1cd35cb1205be05d5a8e4383b5d8dac567d5`.

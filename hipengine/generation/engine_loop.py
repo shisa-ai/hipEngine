@@ -949,10 +949,13 @@ def _submit_poll_max_ticks(
         for row in prompt_rows
     )
     # Decode advances every ready row once per tick, so the longest request—not
-    # the sum across rows—sets the decode bound. Admission and reclaim events
-    # share those work ticks; retain a small diagnostic margin for cancellation
-    # or a late concurrent admission without allowing an infinite server loop.
-    return max(8, prefill_ticks + max(1, int(max_new_tokens)) + len(prompt_rows) + 4)
+    # the sum across rows—sets the steady decode bound. Under fair scheduling,
+    # however, early rows may decode between serial prompt chunks before the
+    # final row becomes ready. Cover that stagger with one additional prefill
+    # span; the historical rows+4 margin remains larger for short prompts and
+    # still accommodates cancellation or late concurrent admission.
+    stagger_margin = max(len(prompt_rows) + 4, prefill_ticks)
+    return max(8, prefill_ticks + max(1, int(max_new_tokens)) + stagger_margin)
 
 
 def add_engine_loop_config_args(
