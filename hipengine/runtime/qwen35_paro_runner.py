@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 import math
@@ -1639,6 +1639,9 @@ class Qwen35ParoVerifierGraphEntry:
     native_spec_launcher: Any | None = None
     native_spec_replay_signature: tuple[object, ...] | None = None
     native_spec_transaction_offset: int = 0
+    native_spec_target_commit: bool = False
+    native_spec_commit_source_table: DeviceBuffer | None = None
+    native_spec_commit_destination_table: DeviceBuffer | None = None
 
 
 class Qwen35ParoResidentSession:
@@ -8103,7 +8106,10 @@ class Qwen35ParoResidentSession:
             verify_rows * len(self.config.layer_types) * self.config.hidden_size * DType.BF16.itemsize,
             runtime=self.runtime,
         )
-        self._verify_graph_cache: dict[tuple[int, int, int, str, str], Qwen35ParoVerifierGraphEntry] = {}
+        self._verify_graph_cache: dict[
+            tuple[int, int, int, str, str, str, bool],
+            Qwen35ParoVerifierGraphEntry,
+        ] = {}
         self.buffers.extend(
             (
                 self.lm_logits,
@@ -10685,11 +10691,129 @@ class Qwen35ParoResidentSession:
             return False
         return _env_flag("HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH", False)
 
+    def _native_spec_provider_target_factory(self) -> Any | None:
+        factory = resolve(
+            backend=self.backend,
+            layer="speculative_cycle",
+            quant="w4_paro",
+            variant="native_v1_target_graph",
+            missing="none",
+        )
+        if factory is not None:
+            return factory
+        # Lazy registration admits only the independently gated gfx1100 key.
+        # Resolving with the live backend after registration keeps gfx1151 and
+        # other peers on exact fallback without a backend branch here.
+        from hipengine.speculative import native_cycle_graph as _native_cycle_graph
+
+        _native_cycle_graph.register_native_spec_provider_target_graph()
+        return resolve(
+            backend=self.backend,
+            layer="speculative_cycle",
+            quant="w4_paro",
+            variant="native_v1_target_graph",
+            missing="none",
+        )
+
+    def _native_spec_provider_target_commit_requested(
+        self,
+        batch: TargetVerifyBatch,
+        *,
+        capture_hidden_concat: Tensor,
+        base_slot: int,
+    ) -> bool:
+        """Return whether this graph bucket may own PARO selected-state commit."""
+
+        if not self._native_spec_provider_target_graph_enabled(batch):
+            return False
+        if not _env_flag("HIPENGINE_PARO_NATIVE_SPEC_TARGET_COMMIT", False):
+            return False
+        rows = int(batch.rows)
+        candidate_rows = rows - 1
+        if (
+            candidate_rows not in {1, 2, 3, 4, 5, 8}
+            or int(batch.candidate_count) != candidate_rows
+            or int(batch.draft_depth) != candidate_rows
+            or sum(bool(flag) for flag in batch.active_mask) != rows
+        ):
+            return False
+        # A zero-width capture is the persistent PARO MTP contract. DFlash
+        # hidden taps and its provider-specific hidden/KV repair stay outside.
+        if (
+            int(capture_hidden_concat.shape[0]) != rows
+            or int(capture_hidden_concat.shape[1]) != 0
+            or int(base_slot) != 0
+        ):
+            return False
+        if not self._verify_gpu_accept_enabled() or not self._verify_accept_packed_payload_enabled():
+            return False
+        if not self._fused_linear_state_commit_enabled() or not self.linear_layer_ids:
+            return False
+        if (
+            getattr(self, "linear_state_dst_conv_table_buf", None) is None
+            or getattr(self, "linear_state_dst_recurrent_table_buf", None) is None
+        ):
+            return False
+        return self._native_spec_provider_target_factory() is not None
+
+    def _native_spec_provider_target_commit_tables(
+        self,
+    ) -> tuple[DeviceBuffer, DeviceBuffer] | None:
+        """Build graph-owned combined source/destination linear-state tables."""
+
+        n_layers = len(self.linear_layer_ids)
+        if n_layers <= 0 or len(self.linear_scratch) != n_layers:
+            return None
+        source = np.empty((2 * n_layers,), dtype=np.uint64)
+        destination = np.empty((2 * n_layers,), dtype=np.uint64)
+        for idx, layer_id in enumerate(self.linear_layer_ids):
+            scratch = self.linear_scratch.get(layer_id)
+            if scratch is None:
+                return None
+            conv_state, recurrent_state = self._slot_linear_state(layer_id, 0)
+            source[idx] = np.uint64(scratch.tree_conv_state.ptr)
+            source[n_layers + idx] = np.uint64(scratch.tree_recurrent_state.ptr)
+            destination[idx] = np.uint64(conv_state.ptr)
+            destination[n_layers + idx] = np.uint64(recurrent_state.ptr)
+        # `_dev` binds both descriptor slabs to the resident session lifetime.
+        # Each graph entry gets fixed contents, so another row bucket cannot
+        # retarget a captured selected-state commit.
+        return self._dev(source), self._dev(destination)
+
+    def _launch_native_spec_provider_target_commit(
+        self,
+        *,
+        source_table_ptr: int,
+        destination_table_ptr: int,
+        commit_row_ptr: int,
+        stream: int,
+    ) -> None:
+        n_layers = len(self.linear_layer_ids)
+        table_half_nbytes = n_layers * np.dtype(np.uint64).itemsize
+        linear_commit = (
+            linear_state_pair_commit_chunked_i32
+            if self._chunked_linear_state_commit_enabled()
+            else linear_state_pair_commit_i32
+        )
+        linear_commit(
+            int(source_table_ptr),
+            int(destination_table_ptr),
+            self.linear_state_conv_row_nbytes,
+            int(source_table_ptr) + table_half_nbytes,
+            int(destination_table_ptr) + table_half_nbytes,
+            self.linear_state_recurrent_row_nbytes,
+            int(commit_row_ptr),
+            n_layers,
+            stream=int(stream),
+            library=self.libraries["dflash_commit"],
+            runtime=self.runtime,
+        )
+
     def _verify_accept_updates_position_enabled(self, batch: TargetVerifyBatch) -> bool:
         if self._native_spec_provider_target_graph_enabled(batch):
-            # The first N4 graph declares VERIFY|ACCEPT only. Keep position and
-            # context mutation in the unchanged provider commit path so the ABI
-            # stage mask never understates graph side effects.
+            # The shared N4 graph declares VERIFY|ACCEPT only. The PARO-only
+            # commit capture passes an explicit update_position=True when it
+            # also declares COMMIT|UPDATE_CURSORS; all other calls stay here.
             return False
         if batch.mode != "verify_chain":
             return False
@@ -10870,6 +10994,7 @@ class Qwen35ParoResidentSession:
                 graph_info["linear_attn_mode"] = linear_attn_mode
                 graph_info["linear_attn_fallback"] = False
             graph_status = str(graph_info.get("status"))
+            native_spec_target_commit = bool(graph_info.get("native_spec_target_commit"))
             if graph_status == "replayed":
                 _mark_bucket("graph_replay", t_bucket)
             elif graph_mode != "off" or not _dflash_verify_sync_phases_enabled():
@@ -10906,7 +11031,7 @@ class Qwen35ParoResidentSession:
                 selected_row = int(cpu_summary.commit_rows[0])
             accept_bucket = "accept_readback" if _dflash_verify_sync_phases_enabled() else "accept_summary"
             _mark_bucket(accept_bucket, t_bucket)
-            if graph_mode != "off":
+            if graph_mode != "off" and int(capture_hidden_concat.shape[1]) > 0:
                 t_bucket = time.perf_counter()
                 self._copy_verify_capture_prefix(
                     capture_target,
@@ -10917,17 +11042,32 @@ class Qwen35ParoResidentSession:
                 )
                 _mark_bucket("capture_prefix_copy", t_bucket)
             t_bucket = time.perf_counter()
-            self._commit_bulk_linear_states(
-                selected_row,
-                base_slot=base_slot,
-                stream=stream,
-                commit_row_ptr=int(self.verify_commit_rows.ptr),
-            )
-            if self._verify_accept_updates_position_enabled(batch) and gpu_accept_match:
-                self._record_slot_position_host(int(summary.commit_positions[0]), slot=base_slot)
+            if native_spec_target_commit:
+                if not gpu_accept_match:
+                    raise RuntimeError(
+                        "native provider target graph committed a GPU accept row that "
+                        "does not match the CPU oracle"
+                    )
+                # The graph already copied the selected Conv/GDN row and its
+                # accept kernel updated device position/context. Mirror only
+                # the bounded host bookkeeping; do not resubmit either kernel.
+                self._record_slot_position_host(
+                    int(summary.commit_positions[0]),
+                    slot=base_slot,
+                )
+                _mark_bucket("graph_owned_commit_host_record", t_bucket)
             else:
-                self._set_slot_position(int(summary.commit_positions[0]), slot=base_slot, stream=stream)
-            _mark_bucket("commit_scatter", t_bucket)
+                self._commit_bulk_linear_states(
+                    selected_row,
+                    base_slot=base_slot,
+                    stream=stream,
+                    commit_row_ptr=int(self.verify_commit_rows.ptr),
+                )
+                if self._verify_accept_updates_position_enabled(batch) and gpu_accept_match:
+                    self._record_slot_position_host(int(summary.commit_positions[0]), slot=base_slot)
+                else:
+                    self._set_slot_position(int(summary.commit_positions[0]), slot=base_slot, stream=stream)
+                _mark_bucket("commit_scatter", t_bucket)
             # Re-pointing the scratch maps to rows=1 decode views re-reserves
             # workspace names with a different shape, which frees the rows=B+1
             # buffers the captured verifier graph holds raw pointers to.
@@ -10938,7 +11078,7 @@ class Qwen35ParoResidentSession:
                 t_bucket = time.perf_counter()
                 self._canonicalize_decode_scratch()
                 _mark_bucket("canonicalize_scratch", t_bucket)
-            if bool(synchronize_after_commit):
+            if bool(synchronize_after_commit) and not native_spec_target_commit:
                 t_bucket = time.perf_counter()
                 self.runtime.stream_synchronize(stream)
                 _mark_bucket("host_sync_after_commit", t_bucket)
@@ -11259,10 +11399,18 @@ class Qwen35ParoResidentSession:
         rows: int,
         stream: int,
     ) -> tuple[bool, str | None]:
-        """Try the explicit N4 target+accept boundary before exact fallback."""
+        """Try the explicit N4 target boundary before exact fallback."""
 
         if not self._native_spec_provider_target_graph_enabled(batch):
             return False, None
+        target_commit = bool(getattr(entry, "native_spec_target_commit", False))
+        commit_source = getattr(entry, "native_spec_commit_source_table", None)
+        commit_destination = getattr(entry, "native_spec_commit_destination_table", None)
+        if target_commit and (commit_source is None or commit_destination is None):
+            return False, "native provider target commit graph is missing bound state tables"
+        stages = NativeSpecCycleStage.VERIFY | NativeSpecCycleStage.ACCEPT
+        if target_commit:
+            stages |= NativeSpecCycleStage.COMMIT | NativeSpecCycleStage.UPDATE_CURSORS
         cycle_id = int(entry.replay_count) + 1
         replay_signature = self._native_spec_provider_target_replay_signature(
             batch,
@@ -11292,23 +11440,23 @@ class Qwen35ParoResidentSession:
                     rows=rows,
                     stream=stream,
                     cycle_id=cycle_id,
+                    stages=stages,
+                    linear_state_rows_ptr=(
+                        0 if commit_source is None else int(commit_source.ptr)
+                    ),
+                    linear_state_dst_ptr=(
+                        0 if commit_destination is None else int(commit_destination.ptr)
+                    ),
                 )
             except (RuntimeError, TypeError, ValueError) as exc:
                 return False, str(exc)
             if entry.native_spec_launcher is None:
                 try:
-                    # Lazy import registers only the gfx1100 provider key. gfx1151
-                    # remains unresolved until its independent N4 gate explicitly
-                    # admits and registers the provider.
-                    from hipengine.speculative import native_cycle_graph as _native_cycle_graph
-
-                    _native_cycle_graph.register_native_spec_provider_target_graph()
-                    factory = resolve(
-                        backend=self.backend,
-                        layer="speculative_cycle",
-                        quant="w4_paro",
-                        variant="native_v1_target_graph",
-                    )
+                    factory = self._native_spec_provider_target_factory()
+                    if factory is None:
+                        raise ValueError(
+                            "native provider target graph is not registered for this backend"
+                        )
                     entry.native_spec_launcher = factory(
                         graph_exec=entry.graph_exec,
                         runtime=self.runtime,
@@ -11350,6 +11498,11 @@ class Qwen35ParoResidentSession:
         linear_attn_mode: str = "tree_tloop",
         stream: int = 0,
     ) -> dict[str, Any]:
+        target_commit_requested = self._native_spec_provider_target_commit_requested(
+            batch,
+            capture_hidden_concat=capture_hidden_concat,
+            base_slot=base_slot,
+        )
         bucket_key = {
             "rows": int(rows),
             "capture_width": int(capture_hidden_concat.shape[1]),
@@ -11357,6 +11510,7 @@ class Qwen35ParoResidentSession:
             "chain_attn_mode": str(chain_attn_mode),
             "linear_attn_mode": str(linear_attn_mode),
             "batch_mode": str(batch.mode),
+            "native_spec_target_commit": bool(target_commit_requested),
         }
         key = (
             bucket_key["rows"],
@@ -11365,6 +11519,7 @@ class Qwen35ParoResidentSession:
             bucket_key["chain_attn_mode"],
             bucket_key["linear_attn_mode"],
             bucket_key["batch_mode"],
+            bucket_key["native_spec_target_commit"],
         )
         entry = self._verify_graph_cache.get(key)
         if (
@@ -11445,6 +11600,9 @@ class Qwen35ParoResidentSession:
                     file=sys.stderr,
                     flush=True,
                 )
+            native_stages = ["VERIFY", "ACCEPT"]
+            if bool(entry.native_spec_target_commit):
+                native_stages.extend(["COMMIT", "UPDATE_CURSORS"])
             return {
                 "mode": graph_mode,
                 "status": "replayed",
@@ -11454,8 +11612,9 @@ class Qwen35ParoResidentSession:
                 "replay_count": entry.replay_count,
                 "native_spec_cycle_graph": native_spec_cycle_graph,
                 "native_spec_cycle_stages": (
-                    ["VERIFY", "ACCEPT"] if native_spec_cycle_graph else []
+                    native_stages if native_spec_cycle_graph else []
                 ),
+                "native_spec_target_commit": bool(entry.native_spec_target_commit),
                 "native_spec_cycle_fallback_reason": native_spec_fallback_reason,
             }
 
@@ -11487,6 +11646,14 @@ class Qwen35ParoResidentSession:
         self.runtime.stream_synchronize(stream)
         direct_top1, _ = self._read_verify_top1(rows)
         direct_payload = self._read_verify_accept_payload(len(batch.request_ids), stream=stream)
+        commit_tables = (
+            self._native_spec_provider_target_commit_tables()
+            if target_commit_requested
+            else None
+        )
+        target_commit_captured = commit_tables is not None
+        commit_source = None if commit_tables is None else commit_tables[0]
+        commit_destination = None if commit_tables is None else commit_tables[1]
         graph = 0
         graph_stream = 0
         try:
@@ -11503,6 +11670,8 @@ class Qwen35ParoResidentSession:
                     stream=graph_stream,
                     chain_attn_mode=chain_attn_mode,
                     linear_attn_mode=linear_attn_mode,
+                    native_spec_commit_source_table=commit_source,
+                    native_spec_commit_destination_table=commit_destination,
                 )
                 graph = self.runtime.stream_end_capture(graph_stream)
             except Exception:
@@ -11560,8 +11729,15 @@ class Qwen35ParoResidentSession:
                 replay_count=1,
                 linear_scratch=dict(self.linear_scratch),
                 moe_scratch=dict(self.moe_scratch),
+                native_spec_target_commit=bool(target_commit_captured),
+                native_spec_commit_source_table=commit_source,
+                native_spec_commit_destination_table=commit_destination,
             )
             self._verify_graph_cache[key] = entry
+            fresh_graph_executed = (
+                graph_mode == "validate"
+                or os.environ.get("HIPENGINE_VERIFY_GRAPH_RECAPTURE", "").strip() == "1"
+            )
             return {
                 "mode": graph_mode,
                 "status": "captured_validated" if graph_mode == "validate" else "captured_validated_miss",
@@ -11569,6 +11745,11 @@ class Qwen35ParoResidentSession:
                 "validation_passed": True,
                 "bucket_key": dict(bucket_key),
                 "replay_count": entry.replay_count,
+                "native_spec_cycle_graph": False,
+                "native_spec_cycle_stages": [],
+                "native_spec_target_commit": bool(
+                    target_commit_captured and fresh_graph_executed
+                ),
             }
         except Exception as exc:
             if graph:
@@ -11615,6 +11796,8 @@ class Qwen35ParoResidentSession:
         chain_attn_mode: str = "c1_loop",
         linear_attn_mode: str = "tree_tloop",
         bucket_seconds: dict[str, float] | None = None,
+        native_spec_commit_source_table: DeviceBuffer | None = None,
+        native_spec_commit_destination_table: DeviceBuffer | None = None,
     ) -> None:
         if linear_attn_mode not in {"tree_tloop", "chain_tloop"}:
             raise ValueError("linear_attn_mode must be tree_tloop or chain_tloop")
@@ -11761,7 +11944,30 @@ class Qwen35ParoResidentSession:
         phase_start = time.perf_counter()
         self._sample_verify_rows_from_hidden(hidden, rows, stream=stream)
         phase_start = _mark_phase("lm_head_top1", phase_start)
-        self._launch_verify_accept_summary(batch, rows=rows, base_slot=base_slot, stream=stream)
+        target_commit = (
+            native_spec_commit_source_table is not None
+            and native_spec_commit_destination_table is not None
+        )
+        if (native_spec_commit_source_table is None) != (
+            native_spec_commit_destination_table is None
+        ):
+            raise ValueError("native provider target commit requires both graph-owned tables")
+        self._launch_verify_accept_summary(
+            batch,
+            rows=rows,
+            base_slot=base_slot,
+            stream=stream,
+            update_position=target_commit,
+        )
+        if target_commit:
+            assert native_spec_commit_source_table is not None
+            assert native_spec_commit_destination_table is not None
+            self._launch_native_spec_provider_target_commit(
+                source_table_ptr=native_spec_commit_source_table.ptr,
+                destination_table_ptr=native_spec_commit_destination_table.ptr,
+                commit_row_ptr=self.verify_commit_rows.ptr,
+                stream=stream,
+            )
         _mark_phase("accept_summary_enqueue", phase_start)
 
     def _run_full_attention_chain_c1_loop(
@@ -12796,8 +13002,13 @@ class Qwen35ParoResidentSession:
         rows: int,
         stream: int,
         cycle_id: int,
+        stages: NativeSpecCycleStage = (
+            NativeSpecCycleStage.VERIFY | NativeSpecCycleStage.ACCEPT
+        ),
+        linear_state_rows_ptr: int = 0,
+        linear_state_dst_ptr: int = 0,
     ) -> NativeSpecCycleControl:
-        """Bind the shared PARO/DFlash target+accept graph to ABI v1."""
+        """Bind the shared PARO/DFlash target graph to ABI v1."""
 
         request_count = len(batch.request_ids)
         if request_count != 1 or rows != int(batch.rows):
@@ -12932,18 +13143,41 @@ class Qwen35ParoResidentSession:
             for row, flag in enumerate(batch.active_mask)
             if row not in batch.root_rows
         )
-        return NativeSpecCycleControl.for_target_verify(
+        verify_accept_stages = NativeSpecCycleStage.VERIFY | NativeSpecCycleStage.ACCEPT
+        control = NativeSpecCycleControl.for_target_verify(
             cycle_id=int(cycle_id),
             buffers=metadata,
             kv_live_spans=verify_spans,
             hidden_seed_rows=hidden_rows,
             context_bucket=self.max_sequence_length,
             stream=int(stream),
-            stages=NativeSpecCycleStage.VERIFY | NativeSpecCycleStage.ACCEPT,
+            # The generic constructor validates immediately. Build the shared
+            # verify/accept descriptor first, then attach the bounded provider
+            # commit/cursor pointers before validating the expanded stage mask.
+            stages=verify_accept_stages,
             active_row_count=active_rows,
             output_stride=rows,
             candidate_counts_ptr=self.verify_candidate_counts_i32.ptr,
         )
+        if stages != verify_accept_stages:
+            pointers = replace(
+                control.pointers,
+                state=replace(
+                    control.pointers.state,
+                    linear_state_rows=int(linear_state_rows_ptr),
+                    linear_state_dst=int(linear_state_dst_ptr),
+                ),
+                outputs=replace(
+                    control.pointers.outputs,
+                    output_ids=int(self.verify_committed_output_ids.ptr),
+                    output_lengths=int(self.verify_committed_output_lengths.ptr),
+                    last_positions=int(self.position_buf.ptr),
+                    context_lengths=int(self.context_buf.ptr),
+                ),
+            )
+            control = replace(control, stages=stages, pointers=pointers)
+            control.validate()
+        return control
 
     def _sample_verify_rows_from_hidden(self, hidden: Tensor, rows: int, *, stream: int = 0) -> None:
         norm_out = Tensor.from_handle(self.batch_norm_out.ptr, (rows, self.config.hidden_size), DType.FP16, self.device)
@@ -13053,6 +13287,7 @@ class Qwen35ParoResidentSession:
         rows: int,
         base_slot: int | None = None,
         stream: int = 0,
+        update_position: bool | None = None,
     ) -> None:
         request_count = len(batch.request_ids)
         accept_args = (
@@ -13073,7 +13308,12 @@ class Qwen35ParoResidentSession:
             self.verify_committed_output_lengths.ptr,
         )
         if self._verify_accept_packed_payload_enabled():
-            if self._verify_accept_updates_position_enabled(batch) and base_slot is not None:
+            should_update_position = (
+                self._verify_accept_updates_position_enabled(batch)
+                if update_position is None
+                else bool(update_position)
+            )
+            if should_update_position and base_slot is not None:
                 dflash_accept_chain_i32_packed_update_state(
                     *accept_args,
                     self.verify_accept_payload_i32.ptr,

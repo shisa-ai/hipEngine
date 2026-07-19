@@ -168243,3 +168243,101 @@ and cached final-child profiling prove non-regression.
 
 Published diagnostic artifact:
 `benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-provider-residuals.json`.
+
+## 2026-07-20 — Implement PARO graph-owned selected commit and cursors
+
+Implemented the profile-selected N4+ ownership boundary behind the additional
+explicit/default-off `HIPENGINE_PARO_NATIVE_SPEC_TARGET_COMMIT=1` flag. The
+existing lazy gfx1100 `w4_paro/native_v1_target_graph` provider remains the
+four-axis admission point; the runner resolves that key rather than branching
+on backend. Only capture-width-zero, all-active, single-request FP16 PARO MTP
+with packed GPU accept, fused slot-0 linear commit, and the admitted provider can
+enter the new path. BF16 DFlash hidden taps, graph-off/tree/inactive shapes,
+unsupported pointers/shapes, control failure, and unregistered gfx1151 retain
+the exact existing path.
+
+Each eligible graph entry owns immutable combined source/destination pointer
+tables for all Conv/GDN state rows. The captured packed accept leaf updates
+resident position/context from the device commit position, then the existing
+chunked commit kernel reads the device commit row and copies the selected state.
+The bound ABI control now accurately declares
+`VERIFY|ACCEPT|COMMIT|UPDATE_CURSORS` and binds the graph-owned state tables plus
+bounded committed IDs/lengths and target cursor arrays. After a proven replay,
+Python reads the unchanged packed result and mirrors host cursor bookkeeping,
+but does not resubmit the state/position kernels or a second synchronization.
+The cycle-1 capture miss, validation/fallback paths, and ordinary N4 graph keep
+the old provider commit.
+
+RED before implementation:
+
+```text
+python3 -m pytest -q \
+  tests/test_native_spec_cycle_graph.py::test_provider_target_graph_launcher_accepts_paro_commit_cursor_bucket_only \
+  tests/test_qwen35_resident_batch_layout.py::test_paro_native_spec_target_commit_request_is_paro_registered_only \
+  tests/test_qwen35_resident_batch_layout.py::test_paro_native_spec_target_commit_uses_combined_graph_owned_tables \
+  tests/test_qwen35_resident_batch_layout.py::test_paro_native_spec_target_control_binds_shared_verify_accept_buffers
+  -> 4 failed (provider stages unsupported; request/commit/control contracts absent)
+```
+
+GREEN host/C++ gates:
+
+```text
+python3 -m pytest -q tests/test_native_spec_cycle.py \
+  tests/test_native_spec_cycle_graph.py tests/test_qwen35_resident_batch_layout.py
+  -> 193 passed
+python3 -m py_compile hipengine/speculative/native_cycle_graph.py \
+  hipengine/runtime/qwen35_paro_runner.py
+  -> pass
+```
+
+Exclusive GPU0/W7900 development gates used the current full8192 W4-PARO target
+plus matching MTP-BF16 sidecar, system HIP 7.2.53211, cached builds, strict
+GDN/linear/shared-expert controls, `c1_loop`, graph-auto, and CPU-oracle GPU
+accept validation:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 \
+  HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_BACKEND=hip_gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-mtp-w7900-hipcc-version.txt \
+  HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH=1 \
+  HIPENGINE_PARO_NATIVE_SPEC_TARGET_COMMIT=1 \
+  HIPENGINE_GDN_TLOOP_C1_EXACT=1 HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS=1 \
+  HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT=1 \
+  HIPENGINE_VERIFY_GPU_ACCEPT=validate PYTHONPATH=. \
+  python3 scripts/mtp_chain_e2e_smoke.py \
+    --model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 \
+    --prompt-tokens "$PROMPT" --decode-tokens 8 --candidate-budget 1 \
+    --proposal-impl persistent_device --backend hip_gfx1100 \
+    --chain-attn-mode c1_loop --graph-mode auto --require-cached-build \
+    --json /tmp/w7900-n4plus-commit-green-d8-dirty.json
+```
+
+Result: exact **8/8 AR IDs** with accept history `[0,0,0,0,0,0,1]`; all six
+post-capture replays use native `VERIFY|ACCEPT|COMMIT|UPDATE_CURSORS`, have no
+fallback, and match the CPU accept oracle. The same environment under
+`scripts/mtp_state_drift_audit.py --prompt-tokens 151646 --candidate-budget 2
+--compare-after-cycles 1,2,3 --max-cycles 3` passes corrections
+`[248050,19,19]`, all cursors, and each cycle's **60 resident Conv/GDN + 20 live
+KV + 60 scratch commit + 60 selected linear + 20 selected KV** comparisons.
+Cycles 2/3 use the expanded native graph.
+
+A dirty-tree cached final-child profile reused canonical B1/D24 and 16 steady
+windows (`region=cycle --steady-state-skip=2`). It is causal development
+evidence, not a clean retained benchmark:
+
+| Metric/pass | Neutral N4+ | Selected commit candidate | Change |
+| --- | ---: | ---: | ---: |
+| complete marker wall | 16.418 ms | **16.379 ms** | -0.039 ms (-0.24%) |
+| verify marker wall | 14.908 ms | **14.858 ms** | -0.050 ms (-0.33%) |
+| HIP API calls | 81.6875 | **75.6875** | -6.0 |
+| synchronizations | 2 | **1** | -1 |
+| host kernel submissions | 36.1875 | **34.1875** | -2 |
+| async copies | 3.3125 | **2.3125** | -1 |
+| total kernels | 1248.5 | **1247.5** | -1 position kernel |
+| kernel wall | 11.164 ms | 11.151 ms | within run variance |
+
+The required **~0.201 ms** state-copy kernel now executes before the graph's
+single terminal sync; it is not removed or relabeled as host savings. The
+mechanical API/sync/submission reduction and exact state gate justify retaining
+the implementation for the clean full-suite keep/revert task. No default or AR
+speed claim is made from this dirty one-run screen.

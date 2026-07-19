@@ -31,7 +31,8 @@ Those boundaries do not advance in lockstep. In particular:
   one target graph per cycle rather than one combined native submission.
 - the first `N4` slice is a cross-provider adapter for PARO MTP and DFlash, not
   a faster GGUF successor to `N3P`; N4+ has removed its measured Python/control
-  tax but does not yet beat the direct graph or own provider proposal/commit.
+  tax. A second explicit PARO-only candidate captures selected linear-state
+  `COMMIT|UPDATE_CURSORS`, but proposal plus DFlash hidden/KV commit remain open.
 
 In status reports and the benchmark rollup, retained reusable `N1R` is often
 shortened to **N1**. The original one-shot `N1` experiment is rejected and is
@@ -90,7 +91,7 @@ single-native-submission boundary.
 | `N2` | Device acceptance and selected-state commit | `VERIFY + ACCEPT + selected COMMIT + target cursors` | Proposal invocation and remaining MTP-KV repair/reseed/accounting | Exact ownership diagnostic |
 | `N3` | Complete GGUF cycle adapter | One scheduler-facing call owns `PROPOSE` through cursor/result accounting | Proposal child kernels still Python-submitted | Exact API-ownership diagnostic |
 | `N3P` | Reusable proposal graph | One proposal graph plus the existing target graph per cycle | Combined proposal+target submission; provider-general path | Exact submission-ownership diagnostic |
-| `N4` | Shared PARO MTP / DFlash adapters | Current slice wraps shared target `VERIFY + ACCEPT` through the common ABI | Provider proposal, selected state/KV/hidden commit, full-cycle ownership | gfx1100 strict B1/B2/B3 exact; N4+ cuts the old 0.216-0.447 ms/cycle adapter tax to a noise-scale 0.028-0.105 ms/cycle and removes the extra sync; still default-off, DFlash/gfx1151 ungated |
+| `N4` | Shared PARO MTP / DFlash adapters | Base slice wraps shared target `VERIFY + ACCEPT`; an explicit PARO-only candidate also captures selected linear-state `COMMIT + UPDATE_CURSORS` | Provider proposal and DFlash hidden/KV commit/full-cycle ownership | gfx1100 strict B1/B2/B3 exact; neutral N4+ cuts the old 0.216-0.447 ms/cycle adapter tax to 0.028-0.105 ms/cycle; selected-commit candidate is dirty-tree GREEN but not yet published; still default-off, DFlash/gfx1151 ungated |
 | `N5` | Multi-cycle native option | Native loop may continue to EOS, cancellation/deadline, output limit, or scheduler yield | Future work | Planned only after provider/backend gates |
 
 ## Milestone Details
@@ -227,12 +228,18 @@ VERIFY | ACCEPT
 ```
 
 Provider proposal, linear/KV/hidden commit, cursors, and scheduler results remain
-on the existing path. Eligible stable replays reuse one validated, state-bound
-ctypes control slab and mutate only cycle/transaction result identity. Graph
-capture/miss, graph-off, tree/inactive layouts, pointer/shape/stream drift,
-unsupported shape/backend, registry miss, and control-build failure rebuild and
-validate the full descriptor before retaining pre-launch direct fallback.
-gfx1151 remains unregistered.
+on the existing base path. Eligible stable replays reuse one validated,
+state-bound ctypes control slab and mutate only cycle/transaction result
+identity. A second explicit `HIPENGINE_PARO_NATIVE_SPEC_TARGET_COMMIT=1` slice
+applies only to capture-width-zero FP16 PARO MTP: graph-owned combined source/
+destination pointer tables let the accept graph copy the selected Conv/GDN row
+and update device position/context, accurately declaring
+`VERIFY|ACCEPT|COMMIT|UPDATE_CURSORS`. The host mirrors only bounded cursor
+bookkeeping. BF16 DFlash hidden taps and hidden/KV repair remain on their exact
+provider path. Graph capture/miss, graph-off, tree/inactive layouts,
+pointer/shape/stream drift, unsupported shape/backend, registry miss, and
+control-build failure rebuild and validate the full descriptor before retaining
+pre-launch direct fallback. gfx1151 remains unregistered.
 
 `N4` is therefore a cross-provider compatibility milestone, not a numerical
 successor that should be compared directly with GGUF `N3P` throughput.
@@ -531,7 +538,20 @@ Strict B1 remains far below true AR and N4+ has no measured advantage over the
 direct graph, so N4 stays explicit/default-off. Provider proposal/commit,
 DFlash, and gfx1151 remain independent gates.
 
+The next residual profile attributes **0.370 ms/cycle** to selected commit and
+cursor handling: **0.201 ms** is the required chunked state-copy kernel and
+**0.208 ms** is the second synchronization. The explicit PARO commit candidate
+therefore folds state commit and device cursor update into the target graph. Its
+first dirty-tree B1/D24 child is exact, changes the complete marker window
+**16.418 -> 16.379 ms/pass**, and mechanically changes HIP API calls
+**81.6875 -> 75.6875**, synchronizations **2 -> 1**, post-graph kernel submits
+**2 -> 0**, and total kernels **1248.5 -> 1247.5 per pass**. A three-cycle B2
+state/KV/cursor audit is also exact. These are implementation-selection signals,
+not a clean retained performance publication; the full canonical and matched
+clean gates still decide keep/revert.
+
 [`N4+ bound-control gate`](../benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-bound-control.json)
+· [`provider residual attribution`](../benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-provider-residuals.json)
 · [`N4 uncontended baseline`](../benchmarks/results/2026-07-20-w7900-paro-mtp-n4-uncontended-baseline.json)
 
 ## gfx1151 Status
