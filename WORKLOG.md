@@ -165788,3 +165788,47 @@ matching the reused production driver, with a regression assertion. Focused
 new/production harness validation is `15 passed`; `py_compile` and
 `git diff --check` pass. Next is the same 1K/c2 + 4K/c2 clean diagnostic from
 the repaired commit; no 32K/64K run is justified until it is green.
+
+## 2026-07-19 — Enable native GGUF packed AR beyond 1K
+
+The repaired clean short diagnostic at `b3e3a6a0` completed exact 1K/c2 and
+4K/c2 output, exact server counters, dynamic grow/shrink, memory recovery, and
+final zero ownership, but both rows failed only
+`native_route_evidence_failed`: every decode step took the c1-serial
+`packed_decode_unavailable` fallback. `step_batch_native` and the shared
+full-attention batch layer had explicit context-1024 stops even though the
+row-major `KVLiveSpans` split-K GQA producer was already retained.
+
+Added the missing BF16 batched gated-reducer entry, registered it through the
+four-axis kernel registry, and gave packed AR a bounded row x split workspace.
+The short-context context-batch kernel is unchanged; contexts >=1024 now use
+the existing split-K batch producer plus the BF16 reducer. The primitive gate
+at uneven 1017/1021/1024/1025 live counts is bit-exact against independent c1
+for both BF16 and the existing FP16 control. Cached gfx1151 `rocprofv3` records
+the producer at **262.972 us** (grid Z 4) and the new
+`qwen35_paged_full_attn_decode_split_k_reduce_gate_batch_kernel<hip_bfloat16>`
+at **12.143 us** (grid Y 4), both with 256-thread workgroups.
+
+The first dirty model diagnostic exposed a second, lifecycle-only bug: after
+the first exact packed step, capacity grew by one token, freed deferred
+canonical packed state, then imported stale per-session state. A one-step
+1024/c2 all-layer oracle was exact across all **80/80** layer rows, while the
+32-step oracle diverged on its second cycle. Packed capacity now rounds to the
+next 256-token page, and any eventual resize scatters deferred state before
+freeing the old workspace. The repaired direct 1024/c2 d32 gate is exact for
+tokens, final Conv/GDN state, and live KV across all 32 native manifests with
+zero scalar fallback.
+
+The real-Uvicorn dirty diagnostic then passes both selected rows:
+
+```text
+context_1k_c2: 17.615209 exact tok/s, 31 native packed steps, 0 serial fallback
+context_4k_c2:  8.109523 exact tok/s, 31 additional native packed steps, 0 serial fallback
+server accounting / grow-shrink / memory recovery / final ownership: passed
+```
+
+The artifact top-level remains failed solely because source provenance is dirty,
+so these rates are diagnostics, not retained performance. Host RED failed on
+the missing BF16 wrapper/workspace; focused runner, kernel-plan, layout,
+generation, and script contracts are GREEN. Next is a clean-commit short rerun,
+then the mixed/32K/pressure/regrow packet; no 32K/64K claim exists yet.

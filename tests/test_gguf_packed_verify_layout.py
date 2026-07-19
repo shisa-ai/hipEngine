@@ -13,12 +13,14 @@ from hipengine.runtime.qwen35_gguf_runner import (
     FULL_ATTENTION,
     LINEAR_ATTENTION,
     Qwen35GGUFPackedPrefillResult,
+    _GGUFPackedARAttentionWorkspace,
     _GGUFPackedTargetState,
     _GGUFPackedVerifySlotBlock,
     _GGUFFullAttentionPrefillScratch,
     _HipEventStageRecorder,
     _build_gguf_packed_verify_layout,
     _packed_ar_prefill_linear_state_plan,
+    _packed_ar_slot_capacity,
     _packed_decode_metadata_device_eligible,
     _plan_packed_ar_prefill_chunks,
     _scatter_packed_layer_output_hidden,
@@ -178,6 +180,21 @@ def test_gguf_packed_verify_layout_supports_variable_rows() -> None:
     np.testing.assert_array_equal(layout.live_counts, np.asarray([5, 6, 7, 3], dtype=np.int64))
     np.testing.assert_array_equal(layout.cu_seqlens, np.asarray([0, 3, 4], dtype=np.int32))
     assert layout.blocks_per_slot == 2
+
+
+def test_gguf_packed_ar_slot_capacity_rounds_without_per_token_reallocation() -> None:
+    assert _packed_ar_slot_capacity(1) == 1024
+    assert _packed_ar_slot_capacity(1024) == 1024
+    assert _packed_ar_slot_capacity(1025) == 1280
+    assert _packed_ar_slot_capacity(1279) == 1280
+    assert _packed_ar_slot_capacity(1280) == 1280
+    assert _packed_ar_slot_capacity(1281) == 1536
+
+
+@pytest.mark.parametrize("max_live_count", (0, -1))
+def test_gguf_packed_ar_slot_capacity_rejects_invalid_context(max_live_count: int) -> None:
+    with pytest.raises(ValueError, match="max_live_count"):
+        _packed_ar_slot_capacity(max_live_count)
 
 
 def test_gguf_packed_decode_device_metadata_requires_singleton_c4_layout() -> None:
@@ -615,6 +632,121 @@ def test_gguf_prefill_scratch_uploads_packed_verify_layout(monkeypatch) -> None:
     assert args[9] == 4
     assert kwargs["stream"] == 7
     assert device_view.metadata_prepare_path == "device_prepare_persistent"
+
+
+def test_gguf_packed_ar_attention_workspace_sizes_rows_and_long_context_splits(
+    monkeypatch,
+) -> None:
+    next_ptr = 0x180000
+    allocations: list[DeviceBuffer] = []
+
+    def fake_malloc(nbytes: int, *, runtime):
+        nonlocal next_ptr
+        buffer = DeviceBuffer(ptr=next_ptr, nbytes=int(nbytes))
+        next_ptr += max(8, int(nbytes) + 8)
+        allocations.append(buffer)
+        return buffer
+
+    monkeypatch.setattr(gguf_runner, "malloc", fake_malloc)
+    runner = SimpleNamespace(
+        q_width=4096,
+        weights=SimpleNamespace(config=SimpleNamespace(head_count=16)),
+    )
+
+    workspace = _GGUFPackedARAttentionWorkspace.allocate(
+        runner,
+        rows=2,
+        max_context_len=1025,
+        runtime=SimpleNamespace(),
+    )
+
+    assert workspace.rows == 2
+    assert workspace.chunk_size == 256
+    assert workspace.num_splits == 5
+    assert [buffer.nbytes for buffer in allocations] == [
+        2 * 4096 * 5 * 4,
+        2 * 16 * 5 * 4,
+        2 * 16 * 5 * 4,
+    ]
+    assert workspace.buffers == tuple(allocations)
+
+
+@pytest.mark.parametrize(
+    ("rows", "max_context_len", "match"),
+    ((0, 1, "rows"), (1, 0, "max_context_len")),
+)
+def test_gguf_packed_ar_attention_workspace_rejects_invalid_shape(
+    monkeypatch, rows: int, max_context_len: int, match: str
+) -> None:
+    monkeypatch.setattr(
+        gguf_runner,
+        "malloc",
+        lambda nbytes, *, runtime: DeviceBuffer(ptr=1, nbytes=int(nbytes)),
+    )
+    runner = SimpleNamespace(
+        q_width=4096,
+        weights=SimpleNamespace(config=SimpleNamespace(head_count=16)),
+    )
+
+    with pytest.raises(ValueError, match=match):
+        _GGUFPackedARAttentionWorkspace.allocate(
+            runner,
+            rows=rows,
+            max_context_len=max_context_len,
+            runtime=SimpleNamespace(),
+        )
+
+
+def test_gguf_packed_workspace_resize_scatters_deferred_decode_state_first(
+    monkeypatch,
+) -> None:
+    owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.runner = SimpleNamespace()
+    owner._packed_verify_state = SimpleNamespace(slot_count=1, max_sequence_length=1024)
+    owner._packed_verify_scratch = SimpleNamespace(
+        rows=1,
+        max_positions=1024,
+        gdn_segment_capacity=1,
+    )
+    owner._packed_decode_state_dirty = True
+    events: list[tuple[object, ...]] = []
+
+    def fake_flush(self, *, stream=0):
+        events.append(("flush", int(stream)))
+        self._packed_decode_state_dirty = False
+        return True
+
+    def fake_free(self, *, runtime):
+        events.append(("free", runtime))
+        self._packed_verify_state = None
+        self._packed_verify_scratch = None
+
+    owner.flush_packed_decode_state = MethodType(fake_flush, owner)
+    owner._free_packed_verify_workspace = MethodType(fake_free, owner)
+    new_state = SimpleNamespace(name="state")
+    new_scratch = SimpleNamespace(name="scratch")
+    monkeypatch.setattr(
+        gguf_runner._GGUFPackedTargetState,
+        "allocate",
+        lambda *args, **kwargs: new_state,
+    )
+    monkeypatch.setattr(
+        gguf_runner._GGUFFullAttentionPrefillScratch,
+        "allocate",
+        lambda *args, **kwargs: new_scratch,
+    )
+    runtime = SimpleNamespace(name="runtime")
+
+    state, scratch = owner._ensure_packed_verify_workspace(
+        slot_count=1,
+        rows=1,
+        max_sequence_length=1280,
+        runtime=runtime,
+        stream=7,
+    )
+
+    assert (state, scratch) == (new_state, new_scratch)
+    assert events == [("flush", 7), ("free", runtime)]
 
 
 def test_gguf_packed_target_state_allocates_per_slot_state(monkeypatch) -> None:
