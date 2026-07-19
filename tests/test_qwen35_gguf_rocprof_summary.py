@@ -78,6 +78,11 @@ def _write_csv(path: Path, rows: Sequence[dict[str, object]]) -> None:
 @pytest.mark.parametrize(
     "name,expected",
     [
+        # Raw-IQ selected direct GEMV (UD-Q3_K_M).
+        ("gguf_iq3_xxs_selected_gemv_kernel", "moe_iq3_xxs_selected_single"),
+        ("gguf_iq3_xxs_selected_dual_silu_gemv_kernel", "moe_iq3_xxs_selected_dual_silu"),
+        ("gguf_iq4_xs_selected_gemv_kernel", "moe_iq4_xs_selected_single"),
+        ("gguf_iq4_xs_weighted_selected_down_kernel", "moe_iq4_xs_weighted_down"),
         # MoE compact selected -- P8 WMMA prefill and P9.B GEMV decode + legacy
         ("gguf_q4_k_selected_dual_wmma_prefill_compact_kernel<unsigned short>", "moe_q4_k_selected_dual_wmma_prefill"),
         ("gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel<unsigned short>", "moe_q4_k_selected_dual_wmma_prefill"),
@@ -277,6 +282,15 @@ def test_summary_single_csv_prefill_phase(tmp_path: Path) -> None:
     # ms/token populated.
     for b in phase["buckets"]:
         assert b["ms_per_token"] == pytest.approx(b["total_ms"] / 512, abs=1e-6)
+
+
+def test_iq_default_footprints_use_exact_encoded_block_bytes() -> None:
+    footprints = SCRIPT._QWEN36_35B_A3B_DEFAULT_FOOTPRINTS_PER_DISPATCH
+
+    assert footprints["moe_iq3_xxs_selected_single"] == 8 * 512 * (2048 // 256) * 98
+    assert footprints["moe_iq3_xxs_selected_dual_silu"] == 8 * 2 * 512 * (2048 // 256) * 98
+    assert footprints["moe_iq4_xs_selected_single"] == 8 * 2048 * (512 // 256) * 136
+    assert footprints["moe_iq4_xs_weighted_down"] == 8 * 2048 * (512 // 256) * 136
 
 
 def test_summary_effective_gb_s_uses_footprint_overrides(tmp_path: Path) -> None:

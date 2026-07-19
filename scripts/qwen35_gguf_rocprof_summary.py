@@ -18,9 +18,10 @@ Outputs (per phase):
   attention, etc.).
 * Optional **back-calculated effective GB/s** per bucket, using the
   methodology in ``docs/ROOFLINE.md`` 12.4. Footprints come from a small
-  built-in dict tuned for Qwen3.6-35B-A3B-UD-Q4_K_M; override or extend via
-  ``--config-json``. Buckets without a known per-dispatch footprint emit
-  ``None`` for ``effective_gb_s`` to make missing data visible.
+  built-in dict covering the Qwen3.6-35B-A3B UD-Q4_K_M and UD-Q3_K_M c=1
+  weight paths; override or extend via ``--config-json``. Buckets without a
+  known per-dispatch footprint emit ``None`` for ``effective_gb_s`` to make
+  missing data visible.
 
 Single-CSV mode produces only a ``"prefill"`` phase block. Paired mode
 produces both ``"prefill"`` and ``"decode"`` blocks (the typical 512/0 vs
@@ -44,9 +45,11 @@ from typing import Any, Iterable
 
 SCHEMA = "p9_gguf_rocprof_summary_v1"
 
-# Default per-dispatch byte footprints for Qwen3.6-35B-A3B-UD-Q4_K_M, used for
-# back-calculated effective GB/s. ``None`` means "no known per-dispatch
-# footprint -- omit GB/s". Override via ``--config-json``.
+# Default c=1 per-dispatch byte footprints for Qwen3.6-35B-A3B UD-Q4_K_M and
+# UD-Q3_K_M, used for back-calculated effective GB/s. ``None`` means "no known
+# per-dispatch footprint -- omit GB/s". Direct x_rows>1 prefill rereads these
+# selected expert bytes per token and must override the IQ footprints with the
+# measured launch's x_rows multiplier via ``--config-json``.
 #
 # The values come from the model config (hidden_size=2048,
 # expert_ffn=4096, top_k=8, shared_ffn=4096) crossed with the GGUF block
@@ -54,6 +57,14 @@ SCHEMA = "p9_gguf_rocprof_summary_v1"
 # B/w, Q6_K ~0.8203 B/w, Q8_0 ~1.0625 B/w. Per-block headers (d/dmin/scales)
 # are amortised over 256 K's so the effective average dominates.
 _QWEN36_35B_A3B_DEFAULT_FOOTPRINTS_PER_DISPATCH: dict[str, int | None] = {
+    # ------------------------------------------------------- Raw IQ3/IQ4 MoE
+    # UD-Q3_K_M uses hidden=2048, expert_ffn=512, top_k=8. IQ3_XXS encodes
+    # 256 values in 98 bytes; IQ4_XS encodes 256 values in 136 bytes. Gate/up
+    # and down have the same 2048*512 weight count per selected expert.
+    "moe_iq3_xxs_selected_single": 8 * 512 * (2048 // 256) * 98,
+    "moe_iq3_xxs_selected_dual_silu": 8 * 2 * 512 * (2048 // 256) * 98,
+    "moe_iq4_xs_selected_single": 8 * 2048 * (512 // 256) * 136,
+    "moe_iq4_xs_weighted_down": 8 * 2048 * (512 // 256) * 136,
     # ------------------------------------------------------------------ MoE
     # Compact selected dual gate+up (P9.B1) and the matching WMMA prefill
     # (P8.4). One dispatch processes one compact tile across all active
@@ -224,6 +235,15 @@ def classify_kernel(name: str) -> str:
 
     lower = name.lower()
     base = _normalise_kernel_name(lower)
+    # -------------------------------------------- GGUF raw IQ3_XXS / IQ4_XS
+    if "gguf_iq3_xxs_selected_dual_silu_gemv" in base:
+        return "moe_iq3_xxs_selected_dual_silu"
+    if "gguf_iq3_xxs_selected_gemv" in base:
+        return "moe_iq3_xxs_selected_single"
+    if "gguf_iq4_xs_weighted_selected_down" in base:
+        return "moe_iq4_xs_weighted_down"
+    if "gguf_iq4_xs_selected_gemv" in base:
+        return "moe_iq4_xs_selected_single"
     # ------------------------------------------------------ GGUF Q4_K MoE
     if (
         "gguf_q4_k_selected_dual_wmma_prefill_compact" in base
