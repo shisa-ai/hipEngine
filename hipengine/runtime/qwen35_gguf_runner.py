@@ -8286,6 +8286,38 @@ def _gguf_device_kv_copy_segments(
 
 
 @dataclass
+class Qwen35GGUFPrefixStateSnapshot:
+    """Cache-owned device snapshot for one exact GGUF hybrid-state boundary."""
+
+    runtime: HipRuntime
+    runner: object
+    kv_storage_dtype: DType
+    kv_storage_layout: str
+    position: int
+    block_ids: tuple[int, ...]
+    backing: object
+    layer_conv_states: tuple[DeviceBuffer | None, ...]
+    layer_recurrent_states: tuple[DeviceBuffer | None, ...]
+    closed: bool = False
+
+    @property
+    def nbytes(self) -> int:
+        return sum(
+            int(buffer.nbytes)
+            for buffer in (*self.layer_conv_states, *self.layer_recurrent_states)
+            if buffer is not None
+        )
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        for buffer in reversed((*self.layer_conv_states, *self.layer_recurrent_states)):
+            if buffer is not None:
+                free(buffer, runtime=self.runtime)
+        self.closed = True
+
+
+@dataclass
 class Qwen35GGUFResidentSession:
     """Persistent GGUF Qwen3.5 session for public greedy generation.
 
@@ -8700,6 +8732,209 @@ class Qwen35GGUFResidentSession:
         self._device_kv_pool = pool
         self._device_kv_allocation = allocation
 
+    def capture_prefix_state_snapshot(
+        self,
+        *,
+        position: int | None = None,
+        stream: int = 0,
+    ) -> Qwen35GGUFPrefixStateSnapshot:
+        """Capture cache-owned Conv/GDN state at the exact current KV boundary."""
+
+        if self.scratch is None:
+            raise RuntimeError("GGUF prefix snapshot requires a live resident session")
+        boundary = int(self.position if position is None else position)
+        if boundary != int(self.position):
+            raise ValueError("GGUF prefix snapshot position must equal the current boundary")
+        if boundary <= 0 or boundary % 256 != 0:
+            raise ValueError("GGUF prefix snapshot requires a positive 256-token-aligned boundary")
+        if boundary >= int(self.scratch.max_positions):
+            raise ValueError("GGUF prefix snapshot boundary leaves no continuation capacity")
+        if bool(getattr(self, "_packed_decode_state_dirty", False)):
+            raise RuntimeError("GGUF prefix snapshot source has unflushed packed state")
+        allocation = self._device_kv_allocation
+        if allocation is None:
+            raise RuntimeError("GGUF prefix snapshot requires bound device KV")
+        prefix_pages = boundary // 256
+        block_ids = tuple(int(block_id) for block_id in allocation.block_ids[:prefix_pages])
+        if len(block_ids) != prefix_pages:
+            raise ValueError("GGUF prefix snapshot allocation does not cover its boundary")
+
+        runtime = self.runtime or get_hip_runtime()
+        conv_backups: list[DeviceBuffer | None] = []
+        recurrent_backups: list[DeviceBuffer | None] = []
+        allocated: list[DeviceBuffer] = []
+        try:
+            for layer_id, (conv_state, recurrent_state) in enumerate(
+                zip(
+                    self.scratch.layer_conv_states,
+                    self.scratch.layer_recurrent_states,
+                    strict=True,
+                )
+            ):
+                if (conv_state is None) != (recurrent_state is None):
+                    raise ValueError(
+                        f"GGUF prefix snapshot partial linear state at layer {layer_id}"
+                    )
+                if conv_state is None:
+                    conv_backups.append(None)
+                    recurrent_backups.append(None)
+                    continue
+                assert recurrent_state is not None
+                conv_backup = malloc(conv_state.nbytes, runtime=runtime)
+                allocated.append(conv_backup)
+                recurrent_backup = malloc(recurrent_state.nbytes, runtime=runtime)
+                allocated.append(recurrent_backup)
+                conv_backups.append(conv_backup)
+                recurrent_backups.append(recurrent_backup)
+                runtime.memcpy_async(
+                    conv_backup.ptr,
+                    conv_state.ptr,
+                    conv_state.nbytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    int(stream),
+                )
+                runtime.memcpy_async(
+                    recurrent_backup.ptr,
+                    recurrent_state.ptr,
+                    recurrent_state.nbytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    int(stream),
+                )
+            if stream:
+                runtime.stream_synchronize(int(stream))
+            else:
+                runtime.device_synchronize()
+        except Exception:
+            for buffer in reversed(allocated):
+                free(buffer, runtime=runtime)
+            raise
+        return Qwen35GGUFPrefixStateSnapshot(
+            runtime=runtime,
+            runner=self.runner,
+            kv_storage_dtype=self.kv_storage_dtype,
+            kv_storage_layout=self.kv_storage_layout,
+            position=boundary,
+            block_ids=block_ids,
+            backing=allocation.backing,
+            layer_conv_states=tuple(conv_backups),
+            layer_recurrent_states=tuple(recurrent_backups),
+        )
+
+    def clone_prefix_state_from_snapshot(
+        self,
+        snapshot: Qwen35GGUFPrefixStateSnapshot,
+        *,
+        stream: int = 0,
+    ) -> int:
+        """Restore an exact historical hybrid boundary beside shared KV pages."""
+
+        if snapshot.closed:
+            raise RuntimeError("GGUF prefix state snapshot is closed")
+        if self.scratch is None:
+            raise RuntimeError("GGUF prefix snapshot clone requires a live destination")
+        boundary = int(snapshot.position)
+        if boundary <= 0 or boundary % 256 != 0:
+            raise ValueError("GGUF prefix clone requires a positive 256-token-aligned boundary")
+        if boundary >= int(self.scratch.max_positions):
+            raise ValueError("GGUF prefix clone boundary exceeds destination capacity")
+        runtime = self.runtime or get_hip_runtime()
+        if snapshot.runner is not self.runner or snapshot.runtime is not runtime:
+            raise ValueError("GGUF prefix snapshot clone requires one runner and HIP runtime")
+        if snapshot.kv_storage_dtype != self.kv_storage_dtype:
+            raise ValueError("GGUF prefix snapshot clone requires matching KV storage dtype")
+        if snapshot.kv_storage_layout != self.kv_storage_layout:
+            raise ValueError("GGUF prefix snapshot clone requires matching KV storage layout")
+        if int(self.position) != 0:
+            raise ValueError("GGUF prefix clone destination must be reset")
+        if bool(getattr(self, "_packed_decode_state_dirty", False)):
+            raise RuntimeError("GGUF prefix clone destination has unflushed packed state")
+        if self._device_kv_graph_handles or any(
+            not bool(getattr(graph, "closed", False))
+            for graph in tuple(self._decode_graphs)
+        ):
+            raise RuntimeError("GGUF prefix clone destination still owns live graphs")
+        allocation = self._device_kv_allocation
+        if allocation is None:
+            raise RuntimeError("GGUF prefix snapshot clone requires bound device KV")
+        if (
+            tuple(int(block_id) for block_id in allocation.reused_block_ids)
+            != snapshot.block_ids
+        ):
+            raise ValueError("GGUF prefix clone allocation does not share the snapshot boundary")
+        if (
+            tuple(
+                int(block_id)
+                for block_id in allocation.block_ids[: len(snapshot.block_ids)]
+            )
+            != snapshot.block_ids
+        ):
+            raise ValueError("GGUF prefix clone block table does not match the snapshot")
+        if allocation.backing is not snapshot.backing:
+            raise ValueError("GGUF prefix snapshot and destination must share one backing")
+
+        destination_conv = tuple(self.scratch.layer_conv_states)
+        destination_recurrent = tuple(self.scratch.layer_recurrent_states)
+        if not (
+            len(destination_conv)
+            == len(destination_recurrent)
+            == len(snapshot.layer_conv_states)
+            == len(snapshot.layer_recurrent_states)
+        ):
+            raise ValueError("GGUF prefix snapshot linear-state layer count mismatch")
+        copied_bytes = 0
+        for layer_id, (dst_conv, dst_recurrent, src_conv, src_recurrent) in enumerate(
+            zip(
+                destination_conv,
+                destination_recurrent,
+                snapshot.layer_conv_states,
+                snapshot.layer_recurrent_states,
+                strict=True,
+            )
+        ):
+            if (dst_conv is None) != (src_conv is None) or (
+                (dst_recurrent is None) != (src_recurrent is None)
+            ):
+                raise ValueError(
+                    f"GGUF prefix snapshot linear-state layout mismatch at layer {layer_id}"
+                )
+            if dst_conv is None:
+                if not (
+                    dst_recurrent is None and src_conv is None and src_recurrent is None
+                ):
+                    raise ValueError(
+                        f"GGUF prefix snapshot partial linear state at layer {layer_id}"
+                    )
+                continue
+            assert dst_recurrent is not None
+            assert src_conv is not None and src_recurrent is not None
+            if int(dst_conv.nbytes) != int(src_conv.nbytes):
+                raise ValueError(f"GGUF prefix snapshot Conv size mismatch at layer {layer_id}")
+            if int(dst_recurrent.nbytes) != int(src_recurrent.nbytes):
+                raise ValueError(
+                    f"GGUF prefix snapshot recurrent size mismatch at layer {layer_id}"
+                )
+            runtime.memcpy_async(
+                dst_conv.ptr,
+                src_conv.ptr,
+                src_conv.nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                int(stream),
+            )
+            runtime.memcpy_async(
+                dst_recurrent.ptr,
+                src_recurrent.ptr,
+                src_recurrent.nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                int(stream),
+            )
+            copied_bytes += int(src_conv.nbytes) + int(src_recurrent.nbytes)
+        self._commit_prefix_state_clone(boundary, stream=int(stream))
+        if stream:
+            runtime.stream_synchronize(int(stream))
+        else:
+            runtime.device_synchronize()
+        return copied_bytes
+
     def clone_prefix_state_from(
         self,
         source: "Qwen35GGUFResidentSession",
@@ -8810,8 +9045,12 @@ class Qwen35GGUFResidentSession:
                 int(stream),
             )
             copied_bytes += int(origin.nbytes)
-        self._set_full_attention_position_device(boundary, stream=int(stream))
-        self._position = boundary
+        self._commit_prefix_state_clone(boundary, stream=int(stream))
+        return copied_bytes
+
+    def _commit_prefix_state_clone(self, boundary: int, *, stream: int) -> None:
+        self._set_full_attention_position_device(int(boundary), stream=int(stream))
+        self._position = int(boundary)
         self._hidden_seed_fp32_populated = False
         self._last_pre_output_norm_hidden = None
         self._last_layer_output_hidden = {}
@@ -8826,7 +9065,6 @@ class Qwen35GGUFResidentSession:
         self.last_packed_execution_manifest = {}
         self._last_packed_lm_head_decode_path = "unobserved"
         self._last_packed_sampler_decode_path = "unobserved"
-        return copied_bytes
 
     def invalidate_device_kv_graphs(self) -> int:
         """Close every graph that pins this session's current KV allocation."""

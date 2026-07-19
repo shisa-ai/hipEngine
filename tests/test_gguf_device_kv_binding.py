@@ -16,9 +16,29 @@ from hipengine.runtime import qwen35_gguf_runner as gguf_runner
 class _FakeRuntime:
     def __init__(self) -> None:
         self.memcpy_async_calls: list[tuple[int, int, int, object, int]] = []
+        self.malloc_calls: list[int] = []
+        self.free_calls: list[int] = []
+        self.device_synchronize_calls = 0
+        self.stream_synchronize_calls: list[int] = []
+        self._next_ptr = 0x9000
+
+    def malloc(self, nbytes: int) -> int:
+        ptr = self._next_ptr
+        self._next_ptr += 0x1000
+        self.malloc_calls.append(int(nbytes))
+        return ptr
+
+    def free(self, ptr: int) -> None:
+        self.free_calls.append(int(ptr))
 
     def memcpy_async(self, dst: int, src: int, nbytes: int, kind: object, stream: int) -> None:
         self.memcpy_async_calls.append((int(dst), int(src), int(nbytes), kind, int(stream)))
+
+    def device_synchronize(self) -> None:
+        self.device_synchronize_calls += 1
+
+    def stream_synchronize(self, stream: int) -> None:
+        self.stream_synchronize_calls.append(int(stream))
 
 
 @dataclass(frozen=True)
@@ -167,3 +187,90 @@ def test_gguf_prefix_state_clone_copies_exact_current_hybrid_boundary(monkeypatc
 
     with pytest.raises(ValueError, match="current source boundary"):
         destination.clone_prefix_state_from(source, position=256)
+
+
+def test_gguf_prefix_state_snapshot_outlives_source_session_and_restores_boundary(
+    monkeypatch,
+) -> None:
+    runtime = _FakeRuntime()
+    shared_runner = object()
+    shared_backing = object()
+
+    def make_session(*, state_base: int, allocation) -> gguf_runner.Qwen35GGUFResidentSession:
+        session = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+        session.runtime = runtime
+        session.runner = shared_runner
+        session.scratch = SimpleNamespace(
+            max_positions=1024,
+            layer_conv_states=(DeviceBuffer(state_base, 64), None),
+            layer_recurrent_states=(DeviceBuffer(state_base + 0x200, 128), None),
+            position_host=np.zeros((1,), dtype=np.int64),
+            context_host=np.ones((1,), dtype=np.int64),
+            position_buf=DeviceBuffer(state_base + 0x800, 8),
+            context_buf=DeviceBuffer(state_base + 0x900, 8),
+        )
+        session.kv_storage_dtype = DType.BF16
+        session.kv_storage_layout = "uniform"
+        session._device_kv_allocation = allocation
+        session._device_kv_pool = object()
+        session._device_kv_graph_handles = {}
+        session._decode_graphs = []
+        session._packed_decode_state_dirty = False
+        session._runtime_state_library = object()
+        session._position = 0
+        session._hidden_seed_fp32_populated = True
+        session._last_pre_output_norm_hidden = np.ones((1, 1), dtype=np.float32)
+        session._last_layer_output_hidden = {0: np.ones((1, 1), dtype=np.float32)}
+        return session
+
+    source = make_session(
+        state_base=0x1000,
+        allocation=SimpleNamespace(
+            block_ids=(8, 9),
+            backing=shared_backing,
+            reused_block_ids=(),
+        ),
+    )
+    destination = make_session(
+        state_base=0x5000,
+        allocation=SimpleNamespace(
+            block_ids=(8, 10),
+            backing=shared_backing,
+            reused_block_ids=(8,),
+        ),
+    )
+    source._position = 256
+    source.scratch.position_host[0] = 256
+    source.scratch.context_host[0] = 257
+    position_calls: list[tuple[int, int, int, int]] = []
+    monkeypatch.setattr(
+        gguf_runner,
+        "set_decode_position_i64",
+        lambda position_ptr, context_ptr, position, *, stream, **kwargs: position_calls.append(
+            (int(position_ptr), int(context_ptr), int(position), int(stream))
+        ),
+    )
+
+    snapshot = source.capture_prefix_state_snapshot()
+    assert snapshot.position == 256
+    assert snapshot.block_ids == (8,)
+    assert snapshot.nbytes == 192
+    assert runtime.malloc_calls == [64, 128]
+    assert runtime.device_synchronize_calls == 1
+
+    source._position = 0
+    copied_bytes = destination.clone_prefix_state_from_snapshot(snapshot, stream=7)
+    assert copied_bytes == 192
+    assert destination.position == 256
+    assert position_calls == [(0x5800, 0x5900, 256, 7)]
+    assert runtime.stream_synchronize_calls == [7]
+    assert runtime.memcpy_async_calls[-2:] == [
+        (0x5000, 0x9000, 64, gguf_runner.HipMemcpyKind.DEVICE_TO_DEVICE, 7),
+        (0x5200, 0xA000, 128, gguf_runner.HipMemcpyKind.DEVICE_TO_DEVICE, 7),
+    ]
+
+    snapshot.close()
+    assert snapshot.closed is True
+    assert runtime.free_calls == [0xA000, 0x9000]
+    with pytest.raises(RuntimeError, match="closed"):
+        destination.clone_prefix_state_from_snapshot(snapshot)

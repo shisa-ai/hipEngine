@@ -3801,6 +3801,23 @@ class _GGUFResidentSessionLease:
 
 
 @dataclass(slots=True)
+class _GGUFPrefixSnapshotEntry:
+    tokens: tuple[int, ...]
+    block_ids: tuple[int, ...]
+    snapshot: Any
+    owner_request_id: int | None
+    retained: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class _GGUFPrefixReuseSource:
+    matched_tokens: tuple[int, ...]
+    block_ids: tuple[int, ...]
+    source_row: _GGUFResidentLoopRow | None = None
+    snapshot: Any | None = None
+
+
+@dataclass(slots=True)
 class _GGUFResidentLoopRow:
     request_id: int
     batch_id: int
@@ -3827,6 +3844,7 @@ class _GGUFResidentLoopRow:
     prefix_reused_tokens: int = 0
     prefix_source_request_id: int | None = None
     prefix_state_clone_bytes: int = 0
+    prefix_snapshot_hit: bool = False
 
 
 class Qwen35GGUFResidentModelRunner:
@@ -3860,6 +3878,10 @@ class Qwen35GGUFResidentModelRunner:
         self._engine_loop_config: Any | None = None
         self._prefix_cache_mode = "off"
         self._prefix_cache: RadixCache | None = None
+        self._prefix_state_snapshots: dict[tuple[int, ...], _GGUFPrefixSnapshotEntry] = {}
+        self._prefix_snapshot_limit = max(1, int(capacity))
+        self._prefix_snapshot_hits = 0
+        self._prefix_snapshot_evictions = 0
         self._prefix_usable_hits = 0
         self._prefix_unusable_hits = 0
         self._prefix_admission_fallbacks = 0
@@ -4026,6 +4048,13 @@ class Qwen35GGUFResidentModelRunner:
                 "admission_fallbacks": int(self._prefix_admission_fallbacks),
                 "reused_tokens": int(self._prefix_reused_tokens),
                 "state_clone_bytes": int(self._prefix_state_clone_bytes),
+                "snapshot_entries": len(self._prefix_state_snapshots),
+                "snapshot_hits": int(self._prefix_snapshot_hits),
+                "snapshot_evictions": int(self._prefix_snapshot_evictions),
+                "snapshot_bytes": sum(
+                    int(getattr(entry.snapshot, "nbytes", 0))
+                    for entry in self._prefix_state_snapshots.values()
+                ),
             },
             "graph_buckets": {
                 "entries": int(sum(active_entries.values())),
@@ -4100,6 +4129,7 @@ class Qwen35GGUFResidentModelRunner:
 
         if self._rows:
             raise RuntimeError("cannot configure GGUF device KV pool while requests are active")
+        self._clear_prefix_snapshots()
         self._engine_loop_config = config
         self._prefix_cache_mode = resolve_prefix_cache_mode(
             getattr(config, "prefix_cache", "off")
@@ -4162,12 +4192,12 @@ class Qwen35GGUFResidentModelRunner:
         pages = (positions + 255) // 256
         prefix_source = self._prefix_source_for(row)
         if prefix_source is not None:
-            matched_tokens, source_row = prefix_source
+            matched_tokens = prefix_source.matched_tokens
             prefix_pages = len(matched_tokens) // 256
             try:
                 allocation = pool.admit_with_shared_prefix(
                     row.request_id,
-                    source_row.kv_allocation.block_ids[:prefix_pages],
+                    prefix_source.block_ids,
                     suffix_pages=pages - prefix_pages,
                     now_seconds=time.monotonic(),
                 )
@@ -4176,12 +4206,21 @@ class Qwen35GGUFResidentModelRunner:
             else:
                 try:
                     lease.session.bind_device_kv_allocation(pool, allocation)
-                    cloned_bytes = int(
-                        lease.session.clone_prefix_state_from(
-                            source_row.lease.session,
-                            position=len(matched_tokens),
+                    if prefix_source.source_row is not None:
+                        source_row = prefix_source.source_row
+                        assert source_row.lease is not None
+                        cloned_bytes = int(
+                            lease.session.clone_prefix_state_from(
+                                source_row.lease.session,
+                                position=len(matched_tokens),
+                            )
                         )
-                    )
+                    else:
+                        cloned_bytes = int(
+                            lease.session.clone_prefix_state_from_snapshot(
+                                prefix_source.snapshot,
+                            )
+                        )
                 except Exception:
                     if getattr(lease.session, "device_kv_allocation", None) is not None or getattr(
                         lease.session, "allocation", None
@@ -4198,8 +4237,15 @@ class Qwen35GGUFResidentModelRunner:
                 row.lease = lease
                 row.kv_allocation = allocation
                 row.prefix_reused_tokens = len(matched_tokens)
-                row.prefix_source_request_id = int(source_row.request_id)
+                row.prefix_source_request_id = (
+                    None
+                    if prefix_source.source_row is None
+                    else int(prefix_source.source_row.request_id)
+                )
                 row.prefix_state_clone_bytes = cloned_bytes
+                row.prefix_snapshot_hit = prefix_source.snapshot is not None
+                if row.prefix_snapshot_hit:
+                    self._prefix_snapshot_hits += 1
                 self._prefix_usable_hits += 1
                 self._prefix_reused_tokens += len(matched_tokens)
                 self._prefix_state_clone_bytes += cloned_bytes
@@ -4226,7 +4272,7 @@ class Qwen35GGUFResidentModelRunner:
     def _prefix_source_for(
         self,
         row: _GGUFResidentLoopRow,
-    ) -> tuple[tuple[int, ...], _GGUFResidentLoopRow] | None:
+    ) -> _GGUFPrefixReuseSource | None:
         cache = getattr(self, "_prefix_cache", None)
         if cache is None or not row.native_greedy or len(row.prompt_ids) <= 256:
             return None
@@ -4253,7 +4299,46 @@ class Qwen35GGUFResidentModelRunner:
                 continue
             if tuple(source.kv_allocation.block_ids[: match.matched_block_count]) != match.block_ids:
                 continue
-            return match.matched_tokens, source
+            return _GGUFPrefixReuseSource(
+                matched_tokens=match.matched_tokens,
+                block_ids=match.block_ids,
+                source_row=source,
+            )
+        snapshot_entry = self._prefix_state_snapshots.get(match.matched_tokens)
+        if snapshot_entry is not None:
+            snapshot = snapshot_entry.snapshot
+            valid = (
+                not bool(getattr(snapshot, "closed", False))
+                and snapshot_entry.block_ids == match.block_ids
+                and int(getattr(snapshot, "position", -1)) == match.matched_token_count
+            )
+            if valid and snapshot_entry.retained:
+                valid = (
+                    self._kv_pool is not None
+                    and all(
+                        self._kv_pool.refcount(block_id) > 0
+                        for block_id in snapshot_entry.block_ids
+                    )
+                )
+            elif valid:
+                owner = self._rows.get(int(snapshot_entry.owner_request_id or -1))
+                valid = (
+                    owner is not None
+                    and owner.kv_allocation is not None
+                    and tuple(
+                        int(block_id)
+                        for block_id in owner.kv_allocation.block_ids[: len(snapshot_entry.block_ids)]
+                    )
+                    == snapshot_entry.block_ids
+                )
+            if valid:
+                self._prefix_state_snapshots.pop(match.matched_tokens)
+                self._prefix_state_snapshots[match.matched_tokens] = snapshot_entry
+                return _GGUFPrefixReuseSource(
+                    matched_tokens=match.matched_tokens,
+                    block_ids=match.block_ids,
+                    snapshot=snapshot,
+                )
         self._prefix_unusable_hits += 1
         return None
 
@@ -4292,7 +4377,103 @@ class Qwen35GGUFResidentModelRunner:
                 raise
             self._prefix_unusable_hits += 1
             return False
+        self._capture_prefix_snapshot(row, tokens=tokens, block_ids=block_ids)
         return True
+
+    def _capture_prefix_snapshot(
+        self,
+        row: _GGUFResidentLoopRow,
+        *,
+        tokens: tuple[int, ...],
+        block_ids: tuple[int, ...],
+    ) -> None:
+        if not row.native_greedy or tokens in self._prefix_state_snapshots:
+            return
+        lease = row.lease
+        if lease is None:
+            return
+        session = lease.session
+        scratch = getattr(session, "scratch", None)
+        if scratch is None or len(tokens) >= int(getattr(scratch, "max_positions", 0)):
+            return
+        capture = getattr(session, "capture_prefix_state_snapshot", None)
+        if not callable(capture):
+            return
+        snapshot = capture(position=len(tokens))
+        if int(getattr(snapshot, "position", -1)) != len(tokens):
+            close = getattr(snapshot, "close", None)
+            if callable(close):
+                close()
+            raise RuntimeError("GGUF prefix snapshot returned the wrong position")
+        if tuple(int(block_id) for block_id in getattr(snapshot, "block_ids", ())) != block_ids:
+            close = getattr(snapshot, "close", None)
+            if callable(close):
+                close()
+            raise RuntimeError("GGUF prefix snapshot returned the wrong block ids")
+        self._prefix_state_snapshots[tokens] = _GGUFPrefixSnapshotEntry(
+            tokens=tokens,
+            block_ids=block_ids,
+            snapshot=snapshot,
+            owner_request_id=int(row.request_id),
+        )
+        while len(self._prefix_state_snapshots) > self._prefix_snapshot_limit:
+            oldest = next(iter(self._prefix_state_snapshots))
+            self._evict_prefix_snapshot(oldest)
+
+    def _promote_prefix_snapshots(self, row: _GGUFResidentLoopRow) -> None:
+        cache = self._prefix_cache
+        pool = self._kv_pool
+        allocation = row.kv_allocation
+        if cache is None or pool is None or allocation is None:
+            self._drop_prefix_snapshots_for_row(row.request_id)
+            return
+        for tokens, entry in tuple(self._prefix_state_snapshots.items()):
+            if entry.retained or entry.owner_request_id != row.request_id:
+                continue
+            prefix = tuple(
+                int(block_id)
+                for block_id in allocation.block_ids[: len(entry.block_ids)]
+            )
+            if prefix != entry.block_ids:
+                self._evict_prefix_snapshot(tokens)
+                continue
+            pool.retain_blocks(entry.block_ids)
+            try:
+                cache.retain_entry(tokens, entry.block_ids)
+            except Exception:
+                pool.release_blocks(entry.block_ids)
+                self._evict_prefix_snapshot(tokens)
+                raise
+            entry.owner_request_id = None
+            entry.retained = True
+
+    def _drop_prefix_snapshots_for_row(self, request_id: int) -> None:
+        rid = int(request_id)
+        for tokens, entry in tuple(self._prefix_state_snapshots.items()):
+            if not entry.retained and entry.owner_request_id == rid:
+                self._evict_prefix_snapshot(tokens)
+
+    def _evict_prefix_snapshot(self, tokens: Sequence[int]) -> bool:
+        token_tuple = tuple(int(token) for token in tokens)
+        entry = self._prefix_state_snapshots.pop(token_tuple, None)
+        if entry is None:
+            return False
+        if entry.retained:
+            cache = self._prefix_cache
+            pool = self._kv_pool
+            if cache is None or pool is None:
+                raise RuntimeError("GGUF retained prefix snapshot outlived cache ownership")
+            cache.evict_entry(token_tuple)
+            pool.release_blocks(entry.block_ids)
+        close = getattr(entry.snapshot, "close", None)
+        if callable(close):
+            close()
+        self._prefix_snapshot_evictions += 1
+        return True
+
+    def _clear_prefix_snapshots(self) -> None:
+        for tokens in tuple(self._prefix_state_snapshots):
+            self._evict_prefix_snapshot(tokens)
 
     def rollback_admission(self, request: RequestState) -> None:
         """Undo a bound KV/session lease that was never published active."""
@@ -4374,6 +4555,7 @@ class Qwen35GGUFResidentModelRunner:
             raise RuntimeError("cannot resize resident GGUF sessions while requests are active")
         with hip_target_arch_environment(self.generator.target_arch):
             config = self._engine_loop_config
+            self._clear_prefix_snapshots()
             if self._kv_pool is not None:
                 self._kv_pool.close()
                 self._kv_pool = None
@@ -4560,7 +4742,7 @@ class Qwen35GGUFResidentModelRunner:
             self._recent_completed_routes.append(
                 {"request_id": request_id, **copy.deepcopy(metadata)}
             )
-            self._release_row_resources(row)
+            self._release_row_resources(row, retain_prefix_snapshots=True)
             self._rows.pop(request_id, None)
 
     def has_outputs(self, request_ids: Sequence[int]) -> bool:
@@ -4641,6 +4823,7 @@ class Qwen35GGUFResidentModelRunner:
             for row in tuple(self._rows.values()):
                 self._release_row_resources(row)
             self._rows.clear()
+            self._clear_prefix_snapshots()
             if self._kv_pool is not None:
                 self._kv_pool.close()
                 self._kv_pool = None
@@ -4669,8 +4852,17 @@ class Qwen35GGUFResidentModelRunner:
             lease = self._available.pop()
             self.generator._release_shared_session(lease.pool_key, lease.session)
 
-    def _release_row_resources(self, row: _GGUFResidentLoopRow) -> None:
+    def _release_row_resources(
+        self,
+        row: _GGUFResidentLoopRow,
+        *,
+        retain_prefix_snapshots: bool = False,
+    ) -> None:
         prefix_cache = getattr(self, "_prefix_cache", None)
+        if retain_prefix_snapshots:
+            self._promote_prefix_snapshots(row)
+        else:
+            self._drop_prefix_snapshots_for_row(row.request_id)
         if prefix_cache is not None:
             prefix_cache.cancel(row.request_id)
         lease = row.lease
@@ -5413,6 +5605,7 @@ class Qwen35GGUFResidentModelRunner:
             "prefix_reused_tokens": int(row.prefix_reused_tokens),
             "prefix_source_request_id": row.prefix_source_request_id,
             "prefix_state_clone_bytes": int(row.prefix_state_clone_bytes),
+            "prefix_snapshot_hit": bool(row.prefix_snapshot_hit),
         }
 
 

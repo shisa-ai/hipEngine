@@ -9,6 +9,18 @@ from hipengine.dispatch import WorkItem, WorkKind
 from hipengine.kvcache import DeviceChunkedKVPool
 
 
+class _FakePrefixSnapshot:
+    def __init__(self, *, source_slot_id: int, position: int, block_ids: tuple[int, ...]) -> None:
+        self.source_slot_id = int(source_slot_id)
+        self.position = int(position)
+        self.block_ids = tuple(int(block_id) for block_id in block_ids)
+        self.nbytes = 384
+        self.closed = False
+
+    def close(self) -> None:
+        self.closed = True
+
+
 class _FakePrefixSession:
     def __init__(self, slot_id: int) -> None:
         self.slot_id = int(slot_id)
@@ -19,6 +31,9 @@ class _FakePrefixSession:
         self.prefill_calls: list[tuple[tuple[int, ...], int, int]] = []
         self.step_calls: list[tuple[int, int, int]] = []
         self.clone_calls: list[tuple[int, int]] = []
+        self.snapshot_capture_calls: list[int] = []
+        self.snapshot_clone_calls: list[tuple[int, int]] = []
+        self.snapshots: list[_FakePrefixSnapshot] = []
 
     def create_device_kv_pool(self, **config):
         return DeviceChunkedKVPool(
@@ -54,6 +69,29 @@ class _FakePrefixSession:
         self.position = int(source.position)
         self.clone_calls.append((int(source.slot_id), int(source.position)))
         return 384
+
+    def capture_prefix_state_snapshot(self, *, position: int | None = None):
+        boundary = int(self.position if position is None else position)
+        assert boundary == self.position
+        assert boundary > 0 and boundary % 256 == 0
+        assert self.allocation is not None
+        snapshot = _FakePrefixSnapshot(
+            source_slot_id=self.slot_id,
+            position=boundary,
+            block_ids=tuple(self.allocation.block_ids[: boundary // 256]),
+        )
+        self.snapshot_capture_calls.append(boundary)
+        self.snapshots.append(snapshot)
+        return snapshot
+
+    def clone_prefix_state_from_snapshot(self, snapshot, *, stream: int = 0) -> int:
+        assert stream == 0
+        assert not snapshot.closed
+        assert self.allocation is not None
+        assert self.allocation.reused_block_ids == snapshot.block_ids
+        self.position = int(snapshot.position)
+        self.snapshot_clone_calls.append((int(snapshot.source_slot_id), int(snapshot.position)))
+        return int(snapshot.nbytes)
 
     def prefill_batch_native(self, prompt_token_ids, *, sessions, **kwargs):
         assert sessions == [self]
@@ -200,4 +238,62 @@ def test_resident_runner_reuses_exact_current_prefix_and_reclaims_source_first()
     assert runner.kv_pool.refcount(shared_block) == 0
     assert runner.kv_pool.stats.refcounted_pages == 0
     assert runner.available_session_count == 3
+    runner.close()
+
+
+def test_resident_runner_reuses_completed_prefix_snapshot_and_evicts_cleanly() -> None:
+    owner = _FakePrefixOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=3)
+    runner.configure_engine_loop(
+        EngineLoopConfig(
+            max_active_requests=3,
+            kv_pool_initial_pages=6,
+            kv_pool_low_water_pages=6,
+            kv_pool_high_water_pages=6,
+            kv_pool_chunk_pages=6,
+            prefix_cache="radix",
+        )
+    )
+    prefix = tuple(range(1, 257))
+    source_request = _request(prefix, max_tokens=3)
+    runner.register_batch((1,), source_request, prompt_rows=(prefix,))
+    runner.reserve_admission(SimpleNamespace(request_id=1))
+    source_row = runner._rows[1]
+    assert source_row.lease is not None
+    source_session = source_row.lease.session
+    source_row.prefill_tokens_seen = len(prefix)
+    source_session.position = len(prefix)
+    assert runner._refresh_prefix_cache(source_row) is True
+    snapshot = source_session.snapshots[-1]
+    shared_block = source_row.kv_allocation.block_ids[0]
+
+    runner._release_row_resources(source_row, retain_prefix_snapshots=True)
+    runner._rows.pop(1)
+    assert snapshot.closed is False
+    assert runner.kv_pool.refcount(shared_block) == 1
+    assert runner.kv_pool.stats.refcounted_pages == 1
+
+    continued_prompt = (*prefix, 999)
+    continued_request = _request(continued_prompt, max_tokens=2)
+    runner.register_batch((2,), continued_request, prompt_rows=(continued_prompt,))
+    runner.reserve_admission(SimpleNamespace(request_id=2))
+    continued_row = runner._rows[2]
+    assert continued_row.lease is not None
+    assert continued_row.prefix_reused_tokens == 256
+    assert continued_row.prefix_source_request_id is None
+    assert continued_row.prefix_snapshot_hit is True
+    assert continued_row.lease.session.snapshot_clone_calls == [(source_session.slot_id, 256)]
+    assert runner.kv_pool.refcount(shared_block) == 2
+
+    runner.rollback_admission(SimpleNamespace(request_id=2))
+    assert runner.kv_pool.refcount(shared_block) == 1
+    prefix_observability = runner.observability_snapshot()["prefix_cache"]
+    assert prefix_observability["snapshot_entries"] == 1
+    assert prefix_observability["snapshot_hits"] == 1
+    assert prefix_observability["snapshot_bytes"] == 384
+
+    assert runner._evict_prefix_snapshot(prefix) is True
+    assert snapshot.closed is True
+    assert runner.kv_pool.refcount(shared_block) == 0
+    assert runner.kv_pool.stats.refcounted_pages == 0
     runner.close()

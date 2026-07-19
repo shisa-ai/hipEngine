@@ -70,6 +70,7 @@ class PrefixCacheEntryState:
     matched_tokens: tuple[int, ...]
     block_ids: tuple[int, ...]
     owner_request_ids: tuple[int, ...]
+    cache_owned: bool
     eviction_state: str
 
     @property
@@ -82,6 +83,7 @@ class PrefixCacheEntryState:
             "block_ids": list(self.block_ids),
             "owner_request_ids": list(self.owner_request_ids),
             "refcount": self.refcount,
+            "cache_owned": self.cache_owned,
             "eviction_state": self.eviction_state,
         }
 
@@ -111,11 +113,12 @@ class _RadixNode:
     children: dict[int, "_RadixNode"] = field(default_factory=dict)
     block_ids: tuple[int, ...] = ()
     owner_request_ids: set[int] = field(default_factory=set)
+    cache_owned: bool = False
     eviction_state: str = "resident"
 
     @property
     def live(self) -> bool:
-        return bool(self.block_ids) and bool(self.owner_request_ids)
+        return bool(self.block_ids) and (bool(self.owner_request_ids) or self.cache_owned)
 
 
 class RadixCache:
@@ -183,7 +186,7 @@ class RadixCache:
             prefix_blocks = block_tuple[:block_count]
             if node.live and node.block_ids != prefix_blocks:
                 raise ValueError("live prefix cache entry has conflicting block ids")
-            if not node.owner_request_ids:
+            if not node.owner_request_ids and not node.cache_owned:
                 node.eviction_state = "resident"
             node.block_ids = prefix_blocks
             node.owner_request_ids.add(rid)
@@ -238,7 +241,7 @@ class RadixCache:
                 continue
             node.owner_request_ids.remove(rid)
             removed_entries += 1
-            if not node.owner_request_ids:
+            if not node.owner_request_ids and not node.cache_owned:
                 removed_blocks.extend(node.block_ids)
                 node.block_ids = ()
                 node.eviction_state = "empty"
@@ -247,6 +250,43 @@ class RadixCache:
             removed_entries=removed_entries,
             removed_blocks=tuple(removed_blocks),
         )
+
+    def retain_entry(
+        self,
+        tokens: Iterable[int],
+        block_ids: Sequence[int],
+    ) -> PrefixCacheEntryState:
+        """Give the cache durable ownership of one exact block boundary."""
+
+        token_tuple = tuple(int(token) for token in tokens)
+        block_tuple = tuple(int(block_id) for block_id in block_ids)
+        if not token_tuple or len(token_tuple) % self.block_size != 0:
+            raise ValueError("retained prefix tokens must end at a complete block boundary")
+        if len(block_tuple) != len(token_tuple) // self.block_size:
+            raise ValueError("retained prefix block ids must cover the exact token boundary")
+        if any(block_id < 0 for block_id in block_tuple):
+            raise ValueError("block ids must be non-negative")
+        node = self._node_for_tokens(token_tuple)
+        if node is None or not node.live:
+            raise KeyError("no live prefix cache entry for tokens")
+        if node.block_ids != block_tuple:
+            raise ValueError("live prefix cache entry has conflicting block ids")
+        node.cache_owned = True
+        node.eviction_state = "resident"
+        return _entry_state_from_node(token_tuple, node)
+
+    def evict_entry(self, tokens: Iterable[int]) -> PrefixCacheEntryState:
+        """Drop durable cache ownership while preserving live request owners."""
+
+        token_tuple = tuple(int(token) for token in tokens)
+        node = self._node_for_tokens(token_tuple)
+        if node is None or not node.cache_owned:
+            raise KeyError("no cache-owned prefix entry for tokens")
+        node.cache_owned = False
+        node.eviction_state = "resident" if node.owner_request_ids else "empty"
+        if not node.owner_request_ids:
+            node.block_ids = ()
+        return _entry_state_from_node(token_tuple, node)
 
     def entry_state(self, tokens: Iterable[int]) -> PrefixCacheEntryState:
         """Return pointer-independent state for an exact live prefix entry."""
@@ -311,6 +351,7 @@ def _entry_state_from_node(tokens: tuple[int, ...], node: _RadixNode) -> PrefixC
         matched_tokens=tokens,
         block_ids=node.block_ids,
         owner_request_ids=tuple(sorted(node.owner_request_ids)),
+        cache_owned=bool(node.cache_owned),
         eviction_state=node.eviction_state,
     )
 
