@@ -1,0 +1,235 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_f0_current_main_recertification",
+  "created_at": "2026-07-19T02:05:00+09:00",
+  "status": "accepted_current_main_recertification",
+  "passed": true,
+  "performance_claim": true,
+  "claim_scope": "current-main freshness for retained direct native c1/c2/c4/c8 and real SSE arbitrary-C scaling; no occupancy-adaptive policy claim",
+  "hipengine_artifact_provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-18T16:56:24.732340+00:00",
+    "repo_root": "/tmp/hipengine-gfx1151-gguf-f0-ef46ee8c",
+    "hipengine_commit": "ef46ee8cb100c291495c233024aa9ca492aea5b6",
+    "git_branch": null,
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [0, 11331169424, 22662338848],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "command": [
+      "/home/lhl/hipEngine-main/.venv/bin/python",
+      "scripts/gguf_live_server_bench.py",
+      "--model",
+      "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1151",
+      "--configurations",
+      "c1,packed_c8,packed_c9,packed_c13,serial_c13",
+      "--prompt-length",
+      "512",
+      "--decode-tokens",
+      "128",
+      "--warmup-runs",
+      "1",
+      "--measured-runs",
+      "3",
+      "--live-decode-tokens",
+      "128",
+      "--live-initial-rows",
+      "8",
+      "--live-tail-rows",
+      "5",
+      "--prefill-chunk-size",
+      "256",
+      "--batch-window-ms",
+      "20",
+      "--compiler-version-file",
+      "/tmp/gfx1151-gguf-f0-clean-ef46ee8c/hipcc-version.txt",
+      "--require-cached-build",
+      "--json",
+      "/tmp/gfx1151-gguf-f0-clean-ef46ee8c/server.json"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": "hip_gfx1151",
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/gfx1151-gguf-f0-clean-ef46ee8c/hipcc-version.txt",
+      "HIP_VISIBLE_DEVICES": "0",
+      "ROCR_VISIBLE_DEVICES": null,
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+      "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact",
+      "HIPENGINE_PREFILL_DECODE_POLICY": "protect_ttft",
+      "HIPENGINE_GGUF_AR_STREAM_DECODE": "0",
+      "HIPENGINE_MAX_ACTIVE_REQUESTS": "13",
+      "HIPENGINE_MAX_PREFILL_CHUNK_TOKENS": "256",
+      "HIPENGINE_KV_POOL_INITIAL_PAGES": "3",
+      "HIPENGINE_KV_POOL_LOW_WATER_PAGES": "3",
+      "HIPENGINE_KV_POOL_HIGH_WATER_PAGES": "39",
+      "HIPENGINE_KV_POOL_CHUNK_PAGES": "3",
+      "HIPENGINE_KV_POOL_IDLE_GRACE_SECONDS": "0"
+    },
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "build_profile": "gfx1151_gguf_openai_live_concurrency_exact_hybrid_and_serial",
+    "timing_protocol": "one prepared model; exact text/raw-token roundtrip prompts; concurrent OpenAI SSE; scheduler latency samples; resident reclaim token accounting",
+    "warmups": 1,
+    "repetitions": 3,
+    "profiler": {
+      "used": false,
+      "reason": "real server-wall and scheduler-latency packet"
+    }
+  },
+  "measurement_context": {
+    "clean_detached_worktree": true,
+    "gpu_max_hw_queues": 1,
+    "tuned_profile": "accelerator-performance",
+    "amd_iommu": "off",
+    "compiler_version_file": "/tmp/gfx1151-gguf-f0-clean-ef46ee8c/hipcc-version.txt",
+    "require_cached_build": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "Q4_K_M",
+    "kv_dtype": "bf16",
+    "sampling": "greedy",
+    "speculative_decode": false
+  },
+  "workload": {
+    "prompt_tokens_per_request": 512,
+    "generated_tokens_per_request": 128,
+    "direct_configurations": ["c1", "c2", "c4", "native_c8", "chunked_c8", "serial_c4"],
+    "server_configurations": ["c1", "packed_c8", "packed_c9", "packed_c13", "serial_c13"],
+    "warmup_runs": 1,
+    "measured_runs": 3,
+    "server_prefill_chunk_tokens": 256,
+    "server_batch_window_ms": 20,
+    "live_admission": "c8 then five tail rows to C13"
+  },
+  "direct": {
+    "passed": true,
+    "cross_configuration_correctness": {
+      "c1_c2_c4_prefix_exact": true,
+      "c4_matches_serial_c4": true,
+      "native_c8_rows_match_c4": true,
+      "chunked_c8_groups_match_c4": true,
+      "all_measured_runs_repeatable": true
+    },
+    "aggregate_decode_tok_s": {
+      "c1": 50.290510105472165,
+      "c2": 72.26200265526673,
+      "c4": 102.66327952844736,
+      "native_c8": 128.0747266078454,
+      "chunked_c8": 102.72410108254118,
+      "serial_c4": 50.2347819520368
+    },
+    "per_request_decode_tok_s": {
+      "c1": 50.290510105472165,
+      "c2": 36.13100132763336,
+      "c4": 25.66581988211184,
+      "native_c8": 16.009340825980676,
+      "chunked_c8": 12.840512635317648,
+      "serial_c4": 12.5586954880092
+    },
+    "ratios": {
+      "native_c8_vs_c1": 2.5466977037862546,
+      "native_c8_vs_chunked_c8": 1.2467836199893774,
+      "native_c8_vs_serial_c4_rate": 2.5495228929256366
+    },
+    "max_rate_stdev_pct_of_median": 0.039,
+    "raw_path": "/tmp/gfx1151-gguf-f0-clean-ef46ee8c/direct.json",
+    "size_bytes": 1338491,
+    "sha256": "324a8f09777c911cac0f2afb11f522722a6d6c276df87daff9ac3b1656e67341"
+  },
+  "server": {
+    "passed": true,
+    "exact_rows": 189,
+    "aggregate_generated_tok_s": {
+      "logical_c1": 15.797652386750611,
+      "physical_c8": 86.35817977725499,
+      "grouped_c9": 57.69056963968664,
+      "grouped_c13": 73.06455000746227,
+      "serial_c13": 43.1159965969227
+    },
+    "ratios": {
+      "grouped_c13_vs_logical_c1": 4.625025808818343,
+      "grouped_c13_vs_serial_c13": 1.6946042252141071
+    },
+    "max_static_rate_stdev_pct_of_median": 0.485,
+    "logical_c1_route": {
+      "physical_widths": [8],
+      "active_masks": ["10000000"],
+      "native_c1_decode_steps": 0,
+      "native_packed_decode_steps": 127,
+      "classification": "masked physical c8 control; not the F2 target"
+    },
+    "live_admission": {
+      "passed": true,
+      "aggregate_generated_tok_s": 71.67478385881209,
+      "generated_tokens": 1664,
+      "expected_generated_tokens": 1664,
+      "observed_logical_concurrency": [5, 8, 13],
+      "final_ownership_zero": true
+    },
+    "raw_path": "/tmp/gfx1151-gguf-f0-clean-ef46ee8c/server.json",
+    "size_bytes": 26128753,
+    "sha256": "e38f0c2e4701c9f880f5d546944c7d636e293dd5497824e0ec2fc1f7c5cc3f18"
+  },
+  "profiler": {
+    "passed": true,
+    "physical_rows": 8,
+    "active_rows": 8,
+    "graph_capture_count": 1,
+    "graph_replay_count": 1,
+    "packed_native_dispatches": 748,
+    "exact_row_local_dispatches": 0,
+    "steady_copies": 0,
+    "complete_c1_session_or_layer_replays": 0,
+    "total_gpu_duration_ns_diagnostic": 56694239,
+    "context_batch": {
+      "dispatches": 10,
+      "workgroup_x": 256,
+      "grid_y": 8,
+      "total_duration_ns": 3102582
+    },
+    "raw_path": "/tmp/gfx1151-gguf-f0-clean-ef46ee8c/profiler.json",
+    "size_bytes": 86371,
+    "sha256": "bfc1df47f9ccf689b5ce136070fccbe11a838b197f24ee00230d4a065fae26ca"
+  },
+  "comparison_to_previous_retained": {
+    "direct_native_c8_tok_s": {"old": 127.902, "new": 128.0747266078454, "delta_pct": 0.13504605701661898},
+    "server_grouped_c13_tok_s": {"old": 72.522, "new": 73.06455000746227, "delta_pct": 0.7481178228155194},
+    "server_serial_c13_tok_s": {"old": 42.764, "new": 43.1159965969227, "delta_pct": 0.8231142945531289},
+    "interpretation": "same protocol and within ordinary run variance; refreshes current-main evidence and is not attributed causally to the correctness repair"
+  },
+  "commands": {
+    "direct": "/home/lhl/hipEngine-main/.venv/bin/python scripts/gguf_packed_ar_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --configurations c1,c2,c4,native_c8,chunked_c8,serial_c4 --prompt-token-id 9707 --prompt-length 512 --decode-steps 128 --warmup-runs 1 --measured-runs 3 --compiler-version-file /tmp/gfx1151-gguf-f0-clean-ef46ee8c/hipcc-version.txt --require-cached-build --json /tmp/gfx1151-gguf-f0-clean-ef46ee8c/direct.json",
+    "server": "/home/lhl/hipEngine-main/.venv/bin/python scripts/gguf_live_server_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --configurations c1,packed_c8,packed_c9,packed_c13,serial_c13 --prompt-length 512 --decode-tokens 128 --warmup-runs 1 --measured-runs 3 --live-decode-tokens 128 --live-initial-rows 8 --live-tail-rows 5 --prefill-chunk-size 256 --batch-window-ms 20 --compiler-version-file /tmp/gfx1151-gguf-f0-clean-ef46ee8c/hipcc-version.txt --require-cached-build --json /tmp/gfx1151-gguf-f0-clean-ef46ee8c/server.json",
+    "profiler": "/home/lhl/hipEngine-main/.venv/bin/python scripts/gguf_packed_ar_rocprof.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --decode-mode graph --packed-concurrency 8 --prompt-length 512 --prompt-token-id 9707 --expected-token-id 9707 --compiler-version-file /tmp/gfx1151-gguf-f0-clean-ef46ee8c/hipcc-version.txt --raw-root /tmp/gfx1151-gguf-f0-clean-ef46ee8c/profiler-raw-retry --rocprofv3 /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin/rocprofv3 --roctx-sdk /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib/librocprofiler-sdk-roctx.so.1 --out /tmp/gfx1151-gguf-f0-clean-ef46ee8c/profiler.json"
+  },
+  "limitations": [
+    "The server c1 control still executes one masked physical c8 group; F2 occupancy-adaptive c1 is not implemented by this result.",
+    "Direct graph model-step and complete SSE cycle-wall timing are separate scopes.",
+    "C9 and C13 are multiple declared physical groups, not native c9/c13.",
+    "Profiler durations are diagnostic and are not substituted for host/server throughput."
+  ]
+}

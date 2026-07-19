@@ -13,7 +13,7 @@ from importlib import import_module
 
 from hipengine.kernels.backends import hip_target_arch_for_backend
 from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
-    qwen35_paged_full_attn_decode_context_bf16_batch_spans,
+    qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans,
 )
 from hipengine.kernels.hip_gfx1100.moe.router import (
     qwen35_router_logits_bf16_f32w_auto_256,
@@ -40,6 +40,19 @@ GGUF_GDN_PREFILL_AUTO_MODE = "chain_lds32_direct_nonvolatile"
 # The architecture-scoped strict-exact selector resolves to the same proven
 # nonvolatile direct route as gfx1151 production.
 GGUF_GDN_PREFILL_EXACT_MODE = "chain_lds32_direct_nonvolatile"
+# F3's independent-c1 and physical-width gates admit the one-token-per-row
+# indexed GDN sibling for packed AR while retaining segmented GDN as fallback.
+GGUF_GDN_INDEXED_SINGLETON_DECODE = True
+# F3's canonical p512/d128 gate rejects automatic Q8T16 row amortization:
+# one non-repeated prompt trajectory diverges consistently at c2/c4/c8 even
+# though the shorter d64 screen passed. Keep the env-only diagnostic available.
+GGUF_Q8_T16_DECODE_ROWTILE_ALL = False
+# F4's clean all-candidate, all-workload production gate selects fair:256 at
+# +5.90% exact mixed-load SLO goodput over fair:128. Scope the default to the
+# measured Q4_K_M generator registry entry; other quants/backends retain their
+# prior engine-loop defaults until independently gated.
+GGUF_Q4_K_M_PREFILL_DECODE_POLICY = "fair"
+GGUF_Q4_K_M_MAX_PREFILL_CHUNK_TOKENS = 256
 # Clean LCP-M2 512/1K/4K full-state and balanced-wall gates admit stream-ordered
 # device metadata through 4K. Explicit opt-in remains available for diagnosis;
 # the 128K one-queue escalation still enters the low-power GPU-active state.
@@ -95,14 +108,15 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
     }
 )
 _GFX1151_OVERRIDES = {
-    # The new scalar-tree c1-exact context kernel retained for gfx1100/PARO
-    # diverges from gfx1151's established paged-c1 arithmetic at model scale.
-    # Keep gfx1151 on the independently retained generic batch reduction.
+    # The scalar-tree c1-exact kernel retained for gfx1100/PARO diverges from
+    # gfx1151's established paged-c1 arithmetic at model scale. Keep gfx1151 on
+    # the generic reduction, but pin its geometry to the c4/c8-proven 256-thread
+    # shape: the generic rows<=2 1024-thread fast path diverges over p512/d128.
     (
         "paged_attn_decode",
         "w4_paro",
         "bf16_context_batch_c1_exact_spans",
-    ): qwen35_paged_full_attn_decode_context_bf16_batch_spans,
+    ): qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans,
     (
         "router_logits",
         "f32",
@@ -169,6 +183,7 @@ __all__ = [
     "BACKEND",
     "GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS",
     "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
+    "GGUF_GDN_INDEXED_SINGLETON_DECODE",
     "GGUF_GDN_PREFILL_AUTO_MODE",
     "GGUF_GDN_PREFILL_EXACT_MODE",
     "GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE",
@@ -177,6 +192,7 @@ __all__ = [
     "GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS",
     "GGUF_PREFILL_ROUTER_SELECT_THREADS",
     "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
+    "GGUF_Q8_T16_DECODE_ROWTILE_ALL",
     "GGUF_Q8_T16_PREFILL_FOUR_WAVE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS",

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Any
+from typing import Any, Callable
 
 from hipengine.generation.registry import FinishDetails
 
@@ -34,6 +34,8 @@ class GenerationCancellationToken:
         self._event = threading.Event()
         self._lock = threading.Lock()
         self._finish_details = FinishDetails(reason="cancelled", cancelled=True)
+        self._cancel_dispatch: Callable[[FinishDetails], None] | None = None
+        self._cancel_requested = False
 
     @property
     def cancelled(self) -> bool:
@@ -45,9 +47,37 @@ class GenerationCancellationToken:
             return self._finish_details
 
     def cancel(self, finish_details: FinishDetails | None = None) -> None:
-        details = finish_details or FinishDetails(reason="cancelled", cancelled=True)
+        details = FinishDetails.from_value(
+            finish_details or FinishDetails(reason="cancelled", cancelled=True)
+        )
         with self._lock:
-            self._finish_details = FinishDetails.from_value(details)
+            self._finish_details = details
+            self._cancel_requested = True
+            dispatch = self._cancel_dispatch
+            if dispatch is None:
+                self._event.set()
+        if dispatch is not None:
+            dispatch(details)
+
+    def set_cancel_dispatch(self, dispatch: Callable[[FinishDetails], None]) -> None:
+        """Route cancellation through a scheduler command before exposing it."""
+
+        with self._lock:
+            self._cancel_dispatch = dispatch
+
+    def clear_cancel_dispatch(self, dispatch: Callable[[FinishDetails], None]) -> None:
+        with self._lock:
+            if self._cancel_dispatch is dispatch:
+                self._cancel_dispatch = None
+                if self._cancel_requested:
+                    self._event.set()
+
+    def acknowledge_cancel(self, finish_details: FinishDetails | None = None) -> None:
+        """Publish cancellation only after scheduler-owned row reclamation."""
+
+        with self._lock:
+            if finish_details is not None:
+                self._finish_details = FinishDetails.from_value(finish_details)
             self._event.set()
 
     def raise_if_cancelled(self) -> None:

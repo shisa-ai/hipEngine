@@ -1,0 +1,114 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_f0_c2_fixed256_correctness",
+  "created_at": "2026-07-19T01:36:00+09:00",
+  "status": "accepted_correctness_repair",
+  "passed": true,
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15",
+    "gpu_max_hw_queues": 1,
+    "tuned_profile": "accelerator-performance",
+    "amd_iommu": "off"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "Q4_K_M",
+    "kv_dtype": "bf16"
+  },
+  "source": {
+    "red_commit": "32c72f9c9f6106648b7aec369b0d655558ce5636",
+    "candidate_diff_sha256": "cbb0687e2168ef7fadf10b4a9bd7accea470b1eaffe0e699714c65c62cb65a55",
+    "red_clean_provenance": true
+  },
+  "red": {
+    "complete_direct_packet": {
+      "passed": false,
+      "c1_c2_c4_prefix_exact": false,
+      "c4_matches_serial_c4": false,
+      "native_c8_rows_match_c4": true,
+      "raw_path": "/tmp/gfx1151-gguf-f0-clean-32c72f9c/direct.json",
+      "sha256": "c9a8de970fa1e018c7ca7fedf8c627d5037510fb8583185afeb2540a93b95b1e"
+    },
+    "localized_c2": {
+      "passed": false,
+      "workload": "independent-c1 prefill, physical c2 graph decode, p512/d128, all-layer capture",
+      "first_divergence": {
+        "step": 1,
+        "row": 0,
+        "layer": 7,
+        "mismatch_elements": 63,
+        "max_abs": 0.000244140625
+      },
+      "raw_path": "/tmp/gfx1151-gguf-f0-clean-32c72f9c/c2-independent-c1-p512-d128.json",
+      "sha256": "8b550f149fceab5e06cd02ceafc785549b96759d578e1e3caebc8216e8bbac94"
+    }
+  },
+  "diagnosis": {
+    "logical_registry_key": "paged_attn_decode/w4_paro/bf16_context_batch_c1_exact_spans",
+    "gfx1151_previous_target": "generic batch reduction with rows<=2 and context<1024 selecting 1024 threads",
+    "gfx1151_repaired_target": "generic batch reduction fixed to the c4/c8-proven 256-thread geometry",
+    "paro_behavior_changed": false,
+    "gfx1100_behavior_changed": false
+  },
+  "green": {
+    "primitive": {
+      "test": "tests/test_qwen35_paged_attn_decode_plan.py::test_qwen35_paged_attn_decode_batch_honors_shared_physical_blocks[fixed256]",
+      "passed": true,
+      "oracle": "independent scalar paged BF16 attention"
+    },
+    "p512_d2": {
+      "passed": true,
+      "tokens_exact": true,
+      "hidden_comparisons": 160,
+      "hidden_mismatches": 0,
+      "state_and_kv_exact": true,
+      "raw_path": "/tmp/gfx1151-gguf-c2-fixed256-main/c2-p512-d2.json",
+      "sha256": "cb6f0f82604ad3dacebf0884079e1a78b4855282721755eebdb131b23221a995"
+    },
+    "p512_d128": {
+      "passed": true,
+      "tokens_exact": true,
+      "hidden_comparisons": 10240,
+      "hidden_mismatches": 0,
+      "conv_gdn_state_exact": true,
+      "live_kv_exact": true,
+      "graph_replays": 128,
+      "raw_path": "/tmp/gfx1151-gguf-c2-fixed256-main/c2-p512-d128.json",
+      "sha256": "1040c955988fcede0bf6709f4dc60499a2f06f433c6509451bbcf80c139d7426"
+    },
+    "profiler": {
+      "passed": true,
+      "kernel": "qwen35_paged_full_attn_decode_context_tensor_batch_kernel",
+      "dispatches": 20,
+      "workgroup_x": 256,
+      "grid_y": 2,
+      "duration_ns": {
+        "min": 228268,
+        "median": 231855,
+        "max": 235241,
+        "total": 4635978
+      },
+      "raw_path": "/tmp/gfx1151-gguf-c2-fixed256-main/rocprof-c2-fixed256/c2-fixed256_kernel_trace.csv",
+      "sha256": "e8f2c70a1653e6989ea980c194fcd495b4c95c1d9c794167ddef12f7f69028e3"
+    },
+    "host_suite": {
+      "passed": 153,
+      "failed": 0,
+      "files": [
+        "tests/test_kv_dispatch.py",
+        "tests/test_qwen35_paged_attn_decode_plan.py",
+        "tests/test_qwen35_decode_state.py",
+        "tests/test_generation_qwen35_gguf_sampling.py"
+      ]
+    }
+  },
+  "limitations": [
+    "This artifact accepts a correctness repair only; no throughput result is retained.",
+    "The complete direct/server F0 packet must be rerun from the clean committed repair before updating topline performance.",
+    "The generic 1024-thread rows<=2 entrypoint remains unchanged for separately retained PARO paths."
+  ]
+}

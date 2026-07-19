@@ -1,0 +1,192 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_f3_singleton_indexed_gdn_retained",
+  "created_at": "2026-07-19T04:28:00+09:00",
+  "status": "accepted_gfx1151_default_and_direct_scaling_refresh",
+  "passed": true,
+  "performance_claim": true,
+  "claim_scope": "clean cached p512/d128 direct native c1/c2/c4/c8 graph model-step throughput on gfx1151; existing OpenAI SSE results are retained but not remeasured or changed by this artifact",
+  "source": {
+    "implementation_commit": "e99b228b724c6519d5079d5d51c33326e01bdba3",
+    "baseline_commit": "5b5b0d593f4a34642584870526cece0780c19621",
+    "clean_detached_measurement": true,
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "rocm": "HIP version: 7.15.0-0000000",
+    "hipcc": "AMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)",
+    "gpu_max_hw_queues": 1,
+    "tuned_profile": "accelerator-performance",
+    "amd_iommu": "off"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "Q4_K_M",
+    "kv_dtype": "bf16",
+    "sampling": "greedy_top1",
+    "speculative_decode": false
+  },
+  "implementation": {
+    "registry_key": ["gguf_qwen35", "gdn_recurrent_rmsnorm_gate", "bf16", "indexed_singleton"],
+    "backend_policy": {
+      "hip_gfx1151": "indexed_singleton",
+      "hip_gfx1100": "segments_pending_independent_transfer"
+    },
+    "contract": "one decode token per active packed-AR row with explicit state_indices ownership",
+    "fallback": "registered arbitrary-length segmented GDN recurrence",
+    "c1_route_changed": false,
+    "manifest_field": "gdn_recurrent_decode_path"
+  },
+  "workload": {
+    "prompt_tokens_per_row": 512,
+    "generated_tokens_per_row": 128,
+    "configurations": ["c1", "c2", "c4", "native_c8"],
+    "warmup_runs": 1,
+    "measured_runs": 3,
+    "timing_protocol": "one shared clean model load; one discarded run and three measured repeats per route; one synchronized graph replay per native group per decode transition",
+    "cached_build_required": true
+  },
+  "canonical_direct": {
+    "passed": true,
+    "raw_packet_status": "partial_measurement_complete",
+    "raw_packet_note": "The focused raw packet intentionally omitted unchanged serial_c4 and changed-by-candidate chunked_c8 controls; all four requested configurations passed. Cross-route correctness is joined from the prior complete packet, independent-c1 primitive gate, and measured c1/c2/c4/c8 trajectory relationships.",
+    "aggregate_decode_tok_s": {
+      "c1": 50.334793602019964,
+      "c2": 78.55249199645833,
+      "c4": 108.05048774468624,
+      "native_c8": 133.2505268407924
+    },
+    "per_request_decode_tok_s": {
+      "c1": 50.334793602019964,
+      "c2": 39.276245998229165,
+      "c4": 27.01262193617156,
+      "native_c8": 16.65631585509905
+    },
+    "ratios": {
+      "c2_vs_c1": 1.560600260280117,
+      "c4_vs_c1": 2.1466361538899825,
+      "native_c8_vs_c1": 2.6472846574947506,
+      "native_c8_vs_c4_rate": 1.2332246676725016,
+      "native_c8_vs_retained_serial_c4_rate": 2.652554672149206
+    },
+    "ttft_seconds_per_request_median_p95": {
+      "c1": [0.3701577640022151, 0.3722648359835148],
+      "c2": [2.176593418000266, 2.176646548003191],
+      "c4": [3.394343474996276, 3.402852545987116],
+      "native_c8": [6.840703303983901, 6.841467761987587]
+    },
+    "model_step_itl_ms_median_p95": {
+      "c1": [19.874210498528555, 20.159620995400473],
+      "c2": [25.459350494202226, 25.81992300110869],
+      "c4": [37.02645149314776, 37.399450986413285],
+      "native_c8": [60.00357450102456, 60.641211981419474]
+    },
+    "tracked_peak_gib": {
+      "c1": 21.783072092570364,
+      "c2": 22.393554350361228,
+      "c4": 23.395871862769127,
+      "native_c8": 25.400506887584925
+    },
+    "decode_stdev_pct_of_median": {
+      "c1": 0.09612783871671442,
+      "c2": 0.019858916266063,
+      "c4": 0.04859710811248934,
+      "native_c8": 0.05805285431377354
+    },
+    "correctness": {
+      "all_configuration_summaries_passed": true,
+      "all_measured_runs_repeatable": true,
+      "c1_c2_c4_prefix_exact": true,
+      "native_c8_rows_match_c4": true,
+      "independent_c1_primitive_byte_exact": true
+    },
+    "raw": {
+      "path": "/tmp/gfx1151-gguf-f3-gdn-e99b228b-results/canonical-p512-d128.json",
+      "size_bytes": 713782,
+      "sha256": "232bf5b2f5a3ce1243cb96d0a8f5e6382102f2c6454d2f3314a4c551c3d5fbd7"
+    }
+  },
+  "comparison_to_previous_retained": {
+    "previous_artifact": "benchmarks/results/2026-07-19-gfx1151-gguf-f0-current-main-recertification.json",
+    "aggregate_decode_tok_s": {
+      "c1": {"old": 50.290510105472165, "new": 50.334793602019964, "delta_pct": 0.08805537357827742},
+      "c2": {"old": 72.26200265526673, "new": 78.55249199645833, "delta_pct": 8.70511348986691},
+      "c4": {"old": 102.66327952844736, "new": 108.05048774468624, "delta_pct": 5.247453852032957},
+      "native_c8": {"old": 128.0747266078454, "new": 133.2505268407924, "delta_pct": 4.041234652637504}
+    },
+    "interpretation": "The c1 route cannot select indexed-singleton GDN and its +0.09% movement is ordinary run variance. Exact c2/c4/c8 gains are retained as a gfx1151 package default. Prior serial-c4 and chunked-c8 rows remain historical controls and were not refreshed in the focused candidate packet."
+  },
+  "short_recertification": {
+    "generated_tokens_per_row": 64,
+    "warmup_runs": 1,
+    "measured_runs": 2,
+    "clean_candidate_aggregate_decode_tok_s": {
+      "c1": 50.64229051320696,
+      "c2": 78.99542446525396,
+      "c4": 108.1428754974538,
+      "native_c8": 133.26844594898313
+    },
+    "all_configuration_summaries_passed": true,
+    "all_measured_runs_repeatable": true,
+    "raw": {
+      "path": "/tmp/gfx1151-gguf-f3-gdn-e99b228b-results/candidate.json",
+      "size_bytes": 412622,
+      "sha256": "23a16cd6f62a2e614d7a4f750b955a6a329a959211d687354ece2376a3ca4b21"
+    }
+  },
+  "profiler_gate": {
+    "passed": true,
+    "performance_claim": false,
+    "source_note": "The required kernel/route trace ran immediately before the implementation commit and therefore records baseline HEAD plus a dirty implementation diff. The subsequent clean detached throughput packets are the performance source; this trace is correctness and dispatch evidence only.",
+    "physical_rows": 8,
+    "graph_capture_count": 1,
+    "graph_replay_count": 1,
+    "all_tokens_exact": true,
+    "route_check_passed": true,
+    "packed_native_dispatches": 748,
+    "exact_row_local_dispatches": 0,
+    "steady_copy_dispatches": 0,
+    "unclassified_dispatches": 0,
+    "indexed_gdn": {
+      "dispatches": 30,
+      "total_duration_ms_diagnostic": 3.705589,
+      "grid": [1024, 32, 1],
+      "workgroup": [128, 1, 1],
+      "vgpr": 56,
+      "scratch_bytes": 0
+    },
+    "linear_attention_state_family_ms_diagnostic": {
+      "previous_segmented": 8.229523,
+      "indexed_singleton": 4.037572,
+      "delta_pct": -50.938
+    },
+    "raw": {
+      "path": "/tmp/gfx1151-f3-gdn-singleton-c8-profile.json",
+      "size_bytes": 108011,
+      "sha256": "8e7d7b5fbadd9c8c8ae95c16129b73f5661a33bffe4d5211a4463e1e187ba49c"
+    }
+  },
+  "validation": {
+    "primitive": "1 passed; sparse indexed Conv/GDN output and recurrent state byte-exact to independent c1 and CPU reference",
+    "focused_host_and_graph_bundle": "71 passed",
+    "canonical_direct_configurations": "4/4 passed with three repeatable measured trajectories each",
+    "correctness_gate": "KL=0 and top-1=100% by byte-exact primitive comparison",
+    "profiler_expected_kernel_observed": true
+  },
+  "commands": {
+    "canonical_direct": "/home/lhl/hipEngine-main/.venv/bin/python scripts/gguf_packed_ar_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --configurations c1,c2,c4,native_c8 --prompt-token-id 9707 --prompt-length 512 --decode-steps 128 --warmup-runs 1 --measured-runs 3 --compiler-version-file /tmp/gfx1151-gguf-f3-clean-3a0fe188/hipcc-version.txt --require-cached-build --json /tmp/gfx1151-gguf-f3-gdn-e99b228b-results/canonical-p512-d128.json",
+    "profiler": "/home/lhl/hipEngine-main/.venv/bin/python scripts/gguf_packed_ar_rocprof.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --decode-mode graph --packed-concurrency 8 --prompt-length 512 --prompt-token-id 9707 --expected-token-id 9707 --compiler-version-file /tmp/gfx1151-gguf-f3-clean-3a0fe188/hipcc-version.txt --raw-root /tmp/gfx1151-f3-gdn-singleton-c8-raw --rocprofv3 /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/bin/rocprofv3 --roctx-sdk /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib/librocprofiler-sdk-roctx.so.1 --out /tmp/gfx1151-f3-gdn-singleton-c8-profile.json"
+  },
+  "limitations": [
+    "This refresh is direct graph model-step evidence, not complete OpenAI server-wall evidence; prior retained F2 server rows remain unchanged.",
+    "The canonical candidate packet intentionally omits serial_c4 and chunked_c8; prior serial-c4 remains a structurally unchanged c1-path reference, while prior chunked-c8 is historical only because the new c4 route would affect it.",
+    "The profiler duration is a single instrumented replay and is diagnostic only.",
+    "gfx1100 remains on segmented GDN until an independent hardware transfer gate passes.",
+    "Normal sampling, mixed lengths, long-context concurrency, production load/SLO, and external-engine comparisons remain later gates."
+  ]
+}

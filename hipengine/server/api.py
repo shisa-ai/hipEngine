@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote
 
+from anyio import CancelScope
 from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
@@ -2127,9 +2128,17 @@ class _GenerationBatcher:
         finally:
             if not item.finished:
                 _cancel_queued_generation(item, reason="disconnect")
+                # The client no longer consumes this queue.  Release a producer
+                # blocked on backpressure, then let the backend observe its
+                # cooperative cancellation token before closing its iterator.
+                # Cancelling the producer task here can race a synchronous
+                # generator still executing in a worker thread and raise
+                # ``aclose(): asynchronous generator is already running``.
+                while not queue.empty():
+                    with suppress(asyncio.QueueEmpty):
+                        queue.get_nowait()
                 producer = item.producer_task
                 if producer is not None and producer is not asyncio.current_task() and not producer.done():
-                    producer.cancel()
                     with suppress(asyncio.CancelledError):
                         await producer
 
@@ -2414,7 +2423,7 @@ async def _finish_stream_queued_generation(
     if queue is None or item.finished:
         return
     item.finished = True
-    if item.cancelled and exception is None:
+    if item.cancelled:
         return
     if exception is not None:
         await queue.put(exception)
@@ -5150,6 +5159,24 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             response["thinking_budget"] = thinking_budget
         return response
 
+    async def account_active_stream_cancellation(
+        iterator: AsyncIterator[str],
+        control: _RequestControl,
+    ) -> AsyncIterator[str]:
+        """Record ASGI task cancellation after the active stream unwinds."""
+
+        try:
+            async for item in iterator:
+                yield item
+        except asyncio.CancelledError:
+            finish_details = FinishDetails(reason="cancelled", cancelled=True)
+            control.cancellation_token.cancel(finish_details)
+            _record_openai_error(
+                app.state.hipengine_server_metrics,
+                _request_cancelled_error(finish_details),
+            )
+            raise
+
     @app.post("/v1/completions", response_model=None)
     async def completions(
         request: CompletionRequest,
@@ -5182,8 +5209,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             and (not _request_logprobs_enabled(request) or live_completion_logprobs)
             and not _structured_result_validation(request)
         ):
+            # StreamingResponse owns the ASGI receive channel and cancels its
+            # body iterator on disconnect. Avoid a competing receive through
+            # Request.is_disconnected() while that response is active.
+            control = replace(control, disconnected=None)
             return StreamingResponse(
-                stream_completion_one(expanded_prompts[0], request, control, raw_request),
+                account_active_stream_cancellation(
+                    stream_completion_one(expanded_prompts[0], request, control, raw_request),
+                    control,
+                ),
                 media_type="text/event-stream",
             )
         batch = await generate_with_request_control(expanded_prompts, request, control)
@@ -5377,6 +5411,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             prompt = prepared_prompt.prompt
             fit_context_extra = prepared_prompt.fit_context_extra
             if request.stream:
+                control = replace(control, disconnected=None)
                 live_chat_logprobs = (
                     bool(request.logprobs)
                     and not request.tools
@@ -5390,7 +5425,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     else stream_chat_completion
                 )
                 return StreamingResponse(
-                    streamer(prompt, request, control, raw_request),
+                    account_active_stream_cancellation(
+                        streamer(prompt, request, control, raw_request),
+                        control,
+                    ),
                     media_type="text/event-stream",
                 )
             n = _request_n(request)
@@ -8970,10 +9008,33 @@ def _request_control_poll_interval(control: _RequestControl) -> float:
     return min(interval, remaining)
 
 
+async def _await_controlled_task_exit(task: asyncio.Task[Any], *, timeout_s: float = 5.0) -> None:
+    """Wait for one controlled child to acknowledge cancellation, then force it."""
+
+    # Starlette cancels response bodies through an AnyIO cancel scope. AnyIO's
+    # level cancellation would otherwise interrupt every cleanup await again,
+    # leaving ``__anext__`` live when the iterator wrapper calls ``aclose()``.
+    with CancelScope(shield=True):
+        done, _pending = await asyncio.wait({task}, timeout=max(0.0, float(timeout_s)))
+        if task not in done:
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
 async def _await_with_request_control(awaitable, control: _RequestControl | None = None):
-    control = control or _RequestControl()
-    if control.deadline_at is None and control.disconnected is None:
+    if control is None:
         return await awaitable
+    if control.deadline_at is None and control.disconnected is None:
+        # Active StreamingResponse bodies deliberately leave request polling to
+        # Starlette. Shield the in-flight child so Starlette's caller
+        # cancellation can become a cooperative row-token signal first.
+        task = asyncio.ensure_future(awaitable)
+        try:
+            return await asyncio.shield(task)
+        except asyncio.CancelledError:
+            control.cancellation_token.cancel(FinishDetails(reason="cancelled", cancelled=True))
+            await _await_controlled_task_exit(task)
+            raise
     try:
         await _raise_for_request_control(control)
     except OpenAIHTTPError:
@@ -8989,9 +9050,19 @@ async def _await_with_request_control(awaitable, control: _RequestControl | None
                 return await task
             await _raise_for_request_control(control)
     except OpenAIHTTPError:
-        task.cancel()
-        with suppress(asyncio.CancelledError):
-            await task
+        # The control token is already tripped. Give controlled generation a
+        # bounded opportunity to acknowledge it and reclaim its own row before
+        # forcing task cancellation; abrupt ``__anext__`` cancellation closes
+        # the generator and can interfere with concurrently subscribed rows.
+        await _await_controlled_task_exit(task)
+        raise
+    except asyncio.CancelledError:
+        # ASGI servers cancel the response task when a streaming client closes
+        # its socket. Signal only this row, then let the child acknowledge and
+        # unwind before the iterator wrapper calls ``aclose()``. This avoids an
+        # abrupt ``__anext__`` cancellation propagating into peer subscriptions.
+        control.cancellation_token.cancel(FinishDetails(reason="cancelled", cancelled=True))
+        await _await_controlled_task_exit(task)
         raise
 
 

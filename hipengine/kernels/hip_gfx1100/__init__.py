@@ -10,6 +10,12 @@ GGUF_GDN_PREFILL_AUTO_MODE = "chain_peer_wave32"
 # Strict-exact rollback/oracle stays architecture-scoped and does not replace
 # the quality-admitted peer-wave production default.
 GGUF_GDN_PREFILL_EXACT_MODE = "chain_lds32_direct_nonvolatile"
+# The singleton-indexed packed-AR recurrence is retained only on independently
+# measured backends. gfx1100 keeps the arbitrary-segment fallback by default.
+GGUF_GDN_INDEXED_SINGLETON_DECODE = False
+# Exact Q8T16 row-amortized decode remains explicit on gfx1100 until an
+# independent native-AR width gate passes on W7900.
+GGUF_Q8_T16_DECODE_ROWTILE_ALL = False
 # Clean W7900 GPF-3A full-model 512/4K evidence admits byte-exact shared-X
 # selected-dual Q4T16 prefill after the predeclared borderline-decode repeat.
 GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE = "shared_x"
@@ -45,6 +51,7 @@ GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE = "baseline"
 __all__ = [
     "GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS",
     "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
+    "GGUF_GDN_INDEXED_SINGLETON_DECODE",
     "GGUF_GDN_PREFILL_AUTO_MODE",
     "GGUF_GDN_PREFILL_EXACT_MODE",
     "GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE",
@@ -54,6 +61,7 @@ __all__ = [
     "GGUF_PREFILL_ROUTER_SELECT_THREADS",
     "GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS",
     "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
+    "GGUF_Q8_T16_DECODE_ROWTILE_ALL",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS",
     "GGUF_ROUTER_F32_BF16_HIDDEN_THREADS",

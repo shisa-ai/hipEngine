@@ -15,11 +15,11 @@ import time
 from collections import deque
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field, replace
-from typing import Any, Iterable, Protocol, Sequence
+from typing import Any, Callable, Iterable, Protocol, Sequence
 
 from hipengine.dispatch import RequestState, SlotMove, WorkItem, WorkKind
 from hipengine.generation.batch_scheduler import CompletedRequest, GeneratedToken, ResidentBatchScheduler
-from hipengine.generation.deadline import GenerationCancelled
+from hipengine.generation.deadline import GenerationCancelled, generation_deadline_expired
 from hipengine.generation.registry import (
     FinishDetails,
     GenerationOutput,
@@ -88,6 +88,7 @@ class _ResidentStreamState:
     events: deque[tuple[int, GenerationStreamChunk]] = field(default_factory=deque)
     emitted_text_request_ids: set[int] = field(default_factory=set)
     overflowed_request_ids: set[int] = field(default_factory=set)
+    cancelled_details: FinishDetails | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,6 +217,13 @@ class SubmitPollTextGenerator:
         self._loop_lock = threading.Lock()
         self._stream_queue_max_chunks = int(stream_queue_max_chunks)
         self._stream_states_by_request: dict[int, _ResidentStreamState] = {}
+        self._submissions_by_request: dict[int, GenerationSubmission] = {}
+        self._cancel_dispatch_by_submission: dict[
+            int,
+            tuple[Any, Callable[[FinishDetails], None]],
+        ] = {}
+        self._cancel_commands_lock = threading.Lock()
+        self._cancel_commands: deque[tuple[GenerationSubmission, FinishDetails]] = deque()
 
     @property
     def inner(self) -> TextGenerator:
@@ -256,6 +264,8 @@ class SubmitPollTextGenerator:
                 events = self.poll(max_ticks=1)
                 ticks += 1
                 if not events:
+                    if self.generation_complete(submission):
+                        continue
                     missing = self._runner.missing_outputs(submission.request_ids)
                     raise RuntimeError(f"submit+poll text generation stalled; missing request_ids={missing}")
                 if ticks > submission.max_ticks:
@@ -288,9 +298,19 @@ class SubmitPollTextGenerator:
                 request_ids.append(
                     self._loop.submit(prompt_row, max_new_tokens=max_new_tokens)
                 )
+            # Native resident scheduling owns row deadlines/cancellation. Keep
+            # the original request on the submission, but prevent one row's
+            # expired deadline from raising through a shared physical model
+            # batch. The serial compatibility bridge keeps its prior direct
+            # token/deadline contract with the inner generator.
+            runner_request = (
+                replace(normalized, deadline_at=None)
+                if self._has_resident_runner
+                else normalized
+            )
             self._runner.register_batch(
                 request_ids,
-                normalized,
+                runner_request,
                 prompt_rows=prompt_rows,
             )
         except Exception:
@@ -299,7 +319,7 @@ class SubmitPollTextGenerator:
                 self._loop.release_completed(request_id)
             self._runner.discard(request_ids)
             raise
-        return GenerationSubmission(
+        submission = GenerationSubmission(
             request_ids=tuple(request_ids),
             request=normalized,
             max_ticks=_submit_poll_max_ticks(
@@ -308,11 +328,14 @@ class SubmitPollTextGenerator:
                 max_new_tokens=max_new_tokens,
             ),
         )
+        self._register_submission_cancellation_locked(submission)
+        return submission
 
     def poll(self, *, max_ticks: int = 1) -> tuple[EngineLoopEvent, ...]:
         """Advance shared model work without owning a request-lifetime lock."""
 
         with self._loop_lock:
+            self._drain_cancel_commands_locked()
             events = self._loop.poll(max_ticks=max_ticks)
             self._route_stream_events_locked(events)
             return events
@@ -343,6 +366,99 @@ class SubmitPollTextGenerator:
                 for request_id in request_ids
             )
 
+    def _register_submission_cancellation_locked(
+        self,
+        submission: GenerationSubmission,
+    ) -> None:
+        if not self._has_resident_runner:
+            return
+        for request_id in submission.request_ids:
+            self._submissions_by_request[int(request_id)] = submission
+        token = submission.request.cancellation_token
+        set_dispatch = getattr(token, "set_cancel_dispatch", None)
+        if not callable(set_dispatch):
+            return
+
+        def dispatch(details: FinishDetails) -> None:
+            with self._cancel_commands_lock:
+                self._cancel_commands.append(
+                    (submission, FinishDetails.from_value(details))
+                )
+
+        set_dispatch(dispatch)
+        self._cancel_dispatch_by_submission[id(submission)] = (token, dispatch)
+        if bool(getattr(token, "cancelled", False)):
+            dispatch(FinishDetails.from_value(getattr(token, "finish_details", None)))
+
+    def _unregister_submission_cancellation_locked(
+        self,
+        submission: GenerationSubmission,
+    ) -> None:
+        for request_id in submission.request_ids:
+            if self._submissions_by_request.get(int(request_id)) is submission:
+                self._submissions_by_request.pop(int(request_id), None)
+        registered = self._cancel_dispatch_by_submission.pop(id(submission), None)
+        if registered is None:
+            return
+        token, dispatch = registered
+        clear_dispatch = getattr(token, "clear_cancel_dispatch", None)
+        if callable(clear_dispatch):
+            clear_dispatch(dispatch)
+
+    def _drain_cancel_commands_locked(self) -> None:
+        with self._cancel_commands_lock:
+            queued_commands = tuple(self._cancel_commands)
+            self._cancel_commands.clear()
+        commands_by_submission = {
+            id(submission): (submission, details)
+            for submission, details in queued_commands
+        }
+        active_submissions = {
+            id(submission): submission
+            for submission in self._submissions_by_request.values()
+        }
+        for submission_id, submission in active_submissions.items():
+            if generation_deadline_expired(submission.request.deadline_at):
+                commands_by_submission.setdefault(
+                    submission_id,
+                    (
+                        submission,
+                        FinishDetails(
+                            reason="deadline_exceeded",
+                            deadline_exceeded=True,
+                        ),
+                    ),
+                )
+        for submission, details in commands_by_submission.values():
+            active = any(
+                self._submissions_by_request.get(int(request_id)) is submission
+                for request_id in submission.request_ids
+            )
+            if active:
+                reason = "timeout" if details.deadline_exceeded else "disconnect"
+                state = next(
+                    (
+                        self._stream_states_by_request.get(int(request_id))
+                        for request_id in submission.request_ids
+                        if self._stream_states_by_request.get(int(request_id)) is not None
+                    ),
+                    None,
+                )
+                if state is not None:
+                    state.cancelled_details = details
+                    state.events.clear()
+                    self._unregister_stream_state_locked(state)
+                    self._abort_submission_locked(submission, reason=reason)
+                else:
+                    for request_id in submission.request_ids:
+                        self._loop.cancel(int(request_id), reason=reason)
+                        self._loop.release_completed(int(request_id))
+                    self._unregister_submission_cancellation_locked(submission)
+            token = submission.request.cancellation_token
+            acknowledge = getattr(token, "acknowledge_cancel", None)
+            if callable(acknowledge):
+                acknowledge(details)
+
     def take_result(self, submission: GenerationSubmission) -> list[GenerationOutput]:
         """Consume one completed submission in original prompt order."""
 
@@ -356,6 +472,7 @@ class SubmitPollTextGenerator:
             finalize_batch = getattr(self._runner, "finalize_batch", None)
             if callable(finalize_batch):
                 finalize_batch(submission.request, submission.request_ids, outputs)
+            self._unregister_submission_cancellation_locked(submission)
             return outputs
 
     def _abort_submission(self, submission: GenerationSubmission) -> None:
@@ -450,14 +567,41 @@ class SubmitPollTextGenerator:
                 self._stream_states_by_request[request_id] = state
 
         consumed = False
+        cancel_acknowledged = False
         ticks = 0
         try:
             while True:
                 queued: tuple[int, GenerationStreamChunk] | None = None
+                cancelled_details: FinishDetails | None = None
                 with self._loop_lock:
-                    if state.events:
-                        queued = state.events.popleft()
-                    complete = self._runner.has_outputs(submission.request_ids)
+                    token = submission.request.cancellation_token
+                    if state.cancelled_details is not None:
+                        cancelled_details = state.cancelled_details
+                        cancel_acknowledged = True
+                        complete = True
+                    elif token is not None and bool(getattr(token, "cancelled", False)):
+                        # Fallback for cancellation tokens without scheduler
+                        # dispatch support. Native server tokens use the queued
+                        # command/ack path drained by ``poll()``.
+                        cancelled_details = FinishDetails.from_value(
+                            getattr(token, "finish_details", None)
+                        )
+                        reason = (
+                            "timeout"
+                            if cancelled_details.deadline_exceeded
+                            else "disconnect"
+                        )
+                        self._abort_submission_locked(submission, reason=reason)
+                        self._unregister_stream_state_locked(state)
+                        state.events.clear()
+                        cancel_acknowledged = True
+                        complete = True
+                    else:
+                        if state.events:
+                            queued = state.events.popleft()
+                        complete = self._runner.has_outputs(submission.request_ids)
+                if cancelled_details is not None:
+                    raise GenerationCancelled(cancelled_details)
                 if queued is not None:
                     request_id, chunk = queued
                     if chunk.text:
@@ -518,7 +662,7 @@ class SubmitPollTextGenerator:
                 )
             consumed = True
         finally:
-            if not consumed:
+            if not consumed and not cancel_acknowledged:
                 with self._loop_lock:
                     self._abort_submission_locked(submission, reason="disconnect")
                     self._unregister_stream_state_locked(state)
@@ -552,6 +696,7 @@ class SubmitPollTextGenerator:
             self._loop.cancel(request_id, reason=reason)
             self._loop.release_completed(request_id)
         self._runner.discard(submission.request_ids)
+        self._unregister_submission_cancellation_locked(submission)
 
     def close(self) -> None:
         """Force-reclaim any remaining rows and release long-lived resources."""
@@ -567,6 +712,14 @@ class SubmitPollTextGenerator:
                 self._loop.release_completed(int(request_id))
             if active_request_ids:
                 self._runner.discard(active_request_ids)
+            submissions = {
+                id(submission): submission
+                for submission in self._submissions_by_request.values()
+            }
+            for submission in submissions.values():
+                self._unregister_submission_cancellation_locked(submission)
+            with self._cancel_commands_lock:
+                self._cancel_commands.clear()
             closer = getattr(self._runner, "close", None)
             if callable(closer):
                 closer()

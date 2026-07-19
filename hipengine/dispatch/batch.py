@@ -171,6 +171,7 @@ class PhysicalBatchGroup:
     global_slot_indices: tuple[int, ...]
     active_slot_indices: tuple[int, ...]
     active_mask: tuple[bool, ...]
+    dense_execution_rows: bool = False
 
     def __post_init__(self) -> None:
         if self.logical_c <= 0:
@@ -201,18 +202,22 @@ class PhysicalBatchGroup:
             raise ValueError("active_mask active lanes must equal active_slot_indices")
         if any(index < 0 or index >= self.physical_slot_extent for index in self.active_slot_indices):
             raise ValueError("active_slot_indices must be within physical_slot_extent")
-        expected_global = tuple(
-            self.physical_slot_base + index for index in self.active_slot_indices
-        )
-        if self.global_slot_indices != expected_global:
-            raise ValueError("global_slot_indices must equal physical base plus local slots")
+        if self.dense_execution_rows:
+            if self.active_slot_indices != tuple(range(active_rows)):
+                raise ValueError("dense execution rows must use contiguous local lanes")
+        else:
+            expected_global = tuple(
+                self.physical_slot_base + index for index in self.active_slot_indices
+            )
+            if self.global_slot_indices != expected_global:
+                raise ValueError("global_slot_indices must equal physical base plus local slots")
 
     @property
     def active_rows(self) -> int:
         return len(self.request_ids)
 
     def to_json_dict(self) -> dict[str, object]:
-        return {
+        payload: dict[str, object] = {
             "logical_c": self.logical_c,
             "group_index": self.group_index,
             "group_count": self.group_count,
@@ -225,18 +230,25 @@ class PhysicalBatchGroup:
             "active_slot_indices": list(self.active_slot_indices),
             "active_mask": list(self.active_mask),
         }
+        if self.dense_execution_rows:
+            payload["execution_row_mapping"] = "dense_active_rows"
+        return payload
 
 
 def plan_physical_batch_groups(
     work: WorkItem,
     *,
     physical_bucket_widths: Sequence[int],
+    compact_active_rows: bool = False,
 ) -> tuple[PhysicalBatchGroup, ...]:
-    """Lower arbitrary logical work into declared no-compaction buckets.
+    """Lower arbitrary logical work into declared physical buckets.
 
-    The largest declared width defines stable global-slot windows.  Empty
-    windows are omitted, but populated windows retain their original extent so
-    retirement does not silently compact a c8 mask into a smaller bucket.
+    By default, the largest declared width defines stable global-slot windows.
+    Empty windows are omitted, but populated windows retain their original
+    extent so retirement does not silently compact a c8 mask into a smaller
+    bucket.  ``compact_active_rows`` instead densifies only the ephemeral model
+    execution row map.  Stable request ids, scheduler slots, state, and KV
+    ownership remain unchanged and are reported through ``global_slot_indices``.
     """
 
     widths = tuple(int(width) for width in physical_bucket_widths)
@@ -257,36 +269,59 @@ def plan_physical_batch_groups(
     request_by_slot = dict(zip(global_slots, request_ids, strict=True))
     max_width = widths[-1]
     provisional: list[dict[str, object]] = []
-    for physical_slot_base in range(0, logical_extent, max_width):
-        physical_slot_extent = min(max_width, logical_extent - physical_slot_base)
-        group_slots = tuple(
-            slot
-            for slot in sorted(request_by_slot)
-            if physical_slot_base <= slot < physical_slot_base + physical_slot_extent
-        )
-        if not group_slots:
-            continue
-        local_slots = tuple(slot - physical_slot_base for slot in group_slots)
-        try:
-            physical_rows = next(
-                width for width in widths if width >= physical_slot_extent
+    if compact_active_rows:
+        ordered_slots = tuple(sorted(request_by_slot))
+        for physical_slot_base in range(0, len(ordered_slots), max_width):
+            group_slots = ordered_slots[physical_slot_base : physical_slot_base + max_width]
+            active_rows = len(group_slots)
+            try:
+                physical_rows = next(width for width in widths if width >= active_rows)
+            except StopIteration as exc:  # pragma: no cover - max-width chunks are defensive
+                raise ValueError("physical_bucket_widths cannot cover active rows") from exc
+            local_slots = tuple(range(active_rows))
+            provisional.append(
+                {
+                    "physical_slot_base": physical_slot_base,
+                    "physical_slot_extent": active_rows,
+                    "physical_rows": physical_rows,
+                    "request_ids": tuple(request_by_slot[slot] for slot in group_slots),
+                    "global_slot_indices": group_slots,
+                    "active_slot_indices": local_slots,
+                    "active_mask": tuple(index < active_rows for index in range(physical_rows)),
+                    "dense_execution_rows": True,
+                }
             )
-        except StopIteration as exc:  # pragma: no cover - max-width windows make this defensive
-            raise ValueError("physical_bucket_widths cannot cover the slot extent") from exc
-        local_slot_set = set(local_slots)
-        provisional.append(
-            {
-                "physical_slot_base": physical_slot_base,
-                "physical_slot_extent": physical_slot_extent,
-                "physical_rows": physical_rows,
-                "request_ids": tuple(request_by_slot[slot] for slot in group_slots),
-                "global_slot_indices": group_slots,
-                "active_slot_indices": local_slots,
-                "active_mask": tuple(
-                    index in local_slot_set for index in range(physical_rows)
-                ),
-            }
-        )
+    else:
+        for physical_slot_base in range(0, logical_extent, max_width):
+            physical_slot_extent = min(max_width, logical_extent - physical_slot_base)
+            group_slots = tuple(
+                slot
+                for slot in sorted(request_by_slot)
+                if physical_slot_base <= slot < physical_slot_base + physical_slot_extent
+            )
+            if not group_slots:
+                continue
+            local_slots = tuple(slot - physical_slot_base for slot in group_slots)
+            try:
+                physical_rows = next(
+                    width for width in widths if width >= physical_slot_extent
+                )
+            except StopIteration as exc:  # pragma: no cover - max-width windows make this defensive
+                raise ValueError("physical_bucket_widths cannot cover the slot extent") from exc
+            local_slot_set = set(local_slots)
+            provisional.append(
+                {
+                    "physical_slot_base": physical_slot_base,
+                    "physical_slot_extent": physical_slot_extent,
+                    "physical_rows": physical_rows,
+                    "request_ids": tuple(request_by_slot[slot] for slot in group_slots),
+                    "global_slot_indices": group_slots,
+                    "active_slot_indices": local_slots,
+                    "active_mask": tuple(
+                        index in local_slot_set for index in range(physical_rows)
+                    ),
+                }
+            )
 
     group_count = len(provisional)
     if group_count <= 0:  # WorkItem already requires requests; keep failure local and explicit.

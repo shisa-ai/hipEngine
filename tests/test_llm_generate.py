@@ -13,6 +13,39 @@ from hipengine.generation import (
 )
 
 
+def test_generator_engine_loop_defaults_respect_explicit_env() -> None:
+    from hipengine.generation import EngineLoopConfig
+    from hipengine.llm import _engine_loop_config_with_generator_defaults
+
+    generator = SimpleNamespace(
+        engine_loop_config_defaults={
+            "prefill_decode_policy": "fair",
+            "max_prefill_chunk_tokens": 256,
+        }
+    )
+    resolved = _engine_loop_config_with_generator_defaults(
+        EngineLoopConfig(),
+        generator,
+        environ={},
+    )
+    assert resolved.prefill_decode_policy == "fair"
+    assert resolved.max_prefill_chunk_tokens == 256
+
+    explicit = EngineLoopConfig(
+        prefill_decode_policy="protect_ttft",
+        max_prefill_chunk_tokens=64,
+    )
+    preserved = _engine_loop_config_with_generator_defaults(
+        explicit,
+        generator,
+        environ={
+            "HIPENGINE_PREFILL_DECODE_POLICY": "protect_ttft",
+            "HIPENGINE_MAX_PREFILL_CHUNK_TOKENS": "64",
+        },
+    )
+    assert preserved == explicit
+
+
 def test_llm_generate_dispatches_through_generation_registry(monkeypatch) -> None:
     import hipengine.generation as generation
     import hipengine.loading as loading

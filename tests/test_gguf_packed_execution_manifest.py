@@ -13,8 +13,10 @@ from scripts.gguf_packed_ar_rocprof import (
     build_arg_parser,
     build_c3_family_census,
     build_execution_census,
+    classify_decode_kernel_family,
     classify_packed_execution_bucket,
     execution_census_closure_level,
+    summarize_decode_kernel_families,
 )
 
 
@@ -26,16 +28,19 @@ def test_packed_profiler_counts_exact_q6_rowtile_groups() -> None:
     assert _q6_rowtile_dispatch_count(13) == 3
 
 
-def test_packed_rocprof_accepts_native_c8_target_and_marker() -> None:
+def test_packed_rocprof_accepts_declared_c2_c4_c8_targets_and_markers() -> None:
     parser = build_arg_parser()
     assert parser.parse_args([]).packed_concurrency == 4
 
-    args = parser.parse_args(["--backend", "hip_gfx1151", "--packed-concurrency", "8"])
-    assert args.backend == "hip_gfx1151"
-    assert args.packed_concurrency == 8
-    assert _marker_name(args.packed_concurrency) == (
-        "hipengine_gguf_packed_c1_profile_c8_steady_decode_step"
-    )
+    for width in (2, 4, 8):
+        args = parser.parse_args(
+            ["--backend", "hip_gfx1151", "--packed-concurrency", str(width)]
+        )
+        assert args.backend == "hip_gfx1151"
+        assert args.packed_concurrency == width
+        assert _marker_name(args.packed_concurrency) == (
+            f"hipengine_gguf_packed_c1_profile_c{width}_steady_decode_step"
+        )
 
 
 def test_packed_rocprof_scopes_kind_and_correctness_gate_to_backend() -> None:
@@ -44,6 +49,12 @@ def test_packed_rocprof_scopes_kind_and_correctness_gate_to_backend() -> None:
     )
     assert _artifact_kind("gfx1151", closure_level="c4", packed_concurrency=8) == (
         "gfx1151_gguf_concurrency_e1_native_c8_graph_profiler_census"
+    )
+    assert _artifact_kind("gfx1151", closure_level="c4", packed_concurrency=4) == (
+        "gfx1151_gguf_concurrency_c4_graph_replay_census"
+    )
+    assert _artifact_kind("gfx1151", closure_level="c4", packed_concurrency=2) == (
+        "gfx1151_gguf_concurrency_c2_graph_replay_census"
     )
     assert _correctness_gate("hip_gfx1100").endswith(
         "2026-07-16-gfx1100-gguf-concurrency-b4-category-lifecycle.json"
@@ -135,10 +146,12 @@ def test_packed_decode_manifest_accounts_indexed_recurrent_closure() -> None:
         scatter_state=False,
         blocks_per_slot=4,
         linear_attention_decode_path="indexed_batch",
+        gdn_recurrent_decode_path="indexed_singleton",
         **_c3_routes(),
     )
 
     assert manifest["linear_attention_decode_path"] == "indexed_batch"
+    assert manifest["gdn_recurrent_decode_path"] == "indexed_singleton"
     assert manifest["claim_level"] == "exact_hybrid"
     assert manifest["model_step"] == {
         "complete_c1_session_replays": 0,
@@ -157,7 +170,7 @@ def test_packed_decode_manifest_accounts_indexed_recurrent_closure() -> None:
         assert families[name]["exact_row_local_work"] == []
     assert families["conv_gdn"]["packed_native_work"] == [
         "conv_decode_indexed",
-        "gdn_recurrent_decode_segments_fp32_out",
+        "gdn_recurrent_decode_indexed_fp32_out",
     ]
     assert manifest["profiler_contract"] == {
         "expected_execution_buckets": ["packed_native"],
@@ -544,6 +557,11 @@ def test_packed_profiler_classifier_separates_exact_row_local_from_native() -> N
             grid_y=4,
         ),
         KernelTraceRow(
+            kernel="qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_kernel<unsigned short>",
+            duration_ns=75,
+            grid_y=32,
+        ),
+        KernelTraceRow(
             kernel="argmax_rows_stage1_i32_kernel",
             duration_ns=80,
             grid_y=4,
@@ -552,6 +570,48 @@ def test_packed_profiler_classifier_separates_exact_row_local_from_native() -> N
 
     assert all(classify_packed_execution_bucket(row) == "exact_row_local" for row in exact_rows)
     assert all(classify_packed_execution_bucket(row) == "packed_native" for row in native_rows)
+
+
+def test_packed_profiler_attributes_every_decode_kernel_family() -> None:
+    rows = [
+        KernelTraceRow(kernel="prepare_packed_decode_metadata_kernel", duration_ns=10),
+        KernelTraceRow(kernel="q6_k_t16_gemv_rowtile_kernel", duration_ns=20),
+        KernelTraceRow(kernel="gguf_q8_0_embedding_bf16_out_kernel", duration_ns=30),
+        KernelTraceRow(kernel="qwen35_router_select_kernel", duration_ns=40),
+        KernelTraceRow(kernel="qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel", duration_ns=50),
+        KernelTraceRow(kernel="qwen35_paged_full_attn_decode_context_tensor_batch_kernel", duration_ns=60),
+        KernelTraceRow(kernel="q4_k_t16_selected_dual_direct_gemv_kernel", duration_ns=70),
+        KernelTraceRow(kernel="gguf_add_rmsnorm_bf16_f32_weight_kernel", duration_ns=80),
+        KernelTraceRow(kernel="q8_0_t16_dual_split_gemv_kernel", duration_ns=90),
+        KernelTraceRow(kernel="future_unclassified_kernel", duration_ns=100),
+    ]
+    expected = [
+        "metadata_lifecycle",
+        "lm_head_sampler",
+        "embedding",
+        "moe_router",
+        "linear_attention_state",
+        "full_attention_core",
+        "moe_selected_combine",
+        "norm_residual",
+        "dense_projection",
+        "other",
+    ]
+
+    assert [classify_decode_kernel_family(row.kernel) for row in rows] == expected
+    summary = summarize_decode_kernel_families(rows)
+    by_name = {record["family"]: record for record in summary["families"]}
+    assert summary["total_dispatches"] == 10
+    assert summary["total_duration_ns"] == 550
+    assert sum(record["dispatches"] for record in summary["families"]) == 10
+    assert sum(record["total_duration_ns"] for record in summary["families"]) == 550
+    assert by_name["dense_projection"]["dispatches"] == 1
+    assert by_name["dense_projection"]["share_of_gpu_duration"] == 90 / 550
+    assert summary["unclassified"] == {
+        "dispatches": 1,
+        "total_duration_ns": 100,
+        "kernel_names": ["future_unclassified_kernel"],
+    }
 
 
 def test_profiler_census_accepts_zero_row_local_indexed_boundary() -> None:
@@ -585,6 +645,8 @@ def test_profiler_census_accepts_zero_row_local_indexed_boundary() -> None:
     assert census["packed_concurrency"] == 4
     assert census["c4"]["buckets"]["exact_row_local"]["dispatches"] == 0
     assert census["c4"]["buckets"]["packed_native"]["dispatches"] == 2
+    assert census["family_attribution"]["c1"]["total_dispatches"] == 1
+    assert census["family_attribution"]["c4"]["total_dispatches"] == 2
 
     c8_manifest = deepcopy(manifest)
     c8_manifest.update({"rows": 8, "physical_rows": 8, "active_rows": 8})

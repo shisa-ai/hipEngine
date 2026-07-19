@@ -4723,6 +4723,57 @@ extern "C" int hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_spans(
   return static_cast<int>(hipGetLastError());
 }
 
+extern "C" int hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* out,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    int64_t rows,
+    int64_t max_context_len,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream) {
+  if (rows <= 0 || !valid_paged_attn_shape(max_context_len, block_size, block_table_len, num_q_heads, num_kv_heads, head_dim)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  // Preserve the generic batch reduction retained by gfx1151 while fixing its
+  // reduction geometry at the c4/c8-proven 256-thread shape.  The generic
+  // entrypoint intentionally keeps its rows<=2 1024-thread PARO fast path.
+  constexpr int threads = 256;
+  constexpr int max_warps = threads / 32;
+  constexpr int value_groups = 1;
+  const size_t shared_bytes =
+      static_cast<size_t>(max_context_len + max_warps + head_dim + value_groups * head_dim) *
+      sizeof(float);
+  hipLaunchKernelGGL(
+      qwen35_paged_full_attn_decode_context_tensor_batch_kernel,
+      dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(rows)),
+      dim3(threads),
+      shared_bytes,
+      stream,
+      query,
+      key_cache,
+      value_cache,
+      base_offsets,
+      live_counts,
+      out,
+      rows,
+      max_context_len,
+      block_size,
+      block_table_len,
+      num_q_heads,
+      num_kv_heads,
+      head_dim,
+      scale);
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_c1_exact_spans(
     const float* query,
     const uint16_t* key_cache,

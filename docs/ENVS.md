@@ -207,6 +207,12 @@ when an adapter/parser calls `add_engine_loop_config_args(...)`.
 | `HIPENGINE_KV_POOL_IDLE_GRACE_SECONDS` | `30.0` | `--kv-pool-idle-grace-seconds` | Seconds before fully-free, graph-unpinned tail chunks are eligible to shrink; must be ≥ 0. |
 | `HIPENGINE_MAX_PENDING_REQUESTS` | unset | `--max-pending-requests` | Optional pending request queue cap for the resident scheduler; must be > 0 when set. |
 
+The table lists generic engine defaults. For each unset scheduler knob, the
+registered gfx1151 Qwen GGUF `gguf_q4_k_m` generator refines the policy/chunk
+pair to the F4-retained `fair:256`; explicit env values always win independently.
+Other GGUF quants, gfx1100, and PARO retain their prior defaults until they pass
+independent workload gates.
+
 ## PARO variables
 
 Prompts shorter than `linear_conv_kernel_dim` use token-serial c1 prefill in

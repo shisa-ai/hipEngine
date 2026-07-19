@@ -6,6 +6,7 @@ import json
 import math
 import os
 import shlex
+import time
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -31,7 +32,9 @@ from hipengine.dispatch import (
 from hipengine.generation import (
     CompactPromptSlab,
     EngineLoopConfig,
+    FinishDetails,
     GeneratedToken,
+    GenerationCancellationToken,
     GenerationCancelled,
     GenerationRequest,
     GenerationOutput,
@@ -16687,6 +16690,14 @@ def test_submit_poll_text_generator_routes_concurrent_streams_and_reclaims_close
             events: list[GeneratedToken] = []
             for request_id in work.request_ids:
                 request, row_index = self.rows[int(request_id)]
+                token = request.cancellation_token
+                if token is not None:
+                    token.raise_if_cancelled()
+                if (
+                    request.deadline_at is not None
+                    and time.perf_counter() >= request.deadline_at
+                ):
+                    raise AssertionError("expired row deadline reached shared runner")
                 count = self.counts.get(int(request_id), 0) + 1
                 self.counts[int(request_id)] = count
                 events.append(
@@ -16797,6 +16808,151 @@ def test_submit_poll_text_generator_routes_concurrent_streams_and_reclaims_close
     assert overflow_adapter._loop.pending_count == 0
     assert overflow_adapter._loop.active_count == 0
     assert overflow_adapter._loop.completed == {}
+
+    cancel_adapter = SubmitPollTextGenerator(
+        ConcurrentInner(),
+        capacity=2,
+        prefill_chunk_size=2,
+    )
+    cancel_token = GenerationCancellationToken()
+    cancelled = cancel_adapter.stream_detailed(
+        replace(first_request, cancellation_token=cancel_token)
+    )
+    survivor = cancel_adapter.stream_detailed(second_request)
+    assert next(cancelled).text == "request0:1"
+    assert next(survivor).text == "request1:1"
+
+    cancel_token.cancel(FinishDetails(reason="cancelled", cancelled=True))
+    assert cancel_token.cancelled is False
+    assert next(survivor).text == "request1:2"
+    assert cancel_token.cancelled is True
+    with pytest.raises(StopIteration):
+        next(survivor)
+    with pytest.raises(GenerationCancelled) as cancelled_error:
+        next(cancelled)
+    assert cancelled_error.value.finish_details.to_json_dict() == {
+        "reason": "cancelled",
+        "cancelled": True,
+    }
+    assert cancel_adapter._runner.reclaims == [(0, "disconnect"), (1, "length")]
+    assert cancel_adapter._loop.pending_count == 0
+    assert cancel_adapter._loop.active_count == 0
+    assert cancel_adapter._loop.completed == {}
+
+    timeout_adapter = SubmitPollTextGenerator(
+        ConcurrentInner(),
+        capacity=2,
+        prefill_chunk_size=2,
+    )
+    timeout_token = GenerationCancellationToken()
+    timed_out = timeout_adapter.stream_detailed(
+        replace(first_request, cancellation_token=timeout_token)
+    )
+    timeout_survivor = timeout_adapter.stream_detailed(second_request)
+    assert next(timed_out).text == "request0:1"
+    assert next(timeout_survivor).text == "request1:1"
+
+    timeout_token.cancel(
+        FinishDetails(reason="deadline_exceeded", deadline_exceeded=True)
+    )
+    assert timeout_token.cancelled is False
+    assert next(timeout_survivor).text == "request1:2"
+    assert timeout_token.cancelled is True
+    with pytest.raises(StopIteration):
+        next(timeout_survivor)
+    with pytest.raises(GenerationCancelled) as timeout_error:
+        next(timed_out)
+    assert timeout_error.value.finish_details.to_json_dict() == {
+        "reason": "deadline_exceeded",
+        "deadline_exceeded": True,
+    }
+    assert timeout_adapter._runner.reclaims == [(0, "timeout"), (1, "length")]
+    assert timeout_adapter._loop.pending_count == 0
+    assert timeout_adapter._loop.active_count == 0
+    assert timeout_adapter._loop.completed == {}
+
+    deadline_adapter = SubmitPollTextGenerator(
+        ConcurrentInner(),
+        capacity=2,
+        prefill_chunk_size=2,
+    )
+    deadline_token = GenerationCancellationToken()
+    expiring = deadline_adapter.stream_detailed(
+        replace(
+            first_request,
+            cancellation_token=deadline_token,
+            deadline_at=time.perf_counter() + 0.1,
+        )
+    )
+    deadline_survivor = deadline_adapter.stream_detailed(second_request)
+    assert next(expiring).text == "request0:1"
+    assert next(deadline_survivor).text == "request1:1"
+    time.sleep(0.11)
+
+    assert next(deadline_survivor).text == "request1:2"
+    assert deadline_token.cancelled is True
+    with pytest.raises(StopIteration):
+        next(deadline_survivor)
+    with pytest.raises(GenerationCancelled) as deadline_error:
+        next(expiring)
+    assert deadline_error.value.finish_details == FinishDetails(
+        reason="deadline_exceeded",
+        deadline_exceeded=True,
+    )
+    assert deadline_adapter._runner.reclaims == [(0, "timeout"), (1, "length")]
+    assert deadline_adapter._loop.pending_count == 0
+    assert deadline_adapter._loop.active_count == 0
+    assert deadline_adapter._loop.completed == {}
+
+    blocking_adapter = SubmitPollTextGenerator(
+        ConcurrentInner(),
+        capacity=2,
+        prefill_chunk_size=2,
+    )
+    blocking_token = GenerationCancellationToken()
+    blocking_submission = blocking_adapter.submit_detailed(
+        replace(first_request, cancellation_token=blocking_token)
+    )
+    blocking_token.cancel(
+        FinishDetails(reason="deadline_exceeded", deadline_exceeded=True)
+    )
+    assert blocking_token.cancelled is False
+    assert blocking_adapter.poll(max_ticks=1) == ()
+    assert blocking_token.cancelled is True
+    assert blocking_adapter.generation_complete(blocking_submission)
+    [blocking_output] = blocking_adapter.take_result(blocking_submission)
+    assert blocking_output.finish_details == FinishDetails(
+        reason="deadline_exceeded",
+        deadline_exceeded=True,
+    )
+    assert blocking_adapter._runner.reclaims == [(0, "timeout")]
+    assert blocking_adapter._loop.pending_count == 0
+    assert blocking_adapter._loop.active_count == 0
+    assert blocking_adapter._loop.completed == {}
+
+    completion_adapter = SubmitPollTextGenerator(
+        ConcurrentInner(),
+        capacity=2,
+        prefill_chunk_size=2,
+    )
+    completion_token = GenerationCancellationToken()
+    completed = completion_adapter.stream_detailed(
+        replace(
+            first_request,
+            max_tokens=1,
+            cancellation_token=completion_token,
+        )
+    )
+    assert next(completed).text == "request0:1"
+    completion_token.cancel(FinishDetails(reason="cancelled", cancelled=True))
+    assert completion_token.cancelled is False
+    with pytest.raises(StopIteration):
+        next(completed)
+    assert completion_token.cancelled is True
+    assert completion_adapter._runner.reclaims == [(0, "length")]
+    assert completion_adapter._loop.pending_count == 0
+    assert completion_adapter._loop.active_count == 0
+    assert completion_adapter._loop.completed == {}
 
 
 def test_engine_loop_cli_env_defaults_match_docs() -> None:
