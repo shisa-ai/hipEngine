@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+from types import SimpleNamespace
 
 import pytest
 
@@ -50,7 +51,55 @@ def test_ud_q3_k_m_public_generator_key_is_registered() -> None:
             model=model,
             backend="hip_gfx1100",
             quant="gguf_ud_q3_k_m",
-        ) is qwen35_gguf_generation.make_qwen35_gguf_bringup_generator
+        ) is qwen35_gguf_generation.make_qwen35_gguf_ud_q3_k_m_generator
+
+
+def test_ud_q3_k_m_generator_plugin_selects_native_bulk_correctness_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        qwen35_gguf_generation.Qwen35GGUFTokenizer,
+        "from_gguf_info",
+        staticmethod(lambda weight_index: SimpleNamespace(weight_index=weight_index)),
+    )
+
+    generator = qwen35_gguf_generation.make_qwen35_gguf_ud_q3_k_m_generator(
+        model_path="/tmp/q3.gguf",
+        weight_index=object(),
+        model_plugin=object(),
+    )
+    session = SimpleNamespace(default_bulk_attention_mode="bulk")
+    generator._configure_session(session)
+
+    assert generator.bulk_prefill_attention_mode == "native"
+    assert session.default_bulk_attention_mode == "native"
+
+
+def test_resident_session_honors_plugin_selected_native_bulk_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = object.__new__(qgr.Qwen35GGUFResidentSession)
+    session.runner = SimpleNamespace(
+        weights=SimpleNamespace(config=SimpleNamespace(ssm_conv_kernel=4))
+    )
+    session.default_bulk_attention_mode = "native"
+    calls: list[str] = []
+
+    def fake_bulk_prefill(self, token_ids, *, bulk_attention_mode, return_logits):
+        del self, token_ids, return_logits
+        calls.append(bulk_attention_mode)
+        return SimpleNamespace(token_id=11)
+
+    monkeypatch.setattr(
+        qgr.Qwen35GGUFResidentSession,
+        "_run_bulk_prefill_and_sample",
+        fake_bulk_prefill,
+    )
+
+    result = session.prefill([9419, 11, 271, 40], return_logits=False)
+
+    assert result.token_id == 11
+    assert calls == ["native"]
 
 
 def test_iq_helpers_resolve_exact_four_axis_registry_keys(

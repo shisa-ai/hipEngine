@@ -3275,6 +3275,7 @@ class Qwen35GGUFResidentSession:
     use_gemv_decode: bool | None = None
     prefill_chunk_size: int = 0
     prefill_config: PrefillConfig | None = None
+    default_bulk_attention_mode: str = "bulk"
     kv_policy: FixedPagedKVPolicy | None = None
     kv_scale_dtype: str | DType = DType.FP16
     kv_scale_granularity: str = "per_token_head"
@@ -3704,16 +3705,16 @@ class Qwen35GGUFResidentSession:
         token_ids: list[int] | tuple[int, ...],
         *,
         use_bulk: bool | None = None,
-        bulk_attention_mode: str = "bulk",
+        bulk_attention_mode: str | None = None,
         return_logits: bool = True,
     ) -> Qwen35GGUFNextTokenProbeResult:
         """Consume prompt tokens once and return the greedy next token.
 
         Prompts at least as long as the linear-attention convolution kernel use
-        bulk prefill by default. qwen35moe now defaults to the fast fully
-        bulk attention+MoE scheduler after the full-attention and recurrent
-        parity fixes; pass ``bulk_attention_mode='native'`` to keep row-serial
-        attention as a diagnostic fallback. Short prompts keep the token-serial
+        bulk prefill by default. The generator plugin selects the certified
+        default bulk scheduler for its quant preset; callers can pass
+        ``bulk_attention_mode='bulk'`` or ``'native'`` explicitly for
+        diagnostics. Short prompts keep the token-serial
         path as a correctness/bisect fallback. Set
         ``return_logits=False`` for public generation paths that only need the
         sampled token and should avoid copying full logits back to the host.
@@ -3724,7 +3725,11 @@ class Qwen35GGUFResidentSession:
         if self.runner is None or self.runner.weights is None:
             raise RuntimeError("GGUF resident session is closed")
         min_bulk_tokens = int(self.runner.weights.config.ssm_conv_kernel)
-        selected_bulk_attention_mode = bulk_attention_mode
+        selected_bulk_attention_mode = (
+            getattr(self, "default_bulk_attention_mode", "bulk")
+            if bulk_attention_mode is None
+            else bulk_attention_mode
+        )
         run_bulk = len(token_ids) >= min_bulk_tokens if use_bulk is None else bool(use_bulk)
         if run_bulk:
             if len(token_ids) < min_bulk_tokens:

@@ -39,13 +39,25 @@ class Qwen35GGUFBringupGenerator:
     model_path: str | Path
     weight_index: GGUFModelInfo
     model_plugin: Any
+    bulk_prefill_attention_mode: str = "bulk"
     tokenizer: Qwen35GGUFTokenizer = field(init=False)
     last_batch_generation: dict[str, Any] | None = field(default=None, init=False, repr=False)
     last_generation_outputs: tuple[GenerationOutput, ...] = field(default=(), init=False, repr=False)
     supports_stream_logprobs: ClassVar[bool] = True
 
     def __post_init__(self) -> None:
+        if self.bulk_prefill_attention_mode not in {"bulk", "native"}:
+            raise ValueError("bulk_prefill_attention_mode must be 'bulk' or 'native'")
         self.tokenizer = Qwen35GGUFTokenizer.from_gguf_info(self.weight_index)
+
+    def _configure_session(self, session: Qwen35GGUFResidentSession) -> None:
+        # Quant-specific correctness policy is selected by the generator
+        # registry factory, not by a quant branch in runtime dispatch.
+        session.default_bulk_attention_mode = getattr(
+            self,
+            "bulk_prefill_attention_mode",
+            "bulk",
+        )
 
     def tokenize(self, text: str) -> tuple[int, ...]:
         return tuple(int(token) for token in self.tokenizer.encode(str(text)))
@@ -76,6 +88,7 @@ class Qwen35GGUFBringupGenerator:
             raise ValueError("GGUF prompt tokenization produced no token IDs")
         plan = _gguf_sampler_plan(request)
         with Qwen35GGUFResidentSession(self.model_path) as session:
+            self._configure_session(session)
             if plan.mode is SamplingMode.GREEDY_FAST:
                 yield from self._stream_greedy(session, prompt_ids, request)
                 return
@@ -124,6 +137,7 @@ class Qwen35GGUFBringupGenerator:
         generated_ids_by_request: dict[int, list[int]] = {}
         token_logprobs_by_request: dict[int, list[TokenLogprob]] = {}
         with Qwen35GGUFResidentSession(self.model_path) as session:
+            self._configure_session(session)
             for row_index, prompt in enumerate(request.prompts):
                 raise_if_generation_deadline_expired(request)
                 prompt_ids = self.tokenizer.encode(prompt)
@@ -889,13 +903,28 @@ def make_qwen35_gguf_bringup_generator(
     )
 
 
+def make_qwen35_gguf_ud_q3_k_m_generator(
+    *,
+    model_path: str | Path,
+    weight_index: GGUFModelInfo,
+    model_plugin: Any,
+) -> Qwen35GGUFBringupGenerator:
+    """Select the parity-safe native-attention bulk policy for UD-Q3_K_M."""
+
+    return Qwen35GGUFBringupGenerator(
+        model_path=model_path,
+        weight_index=weight_index,
+        model_plugin=model_plugin,
+        bulk_prefill_attention_mode="native",
+    )
+
+
 for _model in ("qwen3_5_gguf", "qwen3_5_moe_gguf"):
     for _quant in (
         "gguf_q4_k_m",
         "gguf_q8_0",
         "gguf_q4_1",
         "gguf_ud_q4_k_xl",
-        "gguf_ud_q3_k_m",
     ):
         register_text_generator(
             model=_model,
@@ -903,9 +932,16 @@ for _model in ("qwen3_5_gguf", "qwen3_5_moe_gguf"):
             quant=_quant,
             factory=make_qwen35_gguf_bringup_generator,
         )
+    register_text_generator(
+        model=_model,
+        backend="hip_gfx1100",
+        quant="gguf_ud_q3_k_m",
+        factory=make_qwen35_gguf_ud_q3_k_m_generator,
+    )
 
 
 __all__ = [
     "Qwen35GGUFBringupGenerator",
     "make_qwen35_gguf_bringup_generator",
+    "make_qwen35_gguf_ud_q3_k_m_generator",
 ]

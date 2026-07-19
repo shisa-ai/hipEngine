@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "description": "GPU1 public hipengine.LLM.generate() first-token correctness fixture for Qwen3.6 35B-A3B UD-Q3_K_M AR bring-up.",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf",
+    "file_size_bytes": 17104402720,
+    "sha256": "8966dd0cd8c543c4228490a2a8b0e0814fc4f1e6a8e199ceed4de6754ae7b8e1",
+    "quant": "gguf_ud_q3_k_m",
+    "architecture": "qwen35moe"
+  },
+  "oracle": {
+    "name": "llama.cpp llama-completion greedy first-token oracle",
+    "checkout": "/home/lhl/llama.cpp/llama.cpp-hip",
+    "commit": "1ebf790cda38d827559548f67b0469189690cc8c",
+    "binary": "/home/lhl/llama.cpp/llama.cpp-hip/build-gfx1100-therock715/bin/llama-completion",
+    "binary_sha256": "71b5c1a7e9d16a37d6a3602422684c0512b9e03c2e37e78ef119e967dc96c365",
+    "command": "HIP_VISIBLE_DEVICES=1 /home/lhl/llama.cpp/llama.cpp-hip/build-gfx1100-therock715/bin/llama-completion -m /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf -p Hello -n 1 -c 256 -b 32 --temp 0 --top-k 1 --no-display-prompt --no-conversation --simple-io",
+    "tokenize_command": "/home/lhl/llama.cpp/llama.cpp-hip/build-gfx1100-therock715/bin/llama-tokenize -m /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf -p ',' --ids --log-disable",
+    "scope": "first_generated_token",
+    "observed_completion_text": ",",
+    "observed_completion_token_ids": [11]
+  },
+  "prompt": "Hello",
+  "prompt_ids": [9419],
+  "sampling": {
+    "max_new_tokens": 1,
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "ignore_eos": true
+  },
+  "expected_generated_text": ",",
+  "expected_generated_token_ids": [11],
+  "acceptance": {
+    "public_api": "hipengine.LLM.generate",
+    "backend": "hip_gfx1100",
+    "quant": "gguf_ud_q3_k_m",
+    "repeat": 2,
+    "finite_logits_required": true,
+    "deterministic_required": true,
+    "expected_text_match_required": true,
+    "expected_token_ids_match_required": true,
+    "torch_hot_path_allowed": false,
+    "external_token_oracle": "llama.cpp + llama-tokenize",
+    "bulk_prefill_attention_mode": "native",
+    "rank3_expert_layout": "raw_gguf",
+    "nextn_block_omitted": true,
+    "required_kernel_families": [
+      "gguf_iq3_xxs",
+      "gguf_iq4_xs",
+      "gguf_q6_k",
+      "gguf_q8_0",
+      "qwen35_router",
+      "paro_combine"
+    ]
+  }
+}
