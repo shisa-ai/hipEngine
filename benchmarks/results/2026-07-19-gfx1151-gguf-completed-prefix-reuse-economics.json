@@ -1,0 +1,863 @@
+{
+  "schema": 1,
+  "kind": "gguf_completed_prefix_reuse_economics",
+  "created_at": "2026-07-19T02:36:38.443980+00:00",
+  "status": "passed",
+  "passed": true,
+  "correctness_claim": true,
+  "performance_claim": true,
+  "model": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "backend": "hip_gfx1151",
+  "hardware": "AMD Radeon 8060S (gfx1151)",
+  "repo": {
+    "revision": "f0a63059c2d4b7c2583d4e65d5f43d68965a1f5b",
+    "tracked_clean": true,
+    "tracked_status": []
+  },
+  "correctness_prerequisite": {
+    "path": "/home/lhl/hipEngine-main/benchmarks/results/2026-07-19-gfx1151-gguf-completed-prefix-reuse-correctness.json",
+    "kind": "gguf_completed_prefix_reuse_correctness_gate",
+    "passed": true,
+    "teacher_forced_kl_mean": 0.0,
+    "teacher_forced_top1_agreement": 1.0,
+    "initial_state_exact": true,
+    "final_state_exact": true
+  },
+  "workload": {
+    "prefix_token_id": 9707,
+    "prefix_tokens": 256,
+    "suffix_token_id": 9708,
+    "suffix_tokens": 1,
+    "max_sequence_length": 512,
+    "max_active_requests": 3,
+    "prefill_chunks": [
+      256,
+      1
+    ],
+    "sampling": "greedy_top1_ignore_eos",
+    "kv_dtype": "bf16",
+    "source_lifecycle": "completed",
+    "warmups_per_mode": 1,
+    "measured_repetitions_per_mode": 3,
+    "measured_order": [
+      "off",
+      "radix",
+      "radix",
+      "off",
+      "off",
+      "radix"
+    ]
+  },
+  "timing_protocol": {
+    "scope": "completed cache-ready source; synchronized continuation admission through first token",
+    "source_prefill_timed": false,
+    "mode_reconfiguration_timed": false,
+    "synchronize": "HIP device synchronize before/after admission and after suffix first-token work",
+    "alternating_order": true
+  },
+  "timing": {
+    "off": {
+      "admission_ms": {
+        "samples": [
+          0.15080199227668345,
+          0.15097300638444722,
+          0.15515097766183317
+        ],
+        "count": 3,
+        "median": 0.15097300638444722,
+        "p95": 0.15473318053409457,
+        "min": 0.15080199227668345,
+        "max": 0.15515097766183317,
+        "stdev": 0.0020110352143433785
+      },
+      "prefill_to_first_token_ms": {
+        "samples": [
+          248.55096300598234,
+          249.2953290056903,
+          249.40642699948512
+        ],
+        "count": 3,
+        "median": 249.2953290056903,
+        "p95": 249.39531720010564,
+        "min": 248.55096300598234,
+        "max": 249.40642699948512,
+        "stdev": 0.3798014320267574
+      },
+      "continuation_ttft_ms": {
+        "samples": [
+          248.70176499825902,
+          249.44630201207474,
+          249.56157797714695
+        ],
+        "count": 3,
+        "median": 249.44630201207474,
+        "p95": 249.55005038063973,
+        "min": 248.70176499825902,
+        "max": 249.56157797714695,
+        "stdev": 0.38106608813361303
+      }
+    },
+    "radix": {
+      "admission_ms": {
+        "samples": [
+          1.1317010212223977,
+          1.1994590167887509,
+          1.2643200170714408
+        ],
+        "count": 3,
+        "median": 1.1994590167887509,
+        "p95": 1.2578339170431718,
+        "min": 1.1317010212223977,
+        "max": 1.2643200170714408,
+        "stdev": 0.05414578405753773
+      },
+      "prefill_to_first_token_ms": {
+        "samples": [
+          20.266082981834188,
+          20.813338982407004,
+          20.779165002750233
+        ],
+        "count": 3,
+        "median": 20.779165002750233,
+        "p95": 20.809921584441327,
+        "min": 20.266082981834188,
+        "max": 20.813338982407004,
+        "stdev": 0.2503131707894083
+      },
+      "continuation_ttft_ms": {
+        "samples": [
+          21.397784003056586,
+          22.012797999195755,
+          22.043485019821674
+        ],
+        "count": 3,
+        "median": 22.012797999195755,
+        "p95": 22.04041631775908,
+        "min": 21.397784003056586,
+        "max": 22.043485019821674,
+        "stdev": 0.29741734831965094
+      }
+    }
+  },
+  "comparison": {
+    "passed": true,
+    "correctness_exact": true,
+    "radix_hits": 3,
+    "radix_hit_rate": 1.0,
+    "fallback_free": true,
+    "reuse_exact": true,
+    "final_drain": true,
+    "snapshot_lifecycle_exact": true,
+    "capacity_contract_exact": true,
+    "baseline_live_pages": 2,
+    "radix_live_pages": 2,
+    "saved_live_pages": 0,
+    "baseline_ttft_ms": {
+      "samples": [
+        248.70176499825902,
+        249.44630201207474,
+        249.56157797714695
+      ],
+      "count": 3,
+      "median": 249.44630201207474,
+      "p95": 249.55005038063973,
+      "min": 248.70176499825902,
+      "max": 249.56157797714695,
+      "stdev": 0.38106608813361303
+    },
+    "radix_ttft_ms": {
+      "samples": [
+        21.397784003056586,
+        22.012797999195755,
+        22.043485019821674
+      ],
+      "count": 3,
+      "median": 22.012797999195755,
+      "p95": 22.04041631775908,
+      "min": 21.397784003056586,
+      "max": 22.043485019821674,
+      "stdev": 0.29741734831965094
+    },
+    "ttft_speedup": 11.331876212246547,
+    "ttft_reduction_percent": 91.17533600553028,
+    "saved_live_bytes": 0
+  },
+  "memory": {
+    "off": {
+      "refcounted_pages": {
+        "samples": [
+          2.0,
+          2.0,
+          2.0
+        ],
+        "count": 3,
+        "median": 2.0,
+        "p95": 2.0,
+        "min": 2.0,
+        "max": 2.0,
+        "stdev": 0.0
+      },
+      "snapshot_entries": {
+        "samples": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "count": 3,
+        "median": 0.0,
+        "p95": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "stdev": 0.0
+      },
+      "snapshot_bytes": {
+        "samples": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "count": 3,
+        "median": 0.0,
+        "p95": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "stdev": 0.0
+      },
+      "cache_resident_bytes": {
+        "samples": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "count": 3,
+        "median": 0.0,
+        "p95": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "stdev": 0.0
+      },
+      "tracked_current_before_bytes": {
+        "samples": [
+          24368975116.0,
+          24368975116.0,
+          24368975116.0
+        ],
+        "count": 3,
+        "median": 24368975116.0,
+        "p95": 24368975116.0,
+        "min": 24368975116.0,
+        "max": 24368975116.0,
+        "stdev": 0.0
+      },
+      "tracked_current_after_bytes": {
+        "samples": [
+          24368975116.0,
+          24368975116.0,
+          24368975116.0
+        ],
+        "count": 3,
+        "median": 24368975116.0,
+        "p95": 24368975116.0,
+        "min": 24368975116.0,
+        "max": 24368975116.0,
+        "stdev": 0.0
+      },
+      "hip_used_after_bytes": {
+        "samples": [
+          24759824384.0,
+          24759824384.0,
+          24759824384.0
+        ],
+        "count": 3,
+        "median": 24759824384.0,
+        "p95": 24759824384.0,
+        "min": 24759824384.0,
+        "max": 24759824384.0,
+        "stdev": 0.0
+      },
+      "hip_used_peak_sampled_bytes": {
+        "samples": [
+          24822738944.0,
+          24822738944.0,
+          24822738944.0
+        ],
+        "count": 3,
+        "median": 24822738944.0,
+        "p95": 24822738944.0,
+        "min": 24822738944.0,
+        "max": 24822738944.0,
+        "stdev": 0.0
+      }
+    },
+    "radix": {
+      "refcounted_pages": {
+        "samples": [
+          2.0,
+          2.0,
+          2.0
+        ],
+        "count": 3,
+        "median": 2.0,
+        "p95": 2.0,
+        "min": 2.0,
+        "max": 2.0,
+        "stdev": 0.0
+      },
+      "snapshot_entries": {
+        "samples": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "count": 3,
+        "median": 1.0,
+        "p95": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "stdev": 0.0
+      },
+      "snapshot_bytes": {
+        "samples": [
+          66846720.0,
+          66846720.0,
+          66846720.0
+        ],
+        "count": 3,
+        "median": 66846720.0,
+        "p95": 66846720.0,
+        "min": 66846720.0,
+        "max": 66846720.0,
+        "stdev": 0.0
+      },
+      "cache_resident_bytes": {
+        "samples": [
+          72089600.0,
+          72089600.0,
+          72089600.0
+        ],
+        "count": 3,
+        "median": 72089600.0,
+        "p95": 72089600.0,
+        "min": 72089600.0,
+        "max": 72089600.0,
+        "stdev": 0.0
+      },
+      "tracked_current_before_bytes": {
+        "samples": [
+          24435821836.0,
+          24435821836.0,
+          24435821836.0
+        ],
+        "count": 3,
+        "median": 24435821836.0,
+        "p95": 24435821836.0,
+        "min": 24435821836.0,
+        "max": 24435821836.0,
+        "stdev": 0.0
+      },
+      "tracked_current_after_bytes": {
+        "samples": [
+          24435821836.0,
+          24435821836.0,
+          24435821836.0
+        ],
+        "count": 3,
+        "median": 24435821836.0,
+        "p95": 24435821836.0,
+        "min": 24435821836.0,
+        "max": 24435821836.0,
+        "stdev": 0.0
+      },
+      "hip_used_after_bytes": {
+        "samples": [
+          24822738944.0,
+          24822738944.0,
+          24822738944.0
+        ],
+        "count": 3,
+        "median": 24822738944.0,
+        "p95": 24822738944.0,
+        "min": 24822738944.0,
+        "max": 24822738944.0,
+        "stdev": 0.0
+      },
+      "hip_used_peak_sampled_bytes": {
+        "samples": [
+          24822738944.0,
+          24822738944.0,
+          24822738944.0
+        ],
+        "count": 3,
+        "median": 24822738944.0,
+        "p95": 24822738944.0,
+        "min": 24822738944.0,
+        "max": 24822738944.0,
+        "stdev": 0.0
+      }
+    },
+    "page_bytes": 5242880,
+    "saved_live_pages": 0,
+    "saved_live_bytes": 0,
+    "tracked_current_paired_delta_bytes": {
+      "samples": [
+        -66846720.0,
+        -66846720.0,
+        -66846720.0
+      ],
+      "count": 3,
+      "median": -66846720.0,
+      "p95": -66846720.0,
+      "min": -66846720.0,
+      "max": -66846720.0,
+      "stdev": 0.0,
+      "all_positive": false
+    },
+    "hip_used_current_paired_delta_bytes": {
+      "samples": [
+        -62914560.0,
+        -62914560.0,
+        -62914560.0
+      ],
+      "count": 3,
+      "median": -62914560.0,
+      "p95": -62914560.0,
+      "min": -62914560.0,
+      "max": -62914560.0,
+      "stdev": 0.0,
+      "all_positive": false
+    },
+    "physical_current_reduction_claim": false,
+    "scope_note": "Default fixed-capacity pool backing is preallocated for both modes. Completed reuse trades a retained hybrid snapshot plus one idle cache page for TTFT; during continuation its unique live-page count must equal off."
+  },
+  "warmup_rows": [
+    {
+      "mode": "off",
+      "source_request_id": 10000,
+      "continuation_request_id": 10001,
+      "source_token_id": 9707,
+      "continuation_token_id": 264,
+      "source_lifecycle": "completed",
+      "source_session_reset_before_admission": true,
+      "admission_ms": 0.15083199832588434,
+      "prefill_to_first_token_ms": 264.2101790115703,
+      "continuation_ttft_ms": 264.3610110098962,
+      "prefix_usable_hits_delta": 0,
+      "prefix_admission_fallbacks_delta": 0,
+      "prefix_reused_tokens": 0,
+      "prefix_state_clone_bytes": 0,
+      "prefix_snapshot_hit": false,
+      "prefix_snapshot_hits_delta": 0,
+      "snapshot_entries": 0,
+      "snapshot_bytes": 0,
+      "cache_refcount_after_source_release": 0,
+      "continuation_block_ids": [
+        0,
+        1
+      ],
+      "continuation_reused_block_ids": [],
+      "page_bytes": 5242880,
+      "current_pages": 6,
+      "current_pool_bytes": 31457280,
+      "refcounted_pages": 2,
+      "free_pages": 4,
+      "tracked_current_before_bytes": 24158551996,
+      "tracked_current_after_bytes": 24368975116,
+      "hip_used_before_bytes": 24553910272,
+      "hip_used_after_bytes": 24759824384,
+      "hip_used_peak_sampled_bytes": 24759824384,
+      "route_counts": {
+        "native_full_prefill_rows": 1,
+        "native_incremental_prefill_chunks": 2,
+        "native_packed_decode_steps": 0,
+        "native_c1_decode_steps": 0,
+        "native_sampled_prefill_rows": 0,
+        "host_sampler_requests": 0,
+        "serial_decode_fallback_steps": 0,
+        "resident_fallback_requests": 0
+      },
+      "cache_resident_bytes": 0,
+      "cache_refcount_after_continuation_release": 0,
+      "snapshot_evicted": false,
+      "final_refcounted_pages": 0
+    },
+    {
+      "mode": "radix",
+      "source_request_id": 10010,
+      "continuation_request_id": 10011,
+      "source_token_id": 9707,
+      "continuation_token_id": 264,
+      "source_lifecycle": "completed",
+      "source_session_reset_before_admission": true,
+      "admission_ms": 1.1506970040500164,
+      "prefill_to_first_token_ms": 20.7785340026021,
+      "continuation_ttft_ms": 21.929231006652117,
+      "prefix_usable_hits_delta": 1,
+      "prefix_admission_fallbacks_delta": 0,
+      "prefix_reused_tokens": 256,
+      "prefix_state_clone_bytes": 66846720,
+      "prefix_snapshot_hit": true,
+      "prefix_snapshot_hits_delta": 1,
+      "snapshot_entries": 1,
+      "snapshot_bytes": 66846720,
+      "cache_refcount_after_source_release": 1,
+      "continuation_block_ids": [
+        0,
+        1
+      ],
+      "continuation_reused_block_ids": [
+        0
+      ],
+      "page_bytes": 5242880,
+      "current_pages": 6,
+      "current_pool_bytes": 31457280,
+      "refcounted_pages": 2,
+      "free_pages": 4,
+      "tracked_current_before_bytes": 24435821836,
+      "tracked_current_after_bytes": 24435821836,
+      "hip_used_before_bytes": 24822738944,
+      "hip_used_after_bytes": 24822738944,
+      "hip_used_peak_sampled_bytes": 24822738944,
+      "route_counts": {
+        "native_full_prefill_rows": 2,
+        "native_incremental_prefill_chunks": 2,
+        "native_packed_decode_steps": 0,
+        "native_c1_decode_steps": 0,
+        "native_sampled_prefill_rows": 0,
+        "host_sampler_requests": 0,
+        "serial_decode_fallback_steps": 0,
+        "resident_fallback_requests": 0
+      },
+      "cache_resident_bytes": 72089600,
+      "cache_refcount_after_continuation_release": 1,
+      "snapshot_evicted": true,
+      "final_refcounted_pages": 0
+    }
+  ],
+  "measured_rows": {
+    "off": [
+      {
+        "mode": "off",
+        "source_request_id": 20020,
+        "continuation_request_id": 20021,
+        "source_token_id": 9707,
+        "continuation_token_id": 264,
+        "source_lifecycle": "completed",
+        "source_session_reset_before_admission": true,
+        "admission_ms": 0.15080199227668345,
+        "prefill_to_first_token_ms": 248.55096300598234,
+        "continuation_ttft_ms": 248.70176499825902,
+        "prefix_usable_hits_delta": 0,
+        "prefix_admission_fallbacks_delta": 0,
+        "prefix_reused_tokens": 0,
+        "prefix_state_clone_bytes": 0,
+        "prefix_snapshot_hit": false,
+        "prefix_snapshot_hits_delta": 0,
+        "snapshot_entries": 0,
+        "snapshot_bytes": 0,
+        "cache_refcount_after_source_release": 0,
+        "continuation_block_ids": [
+          0,
+          1
+        ],
+        "continuation_reused_block_ids": [],
+        "page_bytes": 5242880,
+        "current_pages": 6,
+        "current_pool_bytes": 31457280,
+        "refcounted_pages": 2,
+        "free_pages": 4,
+        "tracked_current_before_bytes": 24368975116,
+        "tracked_current_after_bytes": 24368975116,
+        "hip_used_before_bytes": 24759824384,
+        "hip_used_after_bytes": 24759824384,
+        "hip_used_peak_sampled_bytes": 24822738944,
+        "route_counts": {
+          "native_full_prefill_rows": 3,
+          "native_incremental_prefill_chunks": 4,
+          "native_packed_decode_steps": 0,
+          "native_c1_decode_steps": 0,
+          "native_sampled_prefill_rows": 0,
+          "host_sampler_requests": 0,
+          "serial_decode_fallback_steps": 0,
+          "resident_fallback_requests": 0
+        },
+        "cache_resident_bytes": 0,
+        "cache_refcount_after_continuation_release": 0,
+        "snapshot_evicted": false,
+        "final_refcounted_pages": 0
+      },
+      {
+        "mode": "off",
+        "source_request_id": 20050,
+        "continuation_request_id": 20051,
+        "source_token_id": 9707,
+        "continuation_token_id": 264,
+        "source_lifecycle": "completed",
+        "source_session_reset_before_admission": true,
+        "admission_ms": 0.15097300638444722,
+        "prefill_to_first_token_ms": 249.2953290056903,
+        "continuation_ttft_ms": 249.44630201207474,
+        "prefix_usable_hits_delta": 0,
+        "prefix_admission_fallbacks_delta": 0,
+        "prefix_reused_tokens": 0,
+        "prefix_state_clone_bytes": 0,
+        "prefix_snapshot_hit": false,
+        "prefix_snapshot_hits_delta": 0,
+        "snapshot_entries": 0,
+        "snapshot_bytes": 0,
+        "cache_refcount_after_source_release": 0,
+        "continuation_block_ids": [
+          0,
+          1
+        ],
+        "continuation_reused_block_ids": [],
+        "page_bytes": 5242880,
+        "current_pages": 6,
+        "current_pool_bytes": 31457280,
+        "refcounted_pages": 2,
+        "free_pages": 4,
+        "tracked_current_before_bytes": 24368975116,
+        "tracked_current_after_bytes": 24368975116,
+        "hip_used_before_bytes": 24759824384,
+        "hip_used_after_bytes": 24759824384,
+        "hip_used_peak_sampled_bytes": 24822738944,
+        "route_counts": {
+          "native_full_prefill_rows": 6,
+          "native_incremental_prefill_chunks": 6,
+          "native_packed_decode_steps": 0,
+          "native_c1_decode_steps": 0,
+          "native_sampled_prefill_rows": 0,
+          "host_sampler_requests": 0,
+          "serial_decode_fallback_steps": 0,
+          "resident_fallback_requests": 0
+        },
+        "cache_resident_bytes": 0,
+        "cache_refcount_after_continuation_release": 0,
+        "snapshot_evicted": false,
+        "final_refcounted_pages": 0
+      },
+      {
+        "mode": "off",
+        "source_request_id": 20060,
+        "continuation_request_id": 20061,
+        "source_token_id": 9707,
+        "continuation_token_id": 264,
+        "source_lifecycle": "completed",
+        "source_session_reset_before_admission": true,
+        "admission_ms": 0.15515097766183317,
+        "prefill_to_first_token_ms": 249.40642699948512,
+        "continuation_ttft_ms": 249.56157797714695,
+        "prefix_usable_hits_delta": 0,
+        "prefix_admission_fallbacks_delta": 0,
+        "prefix_reused_tokens": 0,
+        "prefix_state_clone_bytes": 0,
+        "prefix_snapshot_hit": false,
+        "prefix_snapshot_hits_delta": 0,
+        "snapshot_entries": 0,
+        "snapshot_bytes": 0,
+        "cache_refcount_after_source_release": 0,
+        "continuation_block_ids": [
+          0,
+          1
+        ],
+        "continuation_reused_block_ids": [],
+        "page_bytes": 5242880,
+        "current_pages": 6,
+        "current_pool_bytes": 31457280,
+        "refcounted_pages": 2,
+        "free_pages": 4,
+        "tracked_current_before_bytes": 24368975116,
+        "tracked_current_after_bytes": 24368975116,
+        "hip_used_before_bytes": 24759824384,
+        "hip_used_after_bytes": 24759824384,
+        "hip_used_peak_sampled_bytes": 24822738944,
+        "route_counts": {
+          "native_full_prefill_rows": 7,
+          "native_incremental_prefill_chunks": 8,
+          "native_packed_decode_steps": 0,
+          "native_c1_decode_steps": 0,
+          "native_sampled_prefill_rows": 0,
+          "host_sampler_requests": 0,
+          "serial_decode_fallback_steps": 0,
+          "resident_fallback_requests": 0
+        },
+        "cache_resident_bytes": 0,
+        "cache_refcount_after_continuation_release": 0,
+        "snapshot_evicted": false,
+        "final_refcounted_pages": 0
+      }
+    ],
+    "radix": [
+      {
+        "mode": "radix",
+        "source_request_id": 20030,
+        "continuation_request_id": 20031,
+        "source_token_id": 9707,
+        "continuation_token_id": 264,
+        "source_lifecycle": "completed",
+        "source_session_reset_before_admission": true,
+        "admission_ms": 1.1317010212223977,
+        "prefill_to_first_token_ms": 20.266082981834188,
+        "continuation_ttft_ms": 21.397784003056586,
+        "prefix_usable_hits_delta": 1,
+        "prefix_admission_fallbacks_delta": 0,
+        "prefix_reused_tokens": 256,
+        "prefix_state_clone_bytes": 66846720,
+        "prefix_snapshot_hit": true,
+        "prefix_snapshot_hits_delta": 1,
+        "snapshot_entries": 1,
+        "snapshot_bytes": 66846720,
+        "cache_refcount_after_source_release": 1,
+        "continuation_block_ids": [
+          0,
+          1
+        ],
+        "continuation_reused_block_ids": [
+          0
+        ],
+        "page_bytes": 5242880,
+        "current_pages": 6,
+        "current_pool_bytes": 31457280,
+        "refcounted_pages": 2,
+        "free_pages": 4,
+        "tracked_current_before_bytes": 24435821836,
+        "tracked_current_after_bytes": 24435821836,
+        "hip_used_before_bytes": 24822738944,
+        "hip_used_after_bytes": 24822738944,
+        "hip_used_peak_sampled_bytes": 24822738944,
+        "route_counts": {
+          "native_full_prefill_rows": 4,
+          "native_incremental_prefill_chunks": 4,
+          "native_packed_decode_steps": 0,
+          "native_c1_decode_steps": 0,
+          "native_sampled_prefill_rows": 0,
+          "host_sampler_requests": 0,
+          "serial_decode_fallback_steps": 0,
+          "resident_fallback_requests": 0
+        },
+        "cache_resident_bytes": 72089600,
+        "cache_refcount_after_continuation_release": 1,
+        "snapshot_evicted": true,
+        "final_refcounted_pages": 0
+      },
+      {
+        "mode": "radix",
+        "source_request_id": 20040,
+        "continuation_request_id": 20041,
+        "source_token_id": 9707,
+        "continuation_token_id": 264,
+        "source_lifecycle": "completed",
+        "source_session_reset_before_admission": true,
+        "admission_ms": 1.1994590167887509,
+        "prefill_to_first_token_ms": 20.813338982407004,
+        "continuation_ttft_ms": 22.012797999195755,
+        "prefix_usable_hits_delta": 1,
+        "prefix_admission_fallbacks_delta": 0,
+        "prefix_reused_tokens": 256,
+        "prefix_state_clone_bytes": 66846720,
+        "prefix_snapshot_hit": true,
+        "prefix_snapshot_hits_delta": 1,
+        "snapshot_entries": 1,
+        "snapshot_bytes": 66846720,
+        "cache_refcount_after_source_release": 1,
+        "continuation_block_ids": [
+          0,
+          1
+        ],
+        "continuation_reused_block_ids": [
+          0
+        ],
+        "page_bytes": 5242880,
+        "current_pages": 6,
+        "current_pool_bytes": 31457280,
+        "refcounted_pages": 2,
+        "free_pages": 4,
+        "tracked_current_before_bytes": 24435821836,
+        "tracked_current_after_bytes": 24435821836,
+        "hip_used_before_bytes": 24822738944,
+        "hip_used_after_bytes": 24822738944,
+        "hip_used_peak_sampled_bytes": 24822738944,
+        "route_counts": {
+          "native_full_prefill_rows": 5,
+          "native_incremental_prefill_chunks": 4,
+          "native_packed_decode_steps": 0,
+          "native_c1_decode_steps": 0,
+          "native_sampled_prefill_rows": 0,
+          "host_sampler_requests": 0,
+          "serial_decode_fallback_steps": 0,
+          "resident_fallback_requests": 0
+        },
+        "cache_resident_bytes": 72089600,
+        "cache_refcount_after_continuation_release": 1,
+        "snapshot_evicted": true,
+        "final_refcounted_pages": 0
+      },
+      {
+        "mode": "radix",
+        "source_request_id": 20070,
+        "continuation_request_id": 20071,
+        "source_token_id": 9707,
+        "continuation_token_id": 264,
+        "source_lifecycle": "completed",
+        "source_session_reset_before_admission": true,
+        "admission_ms": 1.2643200170714408,
+        "prefill_to_first_token_ms": 20.779165002750233,
+        "continuation_ttft_ms": 22.043485019821674,
+        "prefix_usable_hits_delta": 1,
+        "prefix_admission_fallbacks_delta": 0,
+        "prefix_reused_tokens": 256,
+        "prefix_state_clone_bytes": 66846720,
+        "prefix_snapshot_hit": true,
+        "prefix_snapshot_hits_delta": 1,
+        "snapshot_entries": 1,
+        "snapshot_bytes": 66846720,
+        "cache_refcount_after_source_release": 1,
+        "continuation_block_ids": [
+          0,
+          1
+        ],
+        "continuation_reused_block_ids": [
+          0
+        ],
+        "page_bytes": 5242880,
+        "current_pages": 6,
+        "current_pool_bytes": 31457280,
+        "refcounted_pages": 2,
+        "free_pages": 4,
+        "tracked_current_before_bytes": 24435821836,
+        "tracked_current_after_bytes": 24435821836,
+        "hip_used_before_bytes": 24822738944,
+        "hip_used_after_bytes": 24822738944,
+        "hip_used_peak_sampled_bytes": 24822738944,
+        "route_counts": {
+          "native_full_prefill_rows": 8,
+          "native_incremental_prefill_chunks": 8,
+          "native_packed_decode_steps": 0,
+          "native_c1_decode_steps": 0,
+          "native_sampled_prefill_rows": 0,
+          "host_sampler_requests": 0,
+          "serial_decode_fallback_steps": 0,
+          "resident_fallback_requests": 0
+        },
+        "cache_resident_bytes": 72089600,
+        "cache_refcount_after_continuation_release": 1,
+        "snapshot_evicted": true,
+        "final_refcounted_pages": 0
+      }
+    ]
+  },
+  "environment": {
+    "python": "3.10.20 (main, Jun 23 2026, 15:20:26) [Clang 22.1.3 ]",
+    "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.43",
+    "proc_cmdline": "amdgpu.mes_log_enable=1 amdgpu.gpu_recovery=1 amdgpu.send_sigterm=1 amd_iommu=off quiet nowatchdog splash rw rootflags=subvol=/@ root=UUID=56bc3cf2-994d-4561-a614-a8a16f7de8d8",
+    "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/gfx1151-concurrency-ddab579f/hipcc-version.txt",
+    "HIP_VISIBLE_DEVICES": null
+  },
+  "notes": [
+    "Source prefill, snapshot capture, and normal cache promotion are outside continuation TTFT; the source session is reset before timing.",
+    "No prompt-conditioned runtime branch or expected-token rerank is used.",
+    "Snapshot bytes, live pages, and process/GPU-visible current bytes are reported separately.",
+    "This slice is completed-source, greedy, BF16-KV, positive aligned prefix, and non-empty suffix only."
+  ],
+  "command": "/home/lhl/hipEngine-main/.venv/bin/python3 scripts/gguf_prefix_reuse_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --prefix-tokens 256 --suffix-tokens 1 --source-lifecycle completed --max-sequence-length 512 --warmups 1 --repetitions 3 --correctness-artifact benchmarks/results/2026-07-19-gfx1151-gguf-completed-prefix-reuse-correctness.json --json /tmp/gfx1151-completed-prefix-reuse-economics-v1.json"
+}

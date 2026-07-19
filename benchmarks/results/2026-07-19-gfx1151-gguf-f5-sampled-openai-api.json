@@ -1,0 +1,247 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_sampled_openai_api_gate",
+  "created_at": "2026-07-19T00:39:02.336824+00:00",
+  "status": "accepted",
+  "passed": true,
+  "performance_claim": false,
+  "scope": "Phase-F5 real localhost Uvicorn sampled OpenAI correctness and serving-path closure",
+  "source": {
+    "measured_commit": "7871c0886f6c674c77ca279bcd3dbee6e7717e71",
+    "clean": true,
+    "sampled_resident_model_commit": "ae4a3159",
+    "reusable_gate_commit": "d38f2f25",
+    "eos_structured_repair_commit": "7871c088"
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "rocm": "HIP version: 7.15.0-0000000",
+    "hipcc": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+    "gpu_max_hw_queues": 1,
+    "amd_iommu": "off",
+    "power_profile": "TuneD accelerator-performance"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424
+    }
+  },
+  "configuration": {
+    "max_sequence_length": 1024,
+    "max_active_requests": 8,
+    "generation_batch_window_ms": 100.0,
+    "package_default_scheduler": true,
+    "scheduler_environment_overrides": "unset",
+    "sampled_rows_per_wave": 4,
+    "sample_max_tokens": 6,
+    "sampling": {
+      "temperature": 1.2,
+      "top_p": 0.92,
+      "top_k": 64,
+      "repetition_penalty": 1.08,
+      "seed": 17,
+      "top_logprobs": 3
+    },
+    "n_choices": 3,
+    "speculative_decode": false
+  },
+  "cases": {
+    "capabilities": {
+      "passed": true,
+      "completion_logprobs": true,
+      "streaming_logprobs": "live_chunk_metadata",
+      "requires_backend_token_metadata": true
+    },
+    "sampled_blocking_c4": {
+      "passed": true,
+      "waves": 2,
+      "rows_per_wave": 4,
+      "rows_passed": 8,
+      "repeat_exact": true,
+      "generated_token_ids_present": true,
+      "finite_selected_and_top_logprobs": true
+    },
+    "sampled_sse_c4": {
+      "passed": true,
+      "waves": 2,
+      "rows_per_wave": 4,
+      "rows_passed": 8,
+      "repeat_exact": true,
+      "done_and_usage_present": true,
+      "blocking_sse_text_and_logprobs_exact": true
+    },
+    "n_gt_1": {
+      "passed": true,
+      "runs": 2,
+      "choices_per_run": 3,
+      "choices_passed": 6,
+      "choice_indexes": [
+        0,
+        1,
+        2
+      ],
+      "repeat_exact": true,
+      "usage_per_run": {
+        "prompt_tokens": 39,
+        "completion_tokens": 18,
+        "total_tokens": 57
+      }
+    },
+    "explicit_eos": {
+      "passed": true,
+      "status_code": 200,
+      "generated_token_ids": [
+        271
+      ],
+      "finish_reason": "stop",
+      "finish_details": {
+        "reason": "eos",
+        "eos_token_id": 271,
+        "sampler_mode": "host_logits_sample",
+        "cache_action": "append_none"
+      }
+    },
+    "stop_sequence": {
+      "passed": true,
+      "status_code": 200,
+      "stop_token_ids": [
+        271
+      ],
+      "finish_reason": "stop",
+      "finish_details_reason": "stop",
+      "returned_text_excludes_stop": true
+    },
+    "tool_forcing": {
+      "passed": true,
+      "status_code": 200,
+      "tool_name": "lookup",
+      "parsed_arguments": {
+        "key": "README.md"
+      },
+      "generated_token_ids_present": true
+    },
+    "structured_json_schema": {
+      "passed": true,
+      "status_code": 200,
+      "outcome": "schema_violation_rejected",
+      "finish_reason": "length",
+      "finish_details": {
+        "reason": "schema_violation",
+        "length_limit": 64,
+        "sampler_mode": "host_logits_sample",
+        "cache_action": "append_none",
+        "phase": "structured",
+        "continuation_eligible": false
+      },
+      "malformed_text_accepted_as_schema_valid": false
+    }
+  },
+  "route_gates": {
+    "sampled_blocking_sse_waves": {
+      "passed": true,
+      "sampled_rows": 16,
+      "counts": {
+        "host_sampler_requests": 16,
+        "native_c1_decode_steps": 36,
+        "native_full_prefill_rows": 0,
+        "native_incremental_prefill_chunks": 0,
+        "native_packed_decode_steps": 16,
+        "native_sampled_prefill_rows": 16,
+        "resident_fallback_requests": 0,
+        "serial_decode_fallback_steps": 0
+      },
+      "physical_width_decode_steps": {
+        "1": 36,
+        "2": 8,
+        "4": 8,
+        "8": 0
+      },
+      "host_sampling_disclosed_as_model_fallback": false,
+      "fallback_reason": "host_sampling_required"
+    },
+    "n_gt_1": {
+      "passed": true,
+      "sampled_rows": 6,
+      "counts": {
+        "host_sampler_requests": 6,
+        "native_c1_decode_steps": 4,
+        "native_full_prefill_rows": 0,
+        "native_incremental_prefill_chunks": 0,
+        "native_packed_decode_steps": 10,
+        "native_sampled_prefill_rows": 6,
+        "resident_fallback_requests": 0,
+        "serial_decode_fallback_steps": 0
+      },
+      "physical_width_decode_steps": {
+        "1": 4,
+        "2": 4,
+        "4": 6,
+        "8": 0
+      }
+    },
+    "whole_packet": {
+      "host_sampler_requests": 26,
+      "native_c1_decode_steps": 42,
+      "native_full_prefill_rows": 0,
+      "native_incremental_prefill_chunks": 0,
+      "native_packed_decode_steps": 88,
+      "native_sampled_prefill_rows": 26,
+      "resident_fallback_requests": 0,
+      "serial_decode_fallback_steps": 0,
+      "physical_width_decode_steps": {
+        "1": 42,
+        "2": 74,
+        "4": 14,
+        "8": 0
+      }
+    }
+  },
+  "gates": {
+    "cases_passed": true,
+    "routes_passed": true,
+    "clean_source_passed": true,
+    "memory_recovery_passed": true,
+    "post_close_tracked_delta_bytes": 0,
+    "post_close_tracked_tolerance_bytes": 67108864,
+    "final_ownership_passed": true
+  },
+  "final_ownership": {
+    "resident_pending": 0,
+    "resident_active": 0,
+    "generation_queue_depth": 0,
+    "generation_active_requests": 0,
+    "generation_batcher_active": false,
+    "model_runner_active_requests": 0,
+    "model_runner_available_sessions": 8,
+    "kv_pool_current_pages": 4,
+    "kv_pool_free_pages": 4,
+    "kv_pool_refcounted_pages": 0,
+    "kv_pool_pinned_pages": 0
+  },
+  "validation": {
+    "host_before_hardware": [
+      "62 passed: tests/test_generation_qwen35_gguf_sampling.py",
+      "59 passed: tests/test_server_api.py -k 'response_format or structured_output'",
+      "5 passed: tests/test_gguf_sampled_api_gate.py",
+      "python3 -m py_compile",
+      "git diff --check"
+    ],
+    "hardware_command": "/home/lhl/hipEngine-main/.venv/bin/python scripts/gguf_sampled_api_gate.py --backend hip_gfx1151 --compiler-version-file /tmp/hipengine-gfx1151-f4-hipcc-version.txt --require-cached-build --json /tmp/gfx1151-f5-sampled-api-7871c088.json",
+    "elapsed_seconds": 66.17353396100225,
+    "raw_packet_sha256": "76a1530ba6520abe7e4bebdb6811bb9ee5019741a990261c011dbc00bf0a6a9d",
+    "final_metrics_sha256": "ec93f050b90c51ac40dd90bf03b876e5009a7490e03d53ca3c689b453da45721"
+  },
+  "limitations": [
+    "This is a correctness and serving-path claim, not a throughput comparison.",
+    "The retained scope is Qwen GGUF Q4_K_M with BF16 KV on gfx1151.",
+    "Sampling is host-side over packed full-vocabulary logits; host_sampling_required is disclosed separately from serial model fallback.",
+    "Tool and structured cases validate one bounded schema each; they do not imply broad agentic quality or constrained decoding.",
+    "Prefix reuse, long-context memory pressure, non-BF16 KV, gfx1100 transfer, and external-engine comparisons are separate gates."
+  ]
+}

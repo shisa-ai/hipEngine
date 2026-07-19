@@ -165,6 +165,7 @@ class LLM:
         backend: str = "auto",
         quant: str = AUTO_QUANT,
         max_active_requests: int | None = None,
+        prefix_cache: str | None = None,
     ) -> None:
         if max_active_requests is not None and int(max_active_requests) <= 0:
             raise ValueError("max_active_requests must be positive when set")
@@ -174,6 +175,12 @@ class LLM:
         self.max_active_requests = (
             None if max_active_requests is None else int(max_active_requests)
         )
+        if prefix_cache is None:
+            self.prefix_cache = None
+        else:
+            from hipengine.kvcache import resolve_prefix_cache_mode
+
+            self.prefix_cache = resolve_prefix_cache_mode(prefix_cache)
         self._resolved_backend: str | None = None
         self._resolved_quant: str | None = None
         self._weight_index: Any | None = None
@@ -470,6 +477,8 @@ class LLM:
                 loop_config,
                 max_active_requests=self.max_active_requests,
             )
+        if self.prefix_cache is not None:
+            loop_config = replace(loop_config, prefix_cache=self.prefix_cache)
         self._text_generator = SubmitPollTextGenerator(
             generator,
             config=loop_config,

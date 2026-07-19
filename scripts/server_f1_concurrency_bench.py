@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import hashlib
+import http.client
 import json
 import math
 import os
@@ -31,6 +32,7 @@ import threading
 import time
 import traceback
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -125,6 +127,7 @@ def extract_response(engine: str, response: Mapping[str, Any], *, prompt_tokens:
         }
         return {
             "generated_token_ids": generated,
+            "text": str(choice.get("text") or ""),
             "prompt_tokens": int(usage.get("prompt_tokens") or prompt_tokens),
             "completion_tokens": len(generated),
             "finish_reason": choice.get("finish_reason"),
@@ -161,6 +164,7 @@ def extract_response(engine: str, response: Mapping[str, Any], *, prompt_tokens:
         predicted_per_second = 1000.0 * len(generated) / predicted_ms
     return {
         "generated_token_ids": generated,
+        "text": str(response.get("content") or ""),
         "prompt_tokens": int(prompt_n if prompt_n is not None else prompt_tokens),
         "completion_tokens": len(generated),
         "finish_reason": response.get("stop_type") or ("stop" if response.get("stop") else None),
@@ -174,11 +178,160 @@ def extract_response(engine: str, response: Mapping[str, Any], *, prompt_tokens:
     }
 
 
+def _int_tokens_or_none(value: Any) -> list[int] | None:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
+        return None
+    tokens: list[int] = []
+    for token in value:
+        if not isinstance(token, int) or isinstance(token, bool):
+            return None
+        tokens.append(int(token))
+    return tokens
+
+
+def _append_stream_ids(accumulated: list[int], candidate: Sequence[int]) -> int:
+    row = [int(token) for token in candidate]
+    if len(row) > 1 and len(row) >= len(accumulated) and row[: len(accumulated)] == accumulated:
+        delta = len(row) - len(accumulated)
+        accumulated[:] = row
+        return delta
+    accumulated.extend(row)
+    return len(row)
+
+
+def extract_stream_response(
+    engine: str,
+    events: Sequence[tuple[float, Mapping[str, Any] | str]],
+    *,
+    started_at: float,
+    completed_at: float,
+    prompt_tokens: int,
+) -> dict[str, Any]:
+    """Normalize one SSE response and client-observed token timing."""
+
+    normalized_engine = str(engine)
+    if normalized_engine not in ENGINE_CHOICES:
+        raise ValueError(f"unknown engine: {normalized_engine!r}")
+    text_parts: list[str] = []
+    generated_ids: list[int] = []
+    token_times: list[float] = []
+    usage: Mapping[str, Any] = {}
+    timings: Mapping[str, Any] = {}
+    finish_reason: str | None = None
+    done_sentinel = False
+    streamed_total = 0
+    last_decode_state: Mapping[str, Any] = {}
+    for observed_at, payload in events:
+        if payload == "[DONE]":
+            done_sentinel = True
+            continue
+        if not isinstance(payload, Mapping):
+            continue
+        if isinstance(payload.get("usage"), Mapping):
+            usage = payload["usage"]
+        if normalized_engine == "hipengine":
+            root_hip = payload.get("hipengine")
+            root_hip = root_hip if isinstance(root_hip, Mapping) else {}
+            if isinstance(root_hip.get("usage"), Mapping):
+                usage = root_hip["usage"]
+            choices = payload.get("choices")
+            if not isinstance(choices, Sequence) or isinstance(choices, (str, bytes, bytearray)):
+                continue
+            for raw_choice in choices:
+                if not isinstance(raw_choice, Mapping):
+                    continue
+                choice_hip = raw_choice.get("hipengine")
+                choice_hip = choice_hip if isinstance(choice_hip, Mapping) else {}
+                decode_state = choice_hip.get("decode_state")
+                if isinstance(decode_state, Mapping):
+                    last_decode_state = decode_state
+                raw_ids = _int_tokens_or_none(choice_hip.get("generated_token_ids"))
+                if raw_ids is not None:
+                    _append_stream_ids(generated_ids, raw_ids)
+                raw_finish = raw_choice.get("finish_reason")
+                if raw_finish is not None:
+                    finish_reason = str(raw_finish)
+                    continue
+                text = raw_choice.get("text")
+                text = text if isinstance(text, str) else ""
+                if text:
+                    text_parts.append(text)
+                token_payload = choice_hip.get("tokens")
+                token_payload = token_payload if isinstance(token_payload, Mapping) else {}
+                delta = _number(token_payload.get("delta_tokens"))
+                delta_count = max(0, int(delta)) if delta is not None else (1 if text else 0)
+                if delta_count:
+                    token_times.extend([float(observed_at)] * delta_count)
+                    streamed_total += delta_count
+            continue
+
+        content = payload.get("content")
+        content = content if isinstance(content, str) else ""
+        if content:
+            text_parts.append(content)
+        raw_ids = _int_tokens_or_none(payload.get("tokens"))
+        id_delta = 0 if raw_ids is None else _append_stream_ids(generated_ids, raw_ids)
+        token_count = id_delta if id_delta else (1 if content else 0)
+        if token_count:
+            token_times.extend([float(observed_at)] * token_count)
+            streamed_total += token_count
+        if bool(payload.get("stop")):
+            done_sentinel = True
+            raw_finish = payload.get("stop_type")
+            finish_reason = str(raw_finish or "stop")
+        if isinstance(payload.get("timings"), Mapping):
+            timings = payload["timings"]
+
+    completion = _number(usage.get("completion_tokens"))
+    if completion is None:
+        completion = _number(timings.get("predicted_n"))
+    completion_tokens = int(completion) if completion is not None else max(
+        len(generated_ids), streamed_total
+    )
+    prompt_count = _number(usage.get("prompt_tokens"))
+    if prompt_count is None:
+        prompt_count = _number(timings.get("prompt_n"))
+    if prompt_count is None:
+        prompt_count = _number(timings.get("tokens_evaluated"))
+    backend_timing = {
+        str(key): float(value)
+        for key, value in timings.items()
+        if _is_number(value) and str(key).endswith("_ms")
+    }
+    ttft = None if not token_times else float(token_times[0] - started_at)
+    inter_token = [
+        float(current - previous)
+        for previous, current in zip(token_times, token_times[1:])
+    ]
+    return {
+        "generated_token_ids": generated_ids or None,
+        "text": "".join(text_parts),
+        "prompt_tokens": int(prompt_count if prompt_count is not None else prompt_tokens),
+        "completion_tokens": completion_tokens,
+        "finish_reason": finish_reason,
+        "backend_timing_ms": backend_timing,
+        "execution_path": (
+            last_decode_state.get("execution_path")
+            if normalized_engine == "hipengine"
+            else "llama-server /completion SSE"
+        ),
+        "serial_decode_fallback": last_decode_state.get("serial_decode_fallback"),
+        "native_caware_decode": last_decode_state.get("native_caware_decode"),
+        "client_ttft_seconds": ttft,
+        "client_inter_token_seconds": inter_token,
+        "wall_seconds": float(completed_at - started_at),
+        "token_event_count": len(token_times),
+        "done_sentinel": done_sentinel,
+    }
+
+
 def generation_shape_proves_native_group(
     records: Sequence[Mapping[str, Any]],
     *,
     concurrency: int,
 ) -> dict[str, Any]:
+    """Validate complete queue groups and their declared physical backend rows."""
+
     expected = int(concurrency)
     group_ids: list[str] = []
     queue_counts: list[int | None] = []
@@ -186,59 +339,160 @@ def generation_shape_proves_native_group(
     backend_input_rows: list[int | None] = []
     backend_actual_rows: list[list[int]] = []
     backend_max_rows: list[int | None] = []
+    grouped: dict[str, list[tuple[Mapping[str, Any], Mapping[str, Any], list[Mapping[str, Any]]]]] = {}
     row_passes: list[bool] = []
     for record in records:
         shape = record.get("generation_shape")
         shape = shape if isinstance(shape, Mapping) else {}
         queue = shape.get("queue_group")
         queue = queue if isinstance(queue, Mapping) else {}
-        groups = shape.get("backend_groups")
+        raw_groups = shape.get("backend_groups")
         groups = (
-            list(groups)
-            if isinstance(groups, Sequence) and not isinstance(groups, (str, bytes, bytearray))
+            [group for group in raw_groups if isinstance(group, Mapping)]
+            if isinstance(raw_groups, Sequence)
+            and not isinstance(raw_groups, (str, bytes, bytearray))
             else []
         )
-        backend = groups[0] if len(groups) == 1 and isinstance(groups[0], Mapping) else {}
+        group_id = str(queue.get("id") or "")
         queue_count = int(queue["request_count"]) if _is_number(queue.get("request_count")) else None
         prompt_rows = int(queue["prompt_rows"]) if _is_number(queue.get("prompt_rows")) else None
-        input_rows = int(backend["input_rows"]) if _is_number(backend.get("input_rows")) else None
-        max_rows = (
-            int(backend["max_actual_group_rows"])
-            if _is_number(backend.get("max_actual_group_rows"))
-            else None
-        )
-        raw_actual = backend.get("actual_group_rows")
-        actual = (
-            [int(value) for value in raw_actual if _is_number(value)]
-            if isinstance(raw_actual, Sequence) and not isinstance(raw_actual, (str, bytes, bytearray))
-            else []
-        )
-        group_ids.append(str(queue.get("id") or ""))
+        normalized_groups: list[tuple[int, list[int], int]] = []
+        for backend in groups:
+            input_rows = int(backend["input_rows"]) if _is_number(backend.get("input_rows")) else -1
+            raw_actual = backend.get("actual_group_rows")
+            actual = (
+                [int(value) for value in raw_actual if _is_number(value)]
+                if isinstance(raw_actual, Sequence)
+                and not isinstance(raw_actual, (str, bytes, bytearray))
+                else []
+            )
+            max_rows = (
+                int(backend["max_actual_group_rows"])
+                if _is_number(backend.get("max_actual_group_rows"))
+                else -1
+            )
+            normalized_groups.append((input_rows, actual, max_rows))
+        first_input = normalized_groups[0][0] if len(normalized_groups) == 1 else None
+        first_actual = normalized_groups[0][1] if len(normalized_groups) == 1 else []
+        first_max = normalized_groups[0][2] if len(normalized_groups) == 1 else None
+        group_ids.append(group_id)
         queue_counts.append(queue_count)
         queue_prompt_rows.append(prompt_rows)
-        backend_input_rows.append(input_rows)
-        backend_actual_rows.append(actual)
-        backend_max_rows.append(max_rows)
-        row_passes.append(
-            queue_count == expected
-            and prompt_rows == expected
-            and input_rows == expected
-            and actual == [expected]
-            and max_rows == expected
+        backend_input_rows.append(first_input)
+        backend_actual_rows.append(first_actual)
+        backend_max_rows.append(first_max)
+        backend_valid = bool(normalized_groups) and all(
+            input_rows > 0
+            and bool(actual)
+            and all(rows > 0 for rows in actual)
+            and sum(actual) == input_rows
+            and max_rows == max(actual)
+            for input_rows, actual, max_rows in normalized_groups
         )
+        row_passes.append(
+            bool(group_id)
+            and queue_count is not None
+            and queue_count > 0
+            and prompt_rows is not None
+            and prompt_rows > 0
+            and backend_valid
+        )
+        if group_id:
+            grouped.setdefault(group_id, []).append((queue, shape, groups))
+
+    group_passes: list[bool] = []
+    queue_group_request_counts: list[int] = []
+    queue_group_prompt_rows: list[int] = []
+    flattened_backend_rows: list[int] = []
+    native_false_records_expected = 0
+    for group_records in grouped.values():
+        first_queue, _first_shape, first_groups = group_records[0]
+        request_count = int(first_queue.get("request_count", -1))
+        prompt_rows = int(first_queue.get("prompt_rows", -1))
+        first_backend = [
+            (
+                int(group.get("input_rows", -1)),
+                tuple(int(value) for value in group.get("actual_group_rows", ())),
+                int(group.get("max_actual_group_rows", -1)),
+            )
+            for group in first_groups
+        ]
+        invariant = all(
+            int(queue.get("request_count", -1)) == request_count
+            and int(queue.get("prompt_rows", -1)) == prompt_rows
+            and [
+                (
+                    int(group.get("input_rows", -1)),
+                    tuple(int(value) for value in group.get("actual_group_rows", ())),
+                    int(group.get("max_actual_group_rows", -1)),
+                )
+                for group in groups
+            ]
+            == first_backend
+            for queue, _shape, groups in group_records
+        )
+        item_indices = [queue.get("item_index") for queue, _shape, _groups in group_records]
+        item_indices_valid = all(value is None for value in item_indices) or (
+            all(_is_number(value) for value in item_indices)
+            and sorted(int(value) for value in item_indices) == list(range(request_count))
+        )
+        slices = [
+            (queue.get("item_prompt_offset"), queue.get("item_prompt_rows"))
+            for queue, _shape, _groups in group_records
+        ]
+        slices_valid = all(offset is None and rows is None for offset, rows in slices)
+        if not slices_valid and all(_is_number(offset) and _is_number(rows) for offset, rows in slices):
+            cursor = 0
+            slices_valid = True
+            for offset, rows in sorted((int(offset), int(rows)) for offset, rows in slices):
+                if offset != cursor or rows <= 0:
+                    slices_valid = False
+                    break
+                cursor += rows
+            slices_valid = slices_valid and cursor == prompt_rows
+        group_passes.append(
+            request_count > 0
+            and prompt_rows > 0
+            and len(group_records) == request_count
+            and invariant
+            and item_indices_valid
+            and slices_valid
+        )
+        queue_group_request_counts.append(request_count)
+        queue_group_prompt_rows.append(prompt_rows)
+        group_backend_rows = [rows for _input, actual, _maximum in first_backend for rows in actual]
+        flattened_backend_rows.extend(group_backend_rows)
+        if group_backend_rows and max(group_backend_rows) == 1:
+            native_false_records_expected += request_count
+
     nonempty_group_ids = [group_id for group_id in group_ids if group_id]
     shared_group = len(nonempty_group_ids) == len(records) and len(set(nonempty_group_ids)) == 1
+    passed = bool(
+        len(records) == expected
+        and len(nonempty_group_ids) == expected
+        and all(row_passes)
+        and all(group_passes)
+        and sum(queue_group_request_counts) == expected
+        and sum(queue_group_prompt_rows) == expected
+        and bool(flattened_backend_rows)
+    )
     return {
-        "passed": len(records) == expected and all(row_passes) and shared_group,
+        "passed": passed,
         "expected_rows": expected,
         "record_count": len(records),
         "shared_queue_group": shared_group,
+        "queue_group_count": len(grouped),
         "queue_group_ids": group_ids,
         "queue_request_counts": queue_counts,
         "queue_prompt_rows": queue_prompt_rows,
+        "queue_group_request_counts": queue_group_request_counts,
+        "queue_group_prompt_rows": queue_group_prompt_rows,
         "backend_input_rows": backend_input_rows,
         "backend_actual_group_rows": backend_actual_rows,
         "backend_max_actual_group_rows": backend_max_rows,
+        "backend_group_rows": flattened_backend_rows,
+        "max_backend_group_rows": max(flattened_backend_rows) if flattened_backend_rows else None,
+        "native_false_records_expected": native_false_records_expected,
     }
 
 
@@ -314,6 +568,7 @@ def metric_summary(values: Sequence[float]) -> dict[str, Any]:
             "samples": [],
             "median": None,
             "p95": None,
+            "p99": None,
             "min": None,
             "max": None,
             "stdev": None,
@@ -323,10 +578,12 @@ def metric_summary(values: Sequence[float]) -> dict[str, Any]:
     median = float(statistics.median(samples))
     stdev = float(statistics.stdev(samples)) if len(samples) > 1 else 0.0
     p95 = ordered[min(len(ordered) - 1, math.ceil(0.95 * len(ordered)) - 1)]
+    p99 = ordered[min(len(ordered) - 1, math.ceil(0.99 * len(ordered)) - 1)]
     return {
         "samples": samples,
         "median": median,
         "p95": float(p95),
+        "p99": float(p99),
         "min": float(ordered[0]),
         "max": float(ordered[-1]),
         "stdev": stdev,
@@ -395,6 +652,22 @@ def _parse_concurrencies(raw: str) -> list[int]:
     values = [int(part.strip()) for part in str(raw).split(",") if part.strip()]
     if not values or any(value <= 0 for value in values) or len(set(values)) != len(values):
         raise argparse.ArgumentTypeError("concurrencies must be unique positive integers")
+    return values
+
+
+def _validate_concurrency_plan(
+    concurrencies: Sequence[int],
+    *,
+    live_concurrency: int,
+) -> list[int]:
+    values = [int(value) for value in concurrencies]
+    allowed = {1, 2, 4, 8, 13}
+    if 1 not in values:
+        raise ValueError("concurrencies must include c1")
+    if int(live_concurrency) not in values:
+        raise ValueError("live-concurrency must appear in concurrencies")
+    if any(value not in allowed for value in values):
+        raise ValueError("the matched server packet is limited to c1/c2/c4/c8/c13")
     return values
 
 
@@ -488,6 +761,106 @@ def _one_request(
     return record
 
 
+def _parse_sse_data_line(raw_line: bytes | str) -> Mapping[str, Any] | str | None:
+    text = raw_line.decode("utf-8", errors="replace") if isinstance(raw_line, bytes) else str(raw_line)
+    stripped = text.strip()
+    if not stripped.startswith("data:"):
+        return None
+    payload = stripped[5:].strip()
+    if not payload:
+        return None
+    if payload == "[DONE]":
+        return payload
+    parsed = json.loads(payload)
+    if not isinstance(parsed, Mapping):
+        raise BenchError(f"SSE data payload must be an object, got {type(parsed).__name__}")
+    return parsed
+
+
+def _stream_request_payload(
+    args: argparse.Namespace,
+    engine: str,
+    prompt: Sequence[int],
+    request_index: int,
+) -> dict[str, Any]:
+    payload = _request_payload(args, engine, prompt, request_index)
+    payload["stream"] = True
+    if engine == "hipengine":
+        payload["stream_options"] = {
+            "include_hipengine": True,
+            "include_usage": True,
+        }
+    return payload
+
+
+def _one_stream_request(
+    args: argparse.Namespace,
+    *,
+    engine: str,
+    base_url: str,
+    prompt: Sequence[int],
+    index: int,
+    release: threading.Event,
+    epoch: float | Sequence[float],
+) -> dict[str, Any]:
+    release.wait()
+    release_epoch = float(epoch[0]) if isinstance(epoch, Sequence) else float(epoch)
+    parsed_url = urllib.parse.urlparse(_completion_url(engine, base_url))
+    if parsed_url.scheme != "http" or parsed_url.hostname is None:
+        raise BenchError(f"stream benchmark requires a localhost HTTP URL, got {parsed_url.geturl()!r}")
+    started = time.perf_counter()
+    connection = http.client.HTTPConnection(
+        parsed_url.hostname,
+        parsed_url.port,
+        timeout=float(args.request_timeout),
+    )
+    events: list[tuple[float, Mapping[str, Any] | str]] = []
+    status = 0
+    try:
+        connection.request(
+            "POST",
+            parsed_url.path,
+            body=json.dumps(
+                _stream_request_payload(args, engine, prompt, index),
+                separators=(",", ":"),
+            ),
+            headers={"Content-Type": "application/json", "Accept": "text/event-stream"},
+        )
+        response = connection.getresponse()
+        status = int(response.status)
+        if status != 200:
+            body = response.read().decode("utf-8", errors="replace")
+            raise BenchError(f"HTTP {status} from {parsed_url.geturl()}: {body}")
+        while True:
+            raw_line = response.readline()
+            if not raw_line:
+                break
+            observed_at = time.perf_counter()
+            payload = _parse_sse_data_line(raw_line)
+            if payload is not None:
+                events.append((observed_at, payload))
+    finally:
+        connection.close()
+    completed = time.perf_counter()
+    record = extract_stream_response(
+        engine,
+        events,
+        started_at=started,
+        completed_at=completed,
+        prompt_tokens=len(prompt),
+    )
+    record.update(
+        {
+            "status_code": status,
+            "request_index": int(index),
+            "prompt_token_ids_sha256": token_ids_sha256(prompt),
+            "started_offset_seconds": started - release_epoch,
+            "completed_offset_seconds": completed - release_epoch,
+        }
+    )
+    return record
+
+
 def _batch_summary(records: Sequence[Mapping[str, Any]], *, batch_wall_seconds: float) -> dict[str, Any]:
     total = sum(int(record["completion_tokens"]) for record in records)
     decode_ms = [
@@ -522,6 +895,126 @@ def _batch_summary(records: Sequence[Mapping[str, Any]], *, batch_wall_seconds: 
     }
 
 
+def _stream_batch_summary(
+    records: Sequence[Mapping[str, Any]],
+    *,
+    batch_wall_seconds: float,
+    ttft_p95_limit: float,
+    itl_p99_limit: float,
+    e2e_p95_limit: float,
+) -> dict[str, Any]:
+    rows = [dict(record) for record in records]
+    total_tokens = sum(int(row.get("completion_tokens") or 0) for row in rows)
+    ttft = [
+        float(row["client_ttft_seconds"])
+        for row in rows
+        if _is_number(row.get("client_ttft_seconds"))
+    ]
+    itl = [
+        float(value)
+        for row in rows
+        for value in row.get("client_inter_token_seconds") or ()
+        if _is_number(value)
+    ]
+    e2e = [float(row["wall_seconds"]) for row in rows if _is_number(row.get("wall_seconds"))]
+    qualifying = [
+        row
+        for row in rows
+        if row.get("stream_exact") is True
+        and _is_number(row.get("client_ttft_seconds"))
+        and float(row["client_ttft_seconds"]) <= float(ttft_p95_limit)
+        and all(
+            float(value) <= float(itl_p99_limit)
+            for value in row.get("client_inter_token_seconds") or ()
+        )
+        and _is_number(row.get("wall_seconds"))
+        and float(row["wall_seconds"]) <= float(e2e_p95_limit)
+    ]
+    qualifying_tokens = sum(int(row.get("completion_tokens") or 0) for row in qualifying)
+    ttft_summary = metric_summary(ttft)
+    itl_summary = metric_summary(itl)
+    e2e_summary = metric_summary(e2e)
+    exact = bool(rows) and all(
+        row.get("stream_exact") is True
+        and row.get("stream_protocol_complete") is True
+        for row in rows
+    )
+    wall = float(batch_wall_seconds)
+    return {
+        "passed": exact,
+        "batch_wall_seconds": wall,
+        "total_completion_tokens": total_tokens,
+        "exact_generated_tok_s_aggregate": (
+            total_tokens / wall if exact and wall > 0.0 else 0.0
+        ),
+        "slo_goodput_tok_s_aggregate": qualifying_tokens / wall if wall > 0.0 else 0.0,
+        "latency_seconds": {
+            "ttft": ttft_summary,
+            "itl": itl_summary,
+            "end_to_end": e2e_summary,
+        },
+        "slo": {
+            "thresholds": {
+                "ttft_p95_seconds": float(ttft_p95_limit),
+                "itl_p99_seconds": float(itl_p99_limit),
+                "end_to_end_p95_seconds": float(e2e_p95_limit),
+            },
+            "checks": {
+                "ttft_p95": bool(
+                    ttft_summary["p95"] is not None
+                    and float(ttft_summary["p95"]) <= float(ttft_p95_limit)
+                ),
+                "itl_p99": bool(
+                    itl_summary["p99"] is not None
+                    and float(itl_summary["p99"]) <= float(itl_p99_limit)
+                ),
+                "end_to_end_p95": bool(
+                    e2e_summary["p95"] is not None
+                    and float(e2e_summary["p95"]) <= float(e2e_p95_limit)
+                ),
+            },
+            "qualifying_requests": len(qualifying),
+            "qualifying_completion_tokens": qualifying_tokens,
+            "passed": len(qualifying) == len(rows),
+        },
+        "records": sorted(rows, key=lambda row: int(row.get("request_index", 0))),
+    }
+
+
+def _stream_route_summary(
+    engine: str,
+    *,
+    concurrency: int,
+    samples: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    records = [
+        record
+        for sample in samples
+        for record in sample.get("records", ())
+        if isinstance(record, Mapping)
+    ]
+    paths = sorted({str(record.get("execution_path")) for record in records})
+    serial = [record.get("serial_decode_fallback") for record in records]
+    native = [record.get("native_caware_decode") for record in records]
+    if str(engine) != "hipengine":
+        return {"passed": bool(records), "paths": paths}
+    native_expected = False if int(concurrency) == 1 else True
+    return {
+        "passed": bool(records)
+        and all(value is False for value in serial)
+        and all(value is native_expected for value in native)
+        and all(path == "gguf_packed_ar_server_decode" for path in paths),
+        "paths": paths,
+        "serial_decode_fallback_values": sorted(
+            {value for value in serial if isinstance(value, bool)}
+        ),
+        "native_caware_decode_values": sorted(
+            {value for value in native if isinstance(value, bool)}
+        ),
+        "native_caware_decode_expected": native_expected,
+    }
+
+
 def _run_burst(
     args: argparse.Namespace,
     *,
@@ -550,6 +1043,77 @@ def _run_burst(
         records = [future.result() for future in futures]
         completed = time.perf_counter()
     return _batch_summary(records, batch_wall_seconds=completed - epoch[0])
+
+
+def _run_stream_burst(
+    args: argparse.Namespace,
+    *,
+    engine: str,
+    base_url: str,
+    prompts: Sequence[Sequence[int]],
+    oracle: Mapping[str, Sequence[int]],
+    oracle_text: Mapping[str, str],
+) -> dict[str, Any]:
+    release = threading.Event()
+    epoch = [time.perf_counter()]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(prompts)) as pool:
+        futures = [
+            pool.submit(
+                _one_stream_request,
+                args,
+                engine=engine,
+                base_url=base_url,
+                prompt=prompt,
+                index=index,
+                release=release,
+                epoch=epoch,
+            )
+            for index, prompt in enumerate(prompts)
+        ]
+        epoch[0] = time.perf_counter()
+        release.set()
+        records = [future.result() for future in futures]
+        completed = time.perf_counter()
+    for record in records:
+        prompt_hash = str(record["prompt_token_ids_sha256"])
+        expected_ids = [int(token) for token in oracle.get(prompt_hash, ())]
+        expected_text = oracle_text.get(prompt_hash)
+        observed_ids = record.get("generated_token_ids")
+        if isinstance(observed_ids, Sequence) and not isinstance(
+            observed_ids, (str, bytes, bytearray)
+        ):
+            output_exact = [int(token) for token in observed_ids] == expected_ids
+            oracle_mode = "exact_generated_token_ids"
+        else:
+            output_exact = (
+                expected_text is not None
+                and str(record.get("text") or "") == str(expected_text)
+                and int(record.get("completion_tokens") or 0) == int(args.decode_tokens)
+            )
+            oracle_mode = "exact_blocking_text_plus_completion_count"
+        protocol_complete = bool(
+            int(record.get("status_code") or 0) == 200
+            and record.get("done_sentinel") is True
+            and int(record.get("completion_tokens") or 0) == int(args.decode_tokens)
+            and int(record.get("token_event_count") or 0) == int(args.decode_tokens)
+            and record.get("finish_reason") is not None
+        )
+        record["stream_oracle_mode"] = oracle_mode
+        record["stream_output_exact"] = output_exact
+        record["stream_protocol_complete"] = protocol_complete
+        record["stream_exact"] = bool(output_exact and protocol_complete)
+        record["generated_token_ids_sha256"] = (
+            None
+            if observed_ids is None
+            else token_ids_sha256([int(token) for token in observed_ids])
+        )
+    return _stream_batch_summary(
+        records,
+        batch_wall_seconds=completed - epoch[0],
+        ttft_p95_limit=float(args.slo_ttft_p95_seconds),
+        itl_p99_limit=float(args.slo_itl_p99_seconds),
+        e2e_p95_limit=float(args.slo_end_to_end_p95_seconds),
+    )
 
 
 def _metrics_state(base_url: str, *, timeout: float = 10.0) -> tuple[list[dict[str, Any]], str]:
@@ -581,6 +1145,7 @@ def _hipengine_route_expectation_passes(
     native_values: Sequence[Any],
     shape_passed: bool,
     resident_capacity: float | None,
+    native_false_records_expected: int = 0,
 ) -> bool:
     rows = int(concurrency)
     if resident_capacity != float(rows):
@@ -599,8 +1164,12 @@ def _hipengine_route_expectation_passes(
         return False
     if rows == 1:
         return all(value is False for value in native_values)
-    return all(value is False for value in serial_values) and all(
-        value is True for value in native_values
+    return (
+        all(value is False for value in serial_values)
+        and all(isinstance(value, bool) for value in native_values)
+        and any(value is True for value in native_values)
+        and sum(value is False for value in native_values)
+        == int(native_false_records_expected)
     )
 
 
@@ -1050,6 +1619,9 @@ def _selected_metrics(samples: Sequence[Mapping[str, Any]], raw_path: Path) -> d
         "hipengine_resident_work_prefill_total",
         "hipengine_resident_work_decode_total",
         "hipengine_resident_work_reclaim_total",
+        "hipengine_resident_packed_workspace_current_bytes",
+        "hipengine_resident_packed_workspace_release_events_total",
+        "hipengine_resident_packed_workspace_released_bytes_total",
         "hipengine_kv_pool_current_bytes",
         "hipengine_kv_pool_high_water_observed_bytes",
         "hipengine_kv_pool_current_pages",
@@ -1150,6 +1722,10 @@ def _run_width(
         prompt_length=int(args.prompt_length),
         token_id=int(args.prompt_token_id),
     )
+    oracle_text = {
+        str(record.get("prompt_token_ids_sha256") or ""): str(record.get("text") or "")
+        for record in oracle_records
+    }
     sampler = _memory_sampler(args)
     process: subprocess.Popen[str] | None = None
     if sampler is not None:
@@ -1179,6 +1755,82 @@ def _run_width(
                 flush=True,
             )
             time.sleep(float(args.inter_rep_seconds))
+        streaming: dict[str, Any] | None = None
+        if bool(args.streaming_primary):
+            stream_warmups = [
+                _run_stream_burst(
+                    args,
+                    engine=engine,
+                    base_url=base_url,
+                    prompts=prompts,
+                    oracle=oracle,
+                    oracle_text=oracle_text,
+                )
+                for _ in range(int(args.stream_warmup_runs))
+            ]
+            stream_measured: list[dict[str, Any]] = []
+            for repetition in range(int(args.stream_measured_runs)):
+                sample = _run_stream_burst(
+                    args,
+                    engine=engine,
+                    base_url=base_url,
+                    prompts=prompts,
+                    oracle=oracle,
+                    oracle_text=oracle_text,
+                )
+                sample["repetition"] = repetition
+                stream_measured.append(sample)
+                print(
+                    f"{engine} c{concurrency} stream rep{repetition}: "
+                    f"exact={sample['exact_generated_tok_s_aggregate']:.3f} tok/s "
+                    f"goodput={sample['slo_goodput_tok_s_aggregate']:.3f} tok/s "
+                    f"wall={sample['batch_wall_seconds']:.3f}s",
+                    flush=True,
+                )
+                time.sleep(float(args.inter_rep_seconds))
+            streaming = {
+                "warmup_runs": stream_warmups,
+                "measured_runs": stream_measured,
+                "summary": {
+                    "exact_generated_tok_s_aggregate": metric_summary(
+                        [float(sample["exact_generated_tok_s_aggregate"]) for sample in stream_measured]
+                    ),
+                    "slo_goodput_tok_s_aggregate": metric_summary(
+                        [float(sample["slo_goodput_tok_s_aggregate"]) for sample in stream_measured]
+                    ),
+                    "ttft_p95_seconds": metric_summary(
+                        [
+                            float(sample["latency_seconds"]["ttft"]["p95"])
+                            for sample in stream_measured
+                            if _is_number(sample["latency_seconds"]["ttft"]["p95"])
+                        ]
+                    ),
+                    "itl_p99_seconds": metric_summary(
+                        [
+                            float(sample["latency_seconds"]["itl"]["p99"])
+                            for sample in stream_measured
+                            if _is_number(sample["latency_seconds"]["itl"]["p99"])
+                        ]
+                    ),
+                    "end_to_end_p95_seconds": metric_summary(
+                        [
+                            float(sample["latency_seconds"]["end_to_end"]["p95"])
+                            for sample in stream_measured
+                            if _is_number(sample["latency_seconds"]["end_to_end"]["p95"])
+                        ]
+                    ),
+                    "slo_passed_runs": sum(
+                        1 for sample in stream_measured if sample["slo"]["passed"] is True
+                    ),
+                },
+                "route": _stream_route_summary(
+                    engine,
+                    concurrency=int(concurrency),
+                    samples=stream_measured,
+                ),
+                "passed": bool(stream_measured)
+                and all(sample["passed"] is True for sample in stream_measured),
+            }
         burst_metrics: dict[str, Any] | None = None
         if engine == "hipengine":
             samples, text = _metrics_state(base_url)
@@ -1258,6 +1910,10 @@ def _run_width(
                 native_values=native_values,
                 shape_passed=bool(shape_evidence["passed"]),
                 resident_capacity=resident_capacity,
+                native_false_records_expected=sum(
+                    int(run["native_false_records_expected"])
+                    for run in shape_runs
+                ),
             )
         result = {
             "concurrency": int(concurrency),
@@ -1305,6 +1961,7 @@ def _run_width(
                 "resident_capacity": resident_capacity,
             },
             "burst_metrics": burst_metrics,
+            "streaming": streaming,
             "live_admission": live,
             "live_metrics": live_metrics,
         }
@@ -1365,13 +2022,10 @@ def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
     engine = str(args.engine)
-    concurrencies = list(args.concurrencies)
-    if 1 not in concurrencies:
-        raise ValueError("concurrencies must include c1")
-    if int(args.live_concurrency) not in concurrencies:
-        raise ValueError("live-concurrency must appear in concurrencies")
-    if max(concurrencies) > 8:
-        raise ValueError("the F1 native packet is limited to c1/c2/c4/c8")
+    concurrencies = _validate_concurrency_plan(
+        args.concurrencies,
+        live_concurrency=int(args.live_concurrency),
+    )
     if not args.model.exists():
         raise ValueError(f"model does not exist: {args.model}")
     args.work_dir.mkdir(parents=True, exist_ok=True)
@@ -1385,8 +2039,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "performance_claim": False,
         "engine": engine,
         "protocol": {
-            "primary_metric": "C*returned_completion_tokens / barrier_to_last_response_http_wall_seconds",
-            "primary_metric_scope": "prefill + decode + server scheduling + localhost HTTP",
+            "primary_metric": (
+                "exact SLO-qualified returned completion tokens / barrier-to-last-SSE-completion wall"
+                if bool(args.streaming_primary)
+                else "C*returned_completion_tokens / barrier-to-last-response HTTP wall"
+            ),
+            "primary_metric_scope": "prefill + decode + server scheduling + localhost HTTP/SSE",
+            "blocking_control_metric": "C*returned_completion_tokens / barrier-to-last-response HTTP wall",
             "native_decode_metric_scope": "engine-specific diagnostic only; not cross-engine comparable",
             "model": str(args.model.resolve()),
             "quant": str(args.quant),
@@ -1401,6 +2060,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "concurrencies": concurrencies,
             "warmup_runs_per_width": int(args.warmup_runs),
             "measured_runs_per_width": int(args.measured_runs),
+            "streaming_primary": bool(args.streaming_primary),
+            "stream_warmup_runs_per_width": int(args.stream_warmup_runs),
+            "stream_measured_runs_per_width": int(args.stream_measured_runs),
+            "stream_client_slo_seconds": {
+                "ttft_p95": float(args.slo_ttft_p95_seconds),
+                "itl_p99": float(args.slo_itl_p99_seconds),
+                "end_to_end_p95": float(args.slo_end_to_end_p95_seconds),
+            },
             "fresh_server_per_width": True,
             "server_capacity_matches_logical_concurrency": True,
             "context_tokens_per_sequence": int(args.ctx_per_seq),
@@ -1411,7 +2078,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 else None
             ),
             "llamacpp_prompt_cache": False,
-            "exact_output_contract": "every server row equals an independent same-engine c1 token-ID oracle",
+            "exact_output_contract": (
+                "blocking rows equal independent same-engine c1 generated token IDs; llama.cpp SSE "
+                "returns those IDs directly; hipEngine SSE reconstructs the blocking-oracle text with "
+                "the exact completion count"
+            ),
             "live_admission_concurrency": int(args.live_concurrency),
         },
         "command": invocation,
@@ -1421,9 +2092,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "oracle": None,
         "rows": {},
         "limitations": [
-            "llama.cpp does not expose matched non-streaming resident TTFT/ITL percentile summaries; those fields remain unavailable.",
+            "TTFT/ITL/end-to-end curves are matched client-observed SSE timings; engine-resident timing fields are not cross-engine comparable.",
+            "hipEngine SSE does not expose generated token IDs: its stream oracle is exact blocking-c1 text plus completion count, while the exact blocking ID oracle remains retained.",
             "hipEngine and llama.cpp backend-native decode timings have different ownership boundaries and are diagnostic only.",
-            "gfx1151 is UMA: whole-card GTT, not the 512 MiB visible VRAM aperture, is the relevant external memory domain.",
+            "gfx1151 is UMA: whole-card GTT, not the 512 MiB visible-VRAM aperture, is the relevant external memory domain.",
         ],
     }
     _write_json(args.json, payload)
@@ -1466,6 +2138,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         and row["correctness"]["measured"]["passed"]
         and (row["correctness"]["live_admission"] is None or row["correctness"]["live_admission"]["passed"])
         and row["execution"]["route_ok"]
+        and (
+            row["streaming"] is None
+            or (
+                row["streaming"]["passed"] is True
+                and row["streaming"]["route"]["passed"] is True
+            )
+        )
         for row in rows
     )
     live_row = payload["rows"][str(args.live_concurrency)]
@@ -1514,16 +2193,22 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--gpu", default="0")
     parser.add_argument("--gpu-max-hw-queues", type=int, default=1)
     parser.add_argument("--compiler-version-file", type=Path)
-    parser.add_argument("--concurrencies", type=_parse_concurrencies, default=[1, 2, 4, 8])
+    parser.add_argument("--concurrencies", type=_parse_concurrencies, default=[1, 2, 4, 8, 13])
     parser.add_argument("--prompt-token-id", type=int, default=9707)
     parser.add_argument("--prompt-length", type=int, default=512)
     parser.add_argument("--decode-tokens", type=int, default=128)
     parser.add_argument("--oracle-rows", type=int, default=4)
     parser.add_argument("--warmup-runs", type=int, default=1)
     parser.add_argument("--measured-runs", type=int, default=3)
+    parser.add_argument("--streaming-primary", action="store_true")
+    parser.add_argument("--stream-warmup-runs", type=int, default=0)
+    parser.add_argument("--stream-measured-runs", type=int, default=3)
+    parser.add_argument("--slo-ttft-p95-seconds", type=float, default=10.0)
+    parser.add_argument("--slo-itl-p99-seconds", type=float, default=0.5)
+    parser.add_argument("--slo-end-to-end-p95-seconds", type=float, default=30.0)
     parser.add_argument("--batch-window-ms", type=float, default=5.0)
     parser.add_argument("--ctx-per-seq", type=int, default=1024)
-    parser.add_argument("--live-concurrency", type=int, default=8)
+    parser.add_argument("--live-concurrency", type=int, default=13)
     parser.add_argument("--live-join-after-tokens", type=int, default=8)
     parser.add_argument("--metrics-poll-ms", type=float, default=20.0)
     parser.add_argument("--seed", type=int, default=12345)

@@ -122,7 +122,7 @@ curl -H 'Authorization: Bearer local-secret' http://127.0.0.1:8000/v1/models
 | `POST /v1/hipengine/detokenize` | Built in | Decodes token ids with the served tokenizer when available. |
 | `POST /v1/hipengine/count_tokens` | Built in | Counts raw text or rendered chat messages after applying the server chat template, tool markup, thinking controls, and optional app-local `session.id` transcript prefix. Chat diagnostics include lowered thinking-budget close-token metadata when tokenizer support is available. |
 | `POST /v1/hipengine/fit_context` | Built in | Reports prompt tokens, effective max tokens, max allowed/recommended `max_tokens`, required/overflow context, and clear/truncation policy using the same admission arithmetic as generation, including optional app-local `session.id` transcript prefixes plus `session.context_overflow_policy` for chat. Chat diagnostics include the same thinking-budget close-token metadata as `count_tokens`. |
-| `POST /v1/completions` | Built in | Text prompt(s), one token-ID row, or token-ID rows to `LLM.generate()`. Exact-token prompts are non-streaming and do not support `echo`, continuations, or sessions. For a single text prompt with `n=1` and `echo=false`, `stream=true` uses token/chunk SSE from `LLM.stream()` when available; multi-prompt, `n>1`, and echo streaming fall back to buffered SSE. |
+| `POST /v1/completions` | Built in | Text prompt(s), one token-ID row, or token-ID rows to `LLM.generate()`. Exact-token prompts support live SSE for one row and buffered SSE for multiple rows; they do not support `echo`, continuations, or sessions. For a single prompt with `n=1` and `echo=false`, `stream=true` uses token/chunk SSE from `LLM.stream()` when available; multi-prompt, `n>1`, and echo streaming fall back to buffered SSE. |
 | `POST /v1/chat/completions` | Built in | Renders text-only messages with roles `system`, `developer`, `user`, `assistant`, or `tool` to a Qwen-style prompt and calls `LLM.generate()` / `LLM.stream()`. Supports token-level `stream=true` SSE for `n=1`; `n>1` streaming returns buffered per-choice chunks. `<think>` spans are separated into `reasoning_content` (non-streaming) or `delta.reasoning_content` chunks (streaming). Accepts OpenAI `tools` / `tool_choice` and returns `tool_calls` from Qwen-style `<tool_call>{...}</tool_call>` output. |
 
 ## Examples
@@ -160,9 +160,10 @@ curl http://127.0.0.1:8000/v1/completions \
   }'
 ```
 
-Exact-token requests are intentionally non-streaming and reject `stream`,
-`echo`, `continuation_id`, and `session`. Non-streaming responses bind the
-accepted input without echoing its contents:
+Exact-token requests support live `stream=true` SSE for one row and buffered
+SSE for multiple rows while preserving the token IDs without retokenization.
+They continue to reject `echo`, `continuation_id`, and `session`.
+Non-streaming responses bind the accepted input without echoing its contents:
 
 ```json
 {
@@ -175,8 +176,10 @@ accepted input without echoing its contents:
 ```
 
 This object is at `hipengine.prompt_token_accounting`; exact outputs remain at
-`hipengine.token_accounting.choice_generated_token_ids`. Capabilities advertise
-the contract under `features.exact_token_prompts`.
+`hipengine.token_accounting.choice_generated_token_ids`. Streaming token counts
+and timing are available with `stream_options.include_hipengine`; clients that
+need an exact generated-ID oracle should retain the non-streaming response.
+Capabilities advertise the contract under `features.exact_token_prompts`.
 
 ### Chat completion
 
@@ -627,9 +630,11 @@ OpenAI-server generation queue cap. Set `HIPENGINE_MAX_ACTIVE_REQUESTS` or
 one active backend generation batch; overflow remains queued and is still
 bounded by the queue cap when configured. Streaming requests use bounded
 per-client token queues (`HIPENGINE_STREAM_QUEUE_MAX_CHUNKS`, default 16).
-Backpressure blocks only that producer; if another resident request advances
-far enough to fill the model-loop subscription queue, the slow row is cancelled
-with `budget_pressure=client_backpressure` rather than stalling its neighbors.
+The resident model loop separately keeps a bounded 64-event scheduling buffer
+per subscription so transient cross-thread bursts do not look like slow
+clients. Backpressure blocks only the affected producer; if a client remains
+slow enough to fill that model-loop buffer, its row is cancelled with
+`budget_pressure=client_backpressure` rather than stalling its neighbors.
 On process shutdown, admission closes and work drains for
 `HIPENGINE_SHUTDOWN_GRACE_SECONDS` (default 5.0) before cooperative cancellation
 and long-lived runner close. Set `HIPENGINE_MAX_CHAT_SESSIONS` or

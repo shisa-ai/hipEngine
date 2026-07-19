@@ -45,6 +45,7 @@ from hipengine.generation import (
     DecodeState,
     FinishDetails,
     GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS,
+    GenerationAdmissionRejected,
     GenerationCancellationToken,
     GenerationCancelled,
     GenerationDeadlineExceeded,
@@ -393,6 +394,36 @@ class OpenAIHTTPError(Exception):
         self.extra = {} if extra is None else dict(extra)
         self.headers = {} if headers is None else dict(headers)
         super().__init__(message)
+
+
+def _generation_admission_http_error(
+    exc: GenerationAdmissionRejected,
+    *,
+    retry_after_seconds: int,
+    error_extra: Mapping[str, Any] | None = None,
+) -> OpenAIHTTPError:
+    """Convert a bounded resource miss into the public retryable admission error."""
+
+    extra = deepcopy(dict(error_extra or {}))
+    hipengine = extra.get("hipengine")
+    if not isinstance(hipengine, dict):
+        hipengine = {}
+        extra["hipengine"] = hipengine
+    routing = hipengine.get("routing")
+    if not isinstance(routing, dict):
+        routing = {}
+        hipengine["routing"] = routing
+    routing["reason"] = "engine_busy"
+    routing["overload_source"] = "kv_pool_capacity"
+    routing["admission"] = exc.to_json_dict()
+    return OpenAIHTTPError(
+        429,
+        str(exc),
+        error_type="rate_limit_error",
+        code="engine_busy",
+        extra=extra,
+        headers={"Retry-After": str(max(1, int(retry_after_seconds)))},
+    )
 
 
 _ERROR_TAXONOMY: dict[str, dict[str, Any]] = {
@@ -2094,7 +2125,14 @@ class _GenerationBatcher:
         )
         if self._worker is None or self._worker.done():
             self._worker = loop.create_task(self._run())
-        return await future
+        try:
+            return await future
+        except GenerationAdmissionRejected as exc:
+            raise _generation_admission_http_error(
+                exc,
+                retry_after_seconds=self._retry_after_seconds,
+                error_extra=error_extra,
+            ) from exc
 
     async def stream(
         self,
@@ -2122,6 +2160,12 @@ class _GenerationBatcher:
                 event = await queue.get()
                 if event is _STREAM_DONE:
                     break
+                if isinstance(event, GenerationAdmissionRejected):
+                    raise _generation_admission_http_error(
+                        event,
+                        retry_after_seconds=self._retry_after_seconds,
+                        error_extra=error_extra,
+                    ) from event
                 if isinstance(event, BaseException):
                     raise event
                 yield event
@@ -3264,6 +3308,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 backend=config.backend,
                 quant=config.quant,
                 max_active_requests=config.max_active_requests,
+                prefix_cache=prefix_cache_mode,
             )
         app.state.hipengine_readiness.model_loaded = True
         return app.state.hipengine_llm
@@ -3977,6 +4022,19 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 else:
                     raw_outputs = queued_result
                     scheduler_token_chunks = None
+        except GenerationAdmissionRejected as exc:
+            openai_exc = _generation_admission_http_error(
+                exc,
+                retry_after_seconds=config.queue_retry_after_seconds,
+                error_extra=route_rejection_extra(
+                    requested_model=request.model,
+                    reason="engine_busy",
+                    engine=getattr(app.state, "hipengine_llm", None),
+                    details={"overload_source": "kv_pool_capacity"},
+                ),
+            )
+            _record_openai_error(app.state.hipengine_server_metrics, openai_exc)
+            raise openai_exc from exc
         except GenerationDeadlineExceeded as exc:
             raise _deadline_exceeded_error(exc.finish_details) from exc
         except GenerationCancelled as exc:
@@ -4049,7 +4107,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             raise
 
     async def stream_completion_one(
-        prompt: str,
+        prompt: PromptInput,
         request: CompletionRequest,
         control: _RequestControl,
         raw_request: Request,
@@ -4922,8 +4980,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "exact_token_prompts": {
                     "completions": True,
                     "request_forms": ["token_ids", "token_id_rows"],
-                    "direct_api": "LLM.generate_detailed(token_id_rows, sampling_params)",
-                    "streaming": False,
+                    "direct_api": "LLM.generate_detailed/stream_detailed(token_id_rows, sampling_params)",
+                    "streaming": True,
+                    "streaming_mode": {
+                        "single_row": "live",
+                        "multiple_rows": "buffered",
+                    },
                     "echo": False,
                     "response_identity": "hipengine.prompt_token_accounting",
                     "generated_id_oracle": "hipengine.token_accounting.choice_generated_token_ids",
@@ -6727,6 +6789,7 @@ def _resident_loop_metric_values(snapshot: Mapping[str, Any] | None) -> dict[str
     policy = _nested_mapping(loop, "scheduler_policy")
     latency = _nested_mapping(loop, "latency_seconds")
     runner = _nested_mapping(snapshot, "runner")
+    model_runner = _nested_mapping(runner, "model_runner")
     routes = _nested_mapping(runner, "routes")
 
     active_mask_value = bucket.get("active_mask")
@@ -6764,6 +6827,17 @@ def _resident_loop_metric_values(snapshot: Mapping[str, Any] | None) -> dict[str
             "prefill": _non_negative_metric_value(work.get("prefill")),
             "decode": _non_negative_metric_value(work.get("decode")),
             "reclaim": _non_negative_metric_value(work.get("reclaim")),
+        },
+        "packed_workspace": {
+            "current_bytes": _non_negative_metric_value(
+                model_runner.get("packed_workspace_current_bytes")
+            ),
+            "release_events": _non_negative_metric_value(
+                model_runner.get("packed_workspace_release_events")
+            ),
+            "released_bytes": _non_negative_metric_value(
+                model_runner.get("packed_workspace_released_bytes")
+            ),
         },
         "policy": {
             "name": str(policy.get("prefill_decode_policy") or "unavailable"),
@@ -6811,6 +6885,9 @@ def _render_prometheus_metrics(
         "hipengine_resident_work_prefill_total": resident["work"]["prefill"],
         "hipengine_resident_work_decode_total": resident["work"]["decode"],
         "hipengine_resident_work_reclaim_total": resident["work"]["reclaim"],
+        "hipengine_resident_packed_workspace_current_bytes": resident["packed_workspace"]["current_bytes"],
+        "hipengine_resident_packed_workspace_release_events_total": resident["packed_workspace"]["release_events"],
+        "hipengine_resident_packed_workspace_released_bytes_total": resident["packed_workspace"]["released_bytes"],
         "hipengine_kv_pool_current_bytes": pool["current_bytes"],
         "hipengine_kv_pool_high_water_observed_bytes": pool["high_water_observed_bytes"],
         "hipengine_kv_pool_grow_events_total": pool["grow_events"],
@@ -6862,6 +6939,9 @@ def _render_prometheus_metrics(
         "hipengine_resident_work_prefill_total": "Executed resident prefill work items.",
         "hipengine_resident_work_decode_total": "Executed resident decode work items.",
         "hipengine_resident_work_reclaim_total": "Executed resident reclaim transitions.",
+        "hipengine_resident_packed_workspace_current_bytes": "Current owner-only packed GGUF workspace bytes.",
+        "hipengine_resident_packed_workspace_release_events_total": "Reclaimed packed GGUF workspace owners.",
+        "hipengine_resident_packed_workspace_released_bytes_total": "Cumulative owner-only packed GGUF workspace bytes reclaimed.",
         "hipengine_kv_pool_current_bytes": "Current dynamic KV pool bytes, or 0 when unavailable.",
         "hipengine_kv_pool_high_water_observed_bytes": "Peak observed dynamic KV pool bytes, or 0 when unavailable.",
         "hipengine_kv_pool_grow_events_total": "Dynamic KV pool grow events, or 0 when unavailable.",
@@ -6901,6 +6981,8 @@ def _render_prometheus_metrics(
         "hipengine_resident_work_prefill_total",
         "hipengine_resident_work_decode_total",
         "hipengine_resident_work_reclaim_total",
+        "hipengine_resident_packed_workspace_release_events_total",
+        "hipengine_resident_packed_workspace_released_bytes_total",
         "hipengine_kv_pool_grow_events_total",
         "hipengine_kv_pool_grow_failures_total",
         "hipengine_kv_pool_shrink_events_total",
@@ -9101,7 +9183,7 @@ def _validate_generation_request(
 ) -> None:
     _request_n(request)
     if _completion_prompt_uses_token_ids(request):
-        for param in ("stream", "echo", "continuation_id", "session"):
+        for param in ("echo", "continuation_id", "session"):
             value = getattr(request, param, None)
             if value not in (None, False):
                 raise OpenAIHTTPError(
@@ -10098,8 +10180,11 @@ def _mark_structured_length_failure(
 ) -> None:
     if structured_length_failure is None:
         return
-    if _structured_result_validation(request):
-        finish_details.setdefault("phase", "structured")
+    if (
+        _structured_result_validation(request)
+        and finish_details.get("phase") in (None, "", "answer")
+    ):
+        finish_details["phase"] = "structured"
     finish_details["continuation_eligible"] = False
 
 
@@ -11303,14 +11388,16 @@ def _structured_json_object_prefix_validation(
     request: CompletionRequest | ChatCompletionRequest,
     text: str,
 ) -> bool:
+    del text  # The constraint state decides whether the observed root prefix is valid.
     response_mode = _response_format_mode(request)
     guided_mode = _guided_json_mode_from_value(getattr(request, "guided_json", None), validate=False)
     if response_mode == "json_object" or guided_mode == "json_object":
         return True
-    if response_mode != "json_schema" and guided_mode != "json_schema":
-        return False
-    stripped = str(text).lstrip()
-    return stripped.startswith("{")
+    if response_mode == "json_schema":
+        return _json_schema_root_object(_response_format_json_schema(request))
+    if guided_mode == "json_schema":
+        return _json_schema_root_object(_guided_json_schema(request))
+    return False
 
 
 def _json_object_close_forcing(request: CompletionRequest | ChatCompletionRequest) -> bool:

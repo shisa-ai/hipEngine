@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import threading
+from collections import Counter
 from types import SimpleNamespace
 
 import numpy as np
@@ -11,6 +12,7 @@ import hipengine.generation.qwen35_gguf as qwen35_gguf
 from hipengine.dispatch import SlotMove, WorkItem, WorkKind
 from hipengine.generation import (
     EngineLoopConfig,
+    GenerationAdmissionRejected,
     GenerationCancellationToken,
     GenerationCancelled,
     GenerationDeadlineExceeded,
@@ -1575,6 +1577,253 @@ def test_gguf_mtp_metadata_reports_packed_slot_batch() -> None:
     assert mtp["hidden_seed_extra_rows"] == 3
 
 
+def test_gguf_submit_poll_sampled_rows_use_packed_model_ticks(monkeypatch) -> None:
+    calls: list[tuple] = []
+
+    class FakeFullStackRunner:
+        def __init__(self, model_path, **kwargs):
+            self.model_path = str(model_path)
+            self.runtime = SimpleNamespace()
+            self.backend = kwargs.get("backend", "hip_gfx1151")
+            self.target_arch = "gfx1151"
+            self.vocab_size = 128
+            self.weights = SimpleNamespace(config=SimpleNamespace(ssm_conv_kernel=4))
+
+    class FakeSession:
+        next_slot = 0
+
+        def __init__(self, model_path, **kwargs):
+            self.slot_id = FakeSession.next_slot
+            FakeSession.next_slot += 1
+            self.runtime = kwargs["runtime"]
+            self.runner = kwargs["shared_runner"]
+            self.position = 0
+            self._packed_decode_state_dirty = False
+            self._packed_decode_sessions = ()
+
+        @staticmethod
+        def _logits(primary: int, secondary: int) -> np.ndarray:
+            logits = np.full((1, 128), -100.0, dtype=np.float32)
+            logits[0, int(primary)] = 1.0
+            logits[0, int(secondary)] = 0.75
+            return logits
+
+        def reset(self):
+            self.position = 0
+
+        def prefill(self, token_ids, *, return_logits=False):
+            self.position = len(token_ids)
+            primary = int(token_ids[-1]) % 3 + 1
+            calls.append(("prefill", self.slot_id, tuple(token_ids), bool(return_logits)))
+            return SimpleNamespace(
+                token_id=primary,
+                logits=(self._logits(primary, primary + 1) if return_logits else None),
+            )
+
+        def step(self, token_id, *, return_logits=False):  # pragma: no cover - packed c2 must own decode
+            raise AssertionError(
+                f"sampled row {self.slot_id} fell back to scalar model step for token {token_id}"
+            )
+
+        def step_batch_native(
+            self,
+            token_ids,
+            *,
+            sessions,
+            positions,
+            return_logits=False,
+            scatter_state=True,
+            **kwargs,
+        ):
+            calls.append(
+                (
+                    "step_batch_native",
+                    tuple(int(token) for token in token_ids),
+                    tuple(session.slot_id for session in sessions),
+                    tuple(int(position) for position in positions),
+                    bool(return_logits),
+                    bool(scatter_state),
+                    dict(kwargs),
+                )
+            )
+            results = []
+            for token, session in zip(token_ids, sessions, strict=True):
+                session.position += 1
+                primary = int(token) % 3 + 1
+                results.append(
+                    SimpleNamespace(
+                        token_id=primary,
+                        logits=(self._logits(primary, primary + 1) if return_logits else None),
+                    )
+                )
+            self._packed_decode_state_dirty = True
+            self._packed_decode_sessions = tuple(sessions)
+            return results
+
+        def flush_packed_decode_state(self):
+            self._packed_decode_state_dirty = False
+            return True
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFFullStackRunner", FakeFullStackRunner)
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+    generator = _generator()
+    generator.backend = "hip_gfx1151"
+    generator._shared_runner = None
+    generator._shared_runner_lock = threading.Lock()
+    generator._prepared_max_sequence_length = 64
+    generator._shared_session_pool = {}
+    generator._shared_session_pool_lock = threading.Lock()
+    generator._shared_mtp_draft_pool = {}
+    generator._shared_mtp_draft_pool_lock = threading.Lock()
+
+    adapter = SubmitPollTextGenerator(generator, capacity=2)
+    request = _request(
+        prompts=("first", "second"),
+        max_tokens=3,
+        temperature=0.8,
+        top_k=2,
+        top_p=1.0,
+        row_seeds=(17, 29),
+        logprobs=True,
+        top_logprobs=2,
+    )
+    first = adapter.generate_detailed(request)
+    second = adapter.generate_detailed(request)
+
+    assert [output.generated_token_ids for output in first] == [
+        output.generated_token_ids for output in second
+    ]
+    assert all(len(output.generated_token_ids or ()) == 3 for output in first)
+    packed_calls = [call for call in calls if call[0] == "step_batch_native"]
+    assert len(packed_calls) == 4
+    assert all(call[4] is True for call in packed_calls)
+    assert all(call[5] is False for call in packed_calls)
+    assert all(call[6]["physical_rows"] == 2 for call in packed_calls)
+    assert all(call[6]["active_slot_indices"] == (0, 1) for call in packed_calls)
+    assert not any(call[0] == "step" for call in calls)
+
+    for output in second:
+        decode_state = _decode_state(output)
+        assert decode_state["execution_path"] == "gguf_packed_ar_host_sampler_decode"
+        assert decode_state["sampler_fallback_reason"] == "host_sampling_required"
+        assert decode_state["native_caware_decode"] is True
+        assert decode_state["serial_decode_fallback"] is False
+        assert decode_state["native_sampler_rows"] is False
+        assert len(output.token_logprobs) == 3
+
+    assert generator.last_batch_generation is not None
+    assert generator.last_batch_generation["path"] == "gguf_packed_ar_host_sampler_decode"
+    assert generator.last_batch_generation["native_decode_steps"] == 2
+    assert generator.last_batch_generation["serial_decode_fallback"] is False
+    observability = adapter.live_loop_snapshot()["runner"]["routes"]
+    assert observability["counts"]["native_packed_decode_steps"] == 4
+    assert observability["counts"]["host_sampler_requests"] == 4
+    assert observability["counts"]["serial_decode_fallback_steps"] == 0
+    assert observability["counts"]["resident_fallback_requests"] == 0
+    assert observability["fallback_reasons"] == {"host_sampling_required": 4}
+
+
+def test_gguf_sampled_packed_unavailable_reports_model_serial_fallback(monkeypatch) -> None:
+    calls: list[tuple] = []
+    tokenizer = _FakeTokenizer()
+
+    class FakeSession:
+        def __init__(self, slot_id: int):
+            self.slot_id = int(slot_id)
+            self.position = 2
+
+        def step_batch_native(self, token_ids, **kwargs):
+            calls.append(("step_batch_native", tuple(token_ids), dict(kwargs)))
+            raise NotImplementedError("sampled packed logits unavailable")
+
+        def step(self, token_id, *, return_logits=False):
+            calls.append(("step", self.slot_id, int(token_id), bool(return_logits)))
+            self.position += 1
+            logits = np.full((1, 128), -100.0, dtype=np.float32)
+            logits[0, 2] = 10.0
+            return SimpleNamespace(token_id=2, logits=logits if return_logits else None)
+
+    generator = SimpleNamespace(
+        tokenizer=tokenizer,
+        _flush_ar_packed_decode_owners_if_chunk_changed=lambda slots: None,
+        _flush_ar_packed_decode_owners=lambda slots: None,
+    )
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    runner.generator = generator
+    runner._route_counts = Counter()
+    runner._fallback_reasons = Counter()
+    runner._last_execution_manifest = {}
+    runner._last_physical_group_plan = {}
+
+    request = _request(
+        prompts=("first", "second"),
+        max_tokens=3,
+        temperature=0.7,
+        top_k=1,
+        row_seeds=(17, 29),
+    )
+    sampling_request = qwen35_gguf._request_with_tokenizer_eos(request, tokenizer)
+    rows = []
+    for row_index, (request_id, prompt_ids) in enumerate(((10, (10, 11)), (11, (20,)))):
+        state = qwen35_gguf._gguf_row_sampling_state(
+            sampling_request,
+            list(prompt_ids),
+            row_index=row_index,
+        )
+        logits = np.full((1, 128), -100.0, dtype=np.float32)
+        logits[0, 1] = 10.0
+        sample = qwen35_gguf._select_from_gguf_logits(
+            SimpleNamespace(logits=logits),
+            sampling_request,
+            state,
+        )
+        session = FakeSession(row_index)
+        row = qwen35_gguf._GGUFResidentLoopRow(
+            request_id=request_id,
+            batch_id=0,
+            row_index=row_index,
+            request=request,
+            prompt_ids=prompt_ids,
+            native_greedy=False,
+            native_sampled=True,
+            submitted_at=0.0,
+            sampling_request=sampling_request,
+            sampling_state=state,
+            samples=[sample],
+            first_token_emitted=True,
+            slot=qwen35_gguf._GGUFARServingSlot(
+                request_id=request_id,
+                prompt_ids=list(prompt_ids),
+                session=session,
+                prev_token=1,
+                seq_position=2,
+                generated_ids=[1],
+            ),
+        )
+        rows.append(row)
+
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", "1")
+    runner._step_native_rows(rows)
+
+    assert [call[0] for call in calls] == ["step_batch_native", "step", "step"]
+    assert all(call[-1] is True for call in calls if call[0] == "step")
+    assert [row.slot.generated_ids for row in rows] == [[1, 2], [1, 2]]
+    assert [len(row.samples) for row in rows] == [2, 2]
+    assert [row.slot.serial_decode_steps for row in rows] == [1, 1]
+    assert runner._route_counts["native_packed_decode_steps"] == 0
+    assert runner._route_counts["serial_decode_fallback_steps"] == 1
+    assert runner._fallback_reasons == {"packed_decode_unavailable": 1}
+    for row in rows:
+        decode_state = _decode_state(runner._native_stream_chunk(row))
+        assert decode_state["sampler_fallback_reason"] == "host_sampling_required"
+        assert decode_state["serial_decode_fallback"] is True
+
+
 def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) -> None:
     calls: list[tuple] = []
 
@@ -1746,7 +1995,7 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
     assert greedy_last["native_c1_decode_steps"] == 1
     assert generator.last_batch_generation is not None
     assert generator.last_batch_generation["path"] == "gguf_resident_model_loop"
-    assert generator.last_batch_generation["serial_decode_fallback"] is True
+    assert generator.last_batch_generation["serial_decode_fallback"] is False
 
     observability = adapter.live_loop_snapshot()["runner"]
     assert observability["model_runner"] == {
@@ -1754,17 +2003,22 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
         "active_request_ids": [],
         "active_requests": 0,
         "available_sessions": 2,
+        "packed_workspace_current_bytes": 0,
+        "packed_workspace_release_events": 0,
+        "packed_workspace_released_bytes": 0,
     }
     assert observability["routes"]["counts"] == {
         "native_full_prefill_rows": 3,
         "native_incremental_prefill_chunks": 0,
         "native_packed_decode_steps": 2,
-        "native_c1_decode_steps": 1,
+        "native_c1_decode_steps": 2,
+        "native_sampled_prefill_rows": 1,
+        "host_sampler_requests": 1,
         "serial_decode_fallback_steps": 0,
-        "resident_fallback_requests": 2,
+        "resident_fallback_requests": 1,
     }
     assert observability["routes"]["physical_width_decode_steps"] == {
-        "1": 1,
+        "1": 2,
         "2": 2,
         "4": 0,
         "8": 0,
@@ -1777,7 +2031,7 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
         "physical_slot_extent": 1,
         "physical_rows": 1,
         "active_rows": 1,
-        "request_ids": [2],
+        "request_ids": [3],
         "global_slot_indices": [0],
         "active_slot_indices": [0],
         "active_mask": [True],
@@ -1786,7 +2040,7 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
     assert observability["routes"]["last_execution_manifest"] == {
         "schema": 1,
         "kind": "gguf_ar_c1_execution_manifest",
-        "mode": "native_c1_graph",
+        "mode": "native_c1_eager",
         "rows": 1,
         "physical_rows": 1,
         "active_rows": 1,
@@ -1798,8 +2052,8 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
             "host_model_row_iterations": 0,
         },
         "graph": {
-            "captured": True,
-            "replay_count": 1,
+            "captured": False,
+            "replay_count": 0,
         },
         "logical_c": 1,
         "physical_group": physical_group,
@@ -1811,7 +2065,7 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
         "physical_bucket_widths": [1, 2, 4, 8],
         "policy": "occupancy_adaptive_dense_execution",
         "group_count": 1,
-        "groups": [{**physical_group, "execution_path": "native_c1_graph"}],
+        "groups": [{**physical_group, "execution_path": "native_c1_eager"}],
     }
     assert observability["routes"]["fallback_reasons"]
     assert len(observability["routes"]["recent_completed"]) == 5
@@ -2074,9 +2328,13 @@ def test_gguf_resident_runner_device_kv_admission_is_atomic_at_high_water() -> N
     before = runner.kv_pool_stats
     assert before is not None
 
-    with pytest.raises(MemoryError, match="high-water"):
+    with pytest.raises(GenerationAdmissionRejected, match="high-water") as rejected:
         runner.reserve_admission(SimpleNamespace(request_id=3))
 
+    assert rejected.value.resource == "device_kv_pool"
+    assert rejected.value.requested_units == 1
+    assert rejected.value.current_units == 2
+    assert rejected.value.capacity_units == 2
     after = runner.kv_pool_stats
     assert after is not None
     assert after.current_pages == before.current_pages == 2
@@ -2112,6 +2370,129 @@ def test_gguf_resident_runner_device_kv_admission_is_atomic_at_high_water() -> N
     assert ceiling_runner.kv_pool.low_water_pages == 9
     assert ceiling_runner.kv_pool.chunk_pages == 9
     ceiling_runner.close()
+
+
+def test_gguf_resident_runner_releases_packed_workspace_before_reusing_session() -> None:
+    events: list[str] = []
+
+    class FakeSession:
+        _decode_graphs: list[object] = []
+        _device_kv_graph_handles: dict[int, object] = {}
+
+        def invalidate_device_kv_graphs(self) -> int:
+            events.append("invalidate")
+            return 0
+
+        def reset(self) -> None:
+            events.append("reset")
+
+        def release_idle_packed_workspace(self) -> int:
+            events.append("release_packed")
+            return 1234
+
+    session = FakeSession()
+    row = qwen35_gguf._GGUFResidentLoopRow(
+        request_id=1,
+        batch_id=0,
+        row_index=0,
+        request=_request(prompts=("first",), max_tokens=1, ignore_eos=True),
+        prompt_ids=(10, 11),
+        native_greedy=True,
+        native_sampled=False,
+        submitted_at=0.0,
+        lease=qwen35_gguf._GGUFResidentSessionLease(
+            session=session,
+            pool_key=("continuous_ar_dynamic_kv", True, True, 256),
+        ),
+    )
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    runner.capacity = 4
+    runner._prefix_cache = None
+    runner._prefix_state_snapshots = {}
+    runner._available = []
+    runner._kv_pool = None
+    runner._kv_graph_invalidation_count = 0
+    runner._packed_workspace_release_events = 0
+    runner._packed_workspace_released_bytes = 0
+    runner._graph_handles_for_sessions = lambda sessions: ()
+    runner._observe_graph_handles = lambda sessions: None
+    runner._sample_kv_hip_memory = lambda: None
+
+    runner._release_row_resources(row)
+
+    assert events == ["invalidate", "release_packed", "reset"]
+    assert row.lease is None
+    assert runner._available == [qwen35_gguf._GGUFResidentSessionLease(
+        session=session,
+        pool_key=("continuous_ar_dynamic_kv", True, True, 256),
+    )]
+    assert runner._packed_workspace_release_events == 1
+    assert runner._packed_workspace_released_bytes == 1234
+
+    events.clear()
+    low_occupancy_session = FakeSession()
+    low_occupancy_row = qwen35_gguf._GGUFResidentLoopRow(
+        request_id=2,
+        batch_id=1,
+        row_index=0,
+        request=_request(prompts=("second",), max_tokens=1, ignore_eos=True),
+        prompt_ids=(12, 13),
+        native_greedy=True,
+        native_sampled=False,
+        submitted_at=0.0,
+        lease=qwen35_gguf._GGUFResidentSessionLease(
+            session=low_occupancy_session,
+            pool_key=("continuous_ar_dynamic_kv", True, True, 256),
+        ),
+    )
+    runner.capacity = 2
+    runner._available = []
+    runner._release_row_resources(low_occupancy_row)
+
+    assert events == ["invalidate", "reset"]
+    assert runner._packed_workspace_release_events == 1
+    assert runner._packed_workspace_released_bytes == 1234
+
+
+def test_gguf_resident_runner_counts_c1_graph_close_as_invalidation() -> None:
+    events: list[tuple] = []
+
+    class FakeGraph:
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+            events.append(("close",))
+
+    graph = FakeGraph()
+    session = SimpleNamespace()
+    row = SimpleNamespace(
+        slot=SimpleNamespace(c1_decode_graph=graph),
+        lease=SimpleNamespace(session=session),
+    )
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    runner._kv_graph_invalidation_count = 0
+    runner._graph_handles_for_sessions = lambda sessions: (graph,)
+    runner._observe_graph_handles = lambda sessions: events.append(
+        ("observe", tuple(sessions))
+    )
+    runner._record_graph_invalidations = lambda handles, count: events.append(
+        ("record", tuple(handles), int(count))
+    )
+
+    runner._close_c1_decode_graph(row)
+
+    assert events == [
+        ("observe", (session,)),
+        ("close",),
+        ("record", (graph,), 1),
+    ]
+    assert runner._kv_graph_invalidation_count == 1
+    assert row.slot.c1_decode_graph is None
 
 
 def test_gguf_resident_runner_graph_observability_is_bucketed_and_cumulative() -> None:
@@ -4541,6 +4922,50 @@ def test_gguf_host_sampler_stops_on_stop_token_id(monkeypatch) -> None:
     assert generator.last_generation_outputs[0].finish_details.to_json_dict() == {
         "reason": "stop",
         "stop_sequence": [1],
+        "sampler_mode": "host_logits_sample",
+    }
+    assert not any(call[0] == "step" for call in calls)
+
+
+def test_gguf_host_sampler_stops_on_request_eos_token_id(monkeypatch) -> None:
+    calls = []
+
+    class FakeSession:
+        def __init__(self, model_path, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            pass
+
+        def prefill(self, token_ids, *, return_logits=True):
+            calls.append(("prefill", tuple(token_ids), bool(return_logits)))
+            return SimpleNamespace(
+                token_id=0,
+                logits=np.array([[0.0, 5.0, 1.0]], dtype=np.float32),
+            )
+
+        def step(self, token_id: int, *, return_logits=True):
+            calls.append(("step", int(token_id), bool(return_logits)))
+            return SimpleNamespace(
+                token_id=2,
+                logits=np.array([[0.0, 0.0, 5.0]], dtype=np.float32),
+            )
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+
+    generator = _generator()
+    out = generator.generate(
+        _request(temperature=0.7, top_k=1, eos_token_id=1)
+    )
+
+    assert out == ["B"]
+    assert generator.last_generation_outputs[0].finish_details is not None
+    assert generator.last_generation_outputs[0].finish_details.to_json_dict() == {
+        "reason": "eos",
+        "eos_token_id": 1,
         "sampler_mode": "host_logits_sample",
     }
     assert not any(call[0] == "step" for call in calls)

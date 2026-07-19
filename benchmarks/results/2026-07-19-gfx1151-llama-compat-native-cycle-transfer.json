@@ -1,0 +1,300 @@
+{
+  "schema": "hipengine.gfx1151_gguf_native_spec_cycle_transfer.v1",
+  "date": "2026-07-19",
+  "status": "retained",
+  "performance_claim": true,
+  "correctness_claim": true,
+  "speed_claim_eligible": true,
+  "scope": "Explicit accuracy-traded GGUF llama-compat B2 natural24 NativeSpecCycle N1/N3 transfer to gfx1151",
+  "hardware": {
+    "system": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "kernel": "7.1.3-2-cachyos",
+    "tuned_profile": "accelerator-performance",
+    "amdgpu_sched_policy": 0,
+    "amd_iommu": "off",
+    "gpu_max_hw_queues": "1 (automatic gfx1151 process default)"
+  },
+  "software": {
+    "measurement_commit": "1163e1bbd28c7cb31325d695388fc05fa4e7d7ab",
+    "tracked_dirty": false,
+    "untracked_count": 0,
+    "hip": "7.15.0-0000000",
+    "compiler": "AMD clang 23 aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "UD-Q4_K_M GGUF",
+    "kv_dtype": "bf16",
+    "size_bytes": 22663387424,
+    "sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+  },
+  "protocol": {
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompt_count": 10,
+    "train_prompts": 6,
+    "heldout_prompts": 4,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "candidate_budget": 2,
+    "cycles_cap": 24,
+    "max_output_tokens": 24,
+    "output_tokens_total": 240,
+    "reasoning": "off",
+    "sampling": "greedy",
+    "true_ar_path": "state_bound_graph",
+    "record_cycle_stage_timings": true,
+    "cached_builds_required": true,
+    "timing_scope": "complete speculative cycle wall per visible output"
+  },
+  "implementation": {
+    "target_registry_key": [
+      "hip_gfx1151",
+      "speculative_cycle",
+      "w4_gguf",
+      "native_v1_b2_target_graph"
+    ],
+    "shape_buckets": [
+      "B1 / 2 target rows",
+      "B2 / 3 target rows"
+    ],
+    "n1": "Reusable fixed-address target graph with live token, position, context, and cursor metadata",
+    "n2": "Device acceptance, selected hidden/Conv/GDN commit, and target cursor/result accounting",
+    "n3": "One public GGUF call owns proposal through MTP-KV repair, reseed, and both cursor/result boundaries",
+    "proposal_graph": "native_v1_b2_proposal_graph remains unregistered on gfx1151; N3 uses the exact device-chained Python-submitted proposal path",
+    "fallback": "Unsupported shapes fail before target mutation and preserve the prior direct-commit route",
+    "policy": "Explicit llama-compat only; exact/default MTP remains unchanged"
+  },
+  "correctness": {
+    "real_model_oracle": {
+      "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python -m pytest -q tests/test_gguf_native_spec_cycle.py::test_native_b2_target_graph_matches_eager_hidden_state_and_kv -s",
+      "passed": true,
+      "coverage": [
+        "B2 first replay and changing-position replay",
+        "B1 replay",
+        "N2 reject and guaranteed full accept",
+        "target IDs and FP32 hidden rows",
+        "60 captured/resident Conv/GDN state buffers per case",
+        "20 full-attention K/V buffers per case",
+        "selected hidden commit and cursor/result accounting"
+      ]
+    },
+    "full_suite": {
+      "control_vs_n1_vs_n3_output_ids_exact": true,
+      "output_ids_compared": 240,
+      "cycle_semantics_exact": true,
+      "cycles_compared": 97,
+      "draft_acceptance": 0.7771739130434783,
+      "accepted_per_output": 0.5958333333333333,
+      "total_accepted": 143,
+      "all_train_heldout_category_rates_improved_vs_control": true
+    }
+  },
+  "results": {
+    "clean_control": {
+      "route": "llama-compat device-chain direct-commit",
+      "true_ar_tok_s": 56.2364066853375,
+      "mtp_tok_s": 70.01963467255611,
+      "mtp_vs_true_ar": 1.2451,
+      "cycle_wall_ms_per_output": 14.314042083333334,
+      "target_verify_ms_per_output": 11.764734583333333
+    },
+    "n1_target_graph": {
+      "route": "llama-compat-native-cycle",
+      "true_ar_tok_s": 55.48981571710727,
+      "mtp_tok_s": 80.13195061200777,
+      "mtp_vs_true_ar": 1.4441,
+      "cycle_wall_ms_per_output": 12.512462083333332,
+      "target_verify_ms_per_output": 9.90671375,
+      "vs_control_rate_delta_pct": 14.442114682176621,
+      "vs_control_cycle_wall_delta_pct": -12.586102440607505,
+      "vs_control_target_verify_delta_pct": -15.793138554655728
+    },
+    "n3_complete_cycle": {
+      "route": "llama-compat-native-cycle-n3",
+      "true_ar_tok_s": 56.08542384414355,
+      "mtp_tok_s": 80.0985211810527,
+      "mtp_vs_true_ar": 1.4281521951878162,
+      "cycle_wall_ms_per_output": 12.55095375,
+      "target_verify_ms_per_output": 10.067065000000001,
+      "native_complete_cycle_ms_per_output": 12.260745833333333,
+      "vs_control_rate_delta_pct": 14.394371743911671,
+      "vs_control_cycle_wall_delta_pct": -12.317194004803156,
+      "vs_n1_rate_delta_pct": -0.04171797978178571
+    }
+  },
+  "n3_splits": {
+    "full": {
+      "prompts": 10,
+      "true_ar_tok_s": 56.08542384414355,
+      "mtp_tok_s": 80.0985211810527,
+      "mtp_vs_true_ar": 1.4281521951878162,
+      "vs_control_pct": 14.394371743911671,
+      "draft_acceptance": 0.7771739130434783,
+      "accepted_per_output": 0.5958333333333333,
+      "cycle_wall_ms_per_output": 12.55095375
+    },
+    "train": {
+      "prompts": 6,
+      "true_ar_tok_s": 55.96797222862623,
+      "mtp_tok_s": 80.91205870619372,
+      "mtp_vs_true_ar": 1.4456850138445645,
+      "vs_control_pct": 11.365334801737381,
+      "draft_acceptance": 0.8207547169811321,
+      "accepted_per_output": 0.6041666666666666,
+      "cycle_wall_ms_per_output": 12.429415972222223
+    },
+    "heldout": {
+      "prompts": 4,
+      "true_ar_tok_s": 56.26252847916517,
+      "mtp_tok_s": 78.9084333388131,
+      "mtp_vs_true_ar": 1.4025042150040241,
+      "vs_control_pct": 18.825415091237918,
+      "draft_acceptance": 0.717948717948718,
+      "accepted_per_output": 0.5833333333333334,
+      "cycle_wall_ms_per_output": 12.733260416666665
+    },
+    "categories": {
+      "code": {
+        "prompts": 4,
+        "true_ar_tok_s": 56.12309089349567,
+        "mtp_tok_s": 86.08321377331421,
+        "mtp_vs_true_ar": 1.533828810973252,
+        "vs_control_pct": 9.908536585365857,
+        "draft_acceptance": 0.9104477611940298,
+        "accepted_per_output": 0.6354166666666666,
+        "cycle_wall_ms_per_output": 11.684272916666666
+      },
+      "general_en": {
+        "prompts": 2,
+        "true_ar_tok_s": 57.25668240547607,
+        "mtp_tok_s": 78.9837425129994,
+        "mtp_vs_true_ar": 1.3794676742473178,
+        "vs_control_pct": 19.446455604554714,
+        "draft_acceptance": 0.717948717948718,
+        "accepted_per_output": 0.5833333333333334,
+        "cycle_wall_ms_per_output": 12.7164875
+      },
+      "general_ja": {
+        "prompts": 2,
+        "true_ar_tok_s": 55.61082164302096,
+        "mtp_tok_s": 75.12207336922499,
+        "mtp_vs_true_ar": 1.350853505662106,
+        "vs_control_pct": 12.645549017152891,
+        "draft_acceptance": 0.6923076923076923,
+        "accepted_per_output": 0.5625,
+        "cycle_wall_ms_per_output": 13.387697916666665
+      },
+      "mixed_ja_en": {
+        "prompts": 2,
+        "true_ar_tok_s": 55.35123243931007,
+        "mtp_tok_s": 75.6584650788897,
+        "mtp_vs_true_ar": 1.366879502852001,
+        "vs_control_pct": 19.2014879498132,
+        "draft_acceptance": 0.6923076923076923,
+        "accepted_per_output": 0.5625,
+        "cycle_wall_ms_per_output": 13.282037500000001
+      }
+    }
+  },
+  "profiler": {
+    "mode": "cached B2 target verifier",
+    "steps": 6,
+    "warmup_steps": 2,
+    "avg_host_ms": 24.89143834100105,
+    "avg_kernel_ms": 21.673590333333333,
+    "kernel_time_share": 0.8707247060782625,
+    "host_residual_ms_per_step": 3.2178480076677167,
+    "kernel_calls_per_step": 940.0,
+    "measured_recaptures": 0,
+    "native_submit_ms": [
+      23.601160995895043,
+      23.625426983926445,
+      23.21193998795934,
+      23.60877499449998,
+      24.125394003931433,
+      23.971456015715376
+    ],
+    "native_spec_leaf": {
+      "name": "copy_i32_to_i64_kernel",
+      "count": 12,
+      "min_duration_ns": 1002,
+      "max_duration_ns": 1323,
+      "vgpr": 8,
+      "sgpr": 128,
+      "scratch_bytes": 0,
+      "lds_bytes": 0
+    }
+  },
+  "comparisons": {
+    "historical_gfx1151_llama_compat": {
+      "artifact": "benchmarks/results/2026-07-17-gfx1151-amd-iommu-off-mtp-refresh.json",
+      "historical_tok_s": 81.89980241672667,
+      "current_n3_tok_s": 80.0985211810527,
+      "delta_pct": -2.1993718940964024,
+      "qualification": "Different source revision and run; retained as historical context, not a regression attribution"
+    },
+    "llamacpp_floor": {
+      "artifact": "benchmarks/results/2026-07-17-gfx1151-amd-iommu-off-mtp-refresh.json",
+      "llamacpp_transition_tok_s": 68.1530854605615,
+      "current_n3_lead_pct": 17.527358651140943,
+      "qualification": "Same model/hardware but BF16 versus F16 KV and preserved external binary; diagnostic cross-engine context only"
+    }
+  },
+  "commands": {
+    "control": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-gfx1151-native-cycle-hipcc-version.txt PYTHONPATH=. python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit --budgets 2 --cycles 24 --max-output-tokens 24 --record-cycle-stage-timings --require-cached-build --output /tmp/gfx1151-native-cycle-control-1163e1bb.json",
+    "n1": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-gfx1151-native-cycle-hipcc-version.txt PYTHONPATH=. python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route llama-compat-native-cycle --budgets 2 --cycles 24 --max-output-tokens 24 --record-cycle-stage-timings --require-cached-build --output /tmp/gfx1151-native-cycle-n1-1163e1bb.json",
+    "n3": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-gfx1151-native-cycle-hipcc-version.txt PYTHONPATH=. python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route llama-compat-native-cycle-n3 --budgets 2 --cycles 24 --max-output-tokens 24 --record-cycle-stage-timings --require-cached-build --output /tmp/gfx1151-native-cycle-n3-1163e1bb.json",
+    "profiler": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 PYTHONPATH=. python3 scripts/gguf_mtp_verifier_rocprof.py --mode block-verify --block-rows 3 --native-spec-target-cycle --direct-state-commit --verify-dp4a --selected-down-x8-repack q6 --verify-dense-q8-dp4a-all --verify-dense-q8-dp4a-f32 --record-stage-timings --steps 6 --warmup 2 --max-seq 512 --require-cached --compiler-version-file /tmp/hipengine-gfx1151-native-cycle-hipcc-version.txt --raw-root /tmp/gfx1151-native-cycle-n1-rocprof-1163e1bb --out /tmp/gfx1151-native-cycle-n1-rocprof-1163e1bb/summary.json"
+  },
+  "source_artifacts": {
+    "control_wrapper": {
+      "sha256": "63565a9a3c8de852b0752fc9fc3ee75bbf80fdca4ec1d90d60e150352dbeae6d",
+      "bytes": 11598
+    },
+    "n1_wrapper": {
+      "sha256": "c4c5f1696dad8338c95b6d52408326cac15bc12b633133d87a305e3c40bcdf02",
+      "bytes": 10358
+    },
+    "n3_wrapper": {
+      "sha256": "d2d42a070e5e673739e0a83bc2d2ab91f83b17cbc8ea90a29028fadf6776af17",
+      "bytes": 10680
+    },
+    "control_category": {
+      "sha256": "e79c4cf3ac19a21af81a96a9c209ead952585cbce7e8f7f01ae80fbd2dfffdab",
+      "bytes": 93533
+    },
+    "n1_category": {
+      "sha256": "9d7c6ceeb6d31148ad446f5b36ea1446a490fb1234bb88e0997bdd44e62a9054",
+      "bytes": 85043
+    },
+    "n3_category": {
+      "sha256": "1525a2648f42c0b0ca4bbfdafb419eb3f2ccbb2b9812f42baec14bd74170bccd",
+      "bytes": 87734
+    },
+    "profiler_summary": {
+      "sha256": "6176c801847fbefa5a209887619c0acc4c7cb68a7fd6221cacad5cb94831f54f",
+      "bytes": 13797
+    },
+    "kernel_trace": {
+      "sha256": "f79dd68311002f7091f6d8fc751baf24b7a609568c60bffe08a1b3a4b6e6802a",
+      "bytes": 2529118,
+      "committed": false
+    }
+  },
+  "conclusions": [
+    "gfx1151 N1 improves the clean current-main llama-compat control by 14.44% with identical full-suite semantics.",
+    "The production N3 complete-cycle adapter retains essentially all of N1: 80.099 versus 80.132 tok/s, a 0.042% difference.",
+    "Every train, heldout, and category row improves versus the clean control and beats its own true AR denominator.",
+    "The profiler is kernel-dominated at 87.1% with zero measured recaptures; the remaining target work is model kernels rather than Python submission residual.",
+    "N3P proposal-graph admission remains deferred because it was not the gfx1100 topline and is not required for the retained gfx1151 N3 win."
+  ]
+}

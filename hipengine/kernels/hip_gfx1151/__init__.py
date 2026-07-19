@@ -95,9 +95,9 @@ PARO_FULL_ATTN_NATIVE_EXACT_WIDTHS = frozenset({4, 8})
 PARO_RETAINED_BATCH_DEFAULTS = True
 PARO_NATIVE_BATCH_DECODE_DEFAULT = True
 _SOURCE_BACKEND = "hip_gfx1100"
-# Native speculative-cycle providers require independent backend correctness and
-# performance gates (N4). Do not inherit a newly imported gfx1100 provider via
-# the generic shared-body alias refresh before that gate lands.
+# Native speculative-cycle providers use dedicated backend registrations rather
+# than this generic shared-body alias refresh. The GGUF target launcher has an
+# independent gfx1151 parity gate; the proposal graph remains unadmitted here.
 _GFX1151_ALIAS_EXCLUSIONS = frozenset(
     {
         (

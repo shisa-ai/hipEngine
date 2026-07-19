@@ -203,6 +203,7 @@ class _ReclaimedRow:
     observability: dict[str, Any]
     block_ids: tuple[int, ...]
     completed_at: float
+    pointers: tuple[int, ...] = ()
 
 
 @dataclass
@@ -222,6 +223,7 @@ class _HTTPTrace:
     error_status_code: int | None
     error_message: str | None
     disconnected_by_client: bool
+    error_payload: Mapping[str, Any] | None = None
 
 
 class _LocalUvicorn:
@@ -779,6 +781,7 @@ def _stream_request(
     error_code: str | None = None
     error_status: int | None = None
     error_message: str | None = None
+    error_payload: dict[str, Any] | None = None
     disconnected = False
     try:
         body = json.dumps(payload, separators=(",", ":"))
@@ -793,9 +796,14 @@ def _stream_request(
         if status_code != 200:
             raw = response.read()
             try:
-                error_payload = json.loads(raw).get("error", {})
+                raw_error_payload = json.loads(raw).get("error", {})
+                error_payload = (
+                    copy.deepcopy(raw_error_payload)
+                    if isinstance(raw_error_payload, dict)
+                    else None
+                )
                 error_code, error_status, error_message = _openai_error_fields(
-                    error_payload,
+                    raw_error_payload,
                     fallback_status=status_code,
                 )
             except Exception:
@@ -826,6 +834,7 @@ def _stream_request(
                     usage = copy.deepcopy(item["usage"])
                 raw_error = item.get("error")
                 if isinstance(raw_error, dict):
+                    error_payload = copy.deepcopy(raw_error)
                     error_code, error_status, error_message = _openai_error_fields(
                         raw_error
                     )
@@ -884,6 +893,7 @@ def _stream_request(
         error_status_code=error_status,
         error_message=error_message,
         disconnected_by_client=disconnected,
+        error_payload=error_payload,
     )
 
 
@@ -1566,6 +1576,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                             else tuple(int(block) for block in row.kv_allocation.block_ids)
                         ),
                         completed_at=time.perf_counter(),
+                        pointers=(
+                            ()
+                            if row.kv_allocation is None
+                            else tuple(int(pointer) for pointer in row.kv_allocation.pointers)
+                        ),
                     )
                     with reclaimed_lock:
                         reclaimed[request_id] = captured
