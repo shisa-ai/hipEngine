@@ -166025,3 +166025,77 @@ of the merged F3/F4 backend package and widened the existing registry test to
 present both source keys and require zero gfx1151 registrations. This keeps the
 documented independent gfx1151 admission boundary honest; it does not add a
 backend implementation or performance claim.
+
+## 2026-07-19 — Current packed PARO N4 verifier review
+
+Re-audited the N4 claim that the current
+`Qwen3.6-35B-A3B-PARO-packed-MTP-BF16` assembly was model-incompatible. That
+conclusion was wrong: zero acceptance cannot explain a wrong target correction,
+and the repository already documented that the current public packed target
+requires strict verifier fallbacks.
+
+Model/artifact checks are clean:
+
+- the assembled target is a live symlink to source blob SHA-256
+  `a5c9100b17846ff0b2b507dc16dfc3ff1d622adbfc4782f30b4f1b9fac58cc60`;
+- the sidecar SHA-256 is
+  `556c607cce302d3c529f0a4a3d1439cd206eca01421dc7b8b370f9a37a23426f`;
+- `validate_qwen35_mtp_model(..., raise_on_error=True)` passes all 19/19 MTP
+  tensors with no config, dtype, shape, missing, or unexpected-tensor errors;
+- the target README identifies the newer 8192 old+fresh calibration, 149-hour
+  optimization run, and improved held-out PPL/KL/top-1/max-KL versus the 4096
+  checkpoints; retained gfx1100 PARO AR/batch gates already use this exact
+  source snapshot.
+
+The original N4 B3 screen selected `chain_attn_mode=batched` and omitted the
+already-retained strict GDN/linear-output verifier fallbacks. Both native-off
+and native-on faithfully reproduced that fast verifier's wrong cycle-1 row-0
+correction (`59` versus target AR `19`); this is a verifier-semantics result,
+not model/sidecar incompatibility. Fresh clean-main `01e9af84` W7900 runs with
+`HIPENGINE_GDN_TLOOP_C1_EXACT=1`,
+`HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS=1`, `chain_attn_mode=c1_loop` prove:
+
+- graph off B3: exact eight IDs
+  `[248050,19,19,5137,58,58,58,220]`, with seven forced rejections;
+- graph auto / N4 off B3: the same exact eight IDs;
+- graph auto / N4 on B3: the same exact eight IDs, with four steady B3
+  `VERIFY|ACCEPT` native submissions.
+
+A first B2 strict rerun still produced `22` instead of AR `19`; the existing
+strict fallbacks were designed/gated at B1 and did not make every wider verifier
+row layout serial-AR-equivalent. A model-dependent W7900 diagnostic was the
+practical RED fixture here: `mtp_cycle1_layer0_parity.py` now compares the
+post-MoE layer output and semantic MoE scratch in addition to the existing
+linear producers and state.
+
+The RED localizes the first B2 divergence exactly:
+
+- serial c1 and verifier row 0 are byte-exact through layer-0 input, QKV/AB,
+  Conv, GDN, linear out projection, router, selected-expert gate/up/down, and
+  selected Conv/GDN state;
+- layer-0 post-MoE output differs in **253/2048 BF16 elements**;
+- the first semantic MoE mismatch is the linear layer's shared expert. Serial
+  c1 uses the small-batch GEMV path; B+1 t-loop called `run_moe_c1_fp16()`
+  directly and therefore failed to honor the existing
+  `HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT` exactness control.
+  Disabling the C dispatcher does not change the mismatch.
+
+The narrow repair passes `_force_small_batch_shared_expert()` through both
+chain and tree linear-attention t-loop calls. Default behavior is unchanged;
+the existing explicit env gate now works on the verifier paths it was supposed
+to control. With the complete strict stack—GDN c1-exact, linear-out c1 rows,
+small-batch shared expert, c1-loop full attention—dirty-source correctness runs
+based on clean-main `01e9af84` produce:
+
+- B1 N4 graph-auto: exact first five AR IDs; three native replays;
+- B2 N4 graph-auto: exact first five AR IDs; two native replays; row-0 target
+  top-1 starts `19` instead of the RED `22`;
+- B3 N4 graph-auto: exact eight AR IDs; four native replays;
+- B2 three-cycle state audit: every correction matches AR and every cycle is
+  byte-exact for resident **60/60 Conv/GDN + 20/20 live K/V**, selected verifier
+  **60/60 Conv/GDN + 20/20 K/V cells**, and scratch-to-resident **60/60** state
+  commits. Cycles 2-3 submit native `VERIFY|ACCEPT`.
+
+Focused host tests for the new chain-tloop env wiring pass in both unset/set
+cases, together with the existing force-small-shared tests (`4 passed`); Python
+compilation and `git diff --check` pass. No model or sidecar bytes changed.

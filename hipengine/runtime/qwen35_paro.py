@@ -8021,6 +8021,7 @@ class Qwen35ParoDecodeState:
             out=out,
             tokens=tokens,
             group_size=group_size,
+            force_small_batch_shared_expert=_force_small_batch_shared_expert(),
             library=library,
             stream=stream,
         )
@@ -8203,6 +8204,7 @@ class Qwen35ParoDecodeState:
             out=out,
             tokens=tokens,
             group_size=group_size,
+            force_small_batch_shared_expert=_force_small_batch_shared_expert(),
             library=library,
             stream=stream,
         )
