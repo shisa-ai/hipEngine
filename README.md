@@ -72,14 +72,19 @@ numbers below.
   layout fits its tracked-memory gate but fails Qwen3.6 fidelity. The milder
   six-BF16/four-INT8 native layout passes the tested GGUF accuracy gates, but
   fails PARO accuracy and quality-preserving 256 Ki request-scratch capacity.
-  Neither INT8 route is supported/default. Current capacity, throughput,
-  speculative-decode, and concurrency evidence is reported below with separate
-  gfx1100/gfx1151 provenance and correctness gates.
+  On gfx1151, explicit short-context uniform `int8_per_token_head` GGUF requests
+  now support continuous c1/c2/c4/c8 ownership through rounded context 8192 by
+  retaining bounded BF16 attention mirrors. That route is not default or
+  memory-saving; tail4, direct/no-mirror INT8 attention, longer c>N INT8, and
+  PARO INT8 remain unsupported for continuous serving. Current capacity,
+  throughput, speculative-decode, and concurrency evidence is reported below
+  with separate gfx1100/gfx1151 provenance and correctness gates.
 
 This remains an alpha, single-GPU release. Production PARO native `c>1` decode
-is disabled pending independent-c1 correctness, app-local sessions do not reuse
-resident KV, structured outputs are not grammar-constrained decoding, and the
-server MTP route is explicit-only. See [the API limitations](docs/API.md#current-limitations)
+is retained only for the certified gfx1151 profile; gfx1100 remains direct-c2
+only and broader PARO shapes are still gated. General app-local sessions do not
+reuse resident KV, structured outputs are not grammar-constrained decoding, and
+the server MTP route is explicit-only. See [the API limitations](docs/API.md#current-limitations)
 and [concurrency status](docs/CONCURRENCY.md#current-answer) for the exact
 boundaries.
 
@@ -508,10 +513,10 @@ and the canonical
 ## Concurrency
 
 Current GGUF direct-model-step tables are retained separately for gfx1100 and
-gfx1151. Both have exact native c2/c4/c8 graph routes and direct throughput;
-only gfx1100 has also closed live OpenAI membership. The separate gfx1151 PARO
-catalog remains c1-only for native performance because its c2-c8 candidates
-fail the independent-c1 oracle and use width-1 sessions in production. See
+gfx1151. Both have exact native c2/c4/c8 graph routes, direct throughput, and
+live OpenAI membership. gfx1151 additionally retains occupancy-adaptive GGUF
+serving, explicit short mirrored-INT8 c1/c2/c4/c8, and production PARO
+c2/c4/c8; gfx1100 PARO remains direct-c2 only. See
 [`docs/CONCURRENCY.md`](docs/CONCURRENCY.md) for the exact boundaries.
 
 The linked records keep gfx1100 and gfx1151 separate because the model files,
@@ -679,6 +684,14 @@ Artifacts: [`F3 singleton-indexed GDN`](benchmarks/results/2026-07-19-gfx1151-gg
 [`E1 direct scaling`](benchmarks/results/2026-07-17-gfx1151-gguf-concurrency-e1-native-c8-scaling-closure.json),
 [`E3 arbitrary C`](benchmarks/results/2026-07-18-gfx1151-gguf-concurrency-e3-arbitrary-c-correctness.json), and
 [`F1 real server`](benchmarks/results/2026-07-18-gfx1151-gguf-concurrency-f1-server-scaling-closure.json).
+
+The explicit short mirrored-INT8 server packet separately records blocking
+c1/c2/c4/c8 **40.467/57.211/72.037/72.514 tok/s** and exact SSE
+**39.665/52.225/68.665/79.789 tok/s**. All **117** server rows and the full
+11-prompt/99-position KL/top-1 gate pass; C8 drains ownership and packed
+workspace. Bounded BF16 mirrors mean this is not a memory-saving default, and
+strict high-C SLO plus tail4/direct/long INT8 remain open. Evidence:
+[`mirrored INT8 continuous concurrency`](benchmarks/results/2026-07-19-gfx1151-gguf-mirrored-int8-continuous-concurrency.json).
 
 ### gfx1151 historical cross-engine concurrency (2026-06-15)
 

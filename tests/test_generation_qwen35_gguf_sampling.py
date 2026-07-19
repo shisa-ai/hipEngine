@@ -81,6 +81,29 @@ def _mtp_capable_weight_index():
     )
 
 
+def test_gguf_generator_prepares_explicit_int8_session_policy_and_rejects_switch() -> None:
+    generator = _generator()
+    int8_request = _request(kv_storage="int8_per_token_head", kv_scale_dtype="fp16")
+
+    generator._prepare_kv_policy(int8_request)
+
+    kwargs = generator._prepared_session_kv_kwargs()
+    assert kwargs["kv_policy"].storage_dtype.value == "int8_per_token_head"
+    assert kwargs["kv_policy"].storage_layout == "uniform"
+    assert kwargs["kv_policy"].scale_granularity == "per_token_head"
+    assert kwargs["kv_scale_dtype"] == "fp16"
+    assert kwargs["kv_scale_granularity"] == "per_token_head"
+    assert generator._prepared_kv_signature == (
+        "int8_per_token_head",
+        "uniform",
+        "fp16",
+        "per_token_head",
+    )
+
+    with pytest.raises(ValueError, match="cannot change after preparation"):
+        generator._prepare_kv_policy(_request(kv_storage="bf16"))
+
+
 def test_gguf_mtp_server_defer_verify_scatter_default_on_with_opt_out(monkeypatch) -> None:
     monkeypatch.delenv("HIPENGINE_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER", raising=False)
     assert qwen35_gguf._gguf_mtp_server_defer_verify_scatter_enabled() is True

@@ -7,6 +7,7 @@ from scripts.qwen35_gguf_kv_asymmetric_suite import PromptCase
 from scripts.qwen35_native_mixed_kv_suite import (
     PolicyRun,
     PromptRun,
+    _build_parser,
     _engine_summary,
     _teacher_inputs,
 )
@@ -33,6 +34,22 @@ def _prompt_run(prompt_id: str, logits: list[list[float]], generated: list[int])
         decode_input_ids=generated[:-1],
         elapsed_seconds=1.0,
     )
+
+
+def test_parser_accepts_gfx1151_uniform_int8_candidate() -> None:
+    args = _build_parser().parse_args(
+        [
+            "--engine",
+            "gguf",
+            "--backend",
+            "hip_gfx1151",
+            "--candidate-kv-storage",
+            "int8_per_token_head",
+        ]
+    )
+
+    assert args.backend == "hip_gfx1151"
+    assert args.candidate_kv_storage == "int8_per_token_head"
 
 
 def test_teacher_inputs_use_reference_seed_and_prior_decode_tokens() -> None:

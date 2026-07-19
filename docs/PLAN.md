@@ -476,8 +476,8 @@ Design rule: **every new runtime, scheduler, KV, and kernel ABI must stay batch-
 | Question | Answer |
 |---|---|
 | Can current hipEngine run real c=8 PARO decode? | Yes on gfx1151 for W4/BF16-KV greedy contexts covered by the retained profile. Direct physical c2/c4/c8 are independent-c1 exact at p512/d128, use 40/40 selected-batch layers, and never stack c2 groups. G5 attaches those widths to the shared resident OpenAI loop and makes them the gfx1151 package default: blocking F1 c1/c2/c4/c8 is 47.124/51.962/60.323/61.253 aggregate tok/s, all 68 rows exact, and the complementary SSE/native-plus-serial packet keeps all 100 rows exact. gfx1100 remains retained only at direct c2; sampled-native, context >=1024, other-KV, capture/replay, and gfx1100 owner c4/c8 remain open. |
-| Can current hipEngine run native GGUF c>N AR? | Yes through one true physical c8 group on both gfx1100 and gfx1151. Direct eager/graph, ragged, sparse-retirement, cancellation, all-layer hidden, Conv/GDN/live-KV, profiler-family, and repeated same-session scaling gates are retained; F3's clean gfx1151 direct c1/c2/c4/c8 is 50.335/78.552/108.050/133.251 aggregate tok/s, with c8 at 2.647x c1 and 748 packed-native / zero row-local/copy dispatches. The exact singleton-indexed GDN default improves c2/c4/c8 by 8.71%/5.25%/4.04% while leaving c1 structurally unchanged; gfx1100 keeps segmented GDN pending independent transfer. Both targets retain honest arbitrary-C/C>8 lowering as multiple declared groups. The shared owner uses dense ephemeral execution rows so live occupancy selects c1/c2/c4/c8 without moving stable scheduler slots, state, or KV; gfx1151 clean F2 server retention preserves all p512/d128 and live-transition outputs with occupancy-one at 95.625% of same-process direct c1, while F3 server-wall refresh and gfx1100 transfer remain separate. Neither target claims native c9/c13. Broader quant/sampling remain open. |
-| Does current hipEngine implement continuous batching? | Partially project-wide; correctness and real server scaling are retained for both gfx11 GGUF OpenAI paths and for gfx1151 PARO W4/BF16-KV greedy c2/c4/c8. Blocking calls and SSE share one model-owning loop that admits during decode, executes bounded prompt chunks, streams row-owned tokens through bounded queues, cancels or retires rows, and drains through runner close. The GGUF owner densifies only execution rows and selects c1/c2/c4/c8 from occupancy while request/session/KV identity stays stable; gfx1151 F2 is retained and gfx1100 transfer is pending. PARO uses a fixed-capacity stable-slot session, profile-partitions c3/c5/c6/c7 into certified widths, and defaults native c2/c4/c8 on gfx1151. gfx1100 PARO owner symmetry and broader sampling/KV/context remain open. |
+| Can current hipEngine run native GGUF c>N AR? | Yes through one true physical c8 group on both gfx1100 and gfx1151. Direct eager/graph, ragged, sparse-retirement, cancellation, all-layer hidden, Conv/GDN/live-KV, profiler-family, and repeated same-session scaling gates are retained; F3's clean gfx1151 direct c1/c2/c4/c8 is 50.335/78.552/108.050/133.251 aggregate tok/s, with c8 at 2.647x c1 and 748 packed-native / zero row-local/copy dispatches. The exact singleton-indexed GDN default improves c2/c4/c8 by 8.71%/5.25%/4.04% while leaving c1 structurally unchanged; gfx1100 keeps segmented GDN pending independent transfer. Both targets retain honest arbitrary-C/C>8 lowering as multiple declared groups. The shared owner uses dense ephemeral execution rows so live occupancy selects c1/c2/c4/c8 without moving stable scheduler slots, state, or KV; gfx1151 clean F2 server retention preserves all p512/d128 and live-transition outputs with occupancy-one at 95.625% of same-process direct c1, while F3 server-wall refresh and gfx1100 transfer remain separate. Neither target claims native c9/c13. gfx1151 additionally retains explicit uniform `int8_per_token_head` c1/c2/c4/c8 continuous serving through rounded context 8192 with bounded BF16 attention mirrors: exact SSE is 39.665/52.225/68.665/79.789 tok/s and all 117 server rows plus the 11-prompt/99-position KL/top-1 gate pass. This is not default or memory-saving; tail4, direct/no-mirror INT8 attention, longer c>N INT8, gfx1100 transfer, and broader quant/sampling remain open. |
+| Does current hipEngine implement continuous batching? | Partially project-wide; correctness and real server scaling are retained for both gfx11 GGUF OpenAI paths and for gfx1151 PARO W4/BF16-KV greedy c2/c4/c8. Blocking calls and SSE share one model-owning loop that admits during decode, executes bounded prompt chunks, streams row-owned tokens through bounded queues, cancels or retires rows, and drains through runner close. The GGUF owner densifies only execution rows and selects c1/c2/c4/c8 from occupancy while request/session/KV identity stays stable; gfx1151 F2 is retained and gfx1100 transfer is pending. PARO uses a fixed-capacity stable-slot session, profile-partitions c3/c5/c6/c7 into certified widths, and defaults native c2/c4/c8 on gfx1151. gfx1100 PARO owner symmetry and broader sampling/KV/context remain open. The gfx1151 GGUF owner also supports explicit short mirrored-INT8 continuous requests through C8 while preserving policy identity, exact outputs, reclaim, and fail-closed unsupported layouts; it does not broaden the project-wide default. |
 | Is current SpecDec wired into generation? | Partially. GGUF llama-compat MTP has a guarded non-streaming greedy server route with resident slots and packed target verify; exact/default MTP serving, streaming, and broad SpecDec pluginization remain future work. |
 | Is the design cleaner for adding c>1 than `nano-vllm-amd`? | Yes. |
 | Would just setting `tokens=8` work? | No. |
@@ -502,7 +502,7 @@ Current blockers that keep project-wide c>N incomplete:
 
 - The gfx1100 and gfx1151 GGUF adapters now use the same persistent real
   model-loop contract, reusable resident-session identities, scheduler-owned
-  BF16 device KV, and bounded request-owned token streams rather than wrapping
+  policy-shaped device KV, and bounded request-owned token streams rather than wrapping
   complete inner generation calls. gfx1100 D4/D5 and gfx1151 E1 pass mid-generation admission,
   bounded mixed prefill/decode, packed-group membership changes, independent-c1
   survivor state/KV, disconnect/reclaim, real SSE, metrics, and final ownership.
@@ -524,16 +524,21 @@ Current blockers that keep project-wide c>N incomplete:
   scaling, live membership, and arbitrary-C lowering on both gfx11 targets.
   gfx1151 additionally retains exact BF16-KV real-Uvicorn c2 through 64K,
   mixed 1K/4K/32K membership, bounded grow/shrink, retryable pressure rejection,
-  and stale-pointer-safe graph regrow. gfx1100 long-context transfer and
-  non-BF16 continuous-owner allocation/binding remain independent gates.
+  and stale-pointer-safe graph regrow. gfx1151 now also carries short uniform
+  `int8_per_token_head` payloads, FP16 scales, and bounded BF16 mirrors through
+  continuous ownership at c1/c2/c4/c8 with exact API/quality/reclaim evidence.
+  gfx1100 transfer, longer c>N INT8, tail4, and direct/no-mirror INT8 attention
+  remain independent gates.
 - Several decode kernels are row-parallel GEMV rather than true grouped/MMQ/WMMA
   batch kernels. They increase grid size but do not reliably reuse streamed
   weights across requests, which is visible in the weak gfx1151 c=1->c=8 scale
   versus llama.cpp Vulkan.
 - GQA split-K and full-attention now have primitive trace/parity plus exact
   per-sequence `KVLiveSpans` server coverage for gfx1151 BF16-KV c2 through 64K.
-  Equivalent gfx1100 server transfer and non-BF16 payload/scale-backed dynamic
-  spans still need independent row-count-specific evidence.
+  Short mirrored uniform INT8 now has payload/scale-backed gfx1151 c2/c4/c8
+  evidence through 1K allocated context; equivalent longer/direct-INT8/tail4 and
+  gfx1100 spans still need independent row-count-specific evidence. See the
+  [clean mirrored-INT8 continuous packet](../benchmarks/results/2026-07-19-gfx1151-gguf-mirrored-int8-continuous-concurrency.json).
 - Selected MoE decode has row-aware/grouped diagnostic coverage for c<=8, but
   retained performance still needs routed-lane profiling and c-aware thresholds
   for grouped GEMV versus compact/WMMA execution.

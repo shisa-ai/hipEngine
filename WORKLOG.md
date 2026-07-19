@@ -167629,6 +167629,221 @@ parsing and semantic cross-checks, benchmark README synchronization, all **6**
 gates above remain the code-validation evidence; the broad suite was not
 repeated for this isolated publication unit.
 
+## 2026-07-19 — Admit mirrored INT8 KV continuous GGUF ownership
+
+Closed the remaining BF16-only ownership boundary for short-context GGUF
+continuous serving. The scheduler and page allocator were already layout
+agnostic, but their backing object exposed only BF16 K/V and packed AR rejected
+all non-BF16 sessions. The implementation now carries one immutable resolved KV
+layout identity plus aligned per-layer payload, BF16-mirror, scale, and scale-
+metadata planes. Bind compares the complete identity before changing the device
+block table; unbind clears every plane. Packed state allocation, prefill/decode
+writes, session import/scatter, cancellation flush, and non-contiguous live-span
+copies move all applicable planes.
+
+The admitted production route is deliberately narrow: uniform
+`int8_per_token_head` at rounded contexts <=8192 uses its existing bounded BF16
+correctness mirror for attention while retaining INT8 K/V and FP16/FP32 scales.
+Direct INT8 attention without that mirror and `tail4_hadamard_group32` c>N remain
+fail-closed at resident-owner construction. Long uniform INT8 c1 behavior is
+unchanged. Generator preparation now locks the complete server KV signature
+before resident sessions are reserved, forwards scale dtype/granularity into
+session construction, and rejects later policy changes with both signatures in
+the diagnostic. The matched server harness now forwards and records explicit
+hipEngine KV policy arguments instead of hardcoding BF16.
+
+RED/GREEN host coverage validates policy-shaped allocation/accounting, mirror
+and scale metadata identity, six-plane bind/unbind, mismatch rejection before a
+device write, six-plane packed copies, mirrored-INT8 packed admission, no-mirror
+fail-closed behavior, generator policy locking, and harness command forwarding.
+The complete focused bundle is **154 passed**:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/test_qwen35_gguf_int8_kv_policy.py \
+  tests/test_qwen35_kv_int8_accuracy.py \
+  tests/test_generation_qwen35_gguf_sampling.py \
+  tests/test_gguf_device_kv_binding.py \
+  tests/test_gguf_packed_verify_layout.py \
+  tests/test_server_f1_concurrency_bench.py -q
+```
+
+Python compilation and `git diff --check` pass. Ruff is not installed in the
+current `.venv`, so no Ruff result is claimed.
+
+Three gfx1151 diagnostics then separated math from serving lifecycle:
+
+- Fresh packed INT8 p32/C2 decode matches two independent INT8 sessions for
+  **20/20 generated IDs**, carries all 10 INT8 payload/scale layers plus their
+  bounded mirrors, and reports `exact_hybrid` with zero scalar fallback.
+- Independent c1 prefill followed by packed C2 decode swaps the same two
+  near-tie IDs at output positions 5 and 7 for one synthetic row. The identical
+  BF16 control produces the identical swaps, while both routes reconverge; this
+  is an existing packed-width numerical property, not INT8 transfer drift.
+- A p128/d16 real-Uvicorn diagnostic therefore fails one strict C2 row at the
+  same near tie (and intentionally has zero warmups), while c1 and delayed rows
+  are exact. It is not retained as an accepted packet.
+
+The meaningful retained-shape implementation gate used explicit INT8 policy,
+p512/d128, fair:256, C1/C2, one warmup and one measured burst per width, delayed
+C2 admission, whole-card GTT sampling, one HIP queue, cached builds, and the
+active `amd_iommu=off` boot:
+
+```bash
+.venv/bin/python scripts/server_f1_concurrency_bench.py \
+  --engine hipengine --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1151 --quant gguf_q4_k_m \
+  --hipengine-kv-storage int8_per_token_head \
+  --hipengine-kv-scale-dtype fp16 \
+  --hipengine-kv-scale-granularity per_token_head \
+  --hipengine-route-expectation native \
+  --hipengine-prefill-decode-policy fair --batch-window-ms 256 \
+  --concurrencies 1,2 --live-concurrency 2 \
+  --prompt-length 512 --decode-tokens 128 --ctx-per-seq 1024 \
+  --warmup-runs 1 --measured-runs 1 --live-join-after-tokens 8 \
+  --compiler-version-file /tmp/hipengine-gfx1151-native-cycle-hipcc-version.txt \
+  --memory-domain gtt --drm-card-index 0 \
+  --work-dir /tmp/gfx1151-int8-continuous-c2-p512/work \
+  --json /tmp/gfx1151-int8-continuous-c2-p512/result.json
+```
+
+It is `accepted_backend_packet`: both oracle rows, C1/C2 warmup and measured
+rows, and delayed C2 rows are exact; measured aggregate HTTP rate is
+**40.601 tok/s C1 -> 57.182 tok/s C2 (+40.84%)**. Delayed C2 is exact at
+**40.314 tok/s** and admits the second request before the first completes. The
+C2 scrape records **250 native packed decode steps**, 8 native-c1 boundary
+steps, zero serial fallback, zero failed/rejected/cancelled requests, all five
+resident admissions/reclaims drained, 8 dynamic pages / **63,078,400 bytes**,
+and **417,935,092** retained low-occupancy packed-workspace bytes. Whole-card
+GTT peaks are **22.233/23.166 GiB** at C1/C2. These one-repeat rates and memory
+values are implementation evidence; clean broader-width publication follows
+from the implementation commit.
+
+## 2026-07-19 — Generalize compressed-KV quality harness to gfx1151 INT8
+
+Extended the existing 11-prompt teacher-forced native compressed-KV suite so it
+can validate `int8_per_token_head` and select `hip_gfx1151`; the prior CLI only
+accepted `tail4_hadamard_group32` and hardcoded `hip_gfx1100`. Both GGUF and
+PARO runner construction now receive the selected backend, and the emitted
+command/payload records it. Runtime and kernel behavior are unchanged.
+
+RED was the focused parser fixture failing collection because `_build_parser`
+did not exist. GREEN is **3 passed**:
+
+```bash
+.venv/bin/python -m pytest tests/test_qwen35_native_mixed_kv_suite.py -q --tb=short
+python3 -m py_compile scripts/qwen35_native_mixed_kv_suite.py \
+  tests/test_qwen35_native_mixed_kv_suite.py
+.venv/bin/python scripts/qwen35_native_mixed_kv_suite.py --help
+# git diff --check also passes
+```
+
+No GPU result or quality claim is attached to this harness-only unit. The clean
+gfx1151 INT8 multi-prompt run follows after the production C4 lifecycle gate.
+
+## 2026-07-19 — Retain mirrored INT8 GGUF continuous serving
+
+Validated and published the explicit short-context non-BF16 continuous-owner
+slice implemented at `fb926d8e` (quality harness `24d4ad42`). Uniform
+`int8_per_token_head` with FP16 per-token/head scales now runs c1/c2/c4/c8 on
+gfx1151 when rounded context is <=8192. Every dynamic page carries retained INT8
+K/V (2,621,440 bytes), bounded BF16 attention mirrors (5,242,880 bytes), and
+scales (20,480 bytes), totaling 7,884,800 bytes/page; the p512/d128 protocol uses
+four pages / 31,539,200 bytes per request. This is explicitly not a KV-memory-
+saving mode and does not change the default.
+
+A clean detached C1+C4 fail-fast packet passed at `fb926d8e`: blocking was
+**40.484/71.730 tok/s**, exact SSE **38.914/68.746**, delayed C4 **50.001**, and
+the later rows were admitted before the first finished. All exactness, native
+route, and lifecycle checks passed; raw SHA-256 is
+`d40588398dca94aabb037c0871fe04014a3141e43ee13da4fce3d5f916141d08`.
+
+The full teacher-forced category/heldout quality gate then ran from clean
+`24d4ad42`:
+
+```bash
+HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 \
+  /home/lhl/hipEngine-main/.venv/bin/python \
+  scripts/qwen35_native_mixed_kv_suite.py \
+  --engine gguf --backend hip_gfx1151 \
+  --gguf-model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl \
+  --prompt-length 512 --decode-steps 8 \
+  --candidate-kv-storage int8_per_token_head \
+  --kl-threshold 0.05 --top1-threshold 0.90 \
+  --compiler-version-file /tmp/hipengine-gfx1151-native-cycle-hipcc-version.txt \
+  --json /tmp/gfx1151-int8-quality-24d4ad42/result.json
+```
+
+All **11/11 prompts / 99/99 positions** pass independently at **mean/max KL=0,
+100% aggregate and minimum-prompt top-1**, with identical teacher-forced logit
+hashes and no failing prompt. The first cached-only attempt stopped before the
+first logit because the gfx1151 AOTriton wrapper hash was absent; the accepted
+unprofiled run built it normally. This is a cache preflight, not a quality
+failure, and quality timing has `performance_claim=false`. Accepted raw SHA-256:
+`d6a63e2982dfada37cce354e98c9e2d59e97d6b150a6f388baee2d78e98857d3`.
+
+The retained real-Uvicorn publication packet used one warmup plus three blocking
+and three SSE measurements per width, fair:256, one HIP queue, 10 ms whole-card
+GTT sampling, and delayed C8 admission:
+
+```bash
+HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 \
+  /home/lhl/hipEngine-main/.venv/bin/python \
+  scripts/server_f1_concurrency_bench.py \
+  --engine hipengine \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1151 --quant gguf_q4_k_m \
+  --hipengine-python /home/lhl/hipEngine-main/.venv/bin/python \
+  --hipengine-kv-storage int8_per_token_head \
+  --hipengine-kv-scale-dtype fp16 \
+  --hipengine-kv-scale-granularity per_token_head \
+  --hipengine-route-expectation native \
+  --hipengine-prefill-decode-policy fair --batch-window-ms 256 \
+  --concurrencies 1,2,4,8 --live-concurrency 8 \
+  --prompt-length 512 --decode-tokens 128 --ctx-per-seq 1024 \
+  --warmup-runs 1 --measured-runs 3 --streaming-primary \
+  --stream-warmup-runs 0 --stream-measured-runs 3 \
+  --live-join-after-tokens 8 \
+  --compiler-version-file /tmp/hipengine-gfx1151-native-cycle-hipcc-version.txt \
+  --memory-domain gtt --drm-card-index 0 --memory-poll-ms 10 \
+  --work-dir /tmp/gfx1151-int8-continuous-c1248-fb926d8e/work \
+  --json /tmp/gfx1151-int8-continuous-c1248-fb926d8e/result.json
+```
+
+It is `accepted_backend_packet`. Blocking c1/c2/c4/c8 medians are
+**40.467/57.211/72.037/72.514 tok/s**; exact SSE medians are
+**39.665/52.225/68.665/79.789**, making C8 **1.792x/2.012x C1** under the two
+scopes. Maximum blocking stdev/median is **0.468%** and exact-SSE is **1.475%**.
+All **4 oracle + 15 warmup + 45 blocking + 45 SSE + 8 delayed = 117 rows** are
+exact, every route passes, and serial/resident fallback is zero. Delayed C8 is
+exact at **58.751 tok/s** and admits in flight.
+
+Whole-card GTT peaks are **22.233/23.762/26.033/29.885 GiB**. After delayed C8,
+all **65 admitted / 65 reclaimed** sessions drain to 8/8 free slots, zero
+occupied/refcounted/pinned pages, and zero packed-workspace bytes after **64
+release events / 25,107,469,344 bytes**. The bounded 32-page backing pool remains
+resident at **252,313,600 bytes**; no physical pool-shrink claim is made. Strict
+whole-wave SLO passes are **3/3, 2/3, 0/3, 0/3**, so C4/C8 SLO remains open even
+though all outputs and route/lifecycle gates pass. Raw SHA-256 is
+`7755aec5a6d3a3987a9876664f6e0328d85fe28e9e3b217503be227c9b2d87ac`.
+
+Decision: retain only explicit short mirrored uniform INT8 on gfx1151. Direct
+INT8 attention without mirrors, `tail4_hadamard_group32` c>N, contexts above
+8192, and post-preparation policy switches remain fail closed. Long-context c1
+behavior is unchanged. This packet makes no llama.cpp comparison or memory-
+saving/default claim; the prior external competitiveness conclusion is
+unchanged.
+
+Published compact artifact
+`benchmarks/results/2026-07-19-gfx1151-gguf-mirrored-int8-continuous-concurrency.json`
+(SHA-256 `bb7fd49672842fdd8a4a87bca8bd88742e4a6d0d1ed9bf738148f60eb16c35fa`).
+Publication validation passes JSON parsing, semantic metric/lifecycle checks,
+artifact-link synchronization across the root/benchmark/plan/concurrency docs,
+all **6** `test_benchmark_readme_sync.py` tests, WORKLOG conflict checks, and
+`git diff --check`. The implementation's **154-test** focused bundle and the
+quality harness's **3-test** RED/GREEN result remain the code-validation
+evidence; no broad suite was repeated for this isolated publication unit.
 ## 2026-07-19 — Merge current gfx1151 main with PARO N4 correction
 
 Fetched origin after completing the current packed PARO verifier review; main
