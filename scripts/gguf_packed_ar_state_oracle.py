@@ -365,8 +365,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError("prompt lengths must be at least the GDN convolution width (4)")
     if int(args.decode_steps) < 1:
         raise ValueError("decode-steps must be positive")
-    if max(int(args.prompt_length), alternate_prompt_length) + int(args.decode_steps) >= 1024:
-        raise ValueError("packed GGUF AR state oracle currently requires context < 1024")
     model = Path(args.model).expanduser().resolve()
     if not model.is_file():
         raise ValueError(f"model does not exist: {model}")

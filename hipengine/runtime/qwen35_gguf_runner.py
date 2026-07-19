@@ -913,6 +913,27 @@ def _build_gguf_packed_verify_layout(
     )
 
 
+def _packed_ar_slot_capacity(
+    max_live_count: int,
+    *,
+    block_size: int = 256,
+    minimum: int = 1024,
+) -> int:
+    """Round packed-AR capacity so deferred state survives ordinary token steps."""
+
+    max_live_count = int(max_live_count)
+    block_size = int(block_size)
+    minimum = int(minimum)
+    if max_live_count <= 0:
+        raise ValueError("max_live_count must be positive")
+    if block_size <= 0:
+        raise ValueError("block_size must be positive")
+    if minimum <= 0:
+        raise ValueError("minimum must be positive")
+    rounded = ((max_live_count + block_size - 1) // block_size) * block_size
+    return max(minimum, rounded)
+
+
 def _packed_decode_metadata_device_eligible(
     layout: _GGUFPackedVerifyLayout,
 ) -> bool:
@@ -961,6 +982,64 @@ def _packed_prefill_requires_slot_local_full_attention(
             for index in range(int(layout.slot_count))
         )
     )
+
+
+@dataclass(frozen=True)
+class _GGUFPackedARAttentionWorkspace:
+    """Split-K intermediates sized for one physical packed-AR decode width."""
+
+    rows: int
+    chunk_size: int
+    num_splits: int
+    partial_out: object
+    partial_m: object
+    partial_l: object
+    buffers: tuple[object, ...]
+
+    @classmethod
+    def allocate(
+        cls,
+        runner: "Qwen35GGUFFullStackRunner",
+        *,
+        rows: int,
+        max_context_len: int,
+        runtime: HipRuntime,
+        chunk_size: int = 256,
+    ) -> "_GGUFPackedARAttentionWorkspace":
+        rows = int(rows)
+        max_context_len = int(max_context_len)
+        chunk_size = int(chunk_size)
+        if rows <= 0:
+            raise ValueError("packed AR attention rows must be positive")
+        if max_context_len <= 0:
+            raise ValueError("packed AR attention max_context_len must be positive")
+        if chunk_size <= 0:
+            raise ValueError("packed AR attention chunk_size must be positive")
+        if runner.weights is None:
+            raise RuntimeError("GGUF packed AR attention requires materialized weights")
+        num_splits = (max_context_len + chunk_size - 1) // chunk_size
+        num_q_heads = int(runner.weights.config.head_count)
+        partial_out = malloc(
+            rows * int(runner.q_width) * num_splits * DType.FP32.itemsize,
+            runtime=runtime,
+        )
+        partial_m = malloc(
+            rows * num_q_heads * num_splits * DType.FP32.itemsize,
+            runtime=runtime,
+        )
+        partial_l = malloc(
+            rows * num_q_heads * num_splits * DType.FP32.itemsize,
+            runtime=runtime,
+        )
+        return cls(
+            rows=rows,
+            chunk_size=chunk_size,
+            num_splits=num_splits,
+            partial_out=partial_out,
+            partial_m=partial_m,
+            partial_l=partial_l,
+            buffers=(partial_out, partial_m, partial_l),
+        )
 
 
 @dataclass(frozen=True)
@@ -1831,6 +1910,23 @@ class Qwen35GGUFFullStackRunner:
                 missing="none",
             )
             self._gguf_packed_decode_metadata_kernel_cache = kernel
+        return kernel
+
+    def _packed_ar_attention_batch_kernel(self):
+        """Resolve the backend's BF16 long-context packed-AR attention kernel."""
+
+        missing = object()
+        kernel = getattr(self, "_gguf_packed_ar_attention_batch_kernel_cache", missing)
+        if kernel is missing:
+            load_backend_kernel_package(self.backend)
+            kernel = resolve(
+                backend=self.backend,
+                layer=_PACKED_AR_ATTN_BATCH_KEY.layer,
+                quant=_PACKED_AR_ATTN_BATCH_KEY.quant,
+                variant=_PACKED_AR_ATTN_BATCH_KEY.variant,
+                missing="none",
+            )
+            self._gguf_packed_ar_attention_batch_kernel_cache = kernel
         return kernel
 
     def _run_gdn_prefill(
@@ -3236,6 +3332,7 @@ class Qwen35GGUFFullStackRunner:
         stage_timings: dict[str, float] | None = None,
         sync_stage_timings: bool = False,
         stage_prefix: str = "target_block_full_attn",
+        split_workspace: _GGUFPackedARAttentionWorkspace | None = None,
     ) -> str:
         """Run row-bulk QKV/KV write with the c1-equivalent batch decode attention."""
 
@@ -3250,8 +3347,6 @@ class Qwen35GGUFFullStackRunner:
             raise RuntimeError("GGUF full-attention decode batch requires cache-backed key/value buffers")
         end = int(scratch.start) + rows
         max_context_len = int(getattr(scratch.prefill_spans, "max_live_count", end))
-        if max_context_len >= 1024:
-            raise ValueError("GGUF full-attention decode batch verifier path currently requires context < 1024")
         cast_library = self._cast_library()
         kv_write_library = self._paged_kv_write_library()
         paged_attn_library = self._paged_attn_decode_library()
@@ -3434,41 +3529,83 @@ class Qwen35GGUFFullStackRunner:
             f"{stage_prefix}_kv_write",
             t_stage,
         )
-        context_batch = self._paged_attn_context_batch
-        if not callable(context_batch):  # pragma: no cover - registry resolve is fail-closed
-            raise RuntimeError("paged context-batch attention kernel is unavailable")
-        context_batch(
-            scratch.full_query.ptr,
-            scratch.key_cache.ptr,
-            scratch.value_cache.ptr,
-            scratch.full_query_raw.ptr,
-            scratch.prefill_spans,
-            rows,
-            max_context_len,
-            scratch.block_size,
-            cfg.head_count,
-            cfg.head_count_kv,
-            cfg.key_length,
-            cfg.key_length ** -0.5,
-            stream=stream,
-            library=paged_attn_library,
-            runtime=runtime,
-        )
+        if max_context_len < 1024:
+            context_batch = self._paged_attn_context_batch
+            if not callable(context_batch):  # pragma: no cover - registry resolve is fail-closed
+                raise RuntimeError("paged context-batch attention kernel is unavailable")
+            context_batch(
+                scratch.full_query.ptr,
+                scratch.key_cache.ptr,
+                scratch.value_cache.ptr,
+                scratch.full_query_raw.ptr,
+                scratch.prefill_spans,
+                rows,
+                max_context_len,
+                scratch.block_size,
+                cfg.head_count,
+                cfg.head_count_kv,
+                cfg.key_length,
+                cfg.key_length ** -0.5,
+                stream=stream,
+                library=paged_attn_library,
+                runtime=runtime,
+            )
+            qwen35_full_attn_gate_mul_bf16(
+                scratch.full_query_raw.ptr,
+                scratch.full_gate.ptr,
+                scratch.full_gated.ptr,
+                rows * self.q_width,
+                stream=stream,
+                library=paged_attn_library,
+                runtime=runtime,
+            )
+        else:
+            num_splits = (max_context_len + int(scratch.block_size) - 1) // int(
+                scratch.block_size
+            )
+            if (
+                split_workspace is None
+                or int(split_workspace.rows) < rows
+                or int(split_workspace.num_splits) < num_splits
+            ):
+                raise NotImplementedError(
+                    "long-context packed AR decode requires a row-sized split-K workspace"
+                )
+            split_batch = self._packed_ar_attention_batch_kernel()
+            if not callable(split_batch):
+                raise NotImplementedError(
+                    "long-context packed AR BF16 batch attention kernel is unavailable"
+                )
+            split_batch(
+                scratch.full_query.ptr,
+                scratch.key_cache.ptr,
+                scratch.value_cache.ptr,
+                scratch.full_gate.ptr,
+                scratch.full_gated.ptr,
+                split_workspace.partial_out.ptr,
+                split_workspace.partial_m.ptr,
+                split_workspace.partial_l.ptr,
+                scratch.prefill_spans,
+                rows,
+                int(scratch.block_size),
+                num_splits,
+                int(scratch.block_size),
+                cfg.head_count,
+                cfg.head_count_kv,
+                cfg.key_length,
+                cfg.key_length,
+                1,
+                cfg.key_length ** -0.5,
+                stream=stream,
+                library=paged_attn_library,
+                runtime=runtime,
+            )
         t_stage = _mark_sync_stage(
             runtime,
             stage_timings,
             sync_stages,
             f"{stage_prefix}_paged_attn",
             t_stage,
-        )
-        qwen35_full_attn_gate_mul_bf16(
-            scratch.full_query_raw.ptr,
-            scratch.full_gate.ptr,
-            scratch.full_gated.ptr,
-            rows * self.q_width,
-            stream=stream,
-            library=paged_attn_library,
-            runtime=runtime,
         )
         attn_out_f32_ptr = self._run_full_attention_output_rows(
             layer,
@@ -8400,6 +8537,10 @@ class Qwen35GGUFResidentSession:
     _packed_decode_state_dirty: bool = field(default=False, init=False)
     _packed_decode_session_ids: tuple[int, ...] = field(default=(), init=False)
     _packed_decode_positions: tuple[int, ...] = field(default=(), init=False)
+    _packed_ar_attention_workspace: _GGUFPackedARAttentionWorkspace | None = field(
+        default=None,
+        init=False,
+    )
     _prefill_token_buf: object | None = field(default=None, init=False)
     _prefill_hidden_a: object | None = field(default=None, init=False)
     _prefill_hidden_b: object | None = field(default=None, init=False)
@@ -12191,6 +12332,7 @@ class Qwen35GGUFResidentSession:
         packed_state,
         linear_decode_scratch,
         stream: int,
+        split_workspace: _GGUFPackedARAttentionWorkspace | None = None,
         layer_output_callback=None,
         require_logits: bool = False,
     ) -> tuple[set[str], set[str]]:
@@ -12271,6 +12413,7 @@ class Qwen35GGUFResidentSession:
                             stage_timings=None,
                             sync_stage_timings=False,
                             stage_prefix="ar_batch_full_attn",
+                            split_workspace=split_workspace,
                         )
                     )
                 else:
@@ -12405,10 +12548,8 @@ class Qwen35GGUFResidentSession:
             for block in slot_blocks
             if block.active
         )
-        slot_capacity = max(1024, max_live_count)
+        slot_capacity = _packed_ar_slot_capacity(max_live_count)
         layout = _build_gguf_packed_verify_layout(slot_blocks, slot_capacity=slot_capacity)
-        if int(layout.max_live_count) >= 1024:
-            raise NotImplementedError("packed AR decode currently requires context < 1024")
         capture_layer_ids = self._normalize_layer_output_capture(
             capture_layer_output_hidden
         )
@@ -12429,6 +12570,16 @@ class Qwen35GGUFResidentSession:
             rows=rows,
             max_sequence_length=slot_capacity,
             runtime=runtime,
+            stream=stream,
+        )
+        split_workspace = (
+            self._ensure_packed_ar_attention_workspace(
+                rows=rows,
+                max_context_len=int(layout.max_live_count),
+                runtime=runtime,
+            )
+            if int(layout.max_live_count) >= 1024
+            else None
         )
         imported_slot_indices = self._sync_packed_decode_initial_state(
             physical_session_tuple,
@@ -12478,6 +12629,7 @@ class Qwen35GGUFResidentSession:
                 packed_state=packed_state,
                 linear_decode_scratch=linear_decode_scratch,
                 stream=stream,
+                split_workspace=split_workspace,
                 layer_output_callback=(
                     capture_layer_output if capture_layer_ids else None
                 ),
@@ -13419,6 +13571,12 @@ class Qwen35GGUFResidentSession:
         return conv_rows, recurrent_rows
 
     def _free_packed_verify_workspace(self, *, runtime: HipRuntime) -> None:
+        attention_workspace = getattr(self, "_packed_ar_attention_workspace", None)
+        if attention_workspace is not None:
+            for buffer in reversed(attention_workspace.buffers):
+                if buffer is not None:
+                    free(buffer, runtime=runtime)
+        self._packed_ar_attention_workspace = None
         if self._packed_verify_scratch is not None:
             for buffer in reversed(self._packed_verify_scratch.buffers):
                 if buffer is not None:
@@ -13437,6 +13595,36 @@ class Qwen35GGUFResidentSession:
         self._packed_decode_session_ids = ()
         self._packed_decode_positions = ()
 
+    def _ensure_packed_ar_attention_workspace(
+        self,
+        *,
+        rows: int,
+        max_context_len: int,
+        runtime: HipRuntime,
+    ) -> _GGUFPackedARAttentionWorkspace:
+        if self.runner is None:
+            raise RuntimeError("GGUF resident session is closed")
+        rows = int(rows)
+        max_context_len = int(max_context_len)
+        required_splits = (max_context_len + 255) // 256
+        workspace = getattr(self, "_packed_ar_attention_workspace", None)
+        if (
+            workspace is None
+            or int(workspace.rows) < rows
+            or int(workspace.num_splits) < required_splits
+        ):
+            if workspace is not None:
+                for buffer in reversed(workspace.buffers):
+                    free(buffer, runtime=runtime)
+            workspace = _GGUFPackedARAttentionWorkspace.allocate(
+                self.runner,
+                rows=rows,
+                max_context_len=max_context_len,
+                runtime=runtime,
+            )
+            self._packed_ar_attention_workspace = workspace
+        return workspace
+
     def _ensure_packed_verify_workspace(
         self,
         *,
@@ -13444,6 +13632,7 @@ class Qwen35GGUFResidentSession:
         rows: int,
         max_sequence_length: int,
         runtime: HipRuntime,
+        stream: int = 0,
     ) -> tuple[_GGUFPackedTargetState, object]:
         if self.runner is None:
             raise RuntimeError("GGUF resident session is closed")
@@ -13464,6 +13653,11 @@ class Qwen35GGUFResidentSession:
             and int(self._packed_verify_scratch.gdn_segment_capacity) >= slot_count
         )
         if not state_ready or not scratch_ready:
+            if getattr(self, "_packed_decode_state_dirty", False):
+                if not self.flush_packed_decode_state(stream=stream):
+                    raise RuntimeError(
+                        "cannot resize packed workspace before deferred state is scattered"
+                    )
             self._free_packed_verify_workspace(runtime=runtime)
             self._packed_verify_state = _GGUFPackedTargetState.allocate(
                 self.runner,
@@ -15013,20 +15207,7 @@ class Qwen35GGUFResidentSession:
         self._verify_logits_buf = None
         self._verify_lm_rows_capacity = 0
         self._free_verify_linear_state_row_buffers(runtime=runtime)
-        if self._packed_verify_scratch is not None:
-            for buffer in reversed(self._packed_verify_scratch.buffers):
-                if buffer is not None:
-                    free(buffer, runtime=runtime)
-        self._packed_verify_scratch = None
-        if self._packed_verify_state is not None:
-            for buffer in reversed(self._packed_verify_state.buffers):
-                if buffer is not None:
-                    free(buffer, runtime=runtime)
-        self._packed_verify_state = None
-        self._packed_verify_session_ids = ()
-        self._packed_verify_max_written_positions = ()
-        self._packed_decode_session_ids = ()
-        self._packed_decode_positions = ()
+        self._free_packed_verify_workspace(runtime=runtime)
         for buffer in reversed(self._buffers):
             if buffer is not None:
                 free(buffer, runtime=runtime)
@@ -16540,6 +16721,12 @@ _PACKED_DECODE_METADATA_KEY = KernelKey(
     "decode_metadata",
     "gguf_qwen35",
     "packed_c4_i64",
+)
+_PACKED_AR_ATTN_BATCH_KEY = KernelKey(
+    "hip_gfx1100",
+    "paged_attn_decode",
+    "w4_paro",
+    "bf16_split_k_gqa_gate_bf16_batch_spans",
 )
 _LINEAR_ATTN_DECODE_INDEXED_BF16_KEY = KernelKey(
     "hip_gfx1100",
