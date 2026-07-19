@@ -13839,6 +13839,43 @@ class Qwen35GGUFResidentSession:
             return None
         return conv_rows, recurrent_rows
 
+    def packed_workspace_nbytes(self) -> int:
+        """Return owner-only packed workspace bytes retained by this session."""
+
+        seen: set[int] = set()
+        total = 0
+        for workspace in (
+            getattr(self, "_packed_ar_attention_workspace", None),
+            self._packed_verify_scratch,
+            self._packed_verify_state,
+        ):
+            if workspace is None:
+                continue
+            for buffer in workspace.buffers:
+                if buffer is None or int(buffer.ptr) == 0 or int(buffer.ptr) in seen:
+                    continue
+                seen.add(int(buffer.ptr))
+                total += int(buffer.nbytes)
+        return total
+
+    def release_idle_packed_workspace(self) -> int:
+        """Release packed owner scratch after state scatter and graph teardown."""
+
+        if bool(getattr(self, "_packed_decode_state_dirty", False)):
+            raise RuntimeError("cannot release idle workspace with unflushed packed state")
+        graphs = {
+            id(graph): graph
+            for graph in (
+                *tuple(getattr(self, "_decode_graphs", ())),
+                *tuple(getattr(self, "_device_kv_graph_handles", {}).values()),
+            )
+        }
+        if any(not bool(getattr(graph, "closed", False)) for graph in graphs.values()):
+            raise RuntimeError("cannot release idle workspace while a live graph still binds it")
+        released_bytes = self.packed_workspace_nbytes()
+        self._free_packed_verify_workspace(runtime=self.runtime or get_hip_runtime())
+        return released_bytes
+
     def _free_packed_verify_workspace(self, *, runtime: HipRuntime) -> None:
         attention_workspace = getattr(self, "_packed_ar_attention_workspace", None)
         if attention_workspace is not None:

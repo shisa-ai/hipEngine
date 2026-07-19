@@ -103,6 +103,60 @@ def test_gguf_resident_reset_invalidates_packed_state_metadata(monkeypatch) -> N
     assert session._packed_decode_positions == ()
 
 
+def test_gguf_resident_release_idle_packed_workspace_requires_safe_lifecycle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    freed: list[tuple[int, int]] = []
+    monkeypatch.setattr(
+        gguf_runner,
+        "free",
+        lambda buffer, *, runtime: freed.append((int(buffer.ptr), int(buffer.nbytes))),
+    )
+    session = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    session.runtime = SimpleNamespace(name="runtime")
+    session._packed_ar_attention_workspace = SimpleNamespace(
+        buffers=(DeviceBuffer(ptr=0x1000, nbytes=10),)
+    )
+    session._packed_verify_scratch = SimpleNamespace(
+        buffers=(DeviceBuffer(ptr=0x2000, nbytes=20), DeviceBuffer(ptr=0x3000, nbytes=30))
+    )
+    session._packed_verify_state = SimpleNamespace(
+        buffers=(DeviceBuffer(ptr=0x4000, nbytes=40),)
+    )
+    session._packed_verify_session_ids = (11, 22)
+    session._packed_verify_max_written_positions = (4, 4)
+    session._packed_decode_sessions = (object(),)
+    session._packed_decode_last_layout = object()
+    session._packed_decode_state_dirty = True
+    session._packed_decode_session_ids = (33,)
+    session._packed_decode_positions = (5,)
+    session._decode_graphs = []
+    session._device_kv_graph_handles = {}
+
+    with pytest.raises(RuntimeError, match="unflushed packed state"):
+        session.release_idle_packed_workspace()
+
+    session._packed_decode_state_dirty = False
+    live_graph = SimpleNamespace(closed=False)
+    session._decode_graphs = [live_graph]
+    with pytest.raises(RuntimeError, match="live graph"):
+        session.release_idle_packed_workspace()
+
+    live_graph.closed = True
+    assert session.release_idle_packed_workspace() == 100
+    assert freed == [(0x1000, 10), (0x3000, 30), (0x2000, 20), (0x4000, 40)]
+    assert session._packed_ar_attention_workspace is None
+    assert session._packed_verify_scratch is None
+    assert session._packed_verify_state is None
+    assert session._packed_verify_session_ids == ()
+    assert session._packed_verify_max_written_positions == ()
+    assert session._packed_decode_sessions == ()
+    assert session._packed_decode_last_layout is None
+    assert session._packed_decode_state_dirty is False
+    assert session._packed_decode_session_ids == ()
+    assert session._packed_decode_positions == ()
+
+
 def test_gguf_packed_verify_layout_maps_rows_and_slot_state() -> None:
     layout = _build_gguf_packed_verify_layout(
         (

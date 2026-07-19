@@ -167360,3 +167360,68 @@ current environment, so no Ruff result is claimed.
 N3P remains deliberately unregistered on gfx1151: it was not the gfx1100
 performance topline and is not needed for this exact N3 win. Exact/default MTP
 remains unchanged.
+
+## 2026-07-19 — Reclaim rotated GGUF packed-owner workspace at C4+
+
+Attributed the matched gfx1151 server's C-dependent whole-card GTT growth before
+changing lifecycle behavior. The published p512/d128 packet has absolute peak
+GTT **22.406/24.088/27.602/35.125/44.268 GiB** at C1/C2/C4/C8/C13; its dynamic
+BF16 KV pool is only **20 MiB/request**, so KV is not the unexplained family.
+Two cached-build direct probes against the exact model and current source then
+separated constructor and lazy owner allocations:
+
+- the shared runner owns **22,614,272,512 tracked bytes**;
+- each deferred-KV resident session adds exactly **551,220,628 bytes**, of which
+  **471,778,376 bytes (85.6%)** is its p1024 bulk-prefill slab;
+- the first p512/C4 packed owner adds **834,980,004 tracked bytes**: a
+  **351,272,960-byte** packed state plus **471,778,436-byte** packed scratch;
+- rotating the identical exact prefill to a second owner adds the same
+  **834,980,004 bytes** again. Both owners return token `9707`, but `reset()`
+  retained both owner-only slabs. Repeated HTTP waves therefore accumulated
+  workspace as ownership rotated through the fixed C-sized session pool.
+
+Added an explicit idle packed-workspace lifecycle: after packed state has been
+scattered and every binding graph invalidated, reclaim frees packed attention,
+prefill, and state owners before returning a C4+ session to the available pool.
+Dirty state and live graphs fail closed. C1/C2 deliberately keep their prior warm
+workspace to preserve the accepted low-occupancy path. The resident snapshot and
+Prometheus endpoint now expose current packed bytes plus cumulative release
+count/bytes; the matched harness records all three.
+
+RED first failed on the absent release method and absent model-runner reclaim.
+GREEN host evidence is **34 passed** for the complete packed-layout file and the
+complete generation sampling file was otherwise green with one expected exact
+observability-shape failure; the repaired node and new reclaim node pass. The
+Prometheus D5 node passes in `.venv` (one existing Starlette warning).
+`py_compile` and `git diff --check` pass.
+
+Two tracked-dirty real-Uvicorn implementation gates used the same gfx1151 model,
+BF16 KV, p512, fair:256, one HIP hardware queue, cached builds, and
+`amd_iommu=off`:
+
+```bash
+# C1/C4, d64, 1 warmup + 2 measured + delayed C4
+.venv/bin/python scripts/server_f1_concurrency_bench.py ... \
+  --concurrencies 1,4 --live-concurrency 4 --decode-tokens 64 \
+  --warmup-runs 1 --measured-runs 2 \
+  --json /tmp/gfx1151-packed-release-c1-c4-d64/result.json
+
+# C1/C13, d32, 1 warmup + 1 measured + delayed C13
+.venv/bin/python scripts/server_f1_concurrency_bench.py ... \
+  --concurrencies 1,13 --live-concurrency 13 --decode-tokens 32 \
+  --warmup-runs 1 --measured-runs 1 \
+  --json /tmp/gfx1151-packed-release-c1-c13-d32/result.json
+```
+
+Both packets are `accepted_backend_packet`. C4 passes **4/4 warmup, 8/8
+measured, and 4/4 delayed IDs** with native c4 and no serial fallback; its peak
+is **26.484 GiB**. C13 passes **13/13 warmup, 13/13 measured, and 13/13 delayed
+IDs**, native grouped execution, and no serial fallback. Its peak is
+**35.195 GiB**, directionally **9.072 GiB / 20.49% below** the prior p128
+publication's 44.268 GiB. By the end of delayed C13, **39** rotated owners have
+released **10,494,615,540 bytes** and current packed-owner bytes are zero. The
+final C1/C2 retention guard was added after this diagnostic started; C13 behavior
+is identical, while the diagnostic C1 release is intentionally not the final
+low-occupancy policy. These d32/d64 values are implementation evidence, not a
+replacement performance row. Next is a committed-clean exact p512/d128 five-
+width publication packet.

@@ -3962,6 +3962,8 @@ class Qwen35GGUFResidentModelRunner:
         self._prefix_state_clone_bytes = 0
         self._kv_hip_used_peak_sampled_bytes = 0
         self._kv_graph_invalidation_count = 0
+        self._packed_workspace_release_events = 0
+        self._packed_workspace_released_bytes = 0
         self._route_counts: Counter[str] = Counter()
         self._fallback_reasons: Counter[str] = Counter()
         self._last_execution_manifest: dict[str, Any] = {}
@@ -4111,6 +4113,18 @@ class Qwen35GGUFResidentModelRunner:
                 "active_request_ids": list(self.active_request_ids),
                 "active_requests": len(self._rows),
                 "available_sessions": len(self._available),
+                "packed_workspace_current_bytes": sum(
+                    int(size())
+                    for session in sessions
+                    for size in (getattr(session, "packed_workspace_nbytes", None),)
+                    if callable(size)
+                ),
+                "packed_workspace_release_events": int(
+                    getattr(self, "_packed_workspace_release_events", 0)
+                ),
+                "packed_workspace_released_bytes": int(
+                    getattr(self, "_packed_workspace_released_bytes", 0)
+                ),
             },
             "kv_pool": pool_stats,
             "prefix_cache": {
@@ -4974,6 +4988,18 @@ class Qwen35GGUFResidentModelRunner:
             invalidated = int(invalidate())
             self._record_graph_invalidations(graph_handles, invalidated)
             self._kv_graph_invalidation_count += invalidated
+        release_packed = getattr(session, "release_idle_packed_workspace", None)
+        # Preserve the established C1/C2 warm-workspace path. At C4+ repeated
+        # owner rotation otherwise leaves one 0.8+ GiB packed slab per session.
+        if self.capacity > 2 and callable(release_packed):
+            released_bytes = int(release_packed())
+            if released_bytes > 0:
+                self._packed_workspace_release_events = int(
+                    getattr(self, "_packed_workspace_release_events", 0)
+                ) + 1
+                self._packed_workspace_released_bytes = int(
+                    getattr(self, "_packed_workspace_released_bytes", 0)
+                ) + released_bytes
         reset = getattr(session, "reset", None)
         if callable(reset):
             reset()
