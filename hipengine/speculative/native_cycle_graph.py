@@ -8,10 +8,13 @@ and synchronizes the control block's session-owned stream.
 
 The N2 bucket may also capture device acceptance, selected state/hidden commit,
 and cursor update behind the same submission. A separate proposal-only bucket
-can submit an existing strict B1/B2 NextN device chain through the same ABI;
-unsupported shapes remain on the exact Python chain. Broader shapes,
-cancellation, deadlines, and multi-cycle execution belong to later ABI stages
-and must fall back instead of being approximated.
+can submit an existing strict B1/B2 NextN device chain through the same ABI.
+The provider-target variant reuses the launcher for the shared PARO MTP/DFlash
+single-request B1/B2/B3/B4/B5/B8 target+accept graph, with FP16 verifier rows
+or BF16 sidecar hidden taps and the provider's existing Python commit path.
+Unsupported shapes remain on the exact Python chain. Cancellation, deadlines,
+and multi-cycle execution belong
+to later ABI stages and must fall back instead of being approximated.
 """
 
 from __future__ import annotations
@@ -114,10 +117,12 @@ class NativeSpecTargetGraphLauncher:
         require_cached: bool = False,
         _kind: str = "target",
     ) -> None:
-        if _kind not in {"target", "proposal"}:
-            raise ValueError("native graph launcher kind must be target or proposal")
+        if _kind not in {"target", "provider_target", "proposal"}:
+            raise ValueError(
+                "native graph launcher kind must be target, provider_target, or proposal"
+            )
         self._kind = str(_kind)
-        self._symbol = _TARGET_SYMBOL if self._kind == "target" else _PROPOSAL_SYMBOL
+        self._symbol = _PROPOSAL_SYMBOL if self._kind == "proposal" else _TARGET_SYMBOL
         self._graph_exec = _positive_address("graph_exec", graph_exec)
         self._graph_launch_fn = _positive_address("graph_launch_fn", graph_launch_fn)
         self._stream_synchronize_fn = _positive_address(
@@ -235,6 +240,13 @@ class NativeSpecProposalGraphLauncher(NativeSpecTargetGraphLauncher):
         super().__init__(**kwargs, _kind="proposal")
 
 
+class NativeSpecProviderTargetGraphLauncher(NativeSpecTargetGraphLauncher):
+    """Submit a shared PARO MTP/DFlash chain target graph through ABI v1."""
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs, _kind="provider_target")
+
+
 def create_native_spec_proposal_graph_launcher(
     *,
     graph_exec: int,
@@ -250,6 +262,34 @@ def create_native_spec_proposal_graph_launcher(
 
     runtime = runtime or get_hip_runtime()
     return NativeSpecProposalGraphLauncher(
+        graph_exec=graph_exec,
+        graph_launch_fn=_function_address(runtime.library.hipGraphLaunch),
+        stream_synchronize_fn=_function_address(runtime.library.hipStreamSynchronize),
+        bound_control=bound_control,
+        library=library,
+        runtime=runtime,
+        compiler_version=compiler_version,
+        profile=profile,
+        target_arch=target_arch,
+        require_cached=require_cached,
+    )
+
+
+def create_native_spec_provider_target_graph_launcher(
+    *,
+    graph_exec: int,
+    runtime: HipRuntime | None = None,
+    bound_control: NativeSpecCycleControl | None = None,
+    library: ctypes.CDLL | object | None = None,
+    compiler_version: str | None = None,
+    profile: ProfileName = "baseline",
+    target_arch: str | None = None,
+    require_cached: bool = False,
+) -> NativeSpecProviderTargetGraphLauncher:
+    """Registry factory for shared PARO MTP/DFlash chain target graphs."""
+
+    runtime = runtime or get_hip_runtime()
+    return NativeSpecProviderTargetGraphLauncher(
         graph_exec=graph_exec,
         graph_launch_fn=_function_address(runtime.library.hipGraphLaunch),
         stream_synchronize_fn=_function_address(runtime.library.hipStreamSynchronize),
@@ -291,6 +331,8 @@ def create_native_spec_target_graph_launcher(
 def _validate_graph_control(kind: str, control: NativeSpecCycleControl) -> None:
     if kind == "proposal":
         _validate_small_chain_proposal(control)
+    elif kind == "provider_target":
+        _validate_provider_chain_target(control)
     else:
         _validate_small_chain_target(control)
 
@@ -330,6 +372,42 @@ def _validate_small_chain_proposal(control: NativeSpecCycleControl) -> None:
         raise ValueError("native proposal graph does not yet support a deadline")
     if control.pointers.outputs.cancel_flag != 0:
         raise ValueError("native proposal graph does not yet support cancellation")
+
+
+def _validate_provider_chain_target(control: NativeSpecCycleControl) -> None:
+    shape = control.shape
+    supported_stages = {
+        NativeSpecCycleStage.VERIFY,
+        NativeSpecCycleStage.VERIFY | NativeSpecCycleStage.ACCEPT,
+    }
+    candidate_rows = int(shape.row_count) - 1
+    if control.stages not in supported_stages:
+        raise ValueError("provider target graph supports VERIFY or VERIFY|ACCEPT")
+    if (
+        control.mode.name != "CHAIN"
+        or shape.request_count != 1
+        or candidate_rows not in {1, 2, 3, 4, 5, 8}
+        or shape.active_row_count != shape.row_count
+        or shape.candidate_count != candidate_rows
+        or shape.active_candidate_count != candidate_rows
+        or shape.candidate_budget != candidate_rows
+    ):
+        raise ValueError(
+            "provider target graph supports one active B1/B2/B3/B4/B5/B8 chain bucket"
+        )
+    if shape.metadata_dtype is not NativeSpecCycleDType.INT32:
+        raise ValueError("provider target graph requires INT32 verifier metadata")
+    if shape.hidden_dtype not in {
+        NativeSpecCycleDType.FP16,
+        NativeSpecCycleDType.BF16,
+    }:
+        raise ValueError("provider target graph requires FP16/BF16 hidden rows")
+    if shape.kv_dtype is not NativeSpecCycleDType.BF16:
+        raise ValueError("provider target graph requires BF16 target KV")
+    if control.deadline_ns != 0:
+        raise ValueError("provider target graph does not yet support a deadline")
+    if control.pointers.outputs.cancel_flag != 0:
+        raise ValueError("provider target graph does not yet support cancellation")
 
 
 def _validate_small_chain_target(control: NativeSpecCycleControl) -> None:
@@ -423,11 +501,34 @@ register(
 )
 
 
+def register_native_spec_provider_target_graph(*, replace: bool = True) -> None:
+    """Register the gfx1100 N4 provider only when its adapter is requested.
+
+    Keeping this key lazy prevents the generic gfx1151 shared-body alias refresh
+    from admitting an unvalidated provider merely because this module was
+    imported for ABI tests or GGUF N1/N3P registration.
+    """
+
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "speculative_cycle",
+            "w4_paro",
+            "native_v1_target_graph",
+        ),
+        create_native_spec_provider_target_graph_launcher,
+        replace=replace,
+    )
+
+
 __all__ = [
     "NativeSpecProposalGraphLauncher",
+    "NativeSpecProviderTargetGraphLauncher",
     "NativeSpecTargetGraphLauncher",
     "build_native_spec_cycle_graph_launcher",
     "create_native_spec_proposal_graph_launcher",
+    "create_native_spec_provider_target_graph_launcher",
     "create_native_spec_target_graph_launcher",
     "plan_native_spec_cycle_graph_launcher_build",
+    "register_native_spec_provider_target_graph",
 ]

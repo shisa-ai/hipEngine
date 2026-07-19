@@ -70,6 +70,13 @@ Current status:
   `TargetVerifyBatch` rows, captures target hidden taps, samples row-wise top-1,
   validates `dflash_accept_chain_i32` against the CPU oracle, commits the
   selected linear state row, and keeps the serial in-place verifier as fallback;
+- the first cross-provider N4 slice registers the shared gfx1100
+  `w4_paro/native_v1_target_graph` adapter. With explicit
+  `HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH=1`, eligible single-request chain
+  graph replays enter one NativeSpecCycle ABI call for `VERIFY|ACCEPT`; DFlash
+  hidden taps, linear/KV commit, cursor/result construction, graph-off/tree/
+  inactive shapes, and every unsupported backend remain on the existing exact
+  path. This is default-off infrastructure, not a DFlash throughput promotion;
 - native prefill still stops at the three-layer linear prefix, with first
   unsupported layer 3 (`full_attention`);
 - speculative metadata and KV transactions reject duplicate request ids,

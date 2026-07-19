@@ -98,6 +98,26 @@ def _verify_control() -> NativeSpecCycleControl:
     )
 
 
+def test_native_target_adapter_can_declare_verify_accept_without_commit() -> None:
+    _target, buffers = _target_and_buffers()
+    stages = NativeSpecCycleStage.VERIFY | NativeSpecCycleStage.ACCEPT
+
+    control = NativeSpecCycleControl.for_target_verify(
+        cycle_id=8,
+        buffers=buffers,
+        kv_live_spans=_spans(),
+        hidden_seed_rows=_tensor(0x3000, (3, 2048), DType.BF16),
+        context_bucket=128,
+        stages=stages,
+        candidate_counts_ptr=0x2F00,
+    )
+
+    assert control.stages == stages
+    assert control.pointers.metadata.candidate_counts == 0x2F00
+    assert control.pointers.outputs.accepted_counts == buffers.accepted_counts.ptr
+    assert control.shape.hidden_dtype is NativeSpecCycleDType.BF16
+
+
 def test_native_spec_cycle_v1_maps_existing_verify_and_kvlivespans_abis() -> None:
     control = _verify_control()
 

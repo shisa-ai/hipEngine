@@ -1,8 +1,9 @@
-// Host-only fixed-B2 target graph launcher for NativeSpecCycle ABI v1.
+// Host-only target/proposal graph launcher for NativeSpecCycle ABI v1.
 //
 // The provider owns the graph executable and resolves backend runtime entry
-// points once.  This launcher validates the provider-neutral control block,
-// submits exactly one target graph, synchronizes its session-owned stream, and
+// points once. This launcher validates either the strict GGUF B1/B2 contract
+// or the shared PARO MTP/DFlash B1/B2/B3/B4/B5/B8 target+accept contract,
+// submits exactly one graph, synchronizes its selected stream, and
 // writes a bounded terminal result.  It contains no device math and owns none
 // of the borrowed pointers or handles.
 
@@ -60,6 +61,18 @@ bool has_required_verify_pointers(const HipengineNativeSpecCycleControlV1* contr
          control->output_target_top1 != 0;
 }
 
+bool has_required_accept_pointers(const HipengineNativeSpecCycleControlV1* control) {
+  return control->metadata_candidate_counts != 0 &&
+         control->output_accepted_counts != 0 &&
+         control->output_commit_rows != 0 &&
+         control->output_commit_tokens != 0 &&
+         control->output_commit_positions != 0 &&
+         control->output_next_tokens != 0 &&
+         control->output_full_accept != 0 &&
+         control->output_committed_output_ids != 0 &&
+         control->output_committed_output_lengths != 0;
+}
+
 bool has_required_n2_pointers(const HipengineNativeSpecCycleControlV1* control) {
   return control->metadata_candidate_counts != 0 &&
          control->metadata_remaining_decode != 0 &&
@@ -115,6 +128,40 @@ bool is_small_chain_target(const HipengineNativeSpecCycleControlV1* control) {
          (!n2 || has_required_n2_pointers(control));
 }
 
+bool is_provider_chain_target(const HipengineNativeSpecCycleControlV1* control) {
+  constexpr uint32_t kVerifyAcceptStages = HIPENGINE_NATIVE_SPEC_STAGE_VERIFY |
+                                            HIPENGINE_NATIVE_SPEC_STAGE_ACCEPT;
+  const bool verify_only = control->stage_mask == HIPENGINE_NATIVE_SPEC_STAGE_VERIFY;
+  const bool verify_accept = control->stage_mask == kVerifyAcceptStages;
+  const uint32_t rows = control->row_count;
+  const uint32_t candidates = rows >= 1 ? rows - 1 : 0;
+  const bool supported_budget = candidates == 1 || candidates == 2 ||
+                                candidates == 3 || candidates == 4 ||
+                                candidates == 5 || candidates == 8;
+  return (verify_only || verify_accept) &&
+         control->mode == HIPENGINE_NATIVE_SPEC_MODE_CHAIN &&
+         control->request_count == 1 &&
+         control->request_capacity >= 1 &&
+         supported_budget &&
+         control->active_row_count == rows &&
+         control->row_capacity >= rows &&
+         control->candidate_count == candidates &&
+         control->active_candidate_count == candidates &&
+         control->candidate_capacity >= candidates &&
+         control->candidate_budget == candidates &&
+         control->span_count > 0 &&
+         control->span_capacity >= control->span_count &&
+         control->context_bucket >= control->max_live_count &&
+         control->hidden_size > 0 &&
+         control->hidden_row_capacity >= rows &&
+         control->output_stride >= rows &&
+         control->metadata_dtype == HIPENGINE_NATIVE_SPEC_DTYPE_INT32 &&
+         (control->hidden_dtype == HIPENGINE_NATIVE_SPEC_DTYPE_FP16 ||
+          control->hidden_dtype == HIPENGINE_NATIVE_SPEC_DTYPE_BF16) &&
+         control->kv_dtype == HIPENGINE_NATIVE_SPEC_DTYPE_BF16 &&
+         (!verify_accept || has_required_accept_pointers(control));
+}
+
 bool has_required_proposal_pointers(const HipengineNativeSpecCycleControlV1* control) {
   return control->state_hidden_seed_in != 0 &&
          control->state_candidate_token_ids != 0 &&
@@ -154,8 +201,9 @@ int32_t submit_graph(
     void* graph_exec,
     void* graph_launch_address,
     void* stream_synchronize_address,
-    uint32_t failed_stage) {
-  if (control->stream == 0 || control->deadline_ns != 0 ||
+    uint32_t failed_stage,
+    bool allow_default_stream = false) {
+  if ((!allow_default_stream && control->stream == 0) || control->deadline_ns != 0 ||
       control->output_cancel_flag != 0 || graph_exec == nullptr ||
       graph_launch_address == nullptr || stream_synchronize_address == nullptr) {
     return fail(result, HIPENGINE_NATIVE_SPEC_ERROR_INVALID_CONTROL, failed_stage);
@@ -196,7 +244,9 @@ extern "C" int32_t hipengine_native_spec_target_graph_launch_v1(
       control->struct_size != sizeof(*control)) {
     return fail(result, HIPENGINE_NATIVE_SPEC_ERROR_ABI_MISMATCH, kStage);
   }
-  if (!is_small_chain_target(control)) {
+  const bool is_small_gguf = is_small_chain_target(control);
+  const bool is_provider_target = is_provider_chain_target(control);
+  if (!is_small_gguf && !is_provider_target) {
     return fail(result, HIPENGINE_NATIVE_SPEC_ERROR_UNSUPPORTED_SHAPE, kStage);
   }
   if (!has_required_verify_pointers(control)) {
@@ -204,7 +254,7 @@ extern "C" int32_t hipengine_native_spec_target_graph_launch_v1(
   }
   return submit_graph(
       control, result, graph_exec, graph_launch_address,
-      stream_synchronize_address, kStage);
+      stream_synchronize_address, kStage, is_provider_target);
 }
 
 extern "C" int32_t hipengine_native_spec_proposal_graph_launch_v1(

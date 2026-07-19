@@ -371,9 +371,18 @@ accept/commit metadata, and scheduler-facing results.
    The clean detached confirmation at `2395ad33` is **118.183 tok/s / 1.2820x
    true AR / 8.610 ms-output**, matches clean N3 across 97 non-timing fields for
    every cycle, and remains diagnostic because N1 is faster.
-7. **N4 — Shared provider adapters:** migrate GGUF MTP first, then PARO MTP and
-   DFlash without duplicating the launcher. Add gfx1100 and gfx1151 gates for
-   each provider before default promotion.
+7. **N4 — Shared provider adapters (first gfx1100 target slice landed
+   diagnostic 2026-07-19):** the registered `w4_paro/native_v1_target_graph`
+   adapter lets both PARO MTP and DFlash submit their existing single-request
+   B1/B2/B3/B4/B5/B8 chain target+accept graph through NativeSpecCycle ABI v1.
+   The control binds real verify-chain `KVLiveSpans`, fixed INT32 metadata and
+   accept buffers, and either resident FP16 verifier rows or BF16 sidecar hidden
+   taps. It accurately declares only `VERIFY|ACCEPT`; provider linear/KV/hidden
+   commit remains the unchanged exact path. Graph-off, tree, inactive, unsupported,
+   pre-launch failure, and unregistered-backend cases retain direct fallback.
+   Admission is explicit/default-off via
+   `HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH=1`. Complete PARO/DFlash cycle
+   ownership and independent gfx1100/gfx1151 promotion gates remain open.
 8. **N5 — Multi-cycle option:** only after N3/N4 are exact, allow the native
    launcher to continue until EOS, cancellation/deadline, output-buffer limit,
    or an explicit scheduler yield point.
@@ -1350,9 +1359,11 @@ is now answered by the M1 required/optional table.)
       proposal-only NativeSpecCycle graphs (N3P). The full-suite semantic gate,
       proposal K/V byte oracle, aggregate-neutral same-source pair, and cached
       host-submission trace pass. Keep N1/N2/N3 and unsupported-shape fallbacks.
-- [ ] Extend the complete native cycle to PARO MTP and DFlash provider adapters;
-      validate gfx1100 and gfx1151 independently before any default promotion
-      (N4).
+- [x] Add the first shared gfx1100 PARO MTP/DFlash `VERIFY|ACCEPT` target-graph
+      adapter through the provider-neutral NativeSpecCycle ABI, retaining
+      provider commit and exact unsupported-shape fallback (N4 target slice).
+- [ ] Extend N4 through complete PARO MTP and DFlash proposal/commit ownership;
+      validate gfx1100 and gfx1151 independently before any default promotion.
 - [x] Profile N1 and reusable N1R after cached build warmup. The retained N1R
       windows average **18.671 ms host / 13.670 ms kernels / 5.001 ms residual**
       across six graph replays, with zero capture charged in every measured
