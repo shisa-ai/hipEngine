@@ -2038,8 +2038,21 @@ class _GenerationBatcher:
         return tuple(queue.qsize() for queue in queues.values())
 
     def _route_request_cap(self, route: str) -> int | None:
+        route_name = str(route)
         limit = self._max_active_requests
-        route_limit = self._route_max_active_requests.get(str(route))
+        route_limit = self._route_max_active_requests.get(route_name)
+        if route_name == _SPECULATIVE_MTP_DEFAULT_ROUTE:
+            registered_limit = getattr(
+                self._engine_factory(),
+                "server_plain_ar_max_active_requests",
+                None,
+            )
+            if registered_limit is not None:
+                route_limit = int(registered_limit)
+                if route_limit < 1:
+                    raise ValueError(
+                        "server_plain_ar_max_active_requests must be positive"
+                    )
         if route_limit is not None:
             limit = route_limit if limit is None else min(limit, route_limit)
         return limit

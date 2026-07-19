@@ -4646,6 +4646,39 @@ def test_generation_batcher_applies_route_specific_group_limit() -> None:
     asyncio.run(run())
 
 
+def test_generation_batcher_uses_registered_plain_ar_cap_without_widening_mtp() -> None:
+    async def run() -> None:
+        class FakeNativeC8LLM(FakeLLM):
+            server_plain_ar_max_active_requests = 8
+
+        fake = FakeNativeC8LLM()
+        sampling = SamplingParams(max_tokens=2)
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.01,
+            max_active_requests=8,
+            route_max_active_requests={
+                _SPECULATIVE_MTP_DEFAULT_ROUTE: 4,
+                _SPECULATIVE_MTP_BATCH_ROUTE: 4,
+                _SPECULATIVE_MTP_AUTO_ROUTE: 4,
+            },
+        )
+
+        results = await asyncio.gather(
+            *(batcher.submit((f"prompt-{index}",), sampling) for index in range(8))
+        )
+
+        assert results == [[f"generated:prompt-{index}"] for index in range(8)]
+        assert fake.calls == [
+            (tuple(f"prompt-{index}" for index in range(8)), sampling),
+        ]
+        assert batcher._route_request_cap(_SPECULATIVE_MTP_DEFAULT_ROUTE) == 8
+        assert batcher._route_request_cap(_SPECULATIVE_MTP_AUTO_ROUTE) == 4
+        assert batcher._route_request_cap(_SPECULATIVE_MTP_BATCH_ROUTE) == 4
+
+    asyncio.run(run())
+
+
 def test_server_auto_quant_keeps_gguf_route_group_limits() -> None:
     app = create_app(
         ServerConfig(

@@ -59,6 +59,7 @@ from hipengine.generation import (
     engine_loop_config_from_args,
     engine_loop_config_from_env,
 )
+from hipengine.generation.engine_loop import _submit_poll_max_ticks
 from hipengine.kvcache import ChunkedKVPool, FixedPagedKVPolicy
 from hipengine.speculative import AcceptResult, DraftBatch, TargetAcceptSummary, TargetStateCommitBuffers, TargetVerifyBuffers
 from scripts import qwen35_batch_artifact_schema as artifact_schema
@@ -16054,6 +16055,16 @@ def test_retained_bench_int8_primitive_reference_requires_self_describing_hip_ga
     )
     assert missing_require_reference["passed"] is False
     assert "missing --require-int8-hip" in missing_require_reference["reason"]
+
+
+def test_submit_poll_tick_budget_covers_c8_fair_prefill_stagger() -> None:
+    prompt_rows = tuple((9707,) * 512 for _ in range(8))
+
+    assert _submit_poll_max_ticks(
+        prompt_rows,
+        256,
+        max_new_tokens=128,
+    ) == 160
 
 
 def test_submit_poll_text_generator_preserves_prompt_order_and_row_seeds() -> None:

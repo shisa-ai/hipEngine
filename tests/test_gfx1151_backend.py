@@ -529,6 +529,7 @@ def test_qwen35_gguf_gfx1151_generation_factory_sets_backend(monkeypatch) -> Non
         "prefill_decode_policy": "fair",
         "max_prefill_chunk_tokens": 256,
     }
+    assert generator.server_plain_ar_max_active_requests == 8
 
     other_quant_factory = resolve_text_generator(
         model="qwen3_5_moe_gguf",
@@ -541,6 +542,7 @@ def test_qwen35_gguf_gfx1151_generation_factory_sets_backend(monkeypatch) -> Non
         model_plugin=object(),
     )
     assert other_quant_generator.engine_loop_config_defaults == {}
+    assert other_quant_generator.server_plain_ar_max_active_requests is None
 
 
 def test_gguf_weight_backend_drives_embedding_and_linear_dispatch() -> None:
