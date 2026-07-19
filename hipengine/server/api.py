@@ -45,6 +45,7 @@ from hipengine.generation import (
     DecodeState,
     FinishDetails,
     GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS,
+    GenerationAdmissionRejected,
     GenerationCancellationToken,
     GenerationCancelled,
     GenerationDeadlineExceeded,
@@ -393,6 +394,36 @@ class OpenAIHTTPError(Exception):
         self.extra = {} if extra is None else dict(extra)
         self.headers = {} if headers is None else dict(headers)
         super().__init__(message)
+
+
+def _generation_admission_http_error(
+    exc: GenerationAdmissionRejected,
+    *,
+    retry_after_seconds: int,
+    error_extra: Mapping[str, Any] | None = None,
+) -> OpenAIHTTPError:
+    """Convert a bounded resource miss into the public retryable admission error."""
+
+    extra = deepcopy(dict(error_extra or {}))
+    hipengine = extra.get("hipengine")
+    if not isinstance(hipengine, dict):
+        hipengine = {}
+        extra["hipengine"] = hipengine
+    routing = hipengine.get("routing")
+    if not isinstance(routing, dict):
+        routing = {}
+        hipengine["routing"] = routing
+    routing["reason"] = "engine_busy"
+    routing["overload_source"] = "kv_pool_capacity"
+    routing["admission"] = exc.to_json_dict()
+    return OpenAIHTTPError(
+        429,
+        str(exc),
+        error_type="rate_limit_error",
+        code="engine_busy",
+        extra=extra,
+        headers={"Retry-After": str(max(1, int(retry_after_seconds)))},
+    )
 
 
 _ERROR_TAXONOMY: dict[str, dict[str, Any]] = {
@@ -2094,7 +2125,14 @@ class _GenerationBatcher:
         )
         if self._worker is None or self._worker.done():
             self._worker = loop.create_task(self._run())
-        return await future
+        try:
+            return await future
+        except GenerationAdmissionRejected as exc:
+            raise _generation_admission_http_error(
+                exc,
+                retry_after_seconds=self._retry_after_seconds,
+                error_extra=error_extra,
+            ) from exc
 
     async def stream(
         self,
@@ -2122,6 +2160,12 @@ class _GenerationBatcher:
                 event = await queue.get()
                 if event is _STREAM_DONE:
                     break
+                if isinstance(event, GenerationAdmissionRejected):
+                    raise _generation_admission_http_error(
+                        event,
+                        retry_after_seconds=self._retry_after_seconds,
+                        error_extra=error_extra,
+                    ) from event
                 if isinstance(event, BaseException):
                     raise event
                 yield event
@@ -3978,6 +4022,19 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 else:
                     raw_outputs = queued_result
                     scheduler_token_chunks = None
+        except GenerationAdmissionRejected as exc:
+            openai_exc = _generation_admission_http_error(
+                exc,
+                retry_after_seconds=config.queue_retry_after_seconds,
+                error_extra=route_rejection_extra(
+                    requested_model=request.model,
+                    reason="engine_busy",
+                    engine=getattr(app.state, "hipengine_llm", None),
+                    details={"overload_source": "kv_pool_capacity"},
+                ),
+            )
+            _record_openai_error(app.state.hipengine_server_metrics, openai_exc)
+            raise openai_exc from exc
         except GenerationDeadlineExceeded as exc:
             raise _deadline_exceeded_error(exc.finish_details) from exc
         except GenerationCancelled as exc:

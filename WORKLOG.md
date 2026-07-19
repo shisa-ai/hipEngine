@@ -165708,3 +165708,35 @@ Artifact:
 Default remains `off`; next blockers are broader boundary/LRU/graph pressure,
 sampled reuse, gfx1100 transfer, and a policy decision that explicitly accepts
 or budgets the completed-cache residency tradeoff.
+
+## 2026-07-19 — Make device-KV pressure a retryable admission rejection
+
+The long-context/memory-pressure inventory found that GGUF device-pool
+high-water rejection was already atomic but escaped the OpenAI serving path as a
+generic generation failure. Added `GenerationAdmissionRejected`, carrying the
+resource plus requested/current/capacity units, and translated it at the shared
+generation batcher boundary to retryable OpenAI `429 engine_busy`. Blocking
+responses preserve `Retry-After`; SSE emits an error event with status 429 and
+`[DONE]`. Both expose `overload_source=kv_pool_capacity` and exact admission
+page metadata. Other `MemoryError`/runtime failures remain generic rather than
+being mislabeled as overload.
+
+The GGUF resident owner now wraps only the final private device-page allocation
+failure; shared-prefix same-backing misses may still fall back to private
+allocation first. The existing atomic contract remains unchanged: no session
+lease, request allocation, refcount, or physical slot is published on failure.
+
+RED failed because the typed exception/export did not exist. GREEN validation:
+
+```text
+focused admission + blocking/SSE nodes: passed
+full GGUF generation sampling file: passed
+full resident batch-scheduler file: passed
+full server API file: passed
+py_compile + git diff --check: passed
+```
+
+No GPU run or performance claim is attached. The next unit is a real gfx1151
+mixed-context pressure harness that must force grow, rejection, release,
+shrink, regrow, graph invalidation/rebind, exact survivor output, and final zero
+ownership through this public contract.

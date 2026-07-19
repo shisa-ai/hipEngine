@@ -76,6 +76,44 @@ class EngineLoopConfig:
         object.__setattr__(self, "prefix_cache", resolve_prefix_cache_mode(self.prefix_cache))
 
 
+class GenerationAdmissionRejected(MemoryError):
+    """Retryable failure to reserve bounded generation resources at admission."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        resource: str,
+        requested_units: int | None = None,
+        current_units: int | None = None,
+        capacity_units: int | None = None,
+    ) -> None:
+        if not str(message):
+            raise ValueError("admission rejection message must not be empty")
+        if not str(resource):
+            raise ValueError("admission rejection resource must not be empty")
+        for label, value in (
+            ("requested_units", requested_units),
+            ("current_units", current_units),
+            ("capacity_units", capacity_units),
+        ):
+            if value is not None and int(value) < 0:
+                raise ValueError(f"{label} must be non-negative when set")
+        self.resource = str(resource)
+        self.requested_units = None if requested_units is None else int(requested_units)
+        self.current_units = None if current_units is None else int(current_units)
+        self.capacity_units = None if capacity_units is None else int(capacity_units)
+        super().__init__(str(message))
+
+    def to_json_dict(self) -> dict[str, Any]:
+        return {
+            "resource": self.resource,
+            "requested_units": self.requested_units,
+            "current_units": self.current_units,
+            "capacity_units": self.capacity_units,
+        }
+
+
 @dataclass(frozen=True, slots=True)
 class GenerationSubmission:
     """Stable request ids for one batch submitted to a shared model loop."""

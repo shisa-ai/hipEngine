@@ -21,6 +21,7 @@ from hipengine import SamplingParams
 from hipengine.generation import (
     GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS,
     FinishDetails,
+    GenerationAdmissionRejected,
     GenerationCancellationToken,
     GenerationCancelled,
     GenerationDeadlineExceeded,
@@ -379,6 +380,28 @@ class BackendDeadlineFakeLLM(FakeLLM):
         self.calls.append(((prompt,), sampling_params))
         assert sampling_params.deadline_at is not None
         raise GenerationDeadlineExceeded(deadline_at=sampling_params.deadline_at)
+        yield  # pragma: no cover - keeps this method a generator
+
+
+class AdmissionRejectedFakeLLM(FakeLLM):
+    def _reject(self, prompts, sampling_params: SamplingParams) -> None:
+        prompts = tuple(prompts)
+        self.calls.append((prompts, sampling_params))
+        raise GenerationAdmissionRejected(
+            "device KV pool high-water rejection",
+            resource="device_kv_pool",
+            requested_units=17,
+            current_units=129,
+            capacity_units=129,
+        )
+
+    def generate_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
+        self._reject(prompts, sampling_params)
+        raise AssertionError("unreachable")
+
+    def stream(self, prompt: str, sampling_params: SamplingParams):
+        self.stream_calls.append((str(prompt), sampling_params))
+        self._reject((prompt,), sampling_params)
         yield  # pragma: no cover - keeps this method a generator
 
 
@@ -9305,6 +9328,38 @@ def test_backend_deadline_exception_maps_to_completion_408() -> None:
     assert error["finish_details"] == {"reason": "deadline_exceeded", "deadline_exceeded": True}
 
 
+def test_kv_admission_rejection_maps_to_retryable_completion_429() -> None:
+    fake = AdmissionRejectedFakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            queue_retry_after_seconds=3,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "pressure", "max_tokens": 4},
+    )
+
+    assert response.status_code == 429
+    assert response.headers["retry-after"] == "3"
+    error = response.json()["error"]
+    assert error["type"] == "rate_limit_error"
+    assert error["code"] == "engine_busy"
+    assert error["hipengine"]["retryable"] is True
+    assert error["hipengine"]["routing"]["overload_source"] == "kv_pool_capacity"
+    assert error["hipengine"]["routing"]["admission"] == {
+        "resource": "device_kv_pool",
+        "requested_units": 17,
+        "current_units": 129,
+        "capacity_units": 129,
+    }
+
+
 def test_backend_cancelled_exception_maps_to_completion_499() -> None:
     fake = BackendCancelledFakeLLM()
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
@@ -9443,6 +9498,27 @@ def test_streaming_chat_backend_deadline_exception_emits_error_and_done() -> Non
     assert payload["error"]["type"] == "timeout_error"
     assert payload["error"]["code"] == "deadline_exceeded"
     assert payload["error"]["param"] == "timeout_ms"
+
+
+def test_streaming_kv_admission_rejection_emits_retryable_429_and_done() -> None:
+    fake = AdmissionRejectedFakeLLM()
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/completions",
+        json={"model": "fake-model", "prompt": "pressure", "max_tokens": 4, "stream": True},
+    )
+
+    assert response.status_code == 200
+    assert "data: [DONE]" in response.text
+    payload = next(item for item in _sse_payloads(response.text) if item.get("error"))
+    assert payload["choices"][0]["finish_reason"] == "error"
+    assert payload["error"]["type"] == "rate_limit_error"
+    assert payload["error"]["code"] == "engine_busy"
+    assert payload["error"]["hipengine"]["status_code"] == 429
+    assert payload["error"]["hipengine"]["retryable"] is True
+    assert payload["error"]["hipengine"]["routing"]["overload_source"] == "kv_pool_capacity"
 
 
 def test_streaming_completion_backend_cancelled_exception_emits_error_and_done() -> None:

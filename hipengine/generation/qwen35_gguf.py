@@ -29,6 +29,7 @@ from hipengine.dispatch import (
 from hipengine.generation.batch_scheduler import CompletedRequest, GeneratedToken
 from hipengine.generation.constraints import token_sequence_state_for_tokens
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
+from hipengine.generation.engine_loop import GenerationAdmissionRejected
 from hipengine.generation.finish import finish_details_with_sampling_state
 from hipengine.generation.registry import (
     FinishDetails,
@@ -4253,7 +4254,25 @@ class Qwen35GGUFResidentModelRunner:
                 self._sample_kv_hip_memory()
                 return
 
-        allocation = pool.allocate(row.request_id, pages, now_seconds=time.monotonic())
+        try:
+            allocation = pool.allocate(
+                row.request_id,
+                pages,
+                now_seconds=time.monotonic(),
+            )
+        except MemoryError as exc:
+            stats = pool.stats
+            raise GenerationAdmissionRejected(
+                str(exc),
+                resource="device_kv_pool",
+                requested_units=pages,
+                current_units=int(stats.current_pages),
+                capacity_units=(
+                    int(pool.high_water_pages)
+                    if pool.high_water_pages is not None
+                    else None
+                ),
+            ) from exc
         try:
             lease.session.bind_device_kv_allocation(pool, allocation)
         except Exception:
