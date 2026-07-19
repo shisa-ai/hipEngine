@@ -424,8 +424,8 @@ def _patch_compact_registry(
                 (
                     kwargs["compact_rows"],
                     kwargs["in_features"],
-                    kwargs["gate_out_features"],
-                    kwargs["up_out_features"],
+                    kwargs["out_features_a"],
+                    kwargs["out_features_b"],
                     kwargs["num_experts"],
                     kwargs["wmma_total_rows"],
                 ),
