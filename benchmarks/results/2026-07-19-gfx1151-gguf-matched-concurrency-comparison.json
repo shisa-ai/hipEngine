@@ -1,0 +1,1759 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_matched_server_concurrency_comparison",
+  "created_at": "2026-07-19T07:33:53.083213+00:00",
+  "status": "accepted_hipengine_scaling_external_c_gt_1_blocked",
+  "passed": true,
+  "performance_claim": true,
+  "performance_claim_scope": "hipEngine exact own-engine C1/C2/C4/C8/C13 real-Uvicorn blocking/SSE scaling and same-protocol C1 comparison only; no C>1 llama.cpp speed claim",
+  "hipengine_artifact_provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-19T07:33:53.079548+00:00",
+    "repo_root": "/home/lhl/hipEngine-main",
+    "hipengine_commit": "8405c46723efb136df279e03500bbe2425e40384",
+    "git_branch": "main",
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": true,
+    "untracked_count": 255,
+    "dirty": true,
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        11331169424,
+        22662338848
+      ],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "command": [
+      "/home/lhl/hipEngine-main/.venv/bin/python",
+      "scripts/server_f1_concurrency_bench.py",
+      "--engine",
+      "hipengine",
+      "--model",
+      "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1151",
+      "--quant",
+      "gguf_q4_k_m",
+      "--hipengine-python",
+      "/home/lhl/hipEngine-main/.venv/bin/python",
+      "--compiler-version-file",
+      "/tmp/gfx1151-concurrency-ddab579f/hipcc-version.txt",
+      "--concurrencies",
+      "1,2,4,8,13",
+      "--live-concurrency",
+      "13",
+      "--prompt-length",
+      "512",
+      "--decode-tokens",
+      "128",
+      "--ctx-per-seq",
+      "1024",
+      "--warmup-runs",
+      "1",
+      "--measured-runs",
+      "3",
+      "--streaming-primary",
+      "--stream-warmup-runs",
+      "0",
+      "--stream-measured-runs",
+      "3",
+      "--batch-window-ms",
+      "5",
+      "--hipengine-prefill-decode-policy",
+      "fair",
+      "--live-join-after-tokens",
+      "8",
+      "--memory-domain",
+      "gtt",
+      "--drm-card-index",
+      "0",
+      "--memory-poll-ms",
+      "10",
+      "--work-dir",
+      "/tmp/gfx1151-external-f1-standard-8405c467-fair256/hipengine/work",
+      "--json",
+      "/tmp/gfx1151-external-f1-standard-8405c467-fair256/hipengine/result.json"
+    ],
+    "environment": {
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_BACKEND": "hip_gfx1151",
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIPENGINE_PREFILL_DECODE_POLICY": "fair",
+      "HIPENGINE_MAX_PREFILL_CHUNK_TOKENS": "256",
+      "HIPENGINE_RESIDENT_EVENT_QUEUE_CAPACITY": "64",
+      "AMD_IOMMU": "off",
+      "TUNED_PROFILE": "accelerator-performance"
+    },
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "build_profile": "gfx1151_gguf_matched_real_uvicorn_concurrency_fair256",
+    "timing_protocol": "fresh server per C; one warmup plus three blocking and three localhost-SSE measurements at p512/d128; independent same-engine c1 token oracle; delayed C13 admission",
+    "warmups": 1,
+    "repetitions": 3,
+    "profiler": {
+      "used": false,
+      "reason": "client-observed localhost HTTP/SSE cycle-wall packet"
+    }
+  },
+  "source_interpretation": {
+    "measured_commit": "8405c46723efb136df279e03500bbe2425e40384",
+    "tracked_source_clean_at_measurement": true,
+    "tracked_status_at_measurement": "## main...origin/main [ahead 30]",
+    "canonical_provenance_untracked_note": "Canonical post-measurement collection sees only pre-existing untracked benchmarks/results artifacts; all runtime/imported tracked files remain exactly at the measured commit."
+  },
+  "source_artifacts": {
+    "hipengine": {
+      "path": "/tmp/gfx1151-external-f1-standard-8405c467-fair256/hipengine/result.json",
+      "size_bytes": 1911329,
+      "sha256": "adc8e3d33e271d38ece8b22c27f0360fc893735bfe322b163e882dc758f20457",
+      "created_at": "2026-07-19T07:02:31.638566+00:00",
+      "completed_at": "2026-07-19T07:15:03.456423+00:00",
+      "status": "accepted_backend_packet",
+      "passed": true,
+      "performance_claim": true,
+      "command": "/home/lhl/hipEngine-main/.venv/bin/python scripts/server_f1_concurrency_bench.py --engine hipengine --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --hipengine-python /home/lhl/hipEngine-main/.venv/bin/python --compiler-version-file /tmp/gfx1151-concurrency-ddab579f/hipcc-version.txt --concurrencies 1,2,4,8,13 --live-concurrency 13 --prompt-length 512 --decode-tokens 128 --ctx-per-seq 1024 --warmup-runs 1 --measured-runs 3 --streaming-primary --stream-warmup-runs 0 --stream-measured-runs 3 --batch-window-ms 5 --hipengine-prefill-decode-policy fair --live-join-after-tokens 8 --memory-domain gtt --drm-card-index 0 --memory-poll-ms 10 --work-dir /tmp/gfx1151-external-f1-standard-8405c467-fair256/hipengine/work --json /tmp/gfx1151-external-f1-standard-8405c467-fair256/hipengine/result.json"
+    },
+    "llamacpp-hip": {
+      "path": "/tmp/gfx1151-external-f1-standard-8405c467-fair256/llamacpp-hip/result.json",
+      "size_bytes": 2042002,
+      "sha256": "7212a0830f683c41bcfc1633158e3bc940ba7e6a7f5036df7daa024efd89b74e",
+      "created_at": "2026-07-19T07:15:25.298897+00:00",
+      "completed_at": "2026-07-19T07:21:08.448308+00:00",
+      "status": "failed_gate",
+      "passed": false,
+      "performance_claim": false,
+      "command": "/home/lhl/hipEngine-main/.venv/bin/python scripts/server_f1_concurrency_bench.py --engine llamacpp-hip --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --llamacpp-hip-repo /home/lhl/llama.cpp/llama.cpp-hip --llamacpp-hip-server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server --concurrencies 1,2,4,8,13 --live-concurrency 13 --prompt-length 512 --decode-tokens 128 --ctx-per-seq 1024 --warmup-runs 1 --measured-runs 3 --streaming-primary --stream-warmup-runs 0 --stream-measured-runs 3 --live-join-after-tokens 8 --memory-domain gtt --drm-card-index 0 --memory-poll-ms 10 --work-dir /tmp/gfx1151-external-f1-standard-8405c467-fair256/llamacpp-hip/work --json /tmp/gfx1151-external-f1-standard-8405c467-fair256/llamacpp-hip/result.json"
+    },
+    "llamacpp-vulkan": {
+      "path": "/tmp/gfx1151-external-f1-standard-8405c467-fair256/llamacpp-vulkan/result.json",
+      "size_bytes": 2048737,
+      "sha256": "4f088040ed8f118ce6c93f8d39c123a8e7c973016673e8bcf7a08fd854d9a553",
+      "created_at": "2026-07-19T07:21:35.659607+00:00",
+      "completed_at": "2026-07-19T07:27:29.687440+00:00",
+      "status": "failed_gate",
+      "passed": false,
+      "performance_claim": false,
+      "command": "/home/lhl/hipEngine-main/.venv/bin/python scripts/server_f1_concurrency_bench.py --engine llamacpp-vulkan --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --llamacpp-vulkan-repo /home/lhl/llama.cpp/llama.cpp-vulkan --llamacpp-vulkan-server-bin /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server --concurrencies 1,2,4,8,13 --live-concurrency 13 --prompt-length 512 --decode-tokens 128 --ctx-per-seq 1024 --warmup-runs 1 --measured-runs 3 --streaming-primary --stream-warmup-runs 0 --stream-measured-runs 3 --live-join-after-tokens 8 --memory-domain gtt --drm-card-index 0 --memory-poll-ms 10 --work-dir /tmp/gfx1151-external-f1-standard-8405c467-fair256/llamacpp-vulkan/work --json /tmp/gfx1151-external-f1-standard-8405c467-fair256/llamacpp-vulkan/result.json"
+    }
+  },
+  "hardware": {
+    "host": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+    "device": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "rocm": "HIP version: 7.15.0-0000000",
+    "tuned_profile": "accelerator-performance",
+    "amd_iommu": "off",
+    "gpu_max_hw_queues": 1,
+    "memory_domain": "whole-card GTT"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "hipengine_kv_dtype": "bf16",
+    "llamacpp_kv_dtype": "f16",
+    "canonical_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        11331169424,
+        22662338848
+      ],
+      "exists": true,
+      "path_type": "file"
+    },
+    "harness_source_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "f24f72d469e5141b6a74086cdf094faf93726def47c5581b9d84acca03b24579",
+      "size_bytes": 22663387424,
+      "sampled_bytes_per_offset": 1048576,
+      "sample_offsets": [
+        0,
+        11331169424,
+        22662338848
+      ],
+      "note": "The matched harness uses its own sampled-hash framing; all three raw packets match this value."
+    }
+  },
+  "protocol": {
+    "server": "fresh real localhost server per width",
+    "prompt_length": 512,
+    "decode_tokens": 128,
+    "context_tokens_per_sequence": 1024,
+    "concurrencies": [
+      1,
+      2,
+      4,
+      8,
+      13
+    ],
+    "warmups_per_width": 1,
+    "blocking_measurements_per_width": 3,
+    "sse_measurements_per_width": 3,
+    "sampling": "greedy top1, ignore EOS, MTP off, prompt cache off",
+    "oracle": "independent same-engine c1 exact generated-token trajectory for each of four exact-ID prompt rows",
+    "timing": "barrier release through last localhost HTTP/SSE completion; prefill, decode, scheduling, and transport included",
+    "slo_seconds": {
+      "ttft_p95": 10.0,
+      "itl_p99": 0.5,
+      "end_to_end_p95": 30.0
+    },
+    "hipengine_policy": "package-default fair:256; 5 ms batch window; 64-event internal resident scheduling buffer",
+    "delayed_admission": "C13 tail joins after the first row has begun; admission must occur before first completion"
+  },
+  "engines": {
+    "hipengine": {
+      "status": "accepted_backend_packet",
+      "passed": true,
+      "raw_performance_claim": true,
+      "kv_dtype": "bf16",
+      "independent_c1_oracle": {
+        "passed": true,
+        "rows": 4,
+        "prompt_token_ids_sha256": [
+          "98825533aac67938d6a21560446d62296a045b31170b9fcc9c821f76be37e34d",
+          "21bb8bca19ecba9c67d13b85a0a55c4ae09aa3508b4af7fb25346568217543ec",
+          "4c4d942562f1702bce8fc6ef508beec1d66e53c58f4d5963acfb130f68df258c",
+          "f3ac5a82713d82b99fa6529ea1cfc218cdc9fc148b69d298d70f50bae14201d3"
+        ],
+        "generated_token_ids_sha256": [
+          "4d1d3a28ced499b94abce6d9f3494553e452dae62e897b4de54fa406f69e70ac",
+          "7233fc9ec1b3f0a6650ef1ad2f1e197add0eac1b7a0c7ca1bea30155ea202709",
+          "503e69c25347eec1b591466bcd1cb6eba1efff93727fd9fe465344dbf6753616",
+          "2affb99f7a0f54d0cd91ecfd8b5404aa11e8991d9bab9c019ee5cb628c420dc2"
+        ]
+      },
+      "rows": [
+        {
+          "concurrency": 1,
+          "blocking": {
+            "raw_returned_tok_s_aggregate": {
+              "samples": [
+                44.03285309849969,
+                44.076805032495415,
+                44.079459782700276
+              ],
+              "median": 44.076805032495415,
+              "p95": 44.079459782700276,
+              "p99": 44.079459782700276,
+              "min": 44.03285309849969,
+              "max": 44.079459782700276,
+              "stdev": 0.026175698694232103,
+              "stdev_pct_of_median": 0.059386560969957314
+            },
+            "warmup_exact_rows": 1,
+            "warmup_rows": 1,
+            "measured_exact_rows": 3,
+            "measured_rows": 3,
+            "passed": true
+          },
+          "streaming": {
+            "exact_generated_tok_s_aggregate": {
+              "samples": [
+                42.74322990746739,
+                43.41588205414331,
+                42.771758374301356
+              ],
+              "median": 42.771758374301356,
+              "p95": 43.41588205414331,
+              "p99": 43.41588205414331,
+              "min": 42.74322990746739,
+              "max": 43.41588205414331,
+              "stdev": 0.3803879814918717,
+              "stdev_pct_of_median": 0.8893438005588777
+            },
+            "slo_goodput_tok_s_aggregate": {
+              "samples": [
+                42.74322990746739,
+                43.41588205414331,
+                42.771758374301356
+              ],
+              "median": 42.771758374301356,
+              "p95": 43.41588205414331,
+              "p99": 43.41588205414331,
+              "min": 42.74322990746739,
+              "max": 43.41588205414331,
+              "stdev": 0.3803879814918717,
+              "stdev_pct_of_median": 0.8893438005588777
+            },
+            "measured_exact_rows": 3,
+            "measured_rows": 3,
+            "passed": true,
+            "slo_passed_runs": 3,
+            "measured_runs": 3,
+            "latency_seconds_median": {
+              "ttft_p95": 0.42667918899678625,
+              "itl_p99": 0.03071998999803327,
+              "end_to_end_p95": 2.991505356010748
+            }
+          },
+          "delayed_admission": null,
+          "memory": {
+            "domain": "gtt",
+            "peak_delta_gib": 12.367298126220703,
+            "peak_gib": 22.406349182128906
+          },
+          "comparison_eligible": true,
+          "execution": {
+            "route_passed": true,
+            "paths": [
+              "gguf_packed_ar_server_decode"
+            ],
+            "blocking_physical_group_rows": [
+              1
+            ],
+            "streaming_native_caware_decode": [
+              false
+            ],
+            "serial_decode_fallback": [
+              false
+            ]
+          }
+        },
+        {
+          "concurrency": 2,
+          "blocking": {
+            "raw_returned_tok_s_aggregate": {
+              "samples": [
+                60.61665200265116,
+                60.35106472740275,
+                60.661941441371866
+              ],
+              "median": 60.61665200265116,
+              "p95": 60.661941441371866,
+              "p99": 60.661941441371866,
+              "min": 60.35106472740275,
+              "max": 60.661941441371866,
+              "stdev": 0.1679444676680088,
+              "stdev_pct_of_median": 0.27705995319679405
+            },
+            "warmup_exact_rows": 2,
+            "warmup_rows": 2,
+            "measured_exact_rows": 6,
+            "measured_rows": 6,
+            "passed": true
+          },
+          "streaming": {
+            "exact_generated_tok_s_aggregate": {
+              "samples": [
+                56.20166024538145,
+                55.37466136596983,
+                56.691207655572484
+              ],
+              "median": 56.20166024538145,
+              "p95": 56.691207655572484,
+              "p99": 56.691207655572484,
+              "min": 55.37466136596983,
+              "max": 56.691207655572484,
+              "stdev": 0.6654419516430845,
+              "stdev_pct_of_median": 1.1840254340133471
+            },
+            "slo_goodput_tok_s_aggregate": {
+              "samples": [
+                56.20166024538145,
+                55.37466136596983,
+                56.691207655572484
+              ],
+              "median": 56.20166024538145,
+              "p95": 56.691207655572484,
+              "p99": 56.691207655572484,
+              "min": 55.37466136596983,
+              "max": 56.691207655572484,
+              "stdev": 0.6654419516430845,
+              "stdev_pct_of_median": 1.1840254340133471
+            },
+            "measured_exact_rows": 6,
+            "measured_rows": 6,
+            "passed": true,
+            "slo_passed_runs": 3,
+            "measured_runs": 3,
+            "latency_seconds_median": {
+              "ttft_p95": 0.9019022959982976,
+              "itl_p99": 0.055734905996359885,
+              "end_to_end_p95": 4.553751605999423
+            }
+          },
+          "delayed_admission": null,
+          "memory": {
+            "domain": "gtt",
+            "peak_delta_gib": 24.070594787597656,
+            "peak_gib": 24.087989807128906
+          },
+          "comparison_eligible": true,
+          "execution": {
+            "route_passed": true,
+            "paths": [
+              "gguf_packed_ar_server_decode"
+            ],
+            "blocking_physical_group_rows": [
+              2
+            ],
+            "streaming_native_caware_decode": [
+              true
+            ],
+            "serial_decode_fallback": [
+              false
+            ]
+          }
+        },
+        {
+          "concurrency": 4,
+          "blocking": {
+            "raw_returned_tok_s_aggregate": {
+              "samples": [
+                74.70341877537261,
+                75.50737394501701,
+                75.29835146272215
+              ],
+              "median": 75.29835146272215,
+              "p95": 75.50737394501701,
+              "p99": 75.50737394501701,
+              "min": 74.70341877537261,
+              "max": 75.50737394501701,
+              "stdev": 0.41712891999548535,
+              "stdev_pct_of_median": 0.5539681970354858
+            },
+            "warmup_exact_rows": 4,
+            "warmup_rows": 4,
+            "measured_exact_rows": 12,
+            "measured_rows": 12,
+            "passed": true
+          },
+          "streaming": {
+            "exact_generated_tok_s_aggregate": {
+              "samples": [
+                72.82981646752143,
+                72.84197146461602,
+                72.2576252189541
+              ],
+              "median": 72.82981646752143,
+              "p95": 72.84197146461602,
+              "p99": 72.84197146461602,
+              "min": 72.2576252189541,
+              "max": 72.84197146461602,
+              "stdev": 0.3339189282122683,
+              "stdev_pct_of_median": 0.4584920632900126
+            },
+            "slo_goodput_tok_s_aggregate": {
+              "samples": [
+                54.622362350641076,
+                36.42098573230801,
+                54.19321891421558
+              ],
+              "median": 54.19321891421558,
+              "p95": 54.622362350641076,
+              "p99": 54.622362350641076,
+              "min": 36.42098573230801,
+              "max": 54.622362350641076,
+              "stdev": 10.386903189141002,
+              "stdev_pct_of_median": 19.166425979572846
+            },
+            "measured_exact_rows": 12,
+            "measured_rows": 12,
+            "passed": true,
+            "slo_passed_runs": 0,
+            "measured_runs": 3,
+            "latency_seconds_median": {
+              "ttft_p95": 1.9648720300174318,
+              "itl_p99": 0.2246541650092695,
+              "end_to_end_p95": 7.028326625004411
+            }
+          },
+          "delayed_admission": null,
+          "memory": {
+            "domain": "gtt",
+            "peak_delta_gib": 27.584266662597656,
+            "peak_gib": 27.601661682128906
+          },
+          "comparison_eligible": true,
+          "execution": {
+            "route_passed": true,
+            "paths": [
+              "gguf_packed_ar_server_decode"
+            ],
+            "blocking_physical_group_rows": [
+              4
+            ],
+            "streaming_native_caware_decode": [
+              true
+            ],
+            "serial_decode_fallback": [
+              false
+            ]
+          }
+        },
+        {
+          "concurrency": 8,
+          "blocking": {
+            "raw_returned_tok_s_aggregate": {
+              "samples": [
+                75.70151135312733,
+                75.718244222453,
+                75.32128991319775
+              ],
+              "median": 75.70151135312733,
+              "p95": 75.718244222453,
+              "p99": 75.718244222453,
+              "min": 75.32128991319775,
+              "max": 75.718244222453,
+              "stdev": 0.22450725895254453,
+              "stdev_pct_of_median": 0.29656905778971593
+            },
+            "warmup_exact_rows": 8,
+            "warmup_rows": 8,
+            "measured_exact_rows": 24,
+            "measured_rows": 24,
+            "passed": true
+          },
+          "streaming": {
+            "exact_generated_tok_s_aggregate": {
+              "samples": [
+                82.68805680044281,
+                81.73512692584993,
+                82.03466107297572
+              ],
+              "median": 82.03466107297572,
+              "p95": 82.68805680044281,
+              "p99": 82.68805680044281,
+              "min": 81.73512692584993,
+              "max": 82.68805680044281,
+              "stdev": 0.48729218268889213,
+              "stdev_pct_of_median": 0.5940076747015639
+            },
+            "slo_goodput_tok_s_aggregate": {
+              "samples": [
+                10.336007100055351,
+                20.43378173146248,
+                30.762997902365896
+              ],
+              "median": 20.43378173146248,
+              "p95": 30.762997902365896,
+              "p99": 30.762997902365896,
+              "min": 10.336007100055351,
+              "max": 30.762997902365896,
+              "stdev": 10.21371392172979,
+              "stdev_pct_of_median": 49.984452491255894
+            },
+            "measured_exact_rows": 24,
+            "measured_rows": 24,
+            "passed": true,
+            "slo_passed_runs": 0,
+            "measured_runs": 3,
+            "latency_seconds_median": {
+              "ttft_p95": 4.243924979004078,
+              "itl_p99": 0.3780345919949468,
+              "end_to_end_p95": 12.480898291018093
+            }
+          },
+          "delayed_admission": null,
+          "memory": {
+            "domain": "gtt",
+            "peak_delta_gib": 35.107704162597656,
+            "peak_gib": 35.125099182128906
+          },
+          "comparison_eligible": true,
+          "execution": {
+            "route_passed": true,
+            "paths": [
+              "gguf_packed_ar_server_decode"
+            ],
+            "blocking_physical_group_rows": [
+              4,
+              4
+            ],
+            "streaming_native_caware_decode": [
+              true
+            ],
+            "serial_decode_fallback": [
+              false
+            ]
+          }
+        },
+        {
+          "concurrency": 13,
+          "blocking": {
+            "raw_returned_tok_s_aggregate": {
+              "samples": [
+                71.80597996977704,
+                71.53161660036805,
+                71.73290481746703
+              ],
+              "median": 71.73290481746703,
+              "p95": 71.80597996977704,
+              "p99": 71.80597996977704,
+              "min": 71.53161660036805,
+              "max": 71.80597996977704,
+              "stdev": 0.14208693506762504,
+              "stdev_pct_of_median": 0.19807776560726528
+            },
+            "warmup_exact_rows": 13,
+            "warmup_rows": 13,
+            "measured_exact_rows": 39,
+            "measured_rows": 39,
+            "passed": true
+          },
+          "streaming": {
+            "exact_generated_tok_s_aggregate": {
+              "samples": [
+                73.17406298267727,
+                72.4409208561333,
+                72.24787994980812
+              ],
+              "median": 72.4409208561333,
+              "p95": 73.17406298267727,
+              "p99": 73.17406298267727,
+              "min": 72.24787994980812,
+              "max": 73.17406298267727,
+              "stdev": 0.4886336698050578,
+              "stdev_pct_of_median": 0.6745271374662364
+            },
+            "slo_goodput_tok_s_aggregate": {
+              "samples": [
+                28.143870377952798,
+                11.14475705478974,
+                11.115058453816633
+              ],
+              "median": 11.14475705478974,
+              "p95": 28.143870377952798,
+              "p99": 28.143870377952798,
+              "min": 11.115058453816633,
+              "max": 28.143870377952798,
+              "stdev": 9.823027124468316,
+              "stdev_pct_of_median": 88.14034326792816
+            },
+            "measured_exact_rows": 39,
+            "measured_rows": 39,
+            "passed": true,
+            "slo_passed_runs": 0,
+            "measured_runs": 3,
+            "latency_seconds_median": {
+              "ttft_p95": 7.529831200983608,
+              "itl_p99": 0.8883668809721712,
+              "end_to_end_p95": 22.967581889999565
+            }
+          },
+          "delayed_admission": {
+            "exact_rows": 13,
+            "rows": 13,
+            "passed": true,
+            "admission_during_first_request": true,
+            "raw_returned_tok_s_aggregate": 71.30344370076294
+          },
+          "memory": {
+            "domain": "gtt",
+            "peak_delta_gib": 44.250282287597656,
+            "peak_gib": 44.267677307128906
+          },
+          "comparison_eligible": true,
+          "execution": {
+            "route_passed": true,
+            "paths": [
+              "gguf_packed_ar_server_decode"
+            ],
+            "blocking_physical_group_rows": [
+              4,
+              4,
+              4,
+              1
+            ],
+            "streaming_native_caware_decode": [
+              true
+            ],
+            "serial_decode_fallback": [
+              false
+            ]
+          }
+        }
+      ]
+    },
+    "llamacpp-hip": {
+      "status": "failed_gate",
+      "passed": false,
+      "raw_performance_claim": false,
+      "kv_dtype": "f16",
+      "independent_c1_oracle": {
+        "passed": true,
+        "rows": 4,
+        "prompt_token_ids_sha256": [
+          "98825533aac67938d6a21560446d62296a045b31170b9fcc9c821f76be37e34d",
+          "21bb8bca19ecba9c67d13b85a0a55c4ae09aa3508b4af7fb25346568217543ec",
+          "4c4d942562f1702bce8fc6ef508beec1d66e53c58f4d5963acfb130f68df258c",
+          "f3ac5a82713d82b99fa6529ea1cfc218cdc9fc148b69d298d70f50bae14201d3"
+        ],
+        "generated_token_ids_sha256": [
+          "4d1d3a28ced499b94abce6d9f3494553e452dae62e897b4de54fa406f69e70ac",
+          "38db3d50a12361f61a7b4c3426dd8f683e2c66e421fb8187891c4608b835c636",
+          "503e69c25347eec1b591466bcd1cb6eba1efff93727fd9fe465344dbf6753616",
+          "6020a7d2eaad30c531c939b87c2d145ed60943888b2d9eeacf41b8f8db0beed4"
+        ]
+      },
+      "rows": [
+        {
+          "concurrency": 1,
+          "blocking": {
+            "raw_returned_tok_s_aggregate": {
+              "samples": [
+                46.127941306391776,
+                46.01854471848246,
+                46.09204173407074
+              ],
+              "median": 46.09204173407074,
+              "p95": 46.127941306391776,
+              "p99": 46.127941306391776,
+              "min": 46.01854471848246,
+              "max": 46.127941306391776,
+              "stdev": 0.05576469020120463,
+              "stdev_pct_of_median": 0.12098550661509093
+            },
+            "warmup_exact_rows": 1,
+            "warmup_rows": 1,
+            "measured_exact_rows": 3,
+            "measured_rows": 3,
+            "passed": true
+          },
+          "streaming": {
+            "exact_generated_tok_s_aggregate": {
+              "samples": [
+                46.16941703355867,
+                46.113032318312364,
+                46.1455793726341
+              ],
+              "median": 46.1455793726341,
+              "p95": 46.16941703355867,
+              "p99": 46.16941703355867,
+              "min": 46.113032318312364,
+              "max": 46.16941703355867,
+              "stdev": 0.02830424272314568,
+              "stdev_pct_of_median": 0.061336845496258
+            },
+            "slo_goodput_tok_s_aggregate": {
+              "samples": [
+                46.16941703355867,
+                46.113032318312364,
+                46.1455793726341
+              ],
+              "median": 46.1455793726341,
+              "p95": 46.16941703355867,
+              "p99": 46.16941703355867,
+              "min": 46.113032318312364,
+              "max": 46.16941703355867,
+              "stdev": 0.02830424272314568,
+              "stdev_pct_of_median": 0.061336845496258
+            },
+            "measured_exact_rows": 3,
+            "measured_rows": 3,
+            "passed": true,
+            "slo_passed_runs": 3,
+            "measured_runs": 3,
+            "latency_seconds_median": {
+              "ttft_p95": 0.3480279149953276,
+              "itl_p99": 0.0194213850190863,
+              "end_to_end_p95": 2.7731170860060956
+            }
+          },
+          "delayed_admission": null,
+          "memory": {
+            "domain": "gtt",
+            "peak_delta_gib": 20.94384765625,
+            "peak_gib": 20.961284637451172
+          },
+          "comparison_eligible": true,
+          "first_measured_blocking_mismatch": null
+        },
+        {
+          "concurrency": 2,
+          "blocking": {
+            "raw_returned_tok_s_aggregate": {
+              "samples": [
+                66.47900935520988,
+                66.40948319704395,
+                66.55357242377755
+              ],
+              "median": 66.47900935520988,
+              "p95": 66.55357242377755,
+              "p99": 66.55357242377755,
+              "min": 66.40948319704395,
+              "max": 66.55357242377755,
+              "stdev": 0.0720592847640365,
+              "stdev_pct_of_median": 0.10839404116118842
+            },
+            "warmup_exact_rows": 1,
+            "warmup_rows": 2,
+            "measured_exact_rows": 3,
+            "measured_rows": 6,
+            "passed": false
+          },
+          "streaming": {
+            "exact_generated_tok_s_aggregate": {
+              "samples": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "median": 0.0,
+              "p95": 0.0,
+              "p99": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "stdev": 0.0,
+              "stdev_pct_of_median": null
+            },
+            "slo_goodput_tok_s_aggregate": {
+              "samples": [
+                33.239616226177695,
+                33.21225372921128,
+                33.237775473176484
+              ],
+              "median": 33.237775473176484,
+              "p95": 33.239616226177695,
+              "p99": 33.239616226177695,
+              "min": 33.21225372921128,
+              "max": 33.239616226177695,
+              "stdev": 0.015294083969922856,
+              "stdev_pct_of_median": 0.04601416235651953
+            },
+            "measured_exact_rows": 3,
+            "measured_rows": 6,
+            "passed": false,
+            "slo_passed_runs": 0,
+            "measured_runs": 3,
+            "latency_seconds_median": {
+              "ttft_p95": 0.6633046689967159,
+              "itl_p99": 0.02556482600630261,
+              "end_to_end_p95": 3.850365703983698
+            }
+          },
+          "delayed_admission": null,
+          "memory": {
+            "domain": "gtt",
+            "peak_delta_gib": 21.024173736572266,
+            "peak_gib": 21.041568756103516
+          },
+          "comparison_eligible": false,
+          "first_measured_blocking_mismatch": {
+            "prompt_token_ids_sha256": "21bb8bca19ecba9c67d13b85a0a55c4ae09aa3508b4af7fb25346568217543ec",
+            "first_mismatch_index": 14,
+            "expected_token": 264,
+            "observed_token": 279
+          }
+        },
+        {
+          "concurrency": 4,
+          "blocking": {
+            "raw_returned_tok_s_aggregate": {
+              "samples": [
+                84.90967643214948,
+                86.47022129159996,
+                85.13346872412062
+              ],
+              "median": 85.13346872412062,
+              "p95": 86.47022129159996,
+              "p99": 86.47022129159996,
+              "min": 84.90967643214948,
+              "max": 86.47022129159996,
+              "stdev": 0.8438296308068346,
+              "stdev_pct_of_median": 0.9911843643318562
+            },
+            "warmup_exact_rows": 2,
+            "warmup_rows": 4,
+            "measured_exact_rows": 4,
+            "measured_rows": 12,
+            "passed": false
+          },
+          "streaming": {
+            "exact_generated_tok_s_aggregate": {
+              "samples": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "median": 0.0,
+              "p95": 0.0,
+              "p99": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "stdev": 0.0,
+              "stdev_pct_of_median": null
+            },
+            "slo_goodput_tok_s_aggregate": {
+              "samples": [
+                42.268961704718855,
+                43.138933040811494,
+                43.47254557349922
+              ],
+              "median": 43.138933040811494,
+              "p95": 43.47254557349922,
+              "p99": 43.47254557349922,
+              "min": 42.268961704718855,
+              "max": 43.47254557349922,
+              "stdev": 0.6213911243837541,
+              "stdev_pct_of_median": 1.4404415700218836
+            },
+            "measured_exact_rows": 6,
+            "measured_rows": 12,
+            "passed": false,
+            "slo_passed_runs": 0,
+            "measured_runs": 3,
+            "latency_seconds_median": {
+              "ttft_p95": 1.2564460580179002,
+              "itl_p99": 0.03878348501166329,
+              "end_to_end_p95": 5.933694120001746
+            }
+          },
+          "delayed_admission": null,
+          "memory": {
+            "domain": "gtt",
+            "peak_delta_gib": 21.190162658691406,
+            "peak_gib": 21.207557678222656
+          },
+          "comparison_eligible": false,
+          "first_measured_blocking_mismatch": {
+            "prompt_token_ids_sha256": "21bb8bca19ecba9c67d13b85a0a55c4ae09aa3508b4af7fb25346568217543ec",
+            "first_mismatch_index": 0,
+            "expected_token": 11,
+            "observed_token": 264
+          }
+        },
+        {
+          "concurrency": 8,
+          "blocking": {
+            "raw_returned_tok_s_aggregate": {
+              "samples": [
+                99.27208140417771,
+                99.82437655689871,
+                100.62770310238281
+              ],
+              "median": 99.82437655689871,
+              "p95": 100.62770310238281,
+              "p99": 100.62770310238281,
+              "min": 99.27208140417771,
+              "max": 100.62770310238281,
+              "stdev": 0.681673634403224,
+              "stdev_pct_of_median": 0.6828729193361684
+            },
+            "warmup_exact_rows": 2,
+            "warmup_rows": 8,
+            "measured_exact_rows": 8,
+            "measured_rows": 24,
+            "passed": false
+          },
+          "streaming": {
+            "exact_generated_tok_s_aggregate": {
+              "samples": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "median": 0.0,
+              "p95": 0.0,
+              "p99": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "stdev": 0.0,
+              "stdev_pct_of_median": null
+            },
+            "slo_goodput_tok_s_aggregate": {
+              "samples": [
+                0.0,
+                12.415615243787359,
+                24.651304612020805
+              ],
+              "median": 12.415615243787359,
+              "p95": 24.651304612020805,
+              "p99": 24.651304612020805,
+              "min": 0.0,
+              "max": 24.651304612020805,
+              "stdev": 12.32576174300737,
+              "stdev_pct_of_median": 99.27628636184622
+            },
+            "measured_exact_rows": 8,
+            "measured_rows": 24,
+            "passed": false,
+            "slo_passed_runs": 0,
+            "measured_runs": 3,
+            "latency_seconds_median": {
+              "ttft_p95": 2.8547764969989657,
+              "itl_p99": 0.07296509700245224,
+              "end_to_end_p95": 10.308749760006322
+            }
+          },
+          "delayed_admission": null,
+          "memory": {
+            "domain": "gtt",
+            "peak_delta_gib": 21.526424407958984,
+            "peak_gib": 21.543819427490234
+          },
+          "comparison_eligible": false,
+          "first_measured_blocking_mismatch": {
+            "prompt_token_ids_sha256": "21bb8bca19ecba9c67d13b85a0a55c4ae09aa3508b4af7fb25346568217543ec",
+            "first_mismatch_index": 4,
+            "expected_token": 369,
+            "observed_token": 4139
+          }
+        },
+        {
+          "concurrency": 13,
+          "blocking": {
+            "raw_returned_tok_s_aggregate": {
+              "samples": [
+                101.04805122199978,
+                101.92358921702326,
+                101.8129525554136
+              ],
+              "median": 101.8129525554136,
+              "p95": 101.92358921702326,
+              "p99": 101.92358921702326,
+              "min": 101.04805122199978,
+              "max": 101.92358921702326,
+              "stdev": 0.47677410819662086,
+              "stdev_pct_of_median": 0.4682843353718945
+            },
+            "warmup_exact_rows": 6,
+            "warmup_rows": 13,
+            "measured_exact_rows": 19,
+            "measured_rows": 39,
+            "passed": false
+          },
+          "streaming": {
+            "exact_generated_tok_s_aggregate": {
+              "samples": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "median": 0.0,
+              "p95": 0.0,
+              "p99": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "stdev": 0.0,
+              "stdev_pct_of_median": null
+            },
+            "slo_goodput_tok_s_aggregate": {
+              "samples": [
+                7.665716323438414,
+                23.33042867144712,
+                7.875479402188594
+              ],
+              "median": 7.875479402188594,
+              "p95": 23.33042867144712,
+              "p99": 23.33042867144712,
+              "min": 7.665716323438414,
+              "max": 23.33042867144712,
+              "stdev": 8.984084728103154,
+              "stdev_pct_of_median": 114.07667101010358
+            },
+            "measured_exact_rows": 17,
+            "measured_rows": 39,
+            "passed": false,
+            "slo_passed_runs": 0,
+            "measured_runs": 3,
+            "latency_seconds_median": {
+              "ttft_p95": 4.583159306988819,
+              "itl_p99": 0.1356101289857179,
+              "end_to_end_p95": 16.45746891500312
+            }
+          },
+          "delayed_admission": {
+            "exact_rows": 5,
+            "rows": 13,
+            "passed": false,
+            "admission_during_first_request": true,
+            "raw_returned_tok_s_aggregate": 100.0949445362129
+          },
+          "memory": {
+            "domain": "gtt",
+            "peak_delta_gib": 21.971904754638672,
+            "peak_gib": 21.989299774169922
+          },
+          "comparison_eligible": false,
+          "first_measured_blocking_mismatch": {
+            "prompt_token_ids_sha256": "21bb8bca19ecba9c67d13b85a0a55c4ae09aa3508b4af7fb25346568217543ec",
+            "first_mismatch_index": 0,
+            "expected_token": 11,
+            "observed_token": 264
+          }
+        }
+      ],
+      "external_build": {
+        "repo": "/home/lhl/llama.cpp/llama.cpp-hip",
+        "commit": "1ebf790cda38d827559548f67b0469189690cc8c",
+        "tracked_status": "## master...origin/master [ahead 7]\n M common/speculative.cpp\n M common/speculative.h\n M src/llama-context.cpp\n M src/llama-context.h\n M src/llama-ext.h\n M src/llama-graph.cpp\n M src/llama-graph.h\n M src/models/qwen35.cpp\n M src/models/qwen35moe.cpp\n M tools/server/server-context.cpp",
+        "version": "version: 9648 (1ebf790cd)\nbuilt with GNU 16.1.1 for Linux x86_64",
+        "server_binary": {
+          "path": "/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server",
+          "size_bytes": 15976,
+          "sha256": "105a8712fc0d91cf496faa4701970779ad0ead0561fa51cd096b0fa0aa1eb8c5"
+        }
+      }
+    },
+    "llamacpp-vulkan": {
+      "status": "failed_gate",
+      "passed": false,
+      "raw_performance_claim": false,
+      "kv_dtype": "f16",
+      "independent_c1_oracle": {
+        "passed": true,
+        "rows": 4,
+        "prompt_token_ids_sha256": [
+          "98825533aac67938d6a21560446d62296a045b31170b9fcc9c821f76be37e34d",
+          "21bb8bca19ecba9c67d13b85a0a55c4ae09aa3508b4af7fb25346568217543ec",
+          "4c4d942562f1702bce8fc6ef508beec1d66e53c58f4d5963acfb130f68df258c",
+          "f3ac5a82713d82b99fa6529ea1cfc218cdc9fc148b69d298d70f50bae14201d3"
+        ],
+        "generated_token_ids_sha256": [
+          "4d1d3a28ced499b94abce6d9f3494553e452dae62e897b4de54fa406f69e70ac",
+          "b72cabf75e5ab34f49816172a1f28f21fe37cd34066851be2408a373a5aa462b",
+          "b9b5d1634f45f70aed48418b8f8065f3c2a50ff7fd715bd572f0aa3ee87468e6",
+          "6c4cead5999331d61ca84d76441eb68c235916842fc88b9e3a745f5f36d99409"
+        ]
+      },
+      "rows": [
+        {
+          "concurrency": 1,
+          "blocking": {
+            "raw_returned_tok_s_aggregate": {
+              "samples": [
+                53.5950769056921,
+                53.69096520566044,
+                53.611370388554704
+              ],
+              "median": 53.611370388554704,
+              "p95": 53.69096520566044,
+              "p99": 53.69096520566044,
+              "min": 53.5950769056921,
+              "max": 53.69096520566044,
+              "stdev": 0.05130850898357761,
+              "stdev_pct_of_median": 0.09570452799791009
+            },
+            "warmup_exact_rows": 1,
+            "warmup_rows": 1,
+            "measured_exact_rows": 3,
+            "measured_rows": 3,
+            "passed": true
+          },
+          "streaming": {
+            "exact_generated_tok_s_aggregate": {
+              "samples": [
+                53.371224545630795,
+                53.552272987328124,
+                53.4095434773562
+              ],
+              "median": 53.4095434773562,
+              "p95": 53.552272987328124,
+              "p99": 53.552272987328124,
+              "min": 53.371224545630795,
+              "max": 53.552272987328124,
+              "stdev": 0.09541015999919512,
+              "stdev_pct_of_median": 0.17863878585602538
+            },
+            "slo_goodput_tok_s_aggregate": {
+              "samples": [
+                53.371224545630795,
+                53.552272987328124,
+                53.4095434773562
+              ],
+              "median": 53.4095434773562,
+              "p95": 53.552272987328124,
+              "p99": 53.552272987328124,
+              "min": 53.371224545630795,
+              "max": 53.552272987328124,
+              "stdev": 0.09541015999919512,
+              "stdev_pct_of_median": 0.17863878585602538
+            },
+            "measured_exact_rows": 3,
+            "measured_rows": 3,
+            "passed": true,
+            "slo_passed_runs": 3,
+            "measured_runs": 3,
+            "latency_seconds_median": {
+              "ttft_p95": 0.36491791100706905,
+              "itl_p99": 0.01829764898866415,
+              "end_to_end_p95": 2.3957774699956644
+            }
+          },
+          "delayed_admission": null,
+          "memory": {
+            "domain": "gtt",
+            "peak_delta_gib": 20.995800018310547,
+            "peak_gib": 21.013195037841797
+          },
+          "comparison_eligible": true,
+          "first_measured_blocking_mismatch": null
+        },
+        {
+          "concurrency": 2,
+          "blocking": {
+            "raw_returned_tok_s_aggregate": {
+              "samples": [
+                75.2133452170187,
+                75.09593736997796,
+                75.24509940385828
+              ],
+              "median": 75.2133452170187,
+              "p95": 75.24509940385828,
+              "p99": 75.24509940385828,
+              "min": 75.09593736997796,
+              "max": 75.24509940385828,
+              "stdev": 0.07857294199224127,
+              "stdev_pct_of_median": 0.10446675621929709
+            },
+            "warmup_exact_rows": 1,
+            "warmup_rows": 2,
+            "measured_exact_rows": 3,
+            "measured_rows": 6,
+            "passed": false
+          },
+          "streaming": {
+            "exact_generated_tok_s_aggregate": {
+              "samples": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "median": 0.0,
+              "p95": 0.0,
+              "p99": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "stdev": 0.0,
+              "stdev_pct_of_median": null
+            },
+            "slo_goodput_tok_s_aggregate": {
+              "samples": [
+                36.93899525743807,
+                37.61014191403028,
+                37.663557522113564
+              ],
+              "median": 37.61014191403028,
+              "p95": 37.663557522113564,
+              "p99": 37.663557522113564,
+              "min": 36.93899525743807,
+              "max": 37.663557522113564,
+              "stdev": 0.40379069190887346,
+              "stdev_pct_of_median": 1.0736218247510554
+            },
+            "measured_exact_rows": 3,
+            "measured_rows": 6,
+            "passed": false,
+            "slo_passed_runs": 0,
+            "measured_runs": 3,
+            "latency_seconds_median": {
+              "ttft_p95": 0.6806826029787771,
+              "itl_p99": 0.023875747981946915,
+              "end_to_end_p95": 3.402697700978024
+            }
+          },
+          "delayed_admission": null,
+          "memory": {
+            "domain": "gtt",
+            "peak_delta_gib": 20.99663543701172,
+            "peak_gib": 21.01403045654297
+          },
+          "comparison_eligible": false,
+          "first_measured_blocking_mismatch": {
+            "prompt_token_ids_sha256": "21bb8bca19ecba9c67d13b85a0a55c4ae09aa3508b4af7fb25346568217543ec",
+            "first_mismatch_index": 42,
+            "expected_token": 12244,
+            "observed_token": 2574
+          }
+        },
+        {
+          "concurrency": 4,
+          "blocking": {
+            "raw_returned_tok_s_aggregate": {
+              "samples": [
+                93.2121930169432,
+                96.88824023688178,
+                92.75096142044434
+              ],
+              "median": 93.2121930169432,
+              "p95": 96.88824023688178,
+              "p99": 96.88824023688178,
+              "min": 92.75096142044434,
+              "max": 96.88824023688178,
+              "stdev": 2.2672719934526704,
+              "stdev_pct_of_median": 2.432377052903956
+            },
+            "warmup_exact_rows": 1,
+            "warmup_rows": 4,
+            "measured_exact_rows": 3,
+            "measured_rows": 12,
+            "passed": false
+          },
+          "streaming": {
+            "exact_generated_tok_s_aggregate": {
+              "samples": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "median": 0.0,
+              "p95": 0.0,
+              "p99": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "stdev": 0.0,
+              "stdev_pct_of_median": null
+            },
+            "slo_goodput_tok_s_aggregate": {
+              "samples": [
+                23.473942979846925,
+                23.678960742074782,
+                24.107764125465586
+              ],
+              "median": 23.678960742074782,
+              "p95": 24.107764125465586,
+              "p99": 24.107764125465586,
+              "min": 23.473942979846925,
+              "max": 24.107764125465586,
+              "stdev": 0.32342795928142204,
+              "stdev_pct_of_median": 1.3658874762469109
+            },
+            "measured_exact_rows": 3,
+            "measured_rows": 12,
+            "passed": false,
+            "slo_passed_runs": 0,
+            "measured_runs": 3,
+            "latency_seconds_median": {
+              "ttft_p95": 1.42176538502099,
+              "itl_p99": 0.03388564198394306,
+              "end_to_end_p95": 5.404373644996667
+            }
+          },
+          "delayed_admission": null,
+          "memory": {
+            "domain": "gtt",
+            "peak_delta_gib": 21.07025146484375,
+            "peak_gib": 21.087646484375
+          },
+          "comparison_eligible": false,
+          "first_measured_blocking_mismatch": {
+            "prompt_token_ids_sha256": "21bb8bca19ecba9c67d13b85a0a55c4ae09aa3508b4af7fb25346568217543ec",
+            "first_mismatch_index": 0,
+            "expected_token": 310,
+            "observed_token": 314
+          }
+        },
+        {
+          "concurrency": 8,
+          "blocking": {
+            "raw_returned_tok_s_aggregate": {
+              "samples": [
+                108.96213890415429,
+                109.2469092507357,
+                109.19774569884761
+              ],
+              "median": 109.19774569884761,
+              "p95": 109.2469092507357,
+              "p99": 109.2469092507357,
+              "min": 108.96213890415429,
+              "max": 109.2469092507357,
+              "stdev": 0.15221791771011053,
+              "stdev_pct_of_median": 0.1393965752094431
+            },
+            "warmup_exact_rows": 2,
+            "warmup_rows": 8,
+            "measured_exact_rows": 7,
+            "measured_rows": 24,
+            "passed": false
+          },
+          "streaming": {
+            "exact_generated_tok_s_aggregate": {
+              "samples": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "median": 0.0,
+              "p95": 0.0,
+              "p99": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "stdev": 0.0,
+              "stdev_pct_of_median": null
+            },
+            "slo_goodput_tok_s_aggregate": {
+              "samples": [
+                13.557220133412027,
+                13.835843624590506,
+                13.577627035392295
+              ],
+              "median": 13.577627035392295,
+              "p95": 13.835843624590506,
+              "p99": 13.835843624590506,
+              "min": 13.557220133412027,
+              "max": 13.835843624590506,
+              "stdev": 0.15530791910592423,
+              "stdev_pct_of_median": 1.143851710619896
+            },
+            "measured_exact_rows": 6,
+            "measured_rows": 24,
+            "passed": false,
+            "slo_passed_runs": 0,
+            "measured_runs": 3,
+            "latency_seconds_median": {
+              "ttft_p95": 2.835792722995393,
+              "itl_p99": 0.07174821401713416,
+              "end_to_end_p95": 9.42527180199977
+            }
+          },
+          "delayed_admission": null,
+          "memory": {
+            "domain": "gtt",
+            "peak_delta_gib": 21.493091583251953,
+            "peak_gib": 21.510486602783203
+          },
+          "comparison_eligible": false,
+          "first_measured_blocking_mismatch": {
+            "prompt_token_ids_sha256": "21bb8bca19ecba9c67d13b85a0a55c4ae09aa3508b4af7fb25346568217543ec",
+            "first_mismatch_index": 0,
+            "expected_token": 310,
+            "observed_token": 264
+          }
+        },
+        {
+          "concurrency": 13,
+          "blocking": {
+            "raw_returned_tok_s_aggregate": {
+              "samples": [
+                84.14459563981977,
+                85.29535589545105,
+                85.01170152658034
+              ],
+              "median": 85.01170152658034,
+              "p95": 85.29535589545105,
+              "p99": 85.29535589545105,
+              "min": 84.14459563981977,
+              "max": 85.29535589545105,
+              "stdev": 0.5995250322512053,
+              "stdev_pct_of_median": 0.7052264823375566
+            },
+            "warmup_exact_rows": 4,
+            "warmup_rows": 13,
+            "measured_exact_rows": 12,
+            "measured_rows": 39,
+            "passed": false
+          },
+          "streaming": {
+            "exact_generated_tok_s_aggregate": {
+              "samples": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "median": 0.0,
+              "p95": 0.0,
+              "p99": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "stdev": 0.0,
+              "stdev_pct_of_median": null
+            },
+            "slo_goodput_tok_s_aggregate": {
+              "samples": [
+                13.1197970062192,
+                13.017538282192602,
+                13.375831291323136
+              ],
+              "median": 13.1197970062192,
+              "p95": 13.375831291323136,
+              "p99": 13.375831291323136,
+              "min": 13.017538282192602,
+              "max": 13.375831291323136,
+              "stdev": 0.18456447932906125,
+              "stdev_pct_of_median": 1.4067632238636913
+            },
+            "measured_exact_rows": 12,
+            "measured_rows": 39,
+            "passed": false,
+            "slo_passed_runs": 0,
+            "measured_runs": 3,
+            "latency_seconds_median": {
+              "ttft_p95": 4.859561379998922,
+              "itl_p99": 0.12341745899175294,
+              "end_to_end_p95": 19.511406375007937
+            }
+          },
+          "delayed_admission": {
+            "exact_rows": 4,
+            "rows": 13,
+            "passed": false,
+            "admission_during_first_request": true,
+            "raw_returned_tok_s_aggregate": 84.5347538325607
+          },
+          "memory": {
+            "domain": "gtt",
+            "peak_delta_gib": 21.929950714111328,
+            "peak_gib": 21.947345733642578
+          },
+          "comparison_eligible": false,
+          "first_measured_blocking_mismatch": {
+            "prompt_token_ids_sha256": "21bb8bca19ecba9c67d13b85a0a55c4ae09aa3508b4af7fb25346568217543ec",
+            "first_mismatch_index": 28,
+            "expected_token": 561,
+            "observed_token": 1541
+          }
+        }
+      ],
+      "external_build": {
+        "repo": "/home/lhl/llama.cpp/llama.cpp-vulkan",
+        "commit": "6e9007ae61f4e994c27484759caac6ef2aa32b30",
+        "tracked_status": "## master...origin/master",
+        "version": "version: 9641 (6e9007ae6)\nbuilt with GNU 16.1.1 for Linux x86_64",
+        "server_binary": {
+          "path": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server",
+          "size_bytes": 15976,
+          "sha256": "57caed6a48c27b40a25a1c0d06abb1fff44bab1f58f2aba4fd140d05a4eaae8f"
+        }
+      }
+    }
+  },
+  "retained_hipengine_result": {
+    "widths": [
+      1,
+      2,
+      4,
+      8,
+      13
+    ],
+    "blocking_median_tok_s": [
+      44.076805032495415,
+      60.61665200265116,
+      75.29835146272215,
+      75.70151135312733,
+      71.73290481746703
+    ],
+    "blocking_scaling_vs_c1": [
+      1.0,
+      1.375250587195733,
+      1.7083441371762043,
+      1.7174908956608073,
+      1.6274524608710248
+    ],
+    "exact_sse_median_tok_s": [
+      42.771758374301356,
+      56.20166024538145,
+      72.82981646752143,
+      82.03466107297572,
+      72.4409208561333
+    ],
+    "exact_sse_scaling_vs_c1": [
+      1.0,
+      1.3139899405947548,
+      1.7027547904432172,
+      1.9179632587250557,
+      1.6936624447887587
+    ],
+    "slo_goodput_median_tok_s": [
+      42.771758374301356,
+      56.20166024538145,
+      54.19321891421558,
+      20.43378173146248,
+      11.14475705478974
+    ],
+    "slo_passed_runs_of_3": [
+      3,
+      3,
+      0,
+      0,
+      0
+    ],
+    "gtt_peak_delta_gib": [
+      12.367298126220703,
+      24.070594787597656,
+      27.584266662597656,
+      35.107704162597656,
+      44.250282287597656
+    ],
+    "blocking_exact_id_rows": {
+      "exact": 112,
+      "rows": 112,
+      "breakdown": "28 warmup + 84 measured"
+    },
+    "sse_exact_text_and_count_rows": {
+      "exact": 84,
+      "rows": 84
+    },
+    "delayed_c13_exact_id_rows": {
+      "exact": 13,
+      "rows": 13
+    },
+    "route_passed_all_widths": true,
+    "serial_decode_fallback_observed": false,
+    "peak_width": {
+      "blocking": {
+        "concurrency": 8,
+        "tok_s": 75.70151135312733
+      },
+      "exact_sse": {
+        "concurrency": 8,
+        "tok_s": 82.03466107297572
+      }
+    },
+    "c13_vs_c8_pct": {
+      "blocking": -5.242440295739681,
+      "exact_sse": -11.694739871367421
+    }
+  },
+  "external_comparison": {
+    "c1": {
+      "eligible": true,
+      "scope": "same GGUF/input/length/client timing; hipEngine BF16 KV versus llama.cpp F16 KV",
+      "hipengine": {
+        "blocking_tok_s": 44.076805032495415,
+        "exact_sse_tok_s": 42.771758374301356
+      },
+      "llamacpp_hip": {
+        "blocking_tok_s": 46.09204173407074,
+        "exact_sse_tok_s": 46.1455793726341,
+        "external_repo_dirty_disclosed": true,
+        "binary_hash_pinned": true
+      },
+      "llamacpp_vulkan": {
+        "blocking_tok_s": 53.611370388554704,
+        "exact_sse_tok_s": 53.4095434773562,
+        "external_repo_clean": true,
+        "binary_hash_pinned": true
+      },
+      "hipengine_delta_pct": {
+        "vs_llamacpp_hip_blocking": -4.372200982552011,
+        "vs_llamacpp_hip_sse": -7.311255041546916,
+        "vs_llamacpp_vulkan_blocking": -17.784595482182986,
+        "vs_llamacpp_vulkan_sse": -19.91738631423595
+      },
+      "winner": "llamacpp-vulkan"
+    },
+    "c_gt_1": {
+      "eligible": false,
+      "reason": "Both llama.cpp lanes diverge from their own independent c1 token trajectories at every C>1 width in warmup, measured blocking, and measured SSE; their raw aggregate rates are diagnostic only.",
+      "llamacpp_hip_measured_blocking_exact_rows": [
+        [
+          3,
+          6
+        ],
+        [
+          4,
+          12
+        ],
+        [
+          8,
+          24
+        ],
+        [
+          19,
+          39
+        ]
+      ],
+      "llamacpp_hip_measured_sse_exact_rows": [
+        [
+          3,
+          6
+        ],
+        [
+          6,
+          12
+        ],
+        [
+          8,
+          24
+        ],
+        [
+          17,
+          39
+        ]
+      ],
+      "llamacpp_vulkan_measured_blocking_exact_rows": [
+        [
+          3,
+          6
+        ],
+        [
+          3,
+          12
+        ],
+        [
+          7,
+          24
+        ],
+        [
+          12,
+          39
+        ]
+      ],
+      "llamacpp_vulkan_measured_sse_exact_rows": [
+        [
+          3,
+          6
+        ],
+        [
+          3,
+          12
+        ],
+        [
+          6,
+          24
+        ],
+        [
+          12,
+          39
+        ]
+      ],
+      "widths": [
+        2,
+        4,
+        8,
+        13
+      ],
+      "diagnostic_blocking_median_tok_s": {
+        "llamacpp_hip": [
+          66.47900935520988,
+          85.13346872412062,
+          99.82437655689871,
+          101.8129525554136
+        ],
+        "llamacpp_vulkan": [
+          75.2133452170187,
+          93.2121930169432,
+          109.19774569884761,
+          85.01170152658034
+        ]
+      },
+      "claim": "No valid C>1 speed ratio and no claim that hipEngine beats llama.cpp."
+    }
+  },
+  "assessment": {
+    "correctness_and_lifecycle": "good: all hipEngine static, streaming, route, and delayed-C13 gates pass with no cancellation recurrence",
+    "throughput_scaling": "useful but saturated: exact SSE peaks at C8 at 1.918x C1, then falls 11.69% at C13",
+    "service_slo": "mixed: every C1/C2 repetition passes; C4/C8/C13 pass 0/3 whole-wave strict SLO runs and C13 median ITL-p99 exceeds 0.5 s",
+    "memory": "needs work: sampled hipEngine whole-card GTT delta rises from 12.367 GiB at C1 to 44.250 GiB at C13",
+    "llamacpp_position": "not ahead: hipEngine loses the valid C1 comparison, and C>1 is blocked rather than a win"
+  },
+  "limitations": [
+    "TTFT/ITL/end-to-end curves are matched client-observed SSE timings; engine-resident timing fields are not cross-engine comparable.",
+    "hipEngine SSE does not expose generated token IDs: its stream oracle is exact blocking-c1 text plus completion count, while the exact blocking ID oracle remains retained.",
+    "hipEngine and llama.cpp backend-native decode timings have different ownership boundaries and are diagnostic only.",
+    "gfx1151 is UMA: whole-card GTT, not the 512 MiB visible-VRAM aperture, is the relevant external memory domain.",
+    "The external C>1 raw rates are retained only to show the blocked measurement; they are not performance claims.",
+    "The llama.cpp HIP source tree is locally dirty, though the executed server binary and linked libraries are hashed in the raw packet; Vulkan is clean.",
+    "C13 blocking is four queue groups [4,4,4,1], while live SSE observes native c>N packed execution; logical C13 is never presented as one physical native-C13 kernel."
+  ]
+}
