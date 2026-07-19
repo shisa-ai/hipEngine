@@ -167730,3 +167730,45 @@ python3 -m py_compile hipengine/speculative/mtp_native.py \
 A non-profiled current-model B1 preflight with `--require-cached-build` passes
 exact eight IDs and proves all target/proposer/native-cycle artifacts are warm;
 no profiled process needs to spawn `hipcc`.
+
+After committing the profiler harness at `7afc0d5e`, matched final-child profiles
+used the canonical `code_lru_cache` token file, B1/D24, graph auto, strict exact
+environment, and `region=cycle --steady-state-skip=2`. Only the final
+`mtp_chain_e2e_smoke.py` child was wrapped; the parent economics suite was not.
+The two commands differed only by
+`HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH={0,1}` and raw/output roots:
+
+```bash
+python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 \
+  --prompt-tokens "$(cat .../code_lru_cache/prompt-tokens.txt)" \
+  --decode-tokens 24 --candidate-budget 1 --backend hip_gfx1100 \
+  --chain-attn-mode c1_loop --graph-mode auto --region cycle \
+  --steady-state-skip 2 \
+  --compiler-version-file /tmp/hipengine-mtp-w7900-hipcc-version.txt \
+  --raw-root /tmp/w7900-n4-prof-{off,on}-7afc0d5e \
+  --out /tmp/w7900-n4-prof-{off,on}-7afc0d5e.json
+```
+
+Both children are exact. Across 16 steady marker windows:
+
+| Window | N4 off host/kernel/calls | N4 on host/kernel/calls | HIP API difference |
+| --- | --- | --- | --- |
+| complete cycle | 16.437 ms / 11.165 ms / 1248.5 | 16.744 / 11.169 / 1248.5 | 81.6875 -> 82.6875 calls/pass |
+| verify pass | 14.923 ms / 9.912 ms / 1212.9375 | 15.235 / 9.915 / 1212.9375 | `hipStreamSynchronize` 2 -> 3 |
+| proposer update | 1.475 ms / 1.253 ms / 35.5 | 1.474 / 1.254 / 35.5 | unchanged |
+
+Thus N4 adds **0.307 ms complete / 0.312 ms verify host wall** while kernels move
+only **0.004/0.003 ms**. The trace shows the same one `hipGraphLaunch`; the
+extra C++ launcher synchronization is followed by the unchanged Python payload
+sync. Per-call ordering also exposes a roughly 0.3-0.4 ms pre-graph gap from
+rebuilding/validating the state-bound Python control, recomputing its binding
+signature, and marshalling/result-validating ctypes every replay. This supports
+bound raw-control reuse plus duplicate-sync removal as the first causal N4+
+iteration.
+
+Published diagnostic
+`benchmarks/results/2026-07-20-w7900-paro-mtp-n4-uncontended-baseline.json`
+(compact SHA-256
+`47fd94ad27a44ba53f1383a529d56481f5f8361ad3a265f243028187597e01f6`).
+N4 remains explicit/default-off, and no MTP speedup over AR is claimed.

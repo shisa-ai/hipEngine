@@ -1,0 +1,1072 @@
+{
+  "schema": 1,
+  "date": "2026-07-20",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "speed_claim_eligible": false,
+  "purpose": "Uncontended production-GPU-accept strict PARO N4 B1/B2/B3 economics, matched N4 on/off/on attribution, and cached final-child HIP API/kernel profile before N4+ implementation.",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "hip_visible_devices": "0",
+    "gpu0_access": "exclusive",
+    "note": "GPU1 was independently occupied at the start of the off arm and idle at its end; the second on arm brackets the route result. No retained speed claim uses cross-GPU host conditions."
+  },
+  "software": {
+    "suite_commit": "184bc4e81ff0aa34961378590ff6afd705c1f050",
+    "profiler_harness_commit": "7afc0d5e",
+    "rocm": "HIP version: 7.2.53211-3d9ef42",
+    "compiler_version_file": "/tmp/hipengine-mtp-w7900-hipcc-version.txt",
+    "suite_tree_clean": true,
+    "profile_tree_clean": true
+  },
+  "model": {
+    "path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16",
+    "quant": "w4_paro + mtp_bf16",
+    "fingerprint": "1a4745ce8a8734324e62c14aa2545cb7cc1b8ea23a7489b05658f619cc1bdaac",
+    "size_bytes": 22176626792,
+    "correctness_parent": "benchmarks/results/2026-07-19-w7900-paro-mtp-native-target-graph-n4-correctness.json"
+  },
+  "protocol": {
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompt_count": 10,
+    "train_prompts": 6,
+    "heldout_prompts": 4,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "prompt_render": "raw",
+    "decode_tokens_per_prompt": 24,
+    "candidate_budgets": [
+      1,
+      2,
+      3
+    ],
+    "runs_per_prompt_budget": 1,
+    "true_ar_path": "separate no-MTP Qwen35ParoResidentSession decode in the same child",
+    "graph_mode": "auto",
+    "chain_attn_mode": "c1_loop",
+    "gpu_accept": "production path (1), not validate",
+    "strict_env": {
+      "HIPENGINE_GDN_TLOOP_C1_EXACT": "1",
+      "HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS": "1",
+      "HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT": "1",
+      "HIPENGINE_MTP_DRAFT_VOCAB_CAP": null
+    },
+    "timing_note": "diagnostic one-process-per-prompt economics; complete marker wall includes first capture; capture-adjusted replaces each prompt first cycle with its post-cycle-2 median"
+  },
+  "baseline_by_budget": {
+    "1": {
+      "full": {
+        "prompts": 10,
+        "ids": 240,
+        "exact": true,
+        "cycles": 214,
+        "accepts": 16,
+        "active_candidates": 214,
+        "pooled_acceptance": 0.07476635514018691,
+        "visible_per_cycle": 1.1214953271028036,
+        "ar_tok_s_pooled": 110.51509919038386,
+        "mtp_tok_s_pooled": 63.73555142444579,
+        "mtp_ar_ratio_pooled": 0.5767135159934014,
+        "verify_ms_cycle": 15.320757416481692,
+        "proposal_ms_cycle": 1.2254066532477736,
+        "marker_ms_cycle": 16.561870462616824,
+        "capture_adjusted_ms_cycle": 14.285062102803739,
+        "capture_penalty_ms_total": 487.236989,
+        "native_trace_records": 150,
+        "trace_records": 160,
+        "fallbacks": []
+      },
+      "splits": {
+        "train": {
+          "prompts": 6,
+          "ids": 144,
+          "exact": true,
+          "cycles": 125,
+          "accepts": 13,
+          "active_candidates": 125,
+          "pooled_acceptance": 0.104,
+          "visible_per_cycle": 1.152,
+          "ar_tok_s_pooled": 110.6106164296434,
+          "mtp_tok_s_pooled": 65.19664725221301,
+          "mtp_ar_ratio_pooled": 0.5894248613439647,
+          "verify_ms_cycle": 15.345029154792428,
+          "proposal_ms_cycle": 1.2440973026677966,
+          "marker_ms_cycle": 16.605017088,
+          "capture_adjusted_ms_cycle": 14.310832048,
+          "capture_penalty_ms_total": 286.77313,
+          "native_trace_records": 90,
+          "trace_records": 96,
+          "fallbacks": []
+        },
+        "heldout": {
+          "prompts": 4,
+          "ids": 96,
+          "exact": true,
+          "cycles": 89,
+          "accepts": 3,
+          "active_candidates": 89,
+          "pooled_acceptance": 0.033707865168539325,
+          "visible_per_cycle": 1.0786516853932584,
+          "ar_tok_s_pooled": 110.3721322442156,
+          "mtp_tok_s_pooled": 61.66270434166739,
+          "mtp_ar_ratio_pooled": 0.5586800135855763,
+          "verify_ms_cycle": 15.286667896382344,
+          "proposal_ms_cycle": 1.1991557411409999,
+          "marker_ms_cycle": 16.501271269662922,
+          "capture_adjusted_ms_cycle": 14.248868359550563,
+          "capture_penalty_ms_total": 200.463859,
+          "native_trace_records": 60,
+          "trace_records": 64,
+          "fallbacks": []
+        }
+      },
+      "categories": {
+        "code": {
+          "prompts": 4,
+          "ids": 96,
+          "exact": true,
+          "cycles": 84,
+          "accepts": 8,
+          "active_candidates": 84,
+          "pooled_acceptance": 0.09523809523809523,
+          "visible_per_cycle": 1.1428571428571428,
+          "ar_tok_s_pooled": 110.39265425042812,
+          "mtp_tok_s_pooled": 64.07093280599123,
+          "mtp_ar_ratio_pooled": 0.5803912700626341,
+          "verify_ms_cycle": 15.484106488570216,
+          "proposal_ms_cycle": 1.2420559775949056,
+          "marker_ms_cycle": 16.742776535714285,
+          "capture_adjusted_ms_cycle": 14.344993940476192,
+          "capture_penalty_ms_total": 201.413738,
+          "native_trace_records": 60,
+          "trace_records": 64,
+          "fallbacks": []
+        },
+        "general_en": {
+          "prompts": 2,
+          "ids": 48,
+          "exact": true,
+          "cycles": 45,
+          "accepts": 1,
+          "active_candidates": 45,
+          "pooled_acceptance": 0.022222222222222223,
+          "visible_per_cycle": 1.0666666666666667,
+          "ar_tok_s_pooled": 110.53233359350432,
+          "mtp_tok_s_pooled": 61.88805908503995,
+          "mtp_ar_ratio_pooled": 0.5599090969402725,
+          "verify_ms_cycle": 15.058807795867324,
+          "proposal_ms_cycle": 1.1680215493672423,
+          "marker_ms_cycle": 16.2418066,
+          "capture_adjusted_ms_cycle": 14.198515644444445,
+          "capture_penalty_ms_total": 91.948093,
+          "native_trace_records": 30,
+          "trace_records": 32,
+          "fallbacks": []
+        },
+        "general_ja": {
+          "prompts": 2,
+          "ids": 48,
+          "exact": true,
+          "cycles": 45,
+          "accepts": 1,
+          "active_candidates": 45,
+          "pooled_acceptance": 0.022222222222222223,
+          "visible_per_cycle": 1.0666666666666667,
+          "ar_tok_s_pooled": 110.92714795288137,
+          "mtp_tok_s_pooled": 61.08880983481228,
+          "mtp_ar_ratio_pooled": 0.5507110834649875,
+          "verify_ms_cycle": 15.308807221137815,
+          "proposal_ms_cycle": 1.1776601766339607,
+          "marker_ms_cycle": 16.50271311111111,
+          "capture_adjusted_ms_cycle": 14.237431922222221,
+          "capture_penalty_ms_total": 101.9376535,
+          "native_trace_records": 30,
+          "trace_records": 32,
+          "fallbacks": []
+        },
+        "mixed_ja_en": {
+          "prompts": 2,
+          "ids": 48,
+          "exact": true,
+          "cycles": 40,
+          "accepts": 6,
+          "active_candidates": 40,
+          "pooled_acceptance": 0.15,
+          "visible_per_cycle": 1.2,
+          "ar_tok_s_pooled": 110.33281197703519,
+          "mtp_tok_s_pooled": 67.99976388043446,
+          "mtp_ar_ratio_pooled": 0.6163149716023554,
+          "verify_ms_cycle": 15.285861658048816,
+          "proposal_ms_cycle": 1.3087161001749337,
+          "marker_ms_cycle": 16.608591575,
+          "capture_adjusted_ms_cycle": 14.3101539625,
+          "capture_penalty_ms_total": 91.9375045,
+          "native_trace_records": 30,
+          "trace_records": 32,
+          "fallbacks": []
+        }
+      }
+    },
+    "2": {
+      "full": {
+        "prompts": 10,
+        "ids": 240,
+        "exact": true,
+        "cycles": 210,
+        "accepts": 20,
+        "active_candidates": 412,
+        "pooled_acceptance": 0.04854368932038835,
+        "visible_per_cycle": 1.1428571428571428,
+        "ar_tok_s_pooled": 111.25550023675346,
+        "mtp_tok_s_pooled": 47.190228264565995,
+        "mtp_ar_ratio_pooled": 0.4241608564443506,
+        "verify_ms_cycle": 20.75510746134179,
+        "proposal_ms_cycle": 1.2041441713725882,
+        "marker_ms_cycle": 23.054511195238096,
+        "capture_adjusted_ms_cycle": 20.23365869047619,
+        "capture_penalty_ms_total": 592.379026,
+        "native_trace_records": 150,
+        "trace_records": 160,
+        "fallbacks": []
+      },
+      "splits": {
+        "train": {
+          "prompts": 6,
+          "ids": 144,
+          "exact": true,
+          "cycles": 122,
+          "accepts": 16,
+          "active_candidates": 240,
+          "pooled_acceptance": 0.06666666666666667,
+          "visible_per_cycle": 1.180327868852459,
+          "ar_tok_s_pooled": 111.03271967941919,
+          "mtp_tok_s_pooled": 48.70899183592549,
+          "mtp_ar_ratio_pooled": 0.4386904326631035,
+          "verify_ms_cycle": 20.751354188207902,
+          "proposal_ms_cycle": 1.21047022489098,
+          "marker_ms_cycle": 23.05906868852459,
+          "capture_adjusted_ms_cycle": 19.99076237704918,
+          "capture_penalty_ms_total": 374.33337,
+          "native_trace_records": 90,
+          "trace_records": 96,
+          "fallbacks": []
+        },
+        "heldout": {
+          "prompts": 4,
+          "ids": 96,
+          "exact": true,
+          "cycles": 88,
+          "accepts": 4,
+          "active_candidates": 172,
+          "pooled_acceptance": 0.023255813953488372,
+          "visible_per_cycle": 1.0909090909090908,
+          "ar_tok_s_pooled": 111.59135236771915,
+          "mtp_tok_s_pooled": 45.081731782175204,
+          "mtp_ar_ratio_pooled": 0.4039894743243234,
+          "verify_ms_cycle": 20.760310862731952,
+          "proposal_ms_cycle": 1.1953739608129994,
+          "marker_ms_cycle": 23.048192852272727,
+          "capture_adjusted_ms_cycle": 20.57040130681818,
+          "capture_penalty_ms_total": 218.045656,
+          "native_trace_records": 60,
+          "trace_records": 64,
+          "fallbacks": []
+        }
+      },
+      "categories": {
+        "code": {
+          "prompts": 4,
+          "ids": 96,
+          "exact": true,
+          "cycles": 81,
+          "accepts": 11,
+          "active_candidates": 159,
+          "pooled_acceptance": 0.06918238993710692,
+          "visible_per_cycle": 1.1851851851851851,
+          "ar_tok_s_pooled": 111.17710539593564,
+          "mtp_tok_s_pooled": 47.595756866869245,
+          "mtp_ar_ratio_pooled": 0.4281075379446714,
+          "verify_ms_cycle": 21.454924168525103,
+          "proposal_ms_cycle": 1.2179455018521828,
+          "marker_ms_cycle": 23.77048924691358,
+          "capture_adjusted_ms_cycle": 20.382940154320988,
+          "capture_penalty_ms_total": 274.3914765,
+          "native_trace_records": 60,
+          "trace_records": 64,
+          "fallbacks": []
+        },
+        "general_en": {
+          "prompts": 2,
+          "ids": 48,
+          "exact": true,
+          "cycles": 45,
+          "accepts": 1,
+          "active_candidates": 88,
+          "pooled_acceptance": 0.011363636363636364,
+          "visible_per_cycle": 1.0666666666666667,
+          "ar_tok_s_pooled": 111.65102286400622,
+          "mtp_tok_s_pooled": 44.83057537620662,
+          "mtp_ar_ratio_pooled": 0.4015240902074977,
+          "verify_ms_cycle": 20.365423636717928,
+          "proposal_ms_cycle": 1.1602223385125399,
+          "marker_ms_cycle": 22.59655888888889,
+          "capture_adjusted_ms_cycle": 20.194781233333334,
+          "capture_penalty_ms_total": 108.0799945,
+          "native_trace_records": 30,
+          "trace_records": 32,
+          "fallbacks": []
+        },
+        "general_ja": {
+          "prompts": 2,
+          "ids": 48,
+          "exact": true,
+          "cycles": 45,
+          "accepts": 1,
+          "active_candidates": 89,
+          "pooled_acceptance": 0.011235955056179775,
+          "visible_per_cycle": 1.0666666666666667,
+          "ar_tok_s_pooled": 111.70178677991225,
+          "mtp_tok_s_pooled": 45.738777476275985,
+          "mtp_ar_ratio_pooled": 0.409472209843839,
+          "verify_ms_cycle": 19.878240811845494,
+          "proposal_ms_cycle": 1.1841926413277786,
+          "marker_ms_cycle": 22.174600755555556,
+          "capture_adjusted_ms_cycle": 19.8164029,
+          "capture_penalty_ms_total": 106.1189035,
+          "native_trace_records": 30,
+          "trace_records": 32,
+          "fallbacks": []
+        },
+        "mixed_ja_en": {
+          "prompts": 2,
+          "ids": 48,
+          "exact": true,
+          "cycles": 39,
+          "accepts": 7,
+          "active_candidates": 76,
+          "pooled_acceptance": 0.09210526315789473,
+          "visible_per_cycle": 1.2307692307692308,
+          "ar_tok_s_pooled": 110.57792737517156,
+          "mtp_tok_s_pooled": 50.59680214130066,
+          "mtp_ar_ratio_pooled": 0.45756692445169966,
+          "verify_ms_cycle": 20.763046385792013,
+          "proposal_ms_cycle": 1.2491799037282665,
+          "marker_ms_cycle": 23.11116764102564,
+          "capture_adjusted_ms_cycle": 20.44992016666667,
+          "capture_penalty_ms_total": 103.7886515,
+          "native_trace_records": 30,
+          "trace_records": 32,
+          "fallbacks": []
+        }
+      }
+    },
+    "3": {
+      "full": {
+        "prompts": 10,
+        "ids": 240,
+        "exact": true,
+        "cycles": 209,
+        "accepts": 21,
+        "active_candidates": 601,
+        "pooled_acceptance": 0.03494176372712146,
+        "visible_per_cycle": 1.1483253588516746,
+        "ar_tok_s_pooled": 110.14333045717697,
+        "mtp_tok_s_pooled": 39.30050671339512,
+        "mtp_ar_ratio_pooled": 0.3568124057105292,
+        "verify_ms_cycle": 24.698119489676607,
+        "proposal_ms_cycle": 1.1980080688550498,
+        "marker_ms_cycle": 28.01883638277512,
+        "capture_adjusted_ms_cycle": 25.02696030382775,
+        "capture_penalty_ms_total": 625.3021005,
+        "native_trace_records": 147,
+        "trace_records": 160,
+        "fallbacks": [
+          "provider target graph supports one active B1/B2/B3/B4/B5/B8 chain bucket"
+        ]
+      },
+      "splits": {
+        "train": {
+          "prompts": 6,
+          "ids": 144,
+          "exact": true,
+          "cycles": 121,
+          "accepts": 17,
+          "active_candidates": 349,
+          "pooled_acceptance": 0.04871060171919771,
+          "visible_per_cycle": 1.1900826446280992,
+          "ar_tok_s_pooled": 110.23959952564606,
+          "mtp_tok_s_pooled": 40.36895318896913,
+          "mtp_ar_ratio_pooled": 0.3661928505062986,
+          "verify_ms_cycle": 24.89233209774637,
+          "proposal_ms_cycle": 1.2000432018621647,
+          "marker_ms_cycle": 28.21777259504132,
+          "capture_adjusted_ms_cycle": 25.138771537190085,
+          "capture_penalty_ms_total": 372.559128,
+          "native_trace_records": 87,
+          "trace_records": 96,
+          "fallbacks": [
+            "provider target graph supports one active B1/B2/B3/B4/B5/B8 chain bucket"
+          ]
+        },
+        "heldout": {
+          "prompts": 4,
+          "ids": 96,
+          "exact": true,
+          "cycles": 88,
+          "accepts": 4,
+          "active_candidates": 252,
+          "pooled_acceptance": 0.015873015873015872,
+          "visible_per_cycle": 1.0909090909090908,
+          "ar_tok_s_pooled": 109.99924170082613,
+          "mtp_tok_s_pooled": 37.79983250844788,
+          "mtp_ar_ratio_pooled": 0.343637209893275,
+          "verify_ms_cycle": 24.431077153580688,
+          "proposal_ms_cycle": 1.1952097609702668,
+          "marker_ms_cycle": 27.74529909090909,
+          "capture_adjusted_ms_cycle": 24.87321985795455,
+          "capture_penalty_ms_total": 252.7429725,
+          "native_trace_records": 60,
+          "trace_records": 64,
+          "fallbacks": []
+        }
+      },
+      "categories": {
+        "code": {
+          "prompts": 4,
+          "ids": 96,
+          "exact": true,
+          "cycles": 81,
+          "accepts": 11,
+          "active_candidates": 233,
+          "pooled_acceptance": 0.04721030042918455,
+          "visible_per_cycle": 1.1851851851851851,
+          "ar_tok_s_pooled": 108.3822990848325,
+          "mtp_tok_s_pooled": 39.846676526953516,
+          "mtp_ar_ratio_pooled": 0.36764930125504075,
+          "verify_ms_cycle": 25.14554557166304,
+          "proposal_ms_cycle": 1.200594607292226,
+          "marker_ms_cycle": 28.47267261728395,
+          "capture_adjusted_ms_cycle": 25.184416524691358,
+          "capture_penalty_ms_total": 266.3487435,
+          "native_trace_records": 59,
+          "trace_records": 64,
+          "fallbacks": []
+        },
+        "general_en": {
+          "prompts": 2,
+          "ids": 48,
+          "exact": true,
+          "cycles": 45,
+          "accepts": 1,
+          "active_candidates": 129,
+          "pooled_acceptance": 0.007751937984496124,
+          "visible_per_cycle": 1.0666666666666667,
+          "ar_tok_s_pooled": 112.04920572026802,
+          "mtp_tok_s_pooled": 37.27910279257474,
+          "mtp_ar_ratio_pooled": 0.33270296342521516,
+          "verify_ms_cycle": 24.273813896191616,
+          "proposal_ms_cycle": 1.1721472876767318,
+          "marker_ms_cycle": 27.525664600000002,
+          "capture_adjusted_ms_cycle": 24.845957733333332,
+          "capture_penalty_ms_total": 120.586809,
+          "native_trace_records": 30,
+          "trace_records": 32,
+          "fallbacks": []
+        },
+        "general_ja": {
+          "prompts": 2,
+          "ids": 48,
+          "exact": true,
+          "cycles": 45,
+          "accepts": 1,
+          "active_candidates": 131,
+          "pooled_acceptance": 0.007633587786259542,
+          "visible_per_cycle": 1.0666666666666667,
+          "ar_tok_s_pooled": 111.18409650655458,
+          "mtp_tok_s_pooled": 37.49405695562104,
+          "mtp_ar_ratio_pooled": 0.3372250001007174,
+          "verify_ms_cycle": 24.09036927080403,
+          "proposal_ms_cycle": 1.1834293603897095,
+          "marker_ms_cycle": 27.420606022222223,
+          "capture_adjusted_ms_cycle": 24.838931255555554,
+          "capture_penalty_ms_total": 116.1753645,
+          "native_trace_records": 30,
+          "trace_records": 32,
+          "fallbacks": []
+        },
+        "mixed_ja_en": {
+          "prompts": 2,
+          "ids": 48,
+          "exact": true,
+          "cycles": 38,
+          "accepts": 8,
+          "active_candidates": 108,
+          "pooled_acceptance": 0.07407407407407407,
+          "visible_per_cycle": 1.263157894736842,
+          "ar_tok_s_pooled": 110.82229922175308,
+          "mtp_tok_s_pooled": 42.48655535769308,
+          "mtp_ar_ratio_pooled": 0.3833755088646769,
+          "verify_ms_cycle": 24.966566829550032,
+          "proposal_ms_cycle": 1.2403835272906643,
+          "marker_ms_cycle": 28.34389852631579,
+          "capture_adjusted_ms_cycle": 25.128341065789474,
+          "capture_penalty_ms_total": 122.1911835,
+          "native_trace_records": 28,
+          "trace_records": 32,
+          "fallbacks": [
+            "provider target graph supports one active B1/B2/B3/B4/B5/B8 chain bucket"
+          ]
+        }
+      }
+    }
+  },
+  "matched_b1_on_off_on": {
+    "on1": {
+      "path": "/tmp/w7900-n4-strict-b123-gpuaccept-uncontended-184bc4e8.json",
+      "sha256": "4cee535e00da2a409eaecf8a7f7eed16880533b97a06dc4d4e112500f392c4b2",
+      "bytes": 97223,
+      "prompts": 10,
+      "ids": 240,
+      "exact": true,
+      "cycles": 214,
+      "accepts": 16,
+      "ar_tok_s": 110.51509919038386,
+      "mtp_tok_s": 63.73555142444579,
+      "ratio": 0.5767135159934014,
+      "verify_ms_cycle": 15.320757416481692,
+      "proposal_ms_cycle": 1.2254066532477736,
+      "wall_ms_cycle": 16.561870462616824,
+      "adjusted_ms_cycle": 14.285062102803739,
+      "capture_penalty_ms": 487.236989,
+      "delta_vs_off": {
+        "mtp_tok_s_pct": -2.8184086606319436,
+        "verify_ms_cycle_pct": 2.976904451323148,
+        "wall_ms_cycle_pct": 2.773339913505146,
+        "wall_ms_cycle_abs": 0.4469222897196268,
+        "adjusted_ms_cycle_pct": 2.347105035877961,
+        "adjusted_ms_cycle_abs": 0.32759638084112375
+      }
+    },
+    "off": {
+      "path": "/tmp/w7900-n4-control-b1-gpuaccept-uncontended-184bc4e8.json",
+      "sha256": "c0a5903dc736dd8033313cf9669641d217652b08ba772cbeff903541c8377c2b",
+      "bytes": 44714,
+      "prompts": 10,
+      "ids": 240,
+      "exact": true,
+      "cycles": 214,
+      "accepts": 16,
+      "ar_tok_s": 110.85962384742938,
+      "mtp_tok_s": 65.58397588065287,
+      "ratio": 0.5915947899202044,
+      "verify_ms_cycle": 14.877857805216667,
+      "proposal_ms_cycle": 1.2206010396426945,
+      "wall_ms_cycle": 16.114948172897197,
+      "adjusted_ms_cycle": 13.957465721962615,
+      "capture_penalty_ms": 461.7012445
+    },
+    "on2": {
+      "path": "/tmp/w7900-n4-on2-b1-gpuaccept-uncontended-184bc4e8.json",
+      "sha256": "4db6bdb1033588d5f2a3b00ff888c7900dacd1243f79a4e984560404c1a8fcf5",
+      "bytes": 44406,
+      "prompts": 10,
+      "ids": 240,
+      "exact": true,
+      "cycles": 214,
+      "accepts": 16,
+      "ar_tok_s": 111.89398812508486,
+      "mtp_tok_s": 64.51122560888531,
+      "ratio": 0.5765387997143245,
+      "verify_ms_cycle": 15.095615020200228,
+      "proposal_ms_cycle": 1.2209200720241833,
+      "wall_ms_cycle": 16.33047018691589,
+      "adjusted_ms_cycle": 14.20386388551402,
+      "capture_penalty_ms": 455.0937485,
+      "delta_vs_off": {
+        "mtp_tok_s_pct": -1.6356895985075837,
+        "verify_ms_cycle_pct": 1.4636328551762778,
+        "wall_ms_cycle_pct": 1.3374043261346946,
+        "wall_ms_cycle_abs": 0.21552201401869198,
+        "adjusted_ms_cycle_pct": 1.7653503039859686,
+        "adjusted_ms_cycle_abs": 0.24639816355140454
+      }
+    }
+  },
+  "profile": {
+    "prompt": "code_lru_cache",
+    "decode_tokens": 24,
+    "budget": 1,
+    "steady_state_skip": 2,
+    "require_cached_build": true,
+    "profiler": "rocprofv3 --kernel-trace --hip-runtime-trace --marker-trace on final child only",
+    "routes": {
+      "off": {
+        "source": {
+          "path": "/tmp/w7900-n4-prof-off-7afc0d5e.json",
+          "bytes": 33757,
+          "sha256": "370e9b178f53f865568a446f89bbb878e55d68e7eb626d75a42e5aa4ea586bb4"
+        },
+        "exact_ar_match": true,
+        "accepted_lengths": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          1,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          1
+        ],
+        "active_budgets": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "regions": {
+          "verify_pass": {
+            "windows": 16,
+            "host_ms_per_pass": 14.923285125,
+            "kernel_ms_per_pass": 9.91220625,
+            "kernel_calls_per_pass": 1212.9375,
+            "kernel_share": 0.6642107395907575,
+            "api_calls_per_pass": 12.0,
+            "api_ms_per_pass": 14.565152625,
+            "hipStreamSynchronize_calls_per_pass": 2.0,
+            "hipStreamSynchronize_ms_per_pass": 13.811726,
+            "hipGraphLaunch_calls_per_pass": 1.0,
+            "hipLaunchKernel_calls_per_pass": 3.0,
+            "hipMemcpy_calls_per_pass": 2.0,
+            "hipMemcpyAsync_calls_per_pass": 1.0
+          },
+          "proposer_draft": {
+            "windows": 16,
+            "host_ms_per_pass": 0.0214934375,
+            "kernel_ms_per_pass": 0.0,
+            "kernel_calls_per_pass": 0.0,
+            "kernel_share": 0.0,
+            "api_calls_per_pass": 1.0,
+            "api_ms_per_pass": 0.00812375,
+            "hipStreamSynchronize_calls_per_pass": 0,
+            "hipStreamSynchronize_ms_per_pass": 0,
+            "hipGraphLaunch_calls_per_pass": 0,
+            "hipLaunchKernel_calls_per_pass": 0,
+            "hipMemcpy_calls_per_pass": 0,
+            "hipMemcpyAsync_calls_per_pass": 1.0
+          },
+          "proposer_update": {
+            "windows": 16,
+            "host_ms_per_pass": 1.4754465625,
+            "kernel_ms_per_pass": 1.2530084375,
+            "kernel_calls_per_pass": 35.5,
+            "kernel_share": 0.8492401347134522,
+            "api_calls_per_pass": 68.6875,
+            "api_ms_per_pass": 1.1773828125,
+            "hipStreamSynchronize_calls_per_pass": 0,
+            "hipStreamSynchronize_ms_per_pass": 0,
+            "hipGraphLaunch_calls_per_pass": 0,
+            "hipLaunchKernel_calls_per_pass": 33.1875,
+            "hipMemcpy_calls_per_pass": 1.0,
+            "hipMemcpyAsync_calls_per_pass": 1.3125
+          },
+          "cycle": {
+            "windows": 16,
+            "host_ms_per_pass": 16.4371221875,
+            "kernel_ms_per_pass": 11.1653396875,
+            "kernel_calls_per_pass": 1248.5,
+            "kernel_share": 0.6792758221381933,
+            "api_calls_per_pass": 81.6875,
+            "api_ms_per_pass": 15.7506591875,
+            "hipStreamSynchronize_calls_per_pass": 2.0,
+            "hipStreamSynchronize_ms_per_pass": 13.811726,
+            "hipGraphLaunch_calls_per_pass": 1.0,
+            "hipLaunchKernel_calls_per_pass": 36.1875,
+            "hipMemcpy_calls_per_pass": 3.0,
+            "hipMemcpyAsync_calls_per_pass": 3.3125
+          }
+        },
+        "top_cycle_families": [
+          {
+            "name": "other",
+            "calls_per_pass": 238.625,
+            "ms_per_pass": 1.430580875,
+            "vgpr_max": 104,
+            "scratch_max": 0
+          },
+          {
+            "name": "w4_dual_gemv",
+            "calls_per_pass": 100.0,
+            "ms_per_pass": 1.401864125,
+            "vgpr_max": 144,
+            "scratch_max": 0
+          },
+          {
+            "name": "moe_gate_up_dual_gemv",
+            "calls_per_pass": 50.0,
+            "ms_per_pass": 1.2437435,
+            "vgpr_max": 104,
+            "scratch_max": 0
+          },
+          {
+            "name": "moe_paro_rotate_in",
+            "calls_per_pass": 230.0,
+            "ms_per_pass": 1.0583756875,
+            "vgpr_max": 24,
+            "scratch_max": 0
+          },
+          {
+            "name": "moe_down_gemv",
+            "calls_per_pass": 50.0,
+            "ms_per_pass": 0.8158371875,
+            "vgpr_max": 104,
+            "scratch_max": 0
+          },
+          {
+            "name": "w8a16_linear",
+            "calls_per_pass": 1.0,
+            "ms_per_pass": 0.807529625,
+            "vgpr_max": 32,
+            "scratch_max": 0
+          },
+          {
+            "name": "linear_attention_gdn_decode",
+            "calls_per_pass": 30.0,
+            "ms_per_pass": 0.6841541875,
+            "vgpr_max": 80,
+            "scratch_max": 0
+          },
+          {
+            "name": "router",
+            "calls_per_pass": 100.0,
+            "ms_per_pass": 0.567488875,
+            "vgpr_max": 40,
+            "scratch_max": 0
+          },
+          {
+            "name": "moe_silu_rotate_out",
+            "calls_per_pass": 100.0,
+            "ms_per_pass": 0.4681015,
+            "vgpr_max": 24,
+            "scratch_max": 0
+          },
+          {
+            "name": "rmsnorm",
+            "calls_per_pass": 126.25,
+            "ms_per_pass": 0.4437013125,
+            "vgpr_max": 32,
+            "scratch_max": 0
+          },
+          {
+            "name": "lm_head_argmax",
+            "calls_per_pass": 5.0,
+            "ms_per_pass": 0.3810659375,
+            "vgpr_max": 16,
+            "scratch_max": 0
+          },
+          {
+            "name": "decode_attention",
+            "calls_per_pass": 20.0,
+            "ms_per_pass": 0.3702405625,
+            "vgpr_max": 32,
+            "scratch_max": 0
+          }
+        ]
+      },
+      "on": {
+        "source": {
+          "path": "/tmp/w7900-n4-prof-on-7afc0d5e.json",
+          "bytes": 33795,
+          "sha256": "c23a5ffe5f6ebfdbbb0b53c2f4a145576fcc46a738a84b9a427ed71d180e59bd"
+        },
+        "exact_ar_match": true,
+        "accepted_lengths": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          1,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          1
+        ],
+        "active_budgets": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "regions": {
+          "verify_pass": {
+            "windows": 16,
+            "host_ms_per_pass": 15.2350530625,
+            "kernel_ms_per_pass": 9.9147460625,
+            "kernel_calls_per_pass": 1212.9375,
+            "kernel_share": 0.650785134900806,
+            "api_calls_per_pass": 13.0,
+            "api_ms_per_pass": 14.6014359375,
+            "hipStreamSynchronize_calls_per_pass": 3.0,
+            "hipStreamSynchronize_ms_per_pass": 13.8518578125,
+            "hipGraphLaunch_calls_per_pass": 1.0,
+            "hipLaunchKernel_calls_per_pass": 3.0,
+            "hipMemcpy_calls_per_pass": 2.0,
+            "hipMemcpyAsync_calls_per_pass": 1.0
+          },
+          "proposer_draft": {
+            "windows": 16,
+            "host_ms_per_pass": 0.0196794375,
+            "kernel_ms_per_pass": 0.0,
+            "kernel_calls_per_pass": 0.0,
+            "kernel_share": 0.0,
+            "api_calls_per_pass": 1.0,
+            "api_ms_per_pass": 0.007226875,
+            "hipStreamSynchronize_calls_per_pass": 0,
+            "hipStreamSynchronize_ms_per_pass": 0,
+            "hipGraphLaunch_calls_per_pass": 0,
+            "hipLaunchKernel_calls_per_pass": 0,
+            "hipMemcpy_calls_per_pass": 0,
+            "hipMemcpyAsync_calls_per_pass": 1.0
+          },
+          "proposer_update": {
+            "windows": 16,
+            "host_ms_per_pass": 1.4736235625,
+            "kernel_ms_per_pass": 1.254449875,
+            "kernel_calls_per_pass": 35.5,
+            "kernel_share": 0.8512688768845605,
+            "api_calls_per_pass": 68.6875,
+            "api_ms_per_pass": 1.180027125,
+            "hipStreamSynchronize_calls_per_pass": 0,
+            "hipStreamSynchronize_ms_per_pass": 0,
+            "hipGraphLaunch_calls_per_pass": 0,
+            "hipLaunchKernel_calls_per_pass": 33.1875,
+            "hipMemcpy_calls_per_pass": 1.0,
+            "hipMemcpyAsync_calls_per_pass": 1.3125
+          },
+          "cycle": {
+            "windows": 16,
+            "host_ms_per_pass": 16.74406675,
+            "kernel_ms_per_pass": 11.1693359375,
+            "kernel_calls_per_pass": 1248.5,
+            "kernel_share": 0.667062315521407,
+            "api_calls_per_pass": 82.6875,
+            "api_ms_per_pass": 15.7886899375,
+            "hipStreamSynchronize_calls_per_pass": 3.0,
+            "hipStreamSynchronize_ms_per_pass": 13.8518578125,
+            "hipGraphLaunch_calls_per_pass": 1.0,
+            "hipLaunchKernel_calls_per_pass": 36.1875,
+            "hipMemcpy_calls_per_pass": 3.0,
+            "hipMemcpyAsync_calls_per_pass": 3.3125
+          }
+        },
+        "top_cycle_families": [
+          {
+            "name": "other",
+            "calls_per_pass": 238.625,
+            "ms_per_pass": 1.440132375,
+            "vgpr_max": 104,
+            "scratch_max": 0
+          },
+          {
+            "name": "w4_dual_gemv",
+            "calls_per_pass": 100.0,
+            "ms_per_pass": 1.4000858125,
+            "vgpr_max": 144,
+            "scratch_max": 0
+          },
+          {
+            "name": "moe_gate_up_dual_gemv",
+            "calls_per_pass": 50.0,
+            "ms_per_pass": 1.2519455,
+            "vgpr_max": 104,
+            "scratch_max": 0
+          },
+          {
+            "name": "moe_paro_rotate_in",
+            "calls_per_pass": 230.0,
+            "ms_per_pass": 1.049975125,
+            "vgpr_max": 24,
+            "scratch_max": 0
+          },
+          {
+            "name": "moe_down_gemv",
+            "calls_per_pass": 50.0,
+            "ms_per_pass": 0.8287493125,
+            "vgpr_max": 104,
+            "scratch_max": 0
+          },
+          {
+            "name": "w8a16_linear",
+            "calls_per_pass": 1.0,
+            "ms_per_pass": 0.8075341875,
+            "vgpr_max": 32,
+            "scratch_max": 0
+          },
+          {
+            "name": "linear_attention_gdn_decode",
+            "calls_per_pass": 30.0,
+            "ms_per_pass": 0.6815141875,
+            "vgpr_max": 80,
+            "scratch_max": 0
+          },
+          {
+            "name": "router",
+            "calls_per_pass": 100.0,
+            "ms_per_pass": 0.576356125,
+            "vgpr_max": 40,
+            "scratch_max": 0
+          },
+          {
+            "name": "moe_silu_rotate_out",
+            "calls_per_pass": 100.0,
+            "ms_per_pass": 0.4587181875,
+            "vgpr_max": 24,
+            "scratch_max": 0
+          },
+          {
+            "name": "rmsnorm",
+            "calls_per_pass": 126.25,
+            "ms_per_pass": 0.4404583125,
+            "vgpr_max": 32,
+            "scratch_max": 0
+          },
+          {
+            "name": "lm_head_argmax",
+            "calls_per_pass": 5.0,
+            "ms_per_pass": 0.3806433125,
+            "vgpr_max": 16,
+            "scratch_max": 0
+          },
+          {
+            "name": "decode_attention",
+            "calls_per_pass": 20.0,
+            "ms_per_pass": 0.3705559375,
+            "vgpr_max": 32,
+            "scratch_max": 0
+          }
+        ]
+      }
+    },
+    "delta_on_minus_off": {
+      "cycle_host_ms_per_pass": 0.3069445625,
+      "verify_host_ms_per_pass": 0.31176793750000087,
+      "cycle_kernel_ms_per_pass": 0.0039962500000001455,
+      "verify_kernel_ms_per_pass": 0.002539812500000238,
+      "hip_api_calls_per_pass": 1.0,
+      "hipStreamSynchronize_calls_per_pass": 1.0
+    },
+    "interpretation": "Kernels and proposal/update are unchanged. Current N4 adds exactly one hipStreamSynchronize per verifier pass and about 0.312 ms profiled verify host wall; only about 0.003 ms is kernel movement. The pre-hipGraphLaunch gap identifies repeated Python control construction, validation, binding-signature generation, ctypes marshalling, and native result validation as the dominant adapter-only residual."
+  },
+  "source_artifacts": {
+    "b123_on": {
+      "path": "/tmp/w7900-n4-strict-b123-gpuaccept-uncontended-184bc4e8.json",
+      "bytes": 97223,
+      "sha256": "4cee535e00da2a409eaecf8a7f7eed16880533b97a06dc4d4e112500f392c4b2"
+    },
+    "b1_off": {
+      "path": "/tmp/w7900-n4-control-b1-gpuaccept-uncontended-184bc4e8.json",
+      "bytes": 44714,
+      "sha256": "c0a5903dc736dd8033313cf9669641d217652b08ba772cbeff903541c8377c2b"
+    },
+    "b1_on_bracket": {
+      "path": "/tmp/w7900-n4-on2-b1-gpuaccept-uncontended-184bc4e8.json",
+      "bytes": 44406,
+      "sha256": "4db6bdb1033588d5f2a3b00ff888c7900dacd1243f79a4e984560404c1a8fcf5"
+    },
+    "profile_off": {
+      "path": "/tmp/w7900-n4-prof-off-7afc0d5e.json",
+      "bytes": 33757,
+      "sha256": "370e9b178f53f865568a446f89bbb878e55d68e7eb626d75a42e5aa4ea586bb4"
+    },
+    "profile_on": {
+      "path": "/tmp/w7900-n4-prof-on-7afc0d5e.json",
+      "bytes": 33795,
+      "sha256": "c23a5ffe5f6ebfdbbb0b53c2f4a145576fcc46a738a84b9a427ed71d180e59bd"
+    }
+  },
+  "correctness": {
+    "prompt_budget_rows": "30/30 exact",
+    "output_ids": "720/720 exact in B1/B2/B3 matrix; each matched B1 arm 240/240 exact",
+    "matched_cycles": "214/214 each arm",
+    "matched_accepts": "16/16 each arm",
+    "native_trace": "B1 and B2 150/150 retained records; B3 has 147 native records, expected capture misses, and one exact inactive-final-cycle fallback",
+    "profile_children": "both exact",
+    "prior_gpu_cpu_accept_oracle": "150/150 B1 records in corrected parent artifact"
+  },
+  "decision": {
+    "best_budget": "B1",
+    "current_n4": "speed-negative diagnostic; explicit/default-off",
+    "measured_complete_wall_regression_ms_per_cycle_range": [
+      0.21552201401869198,
+      0.4469222897196268
+    ],
+    "measured_complete_wall_regression_percent_range": [
+      1.3374043261346946,
+      2.773339913505146
+    ],
+    "measured_mtp_rate_regression_percent_range": [
+      -2.8184086606319436,
+      -1.6356895985075837
+    ],
+    "n4_plus_next": "Cache and reuse the state-bound ABI control/ctypes slab and remove the duplicate post-native synchronization before expanding provider proposal/commit ownership. Keep exact shape/pointer/active-mask fallback.",
+    "no_speed_claim_reason": [
+      "all strict budgets remain below their true AR controls",
+      "one diagnostic repetition per prompt/arm",
+      "N4 itself regresses current control",
+      "GPU1 host conditions changed during the bracket"
+    ]
+  }
+}

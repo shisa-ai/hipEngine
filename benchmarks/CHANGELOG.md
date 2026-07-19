@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-20
+
+- [diagnostic gfx1100 PARO N4 uncontended baseline; default remains off] W7900 Qwen3.6-35B-A3B full8192 W4-PARO+MTP-BF16 strict B1 on/off/on moves **65.584 tok/s off -> 63.736/64.511 on (-2.82%/-1.64%)** and **16.115 ms/cycle -> 16.562/16.330 (+2.77%/+1.34%)** with identical **240 IDs / 214 cycles / 16 accepts**; the complete B1/B2/B3 matrix is **720/720 IDs exact** but only **0.5767x/0.4242x/0.3568x true AR**, and cached final-child tracing localizes N4's **+0.312 ms verify host wall** to repeated ABI control/marshalling plus one extra `hipStreamSynchronize` (**2 -> 3**) while kernels/proposer are unchanged. `benchmarks/results/2026-07-20-w7900-paro-mtp-n4-uncontended-baseline.json`.
+
 ## 2026-07-19
 
 - [corrected gfx1100 N4 PARO target+accept correctness; no performance row] W7900 Qwen3.6-35B-A3B full8192 W4-PARO+MTP-BF16 changes from a false model-artifact blocker to strict verifier admission: forwarding the existing exact small-batch shared-expert control through wider t-loops moves layer-0 post-MoE BF16 mismatches **253/2048 -> 0/2048 (-100%)** and target correction **22 -> 19 (exact)** without changing weights; clean B2 native-off/on plus Conv/GDN/KV state pass, and canonical B1 is **10/10 prompts / 240/240 IDs exact** with **16/214** full, **13/125** train, and **3/89** heldout draft accepts across **150/150** native trace records. N4 remains default-off, low-acceptance/strict cost is unclaimed, and DFlash/gfx1151 remain ungated; `benchmarks/results/2026-07-19-w7900-paro-mtp-native-target-graph-n4-correctness.json` (supersedes the blocked packet).
