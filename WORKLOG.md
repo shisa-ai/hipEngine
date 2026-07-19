@@ -164607,3 +164607,80 @@ clean wrapper/category/true-AR hashes, real-model and primitive correctness,
 same-tree N1/N2 attribution, and the final-child profiler census. Updated
 `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, `docs/PLAN.md`, and
 `docs/REFACTOR.md`; N1 remains the canonical performance row.
+
+## 2026-07-19 — N3 complete GGUF cycle/public adapter ownership
+
+Added `Qwen35GGUFNativeCompleteCycleResult` and one strict B1/B2 GGUF adapter
+call that owns the retained device-chained NextN proposal, N2 target
+verify/accept/selected hidden+Conv/GDN commit, verifier-seed handoff, speculative
+MTP-KV rollback and accepted-row repair, and target/MTP cursor accounting. The
+result reports the complete `PROPOSE|VERIFY|ACCEPT|COMMIT|UPDATE_CURSORS` stage
+contract plus bounded draft/output IDs, accepted count, cursors, and separate
+proposal/target/KV/whole-call wall. The old N1/N2 target APIs and eager
+unsupported-shape fallback remain unchanged.
+
+`Qwen35GGUFResidentSession.run_native_spec_mtp_cycle()` is now the public GGUF
+provider boundary. The single-request `LLM.generate_speculative_mtp_detailed()`
+loop attempts it through the session capability and falls back to the exact
+prior loop when the registered graph/backend/shape is unsupported. Public MTP
+telemetry now classifies N3 cycles with the prior direct-commit ownership
+metrics instead of reporting zero target rows. Added the explicit benchmark
+route `llama-compat-native-cycle-n3`; exact/default and gfx1151 policies are
+unchanged.
+
+RED/GREEN and CPU validation:
+
+```bash
+python3 -m pytest \
+  tests/test_gguf_native_spec_cycle.py \
+  tests/test_gguf_mtp_bench_metrics.py \
+  tests/test_gguf_ar_mtp_suite.py \
+  tests/test_generation_qwen35_gguf_sampling.py -q \
+  -k 'not native_b2_target_graph_matches_eager_hidden_state_and_kv'
+# 200 passed
+```
+
+Real W7900 gates:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+uv run --extra dev pytest -q \
+  tests/test_gguf_native_spec_cycle.py::test_native_b2_target_graph_matches_eager_hidden_state_and_kv
+# 1 passed
+
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-mtp-w7900-hipcc-version.txt \
+PYTHONPATH=. python3 scripts/gguf_ar_mtp_suite.py \
+  --scope full --mtp-route llama-compat-native-cycle-n3 \
+  --budgets 2 --cycles 24 --max-output-tokens 24 \
+  --record-cycle-stage-timings --require-cached-build \
+  --output /tmp/w7900-llama-compat-native-cycle-n3-full-dirty.json
+```
+
+The full category+heldout run is exact against the clean N2 source for every
+**240 ID / 96 cycle** record, including all draft IDs, target/visible IDs,
+accept counts, cycle cursors, and MTP-KV row cursors. Economy remains **144/179
+accepted drafts (80.45%)** and **144/240 accepted-output (60.00%)**. N3 measures
+**117.318 tok/s, 8.593 ms/output, and 1.2755x true AR**, versus clean N2
+**117.557 tok/s / 8.529 ms/output** (-0.20%, neutral within run variance).
+This is an ownership/public-adapter milestone, not a new topline; N1 remains
+**122.667 tok/s**.
+
+A real public API smoke generated eight tokens through four
+`llama_compat_native_complete_cycle` records (B2 reject/reject/full-accept plus
+B1 full-accept), with `native_complete_cycle_ms` and non-zero target ownership
+telemetry. N3 deliberately does not claim proposal submission collapse yet:
+proposal leaves still execute through the retained Python device-chain method.
+That native submission boundary and N4 PARO/DFlash adapters remain next.
+
+Added `scripts/gguf_mtp_bench.py --require-cached-build` and threaded it into
+the target session and resident draft runner so a final benchmark child can be
+profiled without any compiler process. After a non-profiled warm run, profiled
+the exact eight-cycle N3 child under `rocprofv3 --kernel-trace`. Trace
+`/tmp/w7900-native-n3-rocprof/epyc/3786139_kernel_trace.csv` has 10,916 rows,
+2,843,686 bytes, SHA-256
+`8707df8993bc5cc6e59b3917ec1b830934ca8c4f0a7e1a8a0ac886a52a0f3a8d`.
+It contains 16 measured NextN Q6-X8 top-1 stage-1 launches (**606.262 us
+average**) plus eight each of N2 accept (**7.165 us**), selected linear-state
+commit (**202.082 us**), and hidden/cursor commit (**12.750 us**). The profiled
+trajectory remains 14/16 accepted drafts and the same 22 visible IDs.

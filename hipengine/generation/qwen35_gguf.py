@@ -355,11 +355,19 @@ def _timing_set(timing: dict[str, float], key: str, start: float) -> None:
     timing[key] = _timing_ms_since(start)
 
 
+_LLAMA_COMPAT_DIRECT_CYCLE_MODES = frozenset(
+    {
+        "llama_compat_direct_commit",
+        "llama_compat_native_complete_cycle",
+    }
+)
+
+
 def _mtp_cycle_summary(cycles: list[dict[str, Any]] | tuple[dict[str, Any], ...]) -> dict[str, Any]:
     direct_cycles = [
         cycle
         for cycle in cycles
-        if str(cycle.get("mode", "")) == "llama_compat_direct_commit"
+        if str(cycle.get("mode", "")) in _LLAMA_COMPAT_DIRECT_CYCLE_MODES
     ]
     accept_hist: dict[str, int] = {}
     shape_hist: dict[str, int] = {}
@@ -419,7 +427,7 @@ def _add_mtp_cycle_timing_metrics(
     target_rows = sum(
         int(cycle.get("generated_draft_tokens", 0)) + 1
         for cycle in cycle_rows
-        if str(cycle.get("mode", "")) == "llama_compat_direct_commit"
+        if str(cycle.get("mode", "")) in _LLAMA_COMPAT_DIRECT_CYCLE_MODES
     )
     timing["mtp_cycles_count"] = float(len(cycle_rows))
     timing["mtp_generated_draft_tokens"] = float(draft_tokens)
@@ -3344,6 +3352,70 @@ class Qwen35GGUFBringupGenerator:
                 if resident_context.pending_seed is None:
                     raise RuntimeError("resident MTP context has no pending seed")
                 cycle_mtp_kv_base_len = int(mtp_device_kv_len)
+
+                # N3 is the public c=1 adapter boundary: one call owns proposal,
+                # target accept/commit, GGUF reseed, MTP-KV repair, and cursors.
+                # Backends/shapes without the registered N2 target graph preserve
+                # the established exact loop below.
+                native_cycle = getattr(session, "run_native_spec_mtp_cycle", None)
+                native_result = None
+                if callable(native_cycle):
+                    from hipengine.runtime.gguf_native_spec_cycle import (
+                        NativeSpecTargetGraphUnsupportedError,
+                    )
+
+                    try:
+                        native_result = native_cycle(
+                            resident_draft,
+                            resident_context,
+                            root_token=prev_token,
+                            root_position=seq_position,
+                            candidate_budget=draft_n_max,
+                            remaining_decode=remaining,
+                            rope_cos=assets.rope_cos,
+                            rope_sin=assets.rope_sin,
+                            draft_key_cache=mtp_key_cache,
+                            draft_value_cache=mtp_value_cache,
+                            draft_cache_len=mtp_device_kv_len,
+                            cycle_id=len(cycles),
+                            transaction_id=len(cycles),
+                        )
+                    except NativeSpecTargetGraphUnsupportedError:
+                        native_result = None
+                if native_result is not None:
+                    mtp_device_kv_len = int(native_result.draft_cache_len_after)
+                    output_tokens = [int(token) for token in native_result.output_token_ids]
+                    accepted_draft_tokens = int(native_result.accepted_draft_tokens)
+                    _timing_add_ms(timing, "draft_propose_ms", native_result.proposal_wall_ms)
+                    _timing_add_ms(timing, "target_verify_ms", native_result.target_wall_ms)
+                    _timing_add_ms(
+                        timing,
+                        "mtp_kv_commit_ms",
+                        native_result.mtp_kv_commit_wall_ms,
+                    )
+                    _timing_add_ms(timing, "native_complete_cycle_ms", native_result.call_wall_ms)
+                    cycles.append(
+                        {
+                            "mode": "llama_compat_native_complete_cycle",
+                            "generated_draft_tokens": len(native_result.draft_token_ids),
+                            "accepted_draft_tokens": accepted_draft_tokens,
+                            "visible_output_tokens": len(output_tokens),
+                        }
+                    )
+                    prev_token = int(output_tokens[-1])
+                    seq_position = int(native_result.end_position)
+                    stop = False
+                    for token in output_tokens:
+                        if len(generated_ids) >= int(request.max_tokens):
+                            break
+                        generated_ids.append(int(token))
+                        if _gguf_finished(generated_ids, self.tokenizer, request):
+                            stop = True
+                            break
+                    if stop:
+                        break
+                    continue
+
                 draft_start = time.perf_counter()
                 draft_tokens, _draft_topk, mtp_device_kv_len = resident_draft.propose_chain_from_device_seed(
                     int(resident_context.pending_seed.hidden_ptr),

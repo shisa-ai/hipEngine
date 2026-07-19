@@ -541,8 +541,15 @@ Current blockers that keep project-wide c>N incomplete:
   hidden rows graph-owned so prompt-prefill scratch growth cannot invalidate a
   captured pointer, and matches all 240 IDs / 96 cycle semantics in the full
   category+heldout suite. Its first same-tree aggregate screen is neutral within
-  run variance, while state/KV commit and host-seed sub-windows shrink. N3
-  complete-cycle/public-adapter ownership, draft-side batching, rows>=16
+  run variance, while state/KV commit and host-seed sub-windows shrink. N3 now
+  joins strict device-chained proposal, the N2 target transaction, MTP-KV
+  rollback/accepted-row repair, reseed, and cursor/result accounting behind one
+  GGUF scheduler-facing call. The public single-request GGUF MTP loop uses that
+  adapter when the registered B1/B2 graph admits the shape and preserves the
+  exact prior loop otherwise. The first full N3 gate matches all 240 IDs / 96
+  cycle semantics at 117.318 tok/s versus the clean N2 117.557 tok/s, neutral
+  within run variance; the faster N1 topline remains unchanged. Shared PARO/
+  DFlash adapters, draft-side batching/native submission collapse, rows>=16
   verifier tuning, streaming, and exact/default MTP serving remain open.
 - Exact all-choice generated-token accounting and batch timing ownership are
   available for non-streaming responses. Benchmark coverage still needs

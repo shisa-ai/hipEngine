@@ -339,9 +339,19 @@ accept/commit metadata, and scheduler-facing results.
 4. **N2 — Device accept/commit:** consume target top-1 on device and produce the
    accepted count, commit rows, reseed row, recurrent/KV transaction, and output
    summary without intermediate host reads.
-5. **N3 — Complete native cycle:** include proposal/NextN and cursor update so
-   one Python call owns a complete cycle. Measure host calls, HIP submissions,
-   GPU kernel wall, and complete cycle wall separately.
+5. **N3 — Complete GGUF cycle adapter (landed 2026-07-19):** one
+   scheduler-facing GGUF call now owns strict device-chained proposal/NextN,
+   the N2 target verify/accept/selected-state transaction, MTP-KV rollback and
+   accepted-row repair, reseed, and target/MTP cursor accounting. The public
+   single-request MTP path uses it when the registered B1/B2 target graph admits
+   the shape, with the prior exact loop retained as the unsupported-shape/
+   backend fallback. The first full W7900 gate matches N2 for all 240 IDs / 96
+   cycles at **117.318 tok/s** versus clean N2 **117.557 tok/s** (neutral within
+   run variance), while preserving separate proposal, target, MTP-KV, complete-
+   call, and cycle-wall measurements. Proposal leaves still submit through the
+   retained Python device-chain implementation; moving those submissions into
+   the native launcher remains the next launch-collapse step rather than being
+   implied by this ownership milestone.
 6. **N4 — Shared provider adapters:** migrate GGUF MTP first, then PARO MTP and
    DFlash without duplicating the launcher. Add gfx1100 and gfx1151 gates for
    each provider before default promotion.
