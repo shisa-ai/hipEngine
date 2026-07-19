@@ -167255,3 +167255,38 @@ Merge validation also passes `compileall`, conflict/index checks,
 matched concurrency row, and the compact artifact's raw SHA/provenance/value
 cross-check. No runtime behavior changed beyond preserving the intended
 architecture-specific test boundary.
+
+## 2026-07-19 — Admit the gfx1151 NativeSpecCycle target graph
+
+Fetched and pulled `origin/main`; local `main` was already exact at
+`b3798f01`. HIP 7.15 and the gfx1151 device are healthy under the retained
+one-hardware-queue process default. The broad external kernel-lineage audit is
+currently blocked by the absent read-only Atlas checkout at
+`/home/lhl/amd-gpu-tuning/reference/atlas`; the narrow `*native_cycle*` filter
+selects no external sources because this transfer changes only the in-tree
+backend-neutral host graph launcher and registry admission, not a kernel body.
+
+RED first required dedicated gfx1151 registry resolution for the B1/B2 target
+launcher and failed exactly with a missing `hip_gfx1151` key. The launcher now
+registers that target provider explicitly for both admitted gfx11 backends;
+`hip_gfx1151` continues to exclude speculative providers from its generic
+alias refresh, and the unvalidated N3P proposal graph remains gfx1100-only.
+The previously gfx1100-only real-model oracle now runs on either admitted gfx11
+arch.
+
+On the Radeon 8060S, the focused real GGUF target/N2 graph oracle passes. It
+covers reusable B2 replay at changing positions, B1, reject and guaranteed
+full-accept N2 selection, target IDs, FP32 hidden rows, 60 captured/resident
+Conv/GDN state buffers, 20 full-attention KV buffers, selected hidden commit,
+and cursor/result accounting against the eager path. Host validation is **33
+passed** across NativeSpecCycle ABI/graph/GGUF tests excluding the already-run
+real-model node, plus the gfx1151 alias-isolation test, `py_compile`, and
+`git diff --check`.
+
+A tracked-clean but untracked-dirty current-main diagnostic established the
+same-protocol pre-transfer control at **56.089 true-AR tok/s** and **68.117
+llama-compat B2 tok/s (1.2144x AR)** with unchanged **77.72% draft acceptance /
+59.58% accepted-output**. It is not publication evidence because this shared
+checkout contains 255 unrelated untracked paths. Next is a committed-clean full
+category+heldout `llama-compat-native-cycle` run; proposal-graph admission stays
+blocked until an independent N3P gate.
