@@ -1536,6 +1536,44 @@ Full commands, phase-specific byte footprints, per-family timings/resources,
 raw-trace hashes, and the contextual comparisons are in
 `benchmarks/results/2026-07-19-gpu1-hipengine-qwen36-35b-a3b-ud-q3km-direct-baseline.json`.
 
+### 12.6 Grouped raw-IQ prefill: verified kernel win, flat headline
+
+The expert-major scalar path reuses the existing device-only
+count/prefix/scatter ABI and reads each active expert row once per chunk. It
+adds no resident weight layout, host scalar read, or private memory. On the
+same GPU1 model/shape, selected-region attribution moves:
+
+| 512 prefill window | Direct | Grouped scalar | Delta |
+| --- | ---: | ---: | ---: |
+| Raw-IQ kernel sum | 994.668 ms | 613.995 ms | **-38.27%** |
+| Total kernel sum | 4,396.145 ms | 4,078.667 ms | **-7.22%** |
+| Trace span | 30,432.076 ms | 29,882.217 ms | **-549.859 ms** |
+| MoE count/prefix/scatter | 0 | 2.663 ms | +2.663 ms |
+
+IQ3 dual improves `585.202 -> 280.833 ms` (-52.01%), while activation-heavy
+IQ4 down improves `396.751 -> 328.060 ms` (-17.31%). All grouped symbols have
+zero scratch; allocated VGPRs are 48/112/64 for IQ3 dual, blk.39 IQ4 dual, and
+IQ4 down. No memory-copy trace was emitted inside the selected region.
+
+The expensive formal 512/128 paired wall is deliberately not overstated:
+grouped five-run median is 16.685 tok/s versus direct three-run 16.648 tok/s
+(+0.22%), within 2.08%/1.60% sample spread. Decode is unchanged at 100.573
+versus 100.570 tok/s and peak allocation remains 15.805 GiB. A separate
+4096/1 pair is exact and non-regressive (`19.731 -> 20.005 tok/s`, +1.39%),
+but does not show a larger aggregate percentage because the parity-safe native
+scheduler and resolved chunk boundaries dominate the host wall.
+
+Correctness is stronger than repeated-token trajectory equality: a mixed
+64-token serial-versus-native-row-bulk probe gives KL 0, top-1 agreement 1.0,
+and zero max/mean logit difference. Therefore grouped scalar is default-on as
+an exact, non-regressive verified kernel/sub-window improvement; direct remains
+available with `HIPENGINE_GGUF_IQ_GROUPED_PREFILL=0`. This is not evidence that
+P0 closes the broader prefill scheduler gap, and it has zero direct c=1 decode
+benefit. Decode optimization proceeds through tasks #20 and #15.
+
+Full evidence is in
+`benchmarks/results/2026-07-20-gpu1-hipengine-qwen36-35b-a3b-ud-q3km-grouped-prefill.json`.
+
 ---
 
 ## Summary

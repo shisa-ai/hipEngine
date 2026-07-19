@@ -2942,7 +2942,7 @@ def _env_flag(name: str, default: bool, *aliases: str) -> bool:
 
 
 def _iq_grouped_prefill_enabled() -> bool:
-    return _env_flag(_GGUF_IQ_GROUPED_PREFILL_ENV, False)
+    return _env_flag(_GGUF_IQ_GROUPED_PREFILL_ENV, True)
 
 
 def _env_int(name: str, default: int, *aliases: str) -> int:

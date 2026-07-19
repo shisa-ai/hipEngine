@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-20
+
+- [verified sub-window/default promotion] Qwen3.6-35B-A3B GGUF / gguf_ud_q3_k_m / GPU1 512/128: grouped scalar moves paired prefill `16.648 -> 16.685 tok/s` (+0.22%, flat within spread) while raw-IQ kernel time falls `994.668 -> 613.995 ms` (-38.27%) and total kernel sum falls `4396.145 -> 4078.667 ms` (-7.22%) due to expert-major reuse on the device-only compact scheduler; mixed-64 parity is exact, scratch/copies remain zero, and grouped is now default-on with direct rollback; `benchmarks/results/2026-07-20-gpu1-hipengine-qwen36-35b-a3b-ud-q3km-grouped-prefill.json`.
+
 ## 2026-07-19
 
 - [diagnostic baseline] Qwen3.6-35B-A3B GGUF / gguf_ud_q3_k_m / GPU1 512/128 direct path: no accepted baseline -> `19.452/99.015 tok/s` at `15.805 GiB` tracked peak with exact eager/graph `[11,11,264]`; selected profiles show `185,078` prefill launches, `708` dispatches/decode token, `424,280,064` encoded IQ bytes/token, and zero IQ scratch, so retain as the grouped-prefill/rowtile control rather than a speed promotion; `benchmarks/results/2026-07-19-gpu1-hipengine-qwen36-35b-a3b-ud-q3km-direct-baseline.json`.

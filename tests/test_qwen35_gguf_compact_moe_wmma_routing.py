@@ -68,6 +68,14 @@ def test_qwen35moe_compact_wmma_opt_in_routes_grouped_scheduler(monkeypatch: pyt
     assert ("shared_batch", (3, 256, 1)) in calls
 
 
+def test_qwen35moe_iq_grouped_prefill_policy_defaults_on_with_optout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert qgr._iq_grouped_prefill_enabled() is True
+    monkeypatch.setenv("HIPENGINE_GGUF_IQ_GROUPED_PREFILL", "0")
+    assert qgr._iq_grouped_prefill_enabled() is False
+
+
 def test_qwen35moe_iq_grouped_scalar_routes_without_tile_map_or_d2h(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -81,7 +89,6 @@ def test_qwen35moe_iq_grouped_scalar_routes_without_tile_map_or_d2h(
     monkeypatch.setattr(qgr, "_read_i64_device_scalar", _fail_if_called("scalar_d2h"))
     monkeypatch.setattr(qgr, "_launch_selected_raw_gguf_moe_pair", _fail_if_called("raw_pair"))
     monkeypatch.setattr(qgr, "_launch_selected_raw_gguf_moe_linear", _fail_if_called("raw_linear"))
-    monkeypatch.setenv("HIPENGINE_GGUF_IQ_GROUPED_PREFILL", "1")
 
     runner._run_post_attention_moe_rows(0, 9000, scratch, rows=3, stream=7)
 
