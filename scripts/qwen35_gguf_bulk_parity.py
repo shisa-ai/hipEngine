@@ -282,7 +282,15 @@ def _layerwise_bulk_hidden(
                 if full_attention_mode == "aotriton":
                     key_cache, value_cache = decode_scratch.full_cache(layer_id)
                     layer_scratch = replace(bulk_scratch, key_cache=key_cache, value_cache=value_cache)
-                    runner._run_full_attention_prefill_layer_aotriton(layer_id, src.ptr, dst.ptr, layer_scratch)
+                    runner._run_full_attention_prefill_layer_aotriton(
+                        layer_id,
+                        src.ptr,
+                        dst.ptr,
+                        layer_scratch,
+                        cos_table_ptr=decode_scratch.cos_table.ptr,
+                        sin_table_ptr=decode_scratch.sin_table.ptr,
+                        max_positions=int(decode_scratch.max_positions),
+                    )
                 elif full_attention_mode == "native":
                     for row in range(rows):
                         decode_scratch.set_full_attention_position(row, runtime)
