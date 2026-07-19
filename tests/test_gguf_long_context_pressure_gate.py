@@ -134,3 +134,24 @@ def test_packet_gate_fails_closed_on_wrong_admission_or_stale_logical_ids() -> N
         "pressure_admission_metadata_mismatch",
         "regrow_reused_retired_logical_block_ids",
     ]
+
+
+def test_final_pool_is_preserved_from_the_live_idle_snapshot() -> None:
+    expected = {
+        "current_pages": 5,
+        "free_pages": 5,
+        "refcounted_pages": 0,
+        "pinned_pages": 0,
+        "grow_events": 7,
+        "grow_failures": 1,
+        "shrink_events": 7,
+    }
+    final_idle = {"snapshot": {"runner": {"kv_pool": expected}}}
+
+    observed = gate._final_pool_from_idle_snapshot(final_idle)
+    expected["current_pages"] = 0
+
+    assert observed["current_pages"] == 5
+    assert observed["free_pages"] == 5
+    assert observed["refcounted_pages"] == 0
+    assert observed["pinned_pages"] == 0

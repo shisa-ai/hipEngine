@@ -165935,3 +165935,32 @@ than repeating those passing files.
 No complete packet or retained 64K performance claim exists yet. Diagnostic
 artifacts are `/tmp/gfx1151-long-pressure-mixed-v2-clean.json` and
 `/tmp/gfx1151-long-pressure-graph-pressure-v1-clean.json`.
+
+## 2026-07-19 — Preserve the live final pool in the pressure artifact
+
+The first clean complete 64K packet at `7c243ed1` finished every hardware phase
+successfully but correctly left the top-level artifact failed until one final
+harness defect was understood. Real-Uvicorn 1K/c2, 4K/c2, 32K/c2,
+mixed 1K/4K/32K, and 64K/c2 were exact at **17.638132 / 8.094546 /
+1.037277 / 2.584791 / 0.416068 generated tok/s**. Both 32K graph rows were
+exact at **3.846647 / 3.826387 tok/s**, pressure completed the live 32K row and
+rejected the 4K candidate with retryable `429 engine_busy`, graph lifecycle was
+**2 captures / 256 replays / 2 invalidations**, all logical block ids were
+disjoint after regrow, memory recovery passed, and final ownership was zero.
+
+The sole failed predicate was `final_pool_lifecycle_failed`. The harness called
+`_pool_json(runner)` after leaving `_LocalUvicorn`; application teardown had
+already removed the dynamic pool, so the artifact stored `{}` even though the
+preceding live idle snapshot retained **5 current / 5 free / 0 referenced / 0
+pinned pages, 2 grows / 1 rejected grow / 2 shrinks**. The measurement remains
+at `/tmp/gfx1151-long-pressure-64k-complete-v1-clean.json` with clean detached
+provenance and 708.558 s elapsed wall.
+
+The harness now deep-copies the final pool from that live idle snapshot rather
+than querying a retired owner. RED was the new focused contract failing because
+`_final_pool_from_idle_snapshot` did not exist. GREEN is **6/6** long-pressure
+unit tests, `py_compile`, and `git diff --check`. Re-evaluating the unchanged raw
+packet through `evaluate_packet(...)` with the preserved snapshot returns
+`passed=true` and no failure reasons. Per the focused-repair rule, the 12-minute
+GPU packet is not repeated: publication retains both the original failed
+mechanical verdict and the repaired pure host re-evaluation.
