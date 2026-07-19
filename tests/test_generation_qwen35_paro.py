@@ -870,6 +870,8 @@ def test_qwen35_paro_stream_detailed_reports_native_sampler_route(monkeypatch) -
 
 
 def test_qwen35_paro_stream_detailed_emits_live_sampled_logprobs(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "0")
+
     class FakeSession:
         tokenizer = SimpleNamespace(
             token_to_id=lambda token: None,
