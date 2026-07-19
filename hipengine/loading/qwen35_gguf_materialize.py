@@ -335,6 +335,26 @@ def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo, *, decode_repack: b
             allocation_names=("raw",),
         )
     if qtype in (
+        GGMLQuantizationType.IQ3_XXS,
+        GGMLQuantizationType.Q3_K,
+    ) or (qtype == GGMLQuantizationType.IQ4_XS and _is_selected_expert_tensor(slot_path, tensor)):
+        # UD-Q3_K_M routed experts stay compressed on device (native selected
+        # GEMV kernels); only the rank-3 expert tensors take this path. Rank-2
+        # IQ4_XS tensors keep the dense-BF16 fallback below; rank-2 IQ3_XXS /
+        # Q3_K remain unsupported rather than silently expanding to BF16.
+        if not _is_selected_expert_tensor(slot_path, tensor):
+            raise ValueError(
+                f"unsupported Qwen3.5 GGUF tensor type {tensor.ggml_type_name!r} outside "
+                f"rank-3 expert slots: {tensor.name}"
+            )
+        return Qwen35GGUFWeightSpec(
+            slot_path=slot_path,
+            source=tensor,
+            quant_key=f"gguf_{tensor.ggml_type_name.lower()}",
+            layout=LAYOUT_RAW_GGUF,
+            allocation_names=("raw",),
+        )
+    if qtype in (
         GGMLQuantizationType.Q4_1,
         GGMLQuantizationType.IQ4_XS,
         GGMLQuantizationType.F16,
