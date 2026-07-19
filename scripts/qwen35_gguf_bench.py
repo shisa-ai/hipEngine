@@ -18,11 +18,13 @@ rows.
 from __future__ import annotations
 
 import argparse
+import ctypes
 import json
 import statistics
 import sys
 import time
 from pathlib import Path
+from types import TracebackType
 from typing import Any
 
 import numpy as np
@@ -101,6 +103,15 @@ def main() -> int:
         help="Use one-step HIP graph replay for measured decode (default).",
     )
     parser.add_argument("--graph-steps-per-replay", type=int, default=1)
+    parser.add_argument(
+        "--rocprof-selected-region",
+        choices=("none", "prefill", "measured_decode_graph", "measured_decode"),
+        default="none",
+        help=(
+            "Call roctxProfilerResume/Pause around one timed phase for "
+            "rocprofv3 --selected-regions. Profiler-only; benchmark semantics are unchanged."
+        ),
+    )
     parser.add_argument(
         "--compiler-version-file",
         type=Path,
@@ -196,6 +207,7 @@ def main() -> int:
         chunk_tune_memory_budget_gib=args.prefill_chunk_memory_budget_gib,
     )
     kv_policy = resolve_args_kv_policy(args, block_size=256)
+    roctx = _RoctxProfilerControl(enabled=args.rocprof_selected_region != "none")
 
     if args.persistent_session:
         runs, persistent_session_load_seconds, persistent_session_memory = _run_persistent_session(
@@ -222,6 +234,8 @@ def main() -> int:
             kv_policy=kv_policy,
             warmup_runs=args.warmup_runs,
             measured_runs=args.measured_runs,
+            roctx=roctx,
+            rocprof_selected_region=args.rocprof_selected_region,
         )
         session_mode = "persistent"
     else:
@@ -254,6 +268,8 @@ def main() -> int:
                 kv_policy=kv_policy,
                 measured=measured,
                 run_index=(run_index - args.warmup_runs + 1 if measured else run_index + 1),
+                roctx=roctx,
+                rocprof_selected_region=args.rocprof_selected_region,
             )
             runs.append(run)
         session_mode = "per_run"
@@ -293,6 +309,7 @@ def main() -> int:
         "max_sequence_length": int(max_sequence_length),
         "graph_replay_decode": bool(args.graph_replay_decode),
         "graph_steps_per_replay": int(args.graph_steps_per_replay if args.graph_replay_decode else 0),
+        "rocprof_selected_region": args.rocprof_selected_region,
         "use_bulk_prefill": use_bulk_prefill,
         "bulk_prefill_attention_mode": args.bulk_prefill_attention_mode,
         "requested_prefill_chunk_size": int(args.prefill_chunk_size),
@@ -334,6 +351,7 @@ def main() -> int:
             "--use-gemv-decode opts rows=1 GGUF decode into the P9 pack8 GEMV decode path, including graph-capture decode.",
             "GGUF prefill chunking uses the same PrefillConfig auto policy as PARO unless --prefill-chunk-size or explicit per-surface chunk flags override it.",
             "Measured decode excludes graph capture time when graph_replay_decode=true.",
+            "--rocprof-selected-region wraps only the requested timed phase with ROCTX profiler resume/pause controls.",
             "--persistent-session creates one resident session and resets sequence state between warmup/measured runs, avoiding repeated GGUF load/decode-repack work. Historical artifacts used the default per-run session mode.",
         ],
     }
@@ -343,6 +361,66 @@ def main() -> int:
         args.json.parent.mkdir(parents=True, exist_ok=True)
         args.json.write_text(text + "\n")
     return 0
+
+
+class _RoctxProfilerControl:
+    """Open one timed phase for ``rocprofv3 --selected-regions``."""
+
+    def __init__(self, *, enabled: bool) -> None:
+        self._resume = None
+        self._pause = None
+        if not enabled:
+            return
+        try:
+            library = ctypes.CDLL("libroctx64.so")
+        except OSError as exc:
+            print(f"warning: selected-region profiling could not load libroctx64.so: {exc}", file=sys.stderr)
+            return
+        self._resume = getattr(library, "roctxProfilerResume", None)
+        self._pause = getattr(library, "roctxProfilerPause", None)
+        if self._resume is None or self._pause is None:
+            print(
+                "warning: libroctx64.so lacks roctxProfilerResume/Pause; "
+                "rocprofv3 --selected-regions will emit no kernel rows",
+                file=sys.stderr,
+            )
+            self._resume = None
+            self._pause = None
+            return
+        self._resume.argtypes = [ctypes.c_int]
+        self._resume.restype = None
+        self._pause.argtypes = [ctypes.c_int]
+        self._pause.restype = None
+
+    def region(self, name: str, *, selected: str) -> "_RoctxProfilerRegion":
+        return _RoctxProfilerRegion(self, enabled=(selected == name))
+
+    def resume(self) -> None:
+        if self._resume is not None:
+            self._resume(0)
+
+    def pause(self) -> None:
+        if self._pause is not None:
+            self._pause(0)
+
+
+class _RoctxProfilerRegion:
+    def __init__(self, control: _RoctxProfilerControl, *, enabled: bool) -> None:
+        self.control = control
+        self.enabled = bool(enabled)
+
+    def __enter__(self) -> None:
+        if self.enabled:
+            self.control.resume()
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        if self.enabled:
+            self.control.pause()
 
 
 def _mode_name(*, graph_replay_decode: bool, use_bulk_prefill: bool | None, bulk_attention_mode: str) -> str:
@@ -381,6 +459,8 @@ def _run_persistent_session(
     kv_policy,
     warmup_runs: int,
     measured_runs: int,
+    roctx: "_RoctxProfilerControl",
+    rocprof_selected_region: str,
 ) -> tuple[list[dict[str, Any]], float, dict[str, Any]]:
     """Run warmup/measured iterations inside one resident GGUF session.
 
@@ -448,6 +528,8 @@ def _run_persistent_session(
                 load_seconds=load_seconds,
                 persistent_session=True,
                 graph_holder=graph_holder,
+                roctx=roctx,
+                rocprof_selected_region=rocprof_selected_region,
             )
             runs.append(run)
     finally:
@@ -487,6 +569,8 @@ def _run_existing_session_once(
     load_seconds: float,
     persistent_session: bool,
     graph_holder: dict[str, Any] | None = None,
+    roctx: "_RoctxProfilerControl",
+    rocprof_selected_region: str,
 ) -> dict[str, Any]:
     """Run one prefill/decode iteration on an existing resident session."""
 
@@ -510,12 +594,13 @@ def _run_existing_session_once(
     effective_graph_replay_decode = bool(graph_replay_decode and not host_token_embedding_graph_disabled)
     try:
         prefill_start = time.perf_counter()
-        first = session.prefill(
-            prompt_tokens,
-            use_bulk=use_bulk_prefill,
-            bulk_attention_mode=bulk_attention_mode,
-            return_logits=False,
-        )
+        with roctx.region("prefill", selected=rocprof_selected_region):
+            first = session.prefill(
+                prompt_tokens,
+                use_bulk=use_bulk_prefill,
+                bulk_attention_mode=bulk_attention_mode,
+                return_logits=False,
+            )
         prefill_seconds = time.perf_counter() - prefill_start
         generated_token_ids.append(first.token_id)
         next_token = first.token_id
@@ -564,7 +649,8 @@ def _run_existing_session_once(
                     runtime.stream_destroy(stream)
             try:
                 decode_start = time.perf_counter()
-                graph.replay(decode_tokens)
+                with roctx.region("measured_decode_graph", selected=rocprof_selected_region):
+                    graph.replay(decode_tokens)
                 decode_seconds = time.perf_counter() - decode_start
                 if decode_graph_recorded_tokens:
                     generated_token_ids.extend(graph.read_generated_token_ids(decode_tokens))
@@ -578,10 +664,11 @@ def _run_existing_session_once(
             decode_graph_reused = False
             decode_graph_recorded_tokens = False
             decode_start = time.perf_counter()
-            for step_index in range(decode_tokens):
-                final = session.step(next_token, return_logits=(step_index == decode_tokens - 1))
-                next_token = final.token_id
-                generated_token_ids.append(next_token)
+            with roctx.region("measured_decode", selected=rocprof_selected_region):
+                for step_index in range(decode_tokens):
+                    final = session.step(next_token, return_logits=(step_index == decode_tokens - 1))
+                    next_token = final.token_id
+                    generated_token_ids.append(next_token)
             decode_seconds = time.perf_counter() - decode_start
         memory_snapshots["after_decode"] = _memory_snapshot("after_decode", runtime, session)
         final_token_id = None if final is None else final.token_id
@@ -613,6 +700,7 @@ def _run_existing_session_once(
         "fastpath_safety": fastpath_safety,
         "decode_graph_reused": bool(decode_graph_reused),
         "decode_graph_recorded_tokens": bool(decode_graph_recorded_tokens),
+        "rocprof_selected_region": rocprof_selected_region,
         "host_token_embedding_enabled": bool(getattr(session, "host_token_embedding_enabled", False)),
         "host_token_embedding_reason": getattr(session, "host_token_embedding_reason", None),
         "decode_graph_disabled_reason": (
@@ -670,6 +758,8 @@ def _run_once(
     kv_policy,
     measured: bool,
     run_index: int,
+    roctx: "_RoctxProfilerControl",
+    rocprof_selected_region: str,
 ) -> dict[str, Any]:
     runtime = get_hip_runtime()
     reset_memory_stats()
@@ -706,12 +796,13 @@ def _run_once(
     effective_graph_replay_decode = bool(graph_replay_decode and not host_token_embedding_graph_disabled)
     try:
         prefill_start = time.perf_counter()
-        first = session.prefill(
-            prompt_tokens,
-            use_bulk=use_bulk_prefill,
-            bulk_attention_mode=bulk_attention_mode,
-            return_logits=False,
-        )
+        with roctx.region("prefill", selected=rocprof_selected_region):
+            first = session.prefill(
+                prompt_tokens,
+                use_bulk=use_bulk_prefill,
+                bulk_attention_mode=bulk_attention_mode,
+                return_logits=False,
+            )
         prefill_seconds = time.perf_counter() - prefill_start
         generated_token_ids.append(first.token_id)
         next_token = first.token_id
@@ -736,7 +827,8 @@ def _run_once(
             graph_capture_seconds = time.perf_counter() - capture_start
             try:
                 decode_start = time.perf_counter()
-                graph.replay(decode_tokens)
+                with roctx.region("measured_decode_graph", selected=rocprof_selected_region):
+                    graph.replay(decode_tokens)
                 decode_seconds = time.perf_counter() - decode_start
                 generated_token_ids.extend(graph.read_generated_token_ids(decode_tokens))
                 final = graph.read_sample()
@@ -744,10 +836,11 @@ def _run_once(
                 graph.close()
         else:
             decode_start = time.perf_counter()
-            for step_index in range(decode_tokens):
-                final = session.step(next_token, return_logits=(step_index == decode_tokens - 1))
-                next_token = final.token_id
-                generated_token_ids.append(next_token)
+            with roctx.region("measured_decode", selected=rocprof_selected_region):
+                for step_index in range(decode_tokens):
+                    final = session.step(next_token, return_logits=(step_index == decode_tokens - 1))
+                    next_token = final.token_id
+                    generated_token_ids.append(next_token)
             decode_seconds = time.perf_counter() - decode_start
         memory_snapshots["after_decode"] = _memory_snapshot("after_decode", runtime, session)
         final_token_id = None if final is None else final.token_id
@@ -778,6 +871,7 @@ def _run_once(
         "effective_use_wmma_prefill": None if fastpath_safety is None else fastpath_safety.get("effective_wmma_prefill"),
         "effective_use_gemv_decode": None if fastpath_safety is None else fastpath_safety.get("effective_gemv_decode"),
         "fastpath_safety": fastpath_safety,
+        "rocprof_selected_region": rocprof_selected_region,
         "host_token_embedding_enabled": bool(getattr(session, "host_token_embedding_enabled", False)),
         "host_token_embedding_reason": getattr(session, "host_token_embedding_reason", None),
         "decode_graph_disabled_reason": (
