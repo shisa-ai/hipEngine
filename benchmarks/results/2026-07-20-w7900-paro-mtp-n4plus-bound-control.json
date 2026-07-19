@@ -1,0 +1,653 @@
+{
+  "canonical_n4plus": {
+    "categories": {
+      "code": {
+        "accepts": 8,
+        "active_candidates": 84,
+        "ar_tok_s_pooled": 111.3456270097117,
+        "capture_adjusted_ms_cycle": 14.075890107142857,
+        "cycles": 84,
+        "exact": true,
+        "fallbacks": [],
+        "ids": 96,
+        "marker_ms_cycle": 16.35788039285714,
+        "mtp_ar_ratio_pooled": 0.5898738225216925,
+        "mtp_tok_s_pooled": 65.67987062529325,
+        "native_trace_records": 60,
+        "pooled_acceptance": 0.09523809523809523,
+        "prompts": 4,
+        "proposal_ms_cycle": 1.234730515751012,
+        "trace_records": 64,
+        "verify_ms_cycle": 15.10831180799176,
+        "visible_per_cycle": 1.1428571428571428
+      },
+      "general_en": {
+        "accepts": 1,
+        "active_candidates": 45,
+        "ar_tok_s_pooled": 110.78842086077748,
+        "capture_adjusted_ms_cycle": 13.984085155555555,
+        "cycles": 45,
+        "exact": true,
+        "fallbacks": [],
+        "ids": 48,
+        "marker_ms_cycle": 16.1254016,
+        "mtp_ar_ratio_pooled": 0.5558815803754423,
+        "mtp_tok_s_pooled": 61.585242475388604,
+        "native_trace_records": 30,
+        "pooled_acceptance": 0.022222222222222223,
+        "prompts": 2,
+        "proposal_ms_cycle": 1.1659635774170358,
+        "trace_records": 32,
+        "verify_ms_cycle": 14.943843591026962,
+        "visible_per_cycle": 1.0666666666666667
+      },
+      "general_ja": {
+        "accepts": 1,
+        "active_candidates": 45,
+        "ar_tok_s_pooled": 111.88441498643529,
+        "capture_adjusted_ms_cycle": 14.033697700000001,
+        "cycles": 45,
+        "exact": true,
+        "fallbacks": [],
+        "ids": 48,
+        "marker_ms_cycle": 16.105754933333333,
+        "mtp_ar_ratio_pooled": 0.5510810339955889,
+        "mtp_tok_s_pooled": 61.657379098716326,
+        "native_trace_records": 30,
+        "pooled_acceptance": 0.022222222222222223,
+        "prompts": 2,
+        "proposal_ms_cycle": 1.1781433571336999,
+        "trace_records": 32,
+        "verify_ms_cycle": 14.91150807382332,
+        "visible_per_cycle": 1.0666666666666667
+      },
+      "mixed_ja_en": {
+        "accepts": 6,
+        "active_candidates": 40,
+        "ar_tok_s_pooled": 110.60684911619421,
+        "capture_adjusted_ms_cycle": 14.3278946125,
+        "cycles": 40,
+        "exact": true,
+        "fallbacks": [],
+        "ids": 48,
+        "marker_ms_cycle": 17.2534492,
+        "mtp_ar_ratio_pooled": 0.5850261261062927,
+        "mtp_tok_s_pooled": 64.70789645927032,
+        "native_trace_records": 30,
+        "pooled_acceptance": 0.15,
+        "prompts": 2,
+        "proposal_ms_cycle": 1.3292171817738563,
+        "trace_records": 32,
+        "verify_ms_cycle": 15.903556635021232,
+        "visible_per_cycle": 1.2
+      }
+    },
+    "full": {
+      "accepts": 16,
+      "active_candidates": 214,
+      "ar_tok_s_pooled": 111.19233282373035,
+      "capture_adjusted_ms_cycle": 14.094816738317757,
+      "cycles": 214,
+      "exact": true,
+      "fallbacks": [],
+      "ids": 240,
+      "marker_ms_cycle": 16.423373668224297,
+      "mtp_ar_ratio_pooled": 0.5738449790047672,
+      "mtp_tok_s_pooled": 63.80716189472463,
+      "native_trace_records": 150,
+      "pooled_acceptance": 0.07476635514018691,
+      "prompts": 10,
+      "proposal_ms_cycle": 1.226032068452441,
+      "trace_records": 160,
+      "verify_ms_cycle": 15.180987299955232,
+      "visible_per_cycle": 1.1214953271028036
+    },
+    "splits": {
+      "heldout": {
+        "accepts": 3,
+        "active_candidates": 89,
+        "ar_tok_s_pooled": 111.3945872380026,
+        "capture_adjusted_ms_cycle": 14.09942706741573,
+        "cycles": 89,
+        "exact": true,
+        "fallbacks": [],
+        "ids": 96,
+        "marker_ms_cycle": 16.43912164044944,
+        "mtp_ar_ratio_pooled": 0.5488847293106621,
+        "mtp_tok_s_pooled": 61.142787862804,
+        "native_trace_records": 60,
+        "pooled_acceptance": 0.033707865168539325,
+        "prompts": 4,
+        "proposal_ms_cycle": 1.2042382117256187,
+        "trace_records": 64,
+        "verify_ms_cycle": 15.217470549298136,
+        "visible_per_cycle": 1.0786516853932584
+      },
+      "train": {
+        "accepts": 13,
+        "active_candidates": 125,
+        "ar_tok_s_pooled": 111.05790408174033,
+        "capture_adjusted_ms_cycle": 14.091534184,
+        "cycles": 125,
+        "exact": true,
+        "fallbacks": [],
+        "ids": 144,
+        "marker_ms_cycle": 16.412161112000003,
+        "mtp_ar_ratio_pooled": 0.5917298316864933,
+        "mtp_tok_s_pooled": 65.71627488974292,
+        "native_trace_records": 90,
+        "pooled_acceptance": 0.104,
+        "prompts": 6,
+        "proposal_ms_cycle": 1.2415492944419384,
+        "trace_records": 96,
+        "verify_ms_cycle": 15.155011226423085,
+        "visible_per_cycle": 1.152
+      }
+    }
+  },
+  "correctness_oracles": {
+    "canonical": "10/10 prompts, 240/240 IDs exact; full/train/heldout and every category exact; 150/150 post-capture trace records native with no fallback",
+    "hidden_layer0": {
+      "first_mismatch": null,
+      "intermediates": true,
+      "layer_output": true,
+      "moe": true,
+      "pre_state": true,
+      "root_match": true,
+      "source": {
+        "bytes": 10444,
+        "path": "/tmp/w7900-n4plus-b2-layer0-hidden-4e9703be.json",
+        "sha256": "9bc3d941861315ed899f3391012bd80d78115bb46bff8036b0d9f7d7f0f3fdc9"
+      },
+      "state": true,
+      "status": "matched"
+    },
+    "matched": "all three arms have identical 240 IDs, 214 cycles, 16 accepted drafts, and active budgets",
+    "profile_children": "both exact with identical accepted-length history",
+    "state_kv_cursor": {
+      "cycles": 3,
+      "first_mismatch": null,
+      "generated_prefix": [
+        248050,
+        19,
+        19
+      ],
+      "per_cycle": [
+        {
+          "committed_tokens": [
+            248050
+          ],
+          "context_after": 2,
+          "context_before": 1,
+          "control_next_token": 19,
+          "cycle": 1,
+          "native_graph": false,
+          "next_token": 19,
+          "resident_kv_records": 20,
+          "resident_linear_records": 60,
+          "resident_vs_ar": true,
+          "scratch_commit": true,
+          "scratch_commit_records": 60,
+          "selected_kv_records": 20,
+          "selected_linear_records": 60,
+          "selected_vs_ar": true
+        },
+        {
+          "committed_tokens": [
+            19
+          ],
+          "context_after": 3,
+          "context_before": 2,
+          "control_next_token": 19,
+          "cycle": 2,
+          "native_graph": true,
+          "next_token": 19,
+          "resident_kv_records": 20,
+          "resident_linear_records": 60,
+          "resident_vs_ar": true,
+          "scratch_commit": true,
+          "scratch_commit_records": 60,
+          "selected_kv_records": 20,
+          "selected_linear_records": 60,
+          "selected_vs_ar": true
+        },
+        {
+          "committed_tokens": [
+            19
+          ],
+          "context_after": 4,
+          "context_before": 3,
+          "control_next_token": 5137,
+          "cycle": 3,
+          "native_graph": true,
+          "next_token": 5137,
+          "resident_kv_records": 20,
+          "resident_linear_records": 60,
+          "resident_vs_ar": true,
+          "scratch_commit": true,
+          "scratch_commit_records": 60,
+          "selected_kv_records": 20,
+          "selected_linear_records": 60,
+          "selected_vs_ar": true
+        }
+      ],
+      "source": {
+        "bytes": 6606,
+        "path": "/tmp/w7900-n4plus-b2-state-audit-4e9703be.json",
+        "sha256": "a3d31b1285d7d62adc8d40c1e56ed551b4a43a2dc967e5d01e0314193a29fcfa"
+      },
+      "status": "passed"
+    }
+  },
+  "date": "2026-07-20",
+  "decision": {
+    "default": "remain explicit/default-off",
+    "implementation": "keep and publish: exact and mechanically removes the attributed duplicate control/sync overhead",
+    "measured_result": "canonical complete-wall residual is +0.028 to +0.105 ms/cycle (+0.17% to +0.64%), versus old N4 +0.216 to +0.447 ms/cycle; matched cached profile is non-regressive at -0.072 ms/pass with identical API/sync/graph counts",
+    "next": "Profile provider commit/proposal residuals from this neutral adapter baseline; expand ownership only where complete wall and full category+heldout correctness are non-regressive.",
+    "why_not_default": [
+      "strict B1 remains well below true AR",
+      "N4+ has no complete-wall advantage over the direct graph control outside measurement noise",
+      "provider proposal/selected-state/KV/hidden commit ownership remains outside N4",
+      "DFlash and gfx1151 retain independent unopened gates"
+    ]
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "gpu0_access": "exclusive",
+    "hip_visible_devices": "0",
+    "target_arch": "gfx1100"
+  },
+  "implementation": {
+    "boundary": "eligible stable gfx1100 w4_paro VERIFY|ACCEPT graph replays",
+    "changes": [
+      "reuse one validated state-bound NativeSpecCycleControlC slab while updating only cycle/transaction result identity",
+      "skip the duplicate Python stream synchronization only after the C++ native launcher has synchronized successfully"
+    ],
+    "fallback": "rebuild and fully validate the Python control on pointer/shape/stream/all-active signature drift; use the unchanged pre-launch direct graph fallback on mismatch",
+    "unchanged": [
+      "model and sidecar bytes",
+      "provider proposal and selected state/KV/hidden commit ownership",
+      "four-axis registry key",
+      "DFlash admission",
+      "gfx1151 remains unregistered",
+      "N4 explicit/default-off switch"
+    ]
+  },
+  "matched_b1_on_off_on": {
+    "delta_on_minus_off": {
+      "capture_adjusted_ms_cycle_range": [
+        0.0660817897196253,
+        0.10228533411214791
+      ],
+      "complete_wall_ms_cycle_range": [
+        0.028283457943924617,
+        0.10485063551401907
+      ],
+      "complete_wall_percent_range": [
+        0.1725117555388067,
+        0.6395246026049461
+      ],
+      "mtp_rate_percent_range": [
+        -0.9163852727606447,
+        -0.7939389760434734
+      ],
+      "note": "AR throughput varied across processes, especially the off arm; complete marker wall, verify wall, exact IDs/cycles/accepts, and matched profiler API counts own the decision.",
+      "old_n4_complete_wall_ms_cycle_range": [
+        0.21552201401869198,
+        0.4469222897196268
+      ],
+      "penalty_reduction_percent_range": [
+        51.35038246954879,
+        93.67150428731848
+      ]
+    },
+    "off": {
+      "accepts": 16,
+      "active_candidates": 214,
+      "ar_tok_s_pooled": 105.77466216222385,
+      "capture_adjusted_ms_cycle": 14.028734948598132,
+      "cycles": 214,
+      "exact": true,
+      "fallbacks": [],
+      "ids": 240,
+      "marker_ms_cycle": 16.395090210280372,
+      "mtp_ar_ratio_pooled": 0.6088158340790486,
+      "mtp_tok_s_pooled": 64.3972891687239,
+      "native_trace_records": 0,
+      "pooled_acceptance": 0.07476635514018691,
+      "prompts": 10,
+      "proposal_ms_cycle": 1.228749364718934,
+      "source": {
+        "bytes": 43747,
+        "path": "/tmp/w7900-n4plus-off-b1-gpuaccept-4e9703be.json",
+        "sha256": "912f6e7ef3c6aa55c13cd9fa4a57c1f262619da9f0d0270d96b2d7398d9ee45d"
+      },
+      "trace_records": 160,
+      "verify_ms_cycle": 15.148598078429421,
+      "visible_per_cycle": 1.1214953271028036
+    },
+    "on1": {
+      "accepts": 16,
+      "active_candidates": 214,
+      "ar_tok_s_pooled": 111.19233282373035,
+      "capture_adjusted_ms_cycle": 14.094816738317757,
+      "cycles": 214,
+      "exact": true,
+      "fallbacks": [],
+      "ids": 240,
+      "marker_ms_cycle": 16.423373668224297,
+      "mtp_ar_ratio_pooled": 0.5738449790047672,
+      "mtp_tok_s_pooled": 63.80716189472463,
+      "native_trace_records": 150,
+      "pooled_acceptance": 0.07476635514018691,
+      "prompts": 10,
+      "proposal_ms_cycle": 1.226032068452441,
+      "source": {
+        "bytes": 43754,
+        "path": "/tmp/w7900-n4plus-on1-b1-gpuaccept-4e9703be.json",
+        "sha256": "050d96809efe0658ef72d7266ba13818a6c2343b96cc457c36bbf93ec8218987"
+      },
+      "trace_records": 160,
+      "verify_ms_cycle": 15.180987299955232,
+      "visible_per_cycle": 1.1214953271028036
+    },
+    "on2": {
+      "accepts": 16,
+      "active_candidates": 214,
+      "ar_tok_s_pooled": 109.45156832122471,
+      "capture_adjusted_ms_cycle": 14.13102028271028,
+      "cycles": 214,
+      "exact": true,
+      "fallbacks": [],
+      "ids": 240,
+      "marker_ms_cycle": 16.49994084579439,
+      "mtp_ar_ratio_pooled": 0.5836920838173982,
+      "mtp_tok_s_pooled": 63.88601399049798,
+      "native_trace_records": 150,
+      "pooled_acceptance": 0.07476635514018691,
+      "prompts": 10,
+      "proposal_ms_cycle": 1.2293814085249868,
+      "source": {
+        "bytes": 43747,
+        "path": "/tmp/w7900-n4plus-on2-b1-gpuaccept-4e9703be.json",
+        "sha256": "929d3e7a806997f3022c73a7aaeb51db99f3bc65a441f3c8531a0693b4f5f593"
+      },
+      "trace_records": 160,
+      "verify_ms_cycle": 15.253373855294086,
+      "visible_per_cycle": 1.1214953271028036
+    }
+  },
+  "model": {
+    "correctness_parent": "benchmarks/results/2026-07-19-w7900-paro-mtp-native-target-graph-n4-correctness.json",
+    "fingerprint": "1a4745ce8a8734324e62c14aa2545cb7cc1b8ea23a7489b05658f619cc1bdaac",
+    "path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16",
+    "quant": "w4_paro + mtp_bf16",
+    "size_bytes": 22176626792
+  },
+  "performance_claim": true,
+  "profile": {
+    "budget": 1,
+    "decode_tokens": 24,
+    "delta_on_minus_off": {
+      "cycle": {
+        "api_calls_per_pass": 0.0,
+        "hipStreamSynchronize_calls_per_pass": 0.0,
+        "host_ms_per_pass": -0.07236593750000253,
+        "kernel_calls_per_pass": 0.0,
+        "kernel_ms_per_pass": -0.007962062500000755
+      },
+      "proposer_update": {
+        "api_calls_per_pass": 0.0,
+        "hipStreamSynchronize_calls_per_pass": 0,
+        "host_ms_per_pass": -0.013807062499999967,
+        "kernel_calls_per_pass": 0.0,
+        "kernel_ms_per_pass": 0.0033159375000000324
+      },
+      "verify_pass": {
+        "api_calls_per_pass": 0.0,
+        "hipStreamSynchronize_calls_per_pass": 0.0,
+        "host_ms_per_pass": -0.05456281250000217,
+        "kernel_calls_per_pass": 0.0625,
+        "kernel_ms_per_pass": -0.011162999999999812
+      }
+    },
+    "old_n4_to_n4plus": {
+      "cycle_host_ms_per_pass": -0.32643868750000493,
+      "cycle_host_percent": -1.9495782737488532,
+      "hipStreamSynchronize_calls_per_pass": -1.0,
+      "hip_api_calls_per_pass": -1.0,
+      "verify_host_ms_per_pass": -0.3272744375000016,
+      "verify_host_percent": -2.1481673621837505
+    },
+    "profiler": "rocprofv3 --kernel-trace --hip-runtime-trace --marker-trace on final child only",
+    "prompt": "code_lru_cache",
+    "require_cached_build": true,
+    "routes": {
+      "off": {
+        "accepted_lengths": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          1,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          1
+        ],
+        "exact_ar_match": true,
+        "regions": {
+          "cycle": {
+            "api_calls_per_pass": 81.6875,
+            "api_ms_per_pass": 15.7418384375,
+            "hipGraphLaunch_calls_per_pass": 1.0,
+            "hipLaunchKernel_calls_per_pass": 36.1875,
+            "hipMemcpyAsync_calls_per_pass": 3.3125,
+            "hipMemcpy_calls_per_pass": 3.0,
+            "hipStreamSynchronize_calls_per_pass": 2.0,
+            "hipStreamSynchronize_ms_per_pass": 13.7330965625,
+            "host_ms_per_pass": 16.489994,
+            "kernel_calls_per_pass": 1248.5,
+            "kernel_ms_per_pass": 11.1716385,
+            "windows": 16
+          },
+          "proposer_update": {
+            "api_calls_per_pass": 68.6875,
+            "api_ms_per_pass": 1.1545081875,
+            "hipGraphLaunch_calls_per_pass": 0,
+            "hipLaunchKernel_calls_per_pass": 33.1875,
+            "hipMemcpyAsync_calls_per_pass": 1.3125,
+            "hipMemcpy_calls_per_pass": 1.0,
+            "hipStreamSynchronize_calls_per_pass": 0,
+            "hipStreamSynchronize_ms_per_pass": 0,
+            "host_ms_per_pass": 1.486308875,
+            "kernel_calls_per_pass": 35.5,
+            "kernel_ms_per_pass": 1.2497606875,
+            "windows": 16
+          },
+          "verify_pass": {
+            "api_calls_per_pass": 12.0,
+            "api_ms_per_pass": 14.578395125,
+            "hipGraphLaunch_calls_per_pass": 1.0,
+            "hipLaunchKernel_calls_per_pass": 3.0,
+            "hipMemcpyAsync_calls_per_pass": 1.0,
+            "hipMemcpy_calls_per_pass": 2.0,
+            "hipStreamSynchronize_calls_per_pass": 2.0,
+            "hipStreamSynchronize_ms_per_pass": 13.7330965625,
+            "host_ms_per_pass": 14.962341437500001,
+            "kernel_calls_per_pass": 1212.875,
+            "kernel_ms_per_pass": 9.9216203125,
+            "windows": 16
+          }
+        },
+        "source": {
+          "bytes": 33842,
+          "path": "/tmp/w7900-n4plus-prof-off-4e9703be.json",
+          "sha256": "23e4a2def86ee0f029e5b932b3b8da093fc183702175b1b3ac5fda49140966fa"
+        }
+      },
+      "on": {
+        "accepted_lengths": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          1,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          1
+        ],
+        "exact_ar_match": true,
+        "regions": {
+          "cycle": {
+            "api_calls_per_pass": 81.6875,
+            "api_ms_per_pass": 15.7539686875,
+            "hipGraphLaunch_calls_per_pass": 1.0,
+            "hipLaunchKernel_calls_per_pass": 36.1875,
+            "hipMemcpyAsync_calls_per_pass": 3.3125,
+            "hipMemcpy_calls_per_pass": 3.0,
+            "hipStreamSynchronize_calls_per_pass": 2.0,
+            "hipStreamSynchronize_ms_per_pass": 13.726618125,
+            "host_ms_per_pass": 16.417628062499997,
+            "kernel_calls_per_pass": 1248.5,
+            "kernel_ms_per_pass": 11.1636764375,
+            "windows": 16
+          },
+          "proposer_update": {
+            "api_calls_per_pass": 68.6875,
+            "api_ms_per_pass": 1.1686905625,
+            "hipGraphLaunch_calls_per_pass": 0,
+            "hipLaunchKernel_calls_per_pass": 33.1875,
+            "hipMemcpyAsync_calls_per_pass": 1.3125,
+            "hipMemcpy_calls_per_pass": 1.0,
+            "hipStreamSynchronize_calls_per_pass": 0,
+            "hipStreamSynchronize_ms_per_pass": 0,
+            "host_ms_per_pass": 1.4725018125,
+            "kernel_calls_per_pass": 35.5,
+            "kernel_ms_per_pass": 1.253076625,
+            "windows": 16
+          },
+          "verify_pass": {
+            "api_calls_per_pass": 12.0,
+            "api_ms_per_pass": 14.57628675,
+            "hipGraphLaunch_calls_per_pass": 1.0,
+            "hipLaunchKernel_calls_per_pass": 3.0,
+            "hipMemcpyAsync_calls_per_pass": 1.0,
+            "hipMemcpy_calls_per_pass": 2.0,
+            "hipStreamSynchronize_calls_per_pass": 2.0,
+            "hipStreamSynchronize_ms_per_pass": 13.726618125,
+            "host_ms_per_pass": 14.907778624999999,
+            "kernel_calls_per_pass": 1212.9375,
+            "kernel_ms_per_pass": 9.9104573125,
+            "windows": 16
+          }
+        },
+        "source": {
+          "bytes": 33852,
+          "path": "/tmp/w7900-n4plus-prof-on-4e9703be.json",
+          "sha256": "5c6fe431a686780f4bc8dc6d3cb80928f778360476bbff1b4152c8574152fd41"
+        }
+      }
+    },
+    "steady_state_skip": 2
+  },
+  "protocol": {
+    "candidate_budget": 1,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "chain_attn_mode": "c1_loop",
+    "decode_tokens_per_prompt": 24,
+    "gpu_accept": "production path (1) for suite; validate for state audit",
+    "graph_mode": "auto",
+    "heldout_prompts": 4,
+    "matched_change": "HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH=1/0/1 only",
+    "profiler_command": "python3 scripts/mtp_verifier_rocprof.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 --prompt-tokens \"$(cat .../code_lru_cache/prompt-tokens.txt)\" --decode-tokens 24 --candidate-budget 1 --backend hip_gfx1100 --chain-attn-mode c1_loop --graph-mode auto --region cycle --steady-state-skip 2 --compiler-version-file /tmp/hipengine-mtp-w7900-hipcc-version.txt --raw-root /tmp/w7900-n4plus-prof-{off,on}-4e9703be --out /tmp/w7900-n4plus-prof-{off,on}-4e9703be.json",
+    "prompt_count": 10,
+    "prompt_render": "raw",
+    "prompt_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "runs_per_prompt_arm": 1,
+    "strict_env": {
+      "HIPENGINE_GDN_TLOOP_C1_EXACT": "1",
+      "HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS": "1",
+      "HIPENGINE_MTP_DRAFT_VOCAB_CAP": null,
+      "HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT": "1"
+    },
+    "suite_command": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_BACKEND=hip_gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-mtp-w7900-hipcc-version.txt HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH={1,0,1} HIPENGINE_GDN_TLOOP_C1_EXACT=1 HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS=1 HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT=1 HIPENGINE_VERIFY_GPU_ACCEPT=1 PYTHONPATH=. python3 scripts/mtp-bench.py --mode hipengine-current --prompts-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-tokens 24 --candidate-budgets 1 --runs 1 --prompt-render raw --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode c1_loop --graph-mode auto --engine-model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 --raw-root /tmp/w7900-n4plus-{on1,off,on2}-b1-gpuaccept-4e9703be --out /tmp/w7900-n4plus-{on1,off,on2}-b1-gpuaccept-4e9703be.json",
+    "train_prompts": 6,
+    "true_ar_path": "separate no-MTP Qwen35ParoResidentSession decode in each child"
+  },
+  "purpose": "Clean N4+ correctness, matched complete-wall, and cached final-child proof for state-bound raw-control reuse plus duplicate post-native synchronization removal.",
+  "schema": 1,
+  "software": {
+    "compiler_version_file": "/tmp/hipengine-mtp-w7900-hipcc-version.txt",
+    "gate_commit": "4e9703be8790a05cae6c99685801a1abc5621350",
+    "implementation_commit": "64f80f83",
+    "rocm": "HIP version: 7.2.53211-3d9ef42",
+    "tree_clean": true
+  },
+  "source_artifacts": {
+    "hidden_oracle": {
+      "bytes": 10444,
+      "path": "/tmp/w7900-n4plus-b2-layer0-hidden-4e9703be.json",
+      "sha256": "9bc3d941861315ed899f3391012bd80d78115bb46bff8036b0d9f7d7f0f3fdc9"
+    },
+    "profile_off": {
+      "bytes": 33842,
+      "path": "/tmp/w7900-n4plus-prof-off-4e9703be.json",
+      "sha256": "23e4a2def86ee0f029e5b932b3b8da093fc183702175b1b3ac5fda49140966fa"
+    },
+    "profile_on": {
+      "bytes": 33852,
+      "path": "/tmp/w7900-n4plus-prof-on-4e9703be.json",
+      "sha256": "5c6fe431a686780f4bc8dc6d3cb80928f778360476bbff1b4152c8574152fd41"
+    },
+    "state_audit": {
+      "bytes": 6606,
+      "path": "/tmp/w7900-n4plus-b2-state-audit-4e9703be.json",
+      "sha256": "a3d31b1285d7d62adc8d40c1e56ed551b4a43a2dc967e5d01e0314193a29fcfa"
+    },
+    "suite_off": {
+      "bytes": 43747,
+      "path": "/tmp/w7900-n4plus-off-b1-gpuaccept-4e9703be.json",
+      "sha256": "912f6e7ef3c6aa55c13cd9fa4a57c1f262619da9f0d0270d96b2d7398d9ee45d"
+    },
+    "suite_on1": {
+      "bytes": 43754,
+      "path": "/tmp/w7900-n4plus-on1-b1-gpuaccept-4e9703be.json",
+      "sha256": "050d96809efe0658ef72d7266ba13818a6c2343b96cc457c36bbf93ec8218987"
+    },
+    "suite_on2": {
+      "bytes": 43747,
+      "path": "/tmp/w7900-n4plus-on2-b1-gpuaccept-4e9703be.json",
+      "sha256": "929d3e7a806997f3022c73a7aaeb51db99f3bc65a441f3c8531a0693b4f5f593"
+    }
+  },
+  "speed_claim_eligible": false,
+  "status": "performance_improvement_retained"
+}

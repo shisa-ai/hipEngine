@@ -168081,3 +168081,127 @@ its residual **+0.031 ms/pass** versus N4-off is too small for a dirty one-run
 claim. Next gate is a clean merged commit, full canonical strict B1 correctness,
 and matched N4-off/on wall plus cached final-child profiles before publication
 or any promotion decision.
+
+## 2026-07-20 — Retain and publish clean PARO N4+ gate
+
+Committed the implementation at `64f80f83`, then merged current origin through
+`2c77840d` at `4e9703be`. The only textual conflict was the benchmark revision
+header; resolution preserves both the incoming gfx1151 mirrored-INT8 publication
+and the W7900 N4 evidence. Post-merge validation passes **193** NativeSpecCycle,
+PARO resident-layout, and benchmark-sync tests plus **132** incoming gfx1151
+GGUF concurrency/INT8 tests; WORKLOG conflict and `git diff --check` gates pass.
+
+All retained GPU evidence below comes from the clean merged commit on exclusive
+GPU0/W7900, current full8192 W4-PARO target plus matching MTP-BF16 sidecar,
+system HIP 7.2.53211, and the strict exact verifier environment. The canonical
+production-GPU-accept on/off/on commands differed only by
+`HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH={1,0,1}` and fresh roots:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_BACKEND=hip_gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-mtp-w7900-hipcc-version.txt \
+  HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH={1,0,1} \
+  HIPENGINE_GDN_TLOOP_C1_EXACT=1 \
+  HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS=1 \
+  HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT=1 \
+  HIPENGINE_VERIFY_GPU_ACCEPT=1 PYTHONPATH=. \
+  python3 scripts/mtp-bench.py --mode hipengine-current \
+    --prompts-file benchmarks/prompts/mtpbench-code-general-ja.jsonl \
+    --max-tokens 24 --candidate-budgets 1 --runs 1 \
+    --prompt-render raw --proposal-impl persistent_device \
+    --backend hip_gfx1100 --hip-arch gfx1100 \
+    --chain-attn-mode c1_loop --graph-mode auto \
+    --engine-model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 \
+    --raw-root /tmp/w7900-n4plus-{on1,off,on2}-b1-gpuaccept-4e9703be \
+    --out /tmp/w7900-n4plus-{on1,off,on2}-b1-gpuaccept-4e9703be.json
+```
+
+All three arms have identical **240/240 exact IDs, 214 cycles, 16 accepted
+drafts, and active-budget history**. The first N4+ arm is exact for all **10/10
+prompts**, full/train/heldout and every `code`/`general_en`/`general_ja`/
+`mixed_ja_en` category, with **150/150** post-capture native `VERIFY|ACCEPT`
+records and no fallback.
+
+| Route | AR tok/s | MTP tok/s | verify ms/cycle | complete ms/cycle | capture-adjusted ms/cycle |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| N4+ on, first | 111.192 | 63.807 | 15.181 | 16.423 | 14.095 |
+| N4 off | 105.775 | 64.397 | 15.149 | 16.395 | 14.029 |
+| N4+ on, bracket | 109.452 | 63.886 | 15.253 | 16.500 | 14.131 |
+
+AR process rate varied materially, especially in the off arm, so ratio fields do
+not own this decision. Complete marker wall is matched on identical cycle
+semantics. N4+'s residual is **+0.028/+0.105 ms-cycle (+0.17%/+0.64%)**, down
+from old N4's **+0.216/+0.447 ms-cycle**; capture-adjusted residual is only
+**+0.066/+0.102 ms-cycle**. This cuts the previously measured adapter tax by
+**51.4-93.7%** and is non-regressive within the protocol's one-run noise.
+
+The clean B2 state/KV/cursor audit used the same N4+ route with GPU accept
+validation:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_BACKEND=hip_gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-mtp-w7900-hipcc-version.txt \
+  HIPENGINE_GDN_TLOOP_C1_EXACT=1 \
+  HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS=1 \
+  HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT=1 \
+  HIPENGINE_VERIFY_GPU_ACCEPT=validate \
+  HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH=1 PYTHONPATH=. \
+  python3 scripts/mtp_state_drift_audit.py \
+    --model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 \
+    --prompt-tokens 151646 --decode-tokens 8 --candidate-budget 2 \
+    --backend hip_gfx1100 --chain-attn-mode c1_loop --graph-mode auto \
+    --compare-after-cycles 1,2,3 --max-cycles 3 \
+    --out /tmp/w7900-n4plus-b2-state-audit-4e9703be.json
+```
+
+It passes all three cycles with exact corrections `[248050,19,19]`, cursors,
+and each cycle's **60 resident Conv/GDN + 20 live-KV + 60 scratch-commit + 60
+selected-linear + 20 selected-KV** comparisons. Cycles 2/3 use the native bound
+replay. The independent strict B2 layer-0 oracle
+`/tmp/w7900-n4plus-b2-layer0-hidden-4e9703be.json` also reports
+`status=matched`: roots, pre-state, 12 linear intermediates, 15 MoE producer
+records, post-MoE layer output, and state all pass with no mismatch.
+
+Matched cached final-child profiling used canonical `code_lru_cache`, B1/D24,
+`region=cycle`, and `steady-state-skip=2`; only the leaf child was wrapped:
+
+```bash
+python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 \
+  --prompt-tokens "$(cat .../code_lru_cache/prompt-tokens.txt)" \
+  --decode-tokens 24 --candidate-budget 1 --backend hip_gfx1100 \
+  --chain-attn-mode c1_loop --graph-mode auto --region cycle \
+  --steady-state-skip 2 \
+  --compiler-version-file /tmp/hipengine-mtp-w7900-hipcc-version.txt \
+  --raw-root /tmp/w7900-n4plus-prof-{off,on}-4e9703be \
+  --out /tmp/w7900-n4plus-prof-{off,on}-4e9703be.json
+```
+
+Both children are exact with identical acceptance. Across 16 steady windows:
+
+| Region | N4 off host/kernel/API/sync | N4+ on host/kernel/API/sync |
+| --- | --- | --- |
+| complete cycle | 16.490 ms / 11.172 ms / 81.6875 / 2 | **16.418 / 11.164 / 81.6875 / 2** |
+| verify pass | 14.962 / 9.922 / 12 / 2 | **14.908 / 9.910 / 12 / 2** |
+| proposer update | 1.486 / 1.250 / 68.6875 / 0 | 1.473 / 1.253 / 68.6875 / 0 |
+
+Both complete routes have **1 graph launch and 1248.5 kernels/pass**. N4+ is
+slightly faster than its matched off control (**-0.072 ms/pass**) and moves old
+N4 **16.744 -> 16.418 ms/pass (-1.95%)**, API calls **82.6875 -> 81.6875**, and
+verifier syncs **3 -> 2**. This is the causal keep evidence independent of the
+noisier process-level MTP rates.
+
+Decision: keep the exact bound-control implementation and publish the relative
+adapter-overhead improvement. N4 remains explicit/default-off because strict B1
+is still far below true AR, N4+ has no complete-wall advantage over direct graph
+outside noise, provider proposal/selected-state/KV/hidden commit remains outside
+the boundary, and DFlash/gfx1151 are independently ungated.
+
+Published compact artifact:
+`benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-bound-control.json`, 24,215
+bytes, SHA-256
+`6941dafc9daf628c1febecc30ac82821ce4a2767322feeedb85308cbc0b269cb`.
