@@ -167423,5 +167423,62 @@ released **10,494,615,540 bytes** and current packed-owner bytes are zero. The
 final C1/C2 retention guard was added after this diagnostic started; C13 behavior
 is identical, while the diagnostic C1 release is intentionally not the final
 low-occupancy policy. These d32/d64 values are implementation evidence, not a
-replacement performance row. Next is a committed-clean exact p512/d128 five-
-width publication packet.
+replacement performance row.
+
+The final publication gate ran from a detached, fully clean worktree at
+`0d276fdfa5681f8255e11cad1bd9de9a514a8b71` with the exact prior matched
+protocol:
+
+```bash
+/home/lhl/hipEngine-main/.venv/bin/python \
+  scripts/server_f1_concurrency_bench.py \
+  --engine hipengine \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1151 --quant gguf_q4_k_m \
+  --hipengine-python /home/lhl/hipEngine-main/.venv/bin/python \
+  --compiler-version-file /tmp/gfx1151-concurrency-ddab579f/hipcc-version.txt \
+  --concurrencies 1,2,4,8,13 --live-concurrency 13 \
+  --prompt-length 512 --decode-tokens 128 --ctx-per-seq 1024 \
+  --warmup-runs 1 --measured-runs 3 --streaming-primary \
+  --stream-warmup-runs 0 --stream-measured-runs 3 \
+  --batch-window-ms 5 --hipengine-prefill-decode-policy fair \
+  --live-join-after-tokens 8 --memory-domain gtt --drm-card-index 0 \
+  --memory-poll-ms 10 \
+  --work-dir /tmp/gfx1151-packed-memory-0d276fdf-p128/work \
+  --json /tmp/gfx1151-packed-memory-0d276fdf-p128/result.json
+```
+
+The packet is `accepted_backend_packet` with exact blocking
+C1/C2/C4/C8/C13 at **44.193/60.525/75.339/75.508/71.904 tok/s** and exact SSE
+at **42.428/55.224/72.109/82.240/72.347 tok/s**. Against the exact
+`8405c467` control, maximum absolute median movement is only **0.264% blocking /
+1.739% SSE**. All **112/112 blocking rows, 84/84 SSE rows, and 13/13 delayed
+C13 rows** are exact; every declared route passes, physical grouping remains
+honest, and no serial fallback appears.
+
+Absolute whole-card GTT peaks move from
+**22.406/24.088/27.602/35.125/44.268** to
+**22.406/24.088/27.295/32.543/39.756 GiB**. The deliberately retained C1/C2
+path is exactly unchanged. C4/C8/C13 improve by **0.307/2.582/4.512 GiB**;
+C13 drops **10.19%**, and incremental C1-to-C13 growth drops
+**21.861 -> 17.350 GiB (-20.64%)**. The final delayed C13 scrape has zero
+current packed-owner bytes after **104 release events / 39,909,990,332
+cumulative released bytes**. Strict SSE SLO passes are **3/3, 2/3, 1/3, 0/3,
+0/3** versus **3/3, 3/3, 0/3, 0/3, 0/3** in the prior packet. The single C2
+miss is disclosed rather than attributed: C2 is structurally excluded from the
+new release path, its GTT is byte-for-byte unchanged, and its median SSE movement
+is -1.74%. High-C SLO remains open.
+
+Published
+`benchmarks/results/2026-07-19-gfx1151-gguf-packed-workspace-reclaim.json`.
+The raw source is 1,912,048 bytes with SHA-256
+`8d87b0c05caf59f4f005a2356b7b8b59f8d12cc211afd202235e2993361b628b`;
+the compact artifact SHA-256 is
+`14e907e4015ded3efcd3cb7575830c79bb59e70580d5af9330e5b8700d34c53c`.
+Canonical provenance is fully clean at the measured detached commit. Final
+publication validation passes canonical provenance/model validation, JSON
+parsing and semantic cross-checks, benchmark README synchronization, all **6**
+`test_benchmark_readme_sync.py` tests, WORKLOG conflict checks, and
+`git diff --check`. The focused implementation tests and real C4/C13 lifecycle
+gates above remain the code-validation evidence; the broad suite was not
+repeated for this isolated publication unit.
