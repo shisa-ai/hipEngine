@@ -5396,9 +5396,15 @@ class Qwen35GGUFResidentModelRunner:
             return
         graph = slot.c1_decode_graph
         lease = row.lease
+        session_handles: tuple[Any, ...] = ()
         if lease is not None:
+            session_handles = self._graph_handles_for_sessions((lease.session,))
             self._observe_graph_handles((lease.session,))
+        was_open = not bool(getattr(graph, "closed", False))
         graph.close()
+        if was_open and any(handle is graph for handle in session_handles):
+            self._record_graph_invalidations((graph,), 1)
+            self._kv_graph_invalidation_count += 1
         slot.c1_decode_graph = None
 
     def _record_sampled_result(self, row: _GGUFResidentLoopRow, result: Any) -> None:

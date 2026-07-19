@@ -165902,3 +165902,36 @@ both gfx11 targets. GREEN is five focused tests plus `py_compile`, `--help`, and
 `git diff --check`. The artifact now records ordinary and graph decode lengths
 separately. No GPU rerun or performance claim is attached to this host-only
 harness correction.
+
+## 2026-07-19 — Count c1 graph retirement before KV release
+
+Clean focused reruns at `ba15648d` confirm the two repaired boundaries. The
+formerly failing mixed 1K/4K/32K real-Uvicorn row completes **3/3 exact** with
+96/96 generated-token accounting, **2.589202 exact/SLO-goodput tok/s**, only
+`packed_native` execution as one physical c4 mask `1110`, two grows/two shrinks,
+and final 5/5 free pages with zero refs/pins. Source/provenance resolve to the
+clean detached commit; this subset remains diagnostic.
+
+The focused graph/pressure/regrow run also passes exact request and ownership
+gates: both 32K c1 graph rows complete at **3.870908/3.863828 exact generated
+tok/s**, the live pressure 32K row survives while 4K receives SSE 429
+`engine_busy` with requested/current/capacity **17/134/134 pages**, pressure IDs
+5..133 and regrow IDs 134..262 are disjoint, and the pool returns to 5/5 free
+with two grows, one grow failure, two shrinks, and zero refs/pins. The corrected
+rows produce **2 captures / 256 replays**.
+
+That run exposed one last observability defect: normal c1 completion closes and
+unpins its graph before `_release_row_resources()` calls the generic session
+invalidator, so the graph is safely retired but bucket invalidations stayed
+zero. Updated `_close_c1_decode_graph()` to record one invalidation exactly when
+an open session-owned graph is closed. Unowned/minimal fake graphs are not
+invented as bucket captures. RED expected the close record/count; GREEN passes
+the focused close and prior fake-session ownership nodes plus the complete GGUF
+generation sampling file. In the earlier broad command, production-load,
+long-pressure, and server-API files had already passed; only the fake-session
+bucket assertion failed, so validation followed the focused-repair rule rather
+than repeating those passing files.
+
+No complete packet or retained 64K performance claim exists yet. Diagnostic
+artifacts are `/tmp/gfx1151-long-pressure-mixed-v2-clean.json` and
+`/tmp/gfx1151-long-pressure-graph-pressure-v1-clean.json`.
