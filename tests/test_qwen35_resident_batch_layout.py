@@ -13,7 +13,7 @@ from hipengine.core.dtype import DType
 from hipengine.core.memory import DeviceBuffer
 from hipengine.core.tensor import Tensor
 from hipengine.generation import CompactPromptSlab
-from hipengine.kvcache import FixedPagedKVPolicy, resolve_kv_policy
+from hipengine.kvcache import FixedPagedKVPolicy, KVLiveSpans, resolve_kv_policy
 from hipengine.runtime import PrefillConfig
 from hipengine.runtime.prefill import resolve_prefill_config_for_sequence
 from hipengine.runtime.qwen35_paro import (
@@ -35,7 +35,15 @@ from hipengine.runtime.qwen35_paro_runner import (
     Qwen35ParoResidentSpeculativeExecution,
     qwen35_paro_native_prefill_plan,
 )
-from hipengine.speculative import DraftBatch, TargetCommitPlan, TargetStateCommitBuffers
+from hipengine.speculative import (
+    DraftBatch,
+    NativeSpecCycleDType,
+    NativeSpecCycleStage,
+    NativeSpecCycleStatus,
+    TargetCommitPlan,
+    TargetStateCommitBuffers,
+    TargetVerifyBatch,
+)
 
 
 def _tensor(ptr: int, shape: tuple[int, ...], dtype: str | DType) -> Tensor:
@@ -8217,6 +8225,133 @@ def test_qwen35_resident_linear_batch_decode_can_force_rows1_per_row_probe(monke
     assert session.last_batch_decode_execution["blockers"] == [
         "linear-attention decode forced to per-row diagnostic path"
     ]
+
+
+def test_paro_native_spec_target_replay_uses_one_shared_launcher_boundary() -> None:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    control = object()
+    launches: list[object] = []
+    session._native_spec_provider_target_graph_enabled = lambda _batch: True
+    session._native_spec_provider_target_control = lambda *_args, **_kwargs: control
+
+    class FakeLauncher:
+        def launch(self, observed):
+            launches.append(observed)
+            return SimpleNamespace(status=NativeSpecCycleStatus.COMPLETE)
+
+    entry = SimpleNamespace(replay_count=3, native_spec_launcher=FakeLauncher())
+    submitted, fallback = session._try_submit_native_spec_provider_target_graph(
+        entry,
+        SimpleNamespace(),
+        capture_hidden_concat=_tensor(0x3000, (3, 16), DType.BF16),
+        capture_row_start=0,
+        rows=3,
+        stream=0,
+    )
+
+    assert submitted is True
+    assert fallback is None
+    assert launches == [control]
+
+    session._native_spec_provider_target_control = lambda *_args, **_kwargs: (_ for _ in ()).throw(
+        ValueError("unsupported provider shape")
+    )
+    submitted, fallback = session._try_submit_native_spec_provider_target_graph(
+        entry,
+        SimpleNamespace(),
+        capture_hidden_concat=_tensor(0x3000, (3, 16), DType.BF16),
+        capture_row_start=0,
+        rows=3,
+        stream=0,
+    )
+    assert submitted is False
+    assert fallback == "unsupported provider shape"
+    assert launches == [control]
+
+
+def test_paro_native_spec_target_control_binds_shared_verify_accept_buffers() -> None:
+    session = Qwen35ParoResidentSession.__new__(Qwen35ParoResidentSession)
+    session.device = Device("hip", 0)
+    session.max_sequence_length = 128
+    session.config = SimpleNamespace(hidden_size=32)
+    session.states = [object(), object()]
+    session.verify_trunk_hidden = DeviceBuffer(0x4000, 3 * 32 * DType.FP16.itemsize)
+    session.verify_trunk_next_hidden = DeviceBuffer(0x5000, 3 * 32 * DType.FP16.itemsize)
+    for name, ptr in (
+        ("verify_token_ids_i32", 0x1000),
+        ("verify_positions_i32", 0x1100),
+        ("verify_parent_rows_i32", 0x1200),
+        ("verify_draft_depths_i32", 0x1300),
+        ("verify_row_to_request_i32", 0x1400),
+        ("verify_active_mask_u8", 0x1500),
+        ("verify_candidate_counts_i32", 0x1600),
+        ("verify_top1_i32", 0x1700),
+        ("verify_accepted_counts", 0x1800),
+        ("verify_commit_rows", 0x1900),
+        ("verify_commit_tokens", 0x1A00),
+        ("verify_commit_positions", 0x1B00),
+        ("verify_next_tokens", 0x1C00),
+        ("verify_full_accept", 0x1D00),
+        ("verify_committed_output_ids", 0x1E00),
+        ("verify_committed_output_lengths", 0x1F00),
+    ):
+        setattr(session, name, DeviceBuffer(ptr, 4096))
+    spans = KVLiveSpans.paged_uniform(
+        block_table=_tensor(0x2000, (3, 4), DType.INT32),
+        live_counts=_tensor(0x2100, (3,), DType.INT64),
+        max_live_count=128,
+        storage_dtype=DType.BF16,
+        row_positions=_tensor(0x2200, (3,), DType.INT64),
+        span_role="verify_chain",
+    )
+    session._verify_chain_full_attention_spans_batched = lambda _rows: (spans, spans)
+    draft = DraftBatch(
+        request_ids=(7,),
+        candidate_tokens=(31, 32),
+        parent_positions=(8, 9),
+        draft_depths=(1, 2),
+        row_to_request=(7, 7),
+        tree_parents=(-1, 0),
+    )
+    batch = TargetVerifyBatch.from_draft(
+        draft,
+        root_tokens=(30,),
+        root_positions=(8,),
+    )
+    capture = _tensor(0x3000, (8, 16), DType.BF16)
+
+    control = session._native_spec_provider_target_control(
+        batch,
+        capture_hidden_concat=capture,
+        capture_row_start=2,
+        rows=3,
+        stream=0,
+        cycle_id=5,
+    )
+
+    assert control.stages == (
+        NativeSpecCycleStage.VERIFY | NativeSpecCycleStage.ACCEPT
+    )
+    assert control.shape.metadata_dtype is NativeSpecCycleDType.INT32
+    assert control.shape.hidden_dtype is NativeSpecCycleDType.BF16
+    assert control.shape.kv_dtype is NativeSpecCycleDType.BF16
+    assert control.pointers.metadata.candidate_counts == 0x1600
+    assert control.pointers.state.hidden_seed_rows == 0x3000 + 2 * 16 * 2
+    assert control.pointers.kv_live_spans.base_offsets == 0x2000
+    assert control.pointers.outputs.committed_output_ids == 0x1E00
+    assert control.stream == 0
+
+    paro_control = session._native_spec_provider_target_control(
+        batch,
+        capture_hidden_concat=_tensor(0x6000, (8, 0), DType.BF16),
+        capture_row_start=0,
+        rows=3,
+        stream=0,
+        cycle_id=6,
+    )
+    assert paro_control.shape.hidden_dtype is NativeSpecCycleDType.FP16
+    assert paro_control.shape.hidden_size == 32
+    assert paro_control.pointers.state.hidden_seed_rows == 0x4000
 
 
 @pytest.mark.parametrize(

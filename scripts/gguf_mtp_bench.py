@@ -908,6 +908,45 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--native-spec-target-cycle",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Diagnostic N1 route: submit admitted B2/three-row target blocks through the "
+            "versioned NativeSpecCycle C++ launcher. Unsupported rows/configurations retain "
+            "the exact Python target-block fallback. Capture remains state-generation-bound."
+        ),
+    )
+    parser.add_argument(
+        "--native-spec-device-accept-commit",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "N2 extension: keep strict-chain acceptance, selected recurrent/hidden commit, "
+            "target KV cursor transaction, and bounded visible output summary inside the "
+            "reusable native graph. Requires the device-seed llama-compat route."
+        ),
+    )
+    parser.add_argument(
+        "--native-spec-complete-cycle",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "N3 extension: route strict device-chained proposal, N2 target accept/commit, "
+            "MTP-KV rollback/repair, reseed, and cursor/result accounting through one GGUF "
+            "provider-adapter call. Requires the explicit llama-compat N2 route."
+        ),
+    )
+    parser.add_argument(
+        "--native-spec-proposal-graph",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "N3P extension: replay strict B1/B2 NextN proposal through one reusable native "
+            "graph submission before the unchanged N2 target transaction."
+        ),
+    )
+    parser.add_argument(
         "--target-block-verify-mode",
         choices=("bulk", "native", "serial-exact"),
         default="bulk",
@@ -1237,6 +1276,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--output", default=None, help="Output JSON path (default: benchmarks/results/mtp-bench-<timestamp>.json)")
     parser.add_argument(
+        "--require-cached-build",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Require every session/draft JIT artifact to exist before launch. Use this for "
+            "rocprofv3 children so profiling can never spawn hipcc/clang."
+        ),
+    )
+    parser.add_argument(
         "--mtp-context-replay",
         action="store_true",
         help=(
@@ -1549,16 +1597,19 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 _SESSION_CACHE: dict = {}
-"""Opt-in resident-session cache for in-process load-once batch runs.
+_DRAFT_RUNNER_CACHE: dict = {}
+"""Opt-in resident-session and draft-runner cache for load-once batch runs.
 
 Default behavior is unchanged: when ``HIPENGINE_MTP_BENCH_CACHE_SESSION`` is not
 "1", ``main()`` constructs a fresh session and closes it in its finally block,
 exactly as before (every existing subprocess/test caller). When the flag is set,
 ``main()`` reuses one resident session across calls (reset between runs) and does
 NOT close it, so a batch driver (e.g. gguf_mtp_category_bench in-process loop)
-pays the ~50s model load once instead of per (prompt, budget). Correctness is
-gated by session.reset(); validate token-stream/acceptance parity vs the fresh
-subprocess path before trusting timing.
+pays the ~50s model load once instead of per (prompt, budget). Eligible resident
+draft runners are also reused: their scratch is request-stateless, and stable
+ownership lets reusable proposal graphs survive across prompt resets just like
+target graphs. Correctness is gated by session.reset(); validate token-stream,
+K/V, and acceptance parity vs the fresh subprocess path before trusting timing.
 """
 
 
@@ -1804,6 +1855,34 @@ def main(argv: list[str] | None = None):
         parser.error("--resident-mtp-draft-gpu-event-stage-timings requires --resident-mtp-device-chain")
     if args.resident_mtp_draft_gpu_event_stage_timings and not args.record_cycle_stage_timings:
         parser.error("--resident-mtp-draft-gpu-event-stage-timings requires --record-cycle-stage-timings")
+    if args.native_spec_target_cycle and not args.target_block_verify:
+        parser.error("--native-spec-target-cycle requires --target-block-verify")
+    if args.native_spec_target_cycle and args.target_block_verify_mode != "bulk":
+        parser.error("--native-spec-target-cycle requires --target-block-verify-mode bulk")
+    if args.native_spec_target_cycle and args.target_block_wmma_prefill:
+        parser.error("--native-spec-target-cycle requires --no-target-block-wmma-prefill")
+    if args.native_spec_target_cycle and args.record_target_topk_scores:
+        parser.error("--native-spec-target-cycle does not support target logits readback")
+    if args.native_spec_target_cycle and args.target_block_sync_stage_timings:
+        parser.error("--native-spec-target-cycle does not support synchronized stage timings")
+    if args.native_spec_device_accept_commit and not args.native_spec_target_cycle:
+        parser.error("--native-spec-device-accept-commit requires --native-spec-target-cycle")
+    if args.native_spec_device_accept_commit and not args.resident_mtp_device_seed:
+        parser.error("--native-spec-device-accept-commit requires --resident-mtp-device-seed")
+    if args.native_spec_device_accept_commit and not args.target_block_direct_state_commit:
+        parser.error("--native-spec-device-accept-commit requires --target-block-direct-state-commit")
+    if args.native_spec_complete_cycle and not args.native_spec_device_accept_commit:
+        parser.error("--native-spec-complete-cycle requires --native-spec-device-accept-commit")
+    if args.native_spec_complete_cycle and not args.resident_mtp_device_chain:
+        parser.error("--native-spec-complete-cycle requires --resident-mtp-device-chain")
+    if args.native_spec_complete_cycle and not args.mtp_device_kv_cache:
+        parser.error("--native-spec-complete-cycle requires --mtp-device-kv-cache")
+    if args.native_spec_complete_cycle and (
+        args.root_topk_accept != 1 or args.sibling_topk_accept != 1 or args.draft_p_min != 0.0
+    ):
+        parser.error("--native-spec-complete-cycle requires strict top-1 and --draft-p-min 0")
+    if args.native_spec_proposal_graph and not args.native_spec_complete_cycle:
+        parser.error("--native-spec-proposal-graph requires --native-spec-complete-cycle")
     if args.target_block_sync_stage_timings and not args.target_block_verify:
         parser.error("--target-block-sync-stage-timings requires --target-block-verify")
     if args.target_block_sync_stage_timings and not args.record_cycle_stage_timings:
@@ -1956,6 +2035,7 @@ def main(argv: list[str] | None = None):
         os.environ.get("HIPENGINE_GGUF_Q8_0_RAW_SIDECAR"),
         os.environ.get("HIPENGINE_GGUF_DENSE_Q8_DP4A"),
         os.environ.get("HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL"),
+        bool(args.require_cached_build),
     )
     if _cache_session and _session_key in _SESSION_CACHE:
         session = _SESSION_CACHE[_session_key]
@@ -1965,6 +2045,7 @@ def main(argv: list[str] | None = None):
             model_path=args.model,
             use_wmma_prefill=bool(args.use_wmma_prefill),
             use_gemv_decode=bool(args.use_gemv_decode),
+            require_cached_build=bool(args.require_cached_build),
         )
         if _cache_session:
             _SESSION_CACHE[_session_key] = session
@@ -1977,16 +2058,44 @@ def main(argv: list[str] | None = None):
             if topk_candidate_count > 64:
                 resident_mtp_draft_fallback_reason = "resident draft top-k kernel supports production top-k up to 64"
             else:
-                resident_draft = Qwen35GGUFResidentMTPDraftRunner(
-                    weights,
-                    token_embd_f32,
-                    runtime=runtime,
-                    vocab_cap=int(args.mtp_draft_vocab_cap or sh_raw.shape[0]),
-                    device_chain_enabled=True if args.resident_mtp_device_chain else None,
-                    prewarm_device_chain=bool(args.resident_mtp_device_chain),
-                    sync_stage_timings=bool(args.resident_mtp_draft_sync_stage_timings),
-                    gpu_event_stage_timings=bool(args.resident_mtp_draft_gpu_event_stage_timings),
+                draft_vocab_cap = int(args.mtp_draft_vocab_cap or sh_raw.shape[0])
+                draft_env_names = (
+                    "HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A",
+                    "HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A_STAGES",
+                    "HIPENGINE_RESIDENT_MTP_DRAFT_SELECTED_SILU_DOWN_FUSED",
+                    "HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_MOE",
+                    "HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_GATHER",
+                    "HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A",
+                    "HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE",
+                    "HIPENGINE_GGUF_Q6_TOP1_STAGE1_THREADS",
+                    "HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL",
+                    "HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL",
+                    "HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_CHAIN",
                 )
+                draft_cache_key = (
+                    _session_key,
+                    draft_vocab_cap,
+                    bool(args.resident_mtp_device_chain),
+                    bool(args.resident_mtp_draft_sync_stage_timings),
+                    bool(args.resident_mtp_draft_gpu_event_stage_timings),
+                    tuple(os.environ.get(name) for name in draft_env_names),
+                )
+                if _cache_session and draft_cache_key in _DRAFT_RUNNER_CACHE:
+                    resident_draft = _DRAFT_RUNNER_CACHE[draft_cache_key]
+                else:
+                    resident_draft = Qwen35GGUFResidentMTPDraftRunner(
+                        weights,
+                        token_embd_f32,
+                        runtime=runtime,
+                        vocab_cap=draft_vocab_cap,
+                        device_chain_enabled=True if args.resident_mtp_device_chain else None,
+                        prewarm_device_chain=bool(args.resident_mtp_device_chain),
+                        sync_stage_timings=bool(args.resident_mtp_draft_sync_stage_timings),
+                        gpu_event_stage_timings=bool(args.resident_mtp_draft_gpu_event_stage_timings),
+                        require_cached_build=bool(args.require_cached_build),
+                    )
+                    if _cache_session:
+                        _DRAFT_RUNNER_CACHE[draft_cache_key] = resident_draft
                 resident_mtp_device_chain_effective = bool(resident_draft._device_chain_enabled)
                 if (
                     args.adaptive_full_vocab_after_cap_miss
@@ -2002,6 +2111,7 @@ def main(argv: list[str] | None = None):
                         prewarm_device_chain=bool(args.resident_mtp_device_chain),
                         sync_stage_timings=bool(args.resident_mtp_draft_sync_stage_timings),
                         gpu_event_stage_timings=bool(args.resident_mtp_draft_gpu_event_stage_timings),
+                        require_cached_build=bool(args.require_cached_build),
                     )
                     resident_mtp_draft_full_vocab_recovery_effective = True
                 resident_mtp_draft_effective = True
@@ -2159,17 +2269,27 @@ def main(argv: list[str] | None = None):
             # Prompt replay rows + one draft-start row per cycle + accepted
             # verifier rows.  Keep enough guard space for rejected draft rows
             # written during speculative probing before rollback.
-            mtp_device_kv_capacity = max(
+            required_mtp_device_kv_capacity = max(
                 1,
                 len(mtp_context_tokens)
                 + int(args.cycles) * (2 * int(args.draft_n_max) + 2)
                 + 4,
             )
-            key_nbytes = mtp_device_kv_capacity * kv_heads * qk_head_dim * 4
-            value_nbytes = mtp_device_kv_capacity * kv_heads * value_head_dim * 4
-            mtp_device_key_cache = malloc(key_nbytes, runtime=runtime)
-            mtp_device_value_cache = malloc(value_nbytes, runtime=runtime)
-            mtp_device_kv_buffers.extend([mtp_device_key_cache, mtp_device_value_cache])
+            if args.native_spec_proposal_graph and resident_draft is not None:
+                (
+                    mtp_device_key_cache,
+                    mtp_device_value_cache,
+                    mtp_device_kv_capacity,
+                ) = resident_draft.ensure_native_proposal_kv_capacity(
+                    required_mtp_device_kv_capacity
+                )
+            else:
+                mtp_device_kv_capacity = required_mtp_device_kv_capacity
+                key_nbytes = mtp_device_kv_capacity * kv_heads * qk_head_dim * 4
+                value_nbytes = mtp_device_kv_capacity * kv_heads * value_head_dim * 4
+                mtp_device_key_cache = malloc(key_nbytes, runtime=runtime)
+                mtp_device_value_cache = malloc(value_nbytes, runtime=runtime)
+                mtp_device_kv_buffers.extend([mtp_device_key_cache, mtp_device_value_cache])
             if len(mtp_context_tokens) > 0:
                 context_positions = np.asarray(mtp_context_positions, dtype=np.int64)
                 context_tokens = np.asarray(mtp_context_tokens, dtype=np.int64)
@@ -2327,10 +2447,36 @@ def main(argv: list[str] | None = None):
             current_token = cycle_prev_token
             current_pos = seq_position
             cycle_mtp_kv_base_len = int(mtp_device_kv_len)
+            native_complete_cycle_result = None
             if cycle_resident_draft is not None and cycle_draft_n_max > 0:
                 if args.mtp_device_kv_cache and mtp_device_kv_len + cycle_draft_n_max > mtp_device_kv_capacity:
                     raise RuntimeError("MTP device KV cache capacity exhausted")
-                if args.resident_mtp_device_seed:
+                if args.native_spec_complete_cycle:
+                    if resident_context is None or resident_context.pending_seed is None:
+                        raise RuntimeError("native complete cycle requires a resident MTP context")
+                    if mtp_device_key_cache is None or mtp_device_value_cache is None:
+                        raise RuntimeError("native complete cycle requires resident MTP K/V buffers")
+                    native_complete_cycle_result = session.run_native_spec_mtp_cycle(
+                        cycle_resident_draft,
+                        resident_context,
+                        root_token=current_token,
+                        root_position=current_pos,
+                        candidate_budget=cycle_draft_n_max,
+                        remaining_decode=remaining_output_tokens,
+                        rope_cos=_rope_cos,
+                        rope_sin=_rope_sin,
+                        draft_key_cache=mtp_device_key_cache,
+                        draft_value_cache=mtp_device_value_cache,
+                        draft_cache_len=mtp_device_kv_len,
+                        cycle_id=int(cycle),
+                        transaction_id=int(cycle),
+                        record_stage_timings=bool(args.record_cycle_stage_timings),
+                        native_proposal_graph=bool(args.native_spec_proposal_graph),
+                    )
+                    draft_tokens = [int(token) for token in native_complete_cycle_result.draft_token_ids]
+                    draft_top10_tokens = [[int(token)] for token in draft_tokens]
+                    mtp_device_kv_len = int(native_complete_cycle_result.draft_cache_len_after)
+                elif args.resident_mtp_device_seed:
                     if resident_context is None or resident_context.pending_seed is None:
                         raise RuntimeError("resident MTP context has no pending seed")
                     draft_tokens, draft_top10_tokens, mtp_device_kv_len = (
@@ -2451,8 +2597,17 @@ def main(argv: list[str] | None = None):
                         if _draft_top1_prob(draft_logits[0]) < args.draft_p_min:
                             break
             t3 = time.perf_counter()
-            draft_ms = (t3 - t2) * 1000
+            draft_ms = (
+                float(native_complete_cycle_result.proposal_wall_ms)
+                if native_complete_cycle_result is not None
+                else (t3 - t2) * 1000
+            )
             add_cycle_stage("draft_initial", draft_ms)
+            if native_complete_cycle_result is not None:
+                add_cycle_stage(
+                    "native_spec_complete_cycle",
+                    float(native_complete_cycle_result.call_wall_ms),
+                )
             if cycle_resident_draft is not None:
                 for stage_name, stage_ms in sorted(cycle_resident_draft.last_stage_timings_ms.items()):
                     add_cycle_stage(stage_name, stage_ms)
@@ -2504,6 +2659,8 @@ def main(argv: list[str] | None = None):
             redraft_ms = 0.0
             batched_verify_used = False
             block_verify_used = False
+            native_spec_target_cycle_used = False
+            native_spec_device_accept_commit_used = False
             serial_hidden_host_required = not bool(args.resident_mtp_device_seed)
             device_verify_rows_required = bool(args.resident_mtp_device_seed and args.mtp_device_kv_cache)
             b1_branch_safe_block_verify_used = False
@@ -2559,6 +2716,22 @@ def main(argv: list[str] | None = None):
             def record_direct_commit(rows: int = 1) -> None:
                 nonlocal target_verify_direct_commit_rows
                 target_verify_direct_commit_rows += int(rows)
+
+            def record_native_spec_target_timings() -> None:
+                if not session.last_native_spec_target_submitted:
+                    return
+                add_cycle_stage(
+                    "native_spec_target_capture",
+                    float(session.last_native_spec_target_capture_ms),
+                )
+                add_cycle_stage(
+                    "native_spec_target_submit",
+                    float(session.last_native_spec_target_submit_ms),
+                )
+                add_cycle_stage(
+                    "native_spec_target_readback",
+                    float(session.last_native_spec_target_readback_ms),
+                )
 
             def record_target_lm_head_scores(
                 block_result,
@@ -2634,19 +2807,48 @@ def main(argv: list[str] | None = None):
                             serial_rows=len(block_inputs),
                         )
                     else:
-                        block_result = session.verify_target_block(
-                            block_inputs,
-                            bulk_attention_mode=args.target_block_verify_mode,
-                            use_wmma_prefill=bool(args.target_block_wmma_prefill),
-                            capture_linear_state_rows=direct_state_commit,
-                            capture_lm_head_logits=bool(args.record_target_topk_scores),
-                            record_stage_timings=bool(args.record_cycle_stage_timings),
-                            sync_stage_timings=bool(args.target_block_sync_stage_timings),
-                            defer_linear_state_commit=direct_state_commit,
+                        if args.native_spec_target_cycle:
+                            block_result = session.verify_target_block_native_cycle(
+                                block_inputs,
+                                cycle_id=int(cycle),
+                                bulk_attention_mode=args.target_block_verify_mode,
+                                use_wmma_prefill=bool(args.target_block_wmma_prefill),
+                                capture_linear_state_rows=direct_state_commit,
+                                capture_lm_head_logits=bool(args.record_target_topk_scores),
+                                record_stage_timings=bool(args.record_cycle_stage_timings),
+                                sync_stage_timings=bool(args.target_block_sync_stage_timings),
+                                defer_linear_state_commit=direct_state_commit,
+                                device_accept_commit=bool(args.native_spec_device_accept_commit),
+                                remaining_decode=(
+                                    int(remaining_output_tokens)
+                                    if args.native_spec_device_accept_commit
+                                    else None
+                                ),
+                            )
+                        else:
+                            block_result = session.verify_target_block(
+                                block_inputs,
+                                bulk_attention_mode=args.target_block_verify_mode,
+                                use_wmma_prefill=bool(args.target_block_wmma_prefill),
+                                capture_linear_state_rows=direct_state_commit,
+                                capture_lm_head_logits=bool(args.record_target_topk_scores),
+                                record_stage_timings=bool(args.record_cycle_stage_timings),
+                                sync_stage_timings=bool(args.target_block_sync_stage_timings),
+                                defer_linear_state_commit=direct_state_commit,
+                            )
+                        native_spec_target_cycle_used = bool(
+                            native_spec_target_cycle_used
+                            or session.last_native_spec_target_submitted
                         )
+                        record_native_spec_target_timings()
                         record_target_verify(
                             len(block_inputs),
                             layer_passes=1,
+                            graph_rows=(
+                                len(block_inputs)
+                                if session.last_native_spec_target_submitted
+                                else 0
+                            ),
                             block_passes=1,
                             block_rows=len(block_inputs),
                         )
@@ -2811,7 +3013,7 @@ def main(argv: list[str] | None = None):
                 )
                 target_block_direct_commit_exact = bool(direct_state_commit_exact_mode)
                 snapshot = None
-                if target_block_needs_linear_state_snapshot(
+                if native_complete_cycle_result is None and target_block_needs_linear_state_snapshot(
                     direct_state_commit=direct_state_commit,
                     direct_state_commit_exact_mode=direct_state_commit_exact_mode,
                     direct_partial_commit_exact_mode=direct_partial_commit_exact_mode,
@@ -2822,7 +3024,18 @@ def main(argv: list[str] | None = None):
                     add_cycle_stage("target_block_snapshot", (time.perf_counter() - t_snapshot0) * 1000)
                 try:
                     t_forward0 = time.perf_counter()
-                    if args.target_block_verify_mode == "serial-exact":
+                    if native_complete_cycle_result is not None:
+                        block_result = native_complete_cycle_result.target_result
+                        native_spec_target_cycle_used = True
+                        record_native_spec_target_timings()
+                        record_target_verify(
+                            len(block_inputs),
+                            layer_passes=1,
+                            graph_rows=len(block_inputs),
+                            block_passes=1,
+                            block_rows=len(block_inputs),
+                        )
+                    elif args.target_block_verify_mode == "serial-exact":
                         block_result = session.verify_target_block_serial_exact(
                             block_inputs,
                             capture_linear_state_rows=direct_state_commit,
@@ -2832,23 +3045,59 @@ def main(argv: list[str] | None = None):
                             serial_rows=len(block_inputs),
                         )
                     else:
-                        block_result = session.verify_target_block(
-                            block_inputs,
-                            bulk_attention_mode=args.target_block_verify_mode,
-                            use_wmma_prefill=bool(args.target_block_wmma_prefill),
-                            capture_linear_state_rows=direct_state_commit,
-                            capture_lm_head_logits=bool(args.record_target_topk_scores),
-                            record_stage_timings=bool(args.record_cycle_stage_timings),
-                            sync_stage_timings=bool(args.target_block_sync_stage_timings),
-                            defer_linear_state_commit=direct_state_commit,
+                        if args.native_spec_target_cycle:
+                            block_result = session.verify_target_block_native_cycle(
+                                block_inputs,
+                                cycle_id=int(cycle),
+                                bulk_attention_mode=args.target_block_verify_mode,
+                                use_wmma_prefill=bool(args.target_block_wmma_prefill),
+                                capture_linear_state_rows=direct_state_commit,
+                                capture_lm_head_logits=bool(args.record_target_topk_scores),
+                                record_stage_timings=bool(args.record_cycle_stage_timings),
+                                sync_stage_timings=bool(args.target_block_sync_stage_timings),
+                                defer_linear_state_commit=direct_state_commit,
+                                device_accept_commit=bool(args.native_spec_device_accept_commit),
+                                remaining_decode=(
+                                    int(remaining_output_tokens)
+                                    if args.native_spec_device_accept_commit
+                                    else None
+                                ),
+                            )
+                        else:
+                            block_result = session.verify_target_block(
+                                block_inputs,
+                                bulk_attention_mode=args.target_block_verify_mode,
+                                use_wmma_prefill=bool(args.target_block_wmma_prefill),
+                                capture_linear_state_rows=direct_state_commit,
+                                capture_lm_head_logits=bool(args.record_target_topk_scores),
+                                record_stage_timings=bool(args.record_cycle_stage_timings),
+                                sync_stage_timings=bool(args.target_block_sync_stage_timings),
+                                defer_linear_state_commit=direct_state_commit,
+                            )
+                        native_spec_target_cycle_used = bool(
+                            native_spec_target_cycle_used
+                            or session.last_native_spec_target_submitted
                         )
+                        record_native_spec_target_timings()
                         record_target_verify(
                             len(block_inputs),
                             layer_passes=1,
+                            graph_rows=(
+                                len(block_inputs)
+                                if session.last_native_spec_target_submitted
+                                else 0
+                            ),
                             block_passes=1,
                             block_rows=len(block_inputs),
                         )
-                    add_cycle_stage("target_block_forward", (time.perf_counter() - t_forward0) * 1000)
+                    add_cycle_stage(
+                        "target_block_forward",
+                        (
+                            float(native_complete_cycle_result.target_wall_ms)
+                            if native_complete_cycle_result is not None
+                            else (time.perf_counter() - t_forward0) * 1000
+                        ),
+                    )
                     for stage_name, stage_ms in sorted(session.last_verify_stage_timings_ms.items()):
                         add_cycle_stage(stage_name, stage_ms)
                     t_account0 = time.perf_counter()
@@ -2870,6 +3119,19 @@ def main(argv: list[str] | None = None):
                             topk_branch_depths.append(0)
                             topk_branch_accept_count = 1
                     consumed_rows = int(block_acceptance["accepted_draft_tokens"]) + 1
+                    device_accept_commit_applied = bool(
+                        getattr(block_result, "device_accept_commit", False)
+                    )
+                    native_spec_device_accept_commit_used = bool(
+                        native_spec_device_accept_commit_used or device_accept_commit_applied
+                    )
+                    if device_accept_commit_applied:
+                        if not direct_state_commit:
+                            raise RuntimeError("N2 device accept/commit requires direct state commit policy")
+                        if int(block_result.accepted_draft_tokens) != consumed_rows - 1:
+                            raise RuntimeError("N2 device acceptance diverged from host oracle")
+                        if int(block_result.end_position) != seq_position + consumed_rows:
+                            raise RuntimeError("N2 device cursor diverged from accepted target prefix")
                     target_block_consumed_rows = int(consumed_rows)
                     if consumed_rows < len(block_inputs):
                         record_target_verify(0, discarded_rows=len(block_inputs) - consumed_rows)
@@ -2881,16 +3143,21 @@ def main(argv: list[str] | None = None):
                         if direct_state_commit and direct_partial_commit_supported:
                             if not block_result.linear_state_rows_captured:
                                 raise RuntimeError("direct block commit requested without captured linear-state rows")
-                            session._commit_verify_linear_state_row(
-                                consumed_rows - 1,
-                                position=seq_position + consumed_rows,
-                            )
+                            if not device_accept_commit_applied:
+                                session._commit_verify_linear_state_row(
+                                    consumed_rows - 1,
+                                    position=seq_position + consumed_rows,
+                                )
                             record_direct_commit()
                             replay_tokens = [int(token) for token in block_target_tokens[:consumed_rows]]
-                            replay_hidden = [
-                                np.ascontiguousarray(block_result.hidden_seeds[row:row + 1], dtype=np.float32)
-                                for row in range(len(replay_tokens))
-                            ]
+                            replay_hidden = (
+                                []
+                                if device_accept_commit_applied
+                                else [
+                                    np.ascontiguousarray(block_result.hidden_seeds[row:row + 1], dtype=np.float32)
+                                    for row in range(len(replay_tokens))
+                                ]
+                            )
                         else:
                             if snapshot is None:
                                 raise RuntimeError("target block replay requested without a linear-state snapshot")
@@ -2959,16 +3226,18 @@ def main(argv: list[str] | None = None):
                         if direct_state_commit and direct_state_commit_exact_mode:
                             if not block_result.linear_state_rows_captured:
                                 raise RuntimeError("direct block commit requested without captured linear-state rows")
-                            session._commit_verify_linear_state_row(
-                                len(block_inputs) - 1,
-                                position=seq_position + len(block_inputs),
-                            )
+                            if not device_accept_commit_applied:
+                                session._commit_verify_linear_state_row(
+                                    len(block_inputs) - 1,
+                                    position=seq_position + len(block_inputs),
+                                )
                             record_direct_commit()
                             target_tokens.extend(block_target_tokens)
-                            target_hidden_seeds.extend(
-                                np.ascontiguousarray(block_result.hidden_seeds[row:row + 1], dtype=np.float32)
-                                for row in range(len(block_target_tokens))
-                            )
+                            if not device_accept_commit_applied:
+                                target_hidden_seeds.extend(
+                                    np.ascontiguousarray(block_result.hidden_seeds[row:row + 1], dtype=np.float32)
+                                    for row in range(len(block_target_tokens))
+                                )
                         elif replay_state_commit:
                             if snapshot is None:
                                 raise RuntimeError("target block state replay requested without a linear-state snapshot")
@@ -3013,6 +3282,17 @@ def main(argv: list[str] | None = None):
                                 np.ascontiguousarray(block_result.hidden_seeds[row:row + 1], dtype=np.float32)
                                 for row in range(len(block_target_tokens))
                             )
+                    if device_accept_commit_applied:
+                        target_verify_seed_rows.extend(
+                            session.mtp_verify_seed(
+                                row,
+                                token_id=int(block_target_tokens[row]),
+                                position=seq_position + row,
+                                hidden_seed_base_ptr=int(block_result.hidden_seed_rows_ptr),
+                                hidden_seed_row_count=int(block_result.hidden_seed_row_count),
+                            )
+                            for row in range(consumed_rows)
+                        )
                     add_cycle_stage("target_block_replay_or_commit", (time.perf_counter() - t_commit0) * 1000)
                     current_device_token = int(target_tokens[-1])
                     block_verify_used = True
@@ -3020,7 +3300,11 @@ def main(argv: list[str] | None = None):
                     if snapshot is not None:
                         session._free_linear_state_snapshot(snapshot)
                 t1 = time.perf_counter()
-                elapsed_ms = (t1 - t0) * 1000
+                elapsed_ms = (
+                    float(native_complete_cycle_result.target_wall_ms)
+                    if native_complete_cycle_result is not None
+                    else (t1 - t0) * 1000
+                )
                 add_cycle_stage("target_block_verify_total", elapsed_ms)
                 ar_decode_ms += elapsed_ms
                 if block_verify_used and target_graph is not None:
@@ -3388,7 +3672,7 @@ def main(argv: list[str] | None = None):
                 )
             elif not args.resident_mtp_device_seed:
                 raise RuntimeError("target verifier did not provide a host hidden seed")
-            if args.resident_mtp_device_seed:
+            if args.resident_mtp_device_seed and native_complete_cycle_result is None:
                 if resident_context is None:
                     raise RuntimeError("resident MTP context missing for device-seed route")
                 if target_verify_seed_rows:
@@ -3402,13 +3686,17 @@ def main(argv: list[str] | None = None):
             add_cycle_stage("accept_policy_and_seed", (time.perf_counter() - t_accept_policy0) * 1000)
 
             mtp_device_kv_commit_ms = 0.0
-            if args.mtp_device_kv_cache:
+            if args.mtp_device_kv_cache and native_complete_cycle_result is None:
                 # Draft probing writes every proposed row.  llama.cpp keeps the
                 # cycle-start token row, then replaces accepted draft-token rows
                 # with verifier-derived target hidden rows and drops rejected
                 # speculative rows.
                 mtp_device_kv_len = min(mtp_device_kv_len, cycle_mtp_kv_base_len + 1)
-            if args.mtp_device_kv_cache and accepted_draft_tokens > 0:
+            if (
+                args.mtp_device_kv_cache
+                and accepted_draft_tokens > 0
+                and native_complete_cycle_result is None
+            ):
                 if mtp_device_kv_len + accepted_draft_tokens > mtp_device_kv_capacity:
                     raise RuntimeError("MTP device KV cache capacity exhausted while committing accepted rows")
                 t_commit0 = time.perf_counter()
@@ -3472,6 +3760,16 @@ def main(argv: list[str] | None = None):
                     )
                     mtp_device_kv_len += accepted_draft_tokens
                 mtp_device_kv_commit_ms = (time.perf_counter() - t_commit0) * 1000
+                add_cycle_stage("mtp_device_kv_commit", mtp_device_kv_commit_ms)
+                draft_ms += mtp_device_kv_commit_ms
+            elif native_complete_cycle_result is not None:
+                if accepted_draft_tokens != int(native_complete_cycle_result.accepted_draft_tokens):
+                    raise RuntimeError("N3 acceptance diverged from the host cycle oracle")
+                if mtp_device_kv_len != int(native_complete_cycle_result.draft_cache_len_after):
+                    raise RuntimeError("N3 MTP KV cursor diverged from the adapter result")
+                mtp_device_kv_commit_ms = float(
+                    native_complete_cycle_result.mtp_kv_commit_wall_ms
+                )
                 add_cycle_stage("mtp_device_kv_commit", mtp_device_kv_commit_ms)
                 draft_ms += mtp_device_kv_commit_ms
 
@@ -3608,6 +3906,18 @@ def main(argv: list[str] | None = None):
                 "mtp_device_kv_commit_ms": round(mtp_device_kv_commit_ms, 2),
                 "target_prefill_mode": target_prefill_mode,
                 "target_block_verify": bool(block_verify_used),
+                "native_spec_target_cycle": bool(native_spec_target_cycle_used),
+                "native_spec_device_accept_commit": bool(native_spec_device_accept_commit_used),
+                "native_spec_complete_cycle": bool(native_complete_cycle_result is not None),
+                "native_spec_proposal_graph": bool(
+                    native_complete_cycle_result is not None
+                    and native_complete_cycle_result.proposal_native_graph
+                ),
+                "native_spec_target_fallback_reason": (
+                    session.last_native_spec_target_fallback_reason
+                    if args.native_spec_target_cycle and block_verify_used
+                    else None
+                ),
                 "target_block_direct_state_commit": bool(
                     target_block_direct_state_commit_effective and block_verify_used
                 ),
@@ -3647,7 +3957,7 @@ def main(argv: list[str] | None = None):
     finally:
         if target_graph is not None:
             target_graph.close()
-        if resident_draft is not None:
+        if resident_draft is not None and not _cache_session:
             resident_draft.close()
         if resident_draft_full_vocab is not None:
             resident_draft_full_vocab.close()
@@ -3777,6 +4087,7 @@ def main(argv: list[str] | None = None):
             "cycles": args.cycles,
             "max_output_tokens": int(args.max_output_tokens),
             "draft_n_max": args.draft_n_max,
+            "require_cached_build": bool(args.require_cached_build),
             "adaptive_draft_window": bool(args.adaptive_draft_window),
             "adaptive_ar_fallback": bool(args.adaptive_ar_fallback),
             "adaptive_ar_fallback_max_accepted": int(args.adaptive_ar_fallback_max_accepted),
@@ -3818,6 +4129,10 @@ def main(argv: list[str] | None = None):
             "record_draft_attention_debug": bool(args.record_draft_attention_debug),
             "record_cycle_stage_timings": bool(args.record_cycle_stage_timings),
             "target_block_sync_stage_timings": bool(args.target_block_sync_stage_timings),
+            "native_spec_target_cycle": bool(args.native_spec_target_cycle),
+            "native_spec_device_accept_commit": bool(args.native_spec_device_accept_commit),
+            "native_spec_complete_cycle": bool(args.native_spec_complete_cycle),
+            "native_spec_proposal_graph": bool(args.native_spec_proposal_graph),
             "llama_compat": bool(args.llama_compat),
             "verify_dp4a": bool(args.verify_dp4a),
             "verify_dense_q8_dp4a": bool(args.verify_dense_q8_dp4a),

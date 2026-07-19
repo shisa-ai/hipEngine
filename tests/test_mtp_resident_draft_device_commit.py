@@ -29,9 +29,16 @@ def test_write_kv_rows_from_device_seed_base_uses_d2d_hidden_rows(monkeypatch) -
     class Runtime:
         def __init__(self) -> None:
             self.memcpy_calls = []
+            self.synchronized_streams = []
 
         def memcpy(self, dst, src, nbytes, kind) -> None:
-            self.memcpy_calls.append((int(dst), int(src), int(nbytes), int(kind)))
+            self.memcpy_calls.append(("sync", int(dst), int(src), int(nbytes), int(kind), None))
+
+        def memcpy_async(self, dst, src, nbytes, kind, stream) -> None:
+            self.memcpy_calls.append(("async", int(dst), int(src), int(nbytes), int(kind), int(stream)))
+
+        def stream_synchronize(self, stream) -> None:
+            self.synchronized_streams.append(int(stream))
 
     runtime = Runtime()
     runner = object.__new__(Qwen35GGUFResidentMTPDraftRunner)
@@ -68,12 +75,18 @@ def test_write_kv_rows_from_device_seed_base_uses_d2d_hidden_rows(monkeypatch) -
     assert result_len == 9
     d2d_calls = [
         call for call in runtime.memcpy_calls
-        if call[3] == int(HipMemcpyKind.DEVICE_TO_DEVICE)
+        if call[4] == int(HipMemcpyKind.DEVICE_TO_DEVICE)
     ]
     assert d2d_calls == [
-        (0x1000, 0x5000, 16, int(HipMemcpyKind.DEVICE_TO_DEVICE)),
-        (0x1000, 0x5010, 16, int(HipMemcpyKind.DEVICE_TO_DEVICE)),
+        ("async", 0x1000, 0x5000, 16, int(HipMemcpyKind.DEVICE_TO_DEVICE), 0),
+        ("async", 0x1000, 0x5010, 16, int(HipMemcpyKind.DEVICE_TO_DEVICE), 0),
     ]
+    h2d_calls = [
+        call for call in runtime.memcpy_calls
+        if call[4] == int(HipMemcpyKind.HOST_TO_DEVICE)
+    ]
+    assert all(call[0] == "async" and call[-1] == 0 for call in h2d_calls)
+    assert runtime.synchronized_streams == [0]
     assert [item[0] for item in writes] == [7, 8]
     np.testing.assert_array_equal(writes[0][1], np.asarray([[4, 5, 6, 7]], dtype=np.float32))
     np.testing.assert_array_equal(writes[1][1], np.asarray([[8, 9, 10, 11]], dtype=np.float32))
@@ -373,6 +386,82 @@ def test_attention_debug_recomputes_dense_attention_from_device_rows() -> None:
     assert row_probes[0]["value_first4"] == [1.0, 3.0]
     assert "score" in row_probes[0]
     assert "weight" in row_probes[0]
+
+
+def test_native_proposal_graph_cache_keeps_b1_and_b2_buckets() -> None:
+    runner = object.__new__(Qwen35GGUFResidentMTPDraftRunner)
+    runner.num_kv_heads = 1
+    runner.qk_head_dim = 4
+    runner._native_proposal_graphs = {}
+    runner._rotary_dim_from_rope_table = lambda _rope: 4
+    captures = []
+
+    def capture(**kwargs):
+        graph = SimpleNamespace(closed=False, budget=int(kwargs["budget"]))
+        captures.append(graph)
+        return graph
+
+    runner._capture_native_proposal_graph = capture
+    key = DeviceBuffer(0x1000, 32 * 16)
+    value = DeviceBuffer(0x2000, 32 * 16)
+    rope = np.zeros((64, 4), dtype=np.float32)
+
+    b2 = runner._get_or_capture_native_proposal_graph(
+        budget=2,
+        top_k=1,
+        rope_cos=rope,
+        dense_key_cache=key,
+        dense_value_cache=value,
+    )
+    b1 = runner._get_or_capture_native_proposal_graph(
+        budget=1,
+        top_k=1,
+        rope_cos=rope,
+        dense_key_cache=key,
+        dense_value_cache=value,
+    )
+    replayed_b2 = runner._get_or_capture_native_proposal_graph(
+        budget=2,
+        top_k=1,
+        rope_cos=rope,
+        dense_key_cache=key,
+        dense_value_cache=value,
+    )
+
+    assert [graph.budget for graph in captures] == [2, 1]
+    assert replayed_b2 is b2
+    assert b1 is not b2
+
+
+def test_native_proposal_kv_capacity_is_runner_owned_and_stable() -> None:
+    runner = object.__new__(Qwen35GGUFResidentMTPDraftRunner)
+    runner.num_kv_heads = 2
+    runner.qk_head_dim = 4
+    runner._native_proposal_key_cache = None
+    runner._native_proposal_value_cache = None
+    runner._native_proposal_kv_capacity = 0
+    closed = []
+    runner._native_proposal_graphs = {
+        (1,): SimpleNamespace(close=lambda: closed.append("graph"))
+    }
+    allocations = []
+
+    def allocate(nbytes):
+        buffer = DeviceBuffer(0x3000 + len(allocations) * 0x1000, int(nbytes))
+        allocations.append(buffer)
+        return buffer
+
+    runner._malloc = allocate
+
+    first = runner.ensure_native_proposal_kv_capacity(80)
+    second = runner.ensure_native_proposal_kv_capacity(200)
+
+    assert first == second
+    assert first[2] == 1023
+    assert len(allocations) == 2
+    assert all(buffer.nbytes == 1023 * 2 * 4 * 4 for buffer in allocations)
+    assert closed == ["graph"]
+    assert runner._native_proposal_graphs == {}
 
 
 def test_ensure_device_chain_ready_preloads_embed_table() -> None:

@@ -68,6 +68,7 @@ from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import (
     w8a16_linear_bf16_f32_multi_row,
     w8a16_linear_bf16_f32_out,
 )
+from hipengine.kernels.registry import resolve
 from hipengine.kernels.hip_gfx1100.runtime import (
     advance_decode_position_i64,
     advance_decode_positions_i64,
@@ -131,7 +132,17 @@ from hipengine.runtime.qwen35_paro_batch_width import (
     load_qwen35_paro_native_batch_width_profile,
 )
 from hipengine.runtime.workspace import RuntimeWorkspace
-from hipengine.speculative import DraftBatch, TargetAcceptSummary, TargetCommitPlan, TargetStateCommitBuffers, TargetVerifyBatch, TargetVerifyBuffers
+from hipengine.speculative import (
+    DraftBatch,
+    NativeSpecCycleControl,
+    NativeSpecCycleStage,
+    NativeSpecCycleStatus,
+    TargetAcceptSummary,
+    TargetCommitPlan,
+    TargetStateCommitBuffers,
+    TargetVerifyBatch,
+    TargetVerifyBuffers,
+)
 
 
 _PREFILL_OVERLAP_MIN_TOKENS = 32768
@@ -1625,6 +1636,7 @@ class Qwen35ParoVerifierGraphEntry:
     # commit must restore these handles before reading `tree_*_state`.
     linear_scratch: dict[int, Any] | None = None
     moe_scratch: dict[int, Any] | None = None
+    native_spec_launcher: Any | None = None
 
 
 class Qwen35ParoResidentSession:
@@ -8069,6 +8081,10 @@ class Qwen35ParoResidentSession:
         self.verify_lm_block_indices = malloc(verify_rows * self.lm_head_stage1_blocks * DType.INT32.itemsize, runtime=self.runtime)
         self.verify_top1_i32 = malloc(verify_rows * DType.INT32.itemsize, runtime=self.runtime)
         self.verify_top1_values = malloc(verify_rows * DType.FP32.itemsize, runtime=self.runtime)
+        self.verify_candidate_counts_i32 = malloc(
+            self.max_batch_size * DType.INT32.itemsize,
+            runtime=self.runtime,
+        )
         self.verify_accepted_counts = malloc(self.max_batch_size * DType.INT32.itemsize, runtime=self.runtime)
         self.verify_commit_rows = malloc(self.max_batch_size * DType.INT32.itemsize, runtime=self.runtime)
         self.verify_commit_tokens = malloc(self.max_batch_size * DType.INT32.itemsize, runtime=self.runtime)
@@ -8112,6 +8128,7 @@ class Qwen35ParoResidentSession:
                 self.verify_lm_block_indices,
                 self.verify_top1_i32,
                 self.verify_top1_values,
+                self.verify_candidate_counts_i32,
                 self.verify_accepted_counts,
                 self.verify_commit_rows,
                 self.verify_commit_tokens,
@@ -10661,7 +10678,17 @@ class Qwen35ParoResidentSession:
             return True
         return value.strip().lower() not in {"0", "false", "no", "off"}
 
+    def _native_spec_provider_target_graph_enabled(self, batch: TargetVerifyBatch) -> bool:
+        if batch.mode != "verify_chain" or len(batch.request_ids) != 1:
+            return False
+        return _env_flag("HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH", False)
+
     def _verify_accept_updates_position_enabled(self, batch: TargetVerifyBatch) -> bool:
+        if self._native_spec_provider_target_graph_enabled(batch):
+            # The first N4 graph declares VERIFY|ACCEPT only. Keep position and
+            # context mutation in the unchanged provider commit path so the ABI
+            # stage mask never understates graph side effects.
+            return False
         if batch.mode != "verify_chain":
             return False
         if len(batch.request_ids) != 1:
@@ -11185,6 +11212,68 @@ class Qwen35ParoResidentSession:
             stream,
         )
 
+    def _try_submit_native_spec_provider_target_graph(
+        self,
+        entry: Qwen35ParoVerifierGraphEntry,
+        batch: TargetVerifyBatch,
+        *,
+        capture_hidden_concat: Tensor,
+        capture_row_start: int,
+        rows: int,
+        stream: int,
+    ) -> tuple[bool, str | None]:
+        """Try the explicit N4 target+accept boundary before exact fallback."""
+
+        if not self._native_spec_provider_target_graph_enabled(batch):
+            return False, None
+        try:
+            control = self._native_spec_provider_target_control(
+                batch,
+                capture_hidden_concat=capture_hidden_concat,
+                capture_row_start=capture_row_start,
+                rows=rows,
+                stream=stream,
+                cycle_id=entry.replay_count + 1,
+            )
+        except (RuntimeError, TypeError, ValueError) as exc:
+            return False, str(exc)
+        if entry.native_spec_launcher is None:
+            try:
+                # Lazy import registers only the gfx1100 provider key. gfx1151
+                # remains unresolved until its independent N4 gate explicitly
+                # admits and registers the provider.
+                from hipengine.speculative import native_cycle_graph as _native_cycle_graph
+
+                _native_cycle_graph.register_native_spec_provider_target_graph()
+                factory = resolve(
+                    backend=self.backend,
+                    layer="speculative_cycle",
+                    quant="w4_paro",
+                    variant="native_v1_target_graph",
+                )
+                entry.native_spec_launcher = factory(
+                    graph_exec=entry.graph_exec,
+                    runtime=self.runtime,
+                    bound_control=control,
+                    compiler_version=self.compiler_version,
+                    target_arch=self.target_arch,
+                    require_cached=self.require_cached_build,
+                )
+            except Exception as exc:
+                return False, str(exc)
+        try:
+            native_result = entry.native_spec_launcher.launch(control)
+        except (RuntimeError, TypeError, ValueError) as exc:
+            return False, str(exc)
+        if native_result.status is not NativeSpecCycleStatus.COMPLETE:
+            raise RuntimeError(
+                "native provider target graph failed after submission: "
+                f"status={native_result.status.name}, "
+                f"error={native_result.error.name}, "
+                f"backend_error={native_result.backend_error_code}"
+            )
+        return True, None
+
     def _run_verify_graph_or_direct(
         self,
         batch: TargetVerifyBatch,
@@ -11267,7 +11356,19 @@ class Qwen35ParoResidentSession:
             # Launch on the caller's stream so the subsequent accept-payload
             # read serializes naturally; avoids the extra cross-stream sync we
             # would pay if we launched on the (separate) capture stream.
-            self.runtime.graph_launch(entry.graph_exec, stream)
+            (
+                native_spec_cycle_graph,
+                native_spec_fallback_reason,
+            ) = self._try_submit_native_spec_provider_target_graph(
+                entry,
+                batch,
+                capture_hidden_concat=capture_hidden_concat,
+                capture_row_start=capture_row_start,
+                rows=rows,
+                stream=stream,
+            )
+            if not native_spec_cycle_graph:
+                self.runtime.graph_launch(entry.graph_exec, stream)
             entry.replay_count += 1
             if revalidate:
                 self.runtime.stream_synchronize(stream)
@@ -11289,6 +11390,11 @@ class Qwen35ParoResidentSession:
                 "validation_passed": entry.validation_passed,
                 "bucket_key": dict(bucket_key),
                 "replay_count": entry.replay_count,
+                "native_spec_cycle_graph": native_spec_cycle_graph,
+                "native_spec_cycle_stages": (
+                    ["VERIFY", "ACCEPT"] if native_spec_cycle_graph else []
+                ),
+                "native_spec_cycle_fallback_reason": native_spec_fallback_reason,
             }
 
         # Cycle 1 (cache miss): run the direct pass first so all lazily-
@@ -12482,6 +12588,7 @@ class Qwen35ParoResidentSession:
         depth_i32 = np.asarray(batch.draft_depths, dtype=np.int32)
         row_req_i32 = np.asarray(batch.row_to_request, dtype=np.int32)
         active_u8 = np.asarray(batch.active_mask, dtype=np.uint8)
+        candidate_counts_i32 = np.asarray(batch.candidate_counts, dtype=np.int32)
         physical_blocks = np.arange(base_slot * self.blocks, (base_slot + 1) * self.blocks, dtype=np.int32)
         block_table = np.tile(physical_blocks, (rows, 1))
         self._ensure_prefill_block_table_capacity(rows, uniform=False)
@@ -12534,6 +12641,7 @@ class Qwen35ParoResidentSession:
                 (self.verify_draft_depths_i32, depth_i32),
                 (self.verify_row_to_request_i32, row_req_i32),
                 (self.verify_active_mask_u8, active_u8),
+                (self.verify_candidate_counts_i32, candidate_counts_i32),
                 (self.prefill_block_table_buf, block_table),
             ]
             self._verify_metadata_bucket_cache = bucket_signature
@@ -12616,6 +12724,164 @@ class Qwen35ParoResidentSession:
                 library=self.libraries["runtime_state"],
                 runtime=self.runtime,
             )
+
+    def _native_spec_provider_target_control(
+        self,
+        batch: TargetVerifyBatch,
+        *,
+        capture_hidden_concat: Tensor,
+        capture_row_start: int,
+        rows: int,
+        stream: int,
+        cycle_id: int,
+    ) -> NativeSpecCycleControl:
+        """Bind the shared PARO/DFlash target+accept graph to ABI v1."""
+
+        request_count = len(batch.request_ids)
+        if request_count != 1 or rows != int(batch.rows):
+            raise ValueError("native provider target graph requires one exact batch")
+        metadata = TargetVerifyBuffers.for_batch(
+            batch,
+            token_ids=Tensor.from_handle(
+                self.verify_token_ids_i32.ptr,
+                (rows,),
+                DType.INT32,
+                self.device,
+            ),
+            positions=Tensor.from_handle(
+                self.verify_positions_i32.ptr,
+                (rows,),
+                DType.INT32,
+                self.device,
+            ),
+            parent_rows=Tensor.from_handle(
+                self.verify_parent_rows_i32.ptr,
+                (rows,),
+                DType.INT32,
+                self.device,
+            ),
+            draft_depths=Tensor.from_handle(
+                self.verify_draft_depths_i32.ptr,
+                (rows,),
+                DType.INT32,
+                self.device,
+            ),
+            row_to_request=Tensor.from_handle(
+                self.verify_row_to_request_i32.ptr,
+                (rows,),
+                DType.INT32,
+                self.device,
+            ),
+            active_mask=Tensor.from_handle(
+                self.verify_active_mask_u8.ptr,
+                (rows,),
+                DType.BOOL,
+                self.device,
+            ),
+            target_top1=Tensor.from_handle(
+                self.verify_top1_i32.ptr,
+                (rows,),
+                DType.INT32,
+                self.device,
+            ),
+            accepted_counts=Tensor.from_handle(
+                self.verify_accepted_counts.ptr,
+                (request_count,),
+                DType.INT32,
+                self.device,
+            ),
+            commit_rows=Tensor.from_handle(
+                self.verify_commit_rows.ptr,
+                (request_count,),
+                DType.INT32,
+                self.device,
+            ),
+            commit_tokens=Tensor.from_handle(
+                self.verify_commit_tokens.ptr,
+                (request_count,),
+                DType.INT32,
+                self.device,
+            ),
+            commit_positions=Tensor.from_handle(
+                self.verify_commit_positions.ptr,
+                (request_count,),
+                DType.INT32,
+                self.device,
+            ),
+            next_tokens=Tensor.from_handle(
+                self.verify_next_tokens.ptr,
+                (request_count,),
+                DType.INT32,
+                self.device,
+            ),
+            full_accept=Tensor.from_handle(
+                self.verify_full_accept.ptr,
+                (request_count,),
+                DType.BOOL,
+                self.device,
+            ),
+            committed_output_ids=Tensor.from_handle(
+                self.verify_committed_output_ids.ptr,
+                (request_count, rows),
+                DType.INT32,
+                self.device,
+            ),
+            committed_output_lengths=Tensor.from_handle(
+                self.verify_committed_output_lengths.ptr,
+                (request_count,),
+                DType.INT32,
+                self.device,
+            ),
+            transaction_id=int(cycle_id),
+        )
+        _, verify_spans = self._verify_chain_full_attention_spans_batched(rows)
+        capture_width = int(capture_hidden_concat.shape[1])
+        if capture_width > 0:
+            capture_ptr = (
+                int(capture_hidden_concat.ptr)
+                + int(capture_row_start)
+                * capture_width
+                * DType.BF16.itemsize
+            )
+            hidden_rows = Tensor.from_handle(
+                capture_ptr,
+                (rows, capture_width),
+                DType.BF16,
+                self.device,
+            )
+        else:
+            # PARO MTP consumes the verifier's final resident FP16 trunk row
+            # directly and therefore requests no BF16 hidden-tap sidecar.
+            # Bind that real graph output rather than inventing a non-empty
+            # capture tensor solely to satisfy the control descriptor.
+            final_hidden = (
+                self.verify_trunk_hidden
+                if len(self.states) % 2 == 0
+                else self.verify_trunk_next_hidden
+            )
+            hidden_rows = Tensor.from_handle(
+                final_hidden.ptr,
+                (rows, self.config.hidden_size),
+                DType.FP16,
+                self.device,
+            )
+        active_rows = request_count + sum(
+            bool(flag)
+            for row, flag in enumerate(batch.active_mask)
+            if row not in batch.root_rows
+        )
+        return NativeSpecCycleControl.for_target_verify(
+            cycle_id=int(cycle_id),
+            buffers=metadata,
+            kv_live_spans=verify_spans,
+            hidden_seed_rows=hidden_rows,
+            context_bucket=self.max_sequence_length,
+            stream=int(stream),
+            stages=NativeSpecCycleStage.VERIFY | NativeSpecCycleStage.ACCEPT,
+            active_row_count=active_rows,
+            output_stride=rows,
+            candidate_counts_ptr=self.verify_candidate_counts_i32.ptr,
+        )
 
     def _sample_verify_rows_from_hidden(self, hidden: Tensor, rows: int, *, stream: int = 0) -> None:
         norm_out = Tensor.from_handle(self.batch_norm_out.ptr, (rows, self.config.hidden_size), DType.FP16, self.device)

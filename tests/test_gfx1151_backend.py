@@ -63,7 +63,7 @@ from hipengine.kernels.hip_gfx1151 import (
     TARGET_ARCH,
     register_gfx1151_kernels,
 )
-from hipengine.kernels.registry import resolve
+from hipengine.kernels.registry import KernelKey, resolve
 
 
 def test_auto_backend_selects_supported_hip_arches() -> None:
@@ -153,6 +153,41 @@ def test_explicit_gfx1151_backend_hint_applies_when_arch_detection_is_empty() ->
     applied = configure_hip_process_environment(detected_arches=[], env=env)
 
     assert applied == {"GPU_MAX_HW_QUEUES": "1"}
+
+
+def test_gfx1151_backend_does_not_alias_unvalidated_native_spec_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import hipengine.kernels.hip_gfx1151 as backend
+
+    source_keys = (
+        KernelKey(
+            "hip_gfx1100",
+            "speculative_cycle",
+            "w4_gguf",
+            "native_v1_b2_target_graph",
+        ),
+        KernelKey(
+            "hip_gfx1100",
+            "speculative_cycle",
+            "w4_gguf",
+            "native_v1_b2_proposal_graph",
+        ),
+    )
+    registered: list[KernelKey] = []
+    monkeypatch.setattr(backend, "import_module", lambda _name: None)
+    monkeypatch.setattr(backend, "registered_keys", lambda: source_keys)
+    monkeypatch.setattr(backend, "is_registered", lambda _key: False)
+    monkeypatch.setattr(backend, "resolve", lambda **_kwargs: object())
+    monkeypatch.setattr(
+        backend,
+        "register",
+        lambda key, _kernel, *, replace=False: registered.append(key),
+    )
+
+    backend.register_gfx1151_kernels()
+
+    assert registered == []
 
 
 def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:

@@ -348,6 +348,50 @@ def test_suite_exposes_llama_compat_routes() -> None:
         "--target-block-direct-partial-replay-mode",
         "direct-commit",
     ]
+    native_cycle_route = suite.MTP_ROUTES["llama-compat-native-cycle"]
+    assert native_cycle_route[:-1] == suite.MTP_ROUTES[
+        "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit"
+    ]
+    assert native_cycle_route[-1] == "--native-spec-target-cycle"
+    assert suite.MTP_ROUTE_DEFAULT_BUDGETS["llama-compat-native-cycle"] == [2]
+    assert suite.MTP_ROUTE_ENVS["llama-compat-native-cycle"] == {
+        "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+    }
+    native_n2_route = suite.MTP_ROUTES["llama-compat-native-cycle-n2"]
+    assert native_n2_route[:-3] == suite.MTP_ROUTES[
+        "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit"
+    ]
+    assert native_n2_route[-3:] == [
+        "--native-spec-target-cycle",
+        "--native-spec-device-accept-commit",
+        "--resident-mtp-device-seed",
+    ]
+    assert suite.MTP_ROUTE_DEFAULT_BUDGETS["llama-compat-native-cycle-n2"] == [2]
+    assert suite.MTP_ROUTE_ENVS["llama-compat-native-cycle-n2"] == {
+        "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+    }
+    native_n3_route = suite.MTP_ROUTES["llama-compat-native-cycle-n3"]
+    assert native_n3_route[:-4] == suite.MTP_ROUTES[
+        "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit"
+    ]
+    assert native_n3_route[-4:] == [
+        "--native-spec-target-cycle",
+        "--native-spec-device-accept-commit",
+        "--resident-mtp-device-seed",
+        "--native-spec-complete-cycle",
+    ]
+    assert suite.MTP_ROUTE_DEFAULT_BUDGETS["llama-compat-native-cycle-n3"] == [2]
+    assert suite.MTP_ROUTE_ENVS["llama-compat-native-cycle-n3"] == {
+        "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+    }
+    assert suite.MTP_ROUTES["llama-compat-native-cycle-n3p"] == [
+        *suite.MTP_ROUTES["llama-compat-native-cycle-n3"],
+        "--native-spec-proposal-graph",
+    ]
+    assert suite.MTP_ROUTE_DEFAULT_BUDGETS["llama-compat-native-cycle-n3p"] == [2]
+    assert suite.MTP_ROUTE_ENVS["llama-compat-native-cycle-n3p"] == {
+        "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+    }
     assert suite.MTP_ROUTES[
         "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit-vlmheadtop1"
     ] == [
@@ -707,6 +751,33 @@ def test_suite_llama_compat_dry_run_defaults_to_b2(monkeypatch, tmp_path, capsys
     assert "--extra-arg=--verify-dp4a" in out
     assert '"budgets": [\n    2\n  ]' in out
     assert '"mtp_route_default_budgets": [\n    2\n  ]' in out
+
+
+def test_suite_require_cached_build_reaches_true_ar_and_mtp_children(
+    monkeypatch, tmp_path, capsys
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "gguf_ar_mtp_suite.py",
+            "--scope",
+            "smoke",
+            "--mtp-route",
+            "llama-compat-native-cycle-n3p",
+            "--require-cached-build",
+            "--raw-root",
+            str(tmp_path / "raw"),
+            "--dry-run",
+        ],
+    )
+
+    assert suite.main() == 0
+
+    out = capsys.readouterr().out
+    ar_line, mtp_line, *_ = out.splitlines()
+    assert ar_line.endswith("--require-cached-build")
+    assert "--extra-arg=--require-cached-build" in mtp_line
 
 
 def test_suite_llama_compat_device_chain_dry_run_defaults_to_b2(monkeypatch, tmp_path, capsys) -> None:

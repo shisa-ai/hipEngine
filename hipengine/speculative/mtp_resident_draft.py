@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 import os
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 
@@ -91,6 +91,10 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_dp4a_gemv import (
     gguf_q8_0_dp4a_gemv_f32_f32_out,
     gguf_q8_0_dp4a_triple_split_rowtile4_gemv_f32_f32_out,
 )
+from hipengine.kernels.hip_gfx1100.runtime import (
+    build_runtime_state,
+    record_f32_row_indexed,
+)
 from hipengine.kernels.hip_gfx1100.speculative.mtp_nextn import (
     _cached_upload,
     build_mtp_nextn,
@@ -105,8 +109,21 @@ from hipengine.kernels.hip_gfx1100.speculative.mtp_nextn import (
     mtp_silu_mul_f32,
     mtp_split_q_gate_f32,
 )
+from hipengine.kernels.registry import resolve
 from hipengine.quant.gguf import GGMLQuantizationType
 from hipengine.quant.gguf_x8 import repack_gguf_q6_k_x8, repack_gguf_q6_k_x8_dscale_f32
+from hipengine.speculative.native_cycle import (
+    NativeSpecCycleControl,
+    NativeSpecCycleDType,
+    NativeSpecCycleMode,
+    NativeSpecCyclePointers,
+    NativeSpecCycleShape,
+    NativeSpecCycleStage,
+    NativeSpecCycleStatePointers,
+    NativeSpecCycleStatus,
+)
+# Importing the provider registers the gfx1100 proposal-graph launcher factory.
+from hipengine.speculative import native_cycle_graph as _native_cycle_graph_registration  # noqa: F401
 
 _Q8_1_BLOCK = 32
 _Q8_1_BLOCK_BYTES = 36
@@ -375,6 +392,165 @@ def apply_moe_down_combine(
         stage_marker("draft_run_moe_weighted_combine")
 
 
+class NativeSpecProposalGraphUnsupportedError(RuntimeError):
+    """The reusable B1/B2 proposal graph cannot represent this invocation."""
+
+
+@dataclass
+class _NativeMTPProposalGraph:
+    runner: "Qwen35GGUFResidentMTPDraftRunner"
+    graph: int
+    graph_exec: int
+    stream: int
+    launcher: object
+    control: NativeSpecCycleControl
+    budget: int
+    top_k: int
+    key_cache: DeviceBuffer
+    value_cache: DeviceBuffer
+    cache_capacity: int
+    attention_capacity: int
+    rotary_dim: int
+    capture_wall_ms: float
+    capture_reported: bool = False
+    closed: bool = False
+
+    def launch(
+        self,
+        hidden_seed_ptr: int,
+        *,
+        start_token: int,
+        start_position: int,
+        rope_cos: np.ndarray,
+        rope_sin: np.ndarray,
+        dense_cache_len: int,
+        stage_timings: dict[str, float] | None,
+    ) -> tuple[list[int], list[list[int]], int]:
+        if self.closed:
+            raise RuntimeError("native MTP proposal graph is closed")
+        runner = self.runner
+        runtime = runner.runtime or get_hip_runtime()
+        n = int(self.budget)
+        cache_len = int(dense_cache_len)
+        if cache_len < 0 or cache_len + n > int(self.cache_capacity):
+            raise NativeSpecProposalGraphUnsupportedError(
+                "native proposal graph exceeds its draft KV allocation"
+            )
+        if cache_len + n > int(self.attention_capacity):
+            raise NativeSpecProposalGraphUnsupportedError(
+                "native proposal graph exceeds its captured attention bucket"
+            )
+        token = int(start_token)
+        if token < 0 or token >= int(runner.token_embd_f32.shape[0]):
+            raise ValueError("draft token id outside embedding table")
+        positions = np.arange(n, dtype=np.int64) + int(start_position)
+        if positions[0] < 0 or int(positions[-1]) >= int(np.asarray(rope_cos).shape[0]):
+            raise ValueError("native proposal graph exceeds the supplied RoPE table")
+        contexts = np.arange(n, dtype=np.int64) + cache_len + 1
+        cache_indices = np.arange(n, dtype=np.int64) + cache_len
+        d = int(runner.qk_head_dim)
+        rope_w = int(np.asarray(rope_cos).shape[1])
+        cos_strided = np.zeros((n, d), dtype=np.float32)
+        sin_strided = np.zeros((n, d), dtype=np.float32)
+        cos_strided[:, :rope_w] = np.asarray(rope_cos[positions], dtype=np.float32)
+        sin_strided[:, :rope_w] = np.asarray(rope_sin[positions], dtype=np.float32)
+        embed = np.ascontiguousarray(
+            runner.token_embd_f32[token:token + 1], dtype=np.float32
+        )
+        host_staging = (
+            embed,
+            np.ascontiguousarray(cos_strided),
+            np.ascontiguousarray(sin_strided),
+            np.ascontiguousarray(positions),
+            np.ascontiguousarray(contexts),
+            np.ascontiguousarray(cache_indices),
+        )
+
+        seed_start = time.perf_counter()
+        runtime.memcpy_async(
+            runner.seed_a.ptr,
+            int(hidden_seed_ptr),
+            runner.hidden_size * 4,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            self.stream,
+        )
+        _stage_add(stage_timings, "draft_seed_upload", (time.perf_counter() - seed_start) * 1000.0)
+        prepare_start = time.perf_counter()
+        for dst, src in (
+            (runner.token_embed, host_staging[0]),
+            (runner.cos_all, host_staging[1]),
+            (runner.sin_all, host_staging[2]),
+            (runner.pos_all, host_staging[3]),
+            (runner.ctx_all, host_staging[4]),
+            (runner.cache_index_all, host_staging[5]),
+        ):
+            runtime.memcpy_async(
+                dst.ptr,
+                host_array_ptr(src),
+                src.nbytes,
+                HipMemcpyKind.HOST_TO_DEVICE,
+                self.stream,
+            )
+        _stage_add(stage_timings, "draft_prepare_inputs", (time.perf_counter() - prepare_start) * 1000.0)
+
+        control = replace(
+            self.control,
+            cycle_id=int(self.launcher.launch_count),
+            transaction_id=int(self.launcher.launch_count),
+        )
+        submit_start = time.perf_counter()
+        result = self.launcher.launch(control)
+        submit_ms = (time.perf_counter() - submit_start) * 1000.0
+        if result.status is not NativeSpecCycleStatus.COMPLETE:
+            raise RuntimeError(
+                "native MTP proposal graph failed: "
+                f"status={result.status.name} error={result.error.name} "
+                f"backend_error={result.backend_error_code}"
+            )
+        _stage_add(stage_timings, "native_spec_proposal_submit", submit_ms)
+        _stage_add(stage_timings, "draft_device_chain_drain", submit_ms)
+        capture_ms = 0.0 if self.capture_reported else float(self.capture_wall_ms)
+        if capture_ms:
+            _stage_add(stage_timings, "native_spec_proposal_capture", capture_ms)
+        self.capture_reported = True
+
+        topk_host = np.empty((n, int(self.top_k)), dtype=np.int32)
+        readback_start = time.perf_counter()
+        copy_device_to_host(
+            host_array_ptr(topk_host),
+            DeviceBuffer(runner.topk_all.ptr, topk_host.nbytes),
+            topk_host.nbytes,
+            runtime=runtime,
+        )
+        readback_ms = (time.perf_counter() - readback_start) * 1000.0
+        _stage_add(stage_timings, "draft_topk_d2h", readback_ms)
+        _stage_add(stage_timings, "draft_topk_readback", submit_ms + readback_ms)
+        tokens = [int(topk_host[depth, 0]) for depth in range(n)]
+        rows = [[int(value) for value in topk_host[depth].tolist()] for depth in range(n)]
+        runner.last_proposal_native_graph = True
+        runner.last_proposal_graph_submit_ms = submit_ms
+        runner.last_proposal_graph_capture_ms = capture_ms
+        self.control = control
+        return tokens, rows, cache_len + n
+
+    @property
+    def launch_count(self) -> int:
+        return int(self.launcher.launch_count)
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        runtime = self.runner.runtime or get_hip_runtime()
+        try:
+            runtime.graph_exec_destroy(self.graph_exec)
+        finally:
+            try:
+                runtime.graph_destroy(self.graph)
+            finally:
+                runtime.stream_destroy(self.stream)
+
+
 @dataclass
 class Qwen35GGUFResidentMTPDraftRunner:
     """Device-resident chain runner for the real Qwen3.6 GGUF NextN block."""
@@ -397,6 +573,16 @@ class Qwen35GGUFResidentMTPDraftRunner:
     last_top1_probs: list[float] = field(default_factory=list, init=False)
     last_stage_timings_ms: dict[str, float] = field(default_factory=dict, init=False)
     last_hidden_state_summaries: list[dict[str, object]] = field(default_factory=list, init=False)
+    last_proposal_native_graph: bool = field(default=False, init=False)
+    last_proposal_graph_capture_ms: float = field(default=0.0, init=False)
+    last_proposal_graph_submit_ms: float = field(default=0.0, init=False)
+    _native_proposal_graphs: dict[tuple[int, ...], _NativeMTPProposalGraph] = field(
+        default_factory=dict, init=False
+    )
+    _proposal_runtime_state_lib: object | None = field(default=None, init=False)
+    _native_proposal_key_cache: DeviceBuffer | None = field(default=None, init=False)
+    _native_proposal_value_cache: DeviceBuffer | None = field(default=None, init=False)
+    _native_proposal_kv_capacity: int = field(default=0, init=False)
 
     def __post_init__(self) -> None:
         self.runtime = self.runtime or get_hip_runtime()
@@ -610,6 +796,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
         self.sin_all = self._malloc(cap * d * 4)
         self.pos_all = self._malloc(cap * 8)
         self.ctx_all = self._malloc(cap * 8)
+        self.cache_index_all = self._malloc(cap * 8)
         self.topk_all = self._malloc(cap * top_k * 4)
 
     def _draft_dense_q8_dp4a_stage_enabled(self, stage: str) -> bool:
@@ -620,6 +807,9 @@ class Qwen35GGUFResidentMTPDraftRunner:
 
     def close(self) -> None:
         runtime = self.runtime or get_hip_runtime()
+        for graph in tuple(self._native_proposal_graphs.values()):
+            graph.close()
+        self._native_proposal_graphs.clear()
         for buf in reversed(self._buffers):
             free(buf, runtime=runtime)
         self._buffers.clear()
@@ -802,6 +992,43 @@ class Qwen35GGUFResidentMTPDraftRunner:
 
         self._ensure_embed_table()
 
+    def ensure_native_proposal_kv_capacity(
+        self,
+        minimum_rows: int,
+        *,
+        bucket_rows: int = 1023,
+    ) -> tuple[DeviceBuffer, DeviceBuffer, int]:
+        """Return runner-owned FP32 draft K/V with graph-stable addresses."""
+
+        required = int(minimum_rows)
+        bucket = int(bucket_rows)
+        if required <= 0 or bucket < required:
+            raise NativeSpecProposalGraphUnsupportedError(
+                "native proposal graph draft K/V requirement exceeds its fixed bucket"
+            )
+        if (
+            self._native_proposal_key_cache is not None
+            and self._native_proposal_value_cache is not None
+            and int(self._native_proposal_kv_capacity) >= required
+        ):
+            return (
+                self._native_proposal_key_cache,
+                self._native_proposal_value_cache,
+                int(self._native_proposal_kv_capacity),
+            )
+        for graph in tuple(self._native_proposal_graphs.values()):
+            graph.close()
+        self._native_proposal_graphs.clear()
+        row_bytes = int(self.num_kv_heads) * int(self.qk_head_dim) * 4
+        self._native_proposal_key_cache = self._malloc(bucket * row_bytes)
+        self._native_proposal_value_cache = self._malloc(bucket * row_bytes)
+        self._native_proposal_kv_capacity = bucket
+        return (
+            self._native_proposal_key_cache,
+            self._native_proposal_value_cache,
+            int(self._native_proposal_kv_capacity),
+        )
+
     def propose_chain(
         self,
         hidden_seed: np.ndarray,
@@ -882,6 +1109,9 @@ class Qwen35GGUFResidentMTPDraftRunner:
     ) -> tuple[list[int], list[list[int]], int]:
         """Run the draft chain from an already-resident target hidden seed."""
 
+        self.last_proposal_native_graph = False
+        self.last_proposal_graph_capture_ms = 0.0
+        self.last_proposal_graph_submit_ms = 0.0
         stage_timings: dict[str, float] | None = {} if record_stage_timings else None
         self.last_stage_timings_ms = stage_timings if stage_timings is not None else {}
         ptr = int(hidden_seed_ptr)
@@ -921,6 +1151,275 @@ class Qwen35GGUFResidentMTPDraftRunner:
             stage_timings=stage_timings,
             stream=stream,
         )
+
+    def propose_chain_from_device_seed_graph(
+        self,
+        hidden_seed_ptr: int,
+        *,
+        start_token: int,
+        start_position: int,
+        draft_n_max: int,
+        top_k: int,
+        rope_cos: np.ndarray,
+        rope_sin: np.ndarray,
+        dense_key_cache: DeviceBuffer | None = None,
+        dense_value_cache: DeviceBuffer | None = None,
+        dense_cache_len: int = 0,
+        draft_p_min: float = 0.0,
+        record_top1_probs: bool = False,
+        record_topk_scores: bool = False,
+        record_hidden_stats: bool = False,
+        record_stage_stats: bool = False,
+        record_cache_rows: tuple[int, ...] | list[int] | None = None,
+        record_attention_debug: bool = False,
+        record_stage_timings: bool = False,
+        stream: int = 0,
+    ) -> tuple[list[int], list[list[int]], int]:
+        """Replay one strict B1/B2 NextN proposal as one native graph submit."""
+
+        self.last_proposal_native_graph = False
+        self.last_proposal_graph_capture_ms = 0.0
+        self.last_proposal_graph_submit_ms = 0.0
+        stage_timings: dict[str, float] | None = {} if record_stage_timings else None
+        self.last_stage_timings_ms = stage_timings if stage_timings is not None else {}
+        if int(hidden_seed_ptr) <= 0:
+            raise ValueError("hidden_seed_ptr must be a non-zero device pointer")
+        if not self._device_chain_enabled:
+            raise NativeSpecProposalGraphUnsupportedError(
+                "native proposal graph requires the device-chained draft provider"
+            )
+        if int(draft_n_max) not in {1, 2} or int(top_k) != 1:
+            raise NativeSpecProposalGraphUnsupportedError(
+                "native proposal graph supports only strict top-1 B1/B2 chains"
+            )
+        if float(draft_p_min) != 0.0 or any(
+            (
+                record_top1_probs,
+                record_topk_scores,
+                record_hidden_stats,
+                record_stage_stats,
+                bool(record_cache_rows),
+                record_attention_debug,
+            )
+        ):
+            raise NativeSpecProposalGraphUnsupportedError(
+                "native proposal graph does not support diagnostic readbacks or confidence gates"
+            )
+        if stream:
+            raise NativeSpecProposalGraphUnsupportedError(
+                "native proposal graph owns its capture stream"
+            )
+        if dense_key_cache is None or dense_value_cache is None:
+            raise NativeSpecProposalGraphUnsupportedError(
+                "native proposal graph requires dense draft K/V allocations"
+            )
+        graph = self._get_or_capture_native_proposal_graph(
+            budget=int(draft_n_max),
+            top_k=int(top_k),
+            rope_cos=rope_cos,
+            dense_key_cache=dense_key_cache,
+            dense_value_cache=dense_value_cache,
+        )
+        return graph.launch(
+            int(hidden_seed_ptr),
+            start_token=int(start_token),
+            start_position=int(start_position),
+            rope_cos=rope_cos,
+            rope_sin=rope_sin,
+            dense_cache_len=int(dense_cache_len),
+            stage_timings=stage_timings,
+        )
+
+    def _get_or_capture_native_proposal_graph(
+        self,
+        *,
+        budget: int,
+        top_k: int,
+        rope_cos: np.ndarray,
+        dense_key_cache: DeviceBuffer,
+        dense_value_cache: DeviceBuffer,
+    ) -> _NativeMTPProposalGraph:
+        row_bytes = int(self.num_kv_heads) * int(self.qk_head_dim) * 4
+        key_capacity, key_remainder = divmod(int(dense_key_cache.nbytes), row_bytes)
+        value_capacity, value_remainder = divmod(int(dense_value_cache.nbytes), row_bytes)
+        if key_remainder or value_remainder or key_capacity != value_capacity:
+            raise NativeSpecProposalGraphUnsupportedError(
+                "native proposal graph requires aligned equal-capacity FP32 draft K/V"
+            )
+        rotary_dim = self._rotary_dim_from_rope_table(rope_cos)
+        attention_capacity = min(int(key_capacity), 1023)
+        key = (
+            int(budget),
+            int(top_k),
+            int(dense_key_cache.ptr),
+            int(dense_key_cache.nbytes),
+            int(dense_value_cache.ptr),
+            int(dense_value_cache.nbytes),
+            int(key_capacity),
+            int(attention_capacity),
+            int(rotary_dim),
+        )
+        graph = self._native_proposal_graphs.get(key)
+        if graph is not None and not graph.closed:
+            return graph
+        graph = self._capture_native_proposal_graph(
+            budget=int(budget),
+            top_k=int(top_k),
+            dense_key_cache=dense_key_cache,
+            dense_value_cache=dense_value_cache,
+            cache_capacity=int(key_capacity),
+            attention_capacity=int(attention_capacity),
+            rotary_dim=int(rotary_dim),
+        )
+        self._native_proposal_graphs[key] = graph
+        return graph
+
+    def _capture_native_proposal_graph(
+        self,
+        *,
+        budget: int,
+        top_k: int,
+        dense_key_cache: DeviceBuffer,
+        dense_value_cache: DeviceBuffer,
+        cache_capacity: int,
+        attention_capacity: int,
+        rotary_dim: int,
+    ) -> _NativeMTPProposalGraph:
+        capture_start = time.perf_counter()
+        if not bool(getattr(self, "_q6_top1_gather_enabled", False)):
+            raise NativeSpecProposalGraphUnsupportedError(
+                "native proposal graph requires device-written top-1 IDs"
+            )
+        self._ensure_embed_table()
+        if self._proposal_runtime_state_lib is None:
+            self._proposal_runtime_state_lib = build_runtime_state(
+                load=True,
+                compiler_version=self.compiler_version,
+                require_cached=bool(self.require_cached_build),
+            )
+        factory = resolve(
+            backend="hip_gfx1100",
+            layer="speculative_cycle",
+            quant="w4_gguf",
+            variant="native_v1_b2_proposal_graph",
+            missing="none",
+        )
+        if factory is None:
+            raise NativeSpecProposalGraphUnsupportedError(
+                "native proposal graph launcher is not registered"
+            )
+        runtime = self.runtime or get_hip_runtime()
+        runtime.device_synchronize()
+        stream = runtime.stream_create()
+        graph = 0
+        graph_exec = 0
+        try:
+            runtime.stream_begin_capture(stream)
+            try:
+                current_seed = self.seed_a
+                next_seed = self.seed_b
+                for depth in range(int(budget)):
+                    self._run_one(
+                        current_seed,
+                        next_seed,
+                        cos_ptr=self.cos_all.ptr + depth * self.qk_head_dim * 4,
+                        sin_ptr=self.sin_all.ptr + depth * self.qk_head_dim * 4,
+                        pos_ptr=self.pos_all.ptr + depth * 8,
+                        ctx_ptr=self.ctx_all.ptr + depth * 8,
+                        dense_key_cache=dense_key_cache,
+                        dense_value_cache=dense_value_cache,
+                        dense_cache_len=0,
+                        rotary_dim=int(rotary_dim),
+                        top1_out_ptr=self.topk_all.ptr + depth * int(top_k) * 4,
+                        top1_next_embed_ptr=(
+                            self.token_embed.ptr if depth + 1 < int(budget) else None
+                        ),
+                        dynamic_cache_index_ptr=self.cache_index_all.ptr + depth * 8,
+                        dynamic_cache_capacity=int(cache_capacity),
+                        dynamic_attention_capacity=int(attention_capacity),
+                        runtime_state_library=self._proposal_runtime_state_lib,
+                        stream=stream,
+                    )
+                    current_seed, next_seed = next_seed, current_seed
+                graph = runtime.stream_end_capture(stream)
+            except Exception:
+                try:
+                    runtime.stream_end_capture(stream)
+                except Exception:
+                    pass
+                raise
+            if not graph:
+                raise RuntimeError("HIP returned a null native proposal graph")
+            graph_exec = runtime.graph_instantiate(graph)
+            if not graph_exec:
+                raise RuntimeError("HIP returned a null native proposal graph executable")
+            rows = int(budget) + 1
+            control = NativeSpecCycleControl(
+                cycle_id=0,
+                transaction_id=0,
+                stages=NativeSpecCycleStage.PROPOSE,
+                mode=NativeSpecCycleMode.CHAIN,
+                shape=NativeSpecCycleShape(
+                    request_count=1,
+                    request_capacity=1,
+                    row_count=rows,
+                    active_row_count=rows,
+                    row_capacity=rows,
+                    candidate_count=int(budget),
+                    active_candidate_count=int(budget),
+                    candidate_capacity=int(budget),
+                    candidate_budget=int(budget),
+                    span_count=rows,
+                    span_capacity=rows,
+                    max_live_count=int(attention_capacity),
+                    context_bucket=int(attention_capacity),
+                    hidden_size=int(self.hidden_size),
+                    hidden_row_capacity=rows,
+                    output_stride=rows,
+                    metadata_dtype=NativeSpecCycleDType.INT64,
+                    hidden_dtype=NativeSpecCycleDType.FP32,
+                    kv_dtype=NativeSpecCycleDType.FP32,
+                ),
+                pointers=NativeSpecCyclePointers(
+                    state=NativeSpecCycleStatePointers(
+                        hidden_seed_in=self.seed_a.ptr,
+                        candidate_token_ids=self.topk_all.ptr,
+                        draft_key_cache=dense_key_cache.ptr,
+                        draft_value_cache=dense_value_cache.ptr,
+                    )
+                ),
+                stream=stream,
+            )
+            launcher = factory(
+                graph_exec=graph_exec,
+                runtime=runtime,
+                bound_control=control,
+                compiler_version=self.compiler_version,
+                require_cached=bool(self.require_cached_build),
+            )
+            return _NativeMTPProposalGraph(
+                runner=self,
+                graph=graph,
+                graph_exec=graph_exec,
+                stream=stream,
+                launcher=launcher,
+                control=control,
+                budget=int(budget),
+                top_k=int(top_k),
+                key_cache=dense_key_cache,
+                value_cache=dense_value_cache,
+                cache_capacity=int(cache_capacity),
+                attention_capacity=int(attention_capacity),
+                rotary_dim=int(rotary_dim),
+                capture_wall_ms=(time.perf_counter() - capture_start) * 1000.0,
+            )
+        except Exception:
+            if graph_exec:
+                runtime.graph_exec_destroy(graph_exec)
+            if graph:
+                runtime.graph_destroy(graph)
+            runtime.stream_destroy(stream)
+            raise
 
     def _propose_chain_from_seed_buffer(
         self,
@@ -1573,7 +2072,9 @@ class Qwen35GGUFResidentMTPDraftRunner:
             raise ValueError("hidden_seed_rows must have shape [rows, hidden_size]")
         if hidden.shape[0] != tokens.shape[0] or tokens.shape[0] != pos.shape[0]:
             raise ValueError("hidden rows, token ids, and positions must have the same length")
+        runtime = self.runtime or get_hip_runtime()
         current_len = int(dense_cache_len)
+        host_staging: list[np.ndarray] = []
         for row in range(int(tokens.shape[0])):
             token = int(tokens[row])
             if token < 0 or token >= int(self.token_embd_f32.shape[0]):
@@ -1582,8 +2083,21 @@ class Qwen35GGUFResidentMTPDraftRunner:
             embed = np.ascontiguousarray(self.token_embd_f32[token:token + 1], dtype=np.float32)
             cos = np.ascontiguousarray(rope_cos[pos[row:row + 1]], dtype=np.float32)
             sin = np.ascontiguousarray(rope_sin[pos[row:row + 1]], dtype=np.float32)
-            copy_host_to_device(self.seed_a, host_array_ptr(hidden_row), hidden_row.nbytes, runtime=self.runtime)
-            copy_host_to_device(self.token_embed, host_array_ptr(embed), embed.nbytes, runtime=self.runtime)
+            host_staging.extend((hidden_row, embed, cos, sin))
+            runtime.memcpy_async(
+                self.seed_a.ptr,
+                host_array_ptr(hidden_row),
+                hidden_row.nbytes,
+                HipMemcpyKind.HOST_TO_DEVICE,
+                stream,
+            )
+            runtime.memcpy_async(
+                self.token_embed.ptr,
+                host_array_ptr(embed),
+                embed.nbytes,
+                HipMemcpyKind.HOST_TO_DEVICE,
+                stream,
+            )
             self._write_one_kv(
                 dense_key_cache=dense_key_cache,
                 dense_value_cache=dense_value_cache,
@@ -1593,6 +2107,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 stream=stream,
             )
             current_len += 1
+        runtime.stream_synchronize(stream)
         return current_len
 
     def write_kv_rows_from_device_seed_base(
@@ -1623,6 +2138,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
             raise ValueError("hidden_stride_bytes is smaller than one fp32 hidden row")
         runtime = self.runtime or get_hip_runtime()
         current_len = int(dense_cache_len)
+        host_staging: list[np.ndarray] = []
         for row in range(int(tokens.shape[0])):
             token = int(tokens[row])
             if token < 0 or token >= int(self.token_embd_f32.shape[0]):
@@ -1630,22 +2146,24 @@ class Qwen35GGUFResidentMTPDraftRunner:
             embed = np.ascontiguousarray(self.token_embd_f32[token:token + 1], dtype=np.float32)
             cos = np.ascontiguousarray(rope_cos[pos[row:row + 1]], dtype=np.float32)
             sin = np.ascontiguousarray(rope_sin[pos[row:row + 1]], dtype=np.float32)
-            if stream:
-                runtime.memcpy_async(
-                    self.seed_a.ptr,
-                    base_ptr + row * stride,
-                    self.hidden_size * 4,
-                    HipMemcpyKind.DEVICE_TO_DEVICE,
-                    stream,
-                )
-            else:
-                runtime.memcpy(
-                    self.seed_a.ptr,
-                    base_ptr + row * stride,
-                    self.hidden_size * 4,
-                    HipMemcpyKind.DEVICE_TO_DEVICE,
-                )
-            copy_host_to_device(self.token_embed, host_array_ptr(embed), embed.nbytes, runtime=self.runtime)
+            host_staging.extend((embed, cos, sin))
+            # Keep every copy and consumer on one stream.  Synchronous D2D
+            # copies do not reliably establish ordering against default-stream
+            # launches on every ROCm stream mode.
+            runtime.memcpy_async(
+                self.seed_a.ptr,
+                base_ptr + row * stride,
+                self.hidden_size * 4,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+            runtime.memcpy_async(
+                self.token_embed.ptr,
+                host_array_ptr(embed),
+                embed.nbytes,
+                HipMemcpyKind.HOST_TO_DEVICE,
+                stream,
+            )
             self._write_one_kv(
                 dense_key_cache=dense_key_cache,
                 dense_value_cache=dense_value_cache,
@@ -1655,6 +2173,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 stream=stream,
             )
             current_len += 1
+        runtime.stream_synchronize(stream)
         return current_len
 
     def _project_current_to_attn_normed(
@@ -1669,12 +2188,20 @@ class Qwen35GGUFResidentMTPDraftRunner:
         h = self.hidden_size
         mtp_rmsnorm_f32(self.token_embed.ptr, self.enorm.ptr, self.e_norm.ptr, 1, h, eps=self.eps, stream=stream, library=self._mtp_lib, runtime=runtime)
         mtp_rmsnorm_f32(hidden_seed.ptr, self.hnorm.ptr, self.h_norm.ptr, 1, h, eps=self.eps, stream=stream, library=self._mtp_lib, runtime=runtime)
-        if stream:
-            runtime.memcpy_async(self.concat.ptr, self.e_norm.ptr, h * 4, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
-            runtime.memcpy_async(self.concat.ptr + h * 4, self.h_norm.ptr, h * 4, HipMemcpyKind.DEVICE_TO_DEVICE, stream)
-        else:
-            runtime.memcpy(self.concat.ptr, self.e_norm.ptr, h * 4, HipMemcpyKind.DEVICE_TO_DEVICE)
-            runtime.memcpy(self.concat.ptr + h * 4, self.h_norm.ptr, h * 4, HipMemcpyKind.DEVICE_TO_DEVICE)
+        runtime.memcpy_async(
+            self.concat.ptr,
+            self.e_norm.ptr,
+            h * 4,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            stream,
+        )
+        runtime.memcpy_async(
+            self.concat.ptr + h * 4,
+            self.h_norm.ptr,
+            h * 4,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            stream,
+        )
         if stage_marker is not None:
             stage_marker("draft_run_project_norm_concat")
         if not self._try_dense_q8_dp4a_f32(
@@ -1736,8 +2263,20 @@ class Qwen35GGUFResidentMTPDraftRunner:
             gguf_q8_0_gemv_f32_f32_out(self.attn_normed.ptr, self.wv.ptr, self.value_cur.ptr, 1, h, kv_heads * d, stream=stream, library=self._k_lib, runtime=runtime)
         mtp_rmsnorm_f32(self.key_cur.ptr, self.k_norm.ptr, self.key_cur.ptr, kv_heads, d, eps=self.eps, stream=stream, library=self._mtp_lib, runtime=runtime)
         rotary_dim = self._rotary_dim_from_rope_table(cos)
-        copy_host_to_device(self.cos, host_array_ptr(cos), cos.nbytes, runtime=runtime)
-        copy_host_to_device(self.sin, host_array_ptr(sin), sin.nbytes, runtime=runtime)
+        runtime.memcpy_async(
+            self.cos.ptr,
+            host_array_ptr(cos),
+            cos.nbytes,
+            HipMemcpyKind.HOST_TO_DEVICE,
+            stream,
+        )
+        runtime.memcpy_async(
+            self.sin.ptr,
+            host_array_ptr(sin),
+            sin.nbytes,
+            HipMemcpyKind.HOST_TO_DEVICE,
+            stream,
+        )
         mtp_rope_f32(
             self.key_cur.ptr,
             self.cos.ptr,
@@ -1753,34 +2292,20 @@ class Qwen35GGUFResidentMTPDraftRunner:
         )
         key_row_bytes = kv_heads * d * 4
         value_row_bytes = kv_heads * d * 4
-        if stream:
-            runtime.memcpy_async(
-                dense_key_cache.ptr + int(dense_cache_len) * key_row_bytes,
-                self.key_cur.ptr,
-                key_row_bytes,
-                HipMemcpyKind.DEVICE_TO_DEVICE,
-                stream,
-            )
-            runtime.memcpy_async(
-                dense_value_cache.ptr + int(dense_cache_len) * value_row_bytes,
-                self.value_cur.ptr,
-                value_row_bytes,
-                HipMemcpyKind.DEVICE_TO_DEVICE,
-                stream,
-            )
-        else:
-            runtime.memcpy(
-                dense_key_cache.ptr + int(dense_cache_len) * key_row_bytes,
-                self.key_cur.ptr,
-                key_row_bytes,
-                HipMemcpyKind.DEVICE_TO_DEVICE,
-            )
-            runtime.memcpy(
-                dense_value_cache.ptr + int(dense_cache_len) * value_row_bytes,
-                self.value_cur.ptr,
-                value_row_bytes,
-                HipMemcpyKind.DEVICE_TO_DEVICE,
-            )
+        runtime.memcpy_async(
+            dense_key_cache.ptr + int(dense_cache_len) * key_row_bytes,
+            self.key_cur.ptr,
+            key_row_bytes,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            stream,
+        )
+        runtime.memcpy_async(
+            dense_value_cache.ptr + int(dense_cache_len) * value_row_bytes,
+            self.value_cur.ptr,
+            value_row_bytes,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            stream,
+        )
 
     def _run_one(
         self,
@@ -1800,6 +2325,10 @@ class Qwen35GGUFResidentMTPDraftRunner:
         gpu_event_depth: int | None = None,
         top1_out_ptr: int | None = None,
         top1_next_embed_ptr: int | None = None,
+        dynamic_cache_index_ptr: int | None = None,
+        dynamic_cache_capacity: int | None = None,
+        dynamic_attention_capacity: int | None = None,
+        runtime_state_library: object | None = None,
         stream: int = 0,
     ) -> None:
         runtime = self.runtime or get_hip_runtime()
@@ -1904,7 +2433,37 @@ class Qwen35GGUFResidentMTPDraftRunner:
                 raise ValueError("dense_value_cache is required with dense_key_cache")
             key_row_bytes = kv_heads * d * 4
             value_row_bytes = kv_heads * d * 4
-            if stream:
+            if dynamic_cache_index_ptr is not None:
+                if (
+                    dynamic_cache_capacity is None
+                    or dynamic_attention_capacity is None
+                    or runtime_state_library is None
+                ):
+                    raise ValueError(
+                        "dynamic draft KV write requires capacities and runtime-state library"
+                    )
+                record_f32_row_indexed(
+                    self.key_cur.ptr,
+                    dense_key_cache.ptr,
+                    int(dynamic_cache_index_ptr),
+                    kv_heads * d,
+                    int(dynamic_cache_capacity),
+                    stream=stream,
+                    library=runtime_state_library,
+                    runtime=runtime,
+                )
+                record_f32_row_indexed(
+                    self.value_cur.ptr,
+                    dense_value_cache.ptr,
+                    int(dynamic_cache_index_ptr),
+                    kv_heads * d,
+                    int(dynamic_cache_capacity),
+                    stream=stream,
+                    library=runtime_state_library,
+                    runtime=runtime,
+                )
+                cache_tokens = int(dynamic_attention_capacity)
+            elif stream:
                 runtime.memcpy_async(
                     dense_key_cache.ptr + int(dense_cache_len) * key_row_bytes,
                     self.key_cur.ptr,
@@ -1919,6 +2478,7 @@ class Qwen35GGUFResidentMTPDraftRunner:
                     HipMemcpyKind.DEVICE_TO_DEVICE,
                     stream,
                 )
+                cache_tokens = int(dense_cache_len) + 1
             else:
                 runtime.memcpy(
                     dense_key_cache.ptr + int(dense_cache_len) * key_row_bytes,
@@ -1932,9 +2492,9 @@ class Qwen35GGUFResidentMTPDraftRunner:
                     value_row_bytes,
                     HipMemcpyKind.DEVICE_TO_DEVICE,
                 )
+                cache_tokens = int(dense_cache_len) + 1
             key_ptr = dense_key_cache.ptr
             value_ptr = dense_value_cache.ptr
-            cache_tokens = int(dense_cache_len) + 1
         else:
             key_ptr = self.key_cur.ptr
             value_ptr = self.value_cur.ptr

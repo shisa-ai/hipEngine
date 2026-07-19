@@ -362,55 +362,67 @@ B2 natural24 structure used by the llama.cpp comparison.
 <!-- BEGIN TOPLINE:SPECULATIVE -->
 #### GGUF MTP comparison, Radeon Pro W7900/gfx1100
 
-| Metric | hipEngine GGUF true AR | hipEngine GGUF exact/default | hipEngine GGUF `llama-compat` | llama.cpp HIP base AR |
-| --- | ---: | ---: | ---: | ---: |
-| Route | State-bound graph, no MTP | B3, fixed 10 cycles | B2, natural24/cyclecap24 | Natural25 request / 24 timed transitions |
-| Decode | **98.75 tok/s fixed / 93.30 tok/s natural24** | 68.50 tok/s | 79.70 tok/s | 78.29 tok/s transition-normalized |
-| Own true AR | same route | 98.75 tok/s | 93.30 tok/s | same route |
-| MTP / own AR | 1.0000x | **0.6936x** | **0.8542x** | n/a |
-| Draft acceptance | n/a | 73.53% | 82.95% | n/a |
-| Accepted draft/output | n/a | 50.00% | 60.83% | n/a |
-| Complete wall per output/transition | 10.718 ms natural24 | 14.696 ms | 12.578 ms | 12.774 ms |
-| State/commit contract | serial autoregressive | serial-prefix preserving | direct partial commit/dp4a; accuracy-traded | native llama.cpp autoregressive |
+| Metric | hipEngine GGUF true AR | hipEngine GGUF exact/default | hipEngine GGUF `llama-compat` | llama.cpp HIP base AR | llama.cpp HIP bundled MTP |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Route | State-bound graph, no MTP | B3, fixed 10 cycles | B2 natural24, reusable B1/B2 target graphs | Natural25 request / 24 timed transitions | B2, natural25 request / 24 timed transitions |
+| Decode | **98.75 tok/s fixed / 96.75 tok/s natural24** | 68.50 tok/s | **122.67 tok/s** | 78.05 tok/s transition-normalized | 115.44 tok/s transition-normalized |
+| Own true AR | same route | 98.75 tok/s | 96.75 tok/s | same route | 78.05 tok/s |
+| MTP / own AR | 1.0000x | **0.6936x** | **1.2679x** | n/a | **1.4791x** |
+| Draft acceptance | n/a | 73.53% | 80.45% | n/a | 81.56% |
+| Accepted draft/output | n/a | 50.00% | 60.00% | n/a | 58.40% |
+| Complete wall per output/transition | 10.336 ms natural24 | 14.696 ms | **8.186 ms** | 12.812 ms | 8.662 ms |
+| State/commit contract | serial autoregressive | serial-prefix preserving | direct partial commit/dp4a; accuracy-traded | native llama.cpp autoregressive | native llama.cpp compatibility target |
 
-The old `34.28-34.49 tok/s` true-AR denominator was an eager-only benchmark
-path, not the fastest production no-MTP route. gfx1100 had no backend graph
-capability even though the state-bound implementation was already shared with
-gfx1151. A clean W7900 p512/d24 gate now passes all 24 hidden/GDN/KV/token
-transitions and moves capture-inclusive wall from **30.536 to 12.514 ms/token
-(2.4402x)**. The full natural24 suite matches every prior eager generated-token
-preview/tail and moves **34.28 -> 93.30 tok/s** in the same MTP wrapper.
+The W7900 route now reuses one fixed-address target graph per B1/B2 shape
+bucket. Live token, position, context, and cursor metadata are staged on device;
+the five two-row output-cap tails use B1 and the four true one-row/no-draft
+cycles stay on AR. Unsupported configurations fall back before launch, while a
+post-launch failure never re-executes a possibly mutating verifier.
 
-At the matched cross-engine boundary, hipEngine counts 240 complete post-prefill
-transitions including graph capture/instantiate/close; llama.cpp build 9648
-requests 25 outputs and counts the 240 timed transitions inside `predicted_ms`.
-hipEngine is **93.30 versus 78.29 tok/s (+19.19%)**. BF16 versus F16 KV remains
-disclosed. llama.cpp stays an external diagnostic with
-`performance_claim=false` because its local instrumentation patchset is dirty
-but preserved.
+Two clean full-suite processes at `0d7b86e7` measure **123.33 and 122.67 tok/s**
+(0.54% spread). The conservative run is **1.2679x** its true graph AR and
+**6.26% faster** than llama.cpp's **115.44 tok/s / 8.662 ms-transition** floor,
+while complete wall is **5.50% lower** at **8.186 ms/output**. Draft acceptance
+and accepted/output remain exactly **80.45% / 60.00%**. All 240 output IDs and
+all 96 cycle semantics in both runs match the prior eager-target
+`llama-compat` baseline. hipEngine uses BF16 KV versus llama.cpp F16 KV, and the
+external row remains `performance_claim=false` because its preserved
+instrumentation checkout is dirty.
 
-Neither MTP route beats the corrected production AR control. Exact/default
-remains the semantic control; `llama-compat` remains explicit-only because
-direct partial commit is not serial-prefix-equivalent. The fixed-cycle exact
-and natural24 compatibility rows are different protocols and are not ranked
-against each other.
+The target graph also passes the real 35B oracle at two B2 positions plus B1:
+target top-1, 16,384 FP32 hidden values, each set of 60 captured and 60 resident
+Conv/GDN buffers, all 20 K/V buffers, and cursors are byte-exact. A cached
+six-step trace records zero measured recaptures, **18.67 ms host / 13.67 ms
+kernels / 5.00 ms residual**, and the expected dynamic-metadata, cursor-advance,
+and top-1 widening leaves. The prior eager profiler residual was 38.41 ms.
 
-##### W7900 `llama-compat` full-suite gate against graph AR
+Exact/default remains the semantic control. `llama-compat` remains explicit-only
+because direct partial commit is not serial-prefix-equivalent; this retained
+speed result does not make it the automatic exact route. The fixed-cycle exact
+and natural24 compatibility rows remain different protocols.
+
+##### W7900 reusable-native `llama-compat` full-suite gate
 
 | Scope | Prompts | True AR tok/s | `llama-compat` tok/s | MTP / AR | Draft acceptance | Accepted/output | Cycle wall/output |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Full | 10 | **93.30** | 79.70 | **0.8542x** | 82.95% | 60.83% | 12.578 ms |
-| Train | 6 | **93.73** | 82.01 | **0.8749x** | **88.12%** | 61.81% | 12.224 ms |
-| Heldout | 4 | **92.67** | 76.47 | **0.8252x** | **76.00%** | 59.38% | 13.110 ms |
-| `code` | 4 | **93.63** | 86.99 | **0.9291x** | 95.38% | 64.58% | 11.523 ms |
-| `general_en` | 2 | **90.99** | 75.87 | **0.8338x** | 75.68% | 58.33% | 13.212 ms |
-| `general_ja` | 2 | **94.38** | 72.17 | **0.7647x** | 69.23% | 56.25% | 13.889 ms |
-| `mixed_ja_en` | 2 | **93.98** | 78.71 | **0.8375x** | 82.86% | 60.42% | 12.744 ms |
+| Full | 10 | 96.75 | **122.67** | **1.2679x** | 80.45% | 60.00% | 8.186 ms |
+| Train | 6 | 96.13 | **124.70** | **1.2973x** | **87.25%** | 61.81% | 8.052 ms |
+| Heldout | 4 | 97.68 | **119.73** | **1.2257x** | **71.43%** | 57.29% | 8.388 ms |
+| `code` | 4 | 97.06 | **127.81** | **1.3168x** | 93.94% | 64.58% | 7.854 ms |
+| `general_en` | 2 | 94.25 | **123.37** | **1.3091x** | 75.68% | 58.33% | 8.138 ms |
+| `general_ja` | 2 | 98.04 | **118.42** | **1.2079x** | 69.23% | 56.25% | 8.480 ms |
+| `mixed_ja_en` | 2 | 97.40 | **116.78** | **1.1990x** | 72.97% | 56.25% | 8.604 ms |
 
-All four categories and heldout lose to graph AR despite unchanged strong draft
-acceptance. This corrects the earlier false MTP-win conclusion without changing
-the compatibility semantics. Artifact:
-[`2026-07-12-w7900-gfx1100-gguf-graph-ar-refresh.json`](results/2026-07-12-w7900-gfx1100-gguf-graph-ar-refresh.json).
+Every category and the heldout split beat their true same-protocol AR control;
+even the slowest category remains above the aggregate external floor in the
+conservative run. The corrected 54.88 tok/s eager-target row remains the
+optimization baseline, not the current route. Artifacts:
+[`retained reusable route`](results/2026-07-19-w7900-llama-compat-reusable-native-cycle.json),
+[`N2 ownership diagnostic`](results/2026-07-19-w7900-llama-compat-native-cycle-n2.json),
+[`N3 complete-cycle diagnostic`](results/2026-07-19-w7900-llama-compat-native-cycle-n3.json),
+[`N3P proposal-submission diagnostic`](results/2026-07-19-w7900-llama-compat-native-cycle-n3p.json),
+[`prior baseline`](results/2026-07-19-w7900-hipengine-llama-compat-current-baseline.json),
+and [`llama.cpp floor`](results/2026-07-19-w7900-llamacpp-mtp-natural25-refresh.json).
 
 #### GGUF MTP comparison, Radeon 8060S/gfx1151
 
@@ -878,6 +890,7 @@ request examples, feature contracts, diagnostics, and current limitations.
 | [`docs/PREFILL.md`](docs/PREFILL.md) | Native prefill implementation spec |
 | [`docs/SAMPLING.md`](docs/SAMPLING.md) | Normal sampling parameter support plan |
 | [`docs/MTP.md`](docs/MTP.md) | Multi-token prediction plan |
+| [`docs/NATIVE_SPEC_CYCLE.md`](docs/NATIVE_SPEC_CYCLE.md) | Canonical N0-N5 milestone glossary, ownership distinctions, current speculative performance scorecard, and evidence index |
 | [`docs/DFLASH.md`](docs/DFLASH.md) | DFlash draft-model speculative decode plan |
 | [`docs/SOL-OPTIMIZATION.md`](docs/SOL-OPTIMIZATION.md) | gfx1151 PARO/GGUF optimization ledger and completion gates |
 | [`docs/MTP-LLAMACPP-PARITY.md`](docs/MTP-LLAMACPP-PARITY.md) | Current GGUF MTP parity results and open reruns |

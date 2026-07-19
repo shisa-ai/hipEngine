@@ -165,6 +165,17 @@ def test_b1_branch_safe_block_verify_flag_parses_with_target_block_verify() -> N
     assert args.target_b1_branch_safe_block_verify is True
 
 
+def test_native_complete_cycle_flag_parses_default_off() -> None:
+    assert build_arg_parser().parse_args([]).native_spec_complete_cycle is False
+    assert build_arg_parser().parse_args(
+        ["--native-spec-complete-cycle"]
+    ).native_spec_complete_cycle is True
+    assert build_arg_parser().parse_args([]).native_spec_proposal_graph is False
+    assert build_arg_parser().parse_args(
+        ["--native-spec-proposal-graph"]
+    ).native_spec_proposal_graph is True
+
+
 def test_fused_b1_block_probe_flag_parses() -> None:
     args = build_arg_parser().parse_args(["--fused-b1-block-probe"])
 
@@ -893,6 +904,31 @@ def test_arg_parser_exposes_target_block_sync_stage_timings() -> None:
     assert args.target_block_verify is True
     assert args.record_cycle_stage_timings is True
     assert args.target_block_sync_stage_timings is True
+
+
+def test_arg_parser_exposes_native_spec_target_cycle_diagnostic() -> None:
+    args = build_arg_parser().parse_args(
+        ["--target-block-verify", "--native-spec-target-cycle"]
+    )
+
+    assert args.target_block_verify is True
+    assert args.native_spec_target_cycle is True
+
+
+def test_arg_parser_exposes_native_spec_n2_device_accept_commit() -> None:
+    args = build_arg_parser().parse_args(
+        [
+            "--target-block-verify",
+            "--native-spec-target-cycle",
+            "--native-spec-device-accept-commit",
+            "--resident-mtp-draft",
+            "--resident-mtp-device-seed",
+        ]
+    )
+
+    assert args.native_spec_target_cycle is True
+    assert args.native_spec_device_accept_commit is True
+    assert args.resident_mtp_device_seed is True
 
 
 def test_arg_parser_exposes_record_draft_confidence_diagnostic() -> None:

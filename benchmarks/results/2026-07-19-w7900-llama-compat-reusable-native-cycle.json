@@ -1,0 +1,429 @@
+{
+  "schema": "hipengine.gguf_llama_compat_reusable_native_cycle.v1",
+  "date": "2026-07-19",
+  "status": "retained",
+  "performance_claim": true,
+  "speed_claim_eligible": true,
+  "scope": "Explicit accuracy-traded GGUF llama-compat B2 natural24 route with reusable native B1/B2 target graphs",
+  "hipengine_artifact_provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 1,
+    "collected_at": "2026-07-18T21:45:19.822249+00:00",
+    "repo_root": "/home/lhl/hipEngine-main",
+    "hipengine_commit": "0d7b86e76edc46940417e06f5b9e634b907d9fe2",
+    "git_branch": "main",
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "configured_backend": "auto",
+    "resolved_backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        11331169424,
+        22662338848
+      ],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "command": [
+      "python3",
+      "scripts/gguf_ar_mtp_suite.py",
+      "--scope",
+      "full",
+      "--mtp-route",
+      "llama-compat-native-cycle",
+      "--budgets",
+      "2",
+      "--cycles",
+      "24",
+      "--max-output-tokens",
+      "24",
+      "--record-cycle-stage-timings",
+      "--require-cached-build",
+      "--output",
+      "/tmp/w7900-hipengine-llama-compat-native-cycle-0d7b86e7-full-r1.json"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "GPU_MAX_HW_QUEUES": null,
+      "HIP_VISIBLE_DEVICES": "0",
+      "ROCR_VISIBLE_DEVICES": null,
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null
+    },
+    "rocm_version": "HIP version: 7.2.53211-3d9ef42",
+    "hipcc_version": "HIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+    "build_profile": "gguf_mtp_category",
+    "timing_protocol": "two fresh full-suite processes; complete cycle wall includes first B1/B2 capture, replay, readback, acceptance, and commit",
+    "warmups": 1,
+    "repetitions": 2,
+    "profiler": {
+      "status": "captured",
+      "tool": "rocprofv3 --kernel-trace --marker-trace",
+      "measured_steps": 6,
+      "warmup_steps": 2
+    }
+  },
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "hip_visible_devices": "0",
+    "kv_dtype": "bf16"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "UD-Q4_K_M GGUF",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "size_bytes": 22663387424
+  },
+  "protocol": {
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompt_count": 10,
+    "train_prompts": 6,
+    "heldout_prompts": 4,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "route": "llama-compat-native-cycle",
+    "route_contract": "explicit accuracy-traded direct partial commit/dp4a",
+    "candidate_budget": 2,
+    "cycles_cap": 24,
+    "max_output_tokens": 24,
+    "output_tokens_per_prompt": 24,
+    "output_tokens_total": 240,
+    "reasoning": "off",
+    "greedy": true,
+    "record_cycle_stage_timings": true,
+    "true_ar_path": "state_bound_graph",
+    "apple_to_apple_ok": true,
+    "target_shape_histogram": {
+      "b2_rows_3": 87,
+      "b1_rows_2": 5,
+      "ar_rows_1": 4
+    }
+  },
+  "implementation": {
+    "registry_key": [
+      "hip_gfx1100",
+      "speculative_cycle",
+      "w4_gguf",
+      "native_v1_b2_target_graph"
+    ],
+    "shape_buckets": [
+      "B1/2 rows",
+      "B2/3 rows"
+    ],
+    "ownership": "one graph executable per session and shape bucket; graph-owned fixed-address hidden/F32/metadata scratch",
+    "dynamic_inputs": [
+      "token ids",
+      "absolute positions",
+      "context counts",
+      "device cursor"
+    ],
+    "fallback": "one-row/no-draft tails and unsupported pre-launch configurations use the existing eager verifier/AR path",
+    "failure_policy": "post-launch errors never silently re-execute a state-mutating verifier",
+    "default_scope": "retained explicit gfx1100 llama-compat benchmark route; exact/default MTP and gfx1151 remain unchanged"
+  },
+  "correctness": {
+    "real_model_oracle_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 uv run --extra dev pytest -q tests/test_gguf_native_spec_cycle.py::test_native_b2_target_graph_matches_eager_hidden_state_and_kv",
+    "real_model_oracle_passed": true,
+    "target_top1": {
+      "agreement": 1.0,
+      "kl": 0.0,
+      "cases": [
+        "B2 first replay at positions 8-10",
+        "same B2 graph at positions 11-13",
+        "B1 replay at positions 8-9"
+      ]
+    },
+    "hidden_seed_fp32": {
+      "equal": true,
+      "elements_compared": 16384,
+      "max_abs": 0.0,
+      "finite": true
+    },
+    "captured_conv_gdn_state_rows": {
+      "equal": true,
+      "buffers_per_case": 60,
+      "cases": 3
+    },
+    "resident_conv_gdn_state": {
+      "equal": true,
+      "buffers_per_case": 60,
+      "cases": 3
+    },
+    "full_attention_kv": {
+      "equal": true,
+      "buffers_per_case": 20,
+      "cases": 3
+    },
+    "cursor": {
+      "equal": true,
+      "b2_replay": "8 -> 14",
+      "b1": "8 -> 10"
+    },
+    "full_suite_semantic_oracle": {
+      "baseline": "benchmarks/results/2026-07-19-w7900-hipengine-llama-compat-current-baseline.json",
+      "prompts": 10,
+      "cycles_per_repetition": 96,
+      "output_ids_per_repetition": 240,
+      "repetitions": 2,
+      "exact_cycle_semantics": true,
+      "exact_output_ids": true,
+      "unchanged_draft_acceptance": 0.8044692737430168,
+      "unchanged_accepted_per_output": 0.6
+    }
+  },
+  "results": {
+    "repetitions": [
+      {
+        "name": "r1",
+        "true_ar_tok_s": 96.90853002772906,
+        "mtp_tok_s": 123.33244259902567,
+        "mtp_vs_true_ar": 1.2726685934017963,
+        "cycle_wall_ms_per_output": 8.143119583333334,
+        "cycle_wall_ms_total": 1954.3487,
+        "draft_acceptance": 0.8044692737430168,
+        "accepted_per_output": 0.6
+      },
+      {
+        "name": "r2",
+        "true_ar_tok_s": 96.74556500997959,
+        "mtp_tok_s": 122.6674026710827,
+        "mtp_vs_true_ar": 1.2679382528638827,
+        "cycle_wall_ms_per_output": 8.186126666666665,
+        "cycle_wall_ms_total": 1964.6703999999997,
+        "draft_acceptance": 0.8044692737430168,
+        "accepted_per_output": 0.6
+      }
+    ],
+    "stability": {
+      "mtp_tok_s_mean": 122.99992263505419,
+      "mtp_tok_s_min": 122.6674026710827,
+      "mtp_tok_s_max": 123.33244259902567,
+      "max_over_min_spread_pct": 0.5421488622582071
+    },
+    "conservative_r2": {
+      "full": {
+        "prompts": 10,
+        "true_ar_tok_s": 96.74556500997959,
+        "mtp_tok_s": 122.6674026710827,
+        "mtp_vs_true_ar": 1.2679382528638827,
+        "draft_acceptance": 0.8044692737430168,
+        "accepted_per_output": 0.6,
+        "cycle_wall_ms_per_output": 8.186126666666665
+      },
+      "train": {
+        "prompts": 6,
+        "true_ar_tok_s": 96.12935062478074,
+        "mtp_tok_s": 124.70447637109973,
+        "mtp_vs_true_ar": 1.2972570350324695,
+        "draft_acceptance": 0.8725490196078431,
+        "accepted_per_output": 0.6180555555555556,
+        "cycle_wall_ms_per_output": 8.051619444444444
+      },
+      "heldout": {
+        "prompts": 4,
+        "true_ar_tok_s": 97.68484326229627,
+        "mtp_tok_s": 119.73359275611764,
+        "mtp_vs_true_ar": 1.2257131071461893,
+        "draft_acceptance": 0.7142857142857143,
+        "accepted_per_output": 0.5729166666666666,
+        "cycle_wall_ms_per_output": 8.3878875
+      },
+      "categories": {
+        "code": {
+          "prompts": 4,
+          "true_ar_tok_s": 97.0644730732257,
+          "mtp_tok_s": 127.81424329973773,
+          "mtp_vs_true_ar": 1.3167973744967876,
+          "draft_acceptance": 0.9393939393939394,
+          "accepted_per_output": 0.6458333333333334,
+          "cycle_wall_ms_per_output": 7.8540874999999994
+        },
+        "general_en": {
+          "prompts": 2,
+          "true_ar_tok_s": 94.24714780642833,
+          "mtp_tok_s": 123.37428674240476,
+          "mtp_vs_true_ar": 1.3090506144101026,
+          "draft_acceptance": 0.7567567567567568,
+          "accepted_per_output": 0.5833333333333334,
+          "cycle_wall_ms_per_output": 8.138077083333334
+        },
+        "general_ja": {
+          "prompts": 2,
+          "true_ar_tok_s": 98.03896218100428,
+          "mtp_tok_s": 118.41910494893177,
+          "mtp_vs_true_ar": 1.2078779937541637,
+          "draft_acceptance": 0.6923076923076923,
+          "accepted_per_output": 0.5625,
+          "cycle_wall_ms_per_output": 8.4804125
+        },
+        "mixed_ja_en": {
+          "prompts": 2,
+          "true_ar_tok_s": 97.4025908664219,
+          "mtp_tok_s": 116.78263831443726,
+          "mtp_vs_true_ar": 1.1989685004846862,
+          "draft_acceptance": 0.7297297297297297,
+          "accepted_per_output": 0.5625,
+          "cycle_wall_ms_per_output": 8.60396875
+        }
+      }
+    }
+  },
+  "comparisons": {
+    "prior_hipengine": {
+      "artifact": "benchmarks/results/2026-07-19-w7900-hipengine-llama-compat-current-baseline.json",
+      "prior_tok_s": 54.87997292588002,
+      "current_conservative_tok_s": 122.6674026710827,
+      "tok_s_delta_pct": 123.51943000546895,
+      "prior_cycle_wall_ms_per_output": 18.259497083333333,
+      "current_cycle_wall_ms_per_output": 8.186126666666665,
+      "cycle_wall_delta_pct": -55.16784153853453,
+      "acceptance_changed": false
+    },
+    "llamacpp_floor": {
+      "artifact": "benchmarks/results/2026-07-19-w7900-llamacpp-mtp-natural25-refresh.json",
+      "llamacpp_kv_dtype": "f16",
+      "llamacpp_transition_tok_s": 115.44422456595375,
+      "llamacpp_ms_per_transition": 8.662191666666669,
+      "hipengine_kv_dtype": "bf16",
+      "hipengine_conservative_tok_s": 122.6674026710827,
+      "hipengine_ms_per_output": 8.186126666666665,
+      "hipengine_speed_lead_pct": 6.256855318909715,
+      "hipengine_wall_reduction_pct": 5.4958954767991175,
+      "verdict": "hipEngine llama-compat meets and exceeds the named external W7900 floor in both clean repetitions"
+    }
+  },
+  "stage_timing_conservative_r2_ms_per_output": {
+    "target_block_verify_total": 6.7223175,
+    "native_spec_target_submit": 6.17918625,
+    "native_spec_target_capture": 0.3231570833333333,
+    "native_spec_target_readback": 0.03141,
+    "target_serial_verify_step": 0.28963291666666663,
+    "draft_initial": 0.9481595833333333,
+    "draft_device_chain_drain": 0.70548,
+    "mtp_device_kv_commit": 0.1921254166666667,
+    "target_block_replay_or_commit": 0.05409583333333333,
+    "accept_policy_and_seed": 0.0020333333333333336
+  },
+  "profiler": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 uv run --extra dev python scripts/gguf_mtp_verifier_rocprof.py --mode block-verify --block-rows 3 --native-spec-target-cycle --direct-state-commit --verify-dp4a --selected-down-x8-repack q6 --verify-dense-q8-dp4a-all --verify-dense-q8-dp4a-f32 --record-stage-timings --steps 6 --warmup 2 --max-seq 512 --compiler-version-file /tmp/hipengine-mtp-w7900-hipcc-version.txt --raw-root /tmp/w7900-reusable-native-b2-rocprof-0d7b86e7 --roctx-sdk /home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib/librocprofiler-sdk-roctx.so.1 --out /tmp/w7900-reusable-native-b2-rocprof-0d7b86e7/summary.json",
+    "measured_steps": 6,
+    "warmup_steps": 2,
+    "measured_capture_ms": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "avg_host_ms": 18.670838656059157,
+    "avg_kernel_ms": 13.670188166666668,
+    "kernel_time_share": 0.7321678698257268,
+    "host_residual_ms_per_step": 5.000650489392489,
+    "kernel_calls_per_step": 940.0,
+    "expected_graph_leaf_evidence": {
+      "unpack_verify_chain_dynamic_metadata": {
+        "count": 6,
+        "min_duration_ns": 2120,
+        "max_duration_ns": 2240,
+        "vgpr": 16,
+        "scratch_bytes": 0,
+        "lds_bytes": 0
+      },
+      "advance_decode_position": {
+        "count": 18,
+        "min_duration_ns": 1400,
+        "max_duration_ns": 2080,
+        "vgpr": 8,
+        "scratch_bytes": 0,
+        "lds_bytes": 0
+      },
+      "copy_i32_to_i64": {
+        "count": 12,
+        "min_duration_ns": 1400,
+        "max_duration_ns": 1880,
+        "vgpr": 8,
+        "scratch_bytes": 0,
+        "lds_bytes": 0
+      }
+    },
+    "prior_eager_profiler": {
+      "avg_host_ms": 52.41850332822651,
+      "avg_kernel_ms": 14.013380666666668,
+      "host_residual_ms_per_step": 38.40512266155984,
+      "kernel_calls_per_step": 977.0
+    }
+  },
+  "source_artifacts": {
+    "run1_wrapper": {
+      "path": "/tmp/w7900-hipengine-llama-compat-native-cycle-0d7b86e7-full-r1.json",
+      "sha256": "3cad4c5cf78d4a7d052730bfab771df646b9855b7249d6b81034a405e843104c",
+      "size_bytes": 10255
+    },
+    "run1_category": {
+      "path": "/tmp/hipengine-ar-mtp-suite-full-1784410948/mtp-category.json",
+      "sha256": "f58b54330eeaf54f3fdd60928093799c6e28a55a32258ada1e5f87b001c39fdb"
+    },
+    "run1_true_ar": {
+      "path": "/tmp/hipengine-ar-mtp-suite-full-1784410948/true-ar-baseline.json",
+      "sha256": "3971745a14570dce5842e17b4b75f7a2996fa26ad853ca3831b49c650a1f2085"
+    },
+    "run2_wrapper": {
+      "path": "/tmp/w7900-hipengine-llama-compat-native-cycle-0d7b86e7-full-r2.json",
+      "sha256": "041a0c25ac1a27cb1d5b105e32a1944690edc167641763a8bca75555b68e297f",
+      "size_bytes": 10196
+    },
+    "run2_category": {
+      "path": "/tmp/hipengine-ar-mtp-suite-full-1784411127/mtp-category.json",
+      "sha256": "4e5587399e5093bd555e8afa02d7c9e4741d862caea6758101b33742e0dc1467"
+    },
+    "run2_true_ar": {
+      "path": "/tmp/hipengine-ar-mtp-suite-full-1784411127/true-ar-baseline.json",
+      "sha256": "fd63d4d393e48d9b79faceb7eb0227eab7e6cb6f2ef9ba043f0562469554fe0e"
+    },
+    "profiler_summary": {
+      "path": "/tmp/w7900-reusable-native-b2-rocprof-0d7b86e7/summary.json",
+      "sha256": "7085ded3abf0239816fddfd0ce862dfb38b08e975311795a96203843fe0304d3"
+    },
+    "profiler_child": {
+      "path": "/tmp/w7900-reusable-native-b2-rocprof-0d7b86e7/child.json",
+      "sha256": "c8300662b137fa0299749c4bda9772e581611f3cd795f058c563747dba4c43be"
+    },
+    "kernel_trace": {
+      "path": "/tmp/w7900-reusable-native-b2-rocprof-0d7b86e7/trace/epyc/3573361_kernel_trace.csv",
+      "sha256": "86491233aa67a6ddb2654a7c83b5547ff597f07298ad31b8bca19a5805ebdb9a"
+    },
+    "marker_trace": {
+      "path": "/tmp/w7900-reusable-native-b2-rocprof-0d7b86e7/trace/epyc/3573361_marker_api_trace.csv",
+      "sha256": "02b871bdb2b41b7d5bcef83dd2280da4d76e36a9b881037a0a23a0bab45e8347"
+    }
+  },
+  "decision": {
+    "accepted": true,
+    "reason": "The reusable B1/B2 graph path is byte-exact against the existing llama-compat target/state/KV lifecycle, repeats within 0.55%, beats true graph AR on full/train/heldout and every category, and clears the external llama.cpp W7900 floor in both clean repetitions.",
+    "remaining_semantic_limit": "llama-compat remains explicit and accuracy-traded relative to exact/default MTP; this result does not promote it as automatic exact generation.",
+    "next": "Implement N2 device-resident accept/commit and then N3 complete-cycle ownership, preserving this reusable target path and rerunning gfx1100/gfx1151 independently."
+  }
+}

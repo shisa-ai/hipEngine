@@ -13,6 +13,21 @@ local TheRock torch/ROCm stack or the local `gfx1100` GPTQ build patch.
 For the detailed build log/recipe, also see `/home/lhl/vllm/BUILD-gfx1100.md`.
 This file keeps the hipEngine-facing summary, model table, and benchmark notes.
 
+Upstream status snapshot (2026-07-19): vLLM v0.25.1 does not contain merged
+fixes [#46384](https://github.com/vllm-project/vllm/pull/46384) or
+[#47782](https://github.com/vllm-project/vllm/pull/47782). Current upstream
+main contains both, and regression-test PR
+[#48970](https://github.com/vllm-project/vllm/pull/48970) has its corruption
+arms green, but primary issue
+[#43559](https://github.com/vllm-project/vllm/issues/43559) remains open and
+[#45614](https://github.com/vllm-project/vllm/pull/45614) plus
+[#47861](https://github.com/vllm-project/vllm/pull/47861) remain unresolved.
+Therefore the older repository vLLM comparison is stale; do not publish a
+current MTP performance row until current main passes the same model,
+category+heldout, correctness, and timing protocol. The hipEngine/llama.cpp
+comparison and NativeSpecCycle status are consolidated in
+[`NATIVE_SPEC_CYCLE.md`](NATIVE_SPEC_CYCLE.md).
+
 ## TL;DR recommendation
 
 Use the local `vllm` conda env with TheRock torch and the custom vLLM source
