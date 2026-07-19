@@ -355,6 +355,24 @@ def test_finish_tool_and_structured_validators_fail_closed() -> None:
         expected_value={"status": "ok"},
     )
     assert structured["passed"] is True
+    assert structured["outcome"] == "schema_valid"
+
+    rejected_structured = copy.deepcopy(structured_payload)
+    rejected_choice = rejected_structured["choices"][0]
+    rejected_choice["message"]["content"] = '<|im_end|> {"status":"ok"}'
+    rejected_choice["finish_reason"] = "length"
+    rejected_choice["finish_details"] = {
+        "reason": "schema_violation",
+        "length_limit": 2,
+        "phase": "structured",
+        "continuation_eligible": False,
+    }
+    rejected = _validate_structured_response(
+        rejected_structured,
+        expected_value={"status": "ok"},
+    )
+    assert rejected["passed"] is True
+    assert rejected["outcome"] == "schema_violation_rejected"
 
     bad_tool = copy.deepcopy(tool_payload)
     bad_tool["choices"][0]["message"]["tool_calls"][0]["function"]["arguments"] = "not-json"

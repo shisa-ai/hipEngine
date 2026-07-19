@@ -507,7 +507,22 @@ def _validate_tool_response(
                 "name": function.get("name"),
                 "arguments": parsed_arguments,
             }
-    return _failure_summary(failures, tool_call=tool_call)
+    hipengine = choice.get("hipengine")
+    generated_ids = (
+        list(hipengine.get("generated_token_ids", []))
+        if isinstance(hipengine, Mapping)
+        else []
+    )
+    usage = payload.get("usage")
+    if not isinstance(usage, Mapping) or int(usage.get("completion_tokens", -1)) != len(
+        generated_ids
+    ):
+        failures.append("tool_usage_inexact")
+    return _failure_summary(
+        failures,
+        tool_call=tool_call,
+        generated_token_ids=generated_ids,
+    )
 
 
 def _validate_structured_response(
@@ -517,17 +532,24 @@ def _validate_structured_response(
 ) -> dict[str, Any]:
     failures: list[str] = []
     if not isinstance(payload, Mapping):
-        return _failure_summary(["structured_response_not_object"], value=None)
+        return _failure_summary(
+            ["structured_response_not_object"],
+            outcome=None,
+            value=None,
+        )
     choices = payload.get("choices")
     if not isinstance(choices, list) or len(choices) != 1 or not isinstance(choices[0], Mapping):
-        return _failure_summary(["structured_choice_shape_inexact"], value=None)
+        return _failure_summary(
+            ["structured_choice_shape_inexact"],
+            outcome=None,
+            value=None,
+        )
     choice = choices[0]
     failures.extend(_choice_sampled_failures(choice, 0))
-    if choice.get("finish_reason") != "stop":
-        failures.append("structured_finish_reason_inexact")
     details = choice.get("finish_details")
-    if not isinstance(details, Mapping) or details.get("reason") != "stop":
-        failures.append("structured_finish_details_inexact")
+    if not isinstance(details, Mapping):
+        failures.append("structured_finish_details_missing")
+        details = {}
     message = choice.get("message")
     text = message.get("content") if isinstance(message, Mapping) else None
     value: Any = None
@@ -537,10 +559,41 @@ def _validate_structured_response(
         try:
             value = json.loads(text)
         except Exception:
-            failures.append("structured_text_not_json")
-    if value != dict(expected_value):
-        failures.append("structured_value_inexact")
-    return _failure_summary(failures, value=value, text=text)
+            value = None
+    if value == dict(expected_value):
+        outcome = "schema_valid"
+        if choice.get("finish_reason") != "stop" or details.get("reason") != "stop":
+            failures.append("structured_valid_finish_inexact")
+    else:
+        outcome = "schema_violation_rejected"
+        if choice.get("finish_reason") != "length":
+            failures.append("structured_rejection_finish_reason_inexact")
+        if details.get("reason") != "schema_violation":
+            failures.append("structured_rejection_reason_missing")
+        if details.get("phase") != "structured":
+            failures.append("structured_rejection_phase_inexact")
+        if details.get("continuation_eligible") is not False:
+            failures.append("structured_rejection_continuation_inexact")
+    hipengine = choice.get("hipengine")
+    generated_ids = (
+        list(hipengine.get("generated_token_ids", []))
+        if isinstance(hipengine, Mapping)
+        else []
+    )
+    usage = payload.get("usage")
+    if not isinstance(usage, Mapping) or int(usage.get("completion_tokens", -1)) != len(
+        generated_ids
+    ):
+        failures.append("structured_usage_inexact")
+    return _failure_summary(
+        failures,
+        outcome=outcome,
+        value=value,
+        text=text,
+        generated_token_ids=generated_ids,
+        finish_reason=choice.get("finish_reason"),
+        finish_details=copy.deepcopy(dict(details)),
+    )
 
 
 def _route_delta_gate(

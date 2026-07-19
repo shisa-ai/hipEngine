@@ -165119,3 +165119,37 @@ Host validation:
            tests/test_gguf_sampled_api_gate.py
 CLI --help/import, python3 -m py_compile, git diff --check: passed
 ```
+
+The first clean real-model packet on `d38f2f25` completed in **65.385 s** with
+clean source, route, memory, and ownership gates. Repeated blocking/SSE c4,
+repeated `n=3`, stop, tool forcing, and all sampled model-path checks passed.
+Across the four blocking/SSE waves it recorded 16 host-sampler requests, 12
+packed steps, physical c2/c4 counts of 4/8, 44 honest occupancy-tail c1 steps,
+and zero serial/resident fallback. Repeated `n=3` added 6 sampled rows, 10
+packed steps, physical c2/c4 counts of 4/6, and zero fallback. Two API semantics
+failed:
+
+1. explicit request `eos_token_id=271` ran to the six-token length limit because
+   `_gguf_finished()` and `_gguf_finish_details()` compared only the tokenizer
+   EOS;
+2. strict root-object JSON-schema output exhausted 64 tokens with a non-object
+   special-token prefix, but the length-finish prefix validator skipped the
+   schema violation and left the result continuation-eligible.
+
+Both now fail closed correctly. GGUF resident finish checks use the request EOS
+when supplied and tokenizer EOS only as fallback. Root-object schema/guided-JSON
+length finishes always enter structural prefix validation, and invalid results
+are phase `structured`, `schema_violation`, continuation-ineligible. The real
+packet's structured gate is aligned with advertised result-validation-only
+semantics: it accepts either the exact schema value or an explicit
+`schema_violation` rejection with exact generated-token accounting; malformed
+text can never pass as schema-valid.
+
+Repair validation:
+
+```text
+62 passed: tests/test_generation_qwen35_gguf_sampling.py
+59 passed: tests/test_server_api.py -k 'response_format or structured_output'
+5 passed: tests/test_gguf_sampled_api_gate.py
+python3 -m py_compile + git diff --check: passed
+```
