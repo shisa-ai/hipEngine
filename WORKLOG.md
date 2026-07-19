@@ -165249,3 +165249,34 @@ This unit establishes real page ownership only; it makes no runtime or
 performance claim. Non-contiguous same-backing block-table binding, hybrid
 Conv/GDN state cloning, `RadixCache` admission/reclaim integration, and real
 prefix/continuation gates remain next.
+
+## 2026-07-19 — Bind non-contiguous shared GGUF KV pages
+
+Changed the real deferred GGUF session binding from a sliced contiguous cache
+view with a synthetic `0..N` block table to the full backing chunk with exact
+chunk-local block-table indices. A shared-prefix COW allocation such as logical
+blocks `(8, 9, 11)` now binds unchanged cache bases and uploads `(0, 1, 3)`, so
+attention can address shared prefix pages plus a disjoint private suffix without
+copying KV or changing the base-plus-int32-table kernel ABI. Binding validates
+non-empty unique pages, chunk range, and allocation/backing identity before
+publishing the allocation.
+
+RED:
+
+```text
+uv run pytest -q tests/test_gguf_device_kv_binding.py
+1 failed: Qwen35GGUFBF16KVChunkBacking rejected non-contiguous pages
+```
+
+GREEN:
+
+```text
+27 passed: tests/test_gguf_device_kv_binding.py + tests/test_kvcache_policy.py
+1 passed: tests/test_generation_qwen35_gguf_sampling.py
+          -k device_kv_admission_is_atomic_at_high_water
+python3 -m py_compile + git diff --check: passed
+```
+
+This is addressability/correctness scaffolding only, with no performance claim.
+The next boundary is cloning the exact hybrid linear-attention state at a
+block-aligned cached prefix before the resident loop skips that prefill prefix.
