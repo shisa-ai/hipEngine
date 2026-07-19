@@ -857,6 +857,31 @@ Initial protocol shapes:
 
 Report both aggregate tok/s and per-request tok/s. Do not compare a c=N aggregate row against c=1 without explicitly showing `aggregate/c1` and `per_request/c1` ratios. SpecDec must be disabled for these rows; SpecDec has a separate acceptance protocol because generated-token equality depends on target verification and KV commit semantics.
 
+### Production OpenAI load/SLO gate
+
+Use [`scripts/gguf_production_load_gate.py`](../scripts/gguf_production_load_gate.py)
+for Phase-F4 GGUF serving closure. It starts one prepared model behind a real
+localhost Uvicorn socket and must include all of these workload classes in one
+artifact: static c1/c8, ragged mixed prompt/output burst, deterministic fixed
+arrivals, seeded Poisson arrivals, cancellation plus disconnect and timeout,
+queue overload with both exact accepts and `429 engine_busy` rejects, idle
+recovery, and a duration/rate-qualified soak.
+
+The command declares queue-p99, TTFT-p95, ITL-p99, and end-to-end-p95 SLOs.
+Generated-token goodput counts only resident-reclaim IDs from exact completed
+requests whose own queue, TTFT, every ITL, and end-to-end latency meet all four
+thresholds. Decoded text and `usage.completion_tokens` are not denominators.
+Each workload reports p50/p95/p99, outcome/finish-reason counts, occupancy and
+physical-group transitions, bounded stream-queue depth, KV/tracked/HIP memory,
+server-counter deltas, final ownership, and exact IDs against independent c1
+sessions.
+
+Before the retained workload, sweep the declared prefill/decode policy and
+prefill-chunk candidates on one frozen mixed-arrival shape. Select the highest
+exact SLO-goodput candidate among rows that pass every gate; use TTFT p95, ITL
+p99, then smaller chunks only as tie-breaks. Record every candidate, including
+failed/neutral rows. A passing workload with dirty source remains diagnostic.
+
 ### Speculative decode / DFlash rows
 
 DFlash and later MTP rows use `scripts/dflash_speculative_bench.py` as the

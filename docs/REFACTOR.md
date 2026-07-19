@@ -60,6 +60,7 @@ shorter-horizon audit establishes a lower break-even.
 | GGUF public AR profile | `HIPENGINE_GGUF_DECODE_REPACK=0` remains a rollback opt-out; low-level WMMA/GEMV selectors remain available for benchmark bisection. | Release default: T16 decode-repack is on, and public generate/stream sessions pass the resolved backend plus `use_wmma_prefill=True` and `use_gemv_decode=True`. A no-env gfx1151 Q4_K_M smoke generated one token through `LLM(model)`. | Remove the decode-repack opt-out after one release window and a defaults-only gfx1100 refresh. Keep raw layouts only where a quant/kernel lacks a T16 fallback or a retained diagnostic requires them. |
 | GGUF duplicate AR loop ownership | `Qwen35GGUFResidentModelRunner` owns public blocking and OpenAI submit/poll execution, but `_generate_ar_serving_slots()` remains as a direct control/oracle and explicit compatibility fallback. | D1–E3/F1 now prove one shared model-owning loop through exact arbitrary-C burst/live admission, cancellation, SSE, shutdown, real KV ownership, observability, and retained server scaling on both gfx11 targets. The direct loop still supplies the independent c1/native-width oracle used by the retained E1/E2/E3 packets. | Both gfx11 triggers are met. During F2, move the oracle into an explicit test/benchmark helper and remove production call sites after one release window; keep registry-resolved unsupported-shape fallbacks. |
 | GGUF LCP-1 convolution prefill | `HIPENGINE_GGUF_LINEAR_ATTN_CONV_PREFILL_MODE=baseline|tile32x128` selects between the production global-read convolution and the registered exact shared-token route. | gfx1151 selects `tile32x128` automatically. The clean 512/4K 82-part and wall gates pass, the 4K body falls `954.134 -> 49.790 ms`, and all six right-sized prefill rows improve `+1.10%..+24.04%` with unchanged memory. gfx1100 remains on `baseline` pending hardware transfer. The production implementation is the required unfused fallback and explicit rollback. | Remove the explicit mode selector after one release window if the gfx1100 transfer remains stable. Never remove the exact production fallback. |
+| GGUF packed-AR singleton-indexed GDN | Backend capability `GGUF_GDN_INDEXED_SINGLETON_DECODE` selects a one-token-per-row indexed sibling while retaining the arbitrary-length segmented recurrence. | gfx1151 defaults to the singleton sibling after independent-c1 byte equality and exact p512/d64 trajectories; gfx1100 remains on segmented GDN pending hardware transfer. The runtime manifest records `indexed_singleton` versus `segments` explicitly. | Remove the gfx1100 capability split only after an independent W7900 c2/c4/c8 correctness/performance gate. Keep the segmented implementation permanently as the arbitrary-length fallback. |
 | GGUF F32-weight cooperative c1 router | `HIPENGINE_GGUF_ROUTER_F32W_COOP=0` retains the separate expert-logits/shared-logit/top-k chain as an explicit rollback around the default-on gfx1100 cooperative route. `HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER=0` temporarily restores the selected-ID counter alias plus per-layer host reset instead of the default dedicated self-resetting four-byte counter. | Production-shape logits, selected IDs, and routing weights are byte-exact. Clean commit `4c743994` first improved 4K graph decode **97.234 -> 98.273 tok/s (+1.07%)**. The persistent follow-up removes exactly 40 reset nodes/token, improves the cache-cycled fused leaf **14.667 -> 10.444 us (-28.79%)**, and cleanly improves the 4K graph gate **98.812 -> 100.446 tok/s (+1.65%)**, with all IDs/final values exact and only eight added tracked bytes. The unfused chain remains the required numerical fallback for unsupported hidden/backend/quant shapes. | Remove both env opt-outs after one defaults-only gfx1100 refresh remains non-regressive. Keep registry-driven fallback resolution, not experiment toggles. |
 | GGUF long-context split-K reduction | `HIPENGINE_GGUF_PAGED_ATTN_PARALLEL_REDUCE=0` and the minimum-context override retain the serial split reduction for rollback/A/B around the gfx1100 prepare-plus-coalesced-output route. | Promoted gfx1100 default from 32K after the clean LCP-D2 gate: 32K 1+3 decode **84.525 -> 85.561 tok/s (+1.23%)**, clean 64K/128K confirmations **+3.95%/+7.80%**, max long-context KL **1.904e-6**, top-1 100%, exact IDs, unchanged memory. gfx1151 remains serial without independent evidence. | Keep the serial implementation as the required fallback. Remove the env opt-out after one release window plus a final defaults-only gfx1100 six-shape refresh; retain backend capability scoping until gfx1151 is independently gated. |
 | GGUF MTP server packed verifier | `_MTP_SERVING_TARGET_BATCH_MAX_SLOTS = 4` chunks c>N server target verification instead of sending all active slots to one packed target forward. | Default serving policy after the first packed verifier landing and the stream-draft/stream-verify follow-ups. c=2/c=4 packed target verify wins, but one 8-slot packed batch is a measured rejected regime (`11.58 tok/s`, `target_verify_batch_ms=63733.783`). The current c=8 stream path still chunks verify at 4 slots and reaches **52.18 tok/s**, with verifier still dominant (`slots_verify_phase_ms=12345.442`). | Remove or raise the cap only after rows>=16 packed verifier and resident-draft row-count/cold-slot behavior are tuned and a c=8 natural24 rerun beats the chunked stream path without correctness or latency regressions. |
@@ -424,30 +425,34 @@ should be boring.
   **13.178 -> 13.697 ms/output**.
 - Remove when: the parity sprint moves Q8 verifier work to a true llama-style
   layout/scheduler port, or after another full-suite row confirms this exact
-  rowtile route remains non-retainable. It is an evidence hook only; default and
-  llama-compat runtime paths stay on the existing exact pair wrapper.
+  verifier route remains non-retainable. Default llama-compat and packed AR
+  remain on the existing exact pair wrapper; packed AR may select this body
+  only through the explicit diagnostic env hook.
 
 ## `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL` (diagnostic rejected)
-- Added 2026-07-01. Default-off runtime hook for broad exact Q8T16 verifier
+- Added 2026-07-01 as a default-off runtime hook for broad exact Q8T16 verifier
   row-amortization. Setting `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL=1` routes qwen35
   `rows>1, in=2048` singleton, pair, and triple Q8T16 projections through
   rowtile4 wrappers where available. It also enables the pair rowtile diagnostic
   unless `HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE=0` is set explicitly. Suite route:
   `llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-q8rowtileall`.
-- Purpose: test whether the isolated exact pair-rowtile win can be extended over
-  the full retained llama-compat verifier shape. Correctness passes against the
-  existing exact singleton/pair/triple wrappers. The B2 block profile moved the
-  dense-Q8 bucket **11.420 -> 10.811 ms/block** and total kernel time
-  **26.053 -> 25.276 ms/block**, mostly by cutting the Q8 pair body
-  **6.025 -> 5.316 ms/block**. The async smoke rejected promotion:
-  same-session retained `x8q6` reached **68.78 tok/s / 14.561 ms/output** while
-  q8rowtileall reached **68.54 tok/s / 14.614 ms/output** with identical
-  acceptance.
-- Remove when: the parity sprint replaces the current T16 Q8 verifier layout
-  with a true llama.cpp-style Q8_0 x Q8_1 MMVQ layout/scheduler, or after the
-  dense-Q8 verifier target is resolved another way. This is evidence only; it
-  should not become default or update the retained llama-compat lane without a
-  future full-suite win.
+- The original verifier decision remains rejected. Correctness passes against
+  the exact singleton/pair/triple wrappers and its B2 profile moved dense Q8
+  **11.420 -> 10.811 ms/block**, but async llama-compat moved **68.78 -> 68.54
+  tok/s** with identical acceptance.
+- F3 re-evaluated the same bodies for native packed AR c2/c4/c8. A clean
+  p512/d64 screen looked positive and exact: c4 **108.143 -> 109.467 (+1.22%)**
+  and c8 **133.268 -> 136.887 (+2.72%)**. The required clean p512/d128 gate then
+  rejected promotion. Candidate c4/c8 reached **109.189/136.727 tok/s**, but the
+  second canonical prompt changed from trajectory hash `c74a91f8...` to
+  `60f7baab...` consistently at c2/c4/c8. Pair-only rowtiling also diverged to
+  a third hash, `745e4e13...`, so there is no exact narrower promotion.
+- `GGUF_Q8_T16_DECODE_ROWTILE_ALL` is false on both gfx11 backend packages.
+  `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL=1` and
+  `HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE=1` remain explicit diagnostics only.
+  Remove the hooks when the rowtile bodies are replaced by a trajectory-exact
+  schedule, or when this investigation is archived. Do not promote either AR
+  or MTP without a new full-horizon correctness gate.
 
 ## `HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE=row` / row Q6 top-1 routes (diagnostic rejected)
 - Added 2026-07-01. Bench flag

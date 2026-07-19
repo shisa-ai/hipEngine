@@ -53,6 +53,7 @@ def build_packed_decode_execution_manifest(
     metadata_prepare_path: str,
     capture_layer_count: int = 0,
     linear_attention_decode_path: str = "exact_row_local",
+    gdn_recurrent_decode_path: str | None = None,
     active_mask: Sequence[bool] | None = None,
 ) -> dict[str, Any]:
     """Build the auditable host/runtime contract for one packed decode step.
@@ -117,6 +118,18 @@ def build_packed_decode_execution_manifest(
             "linear_attention_decode_path must be not_applicable without linear layers"
         )
     indexed_linear_decode = linear_path == "indexed_batch"
+    if indexed_linear_decode:
+        gdn_path = str(gdn_recurrent_decode_path or "segments")
+        supported_gdn_paths = {"indexed_singleton", "segments"}
+        if gdn_path not in supported_gdn_paths:
+            raise ValueError(
+                "unsupported gdn_recurrent_decode_path "
+                f"{gdn_path!r}; expected one of {sorted(supported_gdn_paths)!r}"
+            )
+    elif linear_path == "exact_row_local":
+        gdn_path = "exact_row_local"
+    else:
+        gdn_path = "not_applicable"
 
     full_attention_path = str(full_attention_decode_path)
     supported_full_attention_paths = {"kv_live_spans_batch", "not_applicable"}
@@ -254,7 +267,14 @@ def build_packed_decode_execution_manifest(
         "conv_gdn": {
             "execution": "packed_native" if indexed_linear_decode else "exact_row_local",
             "packed_native_work": (
-                ["conv_decode_indexed", "gdn_recurrent_decode_segments_fp32_out"]
+                [
+                    "conv_decode_indexed",
+                    (
+                        "gdn_recurrent_decode_indexed_fp32_out"
+                        if gdn_path == "indexed_singleton"
+                        else "gdn_recurrent_decode_segments_fp32_out"
+                    ),
+                ]
                 if indexed_linear_decode
                 else []
             ),
@@ -338,6 +358,7 @@ def build_packed_decode_execution_manifest(
         "active_rows": active_count,
         "active_mask": list(mask),
         "linear_attention_decode_path": linear_path,
+        "gdn_recurrent_decode_path": gdn_path,
         "full_attention_decode_path": full_attention_path,
         "moe_decode_path": moe_path,
         "lm_head_decode_path": lm_head_path,

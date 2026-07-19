@@ -12,6 +12,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Mapping
 
+import anyio
 import pytest
 from fastapi import Request
 from fastapi.testclient import TestClient
@@ -4313,6 +4314,53 @@ def test_generation_batcher_bounds_slow_stream_queue_without_blocking_neighbor()
     asyncio.run(run())
 
 
+def test_generation_batcher_stream_close_waits_for_cooperative_backend_cancel() -> None:
+    class CooperativeCloseLLM(FakeLLM):
+        supports_controlled_streaming = True
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.cancel_seen = threading.Event()
+            self.release_cancel = threading.Event()
+
+        def stream_detailed(self, prompt: str, sampling_params: SamplingParams):
+            yield GenerationStreamChunk(text=f"{prompt}:0")
+            token = sampling_params.cancellation_token
+            assert token is not None
+            while not token.cancelled:
+                time.sleep(0.001)
+            self.cancel_seen.set()
+            assert self.release_cancel.wait(timeout=5.0)
+            token.raise_if_cancelled()
+
+    async def run() -> None:
+        fake = CooperativeCloseLLM()
+        token = GenerationCancellationToken()
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.0,
+        )
+        stream = batcher.stream(
+            ("cooperative",),
+            SamplingParams(max_tokens=8, cancellation_token=token),
+        )
+
+        assert (await anext(stream)).text == "cooperative:0"
+        release = threading.Timer(0.05, fake.release_cancel.set)
+        release.start()
+        try:
+            await stream.aclose()
+        finally:
+            release.cancel()
+            fake.release_cancel.set()
+        assert fake.cancel_seen.is_set()
+        assert token.cancelled is True
+        assert batcher.active_requests() == 0
+        assert batcher.active() is False
+
+    asyncio.run(run())
+
+
 def test_generation_batcher_shutdown_forces_cancel_after_grace() -> None:
     class CooperativeBlockingStreamLLM(FakeLLM):
         supports_controlled_streaming = True
@@ -4824,6 +4872,194 @@ def test_generation_batcher_live_neighbor_survives_member_cancellation() -> None
         assert first == ["generated:one"]
         assert second == ["generated:two"]
         assert fake.calls[0][0] == ("one", "two")
+
+    asyncio.run(run())
+
+
+def test_await_with_request_control_caller_cancel_closes_child_task() -> None:
+    async def run() -> None:
+        token = GenerationCancellationToken()
+        started = asyncio.Event()
+        cancel_seen = asyncio.Event()
+        closed = asyncio.Event()
+
+        async def child() -> None:
+            started.set()
+            try:
+                while not token.cancelled:
+                    await asyncio.sleep(0.001)
+                cancel_seen.set()
+            finally:
+                closed.set()
+
+        control = SimpleNamespace(
+            deadline_at=None,
+            disconnected=None,
+            poll_interval_s=0.001,
+            cancellation_token=token,
+        )
+        waiter = asyncio.create_task(_await_with_request_control(child(), control))
+        await started.wait()
+        waiter.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiter
+        assert token.cancelled
+        assert token.finish_details == FinishDetails(reason="cancelled", cancelled=True)
+        assert cancel_seen.is_set()
+        assert closed.is_set()
+
+    asyncio.run(run())
+
+
+def test_await_with_request_control_caller_cancel_shields_child_ack_from_level_cancellation() -> None:
+    async def run() -> None:
+        token = GenerationCancellationToken()
+        started = asyncio.Event()
+        cancel_seen = asyncio.Event()
+        release = asyncio.Event()
+        closed = asyncio.Event()
+        waiter_done = asyncio.Event()
+        scopes: list[anyio.CancelScope] = []
+
+        async def child() -> None:
+            started.set()
+            try:
+                while not token.cancelled:
+                    await asyncio.sleep(0.001)
+                cancel_seen.set()
+                await release.wait()
+            finally:
+                closed.set()
+
+        async def waiter() -> None:
+            with anyio.CancelScope() as scope:
+                scopes.append(scope)
+                await _await_with_request_control(
+                    child(),
+                    SimpleNamespace(
+                        deadline_at=None,
+                        disconnected=None,
+                        poll_interval_s=0.001,
+                        cancellation_token=token,
+                    ),
+                )
+            waiter_done.set()
+
+        async with anyio.create_task_group() as tasks:
+            tasks.start_soon(waiter)
+            await started.wait()
+            scopes[0].cancel()
+            await cancel_seen.wait()
+            try:
+                await asyncio.sleep(0.01)
+                assert not waiter_done.is_set()
+            finally:
+                release.set()
+            await waiter_done.wait()
+
+        assert closed.is_set()
+
+    anyio.run(run)
+
+
+def test_await_with_request_control_deadline_waits_for_child_cancel_ack() -> None:
+    async def run() -> None:
+        token = GenerationCancellationToken()
+        started = asyncio.Event()
+        cancel_seen = asyncio.Event()
+
+        async def child() -> None:
+            started.set()
+            while not token.cancelled:
+                await asyncio.sleep(0.001)
+            cancel_seen.set()
+
+        control = SimpleNamespace(
+            deadline_at=time.perf_counter() + 0.01,
+            disconnected=None,
+            poll_interval_s=0.001,
+            cancellation_token=token,
+        )
+        with pytest.raises(OpenAIHTTPError) as error:
+            await _await_with_request_control(child(), control)
+        assert error.value.status_code == 408
+        assert error.value.code == "deadline_exceeded"
+        assert started.is_set()
+        assert cancel_seen.is_set()
+
+    asyncio.run(run())
+
+
+def test_stream_completion_caller_cancel_records_one_cancelled_request() -> None:
+    class CooperativeStreamLLM(FakeLLM):
+        supports_controlled_streaming = True
+
+        def stream_detailed(self, prompt: str, sampling_params: SamplingParams):
+            yield GenerationStreamChunk(text=f"{prompt}:0")
+            token = sampling_params.cancellation_token
+            assert token is not None
+            while not token.cancelled:
+                time.sleep(0.001)
+            token.raise_if_cancelled()
+
+    async def run() -> None:
+        fake = CooperativeStreamLLM()
+        app = create_app(
+            ServerConfig(
+                model="fake-path",
+                served_model_name="fake-model",
+                eager_load=False,
+                metrics="prometheus",
+                generation_batch_window_ms=0.0,
+            ),
+            llm=fake,
+        )
+
+        receive_calls = 0
+
+        async def connected_receive() -> dict[str, object]:
+            nonlocal receive_calls
+            receive_calls += 1
+            await asyncio.sleep(3600)
+            return {"type": "http.disconnect"}
+
+        raw_request = Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/v1/completions",
+                "headers": [],
+                "query_string": b"",
+            },
+            connected_receive,
+        )
+        endpoint = next(route.endpoint for route in app.routes if route.path == "/v1/completions")
+        response = await endpoint(
+            CompletionRequest(
+                model="fake-model",
+                prompt="active-disconnect",
+                max_tokens=8,
+                stream=True,
+            ),
+            raw_request,
+            "anonymous",
+        )
+        stream = response.body_iterator
+        first = await anext(stream)
+        assert "active-disconnect:0" in first
+
+        pending = asyncio.create_task(anext(stream))
+        await asyncio.sleep(0.01)
+        pending.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await pending
+
+        metrics = app.state.hipengine_server_metrics
+        assert metrics.request_total == 1
+        assert metrics.request_failed_total == 1
+        assert metrics.request_cancelled_total == 1
+        assert receive_calls == 0
+        assert app.state.hipengine_generation_batcher.active_requests() == 0
 
     asyncio.run(run())
 

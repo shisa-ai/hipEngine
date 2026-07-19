@@ -276,6 +276,7 @@ from hipengine.runtime.gguf_linear import (
     launch_gguf_linear_pair,
     launch_gguf_linear_pair_concat,
     launch_gguf_linear_triple,
+    q8_t16_rowtile_all_session,
     resolve_gguf_linear_dispatch,
     wmma_prefill_session,
 )
@@ -3734,28 +3735,50 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
-        batch_plan.gdn_segments(
-            scratch.conv_out.ptr,
-            scratch.linear_z.ptr,
-            scratch.linear_alpha.ptr,
-            scratch.linear_beta.ptr,
-            layer.weight("ssm_dt_bias").allocation().tensor.ptr,
-            layer.weight("ssm_a").allocation().tensor.ptr,
-            layer.weight("ssm_norm").allocation().tensor.ptr,
-            recurrent_state.ptr,
-            scratch.recurrent_out.ptr,
-            gdn_cu_seqlens_ptr,
-            state_indices_ptr,
-            rows,
-            rows,
-            cfg.rms_norm_eps,
-            cfg.ssm_group_count,
-            cfg.ssm_time_step_rank,
-            cfg.ssm_state_size,
-            self.ssm_value_dim,
-            stream=stream,
-            runtime=runtime,
-        )
+        if callable(batch_plan.gdn_indexed_singleton):
+            batch_plan.gdn_indexed_singleton(
+                scratch.conv_out.ptr,
+                scratch.linear_z.ptr,
+                scratch.linear_alpha.ptr,
+                scratch.linear_beta.ptr,
+                layer.weight("ssm_dt_bias").allocation().tensor.ptr,
+                layer.weight("ssm_a").allocation().tensor.ptr,
+                layer.weight("ssm_norm").allocation().tensor.ptr,
+                recurrent_state.ptr,
+                scratch.recurrent_out.ptr,
+                state_indices_ptr,
+                rows,
+                cfg.rms_norm_eps,
+                cfg.ssm_group_count,
+                cfg.ssm_time_step_rank,
+                cfg.ssm_state_size,
+                self.ssm_value_dim,
+                stream=stream,
+                runtime=runtime,
+            )
+        else:
+            batch_plan.gdn_segments(
+                scratch.conv_out.ptr,
+                scratch.linear_z.ptr,
+                scratch.linear_alpha.ptr,
+                scratch.linear_beta.ptr,
+                layer.weight("ssm_dt_bias").allocation().tensor.ptr,
+                layer.weight("ssm_a").allocation().tensor.ptr,
+                layer.weight("ssm_norm").allocation().tensor.ptr,
+                recurrent_state.ptr,
+                scratch.recurrent_out.ptr,
+                gdn_cu_seqlens_ptr,
+                state_indices_ptr,
+                rows,
+                rows,
+                cfg.rms_norm_eps,
+                cfg.ssm_group_count,
+                cfg.ssm_time_step_rank,
+                cfg.ssm_state_size,
+                self.ssm_value_dim,
+                stream=stream,
+                runtime=runtime,
+            )
         launch_gguf_linear(
             layer.weight("ssm_out"),
             scratch.recurrent_out.ptr,
@@ -11957,7 +11980,18 @@ class Qwen35GGUFResidentSession:
         linear_attention_decode_paths: set[str] = set()
         full_attention_decode_paths: set[str] = set()
         linear_attention_decode_batch_plan = self.runner._linear_attention_decode_batch_plan()
-        with wmma_prefill_session(False), gemv_decode_session(self.use_gemv_decode):
+        q8_t16_rowtile_all = bool(
+            backend_package_capability(
+                self.runner.backend,
+                "GGUF_Q8_T16_DECODE_ROWTILE_ALL",
+                False,
+            )
+        )
+        with (
+            wmma_prefill_session(False),
+            gemv_decode_session(self.use_gemv_decode),
+            q8_t16_rowtile_all_session(q8_t16_rowtile_all),
+        ):
             for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
                 if layer_type == LINEAR_ATTENTION:
                     linear_attention_decode_paths.add(
@@ -12275,6 +12309,11 @@ class Qwen35GGUFResidentSession:
             blocks_per_slot=int(layout.blocks_per_slot),
             capture_layer_count=len(capture_layer_ids),
             linear_attention_decode_path=linear_attention_decode_path,
+            gdn_recurrent_decode_path=(
+                self.runner._linear_attention_decode_batch_plan().gdn_decode_path
+                if linear_attention_decode_path == "indexed_batch"
+                else None
+            ),
             full_attention_decode_path=full_attention_decode_path,
             moe_decode_path=(
                 "selected_rows_batch"
@@ -16350,6 +16389,12 @@ _GDN_DECODE_SEGMENTS_BF16_KEY = KernelKey(
     "gguf_qwen35",
     "bf16_segments",
 )
+_GDN_DECODE_INDEXED_SINGLETON_BF16_KEY = KernelKey(
+    "hip_gfx1100",
+    "gdn_recurrent_rmsnorm_gate",
+    "gguf_qwen35",
+    "bf16_indexed_singleton",
+)
 _GDN_PREFILL_PREPARE_KEY = KernelKey(
     "hip_gfx1100", "linear_attn_prefill_prepare", "gguf_qwen35", "f32_bf16"
 )
@@ -16582,10 +16627,21 @@ class _GGUFLinearAttentionDecodeBatchPlan:
 
     conv_indexed: object | None
     gdn_segments: object | None
+    gdn_indexed_singleton: object | None
 
     @property
     def available(self) -> bool:
-        return callable(self.conv_indexed) and callable(self.gdn_segments)
+        return callable(self.conv_indexed) and (
+            callable(self.gdn_indexed_singleton) or callable(self.gdn_segments)
+        )
+
+    @property
+    def gdn_decode_path(self) -> str:
+        if callable(self.gdn_indexed_singleton):
+            return "indexed_singleton"
+        if callable(self.gdn_segments):
+            return "segments"
+        return "unavailable"
 
 
 @dataclass(frozen=True)
@@ -16983,9 +17039,21 @@ def _resolve_gguf_linear_attention_decode_batch_plan(
             missing="none",
         )
 
+    indexed_singleton_enabled = bool(
+        backend_package_capability(
+            backend,
+            "GGUF_GDN_INDEXED_SINGLETON_DECODE",
+            False,
+        )
+    )
     return _GGUFLinearAttentionDecodeBatchPlan(
         conv_indexed=_resolve(_LINEAR_ATTN_DECODE_INDEXED_BF16_KEY),
         gdn_segments=_resolve(_GDN_DECODE_SEGMENTS_BF16_KEY),
+        gdn_indexed_singleton=(
+            _resolve(_GDN_DECODE_INDEXED_SINGLETON_BF16_KEY)
+            if indexed_singleton_enabled
+            else None
+        ),
     )
 
 

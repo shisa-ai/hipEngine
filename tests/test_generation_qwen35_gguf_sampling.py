@@ -1624,6 +1624,33 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
                 logits[0, next_token] = 100.0
             return SimpleNamespace(token_id=next_token, logits=logits)
 
+        def decode_graph_min_replay_steps(self):
+            return 1
+
+        def capture_decode_graph(self, **kwargs):
+            session = self
+            calls.append(("capture_decode_graph", self.slot_id, dict(kwargs)))
+
+            class FakeGraph:
+                closed = False
+                replayed_steps = 0
+                steps_per_replay = 1
+
+                def replay(self, steps):
+                    assert int(steps) == 1
+                    self.replayed_steps += 1
+                    session.position += 1
+                    calls.append(("graph_replay", session.slot_id, self.replayed_steps))
+
+                def read_sample(self, **kwargs):
+                    return SimpleNamespace(token_id=2)
+
+                def close(self):
+                    self.closed = True
+                    calls.append(("graph_close", session.slot_id, self.replayed_steps))
+
+            return FakeGraph()
+
         def step_batch_native(self, token_ids, *, sessions, positions, **kwargs):
             physical_rows = int(kwargs.get("physical_rows", len(token_ids)))
             active_slots = tuple(
@@ -1702,18 +1729,21 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
     assert [call[0] for call in calls].count("runner_init") == 1
     assert [call[0] for call in calls].count("session_init") == 4
     packed_calls = [call for call in calls if call[0] == "step_batch_native"]
-    assert [call[2] for call in packed_calls] == [(1, 1), (2, 2), (1,)]
-    assert [call[5]["physical_rows"] for call in packed_calls] == [2, 2, 2]
+    assert [call[2] for call in packed_calls] == [(1, 1), (2, 2)]
+    assert [call[5]["physical_rows"] for call in packed_calls] == [2, 2]
     assert [call[5]["active_slot_indices"] for call in packed_calls] == [
         (0, 1),
         (0, 1),
-        (0,),
+    ]
+    assert [call for call in calls if call[0] == "graph_replay"] == [
+        ("graph_replay", 2, 1)
     ]
     assert [call for call in calls if call[0] == "step"][-1][2] == 1
     assert runner.active_request_ids == ()
     assert runner.available_session_count == 2
     assert greedy_last["path"] == "gguf_packed_ar_server_decode"
     assert greedy_last["serial_decode_fallback"] is False
+    assert greedy_last["native_c1_decode_steps"] == 1
     assert generator.last_batch_generation is not None
     assert generator.last_batch_generation["path"] == "gguf_resident_model_loop"
     assert generator.last_batch_generation["serial_decode_fallback"] is True
@@ -1728,32 +1758,49 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
     assert observability["routes"]["counts"] == {
         "native_full_prefill_rows": 3,
         "native_incremental_prefill_chunks": 0,
-        "native_packed_decode_steps": 3,
-        "native_c1_decode_steps": 0,
+        "native_packed_decode_steps": 2,
+        "native_c1_decode_steps": 1,
         "serial_decode_fallback_steps": 0,
         "resident_fallback_requests": 2,
+    }
+    assert observability["routes"]["physical_width_decode_steps"] == {
+        "1": 1,
+        "2": 2,
+        "4": 0,
+        "8": 0,
     }
     physical_group = {
         "logical_c": 1,
         "group_index": 0,
         "group_count": 1,
         "physical_slot_base": 0,
-        "physical_slot_extent": 2,
-        "physical_rows": 2,
+        "physical_slot_extent": 1,
+        "physical_rows": 1,
         "active_rows": 1,
         "request_ids": [2],
         "global_slot_indices": [0],
         "active_slot_indices": [0],
-        "active_mask": [True, False],
+        "active_mask": [True],
+        "execution_row_mapping": "dense_active_rows",
     }
     assert observability["routes"]["last_execution_manifest"] == {
         "schema": 1,
-        "kind": "gguf_packed_ar_execution_manifest",
-        "rows": 2,
-        "physical_rows": 2,
+        "kind": "gguf_ar_c1_execution_manifest",
+        "mode": "native_c1_graph",
+        "rows": 1,
+        "physical_rows": 1,
         "active_rows": 1,
-        "active_mask": [True, False],
-        "model_step": {"complete_c1_session_replays": 0},
+        "active_mask": [True],
+        "model_step": {
+            "complete_c1_session_replays": 0,
+            "complete_c1_layer_replays": 0,
+            "host_model_row_loop_sites": 0,
+            "host_model_row_iterations": 0,
+        },
+        "graph": {
+            "captured": True,
+            "replay_count": 1,
+        },
         "logical_c": 1,
         "physical_group": physical_group,
     }
@@ -1762,8 +1809,9 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
         "kind": "gguf_ar_physical_group_plan",
         "logical_c": 1,
         "physical_bucket_widths": [1, 2, 4, 8],
+        "policy": "occupancy_adaptive_dense_execution",
         "group_count": 1,
-        "groups": [{**physical_group, "execution_path": "packed_native"}],
+        "groups": [{**physical_group, "execution_path": "native_c1_graph"}],
     }
     assert observability["routes"]["fallback_reasons"]
     assert len(observability["routes"]["recent_completed"]) == 5
@@ -1820,6 +1868,7 @@ def test_gguf_resident_runner_lowers_c13_to_declared_physical_groups(monkeypatch
         "kind": "gguf_ar_physical_group_plan",
         "logical_c": 13,
         "physical_bucket_widths": [1, 2, 4, 8],
+        "policy": "occupancy_adaptive_dense_execution",
         "group_count": 2,
         "groups": [
             {
@@ -1834,6 +1883,7 @@ def test_gguf_resident_runner_lowers_c13_to_declared_physical_groups(monkeypatch
                 "global_slot_indices": list(range(8)),
                 "active_slot_indices": list(range(8)),
                 "active_mask": [True] * 8,
+                "execution_row_mapping": "dense_active_rows",
                 "execution_path": "packed_native",
             },
             {
@@ -1848,6 +1898,7 @@ def test_gguf_resident_runner_lowers_c13_to_declared_physical_groups(monkeypatch
                 "global_slot_indices": list(range(8, 13)),
                 "active_slot_indices": list(range(5)),
                 "active_mask": [True, True, True, True, True, False, False, False],
+                "execution_row_mapping": "dense_active_rows",
                 "execution_path": "packed_native",
             },
         ],
@@ -3951,6 +4002,7 @@ def test_gguf_generate_detailed_records_scheduler_token_chunks_for_serial_rows(m
         "prompt_lengths": [2, 1],
         "decode_steps": 2,
         "native_decode_steps": 0,
+        "native_c1_decode_steps": 0,
         "serial_decode_fallback": True,
         "native_compact_prefill": False,
         "native_caware_decode": False,

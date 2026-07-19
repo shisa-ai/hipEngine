@@ -19,7 +19,6 @@ from hipengine.kernels.hip_gfx1100.attention import (
     qwen35_paged_attn_decode_int8_gqa_splitk_gate_fp16_spans,
     qwen35_paged_attn_prefill_int8_gqa_gate_fp16_spans,
     qwen35_paged_full_attn_decode_context_bf16_batch_c1_exact_spans,
-    qwen35_paged_full_attn_decode_context_bf16_batch_spans,
     qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_spans,
     qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans,
     qwen35_write_paged_kv_int8_per_token_head_batch_spans,
@@ -182,19 +181,20 @@ def test_paged_attn_decode_resolves_batch_context() -> None:
     )
 
 
-def test_gfx1151_paged_attn_batch_context_uses_retained_generic_alias() -> None:
+def test_gfx1151_paged_attn_batch_context_uses_fixed_256_thread_generic_reduction() -> None:
     spans = _bf16_policy_spans()
     register_qwen35_paged_attn_decode_kernels()
     register_gfx1151_kernels(replace=True)
 
-    assert (
-        resolve_paged_attn_decode(
-            backend="hip_gfx1151",
-            spans=spans,
-            kind="context_batch",
-            model_quant="w4_paro",
-        )
-        is qwen35_paged_full_attn_decode_context_bf16_batch_spans
+    resolved = resolve_paged_attn_decode(
+        backend="hip_gfx1151",
+        spans=spans,
+        kind="context_batch",
+        model_quant="w4_paro",
+    )
+
+    assert resolved.__name__ == (
+        "qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans"
     )
 
 

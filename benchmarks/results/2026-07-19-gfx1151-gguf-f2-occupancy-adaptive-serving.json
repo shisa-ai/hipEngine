@@ -1,0 +1,237 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_f2_occupancy_adaptive_serving",
+  "created_at": "2026-07-19T03:02:00+09:00",
+  "status": "accepted_occupancy_adaptive_serving",
+  "passed": true,
+  "performance_claim": true,
+  "claim_scope": "gfx1151 GGUF Q4_K_M/BF16-KV greedy occupancy-adaptive physical c1/c2/c4/c8 in one resident OpenAI owner; C>8 remains multiple declared groups",
+  "source": {
+    "commit": "190f208c758aafc72e4c2d7a66c2b91386445db7",
+    "clean_detached_worktree": true,
+    "tracked_dirty": false,
+    "untracked_dirty": false
+  },
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000",
+    "hipcc": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+    "gpu_max_hw_queues": 1,
+    "tuned_profile": "accelerator-performance",
+    "amd_iommu": "off"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "fingerprint": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "Q4_K_M",
+    "kv_dtype": "bf16",
+    "sampling": "greedy_top1_ignore_eos",
+    "speculative_decode": false
+  },
+  "implementation": {
+    "policy": "occupancy_adaptive_dense_execution",
+    "physical_bucket_widths": [1, 2, 4, 8],
+    "mapping": {
+      "occupancy_1": [1],
+      "occupancy_2": [2],
+      "occupancy_3_to_4": [4],
+      "occupancy_5_to_8": [8],
+      "occupancy_9": [8, 1],
+      "occupancy_13": [8, 8]
+    },
+    "stable_ownership": [
+      "request_id",
+      "scheduler_slot",
+      "resident_session",
+      "Conv/GDN state",
+      "device KV"
+    ],
+    "dense_ephemeral_only": true,
+    "scheduler_compaction": false,
+    "state_or_kv_rebind": false
+  },
+  "host_gate": {
+    "passed": true,
+    "tests_passed": 892,
+    "hardware_skips": 4,
+    "coverage": [
+      "sparse stable slots (0,2,7) map to dense physical c4 execution",
+      "C9 maps to c8+c1",
+      "true c1 graph accounting and reclaim",
+      "C13 manifests",
+      "dispatch, generation, scheduler, server, harness, and API paths"
+    ],
+    "python_compile": true,
+    "git_diff_check": true
+  },
+  "server_packet": {
+    "passed": true,
+    "complete_packet": true,
+    "workload": {
+      "prompt_tokens_per_request": 512,
+      "generated_tokens_per_request": 128,
+      "configurations": ["c1", "packed_c8", "packed_c9", "packed_c13", "serial_c13"],
+      "warmups": 1,
+      "repetitions": 3,
+      "prefill_chunk_tokens": 256,
+      "batch_window_ms": 20
+    },
+    "aggregate_generated_tok_s": {
+      "c1": 43.0329629176844,
+      "c8": 86.94226913230869,
+      "c9": 77.30170674570352,
+      "c13": 73.23499935322452,
+      "serial_c13": 43.06604613516831
+    },
+    "per_request_generated_tok_s": {
+      "c1": 43.0329629176844,
+      "c8": 10.867783641538586,
+      "c9": 8.58907852730039,
+      "c13": 5.633461488709579,
+      "serial_c13": 3.3127727796283314
+    },
+    "cycle_wall_seconds_median": {
+      "c1": 2.974464,
+      "c8": 11.777931,
+      "c9": 14.902646,
+      "c13": 22.721377,
+      "serial_c13": 38.638328
+    },
+    "scheduler_itl_ms_median": {
+      "c1": 19.758759,
+      "c8": 64.948862,
+      "c9": 85.746856,
+      "c13": 132.546908,
+      "serial_c13": 257.799317
+    },
+    "ratios": {
+      "c8_vs_c1": 2.020364451207573,
+      "c9_vs_c1": 1.796337079145843,
+      "c13_vs_c1": 1.7018349196399138,
+      "c13_vs_serial_c13": 1.7005275904554962
+    },
+    "max_rate_stdev_pct_of_median": 0.524,
+    "exact_rows": 189,
+    "expected_exact_rows": 189,
+    "all_prompt_ids_exact": true,
+    "all_generated_ids_exact": true,
+    "all_usage_finish_metadata_exact": true,
+    "all_ownership_drained": true,
+    "physical_shapes": {
+      "c1": [{"logical_c": 1, "physical_widths": [1], "active_masks": ["1"]}],
+      "c8": [{"logical_c": 8, "physical_widths": [8], "active_masks": ["11111111"]}],
+      "c9": [{"logical_c": 9, "physical_widths": [8, 1], "active_masks": ["11111111", "1"]}],
+      "c13": [{"logical_c": 13, "physical_widths": [8, 8], "active_masks": ["11111111", "11111000"]}]
+    },
+    "occupancy_one_reference": {
+      "timing_scope": "same-process synchronized eager c1 transition versus scheduler ITL",
+      "same_process_direct_c1_decode_tok_s": 52.926048283344336,
+      "occupancy_one_transition_tok_s": 50.61046594992215,
+      "ratio": 0.9562487204594322,
+      "within_five_percent": true
+    },
+    "live_c8_to_c13": {
+      "passed": true,
+      "aggregate_generated_tok_s": 71.89070520279326,
+      "generated_ids": 1664,
+      "expected_generated_ids": 1664,
+      "observed_shapes": [
+        {"logical_c": 5, "physical_widths": [8], "active_masks": ["11111000"]},
+        {"logical_c": 8, "physical_widths": [8], "active_masks": ["11111111"]},
+        {"logical_c": 13, "physical_widths": [8, 8], "active_masks": ["11111111", "11111000"]}
+      ],
+      "final_ownership_zero": true
+    },
+    "raw": {
+      "path": "/tmp/gfx1151-gguf-f2-clean-190f208c/server.json",
+      "size_bytes": 26414917,
+      "sha256": "567d8e5ced06109961aff9b5732fd39dcc61932cda0822fbdaa5c76a1d07701f"
+    }
+  },
+  "live_transition_gates": {
+    "c2_to_c8": {
+      "passed": true,
+      "aggregate_generated_tok_s": 84.2103190306927,
+      "generated_ids": 256,
+      "expected_generated_ids": 256,
+      "required_shapes_seen": [[2], [8]],
+      "observed_logical_concurrency": [1, 2, 6, 7, 8],
+      "final_ownership_zero": true,
+      "raw_path": "/tmp/gfx1151-gguf-f2-clean-190f208c/live-c2-to-c8.json",
+      "size_bytes": 588699,
+      "sha256": "377e8c86863574db40bd0ca9cd2bdb8f503ebd82126dd7dd534fd12eee3bb427"
+    },
+    "c4_to_c8": {
+      "passed": true,
+      "aggregate_generated_tok_s": 84.25032711312149,
+      "generated_ids": 256,
+      "expected_generated_ids": 256,
+      "required_shapes_seen": [[4], [8]],
+      "observed_logical_concurrency": [1, 4, 7, 8],
+      "final_ownership_zero": true,
+      "raw_path": "/tmp/gfx1151-gguf-f2-clean-190f208c/live-c4-to-c8.json",
+      "size_bytes": 595636,
+      "sha256": "8d319d8d880fc8f14ebde43bca5537ab567ef24f1cf48a4d1f4f3a20bfed4808"
+    }
+  },
+  "c1_owner_graph_gate": {
+    "passed": true,
+    "workload": {"prompt_tokens": 16, "generated_tokens": 130},
+    "physical_width": 1,
+    "native_c1_decode_steps": 129,
+    "capture_count": 1,
+    "hits": 129,
+    "replays": 129,
+    "entries_after_reclaim": 0,
+    "aggregate_generated_tok_s": 52.38748242129776,
+    "same_process_direct_c1_decode_tok_s": 57.15592463230645,
+    "occupancy_one_transition_tok_s": 54.70252441686307,
+    "ratio": 0.957075312293056,
+    "within_five_percent": true,
+    "raw_path": "/tmp/gfx1151-gguf-f2-clean-190f208c/c1-graph.json",
+    "size_bytes": 413080,
+    "sha256": "3e6297fef495b0976f255a34b5ac6d5ff8a06484cf48fbca106a0e30b83ca524"
+  },
+  "profiler": {
+    "passed": true,
+    "performance_claim": false,
+    "physical_rows": 8,
+    "active_rows": 8,
+    "graph_capture_count": 1,
+    "graph_replay_count": 1,
+    "packed_native_dispatches": 748,
+    "exact_row_local_dispatches": 0,
+    "steady_host_to_device_copies": 0,
+    "steady_device_to_host_copies": 0,
+    "steady_state_import_or_scatter_copies": 0,
+    "complete_c1_session_or_layer_replays": 0,
+    "total_gpu_duration_ns_diagnostic": 57030833,
+    "raw_path": "/tmp/gfx1151-gguf-f2-clean-190f208c/profiler.json",
+    "size_bytes": 86268,
+    "sha256": "26c2b62968a9b9150cc7b08ad8792b000797886e7a581351478e2a696345d569"
+  },
+  "comparison_to_f0": {
+    "complete_sse_c1": {"old": 15.797652386750611, "new": 43.0329629176844, "delta_pct": 172.40099898554775},
+    "server_c8": {"old": 86.35817977725499, "new": 86.94226913230869, "delta_pct": 0.6763567233290413},
+    "server_c9": {"old": 57.69056963968664, "new": 77.30170674570352, "delta_pct": 33.99366175149666},
+    "server_c13": {"old": 73.06455000746227, "new": 73.23499935322452, "delta_pct": 0.2332859721038134},
+    "serial_c13": {"old": 43.1159965969227, "new": 43.06604613516831, "delta_pct": -0.11585089551622965},
+    "live_c13": {"old": 71.67478385881209, "new": 71.89070520279326, "delta_pct": 0.30125147556285814},
+    "interpretation": "The c1 and c9 gains are causally attributable to physical c1 occupancy selection and the c8+c1 tail. c8, c13, serial, and live-C13 deltas are within ordinary variance and establish non-regression."
+  },
+  "commands": {
+    "server": "/home/lhl/hipEngine-main/.venv/bin/python scripts/gguf_live_server_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --configurations c1,packed_c8,packed_c9,packed_c13,serial_c13 --prompt-length 512 --decode-tokens 128 --warmup-runs 1 --measured-runs 3 --live-decode-tokens 128 --live-initial-rows 8 --live-tail-rows 5 --prefill-chunk-size 256 --batch-window-ms 20 --compiler-version-file /tmp/gfx1151-gguf-f2-clean-190f208c/hipcc-version.txt --require-cached-build --json /tmp/gfx1151-gguf-f2-clean-190f208c/server.json",
+    "live_c2_to_c8": "/home/lhl/hipEngine-main/.venv/bin/python scripts/gguf_live_server_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --configurations packed_c8 --prompt-length 16 --decode-tokens 32 --warmup-runs 0 --measured-runs 1 --live-decode-tokens 32 --live-initial-rows 2 --live-tail-rows 6 --prefill-chunk-size 8 --batch-window-ms 20 --compiler-version-file /tmp/gfx1151-gguf-f2-clean-190f208c/hipcc-version.txt --require-cached-build --json /tmp/gfx1151-gguf-f2-clean-190f208c/live-c2-to-c8.json",
+    "live_c4_to_c8": "/home/lhl/hipEngine-main/.venv/bin/python scripts/gguf_live_server_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --configurations packed_c8 --prompt-length 16 --decode-tokens 32 --warmup-runs 0 --measured-runs 1 --live-decode-tokens 32 --live-initial-rows 4 --live-tail-rows 4 --prefill-chunk-size 8 --batch-window-ms 20 --compiler-version-file /tmp/gfx1151-gguf-f2-clean-190f208c/hipcc-version.txt --require-cached-build --json /tmp/gfx1151-gguf-f2-clean-190f208c/live-c4-to-c8.json",
+    "c1_owner_graph": "/home/lhl/hipEngine-main/.venv/bin/python scripts/gguf_live_server_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --configurations c1 --prompt-length 16 --decode-tokens 130 --warmup-runs 0 --measured-runs 1 --skip-live --prefill-chunk-size 16 --batch-window-ms 20 --compiler-version-file /tmp/gfx1151-gguf-f2-clean-190f208c/hipcc-version.txt --require-cached-build --json /tmp/gfx1151-gguf-f2-clean-190f208c/c1-graph.json",
+    "profiler": "/home/lhl/hipEngine-main/.venv/bin/python scripts/gguf_packed_ar_rocprof.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --decode-mode graph --packed-concurrency 8 --prompt-length 512 --prompt-token-id 9707 --expected-token-id 9707 --compiler-version-file /tmp/gfx1151-gguf-f2-clean-190f208c/hipcc-version.txt --raw-root /tmp/gfx1151-gguf-f2-clean-190f208c/profiler-raw --rocprofv3 /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/bin/rocprofv3 --roctx-sdk /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib/librocprofiler-sdk-roctx.so.1 --out /tmp/gfx1151-gguf-f2-clean-190f208c/profiler.json"
+  },
+  "wrapper_note": "The combined bg-154 shell returned exit 1 only because its final non-authoritative print snippet queried an obsolete aggregate_generated_tok_s top-level key. server.json and profiler.json were written first and independently set passed=true; the subsequent clean transition and owner-graph processes exited 0.",
+  "limitations": [
+    "Direct graph-step, backend-transition, and complete SSE cycle-wall timings are separate scopes.",
+    "C9 and C13 are multiple declared physical groups, not native c9/c13.",
+    "gfx1100 occupancy-adaptive transfer is not claimed by this gfx1151 result.",
+    "Normal sampled groups, prefix/KV reuse, production load/SLO, and long-context memory-pressure gates remain open."
+  ]
+}

@@ -1,0 +1,155 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_production_serving_load_gate_blocked",
+  "created_at": "2026-07-19T07:30:00+09:00",
+  "status": "blocked",
+  "passed": false,
+  "complete_packet": true,
+  "performance_claim": false,
+  "scope": "Phase-F4 real OpenAI SSE production load/SLO closure",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000",
+    "gpu_max_hw_queues": 1,
+    "amd_iommu": "off"
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B-UD-Q4_K_M",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424
+    }
+  },
+  "canonical_attempt": {
+    "source_commit": "7200dcf39d333bd8da4d3e9fa1f8aed68af4d69d",
+    "clean_source": true,
+    "command": "/home/lhl/hipEngine-main/.venv/bin/python scripts/gguf_production_load_gate.py --backend hip_gfx1151 --compiler-version-file /tmp/hipengine-gfx1151-f4-hipcc-version.txt --tuning-candidates fair:128 --json /tmp/gfx1151-f4-production-load-fair128-7200dcf3.json",
+    "raw": {
+      "path": "/tmp/gfx1151-f4-production-load-fair128-7200dcf3.json",
+      "size_bytes": 7056082,
+      "sha256": "c52eb3d2a40f4e94c689b55a3d8f0b39e9a734bcdf9ed1b4816a8d86214e0d0f"
+    },
+    "elapsed_seconds": 173.85384116697242,
+    "configuration": {
+      "max_active_requests": 8,
+      "max_queued_requests": 16,
+      "stream_queue_max_chunks": 16,
+      "generation_batch_window_ms": 100.0,
+      "prefill_decode_policy": "fair",
+      "prefill_chunk_tokens": 128,
+      "slo_seconds": {
+        "queue_p99": 10.0,
+        "ttft_p95": 10.0,
+        "itl_p99": 0.5,
+        "end_to_end_p95": 30.0
+      }
+    },
+    "tuning": {
+      "selected": "fair:128",
+      "passed": true,
+      "goodput_generated_tokens_per_second": 43.79275591213855,
+      "ttft_p95_seconds": 1.0581602810125332,
+      "itl_p99_seconds": 0.22940207898500375
+    },
+    "workloads": {
+      "static_c1": {"passed": true, "requests": 1, "outcomes": {"completed": 1}, "goodput_tok_s": 31.35919833227798},
+      "static_c8": {"passed": true, "requests": 8, "outcomes": {"completed": 8}, "goodput_tok_s": 49.857875578181115},
+      "ragged_burst": {"passed": true, "requests": 8, "outcomes": {"completed": 8}, "goodput_tok_s": 48.10455792153367},
+      "continuous_fixed": {"passed": true, "requests": 12, "outcomes": {"completed": 12}, "goodput_tok_s": 43.14258503663113},
+      "continuous_poisson": {"passed": true, "requests": 12, "outcomes": {"completed": 12}, "goodput_tok_s": 36.45330753443133},
+      "cancellation_disconnect": {
+        "passed": false,
+        "requests": 8,
+        "outcomes": {"completed": 2, "cancelled": 4, "disconnected": 1, "timeout": 1},
+        "failure_reasons": ["generated_token_mismatch", "http_sse_protocol_failed", "unexpected_request_outcome"]
+      },
+      "overload": {"passed": true, "requests": 32, "outcomes": {"completed": 16, "rejected": 16}, "goodput_tok_s": 38.73211630077084},
+      "idle_recovery": {"passed": true, "requests": 1, "outcomes": {"completed": 1}, "goodput_tok_s": 28.369691894097002},
+      "soak": {"passed": true, "requests": 120, "duration_seconds": 60.0, "outcomes": {"completed": 120}, "goodput_tok_s": 41.70680843632495}
+    },
+    "gates": {
+      "workloads_passed": false,
+      "overload_metrics_exact": true,
+      "final_ownership_passed": true,
+      "memory_recovery_passed": true,
+      "clean_source_passed": true
+    }
+  },
+  "retained_repairs": {
+    "commits": [
+      "6dce71d4e5f22f6c89678854a3941ac408b335e8",
+      "aae0c04b73d90cedaa358d01cd69b579a9cc5d0f",
+      "94c8e1dcb2f810d837244955f921b57a7a6827b6",
+      "d9c9f6d04773303adc3daae76465f622d66a5564",
+      "cf139e3e24c1822fef50d6b31e437514b7af4ae0"
+    ],
+    "summary": [
+      "Client stream close now trips the row token, drains abandoned HTTP queue backpressure, and awaits cooperative producer exit.",
+      "Request-control caller cancellation joins its child __anext__ task before async-generator closure.",
+      "ASGI cancellation accounting occurs after inner stream unwind and records one cancelled request.",
+      "StreamingResponse is the sole ASGI receive-channel owner for live completion/chat streams."
+    ],
+    "host_validation": {
+      "server_control_and_batcher": "26 passed",
+      "submit_poll_adapter": "8 passed",
+      "load_gate_contract": "10 passed"
+    }
+  },
+  "diagnostics": [
+    {
+      "name": "fresh focused cancellation control",
+      "source_commit": "d9c9f6d04773303adc3daae76465f622d66a5564",
+      "status": "passed",
+      "outcomes": {"completed": 6, "disconnected": 1, "timeout": 1},
+      "raw_sha256": "74190ed3912124be6f05380ae45c8034af3408d02746f58fae76dc6060392f93"
+    },
+    {
+      "name": "warm timeout-only with aligned 64-chunk queues",
+      "source_commit": "1438caea5c6a56d33dde800827887df640e8e865",
+      "status": "passed",
+      "outcomes": {"completed": 7, "timeout": 1},
+      "raw_sha256": "478d0d9c0b5126a51704d238247a082037e47c181fb32629a2a96da7bf104956"
+    },
+    {
+      "name": "warm disconnect-only with aligned 256-chunk queues",
+      "source_commit": "1438caea5c6a56d33dde800827887df640e8e865",
+      "status": "passed",
+      "outcomes": {"completed": 7, "disconnected": 1},
+      "raw_sha256": "27ed87b67bbd88a7f924f6fdd2eaf03639e809c3c6139a1e2c349d9c003d3f6a"
+    },
+    {
+      "name": "warm combined timeout plus disconnect with aligned 256-chunk queues",
+      "source_commit": "1438caea5c6a56d33dde800827887df640e8e865",
+      "status": "failed",
+      "outcomes": {"cancelled": 6, "disconnected": 1, "timeout": 1},
+      "raw_sha256": "27f22439d2cd4a70e12c6953f304265fd38a2fb76b13bf8ee4fd772b8c8b9c1c"
+    },
+    {
+      "name": "warm staged timeout then disconnect with aligned 256-chunk queues",
+      "source_commit": "1438caea5c6a56d33dde800827887df640e8e865",
+      "status": "failed",
+      "outcomes": {"cancelled": 6, "disconnected": 1, "timeout": 1},
+      "raw_sha256": "2f7989570da2667742898532dd4466713e35d7e4b81d2f6eef231744e98127b9"
+    }
+  ],
+  "blocker": {
+    "summary": "Concurrent timeout and active socket-disconnect teardown can cancel unrelated warmed resident streams even though each control passes alone.",
+    "observations": [
+      "Control and batcher cancellation tokens are distinct per request.",
+      "Only the intended timeout/disconnect tokens receive direct cancel() calls.",
+      "Failed peers can return 499 without _queued_generation_cancelled or resident overflow firing.",
+      "Queue-depth samples remain bounded (typically 0-1), final ownership and memory still drain, and native route/accounting gates remain exact.",
+      "Neither queue enlargement through 256 nor staging the controls removes the combined failure."
+    ],
+    "next_action": "Replace per-HTTP-generator teardown coupling with one scheduler-owned row cancellation command/ack path; a timeout or disconnect must atomically cancel only its request_id while peer stream iterators remain subscribed. Add a warmed simultaneous timeout+disconnect RED before rerunning F4."
+  },
+  "limitations": [
+    "No production load/SLO performance claim is retained.",
+    "Passing goodput and soak rows are diagnostic because the complete packet failed neighbor-survival semantics.",
+    "Sampled serving, prefix reuse, long-context pressure, and external-engine serving comparisons remain later gates."
+  ]
+}
