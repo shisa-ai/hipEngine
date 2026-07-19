@@ -160,15 +160,23 @@ def test_gfx1151_backend_does_not_alias_unvalidated_native_spec_provider(
 ) -> None:
     import hipengine.kernels.hip_gfx1151 as backend
 
-    source_key = KernelKey(
-        "hip_gfx1100",
-        "speculative_cycle",
-        "w4_gguf",
-        "native_v1_b2_target_graph",
+    source_keys = (
+        KernelKey(
+            "hip_gfx1100",
+            "speculative_cycle",
+            "w4_gguf",
+            "native_v1_b2_target_graph",
+        ),
+        KernelKey(
+            "hip_gfx1100",
+            "speculative_cycle",
+            "w4_gguf",
+            "native_v1_b2_proposal_graph",
+        ),
     )
     registered: list[KernelKey] = []
     monkeypatch.setattr(backend, "import_module", lambda _name: None)
-    monkeypatch.setattr(backend, "registered_keys", lambda: (source_key,))
+    monkeypatch.setattr(backend, "registered_keys", lambda: source_keys)
     monkeypatch.setattr(backend, "is_registered", lambda _key: False)
     monkeypatch.setattr(backend, "resolve", lambda **_kwargs: object())
     monkeypatch.setattr(
