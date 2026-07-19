@@ -165493,3 +165493,52 @@ only when **every** matched pair is positive and the paired median is positive.
 The exact live-capacity benefit remains one 5,242,880-byte page; process-current
 memory remains a separate diagnostic. The clean benchmark will be rerun from the
 corrected committed harness before any result is published.
+
+## 2026-07-19 — Retain scoped gfx1151 active-prefix economics
+
+Reran the matched economics packet from clean measured revision `05dda75b` on
+Radeon 8060S/gfx1151, TheRock HIP 7.15, TuneD `accelerator-performance`, one HIP
+hardware queue, and `amd_iommu=off`. The canonical Qwen3.6-35B-A3B UD-Q4_K_M,
+BF16-KV, p256+s1 greedy workload keeps the 256-token source live and outside the
+timing window; one discarded warmup per mode precedes three alternating matched
+`off`/`radix` repetitions. Device synchronization brackets continuation
+admission through first token.
+
+Command:
+
+```bash
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/gfx1151-concurrency-ddab579f/hipcc-version.txt \
+  uv run python scripts/gguf_prefix_reuse_bench.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1151 --quant gguf_q4_k_m \
+  --prefix-tokens 256 --suffix-tokens 1 --max-sequence-length 512 \
+  --warmups 1 --repetitions 3 \
+  --correctness-artifact \
+    benchmarks/results/2026-07-19-gfx1151-gguf-active-prefix-reuse-correctness.json \
+  --json /tmp/gfx1151-prefix-reuse-economics-v2.json
+```
+
+Result: `passed=true`; paired output is exact in 3/3 repetitions, all three
+radix admissions are usable 256-token hits, no admission fallback occurs, and
+final refcounts drain. Median continuation TTFT is **249.269 ms off versus
+21.188 ms radix** (**11.765x, -91.50%**). Live/refcounted pages fall **4 -> 3**,
+avoiding exactly **5,242,880 bytes** while the shared source and continuation
+coexist.
+
+The corrected paired memory audit reports HIP-current deltas
+`0/203423744/0` bytes and median `0`; `physical_current_reduction_claim=false`.
+The middle delta is lazy packed-workspace residency, not stable KV savings, and
+the fixed-capacity six-page backing is preallocated in both modes. Therefore the
+retained memory claim is only one page of live-capacity headroom; there is no
+process/GPU-current reduction claim.
+
+Published artifacts:
+
+- `benchmarks/results/2026-07-19-gfx1151-gguf-active-prefix-reuse-correctness.json`
+- `benchmarks/results/2026-07-19-gfx1151-gguf-active-prefix-reuse-economics.json`
+
+This closes only explicit active-current greedy p256+s1 reuse on gfx1151.
+`HIPENGINE_PREFIX_CACHE` remains default `off`. Cache-owned historical boundary
+snapshots, completed-session and sampled reuse, packed shared-suffix byte
+identity, broader boundaries, eviction, graph-safe lifecycle, gfx1100 transfer,
+and default-on promotion remain open.
