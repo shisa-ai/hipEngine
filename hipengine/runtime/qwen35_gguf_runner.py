@@ -14651,6 +14651,7 @@ class Qwen35GGUFResidentSession:
         transaction_id: int = 0,
         request_id: int = 0,
         record_stage_timings: bool = False,
+        native_proposal_graph: bool = False,
     ):
         """Run one complete strict GGUF MTP cycle through the N3 adapter."""
 
@@ -14675,6 +14676,7 @@ class Qwen35GGUFResidentSession:
             transaction_id=int(transaction_id),
             request_id=int(request_id),
             record_stage_timings=bool(record_stage_timings),
+            native_proposal_graph=bool(native_proposal_graph),
         )
 
     def capture_decode_graph(

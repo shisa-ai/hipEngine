@@ -20,6 +20,9 @@ from hipengine.runtime.gguf_native_spec_cycle import (
     run_qwen35_gguf_native_mtp_cycle,
     verify_qwen35_gguf_native_b2_target,
 )
+from hipengine.speculative.mtp_resident_draft import (
+    NativeSpecProposalGraphUnsupportedError,
+)
 
 
 def test_build_native_b2_target_batch_uses_root_prefixed_chain_layout() -> None:
@@ -92,7 +95,19 @@ def test_native_b2_target_can_make_unsupported_shape_a_hard_error() -> None:
         )
 
 
-def test_native_complete_cycle_owns_propose_accept_mtp_kv_and_reseed() -> None:
+@pytest.mark.parametrize(
+    ("native_proposal_graph", "graph_unsupported", "proposal_call"),
+    [
+        (False, False, "propose"),
+        (True, False, "propose_graph"),
+        (True, True, "propose"),
+    ],
+)
+def test_native_complete_cycle_owns_propose_accept_mtp_kv_and_reseed(
+    native_proposal_graph: bool,
+    graph_unsupported: bool,
+    proposal_call: str,
+) -> None:
     calls: list[tuple[object, ...]] = []
 
     class Draft:
@@ -101,6 +116,12 @@ def test_native_complete_cycle_owns_propose_accept_mtp_kv_and_reseed() -> None:
 
         def propose_chain_from_device_seed(self, hidden_seed_ptr, **kwargs):
             calls.append(("propose", int(hidden_seed_ptr), dict(kwargs)))
+            return [201, 202], [[201], [202]], int(kwargs["dense_cache_len"]) + 2
+
+        def propose_chain_from_device_seed_graph(self, hidden_seed_ptr, **kwargs):
+            if graph_unsupported:
+                raise NativeSpecProposalGraphUnsupportedError("unsupported test graph")
+            calls.append(("propose_graph", int(hidden_seed_ptr), dict(kwargs)))
             return [201, 202], [[201], [202]], int(kwargs["dense_cache_len"]) + 2
 
         def write_kv_rows_from_device_seed_base(self, hidden_seed_ptr, token_ids, **kwargs):
@@ -177,6 +198,7 @@ def test_native_complete_cycle_owns_propose_accept_mtp_kv_and_reseed() -> None:
         draft_cache_len=7,
         cycle_id=5,
         transaction_id=6,
+        native_proposal_graph=native_proposal_graph,
     )
 
     assert result.draft_token_ids == (201, 202)
@@ -187,7 +209,8 @@ def test_native_complete_cycle_owns_propose_accept_mtp_kv_and_reseed() -> None:
     assert result.draft_cache_len_before == 7
     assert result.draft_cache_len_after == 9
     assert result.target_result.device_accept_commit is True
-    assert calls[0][0:2] == ("propose", 0xA000)
+    assert result.proposal_native_graph is (native_proposal_graph and not graph_unsupported)
+    assert calls[0][0:2] == (proposal_call, 0xA000)
     assert calls[1] == (
         "verify",
         (101, 201, 202),

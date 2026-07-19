@@ -170,6 +170,10 @@ def test_native_complete_cycle_flag_parses_default_off() -> None:
     assert build_arg_parser().parse_args(
         ["--native-spec-complete-cycle"]
     ).native_spec_complete_cycle is True
+    assert build_arg_parser().parse_args([]).native_spec_proposal_graph is False
+    assert build_arg_parser().parse_args(
+        ["--native-spec-proposal-graph"]
+    ).native_spec_proposal_graph is True
 
 
 def test_fused_b1_block_probe_flag_parses() -> None:

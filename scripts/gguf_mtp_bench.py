@@ -938,6 +938,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--native-spec-proposal-graph",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "N3P extension: replay strict B1/B2 NextN proposal through one reusable native "
+            "graph submission before the unchanged N2 target transaction."
+        ),
+    )
+    parser.add_argument(
         "--target-block-verify-mode",
         choices=("bulk", "native", "serial-exact"),
         default="bulk",
@@ -1588,16 +1597,19 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 _SESSION_CACHE: dict = {}
-"""Opt-in resident-session cache for in-process load-once batch runs.
+_DRAFT_RUNNER_CACHE: dict = {}
+"""Opt-in resident-session and draft-runner cache for load-once batch runs.
 
 Default behavior is unchanged: when ``HIPENGINE_MTP_BENCH_CACHE_SESSION`` is not
 "1", ``main()`` constructs a fresh session and closes it in its finally block,
 exactly as before (every existing subprocess/test caller). When the flag is set,
 ``main()`` reuses one resident session across calls (reset between runs) and does
 NOT close it, so a batch driver (e.g. gguf_mtp_category_bench in-process loop)
-pays the ~50s model load once instead of per (prompt, budget). Correctness is
-gated by session.reset(); validate token-stream/acceptance parity vs the fresh
-subprocess path before trusting timing.
+pays the ~50s model load once instead of per (prompt, budget). Eligible resident
+draft runners are also reused: their scratch is request-stateless, and stable
+ownership lets reusable proposal graphs survive across prompt resets just like
+target graphs. Correctness is gated by session.reset(); validate token-stream,
+K/V, and acceptance parity vs the fresh subprocess path before trusting timing.
 """
 
 
@@ -1869,6 +1881,8 @@ def main(argv: list[str] | None = None):
         args.root_topk_accept != 1 or args.sibling_topk_accept != 1 or args.draft_p_min != 0.0
     ):
         parser.error("--native-spec-complete-cycle requires strict top-1 and --draft-p-min 0")
+    if args.native_spec_proposal_graph and not args.native_spec_complete_cycle:
+        parser.error("--native-spec-proposal-graph requires --native-spec-complete-cycle")
     if args.target_block_sync_stage_timings and not args.target_block_verify:
         parser.error("--target-block-sync-stage-timings requires --target-block-verify")
     if args.target_block_sync_stage_timings and not args.record_cycle_stage_timings:
@@ -2044,17 +2058,44 @@ def main(argv: list[str] | None = None):
             if topk_candidate_count > 64:
                 resident_mtp_draft_fallback_reason = "resident draft top-k kernel supports production top-k up to 64"
             else:
-                resident_draft = Qwen35GGUFResidentMTPDraftRunner(
-                    weights,
-                    token_embd_f32,
-                    runtime=runtime,
-                    vocab_cap=int(args.mtp_draft_vocab_cap or sh_raw.shape[0]),
-                    device_chain_enabled=True if args.resident_mtp_device_chain else None,
-                    prewarm_device_chain=bool(args.resident_mtp_device_chain),
-                    sync_stage_timings=bool(args.resident_mtp_draft_sync_stage_timings),
-                    gpu_event_stage_timings=bool(args.resident_mtp_draft_gpu_event_stage_timings),
-                    require_cached_build=bool(args.require_cached_build),
+                draft_vocab_cap = int(args.mtp_draft_vocab_cap or sh_raw.shape[0])
+                draft_env_names = (
+                    "HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A",
+                    "HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A_STAGES",
+                    "HIPENGINE_RESIDENT_MTP_DRAFT_SELECTED_SILU_DOWN_FUSED",
+                    "HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_MOE",
+                    "HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_GATHER",
+                    "HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A",
+                    "HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE",
+                    "HIPENGINE_GGUF_Q6_TOP1_STAGE1_THREADS",
+                    "HIPENGINE_RESIDENT_MTP_DRAFT_Q8_SHARED_DUAL",
+                    "HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL",
+                    "HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_CHAIN",
                 )
+                draft_cache_key = (
+                    _session_key,
+                    draft_vocab_cap,
+                    bool(args.resident_mtp_device_chain),
+                    bool(args.resident_mtp_draft_sync_stage_timings),
+                    bool(args.resident_mtp_draft_gpu_event_stage_timings),
+                    tuple(os.environ.get(name) for name in draft_env_names),
+                )
+                if _cache_session and draft_cache_key in _DRAFT_RUNNER_CACHE:
+                    resident_draft = _DRAFT_RUNNER_CACHE[draft_cache_key]
+                else:
+                    resident_draft = Qwen35GGUFResidentMTPDraftRunner(
+                        weights,
+                        token_embd_f32,
+                        runtime=runtime,
+                        vocab_cap=draft_vocab_cap,
+                        device_chain_enabled=True if args.resident_mtp_device_chain else None,
+                        prewarm_device_chain=bool(args.resident_mtp_device_chain),
+                        sync_stage_timings=bool(args.resident_mtp_draft_sync_stage_timings),
+                        gpu_event_stage_timings=bool(args.resident_mtp_draft_gpu_event_stage_timings),
+                        require_cached_build=bool(args.require_cached_build),
+                    )
+                    if _cache_session:
+                        _DRAFT_RUNNER_CACHE[draft_cache_key] = resident_draft
                 resident_mtp_device_chain_effective = bool(resident_draft._device_chain_enabled)
                 if (
                     args.adaptive_full_vocab_after_cap_miss
@@ -2228,17 +2269,27 @@ def main(argv: list[str] | None = None):
             # Prompt replay rows + one draft-start row per cycle + accepted
             # verifier rows.  Keep enough guard space for rejected draft rows
             # written during speculative probing before rollback.
-            mtp_device_kv_capacity = max(
+            required_mtp_device_kv_capacity = max(
                 1,
                 len(mtp_context_tokens)
                 + int(args.cycles) * (2 * int(args.draft_n_max) + 2)
                 + 4,
             )
-            key_nbytes = mtp_device_kv_capacity * kv_heads * qk_head_dim * 4
-            value_nbytes = mtp_device_kv_capacity * kv_heads * value_head_dim * 4
-            mtp_device_key_cache = malloc(key_nbytes, runtime=runtime)
-            mtp_device_value_cache = malloc(value_nbytes, runtime=runtime)
-            mtp_device_kv_buffers.extend([mtp_device_key_cache, mtp_device_value_cache])
+            if args.native_spec_proposal_graph and resident_draft is not None:
+                (
+                    mtp_device_key_cache,
+                    mtp_device_value_cache,
+                    mtp_device_kv_capacity,
+                ) = resident_draft.ensure_native_proposal_kv_capacity(
+                    required_mtp_device_kv_capacity
+                )
+            else:
+                mtp_device_kv_capacity = required_mtp_device_kv_capacity
+                key_nbytes = mtp_device_kv_capacity * kv_heads * qk_head_dim * 4
+                value_nbytes = mtp_device_kv_capacity * kv_heads * value_head_dim * 4
+                mtp_device_key_cache = malloc(key_nbytes, runtime=runtime)
+                mtp_device_value_cache = malloc(value_nbytes, runtime=runtime)
+                mtp_device_kv_buffers.extend([mtp_device_key_cache, mtp_device_value_cache])
             if len(mtp_context_tokens) > 0:
                 context_positions = np.asarray(mtp_context_positions, dtype=np.int64)
                 context_tokens = np.asarray(mtp_context_tokens, dtype=np.int64)
@@ -2420,6 +2471,7 @@ def main(argv: list[str] | None = None):
                         cycle_id=int(cycle),
                         transaction_id=int(cycle),
                         record_stage_timings=bool(args.record_cycle_stage_timings),
+                        native_proposal_graph=bool(args.native_spec_proposal_graph),
                     )
                     draft_tokens = [int(token) for token in native_complete_cycle_result.draft_token_ids]
                     draft_top10_tokens = [[int(token)] for token in draft_tokens]
@@ -3857,6 +3909,10 @@ def main(argv: list[str] | None = None):
                 "native_spec_target_cycle": bool(native_spec_target_cycle_used),
                 "native_spec_device_accept_commit": bool(native_spec_device_accept_commit_used),
                 "native_spec_complete_cycle": bool(native_complete_cycle_result is not None),
+                "native_spec_proposal_graph": bool(
+                    native_complete_cycle_result is not None
+                    and native_complete_cycle_result.proposal_native_graph
+                ),
                 "native_spec_target_fallback_reason": (
                     session.last_native_spec_target_fallback_reason
                     if args.native_spec_target_cycle and block_verify_used
@@ -3901,7 +3957,7 @@ def main(argv: list[str] | None = None):
     finally:
         if target_graph is not None:
             target_graph.close()
-        if resident_draft is not None:
+        if resident_draft is not None and not _cache_session:
             resident_draft.close()
         if resident_draft_full_vocab is not None:
             resident_draft_full_vocab.close()
@@ -4076,6 +4132,7 @@ def main(argv: list[str] | None = None):
             "native_spec_target_cycle": bool(args.native_spec_target_cycle),
             "native_spec_device_accept_commit": bool(args.native_spec_device_accept_commit),
             "native_spec_complete_cycle": bool(args.native_spec_complete_cycle),
+            "native_spec_proposal_graph": bool(args.native_spec_proposal_graph),
             "llama_compat": bool(args.llama_compat),
             "verify_dp4a": bool(args.verify_dp4a),
             "verify_dense_q8_dp4a": bool(args.verify_dense_q8_dp4a),
