@@ -558,7 +558,13 @@ Current blockers that keep project-wide c>N incomplete:
   exact prior loop otherwise. The clean committed N3 gate matches all 240 IDs /
   96 cycle semantics at 118.592 tok/s / 1.2858x true AR versus clean N2's
   117.557 tok/s (+0.88%, aggregate-neutral); the faster N1 topline remains
-  unchanged. N3P additionally replays strict B1/B2 NextN proposal through one
+  unchanged. The independent gfx1151 transfer registers the same backend-neutral
+  B1/B2 target launcher under its peer backend key: N1 reaches **80.132 tok/s**
+  and public N3 reaches **80.099 tok/s**, versus a clean same-commit direct-commit
+  control at **70.020 tok/s (+14.39%)**. All 240 IDs / 97 cycle semantics match,
+  every train/heldout/category row improves, and the real-model hidden/Conv/GDN/
+  KV/cursor plus cached-profiler gates pass. N3P additionally replays strict
+  B1/B2 NextN proposal through one
   native graph launch and is profiler-proven to replace 542 `hipLaunchKernel`
   plus 80 synchronous `hipMemcpy` host calls over eight matched cycles, while
   remaining aggregate-neutral and diagnostic. N4 has started with one shared
@@ -566,9 +572,9 @@ Current blockers that keep project-wide c>N incomplete:
   DFlash; it declares only `VERIFY|ACCEPT`, preserves provider commit and exact
   fallback, and remains default-off because the currently available packed
   PARO+MTP local artifact already mismatches true AR on the unchanged control.
-  Complete PARO/DFlash proposal+commit ownership, independent gfx1151 admission,
-  draft-side batching, rows>=16 verifier tuning, streaming, and exact/default
-  MTP serving remain open.
+  Complete PARO/DFlash proposal+commit ownership, independent gfx1151 N4
+  admission, gfx1151 N3P proposal-graph admission, draft-side batching, rows>=16
+  verifier tuning, streaming, and exact/default MTP serving remain open.
 - Exact all-choice generated-token accounting and batch timing ownership are
   available for non-streaming responses. Benchmark coverage still needs
   aggregate tok/s, per-request tok/s, latency, memory, active occupancy,

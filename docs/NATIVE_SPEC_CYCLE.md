@@ -24,7 +24,9 @@ Those boundaries do not advance in lockstep. In particular:
 
 - `N1R` is the current W7900 performance winner because it removes the dominant
   target-verifier submission overhead while leaving cheap policy work alone.
-- `N2` and `N3` own more of the transaction but are not faster than `N1R` yet.
+- On W7900, `N2` and `N3` own more of the transaction but are not faster than
+  `N1R` yet. On gfx1151, N3 retains essentially all of N1 and improves the clean
+  current-main direct-commit control by 14.39%.
 - `N3P` graph-submits the proposal too, but still uses one proposal graph and
   one target graph per cycle rather than one combined native submission.
 - the first `N4` slice is a cross-provider adapter for PARO MTP and DFlash, not
@@ -440,43 +442,54 @@ complete local packed PARO target + MTP-BF16 sidecar pairing is not an admissibl
 oracle. A B2/c1-loop screen diverges before the first steady native replay too.
 The observed one-run **39.898 -> 39.085 tok/s (-2.04%)** is therefore explicitly
 invalid as a speed claim. N4 remains default-off, DFlash remains ungated, and
-gfx1151 remains unregistered.
+the gfx1151 N4 provider remains unregistered.
 
 [`N4 blocked artifact`](../benchmarks/results/2026-07-19-w7900-paro-mtp-native-target-graph-n4-blocked.json)
 
 ## gfx1151 Status
 
-These are the current retained pre-NativeSpecCycle-transfer results from clean
-`2edbb2ee` under TheRock HIP 7.15 and `amd_iommu=off`. That boot disables XDNA;
-its numbers do not admit N1–N4 on gfx1151.
+The current transfer ran clean at `1163e1bb` under TheRock HIP 7.15,
+`amd_iommu=off`, TuneD `accelerator-performance`, and the automatic one-HIP-
+hardware-queue policy. The target-only N1 and public complete-cycle N3 paths are
+now independently admitted; N3P proposal graphs and N4 remain unregistered.
+That boot disables XDNA.
 
 ### gfx1151 MTP comparison
 
 | Route | Own AR tok/s | MTP tok/s | MTP / AR | Wall | Status |
 | --- | ---: | ---: | ---: | ---: | --- |
-| exact/default B1 | 56.983 | 56.354 | 0.9890x | 17.846 ms/output | exact negative |
-| exact/default B2 | 56.983 | 56.045 | 0.9835x | 17.914 ms/output | exact negative |
-| exact/default B3 | 56.983 | 55.158 | 0.9680x | 18.201 ms/output | exact negative |
-| exact/default B4 | 56.983 | 55.583 | 0.9754x | 18.061 ms/output | exact negative |
-| exact/default B5 | 56.983 | **56.386** | **0.9895x** | **17.808 ms/output** | best exact/default; still below AR |
-| explicit `llama-compat` B2 | 56.783 | **81.900** | **1.4423x** | **12.233 ms/output** | retained explicit accuracy-traded route |
+| exact/default B5 (`2edbb2ee`) | 56.983 | **56.386** | **0.9895x** | **17.808 ms/output** | semantic control; still below AR |
+| clean current-main direct-commit control | 56.236 | 70.020 | 1.2451x | 14.314 ms/output | optimization control |
+| **N1 reusable target graph** | 55.490 | **80.132** | **1.4441x** | **12.512 ms/output** | retained target-only performance boundary |
+| **N3 public complete cycle** | 56.085 | **80.099** | **1.4282x** | **12.551 ms/output** | retained production adapter; -0.042% vs N1 |
+| historical direct commit (`2edbb2ee`) | 56.783 | 81.900 | 1.4423x | 12.233 ms/output | prior retained absolute; different revision/run |
 | llama.cpp base/MTP, F16 KV | 50.371 | 68.153 | 1.3530x | 14.673 ms/transition | external diagnostic |
 
-The gfx1151 `llama-compat` route is **19.94% faster** than transition-normalized
-llama.cpp MTP under this qualified protocol. Its category+heldout rows all beat
-AR:
+N3 improves the clean same-commit control by **14.39% rate / -12.32% complete
+wall** and matches N1 plus the control across all **240 output IDs / 97 cycle
+semantics**. Draft acceptance and accepted-output remain **77.72% / 59.58%**.
+Every category and the heldout split improves versus direct commit and beats its
+own true AR denominator:
 
-| Split | AR tok/s | `llama-compat` tok/s | Ratio |
-| --- | ---: | ---: | ---: |
-| Full | 56.783 | **81.900** | 1.4423x |
-| Train | 57.214 | **82.986** | 1.4504x |
-| Heldout | 56.148 | **80.323** | 1.4306x |
-| Code | 56.660 | **89.133** | 1.5731x |
-| General English | 57.658 | **78.442** | 1.3605x |
-| General Japanese | 56.790 | **79.322** | 1.3968x |
-| Mixed JA/EN | 56.167 | **75.434** | 1.3430x |
+| Split | AR tok/s | N3 tok/s | N3 / AR | N3 vs control |
+| --- | ---: | ---: | ---: | ---: |
+| Full | 56.085 | **80.099** | 1.4282x | **+14.39%** |
+| Train | 55.968 | **80.912** | 1.4457x | **+11.37%** |
+| Heldout | 56.263 | **78.908** | 1.4025x | **+18.83%** |
+| Code | 56.123 | **86.083** | 1.5338x | **+9.91%** |
+| General English | 57.257 | **78.984** | 1.3795x | **+19.45%** |
+| General Japanese | 55.611 | **75.122** | 1.3509x | **+12.65%** |
+| Mixed JA/EN | 55.351 | **75.658** | 1.3669x | **+19.20%** |
 
-[`gfx1151 MTP artifact`](../benchmarks/results/2026-07-17-gfx1151-amd-iommu-off-mtp-refresh.json)
+The real-model graph oracle covers B1/B2, changing-position replay, reject/full-
+accept N2, target IDs, FP32 hidden, 60 Conv/GDN buffers, 20 full-KV buffers,
+selected commit, and cursors. The cached six-step trace is **24.891 ms host /
+21.674 ms kernels / 3.218 ms residual**, with 940 calls/step, zero measured
+recaptures, and the expected `copy_i32_to_i64_kernel` at **1.002-1.323 us**, 8
+VGPR, zero scratch/LDS.
+
+[`gfx1151 NativeSpecCycle artifact`](../benchmarks/results/2026-07-19-gfx1151-llama-compat-native-cycle-transfer.json)
+· [`prior gfx1151 MTP artifact`](../benchmarks/results/2026-07-17-gfx1151-amd-iommu-off-mtp-refresh.json)
 
 ### Adjacent concurrency toplines
 
@@ -538,16 +551,19 @@ category+heldout, correctness, and timing protocol.
 1. **Keep N1R as the explicit gfx1100 `llama-compat` performance route.** It is
    the only milestone with a repeated retained speed claim and clears the
    external floor.
-2. **Keep N2/N3/N3P as exact infrastructure.** Promote only after the full suite
-   is non-regressive versus 122.667 tok/s and 8.186 ms-output; a larger
-   ownership label is not sufficient.
+2. **Keep gfx1100 N2/N3/N3P as exact infrastructure.** Promote only after the
+   full suite is non-regressive versus 122.667 tok/s and 8.186 ms-output; a
+   larger ownership label is not sufficient. On gfx1151, N3 is retained because
+   it is +14.39% versus its clean control and only 0.042% below N1.
 3. **Do not claim a combined native cycle yet.** N3P still submits separate
    proposal and target graphs. Combining them is worthwhile only if the measured
    complete wall improves without changing semantics.
 4. **Repair N4 evidence before more tuning.** Obtain/rebuild a compatible PARO
    target+MTP sidecar, then run full PARO MTP and DFlash category+heldout gates.
-5. **Validate gfx1151 independently.** Existing `llama-compat` already reaches
-   81.900 tok/s; no gfx1100 alias or result automatically admits N1–N4 there.
+5. **Keep gfx1151 N1/N3 admitted independently.** They pass the real-model and
+   full category+heldout gates at 80.132/80.099 tok/s. N3P and N4 remain
+   unregistered until they show an independent correctness and complete-wall
+   reason to transfer; no gfx1100 result aliases them automatically.
 6. **Use vLLM main, not v0.25.1, for the next comparison**, and require the
    unresolved corruption/correctness gates before timing.
 
@@ -562,4 +578,5 @@ category+heldout, correctness, and timing protocol.
 - [`2026-07-19 W7900 N3`](../benchmarks/results/2026-07-19-w7900-llama-compat-native-cycle-n3.json)
 - [`2026-07-19 W7900 N3P`](../benchmarks/results/2026-07-19-w7900-llama-compat-native-cycle-n3p.json)
 - [`2026-07-19 W7900 N4 blocker`](../benchmarks/results/2026-07-19-w7900-paro-mtp-native-target-graph-n4-blocked.json)
+- [`2026-07-19 gfx1151 N1/N3 transfer`](../benchmarks/results/2026-07-19-gfx1151-llama-compat-native-cycle-transfer.json)
 - [`2026-07-17 gfx1151 MTP refresh`](../benchmarks/results/2026-07-17-gfx1151-amd-iommu-off-mtp-refresh.json)
