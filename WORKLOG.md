@@ -168589,3 +168589,34 @@ still proves capture/replay/flush/close/invalidation. Validation is **72 passed*
   tests/test_generation_qwen35_gguf_sampling.py
 git diff --check
 ```
+
+## 2026-07-20 — Retain short low-width graphs for primary SSE
+
+The complete low-width decision requires both matched timing surfaces. A second
+detached-clean run at `8adbdbab` exercised the eager C2/C4 horizon candidate
+with the full blocking and SSE protocol. It completed every exact C1/C2/C4
+warmup and measured row before the now-superseded C8 phase was stopped. The
+candidate confirms the blocking gain, but materially regresses the declared
+primary streaming metric:
+
+| Width | Graph-on blocking | Eager blocking | Graph-on SSE | Eager SSE |
+| --- | ---: | ---: | ---: | ---: |
+| C2 | 59.258 | **60.769 (+2.55%)** | **58.579** | 54.841 (-6.38%) |
+| C4 | 74.105 | **75.086 (+1.32%)** | **72.872** | 71.064 (-2.48%) |
+
+The graph-on values are from the complete clean `8e61b9f9` packet; eager values
+are medians of three clean measurements at `8adbdbab`. SSE is the harness's
+`--streaming-primary` cross-engine/server metric, and the graph also retains the
+clean one-submit profiler boundary. Decision: restore the width-scaled resident
+graph horizon for C2/C4/C8 and publish the blocking capture tradeoff explicitly
+rather than optimize the secondary blocking control at a **6.38%/2.48%** primary
+regression. The superseded rerun was stopped before spending the unchanged C8
+phase; its orphaned task-owned server PID was terminated, and `rocm-smi` then
+reported no KFD owners.
+
+`hipengine/generation/qwen35_gguf.py` and its graph tests are restored byte-for-
+byte to retained `8e61b9f9`; `git diff --exit-code 8e61b9f9 -- ...` passes. The
+complete clean `8e61b9f9` raw packet remains the publication source. A future
+route may eliminate the tradeoff by reusing state-safe captures across waves or
+moving capture outside client wall; transport-conditioned model dispatch is not
+introduced here.
