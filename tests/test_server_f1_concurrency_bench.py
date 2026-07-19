@@ -426,6 +426,35 @@ def test_hipengine_parser_locks_the_retained_prefill_decode_policy(tmp_path: Pat
     assert args.hipengine_kv_storage == "bf16"
     assert args.hipengine_kv_scale_dtype == "fp16"
     assert args.hipengine_kv_scale_granularity == "per_token_head"
+    assert args.batch_window_ms == 5.0
+    assert args.hipengine_prefill_chunk_tokens is None
+
+
+def test_hipengine_command_separates_generation_window_from_prefill_chunk(
+    tmp_path: Path,
+) -> None:
+    args = SCRIPT.build_parser().parse_args(
+        [
+            "--engine",
+            "hipengine",
+            "--generation-batch-window-ms",
+            "5",
+            "--hipengine-prefill-chunk-tokens",
+            "256",
+            "--json",
+            str(tmp_path / "result.json"),
+        ]
+    )
+
+    command, env, _cwd = SCRIPT._server_command_and_env(
+        args,
+        engine="hipengine",
+        concurrency=8,
+        port=19123,
+    )
+
+    assert command[command.index("--generation-batch-window-ms") + 1] == "5.0"
+    assert env["HIPENGINE_MAX_PREFILL_CHUNK_TOKENS"] == "256"
 
 
 def test_hipengine_command_forwards_explicit_int8_kv_policy(tmp_path: Path) -> None:
