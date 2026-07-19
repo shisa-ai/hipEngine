@@ -21,6 +21,7 @@ _SYMBOL_EMBEDDING_LOOKUP_BATCH_MAPPED_FP16 = "hipengine_embedding_lookup_batch_m
 _SYMBOL_SET_I64 = "hipengine_set_i64_scalar"
 _SYMBOL_PREFILL_FLIGHT_RECORDER_MARK_I64 = "hipengine_prefill_flight_recorder_mark_i64"
 _SYMBOL_SET_I64_VECTOR = "hipengine_set_i64_vector"
+_SYMBOL_COPY_I32_TO_I64 = "hipengine_copy_i32_to_i64"
 _SYMBOL_SET_POSITION = "hipengine_set_decode_position_i64"
 _SYMBOL_SET_POSITIONS = "hipengine_set_decode_positions_i64"
 _SYMBOL_PREPARE_PREFILL_CHUNK_METADATA = "hipengine_prepare_prefill_chunk_metadata"
@@ -362,6 +363,33 @@ def set_i64_vector(
     err = fn(
         ctypes.c_void_p(out_i64_ptr),
         ctypes.c_void_p(values_i64_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def copy_i32_to_i64(
+    input_i32_ptr: int,
+    output_i64_ptr: int,
+    rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Exactly widen a device int32 row vector to int64."""
+
+    if rows <= 0:
+        raise ValueError("rows must be positive")
+    library = library or build_runtime_state(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_COPY_I32_TO_I64)
+    fn.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int64, ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(input_i32_ptr),
+        ctypes.c_void_p(output_i64_ptr),
         ctypes.c_int64(rows),
         ctypes.c_void_p(stream),
     )
@@ -931,6 +959,11 @@ def register_runtime_state_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "token_embedding", "w4_paro", "batch_mapped_fp16_i64"),
         embedding_lookup_batch_mapped_fp16_i64,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "metadata_cast", "gguf_qwen35", "i32_to_i64"),
+        copy_i32_to_i64,
         replace=replace,
     )
     register(

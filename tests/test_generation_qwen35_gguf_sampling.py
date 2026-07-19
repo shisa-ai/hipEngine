@@ -97,6 +97,28 @@ def test_gguf_decode_graph_default_on_with_opt_out(monkeypatch) -> None:
     assert qwen35_gguf._gguf_decode_graph_enabled() is False
 
 
+def test_native_complete_cycle_contributes_public_mtp_ownership_metrics() -> None:
+    timing: dict[str, float] = {}
+    qwen35_gguf._add_mtp_cycle_timing_metrics(
+        timing,
+        [
+            {
+                "mode": "llama_compat_native_complete_cycle",
+                "generated_draft_tokens": 2,
+                "accepted_draft_tokens": 1,
+                "visible_output_tokens": 2,
+            }
+        ],
+    )
+
+    assert timing["mtp_target_verify_rows"] == 3.0
+    assert timing["mtp_direct_cycles_count"] == 1.0
+    assert timing["mtp_partial_accept_cycles"] == 1.0
+    assert timing["mtp_linear_state_captured_rows"] == 3.0
+    assert timing["mtp_linear_state_commit_rows"] == 1.0
+    assert timing["mtp_hidden_seed_needed_rows"] == 2.0
+
+
 def test_gguf_speculative_mtp_hook_runs_llama_compat_direct_commit(monkeypatch) -> None:
     calls: list[tuple] = []
 

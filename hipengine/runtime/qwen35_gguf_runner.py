@@ -106,6 +106,7 @@ from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import qwen35_split_qgat
 from hipengine.kernels.hip_gfx1100.runtime import (
     advance_decode_position_i64,
     build_runtime_state,
+    copy_i32_to_i64,
     prepare_prefill_chunk_metadata,
     record_f32_row_indexed,
     record_i64_scalar_indexed,
@@ -505,15 +506,16 @@ def qwen35_gguf_fp32_verify_hidden_seed_contract(
     *,
     rows: int = 1,
     populated_by_decode: bool = False,
+    source_buffer: str = "Qwen35GGUFResidentSession._verify_hidden_seed_buf",
 ) -> Qwen35GGUFHiddenSeedContract:
-    """Describe the fp32 verifier-row hidden-seed staging buffer."""
+    """Describe an fp32 verifier-row hidden-seed buffer."""
 
     return Qwen35GGUFHiddenSeedContract(
         provenance="post_output_norm",
         dtype=DType.FP32,
         rows=int(rows),
         hidden_size=int(hidden_size),
-        source_buffer="Qwen35GGUFResidentSession._verify_hidden_seed_buf",
+        source_buffer=str(source_buffer),
         populated_by_decode=bool(populated_by_decode),
         llama_cpp_compatible=bool(populated_by_decode),
     )
@@ -8620,6 +8622,11 @@ class Qwen35GGUFResidentSession:
     _lm_head_stage1_blocks: int = field(default=0, init=False)
     last_verify_stage_timings_ms: dict[str, float] = field(default_factory=dict, init=False)
     last_packed_verify_stage_timings_ms: dict[str, float] = field(default_factory=dict, init=False)
+    last_native_spec_target_submitted: bool = field(default=False, init=False)
+    last_native_spec_target_fallback_reason: str | None = field(default=None, init=False)
+    last_native_spec_target_capture_ms: float = field(default=0.0, init=False)
+    last_native_spec_target_submit_ms: float = field(default=0.0, init=False)
+    last_native_spec_target_readback_ms: float = field(default=0.0, init=False)
     fastpath_safety: Qwen35GGUFFastPathSafety | None = field(default=None, init=False)
     prefill_chunk_tuning: dict[str, object] = field(default_factory=dict, init=False)
     last_packed_prefill_plan: dict[str, object] = field(default_factory=dict, init=False)
@@ -8633,6 +8640,10 @@ class Qwen35GGUFResidentSession:
     int8_bf16_full_attention_layer_indices: tuple[int, ...] = field(default=(), init=False)
     _decode_graphs: list[object] = field(default_factory=list, init=False)
     _decode_graph_min_replay_steps_cache: int | None = field(default=None, init=False)
+    _native_spec_b1_target_graph: object | None = field(default=None, init=False, repr=False)
+    _native_spec_b2_target_graph: object | None = field(default=None, init=False, repr=False)
+    _native_spec_b1_target_graph_n2: object | None = field(default=None, init=False, repr=False)
+    _native_spec_b2_target_graph_n2: object | None = field(default=None, init=False, repr=False)
     _device_kv_pool: DeviceChunkedKVPool | None = field(default=None, init=False, repr=False)
     _device_kv_allocation: DeviceKVPoolAllocation | None = field(default=None, init=False, repr=False)
     _device_kv_graph_handles: dict[int, object] = field(default_factory=dict, init=False, repr=False)
@@ -9754,6 +9765,42 @@ class Qwen35GGUFResidentSession:
             raise RuntimeError("GGUF verifier hidden seed row is not populated")
         row_nbytes = self.runner.hidden_size * DType.FP32.itemsize
         return int(self._verify_hidden_seed_buf.ptr + row * row_nbytes)
+
+    def mtp_verify_seed(
+        self,
+        row_index: int,
+        *,
+        token_id: int,
+        position: int,
+        hidden_seed_base_ptr: int | None = None,
+        hidden_seed_row_count: int | None = None,
+    ) -> Qwen35GGUFMTPDraftSeed:
+        """Describe one already-populated FP32 verifier row without copying it."""
+
+        row = int(row_index)
+        if hidden_seed_base_ptr is None:
+            hidden_ptr = self.fp32_verify_hidden_seed_ptr(row)
+            contract = self.fp32_verify_hidden_seed_contract(rows=1)
+        else:
+            base_ptr = int(hidden_seed_base_ptr)
+            row_count = int(hidden_seed_row_count or 0)
+            if base_ptr <= 0:
+                raise ValueError("hidden_seed_base_ptr must be a non-zero device pointer")
+            if row < 0 or row >= row_count:
+                raise ValueError("row_index is outside external hidden rows")
+            hidden_ptr = base_ptr + row * self.runner.hidden_size * DType.FP32.itemsize
+            contract = qwen35_gguf_fp32_verify_hidden_seed_contract(
+                self.runner.hidden_size,
+                rows=1,
+                populated_by_decode=True,
+                source_buffer="Qwen35GGUFNativeAcceptCommitResult.hidden_seed_rows_ptr",
+            )
+        return Qwen35GGUFMTPDraftSeed(
+            token_id=int(token_id),
+            position=int(position),
+            hidden_ptr=hidden_ptr,
+            hidden_contract=contract,
+        )
 
     def stage_current_hidden_seed_as_verify_row(
         self,
@@ -11089,7 +11136,16 @@ class Qwen35GGUFResidentSession:
         record_stage_timings: bool = False,
         sync_stage_timings: bool = False,
         defer_linear_state_commit: bool = False,
-    ) -> Qwen35GGUFBlockVerifyResult:
+        _pre_staged_token_ids_ptr: int | None = None,
+        _target_top1_i64_ptr: int | None = None,
+        _target_top1_i32_ptr: int | None = None,
+        _enqueue_only: bool = False,
+        _prebuilt_bulk_scratch: object | None = None,
+        _dynamic_cursor_advance: bool = False,
+        _graph_hidden_seed_buf: object | None = None,
+        _graph_hidden_f32_a: object | None = None,
+        _graph_hidden_f32_b: object | None = None,
+    ) -> Qwen35GGUFBlockVerifyResult | None:
         """Consume a continuation block and return greedy target rows.
 
         The current resident decode state is treated as the prefix state.  The
@@ -11139,6 +11195,52 @@ class Qwen35GGUFResidentSession:
         rows = int(len(input_token_ids))
         if rows <= 0:
             raise ValueError("input_token_ids must be non-empty")
+        if _enqueue_only:
+            if stream == 0:
+                raise ValueError("enqueue-only target verification requires a non-default capture stream")
+            if _pre_staged_token_ids_ptr is None or int(_pre_staged_token_ids_ptr) <= 0:
+                raise ValueError("enqueue-only target verification requires pre-staged token ids")
+            has_i64_top1 = _target_top1_i64_ptr is not None and int(_target_top1_i64_ptr) > 0
+            has_i32_top1 = _target_top1_i32_ptr is not None and int(_target_top1_i32_ptr) > 0
+            if has_i64_top1 == has_i32_top1:
+                raise ValueError(
+                    "enqueue-only target verification requires exactly one int32/int64 target-top1 destination"
+                )
+            if rows not in {2, 3}:
+                raise ValueError("enqueue-only native target verification supports B1/B2 rows=2-3")
+            if advance_state_only or capture_pre_output_norm_hidden or capture_lm_head_logits:
+                raise ValueError("enqueue-only target verification does not support host diagnostic outputs")
+            if capture_layer_output_hidden or capture_layer_boundary_hidden:
+                raise ValueError("enqueue-only target verification does not support layer host captures")
+            if record_stage_timings or sync_stage_timings:
+                raise ValueError("enqueue-only target verification does not support host stage timings")
+            graph_hidden = (
+                _graph_hidden_seed_buf,
+                _graph_hidden_f32_a,
+                _graph_hidden_f32_b,
+            )
+            if _prebuilt_bulk_scratch is not None:
+                if int(getattr(_prebuilt_bulk_scratch, "start", -1)) != 0:
+                    raise ValueError("reusable target graph scratch must use fixed row offset zero")
+                if int(getattr(_prebuilt_bulk_scratch, "rows", 0)) != rows:
+                    raise ValueError("reusable target graph scratch rows must match verifier rows")
+                if not _dynamic_cursor_advance:
+                    raise ValueError("reusable target graph scratch requires device-driven cursor advance")
+                if any(buffer is None for buffer in graph_hidden):
+                    raise ValueError("reusable target graph requires graph-owned hidden buffers")
+            elif _dynamic_cursor_advance or any(buffer is not None for buffer in graph_hidden):
+                raise ValueError("device-driven graph state requires reusable target graph scratch")
+        elif (
+            _pre_staged_token_ids_ptr is not None
+            or _target_top1_i64_ptr is not None
+            or _target_top1_i32_ptr is not None
+            or _prebuilt_bulk_scratch is not None
+            or _dynamic_cursor_advance
+            or _graph_hidden_seed_buf is not None
+            or _graph_hidden_f32_a is not None
+            or _graph_hidden_f32_b is not None
+        ):
+            raise ValueError("private target graph controls require enqueue-only mode")
         if rows > int(self._bulk_prefill_scratch.rows):
             raise ValueError(
                 f"target block rows {rows} exceed resident bulk scratch rows {self._bulk_prefill_scratch.rows}"
@@ -11163,26 +11265,47 @@ class Qwen35GGUFResidentSession:
         self._ensure_verify_block_buffers(rows, runtime=runtime)
         if capture_linear_state_rows:
             self._ensure_verify_linear_state_row_buffers(rows, runtime=runtime)
-        if self._verify_hidden_seed_buf is None:
+        hidden_seed_buf = (
+            self._verify_hidden_seed_buf
+            if _graph_hidden_seed_buf is None
+            else _graph_hidden_seed_buf
+        )
+        if hidden_seed_buf is None:
             raise RuntimeError("GGUF verifier hidden-seed buffer is closed")
+        verify_hidden_f32_a = (
+            self._verify_hidden_f32_a
+            if _graph_hidden_f32_a is None
+            else _graph_hidden_f32_a
+        )
+        verify_hidden_f32_b = (
+            self._verify_hidden_f32_b
+            if _graph_hidden_f32_b is None
+            else _graph_hidden_f32_b
+        )
         use_f32_residual = _gguf_verify_f32_residual_enabled()
-        if use_f32_residual and (self._verify_hidden_f32_a is None or self._verify_hidden_f32_b is None):
+        if use_f32_residual and (verify_hidden_f32_a is None or verify_hidden_f32_b is None):
             raise RuntimeError("GGUF verifier F32 residual buffers are closed")
-        hidden_seed_buf = self._verify_hidden_seed_buf
         token_ids_buf = self._verify_token_ids_i64
         token_counter_buf = self._verify_token_counter_i64
         if token_ids_buf is None or token_counter_buf is None:
             raise RuntimeError("GGUF verifier token buffers are closed")
-        zero_index = np.zeros((1,), dtype=np.int64)
-        copy_host_to_device(token_counter_buf, host_array_ptr(zero_index), zero_index.nbytes, runtime=runtime)
-        copy_host_to_device(self._prefill_token_buf, host_array_ptr(tokens), tokens.nbytes, runtime=runtime)
+        if not _enqueue_only:
+            zero_index = np.zeros((1,), dtype=np.int64)
+            copy_host_to_device(token_counter_buf, host_array_ptr(zero_index), zero_index.nbytes, runtime=runtime)
+            copy_host_to_device(self._prefill_token_buf, host_array_ptr(tokens), tokens.nbytes, runtime=runtime)
+        input_token_ids_ptr = (
+            self._prefill_token_buf.ptr
+            if _pre_staged_token_ids_ptr is None
+            else int(_pre_staged_token_ids_ptr)
+        )
         add_verify_stage("target_block_setup", (time.perf_counter() - t_setup0) * 1000 if stage_timings is not None else 0.0)
+        scratch_row_start = 0 if _prebuilt_bulk_scratch is not None else start
         try:
             t_embedding0 = time.perf_counter() if stage_timings is not None else 0.0
             launch_gguf_embedding(
                 self.runner.weights.root("token_embedding"),
-                self._prefill_token_buf.ptr,
-                self._prefill_hidden_a.ptr + start * row_nbytes,
+                input_token_ids_ptr,
+                self._prefill_hidden_a.ptr + scratch_row_start * row_nbytes,
                 rows=rows,
                 hidden_size=self.runner.hidden_size,
                 vocab_size=self.runner.vocab_size,
@@ -11201,8 +11324,8 @@ class Qwen35GGUFResidentSession:
                     )
                 else:
                     bf16_to_f32(
-                        self._prefill_hidden_a.ptr + start * row_nbytes,
-                        self._verify_hidden_f32_a.ptr,
+                        self._prefill_hidden_a.ptr + scratch_row_start * row_nbytes,
+                        verify_hidden_f32_a.ptr,
                         rows * self.runner.hidden_size,
                         stream=stream,
                         library=self.runner._cast_library(),
@@ -11216,8 +11339,8 @@ class Qwen35GGUFResidentSession:
             )
             src = self._prefill_hidden_a
             dst = self._prefill_hidden_b
-            src_f32 = self._verify_hidden_f32_a if use_f32_residual else None
-            dst_f32 = self._verify_hidden_f32_b if use_f32_residual else None
+            src_f32 = verify_hidden_f32_a if use_f32_residual else None
+            dst_f32 = verify_hidden_f32_b if use_f32_residual else None
             block_wmma_prefill = gguf_wmma_prefill_enabled(
                 self.use_wmma_prefill if use_wmma_prefill is None else use_wmma_prefill
             )
@@ -11235,15 +11358,19 @@ class Qwen35GGUFResidentSession:
                     ):
                         expert_sidecar = self._load_expert_sidecar_device_layer(layer_id, runtime=runtime)
                     try:
-                        bulk_scratch = self._bulk_prefill_scratch.for_chunk(
-                            start,
-                            rows,
-                            total_tokens=end,
-                            runtime=runtime,
-                            stream=stream,
+                        bulk_scratch = (
+                            _prebuilt_bulk_scratch
+                            if _prebuilt_bulk_scratch is not None
+                            else self._bulk_prefill_scratch.for_chunk(
+                                start,
+                                rows,
+                                total_tokens=end,
+                                runtime=runtime,
+                                stream=stream,
+                            )
                         )
-                        src_chunk_ptr = src.ptr + start * row_nbytes
-                        dst_chunk_ptr = dst.ptr + start * row_nbytes
+                        src_chunk_ptr = src.ptr + scratch_row_start * row_nbytes
+                        dst_chunk_ptr = dst.ptr + scratch_row_start * row_nbytes
                         src_f32_chunk_ptr = None if src_f32 is None else int(src_f32.ptr)
                         dst_f32_chunk_ptr = None if dst_f32 is None else int(dst_f32.ptr)
                         if bulk_attention_mode == "native":
@@ -11368,12 +11495,16 @@ class Qwen35GGUFResidentSession:
                                 runtime=runtime,
                             )
                 t_output0 = time.perf_counter() if stage_timings is not None else 0.0
-                final_scratch = self._bulk_prefill_scratch.for_chunk(
-                    start,
-                    rows,
-                    total_tokens=end,
-                    runtime=runtime,
-                    stream=stream,
+                final_scratch = (
+                    _prebuilt_bulk_scratch
+                    if _prebuilt_bulk_scratch is not None
+                    else self._bulk_prefill_scratch.for_chunk(
+                        start,
+                        rows,
+                        total_tokens=end,
+                        runtime=runtime,
+                        stream=stream,
+                    )
                 )
                 output_norm_weight_ptr = self.runner.weights.root("output_norm").allocation().tensor.ptr
                 if capture_pre_output_norm_hidden:
@@ -11385,7 +11516,7 @@ class Qwen35GGUFResidentSession:
                         ).reshape(rows, self.runner.hidden_size)
                     else:
                         pre_output_norm_hidden_host = _copy_bf16_rows_to_host_f32(
-                            src.ptr + start * row_nbytes,
+                            src.ptr + scratch_row_start * row_nbytes,
                             rows,
                             self.runner.hidden_size,
                             runtime=runtime,
@@ -11413,7 +11544,7 @@ class Qwen35GGUFResidentSession:
                     )
                 else:
                     gguf_rmsnorm_bf16_f32_weight(
-                        src.ptr + start * row_nbytes,
+                        src.ptr + scratch_row_start * row_nbytes,
                         output_norm_weight_ptr,
                         final_scratch.norm.ptr,
                         rows=rows,
@@ -11423,7 +11554,7 @@ class Qwen35GGUFResidentSession:
                         runtime=runtime,
                     )
                     gguf_rmsnorm_bf16_f32_weight_out_f32(
-                        src.ptr + start * row_nbytes,
+                        src.ptr + scratch_row_start * row_nbytes,
                         output_norm_weight_ptr,
                         hidden_seed_buf.ptr,
                         rows=rows,
@@ -11467,12 +11598,52 @@ class Qwen35GGUFResidentSession:
                 direct_top1 = False
                 if row_lm_head:
                     direct_top1 = _gguf_verify_lm_head_q6_top1_dp4a_enabled()
-                    token_host = self._sample_target_block_rows_from_hidden(
-                        hidden_seed_buf.ptr if direct_top1 else final_scratch.norm.ptr,
-                        rows,
-                        activation_dtype=GGUF_ACTIVATION_F32 if direct_top1 else GGUF_ACTIVATION_BF16,
-                        stream=stream,
-                    )
+                    sample_hidden_ptr = hidden_seed_buf.ptr if direct_top1 else final_scratch.norm.ptr
+                    sample_dtype = GGUF_ACTIVATION_F32 if direct_top1 else GGUF_ACTIVATION_BF16
+                    if _enqueue_only:
+                        self._enqueue_target_block_rows_from_hidden(
+                            sample_hidden_ptr,
+                            rows,
+                            activation_dtype=sample_dtype,
+                            stream=stream,
+                        )
+                        if self._verify_lm_out_indices_i32 is None:
+                            raise RuntimeError("GGUF verifier int32 top1 rows are closed")
+                        if _target_top1_i64_ptr is not None:
+                            copy_i32_to_i64(
+                                self._verify_lm_out_indices_i32.ptr,
+                                int(_target_top1_i64_ptr),
+                                rows,
+                                stream=stream,
+                                library=self._runtime_state_library,
+                                runtime=runtime,
+                            )
+                        elif int(_target_top1_i32_ptr) != int(self._verify_lm_out_indices_i32.ptr):
+                            runtime.memcpy_async(
+                                int(_target_top1_i32_ptr),
+                                self._verify_lm_out_indices_i32.ptr,
+                                rows * DType.INT32.itemsize,
+                                HipMemcpyKind.DEVICE_TO_DEVICE,
+                                stream,
+                            )
+                        if self._lm_out_index is None:
+                            raise RuntimeError("GGUF resident lm-head token buffer is closed")
+                        copy_i32_to_i64(
+                            self._verify_lm_out_indices_i32.ptr + (rows - 1) * DType.INT32.itemsize,
+                            self._lm_out_index.ptr,
+                            1,
+                            stream=stream,
+                            library=self._runtime_state_library,
+                            runtime=runtime,
+                        )
+                        token_host = None
+                    else:
+                        token_host = self._sample_target_block_rows_from_hidden(
+                            sample_hidden_ptr,
+                            rows,
+                            activation_dtype=sample_dtype,
+                            stream=stream,
+                        )
                 else:
                     token_host = np.empty((rows,), dtype=np.int64)
                     for row in range(rows):
@@ -11489,11 +11660,13 @@ class Qwen35GGUFResidentSession:
                             library=self._runtime_state_library,
                             runtime=runtime,
                         )
-                runtime.device_synchronize()
-                if not row_lm_head:
-                    copy_device_to_host(host_array_ptr(token_host), token_ids_buf, token_host.nbytes, runtime=runtime)
+                if not _enqueue_only:
+                    runtime.device_synchronize()
+                    if not row_lm_head:
+                        copy_device_to_host(host_array_ptr(token_host), token_ids_buf, token_host.nbytes, runtime=runtime)
                 if (
-                    capture_lm_head_logits
+                    not _enqueue_only
+                    and capture_lm_head_logits
                     and row_lm_head
                     and not direct_top1
                     and self._verify_logits_buf is not None
@@ -11509,15 +11682,38 @@ class Qwen35GGUFResidentSession:
                     "target_block_lm_head_sample",
                     (time.perf_counter() - t_sample0) * 1000 if stage_timings is not None else 0.0,
                 )
-            t_hidden0 = time.perf_counter() if stage_timings is not None else 0.0
-            hidden_host = np.empty((rows, self.runner.hidden_size), dtype=np.float32)
-            copy_device_to_host(host_array_ptr(hidden_host), hidden_seed_buf, hidden_host.nbytes, runtime=runtime)
-            add_verify_stage(
-                "target_block_hidden_readback",
-                (time.perf_counter() - t_hidden0) * 1000 if stage_timings is not None else 0.0,
-            )
+            if _enqueue_only:
+                hidden_host = None
+            else:
+                t_hidden0 = time.perf_counter() if stage_timings is not None else 0.0
+                hidden_host = np.empty((rows, self.runner.hidden_size), dtype=np.float32)
+                copy_device_to_host(host_array_ptr(hidden_host), hidden_seed_buf, hidden_host.nbytes, runtime=runtime)
+                add_verify_stage(
+                    "target_block_hidden_readback",
+                    (time.perf_counter() - t_hidden0) * 1000 if stage_timings is not None else 0.0,
+                )
         finally:
             pass
+        if _enqueue_only:
+            if _dynamic_cursor_advance:
+                for _ in range(rows):
+                    advance_decode_position_i64(
+                        self.scratch.position_buf.ptr,
+                        self.scratch.context_buf.ptr,
+                        stream=stream,
+                        library=self._runtime_state_library,
+                        runtime=runtime,
+                    )
+            else:
+                set_decode_position_i64(
+                    self.scratch.position_buf.ptr,
+                    self.scratch.context_buf.ptr,
+                    end,
+                    stream=stream,
+                    library=self._runtime_state_library,
+                    runtime=runtime,
+                )
+            return None
         t_cursor0 = time.perf_counter() if stage_timings is not None else 0.0
         self._verify_hidden_seed_rows_populated = rows
         self._position = end
@@ -15147,6 +15343,126 @@ class Qwen35GGUFResidentSession:
             token_id=token_id,
             logit=logit,
             logits=logits,
+        )
+
+    def capture_native_spec_target_graph(
+        self,
+        input_token_ids: list[int] | tuple[int, ...],
+        *,
+        cycle_id: int = 0,
+        transaction_id: int = 0,
+        request_id: int = 0,
+        bulk_attention_mode: str = "bulk",
+        use_wmma_prefill: bool = False,
+        capture_linear_state_rows: bool = False,
+        defer_linear_state_commit: bool = False,
+        device_accept_commit: bool = False,
+    ):
+        """Capture a reusable B1/B2 N1 or N2 native target graph."""
+
+        from hipengine.runtime.gguf_native_spec_cycle import (
+            capture_qwen35_gguf_native_b2_target_graph,
+        )
+
+        return capture_qwen35_gguf_native_b2_target_graph(
+            self,
+            input_token_ids,
+            cycle_id=int(cycle_id),
+            transaction_id=int(transaction_id),
+            request_id=int(request_id),
+            bulk_attention_mode=bulk_attention_mode,
+            use_wmma_prefill=bool(use_wmma_prefill),
+            capture_linear_state_rows=bool(capture_linear_state_rows),
+            defer_linear_state_commit=bool(defer_linear_state_commit),
+            device_accept_commit=bool(device_accept_commit),
+        )
+
+    def verify_target_block_native_cycle(
+        self,
+        input_token_ids: list[int] | tuple[int, ...],
+        *,
+        fallback: bool = True,
+        cycle_id: int = 0,
+        transaction_id: int = 0,
+        request_id: int = 0,
+        bulk_attention_mode: str = "bulk",
+        use_wmma_prefill: bool = False,
+        capture_linear_state_rows: bool = False,
+        capture_lm_head_logits: bool = False,
+        record_stage_timings: bool = False,
+        sync_stage_timings: bool = False,
+        defer_linear_state_commit: bool = False,
+        device_accept_commit: bool = False,
+        remaining_decode: int | None = None,
+    ):
+        """Run reusable B1/B2 N1/N2 submission or preserve the eager fallback."""
+
+        from hipengine.runtime.gguf_native_spec_cycle import (
+            verify_qwen35_gguf_native_b2_target,
+        )
+
+        return verify_qwen35_gguf_native_b2_target(
+            self,
+            input_token_ids,
+            fallback=bool(fallback),
+            cycle_id=int(cycle_id),
+            transaction_id=int(transaction_id),
+            request_id=int(request_id),
+            bulk_attention_mode=bulk_attention_mode,
+            use_wmma_prefill=bool(use_wmma_prefill),
+            capture_linear_state_rows=bool(capture_linear_state_rows),
+            capture_lm_head_logits=bool(capture_lm_head_logits),
+            record_stage_timings=bool(record_stage_timings),
+            sync_stage_timings=bool(sync_stage_timings),
+            defer_linear_state_commit=bool(defer_linear_state_commit),
+            device_accept_commit=bool(device_accept_commit),
+            remaining_decode=(None if remaining_decode is None else int(remaining_decode)),
+        )
+
+    def run_native_spec_mtp_cycle(
+        self,
+        resident_draft,
+        resident_context,
+        *,
+        root_token: int,
+        root_position: int,
+        candidate_budget: int,
+        remaining_decode: int,
+        rope_cos: np.ndarray,
+        rope_sin: np.ndarray,
+        draft_key_cache: DeviceBuffer,
+        draft_value_cache: DeviceBuffer,
+        draft_cache_len: int,
+        cycle_id: int = 0,
+        transaction_id: int = 0,
+        request_id: int = 0,
+        record_stage_timings: bool = False,
+        native_proposal_graph: bool = False,
+    ):
+        """Run one complete strict GGUF MTP cycle through the N3 adapter."""
+
+        from hipengine.runtime.gguf_native_spec_cycle import (
+            run_qwen35_gguf_native_mtp_cycle,
+        )
+
+        return run_qwen35_gguf_native_mtp_cycle(
+            self,
+            resident_draft,
+            resident_context,
+            root_token=int(root_token),
+            root_position=int(root_position),
+            candidate_budget=int(candidate_budget),
+            remaining_decode=int(remaining_decode),
+            rope_cos=rope_cos,
+            rope_sin=rope_sin,
+            draft_key_cache=draft_key_cache,
+            draft_value_cache=draft_value_cache,
+            draft_cache_len=int(draft_cache_len),
+            cycle_id=int(cycle_id),
+            transaction_id=int(transaction_id),
+            request_id=int(request_id),
+            record_stage_timings=bool(record_stage_timings),
+            native_proposal_graph=bool(native_proposal_graph),
         )
 
     def capture_decode_graph(

@@ -1,0 +1,243 @@
+{
+  "schema": "hipengine.gguf_llama_compat_native_cycle_n3.v1",
+  "date": "2026-07-19",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "speed_claim_eligible": false,
+  "purpose": "Clean correctness, public-adapter ownership, and profiler evidence for N3 complete GGUF MTP cycle ownership. The faster retained N1 route remains the topline.",
+  "scope": "Explicit accuracy-traded gfx1100 GGUF llama-compat B2 natural24 route with reusable B1/B2 N2 target graphs and one N3 scheduler-facing cycle adapter",
+  "provenance": {
+    "hipengine_commit": "69b7080850dc1f5c38f577e17468331349cacbd2",
+    "git_branch": "main",
+    "tracked_dirty": false,
+    "untracked_dirty": false,
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "hip_visible_devices": "0",
+    "rocm_version": "HIP version: 7.2.53211-3d9ef42",
+    "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_quant": "UD-Q4_K_M GGUF",
+    "model_sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "model_size_bytes": 22663387424,
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompt_count": 10,
+    "train_prompts": 6,
+    "heldout_prompts": 4,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "route": "llama-compat-native-cycle-n3",
+    "candidate_budget": 2,
+    "cycles_cap": 24,
+    "max_output_tokens": 24,
+    "total_output_tokens": 240,
+    "reasoning": "off",
+    "greedy": true,
+    "record_cycle_stage_timings": true,
+    "true_ar_path": "state_bound_graph",
+    "apple_to_apple_ok": true,
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-mtp-w7900-hipcc-version.txt PYTHONPATH=. python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route llama-compat-native-cycle-n3 --budgets 2 --cycles 24 --max-output-tokens 24 --record-cycle-stage-timings --require-cached-build --output /tmp/w7900-llama-compat-native-cycle-n3-69b70808-full.json"
+  },
+  "implementation": {
+    "completed_stages": [
+      "PROPOSE",
+      "VERIFY",
+      "ACCEPT",
+      "COMMIT",
+      "UPDATE_CURSORS"
+    ],
+    "public_boundary": "Qwen35GGUFResidentSession.run_native_spec_mtp_cycle()",
+    "owned_transaction": [
+      "strict device-chained B1/B2 NextN proposal",
+      "N2 target verify and strict-chain acceptance",
+      "selected FP32 hidden and Conv/GDN state commit",
+      "verifier-row MTP reseed",
+      "speculative MTP-KV rollback and accepted-row repair",
+      "target and MTP cursor accounting",
+      "bounded draft/output result payload"
+    ],
+    "shape_buckets": [
+      "B1/2 rows",
+      "B2/3 rows"
+    ],
+    "fallback": "Unsupported backend, graph, budget, or output-tail shapes raise before target mutation and preserve the prior exact loop.",
+    "submission_limit": "N3 is one public Python adapter call, but proposal leaves still submit through the retained Python device-chain method. Only target mutation is collapsed into the native graph; proposal submission collapse remains open.",
+    "default_scope": "Explicit accuracy-traded gfx1100 route only; N1/N2, exact/default MTP, gfx1151, and serving policies are unchanged."
+  },
+  "correctness": {
+    "real_model_oracle": {
+      "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 uv run --extra dev pytest -q tests/test_gguf_native_spec_cycle.py::test_native_b2_target_graph_matches_eager_hidden_state_and_kv",
+      "passed": true,
+      "selected_hidden_byte_exact": true,
+      "resident_conv_gdn_buffers": 60,
+      "resident_conv_gdn_byte_exact": true,
+      "full_kv_buffers": 20,
+      "full_kv_byte_exact": true,
+      "cursor_exact": true,
+      "note": "The N3 trajectory smoke additionally matched N2 through all eight cycles, including reject, accepted-row reseed, and MTP-KV cursor transitions."
+    },
+    "full_suite_semantics": {
+      "reference": "benchmarks/results/2026-07-19-w7900-llama-compat-native-cycle-n2.json",
+      "reference_raw_category": "/tmp/hipengine-ar-mtp-suite-full-1784418270/mtp-category.json",
+      "exact_output_ids": true,
+      "exact_cycle_semantics": true,
+      "compared_fields_per_cycle": 33,
+      "prompts": 10,
+      "output_ids": 240,
+      "cycles": 96,
+      "accepted_drafts": 144,
+      "generated_drafts": 179,
+      "draft_acceptance": 0.8044692737430168,
+      "accepted_per_output": 0.6,
+      "differences": 0
+    },
+    "public_api_smoke": {
+      "passed": true,
+      "output_tokens": 8,
+      "native_complete_cycles": 4,
+      "cycle_modes": [
+        "B2 reject",
+        "B2 reject",
+        "B2 full-accept",
+        "B1 full-accept"
+      ],
+      "ownership_telemetry_nonzero": true
+    },
+    "focused_tests": {
+      "command": "python3 -m pytest tests/test_gguf_native_spec_cycle.py tests/test_gguf_mtp_bench_metrics.py tests/test_gguf_ar_mtp_suite.py tests/test_generation_qwen35_gguf_sampling.py -q -k 'not native_b2_target_graph_matches_eager_hidden_state_and_kv'",
+      "passed": 200,
+      "failed": 0
+    }
+  },
+  "clean_result": {
+    "true_ar_tok_s": 92.23282223847256,
+    "n3_mtp_tok_s": 118.59230928874263,
+    "n3_vs_true_ar": 1.2858,
+    "cycle_wall_ms_total": 2039.3303999999998,
+    "cycle_wall_ms_per_output": 8.497209999999999,
+    "draft_acceptance": 0.8044692737430168,
+    "accepted_per_output": 0.6,
+    "train": {
+      "true_ar_tok_s": 91.8212251502301,
+      "n3_mtp_tok_s": 119.66195497718942,
+      "n3_vs_true_ar": 1.3032058195848364,
+      "cycle_wall_ms_per_output": 8.43009375
+    },
+    "heldout": {
+      "true_ar_tok_s": 92.85718353899728,
+      "n3_mtp_tok_s": 117.02322179557505,
+      "n3_vs_true_ar": 1.2602495287446314,
+      "cycle_wall_ms_per_output": 8.597884375
+    },
+    "categories": {
+      "code": {
+        "true_ar_tok_s": 92.47019017225202,
+        "n3_mtp_tok_s": 122.99965406347295,
+        "n3_vs_true_ar": 1.3301546566991063
+      },
+      "general_en": {
+        "true_ar_tok_s": 90.47858812955053,
+        "n3_mtp_tok_s": 120.89766516384154,
+        "n3_vs_true_ar": 1.3362019419526736
+      },
+      "general_ja": {
+        "true_ar_tok_s": 93.34610670669542,
+        "n3_mtp_tok_s": 116.02610587382159,
+        "n3_vs_true_ar": 1.242966739238407
+      },
+      "mixed_ja_en": {
+        "true_ar_tok_s": 92.44804495749295,
+        "n3_mtp_tok_s": 110.97752705077222,
+        "n3_vs_true_ar": 1.200431302812288
+      }
+    }
+  },
+  "comparison": {
+    "clean_n2_artifact": "benchmarks/results/2026-07-19-w7900-llama-compat-native-cycle-n2.json",
+    "clean_n2_tok_s": 117.55716217010522,
+    "clean_n2_cycle_wall_ms_per_output": 8.529279583333333,
+    "clean_n3_tok_s": 118.59230928874263,
+    "clean_n3_cycle_wall_ms_per_output": 8.497209999999999,
+    "n3_vs_n2_tok_s_delta_pct": 0.8805478964689195,
+    "n3_vs_n2_cycle_wall_delta_pct": -0.37599404521806434,
+    "retained_n1_artifact": "benchmarks/results/2026-07-19-w7900-llama-compat-reusable-native-cycle.json",
+    "retained_n1_tok_s": 122.6674026710827,
+    "n3_vs_n1_tok_s_delta_pct": -3.3220670639509065,
+    "llamacpp_floor_tok_s": 115.44422456595375,
+    "n3_vs_llamacpp_floor_delta_pct": 2.7269313251702565,
+    "decision": "Retain N3 as exact public-adapter ownership infrastructure. Do not replace the faster N1 performance topline."
+  },
+  "profiler": {
+    "tool": "rocprofv3 --kernel-trace",
+    "protocol": "Non-profiled require-cached warm build followed by one final eight-cycle N3 child. The trace was captured from the implementation-equivalent precommit tree later committed byte-for-byte as 69b70808.",
+    "trace_rows": 10916,
+    "trajectory": {
+      "cycles": 8,
+      "accepted_drafts": 14,
+      "generated_drafts": 16,
+      "visible_output_ids": 22
+    },
+    "kernel_evidence": {
+      "gguf_q6_k_x8_gemv_q8_1_dp4a_top1_stage1_kernel": {
+        "count": 16,
+        "average_duration_ns": 606262.0,
+        "min_duration_ns": 587485,
+        "max_duration_ns": 629604
+      },
+      "dflash_accept_chain_i32_kernel": {
+        "count": 8,
+        "average_duration_ns": 7165.0,
+        "min_duration_ns": 6400,
+        "max_duration_ns": 7400
+      },
+      "linear_state_pair_commit_chunked_i32_kernel": {
+        "count": 8,
+        "average_duration_ns": 202081.5,
+        "min_duration_ns": 200521,
+        "max_duration_ns": 205361
+      },
+      "dflash_commit_chain_i32_kernel": {
+        "count": 8,
+        "average_duration_ns": 12750.125,
+        "min_duration_ns": 12440,
+        "max_duration_ns": 13040
+      },
+      "unpack_verify_chain_dynamic_metadata_i64_kernel": {
+        "count": 8,
+        "average_duration_ns": 2310.0,
+        "min_duration_ns": 2080,
+        "max_duration_ns": 2760
+      }
+    }
+  },
+  "source_artifacts": {
+    "clean_wrapper": {
+      "path": "/tmp/w7900-llama-compat-native-cycle-n3-69b70808-full.json",
+      "bytes": 10595,
+      "sha256": "4a15be4b11ffdd2dbf60399500ed7119df8d97726d179ef9f30663a02e955738"
+    },
+    "clean_category": {
+      "path": "/tmp/hipengine-ar-mtp-suite-full-1784421442/mtp-category.json",
+      "bytes": 87931,
+      "sha256": "41adc9238c903fa7f3b9e54cf080cd329181271ac6115f091cb3e1f15ea4e471"
+    },
+    "clean_true_ar": {
+      "path": "/tmp/hipengine-ar-mtp-suite-full-1784421442/true-ar-baseline.json",
+      "bytes": 20414,
+      "sha256": "a7195a2769222a09947d8ae2246733da7aa2adceeca986c4cb5eb32a5152889f"
+    },
+    "kernel_trace": {
+      "path": "/tmp/w7900-native-n3-rocprof/epyc/3786139_kernel_trace.csv",
+      "bytes": 2843686,
+      "sha256": "8707df8993bc5cc6e59b3917ec1b830934ca8c4f0a7e1a8a0ac886a52a0f3a8d"
+    }
+  }
+}

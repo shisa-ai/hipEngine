@@ -143,6 +143,16 @@ __global__ void set_i64_vector_kernel(int64_t* out, const int64_t* values, int64
   }
 }
 
+__global__ void copy_i32_to_i64_kernel(
+    const int32_t* input,
+    int64_t* output,
+    int64_t rows) {
+  const int64_t row = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (row < rows) {
+    output[row] = static_cast<int64_t>(input[row]);
+  }
+}
+
 __global__ void set_decode_positions_i64_kernel(
     int64_t* positions,
     int64_t* contexts,
@@ -572,6 +582,28 @@ extern "C" int hipengine_set_i64_vector(
       stream,
       out,
       values,
+      rows);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_copy_i32_to_i64(
+    const int32_t* input,
+    int64_t* output,
+    int64_t rows,
+    hipStream_t stream) {
+  if (!valid_vector_shape(rows)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  const int blocks = static_cast<int>((rows + threads - 1) / threads);
+  hipLaunchKernelGGL(
+      copy_i32_to_i64_kernel,
+      dim3(static_cast<unsigned int>(blocks)),
+      dim3(threads),
+      0,
+      stream,
+      input,
+      output,
       rows);
   return static_cast<int>(hipGetLastError());
 }

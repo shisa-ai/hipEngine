@@ -1,6 +1,6 @@
 # MTP-GGUF Plan
 
-Last updated: 2026-07-12
+Last updated: 2026-07-19
 Branch: `mtp-gguf`
 
 This document is the working plan for making hipEngine's **GGUF** inference path
@@ -263,6 +263,12 @@ separately per backend/provider.
 
 ### Target Architecture: Native Speculative Cycle Launcher
 
+> [`NATIVE_SPEC_CYCLE.md`](NATIVE_SPEC_CYCLE.md) is the canonical glossary and
+> current qualified scorecard for `N0`/`N1`/`N1R`/`N2`/`N3`/`N3P`/`N4`/`N5`.
+> It distinguishes API ownership, native submission ownership, and device-state
+> ownership, and explains why milestone numbers are not a monotonic speed rank.
+> The delivery order below preserves the detailed design history.
+
 Build a native C/C++ launcher (working name `NativeSpecCycleLauncher`) that
 reduces the hot loop to one host-language boundary per speculative cycle, with
 a later option to run multiple cycles per call. It is an orchestration layer,
@@ -319,22 +325,77 @@ accept/commit metadata, and scheduler-facing results.
 
 ### Delivery Order
 
-1. **N0 — ABI and oracle:** define the versioned control/result blocks, lifecycle,
-   error/status contract, pointer ownership, and a CPU/fake-launcher test. Add a
-   mechanical validator for every nested shape/pointer/count field.
-2. **N1 — Native target block:** move one fixed B2/B3 target verifier bucket to a
-   C++ launcher while leaving proposal and commit unchanged. Prove identical
-   target rows, logits/top-1, hidden seeds, recurrent state, and KV.
-3. **N2 — Device accept/commit:** consume target top-1 on device and produce the
+1. **N0 — ABI and oracle (landed 2026-07-13):** the public
+   `hipengine.speculative.native_cycle` contract and
+   `hipengine/speculative/native_cycle_abi.h` define matching version-1 control
+   and result layouts, lifecycle/error enums, borrowed-pointer ownership,
+   bounded capacities, explicit dtypes, stage-dependent validation, and a
+   CPU/fake launcher. The target-only adapter consumes the existing
+   `TargetVerifyBuffers` plus `KVLiveSpans`; the Python chain remains unchanged.
+2. **N1 — Native target block (landed diagnostic 2026-07-19):** the initial
+   gfx1100 single-request B2 adapter proved byte-exact target/state/KV behavior
+   and one-call graph submission, but rejected per-cycle position-bound capture.
+3. **N1R — Reusable B1/B2 target graphs (retained 2026-07-19):** one
+   fixed-address graph per two-/three-row bucket now consumes live device token,
+   position, context, and cursor metadata. The real 35B oracle is byte-exact at
+   two B2 positions plus B1. Two clean full-suite runs reach **123.33/122.67
+   tok/s**, preserve all prior IDs/cycles and 80.45% acceptance, beat every true
+   AR split/category, and clear llama.cpp's 115.44 tok/s floor. The measured
+   profiler windows contain zero recaptures and only 5.00 ms host residual.
+4. **N2 — Device accept/commit:** consume target top-1 on device and produce the
    accepted count, commit rows, reseed row, recurrent/KV transaction, and output
    summary without intermediate host reads.
-4. **N3 — Complete native cycle:** include proposal/NextN and cursor update so
-   one Python call owns a complete cycle. Measure host calls, HIP submissions,
-   GPU kernel wall, and complete cycle wall separately.
-5. **N4 — Shared provider adapters:** migrate GGUF MTP first, then PARO MTP and
-   DFlash without duplicating the launcher. Add gfx1100 and gfx1151 gates for
-   each provider before default promotion.
-6. **N5 — Multi-cycle option:** only after N3/N4 are exact, allow the native
+5. **N3 — Complete GGUF cycle adapter (landed 2026-07-19):** one
+   scheduler-facing GGUF call now owns strict device-chained proposal/NextN,
+   the N2 target verify/accept/selected-state transaction, MTP-KV rollback and
+   accepted-row repair, reseed, and target/MTP cursor accounting. The public
+   single-request MTP path uses it when the registered B1/B2 target graph admits
+   the shape, with the prior exact loop retained as the unsupported-shape/
+   backend fallback. The clean committed W7900 gate matches N2 for all 240 IDs /
+   96 cycles at **118.592 tok/s / 1.2858x true AR**, versus clean N2 **117.557
+   tok/s** (+0.88%, aggregate-neutral); cycle wall is **8.497 ms/output** versus
+   N2's 8.529 ms. It preserves separate proposal, target, MTP-KV, complete-call,
+   and cycle-wall measurements. Proposal leaves still submit through the
+   retained Python device-chain implementation; moving those submissions into
+   the native launcher remains the next launch-collapse step rather than being
+   implied by this ownership milestone.
+6. **N3P — Reusable NextN proposal graph (retained 2026-07-19):** strict
+   gfx1100 B1/B2 proposal now stages the changing hidden seed, root embedding,
+   RoPE, position/context, and K/V row indices into fixed runner buffers and
+   replays the existing device chain through one proposal-only NativeSpecCycle
+   graph submission. Runner-owned 1,023-row FP32 draft K/V keeps capture
+   addresses stable across requests, and independent B1/B2 graph buckets
+   coexist. The N3 scheduler-facing adapter therefore owns two native graph
+   submissions per cycle—one proposal and one target—rather than dispatching
+   proposal leaves from Python. It is not yet one combined native submission.
+   A same-source W7900 full-suite pair is exact for all 240 IDs / 96 cycles and
+   aggregate-neutral: N3P **117.589 tok/s / 8.653 ms-output** versus N3
+   **116.793 / 8.634**. Excluding the one B1+B2 capture (**14.477 ms total**),
+   proposal wall improves **0.964 -> 0.953 ms/output**. Matched cached eight-cycle
+   tracing replaces 542 `hipLaunchKernel` and 80 synchronous `hipMemcpy` host
+   calls with eight proposal `hipGraphLaunch` calls while preserving all 22 IDs.
+   The clean detached confirmation at `2395ad33` is **118.183 tok/s / 1.2820x
+   true AR / 8.610 ms-output**, matches clean N3 across 97 non-timing fields for
+   every cycle, and remains diagnostic because N1 is faster.
+7. **N4 — Shared provider adapters (first gfx1100 target slice landed
+   diagnostic 2026-07-19):** the registered `w4_paro/native_v1_target_graph`
+   adapter lets both PARO MTP and DFlash submit their existing single-request
+   B1/B2/B3/B4/B5/B8 chain target+accept graph through NativeSpecCycle ABI v1.
+   The control binds real verify-chain `KVLiveSpans`, fixed INT32 metadata and
+   accept buffers, and either resident FP16 verifier rows or BF16 sidecar hidden
+   taps. It accurately declares only `VERIFY|ACCEPT`; provider linear/KV/hidden
+   commit remains the unchanged exact path. Graph-off, tree, inactive, unsupported,
+   pre-launch failure, and unregistered-backend cases retain direct fallback.
+   Admission is explicit/default-off via
+   `HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH=1`. A clean detached `7bf3439e`
+   B3 pair matches all 265 compared non-timing/non-route leaves while recording
+   four native `VERIFY|ACCEPT` replays, but both arms inherit the available
+   packed artifact's token-2 true-AR mismatch and zero acceptance. The blocked
+   packet is
+   [`benchmarks/results/2026-07-19-w7900-paro-mtp-native-target-graph-n4-blocked.json`](../benchmarks/results/2026-07-19-w7900-paro-mtp-native-target-graph-n4-blocked.json);
+   complete PARO/DFlash cycle ownership and independent gfx1100/gfx1151
+   promotion gates remain open.
+8. **N5 — Multi-cycle option:** only after N3/N4 are exact, allow the native
    launcher to continue until EOS, cancellation/deadline, output-buffer limit,
    or an explicit scheduler yield point.
 
@@ -346,11 +407,14 @@ accept/commit metadata, and scheduler-facing results.
   against their own current outputs.
 - Standard new-kernel gate: KL `<= 0.05`, top-1 `>= 90%`, plus a profiler trace
   proving the expected registered kernels ran.
-- gfx1100 primary break-even: `llama-compat` complete cycle
-  `<= 27.36 ms/cycle` at current density, then beat the current **93.30 tok/s**
-  graph AR control. Exact/default requires its own same-protocol break-even.
-- Stretch target: close the current **12.578 -> 8.556 ms/output** gap to
-  llama.cpp MTP without reducing acceptance or changing the route contract.
+- gfx1100 `llama-compat` break-even is closed: the conservative clean run is
+  **122.67 tok/s / 8.186 ms-output**, **1.2679x** its 96.75 tok/s graph AR and
+  **6.26% above** the refreshed 115.44 tok/s llama.cpp floor. Exact/default
+  still requires its own same-protocol break-even.
+- Preserve the cross-engine closure on the complete category+heldout suite:
+  both clean repetitions must remain at least **115.44 transition-normalized
+  tok/s / at most 8.662 ms-output** without reducing acceptance or changing the
+  explicit accuracy-traded route contract.
 - gfx1151 must be non-regressive on its full suite even if host submission is a
   smaller fraction there. A gfx1100 win does not transfer automatically.
 - Retain as default only when exact/non-regressive for the provider/backend;
@@ -1281,20 +1345,115 @@ is now answered by the M1 required/optional table.)
       resolves through the four-axis registry on gfx1100/gfx1151 to the native
       bounded top-k sampler wrapper; runtime integration still waits on native
       NextN execution.
-- [ ] Define and validate the provider-neutral native speculative cycle
+- [x] Define and validate the provider-neutral native speculative cycle
       control/result ABI, raw-pointer ownership, shape buckets, and exact
-      Python fallback contract (N0).
-- [ ] Implement a native C++ target-block launcher plus device-resident
-      accept/commit summary for one GGUF B2/B3 bucket (N1/N2), then close the
-      full natural-prompt correctness and profiler gates.
-- [ ] Extend the complete native cycle to shared GGUF MTP, PARO MTP, and DFlash
-      provider adapters; validate gfx1100 and gfx1151 independently before any
-      default promotion (N3/N4).
-- [ ] Profile best exact row with `rocprofv3 --kernel-trace` after cached build
-      warmup.
+      Python fallback contract (N0). Landed 2026-07-13 with a **496-byte**
+      control block, **64-byte** result, C-header/ctypes field-order guard,
+      exact `TargetVerifyBuffers` + `KVLiveSpans` adapter, and CPU/fake-launcher
+      oracle tests. This is contract infrastructure only: no native math is
+      enabled and no performance result is claimed.
+- [x] Implement the N1 native C++ target-block launcher for one GGUF B2 bucket.
+      The one-shot recapture version remains the rejected ownership control.
+- [x] Reuse fixed-address B1/B2 target graphs with live device metadata (N1R).
+      The clean W7900 full-suite gate is **123.332/122.667 tok/s**, byte-exact
+      against all prior llama-compat IDs/cycles, and the slower run is **6.26%**
+      above llama.cpp. The real-model oracle covers repeated B2 plus B1 hidden,
+      Conv/GDN, K/V, and cursor state; cached rocprof sees zero measured capture
+      plus the dynamic metadata/cursor/widening leaves.
+- [x] Implement N2 device-resident accept/commit summary for the admitted GGUF
+      B1/B2 bucket. The clean W7900 full-suite packet preserves every 240-ID / 96-cycle
+      record at **117.557 tok/s / 8.529 ms-output**.
+- [x] Implement N3 complete single-request GGUF cycle ownership, including
+      proposal invocation, N2 target transaction, MTP-KV rollback/repair,
+      reseed, and cursor accounting. Clean W7900 N3 is exact at **118.592
+      tok/s / 1.2858x true AR**; proposal leaves remained Python-submitted.
+- [x] Collapse strict B1/B2 NextN proposal host submissions through reusable
+      proposal-only NativeSpecCycle graphs (N3P). The full-suite semantic gate,
+      proposal K/V byte oracle, aggregate-neutral same-source pair, and cached
+      host-submission trace pass. Keep N1/N2/N3 and unsupported-shape fallbacks.
+- [x] Add the first shared gfx1100 PARO MTP/DFlash `VERIFY|ACCEPT` target-graph
+      adapter through the provider-neutral NativeSpecCycle ABI, retaining
+      provider commit and exact unsupported-shape fallback (N4 target slice).
+- [ ] Extend N4 through complete PARO MTP and DFlash proposal/commit ownership;
+      validate gfx1100 and gfx1151 independently before any default promotion.
+- [x] Profile N1 and reusable N1R after cached build warmup. The retained N1R
+      windows average **18.671 ms host / 13.670 ms kernels / 5.001 ms residual**
+      across six graph replays, with zero capture charged in every measured
+      step. Each replay contains one dynamic-metadata unpack, three cursor
+      advances, and two top-1 widening leaves, all zero-scratch. Repeat the
+      complete-cycle attribution after N3.
 
 ## Decision Log
 
+- 2026-07-19: Retained N3P reusable gfx1100 B1/B2 NextN proposal graphs as a
+  submission-ownership milestone, not a new topline. A five-cycle mixed
+  accept/reject/B1 oracle matches N3 candidate IDs and every committed/speculative
+  FP32 K/V prefix hash. The full category+heldout gate preserves all **240 IDs /
+  96 cycles**, **80.45% draft acceptance**, and **60.00% accepted-output**. A
+  same-source pair measures N3P **117.589 tok/s / 8.653 ms-output / 1.2743x AR**
+  versus N3 **116.793 / 8.634 / 1.2691x**; aggregate wall is neutral, while
+  capture-excluded proposal wall improves **0.964 -> 0.953 ms/output**. For the
+  same eight cycles and 22 IDs, cached HIP API tracing changes
+  `hipLaunchKernel` **3273 -> 2731**, synchronous `hipMemcpy` **1204 -> 1124**,
+  and `hipGraphLaunch` **8 -> 16**. A detached clean `2395ad33` publication is
+  **118.183 tok/s / 1.2820x AR / 8.610 ms-output** and matches all 97 common
+  non-timing fields across 96 cycles. N1 remains the **122.667 tok/s** canonical
+  llama-compat row. N3P retains exact N3/unsupported-shape fallback and does not
+  claim one combined proposal+target native submission or gfx1151 admission.
+- 2026-07-19: Retained reusable gfx1100 B1/B2 native target graphs at clean
+  `0d7b86e7`. Two full category+heldout processes measure **123.33/122.67
+  tok/s** versus **96.91/96.75 true AR**, with **8.143/8.186 ms/output** and
+  unchanged **80.45% draft acceptance / 60.00% accepted-output**. Both preserve
+  every prior 240-ID/96-cycle trajectory; the real 35B repeated-B2+B1 target,
+  hidden, 60 Conv/GDN-state, 20 K/V-buffer, and cursor oracle is byte-exact.
+  The conservative run is **6.26% above** llama.cpp's 115.44 tok/s floor. A
+  cached six-step trace records zero measured captures and cuts profiler host
+  residual from **38.41 to 5.00 ms/step**. N2 device accept/commit is now the
+  next ownership milestone; exact/default and gfx1151 remain unchanged.
+  Artifact:
+  `benchmarks/results/2026-07-19-w7900-llama-compat-reusable-native-cycle.json`.
+- 2026-07-19: Established the clean current W7900 `llama-compat` baseline at
+  `637be21d`: graph AR **92.26 tok/s**, B2 **54.88 tok/s (0.5948x)**,
+  80.45% draft acceptance, and 18.259 ms/output. Target verification is
+  **41.319/45.649 ms per cycle**. A cached rocprof trace measures **52.42 ms
+  host / 14.01 ms kernels / 38.41 ms residual** and **977 launches/step**;
+  accept/commit is below 0.22 ms/output. A same-environment child comparison
+  makes current source faster than the July source (43.22 vs 48.20 ms), so the
+  old 79.70 tok/s difference is not attributed to a source regression. N2 is
+  useful state ownership but cannot close parity alone; reusable N3 submission
+  is required. Artifact:
+  `benchmarks/results/2026-07-19-w7900-hipengine-llama-compat-current-baseline.json`.
+- 2026-07-19: Refreshed the W7900 llama.cpp B2 natural25 external floor on all
+  ten category prompts at clean hipEngine `8d67f072`: transition-normalized
+  **78.05 AR -> 115.44 MTP tok/s (1.4791x)**, 81.56% draft acceptance, and
+  58.40% accepted/output. The prior 116.88 tok/s row is within 1.23%.
+  hipEngine `llama-compat` remains 79.70 tok/s and therefore needs **+44.85%**
+  to meet the current floor. Artifact:
+  `benchmarks/results/2026-07-19-w7900-llamacpp-mtp-natural25-refresh.json`.
+- 2026-07-19: Landed N1 as a correctness-accepted, performance-rejected gfx1100
+  diagnostic under registry key
+  `(hip_gfx1100, speculative_cycle, w4_gguf,
+  native_v1_b2_target_graph)`. One host-only C++ call launches and synchronizes
+  the captured three-row target graph; unsupported backends/configurations fall
+  back before capture, while launch-time failures never silently re-execute a
+  potentially mutating verifier. W7900 target/state/KV parity is byte-exact.
+  Collapsed submission cuts target forward host wall **47.64%**, but the
+  required position-bound recapture costs **32.755 ms/cycle** and regresses the
+  same-tree three-cycle diagnostic **84.35 -> 52.48 tok/s (-37.78%)** with
+  identical 6/6 acceptance. Keep `--native-spec-target-cycle` default-off;
+  proceed through N2, then make position/cursor metadata dynamic and reuse the
+  complete-cycle graph/launcher in N3. Artifact:
+  `benchmarks/results/2026-07-19-gfx1100-native-spec-cycle-n1-b2.json`.
+- 2026-07-13: Landed N0 as provider-neutral contract infrastructure in
+  `hipengine.speculative.native_cycle`. Version 1 carries explicit live counts
+  and capacities, chain/tree and stage masks, metadata/hidden/KV dtypes,
+  `KVLiveSpans`, proposal/verifier/accept/commit/cursor pointers, cancellation
+  and deadline fields, and terminal/yield status. All pointers are borrowed;
+  launchers may mutate only output/state destinations and never retain/free
+  caller storage. The C header and ctypes mirrors are **496/64 bytes** and are
+  field-order tested. Selected N1 as the existing single-request B2
+  (`rows=3`) GGUF target verifier, leaving proposal and commit on the exact
+  Python fallback.
 - 2026-07-12: W7900 graph AR corrected the production denominator to
   `93.30 tok/s`; hipEngine `llama-compat` MTP is `79.70 tok/s (0.8542x)`, while
   transition-normalized llama.cpp on the same W7900 reaches

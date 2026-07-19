@@ -538,8 +538,37 @@ Current blockers that keep project-wide c>N incomplete:
   retained performance still needs routed-lane profiling and c-aware thresholds
   for grouped GEMV versus compact/WMMA execution.
 - GGUF MTP serving is phase-serial at the slot level: draft, target verify, then
-  commit. Target verify is packed up to four slots; draft-side batching, rows>=16
-  verifier tuning, streaming, and exact/default MTP serving remain open.
+  commit. Target verify is packed up to four slots. The canonical milestone
+  glossary, ownership distinctions, and qualified scorecard are in
+  [`NATIVE_SPEC_CYCLE.md`](NATIVE_SPEC_CYCLE.md). The provider-neutral
+  `NativeSpecCycleLauncher` N0 ABI plus gfx1100 reusable B1/B2 N1 target graphs
+  are landed. N1 is byte-exact across dynamic positions and cached-session
+  resets; the retained accuracy-traded llama-compat suite reaches 122.667 tok/s
+  versus llama.cpp's 115.444 tok/s W7900 floor. N2 device acceptance, selected
+  hidden/Conv/GDN commit, cursor update, and bounded summary readback are also
+  landed behind the explicit llama-compat native-cycle route. N2 keeps verifier
+  hidden rows graph-owned so prompt-prefill scratch growth cannot invalidate a
+  captured pointer, and matches all 240 IDs / 96 cycle semantics in the full
+  category+heldout suite. Its first same-tree aggregate screen is neutral within
+  run variance, while state/KV commit and host-seed sub-windows shrink. N3 now
+  joins strict device-chained proposal, the N2 target transaction, MTP-KV
+  rollback/accepted-row repair, reseed, and cursor/result accounting behind one
+  GGUF scheduler-facing call. The public single-request GGUF MTP loop uses that
+  adapter when the registered B1/B2 graph admits the shape and preserves the
+  exact prior loop otherwise. The clean committed N3 gate matches all 240 IDs /
+  96 cycle semantics at 118.592 tok/s / 1.2858x true AR versus clean N2's
+  117.557 tok/s (+0.88%, aggregate-neutral); the faster N1 topline remains
+  unchanged. N3P additionally replays strict B1/B2 NextN proposal through one
+  native graph launch and is profiler-proven to replace 542 `hipLaunchKernel`
+  plus 80 synchronous `hipMemcpy` host calls over eight matched cycles, while
+  remaining aggregate-neutral and diagnostic. N4 has started with one shared
+  gfx1100 `w4_paro` target+accept graph adapter used by both PARO MTP and
+  DFlash; it declares only `VERIFY|ACCEPT`, preserves provider commit and exact
+  fallback, and remains default-off because the currently available packed
+  PARO+MTP local artifact already mismatches true AR on the unchanged control.
+  Complete PARO/DFlash proposal+commit ownership, independent gfx1151 admission,
+  draft-side batching, rows>=16 verifier tuning, streaming, and exact/default
+  MTP serving remain open.
 - Exact all-choice generated-token accounting and batch timing ownership are
   available for non-streaming responses. Benchmark coverage still needs
   aggregate tok/s, per-request tok/s, latency, memory, active occupancy,

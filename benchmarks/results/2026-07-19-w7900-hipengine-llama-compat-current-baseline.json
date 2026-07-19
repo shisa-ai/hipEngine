@@ -1,0 +1,200 @@
+{
+  "schema": "hipengine.gguf_llama_compat_current_baseline.v1",
+  "date": "2026-07-19",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "speed_claim_eligible": false,
+  "purpose": "Establish the current clean W7900 hipEngine llama-compat full-suite baseline and attribute the gap to the refreshed llama.cpp bundled-MTP floor before reusable native-cycle work.",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "hip_visible_devices": "0",
+    "vram_bytes": 48301604864
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "UD-Q4_K_M GGUF",
+    "kv_dtype": "bf16",
+    "size_bytes": 22663387424,
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+  },
+  "software": {
+    "hipengine_commit": "637be21d8101a3690c32b2f1dcc1e01a4947f7e3",
+    "hipengine_dirty": false,
+    "runtime_hip_version": "7.2.53211-3d9ef42",
+    "compiler_version_file_sha256": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394",
+    "cached_builds_required": true
+  },
+  "protocol": {
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompt_count": 10,
+    "scope": "full",
+    "route": "llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit",
+    "candidate_budget": 2,
+    "cycles_cap": 24,
+    "max_output_tokens": 24,
+    "output_tokens_per_prompt": 24,
+    "output_tokens_total": 240,
+    "reasoning": "off",
+    "greedy": true,
+    "record_cycle_stage_timings": true,
+    "true_ar_path": "state_bound_graph",
+    "apple_to_apple_ok": true
+  },
+  "results": {
+    "true_ar": {
+      "decode_tok_s_weighted": 92.26245726842282,
+      "decode_ms": 2601.274744956754,
+      "output_tokens": 240
+    },
+    "llama_compat_b2": {
+      "decode_tok_s_weighted": 54.87997292588002,
+      "mtp_vs_true_ar_ratio": 0.5948245315666755,
+      "cycle_wall_ms_total": 4382.2793,
+      "cycle_wall_ms_per_output": 18.259497083333333,
+      "cycles": 96,
+      "total_drafts": 179,
+      "total_accepted": 144,
+      "draft_acceptance": 0.8044692737430168,
+      "accepted_per_output": 0.6,
+      "target_verify_rows": 275,
+      "target_verify_direct_commit_rows": 92,
+      "target_verify_discarded_rows": 35
+    },
+    "splits": {
+      "train": {
+        "prompts": 6,
+        "true_ar_tok_s_weighted": 91.67692824023872,
+        "decode_tok_s_weighted": 57.13696205947005,
+        "draft_acceptance": 0.8725490196078431,
+        "accepted_per_output": 0.6180555555555556,
+        "cycle_wall_ms_per_output": 17.53715763888889
+      },
+      "heldout": {
+        "prompts": 4,
+        "true_ar_tok_s_weighted": 93.15491033980366,
+        "decode_tok_s_weighted": 51.81011592513438,
+        "draft_acceptance": 0.7142857142857143,
+        "accepted_per_output": 0.5729166666666666,
+        "cycle_wall_ms_per_output": 19.343006250000002
+      }
+    },
+    "categories": {
+      "code": {
+        "true_ar_tok_s_weighted": 92.78141001348105,
+        "decode_tok_s_weighted": 60.34054696191632,
+        "draft_acceptance": 0.9393939393939394,
+        "accepted_per_output": 0.6458333333333334,
+        "cycle_wall_ms_per_output": 16.60700416666667
+      },
+      "general_en": {
+        "true_ar_tok_s_weighted": 89.74561045515905,
+        "decode_tok_s_weighted": 53.09793249925331,
+        "draft_acceptance": 0.7567567567567568,
+        "accepted_per_output": 0.5833333333333334,
+        "cycle_wall_ms_per_output": 18.869185416666667
+      },
+      "general_ja": {
+        "true_ar_tok_s_weighted": 93.27208242657663,
+        "decode_tok_s_weighted": 50.63451375043514,
+        "draft_acceptance": 0.6923076923076923,
+        "accepted_per_output": 0.5625,
+        "cycle_wall_ms_per_output": 19.790339583333335
+      },
+      "mixed_ja_en": {
+        "true_ar_tok_s_weighted": 92.82246911078352,
+        "decode_tok_s_weighted": 51.599032518140284,
+        "draft_acceptance": 0.7297297297297297,
+        "accepted_per_output": 0.5625,
+        "cycle_wall_ms_per_output": 19.423952083333333
+      }
+    }
+  },
+  "cycle_attribution": {
+    "complete_cycle_ms": 45.64874270833334,
+    "target_block_verify_ms": 41.3188,
+    "target_share_of_complete_cycle": 0.905146506750494,
+    "target_linear_attention_layers_ms": 30.14148958333333,
+    "target_full_attention_layers_ms": 9.491512499999999,
+    "draft_initial_ms": 2.41316875,
+    "draft_device_chain_drain_ms": 1.6831145833333334,
+    "mtp_device_kv_commit_ms": 0.5272104166666667,
+    "accept_policy_and_seed_ms": 0.0054468749999999995
+  },
+  "profiler": {
+    "mode": "block-verify",
+    "rows": 3,
+    "steps": 6,
+    "warmup": 2,
+    "avg_host_ms": 52.41850332822651,
+    "avg_kernel_ms": 14.013380666666668,
+    "kernel_time_share": 0.2673365276936606,
+    "host_residual_ms_per_step": 38.40512266155984,
+    "kernel_calls_per_step": 977.0,
+    "top_buckets_ms_per_step": {
+      "moe_selected_gemv": 4.722048000000004,
+      "dense_q8_0_gemv": 3.9344131666666624,
+      "gdn_linear_attn": 1.1317948333333345,
+      "moe_router": 1.1007884999999993,
+      "lm_head": 0.9433933333333334
+    },
+    "summary_sha256": "13aac9b45d9d7f31f83b4422ef7d6cc3c8acec8895cd28a21bc966207b9b2bb0",
+    "child_sha256": "cefe5ad61ab6cdbc998be48f4721457dcd6675fe2c4f595f38cd3dad6c5b95ad",
+    "kernel_trace_sha256": "c0cb7b1b3d593994a2949f09925ee8392eb5a8fc5081d2c97210647ac4562d75",
+    "marker_trace_sha256": "b3c66b1dc1dab7cf2cbf086c7b589b1cd9a751f54fc07081a604530217cc7bc7"
+  },
+  "historical_comparison": {
+    "prior_artifact": "benchmarks/results/2026-07-12-w7900-gfx1100-gguf-graph-ar-refresh.json",
+    "prior_commit": "202bd2f0a5972c6c7dfce7d029ae1a1aa4ed2f24",
+    "prior_llama_compat_tok_s": 79.70112079701121,
+    "current_llama_compat_tok_s": 54.87997292588002,
+    "tok_s_delta_pct": -31.14278396955992,
+    "prior_cycle_wall_ms_per_output": 12.57813375,
+    "current_cycle_wall_ms_per_output": 18.259497083333333,
+    "cycle_wall_delta_pct": 45.16857147693578,
+    "causal_status": "unresolved measurement/runtime-state drift; do not attribute to source",
+    "same_environment_child_control": {
+      "current_commit_avg_host_ms": 43.21907431585714,
+      "prior_commit_avg_host_ms": 48.20363945327699,
+      "current_vs_prior_delta_pct": -10.340640652769196,
+      "current_child_sha256": "c1fff7c2eb4830fb267e054a46697b1ba6e01d46f0c9e8d8f4bd5c972ac17612",
+      "prior_child_sha256": "f1e79cbb3839a0d1e4ee745e1b629f6e16687cb294b77486b189c04f7ebbd895"
+    }
+  },
+  "cross_engine_gate": {
+    "llamacpp_artifact": "benchmarks/results/2026-07-19-w7900-llamacpp-mtp-natural25-refresh.json",
+    "llamacpp_mtp_transition_tok_s": 115.44422456595375,
+    "llamacpp_ms_per_transition": 8.662191666666669,
+    "hipengine_relative_to_llamacpp": 0.4753808441454503,
+    "required_hipengine_improvement_pct": 110.35765582805736,
+    "required_cycle_wall_reduction_pct": 52.56062296166289,
+    "verdict": "Current hipEngine llama-compat does not meet the llama.cpp MTP floor. Device accept/commit alone is too small; reusable native target/complete-cycle submission is required."
+  },
+  "commands": {
+    "full_suite": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-mtp-w7900-hipcc-version.txt PYTHONPATH=. python3 scripts/gguf_ar_mtp_suite.py --scope full --mtp-route llama-compat-device-chain-dp4a-q6top1dp4a-x8q6-denseq8all-x8top1-f32ssm-routerrow-draftdenseq8-draftonly-directcommit --budgets 2 --cycles 24 --max-output-tokens 24 --record-cycle-stage-timings --require-cached-build --output /tmp/w7900-hipengine-llama-compat-natural24-637be21d.json",
+    "profiler": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 PYTHONPATH=. python3 scripts/gguf_mtp_verifier_rocprof.py --mode block-verify --block-rows 3 --block-verify-mode bulk --direct-state-commit --verify-dp4a --selected-down-x8-repack q6 --verify-dense-q8-dp4a-all --verify-dense-q8-dp4a-f32 --record-stage-timings --steps 6 --warmup 2 --max-seq 512 --require-cached --compiler-version-file /tmp/hipengine-mtp-w7900-hipcc-version.txt --raw-root /tmp/w7900-current-b2-verifier-rocprof-637be21d --out /tmp/w7900-current-b2-verifier-rocprof-637be21d/summary.json"
+  },
+  "source_artifacts": {
+    "full_suite": {
+      "path": "/tmp/w7900-hipengine-llama-compat-natural24-637be21d.json",
+      "sha256": "6af188577c7036c4175ec93be01b85a336675a201a0c6b87efdd0e2a5d310cf7",
+      "size_bytes": 11398
+    },
+    "mtp_category": {
+      "path": "/tmp/hipengine-ar-mtp-suite-full-1784405919/mtp-category.json",
+      "sha256": "3bd2d19a66c752e0d83f123faa2d3e96cb6bc42ffeceb5435227450ccd8089b6"
+    },
+    "true_ar": {
+      "path": "/tmp/hipengine-ar-mtp-suite-full-1784405919/true-ar-baseline.json",
+      "sha256": "b39396d72bedfaddcc4c9e99ae63e290c9cda78d15bb3de7bcafea093aaac3f2"
+    }
+  },
+  "notes": [
+    "The category suite is a diagnostic contract, not a promoted speed claim; performance_claim and speed_claim_eligible remain false.",
+    "The profiler inflates host wall to 52.42 ms but preserves the decisive split: only 14.01 ms is kernel execution and 38.41 ms is host/profiler residual across 977 launches.",
+    "The current and prior source-child controls were run sequentially with the same model, hardware, flags, cache contract, and six measured steps; current source is faster, so the historical full-suite delta is not a valid source-regression attribution.",
+    "N1 already proved byte-exact target graph submission at 15.49 ms, but per-cycle capture is rejected. A reusable dynamic graph/native launcher is the measured next lever."
+  ]
+}
