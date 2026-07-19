@@ -46,7 +46,21 @@ def test_workload_plan_covers_each_concurrent_context_and_mixed_rows() -> None:
     assert [row.prompt_length for row in workloads["context_32k_c2"]] == [32_768, 32_768]
     assert [row.prompt_length for row in workloads["mixed_1k_4k_32k"]] == [1_024, 4_096, 32_768]
     assert [row.prompt_length for row in workloads["context_64k_c2"]] == [65_536, 65_536]
-    assert all(row.max_tokens == 32 for rows in workloads.values() for row in rows)
+    assert all(
+        row.max_tokens == 32
+        for name, rows in workloads.items()
+        if not name.startswith("graph_")
+        for row in rows
+    )
+    assert [row.max_tokens for row in workloads["graph_seed_32k_c1"]] == [129]
+    assert [row.max_tokens for row in workloads["graph_regrow_32k_c1"]] == [129]
+
+    gfx1100 = gate.build_workload_specs(
+        decode_tokens=32,
+        longer_context_tokens=65_536,
+        backend="hip_gfx1100",
+    )
+    assert [row.max_tokens for row in gfx1100["graph_seed_32k_c1"]] == [32]
 
 
 def _passing_packet_inputs():

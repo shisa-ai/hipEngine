@@ -165886,3 +165886,19 @@ claim is retained. A separate harness audit also found that gfx1151 c1 graph
 admission requires 128 remaining transitions, so the gate's d32 graph rows
 cannot satisfy its eventual complete-packet graph lifecycle check; repair that
 mechanical graph-row budget before the clean mixed rerun.
+
+## 2026-07-19 — Align long-pressure graph rows with backend admission
+
+Repaired the gate's graph-only seed/regrow workload sizing. The ordinary long-
+context and pressure rows retain the requested 32 outputs. Graph rows now read
+`GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS` from the backend package and request at
+least one seed plus that many remaining transitions: **129 outputs on gfx1151**
+and the unchanged 32 on gfx1100. This makes the required capture/replay/close-
+invalidation evidence mechanically reachable without weakening the graph gate
+or changing pool page math (32K+d129 still requires 129 pages).
+
+RED was the existing workload-plan contract observing 32 instead of 129 on
+both gfx11 targets. GREEN is five focused tests plus `py_compile`, `--help`, and
+`git diff --check`. The artifact now records ordinary and graph decode lengths
+separately. No GPU rerun or performance claim is attached to this host-only
+harness correction.

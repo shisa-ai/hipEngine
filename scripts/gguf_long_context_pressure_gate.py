@@ -31,6 +31,7 @@ from typing import Any, Mapping, Sequence
 
 from hipengine import LLM, SamplingParams
 from hipengine.benchmark.provenance import collect_artifact_provenance
+from hipengine.kernels.backends import backend_package_capability
 from hipengine.server import ServerConfig, create_app
 from scripts.gguf_live_server_bench import _artifact_backend_scope, _memory_snapshot
 from scripts.gguf_production_load_gate import (
@@ -163,14 +164,31 @@ def build_pool_plan(
     )
 
 
+def _graph_output_tokens(backend: str, decode_tokens: int) -> int:
+    resolved = str(backend)
+    if resolved not in _SUPPORTED_BACKENDS:
+        raise ValueError(f"unsupported backend {resolved!r}")
+    minimum = backend_package_capability(
+        resolved,
+        "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
+    )
+    if minimum is None or int(minimum) <= 0:
+        raise RuntimeError(f"{resolved} does not declare GGUF c1 graph admission")
+    # Prefill emits the seed output before c1 decode starts. Keep at least the
+    # backend's admitted number of remaining graph transitions.
+    return max(int(decode_tokens), int(minimum) + 1)
+
+
 def build_workload_specs(
     *,
     decode_tokens: int,
     longer_context_tokens: int | None,
+    backend: str = "hip_gfx1151",
 ) -> dict[str, tuple[WorkloadRequest, ...]]:
     decode = int(decode_tokens)
-    if decode < 25:
-        raise ValueError("decode-tokens must be at least 25 to exercise graph capture/replay")
+    if decode <= 0:
+        raise ValueError("decode-tokens must be positive")
+    graph_decode = _graph_output_tokens(str(backend), decode)
     workloads: dict[str, tuple[WorkloadRequest, ...]] = {
         "context_1k_c2": (
             WorkloadRequest("context-1k-a", 9707, 1_024, decode),
@@ -198,10 +216,10 @@ def build_workload_specs(
             WorkloadRequest(f"context-{longer // 1024}k-b", 9708, longer, decode),
         )
     workloads["graph_seed_32k_c1"] = (
-        WorkloadRequest("graph-seed-32k", 9709, 32_768, decode),
+        WorkloadRequest("graph-seed-32k", 9709, 32_768, graph_decode),
     )
     workloads["graph_regrow_32k_c1"] = (
-        WorkloadRequest("graph-regrow-32k", 9710, 32_768, decode),
+        WorkloadRequest("graph-regrow-32k", 9710, 32_768, graph_decode),
     )
     return workloads
 
@@ -588,6 +606,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     all_workloads = build_workload_specs(
         decode_tokens=int(args.decode_tokens),
         longer_context_tokens=longer,
+        backend=str(args.backend),
     )
     workload_names = _parse_workload_names(
         args.workloads,
@@ -905,6 +924,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "backend": str(args.backend),
             "quant": str(args.quant),
             "kv_dtype": "bf16",
+            "decode_tokens": int(args.decode_tokens),
+            "graph_decode_tokens": _graph_output_tokens(
+                str(args.backend), int(args.decode_tokens)
+            ),
             "max_sequence_length": max_sequence_length,
             "max_active_requests": int(args.max_active_requests),
             "prefill_decode_policy": "protect_ttft",
