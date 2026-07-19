@@ -309,7 +309,7 @@ _NUMPY_STORAGE_DTYPES = {
 _IQ4_NL_KVALUES = (-127, -104, -83, -65, -49, -35, -22, -10, 1, 13, 25, 38, 53, 69, 89, 113)
 _MXFP4_KVALUES = (0, 1, 2, 3, 4, 6, 8, 12, 0, -1, -2, -3, -4, -6, -8, -12)
 
-# IQ3_XXS codebook from llama.cpp ggml-common.h (GGML_TABLE iq3xxs_grid).
+# IQ3_XXS codebook from llama.cpp@1ebf790cd ggml-common.h (GGML_TABLE iq3xxs_grid).
 # Each u32 packs four unsigned grid magnitudes (little-endian byte order).
 _IQ3_XXS_GRID = np.array(
     [

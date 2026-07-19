@@ -18,8 +18,11 @@ model rows against a committed llama.cpp-generated fixture.
 
 from __future__ import annotations
 
+import hashlib
+
 import numpy as np
 
+import hipengine.quant.gguf as gguf_quant
 from hipengine.quant.gguf import (
     GGMLQuantizationType,
     dequantization_supported,
@@ -54,6 +57,18 @@ def test_ud_q3_k_m_expert_types_have_dequant_support() -> None:
         GGMLQuantizationType.Q3_K,
     ):
         assert dequantization_supported(qtype), qtype.name
+
+
+def test_iq3_xxs_tables_match_llamacpp_1ebf790cd() -> None:
+    grid_bytes = np.asarray(gguf_quant._IQ3_XXS_GRID, dtype="<u4").tobytes()
+    sign_bytes = np.asarray(gguf_quant._KSIGNS_IQ2XS, dtype=np.uint8).tobytes()
+
+    assert hashlib.sha256(grid_bytes).hexdigest() == (
+        "46e35f5a997efdee6c99ce57854c8a0d4f0ff8ca57e5e8a60c0793ea580acf5d"
+    )
+    assert hashlib.sha256(sign_bytes).hexdigest() == (
+        "a76742a603f8beca5212ecce0f1f02f11a4887fd2f7c8b15aca0ea3eb3380c31"
+    )
 
 
 def _iq3_xxs_block(d: float, grid_idx: np.ndarray, aux32: np.ndarray) -> np.ndarray:

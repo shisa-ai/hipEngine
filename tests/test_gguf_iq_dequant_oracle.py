@@ -20,6 +20,7 @@ import numpy as np
 from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data, quant_layout
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "gguf" / "q3km_iq_dequant_oracle.json"
+LLAMACPP_ORACLE_COMMIT = "1ebf790cda38d827559548f67b0469189690cc8c"
 
 
 def _load() -> dict:
@@ -31,6 +32,18 @@ def test_oracle_fixture_covers_ud_q3_k_m_expert_types() -> None:
     fixture = _load()
     seen = {entry["ggml_type"] for entry in fixture["tensors"]}
     assert seen == {"IQ3_XXS", "IQ4_XS", "Q3_K"}
+
+
+def test_oracle_fixture_records_pinned_provenance_and_exact_contract() -> None:
+    fixture = _load()
+
+    assert fixture["schema_version"] == 1
+    assert fixture["oracle"]["commit"] == LLAMACPP_ORACLE_COMMIT
+    assert fixture["oracle"]["sources"] == [
+        "ggml/src/ggml-quants.c",
+        "ggml/src/ggml-common.h",
+    ]
+    assert fixture["comparison"] == {"kind": "bit_exact", "atol": 0.0, "rtol": 0.0}
 
 
 def test_real_rows_match_llamacpp_oracle_bit_exact() -> None:
