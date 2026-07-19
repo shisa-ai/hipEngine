@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-07-20
 
+- [diagnostic profile] Qwen3.6-35B-A3B GGUF / gguf_ud_q3_k_m / GPU1 selected decode16: post-stabilization graph trace records `8.88584 ms/token` summed kernels and `708` launches/token; current top-8 weighted IQ4 down is `1.00359 ms/token` (11.29%, 37 launches/token), invalidating the old per-slot local64 premise and redirecting D1B to exact output tiling; `benchmarks/results/2026-07-20-gpu1-q3-decode-d0-profile.json`.
 - [rejected] Qwen3.6-35B-A3B GGUF / gguf_ud_q3_k_m / GPU1 512/128: exact hierarchical top-k moves graph decode `99.201 -> 98.057 tok/s` (-1.15%) and prefill `19.590 -> 19.352 tok/s` (-1.21%) despite a `16.1005 -> 13.36 us` (-17.02%) fused-leaf win; candidate code removed and current iterative selector retained; `benchmarks/results/2026-07-20-gpu1-q3-hierarchical-topk-rejected.json`.
 - [verified sub-window/default promotion] Qwen3.6-35B-A3B GGUF / gguf_ud_q3_k_m / GPU1 512/128: grouped scalar moves paired prefill `16.648 -> 16.685 tok/s` (+0.22%, flat within spread) while raw-IQ kernel time falls `994.668 -> 613.995 ms` (-38.27%) and total kernel sum falls `4396.145 -> 4078.667 ms` (-7.22%) due to expert-major reuse on the device-only compact scheduler; mixed-64 parity is exact, scratch/copies remain zero, and grouped is now default-on with direct rollback; `benchmarks/results/2026-07-20-gpu1-hipengine-qwen36-35b-a3b-ud-q3km-grouped-prefill.json`.
 

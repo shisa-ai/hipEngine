@@ -1593,6 +1593,41 @@ Task #15 can use this off/on pair to separate top-k from the raw-IQ D0 profile.
 Evidence:
 `benchmarks/results/2026-07-20-gpu1-q3-hierarchical-topk-rejected.json`.
 
+### 12.8 D0 decode attribution supersedes the local64 premise
+
+The clean post-#11/#20 GPU1 selected decode trace contains 708 launches/token
+and 8.88584 ms/token of summed kernels:
+
+| Family | ms/token | Kernel share | Launches/token |
+| --- | ---: | ---: | ---: |
+| Dense Q8 projections | 2.8393 | 31.95% | 200 |
+| Full attention decode | 1.4207 | 15.99% | 10 |
+| Dense Q6 / lm-head | 1.0562 | 11.89% | 1 |
+| IQ4_XS weighted selected down | **1.0036** | **11.29%** | **37** |
+| IQ3_XXS selected dual gate/up | 0.7185 | 8.09% | 39 |
+| RMSNorm/add-RMSNorm | 0.4958 | 5.58% | 91 |
+| GDN decode | 0.3719 | 4.19% | 30 |
+| Router/shared gate/top-k | 0.3342 | 3.76% | 40 |
+
+This branch has moved beyond the source review's D1A geometry. Task #19's
+production IQ4 down kernel already consumes all top-8 slots in one launch per
+layer, rounds every slot projection to BF16, applies routing FMAs in slot
+order, and writes one selected-sum row. Its grid is 2,048 one-output local128
+blocks, not 4,096 `(slot, four-output)` local256 blocks. The family runs at
+24.48/25.12/27.124/60.6 us min/median/mean/max, VGPR 80, and zero scratch.
+All 37 expected layers are present; per-layer means span only 25.86-27.92 us.
+
+The old local64 D1A target would affect only the residual unweighted IQ4
+selected-single path, which now appears twice/token for blk.39 gate/up and
+costs just 0.0219 ms/token. It is therefore skipped. D1B is reframed against
+the actual default: use one wave per slot and a four-output tile to reduce the
+weighted-composite grid from 2,048 to 512 while preserving the existing wave32
+reduction, per-slot BF16, and routing-order contract. Its measured Amdahl ceiling
+is 1.0036 ms/token, not the review's isolated 3 ms extrapolation.
+
+Evidence:
+`benchmarks/results/2026-07-20-gpu1-q3-decode-d0-profile.json`.
+
 ---
 
 ## Summary
