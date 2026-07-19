@@ -890,7 +890,13 @@ def make_qwen35_gguf_bringup_generator(
 
 
 for _model in ("qwen3_5_gguf", "qwen3_5_moe_gguf"):
-    for _quant in ("gguf_q4_k_m", "gguf_q8_0", "gguf_q4_1", "gguf_ud_q4_k_xl"):
+    for _quant in (
+        "gguf_q4_k_m",
+        "gguf_q8_0",
+        "gguf_q4_1",
+        "gguf_ud_q4_k_xl",
+        "gguf_ud_q3_k_m",
+    ):
         register_text_generator(
             model=_model,
             backend="hip_gfx1100",

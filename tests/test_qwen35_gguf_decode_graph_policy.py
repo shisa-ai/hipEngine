@@ -45,6 +45,22 @@ def _roles() -> tuple[Qwen35GGUFDecodeGraphWeightRole, ...]:
     )
 
 
+def _iq_roles() -> tuple[Qwen35GGUFDecodeGraphWeightRole, ...]:
+    return (
+        Qwen35GGUFDecodeGraphWeightRole("root.lm_head", "gguf_q6_k", 2),
+        Qwen35GGUFDecodeGraphWeightRole("layers.0.attn_qkv", "gguf_q8_0", 2),
+        Qwen35GGUFDecodeGraphWeightRole("layers.0.ffn_gate_inp", "bf16", 2),
+        Qwen35GGUFDecodeGraphWeightRole("layers.0.ffn_gate_shexp", "gguf_q8_0", 2),
+        Qwen35GGUFDecodeGraphWeightRole("layers.0.ffn_up_shexp", "gguf_q8_0", 2),
+        Qwen35GGUFDecodeGraphWeightRole("layers.0.ffn_gate_exps", "gguf_iq3_xxs", 3),
+        Qwen35GGUFDecodeGraphWeightRole("layers.0.ffn_up_exps", "gguf_iq3_xxs", 3),
+        Qwen35GGUFDecodeGraphWeightRole("layers.0.ffn_down_exps", "gguf_iq4_xs", 3),
+        Qwen35GGUFDecodeGraphWeightRole("layers.39.ffn_gate_exps", "gguf_iq4_xs", 3),
+        Qwen35GGUFDecodeGraphWeightRole("layers.39.ffn_up_exps", "gguf_iq4_xs", 3),
+        Qwen35GGUFDecodeGraphWeightRole("layers.39.ffn_down_exps", "gguf_q6_k", 3),
+    )
+
+
 def test_decode_graph_bucket_key_tracks_replay_budget_and_active_p9_groups() -> None:
     key = build_qwen35_gguf_decode_graph_bucket_key(
         position=512,
@@ -70,6 +86,28 @@ def test_decode_graph_bucket_key_tracks_replay_budget_and_active_p9_groups() -> 
         "paged_full_attention_decode",
         "moe_q4_k_selected_dual",
         "moe_q5_k_selected",
+        "moe_q6_k_selected",
+        "dense_q8_0_single",
+        "dense_q8_0_dual",
+        "dense_q6_k_lm_head",
+    }
+
+
+def test_decode_graph_iq_roles_require_fused_single_and_weighted_groups() -> None:
+    groups = qwen35_gguf_decode_graph_active_symbol_groups(
+        is_moe=True,
+        layer_types=(LINEAR_ATTENTION, FULL_ATTENTION),
+        weight_roles=_iq_roles(),
+        use_gemv_decode=True,
+    )
+
+    assert set(groups) == {
+        "gdn_decode",
+        "paged_kv_write",
+        "paged_full_attention_decode",
+        "moe_iq3_xxs_selected",
+        "moe_iq4_xs_selected",
+        "moe_iq4_xs_weighted_down",
         "moe_q6_k_selected",
         "dense_q8_0_single",
         "dense_q8_0_dual",
@@ -134,6 +172,25 @@ def test_decode_graph_symbol_coverage_accepts_all_active_groups() -> None:
         "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<unsigned short>(...)",
         "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_position_tensor_kernel<unsigned short>(...)",
         "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_kernel(...)",
+    ]
+
+    coverage = SMOKE.validate_decode_graph_symbol_coverage(kernels, expected_groups=expected)
+
+    assert coverage["passed"] is True
+    assert coverage["missing_symbol_groups"] == []
+    assert set(coverage["observed_symbol_groups"]) == set(expected)
+
+
+def test_decode_graph_symbol_coverage_accepts_iq_groups() -> None:
+    expected = (
+        "moe_iq3_xxs_selected",
+        "moe_iq4_xs_selected",
+        "moe_iq4_xs_weighted_down",
+    )
+    kernels = [
+        "(anonymous namespace)::gguf_iq3_xxs_selected_dual_silu_gemv_kernel(...) ",
+        "(anonymous namespace)::gguf_iq4_xs_selected_gemv_kernel(...) ",
+        "(anonymous namespace)::gguf_iq4_xs_weighted_selected_down_kernel(...) ",
     ]
 
     coverage = SMOKE.validate_decode_graph_symbol_coverage(kernels, expected_groups=expected)

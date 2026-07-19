@@ -10,6 +10,8 @@ from hipengine.loading.gguf import GGUFReader, GGUFTensorInfo
 from hipengine.loading.qwen35_gguf import build_qwen35_gguf_tensor_map
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
+    LAYOUT_GGUF_Q6_K_T16,
+    LAYOUT_GGUF_Q8_0_T16,
     LAYOUT_RAW_GGUF,
     _spec_for_tensor,
     plan_qwen35_gguf_materialization,
@@ -94,10 +96,49 @@ def test_rank2_iq3_and_q3_are_rejected_without_model_fixture(
 
 
 @pytest.mark.skipif(not MODEL.exists(), reason=f"local GGUF fixture not found: {MODEL}")
-def test_qwen35moe_ud_q3_k_m_plan_keeps_iq_experts_raw() -> None:
+@pytest.mark.parametrize(
+    (
+        "decode_repack",
+        "q6_quant_key",
+        "q6_layout",
+        "q6_allocation",
+        "q8_quant_key",
+        "q8_layout",
+        "q8_allocation",
+    ),
+    [
+        (
+            False,
+            "gguf_q6_k",
+            LAYOUT_RAW_GGUF,
+            "raw",
+            "gguf_q8_0",
+            LAYOUT_RAW_GGUF,
+            "raw",
+        ),
+        (
+            True,
+            "gguf_q6_k_t16_v1",
+            LAYOUT_GGUF_Q6_K_T16,
+            "tiles",
+            "gguf_q8_0_t16_v1",
+            LAYOUT_GGUF_Q8_0_T16,
+            "tiles",
+        ),
+    ],
+)
+def test_qwen35moe_ud_q3_k_m_plan_keeps_iq_experts_raw(
+    decode_repack: bool,
+    q6_quant_key: str,
+    q6_layout: str,
+    q6_allocation: str,
+    q8_quant_key: str,
+    q8_layout: str,
+    q8_allocation: str,
+) -> None:
     reader = GGUFReader(MODEL)
     model_map = build_qwen35_gguf_tensor_map(reader.info)
-    plan = plan_qwen35_gguf_materialization(model_map, decode_repack=False)
+    plan = plan_qwen35_gguf_materialization(model_map, decode_repack=decode_repack)
 
     # The AR map covers blk.0-39. blk.40 is the nextn/MTP block and is
     # intentionally ignored by the base generate path.
@@ -113,7 +154,25 @@ def test_qwen35moe_ud_q3_k_m_plan_keeps_iq_experts_raw() -> None:
     )
     down_quants = Counter(layer["ffn_down_exps"].quant_key for layer in plan.layer_specs)
     assert gate_up_quants == Counter({"gguf_iq3_xxs": 78, "gguf_iq4_xs": 2})
-    assert down_quants == Counter({"gguf_iq4_xs": 37, "gguf_q6_k": 3})
+    assert down_quants == Counter({"gguf_iq4_xs": 37, q6_quant_key: 3})
+    nonexpert_quants = Counter(
+        spec.quant_key
+        for spec in plan.specs
+        if not any(
+            slot in spec.slot_path
+            for slot in ("ffn_gate_exps", "ffn_up_exps", "ffn_down_exps")
+        )
+    )
+    assert nonexpert_quants == Counter(
+        {
+            q8_quant_key: 250,
+            "f32": 221,
+            "bf16": 140,
+            "gguf_q6_k": 2 if not decode_repack else 1,
+            **({q6_quant_key: 1} if decode_repack else {}),
+        }
+    )
+    assert all(spec.quant_key != "gguf_q3_k" for spec in plan.specs)
 
     # Main body: IQ3_XXS gate/up + IQ4_XS down experts stay compressed.
     layer0 = plan.layer_specs[0]
@@ -125,11 +184,26 @@ def test_qwen35moe_ud_q3_k_m_plan_keeps_iq_experts_raw() -> None:
     assert layer0["ffn_down_exps"].layout == LAYOUT_RAW_GGUF
     assert layer0["ffn_down_exps"].quant_key == "gguf_iq4_xs"
 
+    # Router/dense/shared/GDN/full-attention roles keep their existing layouts.
+    assert layer0["ffn_gate_inp"].layout == LAYOUT_DENSE_BF16
+    assert layer0["ffn_gate_inp"].quant_key == "bf16"
+    for slot in ("ffn_gate_shexp", "ffn_up_shexp", "ffn_down_shexp", "attn_gate", "attn_qkv", "ssm_out"):
+        assert layer0[slot].layout == q8_layout
+        assert layer0[slot].quant_key == q8_quant_key
+        assert layer0[slot].allocation_names == (q8_allocation,)
+    full_attention_layer = plan.layer_specs[3]
+    for slot in ("attn_q", "attn_k", "attn_v", "attn_output"):
+        assert full_attention_layer[slot].layout == q8_layout
+        assert full_attention_layer[slot].quant_key == q8_quant_key
+    assert plan.root_specs["lm_head"].quant_key == q6_quant_key
+    assert plan.root_specs["lm_head"].layout == q6_layout
+
     # Deep-layer outlier: IQ4_XS gate/up + already-supported Q6_K down.
     layer39 = plan.layer_specs[39]
     assert layer39["ffn_gate_exps"].layout == LAYOUT_RAW_GGUF
     assert layer39["ffn_gate_exps"].quant_key == "gguf_iq4_xs"
     assert layer39["ffn_up_exps"].layout == LAYOUT_RAW_GGUF
     assert layer39["ffn_up_exps"].quant_key == "gguf_iq4_xs"
-    assert layer39["ffn_down_exps"].layout == LAYOUT_RAW_GGUF
-    assert layer39["ffn_down_exps"].quant_key == "gguf_q6_k"
+    assert layer39["ffn_down_exps"].layout == q6_layout
+    assert layer39["ffn_down_exps"].quant_key == q6_quant_key
+    assert layer39["ffn_down_exps"].allocation_names == (q6_allocation,)

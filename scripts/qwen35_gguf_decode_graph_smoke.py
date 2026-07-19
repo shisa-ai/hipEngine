@@ -18,9 +18,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
-from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
-from hipengine.loading.gguf import scan_gguf
+from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession  # noqa: E402
+from hipengine.tokenization.gguf import Qwen35GGUFTokenizer  # noqa: E402
+from hipengine.loading.gguf import scan_gguf  # noqa: E402
 
 DEFAULT_FIXTURE = REPO_ROOT / "tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json"
 
@@ -244,6 +244,12 @@ def _run_graph(
 
 
 _DECODE_GRAPH_SYMBOL_GROUP_REGEX: dict[str, tuple[str, ...]] = {
+    "moe_iq3_xxs_selected": (
+        r"gguf_iq3_xxs_selected_dual_silu_gemv_kernel",
+        r"gguf_iq3_xxs_selected_gemv_kernel",
+    ),
+    "moe_iq4_xs_selected": (r"gguf_iq4_xs_selected_gemv_kernel",),
+    "moe_iq4_xs_weighted_down": (r"gguf_iq4_xs_weighted_selected_down_kernel",),
     "moe_q4_k_selected_dual": (
         r"q4_k_t16_selected_dual.*gemv",
         r"gguf_q4_k_selected_dual_pack8_gemv_decode",
