@@ -58,6 +58,67 @@ class NativeSpecTargetGraphUnsupportedError(RuntimeError):
     """The fixed native bucket cannot safely represent this verifier invocation."""
 
 
+_COMPLETE_CYCLE_STAGES = (
+    NativeSpecCycleStage.PROPOSE
+    | NativeSpecCycleStage.VERIFY
+    | NativeSpecCycleStage.ACCEPT
+    | NativeSpecCycleStage.COMMIT
+    | NativeSpecCycleStage.UPDATE_CURSORS
+)
+
+
+@dataclass(frozen=True)
+class Qwen35GGUFNativeCompleteCycleResult:
+    """Scheduler-facing payload from one GGUF proposal/verify/commit call.
+
+    N3 keeps the N2 target graph as the state-mutating primitive, but moves the
+    strict NextN proposal, MTP-KV rollback/accepted-row repair, GGUF reseed, and
+    cursor/result accounting behind one public provider-adapter boundary.
+    """
+
+    draft_token_ids: tuple[int, ...]
+    output_token_ids: tuple[int, ...]
+    accepted_draft_tokens: int
+    start_position: int
+    end_position: int
+    draft_cache_len_before: int
+    draft_cache_len_after: int
+    target_result: Any
+    proposal_wall_ms: float
+    target_wall_ms: float
+    mtp_kv_commit_wall_ms: float
+    call_wall_ms: float
+    completed_stages: NativeSpecCycleStage = _COMPLETE_CYCLE_STAGES
+    complete_native_cycle: bool = True
+
+    def __post_init__(self) -> None:
+        drafts = len(self.draft_token_ids)
+        if drafts not in {1, 2}:
+            raise ValueError("native complete cycle requires a B1/B2 draft chain")
+        if self.accepted_draft_tokens < 0 or self.accepted_draft_tokens > drafts:
+            raise ValueError("accepted_draft_tokens is outside the draft chain")
+        if len(self.output_token_ids) != self.accepted_draft_tokens + 1:
+            raise ValueError("output_token_ids must contain accepted drafts plus one correction")
+        if self.end_position != self.start_position + len(self.output_token_ids):
+            raise ValueError("complete-cycle cursor must advance by visible output count")
+        if self.draft_cache_len_before < 0:
+            raise ValueError("draft_cache_len_before must be non-negative")
+        expected_cache_len = self.draft_cache_len_before + 1 + self.accepted_draft_tokens
+        if self.draft_cache_len_after != expected_cache_len:
+            raise ValueError("draft cache must retain the root row plus accepted draft rows")
+        if self.completed_stages != _COMPLETE_CYCLE_STAGES:
+            raise ValueError("native complete-cycle result must report every N3 stage")
+        for name in (
+            "proposal_wall_ms",
+            "target_wall_ms",
+            "mtp_kv_commit_wall_ms",
+            "call_wall_ms",
+        ):
+            value = float(getattr(self, name))
+            if not np.isfinite(value) or value < 0.0:
+                raise ValueError(f"{name} must be finite and non-negative")
+
+
 @dataclass(frozen=True)
 class Qwen35GGUFNativeAcceptCommitResult:
     """Bounded host payload after device-resident N2 accept and state commit."""
@@ -1192,6 +1253,184 @@ def capture_qwen35_gguf_native_b2_target_graph(
         raise
 
 
+def run_qwen35_gguf_native_mtp_cycle(
+    session: Any,
+    resident_draft: Any,
+    resident_context: Any,
+    *,
+    root_token: int,
+    root_position: int,
+    candidate_budget: int,
+    remaining_decode: int,
+    rope_cos: np.ndarray,
+    rope_sin: np.ndarray,
+    draft_key_cache: DeviceBuffer,
+    draft_value_cache: DeviceBuffer,
+    draft_cache_len: int,
+    cycle_id: int = 0,
+    transaction_id: int = 0,
+    request_id: int = 0,
+    record_stage_timings: bool = False,
+) -> Qwen35GGUFNativeCompleteCycleResult:
+    """Own one strict llama-compatible GGUF MTP cycle behind one call.
+
+    The proposal remains the retained device-chained NextN implementation and
+    target mutation remains the byte-exact N2 reusable graph.  This N3 adapter
+    is the single GGUF boundary that joins those providers, repairs the MTP KV
+    transaction after acceptance, advances the GGUF reseed context, and returns
+    only bounded scheduler metadata.  Unsupported shapes raise before target
+    mutation so callers can preserve the existing exact/eager fallback.
+    """
+
+    call_start = time.perf_counter()
+    budget = int(candidate_budget)
+    root = int(root_token)
+    start = int(root_position)
+    remaining = int(remaining_decode)
+    cache_before = int(draft_cache_len)
+    if budget not in {1, 2}:
+        raise NativeSpecTargetGraphUnsupportedError(
+            "native complete cycle supports only B1/B2 strict chains"
+        )
+    if root < 0:
+        raise ValueError("root_token must be non-negative")
+    if start < 0 or cache_before < 0:
+        raise ValueError("root_position and draft_cache_len must be non-negative")
+    if remaining < budget + 1:
+        raise NativeSpecTargetGraphUnsupportedError(
+            "native complete cycle requires output room for drafts plus correction"
+        )
+    if int(getattr(session, "position", -1)) != start:
+        raise ValueError("root_position must match the target session cursor")
+    if not bool(getattr(resident_draft, "_device_chain_enabled", False)):
+        raise NativeSpecTargetGraphUnsupportedError(
+            "native complete cycle requires the device-chained GGUF NextN provider"
+        )
+    pending_seed = getattr(resident_context, "pending_seed", None)
+    pending_seed_ptr = int(getattr(pending_seed, "hidden_ptr", 0))
+    if pending_seed_ptr <= 0:
+        raise RuntimeError("native complete cycle requires a resident pending MTP seed")
+    for name, cache in (
+        ("draft_key_cache", draft_key_cache),
+        ("draft_value_cache", draft_value_cache),
+    ):
+        if not isinstance(cache, DeviceBuffer) or int(cache.ptr) <= 0:
+            raise TypeError(f"{name} must be a live DeviceBuffer")
+    cos = np.asarray(rope_cos)
+    sin = np.asarray(rope_sin)
+    if cos.dtype != np.float32 or sin.dtype != np.float32 or cos.shape != sin.shape or cos.ndim != 2:
+        raise ValueError("rope_cos and rope_sin must be aligned rank-2 float32 tables")
+    if start + budget > int(cos.shape[0]):
+        raise ValueError("native complete cycle exceeds the supplied RoPE table")
+
+    proposal_start = time.perf_counter()
+    draft_tokens, draft_topk, proposed_cache_len = resident_draft.propose_chain_from_device_seed(
+        pending_seed_ptr,
+        start_token=root,
+        start_position=start,
+        draft_n_max=budget,
+        top_k=1,
+        rope_cos=rope_cos,
+        rope_sin=rope_sin,
+        dense_key_cache=draft_key_cache,
+        dense_value_cache=draft_value_cache,
+        dense_cache_len=cache_before,
+        draft_p_min=0.0,
+        record_stage_timings=bool(record_stage_timings),
+    )
+    proposal_wall_ms = (time.perf_counter() - proposal_start) * 1000.0
+    drafts = tuple(int(token) for token in draft_tokens)
+    if len(drafts) != budget or any(token < 0 for token in drafts):
+        raise RuntimeError("device NextN proposal did not fill the requested B1/B2 chain")
+    if len(draft_topk) != budget or any(tuple(int(token) for token in row) != (drafts[index],) for index, row in enumerate(draft_topk)):
+        raise RuntimeError("native complete cycle requires one top-1 row per draft depth")
+    if int(proposed_cache_len) != cache_before + budget:
+        raise RuntimeError("device NextN proposal returned an unexpected speculative KV cursor")
+
+    target_start = time.perf_counter()
+    target_result = session.verify_target_block_native_cycle(
+        [root, *drafts],
+        cycle_id=int(cycle_id),
+        transaction_id=int(transaction_id),
+        request_id=int(request_id),
+        bulk_attention_mode="bulk",
+        use_wmma_prefill=False,
+        capture_linear_state_rows=True,
+        defer_linear_state_commit=True,
+        device_accept_commit=True,
+        remaining_decode=remaining,
+        fallback=False,
+    )
+    target_wall_ms = (time.perf_counter() - target_start) * 1000.0
+    if not bool(getattr(target_result, "device_accept_commit", False)):
+        raise RuntimeError("native complete cycle target did not execute N2 accept/commit")
+    accepted = int(getattr(target_result, "accepted_draft_tokens", -1))
+    outputs = tuple(int(token) for token in getattr(target_result, "token_ids", ()))
+    end = int(getattr(target_result, "end_position", -1))
+    if accepted < 0 or accepted > budget:
+        raise RuntimeError("native target returned an invalid accepted draft count")
+    if outputs[:accepted] != drafts[:accepted] or len(outputs) != accepted + 1:
+        raise RuntimeError("native target returned an invalid strict-chain visible payload")
+    if int(getattr(target_result, "start_position", -1)) != start or end != start + len(outputs):
+        raise RuntimeError("native target cursor diverged from the complete-cycle boundary")
+
+    hidden_rows_ptr = int(getattr(target_result, "hidden_seed_rows_ptr", 0))
+    hidden_row_count = int(getattr(target_result, "hidden_seed_row_count", 0))
+    consumed_rows = accepted + 1
+    if hidden_rows_ptr <= 0 or hidden_row_count < consumed_rows:
+        raise RuntimeError("native target did not expose the consumed verifier hidden rows")
+    verify_seeds = tuple(
+        session.mtp_verify_seed(
+            row,
+            token_id=outputs[row],
+            position=start + row,
+            hidden_seed_base_ptr=hidden_rows_ptr,
+            hidden_seed_row_count=hidden_row_count,
+        )
+        for row in range(consumed_rows)
+    )
+    resident_context.record_verify_seeds(verify_seeds)
+    resident_context.accept(accepted)
+
+    # Proposal writes root+draftee rows.  Keep the root row, replace accepted
+    # draftee rows with verifier-derived target hidden rows, and drop rejects.
+    committed_cache_len = cache_before + 1
+    kv_commit_wall_ms = 0.0
+    if accepted:
+        commit_tokens = np.ascontiguousarray(outputs[:accepted], dtype=np.int64)
+        commit_positions = np.arange(start + 1, start + 1 + accepted, dtype=np.int64)
+        kv_start = time.perf_counter()
+        committed_cache_len = resident_draft.write_kv_rows_from_device_seed_base(
+            hidden_rows_ptr,
+            commit_tokens,
+            positions=commit_positions,
+            rope_cos=rope_cos,
+            rope_sin=rope_sin,
+            dense_key_cache=draft_key_cache,
+            dense_value_cache=draft_value_cache,
+            dense_cache_len=committed_cache_len,
+        )
+        kv_commit_wall_ms = (time.perf_counter() - kv_start) * 1000.0
+    expected_cache_len = cache_before + 1 + accepted
+    if int(committed_cache_len) != expected_cache_len:
+        raise RuntimeError("native complete cycle MTP KV commit returned an invalid cursor")
+
+    return Qwen35GGUFNativeCompleteCycleResult(
+        draft_token_ids=drafts,
+        output_token_ids=outputs,
+        accepted_draft_tokens=accepted,
+        start_position=start,
+        end_position=end,
+        draft_cache_len_before=cache_before,
+        draft_cache_len_after=int(committed_cache_len),
+        target_result=target_result,
+        proposal_wall_ms=proposal_wall_ms,
+        target_wall_ms=target_wall_ms,
+        mtp_kv_commit_wall_ms=kv_commit_wall_ms,
+        call_wall_ms=(time.perf_counter() - call_start) * 1000.0,
+    )
+
+
 def verify_qwen35_gguf_native_b2_target(
     session: Any,
     input_token_ids: Sequence[int],
@@ -1300,7 +1539,9 @@ __all__ = [
     "NativeSpecTargetGraphUnsupportedError",
     "Qwen35GGUFNativeAcceptCommitResult",
     "Qwen35GGUFNativeB2TargetGraph",
+    "Qwen35GGUFNativeCompleteCycleResult",
     "build_native_b2_target_batch",
     "capture_qwen35_gguf_native_b2_target_graph",
+    "run_qwen35_gguf_native_mtp_cycle",
     "verify_qwen35_gguf_native_b2_target",
 ]

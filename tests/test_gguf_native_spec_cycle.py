@@ -17,6 +17,7 @@ from hipengine.core.memory import (
 from hipengine.runtime.gguf_native_spec_cycle import (
     NativeSpecTargetGraphUnsupportedError,
     build_native_b2_target_batch,
+    run_qwen35_gguf_native_mtp_cycle,
     verify_qwen35_gguf_native_b2_target,
 )
 
@@ -89,6 +90,123 @@ def test_native_b2_target_can_make_unsupported_shape_a_hard_error() -> None:
             [1],
             fallback=False,
         )
+
+
+def test_native_complete_cycle_owns_propose_accept_mtp_kv_and_reseed() -> None:
+    calls: list[tuple[object, ...]] = []
+
+    class Draft:
+        hidden_size = 4
+        _device_chain_enabled = True
+
+        def propose_chain_from_device_seed(self, hidden_seed_ptr, **kwargs):
+            calls.append(("propose", int(hidden_seed_ptr), dict(kwargs)))
+            return [201, 202], [[201], [202]], int(kwargs["dense_cache_len"]) + 2
+
+        def write_kv_rows_from_device_seed_base(self, hidden_seed_ptr, token_ids, **kwargs):
+            calls.append(
+                (
+                    "commit_mtp_kv",
+                    int(hidden_seed_ptr),
+                    tuple(int(token) for token in token_ids.tolist()),
+                    tuple(int(position) for position in kwargs["positions"].tolist()),
+                    int(kwargs["dense_cache_len"]),
+                )
+            )
+            return int(kwargs["dense_cache_len"]) + len(token_ids)
+
+    class Context:
+        pending_seed = SimpleNamespace(hidden_ptr=0xA000)
+
+        def record_verify_seeds(self, seeds):
+            rows = tuple(seeds)
+            calls.append(("record_verify_seeds", tuple(int(seed.hidden_ptr) for seed in rows)))
+            self.verify_seeds = rows
+
+        def accept(self, accepted):
+            calls.append(("accept_seed", int(accepted)))
+            self.pending_seed = self.verify_seeds[int(accepted)]
+            return self.pending_seed
+
+    class Session:
+        position = 17
+        backend = "hip_gfx1100"
+
+        def verify_target_block_native_cycle(self, input_token_ids, **kwargs):
+            calls.append(("verify", tuple(int(token) for token in input_token_ids), dict(kwargs)))
+            self.position = 19
+            return SimpleNamespace(
+                input_token_ids=[101, 201, 202],
+                token_ids=[201, 909],
+                accepted_draft_tokens=1,
+                commit_row=1,
+                commit_token=201,
+                commit_position=18,
+                next_token=909,
+                full_accept=False,
+                start_position=17,
+                end_position=19,
+                hidden_seed_rows_ptr=0xB000,
+                hidden_seed_row_count=3,
+                hidden_size=4,
+                device_accept_commit=True,
+            )
+
+        def mtp_verify_seed(self, row, *, token_id, position, **kwargs):
+            return SimpleNamespace(
+                token_id=int(token_id),
+                position=int(position),
+                hidden_ptr=int(kwargs["hidden_seed_base_ptr"]) + int(row) * 16,
+                hidden_contract=SimpleNamespace(ready_for_mtp=True, rows=1, hidden_size=4),
+            )
+
+    rope_cos = np.ones((64, 4), dtype=np.float32)
+    rope_sin = np.zeros((64, 4), dtype=np.float32)
+    result = run_qwen35_gguf_native_mtp_cycle(
+        Session(),
+        Draft(),
+        Context(),
+        root_token=101,
+        root_position=17,
+        candidate_budget=2,
+        remaining_decode=7,
+        rope_cos=rope_cos,
+        rope_sin=rope_sin,
+        draft_key_cache=DeviceBuffer(0xC000, 4096),
+        draft_value_cache=DeviceBuffer(0xD000, 4096),
+        draft_cache_len=7,
+        cycle_id=5,
+        transaction_id=6,
+    )
+
+    assert result.draft_token_ids == (201, 202)
+    assert result.output_token_ids == (201, 909)
+    assert result.accepted_draft_tokens == 1
+    assert result.start_position == 17
+    assert result.end_position == 19
+    assert result.draft_cache_len_before == 7
+    assert result.draft_cache_len_after == 9
+    assert result.target_result.device_accept_commit is True
+    assert calls[0][0:2] == ("propose", 0xA000)
+    assert calls[1] == (
+        "verify",
+        (101, 201, 202),
+        {
+            "cycle_id": 5,
+            "transaction_id": 6,
+            "request_id": 0,
+            "bulk_attention_mode": "bulk",
+            "use_wmma_prefill": False,
+            "capture_linear_state_rows": True,
+            "defer_linear_state_commit": True,
+            "device_accept_commit": True,
+            "remaining_decode": 7,
+            "fallback": False,
+        },
+    )
+    assert calls[2] == ("record_verify_seeds", (0xB000, 0xB010))
+    assert calls[3] == ("accept_seed", 1)
+    assert calls[4] == ("commit_mtp_kv", 0xB000, (201,), (18,), 8)
 
 
 def test_native_b2_target_reuses_one_dynamic_graph_across_cycles(monkeypatch) -> None:

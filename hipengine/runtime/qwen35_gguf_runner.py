@@ -14633,6 +14633,50 @@ class Qwen35GGUFResidentSession:
             remaining_decode=(None if remaining_decode is None else int(remaining_decode)),
         )
 
+    def run_native_spec_mtp_cycle(
+        self,
+        resident_draft,
+        resident_context,
+        *,
+        root_token: int,
+        root_position: int,
+        candidate_budget: int,
+        remaining_decode: int,
+        rope_cos: np.ndarray,
+        rope_sin: np.ndarray,
+        draft_key_cache: DeviceBuffer,
+        draft_value_cache: DeviceBuffer,
+        draft_cache_len: int,
+        cycle_id: int = 0,
+        transaction_id: int = 0,
+        request_id: int = 0,
+        record_stage_timings: bool = False,
+    ):
+        """Run one complete strict GGUF MTP cycle through the N3 adapter."""
+
+        from hipengine.runtime.gguf_native_spec_cycle import (
+            run_qwen35_gguf_native_mtp_cycle,
+        )
+
+        return run_qwen35_gguf_native_mtp_cycle(
+            self,
+            resident_draft,
+            resident_context,
+            root_token=int(root_token),
+            root_position=int(root_position),
+            candidate_budget=int(candidate_budget),
+            remaining_decode=int(remaining_decode),
+            rope_cos=rope_cos,
+            rope_sin=rope_sin,
+            draft_key_cache=draft_key_cache,
+            draft_value_cache=draft_value_cache,
+            draft_cache_len=int(draft_cache_len),
+            cycle_id=int(cycle_id),
+            transaction_id=int(transaction_id),
+            request_id=int(request_id),
+            record_stage_timings=bool(record_stage_timings),
+        )
+
     def capture_decode_graph(
         self,
         *,
