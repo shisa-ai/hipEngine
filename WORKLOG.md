@@ -165153,3 +165153,60 @@ Repair validation:
 5 passed: tests/test_gguf_sampled_api_gate.py
 python3 -m py_compile + git diff --check: passed
 ```
+
+## 2026-07-19 — Close gfx1151 GGUF sampled OpenAI API paths
+
+The repaired F5 packet passed from a clean detached worktree at
+`7871c0886f6c674c77ca279bcd3dbee6e7717e71` on Radeon 8060S/gfx1151, TheRock
+HIP 7.15, TuneD accelerator-performance, normal HWS with one HIP hardware queue,
+`amd_iommu=off`, exact Qwen3.6-35B-A3B UD-Q4_K_M fingerprint
+`936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb`, and
+BF16 KV. Scheduler policy/chunk overrides were unset, so this exercised the
+package-default `fair:256` owner retained by F4. The cached-build command was:
+
+```bash
+HIPENGINE_BACKEND=hip_gfx1151 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. \
+  /home/lhl/hipEngine-main/.venv/bin/python \
+  scripts/gguf_sampled_api_gate.py \
+  --backend hip_gfx1151 \
+  --compiler-version-file /tmp/hipengine-gfx1151-f4-hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/gfx1151-f5-sampled-api-7871c088.json
+```
+
+Result: **accepted in 66.173533961 s**, `performance_claim=false`.
+
+- Two repeated concurrent four-row blocking waves and two repeated concurrent
+  four-row SSE waves passed. All **16 sampled rows** were deterministic; blocking
+  responses carried exact generated-token IDs plus finite selected/top
+  logprobs, and SSE reconstructed blocking text/logprobs exactly with usage and
+  `[DONE]`.
+- Repeated `n=3` passed all **6 choices** with exact indexes, trajectories, and
+  per-run usage 39 prompt + 18 completion = 57 total tokens.
+- Explicit request EOS retired on token 271 with reason `eos`; the tokenizer-
+  exact stop fixture returned reason `stop` without leaking stop text.
+- Strict forced tool `lookup({"key":"README.md"})` parsed exactly. The bounded
+  root-object schema result was malformed model output and therefore passed only
+  through explicit fail-closed `schema_violation`, phase `structured`,
+  continuation-ineligible semantics; malformed text was never accepted as
+  schema-valid.
+- The blocking/SSE subset recorded **16 host-sampler requests, 16 packed model
+  steps, physical c2/c4 counts 8/8, 36 occupancy-tail c1 steps, and zero
+  serial/resident fallback**. Repeated `n=3` added **6 host-sampler requests, 10
+  packed steps, physical c2/c4 counts 4/6, 4 tail c1 steps, and zero fallback**.
+  Across every packet case the cumulative route was **26 host-sampler requests,
+  88 packed model steps, 42 c1 tail steps, zero serial-decode fallback, and zero
+  resident-request fallback**. `host_sampling_required` is an explicit sampler-
+  placement disclosure, not a serial model fallback.
+- Post-close tracked delta was zero within the 64 MiB tolerance. The model runner
+  ended with 0 active / 8 available sessions, all four retained KV pages were
+  free with zero refcounts/pins, and queue/active/batcher ownership was 0/0/off.
+
+Raw packet SHA-256:
+`76a1530ba6520abe7e4bebdb6811bb9ee5019741a990261c011dbc00bf0a6a9d`.
+Published compact artifact:
+`benchmarks/results/2026-07-19-gfx1151-gguf-f5-sampled-openai-api.json`.
+`docs/CONCURRENCY.md`, `benchmarks/README.md`, and
+`benchmarks/CHANGELOG.md` now close only the gfx1151 sampled/API slice. Prefix/
+continuation KV reuse, long-context/non-BF16 pressure, gfx1100 transfer, and
+matched external serving comparisons remain separate F5 work.
