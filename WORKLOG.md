@@ -168436,3 +168436,93 @@ launch-overhead keep, not an aggregate tok/s claim. The 106,560-byte profiler
 JSON has SHA-256
 `4a9eb68b6a0f45e7ceafd29dee050a7511ca38c681a8b75d471eaabaf45369f6`;
 raw CSV remains under `/tmp`.
+
+## 2026-07-20 — Skip throwaway packed-prefill output sampling
+
+Removed mathematically unnecessary output work from the resident GGUF fair
+prefill path without changing admission order or chunk size. Non-final outer
+scheduler chunks now commit model, Conv/GDN, and KV state with
+`sample_output=False`; they do not run output RMSNorm, Q6 LM-head, or argmax.
+For a sampled final slab without MTP hidden-seed capture, the packed runner now
+gathers each slot's raw final hidden row first and RMS-normalizes only those
+sampled rows instead of all prompt rows. Hidden-seed/MTP callers retain the
+full-row normalized FP32 path. New route telemetry counts unsampled incremental
+chunks independently.
+
+RED first showed that the resident owner always sampled non-final chunks and
+that packed rounds had no unsampled contract. The first attempted GPU gate used
+the legacy PARO harness and stopped mechanically because its fixture did not
+contain eight prompt slices; it was not model correctness evidence. GREEN host
+validation is **107 passed**, plus compilation and diff checks:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/test_generation_qwen35_gguf_sampling.py \
+  tests/test_gguf_packed_verify_layout.py -q --tb=short
+.venv/bin/python -m py_compile hipengine/generation/qwen35_gguf.py \
+  hipengine/runtime/qwen35_gguf_runner.py \
+  tests/test_generation_qwen35_gguf_sampling.py \
+  tests/test_gguf_packed_verify_layout.py
+git diff --check
+```
+
+The replacement cached-build C8 packed-prefill oracle used eight distinct
+terminal IDs, six bounded packed rounds for 8x512 prompt rows, eight eager
+decode steps, exact GDN arithmetic, and all-layer hidden capture:
+
+```bash
+HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 .venv/bin/python \
+  scripts/gguf_packed_ar_state_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1151 --rows 8 --lifecycle steady \
+  --prefill-mode packed --gdn-prefill-mode exact --decode-mode eager \
+  --capture-layer-hidden --prompt-length 512 --decode-steps 8 \
+  --compiler-version-file /tmp/hipengine-gfx1151-native-cycle-hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/gfx1151-gguf-prefill-tail-only-state-dirty/result.json
+```
+
+It passes exact tokens, every captured layer hidden row, all Conv/GDN FP32
+state, every live BF16 K/V byte, lifecycle transitions, and final post-flush
+state. Each sampled packed slab now normalizes only eight slot tails: across
+six capacity-bounded rounds this reduces output-norm rows **4,096 -> 48**;
+the helper's existing eight-tail LM-head sampling per internal round is
+unchanged. Raw oracle SHA-256 is
+`e08a4fbf3ad62bbaa3e367eff273d63d450fa3595ac821393ffb8269cd1541f9`.
+
+The matched real-Uvicorn implementation gate reused the retained BF16 graph-on
+p512/d128 protocol: C1/C8, one warmup plus one blocking measurement, delayed C8,
+5 ms generation coalescing, and fair 256-token prefill chunks:
+
+```bash
+HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 .venv/bin/python \
+  scripts/server_f1_concurrency_bench.py \
+  --engine hipengine \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1151 --quant gguf_q4_k_m \
+  --hipengine-python /home/lhl/hipEngine-main/.venv/bin/python \
+  --hipengine-kv-storage bf16 --hipengine-route-expectation native \
+  --hipengine-prefill-decode-policy fair \
+  --generation-batch-window-ms 5 --hipengine-prefill-chunk-tokens 256 \
+  --concurrencies 1,8 --live-concurrency 8 \
+  --prompt-length 512 --decode-tokens 128 --ctx-per-seq 1024 \
+  --warmup-runs 1 --measured-runs 1 \
+  --stream-warmup-runs 0 --stream-measured-runs 0 \
+  --live-join-after-tokens 8 \
+  --compiler-version-file /tmp/hipengine-gfx1151-native-cycle-hipcc-version.txt \
+  --memory-domain gtt --drm-card-index 0 --memory-poll-ms 10 \
+  --work-dir /tmp/gfx1151-bf16-prefill-tail-only-dirty/work \
+  --json /tmp/gfx1151-bf16-prefill-tail-only-dirty/result.json
+```
+
+The packet is `accepted_backend_packet`; every oracle, warmup, measured, and
+live row is exact, one true physical C8 runs, and final graph/KV/workspace
+ownership is zero. By final scrape, **24/48 incremental chunks** skipped output
+sampling. Against the immediately preceding matched graph-on gate, measured C8
+prefill sum is **3404.672 -> 3390.239 ms (-0.424%)** and delayed C8 prefill is
+**3413.194 -> 3393.354 ms (-0.581%)**. Complete C8 wall is non-regressive at
+**84.032 -> 84.080 tok/s (+0.057%)** and delayed C8 is
+**67.242 -> 67.525 (+0.421%)**. The one C1 sample is
+**44.263 -> 43.797 (-1.05%)**, so no C1 wall win is claimed; the required final
+clean three-repeat packet will decide aggregate publication. Raw server SHA-256
+is `51dc060d25fe6258ef6017113eb9587b1ad7c684d8fe913a45f8dd7424d2ddd3`.

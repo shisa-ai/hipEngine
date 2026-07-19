@@ -423,6 +423,41 @@ def test_gguf_packed_ar_prefill_executes_each_round_with_all_active_slots(
     assert owner.last_packed_prefill_plan["all_active_slots_represented"] is True
 
 
+def test_gguf_packed_ar_prefill_forwards_unsampled_rounds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sample_flags: list[bool] = []
+    sessions = tuple(SimpleNamespace(position=0) for _ in range(2))
+
+    def fake_single_slab(self, prompt_token_ids, *, sessions, sample_output, **kwargs):
+        del self, kwargs
+        sample_flags.append(bool(sample_output))
+        for session, prompt in zip(sessions, prompt_token_ids, strict=True):
+            session.position += len(prompt)
+        return [None for _ in prompt_token_ids]
+
+    monkeypatch.setattr(
+        gguf_runner.Qwen35GGUFResidentSession,
+        "_prefill_batch_native_single_slab",
+        fake_single_slab,
+        raising=False,
+    )
+    owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner._bulk_prefill_scratch = SimpleNamespace(rows=4)
+
+    results = owner.prefill_batch_native(
+        ((10, 11, 12, 13), (20, 21, 22, 23)),
+        sessions=sessions,
+        sample_output=False,
+    )
+
+    assert results == [None, None]
+    assert sample_flags == [False, False]
+    assert owner.last_packed_prefill_plan["sample_output"] is False
+    assert owner.last_packed_prefill_plan["output_norm_rows"] == 0
+    assert owner.last_packed_prefill_plan["lm_head_sample_rows"] == 0
+
+
 def test_gguf_packed_ar_prefill_preserves_full_prompt_attention_route_across_scheduler_chunks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
