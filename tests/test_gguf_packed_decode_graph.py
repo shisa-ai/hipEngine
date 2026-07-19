@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import ctypes
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
 import hipengine.runtime.gguf_packed_decode_graph as packed_graph
+from hipengine.core.memory import DeviceBuffer
 from hipengine.runtime.gguf_packed_decode_graph import (
+    Qwen35GGUFPackedDecodeGraph,
     build_qwen35_gguf_packed_decode_graph_key,
 )
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
@@ -229,6 +233,28 @@ def test_resident_session_delegates_packed_graph_capture(monkeypatch) -> None:
         "record_steps": 8,
         "record_layer_output_hidden": (0, 3),
     }
+
+
+def test_packed_decode_graph_reads_only_the_latest_token_row(monkeypatch) -> None:
+    copied: list[tuple[int, int]] = []
+
+    def fake_copy(host_ptr, source, *, runtime):
+        del runtime
+        copied.append((int(source.ptr), int(source.nbytes)))
+        values = np.ascontiguousarray([31, 32], dtype=np.int32)
+        ctypes.memmove(int(host_ptr), values.ctypes.data, int(source.nbytes))
+
+    monkeypatch.setattr(packed_graph, "copy_device_to_host", fake_copy)
+    graph = object.__new__(Qwen35GGUFPackedDecodeGraph)
+    graph.closed = False
+    graph.generated_tokens = DeviceBuffer(ptr=0x1000, nbytes=4 * 2 * 4)
+    graph.replayed_steps = 3
+    graph.rows = 2
+    graph.record_steps = 4
+    graph.owner = SimpleNamespace(runtime=object())
+
+    assert graph.read_latest_generated_token_ids() == [31, 32]
+    assert copied == [(0x1000 + 2 * 2 * 4, 2 * 4)]
 
 
 def test_packed_decode_graph_key_rejects_invalid_shape_contract() -> None:

@@ -857,6 +857,27 @@ class Qwen35GGUFPackedDecodeGraph:
         )
         return [[int(token) for token in row] for row in host.tolist()]
 
+    def read_latest_generated_token_ids(self) -> list[int]:
+        """Read one replay's physical token row without copying prior records."""
+
+        if self.closed:
+            raise RuntimeError("packed GGUF decode graph is closed")
+        if self.generated_tokens is None:
+            raise RuntimeError("packed GGUF decode graph was captured without token recording")
+        if self.replayed_steps <= 0:
+            raise RuntimeError("packed GGUF decode graph has no replayed token row")
+        row_nbytes = self.rows * DType.INT32.itemsize
+        host = np.empty((self.rows,), dtype=np.int32)
+        copy_device_to_host(
+            host_array_ptr(host),
+            DeviceBuffer(
+                self.generated_tokens.ptr + (self.replayed_steps - 1) * row_nbytes,
+                row_nbytes,
+            ),
+            runtime=self.owner.runtime,
+        )
+        return [int(token) for token in host.tolist()]
+
     def read_generated_layer_hidden(
         self,
         *,

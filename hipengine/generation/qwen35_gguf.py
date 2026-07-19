@@ -291,6 +291,8 @@ class _GGUFARServingSlot:
     serial_decode_steps: int = 0
     decode_stream: int = 0
     c1_decode_graph: Any | None = None
+    packed_decode_graph: Any | None = None
+    packed_decode_graph_unavailable: bool = False
     packed_decode_owner: Any | None = None
 
 
@@ -4250,6 +4252,12 @@ class Qwen35GGUFResidentModelRunner:
                     "native_packed_decode_steps": int(
                         self._route_counts["native_packed_decode_steps"]
                     ),
+                    "native_packed_graph_captures": int(
+                        self._route_counts["native_packed_graph_captures"]
+                    ),
+                    "native_packed_graph_replays": int(
+                        self._route_counts["native_packed_graph_replays"]
+                    ),
                     "native_c1_decode_steps": int(self._route_counts["native_c1_decode_steps"]),
                     "native_sampled_prefill_rows": int(
                         self._route_counts["native_sampled_prefill_rows"]
@@ -5473,6 +5481,15 @@ class Qwen35GGUFResidentModelRunner:
             "groups": group_payloads,
         }
 
+    def _packed_graph_capture_membership_stable(self) -> bool:
+        """Require every registered native row to finish prefill before capture."""
+
+        return all(
+            row.slot is not None
+            for row in self._rows.values()
+            if row.native_greedy and not row.native_sampled
+        )
+
     def _step_native_chunk(
         self,
         rows: Sequence[_GGUFResidentLoopRow],
@@ -5490,7 +5507,101 @@ class Qwen35GGUFResidentModelRunner:
         step_batch = getattr(owner_slot.session, "step_batch_native", None)
         if not callable(step_batch):
             return False
+        width = int(physical_rows or len(concrete))
+        active_indices = (
+            tuple(range(len(concrete)))
+            if not active_slot_indices
+            else tuple(int(index) for index in active_slot_indices)
+        )
+        expected_sessions: list[Any | None] = [None] * width
+        for slot, index in zip(concrete, active_indices, strict=True):
+            expected_sessions[index] = slot.session
+        expected_session_tuple = tuple(expected_sessions)
+        graphs = {
+            id(graph): graph
+            for slot in concrete
+            for graph in (getattr(slot, "packed_decode_graph", None),)
+            if graph is not None and not bool(getattr(graph, "closed", False))
+        }
+        graph = next(iter(graphs.values())) if len(graphs) == 1 else None
+        if graph is not None and tuple(getattr(graph, "sessions", ())) != expected_session_tuple:
+            graph = None
+        if graphs and graph is None:
+            self._close_packed_decode_graphs(rows)
+
         self.generator._flush_ar_packed_decode_owners_if_chunk_changed(concrete)
+        graph_eligible = bool(
+            graph is not None
+            or (
+                _gguf_decode_graph_enabled()
+                and len(concrete) == width
+                and active_indices == tuple(range(width))
+                and all(row.native_greedy and not row.native_sampled for row in rows)
+                and self._packed_graph_capture_membership_stable()
+                and not any(
+                    bool(getattr(slot, "packed_decode_graph_unavailable", False))
+                    for slot in concrete
+                )
+            )
+        )
+        if graph is None and graph_eligible:
+            minimum_fn = getattr(owner_slot.session, "decode_graph_min_replay_steps", None)
+            minimum = minimum_fn() if callable(minimum_fn) else None
+            remaining = min(
+                max(0, int(row.request.max_tokens) - len(slot.generated_ids))
+                for row, slot in zip(rows, concrete, strict=True)
+            )
+            scaled_minimum = (
+                None
+                if minimum is None
+                else max(1, (int(minimum) + width - 1) // width)
+            )
+            capture = getattr(owner_slot.session, "capture_packed_decode_graph", None)
+            if (
+                scaled_minimum is not None
+                and remaining >= scaled_minimum
+                and callable(capture)
+            ):
+                try:
+                    graph = capture(
+                        [int(slot.prev_token) for slot in concrete],
+                        sessions=tuple(slot.session for slot in concrete),
+                        physical_rows=width,
+                        active_slot_indices=active_indices,
+                        steps_per_replay=1,
+                        max_replay_steps=remaining,
+                        record_steps=remaining,
+                    )
+                except NotImplementedError:
+                    for slot in concrete:
+                        slot.packed_decode_graph_unavailable = True
+                else:
+                    self._route_counts["native_packed_graph_captures"] += 1
+                    for slot in concrete:
+                        slot.packed_decode_graph = graph
+
+        owner = owner_slot.session
+        if graph is not None:
+            graph.replay(1)
+            physical_tokens = list(graph.read_latest_generated_token_ids())
+            if len(physical_tokens) != width:
+                raise RuntimeError(
+                    f"GGUF resident packed graph returned {len(physical_tokens)} token(s) "
+                    f"for physical width {width}"
+                )
+            self._route_counts["native_packed_graph_replays"] += 1
+            self._observe_graph_handles(tuple(slot.session for slot in concrete))
+            self._last_execution_manifest = copy.deepcopy(
+                dict(getattr(graph, "execution_manifest", {}))
+            )
+            self._route_counts["native_packed_decode_steps"] += 1
+            self._route_counts[f"native_c{width}_decode_steps"] += 1
+            for row, slot, index in zip(rows, concrete, active_indices, strict=True):
+                self._record_native_token(row, int(physical_tokens[index]))
+                slot.packed_decode_owner = owner
+                slot.native_decode_steps += 1
+            return True
+
         return_logits = any(row.native_sampled for row in rows)
         batch_kwargs: dict[str, Any] = {
             "sessions": [slot.session for slot in concrete],
@@ -5501,8 +5612,8 @@ class Qwen35GGUFResidentModelRunner:
         if physical_rows is not None:
             batch_kwargs.update(
                 {
-                    "physical_rows": int(physical_rows),
-                    "active_slot_indices": tuple(int(index) for index in active_slot_indices),
+                    "physical_rows": width,
+                    "active_slot_indices": active_indices,
                 }
             )
         try:
@@ -5521,9 +5632,8 @@ class Qwen35GGUFResidentModelRunner:
                 f"GGUF resident packed decode returned {len(result_list)} result(s) "
                 f"for {len(concrete)} row(s)"
             )
-        owner = owner_slot.session
         self._route_counts["native_packed_decode_steps"] += 1
-        self._route_counts[f"native_c{int(physical_rows or len(concrete))}_decode_steps"] += 1
+        self._route_counts[f"native_c{width}_decode_steps"] += 1
         manifest = getattr(owner, "last_packed_execution_manifest", None)
         if isinstance(manifest, Mapping):
             self._last_execution_manifest = copy.deepcopy(dict(manifest))
@@ -5594,6 +5704,46 @@ class Qwen35GGUFResidentModelRunner:
         graph.replay(1)
         return graph.read_sample(return_logits=False)
 
+    def _close_packed_decode_graphs(
+        self,
+        rows: Sequence[_GGUFResidentLoopRow],
+    ) -> None:
+        graphs = {
+            id(graph): graph
+            for row in rows
+            for slot in (row.slot,)
+            if slot is not None
+            for graph in (getattr(slot, "packed_decode_graph", None),)
+            if graph is not None
+        }
+        for graph in graphs.values():
+            sessions = tuple(
+                session
+                for session in tuple(getattr(graph, "sessions", ()))
+                if session is not None
+            )
+            if sessions:
+                self._observe_graph_handles(sessions)
+            was_open = not bool(getattr(graph, "closed", False))
+            flush = getattr(graph, "flush_packed_state", None)
+            if was_open and callable(flush):
+                flush()
+            close = getattr(graph, "close", None)
+            if was_open and callable(close):
+                close()
+            if was_open:
+                self._record_graph_invalidations((graph,), 1)
+                self._kv_graph_invalidation_count += 1
+        if not graphs:
+            return
+        for candidate in self._rows.values():
+            slot = candidate.slot
+            if (
+                slot is not None
+                and id(getattr(slot, "packed_decode_graph", None)) in graphs
+            ):
+                slot.packed_decode_graph = None
+
     def _close_c1_decode_graph(self, row: _GGUFResidentLoopRow) -> None:
         slot = row.slot
         if slot is None or slot.c1_decode_graph is None:
@@ -5652,7 +5802,9 @@ class Qwen35GGUFResidentModelRunner:
         )
 
     def _flush_rows(self, rows: Sequence[_GGUFResidentLoopRow]) -> None:
-        slots = [row.slot for row in rows if row.slot is not None]
+        row_tuple = tuple(rows)
+        self._close_packed_decode_graphs(row_tuple)
+        slots = [row.slot for row in row_tuple if row.slot is not None]
         if slots:
             self.generator._flush_ar_packed_decode_owners(slots)
 
@@ -5661,16 +5813,21 @@ class Qwen35GGUFResidentModelRunner:
         if slot is None or slot.packed_decode_owner is None:
             return
         owner = slot.packed_decode_owner
-        related = [
-            candidate
+        related_rows = [
+            candidate_row
             for candidate_row in self._rows.values()
             for candidate in (candidate_row.slot,)
             if candidate is not None and candidate.packed_decode_owner is owner
         ]
-        self.generator._flush_ar_packed_decode_owners(related)
+        self._close_packed_decode_graphs(related_rows)
+        self.generator._flush_ar_packed_decode_owners(
+            [candidate.slot for candidate in related_rows if candidate.slot is not None]
+        )
 
     def _flush_all_packed_owners(self) -> None:
-        slots = [row.slot for row in self._rows.values() if row.slot is not None]
+        rows = [row for row in self._rows.values() if row.slot is not None]
+        self._close_packed_decode_graphs(rows)
+        slots = [row.slot for row in rows if row.slot is not None]
         if slots:
             self.generator._flush_ar_packed_decode_owners(slots)
 
