@@ -105,6 +105,11 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "w4_gguf",
             "native_v1_b2_target_graph",
         ),
+        (
+            "speculative_cycle",
+            "w4_gguf",
+            "native_v1_b2_proposal_graph",
+        ),
     }
 )
 _GFX1151_OVERRIDES = {

@@ -166009,3 +166009,19 @@ JSON validation and `git diff --check` pass. `docs/CONCURRENCY.md`,
 `benchmarks/README.md`, and `benchmarks/CHANGELOG.md` now retain the F4 closure.
 F5 sampled/API-path concurrency is next; prefix reuse, long-context pressure,
 and matched external serving comparisons remain explicitly separate gates.
+
+## 2026-07-19 — Preserve gfx1151 NativeSpecCycle exclusions after main merge
+
+Merged the 15-commit NativeSpecCycle series with the 29 incoming gfx1151 F2-F4
+scheduler/kernel commits in a detached clean worktree. The only textual merge
+conflict was the benchmark changelog; both dated streams are preserved. The
+incoming gfx1151 production defaults and retained target-graph exclusion merged
+cleanly.
+
+The primary checkout also held an uncommitted safety extension for N3P: exclude
+`native_v1_b2_proposal_graph` as well as `native_v1_b2_target_graph` from the
+generic gfx1100→gfx1151 alias refresh. Reapplied that exact scoped change on top
+of the merged F3/F4 backend package and widened the existing registry test to
+present both source keys and require zero gfx1151 registrations. This keeps the
+documented independent gfx1151 admission boundary honest; it does not add a
+backend implementation or performance claim.
