@@ -168205,3 +168205,41 @@ Published compact artifact:
 `benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-bound-control.json`, 24,215
 bytes, SHA-256
 `6941dafc9daf628c1febecc30ac82821ce4a2767322feeedb85308cbc0b269cb`.
+
+## 2026-07-20 — Attribute N4+ provider commit/proposal residuals
+
+Reused the clean exclusive-GPU0 cached final-child trace already retained by the
+N4+ gate; no parent harness or new contested process timing was needed. The
+source child is exact against AR and has 16 steady B1/D24 marker windows after
+dropping cycles 1-2. Ordered HIP API timestamps decompose the **16.418 ms**
+complete cycle as follows:
+
+| Window | Mean host wall | Device/API evidence |
+| --- | ---: | --- |
+| proposer draft | 0.021 ms | current B1 token already resident |
+| verifier metadata/unpack | 0.183 ms | synchronous metadata copy + unpack launch |
+| target graph submit/sync | 14.274 ms | one graph launch and first synchronization |
+| accept payload/host summary | 0.081 ms | one packed D2H result |
+| selected commit/cursor tail | **0.370 ms** | linear-state commit + position launch + second sync |
+| proposer repair/update | 1.473 ms | 1.253 ms kernels, 68.6875 HIP APIs/cycle |
+| remaining cycle residual | 0.016 ms | marker/orchestration remainder |
+
+The selected commit/cursor tail contains a **0.2008 ms** chunked linear-state
+copy kernel, a **0.00164 ms** position kernel, and a **0.2077 ms** standalone
+post-commit synchronization. The state-copy kernel remains necessary, but
+capturing selected commit plus device position/context update in the existing
+N4 target graph can remove the two post-graph Python kernel submissions and the
+second synchronization boundary. The mechanical non-kernel upper bound is
+approximately **0.169 ms/cycle**. This is the largest safe provider residual:
+proposal draft is negligible, while proposal update is mostly required device
+work and has provider-specific rollback/repair semantics.
+
+Decision: the next isolated N4+ iteration will own PARO selected linear-state
+`COMMIT|UPDATE_CURSORS` inside the existing target graph. It must remain
+capture-width-zero/PARO-specific, retain DFlash hidden/KV commit isolation and
+pre-launch fallback, and leave gfx1151 unregistered. Keep only after full
+category+heldout exactness, state/KV/hidden/cursor audits, matched complete wall,
+and cached final-child profiling prove non-regression.
+
+Published diagnostic artifact:
+`benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-provider-residuals.json`.
