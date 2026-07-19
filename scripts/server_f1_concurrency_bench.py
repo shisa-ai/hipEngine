@@ -1439,7 +1439,11 @@ def _server_command_and_env(
             "--max-context-tokens",
             str(args.ctx_per_seq),
             "--kv-storage",
-            "bf16",
+            str(args.hipengine_kv_storage),
+            "--kv-scale-dtype",
+            str(args.hipengine_kv_scale_dtype),
+            "--kv-scale-granularity",
+            str(args.hipengine_kv_scale_granularity),
             "--generation-batch-window-ms",
             str(args.batch_window_ms),
             "--max-active-requests",
@@ -2049,7 +2053,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "native_decode_metric_scope": "engine-specific diagnostic only; not cross-engine comparable",
             "model": str(args.model.resolve()),
             "quant": str(args.quant),
-            "kv_storage": "bf16" if engine == "hipengine" else "f16",
+            "kv_storage": str(args.hipengine_kv_storage) if engine == "hipengine" else "f16",
             "prompt_length": int(args.prompt_length),
             "decode_tokens": int(args.decode_tokens),
             "prompt_row_construction": (
@@ -2176,6 +2180,22 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("protect_decode", "protect_ttft", "fair"),
         default="protect_ttft",
         help="Explicit hipEngine resident scheduling policy; retained F1 uses protect_ttft",
+    )
+    parser.add_argument(
+        "--hipengine-kv-storage",
+        choices=("auto", "bf16", "int8_per_token_head", "tail4_hadamard_group32"),
+        default="bf16",
+        help="hipEngine server KV policy; non-hipEngine packets continue to use f16",
+    )
+    parser.add_argument(
+        "--hipengine-kv-scale-dtype",
+        choices=("fp16", "fp32"),
+        default="fp16",
+    )
+    parser.add_argument(
+        "--hipengine-kv-scale-granularity",
+        choices=("per_token_head", "hadamard_group32"),
+        default="per_token_head",
     )
     parser.add_argument("--llamacpp-hip-repo", type=Path, default=DEFAULT_LLAMA_HIP_REPO)
     parser.add_argument(

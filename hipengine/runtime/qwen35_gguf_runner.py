@@ -1046,17 +1046,23 @@ class _GGUFPackedARAttentionWorkspace:
 
 @dataclass(frozen=True)
 class _GGUFPackedTargetState:
-    """Per-slot target recurrent/KV state for a future packed verifier."""
+    """Per-slot recurrent state plus policy-shaped packed KV backing."""
 
     slot_count: int
     max_sequence_length: int
     block_size: int
     blocks_per_slot: int
     total_positions: int
+    kv_layout: Qwen35GGUFKVChunkLayout
     layer_conv_states: tuple[object | None, ...]
     layer_recurrent_states: tuple[object | None, ...]
     full_key_caches: tuple[object | None, ...]
     full_value_caches: tuple[object | None, ...]
+    full_bf16_mirror_key_caches: tuple[object | None, ...]
+    full_bf16_mirror_value_caches: tuple[object | None, ...]
+    full_k_scale_caches: tuple[object | None, ...]
+    full_v_scale_caches: tuple[object | None, ...]
+    full_kv_scale_metadata: tuple[KVScaleMetadata | None, ...]
     buffers: tuple[object, ...]
 
     @classmethod
@@ -1068,6 +1074,7 @@ class _GGUFPackedTargetState:
         max_sequence_length: int,
         runtime: HipRuntime,
         block_size: int = 256,
+        kv_layout: Qwen35GGUFKVChunkLayout | None = None,
     ) -> "_GGUFPackedTargetState":
         slot_count = int(slot_count)
         max_sequence_length = int(max_sequence_length)
@@ -1078,10 +1085,25 @@ class _GGUFPackedTargetState:
             raise ValueError("max_sequence_length must be positive")
         if block_size <= 0:
             raise ValueError("block_size must be positive")
+        if block_size != 256:
+            raise ValueError("packed GGUF KV state currently requires block_size 256")
         assert runner.weights is not None
         cfg = runner.weights.config
+        if kv_layout is None:
+            kv_layout = Qwen35GGUFKVChunkLayout(
+                storage_dtype=DType.BF16,
+                storage_layout="uniform",
+                scale_dtype=DType.FP16,
+                scale_granularity="per_token_head",
+                int8_kv_value_bf16=False,
+                layer_storage_dtypes=tuple(
+                    None if layer_type == LINEAR_ATTENTION else DType.BF16
+                    for layer_type in cfg.layer_types
+                ),
+            )
         blocks_per_slot = (max_sequence_length + block_size - 1) // block_size
-        total_positions = slot_count * blocks_per_slot * block_size
+        total_pages = slot_count * blocks_per_slot
+        total_positions = total_pages * block_size
 
         def buf(nbytes: int):
             return malloc(nbytes, runtime=runtime)
@@ -1099,51 +1121,54 @@ class _GGUFPackedTargetState:
             * int(runner.ssm_value_dim)
             * DType.FP32.itemsize
         )
-        kv_cache_nbytes = (
-            total_positions
-            * int(cfg.head_count_kv)
-            * int(cfg.key_length)
-            * DType.BF16.itemsize
-        )
         layer_conv_states: list[object | None] = []
         layer_recurrent_states: list[object | None] = []
-        full_key_caches: list[object | None] = []
-        full_value_caches: list[object | None] = []
-        buffers: list[object] = []
-        for layer_type in cfg.layer_types:
-            if layer_type == LINEAR_ATTENTION:
-                conv_state = buf(conv_state_nbytes)
-                recurrent_state = buf(recurrent_state_nbytes)
-                memset = getattr(runtime, "memset", None)
-                if callable(memset):
-                    memset(conv_state.ptr, 0, conv_state.nbytes)
-                    memset(recurrent_state.ptr, 0, recurrent_state.nbytes)
-                buffers.extend((conv_state, recurrent_state))
-                layer_conv_states.append(conv_state)
-                layer_recurrent_states.append(recurrent_state)
-                full_key_caches.append(None)
-                full_value_caches.append(None)
-            elif layer_type == FULL_ATTENTION:
-                key_cache = buf(kv_cache_nbytes)
-                value_cache = buf(kv_cache_nbytes)
-                buffers.extend((key_cache, value_cache))
-                layer_conv_states.append(None)
-                layer_recurrent_states.append(None)
-                full_key_caches.append(key_cache)
-                full_value_caches.append(value_cache)
-            else:
-                raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+        state_buffers: list[object] = []
+        try:
+            for layer_type in cfg.layer_types:
+                if layer_type == LINEAR_ATTENTION:
+                    conv_state = buf(conv_state_nbytes)
+                    recurrent_state = buf(recurrent_state_nbytes)
+                    memset = getattr(runtime, "memset", None)
+                    if callable(memset):
+                        memset(conv_state.ptr, 0, conv_state.nbytes)
+                        memset(recurrent_state.ptr, 0, recurrent_state.nbytes)
+                    state_buffers.extend((conv_state, recurrent_state))
+                    layer_conv_states.append(conv_state)
+                    layer_recurrent_states.append(recurrent_state)
+                elif layer_type == FULL_ATTENTION:
+                    layer_conv_states.append(None)
+                    layer_recurrent_states.append(None)
+                else:
+                    raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+            kv_backing = _allocate_qwen35_gguf_kv_chunk(
+                runner,
+                runtime=runtime,
+                start_block_id=0,
+                pages=total_pages,
+                layout=kv_layout,
+            )
+        except Exception:
+            for buffer in reversed(state_buffers):
+                free(buffer, runtime=runtime)
+            raise
         return cls(
             slot_count=slot_count,
             max_sequence_length=max_sequence_length,
             block_size=block_size,
             blocks_per_slot=blocks_per_slot,
             total_positions=total_positions,
+            kv_layout=kv_layout,
             layer_conv_states=tuple(layer_conv_states),
             layer_recurrent_states=tuple(layer_recurrent_states),
-            full_key_caches=tuple(full_key_caches),
-            full_value_caches=tuple(full_value_caches),
-            buffers=tuple(buffers),
+            full_key_caches=kv_backing.full_key_caches,
+            full_value_caches=kv_backing.full_value_caches,
+            full_bf16_mirror_key_caches=kv_backing.full_bf16_mirror_key_caches,
+            full_bf16_mirror_value_caches=kv_backing.full_bf16_mirror_value_caches,
+            full_k_scale_caches=kv_backing.full_k_scale_caches,
+            full_v_scale_caches=kv_backing.full_v_scale_caches,
+            full_kv_scale_metadata=kv_backing.full_kv_scale_metadata,
+            buffers=(*tuple(state_buffers), *kv_backing.buffers),
         )
 
     def linear_state_pair(self, layer_id: int) -> tuple[object, object]:
@@ -1159,6 +1184,16 @@ class _GGUFPackedTargetState:
         if key_cache is None or value_cache is None:
             raise ValueError(f"layer {layer_id} has no packed full-attention KV cache")
         return key_cache, value_cache
+
+    def full_bf16_mirror_cache(self, layer_id: int) -> tuple[object, object] | None:
+        key_cache = self.full_bf16_mirror_key_caches[int(layer_id)]
+        value_cache = self.full_bf16_mirror_value_caches[int(layer_id)]
+        if key_cache is None or value_cache is None:
+            return None
+        return key_cache, value_cache
+
+    def full_scale_metadata(self, layer_id: int) -> KVScaleMetadata | None:
+        return self.full_kv_scale_metadata[int(layer_id)]
 
 
 @dataclass(frozen=True)
@@ -3510,20 +3545,83 @@ class Qwen35GGUFFullStackRunner:
             f"{stage_prefix}_head_norm_rope",
             t_stage,
         )
-        qwen35_write_paged_kv_mixed_value_bf16_prompt_spans(
-            scratch.full_key.ptr,
-            scratch.full_v.ptr,
-            scratch.key_cache.ptr,
-            scratch.value_cache.ptr,
-            scratch.append_spans,
-            rows,
-            scratch.block_size,
-            cfg.head_count_kv,
-            cfg.key_length,
-            stream=stream,
-            library=kv_write_library,
-            runtime=runtime,
-        )
+        retained_spans = getattr(scratch, "retained_append_spans", None)
+        if retained_spans is None:
+            qwen35_write_paged_kv_mixed_value_bf16_prompt_spans(
+                scratch.full_key.ptr,
+                scratch.full_v.ptr,
+                scratch.key_cache.ptr,
+                scratch.value_cache.ptr,
+                scratch.append_spans,
+                rows,
+                scratch.block_size,
+                cfg.head_count_kv,
+                cfg.key_length,
+                stream=stream,
+                library=kv_write_library,
+                runtime=runtime,
+            )
+        else:
+            metadata = retained_spans.scale_metadata
+            retained_key_cache = getattr(scratch, "retained_key_cache", None)
+            retained_value_cache = getattr(scratch, "retained_value_cache", None)
+            if metadata is None or retained_key_cache is None or retained_value_cache is None:
+                raise RuntimeError("packed INT8 KV write requires retained payload and scale metadata")
+            bf16_to_f32(
+                scratch.full_v.ptr,
+                scratch.full_key_raw.ptr,
+                rows * self.kv_width,
+                stream=stream,
+                library=cast_library,
+                runtime=runtime,
+            )
+            if bool(getattr(scratch, "int8_kv_value_bf16", False)):
+                qwen35_write_paged_kv_int8_key_bf16_value_prompt_spans(
+                    scratch.full_key.ptr,
+                    scratch.full_key_raw.ptr,
+                    retained_key_cache.ptr,
+                    retained_value_cache.ptr,
+                    metadata.k_scale.ptr,
+                    retained_spans,
+                    rows,
+                    scratch.block_size,
+                    cfg.head_count_kv,
+                    cfg.key_length,
+                    stream=stream,
+                    library=kv_write_library,
+                    runtime=runtime,
+                )
+            else:
+                _gguf_int8_kv_prompt_write_fn(metadata)(
+                    scratch.full_key.ptr,
+                    scratch.full_key_raw.ptr,
+                    retained_key_cache.ptr,
+                    retained_value_cache.ptr,
+                    metadata.k_scale.ptr,
+                    metadata.v_scale.ptr,
+                    retained_spans,
+                    rows,
+                    scratch.block_size,
+                    cfg.head_count_kv,
+                    cfg.key_length,
+                    stream=stream,
+                    library=kv_write_library,
+                    runtime=runtime,
+                )
+            qwen35_write_paged_kv_mixed_value_bf16_prompt_spans(
+                scratch.full_key.ptr,
+                scratch.full_v.ptr,
+                scratch.key_cache.ptr,
+                scratch.value_cache.ptr,
+                scratch.append_spans,
+                rows,
+                scratch.block_size,
+                cfg.head_count_kv,
+                cfg.key_length,
+                stream=stream,
+                library=kv_write_library,
+                runtime=runtime,
+            )
         t_stage = _mark_sync_stage(
             runtime,
             stage_timings,
@@ -8282,19 +8380,156 @@ def _small_b_rowtile_chunks(rows: int, *, max_chunk: int = 6) -> tuple[int, ...]
 
 
 @dataclass(frozen=True)
-class Qwen35GGUFBF16KVChunkBacking:
-    """Real HIP backing for one contiguous chunk of logical BF16 KV pages."""
+class Qwen35GGUFKVChunkLayout:
+    """Complete policy identity for one scheduler-owned GGUF KV chunk.
 
+    ``layer_storage_dtypes`` is aligned with model layers and uses ``None`` for
+    linear-attention layers.  Keeping the resolved per-layer layout beside the
+    backing lets resident sessions reject payload/scale mismatches before any
+    device metadata is changed.
+    """
+
+    storage_dtype: DType
+    storage_layout: str
+    scale_dtype: DType
+    scale_granularity: str
+    int8_kv_value_bf16: bool
+    layer_storage_dtypes: tuple[DType | None, ...]
+    bf16_mirror_layer_indices: tuple[int, ...] = ()
+
+    def __post_init__(self) -> None:
+        storage = DType.parse(self.storage_dtype)
+        scale = DType.parse(self.scale_dtype)
+        layers = tuple(
+            None if layer_storage is None else DType.parse(layer_storage)
+            for layer_storage in self.layer_storage_dtypes
+        )
+        mirrors = tuple(sorted({int(index) for index in self.bf16_mirror_layer_indices}))
+        object.__setattr__(self, "storage_dtype", storage)
+        object.__setattr__(self, "scale_dtype", scale)
+        object.__setattr__(self, "layer_storage_dtypes", layers)
+        object.__setattr__(self, "bf16_mirror_layer_indices", mirrors)
+        if storage not in {DType.BF16, DType.INT8_PER_TOKEN_HEAD}:
+            raise ValueError("GGUF dynamic KV storage must be bf16 or int8_per_token_head")
+        if scale not in {DType.FP16, DType.FP32}:
+            raise ValueError("GGUF dynamic KV scales must use fp16 or fp32")
+        if self.storage_layout not in {"uniform", "tail4_hadamard_group32"}:
+            raise ValueError("unsupported GGUF dynamic KV storage layout")
+        if self.scale_granularity not in {"per_token_head", "block16", "hadamard_group32"}:
+            raise ValueError("unsupported GGUF dynamic KV scale granularity")
+        if not layers or not any(layer_storage is not None for layer_storage in layers):
+            raise ValueError("GGUF dynamic KV layout requires a full-attention layer")
+        if any(
+            layer_storage not in {None, DType.BF16, DType.INT8_PER_TOKEN_HEAD}
+            for layer_storage in layers
+        ):
+            raise ValueError("unsupported per-layer GGUF dynamic KV storage dtype")
+        int8_layers = tuple(
+            index
+            for index, layer_storage in enumerate(layers)
+            if layer_storage == DType.INT8_PER_TOKEN_HEAD
+        )
+        if storage == DType.BF16 and int8_layers:
+            raise ValueError("BF16 GGUF dynamic KV layout cannot contain INT8 layers")
+        if storage == DType.INT8_PER_TOKEN_HEAD and not int8_layers:
+            raise ValueError("INT8 GGUF dynamic KV layout must contain an INT8 layer")
+        if self.storage_layout == "tail4_hadamard_group32" and (
+            storage != DType.INT8_PER_TOKEN_HEAD
+            or self.scale_granularity != "hadamard_group32"
+            or len(int8_layers) != 4
+        ):
+            raise ValueError("tail4_hadamard_group32 requires exactly four INT8 layers")
+        if self.int8_kv_value_bf16 and (
+            storage != DType.INT8_PER_TOKEN_HEAD
+            or self.scale_granularity != "per_token_head"
+        ):
+            raise ValueError("BF16-value INT8 GGUF dynamic KV requires per-token-head scales")
+        if any(index < 0 or index >= len(layers) for index in mirrors):
+            raise ValueError("GGUF dynamic KV mirror layer index is outside the model")
+        if any(layers[index] != DType.INT8_PER_TOKEN_HEAD for index in mirrors):
+            raise ValueError("GGUF dynamic KV mirrors are valid only for INT8 layers")
+        if mirrors and self.scale_granularity == "hadamard_group32":
+            raise ValueError("Hadamard-group32 GGUF dynamic KV does not use BF16 mirrors")
+
+
+@dataclass(frozen=True)
+class Qwen35GGUFKVChunkBacking:
+    """Payload and scale backing for one contiguous chunk of logical KV pages."""
+
+    layout: Qwen35GGUFKVChunkLayout
     start_block_id: int
     pages: int
-    page_nbytes_per_tensor: int
     full_key_caches: tuple[DeviceBuffer | None, ...]
     full_value_caches: tuple[DeviceBuffer | None, ...]
+    full_bf16_mirror_key_caches: tuple[DeviceBuffer | None, ...]
+    full_bf16_mirror_value_caches: tuple[DeviceBuffer | None, ...]
+    full_k_scale_caches: tuple[DeviceBuffer | None, ...]
+    full_v_scale_caches: tuple[DeviceBuffer | None, ...]
+    full_kv_scale_metadata: tuple[KVScaleMetadata | None, ...]
     buffers: tuple[DeviceBuffer, ...]
+
+    def __post_init__(self) -> None:
+        if int(self.start_block_id) < 0:
+            raise ValueError("GGUF KV chunk start_block_id must be non-negative")
+        if int(self.pages) <= 0:
+            raise ValueError("GGUF KV chunk pages must be positive")
+        layer_count = len(self.layout.layer_storage_dtypes)
+        aligned = (
+            self.full_key_caches,
+            self.full_value_caches,
+            self.full_bf16_mirror_key_caches,
+            self.full_bf16_mirror_value_caches,
+            self.full_k_scale_caches,
+            self.full_v_scale_caches,
+            self.full_kv_scale_metadata,
+        )
+        if any(len(values) != layer_count for values in aligned):
+            raise ValueError("GGUF KV chunk layer tuples must align with the layout")
+        mirror_layers = frozenset(self.layout.bf16_mirror_layer_indices)
+        for layer_id, layer_storage in enumerate(self.layout.layer_storage_dtypes):
+            key_cache = self.full_key_caches[layer_id]
+            value_cache = self.full_value_caches[layer_id]
+            mirror_key = self.full_bf16_mirror_key_caches[layer_id]
+            mirror_value = self.full_bf16_mirror_value_caches[layer_id]
+            k_scale = self.full_k_scale_caches[layer_id]
+            v_scale = self.full_v_scale_caches[layer_id]
+            metadata = self.full_kv_scale_metadata[layer_id]
+            if layer_storage is None:
+                if any(
+                    value is not None
+                    for value in (key_cache, value_cache, mirror_key, mirror_value, k_scale, v_scale, metadata)
+                ):
+                    raise ValueError("linear-attention GGUF KV chunk entries must be empty")
+                continue
+            if key_cache is None or value_cache is None:
+                raise ValueError("full-attention GGUF KV chunk payload is incomplete")
+            if (mirror_key is None) != (mirror_value is None):
+                raise ValueError("GGUF KV chunk BF16 mirror payload must be paired")
+            if (layer_id in mirror_layers) != (mirror_key is not None):
+                raise ValueError("GGUF KV chunk BF16 mirror payload does not match its layout")
+            if layer_storage == DType.INT8_PER_TOKEN_HEAD:
+                if k_scale is None or v_scale is None or metadata is None:
+                    raise ValueError("INT8 GGUF KV chunk requires paired scale payload and metadata")
+                if int(metadata.k_scale.ptr) != int(k_scale.ptr) or int(metadata.v_scale.ptr) != int(v_scale.ptr):
+                    raise ValueError("GGUF KV chunk scale metadata does not reference its backing")
+                if metadata.scale_dtype != self.layout.scale_dtype:
+                    raise ValueError("GGUF KV chunk scale dtype does not match its layout")
+                if metadata.granularity != self.layout.scale_granularity:
+                    raise ValueError("GGUF KV chunk scale granularity does not match its layout")
+                if int(metadata.k_scale.shape[0]) != int(self.pages):
+                    raise ValueError("GGUF KV chunk scale metadata does not cover every page")
+            elif any(value is not None for value in (k_scale, v_scale, metadata)):
+                raise ValueError("BF16 GGUF KV chunk layer cannot carry INT8 scales")
+        if any(int(buffer.nbytes) <= 0 or int(buffer.nbytes) % int(self.pages) for buffer in self.buffers):
+            raise ValueError("GGUF KV chunk buffers must contain whole positive pages")
 
     @property
     def total_nbytes(self) -> int:
         return sum(int(buffer.nbytes) for buffer in self.buffers)
+
+    @property
+    def page_bytes(self) -> int:
+        return self.total_nbytes // int(self.pages)
 
     def page_pointer(self, local_page: int) -> int:
         page = int(local_page)
@@ -8302,20 +8537,11 @@ class Qwen35GGUFBF16KVChunkBacking:
             raise IndexError("local KV page is outside the chunk")
         first = next((buffer for buffer in self.full_key_caches if buffer is not None), None)
         if first is None:
-            raise RuntimeError("GGUF BF16 KV chunk has no full-attention layer backing")
-        return int(first.ptr) + page * int(self.page_nbytes_per_tensor)
+            raise RuntimeError("GGUF KV chunk has no full-attention layer backing")
+        return int(first.ptr) + page * (int(first.nbytes) // int(self.pages))
 
-    def bound_caches(
-        self,
-        block_ids: tuple[int, ...],
-    ) -> tuple[tuple[DeviceBuffer | None, ...], tuple[DeviceBuffer | None, ...]]:
-        """Return the full backing after validating request-local page ids.
-
-        Shared-prefix COW allocations may list non-contiguous pages.  Kernels
-        select those pages through the session block table, so slicing the cache
-        base would make the table unable to address a shared prefix plus private
-        suffix without copying KV.
-        """
+    def validate_bound_blocks(self, block_ids: tuple[int, ...]) -> None:
+        """Validate request-local page ids without slicing the shared backing."""
 
         blocks = tuple(int(block_id) for block_id in block_ids)
         if not blocks:
@@ -8325,55 +8551,209 @@ class Qwen35GGUFBF16KVChunkBacking:
         local_pages = tuple(block_id - int(self.start_block_id) for block_id in blocks)
         if any(local_page < 0 or local_page >= self.pages for local_page in local_pages):
             raise ValueError("GGUF KV allocation is outside its backing chunk")
-        return self.full_key_caches, self.full_value_caches
 
 
-def _allocate_qwen35_gguf_bf16_kv_chunk(
+def _qwen35_gguf_kv_scale_shape(
+    cfg: object,
+    *,
+    pages: int,
+    granularity: str,
+) -> tuple[int, ...]:
+    base = (int(pages), 256, int(cfg.head_count_kv))
+    if granularity == "per_token_head":
+        return base
+    group_size = 16 if granularity == "block16" else 32
+    if int(cfg.key_length) % group_size:
+        raise ValueError(f"GGUF {granularity} KV requires key_length divisible by {group_size}")
+    groups = int(cfg.key_length) // group_size
+    if granularity == "block16" and groups != 16:
+        raise ValueError("GGUF INT8 KV block16 scales require head_dim/key_length 256")
+    return (*base, groups)
+
+
+def _qwen35_gguf_kv_page_bytes(cfg: object, layout: Qwen35GGUFKVChunkLayout) -> int:
+    payload_elements = 256 * int(cfg.head_count_kv) * int(cfg.key_length)
+    scale_elements = int(np.prod(_qwen35_gguf_kv_scale_shape(cfg, pages=1, granularity=layout.scale_granularity)))
+    mirror_layers = frozenset(layout.bf16_mirror_layer_indices)
+    page_bytes = 0
+    for layer_id, layer_storage in enumerate(layout.layer_storage_dtypes):
+        if layer_storage is None:
+            continue
+        key_dtype = DType.INT8 if layer_storage == DType.INT8_PER_TOKEN_HEAD else DType.BF16
+        value_dtype = (
+            DType.BF16
+            if layer_storage == DType.INT8_PER_TOKEN_HEAD and layout.int8_kv_value_bf16
+            else key_dtype
+        )
+        page_bytes += payload_elements * (key_dtype.itemsize + value_dtype.itemsize)
+        if layer_id in mirror_layers:
+            page_bytes += 2 * payload_elements * DType.BF16.itemsize
+        if layer_storage == DType.INT8_PER_TOKEN_HEAD:
+            page_bytes += 2 * scale_elements * layout.scale_dtype.itemsize
+    return int(page_bytes)
+
+
+def _allocate_qwen35_gguf_kv_chunk(
     runner: Qwen35GGUFFullStackRunner,
     *,
     runtime: HipRuntime,
     start_block_id: int,
     pages: int,
-) -> Qwen35GGUFBF16KVChunkBacking:
+    layout: Qwen35GGUFKVChunkLayout,
+) -> Qwen35GGUFKVChunkBacking:
     if runner.weights is None:
         raise RuntimeError("GGUF full-stack runner is closed")
     cfg = runner.weights.config
-    page_nbytes = 256 * int(cfg.head_count_kv) * int(cfg.key_length) * DType.BF16.itemsize
+    if len(layout.layer_storage_dtypes) != len(cfg.layer_types):
+        raise ValueError("GGUF KV chunk layout does not match the model layer count")
+    payload_elements = int(pages) * 256 * int(cfg.head_count_kv) * int(cfg.key_length)
+    scale_shape = _qwen35_gguf_kv_scale_shape(
+        cfg,
+        pages=int(pages),
+        granularity=layout.scale_granularity,
+    )
+    scale_nbytes = int(np.prod(scale_shape)) * layout.scale_dtype.itemsize
+    mirror_layers = frozenset(layout.bf16_mirror_layer_indices)
+    device = Device("hip", 0)
     key_caches: list[DeviceBuffer | None] = []
     value_caches: list[DeviceBuffer | None] = []
+    mirror_key_caches: list[DeviceBuffer | None] = []
+    mirror_value_caches: list[DeviceBuffer | None] = []
+    k_scale_caches: list[DeviceBuffer | None] = []
+    v_scale_caches: list[DeviceBuffer | None] = []
+    scale_metadata: list[KVScaleMetadata | None] = []
     buffers: list[DeviceBuffer] = []
     try:
-        for layer_type in cfg.layer_types:
+        for layer_id, (layer_type, layer_storage) in enumerate(
+            zip(cfg.layer_types, layout.layer_storage_dtypes, strict=True)
+        ):
             if layer_type == LINEAR_ATTENTION:
+                if layer_storage is not None:
+                    raise ValueError("GGUF KV chunk layout assigns storage to a linear-attention layer")
                 key_caches.append(None)
                 value_caches.append(None)
+                mirror_key_caches.append(None)
+                mirror_value_caches.append(None)
+                k_scale_caches.append(None)
+                v_scale_caches.append(None)
+                scale_metadata.append(None)
                 continue
-            key_cache = malloc(int(pages) * page_nbytes, runtime=runtime)
-            value_cache = malloc(int(pages) * page_nbytes, runtime=runtime)
+            if layer_storage is None:
+                raise ValueError("GGUF KV chunk layout omits a full-attention layer")
+            key_dtype = DType.INT8 if layer_storage == DType.INT8_PER_TOKEN_HEAD else DType.BF16
+            value_dtype = (
+                DType.BF16
+                if layer_storage == DType.INT8_PER_TOKEN_HEAD and layout.int8_kv_value_bf16
+                else key_dtype
+            )
+            key_cache = malloc(payload_elements * key_dtype.itemsize, runtime=runtime)
+            value_cache = malloc(payload_elements * value_dtype.itemsize, runtime=runtime)
             buffers.extend((key_cache, value_cache))
             key_caches.append(key_cache)
             value_caches.append(value_cache)
+            if layer_id in mirror_layers:
+                mirror_nbytes = payload_elements * DType.BF16.itemsize
+                mirror_key = malloc(mirror_nbytes, runtime=runtime)
+                mirror_value = malloc(mirror_nbytes, runtime=runtime)
+                buffers.extend((mirror_key, mirror_value))
+                mirror_key_caches.append(mirror_key)
+                mirror_value_caches.append(mirror_value)
+            else:
+                mirror_key_caches.append(None)
+                mirror_value_caches.append(None)
+            if layer_storage == DType.INT8_PER_TOKEN_HEAD:
+                k_scale = malloc(scale_nbytes, runtime=runtime)
+                v_scale = malloc(scale_nbytes, runtime=runtime)
+                buffers.extend((k_scale, v_scale))
+                k_scale_caches.append(k_scale)
+                v_scale_caches.append(v_scale)
+                scale_metadata.append(
+                    KVScaleMetadata(
+                        k_scale=Tensor.from_handle(k_scale.ptr, scale_shape, layout.scale_dtype, device),
+                        v_scale=Tensor.from_handle(v_scale.ptr, scale_shape, layout.scale_dtype, device),
+                        scale_dtype=layout.scale_dtype,
+                        granularity=layout.scale_granularity,
+                    )
+                )
+            else:
+                k_scale_caches.append(None)
+                v_scale_caches.append(None)
+                scale_metadata.append(None)
     except Exception:
         for buffer in reversed(buffers):
             free(buffer, runtime=runtime)
         raise
-    return Qwen35GGUFBF16KVChunkBacking(
-        start_block_id=int(start_block_id),
-        pages=int(pages),
-        page_nbytes_per_tensor=page_nbytes,
-        full_key_caches=tuple(key_caches),
-        full_value_caches=tuple(value_caches),
-        buffers=tuple(buffers),
-    )
+    try:
+        backing = Qwen35GGUFKVChunkBacking(
+            layout=layout,
+            start_block_id=int(start_block_id),
+            pages=int(pages),
+            full_key_caches=tuple(key_caches),
+            full_value_caches=tuple(value_caches),
+            full_bf16_mirror_key_caches=tuple(mirror_key_caches),
+            full_bf16_mirror_value_caches=tuple(mirror_value_caches),
+            full_k_scale_caches=tuple(k_scale_caches),
+            full_v_scale_caches=tuple(v_scale_caches),
+            full_kv_scale_metadata=tuple(scale_metadata),
+            buffers=tuple(buffers),
+        )
+        expected_page_bytes = _qwen35_gguf_kv_page_bytes(cfg, layout)
+        if backing.page_bytes != expected_page_bytes:
+            raise RuntimeError("GGUF KV chunk byte accounting drift")
+    except Exception:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+        raise
+    return backing
 
 
-def _free_qwen35_gguf_bf16_kv_chunk(
-    backing: Qwen35GGUFBF16KVChunkBacking,
+def _free_qwen35_gguf_kv_chunk(
+    backing: Qwen35GGUFKVChunkBacking,
     *,
     runtime: HipRuntime,
 ) -> None:
     for buffer in reversed(backing.buffers):
         free(buffer, runtime=runtime)
+
+
+def _qwen35_gguf_session_kv_chunk_layout(
+    session: "Qwen35GGUFResidentSession",
+) -> Qwen35GGUFKVChunkLayout:
+    if session.runner is None or session.runner.weights is None or session.scratch is None:
+        raise RuntimeError("GGUF resident session is closed")
+    layer_storage: list[DType | None] = []
+    bf16_full_indices = frozenset(int(index) for index in session.int8_bf16_full_attention_layer_indices)
+    full_attention_index = 0
+    for layer_type in session.runner.weights.config.layer_types:
+        if layer_type == LINEAR_ATTENTION:
+            layer_storage.append(None)
+            continue
+        layer_storage.append(
+            DType.BF16
+            if session.kv_storage_dtype == DType.BF16 or full_attention_index in bf16_full_indices
+            else DType.INT8_PER_TOKEN_HEAD
+        )
+        full_attention_index += 1
+    mirror_layers = (
+        tuple(
+            layer_id
+            for layer_id, storage in enumerate(layer_storage)
+            if storage == DType.INT8_PER_TOKEN_HEAD
+        )
+        if session.kv_storage_dtype == DType.INT8_PER_TOKEN_HEAD
+        and session.kv_scale_granularity != "hadamard_group32"
+        and int(session.scratch.max_positions) <= _GGUF_INT8_SHORT_BF16_MIRROR_MAX_POSITIONS
+        else ()
+    )
+    return Qwen35GGUFKVChunkLayout(
+        storage_dtype=session.kv_storage_dtype,
+        storage_layout=session.kv_storage_layout,
+        scale_dtype=session.kv_scale_dtype,
+        scale_granularity=session.kv_scale_granularity,
+        int8_kv_value_bf16=bool(session.int8_kv_value_bf16),
+        layer_storage_dtypes=tuple(layer_storage),
+        bf16_mirror_layer_indices=mirror_layers,
+    )
 
 
 def _gguf_device_kv_contiguous_base_row(
@@ -8646,6 +9026,7 @@ class Qwen35GGUFResidentSession:
     _native_spec_b2_target_graph_n2: object | None = field(default=None, init=False, repr=False)
     _device_kv_pool: DeviceChunkedKVPool | None = field(default=None, init=False, repr=False)
     _device_kv_allocation: DeviceKVPoolAllocation | None = field(default=None, init=False, repr=False)
+    _device_kv_layout: Qwen35GGUFKVChunkLayout | None = field(default=None, init=False, repr=False)
     _device_kv_graph_handles: dict[int, object] = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -8684,8 +9065,6 @@ class Qwen35GGUFResidentSession:
         self.kv_storage_dtype = DType.parse(getattr(self.kv_policy, "storage_dtype", DType.BF16))
         if self.kv_storage_dtype not in {DType.BF16, DType.INT8_PER_TOKEN_HEAD}:
             raise ValueError("GGUF resident full-attention KV storage must be bf16 or int8_per_token_head")
-        if self.defer_kv_allocation and self.kv_storage_dtype != DType.BF16:
-            raise ValueError("deferred GGUF device KV allocation currently requires BF16 storage")
         self.kv_storage_layout = str(getattr(self.kv_policy, "storage_layout", "uniform"))
         self.int8_kv_value_bf16 = _gguf_int8_kv_value_bf16_enabled(kv_storage_dtype=self.kv_storage_dtype)
         self.kv_scale_dtype = DType.parse(self.kv_scale_dtype)
@@ -8800,6 +9179,7 @@ class Qwen35GGUFResidentSession:
             int8_bf16_full_attention_layer_indices=self.int8_bf16_full_attention_layer_indices,
             allocate_kv_cache=not bool(self.defer_kv_allocation),
         )
+        self._device_kv_layout = _qwen35_gguf_session_kv_chunk_layout(self)
         total_memory_bytes = 0
         try:
             _free_bytes, total_memory_bytes = runtime.mem_get_info()
@@ -8891,20 +9271,24 @@ class Qwen35GGUFResidentSession:
 
         if not self.defer_kv_allocation:
             raise RuntimeError("GGUF session was not created for deferred KV allocation")
-        if self.kv_storage_dtype != DType.BF16:
-            raise RuntimeError("dynamic GGUF device KV binding currently requires BF16 storage")
         if self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
         if self._device_kv_allocation is not None:
             raise RuntimeError("GGUF resident session already has a device KV allocation")
         backing = allocation.backing
-        if not isinstance(backing, Qwen35GGUFBF16KVChunkBacking):
+        expected_layout = self._device_kv_layout
+        if expected_layout is None:
+            expected_layout = _qwen35_gguf_session_kv_chunk_layout(self)
+            self._device_kv_layout = expected_layout
+        if getattr(backing, "layout", None) != expected_layout:
+            raise TypeError("GGUF device KV allocation layout does not match the resident session")
+        if not isinstance(backing, Qwen35GGUFKVChunkBacking):
             raise TypeError("GGUF device KV allocation has incompatible backing")
         if len(allocation.block_ids) > int(self.scratch.block_table_tensor.numel):
             raise ValueError("GGUF device KV allocation exceeds the session block-table capacity")
         if int(allocation.chunk_start_block_id) != int(backing.start_block_id):
             raise ValueError("GGUF device KV allocation backing identity mismatch")
-        key_caches, value_caches = backing.bound_caches(allocation.block_ids)
+        backing.validate_bound_blocks(allocation.block_ids)
         local_block_table = np.zeros(self.scratch.block_table_tensor.shape, dtype=np.int32)
         local_block_table[: len(allocation.block_ids)] = np.asarray(
             [
@@ -8921,8 +9305,13 @@ class Qwen35GGUFResidentSession:
         )
         self.scratch = replace(
             self.scratch,
-            full_key_caches=key_caches,
-            full_value_caches=value_caches,
+            full_key_caches=backing.full_key_caches,
+            full_value_caches=backing.full_value_caches,
+            full_bf16_mirror_key_caches=backing.full_bf16_mirror_key_caches,
+            full_bf16_mirror_value_caches=backing.full_bf16_mirror_value_caches,
+            full_k_scale_caches=backing.full_k_scale_caches,
+            full_v_scale_caches=backing.full_v_scale_caches,
+            full_kv_scale_metadata=backing.full_kv_scale_metadata,
         )
         self._device_kv_pool = pool
         self._device_kv_allocation = allocation
@@ -9291,6 +9680,11 @@ class Qwen35GGUFResidentSession:
             self.scratch,
             full_key_caches=empty,
             full_value_caches=empty,
+            full_bf16_mirror_key_caches=empty,
+            full_bf16_mirror_value_caches=empty,
+            full_k_scale_caches=empty,
+            full_v_scale_caches=empty,
+            full_kv_scale_metadata=empty,
         )
         block_table = np.zeros(self.scratch.block_table_tensor.shape, dtype=np.int32)
         copy_host_to_device(
@@ -9334,7 +9728,7 @@ class Qwen35GGUFResidentSession:
         chunk_pages: int,
         idle_grace_seconds: float,
     ) -> DeviceChunkedKVPool:
-        """Create the scheduler-owned BF16 pool using this session's model plan."""
+        """Create the scheduler-owned policy-shaped pool from this session plan."""
 
         if not self.defer_kv_allocation:
             raise RuntimeError("GGUF session was not created for deferred KV allocation")
@@ -9342,18 +9736,19 @@ class Qwen35GGUFResidentSession:
             raise RuntimeError("GGUF resident session is closed")
         runtime = self.runtime or get_hip_runtime()
         cfg = self.runner.weights.config
-        page_nbytes = 256 * int(cfg.head_count_kv) * int(cfg.key_length) * DType.BF16.itemsize
-        full_attention_layers = sum(
-            1 for layer_type in cfg.layer_types if layer_type == FULL_ATTENTION
-        )
-        page_bytes = 2 * full_attention_layers * page_nbytes
+        layout = self._device_kv_layout
+        if layout is None:
+            layout = _qwen35_gguf_session_kv_chunk_layout(self)
+            self._device_kv_layout = layout
+        page_bytes = _qwen35_gguf_kv_page_bytes(cfg, layout)
 
         def allocate_chunk(start_block_id: int, pages: int):
-            return _allocate_qwen35_gguf_bf16_kv_chunk(
+            return _allocate_qwen35_gguf_kv_chunk(
                 self.runner,
                 runtime=runtime,
                 start_block_id=int(start_block_id),
                 pages=int(pages),
+                layout=layout,
             )
 
         return DeviceChunkedKVPool(
@@ -9364,7 +9759,7 @@ class Qwen35GGUFResidentSession:
             chunk_pages=int(chunk_pages),
             idle_grace_seconds=float(idle_grace_seconds),
             allocate_chunk=allocate_chunk,
-            free_chunk=lambda backing: _free_qwen35_gguf_bf16_kv_chunk(
+            free_chunk=lambda backing: _free_qwen35_gguf_kv_chunk(
                 backing, runtime=runtime
             ),
             page_pointer=lambda backing, local_page: backing.page_pointer(local_page),
@@ -10189,6 +10584,44 @@ class Qwen35GGUFResidentSession:
             retained_value_cache=retained_value_cache,
             retained_append_spans=retained_append_spans,
             int8_kv_value_bf16=getattr(self, "int8_kv_value_bf16", False),
+        )
+
+    def _packed_full_attention_scratch_for_layer(
+        self,
+        packed_scratch,
+        packed_state: _GGUFPackedTargetState,
+        layer_id: int,
+    ):
+        key_cache, value_cache = packed_state.full_cache(layer_id)
+        metadata = packed_state.full_scale_metadata(layer_id)
+        if metadata is None:
+            return replace(
+                packed_scratch,
+                key_cache=key_cache,
+                value_cache=value_cache,
+                retained_key_cache=None,
+                retained_value_cache=None,
+                retained_append_spans=None,
+                int8_kv_value_bf16=False,
+            )
+        mirror = packed_state.full_bf16_mirror_cache(layer_id)
+        if mirror is None:
+            raise NotImplementedError(
+                "packed AR direct INT8 attention is not admitted without a bounded BF16 mirror"
+            )
+        retained_append_spans = replace(
+            packed_scratch.append_spans,
+            storage_dtype=DType.INT8_PER_TOKEN_HEAD,
+            scale_metadata=metadata,
+        )
+        return replace(
+            packed_scratch,
+            key_cache=mirror[0],
+            value_cache=mirror[1],
+            retained_key_cache=key_cache,
+            retained_value_cache=value_cache,
+            retained_append_spans=retained_append_spans,
+            int8_kv_value_bf16=bool(packed_state.kv_layout.int8_kv_value_bf16),
         )
 
     def _int8_prefill_oracle_cache_for_layer(self, layer_id: int) -> tuple[DeviceBuffer, DeviceBuffer]:
@@ -11985,6 +12418,33 @@ class Qwen35GGUFResidentSession:
 
         return self._read_sample(return_logits=False)
 
+    def _packed_ar_kv_layout_for_sessions(
+        self,
+        sessions: tuple["Qwen35GGUFResidentSession", ...],
+    ) -> Qwen35GGUFKVChunkLayout:
+        layout = self._device_kv_layout
+        if layout is None:
+            layout = _qwen35_gguf_session_kv_chunk_layout(self)
+            self._device_kv_layout = layout
+        for session in sessions:
+            session_layout = session._device_kv_layout
+            if session_layout is None:
+                session_layout = _qwen35_gguf_session_kv_chunk_layout(session)
+                session._device_kv_layout = session_layout
+            if session_layout != layout:
+                raise NotImplementedError("packed AR requires identical KV layouts across resident sessions")
+        int8_layers = tuple(
+            layer_id
+            for layer_id, storage in enumerate(layout.layer_storage_dtypes)
+            if storage == DType.INT8_PER_TOKEN_HEAD
+        )
+        mirror_layers = frozenset(layout.bf16_mirror_layer_indices)
+        if any(layer_id not in mirror_layers for layer_id in int8_layers):
+            raise NotImplementedError(
+                "packed AR direct INT8 attention is not admitted without a bounded BF16 mirror"
+            )
+        return layout
+
     def prefill_batch_native(
         self,
         prompt_token_ids: list[list[int] | tuple[int, ...]] | tuple[list[int] | tuple[int, ...], ...],
@@ -12184,8 +12644,6 @@ class Qwen35GGUFResidentSession:
             raise RuntimeError("GGUF resident packed prefill buffers are closed")
         if self._bulk_prefill_scratch is None:
             raise RuntimeError("GGUF resident bulk prefill scratch is closed")
-        if self.kv_storage_dtype != DType.BF16:
-            raise NotImplementedError("packed AR prefill currently supports BF16 KV only")
         if self.use_expert_sidecar:
             raise NotImplementedError("packed AR prefill does not support expert sidecars yet")
         if self.host_token_embedding_enabled:
@@ -12206,8 +12664,7 @@ class Qwen35GGUFResidentSession:
                 raise NotImplementedError("packed AR prefill requires shared runner sessions")
             if session.scratch is None:
                 raise RuntimeError("packed AR prefill job session is closed")
-            if session.kv_storage_dtype != DType.BF16:
-                raise NotImplementedError("packed AR prefill currently supports BF16 KV only")
+        self._packed_ar_kv_layout_for_sessions(session_tuple)
 
         slot_blocks = tuple(
             _GGUFPackedVerifySlotBlock(
@@ -12404,11 +12861,12 @@ class Qwen35GGUFResidentSession:
                                 ),
                             )
                     else:
-                        key_cache, value_cache = packed_state.full_cache(layer_id)
                         layer_scratch = replace(
-                            packed_scratch,
-                            key_cache=key_cache,
-                            value_cache=value_cache,
+                            self._packed_full_attention_scratch_for_layer(
+                                packed_scratch,
+                                packed_state,
+                                layer_id,
+                            ),
                             cos_table=self.scratch.cos_table,
                             sin_table=self.scratch.sin_table,
                         )
@@ -12663,11 +13121,12 @@ class Qwen35GGUFResidentSession:
                         )
                     )
                 elif layer_type == FULL_ATTENTION:
-                    key_cache, value_cache = packed_state.full_cache(layer_id)
                     layer_scratch = replace(
-                        packed_scratch,
-                        key_cache=key_cache,
-                        value_cache=value_cache,
+                        self._packed_full_attention_scratch_for_layer(
+                            packed_scratch,
+                            packed_state,
+                            layer_id,
+                        ),
                         cos_table=self.scratch.cos_table,
                         sin_table=self.scratch.sin_table,
                     )
@@ -12746,8 +13205,6 @@ class Qwen35GGUFResidentSession:
             raise RuntimeError("GGUF resident packed decode buffers are closed")
         if self._bulk_prefill_scratch is None:
             raise RuntimeError("GGUF resident bulk prefill scratch is closed")
-        if self.kv_storage_dtype != DType.BF16:
-            raise NotImplementedError("packed AR decode currently supports BF16 KV only")
         if self.use_expert_sidecar:
             raise NotImplementedError("packed AR decode does not support expert sidecars yet")
         if self.host_token_embedding_enabled:
@@ -12770,8 +13227,7 @@ class Qwen35GGUFResidentSession:
                 raise NotImplementedError("packed AR decode requires shared runner sessions")
             if session.scratch is None:
                 raise RuntimeError("packed AR decode job session is closed")
-            if session.kv_storage_dtype != DType.BF16:
-                raise NotImplementedError("packed AR decode currently supports BF16 KV only")
+        self._packed_ar_kv_layout_for_sessions(session_tuple)
 
         active_rows = len(session_tuple)
         row_count = active_rows if physical_rows is None else int(physical_rows)
@@ -13947,10 +14403,15 @@ class Qwen35GGUFResidentSession:
         max_sequence_length = int(max_sequence_length)
         if slot_count <= 0 or rows <= 0 or max_sequence_length <= 0:
             raise ValueError("packed verify workspace dimensions must be positive")
+        kv_layout = getattr(self, "_device_kv_layout", None)
+        if kv_layout is None and getattr(self.runner, "weights", None) is not None and self.scratch is not None:
+            kv_layout = _qwen35_gguf_session_kv_chunk_layout(self)
+            self._device_kv_layout = kv_layout
         state_ready = (
             self._packed_verify_state is not None
             and int(self._packed_verify_state.slot_count) >= slot_count
             and int(self._packed_verify_state.max_sequence_length) >= max_sequence_length
+            and getattr(self._packed_verify_state, "kv_layout", kv_layout) == kv_layout
         )
         scratch_ready = (
             self._packed_verify_scratch is not None
@@ -13970,6 +14431,7 @@ class Qwen35GGUFResidentSession:
                 slot_count=slot_count,
                 max_sequence_length=max_sequence_length,
                 runtime=runtime,
+                kv_layout=kv_layout,
             )
             self._packed_verify_scratch = _GGUFFullAttentionPrefillScratch.allocate(
                 self.runner,
@@ -13989,6 +14451,116 @@ class Qwen35GGUFResidentSession:
         cfg = self.runner.weights.config
         return int(cfg.head_count_kv) * int(cfg.key_length) * DType.BF16.itemsize
 
+    def _packed_kv_copy_planes(
+        self,
+        source: object,
+        destination: object,
+        layer_id: int,
+    ) -> tuple[tuple[object, object, int], ...]:
+        if self.runner is None or self.runner.weights is None:
+            raise RuntimeError("GGUF resident session is closed")
+        layout = getattr(source, "kv_layout", None) or getattr(destination, "kv_layout", None)
+        if layout is None:
+            layout = getattr(self, "_device_kv_layout", None)
+        if layout is None:
+            cfg = self.runner.weights.config
+            layout = Qwen35GGUFKVChunkLayout(
+                storage_dtype=DType.BF16,
+                storage_layout="uniform",
+                scale_dtype=DType.FP16,
+                scale_granularity="per_token_head",
+                int8_kv_value_bf16=False,
+                layer_storage_dtypes=tuple(
+                    None if layer_type == LINEAR_ATTENTION else DType.BF16
+                    for layer_type in cfg.layer_types
+                ),
+            )
+        storage = layout.layer_storage_dtypes[int(layer_id)]
+        if storage is None:
+            raise ValueError(f"layer {layer_id} has no full-attention KV copy planes")
+        cfg = self.runner.weights.config
+        payload_elements = int(cfg.head_count_kv) * int(cfg.key_length)
+        key_row_nbytes = payload_elements * (
+            DType.INT8.itemsize if storage == DType.INT8_PER_TOKEN_HEAD else DType.BF16.itemsize
+        )
+        value_row_nbytes = payload_elements * (
+            DType.BF16.itemsize
+            if storage == DType.INT8_PER_TOKEN_HEAD and layout.int8_kv_value_bf16
+            else (DType.INT8.itemsize if storage == DType.INT8_PER_TOKEN_HEAD else DType.BF16.itemsize)
+        )
+        plane_specs: list[tuple[str, int]] = [
+            ("full_key_caches", key_row_nbytes),
+            ("full_value_caches", value_row_nbytes),
+        ]
+        if int(layer_id) in frozenset(layout.bf16_mirror_layer_indices):
+            mirror_row_nbytes = payload_elements * DType.BF16.itemsize
+            plane_specs.extend(
+                (
+                    ("full_bf16_mirror_key_caches", mirror_row_nbytes),
+                    ("full_bf16_mirror_value_caches", mirror_row_nbytes),
+                )
+            )
+        if storage == DType.INT8_PER_TOKEN_HEAD:
+            group_factor = 1
+            if layout.scale_granularity == "block16":
+                group_factor = int(cfg.key_length) // 16
+            elif layout.scale_granularity == "hadamard_group32":
+                group_factor = int(cfg.key_length) // 32
+            scale_row_nbytes = int(cfg.head_count_kv) * group_factor * layout.scale_dtype.itemsize
+            plane_specs.extend(
+                (
+                    ("full_k_scale_caches", scale_row_nbytes),
+                    ("full_v_scale_caches", scale_row_nbytes),
+                )
+            )
+        planes: list[tuple[object, object, int]] = []
+        for field_name, row_nbytes in plane_specs:
+            if field_name in {"full_key_caches", "full_value_caches"} and not hasattr(source, field_name):
+                source_buffer = source.full_cache(int(layer_id))[
+                    0 if field_name == "full_key_caches" else 1
+                ]
+            else:
+                source_buffer = getattr(source, field_name)[int(layer_id)]
+            if field_name in {"full_key_caches", "full_value_caches"} and not hasattr(destination, field_name):
+                destination_buffer = destination.full_cache(int(layer_id))[
+                    0 if field_name == "full_key_caches" else 1
+                ]
+            else:
+                destination_buffer = getattr(destination, field_name)[int(layer_id)]
+            if source_buffer is None or destination_buffer is None:
+                raise RuntimeError(
+                    f"GGUF packed KV copy plane {field_name} is missing at layer {layer_id}"
+                )
+            planes.append((source_buffer, destination_buffer, int(row_nbytes)))
+        return tuple(planes)
+
+    def _copy_packed_kv_rows(
+        self,
+        source: object,
+        destination: object,
+        layer_id: int,
+        *,
+        source_start: int,
+        destination_start: int,
+        rows: int,
+        runtime: HipRuntime,
+        stream: int,
+    ) -> None:
+        if int(rows) <= 0:
+            return
+        for source_buffer, destination_buffer, row_nbytes in self._packed_kv_copy_planes(
+            source,
+            destination,
+            layer_id,
+        ):
+            runtime.memcpy_async(
+                int(destination_buffer.ptr) + int(destination_start) * row_nbytes,
+                int(source_buffer.ptr) + int(source_start) * row_nbytes,
+                int(rows) * row_nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                int(stream),
+            )
+
     def _sync_packed_verify_initial_state(
         self,
         jobs: list[dict[str, object]],
@@ -14007,7 +14579,6 @@ class Qwen35GGUFResidentSession:
         if len(self._packed_verify_max_written_positions) != len(jobs):
             self._packed_verify_max_written_positions = tuple(0 for _ in jobs)
         written_positions = list(self._packed_verify_max_written_positions)
-        row_nbytes = self._packed_full_kv_row_nbytes()
         cfg = self.runner.weights.config
         for slot_index, job in enumerate(jobs):
             session = job["session"]
@@ -14042,28 +14613,21 @@ class Qwen35GGUFResidentSession:
                 elif layer_type == FULL_ATTENTION:
                     if start_position <= int(written_positions[slot_index]):
                         continue
-                    src_key, src_value = session.scratch.full_cache(layer_id)
-                    dst_key, dst_value = packed_state.full_cache(layer_id)
                     physical_base = slot_index * int(packed_state.blocks_per_slot) * int(packed_state.block_size)
                     for logical_start, physical_start, copy_rows in _gguf_device_kv_copy_segments(
                         session,
                         start_position=0,
                         rows=start_position,
                     ):
-                        nbytes = copy_rows * row_nbytes
-                        runtime.memcpy_async(
-                            dst_key.ptr + (physical_base + logical_start) * row_nbytes,
-                            src_key.ptr + physical_start * row_nbytes,
-                            nbytes,
-                            HipMemcpyKind.DEVICE_TO_DEVICE,
-                            stream,
-                        )
-                        runtime.memcpy_async(
-                            dst_value.ptr + (physical_base + logical_start) * row_nbytes,
-                            src_value.ptr + physical_start * row_nbytes,
-                            nbytes,
-                            HipMemcpyKind.DEVICE_TO_DEVICE,
-                            stream,
+                        self._copy_packed_kv_rows(
+                            session.scratch,
+                            packed_state,
+                            layer_id,
+                            source_start=physical_start,
+                            destination_start=physical_base + logical_start,
+                            rows=copy_rows,
+                            runtime=runtime,
+                            stream=stream,
                         )
                 else:
                     raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
@@ -14087,7 +14651,6 @@ class Qwen35GGUFResidentSession:
             self._packed_decode_session_ids == session_ids
             and len(prior_positions) == len(sessions)
         )
-        row_nbytes = self._packed_full_kv_row_nbytes()
         cfg = self.runner.weights.config
         imported_slot_indices: list[int] = []
         for slot_index, session in enumerate(sessions):
@@ -14127,28 +14690,21 @@ class Qwen35GGUFResidentSession:
                 elif layer_type == FULL_ATTENTION:
                     if start_position <= 0:
                         continue
-                    src_key, src_value = session.scratch.full_cache(layer_id)
-                    dst_key, dst_value = packed_state.full_cache(layer_id)
                     physical_base = slot_index * int(packed_state.blocks_per_slot) * int(packed_state.block_size)
                     for logical_start, physical_start, copy_rows in _gguf_device_kv_copy_segments(
                         session,
                         start_position=0,
                         rows=start_position,
                     ):
-                        nbytes = copy_rows * row_nbytes
-                        runtime.memcpy_async(
-                            dst_key.ptr + (physical_base + logical_start) * row_nbytes,
-                            src_key.ptr + physical_start * row_nbytes,
-                            nbytes,
-                            HipMemcpyKind.DEVICE_TO_DEVICE,
-                            stream,
-                        )
-                        runtime.memcpy_async(
-                            dst_value.ptr + (physical_base + logical_start) * row_nbytes,
-                            src_value.ptr + physical_start * row_nbytes,
-                            nbytes,
-                            HipMemcpyKind.DEVICE_TO_DEVICE,
-                            stream,
+                        self._copy_packed_kv_rows(
+                            session.scratch,
+                            packed_state,
+                            layer_id,
+                            source_start=physical_start,
+                            destination_start=physical_base + logical_start,
+                            rows=copy_rows,
+                            runtime=runtime,
+                            stream=stream,
                         )
                 else:
                     raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
@@ -14362,7 +14918,6 @@ class Qwen35GGUFResidentSession:
         if self.runner is None or self.runner.weights is None:
             raise RuntimeError("GGUF resident session is closed")
         cfg = self.runner.weights.config
-        row_nbytes = self._packed_full_kv_row_nbytes()
         for slot_index, session in enumerate(sessions):
             if session is None:
                 continue
@@ -14395,8 +14950,6 @@ class Qwen35GGUFResidentSession:
                         stream,
                     )
                 elif layer_type == FULL_ATTENTION and copy_kv:
-                    src_key, src_value = packed_state.full_cache(layer_id)
-                    dst_key, dst_value = session.scratch.full_cache(layer_id)
                     physical_base = slot_index * int(packed_state.blocks_per_slot) * int(packed_state.block_size)
                     copy_start = 0 if copy_full_kv else start_position
                     copy_rows = end_position if copy_full_kv else slot_rows
@@ -14405,20 +14958,15 @@ class Qwen35GGUFResidentSession:
                         start_position=copy_start,
                         rows=copy_rows,
                     ):
-                        nbytes = segment_rows * row_nbytes
-                        runtime.memcpy_async(
-                            dst_key.ptr + physical_start * row_nbytes,
-                            src_key.ptr + (physical_base + logical_start) * row_nbytes,
-                            nbytes,
-                            HipMemcpyKind.DEVICE_TO_DEVICE,
-                            stream,
-                        )
-                        runtime.memcpy_async(
-                            dst_value.ptr + physical_start * row_nbytes,
-                            src_value.ptr + (physical_base + logical_start) * row_nbytes,
-                            nbytes,
-                            HipMemcpyKind.DEVICE_TO_DEVICE,
-                            stream,
+                        self._copy_packed_kv_rows(
+                            packed_state,
+                            session.scratch,
+                            layer_id,
+                            source_start=physical_base + logical_start,
+                            destination_start=physical_start,
+                            rows=segment_rows,
+                            runtime=runtime,
+                            stream=stream,
                         )
                 elif layer_type == FULL_ATTENTION:
                     continue
@@ -16583,8 +17131,6 @@ class _FullStackScratch:
         kv_storage = DType.parse(kv_storage_dtype)
         if kv_storage not in {DType.BF16, DType.INT8_PER_TOKEN_HEAD}:
             raise ValueError("GGUF resident full-attention KV storage must be bf16 or int8_per_token_head")
-        if not allocate_kv_cache and kv_storage != DType.BF16:
-            raise ValueError("deferred GGUF full-attention KV allocation currently requires BF16 storage")
         scale_dtype = DType.parse(kv_scale_dtype)
         if scale_dtype not in {DType.FP16, DType.FP32}:
             raise ValueError("GGUF INT8 KV scales must use fp16 or fp32")

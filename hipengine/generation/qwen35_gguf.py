@@ -50,7 +50,12 @@ from hipengine.generation.sampling import (
     thinking_budget_state_from_params,
 )
 from hipengine.loading.gguf import GGUFModelInfo, GGUFReader
-from hipengine.kvcache import RadixCache, resolve_prefix_cache_mode
+from hipengine.kvcache import (
+    FixedPagedKVPolicy,
+    RadixCache,
+    resolve_kv_policy,
+    resolve_prefix_cache_mode,
+)
 from hipengine.kernels.backends import (
     backend_package_capability,
     hip_target_arch_environment,
@@ -123,7 +128,13 @@ _MTP_SERVING_TARGET_BATCH_MAX_SLOTS = 4
 _GGUF_AR_NATIVE_MAX_SLOTS = 8
 _GGUF_RESIDENT_MODEL_LOOP_DEFAULT_CAPACITY = 4
 _GGUF_AR_PHYSICAL_BUCKET_WIDTHS = (1, 2, 4, 8)
-_GGUFSessionPoolKey = tuple[str, bool | None, bool | None, int | None]
+_GGUFSessionPoolKey = tuple[
+    str,
+    bool | None,
+    bool | None,
+    int | None,
+    tuple[str, str, str, str],
+]
 _GGUF_AR_PACKED_DECODE_ENV = "HIPENGINE_GGUF_AR_PACKED_DECODE"
 _GGUF_AR_PACKED_PREFILL_ENV = "HIPENGINE_GGUF_AR_PACKED_PREFILL"
 _GGUF_AR_STREAM_DECODE_ENV = "HIPENGINE_GGUF_AR_STREAM_DECODE"
@@ -594,6 +605,13 @@ class Qwen35GGUFBringupGenerator:
     _shared_runner: Qwen35GGUFFullStackRunner | None = field(default=None, init=False, repr=False)
     _shared_runner_lock: Any = field(default_factory=threading.Lock, init=False, repr=False)
     _prepared_max_sequence_length: int | None = field(default=None, init=False, repr=False)
+    _prepared_kv_policy: FixedPagedKVPolicy | None = field(default=None, init=False, repr=False)
+    _prepared_kv_scale_dtype: str = field(default="fp16", init=False, repr=False)
+    _prepared_kv_signature: tuple[str, str, str, str] | None = field(
+        default=None,
+        init=False,
+        repr=False,
+    )
     _shared_session_pool: dict[
         _GGUFSessionPoolKey,
         list[Qwen35GGUFResidentSession],
@@ -606,6 +624,7 @@ class Qwen35GGUFBringupGenerator:
     def __post_init__(self) -> None:
         self.backend = resolve_backend(self.backend)
         self.tokenizer = Qwen35GGUFTokenizer.from_gguf_info(self.weight_index)
+        self._defer_resident_session_policy_resolution = True
 
     @property
     def target_arch(self) -> str:
@@ -618,6 +637,51 @@ class Qwen35GGUFBringupGenerator:
             backend = "hip_gfx1100"
             self.backend = backend
         return hip_target_arch_for_backend(backend)
+
+    def _resolve_request_kv_policy(
+        self,
+        params: Any | None,
+    ) -> tuple[FixedPagedKVPolicy, str, tuple[str, str, str, str]]:
+        resolved = resolve_kv_policy(
+            getattr(params, "kv_storage", "auto") or "auto",
+            scale_dtype=getattr(params, "kv_scale_dtype", "fp16") or "fp16",
+            scale_granularity=(
+                getattr(params, "kv_scale_granularity", "per_token_head")
+                or "per_token_head"
+            ),
+        )
+        signature = (
+            resolved.storage_dtype.value,
+            resolved.storage_layout,
+            resolved.scale_dtype.value,
+            resolved.scale_granularity,
+        )
+        return resolved.create_policy(), resolved.scale_dtype.value, signature
+
+    def _prepare_kv_policy(self, params: Any | None) -> None:
+        current = getattr(self, "_prepared_kv_signature", None)
+        requested_storage = getattr(params, "kv_storage", "auto") or "auto"
+        if current is not None and str(requested_storage) == "auto":
+            return
+        policy, scale_dtype, signature = self._resolve_request_kv_policy(params)
+        if current is not None and current != signature:
+            raise ValueError(
+                "GGUF resident session KV policy cannot change after preparation: "
+                f"prepared={current!r} requested={signature!r}"
+            )
+        self._prepared_kv_policy = policy
+        self._prepared_kv_scale_dtype = scale_dtype
+        self._prepared_kv_signature = signature
+
+    def _prepared_session_kv_kwargs(self) -> dict[str, Any]:
+        signature = getattr(self, "_prepared_kv_signature", None)
+        if signature in {None, ("bf16", "uniform", "fp16", "per_token_head")}:
+            return {}
+        return {
+            "kv_policy": self._prepared_kv_policy,
+            "kv_scale_dtype": self._prepared_kv_scale_dtype,
+            "kv_scale_granularity": signature[3],
+        }
 
     @_target_arch_scoped
     def prepare(
@@ -637,6 +701,7 @@ class Qwen35GGUFBringupGenerator:
                 requested,
                 0 if current is None else int(current),
             )
+        self._prepare_kv_policy(sampling_params)
         self._get_shared_runner()
         return None if max_sequence_length is None else int(max_sequence_length)
 
@@ -652,7 +717,8 @@ class Qwen35GGUFBringupGenerator:
     ) -> dict[str, Any]:
         """Warm server request shapes that are lazy in the GGUF resident path."""
 
-        del sampling_params, max_new_tokens
+        del max_new_tokens
+        self._prepare_kv_policy(sampling_params)
         max_batch = max(1, int(max_batch_size))
         prompt_len = max(1, min(128, int(max_prompt_tokens)))
         result: dict[str, Any] = {
@@ -940,7 +1006,16 @@ class Qwen35GGUFBringupGenerator:
     ) -> tuple[Qwen35GGUFResidentSession, _GGUFSessionPoolKey, bool]:
         self._ensure_shared_pools()
         max_sequence_length = getattr(self, "_prepared_max_sequence_length", None)
-        key = (str(pool_name), use_wmma_prefill, use_gemv_decode, max_sequence_length)
+        if getattr(self, "_prepared_kv_signature", None) is None:
+            self._prepare_kv_policy(None)
+        assert self._prepared_kv_signature is not None
+        key = (
+            str(pool_name),
+            use_wmma_prefill,
+            use_gemv_decode,
+            max_sequence_length,
+            self._prepared_kv_signature,
+        )
         with self._shared_session_pool_lock:
             pool = self._shared_session_pool.get(key)
             session = pool.pop() if pool else None
@@ -963,6 +1038,7 @@ class Qwen35GGUFBringupGenerator:
                 use_wmma_prefill=use_wmma_prefill,
                 use_gemv_decode=use_gemv_decode,
                 defer_kv_allocation=bool(defer_kv_allocation),
+                **self._prepared_session_kv_kwargs(),
                 **session_kwargs,
             ),
             key,
@@ -998,7 +1074,10 @@ class Qwen35GGUFBringupGenerator:
         use_gemv_decode: bool | None = _GGUF_PUBLIC_USE_GEMV_DECODE,
     ):
         if shared_runner is None:
-            session_kwargs: dict[str, Any] = {"backend": self.backend}
+            session_kwargs: dict[str, Any] = {
+                "backend": self.backend,
+                **self._prepared_session_kv_kwargs(),
+            }
             if use_wmma_prefill is not None:
                 session_kwargs["use_wmma_prefill"] = bool(use_wmma_prefill)
             if use_gemv_decode is not None:
@@ -1071,6 +1150,7 @@ class Qwen35GGUFBringupGenerator:
     @_target_arch_scoped_stream
     def stream_detailed(self, request: GenerationRequest) -> Iterator[GenerationStreamChunk]:
         self.last_batch_generation = None
+        self._prepare_kv_policy(request)
         if len(request.prompts) != 1:
             raise ValueError("streaming currently supports exactly one prompt")
         if request.max_tokens < 0:
@@ -1091,12 +1171,14 @@ class Qwen35GGUFBringupGenerator:
                 "shared_runner": shared_runner,
                 "use_wmma_prefill": _GGUF_PUBLIC_USE_WMMA_PREFILL,
                 "use_gemv_decode": _GGUF_PUBLIC_USE_GEMV_DECODE,
+                **self._prepared_session_kv_kwargs(),
             }
             if shared_runner is not None
             else {
                 "backend": self.backend,
                 "use_wmma_prefill": _GGUF_PUBLIC_USE_WMMA_PREFILL,
                 "use_gemv_decode": _GGUF_PUBLIC_USE_GEMV_DECODE,
+                **self._prepared_session_kv_kwargs(),
             }
         )
         with Qwen35GGUFResidentSession(self.model_path, **session_kwargs) as session:
@@ -1112,6 +1194,7 @@ class Qwen35GGUFBringupGenerator:
 
     @_target_arch_scoped
     def generate_detailed(self, request: GenerationRequest) -> list[GenerationOutput]:
+        self._prepare_kv_policy(request)
         if request.max_tokens < 0:
             raise ValueError("max_tokens must be non-negative")
         raise_if_generation_deadline_expired(request)
@@ -3973,7 +4056,13 @@ class Qwen35GGUFResidentModelRunner:
         self._graph_handle_buckets: dict[int, str] = {}
         self._graph_handle_replays: dict[int, int] = {}
         self._graph_buckets: dict[str, dict[str, Any]] = {}
-        self._reserve_sessions()
+        # Real generators resolve the server/request KV policy in ``prepare``
+        # before sessions exist. Lightweight fake owners used by host tests do
+        # not expose that contract and retain eager reservation.
+        if not bool(
+            getattr(generator, "_defer_resident_session_policy_resolution", False)
+        ):
+            self._reserve_sessions()
 
     @property
     def active_request_ids(self) -> tuple[int, ...]:
@@ -4616,6 +4705,14 @@ class Qwen35GGUFResidentModelRunner:
         *,
         prompt_rows: Sequence[Sequence[int]],
     ) -> None:
+        prepare_kv_policy = getattr(self.generator, "_prepare_kv_policy", None)
+        if callable(prepare_kv_policy):
+            prepare_kv_policy(request)
+        if not self._available and not self._rows:
+            with hip_target_arch_environment(self.generator.target_arch):
+                self._reserve_sessions()
+                if self._engine_loop_config is not None:
+                    self.configure_engine_loop(self._engine_loop_config)
         ids = tuple(int(request_id) for request_id in request_ids)
         prompts = tuple(tuple(int(token) for token in row) for row in prompt_rows)
         if len(ids) != len(request.prompts) or len(prompts) != len(ids):
@@ -4654,7 +4751,7 @@ class Qwen35GGUFResidentModelRunner:
         requested = getattr(self.generator, "_prepared_max_sequence_length", None)
         if requested is None and max_sequence_length is not None:
             requested = int(max_sequence_length)
-        if requested == self._max_sequence_length:
+        if requested == self._max_sequence_length and self._available:
             return
         if self._rows:
             raise RuntimeError("cannot resize resident GGUF sessions while requests are active")
@@ -4946,6 +5043,14 @@ class Qwen35GGUFResidentModelRunner:
                     defer_kv_allocation=True,
                 )
                 acquired.append(_GGUFResidentSessionLease(session, pool_key))
+            if self.capacity > 1 and acquired:
+                admit_layout = getattr(
+                    acquired[0].session,
+                    "_packed_ar_kv_layout_for_sessions",
+                    None,
+                )
+                if callable(admit_layout):
+                    admit_layout(tuple(lease.session for lease in acquired))
         except Exception:
             for lease in reversed(acquired):
                 lease.session.close()
