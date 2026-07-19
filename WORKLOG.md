@@ -167654,3 +167654,79 @@ Post-merge validation passes **307 tests** across NativeSpecCycle, PARO state,
 GGUF NativeSpecCycle, canonical MTP prompt loading, benchmark tool, and README
 synchronization; `git diff --check` passes. No merged decision uses the
 potentially contended GPU0 timing from the PARO correctness runs.
+
+## 2026-07-20 — Uncontended strict PARO N4 baseline and profiler hardening
+
+GPU0/W7900 is now exclusive. The first attempted strict B1/B2/B3 suite
+(`bg-390`) was intentionally stopped without retained evidence because
+`HIPENGINE_VERIFY_GPU_ACCEPT=validate` adds a per-cycle CPU-oracle/top-1
+readback and therefore cannot represent the production GPU-accept timing path.
+
+Clean `184bc4e8` production-GPU-accept replacement:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_BACKEND=hip_gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-mtp-w7900-hipcc-version.txt \
+  HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH=1 \
+  HIPENGINE_GDN_TLOOP_C1_EXACT=1 \
+  HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS=1 \
+  HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT=1 \
+  HIPENGINE_VERIFY_GPU_ACCEPT=1 PYTHONPATH=. \
+  python3 scripts/mtp-bench.py --mode hipengine-current \
+    --prompts-file benchmarks/prompts/mtpbench-code-general-ja.jsonl \
+    --max-tokens 24 --candidate-budgets 1,2,3 --runs 1 \
+    --prompt-render raw --proposal-impl persistent_device \
+    --backend hip_gfx1100 --hip-arch gfx1100 \
+    --chain-attn-mode c1_loop --graph-mode auto \
+    --engine-model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 \
+    --raw-root /tmp/w7900-n4-strict-b123-gpuaccept-uncontended-184bc4e8 \
+    --out /tmp/w7900-n4-strict-b123-gpuaccept-uncontended-184bc4e8.json
+```
+
+All **30/30 prompt-budget rows and 720/720 IDs** are exact. Pooled B1/B2/B3
+MTP/true-AR ratios are **0.5767x / 0.4242x / 0.3568x**. B1/B2/B3 pooled
+acceptance is **16/214 (7.48%)**, **20/412 (4.85%)**, and **21/601 (3.49%)**;
+visible tokens/cycle are **1.1215 / 1.1429 / 1.1483**, while complete marker wall
+is **16.562 / 23.055 / 28.019 ms/cycle**. B1 is decisively the least-bad strict
+budget and remains well below AR. B1 train/heldout ratios are **0.5894x / 0.5587x**;
+all categories are below AR. The source JSON is 97,223 bytes, SHA-256
+`4cee535e00da2a409eaecf8a7f7eed16880533b97a06dc4d4e112500f392c4b2`.
+This is an economics diagnostic, not a speed claim.
+
+A clean B1 N4-off control and N4-on bracket used the same command with only
+`HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH={0,1}` and fresh raw roots. All three
+runs have identical **240/240 IDs, 214 cycles, and 16 accepts**. Pooled results:
+
+| Route | AR tok/s | MTP tok/s | MTP/AR | verify ms/cycle | wall ms/cycle | capture-adjusted wall |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| N4 on, first | 110.515 | 63.736 | 0.5767x | 15.321 | 16.562 | 14.285 |
+| N4 off | 110.860 | 65.584 | 0.5916x | 14.878 | 16.115 | 13.957 |
+| N4 on, bracket | 111.894 | 64.511 | 0.5765x | 15.096 | 16.330 | 14.204 |
+
+Current N4 therefore adds **0.216-0.447 ms/cycle (+1.34-2.77%)** complete wall
+and loses **1.64-2.82%** MTP rate in both brackets. The overhead sits almost
+entirely inside verifier host wall; proposal/update is unchanged. This makes
+cached control/ABI marshalling and synchronization the first N4+ target, before
+expanding proposal/commit ownership. The on/off/on summary is
+`/tmp/w7900-n4-b1-on-off-on-184bc4e8-summary.json`.
+
+Profiler hardening now makes that attribution admissible: the direct child gets
+`--require-cached-build`, the resident target session and native MTP proposer
+thread the requirement into every JIT family, and `mtp_verifier_rocprof.py`
+collects and marker-filters HIP runtime APIs alongside kernels. Validation:
+
+```text
+python3 -m pytest -q tests/test_mtp_verifier_rocprof.py \
+  tests/test_mtp_prompt_suite_economics.py tests/test_mtp_native_vocab_cap.py
+  -> 10 passed
+python3 -m py_compile hipengine/speculative/mtp_native.py \
+  scripts/mtp_chain_e2e_smoke.py scripts/mtp_verifier_rocprof.py \
+  tests/test_mtp_verifier_rocprof.py
+  -> pass
+```
+
+A non-profiled current-model B1 preflight with `--require-cached-build` passes
+exact eight IDs and proves all target/proposer/native-cycle artifacts are warm;
+no profiled process needs to spawn `hipcc`.

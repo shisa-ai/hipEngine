@@ -376,6 +376,7 @@ def _run_ar_baseline(
     decode_tokens: int,
     backend: str,
     runner: Qwen35ParoNextTokenRunner | None = None,
+    require_cached_build: bool = False,
 ) -> tuple[list[int], dict[str, Any]]:
     if runner is None:
         runner = Qwen35ParoNextTokenRunner(model, backend=backend)
@@ -384,7 +385,11 @@ def _run_ar_baseline(
     generated: list[int] = []
     prefill_seconds = 0.0
     decode_seconds = 0.0
-    with Qwen35ParoResidentSession(runner, max_sequence_length=max_sequence) as session:
+    with Qwen35ParoResidentSession(
+        runner,
+        max_sequence_length=max_sequence,
+        require_cached_build=bool(require_cached_build),
+    ) as session:
         next_result = None
         prefill_started = time.perf_counter()
         for pos, token in enumerate(prompt_tokens):
@@ -964,6 +969,7 @@ def _run_spec_persistent_device(
     ar_fallback_after_mtp_cycles: int = 0,
     ar_fallback_tokens: int = 1,
     ar_fallback_until_end: bool = False,
+    require_cached_build: bool = False,
 ) -> tuple[list[int], dict[str, Any]]:
     confidence_threshold = float(confidence_threshold)
     active_budget_cap = int(active_budget_cap)
@@ -1029,7 +1035,12 @@ def _run_spec_persistent_device(
     # rocprofv3 hosts where --selected-regions is broken so it can filter the
     # kernel trace by verifier-cycle window via timestamp arithmetic.
     cycle_marker_ns: list[tuple[int, int, int]] = []
-    with Qwen35ParoResidentSession(runner, max_sequence_length=max_sequence, max_batch_size=int(candidate_budget) + 1) as session:
+    with Qwen35ParoResidentSession(
+        runner,
+        max_sequence_length=max_sequence,
+        max_batch_size=int(candidate_budget) + 1,
+        require_cached_build=bool(require_cached_build),
+    ) as session:
         hidden = int(session.config.hidden_size)
         capture_layer_id = int(session.layer_limit) - 1
         capture_buf = malloc(capture_rows * hidden * DType.BF16.itemsize, runtime=session.runtime)
@@ -1055,6 +1066,8 @@ def _run_spec_persistent_device(
                 max_positions=max_sequence + int(decode_tokens) + 4,
                 max_mtp_tokens=len(prompt_tokens) + 2 * int(decode_tokens) + 8,
                 runtime=session.runtime,
+                compiler_version=session.compiler_version,
+                require_cached_build=bool(require_cached_build),
             ) as proposer, _OptionalHipStream(session.runtime, enabled=overlap_verify_commit_proposer) as proposer_update_stream:
                 draft_vocab_cap = int(proposer.draft_vocab)
                 prefill_started = time.perf_counter()
@@ -1607,7 +1620,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             budgets=_parse_int_list(args.sweep_budgets),
             p_mins=_parse_float_list(args.sweep_pmins),
         )
-    ar_tokens, ar = _run_ar_baseline(model, prompt_tokens, decode_tokens=int(args.decode_tokens), backend=str(args.backend))
+    require_cached_build = bool(getattr(args, "require_cached_build", False))
+    ar_tokens, ar = _run_ar_baseline(
+        model,
+        prompt_tokens,
+        decode_tokens=int(args.decode_tokens),
+        backend=str(args.backend),
+        require_cached_build=require_cached_build,
+    )
     if args.proposal_impl in {"persistent_device", "persistent_device_b1"}:
         spec_tokens, spec = _run_spec_persistent_device(
             model,
@@ -1629,6 +1649,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ar_fallback_after_mtp_cycles=int(getattr(args, "ar_fallback_after_mtp_cycles", 0)),
             ar_fallback_tokens=int(getattr(args, "ar_fallback_tokens", 1)),
             ar_fallback_until_end=bool(getattr(args, "ar_fallback_until_end", False)),
+            require_cached_build=require_cached_build,
         )
     else:
         spec_tokens, spec = _run_spec_smoke(
@@ -1657,6 +1678,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "ar": ar,
         "mtp": spec,
         "proposal_impl": str(args.proposal_impl),
+        "require_cached_build": require_cached_build,
         "decision_reason": "Native MTP proposal rows reached verify_chain_bulk_and_commit and exact AR was checked. persistent_device keeps MTP weights/cache resident, but artifacts remain diagnostic until acceptance and speed gates pass.",
     }
 
@@ -1757,6 +1779,15 @@ def main() -> int:
         help=(
             "persistent_device only: number of verify cycles to keep inside the "
             "roctxProfilerResume window. 0 disables the window (no profiling region)."
+        ),
+    )
+    parser.add_argument(
+        "--require-cached-build",
+        action="store_true",
+        help=(
+            "Require every target/proposer/native-cycle JIT artifact used by the "
+            "normal AR + persistent_device path to exist before process start. "
+            "Use after a non-profiled warmup so rocprof never spawns hipcc."
         ),
     )
     parser.add_argument("--json", type=Path)
