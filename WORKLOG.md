@@ -165210,3 +165210,42 @@ Published compact artifact:
 `benchmarks/CHANGELOG.md` now close only the gfx1151 sampled/API slice. Prefix/
 continuation KV reuse, long-context/non-BF16 pressure, gfx1100 transfer, and
 matched external serving comparisons remain separate F5 work.
+
+## 2026-07-19 — Attach shared ownership to the real device KV pool
+
+Started the production prefix/continuation integration at the first real
+ownership boundary rather than wiring the existing host-only `RadixCache`
+directly to request admission. `DeviceChunkedKVPool` previously indexed one
+private allocation per request and required every released page to have
+refcount exactly one, so live prefix sharing would have corrupted reclaim.
+
+Added single-backing shared-prefix admission and copy-on-write fork metadata to
+the callback-backed real device pool. Shared pages increment one reference per
+request, private suffix pages remain disjoint, release decrements only the
+request's reference, and zero-ref graph-pinned pages stay unavailable until the
+last pin retires. Admission validates the complete prefix/backing/private-page
+set before mutation; a suffix that cannot fit the prefix's backing fails
+atomically. Pool diagnostics now expose prefix reuse and COW event/page counts.
+The one-backing restriction is deliberate: the current GGUF attention ABI binds
+one cache base plus an int32 block table, so cross-chunk request allocations are
+not yet addressable.
+
+RED:
+
+```text
+uv run pytest -q tests/test_kvcache_policy.py -k 'device_chunked_kv_pool_shared'
+2 failed: DeviceChunkedKVPool had no shared-prefix admission API
+```
+
+GREEN:
+
+```text
+4 passed: tests/test_kvcache_policy.py -k 'device_chunked_kv_pool'
+26 passed: tests/test_kvcache_policy.py
+python3 -m py_compile + git diff --check: passed
+```
+
+This unit establishes real page ownership only; it makes no runtime or
+performance claim. Non-contiguous same-backing block-table binding, hybrid
+Conv/GDN state cloning, `RadixCache` admission/reclaim integration, and real
+prefix/continuation gates remain next.

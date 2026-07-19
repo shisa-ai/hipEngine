@@ -383,6 +383,9 @@ class DeviceKVPoolAllocation:
     pointers: tuple[int, ...]
     chunk_start_block_id: int
     backing: Any
+    reused_block_ids: tuple[int, ...] = ()
+    allocated_block_ids: tuple[int, ...] = ()
+    first_divergent_token: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -399,6 +402,10 @@ class DeviceKVPoolStats:
     grow_events: int
     grow_failures: int
     shrink_events: int
+    prefix_reuse_events: int
+    prefix_reused_pages: int
+    cow_fork_events: int
+    cow_forked_pages: int
 
     def to_json_dict(self) -> dict[str, int]:
         return {
@@ -412,6 +419,10 @@ class DeviceKVPoolStats:
             "grow_events": self.grow_events,
             "grow_failures": self.grow_failures,
             "shrink_events": self.shrink_events,
+            "prefix_reuse_events": self.prefix_reuse_events,
+            "prefix_reused_pages": self.prefix_reused_pages,
+            "cow_fork_events": self.cow_fork_events,
+            "cow_forked_pages": self.cow_forked_pages,
         }
 
 
@@ -475,6 +486,10 @@ class DeviceChunkedKVPool:
         self._grow_events = 0
         self._grow_failures = 0
         self._shrink_events = 0
+        self._prefix_reuse_events = 0
+        self._prefix_reused_pages = 0
+        self._cow_fork_events = 0
+        self._cow_forked_pages = 0
         self._last_active_seconds = 0.0
         self._high_water_observed_pages = 0
         self._append_device_chunk(int(initial_pages), count_growth=False)
@@ -501,6 +516,10 @@ class DeviceChunkedKVPool:
             grow_events=self._grow_events,
             grow_failures=self._grow_failures,
             shrink_events=self._shrink_events,
+            prefix_reuse_events=self._prefix_reuse_events,
+            prefix_reused_pages=self._prefix_reused_pages,
+            cow_fork_events=self._cow_fork_events,
+            cow_forked_pages=self._cow_forked_pages,
         )
 
     @property
@@ -552,12 +571,110 @@ class DeviceChunkedKVPool:
             pointers=tuple(self.pointer_for(block_id) for block_id in block_ids),
             chunk_start_block_id=chunk.descriptor.start_block_id,
             backing=chunk.backing,
+            allocated_block_ids=block_ids,
         )
         self._request_allocations[rid] = allocation
         return allocation
 
+    def admit_with_shared_prefix(
+        self,
+        request_id: int,
+        prefix_block_ids: tuple[int, ...] | list[int],
+        *,
+        suffix_pages: int,
+        now_seconds: float = 0.0,
+    ) -> DeviceKVPoolAllocation:
+        """Share live prefix pages and reserve a private suffix in one backing.
+
+        The current GGUF attention ABI binds one base backing plus an int32
+        block table, so a request cannot span device chunks.  All validation is
+        completed before refcounts or free-page state change.
+        """
+
+        rid = int(request_id)
+        prefix = tuple(int(block_id) for block_id in prefix_block_ids)
+        private_count = int(suffix_pages)
+        if rid in self._request_allocations:
+            raise ValueError(f"request_id {rid} already has a device KV allocation")
+        if len(set(prefix)) != len(prefix):
+            raise ValueError("shared device prefix block ids must be unique")
+        if private_count < 0:
+            raise ValueError("suffix_pages must be non-negative")
+        if not prefix:
+            if private_count <= 0:
+                raise ValueError("admission must reuse or allocate at least one device KV page")
+            return self.allocate(rid, private_count, now_seconds=now_seconds)
+
+        chunk = self._chunk_for_block(prefix[0])
+        for block_id in prefix:
+            if self._chunk_for_block(block_id) is not chunk:
+                raise ValueError("shared device prefix must belong to one backing chunk")
+            if self._refcounts.get(block_id, 0) <= 0:
+                raise ValueError("cannot share a free device prefix page")
+        private = tuple(sorted(chunk.free_block_ids)[:private_count])
+        if len(private) != private_count:
+            raise MemoryError("device KV shared admission needs private suffix pages in the same backing chunk")
+
+        self._last_active_seconds = float(now_seconds)
+        for block_id in prefix:
+            self._refcounts[block_id] += 1
+        for block_id in private:
+            chunk.free_block_ids.remove(block_id)
+            self._refcounts[block_id] = 1
+        block_ids = (*prefix, *private)
+        allocation = DeviceKVPoolAllocation(
+            request_id=rid,
+            block_ids=block_ids,
+            pointers=tuple(self.pointer_for(block_id) for block_id in block_ids),
+            chunk_start_block_id=chunk.descriptor.start_block_id,
+            backing=chunk.backing,
+            reused_block_ids=prefix,
+            allocated_block_ids=private,
+        )
+        self._request_allocations[rid] = allocation
+        self._prefix_reuse_events += 1
+        self._prefix_reused_pages += len(prefix)
+        return allocation
+
+    def fork_copy_on_write(
+        self,
+        request_id: int,
+        prefix_block_ids: tuple[int, ...] | list[int],
+        *,
+        suffix_pages: int,
+        first_divergent_token: int,
+        now_seconds: float = 0.0,
+    ) -> DeviceKVPoolAllocation:
+        """Fork a live prefix onto request-private suffix pages."""
+
+        divergent = int(first_divergent_token)
+        if divergent < 0:
+            raise ValueError("first_divergent_token must be non-negative")
+        if int(suffix_pages) <= 0:
+            raise ValueError("suffix_pages must be positive for device copy-on-write fork")
+        admission = self.admit_with_shared_prefix(
+            int(request_id),
+            prefix_block_ids,
+            suffix_pages=int(suffix_pages),
+            now_seconds=now_seconds,
+        )
+        fork = DeviceKVPoolAllocation(
+            request_id=admission.request_id,
+            block_ids=admission.block_ids,
+            pointers=admission.pointers,
+            chunk_start_block_id=admission.chunk_start_block_id,
+            backing=admission.backing,
+            reused_block_ids=admission.reused_block_ids,
+            allocated_block_ids=admission.allocated_block_ids,
+            first_divergent_token=divergent,
+        )
+        self._request_allocations[int(request_id)] = fork
+        self._cow_fork_events += 1
+        self._cow_forked_pages += len(fork.allocated_block_ids)
+        return fork
+
     def release(self, request_id: int, *, now_seconds: float = 0.0) -> DeviceKVPoolAllocation:
-        """Release one request while preserving graph-pinned pages as unavailable."""
+        """Release one request while preserving shared or graph-pinned pages."""
 
         rid = int(request_id)
         try:
@@ -565,13 +682,13 @@ class DeviceChunkedKVPool:
         except KeyError as exc:
             raise KeyError(f"request_id {rid} has no device KV allocation") from exc
         self._last_active_seconds = float(now_seconds)
-        chunk = self._chunk_for_block(allocation.block_ids[0])
         for block_id in allocation.block_ids:
+            chunk = self._chunk_for_block(block_id)
             count = self._refcounts.get(block_id, 0)
-            if count != 1:
+            if count <= 0:
                 raise RuntimeError("device KV allocation refcount drift")
-            self._refcounts[block_id] = 0
-            if self._pin_counts.get(block_id, 0) == 0:
+            self._refcounts[block_id] = count - 1
+            if count == 1 and self._pin_counts.get(block_id, 0) == 0:
                 chunk.free_block_ids.add(block_id)
         return allocation
 

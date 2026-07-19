@@ -332,6 +332,97 @@ def test_device_chunked_kv_pool_high_water_failure_is_atomic() -> None:
     pool.close()
 
 
+def test_device_chunked_kv_pool_shared_prefix_cow_reclaims_after_last_ref_and_pin() -> None:
+    pool = DeviceChunkedKVPool(
+        page_bytes=4096,
+        initial_pages=6,
+        low_water_pages=6,
+        high_water_pages=6,
+        chunk_pages=6,
+        allocate_chunk=lambda start, pages: {
+            "ptr": 0xA0000000 + int(start) * 4096,
+            "pages": int(pages),
+        },
+        free_chunk=lambda backing: None,
+        page_pointer=lambda backing, local_page: int(backing["ptr"]) + int(local_page) * 4096,
+    )
+    parent = pool.allocate(10, 2, now_seconds=1.0)
+
+    left = pool.admit_with_shared_prefix(
+        20,
+        parent.block_ids,
+        suffix_pages=1,
+        now_seconds=2.0,
+    )
+    right = pool.fork_copy_on_write(
+        30,
+        parent.block_ids,
+        suffix_pages=1,
+        first_divergent_token=512,
+        now_seconds=3.0,
+    )
+
+    assert left.reused_block_ids == parent.block_ids
+    assert right.reused_block_ids == parent.block_ids
+    assert left.allocated_block_ids == (2,)
+    assert right.allocated_block_ids == (3,)
+    assert left.block_ids == (0, 1, 2)
+    assert right.block_ids == (0, 1, 3)
+    assert left.backing is parent.backing is right.backing
+    assert pool.refcount(0) == pool.refcount(1) == 3
+    assert pool.refcount(2) == pool.refcount(3) == 1
+    assert pool.stats.prefix_reuse_events == 2
+    assert pool.stats.prefix_reused_pages == 4
+    assert pool.stats.cow_fork_events == 1
+    assert pool.stats.cow_forked_pages == 1
+
+    pool.pin(right.block_ids)
+    pool.release(10, now_seconds=4.0)
+    pool.release(20, now_seconds=5.0)
+    pool.release(30, now_seconds=6.0)
+
+    assert all(pool.refcount(block_id) == 0 for block_id in range(4))
+    assert pool.stats.free_pages == 3
+    assert pool.stats.pinned_pages == 3
+    pool.unpin(right.block_ids)
+    assert pool.stats.free_pages == 6
+    assert pool.stats.pinned_pages == 0
+    pool.close()
+
+
+def test_device_chunked_kv_pool_shared_admission_failure_is_atomic() -> None:
+    pool = DeviceChunkedKVPool(
+        page_bytes=4096,
+        initial_pages=3,
+        low_water_pages=3,
+        high_water_pages=3,
+        chunk_pages=3,
+        allocate_chunk=lambda start, pages: {
+            "ptr": 0xB0000000 + int(start) * 4096,
+            "pages": int(pages),
+        },
+        free_chunk=lambda backing: None,
+        page_pointer=lambda backing, local_page: int(backing["ptr"]) + int(local_page) * 4096,
+    )
+    parent = pool.allocate(10, 2)
+    blocker = pool.allocate(11, 1)
+    before = pool.stats
+
+    with pytest.raises(MemoryError, match="same backing chunk"):
+        pool.admit_with_shared_prefix(20, parent.block_ids, suffix_pages=1)
+
+    after = pool.stats
+    assert pool.allocations == {10: parent, 11: blocker}
+    assert pool.refcount(0) == pool.refcount(1) == pool.refcount(2) == 1
+    assert after.free_pages == before.free_pages == 0
+    assert after.refcounted_pages == before.refcounted_pages == 3
+    assert after.prefix_reuse_events == before.prefix_reuse_events == 0
+    assert after.prefix_reused_pages == before.prefix_reused_pages == 0
+    pool.release(11)
+    pool.release(10)
+    pool.close()
+
+
 def test_chunked_kv_pool_copy_on_write_fork_preserves_prefix_and_splits_suffix() -> None:
     pool = ChunkedKVPool(
         page_bytes=2048,
