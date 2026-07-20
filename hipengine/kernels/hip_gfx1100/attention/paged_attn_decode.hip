@@ -342,9 +342,10 @@ __global__ void qwen35_full_attn_gate_mul_fp16_kernel(
 }
 
 // The gfx1151 fixed-256 route precomputes each token's physical KV element
-// offset once in shared memory. The generic route keeps its existing dynamic
-// launch geometry and computes offsets inline.
-template <bool PRECOMPUTE_TOKEN_OFFSETS>
+// offset once in shared memory and assigns adjacent value dimensions to each
+// active thread. The generic route keeps its existing dynamic launch geometry,
+// inline addressing, and one value dimension per thread.
+template <bool PRECOMPUTE_TOKEN_OFFSETS, int VALUE_VECTOR = 1>
 __global__ void qwen35_paged_full_attn_decode_context_tensor_batch_kernel(
     const float* query,
     const uint16_t* key_cache,
@@ -523,8 +524,10 @@ __global__ void qwen35_paged_full_attn_decode_context_tensor_batch_kernel(
       out[q_offset + threadIdx.x] = acc;
     }
   } else {
-    for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
-      float acc = 0.0f;
+    for (int64_t dim_base = static_cast<int64_t>(threadIdx.x) * VALUE_VECTOR;
+         dim_base < head_dim;
+         dim_base += static_cast<int64_t>(blockDim.x) * VALUE_VECTOR) {
+      float acc[VALUE_VECTOR] = {};
       for (int64_t token = 0; token < context_len; ++token) {
         int64_t token_offset;
         if constexpr (PRECOMPUTE_TOKEN_OFFSETS) {
@@ -537,10 +540,16 @@ __global__ void qwen35_paged_full_attn_decode_context_tensor_batch_kernel(
           token_offset =
               (physical_block * block_size + block_offset) * num_kv_heads * head_dim;
         }
-        const int64_t v_offset = token_offset + kv_head * head_dim + dim;
-        acc += scores[token] * bf16_bits_to_float(value_cache[v_offset]);
+        const int64_t v_offset = token_offset + kv_head * head_dim + dim_base;
+#pragma unroll
+        for (int i = 0; i < VALUE_VECTOR; ++i) {
+          acc[i] += scores[token] * bf16_bits_to_float(value_cache[v_offset + i]);
+        }
       }
-      out[q_offset + dim] = acc;
+#pragma unroll
+      for (int i = 0; i < VALUE_VECTOR; ++i) {
+        out[q_offset + dim_base + i] = acc[i];
+      }
     }
   }
 }
@@ -4823,7 +4832,9 @@ extern "C" int hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_fixed2
   // Preserve the generic batch reduction retained by gfx1151 while fixing its
   // reduction geometry at the c4/c8-proven 256-thread shape. Precompute the
   // physical KV element offset once per token so all value dimensions avoid
-  // repeated division and block-table address construction. The generic
+  // repeated division and block-table address construction; each active value
+  // thread accumulates two adjacent dimensions without changing either token
+  // order. The generic
   // entrypoint intentionally keeps its rows<=2 1024-thread PARO fast path.
   constexpr int threads = 256;
   constexpr int max_warps = threads / 32;
@@ -4833,26 +4844,21 @@ extern "C" int hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_fixed2
       sizeof(float);
   const size_t shared_bytes = float_bytes + 7u +
       static_cast<size_t>(max_context_len) * sizeof(int64_t);
-  hipLaunchKernelGGL(
-      (qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true>),
-      dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(rows)),
-      dim3(threads),
-      shared_bytes,
-      stream,
-      query,
-      key_cache,
-      value_cache,
-      base_offsets,
-      live_counts,
-      out,
-      rows,
-      max_context_len,
-      block_size,
-      block_table_len,
-      num_q_heads,
-      num_kv_heads,
-      head_dim,
-      scale);
+  if ((head_dim % 2) == 0) {
+    hipLaunchKernelGGL(
+        (qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true, 2>),
+        dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(rows)),
+        dim3(threads), shared_bytes, stream, query, key_cache, value_cache,
+        base_offsets, live_counts, out, rows, max_context_len, block_size,
+        block_table_len, num_q_heads, num_kv_heads, head_dim, scale);
+  } else {
+    hipLaunchKernelGGL(
+        (qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true, 1>),
+        dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(rows)),
+        dim3(threads), shared_bytes, stream, query, key_cache, value_cache,
+        base_offsets, live_counts, out, rows, max_context_len, block_size,
+        block_table_len, num_q_heads, num_kv_heads, head_dim, scale);
+  }
   return static_cast<int>(hipGetLastError());
 }
 
