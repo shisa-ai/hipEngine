@@ -72,6 +72,9 @@ def test_qwen35moe_iq_grouped_prefill_policy_defaults_on_with_optout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     assert qgr._iq_grouped_prefill_enabled() is True
+    assert qgr._COMPACT_MOE_IQ_GROUPED_DUAL_KEYS[("gguf_iq3_xxs", "gguf_iq3_xxs")].variant == (
+        "selected_dual_grouped_prefill_compact_auto_bf16_bf16_out"
+    )
     monkeypatch.setenv("HIPENGINE_GGUF_IQ_GROUPED_PREFILL", "0")
     assert qgr._iq_grouped_prefill_enabled() is False
 
@@ -348,12 +351,7 @@ def _patch_iq_compact_registry(
     down_quant: str,
 ) -> None:
     gate_quant = "gguf_iq4_xs" if down_quant == "gguf_q6_k" else "gguf_iq3_xxs"
-    gate_key = KernelKey(
-        "hip_gfx1100",
-        "moe_linear",
-        gate_quant,
-        "selected_dual_grouped_prefill_compact_bf16_bf16_out",
-    )
+    gate_key = qgr._COMPACT_MOE_IQ_GROUPED_DUAL_KEYS[(gate_quant, gate_quant)]
     down_key = KernelKey(
         "hip_gfx1100",
         "moe_linear",

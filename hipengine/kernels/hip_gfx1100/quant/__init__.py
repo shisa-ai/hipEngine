@@ -29,7 +29,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_iq_gemv import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_iq_selected_prefill import (
     build_gguf_iq_selected_prefill,
+    gguf_iq3_xxs_selected_dual_grouped_prefill_compact_auto_bf16_bf16_out,
     gguf_iq3_xxs_selected_dual_grouped_prefill_compact_bf16_bf16_out,
+    gguf_iq3_xxs_selected_dual_grouped_prefill_compact_rowbatch4_bf16_bf16_out,
     gguf_iq3_xxs_selected_dual_wmma_prefill_compact_bf16_bf16_out,
     gguf_iq4_xs_selected_dual_grouped_prefill_compact_bf16_bf16_out,
     gguf_iq4_xs_selected_dual_wmma_prefill_compact_bf16_bf16_out,
@@ -174,7 +176,9 @@ __all__ = [
     "gemv_awq_selected_pack8_transposed_silu_rotate_staged_fp16",
     "gemv_awq_selected_pack8_transposed_silu_rotate_staged_keyed_fp16",
     "gemv_paro_marlin_k_fma_fp16",
+    "gguf_iq3_xxs_selected_dual_grouped_prefill_compact_auto_bf16_bf16_out",
     "gguf_iq3_xxs_selected_dual_grouped_prefill_compact_bf16_bf16_out",
+    "gguf_iq3_xxs_selected_dual_grouped_prefill_compact_rowbatch4_bf16_bf16_out",
     "gguf_iq3_xxs_selected_dual_silu_gemv_bf16_bf16_out",
     "gguf_iq3_xxs_selected_dual_wmma_prefill_compact_bf16_bf16_out",
     "gguf_iq3_xxs_selected_gemv_bf16_bf16_out",

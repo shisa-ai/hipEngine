@@ -55,28 +55,39 @@ raw-IQ, decode, and scheduler tranches:
   hidden/logit gates remain exact. The new default reaches
   `763.221/670.417 tok/s` at 512/mixed-4K and cuts traced GDN
   `1,310.186 -> 882.716 ms` (-32.63%) with local32, VGPR248, and zero scratch.
+- Grouped IQ3 now batches four independent compact rows through one pair of
+  block barriers while preserving every row's lane dot, wave32 shuffle tree,
+  and serial wave-0..7 accumulation. A measured auto crossover keeps RT1 below
+  four rows/expert. Production outputs are BF16-bit exact, the final trace cuts
+  IQ3 `1,093.856 -> 961.231 ms` (-12.12%), and mixed-pattern 4K moves
+  `670.417 -> 684.499 tok/s` (+2.10%) with local256, VGPR80, and zero scratch.
+  The 512 counterbalanced aggregate is only +0.25% and remains within spread;
+  the traced exact sub-window, not a large 512 headline, is the promotion basis.
 - Decode work retained the wave-uniform IQ3 address cleanup and aggregate
   MoE-tail/next-RMS fusion, rejected hierarchical top-k, IQ4 tile4, and routed
   stream overlap, and currently measures `101.216 tok/s` at 512 and
   `108.383 tok/s` at 4K on GPU1. The source-derived 150–190 tok/s feasibility
   argument remains valid, but hipEngine has not reached that band.
 
-The post-GDN-LDS32 cache-only 4K trace is now the active prefill Amdahl ledger:
+The post-IQ3-rowbatch4 cache-only 4K trace is now the active prefill Amdahl ledger:
 
-| Family | Time | Share of 5,971.059 ms kernel sum |
+| Family | Time | Share of 5,827.503 ms kernel sum |
 |---|---:|---:|
-| Dense exact raw Q8 | 2,062.089 ms | **34.53%** |
-| Grouped IQ3 gate/up | 1,093.856 ms | **18.32%** |
-| Full attention | 936.895 ms | **15.69%** |
-| Exact GDN | 882.716 ms | **14.78%** |
-| Grouped IQ4 down | 490.904 ms | **8.22%** |
+| Dense exact raw Q8 | 2,048.793 ms | **35.16%** |
+| Grouped IQ3 gate/up | 961.231 ms | **16.49%** |
+| Full attention | 936.900 ms | **16.08%** |
+| Exact GDN recurrent | 871.085 ms | **14.95%** |
+| Grouped IQ4 down | 503.408 ms | **8.64%** |
 
-Dense Q8 remains first but its local scheduling lane is closed; grouped IQ3 is
-next in Amdahl order, followed by full attention and exact GDN. Any next
-experiment must follow that measured order rather than extending a lower-ranked
-family by inertia. **The ~3,000 tok/s objective is not closed:** 670.417 tok/s
-is a retained step, not a target claim. Full evidence and commands are in
-[`benchmarks/results/2026-07-20-gpu1-q3-exact-gdn-lds32-prefill.json`](../benchmarks/results/2026-07-20-gpu1-q3-exact-gdn-lds32-prefill.json).
+Dense Q8 remains first but its local scheduling lane is closed. IQ3 is only
+24.331 ms ahead of full attention, and its admitted local premises are now
+consumed: output-column tile 2 regressed, raw-IQ WMMA changed the trajectory,
+resident repack remains unapproved, and rowbatch4 already raises the exact leaf
+to VGPR80 while removing 75% of its row barriers. Without a genuinely new IQ3
+premise, task #24 moves to full attention rather than extending row batching by
+inertia. **The ~3,000 tok/s objective is not closed:** 684.499 tok/s is a
+retained step, not a target claim. Full evidence and commands are in
+[`benchmarks/results/2026-07-20-gpu1-q3-exact-iq3-rowbatch4-prefill.json`](../benchmarks/results/2026-07-20-gpu1-q3-exact-iq3-rowbatch4-prefill.json).
 
 ## Executive recommendation
 

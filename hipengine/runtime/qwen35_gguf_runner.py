@@ -5575,13 +5575,18 @@ _COMPACT_MOE_FUSED_KEYS = (
     KernelKey("hip_gfx1100", "shared_gate_combine+residual", "w4_paro", "batch_out"),
 )
 _COMPACT_MOE_IQ_GROUPED_DUAL_KEYS = {
-    (quant, quant): KernelKey(
+    ("gguf_iq3_xxs", "gguf_iq3_xxs"): KernelKey(
         "hip_gfx1100",
         "moe_linear",
-        quant,
+        "gguf_iq3_xxs",
+        "selected_dual_grouped_prefill_compact_auto_bf16_bf16_out",
+    ),
+    ("gguf_iq4_xs", "gguf_iq4_xs"): KernelKey(
+        "hip_gfx1100",
+        "moe_linear",
+        "gguf_iq4_xs",
         "selected_dual_grouped_prefill_compact_bf16_bf16_out",
-    )
-    for quant in ("gguf_iq3_xxs", "gguf_iq4_xs")
+    ),
 }
 _COMPACT_MOE_IQ_GROUPED_DOWN_KEYS = {
     "gguf_iq4_xs": KernelKey(
@@ -6078,8 +6083,8 @@ def _try_run_post_attention_moe_rows_compact_wmma(
 ) -> bool:
     """Run an enabled compact grouped-MoE prefill plan when available.
 
-    Raw-IQ scalar grouping is a temporary explicit experiment.  Otherwise the
-    established WMMA prefill switch selects the compact WMMA plan.  Both share
+    Raw-IQ exact grouping uses package-local leaf crossovers. Otherwise the
+    established WMMA prefill switch selects the compact WMMA plan. Both share
     the resident count/prefix/scatter ABI; small route sets stay on the direct
     selected fallback because they cannot amortize expert grouping.
     """
