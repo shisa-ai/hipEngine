@@ -170363,3 +170363,41 @@ Published compact artifact
 `1f46cf35bf10608f0895c619ce255de6b76ebf3357c3fb5cc48136044c85c8cd`).
 The retained claim is clean direct physical C8; the exact positive
 same-checkout server A/B remains supporting diagnostic evidence.
+
+## 2026-07-20 — Reject gfx1151 physical-C8 indexed GDN paired heads
+
+The post-F3K profile leaves linear-attention state at **4.074 ms (7.83%)** per
+physical-C8 step: indexed GDN is **3.737 ms / 30 launches**, median **124.334
+us**, while indexed Conv is only 0.337 ms. The external lineage preflight was
+attempted before editing but `docs/source_lineage.json` points to absent
+`/home/lhl/amd-gpu-tuning/{nano-vllm-amd,reference/atlas}` worktrees. This
+experiment therefore used only the existing in-tree kernel and ported no
+external code.
+
+RED-first added an exact fixture for a 256-thread candidate that pairs the two
+interleaved value heads sharing each Q/K head. One 128-thread subgroup per
+value head preserves its production state loop and RMSNorm reduction; Q/K load
+and normalization are shared. After correcting the model's interleaved mapping
+(`k_head = v_head % num_k_heads`, not grouped repeat), the fixture is byte-exact
+for output and recurrent state.
+
+At the real `rows=8, 16 K heads, 32 V heads, 128x128 state` shape with five
+cycling 16 MiB states per route, 40 warmups, and 400 iterations, the candidate
+improves **204.689 -> 202.631 us (-1.01%)**. Direct p512/d128 repeats are
+**152.870347/152.782435/152.839405 tok/s**, median **152.839405**, or
+**+0.0856%** over clean F3K **152.708625** with **0.0292%** variance. The
+all-layer gate is **320/320 exact**, with exact tokens and final state.
+
+The mandatory same-checkout Uvicorn gate rejects promotion despite that direct
+signal. Candidate versus current control:
+
+- blocking **88.977 -> 88.869 tok/s (-0.12%)**;
+- exact SSE **85.320 -> 84.759 (-0.66%)**;
+- delayed admission **69.031 -> 68.921 (-0.16%)**.
+
+All rows are exact, but every serving surface regresses. Removed the kernel,
+wrapper, registry variant, runtime selector, and fixture extension; no flag or
+capability remains. Compact rejection artifact:
+`benchmarks/results/2026-07-20-gfx1151-gguf-gdn-pairheads-c8-rejected.json`
+(4,811 bytes, SHA-256
+`7322d49cc6c197132d5ff03e6c1d9695d95626989e86f9d0c4bb4f23787a3731`).

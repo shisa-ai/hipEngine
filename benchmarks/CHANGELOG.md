@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-20
 
+- [rejected exact gfx1151 GGUF physical-C8 paired-head GDN] Sharing Q/K setup across interleaved value-head pairs improves the indexed GDN leaf **204.689 -> 202.631 us (-1.01%)** and direct p512/d128 **152.709 -> 152.839 tok/s (+0.086%)**, with **320/320 exact** hidden/state, but same-checkout server blocking/SSE/delayed all regress **-0.12%/-0.66%/-0.16%**. The kernel, wrapper, selector, and fixture extension were removed. `benchmarks/results/2026-07-20-gfx1151-gguf-gdn-pairheads-c8-rejected.json`.
+
 - [retained exact gfx1151 GGUF physical-C8 Q6T16 lm-head 5+3 partition] Radeon 8060S Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV p512/d128 direct C8 moves **152.192 -> 152.709 tok/s (+0.340%)** by repartitioning the existing exact Q6T16 lm-head kernels from 6+2 to 5+3; three tracked-clean trajectories are exact at 0.027% variance, combined state is **320/320 exact**, and a same-checkout server A/B is non-regressive (**+0.15% blocking / +0.65% SSE / +0.02% delayed**). `benchmarks/results/2026-07-20-gfx1151-gguf-q6t16-lm-head-chunk5-c8-retained.json`.
 
 - [rejected exact gfx1151 GGUF Q8T16 single/dual/triple col8] Col8 regresses long-K BF16/F32 singles **+16.22%/+13.12%** and full-attention triple **+3.56%**. Short-K BF16 single improves **-5.68%** and direct **+0.093%**, but delayed server regresses **-0.53%**; shared gate/up dual improves **-1.83%** at the leaf but moves direct only **+0.019%** under 0.089% variance. All temporary bodies/routes were removed; F3I pair-rowtile col8 remains. `benchmarks/results/2026-07-20-gfx1151-gguf-q8t16-single-dual-triple-col8-rejected.json`.

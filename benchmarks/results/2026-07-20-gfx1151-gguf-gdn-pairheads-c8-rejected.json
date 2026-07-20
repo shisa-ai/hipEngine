@@ -1,0 +1,106 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_gdn_pairheads_c8_rejected",
+  "created_at": "2026-07-20T19:25:00+00:00",
+  "status": "rejected_exact_direct_positive_server_regression",
+  "passed": true,
+  "performance_claim": false,
+  "decision": "remove the paired-value-head GDN kernel and runtime selector because all three same-checkout server surfaces regress",
+  "hardware": {
+    "host": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "amd_iommu": "off",
+    "gpu_max_hw_queues": 1
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B UD-Q4_K_M GGUF",
+    "path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "baseline_profile": {
+    "family": "linear_attention_state",
+    "total_duration_ms": 4.073968,
+    "share_percent": 7.828995861322757,
+    "gdn_dispatches": 30,
+    "gdn_total_duration_ms": 3.737056,
+    "gdn_median_duration_us": 124.3335
+  },
+  "candidate": {
+    "design": "one 256-thread workgroup pairs the two interleaved value heads sharing each Q/K head; one 128-thread subgroup per value head preserves state and RMSNorm order",
+    "grid_change": "rows x 32 value heads x 128 threads -> rows x 16 Q/K heads x 256 threads",
+    "arithmetic_contract": "shared Q/K load and reduction retain the production 128-thread tree; each value head retains its production state loop and 128-thread RMSNorm tree",
+    "removed": true,
+    "rejected_patch_bytes": 25765,
+    "rejected_patch_sha256": "8c974b08cd71d8569cc5bd353db4bd26769abf8706e0b806020223124de4d189"
+  },
+  "correctness": {
+    "red_first": "new wrapper import failed before implementation",
+    "focused_test": "tests/test_qwen35_linear_attn_decode_batch_indexed.py: 3 passed",
+    "primitive_output_and_state_bit_exact": true,
+    "all_layer_hidden_comparisons": 320,
+    "all_layer_hidden_exact": true,
+    "tokens_and_final_state_exact": true,
+    "all_layer_oracle_bytes": 16282,
+    "all_layer_oracle_sha256": "6a942295ac9679834c21e661b60fd6f255fcd87099ad544e5c9f3dfa26414478"
+  },
+  "primitive_microbench": {
+    "shape": "rows=8, num_k_heads=16, num_v_heads=32, head_k_dim=128, head_v_dim=128",
+    "protocol": "five cycling 16 MiB states per route, 40 warmups, 400 iterations",
+    "production_us": 204.6890399651602,
+    "pairheads_us": 202.63082755263895,
+    "delta_percent": -1.005531323451203,
+    "speedup": 1.0101574495716183,
+    "output_and_state_bit_exact": true,
+    "raw_bytes": 594,
+    "raw_sha256": "0350737ee2beaf7105be28a42055cf47f59a8fb9e8d2403e8cd38313ab319f02"
+  },
+  "direct_screen": {
+    "workload": "physical-C8 p512/d128 state-bound graph, one warmup and three measured runs",
+    "baseline_clean_f3k_tok_s": 152.70862495870657,
+    "candidate_tok_s_samples": [152.87034675451065, 152.78243549771727, 152.83940545846448],
+    "candidate_tok_s_median": 152.83940545846448,
+    "delta_percent": 0.08564054570805446,
+    "stdev_percent_of_median": 0.02917651735837013,
+    "wall_savings_seconds_per_1024_tokens": 0.005737781990318602,
+    "trajectories_repeatable": true,
+    "raw_bytes": 200330,
+    "raw_sha256": "1842038fb1c707502ba20e9416942c8bd3af68a9d3e71e063084d25aa8f60386"
+  },
+  "server_gate": {
+    "protocol": "same-checkout real localhost Uvicorn C1/C8 p512/d128, one warmup, three blocking, three exact SSE, delayed C8",
+    "candidate": {
+      "blocking_median_tok_s": 88.86915887110744,
+      "exact_sse_median_tok_s": 84.75934459856056,
+      "delayed_tok_s": 68.92071457133646,
+      "all_exact": true,
+      "raw_bytes": 725761,
+      "raw_sha256": "8cb67d4efd922c052d1a45f83ee6961eb67a1e19ef720faee480575de4880a27"
+    },
+    "control": {
+      "blocking_median_tok_s": 88.97679575422895,
+      "exact_sse_median_tok_s": 85.32037965180942,
+      "delayed_tok_s": 69.03085518766828,
+      "all_exact": true,
+      "raw_bytes": 720894,
+      "raw_sha256": "48dac8d2e816082be528ad377777c9c3fb694515315107f83f8b0477d9b0b682"
+    },
+    "candidate_delta_percent": {
+      "blocking": -0.12097185812222078,
+      "exact_sse": -0.6575627716829513,
+      "delayed": -0.15955273338623677
+    }
+  },
+  "lineage_check": {
+    "attempted": true,
+    "status": "blocked_external_reference_missing",
+    "detail": "docs/source_lineage.json points to /home/lhl/amd-gpu-tuning/nano-vllm-amd, which is absent on this host",
+    "scope_note": "the rejected experiment modified only the existing in-tree kernel and did not port external code"
+  },
+  "limitations": [
+    "The direct gain is measured but cannot be retained because every mandatory same-checkout server metric regresses.",
+    "No candidate kernel, wrapper, registry variant, environment flag, or capability remains in the source tree."
+  ]
+}
