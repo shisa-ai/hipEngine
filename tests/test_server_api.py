@@ -1210,6 +1210,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "format": "qwen_tool_call_json",
         "compatibility_parser_repairs": [
             "duplicated_tool_call_start",
+            "incomplete_duplicate_tool_prefix_control_residue",
             "outer_qwen_template_control_residue",
         ],
         "malformed_json_compatibility": "invalid_tool_call_when_tools_enabled",
@@ -13295,6 +13296,155 @@ def test_chat_completion_strips_qwen_role_template_residue_around_tool_call() ->
     assert "<|im_start|>" not in response.text
 
 
+def _incomplete_duplicate_read_tool_output() -> str:
+    return (
+        '<tool_call>{"name":"read","arguments":{<|im_end|>\n\n'
+        '<|im_start|>assistant\n'
+        '<tool_call>{"name":"read","arguments":{"path":"pyproject.toml",'
+        '"mode":"summary"}}</tool_call>'
+        '<|im_end|><|endoftext|>'
+        '<|im_start|><|im_start|><|im_start|><|im_start|><|im_start|>'
+    )
+
+
+def test_chat_completion_strips_incomplete_duplicate_tool_prefix_control_residue() -> None:
+    fake = FakeLLM(outputs=[_incomplete_duplicate_read_tool_output()])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read pyproject"}],
+            "tool_choice": {"type": "function", "function": {"name": "read"}},
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "tool_calls"
+    assert choice["message"]["content"] == ""
+    _assert_openai_tool_call_shape(
+        choice["message"]["tool_calls"][0],
+        name="read",
+        arguments={"path": "pyproject.toml", "mode": "summary"},
+    )
+    assert "<|im_start|>" not in response.text
+
+
+def test_chat_completion_preserves_incomplete_duplicate_prefix_with_ordinary_content() -> None:
+    valid_call = (
+        '<tool_call>{"name":"read","arguments":{"path":"pyproject.toml",'
+        '"mode":"summary"}}</tool_call>'
+    )
+    raw_output = "Keep this literal prefix: " + _incomplete_duplicate_read_tool_output()
+    expected_content = raw_output.replace(valid_call, "").strip()
+    fake = FakeLLM(outputs=[raw_output])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read pyproject"}],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {"name": "read", "parameters": {"type": "object"}},
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "tool_calls"
+    assert choice["message"]["content"] == expected_content
+    assert choice["message"]["tool_calls"][0]["function"]["name"] == "read"
+
+
+def test_chat_completion_preserves_mismatched_incomplete_duplicate_tool_prefix() -> None:
+    valid_call = (
+        '<tool_call>{"name":"read","arguments":{"path":"pyproject.toml",'
+        '"mode":"summary"}}</tool_call>'
+    )
+    raw_output = _incomplete_duplicate_read_tool_output().replace(
+        '"name":"read"',
+        '"name":"write"',
+        1,
+    )
+    expected_content = raw_output.replace(valid_call, "").strip()
+    fake = FakeLLM(outputs=[raw_output])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read pyproject"}],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {"name": "read", "parameters": {"type": "object"}},
+                },
+                {
+                    "type": "function",
+                    "function": {"name": "write", "parameters": {"type": "object"}},
+                },
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "tool_calls"
+    assert choice["message"]["content"] == expected_content
+    assert choice["message"]["tool_calls"][0]["function"]["name"] == "read"
+
+
+def test_chat_completion_rejects_incomplete_duplicate_prefix_without_valid_call() -> None:
+    raw_output = (
+        '<tool_call>{"name":"read","arguments":{<|im_end|>\n\n'
+        '<|im_start|>assistant\n<|im_end|><|endoftext|>'
+    )
+    fake = FakeLLM(outputs=[raw_output])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read pyproject"}],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {"name": "read", "parameters": {"type": "object"}},
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert raw_output not in response.text
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "stop"
+    assert choice["finish_details"] == _stateless_finish_details("invalid_tool_call")
+    assert choice["message"] == {"role": "assistant", "content": ""}
+
+
 def test_chat_completion_terminal_cleanup_preserves_interior_literal_content() -> None:
     fake = FakeLLM(
         outputs=[
@@ -15380,6 +15530,52 @@ def test_streaming_chat_completion_strips_qwen_role_template_residue_around_tool
     )
     assert payloads[-1]["choices"][0]["finish_reason"] == "tool_calls"
     assert "<|endoftext|>" not in response.text
+    assert "<|im_start|>" not in response.text
+
+
+def test_streaming_chat_completion_strips_incomplete_duplicate_tool_prefix_control_residue() -> None:
+    fake = FakeLLM(
+        outputs=["should-not-buffer"],
+        stream_chunks=[_incomplete_duplicate_read_tool_output()],
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read pyproject"}],
+            "stream": True,
+            "tool_choice": {"type": "function", "function": {"name": "read"}},
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {"name": "read", "parameters": {"type": "object"}},
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    content = "".join(
+        payload["choices"][0]["delta"].get("content", "")
+        for payload in payloads
+        if payload.get("choices")
+    )
+    assert content == ""
+    tool_choice = next(
+        payload["choices"][0]
+        for payload in payloads
+        if payload["choices"][0]["delta"].get("tool_calls")
+    )
+    _assert_openai_stream_tool_call_delta_shape(
+        tool_choice,
+        name="read",
+        arguments={"path": "pyproject.toml", "mode": "summary"},
+    )
+    assert payloads[-1]["choices"][0]["finish_reason"] == "tool_calls"
     assert "<|im_start|>" not in response.text
 
 
@@ -17710,6 +17906,7 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
     assert artifact["capabilities"]["features"]["tools"]["tool_call_close_repair"] is True
     assert artifact["capabilities"]["features"]["tools"]["compatibility_parser_repairs"] == [
         "duplicated_tool_call_start",
+        "incomplete_duplicate_tool_prefix_control_residue",
         "outer_qwen_template_control_residue",
     ]
     assert (
