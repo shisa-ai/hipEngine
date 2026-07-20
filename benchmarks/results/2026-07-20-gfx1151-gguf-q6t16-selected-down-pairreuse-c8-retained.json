@@ -1,0 +1,143 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_q6t16_selected_down_pairreuse_c8_retained",
+  "created_at": "2026-07-20T22:00:00+09:00",
+  "status": "retained_exact_direct_c8_server_nonregressive_diagnostic",
+  "passed": true,
+  "performance_claim": true,
+  "claim_scope": "clean direct physical-C8 p512/d128 graph decode with exact three-layer Q6T16 selected-down expert pair reuse; server measurements are source-equivalent diagnostics",
+  "decision": "promote exact Q6T16 selected-down duplicate-expert weight reuse on gfx1151 physical C8; keep lower widths and gfx1100 on the established per-selected-lane kernel; retain HIPENGINE_GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE=0 as rollback",
+  "hardware": {
+    "host": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "amd_iommu": "off",
+    "gpu_max_hw_queues": 1,
+    "tuned_profile": "accelerator-performance"
+  },
+  "software": {
+    "hipengine_commit": "c843f836b45d5a5c12e05bae8c62b2cf17af2d60",
+    "clean": true,
+    "rocm": "HIP 7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B UD-Q4_K_M GGUF",
+    "path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "implementation": {
+    "backend_capability": {
+      "name": "GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS",
+      "hip_gfx1151": 8,
+      "hip_gfx1100": 0
+    },
+    "kernel": "q6_k_t16_selected_pairreuse_direct_gemv_kernel<unsigned short>",
+    "registry_variant": "gguf_q6_k_t16_v1/selected_t16_pairreuse_gemv_decode_bf16_bf16_out",
+    "scope": "physical rows=8, selected rows=64, three Q6T16 expert-down layers",
+    "arithmetic_contract": "dynamic same-expert pairs share Q6T16 weight/dequant work while retaining independent production-order 128-thread accumulation and BF16 rounding",
+    "rollback": "HIPENGINE_GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE=0"
+  },
+  "correctness": {
+    "red_green_test": "tests/test_gguf_t16_selected_gemv_decode.py::test_q6_t16_direct_pairreuse_matches_production_bits",
+    "primitive_output_bits_exact": true,
+    "combined_default_layer_hidden_comparisons": 320,
+    "combined_default_layer_hidden_exact": true,
+    "tokens_conv_gdn_kv_final_state_exact": true,
+    "clean_profile_oracle_passed": true,
+    "clean_profile_oracle_sha256": "f5407aca1cb4e149850ac807bb27a94847f62918a93d1315f1385590029ffe8f",
+    "focused_tests": {
+      "selected_t16_gpu": "91 passed",
+      "routing_stage_backend": "49 passed"
+    }
+  },
+  "primitive_microbench": {
+    "shape": "rows=64, experts=256, Q6T16 512x2048, 128 threads, warmup=20, iterations=100",
+    "results_us": {
+      "unique": {"production": 254.492, "pairreuse": 271.834, "delta_percent": 6.81, "exact": true},
+      "uniform_random": {"production": 237.957, "pairreuse": 248.150, "delta_percent": 4.28, "exact": true},
+      "thirty_two_pairs": {"production": 192.034, "pairreuse": 146.734, "delta_percent": -23.59, "speedup": 1.3087, "exact": true}
+    },
+    "raw_sha256": {
+      "unique": "854ec91cdaab3db41208d7784a637e0476a698d9e0f7d20d0c116bba6431bf38",
+      "uniform_random": "0539ca47ac4c14fd89ab5973e8b2f80235d1665eff3c0871aee7fd24bcce2401",
+      "thirty_two_pairs": "fa47fcef337aa2c3b069903b9a2d01ad02586655d41dce6d7b9e56670511fe1e"
+    }
+  },
+  "clean_direct_gate": {
+    "workload": {
+      "physical_rows": 8,
+      "prompt_tokens_per_row": 512,
+      "generated_tokens_per_row": 128,
+      "total_generated_tokens": 1024,
+      "sampling": "greedy_top1",
+      "decode_mode": "state-bound graph",
+      "warmups": 1,
+      "repetitions": 3
+    },
+    "f3e_baseline": {
+      "commit": "4cb305434aa11f827bbbd1f021f03d75fbe7398e",
+      "aggregate_decode_tok_s_median": 150.7563294441832,
+      "wall_seconds_per_1024_tokens": 6.792417961987666
+    },
+    "pre_selected_reuse_baseline": {
+      "commit": "7bb3669b9f585a695f8c6ea8d897d3a726268733",
+      "aggregate_decode_tok_s_median": 133.8523123514623,
+      "wall_seconds_per_1024_tokens": 7.650222711963579
+    },
+    "candidate": {
+      "commit": "c843f836b45d5a5c12e05bae8c62b2cf17af2d60",
+      "clean": true,
+      "aggregate_decode_tok_s_samples": [151.01476739865686, 151.09448897782758, 150.82193492486115],
+      "aggregate_decode_tok_s_median": 151.01476739865686,
+      "delta_vs_f3e_percent": 0.17142759804944507,
+      "delta_vs_pre_selected_reuse_percent": 12.821933925302908,
+      "stdev_percent_of_median": 0.09279504694524768,
+      "wall_seconds_per_1024_tokens": 6.7807938100304455,
+      "wall_savings_vs_f3e_seconds_per_1024_tokens": 0.011624151957220441,
+      "wall_savings_vs_pre_selected_reuse_seconds_per_1024_tokens": 0.8694289019331336,
+      "repeatable_trajectories": true
+    },
+    "raw_bytes": 200271,
+    "raw_sha256": "a2e4500961251aee8abbcb8c47ee099e83c45b2dd6f7b051b640ffa4315f27aa"
+  },
+  "clean_profiler_gate": {
+    "tool": "rocprofv3 --kernel-trace",
+    "automatic_backend_policy": true,
+    "dispatches": 3,
+    "workgroup_size_x": 128,
+    "grid_size_x": 16384,
+    "grid_size_y": 64,
+    "vgpr": 96,
+    "sgpr": 128,
+    "lds_bytes": 520,
+    "scratch_bytes": 0,
+    "profile_duration_ns_median": 216405,
+    "profile_duration_ns_total": 650537,
+    "summary_sha256": "fb17a931b06d830e91f3b39ad100d0219224ed2d31cdcb92f8e5a00a488cb4b6",
+    "database_sha256": "b806fad5e9809b556564db627d4c70743279869457aa32ba4f4a03c6a65cc4cb",
+    "duration_note": "profiler durations are diagnostic only"
+  },
+  "server_diagnostic": {
+    "evidence_status": "source-equivalent dirty-tree exact/non-regression screen, not a clean retained server-speed claim",
+    "protocol": "real localhost Uvicorn C1/C8 p512/d128, one warmup, three blocking, three exact SSE, delayed C8",
+    "passed": true,
+    "f3e_control_tok_s": {"blocking_median": 88.4307944066821, "exact_sse_median": 84.69712270878173, "delayed": 68.32005577043688},
+    "candidate_tok_s": {
+      "blocking_samples": [88.47772518148695, 88.21504843983867, 88.295733891612],
+      "blocking_median": 88.295733891612,
+      "exact_sse_samples": [86.21752345079629, 84.38064190898125, 85.10228350588615],
+      "exact_sse_median": 85.10228350588615,
+      "delayed": 68.87360375640193
+    },
+    "delta_vs_f3e_percent": {"blocking": -0.1527301840679729, "exact_sse": 0.4783642987466141, "delayed": 0.810227655295015},
+    "raw_sha256": "1ea99ff0f1dfc8751b34950eb108dd4c5c634d8709fae3a74d1a392f1b06c5b8"
+  },
+  "limitations": [
+    "The clean direct gain is small and scoped to physical C8; lower widths and gfx1100 are unchanged.",
+    "Unique/random expert-ID micros regress, so admission remains limited to the measured physical-C8 router distribution.",
+    "Server results are exact and non-regressive but source-equivalent diagnostics rather than clean publication rows."
+  ]
+}
