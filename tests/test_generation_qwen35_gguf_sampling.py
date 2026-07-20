@@ -1683,6 +1683,12 @@ def test_gguf_submit_poll_sampled_rows_use_packed_model_ticks(monkeypatch) -> No
             self._packed_decode_sessions = tuple(sessions)
             return results
 
+        def discard_packed_decode_state(self):
+            was_dirty = self._packed_decode_state_dirty
+            self._packed_decode_sessions = ()
+            self._packed_decode_state_dirty = False
+            return was_dirty
+
         def flush_packed_decode_state(self):
             self._packed_decode_state_dirty = False
             return True
@@ -2087,6 +2093,12 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
             self._packed_decode_state_dirty = True
             self._packed_decode_sessions = tuple(sessions)
             return [SimpleNamespace(token_id=int(token) + 1) for token in token_ids]
+
+        def discard_packed_decode_state(self):
+            was_dirty = self._packed_decode_state_dirty
+            self._packed_decode_sessions = ()
+            self._packed_decode_state_dirty = False
+            return was_dirty
 
         def flush_packed_decode_state(self):
             calls.append(("flush", self.slot_id))
@@ -2634,7 +2646,7 @@ def test_gguf_resident_runner_waits_for_stable_membership_before_graph_capture()
 @pytest.mark.parametrize(
     ("done_values", "expected_events"),
     [
-        ((True, True), ("close", "invalidate")),
+        ((True, True), ("close", "invalidate", "discard")),
         ((True, False), ("flush", "close", "invalidate", "owner_flush")),
     ],
     ids=("all_done", "live_survivor"),
@@ -2644,7 +2656,9 @@ def test_gguf_resident_runner_discards_only_terminal_packed_state(
     expected_events: tuple[str, ...],
 ) -> None:
     events: list[str] = []
-    owner = SimpleNamespace()
+    owner = SimpleNamespace(
+        discard_packed_decode_state=lambda: events.append("discard"),
+    )
 
     class FakeGraph:
         sessions = ()

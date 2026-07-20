@@ -5878,9 +5878,14 @@ class Qwen35GGUFResidentModelRunner:
         ]
         if all_done:
             # No session survives this physical group, so packed scratch state
-            # has no future consumer. Closing the graph and clearing ownership
-            # is sufficient; scattering every layer back to sessions only to
-            # reset them immediately adds a terminal GPU synchronization.
+            # has no future consumer. Closing the graph and invalidating the
+            # owner's deferred binding is sufficient; scattering every layer
+            # back to sessions only to reset them immediately adds a terminal
+            # GPU synchronization.
+            discard = getattr(owner, "discard_packed_decode_state", None)
+            if not callable(discard):
+                raise RuntimeError("GGUF packed decode owner cannot discard terminal state")
+            discard()
             for slot in concrete:
                 slot.packed_decode_owner = None
             return
