@@ -170273,3 +170273,36 @@ Published compact artifact
 `2a73e55afa31e710a9af9e882507944ad91fd3d0fc82a68f86e4ef11ac16bb77`).
 The retained performance claim is clean direct C8; the positive same-checkout
 server A/B remains supporting diagnostic evidence.
+
+## 2026-07-20 — Reject remaining Q8T16 single/dual/triple col8
+
+Exhausted the F3I output-column hypothesis across every remaining profiled dense
+Q8T16 shape. All candidate outputs are byte-exact to their 128-thread
+production bodies.
+
+Single-output 40-warmup/200-iteration cycling-pool micros:
+
+- BF16 `8x4096 -> 8x2048`: **112.436 -> 130.674 us (+16.22%)**, reject;
+- F32 `8x4096 -> 8x2048`: **114.339 -> 129.344 us (+13.12%)**, reject;
+- BF16 short-K `8x512 -> 8x2048`: **24.021 -> 22.658 us (-5.68%)**.
+
+The short-K singleton advances to exact model/server gates. Direct C8 is
+**152.333692/152.280761/152.401271 tok/s**, median **152.333692**, only
+**+0.093%** over clean F3I. State is **320/320 exact**. Versus the current F3I
+server row, blocking improves **+0.44%**, SSE is **-0.01%**, but delayed
+admission regresses **68.908 -> 68.540 tok/s (-0.53%)**. Reject and remove.
+
+Full-attention triple at real `8x2048 -> 8x(8192+512+512)` regresses
+**281.330 -> 291.341 us (+3.56%)**. Shared gate/up dual at
+`8x2048 -> 8x(512+512)` improves **31.953 -> 31.369 us (-1.83%)**, but its
+direct repeats **152.344413/152.220290/152.073631 tok/s** move the median only
+**+0.019%**, below **0.089%** run variance. Reject before server.
+
+Removed all temporary single/dual/triple col8 kernels, wrappers, fixtures, and
+runtime selectors. No env flags remain; retained F3I pair-rowtile col8 is
+unchanged. Compact rejection artifact:
+`benchmarks/results/2026-07-20-gfx1151-gguf-q8t16-single-dual-triple-col8-rejected.json`
+(5,788 bytes, SHA-256
+`425de237c38ca838b62c9370b4ca91d7e77926690eb256ed6c4f4927610d0a08`).
+Dense Q8T16 row/column scheduling is closed; the 60 dense F32-weight launches
+total only 0.271 ms (0.52%) and are launch-noise scale.
