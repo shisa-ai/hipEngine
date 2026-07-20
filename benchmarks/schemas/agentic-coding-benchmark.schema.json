@@ -68,9 +68,16 @@
             "complete_turn": {"$ref": "#/$defs/percentiles"}
           }
         },
+        "workload_wall_scope": {
+          "const": "first_submit_to_last_tool_result_submit_including_inter_turn_control"
+        },
         "workload_wall_s": {"type": "number", "exclusiveMinimum": 0},
         "exact_generated_tok_s": {"type": "number", "exclusiveMinimum": 0},
         "validated_tool_calls_s": {"type": "number", "exclusiveMinimum": 0},
+        "active_sse_wave_count": {"type": "integer", "minimum": 1},
+        "active_sse_wave_wall_s": {"type": "number", "exclusiveMinimum": 0},
+        "active_sse_exact_generated_tok_s": {"type": "number", "exclusiveMinimum": 0},
+        "active_sse_validated_tool_calls_s": {"type": "number", "exclusiveMinimum": 0},
         "prefix": {
           "type": "object",
           "additionalProperties": false,

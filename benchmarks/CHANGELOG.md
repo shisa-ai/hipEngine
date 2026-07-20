@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-21
+
+- [retained gfx1100 coding-agent A1 baseline] W7900 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV cache-off real-Uvicorn strict-tool active-SSE goodput moves **unmeasured -> small 16.239/15.995/16.020, growing 15.100/15.231/15.036, medium 4.127/4.629/4.339 tok/s at C1/C4/C8** (% delta n/a) across one warmup + three runs/configuration; all **702 turns / 17,316 response-owned IDs** and variance/ownership gates pass, the oracle-inclusive first-to-last rate is corrected to diagnostic-only, and full-vocabulary host D2H selects prefix A/B then native sampling. `benchmarks/results/2026-07-21-w7900-agentic-a1-repeated-baseline.json`.
+
 ## 2026-07-20
 
 - [diagnostic/complete gfx1100 coding-agent C8 capacity matrix; no performance claim] W7900 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV moves A1 capacity **small c1 only -> small/growing/medium logical C8 complete** (% delta n/a): **32/32 + 64/64 + 48/48 turns** and **3,552 exact response-owned IDs** pass blocking/SSE/strict-argument/final-ownership gates at exact 4K/4K/10K contexts through registry-capped c4 residency; public telemetry remains choice-scoped width1, and warmup plus three C1/C4/C8 repeats remain required before any performance baseline. `benchmarks/results/2026-07-20-w7900-agentic-a1-c8-capacity-matrix.json`.
