@@ -170480,3 +170480,69 @@ blocking/SSE exact-ID/strict-argument gates, artifact validation, and final zero
 ownership. Output `/tmp/agentic-registry-cap-dirty-c8-a1.json` pins
 `performance_claim=false`; timing is discarded. Next: commit/push the registry
 capacity unit and repeat C8 from that clean commit before any retention.
+
+## 2026-07-20 — Close clean A1 C8 capacity across all workload families
+
+Committed/pushed the registry residency fix as
+`56c91f8738aa979b723579c248b1a4c1b94a23af`, verified a clean tree with local
+`HEAD == origin/main`, and reran the exact cache-off deterministic A1 protocol on
+W7900/GPU 0. The 4K server used logical `--max-active-requests 8` while readiness
+reported scratch max batch `4`, packed AR warm widths `[2,4]`, and final startup
+`37.427734 GiB` used / `7.556641 GiB` free.
+
+Clean 4K collector results:
+
+- `small_repo --concurrency 8 --runs 1`: **32/32 turns**, 800 exact
+  response-owned IDs, artifact SHA-256
+  `568fef9daa8848f8e3e42c8abe520b48d0df2d6231beab894c5b55168237f66d`;
+- `growing_history --concurrency 8 --runs 1`: **64/64 turns**, 1,592 IDs,
+  artifact SHA-256
+  `d5f0b06326934a66575e009835212cad3704c00a5a791be499b8f68df09c4f8a`.
+
+Both pass every blocking oracle, measured SSE exact-ID equality gate, strict
+argument check, collector validation, and final zero-ownership check. Public
+backend telemetry is choice-scoped and reports physical width one on every row;
+the startup probe proves width-2/4 allocation safety, but these collector
+artifacts do **not** claim physical-c4 model-step execution or performance.
+
+Used the same server tokenizer, exact tool schemas, forced choices, and canonical
+history builder to audit every frozen prompt before selecting the medium
+configuration. Results are recorded in
+`/tmp/agentic-context-requirements-56c91f87.json`:
+
+- small prompt counts `[2504, 2620, 2734, 2851]`, requiring `2851 + 128 = 2979`;
+- growing counts `[2498, 2609, 2717, 2831, 2936, 3051, 3175, 3281]`, requiring
+  `3281 + 128 = 3409`;
+- medium counts `[8644, 8757, 8876, 8998, 9112, 9229]`, requiring
+  `9229 + 128 = 9357`.
+
+Therefore small/growing retain 4,096 context and medium uses 10,240 context,
+leaving 883 tokens above the exact medium requirement without provisioning the
+old 12,288/c8 shape. The clean 10,240/C8-admission server passed the unchanged
+10,239-token startup guard with resident/scratch width four at
+`38.259766 GiB` used / `6.724609 GiB` free. Runtime sampling observed up to
+`43,567,579,136` bytes used and remained below physical VRAM.
+
+The first medium collector attempt is invalid and emitted no artifact: the
+explicit background **server** lifetime was only 600 seconds, so it began
+external graceful shutdown near the end of the collector and one stream lacked
+`[DONE]`. There was no HIP/runtime error. A fresh clean server with a 1,800-second
+lifetime repeated the same startup and completed
+`medium_repo --concurrency 8 --runs 1`: **48/48 turns**, 1,160 exact IDs, all
+blocking/SSE/strict/final-ownership gates passed, artifact SHA-256
+`77a321e66e7157a10ed6ca965f0b48e46317865464c5f24df0f0807af2120b88`.
+
+Published byte-identical collector outputs plus the compact capacity matrix:
+
+- `benchmarks/results/2026-07-20-w7900-agentic-a1-small-c8-capacity.json`;
+- `benchmarks/results/2026-07-20-w7900-agentic-a1-growing-history-c8-capacity.json`;
+- `benchmarks/results/2026-07-20-w7900-agentic-a1-medium-c8-capacity.json`;
+- `benchmarks/results/2026-07-20-w7900-agentic-a1-c8-capacity-matrix.json`
+  (SHA-256 `368a0513f4d9c16d103a49d2e9543938748e6538d76fd01c67d878811442952c`).
+
+All set `performance_claim=false`. Single-run/no-warmup TTFT, rates, and walls
+are diagnostic only; GPU 1 also had unrelated intermittent activity. The frozen
+retained-baseline protocol is now physically valid and model-general: contexts
+4,096/4,096/10,240 for small/growing/medium, logical C1/C4/C8, cache off, one
+complete discarded warmup then three measured runs per configuration. All nine
+configurations must pass before timing is promoted or A2 prefix A/B begins.

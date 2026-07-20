@@ -1,0 +1,5981 @@
+{
+  "configuration": {
+    "backend": "hip_gfx1100",
+    "cache_mode": "off",
+    "collector": "real_http_sse_with_independent_nonstreaming_oracle",
+    "concurrency": 8,
+    "id": "live-growing_history-c8",
+    "lane": "deterministic",
+    "model": "Qwen3.6-35B-A3B",
+    "performance_claim": false,
+    "require_complete_workloads": true,
+    "token_timing_scope": "public_tool_fragments"
+  },
+  "coverage": {
+    "agents": 8,
+    "batches": 64,
+    "concurrency": 8,
+    "generated_tokens": 1592,
+    "runs": 1,
+    "tool_calls": 64,
+    "turns": 64,
+    "workloads": [
+      "growing_history"
+    ]
+  },
+  "created_at": "2026-07-20T11:18:25.234605+00:00",
+  "final_ownership": {
+    "active_requests": 0,
+    "allowed_cache_bytes": 0,
+    "cache_resident_bytes": 0,
+    "graph_owners": 0,
+    "kv_pinned_pages": 0,
+    "kv_refcounted_pages": 0,
+    "model_active_requests": 0,
+    "pending_requests": 0,
+    "session_count": 0,
+    "stream_producers": 0,
+    "workspace_owners": 0
+  },
+  "kind": "hipengine_agentic_coding_benchmark",
+  "performance_claim": false,
+  "rollup": {
+    "backend": {
+      "full_vocab_logits_d2h_bytes": 1581301760,
+      "generated_token_id_source_turns": {
+        "response": 64
+      },
+      "physical_width_turns": {
+        "1": 64
+      },
+      "sampler_mode_turns": {
+        "processed_argmax": 64
+      },
+      "serial_fallback_turns": 0,
+      "token_timing_mode_turns": {
+        "buffered_public": 64
+      }
+    },
+    "exact_generated_tok_s": 7.678854107277426,
+    "latency_ms": {
+      "complete_turn": {
+        "count": 64,
+        "max": 15035.842261975631,
+        "min": 10320.965029997751,
+        "p50": 12955.518853443209,
+        "p95": 14627.583349996712,
+        "p99": 15027.4368404306
+      },
+      "inter_token": {
+        "count": 0,
+        "max": null,
+        "min": null,
+        "p50": null,
+        "p95": null,
+        "p99": null
+      },
+      "tool_call_ready": {
+        "count": 64,
+        "max": 15035.729730967432,
+        "min": 10320.830758078955,
+        "p50": 12955.410731956363,
+        "p95": 14627.482670528116,
+        "p99": 15027.325026997132
+      },
+      "ttft": {
+        "count": 64,
+        "max": 15035.729730967432,
+        "min": 10320.830758078955,
+        "p50": 12955.410731956363,
+        "p95": 14627.482670528116,
+        "p99": 15027.325026997132
+      }
+    },
+    "prefix": {
+      "hit_rate": 0.0,
+      "hits": 0,
+      "lookups": 0,
+      "max_cache_bytes": 0,
+      "reused_tokens": 0
+    },
+    "validated_tool_calls_s": 0.3086976525538664,
+    "workload_wall_s": 207.32260018994566
+  },
+  "schema_version": 1,
+  "turn_records": [
+    {
+      "agent_id": "agent-0",
+      "backend": {
+        "batch_id": "choice:run-0-agent-0-turn-0",
+        "logits_d2h_bytes": 23838720,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          851,
+          2129,
+          15889,
+          21624,
+          2267,
+          3147,
+          3431,
+          17988,
+          6971,
+          2129,
+          8255,
+          3147,
+          1648,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "5f73d4a2cff3a2d76b2015ed2d6ea39fc4afa0f8c2ba360f925152e921b1ae63",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2498,
+        "token_ids_sha256": "bda2d302ad334ed9860981c697c00668eec7659073d831a35d2f23a64903a52a"
+      },
+      "request_id": "run-0-agent-0-turn-0",
+      "run_id": "run-0",
+      "session_id": "session-0",
+      "timing": {
+        "first_token_at_s": 702953.921268922,
+        "response_done_at_s": 702953.921328893,
+        "submitted_at_s": 702943.600438164,
+        "token_event_token_counts": [
+          24
+        ],
+        "token_observed_at_s": [
+          702953.921268922
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 702953.921268922,
+        "tool_result_submitted_at_s": 702953.921403194
+      },
+      "tool": {
+        "arguments": {
+          "mode": "summary",
+          "path": "src/router.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_2eea39f2f02e43e1a816a065",
+        "declared_schema_sha256": "f9d71a5d7e483c60b36a882924dda97b8271376e06fc3c4717552debe8a02f48",
+        "expected_name": "read",
+        "name": "read",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 0,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-1",
+      "backend": {
+        "batch_id": "choice:run-0-agent-1-turn-0",
+        "logits_d2h_bytes": 23838720,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          851,
+          2129,
+          15889,
+          21624,
+          2267,
+          3147,
+          3431,
+          17988,
+          6971,
+          2129,
+          8255,
+          3147,
+          1648,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "5f73d4a2cff3a2d76b2015ed2d6ea39fc4afa0f8c2ba360f925152e921b1ae63",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2498,
+        "token_ids_sha256": "bda2d302ad334ed9860981c697c00668eec7659073d831a35d2f23a64903a52a"
+      },
+      "request_id": "run-0-agent-1-turn-0",
+      "run_id": "run-0",
+      "session_id": "session-1",
+      "timing": {
+        "first_token_at_s": 702955.117112032,
+        "response_done_at_s": 702955.117154943,
+        "submitted_at_s": 702943.600581176,
+        "token_event_token_counts": [
+          24
+        ],
+        "token_observed_at_s": [
+          702955.117112032
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 702955.117112032,
+        "tool_result_submitted_at_s": 702955.117224044
+      },
+      "tool": {
+        "arguments": {
+          "mode": "summary",
+          "path": "src/router.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_96aa02d9f1bd4617846f7f20",
+        "declared_schema_sha256": "f9d71a5d7e483c60b36a882924dda97b8271376e06fc3c4717552debe8a02f48",
+        "expected_name": "read",
+        "name": "read",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 0,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-2",
+      "backend": {
+        "batch_id": "choice:run-0-agent-2-turn-0",
+        "logits_d2h_bytes": 23838720,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          851,
+          2129,
+          15889,
+          21624,
+          2267,
+          3147,
+          3431,
+          17988,
+          6971,
+          2129,
+          8255,
+          3147,
+          1648,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "5f73d4a2cff3a2d76b2015ed2d6ea39fc4afa0f8c2ba360f925152e921b1ae63",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2498,
+        "token_ids_sha256": "bda2d302ad334ed9860981c697c00668eec7659073d831a35d2f23a64903a52a"
+      },
+      "request_id": "run-0-agent-2-turn-0",
+      "run_id": "run-0",
+      "session_id": "session-2",
+      "timing": {
+        "first_token_at_s": 702953.951070775,
+        "response_done_at_s": 702953.951120775,
+        "submitted_at_s": 702943.600044268,
+        "token_event_token_counts": [
+          24
+        ],
+        "token_observed_at_s": [
+          702953.951070775
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 702953.951070775,
+        "tool_result_submitted_at_s": 702953.951185636
+      },
+      "tool": {
+        "arguments": {
+          "mode": "summary",
+          "path": "src/router.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_3be3212c2b6648fbb30b1dd4",
+        "declared_schema_sha256": "f9d71a5d7e483c60b36a882924dda97b8271376e06fc3c4717552debe8a02f48",
+        "expected_name": "read",
+        "name": "read",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 0,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-3",
+      "backend": {
+        "batch_id": "choice:run-0-agent-3-turn-0",
+        "logits_d2h_bytes": 23838720,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          851,
+          2129,
+          15889,
+          21624,
+          2267,
+          3147,
+          3431,
+          17988,
+          6971,
+          2129,
+          8255,
+          3147,
+          1648,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "5f73d4a2cff3a2d76b2015ed2d6ea39fc4afa0f8c2ba360f925152e921b1ae63",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2498,
+        "token_ids_sha256": "bda2d302ad334ed9860981c697c00668eec7659073d831a35d2f23a64903a52a"
+      },
+      "request_id": "run-0-agent-3-turn-0",
+      "run_id": "run-0",
+      "session_id": "session-3",
+      "timing": {
+        "first_token_at_s": 702955.501352923,
+        "response_done_at_s": 702955.501413754,
+        "submitted_at_s": 702943.60018044,
+        "token_event_token_counts": [
+          24
+        ],
+        "token_observed_at_s": [
+          702955.501352923
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 702955.501352923,
+        "tool_result_submitted_at_s": 702955.501483395
+      },
+      "tool": {
+        "arguments": {
+          "mode": "summary",
+          "path": "src/router.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_0e78165c5fcf4c659383f052",
+        "declared_schema_sha256": "f9d71a5d7e483c60b36a882924dda97b8271376e06fc3c4717552debe8a02f48",
+        "expected_name": "read",
+        "name": "read",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 0,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-4",
+      "backend": {
+        "batch_id": "choice:run-0-agent-4-turn-0",
+        "logits_d2h_bytes": 23838720,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          851,
+          2129,
+          15889,
+          21624,
+          2267,
+          3147,
+          3431,
+          17988,
+          6971,
+          2129,
+          8255,
+          3147,
+          1648,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "5f73d4a2cff3a2d76b2015ed2d6ea39fc4afa0f8c2ba360f925152e921b1ae63",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2498,
+        "token_ids_sha256": "bda2d302ad334ed9860981c697c00668eec7659073d831a35d2f23a64903a52a"
+      },
+      "request_id": "run-0-agent-4-turn-0",
+      "run_id": "run-0",
+      "session_id": "session-4",
+      "timing": {
+        "first_token_at_s": 702955.079613503,
+        "response_done_at_s": 702955.079656544,
+        "submitted_at_s": 702943.60091095,
+        "token_event_token_counts": [
+          24
+        ],
+        "token_observed_at_s": [
+          702955.079613503
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 702955.079613503,
+        "tool_result_submitted_at_s": 702955.079794526
+      },
+      "tool": {
+        "arguments": {
+          "mode": "summary",
+          "path": "src/router.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_744ab8d1e1f34155b740378c",
+        "declared_schema_sha256": "f9d71a5d7e483c60b36a882924dda97b8271376e06fc3c4717552debe8a02f48",
+        "expected_name": "read",
+        "name": "read",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 0,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-5",
+      "backend": {
+        "batch_id": "choice:run-0-agent-5-turn-0",
+        "logits_d2h_bytes": 23838720,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          851,
+          2129,
+          15889,
+          21624,
+          2267,
+          3147,
+          3431,
+          17988,
+          6971,
+          2129,
+          8255,
+          3147,
+          1648,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "5f73d4a2cff3a2d76b2015ed2d6ea39fc4afa0f8c2ba360f925152e921b1ae63",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2498,
+        "token_ids_sha256": "bda2d302ad334ed9860981c697c00668eec7659073d831a35d2f23a64903a52a"
+      },
+      "request_id": "run-0-agent-5-turn-0",
+      "run_id": "run-0",
+      "session_id": "session-5",
+      "timing": {
+        "first_token_at_s": 702955.021848963,
+        "response_done_at_s": 702955.021889604,
+        "submitted_at_s": 702943.600313372,
+        "token_event_token_counts": [
+          24
+        ],
+        "token_observed_at_s": [
+          702955.021848963
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 702955.021848963,
+        "tool_result_submitted_at_s": 702955.021957705
+      },
+      "tool": {
+        "arguments": {
+          "mode": "summary",
+          "path": "src/router.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_38cb15bfe960447784e301d8",
+        "declared_schema_sha256": "f9d71a5d7e483c60b36a882924dda97b8271376e06fc3c4717552debe8a02f48",
+        "expected_name": "read",
+        "name": "read",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 0,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-6",
+      "backend": {
+        "batch_id": "choice:run-0-agent-6-turn-0",
+        "logits_d2h_bytes": 23838720,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          851,
+          2129,
+          15889,
+          21624,
+          2267,
+          3147,
+          3431,
+          17988,
+          6971,
+          2129,
+          8255,
+          3147,
+          1648,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "5f73d4a2cff3a2d76b2015ed2d6ea39fc4afa0f8c2ba360f925152e921b1ae63",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2498,
+        "token_ids_sha256": "bda2d302ad334ed9860981c697c00668eec7659073d831a35d2f23a64903a52a"
+      },
+      "request_id": "run-0-agent-6-turn-0",
+      "run_id": "run-0",
+      "session_id": "session-6",
+      "timing": {
+        "first_token_at_s": 702955.1747173,
+        "response_done_at_s": 702955.174759991,
+        "submitted_at_s": 702943.600727018,
+        "token_event_token_counts": [
+          24
+        ],
+        "token_observed_at_s": [
+          702955.1747173
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 702955.1747173,
+        "tool_result_submitted_at_s": 702955.174824791
+      },
+      "tool": {
+        "arguments": {
+          "mode": "summary",
+          "path": "src/router.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_3c26c48c1ae6419e8566c1b6",
+        "declared_schema_sha256": "f9d71a5d7e483c60b36a882924dda97b8271376e06fc3c4717552debe8a02f48",
+        "expected_name": "read",
+        "name": "read",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 0,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-7",
+      "backend": {
+        "batch_id": "choice:run-0-agent-7-turn-0",
+        "logits_d2h_bytes": 23838720,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          851,
+          2129,
+          15889,
+          21624,
+          2267,
+          3147,
+          3431,
+          17988,
+          6971,
+          2129,
+          8255,
+          3147,
+          1648,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "5f73d4a2cff3a2d76b2015ed2d6ea39fc4afa0f8c2ba360f925152e921b1ae63",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2498,
+        "token_ids_sha256": "bda2d302ad334ed9860981c697c00668eec7659073d831a35d2f23a64903a52a"
+      },
+      "request_id": "run-0-agent-7-turn-0",
+      "run_id": "run-0",
+      "session_id": "session-7",
+      "timing": {
+        "first_token_at_s": 702954.982859813,
+        "response_done_at_s": 702954.982917764,
+        "submitted_at_s": 702943.599892306,
+        "token_event_token_counts": [
+          24
+        ],
+        "token_observed_at_s": [
+          702954.982859813
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 702954.982859813,
+        "tool_result_submitted_at_s": 702954.982993535
+      },
+      "tool": {
+        "arguments": {
+          "mode": "summary",
+          "path": "src/router.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_9c9a7c20db214bcdbf7ae28f",
+        "declared_schema_sha256": "f9d71a5d7e483c60b36a882924dda97b8271376e06fc3c4717552debe8a02f48",
+        "expected_name": "read",
+        "name": "read",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 0,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-0",
+      "backend": {
+        "batch_id": "choice:run-0-agent-0-turn-1",
+        "logits_d2h_bytes": 22845440,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          36940,
+          2129,
+          15889,
+          21624,
+          13927,
+          3147,
+          4740,
+          10063,
+          2129,
+          2267,
+          3147,
+          3431,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "1777964314c49122ea998ad22994bb5fac80c2f3dcb38b39893bca9fb07379d5",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2609,
+        "token_ids_sha256": "91ed8e2e3a932e256a40ff8a1e93a85b2ef748aa9d86404ae3dce00d43716d95"
+      },
+      "request_id": "run-0-agent-0-turn-1",
+      "run_id": "run-0",
+      "session_id": "session-0",
+      "timing": {
+        "first_token_at_s": 702980.094474933,
+        "response_done_at_s": 702980.094515324,
+        "submitted_at_s": 702968.078662138,
+        "token_event_token_counts": [
+          23
+        ],
+        "token_observed_at_s": [
+          702980.094474933
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 702980.094474933,
+        "tool_result_submitted_at_s": 702980.094580255
+      },
+      "tool": {
+        "arguments": {
+          "path": "src",
+          "pattern": "RouteNotFound"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_0e245611b0074e69b5e22d88",
+        "declared_schema_sha256": "b0bb2dcce02cc5fc5b58eb90d156589b446270809ece801ba1dd099838d23c59",
+        "expected_name": "grep",
+        "name": "grep",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 1,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-1",
+      "backend": {
+        "batch_id": "choice:run-0-agent-1-turn-1",
+        "logits_d2h_bytes": 22845440,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          36940,
+          2129,
+          15889,
+          21624,
+          13927,
+          3147,
+          4740,
+          10063,
+          2129,
+          2267,
+          3147,
+          3431,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "1777964314c49122ea998ad22994bb5fac80c2f3dcb38b39893bca9fb07379d5",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2609,
+        "token_ids_sha256": "91ed8e2e3a932e256a40ff8a1e93a85b2ef748aa9d86404ae3dce00d43716d95"
+      },
+      "request_id": "run-0-agent-1-turn-1",
+      "run_id": "run-0",
+      "session_id": "session-1",
+      "timing": {
+        "first_token_at_s": 702980.020078013,
+        "response_done_at_s": 702980.020120674,
+        "submitted_at_s": 702968.078510325,
+        "token_event_token_counts": [
+          23
+        ],
+        "token_observed_at_s": [
+          702980.020078013
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 702980.020078013,
+        "tool_result_submitted_at_s": 702980.020187175
+      },
+      "tool": {
+        "arguments": {
+          "path": "src",
+          "pattern": "RouteNotFound"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_a4880664072b46a7ac11f1fa",
+        "declared_schema_sha256": "b0bb2dcce02cc5fc5b58eb90d156589b446270809ece801ba1dd099838d23c59",
+        "expected_name": "grep",
+        "name": "grep",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 1,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-2",
+      "backend": {
+        "batch_id": "choice:run-0-agent-2-turn-1",
+        "logits_d2h_bytes": 22845440,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          36940,
+          2129,
+          15889,
+          21624,
+          13927,
+          3147,
+          4740,
+          10063,
+          2129,
+          2267,
+          3147,
+          3431,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "1777964314c49122ea998ad22994bb5fac80c2f3dcb38b39893bca9fb07379d5",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2609,
+        "token_ids_sha256": "91ed8e2e3a932e256a40ff8a1e93a85b2ef748aa9d86404ae3dce00d43716d95"
+      },
+      "request_id": "run-0-agent-2-turn-1",
+      "run_id": "run-0",
+      "session_id": "session-2",
+      "timing": {
+        "first_token_at_s": 702980.474867371,
+        "response_done_at_s": 702980.474923662,
+        "submitted_at_s": 702968.078903861,
+        "token_event_token_counts": [
+          23
+        ],
+        "token_observed_at_s": [
+          702980.474867371
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 702980.474867371,
+        "tool_result_submitted_at_s": 702980.474993363
+      },
+      "tool": {
+        "arguments": {
+          "path": "src",
+          "pattern": "RouteNotFound"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_ffcb10254d0c49d684280d7f",
+        "declared_schema_sha256": "b0bb2dcce02cc5fc5b58eb90d156589b446270809ece801ba1dd099838d23c59",
+        "expected_name": "grep",
+        "name": "grep",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 1,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-3",
+      "backend": {
+        "batch_id": "choice:run-0-agent-3-turn-1",
+        "logits_d2h_bytes": 22845440,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          36940,
+          2129,
+          15889,
+          21624,
+          13927,
+          3147,
+          4740,
+          10063,
+          2129,
+          2267,
+          3147,
+          3431,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "1777964314c49122ea998ad22994bb5fac80c2f3dcb38b39893bca9fb07379d5",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2609,
+        "token_ids_sha256": "91ed8e2e3a932e256a40ff8a1e93a85b2ef748aa9d86404ae3dce00d43716d95"
+      },
+      "request_id": "run-0-agent-3-turn-1",
+      "run_id": "run-0",
+      "session_id": "session-3",
+      "timing": {
+        "first_token_at_s": 702980.067179325,
+        "response_done_at_s": 702980.067219836,
+        "submitted_at_s": 702968.079091603,
+        "token_event_token_counts": [
+          23
+        ],
+        "token_observed_at_s": [
+          702980.067179325
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 702980.067179325,
+        "tool_result_submitted_at_s": 702980.067296547
+      },
+      "tool": {
+        "arguments": {
+          "path": "src",
+          "pattern": "RouteNotFound"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_48fa68dc7d9848029cf6de9e",
+        "declared_schema_sha256": "b0bb2dcce02cc5fc5b58eb90d156589b446270809ece801ba1dd099838d23c59",
+        "expected_name": "grep",
+        "name": "grep",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 1,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-4",
+      "backend": {
+        "batch_id": "choice:run-0-agent-4-turn-1",
+        "logits_d2h_bytes": 22845440,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          36940,
+          2129,
+          15889,
+          21624,
+          13927,
+          3147,
+          4740,
+          10063,
+          2129,
+          2267,
+          3147,
+          3431,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "1777964314c49122ea998ad22994bb5fac80c2f3dcb38b39893bca9fb07379d5",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2609,
+        "token_ids_sha256": "91ed8e2e3a932e256a40ff8a1e93a85b2ef748aa9d86404ae3dce00d43716d95"
+      },
+      "request_id": "run-0-agent-4-turn-1",
+      "run_id": "run-0",
+      "session_id": "session-4",
+      "timing": {
+        "first_token_at_s": 702980.200028645,
+        "response_done_at_s": 702980.200071206,
+        "submitted_at_s": 702968.079399468,
+        "token_event_token_counts": [
+          23
+        ],
+        "token_observed_at_s": [
+          702980.200028645
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 702980.200028645,
+        "tool_result_submitted_at_s": 702980.200145907
+      },
+      "tool": {
+        "arguments": {
+          "path": "src",
+          "pattern": "RouteNotFound"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_a2ca4c72dc83442eabecf768",
+        "declared_schema_sha256": "b0bb2dcce02cc5fc5b58eb90d156589b446270809ece801ba1dd099838d23c59",
+        "expected_name": "grep",
+        "name": "grep",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 1,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-5",
+      "backend": {
+        "batch_id": "choice:run-0-agent-5-turn-1",
+        "logits_d2h_bytes": 22845440,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          36940,
+          2129,
+          15889,
+          21624,
+          13927,
+          3147,
+          4740,
+          10063,
+          2129,
+          2267,
+          3147,
+          3431,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "1777964314c49122ea998ad22994bb5fac80c2f3dcb38b39893bca9fb07379d5",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2609,
+        "token_ids_sha256": "91ed8e2e3a932e256a40ff8a1e93a85b2ef748aa9d86404ae3dce00d43716d95"
+      },
+      "request_id": "run-0-agent-5-turn-1",
+      "run_id": "run-0",
+      "session_id": "session-5",
+      "timing": {
+        "first_token_at_s": 702979.991724941,
+        "response_done_at_s": 702979.991773721,
+        "submitted_at_s": 702968.078365283,
+        "token_event_token_counts": [
+          23
+        ],
+        "token_observed_at_s": [
+          702979.991724941
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 702979.991724941,
+        "tool_result_submitted_at_s": 702979.991848902
+      },
+      "tool": {
+        "arguments": {
+          "path": "src",
+          "pattern": "RouteNotFound"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_e872c2c7fdbb4a71ba1ec741",
+        "declared_schema_sha256": "b0bb2dcce02cc5fc5b58eb90d156589b446270809ece801ba1dd099838d23c59",
+        "expected_name": "grep",
+        "name": "grep",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 1,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-6",
+      "backend": {
+        "batch_id": "choice:run-0-agent-6-turn-1",
+        "logits_d2h_bytes": 22845440,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          36940,
+          2129,
+          15889,
+          21624,
+          13927,
+          3147,
+          4740,
+          10063,
+          2129,
+          2267,
+          3147,
+          3431,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "1777964314c49122ea998ad22994bb5fac80c2f3dcb38b39893bca9fb07379d5",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2609,
+        "token_ids_sha256": "91ed8e2e3a932e256a40ff8a1e93a85b2ef748aa9d86404ae3dce00d43716d95"
+      },
+      "request_id": "run-0-agent-6-turn-1",
+      "run_id": "run-0",
+      "session_id": "session-6",
+      "timing": {
+        "first_token_at_s": 702980.228606451,
+        "response_done_at_s": 702980.228641881,
+        "submitted_at_s": 702968.078775809,
+        "token_event_token_counts": [
+          23
+        ],
+        "token_observed_at_s": [
+          702980.228606451
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 702980.228606451,
+        "tool_result_submitted_at_s": 702980.228890075
+      },
+      "tool": {
+        "arguments": {
+          "path": "src",
+          "pattern": "RouteNotFound"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_ccbd0e60558749d0a9a3ceb4",
+        "declared_schema_sha256": "b0bb2dcce02cc5fc5b58eb90d156589b446270809ece801ba1dd099838d23c59",
+        "expected_name": "grep",
+        "name": "grep",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 1,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-7",
+      "backend": {
+        "batch_id": "choice:run-0-agent-7-turn-1",
+        "logits_d2h_bytes": 22845440,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          36940,
+          2129,
+          15889,
+          21624,
+          13927,
+          3147,
+          4740,
+          10063,
+          2129,
+          2267,
+          3147,
+          3431,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "1777964314c49122ea998ad22994bb5fac80c2f3dcb38b39893bca9fb07379d5",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2609,
+        "token_ids_sha256": "91ed8e2e3a932e256a40ff8a1e93a85b2ef748aa9d86404ae3dce00d43716d95"
+      },
+      "request_id": "run-0-agent-7-turn-1",
+      "run_id": "run-0",
+      "session_id": "session-7",
+      "timing": {
+        "first_token_at_s": 702980.172338492,
+        "response_done_at_s": 702980.172374532,
+        "submitted_at_s": 702968.078208691,
+        "token_event_token_counts": [
+          23
+        ],
+        "token_observed_at_s": [
+          702980.172338492
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 702980.172338492,
+        "tool_result_submitted_at_s": 702980.172446813
+      },
+      "tool": {
+        "arguments": {
+          "path": "src",
+          "pattern": "RouteNotFound"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_05e5adb628b645108b3c215e",
+        "declared_schema_sha256": "b0bb2dcce02cc5fc5b58eb90d156589b446270809ece801ba1dd099838d23c59",
+        "expected_name": "grep",
+        "name": "grep",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 1,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-0",
+      "backend": {
+        "batch_id": "choice:run-0-agent-0-turn-2",
+        "logits_d2h_bytes": 24832000,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          851,
+          2129,
+          15889,
+          21624,
+          2267,
+          3147,
+          23095,
+          12333,
+          53720,
+          6971,
+          2129,
+          8255,
+          3147,
+          1648,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "73ced645db28a8727483cc3f2828b4e0d9a1e88f07afc3655b9fc8cfdf2f84db",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2717,
+        "token_ids_sha256": "7356c277e3de8c38a8e815db3cfd559048b5e0ba115700b5167a6259ad8f0192"
+      },
+      "request_id": "run-0-agent-0-turn-2",
+      "run_id": "run-0",
+      "session_id": "session-0",
+      "timing": {
+        "first_token_at_s": 703006.117622186,
+        "response_done_at_s": 703006.117668596,
+        "submitted_at_s": 702993.702807529,
+        "token_event_token_counts": [
+          25
+        ],
+        "token_observed_at_s": [
+          703006.117622186
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703006.117622186,
+        "tool_result_submitted_at_s": 703006.117737877
+      },
+      "tool": {
+        "arguments": {
+          "mode": "summary",
+          "path": "tests/test_router.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_0d944347171f481497a029eb",
+        "declared_schema_sha256": "f9d71a5d7e483c60b36a882924dda97b8271376e06fc3c4717552debe8a02f48",
+        "expected_name": "read",
+        "name": "read",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 2,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-1",
+      "backend": {
+        "batch_id": "choice:run-0-agent-1-turn-2",
+        "logits_d2h_bytes": 24832000,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          851,
+          2129,
+          15889,
+          21624,
+          2267,
+          3147,
+          23095,
+          12333,
+          53720,
+          6971,
+          2129,
+          8255,
+          3147,
+          1648,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "73ced645db28a8727483cc3f2828b4e0d9a1e88f07afc3655b9fc8cfdf2f84db",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2717,
+        "token_ids_sha256": "7356c277e3de8c38a8e815db3cfd559048b5e0ba115700b5167a6259ad8f0192"
+      },
+      "request_id": "run-0-agent-1-turn-2",
+      "run_id": "run-0",
+      "session_id": "session-1",
+      "timing": {
+        "first_token_at_s": 703006.248095852,
+        "response_done_at_s": 703006.248136083,
+        "submitted_at_s": 702993.703126064,
+        "token_event_token_counts": [
+          25
+        ],
+        "token_observed_at_s": [
+          703006.248095852
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703006.248095852,
+        "tool_result_submitted_at_s": 703006.248199514
+      },
+      "tool": {
+        "arguments": {
+          "mode": "summary",
+          "path": "tests/test_router.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_26e1dc5e51744859be8eb449",
+        "declared_schema_sha256": "f9d71a5d7e483c60b36a882924dda97b8271376e06fc3c4717552debe8a02f48",
+        "expected_name": "read",
+        "name": "read",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 2,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-2",
+      "backend": {
+        "batch_id": "choice:run-0-agent-2-turn-2",
+        "logits_d2h_bytes": 24832000,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          851,
+          2129,
+          15889,
+          21624,
+          2267,
+          3147,
+          23095,
+          12333,
+          53720,
+          6971,
+          2129,
+          8255,
+          3147,
+          1648,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "73ced645db28a8727483cc3f2828b4e0d9a1e88f07afc3655b9fc8cfdf2f84db",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2717,
+        "token_ids_sha256": "7356c277e3de8c38a8e815db3cfd559048b5e0ba115700b5167a6259ad8f0192"
+      },
+      "request_id": "run-0-agent-2-turn-2",
+      "run_id": "run-0",
+      "session_id": "session-2",
+      "timing": {
+        "first_token_at_s": 703006.060038678,
+        "response_done_at_s": 703006.060087599,
+        "submitted_at_s": 702993.702948281,
+        "token_event_token_counts": [
+          25
+        ],
+        "token_observed_at_s": [
+          703006.060038678
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703006.060038678,
+        "tool_result_submitted_at_s": 703006.06015805
+      },
+      "tool": {
+        "arguments": {
+          "mode": "summary",
+          "path": "tests/test_router.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_00309e3cf68b489186a7bd3d",
+        "declared_schema_sha256": "f9d71a5d7e483c60b36a882924dda97b8271376e06fc3c4717552debe8a02f48",
+        "expected_name": "read",
+        "name": "read",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 2,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-3",
+      "backend": {
+        "batch_id": "choice:run-0-agent-3-turn-2",
+        "logits_d2h_bytes": 24832000,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          851,
+          2129,
+          15889,
+          21624,
+          2267,
+          3147,
+          23095,
+          12333,
+          53720,
+          6971,
+          2129,
+          8255,
+          3147,
+          1648,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "73ced645db28a8727483cc3f2828b4e0d9a1e88f07afc3655b9fc8cfdf2f84db",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2717,
+        "token_ids_sha256": "7356c277e3de8c38a8e815db3cfd559048b5e0ba115700b5167a6259ad8f0192"
+      },
+      "request_id": "run-0-agent-3-turn-2",
+      "run_id": "run-0",
+      "session_id": "session-3",
+      "timing": {
+        "first_token_at_s": 703006.545979707,
+        "response_done_at_s": 703006.546030738,
+        "submitted_at_s": 702993.703430148,
+        "token_event_token_counts": [
+          25
+        ],
+        "token_observed_at_s": [
+          703006.545979707
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703006.545979707,
+        "tool_result_submitted_at_s": 703006.546099329
+      },
+      "tool": {
+        "arguments": {
+          "mode": "summary",
+          "path": "tests/test_router.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_64393a3100b04eb9943cadd6",
+        "declared_schema_sha256": "f9d71a5d7e483c60b36a882924dda97b8271376e06fc3c4717552debe8a02f48",
+        "expected_name": "read",
+        "name": "read",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 2,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-4",
+      "backend": {
+        "batch_id": "choice:run-0-agent-4-turn-2",
+        "logits_d2h_bytes": 24832000,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          851,
+          2129,
+          15889,
+          21624,
+          2267,
+          3147,
+          23095,
+          12333,
+          53720,
+          6971,
+          2129,
+          8255,
+          3147,
+          1648,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "73ced645db28a8727483cc3f2828b4e0d9a1e88f07afc3655b9fc8cfdf2f84db",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2717,
+        "token_ids_sha256": "7356c277e3de8c38a8e815db3cfd559048b5e0ba115700b5167a6259ad8f0192"
+      },
+      "request_id": "run-0-agent-4-turn-2",
+      "run_id": "run-0",
+      "session_id": "session-4",
+      "timing": {
+        "first_token_at_s": 703006.323947583,
+        "response_done_at_s": 703006.323996534,
+        "submitted_at_s": 702993.702660717,
+        "token_event_token_counts": [
+          25
+        ],
+        "token_observed_at_s": [
+          703006.323947583
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703006.323947583,
+        "tool_result_submitted_at_s": 703006.324076475
+      },
+      "tool": {
+        "arguments": {
+          "mode": "summary",
+          "path": "tests/test_router.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_1a913002654143b4887131cb",
+        "declared_schema_sha256": "f9d71a5d7e483c60b36a882924dda97b8271376e06fc3c4717552debe8a02f48",
+        "expected_name": "read",
+        "name": "read",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 2,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-5",
+      "backend": {
+        "batch_id": "choice:run-0-agent-5-turn-2",
+        "logits_d2h_bytes": 24832000,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          851,
+          2129,
+          15889,
+          21624,
+          2267,
+          3147,
+          23095,
+          12333,
+          53720,
+          6971,
+          2129,
+          8255,
+          3147,
+          1648,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "73ced645db28a8727483cc3f2828b4e0d9a1e88f07afc3655b9fc8cfdf2f84db",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2717,
+        "token_ids_sha256": "7356c277e3de8c38a8e815db3cfd559048b5e0ba115700b5167a6259ad8f0192"
+      },
+      "request_id": "run-0-agent-5-turn-2",
+      "run_id": "run-0",
+      "session_id": "session-5",
+      "timing": {
+        "first_token_at_s": 703006.154593518,
+        "response_done_at_s": 703006.154642998,
+        "submitted_at_s": 702993.703281856,
+        "token_event_token_counts": [
+          25
+        ],
+        "token_observed_at_s": [
+          703006.154593518
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703006.154593518,
+        "tool_result_submitted_at_s": 703006.154707389
+      },
+      "tool": {
+        "arguments": {
+          "mode": "summary",
+          "path": "tests/test_router.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_ac05e85c94d6459fb8ab911a",
+        "declared_schema_sha256": "f9d71a5d7e483c60b36a882924dda97b8271376e06fc3c4717552debe8a02f48",
+        "expected_name": "read",
+        "name": "read",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 2,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-6",
+      "backend": {
+        "batch_id": "choice:run-0-agent-6-turn-2",
+        "logits_d2h_bytes": 24832000,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          851,
+          2129,
+          15889,
+          21624,
+          2267,
+          3147,
+          23095,
+          12333,
+          53720,
+          6971,
+          2129,
+          8255,
+          3147,
+          1648,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "73ced645db28a8727483cc3f2828b4e0d9a1e88f07afc3655b9fc8cfdf2f84db",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2717,
+        "token_ids_sha256": "7356c277e3de8c38a8e815db3cfd559048b5e0ba115700b5167a6259ad8f0192"
+      },
+      "request_id": "run-0-agent-6-turn-2",
+      "run_id": "run-0",
+      "session_id": "session-6",
+      "timing": {
+        "first_token_at_s": 703006.174388182,
+        "response_done_at_s": 703006.174432472,
+        "submitted_at_s": 702993.703657511,
+        "token_event_token_counts": [
+          25
+        ],
+        "token_observed_at_s": [
+          703006.174388182
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703006.174388182,
+        "tool_result_submitted_at_s": 703006.174496213
+      },
+      "tool": {
+        "arguments": {
+          "mode": "summary",
+          "path": "tests/test_router.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_4d4d1ffd322f429fbc0da916",
+        "declared_schema_sha256": "f9d71a5d7e483c60b36a882924dda97b8271376e06fc3c4717552debe8a02f48",
+        "expected_name": "read",
+        "name": "read",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 2,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-7",
+      "backend": {
+        "batch_id": "choice:run-0-agent-7-turn-2",
+        "logits_d2h_bytes": 24832000,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          851,
+          2129,
+          15889,
+          21624,
+          2267,
+          3147,
+          23095,
+          12333,
+          53720,
+          6971,
+          2129,
+          8255,
+          3147,
+          1648,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "73ced645db28a8727483cc3f2828b4e0d9a1e88f07afc3655b9fc8cfdf2f84db",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2717,
+        "token_ids_sha256": "7356c277e3de8c38a8e815db3cfd559048b5e0ba115700b5167a6259ad8f0192"
+      },
+      "request_id": "run-0-agent-7-turn-2",
+      "run_id": "run-0",
+      "session_id": "session-7",
+      "timing": {
+        "first_token_at_s": 703006.22913696,
+        "response_done_at_s": 703006.22918008,
+        "submitted_at_s": 702993.702496515,
+        "token_event_token_counts": [
+          25
+        ],
+        "token_observed_at_s": [
+          703006.22913696
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703006.22913696,
+        "tool_result_submitted_at_s": 703006.229240201
+      },
+      "tool": {
+        "arguments": {
+          "mode": "summary",
+          "path": "tests/test_router.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_da86fa01dca14ecbaf4e8a9b",
+        "declared_schema_sha256": "f9d71a5d7e483c60b36a882924dda97b8271376e06fc3c4717552debe8a02f48",
+        "expected_name": "read",
+        "name": "read",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 2,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-0",
+      "backend": {
+        "batch_id": "choice:run-0-agent-0-turn-3",
+        "logits_d2h_bytes": 26818560,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          5917,
+          2129,
+          15889,
+          21624,
+          5454,
+          3147,
+          12305,
+          471,
+          76,
+          26864,
+          471,
+          80,
+          6813,
+          12333,
+          53720,
+          6971,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "f57c05f5a5344c2233ff99e82e79482b93a5e5fac7d31eb413f2700c0d56b17c",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2831,
+        "token_ids_sha256": "8c3f3bde70e36e8095e0386267058ff4cf674d74766210260b93357e74a13f4c"
+      },
+      "request_id": "run-0-agent-0-turn-3",
+      "run_id": "run-0",
+      "session_id": "session-0",
+      "timing": {
+        "first_token_at_s": 703033.402705982,
+        "response_done_at_s": 703033.402755713,
+        "submitted_at_s": 703020.475696409,
+        "token_event_token_counts": [
+          27
+        ],
+        "token_observed_at_s": [
+          703033.402705982
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703033.402705982,
+        "tool_result_submitted_at_s": 703033.402824094
+      },
+      "tool": {
+        "arguments": {
+          "command": "python -m pytest -q tests/test_router.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_4095690a087f4444aaabc1a5",
+        "declared_schema_sha256": "641bee81b69916fd1852ee15f7e181f3606184e5aaf14822306ff67af7f22553",
+        "expected_name": "run",
+        "name": "run",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 3,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-1",
+      "backend": {
+        "batch_id": "choice:run-0-agent-1-turn-3",
+        "logits_d2h_bytes": 26818560,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          5917,
+          2129,
+          15889,
+          21624,
+          5454,
+          3147,
+          12305,
+          471,
+          76,
+          26864,
+          471,
+          80,
+          6813,
+          12333,
+          53720,
+          6971,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "f57c05f5a5344c2233ff99e82e79482b93a5e5fac7d31eb413f2700c0d56b17c",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2831,
+        "token_ids_sha256": "8c3f3bde70e36e8095e0386267058ff4cf674d74766210260b93357e74a13f4c"
+      },
+      "request_id": "run-0-agent-1-turn-3",
+      "run_id": "run-0",
+      "session_id": "session-1",
+      "timing": {
+        "first_token_at_s": 703033.513265233,
+        "response_done_at_s": 703033.513306664,
+        "submitted_at_s": 703020.475982683,
+        "token_event_token_counts": [
+          27
+        ],
+        "token_observed_at_s": [
+          703033.513265233
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703033.513265233,
+        "tool_result_submitted_at_s": 703033.513366945
+      },
+      "tool": {
+        "arguments": {
+          "command": "python -m pytest -q tests/test_router.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_c225bf1484f24778a7263d12",
+        "declared_schema_sha256": "641bee81b69916fd1852ee15f7e181f3606184e5aaf14822306ff67af7f22553",
+        "expected_name": "run",
+        "name": "run",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 3,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-2",
+      "backend": {
+        "batch_id": "choice:run-0-agent-2-turn-3",
+        "logits_d2h_bytes": 26818560,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          5917,
+          2129,
+          15889,
+          21624,
+          5454,
+          3147,
+          12305,
+          471,
+          76,
+          26864,
+          471,
+          80,
+          6813,
+          12333,
+          53720,
+          6971,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "f57c05f5a5344c2233ff99e82e79482b93a5e5fac7d31eb413f2700c0d56b17c",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2831,
+        "token_ids_sha256": "8c3f3bde70e36e8095e0386267058ff4cf674d74766210260b93357e74a13f4c"
+      },
+      "request_id": "run-0-agent-2-turn-3",
+      "run_id": "run-0",
+      "session_id": "session-2",
+      "timing": {
+        "first_token_at_s": 703033.550852484,
+        "response_done_at_s": 703033.550902295,
+        "submitted_at_s": 703020.476608861,
+        "token_event_token_counts": [
+          27
+        ],
+        "token_observed_at_s": [
+          703033.550852484
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703033.550852484,
+        "tool_result_submitted_at_s": 703033.550970255
+      },
+      "tool": {
+        "arguments": {
+          "command": "python -m pytest -q tests/test_router.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_bb979897c22f4bc9abf93d9d",
+        "declared_schema_sha256": "641bee81b69916fd1852ee15f7e181f3606184e5aaf14822306ff67af7f22553",
+        "expected_name": "run",
+        "name": "run",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 3,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-3",
+      "backend": {
+        "batch_id": "choice:run-0-agent-3-turn-3",
+        "logits_d2h_bytes": 26818560,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          5917,
+          2129,
+          15889,
+          21624,
+          5454,
+          3147,
+          12305,
+          471,
+          76,
+          26864,
+          471,
+          80,
+          6813,
+          12333,
+          53720,
+          6971,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "f57c05f5a5344c2233ff99e82e79482b93a5e5fac7d31eb413f2700c0d56b17c",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2831,
+        "token_ids_sha256": "8c3f3bde70e36e8095e0386267058ff4cf674d74766210260b93357e74a13f4c"
+      },
+      "request_id": "run-0-agent-3-turn-3",
+      "run_id": "run-0",
+      "session_id": "session-3",
+      "timing": {
+        "first_token_at_s": 703033.450575605,
+        "response_done_at_s": 703033.450623906,
+        "submitted_at_s": 703020.475835551,
+        "token_event_token_counts": [
+          27
+        ],
+        "token_observed_at_s": [
+          703033.450575605
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703033.450575605,
+        "tool_result_submitted_at_s": 703033.450688867
+      },
+      "tool": {
+        "arguments": {
+          "command": "python -m pytest -q tests/test_router.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_8ae3e28ba22543d09c0f825c",
+        "declared_schema_sha256": "641bee81b69916fd1852ee15f7e181f3606184e5aaf14822306ff67af7f22553",
+        "expected_name": "run",
+        "name": "run",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 3,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-4",
+      "backend": {
+        "batch_id": "choice:run-0-agent-4-turn-3",
+        "logits_d2h_bytes": 26818560,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          5917,
+          2129,
+          15889,
+          21624,
+          5454,
+          3147,
+          12305,
+          471,
+          76,
+          26864,
+          471,
+          80,
+          6813,
+          12333,
+          53720,
+          6971,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "f57c05f5a5344c2233ff99e82e79482b93a5e5fac7d31eb413f2700c0d56b17c",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2831,
+        "token_ids_sha256": "8c3f3bde70e36e8095e0386267058ff4cf674d74766210260b93357e74a13f4c"
+      },
+      "request_id": "run-0-agent-4-turn-3",
+      "run_id": "run-0",
+      "session_id": "session-4",
+      "timing": {
+        "first_token_at_s": 703033.962595385,
+        "response_done_at_s": 703033.962643546,
+        "submitted_at_s": 703020.476281417,
+        "token_event_token_counts": [
+          27
+        ],
+        "token_observed_at_s": [
+          703033.962595385
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703033.962595385,
+        "tool_result_submitted_at_s": 703033.962708277
+      },
+      "tool": {
+        "arguments": {
+          "command": "python -m pytest -q tests/test_router.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_abc1e852deb04b138f78d436",
+        "declared_schema_sha256": "641bee81b69916fd1852ee15f7e181f3606184e5aaf14822306ff67af7f22553",
+        "expected_name": "run",
+        "name": "run",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 3,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-5",
+      "backend": {
+        "batch_id": "choice:run-0-agent-5-turn-3",
+        "logits_d2h_bytes": 26818560,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          5917,
+          2129,
+          15889,
+          21624,
+          5454,
+          3147,
+          12305,
+          471,
+          76,
+          26864,
+          471,
+          80,
+          6813,
+          12333,
+          53720,
+          6971,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "f57c05f5a5344c2233ff99e82e79482b93a5e5fac7d31eb413f2700c0d56b17c",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2831,
+        "token_ids_sha256": "8c3f3bde70e36e8095e0386267058ff4cf674d74766210260b93357e74a13f4c"
+      },
+      "request_id": "run-0-agent-5-turn-3",
+      "run_id": "run-0",
+      "session_id": "session-5",
+      "timing": {
+        "first_token_at_s": 703033.412549409,
+        "response_done_at_s": 703033.412587159,
+        "submitted_at_s": 703020.476467999,
+        "token_event_token_counts": [
+          27
+        ],
+        "token_observed_at_s": [
+          703033.412549409
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703033.412549409,
+        "tool_result_submitted_at_s": 703033.41265239
+      },
+      "tool": {
+        "arguments": {
+          "command": "python -m pytest -q tests/test_router.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_cd1a631761d7458dbcccbd05",
+        "declared_schema_sha256": "641bee81b69916fd1852ee15f7e181f3606184e5aaf14822306ff67af7f22553",
+        "expected_name": "run",
+        "name": "run",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 3,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-6",
+      "backend": {
+        "batch_id": "choice:run-0-agent-6-turn-3",
+        "logits_d2h_bytes": 26818560,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          5917,
+          2129,
+          15889,
+          21624,
+          5454,
+          3147,
+          12305,
+          471,
+          76,
+          26864,
+          471,
+          80,
+          6813,
+          12333,
+          53720,
+          6971,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "f57c05f5a5344c2233ff99e82e79482b93a5e5fac7d31eb413f2700c0d56b17c",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2831,
+        "token_ids_sha256": "8c3f3bde70e36e8095e0386267058ff4cf674d74766210260b93357e74a13f4c"
+      },
+      "request_id": "run-0-agent-6-turn-3",
+      "run_id": "run-0",
+      "session_id": "session-6",
+      "timing": {
+        "first_token_at_s": 703032.199328409,
+        "response_done_at_s": 703032.19937567,
+        "submitted_at_s": 703020.476129175,
+        "token_event_token_counts": [
+          27
+        ],
+        "token_observed_at_s": [
+          703032.199328409
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703032.199328409,
+        "tool_result_submitted_at_s": 703032.199440031
+      },
+      "tool": {
+        "arguments": {
+          "command": "python -m pytest -q tests/test_router.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_2936e8294300490e89396cb0",
+        "declared_schema_sha256": "641bee81b69916fd1852ee15f7e181f3606184e5aaf14822306ff67af7f22553",
+        "expected_name": "run",
+        "name": "run",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 3,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-7",
+      "backend": {
+        "batch_id": "choice:run-0-agent-7-turn-3",
+        "logits_d2h_bytes": 26818560,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          5917,
+          2129,
+          15889,
+          21624,
+          5454,
+          3147,
+          12305,
+          471,
+          76,
+          26864,
+          471,
+          80,
+          6813,
+          12333,
+          53720,
+          6971,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "f57c05f5a5344c2233ff99e82e79482b93a5e5fac7d31eb413f2700c0d56b17c",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2831,
+        "token_ids_sha256": "8c3f3bde70e36e8095e0386267058ff4cf674d74766210260b93357e74a13f4c"
+      },
+      "request_id": "run-0-agent-7-turn-3",
+      "run_id": "run-0",
+      "session_id": "session-7",
+      "timing": {
+        "first_token_at_s": 703032.178894676,
+        "response_done_at_s": 703032.178944087,
+        "submitted_at_s": 703020.475531626,
+        "token_event_token_counts": [
+          27
+        ],
+        "token_observed_at_s": [
+          703032.178894676
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703032.178894676,
+        "tool_result_submitted_at_s": 703032.179019478
+      },
+      "tool": {
+        "arguments": {
+          "command": "python -m pytest -q tests/test_router.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_8d8b0a3e61b1447e942a64d9",
+        "declared_schema_sha256": "641bee81b69916fd1852ee15f7e181f3606184e5aaf14822306ff67af7f22553",
+        "expected_name": "run",
+        "name": "run",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 3,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-0",
+      "backend": {
+        "batch_id": "choice:run-0-agent-0-turn-4",
+        "logits_d2h_bytes": 24832000,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          36940,
+          2129,
+          15889,
+          21624,
+          13927,
+          3147,
+          17961,
+          2129,
+          2267,
+          3147,
+          3431,
+          2600,
+          14779,
+          6971,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "a9ed5a3dd4d9308e83057cce44c22271e11e062bf557936bbdb453d0ef10f0a9",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2936,
+        "token_ids_sha256": "f5634ee06a12e2e58d12537d5b365cfedff46268f8104d6fb8e2b76ffcb0719f"
+      },
+      "request_id": "run-0-agent-0-turn-4",
+      "run_id": "run-0",
+      "session_id": "session-0",
+      "timing": {
+        "first_token_at_s": 703061.302850045,
+        "response_done_at_s": 703061.302894646,
+        "submitted_at_s": 703047.909270126,
+        "token_event_token_counts": [
+          25
+        ],
+        "token_observed_at_s": [
+          703061.302850045
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703061.302850045,
+        "tool_result_submitted_at_s": 703061.302955127
+      },
+      "tool": {
+        "arguments": {
+          "path": "src/scheduler.py",
+          "pattern": "cancel"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_8655ff7a417049ca82165117",
+        "declared_schema_sha256": "b0bb2dcce02cc5fc5b58eb90d156589b446270809ece801ba1dd099838d23c59",
+        "expected_name": "grep",
+        "name": "grep",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 4,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-1",
+      "backend": {
+        "batch_id": "choice:run-0-agent-1-turn-4",
+        "logits_d2h_bytes": 24832000,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          36940,
+          2129,
+          15889,
+          21624,
+          13927,
+          3147,
+          17961,
+          2129,
+          2267,
+          3147,
+          3431,
+          2600,
+          14779,
+          6971,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "a9ed5a3dd4d9308e83057cce44c22271e11e062bf557936bbdb453d0ef10f0a9",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2936,
+        "token_ids_sha256": "f5634ee06a12e2e58d12537d5b365cfedff46268f8104d6fb8e2b76ffcb0719f"
+      },
+      "request_id": "run-0-agent-1-turn-4",
+      "run_id": "run-0",
+      "session_id": "session-1",
+      "timing": {
+        "first_token_at_s": 703061.050874176,
+        "response_done_at_s": 703061.050918427,
+        "submitted_at_s": 703047.909716972,
+        "token_event_token_counts": [
+          25
+        ],
+        "token_observed_at_s": [
+          703061.050874176
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703061.050874176,
+        "tool_result_submitted_at_s": 703061.050979357
+      },
+      "tool": {
+        "arguments": {
+          "path": "src/scheduler.py",
+          "pattern": "cancel"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_f9b4e101b5a44dbba28b5b0a",
+        "declared_schema_sha256": "b0bb2dcce02cc5fc5b58eb90d156589b446270809ece801ba1dd099838d23c59",
+        "expected_name": "grep",
+        "name": "grep",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 4,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-2",
+      "backend": {
+        "batch_id": "choice:run-0-agent-2-turn-4",
+        "logits_d2h_bytes": 24832000,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          36940,
+          2129,
+          15889,
+          21624,
+          13927,
+          3147,
+          17961,
+          2129,
+          2267,
+          3147,
+          3431,
+          2600,
+          14779,
+          6971,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "a9ed5a3dd4d9308e83057cce44c22271e11e062bf557936bbdb453d0ef10f0a9",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2936,
+        "token_ids_sha256": "f5634ee06a12e2e58d12537d5b365cfedff46268f8104d6fb8e2b76ffcb0719f"
+      },
+      "request_id": "run-0-agent-2-turn-4",
+      "run_id": "run-0",
+      "session_id": "session-2",
+      "timing": {
+        "first_token_at_s": 703061.226062112,
+        "response_done_at_s": 703061.226107172,
+        "submitted_at_s": 703047.910044857,
+        "token_event_token_counts": [
+          25
+        ],
+        "token_observed_at_s": [
+          703061.226062112
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703061.226062112,
+        "tool_result_submitted_at_s": 703061.226167163
+      },
+      "tool": {
+        "arguments": {
+          "path": "src/scheduler.py",
+          "pattern": "cancel"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_f29275a3a3144ee2a400c200",
+        "declared_schema_sha256": "b0bb2dcce02cc5fc5b58eb90d156589b446270809ece801ba1dd099838d23c59",
+        "expected_name": "grep",
+        "name": "grep",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 4,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-3",
+      "backend": {
+        "batch_id": "choice:run-0-agent-3-turn-4",
+        "logits_d2h_bytes": 24832000,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          36940,
+          2129,
+          15889,
+          21624,
+          13927,
+          3147,
+          17961,
+          2129,
+          2267,
+          3147,
+          3431,
+          2600,
+          14779,
+          6971,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "a9ed5a3dd4d9308e83057cce44c22271e11e062bf557936bbdb453d0ef10f0a9",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2936,
+        "token_ids_sha256": "f5634ee06a12e2e58d12537d5b365cfedff46268f8104d6fb8e2b76ffcb0719f"
+      },
+      "request_id": "run-0-agent-3-turn-4",
+      "run_id": "run-0",
+      "session_id": "session-3",
+      "timing": {
+        "first_token_at_s": 703059.797612432,
+        "response_done_at_s": 703059.797661553,
+        "submitted_at_s": 703047.909415058,
+        "token_event_token_counts": [
+          25
+        ],
+        "token_observed_at_s": [
+          703059.797612432
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703059.797612432,
+        "tool_result_submitted_at_s": 703059.797727954
+      },
+      "tool": {
+        "arguments": {
+          "path": "src/scheduler.py",
+          "pattern": "cancel"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_0308cba9925f40ee841af06c",
+        "declared_schema_sha256": "b0bb2dcce02cc5fc5b58eb90d156589b446270809ece801ba1dd099838d23c59",
+        "expected_name": "grep",
+        "name": "grep",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 4,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-4",
+      "backend": {
+        "batch_id": "choice:run-0-agent-4-turn-4",
+        "logits_d2h_bytes": 24832000,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          36940,
+          2129,
+          15889,
+          21624,
+          13927,
+          3147,
+          17961,
+          2129,
+          2267,
+          3147,
+          3431,
+          2600,
+          14779,
+          6971,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "a9ed5a3dd4d9308e83057cce44c22271e11e062bf557936bbdb453d0ef10f0a9",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2936,
+        "token_ids_sha256": "f5634ee06a12e2e58d12537d5b365cfedff46268f8104d6fb8e2b76ffcb0719f"
+      },
+      "request_id": "run-0-agent-4-turn-4",
+      "run_id": "run-0",
+      "session_id": "session-4",
+      "timing": {
+        "first_token_at_s": 703059.623310389,
+        "response_done_at_s": 703059.62336471,
+        "submitted_at_s": 703047.90956313,
+        "token_event_token_counts": [
+          25
+        ],
+        "token_observed_at_s": [
+          703059.623310389
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703059.623310389,
+        "tool_result_submitted_at_s": 703059.623440381
+      },
+      "tool": {
+        "arguments": {
+          "path": "src/scheduler.py",
+          "pattern": "cancel"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_c751b49803c4464f80414856",
+        "declared_schema_sha256": "b0bb2dcce02cc5fc5b58eb90d156589b446270809ece801ba1dd099838d23c59",
+        "expected_name": "grep",
+        "name": "grep",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 4,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-5",
+      "backend": {
+        "batch_id": "choice:run-0-agent-5-turn-4",
+        "logits_d2h_bytes": 24832000,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          36940,
+          2129,
+          15889,
+          21624,
+          13927,
+          3147,
+          17961,
+          2129,
+          2267,
+          3147,
+          3431,
+          2600,
+          14779,
+          6971,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "a9ed5a3dd4d9308e83057cce44c22271e11e062bf557936bbdb453d0ef10f0a9",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2936,
+        "token_ids_sha256": "f5634ee06a12e2e58d12537d5b365cfedff46268f8104d6fb8e2b76ffcb0719f"
+      },
+      "request_id": "run-0-agent-5-turn-4",
+      "run_id": "run-0",
+      "session_id": "session-5",
+      "timing": {
+        "first_token_at_s": 703059.568047704,
+        "response_done_at_s": 703059.568090904,
+        "submitted_at_s": 703047.909868604,
+        "token_event_token_counts": [
+          25
+        ],
+        "token_observed_at_s": [
+          703059.568047704
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703059.568047704,
+        "tool_result_submitted_at_s": 703059.568454269
+      },
+      "tool": {
+        "arguments": {
+          "path": "src/scheduler.py",
+          "pattern": "cancel"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_679d1efa598944939f851d8a",
+        "declared_schema_sha256": "b0bb2dcce02cc5fc5b58eb90d156589b446270809ece801ba1dd099838d23c59",
+        "expected_name": "grep",
+        "name": "grep",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 4,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-6",
+      "backend": {
+        "batch_id": "choice:run-0-agent-6-turn-4",
+        "logits_d2h_bytes": 24832000,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          36940,
+          2129,
+          15889,
+          21624,
+          13927,
+          3147,
+          17961,
+          2129,
+          2267,
+          3147,
+          3431,
+          2600,
+          14779,
+          6971,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "a9ed5a3dd4d9308e83057cce44c22271e11e062bf557936bbdb453d0ef10f0a9",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2936,
+        "token_ids_sha256": "f5634ee06a12e2e58d12537d5b365cfedff46268f8104d6fb8e2b76ffcb0719f"
+      },
+      "request_id": "run-0-agent-6-turn-4",
+      "run_id": "run-0",
+      "session_id": "session-6",
+      "timing": {
+        "first_token_at_s": 703061.563536934,
+        "response_done_at_s": 703061.563588105,
+        "submitted_at_s": 703047.910203729,
+        "token_event_token_counts": [
+          25
+        ],
+        "token_observed_at_s": [
+          703061.563536934
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703061.563536934,
+        "tool_result_submitted_at_s": 703061.563653206
+      },
+      "tool": {
+        "arguments": {
+          "path": "src/scheduler.py",
+          "pattern": "cancel"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_4febdaf292fc410198ce1127",
+        "declared_schema_sha256": "b0bb2dcce02cc5fc5b58eb90d156589b446270809ece801ba1dd099838d23c59",
+        "expected_name": "grep",
+        "name": "grep",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 4,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-7",
+      "backend": {
+        "batch_id": "choice:run-0-agent-7-turn-4",
+        "logits_d2h_bytes": 24832000,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          36940,
+          2129,
+          15889,
+          21624,
+          13927,
+          3147,
+          17961,
+          2129,
+          2267,
+          3147,
+          3431,
+          2600,
+          14779,
+          6971,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "a9ed5a3dd4d9308e83057cce44c22271e11e062bf557936bbdb453d0ef10f0a9",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 2936,
+        "token_ids_sha256": "f5634ee06a12e2e58d12537d5b365cfedff46268f8104d6fb8e2b76ffcb0719f"
+      },
+      "request_id": "run-0-agent-7-turn-4",
+      "run_id": "run-0",
+      "session_id": "session-7",
+      "timing": {
+        "first_token_at_s": 703061.147854599,
+        "response_done_at_s": 703061.147899879,
+        "submitted_at_s": 703047.909097883,
+        "token_event_token_counts": [
+          25
+        ],
+        "token_observed_at_s": [
+          703061.147854599
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703061.147854599,
+        "tool_result_submitted_at_s": 703061.14796195
+      },
+      "tool": {
+        "arguments": {
+          "path": "src/scheduler.py",
+          "pattern": "cancel"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_f767d3e897a7412cae976ec4",
+        "declared_schema_sha256": "b0bb2dcce02cc5fc5b58eb90d156589b446270809ece801ba1dd099838d23c59",
+        "expected_name": "grep",
+        "name": "grep",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 4,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-0",
+      "backend": {
+        "batch_id": "choice:run-0-agent-0-turn-5",
+        "logits_d2h_bytes": 24832000,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          851,
+          2129,
+          15889,
+          21624,
+          2267,
+          3147,
+          23095,
+          12333,
+          51845,
+          6971,
+          2129,
+          8255,
+          3147,
+          1648,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "7cc58dca734161181be0444fdfe2c7cfabf0e0b62a58b386c00a91b590260b48",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 3051,
+        "token_ids_sha256": "c9ead2b0801bcd2029802ce3e466e42add7592c32fe2f42479c32933de4c825e"
+      },
+      "request_id": "run-0-agent-0-turn-5",
+      "run_id": "run-0",
+      "session_id": "session-0",
+      "timing": {
+        "first_token_at_s": 703089.493216495,
+        "response_done_at_s": 703089.493253615,
+        "submitted_at_s": 703075.968777329,
+        "token_event_token_counts": [
+          25
+        ],
+        "token_observed_at_s": [
+          703089.493216495
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703089.493216495,
+        "tool_result_submitted_at_s": 703089.493315186
+      },
+      "tool": {
+        "arguments": {
+          "mode": "summary",
+          "path": "tests/test_scheduler.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_8ca8ba50e8f249228dff102d",
+        "declared_schema_sha256": "f9d71a5d7e483c60b36a882924dda97b8271376e06fc3c4717552debe8a02f48",
+        "expected_name": "read",
+        "name": "read",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 5,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-1",
+      "backend": {
+        "batch_id": "choice:run-0-agent-1-turn-5",
+        "logits_d2h_bytes": 24832000,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          851,
+          2129,
+          15889,
+          21624,
+          2267,
+          3147,
+          23095,
+          12333,
+          51845,
+          6971,
+          2129,
+          8255,
+          3147,
+          1648,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "7cc58dca734161181be0444fdfe2c7cfabf0e0b62a58b386c00a91b590260b48",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 3051,
+        "token_ids_sha256": "c9ead2b0801bcd2029802ce3e466e42add7592c32fe2f42479c32933de4c825e"
+      },
+      "request_id": "run-0-agent-1-turn-5",
+      "run_id": "run-0",
+      "session_id": "session-1",
+      "timing": {
+        "first_token_at_s": 703089.410849084,
+        "response_done_at_s": 703089.410894935,
+        "submitted_at_s": 703075.968592316,
+        "token_event_token_counts": [
+          25
+        ],
+        "token_observed_at_s": [
+          703089.410849084
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703089.410849084,
+        "tool_result_submitted_at_s": 703089.410964426
+      },
+      "tool": {
+        "arguments": {
+          "mode": "summary",
+          "path": "tests/test_scheduler.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_9b5db6cf40cf469e92ab183d",
+        "declared_schema_sha256": "f9d71a5d7e483c60b36a882924dda97b8271376e06fc3c4717552debe8a02f48",
+        "expected_name": "read",
+        "name": "read",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 5,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-2",
+      "backend": {
+        "batch_id": "choice:run-0-agent-2-turn-5",
+        "logits_d2h_bytes": 24832000,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          851,
+          2129,
+          15889,
+          21624,
+          2267,
+          3147,
+          23095,
+          12333,
+          51845,
+          6971,
+          2129,
+          8255,
+          3147,
+          1648,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "7cc58dca734161181be0444fdfe2c7cfabf0e0b62a58b386c00a91b590260b48",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 3051,
+        "token_ids_sha256": "c9ead2b0801bcd2029802ce3e466e42add7592c32fe2f42479c32933de4c825e"
+      },
+      "request_id": "run-0-agent-2-turn-5",
+      "run_id": "run-0",
+      "session_id": "session-2",
+      "timing": {
+        "first_token_at_s": 703089.463627865,
+        "response_done_at_s": 703089.463679396,
+        "submitted_at_s": 703075.968963131,
+        "token_event_token_counts": [
+          25
+        ],
+        "token_observed_at_s": [
+          703089.463627865
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703089.463627865,
+        "tool_result_submitted_at_s": 703089.463744487
+      },
+      "tool": {
+        "arguments": {
+          "mode": "summary",
+          "path": "tests/test_scheduler.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_96fe6774839140a4ba493975",
+        "declared_schema_sha256": "f9d71a5d7e483c60b36a882924dda97b8271376e06fc3c4717552debe8a02f48",
+        "expected_name": "read",
+        "name": "read",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 5,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-3",
+      "backend": {
+        "batch_id": "choice:run-0-agent-3-turn-5",
+        "logits_d2h_bytes": 24832000,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          851,
+          2129,
+          15889,
+          21624,
+          2267,
+          3147,
+          23095,
+          12333,
+          51845,
+          6971,
+          2129,
+          8255,
+          3147,
+          1648,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "7cc58dca734161181be0444fdfe2c7cfabf0e0b62a58b386c00a91b590260b48",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 3051,
+        "token_ids_sha256": "c9ead2b0801bcd2029802ce3e466e42add7592c32fe2f42479c32933de4c825e"
+      },
+      "request_id": "run-0-agent-3-turn-5",
+      "run_id": "run-0",
+      "session_id": "session-3",
+      "timing": {
+        "first_token_at_s": 703089.885470586,
+        "response_done_at_s": 703089.885521297,
+        "submitted_at_s": 703075.968452534,
+        "token_event_token_counts": [
+          25
+        ],
+        "token_observed_at_s": [
+          703089.885470586
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703089.885470586,
+        "tool_result_submitted_at_s": 703089.885583808
+      },
+      "tool": {
+        "arguments": {
+          "mode": "summary",
+          "path": "tests/test_scheduler.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_2acfa21443b44eadb2e8bb4a",
+        "declared_schema_sha256": "f9d71a5d7e483c60b36a882924dda97b8271376e06fc3c4717552debe8a02f48",
+        "expected_name": "read",
+        "name": "read",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 5,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-4",
+      "backend": {
+        "batch_id": "choice:run-0-agent-4-turn-5",
+        "logits_d2h_bytes": 24832000,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          851,
+          2129,
+          15889,
+          21624,
+          2267,
+          3147,
+          23095,
+          12333,
+          51845,
+          6971,
+          2129,
+          8255,
+          3147,
+          1648,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "7cc58dca734161181be0444fdfe2c7cfabf0e0b62a58b386c00a91b590260b48",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 3051,
+        "token_ids_sha256": "c9ead2b0801bcd2029802ce3e466e42add7592c32fe2f42479c32933de4c825e"
+      },
+      "request_id": "run-0-agent-4-turn-5",
+      "run_id": "run-0",
+      "session_id": "session-4",
+      "timing": {
+        "first_token_at_s": 703089.543842036,
+        "response_done_at_s": 703089.543879036,
+        "submitted_at_s": 703075.969113013,
+        "token_event_token_counts": [
+          25
+        ],
+        "token_observed_at_s": [
+          703089.543842036
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703089.543842036,
+        "tool_result_submitted_at_s": 703089.543936227
+      },
+      "tool": {
+        "arguments": {
+          "mode": "summary",
+          "path": "tests/test_scheduler.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_42615c39fb0c4bde830be3c9",
+        "declared_schema_sha256": "f9d71a5d7e483c60b36a882924dda97b8271376e06fc3c4717552debe8a02f48",
+        "expected_name": "read",
+        "name": "read",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 5,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-5",
+      "backend": {
+        "batch_id": "choice:run-0-agent-5-turn-5",
+        "logits_d2h_bytes": 24832000,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          851,
+          2129,
+          15889,
+          21624,
+          2267,
+          3147,
+          23095,
+          12333,
+          51845,
+          6971,
+          2129,
+          8255,
+          3147,
+          1648,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "7cc58dca734161181be0444fdfe2c7cfabf0e0b62a58b386c00a91b590260b48",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 3051,
+        "token_ids_sha256": "c9ead2b0801bcd2029802ce3e466e42add7592c32fe2f42479c32933de4c825e"
+      },
+      "request_id": "run-0-agent-5-turn-5",
+      "run_id": "run-0",
+      "session_id": "session-5",
+      "timing": {
+        "first_token_at_s": 703089.575130319,
+        "response_done_at_s": 703089.57517353,
+        "submitted_at_s": 703075.96812883,
+        "token_event_token_counts": [
+          25
+        ],
+        "token_observed_at_s": [
+          703089.575130319
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703089.575130319,
+        "tool_result_submitted_at_s": 703089.57523485
+      },
+      "tool": {
+        "arguments": {
+          "mode": "summary",
+          "path": "tests/test_scheduler.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_568985a7499648848378ba39",
+        "declared_schema_sha256": "f9d71a5d7e483c60b36a882924dda97b8271376e06fc3c4717552debe8a02f48",
+        "expected_name": "read",
+        "name": "read",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 5,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-6",
+      "backend": {
+        "batch_id": "choice:run-0-agent-6-turn-5",
+        "logits_d2h_bytes": 24832000,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          851,
+          2129,
+          15889,
+          21624,
+          2267,
+          3147,
+          23095,
+          12333,
+          51845,
+          6971,
+          2129,
+          8255,
+          3147,
+          1648,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "7cc58dca734161181be0444fdfe2c7cfabf0e0b62a58b386c00a91b590260b48",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 3051,
+        "token_ids_sha256": "c9ead2b0801bcd2029802ce3e466e42add7592c32fe2f42479c32933de4c825e"
+      },
+      "request_id": "run-0-agent-6-turn-5",
+      "run_id": "run-0",
+      "session_id": "session-6",
+      "timing": {
+        "first_token_at_s": 703089.523616626,
+        "response_done_at_s": 703089.523662246,
+        "submitted_at_s": 703075.968292912,
+        "token_event_token_counts": [
+          25
+        ],
+        "token_observed_at_s": [
+          703089.523616626
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703089.523616626,
+        "tool_result_submitted_at_s": 703089.523726507
+      },
+      "tool": {
+        "arguments": {
+          "mode": "summary",
+          "path": "tests/test_scheduler.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_e53a0031f21d43e89d524799",
+        "declared_schema_sha256": "f9d71a5d7e483c60b36a882924dda97b8271376e06fc3c4717552debe8a02f48",
+        "expected_name": "read",
+        "name": "read",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 5,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-7",
+      "backend": {
+        "batch_id": "choice:run-0-agent-7-turn-5",
+        "logits_d2h_bytes": 24832000,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          851,
+          2129,
+          15889,
+          21624,
+          2267,
+          3147,
+          23095,
+          12333,
+          51845,
+          6971,
+          2129,
+          8255,
+          3147,
+          1648,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "7cc58dca734161181be0444fdfe2c7cfabf0e0b62a58b386c00a91b590260b48",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 3051,
+        "token_ids_sha256": "c9ead2b0801bcd2029802ce3e466e42add7592c32fe2f42479c32933de4c825e"
+      },
+      "request_id": "run-0-agent-7-turn-5",
+      "run_id": "run-0",
+      "session_id": "session-7",
+      "timing": {
+        "first_token_at_s": 703089.371302917,
+        "response_done_at_s": 703089.371353907,
+        "submitted_at_s": 703075.967966508,
+        "token_event_token_counts": [
+          25
+        ],
+        "token_observed_at_s": [
+          703089.371302917
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703089.371302917,
+        "tool_result_submitted_at_s": 703089.371422148
+      },
+      "tool": {
+        "arguments": {
+          "mode": "summary",
+          "path": "tests/test_scheduler.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_e9f8e842dc0340e6a5811a04",
+        "declared_schema_sha256": "f9d71a5d7e483c60b36a882924dda97b8271376e06fc3c4717552debe8a02f48",
+        "expected_name": "read",
+        "name": "read",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 5,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-0",
+      "backend": {
+        "batch_id": "choice:run-0-agent-0-turn-6",
+        "logits_d2h_bytes": 26818560,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          5917,
+          2129,
+          15889,
+          21624,
+          5454,
+          3147,
+          12305,
+          471,
+          76,
+          26864,
+          471,
+          80,
+          6813,
+          12333,
+          51845,
+          6971,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "5debfc7b37d80110fea5d034c6261c48c91ce0a80a9e10ffb92cd4f817ee12d9",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 3175,
+        "token_ids_sha256": "f9d4f4cd813056b44338d7d6e49573b303fc2a3c3908751a4f52b81271958b2e"
+      },
+      "request_id": "run-0-agent-0-turn-6",
+      "run_id": "run-0",
+      "session_id": "session-0",
+      "timing": {
+        "first_token_at_s": 703119.922415884,
+        "response_done_at_s": 703119.922451525,
+        "submitted_at_s": 703105.401386734,
+        "token_event_token_counts": [
+          27
+        ],
+        "token_observed_at_s": [
+          703119.922415884
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703119.922415884,
+        "tool_result_submitted_at_s": 703119.922504065
+      },
+      "tool": {
+        "arguments": {
+          "command": "python -m pytest -q tests/test_scheduler.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_524f7d53b2d34ae188be9a3e",
+        "declared_schema_sha256": "641bee81b69916fd1852ee15f7e181f3606184e5aaf14822306ff67af7f22553",
+        "expected_name": "run",
+        "name": "run",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 6,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-1",
+      "backend": {
+        "batch_id": "choice:run-0-agent-1-turn-6",
+        "logits_d2h_bytes": 26818560,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          5917,
+          2129,
+          15889,
+          21624,
+          5454,
+          3147,
+          12305,
+          471,
+          76,
+          26864,
+          471,
+          80,
+          6813,
+          12333,
+          51845,
+          6971,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "5debfc7b37d80110fea5d034c6261c48c91ce0a80a9e10ffb92cd4f817ee12d9",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 3175,
+        "token_ids_sha256": "f9d4f4cd813056b44338d7d6e49573b303fc2a3c3908751a4f52b81271958b2e"
+      },
+      "request_id": "run-0-agent-1-turn-6",
+      "run_id": "run-0",
+      "session_id": "session-1",
+      "timing": {
+        "first_token_at_s": 703118.482663589,
+        "response_done_at_s": 703118.48271079,
+        "submitted_at_s": 703105.401544206,
+        "token_event_token_counts": [
+          27
+        ],
+        "token_observed_at_s": [
+          703118.482663589
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703118.482663589,
+        "tool_result_submitted_at_s": 703118.482779781
+      },
+      "tool": {
+        "arguments": {
+          "command": "python -m pytest -q tests/test_scheduler.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_9b62340d674c44a9bf47ac9e",
+        "declared_schema_sha256": "641bee81b69916fd1852ee15f7e181f3606184e5aaf14822306ff67af7f22553",
+        "expected_name": "run",
+        "name": "run",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 6,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-2",
+      "backend": {
+        "batch_id": "choice:run-0-agent-2-turn-6",
+        "logits_d2h_bytes": 26818560,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          5917,
+          2129,
+          15889,
+          21624,
+          5454,
+          3147,
+          12305,
+          471,
+          76,
+          26864,
+          471,
+          80,
+          6813,
+          12333,
+          51845,
+          6971,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "5debfc7b37d80110fea5d034c6261c48c91ce0a80a9e10ffb92cd4f817ee12d9",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 3175,
+        "token_ids_sha256": "f9d4f4cd813056b44338d7d6e49573b303fc2a3c3908751a4f52b81271958b2e"
+      },
+      "request_id": "run-0-agent-2-turn-6",
+      "run_id": "run-0",
+      "session_id": "session-2",
+      "timing": {
+        "first_token_at_s": 703118.253091991,
+        "response_done_at_s": 703118.253141241,
+        "submitted_at_s": 703105.402032763,
+        "token_event_token_counts": [
+          27
+        ],
+        "token_observed_at_s": [
+          703118.253091991
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703118.253091991,
+        "tool_result_submitted_at_s": 703118.253217392
+      },
+      "tool": {
+        "arguments": {
+          "command": "python -m pytest -q tests/test_scheduler.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_b16aae4ff1274529a5f3cf20",
+        "declared_schema_sha256": "641bee81b69916fd1852ee15f7e181f3606184e5aaf14822306ff67af7f22553",
+        "expected_name": "run",
+        "name": "run",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 6,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-3",
+      "backend": {
+        "batch_id": "choice:run-0-agent-3-turn-6",
+        "logits_d2h_bytes": 26818560,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          5917,
+          2129,
+          15889,
+          21624,
+          5454,
+          3147,
+          12305,
+          471,
+          76,
+          26864,
+          471,
+          80,
+          6813,
+          12333,
+          51845,
+          6971,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "5debfc7b37d80110fea5d034c6261c48c91ce0a80a9e10ffb92cd4f817ee12d9",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 3175,
+        "token_ids_sha256": "f9d4f4cd813056b44338d7d6e49573b303fc2a3c3908751a4f52b81271958b2e"
+      },
+      "request_id": "run-0-agent-3-turn-6",
+      "run_id": "run-0",
+      "session_id": "session-3",
+      "timing": {
+        "first_token_at_s": 703118.44441179,
+        "response_done_at_s": 703118.44446667,
+        "submitted_at_s": 703105.402184945,
+        "token_event_token_counts": [
+          27
+        ],
+        "token_observed_at_s": [
+          703118.44441179
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703118.44441179,
+        "tool_result_submitted_at_s": 703118.445704647
+      },
+      "tool": {
+        "arguments": {
+          "command": "python -m pytest -q tests/test_scheduler.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_d56f9f586e394ad49a861590",
+        "declared_schema_sha256": "641bee81b69916fd1852ee15f7e181f3606184e5aaf14822306ff67af7f22553",
+        "expected_name": "run",
+        "name": "run",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 6,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-4",
+      "backend": {
+        "batch_id": "choice:run-0-agent-4-turn-6",
+        "logits_d2h_bytes": 26818560,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          5917,
+          2129,
+          15889,
+          21624,
+          5454,
+          3147,
+          12305,
+          471,
+          76,
+          26864,
+          471,
+          80,
+          6813,
+          12333,
+          51845,
+          6971,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "5debfc7b37d80110fea5d034c6261c48c91ce0a80a9e10ffb92cd4f817ee12d9",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 3175,
+        "token_ids_sha256": "f9d4f4cd813056b44338d7d6e49573b303fc2a3c3908751a4f52b81271958b2e"
+      },
+      "request_id": "run-0-agent-4-turn-6",
+      "run_id": "run-0",
+      "session_id": "session-4",
+      "timing": {
+        "first_token_at_s": 703120.037410906,
+        "response_done_at_s": 703120.037448007,
+        "submitted_at_s": 703105.401863871,
+        "token_event_token_counts": [
+          27
+        ],
+        "token_observed_at_s": [
+          703120.037410906
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703120.037410906,
+        "tool_result_submitted_at_s": 703120.037510948
+      },
+      "tool": {
+        "arguments": {
+          "command": "python -m pytest -q tests/test_scheduler.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_8e4d8ca97cce43d78dfdc853",
+        "declared_schema_sha256": "641bee81b69916fd1852ee15f7e181f3606184e5aaf14822306ff67af7f22553",
+        "expected_name": "run",
+        "name": "run",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 6,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-5",
+      "backend": {
+        "batch_id": "choice:run-0-agent-5-turn-6",
+        "logits_d2h_bytes": 26818560,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          5917,
+          2129,
+          15889,
+          21624,
+          5454,
+          3147,
+          12305,
+          471,
+          76,
+          26864,
+          471,
+          80,
+          6813,
+          12333,
+          51845,
+          6971,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "5debfc7b37d80110fea5d034c6261c48c91ce0a80a9e10ffb92cd4f817ee12d9",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 3175,
+        "token_ids_sha256": "f9d4f4cd813056b44338d7d6e49573b303fc2a3c3908751a4f52b81271958b2e"
+      },
+      "request_id": "run-0-agent-5-turn-6",
+      "run_id": "run-0",
+      "session_id": "session-5",
+      "timing": {
+        "first_token_at_s": 703119.971453353,
+        "response_done_at_s": 703119.971492584,
+        "submitted_at_s": 703105.401709929,
+        "token_event_token_counts": [
+          27
+        ],
+        "token_observed_at_s": [
+          703119.971453353
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703119.971453353,
+        "tool_result_submitted_at_s": 703119.971558585
+      },
+      "tool": {
+        "arguments": {
+          "command": "python -m pytest -q tests/test_scheduler.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_b810613817f34ee496574a7f",
+        "declared_schema_sha256": "641bee81b69916fd1852ee15f7e181f3606184e5aaf14822306ff67af7f22553",
+        "expected_name": "run",
+        "name": "run",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 6,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-6",
+      "backend": {
+        "batch_id": "choice:run-0-agent-6-turn-6",
+        "logits_d2h_bytes": 26818560,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          5917,
+          2129,
+          15889,
+          21624,
+          5454,
+          3147,
+          12305,
+          471,
+          76,
+          26864,
+          471,
+          80,
+          6813,
+          12333,
+          51845,
+          6971,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "5debfc7b37d80110fea5d034c6261c48c91ce0a80a9e10ffb92cd4f817ee12d9",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 3175,
+        "token_ids_sha256": "f9d4f4cd813056b44338d7d6e49573b303fc2a3c3908751a4f52b81271958b2e"
+      },
+      "request_id": "run-0-agent-6-turn-6",
+      "run_id": "run-0",
+      "session_id": "session-6",
+      "timing": {
+        "first_token_at_s": 703119.821207643,
+        "response_done_at_s": 703119.821257363,
+        "submitted_at_s": 703105.402388658,
+        "token_event_token_counts": [
+          27
+        ],
+        "token_observed_at_s": [
+          703119.821207643
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703119.821207643,
+        "tool_result_submitted_at_s": 703119.821324914
+      },
+      "tool": {
+        "arguments": {
+          "command": "python -m pytest -q tests/test_scheduler.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_41bacfd8d79d4f1c987fc748",
+        "declared_schema_sha256": "641bee81b69916fd1852ee15f7e181f3606184e5aaf14822306ff67af7f22553",
+        "expected_name": "run",
+        "name": "run",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 6,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-7",
+      "backend": {
+        "batch_id": "choice:run-0-agent-7-turn-6",
+        "logits_d2h_bytes": 26818560,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          5917,
+          2129,
+          15889,
+          21624,
+          5454,
+          3147,
+          12305,
+          471,
+          76,
+          26864,
+          471,
+          80,
+          6813,
+          12333,
+          51845,
+          6971,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "5debfc7b37d80110fea5d034c6261c48c91ce0a80a9e10ffb92cd4f817ee12d9",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 3175,
+        "token_ids_sha256": "f9d4f4cd813056b44338d7d6e49573b303fc2a3c3908751a4f52b81271958b2e"
+      },
+      "request_id": "run-0-agent-7-turn-6",
+      "run_id": "run-0",
+      "session_id": "session-7",
+      "timing": {
+        "first_token_at_s": 703120.423605943,
+        "response_done_at_s": 703120.423655604,
+        "submitted_at_s": 703105.401217012,
+        "token_event_token_counts": [
+          27
+        ],
+        "token_observed_at_s": [
+          703120.423605943
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703120.423605943,
+        "tool_result_submitted_at_s": 703120.423717335
+      },
+      "tool": {
+        "arguments": {
+          "command": "python -m pytest -q tests/test_scheduler.py"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_074da7d5513a4e62af0c243b",
+        "declared_schema_sha256": "641bee81b69916fd1852ee15f7e181f3606184e5aaf14822306ff67af7f22553",
+        "expected_name": "run",
+        "name": "run",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 6,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-0",
+      "backend": {
+        "batch_id": "choice:run-0-agent-0-turn-7",
+        "logits_d2h_bytes": 22845440,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          5917,
+          2129,
+          15889,
+          21624,
+          5454,
+          3147,
+          12305,
+          471,
+          76,
+          26864,
+          471,
+          80,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "4962a572e47f45b863c9c9043444804e204893e644eca92b8a6f0b1462e59861",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 3281,
+        "token_ids_sha256": "35977b8d8862833e5172ed2ed54c447957091c0b157f0fde172e6f256b344cf3"
+      },
+      "request_id": "run-0-agent-0-turn-7",
+      "run_id": "run-0",
+      "session_id": "session-0",
+      "timing": {
+        "first_token_at_s": 703150.467936562,
+        "response_done_at_s": 703150.467973993,
+        "submitted_at_s": 703135.886151957,
+        "token_event_token_counts": [
+          23
+        ],
+        "token_observed_at_s": [
+          703150.467936562
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703150.467936562,
+        "tool_result_submitted_at_s": 703150.468040854
+      },
+      "tool": {
+        "arguments": {
+          "command": "python -m pytest -q"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_232724466abd4f148d78950a",
+        "declared_schema_sha256": "641bee81b69916fd1852ee15f7e181f3606184e5aaf14822306ff67af7f22553",
+        "expected_name": "run",
+        "name": "run",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 7,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-1",
+      "backend": {
+        "batch_id": "choice:run-0-agent-1-turn-7",
+        "logits_d2h_bytes": 22845440,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          5917,
+          2129,
+          15889,
+          21624,
+          5454,
+          3147,
+          12305,
+          471,
+          76,
+          26864,
+          471,
+          80,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "4962a572e47f45b863c9c9043444804e204893e644eca92b8a6f0b1462e59861",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 3281,
+        "token_ids_sha256": "35977b8d8862833e5172ed2ed54c447957091c0b157f0fde172e6f256b344cf3"
+      },
+      "request_id": "run-0-agent-1-turn-7",
+      "run_id": "run-0",
+      "session_id": "session-1",
+      "timing": {
+        "first_token_at_s": 703150.336810967,
+        "response_done_at_s": 703150.336849527,
+        "submitted_at_s": 703135.886307749,
+        "token_event_token_counts": [
+          23
+        ],
+        "token_observed_at_s": [
+          703150.336810967
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703150.336810967,
+        "tool_result_submitted_at_s": 703150.336911418
+      },
+      "tool": {
+        "arguments": {
+          "command": "python -m pytest -q"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_1b26c6d93bb94eb39e9280eb",
+        "declared_schema_sha256": "641bee81b69916fd1852ee15f7e181f3606184e5aaf14822306ff67af7f22553",
+        "expected_name": "run",
+        "name": "run",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 7,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-2",
+      "backend": {
+        "batch_id": "choice:run-0-agent-2-turn-7",
+        "logits_d2h_bytes": 22845440,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          5917,
+          2129,
+          15889,
+          21624,
+          5454,
+          3147,
+          12305,
+          471,
+          76,
+          26864,
+          471,
+          80,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "4962a572e47f45b863c9c9043444804e204893e644eca92b8a6f0b1462e59861",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 3281,
+        "token_ids_sha256": "35977b8d8862833e5172ed2ed54c447957091c0b157f0fde172e6f256b344cf3"
+      },
+      "request_id": "run-0-agent-2-turn-7",
+      "run_id": "run-0",
+      "session_id": "session-2",
+      "timing": {
+        "first_token_at_s": 703150.922379965,
+        "response_done_at_s": 703150.922429335,
+        "submitted_at_s": 703135.886650234,
+        "token_event_token_counts": [
+          23
+        ],
+        "token_observed_at_s": [
+          703150.922379965
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703150.922379965,
+        "tool_result_submitted_at_s": 703150.922492496
+      },
+      "tool": {
+        "arguments": {
+          "command": "python -m pytest -q"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_7046882ccb684fa3bb218064",
+        "declared_schema_sha256": "641bee81b69916fd1852ee15f7e181f3606184e5aaf14822306ff67af7f22553",
+        "expected_name": "run",
+        "name": "run",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 7,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-3",
+      "backend": {
+        "batch_id": "choice:run-0-agent-3-turn-7",
+        "logits_d2h_bytes": 22845440,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          5917,
+          2129,
+          15889,
+          21624,
+          5454,
+          3147,
+          12305,
+          471,
+          76,
+          26864,
+          471,
+          80,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "4962a572e47f45b863c9c9043444804e204893e644eca92b8a6f0b1462e59861",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 3281,
+        "token_ids_sha256": "35977b8d8862833e5172ed2ed54c447957091c0b157f0fde172e6f256b344cf3"
+      },
+      "request_id": "run-0-agent-3-turn-7",
+      "run_id": "run-0",
+      "session_id": "session-3",
+      "timing": {
+        "first_token_at_s": 703150.42369052,
+        "response_done_at_s": 703150.42372774,
+        "submitted_at_s": 703135.886848306,
+        "token_event_token_counts": [
+          23
+        ],
+        "token_observed_at_s": [
+          703150.42369052
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703150.42369052,
+        "tool_result_submitted_at_s": 703150.424062845
+      },
+      "tool": {
+        "arguments": {
+          "command": "python -m pytest -q"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_0da7c985d9f2445686913511",
+        "declared_schema_sha256": "641bee81b69916fd1852ee15f7e181f3606184e5aaf14822306ff67af7f22553",
+        "expected_name": "run",
+        "name": "run",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 7,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-4",
+      "backend": {
+        "batch_id": "choice:run-0-agent-4-turn-7",
+        "logits_d2h_bytes": 22845440,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          5917,
+          2129,
+          15889,
+          21624,
+          5454,
+          3147,
+          12305,
+          471,
+          76,
+          26864,
+          471,
+          80,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "4962a572e47f45b863c9c9043444804e204893e644eca92b8a6f0b1462e59861",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 3281,
+        "token_ids_sha256": "35977b8d8862833e5172ed2ed54c447957091c0b157f0fde172e6f256b344cf3"
+      },
+      "request_id": "run-0-agent-4-turn-7",
+      "run_id": "run-0",
+      "session_id": "session-4",
+      "timing": {
+        "first_token_at_s": 703150.393222198,
+        "response_done_at_s": 703150.393260199,
+        "submitted_at_s": 703135.886472371,
+        "token_event_token_counts": [
+          23
+        ],
+        "token_observed_at_s": [
+          703150.393222198
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703150.393222198,
+        "tool_result_submitted_at_s": 703150.393321559
+      },
+      "tool": {
+        "arguments": {
+          "command": "python -m pytest -q"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_badfbbfdedb84ce181b8e3a3",
+        "declared_schema_sha256": "641bee81b69916fd1852ee15f7e181f3606184e5aaf14822306ff67af7f22553",
+        "expected_name": "run",
+        "name": "run",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 7,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-5",
+      "backend": {
+        "batch_id": "choice:run-0-agent-5-turn-7",
+        "logits_d2h_bytes": 22845440,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          5917,
+          2129,
+          15889,
+          21624,
+          5454,
+          3147,
+          12305,
+          471,
+          76,
+          26864,
+          471,
+          80,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "4962a572e47f45b863c9c9043444804e204893e644eca92b8a6f0b1462e59861",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 3281,
+        "token_ids_sha256": "35977b8d8862833e5172ed2ed54c447957091c0b157f0fde172e6f256b344cf3"
+      },
+      "request_id": "run-0-agent-5-turn-7",
+      "run_id": "run-0",
+      "session_id": "session-5",
+      "timing": {
+        "first_token_at_s": 703150.313978751,
+        "response_done_at_s": 703150.314036122,
+        "submitted_at_s": 703135.887011369,
+        "token_event_token_counts": [
+          23
+        ],
+        "token_observed_at_s": [
+          703150.313978751
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703150.313978751,
+        "tool_result_submitted_at_s": 703150.314109363
+      },
+      "tool": {
+        "arguments": {
+          "command": "python -m pytest -q"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_a8c7373dd66842debf01bfbe",
+        "declared_schema_sha256": "641bee81b69916fd1852ee15f7e181f3606184e5aaf14822306ff67af7f22553",
+        "expected_name": "run",
+        "name": "run",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 7,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-6",
+      "backend": {
+        "batch_id": "choice:run-0-agent-6-turn-7",
+        "logits_d2h_bytes": 22845440,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          5917,
+          2129,
+          15889,
+          21624,
+          5454,
+          3147,
+          12305,
+          471,
+          76,
+          26864,
+          471,
+          80,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "4962a572e47f45b863c9c9043444804e204893e644eca92b8a6f0b1462e59861",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 3281,
+        "token_ids_sha256": "35977b8d8862833e5172ed2ed54c447957091c0b157f0fde172e6f256b344cf3"
+      },
+      "request_id": "run-0-agent-6-turn-7",
+      "run_id": "run-0",
+      "session_id": "session-6",
+      "timing": {
+        "first_token_at_s": 703150.550349243,
+        "response_done_at_s": 703150.550386634,
+        "submitted_at_s": 703135.887241052,
+        "token_event_token_counts": [
+          23
+        ],
+        "token_observed_at_s": [
+          703150.550349243
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703150.550349243,
+        "tool_result_submitted_at_s": 703150.550446145
+      },
+      "tool": {
+        "arguments": {
+          "command": "python -m pytest -q"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_8635be2df5c54920905b4a9e",
+        "declared_schema_sha256": "641bee81b69916fd1852ee15f7e181f3606184e5aaf14822306ff67af7f22553",
+        "expected_name": "run",
+        "name": "run",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 7,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    },
+    {
+      "agent_id": "agent-7",
+      "backend": {
+        "batch_id": "choice:run-0-agent-7-turn-7",
+        "logits_d2h_bytes": 22845440,
+        "physical_width": 1,
+        "sampler_mode": "processed_argmax",
+        "serial_fallback": false,
+        "timing_owner": true,
+        "timing_scope": "choice"
+      },
+      "finish": {
+        "reason": "tool_calls",
+        "retry_count": 0
+      },
+      "output": {
+        "generated_token_ids": [
+          27,
+          13766,
+          13042,
+          85806,
+          591,
+          3147,
+          5917,
+          2129,
+          15889,
+          21624,
+          5454,
+          3147,
+          12305,
+          471,
+          76,
+          26864,
+          471,
+          80,
+          1,
+          12445,
+          13766,
+          13042,
+          29
+        ],
+        "generated_token_ids_sha256": "4962a572e47f45b863c9c9043444804e204893e644eca92b8a6f0b1462e59861",
+        "generated_token_ids_source": "response",
+        "raw_markup_leaked": false,
+        "sse_exact_ids_observed": true
+      },
+      "prefix": {
+        "cache_bytes": 0,
+        "hit": false,
+        "lookup": false,
+        "reused_tokens": 0
+      },
+      "prompt": {
+        "token_count": 3281,
+        "token_ids_sha256": "35977b8d8862833e5172ed2ed54c447957091c0b157f0fde172e6f256b344cf3"
+      },
+      "request_id": "run-0-agent-7-turn-7",
+      "run_id": "run-0",
+      "session_id": "session-7",
+      "timing": {
+        "first_token_at_s": 703148.902162893,
+        "response_done_at_s": 703148.902211504,
+        "submitted_at_s": 703135.885967224,
+        "token_event_token_counts": [
+          23
+        ],
+        "token_observed_at_s": [
+          703148.902162893
+        ],
+        "token_timing_mode": "buffered_public",
+        "tool_call_ready_at_s": 703148.902162893,
+        "tool_result_submitted_at_s": 703148.902277425
+      },
+      "tool": {
+        "arguments": {
+          "command": "python -m pytest -q"
+        },
+        "arguments_json_valid": true,
+        "call_id": "call_e50a1cab3ff545ac89dc60f5",
+        "declared_schema_sha256": "641bee81b69916fd1852ee15f7e181f3606184e5aaf14822306ff67af7f22553",
+        "expected_name": "run",
+        "name": "run",
+        "result_linked": true,
+        "schema_valid": true
+      },
+      "turn_index": 7,
+      "workload_id": "growing_history",
+      "workload_sha256": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1"
+    }
+  ],
+  "turn_records_sha256": "0a108dfddb3fb883fddbef3d455eb576824f33561ab006b16b078700c56f90cc",
+  "validation": {
+    "failure_reasons": [],
+    "passed": true
+  },
+  "workload_suite": {
+    "canonical_sha256": "44729fe15196fb232d64eed5a4628ba59ab9959b3a76ac041d2f194e5cc6ce5e",
+    "file_sha256": "44729fe15196fb232d64eed5a4628ba59ab9959b3a76ac041d2f194e5cc6ce5e",
+    "kind": "hipengine.agentic_coding_workloads",
+    "path": "benchmarks/prompts/agentic-coding-v1.json",
+    "schema_version": 1,
+    "suite": "agentic-coding-v1",
+    "workload_sha256": {
+      "growing_history": "e4581410b047a5b4a2de1529e0de92a43ae6f0ed871c52eae434ffdaa4c730c1",
+      "medium_repo": "bb2b982782aaf119f1ef9437f4ee62fe8cb09d1ca70d18ad835cff2bfdf55929",
+      "small_repo": "067fbfd7c506bdb4b37d0aca54714aca24b5c219604b1809e701d5684e92482c"
+    }
+  }
+}

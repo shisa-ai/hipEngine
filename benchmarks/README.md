@@ -1850,17 +1850,25 @@ untracked experiment files as part of the rollup gate.
 
 ## Blocked and Diagnostic Benchmark Attempts
 
-- **W7900 coding-agent strict-schema A1 completion and A6 quality, GGUF
-  Q4_K_M:** clean `f7a38fd1` cache-off 4K/c1 completes deterministic A1 with
-  **4/4 independent blocking oracles + 4/4 exact-SSE equality gates** over
+- **W7900 coding-agent strict-schema A1 completion, C8 capacity, and A6 quality,
+  GGUF Q4_K_M:** clean `f7a38fd1` cache-off 4K/c1 completes deterministic A1
+  with **4/4 independent blocking oracles + 4/4 exact-SSE equality gates** over
   **100 response-owned IDs** and exact `read`/`grep`/`read`/`run` arguments.
-  Final request/session/KV/graph/workspace ownership is zero. The single-family,
-  single-run smoke reports diagnostic TTFT p50 **1536.618 ms**, **9.077 exact
-  generated tok/s**, and **0.363 validated calls/s**, but its artifact pins
-  `performance_claim=false`; C4/C8, medium/growing-history, warmups, and repeats
-  remain required for a retained A1 performance baseline. The separate natural
-  A6 lane remains **2/4 successes** over **274 response-owned IDs**.
-  [completed A1 diagnostic](results/2026-07-20-w7900-agentic-a1-small-c1-post-schema-anchor.json),
+  Clean `56c91f87` then closes logical-C8 capacity for all frozen families:
+  **32/32 small**, **64/64 growing-history**, and **48/48 medium** turns pass
+  blocking, exact-SSE, strict-argument, validation, and zero-ownership gates over
+  **3,552 response-owned IDs**. Exact required context including the 128-token
+  output budget is **2,979 / 3,409 / 9,357** tokens, served at 4K/4K/10K; startup
+  bounds resident/probe width at four while the public choice-scoped telemetry
+  reports width one, so this is not a physical-c4 model-step claim. All artifacts
+  pin `performance_claim=false`; an untimed warmup plus three measured C1/C4/C8
+  runs for each family remains required for a retained A1 performance baseline.
+  The separate natural A6 lane remains **2/4 successes** over **274
+  response-owned IDs**. [C8 capacity matrix](results/2026-07-20-w7900-agentic-a1-c8-capacity-matrix.json),
+  [small C8](results/2026-07-20-w7900-agentic-a1-small-c8-capacity.json),
+  [growing C8](results/2026-07-20-w7900-agentic-a1-growing-history-c8-capacity.json),
+  [medium C8](results/2026-07-20-w7900-agentic-a1-medium-c8-capacity.json),
+  [completed c1 diagnostic](results/2026-07-20-w7900-agentic-a1-small-c1-post-schema-anchor.json),
   [A6 quality artifact](results/2026-07-20-w7900-agentic-a6-small-c1-post-tool-fixes-quality.json),
   [superseded turn-1 blocker](results/2026-07-20-w7900-agentic-a1-small-c1-post-duplicate-prefix-fix-blocked.json).
 - **W7900 GGUF Q4_K_M:** the [2026-07-07 summary](results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-summary.json) is the last measured path and
