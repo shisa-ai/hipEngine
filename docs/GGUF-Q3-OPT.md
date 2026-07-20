@@ -70,6 +70,13 @@ raw-IQ, decode, and scheduler tranches:
   Fifteen primitive shapes are BF16-bit exact; full 4K logits are bit-exact;
   traced attention falls `936.900 -> 464.773 ms` (-50.39%), and mixed-pattern
   4K reaches `741.180 tok/s` (+8.28%) with unchanged launches and memory.
+- A final exact GDN data-boundary candidate removed prompt-sized normalized
+  Q/K/V materialization and read raw rows directly from `conv_out`. It was
+  bit-exact at 64/512/4,096 rows and cut prepare `16.150 -> 7.995 ms`, but the
+  repeated normalization multiplies raised recurrence `866.824 -> 889.363 ms`.
+  The complete GDN pair regressed 1.63%, total kernel sum 0.44%, and trace span
+  0.24%; matched 4K wall was flat at +0.07%. The candidate and tests were
+  removed, closing this direct-conv premise.
 - Decode work retained the wave-uniform IQ3 address cleanup and aggregate
   MoE-tail/next-RMS fusion, rejected hierarchical top-k, IQ4 tile4, and routed
   stream overlap, and currently measures `101.216 tok/s` at 512 and
@@ -88,12 +95,16 @@ The post-grouped-GQA cache-only 4K trace is now the active prefill Amdahl ledger
 
 Dense Q8 remains first but its local scheduling lane is closed. Grouped IQ3 is
 second, but its admitted output-tile/WMMA/repack premises remain closed after
-rowbatch4. Attention is now below 9% and no longer justifies immediate local
-polish. Task #24 therefore returns to one genuinely new exact GDN premise, the
-next open measured family, rather than extending a lower-ranked lane by inertia.
-**The ~3,000 tok/s objective is not closed:** 741.180 tok/s is a retained step,
-not a target claim. Full evidence and commands are in
-[`benchmarks/results/2026-07-20-gpu1-q3-exact-attn-gqa-batch-prefill.json`](../benchmarks/results/2026-07-20-gpu1-q3-exact-attn-gqa-batch-prefill.json).
+rowbatch4. Attention is below 9%, and exact GDN now has both its retained LDS32
+geometry and the rejected direct-conv data boundary measured. Task #24 closes
+the bounded exact local campaign rather than extending a lower-ranked lane by
+inertia; reopening requires new algebra, a new resident layout, or other
+profile-backed architectural evidence. **The ~3,000 tok/s objective is not
+closed:** 741.180 tok/s is a retained step, not a target claim. Retained and
+final-rejection evidence are in
+[`benchmarks/results/2026-07-20-gpu1-q3-exact-attn-gqa-batch-prefill.json`](../benchmarks/results/2026-07-20-gpu1-q3-exact-attn-gqa-batch-prefill.json)
+and
+[`benchmarks/results/2026-07-20-gpu1-q3-exact-gdn-direct-conv-rejected.json`](../benchmarks/results/2026-07-20-gpu1-q3-exact-gdn-direct-conv-rejected.json).
 
 ## Executive recommendation
 
@@ -1002,11 +1013,20 @@ bit-exact. LLVM reports VGPR248 but zero private scratch; the real 4K trace cuts
 GDN 32.63%, so this bounded Q3 adaptation is retained without changing the
 full-column-register closure below.
 
+The final campaign experiment attacked a different boundary: compact Q/K scales
+plus beta/decay were materialized once, while the exact LDS32 recurrence read
+raw Q/K/V from `conv_out`. Primitive and full-model bits were exact and prepare
+fell 50.50%, but repeated normalization inside each value tile made recurrence
+2.60% slower. A matched production trace regressed the combined GDN pair 1.63%,
+total kernel sum 0.44%, and span 0.24%, so the direct path was removed.
+
 Therefore:
 
 - do not port the GLSL `vec4 state[32]` body mechanically;
 - do not treat ACO resource behavior as evidence for LLVM;
 - do not reopen another reduction-width/storage micro-sweep;
+- do not retry direct-conv LDS32 unless normalization can be shared without the
+  already-rejected per-token barriers or repeated per-value-tile multiplies;
 - revisit GDN only with a genuinely different chunked/prefix algebra and an
   explicit numerical contract.
 

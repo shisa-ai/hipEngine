@@ -1,0 +1,174 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-20",
+  "status": "rejected",
+  "performance_claim": false,
+  "measurement_class": "exact primitive microbenchmark plus matched production trace rejection",
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "backend": "hip_gfx1100",
+    "physical_device": 1,
+    "visible_device": 1
+  },
+  "software": {
+    "branch": "q3-k-m",
+    "base_commit": "8e699342374254ae7db279497c5f3c4ca508d979",
+    "hip_version": "7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf",
+    "sha256": "8966dd0cd8c543c4228490a2a8b0e0814fc4f1e6a8e199ceed4de6754ae7b8e1",
+    "quant": "gguf_ud_q3_k_m",
+    "architecture": "qwen35moe"
+  },
+  "diagnosis": {
+    "baseline_artifact": "benchmarks/results/2026-07-20-gpu1-q3-exact-attn-gqa-batch-prefill.json",
+    "baseline_gdn_recurrent_ms": 870.077961,
+    "baseline_gdn_share_pct": 16.261594469689538,
+    "prior_closed_designs": [
+      "full-column local-array state residency spilled at VGPR256 plus about 1 KiB private scratch per thread",
+      "ordinary K2 value2 tiling regressed its historical production trace",
+      "chunkwise WY8 changed the strict trajectory and failed the frozen semantic contract",
+      "peer wave32 and clustered schedules changed arithmetic and missed prior product gates"
+    ],
+    "distinct_premise": "Keep the retained scalar-exact LDS32 recurrence geometry, but materialize only compact per-K-head Q/K scales plus per-V-head beta/decay and read raw Q/K/V directly from canonical conv_out. This removes prompt-sized normalized Q/K/V writes and rereads rather than retuning the closed state tile or reduction width.",
+    "historical_in_tree_reference": "The dataflow follows the earlier explicit-only GPF-2E direct-conv candidate at c3a065ee, re-derived for the corrected grouped-head, rsqrt-epsilon, and decode-association contract at 8e699342."
+  },
+  "candidate": {
+    "prepare_kernel": "qwen35_linear_attn_prefill_prepare_decode_order_compact_scales_kernel<unsigned short>",
+    "recurrent_kernel": "qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_kernel",
+    "prepare_change": "Compute each Q/K norm once per K head with the retained 128-thread reduction order; emit compact Q/K scales and unchanged beta/decay only.",
+    "recurrent_change": "Reconstruct each normalized Q/K scalar from conv_out immediately before the retained rounded key-state product, decay FMA, state-update FMA, and eight-term output group.",
+    "red": "The focused correctness module failed collection on the intentionally missing compact-prepare and direct-LDS32 wrapper imports.",
+    "source_retained": false,
+    "tests_retained": false,
+    "production_tree_after_cleanup": "Tracked production sources and tests are byte-identical to 8e699342."
+  },
+  "correctness": {
+    "focused_command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_qwen35_gguf_gdn_prefill_correctness.py tests/test_qwen35_gguf_gdn_prefill_routing.py tests/test_qwen35_linear_attn_gdn_plan.py",
+    "focused_tests_passed": 24,
+    "primitive_rows": [64, 512, 4096],
+    "recurrent_output_f32_bit_mismatches": [0, 0, 0],
+    "final_state_f32_bit_mismatches": [0, 0, 0],
+    "full_model_command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_qwen35_gguf_q3_bulk_prefill_correctness.py",
+    "full_model_tests_passed": 2,
+    "all_row_and_full_logit_bits_equal": true,
+    "mixed_4096": {
+      "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python /tmp/q3_pack8_4k_mixed.py",
+      "script_sha256": "7845c231d754b1401e61620ba63b479e82829e141fd6762ac47bf009ddab27d8",
+      "output_sha256": "12d41d059581dc34ede72c8905ea076f7b95114f4630194b8b813ecc06862bdf",
+      "tok_s": 744.1050090924259,
+      "token_id": 14626,
+      "logit": 10.020184516906738,
+      "finite": true,
+      "matches_strict_serial_token_and_logit": true
+    }
+  },
+  "microbench": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python /tmp/hipengine_q3_gdn_direct_lds32_micro.py",
+    "script_sha256": "b87d245bae860f835f19ef761eb80cee9e9ff81c9c08aeead7471e981b92a4a7",
+    "output_sha256": "05c436a0247f9bc86f30d2e2e6fdb8bb6680d0580b7e41610393559a569bc6f0",
+    "warmup": 2,
+    "iterations": 7,
+    "scope": "complete prepare plus recurrent pair from identical conv_out and initial state",
+    "rows": {
+      "64": {
+        "materialized_median_ms": 0.454505,
+        "direct_median_ms": 0.426335,
+        "delta_pct": -6.197951617693964
+      },
+      "512": {
+        "materialized_median_ms": 3.22128,
+        "direct_median_ms": 3.18351,
+        "delta_pct": -1.1725152734316846
+      },
+      "4096": {
+        "materialized_median_ms": 27.466348,
+        "direct_median_ms": 26.280134,
+        "delta_pct": -4.318790397616745
+      }
+    },
+    "interpretation": "The isolated pair clears its stop gate, but the matched full-model trace below is authoritative for promotion."
+  },
+  "resource_trace": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-q3-gdn-direct-lds32-trace -o gdn-direct -- uv run python /tmp/hipengine_q3_gdn_direct_lds32_micro.py",
+    "trace_sha256": "b27c93350355bad1cceedc14f5b13eef8f77784f3910d2d56d46b5bf2d324983",
+    "materialized_recurrent": {
+      "vgpr": 248,
+      "lds_bytes": 16384,
+      "scratch_bytes": 0,
+      "workgroup_x": 32
+    },
+    "direct_recurrent": {
+      "vgpr": 248,
+      "lds_bytes": 16384,
+      "scratch_bytes": 0,
+      "workgroup_x": 32
+    },
+    "compact_prepare": {
+      "vgpr": 24,
+      "scratch_bytes": 0,
+      "workgroup_x": 128
+    }
+  },
+  "wall_measurements": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --quant gguf_ud_q3_k_m --token-id 9707 --prompt-length <512|4096> --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --no-use-wmma-prefill --no-use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build",
+    "candidate_512": {
+      "samples_tok_s": [760.9854620113247, 779.1475487742678, 778.2238106543978],
+      "median_tok_s": 778.2238106543978,
+      "stdev_pct": 1.3144878541724412,
+      "tracked_peak_gib": 15.805444963276386,
+      "raw_json_sha256": "83929b635b59421c6ba732f879a1a06b9cab715daabf79d8d4ac6485d607bc8c"
+    },
+    "candidate_4096": {
+      "samples_tok_s": [742.327654849453, 744.9107168825864, 744.5399954676116],
+      "median_tok_s": 744.5399954676116,
+      "stdev_pct": 0.18758808881591416,
+      "tracked_peak_gib": 16.95465761423111,
+      "raw_json_sha256": "2af46f35f67dbec02eedb34eea28edfa315bbaa9d6a66b9cb0f8dedd4bfe4818"
+    },
+    "same_source_materialized_control_4096": {
+      "harness_sha256": "a4008882a6e9aff77127356ed30ece31a98a0e94fba43bfeb564c6a116e0cdcd",
+      "samples_tok_s": [739.9912541705194, 744.0322540637725, 744.5401316248083],
+      "median_tok_s": 744.0322540637725,
+      "candidate_delta_pct": 0.06824185390699178,
+      "tracked_peak_gib": 16.95465761423111,
+      "raw_json_sha256": "326240d6293c80f914ed62927ec538379f1432020953e5ca5925ca81f96c8a17",
+      "verdict": "Flat within run spread; not a promotion basis."
+    }
+  },
+  "matched_production_profile": {
+    "candidate_trace_sha256": "951eebc81527a252447a16da6b03ff52eef8c0a6d27c6b5f4ccf0154346a8a67",
+    "candidate_summary_sha256": "b9bcb3f51161d4045579b44f9a3431b5ea75785eb2e62033b142f91398b2c87c",
+    "control_trace_sha256": "50a631ba0f1f8552d54bcd1765658099c499d7a660c8f91db42a940c8653c1ae",
+    "control_summary_sha256": "0c037d6f370456afd2331df0e966caa1f72bc0b15d7c8a7e0d698ab410950c01",
+    "launches_control": 8705,
+    "launches_candidate": 8705,
+    "prepare_ms_control": 16.150091,
+    "prepare_ms_candidate": 7.994795,
+    "prepare_delta_pct": -50.49690432084872,
+    "recurrent_ms_control": 866.823963,
+    "recurrent_ms_candidate": 889.362677,
+    "recurrent_delta_pct": 2.600148930123658,
+    "prepare_plus_recurrent_ms_control": 882.974054,
+    "prepare_plus_recurrent_ms_candidate": 897.357472,
+    "prepare_plus_recurrent_delta_pct": 1.6289740264553654,
+    "total_kernel_ms_control": 5352.519593,
+    "total_kernel_ms_candidate": 5375.971879,
+    "total_kernel_delta_pct": 0.4381541364308239,
+    "trace_span_ms_control": 5530.996356,
+    "trace_span_ms_candidate": 5544.024162,
+    "trace_span_delta_pct": 0.2355417570627738,
+    "profiled_tok_s_control": 740.298794433196,
+    "profiled_tok_s_candidate": 738.5600805293213,
+    "profiled_wall_delta_pct": -0.23486650484226823
+  },
+  "decision": {
+    "accepted": false,
+    "reason": "The exact direct boundary saves half of prepare but repeats raw-Q/K normalization inside each value tile. That raises recurrent time enough to regress the complete GDN pair, total kernel sum, trace span, and profiled wall; the +0.07% non-profiled wall median is noise and cannot override the production trace.",
+    "cleanup": "Removed the compact prepare, direct recurrent kernel, wrappers, registry entries, runtime capability route, and temporary tests. No production code or test surface remains.",
+    "closure": "Do not retry direct-conv LDS32 unless a new design avoids per-value-tile normalization multiplies without adding the already-rejected per-token barriers. Current exact GDN local geometry and data-boundary premises are closed.",
+    "next_action": "Close task #24 without claiming the approximately 3000 tok/s target, then run the retained-path milestone validation and rebuild the post-prefill roadmap."
+  }
+}
