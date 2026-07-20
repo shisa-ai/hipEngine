@@ -169204,3 +169204,218 @@ Published compact artifact:
 `b5e48ccaee6dd1062464e1a35db590cd0a67a18172b2dad019429fbfaa30905f`). Raw
 source SHA-256 is
 `bf2665d5c3182a5e5f943d7ea29a9c16b327214cd957f3ae5aaad1d775f37964`.
+
+## 2026-07-20 — Decompose retained N4 proposer repair/update
+
+Reused the clean cached final-child `on2` source trace from selected-commit
+implementation `43abe82e`; no new timing process or code change was needed.
+The trace is canonical `code_lru_cache`, B1/D24, exact against true AR, one
+W7900, cached HIP builds, final child only, and 16 windows after the first two
+cycles. Source command and raw CSV hashes are in
+`benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-proposer-update-residuals.json`.
+
+Overall `mtp_proposer_update_*` ownership is:
+
+- **1.471 ms host / 1.252 ms kernel** per cycle;
+- **35.5** kernels/copies, **33.1875** `hipLaunchKernel`, **68.6875** HIP APIs,
+  **1.3125** async token/position copies, and one blocking next-draft result
+  read per cycle;
+- all **24 IDs** and the accepted-length history remain exact.
+
+Acceptance exposes two distinct workloads:
+
+| B1 outcome | Windows | Host | Kernel | Kernels/copies | Host launches | HIP APIs |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| accepted=0, one result advance | 11 | **1.238 ms** | **1.054 ms** | 28 | 26 | 54 |
+| accepted=1, repair + result | 5 | **1.982 ms** | **1.689 ms** | 52 | 49 | 101 |
+| accepted-row increment | — | **+0.744 ms** | **+0.635 ms** | +24 | +23 | +47 |
+
+The zero-accept one-advance kernel breakdown is **0.073 ms input fusion/FC,
+0.258 ms attention+KV, 0.278 ms router+routed experts, 0.068 ms shared
+expert/finalize, and 0.370 ms lm-head+argmax**. The draft lm-head logits leaf is
+the largest required kernel at **0.363 ms/cycle** and is not selected for
+approximation/removal.
+
+The exact next target is the existing
+`mtp_router_topk_softmax_256x8_f32_kernel`: it launches one thread and serially
+inserts 256 expert logits into top8. It costs **0.153 ms/cycle**, **1.3125
+calls/cycle**, and **116.4 us/call** (**12.19%** of update kernel time). It has a
+generic topk lower-index-tiebreak oracle in
+`tests/test_mtp_input_fusion_kernel.py`, so a deterministic parallel replacement
+is narrower and better justified than expanding graph ownership.
+
+A reusable proposer graph is deferred, not assumed: attention context is a
+changing by-value scalar, direct KV destinations vary with cache length,
+accepted rows execute a variable extra repair advance, and the result step still
+requires one bounded D2H/synchronization for the next draft token. DFlash,
+gfx1151, vocab caps, and acceptance policy remain outside this gate.
+
+Artifact: `benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-proposer-update-residuals.json`,
+15,830 bytes, SHA-256
+`7312b02f5c0ef77babaa1a6107b519c450eb157a17e41e3c76acdf054538e76f`.
+
+## 2026-07-20 — Parallelize exact MTP router top8
+
+The clean proposer residual selected
+`mtp_router_topk_softmax_256x8_f32_kernel`, which launched one thread and did
+256 x top8 serial insertion. This is a performance-only rewrite with unchanged
+public ABI/math, so a behavioral RED failure is not expected. Before editing the
+body, strengthened the existing generic-topk oracle with **12 equal maxima
+across every wave32 boundary**; the serial baseline passes and requires the
+lowest eight ids exactly.
+
+Implementation in `hipengine/kernels/hip_gfx1100/speculative/mtp.hip` assigns
+one expert/logit to each of 256 threads and performs eight deterministic shared-
+memory pair reductions. Each selected winner is masked before the next rank;
+`better_pair_i32` preserves descending value/lower-index tie semantics. Thread 0
+retains the prior top8 FP32 softmax operation order. NaNs remain non-candidates.
+The non-256x8 generic two-kernel path is unchanged. No env or fallback debt was
+added.
+
+Focused exact gate:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-mtp-w7900-hipcc-version.txt \
+PYTHONPATH=. python3 -m pytest -q tests/test_mtp_input_fusion_kernel.py
+# 5 passed; fused ids/values/routing exactly equal generic topk+softmax
+```
+
+Matched same-process W7900 `rocprofv3 --kernel-trace --hip-runtime-trace` loaded
+the old cached `.so` (`mtp_speculative-2fe36aafb7ac9f3c`) and final candidate
+(`mtp_speculative-4240eabaef4d8eea`) directly, with 20 warmups and 1,000 measured
+launches each. The tie-heavy output is exact:
+`[0,31,32,63,64,95,96,127]`.
+
+| Router body | Steady mean | Median | VGPR | Scratch/thread | LDS | Workgroup |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| serial baseline | 94.516 us | 92.520 us | 48 | 80 B | 0 | 1 |
+| parallel candidate | **5.395 us** | **5.320 us** | 40 | 0 | 2.5 KiB | 256 |
+
+The leaf improves **-89.121 us/call (-94.29%, 17.52x)**. A separate
+launch-inclusive Python A/B brackets old **162.017/161.933 us** and candidate
+**9.060/9.053 us**.
+
+Then profiled the real dirty-tree canonical `code_lru_cache` B1/D24 final child,
+with explicit N4 and retained default selected commit, cached build, 16 windows
+after skip2. It remains exact with the identical acceptance history
+`[0,0,0,0,0,0,1,0,1,0,0,0,1,0,0,1,0,1]`:
+
+| Metric/cycle | Clean serial source | Parallel dirty candidate | Change |
+| --- | ---: | ---: | ---: |
+| router leaf | 0.153 ms (116.359 us/call) | **0.014 ms (10.615 us/call)** | **-0.139 ms** |
+| proposer-update kernels | 1.252 ms | **1.105 ms** | **-0.147 ms** |
+| proposer-update host | 1.471 ms | **1.323 ms** | **-0.148 ms** |
+| complete-cycle kernels | 11.154 ms | **11.010 ms** | **-0.144 ms** |
+| complete-cycle host | 16.322 ms | **16.235 ms** | -0.087 ms |
+
+Kernel/API counts are unchanged, as expected. The exact leaf gain transfers
+one-for-one into proposer host/kernel time and materially into complete wall,
+so retain the implementation for the clean full-suite gate. DFlash ownership,
+acceptance policy, vocab cap, model bytes, and NativeSpec boundaries are
+unchanged. The source is shared by registered gfx11 backends; only gfx1100 has a
+performance claim, and gfx1151 remains independently unverified.
+
+## 2026-07-20 — Retain clean exact parallel MTP router top8
+
+Ran the full keep/revert gate from clean candidate `bb9fc742` against a detached
+clean parent worktree at `09fa6f9f`. The only source difference is the 256x8
+router body/workgroup. Both routes used exclusive W7900 with
+`HIP_VISIBLE_DEVICES=0`, `ROCR_VISIBLE_DEVICES=0`, system HIP 7.2.53211, cached
+builds, current full8192 W4-PARO target + matching MTP-BF16 sidecar, explicit N4
+with default selected commit, production GPU accept, raw canonical prompts, and
+the strict exact GDN/linear/shared-expert stack:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
+  HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_BACKEND=hip_gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-mtp-w7900-hipcc-version.txt \
+  HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH=1 \
+  HIPENGINE_GDN_TLOOP_C1_EXACT=1 HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS=1 \
+  HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT=1 \
+  HIPENGINE_VERIFY_GPU_ACCEPT=1 PYTHONPATH=. \
+  python3 scripts/mtp-bench.py --mode hipengine-current \
+    --prompts-file benchmarks/prompts/mtpbench-code-general-ja.jsonl \
+    --max-tokens 24 --candidate-budgets 1 --runs 1 --prompt-render raw \
+    --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+    --chain-attn-mode c1_loop --graph-mode auto \
+    --engine-model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 \
+    --raw-root /tmp/w7900-n4plus-router-{parallel-on1r,serial-off,parallel-on2}-... \
+    --out /tmp/w7900-n4plus-router-{parallel-on1r,serial-off,parallel-on2}-....json
+```
+
+The first candidate attempt passed prompt 1, then prompt 2 exited on a ROCm
+hardware exception reporting **GPU Hang on node 2**, the non-W7900 RX 7900 XTX.
+The exact prompt immediately passed **24/24 IDs** in W7900 isolation. No timing
+from that attempt is retained. Adding the explicit ROCR pin produced a complete
+candidate/control/candidate bracket with no second failure.
+
+All retained arms match **10/10 prompts, 240/240 IDs, 214 cycles, 16 accepts**,
+active-budget/acceptance history, and **150/150** expanded native records with
+no fallback:
+
+| Route | AR tok/s | MTP tok/s | MTP/AR | proposer ms/cycle | complete ms/cycle | capture-adjusted ms/cycle |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| parallel candidate 1 | 111.872 | **66.303** | **0.59267x** | **1.107** | **15.919** | **13.839** |
+| serial parent control | 111.054 | 65.188 | 0.586995x | 1.222 | 16.202 | 13.962 |
+| parallel candidate 2 | 111.982 | **66.259** | **0.591699x** | **1.106** | **15.951** | **13.846** |
+
+Candidate deltas are:
+
+- complete wall **-0.283/-0.250 ms/cycle (-1.75%/-1.55%)**;
+- capture-adjusted wall **-0.123/-0.116 ms/cycle (-0.88%/-0.83%)**;
+- proposer update **-0.115/-0.116 ms/cycle (-9.44%/-9.49%)**;
+- pooled MTP throughput **+1.115/+1.071 tok/s (+1.71%/+1.64%)**;
+- MTP/AR ratio **+0.97%/+0.80%** relative.
+
+Both candidate arms improve capture-adjusted and proposer wall for full, train,
+heldout, and every `code`/`general_en`/`general_ja`/`mixed_ja_en` category. The
+second `general_en` complete marker is +0.029 ms versus control, but its
+capture-adjusted wall is -0.084 ms and proposer wall -0.101 ms; full complete
+wall wins in both arms. This is broad model-general evidence, not acceptance or
+single-prompt tuning.
+
+Clean matched final-child profiles then wrapped canonical `code_lru_cache`
+B1/D24 only, with 16 windows after skip2. Both are exact with identical
+acceptance:
+
+| Metric/cycle | Serial parent | Parallel | Change |
+| --- | ---: | ---: | ---: |
+| router leaf | 0.1522 ms / 115.948 us-call | **0.0141 ms / 10.741 us-call** | **-90.74%** |
+| proposer kernel | 1.248 ms | **1.110 ms** | **-0.138 ms (-11.07%)** |
+| proposer host | 1.465 ms | **1.328 ms** | **-0.137 ms (-9.32%)** |
+| complete kernels | 11.152 ms | **11.022 ms** | **-0.130 ms (-1.16%)** |
+| complete host | 16.317 ms | **16.215 ms** | **-0.102 ms (-0.63%)** |
+| kernels / HIP APIs | 1247.5 / 75.6875 | 1247.5 / 75.6875 | unchanged |
+
+The parallel leaf records 40 VGPR, zero scratch, 2,560 B LDS, and workgroup 256;
+the serial leaf records 48 VGPR, 80 B/thread scratch, zero LDS, and workgroup 1.
+This clean profile independently confirms the prior same-process 1,000-launch
+micro A/B (**94.516 -> 5.395 us/call, -94.29%**).
+
+Correctness closure:
+
+- `tests/test_mtp_input_fusion_kernel.py`: **5 passed**, including byte-exact
+  fused/generic values, ids, and routing for 12 tied maxima across wave32
+  boundaries;
+- canonical suite: three x 240 exact IDs with identical acceptance;
+- B1 accepted-row audit with `HIPENGINE_VERIFY_GPU_ACCEPT=validate`: cycles
+  6/7/8 all pass **60 resident Conv/GDN + 20 live KV + 60 scratch commit + 60
+  selected linear + 20 selected KV** comparisons; cycle 7 commits row 1 and
+  cycle 8 remains exact;
+- the clean target layer-0 hidden/MoE oracle is reused because this kernel runs
+  only in the proposer after target hidden production and changes no target/model
+  bytes;
+- `tests/test_benchmark_readme_sync.py`: **6 passed**.
+
+Decision: keep the exact 256-thread body as the default 256x8 implementation.
+The generic two-kernel path remains the unsupported-shape fallback. No env flag
+or refactor debt is added. N4 remains explicit/default-off and strict B1 is only
+~0.592x true AR, so this is a qualified relative MTP/kernel speed claim—not AR
+promotion. DFlash ownership and gfx1151 performance admission remain separate.
+
+Published artifact:
+`benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-parallel-router-topk.json`,
+47,483 bytes, SHA-256
+`8fec69cb8cbcc684c0811770741de5abef2feccf798d759fdc15f8c0ade830ed`.
