@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-20
 
+- [retained exact gfx1151 GGUF physical-C8 paged-attention value vector 2] Assigning two adjacent value dimensions per active thread improves the F3O leaf **181.324 -> 134.890 us (-25.61%)** and tracked-clean p512/d128 direct C8 **158.048 -> 158.804 tok/s (+0.478%)**, **+3.992%** versus F3K, with **320/320 exact** hidden/state. Server blocking/SSE/delayed improve versus F3O **+0.87%/+1.86%/+0.36%**. `benchmarks/results/2026-07-20-gfx1151-gguf-paged-attn-value-vector2-c8-retained.json`.
+
 - [retained exact gfx1151 GGUF physical-C8 paged-attention token offsets] Precomputing each token's physical KV element offset once per query-head block improves the exact paged-context leaf **315.073 -> 181.251 us (-42.47%)** and tracked-clean p512/d128 direct C8 **152.709 -> 158.048 tok/s (+3.496%)** at 0.092% variance, with **320/320 exact** hidden/state. Same-source server blocking/SSE/delayed improve **+2.37%/+0.06%/+0.79%**. `benchmarks/results/2026-07-20-gfx1151-gguf-paged-attn-token-offsets-c8-retained.json`.
 
 - [rejected gfx1151 GGUF physical-C8 GDN state residency and Conv fusion] Exact whole-state caching spills (**96 VGPR / 1,264 B scratch**) and regresses **+217%**; reduced arrays also spill. Exact indexed Conv+paired-GDN fusion improves the combined leaf **229.702 -> 224.120 us (-2.43%)** but regresses direct p512/d128 **152.709 -> 152.238 tok/s (-0.308%)** with identical trajectories. All kernels/routes/selectors were removed. `benchmarks/results/2026-07-20-gfx1151-gguf-gdn-state-residency-fusion-c8-rejected.json`.

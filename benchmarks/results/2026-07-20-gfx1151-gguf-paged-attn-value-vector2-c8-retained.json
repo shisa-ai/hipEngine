@@ -1,0 +1,129 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_paged_attn_value_vector2_c8_retained",
+  "created_at": "2026-07-20T23:00:00+00:00",
+  "status": "retained_exact_clean_direct_positive_server",
+  "passed": true,
+  "performance_claim": true,
+  "decision": "promote two adjacent value dimensions per active thread in the gfx1151 fixed-256 paged-attention route",
+  "implementation_commit": "4bec6b20c96a233fa56e0fa732dd6f6ab503a05c",
+  "hardware": {
+    "host": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "amd_iommu": "off",
+    "gpu_max_hw_queues": 1
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B UD-Q4_K_M GGUF",
+    "path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "scope": {
+    "backend_route": "gfx1151 bf16_context_batch_fixed256_spans with shared token offsets",
+    "value_vector": 2,
+    "unchanged_routes": [
+      "generic adaptive batch route uses value vector 1",
+      "odd head dimensions fall back to value vector 1",
+      "gfx1100 c1-exact batch route",
+      "long-context split-K attention"
+    ],
+    "floating_point_contract": "each output dimension retains the same token order and FP32 accumulation statements"
+  },
+  "primitive_microbench": {
+    "shape": "rows=8, context=513, block_size=256, num_q_heads=16, num_kv_heads=2, head_dim=256",
+    "protocol": "five cycling 12 MiB KV pools, 40 warmups, 400 iterations, same binary against F3O",
+    "f3o_us": 181.32373748812824,
+    "vector2_us": 134.8902475729119,
+    "delta_percent": -25.608059131395567,
+    "speedup": 1.3442316309051012,
+    "output_bit_exact": true,
+    "raw_bytes": 572,
+    "raw_sha256": "ae2cfbc2d4b9ed152092d10ebfa58e2eda9c90fd9c753779b0ce3ec59660ccfa"
+  },
+  "correctness": {
+    "focused_test": "HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python -m pytest tests/test_qwen35_paged_attn_decode_plan.py -q: 6 passed",
+    "all_layer_hidden_comparisons": 320,
+    "all_layer_hidden_exact": true,
+    "tokens_and_final_state_exact": true,
+    "first_divergence": null,
+    "all_layer_oracle_bytes": 16147,
+    "all_layer_oracle_sha256": "55b7d806fe277569cb87b270a55729c88482e0459017f680e3b858fb7df07eb2"
+  },
+  "clean_direct_retention": {
+    "provenance": "detached tracked-clean 4bec6b20 worktree",
+    "workload": "physical-C8 p512/d128 state-bound graph, one warmup and three measured runs",
+    "baseline_clean_f3o_tok_s": 158.04796745731866,
+    "candidate_tok_s_samples": [158.8041254579851, 158.582907303087, 158.9714871422141],
+    "candidate_tok_s_median": 158.8041254579851,
+    "delta_vs_f3o_percent": 0.4784357640478021,
+    "delta_vs_f3k_percent": 3.9915888843389036,
+    "stdev_percent_of_median": 0.122736711429915,
+    "wall_savings_seconds_per_1024_tokens_vs_f3o": 0.03085047198692248,
+    "trajectories_repeatable": true,
+    "trajectory_hashes_exact_to_f3o": true,
+    "raw_bytes": 200333,
+    "raw_sha256": "009587c7f5464fbf13a21d964c2645dc458150770e1aa5504f3b6bbcbd019fc8"
+  },
+  "server_gate": {
+    "provenance": "source-equivalent vector2 candidate compared with the immediately preceding committed F3O packet; equivalent five-minute F3O control was not repeated",
+    "protocol": "real localhost Uvicorn C1/C8 p512/d128, one warmup, three blocking, three exact SSE, delayed C8",
+    "candidate": {
+      "blocking_median_tok_s": 91.82953313102723,
+      "exact_sse_median_tok_s": 87.77240762002337,
+      "delayed_tok_s": 69.777478647011,
+      "all_exact": true,
+      "raw_bytes": 718017,
+      "raw_sha256": "a3fa90770bd6cc2188cda51d26450a23847992db6d7284458dba258e2f7de877"
+    },
+    "f3o_control": {
+      "blocking_median_tok_s": 91.0333638888264,
+      "exact_sse_median_tok_s": 86.16962739724603,
+      "delayed_tok_s": 69.52730852369854,
+      "all_exact": true,
+      "raw_bytes": 725862,
+      "raw_sha256": "c5580cf43318dac29fbcb03bdf921338a0a5b1976998239ffe58cbdca4da9ad2"
+    },
+    "candidate_delta_percent": {
+      "blocking": 0.874590598643743,
+      "exact_sse": 1.8600291903183575,
+      "delayed": 0.35981563018103735
+    }
+  },
+  "kernel_trace": {
+    "kernel": "qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true,2>",
+    "dispatches": 445,
+    "workgroup_size_x": 256,
+    "grid_size_x": 4096,
+    "grid_size_y": 8,
+    "vgpr": 40,
+    "scratch_bytes": 0,
+    "median_duration_us": 128.441,
+    "min_duration_us": 125.516,
+    "raw_bytes": 157204,
+    "raw_sha256": "4032426c94674c0f6d3768337164443cef1a8f5644063dd1f769f41a2e28c978"
+  },
+  "rejected_adjacent_points": {
+    "kv_head_in_shared_offset": {
+      "f3o_median_us": 180.86350755766034,
+      "candidate_median_us": 182.10713998996653,
+      "delta_percent": 0.6876082683012763,
+      "output_bit_exact": true,
+      "decision": "remove; compiler hoisting wins"
+    },
+    "value_vector4": {
+      "f3o_us": 181.50718009565026,
+      "candidate_us": 143.66984760272317,
+      "delta_percent": -20.846190477416737,
+      "output_bit_exact": true,
+      "decision": "remove because vector2 is 6.51% faster"
+    }
+  },
+  "limitations": [
+    "The retained topline is detached tracked-clean direct C8; server evidence reuses the immediately preceding committed F3O control instead of repeating an equivalent expensive packet.",
+    "Only the gfx1151 fixed-256 short-context batch route selects vector2; generic and long-context paths require independent gates.",
+    "No persistent or dynamic-shared-memory increase is added beyond retained F3O."
+  ]
+}
