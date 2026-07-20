@@ -169576,3 +169576,58 @@ Next: add a server RED fixture for Qwen terminal residue around a validated tool
 block, remove it from blocking and SSE public envelopes without suppressing
 legitimate assistant content, then rerun A1 c1. Separately, expose measured SSE
 response-owned generated IDs and plan C4/C8 context/scratch capacity.
+
+## 2026-07-20 — Strip Qwen terminal residue from validated tool envelopes
+
+Added blocking and SSE RED fixtures with a valid tool block surrounded by
+repeated `<|im_end|>` terminals. Both initially failed: blocking published three
+terminal markers in `message.content`, while SSE emitted the same residue as a
+public content delta before the valid tool arguments.
+
+The parser now strips repeated Qwen terminal markers only from the outer edges
+of assistant text left around at least one successfully parsed tool block. It
+does not globally replace markers. A separate guard preserves
+`Keep <|im_end|> literal.` inside legitimate assistant content, the existing
+literal-`<tool_call>` tests remain green, and a no-tool JSON-schema response that
+starts with `<|im_end|>` remains unchanged. `docs/API.md` records the behavior.
+
+Validation:
+
+```bash
+python3 -m pytest -q \
+  tests/test_server_api.py::test_chat_completion_strips_qwen_terminal_residue_around_tool_call \
+  tests/test_server_api.py::test_streaming_chat_completion_strips_qwen_terminal_residue_around_tool_call
+# RED: 2 failed
+# GREEN: 2 passed
+python3 -m pytest -q \
+  tests/test_server_api.py::test_chat_completion_strips_qwen_terminal_residue_around_tool_call \
+  tests/test_server_api.py::test_streaming_chat_completion_strips_qwen_terminal_residue_around_tool_call \
+  tests/test_server_api.py::test_chat_completion_terminal_cleanup_preserves_interior_literal_content \
+  tests/test_server_api.py::test_chat_completion_parses_tool_call_after_literal_marker_text \
+  tests/test_server_api.py::test_streaming_chat_completion_parses_tool_call_after_literal_marker_text \
+  tests/test_server_api.py::test_chat_completion_response_format_json_schema_length_rejects_non_object_prefix
+# 6 passed
+python3 -m pytest -q tests/test_server_api.py
+# 502 passed
+python3 -m pytest -q tests/test_agentic_coding_live.py \
+  tests/test_agentic_coding_benchmark.py tests/test_agentic_server_conformance.py \
+  tests/test_agentic_harness_traces.py tests/test_local_agent_config.py \
+  tests/test_benchmark_matrix.py tests/test_benchmark_provenance.py \
+  tests/test_exact_token_benchmark.py tests/test_speculative_benchmark.py
+# 171 passed
+```
+
+The same W7900/gfx1100 Q4_K_M 4K/c1 cache-off server and A1 command were rerun.
+Turn 0 now passed its exact oracle and measured SSE, proving the original public-
+envelope blocker is removed. Turn 1 then failed naturally before measurement:
+after the canonical prior read/result transcript, the model emitted an empty
+`<tool_call>`, Qwen role/template tokens, and reasoning instead of a `grep`
+JSON body. At 128 IDs the server returned `finish_reason=length`,
+`finish_details.reason=invalid_tool_call`, `phase=reasoning`, and no successful
+public tool call. This is a live multi-turn model/tool-quality boundary. It was
+not bypassed with fixture-conditioned token forcing.
+
+No complete `/tmp/agentic-small-c1-a1.json` was emitted and no performance
+number/rollup was retained. Next, separate the natural quality/repair lane from
+the deterministic performance lane, add response-owned exact IDs to measured
+SSE, and keep the c4/c8 startup-capacity blocker explicit.

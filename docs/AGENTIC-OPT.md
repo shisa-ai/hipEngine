@@ -502,8 +502,22 @@ states its exact arguments. The clarified first oracle then selected the exact
 these explicitly tool-only calls, so no measured SSE interval, artifact, or
 performance number was retained.
 
-Next actions are concrete: remove Qwen template terminal residue from validated
-public tool envelopes with a server RED test, rerun A1 c1, then expose measured
-SSE response-owned generated IDs. C4/C8 for the 2K family also needs a capacity
-plan that passes the startup guard rather than bypassing it; the 8K family needs
-a separate lower-concurrency context configuration.
+The terminal-residue follow-up is now GREEN for blocking and SSE. The parser
+removes repeated `<|im_end|>` only from the outer edges of text surrounding a
+successfully parsed tool block; an interior literal and non-tool structured
+output remain unchanged. On the same W7900 rerun, turn 0 then passed both its
+oracle and measured SSE. Turn 1 exposed the next boundary: after the valid prior
+assistant/read/result transcript, Qwen emitted an empty `<tool_call>`, role/
+template tokens, and then reasoning instead of the forced `grep` arguments. At
+128 tokens the server correctly returned `finish_reason=length` with
+`finish_details.reason=invalid_tool_call`, rather than publishing malformed
+output. No complete-workload artifact or timing row was retained.
+
+Next actions are now split by purpose. A live-agent quality lane should keep
+this natural multi-turn failure and measure repair/success rates. The
+performance lane needs a deterministic, non-prompt-conditioned way to obtain
+valid multi-turn envelopes; do not hardcode fixture argument tokens to make it
+pass. Independently, expose measured SSE response-owned generated IDs. C4/C8 for
+the 2K family also needs a capacity plan that passes the startup guard rather
+than bypassing it; the 8K family needs a separate lower-concurrency context
+configuration.
