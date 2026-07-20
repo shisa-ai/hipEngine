@@ -170344,3 +170344,22 @@ Cached automatic tracing confirms one rowtile5 and one rowtile3 launch, both at
 128 threads/grid `1986560x1`, using 168/104 VGPR, 1,280/768 B LDS, and zero
 scratch. Profile total **4.711116 ms** is diagnostic. Focused validation:
 chunk/backend **30 passed**, dense-Q6T16 **6 passed**.
+
+### Clean F3K direct retention and publication
+
+Committed implementation as `11910c27`, then ran a tracked-clean detached
+physical-C8 p512/d128 gate. The first attempted capture was correctly discarded
+from publication because a convenience `.venv` symlink made provenance
+untracked-dirty; after removing it, the clean samples are
+**152.680701/152.708625/152.760971 tok/s**, median **152.708625**. This is
+**+0.3397%** over clean F3I **152.191614**, with only **0.0267%**
+stdev/median. All trajectories repeat exactly. The 1,024-token window is
+**6.705581 s**, saving **22.780 ms** versus F3I. Raw clean direct SHA-256 is
+`3602d69199f695f56349bbee038e0a70dc70c41c343d71a33488e26f3bf30cbf`.
+
+Published compact artifact
+`benchmarks/results/2026-07-20-gfx1151-gguf-q6t16-lm-head-chunk5-c8-retained.json`
+(6,269 bytes, SHA-256
+`1f46cf35bf10608f0895c619ce255de6b76ebf3357c3fb5cc48136044c85c8cd`).
+The retained claim is clean direct physical C8; the exact positive
+same-checkout server A/B remains supporting diagnostic evidence.
