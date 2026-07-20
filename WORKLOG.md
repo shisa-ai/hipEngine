@@ -169069,3 +169069,62 @@ fully passing at **46.470 exact goodput tok/s**, versus **46.453** before the ho
 change; TTFT p95 is **0.510 s**, ITL p99 **0.292 s**, no fallback occurs, and
 final ownership is clean. Decision: retain the deterministic host-work removal;
 the final multi-width repeat will decide the aggregate publication row.
+
+## 2026-07-20 — Discard terminal GGUF packed state instead of scattering it
+
+The completion-path profile found a smaller independent lifecycle cost: when
+all rows sharing one packed owner have already reached `done`, completion still
+scattered every packed layer back into sessions immediately before resetting
+those sessions. The runner now closes any packed graph, clears owner references,
+and discards that dead scratch state. If even one related row remains live, the
+existing graph/state flush is unchanged. This does not alter model math, KV
+ownership, output IDs, or the mixed-membership survivor path.
+
+A low-overhead method-timing shim ran the same real-Uvicorn gfx1151
+Q4_K_M/BF16-KV p512/d32 C1/C8 blocking plus delayed-C8 packet. The control
+wrapper monkey-patched only `_flush_row_owner()` back to the prior unconditional
+scatter; the candidate wrapper used the source tree. Both commands were:
+
+```bash
+.venv/bin/python scripts/server_f1_concurrency_bench.py \
+  --engine hipengine \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1151 --quant gguf_q4_k_m \
+  --hipengine-python /tmp/hipengine-{terminal-control,hotprofile}-python \
+  --hipengine-kv-storage bf16 --hipengine-route-expectation native \
+  --hipengine-prefill-decode-policy fair --generation-batch-window-ms 5 \
+  --hipengine-prefill-chunk-tokens 256 --concurrencies 1,8 \
+  --live-concurrency 8 --prompt-length 512 --decode-tokens 32 \
+  --oracle-rows 1 --ctx-per-seq 1024 --warmup-runs 0 --measured-runs 1 \
+  --stream-warmup-runs 0 --stream-measured-runs 0 \
+  --live-join-after-tokens 8 \
+  --compiler-version-file /tmp/hipengine-gfx1151-native-cycle-hipcc-version.txt \
+  --memory-domain gtt --drm-card-index 0 --memory-poll-ms 10 \
+  --work-dir /tmp/gfx1151-c8-terminal-{control,candidate}/work \
+  --json /tmp/gfx1151-c8-terminal-{control,candidate}/result.json
+```
+
+The matched old control executes **41 packed session scatters / 228.681 ms**.
+The two candidate-side profiles execute **31 / 160.543 ms** and
+**35 / 187.167 ms**, removing **6-10 scatters and 41.514-68.138 ms** from the
+focused packet. Blocking throughput is noise-flat at **42.993 control versus
+42.985/43.125 tok/s candidates**; delayed-C8 is directionally consistent at
+**38.228 -> 38.761/38.886 tok/s (+1.39%/+1.72%)**. This d32 profiler packet is
+development attribution, not a retained throughput row: `oracle_rows=1` scores
+only two of the four prompt variants, warmup/streaming were intentionally zero,
+and the harness therefore reports `failed_gate`. The final clean p512/d128
+full-oracle publication packet remains required.
+
+Host lifecycle coverage passes both all-done and live-survivor branches, ordinary
+graph flush/close, session reuse, and the complete resident-focused bundle:
+
+```bash
+.venv/bin/python -m pytest tests/test_generation_qwen35_gguf_sampling.py \
+  -k resident -q --tb=short
+# 17 passed
+.venv/bin/python -m pytest -q \
+  tests/test_generation_qwen35_gguf_sampling.py::test_gguf_resident_runner_discards_only_terminal_packed_state \
+  tests/test_generation_qwen35_gguf_sampling.py::test_gguf_resident_runner_captures_replays_and_closes_packed_graph \
+  tests/test_generation_qwen35_gguf_sampling.py::test_gguf_resident_runner_releases_packed_workspace_before_reusing_session
+# 4 passed
+```

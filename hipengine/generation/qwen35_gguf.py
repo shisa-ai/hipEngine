@@ -5751,6 +5751,8 @@ class Qwen35GGUFResidentModelRunner:
     def _close_packed_decode_graphs(
         self,
         rows: Sequence[_GGUFResidentLoopRow],
+        *,
+        flush_state: bool = True,
     ) -> None:
         graphs = {
             id(graph): graph
@@ -5770,7 +5772,7 @@ class Qwen35GGUFResidentModelRunner:
                 self._observe_graph_handles(sessions)
             was_open = not bool(getattr(graph, "closed", False))
             flush = getattr(graph, "flush_packed_state", None)
-            if was_open and callable(flush):
+            if was_open and flush_state and callable(flush):
                 flush()
             close = getattr(graph, "close", None)
             if was_open and callable(close):
@@ -5863,10 +5865,26 @@ class Qwen35GGUFResidentModelRunner:
             for candidate in (candidate_row.slot,)
             if candidate is not None and candidate.packed_decode_owner is owner
         ]
-        self._close_packed_decode_graphs(related_rows)
-        self.generator._flush_ar_packed_decode_owners(
-            [candidate.slot for candidate in related_rows if candidate.slot is not None]
+        all_done = bool(related_rows) and all(
+            candidate.slot is not None and candidate.slot.done
+            for candidate in related_rows
         )
+        self._close_packed_decode_graphs(
+            related_rows,
+            flush_state=not all_done,
+        )
+        concrete = [
+            candidate.slot for candidate in related_rows if candidate.slot is not None
+        ]
+        if all_done:
+            # No session survives this physical group, so packed scratch state
+            # has no future consumer. Closing the graph and clearing ownership
+            # is sufficient; scattering every layer back to sessions only to
+            # reset them immediately adds a terminal GPU synchronization.
+            for slot in concrete:
+                slot.packed_decode_owner = None
+            return
+        self.generator._flush_ar_packed_decode_owners(concrete)
 
     def _flush_all_packed_owners(self) -> None:
         rows = [row for row in self._rows.values() if row.slot is not None]

@@ -2631,6 +2631,68 @@ def test_gguf_resident_runner_waits_for_stable_membership_before_graph_capture()
     assert runner._packed_graph_capture_membership_stable() is True
 
 
+@pytest.mark.parametrize(
+    ("done_values", "expected_events"),
+    [
+        ((True, True), ("close", "invalidate")),
+        ((True, False), ("flush", "close", "invalidate", "owner_flush")),
+    ],
+    ids=("all_done", "live_survivor"),
+)
+def test_gguf_resident_runner_discards_only_terminal_packed_state(
+    done_values: tuple[bool, bool],
+    expected_events: tuple[str, ...],
+) -> None:
+    events: list[str] = []
+    owner = SimpleNamespace()
+
+    class FakeGraph:
+        sessions = ()
+        closed = False
+
+        def flush_packed_state(self) -> bool:
+            events.append("flush")
+            return True
+
+        def close(self) -> None:
+            self.closed = True
+            events.append("close")
+
+    graph = FakeGraph()
+    slots = [
+        SimpleNamespace(
+            packed_decode_owner=owner,
+            packed_decode_graph=graph,
+            done=done,
+        )
+        for done in done_values
+    ]
+    rows = [SimpleNamespace(slot=slot) for slot in slots]
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    runner._rows = {index: row for index, row in enumerate(rows)}
+    runner._kv_graph_invalidation_count = 0
+    runner._record_graph_invalidations = lambda handles, count: events.append(
+        "invalidate"
+    )
+
+    def flush_owners(concrete) -> None:
+        events.append("owner_flush")
+        for slot in concrete:
+            slot.packed_decode_owner = None
+
+    runner.generator = SimpleNamespace(
+        _flush_ar_packed_decode_owners=flush_owners,
+    )
+
+    runner._flush_row_owner(rows[0])
+
+    assert events == list(expected_events)
+    assert all(slot.packed_decode_graph is None for slot in slots)
+    assert all(slot.packed_decode_owner is None for slot in slots)
+
+
 def test_gguf_resident_runner_captures_replays_and_closes_packed_graph() -> None:
     events: list[tuple] = []
 
