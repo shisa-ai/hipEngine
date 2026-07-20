@@ -40,8 +40,10 @@ raw-IQ, decode, and scheduler tranches:
 - Reprofiling returned dense Q8 to first. The third exact Q8 step widens output
   reuse from 8x4 to 16x4 only at measured row thresholds, reaching
   `707.420/626.077 tok/s` at 512/mixed-4K. The exact 8x8 alternative regressed
-  every production shape and was removed; short-row and unaligned shapes retain
-  the 8x4/8x2/pack8 fallbacks.
+  every production shape and was removed. A subsequent exact 32x2 schedule was
+  also removed after regressing all nine production shapes by 8.28–89.99%
+  despite matching 16x4's VGPR/LDS/scratch resources; short-row and unaligned
+  shapes retain the 8x4/8x2/pack8 fallbacks.
 - Decode work retained the wave-uniform IQ3 address cleanup and aggregate
   MoE-tail/next-RMS fusion, rejected hierarchical top-k, IQ4 tile4, and routed
   stream overlap, and currently measures `101.216 tok/s` at 512 and
