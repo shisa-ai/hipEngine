@@ -502,6 +502,62 @@ def test_row_bulk_t16_direct_selected_prefill_routes_without_compact_scheduler(m
     assert ("weighted_shared_batch", None) in calls
 
 
+def test_physical_c8_t16_pairreuse_uses_backend_scope_and_env_rollback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gate = _FakeWeight(
+        "ffn_gate_exps", "gguf_q4_k_t16_v1", 12, experts=256, out_features=512, in_features=2048
+    )
+    up = _FakeWeight(
+        "ffn_up_exps", "gguf_q4_k_t16_v1", 13, experts=256, out_features=512, in_features=2048
+    )
+    calls: list[str] = []
+    monkeypatch.delenv("HIPENGINE_GGUF_T16_SELECTED_PAIRREUSE", raising=False)
+    monkeypatch.setattr(
+        qgr,
+        "gguf_q4_k_t16_selected_dual_pairreuse_gemv_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("pairreuse"),
+    )
+    monkeypatch.setattr(
+        qgr,
+        "gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("baseline"),
+    )
+
+    kwargs = dict(
+        x_rows=8,
+        rows=64,
+        num_experts=256,
+        in_features=2048,
+        out_features=512,
+        stream=7,
+        runtime=object(),
+    )
+    with qgr._gguf_t16_selected_pairreuse_min_rows_scope(8):
+        assert qgr._launch_selected_raw_gguf_moe_pair(
+            gate,
+            up,
+            100,
+            130,
+            150,
+            160,
+            **kwargs,
+        )
+    monkeypatch.setenv("HIPENGINE_GGUF_T16_SELECTED_PAIRREUSE", "0")
+    with qgr._gguf_t16_selected_pairreuse_min_rows_scope(8):
+        assert qgr._launch_selected_raw_gguf_moe_pair(
+            gate,
+            up,
+            100,
+            130,
+            150,
+            160,
+            **kwargs,
+        )
+
+    assert calls == ["pairreuse", "baseline"]
+
+
 def test_row_bulk_f32_post_norm_shared_q8_routes_shared_singletons(monkeypatch: pytest.MonkeyPatch) -> None:
     runner, scratch = _fake_runner_and_scratch()
     layer = runner.weights.layer(0)

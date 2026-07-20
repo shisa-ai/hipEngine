@@ -17,6 +17,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     build_gguf_t16_selected_gemv,
     gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
+    gguf_q4_k_t16_selected_dual_pairreuse_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_gemv_fp16_fp16_out,
     gguf_q4_k_t16_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out,
@@ -715,6 +716,61 @@ def test_p9_d4_q4_t16_direct_dual_silu_matches_split_kernel_bits(t16_selected_li
     with np.errstate(over="ignore"):
         expected_bits = _f32_to_bf16_u16((gate / (1.0 + np.exp(-gate))) * up)
     np.testing.assert_array_equal(fused_bits, expected_bits)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_q4_t16_direct_dual_pairreuse_matches_production_bits(t16_selected_library) -> None:
+    """Repeated expert IDs may share weights without changing row arithmetic."""
+
+    x_rows, top_k = 8, 8
+    rows = x_rows * top_k
+    # Cover repeated experts across different input rows plus unpaired IDs.
+    selected = np.array(
+        [
+            0, 1, 2, 3, 4, 5, 6, 7,
+            8, 9, 10, 11, 12, 13, 14, 15,
+            16, 17, 18, 19, 20, 21, 22, 23,
+            24, 25, 26, 27, 28, 29, 30, 31,
+            0, 1, 2, 3, 4, 5, 6, 7,
+            8, 9, 10, 11, 12, 13, 14, 15,
+            16, 17, 18, 19, 20, 21, 22, 23,
+            32, 33, 34, 35, 36, 37, 38, 39,
+        ],
+        dtype=np.int64,
+    )
+    in_features, out_features = 2048, 512
+    num_experts = 40
+    rng = np.random.default_rng(20260720)
+    qa = _stack_experts(make_q4_k_weight, out_features, in_features, num_experts, seed=61)
+    qb = _stack_experts(make_q4_k_weight, out_features, in_features, num_experts, seed=67)
+    ta = repack_gguf_q4_k_tile16(qa).tiles
+    tb = repack_gguf_q4_k_tile16(qb).tiles
+    x = rng.normal(0.0, 0.3, size=(x_rows, in_features)).astype(np.float32)
+    x_bf16 = _f32_to_bf16_u16(x)
+
+    ref_a, ref_b = _run_direct_dual(
+        gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
+        x_bf16,
+        selected,
+        ta,
+        tb,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+    actual_a, actual_b = _run_direct_dual(
+        gguf_q4_k_t16_selected_dual_pairreuse_gemv_bf16_bf16_out,
+        x_bf16,
+        selected,
+        ta,
+        tb,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+
+    np.testing.assert_array_equal(actual_a, ref_a)
+    np.testing.assert_array_equal(actual_b, ref_b)
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")

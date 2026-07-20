@@ -169852,3 +169852,69 @@ Compact retained artifact:
 because the manifest references missing external checkout
 `/home/lhl/amd-gpu-tuning/reference/atlas`; this change does not port or modify
 a kernel body, and the existing Q8T16 source lineage is unchanged.
+
+## 2026-07-20 — Retain gfx1151 physical-C8 selected-expert pair reuse
+
+The clean F3B trace attributes **200/748 dispatches and 19.519 ms (36.08%)**
+of profiler time to selected-MoE/combine. Q4T16 gate/up is the largest selected
+leaf (**10.384 ms / 40 launches**), followed by Q5T16 down (**8.906 ms / 40**).
+Both production bodies launch one block per selected lane/output tile and reread
+an expert's weights for every repeated dynamic selected ID.
+
+Added `q4_k_t16_selected_dual_pairreuse_direct_gemv_kernel`: two wave32 ballots
+build a 64-lane same-expert mask, consecutive occurrences pair, and one
+128-thread block evaluates both rows. Gate and up run sequentially so the live
+accumulator count stays equal to production; each row preserves the original K
+partition, wave reduction, cross-wave reduction, and BF16 rounding. Unique IDs
+execute the established dual body in the same launch. Backend capability
+`GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS=8` admits only gfx1151 physical C8;
+gfx1100 remains zero. `HIPENGINE_GGUF_T16_SELECTED_PAIRREUSE=0` is rollback.
+
+On Radeon 8060S/gfx1151, TheRock HIP 7.15, Qwen3.6-35B-A3B UD-Q4_K_M,
+BF16 KV, one HIP queue, the real `x_rows=8, selected_rows=64, 2048x512`
+Q4T16 leaf measures:
+
+| Selected IDs | Production | Pair reuse | Delta | Correctness |
+| --- | ---: | ---: | ---: | ---: |
+| unique | 366.313 us | 367.025 us | +0.19% | byte-exact |
+| uniform random | 327.486 us | 328.941 us | +0.44% | byte-exact |
+| 32 repeated pairs | 363.114 us | **249.404 us** | **-31.32%** | byte-exact |
+
+Command: `HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python scripts/gguf_q4_k_t16_selected_dual_dp4a_microbench.py --x-rows 8 --rows 64 --experts 256 --in-features 2048 --out-features 512 --selection-pattern {unique,random,paired} --warmup 20 --iters 100`.
+
+The no-env combined-default `scripts/gguf_packed_ar_state_oracle.py --rows 8
+--prefill-mode independent_c1 --decode-mode graph --capture-layer-hidden
+--decode-steps 1` passes **320/320 layer outputs**, token, initial state,
+Conv/GDN, live KV, lifecycle, and final state byte-exact with no divergence.
+The full selected-T16 GPU fixture has **89 passed**; routing/stage timing has
+**24 passed**; gfx1151 backend has **23 passed**.
+
+Canonical direct p512/d128 native-C8 same-checkout control is **133.868 tok/s**.
+Three pair-reuse samples are **144.029/143.903/143.994**, median
+**143.994 tok/s (+7.57%)**, stdev/median about **0.04%**. All three eight-row,
+128-token trajectory sets repeat exactly. Command:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_BACKEND=hip_gfx1151 \
+HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 \
+.venv/bin/python scripts/gguf_packed_ar_bench.py \
+  --model /home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1151 --configurations native_c8 \
+  --prompt-length 512 --decode-steps 128 --warmup-runs 1 --measured-runs 3
+```
+
+A matched real-Uvicorn C1/C8 p512/d128 packet is
+`accepted_backend_packet`; all independent oracle, warmup, blocking, exact-SSE,
+and delayed-admission rows pass, all C8 rows use native packed decode, and live
+admission occurs during the first request. Versus the latest retained complete
+server row, C8 improves blocking **86.185 -> 87.770 tok/s (+1.84%)**, exact SSE
+median **84.196 -> 84.798 (+0.72%)**, and delayed **67.788 -> 68.242 (+0.67%)**.
+This demonstrates benefit on eight distinct server requests, not only the
+canonical duplicated direct trajectories.
+
+Cached `rocprofv3 --kernel-trace` micro smoke records four pair-reuse launches:
+128 threads, `Grid_Size_X=4096`, `Grid_Size_Y=64`, median profiled duration
+**240.388 us**, 200 VGPR, 128 SGPR, 1,032 B LDS, and zero scratch. `python3
+scripts/check_lineage.py --kind kernel --diff stat` remains mechanically blocked
+by missing external checkout `/home/lhl/amd-gpu-tuning/reference/atlas`; this is
+an in-tree kernel design, not an external port.
