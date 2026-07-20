@@ -28,6 +28,11 @@ from hipengine.core.memory import (
     malloc,
 )
 from hipengine.kernels.cpu_reference import gguf_quant_gemv
+from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
+    build_gguf_k_gemv,
+    gguf_q8_0_gemv_bf16_bf16_out,
+    gguf_q8_0_pack8_gemv_bf16_bf16_out,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_pack8_gemv import (
     build_gguf_q8_0_pack8_gemv,
     gguf_q8_0_pack8_dual_gate_up_gemv_decode_bf16_bf16_out,
@@ -58,6 +63,13 @@ def q8_0_library():
     if not HIP_AVAILABLE:
         pytest.skip("HIP runtime is not available")
     return build_gguf_q8_0_pack8_gemv(load=True)
+
+
+@pytest.fixture(scope="module")
+def q8_0_legacy_library():
+    if not HIP_AVAILABLE:
+        pytest.skip("HIP runtime is not available")
+    return build_gguf_k_gemv(load=True)
 
 
 # ---------------------------------------------------------------------------
@@ -157,6 +169,44 @@ def _run_dual(fn, x, qa, qb, rows, in_features, oa, ob, out_dtype, library):
 
 
 _TOL = dict(atol=5.0e-4, rtol=5.0e-3)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.parametrize(
+    "rows,in_features,out_features",
+    [(4, 512, 256), (3, 2048, 512)],
+)
+def test_legacy_pack8_multirow_is_bit_exact_to_single_output_prefill(
+    rows, in_features, out_features, q8_0_legacy_library
+) -> None:
+    """Pack eight outputs without changing each output's reduction order."""
+
+    rng = np.random.default_rng(rows * 31 + in_features + out_features)
+    qweight = make_q8_0_weight(out_features, in_features)
+    x_bf16 = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+    )
+    scalar = _run_single(
+        gguf_q8_0_gemv_bf16_bf16_out,
+        x_bf16,
+        qweight,
+        rows,
+        in_features,
+        out_features,
+        np.uint16,
+        q8_0_legacy_library,
+    )
+    pack8 = _run_single(
+        gguf_q8_0_pack8_gemv_bf16_bf16_out,
+        x_bf16,
+        qweight,
+        rows,
+        in_features,
+        out_features,
+        np.uint16,
+        q8_0_legacy_library,
+    )
+    assert np.array_equal(pack8, scalar)
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")

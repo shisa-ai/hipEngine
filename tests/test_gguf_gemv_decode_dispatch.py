@@ -284,11 +284,11 @@ def test_gguf_gemv_decode_enabled_resolver_precedence(monkeypatch) -> None:
 
 
 def test_gemv_decode_prefill_path_unaffected_by_opt_in() -> None:
-    """rows>1 never gets the GEMV-decode rewrite, regardless of opt-in state."""
+    """rows>1 keeps exact pack8 prefill regardless of GEMV-decode opt-in."""
 
     set_gemv_decode_enabled(True)
     key, _, _ = _capture_launch(rows=4)
-    assert key == _Q8_PREFILL
+    assert key == _Q8_DECODE_PACK8
 
 
 def test_gemv_decode_fallback_when_registry_key_missing() -> None:

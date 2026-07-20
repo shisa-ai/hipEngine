@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from types import SimpleNamespace
 
 import pytest
@@ -185,6 +184,7 @@ def _reset_wmma_prefill_state(monkeypatch):
 _WMMA_BF16 = KernelKey("hip_gfx1100", "linear", "gguf_q8_0", "wmma_prefill_bf16_bf16_out")
 _PREFILL_BF16 = KernelKey("hip_gfx1100", "linear", "gguf_q8_0", "prefill_bf16_bf16_out")
 _DECODE_PACK8_BF16 = KernelKey("hip_gfx1100", "linear", "gguf_q8_0", "pack8_gemv_bf16_bf16_out")
+_PREFILL_PACK8_BF16 = _DECODE_PACK8_BF16
 _Q4_WMMA_BF16 = KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "wmma_prefill_bf16_bf16_out")
 _Q4_PREFILL_BF16 = KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "prefill_bf16_bf16_out")
 _Q4_GEMV_BF16 = KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "gemv_bf16_bf16_out")
@@ -269,11 +269,18 @@ def test_prefill_config_exposes_wmma_prefill_field() -> None:
     assert coerced.use_wmma_prefill is True
 
 
-def test_wmma_prefill_off_by_default_for_q8_0_rows_gt_1() -> None:
-    """Without any opt-in, rows>1 Q8_0 still goes through the decode-shaped alias."""
+def test_exact_pack8_prefill_is_default_for_q8_0_rows_gt_1() -> None:
+    """Without WMMA opt-in, raw Q8_0 prefill uses the exact pack8 kernel."""
 
-    key, _, _ = _capture_launch(rows=4)
-    assert key == _PREFILL_BF16  # decode-shaped prefill alias, NOT WMMA
+    key, args, kwargs = _capture_launch(rows=4)
+    assert key == _PREFILL_PACK8_BF16
+    assert args == (100, 10, 200, 4, 1024, 2048)
+    assert kwargs == {"stream": 7, "runtime": "runtime-sentinel"}
+
+
+def test_exact_pack8_prefill_requires_eight_output_columns() -> None:
+    key, _, _ = _capture_launch(rows=4, out_features=2049)
+    assert key == _PREFILL_BF16
 
 
 def test_wmma_prefill_kwarg_opts_in_q8_0_rows_gt_1() -> None:
@@ -293,7 +300,7 @@ def test_wmma_prefill_kwarg_can_force_off_even_with_session_on() -> None:
 
     set_wmma_prefill_enabled(True)
     key, _, _ = _capture_launch(rows=4, use_wmma_prefill=False)
-    assert key == _PREFILL_BF16
+    assert key == _PREFILL_PACK8_BF16
 
 
 def test_wmma_prefill_env_var_opts_in(monkeypatch) -> None:
@@ -311,11 +318,11 @@ def test_wmma_prefill_env_var_accepts_common_truthy_values(monkeypatch) -> None:
         assert key == _WMMA_BF16, f"env value {value!r} should enable WMMA"
 
 
-def test_wmma_prefill_env_var_falsy_values_keep_decode_path(monkeypatch) -> None:
+def test_wmma_prefill_env_var_falsy_values_keep_exact_pack8_path(monkeypatch) -> None:
     for value in ("", "0", "false", "no", "off"):
         monkeypatch.setenv("HIPENGINE_GGUF_WMMA_PREFILL", value)
         key, _, _ = _capture_launch(rows=4)
-        assert key == _PREFILL_BF16, f"env value {value!r} should keep decode path"
+        assert key == _PREFILL_PACK8_BF16, f"env value {value!r} should keep exact pack8"
 
 
 def test_wmma_prefill_session_toggle_persists_until_cleared() -> None:
@@ -326,11 +333,11 @@ def test_wmma_prefill_session_toggle_persists_until_cleared() -> None:
     assert key == _WMMA_BF16
     set_wmma_prefill_enabled(False)
     key, _, _ = _capture_launch(rows=4)
-    assert key == _PREFILL_BF16
+    assert key == _PREFILL_PACK8_BF16
     set_wmma_prefill_enabled(None)
-    # back to env default (unset in this fixture) -> decode path
+    # Back to the env default (unset in this fixture) -> exact pack8.
     key, _, _ = _capture_launch(rows=4)
-    assert key == _PREFILL_BF16
+    assert key == _PREFILL_PACK8_BF16
 
 
 def test_wmma_prefill_session_context_manager_restores_previous_state() -> None:
@@ -338,9 +345,9 @@ def test_wmma_prefill_session_context_manager_restores_previous_state() -> None:
     with wmma_prefill_session(True):
         key, _, _ = _capture_launch(rows=4)
         assert key == _WMMA_BF16
-    # Restored to the previous explicit-off session state
+    # Restored to the previous explicit-off session state.
     key, _, _ = _capture_launch(rows=4)
-    assert key == _PREFILL_BF16
+    assert key == _PREFILL_PACK8_BF16
 
 
 def test_wmma_prefill_decode_path_unaffected_by_opt_in() -> None:
@@ -491,11 +498,11 @@ def test_wmma_prefill_q5_k_not_yet_supported_keeps_decode_path() -> None:
     assert key == q5_prefill
 
 
-def test_wmma_prefill_unaligned_in_features_falls_back_to_decode_path() -> None:
-    """Q8_0 requires in_features % 32 == 0; unaligned shapes skip the WMMA path."""
+def test_wmma_prefill_unaligned_in_features_falls_back_to_exact_pack8_path() -> None:
+    """Q8_0 shapes outside WMMA policy retain the exact pack8 schedule."""
 
     key, _, _ = _capture_launch(rows=4, in_features=1000, use_wmma_prefill=True)
-    assert key == _PREFILL_BF16
+    assert key == _PREFILL_PACK8_BF16
 
 
 def test_wmma_prefill_threads_silently_dropped_on_wmma_path() -> None:
@@ -504,9 +511,9 @@ def test_wmma_prefill_threads_silently_dropped_on_wmma_path() -> None:
     key, _, kwargs = _capture_launch(rows=4, use_wmma_prefill=True, threads=128)
     assert key == _WMMA_BF16
     assert "threads" not in kwargs
-    # And confirm threads still flows through on the decode path:
+    # And confirm threads still flows through on the exact pack8 path:
     key2, _, kwargs2 = _capture_launch(rows=4, threads=128)
-    assert key2 == _PREFILL_BF16
+    assert key2 == _PREFILL_PACK8_BF16
     assert kwargs2.get("threads") == 128
 
 

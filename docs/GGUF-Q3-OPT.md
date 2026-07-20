@@ -1,12 +1,57 @@
 # hipEngine Q3 optimization review
 
-**Date:** 2026-07-19
+**Date:** 2026-07-19 review; implementation status updated 2026-07-20
 
-**Scope:** read-only review of qwen-kernel and hipEngine Q3/Q4/PARO paths
+**Scope:** retained qwen-kernel/hipEngine Q3 analysis plus measured implementation status
 
 **Primary target:** Qwen3.6-35B-A3B `UD-Q3_K_M` on gfx1100
 
-**Constraint:** no hipEngine source files were modified for this review
+**Provenance:** the original review below was read-only; the status section records later in-tree work without rewriting the source-derived analysis
+
+## Current implementation status (2026-07-20)
+
+The original profile and recommendations remain useful provenance, but they no
+longer describe the current default path. The campaign has completed the first
+raw-IQ, decode, and scheduler tranches:
+
+- Expert-major raw IQ3/IQ4 prefill is default-on with an exact direct fallback.
+  In the retained native-attention profile it reduced selected-IQ time
+  `994.668 -> 613.995 ms` (-38.27%) and total kernel sum
+  `4,396.145 -> 4,078.667 ms` (-7.22%), although the full 512 wall result was
+  flat within run spread because the old row scheduler dominated.
+- The temporary native-attention quarantine is gone. The quant-axis
+  `gguf_ud_q3_k_m` plugin now preserves decode-order GDN and full-attention
+  arithmetic while running the whole prompt in bulk. Mixed-64 hidden rows and
+  logits are bit-exact to token serial, as are the full 4K logits. The first
+  retained 4K result was `211.936 tok/s`, versus `10.907 tok/s` for the same
+  token-serial oracle.
+- The first profile-driven projection fix promotes the existing exact raw-Q8
+  eight-output schedule for multirow BF16 prefill. Three-run 512 throughput is
+  `364.414 tok/s`; the same mixed-pattern 4K gate moves
+  `211.936 -> 342.902 tok/s` (+61.79%). Primitive outputs are BF16-bit equal to
+  the old scalar kernel, and the full-model exact gates remain green.
+- Decode work retained the wave-uniform IQ3 address cleanup and aggregate
+  MoE-tail/next-RMS fusion, rejected hierarchical top-k, IQ4 tile4, and routed
+  stream overlap, and currently measures `101.216 tok/s` at 512 and
+  `108.383 tok/s` at 4K on GPU1. The source-derived 150–190 tok/s feasibility
+  argument remains valid, but hipEngine has not reached that band.
+
+The post-Q8-pack8 cache-only 4K trace is now the active prefill Amdahl ledger:
+
+| Family | Time | Share of 11,832.588 ms kernel sum |
+|---|---:|---:|
+| Dense raw Q8 pack8 | 5,958.328 ms | **50.36%** |
+| Grouped IQ3 + IQ4 | 3,028.267 ms | **25.59%** |
+| Exact GDN | 1,326.134 ms | **11.21%** |
+| Warp-split full attention | 822.339 ms | **6.95%** |
+
+Dense Q8 therefore remains first in Amdahl order: the next prefill experiment
+must reuse each exact Q8 row across prompt rows (or provide an equally exact
+source-justified sibling) before opening an IQ compact/repack tranche. Reprofile
+again when Q8 ceases to dominate. **The ~3,000 tok/s objective is not closed:**
+342.902 tok/s is the first retained step, not a target claim. Full evidence and
+commands are in
+[`benchmarks/results/2026-07-20-gpu1-q3-exact-q8-pack8-prefill.json`](../benchmarks/results/2026-07-20-gpu1-q3-exact-q8-pack8-prefill.json).
 
 ## Executive recommendation
 
