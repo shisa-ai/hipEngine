@@ -66,6 +66,7 @@ from hipengine.quant.gguf import dequantize_gguf_data
 from hipengine.runtime.qwen35_gguf_runner import (
     Qwen35GGUFFullStackRunner,
     Qwen35GGUFResidentSession,
+    _gguf_device_kv_contiguous_base_row,
     _rope_tables as _gguf_rope_tables,
 )
 from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
@@ -4765,7 +4766,7 @@ class Qwen35GGUFResidentModelRunner:
         requested = getattr(self.generator, "_prepared_max_sequence_length", None)
         if requested is None and max_sequence_length is not None:
             requested = int(max_sequence_length)
-        if requested == self._max_sequence_length and self._available:
+        if requested == self._max_sequence_length and (self._available or self._rows):
             return
         if self._rows:
             raise RuntimeError("cannot resize resident GGUF sessions while requests are active")
@@ -5170,12 +5171,43 @@ class Qwen35GGUFResidentModelRunner:
         lease = row.lease or self._acquire_lease()
         row.lease = lease
         start = time.perf_counter()
-        result = lease.session.prefill(row.prompt_ids, return_logits=False)
+        native_compact_prefill = False
+        # Raw single-session bulk prefill addresses logical KV row zero from the
+        # cache base. A reused dynamic allocation may begin later in its backing
+        # chunk (or be non-contiguous), so route it through the block-table-aware
+        # packed prefill path instead of overwriting another live request's KV.
+        if _gguf_device_kv_contiguous_base_row(lease.session) == 0:
+            result = lease.session.prefill(row.prompt_ids, return_logits=False)
+        else:
+            prefill_batch = getattr(lease.session, "prefill_batch_native", None)
+            if not callable(prefill_batch):
+                raise RuntimeError(
+                    "shifted dynamic GGUF KV requires block-table-aware prefill"
+                )
+            with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
+                results = prefill_batch(
+                    [row.prompt_ids],
+                    sessions=[lease.session],
+                    full_prompt_lengths=[len(row.prompt_ids)],
+                    return_logits=False,
+                    return_hidden_seeds=False,
+                )
+            result_list = [] if results is None else list(results)
+            if len(result_list) != 1:
+                raise RuntimeError(
+                    "shifted dynamic GGUF prefill did not return exactly one result"
+                )
+            result = result_list[0]
+            native_compact_prefill = True
         self._route_counts["native_full_prefill_rows"] += 1
         row.prefill_ms += _timing_ms_since(start)
         row.prefill_chunk_count += 1
         self._refresh_prefix_cache(row)
-        self._finish_native_prefill(row, result, native_compact_prefill=False)
+        self._finish_native_prefill(
+            row,
+            result,
+            native_compact_prefill=native_compact_prefill,
+        )
 
     def _prefill_sampled_row(self, row: _GGUFResidentLoopRow) -> None:
         if row.slot is not None:

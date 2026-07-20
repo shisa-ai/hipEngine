@@ -1847,6 +1847,85 @@ def test_gguf_sampled_packed_unavailable_reports_model_serial_fallback(monkeypat
         assert decode_state["serial_decode_fallback"] is True
 
 
+def test_gguf_resident_prepare_is_idempotent_at_full_occupancy() -> None:
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    runner.generator = SimpleNamespace(_prepared_max_sequence_length=562)
+    runner._max_sequence_length = 562
+    runner._available = []
+    runner._rows = {request_id: object() for request_id in range(8)}
+
+    runner.prepare(max_sequence_length=562)
+
+    assert len(runner._rows) == 8
+
+
+def test_gguf_resident_full_prefill_rebases_reused_dynamic_kv_through_packed_path() -> None:
+    calls: list[tuple] = []
+
+    class FakeSession:
+        position = 0
+        _device_kv_allocation = SimpleNamespace(
+            block_ids=(9,),
+            chunk_start_block_id=8,
+        )
+
+        def prefill(self, token_ids, **kwargs):
+            raise AssertionError(
+                f"shifted dynamic KV must not use raw-cache full prefill: {token_ids!r} {kwargs!r}"
+            )
+
+        def prefill_batch_native(self, token_rows, *, sessions, **kwargs):
+            calls.append(
+                (
+                    tuple(tuple(int(token) for token in row) for row in token_rows),
+                    tuple(sessions),
+                    dict(kwargs),
+                )
+            )
+            self.position = len(token_rows[0])
+            return [SimpleNamespace(token_id=7)]
+
+    session = FakeSession()
+    row = qwen35_gguf._GGUFResidentLoopRow(
+        request_id=1,
+        batch_id=0,
+        row_index=0,
+        request=_request(prompts=("first",), max_tokens=2, ignore_eos=True),
+        prompt_ids=(10, 11),
+        native_greedy=True,
+        native_sampled=False,
+        submitted_at=0.0,
+        lease=qwen35_gguf._GGUFResidentSessionLease(
+            session=session,
+            pool_key=("continuous_ar_dynamic_kv", True, True, 256),
+        ),
+    )
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    runner.generator = SimpleNamespace(tokenizer=_FakeTokenizer())
+    runner._route_counts = Counter()
+    runner._refresh_prefix_cache = lambda candidate: None
+
+    runner._prefill_native_row(row)
+
+    assert len(calls) == 1
+    token_rows, sessions, kwargs = calls[0]
+    assert token_rows == ((10, 11),)
+    assert sessions == (session,)
+    assert kwargs == {
+        "full_prompt_lengths": [2],
+        "return_logits": False,
+        "return_hidden_seeds": False,
+    }
+    assert row.slot is not None
+    assert row.slot.generated_ids == [7]
+    assert row.slot.native_compact_prefill is True
+    assert runner._route_counts["native_full_prefill_rows"] == 1
+
+
 def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) -> None:
     calls: list[tuple] = []
 
