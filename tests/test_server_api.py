@@ -18314,12 +18314,15 @@ def test_metrics_endpoint_exports_resident_loop_d5_observability() -> None:
     assert _metric_value(body, "hipengine_resident_work_prefill_total") == 3
     assert _metric_value(body, "hipengine_resident_work_decode_total") == 9
     assert _metric_value(body, "hipengine_resident_work_reclaim_total") == 5
+    assert _metric_value(body, "hipengine_resident_prefill_chunk_tokens") == 256
+    assert _metric_value(body, "hipengine_resident_fair_prefill_burst_chunks") == 1
+    assert _metric_value(body, "hipengine_resident_consecutive_prefill_chunks") == 0
     assert _metric_value(body, "hipengine_resident_packed_workspace_current_bytes") == 0
     assert _metric_value(body, "hipengine_resident_packed_workspace_release_events_total") == 4
     assert _metric_value(body, "hipengine_resident_packed_workspace_released_bytes_total") == 3330000000
     assert (
-        'hipengine_resident_bucket_info{active_mask="1010",last_work_kind="decode",'
-        'policy="protect_ttft"} 1'
+        'hipengine_resident_bucket_info{active_mask="1010",fair_prefill_burst_chunks="1",'
+        'last_work_kind="decode",policy="protect_ttft"} 1'
         in body
     )
     assert _labeled_metric_value(

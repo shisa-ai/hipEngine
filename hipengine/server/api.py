@@ -6854,6 +6854,16 @@ def _resident_loop_metric_values(snapshot: Mapping[str, Any] | None) -> dict[str
         },
         "policy": {
             "name": str(policy.get("prefill_decode_policy") or "unavailable"),
+            "prefill_chunk_tokens": _non_negative_metric_value(
+                policy.get("prefill_chunk_tokens")
+            ),
+            "fair_prefill_burst_chunks": max(
+                1.0,
+                _non_negative_metric_value(policy.get("fair_prefill_burst_chunks", 1)),
+            ),
+            "consecutive_prefill_chunks": _non_negative_metric_value(
+                policy.get("consecutive_prefill_chunks")
+            ),
             "last_work_kind": str(policy.get("last_work_kind") or "none"),
         },
         "latency": latency_rows,
@@ -6898,6 +6908,9 @@ def _render_prometheus_metrics(
         "hipengine_resident_work_prefill_total": resident["work"]["prefill"],
         "hipengine_resident_work_decode_total": resident["work"]["decode"],
         "hipengine_resident_work_reclaim_total": resident["work"]["reclaim"],
+        "hipengine_resident_prefill_chunk_tokens": resident["policy"]["prefill_chunk_tokens"],
+        "hipengine_resident_fair_prefill_burst_chunks": resident["policy"]["fair_prefill_burst_chunks"],
+        "hipengine_resident_consecutive_prefill_chunks": resident["policy"]["consecutive_prefill_chunks"],
         "hipengine_resident_packed_workspace_current_bytes": resident["packed_workspace"]["current_bytes"],
         "hipengine_resident_packed_workspace_release_events_total": resident["packed_workspace"]["release_events"],
         "hipengine_resident_packed_workspace_released_bytes_total": resident["packed_workspace"]["released_bytes"],
@@ -6952,6 +6965,9 @@ def _render_prometheus_metrics(
         "hipengine_resident_work_prefill_total": "Executed resident prefill work items.",
         "hipengine_resident_work_decode_total": "Executed resident decode work items.",
         "hipengine_resident_work_reclaim_total": "Executed resident reclaim transitions.",
+        "hipengine_resident_prefill_chunk_tokens": "Configured maximum tokens in one resident prefill work item.",
+        "hipengine_resident_fair_prefill_burst_chunks": "Configured maximum consecutive prefill chunks while fair scheduling also has decode work.",
+        "hipengine_resident_consecutive_prefill_chunks": "Current consecutive resident prefill chunks since the last decode work item.",
         "hipengine_resident_packed_workspace_current_bytes": "Current owner-only packed GGUF workspace bytes.",
         "hipengine_resident_packed_workspace_release_events_total": "Reclaimed packed GGUF workspace owners.",
         "hipengine_resident_packed_workspace_released_bytes_total": "Cumulative owner-only packed GGUF workspace bytes reclaimed.",
@@ -7026,6 +7042,7 @@ def _render_prometheus_metrics(
     lines.append(
         "hipengine_resident_bucket_info{"
         f'active_mask="{_escape_prometheus_label_value(str(resident["bucket"]["active_mask"]))}",'
+        f'fair_prefill_burst_chunks="{int(resident["policy"]["fair_prefill_burst_chunks"])}",'
         f'last_work_kind="{_escape_prometheus_label_value(str(resident["policy"]["last_work_kind"]))}",'
         f'policy="{_escape_prometheus_label_value(str(resident["policy"]["name"]))}"'
         "} 1"

@@ -1213,13 +1213,18 @@ class ResidentBatchScheduler:
             slabs.append(slab)
         return tuple(slabs)
 
-    def has_prefill_work(self) -> bool:
-        """Return whether any active request still needs prompt prefill."""
+    def prefill_request_count(self) -> int:
+        """Return the number of active requests that still need prompt prefill."""
 
-        return any(
+        return sum(
             request.remaining_prefill > 0 and not request.finished
             for request in self.active_batch.requests.values()
         )
+
+    def has_prefill_work(self) -> bool:
+        """Return whether any active request still needs prompt prefill."""
+
+        return self.prefill_request_count() > 0
 
     def next_decode_work(
         self,

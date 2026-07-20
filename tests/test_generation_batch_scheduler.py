@@ -17018,6 +17018,7 @@ def test_engine_loop_cli_env_defaults_match_docs() -> None:
     assert config.prefill_decode_policy == "protect_decode"
     assert config.max_active_requests is None
     assert config.max_prefill_chunk_tokens == 256
+    assert config.fair_prefill_burst_chunks == 1
     assert config.kv_pool_initial_pages == 128
     assert config.kv_pool_low_water_pages == 128
     assert config.kv_pool_high_water_pages is None
@@ -17031,6 +17032,7 @@ def test_engine_loop_cli_env_defaults_match_docs() -> None:
         "HIPENGINE_PREFILL_DECODE_POLICY",
         "HIPENGINE_MAX_ACTIVE_REQUESTS",
         "HIPENGINE_MAX_PREFILL_CHUNK_TOKENS",
+        "HIPENGINE_FAIR_PREFILL_BURST_CHUNKS",
         "HIPENGINE_KV_POOL_INITIAL_PAGES",
         "HIPENGINE_KV_POOL_LOW_WATER_PAGES",
         "HIPENGINE_KV_POOL_HIGH_WATER_PAGES",
@@ -17051,6 +17053,7 @@ def test_engine_loop_cli_env_overrides() -> None:
         "HIPENGINE_PREFILL_DECODE_POLICY": "fair",
         "HIPENGINE_MAX_ACTIVE_REQUESTS": "3",
         "HIPENGINE_MAX_PREFILL_CHUNK_TOKENS": "7",
+        "HIPENGINE_FAIR_PREFILL_BURST_CHUNKS": "2",
         "HIPENGINE_KV_POOL_INITIAL_PAGES": "16",
         "HIPENGINE_KV_POOL_LOW_WATER_PAGES": "8",
         "HIPENGINE_KV_POOL_HIGH_WATER_PAGES": "64",
@@ -17064,6 +17067,7 @@ def test_engine_loop_cli_env_overrides() -> None:
         prefill_decode_policy="fair",
         max_active_requests=3,
         max_prefill_chunk_tokens=7,
+        fair_prefill_burst_chunks=2,
         kv_pool_initial_pages=16,
         kv_pool_low_water_pages=8,
         kv_pool_high_water_pages=64,
@@ -17084,6 +17088,8 @@ def test_engine_loop_cli_env_overrides() -> None:
                 "5",
                 "--max-prefill-chunk-tokens",
                 "11",
+                "--fair-prefill-burst-chunks",
+                "3",
                 "--kv-pool-initial-pages",
                 "32",
                 "--kv-pool-low-water-pages",
@@ -17104,6 +17110,7 @@ def test_engine_loop_cli_env_overrides() -> None:
     assert cli_config.prefill_decode_policy == "protect_ttft"
     assert cli_config.max_active_requests == 5
     assert cli_config.max_prefill_chunk_tokens == 11
+    assert cli_config.fair_prefill_burst_chunks == 3
     assert cli_config.kv_pool_initial_pages == 32
     assert cli_config.kv_pool_low_water_pages == 16
     assert cli_config.kv_pool_high_water_pages == 96
@@ -17116,6 +17123,8 @@ def test_engine_loop_cli_env_overrides() -> None:
         EngineLoopConfig(max_active_requests=0)
     with pytest.raises(ValueError, match="max_prefill_chunk_tokens"):
         EngineLoopConfig(max_prefill_chunk_tokens=0)
+    with pytest.raises(ValueError, match="fair_prefill_burst_chunks"):
+        EngineLoopConfig(fair_prefill_burst_chunks=0)
     with pytest.raises(ValueError, match="max_pending_requests"):
         EngineLoopConfig(max_pending_requests=0)
 
@@ -17264,6 +17273,8 @@ def test_resident_scheduler_live_observability_snapshot_covers_d5_contract() -> 
     assert loop_snapshot["scheduler_policy"] == {
         "prefill_decode_policy": "fair",
         "prefill_chunk_tokens": 2,
+        "fair_prefill_burst_chunks": 1,
+        "consecutive_prefill_chunks": 1,
         "last_work_kind": "prefill",
     }
     assert loop_snapshot["physical_bucket"]["slot_to_request"] == [loop_request, None]

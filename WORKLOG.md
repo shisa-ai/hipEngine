@@ -168937,3 +168937,73 @@ repair and confirms the lifecycle boundary independently:
 The focused invocation exits 1 only because it intentionally omits the other
 production-matrix workloads; `workloads.continuous_fixed.passed=true`, with all
 correctness, ownership, route, memory, and SLO checks green.
+
+## 2026-07-20 — Retain pressure-gated fair-prefill bursts on gfx1151 GGUF
+
+The retained fair:256 server packet spent 989 decode ticks on seven static C8
+waves versus 889 ideal ticks. Its 100 excess ticks came from alternating decode
+after every 256-token chunk while each p512 row needed two chunks, producing two
+partial-width ticks per newly ready row. A generic engine-loop bound now permits
+two consecutive fair-prefill chunks only while at least two active prompts still
+need prefill. Lone staggered arrivals retain strict one-chunk alternation, and
+other backend/quant packages retain the generic bound of one; gfx1151 Q4_K_M
+selects two through its package capability rather than a scheduler backend
+branch.
+
+RED/GREEN host coverage proves the static C8 ramp changes from 14 partial decode
+widths (`1,1,2,2,...,7,7`) to eight (`1,2,3,4,5,6,7,7`), preserves the first
+row's two-chunk TTFT, never exceeds two chunks between decode ticks, leaves the
+one-chunk default unchanged, and keeps a lone staggered p512 admission on
+`prefill,decode,prefill`. The focused config/observability suite passes 10 tests:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/test_generation_engine_loop_burst.py \
+  tests/test_generation_batch_scheduler.py::test_engine_loop_cli_env_defaults_match_docs \
+  tests/test_generation_batch_scheduler.py::test_engine_loop_cli_env_overrides \
+  tests/test_generation_batch_scheduler.py::test_resident_scheduler_live_observability_snapshot_covers_d5_contract \
+  tests/test_generation_batch_scheduler.py::test_resident_engine_loop_prefill_decode_policies \
+  tests/test_gfx1151_backend.py::test_qwen35_gguf_gfx1151_generation_factory_sets_backend \
+  tests/test_llm_generate.py::test_generator_engine_loop_defaults_respect_explicit_env \
+  tests/test_server_api.py::test_metrics_endpoint_exports_resident_loop_d5_observability \
+  -q --tb=short
+```
+
+The accepted real-Uvicorn p512/d128 Q4_K_M/BF16-KV C1/C8 screen used one warmup,
+one blocking measurement, one exact SSE measurement, and delayed C8 admission:
+
+```bash
+.venv/bin/python scripts/server_f1_concurrency_bench.py \
+  --engine hipengine \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1151 --quant gguf_q4_k_m \
+  --hipengine-kv-storage bf16 --hipengine-route-expectation native \
+  --hipengine-prefill-decode-policy fair --generation-batch-window-ms 5 \
+  --hipengine-prefill-chunk-tokens 256 --concurrencies 1,8 \
+  --live-concurrency 8 --prompt-length 512 --decode-tokens 128 \
+  --ctx-per-seq 1024 --warmup-runs 1 --measured-runs 1 \
+  --streaming-primary --stream-warmup-runs 0 --stream-measured-runs 1 \
+  --live-join-after-tokens 8 \
+  --compiler-version-file /tmp/hipengine-gfx1151-native-cycle-hipcc-version.txt \
+  --memory-domain gtt --drm-card-index 0 --memory-poll-ms 10 \
+  --work-dir /tmp/gfx1151-pressure-burst-c8-accepted/work \
+  --json /tmp/gfx1151-pressure-burst-c8-accepted/result.json
+```
+
+Status is `accepted_backend_packet`; all **39/39** oracle/warmup/measured/SSE/live
+rows are exact, native, and fallback-free. Against the retained three-run median
+packet, C8 blocking is **83.771 -> 85.685 tok/s (+2.28%)**, exact SSE is
+**81.609 -> 83.578 (+2.41%)**, delayed C8 is **66.563 -> 67.299 (+1.10%)**,
+TTFT p95 is **4.332 -> 4.046 s (-6.60%)**, and aggregate ITL p99 is **0.474 ->
+0.214 s (-54.93%)**. C1 remains within one percent at **43.991 blocking / 43.042
+SSE tok/s**.
+
+The SLO-sensitive cached `continuous_fixed` workload is independently **12/12
+exact** with no fallback and clean final ownership. Relative to unconditional
+burst-2, pressure gating moves ITL p99 **0.5068 -> 0.2949 s (-41.80%)**, changes
+throughput only **46.413 -> 46.453 tok/s (+0.09%)**, and moves goodput from
+**27.848 -> 46.453 tok/s** because all requests now satisfy the 0.5-second ITL
+threshold. Decision: retain the exact package-scoped default. The raw accepted
+screen and focused production artifact remain under `/tmp`; the final multi-width
+publication task will emit the compact repository artifact and rollup after the
+steady-loop optimization pass.

@@ -21,6 +21,7 @@ def test_generator_engine_loop_defaults_respect_explicit_env() -> None:
         engine_loop_config_defaults={
             "prefill_decode_policy": "fair",
             "max_prefill_chunk_tokens": 256,
+            "fair_prefill_burst_chunks": 2,
         }
     )
     resolved = _engine_loop_config_with_generator_defaults(
@@ -30,10 +31,12 @@ def test_generator_engine_loop_defaults_respect_explicit_env() -> None:
     )
     assert resolved.prefill_decode_policy == "fair"
     assert resolved.max_prefill_chunk_tokens == 256
+    assert resolved.fair_prefill_burst_chunks == 2
 
     explicit = EngineLoopConfig(
         prefill_decode_policy="protect_ttft",
         max_prefill_chunk_tokens=64,
+        fair_prefill_burst_chunks=3,
     )
     preserved = _engine_loop_config_with_generator_defaults(
         explicit,
@@ -41,6 +44,7 @@ def test_generator_engine_loop_defaults_respect_explicit_env() -> None:
         environ={
             "HIPENGINE_PREFILL_DECODE_POLICY": "protect_ttft",
             "HIPENGINE_MAX_PREFILL_CHUNK_TOKENS": "64",
+            "HIPENGINE_FAIR_PREFILL_BURST_CHUNKS": "3",
         },
     )
     assert preserved == explicit

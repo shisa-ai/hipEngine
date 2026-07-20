@@ -528,6 +528,7 @@ def test_qwen35_gguf_gfx1151_generation_factory_sets_backend(monkeypatch) -> Non
     assert generator.engine_loop_config_defaults == {
         "prefill_decode_policy": "fair",
         "max_prefill_chunk_tokens": 256,
+        "fair_prefill_burst_chunks": 2,
     }
     assert generator.server_plain_ar_max_active_requests == 8
 

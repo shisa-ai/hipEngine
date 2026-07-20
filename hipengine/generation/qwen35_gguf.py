@@ -6708,6 +6708,13 @@ def make_qwen35_gguf_q4_k_m_generator_gfx1151(
                     256,
                 )
             ),
+            "fair_prefill_burst_chunks": int(
+                backend_package_capability(
+                    backend,
+                    "GGUF_Q4_K_M_FAIR_PREFILL_BURST_CHUNKS",
+                    1,
+                )
+            ),
         },
         server_plain_ar_max_active_requests=int(
             backend_package_capability(
