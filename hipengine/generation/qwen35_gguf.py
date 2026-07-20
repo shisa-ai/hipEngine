@@ -3842,6 +3842,11 @@ class Qwen35GGUFBringupGenerator:
                 row_index=0,
                 phase="answer",
             ),
+            generated_token_ids=(
+                tuple(generated_ids)
+                if finished or len(generated_ids) >= request.max_tokens
+                else None
+            ),
         )
         if finished:
             return
@@ -3864,6 +3869,11 @@ class Qwen35GGUFBringupGenerator:
                     request,
                     row_index=0,
                     phase="answer",
+                ),
+                generated_token_ids=(
+                    tuple(generated_ids)
+                    if finished or len(generated_ids) >= request.max_tokens
+                    else None
                 ),
             )
             if finished:
@@ -3913,6 +3923,11 @@ class Qwen35GGUFBringupGenerator:
                 full_vocab_logits_d2h=full_vocab_logits_d2h,
                 logits_d2h_bytes=logits_d2h_bytes,
             ),
+            generated_token_ids=(
+                tuple(generated_ids)
+                if finished or len(generated_ids) >= sampling_request.max_tokens
+                else None
+            ),
         )
         if finished:
             return
@@ -3948,6 +3963,11 @@ class Qwen35GGUFBringupGenerator:
                     forced_sample=sample,
                     full_vocab_logits_d2h=full_vocab_logits_d2h,
                     logits_d2h_bytes=logits_d2h_bytes,
+                ),
+                generated_token_ids=(
+                    tuple(generated_ids)
+                    if finished or len(generated_ids) >= sampling_request.max_tokens
+                    else None
                 ),
             )
             if finished:
@@ -4888,6 +4908,7 @@ class Qwen35GGUFResidentModelRunner:
                                 token_logprobs=output.token_logprobs,
                                 finish_details=output.finish_details,
                                 telemetry=output.telemetry,
+                                generated_token_ids=output.generated_token_ids,
                             ),
                         )
                     )
@@ -5949,6 +5970,7 @@ class Qwen35GGUFResidentModelRunner:
                 native_sampler_rows=False,
                 sampler_plan=row.sampler_plan,
             ),
+            generated_token_ids=generated_ids if slot.done else None,
         )
 
     def _native_output(
@@ -6426,6 +6448,7 @@ def _gguf_scheduler_token_chunks(
                     serial_decode_fallback=serial_fallback,
                     native_sampler_rows=False,
                 ),
+                generated_token_ids=tuple(prefix) if final else None,
             )
             chunks.append(_gguf_scheduler_token_chunk_payload(request_id, token_index, int(token_id), chunk))
     return chunks
@@ -6459,6 +6482,8 @@ def _gguf_scheduler_token_chunk_payload(
         ]
     if chunk.finish_details is not None:
         payload["chunk"]["finish_details"] = chunk.finish_details.to_json_dict()
+    if chunk.generated_token_ids is not None:
+        payload["chunk"]["generated_token_ids"] = list(chunk.generated_token_ids)
     if chunk.telemetry is not None:
         payload["chunk"]["telemetry"] = chunk.telemetry.to_json_dict()
     return payload

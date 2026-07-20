@@ -1838,6 +1838,11 @@ class ResidentBatchScheduler:
                     if provided_chunk.telemetry is not None
                     else scheduler_chunk.telemetry
                 ),
+                generated_token_ids=(
+                    provided_chunk.generated_token_ids
+                    if provided_chunk.generated_token_ids is not None
+                    else scheduler_chunk.generated_token_ids
+                ),
             )
         if not updated.finished:
             return None, stream_chunk
@@ -1851,6 +1856,7 @@ class ResidentBatchScheduler:
                 else done.finish_details
             ),
             telemetry=stream_chunk.telemetry,
+            generated_token_ids=stream_chunk.generated_token_ids,
         )
 
     def _stream_chunk_for_generated_token(
@@ -1879,7 +1885,13 @@ class ResidentBatchScheduler:
                 native_caware_decode=native_caware_decode,
                 serial_decode_fallback=serial_decode_fallback,
             )
-            return GenerationStreamChunk(text="", telemetry=telemetry)
+            return GenerationStreamChunk(
+                text="",
+                telemetry=telemetry,
+                generated_token_ids=(
+                    tuple(request.generated_tokens) if request.finished else None
+                ),
+            )
 
         thinking_budget = sampler_state.thinking_budget
         phase = "answer" if thinking_budget is None else thinking_budget.phase
@@ -1925,7 +1937,13 @@ class ResidentBatchScheduler:
             native_caware_decode=native_caware_decode,
             serial_decode_fallback=serial_decode_fallback,
         )
-        return GenerationStreamChunk(text="", telemetry=telemetry)
+        return GenerationStreamChunk(
+            text="",
+            telemetry=telemetry,
+            generated_token_ids=(
+                tuple(request.generated_tokens) if request.finished else None
+            ),
+        )
 
     def _pop_pending_request(self, request_id: int) -> RequestState | None:
         for pending in tuple(self._pending):

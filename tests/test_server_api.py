@@ -938,6 +938,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "backend_prefill_timing": "GenerationTelemetry.timing_when_available",
         "choice_phase": True,
         "choice_finish_details": True,
+        "choice_generated_token_ids": "done_event_when_backend_supplies_exact_ids",
         "choice_token_accounting": True,
         "choice_token_accounting_scopes": ["live_delta", "buffered_delta", "final_choice"],
         "choice_decode_state": True,
@@ -15161,6 +15162,60 @@ def test_streaming_chat_completion_returns_tool_call_deltas() -> None:
     )
 
 
+def test_streaming_chat_tool_done_exposes_response_owned_generated_ids() -> None:
+    raw_tool_call = '<tool_call>{"name":"bash","arguments":{"command":"pwd"}}</tool_call>'
+    fake = FakeLLM(
+        outputs=["should-not-buffer"],
+        stream_chunks=[
+            GenerationStreamChunk(
+                raw_tool_call,
+                generated_token_ids=(701, 702, 703),
+                finish_details=FinishDetails(reason="stop"),
+                telemetry=GenerationTelemetry.from_decode_counts(
+                    prompt_tokens=9,
+                    generated_tokens=3,
+                    row_index=0,
+                    phase="tool_call",
+                    sampler_mode="greedy_fast",
+                ),
+            )
+        ],
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "run pwd"}],
+            "stream": True,
+            "stream_options": {"include_hipengine": True, "include_usage": True},
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "description": "Run a command",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    done = next(
+        payload["choices"][0]
+        for payload in payloads
+        if payload.get("choices") and payload["choices"][0]["finish_reason"] == "tool_calls"
+    )
+    assert done["hipengine"]["generated_token_ids"] == [701, 702, 703]
+    assert done["hipengine"]["generated_tokens"] == 3
+    assert payloads[-1]["usage"]["completion_tokens"] == 3
+
+
 def test_streaming_chat_completion_strips_qwen_terminal_residue_around_tool_call() -> None:
     fake = FakeLLM(
         outputs=["should-not-buffer"],
@@ -15312,6 +15367,10 @@ def test_streaming_chat_completion_n_uses_scheduler_chunks_for_tool_call_argumen
             return [
                 GenerationOutput(
                     text=raw_outputs[index],
+                    generated_token_ids=tuple(
+                        600 + index * 10 + token_index
+                        for token_index in range(len(chunk_texts[index]))
+                    ),
                     finish_details=FinishDetails(reason="stop", sampler_mode="greedy_fast"),
                     telemetry=GenerationTelemetry.from_decode_counts(
                         prompt_tokens=1,
@@ -15397,6 +15456,10 @@ def test_streaming_chat_completion_n_uses_scheduler_chunks_for_tool_call_argumen
         if payload.get("choices") and payload["choices"][0]["finish_reason"] == "tool_calls"
     ]
     assert [choice["index"] for choice in done] == [0, 1]
+    assert [choice["hipengine"]["generated_token_ids"] for choice in done] == [
+        [600, 601, 602, 603],
+        [610, 611, 612, 613],
+    ]
     assert {
         choice["hipengine"]["decode_state"]["execution_path"]
         for choice in done

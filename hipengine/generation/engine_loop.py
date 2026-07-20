@@ -586,6 +586,7 @@ class SubmitPollTextGenerator:
                 token_logprobs=generation_output.token_logprobs,
                 finish_details=generation_output.finish_details,
                 telemetry=generation_output.telemetry,
+                generated_token_ids=generation_output.generated_token_ids,
             )
 
     def stream_many_detailed(self, request: GenerationRequest) -> Iterator[GenerationStreamChunk]:
@@ -708,6 +709,7 @@ class SubmitPollTextGenerator:
                     token_logprobs=generation_output.token_logprobs,
                     finish_details=generation_output.finish_details,
                     telemetry=generation_output.telemetry,
+                    generated_token_ids=generation_output.generated_token_ids,
                 )
             consumed = True
         finally:

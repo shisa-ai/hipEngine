@@ -4910,6 +4910,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "backend_prefill_timing": "GenerationTelemetry.timing_when_available",
                     "choice_phase": True,
                     "choice_finish_details": True,
+                    "choice_generated_token_ids": (
+                        "done_event_when_backend_supplies_exact_ids"
+                    ),
                     "choice_token_accounting": tokenizer_caps["count_tokens"],
                     "choice_token_accounting_scopes": (
                         ["live_delta", "buffered_delta", "final_choice"]
@@ -6053,6 +6056,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         index=index,
                         finish_details=finish_details,
                         token_accounting=token_accounting,
+                        final_stream_chunk=_stream_chunk_from_detail("", detail),
                         include_hipengine=include_hipengine,
                         stream_started_at=stream_started_at,
                         routing=routing_metadata,
@@ -8780,35 +8784,68 @@ def _coerce_generation_stream_chunk(value: Any) -> GenerationStreamChunk:
     token_logprobs = getattr(value, "token_logprobs", None)
     finish_details = getattr(value, "finish_details", None)
     telemetry = getattr(value, "telemetry", None)
-    if token_logprobs is not None or finish_details is not None or telemetry is not None:
+    generated_token_ids = getattr(value, "generated_token_ids", None)
+    if (
+        token_logprobs is not None
+        or finish_details is not None
+        or telemetry is not None
+        or generated_token_ids is not None
+    ):
         return GenerationStreamChunk(
             text=str(getattr(value, "text", value)),
             token_logprobs=_coerce_token_logprobs(token_logprobs),
             finish_details=finish_details,
             telemetry=telemetry,
+            generated_token_ids=generated_token_ids,
         )
-    if isinstance(value, Mapping) and (
-        "text" in value or "token_logprobs" in value or "finish_details" in value or "telemetry" in value
+    if isinstance(value, Mapping) and any(
+        key in value
+        for key in (
+            "text",
+            "token_logprobs",
+            "finish_details",
+            "telemetry",
+            "generated_token_ids",
+        )
     ):
         return GenerationStreamChunk(
             text=str(value.get("text", "")),
             token_logprobs=_coerce_token_logprobs(value.get("token_logprobs", ())),
             finish_details=value.get("finish_details"),
             telemetry=value.get("telemetry"),
+            generated_token_ids=value.get("generated_token_ids"),
         )
     return GenerationStreamChunk(text=str(value))
 
 
 def _stream_chunk_from_detail(text: str, detail: GenerationOutput | None) -> GenerationStreamChunk | None:
-    if detail is None or (detail.finish_details is None and detail.telemetry is None):
+    if detail is None or (
+        detail.finish_details is None
+        and detail.telemetry is None
+        and detail.generated_token_ids is None
+    ):
         return None
-    return GenerationStreamChunk(text=str(text), finish_details=detail.finish_details, telemetry=detail.telemetry)
+    return GenerationStreamChunk(
+        text=str(text),
+        finish_details=detail.finish_details,
+        telemetry=detail.telemetry,
+        generated_token_ids=detail.generated_token_ids,
+    )
 
 
 def _output_from_stream_chunk(chunk: GenerationStreamChunk | None, text: str) -> GenerationOutput | None:
-    if chunk is None or (chunk.finish_details is None and chunk.telemetry is None):
+    if chunk is None or (
+        chunk.finish_details is None
+        and chunk.telemetry is None
+        and chunk.generated_token_ids is None
+    ):
         return None
-    return GenerationOutput(text=str(text), finish_details=chunk.finish_details, telemetry=chunk.telemetry)
+    return GenerationOutput(
+        text=str(text),
+        finish_details=chunk.finish_details,
+        telemetry=chunk.telemetry,
+        generated_token_ids=chunk.generated_token_ids,
+    )
 
 
 def _backend_generation_targets(engine: Any) -> tuple[Any, ...]:
@@ -9020,6 +9057,9 @@ def _buffered_delta_stream_chunk(
                 native_sampler_rows=backend_state.native_sampler_rows,
                 continuation_eligible=token_state.continuation_eligible,
             )
+        ),
+        generated_token_ids=(
+            None if final_chunk is None else final_chunk.generated_token_ids
         ),
     )
 
@@ -11985,6 +12025,7 @@ def _live_splitter_span_stream_chunk(
         token_logprobs=tuple(token_logprobs),
         finish_details=tail_chunk.finish_details,
         telemetry=tail_chunk.telemetry,
+        generated_token_ids=tail_chunk.generated_token_ids,
     )
     return _stream_chunk_with_phase(chunk, phase)
 
@@ -13733,6 +13774,7 @@ def _choice_hipengine_payload(
     finish_details: Mapping[str, Any] | None = None,
     tokens: Mapping[str, int] | None = None,
     stream_chunk: GenerationStreamChunk | None = None,
+    include_generated_token_ids: bool = False,
 ) -> dict[str, Any]:
     telemetry = None if stream_chunk is None else stream_chunk.telemetry
     payload: dict[str, Any] = {"phase": str(phase)}
@@ -13741,6 +13783,13 @@ def _choice_hipengine_payload(
         payload["phase"] = payload.get("decode_state", {}).get("phase", str(phase))
     if finish_details is not None:
         payload["finish_details"] = dict(finish_details)
+    if (
+        include_generated_token_ids
+        and stream_chunk is not None
+        and stream_chunk.generated_token_ids is not None
+    ):
+        payload["generated_token_ids"] = list(stream_chunk.generated_token_ids)
+        payload["generated_tokens"] = len(stream_chunk.generated_token_ids)
     if tokens is not None:
         token_payload = {str(key): max(0, int(value)) for key, value in tokens.items()}
         payload["tokens"] = token_payload
@@ -13879,6 +13928,7 @@ def _completion_stream_done(
             finish_details=finish_payload,
             tokens=tokens,
             stream_chunk=stream_chunk,
+            include_generated_token_ids=True,
         )
     return _sse(
         _attach_stream_hipengine(
@@ -14148,6 +14198,7 @@ def _stream_chunk_with_phase(
             stream_chunk.telemetry,
             decode_state=replace(stream_chunk.telemetry.decode_state, phase=phase),
         ),
+        generated_token_ids=stream_chunk.generated_token_ids,
     )
 
 
@@ -14666,6 +14717,7 @@ def _chat_stream_scheduler_tool_call_chunks(
     index: int = 0,
     finish_details: Mapping[str, Any] | None = None,
     token_accounting: _StreamTokenAccounting | None = None,
+    final_stream_chunk: GenerationStreamChunk | None = None,
     include_hipengine: bool = False,
     stream_started_at: _StreamTimingSource = None,
     routing: Mapping[str, Any] | None = None,
@@ -14700,6 +14752,15 @@ def _chat_stream_scheduler_tool_call_chunks(
     final_tokens = None
     if token_accounting is not None and token_accounting.streamed_tokens > 0:
         final_tokens = token_accounting.snapshot()
+    done_stream_chunk = last_stream_chunk
+    if final_stream_chunk is not None:
+        if done_stream_chunk is None:
+            done_stream_chunk = final_stream_chunk
+        elif final_stream_chunk.generated_token_ids is not None:
+            done_stream_chunk = replace(
+                done_stream_chunk,
+                generated_token_ids=final_stream_chunk.generated_token_ids,
+            )
     yield _chat_stream_done(
         response_id,
         created,
@@ -14708,7 +14769,7 @@ def _chat_stream_scheduler_tool_call_chunks(
         index=index,
         finish_details=finish_details,
         tokens=final_tokens,
-        stream_chunk=last_stream_chunk,
+        stream_chunk=done_stream_chunk,
         include_hipengine=include_hipengine,
         stream_started_at=stream_started_at,
         routing=routing,
@@ -14856,6 +14917,7 @@ def _chat_stream_done(
             finish_details=finish_payload,
             tokens=tokens,
             stream_chunk=stream_chunk,
+            include_generated_token_ids=True,
         )
         if extra_hipengine is not None:
             hipengine_payload.update(deepcopy(dict(extra_hipengine)))

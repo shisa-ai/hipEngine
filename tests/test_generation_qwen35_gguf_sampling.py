@@ -1888,6 +1888,7 @@ def test_gguf_resident_stream_reuses_registered_sampler_plan(monkeypatch) -> Non
     chunk = runner._native_stream_chunk(row)
 
     assert _decode_state(chunk)["sampler_mode"] == "greedy_fast"
+    assert chunk.generated_token_ids is None
 
 
 def test_gguf_empty_stop_suffix_skips_history_scan(monkeypatch) -> None:
@@ -4917,6 +4918,7 @@ def test_gguf_stream_detailed_emits_live_greedy_telemetry(monkeypatch) -> None:
 
     assert [chunk.text for chunk in chunks] == ["B", "C"]
     assert all(isinstance(chunk, GenerationStreamChunk) for chunk in chunks)
+    assert [chunk.generated_token_ids for chunk in chunks] == [None, (1, 2)]
     assert [_decode_state(chunk) for chunk in chunks] == [
         {
             "row_index": 0,

@@ -279,6 +279,7 @@ def test_generation_stream_chunk_preserves_token_logprobs() -> None:
                 TokenLogprob(token_id=7, token_text="answer", logprob=-0.25),
             ),
             "telemetry": {"decode_state": {"phase": "answer", "generated_tokens": 1}},
+            "generated_token_ids": [7],
         }
     )
 
@@ -289,6 +290,10 @@ def test_generation_stream_chunk_preserves_token_logprobs() -> None:
     assert chunk.telemetry is not None
     assert chunk.telemetry.decode_state is not None
     assert chunk.telemetry.decode_state.phase == "answer"
+    assert chunk.generated_token_ids == (7,)
+
+    with pytest.raises(ValueError, match="generated_token_ids must contain non-negative integers"):
+        GenerationStreamChunk(text="bad", generated_token_ids=(-1,))
 
 
 def test_decode_state_mapping_accepts_json_nulls() -> None:
