@@ -1,0 +1,142 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_paged_attn_token_offsets_c8_retained",
+  "created_at": "2026-07-20T22:10:00+00:00",
+  "status": "retained_exact_clean_direct_positive_server_ab",
+  "passed": true,
+  "performance_claim": true,
+  "decision": "promote shared token-offset precomputation in the gfx1151 fixed-256 paged-attention route",
+  "implementation_commit": "a960e28a3bf129f2f49f30a40b3ca37ef0493cad",
+  "hardware": {
+    "host": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "amd_iommu": "off",
+    "gpu_max_hw_queues": 1
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B UD-Q4_K_M GGUF",
+    "path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "scope": {
+    "backend_route": "gfx1151 bf16_context_batch_fixed256_spans",
+    "unchanged_routes": [
+      "gfx1100 c1-exact batch route",
+      "generic adaptive batch route including rows<=2 1024-thread geometry",
+      "long-context split-K attention"
+    ],
+    "floating_point_contract": "no FP operation, reduction, softmax, or value accumulation order changes"
+  },
+  "baseline_profile": {
+    "family": "full_attention",
+    "total_duration_ms": 3.204,
+    "share_percent": 6.16,
+    "paged_context_dispatches": 10,
+    "paged_context_total_duration_ms": 3.103
+  },
+  "candidate": {
+    "design": "precompute each token's physical KV element offset once per query-head block in aligned dynamic shared memory and reuse it in key and value passes",
+    "removed_redundancy": "per-value-dimension token division, block-table lookup, physical-block arithmetic, and KV-stride multiplication",
+    "persistent_memory_delta_bytes": 0,
+    "temporary_shared_bytes_per_live_token": 8
+  },
+  "primitive_microbench": {
+    "shape": "rows=8, context=513, block_size=256, num_q_heads=16, num_kv_heads=2, head_dim=256",
+    "protocol": "five cycling 12 MiB KV pools, 40 warmups, 400 iterations, same binary",
+    "production_us": 315.0734525115695,
+    "candidate_us": 181.25136513845064,
+    "delta_percent": -42.47329830754462,
+    "speedup": 1.73832319701922,
+    "output_bytes_compared": 655360,
+    "output_bit_exact": true,
+    "raw_bytes": 549,
+    "raw_sha256": "2f63b1e2dbb768610dda8005b9f8a06d5287599b34823a587285912154f5ae7f"
+  },
+  "correctness": {
+    "focused_test": "HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python -m pytest tests/test_qwen35_paged_attn_decode_plan.py -q: 6 passed",
+    "all_layer_hidden_comparisons": 320,
+    "all_layer_hidden_exact": true,
+    "tokens_and_final_state_exact": true,
+    "first_divergence": null,
+    "all_layer_oracle_bytes": 16147,
+    "all_layer_oracle_sha256": "c409c4142c0c94f61afeafa087fe8f687da8d3019cc829df4a404fa3dc36862b"
+  },
+  "clean_direct_retention": {
+    "provenance": "detached tracked-clean a960e28a worktree",
+    "workload": "physical-C8 p512/d128 state-bound graph, one warmup and three measured runs",
+    "baseline_clean_f3k_tok_s": 152.70862495870657,
+    "candidate_tok_s_samples": [158.18187910821817, 157.89041552522778, 158.04796745731866],
+    "candidate_tok_s_median": 158.04796745731866,
+    "delta_percent": 3.4964249727583496,
+    "stdev_percent_of_median": 0.09230836227126331,
+    "wall_savings_seconds_per_1024_tokens": 0.22653497097780928,
+    "trajectories_repeatable": true,
+    "trajectory_hashes_exact_to_f3k": true,
+    "raw_bytes": 200264,
+    "raw_sha256": "d162976473f9f7f22e6127087a3ceba7e64f864cb314f462ab4c07f19fa4f295"
+  },
+  "server_gate": {
+    "provenance": "same-checkout source-equivalent candidate/control before implementation commit",
+    "protocol": "real localhost Uvicorn C1/C8 p512/d128, one warmup, three blocking, three exact SSE, delayed C8",
+    "candidate": {
+      "blocking_median_tok_s": 91.0333638888264,
+      "exact_sse_median_tok_s": 86.16962739724603,
+      "delayed_tok_s": 69.52730852369854,
+      "all_exact": true,
+      "raw_bytes": 725862,
+      "raw_sha256": "c5580cf43318dac29fbcb03bdf921338a0a5b1976998239ffe58cbdca4da9ad2"
+    },
+    "control": {
+      "blocking_median_tok_s": 88.92675291962269,
+      "exact_sse_median_tok_s": 86.11906213374031,
+      "delayed_tok_s": 68.983190681042,
+      "all_exact": true,
+      "raw_bytes": 718069,
+      "raw_sha256": "56494f233d478b5c4f9c22e19715cba98e1de50e5f625c4fab791cb6b5332534"
+    },
+    "candidate_delta_percent": {
+      "blocking": 2.368928247169655,
+      "exact_sse": 0.05871552970142524,
+      "delayed": 0.7887687381298081
+    }
+  },
+  "kernel_trace": {
+    "kernel": "qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true>",
+    "dispatches": 445,
+    "workgroup_size_x": 256,
+    "grid_size_x": 4096,
+    "grid_size_y": 8,
+    "vgpr": 40,
+    "scratch_bytes": 0,
+    "median_duration_us": 174.687,
+    "min_duration_us": 171.962,
+    "raw_bytes": 155869,
+    "raw_sha256": "242f80a0ece6f6c8cffe30705d55da0827664daea536fb583742d857812e5f15"
+  },
+  "rejected_adjacent_points": {
+    "launch_widths": {
+      "threads_128_delta_percent": 55.41033778410336,
+      "threads_512_delta_percent": 25.09858953375197,
+      "threads_1024_delta_percent": 32.720685507143884,
+      "all_output_bit_exact": false,
+      "decision": "retain 256 threads"
+    },
+    "packed_uint64_key_load": {
+      "production_us_samples": [315.2538600261323, 314.77589247515425, 314.6311698947102],
+      "candidate_us_samples": [315.4165649903007, 315.0893775455188, 314.3143025226891],
+      "production_median_us": 314.77589247515425,
+      "candidate_median_us": 315.0893775455188,
+      "delta_percent": 0.09958992345302509,
+      "output_bit_exact": true,
+      "decision": "remove explicit packed load because the compiler already coalesces the scalar source"
+    }
+  },
+  "limitations": [
+    "The retained topline is the detached tracked-clean direct C8 result; the exact positive server A/B is source-equivalent supporting evidence.",
+    "Only the gfx1151 fixed-256 short-context batch route changes; long-context split-K and gfx1100 require independent optimization gates.",
+    "No persistent memory is added; dynamic shared memory grows by eight bytes per live token plus alignment."
+  ]
+}
