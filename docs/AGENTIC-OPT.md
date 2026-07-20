@@ -724,3 +724,35 @@ The next model-general unit must constrain JSON from the declared function
 schema after the selected-tool prefix while leaving argument keys/values
 model-selected—no fixture IDs, expected arguments, or prompt-conditioned repair.
 A complete A1 packet remains required before any performance lane opens.
+
+## 2026-07-20 — Anchor selected strict-tool JSON and stop at its envelope
+
+A full vocabulary JSON-schema grammar is not required for the blocked Qwen
+trajectory. For a selected function whose declared schema is strict, is an
+object with `additionalProperties: false`, and has a first required string
+property, hipEngine now atomically extends the existing forced tool prefix
+through that schema-derived property key and its opening value quote. The model
+still selects the string value and every remaining property; unsupported schema
+shapes retain the shorter name-and-arguments prefix and all results remain
+subject to independent strict postvalidation.
+
+The same narrow route enables tokenizer-derived `}}</tool_call>` completion in
+addition to the existing close-marker completion. A candidate is omitted if its
+complete token sequence appears in the forced opening prefix. Once either safe
+close candidate begins, its remainder is forced and the completed sequence is
+also a stop boundary, preventing post-envelope Qwen transcript continuation.
+The structural candidate is never enabled for multi-tool `required`, non-strict
+schemas, unsupported first-property types, or failed schema-prefix tokenization.
+Capabilities disclose both the schema-anchor scope and close/stop scope. This is
+not a general JSON grammar and does not inspect prompts, fixtures, expected
+arguments, or benchmark token IDs.
+
+A deliberately dirty-tree W7900 diagnostic justified the bounded design before
+commit: the complete four-turn small-repo c1 collector passed all four
+independent blocking oracles, all four response-owned SSE equality gates, and
+final zero-ownership checks over 100 generated IDs. That diagnostic has
+`performance_claim=false`; none of its latency or throughput fields are retained
+or promoted. Host validation is green across **529 generation tests**, **513
+server tests**, and **142 agentic/config tests**, plus Ruff. The next step remains
+a clean committed W7900 A1 rerun; no performance lane opens until that complete
+packet passes.

@@ -1233,7 +1233,10 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "required_tool_start_forcing_scope": "initial_or_after_tokenized_thinking_close",
         "specific_tool_name_prefix_forcing": True,
         "specific_tool_name_prefix_forcing_scope": "atomic_tool_call_name_and_arguments_key",
+        "strict_tool_schema_prefix_anchor": True,
+        "strict_tool_schema_prefix_anchor_scope": "selected_closed_object_first_required_string_key",
         "tool_call_close_repair": True,
+        "tool_call_close_repair_scope": "tokenizer_safe_marker_or_object_envelope_then_stop",
     }
     assert body["features"]["reasoning_controls"] == {
         "enabled": True,
@@ -14140,12 +14143,17 @@ def test_chat_completion_required_tool_choice_forces_atomic_tool_json_prefix(too
     )
 
     assert response.status_code == 200
-    assert fake.tokenize_calls == ["<tool_call>", '<tool_call>{"name":"read","arguments":', "</tool_call>"]
+    assert fake.tokenize_calls == [
+        "<tool_call>",
+        '<tool_call>{"name":"read","arguments":',
+        "</tool_call>",
+    ]
     params = fake.calls[-1][1]
     assert params.forced_tokens_pending == (77, 78, 90, 91, 92)
     assert params.forced_token_reason == "tool_choice_required"
     assert params.force_sequence_completion_token_sequences == ((88, 89),)
     assert params.force_sequence_completion_reason == "tool_call_sequence_completion"
+    assert params.stop_token_sequences == ((88, 89),)
     choice = response.json()["choices"][0]
     assert choice["finish_reason"] == "stop"
     assert choice["finish_details"] == _stateless_finish_details("tool_required_not_satisfied")
@@ -14192,6 +14200,7 @@ def test_chat_completion_required_tool_choice_queues_tool_start_after_thinking_b
     assert params.post_thinking_forced_token_reason == "tool_choice_required"
     assert params.force_sequence_completion_token_sequences == ((88, 89),)
     assert params.force_sequence_completion_reason == "tool_call_sequence_completion"
+    assert params.stop_token_sequences == ((88, 89),)
     assert params.thinking_close_token_ids == (91, 92)
     assert params.thinking_hard_token_cap == 512
     choice = response.json()["choices"][0]
@@ -14199,7 +14208,13 @@ def test_chat_completion_required_tool_choice_queues_tool_start_after_thinking_b
 
 
 def test_chat_completion_required_tool_choice_skips_name_prefix_with_multiple_tools() -> None:
-    fake = FakeLLM(outputs=["ordinary answer"], token_map={"<tool_call>": [77, 78], "</tool_call>": [88, 89]})
+    fake = FakeLLM(
+        outputs=["ordinary answer"],
+        token_map={
+            "<tool_call>": [77, 78],
+            "</tool_call>": [88, 89],
+        },
+    )
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
     client = TestClient(app)
 
@@ -14222,15 +14237,39 @@ def test_chat_completion_required_tool_choice_skips_name_prefix_with_multiple_to
     assert params.forced_tokens_pending == (77, 78)
     assert params.force_sequence_completion_token_sequences == ((88, 89),)
     assert params.force_sequence_completion_reason == "tool_call_sequence_completion"
+    assert params.stop_token_sequences == ((88, 89),)
 
 
-def test_chat_completion_specific_tool_choice_forces_atomic_prefix_after_tool_result() -> None:
+@pytest.mark.parametrize(
+    ("schema_prefix_ids", "expected_close_sequences"),
+    [
+        (
+            (93, 94, 95, 96),
+            ((12445, 13766, 13042, 29), (510, 13766, 13042, 29)),
+        ),
+        (
+            (27, 12445, 13766, 13042, 29, 591),
+            ((510, 13766, 13042, 29),),
+        ),
+        (
+            (27, 510, 13766, 13042, 29, 591),
+            ((12445, 13766, 13042, 29),),
+        ),
+    ],
+)
+def test_chat_completion_specific_tool_choice_forces_schema_first_string_key_after_tool_result(
+    schema_prefix_ids: tuple[int, ...],
+    expected_close_sequences: tuple[tuple[int, ...], ...],
+) -> None:
+    schema_prefix = '<tool_call>{"name":"grep","arguments":{"pattern":"'
     fake = FakeLLM(
         outputs=["ordinary answer"],
         token_map={
             "<tool_call>": [77, 78],
             '<tool_call>{"name":"grep","arguments":': [90, 91, 92],
-            "</tool_call>": [88, 89],
+            schema_prefix: list(schema_prefix_ids),
+            "</tool_call>": [510, 13766, 13042, 29],
+            "}}</tool_call>": [12445, 13766, 13042, 29],
         },
     )
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
@@ -14262,18 +14301,88 @@ def test_chat_completion_specific_tool_choice_forces_atomic_prefix_after_tool_re
             "tool_choice": {"type": "function", "function": {"name": "grep"}},
             "tools": [
                 {"type": "function", "function": {"name": "read", "parameters": {"type": "object"}}},
-                {"type": "function", "function": {"name": "grep", "parameters": {"type": "object"}}},
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "grep",
+                        "strict": True,
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "pattern": {"type": "string", "minLength": 1},
+                                "path": {"type": "string", "minLength": 1},
+                            },
+                            "required": ["pattern", "path"],
+                            "additionalProperties": False,
+                        },
+                    },
+                },
             ],
         },
     )
 
     assert response.status_code == 200
-    assert fake.tokenize_calls == ["<tool_call>", '<tool_call>{"name":"grep","arguments":', "</tool_call>"]
+    assert fake.tokenize_calls == [
+        "<tool_call>",
+        '<tool_call>{"name":"grep","arguments":',
+        schema_prefix,
+        "</tool_call>",
+        "}}</tool_call>",
+    ]
+    params = fake.calls[-1][1]
+    assert params.forced_tokens_pending == schema_prefix_ids
+    assert params.forced_token_reason == "tool_choice_required"
+    assert params.force_sequence_completion_token_sequences == expected_close_sequences
+    assert params.force_sequence_completion_reason == "tool_call_sequence_completion"
+    assert params.stop_token_sequences == expected_close_sequences
+
+
+def test_chat_completion_specific_tool_choice_falls_back_for_non_string_first_required_schema() -> None:
+    fake = FakeLLM(
+        outputs=["ordinary answer"],
+        token_map={
+            "<tool_call>": [77, 78],
+            '<tool_call>{"name":"count","arguments":': [90, 91, 92],
+            "</tool_call>": [88, 89],
+        },
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "count the matches"}],
+            "tool_choice": {"type": "function", "function": {"name": "count"}},
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "count",
+                        "strict": True,
+                        "parameters": {
+                            "type": "object",
+                            "properties": {"limit": {"type": "integer"}},
+                            "required": ["limit"],
+                            "additionalProperties": False,
+                        },
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert fake.tokenize_calls == [
+        "<tool_call>",
+        '<tool_call>{"name":"count","arguments":',
+        "</tool_call>",
+    ]
     params = fake.calls[-1][1]
     assert params.forced_tokens_pending == (90, 91, 92)
-    assert params.forced_token_reason == "tool_choice_required"
     assert params.force_sequence_completion_token_sequences == ((88, 89),)
-    assert params.force_sequence_completion_reason == "tool_call_sequence_completion"
+    assert params.stop_token_sequences == ((88, 89),)
 
 
 def test_chat_completion_strict_tool_schema_reports_schema_violation() -> None:
@@ -17903,7 +18012,14 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
     assert artifact["capabilities"]["features"]["tools"]["specific_tool_name_prefix_forcing_scope"] == (
         "atomic_tool_call_name_and_arguments_key"
     )
+    assert artifact["capabilities"]["features"]["tools"]["strict_tool_schema_prefix_anchor"] is True
+    assert artifact["capabilities"]["features"]["tools"]["strict_tool_schema_prefix_anchor_scope"] == (
+        "selected_closed_object_first_required_string_key"
+    )
     assert artifact["capabilities"]["features"]["tools"]["tool_call_close_repair"] is True
+    assert artifact["capabilities"]["features"]["tools"]["tool_call_close_repair_scope"] == (
+        "tokenizer_safe_marker_or_object_envelope_then_stop"
+    )
     assert artifact["capabilities"]["features"]["tools"]["compatibility_parser_repairs"] == [
         "duplicated_tool_call_start",
         "incomplete_duplicate_tool_prefix_control_residue",

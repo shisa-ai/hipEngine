@@ -758,15 +758,23 @@ Specific function choices, plus `required` mode with exactly one function tool,
 atomically queue the independently tokenized
 `<tool_call>{"name":"...","arguments":` prefix from its first token. This does
 not assume that separately tokenized `<tool_call>` IDs compose with the JSON
-suffix (Qwen tokenizers may merge the `>{` boundary). Multi-tool `required`
-mode queues only `<tool_call>` and leaves tool-name selection to the model. If a
-tokenized thinking budget is active, the applicable whole prefix is held until
-the `</think>` close sequence has moved the row into answer phase. Argument JSON
-keys/values remain model-generated and result-validated rather than
-schema-grammar constrained. Required and specific function modes also tokenize
-`</tool_call>` when possible; once that close marker begins, the host sampler
-forces the remaining suffix through model decoding so the closing tag is not
-left partially emitted.
+suffix (Qwen tokenizers may merge the `>{` boundary). For a selected strict
+object schema with `additionalProperties: false` whose first `required` property
+has `type: "string"`, the atomic prefix extends through the encoded property key
+and opening value quote. The value and all remaining properties stay
+model-generated and strict-result-validated. Other schema shapes fall back to
+the name-and-arguments prefix. Multi-tool `required` mode queues only
+`<tool_call>` and leaves tool-name selection to the model. If a tokenized
+thinking budget is active, the applicable whole prefix is held until the
+`</think>` close sequence has moved the row into answer phase.
+
+Required and specific function modes also tokenize `</tool_call>` when
+possible. Strict-schema first-string-key anchoring additionally enables the
+structural `}}</tool_call>` envelope tail. A tail is used only when its complete
+token sequence does not occur in the forced opening prefix. Once an enabled
+tail begins, the host sampler forces its remaining tokens and stops at the
+completed sequence, preventing post-envelope transcript residue. This is a
+bounded tokenizer-aware repair, not a general JSON-schema grammar.
 
 The current post-generation schema subset covers `type`, `enum`, `const`,
 local references with `$ref` into `$defs` or `definitions`, schema composition
@@ -789,8 +797,9 @@ validation keywords are rejected before generation when strict tool validation
 would use the schema; remote, unresolved, non-object, or cyclic `$ref` targets
 are rejected before generation too. Annotation keys such as `title`,
 `description`, `default`, and `format` are
-accepted but ignored by validation. This is result validation only; decode-time
-JSON/schema constraints remain unsupported.
+accepted but ignored by validation. Apart from the selected strict-schema
+first-string-key anchor described above, this is result validation only;
+general decode-time JSON/schema grammars remain unsupported.
 
 ### Structured outputs
 

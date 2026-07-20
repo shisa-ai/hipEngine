@@ -170160,3 +170160,81 @@ goodput, or complete-workload row is retained. Published blocked packet:
 Next: implement model-general schema-aware in-envelope JSON constraints after
 the selected-tool prefix without benchmark-conditioned IDs or expected
 arguments, then rerun the complete A1 packet.
+
+## 2026-07-20 — Anchor selected strict-tool JSON and stop at the envelope
+
+The clean-`5d6a2883` turn-1 blocker did not require a full per-token vocabulary
+grammar. The selected function already supplies a validated declared schema, so
+the minimal model-general route now extends the atomic tool prefix only when:
+
+1. a specific function is selected directly or by single-tool `required`;
+2. that function declares `strict: true`;
+3. its parameters are an object with `additionalProperties: false`;
+4. its first required property exists and has `type: "string"`.
+
+For that shape, the independently tokenized forced prefix extends through the
+JSON-encoded first required key and opening quote, for example
+`<tool_call>{"name":"grep","arguments":{"pattern":"`. The model still owns
+the string value and all remaining keys/values. Non-strict, multi-tool,
+non-object, open-object, empty-required, and non-string-first schemas retain the
+shorter existing prefix and strict postvalidation remains authoritative.
+
+The strict-anchor route also tokenizes the structural argument/envelope close
+`}}</tool_call>` alongside the existing marker close. Each candidate is omitted
+if its full token sequence occurs within the forced prefix. The first candidate
+token queues the remaining suffix through the existing tokenizer-agnostic DFA;
+the same completed sequence is now a stop boundary, so a valid envelope cannot
+continue into hallucinated Qwen role/transcript text. The structural candidate
+is never enabled when schema anchoring did not actually tokenize successfully;
+this safety narrowing avoids triggering on ordinary `}}` under multi-tool or
+unsupported-schema generation. Capabilities now report
+`strict_tool_schema_prefix_anchor_scope=selected_closed_object_first_required_string_key`
+and
+`tool_call_close_repair_scope=tokenizer_safe_marker_or_object_envelope_then_stop`.
+`docs/API.md` and `docs/AGENTIC-OPT.md` describe the bounded contract and state
+that general JSON-schema grammar decoding remains unsupported.
+
+RED/GREEN evidence:
+
+```bash
+python3 -m pytest -q \
+  tests/test_server_api.py::test_chat_completion_specific_tool_choice_forces_schema_first_string_key_after_tool_result
+# RED 1: schema-derived prefix was not tokenized/forced
+# RED 2: safe close-tail candidate was absent
+# GREEN: parameterized anchor plus both forced-prefix overlap guards pass
+
+python3 -m pytest -q tests/test_server_api.py -k \
+  'capabilities or required_tool_choice or specific_tool_choice_forces_schema_first_string_key_after_tool_result or specific_tool_choice_falls_back_for_non_string_first_required_schema or replay'
+# 34 passed
+
+python3 -m pytest -q tests/test_sampling.py \
+  tests/test_generation_qwen35_gguf_sampling.py \
+  tests/test_generation_qwen35_paro.py \
+  tests/test_generation_batch_scheduler.py tests/test_llm_generate.py
+# 529 passed
+python3 -m pytest -q tests/test_server_api.py
+# 513 passed
+python3 -m pytest -q tests/test_agentic_coding_live.py \
+  tests/test_agentic_coding_quality.py tests/test_agentic_server_conformance.py \
+  tests/test_agentic_harness_traces.py tests/test_local_agent_config.py
+# 142 passed
+ruff check hipengine/server/api.py tests/test_server_api.py
+# All checks passed
+```
+
+Before commit, an explicitly dirty-tree W7900 design diagnostic ran the complete
+small-repo c1 A1 collector against the same 4K cache-off server protocol. All
+four independent blocking oracles and all four exact response-owned SSE gates
+passed: `read`, `grep`, `read`, and `run`, totaling 100 generated IDs, with zero
+final request/session/KV/graph/workspace ownership. The diagnostic files were:
+
+- `/tmp/agentic-schema-anchor-close-dirty-a1.json` (SHA-256
+  `c2b4d695db284534b3a8969ddb8ff43445119b18a1b79cfaca15bb0745adf131`)
+- `/tmp/agentic-schema-anchor-close-dirty-records.json` (SHA-256
+  `f967734a19e1f391c5134ffd17ad1b49ae2ae3956a9ca47e69c30d10f4dcb5f6`)
+
+That diagnostic has `performance_claim=false`; its timing/throughput fields are
+not retained, copied into `benchmarks/results/`, or promoted to any rollup. It
+establishes only that the bounded schema anchor plus safe close/stop route can
+clear all four correctness gates. Next: commit/push this correctness unit, then
+run the identical A1 collector from a clean commit before any performance lane.
