@@ -168944,3 +168944,65 @@ gfx1151, vocab caps, and acceptance policy remain outside this gate.
 Artifact: `benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-proposer-update-residuals.json`,
 15,830 bytes, SHA-256
 `7312b02f5c0ef77babaa1a6107b519c450eb157a17e41e3c76acdf054538e76f`.
+
+## 2026-07-20 — Parallelize exact MTP router top8
+
+The clean proposer residual selected
+`mtp_router_topk_softmax_256x8_f32_kernel`, which launched one thread and did
+256 x top8 serial insertion. This is a performance-only rewrite with unchanged
+public ABI/math, so a behavioral RED failure is not expected. Before editing the
+body, strengthened the existing generic-topk oracle with **12 equal maxima
+across every wave32 boundary**; the serial baseline passes and requires the
+lowest eight ids exactly.
+
+Implementation in `hipengine/kernels/hip_gfx1100/speculative/mtp.hip` assigns
+one expert/logit to each of 256 threads and performs eight deterministic shared-
+memory pair reductions. Each selected winner is masked before the next rank;
+`better_pair_i32` preserves descending value/lower-index tie semantics. Thread 0
+retains the prior top8 FP32 softmax operation order. NaNs remain non-candidates.
+The non-256x8 generic two-kernel path is unchanged. No env or fallback debt was
+added.
+
+Focused exact gate:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-mtp-w7900-hipcc-version.txt \
+PYTHONPATH=. python3 -m pytest -q tests/test_mtp_input_fusion_kernel.py
+# 5 passed; fused ids/values/routing exactly equal generic topk+softmax
+```
+
+Matched same-process W7900 `rocprofv3 --kernel-trace --hip-runtime-trace` loaded
+the old cached `.so` (`mtp_speculative-2fe36aafb7ac9f3c`) and final candidate
+(`mtp_speculative-4240eabaef4d8eea`) directly, with 20 warmups and 1,000 measured
+launches each. The tie-heavy output is exact:
+`[0,31,32,63,64,95,96,127]`.
+
+| Router body | Steady mean | Median | VGPR | Scratch/thread | LDS | Workgroup |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| serial baseline | 94.516 us | 92.520 us | 48 | 80 B | 0 | 1 |
+| parallel candidate | **5.395 us** | **5.320 us** | 40 | 0 | 2.5 KiB | 256 |
+
+The leaf improves **-89.121 us/call (-94.29%, 17.52x)**. A separate
+launch-inclusive Python A/B brackets old **162.017/161.933 us** and candidate
+**9.060/9.053 us**.
+
+Then profiled the real dirty-tree canonical `code_lru_cache` B1/D24 final child,
+with explicit N4 and retained default selected commit, cached build, 16 windows
+after skip2. It remains exact with the identical acceptance history
+`[0,0,0,0,0,0,1,0,1,0,0,0,1,0,0,1,0,1]`:
+
+| Metric/cycle | Clean serial source | Parallel dirty candidate | Change |
+| --- | ---: | ---: | ---: |
+| router leaf | 0.153 ms (116.359 us/call) | **0.014 ms (10.615 us/call)** | **-0.139 ms** |
+| proposer-update kernels | 1.252 ms | **1.105 ms** | **-0.147 ms** |
+| proposer-update host | 1.471 ms | **1.323 ms** | **-0.148 ms** |
+| complete-cycle kernels | 11.154 ms | **11.010 ms** | **-0.144 ms** |
+| complete-cycle host | 16.322 ms | **16.235 ms** | -0.087 ms |
+
+Kernel/API counts are unchanged, as expected. The exact leaf gain transfers
+one-for-one into proposer host/kernel time and materially into complete wall,
+so retain the implementation for the clean full-suite gate. DFlash ownership,
+acceptance policy, vocab cap, model bytes, and NativeSpec boundaries are
+unchanged. The source is shared by registered gfx11 backends; only gfx1100 has a
+performance claim, and gfx1151 remains independently unverified.
