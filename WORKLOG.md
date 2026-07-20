@@ -170731,3 +170731,43 @@ The canonical direct C1/C2/C4/C8 row is now
 claims; the elevated all-width diagnostic was not used. F3Q is a clean direct
 physical-C8 claim with exact profiler/state and non-regressive-within-noise
 server support.
+
+## 2026-07-20 — Close remaining exact paged-attention schedules
+
+After F3P/F3Q, the paged-context kernel is only **1.294 ms / 10 launches
+(2.61%)** of the model window. Tested the remaining independent softmax and
+value-load schedules at the real C8/context-513 shape with five cycling 12 MiB
+KV pools, 40 warmups, and 400 iterations. Every point is byte-exact:
+
+- diagnostic baseline **134.564 us**;
+- parallel independent exponentiation **131.089 us (-2.58%)**;
+- parallel independent score normalization **132.277 us (-1.70%)**;
+- combined parallel exp+normalize **128.225 us (-4.71%)**;
+- explicit packed vector-2 V loads **135.403 us (+0.62%)**;
+- combined parallel softmax + packed V **128.575 us (-4.45%)**.
+
+The combined softmax candidate preserves the original eight lane-0 partial-sum
+order by parallelizing only independent `expf`/normalization writes and then
+running the existing sum loop. Three-run p512/d128 direct is
+**159.549298/159.630946/159.928336 tok/s**, median **159.630946**, only
+**+0.090%** over clean F3Q at **0.102%** stdev/median. All trajectories and the
+**320/320** hidden/state oracle are exact.
+
+Serving rejects the noise-limited direct result: against F3Q, blocking improves
+**91.562 -> 91.758 tok/s (+0.21%)**, but exact SSE regresses
+**88.597 -> 87.838 (-0.86%)** and delayed regresses
+**70.414 -> 70.322 (-0.13%)**. The candidate/server raw artifact is 718,330
+bytes, SHA-256
+`96805ca38cf56aeb7bba7e006e781a67e505f47358b361c67679dbb8497bc76a`.
+All softmax/packed-load templates and diagnostic wrappers were removed.
+
+This closes the exact short-context paged-attention family: grouped query heads,
+explicit shared K/V, launch widths 128/512/1,024, packed K and V loads,
+KV-head-base hoisting, value vectors 1/2/4, shared token addressing, and parallel
+softmax schedules have all been measured. F3P's shared offsets + value vector 2
+remain the unique promoted combination.
+
+Published rejected artifact
+`benchmarks/results/2026-07-20-gfx1151-gguf-paged-attn-softmax-value-schedules-c8-rejected.json`
+(4,037 bytes, SHA-256
+`1d1eae788ae2bfbccfc7a84ba83d04ab9dabad4e2d48a01169f0fb095ffd5838`).
