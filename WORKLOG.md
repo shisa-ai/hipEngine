@@ -169631,3 +169631,49 @@ No complete `/tmp/agentic-small-c1-a1.json` was emitted and no performance
 number/rollup was retained. Next, separate the natural quality/repair lane from
 the deterministic performance lane, add response-owned exact IDs to measured
 SSE, and keep the c4/c8 startup-capacity blocker explicit.
+
+## 2026-07-20 — Separate natural agent quality from performance artifacts
+
+Implemented the A6 automatic-tool quality lane without weakening the A0/A1
+all-success performance contract. `hipengine/benchmark/agentic_quality.py` and
+two new JSON schemas define a separate non-performance artifact. Natural
+`tool_choice=auto` responses require exact blocking response-owned generated
+IDs, but model failures such as `finish_details.reason=invalid_tool_call` are
+retained as scored outcomes rather than aborting the suite. Rollups include
+valid-call, correct-tool, exact-argument, success, repair, and outcome rates and
+intentionally contain no latency, tok/s, or goodput fields; setting
+`performance_claim=true` is rejected.
+
+Added `scripts/agentic_coding_quality.py`. Each turn is evaluated against a
+canonical valid fixture history so a failed attempt does not corrupt or cascade
+into later turns. The fake live transport retains one invalid second turn,
+finishes all four turns, and reports 3/4 successes. The deterministic live
+collector still uses forced tools plus an independent exact oracle and remains
+unchanged apart from allowing its prompt-count helper to render string
+`tool_choice="auto"`. No GPU run, result artifact, performance claim, or runtime
+default changed.
+
+RED/GREEN and validation:
+
+```bash
+python3 -m pytest -q tests/test_agentic_coding_quality.py
+# RED: ModuleNotFoundError: hipengine.benchmark.agentic_quality
+# GREEN: 5 passed
+python3 -m pytest -q tests/test_agentic_coding_quality.py \
+  tests/test_agentic_coding_live.py tests/test_agentic_coding_benchmark.py
+# 17 passed
+ruff check hipengine/benchmark/agentic_quality.py \
+  hipengine/benchmark/__init__.py scripts/agentic_coding_live.py \
+  scripts/agentic_coding_quality.py tests/test_agentic_coding_quality.py
+# All checks passed
+python3 -m json.tool \
+  benchmarks/schemas/agentic-coding-quality-records.schema.json >/dev/null
+python3 -m json.tool \
+  benchmarks/schemas/agentic-coding-quality-benchmark.schema.json >/dev/null
+python3 -m py_compile hipengine/benchmark/agentic_quality.py \
+  scripts/agentic_coding_quality.py
+```
+
+Next: add exact generated IDs to the response-owned SSE done event and consume
+them in A1 with strict equality to the independent oracle, then run A6 on the
+viable W7900 4K/c1 configuration.
