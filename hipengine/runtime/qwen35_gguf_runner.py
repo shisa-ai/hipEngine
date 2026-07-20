@@ -184,6 +184,7 @@ from hipengine.runtime.gguf_linear import (
     wmma_prefill_session,
 )
 from hipengine.runtime.prefill import PrefillConfig, resolve_prefill_config_for_sequence
+from hipengine.speculative import TargetVerifyBatch
 
 
 @dataclass(frozen=True)
@@ -191,6 +192,76 @@ class Qwen35GGUFNextTokenProbeResult:
     token_id: int
     logit: float
     logits: np.ndarray
+
+
+@dataclass(frozen=True)
+class Qwen35GGUFResidentTargetLayout:
+    """Batch-shaped resident storage contract for GGUF target rows."""
+
+    max_batch_size: int
+    hidden_size: int
+    vocab_size: int
+    max_sequence_length: int
+    block_size: int = 256
+
+    def __post_init__(self) -> None:
+        for name in ("max_batch_size", "hidden_size", "vocab_size", "max_sequence_length", "block_size"):
+            if int(getattr(self, name)) <= 0:
+                raise ValueError(f"{name} must be positive")
+
+    @property
+    def blocks_per_slot(self) -> int:
+        return (int(self.max_sequence_length) + int(self.block_size) - 1) // int(self.block_size)
+
+    @property
+    def token_shape(self) -> tuple[int, ...]:
+        return (int(self.max_batch_size),)
+
+    @property
+    def position_shape(self) -> tuple[int, ...]:
+        return self.token_shape
+
+    @property
+    def hidden_shape(self) -> tuple[int, ...]:
+        return (int(self.max_batch_size), int(self.hidden_size))
+
+    @property
+    def slot0_hidden_shape(self) -> tuple[int, ...]:
+        return (1, int(self.hidden_size))
+
+    @property
+    def logits_shape(self) -> tuple[int, ...]:
+        return (int(self.max_batch_size), int(self.vocab_size))
+
+    @property
+    def block_table_shape(self) -> tuple[int, ...]:
+        return (int(self.max_batch_size), self.blocks_per_slot)
+
+
+@dataclass(frozen=True)
+class Qwen35GGUFTargetRowsResult:
+    """Host-visible outputs from the correctness-first GGUF target executor."""
+
+    token_ids: tuple[int, ...]
+    positions: tuple[int, ...]
+    slot_indices: tuple[int, ...]
+    span_role: str
+    logits: np.ndarray
+    layer_hidden_bits: dict[int, np.ndarray]
+
+    def __post_init__(self) -> None:
+        rows = len(self.token_ids)
+        if rows <= 0:
+            raise ValueError("target-row result must contain at least one row")
+        if len(self.positions) != rows or len(self.slot_indices) != rows:
+            raise ValueError("target-row result metadata must align")
+        if self.span_role not in {"decode", "verify_chain", "verify_tree"}:
+            raise ValueError("target-row result span_role is invalid")
+        if self.logits.ndim != 2 or self.logits.shape[0] != rows:
+            raise ValueError("target-row logits must be rank-2 with one row per result")
+        for hidden in self.layer_hidden_bits.values():
+            if hidden.ndim != 2 or hidden.shape[0] != rows or hidden.dtype != np.uint16:
+                raise ValueError("target-row layer captures must be row-aligned uint16 arrays")
 
 
 @dataclass(frozen=True)
@@ -3527,7 +3598,9 @@ class Qwen35GGUFResidentSession:
     runtime: HipRuntime | None = None
     compiler_version: str | None = None
     require_cached_build: bool = False
+    shared_runner: Qwen35GGUFFullStackRunner | None = None
     max_sequence_length: int | None = None
+    max_batch_size: int = 1
     use_expert_sidecar: bool = False
     expert_sidecar_cache_dir: str | Path | None = None
     require_expert_sidecar: bool = False
@@ -3542,6 +3615,9 @@ class Qwen35GGUFResidentSession:
     kv_scale_granularity: str = "per_token_head"
     runner: Qwen35GGUFFullStackRunner | None = field(default=None, init=False)
     scratch: object | None = field(default=None, init=False)
+    _target_scratch_owner: object | None = field(default=None, init=False)
+    _target_layout: Qwen35GGUFResidentTargetLayout | None = field(default=None, init=False)
+    _owns_runner: bool = field(default=True, init=False)
     _token_buf: object | None = field(default=None, init=False)
     _hidden_a: object | None = field(default=None, init=False)
     _hidden_b: object | None = field(default=None, init=False)
@@ -3584,12 +3660,21 @@ class Qwen35GGUFResidentSession:
 
     def __post_init__(self) -> None:
         self.runtime = self.runtime or get_hip_runtime()
-        self.runner = Qwen35GGUFFullStackRunner(
-            self.model_path,
-            runtime=self.runtime,
-            compiler_version=self.compiler_version,
-            require_cached_build=self.require_cached_build,
-        )
+        if int(self.max_batch_size) <= 0:
+            raise ValueError("max_batch_size must be positive")
+        self.max_batch_size = int(self.max_batch_size)
+        if self.shared_runner is None:
+            self.runner = Qwen35GGUFFullStackRunner(
+                self.model_path,
+                runtime=self.runtime,
+                compiler_version=self.compiler_version,
+                require_cached_build=self.require_cached_build,
+            )
+            self._owns_runner = True
+        else:
+            self.runner = self.shared_runner
+            self.runtime = self.runner.runtime or self.runtime
+            self._owns_runner = False
         if self.runner.weights is None:
             raise RuntimeError("GGUF full-stack runner did not materialize weights")
         self.fastpath_safety = resolve_qwen35moe_fastpath_safety(
@@ -3670,16 +3755,25 @@ class Qwen35GGUFResidentSession:
                     layer_id: self._load_expert_sidecar_host_layer(layer_id)
                     for layer_id in range(self.runner.weights.config.block_count)
                 }
-        self.scratch = _FullStackScratch.allocate(
+        self._target_scratch_owner = _FullStackScratch.allocate(
             self.runner,
             runtime=runtime,
             max_sequence_length=self.max_sequence_length,
+            max_batch_size=self.max_batch_size,
             kv_storage_dtype=self.kv_storage_dtype,
             kv_scale_dtype=self.kv_scale_dtype,
             kv_scale_granularity=self.kv_scale_granularity,
             int8_kv_value_bf16=self.int8_kv_value_bf16,
             int8_bf16_prefix_full_attention_layers=self.int8_bf16_prefix_full_attention_layers,
             int8_bf16_full_attention_layer_indices=self.int8_bf16_full_attention_layer_indices,
+        )
+        self.scratch = self._target_scratch_owner.for_slot(0)
+        self._target_layout = Qwen35GGUFResidentTargetLayout(
+            max_batch_size=self.max_batch_size,
+            hidden_size=self.runner.hidden_size,
+            vocab_size=self.runner.vocab_size,
+            max_sequence_length=int(self.scratch.max_positions),
+            block_size=int(self.scratch.block_size),
         )
         total_memory_bytes = 0
         try:
@@ -3691,18 +3785,28 @@ class Qwen35GGUFResidentSession:
             max_sequence_length=int(self.scratch.max_positions),
             total_memory_bytes=int(total_memory_bytes),
         )
+        self._token_host = np.empty((self.max_batch_size,), dtype=np.int64)
         self._token_buf = malloc(self._token_host.nbytes, runtime=runtime)
         hidden_bytes = self.runner.hidden_size * 2
-        self._hidden_a = malloc(hidden_bytes, runtime=runtime)
-        self._hidden_b = malloc(hidden_bytes, runtime=runtime)
+        self._hidden_a = malloc(self.max_batch_size * hidden_bytes, runtime=runtime)
+        self._hidden_b = malloc(self.max_batch_size * hidden_bytes, runtime=runtime)
         self._logits_host = np.empty((1, self.runner.vocab_size), dtype=np.float32)
-        self._logits_buf = malloc(self._logits_host.nbytes, runtime=runtime)
+        self._logits_buf = malloc(
+            self.max_batch_size * self.runner.vocab_size * DType.FP32.itemsize,
+            runtime=runtime,
+        )
         self._lm_head_threads = 128
         self._lm_head_stage1_blocks = lm_head_argmax_stage1_blocks(self.runner.vocab_size, threads=self._lm_head_threads)
-        self._lm_block_values = malloc(self._lm_head_stage1_blocks * DType.FP32.itemsize, runtime=runtime)
-        self._lm_block_indices = malloc(self._lm_head_stage1_blocks * DType.INT64.itemsize, runtime=runtime)
-        self._lm_out_index = malloc(DType.INT64.itemsize, runtime=runtime)
-        self._lm_out_value = malloc(DType.FP32.itemsize, runtime=runtime)
+        self._lm_block_values = malloc(
+            self.max_batch_size * self._lm_head_stage1_blocks * DType.FP32.itemsize,
+            runtime=runtime,
+        )
+        self._lm_block_indices = malloc(
+            self.max_batch_size * self._lm_head_stage1_blocks * DType.INT64.itemsize,
+            runtime=runtime,
+        )
+        self._lm_out_index = malloc(self.max_batch_size * DType.INT64.itemsize, runtime=runtime)
+        self._lm_out_value = malloc(self.max_batch_size * DType.FP32.itemsize, runtime=runtime)
         prefill_capacity = int(self.scratch.max_positions)
         prefill_rows = self._prefill_scratch_rows(prefill_capacity)
         alloc_capacity = prefill_capacity if self.use_expert_sidecar else prefill_rows
@@ -3738,6 +3842,80 @@ class Qwen35GGUFResidentSession:
 
         return int(self._position)
 
+    @property
+    def row_positions(self) -> tuple[int, ...]:
+        """Next target-token position for every resident physical row."""
+
+        if self._target_scratch_owner is None:
+            raise RuntimeError("GGUF resident session is closed")
+        positions = [int(value) for value in self._target_scratch_owner.position_host.tolist()]
+        if positions:
+            positions[0] = int(self._position)
+        return tuple(positions)
+
+    @property
+    def target_layout(self) -> Qwen35GGUFResidentTargetLayout:
+        if self._target_layout is None:
+            raise RuntimeError("GGUF resident session is closed")
+        return self._target_layout
+
+    def target_spans(
+        self,
+        *,
+        slot_indices: tuple[int, ...] | list[int] | None = None,
+        span_role: str = "decode",
+    ) -> KVLiveSpans:
+        """Return contiguous per-row spans for the resident target executor."""
+
+        if self._target_scratch_owner is None:
+            raise RuntimeError("GGUF resident session is closed")
+        owner = self._target_scratch_owner
+        slots = (
+            tuple(range(int(owner.slot_count)))
+            if slot_indices is None
+            else tuple(int(slot) for slot in slot_indices)
+        )
+        if not slots:
+            raise ValueError("slot_indices must contain at least one slot")
+        if slots != tuple(range(slots[0], slots[0] + len(slots))):
+            raise ValueError("target spans currently require contiguous physical slots")
+        if slots[0] < 0 or slots[-1] >= int(owner.slot_count):
+            raise ValueError("target span slot outside resident capacity")
+        if span_role not in {"decode", "verify_chain", "verify_tree"}:
+            raise ValueError("span_role must be decode, verify_chain, or verify_tree")
+        rows = len(slots)
+        blocks = int(owner.blocks_per_slot)
+        block_ptr = int(owner.block_table.ptr) + slots[0] * blocks * DType.INT32.itemsize
+        position_ptr = int(owner.position_buf.ptr) + slots[0] * DType.INT64.itemsize
+        context_ptr = int(owner.context_buf.ptr) + slots[0] * DType.INT64.itemsize
+        block_table = Tensor.from_handle(
+            block_ptr,
+            (rows, blocks),
+            DType.INT32,
+            owner.block_table_tensor.device,
+        )
+        positions = Tensor.from_handle(
+            position_ptr,
+            (rows,),
+            DType.INT64,
+            owner.position_tensor.device,
+        )
+        contexts = Tensor.from_handle(
+            context_ptr,
+            (rows,),
+            DType.INT64,
+            owner.context_tensor.device,
+        )
+        max_live_count = max(int(owner.context_host[slot]) for slot in slots)
+        return KVLiveSpans.paged_uniform(
+            block_table=block_table,
+            live_counts=contexts,
+            max_live_count=max_live_count,
+            storage_dtype=owner.kv_storage_dtype,
+            row_positions=positions,
+            span_role=span_role,
+        )
+
     def select_prefill_quant(self, quant: str) -> None:
         """Select the four-axis GGUF prefill plugins for this session."""
 
@@ -3746,12 +3924,12 @@ class Qwen35GGUFResidentSession:
         self.runner.select_prefill_quant(quant)
 
     def reset(self) -> None:
-        """Reset sequence state without freeing resident weights or scratch."""
+        """Reset every resident target row without freeing weights or scratch."""
 
-        if self.scratch is None:
+        if self.scratch is None or self._target_scratch_owner is None:
             raise RuntimeError("GGUF resident session is closed")
         runtime = self.runtime or get_hip_runtime()
-        self.scratch.zero_states(runtime)
+        self._target_scratch_owner.zero_states(runtime)
         self._position = 0
 
     def _offload_token_embedding_to_host(self, *, runtime: HipRuntime) -> None:
@@ -4296,6 +4474,243 @@ class Qwen35GGUFResidentSession:
                 tensor.free(runtime=runtime)
             raise
 
+    def step_rows(
+        self,
+        token_ids: tuple[int, ...] | list[int],
+        positions: tuple[int, ...] | list[int] | None = None,
+        *,
+        slot_indices: tuple[int, ...] | list[int] | None = None,
+        span_role: str = "decode",
+        return_logits: bool = True,
+        capture_layer_ids: tuple[int, ...] | list[int] | set[int] = (),
+        stream: int = 0,
+    ) -> Qwen35GGUFTargetRowsResult:
+        """Run target rows through the c=1-exact fallback over batch storage.
+
+        The ABI and all resident ownership are row-shaped. This first executor
+        deliberately invokes the retained c=1 layer path once per active row;
+        Task #29 may replace individual families with c-aware kernels without
+        changing token/state/KV metadata or the verification entrypoint.
+        """
+
+        if self.runner is None or self.runner.weights is None or self._target_scratch_owner is None:
+            raise RuntimeError("GGUF resident session is closed")
+        if self._token_buf is None or self._hidden_a is None or self._hidden_b is None or self._logits_buf is None:
+            raise RuntimeError("GGUF resident target-row buffers are closed")
+        tokens = tuple(int(token) for token in token_ids)
+        if not tokens:
+            raise ValueError("token_ids must contain at least one row")
+        slots = tuple(range(len(tokens))) if slot_indices is None else tuple(int(slot) for slot in slot_indices)
+        if len(slots) != len(tokens):
+            raise ValueError("slot_indices must align with token_ids")
+        if len(set(slots)) != len(slots):
+            raise ValueError("slot_indices must be unique")
+        if min(slots) < 0 or max(slots) >= int(self.max_batch_size):
+            raise ValueError("target row slot outside resident max_batch_size")
+        if span_role not in {"decode", "verify_chain", "verify_tree"}:
+            raise ValueError("span_role must be decode, verify_chain, or verify_tree")
+        for token in tokens:
+            if token < 0 or token >= int(self.runner.vocab_size):
+                raise ValueError(f"token_id {token} outside [0, {self.runner.vocab_size})")
+
+        owner = self._target_scratch_owner
+        current_positions = list(self.row_positions)
+        consumed_positions = tuple(current_positions[slot] for slot in slots)
+        if positions is not None:
+            requested_positions = tuple(int(position) for position in positions)
+            if requested_positions != consumed_positions:
+                raise ValueError(
+                    f"target row positions {requested_positions!r} do not match resident cursors "
+                    f"{consumed_positions!r}"
+                )
+        owner.set_full_attention_positions(tuple(current_positions), self.runtime or get_hip_runtime())
+        capture_ids = tuple(sorted({int(layer_id) for layer_id in capture_layer_ids}))
+        layer_count = len(self.runner.weights.config.layer_types)
+        if any(layer_id < 0 or layer_id >= layer_count for layer_id in capture_ids):
+            raise ValueError("capture_layer_ids contains an out-of-range layer")
+
+        runtime = self.runtime or get_hip_runtime()
+        hidden_row_nbytes = int(self.runner.hidden_size) * DType.BF16.itemsize
+        logits_row_nbytes = int(self.runner.vocab_size) * DType.FP32.itemsize
+        slot_scratch = {
+            slot: owner.for_slot(slot, span_role=span_role)
+            for slot in slots
+        }
+        for token, slot in zip(tokens, slots, strict=True):
+            self._copy_token_embeddings_to_device(
+                np.asarray([token], dtype=np.int64),
+                int(self._hidden_a.ptr) + slot * hidden_row_nbytes,
+                rows=1,
+                token_ids_device_ptr=int(self._token_buf.ptr) + slot * DType.INT64.itemsize,
+                stream=stream,
+            )
+
+        src = self._hidden_a
+        dst = self._hidden_b
+        captures: dict[int, np.ndarray] = {}
+        with gemv_decode_session(self.use_gemv_decode):
+            for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
+                for slot in slots:
+                    scratch = slot_scratch[slot]
+                    src_ptr = int(src.ptr) + slot * hidden_row_nbytes
+                    dst_ptr = int(dst.ptr) + slot * hidden_row_nbytes
+                    if layer_type == LINEAR_ATTENTION:
+                        self.runner._run_linear_attention_layer(
+                            layer_id,
+                            src_ptr,
+                            dst_ptr,
+                            scratch,
+                            stream=stream,
+                        )
+                    elif layer_type == FULL_ATTENTION:
+                        self.runner._run_full_attention_layer(
+                            layer_id,
+                            src_ptr,
+                            dst_ptr,
+                            scratch,
+                            position=consumed_positions[slots.index(slot)],
+                            stream=stream,
+                        )
+                    else:
+                        raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+                src, dst = dst, src
+                if layer_id in capture_ids:
+                    hidden = np.empty((len(slots), self.runner.hidden_size), dtype=np.uint16)
+                    for row, slot in enumerate(slots):
+                        copy_device_to_host(
+                            host_array_ptr(hidden[row]),
+                            DeviceBuffer(int(src.ptr) + slot * hidden_row_nbytes, hidden_row_nbytes),
+                            runtime=runtime,
+                        )
+                    captures[layer_id] = hidden
+
+            for slot in slots:
+                scratch = slot_scratch[slot]
+                src_ptr = int(src.ptr) + slot * hidden_row_nbytes
+                gguf_rmsnorm_bf16_f32_weight(
+                    src_ptr,
+                    self.runner.weights.root("output_norm").allocation().tensor.ptr,
+                    scratch.norm.ptr,
+                    rows=1,
+                    hidden_size=self.runner.hidden_size,
+                    eps=self.runner.weights.config.rms_norm_eps,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                launch_gguf_linear(
+                    self.runner.weights.root("lm_head"),
+                    scratch.norm.ptr,
+                    int(self._logits_buf.ptr) + slot * logits_row_nbytes,
+                    rows=1,
+                    in_features=self.runner.hidden_size,
+                    out_features=self.runner.vocab_size,
+                    output_dtype=GGUF_OUTPUT_F32,
+                    stream=stream,
+                    runtime=runtime,
+                )
+
+        if stream:
+            runtime.stream_synchronize(stream)
+        else:
+            runtime.device_synchronize()
+        logits = np.empty((len(slots), self.runner.vocab_size), dtype=np.float32)
+        for row, slot in enumerate(slots):
+            copy_device_to_host(
+                host_array_ptr(logits[row]),
+                DeviceBuffer(int(self._logits_buf.ptr) + slot * logits_row_nbytes, logits_row_nbytes),
+                runtime=runtime,
+            )
+        if not np.all(np.isfinite(logits)):
+            raise FloatingPointError("GGUF target-row lm-head logits contain NaN or Inf")
+        next_tokens = tuple(int(np.argmax(row)) for row in logits)
+
+        for slot in slots:
+            current_positions[slot] += 1
+        owner.set_full_attention_positions(tuple(current_positions), runtime)
+        self._position = int(current_positions[0])
+        return Qwen35GGUFTargetRowsResult(
+            token_ids=next_tokens,
+            positions=consumed_positions,
+            slot_indices=slots,
+            span_role=span_role,
+            logits=logits if return_logits else np.empty((len(slots), 0), dtype=np.float32),
+            layer_hidden_bits=captures,
+        )
+
+    def verify_rows(
+        self,
+        batch: TargetVerifyBatch,
+        *,
+        return_logits: bool = True,
+        capture_layer_ids: tuple[int, ...] | list[int] | set[int] = (),
+        stream: int = 0,
+    ) -> Qwen35GGUFTargetRowsResult:
+        """Execute a correctness-first linear target chain over shared row state.
+
+        This fallback mutates its dedicated resident target slots in row order;
+        scheduler-owned transactional import/commit remains the integration
+        boundary for Task #31. Tree branches fail closed until parent-state
+        snapshots are wired.
+        """
+
+        if batch.mode != "verify_chain":
+            raise NotImplementedError("GGUF target-row fallback currently supports verify_chain only")
+        if len(batch.request_ids) > int(self.max_batch_size):
+            raise ValueError("target verify requests exceed resident max_batch_size")
+        if not all(batch.active_mask):
+            raise NotImplementedError("inactive target verify rows are not supported by the fallback")
+        slot_by_request = {
+            request_id: slot
+            for slot, request_id in enumerate(batch.request_ids)
+        }
+        last_row_by_request: dict[int, int] = {}
+        row_results: list[Qwen35GGUFTargetRowsResult] = []
+        for row, (token, position, request_id, parent_row) in enumerate(
+            zip(
+                batch.tokens,
+                batch.positions,
+                batch.row_to_request,
+                batch.parent_rows,
+                strict=True,
+            )
+        ):
+            if row in set(batch.root_rows):
+                if parent_row != -1:
+                    raise ValueError("target verify root rows must have parent -1")
+            elif parent_row != last_row_by_request.get(request_id):
+                raise NotImplementedError(
+                    "branched target verification requires parent-state snapshots"
+                )
+            slot = slot_by_request[request_id]
+            row_results.append(
+                self.step_rows(
+                    (int(token),),
+                    positions=(int(position),),
+                    slot_indices=(slot,),
+                    span_role="verify_chain",
+                    return_logits=return_logits,
+                    capture_layer_ids=capture_layer_ids,
+                    stream=stream,
+                )
+            )
+            last_row_by_request[request_id] = row
+
+        capture_ids = tuple(sorted({int(layer_id) for layer_id in capture_layer_ids}))
+        return Qwen35GGUFTargetRowsResult(
+            token_ids=tuple(result.token_ids[0] for result in row_results),
+            positions=tuple(int(position) for position in batch.positions),
+            slot_indices=tuple(slot_by_request[request_id] for request_id in batch.row_to_request),
+            span_role="verify_chain",
+            logits=np.concatenate([result.logits for result in row_results], axis=0),
+            layer_hidden_bits={
+                layer_id: np.concatenate(
+                    [result.layer_hidden_bits[layer_id] for result in row_results],
+                    axis=0,
+                )
+                for layer_id in capture_ids
+            },
+        )
+
     def step(
         self,
         token_id: int,
@@ -4685,13 +5100,16 @@ class Qwen35GGUFResidentSession:
             if buffer is not None:
                 free(buffer, runtime=runtime)
         self._buffers = ()
-        if self.scratch is not None:
-            for buffer in reversed(self.scratch.buffers):
+        if self._target_scratch_owner is not None:
+            for buffer in reversed(self._target_scratch_owner.buffers):
                 free(buffer, runtime=runtime)
+            self._target_scratch_owner = None
             self.scratch = None
         if self.runner is not None:
-            self.runner.close()
+            if self._owns_runner:
+                self.runner.close()
             self.runner = None
+        self._target_layout = None
         self._token_buf = None
         self._hidden_a = None
         self._hidden_b = None
@@ -5251,6 +5669,8 @@ class _FullStackScratch:
     moe_scatter_offsets_zero: np.ndarray
     moe_selected_rows_capacity: int
     buffers: tuple[object, ...]
+    slot_count: int = 1
+    blocks_per_slot: int = 1
 
     @classmethod
     def allocate(
@@ -5259,6 +5679,7 @@ class _FullStackScratch:
         *,
         runtime: HipRuntime,
         max_sequence_length: int | None = None,
+        max_batch_size: int = 1,
         kv_storage_dtype: str | DType = DType.BF16,
         kv_scale_dtype: str | DType = DType.FP16,
         kv_scale_granularity: str = "per_token_head",
@@ -5292,26 +5713,36 @@ class _FullStackScratch:
             raise ValueError(
                 f"max_sequence_length {requested_positions} exceeds GGUF context length {cfg.context_length}"
             )
+        slot_count = int(max_batch_size)
+        if slot_count <= 0:
+            raise ValueError("max_batch_size must be positive")
         block_count = (requested_positions + block_size - 1) // block_size
         max_positions = min(int(cfg.context_length), block_count * block_size)
-        hidden_bytes = runner.hidden_size * 2
-        ffn_bytes = runner.ffn_size * 2
+        total_blocks = slot_count * block_count
+        total_positions = slot_count * max_positions
+        hidden_bytes = slot_count * runner.hidden_size * 2
+        ffn_bytes = slot_count * runner.ffn_size * 2
         moe_lane_count = max(1, int(cfg.expert_used_count)) if cfg.is_moe else 1
         moe_top_k = max(1, int(cfg.expert_used_count))
         moe_experts = max(1, int(cfg.expert_count))
         moe_shared_ffn = max(1, int(cfg.expert_shared_feed_forward_length or runner.ffn_size or 1))
-        linear_qkv_bytes = runner.linear_qkv_width * 2
-        ssm_inner_bytes = cfg.ssm_inner_size * 2
-        alpha_bytes = cfg.ssm_time_step_rank * 2
-        q_proj_bytes = 2 * runner.q_width * 2
-        kv_bf16_bytes = runner.kv_width * 2
-        q_f32_bytes = runner.q_width * 4
-        kv_f32_bytes = runner.kv_width * 4
+        linear_qkv_bytes = slot_count * runner.linear_qkv_width * 2
+        ssm_inner_bytes = slot_count * cfg.ssm_inner_size * 2
+        alpha_bytes = slot_count * cfg.ssm_time_step_rank * 2
+        q_proj_bytes = slot_count * 2 * runner.q_width * 2
+        kv_bf16_bytes = slot_count * runner.kv_width * 2
+        q_f32_bytes = slot_count * runner.q_width * 4
+        kv_f32_bytes = slot_count * runner.kv_width * 4
         full_attn_split_count = (max_positions + block_size - 1) // block_size
-        full_attn_split_partial_bytes = runner.q_width * full_attn_split_count * 4
-        full_attn_split_stat_bytes = cfg.head_count * full_attn_split_count * 4
-        conv_zero = np.zeros((runner.linear_qkv_width, cfg.ssm_conv_kernel), dtype=np.float32)
-        recurrent_zero = np.zeros((cfg.ssm_time_step_rank, cfg.ssm_state_size, runner.ssm_value_dim), dtype=np.float32)
+        full_attn_split_partial_bytes = slot_count * runner.q_width * full_attn_split_count * 4
+        full_attn_split_stat_bytes = slot_count * cfg.head_count * full_attn_split_count * 4
+        conv_zero = np.zeros(
+            (slot_count, runner.linear_qkv_width, cfg.ssm_conv_kernel), dtype=np.float32
+        )
+        recurrent_zero = np.zeros(
+            (slot_count, cfg.ssm_time_step_rank, cfg.ssm_state_size, runner.ssm_value_dim),
+            dtype=np.float32,
+        )
         layer_conv_states: list[object | None] = []
         layer_recurrent_states: list[object | None] = []
         full_key_caches: list[object | None] = []
@@ -5335,8 +5766,8 @@ class _FullStackScratch:
                 f"GGUF INT8 BF16 full-attention layer indices {bad_bf16_indices} outside [0, {full_attention_count})"
             )
         bf16_full_attention_index_set = frozenset(bf16_full_attention_indices)
-        int8_cache_nbytes = max_positions * cfg.head_count_kv * cfg.key_length * DType.INT8.itemsize
-        bf16_cache_nbytes = max_positions * cfg.head_count_kv * cfg.key_length * DType.BF16.itemsize
+        int8_cache_nbytes = total_positions * cfg.head_count_kv * cfg.key_length * DType.INT8.itemsize
+        bf16_cache_nbytes = total_positions * cfg.head_count_kv * cfg.key_length * DType.BF16.itemsize
         mirror_bf16_nbytes = bf16_cache_nbytes
         short_int8_bf16_mirror = (
             kv_storage == DType.INT8_PER_TOKEN_HEAD
@@ -5346,9 +5777,9 @@ class _FullStackScratch:
             scale_dim_blocks = int(cfg.key_length) // 16
             if int(cfg.key_length) % 16 != 0 or scale_dim_blocks != 16:
                 raise ValueError("GGUF INT8 KV block16 scales require head_dim/key_length 256")
-            scale_shape = (block_count, block_size, cfg.head_count_kv, scale_dim_blocks)
+            scale_shape = (total_blocks, block_size, cfg.head_count_kv, scale_dim_blocks)
         else:
-            scale_shape = (block_count, block_size, cfg.head_count_kv)
+            scale_shape = (total_blocks, block_size, cfg.head_count_kv)
         scale_nbytes = int(np.prod(scale_shape)) * scale_dtype.itemsize
         full_attention_index = 0
         for layer_type in cfg.layer_types:
@@ -5408,9 +5839,12 @@ class _FullStackScratch:
                     full_v_scale_caches.append(None)
                     full_kv_scale_metadata.append(None)
                 full_attention_index += 1
-        block_table_arr = np.arange(block_count, dtype=np.int32)
-        position_host = np.asarray([0], dtype=np.int64)
-        context_host = np.asarray([1], dtype=np.int64)
+        if slot_count == 1:
+            block_table_arr = np.arange(block_count, dtype=np.int32)
+        else:
+            block_table_arr = np.arange(total_blocks, dtype=np.int32).reshape(slot_count, block_count)
+        position_host = np.zeros((slot_count,), dtype=np.int64)
+        context_host = np.ones((slot_count,), dtype=np.int64)
         cos_arr, sin_arr = _rope_tables(
             max_positions=max_positions,
             rotary_dim=cfg.rope_dimension_count,
@@ -5453,8 +5887,8 @@ class _FullStackScratch:
             "linear_alpha": buf(alpha_bytes),
             "linear_beta": buf(alpha_bytes),
             "linear_alpha_beta": buf(2 * alpha_bytes),
-            "conv_out": buf(runner.linear_qkv_width * 4),
-            "recurrent_out": buf(cfg.ssm_inner_size * 4),
+            "conv_out": buf(slot_count * runner.linear_qkv_width * 4),
+            "recurrent_out": buf(slot_count * cfg.ssm_inner_size * 4),
             "recurrent_bf16": buf(ssm_inner_bytes),
             "full_q": buf(q_proj_bytes),
             "full_k": buf(kv_bf16_bytes),
@@ -5463,33 +5897,33 @@ class _FullStackScratch:
             "full_key_raw": buf(kv_f32_bytes),
             "full_query": buf(q_f32_bytes),
             "full_key": buf(kv_f32_bytes),
-            "full_gate": buf(runner.q_width * 2),
+            "full_gate": buf(slot_count * runner.q_width * 2),
             "full_attn_context": buf(q_f32_bytes),
             "full_attn_split_partial": buf(full_attn_split_partial_bytes),
             "full_attn_split_m": buf(full_attn_split_stat_bytes),
             "full_attn_split_l": buf(full_attn_split_stat_bytes),
-            "full_gated": buf(runner.q_width * 2),
+            "full_gated": buf(slot_count * runner.q_width * 2),
             "ffn_gate_up": buf(2 * ffn_bytes * moe_lane_count),
             "ffn_intermediate": buf(ffn_bytes * moe_lane_count),
             "ffn_down": buf(hidden_bytes),
-            "moe_router_logits": buf((moe_experts + 1) * DType.FP32.itemsize),
-            "moe_selected_experts": buf(moe_top_k * DType.INT64.itemsize),
-            "moe_routing_weights": buf(moe_top_k * DType.FP32.itemsize),
+            "moe_router_logits": buf(slot_count * (moe_experts + 1) * DType.FP32.itemsize),
+            "moe_selected_experts": buf(slot_count * moe_top_k * DType.INT64.itemsize),
+            "moe_routing_weights": buf(slot_count * moe_top_k * DType.FP32.itemsize),
             "moe_down_out": buf(moe_top_k * hidden_bytes),
-            "moe_group_counts": buf(moe_experts * DType.INT32.itemsize),
-            "moe_padded_counts": buf(moe_experts * DType.INT32.itemsize),
-            "moe_scatter_offsets": buf(moe_experts * DType.INT32.itemsize),
-            "moe_expert_start_compact": buf((moe_experts + 1) * DType.INT64.itemsize),
-            "moe_total_compact": buf(DType.INT64.itemsize),
-            "moe_sorted_lanes": buf(moe_top_k * DType.INT64.itemsize),
-            "moe_sorted_experts": buf(moe_top_k * DType.INT64.itemsize),
-            "moe_sorted_weights": buf(moe_top_k * DType.FP32.itemsize),
-            "moe_lane_to_row": buf(moe_top_k * DType.INT64.itemsize),
-            "moe_shared_gate": buf(moe_shared_ffn * DType.BF16.itemsize),
-            "moe_shared_up": buf(moe_shared_ffn * DType.BF16.itemsize),
-            "moe_shared_intermediate": buf(moe_shared_ffn * DType.BF16.itemsize),
+            "moe_group_counts": buf(slot_count * moe_experts * DType.INT32.itemsize),
+            "moe_padded_counts": buf(slot_count * moe_experts * DType.INT32.itemsize),
+            "moe_scatter_offsets": buf(slot_count * moe_experts * DType.INT32.itemsize),
+            "moe_expert_start_compact": buf(slot_count * (moe_experts + 1) * DType.INT64.itemsize),
+            "moe_total_compact": buf(slot_count * DType.INT64.itemsize),
+            "moe_sorted_lanes": buf(slot_count * moe_top_k * DType.INT64.itemsize),
+            "moe_sorted_experts": buf(slot_count * moe_top_k * DType.INT64.itemsize),
+            "moe_sorted_weights": buf(slot_count * moe_top_k * DType.FP32.itemsize),
+            "moe_lane_to_row": buf(slot_count * moe_top_k * DType.INT64.itemsize),
+            "moe_shared_gate": buf(slot_count * moe_shared_ffn * DType.BF16.itemsize),
+            "moe_shared_up": buf(slot_count * moe_shared_ffn * DType.BF16.itemsize),
+            "moe_shared_intermediate": buf(slot_count * moe_shared_ffn * DType.BF16.itemsize),
             "moe_shared_out": buf(hidden_bytes),
-            "moe_shared_gate_logits": buf(DType.FP32.itemsize),
+            "moe_shared_gate_logits": buf(slot_count * DType.FP32.itemsize),
         }
         moe_group_counts_zero = np.zeros((moe_experts,), dtype=np.int32)
         moe_scatter_offsets_zero = np.zeros((moe_experts,), dtype=np.int32)
@@ -5529,11 +5963,170 @@ class _FullStackScratch:
             layer_recurrent_states=tuple(layer_recurrent_states),
             conv_zero=conv_zero,
             recurrent_zero=recurrent_zero,
-            moe_selected_host=np.empty((moe_top_k,), dtype=np.int64),
+            moe_selected_host=(
+                np.empty((moe_top_k,), dtype=np.int64)
+                if slot_count == 1
+                else np.empty((slot_count, moe_top_k), dtype=np.int64)
+            ),
             moe_group_counts_zero=moe_group_counts_zero,
             moe_scatter_offsets_zero=moe_scatter_offsets_zero,
             moe_selected_rows_capacity=moe_top_k,
             buffers=tuple(fields.values()) + tuple(state_buffers) + tuple(cache_buffers) + metadata_buffers,
+            slot_count=slot_count,
+            blocks_per_slot=block_count,
+        )
+
+    def for_slot(self, slot: int, *, span_role: str = "decode") -> "_FullStackScratch":
+        """Return a c=1-compatible view over one row of batch-shaped storage."""
+
+        slot = int(slot)
+        if slot < 0 or slot >= int(self.slot_count):
+            raise ValueError(f"slot {slot} outside [0, {self.slot_count})")
+        if span_role not in {"decode", "verify_chain", "verify_tree"}:
+            raise ValueError("span_role must be decode, verify_chain, or verify_tree")
+        if int(self.slot_count) == 1:
+            if self.append_spans.span_role == span_role and self.decode_spans.span_role == span_role:
+                return self
+            position_tensor = self.position_tensor
+            return replace(
+                self,
+                append_spans=replace(
+                    self.append_spans,
+                    row_positions=position_tensor,
+                    span_role=span_role,
+                ),
+                decode_spans=replace(
+                    self.decode_spans,
+                    row_positions=position_tensor,
+                    span_role=span_role,
+                ),
+            )
+
+        def row(buffer) -> DeviceBuffer:
+            row_nbytes = int(buffer.nbytes) // int(self.slot_count)
+            return DeviceBuffer(int(buffer.ptr) + slot * row_nbytes, row_nbytes)
+
+        block_row_nbytes = int(self.blocks_per_slot) * DType.INT32.itemsize
+        block_table = DeviceBuffer(
+            int(self.block_table.ptr) + slot * block_row_nbytes,
+            block_row_nbytes,
+        )
+        position_buf = DeviceBuffer(
+            int(self.position_buf.ptr) + slot * DType.INT64.itemsize,
+            DType.INT64.itemsize,
+        )
+        context_buf = DeviceBuffer(
+            int(self.context_buf.ptr) + slot * DType.INT64.itemsize,
+            DType.INT64.itemsize,
+        )
+        block_table_tensor = Tensor.from_handle(
+            block_table.ptr,
+            (int(self.blocks_per_slot),),
+            DType.INT32,
+            self.block_table_tensor.device,
+        )
+        position_tensor = Tensor.from_handle(
+            position_buf.ptr,
+            (1,),
+            DType.INT64,
+            self.position_tensor.device,
+        )
+        context_tensor = Tensor.from_handle(
+            context_buf.ptr,
+            (1,),
+            DType.INT64,
+            self.context_tensor.device,
+        )
+        append_spans = KVLiveSpans.paged_uniform(
+            block_table=block_table_tensor,
+            live_counts=position_tensor,
+            max_live_count=int(self.max_positions) - 1,
+            storage_dtype=DType.BF16,
+            row_positions=position_tensor,
+            span_role=span_role,
+        )
+        decode_spans = KVLiveSpans.paged_uniform(
+            block_table=block_table_tensor,
+            live_counts=context_tensor,
+            max_live_count=int(self.max_positions),
+            storage_dtype=DType.BF16,
+            row_positions=position_tensor,
+            span_role=span_role,
+        )
+        layer_conv_states = tuple(None if state is None else row(state) for state in self.layer_conv_states)
+        layer_recurrent_states = tuple(
+            None if state is None else row(state) for state in self.layer_recurrent_states
+        )
+        selected_host = (
+            self.moe_selected_host
+            if self.moe_selected_host.ndim == 1
+            else self.moe_selected_host[slot]
+        )
+        return replace(
+            self,
+            norm=row(self.norm),
+            post_norm=row(self.post_norm),
+            residual=row(self.residual),
+            attn_out=row(self.attn_out),
+            linear_qkv=row(self.linear_qkv),
+            linear_z=row(self.linear_z),
+            linear_alpha=row(self.linear_alpha),
+            linear_beta=row(self.linear_beta),
+            linear_alpha_beta=row(self.linear_alpha_beta),
+            conv_out=row(self.conv_out),
+            recurrent_out=row(self.recurrent_out),
+            recurrent_bf16=row(self.recurrent_bf16),
+            layer_conv_states=layer_conv_states,
+            layer_recurrent_states=layer_recurrent_states,
+            conv_zero=self.conv_zero[slot],
+            recurrent_zero=self.recurrent_zero[slot],
+            full_q=row(self.full_q),
+            full_k=row(self.full_k),
+            full_v=row(self.full_v),
+            full_query_raw=row(self.full_query_raw),
+            full_key_raw=row(self.full_key_raw),
+            full_query=row(self.full_query),
+            full_key=row(self.full_key),
+            full_gate=row(self.full_gate),
+            full_attn_context=row(self.full_attn_context),
+            full_attn_split_partial=row(self.full_attn_split_partial),
+            full_attn_split_m=row(self.full_attn_split_m),
+            full_attn_split_l=row(self.full_attn_split_l),
+            full_gated=row(self.full_gated),
+            block_table=block_table,
+            position_buf=position_buf,
+            context_buf=context_buf,
+            block_table_tensor=block_table_tensor,
+            position_tensor=position_tensor,
+            context_tensor=context_tensor,
+            append_spans=append_spans,
+            decode_spans=decode_spans,
+            position_host=self.position_host[slot : slot + 1],
+            context_host=self.context_host[slot : slot + 1],
+            ffn_gate_up=row(self.ffn_gate_up),
+            ffn_intermediate=row(self.ffn_intermediate),
+            ffn_down=row(self.ffn_down),
+            moe_router_logits=row(self.moe_router_logits),
+            moe_selected_experts=row(self.moe_selected_experts),
+            moe_routing_weights=row(self.moe_routing_weights),
+            moe_down_out=row(self.moe_down_out),
+            moe_group_counts=row(self.moe_group_counts),
+            moe_padded_counts=row(self.moe_padded_counts),
+            moe_scatter_offsets=row(self.moe_scatter_offsets),
+            moe_expert_start_compact=row(self.moe_expert_start_compact),
+            moe_total_compact=row(self.moe_total_compact),
+            moe_sorted_lanes=row(self.moe_sorted_lanes),
+            moe_sorted_experts=row(self.moe_sorted_experts),
+            moe_sorted_weights=row(self.moe_sorted_weights),
+            moe_lane_to_row=row(self.moe_lane_to_row),
+            moe_shared_gate=row(self.moe_shared_gate),
+            moe_shared_up=row(self.moe_shared_up),
+            moe_shared_intermediate=row(self.moe_shared_intermediate),
+            moe_shared_out=row(self.moe_shared_out),
+            moe_shared_gate_logits=row(self.moe_shared_gate_logits),
+            moe_selected_host=selected_host,
+            buffers=(),
+            slot_count=1,
         )
 
     def full_cache(self, layer_id: int) -> tuple[object, object]:
@@ -5581,13 +6174,34 @@ class _FullStackScratch:
         copy_host_to_device(self.position_buf, host_array_ptr(self.position_host), runtime=runtime)
         copy_host_to_device(self.context_buf, host_array_ptr(self.context_host), runtime=runtime)
 
+    def set_full_attention_positions(
+        self,
+        positions: tuple[int, ...] | list[int] | np.ndarray,
+        runtime: HipRuntime,
+    ) -> None:
+        values = np.asarray(positions, dtype=np.int64).reshape(-1)
+        if values.size != int(self.slot_count):
+            raise ValueError("positions must contain one value per resident target slot")
+        if values.size == 0 or int(values.min()) < 0 or int(values.max()) >= int(self.max_positions):
+            raise ValueError("resident target positions exceed cache capacity")
+        self.position_host[:] = values
+        self.context_host[:] = values + np.int64(1)
+        copy_host_to_device(self.position_buf, host_array_ptr(self.position_host), runtime=runtime)
+        copy_host_to_device(self.context_buf, host_array_ptr(self.context_host), runtime=runtime)
+
     def zero_states(self, runtime: HipRuntime) -> None:
         for conv_state, recurrent_state in zip(self.layer_conv_states, self.layer_recurrent_states, strict=True):
             if conv_state is not None:
                 _zero(runtime, conv_state, self.conv_zero)
             if recurrent_state is not None:
                 _zero(runtime, recurrent_state, self.recurrent_zero)
-        self.set_full_attention_position(0, runtime)
+        if int(self.slot_count) == 1:
+            self.set_full_attention_position(0, runtime)
+        else:
+            self.position_host.fill(0)
+            self.context_host.fill(1)
+            copy_host_to_device(self.position_buf, host_array_ptr(self.position_host), runtime=runtime)
+            copy_host_to_device(self.context_buf, host_array_ptr(self.context_host), runtime=runtime)
 
 
 def _expert_raw_ptr(weight: Qwen35GGUFDeviceWeight, expert_id: int) -> int:
@@ -7490,6 +8104,8 @@ __all__ = [
     "Qwen35GGUFOneLayerProbe",
     "Qwen35GGUFFastPathSafety",
     "Qwen35GGUFResidentSession",
+    "Qwen35GGUFResidentTargetLayout",
+    "Qwen35GGUFTargetRowsResult",
     "build_qwen35_gguf_decode_graph_bucket_key",
     "qwen35_gguf_decode_graph_active_symbol_groups",
     "qwen35_gguf_decode_graph_weight_roles",

@@ -477,6 +477,15 @@ Design rule: **every new runtime, scheduler, KV, and kernel ABI must stay batch-
 | Would just setting `tokens=8` work? | No. |
 | Is hipEngine the better place to build c=8+ PARO and SpecDec? | Probably yes. |
 
+**GGUF foundation update (2026-07-20):** `Qwen35GGUFResidentSession` now owns
+row-shaped target token/hidden/logit scratch, per-slot linear state and paged KV,
+and per-row `KVLiveSpans` while sharing one resident weight set. The initial C=2
+decode and V=2 verify-chain executor deliberately serializes rows through the
+retained c=1 layer path and is full-logit/layer-boundary exact. This satisfies
+the ownership/correctness foundation only; native c-aware kernels, continuous
+batch scheduling, transactional speculative import/commit, and any c=N speed
+claim remain open.
+
 Why the design is better positioned:
 
 - The hot path owns raw HIP pointers and `hipGraph` replay directly instead of depending on torch tensors or PyTorch graph wrappers.

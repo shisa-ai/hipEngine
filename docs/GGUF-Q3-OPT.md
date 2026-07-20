@@ -141,11 +141,14 @@ the source-derived review below. The measured state is:
   `108.383 tok/s` at 4K. Task #32 starts from a fresh profile and may reopen a
   family only with a new measured premise. These current-code rows have not
   been rerun on GPU0/W7900.
-- **c=N GGUF:** unsupported as a native execution path, so there is no honest
-  Q3 c=N throughput number. `Qwen35GGUFBringupGenerator.generate_detailed()`
-  still loops over prompts and `Qwen35GGUFResidentSession` owns singleton
-  token/hidden/state/KV buffers. The existing GGUF c>N script is intentionally
-  a blocked command template, not a runner.
+- **c=N GGUF:** the foundational target runtime is now row-shaped: one resident
+  weight set owns `[C,...]` token/hidden/logit scratch, per-slot linear state,
+  paged KV ranges, and `KVLiveSpans`. Its correctness-first executor serializes
+  each active row through the retained c=1 layer path and is bit-exact at C=2;
+  it is a diagnostic bridge, not a native c-aware throughput path or speed
+  claim. `Qwen35GGUFBringupGenerator.generate_detailed()` still loops over
+  prompts, and the existing GGUF c>N script remains a blocked command template
+  until task #29 promotes native c=2/4/8 kernel families and scheduler wiring.
 - **GGUF MTP ABI:** locked and already implemented in shared infrastructure.
   Candidate-only `DraftBatch`, verifier-internal `TargetVerifyBatch`,
   `AcceptResult`, `KVLiveSpans(span_role="verify_chain")`, transactional
@@ -163,8 +166,8 @@ embedding/output fallbacks apply.
 | Task | Work | Actual dependency |
 |---:|---|---|
 | #27 | Land and close the first changed-algebra prefill tranche | **Completed:** guarded residual-D4 MMQ retained; ~3,000 tok/s objective remains unmet |
-| #28 | Build one row-shaped GGUF target executor for independent decode and verify rows | Foundational runtime work |
-| #29 | Promote native UD-Q3_K_M c=2/4/8 decode and replace the blocked template | #28 |
+| #28 | Build one row-shaped GGUF target executor for independent decode and verify rows | **Completed:** C=2 decode and V=2 serial-chain layer/full-logit parity are exact |
+| #29 | Promote native UD-Q3_K_M c=2/4/8 decode and replace the blocked template | #28 completed; native family-by-family promotion is next |
 | #30 | Materialize blk.40 and emit candidate-only `DraftBatch` rows | Locked shared ABI; can develop alongside #28 |
 | #31 | Integrate and benchmark GGUF MTP end to end | #28 + #30 |
 | #32 | Reprofile residual c=1 Q3 decode | Independent, profile-gated |
@@ -1614,10 +1617,11 @@ profile; it must not repeat the rejected hierarchical top-k, IQ4 tile4,
 rowtile/repack, or stream-overlap premises.
 
 For **concurrent and speculative execution**, c=N currently has no native GGUF
-speed claim. Task #28 builds the shared row-shaped target executor, #29 wires
-independent c=2/4/8 serving, #30 materializes the already-present blk.40 NextN
-weights under the locked shared ABI, and #31 performs end-to-end MTP integration
-and economics. No additional GGUF-MTP ABI approval is required.
+speed claim. Task #28 has landed the shared row-shaped target executor and exact
+serial fallback; #29 now owns c-aware family promotion plus independent c=2/4/8
+serving, #30 materializes the already-present blk.40 NextN weights under the
+locked shared ABI, and #31 performs end-to-end MTP integration and economics.
+No additional GGUF-MTP ABI approval is required.
 
 For future models and cards, bounded auto-tuning should make coverage and
 portability systematic: reconcile every tensor and runtime shape with its
