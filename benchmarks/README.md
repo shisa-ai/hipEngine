@@ -1853,17 +1853,16 @@ untracked experiment files as part of the rollup gate.
 - **W7900 coding-agent post-tool-fix A6/A1, GGUF Q4_K_M:** clean `f25362d0`
   cache-off 4K/c1 moves A6 natural quality from **0/4 to 2/4 successes** over
   the same **274 exact response-owned IDs**: the two exact `read` calls now have
-  empty public content, while the `grep` and `run` attempts remain
-  `invalid_tool_call`. Deterministic A1 still rejects before measured SSE, now
-  at turn 0: the atomic forced `read` prefix is left unfinished before a later
-  valid duplicate call, and the parser leaks that first prefix plus Qwen
-  controls as public content. A same-request diagnostic records the exact
-  parsed arguments over **63 response-owned IDs**, but it is not a timing row.
-  No A1 records, latency, tok/s, or goodput are retained; final ownership is
-  zero. [post-fix A6 quality artifact](results/2026-07-20-w7900-agentic-a6-small-c1-post-tool-fixes-quality.json),
-  [post-fix blocked A1 packet](results/2026-07-20-w7900-agentic-a1-small-c1-post-tool-fixes-blocked.json)
-  (supersedes the [pre-fix A6](results/2026-07-20-w7900-agentic-a6-small-c1-quality.json)
-  / [A1](results/2026-07-20-w7900-agentic-a1-small-c1-blocked.json) diagnostic).
+  empty public content, while natural `grep` and `run` remain
+  `invalid_tool_call`. After the duplicate-prefix parser fix, clean `5d6a2883`
+  deterministic A1 passes turn 0's independent oracle and measured exact-SSE
+  equality gates, then rejects at the turn-1 blocking oracle: the atomic `grep`
+  prefix is followed by an unmatched `{`, Qwen controls, and free-form reasoning
+  until the 128-token cap, with no valid call. No partial A1 records, latency,
+  tok/s, or goodput are retained; final ownership is zero.
+  [A6 quality artifact](results/2026-07-20-w7900-agentic-a6-small-c1-post-tool-fixes-quality.json),
+  [latest blocked A1 packet](results/2026-07-20-w7900-agentic-a1-small-c1-post-duplicate-prefix-fix-blocked.json)
+  (supersedes the [pre-parser-fix A1 packet](results/2026-07-20-w7900-agentic-a1-small-c1-post-tool-fixes-blocked.json)).
 - **W7900 GGUF Q4_K_M:** the [2026-07-07 summary](results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-summary.json) is the last measured path and
   has `performance_claim=false`. Repetition of token `9707` is confirmed as
   valid for the exact model by llama.cpp and the gfx1151 G1 oracle; the W7900
