@@ -169681,3 +169681,71 @@ A pure-host re-evaluation of the serialized 1,060,592-byte rerun packet (SHA-256
 passes every C1/C2/C4/C8 route, all exactness gates, and delayed admission. No
 additional GPU timing repetition is needed because the correction consumes the
 already-recorded path/flag history and changes no metric or runtime behavior.
+
+## 2026-07-20 — Publish matched gfx1151 four-lane server concurrency refresh
+
+Ran one real-localhost-server protocol on the idle Radeon 8060S/gfx1151 with
+TuneD `accelerator-performance`, `amd_iommu=off`, one HIP hardware queue, and
+TheRock HIP 7.15. Every lane uses raw 512-token rows, 128 returned tokens,
+greedy/top1, ignore-EOS, no MTP, no prompt cache, C1/C2/C4/C8, one warmup,
+three blocking repetitions, three SSE repetitions, and delayed C1->C8
+admission. hipEngine uses BF16 KV; llama.cpp uses F16 KV. PARO is a different W4
+representation and is shown as cross-quant context, not a same-math ratio.
+Commands, model fingerprints, binary/library hashes, all samples, first
+mismatches, and source-packet hashes are in the compact artifact.
+
+Fresh blocking medians (aggregate tok/s):
+
+| Lane | C1 | C2 | C4 | C8 | C8/C1 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| hipEngine PARO | 46.742 | 51.485 | 59.606 | 60.576 | 1.296x |
+| hipEngine GGUF | 44.511 | 60.073 | 75.642 | 86.601 | 1.946x |
+| llama.cpp HIP raw | 46.279 | 66.725 | 85.404 | 103.724 | 2.241x |
+| llama.cpp Vulkan raw | 53.696 | 75.704 | 94.520 | 109.370 | 2.037x |
+
+Fresh SSE medians use raw returned-token/wall rate for all lanes so the timing
+surface remains visible even when an output gate fails:
+
+| Lane | C1 | C2 | C4 | C8 |
+| --- | ---: | ---: | ---: | ---: |
+| hipEngine PARO exact | 50.881 | 54.981 | 62.979 | 60.284 |
+| hipEngine GGUF exact | 42.782 | 59.240 | 73.548 | 82.387 |
+| llama.cpp HIP raw | 46.247 | 66.709 | 87.505 | 101.525 |
+| llama.cpp Vulkan raw | 53.810 | 75.664 | 97.455 | 109.717 |
+
+Both hipEngine lanes pass all **117/117** oracle/warmup/blocking/SSE/delayed
+rows. Exact delayed C8 is **20.158 PARO / 67.898 GGUF tok/s**; PARO's result is
+a major dynamic-admission blocker despite correct output. Both llama.cpp lanes
+are C1-exact, but blocking exact fractions at C2/C4/C8 are only
+**50%/33%/37.5% HIP** and **50%/25%/25% Vulkan**; SSE exact fractions are
+**50%/50%/29.2%** and **50%/25%/25%**. Therefore only C1 is an eligible
+external comparison. On same-GGUF C1, hipEngine trails HIP by **3.82% blocking /
+7.49% SSE** and Vulkan by **17.11% / 20.50%**. Raw C8 gaps are **16.51% HIP /
+20.82% Vulkan**, explicitly diagnostic.
+
+The C8 GGUF server result is not simply an arithmetic-compute ceiling. Its
+median **11.824 s** wall decomposes into **3.404 s** of recorded per-row prefill,
+the retained direct physical-C8 **7.685 s** model wall (**133.251 tok/s**), and
+**0.735 s / 6.22%** residual ramp+server wall. Removing recorded prefill gives
+**121.617 tok/s**, **91.27%** of direct. C8 TTFT p95 is **4.317 s** versus
+llama.cpp HIP **2.685 s**; that **1.632 s** TTFT gap explains **83.6%** of the
+complete **1.952 s** wall gap. Concurrent/cohort prefill is therefore the first
+server target, followed by genuine weight-reusing dense and selected-MoE
+MMQ/WMMA/grouped kernels.
+
+PARO is more directly model-kernel limited: retained direct C1/C2/C4/C8 is
+**70.810/79.237/100.209/99.943 tok/s**, so C4->C8 is already **-0.265%** before
+HTTP/scheduling, and fresh server C4->C8 is only **+1.63%**. Its profiler names
+the selected AWQ GEMV projections and exact c8 context path; this is not evidence
+of a hardware FLOP roof. At C<=4 quantized decode remains memory-bound, C4-C8
+should benefit from weight reuse, and small-intermediate selected MoE remains
+memory-bound longer. Call the current steady path GPU-kernel/model-step bound,
+not proven arithmetic-compute-bound.
+
+Decision: retain exact hipEngine own-engine scaling and same-GGUF C1. Publish
+llama.cpp C>N rates only as diagnostics. An 8x C1 target is unrealistic, but
+GGUF >2x complete-server and roughly 3x direct scaling remain credible after
+concurrent prefill plus true batched dense/MoE work. Compact artifact:
+`benchmarks/results/2026-07-20-gfx1151-four-lane-server-concurrency-refresh.json`,
+44,845 bytes, SHA-256
+`2a78256d83e8efd2b4b57b6325b4fa7dd70f9206945df18ffdc56978023cdc95`.
