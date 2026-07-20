@@ -169441,6 +169441,21 @@ The status report links existing retained artifacts rather than creating a new
 performance claim. It also records that the current deterministic agent server
 contract passes 130 tests over 56 golden traces, while distinguishing that API
 contract evidence from live-model agent quality.
+## 2026-07-20 — Accept occupancy-adaptive PARO SSE routes in the matched harness
+
+The clean four-lane gfx1151 C1/C2/C4/C8 server refresh exposed a harness-only
+failure in `scripts/server_f1_concurrency_bench.py`: `_stream_route_summary()`
+hardcoded the GGUF execution path and required every hipEngine SSE record to be
+non-serial. PARO correctly uses `paro_resident_native_width_decode` while two or
+more rows are live and explicit `paro_resident_serial_decode` c1 endpoints during
+ramp/drain. All **45/45** PARO static blocking rows and **45/45** SSE rows were
+exact, but the valid path mixture made the packet report `failed_gate`.
+
+Added RED/GREEN coverage for PARO route telemetry. C1 now requires the explicit
+serial path with `serial_decode_fallback=true/native_caware_decode=false`; C>N
+requires at least one native-width record, and every native/serial record must
+carry its matching mutually exclusive telemetry. Unknown paths, inconsistent
+flags, and the existing strict GGUF packed-route checks still fail closed.
 
 Validation:
 
@@ -169631,3 +169646,14 @@ No complete `/tmp/agentic-small-c1-a1.json` was emitted and no performance
 number/rollup was retained. Next, separate the natural quality/repair lane from
 the deterministic performance lane, add response-owned exact IDs to measured
 SSE, and keep the c4/c8 startup-capacity blocker explicit.
+.venv/bin/python -m pytest -q \
+  tests/test_server_f1_concurrency_bench.py::test_stream_route_summary_accepts_paro_native_with_serial_c1_edges \
+  tests/test_server_f1_concurrency_bench.py::test_stream_route_summary_requires_native_nonserial_hipengine_cn
+# 2 passed
+.venv/bin/python -m pytest -q tests/test_server_f1_concurrency_bench.py
+# 22 passed
+```
+
+No model/runtime math or route changed. The PARO lane must be rerun from the
+clean committed harness before publication; the original exact timing packet
+remains diagnostic input only.

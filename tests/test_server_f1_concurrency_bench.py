@@ -265,6 +265,40 @@ def test_stream_route_summary_requires_native_nonserial_hipengine_cn() -> None:
     )["passed"] is False
 
 
+def test_stream_route_summary_accepts_paro_native_with_serial_c1_edges() -> None:
+    native_record = {
+        "execution_path": "paro_resident_native_width_decode",
+        "serial_decode_fallback": False,
+        "native_caware_decode": True,
+    }
+    serial_edge_record = {
+        "execution_path": "paro_resident_serial_decode",
+        "serial_decode_fallback": True,
+        "native_caware_decode": False,
+    }
+    sample = {
+        "records": [native_record.copy() for _ in range(3)]
+        + [serial_edge_record.copy()]
+    }
+
+    summary = SCRIPT._stream_route_summary(
+        "hipengine", concurrency=4, samples=[sample]
+    )
+
+    assert summary["passed"] is True
+    assert summary["route_policy"] == "paro_occupancy_adaptive"
+    assert SCRIPT._stream_route_summary(
+        "hipengine",
+        concurrency=1,
+        samples=[{"records": [serial_edge_record.copy()]}],
+    )["passed"] is True
+
+    sample["records"][0]["serial_decode_fallback"] = True
+    assert SCRIPT._stream_route_summary(
+        "hipengine", concurrency=4, samples=[sample]
+    )["passed"] is False
+
+
 def test_stream_batch_summary_applies_per_request_slo_goodput() -> None:
     records = [
         {

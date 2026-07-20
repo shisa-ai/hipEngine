@@ -1006,6 +1006,39 @@ def _stream_route_summary(
     if str(engine) != "hipengine":
         return {"passed": bool(records), "paths": paths}
     native_expected = False if int(concurrency) == 1 else True
+    paro_native_path = "paro_resident_native_width_decode"
+    paro_serial_path = "paro_resident_serial_decode"
+    if paths and set(paths).issubset({paro_native_path, paro_serial_path}):
+        records_consistent = all(
+            (
+                record.get("execution_path") == paro_native_path
+                and record.get("serial_decode_fallback") is False
+                and record.get("native_caware_decode") is True
+            )
+            or (
+                record.get("execution_path") == paro_serial_path
+                and record.get("serial_decode_fallback") is True
+                and record.get("native_caware_decode") is False
+            )
+            for record in records
+        )
+        topology_valid = (
+            paths == [paro_serial_path]
+            if int(concurrency) == 1
+            else paro_native_path in paths
+        )
+        return {
+            "passed": bool(records) and records_consistent and topology_valid,
+            "route_policy": "paro_occupancy_adaptive",
+            "paths": paths,
+            "serial_decode_fallback_values": sorted(
+                {value for value in serial if isinstance(value, bool)}
+            ),
+            "native_caware_decode_values": sorted(
+                {value for value in native if isinstance(value, bool)}
+            ),
+            "native_caware_decode_expected": native_expected,
+        }
     return {
         "passed": bool(records)
         and all(value is False for value in serial)
