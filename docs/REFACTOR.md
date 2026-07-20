@@ -411,31 +411,23 @@ should be boring.
   mmvq/T16 replacement layout or row-amortized verifier kernel. This callable is
   evidence, not a performance path; do not route it into `llama-compat` runtime.
 
-## `HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE` (gfx1151 C8 rollback; verifier diagnostic)
-- Added 2026-07-01 as a default-off verifier diagnostic. Setting
-  `HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE=1` routes the qwen35
-  `rows>1, in=2048, out=(8192,4096)` pair through
-  `gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out`. The rowtile now uses
-  128 threads to preserve the production reduction partition. The original
-  64-thread micro was faster, but a model-hidden oracle found one-BF16-ULP drift
-  on the first packed-AR transition (first at layers 13/4 for the two c2 rows),
-  explaining the prior full-horizon trajectory rejection.
-- gfx1151 package metadata now selects the repaired pair route automatically
-  only at physical C8. C2/C4 and gfx1100 retain per-row Q8T16. The 128-thread
-  qwen35 pair micro improves C2/C4/C8 **185.53/232.02/340.12 ->
-  161.94/202.15/323.99 us**. Clean committed C8 is exact and stable at
-  **133.852/133.894/133.806 tok/s**, median **133.852**, or **+0.452%** versus
-  retained **133.251**. Broad or lower-width promotion is rejected because
-  C2/C4 regress at model scale. `HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE=0` is the
-  package-default rollback; explicit `=1` remains a diagnostic for other row
-  widths and MTP.
-- Remove when: the physical-C8 default has survived one release window and a
-  later complete-server refresh gives a clear directional result, at which
-  point remove the rollback but keep the package width capability. The first
-  C1/C8 server packet is exact but mixed within noise (**-0.40% blocking,
-  +1.63% SSE, -0.64% delayed**), so it neither blocks the retained exact direct
-  sub-window nor supports a server-speed claim. Do not promote verifier or
-  lower-width use without an independent full-horizon gate.
+## `HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE` / `HIPENGINE_GGUF_Q8_T16_PAIR_COL8` (gfx1151 C8 rollback)
+- The 2026-07-01 rowtile diagnostic was repaired to 128 threads so it preserves
+  the production reduction partition, then scoped by backend metadata to
+  gfx1151 physical C8. C2/C4 and gfx1100 retain per-row Q8T16.
+- F3I keeps rowtile4's two row groups but computes eight output columns per
+  block. This halves live accumulators and moves static resources from 136 to
+  72 VGPR and 1,024 to 512 B LDS, with zero scratch. Exact direct C8 improves
+  **151.015 -> 152.164 tok/s (+0.76%)** in implementation evidence; matched
+  blocking/SSE/delayed server rows all improve **+0.38%/+0.54%/+0.46%**.
+- `HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE=0` rolls the physical-C8 owner back to
+  the per-row kernel. `HIPENGINE_GGUF_Q8_T16_PAIR_COL8=0` keeps row
+  amortization but restores the prior 16-column body. Explicit `PAIR_ROWTILE=1`
+  outside the backend-certified session remains a diagnostic and does not
+  automatically select col8.
+- Remove the two rollbacks after one release window plus defaults-only gfx1151
+  direct/server refreshes and an independent gfx1100 transfer. Keep the old
+  per-row and 16-column rowtile bodies as unsupported-width fallbacks.
 
 ## `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL` (diagnostic rejected)
 - Added 2026-07-01 as a default-off runtime hook for broad exact Q8T16 verifier

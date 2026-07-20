@@ -717,6 +717,7 @@ def test_t16_pair_rowtile_session_scopes_exact_c8_width(monkeypatch) -> None:
 
     monkeypatch.delenv("HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_Q8_T16_PAIR_COL8", raising=False)
     gl.clear_gguf_linear_dispatch_cache()
     calls: list[tuple[str, int, int]] = []
 
@@ -726,10 +727,15 @@ def test_t16_pair_rowtile_session_scopes_exact_c8_width(monkeypatch) -> None:
     def fake_rowtile(*args, **kwargs):
         calls.append(("rowtile4", int(args[5]), int(kwargs["threads"])))
 
+    def fake_col8(*args, **kwargs):
+        calls.append(("rowtile4_col8", int(args[5]), int(kwargs["threads"])))
+
     original_exact = gl.gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out
     original_rowtile = gl.gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out
+    original_col8 = gl.gguf_q8_0_t16_dual_gemv_decode_rowtile4_col8_bf16_bf16_out
     gl.gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out = fake_exact  # type: ignore[assignment]
     gl.gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out = fake_rowtile  # type: ignore[assignment]
+    gl.gguf_q8_0_t16_dual_gemv_decode_rowtile4_col8_bf16_bf16_out = fake_col8  # type: ignore[assignment]
     try:
         with gl.q8_t16_pair_rowtile_min_rows_session(8):
             for rows in (4, 8):
@@ -744,6 +750,19 @@ def test_t16_pair_rowtile_session_scopes_exact_c8_width(monkeypatch) -> None:
                     out_features=8192,
                     out_features_b=4096,
                 )
+        monkeypatch.setenv("HIPENGINE_GGUF_Q8_T16_PAIR_COL8", "0")
+        with gl.q8_t16_pair_rowtile_min_rows_session(8):
+            assert launch_gguf_linear_pair(
+                weight_a,
+                weight_b,
+                x_ptr=100,
+                out_a_ptr=200,
+                out_b_ptr=300,
+                rows=8,
+                in_features=2048,
+                out_features=8192,
+                out_features_b=4096,
+            )
         monkeypatch.setenv("HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE", "0")
         with gl.q8_t16_pair_rowtile_min_rows_session(8):
             assert launch_gguf_linear_pair(
@@ -760,9 +779,15 @@ def test_t16_pair_rowtile_session_scopes_exact_c8_width(monkeypatch) -> None:
     finally:
         gl.gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out = original_exact  # type: ignore[assignment]
         gl.gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out = original_rowtile  # type: ignore[assignment]
+        gl.gguf_q8_0_t16_dual_gemv_decode_rowtile4_col8_bf16_bf16_out = original_col8  # type: ignore[assignment]
         gl.clear_gguf_linear_dispatch_cache()
 
-    assert calls == [("exact", 4, 0), ("rowtile4", 8, 128), ("exact", 8, 0)]
+    assert calls == [
+        ("exact", 4, 0),
+        ("rowtile4_col8", 8, 128),
+        ("rowtile4", 8, 128),
+        ("exact", 8, 0),
+    ]
 
 
 def test_t16_pair_rowtile_opt_out_keeps_exact_wrapper(monkeypatch) -> None:

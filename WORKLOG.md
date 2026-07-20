@@ -170212,3 +170212,40 @@ Raw candidate/control server SHA-256 values are
 `a1208a6eb918b20082487480508b21c7a50e4be0b38e2bee2ee48df43068106e`.
 Compact artifact is 4,418 bytes with SHA-256
 `ccd53cbc610ba21dc57be4cf014004aa51e2dc1fc64e7baff6b16102bfa007b7`.
+
+## 2026-07-20 — Retain gfx1151 physical-C8 Q8T16 pair col8
+
+After rejecting alternate row counts, added an orthogonal exact
+`q8_0_t16_dual_split_rowtile_col8_gemv_kernel<bf16,bf16,4>`. It preserves
+rowtile4's two row groups and each output's production 128-thread K/reduction
+order, but maps two blocks to each T16 tile and computes eight columns per
+block. Per-thread accumulators fall from 64 to 32.
+
+At the >2x-MALL `8x2048 -> 8x(8192+4096)` qkv+gate shape (40 warmups, 200
+iterations), col8 improves **327.91 -> 318.14 us (-2.98%, 1.031x)** and all
+output bits match. Raw micro SHA-256 is
+`fc7a852b0e487e048f62a1cbdb1677ab89a4c7ece50319b113e57b537fdd6c5e`.
+
+The no-env backend policy selects col8 only inside the existing gfx1151
+physical-C8 pair-rowtile scope. Lower widths, manual verifier opt-ins, and
+gfx1100 remain on established paths. `HIPENGINE_GGUF_Q8_T16_PAIR_COL8=0`
+restores T16/rowtile4; `HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE=0` restores the
+per-row kernel.
+
+The combined automatic state gate is **320/320 layer outputs exact** with exact
+tokens, Conv/GDN/KV, and final state. Direct p512/d128 C8 is
+**152.226443/152.125790/152.163921 tok/s**, median **152.163921**, versus clean
+F3F **151.014767 (+0.7610%)** with stdev/median **0.0334%**. This saves
+**51.209 ms** per 1,024 tokens. All trajectories repeat exactly.
+
+A same-checkout Uvicorn control/candidate A/B is exact and accepts native C8:
+blocking **88.387 -> 88.727 (+0.38%)**, exact SSE **85.517 -> 85.983
+(+0.54%)**, and delayed admission **68.590 -> 68.908 (+0.46%)**. Candidate raw
+SHA-256 is
+`3686edb93b6007bc6e63d9ea491c09ae6d9bc3f5328c2cd04afbaead730a164f`.
+
+Cached automatic tracing confirms **30** launches at 128 threads, grid
+`196608x2`, **72 VGPR**, 128 SGPR, **512 B LDS**, and zero scratch; prior col16
+used 136 VGPR and 1 KiB LDS. Profile median **299.622 us** / total **9.700 ms**
+are diagnostic. Focused validation: Q8T16 GPU **37 passed**; dispatch/cache/
+backend **72 passed**.

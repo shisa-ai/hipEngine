@@ -33,6 +33,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv import (
     gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out,
     gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out,
     gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out,
+    gguf_q8_0_t16_dual_gemv_decode_rowtile4_col8_bf16_bf16_out,
     gguf_q8_0_t16_gemv_decode_rowtile4_bf16_bf16_out,
     gguf_q8_0_t16_triple_gemv_decode_rowtile4_bf16_bf16_out,
     gguf_q8_0_t16_triple_gemv_decode_bf16_bf16_out,
@@ -121,6 +122,7 @@ _Q8_T16_ALLOWED_THREADS = frozenset({64, 128})
 # BF16 ULP on real packed-AR activations.
 _Q8_T16_ROWTILE_THREADS = 128
 _Q8_T16_PAIR_ROWTILE_ENV = "HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE"
+_Q8_T16_PAIR_COL8_ENV = "HIPENGINE_GGUF_Q8_T16_PAIR_COL8"
 _Q8_T16_ROWTILE_ALL_ENV = "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL"
 _q8_t16_pair_rowtile_min_rows_session: int | None = None
 _q8_t16_rowtile_all_session_enabled: bool | None = None
@@ -357,6 +359,14 @@ def _resolve_use_q8_t16_pair_rowtile(*, rows: int) -> bool:
     if min_rows is not None and min_rows > 0 and rows >= min_rows:
         return True
     return _resolve_use_q8_t16_all_rowtile()
+
+
+def _resolve_use_q8_t16_pair_col8(*, rows: int) -> bool:
+    raw = os.environ.get(_Q8_T16_PAIR_COL8_ENV, "")
+    if raw:
+        return raw.strip().lower() in {"1", "true", "yes", "on"}
+    min_rows = _q8_t16_pair_rowtile_min_rows_session
+    return min_rows is not None and min_rows > 0 and rows >= min_rows
 
 
 def _use_q8_t16_all_rowtile(
@@ -842,7 +852,12 @@ def launch_gguf_linear_pair(
             out_features_b=out_features_b,
             threads=threads,
         ):
-            gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out(
+            pair_rowtile_fn = (
+                gguf_q8_0_t16_dual_gemv_decode_rowtile4_col8_bf16_bf16_out
+                if _resolve_use_q8_t16_pair_col8(rows=rows)
+                else gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out
+            )
+            pair_rowtile_fn(
                 x_ptr,
                 weight_a.allocation("tiles").tensor.ptr,
                 weight_b.allocation("tiles").tensor.ptr,

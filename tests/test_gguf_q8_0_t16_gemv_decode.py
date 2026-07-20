@@ -18,6 +18,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv import (
     gguf_q8_0_t16_dual_gemv_decode_q8_1_dp4a_bf16_bf16_out,
     gguf_q8_0_t16_dual_gemv_decode_rowtile2_bf16_bf16_out,
     gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out,
+    gguf_q8_0_t16_dual_gemv_decode_rowtile4_col8_bf16_bf16_out,
     gguf_q8_0_t16_gemv_decode_bf16_bf16_out,
     gguf_q8_0_t16_gemv_decode_f32_bf16_out,
     gguf_q8_0_t16_gemv_decode_fp16_fp16_out,
@@ -617,6 +618,7 @@ def test_q8_t16_dual_split_q8_1_dp4a_matches_oracle_and_quality_gate(q8_t16_libr
     [
         (gguf_q8_0_t16_dual_gemv_decode_rowtile2_bf16_bf16_out, 3),
         (gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out, 5),
+        (gguf_q8_0_t16_dual_gemv_decode_rowtile4_col8_bf16_bf16_out, 8),
     ],
 )
 def test_q8_t16_dual_split_rowtile_matches_exact_pair(fn, rows: int, q8_t16_library) -> None:
