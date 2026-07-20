@@ -14,6 +14,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+import hipengine.generation.batch_scheduler as batch_scheduler_module
 from hipengine.benchmark.provenance import validate_artifact_provenance
 from hipengine.core.device import Device
 from hipengine.core.tensor import Tensor
@@ -17788,6 +17789,47 @@ def test_resident_scheduler_record_generated_events_emit_decode_telemetry() -> N
         "reason": "length",
         "length_limit": 2,
     }
+
+
+def test_resident_scheduler_reuses_complete_runner_stream_chunk(monkeypatch) -> None:
+    scheduler = ResidentBatchScheduler(capacity=1, context_bucket_size=4)
+    request_id = scheduler.submit(
+        [10, 11],
+        max_new_tokens=2,
+        sampling=PerRowSamplingParams(),
+        sampling_row_index=3,
+    )
+    scheduler.admit_pending()
+    assert scheduler.next_prefill_work(chunk_size=8) is not None
+    provided = GenerationStreamChunk(
+        text="token",
+        telemetry=GenerationTelemetry.from_decode_counts(
+            prompt_tokens=2,
+            generated_tokens=1,
+            row_index=3,
+            request_id=str(request_id),
+            phase="answer",
+            sampler_mode="greedy_fast",
+            execution_path="native_runner",
+        ),
+    )
+
+    def fail_duplicate_telemetry(*args, **kwargs):
+        raise AssertionError(f"complete runner telemetry must be reused: {args!r} {kwargs!r}")
+
+    monkeypatch.setattr(batch_scheduler_module, "plan_sampler", fail_duplicate_telemetry)
+    monkeypatch.setattr(
+        scheduler,
+        "_stream_chunk_for_generated_token",
+        fail_duplicate_telemetry,
+    )
+
+    events = scheduler.record_generated_events(
+        [GeneratedToken(request_id, 55, stream_chunk=provided)]
+    )
+
+    assert events[0].stream_chunk is provided
+    assert scheduler.sampler_state(request_id).generated_tokens == [55]
 
 
 def test_resident_scheduler_record_generated_events_emit_stop_suffix_telemetry() -> None:
