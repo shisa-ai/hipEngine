@@ -1,0 +1,119 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_gdn_state_residency_fusion_c8_rejected",
+  "created_at": "2026-07-20T21:05:00+00:00",
+  "status": "rejected_exact_spill_or_model_regression",
+  "passed": true,
+  "performance_claim": false,
+  "decision": "remove state-cache and fused Conv+GDN candidates because exact register residency spills and exact launch fusion regresses model-scale decode",
+  "hardware": {
+    "host": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "amd_iommu": "off",
+    "gpu_max_hw_queues": 1
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B UD-Q4_K_M GGUF",
+    "path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "baseline_profile": {
+    "family": "linear_attention_state",
+    "total_duration_ms": 4.073968,
+    "share_percent": 7.828995861322757,
+    "gdn_dispatches": 30,
+    "gdn_total_duration_ms": 3.737056,
+    "conv_total_duration_ms": 0.336912
+  },
+  "state_cache_candidates": {
+    "design": "retain original FP32 recurrent-state scalars across the delta dependency so the update does not reread them",
+    "shape": "rows=8, 16 K heads, 32 V heads, 128x128 state, five cycling 16 MiB states",
+    "full_128_scalar_cache": {
+      "production_us": 204.8305975040421,
+      "candidate_us": 649.3675499223173,
+      "delta_percent": 217.0266346118054,
+      "output_and_state_bit_exact": true,
+      "candidate_vgpr": 96,
+      "candidate_scratch_bytes": 1264,
+      "production_vgpr": 56,
+      "production_scratch_bytes": 0,
+      "decision": "reject because private-array spills turn the removed state reread into slower scratch traffic"
+    },
+    "partial_array_cache": {
+      "cache_64_candidate_us": 654.9651025852654,
+      "cache_64_delta_percent": 221.0550374334661,
+      "cache_64_bit_exact": true,
+      "cache_32_candidate_us": 689.1385850030929,
+      "cache_32_delta_percent": 232.3755911181865,
+      "cache_32_bit_exact": true,
+      "decision": "reject because the compiler retains spill-backed private arrays even at reduced cache widths"
+    },
+    "manual_scalar8_cache": {
+      "production_us": 204.67200258281082,
+      "candidate_us": 202.95345500926487,
+      "delta_percent": -0.8396593338898972,
+      "output_mismatch_count": 3385,
+      "output_max_abs": 5.960464477539063e-08,
+      "state_mismatch_count": 77945,
+      "state_max_abs": 7.450580596923828e-09,
+      "decision": "reject because the only spill-free point changes exact arithmetic and its theoretical model effect is below the admission threshold",
+      "raw_bytes": 639,
+      "raw_sha256": "ceb86d39be19ab3a34b7ec5c57d1293a88277b1858a08e8f009c5bb595bb0ece"
+    },
+    "rocprof": {
+      "raw_bytes": 364316,
+      "raw_sha256": "ed4340a771e190138ea4e33cd8665b6d2bd0ef52ec46dfce2facd7b0e5ab598b"
+    },
+    "removed_patch": {
+      "bytes": 14848,
+      "sha256": "87c1e991401a710179228a533ef32de951b257132919467f77bb7092050c7205"
+    }
+  },
+  "fused_conv_gdn_candidate": {
+    "design": "one 256-thread block fuses indexed depthwise Conv with paired-value-head GDN; Q and K Conv channels are split across exact 128-thread subgroups and value channels remain disjoint",
+    "arithmetic_contract": "Conv shift/FMA/SiLU and each GDN normalization, recurrent update, RMSNorm, and gate retain production order",
+    "primitive_microbench": {
+      "shape": "rows=8, qkv_width=8192, conv_kernel=4, 16 K heads, 32 V heads, 128x128 state",
+      "protocol": "five cycling 1 MiB Conv plus 16 MiB GDN states, 40 warmups, 400 iterations",
+      "production_conv_plus_gdn_us": 229.70229503698647,
+      "candidate_us": 224.12032238207757,
+      "delta_percent": -2.4300900668015046,
+      "speedup": 1.0249061423595172,
+      "output_conv_and_gdn_state_bit_exact": true,
+      "raw_bytes": 767,
+      "raw_sha256": "72e0844b3c66a27cee20852b9fdd266f831aece364c7c9d16a855ed428da1f8a"
+    },
+    "focused_test": "tests/test_qwen35_linear_attn_decode_batch_indexed.py: 3 passed",
+    "direct_screen": {
+      "workload": "physical-C8 p512/d128 state-bound graph, one warmup and one measured run",
+      "baseline_clean_f3k_tok_s": 152.70862495870657,
+      "candidate_tok_s": 152.2376989477844,
+      "delta_percent": -0.30838206489615105,
+      "trajectory_hashes_exact": true,
+      "trajectories_repeatable": true,
+      "raw_bytes": 103517,
+      "raw_sha256": "2b008ad865363addabbc044cf192b169cc8cd45e69ddf53da76ba4bf637fb56b"
+    },
+    "decision": "reject before server because model-scale decode clearly regresses despite an exact isolated leaf win",
+    "removed_patch": {
+      "bytes": 36736,
+      "sha256": "769667c424b609fe8321e9b239ac11b6b8df1e2c8103be10a4b539734fa2097e"
+    }
+  },
+  "cleanup": {
+    "removed": true,
+    "remaining_kernel": false,
+    "remaining_wrapper": false,
+    "remaining_runtime_selector": false,
+    "remaining_environment_flag": false,
+    "remaining_fixture_extension": false
+  },
+  "limitations": [
+    "The state layout is already coalesced across value dimensions; exact whole-state residency is compiler-spill limited on gfx1151.",
+    "The fused primitive gain cannot be retained because the actual captured model graph regresses with identical trajectories.",
+    "No server cycle was run for the direct-regressive fused candidate."
+  ]
+}

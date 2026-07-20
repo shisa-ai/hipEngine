@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-20
 
+- [rejected gfx1151 GGUF physical-C8 GDN state residency and Conv fusion] Exact whole-state caching spills (**96 VGPR / 1,264 B scratch**) and regresses **+217%**; reduced arrays also spill. Exact indexed Conv+paired-GDN fusion improves the combined leaf **229.702 -> 224.120 us (-2.43%)** but regresses direct p512/d128 **152.709 -> 152.238 tok/s (-0.308%)** with identical trajectories. All kernels/routes/selectors were removed. `benchmarks/results/2026-07-20-gfx1151-gguf-gdn-state-residency-fusion-c8-rejected.json`.
+
 - [rejected exact gfx1151 GGUF physical-C8 grouped-query paged attention] Two independent production-order query groups per block improve the paged-context leaf **314.999 -> 293.151 us (-6.94%)** and direct p512/d128 **152.709 -> 153.341 tok/s (+0.414%)**, with **320/320 exact** hidden/state, but same-checkout server blocking/delayed regress **-0.57%/-0.94%** (SSE **+0.40%**). Four-group scheduling is exact but only **-5.55%** at the leaf; all candidate kernels/selectors were removed. `benchmarks/results/2026-07-20-gfx1151-gguf-paged-attn-qhead-groups-c8-rejected.json`.
 
 - [rejected exact gfx1151 GGUF physical-C8 paired-head GDN] Sharing Q/K setup across interleaved value-head pairs improves the indexed GDN leaf **204.689 -> 202.631 us (-1.01%)** and direct p512/d128 **152.709 -> 152.839 tok/s (+0.086%)**, with **320/320 exact** hidden/state, but same-checkout server blocking/SSE/delayed all regress **-0.12%/-0.66%/-0.16%**. The kernel, wrapper, selector, and fixture extension were removed. `benchmarks/results/2026-07-20-gfx1151-gguf-gdn-pairheads-c8-rejected.json`.

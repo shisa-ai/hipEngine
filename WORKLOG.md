@@ -170448,3 +170448,44 @@ rejection artifact:
 `5c84626fb7ff0f19bde757f9d8b3e24082462f09aa61738fc10c8bcc665cffc4`).
 The removed raw candidate patch is 28,723 bytes, SHA-256
 `dc287170ceb009e01bf2a392dd35697e05e58e96630190095d6331b046ad6ce3`.
+
+## 2026-07-20 — Reject gfx1151 C8 GDN state residency and Conv fusion
+
+After paired-head setup reuse failed serving, the next GDN design attacked the
+actual state traffic: production reads each 128x128 FP32 head state once for
+the delta dot, rereads it for the update, then writes it. A specialized exact
+kernel retained all 128 original state scalars per lane across that dependency.
+At the real C8 shape and five cycling 16 MiB states it regressed **204.831 ->
+649.368 us (+217.03%)**. `rocprofv3` confirms why: the candidate compiles at
+**96 VGPR / 1,264 B scratch** versus production **56 VGPR / zero scratch**.
+The removed global-state reread becomes slower private scratch traffic.
+
+Reducing the private array to 64 and 32 values remains byte-exact but still
+spills and regresses **+221.06%/+232.38%**. Manually scalarizing only eight
+values removes the catastrophic spill and improves the leaf **204.672 ->
+202.953 us (-0.84%)**, but changes 3,385 output and 77,945 state FP32 words
+(max absolute **5.96e-8 / 7.45e-9**) because the compiler schedules the split
+loop differently. Its maximum whole-model effect is below admission scale, so
+it was rejected without weakening exactness.
+
+A materially different fused candidate then combined indexed depthwise Conv
+with paired-value-head GDN in one 256-thread block. Q and K Conv channels run
+on separate 128-thread subgroups, both value heads own disjoint Conv/state
+columns, and Conv shift/FMA/SiLU plus every GDN reduction/update retains the
+production order. The focused indexed test was **3 passed**. Across five
+cycling 1 MiB Conv plus 16 MiB GDN states, 40 warmups, and 400 iterations, the
+fused kernel is byte-exact for output, Conv state, and GDN state and improves
+sequential Conv+GDN **229.702 -> 224.120 us (-2.43%)**.
+
+The captured-model screen nevertheless rejects it: physical-C8 p512/d128
+moves clean F3K **152.708625 -> 152.237699 tok/s (-0.3084%)**, while every
+trajectory hash remains exact. The 256-thread fused schedule's graph/occupancy
+interference costs more than its isolated launch and `conv_out` savings. It did
+not advance to an unnecessary server cycle.
+
+Removed all state-cache/fused kernels, wrappers, registry variants, manifest
+path, runtime selector, and fixture extensions. No flag/capability remains.
+Compact artifact:
+`benchmarks/results/2026-07-20-gfx1151-gguf-gdn-state-residency-fusion-c8-rejected.json`
+(5,405 bytes, SHA-256
+`bc7469013d278f895be5e88aee594ac72a61d39c52a8109a851e3c6e1a3c987a`).
