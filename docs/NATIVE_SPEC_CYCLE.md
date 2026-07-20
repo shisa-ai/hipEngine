@@ -560,18 +560,28 @@ The mechanical change is invariant: HIP APIs **80.6875 -> 75.6875**, syncs
 therefore default-on inside explicit N4, with `=0` retained temporarily for
 rollback.
 
-The next clean residual decomposition finds **1.471 ms host / 1.252 ms kernel**
-per proposer repair/update cycle. Zero-accept B1 cycles need one result-producing
-advance (**1.238 ms host, 28 kernels/copies, 26 host submissions**); accepted
-rows add a no-result state/KV repair advance (**+0.744 ms host, +0.635 ms
-kernel, +23 submissions**). The largest required leaf is draft lm-head logits at
-**0.363 ms/cycle**. The selected next target is instead the general 256-expert
-router top8+softmax kernel: its current one-thread serial insertion costs
-**0.153 ms/cycle / 116.4 us/call**. Dynamic attention context, KV slot pointers,
-variable accepted-row repair, and the bounded next-draft D2H remain blockers to
-a reusable complete proposer graph.
+The next clean residual decomposition found **1.471 ms host / 1.252 ms kernel**
+per proposer repair/update cycle and selected the serial 256-expert router top8.
+The retained exact kernel now assigns one expert to each of 256 threads and
+performs deterministic shared-memory pair reductions. A same-process 1,000-call
+rocprof A/B improves **94.516 -> 5.395 us/call (-94.29%)**, removes **80 B/thread
+scratch**, and lowers **48 -> 40 VGPR**.
 
-[`selected-commit gate`](../benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-selected-commit.json)
+The clean full-suite on/off/on gate preserves three x **240 IDs / 214 cycles / 16
+accepts**. Complete wall improves **16.202 -> 15.919/15.951 ms/cycle**,
+capture-adjusted wall **13.962 -> 13.839/13.846**, and proposer update
+**1.222 -> 1.107/1.106**; pooled MTP throughput improves **65.188 ->
+66.303/66.259 tok/s**. Both candidates improve capture-adjusted and proposer
+wall on train, heldout, and every category. Clean final-child tracing confirms
+router **115.948 -> 10.741 us/call**, proposer host **1.465 -> 1.328 ms**, and
+complete host **16.317 -> 16.215 ms** with counts unchanged. Accepted row 1 and
+the following cycle pass every Conv/GDN, KV, selected-state, scratch, and cursor
+comparison. Dynamic attention context, KV slot pointers, variable accepted-row
+repair, and bounded next-draft D2H still block a reusable complete proposer
+graph.
+
+[`parallel-router gate`](../benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-parallel-router-topk.json)
+· [`selected-commit gate`](../benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-selected-commit.json)
 · [`N4+ bound-control gate`](../benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-bound-control.json)
 · [`provider residual attribution`](../benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-provider-residuals.json)
 · [`proposer-update residuals`](../benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-proposer-update-residuals.json)

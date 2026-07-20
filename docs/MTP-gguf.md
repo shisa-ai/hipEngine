@@ -418,11 +418,15 @@ accept/commit metadata, and scheduler-facing results.
    remain open. See the
    [`selected-commit packet`](../benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-selected-commit.json).
    The follow-up proposer profile records **1.471 ms host / 1.252 ms kernel** per
-   update; accepted rows add one **0.635 ms** no-result repair advance. The first
-   selected tuning target is the model-general serial 256x8 router topk kernel
-   (**0.153 ms/cycle**), not broader graph ownership while context/KV metadata
-   remain host-valued. See the
-   [`proposer residuals`](../benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-proposer-update-residuals.json).
+   update; accepted rows add one **0.635 ms** no-result repair advance. Its first
+   retained tuning target replaces serial 256x8 router topk with exact 256-thread
+   reduction. Micro-rocprof improves **94.516 -> 5.395 us/call**; the clean full
+   suite improves complete wall **16.202 -> 15.919/15.951 ms/cycle**, proposer
+   update **1.222 -> 1.107/1.106**, and MTP **65.188 -> 66.303/66.259 tok/s**
+   with every ID/category unchanged. Broader graph ownership remains blocked
+   while context/KV metadata are host-valued. See the
+   [`parallel-router gate`](../benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-parallel-router-topk.json)
+   and [`proposer residuals`](../benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-proposer-update-residuals.json).
 8. **N5 — Multi-cycle option:** only after N3/N4 are exact, allow the native
    launcher to continue until EOS, cancellation/deadline, output-buffer limit,
    or an explicit scheduler yield point.
