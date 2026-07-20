@@ -182,6 +182,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_gemv_bf16_bf16_out,
     gguf_q5_k_t16_selected_gemv_bf16_bf16_out,
+    gguf_q5_k_t16_selected_pairreuse_gemv_bf16_bf16_out,
     gguf_q5_k_t16_selected_q8_1_dp4a_gemv_bf16_bf16_out,
     gguf_q6_k_t16_selected_gemv_bf16_bf16_out,
     register_gguf_t16_selected_gemv_kernels,
@@ -6920,7 +6921,9 @@ _GGUF_HOST_TOKEN_EMBEDDING_ENV = "HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING"
 _GGUF_Q4K_SELECTED_DUAL_DP4A_ENV = "HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A"
 _GGUF_T16_SELECTED_DP4A_ENV = "HIPENGINE_GGUF_T16_SELECTED_DP4A"
 _GGUF_T16_SELECTED_PAIRREUSE_ENV = "HIPENGINE_GGUF_T16_SELECTED_PAIRREUSE"
+_GGUF_T16_SELECTED_DOWN_PAIRREUSE_ENV = "HIPENGINE_GGUF_T16_SELECTED_DOWN_PAIRREUSE"
 _gguf_t16_selected_pairreuse_min_rows_session: int | None = None
+_gguf_t16_selected_down_pairreuse_min_rows_session: int | None = None
 _GGUF_T16_DS4_PREFILL_ENV = "HIPENGINE_GGUF_T16_DS4_PREFILL"
 _GGUF_RAW_SELECTED_DP4A_ENV = "HIPENGINE_GGUF_RAW_SELECTED_DP4A"
 _GGUF_DENSE_Q8_DP4A_ENV = "HIPENGINE_GGUF_DENSE_Q8_DP4A"
@@ -7390,6 +7393,29 @@ def _gguf_t16_selected_pairreuse_enabled() -> bool:
     if raw:
         return _env_flag(_GGUF_T16_SELECTED_PAIRREUSE_ENV, False)
     min_rows = _gguf_t16_selected_pairreuse_min_rows_session
+    return min_rows is not None and min_rows > 0
+
+
+@contextmanager
+def _gguf_t16_selected_down_pairreuse_min_rows_scope(min_rows: int | None):
+    """Apply a backend-certified selected-down reuse width floor."""
+
+    global _gguf_t16_selected_down_pairreuse_min_rows_session
+    previous = _gguf_t16_selected_down_pairreuse_min_rows_session
+    _gguf_t16_selected_down_pairreuse_min_rows_session = (
+        None if min_rows is None else int(min_rows)
+    )
+    try:
+        yield
+    finally:
+        _gguf_t16_selected_down_pairreuse_min_rows_session = previous
+
+
+def _gguf_t16_selected_down_pairreuse_enabled() -> bool:
+    raw = os.environ.get(_GGUF_T16_SELECTED_DOWN_PAIRREUSE_ENV, "")
+    if raw:
+        return _env_flag(_GGUF_T16_SELECTED_DOWN_PAIRREUSE_ENV, False)
+    min_rows = _gguf_t16_selected_down_pairreuse_min_rows_session
     return min_rows is not None and min_rows > 0
 
 
@@ -13193,10 +13219,18 @@ class Qwen35GGUFResidentSession:
                 0,
             )
         )
+        selected_down_pairreuse_min_rows = int(
+            backend_package_capability(
+                self.runner.backend,
+                "GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS",
+                0,
+            )
+        )
         with (
             wmma_prefill_session(False),
             gemv_decode_session(self.use_gemv_decode),
             _gguf_t16_selected_pairreuse_min_rows_scope(selected_pairreuse_min_rows),
+            _gguf_t16_selected_down_pairreuse_min_rows_scope(selected_down_pairreuse_min_rows),
             q8_t16_pair_rowtile_min_rows_session(q8_t16_pair_rowtile_min_rows),
             q8_t16_rowtile_all_session(q8_t16_rowtile_all),
         ):
@@ -20271,7 +20305,13 @@ def _launch_selected_raw_gguf_moe_linear(
     elif quant_key == "gguf_q4_k_t16_v1":
         fn = gguf_q4_k_t16_selected_gemv_bf16_bf16_out
     elif quant_key == "gguf_q5_k_t16_v1":
-        fn = gguf_q5_k_t16_selected_gemv_bf16_bf16_out
+        fn = (
+            gguf_q5_k_t16_selected_pairreuse_gemv_bf16_bf16_out
+            if _gguf_t16_selected_down_pairreuse_enabled()
+            and x_rows == 64
+            and rows == 64
+            else gguf_q5_k_t16_selected_gemv_bf16_bf16_out
+        )
     elif quant_key == "gguf_q6_k_t16_v1":
         fn = gguf_q6_k_t16_selected_gemv_bf16_bf16_out
     else:
