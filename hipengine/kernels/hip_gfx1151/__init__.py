@@ -15,6 +15,9 @@ from hipengine.kernels.backends import hip_target_arch_for_backend
 from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
     qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans,
 )
+from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
+    qwen35_gdn_recurrent_rmsnorm_gate_indexed_shared_statecache24_lowp_bf16,
+)
 from hipengine.kernels.hip_gfx1100.moe.router import (
     qwen35_router_logits_bf16_f32w_auto_256,
 )
@@ -136,6 +139,13 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
     }
 )
 _GFX1151_OVERRIDES = {
+    # F3Q caches 24 of 128 FP32 state rows across the GDN dependency barrier.
+    # Its 15 KiB LDS footprint preserves four resident blocks on gfx1151.
+    (
+        "gdn_recurrent_rmsnorm_gate",
+        "gguf_qwen35",
+        "bf16_indexed_singleton",
+    ): qwen35_gdn_recurrent_rmsnorm_gate_indexed_shared_statecache24_lowp_bf16,
     # The scalar-tree c1-exact kernel retained for gfx1100/PARO diverges from
     # gfx1151's established paged-c1 arithmetic at model scale. Keep gfx1151 on
     # the generic reduction, but pin its geometry to the c4/c8-proven 256-thread

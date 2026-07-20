@@ -292,7 +292,7 @@ __global__ void qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel(
 // Packed AR advances one token per active row.  Keep this sibling separate from
 // the arbitrary-length segmented kernel so the compiler sees the same single-
 // token recurrence as the c1 kernel while state ownership remains indexed.
-template <typename scalar_t>
+template <typename scalar_t, int STATE_CACHE_ROWS = 0>
 __global__ void qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_kernel(
     const float* conv_out,
     const scalar_t* gate,
@@ -317,6 +317,7 @@ __global__ void qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_kernel(
   float* k_partial = q_partial + blockDim.x;
   float* out_shared = k_partial + blockDim.x;
   float* norm_partial = out_shared + head_v_dim;
+  float* state_cache = norm_partial + blockDim.x;
 
   const int64_t row = blockIdx.x;
   const int64_t v_head = blockIdx.y;
@@ -403,19 +404,53 @@ __global__ void qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_kernel(
     const int64_t state_col = state_slot * state_stride + v_head * head_k_dim * head_v_dim + value_idx;
     float kv_mem = 0.0f;
     for (int64_t idx = 0; idx + 7 < head_k_dim; idx += 8) {
-      kv_mem += k_shared[idx + 0] * k_scale * recurrent_state[state_col + (idx + 0) * head_v_dim] * decay;
-      kv_mem += k_shared[idx + 1] * k_scale * recurrent_state[state_col + (idx + 1) * head_v_dim] * decay;
-      kv_mem += k_shared[idx + 2] * k_scale * recurrent_state[state_col + (idx + 2) * head_v_dim] * decay;
-      kv_mem += k_shared[idx + 3] * k_scale * recurrent_state[state_col + (idx + 3) * head_v_dim] * decay;
-      kv_mem += k_shared[idx + 4] * k_scale * recurrent_state[state_col + (idx + 4) * head_v_dim] * decay;
-      kv_mem += k_shared[idx + 5] * k_scale * recurrent_state[state_col + (idx + 5) * head_v_dim] * decay;
-      kv_mem += k_shared[idx + 6] * k_scale * recurrent_state[state_col + (idx + 6) * head_v_dim] * decay;
-      kv_mem += k_shared[idx + 7] * k_scale * recurrent_state[state_col + (idx + 7) * head_v_dim] * decay;
+      const int64_t so0 = state_col + (idx + 0) * head_v_dim;
+      const int64_t so1 = state_col + (idx + 1) * head_v_dim;
+      const int64_t so2 = state_col + (idx + 2) * head_v_dim;
+      const int64_t so3 = state_col + (idx + 3) * head_v_dim;
+      const int64_t so4 = state_col + (idx + 4) * head_v_dim;
+      const int64_t so5 = state_col + (idx + 5) * head_v_dim;
+      const int64_t so6 = state_col + (idx + 6) * head_v_dim;
+      const int64_t so7 = state_col + (idx + 7) * head_v_dim;
+      const float state0 = recurrent_state[so0];
+      const float state1 = recurrent_state[so1];
+      const float state2 = recurrent_state[so2];
+      const float state3 = recurrent_state[so3];
+      const float state4 = recurrent_state[so4];
+      const float state5 = recurrent_state[so5];
+      const float state6 = recurrent_state[so6];
+      const float state7 = recurrent_state[so7];
+      if constexpr (STATE_CACHE_ROWS > 0) {
+        if (idx < STATE_CACHE_ROWS) {
+          state_cache[(idx + 0) * head_v_dim + value_idx] = state0;
+          state_cache[(idx + 1) * head_v_dim + value_idx] = state1;
+          state_cache[(idx + 2) * head_v_dim + value_idx] = state2;
+          state_cache[(idx + 3) * head_v_dim + value_idx] = state3;
+          state_cache[(idx + 4) * head_v_dim + value_idx] = state4;
+          state_cache[(idx + 5) * head_v_dim + value_idx] = state5;
+          state_cache[(idx + 6) * head_v_dim + value_idx] = state6;
+          state_cache[(idx + 7) * head_v_dim + value_idx] = state7;
+        }
+      }
+      kv_mem += k_shared[idx + 0] * k_scale * state0 * decay;
+      kv_mem += k_shared[idx + 1] * k_scale * state1 * decay;
+      kv_mem += k_shared[idx + 2] * k_scale * state2 * decay;
+      kv_mem += k_shared[idx + 3] * k_scale * state3 * decay;
+      kv_mem += k_shared[idx + 4] * k_scale * state4 * decay;
+      kv_mem += k_shared[idx + 5] * k_scale * state5 * decay;
+      kv_mem += k_shared[idx + 6] * k_scale * state6 * decay;
+      kv_mem += k_shared[idx + 7] * k_scale * state7 * decay;
     }
     for (int64_t idx = (head_k_dim & ~7); idx < head_k_dim; ++idx) {
       const float k_norm = k_shared[idx] * k_scale;
-      const float state_value = recurrent_state[state_col + idx * head_v_dim] * decay;
-      kv_mem += k_norm * state_value;
+      const int64_t state_offset = state_col + idx * head_v_dim;
+      const float state_value = recurrent_state[state_offset];
+      if constexpr (STATE_CACHE_ROWS > 0) {
+        if (idx < STATE_CACHE_ROWS) {
+          state_cache[idx * head_v_dim + value_idx] = state_value;
+        }
+      }
+      kv_mem += k_norm * state_value * decay;
     }
 
     const float value = conv_out[value_offset + value_idx];
@@ -445,14 +480,52 @@ __global__ void qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_kernel(
       const int64_t so5 = state_col + (idx + 5) * head_v_dim;
       const int64_t so6 = state_col + (idx + 6) * head_v_dim;
       const int64_t so7 = state_col + (idx + 7) * head_v_dim;
-      const float ns0 = recurrent_state[so0] * decay + k_norm0 * delta;
-      const float ns1 = recurrent_state[so1] * decay + k_norm1 * delta;
-      const float ns2 = recurrent_state[so2] * decay + k_norm2 * delta;
-      const float ns3 = recurrent_state[so3] * decay + k_norm3 * delta;
-      const float ns4 = recurrent_state[so4] * decay + k_norm4 * delta;
-      const float ns5 = recurrent_state[so5] * decay + k_norm5 * delta;
-      const float ns6 = recurrent_state[so6] * decay + k_norm6 * delta;
-      const float ns7 = recurrent_state[so7] * decay + k_norm7 * delta;
+      float state0;
+      float state1;
+      float state2;
+      float state3;
+      float state4;
+      float state5;
+      float state6;
+      float state7;
+      if constexpr (STATE_CACHE_ROWS > 0) {
+        if (idx < STATE_CACHE_ROWS) {
+          state0 = state_cache[(idx + 0) * head_v_dim + value_idx];
+          state1 = state_cache[(idx + 1) * head_v_dim + value_idx];
+          state2 = state_cache[(idx + 2) * head_v_dim + value_idx];
+          state3 = state_cache[(idx + 3) * head_v_dim + value_idx];
+          state4 = state_cache[(idx + 4) * head_v_dim + value_idx];
+          state5 = state_cache[(idx + 5) * head_v_dim + value_idx];
+          state6 = state_cache[(idx + 6) * head_v_dim + value_idx];
+          state7 = state_cache[(idx + 7) * head_v_dim + value_idx];
+        } else {
+          state0 = recurrent_state[so0];
+          state1 = recurrent_state[so1];
+          state2 = recurrent_state[so2];
+          state3 = recurrent_state[so3];
+          state4 = recurrent_state[so4];
+          state5 = recurrent_state[so5];
+          state6 = recurrent_state[so6];
+          state7 = recurrent_state[so7];
+        }
+      } else {
+        state0 = recurrent_state[so0];
+        state1 = recurrent_state[so1];
+        state2 = recurrent_state[so2];
+        state3 = recurrent_state[so3];
+        state4 = recurrent_state[so4];
+        state5 = recurrent_state[so5];
+        state6 = recurrent_state[so6];
+        state7 = recurrent_state[so7];
+      }
+      const float ns0 = state0 * decay + k_norm0 * delta;
+      const float ns1 = state1 * decay + k_norm1 * delta;
+      const float ns2 = state2 * decay + k_norm2 * delta;
+      const float ns3 = state3 * decay + k_norm3 * delta;
+      const float ns4 = state4 * decay + k_norm4 * delta;
+      const float ns5 = state5 * decay + k_norm5 * delta;
+      const float ns6 = state6 * decay + k_norm6 * delta;
+      const float ns7 = state7 * decay + k_norm7 * delta;
       recurrent_state[so0] = ns0;
       recurrent_state[so1] = ns1;
       recurrent_state[so2] = ns2;
@@ -468,7 +541,15 @@ __global__ void qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_kernel(
       const float q_norm = q_shared[idx] * q_scale;
       const float k_norm = k_shared[idx] * k_scale;
       const int64_t state_offset = state_col + idx * head_v_dim;
-      const float new_state = recurrent_state[state_offset] * decay + k_norm * delta;
+      float state_value;
+      if constexpr (STATE_CACHE_ROWS > 0) {
+        state_value = idx < STATE_CACHE_ROWS
+            ? state_cache[idx * head_v_dim + value_idx]
+            : recurrent_state[state_offset];
+      } else {
+        state_value = recurrent_state[state_offset];
+      }
+      const float new_state = state_value * decay + k_norm * delta;
       recurrent_state[state_offset] = new_state;
       out_acc += q_norm * new_state;
     }
@@ -5861,7 +5942,59 @@ extern "C" int hipengine_qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_bf16(
   const int threads = 128;
   const size_t shared_bytes = static_cast<size_t>((2 * head_k_dim) + (3 * threads) + head_v_dim) * sizeof(float);
   hipLaunchKernelGGL(
-      (qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_kernel<uint16_t>),
+      (qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_kernel<uint16_t, 0>),
+      dim3(static_cast<unsigned int>(rows), static_cast<unsigned int>(num_v_heads)),
+      dim3(threads),
+      shared_bytes,
+      stream,
+      conv_out,
+      gate,
+      a,
+      b,
+      dt_bias,
+      a_log,
+      norm_weight,
+      recurrent_state,
+      out,
+      state_indices,
+      rows,
+      eps,
+      num_k_heads,
+      num_v_heads,
+      head_k_dim,
+      head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_gdn_recurrent_rmsnorm_gate_indexed_shared_statecache24_lowp_bf16(
+    const float* conv_out,
+    const uint16_t* gate,
+    const uint16_t* a,
+    const uint16_t* b,
+    const float* dt_bias,
+    const float* a_log,
+    const float* norm_weight,
+    float* recurrent_state,
+    float* out,
+    const int64_t* state_indices,
+    int64_t rows,
+    float eps,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (rows <= 0 || !valid_gdn_shape(num_k_heads, num_v_heads, head_k_dim, head_v_dim)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 128;
+  constexpr int state_cache_rows = 24;
+  const size_t shared_bytes = static_cast<size_t>(
+      (2 * head_k_dim) + (3 * threads) + head_v_dim +
+      state_cache_rows * head_v_dim) * sizeof(float);
+  hipLaunchKernelGGL(
+      (qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_kernel<
+          uint16_t, state_cache_rows>),
       dim3(static_cast<unsigned int>(rows), static_cast<unsigned int>(num_v_heads)),
       dim3(threads),
       shared_bytes,

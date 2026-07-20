@@ -170610,3 +170610,99 @@ The canonical direct C1/C2/C4/C8 row is now
 **50.335/78.552/108.050/158.804 tok/s**; the clean direct result is the retained
 claim and the positive exact source-equivalent server packet is supporting
 evidence.
+
+## 2026-07-20 — Post-F3P physical-C8 profile pivot
+
+Repeated the canonical cached-only one-transition `rocprofv3` graph trace after
+F3P. The steady window remains 748 dispatches and falls from post-F3E
+**52.037 ms** to **49.648 ms**. The retained paged-context kernel is now
+**1.294 ms / 10 launches**, only **2.61%** of the window, at median
+**129.343 us**, 40 VGPR, 8,243 B LDS, and zero scratch.
+
+GDN recurrence is now the larger state target: indexed recurrent GDN is
+**3.770 ms / 30 launches (7.59%)**, median **123.652 us**, 56 VGPR, 3,072 B
+LDS, and zero scratch; indexed Conv adds **0.335 ms**. The next exact candidate
+will normalize each head's Q/K vectors once in shared memory and share uniform
+beta/decay across the block instead of repeating identical scale/transcendental
+work across all 128 value lanes. This does not change recurrence order or
+state ownership. Raw DB is 7,360,512 bytes, SHA-256
+`f99f03e55bf3bd92da24b1a9d7371e1d5b799e24e6848cc5c5e9b02c0d8fa23a`;
+compact diagnostic is `/tmp/gfx1151-f3p-current-c8-family-profile.json`.
+
+## 2026-07-20 — Retain gfx1151 indexed-GDN shared state cache 24
+
+The first exact GDN follow-up pre-normalized Q/K once in LDS and shared uniform
+beta/decay across the block. It is byte-exact but regresses the real indexed
+leaf **203.649 -> 204.750 us (+0.54%)**; a second same-binary sweep reports
+**+0.62%**. The extra barrier/shared round trip costs more than the repeated
+scale work, so the route and wrapper were removed.
+
+A materially different state-cache design stores old FP32 state in LDS during
+the first K/state pass and reuses it during the dependent update pass. Unlike
+the rejected VGPR whole-state cache, this uses no scratch and keeps the
+coalesced state layout. The complete 0..120-row sweep in increments of eight is
+byte-exact. With five cycling 16 MiB state pools, 40 warmups, and 400 measured
+launches, the occupancy-safe optimum is cache-24:
+
+- cache-0 **204.996 us**;
+- cache-16 **201.674 us (-1.62%)**;
+- cache-24 **197.844 us (-3.49%)**;
+- cache-32 **201.471 us (-1.72%)** after crossing to three resident blocks;
+- cache-120 **197.922 us (-3.45%)**, but only one resident block.
+
+Cache-120 initially appeared viable at direct median **159.111 tok/s
+(+0.193%)** and **320/320 exact** state, but serving rejected its occupancy
+trade: blocking **91.830 -> 91.359 (-0.51%)** and exact SSE **87.772 -> 87.464
+(-0.35%)**, despite delayed **69.777 -> 70.111 (+0.48%)**. It was removed.
+
+Cache-24 preserves four resident 128-thread blocks: its model-shape LDS is
+15,360 B. The pre-cleanup three-run direct median is **159.772 tok/s**, +0.610%
+over clean F3P. The final architecture-scoped implementation registers a
+distinct cache-24 wrapper only for gfx1151 physical rows >=8; gfx1100 and lower
+physical widths retain the generic indexed function. Final direct C8 samples
+are **159.580248/159.535231/159.602307 tok/s**, median **159.580248**, or
+**+0.4887%** over clean F3P **158.804125**, with all trajectories exact. The
+same run's lower-width rates are thermally elevated and are diagnostic only;
+the canonical C1/C2/C4 rows remain unchanged.
+
+The final all-layer gate is **320/320 exact**, with exact tokens/final state and
+no first divergence. Focused indexed Conv/GDN tests are **3 passed**, including
+independent-c1 and CPU-reference equality plus registry scoping.
+
+The full exact server packet is positive on SSE and delayed but flat/noisy on
+blocking versus the older F3P control:
+
+- blocking **91.830 -> 91.562 tok/s (-0.29%)**;
+- exact SSE **87.772 -> 88.597 (+0.94%)**;
+- delayed **69.777 -> 70.414 (+0.91%)**.
+
+A matched no-streaming cache-0/cache-24 bracket confirms session drift: C1 is
+**44.433 -> 44.425 (-0.02%)** and C8 blocking **91.309 -> 91.148 (-0.18%)**,
+inside the runs' 0.47%/0.79% stdev/median. Per the project rule, the exact
+sub-window/direct win is retainable when aggregate serving is flat in this
+noise band and the other two serving surfaces improve.
+
+Final cached-only `rocprofv3` records
+`qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_kernel<unsigned short,24>` at
+128 threads, grid `(1024,32)`, **56 VGPR**, **15,360 B LDS**, zero scratch, and
+median **112.231 us**. GDN falls **3.770 -> 3.468 ms (-8.02%)** over 30
+launches and the complete 748-dispatch window falls **49.648 -> 48.819 ms
+(-1.67%)**. Raw final profile DB is 7,368,704 bytes, SHA-256
+`5b425f16e7b3e9ef894ac45deccfe41ad0c29e52ef55ab49bf240876b352ef89`.
+
+Final evidence hashes:
+
+- direct all-width diagnostic: 713,907 bytes,
+  `72adcd9308d5c91945e3b72f5c3203316c3a1ebcb840ff52c09c98eb396d804f`;
+- all-layer oracle: 16,283 bytes,
+  `975e3660a62fdf9dc890bab86ca190da40779feb0785abf1722ab1d13455f2b3`;
+- full server candidate: 715,420 bytes,
+  `fc540c5c3e0bb8f75c72949d889405c455180f4a1f062dbc5963a11cbb0decf2`;
+- matched cache-0/cache-24 bracket: control
+  `25223b887bd908a78258675c4d3444a0e34dd513a0432b03055da1ce5ed645b6`,
+  candidate
+  `03469a4fa82c67ec9749099bf4d3f24d879ee4f29c98473c56f76e890f2c0c2d`.
+
+Implementation, architecture override, focused oracle, and profiler evidence
+are ready for an atomic code commit. Detached tracked-clean retention and
+compact rollup publication follow.
