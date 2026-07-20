@@ -42,8 +42,11 @@ raw-IQ, decode, and scheduler tranches:
   `707.420/626.077 tok/s` at 512/mixed-4K. The exact 8x8 alternative regressed
   every production shape and was removed. A subsequent exact 32x2 schedule was
   also removed after regressing all nine production shapes by 8.28–89.99%
-  despite matching 16x4's VGPR/LDS/scratch resources; short-row and unaligned
-  shapes retain the 8x4/8x2/pack8 fallbacks.
+  despite matching 16x4's VGPR/LDS/scratch resources. A wave-uniform Q8-scale
+  broadcast then regressed the same shapes by 38.77–191.80% because its sixteen
+  shuffles per K iteration outweighed uniform cached scale loads. Short-row and
+  unaligned shapes retain the 8x4/8x2/pack8 fallbacks; local exact-Q8 scheduling
+  is closed at 16x4 pending a new profile-backed premise.
 - Decode work retained the wave-uniform IQ3 address cleanup and aggregate
   MoE-tail/next-RMS fusion, rejected hierarchical top-k, IQ4 tile4, and routed
   stream overlap, and currently measures `101.216 tok/s` at 512 and
