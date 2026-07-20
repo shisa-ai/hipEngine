@@ -389,7 +389,36 @@ Every retained comparison requires:
 - **A6 — quality lane:** automatic tool selection and repository-task oracles,
   reported separately from deterministic engine performance.
 
-The immediate implementation target is A0. A1 begins only after A0 can reject
-malformed tool transcripts, missing timestamps, ambiguous timing ownership,
-incorrect exact-token denominators, and leaked final ownership without loading a
-model.
+### Current implementation status
+
+A0 is implemented by:
+
+- `benchmarks/prompts/agentic-coding-v1.json`: three synthetic repository
+  workloads with 2K/8K/growing-history targets and 4/6/8 strict tool turns;
+- `benchmarks/schemas/agentic-coding-workloads.schema.json`;
+- `benchmarks/schemas/agentic-coding-records.schema.json`;
+- `benchmarks/schemas/agentic-coding-benchmark.schema.json`;
+- `hipengine/benchmark/agentic.py`: fixture identity, independent strict
+  argument checks, exact-token/timestamp/batch-owner/ownership validation, and
+  latency/goodput/cache/backend rollups;
+- `scripts/agentic_coding_bench.py`: model-free normalized-record to artifact
+  CLI;
+- `tests/test_agentic_coding_benchmark.py`: RED/GREEN contract and failure
+  matrix.
+
+The normalized A0 command is:
+
+```bash
+python3 scripts/agentic_coding_bench.py \
+  --workloads benchmarks/prompts/agentic-coding-v1.json \
+  --records /tmp/agentic-coding-records.json \
+  --json /tmp/agentic-coding-a0.json
+```
+
+A0 intentionally accepts only successful deterministic assistant-tool-result
+turns. Cancellation, deadline, slow-consumer, automatic-tool quality, and sampled
+records extend the schema in A3/A5/A6 rather than weakening the initial exact
+tool denominator. A1 is the next implementation boundary: a real-Uvicorn SSE
+collector must render each committed workload to the model tokenizer target,
+run C1/C4/C8 cache-off turns, normalize exact private server telemetry into the
+A0 record contract, and close final ownership.

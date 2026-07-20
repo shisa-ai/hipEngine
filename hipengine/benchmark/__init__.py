@@ -1,5 +1,18 @@
 """Benchmark and correctness helpers."""
 
+from hipengine.benchmark.agentic import (
+    AGENTIC_ARTIFACT_KIND,
+    AGENTIC_RECORDS_KIND,
+    AGENTIC_SCHEMA_VERSION,
+    AGENTIC_WORKLOAD_KIND,
+    DEFAULT_AGENTIC_WORKLOADS,
+    AgenticBenchmarkError,
+    AgenticWorkloadSuite,
+    build_agentic_benchmark_artifact,
+    load_agentic_workload_suite,
+    percentile,
+    validate_agentic_benchmark_artifact,
+)
 from hipengine.benchmark.correctness import LogitCorrectness, evaluate_logits
 from hipengine.benchmark.exact_tokens import (
     DEFAULT_EXACT_TOKEN_FIXTURE,
@@ -46,6 +59,10 @@ from hipengine.benchmark.speculative import (
 )
 
 __all__ = [
+    "AGENTIC_ARTIFACT_KIND",
+    "AGENTIC_RECORDS_KIND",
+    "AGENTIC_SCHEMA_VERSION",
+    "AGENTIC_WORKLOAD_KIND",
     "ARTIFACT_PROVENANCE_KIND",
     "ARTIFACT_PROVENANCE_SCHEMA_VERSION",
     "BENCHMARK_MATRIX_KIND",
@@ -54,8 +71,11 @@ __all__ = [
     "DEFAULT_STABLE_PROMPT_FIXTURE",
     "DEFAULT_EXACT_TOKEN_FIXTURE",
     "D2HCounts",
+    "DEFAULT_AGENTIC_WORKLOADS",
     "EXACT_TOKEN_ORACLE_KIND",
     "EXACT_TOKEN_ORACLE_SCHEMA_VERSION",
+    "AgenticBenchmarkError",
+    "AgenticWorkloadSuite",
     "ExactTokenFixture",
     "ExactTokenOracle",
     "LogitCorrectness",
@@ -66,6 +86,7 @@ __all__ = [
     "StablePromptSpec",
     "acceptance_summary",
     "aggregate_speculative_rows",
+    "build_agentic_benchmark_artifact",
     "build_prompt_records",
     "build_benchmark_matrix",
     "build_speculative_artifact",
@@ -73,11 +94,14 @@ __all__ = [
     "collect_model_identity",
     "collect_repo_state",
     "evaluate_logits",
+    "load_agentic_workload_suite",
     "load_prompt_records",
     "normalize_speculative_row",
+    "percentile",
     "token_ids_sha256",
     "load_exact_token_fixture",
     "validate_exact_token_parity",
+    "validate_agentic_benchmark_artifact",
     "validate_artifact_provenance",
     "validate_benchmark_matrix",
     "validate_prompt_records",

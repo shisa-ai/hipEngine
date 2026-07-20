@@ -882,6 +882,45 @@ exact SLO-goodput candidate among rows that pass every gate; use TTFT p95, ITL
 p99, then smaller chunks only as tie-breaks. Record every candidate, including
 failed/neutral rows. A passing workload with dirty source remains diagnostic.
 
+### Coding-agent multi-turn server rows
+
+Use [`benchmarks/prompts/agentic-coding-v1.json`](../benchmarks/prompts/agentic-coding-v1.json)
+as the initial synthetic repository/tool-loop suite and
+[`scripts/agentic_coding_bench.py`](../scripts/agentic_coding_bench.py) as the
+fail-closed A0 record/artifact gate. The workload suite, normalized turn records,
+and artifact envelopes are pinned by the three `agentic-coding-*.schema.json`
+files under `benchmarks/schemas/`.
+
+A retained live row uses real localhost Uvicorn SSE, the exact committed workload
+fingerprint, and concurrency 1/4/8. Report first-token TTFT, complete validated
+tool-call-ready latency, ITL, complete turn wall, exact generated tok/s, valid
+tool calls/s, prefix hits/reused tokens/cache bytes, sampler and full-vocabulary
+D2H state, physical widths, batch timing ownership, and final request/session/KV/
+graph/workspace ownership. Do not substitute decoded text, OpenAI usage, or
+client concurrency for exact backend token and width evidence.
+
+The A0 gate is model-free and accepts only normalized successful deterministic
+tool turns. It rejects undeclared/wrong tools, invalid or schema-mismatched
+arguments, raw reasoning/tool markup leakage, missing or non-monotonic timestamps,
+exact-token hash mismatch, duplicate request ids, incomplete turn sequences,
+ambiguous batch timing ownership, cache activity under `cache_mode=off`, and
+leaked final ownership. Build an A0 artifact with:
+
+```bash
+python3 scripts/agentic_coding_bench.py \
+  --workloads benchmarks/prompts/agentic-coding-v1.json \
+  --records /tmp/agentic-coding-records.json \
+  --json /tmp/agentic-coding-a0.json
+```
+
+A1 and later live collectors must produce the normalized input rather than
+weakening A0 when backend telemetry is missing. Prefix/routing candidates require
+cache-off generated-ID parity and state/KV/refcount gates. Sampled candidates
+add fixed-seed repeatability and distribution sanity. Pressure/cancellation and
+automatic-tool quality are separate later lanes and must not be mixed into the
+first deterministic performance denominator. The complete active board is
+[`AGENTIC-OPT.md`](AGENTIC-OPT.md).
+
 ### Speculative decode / DFlash rows
 
 DFlash and later MTP rows use `scripts/dflash_speculative_bench.py` as the
