@@ -169833,3 +169833,57 @@ cmp -s /tmp/agentic-small-c1-quality.json \
   benchmarks/results/2026-07-20-w7900-agentic-a6-small-c1-quality.json
 # exact copy
 ```
+
+## 2026-07-20 — Strip outer Qwen role/template residue from valid tool calls
+
+Promoted the two A6 `content_alongside_tool_call` failures into blocking and SSE
+regressions using their exact residue classes. Before the implementation,
+`_parse_chat_tool_calls()` successfully parsed the tool but published the full
+remaining `<|endoftext|><|im_start|>...` sequence as assistant content; both
+new endpoint tests failed on non-empty public content.
+
+The parser now discards a post-parse remainder only when the entire string is a
+grammar of Qwen `<|endoftext|>`, `<|im_start|>`, and `<|im_end|>` controls,
+whitespace, plus a chat-role label that follows an `im_start` marker. The rule
+is reached only after at least one valid tool block parses. Any ordinary
+character preserves the remainder, the existing outer-`im_end` behavior remains,
+interior literal `<|im_end|>` / `<|im_start|>user` text is retained, and non-tool
+structured output is unchanged. Blocking and SSE share the parser. Capabilities
+now advertise `outer_qwen_template_control_residue` under
+`features.tools.compatibility_parser_repairs`; `docs/API.md` records the narrow
+contract.
+
+RED/GREEN and validation:
+
+```bash
+python3 -m pytest -q \
+  tests/test_server_api.py::test_chat_completion_strips_qwen_role_template_residue_around_tool_call \
+  tests/test_server_api.py::test_streaming_chat_completion_strips_qwen_role_template_residue_around_tool_call \
+  tests/test_server_api.py::test_chat_completion_terminal_cleanup_preserves_interior_literal_content
+# RED: 2 failed, 1 passed
+# GREEN: 3 passed
+python3 -m pytest -q \
+  tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth \
+  tests/test_server_api.py::test_replay_artifact_redacts_failed_request \
+  tests/test_server_api.py::test_chat_completion_strips_qwen_terminal_residue_around_tool_call \
+  tests/test_server_api.py::test_chat_completion_strips_qwen_role_template_residue_around_tool_call \
+  tests/test_server_api.py::test_streaming_chat_completion_strips_qwen_terminal_residue_around_tool_call \
+  tests/test_server_api.py::test_streaming_chat_completion_strips_qwen_role_template_residue_around_tool_call \
+  tests/test_server_api.py::test_chat_completion_terminal_cleanup_preserves_interior_literal_content \
+  tests/test_server_api.py::test_chat_completion_parses_tool_call_after_literal_marker_text \
+  tests/test_server_api.py::test_streaming_chat_completion_parses_tool_call_after_literal_marker_text \
+  tests/test_server_api.py::test_chat_completion_response_format_json_schema_length_rejects_non_object_prefix
+# 10 passed
+python3 -m pytest -q tests/test_agentic_coding_quality.py \
+  tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py \
+  tests/test_local_agent_config.py
+# 135 passed
+python3 -m pytest -q tests/test_server_api.py
+# 505 passed
+ruff check hipengine/server/api.py tests/test_server_api.py
+# All checks passed
+```
+
+This repairs the two valid-call A6 outcomes generically; it does not reinterpret
+the remaining `invalid_tool_call` rows. Forced-tool JSON constraints remain the
+next separate correctness unit.

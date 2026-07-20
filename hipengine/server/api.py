@@ -74,6 +74,8 @@ _THINKING_CLOSE_MARKER = "</think>"
 _TOOL_CALL_START_MARKER = "<tool_call>"
 _TOOL_CALL_END_MARKER = "</tool_call>"
 _CHAT_TEMPLATE_TERMINAL_MARKERS = ("<|im_end|>",)
+_CHAT_TEMPLATE_RESIDUE_MARKERS = ("<|endoftext|>", "<|im_start|>", "<|im_end|>")
+_CHAT_TEMPLATE_RESIDUE_ROLES = ("assistant", "developer", "system", "tool", "user")
 _TOOL_CALL_ARGUMENT_STREAM_CHARS = 128
 _CHAT_MESSAGE_ROLES = ("assistant", "developer", "system", "tool", "user")
 _CHAT_MESSAGE_ROLE_SET = frozenset(_CHAT_MESSAGE_ROLES)
@@ -1027,7 +1029,10 @@ def _tools_capability(*, tokenizer_backed: bool) -> dict[str, Any]:
         "unsupported_schema_keywords_rejected": True,
         "annotation_keywords_ignored": list(_JSON_SCHEMA_ANNOTATION_KEYWORDS),
         "format": "qwen_tool_call_json",
-        "compatibility_parser_repairs": ["duplicated_tool_call_start"],
+        "compatibility_parser_repairs": [
+            "duplicated_tool_call_start",
+            "outer_qwen_template_control_residue",
+        ],
         "malformed_json_compatibility": "invalid_tool_call_when_tools_enabled",
         "strict_malformed_blocks_rejected": True,
         "declared_tool_name_validation": True,
@@ -12399,8 +12404,43 @@ def _valid_tool_call_blocks(text: str) -> tuple[_ToolCallBlock, ...]:
     return tuple(blocks)
 
 
+def _is_chat_template_control_residue(text: str) -> bool:
+    """Return whether text contains only leaked Qwen template controls/roles."""
+
+    residue = str(text)
+    cursor = 0
+    saw_marker = False
+    role_allowed = False
+    while cursor < len(residue):
+        if residue[cursor].isspace():
+            cursor += 1
+            continue
+        marker = next(
+            (item for item in _CHAT_TEMPLATE_RESIDUE_MARKERS if residue.startswith(item, cursor)),
+            None,
+        )
+        if marker is not None:
+            cursor += len(marker)
+            saw_marker = True
+            role_allowed = role_allowed or marker == "<|im_start|>"
+            continue
+        if role_allowed:
+            role = next(
+                (item for item in _CHAT_TEMPLATE_RESIDUE_ROLES if residue.startswith(item, cursor)),
+                None,
+            )
+            if role is not None:
+                role_end = cursor + len(role)
+                if role_end == len(residue) or residue[role_end] in "\r\n":
+                    cursor = role_end
+                    role_allowed = False
+                    continue
+        return False
+    return saw_marker
+
+
 def _strip_chat_template_terminal_edges(text: str) -> str:
-    """Remove repeated chat-template terminals only at parsed tool envelope edges."""
+    """Remove chat-template residue only around a parsed tool envelope."""
 
     stripped = str(text).strip()
     while stripped:
@@ -12412,6 +12452,8 @@ def _strip_chat_template_terminal_edges(text: str) -> str:
                 stripped = stripped[: -len(marker)].rstrip()
         if stripped == previous:
             break
+    if _is_chat_template_control_residue(stripped):
+        return ""
     return stripped
 
 
