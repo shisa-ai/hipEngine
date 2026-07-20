@@ -15175,6 +15175,18 @@ class Qwen35GGUFResidentSession:
             session.scratch.position_host[0] = end_position
             session.scratch.context_host[0] = end_position + 1
 
+    def discard_packed_decode_state(self) -> bool:
+        """Forget deferred packed-AR state after every bound session is terminal."""
+
+        if not self._packed_decode_state_dirty:
+            return False
+        self._packed_decode_sessions = ()
+        self._packed_decode_last_layout = None
+        self._packed_decode_state_dirty = False
+        self._packed_decode_session_ids = ()
+        self._packed_decode_positions = ()
+        return True
+
     def flush_packed_decode_state(self, *, stream: int = 0) -> bool:
         """Scatter deferred packed-AR state back into the slot sessions.
 

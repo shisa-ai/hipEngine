@@ -104,6 +104,23 @@ def test_gguf_resident_reset_invalidates_packed_state_metadata(monkeypatch) -> N
     assert session._packed_decode_positions == ()
 
 
+def test_gguf_resident_discards_terminal_packed_decode_state_without_scatter() -> None:
+    session = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    session._packed_decode_sessions = (object(),)
+    session._packed_decode_last_layout = object()
+    session._packed_decode_state_dirty = True
+    session._packed_decode_session_ids = (33,)
+    session._packed_decode_positions = (5,)
+
+    assert session.discard_packed_decode_state() is True
+    assert session._packed_decode_sessions == ()
+    assert session._packed_decode_last_layout is None
+    assert session._packed_decode_state_dirty is False
+    assert session._packed_decode_session_ids == ()
+    assert session._packed_decode_positions == ()
+    assert session.discard_packed_decode_state() is False
+
+
 def test_gguf_resident_release_idle_packed_workspace_requires_safe_lifecycle(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

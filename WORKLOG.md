@@ -170771,3 +170771,72 @@ Published rejected artifact
 `benchmarks/results/2026-07-20-gfx1151-gguf-paged-attn-softmax-value-schedules-c8-rejected.json`
 (4,037 bytes, SHA-256
 `1d1eae788ae2bfbccfc7a84ba83d04ab9dabad4e2d48a01169f0fb095ffd5838`).
+
+## 2026-07-21 — Repair terminal packed-owner discard and isolate C8 ramp
+
+The cold-cohort server audit exposed a lifecycle defect in the retained terminal
+packed-state optimization. When every row bound to one packed owner completed in
+the same model tick, `Qwen35GGUFResidentModelRunner` closed the graph and cleared
+slot ownership without invalidating the owner's deferred packed-state binding.
+The next C4+ idle-workspace release therefore failed with `cannot release idle
+workspace with unflushed packed state`; all eight requests then failed and the
+KV pool could not close cleanly.
+
+Restored the independent terminal discard-without-scatter contract from the
+previous diagnostic branch. `Qwen35GGUFResidentSession.discard_packed_decode_state()`
+clears only deferred owner/session/layout metadata after the model runner has
+proved every related row terminal and closed the bound graph. Any live survivor
+continues through the existing full state scatter. RED reproduced the missing
+method and missing all-done discard; GREEN covers terminal metadata invalidation,
+workspace-release safety, all-done versus survivor behavior, sampled packed
+model ticks, and resident session reuse. The first affected-file run isolated
+two fake-owner contract failures while all other nodes passed; after updating
+those test doubles, the focused repair is **6/6 passed**. Compileall and
+diff-check are clean.
+
+The repaired real-Uvicorn p512/d128 C1/C8 `protect_ttft` packet is
+`accepted_backend_packet`: every oracle/warmup/blocking/SSE/live row is exact,
+native, and fallback-free; request failures and retained packed workspace are
+both zero. This is an upper-bound scheduler diagnostic, not yet the default.
+Against retained F3Q fair:256/burst-2 serving:
+
+- blocking **91.562 -> 101.563 tok/s (+10.92%)**;
+- complete wall **11.184 -> 10.082 s (-9.85%)**;
+- exact SSE **88.597 -> 93.144 tok/s (+5.13%)**;
+- delayed admission **70.414 -> 74.335 tok/s (+5.57%)**;
+- TTFT p95 **3.947 -> 3.763 s (-4.68%)**;
+- ITL p99 **0.496 -> 0.220 s (-55.73%)**.
+
+Recorded per-row prefill remains **3.393 s** aggregate and clean F3Q ideal C8
+decode remains **6.421 s**. The unexplained ramp/glue bucket therefore collapses
+from **1.373 s (12.3% of fair wall)** to **0.269 s (2.7%)**. Route counters move
+to zero native-c1 decode steps and 384 packed decode steps across the captured
+packet. This identifies partial-width cold-cohort decode ramp—not HTTP or Python
+glue—as the remaining material server loss. The exact candidate is to drain a
+cold fair cohort only when every prompt fits the already-gated two-chunk bound;
+late admissions with an existing decode-ready row retain the current pressure-
+gated fairness behavior.
+
+Exact diagnostic command:
+
+```bash
+HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 \
+HIPENGINE_BACKEND=hip_gfx1151 .venv/bin/python \
+  scripts/server_f1_concurrency_bench.py --engine hipengine \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1151 --quant gguf_q4_k_m \
+  --hipengine-kv-storage bf16 --hipengine-route-expectation native \
+  --hipengine-prefill-decode-policy protect_ttft \
+  --hipengine-prefill-chunk-tokens 256 --generation-batch-window-ms 5 \
+  --concurrencies 1,8 --live-concurrency 8 --prompt-length 512 \
+  --decode-tokens 128 --ctx-per-seq 1024 --warmup-runs 1 \
+  --measured-runs 1 --streaming-primary --stream-warmup-runs 0 \
+  --stream-measured-runs 1 --live-join-after-tokens 8 \
+  --compiler-version-file /tmp/hipengine-gfx1151-native-cycle-hipcc-version.txt \
+  --memory-domain gtt --drm-card-index 0 --memory-poll-ms 10 \
+  --work-dir /tmp/gfx1151-gguf-cold-cohort-protect-ttft-repair/work \
+  --json /tmp/gfx1151-gguf-cold-cohort-protect-ttft-repair/result.json
+```
+
+Raw diagnostic is 374,257 bytes, SHA-256
+`172eb6f5a50121d95f29c98e1a20719109418c05fa9e4b0399e3c64e0bf2a29e`.
