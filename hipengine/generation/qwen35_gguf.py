@@ -6740,11 +6740,19 @@ def make_qwen35_gguf_bringup_generator(
     weight_index: GGUFModelInfo,
     model_plugin: Any,
 ) -> Qwen35GGUFBringupGenerator:
+    backend = "hip_gfx1100"
     return Qwen35GGUFBringupGenerator(
         model_path=model_path,
         weight_index=weight_index,
         model_plugin=model_plugin,
-        backend="hip_gfx1100",
+        backend=backend,
+        server_plain_ar_max_active_requests=int(
+            backend_package_capability(
+                backend,
+                "GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS",
+                4,
+            )
+        ),
     )
 
 

@@ -488,10 +488,27 @@ class LLM:
             engine_loop_config_from_env(),
             generator,
         )
-        if self.max_active_requests is not None:
+        resident_capacity = self.max_active_requests
+        registered_plain_ar_capacity = getattr(
+            generator,
+            "server_plain_ar_max_active_requests",
+            None,
+        )
+        if registered_plain_ar_capacity is not None:
+            registered_plain_ar_capacity = int(registered_plain_ar_capacity)
+            if registered_plain_ar_capacity < 1:
+                raise ValueError(
+                    "server_plain_ar_max_active_requests must be positive"
+                )
+            resident_capacity = (
+                registered_plain_ar_capacity
+                if resident_capacity is None
+                else min(resident_capacity, registered_plain_ar_capacity)
+            )
+        if resident_capacity is not None:
             loop_config = replace(
                 loop_config,
-                max_active_requests=self.max_active_requests,
+                max_active_requests=resident_capacity,
             )
         if self.prefix_cache is not None:
             loop_config = replace(loop_config, prefix_cache=self.prefix_cache)

@@ -170427,3 +170427,56 @@ shutdown GPU 0 returned to baseline VRAM and all request/session/KV/graph/
 workspace ownership was zero. Next: commit/push this correctness unit, then run
 the clean 4K/C8-admission physical-c4 gate before defining the 8K/growing-history
 context split.
+
+## 2026-07-20 — Separate logical C8 admission from physical c4 residency
+
+Pushed sampled-prefill/c4 repair `84fd737a3415c8f75b3716359bb1a07e271a4b44`,
+confirmed local `HEAD == origin/main` and a clean tree, then launched the exact
+4K/cache-off server with `--max-active-requests 8`. The launch failed closed
+before chat smoke or any collector request:
+
+- resident preparation allocated eight 4K loop slots and reached `36.84375 GiB`
+  used / `8.140625 GiB` free;
+- raw warmup passed, but the scratch probe still logged `max_batch_size=8` and
+  failed with HIP OOM;
+- readiness remained false and no A1 records/artifact were emitted.
+
+The API probe clamp could not recover memory allocated earlier by the resident
+loop. Audit found that the gfx1100 generator factory did not attach
+`server_plain_ar_max_active_requests` at all; only the gfx1151 Q4 factory carried
+registry width metadata. `LLM` also propagated the logical admission setting
+directly into resident-loop capacity.
+
+Added the missing registry/loop contract without backend dispatch branches:
+
+- the gfx1100 GGUF factory advertises plain-AR physical width four through the
+  same generator field used by gfx1151 (whose registered width remains eight);
+- `LLM._get_text_generator()` caps resident capacity to the generator-advertised
+  plain-AR width while leaving `LLM.max_active_requests` and the outer HTTP queue
+  at the requested logical admission width;
+- scratch preparation independently caps plain-AR warm widths but can still use
+  a wider admission width for an enabled MTP warmup.
+
+Focused RED/GREEN tests assert the gfx1100 factory metadata and an LLM requested
+at C8 with registered physical c4 (`llm.max_active_requests == 8`, resident
+runner capacity `4`). Full validation passed:
+
+```bash
+python3 -m pytest -q tests/test_llm_generate.py tests/test_llm_gguf_generate_path.py
+python3 -m pytest -q tests/test_generation\*.py
+python3 -m pytest -q tests/test_server_api.py
+python3 -m ruff check hipengine/llm.py hipengine/generation/qwen35_gguf.py \
+  tests/test_llm_generate.py tests/test_generation_qwen35_gguf_sampling.py
+```
+
+Results: 16 LLM tests passed / four local-model tests skipped, 480 generation
+tests passed, 515 server tests passed, and targeted Ruff plus diff checks passed.
+
+A dirty-tree W7900 launch with the identical C8 command then passed startup:
+logical queue max `8`, scratch max batch `4`, packed AR widths `[2,4]`, final
+`37.427734 GiB` used / `7.556641 GiB` free. The complete canonical
+`small_repo --concurrency 8 --runs 1` collector passed **32/32 turns**, all
+blocking/SSE exact-ID/strict-argument gates, artifact validation, and final zero
+ownership. Output `/tmp/agentic-registry-cap-dirty-c8-a1.json` pins
+`performance_claim=false`; timing is discarded. Next: commit/push the registry
+capacity unit and repeat C8 from that clean commit before any retention.
