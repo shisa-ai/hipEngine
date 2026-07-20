@@ -1,0 +1,131 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_q8t16_pair_col8_c8_retained",
+  "created_at": "2026-07-20T23:05:00+09:00",
+  "status": "retained_exact_direct_c8_server_positive_diagnostic",
+  "passed": true,
+  "performance_claim": true,
+  "claim_scope": "clean direct physical-C8 p512/d128 graph decode with exact Q8T16 qkv+gate rowtile4/col8; server A/B is source-equivalent diagnostic",
+  "decision": "promote eight-column blocks inside the existing gfx1151 physical-C8 Q8T16 qkv+gate rowtile4 scope; leave lower widths and gfx1100 unchanged",
+  "hardware": {
+    "host": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "amd_iommu": "off",
+    "gpu_max_hw_queues": 1,
+    "tuned_profile": "accelerator-performance"
+  },
+  "software": {
+    "hipengine_commit": "b03a828fe5e6ddccdf702ff185184e2d09014e21",
+    "clean": true,
+    "rocm": "HIP 7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B UD-Q4_K_M GGUF",
+    "path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "implementation": {
+    "kernel": "q8_0_t16_dual_split_rowtile_col8_gemv_kernel<unsigned short,unsigned short,4>",
+    "registry_variant": "t16_dual_gemv_decode_rowtile4_col8_bf16_bf16_out",
+    "scope": "existing GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS=8 backend capability; gfx1151 physical C8 only",
+    "mapping": "two eight-column blocks map each T16 weight tile while retaining two row groups",
+    "arithmetic_contract": "every output retains the production 128-thread K partition, wave reduction, cross-wave reduction, and BF16 rounding",
+    "resource_change": {"vgpr": "136 -> 72", "lds_bytes": "1024 -> 512", "scratch_bytes": "0 -> 0"},
+    "rollback": {
+      "col16": "HIPENGINE_GGUF_Q8_T16_PAIR_COL8=0",
+      "per_row": "HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE=0"
+    }
+  },
+  "correctness": {
+    "red_green_fixture": "tests/test_gguf_q8_0_t16_gemv_decode.py::test_q8_t16_dual_split_rowtile_matches_exact_pair",
+    "primitive_output_bits_exact": true,
+    "combined_default_layer_hidden_comparisons": 320,
+    "combined_default_layer_hidden_exact": true,
+    "tokens_conv_gdn_kv_final_state_exact": true,
+    "clean_profile_oracle_passed": true,
+    "clean_profile_oracle_sha256": "698a07403e86c0a327bcad15e116b5fed2367758f245dcf40d10776df295746a",
+    "focused_tests": {"q8t16_gpu": "37 passed", "dispatch_cache_backend": "72 passed"}
+  },
+  "primitive_microbench": {
+    "shape": "rows=8, in=2048, out_a=8192, out_b=4096, threads=128, >2x-MALL pool, warmup=40, iterations=200",
+    "col16_us": 327.91,
+    "col8_us": 318.14,
+    "delta_percent": -2.9794760757525074,
+    "speedup": 1.0307097504243417,
+    "output_bits_exact": true,
+    "raw_bytes": 1150,
+    "raw_sha256": "fc7a852b0e487e048f62a1cbdb1677ab89a4c7ece50319b113e57b537fdd6c5e"
+  },
+  "clean_direct_gate": {
+    "workload": {
+      "physical_rows": 8,
+      "prompt_tokens_per_row": 512,
+      "generated_tokens_per_row": 128,
+      "total_generated_tokens": 1024,
+      "sampling": "greedy_top1",
+      "decode_mode": "state-bound graph",
+      "warmups": 1,
+      "repetitions": 3
+    },
+    "f3f_baseline": {
+      "commit": "c843f836b45d5a5c12e05bae8c62b2cf17af2d60",
+      "aggregate_decode_tok_s_median": 151.01476739865686,
+      "wall_seconds_per_1024_tokens": 6.7807938100304455
+    },
+    "pre_selected_reuse_baseline": {
+      "commit": "7bb3669b9f585a695f8c6ea8d897d3a726268733",
+      "aggregate_decode_tok_s_median": 133.8523123514623,
+      "wall_seconds_per_1024_tokens": 7.650222711963579
+    },
+    "candidate": {
+      "commit": "b03a828fe5e6ddccdf702ff185184e2d09014e21",
+      "clean": true,
+      "aggregate_decode_tok_s_samples": [152.1453159180841, 152.19161412265987, 152.3466539123831],
+      "aggregate_decode_tok_s_median": 152.19161412265987,
+      "delta_vs_f3f_percent": 0.7792924786595989,
+      "delta_vs_pre_selected_reuse_percent": 13.701146770661076,
+      "stdev_percent_of_median": 0.06928746413123929,
+      "wall_seconds_per_1024_tokens": 6.728360205015634,
+      "wall_savings_vs_f3f_seconds_per_1024_tokens": 0.05243360501481131,
+      "wall_savings_vs_pre_selected_reuse_seconds_per_1024_tokens": 0.9218625069479449,
+      "repeatable_trajectories": true
+    },
+    "raw_bytes": 200422,
+    "raw_sha256": "7d3a1cd17991d974a926de381ba5c7edf3485dcd9b6a93f3b719380de238da17"
+  },
+  "clean_profiler_gate": {
+    "tool": "rocprofv3 --kernel-trace",
+    "automatic_backend_policy": true,
+    "dispatches": 30,
+    "workgroup_size_x": 128,
+    "grid_size_x": 196608,
+    "grid_size_y": 2,
+    "vgpr": 72,
+    "sgpr": 128,
+    "lds_bytes": 512,
+    "scratch_bytes": 0,
+    "profile_duration_ns_median": 299602.5,
+    "profile_duration_ns_total": 9676883,
+    "summary_sha256": "b56a38f6f7eeb02858d86b1b92fff2ac9f94e93178e370eb6f23aa41b5b95910",
+    "database_sha256": "ce89c2287d047784967b47d7b25cd02b3e041213c6664a0ffb53ce4ec0cc03cc",
+    "duration_note": "profiler durations are diagnostic only"
+  },
+  "server_diagnostic": {
+    "evidence_status": "same-checkout source-equivalent exact A/B, not a clean retained server-speed row",
+    "protocol": "real localhost Uvicorn C1/C8 p512/d128, one warmup, three blocking, three exact SSE, delayed C8",
+    "passed": true,
+    "col16_control_tok_s": {"blocking_median": 88.38658937443299, "exact_sse_median": 85.51730524411873, "delayed": 68.58968508338224},
+    "col8_candidate_tok_s": {"blocking_median": 88.72686221609999, "exact_sse_median": 85.98280368877633, "delayed": 68.90792857722933},
+    "delta_percent": {"blocking": 0.38498243237501395, "exact_sse": 0.5443324521613224, "delayed": 0.4639815643711076},
+    "raw_sha256": {"candidate": "3686edb93b6007bc6e63d9ea491c09ae6d9bc3f5328c2cd04afbaead730a164f", "control": "a1208a6eb918b20082487480508b21c7a50e4be0b38e2bee2ee48df43068106e"}
+  },
+  "limitations": [
+    "The retained performance claim is clean direct physical C8; server evidence is exact/positive but source-equivalent diagnostic.",
+    "Lower widths and gfx1100 remain on established kernels pending independent transfer.",
+    "The current T16 storage remains unchanged; col8 is a compute scheduling change, not a new quant layout."
+  ]
+}

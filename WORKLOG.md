@@ -170249,3 +170249,27 @@ Cached automatic tracing confirms **30** launches at 128 threads, grid
 used 136 VGPR and 1 KiB LDS. Profile median **299.622 us** / total **9.700 ms**
 are diagnostic. Focused validation: Q8T16 GPU **37 passed**; dispatch/cache/
 backend **72 passed**.
+
+### Clean F3I direct retention and automatic-route trace
+
+Committed implementation as `b03a828f`, then ran detached-clean publication at
+that exact commit. Clean p512/d128 physical-C8 samples are
+**152.145316/152.191614/152.346654 tok/s**, median **152.191614**. This is
+**+0.7793%** over clean F3F **151.014767** and **+13.7011%** over the
+pre-selected-reuse F3B **133.852312**. Stdev/median is **0.0693%** and all
+trajectories repeat exactly. The 1,024-token window is **6.728360 s**, saving
+**52.434 ms** versus F3F and **921.863 ms** versus F3B. Raw SHA-256 is
+`7d3a1cd17991d974a926de381ba5c7edf3485dcd9b6a93f3b719380de238da17`.
+
+Clean cached-only automatic tracing passes exact token/final state and confirms
+**30** col8 launches at 128 threads, grid `196608x2`, 72 VGPR, 512 B LDS, and
+zero scratch. Profile median **299.603 us** / total **9.676883 ms** remain
+diagnostic. Results DB SHA-256 is
+`ce89c2287d047784967b47d7b25cd02b3e041213c6664a0ffb53ce4ec0cc03cc`.
+
+Published compact artifact
+`benchmarks/results/2026-07-20-gfx1151-gguf-q8t16-pair-col8-c8-retained.json`
+(6,426 bytes, SHA-256
+`2a73e55afa31e710a9af9e882507944ad91fd3d0fc82a68f86e4ef11ac16bb77`).
+The retained performance claim is clean direct C8; the positive same-checkout
+server A/B remains supporting diagnostic evidence.
