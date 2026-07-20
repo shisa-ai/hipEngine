@@ -913,6 +913,33 @@ python3 scripts/agentic_coding_bench.py \
   --json /tmp/agentic-coding-a0.json
 ```
 
+A1 uses `scripts/agentic_coding_live.py` against an already-running real server.
+It renders exact tokenizer-sized prefixes, builds deterministic prior tool
+transcripts, obtains an independent non-streaming c1 exact-token/tool oracle
+outside the measured window, and releases the measured SSE requests together.
+For example:
+
+```bash
+HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
+python3 scripts/agentic_coding_live.py \
+  --base-url http://127.0.0.1:8100/v1 \
+  --model Qwen3.6-35B-A3B --backend hip_gfx1100 \
+  --workload small_repo --concurrency 1 --runs 1 \
+  --cache-mode off --max-tokens 128 \
+  --records-json /tmp/agentic-small-c1-records.json \
+  --json /tmp/agentic-small-c1-a1.json
+```
+
+A validated tool SSE response can be a safely buffered public projection, not
+one event per model token. Record it as `token_timing_mode=buffered_public`,
+`generated_token_ids_source=matched_nonstreaming_oracle`, and
+`sse_exact_ids_observed=false`; report public TTFT/tool-ready latency and withhold
+ITL. Oracle/tool equality does not make the measured SSE token IDs observed, so
+such a row remains diagnostic and cannot support an exact-token performance
+claim. Only response-owned IDs satisfy the exact denominator, and only
+`live_exact` one-token events support ITL percentiles. Never spread one buffered
+timestamp across token IDs and call the resulting zero intervals ITL.
+
 A1 and later live collectors must produce the normalized input rather than
 weakening A0 when backend telemetry is missing. Prefix/routing candidates require
 cache-off generated-ID parity and state/KV/refcount gates. Sampled candidates

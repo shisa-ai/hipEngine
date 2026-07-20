@@ -22,6 +22,7 @@ AGENTIC_SCHEMA_VERSION = 1
 DEFAULT_AGENTIC_WORKLOADS = Path("benchmarks/prompts/agentic-coding-v1.json")
 _LANES = frozenset({"deterministic", "sampled", "auto_tool"})
 _CACHE_MODES = frozenset({"off", "radix"})
+_TOKEN_TIMING_MODES = frozenset({"live_exact", "buffered_public"})
 _ZERO_OWNERSHIP_FIELDS = (
     "pending_requests",
     "active_requests",
@@ -461,6 +462,20 @@ def _validate_turn_records(
             output.get("generated_token_ids_sha256"),
             label=f"record[{record_index}].output.generated_token_ids_sha256",
         )
+        id_source = output.get("generated_token_ids_source")
+        if id_source not in {"response", "matched_nonstreaming_oracle"}:
+            raise AgenticBenchmarkError(
+                f"record[{record_index}].output.generated_token_ids_source is unsupported"
+            )
+        observed_in_sse = output.get("sse_exact_ids_observed")
+        if not isinstance(observed_in_sse, bool):
+            raise AgenticBenchmarkError(
+                f"record[{record_index}].output.sse_exact_ids_observed must be boolean"
+            )
+        if (id_source == "response") != observed_in_sse:
+            raise AgenticBenchmarkError(
+                f"record[{record_index}] exact-ID source/observation metadata is inconsistent"
+            )
         if generated_hash != token_ids_sha256(generated):
             raise AgenticBenchmarkError(f"record[{record_index}] generated token hash mismatch")
         if output.get("raw_markup_leaked") is not False:
@@ -501,15 +516,41 @@ def _validate_turn_records(
         result_submit = _required_time(
             timing, "tool_result_submitted_at_s", record_index=record_index
         )
-        observed = timing.get("token_observed_at_s")
-        if not _is_sequence(observed) or len(observed) != len(generated):
+        timing_mode = timing.get("token_timing_mode")
+        if timing_mode not in _TOKEN_TIMING_MODES:
             raise AgenticBenchmarkError(
-                f"record[{record_index}].timing.token_observed_at_s must match generated IDs"
+                f"record[{record_index}].timing.token_timing_mode must be one of "
+                f"{sorted(_TOKEN_TIMING_MODES)}"
+            )
+        observed = timing.get("token_observed_at_s")
+        event_counts = timing.get("token_event_token_counts")
+        if not _is_sequence(observed) or not observed:
+            raise AgenticBenchmarkError(
+                f"record[{record_index}].timing.token_observed_at_s must be non-empty"
+            )
+        if not _is_sequence(event_counts) or len(event_counts) != len(observed):
+            raise AgenticBenchmarkError(
+                f"record[{record_index}].timing.token_event_token_counts must match token events"
             )
         observed_times = [float(value) for value in observed if _is_finite_number(value)]
-        if len(observed_times) != len(generated):
+        if len(observed_times) != len(observed):
             raise AgenticBenchmarkError(
                 f"record[{record_index}].timing.token_observed_at_s must be finite"
+            )
+        normalized_event_counts = [
+            _positive_int(
+                value,
+                label=f"record[{record_index}].timing.token_event_token_counts[{event_index}]",
+            )
+            for event_index, value in enumerate(event_counts)
+        ]
+        if sum(normalized_event_counts) != len(generated):
+            raise AgenticBenchmarkError(
+                f"record[{record_index}] token event counts do not match generated IDs"
+            )
+        if timing_mode == "live_exact" and any(count != 1 for count in normalized_event_counts):
+            raise AgenticBenchmarkError(
+                f"record[{record_index}] live_exact timing requires one token per event"
             )
         ordered = [submitted, first, *observed_times, ready, done, result_submit]
         if any(right < left for left, right in zip(ordered, ordered[1:])):
@@ -521,6 +562,10 @@ def _validate_turn_records(
 
         backend = _mapping(record.get("backend"), label=f"record[{record_index}].backend")
         _nonempty_string(backend.get("batch_id"), label=f"record[{record_index}].backend.batch_id")
+        if backend.get("timing_scope") not in {"choice", "batch", "request"}:
+            raise AgenticBenchmarkError(
+                f"record[{record_index}].backend.timing_scope is unsupported"
+            )
         if not isinstance(backend.get("timing_owner"), bool):
             raise AgenticBenchmarkError(
                 f"record[{record_index}].backend.timing_owner must be boolean"
@@ -573,9 +618,17 @@ def _validate_turn_records(
         )
         normalized.append(copy.deepcopy(dict(record)))
 
-    if len(agents) != concurrency:
+    agents_by_run: dict[str, set[str]] = {}
+    for run_id, agent_id in agents:
+        agents_by_run.setdefault(run_id, set()).add(agent_id)
+    invalid_runs = {
+        run_id: len(run_agents)
+        for run_id, run_agents in agents_by_run.items()
+        if len(run_agents) != concurrency
+    }
+    if invalid_runs:
         raise AgenticBenchmarkError(
-            f"configuration.concurrency={concurrency} but records contain {len(agents)} agents"
+            f"configuration.concurrency={concurrency} but per-run agent counts are {invalid_runs}"
         )
     if configuration.get("require_complete_workloads") is True:
         for agent_key, turn_indexes in agent_turns.items():
@@ -618,6 +671,8 @@ def _rollup(records: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any], dict[
     physical_width_turns: dict[str, int] = {}
     sampler_modes: dict[str, int] = {}
     serial_fallback_turns = 0
+    token_timing_modes: dict[str, int] = {}
+    generated_id_sources: dict[str, int] = {}
     agents: set[tuple[str, str]] = set()
     workloads: set[str] = set()
     batches: set[tuple[str, str]] = set()
@@ -629,15 +684,21 @@ def _rollup(records: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any], dict[
         ready = float(timing["tool_call_ready_at_s"])
         complete = float(timing["tool_result_submitted_at_s"])
         observed = [float(value) for value in timing["token_observed_at_s"]]
+        timing_mode = str(timing["token_timing_mode"])
+        token_timing_modes[timing_mode] = token_timing_modes.get(timing_mode, 0) + 1
         ttft_ms.append(1000.0 * (first - submitted))
         ready_ms.append(1000.0 * (ready - submitted))
         complete_ms.append(1000.0 * (complete - submitted))
-        inter_token_ms.extend(
-            1000.0 * (right - left) for left, right in zip(observed, observed[1:])
-        )
+        if timing_mode == "live_exact":
+            inter_token_ms.extend(
+                1000.0 * (right - left) for left, right in zip(observed, observed[1:])
+            )
         submitted_times.append(submitted)
         completed_times.append(complete)
-        generated_tokens += len(record["output"]["generated_token_ids"])
+        output = _mapping(record["output"], label="output")
+        generated_tokens += len(output["generated_token_ids"])
+        id_source = str(output["generated_token_ids_source"])
+        generated_id_sources[id_source] = generated_id_sources.get(id_source, 0) + 1
         agents.add((str(record["run_id"]), str(record["agent_id"])))
         workloads.add(str(record["workload_id"]))
 
@@ -659,8 +720,13 @@ def _rollup(records: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any], dict[
     workload_wall = max(completed_times) - min(submitted_times)
     if workload_wall <= 0.0:
         raise AgenticBenchmarkError("workload wall must be positive")
+    run_agents: dict[str, set[str]] = {}
+    for run_id, agent_id in agents:
+        run_agents.setdefault(run_id, set()).add(agent_id)
     coverage = {
         "workloads": sorted(workloads),
+        "runs": len(run_agents),
+        "concurrency": max((len(items) for items in run_agents.values()), default=0),
         "agents": len(agents),
         "turns": len(records),
         "tool_calls": len(records),
@@ -691,6 +757,8 @@ def _rollup(records: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any], dict[
                 sorted(physical_width_turns.items(), key=lambda item: int(item[0]))
             ),
             "serial_fallback_turns": serial_fallback_turns,
+            "token_timing_mode_turns": dict(sorted(token_timing_modes.items())),
+            "generated_token_id_source_turns": dict(sorted(generated_id_sources.items())),
         },
     }
     return coverage, rollup

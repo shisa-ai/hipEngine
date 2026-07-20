@@ -39,6 +39,8 @@ def _record(suite, turn_index: int, *, batch_id: str, timing_owner: bool) -> dic
         "output": {
             "generated_token_ids": generated,
             "generated_token_ids_sha256": suite.token_ids_sha256(generated),
+            "generated_token_ids_source": "response",
+            "sse_exact_ids_observed": True,
             "raw_markup_leaked": False,
         },
         "tool": {
@@ -55,12 +57,15 @@ def _record(suite, turn_index: int, *, batch_id: str, timing_owner: bool) -> dic
             "submitted_at_s": submitted,
             "first_token_at_s": submitted + 0.1,
             "token_observed_at_s": [submitted + 0.1, submitted + 0.2],
+            "token_event_token_counts": [1, 1],
+            "token_timing_mode": "live_exact",
             "tool_call_ready_at_s": submitted + 0.3,
             "response_done_at_s": submitted + 0.4,
             "tool_result_submitted_at_s": submitted + 0.5,
         },
         "backend": {
             "batch_id": batch_id,
+            "timing_scope": "batch",
             "timing_owner": timing_owner,
             "sampler_mode": "greedy_fast",
             "logits_d2h_bytes": 0,
@@ -138,6 +143,8 @@ def test_agentic_artifact_rolls_up_exact_turn_latency_and_goodput() -> None:
     assert artifact["validation"] == {"passed": True, "failure_reasons": []}
     assert artifact["coverage"] == {
         "workloads": ["small_repo"],
+        "runs": 1,
+        "concurrency": 1,
         "agents": 1,
         "turns": 4,
         "tool_calls": 4,
@@ -161,6 +168,8 @@ def test_agentic_artifact_rolls_up_exact_turn_latency_and_goodput() -> None:
     }
     assert artifact["rollup"]["backend"]["physical_width_turns"] == {"1": 2, "2": 2}
     assert artifact["rollup"]["backend"]["full_vocab_logits_d2h_bytes"] == 0
+    assert artifact["rollup"]["backend"]["token_timing_mode_turns"] == {"live_exact": 4}
+    assert artifact["rollup"]["backend"]["generated_token_id_source_turns"] == {"response": 4}
 
     tampered = copy.deepcopy(artifact)
     tampered["turn_records"][0]["output"]["generated_token_ids"].append(999)
@@ -192,6 +201,16 @@ def test_agentic_artifact_rejects_tool_timing_token_owner_and_resource_failures(
     leaked_markup = _records_payload(suite)
     leaked_markup["turn_records"][0]["output"]["raw_markup_leaked"] = True
     cases.append(("markup", leaked_markup, "record[0] leaked raw model markup"))
+
+    false_sse_ids = _records_payload(suite)
+    false_sse_ids["turn_records"][0]["output"]["sse_exact_ids_observed"] = False
+    cases.append(
+        (
+            "id source",
+            false_sse_ids,
+            "record[0] exact-ID source/observation metadata is inconsistent",
+        )
+    )
 
     ambiguous_owner = _records_payload(suite)
     ambiguous_owner["turn_records"][1]["backend"]["timing_owner"] = True

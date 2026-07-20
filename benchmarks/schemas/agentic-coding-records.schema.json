@@ -60,13 +60,15 @@
         "output": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["generated_token_ids", "generated_token_ids_sha256", "raw_markup_leaked"],
+          "required": ["generated_token_ids", "generated_token_ids_sha256", "generated_token_ids_source", "sse_exact_ids_observed", "raw_markup_leaked"],
           "properties": {
             "generated_token_ids": {
               "type": "array", "minItems": 1,
               "items": {"type": "integer", "minimum": 0}
             },
             "generated_token_ids_sha256": {"$ref": "#/$defs/sha256"},
+            "generated_token_ids_source": {"enum": ["response", "matched_nonstreaming_oracle"]},
+            "sse_exact_ids_observed": {"type": "boolean"},
             "raw_markup_leaked": {"const": false}
           }
         },
@@ -93,12 +95,15 @@
           "additionalProperties": false,
           "required": [
             "submitted_at_s", "first_token_at_s", "token_observed_at_s",
-            "tool_call_ready_at_s", "response_done_at_s", "tool_result_submitted_at_s"
+            "token_event_token_counts", "token_timing_mode", "tool_call_ready_at_s",
+            "response_done_at_s", "tool_result_submitted_at_s"
           ],
           "properties": {
             "submitted_at_s": {"type": "number"},
             "first_token_at_s": {"type": "number"},
             "token_observed_at_s": {"type": "array", "minItems": 1, "items": {"type": "number"}},
+            "token_event_token_counts": {"type": "array", "minItems": 1, "items": {"type": "integer", "minimum": 1}},
+            "token_timing_mode": {"enum": ["live_exact", "buffered_public"]},
             "tool_call_ready_at_s": {"type": "number"},
             "response_done_at_s": {"type": "number"},
             "tool_result_submitted_at_s": {"type": "number"}
@@ -107,9 +112,10 @@
         "backend": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["batch_id", "timing_owner", "sampler_mode", "logits_d2h_bytes", "physical_width", "serial_fallback"],
+          "required": ["batch_id", "timing_scope", "timing_owner", "sampler_mode", "logits_d2h_bytes", "physical_width", "serial_fallback"],
           "properties": {
             "batch_id": {"type": "string", "minLength": 1},
+            "timing_scope": {"enum": ["choice", "batch", "request"]},
             "timing_owner": {"type": "boolean"},
             "sampler_mode": {"type": "string", "minLength": 1},
             "logits_d2h_bytes": {"type": "integer", "minimum": 0},

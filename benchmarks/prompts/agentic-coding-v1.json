@@ -74,25 +74,25 @@
       "history_mode": "stable_prefix",
       "turns": [
         {
-          "user": "Inspect the package configuration before suggesting a validation command.",
+          "user": "Use read with path pyproject.toml and mode summary to inspect the package configuration before suggesting a validation command.",
           "expected_tool": "read",
           "expected_arguments": {"path": "pyproject.toml", "mode": "summary"},
           "tool_result": "Package acme_router targets Python 3.11 and configures pytest with tests/ as the default path."
         },
         {
-          "user": "Find the scheduler admission API.",
+          "user": "Use grep with pattern def admit and path src to find the scheduler admission API.",
           "expected_tool": "grep",
           "expected_arguments": {"pattern": "def admit", "path": "src"},
           "tool_result": "src/scheduler.py:41:def admit(self, request: Request) -> AdmissionResult:"
         },
         {
-          "user": "Read the scheduler implementation around that API.",
+          "user": "Use read with path src/scheduler.py and mode summary to inspect the scheduler implementation around that API.",
           "expected_tool": "read",
           "expected_arguments": {"path": "src/scheduler.py", "mode": "summary"},
           "tool_result": "Admission checks pending and active limits, preserves request identity, and records queue and reclaim timestamps."
         },
         {
-          "user": "Run the narrow scheduler tests.",
+          "user": "Use run with command python -m pytest -q tests/test_scheduler.py to run the narrow scheduler tests.",
           "expected_tool": "run",
           "expected_arguments": {"command": "python -m pytest -q tests/test_scheduler.py"},
           "tool_result": "8 passed in 0.24s"
@@ -105,37 +105,37 @@
       "history_mode": "stable_prefix",
       "turns": [
         {
-          "user": "Locate prefix cache ownership rules.",
+          "user": "Use grep with pattern refcount and path src/cache.py to locate prefix cache ownership rules.",
           "expected_tool": "grep",
           "expected_arguments": {"pattern": "refcount", "path": "src/cache.py"},
           "tool_result": "src/cache.py contains acquire, release, copy-on-write, and unreferenced-only eviction checks."
         },
         {
-          "user": "Summarize the cache implementation.",
+          "user": "Use read with path src/cache.py and mode summary to summarize the cache implementation.",
           "expected_tool": "read",
           "expected_arguments": {"path": "src/cache.py", "mode": "summary"},
           "tool_result": "PrefixEntry values are immutable, keyed by content hash, reference counted, and evicted only at zero references."
         },
         {
-          "user": "Check which metrics expose cache and batch behavior.",
+          "user": "Use read with path src/metrics.py and mode summary to check which metrics expose cache and batch behavior.",
           "expected_tool": "read",
           "expected_arguments": {"path": "src/metrics.py", "mode": "summary"},
           "tool_result": "Metrics include prefix lookups, hits, reused tokens, cache bytes, physical width, queue wait, TTFT, cancellation, and ownership."
         },
         {
-          "user": "Find the batch timing ownership invariant.",
+          "user": "Use grep with pattern timing_owner and path src to find the batch timing ownership invariant.",
           "expected_tool": "grep",
           "expected_arguments": {"pattern": "timing_owner", "path": "src"},
           "tool_result": "src/metrics.py:77: timing_owner must be true for exactly one row in each batch."
         },
         {
-          "user": "Read the operational pressure guidance.",
+          "user": "Use read with path docs/operations.md and mode summary to inspect the operational pressure guidance.",
           "expected_tool": "read",
           "expected_arguments": {"path": "docs/operations.md", "mode": "summary"},
           "tool_result": "Pressure tests cover bounded queue rejection, slow consumers, cancellation, cache eviction, graceful drain, and zero leaked ownership."
         },
         {
-          "user": "Run the full synthetic suite.",
+          "user": "Use run with command python -m pytest -q to run the full synthetic suite.",
           "expected_tool": "run",
           "expected_arguments": {"command": "python -m pytest -q"},
           "tool_result": "24 passed in 0.71s"
@@ -148,49 +148,49 @@
       "history_mode": "growing_tool_results",
       "turns": [
         {
-          "user": "Inspect the router contract.",
+          "user": "Use read with path src/router.py and mode summary to inspect the router contract.",
           "expected_tool": "read",
           "expected_arguments": {"path": "src/router.py", "mode": "summary"},
           "tool_result": "The router resolves immutable registrations under a lock and performs no network I/O while the lock is held."
         },
         {
-          "user": "Find missing-route handling.",
+          "user": "Use grep with pattern RouteNotFound and path src to find missing-route handling.",
           "expected_tool": "grep",
           "expected_arguments": {"pattern": "RouteNotFound", "path": "src"},
           "tool_result": "src/router.py:68 raises RouteNotFound with the requested route id."
         },
         {
-          "user": "Inspect the focused router tests.",
+          "user": "Use read with path tests/test_router.py and mode summary to inspect the focused router tests.",
           "expected_tool": "read",
           "expected_arguments": {"path": "tests/test_router.py", "mode": "summary"},
           "tool_result": "Tests cover exact route selection, duplicate registration, missing routes, and lock release before execution."
         },
         {
-          "user": "Run those tests.",
+          "user": "Use run with command python -m pytest -q tests/test_router.py to run those tests.",
           "expected_tool": "run",
           "expected_arguments": {"command": "python -m pytest -q tests/test_router.py"},
           "tool_result": "7 passed in 0.18s"
         },
         {
-          "user": "Now inspect request cancellation behavior.",
+          "user": "Use grep with pattern cancel and path src/scheduler.py to inspect request cancellation behavior.",
           "expected_tool": "grep",
           "expected_arguments": {"pattern": "cancel", "path": "src/scheduler.py"},
           "tool_result": "Cancellation marks the row for reclaim at the next commit point and does not change live neighboring requests."
         },
         {
-          "user": "Read the scheduler tests for cancellation and reclaim.",
+          "user": "Use read with path tests/test_scheduler.py and mode summary to inspect scheduler cancellation and reclaim tests.",
           "expected_tool": "read",
           "expected_arguments": {"path": "tests/test_scheduler.py", "mode": "summary"},
           "tool_result": "Tests cancel a middle row, admit a replacement, verify survivors, and assert pending, active, refs, and producers drain to zero."
         },
         {
-          "user": "Run the scheduler tests after the longer tool history.",
+          "user": "Use run with command python -m pytest -q tests/test_scheduler.py after the longer tool history.",
           "expected_tool": "run",
           "expected_arguments": {"command": "python -m pytest -q tests/test_scheduler.py"},
           "tool_result": "8 passed in 0.24s"
         },
         {
-          "user": "Confirm the project-wide validation result.",
+          "user": "Use run with command python -m pytest -q to confirm the project-wide validation result.",
           "expected_tool": "run",
           "expected_arguments": {"command": "python -m pytest -q"},
           "tool_result": "24 passed in 0.71s"
