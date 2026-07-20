@@ -20,6 +20,9 @@ _SYMBOL_CHAIN_TLOOP_FP16 = "hipengine_qwen35_gdn_chain_recurrent_rmsnorm_gate_lo
 _SYMBOL_PREFILL = "hipengine_qwen35_gdn_prefill_recurrent_f32"
 _SYMBOL_PREFILL_K2 = "hipengine_qwen35_gdn_prefill_recurrent_k2_f32"
 _SYMBOL_PREFILL_K2_DECODE_ORDER = "hipengine_qwen35_gdn_prefill_recurrent_k2_decode_order_f32"
+_SYMBOL_PREFILL_EXACT_LDS32 = (
+    "hipengine_qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_f32"
+)
 _SYMBOL_PREFILL_SEGMENTS_K2 = "hipengine_qwen35_gdn_prefill_recurrent_segments_k2_f32"
 _SYMBOL_PREFILL_PREPARE = "hipengine_qwen35_linear_attn_prefill_prepare_f32_bf16"
 _SYMBOL_PREFILL_PREPARE_DECODE_ORDER = "hipengine_qwen35_linear_attn_prefill_prepare_decode_order_f32_bf16"
@@ -541,6 +544,46 @@ def qwen35_gdn_prefill_recurrent_k2_decode_order_f32(
 
     _launch_prefill_recurrent(
         _SYMBOL_PREFILL_K2_DECODE_ORDER,
+        query_ptr,
+        key_ptr,
+        value_ptr,
+        beta_ptr,
+        decay_ptr,
+        recurrent_state_ptr,
+        out_ptr,
+        tokens,
+        num_v_heads,
+        head_k_dim,
+        head_v_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_f32(
+    query_ptr: int,
+    key_ptr: int,
+    value_ptr: int,
+    beta_ptr: int,
+    decay_ptr: int,
+    recurrent_state_ptr: int,
+    out_ptr: int,
+    tokens: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact decode-order prefill with 32 value columns tiled in LDS."""
+
+    if head_v_dim % 32:
+        raise ValueError("head_v_dim must be divisible by 32 for exact LDS32 GDN")
+    _launch_prefill_recurrent(
+        _SYMBOL_PREFILL_EXACT_LDS32,
         query_ptr,
         key_ptr,
         value_ptr,
@@ -1172,6 +1215,11 @@ def register_qwen35_linear_attn_gdn_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "gdn_prefill_recurrent", "w4_paro", "f32_decode_order_exact_lds32"),
+        qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_f32,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "gdn_prefill_recurrent", "w4_paro", "f32_k2_segments"),
         qwen35_gdn_prefill_recurrent_segments_k2_f32,
         replace=replace,
@@ -1251,7 +1299,7 @@ def register_qwen35_linear_attn_gdn_kernels(*, replace: bool = True) -> None:
     )
     register(
         KernelKey("hip_gfx1100", "gdn_prefill_recurrent", "gguf_ud_q3_k_m", "f32_k2"),
-        qwen35_gdn_prefill_recurrent_k2_decode_order_f32,
+        qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_f32,
         replace=replace,
     )
     register(

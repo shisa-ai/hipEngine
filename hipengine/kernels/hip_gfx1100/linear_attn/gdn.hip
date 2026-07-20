@@ -719,6 +719,127 @@ __global__ void qwen35_gdn_prefill_recurrent_k2_decode_order_kernel(
   recurrent_state[state_offset1] = state_value1;
 }
 
+// Exact decode-order recurrence with one wave owning 32 adjacent value
+// columns.  The state lives in a conflict-free [K][value] LDS tile across the
+// serial token loop.  Every value lane preserves the K2 exact kernel's scalar
+// K contraction, state update, and eight-term output grouping; only independent
+// value columns are interleaved so Q/K/scalar loads can be wave-uniform.
+__launch_bounds__(32, 4)
+__global__ void qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_kernel(
+    const float* __restrict__ query,
+    const float* __restrict__ key,
+    const float* __restrict__ value,
+    const float* __restrict__ beta,
+    const float* __restrict__ decay,
+    float* recurrent_state,
+    float* __restrict__ out,
+    int64_t tokens,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim) {
+  constexpr int kHeadKDim = 128;
+  constexpr int kValueTile = 32;
+  __shared__ float state_tile[kHeadKDim * kValueTile];
+
+  const int64_t v_head = blockIdx.x;
+  const int value_lane = static_cast<int>(threadIdx.x);
+  const int64_t value_idx =
+      static_cast<int64_t>(blockIdx.y) * kValueTile + value_lane;
+  if (v_head >= num_v_heads || value_idx >= head_v_dim ||
+      head_k_dim != kHeadKDim) {
+    return;
+  }
+
+  const int64_t state_col =
+      v_head * kHeadKDim * head_v_dim + value_idx;
+#pragma unroll 1
+  for (int idx = 0; idx < kHeadKDim; ++idx) {
+    state_tile[idx * kValueTile + value_lane] =
+        recurrent_state[state_col + static_cast<int64_t>(idx) * head_v_dim];
+  }
+
+  for (int64_t token = 0; token < tokens; ++token) {
+    const int64_t head_offset = token * num_v_heads + v_head;
+    const int64_t qk_base = head_offset * kHeadKDim;
+    const float decay_value = decay[head_offset];
+
+    float kv_mem = 0.0f;
+#pragma unroll 1
+    for (int idx = 0; idx < kHeadKDim; ++idx) {
+      // Match K2 exact: round key*previous_state before the decay FMA.
+      const float key_state =
+          key[qk_base + idx] * state_tile[idx * kValueTile + value_lane];
+      kv_mem = fmaf(decay_value, key_state, kv_mem);
+    }
+
+    const float delta =
+        (value[head_offset * head_v_dim + value_idx] - kv_mem) *
+        beta[head_offset];
+    float out_acc = 0.0f;
+#pragma unroll 1
+    for (int idx = 0; idx < kHeadKDim; idx += 8) {
+      const float q0 = query[qk_base + idx + 0];
+      const float q1 = query[qk_base + idx + 1];
+      const float q2 = query[qk_base + idx + 2];
+      const float q3 = query[qk_base + idx + 3];
+      const float q4 = query[qk_base + idx + 4];
+      const float q5 = query[qk_base + idx + 5];
+      const float q6 = query[qk_base + idx + 6];
+      const float q7 = query[qk_base + idx + 7];
+      const float k0 = key[qk_base + idx + 0];
+      const float k1 = key[qk_base + idx + 1];
+      const float k2 = key[qk_base + idx + 2];
+      const float k3 = key[qk_base + idx + 3];
+      const float k4 = key[qk_base + idx + 4];
+      const float k5 = key[qk_base + idx + 5];
+      const float k6 = key[qk_base + idx + 6];
+      const float k7 = key[qk_base + idx + 7];
+      const int so0 = (idx + 0) * kValueTile + value_lane;
+      const int so1 = (idx + 1) * kValueTile + value_lane;
+      const int so2 = (idx + 2) * kValueTile + value_lane;
+      const int so3 = (idx + 3) * kValueTile + value_lane;
+      const int so4 = (idx + 4) * kValueTile + value_lane;
+      const int so5 = (idx + 5) * kValueTile + value_lane;
+      const int so6 = (idx + 6) * kValueTile + value_lane;
+      const int so7 = (idx + 7) * kValueTile + value_lane;
+      const float ns0 = fmaf(k0, delta, state_tile[so0] * decay_value);
+      const float ns1 = fmaf(k1, delta, state_tile[so1] * decay_value);
+      const float ns2 = fmaf(k2, delta, state_tile[so2] * decay_value);
+      const float ns3 = fmaf(k3, delta, state_tile[so3] * decay_value);
+      const float ns4 = fmaf(k4, delta, state_tile[so4] * decay_value);
+      const float ns5 = fmaf(k5, delta, state_tile[so5] * decay_value);
+      const float ns6 = fmaf(k6, delta, state_tile[so6] * decay_value);
+      const float ns7 = fmaf(k7, delta, state_tile[so7] * decay_value);
+      state_tile[so0] = ns0;
+      state_tile[so1] = ns1;
+      state_tile[so2] = ns2;
+      state_tile[so3] = ns3;
+      state_tile[so4] = ns4;
+      state_tile[so5] = ns5;
+      state_tile[so6] = ns6;
+      state_tile[so7] = ns7;
+
+      // Preserve the decode compiler's group-of-eight contraction exactly.
+      float group = q1 * ns1;
+      group = fmaf(q0, ns0, group);
+      group = fmaf(q2, ns2, group);
+      group = fmaf(q3, ns3, group);
+      group = fmaf(q4, ns4, group);
+      group = fmaf(q5, ns5, group);
+      group = fmaf(q6, ns6, group);
+      group = fmaf(q7, ns7, group);
+      out_acc += group;
+    }
+    out[head_offset * head_v_dim + value_idx] = out_acc;
+  }
+
+#pragma unroll 1
+  for (int idx = 0; idx < kHeadKDim; ++idx) {
+    recurrent_state[state_col + static_cast<int64_t>(idx) * head_v_dim] =
+        state_tile[idx * kValueTile + value_lane];
+  }
+}
+
 __global__ void qwen35_gdn_prefill_recurrent_k2_segments_kernel(
     const float* query,
     const float* key,
@@ -2434,6 +2555,46 @@ extern "C" int hipengine_qwen35_gdn_prefill_recurrent_k2_decode_order_f32(
   hipLaunchKernelGGL(
       qwen35_gdn_prefill_recurrent_k2_decode_order_kernel,
       dim3(static_cast<unsigned int>(num_v_heads), static_cast<unsigned int>(head_v_dim)),
+      dim3(threads),
+      0,
+      stream,
+      query,
+      key,
+      value,
+      beta,
+      decay,
+      recurrent_state,
+      out,
+      tokens,
+      num_v_heads,
+      head_k_dim,
+      head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_f32(
+    const float* query,
+    const float* key,
+    const float* value,
+    const float* beta,
+    const float* decay,
+    float* recurrent_state,
+    float* out,
+    int64_t tokens,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (tokens <= 0 || num_v_heads <= 0 || head_k_dim != 128 ||
+      head_v_dim <= 0 || head_v_dim % 32 != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int threads = 32;
+  hipLaunchKernelGGL(
+      qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_kernel,
+      dim3(
+          static_cast<unsigned int>(num_v_heads),
+          static_cast<unsigned int>(head_v_dim / threads)),
       dim3(threads),
       0,
       stream,

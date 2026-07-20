@@ -56,6 +56,7 @@ from hipengine.core.memory import (
 )
 from hipengine.kernels.cpu_reference import gdn_prefill_recurrent_segments
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
+    qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_f32,
     qwen35_gdn_prefill_recurrent_k2_decode_order_f32,
     qwen35_gdn_prefill_recurrent_k2_f32,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order,
@@ -569,7 +570,7 @@ def test_gguf_qwen35_gdn_registry_resolves_all_chain_aliases() -> None:
             quant="gguf_ud_q3_k_m",
             variant="f32_k2",
         )
-        is qwen35_gdn_prefill_recurrent_k2_decode_order_f32
+        is qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_f32
     )
     assert (
         resolve(
@@ -752,3 +753,33 @@ def test_gdn_prefill_k2_decode_order_is_bit_exact_to_fused_qwen36_shape() -> Non
     )
     assert np.array_equal(state_exact, state_fused)
     assert np.array_equal(out_exact, out_fused)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_gdn_prefill_exact_lds32_is_bit_exact_to_k2_decode_order() -> None:
+    """Preserve every recurrent-state/output bit while tiling value columns in LDS."""
+
+    inputs = _GDNInputs(
+        tokens=64,
+        num_k_heads=16,
+        num_v_heads=32,
+        head_k_dim=128,
+        head_v_dim=128,
+        seed=4,
+    )
+    out_k2, state_k2 = _run_chain(
+        inputs,
+        _RMS_EPS,
+        use_segments=False,
+        prepare_fn=qwen35_linear_attn_prefill_prepare_decode_order_f32_bf16,
+        recurrent_fn=qwen35_gdn_prefill_recurrent_k2_decode_order_f32,
+    )
+    out_lds32, state_lds32 = _run_chain(
+        inputs,
+        _RMS_EPS,
+        use_segments=False,
+        prepare_fn=qwen35_linear_attn_prefill_prepare_decode_order_f32_bf16,
+        recurrent_fn=qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_f32,
+    )
+    assert np.array_equal(state_lds32, state_k2)
+    assert np.array_equal(out_lds32, out_k2)

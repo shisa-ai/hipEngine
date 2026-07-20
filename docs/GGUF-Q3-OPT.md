@@ -47,28 +47,36 @@ raw-IQ, decode, and scheduler tranches:
   shuffles per K iteration outweighed uniform cached scale loads. Short-row and
   unaligned shapes retain the 8x4/8x2/pack8 fallbacks; local exact-Q8 scheduling
   is closed at 16x4 pending a new profile-backed premise.
+- Exact GDN now uses a corrected-contract 32-value-column LDS schedule instead
+  of the 4,096-block K2 reduction leaf. Each lane executes the same ordered
+  128-term KV contraction, state FMA, and eight-term output groups while a
+  conflict-free 16 KiB LDS tile keeps recurrent state across the token loop.
+  Recurrent output and final state are bit-exact at 64/512/4,096 rows; the full
+  hidden/logit gates remain exact. The new default reaches
+  `763.221/670.417 tok/s` at 512/mixed-4K and cuts traced GDN
+  `1,310.186 -> 882.716 ms` (-32.63%) with local32, VGPR248, and zero scratch.
 - Decode work retained the wave-uniform IQ3 address cleanup and aggregate
   MoE-tail/next-RMS fusion, rejected hierarchical top-k, IQ4 tile4, and routed
   stream overlap, and currently measures `101.216 tok/s` at 512 and
   `108.383 tok/s` at 4K on GPU1. The source-derived 150–190 tok/s feasibility
   argument remains valid, but hipEngine has not reached that band.
 
-The post-Q8-16x4 cache-only 4K trace is now the active prefill Amdahl ledger:
+The post-GDN-LDS32 cache-only 4K trace is now the active prefill Amdahl ledger:
 
-| Family | Time | Share of 6,413.593 ms kernel sum |
+| Family | Time | Share of 5,971.059 ms kernel sum |
 |---|---:|---:|
-| Dense exact raw Q8 | 2,056.867 ms | **32.07%** |
-| Exact GDN | 1,310.186 ms | **20.43%** |
-| Grouped IQ3 gate/up | 1,100.257 ms | **17.16%** |
-| Full attention | 940.031 ms | **14.66%** |
-| Grouped IQ4 down | 501.585 ms | **7.82%** |
+| Dense exact raw Q8 | 2,062.089 ms | **34.53%** |
+| Grouped IQ3 gate/up | 1,093.856 ms | **18.32%** |
+| Full attention | 936.895 ms | **15.69%** |
+| Exact GDN | 882.716 ms | **14.78%** |
+| Grouped IQ4 down | 490.904 ms | **8.22%** |
 
-Dense Q8 remains first in Amdahl order, followed by exact GDN and grouped IQ3.
-Any next experiment must follow that measured order rather than extending a
-lower-ranked family by inertia. **The ~3,000 tok/s objective is not closed:**
-626.077 tok/s is a retained step, not a target claim. Full evidence and
-commands are in
-[`benchmarks/results/2026-07-20-gpu1-q3-exact-q8-tile16x4-prefill.json`](../benchmarks/results/2026-07-20-gpu1-q3-exact-q8-tile16x4-prefill.json).
+Dense Q8 remains first but its local scheduling lane is closed; grouped IQ3 is
+next in Amdahl order, followed by full attention and exact GDN. Any next
+experiment must follow that measured order rather than extending a lower-ranked
+family by inertia. **The ~3,000 tok/s objective is not closed:** 670.417 tok/s
+is a retained step, not a target claim. Full evidence and commands are in
+[`benchmarks/results/2026-07-20-gpu1-q3-exact-gdn-lds32-prefill.json`](../benchmarks/results/2026-07-20-gpu1-q3-exact-gdn-lds32-prefill.json).
 
 ## Executive recommendation
 
@@ -965,9 +973,17 @@ strict-exact full-column register candidate compiled on gfx1100 with:
 
 It was rejected before full-model timing. Ordered/grouped register schedules,
 state-layout changes, tiled updates, scalar broadcast, and atomic completion
-variants were also tested or closed. Production prefill now uses its admitted
-peer-wave route; the strict exact rollback uses the much faster nonvolatile
-LDS32 path.
+variants were also tested or closed. Historical production prefill used its
+admitted peer-wave route; its strict exact rollback used the much faster
+nonvolatile LDS32 path.
+
+The 2026-07-20 Q3 campaign did **not** reopen that failed local-array design. It
+re-derived the old spill-free LDS32 schedule under the corrected grouped-head,
+rsqrt-epsilon, and decode-association contract: one lane owns one value column,
+the source state is an explicit `[128][32]` LDS tile, and the full-model path is
+bit-exact. LLVM reports VGPR248 but zero private scratch; the real 4K trace cuts
+GDN 32.63%, so this bounded Q3 adaptation is retained without changing the
+full-column-register closure below.
 
 Therefore:
 

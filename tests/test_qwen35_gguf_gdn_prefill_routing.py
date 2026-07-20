@@ -24,7 +24,7 @@ from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
     qwen35_paged_full_attn_prefill_gqa_gate_bf16_decode_order_spans,
 )
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
-    qwen35_gdn_prefill_recurrent_k2_decode_order_f32,
+    qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_f32,
     qwen35_gdn_prefill_recurrent_k2_f32,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order,
     qwen35_gdn_prefill_recurrent_segments_k2_f32,
@@ -60,7 +60,7 @@ def test_resolve_ud_q3_k_m_plan_selects_exact_nonsegmented_chain() -> None:
     assert plan.has_chain
     assert plan.has_fused
     assert plan.prepare is qwen35_linear_attn_prefill_prepare_decode_order_f32_bf16
-    assert plan.recurrent is qwen35_gdn_prefill_recurrent_k2_decode_order_f32
+    assert plan.recurrent is qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_f32
     assert plan.recurrent_segments is None
     assert plan.rmsnorm_gate is qwen35_gdn_prefill_rmsnorm_gate_bf16
     assert plan.fused_decode_order is qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order
