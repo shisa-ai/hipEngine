@@ -170095,3 +170095,39 @@ profile DB SHA-256 is
 Profiler durations are diagnostic only; retained speed remains the clean direct
 host-wall gate. Compact artifact is 6,243 bytes with SHA-256
 `d3680da531d6a670de013f2f75ab99f5d4f9b08f460427cf9610a8d1ef644a4b`.
+
+## 2026-07-20 — Retain gfx1151 physical-C8 Q6T16 selected-down pair reuse
+
+Closed the final three Q6 selected-down layers with a separate exact
+`q6_k_t16_selected_pairreuse_direct_gemv_kernel`. It uses the same two-wave
+64-lane dynamic expert mask as Q4/Q5 and independent 16-column accumulators per
+paired row, preserving the production 128-thread K/reduction/BF16 order. Q5's
+kernel symbol and evidence remain unchanged.
+
+Real-shape `64x512 -> 64x2048`, 256-expert micros (20 warmups, 100 iterations)
+are all byte-exact:
+
+- unique **254.492 -> 271.834 us (+6.81%)**,
+- uniform random **237.957 -> 248.150 us (+4.28%)**,
+- 32 pairs **192.034 -> 146.734 us (-23.59%, 1.309x)**.
+
+The worse random tax and small three-layer scope required both complete direct
+and server gates. Automatic backend capability
+`GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS=8` admits only gfx1151 physical C8;
+gfx1100 stays zero and `HIPENGINE_GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE=0` is
+rollback.
+
+The combined no-env state oracle is **320/320 layer outputs exact** with exact
+token/Conv/GDN/KV/final state. Direct p512/d128 C8 is
+**151.071134/151.054398/151.073179 tok/s**, median **151.071134**, versus F3E
+**150.756329 (+0.2088%)** with stdev/median **0.0068%**. This saves
+**14.154 ms** per 1,024 tokens. All trajectories repeat exactly.
+
+The matched source-equivalent real-Uvicorn packet is accepted and exact. Versus
+F3E, blocking is **88.431 -> 88.296 tok/s (-0.15%, noise)**, exact SSE
+**84.697 -> 85.102 (+0.48%)**, and delayed **68.320 -> 68.874 (+0.81%)**.
+Cached automatic tracing confirms exactly **3** Q6 pair-reuse launches at 128
+threads, grid `16384x64`, **96 VGPR**, 128 SGPR, **520 B LDS**, zero scratch;
+profile median **213.320 us** / total **0.638559 ms** are diagnostic. Focused
+validation is **91 selected-T16 GPU tests** plus **49 routing/stage/backend
+tests**.
