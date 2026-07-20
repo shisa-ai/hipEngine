@@ -575,9 +575,10 @@ Current blockers that keep project-wide c>N incomplete:
   remaining aggregate-neutral and diagnostic. N4 has one shared gfx1100
   `w4_paro` target+accept graph adapter used by both PARO MTP and DFlash; its
   base path declares only `VERIFY|ACCEPT`, preserves provider commit and exact
-  fallback, and remains default-off. An additional explicit capture-width-zero
-  PARO candidate owns selected linear-state `COMMIT|UPDATE_CURSORS` through
-  graph-owned pointer tables while BF16 DFlash hidden/KV repair remains outside.
+  fallback, and remains default-off globally. Capture-width-zero FP16 PARO
+  replays now own selected linear-state `COMMIT|UPDATE_CURSORS` by default inside
+  explicit N4 through graph-owned pointer tables; `TARGET_COMMIT=0` is the
+  temporary rollback. BF16 DFlash hidden/KV repair remains outside.
   Strict B1/B2/B3 is exact for all 720 canonical IDs,
   but pooled MTP/AR is only 0.5767x/0.4242x/0.3568x. The first B1 on/off/on
   bracket localized a reproducible 0.216-0.447 ms/cycle regression to repeated
@@ -592,12 +593,16 @@ Current blockers that keep project-wide c>N incomplete:
   81.6875 API calls, 2 synchronizations, 1 graph launch, and 1248.5 kernels/pass.
   Old N4 was 16.744 ms, 82.6875 calls, and 3 synchronizations. This retains the
   wrapper-overhead improvement but does not promote N4: strict B1 remains far
-  below AR and has no advantage over the direct graph. The selected-commit
-  candidate is dirty-tree exact for B1/D24 plus a three-cycle B2 state/KV/cursor
-  audit and mechanically reduces cached final-child HIP APIs **81.6875 ->
-  75.6875**, synchronizations **2 -> 1**, and complete marker wall **16.418 ->
-  16.379 ms/pass**; it still requires a clean full-suite keep/revert gate. The
-  initial model-
+  below AR and has no advantage over the direct graph. The selected-commit gate
+  is cleanly exact for three arms x 240 IDs/214 cycles/16 accepts, every
+  train/heldout/category split, 150/150 expanded native records, accepted-row-1
+  state plus following-cycle continuity, and B2 state/KV/cursors. Both candidate
+  arms improve capture-adjusted wall **14.051 -> 13.983/13.992 ms/cycle** across
+  every category. Cached profile wall brackets **16.518/16.322 ms** around the
+  **16.413 ms** control (mean +0.007 ms, neutral) while mechanically reducing
+  HIP APIs **80.6875 -> 75.6875**, synchronizations **2 -> 1**, host launches
+  **36.1875 -> 34.1875**, and kernels **1248.5 -> 1247.5**. This admits selected
+  commit inside explicit N4 without a global N4/AR speed claim. The initial model-
   incompatibility diagnosis was also wrong; a wider verifier t-loop had failed
   to forward the exact shared-expert control, and its repair did not change model
   bytes. Complete PARO proposal ownership, DFlash proposal/hidden/KV commit

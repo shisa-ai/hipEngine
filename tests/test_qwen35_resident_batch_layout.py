@@ -8334,6 +8334,19 @@ def test_paro_native_spec_target_commit_request_is_paro_registered_only(
         capture_hidden_concat=_tensor(0x2000, (3, 0), DType.BF16),
         base_slot=0,
     )
+    monkeypatch.setenv("HIPENGINE_PARO_NATIVE_SPEC_TARGET_COMMIT", "0")
+    assert not session._native_spec_provider_target_commit_requested(
+        batch,
+        capture_hidden_concat=_tensor(0x2000, (3, 0), DType.BF16),
+        base_slot=0,
+    )
+    monkeypatch.delenv("HIPENGINE_PARO_NATIVE_SPEC_TARGET_COMMIT")
+    assert session._native_spec_provider_target_commit_requested(
+        batch,
+        capture_hidden_concat=_tensor(0x2000, (3, 0), DType.BF16),
+        base_slot=0,
+    )
+    monkeypatch.setenv("HIPENGINE_PARO_NATIVE_SPEC_TARGET_COMMIT", "1")
     assert not session._native_spec_provider_target_commit_requested(
         batch,
         capture_hidden_concat=_tensor(0x3000, (3, 16), DType.BF16),
