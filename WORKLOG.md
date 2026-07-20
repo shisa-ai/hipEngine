@@ -170306,3 +170306,41 @@ unchanged. Compact rejection artifact:
 `425de237c38ca838b62c9370b4ca91d7e77926690eb256ed6c4f4927610d0a08`).
 Dense Q8T16 row/column scheduling is closed; the 60 dense F32-weight launches
 total only 0.271 ms (0.52%) and are launch-noise scale.
+
+## 2026-07-20 — Retain gfx1151 physical-C8 Q6T16 lm-head 5+3 chunks
+
+The canonical profile's LM-head/sampler family is **4.879 ms (9.38%)**; argmax
+is only 0.043 ms. The Q6T16 head itself is split into rowtile6 **2.865 ms** plus
+rowtile2 **1.972 ms** because the exact rowtile ABI caps at six rows. Resource
+census: rowtile6/5/4/3/2 use **200/168/136/104/88 VGPR**, 1,536/1,280/1,024/
+768/512 B LDS, all zero scratch.
+
+First tested a one-launch exact rowtile8/col8 body (64 accumulators/thread). It
+improves isolated real-head wall **4.887 -> 4.715 ms (-3.52%)** and is bit-exact,
+but same-checkout direct regresses **152.236 -> 151.842 tok/s (-0.26%)**. The
+candidate body/wrapper/fixture were removed; doubled T16 cache-line traffic or
+graph-level scheduling outweighs its isolated benefit.
+
+Exhaustive existing-kernel partitions at `rows=8, hidden=2048, vocab=248320`
+(10 warmups, 50 iterations), all bit-exact to 6+2:
+
+- **6+2: 4.865 ms**,
+- **5+3: 4.815 ms (-1.02%)**,
+- 4+4: 5.859 ms (+20.45%),
+- 4+2+2 / 3+3+2 / 2+2+2+2: +42.13% / +40.05% / +64.11%.
+
+Backend capability `GGUF_Q6_LM_HEAD_MAX_CHUNK=5` selects 5+3 only on gfx1151;
+gfx1100 remains 6 and `HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK=6` rolls back.
+No kernel math changed.
+
+Automatic state is **320/320 exact** with exact token/Conv/GDN/KV/final state.
+Direct p512/d128 C8 is **152.707522/152.585917/152.628301 tok/s**, median
+**152.628301**, versus clean F3I **152.191614 (+0.2869%)** with 0.0404%
+stdev/median. This saves **19.251 ms** per 1,024 tokens. Same-checkout Uvicorn
+A/B is exact and moves blocking **88.702 -> 88.838 (+0.15%)**, exact SSE
+**85.543 -> 86.100 (+0.65%)**, delayed **68.412 -> 68.424 (+0.02%)**.
+
+Cached automatic tracing confirms one rowtile5 and one rowtile3 launch, both at
+128 threads/grid `1986560x1`, using 168/104 VGPR, 1,280/768 B LDS, and zero
+scratch. Profile total **4.711116 ms** is diagnostic. Focused validation:
+chunk/backend **30 passed**, dense-Q6T16 **6 passed**.

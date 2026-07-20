@@ -15850,7 +15850,21 @@ class Qwen35GGUFResidentSession:
         hidden_row_nbytes = int(self.runner.hidden_size) * DType.BF16.itemsize
         logits_row_nbytes = int(self.runner.vocab_size) * DType.FP32.itemsize
         row_offset = 0
-        for chunk_rows in _small_b_rowtile_chunks(rows, max_chunk=6):
+        max_chunk_raw = os.environ.get("HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK", "")
+        max_chunk = (
+            int(max_chunk_raw)
+            if max_chunk_raw
+            else int(
+                backend_package_capability(
+                    self.runner.backend,
+                    "GGUF_Q6_LM_HEAD_MAX_CHUNK",
+                    6,
+                )
+            )
+        )
+        if max_chunk < 2 or max_chunk > 6:
+            raise ValueError("HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK must be in [2, 6]")
+        for chunk_rows in _small_b_rowtile_chunks(rows, max_chunk=max_chunk):
             if int(chunk_rows) < 2:
                 return False
             handled = self._verify_lm_head_rowtile(

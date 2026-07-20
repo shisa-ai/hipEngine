@@ -429,6 +429,18 @@ should be boring.
   direct/server refreshes and an independent gfx1100 transfer. Keep the old
   per-row and 16-column rowtile bodies as unsupported-width fallbacks.
 
+## `HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK` (gfx1151 C8 rollback)
+- The physical-C8 Q6T16 lm-head reads the full ~417 MiB head twice. The prior
+  **6+2** partition uses 200/88 VGPR; gfx1151 now defaults to exact **5+3** at
+  168/104 VGPR. Isolated wall improves **4.865 -> 4.815 ms (-1.02%)** and
+  implementation direct C8 improves **152.192 -> 152.628 tok/s (+0.29%)**.
+- `HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK=6` restores 6+2. gfx1100 package
+  metadata remains 6 pending independent W7900 transfer. Values outside [2,6]
+  are invalid.
+- Remove after one release window plus defaults-only gfx1151 direct/server
+  refresh and gfx1100 transfer. Keep `_small_b_rowtile_chunks` and all 2-6 row
+  kernels because they remain exact fallbacks for arbitrary packed widths.
+
 ## `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL` (diagnostic rejected)
 - Added 2026-07-01 as a default-off runtime hook for broad exact Q8T16 verifier
   row-amortization. Setting `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL=1` routes qwen35
