@@ -59,9 +59,12 @@ def main() -> None:
     ap.add_argument("--warmup", type=int, default=20)
     ap.add_argument(
         "--selection-pattern",
-        choices=("unique", "random", "paired"),
+        choices=("unique", "random", "paired", "paired_identical"),
         default="unique",
-        help="paired repeats the first half of expert IDs to screen duplicate-expert reuse",
+        help=(
+            "paired repeats the first half of expert IDs; paired_identical also "
+            "duplicates the first half of input rows"
+        ),
     )
     ap.add_argument("--json", type=Path, default=None)
     args = ap.parse_args()
@@ -100,9 +103,13 @@ def main() -> None:
     x = _f32_to_bf16_bits(
         (rng.standard_normal((args.x_rows, args.in_features)) * 0.1).astype(np.float32)
     )
-    if args.selection_pattern == "paired":
+    if args.selection_pattern == "paired_identical":
+        if args.x_rows % 2 != 0:
+            raise ValueError("--x-rows must be even for --selection-pattern paired_identical")
+        x[args.x_rows // 2 :] = x[: args.x_rows // 2]
+    if args.selection_pattern in {"paired", "paired_identical"}:
         if args.rows % 2 != 0:
-            raise ValueError("--rows must be even for --selection-pattern paired")
+            raise ValueError("--rows must be even for paired selection patterns")
         half = np.arange(args.rows // 2, dtype=np.int64) % args.experts
         selected = np.ascontiguousarray(np.concatenate((half, half)))
     elif args.selection_pattern == "random":
