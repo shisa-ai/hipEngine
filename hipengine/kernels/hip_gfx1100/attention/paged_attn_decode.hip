@@ -341,6 +341,10 @@ __global__ void qwen35_full_attn_gate_mul_fp16_kernel(
   }
 }
 
+// The gfx1151 fixed-256 route precomputes each token's physical KV element
+// offset once in shared memory. The generic route keeps its existing dynamic
+// launch geometry and computes offsets inline.
+template <bool PRECOMPUTE_TOKEN_OFFSETS>
 __global__ void qwen35_paged_full_attn_decode_context_tensor_batch_kernel(
     const float* query,
     const uint16_t* key_cache,
@@ -375,6 +379,11 @@ __global__ void qwen35_paged_full_attn_decode_context_tensor_batch_kernel(
   const int raw_value_groups = (head_dim >= 128 && context_len >= 128) ? static_cast<int>(blockDim.x / static_cast<unsigned int>(head_dim)) : 0;
   const int value_groups = (blockDim.x >= 512 && raw_value_groups > 1) ? raw_value_groups : 1;
   float* value_partials = q_shared + head_dim;
+  const uintptr_t token_offset_base =
+      (reinterpret_cast<uintptr_t>(
+           value_partials + static_cast<int64_t>(value_groups) * head_dim) + 7u) &
+      ~static_cast<uintptr_t>(7u);
+  int64_t* token_offsets = reinterpret_cast<int64_t*>(token_offset_base);
   const int64_t q_head = blockIdx.x;
   if (q_head >= num_q_heads) {
     return;
@@ -388,14 +397,31 @@ __global__ void qwen35_paged_full_attn_decode_context_tensor_batch_kernel(
   for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
     q_shared[dim] = query[q_offset + dim];
   }
+  if constexpr (PRECOMPUTE_TOKEN_OFFSETS) {
+    for (int64_t token = threadIdx.x; token < context_len; token += blockDim.x) {
+      const int64_t logical_block = token / block_size;
+      const int64_t block_offset = token - logical_block * block_size;
+      const int64_t physical_block = static_cast<int64_t>(
+          block_table[row * block_table_len + logical_block]);
+      token_offsets[token] =
+          (physical_block * block_size + block_offset) * num_kv_heads * head_dim;
+    }
+  }
   __syncthreads();
 
   float local_max = -3.4028234663852886e38f;
   for (int64_t token = warp_id; token < context_len; token += num_warps) {
-    const int64_t logical_block = token / block_size;
-    const int64_t block_offset = token - logical_block * block_size;
-    const int64_t physical_block = static_cast<int64_t>(block_table[row * block_table_len + logical_block]);
-    const int64_t token_offset = (physical_block * block_size + block_offset) * num_kv_heads * head_dim;
+    int64_t token_offset;
+    if constexpr (PRECOMPUTE_TOKEN_OFFSETS) {
+      token_offset = token_offsets[token];
+    } else {
+      const int64_t logical_block = token / block_size;
+      const int64_t block_offset = token - logical_block * block_size;
+      const int64_t physical_block = static_cast<int64_t>(
+          block_table[row * block_table_len + logical_block]);
+      token_offset =
+          (physical_block * block_size + block_offset) * num_kv_heads * head_dim;
+    }
     const int64_t k_offset = token_offset + kv_head * head_dim;
     float acc = 0.0f;
     for (int64_t dim = lane_id * 4; dim < head_dim; dim += warpSize * 4) {
@@ -472,10 +498,17 @@ __global__ void qwen35_paged_full_attn_decode_context_tensor_batch_kernel(
       const int group = static_cast<int>(static_cast<int64_t>(threadIdx.x) / head_dim);
       float acc = 0.0f;
       for (int64_t token = group; token < context_len; token += value_groups) {
-        const int64_t logical_block = token / block_size;
-        const int64_t block_offset = token - logical_block * block_size;
-        const int64_t physical_block = static_cast<int64_t>(block_table[row * block_table_len + logical_block]);
-        const int64_t token_offset = (physical_block * block_size + block_offset) * num_kv_heads * head_dim;
+        int64_t token_offset;
+        if constexpr (PRECOMPUTE_TOKEN_OFFSETS) {
+          token_offset = token_offsets[token];
+        } else {
+          const int64_t logical_block = token / block_size;
+          const int64_t block_offset = token - logical_block * block_size;
+          const int64_t physical_block = static_cast<int64_t>(
+              block_table[row * block_table_len + logical_block]);
+          token_offset =
+              (physical_block * block_size + block_offset) * num_kv_heads * head_dim;
+        }
         const int64_t v_offset = token_offset + kv_head * head_dim + dim;
         acc += (scores[token] * inv_denom) * bf16_bits_to_float(value_cache[v_offset]);
       }
@@ -493,10 +526,17 @@ __global__ void qwen35_paged_full_attn_decode_context_tensor_batch_kernel(
     for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
       float acc = 0.0f;
       for (int64_t token = 0; token < context_len; ++token) {
-        const int64_t logical_block = token / block_size;
-        const int64_t block_offset = token - logical_block * block_size;
-        const int64_t physical_block = static_cast<int64_t>(block_table[row * block_table_len + logical_block]);
-        const int64_t token_offset = (physical_block * block_size + block_offset) * num_kv_heads * head_dim;
+        int64_t token_offset;
+        if constexpr (PRECOMPUTE_TOKEN_OFFSETS) {
+          token_offset = token_offsets[token];
+        } else {
+          const int64_t logical_block = token / block_size;
+          const int64_t block_offset = token - logical_block * block_size;
+          const int64_t physical_block = static_cast<int64_t>(
+              block_table[row * block_table_len + logical_block]);
+          token_offset =
+              (physical_block * block_size + block_offset) * num_kv_heads * head_dim;
+        }
         const int64_t v_offset = token_offset + kv_head * head_dim + dim;
         acc += scores[token] * bf16_bits_to_float(value_cache[v_offset]);
       }
@@ -4739,7 +4779,7 @@ extern "C" int hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_spans(
   const int value_groups = (threads >= 512 && raw_value_groups > 1) ? raw_value_groups : 1;
   const size_t shared_bytes = static_cast<size_t>(max_context_len + max_warps + head_dim + value_groups * head_dim) * sizeof(float);
   hipLaunchKernelGGL(
-      qwen35_paged_full_attn_decode_context_tensor_batch_kernel,
+      (qwen35_paged_full_attn_decode_context_tensor_batch_kernel<false>),
       dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(rows)),
       dim3(threads),
       shared_bytes,
@@ -4781,16 +4821,20 @@ extern "C" int hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_fixed2
     return static_cast<int>(hipErrorInvalidValue);
   }
   // Preserve the generic batch reduction retained by gfx1151 while fixing its
-  // reduction geometry at the c4/c8-proven 256-thread shape.  The generic
+  // reduction geometry at the c4/c8-proven 256-thread shape. Precompute the
+  // physical KV element offset once per token so all value dimensions avoid
+  // repeated division and block-table address construction. The generic
   // entrypoint intentionally keeps its rows<=2 1024-thread PARO fast path.
   constexpr int threads = 256;
   constexpr int max_warps = threads / 32;
   constexpr int value_groups = 1;
-  const size_t shared_bytes =
-      static_cast<size_t>(max_context_len + max_warps + head_dim + value_groups * head_dim) *
+  const size_t float_bytes = static_cast<size_t>(
+      max_context_len + max_warps + head_dim + value_groups * head_dim) *
       sizeof(float);
+  const size_t shared_bytes = float_bytes + 7u +
+      static_cast<size_t>(max_context_len) * sizeof(int64_t);
   hipLaunchKernelGGL(
-      qwen35_paged_full_attn_decode_context_tensor_batch_kernel,
+      (qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true>),
       dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(rows)),
       dim3(threads),
       shared_bytes,
