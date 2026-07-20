@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hipengine.dev/schemas/agentic-coding-quality-records.schema.json",
+  "title": "hipEngine natural coding-agent tool-quality records",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "schema_version", "configuration", "turn_records", "final_ownership"],
+  "properties": {
+    "kind": {"const": "hipengine_agentic_coding_quality_records"},
+    "schema_version": {"const": 1},
+    "configuration": {"$ref": "#/$defs/configuration"},
+    "turn_records": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/turnRecord"}
+    },
+    "final_ownership": {"$ref": "#/$defs/finalOwnership"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "configuration": {
+      "type": "object",
+      "required": [
+        "id", "lane", "concurrency", "cache_mode", "backend", "model",
+        "require_complete_workloads", "performance_claim", "tool_choice"
+      ],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "lane": {"const": "auto_tool"},
+        "concurrency": {"type": "integer", "minimum": 1},
+        "cache_mode": {"enum": ["off", "radix"]},
+        "backend": {"type": "string", "minLength": 1},
+        "model": {"type": "string", "minLength": 1},
+        "require_complete_workloads": {"type": "boolean"},
+        "performance_claim": {"const": false},
+        "tool_choice": {"const": "auto"},
+        "collector": {"type": "string", "minLength": 1},
+        "history": {"type": "string", "minLength": 1}
+      }
+    },
+    "turnRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workload_id", "workload_sha256", "run_id", "agent_id", "session_id",
+        "turn_index", "request_id", "prompt", "output", "quality", "finish"
+      ],
+      "properties": {
+        "workload_id": {"type": "string", "minLength": 1},
+        "workload_sha256": {"$ref": "#/$defs/sha256"},
+        "run_id": {"type": "string", "minLength": 1},
+        "agent_id": {"type": "string", "minLength": 1},
+        "session_id": {"type": "string", "minLength": 1},
+        "turn_index": {"type": "integer", "minimum": 0},
+        "request_id": {"type": "string", "minLength": 1},
+        "prompt": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["token_count", "token_ids_sha256"],
+          "properties": {
+            "token_count": {"type": "integer", "minimum": 1},
+            "token_ids_sha256": {"$ref": "#/$defs/sha256"}
+          }
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "generated_token_ids", "generated_token_ids_sha256",
+            "generated_token_ids_source", "public_content", "raw_markup_leaked"
+          ],
+          "properties": {
+            "generated_token_ids": {
+              "type": "array",
+              "minItems": 1,
+              "items": {"type": "integer", "minimum": 0}
+            },
+            "generated_token_ids_sha256": {"$ref": "#/$defs/sha256"},
+            "generated_token_ids_source": {"const": "response"},
+            "public_content": {"type": "string"},
+            "raw_markup_leaked": {"type": "boolean"}
+          }
+        },
+        "quality": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "expected_tool", "selected_tool", "tool_call_count", "call_id", "arguments",
+            "arguments_json_valid", "schema_valid", "correct_tool", "exact_arguments",
+            "valid_call", "success", "outcome", "repair_count"
+          ],
+          "properties": {
+            "expected_tool": {"type": "string", "minLength": 1},
+            "selected_tool": {"type": ["string", "null"]},
+            "tool_call_count": {"type": "integer", "minimum": 0},
+            "call_id": {"type": ["string", "null"]},
+            "arguments": {"type": ["object", "null"]},
+            "arguments_json_valid": {"type": "boolean"},
+            "schema_valid": {"type": "boolean"},
+            "correct_tool": {"type": "boolean"},
+            "exact_arguments": {"type": "boolean"},
+            "valid_call": {"type": "boolean"},
+            "success": {"type": "boolean"},
+            "outcome": {
+              "enum": [
+                "passed", "invalid_tool_call", "no_tool_call", "multiple_tool_calls",
+                "invalid_arguments", "schema_violation", "wrong_tool", "wrong_arguments",
+                "content_alongside_tool_call", "raw_markup_leak", "finish_mismatch"
+              ]
+            },
+            "repair_count": {"type": "integer", "minimum": 0}
+          }
+        },
+        "finish": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reason", "detail_reason"],
+          "properties": {
+            "reason": {"type": "string", "minLength": 1},
+            "detail_reason": {"type": ["string", "null"]}
+          }
+        }
+      }
+    },
+    "finalOwnership": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pending_requests", "active_requests", "stream_producers", "model_active_requests",
+        "session_count", "kv_refcounted_pages", "kv_pinned_pages", "graph_owners",
+        "workspace_owners", "cache_resident_bytes", "allowed_cache_bytes"
+      ],
+      "properties": {
+        "pending_requests": {"const": 0},
+        "active_requests": {"const": 0},
+        "stream_producers": {"const": 0},
+        "model_active_requests": {"const": 0},
+        "session_count": {"const": 0},
+        "kv_refcounted_pages": {"const": 0},
+        "kv_pinned_pages": {"const": 0},
+        "graph_owners": {"const": 0},
+        "workspace_owners": {"const": 0},
+        "cache_resident_bytes": {"type": "integer", "minimum": 0},
+        "allowed_cache_bytes": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

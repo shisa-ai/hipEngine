@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hipengine.dev/schemas/agentic-coding-quality-benchmark.schema.json",
+  "title": "hipEngine natural coding-agent tool-quality artifact",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind", "schema_version", "created_at", "performance_claim", "workload_suite",
+    "configuration", "coverage", "validation", "quality", "final_ownership",
+    "turn_records_sha256", "turn_records"
+  ],
+  "properties": {
+    "kind": {"const": "hipengine_agentic_coding_quality_benchmark"},
+    "schema_version": {"const": 1},
+    "created_at": {"type": "string", "minLength": 1},
+    "performance_claim": {"const": false},
+    "workload_suite": {
+      "type": "object",
+      "required": [
+        "path", "kind", "schema_version", "suite", "file_sha256",
+        "canonical_sha256", "workload_sha256"
+      ],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "kind": {"const": "hipengine.agentic_coding_workloads"},
+        "schema_version": {"const": 1},
+        "suite": {"type": "string", "minLength": 1},
+        "file_sha256": {"$ref": "#/$defs/sha256"},
+        "canonical_sha256": {"$ref": "#/$defs/sha256"},
+        "workload_sha256": {
+          "type": "object",
+          "additionalProperties": {"$ref": "#/$defs/sha256"}
+        }
+      }
+    },
+    "configuration": {
+      "$ref": "agentic-coding-quality-records.schema.json#/$defs/configuration"
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workloads", "runs", "concurrency", "agents", "turns", "generated_tokens"],
+      "properties": {
+        "workloads": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "runs": {"type": "integer", "minimum": 1},
+        "concurrency": {"type": "integer", "minimum": 1},
+        "agents": {"type": "integer", "minimum": 1},
+        "turns": {"type": "integer", "minimum": 1},
+        "generated_tokens": {"type": "integer", "minimum": 1}
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passed", "failure_reasons"],
+      "properties": {
+        "passed": {"const": true},
+        "failure_reasons": {"type": "array", "maxItems": 0}
+      }
+    },
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attempts", "valid_calls", "correct_tools", "exact_arguments", "successes",
+        "valid_call_rate", "correct_tool_rate", "exact_arguments_rate", "success_rate",
+        "repair_attempts", "outcomes"
+      ],
+      "properties": {
+        "attempts": {"type": "integer", "minimum": 1},
+        "valid_calls": {"type": "integer", "minimum": 0},
+        "correct_tools": {"type": "integer", "minimum": 0},
+        "exact_arguments": {"type": "integer", "minimum": 0},
+        "successes": {"type": "integer", "minimum": 0},
+        "valid_call_rate": {"type": "number", "minimum": 0, "maximum": 1},
+        "correct_tool_rate": {"type": "number", "minimum": 0, "maximum": 1},
+        "exact_arguments_rate": {"type": "number", "minimum": 0, "maximum": 1},
+        "success_rate": {"type": "number", "minimum": 0, "maximum": 1},
+        "repair_attempts": {"type": "integer", "minimum": 0},
+        "outcomes": {
+          "type": "object",
+          "additionalProperties": {"type": "integer", "minimum": 1}
+        }
+      }
+    },
+    "final_ownership": {
+      "$ref": "agentic-coding-quality-records.schema.json#/$defs/finalOwnership"
+    },
+    "turn_records_sha256": {"$ref": "#/$defs/sha256"},
+    "turn_records": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "agentic-coding-quality-records.schema.json#/$defs/turnRecord"}
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}
