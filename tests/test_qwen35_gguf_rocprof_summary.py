@@ -117,6 +117,14 @@ def _write_csv(path: Path, rows: Sequence[dict[str, object]]) -> None:
         ("gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 32, 32>", "dense_q8_0_wmma_prefill"),
         ("gguf_q8_0_prefill_dual_wmma_kernel<unsigned short, unsigned short, 16, 32>", "dense_q8_0_wmma_prefill"),
         ("gguf_q8_0_t16_prefill_wmma_kernel<unsigned short, unsigned short, 64, 32>", "dense_q8_0_wmma_prefill"),
+        (
+            "gguf_q8_0_exact_prefill_tiled_out_kernel<unsigned short, unsigned short, 8, 2>",
+            "dense_q8_0_exact_prefill",
+        ),
+        (
+            "gguf_q8_0_exact_prefill_tiled_out_kernel<unsigned short, unsigned short, 8, 4>",
+            "dense_q8_0_exact_prefill",
+        ),
         ("gguf_q8_0_pack8_gemv_kernel<unsigned short>", "other"),  # legacy non-decode pack8
         ("gguf_q8_0_pack8_gemv_decode_kernel<unsigned short>", "dense_q8_0_pack8_gemv_decode_p9"),
         ("gguf_q8_0_pack8_dual_gate_up_gemv_decode_kernel<unsigned short>", "dense_q8_0_pack8_gemv_decode_p9"),
@@ -308,6 +316,7 @@ def test_iq_default_footprints_use_exact_encoded_block_bytes() -> None:
     assert footprints["moe_iq3_xxs_grouped_dual_prefill"] is None
     assert footprints["moe_iq4_xs_grouped_dual_prefill"] is None
     assert footprints["moe_iq4_xs_grouped_down_prefill"] is None
+    assert footprints["dense_q8_0_exact_prefill"] is None
 
 
 def test_summary_effective_gb_s_uses_footprint_overrides(tmp_path: Path) -> None:

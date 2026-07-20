@@ -306,8 +306,8 @@ def launch_gguf_linear(
     * a runner has called :func:`set_wmma_prefill_enabled` with ``True``,
     * the env var ``HIPENGINE_GGUF_WMMA_PREFILL`` is set.
 
-    Otherwise raw Q8_0 BF16 projections with eight-column-aligned outputs use
-    the exact multirow ``pack8_gemv_*`` schedule; other shapes retain the
+    Otherwise aligned raw-Q8 BF16 projections use the exact pack8/row-tiled
+    schedule selected for their row and output shape; other inputs retain the
     existing decode-shaped ``prefill_*`` aliases.
     """
 
@@ -330,7 +330,7 @@ def launch_gguf_linear(
         in_features=in_features,
         use_wmma=_resolve_use_wmma_prefill(use_wmma_prefill),
     )
-    dispatch = _pack8_prefill_dispatch(
+    dispatch = _exact_q8_prefill_dispatch(
         dispatch,
         rows=rows,
         out_features=out_features,
@@ -818,13 +818,13 @@ def _pack8_decode_dispatch(
     return dispatch
 
 
-def _pack8_prefill_dispatch(
+def _exact_q8_prefill_dispatch(
     dispatch: GGUFLinearDispatch,
     *,
     rows: int,
     out_features: int,
 ) -> GGUFLinearDispatch:
-    """Pack eight exact raw-Q8 outputs for non-WMMA multirow prefill."""
+    """Reuse activations and raw-Q8 weights without changing dot association."""
 
     if (
         dispatch.abi == "raw"
@@ -833,12 +833,22 @@ def _pack8_prefill_dispatch(
         and dispatch.key.quant == "gguf_q8_0"
         and dispatch.key.variant == "prefill_bf16_bf16_out"
     ):
+        variant = "pack8_gemv_bf16_bf16_out"
+        if rows >= 8:
+            # Keep the lower-resource 8x2 tile for narrow, short batches. Once
+            # either dimension is large, 8x4 doubles exact row reuse and wins
+            # the bounded production-shape sweep without spilling.
+            variant = (
+                "exact_prefill_tile8x2_bf16_bf16_out"
+                if rows < 32 and out_features <= 512
+                else "exact_prefill_tile8x4_bf16_bf16_out"
+            )
         return GGUFLinearDispatch(
             KernelKey(
                 dispatch.key.backend,
                 dispatch.key.layer,
                 dispatch.key.quant,
-                "pack8_gemv_bf16_bf16_out",
+                variant,
             ),
             dispatch.abi,
         )

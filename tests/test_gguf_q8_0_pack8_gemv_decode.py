@@ -1,6 +1,7 @@
-"""Correctness fixtures for the dense GGUF Q8_0 pack8 GEMV decode (P9.B3).
+"""Correctness fixtures for dense GGUF Q8_0 exact prefill and pack8 decode.
 
-Covers both the single-output kernel (drop-in replacement for the legacy
+Covers the exact multirow pack8/row-tiled prefill family and both the
+single-output decode kernel (drop-in replacement for the legacy
 ``gguf_k_pack8_prefill_out_kernel<...,8>`` at decode shapes) and the fused
 gate+up dual kernel used by the qwen35moe shared-expert decode bundle.
 
@@ -30,8 +31,11 @@ from hipengine.core.memory import (
 from hipengine.kernels.cpu_reference import gguf_quant_gemv
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     build_gguf_k_gemv,
+    gguf_q8_0_exact_prefill_tile8x2_bf16_bf16_out,
+    gguf_q8_0_exact_prefill_tile8x4_bf16_bf16_out,
     gguf_q8_0_gemv_bf16_bf16_out,
     gguf_q8_0_pack8_gemv_bf16_bf16_out,
+    register_gguf_k_gemv_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_pack8_gemv import (
     build_gguf_q8_0_pack8_gemv,
@@ -84,6 +88,21 @@ def test_p9_b3_registry_keys_resolve() -> None:
         "pack8_gemv_decode_fp16_fp16_out",
         "pack8_dual_gate_up_gemv_decode_bf16_bf16_out",
         "pack8_dual_gate_up_gemv_decode_fp16_fp16_out",
+    ):
+        fn = resolve(
+            backend="hip_gfx1100",
+            layer="linear",
+            quant="gguf_q8_0",
+            variant=variant,
+        )
+        assert fn is not None, f"missing registry entry: {variant}"
+
+
+def test_exact_prefill_registry_keys_resolve() -> None:
+    register_gguf_k_gemv_kernels()
+    for variant in (
+        "exact_prefill_tile8x2_bf16_bf16_out",
+        "exact_prefill_tile8x4_bf16_bf16_out",
     ):
         fn = resolve(
             backend="hip_gfx1100",
@@ -207,6 +226,51 @@ def test_legacy_pack8_multirow_is_bit_exact_to_single_output_prefill(
         q8_0_legacy_library,
     )
     assert np.array_equal(pack8, scalar)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.parametrize(
+    "candidate",
+    [
+        pytest.param(gguf_q8_0_exact_prefill_tile8x2_bf16_bf16_out, id="tile8x2"),
+        pytest.param(gguf_q8_0_exact_prefill_tile8x4_bf16_bf16_out, id="tile8x4"),
+    ],
+)
+@pytest.mark.parametrize(
+    "rows,in_features,out_features",
+    [(5, 512, 256), (3, 2048, 512)],
+)
+def test_exact_row_reuse_candidates_are_bit_exact_to_pack8(
+    candidate, rows, in_features, out_features, q8_0_legacy_library
+) -> None:
+    """Reuse each raw-Q8 weight across rows without changing association."""
+
+    rng = np.random.default_rng(rows * 43 + in_features + out_features)
+    qweight = make_q8_0_weight(out_features, in_features)
+    x_bf16 = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+    )
+    pack8 = _run_single(
+        gguf_q8_0_pack8_gemv_bf16_bf16_out,
+        x_bf16,
+        qweight,
+        rows,
+        in_features,
+        out_features,
+        np.uint16,
+        q8_0_legacy_library,
+    )
+    tiled = _run_single(
+        candidate,
+        x_bf16,
+        qweight,
+        rows,
+        in_features,
+        out_features,
+        np.uint16,
+        q8_0_legacy_library,
+    )
+    assert np.array_equal(tiled, pack8)
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")

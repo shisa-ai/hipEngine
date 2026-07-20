@@ -25,33 +25,33 @@ raw-IQ, decode, and scheduler tranches:
   logits are bit-exact to token serial, as are the full 4K logits. The first
   retained 4K result was `211.936 tok/s`, versus `10.907 tok/s` for the same
   token-serial oracle.
-- The first profile-driven projection fix promotes the existing exact raw-Q8
-  eight-output schedule for multirow BF16 prefill. Three-run 512 throughput is
-  `364.414 tok/s`; the same mixed-pattern 4K gate moves
-  `211.936 -> 342.902 tok/s` (+61.79%). Primitive outputs are BF16-bit equal to
-  the old scalar kernel, and the full-model exact gates remain green.
+- Dense raw-Q8 prefill has completed two exact profile-driven steps. The
+  existing eight-output schedule first raised 512/mixed-4K to
+  `364.414/342.902 tok/s`; bounded 8x2/8x4 row tiles now reuse each encoded
+  weight row across prompt rows and reach `573.288/523.321 tok/s`. Every dot
+  keeps the old K traversal and reduction association, primitive outputs are
+  BF16-bit equal, and the full-model exact gates remain green.
 - Decode work retained the wave-uniform IQ3 address cleanup and aggregate
   MoE-tail/next-RMS fusion, rejected hierarchical top-k, IQ4 tile4, and routed
   stream overlap, and currently measures `101.216 tok/s` at 512 and
   `108.383 tok/s` at 4K on GPU1. The source-derived 150–190 tok/s feasibility
   argument remains valid, but hipEngine has not reached that band.
 
-The post-Q8-pack8 cache-only 4K trace is now the active prefill Amdahl ledger:
+The post-row-reuse cache-only 4K trace is now the active prefill Amdahl ledger:
 
-| Family | Time | Share of 11,832.588 ms kernel sum |
+| Family | Time | Share of 7,714.184 ms kernel sum |
 |---|---:|---:|
-| Dense raw Q8 pack8 | 5,958.328 ms | **50.36%** |
-| Grouped IQ3 + IQ4 | 3,028.267 ms | **25.59%** |
-| Exact GDN | 1,326.134 ms | **11.21%** |
-| Warp-split full attention | 822.339 ms | **6.95%** |
+| Grouped IQ3 + IQ4 | 2,803.861 ms | **36.35%** |
+| Dense exact raw Q8 | 2,216.705 ms | **28.74%** |
+| Exact GDN | 1,260.753 ms | **16.34%** |
+| Full attention | 926.151 ms | **12.01%** |
 
-Dense Q8 therefore remains first in Amdahl order: the next prefill experiment
-must reuse each exact Q8 row across prompt rows (or provide an equally exact
-source-justified sibling) before opening an IQ compact/repack tranche. Reprofile
-again when Q8 ceases to dominate. **The ~3,000 tok/s objective is not closed:**
-342.902 tok/s is the first retained step, not a target claim. Full evidence and
-commands are in
-[`benchmarks/results/2026-07-20-gpu1-q3-exact-q8-pack8-prefill.json`](../benchmarks/results/2026-07-20-gpu1-q3-exact-q8-pack8-prefill.json).
+The required reprofile now admits the next tranche: grouped selected IQ has
+become the largest family, so compact/repacked IQ3/IQ4 work moves ahead of any
+further dense-Q8 tile expansion. **The ~3,000 tok/s objective is not closed:**
+523.321 tok/s is a retained step, not a target claim. Full evidence and commands
+are in
+[`benchmarks/results/2026-07-20-gpu1-q3-exact-q8-row-reuse-prefill.json`](../benchmarks/results/2026-07-20-gpu1-q3-exact-q8-row-reuse-prefill.json).
 
 ## Executive recommendation
 

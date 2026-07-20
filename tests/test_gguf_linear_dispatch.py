@@ -185,6 +185,12 @@ _WMMA_BF16 = KernelKey("hip_gfx1100", "linear", "gguf_q8_0", "wmma_prefill_bf16_
 _PREFILL_BF16 = KernelKey("hip_gfx1100", "linear", "gguf_q8_0", "prefill_bf16_bf16_out")
 _DECODE_PACK8_BF16 = KernelKey("hip_gfx1100", "linear", "gguf_q8_0", "pack8_gemv_bf16_bf16_out")
 _PREFILL_PACK8_BF16 = _DECODE_PACK8_BF16
+_PREFILL_TILE8X2_BF16 = KernelKey(
+    "hip_gfx1100", "linear", "gguf_q8_0", "exact_prefill_tile8x2_bf16_bf16_out"
+)
+_PREFILL_TILE8X4_BF16 = KernelKey(
+    "hip_gfx1100", "linear", "gguf_q8_0", "exact_prefill_tile8x4_bf16_bf16_out"
+)
 _Q4_WMMA_BF16 = KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "wmma_prefill_bf16_bf16_out")
 _Q4_PREFILL_BF16 = KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "prefill_bf16_bf16_out")
 _Q4_GEMV_BF16 = KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "gemv_bf16_bf16_out")
@@ -219,6 +225,8 @@ def _capture_launch(
         _WMMA_BF16,
         _PREFILL_BF16,
         _DECODE_PACK8_BF16,
+        _PREFILL_TILE8X2_BF16,
+        _PREFILL_TILE8X4_BF16,
         _Q4_WMMA_BF16,
         _Q4_PREFILL_BF16,
         _Q4_GEMV_BF16,
@@ -281,6 +289,18 @@ def test_exact_pack8_prefill_is_default_for_q8_0_rows_gt_1() -> None:
 def test_exact_pack8_prefill_requires_eight_output_columns() -> None:
     key, _, _ = _capture_launch(rows=4, out_features=2049)
     assert key == _PREFILL_BF16
+
+
+def test_exact_q8_prefill_reuses_weights_across_rows() -> None:
+    narrow, _, _ = _capture_launch(rows=8, out_features=512)
+    wide, _, _ = _capture_launch(rows=8, out_features=2048)
+    large_narrow, _, _ = _capture_launch(rows=32, out_features=512)
+    small, _, _ = _capture_launch(rows=7, out_features=2048)
+
+    assert narrow == _PREFILL_TILE8X2_BF16
+    assert wide == _PREFILL_TILE8X4_BF16
+    assert large_narrow == _PREFILL_TILE8X4_BF16
+    assert small == _PREFILL_PACK8_BF16
 
 
 def test_wmma_prefill_kwarg_opts_in_q8_0_rows_gt_1() -> None:

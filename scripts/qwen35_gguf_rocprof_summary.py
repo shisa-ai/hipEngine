@@ -98,6 +98,10 @@ _QWEN36_35B_A3B_DEFAULT_FOOTPRINTS_PER_DISPATCH: dict[str, int | None] = {
     # (Q/K/V/O/shexp-gate/shexp-up/shexp-down); 2048*2048 is a representative
     # midpoint for QKV/O at hidden_size=2048.
     "dense_q8_0_wmma_prefill": int(2048 * 2048 * 1.0625),
+    # Exact tiled prefill rereads each encoded weight row once per live row
+    # tile; rows and the selected 8x2/8x4 tile are dispatch-shape dependent.
+    # Require a phase override rather than report one-tensor nominal traffic.
+    "dense_q8_0_exact_prefill": None,
     "dense_q8_0_pack8_gemv_decode_p9": int(2048 * 2048 * 1.0625),
     "dense_q8_0_t16_gemv_decode_p9": int(2048 * 2048 * 1.0625),
     "dense_q8_0_legacy_decode": int(2048 * 2048 * 1.0625),
@@ -297,6 +301,8 @@ def classify_kernel(name: str) -> str:
         if ", 6" in name or ",6" in name:
             return "moe_q6_k_selected_legacy_decode"
     # ---------------------------------------------- Dense Q8_0 / Q4_K / Q6_K
+    if "gguf_q8_0_exact_prefill_tiled_out" in base:
+        return "dense_q8_0_exact_prefill"
     if (
         "gguf_q8_0_prefill_wmma" in base
         or "gguf_q8_0_prefill_dual_wmma" in base
