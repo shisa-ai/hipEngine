@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hipengine.dev/schemas/agentic-coding-benchmark.schema.json",
+  "title": "hipEngine coding-agent benchmark artifact",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind", "schema_version", "created_at", "performance_claim", "workload_suite",
+    "configuration", "coverage", "validation", "rollup", "final_ownership",
+    "turn_records_sha256", "turn_records"
+  ],
+  "properties": {
+    "kind": {"const": "hipengine_agentic_coding_benchmark"},
+    "schema_version": {"const": 1},
+    "created_at": {"type": "string", "minLength": 1},
+    "performance_claim": {"type": "boolean"},
+    "workload_suite": {
+      "type": "object",
+      "required": ["path", "kind", "schema_version", "suite", "file_sha256", "canonical_sha256", "workload_sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "kind": {"const": "hipengine.agentic_coding_workloads"},
+        "schema_version": {"const": 1},
+        "suite": {"type": "string", "minLength": 1},
+        "file_sha256": {"$ref": "#/$defs/sha256"},
+        "canonical_sha256": {"$ref": "#/$defs/sha256"},
+        "workload_sha256": {"type": "object", "additionalProperties": {"$ref": "#/$defs/sha256"}}
+      }
+    },
+    "configuration": {"$ref": "agentic-coding-records.schema.json#/$defs/configuration"},
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workloads", "agents", "turns", "tool_calls", "generated_tokens", "batches"],
+      "properties": {
+        "workloads": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "agents": {"type": "integer", "minimum": 1},
+        "turns": {"type": "integer", "minimum": 1},
+        "tool_calls": {"type": "integer", "minimum": 1},
+        "generated_tokens": {"type": "integer", "minimum": 1},
+        "batches": {"type": "integer", "minimum": 1}
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passed", "failure_reasons"],
+      "properties": {
+        "passed": {"const": true},
+        "failure_reasons": {"type": "array", "maxItems": 0}
+      }
+    },
+    "rollup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["latency_ms", "workload_wall_s", "exact_generated_tok_s", "validated_tool_calls_s", "prefix", "backend"],
+      "properties": {
+        "latency_ms": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ttft", "tool_call_ready", "inter_token", "complete_turn"],
+          "properties": {
+            "ttft": {"$ref": "#/$defs/percentiles"},
+            "tool_call_ready": {"$ref": "#/$defs/percentiles"},
+            "inter_token": {"$ref": "#/$defs/percentiles"},
+            "complete_turn": {"$ref": "#/$defs/percentiles"}
+          }
+        },
+        "workload_wall_s": {"type": "number", "exclusiveMinimum": 0},
+        "exact_generated_tok_s": {"type": "number", "exclusiveMinimum": 0},
+        "validated_tool_calls_s": {"type": "number", "exclusiveMinimum": 0},
+        "prefix": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["lookups", "hits", "hit_rate", "reused_tokens", "max_cache_bytes"],
+          "properties": {
+            "lookups": {"type": "integer", "minimum": 0},
+            "hits": {"type": "integer", "minimum": 0},
+            "hit_rate": {"type": "number", "minimum": 0, "maximum": 1},
+            "reused_tokens": {"type": "integer", "minimum": 0},
+            "max_cache_bytes": {"type": "integer", "minimum": 0}
+          }
+        },
+        "backend": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sampler_mode_turns", "full_vocab_logits_d2h_bytes", "physical_width_turns", "serial_fallback_turns"],
+          "properties": {
+            "sampler_mode_turns": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+            "full_vocab_logits_d2h_bytes": {"type": "integer", "minimum": 0},
+            "physical_width_turns": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+            "serial_fallback_turns": {"type": "integer", "minimum": 0}
+          }
+        }
+      }
+    },
+    "final_ownership": {"$ref": "agentic-coding-records.schema.json#/$defs/finalOwnership"},
+    "turn_records_sha256": {"$ref": "#/$defs/sha256"},
+    "turn_records": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "agentic-coding-records.schema.json#/$defs/turnRecord"}
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "percentiles": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["count", "p50", "p95", "p99", "min", "max"],
+      "properties": {
+        "count": {"type": "integer", "minimum": 0},
+        "p50": {"type": ["number", "null"]},
+        "p95": {"type": ["number", "null"]},
+        "p99": {"type": ["number", "null"]},
+        "min": {"type": ["number", "null"]},
+        "max": {"type": ["number", "null"]}
+      }
+    }
+  }
+}

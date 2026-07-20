@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hipengine.dev/schemas/agentic-coding-workloads.schema.json",
+  "title": "hipEngine coding-agent workload suite",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "schema_version", "suite", "description", "repository_context", "tools", "workloads"],
+  "properties": {
+    "kind": {"const": "hipengine.agentic_coding_workloads"},
+    "schema_version": {"const": 1},
+    "suite": {"type": "string", "minLength": 1},
+    "description": {"type": "string", "minLength": 1},
+    "repository_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "base", "expansion_blocks"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "base": {"type": "string", "minLength": 1},
+        "expansion_blocks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "tools": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/tool"}
+    },
+    "workloads": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/workload"}
+    }
+  },
+  "$defs": {
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "description", "strict", "parameters"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "description": {"type": "string", "minLength": 1},
+        "strict": {"const": true},
+        "parameters": {"type": "object"}
+      }
+    },
+    "workload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "target_prefix_tokens", "history_mode", "turns"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "target_prefix_tokens": {"type": "integer", "minimum": 1},
+        "history_mode": {"enum": ["stable_prefix", "growing_tool_results"]},
+        "turns": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/turn"}
+        }
+      }
+    },
+    "turn": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["user", "expected_tool", "expected_arguments", "tool_result"],
+      "properties": {
+        "user": {"type": "string", "minLength": 1},
+        "expected_tool": {"type": "string", "minLength": 1},
+        "expected_arguments": {"type": "object"},
+        "tool_result": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

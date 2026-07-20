@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hipengine.dev/schemas/agentic-coding-records.schema.json",
+  "title": "hipEngine normalized coding-agent turn records",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "schema_version", "configuration", "turn_records", "final_ownership"],
+  "properties": {
+    "kind": {"const": "hipengine_agentic_coding_records"},
+    "schema_version": {"const": 1},
+    "configuration": {"$ref": "#/$defs/configuration"},
+    "turn_records": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/turnRecord"}
+    },
+    "final_ownership": {"$ref": "#/$defs/finalOwnership"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "configuration": {
+      "type": "object",
+      "required": ["id", "lane", "concurrency", "cache_mode", "backend", "model", "require_complete_workloads"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "lane": {"enum": ["deterministic", "sampled", "auto_tool"]},
+        "concurrency": {"type": "integer", "minimum": 1},
+        "cache_mode": {"enum": ["off", "radix"]},
+        "backend": {"type": "string", "minLength": 1},
+        "model": {"type": "string", "minLength": 1},
+        "require_complete_workloads": {"type": "boolean"},
+        "performance_claim": {"type": "boolean"}
+      }
+    },
+    "turnRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workload_id", "workload_sha256", "run_id", "agent_id", "session_id",
+        "turn_index", "request_id", "prompt", "output", "tool", "timing",
+        "backend", "prefix", "finish"
+      ],
+      "properties": {
+        "workload_id": {"type": "string", "minLength": 1},
+        "workload_sha256": {"$ref": "#/$defs/sha256"},
+        "run_id": {"type": "string", "minLength": 1},
+        "agent_id": {"type": "string", "minLength": 1},
+        "session_id": {"type": "string", "minLength": 1},
+        "turn_index": {"type": "integer", "minimum": 0},
+        "request_id": {"type": "string", "minLength": 1},
+        "prompt": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["token_count", "token_ids_sha256"],
+          "properties": {
+            "token_count": {"type": "integer", "minimum": 1},
+            "token_ids_sha256": {"$ref": "#/$defs/sha256"}
+          }
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["generated_token_ids", "generated_token_ids_sha256", "raw_markup_leaked"],
+          "properties": {
+            "generated_token_ids": {
+              "type": "array", "minItems": 1,
+              "items": {"type": "integer", "minimum": 0}
+            },
+            "generated_token_ids_sha256": {"$ref": "#/$defs/sha256"},
+            "raw_markup_leaked": {"const": false}
+          }
+        },
+        "tool": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "expected_name", "name", "declared_schema_sha256", "call_id", "arguments",
+            "arguments_json_valid", "schema_valid", "result_linked"
+          ],
+          "properties": {
+            "expected_name": {"type": "string", "minLength": 1},
+            "name": {"type": "string", "minLength": 1},
+            "declared_schema_sha256": {"$ref": "#/$defs/sha256"},
+            "call_id": {"type": "string", "minLength": 1},
+            "arguments": {"type": "object"},
+            "arguments_json_valid": {"const": true},
+            "schema_valid": {"const": true},
+            "result_linked": {"const": true}
+          }
+        },
+        "timing": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "submitted_at_s", "first_token_at_s", "token_observed_at_s",
+            "tool_call_ready_at_s", "response_done_at_s", "tool_result_submitted_at_s"
+          ],
+          "properties": {
+            "submitted_at_s": {"type": "number"},
+            "first_token_at_s": {"type": "number"},
+            "token_observed_at_s": {"type": "array", "minItems": 1, "items": {"type": "number"}},
+            "tool_call_ready_at_s": {"type": "number"},
+            "response_done_at_s": {"type": "number"},
+            "tool_result_submitted_at_s": {"type": "number"}
+          }
+        },
+        "backend": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["batch_id", "timing_owner", "sampler_mode", "logits_d2h_bytes", "physical_width", "serial_fallback"],
+          "properties": {
+            "batch_id": {"type": "string", "minLength": 1},
+            "timing_owner": {"type": "boolean"},
+            "sampler_mode": {"type": "string", "minLength": 1},
+            "logits_d2h_bytes": {"type": "integer", "minimum": 0},
+            "physical_width": {"type": "integer", "minimum": 1},
+            "serial_fallback": {"type": "boolean"}
+          }
+        },
+        "prefix": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["lookup", "hit", "reused_tokens", "cache_bytes"],
+          "properties": {
+            "lookup": {"type": "boolean"},
+            "hit": {"type": "boolean"},
+            "reused_tokens": {"type": "integer", "minimum": 0},
+            "cache_bytes": {"type": "integer", "minimum": 0}
+          }
+        },
+        "finish": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reason", "retry_count"],
+          "properties": {
+            "reason": {"const": "tool_calls"},
+            "retry_count": {"type": "integer", "minimum": 0}
+          }
+        }
+      }
+    },
+    "finalOwnership": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pending_requests", "active_requests", "stream_producers", "model_active_requests",
+        "session_count", "kv_refcounted_pages", "kv_pinned_pages", "graph_owners",
+        "workspace_owners", "cache_resident_bytes", "allowed_cache_bytes"
+      ],
+      "properties": {
+        "pending_requests": {"const": 0},
+        "active_requests": {"const": 0},
+        "stream_producers": {"const": 0},
+        "model_active_requests": {"const": 0},
+        "session_count": {"const": 0},
+        "kv_refcounted_pages": {"const": 0},
+        "kv_pinned_pages": {"const": 0},
+        "graph_owners": {"const": 0},
+        "workspace_owners": {"const": 0},
+        "cache_resident_bytes": {"type": "integer", "minimum": 0},
+        "allowed_cache_bytes": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

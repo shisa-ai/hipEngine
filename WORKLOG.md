@@ -169454,3 +169454,56 @@ python3 -m pytest --collect-only -q tests/test_agentic_server_conformance.py \
 ```
 
 No runtime path or performance default changed.
+
+## 2026-07-20 — Implement the coding-agent benchmark A0 contract
+
+Started the benchmark defined in `docs/AGENTIC-OPT.md` with a model-free,
+fail-closed A0 foundation. The first RED test failed at collection because
+`hipengine.benchmark.agentic` did not exist. The GREEN implementation adds:
+
+- `benchmarks/prompts/agentic-coding-v1.json`, a synthetic non-quality suite
+  with stable 2K/8K/growing-history targets and 4/6/8 strict read/grep/run tool
+  turns;
+- workload, normalized-record, and artifact JSON Schema v1 files under
+  `benchmarks/schemas/`;
+- `hipengine/benchmark/agentic.py`, which validates committed workload/tool
+  identity, exact generated-token hashes, strict tool names/arguments/schema
+  hashes, monotonic client timestamps, complete per-agent turn sequences,
+  unique request ids, one timing owner per backend batch, cache-mode semantics,
+  and zero/bounded final ownership;
+- deterministic p50/p95/p99 TTFT, tool-call-ready, inter-token, and complete-turn
+  rollups plus exact generated tok/s, validated tool calls/s, prefix economics,
+  full-vocabulary D2H bytes, sampler modes, widths, and fallback counts;
+- `scripts/agentic_coding_bench.py`, a normalized-record-to-artifact CLI that
+  exits fail-closed and cannot set `performance_claim=true` at A0;
+- `tests/test_agentic_coding_benchmark.py`, including failures for wrong tools,
+  missing timestamps, token-hash drift, raw markup leakage, ambiguous timing
+  ownership, leaked resources, false performance claims, and artifact tampering.
+
+The suite is deliberately synthetic and contains no expected model token IDs or
+prompt-conditioned scoring hooks. It measures server/engine behavior, not coding
+quality. A0 currently accepts successful deterministic tool turns only; live
+Uvicorn collection is A1, while sampled, cancellation/pressure, and automatic-
+tool quality records remain separate A3/A5/A6 extensions.
+
+RED/GREEN and validation:
+
+```bash
+python3 -m pytest -q tests/test_agentic_coding_benchmark.py
+# RED: ModuleNotFoundError: hipengine.benchmark.agentic
+# GREEN: 6 passed
+ruff check hipengine/benchmark/agentic.py hipengine/benchmark/__init__.py \
+  scripts/agentic_coding_bench.py tests/test_agentic_coding_benchmark.py
+# All checks passed
+python3 -m pytest -q tests/test_agentic_coding_benchmark.py \
+  tests/test_benchmark_matrix.py tests/test_benchmark_provenance.py \
+  tests/test_exact_token_benchmark.py tests/test_speculative_benchmark.py
+# 35 passed
+python3 -m py_compile hipengine/benchmark/agentic.py \
+  scripts/agentic_coding_bench.py
+python3 scripts/agentic_coding_bench.py --help
+```
+
+No model was loaded, no GPU measurement was made, and no performance claim or
+runtime default changed. The next boundary is the A1 real-Uvicorn SSE collector
+for cache-off W7900 C1/C4/C8.
