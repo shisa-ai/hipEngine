@@ -80,24 +80,6 @@ __device__ inline bool better_pair_i32(float value, int32_t index, float best_va
   return value > best_value || (value == best_value && index < best_index);
 }
 
-__device__ inline void insert_topk_pair_i32(
-    float value,
-    int32_t index,
-    float* top_values,
-    int32_t* top_indices) {
-  for (int pos = 0; pos < kMtpRouterTopK; ++pos) {
-    if (better_pair_i32(value, index, top_values[pos], top_indices[pos])) {
-      for (int shift = kMtpRouterTopK - 1; shift > pos; --shift) {
-        top_values[shift] = top_values[shift - 1];
-        top_indices[shift] = top_indices[shift - 1];
-      }
-      top_values[pos] = value;
-      top_indices[pos] = index;
-      return;
-    }
-  }
-}
-
 __global__ void mtp_fuse_inputs_f16_bf16_kernel(
     const int64_t* __restrict__ token_ids,
     const half_t* __restrict__ embedding_f16,
@@ -261,42 +243,69 @@ __global__ void mtp_softmax_topk_f32_kernel(
   }
 }
 
-__global__ void mtp_router_topk_softmax_256x8_f32_kernel(
+__global__ __launch_bounds__(kMtpRouterExperts) void mtp_router_topk_softmax_256x8_f32_kernel(
     const float* __restrict__ logits,
     float* __restrict__ out_values,
     int32_t* __restrict__ out_indices,
     float* __restrict__ routing) {
-  if (blockIdx.x != 0 || threadIdx.x != 0) {
+  if (blockIdx.x != 0) {
     return;
   }
 
-  float top_values[kMtpRouterTopK];
-  int32_t top_indices[kMtpRouterTopK];
-  for (int i = 0; i < kMtpRouterTopK; ++i) {
-    top_values[i] = -3.4028234663852886e+38F;
-    top_indices[i] = INT32_MAX;
+  __shared__ float reduce_values[kMtpRouterExperts];
+  __shared__ int32_t reduce_indices[kMtpRouterExperts];
+  __shared__ int32_t selected_index;
+
+  const int32_t tid = static_cast<int32_t>(threadIdx.x);
+  float candidate_value = logits[tid];
+  int32_t candidate_index = candidate_value == candidate_value ? tid : INT32_MAX;
+  if (candidate_index == INT32_MAX) {
+    candidate_value = -3.4028234663852886e+38F;
   }
 
-  for (int i = 0; i < kMtpRouterExperts; ++i) {
-    insert_topk_pair_i32(logits[i], static_cast<int32_t>(i), top_values, top_indices);
+  #pragma unroll
+  for (int rank = 0; rank < kMtpRouterTopK; ++rank) {
+    reduce_values[tid] = candidate_value;
+    reduce_indices[tid] = candidate_index;
+    __syncthreads();
+
+    #pragma unroll
+    for (int stride = kMtpRouterExperts / 2; stride > 0; stride >>= 1) {
+      if (tid < stride && better_pair_i32(
+              reduce_values[tid + stride],
+              reduce_indices[tid + stride],
+              reduce_values[tid],
+              reduce_indices[tid])) {
+        reduce_values[tid] = reduce_values[tid + stride];
+        reduce_indices[tid] = reduce_indices[tid + stride];
+      }
+      __syncthreads();
+    }
+
+    if (tid == 0) {
+      out_values[rank] = reduce_values[0];
+      out_indices[rank] = reduce_indices[0];
+      selected_index = reduce_indices[0];
+    }
+    __syncthreads();
+    if (candidate_index == selected_index) {
+      candidate_value = -3.4028234663852886e+38F;
+      candidate_index = INT32_MAX;
+    }
   }
 
-  float max_value = top_values[0];
-  for (int i = 1; i < kMtpRouterTopK; ++i) {
-    max_value = fmaxf(max_value, top_values[i]);
-  }
-
-  float denom = 0.0f;
-  for (int i = 0; i < kMtpRouterTopK; ++i) {
-    out_values[i] = top_values[i];
-    out_indices[i] = top_indices[i];
-    const float e = expf(top_values[i] - max_value);
-    routing[i] = e;
-    denom += e;
-  }
-  const float inv = 1.0f / denom;
-  for (int i = 0; i < kMtpRouterTopK; ++i) {
-    routing[i] *= inv;
+  if (tid == 0) {
+    const float max_value = out_values[0];
+    float denom = 0.0f;
+    for (int i = 0; i < kMtpRouterTopK; ++i) {
+      const float e = expf(out_values[i] - max_value);
+      routing[i] = e;
+      denom += e;
+    }
+    const float inv = 1.0f / denom;
+    for (int i = 0; i < kMtpRouterTopK; ++i) {
+      routing[i] *= inv;
+    }
   }
 }
 
@@ -543,7 +552,7 @@ extern "C" int hipengine_mtp_router_topk_softmax_256x8_f32(
   hipLaunchKernelGGL(
       mtp_router_topk_softmax_256x8_f32_kernel,
       dim3(1U),
-      dim3(1U),
+      dim3(static_cast<unsigned int>(kMtpRouterExperts)),
       0,
       stream,
       logits,
