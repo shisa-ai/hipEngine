@@ -1,0 +1,639 @@
+{
+  "correctness": {
+    "multi_prompt_quality": {
+      "candidate_policy": {
+        "block_size": 256,
+        "int8_admission_gated": false,
+        "int8_explicit": true,
+        "policy_class": "FixedPagedKVPolicy",
+        "quantized_tail_layers": 0,
+        "requested_scale_dtype": "fp16",
+        "requested_scale_granularity": "per_token_head",
+        "requested_storage": "int8_per_token_head",
+        "resolved_storage_dtype": "int8_per_token_head",
+        "scale_metadata_format": {
+          "granularity": "per_token_head",
+          "k_scale": "per_token_head",
+          "present": true,
+          "scale_dtype": "fp16",
+          "v_scale": "per_token_head"
+        },
+        "selection_reason": "explicit_int8",
+        "spans_mode": "uniform",
+        "storage_dtype": "int8_per_token_head",
+        "storage_layout": "uniform"
+      },
+      "failing_prompt_ids": [],
+      "max_kl": 0.0,
+      "mean_kl": 0.0,
+      "minimum_prompt_top1_agreement": 1.0,
+      "passed": true,
+      "positions": 99,
+      "prompt_count": 11,
+      "teacher_forced_matched_history": true,
+      "top1_agreement": 1.0
+    },
+    "server": {
+      "all_rows_exact": true,
+      "blocking_rows": 45,
+      "delayed_rows": 8,
+      "oracle_rows": 4,
+      "route_passed_all_widths": true,
+      "sse_rows": 45,
+      "total_rows": 117,
+      "warmup_rows": 15
+    }
+  },
+  "created_at": "2026-07-19T19:56:59.923085+00:00",
+  "decision": {
+    "default_policy": "unchanged",
+    "external_competitiveness": "unchanged; no llama.cpp C>1 claim",
+    "graph": "eager; INT8 packed graph ABI not admitted",
+    "memory_saving_claim": false,
+    "physical_c8": "retained",
+    "strict_slo": "C1/C2 pass 3/3; C4/C8 exact but 0/3 whole-wave SLO",
+    "uniform_int8_short_continuous_concurrency": "retained explicit on gfx1151"
+  },
+  "hardware": {
+    "amd_iommu": "off",
+    "device": "AMD Radeon 8060S Graphics",
+    "gpu_max_hw_queues": 1,
+    "host": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+    "memory_domain": "whole-card GTT",
+    "rocm": "HIP version: 7.15.0-0000000",
+    "target_arch": "gfx1151",
+    "tuned_profile": "accelerator-performance"
+  },
+  "hipengine_artifact_provenance": {
+    "build_profile": "gfx1151_gguf_mirrored_int8_corrected_c8",
+    "collected_at": "2026-07-19T19:56:59.943491+00:00",
+    "command": [
+      "/home/lhl/hipEngine-main/.venv/bin/python",
+      "scripts/server_f1_concurrency_bench.py",
+      "--engine",
+      "hipengine",
+      "--model",
+      "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1151",
+      "--quant",
+      "gguf_q4_k_m",
+      "--hipengine-python",
+      "/home/lhl/hipEngine-main/.venv/bin/python",
+      "--hipengine-kv-storage",
+      "int8_per_token_head",
+      "--hipengine-kv-scale-dtype",
+      "fp16",
+      "--hipengine-kv-scale-granularity",
+      "per_token_head",
+      "--hipengine-route-expectation",
+      "native",
+      "--hipengine-prefill-decode-policy",
+      "fair",
+      "--generation-batch-window-ms",
+      "5",
+      "--hipengine-prefill-chunk-tokens",
+      "256",
+      "--concurrencies",
+      "1,2,4,8",
+      "--live-concurrency",
+      "8",
+      "--prompt-length",
+      "512",
+      "--decode-tokens",
+      "128",
+      "--ctx-per-seq",
+      "1024",
+      "--warmup-runs",
+      "1",
+      "--measured-runs",
+      "3",
+      "--streaming-primary",
+      "--stream-warmup-runs",
+      "0",
+      "--stream-measured-runs",
+      "3",
+      "--live-join-after-tokens",
+      "8",
+      "--compiler-version-file",
+      "/tmp/hipengine-gfx1151-native-cycle-hipcc-version.txt",
+      "--memory-domain",
+      "gtt",
+      "--drm-card-index",
+      "0",
+      "--memory-poll-ms",
+      "10",
+      "--work-dir",
+      "/tmp/gfx1151-int8-server-final-29467874/work",
+      "--json",
+      "/tmp/gfx1151-int8-server-final-29467874/result.json"
+    ],
+    "configured_backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "dirty": false,
+    "environment": {
+      "AMD_IOMMU": "off",
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_BACKEND": "hip_gfx1151",
+      "HIPENGINE_GGUF_DECODE_GRAPH": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIPENGINE_MAX_PREFILL_CHUNK_TOKENS": "256",
+      "HIPENGINE_PREFILL_DECODE_POLICY": "fair",
+      "HIP_VISIBLE_DEVICES": "0",
+      "TUNED_PROFILE": "accelerator-performance"
+    },
+    "git_branch": null,
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "hipengine_commit": "2946787417d299ec4b30d1940d008128d4a4442d",
+    "kind": "hipengine_artifact_provenance",
+    "kv_dtype": "int8_per_token_head",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        11331169424,
+        22662338848
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 22663387424,
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+    },
+    "model_path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_revision": null,
+    "profiler": {
+      "reason": "mirrored INT8 packed graph ABI remains eager and reports zero captures/replays",
+      "used": false
+    },
+    "quant": "gguf_q4_k_m",
+    "repetitions": 3,
+    "repo_root": "/tmp/hipengine-gfx1151-server-final-29467874",
+    "resolved_backend": "hip_gfx1151",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "schema_version": 1,
+    "staged_dirty": false,
+    "target_arch": "gfx1151",
+    "timing_protocol": "p512/d128; 5 ms generation coalescing; fair 256-token prefill chunks; one blocking warmup; three blocking and three SSE measurements per C1/C2/C4/C8; delayed C8 admission",
+    "unstaged_dirty": false,
+    "untracked_count": 0,
+    "untracked_dirty": false,
+    "warmups": 1
+  },
+  "kind": "gfx1151_gguf_mirrored_int8_concurrency_refresh",
+  "lifecycle": {
+    "hipengine_graph_bucket_captures_total": 0.0,
+    "hipengine_graph_bucket_replays_total": 0.0,
+    "hipengine_kv_pool_pinned_pages": 0.0,
+    "hipengine_kv_pool_refcounted_pages": 0.0,
+    "hipengine_request_cancelled_total": 0.0,
+    "hipengine_request_failed_total": 0.0,
+    "hipengine_request_rejected_total": 0.0,
+    "hipengine_resident_bucket_free_slots": 8.0,
+    "hipengine_resident_bucket_occupied_slots": 0.0,
+    "hipengine_resident_packed_workspace_current_bytes": 0.0,
+    "hipengine_resident_requests_admitted_total": 65.0,
+    "hipengine_resident_requests_reclaimed_total": 65.0
+  },
+  "limitations": [
+    "The admitted route keeps a bounded BF16 attention mirror and therefore is not a KV-memory-saving mode.",
+    "Only explicit uniform int8_per_token_head with FP16 per-token/head scales and rounded contexts <=8192 is admitted for c>N.",
+    "tail4_hadamard_group32, direct INT8 attention without mirrors, and longer c>N INT8 contexts remain fail closed.",
+    "C4/C8 exact SSE scale, but strict whole-wave SLO does not pass; no production-SLO closure or external-engine win is claimed.",
+    "The first cached-only quality attempt stopped before logits because the gfx1151 AOTriton wrapper hash was absent; the accepted unprofiled clean run built it normally and performance_claim stayed false for quality timing.",
+    "No new kernels were added; existing INT8 writer/dequant primitives retain their prior CPU-reference and profiler evidence.",
+    "The superseded 256ms row was exact but protocol-mismatched; it is retained only as historical control.",
+    "Resident packed graph replay remains BF16-only; the INT8 refresh is eager with zero captures/replays."
+  ],
+  "model": {
+    "attention_compute": "bounded BF16 mirror",
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "path_type": "file",
+      "revision": null,
+      "sample_offsets": [
+        0,
+        11331169424,
+        22662338848
+      ],
+      "sampled_bytes_per_offset": 1048576,
+      "size_bytes": 22663387424,
+      "value": "f24f72d469e5141b6a74086cdf094faf93726def47c5581b9d84acca03b24579"
+    },
+    "kv_storage": "int8_per_token_head",
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "scale_dtype": "fp16",
+    "scale_granularity": "per_token_head"
+  },
+  "passed": true,
+  "performance_claim": true,
+  "performance_claim_scope": "hipEngine own-engine exact real-Uvicorn p512/d128 C1/C2/C4/C8 blocking/SSE and delayed-C8 with explicit mirrored int8_per_token_head KV; no memory-saving, external C>1, long-context, tail4, or direct-INT8-attention claim",
+  "protocol": {
+    "blocking_control_metric": "C*returned_completion_tokens / barrier-to-last-response HTTP wall",
+    "concurrencies": [
+      1,
+      2,
+      4,
+      8
+    ],
+    "context_tokens_per_sequence": 1024,
+    "decode_tokens": 128,
+    "exact_output_contract": "blocking rows equal independent same-engine c1 generated token IDs; llama.cpp SSE returns those IDs directly; hipEngine SSE reconstructs the blocking-oracle text with the exact completion count",
+    "fresh_server_per_width": true,
+    "hipengine_batch_window_ms": 5.0,
+    "hipengine_generation_batch_window_ms": 5.0,
+    "hipengine_prefill_chunk_tokens": 256,
+    "hipengine_prefill_decode_policy": "fair",
+    "kv_storage": "int8_per_token_head",
+    "live_admission_concurrency": 8,
+    "llamacpp_prompt_cache": false,
+    "measured_runs_per_width": 3,
+    "model": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "native_decode_metric_scope": "engine-specific diagnostic only; not cross-engine comparable",
+    "primary_metric": "exact SLO-qualified returned completion tokens / barrier-to-last-SSE-completion wall",
+    "primary_metric_scope": "prefill + decode + server scheduling + localhost HTTP/SSE",
+    "prompt_length": 512,
+    "prompt_row_construction": "512-token rows filled with 9707; final token cycles 9707..9710",
+    "quant": "gguf_q4_k_m",
+    "sampling": "temperature=0, top_k=1, top_p=1, ignore_eos=true, MTP disabled",
+    "server_capacity_matches_logical_concurrency": true,
+    "stream_client_slo_seconds": {
+      "end_to_end_p95": 30.0,
+      "itl_p99": 0.5,
+      "ttft_p95": 10.0
+    },
+    "stream_measured_runs_per_width": 3,
+    "stream_warmup_runs_per_width": 0,
+    "streaming_primary": true,
+    "warmup_runs_per_width": 1
+  },
+  "protocol_correction": {
+    "new_generation_window_ms": 5.0,
+    "old_generation_window_ms": 256.0,
+    "prefill_chunk_tokens": 256,
+    "reason": "fair:256 names the prefill chunk policy, not a 256ms generation coalescing delay"
+  },
+  "comparison_to_corrected_window_single_run_baseline": {
+    "baseline_commit": "b2448f814393d93c5070296287ad96a5fb012bb8",
+    "baseline_blocking_tok_s": {
+      "c1": 43.9789163451241,
+      "c2": 60.723861043824755,
+      "c4": 74.21867334240888,
+      "c8": 75.51266891749022
+    },
+    "final_blocking_tok_s": {
+      "c1": 44.22461987501794,
+      "c2": 60.598315455673976,
+      "c4": 74.63103187125552,
+      "c8": 83.40809958539097
+    },
+    "delta_percent": {
+      "c1": 0.559,
+      "c2": -0.207,
+      "c4": 0.556,
+      "c8": 10.456,
+      "delayed_c8": 4.577
+    },
+    "interpretation": "The corrected 5ms single-run baseline is diagnostic rather than variance-qualified, but it isolates the implementation sequence: C1/C2/C4 remain within 0.56% while physical C8 improves 10.46% and delayed C8 improves 4.58%."
+  },
+  "rows": [
+    {
+      "blocking": {
+        "aggregate_tok_s_median": 44.22461987501794,
+        "aggregate_tok_s_samples": [
+          44.249295020853154,
+          44.16269921202451,
+          44.22461987501794
+        ],
+        "delta_percent": 9.284615441298305,
+        "old_aggregate_tok_s_median": 40.46737932547604,
+        "stdev_percent_of_median": 0.10087797428358453
+      },
+      "concurrency": 1,
+      "correctness": {
+        "blocking_exact_rows": 3,
+        "blocking_rows": 3,
+        "delayed_exact_rows": 0,
+        "delayed_rows": 0,
+        "sse_exact_rows": 3,
+        "sse_rows": 3,
+        "warmup_exact_rows": 1,
+        "warmup_rows": 1
+      },
+      "delayed_admission": null,
+      "execution": {
+        "backend_group_rows": [
+          1
+        ],
+        "generation_shape_passed": true,
+        "incremental_prefill_chunks_total": 14,
+        "max_backend_group_rows": 1,
+        "native_caware_decode": [
+          false
+        ],
+        "native_packed_graph_captures_total": 0,
+        "native_packed_graph_replays_total": 0,
+        "resident_fallback_requests_total": 0,
+        "route_passed": true,
+        "serial_decode_fallback": [
+          false
+        ],
+        "serial_decode_fallback_steps_total": 0,
+        "unsampled_prefill_chunks_total": 7
+      },
+      "memory": {
+        "domain": "gtt",
+        "whole_card_final_gib": 22.232521057128906,
+        "whole_card_peak_delta_gib": 22.215126037597656,
+        "whole_card_peak_gib": 22.232521057128906
+      },
+      "physical_execution": "1x c1",
+      "sse": {
+        "delta_percent": 7.7996166659871635,
+        "end_to_end_p95_seconds_median": 2.9922131419880316,
+        "exact_aggregate_tok_s_median": 42.758559871607936,
+        "exact_aggregate_tok_s_samples": [
+          43.44234501403006,
+          42.758559871607936,
+          42.0131648276418
+        ],
+        "itl_p99_seconds_median": 0.03743632300756872,
+        "measured_runs": 3,
+        "old_exact_aggregate_tok_s_median": 39.664853358517625,
+        "slo_goodput_tok_s_median": 42.758559871607936,
+        "slo_goodput_tok_s_samples": [
+          43.44234501403006,
+          42.758559871607936,
+          42.0131648276418
+        ],
+        "slo_passed_runs": 3,
+        "stdev_percent_of_median": 1.6717386817057163,
+        "ttft_p95_seconds_median": 0.4245017329812981
+      }
+    },
+    {
+      "blocking": {
+        "aggregate_tok_s_median": 60.598315455673976,
+        "aggregate_tok_s_samples": [
+          60.598315455673976,
+          60.641116339487105,
+          60.39143361135519
+        ],
+        "delta_percent": 5.921516766177537,
+        "old_aggregate_tok_s_median": 57.21058129241594,
+        "stdev_percent_of_median": 0.2203443307826688
+      },
+      "concurrency": 2,
+      "correctness": {
+        "blocking_exact_rows": 6,
+        "blocking_rows": 6,
+        "delayed_exact_rows": 0,
+        "delayed_rows": 0,
+        "sse_exact_rows": 6,
+        "sse_rows": 6,
+        "warmup_exact_rows": 2,
+        "warmup_rows": 2
+      },
+      "delayed_admission": null,
+      "execution": {
+        "backend_group_rows": [
+          2
+        ],
+        "generation_shape_passed": true,
+        "incremental_prefill_chunks_total": 28,
+        "max_backend_group_rows": 2,
+        "native_caware_decode": [
+          true
+        ],
+        "native_packed_graph_captures_total": 0,
+        "native_packed_graph_replays_total": 0,
+        "resident_fallback_requests_total": 0,
+        "route_passed": true,
+        "serial_decode_fallback": [
+          false
+        ],
+        "serial_decode_fallback_steps_total": 0,
+        "unsampled_prefill_chunks_total": 14
+      },
+      "memory": {
+        "domain": "gtt",
+        "whole_card_final_gib": 23.761817932128906,
+        "whole_card_peak_delta_gib": 23.744422912597656,
+        "whole_card_peak_gib": 23.761817932128906
+      },
+      "physical_execution": "1x c2",
+      "sse": {
+        "delta_percent": 5.557764891852535,
+        "end_to_end_p95_seconds_median": 4.642259162996197,
+        "exact_aggregate_tok_s_median": 55.12783612997118,
+        "exact_aggregate_tok_s_samples": [
+          55.63168979262603,
+          54.255337702493485,
+          55.12783612997118
+        ],
+        "itl_p99_seconds_median": 0.05648439499782398,
+        "measured_runs": 3,
+        "old_exact_aggregate_tok_s_median": 52.225277966477876,
+        "slo_goodput_tok_s_median": 55.12783612997118,
+        "slo_goodput_tok_s_samples": [
+          55.63168979262603,
+          54.255337702493485,
+          55.12783612997118
+        ],
+        "slo_passed_runs": 3,
+        "stdev_percent_of_median": 1.2631652040341208,
+        "ttft_p95_seconds_median": 0.896981842990499
+      }
+    },
+    {
+      "blocking": {
+        "aggregate_tok_s_median": 74.63103187125552,
+        "aggregate_tok_s_samples": [
+          74.19295979076541,
+          74.72439697645599,
+          74.63103187125552
+        ],
+        "delta_percent": 3.6016583960517323,
+        "old_aggregate_tok_s_median": 72.0365224135251,
+        "stdev_percent_of_median": 0.38019011822927523
+      },
+      "concurrency": 4,
+      "correctness": {
+        "blocking_exact_rows": 12,
+        "blocking_rows": 12,
+        "delayed_exact_rows": 0,
+        "delayed_rows": 0,
+        "sse_exact_rows": 12,
+        "sse_rows": 12,
+        "warmup_exact_rows": 4,
+        "warmup_rows": 4
+      },
+      "delayed_admission": null,
+      "execution": {
+        "backend_group_rows": [
+          4
+        ],
+        "generation_shape_passed": true,
+        "incremental_prefill_chunks_total": 56,
+        "max_backend_group_rows": 4,
+        "native_caware_decode": [
+          true
+        ],
+        "native_packed_graph_captures_total": 0,
+        "native_packed_graph_replays_total": 0,
+        "resident_fallback_requests_total": 0,
+        "route_passed": true,
+        "serial_decode_fallback": [
+          false
+        ],
+        "serial_decode_fallback_steps_total": 0,
+        "unsampled_prefill_chunks_total": 28
+      },
+      "memory": {
+        "domain": "gtt",
+        "whole_card_final_gib": 25.080177307128906,
+        "whole_card_peak_delta_gib": 26.015907287597656,
+        "whole_card_peak_gib": 26.033302307128906
+      },
+      "physical_execution": "1x c4",
+      "sse": {
+        "delta_percent": 3.8142160577878004,
+        "end_to_end_p95_seconds_median": 7.1806851270084735,
+        "exact_aggregate_tok_s_median": 71.28366147078175,
+        "exact_aggregate_tok_s_samples": [
+          71.28366147078175,
+          70.23407412362013,
+          71.60736199462451
+        ],
+        "itl_p99_seconds_median": 0.10362377599813044,
+        "measured_runs": 3,
+        "old_exact_aggregate_tok_s_median": 68.664643608253,
+        "slo_goodput_tok_s_median": 35.641830735390876,
+        "slo_goodput_tok_s_samples": [
+          35.641830735390876,
+          52.67555559271509,
+          17.901840498656128
+        ],
+        "slo_passed_runs": 0,
+        "stdev_percent_of_median": 1.0071117388987807,
+        "ttft_p95_seconds_median": 1.9481279190222267
+      }
+    },
+    {
+      "blocking": {
+        "aggregate_tok_s_median": 83.40809958539097,
+        "aggregate_tok_s_samples": [
+          83.40809958539097,
+          83.19748206192402,
+          83.43162232976088
+        ],
+        "delta_percent": 15.023891993592041,
+        "old_aggregate_tok_s_median": 72.513717054573,
+        "stdev_percent_of_median": 0.15457503286880508
+      },
+      "concurrency": 8,
+      "correctness": {
+        "blocking_exact_rows": 24,
+        "blocking_rows": 24,
+        "delayed_exact_rows": 8,
+        "delayed_rows": 8,
+        "sse_exact_rows": 24,
+        "sse_rows": 24,
+        "warmup_exact_rows": 8,
+        "warmup_rows": 8
+      },
+      "delayed_admission": {
+        "admission_during_first_request": true,
+        "aggregate_tok_s": 65.03386560309022,
+        "exact_rows": 8,
+        "rows": 8
+      },
+      "execution": {
+        "backend_group_rows": [
+          8
+        ],
+        "generation_shape_passed": true,
+        "incremental_prefill_chunks_total": 128,
+        "max_backend_group_rows": 8,
+        "native_caware_decode": [
+          true
+        ],
+        "native_packed_graph_captures_total": 0,
+        "native_packed_graph_replays_total": 0,
+        "resident_fallback_requests_total": 0,
+        "route_passed": true,
+        "serial_decode_fallback": [
+          false
+        ],
+        "serial_decode_fallback_steps_total": 0,
+        "unsampled_prefill_chunks_total": 64
+      },
+      "memory": {
+        "domain": "gtt",
+        "whole_card_final_gib": 27.886817932128906,
+        "whole_card_peak_delta_gib": 29.855751037597656,
+        "whole_card_peak_gib": 29.873146057128906
+      },
+      "physical_execution": "1x c8",
+      "sse": {
+        "delta_percent": 1.6937901349683981,
+        "end_to_end_p95_seconds_median": 12.617291760019725,
+        "exact_aggregate_tok_s_median": 81.14044431712854,
+        "exact_aggregate_tok_s_samples": [
+          81.50277921429432,
+          81.14044431712854,
+          80.69882265804688
+        ],
+        "itl_p99_seconds_median": 0.38793288299348205,
+        "measured_runs": 3,
+        "old_exact_aggregate_tok_s_median": 79.78898633774847,
+        "slo_goodput_tok_s_median": 30.4276666189232,
+        "slo_goodput_tok_s_samples": [
+          40.75138960714716,
+          30.4276666189232,
+          20.17470566451172
+        ],
+        "slo_passed_runs": 0,
+        "stdev_percent_of_median": 0.49621291074669627,
+        "ttft_p95_seconds_median": 4.220674935000716
+      }
+    }
+  ],
+  "schema": 1,
+  "source": {
+    "compiler_version_file": {
+      "path": "/tmp/hipengine-gfx1151-native-cycle-hipcc-version.txt",
+      "sha256": "4575f2f128d68d1d1c7e99436d20ecac67a363d6d300f6dde6b2fb83a86f8987",
+      "size_bytes": 348
+    },
+    "corrected_window_single_run_baseline": {
+      "path": "/tmp/gfx1151-int8-window5-b2448f81/result.json",
+      "sha256": "56798979b6c80cc2f6f56be28244de7de77baa2a6b618195fce0d029c8488999",
+      "size_bytes": 343052
+    },
+    "measured_commit": "2946787417d299ec4b30d1940d008128d4a4442d",
+    "prefill_state_oracle": {
+      "path": "/tmp/gfx1151-gguf-prefill-tail-only-state-dirty/result.json",
+      "sha256": "e08a4fbf3ad62bbaa3e367eff273d63d450fa3595ac821393ffb8269cd1541f9",
+      "size_bytes": 65088
+    },
+    "previous_mislabeled_256ms_rollup": {
+      "path": "/home/lhl/hipEngine-main/benchmarks/results/2026-07-19-gfx1151-gguf-mirrored-int8-continuous-concurrency.json",
+      "sha256": "bb7fd49672842fdd8a4a87bca8bd88742e4a6d0d1ed9bf738148f60eb16c35fa",
+      "size_bytes": 24484
+    },
+    "quality": {
+      "path": "/tmp/gfx1151-int8-quality-24d4ad42/result.json",
+      "sha256": "d6a63e2982dfada37cce354e98c9e2d59e97d6b150a6f388baee2d78e98857d3",
+      "size_bytes": 24506
+    },
+    "server": {
+      "path": "/tmp/gfx1151-int8-server-final-29467874/result.json",
+      "sha256": "320b14fbacd6f92428dee75ef03c2004dccbe59e0a7c4e69305ec619d7aa63dc",
+      "size_bytes": 1101128
+    }
+  },
+  "status": "accepted_corrected_window_physical_c8"
+}

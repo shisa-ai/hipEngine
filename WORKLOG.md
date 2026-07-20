@@ -168620,3 +168620,44 @@ complete clean `8e61b9f9` raw packet remains the publication source. A future
 route may eliminate the tradeoff by reusing state-safe captures across waves or
 moving capture outside client wall; transport-conditioned model dispatch is not
 introduced here.
+
+## 2026-07-20 — Publish corrected gfx1151 physical-C8 server refresh
+
+The final retained BF16 source is the detached-clean `8e61b9f9` packet; final
+`29467874` is behavior-equivalent and restores the retained low-width graph
+policy after the measured eager control. Protocol is real localhost Uvicorn,
+Qwen3.6-35B-A3B UD-Q4_K_M, BF16 KV, p512/d128, one blocking warmup, three
+blocking and three exact SSE measurements at C1/C2/C4/C8, delayed C8 admission,
+5 ms generation coalescing, fair 256-token prefill, one HIP hardware queue, and
+cached TheRock HIP 7.15 builds on Radeon 8060S/gfx1151 with `amd_iommu=off`.
+
+Final medians are:
+
+| Width | Blocking tok/s | Exact SSE tok/s | Strict SLO pass |
+| --- | ---: | ---: | ---: |
+| C1 | 44.137 | 43.307 | 3/3 |
+| C2 | 59.258 | 58.579 | 3/3 |
+| C4 | 74.105 | 72.872 | 0/3 |
+| C8 | 83.771 | 81.609 | 0/3 |
+
+Delayed C8 is **66.563 tok/s**. All **117/117** oracle/warmup/blocking/SSE/live
+rows are exact; C8 executes one physical group, resident graph counters reach
+**9 captures / 793 replays**, all-state packed-prefill correctness passes, and
+final graph/KV/workspace ownership is zero. Versus the prior matched packet,
+C8 blocking improves **75.702 -> 83.771 (+10.66%)**. C1 is the only eligible
+external width and still trails pinned llama.cpp HIP by **4.24% blocking /
+6.15% SSE** and clean Vulkan by **17.67% / 18.92%**. llama.cpp C>1 remains
+oracle-ineligible. Compact artifact:
+`benchmarks/results/2026-07-20-gfx1151-gguf-server-concurrency-refresh.json`.
+
+The final mirrored-INT8 packet ran the same corrected timing protocol from clean
+`29467874`. Blocking C1/C2/C4/C8 is
+**44.225/60.598/74.631/83.408 tok/s**, exact SSE is
+**42.759/55.128/71.284/81.140**, and delayed C8 is **65.034**. All **117/117**
+rows are exact and the retained 11-prompt/99-position gate remains KL=0 / 100%
+top-1. Against the corrected-window single-run `b2448f81` baseline, C1/C2/C4
+stay within 0.56%, while C8 improves **75.513 -> 83.408 (+10.46%)** and delayed
+C8 **62.188 -> 65.034 (+4.58%)**. INT8 remains explicit/eager with bounded BF16
+attention mirrors, so no default or memory-saving claim is made. Compact
+artifact:
+`benchmarks/results/2026-07-20-gfx1151-gguf-mirrored-int8-concurrency-refresh.json`.
