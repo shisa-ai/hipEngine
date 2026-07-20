@@ -170057,3 +170057,41 @@ Published compact artifact
 The retained performance claim is clean direct C8; the source-equivalent server
 packet is exact/non-regressive but remains diagnostic rather than replacing the
 clean server scoreboard.
+
+## 2026-07-20 — Reprofile canonical physical-C8 after F3E
+
+Ran cached `rocprofv3 --kernel-trace` on one automatic p512 physical-C8 graph
+transition at tracked runtime `4cb30543` / publication tree `f9202b2e`. The
+mechanical transition boundary is exact: dispatch indices **31,170..31,917**
+are **748 kernels**, from
+`prepare_packed_decode_metadata_from_positions_kernel` through
+`commit_packed_decode_graph_step_kernel`. This excludes prompt prefill and all
+other process work.
+
+| Family | Dispatches | Profiled ms | Share |
+| --- | ---: | ---: | ---: |
+| Dense projections | 220 | **19.785** | **38.02%** |
+| Selected MoE/combine | 200 | **18.642** | **35.82%** |
+| LM head/sampler | 4 | 4.879 | 9.38% |
+| Linear-attention state | 60 | 4.074 | 7.83% |
+| Full-attention core | 60 | 3.204 | 6.16% |
+| Router | 120 | 0.971 | 1.87% |
+| Norm/residual | 81 | 0.456 | 0.88% |
+| Metadata + embedding | 3 | 0.027 | 0.05% |
+
+Top leaves are Q4 selected gate/up **11.084 ms / 40**, Q8T16 qkv+gate rowtile
+**10.138 / 30**, Q5 selected down **6.658 / 37**, Q8T16 F32-output single
+**3.384 / 30**, full attention context **3.103 / 10**, Q6 lm-head stages
+**2.865+1.972**, and Q8T16 triple **2.668 / 10**. Remaining selected Q6 down is
+only **0.657 ms / 3 layers** (~1.26% of profiled GPU time), so close that bounded
+sibling first and then move to dense Q8T16, now the largest family.
+
+Compact diagnostic:
+`benchmarks/results/2026-07-20-gfx1151-gguf-f3e-c8-family-profile.json`.
+Raw family summary SHA-256 is
+`d25c2346a10503295ac193052fea705faf38ed82cd5934e91f77b71624c7dcb7`;
+profile DB SHA-256 is
+`00843a2461f5ae2957045aff0b14fd0b9b69fd833d66c14f7eda0739847d6443`.
+Profiler durations are diagnostic only; retained speed remains the clean direct
+host-wall gate. Compact artifact is 6,243 bytes with SHA-256
+`d3680da531d6a670de013f2f75ab99f5d4f9b08f460427cf9610a8d1ef644a4b`.

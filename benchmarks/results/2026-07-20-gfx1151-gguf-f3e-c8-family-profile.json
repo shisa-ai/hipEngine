@@ -1,0 +1,124 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_f3e_c8_family_profile",
+  "created_at": "2026-07-20T21:35:00+09:00",
+  "status": "diagnostic_current_bottleneck_ranking",
+  "passed": true,
+  "performance_claim": false,
+  "claim_scope": "canonical p512 one-transition physical-C8 automatic graph kernel-family attribution after retained F3C Q4T16 and F3E Q5T16 selected-expert reuse",
+  "hardware": {
+    "host": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "amd_iommu": "off",
+    "gpu_max_hw_queues": 1,
+    "tuned_profile": "accelerator-performance"
+  },
+  "software": {
+    "profiled_commit": "f9202b2e",
+    "runtime_commit": "4cb305434aa11f827bbbd1f021f03d75fbe7398e",
+    "rocm": "HIP 7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B UD-Q4_K_M GGUF",
+    "path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "workload": {
+    "physical_rows": 8,
+    "prompt_tokens_per_row": 512,
+    "decode_steps": 1,
+    "sampling": "greedy_top1",
+    "decode_mode": "state-bound graph",
+    "profiler": "rocprofv3 --kernel-trace"
+  },
+  "mechanical_window": {
+    "selection": "last exact 748-dispatch prepare_packed_decode_metadata_from_positions_kernel through commit_packed_decode_graph_step_kernel window",
+    "start_index": 31170,
+    "end_index": 31917,
+    "dispatches": 748,
+    "total_profile_duration_ns": 52036916,
+    "total_profile_duration_ms": 52.036916
+  },
+  "families": [
+    {
+      "family": "dense_projection",
+      "dispatches": 220,
+      "total_duration_ms": 19.784595,
+      "share_percent": 38.02,
+      "top_kernels": [
+        {"name": "q8_0_t16_dual_split_rowtile_gemv_kernel<bf16,bf16,4>", "dispatches": 30, "total_duration_ms": 10.138},
+        {"name": "q8_0_t16_gemv_kernel<float,bf16>", "dispatches": 30, "total_duration_ms": 3.384},
+        {"name": "q8_0_t16_triple_split_gemv_kernel<bf16,bf16>", "dispatches": 10, "total_duration_ms": 2.668},
+        {"name": "q8_0_t16_gemv_kernel<bf16,bf16>", "dispatches": 50, "total_duration_ms": 2.026},
+        {"name": "q8_0_t16_dual_gemv_kernel<bf16,bf16>", "dispatches": 40, "total_duration_ms": 1.298}
+      ]
+    },
+    {
+      "family": "moe_selected_combine",
+      "dispatches": 200,
+      "total_duration_ms": 18.641656,
+      "share_percent": 35.82,
+      "top_kernels": [
+        {"name": "q4_k_t16_selected_dual_pairreuse_direct_gemv_kernel<bf16>", "dispatches": 40, "total_duration_ms": 11.084},
+        {"name": "q5_k_t16_selected_pairreuse_direct_gemv_kernel<bf16>", "dispatches": 37, "total_duration_ms": 6.658},
+        {"name": "qk_t16_selected_direct_gemv_kernel<bf16,6>", "dispatches": 3, "total_duration_ms": 0.657},
+        {"name": "weighted_sum_shared_gate_combine_residual_batch_out_kernel", "dispatches": 40, "total_duration_ms": 0.122},
+        {"name": "silu_mul_separate_out_kernel", "dispatches": 40, "total_duration_ms": 0.064}
+      ]
+    },
+    {
+      "family": "lm_head_sampler",
+      "dispatches": 4,
+      "total_duration_ms": 4.879,
+      "share_percent": 9.38,
+      "top_kernels": [
+        {"name": "q6_k_t16_gemv_rowtile_kernel<bf16,float,6>", "dispatches": 1, "total_duration_ms": 2.865},
+        {"name": "q6_k_t16_gemv_rowtile_kernel<bf16,float,2>", "dispatches": 1, "total_duration_ms": 1.972}
+      ]
+    },
+    {
+      "family": "linear_attention_state",
+      "dispatches": 60,
+      "total_duration_ms": 4.074,
+      "share_percent": 7.83,
+      "top_kernels": [
+        {"name": "qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_kernel", "dispatches": 30, "total_duration_ms": 3.737},
+        {"name": "qwen35_linear_attn_conv_decode_indexed_lowp_kernel", "dispatches": 30, "total_duration_ms": 0.337}
+      ]
+    },
+    {
+      "family": "full_attention_core",
+      "dispatches": 60,
+      "total_duration_ms": 3.204,
+      "share_percent": 6.16,
+      "top_kernels": [
+        {"name": "qwen35_paged_full_attn_decode_context_tensor_batch_kernel", "dispatches": 10, "total_duration_ms": 3.103}
+      ]
+    },
+    {"family": "moe_router", "dispatches": 120, "total_duration_ms": 0.971, "share_percent": 1.87},
+    {"family": "norm_residual", "dispatches": 81, "total_duration_ms": 0.456, "share_percent": 0.88},
+    {"family": "metadata_lifecycle", "dispatches": 2, "total_duration_ms": 0.017, "share_percent": 0.03},
+    {"family": "embedding", "dispatches": 1, "total_duration_ms": 0.010, "share_percent": 0.02}
+  ],
+  "priority": [
+    "Close the bounded three-layer Q6T16 selected-down sibling; maximum family opportunity is small (~1.26% of profiled GPU time).",
+    "Then prioritize dense Q8T16 projections (38.02%), especially the 30 qkv+gate rowtile launches (19.48% of total profile).",
+    "Revisit Q4/Q5 selected kernels only with a design that reduces profiler-visible work without regressing distinct-request server wall.",
+    "LM head/sampler, GDN recurrence, and full attention are the next independent families after dense projection."
+  ],
+  "provenance": {
+    "profile_database_sha256": "00843a2461f5ae2957045aff0b14fd0b9b69fd833d66c14f7eda0739847d6443",
+    "raw_family_summary_sha256": "d25c2346a10503295ac193052fea705faf38ed82cd5934e91f77b71624c7dcb7",
+    "profile_run_json_sha256": "cbaf4507790bbd4c1f37eeea3a5013c1d5efbf6251d8d2ad3b738a1c17b3141b",
+    "command": "rocprofv3 --kernel-trace -- .venv/bin/python scripts/gguf_packed_ar_bench.py --model /home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --configurations native_c8 --prompt-length 512 --decode-steps 1 --warmup-runs 0 --measured-runs 1 --require-cached-build"
+  },
+  "limitations": [
+    "Profiler durations are diagnostic and must not be compared directly to unprofiled host wall.",
+    "The source checkout contained unrelated untracked historical artifacts; the measured tracked runtime is the named commit and the profile is used only for family ranking.",
+    "The one-transition benchmark output rate under profiling is not a retained throughput result."
+  ]
+}
