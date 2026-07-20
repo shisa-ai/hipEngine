@@ -1,0 +1,104 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_paged_attn_softmax_value_schedules_c8_rejected",
+  "created_at": "2026-07-21T00:45:00+00:00",
+  "status": "rejected_server_regression_removed",
+  "passed": false,
+  "performance_claim": false,
+  "decision": "retain F3P and remove all parallel-softmax and packed-value diagnostic routes",
+  "source_base_commit": "f025ee04",
+  "hardware": {
+    "host": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "amd_iommu": "off",
+    "gpu_max_hw_queues": 1
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B UD-Q4_K_M GGUF",
+    "path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "primitive_sweep": {
+    "shape": "rows=8, context=513, block_size=256, num_q_heads=16, num_kv_heads=2, head_dim=256",
+    "protocol": "five cycling 12 MiB KV pools, 40 warmups, 400 iterations, same binary",
+    "all_output_bit_exact": true,
+    "variants": {
+      "baseline_us": 134.56416243570857,
+      "parallel_exp_us": 131.08856248436496,
+      "parallel_exp_delta_percent": -2.5828570463582112,
+      "parallel_normalize_us": 132.2767675446812,
+      "parallel_normalize_delta_percent": -1.699854440903037,
+      "parallel_both_us": 128.22541248169728,
+      "parallel_both_delta_percent": -4.71057809098302,
+      "packed_value2_us": 135.40298488806002,
+      "packed_value2_delta_percent": 0.6233624444786479,
+      "parallel_both_packed_value2_us": 128.57534748036414,
+      "parallel_both_packed_value2_delta_percent": -4.450527426428064
+    },
+    "raw_bytes": 1767,
+    "raw_sha256": "049cb50b4ae99010e84e76f0887c39c7a31c0cde4c8079e527674491fce6cde5"
+  },
+  "candidate": {
+    "description": "parallelize independent expf and normalized-score writes, then preserve the original lane-0 partial-sum order",
+    "direct_c8_tok_s_samples": [
+      159.54929798801754,
+      159.63094589848103,
+      159.92833621238378
+    ],
+    "direct_c8_tok_s_median": 159.63094589848103,
+    "clean_f3q_baseline_tok_s": 159.4872522220156,
+    "direct_delta_percent": 0.09009728016720064,
+    "direct_stdev_percent_of_median": 0.10203712826328128,
+    "trajectories_exact": true,
+    "direct_raw_bytes": 200972,
+    "direct_raw_sha256": "b67941ed4a1cbe08250ff63dca7be8c80c3d150067f5bb949f05c9cda2714086"
+  },
+  "correctness": {
+    "primitive_output_bit_exact": true,
+    "all_layer_hidden_comparisons": 320,
+    "all_layer_hidden_exact": true,
+    "tokens_and_final_state_exact": true,
+    "first_divergence": null,
+    "all_layer_oracle_bytes": 16288,
+    "all_layer_oracle_sha256": "d57b6a9ba67bed996297504b9b7698236b09809dd02df50c04cdbcc34dd2fff2"
+  },
+  "server_gate": {
+    "protocol": "real localhost Uvicorn C1/C8 p512/d128, one warmup, three blocking, three exact SSE, delayed C8",
+    "f3q_control": {
+      "blocking_median_tok_s": 91.56234113113928,
+      "exact_sse_median_tok_s": 88.59660534988375,
+      "delayed_tok_s": 70.41417027896456
+    },
+    "candidate": {
+      "blocking_median_tok_s": 91.75810623147906,
+      "exact_sse_median_tok_s": 87.83793718135492,
+      "delayed_tok_s": 70.32150242439624,
+      "all_exact": true,
+      "raw_bytes": 718330,
+      "raw_sha256": "96805ca38cf56aeb7bba7e006e781a67e505f47358b361c67679dbb8497bc76a"
+    },
+    "candidate_delta_percent": {
+      "blocking": 0.21380525871372846,
+      "exact_sse": -0.8563174238253368,
+      "delayed": -0.13160398567673148
+    }
+  },
+  "removed": [
+    "parallel-exp template parameter",
+    "parallel-normalize template parameter",
+    "packed-value2 template parameter",
+    "diagnostic wrapper and variant switch",
+    "physical-C8 candidate dispatch"
+  ],
+  "family_closure": [
+    "grouped query heads and explicit shared K/V",
+    "128/256/512/1024-thread launch widths",
+    "packed K/V loads and KV-head-base hoisting",
+    "value vectors 1/2/4",
+    "shared token offsets",
+    "parallel exp and score normalization"
+  ]
+}
