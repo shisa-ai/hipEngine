@@ -170532,3 +170532,23 @@ retained 256-thread token-offset schedule is therefore the only promoted point.
 
 Implementation is ready for an atomic code commit. A detached tracked-clean
 direct capture and compact artifact/scoreboard publication follow that commit.
+
+### Clean F3O retention and publication
+
+Committed the implementation as `a960e28a`, then measured it from detached
+tracked-clean worktree `/tmp/hipengine-gfx1151-tokenoffset-clean` without a
+convenience symlink or untracked file. Clean p512/d128 physical-C8 samples are
+**158.181879/157.890416/158.047967 tok/s**, median **158.047967**. This is
+**+3.4964%** over clean F3K **152.708625**, at **0.0923%** stdev/median, and
+saves **226.535 ms** per 1,024 tokens. Every trajectory repeats exactly. Raw
+clean direct is 200,264 bytes, SHA-256
+`d162976473f9f7f22e6127087a3ceba7e64f864cb314f462ab4c07f19fa4f295`.
+
+Published compact artifact
+`benchmarks/results/2026-07-20-gfx1151-gguf-paged-attn-token-offsets-c8-retained.json`
+(6,229 bytes, SHA-256
+`51f9f3ec2bccc74fdd680ca0aff735d5fb45cb2447ac3978913f35938912f310`).
+Updated the canonical benchmark row to C1/C2/C4/C8
+**50.335/78.552/108.050/158.048 tok/s**; the clean retained claim is direct
+physical C8 and the exact positive same-source server A/B is supporting
+diagnostic evidence.
