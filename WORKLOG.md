@@ -169677,3 +169677,62 @@ python3 -m py_compile hipengine/benchmark/agentic_quality.py \
 Next: add exact generated IDs to the response-owned SSE done event and consume
 them in A1 with strict equality to the independent oracle, then run A6 on the
 viable W7900 4K/c1 configuration.
+
+## 2026-07-20 — Publish response-owned exact IDs on tool SSE
+
+Extended `GenerationStreamChunk` with optional cumulative
+`generated_token_ids`. Final GGUF direct greedy/sampled streams, resident native
+chunks, and serialized scheduler chunks now populate the field without copying
+the growing ID history on every intermediate token; generic stream
+coercion, resident scheduler merge/finalization, engine-loop fallback,
+buffered/detail conversion, live phase rewriting, and final output conversion
+preserve it. This is host metadata only and does not alter model math, token
+selection, or kernel dispatch.
+
+When `stream_options.include_hipengine=true`, final completion/chat done choices
+now include `choices[].hipengine.generated_token_ids` and `generated_tokens`
+when the final backend chunk supplies exact IDs. Capabilities advertise
+`choice_generated_token_ids=done_event_when_backend_supplies_exact_ids`.
+Buffered validated tool argument fragments remain public-fragment timing, so the
+new exact response denominator does not manufacture per-token ITL.
+
+A1 now reads only IDs observed in the measured SSE response, validates their
+count, and requires exact sequence equality to the independent blocking oracle.
+A matching row records `generated_token_ids_source=response` and
+`sse_exact_ids_observed=true`; drift is rejected. Backends that omit IDs retain
+the explicit `matched_nonstreaming_oracle` diagnostic source and remain
+ineligible for an exact-token performance claim.
+
+RED/GREEN and validation:
+
+```bash
+python3 -m pytest -q \
+  tests/test_generation_registry.py::test_generation_stream_chunk_preserves_token_logprobs \
+  tests/test_server_api.py::test_streaming_chat_tool_done_exposes_response_owned_generated_ids \
+  tests/test_agentic_coding_live.py::test_sse_normalizer_uses_exact_response_ids_and_rejects_oracle_drift
+# RED: 3 failed
+# GREEN: 3 passed
+python3 -m pytest -q tests/test_server_api.py
+# 503 passed
+python3 -m pytest -q tests/test_generation_registry.py \
+  tests/test_agentic_coding_live.py tests/test_agentic_coding_benchmark.py \
+  tests/test_generation_qwen35_gguf_sampling.py
+# 99 passed
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -k \
+  'resident_scheduler_record_generated_events_emit_decode_telemetry or \
+   resident_scheduler_reuses_complete_runner_stream_chunk or \
+   resident_engine_loop_token_events_carry_stream_telemetry or \
+   submit_poll_text_generator_preserves_stream_detailed_telemetry or \
+   submit_poll_text_generator_preserves_generate_detailed_telemetry_for_stream'
+# 5 passed
+ruff check hipengine/benchmark/agentic_live.py hipengine/generation/registry.py \
+  hipengine/generation/engine_loop.py hipengine/generation/batch_scheduler.py \
+  hipengine/generation/qwen35_gguf.py hipengine/server/api.py \
+  tests/test_agentic_coding_live.py tests/test_generation_registry.py \
+  tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py
+# All checks passed
+```
+
+No GPU run or benchmark result was retained. Next: commit this API/collector
+unit, launch the viable W7900 4K/c1 cache-off server, run A6 quality, and rerun
+A1 deterministic collection with the quality/performance lanes kept separate.

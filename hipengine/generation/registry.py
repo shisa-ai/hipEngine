@@ -872,12 +872,13 @@ class GenerationOutput:
 
 @dataclass(frozen=True)
 class GenerationStreamChunk:
-    """Incremental generated text plus optional live backend metadata."""
+    """Incremental text plus optional cumulative generated-ID/backend metadata."""
 
     text: str
     token_logprobs: tuple[TokenLogprob, ...] = ()
     finish_details: FinishDetails | None = None
     telemetry: GenerationTelemetry | None = None
+    generated_token_ids: tuple[int, ...] | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "text", str(self.text))
@@ -886,6 +887,11 @@ class GenerationStreamChunk:
             object.__setattr__(self, "finish_details", FinishDetails.from_value(self.finish_details))
         if self.telemetry is not None:
             object.__setattr__(self, "telemetry", GenerationTelemetry.from_value(self.telemetry))
+        if self.generated_token_ids is not None:
+            token_ids = tuple(int(token_id) for token_id in self.generated_token_ids)
+            if any(token_id < 0 for token_id in token_ids):
+                raise ValueError("generated_token_ids must contain non-negative integers")
+            object.__setattr__(self, "generated_token_ids", token_ids)
 
     @classmethod
     def from_value(cls, value: Any) -> "GenerationStreamChunk":
@@ -897,6 +903,7 @@ class GenerationStreamChunk:
                 token_logprobs=tuple(value.get("token_logprobs", ()) or ()),
                 finish_details=value.get("finish_details"),
                 telemetry=value.get("telemetry"),
+                generated_token_ids=value.get("generated_token_ids"),
             )
         return cls(text=str(value))
 

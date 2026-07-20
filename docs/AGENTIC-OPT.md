@@ -436,16 +436,17 @@ A1 collection is implemented by `hipengine/benchmark/agentic_live.py` and
 - polls readiness, sessions/continuations, and KV refs/pins to close final
   ownership before A0 accepts the packet.
 
-Current validated tool SSE is often a safely buffered public projection rather
-than one event per generated model token. Such turns are explicitly labeled
-`token_timing_mode=buffered_public`; the candidate IDs are labeled
-`generated_token_ids_source=matched_nonstreaming_oracle` and
-`sse_exact_ids_observed=false`, and ITL is withheld instead of assigning
-fabricated per-token timestamps. Oracle/tool equality is useful diagnostic
-coverage, but it does **not** satisfy the retained exact-SSE-ID gate. A retained
-performance row requires the measured response to expose its own exact IDs, and
-a retained ITL row additionally requires `live_exact` lower-loop events. The
-first diagnostic command is:
+Validated tool SSE is often a safely buffered public projection rather than one
+event per generated model token. Such turns are explicitly labeled
+`token_timing_mode=buffered_public`, and ITL is withheld instead of assigning
+fabricated per-token timestamps. A1 now consumes cumulative response-owned IDs
+from the final SSE done choice, requires exact equality to the independent
+non-streaming oracle, and records `generated_token_ids_source=response` with
+`sse_exact_ids_observed=true`. If a backend omits the final IDs, the old
+`matched_nonstreaming_oracle`/false row remains diagnostic and cannot support a
+retained exact-token performance claim. Exact response IDs make the denominator
+valid; a retained ITL row additionally requires `live_exact` lower-loop events.
+The first diagnostic command is:
 
 ```bash
 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
@@ -570,7 +571,47 @@ ruff check hipengine/benchmark/agentic_quality.py \
 # All checks passed
 ```
 
-Next: expose exact response-owned generated IDs on the measured tool SSE done
-event, consume them in A1 with strict oracle equality, then run the A6 c1 quality
-packet and retry the deterministic c1 performance lane without conflating their
-acceptance rules.
+Next: run the A6 c1 quality packet and retry the deterministic c1 performance
+lane with response-owned SSE IDs, without conflating their acceptance rules.
+
+## 2026-07-20 — Expose response-owned exact IDs on tool SSE
+
+`GenerationStreamChunk` now carries an optional cumulative
+`generated_token_ids` tuple. Final GGUF direct, resident, and scheduler-chunk
+stream events populate and preserve it without copying the growing ID history on
+every intermediate token; generic resident scheduling, stream
+coercion, buffered/detail projection, phase rewriting, and final output
+conversion no longer drop it. With `stream_options.include_hipengine=true`, the
+final completion/chat SSE done choice publishes `generated_token_ids` and
+`generated_tokens` when the final backend chunk supplies exact IDs. Capabilities
+advertise this as
+`choice_generated_token_ids=done_event_when_backend_supplies_exact_ids`.
+
+A1 reads only response IDs actually present in SSE, checks their count and exact
+sequence against the independent blocking oracle, and rejects drift before
+normalizing a record. Successful exact-ID tool streams use `source=response`
+and `sse_exact_ids_observed=true`. Buffered tool arguments remain
+`token_timing_mode=buffered_public`: exact IDs repair the throughput denominator,
+not ITL resolution. Backends that omit IDs retain the prior explicit diagnostic
+oracle source rather than receiving fabricated response provenance.
+
+RED/GREEN and validation:
+
+```bash
+python3 -m pytest -q \
+  tests/test_generation_registry.py::test_generation_stream_chunk_preserves_token_logprobs \
+  tests/test_server_api.py::test_streaming_chat_tool_done_exposes_response_owned_generated_ids \
+  tests/test_agentic_coding_live.py::test_sse_normalizer_uses_exact_response_ids_and_rejects_oracle_drift
+# RED: 3 failed
+# GREEN: 3 passed
+python3 -m pytest -q tests/test_server_api.py
+# 503 passed
+python3 -m pytest -q tests/test_generation_registry.py \
+  tests/test_agentic_coding_live.py tests/test_agentic_coding_benchmark.py \
+  tests/test_generation_qwen35_gguf_sampling.py
+# 99 passed
+```
+
+No W7900 run or performance result has been retained yet. The next execution is
+the same viable 4K/c1 server followed by A6 quality and A1 deterministic
+collection; C4/C8 remains a separate startup-capacity blocker.

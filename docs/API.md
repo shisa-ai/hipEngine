@@ -175,11 +175,15 @@ Non-streaming responses bind the accepted input without echoing its contents:
 }
 ```
 
-This object is at `hipengine.prompt_token_accounting`; exact outputs remain at
-`hipengine.token_accounting.choice_generated_token_ids`. Streaming token counts
-and timing are available with `stream_options.include_hipengine`; clients that
-need an exact generated-ID oracle should retain the non-streaming response.
-Capabilities advertise the contract under `features.exact_token_prompts`.
+This object is at `hipengine.prompt_token_accounting`; exact non-streaming
+outputs remain at `hipengine.token_accounting.choice_generated_token_ids`.
+Streaming token counts and timing are available with
+`stream_options.include_hipengine`; when the backend supplies cumulative exact
+IDs, the final SSE done choice also includes
+`choices[].hipengine.generated_token_ids` and `generated_tokens`. The field is
+omitted rather than retokenized when unavailable. Capabilities advertise the
+prompt contract under `features.exact_token_prompts` and the SSE surface under
+`features.stream_metadata.choice_generated_token_ids`.
 
 ### Chat completion
 
@@ -285,10 +289,16 @@ when a live stream chunk or final buffered response provides them, for example
 `backend_prefill_ms` and `backend_decode_ms`. It also includes `routing`
 metadata for the current single-model exact route. Choice chunks also get
 `choices[].hipengine.phase` (`think`, `answer`, `tool_call`, `structured`, or
-`done`) when a phase is known. Structured phases are server-authored final
-metadata for buffered result-validation streams; they are not decode-time
-grammar enforcement. When the served engine exposes `count_tokens`, live and
-buffered stream deltas also include `choices[].hipengine.tokens` with
+`done`) when a phase is known. A final done choice gets the cumulative
+backend-authored `generated_token_ids` and `generated_tokens` when its final
+`GenerationStreamChunk` or buffered `GenerationOutput` supplies exact IDs.
+These IDs describe the measured response even when validated tool arguments are
+published later as buffered fragments; they do not imply one public event per
+model token or make public-fragment ITL exact. Structured phases are
+server-authored final metadata for buffered result-validation streams; they are
+not decode-time grammar enforcement. When the served engine exposes
+`count_tokens`, live and buffered stream deltas also include
+`choices[].hipengine.tokens` with
 `delta_tokens`, cumulative `streamed_tokens`, and phase counters such as
 `reasoning_tokens` / `answer_tokens`; final choice chunks include usage-derived
 `prompt_tokens`, `completion_tokens`, and `total_tokens` in the same object.
@@ -371,9 +381,10 @@ available.
 
 The `/v1/hipengine/capabilities` manifest reports the same extension under
 `features.stream_metadata`, including metadata version, event names, timing
-field names plus the `backend_*` namespace for backend-authored timing,
-token-accounting/decode-state scopes (`live_delta`, `buffered_delta`, and
-`final_choice` when tokenizer counting is available), and
+field names plus the `backend_*` namespace for backend-authored timing, the
+`choice_generated_token_ids=done_event_when_backend_supplies_exact_ids`
+surface, token-accounting/decode-state scopes (`live_delta`, `buffered_delta`,
+and `final_choice` when tokenizer counting is available), and
 backend telemetry scopes (`live_chunk`, `buffered_delta_safe_decode_state`, and
 `buffered_done`) for engines that emit `GenerationStreamChunk` or
 `GenerationOutput` telemetry. `features.stream_metadata.live_many_chunks`
@@ -404,9 +415,12 @@ those signals.
 ### Exact generated-token accounting
 
 `GenerationOutput.generated_token_ids` is the authoritative completion-token
-sequence for non-streaming generation. Qwen3.5/Qwen3.6 PARO and GGUF generators
-populate it for greedy, sampled, packed, serial-fallback, and speculative MTP
-results, including a known-empty tuple when `max_tokens=0`.
+sequence for non-streaming generation. `GenerationStreamChunk.generated_token_ids`
+is the optional cumulative sequence through that live chunk; when present on
+the final chunk, it is the authoritative SSE response sequence. Qwen3.5/Qwen3.6
+PARO and GGUF generators populate exact output IDs for greedy, sampled, packed,
+serial-fallback, and speculative MTP results, including a known-empty tuple when
+`max_tokens=0`; the GGUF live/resident stream paths also carry cumulative IDs.
 
 When every choice carries exact IDs, non-streaming completion and chat responses
 include `choices[].hipengine.generated_token_ids` and `generated_tokens`, plus a
