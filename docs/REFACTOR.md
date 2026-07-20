@@ -410,26 +410,28 @@ should be boring.
   mmvq/T16 replacement layout or row-amortized verifier kernel. This callable is
   evidence, not a performance path; do not route it into `llama-compat` runtime.
 
-## `HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE` (diagnostic rejected)
-- Added 2026-07-01. Default-off runtime hook for the exact Q8T16
-  `attn_qkv+attn_gate` pair rowtile diagnostic. Setting
+## `HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE` (gfx1151 C8 rollback; verifier diagnostic)
+- Added 2026-07-01 as a default-off verifier diagnostic. Setting
   `HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE=1` routes the qwen35
   `rows>1, in=2048, out=(8192,4096)` pair through
-  `gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out` at 64 threads.
-- Purpose: test whether llama.cpp-style row amortization closes the verifier
-  pair gap while preserving exact arithmetic. Correctness is bit-identical to
-  the existing exact pair, including the large qwen35 pair fixture. The isolated
-  microbench was positive (`rows=2/3/4/5/6` exact 128:
-  **179.75/207.70/236.41/265.87/298.97 us** vs rowtile4-64:
-  **154.05/170.55/191.16/254.19/271.06 us**) and same-code smoke improved
-  **66.00 -> 67.14 tok/s**, but the full-suite llama-compat row rejected it:
-  **59.63 -> 57.25 tok/s**, `target_block_verify_total`
-  **13.178 -> 13.697 ms/output**.
-- Remove when: the parity sprint moves Q8 verifier work to a true llama-style
-  layout/scheduler port, or after another full-suite row confirms this exact
-  verifier route remains non-retainable. Default llama-compat and packed AR
-  remain on the existing exact pair wrapper; packed AR may select this body
-  only through the explicit diagnostic env hook.
+  `gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out`. The rowtile now uses
+  128 threads to preserve the production reduction partition. The original
+  64-thread micro was faster, but a model-hidden oracle found one-BF16-ULP drift
+  on the first packed-AR transition (first at layers 13/4 for the two c2 rows),
+  explaining the prior full-horizon trajectory rejection.
+- gfx1151 package metadata now selects the repaired pair route automatically
+  only at physical C8. C2/C4 and gfx1100 retain per-row Q8T16. The 128-thread
+  qwen35 pair micro improves C2/C4/C8 **185.53/232.02/340.12 ->
+  161.94/202.15/323.99 us**; the dirty-tree C8 screen is exact and stable at
+  **133.792/133.796/133.930 tok/s** versus retained **133.251**. Broad or
+  lower-width promotion is rejected because C2/C4 regress at model scale.
+  `HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE=0` is the package-default rollback;
+  explicit `=1` remains a diagnostic for other row widths and MTP.
+- Remove when: the physical-C8 default has survived one release window and a
+  retained server refresh, at which point remove the rollback but keep the
+  package width capability; or remove the route if the clean committed gate
+  does not confirm the diagnostic win. Do not promote verifier/lower-width use
+  without an independent full-horizon gate.
 
 ## `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL` (diagnostic rejected)
 - Added 2026-07-01 as a default-off runtime hook for broad exact Q8T16 verifier
@@ -442,19 +444,19 @@ should be boring.
   the exact singleton/pair/triple wrappers and its B2 profile moved dense Q8
   **11.420 -> 10.811 ms/block**, but async llama-compat moved **68.78 -> 68.54
   tok/s** with identical acceptance.
-- F3 re-evaluated the same bodies for native packed AR c2/c4/c8. A clean
-  p512/d64 screen looked positive and exact: c4 **108.143 -> 109.467 (+1.22%)**
-  and c8 **133.268 -> 136.887 (+2.72%)**. The required clean p512/d128 gate then
-  rejected promotion. Candidate c4/c8 reached **109.189/136.727 tok/s**, but the
-  second canonical prompt changed from trajectory hash `c74a91f8...` to
-  `60f7baab...` consistently at c2/c4/c8. Pair-only rowtiling also diverged to
-  a third hash, `745e4e13...`, so there is no exact narrower promotion.
-- `GGUF_Q8_T16_DECODE_ROWTILE_ALL` is false on both gfx11 backend packages.
-  `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL=1` and
-  `HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE=1` remain explicit diagnostics only.
-  Remove the hooks when the rowtile bodies are replaced by a trajectory-exact
-  schedule, or when this investigation is archived. Do not promote either AR
-  or MTP without a new full-horizon correctness gate.
+- F3 re-evaluated the original 64-thread bodies for native packed AR c2/c4/c8.
+  A clean p512/d64 screen looked positive, but p512/d128 changed one prompt's
+  trajectory at every packed width. The later model-hidden oracle localized the
+  cause to 64-thread reduction order, not cross-row weight reuse. Moving all
+  rowtiles to the production 128-thread partition makes the first-transition
+  model-hidden gate exact, but broad all-projection model wall remains neutral
+  or negative: C2/C4/C8 **77.940/107.798/133.377 tok/s** versus retained
+  **78.552/108.050/133.251**. Therefore all-projection promotion stays rejected;
+  only the separately scoped physical-C8 pair above is eligible.
+- `GGUF_Q8_T16_DECODE_ROWTILE_ALL` is false on both gfx11 backend packages and
+  `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL=1` remains diagnostic-only at 128 threads.
+  Remove this broad hook when the investigation is archived. Do not promote it
+  for AR or MTP without a new full-horizon correctness and performance gate.
 
 ## `HIPENGINE_GGUF_Q6_TOP1_STAGE1_SHAPE=row` / row Q6 top-1 routes (diagnostic rejected)
 - Added 2026-07-01. Bench flag

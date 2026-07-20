@@ -680,7 +680,7 @@ def test_q8_t16_dual_split_rowtile4_matches_exact_qwen35_attention_pair_shape(q8
         out_features_b,
         np.uint16,
         q8_t16_library,
-        threads=64,
+        threads=128,
     )
     expected_a, expected_b = _run_dual_split(
         gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out,
@@ -735,7 +735,7 @@ def test_q8_t16_triple_rowtile4_matches_exact_triple(
         out_features_c,
         np.uint16,
         q8_t16_library,
-        threads=64,
+        threads=128,
     )
     expected_a, expected_b, expected_c = _run_triple_split(
         gguf_q8_0_t16_triple_gemv_decode_bf16_bf16_out,

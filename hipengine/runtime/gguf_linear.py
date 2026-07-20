@@ -116,8 +116,13 @@ _WMMA_PREFILL_QUANT_BLOCKS: Mapping[str, int] = {
 # thread-width hook stays separate from selected-MoE T16 dp4a scheduling.
 _Q8_T16_THREADS_ENV = "HIPENGINE_GGUF_Q8_T16_THREADS"
 _Q8_T16_ALLOWED_THREADS = frozenset({64, 128})
+# Match the production Q8T16 per-output reduction partition. The earlier
+# 64-thread rowtile rounded synthetic fixtures identically but diverged by one
+# BF16 ULP on real packed-AR activations.
+_Q8_T16_ROWTILE_THREADS = 128
 _Q8_T16_PAIR_ROWTILE_ENV = "HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE"
 _Q8_T16_ROWTILE_ALL_ENV = "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL"
+_q8_t16_pair_rowtile_min_rows_session: int | None = None
 _q8_t16_rowtile_all_session_enabled: bool | None = None
 _Q8_T16_QWEN35_ATTN_QKV_OUT = 8192
 _Q8_T16_QWEN35_ATTN_GATE_OUT = 4096
@@ -295,6 +300,27 @@ def _q8_t16_threads_override_active(threads: int = 0) -> bool:
     return int(threads) != 0 or bool(os.environ.get(_Q8_T16_THREADS_ENV, "").strip())
 
 
+def set_q8_t16_pair_rowtile_min_rows(min_rows: int | None) -> None:
+    """Set the owner-scoped minimum width for exact Q8T16 pair rowtiling."""
+
+    global _q8_t16_pair_rowtile_min_rows_session
+    if min_rows is not None and int(min_rows) < 0:
+        raise ValueError("Q8T16 pair rowtile minimum rows must be non-negative")
+    _q8_t16_pair_rowtile_min_rows_session = None if min_rows is None else int(min_rows)
+
+
+@contextlib.contextmanager
+def q8_t16_pair_rowtile_min_rows_session(min_rows: int | None) -> Iterator[None]:
+    """Temporarily apply a backend-certified Q8T16 pair-rowtile width floor."""
+
+    previous = _q8_t16_pair_rowtile_min_rows_session
+    set_q8_t16_pair_rowtile_min_rows(min_rows)
+    try:
+        yield
+    finally:
+        set_q8_t16_pair_rowtile_min_rows(previous)
+
+
 def set_q8_t16_rowtile_all_enabled(enabled: bool | None) -> None:
     """Set the packed-AR scoped Q8T16 row-amortized decode policy."""
 
@@ -323,10 +349,13 @@ def _resolve_use_q8_t16_all_rowtile() -> bool:
     return False
 
 
-def _resolve_use_q8_t16_pair_rowtile() -> bool:
+def _resolve_use_q8_t16_pair_rowtile(*, rows: int) -> bool:
     raw = os.environ.get(_Q8_T16_PAIR_ROWTILE_ENV, "")
     if raw:
         return raw.strip().lower() in {"1", "true", "yes", "on"}
+    min_rows = _q8_t16_pair_rowtile_min_rows_session
+    if min_rows is not None and min_rows > 0 and rows >= min_rows:
+        return True
     return _resolve_use_q8_t16_all_rowtile()
 
 
@@ -358,7 +387,7 @@ def _use_q8_t16_pair_rowtile(
         and out_features_a == _Q8_T16_QWEN35_ATTN_QKV_OUT
         and out_features_b == _Q8_T16_QWEN35_ATTN_GATE_OUT
         and not _q8_t16_threads_override_active(threads)
-        and _resolve_use_q8_t16_pair_rowtile()
+        and _resolve_use_q8_t16_pair_rowtile(rows=rows)
     )
 
 
@@ -656,7 +685,7 @@ def launch_gguf_linear(
             rows,
             in_features,
             out_features,
-            threads=64,
+            threads=_Q8_T16_ROWTILE_THREADS,
             **kwargs,
         )
         return
@@ -823,7 +852,7 @@ def launch_gguf_linear_pair(
                 in_features,
                 out_features,
                 out_features_b,
-                threads=64,
+                threads=_Q8_T16_ROWTILE_THREADS,
                 stream=stream,
                 runtime=runtime,
             )
@@ -1037,7 +1066,7 @@ def launch_gguf_linear_triple(
                 out_features,
                 out_features_b,
                 out_features_c,
-                threads=64,
+                threads=_Q8_T16_ROWTILE_THREADS,
                 stream=stream,
                 runtime=runtime,
             )

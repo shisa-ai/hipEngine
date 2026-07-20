@@ -705,9 +705,64 @@ def test_t16_pair_qwen35_rows_gt1_routes_to_rowtile4_when_opted_in(monkeypatch) 
         (
             "rowtile4",
             (100, 14, 14, 200, 300, 3, 2048, 8192, 4096),
-            {"threads": 64, "stream": 7, "runtime": "runtime-sentinel"},
+            {"threads": 128, "stream": 7, "runtime": "runtime-sentinel"},
         )
     ]
+
+
+def test_t16_pair_rowtile_session_scopes_exact_c8_width(monkeypatch) -> None:
+    weight_a = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
+    weight_b = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16, quant_key="gguf_q8_0_t16_v1")
+    import hipengine.runtime.gguf_linear as gl
+
+    monkeypatch.delenv("HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL", raising=False)
+    gl.clear_gguf_linear_dispatch_cache()
+    calls: list[tuple[str, int, int]] = []
+
+    def fake_exact(*args, **kwargs):
+        calls.append(("exact", int(args[5]), int(kwargs["threads"])))
+
+    def fake_rowtile(*args, **kwargs):
+        calls.append(("rowtile4", int(args[5]), int(kwargs["threads"])))
+
+    original_exact = gl.gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out
+    original_rowtile = gl.gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out
+    gl.gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out = fake_exact  # type: ignore[assignment]
+    gl.gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out = fake_rowtile  # type: ignore[assignment]
+    try:
+        with gl.q8_t16_pair_rowtile_min_rows_session(8):
+            for rows in (4, 8):
+                assert launch_gguf_linear_pair(
+                    weight_a,
+                    weight_b,
+                    x_ptr=100,
+                    out_a_ptr=200,
+                    out_b_ptr=300,
+                    rows=rows,
+                    in_features=2048,
+                    out_features=8192,
+                    out_features_b=4096,
+                )
+        monkeypatch.setenv("HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE", "0")
+        with gl.q8_t16_pair_rowtile_min_rows_session(8):
+            assert launch_gguf_linear_pair(
+                weight_a,
+                weight_b,
+                x_ptr=100,
+                out_a_ptr=200,
+                out_b_ptr=300,
+                rows=8,
+                in_features=2048,
+                out_features=8192,
+                out_features_b=4096,
+            )
+    finally:
+        gl.gguf_q8_0_t16_dual_gemv_decode_bf16_bf16_out = original_exact  # type: ignore[assignment]
+        gl.gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out = original_rowtile  # type: ignore[assignment]
+        gl.clear_gguf_linear_dispatch_cache()
+
+    assert calls == [("exact", 4, 0), ("rowtile4", 8, 128), ("exact", 8, 0)]
 
 
 def test_t16_pair_rowtile_opt_out_keeps_exact_wrapper(monkeypatch) -> None:
@@ -796,7 +851,7 @@ def test_t16_single_qwen35_rows_gt1_routes_to_rowtile4_when_all_opted_in(monkeyp
         (
             "rowtile4",
             (100, 14, 200, 3, 2048, 4096),
-            {"threads": 64, "stream": 7, "runtime": "runtime-sentinel"},
+            {"threads": 128, "stream": 7, "runtime": "runtime-sentinel"},
         )
     ]
 
@@ -952,7 +1007,7 @@ def test_t16_triple_qwen35_rows_gt1_routes_to_rowtile4_when_all_opted_in(monkeyp
         (
             "rowtile4",
             (100, 14, 14, 14, 200, 300, 400, 3, 2048, 4096, 1024, 1024),
-            {"threads": 64, "stream": 7, "runtime": "runtime-sentinel"},
+            {"threads": 128, "stream": 7, "runtime": "runtime-sentinel"},
         )
     ]
 
