@@ -18,6 +18,7 @@ AUTO_QUANT = "auto"
 _ENGINE_LOOP_GENERATOR_DEFAULT_ENVS = {
     "prefill_decode_policy": "HIPENGINE_PREFILL_DECODE_POLICY",
     "max_prefill_chunk_tokens": "HIPENGINE_MAX_PREFILL_CHUNK_TOKENS",
+    "fair_prefill_burst_chunks": "HIPENGINE_FAIR_PREFILL_BURST_CHUNKS",
 }
 
 

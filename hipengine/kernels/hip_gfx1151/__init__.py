@@ -53,6 +53,10 @@ GGUF_Q8_T16_DECODE_ROWTILE_ALL = False
 # prior engine-loop defaults until independently gated.
 GGUF_Q4_K_M_PREFILL_DECODE_POLICY = "fair"
 GGUF_Q4_K_M_MAX_PREFILL_CHUNK_TOKENS = 256
+# Bound fair scheduling to two consecutive 256-token chunks so one p512 row
+# becomes decode-ready per interruption instead of paying two partial-width
+# decode ticks. The package selector keeps other quants/backends at one chunk.
+GGUF_Q4_K_M_FAIR_PREFILL_BURST_CHUNKS = 2
 # F3/F2 prove true physical-c8 GGUF AR and exact live ownership. The OpenAI
 # coalescer may therefore submit eight plain-AR requests to this registry entry;
 # speculative MTP keeps its separately certified four-request cap.
@@ -200,6 +204,7 @@ __all__ = [
     "GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT",
     "GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS",
     "GGUF_PREFILL_ROUTER_SELECT_THREADS",
+    "GGUF_Q4_K_M_FAIR_PREFILL_BURST_CHUNKS",
     "GGUF_Q4_K_M_MAX_PREFILL_CHUNK_TOKENS",
     "GGUF_Q4_K_M_PREFILL_DECODE_POLICY",
     "GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS",

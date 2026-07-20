@@ -47,6 +47,7 @@ class EngineLoopConfig:
     prefill_decode_policy: str = "protect_decode"
     max_active_requests: int | None = None
     max_prefill_chunk_tokens: int = DEFAULT_MAX_PREFILL_CHUNK_TOKENS
+    fair_prefill_burst_chunks: int = 1
     kv_pool_initial_pages: int = DEFAULT_KV_POOL_INITIAL_PAGES
     kv_pool_low_water_pages: int = DEFAULT_KV_POOL_LOW_WATER_PAGES
     kv_pool_high_water_pages: int | None = None
@@ -62,6 +63,8 @@ class EngineLoopConfig:
             raise ValueError("max_active_requests must be positive when set")
         if self.max_prefill_chunk_tokens <= 0:
             raise ValueError("max_prefill_chunk_tokens must be positive")
+        if self.fair_prefill_burst_chunks <= 0:
+            raise ValueError("fair_prefill_burst_chunks must be positive")
         if self.kv_pool_initial_pages <= 0:
             raise ValueError("kv_pool_initial_pages must be positive")
         if self.kv_pool_low_water_pages <= 0:
@@ -989,6 +992,12 @@ def add_engine_loop_config_args(
         help="Maximum prefill chunk tokens per loop tick (env HIPENGINE_MAX_PREFILL_CHUNK_TOKENS; default: 256)",
     )
     parser.add_argument(
+        "--fair-prefill-burst-chunks",
+        type=_positive_int_arg,
+        default=_env_positive_int(env, "HIPENGINE_FAIR_PREFILL_BURST_CHUNKS", 1),
+        help="Maximum consecutive prefill chunks while fair scheduling has decode work (env HIPENGINE_FAIR_PREFILL_BURST_CHUNKS; default: 1)",
+    )
+    parser.add_argument(
         "--kv-pool-initial-pages",
         type=_positive_int_arg,
         default=_env_positive_int(env, "HIPENGINE_KV_POOL_INITIAL_PAGES", DEFAULT_KV_POOL_INITIAL_PAGES),
@@ -1047,6 +1056,7 @@ def engine_loop_config_from_args(args: object) -> EngineLoopConfig:
             else int(getattr(args, "max_active_requests"))
         ),
         max_prefill_chunk_tokens=int(getattr(args, "max_prefill_chunk_tokens")),
+        fair_prefill_burst_chunks=int(getattr(args, "fair_prefill_burst_chunks")),
         kv_pool_initial_pages=int(getattr(args, "kv_pool_initial_pages")),
         kv_pool_low_water_pages=int(getattr(args, "kv_pool_low_water_pages")),
         kv_pool_high_water_pages=(
@@ -1173,7 +1183,9 @@ class ResidentEngineLoop:
         self.prefill_chunk_size = int(resolved_config.max_prefill_chunk_tokens)
         self.config = resolved_config
         self.prefill_decode_policy = resolved_config.prefill_decode_policy
+        self.fair_prefill_burst_chunks = int(resolved_config.fair_prefill_burst_chunks)
         self._last_work_kind: WorkKind | None = None
+        self._consecutive_prefill_chunks = 0
         self.scheduler = ResidentBatchScheduler(
             capacity=resolved_capacity,
             context_bucket_size=context_bucket_size,
@@ -1200,6 +1212,8 @@ class ResidentEngineLoop:
         snapshot["scheduler_policy"] = {
             "prefill_decode_policy": self.prefill_decode_policy,
             "prefill_chunk_tokens": int(self.prefill_chunk_size),
+            "fair_prefill_burst_chunks": int(self.fair_prefill_burst_chunks),
+            "consecutive_prefill_chunks": int(self._consecutive_prefill_chunks),
             "last_work_kind": (
                 None if self._last_work_kind is None else self._last_work_kind.value
             ),
@@ -1301,7 +1315,16 @@ class ResidentEngineLoop:
             return True
         if self.prefill_decode_policy == "protect_ttft":
             return False
-        return self._last_work_kind is WorkKind.PREFILL
+        # A multi-chunk interruption only earns its ITL cost when more than one
+        # prompt remains: completing the current row then forms a wider group
+        # while another prompt can use the next burst. Lone staggered arrivals
+        # retain strict one-chunk fair alternation.
+        burst_limit = (
+            self.fair_prefill_burst_chunks
+            if self.scheduler.prefill_request_count() > 1
+            else 1
+        )
+        return self._consecutive_prefill_chunks >= burst_limit
 
     def _run_prefill(self, work: WorkItem) -> tuple[EngineLoopEvent, ...]:
         start = time.perf_counter()
@@ -1312,6 +1335,7 @@ class ResidentEngineLoop:
             self.runner.prefill(work)
         self.scheduler.record_work_duration(work, time.perf_counter() - start)
         self._last_work_kind = work.kind
+        self._consecutive_prefill_chunks += 1
         return (EngineLoopEvent(kind="work", request_ids=work.request_ids, work_kind=work.kind),)
 
     def _run_decode(self, work: WorkItem) -> tuple[EngineLoopEvent, ...]:
@@ -1324,6 +1348,7 @@ class ResidentEngineLoop:
         self.scheduler.record_work_duration(work, time.perf_counter() - start)
         generated_events = self.scheduler.record_generated_events(generated)
         self._last_work_kind = work.kind
+        self._consecutive_prefill_chunks = 0
         events = [EngineLoopEvent(kind="work", request_ids=work.request_ids, work_kind=work.kind)]
         for token_event in generated_events:
             events.append(
