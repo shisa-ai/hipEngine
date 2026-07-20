@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_q8t16_f32_rowtile_rejected",
+  "created_at": "2026-07-20T22:20:00+09:00",
+  "status": "rejected_exact_primitive_regression",
+  "passed": false,
+  "performance_claim": false,
+  "decision": "remove F32-input Q8T16 rowtile2/rowtile4 diagnostics; retain the production per-row 128-thread kernel",
+  "hardware": {
+    "host": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "gpu_max_hw_queues": 1,
+    "tuned_profile": "accelerator-performance"
+  },
+  "software": {
+    "base_commit": "7d6d76ef",
+    "rocm": "HIP 7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "model_context": {
+    "model": "Qwen3.6-35B-A3B UD-Q4_K_M GGUF",
+    "leaf": "30 linear-attention ssm_out F32-input/BF16-output Q8T16 projections",
+    "canonical_profile": "benchmarks/results/2026-07-20-gfx1151-gguf-f3e-c8-family-profile.json",
+    "profiled_leaf_time_ms": 3.384,
+    "profiled_leaf_dispatches": 30
+  },
+  "microbench": {
+    "shape": {
+      "rows": 8,
+      "in_features": 4096,
+      "out_features": 2048,
+      "threads": 128,
+      "warmups": 20,
+      "iterations": 100,
+      "weight_pool_copies": 8,
+      "weight_pool_bytes": 71303168
+    },
+    "timing_us": {
+      "production_per_row": 111.26463999971747,
+      "rowtile2": 111.69965961016715,
+      "rowtile4": 130.39651967119426
+    },
+    "delta_percent": {
+      "rowtile2": 0.3909774124562615,
+      "rowtile4": 17.194932434532095
+    },
+    "speedup": {
+      "rowtile2": 0.9961054526757924,
+      "rowtile4": 0.8532792154290665
+    },
+    "output_bits_exact": {
+      "rowtile2": true,
+      "rowtile4": true
+    },
+    "raw_bytes": 880,
+    "raw_sha256": "73085cd6916297d0e532506506b4848f44093dab3821dd641329001b92a70744"
+  },
+  "reason": "The production grid exposes eight row blocks per output tile and hardware caching already services shared matrix lines efficiently. Rowtile2 is neutral-negative and rowtile4 loses enough grid parallelism/register occupancy to regress 17.2%; neither can improve full-model wall.",
+  "code_disposition": {
+    "candidate_kernel_exports_removed": true,
+    "candidate_python_wrappers_removed": true,
+    "candidate_tests_removed": true,
+    "candidate_microbench_removed": true,
+    "runtime_route_added": false,
+    "env_flag_added": false
+  },
+  "next": "Inspect exact output-column/K-partition scheduling for the dominant qkv+gate rowtile, then move to independent LM-head/state families if no bounded dense candidate remains.",
+  "limitations": [
+    "This is a primitive rejection, not a retained throughput row.",
+    "Profiler durations are diagnostic and only identify the leaf's Amdahl share.",
+    "No server run was warranted because both candidate leaf kernels regressed before runtime routing."
+  ]
+}
