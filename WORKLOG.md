@@ -170339,3 +170339,91 @@ and changelog now promote the blocker to a completed diagnostic while keeping
 timing explicitly diagnostic and non-promotable. Next: solve startup capacity
 and run the full A1 C1/C4/C8 plus medium/growing-history repeated baseline
 before A2 prefix A/B.
+
+## 2026-07-20 — Localize and repair the A1 c4 sampled-KV capacity path
+
+Audited the prior 4K/c8 OOM instead of bypassing the startup guard. The missing
+clean `fee9ee85` 4K/c4 point used the same server protocol as the completed c1
+smoke except `--max-active-requests 4`. The unchanged 4,095-token scratch probe
+passed in `81.427 s`, including packed AR width-2/4 warmup, with `37.43 GiB`
+used / `7.56 GiB` free. Thus c4 is physically viable; the old c8 failure came
+from probing beyond the registered plain-AR physical route ceiling of four.
+
+The first c4 collector attempt failed closed before producing records or an A1
+artifact. A focused host RED proved that startup used admission width eight even
+though `server_plain_ar_max_active_requests=4`; its MTP-enabled control stayed
+green. Runtime localization then showed exactly one base-allocation row stayed
+correct while shifted rows either repeated the forced schema prefix or were
+cancelled. Sampled resident prefill, unlike greedy resident prefill, always used
+the raw KV base.
+
+Implemented the model-general repair:
+
+- shifted sampled allocations use `prefill_batch_native` and the scheduler-owned
+  block table instead of raw-cache prefill;
+- packed prefill supports `return_logits=True`, copies one finite FP32 vocabulary
+  row per slot, and preserves the existing host sampling processors/seed/state;
+- long shifted-contiguous chunks use their per-session slot-local AOTriton cache
+  view, while non-contiguous paged scatter remains rejected at context >= 1,024;
+- startup scratch width clamps to the registered plain-AR route ceiling unless
+  a configured MTP route is actually available. The probe remains enabled and
+  MTP startup-warmup request semantics are unchanged.
+
+RED/GREEN fixtures:
+
+```bash
+python3 -m pytest -q tests/test_generation_qwen35_gguf_sampling.py \
+  -k 'sampled_prefill_rebases_shifted_dynamic_kv_through_packed_path or full_prefill_rebases_reused_dynamic_kv_through_packed_path'
+python3 -m pytest -q tests/test_server_api.py \
+  -k 'startup_scratch_probe_clamps_to_registered_plain_ar_route_width or startup_scratch_probe_keeps_admission_width_for_enabled_mtp_route or startup_scratch_probe_uses_max_active_request_width'
+python3 -m pytest -q tests/test_gguf_packed_verify_layout.py \
+  -k long_packed_prefill_requires_slot_local_full_attention
+```
+
+The local 0.8B packed-prefill GPU fixture is absent and skips explicitly. The
+live W7900 model therefore supplied the math/route gate. Started the dirty-tree
+4K/c4 server with:
+
+```bash
+HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
+HIPENGINE_GENERATION_BATCH_WINDOW_MS=0 \
+HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 \
+HIPENGINE_GGUF_GDN_PREFILL_MODE=exact \
+HIPENGINE_GGUF_AR_STREAM_DECODE=0 \
+HIPENGINE_GGUF_AR_PACKED_DECODE=1 \
+HIPENGINE_MAX_PREFILL_CHUNK_TOKENS=256 \
+python3 -m hipengine.server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --served-model-name Qwen3.6-35B-A3B \
+  --max-context-tokens 4096 --max-active-requests 4 \
+  --prefix-cache off --metrics prometheus --eager-load \
+  --host 127.0.0.1 --port 8100
+```
+
+Then ran `scripts/agentic_coding_live.py` with the canonical `small_repo`,
+cache-off, 128-token protocol at `--concurrency 2 --runs 1` and
+`--concurrency 4 --runs 1`. Results were **8/8 c2 turns** and **16/16 c4
+turns**: all blocking oracles, measured SSE exact-ID equality gates, strict
+arguments, collector validation, and final ownership passed. Outputs were
+`/tmp/agentic-packed-sampled-prefill-dirty-c{2,4}-a1.json`; both pin
+`performance_claim=false`. Dirty/concurrently-contended timings are discarded
+and no benchmark artifact or rollup is published.
+
+Validation after implementation:
+
+```bash
+python3 -m pytest -q tests/test_gguf_packed_verify_layout.py \
+  tests/test_generation_qwen35_gguf_sampling.py
+python3 -m pytest -q tests/test_generation\*.py
+python3 -m pytest -q tests/test_server_api.py
+python3 -m pytest -q tests/test_agentic_server_conformance.py \
+  tests/test_agentic_harness_traces.py tests/test_local_agent_config.py
+```
+
+All passed: 39 packed-layout tests, 479 generation tests, 515 server tests, and
+130 agentic/config tests. Targeted Ruff and `git diff --check` pass; the runtime
+file retains pre-existing whole-file Ruff debt unrelated to this unit. After
+shutdown GPU 0 returned to baseline VRAM and all request/session/KV/graph/
+workspace ownership was zero. Next: commit/push this correctness unit, then run
+the clean 4K/C8-admission physical-c4 gate before defining the 8K/growing-history
+context split.

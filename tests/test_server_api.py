@@ -2553,6 +2553,48 @@ def test_startup_scratch_probe_uses_max_active_request_width() -> None:
     assert fake.scratch_prepares[0]["max_batch_size"] == 4
 
 
+def test_startup_scratch_probe_clamps_to_registered_plain_ar_route_width() -> None:
+    class CappedPlainARFakeLLM(FakeLLM):
+        server_plain_ar_max_active_requests = 4
+
+    fake = CappedPlainARFakeLLM(outputs=["warm"])
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        max_active_requests=8,
+    )
+    app = create_app(config, llm=fake)
+
+    with TestClient(app) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 200
+    assert fake.scratch_prepares
+    assert fake.scratch_prepares[0]["max_batch_size"] == 4
+    assert response.json()["startup"]["checks"]["scratch_probe"]["result"]["max_batch_size"] == 4
+
+
+def test_startup_scratch_probe_keeps_admission_width_for_enabled_mtp_route() -> None:
+    class CappedPlainARWithMTPFakeLLM(SpeculativeMTPFakeLLM):
+        server_plain_ar_max_active_requests = 4
+
+    fake = CappedPlainARWithMTPFakeLLM()
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        max_active_requests=8,
+        speculative_mtp_serving="opt_in",
+    )
+    app = create_app(config, llm=fake)
+
+    with TestClient(app) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 200
+    assert fake.scratch_prepares
+    assert fake.scratch_prepares[0]["max_batch_size"] == 8
+
+
 def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, Any] = {}
     fake = FakeLLM(outputs=["ok"])

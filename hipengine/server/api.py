@@ -3622,6 +3622,27 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             scratch_probe_context_unknown = max_prompt_tokens is None
             scratch_probe_prompt_tokens = 64 if max_prompt_tokens is None else int(max_prompt_tokens)
             scratch_probe_batch_size = max(1, int(config.max_active_requests or 1))
+            mtp_startup_warmup_requested = str(config.speculative_mtp_serving) != "off"
+            mtp_route_enabled = (
+                mtp_startup_warmup_requested
+                and _engine_supports_speculative_mtp(engine)
+            )
+            if not mtp_route_enabled:
+                plain_ar_limit = getattr(
+                    engine,
+                    "server_plain_ar_max_active_requests",
+                    None,
+                )
+                if plain_ar_limit is not None:
+                    plain_ar_limit = int(plain_ar_limit)
+                    if plain_ar_limit < 1:
+                        raise ValueError(
+                            "server_plain_ar_max_active_requests must be positive"
+                        )
+                    scratch_probe_batch_size = min(
+                        scratch_probe_batch_size,
+                        plain_ar_limit,
+                    )
             if max_prompt_tokens is None and scratch_probe_batch_size <= 1:
                 startup_checks["scratch_probe"] = {"enabled": True, "status": "skipped", "reason": "unknown_context"}
             elif not callable(scratch_preparer):
@@ -3638,7 +3659,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     def run_scratch_probe() -> Any:
                         mtp_warmup_env = "HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP"
                         previous_mtp_warmup = os.environ.get(mtp_warmup_env)
-                        os.environ[mtp_warmup_env] = "1" if str(config.speculative_mtp_serving) != "off" else "0"
+                        os.environ[mtp_warmup_env] = "1" if mtp_startup_warmup_requested else "0"
                         try:
                             return scratch_preparer(
                                 max_prompt_tokens=scratch_probe_prompt_tokens,

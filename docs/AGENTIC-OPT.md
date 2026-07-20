@@ -763,3 +763,35 @@ warmups/repeats, C4/C8, or medium/growing-history coverage. Host validation is
 green across **529 generation tests**, **513 server tests**, and **142
 agentic/config tests**, plus Ruff. Next: solve capacity for the remaining A1
 matrix before opening A2 prefix A/B.
+
+## 2026-07-20 — Small-repo c4 is physically viable; sampled reuse repaired
+
+The missing guarded capacity point is now measured: clean `fee9ee85` with a
+4,096-token context and `--max-active-requests 4` passes the unchanged exact
+4,095-token startup probe, including packed width-2/4 warmup, at **37.43 GiB
+used / 7.56 GiB free**. Startup completed in **81.427 s**. This is capacity and
+correctness evidence, not a performance result.
+
+The first live c4 request then exposed two independent runtime defects. Sampled
+resident prefill addressed the raw KV cache base even when the scheduler had
+assigned a shifted dynamic allocation; after rebasing it through the same
+block-table-aware packed route used by greedy prefill, that route still rejected
+`return_logits=True`. The packed prefill path now returns one finite FP32 logits
+row per active slot for the existing host sampler, and long shifted-contiguous
+prompts remain on their per-session slot-local AOTriton cache view. Genuinely
+non-contiguous paged scatter remains conservatively limited below 1,024 context
+tokens. No requested sampling semantics are weakened or converted to top-1.
+
+The startup probe also now respects the registry-selected plain-AR physical
+width. An admission setting of C8 therefore probes the retained physical c4
+route instead of allocating an unsupported width-8 plain-AR workspace. An
+actually enabled MTP route retains its own admission-width warmup; the exact
+capacity guard remains mandatory in both cases.
+
+A dirty-tree correctness gate completed **8/8 c2 turns** and **16/16 c4 turns**
+for `small_repo`, with every independent blocking oracle, response-owned SSE ID
+equality check, strict tool argument check, and final zero-ownership check
+passing. Both collector outputs set `performance_claim=false`; their timings
+were discarded because the tree was dirty and host tests ran concurrently.
+Clean committed C8 admission/physical-c4 coverage and the 8K/growing-history
+context-capacity split remain required before A1 can become a retained baseline.

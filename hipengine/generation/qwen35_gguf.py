@@ -768,7 +768,13 @@ class Qwen35GGUFBringupGenerator:
             result["packed_ar_prefill_reason"] = "backend_hook_unavailable"
             result["reason"] = "backend_hook_unavailable"
         else:
-            ar_widths = [width for width in (2, 4, 8) if width <= max_batch]
+            plain_ar_limit = self.server_plain_ar_max_active_requests
+            ar_max_batch = (
+                max_batch
+                if plain_ar_limit is None
+                else min(max_batch, max(1, int(plain_ar_limit)))
+            )
+            ar_widths = [width for width in (2, 4, 8) if width <= ar_max_batch]
             for width in sorted(set(ar_widths)):
                 for target_len in warm_prompt_lengths:
                     sessions: list[Qwen35GGUFResidentSession] = []
@@ -5247,7 +5253,30 @@ class Qwen35GGUFResidentModelRunner:
             row_index=row.row_index,
         )
         start = time.perf_counter()
-        result = lease.session.prefill(row.prompt_ids, return_logits=True)
+        native_compact_prefill = False
+        if _gguf_device_kv_contiguous_base_row(lease.session) == 0:
+            result = lease.session.prefill(row.prompt_ids, return_logits=True)
+        else:
+            prefill_batch = getattr(lease.session, "prefill_batch_native", None)
+            if not callable(prefill_batch):
+                raise RuntimeError(
+                    "shifted sampled GGUF KV requires block-table-aware prefill"
+                )
+            with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
+                results = prefill_batch(
+                    [row.prompt_ids],
+                    sessions=[lease.session],
+                    full_prompt_lengths=[len(row.prompt_ids)],
+                    return_logits=True,
+                    return_hidden_seeds=False,
+                )
+            result_list = [] if results is None else list(results)
+            if len(result_list) != 1:
+                raise RuntimeError(
+                    "shifted sampled GGUF prefill did not return exactly one result"
+                )
+            result = result_list[0]
+            native_compact_prefill = True
         sample = _select_from_gguf_logits(result, sampling_request, sampling_state)
         full_vocab_logits_d2h, logits_d2h_bytes = _gguf_logits_d2h_metadata(result)
         token = int(sample.token_id)
@@ -5292,6 +5321,7 @@ class Qwen35GGUFResidentModelRunner:
                     sampling_request,
                 )
             ),
+            native_compact_prefill=native_compact_prefill,
         )
 
     def _prefill_native_chunk(

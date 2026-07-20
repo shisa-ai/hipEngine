@@ -28,6 +28,28 @@ from hipengine.runtime.qwen35_gguf_runner import (
 )
 
 
+def test_long_packed_prefill_requires_slot_local_full_attention() -> None:
+    layout = _build_gguf_packed_verify_layout(
+        (
+            _GGUFPackedVerifySlotBlock(
+                input_token_ids=(17,),
+                start_position=1023,
+            ),
+        ),
+        slot_capacity=1024,
+    )
+
+    gguf_runner._validate_packed_ar_prefill_context(
+        layout,
+        slot_local_full_prefill=True,
+    )
+    with pytest.raises(NotImplementedError, match="packed paged AR prefill"):
+        gguf_runner._validate_packed_ar_prefill_context(
+            layout,
+            slot_local_full_prefill=False,
+        )
+
+
 def test_prefill_device_metadata_uses_backend_ceiling_and_explicit_override(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
