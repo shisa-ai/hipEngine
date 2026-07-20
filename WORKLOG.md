@@ -170155,3 +170155,29 @@ Published compact artifact
 `16a5506d09e7d4622a51142a0ab3c21d24d31fe3b5da1c5e8c8a361edf14d1a5`).
 The retained performance claim is clean direct C8; server evidence remains an
 exact/non-regressive source-equivalent diagnostic.
+
+## 2026-07-20 — Reject Q8T16 F32-input row amortization
+
+The post-F3E canonical profile attributes **3.384 ms / 30 launches (6.50%)** to
+`q8_0_t16_gemv_kernel<float,bf16>`, the linear-attention `ssm_out` projection
+at physical-C8 shape `8x4096 -> 8x2048`. Tested exact 128-thread rowtile2 and
+rowtile4 instantiations with a 71.3 MB cycling weight pool (>2x estimated MALL),
+20 warmups, and 100 iterations:
+
+- production per-row **111.265 us**,
+- rowtile2 **111.700 us (+0.39%, 0.996x)**,
+- rowtile4 **130.397 us (+17.19%, 0.853x)**.
+
+Both candidates are byte-exact to production. The result shows that hardware
+caching already services shared rows while the production grid retains more
+parallelism; rowtile2 is neutral-negative and rowtile4 loses badly. Removed the
+temporary kernel exports, wrappers, fixture, and microbench. No runtime route or
+env flag was added, and no server/model run was warranted.
+
+Rejected artifact:
+`benchmarks/results/2026-07-20-gfx1151-gguf-q8t16-f32-rowtile-rejected.json`.
+Raw micro SHA-256 is
+`73085cd6916297d0e532506506b4848f44093dab3821dd641329001b92a70744`.
+The next dense candidate must change output-column/K scheduling rather than
+repeat cross-row weight amortization. Compact artifact is 2,886 bytes with
+SHA-256 `3da329eaa35bad4fe8135512c1faea502e30d57c11a7d9382cb2d68c33805517`.
