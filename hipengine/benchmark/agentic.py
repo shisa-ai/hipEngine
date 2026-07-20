@@ -662,6 +662,7 @@ def _rollup(records: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any], dict[
     inter_token_ms: list[float] = []
     submitted_times: list[float] = []
     completed_times: list[float] = []
+    sse_wave_bounds: dict[tuple[str, str, int], list[tuple[float, float]]] = {}
     generated_tokens = 0
     lookups = 0
     hits = 0
@@ -682,6 +683,7 @@ def _rollup(records: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any], dict[
         submitted = float(timing["submitted_at_s"])
         first = float(timing["first_token_at_s"])
         ready = float(timing["tool_call_ready_at_s"])
+        response_done = float(timing["response_done_at_s"])
         complete = float(timing["tool_result_submitted_at_s"])
         observed = [float(value) for value in timing["token_observed_at_s"]]
         timing_mode = str(timing["token_timing_mode"])
@@ -695,6 +697,12 @@ def _rollup(records: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any], dict[
             )
         submitted_times.append(submitted)
         completed_times.append(complete)
+        wave_key = (
+            str(record["run_id"]),
+            str(record["workload_id"]),
+            int(record["turn_index"]),
+        )
+        sse_wave_bounds.setdefault(wave_key, []).append((submitted, response_done))
         output = _mapping(record["output"], label="output")
         generated_tokens += len(output["generated_token_ids"])
         id_source = str(output["generated_token_ids_source"])
@@ -720,6 +728,14 @@ def _rollup(records: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any], dict[
     workload_wall = max(completed_times) - min(submitted_times)
     if workload_wall <= 0.0:
         raise AgenticBenchmarkError("workload wall must be positive")
+    active_sse_wave_wall = 0.0
+    for wave_key, bounds in sse_wave_bounds.items():
+        wave_wall = max(done for _submitted, done in bounds) - min(
+            submitted for submitted, _done in bounds
+        )
+        if wave_wall <= 0.0:
+            raise AgenticBenchmarkError(f"SSE wave {wave_key} wall must be positive")
+        active_sse_wave_wall += wave_wall
     run_agents: dict[str, set[str]] = {}
     for run_id, agent_id in agents:
         run_agents.setdefault(run_id, set()).add(agent_id)
@@ -740,9 +756,16 @@ def _rollup(records: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any], dict[
             "inter_token": _latency_summary(inter_token_ms),
             "complete_turn": _latency_summary(complete_ms),
         },
+        "workload_wall_scope": (
+            "first_submit_to_last_tool_result_submit_including_inter_turn_control"
+        ),
         "workload_wall_s": workload_wall,
         "exact_generated_tok_s": generated_tokens / workload_wall,
         "validated_tool_calls_s": len(records) / workload_wall,
+        "active_sse_wave_count": len(sse_wave_bounds),
+        "active_sse_wave_wall_s": active_sse_wave_wall,
+        "active_sse_exact_generated_tok_s": generated_tokens / active_sse_wave_wall,
+        "active_sse_validated_tool_calls_s": len(records) / active_sse_wave_wall,
         "prefix": {
             "lookups": lookups,
             "hits": hits,

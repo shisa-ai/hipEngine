@@ -170546,3 +170546,58 @@ retained-baseline protocol is now physically valid and model-general: contexts
 4,096/4,096/10,240 for small/growing/medium, logical C1/C4/C8, cache off, one
 complete discarded warmup then three measured runs per configuration. All nine
 configurations must pass before timing is promoted or A2 prefix A/B begins.
+
+## 2026-07-21 — Retain repeated W7900 coding-agent A1 baseline
+
+Ran the frozen deterministic A1 matrix from clean pushed source
+`44c76674c2693f7dfc994b40b4cfc3880abbbeac` on ROCm GPU0 / Radeon Pro W7900,
+with `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, BF16 KV, cache off,
+`HIPENGINE_GENERATION_BATCH_WINDOW_MS=0`, exact GDN prefill, packed AR decode,
+256-token prefill chunks, real localhost Uvicorn SSE, and independent blocking
+oracles. Configurations were small/growing at 4,096 and medium at 10,240,
+logical C1/C4/C8; each used one complete discarded warmup and three measured
+runs. Startup guards preserved registry-capped c4 residency at logical C8.
+
+The first rollup audit found that `workload_wall_s` spans first measured submit
+to final tool-result submit. Although each blocking oracle is outside its own
+measured SSE interval, oracles for later turns lie inside that first-to-last
+wall, making the initial **9.134/7.912/2.527 tok/s C1** figures validation-control
+inclusive rather than server throughput. Added a RED/GREEN contract for
+`active_sse_wave_wall_s`: group by `(run_id, workload_id, turn_index)`, subtract
+minimum submit from maximum response-done per concurrent wave, then sum waves.
+The builder now emits both scopes and labels the older one
+`first_submit_to_last_tool_result_submit_including_inter_turn_control`.
+`buffered_public` timing remains validated tool-ready latency, not lower-loop
+TTFT, and cannot support ITL.
+
+Correct active-SSE medians (exact response-owned generated tok/s):
+
+| Workload | C1 | C4 | C8 | C4/C1 | C8/C1 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| small_repo | 16.239 | 15.995 | 16.020 | 0.985x | 0.987x |
+| growing_history | 15.100 | 15.231 | 15.036 | 1.009x | 0.996x |
+| medium_repo | 4.127 | 4.629 | 4.339 | 1.122x | 1.052x |
+
+All 27 measured runs are <=0.91% stdev/median. The packet contains **702 strict
+tool turns / 17,316 exact response-owned IDs**; every blocking oracle, SSE ID,
+strict argument/schema, collector, and final request/session/KV/graph/workspace
+ownership gate passes. Linked semantic correctness is **KL max 0.041737 <=
+0.05 / top-1 98.89% >= 90%**, and the native-c8 token/state/KV oracle passes.
+Full-vocabulary host logits D2H reaches 1.473 GiB/run at growing C8.
+
+Corrected a measurement-coordination mistake during the long rows: ROCm GPU0 is
+the target W7900 (Linux DRM card1), while ROCm GPU1 is the separate RX 7900 XTX
+(DRM card0). Q3 work was explicitly `HIP_VISIBLE_DEVICES=1`; treating it as
+GPU0 contention was over-constrained. No Q3 process was stopped. Eleven medium
+C4 rows spanning peer activity were extremely stable (active-SSE rate 0.22%
+stdev/median), and the retained packet rejects only additional GPU0 owners while
+recording/allowing pinned GPU1 activity.
+
+Published
+`benchmarks/results/2026-07-21-w7900-agentic-a1-repeated-baseline.json`
+(SHA-256 `29133f5fb0fa36f0f83fe34565ad7df93214b8eb7e035ac56b5413713e495f3f`).
+Validation passed **150 agentic/live/quality/conformance/config/artifact tests**,
+targeted Ruff, `git diff --check`, and benchmark README synchronization.
+The result selects A2 cache-off/radix prefix A/B first, then native GPU sampling;
+short/growing C4/C8 have no aggregate win, medium C4 is the long-context guard,
+and C1 latency remains the non-regression guard.

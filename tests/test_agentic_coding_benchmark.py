@@ -156,9 +156,16 @@ def test_agentic_artifact_rolls_up_exact_turn_latency_and_goodput() -> None:
     assert latency["tool_call_ready"]["p95"] == pytest.approx(300.0)
     assert latency["inter_token"]["p99"] == pytest.approx(100.0)
     assert latency["complete_turn"]["p50"] == pytest.approx(500.0)
+    assert artifact["rollup"]["workload_wall_scope"] == (
+        "first_submit_to_last_tool_result_submit_including_inter_turn_control"
+    )
     assert artifact["rollup"]["workload_wall_s"] == pytest.approx(3.5)
     assert artifact["rollup"]["exact_generated_tok_s"] == pytest.approx(8 / 3.5)
     assert artifact["rollup"]["validated_tool_calls_s"] == pytest.approx(4 / 3.5)
+    assert artifact["rollup"]["active_sse_wave_count"] == 4
+    assert artifact["rollup"]["active_sse_wave_wall_s"] == pytest.approx(1.6)
+    assert artifact["rollup"]["active_sse_exact_generated_tok_s"] == pytest.approx(8 / 1.6)
+    assert artifact["rollup"]["active_sse_validated_tool_calls_s"] == pytest.approx(4 / 1.6)
     assert artifact["rollup"]["prefix"] == {
         "lookups": 3,
         "hits": 1,
@@ -178,6 +185,39 @@ def test_agentic_artifact_rolls_up_exact_turn_latency_and_goodput() -> None:
         match="turn_records_sha256 does not match turn_records",
     ):
         validate_agentic_benchmark_artifact(tampered)
+
+
+def test_agentic_active_sse_wall_groups_concurrent_rows_once_per_turn() -> None:
+    suite = load_agentic_workload_suite(WORKLOADS)
+    records = _records_payload(suite)
+    records["configuration"]["concurrency"] = 2
+    second_agent = []
+    for raw_record in records["turn_records"]:
+        record = copy.deepcopy(raw_record)
+        record["agent_id"] = "agent-1"
+        record["session_id"] = "session-1"
+        record["request_id"] = f"{record['request_id']}-agent-1"
+        record["backend"]["timing_owner"] = False
+        for key in (
+            "submitted_at_s",
+            "first_token_at_s",
+            "tool_call_ready_at_s",
+            "response_done_at_s",
+            "tool_result_submitted_at_s",
+        ):
+            record["timing"][key] += 0.05
+        record["timing"]["token_observed_at_s"] = [
+            value + 0.05 for value in record["timing"]["token_observed_at_s"]
+        ]
+        second_agent.append(record)
+    records["turn_records"].extend(second_agent)
+
+    artifact = build_agentic_benchmark_artifact(suite, records)
+
+    assert artifact["coverage"]["concurrency"] == 2
+    assert artifact["rollup"]["active_sse_wave_count"] == 4
+    assert artifact["rollup"]["active_sse_wave_wall_s"] == pytest.approx(1.8)
+    assert artifact["rollup"]["active_sse_exact_generated_tok_s"] == pytest.approx(16 / 1.8)
 
 
 def test_agentic_artifact_rejects_tool_timing_token_owner_and_resource_failures() -> None:

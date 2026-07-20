@@ -1,6 +1,6 @@
 # Agentic Serving Optimization Board
 
-Last updated: 2026-07-20
+Last updated: 2026-07-21
 
 `AGENTIC-OPT.md` is the active status, measurement, and optimization board for
 using hipEngine as a local coding-agent runtime. The functional server contract
@@ -34,10 +34,11 @@ The key workload distinction is:
 - both cases benefit from preserving exact resident state/KV ownership and
   avoiding full-vocabulary host readback.
 
-The recommended next unit is a W7900 GGUF coding-agent benchmark followed by
-three measured candidates: gfx1100 prefix reuse, low-occupancy routing, and GGUF
-native GPU sampling. The benchmark, not intuition, selects their order after the
-baseline packet exists.
+The repeated W7900 A1 packet now exists. It shows flat active-SSE goodput at 4K
+from C1 through C8, a modest long-context C4 gain, linearly worsening buffered
+tool-ready latency, and one full-vocabulary D2H row per generated token. The
+recommended next unit is therefore the frozen A2 cache-off/radix prefix A/B,
+followed by native GPU sampling; low-occupancy routing remains the C1 guard.
 
 ## Current status report
 
@@ -79,6 +80,7 @@ fail-safe envelopes; they do not prove broad live-model tool-use quality.
 | Real OpenAI GGUF physical c8 | **136.122 aggregate tok/s** | same F1 artifact |
 | Real OpenAI logical C13 | **111.380 aggregate tok/s**, physical c8 plus sparse c8 | same F1 artifact |
 | Same-loop serial C13 control | **31.708 aggregate tok/s** | same F1 artifact |
+| Coding-agent A1 active SSE | Small **16.239/15.995/16.020**, growing **15.100/15.231/15.036**, medium **4.127/4.629/4.339 tok/s** at C1/C4/C8 | `benchmarks/results/2026-07-21-w7900-agentic-a1-repeated-baseline.json` |
 | PARO direct selected-batch c2 | **121.923 aggregate tok/s**, +5.09% vs c1 and +20.81% vs serial c2 | `benchmarks/results/2026-07-18-gfx1100-paro-g2-selected-batch-c2-retained.json` |
 | PARO MTP N4 after parallel router | **66.303/66.259 tok/s**, about **0.592x true AR** | `benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-parallel-router-topk.json` |
 
@@ -106,10 +108,10 @@ resident-session semantics.
 
 ### Runtime and performance
 
-1. **No retained W7900 coding-agent workload packet.** Existing server rows use
-   throughput-oriented prompt/decode shapes. They do not measure repeated
-   assistant-tool-result turns, tool-call-ready latency, prefix hits, or
-   per-turn queue/prefill/decode ownership.
+1. **The retained coding-agent baseline exposes no useful 4K concurrency
+   scaling.** Active-SSE goodput is flat from C1 through C8 while buffered
+   tool-ready p50 grows about 4x/8x. Medium C4 is only **1.122x** C1 and C8 falls
+   to **0.937x** C4. Prefix reuse and native sampling now have measured targets.
 2. **gfx1100 production-policy transfer is incomplete.** GGUF continuous
    membership and physical c8 are retained, but the broader occupancy-adaptive
    low-load, sampled API, prefix-economics, long-context pressure, and SLO packet
@@ -168,13 +170,14 @@ with the full server contract gate green after each unit.
 
 ## Improvement priority order
 
-### P0 — Establish the W7900 coding-agent baseline
+### P0 — Establish the W7900 coding-agent baseline — complete
 
-Build and retain a real-Uvicorn benchmark that exercises several complete
-assistant -> tool call -> tool result turns. It must measure concurrency one as
-well as concurrent agent swarms, preserve exact prompt/tool identities, and
-finish with zero request/session/KV ownership. No optimization is promoted
-before this baseline exists.
+The retained real-Uvicorn A1 packet covers all three frozen workloads at
+C1/C4/C8 with one discarded warmup plus three measured runs each. It preserves
+17,316 response-owned IDs across 702 strict tool turns, passes all independent
+blocking/SSE and ownership gates, and explicitly separates active SSE waves from
+the oracle-inclusive first-to-last harness wall. See the 2026-07-21 closure
+below.
 
 ### P1 — Transfer and broaden gfx1100 GGUF prefix reuse
 
@@ -459,9 +462,10 @@ python3 scripts/agentic_coding_live.py \
   --json /tmp/agentic-small-c1-a1.json
 ```
 
-The complete A1 baseline still requires clean cache-off C1/C4/C8 runs over all
-three workload families with warmup and repeated measurements. The initial
-single-family smoke is diagnostic, not a retained performance claim.
+The complete A1 baseline is retained across cache-off C1/C4/C8 for all three
+workload families with one warmup and three measurements per configuration.
+Earlier single-family rows remain diagnostics; only active SSE wave time from
+the repeated packet is a performance denominator.
 
 #### First W7900 A1 smoke: blocked before timing
 
@@ -847,3 +851,37 @@ cannot support a physical-c4 claim. The now-frozen repeated baseline protocol is
 4K for small/growing, 10,240 for medium; logical C1/C4/C8; one discarded complete
 workload warmup and three measured cache-off runs per configuration. All nine
 configurations must pass before A2 prefix A/B opens.
+
+## 2026-07-21 — Repeated W7900 A1 baseline retained
+
+Clean pushed source `44c76674` completes the frozen real-Uvicorn, cache-off
+matrix: three workload families x logical C1/C4/C8, each with one complete
+discarded warmup and three target-GPU-exclusive measured runs. Across **702
+strict tool turns** and **17,316 response-owned IDs**, every independent blocking
+oracle, SSE exact-ID comparison, strict argument/schema gate, and final
+request/session/KV/graph/workspace ownership check passes. All active-SSE rate
+rows have less than **0.91% stdev/median**.
+
+| Workload | C1 | C4 | C8 | C4/C1 | C8/C1 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Small, 4K | **16.239** | **15.995** | **16.020** | 0.985x | 0.987x |
+| Growing history, 4K | **15.100** | **15.231** | **15.036** | 1.009x | 0.996x |
+| Medium, 10,240 | **4.127** | **4.629** | **4.339** | 1.122x | 1.052x |
+
+Rates are exact generated tok/s over the sum of measured SSE wave walls. The
+original first-submit-to-last-tool-result rollup included independent blocking
+oracles between turns and produced misleading **9.134/7.912/2.527 tok/s** C1
+figures; it is retained only as an explicitly named diagnostic. The artifact and
+A0 builder now expose both scopes. Public tool SSE remains `buffered_public`, so
+its **1.526/1.655/4.396 s** C1 p50 is validated tool-ready latency, not true
+lower-loop TTFT, and no ITL claim is made.
+
+Short/growing C4/C8 provide no aggregate benefit, while medium C4 gains 12.17%
+and C8 gives back 6.25% versus C4. Every output token still records one FP32
+full-vocabulary D2H row (up to **1.473 GiB/run** at growing C8), making the next
+order evidence-driven: A2 prefix reuse first for repeated long prefill, then
+native GPU sampling; preserve C1 and medium-C4 guards. ROCm GPU0 is the W7900
+target. Concurrent work explicitly pinned to the separate ROCm GPU1/XTX is not
+target contention and is recorded but allowed.
+
+[Retained artifact](../benchmarks/results/2026-07-21-w7900-agentic-a1-repeated-baseline.json).
