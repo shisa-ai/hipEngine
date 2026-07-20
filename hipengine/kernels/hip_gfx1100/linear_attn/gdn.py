@@ -102,6 +102,9 @@ _SYMBOL_PREFILL_RMSNORM_GATE = "hipengine_qwen35_gdn_prefill_rmsnorm_gate_bf16"
 _SYMBOL_PREFILL_RMSNORM_GATE_FP16 = "hipengine_qwen35_gdn_prefill_rmsnorm_gate_fp16"
 _SYMBOL_PREFILL_RMSNORM_GATE_ROTATE_FP16 = "hipengine_qwen35_gdn_prefill_rmsnorm_gate_rotate_fp16"
 _SYMBOL_INDEXED_LOWP_BF16 = "hipengine_qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_bf16"
+_SYMBOL_INDEXED_SHARED_STATECACHE24_LOWP_BF16 = (
+    "hipengine_qwen35_gdn_recurrent_rmsnorm_gate_indexed_shared_statecache24_lowp_bf16"
+)
 _SYMBOL_SEGMENTS_LOWP_BF16 = "hipengine_qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16"
 _SYMBOL_SEGMENTS_LOWP_FP16 = "hipengine_qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_fp16"
 _SYMBOL_PREFILL_DECODE_ORDER_BF16 = "hipengine_qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order"
@@ -2688,6 +2691,101 @@ def qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_bf16(
     library = library or build_qwen35_linear_attn_gdn(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_INDEXED_LOWP_BF16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_float,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(conv_out_ptr),
+        ctypes.c_void_p(gate_ptr),
+        ctypes.c_void_p(a_ptr),
+        ctypes.c_void_p(b_ptr),
+        ctypes.c_void_p(dt_bias_ptr),
+        ctypes.c_void_p(a_log_ptr),
+        ctypes.c_void_p(norm_weight_ptr),
+        ctypes.c_void_p(recurrent_state_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(state_indices_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_float(eps),
+        ctypes.c_int64(num_k_heads),
+        ctypes.c_int64(num_v_heads),
+        ctypes.c_int64(head_k_dim),
+        ctypes.c_int64(head_v_dim),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def qwen35_gdn_recurrent_rmsnorm_gate_indexed_shared_statecache24_lowp_bf16(
+    conv_out_ptr: int,
+    gate_ptr: int,
+    a_ptr: int,
+    b_ptr: int,
+    dt_bias_ptr: int,
+    a_log_ptr: int,
+    norm_weight_ptr: int,
+    recurrent_state_ptr: int,
+    out_ptr: int,
+    state_indices_ptr: int,
+    rows: int,
+    eps: float,
+    num_k_heads: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch gfx1151 indexed BF16 GDN with a 24-row shared state cache."""
+
+    if rows <= 0:
+        raise ValueError("rows must be positive")
+    _check_prefill_shape(rows, num_k_heads, num_v_heads, head_k_dim, head_v_dim)
+    if rows < 8:
+        qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_bf16(
+            conv_out_ptr,
+            gate_ptr,
+            a_ptr,
+            b_ptr,
+            dt_bias_ptr,
+            a_log_ptr,
+            norm_weight_ptr,
+            recurrent_state_ptr,
+            out_ptr,
+            state_indices_ptr,
+            rows,
+            eps,
+            num_k_heads,
+            num_v_heads,
+            head_k_dim,
+            head_v_dim,
+            stream=stream,
+            library=library,
+            runtime=runtime,
+        )
+        return
+    library = library or build_qwen35_linear_attn_gdn(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_INDEXED_SHARED_STATECACHE24_LOWP_BF16)
     fn.argtypes = [
         ctypes.c_void_p,
         ctypes.c_void_p,
