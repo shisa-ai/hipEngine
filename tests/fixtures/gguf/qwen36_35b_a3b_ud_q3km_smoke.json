@@ -47,7 +47,9 @@
     "expected_token_ids_match_required": true,
     "torch_hot_path_allowed": false,
     "external_token_oracle": "llama.cpp + llama-tokenize",
-    "bulk_prefill_attention_mode": "native",
+    "bulk_prefill_attention_mode": "bulk",
+    "prefill_quant": "gguf_ud_q3_k_m",
+    "prefill_attn_aotriton_min_tokens": 0,
     "rank3_expert_layout": "raw_gguf",
     "nextn_block_omitted": true,
     "required_kernel_families": [

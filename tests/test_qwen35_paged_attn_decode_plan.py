@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+import hipengine.kernels.hip_gfx1100.attention.paged_attn_decode as paged_attn_decode
 from hipengine.core.device import Device
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.hip_gfx1100.attention import (
@@ -27,6 +28,7 @@ from hipengine.kernels.hip_gfx1100.attention import (
     qwen35_paged_full_attn_decode_split_k_warp_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_warp_gate_fp16_spans,
+    qwen35_paged_full_attn_prefill_gqa_gate_bf16_decode_order_spans,
     qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans,
     qwen35_paged_full_attn_prefill_gqa_gate_tree_fp16_spans,
     qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_spans,
@@ -296,6 +298,15 @@ def test_qwen35_paged_attn_decode_registers_span_variant() -> None:
     assert (
         resolve(
             backend="hip_gfx1100",
+            layer="full_attn_prefill",
+            quant="gguf_ud_q3_k_m",
+            variant="causal_gqa_gate_bf16",
+        )
+        is qwen35_paged_full_attn_prefill_gqa_gate_bf16_decode_order_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
             layer="paged_attn_prefill",
             quant="w4_paro",
             variant="bf16_gqa_gate_fp16_spans",
@@ -329,6 +340,97 @@ def test_qwen35_paged_attn_decode_registers_span_variant() -> None:
         )
         is qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_spans
     )
+
+
+def test_qwen35_decode_order_prefill_splits_at_resident_policy_boundaries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, tuple, dict]] = []
+
+    def record(name: str):
+        def launch(*args, **kwargs):
+            calls.append((name, args, kwargs))
+
+        return launch
+
+    monkeypatch.setattr(paged_attn_decode, "_launch_prefill_gqa_gate", record("dense"))
+    monkeypatch.setattr(
+        paged_attn_decode,
+        "qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_batch_spans",
+        record("warp"),
+    )
+    monkeypatch.setattr(
+        paged_attn_decode,
+        "qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_batch_spans",
+        record("gqa"),
+    )
+
+    def spans(rows: int, blocks: int) -> KVLiveSpans:
+        return KVLiveSpans.paged_uniform(
+            block_table=_tensor(0x1000, (rows, blocks), "int32"),
+            live_counts=_tensor(0x2000, (rows,), "int64"),
+            max_live_count=rows,
+            storage_dtype="bf16",
+            row_positions=_tensor(0x3000, (rows,), "int64"),
+            span_role="prefill",
+        )
+
+    common = {
+        "query_ptr": 0x100000,
+        "key_cache_ptr": 0x200000,
+        "value_cache_ptr": 0x300000,
+        "gate_ptr": 0x400000,
+        "out_ptr": 0x500000,
+        "split_partial_out_ptr": 0x600000,
+        "split_partial_m_ptr": 0x700000,
+        "split_partial_l_ptr": 0x800000,
+        "split_batch_rows": 16,
+        "block_size": 256,
+        "num_q_heads": 16,
+        "num_kv_heads": 2,
+        "head_dim": 256,
+        "gate_stride1": 256,
+        "gate_stride2": 1,
+        "scale": 0.0625,
+        "library": object(),
+        "runtime": object(),
+    }
+
+    qwen35_paged_full_attn_prefill_gqa_gate_bf16_decode_order_spans(
+        spans=spans(5, 5),
+        rows=5,
+        max_context_len=1026,
+        split_count=5,
+        **common,
+    )
+    assert [name for name, _, _ in calls] == ["dense", "warp"]
+    dense_args = calls[0][1]
+    assert dense_args[7:9] == (2, 1023)
+    assert dense_args[6].base_offsets.shape == (2, 5)
+    warp_args = calls[1][1]
+    assert warp_args[0] == common["query_ptr"] + 2 * 16 * 256 * 4
+    assert warp_args[3] == common["gate_ptr"] + 2 * 16 * 256 * 2
+    assert warp_args[8].base_offsets.shape == (3, 5)
+    assert warp_args[8].base_offsets.ptr == 0x1000 + 2 * 5 * 4
+    assert warp_args[9:12] == (3, 256, 5)
+
+    calls.clear()
+    qwen35_paged_full_attn_prefill_gqa_gate_bf16_decode_order_spans(
+        spans=spans(4, 17),
+        rows=4,
+        max_context_len=4097,
+        split_count=17,
+        **common,
+    )
+    assert [name for name, _, _ in calls] == ["warp", "gqa"]
+    warp_args = calls[0][1]
+    gqa_args = calls[1][1]
+    assert warp_args[8].base_offsets.shape == (2, 17)
+    assert warp_args[9:12] == (2, 256, 16)
+    assert gqa_args[0] == common["query_ptr"] + 2 * 16 * 256 * 4
+    assert gqa_args[8].base_offsets.ptr == 0x1000 + 2 * 17 * 4
+    assert gqa_args[8].base_offsets.shape == (2, 17)
+    assert gqa_args[9:12] == (2, 256, 17)
 
 
 def test_qwen35_paged_attn_decode_build_plan_is_dry_run_safe(tmp_path) -> None:

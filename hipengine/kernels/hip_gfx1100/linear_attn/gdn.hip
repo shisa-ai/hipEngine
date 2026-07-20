@@ -628,6 +628,97 @@ __global__ void qwen35_gdn_prefill_recurrent_k2_kernel(
   recurrent_state[state_offset1] = state_value1;
 }
 
+// State-parallel prefill with the c=1 decode reduction contract.  The ordinary
+// K2 kernel tree-reduces two K terms per lane; that changes F32 association and
+// can move BF16 layer outputs.  Keep the same 64-thread / (v_head, value_idx)
+// grid and register-resident recurrent state, but materialize the 128 products
+// in K order and let lane 0 accumulate them in the same order as decode.
+__launch_bounds__(64, 4)
+__global__ void qwen35_gdn_prefill_recurrent_k2_decode_order_kernel(
+    const float* query,
+    const float* key,
+    const float* value,
+    const float* beta,
+    const float* decay,
+    float* recurrent_state,
+    float* out,
+    int64_t tokens,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim) {
+  __shared__ float reduction_lhs[128];
+  __shared__ float reduction_rhs[128];
+  __shared__ float reduction_total;
+  const int64_t v_head = blockIdx.x;
+  const int64_t value_idx = blockIdx.y;
+  const int64_t k_base = static_cast<int64_t>(threadIdx.x) * 2;
+  if (v_head >= num_v_heads || value_idx >= head_v_dim || k_base + 1 >= head_k_dim) {
+    return;
+  }
+
+  const int64_t state_offset0 = (v_head * head_k_dim + k_base) * head_v_dim + value_idx;
+  const int64_t state_offset1 = state_offset0 + head_v_dim;
+  float state_value0 = recurrent_state[state_offset0];
+  float state_value1 = recurrent_state[state_offset1];
+  for (int64_t token = 0; token < tokens; ++token) {
+    const int64_t head_offset = token * num_v_heads + v_head;
+    const int64_t key_offset = head_offset * head_k_dim + k_base;
+    const float key_value0 = key[key_offset];
+    const float key_value1 = key[key_offset + 1];
+    const float decay_value = decay[head_offset];
+    const float previous_state0 = state_value0;
+    const float previous_state1 = state_value1;
+
+    // The decode kernel rounds k_norm*state, then fuses decay*product into
+    // the serial accumulator.  Materializing the decay product here would
+    // introduce one extra F32 rounding before the accumulation.
+    reduction_lhs[k_base] = key_value0 * previous_state0;
+    reduction_lhs[k_base + 1] = key_value1 * previous_state1;
+    __syncthreads();
+    if (threadIdx.x == 0) {
+      float total = 0.0f;
+      for (int64_t idx = 0; idx < head_k_dim; ++idx) {
+        total = fmaf(decay_value, reduction_lhs[idx], total);
+      }
+      reduction_total = total;
+    }
+    __syncthreads();
+
+    const float delta =
+        (value[head_offset * head_v_dim + value_idx] - reduction_total) * beta[head_offset];
+    state_value0 = fmaf(key_value0, delta, previous_state0 * decay_value);
+    state_value1 = fmaf(key_value1, delta, previous_state1 * decay_value);
+
+    const int64_t query_offset = head_offset * head_k_dim + k_base;
+    reduction_lhs[k_base] = query[query_offset];
+    reduction_lhs[k_base + 1] = query[query_offset + 1];
+    reduction_rhs[k_base] = state_value0;
+    reduction_rhs[k_base + 1] = state_value1;
+    __syncthreads();
+    if (threadIdx.x == 0) {
+      float total = 0.0f;
+      for (int64_t idx = 0; idx + 7 < head_k_dim; idx += 8) {
+        // Match the compiler's decode-order lowering for
+        // ``q0*s0 + ... + q7*s7``: round term 1, fuse term 0 into it,
+        // then fuse terms 2..7 before adding the eight-term group.
+        float group = reduction_lhs[idx + 1] * reduction_rhs[idx + 1];
+        group = fmaf(reduction_lhs[idx + 0], reduction_rhs[idx + 0], group);
+        group = fmaf(reduction_lhs[idx + 2], reduction_rhs[idx + 2], group);
+        group = fmaf(reduction_lhs[idx + 3], reduction_rhs[idx + 3], group);
+        group = fmaf(reduction_lhs[idx + 4], reduction_rhs[idx + 4], group);
+        group = fmaf(reduction_lhs[idx + 5], reduction_rhs[idx + 5], group);
+        group = fmaf(reduction_lhs[idx + 6], reduction_rhs[idx + 6], group);
+        group = fmaf(reduction_lhs[idx + 7], reduction_rhs[idx + 7], group);
+        total += group;
+      }
+      out[head_offset * head_v_dim + value_idx] = total;
+    }
+    __syncthreads();
+  }
+  recurrent_state[state_offset0] = state_value0;
+  recurrent_state[state_offset1] = state_value1;
+}
+
 __global__ void qwen35_gdn_prefill_recurrent_k2_segments_kernel(
     const float* query,
     const float* key,
@@ -763,6 +854,103 @@ __global__ void qwen35_linear_attn_prefill_prepare_kernel(
   k_partial[threadIdx.x] = k_sum;
   __syncthreads();
 
+  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) {
+      q_partial[threadIdx.x] += q_partial[threadIdx.x + stride];
+      k_partial[threadIdx.x] += k_partial[threadIdx.x + stride];
+    }
+    __syncthreads();
+  }
+
+  const float q_scale = rsqrtf(q_partial[0] + 1.0e-6f) * rsqrtf(static_cast<float>(head_k_dim));
+  const float k_scale = rsqrtf(k_partial[0] + 1.0e-6f);
+  const int64_t head_base = (token * num_v_heads + v_head) * head_k_dim;
+  for (int64_t idx = threadIdx.x; idx < head_k_dim; idx += blockDim.x) {
+    query[head_base + idx] = conv_out[q_base + idx] * q_scale;
+    key[head_base + idx] = conv_out[k_base + idx] * k_scale;
+  }
+  const int64_t value_base = (token * num_v_heads + v_head) * head_v_dim;
+  const int64_t conv_value_base = conv_base + 2 * key_dim + v_head * head_v_dim;
+  for (int64_t idx = threadIdx.x; idx < head_v_dim; idx += blockDim.x) {
+    value[value_base + idx] = conv_out[conv_value_base + idx];
+  }
+  if (threadIdx.x == 0) {
+    const int64_t scalar_idx = token * num_v_heads + v_head;
+    beta[scalar_idx] = sigmoid_f32(scalar_to_float_qwen35(b[scalar_idx]));
+    decay[scalar_idx] = expf(
+        -expf(a_log[v_head]) * softplus_f32(scalar_to_float_qwen35(a[scalar_idx]) + dt_bias[v_head]));
+  }
+}
+
+template <typename scalar_t>
+__global__ void qwen35_linear_attn_prefill_prepare_decode_order_kernel(
+    const float* __restrict__ conv_out,
+    const scalar_t* __restrict__ a,
+    const scalar_t* __restrict__ b,
+    const float* __restrict__ dt_bias,
+    const float* __restrict__ a_log,
+    float* __restrict__ query,
+    float* __restrict__ key,
+    float* __restrict__ value,
+    float* __restrict__ beta,
+    float* __restrict__ decay,
+    int64_t tokens,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim) {
+  extern __shared__ float partial[];
+  float* q_partial = partial;
+  float* k_partial = q_partial + blockDim.x;
+
+  const int64_t token = blockIdx.x;
+  const int64_t v_head = blockIdx.y;
+  if (token >= tokens || v_head >= num_v_heads) {
+    return;
+  }
+  const int64_t repeat = num_v_heads / num_k_heads;
+  const int64_t k_head = v_head / repeat;
+  const int64_t key_dim = num_k_heads * head_k_dim;
+  const int64_t value_dim = num_v_heads * head_v_dim;
+  const int64_t qkv_width = 2 * key_dim + value_dim;
+  const int64_t conv_base = token * qkv_width;
+  const int64_t q_base = conv_base + k_head * head_k_dim;
+  const int64_t k_base = conv_base + key_dim + k_head * head_k_dim;
+
+  // Match qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_kernel:
+  // each of the first K/8 lanes accumulates one contiguous eight-value group,
+  // then the full 128-lane shared reduction combines those group sums.
+  float q_sum = 0.0f;
+  float k_sum = 0.0f;
+  for (int64_t idx = threadIdx.x * 8; idx + 7 < head_k_dim; idx += blockDim.x * 8) {
+    const float q0 = conv_out[q_base + idx + 0];
+    const float q1 = conv_out[q_base + idx + 1];
+    const float q2 = conv_out[q_base + idx + 2];
+    const float q3 = conv_out[q_base + idx + 3];
+    const float q4 = conv_out[q_base + idx + 4];
+    const float q5 = conv_out[q_base + idx + 5];
+    const float q6 = conv_out[q_base + idx + 6];
+    const float q7 = conv_out[q_base + idx + 7];
+    const float k0 = conv_out[k_base + idx + 0];
+    const float k1 = conv_out[k_base + idx + 1];
+    const float k2 = conv_out[k_base + idx + 2];
+    const float k3 = conv_out[k_base + idx + 3];
+    const float k4 = conv_out[k_base + idx + 4];
+    const float k5 = conv_out[k_base + idx + 5];
+    const float k6 = conv_out[k_base + idx + 6];
+    const float k7 = conv_out[k_base + idx + 7];
+    q_sum += q0*q0 + q1*q1 + q2*q2 + q3*q3 + q4*q4 + q5*q5 + q6*q6 + q7*q7;
+    k_sum += k0*k0 + k1*k1 + k2*k2 + k3*k3 + k4*k4 + k5*k5 + k6*k6 + k7*k7;
+  }
+  for (int64_t idx = (head_k_dim & ~7) + threadIdx.x; idx < head_k_dim; idx += blockDim.x) {
+    const float q_value = conv_out[q_base + idx];
+    const float k_value = conv_out[k_base + idx];
+    q_sum += q_value * q_value;
+    k_sum += k_value * k_value;
+  }
+  q_partial[threadIdx.x] = q_sum;
+  k_partial[threadIdx.x] = k_sum;
+  __syncthreads();
   for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
     if (threadIdx.x < stride) {
       q_partial[threadIdx.x] += q_partial[threadIdx.x + stride];
@@ -2226,6 +2414,43 @@ extern "C" int hipengine_qwen35_gdn_prefill_recurrent_k2_f32(
   return static_cast<int>(hipGetLastError());
 }
 
+extern "C" int hipengine_qwen35_gdn_prefill_recurrent_k2_decode_order_f32(
+    const float* query,
+    const float* key,
+    const float* value,
+    const float* beta,
+    const float* decay,
+    float* recurrent_state,
+    float* out,
+    int64_t tokens,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (tokens <= 0 || num_v_heads <= 0 || head_k_dim != 128 || head_v_dim <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int threads = 64;
+  hipLaunchKernelGGL(
+      qwen35_gdn_prefill_recurrent_k2_decode_order_kernel,
+      dim3(static_cast<unsigned int>(num_v_heads), static_cast<unsigned int>(head_v_dim)),
+      dim3(threads),
+      0,
+      stream,
+      query,
+      key,
+      value,
+      beta,
+      decay,
+      recurrent_state,
+      out,
+      tokens,
+      num_v_heads,
+      head_k_dim,
+      head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_qwen35_gdn_prefill_recurrent_segments_k2_f32(
     const float* query,
     const float* key,
@@ -2295,6 +2520,52 @@ extern "C" int hipengine_qwen35_linear_attn_prefill_prepare_f32_bf16(
   const size_t shared_bytes = static_cast<size_t>(2 * threads) * sizeof(float);
   hipLaunchKernelGGL(
       (qwen35_linear_attn_prefill_prepare_kernel<uint16_t>),
+      dim3(static_cast<unsigned int>(tokens), static_cast<unsigned int>(num_v_heads)),
+      dim3(threads),
+      shared_bytes,
+      stream,
+      conv_out,
+      a,
+      b,
+      dt_bias,
+      a_log,
+      query,
+      key,
+      value,
+      beta,
+      decay,
+      tokens,
+      num_k_heads,
+      num_v_heads,
+      head_k_dim,
+      head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_linear_attn_prefill_prepare_decode_order_f32_bf16(
+    const float* conv_out,
+    const uint16_t* a,
+    const uint16_t* b,
+    const float* dt_bias,
+    const float* a_log,
+    float* query,
+    float* key,
+    float* value,
+    float* beta,
+    float* decay,
+    int64_t tokens,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (!valid_prefill_shape(tokens, num_k_heads, num_v_heads, head_k_dim, head_v_dim)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int threads = 128;
+  const size_t shared_bytes = static_cast<size_t>(2 * threads) * sizeof(float);
+  hipLaunchKernelGGL(
+      (qwen35_linear_attn_prefill_prepare_decode_order_kernel<uint16_t>),
       dim3(static_cast<unsigned int>(tokens), static_cast<unsigned int>(num_v_heads)),
       dim3(threads),
       shared_bytes,

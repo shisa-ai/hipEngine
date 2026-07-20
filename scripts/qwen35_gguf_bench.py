@@ -40,6 +40,7 @@ from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 from scripts.qwen35_kv_policy_args import add_kv_policy_args, kv_policy_json, resolve_args_kv_policy
 
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf")
+_QUANT_ATTN_AOTRITON_MIN_TOKENS = {"gguf_ud_q3_k_m": 0}
 
 
 def main() -> int:
@@ -84,6 +85,15 @@ def main() -> int:
     parser.add_argument("--prefill-full-attn-query-chunk-size", type=int, default=0, help="Chunk full-attention query rows (0 lets auto policy decide).")
     parser.add_argument("--prefill-full-attn-post-chunk-size", type=int, default=0, help="Limit full-attention post/MoE chunk rows when query chunk is unset.")
     parser.add_argument("--prefill-full-attn-rope-chunk-size", type=int, default=0, help="Limit full-attention RoPE chunk rows when query chunk is unset.")
+    parser.add_argument(
+        "--prefill-attn-aotriton-min-tokens",
+        type=int,
+        default=None,
+        help=(
+            "AOTriton full-attention crossover; unset uses the quant policy "
+            "(UD-Q3_K_M keeps exact native GQA)."
+        ),
+    )
     parser.add_argument(
         "--prefill-chunk-autotune",
         action=argparse.BooleanOptionalAction,
@@ -187,6 +197,11 @@ def main() -> int:
             raise ValueError(f"--{name.replace('_', '-')} must be non-negative")
     if args.prefill_chunk_memory_budget_gib < 0.0:
         raise ValueError("--prefill-chunk-memory-budget-gib must be non-negative")
+    if (
+        args.prefill_attn_aotriton_min_tokens is not None
+        and int(args.prefill_attn_aotriton_min_tokens) < 0
+    ):
+        raise ValueError("--prefill-attn-aotriton-min-tokens must be non-negative")
 
     compiler_version = _read_compiler_version(args.compiler_version_file) if args.compiler_version_file else None
     if args.force_bulk_prefill:
@@ -197,12 +212,19 @@ def main() -> int:
         use_bulk_prefill = None
     prompt_tokens = [int(args.token_id)] * int(args.prompt_length)
     max_sequence_length = len(prompt_tokens) + args.warmup_decode_tokens + args.decode_tokens + 1
+    default_aotriton_threshold = PrefillConfig().attn_aotriton_min_tokens
+    aotriton_threshold = (
+        _QUANT_ATTN_AOTRITON_MIN_TOKENS.get(args.quant, default_aotriton_threshold)
+        if args.prefill_attn_aotriton_min_tokens is None
+        else int(args.prefill_attn_aotriton_min_tokens)
+    )
     prefill_config = PrefillConfig(
         linear_chunk_size=args.prefill_linear_chunk_size,
         moe_chunk_size=args.prefill_moe_chunk_size,
         full_attn_query_chunk_size=args.prefill_full_attn_query_chunk_size,
         full_attn_post_chunk_size=args.prefill_full_attn_post_chunk_size,
         full_attn_rope_chunk_size=args.prefill_full_attn_rope_chunk_size,
+        attn_aotriton_min_tokens=aotriton_threshold,
         auto_tune_chunk_sizes=args.prefill_chunk_autotune,
         chunk_tune_memory_budget_gib=args.prefill_chunk_memory_budget_gib,
     )
@@ -495,6 +517,7 @@ def _run_persistent_session(
         kv_scale_granularity=kv_policy.scale_granularity,
     )
     load_seconds = time.perf_counter() - load_start
+    session.select_prefill_quant(quant)
     persistent_memory["after_load"] = _memory_snapshot("after_load", runtime, session)
 
     runs: list[dict[str, Any]] = []
@@ -784,6 +807,7 @@ def _run_once(
         kv_scale_granularity=kv_policy.scale_granularity,
     )
     load_seconds = time.perf_counter() - load_start
+    session.select_prefill_quant(quant)
     fastpath_safety = session.fastpath_safety.as_dict() if session.fastpath_safety is not None else None
     memory_snapshots["after_load"] = _memory_snapshot("after_load", runtime, session)
 

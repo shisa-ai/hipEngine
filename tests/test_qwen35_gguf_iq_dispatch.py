@@ -12,6 +12,7 @@ from hipengine.generation.registry import resolve_text_generator
 from hipengine.kernels import registry as kernel_registry
 from hipengine.kernels.registry import KernelKey
 from hipengine.runtime import qwen35_gguf_runner as qgr
+from hipengine.runtime.prefill import PrefillConfig
 from tests.test_qwen35_gguf_compact_moe_gemv_routing import (
     _FakeWeight,
     _fail_if_called,
@@ -54,7 +55,7 @@ def test_ud_q3_k_m_public_generator_key_is_registered() -> None:
         ) is qwen35_gguf_generation.make_qwen35_gguf_ud_q3_k_m_generator
 
 
-def test_ud_q3_k_m_generator_plugin_selects_native_bulk_correctness_path(
+def test_ud_q3_k_m_generator_plugin_selects_exact_fully_bulk_prefill(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
@@ -68,21 +69,30 @@ def test_ud_q3_k_m_generator_plugin_selects_native_bulk_correctness_path(
         weight_index=object(),
         model_plugin=object(),
     )
-    session = SimpleNamespace(default_bulk_attention_mode="bulk")
+    selected_prefill_quants: list[str] = []
+    session = SimpleNamespace(
+        default_bulk_attention_mode="native",
+        prefill_config=PrefillConfig(),
+        select_prefill_quant=selected_prefill_quants.append,
+    )
     generator._configure_session(session)
 
-    assert generator.bulk_prefill_attention_mode == "native"
-    assert session.default_bulk_attention_mode == "native"
+    assert generator.bulk_prefill_attention_mode == "bulk"
+    assert generator.prefill_quant == "gguf_ud_q3_k_m"
+    assert generator.prefill_attn_aotriton_min_tokens == 0
+    assert session.default_bulk_attention_mode == "bulk"
+    assert session.prefill_config.attn_aotriton_min_tokens == 0
+    assert selected_prefill_quants == ["gguf_ud_q3_k_m"]
 
 
-def test_resident_session_honors_plugin_selected_native_bulk_default(
+def test_resident_session_honors_plugin_selected_bulk_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = object.__new__(qgr.Qwen35GGUFResidentSession)
     session.runner = SimpleNamespace(
         weights=SimpleNamespace(config=SimpleNamespace(ssm_conv_kernel=4))
     )
-    session.default_bulk_attention_mode = "native"
+    session.default_bulk_attention_mode = "bulk"
     calls: list[str] = []
 
     def fake_bulk_prefill(self, token_ids, *, bulk_attention_mode, return_logits):
@@ -99,7 +109,7 @@ def test_resident_session_honors_plugin_selected_native_bulk_default(
     result = session.prefill([9419, 11, 271, 40], return_logits=False)
 
     assert result.token_id == 11
-    assert calls == ["native"]
+    assert calls == ["bulk"]
 
 
 def test_iq_helpers_resolve_exact_four_axis_registry_keys(

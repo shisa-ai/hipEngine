@@ -173,7 +173,9 @@ def test_qwen35moe_ud_q3km_e2e_fixture_pins_llamacpp_first_token() -> None:
     assert acceptance["expected_token_ids_match_required"] is True
     assert acceptance["finite_logits_required"] is True
     assert acceptance["external_token_oracle"] == "llama.cpp + llama-tokenize"
-    assert acceptance["bulk_prefill_attention_mode"] == "native"
+    assert acceptance["bulk_prefill_attention_mode"] == "bulk"
+    assert acceptance["prefill_quant"] == "gguf_ud_q3_k_m"
+    assert acceptance["prefill_attn_aotriton_min_tokens"] == 0
     assert set(acceptance["required_kernel_families"]) == {
         "gguf_iq3_xxs",
         "gguf_iq4_xs",

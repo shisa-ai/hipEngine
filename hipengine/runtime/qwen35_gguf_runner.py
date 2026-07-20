@@ -705,16 +705,42 @@ class Qwen35GGUFFullStackRunner:
             self._paged_kv_write_library_handle = library
         return library
 
-    def _gdn_prefill_plan(self) -> _GGUFGDNPrefillPlan:
-        """Return the cached qwen35 GGUF GDN prefill plan.
+    def select_prefill_quant(self, quant: str) -> None:
+        """Select the registry quant axis for GGUF prefill plugins."""
 
-        Resolved once per runner via the kernel registry. Falls back to the
-        legacy fused decode-order kernel when the chained path is incomplete.
-        """
+        selected = str(quant).strip()
+        if not selected:
+            raise ValueError("prefill quant must be non-empty")
+        self._gguf_prefill_quant = selected
+        self.__dict__.pop("_gguf_gdn_prefill_plan_cache", None)
+        self.__dict__.pop("_gguf_full_attn_prefill_native_fn_cache", None)
+
+    def _full_attn_prefill_native_fn(self):
+        """Return the native GQA prefill kernel on the selected quant axis."""
+
+        fn = getattr(self, "_gguf_full_attn_prefill_native_fn_cache", None)
+        if fn is None:
+            quant = getattr(self, "_gguf_prefill_quant", _GDN_PREFILL_DEFAULT_QUANT)
+            fn = resolve(
+                backend="hip_gfx1100",
+                layer="full_attn_prefill",
+                quant=quant,
+                variant="causal_gqa_gate_bf16",
+                missing="none",
+            )
+            if fn is None:
+                fn = qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans
+            self._gguf_full_attn_prefill_native_fn_cache = fn
+        return fn
+
+    def _gdn_prefill_plan(self) -> _GGUFGDNPrefillPlan:
+        """Return the cached registry-selected qwen35 GGUF GDN prefill plan."""
 
         plan = getattr(self, "_gguf_gdn_prefill_plan_cache", None)
         if plan is None:
-            plan = _resolve_gguf_gdn_prefill_plan()
+            plan = _resolve_gguf_gdn_prefill_plan(
+                quant=getattr(self, "_gguf_prefill_quant", _GDN_PREFILL_DEFAULT_QUANT)
+            )
             self._gguf_gdn_prefill_plan_cache = plan
         return plan
 
@@ -731,12 +757,13 @@ class Qwen35GGUFFullStackRunner:
     ) -> None:
         """Dispatch the qwen35 GGUF GDN prefill chain (or fused fallback).
 
-        Plugin-style: the kernel chain is resolved via the kernel registry
-        keyed by ``(hip_gfx1100, ..., gguf_qwen35, ...)``. Whether the
-        single-segment k2 or multi-segment k2_segments recurrent kernel runs
-        is a perf-tuning decision controlled by
-        ``HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD`` (default 256), not a
-        per-quant/per-backend branch.
+        Plugin-style: the kernel chain is resolved via the kernel registry on
+        the selected prefill quant axis. Whether the single-segment k2 or
+        multi-segment k2_segments recurrent kernel runs is a perf-tuning
+        decision controlled by ``HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD``
+        (default 256), not a per-quant/per-backend branch. A quant plugin may
+        omit the segmented variant when its exact arithmetic contract requires
+        the nonsegmented schedule.
         """
 
         plan = self._gdn_prefill_plan()
@@ -1124,6 +1151,7 @@ class Qwen35GGUFFullStackRunner:
         cos_table_ptr: int,
         sin_table_ptr: int,
         max_positions: int,
+        attn_aotriton_min_tokens: int | None = None,
         stream: int = 0,
         expert_sidecar: _DeviceExpertLayerSidecar | None = None,
     ) -> bool:
@@ -1307,7 +1335,13 @@ class Qwen35GGUFFullStackRunner:
                     library=kv_write_library,
                     runtime=runtime,
                 )
-        threshold = int(PrefillConfig().attn_aotriton_min_tokens)
+        threshold = int(
+            PrefillConfig().attn_aotriton_min_tokens
+            if attn_aotriton_min_tokens is None
+            else attn_aotriton_min_tokens
+        )
+        if threshold < 0:
+            raise ValueError("attn_aotriton_min_tokens must be non-negative")
         use_aotriton = threshold > 0 and rows >= threshold
         paged_attn_library = self._paged_attn_decode_library()
         end = scratch.start + rows
@@ -1400,7 +1434,7 @@ class Qwen35GGUFFullStackRunner:
                 runtime=runtime,
             )
         else:
-            qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans(
+            self._full_attn_prefill_native_fn()(
                 scratch.full_query.ptr,
                 scratch.key_cache.ptr,
                 scratch.value_cache.ptr,
@@ -1416,6 +1450,11 @@ class Qwen35GGUFFullStackRunner:
                 cfg.key_length,
                 1,
                 cfg.key_length ** -0.5,
+                split_partial_out_ptr=scratch.full_attn_split_partial.ptr,
+                split_partial_m_ptr=scratch.full_attn_split_m.ptr,
+                split_partial_l_ptr=scratch.full_attn_split_l.ptr,
+                split_batch_rows=scratch.full_attn_split_batch_rows,
+                split_count=scratch.full_attn_split_count,
                 stream=stream,
                 library=paged_attn_library,
                 runtime=runtime,
@@ -3060,6 +3099,7 @@ _QWEN35MOE_UNSAFE_FASTPATH_ENV = "HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATH
 _GGUF_AOTRITON_PREFILL_ENV = "HIPENGINE_GGUF_AOTRITON_PREFILL"
 _GGUF_FULL_ATTN_DECODE_SPLIT_MIN_CONTEXT_ENV = "HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT"
 _GGUF_FULL_ATTN_DECODE_SPLIT_MIN_CONTEXT_DEFAULT = 1024
+_GGUF_FULL_ATTN_PREFILL_SPLIT_BATCH_ROWS = 16
 _GGUF_COMPACT_MOE_C1_ENV = "HIPENGINE_GGUF_COMPACT_MOE_C1"
 # Keep explicit INT8-KV short gates on the exact BF16 decode path. Long-context
 # sweeps after the layer-local BF16 prefill-oracle fix found that prefix 8/10
@@ -3689,6 +3729,13 @@ class Qwen35GGUFResidentSession:
 
         return int(self._position)
 
+    def select_prefill_quant(self, quant: str) -> None:
+        """Select the four-axis GGUF prefill plugins for this session."""
+
+        if self.runner is None:
+            raise RuntimeError("GGUF resident session is closed")
+        self.runner.select_prefill_quant(quant)
+
     def reset(self) -> None:
         """Reset sequence state without freeing resident weights or scratch."""
 
@@ -4032,7 +4079,16 @@ class Qwen35GGUFResidentSession:
                     elif layer_type == FULL_ATTENTION:
                         layer_scratch = self._full_attention_prefill_scratch_for_layer(bulk_scratch, layer_id)
                         self.runner._run_full_attention_prefill_layer_aotriton(
-                            layer_id, src.ptr, dst.ptr, layer_scratch, cos_table_ptr=self.scratch.cos_table_buf.ptr, sin_table_ptr=self.scratch.sin_table_buf.ptr, max_positions=int(self.scratch.max_positions), stream=stream, expert_sidecar=expert_sidecar
+                            layer_id,
+                            src.ptr,
+                            dst.ptr,
+                            layer_scratch,
+                            cos_table_ptr=self.scratch.cos_table_buf.ptr,
+                            sin_table_ptr=self.scratch.sin_table_buf.ptr,
+                            max_positions=int(self.scratch.max_positions),
+                            attn_aotriton_min_tokens=int(self.prefill_config.attn_aotriton_min_tokens),
+                            stream=stream,
+                            expert_sidecar=expert_sidecar,
                         )
                     else:
                         raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
@@ -4109,6 +4165,7 @@ class Qwen35GGUFResidentSession:
                                 cos_table_ptr=self.scratch.cos_table_buf.ptr,
                                 sin_table_ptr=self.scratch.sin_table_buf.ptr,
                                 max_positions=int(self.scratch.max_positions),
+                                attn_aotriton_min_tokens=int(self.prefill_config.attn_aotriton_min_tokens),
                                 stream=stream,
                                 expert_sidecar=expert_sidecar,
                             )
@@ -4723,6 +4780,9 @@ class _GGUFFullAttentionPrefillScratch:
     full_gate: object
     full_attn_bf16: object
     full_gated: object
+    full_attn_split_partial: object
+    full_attn_split_m: object
+    full_attn_split_l: object
     attn_out: object
     post_norm: object
     residual: object
@@ -4770,6 +4830,8 @@ class _GGUFFullAttentionPrefillScratch:
     block_size: int
     blocks: int
     max_positions: int
+    full_attn_split_batch_rows: int
+    full_attn_split_count: int
     moe_group_counts_zero: np.ndarray
     moe_scatter_offsets_zero: np.ndarray
     moe_wmma_total_host: np.ndarray
@@ -4827,6 +4889,17 @@ class _GGUFFullAttentionPrefillScratch:
         recurrent_f32_bytes = rows * cfg.ssm_inner_size * 4
         prefill_scalar_bytes = rows * cfg.ssm_time_step_rank * 4
         cache_nbytes = max_positions * cfg.head_count_kv * cfg.key_length * 2 if allocate_kv_cache else 0
+        full_attn_split_count = (capacity + block_size - 1) // block_size
+        full_attn_split_batch_rows = min(rows, _GGUF_FULL_ATTN_PREFILL_SPLIT_BATCH_ROWS)
+        full_attn_split_partial_bytes = (
+            full_attn_split_batch_rows * runner.q_width * full_attn_split_count * DType.FP32.itemsize
+        )
+        full_attn_split_stat_bytes = (
+            full_attn_split_batch_rows
+            * cfg.head_count
+            * full_attn_split_count
+            * DType.FP32.itemsize
+        )
         block_table_arr = np.tile(np.arange(blocks, dtype=np.int32), (rows, 1))
         positions_arr = np.arange(rows, dtype=np.int64)
         context_arr = positions_arr + np.int64(1)
@@ -4865,6 +4938,9 @@ class _GGUFFullAttentionPrefillScratch:
             "full_gate": buf(rows * runner.q_width * 2),
             "full_attn_bf16": buf(rows * runner.q_width * 2),
             "full_gated": buf(rows * runner.q_width * 2),
+            "full_attn_split_partial": buf(full_attn_split_partial_bytes),
+            "full_attn_split_m": buf(full_attn_split_stat_bytes),
+            "full_attn_split_l": buf(full_attn_split_stat_bytes),
             "attn_out": buf(hidden_bytes),
             "post_norm": buf(hidden_bytes),
             "residual": buf(hidden_bytes),
@@ -4951,6 +5027,8 @@ class _GGUFFullAttentionPrefillScratch:
             block_size=block_size,
             blocks=blocks,
             max_positions=capacity,
+            full_attn_split_batch_rows=full_attn_split_batch_rows,
+            full_attn_split_count=full_attn_split_count,
             moe_group_counts_zero=moe_group_counts_zero,
             moe_scatter_offsets_zero=moe_scatter_offsets_zero,
             moe_wmma_total_host=moe_wmma_total_host,
@@ -5640,21 +5718,12 @@ _COMPACT_MOE_REQUIRED_SCRATCH = (
     "moe_wmma_total_host",
 )
 
-_GDN_PREFILL_PREPARE_KEY = KernelKey(
-    "hip_gfx1100", "linear_attn_prefill_prepare", "gguf_qwen35", "f32_bf16"
-)
-_GDN_PREFILL_RECURRENT_K2_KEY = KernelKey(
-    "hip_gfx1100", "gdn_prefill_recurrent", "gguf_qwen35", "f32_k2"
-)
-_GDN_PREFILL_RECURRENT_SEGMENTS_K2_KEY = KernelKey(
-    "hip_gfx1100", "gdn_prefill_recurrent", "gguf_qwen35", "f32_k2_segments"
-)
-_GDN_PREFILL_RMSNORM_GATE_BF16_KEY = KernelKey(
-    "hip_gfx1100", "gdn_prefill_rmsnorm_gate", "gguf_qwen35", "bf16"
-)
-_GDN_PREFILL_DECODE_ORDER_BF16_KEY = KernelKey(
-    "hip_gfx1100", "gdn_prefill_recurrent", "gguf_qwen35", "decode_order_bf16"
-)
+_GDN_PREFILL_DEFAULT_QUANT = "gguf_qwen35"
+_GDN_PREFILL_PREPARE_VARIANT = "f32_bf16"
+_GDN_PREFILL_RECURRENT_K2_VARIANT = "f32_k2"
+_GDN_PREFILL_RECURRENT_SEGMENTS_K2_VARIANT = "f32_k2_segments"
+_GDN_PREFILL_RMSNORM_GATE_BF16_VARIANT = "bf16"
+_GDN_PREFILL_DECODE_ORDER_BF16_VARIANT = "decode_order_bf16"
 _GDN_PREFILL_SEGMENT_THRESHOLD_DEFAULT = 256
 
 
@@ -5816,25 +5885,49 @@ def _gguf_full_attention_split_gate_bf16_fn(
     return qwen35_paged_full_attn_decode_split_k_gate_bf16_spans
 
 
-def _resolve_gguf_gdn_prefill_plan() -> _GGUFGDNPrefillPlan:
+def _resolve_gguf_gdn_prefill_plan(
+    *, quant: str = _GDN_PREFILL_DEFAULT_QUANT
+) -> _GGUFGDNPrefillPlan:
     register_qwen35_linear_attn_gdn_kernels()
 
-    def _resolve(key: KernelKey):
+    def _resolve(candidate_quant: str, layer: str, variant: str):
         return resolve(
-            backend=key.backend,
-            layer=key.layer,
-            quant=key.quant,
-            variant=key.variant,
+            backend="hip_gfx1100",
+            layer=layer,
+            quant=candidate_quant,
+            variant=variant,
             missing="none",
         )
 
-    return _GGUFGDNPrefillPlan(
-        prepare=_resolve(_GDN_PREFILL_PREPARE_KEY),
-        recurrent=_resolve(_GDN_PREFILL_RECURRENT_K2_KEY),
-        recurrent_segments=_resolve(_GDN_PREFILL_RECURRENT_SEGMENTS_K2_KEY),
-        rmsnorm_gate=_resolve(_GDN_PREFILL_RMSNORM_GATE_BF16_KEY),
-        fused_decode_order=_resolve(_GDN_PREFILL_DECODE_ORDER_BF16_KEY),
-    )
+    def _plan(candidate_quant: str) -> _GGUFGDNPrefillPlan:
+        return _GGUFGDNPrefillPlan(
+            prepare=_resolve(
+                candidate_quant, "linear_attn_prefill_prepare", _GDN_PREFILL_PREPARE_VARIANT
+            ),
+            recurrent=_resolve(
+                candidate_quant, "gdn_prefill_recurrent", _GDN_PREFILL_RECURRENT_K2_VARIANT
+            ),
+            recurrent_segments=_resolve(
+                candidate_quant,
+                "gdn_prefill_recurrent",
+                _GDN_PREFILL_RECURRENT_SEGMENTS_K2_VARIANT,
+            ),
+            rmsnorm_gate=_resolve(
+                candidate_quant,
+                "gdn_prefill_rmsnorm_gate",
+                _GDN_PREFILL_RMSNORM_GATE_BF16_VARIANT,
+            ),
+            fused_decode_order=_resolve(
+                candidate_quant,
+                "gdn_prefill_recurrent",
+                _GDN_PREFILL_DECODE_ORDER_BF16_VARIANT,
+            ),
+        )
+
+    plan = _plan(str(quant))
+    if plan.has_chain:
+        return plan
+    return _plan(_GDN_PREFILL_DEFAULT_QUANT)
 
 
 def _copy_sidecar_array_to_device(array: np.ndarray, *, runtime: HipRuntime) -> DeviceBuffer:

@@ -28,6 +28,7 @@ from hipengine.generation.sampling import (
     thinking_budget_state_from_params,
 )
 from hipengine.loading.gguf import GGUFModelInfo
+from hipengine.runtime.prefill import PrefillConfig
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
 
@@ -40,6 +41,8 @@ class Qwen35GGUFBringupGenerator:
     weight_index: GGUFModelInfo
     model_plugin: Any
     bulk_prefill_attention_mode: str = "bulk"
+    prefill_quant: str | None = None
+    prefill_attn_aotriton_min_tokens: int | None = None
     tokenizer: Qwen35GGUFTokenizer = field(init=False)
     last_batch_generation: dict[str, Any] | None = field(default=None, init=False, repr=False)
     last_generation_outputs: tuple[GenerationOutput, ...] = field(default=(), init=False, repr=False)
@@ -48,16 +51,28 @@ class Qwen35GGUFBringupGenerator:
     def __post_init__(self) -> None:
         if self.bulk_prefill_attention_mode not in {"bulk", "native"}:
             raise ValueError("bulk_prefill_attention_mode must be 'bulk' or 'native'")
+        if (
+            self.prefill_attn_aotriton_min_tokens is not None
+            and int(self.prefill_attn_aotriton_min_tokens) < 0
+        ):
+            raise ValueError("prefill_attn_aotriton_min_tokens must be non-negative")
         self.tokenizer = Qwen35GGUFTokenizer.from_gguf_info(self.weight_index)
 
     def _configure_session(self, session: Qwen35GGUFResidentSession) -> None:
-        # Quant-specific correctness policy is selected by the generator
-        # registry factory, not by a quant branch in runtime dispatch.
+        # Prefill correctness policy is selected by the generator registry
+        # factory, not by a quant branch in runtime dispatch.
         session.default_bulk_attention_mode = getattr(
             self,
             "bulk_prefill_attention_mode",
             "bulk",
         )
+        if self.prefill_quant is not None:
+            session.select_prefill_quant(self.prefill_quant)
+        if self.prefill_attn_aotriton_min_tokens is not None:
+            session.prefill_config = replace(
+                session.prefill_config or PrefillConfig(),
+                attn_aotriton_min_tokens=int(self.prefill_attn_aotriton_min_tokens),
+            )
 
     def tokenize(self, text: str) -> tuple[int, ...]:
         return tuple(int(token) for token in self.tokenizer.encode(str(text)))
@@ -909,13 +924,15 @@ def make_qwen35_gguf_ud_q3_k_m_generator(
     weight_index: GGUFModelInfo,
     model_plugin: Any,
 ) -> Qwen35GGUFBringupGenerator:
-    """Select the parity-safe native-attention bulk policy for UD-Q3_K_M."""
+    """Select the exact fully-bulk prefill plugins for UD-Q3_K_M."""
 
     return Qwen35GGUFBringupGenerator(
         model_path=model_path,
         weight_index=weight_index,
         model_plugin=model_plugin,
-        bulk_prefill_attention_mode="native",
+        bulk_prefill_attention_mode="bulk",
+        prefill_quant="gguf_ud_q3_k_m",
+        prefill_attn_aotriton_min_tokens=0,
     )
 
 

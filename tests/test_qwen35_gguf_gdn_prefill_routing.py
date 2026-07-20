@@ -20,11 +20,16 @@ from types import SimpleNamespace
 
 import pytest
 
+from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
+    qwen35_paged_full_attn_prefill_gqa_gate_bf16_decode_order_spans,
+)
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
+    qwen35_gdn_prefill_recurrent_k2_decode_order_f32,
     qwen35_gdn_prefill_recurrent_k2_f32,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order,
     qwen35_gdn_prefill_recurrent_segments_k2_f32,
     qwen35_gdn_prefill_rmsnorm_gate_bf16,
+    qwen35_linear_attn_prefill_prepare_decode_order_f32_bf16,
     qwen35_linear_attn_prefill_prepare_f32_bf16,
     register_qwen35_linear_attn_gdn_kernels,
 )
@@ -46,6 +51,35 @@ def test_resolve_gguf_gdn_prefill_plan_returns_complete_chain() -> None:
     assert plan.recurrent_segments is qwen35_gdn_prefill_recurrent_segments_k2_f32
     assert plan.rmsnorm_gate is qwen35_gdn_prefill_rmsnorm_gate_bf16
     assert plan.fused_decode_order is qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order
+
+
+def test_resolve_ud_q3_k_m_plan_selects_exact_nonsegmented_chain() -> None:
+    register_qwen35_linear_attn_gdn_kernels()
+    plan = qgr._resolve_gguf_gdn_prefill_plan(quant="gguf_ud_q3_k_m")
+
+    assert plan.has_chain
+    assert plan.has_fused
+    assert plan.prepare is qwen35_linear_attn_prefill_prepare_decode_order_f32_bf16
+    assert plan.recurrent is qwen35_gdn_prefill_recurrent_k2_decode_order_f32
+    assert plan.recurrent_segments is None
+    assert plan.rmsnorm_gate is qwen35_gdn_prefill_rmsnorm_gate_bf16
+    assert plan.fused_decode_order is qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order
+
+
+def test_runner_quant_selection_invalidates_cached_prefill_plugins() -> None:
+    runner = _new_runner()
+    runner._gguf_gdn_prefill_plan_cache = object()
+    runner._gguf_full_attn_prefill_native_fn_cache = object()
+
+    runner.select_prefill_quant("gguf_ud_q3_k_m")
+
+    assert runner._gguf_prefill_quant == "gguf_ud_q3_k_m"
+    assert "_gguf_gdn_prefill_plan_cache" not in runner.__dict__
+    assert "_gguf_full_attn_prefill_native_fn_cache" not in runner.__dict__
+    assert (
+        runner._full_attn_prefill_native_fn()
+        is qwen35_paged_full_attn_prefill_gqa_gate_bf16_decode_order_spans
+    )
 
 
 def test_run_gdn_prefill_uses_chain_under_threshold() -> None:

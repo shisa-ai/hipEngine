@@ -614,16 +614,18 @@ __global__ void qwen35_paged_full_attn_decode_split_k_ctx_tensor_kernel(
 
 
 __global__ void qwen35_paged_full_attn_decode_split_k_ctx_tensor_warp_kernel(
-    const float* __restrict__ query,         // [1, 16, 256]
+    const float* __restrict__ query,         // [rows, 16, 256]
     const uint16_t* __restrict__ key_cache,  // [num_blocks, 256, 2, 256]
     const uint16_t* __restrict__ value_cache,
-    const int32_t* __restrict__ block_table,
+    const int32_t* __restrict__ block_tables,
     const int64_t* __restrict__ context_len_ptr,
     float* __restrict__ partial_out,
     float* __restrict__ partial_m,
     float* __restrict__ partial_l,
+    int64_t rows,
     int64_t chunk_size,
     int64_t num_splits,
+    int64_t block_table_len,
     float scale) {
   constexpr int64_t head_dim = 256;
   constexpr int64_t num_q_heads = 16;
@@ -631,15 +633,17 @@ __global__ void qwen35_paged_full_attn_decode_split_k_ctx_tensor_warp_kernel(
   constexpr int64_t block_size = 256;
   const int64_t q_head = blockIdx.x;
   const int64_t split_idx = blockIdx.y;
-  if (q_head >= num_q_heads || split_idx >= num_splits) {
+  const int64_t row = blockIdx.z;
+  if (q_head >= num_q_heads || split_idx >= num_splits || row >= rows) {
     return;
   }
 
-  const int64_t context_len = *context_len_ptr;
+  const int64_t context_len = context_len_ptr[row];
   const int64_t token_start = split_idx * chunk_size;
   const int64_t kv_head = q_head >> 3;
-  const int64_t q_offset = q_head * head_dim;
-  const int64_t partial_idx = q_head * num_splits + split_idx;
+  const int64_t q_offset = (row * num_q_heads + q_head) * head_dim;
+  const int64_t partial_idx = (row * num_q_heads + q_head) * num_splits + split_idx;
+  const int32_t* __restrict__ block_table = block_tables + row * block_table_len;
 
   if (token_start >= context_len) {
     if (threadIdx.x == 0) {
@@ -3561,8 +3565,63 @@ extern "C" int hipengine_qwen35_paged_full_attn_decode_split_k_warp_context_bf16
       partial_out,
       partial_m,
       partial_l,
+      1,
       chunk_size,
       num_splits,
+      block_table_len,
+      scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_paged_full_attn_decode_split_k_warp_context_batch_bf16_spans(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* partial_out,
+    float* partial_m,
+    float* partial_l,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    int64_t rows,
+    int64_t chunk_size,
+    int64_t num_splits,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream) {
+  if (rows <= 0 ||
+      !valid_paged_attn_shape(chunk_size * num_splits, block_size, block_table_len, num_q_heads, num_kv_heads, head_dim) ||
+      chunk_size <= 0 || num_splits <= 0 || block_size != 256 || num_q_heads != 16 ||
+      num_kv_heads != 2 || head_dim != 256) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  const size_t shared_bytes = static_cast<size_t>(chunk_size + threads + head_dim) * sizeof(float) +
+      static_cast<size_t>(chunk_size + 2) * sizeof(int32_t);
+  hipLaunchKernelGGL(
+      qwen35_paged_full_attn_decode_split_k_ctx_tensor_warp_kernel,
+      dim3(
+          static_cast<unsigned int>(num_q_heads),
+          static_cast<unsigned int>(num_splits),
+          static_cast<unsigned int>(rows)),
+      dim3(threads),
+      shared_bytes,
+      stream,
+      query,
+      key_cache,
+      value_cache,
+      base_offsets,
+      live_counts,
+      partial_out,
+      partial_m,
+      partial_l,
+      rows,
+      chunk_size,
+      num_splits,
+      block_table_len,
       scale);
   return static_cast<int>(hipGetLastError());
 }
@@ -4167,6 +4226,44 @@ extern "C" int hipengine_qwen35_paged_full_attn_decode_split_k_reduce_gate_fp16(
   return static_cast<int>(hipGetLastError());
 }
 
+extern "C" int hipengine_qwen35_paged_full_attn_decode_split_k_reduce_gate_bf16_batch(
+    const float* partial_out,
+    const float* partial_m,
+    const float* partial_l,
+    const uint16_t* gate,
+    uint16_t* out,
+    int64_t rows,
+    int64_t num_q_heads,
+    int64_t num_splits,
+    int64_t head_dim,
+    int64_t gate_stride1,
+    int64_t gate_stride2,
+    hipStream_t stream) {
+  if (rows <= 0 || num_q_heads <= 0 || num_splits <= 0 || head_dim <= 0 || head_dim > 1024 ||
+      gate_stride1 <= 0 || gate_stride2 <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int reduce_threads = static_cast<int>(head_dim);
+  const size_t shared_bytes = static_cast<size_t>(num_splits) * 3 * sizeof(float);
+  hipLaunchKernelGGL(
+      HIP_KERNEL_NAME(qwen35_paged_full_attn_decode_split_k_reduce_gate_batch_kernel<hip_bfloat16>),
+      dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(rows)),
+      dim3(reduce_threads),
+      shared_bytes,
+      stream,
+      partial_out,
+      partial_m,
+      partial_l,
+      reinterpret_cast<const hip_bfloat16*>(gate),
+      reinterpret_cast<hip_bfloat16*>(out),
+      rows,
+      num_splits,
+      head_dim,
+      gate_stride1,
+      gate_stride2);
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_qwen35_paged_full_attn_decode_split_k_reduce_gate_fp16_batch(
     const float* partial_out,
     const float* partial_m,
@@ -4605,7 +4702,7 @@ extern "C" int hipengine_qwen35_paged_full_attn_decode_split_k_gqa_context_int8_
       stream);
 }
 
-extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans(
+int launch_qwen35_paged_full_attn_prefill_gqa_gate_bf16(
     const float* query,
     const uint16_t* key_cache,
     const uint16_t* value_cache,
@@ -4624,13 +4721,13 @@ extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans(
     int64_t gate_stride1,
     int64_t gate_stride2,
     float scale,
+    int threads,
     hipStream_t stream) {
   if (rows <= 0 || max_context_len <= 0 || block_size <= 0 || block_table_len <= 0 ||
       num_q_heads <= 0 || num_kv_heads <= 0 || head_dim <= 0 || gate_stride1 <= 0 || gate_stride2 <= 0 ||
-      (num_q_heads % num_kv_heads) != 0) {
+      (num_q_heads % num_kv_heads) != 0 || threads <= 0 || (threads % 32) != 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
-  const int threads = max_context_len <= 1024 ? 32 : 64;
   const size_t shared = static_cast<size_t>(max_context_len + threads + head_dim) * sizeof(float);
   const bool use_short_block256 = block_size == 256 && max_context_len <= 512;
 #define HIPENGINE_LAUNCH_PREFILL_GQA_BF16(SHORT) \
@@ -4665,4 +4762,60 @@ extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans(
   }
 #undef HIPENGINE_LAUNCH_PREFILL_GQA_BF16
   return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    const uint16_t* gate,
+    uint16_t* out,
+    const int32_t* block_tables,
+    const int64_t* context_counts,
+    const int64_t* row_positions,
+    int64_t rows,
+    int64_t max_context_len,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t gate_stride1,
+    int64_t gate_stride2,
+    float scale,
+    hipStream_t stream) {
+  const int threads = max_context_len <= 1024 ? 32 : 64;
+  return launch_qwen35_paged_full_attn_prefill_gqa_gate_bf16(
+      query, key_cache, value_cache, gate, out, block_tables, context_counts, row_positions,
+      rows, max_context_len, block_size, block_table_len, num_q_heads, num_kv_heads, head_dim,
+      gate_stride1, gate_stride2, scale, threads, stream);
+}
+
+extern "C" int hipengine_qwen35_paged_full_attn_prefill_gqa_gate_bf16_decode_order_spans(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    const uint16_t* gate,
+    uint16_t* out,
+    const int32_t* block_tables,
+    const int64_t* context_counts,
+    const int64_t* row_positions,
+    int64_t rows,
+    int64_t max_context_len,
+    int64_t block_size,
+    int64_t block_table_len,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    int64_t gate_stride1,
+    int64_t gate_stride2,
+    float scale,
+    hipStream_t stream) {
+  // The resident decode kernel uses 256 threads (eight wave32s).  Preserve
+  // that score/softmax partition for every prompt row so earlier hidden rows,
+  // not only the final row, remain on the c=1 arithmetic contract.
+  return launch_qwen35_paged_full_attn_prefill_gqa_gate_bf16(
+      query, key_cache, value_cache, gate, out, block_tables, context_counts, row_positions,
+      rows, max_context_len, block_size, block_table_len, num_q_heads, num_kv_heads, head_dim,
+      gate_stride1, gate_stride2, scale, 256, stream);
 }

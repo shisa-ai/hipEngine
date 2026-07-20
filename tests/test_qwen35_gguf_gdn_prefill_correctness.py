@@ -56,10 +56,12 @@ from hipengine.core.memory import (
 )
 from hipengine.kernels.cpu_reference import gdn_prefill_recurrent_segments
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
+    qwen35_gdn_prefill_recurrent_k2_decode_order_f32,
     qwen35_gdn_prefill_recurrent_k2_f32,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order,
     qwen35_gdn_prefill_recurrent_segments_k2_f32,
     qwen35_gdn_prefill_rmsnorm_gate_bf16,
+    qwen35_linear_attn_prefill_prepare_decode_order_f32_bf16,
     qwen35_linear_attn_prefill_prepare_f32_bf16,
     register_qwen35_linear_attn_gdn_kernels,
 )
@@ -379,7 +381,12 @@ def _run_decode_order_bf16(
 
 
 def _run_chain(
-    inputs: _GDNInputs, rms_norm_eps: float, *, use_segments: bool
+    inputs: _GDNInputs,
+    rms_norm_eps: float,
+    *,
+    use_segments: bool,
+    prepare_fn=qwen35_linear_attn_prefill_prepare_f32_bf16,
+    recurrent_fn=qwen35_gdn_prefill_recurrent_k2_f32,
 ) -> tuple[np.ndarray, np.ndarray]:
     conv_out = _to_device(inputs.conv_out_f32)
     a = _to_device(inputs.a_u16)
@@ -406,7 +413,7 @@ def _run_chain(
     cu = _to_device(cu_arr)
     state_indices = _to_device(state_indices_arr)
     try:
-        qwen35_linear_attn_prefill_prepare_f32_bf16(
+        prepare_fn(
             conv_out.ptr,
             a.ptr,
             b.ptr,
@@ -441,7 +448,7 @@ def _run_chain(
                 inputs.head_v_dim,
             )
         else:
-            qwen35_gdn_prefill_recurrent_k2_f32(
+            recurrent_fn(
                 query.ptr,
                 key.ptr,
                 value.ptr,
@@ -545,6 +552,34 @@ def test_gguf_qwen35_gdn_registry_resolves_all_chain_aliases() -> None:
             variant="bf16",
         )
         is qwen35_gdn_prefill_rmsnorm_gate_bf16
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="linear_attn_prefill_prepare",
+            quant="gguf_ud_q3_k_m",
+            variant="f32_bf16",
+        )
+        is qwen35_linear_attn_prefill_prepare_decode_order_f32_bf16
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gdn_prefill_recurrent",
+            quant="gguf_ud_q3_k_m",
+            variant="f32_k2",
+        )
+        is qwen35_gdn_prefill_recurrent_k2_decode_order_f32
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gdn_prefill_recurrent",
+            quant="gguf_ud_q3_k_m",
+            variant="f32_k2_segments",
+            missing="none",
+        )
+        is None
     )
 
 
@@ -693,3 +728,27 @@ def test_gdn_prefill_chain_matches_decode_order_within_drift_budget() -> None:
     out_chain, state_chain = _run_chain(inputs, _RMS_EPS, use_segments=False)
     _assert_state_close(state_chain, state_fused, label="chain_k2 vs fused")
     _assert_output_close(out_chain, out_fused, label="chain_k2 vs fused")
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_gdn_prefill_k2_decode_order_is_bit_exact_to_fused_qwen36_shape() -> None:
+    """Keep the fast state-parallel K2 schedule on the c=1 decode contract."""
+
+    inputs = _GDNInputs(
+        tokens=64,
+        num_k_heads=16,
+        num_v_heads=32,
+        head_k_dim=128,
+        head_v_dim=128,
+        seed=3,
+    )
+    out_fused, state_fused = _run_decode_order_bf16(inputs, _RMS_EPS)
+    out_exact, state_exact = _run_chain(
+        inputs,
+        _RMS_EPS,
+        use_segments=False,
+        prepare_fn=qwen35_linear_attn_prefill_prepare_decode_order_f32_bf16,
+        recurrent_fn=qwen35_gdn_prefill_recurrent_k2_decode_order_f32,
+    )
+    assert np.array_equal(state_exact, state_fused)
+    assert np.array_equal(out_exact, out_fused)
