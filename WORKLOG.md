@@ -168661,3 +168661,237 @@ C8 **62.188 -> 65.034 (+4.58%)**. INT8 remains explicit/eager with bounded BF16
 attention mirrors, so no default or memory-saving claim is made. Compact
 artifact:
 `benchmarks/results/2026-07-20-gfx1151-gguf-mirrored-int8-concurrency-refresh.json`.
+## 2026-07-20 — Attribute N4+ provider commit/proposal residuals
+
+Reused the clean exclusive-GPU0 cached final-child trace already retained by the
+N4+ gate; no parent harness or new contested process timing was needed. The
+source child is exact against AR and has 16 steady B1/D24 marker windows after
+dropping cycles 1-2. Ordered HIP API timestamps decompose the **16.418 ms**
+complete cycle as follows:
+
+| Window | Mean host wall | Device/API evidence |
+| --- | ---: | --- |
+| proposer draft | 0.021 ms | current B1 token already resident |
+| verifier metadata/unpack | 0.183 ms | synchronous metadata copy + unpack launch |
+| target graph submit/sync | 14.274 ms | one graph launch and first synchronization |
+| accept payload/host summary | 0.081 ms | one packed D2H result |
+| selected commit/cursor tail | **0.370 ms** | linear-state commit + position launch + second sync |
+| proposer repair/update | 1.473 ms | 1.253 ms kernels, 68.6875 HIP APIs/cycle |
+| remaining cycle residual | 0.016 ms | marker/orchestration remainder |
+
+The selected commit/cursor tail contains a **0.2008 ms** chunked linear-state
+copy kernel, a **0.00164 ms** position kernel, and a **0.2077 ms** standalone
+post-commit synchronization. The state-copy kernel remains necessary, but
+capturing selected commit plus device position/context update in the existing
+N4 target graph can remove the two post-graph Python kernel submissions and the
+second synchronization boundary. The mechanical non-kernel upper bound is
+approximately **0.169 ms/cycle**. This is the largest safe provider residual:
+proposal draft is negligible, while proposal update is mostly required device
+work and has provider-specific rollback/repair semantics.
+
+Decision: the next isolated N4+ iteration will own PARO selected linear-state
+`COMMIT|UPDATE_CURSORS` inside the existing target graph. It must remain
+capture-width-zero/PARO-specific, retain DFlash hidden/KV commit isolation and
+pre-launch fallback, and leave gfx1151 unregistered. Keep only after full
+category+heldout exactness, state/KV/hidden/cursor audits, matched complete wall,
+and cached final-child profiling prove non-regression.
+
+Published diagnostic artifact:
+`benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-provider-residuals.json`.
+
+## 2026-07-20 — Implement PARO graph-owned selected commit and cursors
+
+Implemented the profile-selected N4+ ownership boundary behind the additional
+explicit/default-off `HIPENGINE_PARO_NATIVE_SPEC_TARGET_COMMIT=1` flag. The
+existing lazy gfx1100 `w4_paro/native_v1_target_graph` provider remains the
+four-axis admission point; the runner resolves that key rather than branching
+on backend. Only capture-width-zero, all-active, single-request FP16 PARO MTP
+with packed GPU accept, fused slot-0 linear commit, and the admitted provider can
+enter the new path. BF16 DFlash hidden taps, graph-off/tree/inactive shapes,
+unsupported pointers/shapes, control failure, and unregistered gfx1151 retain
+the exact existing path.
+
+Each eligible graph entry owns immutable combined source/destination pointer
+tables for all Conv/GDN state rows. The captured packed accept leaf updates
+resident position/context from the device commit position, then the existing
+chunked commit kernel reads the device commit row and copies the selected state.
+The bound ABI control now accurately declares
+`VERIFY|ACCEPT|COMMIT|UPDATE_CURSORS` and binds the graph-owned state tables plus
+bounded committed IDs/lengths and target cursor arrays. After a proven replay,
+Python reads the unchanged packed result and mirrors host cursor bookkeeping,
+but does not resubmit the state/position kernels or a second synchronization.
+The cycle-1 capture miss, validation/fallback paths, and ordinary N4 graph keep
+the old provider commit.
+
+RED before implementation:
+
+```text
+python3 -m pytest -q \
+  tests/test_native_spec_cycle_graph.py::test_provider_target_graph_launcher_accepts_paro_commit_cursor_bucket_only \
+  tests/test_qwen35_resident_batch_layout.py::test_paro_native_spec_target_commit_request_is_paro_registered_only \
+  tests/test_qwen35_resident_batch_layout.py::test_paro_native_spec_target_commit_uses_combined_graph_owned_tables \
+  tests/test_qwen35_resident_batch_layout.py::test_paro_native_spec_target_control_binds_shared_verify_accept_buffers
+  -> 4 failed (provider stages unsupported; request/commit/control contracts absent)
+```
+
+GREEN host/C++ gates:
+
+```text
+python3 -m pytest -q tests/test_native_spec_cycle.py \
+  tests/test_native_spec_cycle_graph.py tests/test_qwen35_resident_batch_layout.py
+  -> 193 passed
+python3 -m py_compile hipengine/speculative/native_cycle_graph.py \
+  hipengine/runtime/qwen35_paro_runner.py
+  -> pass
+```
+
+Exclusive GPU0/W7900 development gates used the current full8192 W4-PARO target
+plus matching MTP-BF16 sidecar, system HIP 7.2.53211, cached builds, strict
+GDN/linear/shared-expert controls, `c1_loop`, graph-auto, and CPU-oracle GPU
+accept validation:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 \
+  HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_BACKEND=hip_gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-mtp-w7900-hipcc-version.txt \
+  HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH=1 \
+  HIPENGINE_PARO_NATIVE_SPEC_TARGET_COMMIT=1 \
+  HIPENGINE_GDN_TLOOP_C1_EXACT=1 HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS=1 \
+  HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT=1 \
+  HIPENGINE_VERIFY_GPU_ACCEPT=validate PYTHONPATH=. \
+  python3 scripts/mtp_chain_e2e_smoke.py \
+    --model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 \
+    --prompt-tokens "$PROMPT" --decode-tokens 8 --candidate-budget 1 \
+    --proposal-impl persistent_device --backend hip_gfx1100 \
+    --chain-attn-mode c1_loop --graph-mode auto --require-cached-build \
+    --json /tmp/w7900-n4plus-commit-green-d8-dirty.json
+```
+
+Result: exact **8/8 AR IDs** with accept history `[0,0,0,0,0,0,1]`; all six
+post-capture replays use native `VERIFY|ACCEPT|COMMIT|UPDATE_CURSORS`, have no
+fallback, and match the CPU accept oracle. The same environment under
+`scripts/mtp_state_drift_audit.py --prompt-tokens 151646 --candidate-budget 2
+--compare-after-cycles 1,2,3 --max-cycles 3` passes corrections
+`[248050,19,19]`, all cursors, and each cycle's **60 resident Conv/GDN + 20 live
+KV + 60 scratch commit + 60 selected linear + 20 selected KV** comparisons.
+Cycles 2/3 use the expanded native graph.
+
+A dirty-tree cached final-child profile reused canonical B1/D24 and 16 steady
+windows (`region=cycle --steady-state-skip=2`). It is causal development
+evidence, not a clean retained benchmark:
+
+| Metric/pass | Neutral N4+ | Selected commit candidate | Change |
+| --- | ---: | ---: | ---: |
+| complete marker wall | 16.418 ms | **16.379 ms** | -0.039 ms (-0.24%) |
+| verify marker wall | 14.908 ms | **14.858 ms** | -0.050 ms (-0.33%) |
+| HIP API calls | 81.6875 | **75.6875** | -6.0 |
+| synchronizations | 2 | **1** | -1 |
+| host kernel submissions | 36.1875 | **34.1875** | -2 |
+| async copies | 3.3125 | **2.3125** | -1 |
+| total kernels | 1248.5 | **1247.5** | -1 position kernel |
+| kernel wall | 11.164 ms | 11.151 ms | within run variance |
+
+The required **~0.201 ms** state-copy kernel now executes before the graph's
+single terminal sync; it is not removed or relabeled as host savings. The
+mechanical API/sync/submission reduction and exact state gate justify retaining
+the implementation for the clean full-suite keep/revert task. No default or AR
+speed claim is made from this dirty one-run screen.
+
+## 2026-07-20 — Retain clean PARO selected-commit gate
+
+Ran the full keep/revert protocol from clean implementation commit `43abe82e` on
+exclusive GPU0/W7900, current full8192 W4-PARO target plus matching MTP-BF16
+sidecar, system HIP 7.2.53211, cached builds, `c1_loop`, graph-auto, production
+GPU accept for timing, and the strict exact GDN/linear/shared-expert stack. The
+canonical on/off/on arms changed only
+`HIPENGINE_PARO_NATIVE_SPEC_TARGET_COMMIT={1,0,1}` while keeping explicit
+`HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH=1`:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_BACKEND=hip_gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-mtp-w7900-hipcc-version.txt \
+  HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH=1 \
+  HIPENGINE_PARO_NATIVE_SPEC_TARGET_COMMIT={1,0,1} \
+  HIPENGINE_GDN_TLOOP_C1_EXACT=1 HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS=1 \
+  HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT=1 \
+  HIPENGINE_VERIFY_GPU_ACCEPT=1 PYTHONPATH=. \
+  python3 scripts/mtp-bench.py --mode hipengine-current \
+    --prompts-file benchmarks/prompts/mtpbench-code-general-ja.jsonl \
+    --max-tokens 24 --candidate-budgets 1 --runs 1 --prompt-render raw \
+    --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+    --chain-attn-mode c1_loop --graph-mode auto \
+    --engine-model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 \
+    --raw-root /tmp/w7900-n4plus-commit-{on1,off,on2}-b1-gpuaccept-43abe82e \
+    --out /tmp/w7900-n4plus-commit-{on1,off,on2}-b1-gpuaccept-43abe82e.json
+```
+
+All three arms preserve **10/10 prompts, 240/240 exact IDs, 214 cycles, 16
+accepted drafts**, and active-budget history. Both candidate arms are exact on
+train/heldout and every `code`/`general_en`/`general_ja`/`mixed_ja_en` category,
+with **150/150** expanded native `VERIFY|ACCEPT|COMMIT|UPDATE_CURSORS` records
+and no fallback.
+
+| Route | AR tok/s | MTP tok/s | verify ms/cycle | complete ms/cycle | capture-adjusted ms/cycle |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| selected commit on, first | 106.402 | 64.537 | 14.947 | **16.189** | **13.983** |
+| neutral N4+ control | 110.060 | 64.707 | 15.040 | 16.277 | 14.051 |
+| selected commit on, bracket | 108.375 | 63.659 | 15.309 | 16.549 | **13.992** |
+
+Process AR and first-capture wall vary enough that no aggregate tok/s or
+capture-inclusive win is retained: complete wall deltas are **-0.089/+0.272
+ms/cycle**. The capture-adjusted result is consistent at **-0.068/-0.059
+ms/cycle (-0.49%/-0.42%)**, including the same direction for train, heldout,
+and every category in both candidate arms. This broad steady-cycle result is
+not a single-prompt selection.
+
+Clean correctness audits additionally used `HIPENGINE_VERIFY_GPU_ACCEPT=validate`:
+
+- canonical B1/D12, cycles 6/7/8: cycle 7 accepts and commits **row 1**, every
+  resident Conv/GDN, live KV, scratch-commit, selected-linear/KV, cursor, and
+  target correction comparison passes, and cycle 8 remains exact afterward;
+- B2 prompt `151646`, cycles 1/2/3: all corresponding comparisons pass with
+  corrections `[248050,19,19]`; cycles 2/3 use expanded native stages;
+- the clean base N4+ layer-0 hidden/MoE oracle is reused because this change is
+  post-accept only and leaves verifier forward/model bytes unchanged.
+
+Matched cached final-child profiling wrapped only the leaf smoke and used
+canonical `code_lru_cache`, B1/D24, `region=cycle --steady-state-skip=2`:
+
+```bash
+python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 \
+  --prompt-tokens "$(cat .../code_lru_cache/prompt-tokens.txt)" \
+  --decode-tokens 24 --candidate-budget 1 --backend hip_gfx1100 \
+  --chain-attn-mode c1_loop --graph-mode auto --region cycle \
+  --steady-state-skip 2 \
+  --compiler-version-file /tmp/hipengine-mtp-w7900-hipcc-version.txt \
+  --raw-root /tmp/w7900-n4plus-commit-prof-{off,on,on2}-43abe82e \
+  --out /tmp/w7900-n4plus-commit-prof-{off,on,on2}-43abe82e.json
+```
+
+All children are exact with identical acceptance. Candidate wall brackets
+**16.518/16.322 ms/pass** around the **16.413 ms** control; the candidate mean
+is **+0.007 ms/pass**, neutral. The mechanical ownership change is invariant:
+
+| Metric/pass | Neutral N4+ | Selected commit | Change |
+| --- | ---: | ---: | ---: |
+| HIP API calls | 80.6875 | **75.6875** | -5 |
+| synchronizations | 2 | **1** | -1 |
+| host kernel submissions | 36.1875 | **34.1875** | -2 |
+| graph launches | 1 | 1 | unchanged |
+| kernels | 1248.5 | **1247.5** | -1 position kernel |
+
+Decision: keep and publish. Selected commit is default-on only after the user
+explicitly enables N4; `HIPENGINE_PARO_NATIVE_SPEC_TARGET_COMMIT=0` remains a
+one-release rollback. N4 itself stays package/default-off because strict B1 is
+far below true AR, complete wall straddles the neutral control, PARO proposal
+remains host/provider-owned, and DFlash/gfx1151 are independent unopened gates.
+A no-`TARGET_COMMIT` B1/D8 smoke after the default flip is exact and reports the
+expanded stages on every steady replay.
+
+Published compact artifact:
+`benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-selected-commit.json`,
+31,360 bytes, SHA-256
+`683888115f4ec5e1431bf232677e5cd55b2aa3ed9370978a6f0eb3a751e0999f`.

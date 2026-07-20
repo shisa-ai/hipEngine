@@ -203,6 +203,36 @@ def _n2_control(*, cycle_id: int = 11) -> NativeSpecCycleControl:
     )
 
 
+def _provider_commit_control(*, cycle_id: int = 13) -> NativeSpecCycleControl:
+    control = _provider_b4_control(cycle_id=cycle_id)
+    commit_stages = (
+        NativeSpecCycleStage.VERIFY
+        | NativeSpecCycleStage.ACCEPT
+        | NativeSpecCycleStage.COMMIT
+        | NativeSpecCycleStage.UPDATE_CURSORS
+    )
+    return replace(
+        control,
+        stages=commit_stages,
+        shape=replace(control.shape, hidden_dtype=NativeSpecCycleDType.FP16),
+        pointers=replace(
+            control.pointers,
+            state=replace(
+                control.pointers.state,
+                linear_state_rows=0x5100,
+                linear_state_dst=0x5200,
+            ),
+            outputs=replace(
+                control.pointers.outputs,
+                output_ids=0x5300,
+                output_lengths=0x5400,
+                last_positions=0x5500,
+                context_lengths=0x5600,
+            ),
+        ),
+    )
+
+
 class _FakeNativeLibrary:
     def __init__(self, *, status: NativeSpecCycleStatus = NativeSpecCycleStatus.COMPLETE) -> None:
         self.status = status
@@ -366,6 +396,30 @@ def test_provider_target_graph_launcher_accepts_paro_b4_verify_accept_bucket() -
         replace(control, shape=replace(control.shape, hidden_dtype=NativeSpecCycleDType.FP16))
     )
     assert fp16.status is NativeSpecCycleStatus.COMPLETE
+
+
+def test_provider_target_graph_launcher_accepts_paro_commit_cursor_bucket_only() -> None:
+    library = _FakeNativeLibrary()
+    commit_control = _provider_commit_control()
+    commit_stages = commit_control.stages
+    launcher = NativeSpecProviderTargetGraphLauncher(
+        graph_exec=0x6000,
+        graph_launch_fn=0x7000,
+        stream_synchronize_fn=0x8000,
+        bound_control=commit_control,
+        library=library,
+    )
+
+    result = launcher.launch(replace(commit_control, cycle_id=14))
+
+    assert result.completed_stages == commit_stages
+    with pytest.raises(ValueError, match="FP16"):
+        launcher.launch(
+            replace(
+                commit_control,
+                shape=replace(commit_control.shape, hidden_dtype=NativeSpecCycleDType.BF16),
+            )
+        )
 
 
 def test_bound_provider_launcher_reuses_marshaled_control_identity(
@@ -596,6 +650,7 @@ def test_native_target_graph_cpp_launcher_calls_fake_hip_functions(
         library=library,
     )
     provider = provider_launcher.launch(_provider_b4_control())
+    provider_commit = provider_launcher.launch(_provider_commit_control())
 
     assert b1.status is NativeSpecCycleStatus.COMPLETE
     assert b2.status is NativeSpecCycleStatus.COMPLETE
@@ -605,6 +660,8 @@ def test_native_target_graph_cpp_launcher_calls_fake_hip_functions(
     assert provider.completed_stages == (
         NativeSpecCycleStage.VERIFY | NativeSpecCycleStage.ACCEPT
     )
+    assert provider_commit.status is NativeSpecCycleStatus.COMPLETE
+    assert provider_commit.completed_stages == _provider_commit_control().stages
     assert calls == [
         ("launch", 0x6000, 0x5000),
         ("sync", 0x5000, 0),
@@ -612,6 +669,8 @@ def test_native_target_graph_cpp_launcher_calls_fake_hip_functions(
         ("sync", 0x5000, 0),
         ("launch", 0x6001, 0x5000),
         ("sync", 0x5000, 0),
+        ("launch", 0x6002, 0),
+        ("sync", 0, 0),
         ("launch", 0x6002, 0),
         ("sync", 0, 0),
     ]
