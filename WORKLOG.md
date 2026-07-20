@@ -169946,3 +169946,37 @@ The performance claim is clean direct C8 only. The earlier exact and positive
 real-Uvicorn C1/C8 source-equivalent packet remains a diagnostic until a clean
 server repetition is explicitly approved; it is not used to replace the
 retained server scoreboard.
+
+## 2026-07-20 — Reject Q4T16 byte-identical selected-input shortcut
+
+After F3C, tested a narrower exact optimization for repeated trajectories: once
+expert IDs paired, all 128 threads compared the two 2,048-element BF16 inputs;
+byte-identical pairs ran one production-order dual gate/up body and copied the
+already-rounded outputs to both selected lanes. Same-expert/different-input and
+unique lanes retained F3C arithmetic. RED-first was impractical because the
+optimization is functionally identical by contract; the existing GPU fixture
+was strengthened before implementation to include identical-input pairs,
+different-input pairs, and unpaired IDs in one launch.
+
+Real-shape `8x64`, 256-expert, `2048x512` micros were all byte-exact:
+
+- unique: **373.476 -> 375.233 us (+0.47%)**,
+- uniform random: **329.629 -> 333.762 us (+1.25%)**,
+- same expert/different input: **373.299 -> 254.123 us (-31.93%)**,
+- same expert/identical input: **370.045 -> 216.955 us (-41.37%)**.
+
+The all-layer automatic graph oracle remained **320/320 exact**, and one-run
+direct p512/d128 C8 improved **144.039 -> 145.502 tok/s (+1.02%)**. The
+matched real-Uvicorn distinct-request gate rejected promotion, however. Versus
+the immediately preceding source-equivalent F3C packet:
+
+- blocking median **87.726 -> 87.367 tok/s (-0.41%)**,
+- exact SSE median **84.798 -> 83.616 (-1.39%)**,
+- delayed C8 **68.242 -> 67.347 (-1.31%)**.
+
+SSE/delayed also fall **0.69%/0.65%** below the clean retained server row. All
+75 server rows are exact, so this is purely a same-suite performance rejection.
+Removed the runtime shortcut and retained F3C general expert-ID weight reuse
+unchanged. The strengthened primitive fixture and explicit identical-input
+microbench mode remain for regression/reproduction. Compact rejected artifact:
+`benchmarks/results/2026-07-20-gfx1151-gguf-selected-identical-input-reuse-rejected.json`.

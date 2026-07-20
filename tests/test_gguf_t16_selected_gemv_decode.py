@@ -724,7 +724,8 @@ def test_q4_t16_direct_dual_pairreuse_matches_production_bits(t16_selected_libra
 
     x_rows, top_k = 8, 8
     rows = x_rows * top_k
-    # Cover repeated experts across different input rows plus unpaired IDs.
+    # Cover byte-identical repeated inputs, different-input repeated experts,
+    # and unpaired IDs in the same physical-C8 launch.
     selected = np.array(
         [
             0, 1, 2, 3, 4, 5, 6, 7,
@@ -746,6 +747,8 @@ def test_q4_t16_direct_dual_pairreuse_matches_production_bits(t16_selected_libra
     ta = repack_gguf_q4_k_tile16(qa).tiles
     tb = repack_gguf_q4_k_tile16(qb).tiles
     x = rng.normal(0.0, 0.3, size=(x_rows, in_features)).astype(np.float32)
+    x[4] = x[0]
+    x[5] = x[1]
     x_bf16 = _f32_to_bf16_u16(x)
 
     ref_a, ref_b = _run_direct_dual(

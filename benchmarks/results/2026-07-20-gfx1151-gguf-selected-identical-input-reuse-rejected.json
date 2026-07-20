@@ -1,0 +1,111 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_selected_identical_input_reuse_rejected",
+  "created_at": "2026-07-20T20:55:00+09:00",
+  "status": "rejected_server_regression_removed",
+  "passed": false,
+  "performance_claim": false,
+  "decision": "remove the byte-identical-input shortcut; retain general dynamic expert-ID weight reuse from F3C unchanged",
+  "hardware": {
+    "host": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "amd_iommu": "off",
+    "gpu_max_hw_queues": 1,
+    "tuned_profile": "accelerator-performance"
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B UD-Q4_K_M GGUF",
+    "path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "candidate": {
+    "description": "for paired dynamic expert IDs, cooperatively compare both 2048-element BF16 input rows; when byte-identical, execute one production-order Q4T16 dual gate/up body and write the rounded outputs to both selected lanes",
+    "prompt_conditioned": false,
+    "token_conditioned": false,
+    "removed_from_source": true,
+    "retained_fallback": "F3C same-expert weight reuse for different or identical inputs"
+  },
+  "correctness": {
+    "primitive_gate_up_bits_exact": true,
+    "layer_hidden_comparisons": 320,
+    "layer_hidden_exact": true,
+    "tokens_exact": true,
+    "conv_gdn_kv_final_state_exact": true,
+    "server_packet_status": "accepted_backend_packet",
+    "server_exact_rows": 75,
+    "state_oracle_sha256": "22f5108df2ac48324e5e91153d45258e681744a74e53b30d0ba8881ee9f48a1b"
+  },
+  "primitive_microbench": {
+    "shape": "x_rows=8, selected_rows=64, experts=256, Q4T16 2048x512, warmup=20, iterations=100",
+    "results_us": {
+      "unique": {
+        "production": 373.476,
+        "candidate": 375.233,
+        "delta_percent": 0.47
+      },
+      "uniform_random": {
+        "production": 329.629,
+        "candidate": 333.762,
+        "delta_percent": 1.25
+      },
+      "same_expert_different_input": {
+        "production": 373.299,
+        "candidate": 254.123,
+        "delta_percent": -31.93
+      },
+      "same_expert_identical_input": {
+        "production": 370.045,
+        "candidate": 216.955,
+        "delta_percent": -41.37,
+        "speedup": 1.7056
+      }
+    },
+    "all_outputs_exact": true,
+    "raw_sha256": {
+      "unique": "cc52bea0ca025b0b2e30e10a6655a182783f11dd801bcb5fd9f3f9bbfd2f6a2d",
+      "uniform_random": "a88169663076debea29660512f061b5b061349ec7d6cad38112c351b35c118b1",
+      "same_expert_different_input": "f9de7792d9570db23f44026010ac7277ff1678839eec8a2b248c8ad7c39c054d",
+      "same_expert_identical_input": "08bf3dfbcc96e225100cb7d330f82964df88f54c92e10f9972b04569cfeb7bdf"
+    }
+  },
+  "direct_screen": {
+    "protocol": "native physical-C8 p512/d128 graph, one warmup and one measured run",
+    "retained_f3c_tok_s": 144.0389562498895,
+    "candidate_tok_s": 145.5019425270062,
+    "delta_percent": 1.015691827957443,
+    "raw_sha256": "7470caade5482c3d90400f231199f2cb7d0a4711eb0ad7f5e331b7cd4b7b9d56",
+    "evidence_status": "positive but insufficient because canonical C8 repeats four trajectories"
+  },
+  "server_rejection": {
+    "protocol": "real localhost Uvicorn C1/C8 p512/d128, one warmup, three blocking, three exact SSE, delayed C8 admission",
+    "source_provenance": "dirty implementation candidate; matched against the immediately preceding source-equivalent F3C dirty packet",
+    "f3c_control_tok_s": {
+      "blocking_median": 87.72588271425721,
+      "exact_sse_median": 84.79817851574933,
+      "delayed": 68.24160890728274
+    },
+    "candidate_tok_s": {
+      "blocking_samples": [87.36678919246236, 87.38505294087985, 87.27231753160666],
+      "blocking_median": 87.36678919246236,
+      "exact_sse_samples": [83.57621919107616, 84.6717856444846, 83.61591615960252],
+      "exact_sse_median": 83.61591615960252,
+      "delayed": 67.34708717015012
+    },
+    "delta_vs_source_equivalent_f3c_percent": {
+      "blocking": -0.40933588888981687,
+      "exact_sse": -1.3942072540240158,
+      "delayed": -1.3108157199927306
+    },
+    "delta_vs_clean_retained_server_percent": {
+      "blocking": 1.3712237540898675,
+      "exact_sse": -0.6889684075223057,
+      "delayed": -0.650429028515187
+    },
+    "rejection_reason": "the candidate regresses every source-equivalent server surface and falls below the clean retained SSE/delayed rows despite exact outputs",
+    "raw_sha256": "1904eaa8ba1064289c5f8304e517b960e865419061de28dd31fa35bb3302eac5"
+  },
+  "follow_up": "continue with Q5T16 selected-down expert weight reuse; do not reintroduce whole-input equality scans without a one-per-layer hash/map that removes per-output-tile comparison overhead"
+}
