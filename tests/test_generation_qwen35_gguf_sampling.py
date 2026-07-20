@@ -55,6 +55,23 @@ def _generator() -> qwen35_gguf.Qwen35GGUFBringupGenerator:
     return generator
 
 
+def test_gfx1100_generator_factory_registers_plain_ar_width(monkeypatch) -> None:
+    monkeypatch.setattr(
+        qwen35_gguf,
+        "Qwen35GGUFBringupGenerator",
+        lambda **kwargs: SimpleNamespace(**kwargs),
+    )
+
+    generator = qwen35_gguf.make_qwen35_gguf_bringup_generator(
+        model_path="/tmp/fake.gguf",
+        weight_index=SimpleNamespace(),
+        model_plugin=SimpleNamespace(),
+    )
+
+    assert generator.backend == "hip_gfx1100"
+    assert generator.server_plain_ar_max_active_requests == 4
+
+
 def _request(**overrides) -> GenerationRequest:
     values = {
         "prompts": ("first",),

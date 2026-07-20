@@ -795,3 +795,27 @@ passing. Both collector outputs set `performance_claim=false`; their timings
 were discarded because the tree was dirty and host tests ran concurrently.
 Clean committed C8 admission/physical-c4 coverage and the 8K/growing-history
 context-capacity split remain required before A1 can become a retained baseline.
+
+## 2026-07-20 — Separate logical C8 admission from physical c4 residency
+
+The first clean `84fd737a` C8 launch still failed the startup guard before any
+collector request. Although the probe itself was intended to clamp, the LLM
+resident loop had already allocated eight 4K session slots: resident preparation
+used **36.84 GiB**, leaving **8.14 GiB**, and scratch warmup failed with HIP OOM.
+This run produced no A1 artifact and readiness remained false.
+
+The physical-width contract now crosses the entire registry boundary. The
+registered gfx1100 GGUF generator advertises plain-AR width four; `LLM` caps its
+resident loop to the generator-advertised width while preserving the caller's
+logical request/admission setting. The outer HTTP queue can therefore accept C8
+and drain it through c4 groups without allocating eight resident slots. The same
+mechanism preserves gfx1151's separately registered c8 width and avoids backend
+branches in `LLM` or server dispatch.
+
+A dirty W7900 validation then reached readiness with logical
+`queue.max_active_requests=8`, scratch `max_batch_size=4`, packed AR warmups
+`[2,4]`, and the same **37.43 GiB used / 7.56 GiB free** c4 footprint. The full
+`small_repo` C8 collector passed **32/32 turns**, artifact validation, and final
+zero ownership. Its artifact sets `performance_claim=false` and its timing is
+discarded. A clean committed repeat is still required before this diagnostic is
+retained or used to define the repeated A1 protocol.
