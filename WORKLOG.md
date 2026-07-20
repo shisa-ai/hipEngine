@@ -169806,3 +169806,49 @@ HIP_VISIBLE_DEVICES=0 HIPENGINE_BACKEND=hip_gfx1151 HIPENGINE_HIP_ARCH=gfx1151 G
   .venv/bin/python -m pytest -q tests/test_gguf_q8_0_t16_gemv_decode.py
 # 36 passed
 ```
+
+### Clean F3B retention and complete-server check
+
+Committed the exact physical-C8 scope as `7bb3669b`, then ran the required
+clean detached-worktree gates. The clean 1+3 direct C8 samples are
+**133.852312/133.894126/133.805747 tok/s**, median **133.852312**, versus the
+retained F3 **133.250527**: **+0.4516%**, with stdev/median **0.0330%**. This
+reduces the 1,024-token direct window from **7.684773 -> 7.650223 s**, saving
+**34.550 ms**. All three eight-row trajectories are repeatable and exact.
+Raw packet SHA-256 is
+`f57247a88e65fba7b171ab2247d682dc33240a693789b2e3fe896e4d312d0304`.
+
+The cached-only `rocprofv3 --kernel-trace --marker-trace` graph gate passes at
+clean `7bb3669b`: c1 and c8 tokens are exact, route checks pass, and the marker
+contains **748 packed-native / zero row-local / zero-copy dispatches**. The new
+`q8_0_t16_dual_split_rowtile_gemv_kernel<unsigned short,unsigned short,4>`
+launches **30** times at `Workgroup_Size_X=128`, `Grid_Size_X=98304`,
+`Grid_Size_Y=2`, 136 VGPR, 1 KiB LDS, and zero scratch. Profile JSON SHA-256 is
+`b2f65d4fbd1d9bc51b80662cbcde00247a38b1a611a3a3edb47e4f7adc8f6a2c`;
+trace SHA-256 is
+`163d30c60072fba171e784fdce27ee25fb818bd4d754892c37ba41fa061f5960`.
+Profile durations are diagnostic only.
+
+A minimal valid clean real-Uvicorn C1/C8 packet (the harness requires C1 as the
+independent oracle) passes **71/71** warmup/blocking/SSE/delayed rows, uses
+native C8 with no serial fallback, admits delayed rows during the first request,
+and drains 65/65 owners with zero packed-workspace and KV refs/pins. C8 is:
+
+- blocking **86.253 tok/s** (samples 86.851/86.253/86.125),
+- exact SSE **83.726 tok/s** (83.368/83.726/83.960),
+- delayed admission **67.462 tok/s**.
+
+Versus the latest matched `fcc586ed` row this is **-0.40% blocking / +1.63%
+SSE / -0.64% delayed**. The complete-server surface is mixed within noise, so
+no server-speed claim is retained; the exact direct sub-window is retained per
+evidence policy. Server raw SHA-256 is
+`1fa0ab043526c856b2b3fa713bc0ea76ad5dcc6d39771db3134cf227c55dd624`.
+Compact retained artifact:
+`benchmarks/results/2026-07-20-gfx1151-gguf-q8t16-pair-rowtile-c8-retained.json`,
+9,859 bytes, SHA-256
+`f27030e369c4c220ff6f7faea2624cb90ca7a07f82a59488f606736f972eb9a9`.
+
+`python3 scripts/check_lineage.py --kind kernel --diff stat` could not complete
+because the manifest references missing external checkout
+`/home/lhl/amd-gpu-tuning/reference/atlas`; this change does not port or modify
+a kernel body, and the existing Q8T16 source lineage is unchanged.
