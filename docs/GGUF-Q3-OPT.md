@@ -77,31 +77,50 @@ raw-IQ, decode, and scheduler tranches:
   The complete GDN pair regressed 1.63%, total kernel sum 0.44%, and trace span
   0.24%; matched 4K wall was flat at +0.07%. The candidate and tests were
   removed, closing this direct-conv premise.
+- Task #27 then changed the dense-Q8 algebra instead of retrying an exact local
+  schedule. A llama.cpp-derived 128x128 K256 integer-MMQ body consumes raw Q8_0
+  weights and three residual D4 activation planes. One-pass MMQ, tail-layer
+  heuristics, unguarded D4x2/D4x3, and tighter `3e-6`/`6e-6` repair policies all
+  failed model gates. The retained `1e-5` policy queues values near BF16 rounding
+  boundaries and recomputes them with the exact raw-Q8 reduction; only
+  `(K,N)=(2048,8192)` from 32 rows and `(2048,4096)` from 48 rows are admitted.
+  All other shapes keep exact 16x4/8x4/8x2/pack8 fallbacks. The final 18-workload
+  by 9-position text/decode suite is logit-bit-exact (`KL=0`, top-1 `1.0`).
+  Post-hardening official medians reach `848.543/828.003 tok/s` at
+  512/repeated-4K, while matched mixed-pattern 4K is
+  `743.906 -> 831.393 tok/s`. D4x3 reuses bulk
+  scratch; the bounded risk queue raises tracked peak by 16/128 MiB to
+  `15.821/17.080 GiB` at 512/4K.
 - Decode work retained the wave-uniform IQ3 address cleanup and aggregate
   MoE-tail/next-RMS fusion, rejected hierarchical top-k, IQ4 tile4, and routed
   stream overlap, and currently measures `101.216 tok/s` at 512 and
   `108.383 tok/s` at 4K on GPU1. The source-derived 150–190 tok/s feasibility
   argument remains valid, but hipEngine has not reached that band.
 
-The post-grouped-GQA cache-only 4K trace is now the active prefill Amdahl ledger:
+The guarded-MMQ cache-only 4K trace is now the active prefill Amdahl ledger:
 
-| Family | Time | Share of 5,350.508 ms kernel sum |
+| Family | Time | Share of 4,815.413 ms kernel sum |
 |---|---:|---:|
-| Dense exact raw Q8 | 2,052.066 ms | **38.35%** |
-| Grouped IQ3 gate/up | 954.502 ms | **17.84%** |
-| Exact GDN recurrent | 870.078 ms | **16.26%** |
-| Grouped IQ4 down | 504.051 ms | **9.42%** |
-| Full attention | 464.773 ms | **8.69%** |
+| Dense Q8 total | 1,569.232 ms | **32.59%** |
+| ├ exact fallback | 753.045 ms | 15.64% |
+| ├ guarded D4x3 MMQ | 602.924 ms | 12.52% |
+| ├ sparse exact repair | 207.578 ms | 4.31% |
+| └ residual quantize | 5.685 ms | 0.12% |
+| Grouped IQ3 gate/up | 1,075.210 ms | **22.33%** |
+| Exact GDN recurrent | 741.083 ms | **15.39%** |
+| Grouped IQ4 down | 491.646 ms | **10.21%** |
+| Full attention | 445.168 ms | **9.24%** |
 
-Dense Q8 remains first but its local scheduling lane is closed. Grouped IQ3 is
-second, but its admitted output-tile/WMMA/repack premises remain closed after
-rowbatch4. Attention is below 9%, and exact GDN now has both its retained LDS32
-geometry and the rejected direct-conv data boundary measured. Task #24 closes
-the bounded exact local campaign rather than extending a lower-ranked lane by
-inertia; reopening requires new algebra, a new resident layout, or other
-profile-backed architectural evidence. **The ~3,000 tok/s objective is not
-closed:** 741.180 tok/s is a retained step, not a target claim. Retained and
-final-rejection evidence are in
+The changed algebra cuts dense Q8 `2,052.066 -> 1,569.232 ms` (-23.53%), total
+kernel sum `5,350.508 -> 4,815.413 ms` (-10.00%), and trace span
+`5,534.073 -> 4,973.718 ms` (-10.13%). Dense Q8 remains first in aggregate and
+grouped IQ3 is second; their already-rejected local schedules are not reopened.
+Task #27 closes this bounded source-faithful MMQ tranche with an explicit
+quality and memory contract. **The ~3,000 tok/s objective remains open:**
+~825–850 tok/s is a retained architectural step, not a target claim, and the
+empirical BF16-boundary guard must not be weakened below `1e-5`. Evidence is in
+[`benchmarks/results/2026-07-20-gpu1-q3-guarded-d4x3-mmq-prefill.json`](../benchmarks/results/2026-07-20-gpu1-q3-guarded-d4x3-mmq-prefill.json),
+with the preceding exact-attention and final exact-GDN rejection in
 [`benchmarks/results/2026-07-20-gpu1-q3-exact-attn-gqa-batch-prefill.json`](../benchmarks/results/2026-07-20-gpu1-q3-exact-attn-gqa-batch-prefill.json)
 and
 [`benchmarks/results/2026-07-20-gpu1-q3-exact-gdn-direct-conv-rejected.json`](../benchmarks/results/2026-07-20-gpu1-q3-exact-gdn-direct-conv-rejected.json).
@@ -111,10 +130,13 @@ and
 This section supersedes the historical task numbers and dependency language in
 the source-derived review below. The measured state is:
 
-- **c=1 prefill, GPU1 RX 7900 XTX:** `774.185 tok/s` at 512 repeated tokens and
-  `741.180 tok/s` at mixed-pattern 4K. The exact local campaign is closed, but
-  the ~3,000 tok/s objective is not; task #27 requires a new algebra or resident
-  layout rather than another local geometry retry.
+- **c=1 prefill, GPU1 RX 7900 XTX:** guarded D4x3 MMQ reaches
+  `848.543 tok/s` at 512 repeated tokens, `828.003 tok/s` in the official
+  repeated-token 4K run, and `831.393 tok/s` in the matched mixed-pattern 4K
+  A/B. The `1e-5` sparse exact-repair policy passes the 18-workload continuation
+  gate bit-for-bit and retains exact fallbacks for every non-admitted shape.
+  Task #27's bounded changed-algebra tranche is complete; the ~3,000 tok/s
+  objective remains open to a future, separately justified architecture.
 - **c=1 decode, GPU1 RX 7900 XTX:** `101.216 tok/s` at 512 and
   `108.383 tok/s` at 4K. Task #32 starts from a fresh profile and may reopen a
   family only with a new measured premise. These current-code rows have not
@@ -140,7 +162,7 @@ embedding/output fallbacks apply.
 
 | Task | Work | Actual dependency |
 |---:|---|---|
-| #27 | Resolve the remaining ~3,000 tok/s prefill architecture gap | New algebra/layout premise; independent of c=N/MTP |
+| #27 | Land and close the first changed-algebra prefill tranche | **Completed:** guarded residual-D4 MMQ retained; ~3,000 tok/s objective remains unmet |
 | #28 | Build one row-shaped GGUF target executor for independent decode and verify rows | Foundational runtime work |
 | #29 | Promote native UD-Q3_K_M c=2/4/8 decode and replace the blocked template | #28 |
 | #30 | Materialize blk.40 and emit candidate-only `DraftBatch` rows | Locked shared ABI; can develop alongside #28 |
@@ -1576,11 +1598,13 @@ ownership must still be checked immediately before any benchmark.
 
 Q3 has two separate optimization stories.
 
-For **prefill**, the source diagnosis was correct and the exact fully-bulk path
-now reaches `774.185/741.180 tok/s` at 512/mixed-4K on GPU1. The remaining gap
-to ~3,000 tok/s is architectural: local Q8, IQ3, GDN, and attention premises
-were measured to closure. Task #27 may proceed only from new algebra or a new
-resident layout with an explicit memory/correctness contract.
+For **prefill**, the source diagnosis was correct and the fully-bulk path now
+uses guarded residual-D4 MMQ for two wide Q8 shapes plus exact fallbacks. It
+reaches `848.543 tok/s` at 512 and `831.393 tok/s` on the matched mixed-pattern
+4K workload on GPU1, with the final 18-workload continuation suite logit-bit
+exact. The first changed-algebra tranche is therefore retained and closed, but
+the gap to ~3,000 tok/s remains architectural; reopening it requires another
+new algebra/layout premise with its own explicit memory and correctness contract.
 
 For **decode**, current GPU1 graph rows are `101.216/108.383 tok/s` at 512/4K.
 The same-model W7900/XTX qwen results still prove that approximately 145-190

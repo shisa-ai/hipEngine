@@ -9,6 +9,7 @@ import hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv  # noqa: F401
 import hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv  # noqa: F401
 import hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill  # noqa: F401
 import hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv  # noqa: F401
+import hipengine.runtime.gguf_linear as gguf_linear_module
 from hipengine.kernels.registry import KernelKey, register, resolve
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
@@ -25,7 +26,9 @@ from hipengine.runtime.gguf_linear import (
     launch_gguf_linear_pair,
     launch_gguf_linear_pair_concat,
     launch_gguf_linear_triple,
+    q8_mmq_prefill_session,
     resolve_gguf_linear_dispatch,
+    resolve_q8_mmq_prefill_policy,
     set_wmma_prefill_enabled,
     wmma_prefill_session,
 )
@@ -194,6 +197,12 @@ _PREFILL_TILE8X4_BF16 = KernelKey(
 _PREFILL_TILE16X4_BF16 = KernelKey(
     "hip_gfx1100", "linear", "gguf_q8_0", "exact_prefill_tile16x4_bf16_bf16_out"
 )
+_PREFILL_MMQ128_X3_GUARDED_BF16 = KernelKey(
+    "hip_gfx1100",
+    "linear",
+    "gguf_q8_0",
+    "mmq128_prefill_q8_1_d4x3_guarded_bf16_bf16_out",
+)
 _Q4_WMMA_BF16 = KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "wmma_prefill_bf16_bf16_out")
 _Q4_PREFILL_BF16 = KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "prefill_bf16_bf16_out")
 _Q4_GEMV_BF16 = KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "gemv_bf16_bf16_out")
@@ -212,6 +221,7 @@ def _capture_launch(
     layout: str = LAYOUT_RAW_GGUF,
     output_dtype: str = GGUF_OUTPUT_BF16,
     threads: int = 0,
+    runtime: object = "runtime-sentinel",
     extra_keys: tuple[KernelKey, ...] = (),
 ) -> tuple[KernelKey, tuple, dict]:
     """Drive ``launch_gguf_linear`` against a fake kernel + capture the call.
@@ -259,7 +269,7 @@ def _capture_launch(
             output_dtype=output_dtype,
             threads=threads,
             stream=7,
-            runtime="runtime-sentinel",
+            runtime=runtime,
             use_wmma_prefill=use_wmma_prefill,
         )
     finally:
@@ -321,6 +331,132 @@ def test_exact_q8_prefill_widens_columns_at_measured_row_thresholds() -> None:
     assert narrow_control == _PREFILL_TILE8X4_BF16
     assert medium_control == _PREFILL_TILE8X4_BF16
     assert wide_control == _PREFILL_TILE8X4_BF16
+
+
+def test_q3_mmq_prefill_policy_is_registry_selected() -> None:
+    q3_policy = resolve_q8_mmq_prefill_policy("gguf_ud_q3_k_m")
+    assert q3_policy is not None
+    assert q3_policy(512, 2048, 8192)
+    assert not q3_policy(512, 512, 2048)
+    assert not q3_policy(4097, 2048, 8192)
+    assert q3_policy.risk_threshold == 1.0e-5
+    assert q3_policy.risk_indices_nbytes(512) == 16_777_216
+    assert resolve_q8_mmq_prefill_policy("gguf_qwen35") is None
+
+
+def test_q3_mmq_prefill_session_uses_bounded_workspace(monkeypatch) -> None:
+    quantize_calls = []
+    correction_calls = []
+
+    class FakeRuntime:
+        def __init__(self) -> None:
+            self.memset_calls = []
+
+        def memset_async(self, *args) -> None:
+            self.memset_calls.append(args)
+
+    def fake_quantize(*args, **kwargs):
+        quantize_calls.append((args, kwargs))
+
+    def fake_correct(*args, **kwargs):
+        correction_calls.append((args, kwargs))
+
+    monkeypatch.setattr(
+        gguf_linear_module,
+        "gguf_q8_0_mmq128_quantize_bf16_d4x3",
+        fake_quantize,
+    )
+    monkeypatch.setattr(
+        gguf_linear_module,
+        "gguf_q8_0_mmq128_sparse_exact_correct_bf16",
+        fake_correct,
+    )
+    policy = resolve_q8_mmq_prefill_policy("gguf_ud_q3_k_m")
+    assert policy is not None
+    library = object()
+    runtime = FakeRuntime()
+    with q8_mmq_prefill_session(
+        workspace_ptr=10_000_000,
+        workspace_nbytes=3_538_944,
+        risk_count_ptr=14_000_000,
+        risk_count_nbytes=4,
+        risk_indices_ptr=15_000_000,
+        risk_indices_nbytes=16_777_216,
+        policy=policy,
+        library=library,  # type: ignore[arg-type]
+    ):
+        key, args, kwargs = _capture_launch(
+            rows=512,
+            in_features=2048,
+            out_features=8192,
+            runtime=runtime,
+            extra_keys=(_PREFILL_MMQ128_X3_GUARDED_BF16,),
+        )
+    assert key == _PREFILL_MMQ128_X3_GUARDED_BF16
+    assert runtime.memset_calls == [(14_000_000, 0, 4, 7)]
+    common_kwargs = {"stream": 7, "runtime": runtime, "library": library}
+    assert quantize_calls == [((100, 10_000_000, 512, 2048), common_kwargs)]
+    assert args == (
+        10_000_000,
+        10,
+        200,
+        14_000_000,
+        15_000_000,
+        4_194_304,
+        1.0e-5,
+        512,
+        2048,
+        8192,
+    )
+    assert kwargs == common_kwargs
+    assert correction_calls == [
+        (
+            (100, 10, 200, 14_000_000, 15_000_000, 4_194_304, 512, 2048, 8192),
+            common_kwargs,
+        )
+    ]
+
+
+def test_q3_mmq_prefill_session_keeps_exact_below_crossover() -> None:
+    policy = resolve_q8_mmq_prefill_policy("gguf_ud_q3_k_m")
+    assert policy is not None
+    with q8_mmq_prefill_session(
+        workspace_ptr=10_000_000,
+        workspace_nbytes=3_538_944,
+        risk_count_ptr=14_000_000,
+        risk_count_nbytes=4,
+        risk_indices_ptr=15_000_000,
+        risk_indices_nbytes=16_777_216,
+        policy=policy,
+    ):
+        key, _, _ = _capture_launch(
+            rows=31,
+            in_features=2048,
+            out_features=8192,
+            extra_keys=(_PREFILL_MMQ128_X3_GUARDED_BF16,),
+        )
+    assert key == _PREFILL_TILE8X4_BF16
+
+
+def test_q3_mmq_prefill_session_rejects_undersized_workspace() -> None:
+    policy = resolve_q8_mmq_prefill_policy("gguf_ud_q3_k_m")
+    assert policy is not None
+    with q8_mmq_prefill_session(
+        workspace_ptr=10_000_000,
+        workspace_nbytes=3_538_943,
+        risk_count_ptr=14_000_000,
+        risk_count_nbytes=4,
+        risk_indices_ptr=15_000_000,
+        risk_indices_nbytes=16_777_216,
+        policy=policy,
+    ):
+        with pytest.raises(ValueError, match="workspace is too small"):
+            _capture_launch(
+                rows=512,
+                in_features=2048,
+                out_features=8192,
+                extra_keys=(_PREFILL_MMQ128_X3_GUARDED_BF16,),
+            )
 
 
 def test_wmma_prefill_kwarg_opts_in_q8_0_rows_gt_1() -> None:

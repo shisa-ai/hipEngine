@@ -129,6 +129,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     gguf_q6_k_selected_gemv_bf16_bf16_out,
     gguf_q6_k_selected_pack8_gemv_bf16_bf16_out,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_mmq_prefill import (
+    build_gguf_q8_0_mmq_prefill,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     gguf_q4_k_selected_dual_gemv_bf16_bf16_out,
     gguf_q4_k_selected_gemv_bf16_bf16_out,
@@ -176,6 +179,8 @@ from hipengine.runtime.gguf_linear import (
     launch_gguf_linear_pair,
     launch_gguf_linear_pair_concat,
     launch_gguf_linear_triple,
+    q8_mmq_prefill_session,
+    resolve_q8_mmq_prefill_policy,
     wmma_prefill_session,
 )
 from hipengine.runtime.prefill import PrefillConfig, resolve_prefill_config_for_sequence
@@ -712,6 +717,7 @@ class Qwen35GGUFFullStackRunner:
         if not selected:
             raise ValueError("prefill quant must be non-empty")
         self._gguf_prefill_quant = selected
+        self._gguf_q8_mmq_prefill_policy = resolve_q8_mmq_prefill_policy(selected)
         self.__dict__.pop("_gguf_gdn_prefill_plan_cache", None)
         self.__dict__.pop("_gguf_full_attn_prefill_native_fn_cache", None)
 
@@ -3552,6 +3558,9 @@ class Qwen35GGUFResidentSession:
     _runtime_state_library: object | None = field(default=None, init=False)
     _lm_head_library: object | None = field(default=None, init=False)
     _expert_pack8_library: object | None = field(default=None, init=False)
+    _q8_mmq_prefill_library: object | None = field(default=None, init=False)
+    _q8_mmq_risk_count: object | None = field(default=None, init=False)
+    _q8_mmq_risk_indices: object | None = field(default=None, init=False)
     _expert_sidecar_reader: GGUFReader | None = field(default=None, init=False)
     _expert_sidecar_model_map: object | None = field(default=None, init=False)
     _expert_sidecar_host_layers: dict[int, dict[str, GGUFExpertPackedTensor]] | None = field(default=None, init=False)
@@ -3998,7 +4007,50 @@ class Qwen35GGUFResidentSession:
                 raise ValueError(
                     f"GGUF bulk prefill requires at least {min_bulk_tokens} tokens; got {len(token_ids)}"
                 )
-            with wmma_prefill_session(self.use_wmma_prefill), gemv_decode_session(self.use_gemv_decode):
+            if self._bulk_prefill_scratch is None:
+                raise RuntimeError("GGUF resident bulk prefill scratch is closed")
+            q8_mmq_policy = getattr(self.runner, "_gguf_q8_mmq_prefill_policy", None)
+            if q8_mmq_policy is not None and self._q8_mmq_prefill_library is None:
+                self._q8_mmq_prefill_library = build_gguf_q8_0_mmq_prefill(
+                    load=True,
+                    compiler_version=self.compiler_version,
+                    require_cached=self.require_cached_build,
+                )
+            if q8_mmq_policy is not None and self._q8_mmq_risk_count is None:
+                runtime = self.runtime or get_hip_runtime()
+                risk_rows = min(
+                    int(self.max_sequence_length),
+                    int(q8_mmq_policy.max_rows),
+                )
+                risk_count = malloc(DType.INT32.itemsize, runtime=runtime)
+                try:
+                    risk_indices = malloc(
+                        q8_mmq_policy.risk_indices_nbytes(risk_rows),
+                        runtime=runtime,
+                    )
+                except Exception:
+                    free(risk_count, runtime=runtime)
+                    raise
+                self._q8_mmq_risk_count = risk_count
+                self._q8_mmq_risk_indices = risk_indices
+                self._buffers = (*self._buffers, risk_count, risk_indices)
+            q8_workspace = self._bulk_prefill_scratch.linear_qkv_f32
+            q8_risk_count = self._q8_mmq_risk_count
+            q8_risk_indices = self._q8_mmq_risk_indices
+            with (
+                wmma_prefill_session(self.use_wmma_prefill),
+                gemv_decode_session(self.use_gemv_decode),
+                q8_mmq_prefill_session(
+                    workspace_ptr=q8_workspace.ptr,
+                    workspace_nbytes=q8_workspace.nbytes,
+                    risk_count_ptr=0 if q8_risk_count is None else q8_risk_count.ptr,
+                    risk_count_nbytes=0 if q8_risk_count is None else q8_risk_count.nbytes,
+                    risk_indices_ptr=0 if q8_risk_indices is None else q8_risk_indices.ptr,
+                    risk_indices_nbytes=0 if q8_risk_indices is None else q8_risk_indices.nbytes,
+                    policy=q8_mmq_policy,
+                    library=self._q8_mmq_prefill_library,
+                ),
+            ):
                 return self._run_bulk_prefill_and_sample(
                     token_ids,
                     bulk_attention_mode=selected_bulk_attention_mode,
@@ -4652,6 +4704,8 @@ class Qwen35GGUFResidentSession:
         self._prefill_hidden_a = None
         self._prefill_hidden_b = None
         self._bulk_prefill_scratch = None
+        self._q8_mmq_risk_count = None
+        self._q8_mmq_risk_indices = None
         self._logits_host = None
         self._expert_sidecar_host_layers = None
         self._expert_sidecar_reader = None
