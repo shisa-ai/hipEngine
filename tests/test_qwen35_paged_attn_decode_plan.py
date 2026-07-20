@@ -342,7 +342,7 @@ def test_qwen35_paged_attn_decode_registers_span_variant() -> None:
     )
 
 
-def test_qwen35_decode_order_prefill_splits_at_resident_policy_boundaries(
+def test_qwen35_decode_order_prefill_uses_query_batch_gqa_crossover(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[tuple[str, tuple, dict]] = []
@@ -397,22 +397,33 @@ def test_qwen35_decode_order_prefill_splits_at_resident_policy_boundaries(
     }
 
     qwen35_paged_full_attn_prefill_gqa_gate_bf16_decode_order_spans(
+        spans=spans(1, 4),
+        rows=1,
+        max_context_len=1024,
+        split_count=4,
+        **common,
+    )
+    assert [name for name, _, _ in calls] == ["warp"]
+    assert calls[0][1][9:12] == (1, 256, 4)
+
+    calls.clear()
+    qwen35_paged_full_attn_prefill_gqa_gate_bf16_decode_order_spans(
         spans=spans(5, 5),
         rows=5,
         max_context_len=1026,
         split_count=5,
         **common,
     )
-    assert [name for name, _, _ in calls] == ["dense", "warp"]
+    assert [name for name, _, _ in calls] == ["dense", "gqa"]
     dense_args = calls[0][1]
     assert dense_args[7:9] == (2, 1023)
     assert dense_args[6].base_offsets.shape == (2, 5)
-    warp_args = calls[1][1]
-    assert warp_args[0] == common["query_ptr"] + 2 * 16 * 256 * 4
-    assert warp_args[3] == common["gate_ptr"] + 2 * 16 * 256 * 2
-    assert warp_args[8].base_offsets.shape == (3, 5)
-    assert warp_args[8].base_offsets.ptr == 0x1000 + 2 * 5 * 4
-    assert warp_args[9:12] == (3, 256, 5)
+    gqa_args = calls[1][1]
+    assert gqa_args[0] == common["query_ptr"] + 2 * 16 * 256 * 4
+    assert gqa_args[3] == common["gate_ptr"] + 2 * 16 * 256 * 2
+    assert gqa_args[8].base_offsets.shape == (3, 5)
+    assert gqa_args[8].base_offsets.ptr == 0x1000 + 2 * 5 * 4
+    assert gqa_args[9:12] == (3, 256, 5)
 
     calls.clear()
     qwen35_paged_full_attn_prefill_gqa_gate_bf16_decode_order_spans(
@@ -422,15 +433,10 @@ def test_qwen35_decode_order_prefill_splits_at_resident_policy_boundaries(
         split_count=17,
         **common,
     )
-    assert [name for name, _, _ in calls] == ["warp", "gqa"]
-    warp_args = calls[0][1]
-    gqa_args = calls[1][1]
-    assert warp_args[8].base_offsets.shape == (2, 17)
-    assert warp_args[9:12] == (2, 256, 16)
-    assert gqa_args[0] == common["query_ptr"] + 2 * 16 * 256 * 4
-    assert gqa_args[8].base_offsets.ptr == 0x1000 + 2 * 17 * 4
-    assert gqa_args[8].base_offsets.shape == (2, 17)
-    assert gqa_args[9:12] == (2, 256, 17)
+    assert [name for name, _, _ in calls] == ["gqa"]
+    gqa_args = calls[0][1]
+    assert gqa_args[8].base_offsets.shape == (4, 17)
+    assert gqa_args[9:12] == (4, 256, 17)
 
 
 def test_qwen35_paged_attn_decode_build_plan_is_dry_run_safe(tmp_path) -> None:

@@ -2433,39 +2433,12 @@ def qwen35_paged_full_attn_prefill_gqa_gate_bf16_decode_order_spans(
     _check_positive(split_batch_rows, "split_batch_rows")
     _check_positive(split_count, "split_count")
 
-    # Match the resident split policy: per-Q-head warp split for contexts
-    # [1024, 4096), then grouped-GQA split at 4096 and above. Prompt positions
-    # are contiguous, so each policy owns one contiguous local row range.
-    warp_start = unsplit_rows
-    warp_end = min(rows, max(warp_start, 4095 - chunk_start))
+    # The resident c=1 crossover keeps the per-Q-head warp producer below
+    # context 4096. Prefill query batches provide enough independent blocks for
+    # grouped-GQA sooner: use it from two rows while retaining the resident
+    # singleton policy. Both producers preserve each Q head's arithmetic order.
     _launch_decode_order_split_range(
         qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_batch_spans,
-        query_ptr,
-        key_cache_ptr,
-        value_cache_ptr,
-        gate_ptr,
-        out_ptr,
-        split_partial_out_ptr,
-        split_partial_m_ptr,
-        split_partial_l_ptr,
-        spans,
-        row_start=warp_start,
-        row_end=warp_end,
-        chunk_start=chunk_start,
-        split_batch_rows=split_batch_rows,
-        split_count=split_count,
-        block_size=block_size,
-        num_q_heads=num_q_heads,
-        num_kv_heads=num_kv_heads,
-        head_dim=head_dim,
-        gate_stride1=gate_stride1,
-        gate_stride2=gate_stride2,
-        scale=scale,
-        stream=stream,
-        library=library,
-        runtime=runtime,
-    )
-    _launch_decode_order_split_range(
         qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_batch_spans,
         query_ptr,
         key_cache_ptr,
@@ -2476,7 +2449,7 @@ def qwen35_paged_full_attn_prefill_gqa_gate_bf16_decode_order_spans(
         split_partial_m_ptr,
         split_partial_l_ptr,
         spans,
-        row_start=warp_end,
+        row_start=unsplit_rows,
         row_end=rows,
         chunk_start=chunk_start,
         split_batch_rows=split_batch_rows,
@@ -2495,7 +2468,8 @@ def qwen35_paged_full_attn_prefill_gqa_gate_bf16_decode_order_spans(
 
 
 def _launch_decode_order_split_range(
-    launch,
+    singleton_launch,
+    grouped_launch,
     query_ptr: int,
     key_cache_ptr: int,
     value_cache_ptr: int,
@@ -2533,6 +2507,11 @@ def _launch_decode_order_split_range(
             raise ValueError(
                 f"decode-order split count {num_splits} exceeds workspace capacity {split_count}"
             )
+        launch = (
+            grouped_launch
+            if batch_rows >= 2 or max_batch_context >= 4096
+            else singleton_launch
+        )
         launch(
             query_ptr + batch_start * q_row_bytes,
             key_cache_ptr,

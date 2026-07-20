@@ -118,14 +118,26 @@ def _free_all(runtime, bufs) -> None:
         free(buf, runtime=runtime)
 
 
-def _spans(block_table_buf, live_counts_buf, *, rows: int, max_live_count: int):
+def _spans(
+    block_table_buf,
+    live_counts_buf,
+    *,
+    rows: int,
+    max_live_count: int,
+    block_table_len: int = 1,
+):
     from hipengine.core.device import Device
     from hipengine.core.tensor import Tensor
     from hipengine.kvcache import KVLiveSpans
 
     device = Device("hip", 0)
     return KVLiveSpans.paged_uniform(
-        block_table=Tensor.from_handle(block_table_buf.ptr, (rows,), "int32", device),
+        block_table=Tensor.from_handle(
+            block_table_buf.ptr,
+            (rows, block_table_len) if block_table_len > 1 else (rows,),
+            "int32",
+            device,
+        ),
         live_counts=Tensor.from_handle(live_counts_buf.ptr, (rows,), "int64", device),
         max_live_count=max_live_count,
         storage_dtype="bf16",
@@ -223,5 +235,94 @@ def test_qwen35_decode_batched_direct_gate_matches_split_reduce(_attention_lib, 
         cpu = _cpu_reference(query, key, value, gate, live_counts, scale=scale)
         np.testing.assert_array_equal(direct.view(np.uint16), split.view(np.uint16))
         np.testing.assert_allclose(direct.astype(np.float32), cpu.astype(np.float32), atol=3e-4, rtol=3e-3)
+    finally:
+        _free_all(_runtime, bufs)
+
+
+@pytest.mark.parametrize(("rows", "max_context"), [(2, 1280), (16, 4095)])
+def test_qwen35_grouped_gqa_bf16_batch_is_bit_exact_to_warp(
+    _attention_lib,
+    _runtime,
+    rows: int,
+    max_context: int,
+) -> None:
+    from hipengine.kernels.hip_gfx1100.attention import (
+        qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_batch_spans,
+        qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_batch_spans,
+    )
+
+    num_q_heads = 16
+    num_kv_heads = 2
+    head_dim = 256
+    block_size = 256
+    blocks = (max_context + block_size - 1) // block_size
+    rng = np.random.default_rng(0x6A0A + rows)
+    query = (rng.standard_normal((rows, num_q_heads, head_dim), dtype=np.float32) * 0.05).astype(np.float32)
+    key = _to_bf16_bits(
+        rng.standard_normal((blocks, block_size, num_kv_heads, head_dim), dtype=np.float32) * 0.05
+    )
+    value = _to_bf16_bits(
+        rng.standard_normal((blocks, block_size, num_kv_heads, head_dim), dtype=np.float32) * 0.05
+    )
+    gate = _to_bf16_bits(
+        rng.standard_normal((rows, num_q_heads, head_dim), dtype=np.float32) * 0.05
+    )
+    live_counts = np.arange(max_context - rows + 1, max_context + 1, dtype=np.int64)
+    block_table = np.tile(np.arange(blocks, dtype=np.int32), (rows, 1))
+
+    bufs = []
+    try:
+        query_buf = _upload(_runtime, bufs, query)
+        key_buf = _upload(_runtime, bufs, key)
+        value_buf = _upload(_runtime, bufs, value)
+        gate_buf = _upload(_runtime, bufs, gate)
+        block_table_buf = _upload(_runtime, bufs, block_table)
+        live_counts_buf = _upload(_runtime, bufs, live_counts)
+        out_warp = _alloc(_runtime, bufs, gate.nbytes)
+        out_gqa = _alloc(_runtime, bufs, gate.nbytes)
+        partial_out = _alloc(_runtime, bufs, rows * num_q_heads * blocks * head_dim * 4)
+        partial_m = _alloc(_runtime, bufs, rows * num_q_heads * blocks * 4)
+        partial_l = _alloc(_runtime, bufs, rows * num_q_heads * blocks * 4)
+        spans = _spans(
+            block_table_buf,
+            live_counts_buf,
+            rows=rows,
+            max_live_count=max_context,
+            block_table_len=blocks,
+        )
+
+        common = (
+            query_buf.ptr,
+            key_buf.ptr,
+            value_buf.ptr,
+            gate_buf.ptr,
+            None,
+            partial_out.ptr,
+            partial_m.ptr,
+            partial_l.ptr,
+            spans,
+            rows,
+            block_size,
+            blocks,
+            block_size,
+            num_q_heads,
+            num_kv_heads,
+            head_dim,
+            head_dim,
+            1,
+            head_dim ** -0.5,
+        )
+        for fn, out in (
+            (qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_batch_spans, out_warp),
+            (qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_batch_spans, out_gqa),
+        ):
+            args = list(common)
+            args[4] = out.ptr
+            fn(*args, library=_attention_lib, runtime=_runtime)
+        _runtime.device_synchronize()
+
+        warp = _download(_runtime, out_warp, gate.shape, np.uint16)
+        gqa = _download(_runtime, out_gqa, gate.shape, np.uint16)
+        np.testing.assert_array_equal(gqa, warp)
     finally:
         _free_all(_runtime, bufs)

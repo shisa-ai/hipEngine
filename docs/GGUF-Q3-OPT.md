@@ -63,31 +63,37 @@ raw-IQ, decode, and scheduler tranches:
   `670.417 -> 684.499 tok/s` (+2.10%) with local256, VGPR80, and zero scratch.
   The 512 counterbalanced aggregate is only +0.25% and remains within spread;
   the traced exact sub-window, not a large 512 headline, is the promotion basis.
+- Exact split attention now uses its existing grouped-GQA producer from two
+  prompt rows while retaining per-Q-head warp split for a singleton below
+  context 4,096. The prefill batch supplies enough independent blocks to reuse
+  each K/V stream across eight Q heads without changing per-head arithmetic.
+  Fifteen primitive shapes are BF16-bit exact; full 4K logits are bit-exact;
+  traced attention falls `936.900 -> 464.773 ms` (-50.39%), and mixed-pattern
+  4K reaches `741.180 tok/s` (+8.28%) with unchanged launches and memory.
 - Decode work retained the wave-uniform IQ3 address cleanup and aggregate
   MoE-tail/next-RMS fusion, rejected hierarchical top-k, IQ4 tile4, and routed
   stream overlap, and currently measures `101.216 tok/s` at 512 and
   `108.383 tok/s` at 4K on GPU1. The source-derived 150–190 tok/s feasibility
   argument remains valid, but hipEngine has not reached that band.
 
-The post-IQ3-rowbatch4 cache-only 4K trace is now the active prefill Amdahl ledger:
+The post-grouped-GQA cache-only 4K trace is now the active prefill Amdahl ledger:
 
-| Family | Time | Share of 5,827.503 ms kernel sum |
+| Family | Time | Share of 5,350.508 ms kernel sum |
 |---|---:|---:|
-| Dense exact raw Q8 | 2,048.793 ms | **35.16%** |
-| Grouped IQ3 gate/up | 961.231 ms | **16.49%** |
-| Full attention | 936.900 ms | **16.08%** |
-| Exact GDN recurrent | 871.085 ms | **14.95%** |
-| Grouped IQ4 down | 503.408 ms | **8.64%** |
+| Dense exact raw Q8 | 2,052.066 ms | **38.35%** |
+| Grouped IQ3 gate/up | 954.502 ms | **17.84%** |
+| Exact GDN recurrent | 870.078 ms | **16.26%** |
+| Grouped IQ4 down | 504.051 ms | **9.42%** |
+| Full attention | 464.773 ms | **8.69%** |
 
-Dense Q8 remains first but its local scheduling lane is closed. IQ3 is only
-24.331 ms ahead of full attention, and its admitted local premises are now
-consumed: output-column tile 2 regressed, raw-IQ WMMA changed the trajectory,
-resident repack remains unapproved, and rowbatch4 already raises the exact leaf
-to VGPR80 while removing 75% of its row barriers. Without a genuinely new IQ3
-premise, task #24 moves to full attention rather than extending row batching by
-inertia. **The ~3,000 tok/s objective is not closed:** 684.499 tok/s is a
-retained step, not a target claim. Full evidence and commands are in
-[`benchmarks/results/2026-07-20-gpu1-q3-exact-iq3-rowbatch4-prefill.json`](../benchmarks/results/2026-07-20-gpu1-q3-exact-iq3-rowbatch4-prefill.json).
+Dense Q8 remains first but its local scheduling lane is closed. Grouped IQ3 is
+second, but its admitted output-tile/WMMA/repack premises remain closed after
+rowbatch4. Attention is now below 9% and no longer justifies immediate local
+polish. Task #24 therefore returns to one genuinely new exact GDN premise, the
+next open measured family, rather than extending a lower-ranked lane by inertia.
+**The ~3,000 tok/s objective is not closed:** 741.180 tok/s is a retained step,
+not a target claim. Full evidence and commands are in
+[`benchmarks/results/2026-07-20-gpu1-q3-exact-attn-gqa-batch-prefill.json`](../benchmarks/results/2026-07-20-gpu1-q3-exact-attn-gqa-batch-prefill.json).
 
 ## Executive recommendation
 
