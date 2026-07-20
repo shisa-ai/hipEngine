@@ -57,6 +57,12 @@ def main() -> None:
     ap.add_argument("--out-features", type=int, default=512)
     ap.add_argument("--iters", type=int, default=80)
     ap.add_argument("--warmup", type=int, default=20)
+    ap.add_argument(
+        "--selection-pattern",
+        choices=("unique", "random", "paired"),
+        default="unique",
+        help="paired repeats the first half of expert IDs to screen duplicate-expert reuse",
+    )
     ap.add_argument("--json", type=Path, default=None)
     args = ap.parse_args()
 
@@ -78,6 +84,7 @@ def main() -> None:
     from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
         build_gguf_t16_selected_gemv,
         gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
+        gguf_q4_k_t16_selected_dual_pairreuse_gemv_bf16_bf16_out,
         gguf_q4_k_t16_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out,
         gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out,
         gguf_q4_k_t16_selected_dual_silu_q8_1_dp4a_gemv_bf16_bf16_out,
@@ -93,7 +100,17 @@ def main() -> None:
     x = _f32_to_bf16_bits(
         (rng.standard_normal((args.x_rows, args.in_features)) * 0.1).astype(np.float32)
     )
-    selected = np.ascontiguousarray((np.arange(args.rows) % args.experts).astype(np.int64))
+    if args.selection_pattern == "paired":
+        if args.rows % 2 != 0:
+            raise ValueError("--rows must be even for --selection-pattern paired")
+        half = np.arange(args.rows // 2, dtype=np.int64) % args.experts
+        selected = np.ascontiguousarray(np.concatenate((half, half)))
+    elif args.selection_pattern == "random":
+        selected = np.ascontiguousarray(
+            rng.integers(0, args.experts, size=args.rows, dtype=np.int64)
+        )
+    else:
+        selected = np.ascontiguousarray((np.arange(args.rows) % args.experts).astype(np.int64))
     base = make_q4_k_weight(args.out_features, args.in_features)
     qa = np.ascontiguousarray(
         np.stack([np.roll(base, e % args.out_features, axis=0) for e in range(args.experts)], axis=0)
@@ -106,6 +123,8 @@ def main() -> None:
 
     out_ref_a = np.zeros((args.rows, args.out_features), np.uint16)
     out_ref_b = np.zeros_like(out_ref_a)
+    out_pairreuse_a = np.zeros_like(out_ref_a)
+    out_pairreuse_b = np.zeros_like(out_ref_a)
     out_dp4a_a = np.zeros_like(out_ref_a)
     out_dp4a_b = np.zeros_like(out_ref_a)
     out_silu_ref = np.zeros_like(out_ref_a)
@@ -125,12 +144,26 @@ def main() -> None:
         tb_buf = dev(tb)
         ref_a_buf = malloc(out_ref_a.nbytes, runtime=rt)
         ref_b_buf = malloc(out_ref_b.nbytes, runtime=rt)
+        pairreuse_a_buf = malloc(out_pairreuse_a.nbytes, runtime=rt)
+        pairreuse_b_buf = malloc(out_pairreuse_b.nbytes, runtime=rt)
         dp4a_a_buf = malloc(out_dp4a_a.nbytes, runtime=rt)
         dp4a_b_buf = malloc(out_dp4a_b.nbytes, runtime=rt)
         silu_ref_buf = malloc(out_silu_ref.nbytes, runtime=rt)
         silu_dp4a_buf = malloc(out_silu_dp4a.nbytes, runtime=rt)
         xq_buf = malloc(args.x_rows * (args.in_features // 32) * 36, runtime=rt)
-        bufs.extend((ref_a_buf, ref_b_buf, dp4a_a_buf, dp4a_b_buf, silu_ref_buf, silu_dp4a_buf, xq_buf))
+        bufs.extend(
+            (
+                ref_a_buf,
+                ref_b_buf,
+                pairreuse_a_buf,
+                pairreuse_b_buf,
+                dp4a_a_buf,
+                dp4a_b_buf,
+                silu_ref_buf,
+                silu_dp4a_buf,
+                xq_buf,
+            )
+        )
 
         def direct() -> None:
             gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out(
@@ -140,6 +173,23 @@ def main() -> None:
                 tb_buf.ptr,
                 ref_a_buf.ptr,
                 ref_b_buf.ptr,
+                args.x_rows,
+                args.rows,
+                args.experts,
+                args.in_features,
+                args.out_features,
+                library=t16_library,
+                runtime=rt,
+            )
+
+        def pairreuse_direct() -> None:
+            gguf_q4_k_t16_selected_dual_pairreuse_gemv_bf16_bf16_out(
+                x_buf.ptr,
+                selected_buf.ptr,
+                ta_buf.ptr,
+                tb_buf.ptr,
+                pairreuse_a_buf.ptr,
+                pairreuse_b_buf.ptr,
                 args.x_rows,
                 args.rows,
                 args.experts,
@@ -229,6 +279,7 @@ def main() -> None:
         quant()
         rt.device_synchronize()
         direct_ms = bench(direct)
+        pairreuse_direct_ms = bench(pairreuse_direct)
         silu_direct_ms = bench(silu_direct)
         quant_ms = bench(quant)
         dot_ms = bench(dot)
@@ -237,12 +288,15 @@ def main() -> None:
         quant_silu_dot_ms = bench(quant_silu_dot)
 
         direct()
+        pairreuse_direct()
         silu_direct()
         quant_dot()
         silu_dot()
         rt.device_synchronize()
         copy_device_to_host(host_array_ptr(out_ref_a), ref_a_buf, runtime=rt)
         copy_device_to_host(host_array_ptr(out_ref_b), ref_b_buf, runtime=rt)
+        copy_device_to_host(host_array_ptr(out_pairreuse_a), pairreuse_a_buf, runtime=rt)
+        copy_device_to_host(host_array_ptr(out_pairreuse_b), pairreuse_b_buf, runtime=rt)
         copy_device_to_host(host_array_ptr(out_dp4a_a), dp4a_a_buf, runtime=rt)
         copy_device_to_host(host_array_ptr(out_dp4a_b), dp4a_b_buf, runtime=rt)
         copy_device_to_host(host_array_ptr(out_silu_ref), silu_ref_buf, runtime=rt)
@@ -278,6 +332,7 @@ def main() -> None:
         "hip_arch": os.environ.get("HIPENGINE_HIP_ARCH"),
         "selected_dp4a_threads": os.environ.get("HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS", "64"),
         "shape": {
+            "selection_pattern": args.selection_pattern,
             "x_rows": args.x_rows,
             "rows": args.rows,
             "experts": args.experts,
@@ -288,6 +343,7 @@ def main() -> None:
         "warmup": args.warmup,
         "timing_ms": {
             "t16_selected_dual": direct_ms,
+            "t16_selected_dual_pairreuse": pairreuse_direct_ms,
             "t16_selected_dual_silu": silu_direct_ms,
             "q8_1_quantize": quant_ms,
             "t16_dp4a_dot_prequantized": dot_ms,
@@ -296,12 +352,17 @@ def main() -> None:
             "t16_silu_dp4a_quantize_plus_dot": quant_silu_dot_ms,
         },
         "speedup": {
+            "t16_dual_over_pairreuse": direct_ms / pairreuse_direct_ms,
             "t16_dual_over_dp4a_dot": direct_ms / dot_ms,
             "t16_dual_over_dp4a_quantize_plus_dot": direct_ms / quant_dot_ms,
             "t16_silu_over_dp4a_dot": silu_direct_ms / silu_dot_ms,
             "t16_silu_over_dp4a_quantize_plus_dot": silu_direct_ms / quant_silu_dot_ms,
         },
         "correctness_vs_t16_float": {
+            "pairreuse_exact": {
+                "gate": bool(np.array_equal(out_ref_a, out_pairreuse_a)),
+                "up": bool(np.array_equal(out_ref_b, out_pairreuse_b)),
+            },
             "gate": {
                 "max_abs": float(np.max(np.abs(ref_a - dp4a_a))),
                 "mean_abs": float(np.mean(np.abs(ref_a - dp4a_a))),

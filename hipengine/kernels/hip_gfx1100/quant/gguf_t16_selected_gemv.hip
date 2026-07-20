@@ -500,6 +500,230 @@ __global__ __launch_bounds__(256, 2) void q4_k_t16_selected_dual_direct_gemv_ker
 }
 
 template <typename scalar_t>
+__global__ __launch_bounds__(256, 2) void q4_k_t16_selected_dual_pairreuse_direct_gemv_kernel(
+    const scalar_t* __restrict__ x,
+    const int64_t* __restrict__ selected,
+    const uint8_t* __restrict__ tiles_a,
+    const uint8_t* __restrict__ tiles_b,
+    scalar_t* __restrict__ out_a,
+    scalar_t* __restrict__ out_b,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts) {
+  const int64_t out_tile = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  const int tid = threadIdx.x;
+  if (row >= rows) return;
+  const int64_t expert_id = selected[row];
+  if (expert_id < 0 || expert_id >= num_experts) return;
+
+  // Pair consecutive occurrences of the same dynamic expert ID.  Physical C8
+  // has at most 64 selected lanes, so two wave32 ballots build the full match
+  // mask in one coalesced read and one barrier.  Odd occurrences are completed
+  // by their preceding anchor block and return before touching output.
+  __shared__ uint32_t expert_match_words[2];
+  const bool lane_matches = tid < rows && selected[tid] == expert_id;
+  const uint32_t wave_matches = static_cast<uint32_t>(__ballot(lane_matches));
+  const int wave_id = tid >> 5;
+  if ((tid & 31) == 0 && wave_id < 2) {
+    expert_match_words[wave_id] = wave_matches;
+  }
+  __syncthreads();
+  const uint64_t expert_matches = static_cast<uint64_t>(expert_match_words[0]) |
+                                  (static_cast<uint64_t>(expert_match_words[1]) << 32);
+  const uint64_t prior_mask = row == 0 ? 0 : ((uint64_t{1} << row) - 1);
+  const int prior_matches = __popcll(expert_matches & prior_mask);
+  if ((prior_matches & 1) != 0) return;
+  const uint64_t later_mask = row == 63 ? 0 : (~uint64_t{0} << (row + 1));
+  const uint64_t later_matches = expert_matches & later_mask;
+  const int64_t paired_row = later_matches == 0
+                                 ? -1
+                                 : (__ffsll(static_cast<unsigned long long>(later_matches)) - 1);
+
+  const int64_t lanes_per_x_row = rows / x_rows;
+  const int64_t x_row_idx = (x_rows == 1) ? 0 : (row / lanes_per_x_row);
+  const int64_t paired_x_row_idx = paired_row >= 0 ? paired_row / lanes_per_x_row : -1;
+  const int64_t blocks_per_row = in_features / QK_K;
+  const int64_t out_tiles = out_features / T16_COLS;
+  const scalar_t* __restrict__ x_row = x + x_row_idx * in_features;
+  const scalar_t* __restrict__ paired_x_row =
+      paired_row >= 0 ? x + paired_x_row_idx * in_features : nullptr;
+
+  float acc0[T16_COLS];
+  float acc1[T16_COLS];
+#pragma unroll
+  for (int col = 0; col < T16_COLS; ++col) {
+    acc0[col] = 0.0f;
+    acc1[col] = 0.0f;
+  }
+
+  if (paired_row < 0) {
+    // Preserve the production dual kernel unchanged for unpaired lanes.
+    for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
+      const uint8_t* __restrict__ tile_a = expert_tile_ptr<Q4_T16_BLOCK_BYTES>(
+          tiles_a, expert_id, out_tile, blk, out_tiles, blocks_per_row);
+      const uint8_t* __restrict__ tile_b = expert_tile_ptr<Q4_T16_BLOCK_BYTES>(
+          tiles_b, expert_id, out_tile, blk, out_tiles, blocks_per_row);
+      const int64_t k_base = blk * QK_K;
+      for (int k_in_block = tid; k_in_block < QK_K; k_in_block += blockDim.x) {
+        const float xv = scalar_to_float<scalar_t>(x_row[k_base + k_in_block]);
+#pragma unroll
+        for (int col = 0; col < T16_COLS; ++col) {
+          const float wv_a = t16_q4_weight(tile_a, k_in_block, col);
+          const float wv_b = t16_q4_weight(tile_b, k_in_block, col);
+          acc0[col] += xv * wv_a;
+          acc1[col] += xv * wv_b;
+        }
+      }
+    }
+
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) GGUF_T16_WAVE_REDUCE(acc0[col]);
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) GGUF_T16_WAVE_REDUCE(acc1[col]);
+
+    __shared__ float xchg0[4 * T16_COLS];
+    __shared__ float xchg1[4 * T16_COLS];
+    const int sub_id = tid >> 5;
+    const int sub_lane = tid & 31;
+    if (sub_lane == 0) {
+#pragma unroll
+      for (int col = 0; col < T16_COLS; ++col) {
+        xchg0[sub_id * T16_COLS + col] = acc0[col];
+        xchg1[sub_id * T16_COLS + col] = acc1[col];
+      }
+    }
+    __syncthreads();
+
+    if (tid == 0) {
+      scalar_t* __restrict__ out_row_a = out_a + row * out_features + out_tile * T16_COLS;
+      scalar_t* __restrict__ out_row_b = out_b + row * out_features + out_tile * T16_COLS;
+#pragma unroll
+      for (int col = 0; col < T16_COLS; ++col) {
+        float total_a = 0.0f;
+        float total_b = 0.0f;
+        for (int g = 0; g < 4; ++g) {
+          total_a += xchg0[g * T16_COLS + col];
+          total_b += xchg1[g * T16_COLS + col];
+        }
+        out_row_a[col] = float_to_scalar<scalar_t>(total_a);
+        out_row_b[col] = float_to_scalar<scalar_t>(total_b);
+      }
+    }
+    return;
+  }
+
+  // Reuse gate weights across both input rows while retaining the production
+  // 128-thread accumulation partition and reduction order for each output.
+  for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
+    const uint8_t* __restrict__ tile = expert_tile_ptr<Q4_T16_BLOCK_BYTES>(
+        tiles_a, expert_id, out_tile, blk, out_tiles, blocks_per_row);
+    const int64_t k_base = blk * QK_K;
+    for (int k_in_block = tid; k_in_block < QK_K; k_in_block += blockDim.x) {
+      const float xv0 = scalar_to_float<scalar_t>(x_row[k_base + k_in_block]);
+      const float xv1 = scalar_to_float<scalar_t>(paired_x_row[k_base + k_in_block]);
+#pragma unroll
+      for (int col = 0; col < T16_COLS; ++col) {
+        const float wv = t16_q4_weight(tile, k_in_block, col);
+        acc0[col] += xv0 * wv;
+        acc1[col] += xv1 * wv;
+      }
+    }
+  }
+
+#pragma unroll
+  for (int col = 0; col < T16_COLS; ++col) GGUF_T16_WAVE_REDUCE(acc0[col]);
+#pragma unroll
+  for (int col = 0; col < T16_COLS; ++col) GGUF_T16_WAVE_REDUCE(acc1[col]);
+
+  __shared__ float xchg0[4 * T16_COLS];
+  __shared__ float xchg1[4 * T16_COLS];
+  const int sub_id = tid >> 5;
+  const int sub_lane = tid & 31;
+  if (sub_lane == 0) {
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) {
+      xchg0[sub_id * T16_COLS + col] = acc0[col];
+      xchg1[sub_id * T16_COLS + col] = acc1[col];
+    }
+  }
+  __syncthreads();
+
+  if (tid == 0) {
+    scalar_t* __restrict__ out_row0 = out_a + row * out_features + out_tile * T16_COLS;
+    scalar_t* __restrict__ out_row1 = out_a + paired_row * out_features + out_tile * T16_COLS;
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) {
+      float total0 = 0.0f;
+      float total1 = 0.0f;
+      for (int g = 0; g < 4; ++g) {
+        total0 += xchg0[g * T16_COLS + col];
+        total1 += xchg1[g * T16_COLS + col];
+      }
+      out_row0[col] = float_to_scalar<scalar_t>(total0);
+      out_row1[col] = float_to_scalar<scalar_t>(total1);
+    }
+  }
+  __syncthreads();
+
+#pragma unroll
+  for (int col = 0; col < T16_COLS; ++col) {
+    acc0[col] = 0.0f;
+    acc1[col] = 0.0f;
+  }
+
+  // Reuse up weights in the same way.  Processing gate and up sequentially
+  // holds the live accumulator count equal to the production dual kernel.
+  for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
+    const uint8_t* __restrict__ tile = expert_tile_ptr<Q4_T16_BLOCK_BYTES>(
+        tiles_b, expert_id, out_tile, blk, out_tiles, blocks_per_row);
+    const int64_t k_base = blk * QK_K;
+    for (int k_in_block = tid; k_in_block < QK_K; k_in_block += blockDim.x) {
+      const float xv0 = scalar_to_float<scalar_t>(x_row[k_base + k_in_block]);
+      const float xv1 = scalar_to_float<scalar_t>(paired_x_row[k_base + k_in_block]);
+#pragma unroll
+      for (int col = 0; col < T16_COLS; ++col) {
+        const float wv = t16_q4_weight(tile, k_in_block, col);
+        acc0[col] += xv0 * wv;
+        acc1[col] += xv1 * wv;
+      }
+    }
+  }
+
+#pragma unroll
+  for (int col = 0; col < T16_COLS; ++col) GGUF_T16_WAVE_REDUCE(acc0[col]);
+#pragma unroll
+  for (int col = 0; col < T16_COLS; ++col) GGUF_T16_WAVE_REDUCE(acc1[col]);
+
+  if (sub_lane == 0) {
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) {
+      xchg0[sub_id * T16_COLS + col] = acc0[col];
+      xchg1[sub_id * T16_COLS + col] = acc1[col];
+    }
+  }
+  __syncthreads();
+
+  if (tid == 0) {
+    scalar_t* __restrict__ out_row0 = out_b + row * out_features + out_tile * T16_COLS;
+    scalar_t* __restrict__ out_row1 = out_b + paired_row * out_features + out_tile * T16_COLS;
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) {
+      float total0 = 0.0f;
+      float total1 = 0.0f;
+      for (int g = 0; g < 4; ++g) {
+        total0 += xchg0[g * T16_COLS + col];
+        total1 += xchg1[g * T16_COLS + col];
+      }
+      out_row0[col] = float_to_scalar<scalar_t>(total0);
+      out_row1[col] = float_to_scalar<scalar_t>(total1);
+    }
+  }
+}
+
+template <typename scalar_t>
 __global__ __launch_bounds__(256, 1) void q4_k_t16_selected_dual_silu_direct_gemv_kernel(
     const scalar_t* __restrict__ x,
     const int64_t* __restrict__ selected,
@@ -969,6 +1193,39 @@ int launch_q4_dual_direct(const void* x,
 }
 
 template <typename scalar_t>
+int launch_q4_dual_pairreuse_direct(const void* x,
+                                    const void* selected,
+                                    const void* tiles_a,
+                                    const void* tiles_b,
+                                    void* out_a,
+                                    void* out_b,
+                                    int64_t x_rows,
+                                    int64_t rows,
+                                    int64_t in_features,
+                                    int64_t out_features,
+                                    int64_t num_experts,
+                                    hipStream_t stream) {
+  if (!x || !selected || !tiles_a || !tiles_b || !out_a || !out_b || x_rows <= 0 || rows <= 0 ||
+      rows > 64 || num_experts <= 0 || in_features <= 0 || out_features <= 0 ||
+      (rows % x_rows) != 0 ||
+      (in_features % QK_K) != 0 || (out_features % T16_COLS) != 0) {
+    return hipErrorInvalidValue;
+  }
+  const dim3 block(128);
+  const dim3 grid(static_cast<unsigned int>(out_features / T16_COLS), static_cast<unsigned int>(rows));
+  hipLaunchKernelGGL((q4_k_t16_selected_dual_pairreuse_direct_gemv_kernel<scalar_t>),
+                     grid, block, 0, stream,
+                     reinterpret_cast<const scalar_t*>(x),
+                     reinterpret_cast<const int64_t*>(selected),
+                     reinterpret_cast<const uint8_t*>(tiles_a),
+                     reinterpret_cast<const uint8_t*>(tiles_b),
+                     reinterpret_cast<scalar_t*>(out_a),
+                     reinterpret_cast<scalar_t*>(out_b),
+                     x_rows, rows, in_features, out_features, num_experts);
+  return hipGetLastError();
+}
+
+template <typename scalar_t>
 int launch_q4_dual_silu_direct(const void* x,
                                 const void* selected,
                                 const void* tiles_a,
@@ -1093,6 +1350,15 @@ extern "C" int hipengine_gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out(
   return launch_q4_dual_direct<uint16_t>(x, selected, tiles_a, tiles_b, out_a, out_b,
                                          x_rows, rows, in_features, out_features,
                                          num_experts, stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_t16_selected_dual_pairreuse_gemv_bf16_bf16_out(
+    const void* x, const void* selected, const void* tiles_a, const void* tiles_b,
+    void* out_a, void* out_b, int64_t x_rows, int64_t rows, int64_t num_experts,
+    int64_t in_features, int64_t out_features, hipStream_t stream) {
+  return launch_q4_dual_pairreuse_direct<uint16_t>(
+      x, selected, tiles_a, tiles_b, out_a, out_b, x_rows, rows, in_features,
+      out_features, num_experts, stream);
 }
 
 extern "C" int hipengine_gguf_q4_k_t16_selected_dual_gemv_fp16_fp16_out(
