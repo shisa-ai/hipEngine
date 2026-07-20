@@ -169128,3 +169128,79 @@ graph flush/close, session reuse, and the complete resident-focused bundle:
   tests/test_generation_qwen35_gguf_sampling.py::test_gguf_resident_runner_releases_packed_workspace_before_reusing_session
 # 4 passed
 ```
+
+## 2026-07-20 — Publish optimized gfx1151 GGUF server concurrency
+
+Ran the final publication protocol from detached-clean commit `bbe328cb` on the
+Radeon 8060S/gfx1151 with `amd_iommu=off`, TuneD
+`accelerator-performance`, one HIP hardware queue, Qwen3.6-35B-A3B
+UD-Q4_K_M, BF16 KV, cached TheRock HIP 7.15 builds, 5 ms generation
+coalescing, and the package-default pressure-gated `fair:256` prefill policy:
+
+```bash
+env HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 \
+  HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_BACKEND=hip_gfx1151 \
+  /home/lhl/hipEngine-main/.venv/bin/python \
+  scripts/server_f1_concurrency_bench.py \
+  --engine hipengine \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1151 --quant gguf_q4_k_m \
+  --hipengine-python /home/lhl/hipEngine-main/.venv/bin/python \
+  --hipengine-kv-storage bf16 --hipengine-route-expectation native \
+  --hipengine-prefill-decode-policy fair --generation-batch-window-ms 5 \
+  --hipengine-prefill-chunk-tokens 256 --concurrencies 1,2,4,8 \
+  --live-concurrency 8 --prompt-length 512 --decode-tokens 128 \
+  --ctx-per-seq 1024 --warmup-runs 1 --measured-runs 3 \
+  --streaming-primary --stream-warmup-runs 0 --stream-measured-runs 3 \
+  --live-join-after-tokens 8 \
+  --compiler-version-file /tmp/hipengine-gfx1151-native-cycle-hipcc-version.txt \
+  --memory-domain gtt --drm-card-index 0 --memory-poll-ms 10 \
+  --work-dir /tmp/gfx1151-server-final-bbe328cb/work \
+  --json /tmp/gfx1151-server-final-bbe328cb/result.json
+```
+
+The packet is `accepted_backend_packet` with clean canonical provenance. Every
+one of the **117/117** oracle, warmup, blocking, exact-SSE, and delayed-C8 rows
+passes; all widths use the native route with no serial/resident fallback. C8
+records **8 graph captures / 829 replays / 8 invalidations**, admits during the
+first live request, and drains **65/65** sessions with zero occupied slots,
+workspace bytes, KV refs, or pinned pages.
+
+| Width | Blocking tok/s | vs prior | Exact SSE tok/s | vs prior | SLO pass |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| C1 | 44.321 | +0.42% | 42.147 | -2.68% | 3/3 |
+| C2 | 59.783 | +0.89% | 59.102 | +0.89% | 2/3 |
+| C4 | 75.580 | +1.99% | 73.971 | +1.51% | 1/3 |
+| C8 | **86.185** | **+2.88%** | **84.196** | **+3.17%** | 0/3 |
+
+Delayed C8 improves **66.563 -> 67.788 tok/s (+1.84%)**. C8 exact
+SLO-qualified goodput improves **20.402 -> 31.574 tok/s (+54.76%)**, and ITL
+p99 median improves **0.4744 -> 0.2945 s (-37.91%)**. The single C2 SLO miss is
+localized to one request's **0.559-second** first ramp interval; its run-level
+aggregate ITL p99 is **0.0338 s**, every row is exact, and the independently
+retained `continuous_fixed` gate remains 12/12 exact/SLO-green at 46.470
+goodput tok/s. C4 whole-wave SLO improves 0/3 -> 1/3; C8 still has at least one
+non-qualifying request in every static wave despite materially higher goodput.
+
+Canonical C1 SSE has ordinary localhost variance (41.722-43.518 tok/s). A
+focused clean C1 repeat completed all three blocking rows at **44.314/44.339/
+44.354 tok/s** and all three exact SSE rows at **42.742/43.711/42.749 tok/s**;
+the harness then emitted `failed_exception` solely because delayed admission is
+undefined with `live_concurrency=1`. The repeat classifies C1 SSE as noisy and
+does not replace the complete packet's canonical row.
+
+The raw direct/server difference is now attributable rather than a 35% steady
+engine loss. At C8, direct decode-only is **133.251 tok/s / 7.685 s** for 1,024
+outputs. The server median is **11.881 s**, of which measured prompt prefill is
+**3.395 s**. Prefill therefore explains **80.89%** of the 4.197-second raw gap;
+the remaining **0.802 s** covers partial-width ramp, graph lifecycle, scheduling,
+localhost HTTP, and completion (**7.24%** over direct-decode+prefill wall). The
+method profile showed model/graph execution dominates steady ticks; the removed
+scheduler/telemetry duplication is no longer the main residual.
+
+Published compact artifact:
+`benchmarks/results/2026-07-20-gfx1151-gguf-server-concurrency-optimized.json`
+(**25,904 bytes**, SHA-256
+`b5e48ccaee6dd1062464e1a35db590cd0a67a18172b2dad019429fbfaa30905f`). Raw
+source SHA-256 is
+`bf2665d5c3182a5e5f943d7ea29a9c16b327214cd957f3ae5aaad1d775f37964`.
