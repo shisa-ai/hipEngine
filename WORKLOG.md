@@ -169980,3 +169980,55 @@ Removed the runtime shortcut and retained F3C general expert-ID weight reuse
 unchanged. The strengthened primitive fixture and explicit identical-input
 microbench mode remain for regression/reproduction. Compact rejected artifact:
 `benchmarks/results/2026-07-20-gfx1151-gguf-selected-identical-input-reuse-rejected.json`.
+
+## 2026-07-20 — Retain gfx1151 physical-C8 Q5T16 selected-down pair reuse
+
+The clean post-F3C automatic transition still spends **8.972 ms / 37 launches**
+in Q5T16 selected down (profiler median **241.814 us**), plus only 0.685 ms in
+three Q6 layers. Production Q5 uses 128 threads, 128 VGPR, 256 B LDS, and zero
+scratch for the `selected_rows=64`, `512x2048` shape.
+
+Added `q5_k_t16_selected_pairreuse_direct_gemv_kernel`: two wave32 ballots pair
+consecutive dynamic expert-ID occurrences across at most 64 selected lanes; one
+block then shares Q5T16 weight/dequant work while accumulating each input row in
+its own 16-column FP32 array. Every row retains the production 128-thread K
+partition, wave/cross-wave reduction, and BF16 rounding. The existing per-lane
+kernel is the fallback for unpaired/lower-width/unsupported routes.
+
+Real-shape 256-expert microbench, 20 warmups and 100 iterations:
+
+- unique IDs: **258.836 -> 272.741 us (+5.37%)**,
+- uniform random IDs: **248.557 -> 249.434 us (+0.35%)**,
+- 32 expert pairs: **212.215 -> 152.398 us (-28.19%, 1.393x)**.
+
+All outputs are byte-exact. The unique tax was predeclared as the risk; actual
+64-of-256 router overlap is represented better by the random and model gates.
+Backend capability `GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS=8` admits only
+gfx1151 physical C8, gfx1100 remains zero, and
+`HIPENGINE_GGUF_T16_SELECTED_DOWN_PAIRREUSE=0` is rollback.
+
+The no-env combined F3C+Q5 automatic graph oracle passes **320/320 layer
+outputs**, token, Conv/GDN, live KV, lifecycle, and final state byte-exact.
+Canonical p512/d128 direct C8 samples are
+**150.778655/150.731429/150.806535 tok/s**, median **150.778655**, versus F3C
+**144.038956 (+4.679%)** and pre-selected-reuse F3B **133.852312 (+12.646%)**;
+stdev/median is **0.0252%** and all trajectories repeat exactly. Q5 adds
+**317.776 ms** savings per 1,024-token window; combined selected reuse saves
+**858.810 ms**.
+
+A matched source-equivalent real-Uvicorn C1/C8 packet is
+`accepted_backend_packet` and exact. Versus the immediately preceding F3C
+packet, C8 blocking median improves **87.726 -> 88.431 tok/s (+0.80%)**, exact
+SSE is **84.798 -> 84.697 (-0.12%, noise)**, and delayed is
+**68.242 -> 68.320 (+0.11%)**. SSE remains +0.60% over the clean retained
+server row. This admits the scoped default but is not a clean server-speed
+publication claim.
+
+Cached `rocprofv3 --kernel-trace` around one automatic graph transition records
+exactly **37**
+`q5_k_t16_selected_pairreuse_direct_gemv_kernel<unsigned short>` launches at
+128 threads, grid `16384x64`, **96 VGPR**, 128 SGPR, **520 B LDS**, and zero
+scratch. Profile median **223.539 us** / total **8.284 ms** are diagnostic.
+Focused validation: selected-T16 GPU **90 passed**; routing/stage/backend **48
+passed**. Lineage checking remains blocked by the missing external atlas
+checkout; this is an in-tree design, not a port.

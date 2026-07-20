@@ -53,6 +53,11 @@ def main() -> None:
     ap.add_argument("--input-scale", type=float, default=0.1)
     ap.add_argument("--iters", type=int, default=120)
     ap.add_argument("--warmup", type=int, default=30)
+    ap.add_argument(
+        "--selection-pattern",
+        choices=("unique", "random", "paired"),
+        default="unique",
+    )
     ap.add_argument("--json", type=Path, default=None)
     args = ap.parse_args()
 
@@ -72,6 +77,7 @@ def main() -> None:
     from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
         build_gguf_t16_selected_gemv,
         gguf_q5_k_t16_selected_gemv_bf16_bf16_out,
+        gguf_q5_k_t16_selected_pairreuse_gemv_bf16_bf16_out,
         gguf_q5_k_t16_selected_q8_1_dp4a_gemv_bf16_bf16_out,
     )
     from hipengine.quant.gguf_t16 import repack_gguf_q5_k_tile16
@@ -85,7 +91,17 @@ def main() -> None:
     x = _f32_to_bf16_bits(
         (rng.standard_normal((args.rows, args.in_features)) * args.input_scale).astype(np.float32)
     )
-    selected = np.ascontiguousarray((np.arange(args.rows) % args.experts).astype(np.int64))
+    if args.selection_pattern == "paired":
+        if args.rows % 2 != 0:
+            raise ValueError("--rows must be even for --selection-pattern paired")
+        half = np.arange(args.rows // 2, dtype=np.int64) % args.experts
+        selected = np.ascontiguousarray(np.concatenate((half, half)))
+    elif args.selection_pattern == "random":
+        selected = np.ascontiguousarray(
+            rng.integers(0, args.experts, size=args.rows, dtype=np.int64)
+        )
+    else:
+        selected = np.ascontiguousarray((np.arange(args.rows) % args.experts).astype(np.int64))
     base = make_q5_k_weight(args.out_features, args.in_features)
     qweight = np.ascontiguousarray(
         np.stack([np.roll(base, shift=e + 61, axis=0) for e in range(args.experts)], axis=0)
@@ -93,6 +109,7 @@ def main() -> None:
     tiles = repack_gguf_q5_k_tile16(qweight).tiles
 
     out_ref = np.zeros((args.rows, args.out_features), np.uint16)
+    out_pairreuse = np.zeros_like(out_ref)
     out_dp4a = np.zeros_like(out_ref)
     bufs = []
 
@@ -107,9 +124,10 @@ def main() -> None:
         selected_buf = dev(selected)
         tile_buf = dev(tiles)
         ref_buf = malloc(out_ref.nbytes, runtime=rt)
+        pairreuse_buf = malloc(out_pairreuse.nbytes, runtime=rt)
         dp4a_buf = malloc(out_dp4a.nbytes, runtime=rt)
         xq_buf = malloc(args.rows * (args.in_features // 32) * 36, runtime=rt)
-        bufs.extend((ref_buf, dp4a_buf, xq_buf))
+        bufs.extend((ref_buf, pairreuse_buf, dp4a_buf, xq_buf))
 
         def direct() -> None:
             gguf_q5_k_t16_selected_gemv_bf16_bf16_out(
@@ -117,6 +135,21 @@ def main() -> None:
                 selected_buf.ptr,
                 tile_buf.ptr,
                 ref_buf.ptr,
+                args.rows,
+                args.rows,
+                args.experts,
+                args.in_features,
+                args.out_features,
+                library=t16_library,
+                runtime=rt,
+            )
+
+        def pairreuse_direct() -> None:
+            gguf_q5_k_t16_selected_pairreuse_gemv_bf16_bf16_out(
+                x_buf.ptr,
+                selected_buf.ptr,
+                tile_buf.ptr,
+                pairreuse_buf.ptr,
                 args.rows,
                 args.rows,
                 args.experts,
@@ -168,14 +201,17 @@ def main() -> None:
         quant()
         rt.device_synchronize()
         direct_ms = bench(direct)
+        pairreuse_direct_ms = bench(pairreuse_direct)
         quant_ms = bench(quant)
         dot_ms = bench(dot)
         quant_dot_ms = bench(quant_dot)
 
         direct()
+        pairreuse_direct()
         quant_dot()
         rt.device_synchronize()
         copy_device_to_host(host_array_ptr(out_ref), ref_buf, runtime=rt)
+        copy_device_to_host(host_array_ptr(out_pairreuse), pairreuse_buf, runtime=rt)
         copy_device_to_host(host_array_ptr(out_dp4a), dp4a_buf, runtime=rt)
     finally:
         for buf in reversed(bufs):
@@ -207,6 +243,7 @@ def main() -> None:
             os.environ.get("HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS", "64"),
         ),
         "shape": {
+            "selection_pattern": args.selection_pattern,
             "rows": args.rows,
             "experts": args.experts,
             "in_features": args.in_features,
@@ -217,15 +254,18 @@ def main() -> None:
         "warmup": args.warmup,
         "timing_ms": {
             "t16_selected_down": direct_ms,
+            "t16_selected_down_pairreuse": pairreuse_direct_ms,
             "q8_1_quantize": quant_ms,
             "t16_q5_dp4a_dot_prequantized": dot_ms,
             "t16_q5_dp4a_quantize_plus_dot": quant_dot_ms,
         },
         "speedup": {
+            "t16_down_over_pairreuse": direct_ms / pairreuse_direct_ms,
             "t16_down_over_dp4a_dot": direct_ms / dot_ms,
             "t16_down_over_dp4a_quantize_plus_dot": direct_ms / quant_dot_ms,
         },
         "correctness_vs_t16_float": {
+            "pairreuse_exact": bool(np.array_equal(out_ref, out_pairreuse)),
             "max_abs": float(np.max(np.abs(ref - dp4a))),
             "mean_abs": float(np.mean(np.abs(ref - dp4a))),
             "kl_mean": kl_mean,
