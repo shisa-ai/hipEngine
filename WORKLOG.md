@@ -170590,3 +170590,23 @@ vector 1.
 
 Implementation is ready for its atomic code commit; detached tracked-clean
 direct retention and compact publication follow.
+
+### Clean F3P retention and publication
+
+Committed implementation as `4bec6b20`, then measured detached tracked-clean
+worktree `/tmp/hipengine-gfx1151-valuevector2-clean`. Clean samples are
+**158.804125/158.582907/158.971487 tok/s**, median **158.804125**. This is
+**+0.4784%** over clean F3O **158.047967** and **+3.9916%** over clean F3K
+**152.708625**, at **0.1227%** stdev/median. It saves another **30.850 ms** per
+1,024 tokens versus F3O; all three trajectory sets are repeatable and exactly
+match F3O. Raw clean direct is 200,333 bytes, SHA-256
+`009587c7f5464fbf13a21d964c2645dc458150770e1aa5504f3b6bbcbd019fc8`.
+
+Published compact artifact
+`benchmarks/results/2026-07-20-gfx1151-gguf-paged-attn-value-vector2-c8-retained.json`
+(5,564 bytes, SHA-256
+`23bc356f970f8c26aa258bf655c0056d6f5a4911d80cbd3758bbbf994d4c860e`).
+The canonical direct C1/C2/C4/C8 row is now
+**50.335/78.552/108.050/158.804 tok/s**; the clean direct result is the retained
+claim and the positive exact source-equivalent server packet is supporting
+evidence.
