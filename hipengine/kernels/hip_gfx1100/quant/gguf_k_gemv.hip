@@ -386,7 +386,7 @@ __global__ void gguf_k_pack8_prefill_out_kernel(
 }
 
 template <typename scalar_t, typename out_t, int COL_TILE, int ROW_TILE>
-__launch_bounds__(128, 2)
+__launch_bounds__(128, (COL_TILE * ROW_TILE <= 32 ? 2 : 1))
 __global__ void gguf_q8_0_exact_prefill_tiled_out_kernel(
     const scalar_t* __restrict__ x,
     const uint8_t* __restrict__ qweight,
@@ -395,8 +395,9 @@ __global__ void gguf_q8_0_exact_prefill_tiled_out_kernel(
     int in_features,
     int out_features) {
   static_assert(
-      COL_TILE * ROW_TILE == 16 || COL_TILE * ROW_TILE == 32,
-      "exact Q8 prefill supports the bounded 16/32-accumulator candidates");
+      COL_TILE * ROW_TILE == 16 || COL_TILE * ROW_TILE == 32 ||
+          COL_TILE * ROW_TILE == 64,
+      "exact Q8 prefill supports the bounded 16/32/64-accumulator candidates");
   const int out_col_base = static_cast<int>(blockIdx.x) * COL_TILE;
   const int row_base = static_cast<int>(blockIdx.y) * ROW_TILE;
   const int tid = threadIdx.x;
@@ -919,5 +920,18 @@ extern "C" int hipengine_gguf_q8_0_exact_prefill_tile8x4_bf16_bf16_out(
     int64_t threads,
     hipStream_t stream) {
   return launch_gguf_q8_0_exact_prefill_tiled_out<uint16_t, uint16_t, 8, 4>(
+      x, qweight, out, rows, in_features, out_features, threads, stream);
+}
+
+extern "C" int hipengine_gguf_q8_0_exact_prefill_tile16x4_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_gguf_q8_0_exact_prefill_tiled_out<uint16_t, uint16_t, 16, 4>(
       x, qweight, out, rows, in_features, out_features, threads, stream);
 }

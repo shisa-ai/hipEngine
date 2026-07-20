@@ -25,40 +25,45 @@ raw-IQ, decode, and scheduler tranches:
   logits are bit-exact to token serial, as are the full 4K logits. The first
   retained 4K result was `211.936 tok/s`, versus `10.907 tok/s` for the same
   token-serial oracle.
-- Dense raw-Q8 prefill has completed two exact profile-driven steps. The
+- Dense raw-Q8 prefill has completed three exact profile-driven steps. The
   existing eight-output schedule first raised 512/mixed-4K to
-  `364.414/342.902 tok/s`; bounded 8x2/8x4 row tiles now reuse each encoded
+  `364.414/342.902 tok/s`; bounded 8x2/8x4 row tiles then reused each encoded
   weight row across prompt rows and reached `573.288/523.321 tok/s`. Every dot
   keeps the old K traversal and reduction association, primitive outputs are
   BF16-bit equal, and the full-model exact gates remain green.
 - The first post-Q8 selected-IQ step specializes grouped IQ4 down's production
   `K=512` shape from local128 to one wave: only lanes 0–15 ever owned work, so
-  the old three extra waves reduced zeros. The exact local32 key raises
-  512/mixed-4K again to `693.325/613.576 tok/s`, cuts traced IQ4 down
-  `1,666.039 -> 502.039 ms` (-69.87%), and retains the general local128 and
+  the old three extra waves reduced zeros. The exact local32 key raised
+  512/mixed-4K again to `693.325/613.576 tok/s`, cut traced IQ4 down
+  `1,666.039 -> 502.039 ms` (-69.87%), and retained the general local128 and
   direct selected fallbacks.
+- Reprofiling returned dense Q8 to first. The third exact Q8 step widens output
+  reuse from 8x4 to 16x4 only at measured row thresholds, reaching
+  `707.420/626.077 tok/s` at 512/mixed-4K. The exact 8x8 alternative regressed
+  every production shape and was removed; short-row and unaligned shapes retain
+  the 8x4/8x2/pack8 fallbacks.
 - Decode work retained the wave-uniform IQ3 address cleanup and aggregate
   MoE-tail/next-RMS fusion, rejected hierarchical top-k, IQ4 tile4, and routed
   stream overlap, and currently measures `101.216 tok/s` at 512 and
   `108.383 tok/s` at 4K on GPU1. The source-derived 150–190 tok/s feasibility
   argument remains valid, but hipEngine has not reached that band.
 
-The post-IQ4-wave32 cache-only 4K trace is now the active prefill Amdahl ledger:
+The post-Q8-16x4 cache-only 4K trace is now the active prefill Amdahl ledger:
 
-| Family | Time | Share of 6,533.520 ms kernel sum |
+| Family | Time | Share of 6,413.593 ms kernel sum |
 |---|---:|---:|
-| Dense exact raw Q8 | 2,161.039 ms | **33.08%** |
-| Exact GDN | 1,318.467 ms | **20.18%** |
-| Grouped IQ3 gate/up | 1,107.878 ms | **16.96%** |
-| Full attention | 940.280 ms | **14.39%** |
-| Grouped IQ4 down | 502.039 ms | **7.68%** |
+| Dense exact raw Q8 | 2,056.867 ms | **32.07%** |
+| Exact GDN | 1,310.186 ms | **20.43%** |
+| Grouped IQ3 gate/up | 1,100.257 ms | **17.16%** |
+| Full attention | 940.031 ms | **14.66%** |
+| Grouped IQ4 down | 501.585 ms | **7.82%** |
 
-The required reprofile returns dense Q8 to first in Amdahl order, followed by
-exact GDN and grouped IQ3. Any next experiment must follow that measured order
-rather than continuing IQ4 blindly. **The ~3,000 tok/s objective is not
-closed:** 613.576 tok/s is a retained step, not a target claim. Full evidence
-and commands are in
-[`benchmarks/results/2026-07-20-gpu1-q3-exact-iq4-wave32-prefill.json`](../benchmarks/results/2026-07-20-gpu1-q3-exact-iq4-wave32-prefill.json).
+Dense Q8 remains first in Amdahl order, followed by exact GDN and grouped IQ3.
+Any next experiment must follow that measured order rather than extending a
+lower-ranked family by inertia. **The ~3,000 tok/s objective is not closed:**
+626.077 tok/s is a retained step, not a target claim. Full evidence and
+commands are in
+[`benchmarks/results/2026-07-20-gpu1-q3-exact-q8-tile16x4-prefill.json`](../benchmarks/results/2026-07-20-gpu1-q3-exact-q8-tile16x4-prefill.json).
 
 ## Executive recommendation
 

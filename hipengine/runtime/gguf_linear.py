@@ -835,14 +835,20 @@ def _exact_q8_prefill_dispatch(
     ):
         variant = "pack8_gemv_bf16_bf16_out"
         if rows >= 8:
-            # Keep the lower-resource 8x2 tile for narrow, short batches. Once
-            # either dimension is large, 8x4 doubles exact row reuse and wins
-            # the bounded production-shape sweep without spilling.
-            variant = (
-                "exact_prefill_tile8x2_bf16_bf16_out"
-                if rows < 32 and out_features <= 512
-                else "exact_prefill_tile8x4_bf16_bf16_out"
+            # Keep enough column blocks to fill the device at short/narrow
+            # shapes. Once the measured grid is large enough, 16x4 halves
+            # activation reloads while preserving every dot association.
+            tile16_row_threshold = (
+                512 if out_features <= 512 else 64 if out_features <= 2048 else 32
             )
+            if out_features % 16 == 0 and rows >= tile16_row_threshold:
+                variant = "exact_prefill_tile16x4_bf16_bf16_out"
+            else:
+                variant = (
+                    "exact_prefill_tile8x2_bf16_bf16_out"
+                    if rows < 32 and out_features <= 512
+                    else "exact_prefill_tile8x4_bf16_bf16_out"
+                )
         return GGUFLinearDispatch(
             KernelKey(
                 dispatch.key.backend,

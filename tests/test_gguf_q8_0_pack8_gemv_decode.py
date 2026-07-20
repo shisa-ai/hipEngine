@@ -31,6 +31,7 @@ from hipengine.core.memory import (
 from hipengine.kernels.cpu_reference import gguf_quant_gemv
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     build_gguf_k_gemv,
+    gguf_q8_0_exact_prefill_tile16x4_bf16_bf16_out,
     gguf_q8_0_exact_prefill_tile8x2_bf16_bf16_out,
     gguf_q8_0_exact_prefill_tile8x4_bf16_bf16_out,
     gguf_q8_0_gemv_bf16_bf16_out,
@@ -103,6 +104,7 @@ def test_exact_prefill_registry_keys_resolve() -> None:
     for variant in (
         "exact_prefill_tile8x2_bf16_bf16_out",
         "exact_prefill_tile8x4_bf16_bf16_out",
+        "exact_prefill_tile16x4_bf16_bf16_out",
     ):
         fn = resolve(
             backend="hip_gfx1100",
@@ -234,6 +236,7 @@ def test_legacy_pack8_multirow_is_bit_exact_to_single_output_prefill(
     [
         pytest.param(gguf_q8_0_exact_prefill_tile8x2_bf16_bf16_out, id="tile8x2"),
         pytest.param(gguf_q8_0_exact_prefill_tile8x4_bf16_bf16_out, id="tile8x4"),
+        pytest.param(gguf_q8_0_exact_prefill_tile16x4_bf16_bf16_out, id="tile16x4"),
     ],
 )
 @pytest.mark.parametrize(
