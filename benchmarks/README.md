@@ -1850,6 +1850,15 @@ untracked experiment files as part of the rollup gate.
 
 ## Blocked and Diagnostic Benchmark Attempts
 
+- **W7900 coding-agent A6/A1, GGUF Q4_K_M:** clean `4d01f897` cache-off 4K/c1
+  A6 completes all four `small_repo` attempts but scores **0/4 successes** over
+  **274 exact response-owned IDs**: two exact calls include public Qwen
+  role/EOT residue and two end `invalid_tool_call`. A1 independently verifies
+  turn 0 with **32 exact response-owned SSE IDs** and the expected `read` call,
+  then rejects at the turn-1 forced-`grep` blocking oracle before timing. No A1
+  records, latency, tok/s, or goodput row is retained; final A6 ownership is
+  zero. [A6 quality artifact](results/2026-07-20-w7900-agentic-a6-small-c1-quality.json),
+  [blocked A1 packet](results/2026-07-20-w7900-agentic-a1-small-c1-blocked.json).
 - **W7900 GGUF Q4_K_M:** the [2026-07-07 summary](results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-summary.json) is the last measured path and
   has `performance_claim=false`. Repetition of token `9707` is confirmed as
   valid for the exact model by llama.cpp and the gfx1151 G1 oracle; the W7900

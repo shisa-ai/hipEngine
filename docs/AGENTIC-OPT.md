@@ -514,14 +514,14 @@ template tokens, and then reasoning instead of the forced `grep` arguments. At
 `finish_details.reason=invalid_tool_call`, rather than publishing malformed
 output. No complete-workload artifact or timing row was retained.
 
-Next actions are now split by purpose. The A6 quality lane below keeps natural
+Next actions are split by purpose. The A6 quality lane below keeps natural
 multi-turn failures and reports success rates without a performance denominator.
 The performance lane still needs a deterministic, non-prompt-conditioned way to
 obtain valid multi-turn envelopes; do not hardcode fixture argument tokens to
-make it pass. Independently, expose measured SSE response-owned generated IDs.
-C4/C8 for the 2K family also needs a capacity plan that passes the startup guard
-rather than bypassing it; the 8K family needs a separate lower-concurrency
-context configuration.
+make it pass. Response-owned SSE IDs are now implemented and live-verified, so
+that provenance issue is closed. C4/C8 for the 2K family still needs a capacity
+plan that passes the startup guard rather than bypassing it; the 8K family needs
+a separate lower-concurrency context configuration.
 
 ## 2026-07-20 — Separate natural auto-tool quality from performance (A6)
 
@@ -542,8 +542,8 @@ A6 now has a distinct fail-closed quality contract and live blocking collector:
 
 The fake-transport gate retains a turn with
 `finish_details.reason=invalid_tool_call`, completes all four turns, and reports
-three successes rather than rejecting the packet. No W7900 quality result has
-been run or published yet. The exact live command is:
+three successes rather than rejecting the packet. The first clean W7900 run is
+now published as a bounded quality diagnostic below. The exact live command is:
 
 ```bash
 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
@@ -571,8 +571,16 @@ ruff check hipengine/benchmark/agentic_quality.py \
 # All checks passed
 ```
 
-Next: run the A6 c1 quality packet and retry the deterministic c1 performance
-lane with response-owned SSE IDs, without conflating their acceptance rules.
+The clean `4d01f897` W7900/gfx1100 run completed all four independent
+`small_repo` attempts and retained **0/4 successes** over **274 exact
+response-owned generated IDs**. Two turns selected the correct tool and exact
+arguments but returned Qwen role/EOT residue in public content; two produced no
+valid call and ended as `invalid_tool_call`. The quality artifact contains no
+latency, tok/s, or goodput fields, sets `performance_claim=false`, and records
+zero final request/session/KV/graph/workspace ownership:
+[`2026-07-20-w7900-agentic-a6-small-c1-quality.json`](../benchmarks/results/2026-07-20-w7900-agentic-a6-small-c1-quality.json).
+This one-run/four-turn result is a failure-distribution diagnostic, not a broad
+model-quality score.
 
 ## 2026-07-20 — Expose response-owned exact IDs on tool SSE
 
@@ -612,6 +620,18 @@ python3 -m pytest -q tests/test_generation_registry.py \
 # 99 passed
 ```
 
-No W7900 run or performance result has been retained yet. The next execution is
-the same viable 4K/c1 server followed by A6 quality and A1 deterministic
-collection; C4/C8 remains a separate startup-capacity blocker.
+The clean W7900 rerun verifies the transport but still rejects the baseline.
+The 4K/c1 server passed its guarded 4,095-token startup probe in **79.425 s** at
+**23.447 GiB used / 21.537 GiB free**. A1 turn 0 then matched its independent
+oracle with **32 response-owned IDs**, exact
+`read(path="pyproject.toml", mode="summary")`, and
+`token_timing_mode=buffered_public`. Turn 1's independent blocking oracle did
+not finish with a valid forced `grep` tool call, so the collector correctly
+stopped before opening that measured SSE interval and emitted no partial A1
+records or performance artifact. The blocked packet is
+[`2026-07-20-w7900-agentic-a1-small-c1-blocked.json`](../benchmarks/results/2026-07-20-w7900-agentic-a1-small-c1-blocked.json).
+
+The next correctness unit is model-general strict-tool JSON constraint/repair,
+not fixture-conditioned argument forcing. A complete small-repo c1 packet must
+pass before prefix A/B or any latency/goodput claim. C4/C8 remains a separate
+startup-capacity blocker.
