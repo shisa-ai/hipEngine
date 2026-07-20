@@ -1,0 +1,1074 @@
+{
+  "bottleneck_analysis": {
+    "hipengine_gguf_c8": {
+      "complete_wall_gap_vs_llamacpp_hip_seconds": 1.9519797469838522,
+      "interpretation": "not simply compute-bound: serial/cohort prefill and ramp dominate the external C8 wall gap, while the steady model step is still GPU-kernel limited under the current row-parallel GEMV/selected-MoE implementation",
+      "prefill_subtracted_percent_of_direct": 91.26910763374323,
+      "prefill_subtracted_server_rate_tok_s": 121.61656676485272,
+      "remaining_percent_of_complete_wall": 6.217116913913261,
+      "remaining_server_ramp_and_glue_seconds": 0.7351328869802236,
+      "retained_direct_physical_c8_rate_tok_s": 133.2505268407924,
+      "retained_direct_physical_c8_wall_seconds_for_1024_tokens": 7.684772617998534,
+      "server_wall_seconds_median": 11.824337504978757,
+      "summed_recorded_prefill_seconds": 3.4044320000000003,
+      "ttft_gap_share_of_complete_wall_gap_percent": 83.59100685078855,
+      "ttft_p95_gap_vs_llamacpp_hip_seconds": 1.6316795240272768
+    },
+    "hipengine_paro": {
+      "direct_c8_percent_vs_c4": -0.2650171424699699,
+      "direct_c8_vs_c1_scale": 1.4114345998522546,
+      "fresh_server_c8_vs_c1_scale": 1.2959730489886179,
+      "interpretation": "C4 and C8 plateau in both direct decode and complete server wall, so PARO is primarily limited by current multi-row model kernels rather than HTTP/Python glue.",
+      "retained_direct_tok_s": {
+        "c1": 70.80956421513164,
+        "c2": 79.23736745260864,
+        "c4": 100.20863900529675,
+        "c8": 99.94306893369686
+      }
+    },
+    "priority_order": [
+      "batch or coalesce concurrent prefill to reduce C8 TTFT/ramp",
+      "replace row-parallel dense projection GEMV with weight-reusing MMQ/WMMA/GEMM shapes",
+      "group selected MoE rows by expert and tune c-aware kernels, especially PARO selected AWQ projections",
+      "repair PARO delayed C1-to-C8 admission behavior; its exact live rate is only about 20 tok/s",
+      "collect exact gfx1151 counter profiles before claiming arithmetic-compute versus bandwidth saturation"
+    ],
+    "roofline_classification": "At C<=4 quantized decode remains memory-bound; at C4-C8 reuse becomes valuable, while selected small-intermediate MoE remains memory-bound longer. Current paths do not prove a FLOP ceiling. Call the steady phase GPU-kernel/model-step bound, with weight-reuse, dequant instruction throughput, occupancy, and per-row state all contributing."
+  },
+  "comparison_caveats": [
+    "hipEngine GGUF, llama.cpp HIP, and llama.cpp Vulkan use the same UD-Q4_K_M file; PARO uses a different W4 representation and is cross-quant context, not an apples-to-apples speed ratio.",
+    "hipEngine uses BF16 KV while llama.cpp uses F16 KV.",
+    "llama.cpp HIP source tree is disclosed dirty/ahead but the server binary and every local linked library are pinned by SHA-256; Vulkan is clean.",
+    "Both llama.cpp lanes are C1-exact but diverge from their own C1 oracle at C2/C4/C8. Their raw rates remain useful scheduler/kernel diagnostics but are not retained correctness-eligible comparisons."
+  ],
+  "created_at": "2026-07-20T07:38:45.681385+00:00",
+  "decision": "Retain both hipEngine lanes as exact own-engine concurrency evidence. Retain same-GGUF C1 comparisons. Publish llama.cpp C2/C4/C8 as clearly labeled raw diagnostics only. Prioritize concurrent prefill plus genuine weight-reusing dense/MoE kernels; an 8x C1 target is unrealistic, but GGUF >2x end-to-end and roughly 3x direct scaling remain credible.",
+  "hardware": {
+    "amd_iommu": "off",
+    "arch": "gfx1151",
+    "gpu": "Radeon 8060S",
+    "gpu_max_hw_queues": 1,
+    "host": "Ryzen AI MAX+ 395",
+    "memory_domain": "GTT/UMA",
+    "rocm": "TheRock HIP 7.15",
+    "tuned": "accelerator-performance"
+  },
+  "kind": "gfx1151_four_lane_matched_server_concurrency_refresh",
+  "lanes": {
+    "hipengine_gguf": {
+      "command_shell": "/home/lhl/hipEngine-main/.venv/bin/python scripts/server_f1_concurrency_bench.py --engine hipengine --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --served-model-name qwen36-35b-q4km-cn4 --hipengine-python /home/lhl/hipEngine-main/.venv/bin/python --hipengine-kv-storage bf16 --hipengine-route-expectation native --hipengine-prefill-decode-policy fair --hipengine-prefill-chunk-tokens 256 --generation-batch-window-ms 5 --concurrencies 1,2,4,8 --live-concurrency 8 --prompt-length 512 --decode-tokens 128 --ctx-per-seq 1024 --warmup-runs 1 --measured-runs 3 --streaming-primary --stream-warmup-runs 0 --stream-measured-runs 3 --live-join-after-tokens 8 --compiler-version-file /tmp/hipengine-gfx1151-native-cycle-hipcc-version.txt --memory-domain gtt --drm-card-index 0 --memory-poll-ms 10 --port-base 22200 --work-dir /tmp/gfx1151-cn4-20260720-065727/hipengine-gguf/work --json /tmp/gfx1151-cn4-20260720-065727/hipengine-gguf/result.json",
+      "delayed_c8": {
+        "admission_during_first_request": true,
+        "exact_rows": 8,
+        "raw_http_tok_s": 67.89788684898942,
+        "total_rows": 8
+      },
+      "kv_storage": "bf16",
+      "provenance": {
+        "compiler_version_file": {
+          "path": "/tmp/hipengine-gfx1151-native-cycle-hipcc-version.txt",
+          "sha256": "4575f2f128d68d1d1c7e99436d20ecac67a363d6d300f6dde6b2fb83a86f8987",
+          "size_bytes": 348
+        },
+        "hipengine": {
+          "head": {
+            "command": [
+              "git",
+              "rev-parse",
+              "HEAD"
+            ],
+            "returncode": 0,
+            "stderr": "",
+            "stdout": "fcc586ed6afc73b9a43fe8f4f746acf21fdbed0b"
+          },
+          "status": {
+            "command": [
+              "git",
+              "status",
+              "-sb",
+              "--untracked-files=no"
+            ],
+            "returncode": 0,
+            "stderr": "",
+            "stdout": "## HEAD (no branch)"
+          }
+        },
+        "model": {
+          "algorithm": "sha256-sampled-v1",
+          "path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+          "path_type": "file",
+          "revision": null,
+          "sample_offsets": [
+            0,
+            11331169424,
+            22662338848
+          ],
+          "sampled_bytes_per_offset": 1048576,
+          "size_bytes": 22663387424,
+          "value": "f24f72d469e5141b6a74086cdf094faf93726def47c5581b9d84acca03b24579"
+        }
+      },
+      "qualified_passed": true,
+      "quant": "gguf_q4_k_m",
+      "raw_passed": true,
+      "raw_status": "accepted_backend_packet",
+      "rows": {
+        "1": {
+          "blocking_c1_scale": 1.0,
+          "blocking_exact_fraction": 1.0,
+          "blocking_exact_rows": 3,
+          "blocking_first_mismatch": null,
+          "blocking_tok_s_median": 44.51077147477833,
+          "blocking_tok_s_samples": [
+            44.39463312682885,
+            44.5722283804719,
+            44.51077147477833
+          ],
+          "blocking_total_rows": 3,
+          "client_itl_p99_seconds_median": 0.040153403009753674,
+          "client_ttft_p95_seconds_median": 0.4242721460177563,
+          "execution_paths": [
+            "gguf_packed_ar_server_decode"
+          ],
+          "slo_passed_runs": 3,
+          "sse_c1_scale": 1.0,
+          "sse_exact_fraction": 1.0,
+          "sse_exact_rows": 3,
+          "sse_exact_tok_s_median": 42.782062410291765,
+          "sse_raw_tok_s_median": 42.782062410291765,
+          "sse_raw_tok_s_samples": [
+            42.94960729743241,
+            42.782062410291765,
+            42.33990826874928
+          ],
+          "sse_total_rows": 3
+        },
+        "2": {
+          "blocking_c1_scale": 1.349626270270251,
+          "blocking_exact_fraction": 1.0,
+          "blocking_exact_rows": 6,
+          "blocking_first_mismatch": null,
+          "blocking_tok_s_median": 60.07290649235656,
+          "blocking_tok_s_samples": [
+            60.07290649235656,
+            60.348901108391345,
+            59.447223025409095
+          ],
+          "blocking_total_rows": 6,
+          "client_itl_p99_seconds_median": 0.06488026800798252,
+          "client_ttft_p95_seconds_median": 0.8961709750001319,
+          "execution_paths": [
+            "gguf_packed_ar_server_decode"
+          ],
+          "slo_passed_runs": 3,
+          "sse_c1_scale": 1.3846934743672825,
+          "sse_exact_fraction": 1.0,
+          "sse_exact_rows": 6,
+          "sse_exact_tok_s_median": 59.24004263950482,
+          "sse_raw_tok_s_median": 59.24004263950482,
+          "sse_raw_tok_s_samples": [
+            59.24004263950482,
+            59.22561732642288,
+            59.33618809158969
+          ],
+          "sse_total_rows": 6
+        },
+        "4": {
+          "blocking_c1_scale": 1.6994038659695667,
+          "blocking_exact_fraction": 1.0,
+          "blocking_exact_rows": 12,
+          "blocking_first_mismatch": null,
+          "blocking_tok_s_median": 75.6417771215262,
+          "blocking_tok_s_samples": [
+            75.19631799023048,
+            75.85860349232257,
+            75.6417771215262
+          ],
+          "blocking_total_rows": 12,
+          "client_itl_p99_seconds_median": 0.11881772498600185,
+          "client_ttft_p95_seconds_median": 2.027090278977994,
+          "execution_paths": [
+            "gguf_packed_ar_server_decode"
+          ],
+          "slo_passed_runs": 2,
+          "sse_c1_scale": 1.7191221707432904,
+          "sse_exact_fraction": 1.0,
+          "sse_exact_rows": 12,
+          "sse_exact_tok_s_median": 73.54759199965571,
+          "sse_raw_tok_s_median": 73.54759199965571,
+          "sse_raw_tok_s_samples": [
+            73.4637007883959,
+            74.22355667729431,
+            73.54759199965571
+          ],
+          "sse_total_rows": 12
+        },
+        "8": {
+          "blocking_c1_scale": 1.9456199803555774,
+          "blocking_exact_fraction": 1.0,
+          "blocking_exact_rows": 24,
+          "blocking_first_mismatch": null,
+          "blocking_tok_s_median": 86.60104632236981,
+          "blocking_tok_s_samples": [
+            86.60104632236981,
+            86.80315039840373,
+            86.55970467236568
+          ],
+          "blocking_total_rows": 24,
+          "client_itl_p99_seconds_median": 0.3536416739807464,
+          "client_ttft_p95_seconds_median": 4.316963353019673,
+          "execution_paths": [
+            "gguf_packed_ar_server_decode"
+          ],
+          "slo_passed_runs": 0,
+          "sse_c1_scale": 1.9257433708029583,
+          "sse_exact_fraction": 1.0,
+          "sse_exact_rows": 24,
+          "sse_exact_tok_s_median": 82.3872730758978,
+          "sse_raw_tok_s_median": 82.3872730758978,
+          "sse_raw_tok_s_samples": [
+            82.21237417485037,
+            84.2337783230307,
+            82.3872730758978
+          ],
+          "sse_total_rows": 24
+        }
+      }
+    },
+    "hipengine_paro": {
+      "command_shell": "/home/lhl/hipEngine-main/.venv/bin/python scripts/server_f1_concurrency_bench.py --engine hipengine --model /home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1 --backend hip_gfx1151 --quant w4_paro --served-model-name qwen36-35b-paro-cn4 --hipengine-python /home/lhl/hipEngine-main/.venv/bin/python --hipengine-kv-storage bf16 --hipengine-route-expectation native --hipengine-prefill-decode-policy protect_ttft --generation-batch-window-ms 5 --concurrencies 1,2,4,8 --live-concurrency 8 --prompt-length 512 --decode-tokens 128 --ctx-per-seq 1024 --warmup-runs 1 --measured-runs 3 --streaming-primary --stream-warmup-runs 0 --stream-measured-runs 3 --live-join-after-tokens 8 --compiler-version-file /tmp/hipengine-gfx1151-native-cycle-hipcc-version.txt --memory-domain gtt --drm-card-index 0 --memory-poll-ms 10 --port-base 22500 --work-dir /tmp/gfx1151-cn4-20260720-065727/hipengine-paro-rerun/work --json /tmp/gfx1151-cn4-20260720-065727/hipengine-paro-rerun/result.json",
+      "delayed_c8": {
+        "admission_during_first_request": true,
+        "exact_rows": 8,
+        "raw_http_tok_s": 20.157580840955163,
+        "total_rows": 8
+      },
+      "kv_storage": "bf16",
+      "provenance": {
+        "compiler_version_file": {
+          "path": "/tmp/hipengine-gfx1151-native-cycle-hipcc-version.txt",
+          "sha256": "4575f2f128d68d1d1c7e99436d20ecac67a363d6d300f6dde6b2fb83a86f8987",
+          "size_bytes": 348
+        },
+        "hipengine": {
+          "head": {
+            "command": [
+              "git",
+              "rev-parse",
+              "HEAD"
+            ],
+            "returncode": 0,
+            "stderr": "",
+            "stdout": "473ec348dd48eec7b7ee4483ee5251af342eeccd"
+          },
+          "status": {
+            "command": [
+              "git",
+              "status",
+              "-sb",
+              "--untracked-files=no"
+            ],
+            "returncode": 0,
+            "stderr": "",
+            "stdout": "## HEAD (no branch)"
+          }
+        },
+        "model": {
+          "algorithm": "sha256-directory-manifest-v1",
+          "exists": true,
+          "file_count": 18,
+          "path": "/home/lhl/.cache/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-packed/snapshots/437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+          "path_type": "directory",
+          "revision": "437eba06df05aad71a4dacdcaf3fff70ae1ee8a1",
+          "sampled_bytes": 16442350,
+          "size_bytes": 20497454388,
+          "value": "995a8c67847cb2819588bec573a6d17ef04ae554504d040d4f2ea6b2c9c6d917"
+        }
+      },
+      "qualified_passed": true,
+      "qualified_route_re_evaluation": {
+        "admission_during_first_request": true,
+        "all_static_blocking_rows_exact": true,
+        "all_stream_rows_exact": true,
+        "evaluator_commit": "960d4a98d623c64073e40ffd061cbc25ee38a0fc",
+        "kind": "server_f1_route_re_evaluation",
+        "live_exact": true,
+        "passed": true,
+        "routes": {
+          "1": {
+            "native_caware_decode_expected": false,
+            "native_caware_decode_values": [
+              false
+            ],
+            "passed": true,
+            "paths": [
+              "paro_resident_serial_decode"
+            ],
+            "route_policy": "paro_occupancy_adaptive",
+            "serial_decode_fallback_values": [
+              true
+            ]
+          },
+          "2": {
+            "native_caware_decode_expected": true,
+            "native_caware_decode_values": [
+              true
+            ],
+            "passed": true,
+            "paths": [
+              "paro_resident_native_width_decode",
+              "paro_resident_serial_decode"
+            ],
+            "route_policy": "paro_occupancy_adaptive",
+            "serial_decode_fallback_values": [
+              false,
+              true
+            ]
+          },
+          "4": {
+            "native_caware_decode_expected": true,
+            "native_caware_decode_values": [
+              true
+            ],
+            "passed": true,
+            "paths": [
+              "paro_resident_native_width_decode",
+              "paro_resident_serial_decode"
+            ],
+            "route_policy": "paro_occupancy_adaptive",
+            "serial_decode_fallback_values": [
+              false,
+              true
+            ]
+          },
+          "8": {
+            "native_caware_decode_expected": true,
+            "native_caware_decode_values": [
+              true
+            ],
+            "passed": true,
+            "paths": [
+              "paro_resident_native_width_decode",
+              "paro_resident_serial_decode"
+            ],
+            "route_policy": "paro_occupancy_adaptive",
+            "serial_decode_fallback_values": [
+              false,
+              true
+            ]
+          }
+        },
+        "schema": 1,
+        "source": {
+          "path": "/tmp/gfx1151-cn4-20260720-065727/hipengine-paro-rerun/result.json",
+          "sha256": "244c59c05f15e4d2e6aff5ae6aedc1bc17b61563e2e8cca42239b87719d098bb",
+          "size_bytes": 1060592
+        }
+      },
+      "quant": "w4_paro",
+      "raw_passed": false,
+      "raw_status": "failed_gate",
+      "rows": {
+        "1": {
+          "blocking_c1_scale": 1.0,
+          "blocking_exact_fraction": 1.0,
+          "blocking_exact_rows": 3,
+          "blocking_first_mismatch": null,
+          "blocking_tok_s_median": 46.74170472639603,
+          "blocking_tok_s_samples": [
+            46.74170472639603,
+            46.907027473527094,
+            46.61581673056505
+          ],
+          "blocking_total_rows": 3,
+          "client_itl_p99_seconds_median": 0.01652598101645708,
+          "client_ttft_p95_seconds_median": 0.4968873119796626,
+          "execution_paths": [
+            "paro_resident_serial_decode"
+          ],
+          "slo_passed_runs": 3,
+          "sse_c1_scale": 1.0,
+          "sse_exact_fraction": 1.0,
+          "sse_exact_rows": 3,
+          "sse_exact_tok_s_median": 50.880519831726666,
+          "sse_raw_tok_s_median": 50.880519831726666,
+          "sse_raw_tok_s_samples": [
+            50.97640939353583,
+            50.880519831726666,
+            50.67201124268924
+          ],
+          "sse_total_rows": 3
+        },
+        "2": {
+          "blocking_c1_scale": 1.1014760993226018,
+          "blocking_exact_fraction": 1.0,
+          "blocking_exact_rows": 6,
+          "blocking_first_mismatch": null,
+          "blocking_tok_s_median": 51.48487059771952,
+          "blocking_tok_s_samples": [
+            51.53928798787929,
+            51.48487059771952,
+            50.573532573392825
+          ],
+          "blocking_total_rows": 6,
+          "client_itl_p99_seconds_median": 0.05108586297137663,
+          "client_ttft_p95_seconds_median": 1.0263023400329985,
+          "execution_paths": [
+            "paro_resident_native_width_decode"
+          ],
+          "slo_passed_runs": 1,
+          "sse_c1_scale": 1.080583046189245,
+          "sse_exact_fraction": 1.0,
+          "sse_exact_rows": 6,
+          "sse_exact_tok_s_median": 54.980627111459484,
+          "sse_raw_tok_s_median": 54.980627111459484,
+          "sse_raw_tok_s_samples": [
+            54.980627111459484,
+            53.78353314837384,
+            55.54040364406198
+          ],
+          "sse_total_rows": 6
+        },
+        "4": {
+          "blocking_c1_scale": 1.2752251016123552,
+          "blocking_exact_fraction": 1.0,
+          "blocking_exact_rows": 12,
+          "blocking_first_mismatch": null,
+          "blocking_tok_s_median": 59.60619515925308,
+          "blocking_tok_s_samples": [
+            59.15435960100575,
+            59.84384949271343,
+            59.60619515925308
+          ],
+          "blocking_total_rows": 12,
+          "client_itl_p99_seconds_median": 0.09804403700400144,
+          "client_ttft_p95_seconds_median": 2.180083177983761,
+          "execution_paths": [
+            "paro_resident_native_width_decode"
+          ],
+          "slo_passed_runs": 2,
+          "sse_c1_scale": 1.237788220313737,
+          "sse_exact_fraction": 1.0,
+          "sse_exact_rows": 12,
+          "sse_exact_tok_s_median": 62.97930809115074,
+          "sse_raw_tok_s_median": 62.97930809115074,
+          "sse_raw_tok_s_samples": [
+            63.50598954300164,
+            61.907735638175765,
+            62.97930809115074
+          ],
+          "sse_total_rows": 12
+        },
+        "8": {
+          "blocking_c1_scale": 1.2959730489886179,
+          "blocking_exact_fraction": 1.0,
+          "blocking_exact_rows": 24,
+          "blocking_first_mismatch": null,
+          "blocking_tok_s_median": 60.575989589193156,
+          "blocking_tok_s_samples": [
+            61.02287763898375,
+            60.154572643433035,
+            60.575989589193156
+          ],
+          "blocking_total_rows": 24,
+          "client_itl_p99_seconds_median": 0.38386959698982537,
+          "client_ttft_p95_seconds_median": 4.530738221015781,
+          "execution_paths": [
+            "paro_resident_native_width_decode"
+          ],
+          "slo_passed_runs": 0,
+          "sse_c1_scale": 1.1848055926794971,
+          "sse_exact_fraction": 1.0,
+          "sse_exact_rows": 24,
+          "sse_exact_tok_s_median": 60.28352445506982,
+          "sse_raw_tok_s_median": 60.28352445506982,
+          "sse_raw_tok_s_samples": [
+            62.09556171098896,
+            60.28352445506982,
+            59.984279870444894
+          ],
+          "sse_total_rows": 24
+        }
+      }
+    },
+    "llamacpp_hip": {
+      "command_shell": "/home/lhl/hipEngine-main/.venv/bin/python scripts/server_f1_concurrency_bench.py --engine llamacpp-hip --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --llamacpp-hip-repo /home/lhl/llama.cpp/llama.cpp-hip --llamacpp-hip-server-bin /home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server --concurrencies 1,2,4,8 --live-concurrency 8 --prompt-length 512 --decode-tokens 128 --ctx-per-seq 1024 --warmup-runs 1 --measured-runs 3 --streaming-primary --stream-warmup-runs 0 --stream-measured-runs 3 --live-join-after-tokens 8 --memory-domain gtt --drm-card-index 0 --memory-poll-ms 10 --port-base 22300 --work-dir /tmp/gfx1151-cn4-20260720-065727/llamacpp-hip/work --json /tmp/gfx1151-cn4-20260720-065727/llamacpp-hip/result.json",
+      "delayed_c8": {
+        "admission_during_first_request": true,
+        "exact_rows": 3,
+        "raw_http_tok_s": 100.21274443417276,
+        "total_rows": 8
+      },
+      "kv_storage": "f16",
+      "provenance": {
+        "llamacpp": {
+          "head": "1ebf790cda38d827559548f67b0469189690cc8c",
+          "local_linked_libraries": [
+            {
+              "path": "/home/lhl/llama.cpp/llama.cpp-hip/build/bin/libggml-base.so.0.15.1",
+              "sha256": "d7019a213c4316be11128d1c9d2d22a01a701fe9768886fd0fc4e391c92669dd",
+              "size_bytes": 943736
+            },
+            {
+              "path": "/home/lhl/llama.cpp/llama.cpp-hip/build/bin/libggml-cpu.so.0.15.1",
+              "sha256": "7fe7391b94018e64cb9cc555d835c532f161975936378ffb2b06bcd3afdfc9e3",
+              "size_bytes": 1349856
+            },
+            {
+              "path": "/home/lhl/llama.cpp/llama.cpp-hip/build/bin/libggml-hip.so.0.15.1",
+              "sha256": "e0fc999a9bbf28d3bbf55ad3b78d3d00831146e05ea14aa53d742006fcb351b3",
+              "size_bytes": 68817040
+            },
+            {
+              "path": "/home/lhl/llama.cpp/llama.cpp-hip/build/bin/libggml.so.0.15.1",
+              "sha256": "c737adbf4dd8b0375f36ac986f2a99554b5fcfb119354b2468aae25439752130",
+              "size_bytes": 55208
+            },
+            {
+              "path": "/home/lhl/llama.cpp/llama.cpp-hip/build/bin/libllama-common.so.0.0.9648",
+              "sha256": "3c85b5d25806af321f55d3015fb3092c36c83fa9db7baa886211c903bd832998",
+              "size_bytes": 6206432
+            },
+            {
+              "path": "/home/lhl/llama.cpp/llama.cpp-hip/build/bin/libllama-server-impl.so",
+              "sha256": "f47cc8b2a34c4f8c7027cbb454f59e5bc4e4bf0d5f9d66b999a911b31f9a5c95",
+              "size_bytes": 6783392
+            },
+            {
+              "path": "/home/lhl/llama.cpp/llama.cpp-hip/build/bin/libllama.so.0.0.9648",
+              "sha256": "3fbdf37cee511abb3b25bdc13867c007ec3519f2a1de6b05989b36de76873681",
+              "size_bytes": 3896776
+            },
+            {
+              "path": "/home/lhl/llama.cpp/llama.cpp-hip/build/bin/libmtmd.so.0.0.9648",
+              "sha256": "edb70e4551ba76e63e10013de86fffc999aef41ecc11b066e26b7faee01bf995",
+              "size_bytes": 1485800
+            }
+          ],
+          "repo": "/home/lhl/llama.cpp/llama.cpp-hip",
+          "server_binary": {
+            "path": "/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server",
+            "sha256": "105a8712fc0d91cf496faa4701970779ad0ead0561fa51cd096b0fa0aa1eb8c5",
+            "size_bytes": 15976
+          },
+          "status": "## master...origin/master [ahead 7]\n M common/speculative.cpp\n M common/speculative.h\n M src/llama-context.cpp\n M src/llama-context.h\n M src/llama-ext.h\n M src/llama-graph.cpp\n M src/llama-graph.h\n M src/models/qwen35.cpp\n M src/models/qwen35moe.cpp\n M tools/server/server-context.cpp",
+          "version": "version: 9648 (1ebf790cd)\nbuilt with GNU 16.1.1 for Linux x86_64"
+        },
+        "model": {
+          "algorithm": "sha256-sampled-v1",
+          "path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+          "path_type": "file",
+          "revision": null,
+          "sample_offsets": [
+            0,
+            11331169424,
+            22662338848
+          ],
+          "sampled_bytes_per_offset": 1048576,
+          "size_bytes": 22663387424,
+          "value": "f24f72d469e5141b6a74086cdf094faf93726def47c5581b9d84acca03b24579"
+        }
+      },
+      "qualified_passed": false,
+      "quant": "gguf_q4_k_m",
+      "raw_passed": false,
+      "raw_status": "failed_gate",
+      "rows": {
+        "1": {
+          "blocking_c1_scale": 1.0,
+          "blocking_exact_fraction": 1.0,
+          "blocking_exact_rows": 3,
+          "blocking_first_mismatch": null,
+          "blocking_tok_s_median": 46.27877201138787,
+          "blocking_tok_s_samples": [
+            46.27877201138787,
+            46.33095380445395,
+            46.256821147938446
+          ],
+          "blocking_total_rows": 3,
+          "client_itl_p99_seconds_median": 0.019299587002024055,
+          "client_ttft_p95_seconds_median": 0.34851152304327115,
+          "execution_paths": [
+            "llama-server /completion"
+          ],
+          "slo_passed_runs": 3,
+          "sse_c1_scale": 1.0,
+          "sse_exact_fraction": 1.0,
+          "sse_exact_rows": 3,
+          "sse_exact_tok_s_median": 46.24695431838398,
+          "sse_raw_tok_s_median": 46.24695431838398,
+          "sse_raw_tok_s_samples": [
+            46.22702696502575,
+            46.24695431838398,
+            46.27538433503946
+          ],
+          "sse_total_rows": 3
+        },
+        "2": {
+          "blocking_c1_scale": 1.441810888346752,
+          "blocking_exact_fraction": 0.5,
+          "blocking_exact_rows": 3,
+          "blocking_first_mismatch": {
+            "expected_oracle_present": true,
+            "expected_token": 264,
+            "expected_tokens": 128,
+            "first_mismatch_index": 14,
+            "observed_token": 279,
+            "observed_tokens": 128,
+            "prompt_token_ids_sha256": "21bb8bca19ecba9c67d13b85a0a55c4ae09aa3508b4af7fb25346568217543ec",
+            "record_index": 1
+          },
+          "blocking_tok_s_median": 66.72523738533594,
+          "blocking_tok_s_samples": [
+            66.70071569698896,
+            66.72794923272409,
+            66.72523738533594
+          ],
+          "blocking_total_rows": 6,
+          "client_itl_p99_seconds_median": 0.025456635048612952,
+          "client_ttft_p95_seconds_median": 0.6608552749967203,
+          "execution_paths": [
+            "llama-server /completion"
+          ],
+          "slo_passed_runs": 0,
+          "sse_c1_scale": 1.4424470570124275,
+          "sse_exact_fraction": 0.5,
+          "sse_exact_rows": 3,
+          "sse_exact_tok_s_median": 0.0,
+          "sse_raw_tok_s_median": 66.70878315234114,
+          "sse_raw_tok_s_samples": [
+            66.65599774952574,
+            66.71344879491001,
+            66.70878315234114
+          ],
+          "sse_total_rows": 6
+        },
+        "4": {
+          "blocking_c1_scale": 1.8454347387268069,
+          "blocking_exact_fraction": 0.3333333333333333,
+          "blocking_exact_rows": 4,
+          "blocking_first_mismatch": {
+            "expected_oracle_present": true,
+            "expected_token": 1208,
+            "expected_tokens": 128,
+            "first_mismatch_index": 9,
+            "observed_token": 1118,
+            "observed_tokens": 128,
+            "prompt_token_ids_sha256": "21bb8bca19ecba9c67d13b85a0a55c4ae09aa3508b4af7fb25346568217543ec",
+            "record_index": 1
+          },
+          "blocking_tok_s_median": 85.40445353543303,
+          "blocking_tok_s_samples": [
+            85.38838872135284,
+            85.40445353543303,
+            85.475536633476
+          ],
+          "blocking_total_rows": 12,
+          "client_itl_p99_seconds_median": 0.03758770599961281,
+          "client_ttft_p95_seconds_median": 1.2541174280340783,
+          "execution_paths": [
+            "llama-server /completion"
+          ],
+          "slo_passed_runs": 0,
+          "sse_c1_scale": 1.8921290420061612,
+          "sse_exact_fraction": 0.5,
+          "sse_exact_rows": 6,
+          "sse_exact_tok_s_median": 0.0,
+          "sse_raw_tok_s_median": 87.50520537014657,
+          "sse_raw_tok_s_samples": [
+            86.5732306845587,
+            87.56041067881124,
+            87.50520537014657
+          ],
+          "sse_total_rows": 12
+        },
+        "8": {
+          "blocking_c1_scale": 2.241285827584576,
+          "blocking_exact_fraction": 0.375,
+          "blocking_exact_rows": 9,
+          "blocking_first_mismatch": {
+            "expected_oracle_present": true,
+            "expected_token": 11,
+            "expected_tokens": 128,
+            "first_mismatch_index": 0,
+            "observed_token": 310,
+            "observed_tokens": 128,
+            "prompt_token_ids_sha256": "21bb8bca19ecba9c67d13b85a0a55c4ae09aa3508b4af7fb25346568217543ec",
+            "record_index": 1
+          },
+          "blocking_tok_s_median": 103.72395582714138,
+          "blocking_tok_s_samples": [
+            104.06875596881736,
+            103.69466285259507,
+            103.72395582714138
+          ],
+          "blocking_total_rows": 24,
+          "client_itl_p99_seconds_median": 0.06083555397344753,
+          "client_ttft_p95_seconds_median": 2.6852838289923966,
+          "execution_paths": [
+            "llama-server /completion"
+          ],
+          "slo_passed_runs": 0,
+          "sse_c1_scale": 2.1952794123363715,
+          "sse_exact_fraction": 0.2916666666666667,
+          "sse_exact_rows": 7,
+          "sse_exact_tok_s_median": 0.0,
+          "sse_raw_tok_s_median": 101.524986698409,
+          "sse_raw_tok_s_samples": [
+            101.62647571041008,
+            101.524986698409,
+            99.29613506980147
+          ],
+          "sse_total_rows": 24
+        }
+      }
+    },
+    "llamacpp_vulkan": {
+      "command_shell": "/home/lhl/hipEngine-main/.venv/bin/python scripts/server_f1_concurrency_bench.py --engine llamacpp-vulkan --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --quant gguf_q4_k_m --llamacpp-vulkan-repo /home/lhl/llama.cpp/llama.cpp-vulkan --llamacpp-vulkan-server-bin /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server --concurrencies 1,2,4,8 --live-concurrency 8 --prompt-length 512 --decode-tokens 128 --ctx-per-seq 1024 --warmup-runs 1 --measured-runs 3 --streaming-primary --stream-warmup-runs 0 --stream-measured-runs 3 --live-join-after-tokens 8 --memory-domain gtt --drm-card-index 0 --memory-poll-ms 10 --port-base 22400 --work-dir /tmp/gfx1151-cn4-20260720-065727/llamacpp-vulkan/work --json /tmp/gfx1151-cn4-20260720-065727/llamacpp-vulkan/result.json",
+      "delayed_c8": {
+        "admission_during_first_request": true,
+        "exact_rows": 2,
+        "raw_http_tok_s": 107.27921616176623,
+        "total_rows": 8
+      },
+      "kv_storage": "f16",
+      "provenance": {
+        "llamacpp": {
+          "head": "6e9007ae61f4e994c27484759caac6ef2aa32b30",
+          "local_linked_libraries": [
+            {
+              "path": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/libggml-base.so.0.15.1",
+              "sha256": "95e7e238b4fca06eb00421aed5bff81e24e5d837479cd6d94b7b3b01dfc21cc3",
+              "size_bytes": 943736
+            },
+            {
+              "path": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/libggml-cpu.so.0.15.1",
+              "sha256": "913e3777a8eaebe72f12effd784004f64f70af79d06e6b122aaf38aa96f2cbdb",
+              "size_bytes": 1349856
+            },
+            {
+              "path": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/libggml-vulkan.so.0.15.1",
+              "sha256": "4a1c1f9b2765a6bfda45595fcd7677e6e236bd7a9172cac86ed86d561f0dba42",
+              "size_bytes": 74890144
+            },
+            {
+              "path": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/libggml.so.0.15.1",
+              "sha256": "9a3735bae08c09ded05c9662aa15695791a1b2fab0ae9337423613809ffafc41",
+              "size_bytes": 55208
+            },
+            {
+              "path": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/libllama-common.so.0.0.9641",
+              "sha256": "c1f69b7e94000aca85509f95a6f8163876a0b2ead6f2ebfe75503fbf0365a091",
+              "size_bytes": 6152632
+            },
+            {
+              "path": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/libllama-server-impl.so",
+              "sha256": "0f126e66a35b9f417f2eebc41d920f03d6202e5bb223652556f01832e694ffb0",
+              "size_bytes": 6698264
+            },
+            {
+              "path": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/libllama.so.0.0.9641",
+              "sha256": "58c1f765b55efa43e03a58ce1ccc13da12eeea48ffd821ef4205d807b6b0a106",
+              "size_bytes": 3851712
+            },
+            {
+              "path": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/libmtmd.so.0.0.9641",
+              "sha256": "e4640dd64bb21a518c2598e2da6390bdbf79b70f926932c2ffeadcdccf21cf6c",
+              "size_bytes": 1485800
+            }
+          ],
+          "repo": "/home/lhl/llama.cpp/llama.cpp-vulkan",
+          "server_binary": {
+            "path": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-server",
+            "sha256": "57caed6a48c27b40a25a1c0d06abb1fff44bab1f58f2aba4fd140d05a4eaae8f",
+            "size_bytes": 15976
+          },
+          "status": "## master...origin/master",
+          "version": "version: 9641 (6e9007ae6)\nbuilt with GNU 16.1.1 for Linux x86_64"
+        },
+        "model": {
+          "algorithm": "sha256-sampled-v1",
+          "path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+          "path_type": "file",
+          "revision": null,
+          "sample_offsets": [
+            0,
+            11331169424,
+            22662338848
+          ],
+          "sampled_bytes_per_offset": 1048576,
+          "size_bytes": 22663387424,
+          "value": "f24f72d469e5141b6a74086cdf094faf93726def47c5581b9d84acca03b24579"
+        }
+      },
+      "qualified_passed": false,
+      "quant": "gguf_q4_k_m",
+      "raw_passed": false,
+      "raw_status": "failed_gate",
+      "rows": {
+        "1": {
+          "blocking_c1_scale": 1.0,
+          "blocking_exact_fraction": 1.0,
+          "blocking_exact_rows": 3,
+          "blocking_first_mismatch": null,
+          "blocking_tok_s_median": 53.69592770390255,
+          "blocking_tok_s_samples": [
+            53.80472871209029,
+            53.687191991935784,
+            53.69592770390255
+          ],
+          "blocking_total_rows": 3,
+          "client_itl_p99_seconds_median": 0.0161837880150415,
+          "client_ttft_p95_seconds_median": 0.36321586201665923,
+          "execution_paths": [
+            "llama-server /completion"
+          ],
+          "slo_passed_runs": 3,
+          "sse_c1_scale": 1.0,
+          "sse_exact_fraction": 1.0,
+          "sse_exact_rows": 3,
+          "sse_exact_tok_s_median": 53.81042134885486,
+          "sse_raw_tok_s_median": 53.81042134885486,
+          "sse_raw_tok_s_samples": [
+            53.81042134885486,
+            53.65059622282964,
+            53.83927984509811
+          ],
+          "sse_total_rows": 3
+        },
+        "2": {
+          "blocking_c1_scale": 1.4098578308192673,
+          "blocking_exact_fraction": 0.5,
+          "blocking_exact_rows": 3,
+          "blocking_first_mismatch": {
+            "expected_oracle_present": true,
+            "expected_token": 12244,
+            "expected_tokens": 128,
+            "first_mismatch_index": 42,
+            "observed_token": 2574,
+            "observed_tokens": 128,
+            "prompt_token_ids_sha256": "21bb8bca19ecba9c67d13b85a0a55c4ae09aa3508b4af7fb25346568217543ec",
+            "record_index": 1
+          },
+          "blocking_tok_s_median": 75.70362415645225,
+          "blocking_tok_s_samples": [
+            75.87643934760855,
+            75.65578648421598,
+            75.70362415645225
+          ],
+          "blocking_total_rows": 6,
+          "client_itl_p99_seconds_median": 0.023526981996838003,
+          "client_ttft_p95_seconds_median": 0.6765505209914409,
+          "execution_paths": [
+            "llama-server /completion"
+          ],
+          "slo_passed_runs": 0,
+          "sse_c1_scale": 1.4061173224289139,
+          "sse_exact_fraction": 0.5,
+          "sse_exact_rows": 3,
+          "sse_exact_tok_s_median": 0.0,
+          "sse_raw_tok_s_median": 75.66376558582346,
+          "sse_raw_tok_s_samples": [
+            75.60430992183473,
+            75.81666584241853,
+            75.66376558582346
+          ],
+          "sse_total_rows": 6
+        },
+        "4": {
+          "blocking_c1_scale": 1.7602758881936404,
+          "blocking_exact_fraction": 0.25,
+          "blocking_exact_rows": 3,
+          "blocking_first_mismatch": {
+            "expected_oracle_present": true,
+            "expected_token": 561,
+            "expected_tokens": 128,
+            "first_mismatch_index": 28,
+            "observed_token": 1541,
+            "observed_tokens": 128,
+            "prompt_token_ids_sha256": "21bb8bca19ecba9c67d13b85a0a55c4ae09aa3508b4af7fb25346568217543ec",
+            "record_index": 1
+          },
+          "blocking_tok_s_median": 94.51964683136856,
+          "blocking_tok_s_samples": [
+            94.1999822763601,
+            96.73637029206336,
+            94.51964683136856
+          ],
+          "blocking_total_rows": 12,
+          "client_itl_p99_seconds_median": 0.03353502799291164,
+          "client_ttft_p95_seconds_median": 1.244264175009448,
+          "execution_paths": [
+            "llama-server /completion"
+          ],
+          "slo_passed_runs": 0,
+          "sse_c1_scale": 1.8110863038509195,
+          "sse_exact_fraction": 0.25,
+          "sse_exact_rows": 3,
+          "sse_exact_tok_s_median": 0.0,
+          "sse_raw_tok_s_median": 97.45531710935816,
+          "sse_raw_tok_s_samples": [
+            97.42397209027422,
+            97.60019074538108,
+            97.45531710935816
+          ],
+          "sse_total_rows": 12
+        },
+        "8": {
+          "blocking_c1_scale": 2.036840478015547,
+          "blocking_exact_fraction": 0.25,
+          "blocking_exact_rows": 6,
+          "blocking_first_mismatch": {
+            "expected_oracle_present": true,
+            "expected_token": 430,
+            "expected_tokens": 128,
+            "first_mismatch_index": 13,
+            "observed_token": 26,
+            "observed_tokens": 128,
+            "prompt_token_ids_sha256": "21bb8bca19ecba9c67d13b85a0a55c4ae09aa3508b4af7fb25346568217543ec",
+            "record_index": 1
+          },
+          "blocking_tok_s_median": 109.37003905190512,
+          "blocking_tok_s_samples": [
+            109.37003905190512,
+            111.62733221761896,
+            109.24734299947283
+          ],
+          "blocking_total_rows": 24,
+          "client_itl_p99_seconds_median": 0.07060195703525096,
+          "client_ttft_p95_seconds_median": 2.8116121329949237,
+          "execution_paths": [
+            "llama-server /completion"
+          ],
+          "slo_passed_runs": 0,
+          "sse_c1_scale": 2.0389491576682306,
+          "sse_exact_fraction": 0.25,
+          "sse_exact_rows": 6,
+          "sse_exact_tok_s_median": 0.0,
+          "sse_raw_tok_s_median": 109.7167132830202,
+          "sse_raw_tok_s_samples": [
+            112.75292194561185,
+            108.53507592978866,
+            109.7167132830202
+          ],
+          "sse_total_rows": 24
+        }
+      }
+    }
+  },
+  "passed": true,
+  "performance_claim": true,
+  "performance_claim_scope": "hipEngine PARO/GGUF exact own-engine C1/C2/C4/C8 real-server scaling and same-GGUF C1 comparison; llama.cpp C>N raw rates are diagnostic because they fail the independent same-engine C1 oracle; PARO is cross-quant context only",
+  "protocol": {
+    "concurrencies": [
+      1,
+      2,
+      4,
+      8
+    ],
+    "context_tokens_per_sequence": 1024,
+    "correctness": "each row compared to independent same-engine C1 token-ID oracle; hipEngine SSE uses exact C1 text plus completion count because IDs are not exposed",
+    "decode_tokens": 128,
+    "fresh_server_per_width": true,
+    "generation_batch_window_ms": 5,
+    "hipengine_gguf_policy": "fair with 256-token bounded prefill bursts",
+    "hipengine_paro_policy": "protect_ttft retained policy",
+    "llamacpp_parallel_slots": "-np equals logical concurrency",
+    "measured_blocking_runs_per_width": 3,
+    "measured_sse_runs_per_width": 3,
+    "prompt_cache": false,
+    "prompt_rows": "raw 512-token rows filled with 9707, final token cycles 9707..9710",
+    "sampling": "temperature=0, top_k=1, top_p=1, ignore_eos=true, MTP off",
+    "surface": "real localhost servers; blocking /v1/completions and SSE",
+    "warmups_per_width": 1
+  },
+  "same_gguf_blocking_comparison": {
+    "1": {
+      "llamacpp_hip": {
+        "eligible_under_independent_c1_exactness": true,
+        "external_raw_speed_ratio_vs_hipengine": 1.0397207345105524,
+        "hipengine_percent_vs_external": -3.8203272467439042
+      },
+      "llamacpp_vulkan": {
+        "eligible_under_independent_c1_exactness": true,
+        "external_raw_speed_ratio_vs_hipengine": 1.2063580550233535,
+        "hipengine_percent_vs_external": -17.105871193387824
+      }
+    },
+    "2": {
+      "llamacpp_hip": {
+        "eligible_under_independent_c1_exactness": false,
+        "external_raw_speed_ratio_vs_hipengine": 1.1107376233548114,
+        "hipengine_percent_vs_external": -9.969737319273076
+      },
+      "llamacpp_vulkan": {
+        "eligible_under_independent_c1_exactness": false,
+        "external_raw_speed_ratio_vs_hipengine": 1.2601957950225777,
+        "hipengine_percent_vs_external": -20.64725148665617
+      }
+    },
+    "4": {
+      "llamacpp_hip": {
+        "eligible_under_independent_c1_exactness": false,
+        "external_raw_speed_ratio_vs_hipengine": 1.1290646093391234,
+        "hipengine_percent_vs_external": -11.431109280333306
+      },
+      "llamacpp_vulkan": {
+        "eligible_under_independent_c1_exactness": false,
+        "external_raw_speed_ratio_vs_hipengine": 1.2495693574136042,
+        "hipengine_percent_vs_external": -19.972429376002797
+      }
+    },
+    "8": {
+      "llamacpp_hip": {
+        "eligible_under_independent_c1_exactness": false,
+        "external_raw_speed_ratio_vs_hipengine": 1.1977217393082302,
+        "hipengine_percent_vs_external": -16.508153172741824
+      },
+      "llamacpp_vulkan": {
+        "eligible_under_independent_c1_exactness": false,
+        "external_raw_speed_ratio_vs_hipengine": 1.2629182174633136,
+        "hipengine_percent_vs_external": -20.818309042323325
+      }
+    }
+  },
+  "schema": 1,
+  "sources": {
+    "gguf_direct_reference": {
+      "path": "benchmarks/results/2026-07-19-gfx1151-gguf-f3-singleton-gdn-retained.json",
+      "sha256": "a744f4e162826c6f32d644fce6535ad98d3238f129047b22590fecfe489a37b4",
+      "size_bytes": 9758
+    },
+    "hipengine_gguf": {
+      "path": "/tmp/gfx1151-cn4-20260720-065727/hipengine-gguf/result.json",
+      "sha256": "bf201493d46cc6e21c3965fbcbde2966d4a19733fedd9eb64e93675b67a58781",
+      "size_bytes": 1147694
+    },
+    "hipengine_paro": {
+      "path": "/tmp/gfx1151-cn4-20260720-065727/hipengine-paro-rerun/result.json",
+      "sha256": "244c59c05f15e4d2e6aff5ae6aedc1bc17b61563e2e8cca42239b87719d098bb",
+      "size_bytes": 1060592
+    },
+    "hipengine_paro_route_re_evaluation": {
+      "path": "/tmp/gfx1151-cn4-20260720-065727/hipengine-paro-rerun/route-re-evaluation.json",
+      "sha256": "0dd700de9b39ab035f6029f4796354a1246920c4c8e22d305caf79fcf12744b6",
+      "size_bytes": 1973
+    },
+    "llamacpp_hip": {
+      "path": "/tmp/gfx1151-cn4-20260720-065727/llamacpp-hip/result.json",
+      "sha256": "8fe19fecfded06a42e9553fbd0b11cb50706584362bedc47c136bc30c65bb8b5",
+      "size_bytes": 1162432
+    },
+    "llamacpp_vulkan": {
+      "path": "/tmp/gfx1151-cn4-20260720-065727/llamacpp-vulkan/result.json",
+      "sha256": "9e9d5d29626fb0bbd6a3c6008d060573e12a0ffd93cafe87175f74b51e6b91c3",
+      "size_bytes": 1167159
+    },
+    "paro_direct_reference": {
+      "path": "benchmarks/results/2026-07-18-gfx1151-paro-g3-native-c248-direct-retained.json",
+      "sha256": "8498a57b736dc9734e6b474e740166633d01e7925aa28f7536bddb65a7ad8e59",
+      "size_bytes": 26498
+    }
+  },
+  "status": "accepted_qualified_external_cn_blocked"
+}
