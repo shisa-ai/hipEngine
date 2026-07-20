@@ -170238,3 +170238,104 @@ not retained, copied into `benchmarks/results/`, or promoted to any rollup. It
 establishes only that the bounded schema anchor plus safe close/stop route can
 clear all four correctness gates. Next: commit/push this correctness unit, then
 run the identical A1 collector from a clean commit before any performance lane.
+
+## 2026-07-20 — Clean W7900 post-schema-anchor A1 c1 completes
+
+Reran the exact deterministic `small_repo` A1 smoke from clean, pushed
+`f7a38fd198feb510b90dc5ca922da38c3ad9a691`; local `HEAD` and `origin/main`
+matched and `git status -sb` was clean before server startup. GPU 0 was idle at
+0% VRAM with no live `/dev/kfd` owner. Hardware/model/toolchain remained:
+
+- AMD Radeon Pro W7900, gfx1100, 48,301,604,864 physical VRAM bytes;
+- `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, GGUF Q4_K_M, BF16 KV,
+  22,663,387,424 bytes, SHA-256
+  `0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b`,
+  sampled SHA-256
+  `936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb`;
+- HIP `7.2.53211-3d9ef42`, `hipcc` SHA-256
+  `272d6acceae43b20d6c91e706d0272fe75d4c53b1e1717ccb8a5bc915e2aef6e`;
+- `benchmarks/prompts/agentic-coding-v1.json` file/canonical SHA-256
+  `44729fe15196fb232d64eed5a4628ba59ab9959b3a76ac041d2f194e5cc6ce5e`
+  and `small_repo` workload SHA-256
+  `067fbfd7c506bdb4b37d0aca54714aca24b5c219604b1809e701d5684e92482c`.
+
+Exact commands:
+
+```bash
+HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
+HIPENGINE_GENERATION_BATCH_WINDOW_MS=0 \
+HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 \
+HIPENGINE_GGUF_GDN_PREFILL_MODE=exact \
+HIPENGINE_GGUF_AR_STREAM_DECODE=0 \
+HIPENGINE_GGUF_AR_PACKED_DECODE=1 \
+HIPENGINE_MAX_PREFILL_CHUNK_TOKENS=256 \
+python3 -m hipengine.server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --served-model-name Qwen3.6-35B-A3B \
+  --max-context-tokens 4096 --max-active-requests 1 \
+  --prefix-cache off --metrics prometheus --eager-load \
+  --host 127.0.0.1 --port 8100
+
+HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
+python3 scripts/agentic_coding_live.py \
+  --base-url http://127.0.0.1:8100/v1 \
+  --model Qwen3.6-35B-A3B --backend hip_gfx1100 \
+  --workload small_repo --concurrency 1 --runs 1 \
+  --cache-mode off --max-tokens 128 \
+  --records-json /tmp/agentic-f7a38fd1-small-c1-records.json \
+  --json /tmp/agentic-f7a38fd1-small-c1-a1.json
+```
+
+Startup passed in `86.580089 s`, including raw warmup, chat smoke, and the exact
+4,095-token scratch probe. Final startup allocation was `23.447266 GiB` used /
+`21.537109 GiB` free. An external readiness waiter initially used the wrong
+`/v1/hipengine/ready` path and produced benign 404s; it was stopped and `/ready`
+was checked successfully before the collector began. No generation or ownership
+state was created by those GETs.
+
+The fail-closed collector completed the entire packet:
+
+- **4/4 independent blocking oracles passed**;
+- **4/4 measured SSE text/tool/exact-ID equality gates passed**;
+- turns were exact `read(path="pyproject.toml", mode="summary")` (**25 IDs**),
+  `grep(pattern="def admit", path="src")` (**23 IDs**),
+  `read(path="src/scheduler.py", mode="summary")` (**25 IDs**), and
+  `run(command="python -m pytest -q tests/test_scheduler.py")` (**27 IDs**);
+- all **100 generated IDs** are response-owned with
+  `sse_exact_ids_observed=true`, all four rows use `processed_argmax`, physical
+  width 1, and `token_timing_mode=buffered_public`;
+- strict schemas, declared tool names, exact fixture arguments, and transcript
+  links all pass; artifact validation is `{passed: true, failure_reasons: []}`;
+- final active/pending/model requests, sessions, stream producers, KV refs/pins,
+  graph owners, workspace owners, and cache bytes are all zero.
+
+Diagnostic rollup (not a performance claim): TTFT/tool-ready p50
+`1536.617911 ms`, p95 `1647.284634 ms`; complete-turn p50 `1536.737884 ms`;
+workload wall `11.016769499 s`; exact generated rate `9.077071097 tok/s`;
+validated tool calls `0.363082844/s`; full-vocabulary D2H `99,328,000 bytes`.
+Because this is one c1/single-family/single-run smoke without required warmups,
+repetitions, C4/C8, or medium/growing-history coverage, the artifact correctly
+pins `performance_claim=false` and no topline performance row is added.
+
+Artifacts and hashes:
+
+- `/tmp/agentic-f7a38fd1-small-c1-records.json` SHA-256
+  `fb9d44d2ad18010b907e07963c906c1cc6853e4d1efea0c2491609f352a0fb80`;
+- collector output `/tmp/agentic-f7a38fd1-small-c1-a1.json` and byte-identical
+  `benchmarks/results/2026-07-20-w7900-agentic-a1-small-c1-post-schema-anchor.json`
+  SHA-256
+  `c123b94567f864bcb031e977281feeef8ea6ee70ac7b94c803a6308a1ea1f2d4`;
+- artifact `turn_records_sha256`
+  `f4c1bcd10503fa7ff5be5b6979372b63281f2bf6c7ea40c97f8d925f4f0b6d0e`;
+- final readiness/sessions snapshots SHA-256
+  `569ff0d98a785ec3c3c769885c3e0b9139a3b26b1efe816be453f60275587178` /
+  `ede14f34d23bf255048455e0646be9aa1193c10892d4ea80532f8dbb19d1e613`;
+- server/collector logs SHA-256
+  `3ba91d25a0c5845caa8de4e5f4d47159de25e10c8510a2394f51e3ed179f37a2` /
+  `64e2f200f8dae0f1b4b7250c6372774928fbb587861c38bd573292d745ed26bf`.
+
+After shutdown both GPUs report 0% VRAM and no KFD PIDs. The benchmark README
+and changelog now promote the blocker to a completed diagnostic while keeping
+timing explicitly diagnostic and non-promotable. Next: solve startup capacity
+and run the full A1 C1/C4/C8 plus medium/growing-history repeated baseline
+before A2 prefix A/B.

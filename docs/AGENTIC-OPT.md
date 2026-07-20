@@ -750,9 +750,16 @@ arguments, or benchmark token IDs.
 A deliberately dirty-tree W7900 diagnostic justified the bounded design before
 commit: the complete four-turn small-repo c1 collector passed all four
 independent blocking oracles, all four response-owned SSE equality gates, and
-final zero-ownership checks over 100 generated IDs. That diagnostic has
-`performance_claim=false`; none of its latency or throughput fields are retained
-or promoted. Host validation is green across **529 generation tests**, **513
-server tests**, and **142 agentic/config tests**, plus Ruff. The next step remains
-a clean committed W7900 A1 rerun; no performance lane opens until that complete
-packet passes.
+final zero-ownership checks over 100 generated IDs. That pre-commit diagnostic
+has `performance_claim=false`; none of its timing fields are retained.
+
+Clean committed `f7a38fd1` repeats the result: **4/4 blocking oracles + 4/4
+exact-SSE gates** pass for exact `read`/`grep`/`read`/`run` arguments over **100
+response-owned IDs**, with zero final ownership. The published
+[completed A1 diagnostic](../benchmarks/results/2026-07-20-w7900-agentic-a1-small-c1-post-schema-anchor.json)
+reports TTFT p50 **1536.618 ms** and **9.077 exact generated tok/s**, but remains
+`performance_claim=false`: this is one small-repo c1 run without the required
+warmups/repeats, C4/C8, or medium/growing-history coverage. Host validation is
+green across **529 generation tests**, **513 server tests**, and **142
+agentic/config tests**, plus Ruff. Next: solve capacity for the remaining A1
+matrix before opening A2 prefix A/B.
