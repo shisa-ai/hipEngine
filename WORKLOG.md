@@ -169887,3 +169887,70 @@ ruff check hipengine/server/api.py tests/test_server_api.py
 This repairs the two valid-call A6 outcomes generically; it does not reinterpret
 the remaining `invalid_tool_call` rows. Forced-tool JSON constraints remain the
 next separate correctness unit.
+
+## 2026-07-20 — Force selected-tool JSON prefixes atomically
+
+Decoded the blocked turn-1 exact IDs with the model's GGUF tokenizer. The
+trajectory starts with `<tool_call>`, then immediately emits blank lines, Qwen
+role/template controls, an empty `<tool_response>`, and reasoning; it never
+emits the selected `grep` JSON body. The root cause is tokenizer composition:
+
+```text
+<tool_call>                                  -> [27,13766,13042,29]
+<tool_call>{"name":"grep","arguments":       -> [27,13766,13042,85806,591,3147,36940,2129,15889,763]
+```
+
+The longer prefix merges the `>{` boundary as token 85806, so the prior strategy
+could not force the short marker and then DFA-complete the longer token row. Its
+composition guard correctly declined the prefix, but that left only the marker
+forced.
+
+Specific function choices, plus `required` mode with exactly one function, now
+independently tokenize and queue the entire
+`<tool_call>{"name":"...","arguments":` prefix as the initial forced row. The
+change is model-general and request-owned: the declared selected tool name is
+JSON-escaped, but no prompt text, fixture token ID, argument key, or argument
+value is consulted. Multi-tool `required` still queues only `<tool_call>` so
+model tool selection is preserved. Thinking-budget requests hold the same
+atomic prefix until answer phase. Existing `</tool_call>` suffix completion is
+unchanged, and strict post-generation schema validation still owns arguments.
+Capabilities advertise
+`specific_tool_name_prefix_forcing_scope=atomic_tool_call_name_and_arguments_key`;
+`docs/API.md` and `docs/AGENTIC-OPT.md` record the scope and explicitly state
+that this is not full grammar-constrained JSON decoding.
+
+RED/GREEN and validation:
+
+```bash
+python3 -m pytest -q \
+  tests/test_server_api.py::test_chat_completion_required_tool_choice_forces_atomic_tool_json_prefix \
+  tests/test_server_api.py::test_chat_completion_required_tool_choice_queues_tool_start_after_thinking_budget \
+  tests/test_server_api.py::test_chat_completion_specific_tool_choice_forces_atomic_prefix_after_tool_result
+# RED: 4 failed (the first test is parameterized twice)
+# GREEN: 4 passed
+python3 -m pytest -q \
+  tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth \
+  tests/test_server_api.py::test_replay_artifact_redacts_failed_request \
+  tests/test_server_api.py::test_chat_completion_required_tool_choice_forces_atomic_tool_json_prefix \
+  tests/test_server_api.py::test_chat_completion_required_tool_choice_queues_tool_start_after_thinking_budget \
+  tests/test_server_api.py::test_chat_completion_required_tool_choice_skips_name_prefix_with_multiple_tools \
+  tests/test_server_api.py::test_chat_completion_specific_tool_choice_forces_atomic_prefix_after_tool_result
+# 7 passed
+python3 -m pytest -q tests/test_sampling.py \
+  tests/test_generation_qwen35_gguf_sampling.py \
+  tests/test_generation_qwen35_paro.py \
+  tests/test_generation_batch_scheduler.py tests/test_llm_generate.py
+# 529 passed
+python3 -m pytest -q tests/test_server_api.py
+# 505 passed
+python3 -m pytest -q tests/test_agentic_coding_live.py \
+  tests/test_agentic_coding_quality.py tests/test_agentic_server_conformance.py \
+  tests/test_agentic_harness_traces.py tests/test_local_agent_config.py
+# 142 passed
+ruff check hipengine/server/api.py tests/test_server_api.py
+# All checks passed
+```
+
+No GPU run or benchmark number changed. Next: commit this unit, then rerun the
+same clean W7900 4K/c1 A6 and A1 packets. A1 remains fail-closed until every
+turn passes its independent oracle and measured SSE.

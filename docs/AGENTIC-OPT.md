@@ -635,3 +635,27 @@ The next correctness unit is model-general strict-tool JSON constraint/repair,
 not fixture-conditioned argument forcing. A complete small-repo c1 packet must
 pass before prefix A/B or any latency/goodput claim. C4/C8 remains a separate
 startup-capacity blocker.
+
+## 2026-07-20 — Make selected-tool JSON prefix forcing atomic
+
+The blocked turn-1 IDs exposed a tokenizer-boundary bug rather than an argument
+oracle gap. Qwen tokenizes `<tool_call>` with a final `>` token, but tokenizes
+`<tool_call>{"name":"grep","arguments":` with a merged `>{` token. The prior
+route forced the short marker and attempted to complete the longer prefix with
+a token-sequence DFA; because those tokenizations are non-composable, only the
+marker was forced and the model could emit template text immediately after it.
+
+Specific function choices, and `required` with exactly one declared function,
+now tokenize and queue the entire selected
+`<tool_call>{"name":"...","arguments":` prefix atomically from token zero. A
+multi-tool `required` request still forces only the opening marker so tool
+selection remains model-owned. Thinking-budget requests hold the same complete
+prefix until answer phase, and the existing close-marker completion remains.
+No prompt text, benchmark token ID, expected argument key, or expected argument
+value is inspected or forced; arguments remain model-generated and strict-schema
+validated. Capabilities report the scope as
+`atomic_tool_call_name_and_arguments_key`.
+
+The host-only RED/GREEN and broad server/generation gates pass. No GPU result or
+performance claim changed. The next step is the clean W7900 A6/A1 rerun; only a
+complete all-success A1 packet can open prefix/routing performance work.
