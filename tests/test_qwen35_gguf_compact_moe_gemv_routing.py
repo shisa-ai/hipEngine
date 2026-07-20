@@ -595,6 +595,43 @@ def test_physical_c8_t16_selected_down_pairreuse_env_routes_and_rolls_back(
     assert calls == ["pairreuse", "baseline"]
 
 
+def test_physical_c8_q6_selected_down_pairreuse_scope_and_rollback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    down = _FakeWeight(
+        "ffn_down_exps", "gguf_q6_k_t16_v1", 14, experts=256, out_features=2048, in_features=512
+    )
+    calls: list[str] = []
+    monkeypatch.setattr(
+        qgr,
+        "gguf_q6_k_t16_selected_pairreuse_gemv_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("pairreuse"),
+    )
+    monkeypatch.setattr(
+        qgr,
+        "gguf_q6_k_t16_selected_gemv_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("baseline"),
+    )
+    kwargs = dict(
+        x_rows=64,
+        rows=64,
+        num_experts=256,
+        in_features=512,
+        out_features=2048,
+        stream=7,
+        runtime=object(),
+    )
+
+    monkeypatch.delenv("HIPENGINE_GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE", raising=False)
+    with qgr._gguf_t16_selected_q6_down_pairreuse_min_rows_scope(8):
+        qgr._launch_selected_raw_gguf_moe_linear(down, 100, 130, 150, **kwargs)
+    monkeypatch.setenv("HIPENGINE_GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE", "0")
+    with qgr._gguf_t16_selected_q6_down_pairreuse_min_rows_scope(8):
+        qgr._launch_selected_raw_gguf_moe_linear(down, 100, 130, 150, **kwargs)
+
+    assert calls == ["pairreuse", "baseline"]
+
+
 def test_row_bulk_f32_post_norm_shared_q8_routes_shared_singletons(monkeypatch: pytest.MonkeyPatch) -> None:
     runner, scratch = _fake_runner_and_scratch()
     layer = runner.weights.layer(0)

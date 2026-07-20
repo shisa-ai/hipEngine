@@ -35,6 +35,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q5_k_t16_selected_gemv_decode_compact_bf16_bf16_out,
     gguf_q5_k_t16_selected_gemv_decode_compact_fp16_fp16_out,
     gguf_q6_k_t16_selected_gemv_bf16_bf16_out,
+    gguf_q6_k_t16_selected_pairreuse_gemv_bf16_bf16_out,
     gguf_q6_k_t16_selected_gemv_fp16_fp16_out,
     gguf_q6_k_t16_selected_gemv_decode_compact_bf16_bf16_out,
     gguf_q6_k_t16_selected_gemv_decode_compact_fp16_fp16_out,
@@ -859,6 +860,52 @@ def test_q5_t16_direct_pairreuse_matches_production_bits(t16_selected_library) -
     )
     candidate = _run_direct_single(
         gguf_q5_k_t16_selected_pairreuse_gemv_bf16_bf16_out,
+        x_bf16,
+        selected,
+        tiles,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+
+    np.testing.assert_array_equal(candidate, reference)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_q6_t16_direct_pairreuse_matches_production_bits(t16_selected_library) -> None:
+    rows = 64
+    selected = np.array(
+        [
+            0, 1, 2, 3, 4, 5, 6, 7,
+            8, 9, 10, 11, 12, 13, 14, 15,
+            16, 17, 18, 19, 20, 21, 22, 23,
+            24, 25, 26, 27, 28, 29, 30, 31,
+            0, 1, 2, 3, 4, 5, 6, 7,
+            8, 9, 10, 11, 12, 13, 14, 15,
+            16, 17, 18, 19, 20, 21, 22, 23,
+            32, 33, 34, 35, 36, 37, 38, 39,
+        ],
+        dtype=np.int64,
+    )
+    in_features, out_features, num_experts = 512, 512, 40
+    rng = np.random.default_rng(20260722)
+    qweight = _stack_experts(make_q6_k_weight, out_features, in_features, num_experts, seed=73)
+    tiles = repack_gguf_q6_k_tile16(qweight).tiles
+    x_bf16 = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+    )
+
+    reference = _run_direct_single(
+        gguf_q6_k_t16_selected_gemv_bf16_bf16_out,
+        x_bf16,
+        selected,
+        tiles,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+    candidate = _run_direct_single(
+        gguf_q6_k_t16_selected_pairreuse_gemv_bf16_bf16_out,
         x_bf16,
         selected,
         tiles,
