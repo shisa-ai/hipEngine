@@ -169419,3 +169419,38 @@ Published artifact:
 `benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-parallel-router-topk.json`,
 47,483 bytes, SHA-256
 `8fec69cb8cbcc684c0811770741de5abef2feccf798d759fdc15f8c0ade830ed`.
+
+## 2026-07-20 — Publish the agent-serving optimization board
+
+Added `docs/AGENTIC-OPT.md` as the active status and measurement board for
+coding-agent use. `docs/AGENTIC.md` remains the functional server contract;
+`AGENTIC-OPT.md` instead records current gfx1100 evidence, current server/router
+limitations, the ordered improvement program, and the benchmark that decides
+which work is retained.
+
+The board selects a W7900 GGUF coding-agent baseline before further optimization,
+then prioritizes gfx1100 prefix reuse, low-occupancy/SLO routing, native GGUF GPU
+sampling, and PARO c4/c8 resident ownership. It explicitly defers additional
+35B-A3B N4 leaf tuning while the exact full-suite route remains about 0.592x
+true AR. The benchmark plan freezes multiple 2K/8K/growing-prefix workload
+families, deterministic/sampled/auto-tool lanes, C1/C4/C8 real-Uvicorn SSE,
+prefix off/radix A/B, exact token/tool/state/KV gates, latency/goodput/cache
+rollups, and cancellation/pressure/final-ownership closure.
+
+The status report links existing retained artifacts rather than creating a new
+performance claim. It also records that the current deterministic agent server
+contract passes 130 tests over 56 golden traces, while distinguishing that API
+contract evidence from live-model agent quality.
+
+Validation:
+
+```bash
+python3 -m pytest -q tests/test_agentic_server_conformance.py \
+  tests/test_agentic_harness_traces.py tests/test_local_agent_config.py
+# 130 passed
+python3 -m pytest --collect-only -q tests/test_agentic_server_conformance.py \
+  tests/test_agentic_harness_traces.py tests/test_local_agent_config.py
+# 57 + 13 + 60 tests
+```
+
+No runtime path or performance default changed.

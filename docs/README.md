@@ -1,6 +1,6 @@
 # hipEngine Documentation Index
 
-Last updated: 2026-07-19
+Last updated: 2026-07-20
 
 This directory contains the project architecture, validation, benchmarking, and
 optimization notes for hipEngine. If you are new to the repo, start with
@@ -50,7 +50,8 @@ working on.
 | [`CONCURRENCY.md`](CONCURRENCY.md) | c=N serving roadmap, readiness ledger, architecture contract, and active punchlist. |
 | [`NATIVE_SPEC_CYCLE.md`](NATIVE_SPEC_CYCLE.md) | Canonical N0-N5 speculative-cycle milestone glossary, ownership boundaries, current W7900/gfx1151 scorecard, and evidence index. |
 | [`SAMPLING.md`](SAMPLING.md) | Normal sampling parameter support plan, sampler-state contract, and CPU/GPU rollout tracks. |
-| [`AGENTIC.md`](AGENTIC.md) | Serving features for local agent harnesses built on top of sampling/decode-state primitives. |
+| [`AGENTIC.md`](AGENTIC.md) | Serving features and functional contract for local agent harnesses built on top of sampling/decode-state primitives. |
+| [`AGENTIC-OPT.md`](AGENTIC-OPT.md) | Active gfx1100 agent-serving status, limitations, optimization priorities, and coding-agent benchmark plan. |
 | [`TENSOR_PARALLEL.md`](TENSOR_PARALLEL.md) | Tensor-parallel serving design gate, current disabled manifest contract, and multi-GPU validation plan. |
 | [`PREFILL.md`](PREFILL.md) | Native prefill implementation plan and compact/prompt execution details. |
 | [`KVCACHE.md`](KVCACHE.md) | KV cache ABI, policy notes, quantization path, and long-context considerations. |
