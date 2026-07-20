@@ -16,6 +16,9 @@ GGUF_GDN_INDEXED_SINGLETON_DECODE = False
 # Exact Q8T16 row-amortized decode remains explicit on gfx1100 until an
 # independent native-AR width gate passes on W7900.
 GGUF_Q8_T16_DECODE_ROWTILE_ALL = False
+# The exact 128-thread c8 pair schedule is admitted only on independently
+# measured backends. Zero disables automatic pair rowtiling on gfx1100.
+GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS = 0
 # Clean W7900 GPF-3A full-model 512/4K evidence admits byte-exact shared-X
 # selected-dual Q4T16 prefill after the predeclared borderline-decode repeat.
 GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE = "shared_x"
@@ -61,6 +64,7 @@ __all__ = [
     "GGUF_PREFILL_ROUTER_SELECT_THREADS",
     "GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS",
     "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
+    "GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS",
     "GGUF_Q8_T16_DECODE_ROWTILE_ALL",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS",

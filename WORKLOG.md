@@ -169749,3 +169749,60 @@ concurrent prefill plus true batched dense/MoE work. Compact artifact:
 `benchmarks/results/2026-07-20-gfx1151-four-lane-server-concurrency-refresh.json`,
 44,845 bytes, SHA-256
 `2a78256d83e8efd2b4b57b6325b4fa7dd70f9206945df18ffdc56978023cdc95`.
+
+## 2026-07-20 — Repair exact gfx1151 Q8T16 pair row amortization
+
+Audited the synced gfx1100 concurrency merge before changing gfx1151. The
+backend-neutral resident owner, physical c1/c2/c4/c8 state handling, packed
+prefill primitive, arbitrary-C lowering, and lifecycle fixes are already shared
+by gfx1151. The first new server experiment therefore used the existing native
+multi-session prefill primitive to cohort static C8 prompt chunks. It was
+rejected and removed: blocking **86.601 -> 71.540 tok/s (-17.39%)**, SSE
+**82.387 -> 80.229 (-2.62%)**, delayed C8 **67.898 -> 58.907 (-13.24%)**.
+Measured packed-prefill wall was **6.553 s** versus the retained serial-row sum
+**3.404 s**. The 768-row scratch cap split 8x512 into six all-slot rounds, and
+slot-local exact AOTriton repeated full-attention work. No cohort-prefill code
+or default remains.
+
+The next bounded target revisited the prior Q8T16 rowtile rejection as a
+correctness localization, not as a repeated benchmark. A c2 independent-prefill
+one-step all-layer oracle with the old 64-thread all-rowtile diagnostic found
+immediate BF16 drift: row 0 first differed at layer 13 and row 1 at layer 4,
+with initial max absolute error **0.0009765625**. Production Q8T16 uses a
+128-thread reduction partition, but the rowtile runtime had hardcoded 64; the
+synthetic leaf happened to round identically while model activations did not.
+Switching rowtile launches to 128 threads makes the same oracle fully exact:
+**80/80 layer comparisons**, token, Conv/GDN, KV, and final state all exact.
+The automatic physical-C8 graph gate is also **320/320 layer comparisons exact**
+with exact lifecycle and no first divergence.
+
+A >2x-MALL qwen35 `2048x(8192+4096)` pair micro at 128 threads still favors
+rowtile4: C2 **185.53 -> 161.94 us (-12.7%)**, C4 **232.02 -> 202.15 us
+(-12.9%)**, C8 **340.12 -> 323.99 us (-4.7%)**. Broad all-projection routing is
+not retainable: one-run full-horizon direct C2/C4/C8 was
+**77.940/107.798/133.377 tok/s** versus retained
+**78.552/108.050/133.251**. Pair-only routing is likewise negative below C8,
+so backend metadata now scopes only the repaired qkv+gate pair to physical C8;
+gfx1100 and C2/C4 stay on exact per-row kernels. Explicit
+`HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE=0` is the rollback.
+
+Dirty-tree diagnostic C8 pair-only repeats are
+**133.792/133.796/133.930 tok/s**, median **133.796**, or **+0.41%** versus the
+retained 133.251 baseline with stdev/median **0.058%**; all three 8-row,
+129-token trajectory sets are exact. Automatic-width one-run direct output is
+C1/C2/C4/C8 **50.310/78.578/107.937/133.889 tok/s**, with exact c1-prefix and
+native-C8 row equality. This is implementation-screen evidence only; the next
+step is a clean committed 1+3 C8 gate and cached profiler route confirmation
+before benchmark publication.
+
+Validation:
+
+```text
+.venv/bin/python -m pytest -q tests/test_gfx1151_backend.py tests/test_gguf_linear_dispatch.py
+# 68 passed
+.venv/bin/python -m pytest -q tests/test_generation_qwen35_gguf_sampling.py tests/test_gguf_packed_verify_layout.py
+# 113 passed
+HIP_VISIBLE_DEVICES=0 HIPENGINE_BACKEND=hip_gfx1151 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 \
+  .venv/bin/python -m pytest -q tests/test_gguf_q8_0_t16_gemv_decode.py
+# 36 passed
+```
