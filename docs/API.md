@@ -748,17 +748,17 @@ When
 the first token of the Qwen `<tool_call>` start marker; this is a no-tool
 guard, not full grammar-constrained tool decoding. When
 `tool_choice="required"` or a specific function is requested and tokenization is
-available, the sampler forces the tokenized `<tool_call>` start marker before
-ordinary token selection. If a tokenized thinking budget is active, the same
-marker is queued until the `</think>` close sequence has moved the row into
-answer phase. This prevents ordinary prose from being selected as the first
-visible answer/tool token.
+available, the sampler forces a tool prefix before ordinary token selection.
 Specific function choices, plus `required` mode with exactly one function tool,
-also force the selected `<tool_call>{"name":"...","arguments":` prefix when
-tokenizer composition shows that prefix starts with the same tokenized
-`<tool_call>` marker. Multi-tool `required` mode leaves tool-name selection to
-the model, and argument JSON is still result-validated rather than
-grammar-constrained. Required and specific function modes also tokenize
+atomically queue the independently tokenized
+`<tool_call>{"name":"...","arguments":` prefix from its first token. This does
+not assume that separately tokenized `<tool_call>` IDs compose with the JSON
+suffix (Qwen tokenizers may merge the `>{` boundary). Multi-tool `required`
+mode queues only `<tool_call>` and leaves tool-name selection to the model. If a
+tokenized thinking budget is active, the applicable whole prefix is held until
+the `</think>` close sequence has moved the row into answer phase. Argument JSON
+keys/values remain model-generated and result-validated rather than
+schema-grammar constrained. Required and specific function modes also tokenize
 `</tool_call>` when possible; once that close marker begins, the host sampler
 forces the remaining suffix through model decoding so the closing tag is not
 left partially emitted.

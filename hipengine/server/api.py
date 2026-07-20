@@ -1054,6 +1054,9 @@ def _tools_capability(*, tokenizer_backed: bool) -> dict[str, Any]:
             "initial_or_after_tokenized_thinking_close" if tokenizer_backed else "none"
         ),
         "specific_tool_name_prefix_forcing": tokenizer_backed,
+        "specific_tool_name_prefix_forcing_scope": (
+            "atomic_tool_call_name_and_arguments_key" if tokenizer_backed else "none"
+        ),
         "tool_call_close_repair": tokenizer_backed,
     }
 
@@ -3879,7 +3882,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             else ()
         )
         force_sequence_completion_token_sequences = (
-            _tool_call_sequence_completion_token_sequences(request, engine, forced_tool_token_ids)
+            _tool_call_sequence_completion_token_sequences(request, engine)
             if isinstance(request, ChatCompletionRequest)
             else ()
         )
@@ -9805,45 +9808,26 @@ def _required_tool_sampling_forced_token_ids(
     if mode not in {"required", "function"}:
         return ()
     try:
-        token_ids = _tokenize_text(engine, _TOOL_CALL_START_MARKER)
+        start_ids = _tokenize_text(engine, _TOOL_CALL_START_MARKER)
     except OpenAIHTTPError:
         return ()
-    return tuple(int(token_id) for token_id in token_ids)
+    name = _specific_tool_name_prefix_target(request)
+    if name is None:
+        return tuple(int(token_id) for token_id in start_ids)
+    try:
+        prefix_ids = _tokenize_text(engine, _tool_call_name_prefix_text(name))
+    except OpenAIHTTPError:
+        return tuple(int(token_id) for token_id in start_ids)
+    if not prefix_ids:
+        return tuple(int(token_id) for token_id in start_ids)
+    return tuple(int(token_id) for token_id in prefix_ids)
 
 
 def _tool_call_sequence_completion_token_sequences(
     request: ChatCompletionRequest,
     engine: Any,
-    forced_tool_token_ids: Sequence[int],
 ) -> tuple[tuple[int, ...], ...]:
-    sequences: list[tuple[int, ...]] = []
-    prefix_sequence = _specific_tool_name_prefix_token_sequence(request, engine, forced_tool_token_ids)
-    if prefix_sequence:
-        sequences.append(prefix_sequence)
-    sequences.extend(_tool_call_close_repair_token_sequences(request, engine))
-    return tuple(sequences)
-
-
-def _specific_tool_name_prefix_token_sequence(
-    request: ChatCompletionRequest,
-    engine: Any,
-    forced_tool_token_ids: Sequence[int],
-) -> tuple[int, ...]:
-    start_ids = tuple(int(token_id) for token_id in forced_tool_token_ids)
-    if not start_ids:
-        return ()
-    name = _specific_tool_name_prefix_target(request)
-    if name is None:
-        return ()
-    prefix_text = _tool_call_name_prefix_text(name)
-    try:
-        prefix_ids = _tokenize_text(engine, prefix_text)
-    except OpenAIHTTPError:
-        return ()
-    prefix = tuple(int(token_id) for token_id in prefix_ids)
-    if len(prefix) <= len(start_ids) or prefix[: len(start_ids)] != start_ids:
-        return ()
-    return prefix
+    return _tool_call_close_repair_token_sequences(request, engine)
 
 
 def _specific_tool_name_prefix_target(request: ChatCompletionRequest) -> str | None:
