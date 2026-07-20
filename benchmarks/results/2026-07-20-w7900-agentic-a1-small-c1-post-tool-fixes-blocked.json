@@ -1,0 +1,142 @@
+{
+  "a1_attempt": {
+    "blocked_expected_tool": "read",
+    "blocked_stage": "independent blocking oracle before measured SSE",
+    "blocked_turn_index": 0,
+    "canonical_turn_0_diagnostic": {
+      "arguments": {
+        "mode": "summary",
+        "path": "pyproject.toml"
+      },
+      "diagnostic_response_sha256": "c6f40e1b8576080267222dd86cf871ce921f2be14bf47de7d830b70a8594c034",
+      "finish_detail_reason": "tool_calls",
+      "finish_reason": "tool_calls",
+      "generated_token_ids_sha256": "4882704eb0d61a5ae2a6fd5521593c07fcb715a4a50a0ab0ae8dd82b0b9f9800",
+      "generated_token_ids_source": "response",
+      "generated_tokens": 63,
+      "prompt_tokens": 2504,
+      "public_content": "<tool_call>{\"name\":\"read\",\"arguments\":{<|im_end|>\n\n<|im_start|>assistant\n<|im_end|><|endoftext|><|im_start|><|im_start|><|im_start|><|im_start|><|im_start|>",
+      "raw_markup_leaked": true,
+      "selected_tool": "read",
+      "valid_parsed_call": true
+    },
+    "complete_artifact_emitted": false,
+    "failure": "oracle leaked raw model markup",
+    "records_artifact_emitted": false
+  },
+  "a6_quality": {
+    "artifact": "benchmarks/results/2026-07-20-w7900-agentic-a6-small-c1-post-tool-fixes-quality.json",
+    "artifact_sha256": "64d6e44dd2c6c45931c4964860ff25c10dc48fd57daa760dd270ac5abe58eebc",
+    "attempts": 4,
+    "final_ownership_zero": true,
+    "generated_tokens": 274,
+    "outcomes": {
+      "invalid_tool_call": 2,
+      "passed": 2
+    },
+    "performance_claim": false,
+    "response_owned_exact_ids": true,
+    "successes": 2
+  },
+  "blocker": {
+    "next_action": "Add an envelope-scoped repair for an incomplete duplicate selected-tool prefix only when a later valid call parses and the entire remainder is recognized prefix/control residue; preserve ordinary and interior literal content, then rerun A1.",
+    "summary": "The forced turn-0 oracle emitted an unfinished selected-tool prefix before a later valid duplicate call; the parser extracted the valid call but leaked the unfinished prefix and Qwen controls as public content."
+  },
+  "configuration": {
+    "a1_command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 python3 scripts/agentic_coding_live.py --base-url http://127.0.0.1:8100/v1 --model Qwen3.6-35B-A3B --backend hip_gfx1100 --workload small_repo --concurrency 1 --runs 1 --cache-mode off --max-tokens 128 --records-json /tmp/agentic-f25362d0-small-c1-records.json --json /tmp/agentic-f25362d0-small-c1-a1.json",
+    "a6_command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 python3 scripts/agentic_coding_quality.py --base-url http://127.0.0.1:8100/v1 --model Qwen3.6-35B-A3B --backend hip_gfx1100 --workload small_repo --concurrency 1 --runs 1 --cache-mode off --max-tokens 128 --records-json /tmp/agentic-f25362d0-small-c1-quality-records.json --json /tmp/agentic-f25362d0-small-c1-quality.json",
+    "batch_window_ms": 0.0,
+    "cache_mode": "off",
+    "concurrency": 1,
+    "max_active_requests": 1,
+    "max_context_tokens": 4096,
+    "max_tokens": 128,
+    "runs": 1,
+    "server_command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_GENERATION_BATCH_WINDOW_MS=0 HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 HIPENGINE_GGUF_GDN_PREFILL_MODE=exact HIPENGINE_GGUF_AR_STREAM_DECODE=0 HIPENGINE_GGUF_AR_PACKED_DECODE=1 HIPENGINE_MAX_PREFILL_CHUNK_TOKENS=256 python3 -m hipengine.server --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --served-model-name Qwen3.6-35B-A3B --max-context-tokens 4096 --max-active-requests 1 --prefix-cache off --metrics prometheus --eager-load --host 127.0.0.1 --port 8100",
+    "workload": "small_repo",
+    "workload_sha256": "067fbfd7c506bdb4b37d0aca54714aca24b5c219604b1809e701d5684e92482c",
+    "workload_suite": "benchmarks/prompts/agentic-coding-v1.json"
+  },
+  "created_at": "2026-07-20T09:11:41.953357+00:00",
+  "final_ownership": {
+    "active_requests": 0,
+    "allowed_cache_bytes": 0,
+    "cache_resident_bytes": 0,
+    "graph_owners": 0,
+    "kv_pinned_pages": 0,
+    "kv_refcounted_pages": 0,
+    "model_active_requests": 0,
+    "pending_requests": 0,
+    "session_count": 0,
+    "stream_producers": 0,
+    "workspace_owners": 0
+  },
+  "gates": {
+    "a1_all_tool_envelopes_passed": false,
+    "a1_complete_workload_passed": false,
+    "a6_all_turns_successful": false,
+    "a6_complete_quality_packet_passed": true,
+    "exact_performance_denominator_complete": false,
+    "final_performance_claim_eligible": false,
+    "startup_capacity_passed": true
+  },
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "hip_visible_devices": "0",
+    "hipcc_sha256": "272d6acceae43b20d6c91e706d0272fe75d4c53b1e1717ccb8a5bc915e2aef6e",
+    "hipcc_version": "HIP version: 7.2.53211-3d9ef42",
+    "physical_vram_bytes": 48301604864,
+    "rocr_visible_devices": "0",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_agentic_coding_a1_baseline_blocked",
+  "limitations": [
+    "No A1 SSE interval opened, so no A1 records, latency, throughput, goodput, or complete-workload metric is retained.",
+    "The 63-ID turn-0 response is a post-rejection deterministic correctness diagnostic, not a measured SSE row.",
+    "A6 is one run of one four-turn synthetic workload and is quality evidence only.",
+    "C4/C8 and medium/growing-history workloads remain unmeasured under this protocol."
+  ],
+  "model": {
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "served_name": "Qwen3.6-35B-A3B",
+    "sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+    "size_bytes": 22663387424
+  },
+  "performance_claim": false,
+  "raw_log_hashes": {
+    "a1_stderr": "9e45cca1940f310c3c4209bba5c28d2dd2744e0ecf9e2c6aad80a6fee3bcc7e0",
+    "a1_stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "a6_records": "54c8b7ce8beefc347e94909f8bce5dcab0a87b0b11093e20fb0d014a019e2a4c",
+    "a6_stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "a6_stdout": "8425df0f0938a9c9b7cbf3e479c4fe8795154d8cb3fcb20498a5b05502887443",
+    "final_readiness": "433f4e4f64470567b8519f44d7d5ecebf34955b4cb55236430950820f98746b0",
+    "final_sessions": "d3aa9414dc7a6b94393c87c6ac5a039c594c4c1f31f4259459c525fe3ca63835",
+    "readiness": "57da72ce778a2705505322de6fe4b8f90347cbee7c1a40c6e62b5b81cb95eb5c",
+    "server": "556b870ddf77ba67db9013c600564bfababac53762300bc7d54e6f07069e3c20"
+  },
+  "schema": 1,
+  "scope": "A6 natural-quality and A1 deterministic real-Uvicorn small_repo cache-off C1 post-tool-fixes rerun",
+  "source": {
+    "dirty": false,
+    "git_branch": "main",
+    "hipengine_commit": "f25362d0126804a70421f283208380d4d5863636",
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false
+  },
+  "startup": {
+    "final_ready": true,
+    "passed": true,
+    "scratch_probe_prompt_tokens": 4095,
+    "scratch_probe_status": "passed",
+    "startup_free_bytes": 23125295104,
+    "startup_free_gib": 21.537109,
+    "startup_total_seconds": 84.88688,
+    "startup_used_bytes": 25176309760,
+    "startup_used_gib": 23.447266
+  },
+  "status": "blocked"
+}

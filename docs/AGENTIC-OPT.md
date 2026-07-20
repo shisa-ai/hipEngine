@@ -659,3 +659,25 @@ validated. Capabilities report the scope as
 The host-only RED/GREEN and broad server/generation gates pass. No GPU result or
 performance claim changed. The next step is the clean W7900 A6/A1 rerun; only a
 complete all-success A1 packet can open prefix/routing performance work.
+
+## 2026-07-20 — Post-tool-fix W7900 A6/A1 remains blocked
+
+The clean `f25362d0` W7900 4K/c1 cache-off rerun improves the natural A6 lane
+from **0/4 to 2/4 successful turns** over the same **274 exact response-owned
+IDs**. The two previously valid `read` calls now have empty public content and
+pass exact-argument scoring. Natural `grep` and `run` remain
+`invalid_tool_call`; this is quality-only evidence and contains no timing.
+
+The deterministic A1 lane still fails closed before opening its first measured
+SSE interval. Atomic prefix forcing produces
+`<tool_call>{"name":"read","arguments":`, but the model starts an invalid
+argument object, emits Qwen controls, and later emits a second complete valid
+`read(path="pyproject.toml", mode="summary")` envelope. The parser extracts
+that later call but leaves the unfinished first envelope and controls in public
+content. A same-canonical-request diagnostic contains **63 response-owned IDs**
+and the exact parsed call, but it is not an A1 record or performance row.
+
+Final request/session/KV/graph/workspace ownership is zero. The next correctness
+unit is an envelope-scoped incomplete-duplicate-prefix repair after a valid
+call parses, with ordinary-content and interior-literal guards. C4/C8 and any
+prefix/routing performance work remain closed.
