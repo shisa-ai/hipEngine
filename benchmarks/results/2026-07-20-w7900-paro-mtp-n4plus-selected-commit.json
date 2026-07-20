@@ -1,0 +1,895 @@
+{
+  "canonical_selected_commit": {
+    "categories": {
+      "code": {
+        "accepts": 8,
+        "active_candidates": 84,
+        "ar_tok_s_pooled": 104.9202135393964,
+        "capture_adjusted_ms_cycle": 14.035933660714285,
+        "cycles": 84,
+        "exact": true,
+        "fallbacks": [],
+        "ids": 96,
+        "marker_ms_cycle": 16.321354797619048,
+        "mtp_ar_ratio_pooled": 0.6163423229623552,
+        "mtp_tok_s_pooled": 64.66676813857794,
+        "native_trace_records": 60,
+        "pooled_acceptance": 0.09523809523809523,
+        "prompts": 4,
+        "proposal_ms_cycle": 1.2429138504168284,
+        "trace_records": 64,
+        "verify_ms_cycle": 15.061368996698764,
+        "visible_per_cycle": 1.1428571428571428
+      },
+      "general_en": {
+        "accepts": 1,
+        "active_candidates": 45,
+        "ar_tok_s_pooled": 107.82487233940788,
+        "capture_adjusted_ms_cycle": 13.925503622222221,
+        "cycles": 45,
+        "exact": true,
+        "fallbacks": [],
+        "ids": 48,
+        "marker_ms_cycle": 16.000965266666668,
+        "mtp_ar_ratio_pooled": 0.5774977992500977,
+        "mtp_tok_s_pooled": 62.26862648043078,
+        "native_trace_records": 30,
+        "pooled_acceptance": 0.022222222222222223,
+        "prompts": 2,
+        "proposal_ms_cycle": 1.1714871170827084,
+        "trace_records": 32,
+        "verify_ms_cycle": 14.813318827913868,
+        "visible_per_cycle": 1.0666666666666667
+      },
+      "general_ja": {
+        "accepts": 1,
+        "active_candidates": 45,
+        "ar_tok_s_pooled": 102.8914980286724,
+        "capture_adjusted_ms_cycle": 13.895364733333334,
+        "cycles": 45,
+        "exact": true,
+        "fallbacks": [],
+        "ids": 48,
+        "marker_ms_cycle": 15.88600868888889,
+        "mtp_ar_ratio_pooled": 0.6109574505653008,
+        "mtp_tok_s_pooled": 62.86232732044236,
+        "native_trace_records": 30,
+        "pooled_acceptance": 0.022222222222222223,
+        "prompts": 2,
+        "proposal_ms_cycle": 1.1728241574019194,
+        "trace_records": 32,
+        "verify_ms_cycle": 14.699448448502356,
+        "visible_per_cycle": 1.0666666666666667
+      },
+      "mixed_ja_en": {
+        "accepts": 6,
+        "active_candidates": 40,
+        "ar_tok_s_pooled": 111.90581620830666,
+        "capture_adjusted_ms_cycle": 14.03306555,
+        "cycles": 40,
+        "exact": true,
+        "fallbacks": [],
+        "ids": 48,
+        "marker_ms_cycle": 16.461720274999998,
+        "mtp_ar_ratio_pooled": 0.6129192509560988,
+        "mtp_tok_s_pooled": 68.58922904802618,
+        "native_trace_records": 30,
+        "pooled_acceptance": 0.15,
+        "prompts": 2,
+        "proposal_ms_cycle": 1.3103626668453217,
+        "trace_records": 32,
+        "verify_ms_cycle": 15.13750490557868,
+        "visible_per_cycle": 1.2
+      }
+    },
+    "full": {
+      "accepts": 16,
+      "active_candidates": 214,
+      "ar_tok_s_pooled": 106.40230357625552,
+      "capture_adjusted_ms_cycle": 13.982617408878504,
+      "cycles": 214,
+      "exact": true,
+      "fallbacks": [],
+      "ids": 240,
+      "marker_ms_cycle": 16.188674962616822,
+      "mtp_ar_ratio_pooled": 0.6065405260772089,
+      "mtp_tok_s_pooled": 64.5373091869689,
+      "native_trace_records": 150,
+      "pooled_acceptance": 0.07476635514018691,
+      "prompts": 10,
+      "proposal_ms_cycle": 1.2257629787880127,
+      "trace_records": 160,
+      "verify_ms_cycle": 14.947335137311091,
+      "visible_per_cycle": 1.1214953271028036
+    },
+    "splits": {
+      "heldout": {
+        "accepts": 3,
+        "active_candidates": 89,
+        "ar_tok_s_pooled": 109.27222772063921,
+        "capture_adjusted_ms_cycle": 13.944524269662923,
+        "cycles": 89,
+        "exact": true,
+        "fallbacks": [],
+        "ids": 96,
+        "marker_ms_cycle": 15.966252977528091,
+        "mtp_ar_ratio_pooled": 0.5810577258907796,
+        "mtp_tok_s_pooled": 63.49347214237403,
+        "native_trace_records": 60,
+        "pooled_acceptance": 0.033707865168539325,
+        "prompts": 4,
+        "proposal_ms_cycle": 1.1987849648811677,
+        "trace_records": 64,
+        "verify_ms_cycle": 14.752756214302996,
+        "visible_per_cycle": 1.0786516853932584
+      },
+      "train": {
+        "accepts": 13,
+        "active_candidates": 125,
+        "ar_tok_s_pooled": 104.57133034528051,
+        "capture_adjusted_ms_cycle": 14.009739724,
+        "cycles": 125,
+        "exact": true,
+        "fallbacks": [],
+        "ids": 144,
+        "marker_ms_cycle": 16.347039416,
+        "mtp_ar_ratio_pooled": 0.6239997055994361,
+        "mtp_tok_s_pooled": 65.25247934959641,
+        "native_trace_records": 90,
+        "pooled_acceptance": 0.104,
+        "prompts": 6,
+        "proposal_ms_cycle": 1.2449713246896863,
+        "trace_records": 96,
+        "verify_ms_cycle": 15.085875330492854,
+        "visible_per_cycle": 1.152
+      }
+    }
+  },
+  "correctness_oracles": {
+    "b1_accepted_row_state": {
+      "audited_cycles": [
+        {
+          "accepted": 0,
+          "commit_row": 0,
+          "committed_tokens": [
+            17
+          ],
+          "context_after": 41,
+          "context_before": 40,
+          "control_next_token": 220,
+          "cycle": 6,
+          "native_stages": [
+            "VERIFY",
+            "ACCEPT",
+            "COMMIT",
+            "UPDATE_CURSORS"
+          ],
+          "next_token": 220,
+          "resident_kv_records": 20,
+          "resident_linear_records": 60,
+          "resident_vs_ar": true,
+          "scratch_commit": true,
+          "scratch_commit_records": 60,
+          "selected_kv_records": 20,
+          "selected_linear_records": 60,
+          "selected_vs_ar": true
+        },
+        {
+          "accepted": 1,
+          "commit_row": 1,
+          "committed_tokens": [
+            220,
+            17
+          ],
+          "context_after": 43,
+          "context_before": 41,
+          "control_next_token": 220,
+          "cycle": 7,
+          "native_stages": [
+            "VERIFY",
+            "ACCEPT",
+            "COMMIT",
+            "UPDATE_CURSORS"
+          ],
+          "next_token": 220,
+          "resident_kv_records": 20,
+          "resident_linear_records": 60,
+          "resident_vs_ar": true,
+          "scratch_commit": true,
+          "scratch_commit_records": 60,
+          "selected_kv_records": 20,
+          "selected_linear_records": 60,
+          "selected_vs_ar": true
+        },
+        {
+          "accepted": 0,
+          "commit_row": 0,
+          "committed_tokens": [
+            220
+          ],
+          "context_after": 44,
+          "context_before": 43,
+          "control_next_token": 220,
+          "cycle": 8,
+          "native_stages": [
+            "VERIFY",
+            "ACCEPT",
+            "COMMIT",
+            "UPDATE_CURSORS"
+          ],
+          "next_token": 220,
+          "resident_kv_records": 20,
+          "resident_linear_records": 60,
+          "resident_vs_ar": true,
+          "scratch_commit": true,
+          "scratch_commit_records": 60,
+          "selected_kv_records": 20,
+          "selected_linear_records": 60,
+          "selected_vs_ar": true
+        }
+      ],
+      "first_mismatch": null,
+      "generated_prefix": [
+        220,
+        220,
+        220,
+        17,
+        17,
+        17,
+        220,
+        17,
+        220
+      ],
+      "source": {
+        "bytes": 13222,
+        "path": "/tmp/w7900-n4plus-commit-b1-accepted-state-43abe82e.json",
+        "sha256": "00cb890e11d1d905d998d50df7e443fb8ffc0fb6120ef2d224a039de1d0c9ef9"
+      },
+      "status": "passed"
+    },
+    "b2_state_kv_cursor": {
+      "audited_cycles": [
+        {
+          "accepted": 0,
+          "commit_row": 0,
+          "committed_tokens": [
+            248050
+          ],
+          "context_after": 2,
+          "context_before": 1,
+          "control_next_token": 19,
+          "cycle": 1,
+          "native_stages": [],
+          "next_token": 19,
+          "resident_kv_records": 20,
+          "resident_linear_records": 60,
+          "resident_vs_ar": true,
+          "scratch_commit": true,
+          "scratch_commit_records": 60,
+          "selected_kv_records": 20,
+          "selected_linear_records": 60,
+          "selected_vs_ar": true
+        },
+        {
+          "accepted": 0,
+          "commit_row": 0,
+          "committed_tokens": [
+            19
+          ],
+          "context_after": 3,
+          "context_before": 2,
+          "control_next_token": 19,
+          "cycle": 2,
+          "native_stages": [
+            "VERIFY",
+            "ACCEPT",
+            "COMMIT",
+            "UPDATE_CURSORS"
+          ],
+          "next_token": 19,
+          "resident_kv_records": 20,
+          "resident_linear_records": 60,
+          "resident_vs_ar": true,
+          "scratch_commit": true,
+          "scratch_commit_records": 60,
+          "selected_kv_records": 20,
+          "selected_linear_records": 60,
+          "selected_vs_ar": true
+        },
+        {
+          "accepted": 0,
+          "commit_row": 0,
+          "committed_tokens": [
+            19
+          ],
+          "context_after": 4,
+          "context_before": 3,
+          "control_next_token": 5137,
+          "cycle": 3,
+          "native_stages": [
+            "VERIFY",
+            "ACCEPT",
+            "COMMIT",
+            "UPDATE_CURSORS"
+          ],
+          "next_token": 5137,
+          "resident_kv_records": 20,
+          "resident_linear_records": 60,
+          "resident_vs_ar": true,
+          "scratch_commit": true,
+          "scratch_commit_records": 60,
+          "selected_kv_records": 20,
+          "selected_linear_records": 60,
+          "selected_vs_ar": true
+        }
+      ],
+      "first_mismatch": null,
+      "generated_prefix": [
+        248050,
+        19,
+        19
+      ],
+      "source": {
+        "bytes": 7047,
+        "path": "/tmp/w7900-n4plus-commit-b2-state-43abe82e.json",
+        "sha256": "0c7a2ca2ca4fbc732679caa28b2139195f4acdb2ad0165ae362a22c83e4fafe5"
+      },
+      "status": "passed"
+    },
+    "canonical": "three arms x 10/10 prompts and 240/240 IDs exact with identical 214 cycles, 16 accepted drafts, and active-budget history; candidate has 150/150 expanded native stage records and no fallback",
+    "defaults_only_smoke": {
+      "accepted_lengths": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "environment": "explicit N4, TARGET_COMMIT unset after default-on promotion",
+      "exact_ar_match": true,
+      "expanded_stages": [
+        "VERIFY",
+        "ACCEPT",
+        "COMMIT",
+        "UPDATE_CURSORS"
+      ],
+      "ids": [
+        220,
+        220,
+        220,
+        17,
+        17,
+        17,
+        220,
+        17
+      ],
+      "source": {
+        "bytes": 14012,
+        "path": "/tmp/w7900-n4plus-commit-default-green-d8.json",
+        "sha256": "7db49998197172bbb57a6ef7f3e7beefd23ad1359c2dc360a0b4e5cbfe3ec349"
+      }
+    },
+    "hidden_layer0_reused_unmodified_forward_oracle": {
+      "first_mismatch": null,
+      "intermediates": true,
+      "layer_output": true,
+      "moe": true,
+      "pre_state": true,
+      "reuse_reason": "selected commit changes only post-accept state/cursors; verifier forward/model bytes are unchanged from the clean N4+ gate",
+      "root_match": true,
+      "source": {
+        "bytes": 10444,
+        "path": "/tmp/w7900-n4plus-b2-layer0-hidden-4e9703be.json",
+        "sha256": "9bc3d941861315ed899f3391012bd80d78115bb46bff8036b0d9f7d7f0f3fdc9"
+      },
+      "state": true,
+      "status": "matched"
+    },
+    "profile_children": "all three exact with identical accepted-length history"
+  },
+  "date": "2026-07-20",
+  "decision": {
+    "default": "N4 remains package/default-off; selected commit is on when N4 is explicitly requested, with =0 rollback",
+    "implementation": "keep and publish; make selected commit default-on inside the still-explicit N4 target route",
+    "measured_result": "both canonical candidate arms improve capture-adjusted wall by 0.059-0.068 ms/cycle across full/train/heldout and every category; profile wall brackets -0.091/+0.105 ms/pass and averages +0.007 ms (neutral) while mechanically removing 5 API calls, 1 synchronization, 2 host kernel submissions, and 1 position kernel per pass",
+    "next": "Profile and optimize provider-specific proposer repair/update; do not expand DFlash/gfx1151 from this PARO-only evidence.",
+    "why_not_global_default": [
+      "strict B1 remains well below true AR",
+      "capture-inclusive complete wall straddles the neutral N4+ control",
+      "PARO proposal ownership remains outside",
+      "DFlash and gfx1151 retain independent unopened gates"
+    ]
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "gpu0_access": "exclusive",
+    "hip_visible_devices": "0",
+    "target_arch": "gfx1100"
+  },
+  "implementation": {
+    "boundary": "capture-width-zero FP16 PARO MTP selected linear-state COMMIT plus target UPDATE_CURSORS inside the existing gfx1100 w4_paro target graph",
+    "default": "default-on inside explicit HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH=1; HIPENGINE_PARO_NATIVE_SPEC_TARGET_COMMIT=0 is the temporary rollback opt-out; N4 itself remains default-off",
+    "ownership": [
+      "graph-owned combined source/destination pointer tables for all 60 Conv/GDN state pairs",
+      "device commit-row-selected chunked linear-state copy",
+      "packed accept kernel update of resident target position/context",
+      "bounded host cursor mirror after one packed result read"
+    ],
+    "stages": [
+      "VERIFY",
+      "ACCEPT",
+      "COMMIT",
+      "UPDATE_CURSORS"
+    ],
+    "unchanged": [
+      "model and sidecar bytes",
+      "PARO proposal/repair/update",
+      "full-attention provisional KV write semantics",
+      "BF16 DFlash hidden/KV commit",
+      "gfx1151 remains unregistered",
+      "graph-off/tree/inactive/unsupported exact fallback"
+    ]
+  },
+  "matched_b1_on_off_on": {
+    "delta_on_minus_off": {
+      "capture_adjusted_ms_cycle": [
+        -0.06844973130841225,
+        -0.058724586448597904
+      ],
+      "category_capture_adjusted_ms_cycle": {
+        "code": [
+          -0.011195684523810812,
+          -0.04206246428571525
+        ],
+        "general_en": [
+          -0.04044407777777792,
+          -0.07080752222222131
+        ],
+        "general_ja": [
+          -0.17642236666666733,
+          -0.10059616666666926
+        ],
+        "mixed_ja_en": [
+          -0.0987203749999992,
+          -0.03301621249999798
+        ]
+      },
+      "complete_wall_ms_cycle": [
+        -0.08864256542056026,
+        0.27193326168224274
+      ],
+      "complete_wall_percent": [
+        -0.544577233121335,
+        1.6706270011249913
+      ],
+      "note": "Capture-inclusive complete wall straddles the control because first-capture/process variance dominates one arm. Both candidate arms improve capture-adjusted full/train/heldout and every category; that broad steady-cycle result plus mechanical profiler counts owns the keep decision.",
+      "verify_ms_cycle": [
+        -0.09296298903961464,
+        0.268940989550412
+      ]
+    },
+    "off": {
+      "accepts": 16,
+      "active_candidates": 214,
+      "ar_tok_s_pooled": 110.06012571245175,
+      "capture_adjusted_ms_cycle": 14.051067140186916,
+      "cycles": 214,
+      "exact": true,
+      "fallbacks": [],
+      "ids": 240,
+      "marker_ms_cycle": 16.277317528037383,
+      "mtp_ar_ratio_pooled": 0.5879263933279835,
+      "mtp_tok_s_pooled": 64.70725275934622,
+      "native_trace_records": 150,
+      "pooled_acceptance": 0.07476635514018691,
+      "prompts": 10,
+      "proposal_ms_cycle": 1.2222761342684938,
+      "trace_records": 160,
+      "verify_ms_cycle": 15.040298126350706,
+      "visible_per_cycle": 1.1214953271028036
+    },
+    "on1": {
+      "accepts": 16,
+      "active_candidates": 214,
+      "ar_tok_s_pooled": 106.40230357625552,
+      "capture_adjusted_ms_cycle": 13.982617408878504,
+      "cycles": 214,
+      "exact": true,
+      "fallbacks": [],
+      "ids": 240,
+      "marker_ms_cycle": 16.188674962616822,
+      "mtp_ar_ratio_pooled": 0.6065405260772089,
+      "mtp_tok_s_pooled": 64.5373091869689,
+      "native_trace_records": 150,
+      "pooled_acceptance": 0.07476635514018691,
+      "prompts": 10,
+      "proposal_ms_cycle": 1.2257629787880127,
+      "trace_records": 160,
+      "verify_ms_cycle": 14.947335137311091,
+      "visible_per_cycle": 1.1214953271028036
+    },
+    "on2": {
+      "accepts": 16,
+      "active_candidates": 214,
+      "ar_tok_s_pooled": 108.37534868949722,
+      "capture_adjusted_ms_cycle": 13.992342553738318,
+      "cycles": 214,
+      "exact": true,
+      "fallbacks": [],
+      "ids": 240,
+      "marker_ms_cycle": 16.549250789719625,
+      "mtp_ar_ratio_pooled": 0.5873903808865713,
+      "mtp_tok_s_pooled": 63.658637345438734,
+      "native_trace_records": 150,
+      "pooled_acceptance": 0.07476635514018691,
+      "prompts": 10,
+      "proposal_ms_cycle": 1.2249469917015146,
+      "trace_records": 160,
+      "verify_ms_cycle": 15.309239115901118,
+      "visible_per_cycle": 1.1214953271028036
+    }
+  },
+  "model": {
+    "correctness_parent": "benchmarks/results/2026-07-19-w7900-paro-mtp-native-target-graph-n4-correctness.json",
+    "fingerprint": "1a4745ce8a8734324e62c14aa2545cb7cc1b8ea23a7489b05658f619cc1bdaac",
+    "path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16",
+    "quant": "w4_paro + mtp_bf16",
+    "size_bytes": 22176626792
+  },
+  "performance_claim": true,
+  "profile": {
+    "budget": 1,
+    "candidate_host_ms_delta_range": [
+      -0.09071456250000054,
+      0.1051280625000004
+    ],
+    "candidate_mean_cycle_host_ms": 16.4199045,
+    "candidate_mean_minus_control_ms": 0.007206750000001705,
+    "candidate_verify_ms_delta_range": [
+      -0.08381218749999952,
+      0.06571962499999984
+    ],
+    "control_cycle_host_ms": 16.41269775,
+    "decode_tokens": 24,
+    "mechanical_delta_per_pass": {
+      "api_calls": -5.0,
+      "graph_launches": 0.0,
+      "host_kernel_submissions": -2.0,
+      "kernels": -1.0,
+      "synchronizations": -1.0
+    },
+    "profiler": "rocprofv3 --kernel-trace --hip-runtime-trace --marker-trace on final child only",
+    "prompt": "code_lru_cache",
+    "require_cached_build": true,
+    "routes": {
+      "off": {
+        "accepted_lengths": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          1,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          1
+        ],
+        "exact_ar_match": true,
+        "raw_root": "/tmp/w7900-n4plus-commit-prof-off-43abe82e",
+        "regions": {
+          "cycle": {
+            "api_calls_per_pass": 80.6875,
+            "api_ms_per_pass": 15.722655375,
+            "hipGraphLaunch_calls_per_pass": 1.0,
+            "hipLaunchKernel_calls_per_pass": 36.1875,
+            "hipMemcpyAsync_calls_per_pass": 2.3125,
+            "hipMemcpy_calls_per_pass": 3.0,
+            "hipStreamSynchronize_calls_per_pass": 2.0,
+            "hipStreamSynchronize_ms_per_pass": 13.6296481875,
+            "host_ms_per_pass": 16.41269775,
+            "kernel_calls_per_pass": 1248.5,
+            "kernel_ms_per_pass": 11.143825875,
+            "windows": 16
+          },
+          "proposer_update": {
+            "api_calls_per_pass": 68.6875,
+            "api_ms_per_pass": 1.174212125,
+            "hipGraphLaunch_calls_per_pass": 0,
+            "hipLaunchKernel_calls_per_pass": 33.1875,
+            "hipMemcpyAsync_calls_per_pass": 1.3125,
+            "hipMemcpy_calls_per_pass": 1.0,
+            "hipStreamSynchronize_calls_per_pass": 0,
+            "hipStreamSynchronize_ms_per_pass": 0,
+            "host_ms_per_pass": 1.4753083125000002,
+            "kernel_calls_per_pass": 35.5,
+            "kernel_ms_per_pass": 1.2517105,
+            "windows": 16
+          },
+          "verify_pass": {
+            "api_calls_per_pass": 11.0,
+            "api_ms_per_pass": 14.5408719375,
+            "hipGraphLaunch_calls_per_pass": 1.0,
+            "hipLaunchKernel_calls_per_pass": 3.0,
+            "hipMemcpyAsync_calls_per_pass": 0,
+            "hipMemcpy_calls_per_pass": 2.0,
+            "hipStreamSynchronize_calls_per_pass": 2.0,
+            "hipStreamSynchronize_ms_per_pass": 13.6296481875,
+            "host_ms_per_pass": 14.9003639375,
+            "kernel_calls_per_pass": 1212.875,
+            "kernel_ms_per_pass": 9.891840375,
+            "windows": 16
+          }
+        },
+        "source": {
+          "bytes": 33876,
+          "path": "/tmp/w7900-n4plus-commit-prof-off-43abe82e.json",
+          "sha256": "734cca229fdd46b40a8229ec5216c89cb8845caa5ac968932475acd023848487"
+        }
+      },
+      "on": {
+        "accepted_lengths": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          1,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          1
+        ],
+        "exact_ar_match": true,
+        "raw_root": "/tmp/w7900-n4plus-commit-prof-on-43abe82e",
+        "regions": {
+          "cycle": {
+            "api_calls_per_pass": 75.6875,
+            "api_ms_per_pass": 15.682211,
+            "hipGraphLaunch_calls_per_pass": 1.0,
+            "hipLaunchKernel_calls_per_pass": 34.1875,
+            "hipMemcpyAsync_calls_per_pass": 2.3125,
+            "hipMemcpy_calls_per_pass": 3.0,
+            "hipStreamSynchronize_calls_per_pass": 1.0,
+            "hipStreamSynchronize_ms_per_pass": 13.72524875,
+            "host_ms_per_pass": 16.5178258125,
+            "kernel_calls_per_pass": 1247.5,
+            "kernel_ms_per_pass": 11.1256808125,
+            "windows": 16
+          },
+          "proposer_update": {
+            "api_calls_per_pass": 68.6875,
+            "api_ms_per_pass": 1.1273015,
+            "hipGraphLaunch_calls_per_pass": 0,
+            "hipLaunchKernel_calls_per_pass": 33.1875,
+            "hipMemcpyAsync_calls_per_pass": 1.3125,
+            "hipMemcpy_calls_per_pass": 1.0,
+            "hipStreamSynchronize_calls_per_pass": 0,
+            "hipStreamSynchronize_ms_per_pass": 0,
+            "host_ms_per_pass": 1.5071136875000002,
+            "kernel_calls_per_pass": 35.5,
+            "kernel_ms_per_pass": 1.24678825,
+            "windows": 16
+          },
+          "verify_pass": {
+            "api_calls_per_pass": 6.0,
+            "api_ms_per_pass": 14.546415625,
+            "hipGraphLaunch_calls_per_pass": 1.0,
+            "hipLaunchKernel_calls_per_pass": 1.0,
+            "hipMemcpyAsync_calls_per_pass": 0,
+            "hipMemcpy_calls_per_pass": 2.0,
+            "hipStreamSynchronize_calls_per_pass": 1.0,
+            "hipStreamSynchronize_ms_per_pass": 13.72524875,
+            "host_ms_per_pass": 14.9660835625,
+            "kernel_calls_per_pass": 1211.75,
+            "kernel_ms_per_pass": 9.8783600625,
+            "windows": 16
+          }
+        },
+        "source": {
+          "bytes": 33852,
+          "path": "/tmp/w7900-n4plus-commit-prof-on-43abe82e.json",
+          "sha256": "6d49be7a03c19879bc2a9d690a5a75e2e336956969c65a5963463279e9ae9ac3"
+        }
+      },
+      "on2": {
+        "accepted_lengths": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          1,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          1,
+          0,
+          1
+        ],
+        "exact_ar_match": true,
+        "raw_root": "/tmp/w7900-n4plus-commit-prof-on2-43abe82e",
+        "regions": {
+          "cycle": {
+            "api_calls_per_pass": 75.6875,
+            "api_ms_per_pass": 15.7158024375,
+            "hipGraphLaunch_calls_per_pass": 1.0,
+            "hipLaunchKernel_calls_per_pass": 34.1875,
+            "hipMemcpyAsync_calls_per_pass": 2.3125,
+            "hipMemcpy_calls_per_pass": 3.0,
+            "hipStreamSynchronize_calls_per_pass": 1.0,
+            "hipStreamSynchronize_ms_per_pass": 13.637222125,
+            "host_ms_per_pass": 16.3219831875,
+            "kernel_calls_per_pass": 1247.5,
+            "kernel_ms_per_pass": 11.153917625,
+            "windows": 16
+          },
+          "proposer_update": {
+            "api_calls_per_pass": 68.6875,
+            "api_ms_per_pass": 1.1715211875,
+            "hipGraphLaunch_calls_per_pass": 0,
+            "hipLaunchKernel_calls_per_pass": 33.1875,
+            "hipMemcpyAsync_calls_per_pass": 1.3125,
+            "hipMemcpy_calls_per_pass": 1.0,
+            "hipStreamSynchronize_calls_per_pass": 0,
+            "hipStreamSynchronize_ms_per_pass": 0,
+            "host_ms_per_pass": 1.4708774375,
+            "kernel_calls_per_pass": 35.5,
+            "kernel_ms_per_pass": 1.252463375,
+            "windows": 16
+          },
+          "verify_pass": {
+            "api_calls_per_pass": 6.0,
+            "api_ms_per_pass": 14.5364374375,
+            "hipGraphLaunch_calls_per_pass": 1.0,
+            "hipLaunchKernel_calls_per_pass": 1.0,
+            "hipMemcpyAsync_calls_per_pass": 0,
+            "hipMemcpy_calls_per_pass": 2.0,
+            "hipStreamSynchronize_calls_per_pass": 1.0,
+            "hipStreamSynchronize_ms_per_pass": 13.637222125,
+            "host_ms_per_pass": 14.81655175,
+            "kernel_calls_per_pass": 1211.875,
+            "kernel_ms_per_pass": 9.90115925,
+            "windows": 16
+          }
+        },
+        "source": {
+          "bytes": 33855,
+          "path": "/tmp/w7900-n4plus-commit-prof-on2-43abe82e.json",
+          "sha256": "bdf905dd9ed87349260222e9377e7b9db6965535e94d08b9ea9188870494539e"
+        }
+      }
+    },
+    "steady_state_skip": 2
+  },
+  "protocol": {
+    "candidate_budget": 1,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "chain_attn_mode": "c1_loop",
+    "decode_tokens_per_prompt": 24,
+    "gpu_accept": "production path (1) for suite/profile; validate for state audits",
+    "graph_mode": "auto",
+    "heldout_prompts": 4,
+    "matched_change": "HIPENGINE_PARO_NATIVE_SPEC_TARGET_COMMIT=1/0/1 only; HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH=1 in all arms",
+    "profile_command": "python3 scripts/mtp_verifier_rocprof.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 --prompt-tokens \"$(cat .../code_lru_cache/prompt-tokens.txt)\" --decode-tokens 24 --candidate-budget 1 --backend hip_gfx1100 --chain-attn-mode c1_loop --graph-mode auto --region cycle --steady-state-skip 2 --compiler-version-file /tmp/hipengine-mtp-w7900-hipcc-version.txt --raw-root /tmp/w7900-n4plus-commit-prof-{off,on,on2}-43abe82e --out /tmp/w7900-n4plus-commit-prof-{off,on,on2}-43abe82e.json",
+    "prompt_count": 10,
+    "prompt_render": "raw",
+    "prompt_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "runs_per_prompt_arm": 1,
+    "strict_env": {
+      "HIPENGINE_GDN_TLOOP_C1_EXACT": "1",
+      "HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS": "1",
+      "HIPENGINE_MTP_DRAFT_VOCAB_CAP": null,
+      "HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT": "1"
+    },
+    "suite_command": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_BACKEND=hip_gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-mtp-w7900-hipcc-version.txt HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH=1 HIPENGINE_PARO_NATIVE_SPEC_TARGET_COMMIT={1,0,1} HIPENGINE_GDN_TLOOP_C1_EXACT=1 HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS=1 HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT=1 HIPENGINE_VERIFY_GPU_ACCEPT=1 PYTHONPATH=. python3 scripts/mtp-bench.py --mode hipengine-current --prompts-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-tokens 24 --candidate-budgets 1 --runs 1 --prompt-render raw --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode c1_loop --graph-mode auto --engine-model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 --raw-root /tmp/w7900-n4plus-commit-{on1,off,on2}-b1-gpuaccept-43abe82e --out /tmp/w7900-n4plus-commit-{on1,off,on2}-b1-gpuaccept-43abe82e.json",
+    "train_prompts": 6,
+    "true_ar_path": "separate no-MTP Qwen35ParoResidentSession decode in each child"
+  },
+  "purpose": "Clean N4+ selected-state COMMIT|UPDATE_CURSORS correctness, matched complete/capture-adjusted wall, and cached final-child HIP API/kernel keep decision.",
+  "schema": 1,
+  "software": {
+    "base_publication_commit": "a96b34bc",
+    "compiler_version_file": "/tmp/hipengine-mtp-w7900-hipcc-version.txt",
+    "implementation_commit": "43abe82ee7094601a0fb3af0b0b71afe0e787e09",
+    "profile_attribution_commit": "036b7ba4",
+    "rocm": "HIP version: 7.2.53211-3d9ef42",
+    "tree_clean_during_retained_gpu_gates": true
+  },
+  "source_artifacts": {
+    "defaults_only_smoke": {
+      "bytes": 14012,
+      "path": "/tmp/w7900-n4plus-commit-default-green-d8.json",
+      "sha256": "7db49998197172bbb57a6ef7f3e7beefd23ad1359c2dc360a0b4e5cbfe3ec349"
+    },
+    "hidden_oracle": {
+      "bytes": 10444,
+      "path": "/tmp/w7900-n4plus-b2-layer0-hidden-4e9703be.json",
+      "sha256": "9bc3d941861315ed899f3391012bd80d78115bb46bff8036b0d9f7d7f0f3fdc9"
+    },
+    "profile_off": {
+      "bytes": 33876,
+      "path": "/tmp/w7900-n4plus-commit-prof-off-43abe82e.json",
+      "sha256": "734cca229fdd46b40a8229ec5216c89cb8845caa5ac968932475acd023848487"
+    },
+    "profile_on1": {
+      "bytes": 33852,
+      "path": "/tmp/w7900-n4plus-commit-prof-on-43abe82e.json",
+      "sha256": "6d49be7a03c19879bc2a9d690a5a75e2e336956969c65a5963463279e9ae9ac3"
+    },
+    "profile_on2": {
+      "bytes": 33855,
+      "path": "/tmp/w7900-n4plus-commit-prof-on2-43abe82e.json",
+      "sha256": "bdf905dd9ed87349260222e9377e7b9db6965535e94d08b9ea9188870494539e"
+    },
+    "state_b1_accepted": {
+      "bytes": 13222,
+      "path": "/tmp/w7900-n4plus-commit-b1-accepted-state-43abe82e.json",
+      "sha256": "00cb890e11d1d905d998d50df7e443fb8ffc0fb6120ef2d224a039de1d0c9ef9"
+    },
+    "state_b2": {
+      "bytes": 7047,
+      "path": "/tmp/w7900-n4plus-commit-b2-state-43abe82e.json",
+      "sha256": "0c7a2ca2ca4fbc732679caa28b2139195f4acdb2ad0165ae362a22c83e4fafe5"
+    },
+    "suite_off": {
+      "bytes": 44315,
+      "path": "/tmp/w7900-n4plus-commit-off-b1-gpuaccept-43abe82e.json",
+      "sha256": "09ce468ed7f36ee36043ba83b6fc9c73e03da34ffdfaa1231711fb901f4716a9"
+    },
+    "suite_on1": {
+      "bytes": 44303,
+      "path": "/tmp/w7900-n4plus-commit-on1-b1-gpuaccept-43abe82e.json",
+      "sha256": "c520c1781c7fcd2ddd7121d5e70417ef28458972c6063c6c73a14859a87b175e"
+    },
+    "suite_on2": {
+      "bytes": 44308,
+      "path": "/tmp/w7900-n4plus-commit-on2-b1-gpuaccept-43abe82e.json",
+      "sha256": "607e91bc0113b2a0d3dda8c02ef237cc7b51bd7089052048ba9b917875242738"
+    }
+  },
+  "speed_claim_eligible": false,
+  "status": "performance_improvement_retained",
+  "validation": {
+    "diff_check": "passed",
+    "host_tests": {
+      "command": "python3 -m pytest -q tests/test_native_spec_cycle.py tests/test_native_spec_cycle_graph.py tests/test_qwen35_resident_batch_layout.py tests/test_benchmark_readme_sync.py",
+      "failed": 0,
+      "passed": 196
+    },
+    "json_parse": "passed",
+    "py_compile": "passed",
+    "worklog_conflict_check": "passed"
+  }
+}

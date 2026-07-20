@@ -1,0 +1,118 @@
+{
+  "schema": 1,
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "date": "2026-07-20",
+  "purpose": "Attribute the remaining PARO N4+ complete-cycle provider windows before expanding NativeSpecCycle ownership.",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "gpu0_access": "exclusive"
+  },
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16",
+  "protocol": {
+    "prompt": "canonical code_lru_cache",
+    "decode_tokens": 24,
+    "candidate_budget": 1,
+    "proposal_impl": "persistent_device",
+    "chain_attn_mode": "c1_loop",
+    "graph_mode": "auto",
+    "native_spec_target_graph": true,
+    "steady_state_skip": 2,
+    "steady_windows": 16,
+    "exact_ar_match": true,
+    "accepted_lengths": [0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1],
+    "command": "python3 scripts/mtp_verifier_rocprof.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 --prompt-tokens \"$(cat .../code_lru_cache/prompt-tokens.txt)\" --decode-tokens 24 --candidate-budget 1 --backend hip_gfx1100 --chain-attn-mode c1_loop --graph-mode auto --region cycle --steady-state-skip 2 --compiler-version-file /tmp/hipengine-mtp-w7900-hipcc-version.txt --raw-root /tmp/w7900-n4plus-prof-on-4e9703be --out /tmp/w7900-n4plus-prof-on-4e9703be.json"
+  },
+  "complete_cycle_ms": {
+    "mean": 16.4176280625,
+    "median": 16.2352415,
+    "min": 16.12435,
+    "max": 16.940092
+  },
+  "nested_windows_ms": {
+    "proposer_draft": {
+      "mean": 0.0210846875,
+      "median": 0.020675,
+      "min": 0.01878,
+      "max": 0.027811
+    },
+    "verify_pass": {
+      "mean": 14.907778625,
+      "median": 14.907715,
+      "min": 14.841249,
+      "max": 14.995161
+    },
+    "proposer_update": {
+      "mean": 1.4725018125,
+      "median": 1.250885,
+      "min": 1.21818,
+      "max": 2.000042,
+      "kernel_ms_mean": 1.253076625,
+      "hip_api_calls_mean": 68.6875
+    },
+    "unmarked_cycle_residual_mean": 0.0162629375
+  },
+  "verify_attribution_ms": {
+    "metadata_upload_and_unpack": {
+      "mean": 0.1829954375,
+      "median": 0.177673,
+      "min": 0.160502,
+      "max": 0.248994
+    },
+    "target_graph_submit_and_sync": {
+      "mean": 14.2741076875,
+      "median": 14.274329,
+      "min": 14.220339,
+      "max": 14.361061
+    },
+    "accept_payload_and_host_summary": {
+      "mean": 0.080716875,
+      "median": 0.0794665,
+      "min": 0.068721,
+      "max": 0.118282
+    },
+    "selected_commit_and_cursor_tail": {
+      "mean": 0.369958625,
+      "median": 0.368056,
+      "min": 0.356026,
+      "max": 0.416277,
+      "linear_state_commit_kernel_ms_mean": 0.20077725,
+      "set_decode_position_kernel_ms_mean": 0.00164,
+      "post_commit_sync_ms_mean": 0.207703125,
+      "hip_api_sequence": [
+        "hipMemcpyAsync",
+        "hipLaunchKernel(linear_state_pair_commit_chunked_i32)",
+        "hipGetLastError",
+        "hipLaunchKernel(set_decode_position_i64)",
+        "hipGetLastError",
+        "hipStreamSynchronize"
+      ]
+    }
+  },
+  "decision": {
+    "next_boundary": "Capture PARO selected linear-state commit and device position/context update in the existing N4 target graph, then skip duplicate provider commit submissions and the second verifier synchronization on proven replays.",
+    "why": [
+      "The selected commit/cursor tail is 0.370 ms/cycle and is the largest non-model provider residual after the neutral N4+ adapter fix.",
+      "Its 0.201 ms linear-state copy kernel remains necessary, but graph ownership can remove two Python kernel submissions, the standalone position kernel, the second synchronization boundary, and approximately 0.169 ms/cycle of non-kernel tail.",
+      "B1 proposer draft is only 0.021 ms/cycle; proposer update is larger but 1.253/1.473 ms is device work and its repair semantics are provider-specific.",
+      "The target selected-state boundary is already represented by NativeSpecCycle COMMIT and UPDATE_CURSORS stages and can remain isolated from DFlash hidden/KV repair and gfx1151 admission."
+    ],
+    "expected_mechanical_change": {
+      "verify_syncs_per_pass": "2 -> 1",
+      "post_graph_host_kernel_submissions": "2 -> 0",
+      "non_kernel_tail_upper_bound_ms_per_cycle": 0.169181375
+    },
+    "promotion_rule": "Keep only if full canonical category+heldout IDs, state/KV/hidden/cursor oracles, matched complete wall, and cached final-child profiling are non-regressive."
+  },
+  "source": {
+    "profile_artifact": "/tmp/w7900-n4plus-prof-on-4e9703be.json",
+    "profile_artifact_sha256": "5c6fe431a686780f4bc8dc6d3cb80928f778360476bbff1b4152c8574152fd41",
+    "marker_trace": "/tmp/w7900-n4plus-prof-on-4e9703be/mtp-cycle-rocprof_marker_api_trace.csv",
+    "hip_api_trace": "/tmp/w7900-n4plus-prof-on-4e9703be/mtp-cycle-rocprof_hip_api_trace.csv",
+    "kernel_trace": "/tmp/w7900-n4plus-prof-on-4e9703be/mtp-cycle-rocprof_kernel_trace.csv",
+    "gate_commit": "4e9703be8790a05cae6c99685801a1abc5621350",
+    "implementation_commit": "64f80f83"
+  }
+}

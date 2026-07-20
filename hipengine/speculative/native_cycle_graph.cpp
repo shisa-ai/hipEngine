@@ -95,6 +95,17 @@ bool has_required_n2_pointers(const HipengineNativeSpecCycleControlV1* control) 
           control->state_hidden_seed_dst != 0);
 }
 
+bool has_required_provider_commit_pointers(
+    const HipengineNativeSpecCycleControlV1* control) {
+  return has_required_accept_pointers(control) &&
+         control->state_linear_state_rows != 0 &&
+         control->state_linear_state_dst != 0 &&
+         control->output_output_ids != 0 &&
+         control->output_output_lengths != 0 &&
+         control->output_last_positions != 0 &&
+         control->output_context_lengths != 0;
+}
+
 bool is_small_chain_target(const HipengineNativeSpecCycleControlV1* control) {
   constexpr uint32_t kN2Stages = HIPENGINE_NATIVE_SPEC_STAGE_VERIFY |
                                  HIPENGINE_NATIVE_SPEC_STAGE_ACCEPT |
@@ -131,14 +142,18 @@ bool is_small_chain_target(const HipengineNativeSpecCycleControlV1* control) {
 bool is_provider_chain_target(const HipengineNativeSpecCycleControlV1* control) {
   constexpr uint32_t kVerifyAcceptStages = HIPENGINE_NATIVE_SPEC_STAGE_VERIFY |
                                             HIPENGINE_NATIVE_SPEC_STAGE_ACCEPT;
+  constexpr uint32_t kCommitStages = kVerifyAcceptStages |
+                                     HIPENGINE_NATIVE_SPEC_STAGE_COMMIT |
+                                     HIPENGINE_NATIVE_SPEC_STAGE_UPDATE_CURSORS;
   const bool verify_only = control->stage_mask == HIPENGINE_NATIVE_SPEC_STAGE_VERIFY;
   const bool verify_accept = control->stage_mask == kVerifyAcceptStages;
+  const bool commit = control->stage_mask == kCommitStages;
   const uint32_t rows = control->row_count;
   const uint32_t candidates = rows >= 1 ? rows - 1 : 0;
   const bool supported_budget = candidates == 1 || candidates == 2 ||
                                 candidates == 3 || candidates == 4 ||
                                 candidates == 5 || candidates == 8;
-  return (verify_only || verify_accept) &&
+  return (verify_only || verify_accept || commit) &&
          control->mode == HIPENGINE_NATIVE_SPEC_MODE_CHAIN &&
          control->request_count == 1 &&
          control->request_capacity >= 1 &&
@@ -158,8 +173,10 @@ bool is_provider_chain_target(const HipengineNativeSpecCycleControlV1* control) 
          control->metadata_dtype == HIPENGINE_NATIVE_SPEC_DTYPE_INT32 &&
          (control->hidden_dtype == HIPENGINE_NATIVE_SPEC_DTYPE_FP16 ||
           control->hidden_dtype == HIPENGINE_NATIVE_SPEC_DTYPE_BF16) &&
+         (!commit || control->hidden_dtype == HIPENGINE_NATIVE_SPEC_DTYPE_FP16) &&
          control->kv_dtype == HIPENGINE_NATIVE_SPEC_DTYPE_BF16 &&
-         (!verify_accept || has_required_accept_pointers(control));
+         (!(verify_accept || commit) || has_required_accept_pointers(control)) &&
+         (!commit || has_required_provider_commit_pointers(control));
 }
 
 bool has_required_proposal_pointers(const HipengineNativeSpecCycleControlV1* control) {
