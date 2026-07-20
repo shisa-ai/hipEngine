@@ -93,6 +93,9 @@ def test_resident_session_honors_plugin_selected_bulk_default(
         weights=SimpleNamespace(config=SimpleNamespace(ssm_conv_kernel=4))
     )
     session.default_bulk_attention_mode = "bulk"
+    session._bulk_prefill_scratch = SimpleNamespace(
+        linear_qkv_f32=SimpleNamespace(ptr=0, nbytes=0)
+    )
     calls: list[str] = []
 
     def fake_bulk_prefill(self, token_ids, *, bulk_attention_mode, return_logits):
