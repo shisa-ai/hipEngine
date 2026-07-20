@@ -417,6 +417,12 @@ accept/commit metadata, and scheduler-facing results.
    PARO/DFlash cycle ownership and independent gfx1100/gfx1151 promotion gates
    remain open. See the
    [`selected-commit packet`](../benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-selected-commit.json).
+   The follow-up proposer profile records **1.471 ms host / 1.252 ms kernel** per
+   update; accepted rows add one **0.635 ms** no-result repair advance. The first
+   selected tuning target is the model-general serial 256x8 router topk kernel
+   (**0.153 ms/cycle**), not broader graph ownership while context/KV metadata
+   remain host-valued. See the
+   [`proposer residuals`](../benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-proposer-update-residuals.json).
 8. **N5 — Multi-cycle option:** only after N3/N4 are exact, allow the native
    launcher to continue until EOS, cancellation/deadline, output-buffer limit,
    or an explicit scheduler yield point.

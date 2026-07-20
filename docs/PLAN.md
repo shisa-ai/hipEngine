@@ -602,7 +602,13 @@ Current blockers that keep project-wide c>N incomplete:
   **16.413 ms** control (mean +0.007 ms, neutral) while mechanically reducing
   HIP APIs **80.6875 -> 75.6875**, synchronizations **2 -> 1**, host launches
   **36.1875 -> 34.1875**, and kernels **1248.5 -> 1247.5**. This admits selected
-  commit inside explicit N4 without a global N4/AR speed claim. The initial model-
+  commit inside explicit N4 without a global N4/AR speed claim. The next clean
+  profile decomposes provider update at **1.471 ms host / 1.252 ms kernel**:
+  accepted B1 rows add a **0.635 ms** no-result repair advance, while the general
+  one-thread 256-expert router top8+softmax alone costs **0.153 ms/cycle / 116.4
+  us/call**. Optimize that exact-oracle-covered kernel before broadening proposer
+  graph ownership; dynamic context/KV slot metadata and the bounded next-token
+  D2H still block a stable reusable graph. The initial model-
   incompatibility diagnosis was also wrong; a wider verifier t-loop had failed
   to forward the exact shared-expert control, and its repair did not change model
   bytes. Complete PARO proposal ownership, DFlash proposal/hidden/KV commit
