@@ -1009,24 +1009,21 @@ def _stream_route_summary(
     paro_native_path = "paro_resident_native_width_decode"
     paro_serial_path = "paro_resident_serial_decode"
     if paths and set(paths).issubset({paro_native_path, paro_serial_path}):
-        records_consistent = all(
-            (
-                record.get("execution_path") == paro_native_path
-                and record.get("serial_decode_fallback") is False
-                and record.get("native_caware_decode") is True
-            )
-            or (
+        if int(concurrency) == 1:
+            records_consistent = all(
                 record.get("execution_path") == paro_serial_path
                 and record.get("serial_decode_fallback") is True
                 and record.get("native_caware_decode") is False
+                for record in records
             )
-            for record in records
-        )
-        topology_valid = (
-            paths == [paro_serial_path]
-            if int(concurrency) == 1
-            else paro_native_path in paths
-        )
+            topology_valid = paths == [paro_serial_path]
+        else:
+            records_consistent = all(
+                isinstance(record.get("serial_decode_fallback"), bool)
+                and record.get("native_caware_decode") is True
+                for record in records
+            )
+            topology_valid = paro_native_path in paths
         return {
             "passed": bool(records) and records_consistent and topology_valid,
             "route_policy": "paro_occupancy_adaptive",
