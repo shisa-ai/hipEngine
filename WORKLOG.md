@@ -168895,3 +168895,45 @@ Published compact artifact:
 `benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-selected-commit.json`,
 31,360 bytes, SHA-256
 `683888115f4ec5e1431bf232677e5cd55b2aa3ed9370978a6f0eb3a751e0999f`.
+
+## 2026-07-20 — Repair GGUF reused-session prefill lifecycle
+
+The gfx1151 fair-prefill optimization exposed two pre-existing lifecycle bugs in
+`continuous_fixed`, where a retired session is reused while other physical rows
+remain live. First, one-chunk full prefill called the raw cache-base path for a
+reused dynamic-KV allocation whose first physical page had a non-zero backing
+chunk offset. That could overwrite another live row's KV and later return the
+invalid GPU argmax sentinel `2147483647`. Full prefill now retains the eager raw
+path only for identity/base-zero allocations and sends shifted or fragmented
+allocations through the existing block-table-aware packed prefill path. Second,
+idempotent `prepare(562)` no longer interprets an empty available list at full
+occupancy as an unprepared pool; an unchanged size with active rows is already
+prepared.
+
+Focused RED/GREEN coverage:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/test_generation_qwen35_gguf_sampling.py::test_gguf_resident_prepare_is_idempotent_at_full_occupancy \
+  tests/test_generation_qwen35_gguf_sampling.py::test_gguf_resident_full_prefill_rebases_reused_dynamic_kv_through_packed_path \
+  -q --tb=short
+```
+
+The real cached gfx1151 Q4_K_M/BF16-KV staggered workload then completed **12/12
+exact rows**, reclaimed request IDs 0-11, ended with zero pending/active/buffered
+requests, and reported no fallback. The final pressure-policy run uses the same
+repair and confirms the lifecycle boundary independently:
+
+```bash
+.venv/bin/python scripts/gguf_production_load_gate.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1151 --workloads continuous_fixed --skip-tuning \
+  --initial-policy fair --initial-prefill-chunk-tokens 256 \
+  --compiler-version-file /tmp/hipengine-gfx1151-f4-hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/gfx1151-pressure-burst-continuous-fixed.json
+```
+
+The focused invocation exits 1 only because it intentionally omits the other
+production-matrix workloads; `workloads.continuous_fixed.passed=true`, with all
+correctness, ownership, route, memory, and SLO checks green.
