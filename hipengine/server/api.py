@@ -1031,6 +1031,7 @@ def _tools_capability(*, tokenizer_backed: bool) -> dict[str, Any]:
         "format": "qwen_tool_call_json",
         "compatibility_parser_repairs": [
             "duplicated_tool_call_start",
+            "incomplete_duplicate_tool_prefix_control_residue",
             "outer_qwen_template_control_residue",
         ],
         "malformed_json_compatibility": "invalid_tool_call_when_tools_enabled",
@@ -12441,6 +12442,19 @@ def _strip_chat_template_terminal_edges(text: str) -> str:
     return stripped
 
 
+def _is_incomplete_duplicate_tool_prefix_control_residue(text: str, *, tool_name: str) -> bool:
+    """Return whether text is an unfinished duplicate prefix plus Qwen controls."""
+
+    residue = str(text).strip()
+    prefix = _tool_call_name_prefix_text(tool_name)
+    if not residue.startswith(prefix):
+        return False
+    residue = residue[len(prefix) :].lstrip()
+    if residue.startswith("{"):
+        residue = residue[1:].lstrip()
+    return _is_chat_template_control_residue(residue)
+
+
 def _parse_chat_tool_calls(text: str) -> _ParsedChatOutput:
     calls: list[_ParsedToolCall] = []
     text_parts: list[str] = []
@@ -12457,7 +12471,13 @@ def _parse_chat_tool_calls(text: str) -> _ParsedChatOutput:
             return _ParsedChatOutput(text="", tool_calls=(parsed,))
     visible_text = "".join(text_parts).strip()
     if calls:
-        visible_text = _strip_chat_template_terminal_edges(visible_text)
+        if _is_incomplete_duplicate_tool_prefix_control_residue(
+            visible_text,
+            tool_name=calls[0].name,
+        ):
+            visible_text = ""
+        else:
+            visible_text = _strip_chat_template_terminal_edges(visible_text)
     return _ParsedChatOutput(text=visible_text, tool_calls=tuple(calls))
 
 

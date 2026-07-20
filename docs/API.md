@@ -736,8 +736,13 @@ counts and hashes, without raw reasoning or answer text.
 recovers a common duplicated-start form,
 `<tool_call><tool_call>{...}</tool_call>`, when the inner JSON is otherwise a
 valid tool call, and removes an otherwise-empty outer Qwen template-control
-residue after a valid call. The manifest reports both under
-`features.tools.compatibility_parser_repairs`. Tool-enabled requests fail closed
+residue after a valid call. It also removes an unfinished canonical
+`<tool_call>{"name":"...","arguments":` duplicate prefix before a later valid
+call for the same tool only when the remaining text contains at most one
+unmatched argument-object opener followed entirely by recognized Qwen controls
+and role labels. Ordinary or mismatched content is preserved. The manifest
+reports these repairs under `features.tools.compatibility_parser_repairs`.
+Tool-enabled requests fail closed
 on unparseable `<tool_call>` markup, reported as
 `features.tools.malformed_json_compatibility =
 "invalid_tool_call_when_tools_enabled"`. Strict validation uses the same

@@ -681,3 +681,26 @@ Final request/session/KV/graph/workspace ownership is zero. The next correctness
 unit is an envelope-scoped incomplete-duplicate-prefix repair after a valid
 call parses, with ordinary-content and interior-literal guards. C4/C8 and any
 prefix/routing performance work remain closed.
+
+## 2026-07-20 — Strip incomplete duplicate forced-prefix residue
+
+The exact 63-ID A1 turn-0 response is now a blocking and SSE regression. After a
+later valid tool block parses, public cleanup discards an earlier incomplete
+canonical `<tool_call>{"name":"...","arguments":` prefix only when its tool
+name exactly matches the first parsed call and the remainder contains optional
+whitespace, at most one unmatched `{`, and otherwise only recognized Qwen
+controls/role labels. The check runs on the original remainder before generic
+edge cleanup.
+
+This does not repair arguments or reinterpret malformed-only output. Ordinary
+text before the prefix, a mismatched tool name, interior literal markers, and an
+incomplete prefix without a later valid call are all preserved or rejected by
+their previous fail-closed routes. Blocking and SSE share the parser, and the
+capability manifest advertises
+`incomplete_duplicate_tool_prefix_control_residue`.
+
+The exact blocking/SSE tests fail before the implementation and pass afterward;
+ordinary, mismatched-name, literal-marker, and malformed-only guards pass. The
+final **510-test server** and **142-test agentic/config** gates are green. No GPU
+result or performance claim changed. Next: rerun the clean W7900 deterministic
+A1 packet before opening any performance lane.
