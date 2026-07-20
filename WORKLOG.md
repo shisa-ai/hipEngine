@@ -170131,3 +170131,27 @@ threads, grid `16384x64`, **96 VGPR**, 128 SGPR, **520 B LDS**, zero scratch;
 profile median **213.320 us** / total **0.638559 ms** are diagnostic. Focused
 validation is **91 selected-T16 GPU tests** plus **49 routing/stage/backend
 tests**.
+
+### Clean F3F direct retention and automatic-route trace
+
+Committed implementation as `c843f836`, then ran detached-clean publication at
+that exact commit. Clean p512/d128 physical-C8 samples are
+**151.014767/151.094489/150.821935 tok/s**, median **151.014767**. This is
+**+0.1714%** over clean F3E **150.756329** and **+12.8219%** over the
+pre-selected-reuse F3B **133.852312**. Stdev/median is **0.0928%** and all
+trajectories repeat exactly. The 1,024-token window is **6.780794 s**, saving
+**11.624 ms** versus F3E and **869.429 ms** versus F3B. Raw SHA-256 is
+`a2e4500961251aee8abbcb8c47ee099e83c45b2dd6f7b051b640ffa4315f27aa`.
+
+Clean cached-only automatic tracing passes exact token/final state and confirms
+**3** Q6 pair-reuse launches at 128 threads, grid `16384x64`, 96 VGPR, 520 B
+LDS, and zero scratch. Profile median **216.405 us** / total **0.650537 ms**
+remain diagnostic. Results DB SHA-256 is
+`b806fad5e9809b556564db627d4c70743279869457aa32ba4f4a03c6a65cc4cb`.
+
+Published compact artifact
+`benchmarks/results/2026-07-20-gfx1151-gguf-q6t16-selected-down-pairreuse-c8-retained.json`
+(6,975 bytes, SHA-256
+`16a5506d09e7d4622a51142a0ab3c21d24d31fe3b5da1c5e8c8a361edf14d1a5`).
+The retained performance claim is clean direct C8; server evidence remains an
+exact/non-regressive source-equivalent diagnostic.
