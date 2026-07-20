@@ -602,7 +602,16 @@ Current blockers that keep project-wide c>N incomplete:
   **16.413 ms** control (mean +0.007 ms, neutral) while mechanically reducing
   HIP APIs **80.6875 -> 75.6875**, synchronizations **2 -> 1**, host launches
   **36.1875 -> 34.1875**, and kernels **1248.5 -> 1247.5**. This admits selected
-  commit inside explicit N4 without a global N4/AR speed claim. The initial model-
+  commit inside explicit N4 without a global N4/AR speed claim. The next exact
+  kernel gate replaces the one-thread 256-expert router top8 with deterministic
+  256-thread reduction: matched micro-rocprof improves **94.516 -> 5.395
+  us/call**, while clean full-suite complete wall improves **16.202 ->
+  15.919/15.951 ms/cycle**, proposer update **1.222 -> 1.107/1.106**, and MTP
+  throughput **65.188 -> 66.303/66.259 tok/s** with three x 240 IDs/214 cycles/16
+  accepts unchanged and every category capture-adjusted-positive. Final-child
+  tracing confirms router **115.948 -> 10.741 us/call** and proposer host
+  **1.465 -> 1.328 ms**. Dynamic context/KV slot metadata and the bounded
+  next-token D2H still block a stable reusable graph. The initial model-
   incompatibility diagnosis was also wrong; a wider verifier t-loop had failed
   to forward the exact shared-expert control, and its repair did not change model
   bytes. Complete PARO proposal ownership, DFlash proposal/hidden/KV commit

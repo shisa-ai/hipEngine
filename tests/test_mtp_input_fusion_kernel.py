@@ -230,11 +230,11 @@ def test_mtp_decoder_helper_kernels_match_cpu_reference() -> None:
 def test_mtp_router_topk_softmax_matches_generic_topk_path() -> None:
     rng = np.random.default_rng(12345)
     logits = rng.normal(loc=0.0, scale=1.0, size=(1, 256)).astype(np.float32)
-    # Tie values prove the fused path keeps the generic lower-index tiebreak.
-    logits[0, 5] = np.float32(7.0)
-    logits[0, 17] = np.float32(7.0)
-    logits[0, 63] = np.float32(6.5)
-    logits[0, 64] = np.float32(6.5)
+    # More than top_k equal maxima straddle every wave32 boundary. This proves
+    # repeated parallel selection masks prior winners and preserves the generic
+    # lower-index tiebreak across waves.
+    tied_maxima = (0, 31, 32, 63, 64, 95, 96, 127, 128, 159, 160, 191)
+    logits[0, list(tied_maxima)] = np.float32(7.0)
     top_k = 8
     generic_values = np.zeros((1, top_k), dtype=np.float32)
     generic_ids = np.zeros((1, top_k), dtype=np.int32)
@@ -279,8 +279,7 @@ def test_mtp_router_topk_softmax_matches_generic_topk_path() -> None:
     assert np.array_equal(fused_ids, generic_ids)
     assert np.array_equal(fused_values, generic_values)
     assert np.array_equal(fused_routing, generic_routing)
-    assert fused_ids[0, 0] == 5
-    assert fused_ids[0, 1] == 17
+    assert fused_ids[0].tolist() == list(tied_maxima[:top_k])
 
 
 @pytest.mark.skipif(not _hip_available(), reason="ROCm runtime not available")
