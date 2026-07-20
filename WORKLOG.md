@@ -169736,3 +169736,100 @@ ruff check hipengine/benchmark/agentic_live.py hipengine/generation/registry.py 
 No GPU run or benchmark result was retained. Next: commit this API/collector
 unit, launch the viable W7900 4K/c1 cache-off server, run A6 quality, and rerun
 A1 deterministic collection with the quality/performance lanes kept separate.
+
+## 2026-07-20 — Measure W7900 A6 quality and block A1 before timing
+
+Ran the clean `4d01f89722b5b61f75e9717491f9a5a383a0e5eb` W7900/gfx1100
+Qwen3.6-35B-A3B UD-Q4_K_M server at the viable 4K/c1 cache-off shape. The
+server passed the full 4,095-position startup scratch probe and readiness in
+79.424736 seconds; readiness reported 25,176,309,760 bytes (23.447266 GiB)
+used and 23,125,295,104 bytes (21.537109 GiB) free, with zero active queue,
+session, and KV ownership before collection.
+
+Server command:
+
+```bash
+HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
+HIPENGINE_GENERATION_BATCH_WINDOW_MS=0 \
+HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 \
+HIPENGINE_GGUF_GDN_PREFILL_MODE=exact \
+HIPENGINE_GGUF_AR_STREAM_DECODE=0 \
+HIPENGINE_GGUF_AR_PACKED_DECODE=1 \
+HIPENGINE_MAX_PREFILL_CHUNK_TOKENS=256 \
+python3 -m hipengine.server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --served-model-name Qwen3.6-35B-A3B \
+  --max-context-tokens 4096 --max-active-requests 1 \
+  --prefix-cache off --metrics prometheus --eager-load \
+  --host 127.0.0.1 --port 8100
+```
+
+A6 command and result:
+
+```bash
+HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
+python3 scripts/agentic_coding_quality.py \
+  --base-url http://127.0.0.1:8100/v1 \
+  --model Qwen3.6-35B-A3B --backend hip_gfx1100 \
+  --workload small_repo --concurrency 1 --runs 1 \
+  --cache-mode off --max-tokens 128 \
+  --records-json /tmp/agentic-small-c1-quality-records.json \
+  --json /tmp/agentic-small-c1-quality.json
+# A6 quality collected: 0/4 successful tool turns (0.0%)
+```
+
+The four independent natural attempts contain 274 exact response-owned IDs.
+Turns 0 and 2 select the correct tool and exact arguments but publish Qwen
+role/EOT residue beside the tool call, so both score
+`content_alongside_tool_call`; turns 1 and 3 score `invalid_tool_call`. All
+request/session/KV/graph/workspace ownership is zero after collection. This is
+quality-only evidence with `performance_claim=false`, no timing/goodput fields,
+and no broad quality claim. The copied artifact is
+`benchmarks/results/2026-07-20-w7900-agentic-a6-small-c1-quality.json`
+(SHA-256 `4245dded403ba1afecc6838bc7b53a545d8669fd963f34517db6fd757b6711c0`).
+
+A1 command and result:
+
+```bash
+HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
+python3 scripts/agentic_coding_live.py \
+  --base-url http://127.0.0.1:8100/v1 \
+  --model Qwen3.6-35B-A3B --backend hip_gfx1100 \
+  --workload small_repo --concurrency 1 --runs 1 \
+  --cache-mode off --max-tokens 128 \
+  --records-json /tmp/agentic-small-c1-records.json \
+  --json /tmp/agentic-small-c1-a1.json
+# live agentic benchmark rejected: oracle did not finish with tool_calls
+```
+
+The collector accepted turn 0's blocking oracle and measured SSE. A focused
+normalization check confirms 2,504 prompt IDs, 32 exact generated IDs,
+`generated_token_ids_source=response`, `sse_exact_ids_observed=true`, exact
+`read(path="pyproject.toml", mode="summary")`, `finish_reason=tool_calls`, and
+`token_timing_mode=buffered_public`. The turn-1 independent blocking oracle then
+failed to produce a valid forced `grep` envelope, so the collector stopped
+before that measured SSE interval. It emitted no partial records or A1 artifact,
+and no latency/tok/s/goodput number is retained. The machine-readable blocked
+packet is
+`benchmarks/results/2026-07-20-w7900-agentic-a1-small-c1-blocked.json`.
+
+This closes the SSE ID-provenance blocker but not A1. The next correctness unit
+is a model-general constrained strict-tool JSON path or equivalent tool-envelope
+repair. It must not force fixture-specific IDs or expected arguments. Rerun the
+complete c1 workload before prefix/routing A/B; solve C4/C8 startup capacity
+separately.
+
+Validation after publishing the evidence:
+
+```bash
+python3 -m pytest -q tests/test_agentic_coding_quality.py \
+  tests/test_agentic_coding_live.py tests/test_agentic_coding_benchmark.py
+# 18 passed
+python3 -m json.tool \
+  benchmarks/results/2026-07-20-w7900-agentic-a6-small-c1-quality.json >/dev/null
+python3 -m json.tool \
+  benchmarks/results/2026-07-20-w7900-agentic-a1-small-c1-blocked.json >/dev/null
+cmp -s /tmp/agentic-small-c1-quality.json \
+  benchmarks/results/2026-07-20-w7900-agentic-a6-small-c1-quality.json
+# exact copy
+```
