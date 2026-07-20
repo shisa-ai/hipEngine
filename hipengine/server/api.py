@@ -73,6 +73,7 @@ _GRAPH_KERNEL_TIME_HISTOGRAM_BUCKET_SET = frozenset(GRAPH_KERNEL_TIME_HISTOGRAM_
 _THINKING_CLOSE_MARKER = "</think>"
 _TOOL_CALL_START_MARKER = "<tool_call>"
 _TOOL_CALL_END_MARKER = "</tool_call>"
+_CHAT_TEMPLATE_TERMINAL_MARKERS = ("<|im_end|>",)
 _TOOL_CALL_ARGUMENT_STREAM_CHARS = 128
 _CHAT_MESSAGE_ROLES = ("assistant", "developer", "system", "tool", "user")
 _CHAT_MESSAGE_ROLE_SET = frozenset(_CHAT_MESSAGE_ROLES)
@@ -12357,6 +12358,22 @@ def _valid_tool_call_blocks(text: str) -> tuple[_ToolCallBlock, ...]:
     return tuple(blocks)
 
 
+def _strip_chat_template_terminal_edges(text: str) -> str:
+    """Remove repeated chat-template terminals only at parsed tool envelope edges."""
+
+    stripped = str(text).strip()
+    while stripped:
+        previous = stripped
+        for marker in _CHAT_TEMPLATE_TERMINAL_MARKERS:
+            if stripped.startswith(marker):
+                stripped = stripped[len(marker) :].lstrip()
+            if stripped.endswith(marker):
+                stripped = stripped[: -len(marker)].rstrip()
+        if stripped == previous:
+            break
+    return stripped
+
+
 def _parse_chat_tool_calls(text: str) -> _ParsedChatOutput:
     calls: list[_ParsedToolCall] = []
     text_parts: list[str] = []
@@ -12371,7 +12388,10 @@ def _parse_chat_tool_calls(text: str) -> _ParsedChatOutput:
         parsed = _parsed_tool_call_from_json(stripped, raw_text=stripped)
         if parsed is not None:
             return _ParsedChatOutput(text="", tool_calls=(parsed,))
-    return _ParsedChatOutput(text="".join(text_parts).strip(), tool_calls=tuple(calls))
+    visible_text = "".join(text_parts).strip()
+    if calls:
+        visible_text = _strip_chat_template_terminal_edges(visible_text)
+    return _ParsedChatOutput(text=visible_text, tool_calls=tuple(calls))
 
 
 def _parsed_tool_call_from_block_body(raw: str, *, raw_text: str = "") -> _ParsedToolCall | None:

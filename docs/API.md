@@ -1,6 +1,6 @@
 # OpenAI-Compatible Server API
 
-Last updated: 2026-07-13
+Last updated: 2026-07-20
 
 hipEngine ships a thin FastAPI layer that adapts OpenAI-style requests to the
 torch-free `hipengine.LLM.generate()` library API. Server dependencies are
@@ -657,7 +657,10 @@ emit tool calls as:
 
 The server converts those blocks to OpenAI-compatible `message.tool_calls` in
 non-streaming responses or `delta.tool_calls` chunks in streaming responses, with
-`finish_reason: "tool_calls"`. Long streaming `function.arguments` strings are
+`finish_reason: "tool_calls"`. After a tool block parses, repeated Qwen
+`<|im_end|>` template terminals are removed only from the outer edges of the
+remaining assistant text; legitimate interior literal text is preserved, and
+non-tool outputs are unchanged. Long streaming `function.arguments` strings are
 split into concatenable fragments after the full tool-call block has been parsed
 and validated; the first chunk carries the function name, and all chunks carry
 the same tool-call id and index. Buffered c>N streams can preserve backend

@@ -13214,6 +13214,80 @@ def test_chat_completion_returns_openai_tool_calls() -> None:
     assert "<tools>" in fake.calls[0][0][0]
 
 
+def test_chat_completion_strips_qwen_terminal_residue_around_tool_call() -> None:
+    fake = FakeLLM(
+        outputs=[
+            '<|im_end|><tool_call>{"name":"read","arguments":{"path":"README.md"}}'
+            '</tool_call><|im_end|><|im_end|>'
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read the readme"}],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "description": "Read a file",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "tool_calls"
+    assert choice["message"]["content"] == ""
+    tool_call = choice["message"]["tool_calls"][0]
+    assert tool_call["function"]["name"] == "read"
+    assert json.loads(tool_call["function"]["arguments"]) == {"path": "README.md"}
+    assert "<|im_end|>" not in response.text
+
+
+def test_chat_completion_terminal_cleanup_preserves_interior_literal_content() -> None:
+    fake = FakeLLM(
+        outputs=[
+            '<|im_end|>Keep <|im_end|> literal. '
+            '<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>'
+            '<|im_end|>'
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read the readme"}],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "description": "Read a file",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "tool_calls"
+    assert choice["message"]["content"] == "Keep <|im_end|> literal."
+    assert choice["message"]["tool_calls"][0]["function"]["name"] == "read"
+
+
 def test_chat_completion_preserves_reasoning_with_openai_tool_call() -> None:
     fake = FakeLLM(
         outputs=['<think>need file</think><tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>']
@@ -15085,6 +15159,58 @@ def test_streaming_chat_completion_returns_tool_call_deltas() -> None:
         tool_call_tokens=1,
         phase="tool_call",
     )
+
+
+def test_streaming_chat_completion_strips_qwen_terminal_residue_around_tool_call() -> None:
+    fake = FakeLLM(
+        outputs=["should-not-buffer"],
+        stream_chunks=[
+            '<|im_end|><tool_call>{"name":"bash","arguments":{"command":"pwd"}}'
+            '</tool_call><|im_end|><|im_end|>'
+        ],
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "run pwd"}],
+            "stream": True,
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "description": "Run a command",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert "<|im_end|>" not in response.text
+    payloads = _sse_payloads(response.text)
+    content = "".join(
+        payload["choices"][0]["delta"].get("content", "")
+        for payload in payloads
+        if payload.get("choices")
+    )
+    assert content == ""
+    tool_choice = next(
+        payload["choices"][0]
+        for payload in payloads
+        if payload["choices"][0]["delta"].get("tool_calls")
+    )
+    _assert_openai_stream_tool_call_delta_shape(
+        tool_choice,
+        name="bash",
+        arguments={"command": "pwd"},
+    )
+    assert payloads[-1]["choices"][0]["finish_reason"] == "tool_calls"
 
 
 def test_streaming_chat_completion_parses_tool_call_after_literal_marker_text() -> None:
