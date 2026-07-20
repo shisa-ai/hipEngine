@@ -32,6 +32,9 @@ _SYMBOL_IQ4_GROUPED_DUAL = (
 _SYMBOL_IQ4_GROUPED_SINGLE = (
     "hipengine_gguf_iq4_xs_selected_grouped_prefill_compact_bf16_bf16_out"
 )
+_SYMBOL_IQ4_GROUPED_SINGLE_K512_WAVE32 = (
+    "hipengine_gguf_iq4_xs_selected_grouped_prefill_compact_k512_wave32_bf16_bf16_out"
+)
 _SYMBOL_IQ3_WMMA_DUAL = (
     "hipengine_gguf_iq3_xxs_selected_dual_wmma_prefill_compact_bf16_bf16_out"
 )
@@ -202,6 +205,93 @@ def gguf_iq4_xs_selected_grouped_prefill_compact_bf16_bf16_out(
         ctypes.c_void_p(stream),
     )
     _check_launch(runtime, err)
+
+
+def gguf_iq4_xs_selected_grouped_prefill_compact_k512_wave32_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    qweight_ptr: int,
+    out_ptr: int,
+    *,
+    compact_rows: int,
+    in_features: int,
+    out_features: int,
+    num_experts: int,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _validate_common(
+        compact_rows=compact_rows,
+        in_features=in_features,
+        out_features=out_features,
+        num_experts=num_experts,
+    )
+    if in_features != 512:
+        raise ValueError("in_features must be exactly 512 for grouped IQ4 wave32")
+    library = library or build_gguf_iq_selected_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_IQ4_GROUPED_SINGLE_K512_WAVE32)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(expert_start_compact_ptr),
+        ctypes.c_void_p(qweight_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(compact_rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_int64(num_experts),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def gguf_iq4_xs_selected_grouped_prefill_compact_auto_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    qweight_ptr: int,
+    out_ptr: int,
+    *,
+    compact_rows: int,
+    in_features: int,
+    out_features: int,
+    num_experts: int,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Select wave32 at K=512 and retain local128 for general shapes."""
+
+    fn = (
+        gguf_iq4_xs_selected_grouped_prefill_compact_k512_wave32_bf16_bf16_out
+        if in_features == 512
+        else gguf_iq4_xs_selected_grouped_prefill_compact_bf16_bf16_out
+    )
+    fn(
+        x_ptr,
+        expert_start_compact_ptr,
+        qweight_ptr,
+        out_ptr,
+        compact_rows=compact_rows,
+        in_features=in_features,
+        out_features=out_features,
+        num_experts=num_experts,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
 
 
 def gguf_iq3_xxs_selected_dual_wmma_prefill_compact_bf16_bf16_out(
@@ -524,6 +614,16 @@ def register_gguf_iq_selected_prefill_kernels(*, replace: bool = True) -> None:
         ),
         (
             "gguf_iq4_xs",
+            "selected_grouped_prefill_compact_k512_wave32_bf16_bf16_out",
+            gguf_iq4_xs_selected_grouped_prefill_compact_k512_wave32_bf16_bf16_out,
+        ),
+        (
+            "gguf_iq4_xs",
+            "selected_grouped_prefill_compact_auto_bf16_bf16_out",
+            gguf_iq4_xs_selected_grouped_prefill_compact_auto_bf16_bf16_out,
+        ),
+        (
+            "gguf_iq4_xs",
             "selected_wmma_prefill_compact_bf16_bf16_out",
             gguf_iq4_xs_selected_wmma_prefill_compact_bf16_bf16_out,
         ),
@@ -544,7 +644,9 @@ __all__ = [
     "gguf_iq3_xxs_selected_dual_wmma_prefill_compact_bf16_bf16_out",
     "gguf_iq4_xs_selected_dual_grouped_prefill_compact_bf16_bf16_out",
     "gguf_iq4_xs_selected_dual_wmma_prefill_compact_bf16_bf16_out",
+    "gguf_iq4_xs_selected_grouped_prefill_compact_auto_bf16_bf16_out",
     "gguf_iq4_xs_selected_grouped_prefill_compact_bf16_bf16_out",
+    "gguf_iq4_xs_selected_grouped_prefill_compact_k512_wave32_bf16_bf16_out",
     "gguf_iq4_xs_selected_wmma_prefill_compact_bf16_bf16_out",
     "plan_gguf_iq_selected_prefill_build",
     "register_gguf_iq_selected_prefill_kernels",

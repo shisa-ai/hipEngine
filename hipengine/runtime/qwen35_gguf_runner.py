@@ -5588,7 +5588,7 @@ _COMPACT_MOE_IQ_GROUPED_DOWN_KEYS = {
         "hip_gfx1100",
         "moe_linear",
         "gguf_iq4_xs",
-        "selected_grouped_prefill_compact_bf16_bf16_out",
+        "selected_grouped_prefill_compact_auto_bf16_bf16_out",
     )
 }
 _COMPACT_MOE_Q4_DUAL_KEYS = {

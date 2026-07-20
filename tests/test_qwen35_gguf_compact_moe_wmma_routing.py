@@ -358,7 +358,7 @@ def _patch_iq_compact_registry(
         "hip_gfx1100",
         "moe_linear",
         down_quant,
-        "selected_grouped_prefill_compact_bf16_bf16_out",
+        "selected_grouped_prefill_compact_auto_bf16_bf16_out",
     )
 
     def fake_gate_up(*args, **kwargs):

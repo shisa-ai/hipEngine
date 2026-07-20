@@ -37,7 +37,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_iq_selected_prefill import (
     gguf_iq3_xxs_selected_dual_wmma_prefill_compact_bf16_bf16_out,
     gguf_iq4_xs_selected_dual_grouped_prefill_compact_bf16_bf16_out,
     gguf_iq4_xs_selected_dual_wmma_prefill_compact_bf16_bf16_out,
+    gguf_iq4_xs_selected_grouped_prefill_compact_auto_bf16_bf16_out,
     gguf_iq4_xs_selected_grouped_prefill_compact_bf16_bf16_out,
+    gguf_iq4_xs_selected_grouped_prefill_compact_k512_wave32_bf16_bf16_out,
     gguf_iq4_xs_selected_wmma_prefill_compact_bf16_bf16_out,
     plan_gguf_iq_selected_prefill_build,
 )
@@ -247,6 +249,13 @@ def test_iq_selected_prefill_registry_and_build_plan() -> None:
         ("gguf_iq4_xs", "selected_grouped_prefill_compact_bf16_bf16_out"): (
             gguf_iq4_xs_selected_grouped_prefill_compact_bf16_bf16_out
         ),
+        (
+            "gguf_iq4_xs",
+            "selected_grouped_prefill_compact_k512_wave32_bf16_bf16_out",
+        ): gguf_iq4_xs_selected_grouped_prefill_compact_k512_wave32_bf16_bf16_out,
+        ("gguf_iq4_xs", "selected_grouped_prefill_compact_auto_bf16_bf16_out"): (
+            gguf_iq4_xs_selected_grouped_prefill_compact_auto_bf16_bf16_out
+        ),
         ("gguf_iq4_xs", "selected_wmma_prefill_compact_bf16_bf16_out"): (
             gguf_iq4_xs_selected_wmma_prefill_compact_bf16_bf16_out
         ),
@@ -292,6 +301,17 @@ def test_iq_selected_prefill_wrappers_validate_before_loading() -> None:
     with pytest.raises(ValueError, match="at most 2048"):
         gguf_iq3_xxs_selected_dual_grouped_prefill_compact_bf16_bf16_out(
             **{**scalar, "in_features": 2304}
+        )
+    with pytest.raises(ValueError, match="exactly 512"):
+        gguf_iq4_xs_selected_grouped_prefill_compact_k512_wave32_bf16_bf16_out(
+            scalar["x_ptr"],
+            scalar["expert_start_compact_ptr"],
+            scalar["gate_weight_ptr"],
+            scalar["out_ptr"],
+            compact_rows=scalar["compact_rows"],
+            in_features=256,
+            out_features=scalar["out_features"],
+            num_experts=scalar["num_experts"],
         )
 
     wmma = dict(
@@ -386,6 +406,61 @@ def test_grouped_scalar_iq4_down_is_bit_exact_to_selected_single_fallback(
     )
     actual = _run_single_grouped(
         gguf_iq4_xs_selected_grouped_prefill_compact_bf16_bf16_out,
+        grouped_library,
+        x_bf16=x_bf16,
+        meta=meta,
+        qweight=qweight,
+        wmma=False,
+    )
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.parametrize("counts", _COUNTS)
+def test_grouped_wave32_iq4_down_is_bit_exact_to_local128_fallback(
+    libraries, counts: list[int]
+) -> None:
+    grouped_library, _ = libraries
+    meta = _compact_meta(counts)
+    in_features = 512
+    out_features = 23
+    x_bf16 = _f32_to_bf16_u16(_make_x(meta.compact_rows, in_features))
+    qweight = _make_iq4_weight(meta.num_experts, out_features, in_features)
+    expected = _run_single_grouped(
+        gguf_iq4_xs_selected_grouped_prefill_compact_bf16_bf16_out,
+        grouped_library,
+        x_bf16=x_bf16,
+        meta=meta,
+        qweight=qweight,
+        wmma=False,
+    )
+    actual = _run_single_grouped(
+        gguf_iq4_xs_selected_grouped_prefill_compact_k512_wave32_bf16_bf16_out,
+        grouped_library,
+        x_bf16=x_bf16,
+        meta=meta,
+        qweight=qweight,
+        wmma=False,
+    )
+    np.testing.assert_array_equal(actual, expected)
+
+
+def test_grouped_iq4_auto_keeps_local128_for_general_k(libraries) -> None:
+    grouped_library, _ = libraries
+    meta = _compact_meta([0, 2, 3, 5])
+    in_features = 1024
+    out_features = 23
+    x_bf16 = _f32_to_bf16_u16(_make_x(meta.compact_rows, in_features))
+    qweight = _make_iq4_weight(meta.num_experts, out_features, in_features)
+    expected = _run_single_grouped(
+        gguf_iq4_xs_selected_grouped_prefill_compact_bf16_bf16_out,
+        grouped_library,
+        x_bf16=x_bf16,
+        meta=meta,
+        qweight=qweight,
+        wmma=False,
+    )
+    actual = _run_single_grouped(
+        gguf_iq4_xs_selected_grouped_prefill_compact_auto_bf16_bf16_out,
         grouped_library,
         x_bf16=x_bf16,
         meta=meta,

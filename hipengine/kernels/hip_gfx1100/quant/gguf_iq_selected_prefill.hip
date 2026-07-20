@@ -261,6 +261,64 @@ __global__ void gguf_iq4_xs_selected_grouped_prefill_compact_kernel(
   }
 }
 
+// The production IQ4 down shape has K=512, so only lanes 0..15 own
+// subblocks. The local128 fallback therefore reduces one populated wave plus
+// three all-zero waves. This one-wave sibling keeps the populated wave's dot
+// and shuffle association exactly while removing 96 idle lanes and all
+// cross-wave barriers.
+__launch_bounds__(32, 8)
+__global__ void gguf_iq4_xs_selected_grouped_prefill_compact_k512_wave32_kernel(
+    const uint16_t* __restrict__ x,
+    const int64_t* __restrict__ expert_start_compact,
+    const uint8_t* __restrict__ qweight,
+    uint16_t* __restrict__ out,
+    int compact_rows,
+    int out_features,
+    int num_experts) {
+  const int out_col = blockIdx.x;
+  const int expert = blockIdx.y;
+  if (out_col >= out_features || expert >= num_experts) return;
+  const int64_t begin = expert_start_compact[expert];
+  const int64_t end = expert_start_compact[expert + 1];
+  if (begin >= end) return;
+
+  constexpr int in_features = 512;
+  constexpr int subblocks = in_features / 32;
+  const bool active = threadIdx.x < subblocks;
+  constexpr int row_bytes = (in_features / QK_K) * IQ4_XS_BLOCK_BYTES;
+  const int64_t expert_bytes = static_cast<int64_t>(out_features) * row_bytes;
+  const uint8_t* __restrict__ weight_row =
+      qweight + static_cast<int64_t>(expert) * expert_bytes +
+      static_cast<int64_t>(out_col) * row_bytes;
+  IQ4Segment segment{};
+  int x_offset = 0;
+  if (active) {
+    const int subblock = threadIdx.x;
+    segment = load_iq4_segment(weight_row, subblock);
+    x_offset = subblock * 32;
+  }
+
+  for (int64_t row = begin; row < end; ++row) {
+    float acc = 0.0f;
+    if (active) {
+      acc = dot_iq4_segment(segment, x + row * in_features + x_offset);
+    }
+    for (int offset = 16; offset > 0; offset >>= 1) {
+      acc += __shfl_down(acc, offset);
+    }
+    if (threadIdx.x == 0) {
+      // Match reduce_block_sum's wave-0 accumulation into a +0.0 total. The
+      // three omitted waves are identically +0.0 for this K=512 shape.
+      float total = 0.0f;
+      total += acc;
+      total += 0.0f;
+      total += 0.0f;
+      total += 0.0f;
+      out[row * out_features + out_col] = float_to_bf16_bits(total);
+    }
+  }
+}
+
 __device__ inline half16_t load_compact_bf16_half16(
     const uint16_t* __restrict__ x,
     int64_t row,
@@ -667,6 +725,37 @@ extern "C" int hipengine_gguf_iq4_xs_selected_grouped_prefill_compact_bf16_bf16_
       out,
       static_cast<int>(compact_rows),
       static_cast<int>(in_features),
+      static_cast<int>(out_features),
+      static_cast<int>(num_experts));
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gguf_iq4_xs_selected_grouped_prefill_compact_k512_wave32_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* expert_start_compact,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    hipStream_t stream) {
+  if (!valid_common(
+          x, expert_start_compact, qweight, out, compact_rows, in_features,
+          out_features, num_experts) || in_features != 512) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      gguf_iq4_xs_selected_grouped_prefill_compact_k512_wave32_kernel,
+      dim3(out_features, num_experts),
+      dim3(32),
+      0,
+      stream,
+      x,
+      expert_start_compact,
+      qweight,
+      out,
+      static_cast<int>(compact_rows),
       static_cast<int>(out_features),
       static_cast<int>(num_experts));
   return static_cast<int>(hipGetLastError());

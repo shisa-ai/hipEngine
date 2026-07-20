@@ -95,6 +95,10 @@ def _write_csv(path: Path, rows: Sequence[dict[str, object]]) -> None:
             "gguf_iq4_xs_selected_grouped_prefill_compact_kernel",
             "moe_iq4_xs_grouped_down_prefill",
         ),
+        (
+            "gguf_iq4_xs_selected_grouped_prefill_compact_k512_wave32_kernel",
+            "moe_iq4_xs_grouped_down_prefill",
+        ),
         # MoE compact selected -- P8 WMMA prefill and P9.B GEMV decode + legacy
         ("gguf_q4_k_selected_dual_wmma_prefill_compact_kernel<unsigned short>", "moe_q4_k_selected_dual_wmma_prefill"),
         ("gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel<unsigned short>", "moe_q4_k_selected_dual_wmma_prefill"),
