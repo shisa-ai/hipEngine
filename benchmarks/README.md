@@ -13,6 +13,8 @@ selected-state commit/cursor ownership gate,
 `64f80f83e241013f05ac70b22806e3b523826b4f` (clean merged gate
 `4e9703be8790a05cae6c99685801a1abc5621350`) for the W7900 PARO N4+
 bound-control replay and duplicate-sync removal plus the follow-up provider-residual attribution,
+`11910c273684636855ee3160d70b5bcb6415bdb0` for exact physical-C8
+Q6T16 lm-head 5+3 rowtile partition and clean direct C8 retention,
 `b03a828fe5e6ddccdf702ff185184e2d09014e21` for exact physical-C8
 Q8T16 qkv+gate rowtile4/col8 and clean direct C8 retention,
 `c843f836b45d5a5c12e05bae8c62b2cf17af2d60` for exact physical-C8

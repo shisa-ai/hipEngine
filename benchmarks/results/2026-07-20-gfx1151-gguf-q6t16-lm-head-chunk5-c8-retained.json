@@ -1,0 +1,153 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_q6t16_lm_head_chunk5_c8_retained",
+  "created_at": "2026-07-20T18:45:00+00:00",
+  "status": "retained_exact_direct_c8_server_non_regressive_diagnostic",
+  "passed": true,
+  "performance_claim": true,
+  "claim_scope": "clean direct physical-C8 p512/d128 graph decode with exact Q6T16 lm-head 5+3 rowtile partition; server A/B is source-equivalent diagnostic",
+  "decision": "promote the 5+3 existing-kernel rowtile partition for gfx1151 physical C8; leave gfx1100 at 6+2",
+  "hardware": {
+    "host": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "amd_iommu": "off",
+    "gpu_max_hw_queues": 1,
+    "tuned_profile": "accelerator-performance"
+  },
+  "software": {
+    "hipengine_commit": "11910c273684636855ee3160d70b5bcb6415bdb0",
+    "clean": true,
+    "rocm": "HIP 7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B UD-Q4_K_M GGUF",
+    "path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "implementation": {
+    "scope": "backend capability GGUF_Q6_LM_HEAD_MAX_CHUNK=5 on gfx1151; gfx1100 remains 6",
+    "candidate_partition": [5, 3],
+    "prior_partition": [6, 2],
+    "kernel_math_changed": false,
+    "candidate_resources": {
+      "rowtile5": {"vgpr": 168, "sgpr": 128, "lds_bytes": 1280, "scratch_bytes": 0},
+      "rowtile3": {"vgpr": 104, "sgpr": 128, "lds_bytes": 768, "scratch_bytes": 0}
+    },
+    "prior_resources": {
+      "rowtile6": {"vgpr": 200, "lds_bytes": 1536, "scratch_bytes": 0},
+      "rowtile2": {"vgpr": 88, "lds_bytes": 512, "scratch_bytes": 0}
+    },
+    "rollback": "HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK=6"
+  },
+  "correctness": {
+    "primitive_partitions_exact_vs_6_plus_2": true,
+    "combined_default_layer_hidden_comparisons": 320,
+    "combined_default_layer_hidden_exact": true,
+    "tokens_conv_gdn_kv_final_state_exact": true,
+    "clean_direct_trajectories_repeatable": true,
+    "server_candidate_and_control_exact": true,
+    "focused_tests": {
+      "chunk_and_backend": "30 passed",
+      "dense_q6t16": "6 passed"
+    }
+  },
+  "partition_microbench": {
+    "shape": "rows=8, hidden=2048, vocab=248320, warmup=10, iterations=50",
+    "timing_us": {
+      "6+2": 4864.593680249527,
+      "5+3": 4814.908100524917,
+      "4+4": 5859.340459574014,
+      "4+2+2": 6914.026599843055,
+      "3+3+2": 6812.947459984571,
+      "2+2+2+2": 7983.127019833773
+    },
+    "candidate_delta_percent": -1.0213716291729735,
+    "all_outputs_bit_exact": true,
+    "raw_bytes": 781,
+    "raw_sha256": "88022c61430017e57878d3e2aebe8e0962e758d476f0f4f7e7b29a4df0847d1a"
+  },
+  "clean_direct_gate": {
+    "workload": {
+      "physical_rows": 8,
+      "prompt_tokens_per_row": 512,
+      "generated_tokens_per_row": 128,
+      "total_generated_tokens": 1024,
+      "sampling": "greedy_top1",
+      "decode_mode": "state-bound graph",
+      "warmups": 1,
+      "repetitions": 3
+    },
+    "f3i_baseline": {
+      "commit": "b03a828fe5e6ddccdf702ff185184e2d09014e21",
+      "aggregate_decode_tok_s_median": 152.19161412265987,
+      "wall_seconds_per_1024_tokens": 6.728360205015634
+    },
+    "candidate": {
+      "commit": "11910c273684636855ee3160d70b5bcb6415bdb0",
+      "clean": true,
+      "aggregate_decode_tok_s_samples": [152.68070149610764, 152.70862495870657, 152.7609712569479],
+      "aggregate_decode_tok_s_median": 152.70862495870657,
+      "delta_vs_f3i_percent": 0.33971046238461255,
+      "stdev_percent_of_median": 0.02668442307433509,
+      "wall_seconds_per_1024_tokens": 6.705580645997542,
+      "wall_savings_vs_f3i_seconds_per_1024_tokens": 0.022779559018092144,
+      "repeatable_trajectories": true
+    },
+    "raw_bytes": 200378,
+    "raw_sha256": "3602d69199f695f56349bbee038e0a70dc70c41c343d71a33488e26f3bf30cbf"
+  },
+  "automatic_profiler_diagnostic": {
+    "dispatches": 2,
+    "workgroup_size_x": 128,
+    "grid_size_x": 1986560,
+    "grid_size_y": 1,
+    "rowtile5_duration_ns": 2338386,
+    "rowtile3_duration_ns": 2372730,
+    "total_duration_ns": 4711116,
+    "summary_sha256": "cba982c2973dac218d1d123e561c3316623da5c8572a03b993bfc94ec6ae8680",
+    "database_sha256": "ab956de5e86ba711b1ca8bca0585c3db7fa6ccd69c27101967799e1ca46804d7",
+    "duration_note": "profiler durations are source-equivalent implementation diagnostics only"
+  },
+  "server_diagnostic": {
+    "evidence_status": "same-checkout source-equivalent exact A/B, not a clean retained server-speed row",
+    "protocol": "real localhost Uvicorn C1/C8 p512/d128, one warmup, three blocking, three exact SSE, delayed C8",
+    "passed": true,
+    "control_6_plus_2_tok_s": {
+      "blocking_median": 88.70153729773081,
+      "exact_sse_median": 85.54279791951308,
+      "delayed": 68.41211608416134
+    },
+    "candidate_5_plus_3_tok_s": {
+      "blocking_median": 88.83792738971847,
+      "exact_sse_median": 86.10004087333526,
+      "delayed": 68.42381076579726
+    },
+    "delta_percent": {
+      "blocking": 0.15376294046614003,
+      "exact_sse": 0.6514200696901451,
+      "delayed": 0.017094459732147627
+    },
+    "raw_sha256": {
+      "candidate": "e9d3ec01c5fa82ae5dfb73981f7a8efe7f3ed2cbc173456c541036eaca21e8f1",
+      "control": "22faee12e53d1d428a0b46cafb27f2cf39f013003882d9c0eeff008432e3029f"
+    }
+  },
+  "rejected_one_launch_candidate": {
+    "design": "Q6T16 rowtile8/col8",
+    "isolated_us": {"production_6_plus_2": 4886.837159865536, "candidate": 4714.8628800641745},
+    "isolated_delta_percent": -3.519132604084829,
+    "bit_exact": true,
+    "same_checkout_direct_tok_s": {"control": 152.236, "candidate": 151.842},
+    "same_checkout_direct_delta_percent": -0.26,
+    "decision": "removed"
+  },
+  "limitations": [
+    "The retained performance claim is clean direct physical C8; server evidence is exact/non-regressive but source-equivalent diagnostic.",
+    "gfx1100 remains on 6+2 pending independent W7900 transfer.",
+    "The win changes only row partitioning across existing exact kernels; storage and arithmetic are unchanged."
+  ]
+}

@@ -433,7 +433,7 @@ should be boring.
 - The physical-C8 Q6T16 lm-head reads the full ~417 MiB head twice. The prior
   **6+2** partition uses 200/88 VGPR; gfx1151 now defaults to exact **5+3** at
   168/104 VGPR. Isolated wall improves **4.865 -> 4.815 ms (-1.02%)** and
-  implementation direct C8 improves **152.192 -> 152.628 tok/s (+0.29%)**.
+  clean direct C8 improves **152.192 -> 152.709 tok/s (+0.340%)**.
 - `HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK=6` restores 6+2. gfx1100 package
   metadata remains 6 pending independent W7900 transfer. Values outside [2,6]
   are invalid.
