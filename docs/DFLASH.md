@@ -80,10 +80,11 @@ Current status:
   graph replays enter one NativeSpecCycle ABI call for `VERIFY|ACCEPT`; DFlash
   hidden taps, linear/KV commit, cursor/result construction, graph-off/tree/
   inactive shapes, and every unsupported backend remain on the existing exact
-  path. The separate `HIPENGINE_PARO_NATIVE_SPEC_TARGET_COMMIT=1` candidate is
+  path. Selected commit is now default-on inside explicit N4, with
+  `HIPENGINE_PARO_NATIVE_SPEC_TARGET_COMMIT=0` as a PARO rollback, but remains
   deliberately capture-width-zero/FP16-only: BF16 DFlash hidden-tap graphs do
-  not enter it and retain their existing provider commit. This is default-off
-  infrastructure, not a DFlash throughput promotion;
+  not enter it and retain their existing provider commit. This is globally
+  default-off infrastructure, not a DFlash throughput promotion;
 - native prefill still stops at the three-layer linear prefix, with first
   unsupported layer 3 (`full_attention`);
 - speculative metadata and KV transactions reject duplicate request ids,

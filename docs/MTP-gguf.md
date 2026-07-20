@@ -384,9 +384,10 @@ accept/commit metadata, and scheduler-facing results.
    The control binds real verify-chain `KVLiveSpans`, fixed INT32 metadata and
    accept buffers, and either resident FP16 verifier rows or BF16 sidecar hidden
    taps. The shared base accurately declares only `VERIFY|ACCEPT`; provider
-   linear/KV/hidden commit remains the unchanged exact path. An additional
-   explicit `HIPENGINE_PARO_NATIVE_SPEC_TARGET_COMMIT=1` candidate applies only
-   to capture-width-zero FP16 PARO MTP and captures selected linear-state commit
+   linear/KV/hidden commit remains the unchanged exact path. The selected-commit
+   route is default-on inside explicit N4
+   (`HIPENGINE_PARO_NATIVE_SPEC_TARGET_COMMIT=0` is the rollback), applies only
+   to capture-width-zero FP16 PARO MTP, and captures selected linear-state commit
    plus device position/context update, declaring
    `VERIFY|ACCEPT|COMMIT|UPDATE_CURSORS`. BF16 DFlash hidden/KV commit remains
    outside. Graph-off, tree, inactive, unsupported,
@@ -406,11 +407,16 @@ accept/commit metadata, and scheduler-facing results.
    than full4096-e5—and the existing sidecar passes all 19/19 tensor checks.
    See the
    [`corrected packet`](../benchmarks/results/2026-07-19-w7900-paro-mtp-native-target-graph-n4-correctness.json).
-   N4 remains default-off with no speed row. The selected-commit candidate is
-   dirty-tree exact for B1/D24 and a three-cycle B2 state/KV/cursor audit and
-   mechanically reduces cached final-child APIs **81.6875 -> 75.6875** and syncs
-   **2 -> 1**; clean full-suite keep/revert remains open. Complete PARO/DFlash
-   cycle ownership and independent gfx1100/gfx1151 promotion gates remain open.
+   N4 remains globally default-off with no AR speed row. The clean
+   selected-commit gate matches three arms x **240 IDs / 214 cycles / 16
+   accepts**, every split/category, accepted-row-1 and B2 state/KV/cursor
+   oracles, and **150/150** expanded native records. Both candidate arms improve
+   capture-adjusted wall, while cached profile wall averages neutral and
+   mechanically reduces APIs **80.6875 -> 75.6875**, syncs **2 -> 1**, host
+   launches **36.1875 -> 34.1875**, and kernels **1248.5 -> 1247.5**. Complete
+   PARO/DFlash cycle ownership and independent gfx1100/gfx1151 promotion gates
+   remain open. See the
+   [`selected-commit packet`](../benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-selected-commit.json).
 8. **N5 — Multi-cycle option:** only after N3/N4 are exact, allow the native
    launcher to continue until EOS, cancellation/deadline, output-buffer limit,
    or an explicit scheduler yield point.

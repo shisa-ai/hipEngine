@@ -10726,7 +10726,7 @@ class Qwen35ParoResidentSession:
 
         if not self._native_spec_provider_target_graph_enabled(batch):
             return False
-        if not _env_flag("HIPENGINE_PARO_NATIVE_SPEC_TARGET_COMMIT", False):
+        if not _env_flag("HIPENGINE_PARO_NATIVE_SPEC_TARGET_COMMIT", True):
             return False
         rows = int(batch.rows)
         candidate_rows = rows - 1

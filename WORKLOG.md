@@ -168341,3 +168341,102 @@ single terminal sync; it is not removed or relabeled as host savings. The
 mechanical API/sync/submission reduction and exact state gate justify retaining
 the implementation for the clean full-suite keep/revert task. No default or AR
 speed claim is made from this dirty one-run screen.
+
+## 2026-07-20 — Retain clean PARO selected-commit gate
+
+Ran the full keep/revert protocol from clean implementation commit `43abe82e` on
+exclusive GPU0/W7900, current full8192 W4-PARO target plus matching MTP-BF16
+sidecar, system HIP 7.2.53211, cached builds, `c1_loop`, graph-auto, production
+GPU accept for timing, and the strict exact GDN/linear/shared-expert stack. The
+canonical on/off/on arms changed only
+`HIPENGINE_PARO_NATIVE_SPEC_TARGET_COMMIT={1,0,1}` while keeping explicit
+`HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH=1`:
+
+```bash
+env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_BACKEND=hip_gfx1100 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-mtp-w7900-hipcc-version.txt \
+  HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH=1 \
+  HIPENGINE_PARO_NATIVE_SPEC_TARGET_COMMIT={1,0,1} \
+  HIPENGINE_GDN_TLOOP_C1_EXACT=1 HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS=1 \
+  HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT=1 \
+  HIPENGINE_VERIFY_GPU_ACCEPT=1 PYTHONPATH=. \
+  python3 scripts/mtp-bench.py --mode hipengine-current \
+    --prompts-file benchmarks/prompts/mtpbench-code-general-ja.jsonl \
+    --max-tokens 24 --candidate-budgets 1 --runs 1 --prompt-render raw \
+    --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 \
+    --chain-attn-mode c1_loop --graph-mode auto \
+    --engine-model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 \
+    --raw-root /tmp/w7900-n4plus-commit-{on1,off,on2}-b1-gpuaccept-43abe82e \
+    --out /tmp/w7900-n4plus-commit-{on1,off,on2}-b1-gpuaccept-43abe82e.json
+```
+
+All three arms preserve **10/10 prompts, 240/240 exact IDs, 214 cycles, 16
+accepted drafts**, and active-budget history. Both candidate arms are exact on
+train/heldout and every `code`/`general_en`/`general_ja`/`mixed_ja_en` category,
+with **150/150** expanded native `VERIFY|ACCEPT|COMMIT|UPDATE_CURSORS` records
+and no fallback.
+
+| Route | AR tok/s | MTP tok/s | verify ms/cycle | complete ms/cycle | capture-adjusted ms/cycle |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| selected commit on, first | 106.402 | 64.537 | 14.947 | **16.189** | **13.983** |
+| neutral N4+ control | 110.060 | 64.707 | 15.040 | 16.277 | 14.051 |
+| selected commit on, bracket | 108.375 | 63.659 | 15.309 | 16.549 | **13.992** |
+
+Process AR and first-capture wall vary enough that no aggregate tok/s or
+capture-inclusive win is retained: complete wall deltas are **-0.089/+0.272
+ms/cycle**. The capture-adjusted result is consistent at **-0.068/-0.059
+ms/cycle (-0.49%/-0.42%)**, including the same direction for train, heldout,
+and every category in both candidate arms. This broad steady-cycle result is
+not a single-prompt selection.
+
+Clean correctness audits additionally used `HIPENGINE_VERIFY_GPU_ACCEPT=validate`:
+
+- canonical B1/D12, cycles 6/7/8: cycle 7 accepts and commits **row 1**, every
+  resident Conv/GDN, live KV, scratch-commit, selected-linear/KV, cursor, and
+  target correction comparison passes, and cycle 8 remains exact afterward;
+- B2 prompt `151646`, cycles 1/2/3: all corresponding comparisons pass with
+  corrections `[248050,19,19]`; cycles 2/3 use expanded native stages;
+- the clean base N4+ layer-0 hidden/MoE oracle is reused because this change is
+  post-accept only and leaves verifier forward/model bytes unchanged.
+
+Matched cached final-child profiling wrapped only the leaf smoke and used
+canonical `code_lru_cache`, B1/D24, `region=cycle --steady-state-skip=2`:
+
+```bash
+python3 scripts/mtp_verifier_rocprof.py \
+  --model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 \
+  --prompt-tokens "$(cat .../code_lru_cache/prompt-tokens.txt)" \
+  --decode-tokens 24 --candidate-budget 1 --backend hip_gfx1100 \
+  --chain-attn-mode c1_loop --graph-mode auto --region cycle \
+  --steady-state-skip 2 \
+  --compiler-version-file /tmp/hipengine-mtp-w7900-hipcc-version.txt \
+  --raw-root /tmp/w7900-n4plus-commit-prof-{off,on,on2}-43abe82e \
+  --out /tmp/w7900-n4plus-commit-prof-{off,on,on2}-43abe82e.json
+```
+
+All children are exact with identical acceptance. Candidate wall brackets
+**16.518/16.322 ms/pass** around the **16.413 ms** control; the candidate mean
+is **+0.007 ms/pass**, neutral. The mechanical ownership change is invariant:
+
+| Metric/pass | Neutral N4+ | Selected commit | Change |
+| --- | ---: | ---: | ---: |
+| HIP API calls | 80.6875 | **75.6875** | -5 |
+| synchronizations | 2 | **1** | -1 |
+| host kernel submissions | 36.1875 | **34.1875** | -2 |
+| graph launches | 1 | 1 | unchanged |
+| kernels | 1248.5 | **1247.5** | -1 position kernel |
+
+Decision: keep and publish. Selected commit is default-on only after the user
+explicitly enables N4; `HIPENGINE_PARO_NATIVE_SPEC_TARGET_COMMIT=0` remains a
+one-release rollback. N4 itself stays package/default-off because strict B1 is
+far below true AR, complete wall straddles the neutral control, PARO proposal
+remains host/provider-owned, and DFlash/gfx1151 are independent unopened gates.
+A no-`TARGET_COMMIT` B1/D8 smoke after the default flip is exact and reports the
+expanded stages on every steady replay.
+
+Published compact artifact:
+`benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-selected-commit.json`,
+31,360 bytes, SHA-256
+`683888115f4ec5e1431bf232677e5cd55b2aa3ed9370978a6f0eb3a751e0999f`.
