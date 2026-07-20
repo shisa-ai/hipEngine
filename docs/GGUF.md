@@ -1,6 +1,6 @@
 # GGUF Intake and Native-Quant Plan
 
-Date: 2026-05-17
+Date: 2026-05-17; current Q3 status updated 2026-07-20
 Target repo: `~/hipENGINE`
 
 Primary references: local llama.cpp checkouts under `~/llama.cpp/` and parent evidence in `~/amd-gpu-tuning/`
@@ -46,7 +46,9 @@ resident prefill once, then replays a captured one-step decode graph for remaini
 greedy tokens, detokenizes the generated IDs, and returns text through
 `LLM.generate()`. The hard gate now passes all local dense-Qwen GGUF quant fixtures for the target prompt with no `torch` import on the generate path. A minimal `qwen35moe` GGUF public-generation bring-up also now works for `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`: it maps the untied `output.weight` lm-head, keeps rank-3 expert tensors in raw GGUF layout for the default path, and runs a deterministic public smoke. The qwen35moe long-prompt default now uses parity-accepted fully bulk prefill, while performance parity with packed PARO still needs packed/grouped expert kernels. Task #59 adds an explicit GGUF expert pack8 sidecar cache for the rank-3 `ffn_gate_exps`, `ffn_up_exps`, and `ffn_down_exps` tensors; the sidecar is opt-in and generated under a cache directory, not committed.
 
-**UD-Q3_K_M AR bring-up (2026-07-19):** raw rank-3 IQ3_XXS and IQ4_XS expert tensors now have gfx1100 selected GEMV kernels and registry-driven resident dispatch under the public `gguf_ud_q3_k_m` preset. Main-body IQ3 gate/up uses a fused dual-SiLU composite with selected-single fallbacks; IQ4 down can emit the routing-weighted aggregate directly, with the selected-single + weighted-combine chain retained when that composite is unavailable. The blk.39 IQ4 gate/up outlier uses the selected-single chain, the three Q6_K down outliers keep their existing raw/T16 path, and blk.40 nextn remains omitted. This is kernel/dispatch readiness only: full-model token correctness, graph replay, and controlled performance comparison remain the next gates and are not claimed here.
+**UD-Q3_K_M current status (2026-07-20):** raw rank-3 IQ3_XXS and IQ4_XS expert tensors have gfx1100 selected GEMV/grouped-prefill kernels and registry-driven resident dispatch under the public `gguf_ud_q3_k_m` preset. The exact fully-bulk AR path passes mixed-64/all-row/full-4K hidden and logit gates, reaches `774.185 tok/s` at 512 and `741.180 tok/s` at mixed-pattern 4K prefill on GPU1 RX 7900 XTX, and graph decode measures `101.216/108.383 tok/s` at 512/4K. These current-code rows are GPU1-only; W7900 was not rerun. Native GGUF c=N execution is still absent, so prompt-list generation remains serial and has no c=N speed claim.
+
+The real GGUF contains a trailing blk.40 MTP predictor. The 40-layer AR tensor map intentionally excludes it, but this is now an implementation boundary rather than an approval blocker: the shared candidate-only `DraftBatch` → verifier-internal `TargetVerifyBatch` → `AcceptResult` ABI, transactional `KVLiveSpans`, and graph buckets are already locked and landed. Remaining GGUF MTP work is a separate blk.40 draft-model materializer plus Q3_K gate/up kernels, followed by integration with the shared row-shaped target verifier; do not execute blk.40 as a 41st AR layer or fork a GGUF-specific speculative ABI.
 
 The short answer to "can hipENGINE load GGUF quants easily now?" is:
 
@@ -56,9 +58,9 @@ The short answer to "can hipENGINE load GGUF quants easily now?" is:
 - **Native GGUF quant execution is not drop-in.** GGUF `Q4_K`, `Q5_K`, `Q6_K`, `Q8_0`, `Q8_K`, and `IQ*` tensors have GGML block layouts and quant math that differ from PARO/AWQ and from the current Marlin-K v0 layout. They need their own quant plugins, CPU oracles, and HIP kernels or a deliberate repack path.
 - **The new PARO/Marlin-K work makes this tractable.** hipEngine now has the pattern we want: file/checkpoint layout -> host repack -> explicit device layout -> raw-pointer kernel -> registry dispatch. GGUF should use the same architecture, not special-case dispatch.
 
-The intake implementation is now past scanner/GEMV bring-up for the local Q4_K_M, Q8_0, Q4_1, and UD-Q4_K_XL fixtures. The near-term performance path has resident GGUF decode, all-GPU full attention, AOTriton/equivalent layer prefill attention, rows>1 GGUF projections, decode graph replay, and correctness-oriented dense fallback coverage; remaining work is public full-model bulk prefill and retained throughput parity rows.
+The intake implementation is past scanner/GEMV bring-up and public full-model bulk prefill. Current c=1 Q3 performance/correctness is recorded above and in linked benchmark artifacts. The next runtime boundary is row-shaped GGUF target execution for c=N and shared speculative verification; the independent draft boundary is blk.40 materialization under the locked MTP ABI.
 
-Do not treat this document as a performance claim. It is an implementation plan. Any hipENGINE GGUF speedup must be measured in hipENGINE after the accelerated runtime pieces land.
+Treat historical P8–P10 projections below as chronology, not current performance claims. Only the current status and retained artifacts/rollups establish measured speed.
 
 ## GGUF Q8 / INT8 KV cache status
 
@@ -250,7 +252,7 @@ and dense-BF16 fallback coverage for Q4_1/F16/IQ4_XS. See
 `benchmarks/results/2026-05-16-hipengine-gguf-qwen35-e2e-correctness-diagnostic.json`,
 `benchmarks/results/2026-05-17-hipengine-gguf-full-attn-gpu-prelude-diagnostic.json`,
 and `benchmarks/results/2026-05-17-hipengine-gguf-local-quant-coverage-diagnostic.json`.
-The `qwen35moe` Qwen3.6 smoke fixture now passes the same public API/no-torch gate, but only as a narrow deterministic bring-up smoke. Broader prompts, qwen35moe bulk prefill, stronger oracles, and throughput claims remain future work.
+The original `qwen35moe` Qwen3.6 smoke remains a narrow public-API/no-torch gate. The later Q3 campaign adds all-row/full-logit/full-4K oracles and retained bulk-prefill/decode evidence; c=N and blk.40 MTP execution remain future work.
 
 
 ## Why GGUF is attractive for hipEngine
@@ -1115,7 +1117,7 @@ The Marlin-K lesson applies: if we repack GGUF tensors into a native layout, we 
 
 Tokenizer metadata support matters eventually, but kernel/load validation can use explicit token IDs and tensor-level fixtures. Do not let tokenizer support block quant kernel bring-up.
 
-## Recommended near-term decision
+## Historical near-term decision (pre-P8)
 
 The scanner, quant table, Qwen3.5 tensor-name map, Q4_K_M resident weight materialization, native GGUF GEMV surfaces, tokenizer, and public E2E correctness gate are already in place for the local Q4_K_M target. The next retained unit should therefore be performance plumbing, not more scanner work:
 
@@ -1127,12 +1129,12 @@ The scanner, quant table, Qwen3.5 tensor-name map, Q4_K_M resident weight materi
 6. Broaden to Q8_0, Q4_1, and UD-Q4_K_XL only after the resident/runtime gates are reusable. [done]
 7. Promote benchmark rows only after the normal correctness, profiler, artifact, rollup, and changelog gates pass.
 
-## Bottom line
+## Historical pre-P8 bottom line
 
 hipENGINE can now load and execute the Qwen3.5-0.8B Q4_K_M GGUF fixture correctly with resident state, all-GPU attention/KV, layer-level AOTriton prefill attention, multirow projection surfaces, decode graph replay, and retained diagnostic 512/128 + 4K/128 parity measurements. It is still not a promoted performance path: public full-model bulk prefill and accepted throughput parity rows remain. GGUF must keep GGML quant math and its own quant layouts while borrowing PARO's scheduling, registry, and memory-discipline patterns.
 
 
-## P8: real batched prefill GEMM (active)
+## P8: real batched prefill GEMM (historical)
 
 Date added: 2026-05-18. Branch: `gguf-bulk-prefill`.
 
@@ -1542,7 +1544,7 @@ output + rocprofv3 evidence. Update `benchmarks/README.md` and
 - [ ] No `import torch` on the `LLM.generate()` path; no `if backend == ...`
   / `if quant == ...` branches added to runtime dispatch.
 
-## P9: Closing the qwen35moe gap to PARO ~2700/116 (planned)
+## P9: Closing the qwen35moe gap to PARO ~2700/116 (historical)
 
 P8 (tasks #7–#16) collapsed the qwen35moe GGUF MoE-projection disaster, but
 the engine is not yet at the parent PARO Qwen3.5-35B-A3B native ceiling. P9
@@ -2068,7 +2070,7 @@ Every P9 kernel honours the project policy:
 - [ ] No `import torch` on the `LLM.generate()` path; no `if backend == ...`
   / `if quant == ...` branches added to runtime dispatch.
 
-## P10: Path to >2500 prefill / >120 decode (active)
+## P10: Path to >2500 prefill / >120 decode (historical Q4 campaign)
 
 Date opened: 2026-05-20
 

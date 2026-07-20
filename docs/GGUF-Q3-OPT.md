@@ -106,6 +106,47 @@ final-rejection evidence are in
 and
 [`benchmarks/results/2026-07-20-gpu1-q3-exact-gdn-direct-conv-rejected.json`](../benchmarks/results/2026-07-20-gpu1-q3-exact-gdn-direct-conv-rejected.json).
 
+## Current post-prefill roadmap
+
+This section supersedes the historical task numbers and dependency language in
+the source-derived review below. The measured state is:
+
+- **c=1 prefill, GPU1 RX 7900 XTX:** `774.185 tok/s` at 512 repeated tokens and
+  `741.180 tok/s` at mixed-pattern 4K. The exact local campaign is closed, but
+  the ~3,000 tok/s objective is not; task #27 requires a new algebra or resident
+  layout rather than another local geometry retry.
+- **c=1 decode, GPU1 RX 7900 XTX:** `101.216 tok/s` at 512 and
+  `108.383 tok/s` at 4K. Task #32 starts from a fresh profile and may reopen a
+  family only with a new measured premise. These current-code rows have not
+  been rerun on GPU0/W7900.
+- **c=N GGUF:** unsupported as a native execution path, so there is no honest
+  Q3 c=N throughput number. `Qwen35GGUFBringupGenerator.generate_detailed()`
+  still loops over prompts and `Qwen35GGUFResidentSession` owns singleton
+  token/hidden/state/KV buffers. The existing GGUF c>N script is intentionally
+  a blocked command template, not a runner.
+- **GGUF MTP ABI:** locked and already implemented in shared infrastructure.
+  Candidate-only `DraftBatch`, verifier-internal `TargetVerifyBatch`,
+  `AcceptResult`, `KVLiveSpans(span_role="verify_chain")`, transactional
+  state/KV commit, GPU accept summaries, and shape-keyed graph buckets are not
+  awaiting another approval decision. The missing work is implementation: the
+  AR loader intentionally excludes trailing blk.40, and no GGUF draft-model
+  materializer/provider invokes it yet.
+
+The real local UD-Q3_K_M blk.40 has 20 tensors: Q8_0 attention, output,
+shared-expert, and `nextn.eh_proj` weights; Q3_K expert gate/up; Q4_K expert
+down; BF16 router/shared-gate weights; norms; and four `nextn.*` tensors. It has
+no NextN-specific embedding or lm-head tensor, so the documented target
+embedding/output fallbacks apply.
+
+| Task | Work | Actual dependency |
+|---:|---|---|
+| #27 | Resolve the remaining ~3,000 tok/s prefill architecture gap | New algebra/layout premise; independent of c=N/MTP |
+| #28 | Build one row-shaped GGUF target executor for independent decode and verify rows | Foundational runtime work |
+| #29 | Promote native UD-Q3_K_M c=2/4/8 decode and replace the blocked template | #28 |
+| #30 | Materialize blk.40 and emit candidate-only `DraftBatch` rows | Locked shared ABI; can develop alongside #28 |
+| #31 | Integrate and benchmark GGUF MTP end to end | #28 + #30 |
+| #32 | Reprofile residual c=1 Q3 decode | Independent, profile-gated |
+
 ## Executive recommendation
 
 The review now has two distinct conclusions.
@@ -133,35 +174,18 @@ There is no retained HIP-versus-Vulkan evidence for a fundamental HIP kernel
 ceiling: production-shaped serialized Q4, Q6, and dense-Q8 controls favor HIP
 on gfx1100.
 
-The current handoff order, aligned with the active hipEngine task dependencies,
-is therefore:
-
-1. **P0 / task #11 — Q3 grouped raw-IQ prefill.** Reuse hipEngine's existing
-   compact MoE count/prefix/scatter scheduler, but add expert-major IQ3_XXS
-   gate/up and IQ4_XS down kernels. Keep raw GGUF weights; do not introduce a
-   second resident repack. This is a large prefill lever and a **zero direct
-   decode lever**.
-2. **P1 / task #20 — hierarchical exact top-k.** Replace eight repeated
-   whole-block selections with local wave top-k plus one global top-k over the
-   exact candidate union. Keep a rollback path so its small contribution can be
-   separated from the later IQ work.
-3. **D1 / task #15 — exact raw-IQ decode work distribution.** First profile the
-   stabilized route, then right-size the correctness-first IQ4_XS down kernel
-   and test an all-top-8, four-output-row contraction that preserves
-   hipEngine's per-slot BF16 boundary and routing-weight order. This is the
-   first candidate that could be material enough to move toward 150 tok/s.
-4. **P2 / task #21 — MoE tail plus next-layer input RMSNorm.** Build on the
-   stable selected-down ABI. This applies to Q3, Q4 GGUF, and PARO but remains a
-   sub-percent-scale boundary by itself.
-5. **P3 / task #16 — routed/shared overlap and broader fusion, bounded by a
-   real profile.** Prove overlap in an eager two-stream DAG before changing
-   graph replay. Stop if the timeline serializes or full-step gain is below 1%.
+The original #11 → #20 → #15 → #21 → #16 handoff is complete and retained
+only as provenance below. Grouped prefill, the exact-IQ decode audit, and the
+next-RMS tail landed; hierarchical top-k, IQ4 tile4, and routed/shared overlap
+were measured and rejected. The authoritative remaining order is the current
+post-prefill roadmap above, not those historical task dependencies.
 
 Do **not** reopen full-column register-resident GDN, broad Q4 launch/repack
-sweeps, broad attention geometry, or generic launch reduction. The new raw-Q3
-IQ4 down kernel was not part of those older Q4 sweeps, however; its statically
-underfilled `in_features=512` geometry is a new, format-specific premise and is
-explicitly open under D1.
+sweeps, broad attention geometry, or generic launch reduction. The original
+raw-Q3 IQ4 underfill premise is no longer open either: K512 grouped prefill now
+uses the retained exact one-wave leaf, while the exact c=1 IQ4 tile4 attempt
+regressed the real family and was removed. Reopening requires a different
+algorithm/layout premise and a fresh production profile.
 
 For future models and cards, adopt only **bounded, coverage-first auto-tuning**
 as described in §14: inventory every static and runtime shape class, compare a
@@ -689,10 +713,11 @@ The active task graph already encodes the safe composition order:
 | #21 MoE tail + next RMS | Removes one boundary and hidden reread | ~0.3-1% | Build on stable D1 selected sum |
 | #16 overlap/broader fusion | Hide independent shared/routed work | 0-3%, uncertain | Require real overlap and >=1% wall |
 
-Task #12 (Q3 NextN kernels) is deliberately outside this AR campaign. The
-150-190 tok/s target is one-token autoregressive decode, not speculative
-aggregate throughput; NextN remains blocked on #11/#16 and explicit GGUF-MTP
-approval.
+GGUF NextN remains outside the one-token AR optimization campaign, but it is
+not approval-blocked. The shared speculative ABI and verifier/commit contract
+are locked and landed. Current task #30 owns blk.40 materialization plus the
+missing Q3_K selected gate/up kernels; task #31 integrates that proposer after
+the row-shaped GGUF target executor in #28 exists.
 
 The latency budget makes clear why #20/#21 alone cannot reach the target:
 
@@ -1417,10 +1442,11 @@ because both report gfx1100. Fall back and recalibrate. Writes must be atomic an
 checksummed, and stale/corrupt manifests must degrade to the retained default,
 not fail model startup.
 
-### 14.7 Adoption order
+### 14.7 Original adoption order (historical)
 
-Do not delay the current `#11 -> #20 -> #15 -> #21 -> #16` campaign to build a
-general tuner. Adopt the approach incrementally:
+The `#11 -> #20 -> #15 -> #21 -> #16` campaign described here has completed.
+The sequence below is retained as methodology provenance; new work follows the
+current post-prefill roadmap and does not reopen its rejected candidates.
 
 1. **Coverage auditor first (CPU/offline capable).** Extend model inventory and
    dispatch reporting to rank-3 experts and emit the status matrix above. Join a
@@ -1448,7 +1474,10 @@ static default and mark the experiment closed.
 
 ---
 
-## 15. Prioritized implementation handoff
+## 15. Original prioritized implementation handoff (historical)
+
+The table records the source review's implementation order. Its numbered tasks
+are closed or superseded; see **Current post-prefill roadmap** for live task IDs.
 
 | Order / owner | Work item | Formats / phase | Expected scale | Dependency | Promotion signal |
 |---:|---|---|---|---|---|
@@ -1464,10 +1493,9 @@ static default and mark the experiment closed.
 | Closed | Full-column register GDN | All | Compiler rejected | New algebra required | Do not retry current design |
 | Closed | Generic Q4 selected retuning | Q4/PARO | Existing sweep exhausted | New source/layout evidence | Do not repeat historical sweeps by analogy |
 
-The active agent currently owns task #11 and GPU1; GPU0 is occupied by MTP.
-This document is the handoff for #15/#20/#21/#16, not authorization for a
-concurrent implementation or benchmark. The external task graph remains the
-authoritative dependency order if it changes.
+This historical table is no longer the active task graph. Current tasks #27–#32
+encode the measured post-prefill work and their actual dependencies; device
+ownership must still be checked immediately before any benchmark.
 
 ---
 
@@ -1548,21 +1576,24 @@ authoritative dependency order if it changes.
 
 Q3 has two separate optimization stories.
 
-For **prefill**, the major opportunity is to connect raw IQ3_XXS/IQ4_XS compute
-to the compact expert-grouping infrastructure that Q4 and PARO already use. The
-matched profile puts almost 90% of Q3 prefill time behind that architectural
-boundary, and active task #11 owns it.
+For **prefill**, the source diagnosis was correct and the exact fully-bulk path
+now reaches `774.185/741.180 tok/s` at 512/mixed-4K on GPU1. The remaining gap
+to ~3,000 tok/s is architectural: local Q8, IQ3, GDN, and attention premises
+were measured to closure. Task #27 may proceed only from new algebra or a new
+resident layout with an explicit memory/correctness contract.
 
-For **decode**, P0 contributes nothing directly. The same-model W7900/XTX qwen
-results prove that approximately 145-190 tok/s is feasible on gfx1100, and the
-retained HIP/Vulkan matrix gives no reason to treat HIP as fundamentally unable
-to reach that regime. hipEngine's gate/up already has the retained four-row IQ3
-idea, but its new raw IQ4 down kernel is a correctness-first local256/per-slot
-schedule with only 64 dot-product threads. Task #15 should first measure that
-family, then test exact local64 and an all-top-8/four-output contraction that
-preserves every BF16 and routing-order boundary. Hierarchical top-k and the MoE
-next-RMS tail remain useful composition work, not substitutes for the missing
-multi-millisecond decode reduction.
+For **decode**, current GPU1 graph rows are `101.216/108.383 tok/s` at 512/4K.
+The same-model W7900/XTX qwen results still prove that approximately 145-190
+tok/s is feasible on gfx1100, and the retained HIP/Vulkan matrix gives no reason
+to infer a fundamental HIP ceiling. Task #32 starts from a fresh production
+profile; it must not repeat the rejected hierarchical top-k, IQ4 tile4,
+rowtile/repack, or stream-overlap premises.
+
+For **concurrent and speculative execution**, c=N currently has no native GGUF
+speed claim. Task #28 builds the shared row-shaped target executor, #29 wires
+independent c=2/4/8 serving, #30 materializes the already-present blk.40 NextN
+weights under the locked shared ABI, and #31 performs end-to-end MTP integration
+and economics. No additional GGUF-MTP ABI approval is required.
 
 For future models and cards, bounded auto-tuning should make coverage and
 portability systematic: reconcile every tensor and runtime shape with its
@@ -1572,10 +1603,12 @@ winners under complete model/card/software/build identity. Optional dynamic
 behavior is a verified lookup chosen before session/graph construction—not
 live compilation or request-path benchmarking.
 
-For Q4 and PARO, a distributed profile means no single qwen-derived 90%-share
-fix—not that the formats are incapable of becoming faster. Their credible
-transfers remain hierarchical exact top-k and MoE-tail/next-RMS fusion, followed
-only by a profiler-gated overlap experiment or genuinely new profile-backed
-algorithms/layouts. Treat Vulkan command replay and ACO register allocation as
-backend-specific evidence, keep the documented HIP negative sweeps closed, and
-do not transfer the gfx1100 150-190 tok/s target to bandwidth-limited gfx1151.
+For Q4 and PARO, a distributed profile still means no single qwen-derived
+90%-share fix—not that the formats are incapable of becoming faster. The
+cross-format transfer tranche is now measured: hierarchical exact top-k was
+rejected, aggregate MoE-tail/next-RMS was retained where exact and profitable,
+and eager routed/shared overlap produced zero concurrent kernel time and was
+removed. Future work needs genuinely new profile-backed algorithms/layouts.
+Treat Vulkan command replay and ACO register allocation as backend-specific
+evidence, keep the documented HIP negative sweeps closed, and do not transfer
+the gfx1100 150-190 tok/s target to bandwidth-limited gfx1151.
