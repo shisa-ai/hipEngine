@@ -169918,3 +169918,31 @@ Cached `rocprofv3 --kernel-trace` micro smoke records four pair-reuse launches:
 scripts/check_lineage.py --kind kernel --diff stat` remains mechanically blocked
 by missing external checkout `/home/lhl/amd-gpu-tuning/reference/atlas`; this is
 an in-tree kernel design, not an external port.
+
+### Clean F3C direct retention and automatic-route trace
+
+Committed implementation as `1a753e2e`, then ran the canonical direct gate from
+a detached clean worktree at that exact commit. The clean p512/d128 physical-C8
+samples are **144.038956/143.980547/144.049085 tok/s**, median
+**144.038956**, versus retained F3B **133.852312**: **+7.6104%**, with
+stdev/median **0.0257%**. The 1,024-token direct window falls from
+**7.650223 -> 7.109188 s**, saving **541.035 ms**. Provenance is clean
+(`dirty=false`), all three eight-row trajectories repeat exactly, and raw
+SHA-256 is `13c4deea82ea08e2bed8d3429cb4bd4b5b5138ef19eba977182f163cbb7d76c8`.
+
+A clean cached-only `rocprofv3 --kernel-trace` around one automatic physical-C8
+graph transition passes exact token/final state and records exactly **40**
+`q4_k_t16_selected_dual_pairreuse_direct_gemv_kernel<unsigned short>` launches:
+128 threads, grid `4096x64`, 200 VGPR, 128 SGPR, 1,032 B LDS, zero scratch.
+Profile median **363.622 us** and total **14.2055 ms** are diagnostic under
+profiler overhead. Results DB SHA-256 is
+`5a106384ab8026339cfdc476ce46ef638216ff9dda6818e20dc770adaa60ae39`.
+
+Published compact retained artifact
+`benchmarks/results/2026-07-20-gfx1151-gguf-selected-expert-pairreuse-c8-retained.json`
+(8,477 bytes, SHA-256
+`585bb5570b9116d68a10aa5e3c27d23bfb3cb063422a6f35bd90242a77e504c0`).
+The performance claim is clean direct C8 only. The earlier exact and positive
+real-Uvicorn C1/C8 source-equivalent packet remains a diagnostic until a clean
+server repetition is explicitly approved; it is not used to replace the
+retained server scoreboard.
