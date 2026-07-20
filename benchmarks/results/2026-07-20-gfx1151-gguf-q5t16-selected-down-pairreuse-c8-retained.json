@@ -1,0 +1,209 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_q5t16_selected_down_pairreuse_c8_retained",
+  "created_at": "2026-07-20T21:20:00+09:00",
+  "status": "retained_exact_direct_c8_server_nonregressive_diagnostic",
+  "passed": true,
+  "performance_claim": true,
+  "claim_scope": "clean direct physical-C8 p512/d128 graph decode with exact Q5T16 dynamic selected-down expert pair reuse; server measurements are source-equivalent diagnostics",
+  "decision": "promote exact Q5T16 selected-down duplicate-expert weight reuse on gfx1151 physical C8; keep lower widths and gfx1100 on the established per-selected-lane kernel; retain HIPENGINE_GGUF_T16_SELECTED_DOWN_PAIRREUSE=0 as rollback",
+  "hardware": {
+    "host": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "memory_domain": "GTT/UMA",
+    "amd_iommu": "off",
+    "gpu_max_hw_queues": 1,
+    "tuned_profile": "accelerator-performance"
+  },
+  "software": {
+    "hipengine_commit": "4cb305434aa11f827bbbd1f021f03d75fbe7398e",
+    "clean": true,
+    "rocm": "HIP 7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B UD-Q4_K_M GGUF",
+    "path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "size_bytes": 22663387424,
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "implementation": {
+    "backend_capability": {
+      "name": "GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS",
+      "hip_gfx1151": 8,
+      "hip_gfx1100": 0
+    },
+    "kernel": "q5_k_t16_selected_pairreuse_direct_gemv_kernel<unsigned short>",
+    "registry_variant": "selected_t16_pairreuse_gemv_decode_bf16_bf16_out",
+    "scope": "physical rows=8, selected rows=64, Q5T16 expert down, packed AR model-step owner",
+    "pairing": "two wave32 ballots form one 64-lane dynamic expert-ID mask; consecutive occurrences share Q5T16 weight and dequant work",
+    "arithmetic_contract": "each row retains production 128-thread K partition, wave reduction, cross-wave reduction, and BF16 rounding",
+    "fallback": "existing per-selected-lane Q5T16 GEMV for unpaired IDs, lower physical widths, and unsupported backends",
+    "rollback": "HIPENGINE_GGUF_T16_SELECTED_DOWN_PAIRREUSE=0"
+  },
+  "correctness": {
+    "red_green_fixture": {
+      "test": "tests/test_gguf_t16_selected_gemv_decode.py::test_q5_t16_direct_pairreuse_matches_production_bits",
+      "output_bits_exact": true
+    },
+    "no_env_combined_default_c8_graph": {
+      "layer_hidden_comparisons": 320,
+      "layer_hidden_exact": true,
+      "tokens_exact": true,
+      "conv_gdn_kv_lifecycle_exact": true,
+      "final_state_exact": true,
+      "first_divergence": null,
+      "raw_sha256": "867fc3112c06333f5fc91f229b972055d69a789f26fdd218988999dfbfc4f33c"
+    },
+    "clean_profile_oracle": {
+      "passed": true,
+      "tokens_exact": true,
+      "final_state_exact": true,
+      "raw_sha256": "8782e2c1ba07a1005f8fb91f1be3059fa53f90f0783eb0aea6865479f0d51c59"
+    },
+    "focused_tests": {
+      "selected_t16_gpu": "90 passed",
+      "routing_stage_backend": "48 passed"
+    }
+  },
+  "primitive_microbench": {
+    "shape": {
+      "rows": 64,
+      "experts": 256,
+      "in_features": 512,
+      "out_features": 2048,
+      "threads": 128,
+      "warmups": 20,
+      "iterations": 100
+    },
+    "results_us": {
+      "unique": {
+        "production": 258.836,
+        "pairreuse": 272.741,
+        "delta_percent": 5.37,
+        "exact": true
+      },
+      "uniform_random": {
+        "production": 248.557,
+        "pairreuse": 249.434,
+        "delta_percent": 0.35,
+        "exact": true
+      },
+      "thirty_two_pairs": {
+        "production": 212.215,
+        "pairreuse": 152.398,
+        "delta_percent": -28.19,
+        "speedup": 1.3925,
+        "exact": true
+      }
+    },
+    "raw_sha256": {
+      "unique": "c701df64cf0d831414dae6b79ce20a49dbce5084ff371757d83d9391bd0b5b76",
+      "uniform_random": "2373cdf0f327ad39eab0d0c7579de416fbf85919c5621d30ce801edd1675b804",
+      "thirty_two_pairs": "7f36b9e19e4c47ff00769b72b409f24971dd0619625222c2912d4b3cec25eab3"
+    },
+    "evidence_status": "development microbench; clean direct gate supplies retained performance provenance"
+  },
+  "clean_direct_gate": {
+    "workload": {
+      "physical_rows": 8,
+      "prompt_tokens_per_row": 512,
+      "generated_tokens_per_row": 128,
+      "total_generated_tokens": 1024,
+      "sampling": "greedy_top1",
+      "decode_mode": "state-bound graph",
+      "warmups": 1,
+      "repetitions": 3
+    },
+    "f3c_baseline": {
+      "commit": "1a753e2e99820ec421b6e16f192c3fa70b341e4d",
+      "aggregate_decode_tok_s_median": 144.0389562498895,
+      "wall_seconds_per_1024_tokens": 7.109187865979038
+    },
+    "pre_selected_reuse_baseline": {
+      "commit": "7bb3669b9f585a695f8c6ea8d897d3a726268733",
+      "aggregate_decode_tok_s_median": 133.8523123514623,
+      "wall_seconds_per_1024_tokens": 7.650222711963579
+    },
+    "candidate": {
+      "commit": "4cb305434aa11f827bbbd1f021f03d75fbe7398e",
+      "clean": true,
+      "aggregate_decode_tok_s_samples": [
+        150.57216109627464,
+        150.7563294441832,
+        150.90708187364044
+      ],
+      "aggregate_decode_tok_s_median": 150.7563294441832,
+      "delta_vs_f3c_percent": 4.663580859777872,
+      "delta_vs_pre_selected_reuse_percent": 12.628856981069724,
+      "stdev_percent_of_median": 0.11126431107532303,
+      "wall_seconds_per_1024_tokens": 6.792417961987666,
+      "wall_savings_vs_f3c_seconds_per_1024_tokens": 0.3167699039913723,
+      "wall_savings_vs_pre_selected_reuse_seconds_per_1024_tokens": 0.8578047499759132,
+      "repeatable_trajectories": true
+    },
+    "raw_bytes": 200304,
+    "raw_sha256": "079e9b258bc01ad9be2054d2cdf488b6f71bfaa72e65162b7de83bf91dc2c384",
+    "command": "env -u HIPENGINE_GGUF_T16_SELECTED_DOWN_PAIRREUSE HIP_VISIBLE_DEVICES=0 HIPENGINE_BACKEND=hip_gfx1151 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 /home/lhl/hipEngine-main/.venv/bin/python scripts/gguf_packed_ar_bench.py --model /home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --configurations native_c8 --prompt-length 512 --decode-steps 128 --warmup-runs 1 --measured-runs 3"
+  },
+  "clean_profiler_gate": {
+    "tool": "rocprofv3 --kernel-trace",
+    "automatic_backend_policy": true,
+    "environment_override": null,
+    "decode_steps": 1,
+    "dispatches": 37,
+    "workgroup_size_x": 128,
+    "grid_size_x": 16384,
+    "grid_size_y": 64,
+    "vgpr": 96,
+    "sgpr": 128,
+    "lds_bytes": 520,
+    "scratch_bytes": 0,
+    "profile_duration_ns_median": 222858,
+    "profile_duration_ns_total": 8289323,
+    "duration_note": "profiler durations are diagnostic only",
+    "summary_sha256": "c86f79e923a0025c384fc385d6a8e2f72ca173f17b33735c2fcd8bdcce48b5d3",
+    "database_sha256": "d5807a54d396d00c80177895e9c8a310ab57c0b58beebec159c35ef1f97004cf"
+  },
+  "server_diagnostic": {
+    "evidence_status": "source-equivalent dirty-tree screen; correctness and non-regression only, not a clean retained server-speed claim",
+    "protocol": "real localhost Uvicorn C1/C8, p512/d128, one warmup, three blocking, three exact SSE, delayed C8 admission",
+    "passed": true,
+    "exact_rows": 75,
+    "native_c8_only": true,
+    "f3c_control_tok_s": {
+      "blocking_median": 87.72588271425721,
+      "exact_sse_median": 84.79817851574933,
+      "delayed": 68.24160890728274
+    },
+    "candidate_tok_s": {
+      "blocking_samples": [88.80965637502062, 88.02337860212083, 88.4307944066821],
+      "blocking_median": 88.4307944066821,
+      "exact_sse_samples": [85.85571508357671, 84.69712270878173, 84.04432919381082],
+      "exact_sse_median": 84.69712270878173,
+      "delayed": 68.32005577043688
+    },
+    "delta_vs_f3c_percent": {
+      "blocking": 0.8035390133615872,
+      "exact_sse": -0.11917214347808569,
+      "delayed": 0.11495459208872294
+    },
+    "raw_bytes": 718287,
+    "raw_sha256": "e540953e284e2f2c2780ab9b69fdfff33548755bb9b30391d88f38055fa5f595"
+  },
+  "lineage": {
+    "kind": "in_tree_design_not_external_port",
+    "check_command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "check_status": "blocked",
+    "blocker": "manifest references missing external checkout /home/lhl/amd-gpu-tuning/reference/atlas"
+  },
+  "limitations": [
+    "The retained performance claim is direct physical-C8 graph decode only; the source-equivalent server screen is not clean provenance.",
+    "Unique expert IDs regress the leaf by 5.37%; automatic admission is therefore limited to the measured physical-C8 router distribution.",
+    "gfx1100 remains disabled until independently measured on W7900.",
+    "Q6T16 selected-down, dense projection, attention/state, and sampler families remain follow-up optimization targets."
+  ]
+}

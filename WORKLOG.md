@@ -170032,3 +170032,28 @@ scratch. Profile median **223.539 us** / total **8.284 ms** are diagnostic.
 Focused validation: selected-T16 GPU **90 passed**; routing/stage/backend **48
 passed**. Lineage checking remains blocked by the missing external atlas
 checkout; this is an in-tree design, not a port.
+
+### Clean F3E direct retention and automatic-route trace
+
+Committed implementation as `4cb30543`, then ran detached-clean publication at
+that exact commit. Clean p512/d128 physical-C8 samples are
+**150.572161/150.756329/150.907082 tok/s**, median **150.756329**. This is
+**+4.6636%** over clean F3C **144.038956** and **+12.6289%** over the
+pre-selected-reuse F3B **133.852312**. Stdev/median is **0.1113%** and all
+trajectories repeat exactly. The 1,024-token window is **6.792418 s**, saving
+**316.770 ms** versus F3C and **857.805 ms** versus F3B. Raw SHA-256 is
+`079e9b258bc01ad9be2054d2cdf488b6f71bfaa72e65162b7de83bf91dc2c384`.
+
+Clean cached-only automatic tracing passes exact token/final state and confirms
+**37** Q5 pair-reuse launches at 128 threads, grid `16384x64`, 96 VGPR, 520 B
+LDS, and zero scratch. Profile median **222.858 us** / total **8.289323 ms**
+remain diagnostic. Results DB SHA-256 is
+`d5807a54d396d00c80177895e9c8a310ab57c0b58beebec159c35ef1f97004cf`.
+
+Published compact artifact
+`benchmarks/results/2026-07-20-gfx1151-gguf-q5t16-selected-down-pairreuse-c8-retained.json`
+(8,924 bytes, SHA-256
+`6ef2b51b03d9f036d41a97657e7ca878c6e8b67960dbbc947973b88b9e24914d`).
+The retained performance claim is clean direct C8; the source-equivalent server
+packet is exact/non-regressive but remains diagnostic rather than replacing the
+clean server scoreboard.
