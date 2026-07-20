@@ -704,3 +704,23 @@ ordinary, mismatched-name, literal-marker, and malformed-only guards pass. The
 final **510-test server** and **142-test agentic/config** gates are green. No GPU
 result or performance claim changed. Next: rerun the clean W7900 deterministic
 A1 packet before opening any performance lane.
+
+## 2026-07-20 — Deterministic A1 advances to the turn-1 JSON boundary
+
+Clean `5d6a2883` on the W7900 passes the 4,095-token startup probe and advances
+through turn 0's independent blocking oracle plus measured exact-SSE equality
+gate. The fail-closed collector then reaches turn 1, proving the duplicate-prefix
+cleanup repaired the previous boundary without retaining any partial timing.
+
+Turn 1 still fails before measured SSE. The response begins with the atomic
+`<tool_call>{"name":"grep","arguments":` prefix, emits `{`, Qwen template and
+tool-response controls, then produces free-form reasoning until the 128-token
+cap. It finishes `length` / `invalid_tool_call` with **128 response-owned IDs**,
+no parsed call, and empty public content. The collector emits no records or
+complete artifact; final ownership is zero.
+
+This is now an in-envelope generation problem, not a parser-residue problem.
+The next model-general unit must constrain JSON from the declared function
+schema after the selected-tool prefix while leaving argument keys/values
+model-selected—no fixture IDs, expected arguments, or prompt-conditioned repair.
+A complete A1 packet remains required before any performance lane opens.

@@ -170097,3 +170097,66 @@ ruff check hipengine/server/api.py tests/test_server_api.py
 
 No GPU run or benchmark number changed. Next: commit this correctness unit and
 rerun the same clean W7900 4K/c1 deterministic A1 packet.
+
+## 2026-07-20 — Post-duplicate-prefix-fix W7900 deterministic A1 rerun
+
+Reran the exact cache-off 4K/c1 `small_repo` A1 packet on the Radeon Pro W7900
+from clean `5d6a28839dbf142bcb759ed23d344e2459906e38`. GPU 0 was idle before
+startup; the model, quant, and toolchain fingerprints were unchanged from the
+post-tool-fix packet.
+
+Exact commands:
+
+```bash
+HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
+HIPENGINE_GENERATION_BATCH_WINDOW_MS=0 \
+HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 \
+HIPENGINE_GGUF_GDN_PREFILL_MODE=exact \
+HIPENGINE_GGUF_AR_STREAM_DECODE=0 \
+HIPENGINE_GGUF_AR_PACKED_DECODE=1 \
+HIPENGINE_MAX_PREFILL_CHUNK_TOKENS=256 \
+python3 -m hipengine.server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --served-model-name Qwen3.6-35B-A3B \
+  --max-context-tokens 4096 --max-active-requests 1 \
+  --prefix-cache off --metrics prometheus --eager-load \
+  --host 127.0.0.1 --port 8100
+
+HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
+python3 scripts/agentic_coding_live.py \
+  --base-url http://127.0.0.1:8100/v1 \
+  --model Qwen3.6-35B-A3B --backend hip_gfx1100 \
+  --workload small_repo --concurrency 1 --runs 1 \
+  --cache-mode off --max-tokens 128 \
+  --records-json /tmp/agentic-5d6a2883-small-c1-records.json \
+  --json /tmp/agentic-5d6a2883-small-c1-a1.json
+```
+
+Startup passed in `88.385723 s`, including the guarded 4,095-token scratch
+probe, at `23.447266 GiB` used / `21.537109 GiB` free. The collector completed
+turn 0's independent blocking oracle and measured SSE normalization/equality
+before issuing the turn-1 blocking request. This proves turn 0 now passes both
+gates, but no partial record or timing is retained because the full packet did
+not complete.
+
+Turn 1 rejected with `oracle did not finish with tool_calls`. The same canonical
+blocking request uses 2,620 prompt tokens and generates 128 exact response-owned
+IDs (hash
+`868056699e24e22bb7b84ceb38b06f8290b9cf8ddec899d51104802625299e32`).
+It begins with the atomic `grep` prefix, emits an unmatched argument `{`, Qwen
+controls/tool-response framing, and then free-form reasoning to the token cap.
+The public response finishes `length` with detail `invalid_tool_call`, phase
+`reasoning`, no tool call, and empty public content. The raw diagnostic hash is
+`f0305518d55b5b7d5e6c480475161653338829758885ce2e80915c364fc6e1f4`.
+
+Final request/session/KV/graph/workspace ownership was zero. The collector wrote
+neither `/tmp/agentic-5d6a2883-small-c1-records.json` nor
+`/tmp/agentic-5d6a2883-small-c1-a1.json`; therefore no latency, throughput,
+goodput, or complete-workload row is retained. Published blocked packet:
+
+- `benchmarks/results/2026-07-20-w7900-agentic-a1-small-c1-post-duplicate-prefix-fix-blocked.json`
+  (SHA-256 `abe3d3466aa4949517a7d40c2a8f7bd3e479e02e1a50744f563c428f8b706530`)
+
+Next: implement model-general schema-aware in-envelope JSON constraints after
+the selected-tool prefix without benchmark-conditioned IDs or expected
+arguments, then rerun the complete A1 packet.
