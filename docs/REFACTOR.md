@@ -422,16 +422,19 @@ should be boring.
 - gfx1151 package metadata now selects the repaired pair route automatically
   only at physical C8. C2/C4 and gfx1100 retain per-row Q8T16. The 128-thread
   qwen35 pair micro improves C2/C4/C8 **185.53/232.02/340.12 ->
-  161.94/202.15/323.99 us**; the dirty-tree C8 screen is exact and stable at
-  **133.792/133.796/133.930 tok/s** versus retained **133.251**. Broad or
-  lower-width promotion is rejected because C2/C4 regress at model scale.
-  `HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE=0` is the package-default rollback;
-  explicit `=1` remains a diagnostic for other row widths and MTP.
+  161.94/202.15/323.99 us**. Clean committed C8 is exact and stable at
+  **133.852/133.894/133.806 tok/s**, median **133.852**, or **+0.452%** versus
+  retained **133.251**. Broad or lower-width promotion is rejected because
+  C2/C4 regress at model scale. `HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE=0` is the
+  package-default rollback; explicit `=1` remains a diagnostic for other row
+  widths and MTP.
 - Remove when: the physical-C8 default has survived one release window and a
-  retained server refresh, at which point remove the rollback but keep the
-  package width capability; or remove the route if the clean committed gate
-  does not confirm the diagnostic win. Do not promote verifier/lower-width use
-  without an independent full-horizon gate.
+  later complete-server refresh gives a clear directional result, at which
+  point remove the rollback but keep the package width capability. The first
+  C1/C8 server packet is exact but mixed within noise (**-0.40% blocking,
+  +1.63% SSE, -0.64% delayed**), so it neither blocks the retained exact direct
+  sub-window nor supports a server-speed claim. Do not promote verifier or
+  lower-width use without an independent full-horizon gate.
 
 ## `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL` (diagnostic rejected)
 - Added 2026-07-01 as a default-off runtime hook for broad exact Q8T16 verifier

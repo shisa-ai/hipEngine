@@ -1,0 +1,243 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_q8t16_pair_rowtile_c8_retained",
+  "created_at": "2026-07-20T18:40:00+09:00",
+  "status": "retained_exact_direct_c8_server_flat_within_noise",
+  "passed": true,
+  "performance_claim": true,
+  "claim_scope": "clean direct physical-C8 p512/d128 graph decode; complete C1/C8 localhost-server rows are correctness-qualified diagnostics",
+  "decision": "promote the exact 128-thread Q8T16 qkv+gate pair rowtile only at gfx1151 physical C8; keep C2/C4 and gfx1100 on per-row Q8T16; retain HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE=0 as rollback",
+  "hardware": {
+    "host": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "memory_domain": "GTT/UMA",
+    "amd_iommu": "off",
+    "gpu_max_hw_queues": 1,
+    "tuned_profile": "accelerator-performance"
+  },
+  "software": {
+    "hipengine_commit": "7bb3669b9f585a695f8c6ea8d897d3a726268733",
+    "clean": true,
+    "rocm": "HIP 7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B UD-Q4_K_M GGUF",
+    "path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "size_bytes": 22663387424,
+    "direct_sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "server_sampled_sha256": "f24f72d469e5141b6a74086cdf094faf93726def47c5581b9d84acca03b24579",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "implementation": {
+    "backend_capability": {
+      "name": "GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS",
+      "hip_gfx1151": 8,
+      "hip_gfx1100": 0
+    },
+    "kernel": "q8_0_t16_dual_split_rowtile_gemv_kernel<unsigned short,unsigned short,4>",
+    "scope": "rows>=8, in=2048, outputs=(8192,4096), packed AR model-step owner only",
+    "threads": 128,
+    "broad_all_projection_default": false,
+    "rollback": "HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE=0"
+  },
+  "correctness_localization": {
+    "old_64_thread_route": {
+      "passed": false,
+      "decode_steps": 1,
+      "rows": 2,
+      "row_0_first_hidden_divergence_layer": 13,
+      "row_1_first_hidden_divergence_layer": 4,
+      "initial_max_abs": 0.0009765625,
+      "interpretation": "The prior synthetic fixture rounded identically, but the 64-thread model route changed the production reduction partition and drifted by one BF16 ULP immediately."
+    },
+    "repaired_128_thread_c2": {
+      "passed": true,
+      "layer_hidden_comparisons": 80,
+      "layer_hidden_exact": true,
+      "tokens_exact": true,
+      "conv_gdn_kv_final_state_exact": true,
+      "first_divergence": null
+    },
+    "automatic_128_thread_c8_graph": {
+      "passed": true,
+      "layer_hidden_comparisons": 320,
+      "layer_hidden_exact": true,
+      "tokens_exact": true,
+      "conv_gdn_kv_final_state_exact": true,
+      "first_divergence": null
+    }
+  },
+  "pair_microbench": {
+    "shape": "BF16 rows x 2048, Q8T16 split outputs 8192+4096, >2x-MALL cycling weight pool",
+    "threads": 128,
+    "warmups": 20,
+    "iterations": 100,
+    "results_us": {
+      "c2": {"per_row": 185.53, "rowtile4": 161.94, "delta_percent": -12.72},
+      "c4": {"per_row": 232.02, "rowtile4": 202.15, "delta_percent": -12.87},
+      "c8": {"per_row": 340.12, "rowtile4": 323.99, "delta_percent": -4.74}
+    }
+  },
+  "rejected_scopes": {
+    "all_projection_128_thread_direct_tok_s": {
+      "c2": 77.9397744653746,
+      "c4": 107.79763047023889,
+      "c8": 133.37741215402184
+    },
+    "retained_baseline_tok_s": {
+      "c2": 78.55249199645833,
+      "c4": 108.05048774468624,
+      "c8": 133.2505268407924
+    },
+    "decision": "reject broad all-projection and lower-width pair defaults; they are neutral or negative at model scale"
+  },
+  "clean_direct_gate": {
+    "workload": {
+      "physical_rows": 8,
+      "prompt_tokens_per_row": 512,
+      "generated_tokens_per_row": 128,
+      "sampling": "greedy_top1",
+      "decode_mode": "graph",
+      "warmups": 1,
+      "repetitions": 3
+    },
+    "baseline": {
+      "commit": "e99b228b724c6519d5079d5d51c33326e01bdba3",
+      "aggregate_decode_tok_s_median": 133.2505268407924,
+      "wall_seconds_per_1024_tokens": 7.684772617998534
+    },
+    "candidate": {
+      "commit": "7bb3669b9f585a695f8c6ea8d897d3a726268733",
+      "clean": true,
+      "aggregate_decode_tok_s_samples": [133.8523123514623, 133.89412590131874, 133.80574656121576],
+      "aggregate_decode_tok_s_median": 133.8523123514623,
+      "stdev_percent_of_median": 0.033029656729006145,
+      "wall_seconds_per_1024_tokens": 7.650222711963579,
+      "wall_savings_seconds_per_1024_tokens": 0.03454990603495478
+    },
+    "delta_percent": 0.4516196107719139,
+    "all_trajectories_exact": true,
+    "repeatable_trajectories": true,
+    "row_trajectory_sha256": [
+      "5055191f0e2b770b6fcd3aaf6574b792dd3d1dd221f77a2b7eb7007fd29ee652",
+      "c74a91f8f2977053f245ab1e10bb5f11ba1517e4ba45964899ccdb62d5a3c3b4",
+      "2acdede14f676f0aa32a082c2470d6993ba72228f1980b06340debe9f4030dcb",
+      "fbec096061fd61ce36f430289ea9b3a8d5f5eeffac1aeebd5a49ab15fbf6c190"
+    ]
+  },
+  "profiler_gate": {
+    "passed": true,
+    "route_check_passed": true,
+    "physical_rows": 8,
+    "selected_dispatches": 748,
+    "packed_native_dispatches": 748,
+    "exact_row_local_dispatches": 0,
+    "copy_dispatches": 0,
+    "pair_rowtile_dispatches_in_marker": 30,
+    "pair_rowtile_total_duration_ns_diagnostic": 10899121,
+    "workgroup_size_x": 128,
+    "grid_size_x": 98304,
+    "grid_size_y": 2,
+    "vgpr_count": 136,
+    "sgpr_count": 128,
+    "lds_bytes": 1024,
+    "scratch_bytes": 0,
+    "c1_tokens_exact": true,
+    "c8_tokens_exact": true,
+    "note": "Profiler durations are diagnostic only; the clean unprofiled direct gate supplies the performance claim."
+  },
+  "server_c1_c8_gate": {
+    "status": "accepted_backend_packet",
+    "passed": true,
+    "performance_claim": false,
+    "protocol": "real localhost Uvicorn; p512/d128; one warmup; three blocking and three SSE repetitions; delayed C1-to-C8 admission; fair:256; 5 ms generation window",
+    "c1": {
+      "blocking_tok_s_median": 44.26979728079862,
+      "sse_exact_tok_s_median": 41.6780337667964
+    },
+    "c8": {
+      "blocking_tok_s_samples": [86.85078196670915, 86.25298520236305, 86.1252555246221],
+      "blocking_tok_s_median": 86.25298520236305,
+      "sse_exact_tok_s_samples": [83.3684559588251, 83.72649829960474, 83.95970059788986],
+      "sse_exact_tok_s_median": 83.72649829960474,
+      "delayed_admission_tok_s": 67.4618266872773,
+      "blocking_exact_rows": 24,
+      "sse_exact_rows": 24,
+      "delayed_exact_rows": 8,
+      "native_caware_decode": true,
+      "serial_decode_fallback": false
+    },
+    "latest_matched_baseline": {
+      "artifact": "benchmarks/results/2026-07-20-gfx1151-four-lane-server-concurrency-refresh.json",
+      "blocking_c8_tok_s": 86.60104632236981,
+      "sse_c8_tok_s": 82.3872730758978,
+      "delayed_c8_tok_s": 67.89788684898942
+    },
+    "delta_percent_vs_latest_matched": {
+      "blocking_c8": -0.40191329641805495,
+      "sse_c8": 1.6255243967999933,
+      "delayed_c8": -0.642229356389179
+    },
+    "exact_rows_total": 71,
+    "total_rows": 71,
+    "final_ownership": {
+      "resident_requests_admitted": 65,
+      "resident_requests_reclaimed": 65,
+      "packed_workspace_current_bytes": 0,
+      "kv_refcounted_pages": 0,
+      "kv_pinned_pages": 0
+    },
+    "interpretation": "Complete server wall is mixed and within run-to-run noise: no server speedup is claimed. The exact direct sub-window is retained under the evidence policy."
+  },
+  "raw_sources": {
+    "clean_direct": {
+      "path": "/tmp/gfx1151-q8pair128-clean-worktree-7bb3669b-c8-3run.json",
+      "size_bytes": 201058,
+      "sha256": "f57247a88e65fba7b171ab2247d682dc33240a693789b2e3fe896e4d312d0304"
+    },
+    "clean_profiler": {
+      "path": "/tmp/gfx1151-q8pair128-clean-profile-7bb3669b.json",
+      "size_bytes": 107788,
+      "sha256": "b2f65d4fbd1d9bc51b80662cbcde00247a38b1a611a3a3edb47e4f7adc8f6a2c"
+    },
+    "old_64_thread_hidden": {
+      "path": "/tmp/gfx1151-q8rowtile-c2-first-hidden.json",
+      "size_bytes": 63667,
+      "sha256": "951a8fa361ede60ecd2e63d38c705419cec27d8d9e71574a79aca73435d50a48"
+    },
+    "repaired_c2_hidden": {
+      "path": "/tmp/gfx1151-q8rowtile128-c2-first-hidden.json",
+      "size_bytes": 15204,
+      "sha256": "cabc0e9650e09f87040d722524c9ea3cd7a47188a01fd4ee10b674c1d0b060f8"
+    },
+    "automatic_c8_hidden": {
+      "path": "/tmp/gfx1151-q8pair128-auto-c8-hidden.json",
+      "size_bytes": 16324,
+      "sha256": "c464b6e8874c999b11e3194adad84ca8a1d33fdca00fca4d99ae6e93a89b31a1"
+    },
+    "pair_microbench": {
+      "path": "/tmp/gfx1151-q8rowtile128-pair-micro.json",
+      "size_bytes": 2607,
+      "sha256": "f193ef5949ae90032a117d33203df89449e3855a53b873116fcf9e8dbaf18da6"
+    },
+    "server_c1_c8": {
+      "path": "/tmp/gfx1151-q8pair128-server-7bb3669b/result-c1-c8.json",
+      "size_bytes": 714136,
+      "sha256": "1fa0ab043526c856b2b3fa713bc0ea76ad5dcc6d39771db3134cf227c55dd624"
+    },
+    "c8_kernel_trace": {
+      "path": "/tmp/gfx1151-q8pair128-clean-profile-raw3/c8/trace/gfx1151/3729817_kernel_trace.csv",
+      "sha256": "163d30c60072fba171e784fdce27ee25fb818bd4d754892c37ba41fa061f5960"
+    }
+  },
+  "limitations": [
+    "The direct gate isolates physical-C8 model-step decode and does not include prompt prefill or HTTP scheduling.",
+    "The server C1/C8 packet is exact but mixed within noise, so no complete-server speedup is claimed.",
+    "C2/C4 pair rowtiling and broad all-projection rowtiling remain rejected.",
+    "gfx1100 automatic selection remains disabled pending an independent hardware gate.",
+    "The profiler trace confirms route/resource shape only; profiled durations are not a throughput claim."
+  ]
+}
