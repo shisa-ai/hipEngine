@@ -170706,3 +170706,28 @@ Final evidence hashes:
 Implementation, architecture override, focused oracle, and profiler evidence
 are ready for an atomic code commit. Detached tracked-clean retention and
 compact rollup publication follow.
+
+### Clean F3Q retention and publication
+
+Committed the implementation as `f3600c24`, then created detached tracked-clean
+worktree `/tmp/hipengine-gfx1151-gdn-cache24-clean`. The first cached-only run
+failed before measurement because the detached source-root AOTriton key had not
+been built. Warmed that external JIT cache without changing the worktree, then
+re-ran cached-only. Clean samples are
+**159.209799/159.487252/159.494661 tok/s**, median **159.487252**. This is
+**+0.4302%** over clean F3P **158.804125** and **+4.4389%** over clean F3K at
+**0.0831%** stdev/median, saving **27.619 ms** per 1,024 tokens versus F3P.
+All trajectories repeat exactly. Raw clean direct is 200,988 bytes, SHA-256
+`5fdbfab22fd339799ca374546f0fb1714ee61d3342d6f5c53e2c7cb4f872d7f7`.
+The detached worktree remained clean before warmup, between warmup/measurement,
+and after measurement.
+
+Published compact artifact
+`benchmarks/results/2026-07-20-gfx1151-gguf-gdn-shared-statecache24-c8-retained.json`
+(7,569 bytes, SHA-256
+`e1ef3f15e873890e40eb8cf75cd2f25b967b7521b9cc1746d5941b53ba6ed365`).
+The canonical direct C1/C2/C4/C8 row is now
+**50.335/78.552/108.050/159.487 tok/s**. Lower widths remain their prior clean
+claims; the elevated all-width diagnostic was not used. F3Q is a clean direct
+physical-C8 claim with exact profiler/state and non-regressive-within-noise
+server support.

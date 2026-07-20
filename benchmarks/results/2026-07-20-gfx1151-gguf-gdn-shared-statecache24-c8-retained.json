@@ -1,0 +1,178 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_gdn_shared_statecache24_c8_retained",
+  "created_at": "2026-07-20T23:55:00+00:00",
+  "status": "retained_exact_clean_direct_server_nonregressive_within_noise",
+  "passed": true,
+  "performance_claim": true,
+  "decision": "promote a 24-row FP32 LDS state cache for gfx1151 indexed GDN at physical rows >= 8",
+  "implementation_commit": "f3600c248ab8368a2cf808c65e8ace283fc6328c",
+  "hardware": {
+    "host": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "amd_iommu": "off",
+    "gpu_max_hw_queues": 1
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B UD-Q4_K_M GGUF",
+    "path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "scope": {
+    "backend_route": "gfx1151 gdn_recurrent_rmsnorm_gate/gguf_qwen35/bf16_indexed_singleton override",
+    "physical_min_rows": 8,
+    "state_cache_rows": 24,
+    "state_rows_total": 128,
+    "state_cache_fraction": 0.1875,
+    "unchanged_routes": [
+      "gfx1100 generic indexed wrapper",
+      "gfx1151 physical rows below 8",
+      "segmented and c1 recurrent GDN kernels",
+      "GDN prefill kernels"
+    ],
+    "floating_point_contract": "old FP32 state values are copied to LDS during the first pass and reused in the second pass without changing any multiply, add, reduction, update, or output order"
+  },
+  "post_f3p_profile": {
+    "window_dispatches": 748,
+    "window_duration_ms": 49.64772,
+    "gdn_dispatches": 30,
+    "gdn_total_ms": 3.770433,
+    "gdn_median_us": 123.652,
+    "gdn_share_percent": 7.594
+  },
+  "primitive_sweep": {
+    "shape": "rows=8, slots=8, 16K/32V heads, head_k_dim=head_v_dim=128",
+    "protocol": "five cycling 16 MiB state pools, 40 warmups, 400 iterations, same binary",
+    "all_output_and_state_bit_exact": true,
+    "points_us": {
+      "cache0": 204.99592254054733,
+      "cache8": 203.1526625796687,
+      "cache16": 201.67444003163837,
+      "cache24": 197.84415504545905,
+      "cache32": 201.47103496128693,
+      "cache40": 200.05407510325313,
+      "cache48": 199.47641747421585,
+      "cache56": 198.78629493177868,
+      "cache64": 200.62892755959183,
+      "cache72": 200.10602253023535,
+      "cache80": 199.96984250610694,
+      "cache88": 199.27441244362853,
+      "cache96": 199.39506499213167,
+      "cache104": 199.04838743968867,
+      "cache112": 198.77089507644996,
+      "cache120": 197.9223250236828
+    },
+    "cache24_delta_percent": -3.488736461903863,
+    "cache24_likely_resident_blocks": 4,
+    "raw_bytes": 3396,
+    "raw_sha256": "abd29a804e261503d3afdd8bcb502cc8a4e33bbae59e0bd256219afcd6b5bb48"
+  },
+  "correctness": {
+    "focused_test": "HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python -m pytest tests/test_gfx1151_backend.py tests/test_qwen35_linear_attn_decode_batch_indexed.py -q: 26 passed",
+    "cpu_reference_and_independent_c1_exact": true,
+    "all_layer_hidden_comparisons": 320,
+    "all_layer_hidden_exact": true,
+    "tokens_and_final_state_exact": true,
+    "first_divergence": null,
+    "all_layer_oracle_bytes": 16283,
+    "all_layer_oracle_sha256": "975e3660a62fdf9dc890bab86ca190da40779feb0785abf1722ab1d13455f2b3"
+  },
+  "clean_direct_retention": {
+    "provenance": "detached tracked-clean f3600c24 worktree after external JIT-cache warmup",
+    "workload": "physical-C8 p512/d128 state-bound graph, one warmup and three measured runs",
+    "baseline_clean_f3p_tok_s": 158.8041254579851,
+    "candidate_tok_s_samples": [
+      159.20979851008025,
+      159.4872522220156,
+      159.49466085436305
+    ],
+    "candidate_tok_s_median": 159.4872522220156,
+    "delta_vs_f3p_percent": 0.43016940653171076,
+    "delta_vs_f3k_percent": 4.438928856844582,
+    "stdev_percent_of_median": 0.08312493294446867,
+    "wall_savings_seconds_per_1024_tokens_vs_f3p": 0.027619353029876947,
+    "trajectories_repeatable": true,
+    "trajectory_hashes_exact_to_f3p": true,
+    "raw_bytes": 200988,
+    "raw_sha256": "5fdbfab22fd339799ca374546f0fb1714ee61d3342d6f5c53e2c7cb4f872d7f7"
+  },
+  "server_gate": {
+    "protocol": "real localhost Uvicorn C1/C8 p512/d128, one warmup, three blocking, three exact SSE, delayed C8",
+    "f3p_control": {
+      "blocking_median_tok_s": 91.82953313102723,
+      "exact_sse_median_tok_s": 87.77240762002337,
+      "delayed_tok_s": 69.777478647011,
+      "all_exact": true
+    },
+    "cache24_candidate": {
+      "blocking_median_tok_s": 91.56234113113928,
+      "exact_sse_median_tok_s": 88.59660534988375,
+      "delayed_tok_s": 70.41417027896456,
+      "all_exact": true,
+      "raw_bytes": 715420,
+      "raw_sha256": "fc540c5c3e0bb8f75c72949d889405c455180f4a1f062dbc5963a11cbb0decf2"
+    },
+    "candidate_delta_percent": {
+      "blocking": -0.2909652165025256,
+      "exact_sse": 0.9390168872072113,
+      "delayed": 0.9124600720734621
+    },
+    "matched_blocking_bracket": {
+      "protocol": "same no-streaming c1/c2/c8 packet, cache0 then cache24",
+      "cache0_c1_tok_s": 44.432954899278286,
+      "cache24_c1_tok_s": 44.42459175747076,
+      "cache0_c8_tok_s": 91.30919276288641,
+      "cache24_c8_tok_s": 91.14793444175727,
+      "c1_delta_percent": -0.018821934815016483,
+      "c8_delta_percent": -0.17660688507881162,
+      "cache0_stdev_percent": 0.4701590303906562,
+      "cache24_stdev_percent": 0.78543598221866,
+      "decision": "blocking is flat within run variance; retain the exact measured sub-window/direct win because SSE and delayed improve",
+      "control_raw_sha256": "25223b887bd908a78258675c4d3444a0e34dd513a0432b03055da1ce5ed645b6",
+      "candidate_raw_sha256": "03469a4fa82c67ec9749099bf4d3f24d879ee4f29c98473c56f76e890f2c0c2d"
+    }
+  },
+  "kernel_trace": {
+    "kernel": "qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_kernel<unsigned short,24>",
+    "dispatches": 30,
+    "workgroup_size_x": 128,
+    "grid_size_x": 1024,
+    "grid_size_y": 32,
+    "vgpr": 56,
+    "lds_bytes": 15360,
+    "scratch_bytes": 0,
+    "median_duration_us": 112.2305,
+    "total_duration_ms": 3.468027,
+    "delta_total_vs_f3p_percent": -8.020458127753493,
+    "full_window_ms": 48.819191,
+    "full_window_delta_percent": -1.6688158086615057,
+    "raw_db_bytes": 7368704,
+    "raw_db_sha256": "5b425f16e7b3e9ef894ac45deccfe41ad0c29e52ef55ab49bf240876b352ef89"
+  },
+  "rejected_adjacent_points": {
+    "prenormalized_qk_shared_scalars": {
+      "output_and_state_bit_exact": true,
+      "production_us": 203.64862255519256,
+      "candidate_us": 204.75013996474445,
+      "delta_percent": 0.5408911662308835,
+      "decision": "remove; added barrier and shared traffic exceed saved repeated scale work"
+    },
+    "cache120": {
+      "output_and_state_bit_exact": true,
+      "leaf_delta_percent": -3.4506040067530663,
+      "direct_delta_vs_f3p_percent": 0.19333477635838925,
+      "server_blocking_delta_percent": -0.512,
+      "server_exact_sse_delta_percent": -0.351,
+      "server_delayed_delta_percent": 0.478,
+      "decision": "remove; one-block-per-CU LDS occupancy regresses blocking and SSE"
+    }
+  },
+  "limitations": [
+    "The retained performance claim is detached tracked-clean direct physical C8; serving supports non-regression within measured variance rather than a blocking-throughput win.",
+    "The gfx1151 registry override activates only at physical rows >= 8; lower widths and gfx1100 remain unchanged.",
+    "The all-width dirty diagnostic had thermally elevated C1/C2/C4 rates and is not used to update those canonical rows."
+  ]
+}
