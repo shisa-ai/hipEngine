@@ -673,8 +673,11 @@ The server converts those blocks to OpenAI-compatible `message.tool_calls` in
 non-streaming responses or `delta.tool_calls` chunks in streaming responses, with
 `finish_reason: "tool_calls"`. After a tool block parses, repeated Qwen
 `<|im_end|>` template terminals are removed only from the outer edges of the
-remaining assistant text; legitimate interior literal text is preserved, and
-non-tool outputs are unchanged. Long streaming `function.arguments` strings are
+remaining assistant text. If that entire remainder consists only of Qwen
+`<|endoftext|>` / `<|im_start|>` / `<|im_end|>` controls, whitespace, and a
+marker-bound chat role label, it is discarded as leaked template residue.
+Ordinary or interior literal text is preserved, and non-tool outputs are
+unchanged. Long streaming `function.arguments` strings are
 split into concatenable fragments after the full tool-call block has been parsed
 and validated; the first chunk carries the function name, and all chunks carry
 the same tool-call id and index. Buffered c>N streams can preserve backend
@@ -732,7 +735,8 @@ counts and hashes, without raw reasoning or answer text.
 `features.tools.result_validation_failure_reasons`. Compatibility parsing
 recovers a common duplicated-start form,
 `<tool_call><tool_call>{...}</tool_call>`, when the inner JSON is otherwise a
-valid tool call; the manifest reports this under
+valid tool call, and removes an otherwise-empty outer Qwen template-control
+residue after a valid call. The manifest reports both under
 `features.tools.compatibility_parser_repairs`. Tool-enabled requests fail closed
 on unparseable `<tool_call>` markup, reported as
 `features.tools.malformed_json_compatibility =
@@ -1324,7 +1328,8 @@ generated text.
 - Tool calling uses Qwen-style prompt markup and output parsing rather than a
   constrained decoder. With tools enabled, malformed `<tool_call>` JSON fails
   closed as an invalid tool call; the common duplicated-start wrapper is
-  repaired only when its inner tool JSON is otherwise valid.
+  repaired only when its inner tool JSON is otherwise valid, and pure outer
+  Qwen template-control residue is removed only after at least one call parses.
 - Unknown top-level request parameters are rejected instead of silently ignored.
 - Completion `usage` is exact when every `GenerationOutput` exposes generated
   token IDs. Prompt usage and legacy completion fallback counting require the

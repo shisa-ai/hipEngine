@@ -1208,7 +1208,10 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "format",
         ],
         "format": "qwen_tool_call_json",
-        "compatibility_parser_repairs": ["duplicated_tool_call_start"],
+        "compatibility_parser_repairs": [
+            "duplicated_tool_call_start",
+            "outer_qwen_template_control_residue",
+        ],
         "malformed_json_compatibility": "invalid_tool_call_when_tools_enabled",
         "strict_malformed_blocks_rejected": True,
         "declared_tool_name_validation": True,
@@ -13253,10 +13256,48 @@ def test_chat_completion_strips_qwen_terminal_residue_around_tool_call() -> None
     assert "<|im_end|>" not in response.text
 
 
+def test_chat_completion_strips_qwen_role_template_residue_around_tool_call() -> None:
+    fake = FakeLLM(
+        outputs=[
+            '<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>'
+            '<|endoftext|><|im_start|><|im_start|><|im_start|>user\n'
+            '<|im_start|><|im_start|>'
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read the readme"}],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "description": "Read a file",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "tool_calls"
+    assert choice["message"]["content"] == ""
+    assert choice["message"]["tool_calls"][0]["function"]["name"] == "read"
+    assert "<|endoftext|>" not in response.text
+    assert "<|im_start|>" not in response.text
+
+
 def test_chat_completion_terminal_cleanup_preserves_interior_literal_content() -> None:
     fake = FakeLLM(
         outputs=[
-            '<|im_end|>Keep <|im_end|> literal. '
+            '<|im_end|>Keep <|im_end|> and <|im_start|>user literal. '
             '<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>'
             '<|im_end|>'
         ]
@@ -13285,7 +13326,7 @@ def test_chat_completion_terminal_cleanup_preserves_interior_literal_content() -
     assert response.status_code == 200
     choice = response.json()["choices"][0]
     assert choice["finish_reason"] == "tool_calls"
-    assert choice["message"]["content"] == "Keep <|im_end|> literal."
+    assert choice["message"]["content"] == "Keep <|im_end|> and <|im_start|>user literal."
     assert choice["message"]["tool_calls"][0]["function"]["name"] == "read"
 
 
@@ -15266,6 +15307,59 @@ def test_streaming_chat_completion_strips_qwen_terminal_residue_around_tool_call
         arguments={"command": "pwd"},
     )
     assert payloads[-1]["choices"][0]["finish_reason"] == "tool_calls"
+
+
+def test_streaming_chat_completion_strips_qwen_role_template_residue_around_tool_call() -> None:
+    fake = FakeLLM(
+        outputs=["should-not-buffer"],
+        stream_chunks=[
+            '<tool_call>{"name":"bash","arguments":{"command":"pwd"}}</tool_call>'
+            '<|endoftext|><|im_start|><|im_start|><|im_start|><|im_start|><|im_start|>'
+        ],
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "run pwd"}],
+            "stream": True,
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "description": "Run a command",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    content = "".join(
+        payload["choices"][0]["delta"].get("content", "")
+        for payload in payloads
+        if payload.get("choices")
+    )
+    assert content == ""
+    tool_choice = next(
+        payload["choices"][0]
+        for payload in payloads
+        if payload["choices"][0]["delta"].get("tool_calls")
+    )
+    _assert_openai_stream_tool_call_delta_shape(
+        tool_choice,
+        name="bash",
+        arguments={"command": "pwd"},
+    )
+    assert payloads[-1]["choices"][0]["finish_reason"] == "tool_calls"
+    assert "<|endoftext|>" not in response.text
+    assert "<|im_start|>" not in response.text
 
 
 def test_streaming_chat_completion_parses_tool_call_after_literal_marker_text() -> None:
@@ -17591,7 +17685,8 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
     assert artifact["capabilities"]["features"]["tools"]["specific_tool_name_prefix_forcing"] is True
     assert artifact["capabilities"]["features"]["tools"]["tool_call_close_repair"] is True
     assert artifact["capabilities"]["features"]["tools"]["compatibility_parser_repairs"] == [
-        "duplicated_tool_call_start"
+        "duplicated_tool_call_start",
+        "outer_qwen_template_control_residue",
     ]
     assert (
         artifact["capabilities"]["features"]["tools"]["malformed_json_compatibility"]
