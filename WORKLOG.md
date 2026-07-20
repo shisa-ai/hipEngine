@@ -170489,3 +170489,46 @@ Compact artifact:
 `benchmarks/results/2026-07-20-gfx1151-gguf-gdn-state-residency-fusion-c8-rejected.json`
 (5,405 bytes, SHA-256
 `bc7469013d278f895be5e88aee594ac72a61d39c52a8109a851e3c6e1a3c987a`).
+
+## 2026-07-20 — Retain gfx1151 C8 paged-attention token offsets
+
+The post-F3K physical-C8 profile attributes **3.103 ms / 10 launches** to the
+BF16 paged-context body. In its value pass, each of 256 dimensions recomputed
+`token / block_size`, read the same block-table element, and reconstructed the
+same physical KV element offset for every one of 513 tokens.
+
+The gfx1151 fixed-256 route now precomputes those 513 integer offsets once per
+query-head block in aligned dynamic shared memory. The generic adaptive batch
+route keeps its previous inline addressing, so gfx1100 and the rows<=2
+1,024-thread path do not change. No FP operation, reduction, softmax, or value
+accumulation order changes.
+
+At the real `rows=8, context=513, block_size=256, 16Q/2KV, head_dim=256`
+shape with five cycling 12 MiB KV pools, 40 warmups, and 400 iterations, the
+same-binary leaf improves **315.073 -> 181.251 us (-42.47%, 1.738x)** and all
+655,360 output bytes match. Focused paged-attention validation is **6 passed**.
+The all-layer state oracle is **320/320 exact**, with exact tokens, final state,
+and no first divergence.
+
+Direct p512/d128 C8 repeats are **158.042139/158.093079/158.215217 tok/s**,
+median **158.093079**, or **+3.5260%** over clean F3K **152.708625**, at
+**0.0563%** stdev/median. This saves **228.384 ms** per 1,024 tokens and every
+trajectory hash is identical.
+
+The mandatory same-checkout real-Uvicorn candidate/control packet is exact and
+positive on every C8 serving surface:
+
+- blocking **88.927 -> 91.033 tok/s (+2.37%)**;
+- exact SSE **86.119 -> 86.170 (+0.06%)**;
+- delayed admission **68.983 -> 69.527 (+0.79%)**.
+
+Cached-only `rocprofv3` names
+`qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true>` at 256
+threads, grid `(4096,8)`, **40 VGPR**, zero scratch, and median **174.687 us**
+over 445 launches. The diagnostic 128/512/1,024-thread sweep regresses the leaf
+**+55.41%/+25.10%/+32.72%** and changes FP32 bytes; explicit packed 64-bit K
+loads are byte-exact but a same-binary **+0.10%** median regression. The
+retained 256-thread token-offset schedule is therefore the only promoted point.
+
+Implementation is ready for an atomic code commit. A detached tracked-clean
+direct capture and compact artifact/scoreboard publication follow that commit.
