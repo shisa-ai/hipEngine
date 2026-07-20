@@ -34,6 +34,32 @@ def test_request_state_tracks_prefill_and_decode_progress() -> None:
     assert req.finished
 
 
+def test_request_state_transitions_do_not_revalidate_immutable_token_history() -> None:
+    int_calls: list[int] = []
+
+    class CountedToken:
+        def __init__(self, value: int) -> None:
+            self.value = int(value)
+
+        def __int__(self) -> int:
+            int_calls.append(self.value)
+            return self.value
+
+    request = RequestState(
+        request_id=7,
+        prompt_tokens=(CountedToken(10), CountedToken(11)),
+        max_new_tokens=4,
+        generated_tokens=(CountedToken(12),),
+    )
+    assert int_calls == [10, 11, 12]
+
+    int_calls.clear()
+    advanced = request.append_generated(13)
+
+    assert int_calls == []
+    assert tuple(int(token) for token in advanced.generated_tokens) == (12, 13)
+
+
 def test_active_batch_admits_finishes_and_compacts_stable_requests() -> None:
     batch = ActiveBatch(capacity=4)
     assert batch.active_mask == (False, False, False, False)

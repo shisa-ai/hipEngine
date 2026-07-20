@@ -1779,11 +1779,15 @@ class ResidentBatchScheduler:
         finish_reason = "stop" if token.finished else "length"
         sampler_state = self._sampling_states.get(token.request_id)
         params = self._sampling.get(token.request_id)
+        provided_chunk = token.stream_chunk
+        needs_scheduler_chunk = (
+            provided_chunk is None or provided_chunk.telemetry is None
+        )
         forced_tokens = () if sampler_state is None else tuple(sampler_state.forced_tokens)
         forced_reason = None if sampler_state is None else sampler_state.forced_token_reason
         plan = (
             None
-            if params is None
+            if params is None or not needs_scheduler_chunk
             else plan_sampler(
                 params,
                 native_gpu_available=bool(native_gpu_available),
@@ -1796,23 +1800,32 @@ class ResidentBatchScheduler:
         updated = request.append_generated(token.token_id, finished=token.finished)
         self.active_batch.update_request(updated)
         self._update_kv_pages(updated)
-        scheduler_chunk = self._stream_chunk_for_generated_token(
-            token,
-            updated,
-            sampler_state=sampler_state,
-            plan=plan,
-            forced_tokens_before=forced_tokens,
-            forced_reason_before=forced_reason,
-            execution_path=execution_path,
-            native_compact_prefill=native_compact_prefill,
-            native_caware_decode=native_caware_decode,
-            serial_decode_fallback=serial_decode_fallback,
+        scheduler_chunk = (
+            self._stream_chunk_for_generated_token(
+                token,
+                updated,
+                sampler_state=sampler_state,
+                plan=plan,
+                forced_tokens_before=forced_tokens,
+                forced_reason_before=forced_reason,
+                execution_path=execution_path,
+                native_compact_prefill=native_compact_prefill,
+                native_caware_decode=native_caware_decode,
+                serial_decode_fallback=serial_decode_fallback,
+            )
+            if needs_scheduler_chunk
+            else None
         )
-        provided_chunk = token.stream_chunk
-        stream_chunk = (
-            scheduler_chunk
-            if provided_chunk is None
-            else GenerationStreamChunk(
+        if provided_chunk is None:
+            assert scheduler_chunk is not None
+            stream_chunk = scheduler_chunk
+        elif scheduler_chunk is None:
+            # Native runners already provide the authoritative telemetry. Avoid
+            # rebuilding and then discarding an equivalent sampler plan/state
+            # payload for every row on every decode tick.
+            stream_chunk = provided_chunk
+        else:
+            stream_chunk = GenerationStreamChunk(
                 text=provided_chunk.text,
                 token_logprobs=(
                     provided_chunk.token_logprobs
@@ -1826,7 +1839,6 @@ class ResidentBatchScheduler:
                     else scheduler_chunk.telemetry
                 ),
             )
-        )
         if not updated.finished:
             return None, stream_chunk
         done = self._reclaim_active_request(updated.request_id, finish_reason=finish_reason)

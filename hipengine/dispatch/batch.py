@@ -7,7 +7,7 @@ keys before the Qwen3.5/PARO kernels are fully c>1-capable.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from math import ceil
 from typing import Iterable, Mapping, Sequence
@@ -37,6 +37,7 @@ class RequestState:
     next_prompt_index: int = 0
     generated_tokens: tuple[int, ...] = ()
     finished: bool = False
+    _tokens_validated: bool = field(default=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if self.request_id < 0:
@@ -45,10 +46,15 @@ class RequestState:
             raise ValueError("max_new_tokens must be non-negative")
         if self.next_prompt_index < 0 or self.next_prompt_index > len(self.prompt_tokens):
             raise ValueError("next_prompt_index must be within prompt_tokens")
-        if any(int(token) < 0 for token in self.prompt_tokens):
-            raise ValueError("prompt token ids must be non-negative")
-        if any(int(token) < 0 for token in self.generated_tokens):
-            raise ValueError("generated token ids must be non-negative")
+        # Token tuples are immutable. Validate them once at construction, then
+        # let dataclasses.replace() preserve that proof across cursor/token
+        # transitions; append_generated() validates its one new token directly.
+        if not self._tokens_validated:
+            if any(int(token) < 0 for token in self.prompt_tokens):
+                raise ValueError("prompt token ids must be non-negative")
+            if any(int(token) < 0 for token in self.generated_tokens):
+                raise ValueError("generated token ids must be non-negative")
+            object.__setattr__(self, "_tokens_validated", True)
 
     @classmethod
     def from_tokens(cls, request_id: int, prompt_tokens: Iterable[int], *, max_new_tokens: int) -> "RequestState":

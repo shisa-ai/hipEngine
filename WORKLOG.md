@@ -169007,3 +169007,65 @@ threshold. Decision: retain the exact package-scoped default. The raw accepted
 screen and focused production artifact remain under `/tmp`; the final multi-width
 publication task will emit the compact repository artifact and rollup after the
 steady-loop optimization pass.
+
+## 2026-07-20 — Remove duplicate resident token telemetry work
+
+A low-overhead method-timing shim on the real gfx1151 C8 server localized the
+steady host path rather than relying on the earlier direct/server residual. Over
+one p512/d64 blocking plus live C8 process it recorded 206 decode calls and 1,023
+row token chunks. `runner.decode_batch` consumed 10,140.316 ms, while the outer
+`loop.run_decode` consumed 10,374.340 ms. Of the 234.024 ms difference,
+`scheduler.record_generated_events` owned 230.246 ms. Locking, cancellation
+polling, event routing, decode-work planning, graph observation, and the loop
+barrier were each negligible. Inside the runner, stream-chunk construction still
+used 53.768 ms; graph latest-token readback was only 5.565 ms. The earlier ~6%
+steady residual therefore overstates removable Python overhead; model/graph wall
+still dominates.
+
+Code audit found three duplicate operations on every row/token:
+
+1. `RequestState.append_generated()` used `dataclasses.replace()`, whose
+   `__post_init__` rescanned the immutable 512-token prompt and complete generated
+   history after the one new token had already been validated.
+2. The native runner supplied authoritative text/logprob/telemetry, but the
+   scheduler rebuilt a sampler plan and second telemetry object before discarding
+   it in favor of the supplied payload.
+3. GGUF stream telemetry rebuilt the same immutable sampler plan and ran an empty
+   stop-sequence matcher over the full generated history on every token.
+
+RED tests require one-time immutable token validation, reuse of a complete runner
+stream chunk while scheduler sampling state still advances, reuse of the
+registered GGUF sampler plan, and no history scan for an empty stop policy. The
+focused bundles pass:
+
+```bash
+.venv/bin/python -m pytest tests/test_dispatch_batch.py -q --tb=short
+.venv/bin/python -m pytest tests/test_generation_batch_scheduler.py \
+  -k 'record_generated_events or token_events_carry_stream_telemetry or submit_poll' \
+  -q --tb=short
+.venv/bin/python -m pytest tests/test_generation_qwen35_gguf_sampling.py \
+  -k resident -q --tb=short
+```
+
+Results are **16 + 13 + 15 tests passed**. The deterministic 8-row/128-tick host
+microbench moves scheduler token recording **132.721 -> 11.755 ms** and GGUF
+stream construction **45.074 -> 12.987 ms**; combined host work falls **1.389 ->
+0.193 ms/tick (-86.1%, -1.196 ms/tick)** without changing any emitted object or
+sampling-state transition.
+
+The matched accepted real-Uvicorn p512/d128 C1/C8 command is the same as the
+preceding pressure-burst entry, with output
+`/tmp/gfx1151-hotloop-candidate/result.json`. All **39/39** rows remain exact,
+native, and fallback-free. Relative to the immediately preceding accepted
+pressure baseline:
+
+- C8 blocking: **85.685 -> 86.275 tok/s (+0.69%)**;
+- C8 live admission: **67.299 -> 67.695 (+0.59%)**;
+- exact C8 SSE: **83.578 -> 83.435 (-0.17%, within one-run variance)**;
+- C1: **43.991/43.042 -> 44.137/43.006 blocking/SSE tok/s**.
+
+The SLO-sensitive `continuous_fixed` repeat is independently **12/12 exact** and
+fully passing at **46.470 exact goodput tok/s**, versus **46.453** before the host
+change; TTFT p95 is **0.510 s**, ITL p99 **0.292 s**, no fallback occurs, and
+final ownership is clean. Decision: retain the deterministic host-work removal;
+the final multi-width repeat will decide the aggregate publication row.

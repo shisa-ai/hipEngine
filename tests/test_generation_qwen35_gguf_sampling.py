@@ -1847,6 +1847,61 @@ def test_gguf_sampled_packed_unavailable_reports_model_serial_fallback(monkeypat
         assert decode_state["serial_decode_fallback"] is True
 
 
+def test_gguf_resident_stream_reuses_registered_sampler_plan(monkeypatch) -> None:
+    request = _request(max_tokens=2, ignore_eos=True)
+    plan = qwen35_gguf._gguf_sampler_plan(request)
+    slot = qwen35_gguf._GGUFARServingSlot(
+        request_id=1,
+        prompt_ids=[10, 11],
+        session=SimpleNamespace(),
+        prev_token=16,
+        seq_position=3,
+        generated_ids=[16],
+        native_decode_steps=1,
+    )
+    row = qwen35_gguf._GGUFResidentLoopRow(
+        request_id=1,
+        batch_id=0,
+        row_index=0,
+        request=request,
+        prompt_ids=(10, 11),
+        native_greedy=True,
+        native_sampled=False,
+        submitted_at=0.0,
+        slot=slot,
+        first_token_emitted=True,
+        sampler_plan=plan,
+    )
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    runner.generator = SimpleNamespace(tokenizer=_FakeTokenizer())
+
+    monkeypatch.setattr(
+        qwen35_gguf,
+        "_gguf_sampler_plan",
+        lambda request: (_ for _ in ()).throw(
+            AssertionError(f"registered sampler plan was recomputed: {request!r}")
+        ),
+    )
+
+    chunk = runner._native_stream_chunk(row)
+
+    assert _decode_state(chunk)["sampler_mode"] == "greedy_fast"
+
+
+def test_gguf_empty_stop_suffix_skips_history_scan(monkeypatch) -> None:
+    monkeypatch.setattr(
+        qwen35_gguf,
+        "token_sequence_state_for_tokens",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError(f"empty stop policy must not scan token history: {args!r} {kwargs!r}")
+        ),
+    )
+
+    assert qwen35_gguf._gguf_stop_suffix_state((1, 2, 3), ()) is None
+
+
 def test_gguf_resident_prepare_is_idempotent_at_full_occupancy() -> None:
     runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
         qwen35_gguf.Qwen35GGUFResidentModelRunner

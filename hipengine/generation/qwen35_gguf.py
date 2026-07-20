@@ -3997,6 +3997,7 @@ class _GGUFResidentLoopRow:
     fallback_output: GenerationOutput | None = None
     kv_allocation: Any | None = None
     sampling_request: GenerationRequest | None = None
+    sampler_plan: Any | None = None
     sampling_state: RowSamplingState | None = None
     samples: list[Any] = field(default_factory=list)
     full_vocab_logits_d2h: bool | None = None
@@ -4760,6 +4761,7 @@ class Qwen35GGUFResidentModelRunner:
                 native_greedy=native_greedy,
                 native_sampled=native_sampled,
                 submitted_at=now,
+                sampler_plan=plan,
             )
 
     def prepare(self, *, max_sequence_length: int | None = None) -> None:
@@ -5239,6 +5241,7 @@ class Qwen35GGUFResidentModelRunner:
         plan = _gguf_sampler_plan(sampling_request)
         self._fallback_reasons[str(plan.fallback_reason or plan.mode.value)] += 1
         row.sampling_request = sampling_request
+        row.sampler_plan = plan
         row.sampling_state = sampling_state
         row.samples.append(sample)
         row.full_vocab_logits_d2h = full_vocab_logits_d2h
@@ -5926,6 +5929,7 @@ class Qwen35GGUFResidentModelRunner:
                 native_caware_decode=slot.native_decode_steps > 0,
                 serial_decode_fallback=slot.serial_decode_steps > 0,
                 native_sampler_rows=False,
+                sampler_plan=row.sampler_plan,
             ),
         )
 
@@ -5985,6 +5989,7 @@ class Qwen35GGUFResidentModelRunner:
                 serial_decode_fallback=slot.serial_decode_steps > 0,
                 native_sampler_rows=False,
                 timing=timing,
+                sampler_plan=row.sampler_plan,
             ),
         )
 
@@ -6477,12 +6482,13 @@ def _gguf_telemetry(
     batch_id: str | None = None,
     group_rows: int | None = None,
     timing_owner: bool | None = None,
+    sampler_plan: Any | None = None,
 ) -> GenerationTelemetry:
     if timing is not None and timing_scope is None:
         timing_scope = "choice"
         group_rows = 1 if group_rows is None else int(group_rows)
         timing_owner = True if timing_owner is None else bool(timing_owner)
-    plan = _gguf_sampler_plan(request)
+    plan = _gguf_sampler_plan(request) if sampler_plan is None else sampler_plan
     state_payload = _gguf_decode_state_from_sampling_state(sampling_state)
     forced_token_id, forced_token_reason, forced_tokens_remaining = _gguf_forced_token_metadata(forced_sample)
     return GenerationTelemetry.from_decode_counts(
@@ -6565,6 +6571,8 @@ def _gguf_stop_suffix_state(
     generated_ids: list[int] | tuple[int, ...],
     stop_token_sequences: tuple[tuple[int, ...], ...],
 ) -> dict[str, Any] | None:
+    if not stop_token_sequences:
+        return None
     payload = token_sequence_state_for_tokens(generated_ids, stop_token_sequences).to_json_dict()
     return payload or None
 
