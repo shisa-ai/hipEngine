@@ -170181,3 +170181,34 @@ Raw micro SHA-256 is
 The next dense candidate must change output-column/K scheduling rather than
 repeat cross-row weight amortization. Compact artifact is 2,886 bytes with
 SHA-256 `3da329eaa35bad4fe8135512c1faea502e30d57c11a7d9382cb2d68c33805517`.
+
+## 2026-07-20 — Reject Q8T16 physical-C8 pair rowtile2/3 scheduling
+
+Rechecked the dominant 30-launch qkv+gate rowtile at exact physical C8. A
+>2x-MALL `8x2048 -> 8x(8192+4096)`, 128-thread, 200-iteration micro measures
+rowtile2/3/4 at **318.60/326.31/328.91 us**. All are byte-exact; rowtile2 is
+**3.13%** faster than rowtile4 and rowtile3 is **0.79%** faster.
+
+Rowtile2's p512/d128 direct screen is real and stable:
+**152.067881/152.012546/152.062008 tok/s**, median **152.062008**, or
+**+0.6935%** over clean F3F **151.014767**, with 0.0200% stdev/median. The
+all-layer oracle is **320/320 exact** with exact tokens, Conv/GDN/KV, and final
+state.
+
+The mandatory same-checkout Uvicorn A/B rejects promotion. Relative to rowtile4
+control, rowtile2 is **+0.32% blocking** (88.387 -> 88.671), **+0.36% exact
+SSE** (85.517 -> 85.827), but delayed admission regresses **68.590 -> 67.870
+tok/s (-1.05%)**. All rows and native routes are exact. This violates the
+same-suite non-regression policy. Rowtile3 was then screened as the lower-grid
+compromise; it regresses direct **151.015 -> 150.863 (-0.10%)**, so no server
+run was warranted.
+
+Removed the temporary rowtile3 body/wrapper/test, all rowtile2/3 runtime
+selectors, and microbench extensions. The pre-existing callable rowtile2
+diagnostic remains; automatic physical C8 stays on rowtile4. Rejected artifact:
+`benchmarks/results/2026-07-20-gfx1151-gguf-q8t16-pair-rowtile-scheduling-rejected.json`.
+Raw candidate/control server SHA-256 values are
+`2081bcd68a5f8562577c6d180d0933e709c620378060359d79d755edb7444fb0` and
+`a1208a6eb918b20082487480508b21c7a50e4be0b38e2bee2ee48df43068106e`.
+Compact artifact is 4,418 bytes with SHA-256
+`ccd53cbc610ba21dc57be4cf014004aa51e2dc1fc64e7baff6b16102bfa007b7`.
