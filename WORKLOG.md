@@ -170401,3 +170401,50 @@ capability remains. Compact rejection artifact:
 `benchmarks/results/2026-07-20-gfx1151-gguf-gdn-pairheads-c8-rejected.json`
 (4,811 bytes, SHA-256
 `7322d49cc6c197132d5ff03e6c1d9695d95626989e86f9d0c4bb4f23787a3731`).
+
+## 2026-07-20 — Reject gfx1151 physical-C8 grouped-query paged attention
+
+The post-F3K profile leaves full attention at **3.204 ms (6.16%)** per
+physical-C8 step, including **3.103 ms / 10 launches** in the BF16 paged-context
+body. The external lineage preflight remained blocked by absent reference
+worktrees, so this experiment modified only the existing in-tree body and
+ported no external code.
+
+First, a q-head-tiled body explicitly shared the K/V loads of the two query
+heads mapped to one GQA KV head. Its best exact primitive improved the real
+`rows=8, context=513, 16Q/2KV, head_dim=256` leaf by **28.42%** while staying
+byte-exact, but the model screen regressed approximately
+**152.709 -> 145.148 tok/s (-4.95%)**. Synchronization and reduced grid
+parallelism overwhelm the isolated memory saving at model scale.
+
+The successful exact design instead put two independent production-order
+256-thread query groups in one 512-thread block. Each subgroup retained its
+original token mapping, shuffle/reduction tree, softmax order, value
+accumulation, and stores; sharing was limited to block scheduling/cache
+locality. Across five cycling 12 MiB KV pools, 40 warmups, and 400 iterations,
+the leaf improved **314.999 -> 293.151 us (-6.94%)** and was byte-exact.
+Direct p512/d128 repeats were **153.361925/153.341008/153.181386 tok/s**, median
+**153.341008**, or **+0.4141%** over clean F3K **152.708625**, at **0.0644%**
+stdev/median. This saves **27.654 ms** per 1,024 tokens. The all-layer gate was
+**320/320 exact**, with exact tokens and final state.
+
+The mandatory same-checkout real-Uvicorn gate rejected promotion:
+
+- blocking **89.436 -> 88.930 tok/s (-0.57%)**;
+- exact SSE **84.807 -> 85.150 (+0.40%)**;
+- delayed admission **68.975 -> 68.330 (-0.94%)**.
+
+Every request remained exact, but both non-streaming and delayed service
+regressed. The only remaining grouping point, four independent 256-thread
+query groups in one 1,024-thread block, was also byte-exact but improved the
+leaf only **313.530 -> 296.114 us (-5.55%)**, less than the server-rejected
+two-group design; it was rejected before a redundant expensive server cycle.
+
+Removed all candidate kernels, wrappers, registry variants, runtime selectors,
+and fixture extensions. No environment flag/capability remains. Compact
+rejection artifact:
+`benchmarks/results/2026-07-20-gfx1151-gguf-paged-attn-qhead-groups-c8-rejected.json`
+(6,285 bytes, SHA-256
+`5c84626fb7ff0f19bde757f9d8b3e24082462f09aa61738fc10c8bcc665cffc4`).
+The removed raw candidate patch is 28,723 bytes, SHA-256
+`dc287170ceb009e01bf2a392dd35697e05e58e96630190095d6331b046ad6ce3`.

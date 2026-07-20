@@ -1,0 +1,131 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_paged_attn_qhead_groups_c8_rejected",
+  "created_at": "2026-07-20T20:10:00+00:00",
+  "status": "rejected_exact_direct_positive_server_regression",
+  "passed": true,
+  "performance_claim": false,
+  "decision": "remove all grouped-query paged-attention kernels and selectors because the best exact direct candidate regresses blocking and delayed serving",
+  "hardware": {
+    "host": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "amd_iommu": "off",
+    "gpu_max_hw_queues": 1
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B UD-Q4_K_M GGUF",
+    "path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "baseline_profile": {
+    "family": "full_attention",
+    "total_duration_ms": 3.204,
+    "share_percent": 6.16,
+    "paged_context_dispatches": 10,
+    "paged_context_total_duration_ms": 3.103
+  },
+  "candidates": {
+    "explicit_shared_kv": {
+      "design": "two query heads sharing one KV head cooperate in one block and explicitly share K/V loads",
+      "primitive_delta_percent": -28.42042525755123,
+      "primitive_output_bit_exact": true,
+      "model_screen_tok_s": 145.148,
+      "model_delta_percent": -4.95,
+      "decision": "reject because explicit synchronization/load sharing destroys model-scale scheduling despite an exact leaf win"
+    },
+    "two_independent_query_groups": {
+      "design": "one 512-thread block contains two independent production-order 256-thread query-head groups sharing only block scheduling and cache locality",
+      "grid_change": "rows x 16 query-head blocks x 256 threads -> rows x 8 paired-query blocks x 512 threads",
+      "arithmetic_contract": "each 256-thread subgroup retains the production token mapping, shuffle/reduction tree, softmax order, value accumulation order, and output stores",
+      "primitive_microbench": {
+        "shape": "rows=8, context=513, block_size=256, num_q_heads=16, num_kv_heads=2, head_dim=256",
+        "protocol": "five cycling 12 MiB KV pools, 40 warmups, 400 iterations",
+        "production_us": 314.9990124802571,
+        "candidate_us": 293.1511749920901,
+        "delta_percent": -6.9358431685675015,
+        "speedup": 1.0745275453484247,
+        "output_bit_exact": true
+      },
+      "direct_screen": {
+        "workload": "physical-C8 p512/d128 state-bound graph, one warmup and three measured runs",
+        "baseline_clean_f3k_tok_s": 152.70862495870657,
+        "candidate_tok_s_samples": [153.3619250188752, 153.34100776712046, 153.18138630700562],
+        "candidate_tok_s_median": 153.34100776712046,
+        "delta_percent": 0.414110734468931,
+        "stdev_percent_of_median": 0.06439971754743187,
+        "wall_savings_seconds_per_1024_tokens": 0.027654011035337156,
+        "trajectories_repeatable": true,
+        "raw_bytes": 200350,
+        "raw_sha256": "48d0790adee9199b6016bdf0a6e7be29f98f91b4917e84ba797909606f6e4829"
+      },
+      "correctness": {
+        "primitive_output_bit_exact": true,
+        "all_layer_hidden_comparisons": 320,
+        "all_layer_hidden_exact": true,
+        "tokens_and_final_state_exact": true,
+        "all_layer_oracle_bytes": 16146,
+        "all_layer_oracle_sha256": "17558433a96bc641c771994bc4c3f8d5592906c71c80d8eefe5b4cfd5cfc773b"
+      },
+      "server_gate": {
+        "protocol": "same-checkout real localhost Uvicorn C1/C8 p512/d128, one warmup, three blocking, three exact SSE, delayed C8",
+        "candidate": {
+          "blocking_median_tok_s": 88.92983087052767,
+          "exact_sse_median_tok_s": 85.14965128718805,
+          "delayed_tok_s": 68.33047066266025,
+          "all_exact": true,
+          "raw_bytes": 718048,
+          "raw_sha256": "04dd4e1dd29fe41983ef39ca8cf01c0943fd56191842cb4a67cf861314b7cb6e"
+        },
+        "control": {
+          "blocking_median_tok_s": 89.43567637967314,
+          "exact_sse_median_tok_s": 84.80708699072167,
+          "delayed_tok_s": 68.97543122395639,
+          "all_exact": true,
+          "raw_bytes": 726116,
+          "raw_sha256": "390d3cc700f785e7283691cf6bd4ce6e082bbd8da42f873032a260858500baab"
+        },
+        "candidate_delta_percent": {
+          "blocking": -0.5655970073933925,
+          "exact_sse": 0.4039335727966442,
+          "delayed": -0.9350583966659443
+        }
+      }
+    },
+    "four_independent_query_groups": {
+      "design": "one 1024-thread block contains four independent production-order 256-thread query-head groups",
+      "primitive_microbench": {
+        "shape": "rows=8, context=513, block_size=256, num_q_heads=16, num_kv_heads=2, head_dim=256",
+        "protocol": "five cycling 12 MiB KV pools, 40 warmups, 400 iterations",
+        "production_us": 313.530377461575,
+        "candidate_us": 296.1139549734071,
+        "delta_percent": -5.5549394062469615,
+        "speedup": 1.058816621762159,
+        "output_bit_exact": true,
+        "raw_bytes": 519,
+        "raw_sha256": "9ac0f7af312e3ccf22de5c9a09422ff55bb3ad4209f1c63eaa73d4875904670c"
+      },
+      "decision": "reject before another expensive server cycle because it is slower than the two-group leaf that already failed serving"
+    }
+  },
+  "cleanup": {
+    "removed": true,
+    "rejected_patch_bytes": 28723,
+    "rejected_patch_sha256": "dc287170ceb009e01bf2a392dd35697e05e58e96630190095d6331b046ad6ce3",
+    "remaining_runtime_selector": false,
+    "remaining_environment_flag": false
+  },
+  "lineage_check": {
+    "attempted": true,
+    "status": "blocked_external_reference_missing",
+    "detail": "docs/source_lineage.json points to absent external reference worktrees",
+    "scope_note": "the rejected experiment modified only the existing in-tree kernel and ported no external code"
+  },
+  "limitations": [
+    "The two-group direct gain is measured but cannot be retained because mandatory same-checkout blocking and delayed server metrics regress.",
+    "The four-group leaf is weaker than the rejected two-group candidate and was not subjected to a redundant server gate.",
+    "No candidate kernel, wrapper, registry variant, environment flag, capability, or test-only route remains in the source tree."
+  ]
+}
