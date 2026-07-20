@@ -1058,7 +1058,14 @@ def _tools_capability(*, tokenizer_backed: bool) -> dict[str, Any]:
         "specific_tool_name_prefix_forcing_scope": (
             "atomic_tool_call_name_and_arguments_key" if tokenizer_backed else "none"
         ),
+        "strict_tool_schema_prefix_anchor": tokenizer_backed,
+        "strict_tool_schema_prefix_anchor_scope": (
+            "selected_closed_object_first_required_string_key" if tokenizer_backed else "none"
+        ),
         "tool_call_close_repair": tokenizer_backed,
+        "tool_call_close_repair_scope": (
+            "tokenizer_safe_marker_or_object_envelope_then_stop" if tokenizer_backed else "none"
+        ),
     }
 
 
@@ -3877,15 +3884,23 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             if isinstance(request, ChatCompletionRequest) and not uses_stored_chat_prompt
             else ()
         )
-        forced_tool_token_ids = (
-            _required_tool_sampling_forced_token_ids(request, engine)
+        forced_tool_token_ids, strict_tool_schema_prefix_anchored = (
+            _required_tool_sampling_forced_prefix(request, engine)
             if isinstance(request, ChatCompletionRequest) and not uses_stored_chat_prompt
-            else ()
+            else ((), False)
         )
         force_sequence_completion_token_sequences = (
-            _tool_call_sequence_completion_token_sequences(request, engine)
+            _tool_call_sequence_completion_token_sequences(
+                request,
+                engine,
+                forced_tool_token_ids,
+                include_object_close=strict_tool_schema_prefix_anchored,
+            )
             if isinstance(request, ChatCompletionRequest)
             else ()
+        )
+        stop_token_sequences = tuple(
+            dict.fromkeys((*stop_token_sequences, *force_sequence_completion_token_sequences))
         )
         initial_forced_tool_token_ids = () if thinking_budget else forced_tool_token_ids
         post_thinking_forced_tool_token_ids = forced_tool_token_ids if thinking_budget else ()
@@ -9799,36 +9814,56 @@ def _no_tool_sampling_suppress_token_ids(
     return (int(token_ids[0]),)
 
 
-def _required_tool_sampling_forced_token_ids(
+def _required_tool_sampling_forced_prefix(
     request: ChatCompletionRequest,
     engine: Any,
-) -> tuple[int, ...]:
+) -> tuple[tuple[int, ...], bool]:
     if not request.tools:
-        return ()
+        return (), False
     mode, _name = _tool_choice_mode(request.tool_choice)
     if mode not in {"required", "function"}:
-        return ()
+        return (), False
     try:
         start_ids = _tokenize_text(engine, _TOOL_CALL_START_MARKER)
     except OpenAIHTTPError:
-        return ()
+        return (), False
+    start = tuple(int(token_id) for token_id in start_ids)
     name = _specific_tool_name_prefix_target(request)
     if name is None:
-        return tuple(int(token_id) for token_id in start_ids)
+        return start, False
     try:
         prefix_ids = _tokenize_text(engine, _tool_call_name_prefix_text(name))
     except OpenAIHTTPError:
-        return tuple(int(token_id) for token_id in start_ids)
-    if not prefix_ids:
-        return tuple(int(token_id) for token_id in start_ids)
-    return tuple(int(token_id) for token_id in prefix_ids)
+        return start, False
+    prefix = tuple(int(token_id) for token_id in prefix_ids)
+    if not prefix:
+        return start, False
+    schema_prefix = _specific_tool_first_required_string_prefix(request, name)
+    if schema_prefix is None:
+        return prefix, False
+    try:
+        schema_prefix_ids = _tokenize_text(engine, schema_prefix)
+    except OpenAIHTTPError:
+        return prefix, False
+    schema_prefix_tokens = tuple(int(token_id) for token_id in schema_prefix_ids)
+    if not schema_prefix_tokens:
+        return prefix, False
+    return schema_prefix_tokens, True
 
 
 def _tool_call_sequence_completion_token_sequences(
     request: ChatCompletionRequest,
     engine: Any,
+    forced_tool_token_ids: Sequence[int],
+    *,
+    include_object_close: bool,
 ) -> tuple[tuple[int, ...], ...]:
-    return _tool_call_close_repair_token_sequences(request, engine)
+    return _tool_call_close_repair_token_sequences(
+        request,
+        engine,
+        forced_tool_token_ids,
+        include_object_close=include_object_close,
+    )
 
 
 def _specific_tool_name_prefix_target(request: ChatCompletionRequest) -> str | None:
@@ -9854,9 +9889,44 @@ def _tool_call_name_prefix_text(name: str) -> str:
     )
 
 
+def _specific_tool_first_required_string_prefix(
+    request: ChatCompletionRequest,
+    name: str,
+) -> str | None:
+    tool = _tool_map_by_name(request.tools).get(str(name))
+    if tool is None:
+        return None
+    function = _tool_function(tool)
+    if function.get("strict") is not True:
+        return None
+    schema = _tool_parameters_schema(tool)
+    if not isinstance(schema, Mapping) or schema.get("type") != "object":
+        return None
+    if schema.get("additionalProperties") is not False:
+        return None
+    required = schema.get("required")
+    properties = schema.get("properties")
+    if (
+        not isinstance(required, Sequence)
+        or isinstance(required, (str, bytes))
+        or not required
+        or not isinstance(properties, Mapping)
+    ):
+        return None
+    key = required[0]
+    property_schema = properties.get(key) if isinstance(key, str) else None
+    if not isinstance(property_schema, Mapping) or property_schema.get("type") != "string":
+        return None
+    encoded_key = json.dumps(key, ensure_ascii=False, separators=(",", ":"))
+    return f"{_tool_call_name_prefix_text(name)}{{{encoded_key}:\""
+
+
 def _tool_call_close_repair_token_sequences(
     request: ChatCompletionRequest,
     engine: Any,
+    forced_tool_token_ids: Sequence[int],
+    *,
+    include_object_close: bool,
 ) -> tuple[tuple[int, ...], ...]:
     if not request.tools:
         return ()
@@ -9864,12 +9934,34 @@ def _tool_call_close_repair_token_sequences(
     if mode not in {"required", "function"}:
         return ()
     try:
-        token_ids = _tokenize_text(engine, _TOOL_CALL_END_MARKER)
+        marker_ids = _tokenize_text(engine, _TOOL_CALL_END_MARKER)
     except OpenAIHTTPError:
         return ()
-    if not token_ids:
-        return ()
-    return (tuple(int(token_id) for token_id in token_ids),)
+    object_close_ids: tuple[int, ...] = ()
+    if include_object_close:
+        try:
+            object_close_ids = _tokenize_text(engine, f"}}}}{_TOOL_CALL_END_MARKER}")
+        except OpenAIHTTPError:
+            pass
+    full = tuple(int(token_id) for token_id in marker_ids)
+    object_close = tuple(int(token_id) for token_id in object_close_ids)
+    forced = tuple(int(token_id) for token_id in forced_tool_token_ids)
+    sequences: list[tuple[int, ...]] = []
+    for sequence in (object_close, full):
+        if sequence and sequence not in sequences and not _token_sequence_occurs(forced, sequence):
+            sequences.append(sequence)
+    return tuple(sequences)
+
+
+def _token_sequence_occurs(token_ids: Sequence[int], sequence: Sequence[int]) -> bool:
+    tokens = tuple(int(token_id) for token_id in token_ids)
+    target = tuple(int(token_id) for token_id in sequence)
+    if not target or len(target) > len(tokens):
+        return False
+    return any(
+        tokens[index : index + len(target)] == target
+        for index in range(len(tokens) - len(target) + 1)
+    )
 
 
 def _normalize_prompts(
