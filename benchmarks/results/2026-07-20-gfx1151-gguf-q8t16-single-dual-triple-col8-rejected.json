@@ -1,0 +1,125 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_q8t16_single_dual_triple_col8_rejected",
+  "created_at": "2026-07-20T23:30:00+09:00",
+  "status": "rejected_leaf_or_server_regression",
+  "passed": false,
+  "performance_claim": false,
+  "decision": "remove all single/triple Q8T16 col8 diagnostics; retain col8 only for the independently promoted qkv+gate rowtile4 pair",
+  "hardware": {
+    "host": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "gpu_max_hw_queues": 1,
+    "tuned_profile": "accelerator-performance"
+  },
+  "software": {
+    "base_commit": "04614856",
+    "runtime_commit": "b03a828fe5e6ddccdf702ff185184e2d09014e21",
+    "rocm": "HIP 7.15.0-0000000"
+  },
+  "single_microbench": {
+    "contract": "rows=8, threads=128, 40 warmups, 200 iterations, cycling pools >2x estimated MALL",
+    "results": [
+      {
+        "activation": "bf16",
+        "shape": "4096x2048",
+        "production_us": 112.43554996326566,
+        "col8_us": 130.67417516140267,
+        "delta_percent": 16.22140435484669,
+        "exact": true,
+        "decision": "reject before model routing"
+      },
+      {
+        "activation": "f32",
+        "shape": "4096x2048",
+        "production_us": 114.33917476097122,
+        "col8_us": 129.3436301057227,
+        "delta_percent": 13.122759873086931,
+        "exact": true,
+        "decision": "reject before model routing"
+      },
+      {
+        "activation": "bf16",
+        "shape": "512x2048",
+        "production_us": 24.021230055950582,
+        "col8_us": 22.657919907942414,
+        "delta_percent": -5.675438538462552,
+        "exact": true,
+        "decision": "advance only this short-K shape to model/server gates"
+      }
+    ],
+    "raw_bytes": 1149,
+    "raw_sha256": "f6f9403d529dc4751941a356d1fa24c765342322b44713f83d17f99da81380ec"
+  },
+  "triple_microbench": {
+    "shape": "rows=8, in=2048, out=(8192,512,512), threads=128, 40 warmups, 200 iterations, 80.2 MB cycling pool",
+    "production_us": 281.33033018093556,
+    "col8_us": 291.34135984349996,
+    "delta_percent": 3.5584608513862914,
+    "exact": true,
+    "decision": "reject before model routing",
+    "raw_bytes": 435,
+    "raw_sha256": "467ffcf0c58e178e92a6700631258d89e479529144411368aedfaa20db5f256b"
+  },
+  "dual_microbench": {
+    "shape": "rows=8, in=2048, out=(512,512), threads=128, 40 warmups, 200 iterations, 69.1 MB cycling pool",
+    "production_us": 31.953454890754074,
+    "col8_us": 31.368604977615178,
+    "delta_percent": -1.8303182398849982,
+    "exact": true,
+    "decision": "advance to direct screen because the primitive improves",
+    "raw_bytes": 423,
+    "raw_sha256": "c1ad7c902887764717435beb4f7255f725eb97306ff836640c2a6cd5c1780658"
+  },
+  "dual_model_gate": {
+    "scope": "p512/d128 physical-C8 graph, one warmup, three measured repeats",
+    "clean_f3i_baseline_tok_s": 152.19161412265987,
+    "candidate_samples_tok_s": [152.3444132084179, 152.22028977782767, 152.07363051618074],
+    "candidate_median_tok_s": 152.22028977782767,
+    "delta_percent": 0.018841810262082426,
+    "stdev_percent_of_median": 0.08904696685308275,
+    "decision": "reject before server: 0.019% median movement is below 0.089% run variance",
+    "raw_bytes": 200370,
+    "raw_sha256": "ee04433cd5326abb012308b4a5dbb19b054a578a7d84aeedd7123c994ed83b56"
+  },
+  "short_single_model_gate": {
+    "scope": "p512/d128 physical-C8 graph, one warmup, three measured repeats",
+    "clean_f3i_baseline_tok_s": 152.19161412265987,
+    "candidate_samples_tok_s": [152.33369180593346, 152.28076113432402, 152.40127087217564],
+    "candidate_median_tok_s": 152.33369180593346,
+    "delta_percent": 0.09335447560143706,
+    "stdev_percent_of_median": 0.039651810711328846,
+    "layer_hidden_comparisons": 320,
+    "layer_hidden_exact": true,
+    "tokens_conv_gdn_kv_final_state_exact": true,
+    "raw_sha256": {
+      "direct": "a0ceab35f1ac1fbcdef586d528fc2150e7e8d37947233c7102982958382f5eff",
+      "state": "0f31fd6c52eee58a1a0e73aa6b5c695094ebfb9248a7fd1aa2176dddb96abdca"
+    }
+  },
+  "short_single_server_gate": {
+    "protocol": "source-equivalent real localhost Uvicorn C1/C8 p512/d128, three blocking, three exact SSE, delayed C8",
+    "passed_correctness": true,
+    "f3i_control_tok_s": {"blocking_median": 88.72686221609999, "exact_sse_median": 85.98280368877633, "delayed": 68.90792857722933},
+    "candidate_tok_s": {"blocking_median": 89.11637184974315, "exact_sse_median": 85.97394076304157, "delayed": 68.54025398246124},
+    "delta_percent": {"blocking": 0.43899854442557285, "exact_sse": -0.01030778871417004, "delayed": -0.5335737154774756},
+    "decision": "reject: 0.09% direct gain does not justify a 0.53% delayed-admission regression",
+    "raw_sha256": {"candidate": "cb76146e4aeb8096c11e73be24a1349b24659bc83eec26d70b15c5fbfcf80755", "control": "3686edb93b6007bc6e63d9ea491c09ae6d9bc3f5328c2cd04afbaead730a164f"}
+  },
+  "code_disposition": {
+    "single_col8_kernels_wrappers_tests_removed": true,
+    "triple_col8_kernel_wrapper_test_removed": true,
+    "dual_col8_kernel_wrapper_test_removed": true,
+    "short_single_runtime_selector_removed": true,
+    "dual_runtime_selector_removed": true,
+    "new_env_flags_retained": false,
+    "f3i_pair_rowtile4_col8_unchanged": true
+  },
+  "next": "Dense Q8T16 row/column amortization is exhausted for all profiled C8 single/dual/triple shapes beyond retained F3I; move to LM-head/sampler, then state/attention families.",
+  "limitations": [
+    "The short-K direct gain is real but not retained because its server surface is not same-suite non-regressive.",
+    "The long-K and triple candidates were rejected at the primitive gate and did not warrant server runs.",
+    "This artifact records rejected experiments and does not update retained throughput."
+  ]
+}
