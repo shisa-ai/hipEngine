@@ -169954,3 +169954,79 @@ ruff check hipengine/server/api.py tests/test_server_api.py
 No GPU run or benchmark number changed. Next: commit this unit, then rerun the
 same clean W7900 4K/c1 A6 and A1 packets. A1 remains fail-closed until every
 turn passes its independent oracle and measured SSE.
+
+## 2026-07-20 — Post-tool-fix W7900 agentic A6/A1 rerun
+
+Reran the exact cache-off 4K/c1 `small_repo` packet on an idle Radeon Pro W7900
+from clean `f25362d0126804a70421f283208380d4d5863636`. The model remained
+`/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` (22,663,387,424 bytes, SHA-256
+`0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b`),
+HIP was 7.2.53211-3d9ef42, and no KFD process owned either GPU before startup.
+
+Exact server and collector commands:
+
+```bash
+HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
+HIPENGINE_GENERATION_BATCH_WINDOW_MS=0 \
+HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 \
+HIPENGINE_GGUF_GDN_PREFILL_MODE=exact \
+HIPENGINE_GGUF_AR_STREAM_DECODE=0 \
+HIPENGINE_GGUF_AR_PACKED_DECODE=1 \
+HIPENGINE_MAX_PREFILL_CHUNK_TOKENS=256 \
+python3 -m hipengine.server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --served-model-name Qwen3.6-35B-A3B \
+  --max-context-tokens 4096 --max-active-requests 1 \
+  --prefix-cache off --metrics prometheus --eager-load \
+  --host 127.0.0.1 --port 8100
+
+HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
+python3 scripts/agentic_coding_quality.py \
+  --base-url http://127.0.0.1:8100/v1 \
+  --model Qwen3.6-35B-A3B --backend hip_gfx1100 \
+  --workload small_repo --concurrency 1 --runs 1 \
+  --cache-mode off --max-tokens 128 \
+  --records-json /tmp/agentic-f25362d0-small-c1-quality-records.json \
+  --json /tmp/agentic-f25362d0-small-c1-quality.json
+
+HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
+python3 scripts/agentic_coding_live.py \
+  --base-url http://127.0.0.1:8100/v1 \
+  --model Qwen3.6-35B-A3B --backend hip_gfx1100 \
+  --workload small_repo --concurrency 1 --runs 1 \
+  --cache-mode off --max-tokens 128 \
+  --records-json /tmp/agentic-f25362d0-small-c1-records.json \
+  --json /tmp/agentic-f25362d0-small-c1-a1.json
+```
+
+Startup passed in `84.88688 s`, including the guarded 4,095-token scratch probe,
+at `23.447266 GiB` used / `21.537109 GiB` free. A6 completed all four turns and
+improved from 0/4 to **2/4 successes** over **274 exact response-owned IDs**.
+Turns 0 and 2 now pass with exact `read` arguments and empty public content;
+turns 1 (`grep`) and 3 (`run`) remain `invalid_tool_call`. The complete A6
+artifact SHA-256 is
+`64d6e44dd2c6c45931c4964860ff25c10dc48fd57daa760dd270ac5abe58eebc`.
+
+A1 rejected at the turn-0 independent blocking oracle before measured SSE with
+`oracle leaked raw model markup`; it emitted no records or complete artifact.
+A same-canonical-request diagnostic localized the failure. The 63 response-owned
+IDs begin with the atomic forced `read` prefix, after which the model emits an
+invalid `{` plus Qwen controls and later a second complete valid
+`read(path="pyproject.toml", mode="summary")` envelope. The parser extracts the
+valid call but publishes the unfinished first envelope and controls as content.
+The generated-ID hash is
+`4882704eb0d61a5ae2a6fd5521593c07fcb715a4a50a0ab0ae8dd82b0b9f9800`;
+the raw diagnostic response hash is
+`c6f40e1b8576080267222dd86cf871ce921f2be14bf47de7d830b70a8594c034`.
+
+Final request/session/KV/graph/workspace ownership was zero. Published bounded
+evidence:
+
+- `benchmarks/results/2026-07-20-w7900-agentic-a6-small-c1-post-tool-fixes-quality.json`
+- `benchmarks/results/2026-07-20-w7900-agentic-a1-small-c1-post-tool-fixes-blocked.json`
+
+Both files pass `python3 -m json.tool`; the A6 artifact is an exact copy of the
+collector output. No A1 latency, throughput, goodput, or complete-workload row
+is retained. Next: add an envelope-scoped RED case for the unfinished duplicate
+selected-tool prefix while preserving ordinary/interior literal content, then
+rerun A1 before opening any performance work.

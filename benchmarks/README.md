@@ -1850,15 +1850,20 @@ untracked experiment files as part of the rollup gate.
 
 ## Blocked and Diagnostic Benchmark Attempts
 
-- **W7900 coding-agent A6/A1, GGUF Q4_K_M:** clean `4d01f897` cache-off 4K/c1
-  A6 completes all four `small_repo` attempts but scores **0/4 successes** over
-  **274 exact response-owned IDs**: two exact calls include public Qwen
-  role/EOT residue and two end `invalid_tool_call`. A1 independently verifies
-  turn 0 with **32 exact response-owned SSE IDs** and the expected `read` call,
-  then rejects at the turn-1 forced-`grep` blocking oracle before timing. No A1
-  records, latency, tok/s, or goodput row is retained; final A6 ownership is
-  zero. [A6 quality artifact](results/2026-07-20-w7900-agentic-a6-small-c1-quality.json),
-  [blocked A1 packet](results/2026-07-20-w7900-agentic-a1-small-c1-blocked.json).
+- **W7900 coding-agent post-tool-fix A6/A1, GGUF Q4_K_M:** clean `f25362d0`
+  cache-off 4K/c1 moves A6 natural quality from **0/4 to 2/4 successes** over
+  the same **274 exact response-owned IDs**: the two exact `read` calls now have
+  empty public content, while the `grep` and `run` attempts remain
+  `invalid_tool_call`. Deterministic A1 still rejects before measured SSE, now
+  at turn 0: the atomic forced `read` prefix is left unfinished before a later
+  valid duplicate call, and the parser leaks that first prefix plus Qwen
+  controls as public content. A same-request diagnostic records the exact
+  parsed arguments over **63 response-owned IDs**, but it is not a timing row.
+  No A1 records, latency, tok/s, or goodput are retained; final ownership is
+  zero. [post-fix A6 quality artifact](results/2026-07-20-w7900-agentic-a6-small-c1-post-tool-fixes-quality.json),
+  [post-fix blocked A1 packet](results/2026-07-20-w7900-agentic-a1-small-c1-post-tool-fixes-blocked.json)
+  (supersedes the [pre-fix A6](results/2026-07-20-w7900-agentic-a6-small-c1-quality.json)
+  / [A1](results/2026-07-20-w7900-agentic-a1-small-c1-blocked.json) diagnostic).
 - **W7900 GGUF Q4_K_M:** the [2026-07-07 summary](results/2026-07-07-w7900-gpu0-readme-refresh-20260707-104756-summary.json) is the last measured path and
   has `performance_claim=false`. Repetition of token `9707` is confirmed as
   valid for the exact model by llama.cpp and the gfx1151 G1 oracle; the W7900
