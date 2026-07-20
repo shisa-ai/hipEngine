@@ -170552,3 +170552,41 @@ Updated the canonical benchmark row to C1/C2/C4/C8
 **50.335/78.552/108.050/158.048 tok/s**; the clean retained claim is direct
 physical C8 and the exact positive same-source server A/B is supporting
 diagnostic evidence.
+
+## 2026-07-20 — Retain gfx1151 C8 paged-attention value vector 2
+
+First closed the final address-hoist refinement on top of F3O. Including the
+KV-head base in each shared token offset remained byte-exact but regressed the
+same-binary leaf median **180.864 -> 182.107 us (+0.69%)**; the compiler already
+hoists that invariant efficiently. The diagnostic wrapper was removed.
+
+The remaining exact value-pass sweep assigns adjacent dimensions to one active
+thread while preserving each dimension's original token/FP32 accumulation
+order. At the same real C8 shape and five cycling 12 MiB KV pools, vector 2
+improves F3O **181.324 -> 134.890 us (-25.61%, 1.344x)** and vector 4 reaches
+**181.507 -> 143.670 us (-20.85%)**. Both are byte-exact; vector 2 wins.
+
+Three-run p512/d128 direct samples are
+**158.757051/159.053787/158.881259 tok/s**, median **158.881259**, or
+**+0.5272%** over clean F3O **158.047967**, at **0.0938%** stdev/median. This
+saves another **33.981 ms** per 1,024 tokens. Every trajectory hash matches
+F3O. The all-layer gate is **320/320 exact**, with exact tokens/final state and
+no first divergence. Focused paged-attention validation remains **6 passed**.
+
+The same-protocol server candidate is positive against the already-measured
+committed F3O control, so an equivalent second five-minute control was not
+repeated:
+
+- blocking **91.033 -> 91.830 tok/s (+0.87%)**;
+- exact SSE **86.170 -> 87.772 (+1.86%)**;
+- delayed admission **69.527 -> 69.777 (+0.36%)**.
+
+All requests are exact. Cached-only `rocprofv3` names
+`qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true,2>` at 256
+threads, grid `(4096,8)`, **40 VGPR**, zero scratch, and median **128.441 us**
+over 445 launches. The vector-4 diagnostic wrapper was removed; fixed-256 now
+selects vector 2 without an environment flag, while the generic route keeps
+vector 1.
+
+Implementation is ready for its atomic code commit; detached tracked-clean
+direct retention and compact publication follow.
