@@ -169657,3 +169657,27 @@ SSE, and keep the c4/c8 startup-capacity blocker explicit.
 No model/runtime math or route changed. The PARO lane must be rerun from the
 clean committed harness before publication; the original exact timing packet
 remains diagnostic input only.
+
+### Follow-up: PARO SSE flags are request-lifetime aggregates
+
+The clean `473ec348` rerun preserved **45/45 blocking + 45/45 SSE + 8/8 delayed
+rows exact**, but correctly falsified the first validator: at C>N, each PARO SSE
+record summarizes every route used during the request. A row that used native
+width while occupancy was >1 and serial c1 during ramp/drain therefore reports
+`native_caware_decode=true` and may also report
+`serial_decode_fallback=true`; those flags are not mutually exclusive
+per-transition labels.
+
+Strengthened the RED case with the observed lifetime-aggregate combinations.
+The final validator keeps C1 strict (serial path, serial=true, native=false).
+For C>N it requires every record to report native work, requires at least one
+native-width path, requires a boolean serial-history field, and rejects unknown
+paths or any record without native work. Strict GGUF packed-route behavior is
+unchanged. The focused pair and full harness file remain **2 passed / 22
+passed**.
+
+A pure-host re-evaluation of the serialized 1,060,592-byte rerun packet (SHA-256
+`244c59c05f15e4d2e6aff5ae6aedc1bc17b61563e2e8cca42239b87719d098bb`)
+passes every C1/C2/C4/C8 route, all exactness gates, and delayed admission. No
+additional GPU timing repetition is needed because the correction consumes the
+already-recorded path/flag history and changes no metric or runtime behavior.

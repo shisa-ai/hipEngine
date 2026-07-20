@@ -271,14 +271,23 @@ def test_stream_route_summary_accepts_paro_native_with_serial_c1_edges() -> None
         "serial_decode_fallback": False,
         "native_caware_decode": True,
     }
+    native_with_serial_edge_record = {
+        "execution_path": "paro_resident_native_width_decode",
+        "serial_decode_fallback": True,
+        "native_caware_decode": True,
+    }
     serial_edge_record = {
         "execution_path": "paro_resident_serial_decode",
         "serial_decode_fallback": True,
-        "native_caware_decode": False,
+        "native_caware_decode": True,
     }
+    c1_record = serial_edge_record | {"native_caware_decode": False}
     sample = {
-        "records": [native_record.copy() for _ in range(3)]
-        + [serial_edge_record.copy()]
+        "records": [
+            native_record,
+            native_with_serial_edge_record,
+            serial_edge_record,
+        ]
     }
 
     summary = SCRIPT._stream_route_summary(
@@ -288,12 +297,10 @@ def test_stream_route_summary_accepts_paro_native_with_serial_c1_edges() -> None
     assert summary["passed"] is True
     assert summary["route_policy"] == "paro_occupancy_adaptive"
     assert SCRIPT._stream_route_summary(
-        "hipengine",
-        concurrency=1,
-        samples=[{"records": [serial_edge_record.copy()]}],
+        "hipengine", concurrency=1, samples=[{"records": [c1_record]}]
     )["passed"] is True
 
-    sample["records"][0]["serial_decode_fallback"] = True
+    sample["records"][0]["native_caware_decode"] = False
     assert SCRIPT._stream_route_summary(
         "hipengine", concurrency=4, samples=[sample]
     )["passed"] is False
