@@ -17,7 +17,7 @@ def test_small_b_rowtile_chunks_avoid_single_row_tail() -> None:
 
 def test_verify_lm_head_rowtile_chunked_splits_large_packed_rows(monkeypatch: pytest.MonkeyPatch) -> None:
     session = object.__new__(runner_mod.Qwen35GGUFResidentSession)
-    session.runner = SimpleNamespace(hidden_size=64, vocab_size=128)
+    session.runner = SimpleNamespace(hidden_size=64, vocab_size=128, backend="hip_gfx1100")
     runtime = SimpleNamespace()
     calls: list[tuple[int, int, int, int, object]] = []
 
@@ -38,11 +38,37 @@ def test_verify_lm_head_rowtile_chunked_splits_large_packed_rows(monkeypatch: py
     ]
 
 
+def test_verify_lm_head_rowtile_chunked_uses_gfx1151_chunk5_and_env_rollback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = object.__new__(runner_mod.Qwen35GGUFResidentSession)
+    session.runner = SimpleNamespace(hidden_size=64, vocab_size=128, backend="hip_gfx1151")
+    calls: list[int] = []
+
+    def fake_rowtile(self, hidden_ptr, out_ptr, rows, *, stream=0, runtime=None):
+        calls.append(int(rows))
+        return True
+
+    monkeypatch.delenv("HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK", raising=False)
+    monkeypatch.setattr(
+        runner_mod.Qwen35GGUFResidentSession,
+        "_verify_lm_head_rowtile",
+        fake_rowtile,
+    )
+
+    assert session._verify_lm_head_rowtile_chunked(0x100000, 0x200000, 8)
+    assert calls == [5, 3]
+    calls.clear()
+    monkeypatch.setenv("HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK", "6")
+    assert session._verify_lm_head_rowtile_chunked(0x100000, 0x200000, 8)
+    assert calls == [6, 2]
+
+
 def test_verify_lm_head_rowtile_chunked_falls_back_when_chunk_unsupported(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = object.__new__(runner_mod.Qwen35GGUFResidentSession)
-    session.runner = SimpleNamespace(hidden_size=64, vocab_size=128)
+    session.runner = SimpleNamespace(hidden_size=64, vocab_size=128, backend="hip_gfx1100")
 
     def fake_rowtile(self, hidden_ptr, out_ptr, rows, *, stream=0, runtime=None):
         return False
