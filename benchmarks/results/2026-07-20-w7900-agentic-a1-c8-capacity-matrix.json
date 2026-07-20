@@ -1,0 +1,150 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_agentic_a1_c8_capacity_matrix",
+  "created_at": "2026-07-20T20:44:28+09:00",
+  "status": "diagnostic_complete_not_performance_baseline",
+  "source_revision": "56c91f8738aa979b723579c248b1a4c1b94a23af",
+  "source_clean_and_pushed": true,
+  "performance_claim": false,
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "physical_vram_bytes": 48301604864,
+    "hip": "7.2.53211-3d9ef42"
+  },
+  "model": {
+    "served_name": "Qwen3.6-35B-A3B",
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "UD-Q4_K_M",
+    "kv_storage": "bf16",
+    "size_bytes": 22663387424,
+    "sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b"
+  },
+  "protocol": {
+    "workload_suite": "benchmarks/prompts/agentic-coding-v1.json",
+    "workload_suite_sha256": "44729fe15196fb232d64eed5a4628ba59ab9959b3a76ac041d2f194e5cc6ce5e",
+    "cache_mode": "off",
+    "max_tokens": 128,
+    "logical_concurrency": 8,
+    "resident_plain_ar_capacity": 4,
+    "generation_batch_window_ms": 0,
+    "collector": "real_http_sse_with_independent_nonstreaming_oracle",
+    "runs": 1,
+    "warmup_runs": 0,
+    "token_timing_mode": "buffered_public",
+    "public_physical_width_telemetry": 1,
+    "physical_c4_execution_claim": false
+  },
+  "context_requirements": {
+    "small_repo": {
+      "rendered_prompt_tokens": [2504, 2620, 2734, 2851],
+      "max_prompt_tokens": 2851,
+      "minimum_context_with_128_output_tokens": 2979,
+      "configured_context_tokens": 4096
+    },
+    "growing_history": {
+      "rendered_prompt_tokens": [2498, 2609, 2717, 2831, 2936, 3051, 3175, 3281],
+      "max_prompt_tokens": 3281,
+      "minimum_context_with_128_output_tokens": 3409,
+      "configured_context_tokens": 4096
+    },
+    "medium_repo": {
+      "rendered_prompt_tokens": [8644, 8757, 8876, 8998, 9112, 9229],
+      "max_prompt_tokens": 9229,
+      "minimum_context_with_128_output_tokens": 9357,
+      "configured_context_tokens": 10240
+    }
+  },
+  "startup_capacity": {
+    "context_4096": {
+      "logical_max_active_requests": 8,
+      "scratch_max_batch_size": 4,
+      "packed_ar_prefill_widths": [2, 4],
+      "used_gib": 37.427734,
+      "free_gib": 7.556641,
+      "guard_passed": true
+    },
+    "context_10240": {
+      "logical_max_active_requests": 8,
+      "scratch_max_batch_size": 4,
+      "packed_ar_prefill_widths": [2, 4],
+      "used_gib": 38.259766,
+      "free_gib": 6.724609,
+      "observed_runtime_used_bytes": 43567579136,
+      "guard_passed": true
+    }
+  },
+  "diagnostics": [
+    {
+      "workload": "small_repo",
+      "turns": 32,
+      "generated_tokens": 800,
+      "all_blocking_oracles_passed": true,
+      "all_sse_exact_id_gates_passed": true,
+      "strict_arguments_passed": true,
+      "final_ownership_zero": true,
+      "artifact": "benchmarks/results/2026-07-20-w7900-agentic-a1-small-c8-capacity.json",
+      "artifact_sha256": "568fef9daa8848f8e3e42c8abe520b48d0df2d6231beab894c5b55168237f66d",
+      "turn_records_sha256": "44d7fffd4e314c1ceec22b5372c4618a313953119c65d2b223d1fe79d1e8a139"
+    },
+    {
+      "workload": "growing_history",
+      "turns": 64,
+      "generated_tokens": 1592,
+      "all_blocking_oracles_passed": true,
+      "all_sse_exact_id_gates_passed": true,
+      "strict_arguments_passed": true,
+      "final_ownership_zero": true,
+      "artifact": "benchmarks/results/2026-07-20-w7900-agentic-a1-growing-history-c8-capacity.json",
+      "artifact_sha256": "d5f0b06326934a66575e009835212cad3704c00a5a791be499b8f68df09c4f8a",
+      "turn_records_sha256": "0a108dfddb3fb883fddbef3d455eb576824f33561ab006b16b078700c56f90cc"
+    },
+    {
+      "workload": "medium_repo",
+      "turns": 48,
+      "generated_tokens": 1160,
+      "all_blocking_oracles_passed": true,
+      "all_sse_exact_id_gates_passed": true,
+      "strict_arguments_passed": true,
+      "final_ownership_zero": true,
+      "artifact": "benchmarks/results/2026-07-20-w7900-agentic-a1-medium-c8-capacity.json",
+      "artifact_sha256": "77a321e66e7157a10ed6ca965f0b48e46317865464c5f24df0f0807af2120b88",
+      "turn_records_sha256": "81a9b2776cb66db0284d3b664cd881bd907bad4690c6ae0953f304513317aee5"
+    }
+  ],
+  "invalid_attempts": [
+    {
+      "workload": "medium_repo",
+      "reason": "external background server task expired at 600 seconds during measured SSE",
+      "engine_failure": false,
+      "artifact_emitted": false
+    }
+  ],
+  "acceptance": {
+    "capacity_blocker_closed": true,
+    "all_three_workload_families_c8_complete": true,
+    "all_collector_validations_passed": true,
+    "all_final_ownership_zero": true,
+    "timing_promotable": false,
+    "reasons_timing_not_promotable": [
+      "one run per workload",
+      "no untimed complete-workload warmup",
+      "C1 and C4 repeated matrix is incomplete",
+      "public telemetry is choice-scoped and reports physical width one",
+      "medium first attempt was invalidated by external server-task expiry",
+      "the second visible GPU had intermittent unrelated activity"
+    ]
+  },
+  "next_protocol": {
+    "contexts": {
+      "small_repo": 4096,
+      "growing_history": 4096,
+      "medium_repo": 10240
+    },
+    "logical_concurrencies": [1, 4, 8],
+    "untimed_complete_workload_warmups_per_configuration": 1,
+    "measured_runs_per_configuration": 3,
+    "cache_mode": "off",
+    "require_all_nine_configurations_before_performance_baseline": true
+  }
+}

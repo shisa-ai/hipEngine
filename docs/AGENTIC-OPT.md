@@ -808,14 +808,42 @@ The physical-width contract now crosses the entire registry boundary. The
 registered gfx1100 GGUF generator advertises plain-AR width four; `LLM` caps its
 resident loop to the generator-advertised width while preserving the caller's
 logical request/admission setting. The outer HTTP queue can therefore accept C8
-and drain it through c4 groups without allocating eight resident slots. The same
-mechanism preserves gfx1151's separately registered c8 width and avoids backend
-branches in `LLM` or server dispatch.
+without allocating eight resident slots. The same mechanism preserves gfx1151's
+separately registered c8 width and avoids backend branches in `LLM` or server
+dispatch. Public choice-scoped telemetry in the C8 diagnostics reports width
+one, so this capacity result does not claim physical-c4 model-step execution.
 
 A dirty W7900 validation then reached readiness with logical
 `queue.max_active_requests=8`, scratch `max_batch_size=4`, packed AR warmups
-`[2,4]`, and the same **37.43 GiB used / 7.56 GiB free** c4 footprint. The full
-`small_repo` C8 collector passed **32/32 turns**, artifact validation, and final
-zero ownership. Its artifact sets `performance_claim=false` and its timing is
-discarded. A clean committed repeat is still required before this diagnostic is
-retained or used to define the repeated A1 protocol.
+`[2,4]`, and the same **37.43 GiB used / 7.56 GiB free** c4-residency footprint.
+The full `small_repo` C8 collector passed **32/32 turns**, artifact validation,
+and final zero ownership. Its artifact sets `performance_claim=false` and its
+timing is discarded.
+
+## 2026-07-20 — Clean C8 capacity closes all frozen A1 families
+
+Clean pushed `56c91f87` repeats C8 correctness across every frozen family:
+
+- `small_repo`: exact prompts **2,504-2,851 tokens**, **32/32 turns** and 800
+  response-owned IDs pass at 4K context;
+- `growing_history`: exact prompts **2,498-3,281 tokens**, **64/64 turns** and
+  1,592 IDs pass at 4K context;
+- `medium_repo`: exact prompts **8,644-9,229 tokens**, **48/48 turns** and 1,160
+  IDs pass at 10,240 context.
+
+Including the 128-token output budget, their exact minimum contexts are
+**2,979 / 3,409 / 9,357** tokens. Both guarded servers retained logical C8 while
+probing resident width four: 4K used/free **37.43/7.56 GiB** and 10K used/free
+**38.26/6.72 GiB**. Every independent blocking oracle, response-owned SSE ID,
+strict tool argument, collector validation, and final request/session/KV/graph/
+workspace ownership check passed. The first medium attempt is excluded because
+its external background server expired at 600 seconds; the 30-minute retry
+completed cleanly.
+
+The [capacity matrix](../benchmarks/results/2026-07-20-w7900-agentic-a1-c8-capacity-matrix.json)
+and three linked collector artifacts all set `performance_claim=false`. Their
+single-run, no-warmup timing is non-promotable, and width-one public telemetry
+cannot support a physical-c4 claim. The now-frozen repeated baseline protocol is:
+4K for small/growing, 10,240 for medium; logical C1/C4/C8; one discarded complete
+workload warmup and three measured cache-off runs per configuration. All nine
+configurations must pass before A2 prefix A/B opens.
