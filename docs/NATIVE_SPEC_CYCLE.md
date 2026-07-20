@@ -560,9 +560,21 @@ The mechanical change is invariant: HIP APIs **80.6875 -> 75.6875**, syncs
 therefore default-on inside explicit N4, with `=0` retained temporarily for
 rollback.
 
+The next clean residual decomposition finds **1.471 ms host / 1.252 ms kernel**
+per proposer repair/update cycle. Zero-accept B1 cycles need one result-producing
+advance (**1.238 ms host, 28 kernels/copies, 26 host submissions**); accepted
+rows add a no-result state/KV repair advance (**+0.744 ms host, +0.635 ms
+kernel, +23 submissions**). The largest required leaf is draft lm-head logits at
+**0.363 ms/cycle**. The selected next target is instead the general 256-expert
+router top8+softmax kernel: its current one-thread serial insertion costs
+**0.153 ms/cycle / 116.4 us/call**. Dynamic attention context, KV slot pointers,
+variable accepted-row repair, and the bounded next-draft D2H remain blockers to
+a reusable complete proposer graph.
+
 [`selected-commit gate`](../benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-selected-commit.json)
 · [`N4+ bound-control gate`](../benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-bound-control.json)
 · [`provider residual attribution`](../benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-provider-residuals.json)
+· [`proposer-update residuals`](../benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-proposer-update-residuals.json)
 · [`N4 uncontended baseline`](../benchmarks/results/2026-07-20-w7900-paro-mtp-n4-uncontended-baseline.json)
 
 ## gfx1151 Status

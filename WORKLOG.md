@@ -168895,3 +168895,52 @@ Published compact artifact:
 `benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-selected-commit.json`,
 31,360 bytes, SHA-256
 `683888115f4ec5e1431bf232677e5cd55b2aa3ed9370978a6f0eb3a751e0999f`.
+
+## 2026-07-20 — Decompose retained N4 proposer repair/update
+
+Reused the clean cached final-child `on2` source trace from selected-commit
+implementation `43abe82e`; no new timing process or code change was needed.
+The trace is canonical `code_lru_cache`, B1/D24, exact against true AR, one
+W7900, cached HIP builds, final child only, and 16 windows after the first two
+cycles. Source command and raw CSV hashes are in
+`benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-proposer-update-residuals.json`.
+
+Overall `mtp_proposer_update_*` ownership is:
+
+- **1.471 ms host / 1.252 ms kernel** per cycle;
+- **35.5** kernels/copies, **33.1875** `hipLaunchKernel`, **68.6875** HIP APIs,
+  **1.3125** async token/position copies, and one blocking next-draft result
+  read per cycle;
+- all **24 IDs** and the accepted-length history remain exact.
+
+Acceptance exposes two distinct workloads:
+
+| B1 outcome | Windows | Host | Kernel | Kernels/copies | Host launches | HIP APIs |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| accepted=0, one result advance | 11 | **1.238 ms** | **1.054 ms** | 28 | 26 | 54 |
+| accepted=1, repair + result | 5 | **1.982 ms** | **1.689 ms** | 52 | 49 | 101 |
+| accepted-row increment | — | **+0.744 ms** | **+0.635 ms** | +24 | +23 | +47 |
+
+The zero-accept one-advance kernel breakdown is **0.073 ms input fusion/FC,
+0.258 ms attention+KV, 0.278 ms router+routed experts, 0.068 ms shared
+expert/finalize, and 0.370 ms lm-head+argmax**. The draft lm-head logits leaf is
+the largest required kernel at **0.363 ms/cycle** and is not selected for
+approximation/removal.
+
+The exact next target is the existing
+`mtp_router_topk_softmax_256x8_f32_kernel`: it launches one thread and serially
+inserts 256 expert logits into top8. It costs **0.153 ms/cycle**, **1.3125
+calls/cycle**, and **116.4 us/call** (**12.19%** of update kernel time). It has a
+generic topk lower-index-tiebreak oracle in
+`tests/test_mtp_input_fusion_kernel.py`, so a deterministic parallel replacement
+is narrower and better justified than expanding graph ownership.
+
+A reusable proposer graph is deferred, not assumed: attention context is a
+changing by-value scalar, direct KV destinations vary with cache length,
+accepted rows execute a variable extra repair advance, and the result step still
+requires one bounded D2H/synchronization for the next draft token. DFlash,
+gfx1151, vocab caps, and acceptance policy remain outside this gate.
+
+Artifact: `benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-proposer-update-residuals.json`,
+15,830 bytes, SHA-256
+`7312b02f5c0ef77babaa1a6107b519c450eb157a17e41e3c76acdf054538e76f`.

@@ -1,0 +1,398 @@
+{
+  "attribution": {
+    "accepted_repair": "An accepted B1 row adds one no-result proposer state/KV repair advance before the bonus-token result advance: +0.744 ms host, +0.635 ms kernels, +24 device kernels/copies, +23 host kernel submissions, +47 APIs, and no second D2H.",
+    "graph_boundary_blockers": [
+      "Attention context length is passed by value and changes every proposer step.",
+      "Direct KV destinations change with cache_len unless the separately gated indexed-KV route is admitted.",
+      "Accepted rows execute a variable extra no-result repair advance.",
+      "A result-producing step still needs one bounded D2H/synchronization for the next draft token."
+    ],
+    "largest_required_leaf": {
+      "calls_per_cycle": 1.0,
+      "ms_per_cycle": 0.363439875,
+      "name": "draft lm-head logits",
+      "note": "Required to produce the next draft token; not selected for removal.",
+      "share_of_update_kernel_time": 0.29018004219085447
+    },
+    "result_advance": "A zero-accept B1 cycle executes one full proposer model step and host-visible draft argmax: 28 device kernels/copies, 26 host kernel submissions, one packed token/position H2D, and one blocking argmax-index D2H.",
+    "selected_next_leaf": {
+      "avg_us": 116.35890476190477,
+      "calls_per_cycle": 1.3125,
+      "ms_per_cycle": 0.1527210625,
+      "name": "single-thread 256-expert x top8 router selection+softmax",
+      "reason": "The current kernel launches one thread and serially performs 256 x top8 insertion. It is model-general, exact-oracle-covered, and consumes about 0.153 ms/cycle without changing NativeSpec ownership.",
+      "share_of_update_kernel_time": 0.12193654964162126,
+      "source": "hipengine/kernels/hip_gfx1100/speculative/mtp.hip"
+    }
+  },
+  "correctness": {
+    "acceptance_rate": 0.2777777777777778,
+    "accepted_lengths": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      1,
+      0,
+      1
+    ],
+    "active_budgets": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "exact_ar_match": true
+  },
+  "date": "2026-07-20",
+  "decision": {
+    "action": "profile first; do not broaden NativeSpec ownership yet",
+    "excluded": [
+      "DFlash hidden/KV commit",
+      "gfx1151",
+      "single-prompt acceptance tuning",
+      "lm-head approximation or draft-vocab changes"
+    ],
+    "next": "Replace the serial 256x8 router selection with a deterministic parallel gfx1100 kernel, RED against the generic lower-index-tiebreak oracle, then measure kernel and complete cycle. Revisit proposer graph ownership only after dynamic context/KV metadata has an exact device-bound contract."
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "gpu0_access": "exclusive during source capture",
+    "hip_visible_devices": "0",
+    "target_arch": "gfx1100"
+  },
+  "model": {
+    "path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16",
+    "sidecar": "matching MTP-BF16",
+    "target": "current full8192 W4-PARO"
+  },
+  "performance_claim": false,
+  "proposer_update": {
+    "accepted_row_extra_over_zero_accept": {
+      "api_calls": 47.0,
+      "api_ms": 0.565673618181818,
+      "async_memcpy": 1.0,
+      "host_ms": 0.7436339818181819,
+      "kernel_ms": 0.6347238181818178,
+      "kernels": 24.0,
+      "launches": 23.0,
+      "sync_memcpy": 0.0
+    },
+    "by_accept_count": {
+      "0": {
+        "host_ms_range": [
+          1.223814,
+          1.259915
+        ],
+        "mean": {
+          "api_calls": 54.0,
+          "api_ms": 0.9947481818181818,
+          "async_memcpy": 1.0,
+          "host_ms": 1.238491818181818,
+          "kernel_ms": 1.054112181818182,
+          "kernels": 28.0,
+          "launches": 26.0,
+          "sync_memcpy": 1.0
+        },
+        "windows": 11
+      },
+      "1": {
+        "host_ms_range": [
+          1.953963,
+          2.015604
+        ],
+        "mean": {
+          "api_calls": 101.0,
+          "api_ms": 1.5604217999999999,
+          "async_memcpy": 2.0,
+          "host_ms": 1.9821258,
+          "kernel_ms": 1.6888359999999998,
+          "kernels": 52.0,
+          "launches": 49.0,
+          "sync_memcpy": 1.0
+        },
+        "windows": 5
+      }
+    },
+    "overall": {
+      "api_calls_per_cycle": 68.6875,
+      "api_ms_per_cycle": 1.1715211875,
+      "hipLaunchKernel_calls_per_cycle": 33.1875,
+      "hipMemcpyAsync_calls_per_cycle": 1.3125,
+      "hipMemcpy_calls_per_cycle": 1.0,
+      "host_ms_per_cycle": 1.4708774375,
+      "kernel_calls_per_cycle": 35.5,
+      "kernel_ms_per_cycle": 1.252463375
+    },
+    "single_result_advance_kernel_stages": {
+      "attention_and_kv": {
+        "kernel_count": 8,
+        "max_ms": 0.271162,
+        "mean_ms_per_result_advance": 0.2577364545454545,
+        "min_ms": 0.243242
+      },
+      "input_fusion_and_fc": {
+        "kernel_count": 2,
+        "max_ms": 0.076761,
+        "mean_ms_per_result_advance": 0.073255,
+        "min_ms": 0.067401
+      },
+      "lm_head_and_argmax": {
+        "kernel_count": 3,
+        "max_ms": 0.370923,
+        "mean_ms_per_result_advance": 0.3700969090909091,
+        "min_ms": 0.369443
+      },
+      "result_d2h": {
+        "kernel_count": 1,
+        "max_ms": 0.0036,
+        "mean_ms_per_result_advance": 0.003469090909090909,
+        "min_ms": 0.00336
+      },
+      "router_and_routed_experts": {
+        "kernel_count": 6,
+        "max_ms": 0.282242,
+        "mean_ms_per_result_advance": 0.2775800909090909,
+        "min_ms": 0.257841
+      },
+      "shared_expert_and_finalize": {
+        "kernel_count": 7,
+        "max_ms": 0.0694,
+        "mean_ms_per_result_advance": 0.06758554545454545,
+        "min_ms": 0.06636
+      },
+      "token_position_h2d": {
+        "kernel_count": 1,
+        "max_ms": 0.00456,
+        "mean_ms_per_result_advance": 0.0043890909090909085,
+        "min_ms": 0.0042
+      }
+    },
+    "top_kernels": [
+      {
+        "avg_us": 363.439875,
+        "calls_per_cycle": 1.0,
+        "kernel": "(anonymous namespace)::lm_head_fp16_logits_kernel(unsigned short const*, unsigned short const*, float*, long, long)",
+        "ms_per_cycle": 0.363439875,
+        "share_of_update_kernel_time": 0.29018004219085447
+      },
+      {
+        "avg_us": 45.26512698412698,
+        "calls_per_cycle": 3.9375,
+        "kernel": "(anonymous namespace)::dflash_dense_bf16_to_bf16_wmma_kernel(unsigned short const*, unsigned short const*, unsigned short*, long, long, long)",
+        "ms_per_cycle": 0.1782314375,
+        "share_of_update_kernel_time": 0.14230471010779058
+      },
+      {
+        "avg_us": 62.83942857142857,
+        "calls_per_cycle": 2.625,
+        "kernel": "(anonymous namespace)::dflash_dense_bf16_to_bf16_expert_routes_kernel(unsigned short const*, unsigned short const*, int const*, unsigned short*, long, long, long, long, long, long)",
+        "ms_per_cycle": 0.1649535,
+        "share_of_update_kernel_time": 0.13170325240049435
+      },
+      {
+        "avg_us": 116.35890476190477,
+        "calls_per_cycle": 1.3125,
+        "kernel": "(anonymous namespace)::mtp_router_topk_softmax_256x8_f32_kernel(float const*, float*, int*, float*)",
+        "ms_per_cycle": 0.1527210625,
+        "share_of_update_kernel_time": 0.12193654964162126
+      },
+      {
+        "avg_us": 89.16076190476191,
+        "calls_per_cycle": 1.3125,
+        "kernel": "(anonymous namespace)::dflash_qkv_proj_bf16_mixed_kernel(unsigned short const*, unsigned short const*, unsigned short const*, unsigned short const*, float*, float*, unsigned short*, long, long, long, long)",
+        "ms_per_cycle": 0.1170235,
+        "share_of_update_kernel_time": 0.0934346682991828
+      },
+      {
+        "avg_us": 77.33566666666667,
+        "calls_per_cycle": 1.3125,
+        "kernel": "(anonymous namespace)::dflash_gqa_attention_f32_bf16_kernel(float const*, float const*, unsigned short const*, unsigned short*, long, long, long, long, long, long, float)",
+        "ms_per_cycle": 0.1015030625,
+        "share_of_update_kernel_time": 0.08104273907410665
+      },
+      {
+        "avg_us": 19.289595238095238,
+        "calls_per_cycle": 2.625,
+        "kernel": "(anonymous namespace)::dflash_dense_bf16_to_f32_wmma_kernel(unsigned short const*, unsigned short const*, float*, long, long, long)",
+        "ms_per_cycle": 0.0506351875,
+        "share_of_update_kernel_time": 0.04042847759919527
+      },
+      {
+        "avg_us": 25.380952380952383,
+        "calls_per_cycle": 1.3125,
+        "kernel": "(anonymous namespace)::dense_dual_gemv_out_bf16_wmma_kernel(unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, long, long, long, long)",
+        "ms_per_cycle": 0.0333125,
+        "share_of_update_kernel_time": 0.026597584140933463
+      },
+      {
+        "avg_us": 6.847666666666667,
+        "calls_per_cycle": 2.625,
+        "kernel": "(anonymous namespace)::mtp_add_rmsnorm_bf16_oneplus_kernel(unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, unsigned short*, long, long, float)",
+        "ms_per_cycle": 0.017975125,
+        "share_of_update_kernel_time": 0.014351816874485451
+      },
+      {
+        "avg_us": 11.407761904761905,
+        "calls_per_cycle": 1.3125,
+        "kernel": "(anonymous namespace)::mtp_fuse_inputs_f16_bf16_kernel(long const*, _Float16 const*, unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, long, long, long, float)",
+        "ms_per_cycle": 0.0149726875,
+        "share_of_update_kernel_time": 0.01195459108734417
+      },
+      {
+        "avg_us": 3.785945945945946,
+        "calls_per_cycle": 2.3125,
+        "kernel": "__amd_rocclr_copyBuffer",
+        "ms_per_cycle": 0.008755,
+        "share_of_update_kernel_time": 0.0069902243648442015
+      },
+      {
+        "avg_us": 5.750571428571428,
+        "calls_per_cycle": 1.3125,
+        "kernel": "(anonymous namespace)::mtp_accumulate_routes_bf16_to_f32_kernel(unsigned short const*, float const*, float*, long, long)",
+        "ms_per_cycle": 0.007547625,
+        "share_of_update_kernel_time": 0.006026224120126467
+      },
+      {
+        "avg_us": 5.750476190476191,
+        "calls_per_cycle": 1.3125,
+        "kernel": "(anonymous namespace)::mtp_rmsnorm_bf16_oneplus_kernel(unsigned short const*, unsigned short const*, unsigned short*, long, long, float)",
+        "ms_per_cycle": 0.0075475,
+        "share_of_update_kernel_time": 0.006026124316808865
+      },
+      {
+        "avg_us": 4.272428571428572,
+        "calls_per_cycle": 1.3125,
+        "kernel": "(anonymous namespace)::dflash_head_rmsnorm_rotary_f32_kernel(float const*, float const*, unsigned short const*, unsigned short const*, float const*, float const*, int const*, int const*, float*, float*, long, long, long, long, long, long, long, long, float)",
+        "ms_per_cycle": 0.0056075625,
+        "share_of_update_kernel_time": 0.004477226729284599
+      },
+      {
+        "avg_us": 3.6342857142857143,
+        "calls_per_cycle": 1.3125,
+        "kernel": "(anonymous namespace)::mtp_split_q_gate_f32_bf16_kernel(float const*, float*, unsigned short*, long, long, long)",
+        "ms_per_cycle": 0.00477,
+        "share_of_update_kernel_time": 0.0038084945996923864
+      },
+      {
+        "avg_us": 3.381047619047619,
+        "calls_per_cycle": 1.3125,
+        "kernel": "(anonymous namespace)::dflash_silu_mul_gate_up_routes_bf16_kernel(unsigned short const*, unsigned short*, long, long)",
+        "ms_per_cycle": 0.004437625,
+        "share_of_update_kernel_time": 0.0035431175781886638
+      },
+      {
+        "avg_us": 3.8575,
+        "calls_per_cycle": 1.0,
+        "kernel": "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)",
+        "ms_per_cycle": 0.0038575,
+        "share_of_update_kernel_time": 0.0030799303811977737
+      },
+      {
+        "avg_us": 2.8495714285714286,
+        "calls_per_cycle": 1.3125,
+        "kernel": "(anonymous namespace)::dflash_silu_mul_bf16_kernel(unsigned short const*, unsigned short const*, unsigned short*, long)",
+        "ms_per_cycle": 0.0037400625,
+        "share_of_update_kernel_time": 0.002986165164310693
+      },
+      {
+        "avg_us": 2.6,
+        "calls_per_cycle": 1.3125,
+        "kernel": "(anonymous namespace)::mtp_gate_mul_bf16_kernel(unsigned short const*, unsigned short const*, unsigned short*, long)",
+        "ms_per_cycle": 0.0034125,
+        "share_of_update_kernel_time": 0.0027246305705346473
+      },
+      {
+        "avg_us": 2.203809523809524,
+        "calls_per_cycle": 1.3125,
+        "kernel": "(anonymous namespace)::mtp_accumulate_sigmoid_gate_bf16_to_f32_kernel(unsigned short const*, float const*, float*, long)",
+        "ms_per_cycle": 0.0028925,
+        "share_of_update_kernel_time": 0.0023094487693103203
+      },
+      {
+        "avg_us": 2.79,
+        "calls_per_cycle": 1.0,
+        "kernel": "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)",
+        "ms_per_cycle": 0.00279,
+        "share_of_update_kernel_time": 0.002227610048876679
+      },
+      {
+        "avg_us": 1.781,
+        "calls_per_cycle": 1.3125,
+        "kernel": "(anonymous namespace)::mtp_finalize_f32_to_bf16_kernel(float const*, unsigned short*, long)",
+        "ms_per_cycle": 0.0023375625,
+        "share_of_update_kernel_time": 0.0018663719408162334
+      }
+    ]
+  },
+  "protocol": {
+    "candidate_budget": 1,
+    "chain_attn_mode": "c1_loop",
+    "command": "python3 scripts/mtp_verifier_rocprof.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 --prompt-tokens \"$(cat .../code_lru_cache/prompt-tokens.txt)\" --decode-tokens 24 --candidate-budget 1 --backend hip_gfx1100 --chain-attn-mode c1_loop --graph-mode auto --region cycle --steady-state-skip 2 --compiler-version-file /tmp/hipengine-mtp-w7900-hipcc-version.txt --raw-root /tmp/w7900-n4plus-commit-prof-on2-43abe82e --out /tmp/w7900-n4plus-commit-prof-on2-43abe82e.json",
+    "decode_tokens": 24,
+    "graph_mode": "auto",
+    "profiler": "rocprofv3 --kernel-trace --hip-runtime-trace --marker-trace around final child only",
+    "prompt": "canonical code_lru_cache token file",
+    "steady_state_skip": 2,
+    "steady_windows": 16,
+    "target_graph": "explicit N4 with retained selected commit"
+  },
+  "purpose": "Decompose the retained explicit-N4 PARO B1 proposer repair/update residual before selecting another ownership or kernel boundary.",
+  "schema": 1,
+  "software": {
+    "analysis_commit": "c8651550",
+    "compiler_version_file": "/tmp/hipengine-mtp-w7900-hipcc-version.txt",
+    "profile_capture_commit": "43abe82e",
+    "rocm": "HIP version: 7.2.53211-3d9ef42"
+  },
+  "source_artifacts": {
+    "hip_api_trace": {
+      "bytes": 19152570,
+      "path": "/tmp/w7900-n4plus-commit-prof-on2-43abe82e/mtp-cycle-rocprof_hip_api_trace.csv",
+      "sha256": "a527b6f72d1ef6edc65ea7e18032101225bbe6159bf7f4c8be5040722895e7b3"
+    },
+    "kernel_trace": {
+      "bytes": 32086874,
+      "path": "/tmp/w7900-n4plus-commit-prof-on2-43abe82e/mtp-cycle-rocprof_kernel_trace.csv",
+      "sha256": "a276268386768afd00b8fbbd712066515881009d4ac3ec53f902fa390925c88c"
+    },
+    "marker_trace": {
+      "bytes": 7404,
+      "path": "/tmp/w7900-n4plus-commit-prof-on2-43abe82e/mtp-cycle-rocprof_marker_api_trace.csv",
+      "sha256": "49bdb22e0a07c2729ad3759a7c8083e66ab034c0924331f9057eb40c41fff387"
+    },
+    "profile_report": {
+      "bytes": 33855,
+      "path": "/tmp/w7900-n4plus-commit-prof-on2-43abe82e.json",
+      "sha256": "bdf905dd9ed87349260222e9377e7b9db6965535e94d08b9ea9188870494539e"
+    }
+  },
+  "speed_claim_eligible": false,
+  "status": "diagnostic"
+}
