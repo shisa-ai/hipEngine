@@ -1,0 +1,107 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_q8t16_pair_rowtile_scheduling_rejected",
+  "created_at": "2026-07-20T22:45:00+09:00",
+  "status": "rejected_server_regression_or_model_regression",
+  "passed": false,
+  "performance_claim": false,
+  "decision": "retain exact rowtile4 as the gfx1151 physical-C8 qkv+gate default; do not promote rowtile2 and remove the temporary rowtile3 body/selectors",
+  "hardware": {
+    "host": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "gpu_max_hw_queues": 1,
+    "tuned_profile": "accelerator-performance"
+  },
+  "software": {
+    "base_commit": "7d6d76ef",
+    "rocm": "HIP 7.15.0-0000000"
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B UD-Q4_K_M GGUF",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "leaf_microbench": {
+    "shape": "rows=8, in=2048, out_a=8192, out_b=4096, threads=128, >2x-MALL cycling pool",
+    "repeat_200_iterations_us": {
+      "rowtile2": 318.60,
+      "rowtile3": 326.31,
+      "rowtile4": 328.91
+    },
+    "delta_vs_rowtile4_percent": {
+      "rowtile2": -3.1345960901158376,
+      "rowtile3": -0.7904897996412474
+    },
+    "output_bits_exact": {
+      "rowtile2": true,
+      "rowtile3": true,
+      "rowtile4": true
+    },
+    "raw_sha256": {
+      "rowtile2_vs_rowtile4_repeat": "2a3d1e7c76279566414753d1235d2135aaa0a36cef7a0b1f5269c860472f5d9b",
+      "rowtile2_3_4": "47ef69e6f8d467890a6ff8a05b73ce9d71d3e544f5a499e8ee2d0bd05e2941ad"
+    }
+  },
+  "rowtile2_model_gate": {
+    "scope": "p512/d128 physical-C8 graph, one warmup, three measured repeats",
+    "baseline_clean_rowtile4_tok_s": 151.01476739865686,
+    "candidate_samples_tok_s": [152.06788109183796, 152.01254635472554, 152.06200817954036],
+    "candidate_median_tok_s": 152.06200817954036,
+    "delta_percent": 0.6934691215455313,
+    "stdev_percent_of_median": 0.019988123849044994,
+    "layer_hidden_comparisons": 320,
+    "layer_hidden_exact": true,
+    "tokens_conv_gdn_kv_final_state_exact": true,
+    "raw_sha256": {
+      "direct": "dd77455a5c429a214c7eb822745451f2c5a26ab47896e43e33a271cbf5c69e5a",
+      "state_oracle": "78e7b4f9c073a85af44c06b7775ca3e50ad1f263c995aea25f895590366eeac9"
+    }
+  },
+  "rowtile2_same_checkout_server_gate": {
+    "protocol": "real localhost Uvicorn C1/C8 p512/d128, one warmup, three blocking, three exact SSE, delayed C8; candidate then same-checkout rowtile4 control",
+    "passed_correctness": true,
+    "native_c8_only": true,
+    "rowtile4_control_tok_s": {
+      "blocking_median": 88.38658937443299,
+      "exact_sse_median": 85.51730524411873,
+      "delayed": 68.58968508338224
+    },
+    "rowtile2_candidate_tok_s": {
+      "blocking_median": 88.67106364150199,
+      "exact_sse_median": 85.8271444076465,
+      "delayed": 67.8702416575573
+    },
+    "delta_percent": {
+      "blocking": 0.32185229578649555,
+      "exact_sse": 0.3623116545163674,
+      "delayed": -1.0489090669396295
+    },
+    "decision": "reject: same-checkout delayed admission regression violates same-suite non-regression despite direct/blocking/SSE gains",
+    "raw_sha256": {
+      "candidate": "2081bcd68a5f8562577c6d180d0933e709c620378060359d79d755edb7444fb0",
+      "control": "a1208a6eb918b20082487480508b21c7a50e4be0b38e2bee2ee48df43068106e"
+    }
+  },
+  "rowtile3_model_gate": {
+    "scope": "one p512/d128 physical-C8 graph screen",
+    "baseline_clean_rowtile4_tok_s": 151.01476739865686,
+    "candidate_tok_s": 150.86333714154475,
+    "delta_percent": -0.1002751318434636,
+    "decision": "reject before server: model wall regresses",
+    "raw_sha256": "ba0c89d8b13cf600d1c4e39daf8b152b1089ca217b8cc1f1580f0baa5ae791af"
+  },
+  "code_disposition": {
+    "rowtile2_existing_diagnostic_wrapper_retained": true,
+    "rowtile2_runtime_selector_added": false,
+    "rowtile3_kernel_wrapper_test_removed": true,
+    "temporary_runtime_selectors_removed": true,
+    "rowtile4_default_unchanged": true
+  },
+  "next": "Do not revisit row-count tiling without a scheduler that preserves delayed-admission wall; test output-column/K partition changes or move to LM-head/state families.",
+  "limitations": [
+    "The rowtile2 direct gain is not retainable because the matched delayed server workload regresses.",
+    "Rowtile3 received only one model sample because it already regressed and did not warrant a server run.",
+    "This artifact records a rejected experiment, not a retained speed claim."
+  ]
+}
