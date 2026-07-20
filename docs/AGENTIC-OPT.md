@@ -418,7 +418,92 @@ python3 scripts/agentic_coding_bench.py \
 A0 intentionally accepts only successful deterministic assistant-tool-result
 turns. Cancellation, deadline, slow-consumer, automatic-tool quality, and sampled
 records extend the schema in A3/A5/A6 rather than weakening the initial exact
-tool denominator. A1 is the next implementation boundary: a real-Uvicorn SSE
-collector must render each committed workload to the model tokenizer target,
-run C1/C4/C8 cache-off turns, normalize exact private server telemetry into the
-A0 record contract, and close final ownership.
+tool denominator.
+
+A1 collection is implemented by `hipengine/benchmark/agentic_live.py` and
+`scripts/agentic_coding_live.py`. It:
+
+- expands/detokenizes each synthetic repository prefix to the exact target under
+  the served tokenizer and rejects a non-exact roundtrip;
+- builds stable prior assistant-tool-result transcripts with deterministic call
+  ids, independent of random server response ids;
+- obtains an independent non-streaming c1 exact-token/tool oracle outside each
+  measured SSE interval;
+- releases C concurrent real HTTP SSE requests together, reconstructs strict
+  streamed tool arguments, and requires oracle/fixture equality;
+- records batch/choice timing ownership, physical group rows, sampler/D2H/
+  fallback metadata, prompt/output hashes, and public TTFT/tool-ready wall;
+- polls readiness, sessions/continuations, and KV refs/pins to close final
+  ownership before A0 accepts the packet.
+
+Current validated tool SSE is often a safely buffered public projection rather
+than one event per generated model token. Such turns are explicitly labeled
+`token_timing_mode=buffered_public`; the candidate IDs are labeled
+`generated_token_ids_source=matched_nonstreaming_oracle` and
+`sse_exact_ids_observed=false`, and ITL is withheld instead of assigning
+fabricated per-token timestamps. Oracle/tool equality is useful diagnostic
+coverage, but it does **not** satisfy the retained exact-SSE-ID gate. A retained
+performance row requires the measured response to expose its own exact IDs, and
+a retained ITL row additionally requires `live_exact` lower-loop events. The
+first diagnostic command is:
+
+```bash
+HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
+python3 scripts/agentic_coding_live.py \
+  --base-url http://127.0.0.1:8100/v1 \
+  --model Qwen3.6-35B-A3B --backend hip_gfx1100 \
+  --workload small_repo --concurrency 1 --runs 1 \
+  --cache-mode off --max-tokens 128 \
+  --records-json /tmp/agentic-small-c1-records.json \
+  --json /tmp/agentic-small-c1-a1.json
+```
+
+The complete A1 baseline still requires clean cache-off C1/C4/C8 runs over all
+three workload families with warmup and repeated measurements. The initial
+single-family smoke is diagnostic, not a retained performance claim.
+
+#### First W7900 A1 smoke: blocked before timing
+
+The first dirty-tree diagnostic used W7900/gfx1100,
+`/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, cache off, and the small 2K
+family. Launch-capacity checks behaved correctly:
+
+- the default 256-position resident capacity rejected the 2,619-position rendered
+  first turn before generation;
+- 12,288/c8 and 4,096/c8 startup scratch probes failed with HIP OOM and left
+  readiness false;
+- 4,096/c1 passed eager load, the full 4,095-token scratch probe, warmup chat,
+  and readiness, with 23.45 GiB used and 21.54 GiB free after startup.
+
+The viable diagnostic server was:
+
+```bash
+HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
+HIPENGINE_GENERATION_BATCH_WINDOW_MS=0 \
+HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 \
+HIPENGINE_GGUF_GDN_PREFILL_MODE=exact \
+HIPENGINE_GGUF_AR_STREAM_DECODE=0 \
+HIPENGINE_GGUF_AR_PACKED_DECODE=1 \
+HIPENGINE_MAX_PREFILL_CHUNK_TOKENS=256 \
+python3 -m hipengine.server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --served-model-name Qwen3.6-35B-A3B \
+  --max-context-tokens 4096 --max-active-requests 1 \
+  --prefix-cache off --metrics prometheus --eager-load \
+  --host 127.0.0.1 --port 8100
+```
+
+The original fixture had an ambiguous `read` mode; the model validly selected
+`raw` while the fixture expected `summary`. Every deterministic user turn now
+states its exact arguments. The clarified first oracle then selected the exact
+`read(path="pyproject.toml", mode="summary")` call with 32 generated IDs and
+`finish_reason=tool_calls`, but also returned
+`message.content="<|im_end|><|im_end|>"`. A1 rejects non-empty content beside
+these explicitly tool-only calls, so no measured SSE interval, artifact, or
+performance number was retained.
+
+Next actions are concrete: remove Qwen template terminal residue from validated
+public tool envelopes with a server RED test, rerun A1 c1, then expose measured
+SSE response-owned generated IDs. C4/C8 for the 2K family also needs a capacity
+plan that passes the startup guard rather than bypassing it; the 8K family needs
+a separate lower-concurrency context configuration.

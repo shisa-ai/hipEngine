@@ -169507,3 +169507,72 @@ python3 scripts/agentic_coding_bench.py --help
 No model was loaded, no GPU measurement was made, and no performance claim or
 runtime default changed. The next boundary is the A1 real-Uvicorn SSE collector
 for cache-off W7900 C1/C4/C8.
+
+## 2026-07-20 — Start live coding-agent SSE collection (A1, blocked)
+
+Added the first real-HTTP collector behind the A0 contract. RED failed at test
+collection because `hipengine.benchmark.agentic_live` did not exist. GREEN adds:
+
+- exact served-tokenizer expansion/detokenization of the synthetic repository to
+  its 2K/8K target with byte-exact roundtrip validation;
+- canonical prior assistant/tool/result transcripts with deterministic call ids;
+- independent non-streaming c1 tool/exact-ID oracles outside each measured SSE
+  interval;
+- simultaneous C-client SSE release, strict streamed argument reconstruction,
+  oracle/fixture equality, batch/choice timing ownership, sampler/D2H/physical-
+  width/fallback metadata, and readiness/session/continuation/KV final ownership;
+- explicit `live_exact` vs `buffered_public` token timing. Buffered tool turns
+  contribute public TTFT/tool-ready wall but no fabricated ITL;
+- explicit exact-ID provenance. Current tool SSE rows are
+  `matched_nonstreaming_oracle` with `sse_exact_ids_observed=false`, so they are
+  diagnostic and cannot support a retained exact-token performance claim;
+- per-run concurrency validation and run/concurrency/agent-run coverage;
+- `scripts/agentic_coding_live.py`, which is deliberately cache-off only until
+  A2 has real prefix telemetry;
+- fake-transport closure over two runs x c2 x four turns.
+
+The deterministic fixture initially expected `read(..., mode="summary")` while
+the user asked only to inspect the file. The live model validly selected `raw`.
+Every fixture turn now states the exact tool arguments; no expected token IDs or
+model-specific answer strings were added.
+
+W7900 diagnostic, Qwen3.6-35B-A3B Q4_K_M, gfx1100, both HIP/ROCR pinned to device
+0, cache off:
+
+1. Default resident capacity rejected the rendered first prompt before generation:
+   **2,619 required positions vs 256 capacity**.
+2. `--max-context-tokens 12288 --max-active-requests 8` and then `4096/8`
+   failed the guarded full-context startup scratch probe with HIP OOM and left
+   `/ready` at 503. The guard was not bypassed.
+3. `4096/1` passed the full 4,095-token probe and warmup: startup used **23.45
+   GiB**, with **21.54 GiB free** on the W7900.
+4. After clarifying arguments, the first oracle generated the exact expected
+   `read(path="pyproject.toml", mode="summary")`, 32 exact IDs, and
+   `finish_reason=tool_calls`. It also returned non-empty public content
+   `"<|im_end|><|im_end|>"` beside the tool call. A1 rejects this tool-only
+   envelope before opening a measured SSE interval.
+
+Exact viable launch/collector commands are recorded in `docs/AGENTIC-OPT.md`.
+No `/tmp/agentic-small-c1-a1.json` was emitted, no timing number was retained,
+and no benchmark README/changelog update is appropriate. This is a server-
+envelope and capacity blocker, not a performance result.
+
+RED/GREEN validation:
+
+```bash
+python3 -m pytest -q tests/test_agentic_coding_live.py
+# RED: ModuleNotFoundError: hipengine.benchmark.agentic_live
+python3 -m pytest -q tests/test_agentic_coding_live.py \
+  tests/test_agentic_coding_benchmark.py
+# 12 passed
+ruff check hipengine/benchmark/agentic.py \
+  hipengine/benchmark/agentic_live.py hipengine/benchmark/__init__.py \
+  scripts/agentic_coding_live.py tests/test_agentic_coding_benchmark.py \
+  tests/test_agentic_coding_live.py
+# All checks passed
+```
+
+Next: add a server RED fixture for Qwen terminal residue around a validated tool
+block, remove it from blocking and SSE public envelopes without suppressing
+legitimate assistant content, then rerun A1 c1. Separately, expose measured SSE
+response-owned generated IDs and plan C4/C8 context/scratch capacity.
