@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-20
 
+- [rejected exact gfx1151 GGUF physical-C8 grouped-query paged attention] Two independent production-order query groups per block improve the paged-context leaf **314.999 -> 293.151 us (-6.94%)** and direct p512/d128 **152.709 -> 153.341 tok/s (+0.414%)**, with **320/320 exact** hidden/state, but same-checkout server blocking/delayed regress **-0.57%/-0.94%** (SSE **+0.40%**). Four-group scheduling is exact but only **-5.55%** at the leaf; all candidate kernels/selectors were removed. `benchmarks/results/2026-07-20-gfx1151-gguf-paged-attn-qhead-groups-c8-rejected.json`.
+
 - [rejected exact gfx1151 GGUF physical-C8 paired-head GDN] Sharing Q/K setup across interleaved value-head pairs improves the indexed GDN leaf **204.689 -> 202.631 us (-1.01%)** and direct p512/d128 **152.709 -> 152.839 tok/s (+0.086%)**, with **320/320 exact** hidden/state, but same-checkout server blocking/SSE/delayed all regress **-0.12%/-0.66%/-0.16%**. The kernel, wrapper, selector, and fixture extension were removed. `benchmarks/results/2026-07-20-gfx1151-gguf-gdn-pairheads-c8-rejected.json`.
 
 - [retained exact gfx1151 GGUF physical-C8 Q6T16 lm-head 5+3 partition] Radeon 8060S Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV p512/d128 direct C8 moves **152.192 -> 152.709 tok/s (+0.340%)** by repartitioning the existing exact Q6T16 lm-head kernels from 6+2 to 5+3; three tracked-clean trajectories are exact at 0.027% variance, combined state is **320/320 exact**, and a same-checkout server A/B is non-regressive (**+0.15% blocking / +0.65% SSE / +0.02% delayed**). `benchmarks/results/2026-07-20-gfx1151-gguf-q6t16-lm-head-chunk5-c8-retained.json`.
