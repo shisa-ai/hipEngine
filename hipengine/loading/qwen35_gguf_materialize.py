@@ -238,6 +238,17 @@ def gguf_decode_repack_enabled(value: bool | None = None) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def plan_qwen35_gguf_weight_spec(
+    slot_path: str,
+    tensor: GGUFTensorInfo,
+    *,
+    decode_repack: bool = False,
+) -> Qwen35GGUFWeightSpec:
+    """Plan one canonical GGUF weight for AR or draft-model materialization."""
+
+    return _spec_for_tensor(slot_path, tensor, decode_repack=bool(decode_repack))
+
+
 def _spec_for_tensor(slot_path: str, tensor: GGUFTensorInfo, *, decode_repack: bool) -> Qwen35GGUFWeightSpec:
     qtype = GGMLQuantizationType(tensor.ggml_type)
     if qtype == GGMLQuantizationType.F32:
@@ -407,6 +418,18 @@ def _materialize_or_alias(
     return weight
 
 
+def materialize_qwen35_gguf_weight_spec(
+    spec: Qwen35GGUFWeightSpec,
+    reader: GGUFReader,
+    *,
+    device: Device | None = None,
+    runtime: HipRuntime | None = None,
+) -> Qwen35GGUFDeviceWeight:
+    """Materialize one planned GGUF weight for AR or draft-model ownership."""
+
+    return _materialize_spec(spec, reader, device=device, runtime=runtime)
+
+
 def _materialize_spec(
     spec: Qwen35GGUFWeightSpec,
     reader: GGUFReader,
@@ -529,6 +552,8 @@ __all__ = [
     "Qwen35GGUFResidentWeights",
     "Qwen35GGUFWeightSpec",
     "gguf_decode_repack_enabled",
+    "materialize_qwen35_gguf_weight_spec",
     "materialize_qwen35_gguf_weights",
     "plan_qwen35_gguf_materialization",
+    "plan_qwen35_gguf_weight_spec",
 ]
