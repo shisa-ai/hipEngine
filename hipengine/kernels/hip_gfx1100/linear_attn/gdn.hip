@@ -2900,6 +2900,57 @@ extern "C" int hipengine_qwen35_gdn_prefill_rmsnorm_gate_rotate_fp16(
   return static_cast<int>(hipGetLastError());
 }
 
+extern "C" int hipengine_qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16(
+    const float* conv_out,
+    const uint16_t* gate,
+    const uint16_t* a,
+    const uint16_t* b,
+    const float* dt_bias,
+    const float* a_log,
+    const float* norm_weight,
+    float* recurrent_state,
+    float* out,
+    const int32_t* cu_seqlens,
+    const int64_t* state_indices,
+    int64_t total_tokens,
+    int64_t segments,
+    float eps,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (total_tokens <= 0 || segments <= 0 || !valid_gdn_shape(num_k_heads, num_v_heads, head_k_dim, head_v_dim)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 128;
+  const size_t shared_bytes = static_cast<size_t>((2 * head_k_dim) + (3 * threads) + head_v_dim) * sizeof(float);
+  hipLaunchKernelGGL(
+      (qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel<uint16_t>),
+      dim3(static_cast<unsigned int>(segments), static_cast<unsigned int>(num_v_heads)),
+      dim3(threads),
+      shared_bytes,
+      stream,
+      conv_out,
+      gate,
+      a,
+      b,
+      dt_bias,
+      a_log,
+      norm_weight,
+      recurrent_state,
+      out,
+      cu_seqlens,
+      state_indices,
+      segments,
+      eps,
+      num_k_heads,
+      num_v_heads,
+      head_k_dim,
+      head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_fp16(
     const float* conv_out,
     const half_t* gate,

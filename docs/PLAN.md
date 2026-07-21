@@ -470,21 +470,40 @@ Design rule: **every new runtime, scheduler, KV, and kernel ABI must stay batch-
 
 | Question | Answer |
 |---|---|
-| Can current hipEngine run real c=8 PARO decode? | No. |
-| Does current hipEngine implement continuous batching? | No. |
-| Is current SpecDec wired into generation? | No; only the design/file-tree placeholder exists. |
+| Can current hipEngine run real c=8 PARO decode? | No; UD-Q3_K_M GGUF now has a separate native c=8 path. |
+| Does current hipEngine implement continuous batching? | Partly: synchronous greedy GGUF prompt lists admit/reclaim/compact inside one call; the persistent HTTP engine loop remains open. |
+| Is current SpecDec wired into generation? | No; only the shared target/verifier ABI and file-tree placeholder exist. |
 | Is the design cleaner for adding c>1 than `nano-vllm-amd`? | Yes. |
 | Would just setting `tokens=8` work? | No. |
 | Is hipEngine the better place to build c=8+ PARO and SpecDec? | Probably yes. |
 
-**GGUF foundation update (2026-07-20):** `Qwen35GGUFResidentSession` now owns
+**GGUF native-row update (2026-07-21):** `Qwen35GGUFResidentSession` owns
 row-shaped target token/hidden/logit scratch, per-slot linear state and paged KV,
-and per-row `KVLiveSpans` while sharing one resident weight set. The initial C=2
-decode and V=2 verify-chain executor deliberately serializes rows through the
-retained c=1 layer path and is full-logit/layer-boundary exact. This satisfies
-the ownership/correctness foundation only; native c-aware kernels, continuous
-batch scheduling, transactional speculative import/commit, and any c=N speed
-claim remain open.
+and per-row `KVLiveSpans` while sharing one resident weight set. UD-Q3_K_M
+advances compact C=2/4/8 rows through indexed Conv/GDN state, row-batched paged
+attention, selected-row MoE, row lm-head/argmax, and C/context-shaped HIP
+graphs. C=2 is layer-boundary/full-logit exact over stateful short decode and a
+1K split-attention prefill boundary; C=4/8 are full-logit exact, varied short
+prompt lengths are exact, and rotated prompt rows preserve 128 generated IDs
+against independent c=1 sessions.
+
+Public greedy prompt lists now use `ResidentBatchScheduler`: stable request ids
+are admitted into a configurable 2–8-slot resident session, EOS/length completion
+reclaims scheduler ownership, surviving recurrent state plus live paged-KV
+prefixes compact downward, and pending prompts prefill reclaimed slots between
+decode steps. Graphs are cached by the full `BatchShapeKey`; per-request
+admission/completion timestamps and no-fallback provenance are emitted. This is
+synchronous prompt-list continuous scheduling, not yet the persistent server
+engine loop: cross-call admission, cancellation/disconnect, elastic KV growth,
+prefix sharing, and non-greedy native row sampling remain open. The original
+`step_rows()` and linear-chain `verify_rows()` loops remain explicit scalar
+oracles/speculative bridges rather than the independent-decode default.
+
+GPU1 RX 7900 XTX retained C=8 rows are `207.780 tok/s` at 512/128 and
+`211.177 tok/s` at 4K/128 (`25.973/26.397 tok/s/request`), or `2.053x/1.948x`
+the retained c=1 aggregate controls. Full C=2/4/8 scaling, latency, memory,
+correctness, scheduler, and rocprof evidence is in
+[`benchmarks/results/2026-07-21-gpu1-q3-native-cn-retained.json`](../benchmarks/results/2026-07-21-gpu1-q3-native-cn-retained.json).
 
 Why the design is better positioned:
 

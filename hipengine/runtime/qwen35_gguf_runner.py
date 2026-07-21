@@ -11,7 +11,7 @@ import numpy as np
 
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
-from hipengine.core.hip import HipRuntime, get_hip_runtime
+from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
 from hipengine.core.memory import DeviceBuffer, copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.hip_gfx1100.attention import (
@@ -31,8 +31,10 @@ from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
     qwen35_paged_attn_decode_int8_block16_gqa_splitk_gate_bf16_spans,
     qwen35_paged_attn_decode_int8_key_bf16_value_gqa_splitk_gate_bf16_spans,
     qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_spans,
+    qwen35_paged_full_attn_decode_context_bf16_batch_c1_exact_spans,
     qwen35_paged_full_attn_decode_context_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_gate_bf16_spans,
+    qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_batch_spans,
     qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_spans,
     qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans,
@@ -72,7 +74,12 @@ from hipengine.kernels.hip_gfx1100.linear.dense_gemv import (
     dense_dual_gemv_out_bf16,
     dense_gemv_out_bf16,
 )
-from hipengine.kernels.hip_gfx1100.linear.lm_head import argmax_f32, build_lm_head, lm_head_argmax_stage1_blocks
+from hipengine.kernels.hip_gfx1100.linear.lm_head import (
+    argmax_f32,
+    argmax_f32_rows_i32,
+    build_lm_head,
+    lm_head_argmax_stage1_blocks,
+)
 from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import qwen35_split_qgate_bf16
 from hipengine.kernels.hip_gfx1100.runtime import (
     advance_decode_position_i64,
@@ -84,10 +91,12 @@ from hipengine.kernels.hip_gfx1100.runtime import (
 from hipengine.kvcache import FixedPagedKVPolicy, KVLiveSpans, KVScaleMetadata
 from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
     qwen35_linear_attn_conv_decode_bf16,
+    qwen35_linear_attn_conv_decode_indexed_bf16,
     qwen35_linear_attn_conv_prefill_f32,
 )
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16,
+    qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16,
     register_qwen35_linear_attn_gdn_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_expert_pack8_gemv import (
@@ -179,6 +188,7 @@ from hipengine.runtime.gguf_linear import (
     launch_gguf_linear_pair,
     launch_gguf_linear_pair_concat,
     launch_gguf_linear_triple,
+    native_batch_decode_session,
     q8_mmq_prefill_session,
     resolve_q8_mmq_prefill_policy,
     wmma_prefill_session,
@@ -248,6 +258,7 @@ class Qwen35GGUFTargetRowsResult:
     span_role: str
     logits: np.ndarray
     layer_hidden_bits: dict[int, np.ndarray]
+    execution_paths: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         rows = len(self.token_ids)
@@ -1750,6 +1761,388 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
+
+    def _run_linear_attention_decode_rows_native(
+        self,
+        layer_id: int,
+        hidden_ptr: int,
+        out_ptr: int,
+        scratch,
+        *,
+        rows: int,
+        cu_seqlens_ptr: int,
+        state_indices_ptr: int,
+        stream: int = 0,
+    ) -> str:
+        """Run independent decode rows through indexed Conv/GDN state."""
+
+        assert self.weights is not None
+        if rows <= 1:
+            raise ValueError("native linear-attention batch requires rows > 1")
+        layer = self.weights.layer(layer_id)
+        cfg = self.weights.config
+        runtime = self.runtime or get_hip_runtime()
+        conv_state = scratch.layer_conv_states[layer_id]
+        recurrent_state = scratch.layer_recurrent_states[layer_id]
+        if conv_state is None or recurrent_state is None:
+            raise ValueError(f"layer {layer_id} has no linear-attention state")
+
+        gguf_rmsnorm_bf16_f32_weight(
+            hidden_ptr,
+            layer.weight("attn_norm").allocation().tensor.ptr,
+            scratch.norm.ptr,
+            rows=rows,
+            hidden_size=self.hidden_size,
+            eps=cfg.rms_norm_eps,
+            stream=stream,
+            runtime=runtime,
+        )
+        if not launch_gguf_linear_pair(
+            layer.weight("attn_qkv"),
+            layer.weight("attn_gate"),
+            scratch.norm.ptr,
+            scratch.linear_qkv.ptr,
+            scratch.linear_z.ptr,
+            rows=rows,
+            in_features=self.hidden_size,
+            out_features=self.linear_qkv_width,
+            out_features_b=cfg.ssm_inner_size,
+            stream=stream,
+            runtime=runtime,
+        ):
+            launch_gguf_linear(
+                layer.weight("attn_qkv"),
+                scratch.norm.ptr,
+                scratch.linear_qkv.ptr,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features=self.linear_qkv_width,
+                stream=stream,
+                runtime=runtime,
+            )
+            launch_gguf_linear(
+                layer.weight("attn_gate"),
+                scratch.norm.ptr,
+                scratch.linear_z.ptr,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features=cfg.ssm_inner_size,
+                stream=stream,
+                runtime=runtime,
+            )
+
+        alpha_ptr = scratch.linear_alpha.ptr
+        beta_ptr = scratch.linear_beta.ptr
+        # The dual dense kernel writes row-major [rows, alpha+beta], while the
+        # indexed GDN ABI consumes separate [rows, rank] arrays. Two launches
+        # preserve the scalar reduction order without a transpose.
+        dense_gemv_out_bf16(
+            scratch.norm.ptr,
+            layer.weight("ssm_alpha").allocation("raw").tensor.ptr,
+            alpha_ptr,
+            rows,
+            self.hidden_size,
+            cfg.ssm_time_step_rank,
+            stream=stream,
+            runtime=runtime,
+        )
+        dense_gemv_out_bf16(
+            scratch.norm.ptr,
+            layer.weight("ssm_beta").allocation("raw").tensor.ptr,
+            beta_ptr,
+            rows,
+            self.hidden_size,
+            cfg.ssm_time_step_rank,
+            stream=stream,
+            runtime=runtime,
+        )
+        qwen35_linear_attn_conv_decode_indexed_bf16(
+            scratch.linear_qkv.ptr,
+            conv_state.ptr,
+            layer.weight("ssm_conv1d").allocation().tensor.ptr,
+            scratch.conv_out.ptr,
+            state_indices_ptr,
+            rows,
+            self.linear_qkv_width,
+            cfg.ssm_conv_kernel,
+            stream=stream,
+            runtime=runtime,
+        )
+        qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16(
+            scratch.conv_out.ptr,
+            scratch.linear_z.ptr,
+            alpha_ptr,
+            beta_ptr,
+            layer.weight("ssm_dt_bias").allocation().tensor.ptr,
+            layer.weight("ssm_a").allocation().tensor.ptr,
+            layer.weight("ssm_norm").allocation().tensor.ptr,
+            recurrent_state.ptr,
+            scratch.recurrent_out.ptr,
+            cu_seqlens_ptr,
+            state_indices_ptr,
+            rows,
+            rows,
+            cfg.rms_norm_eps,
+            cfg.ssm_group_count,
+            cfg.ssm_time_step_rank,
+            cfg.ssm_state_size,
+            self.ssm_value_dim,
+            stream=stream,
+            runtime=runtime,
+        )
+        f32_to_bf16(
+            scratch.recurrent_out.ptr,
+            scratch.recurrent_bf16.ptr,
+            rows * cfg.ssm_inner_size,
+            stream=stream,
+            runtime=runtime,
+        )
+        launch_gguf_linear(
+            layer.weight("ssm_out"),
+            scratch.recurrent_bf16.ptr,
+            scratch.attn_out.ptr,
+            rows=rows,
+            in_features=cfg.ssm_inner_size,
+            out_features=self.hidden_size,
+            stream=stream,
+            runtime=runtime,
+        )
+        self._run_post_attention_ffn_rows(
+            layer_id,
+            hidden_ptr,
+            scratch.attn_out.ptr,
+            out_ptr,
+            scratch,
+            rows=rows,
+            stream=stream,
+        )
+        return "indexed_conv_gdn"
+
+    def _run_full_attention_decode_rows_native(
+        self,
+        layer_id: int,
+        hidden_ptr: int,
+        out_ptr: int,
+        scratch,
+        *,
+        rows: int,
+        stream: int = 0,
+    ) -> str:
+        """Run one native row-batched full-attention decode layer."""
+
+        assert self.weights is not None
+        if rows <= 1:
+            raise ValueError("native full-attention batch requires rows > 1")
+        if scratch.kv_storage_dtype != DType.BF16:
+            raise NotImplementedError("native GGUF target rows currently require BF16 KV")
+        layer = self.weights.layer(layer_id)
+        cfg = self.weights.config
+        runtime = self.runtime or get_hip_runtime()
+        cast_library = self._cast_library()
+        kv_write_library = self._paged_kv_write_library()
+        paged_attn_library = self._paged_attn_decode_library()
+
+        gguf_rmsnorm_bf16_f32_weight(
+            hidden_ptr,
+            layer.weight("attn_norm").allocation().tensor.ptr,
+            scratch.norm.ptr,
+            rows=rows,
+            hidden_size=self.hidden_size,
+            eps=cfg.rms_norm_eps,
+            stream=stream,
+            runtime=runtime,
+        )
+        if not launch_gguf_linear_triple(
+            layer.weight("attn_q"),
+            layer.weight("attn_k"),
+            layer.weight("attn_v"),
+            scratch.norm.ptr,
+            scratch.full_q.ptr,
+            scratch.full_k.ptr,
+            scratch.full_v.ptr,
+            rows=rows,
+            in_features=self.hidden_size,
+            out_features=2 * self.q_width,
+            out_features_b=self.kv_width,
+            out_features_c=self.kv_width,
+            stream=stream,
+            runtime=runtime,
+        ):
+            launch_gguf_linear(
+                layer.weight("attn_q"),
+                scratch.norm.ptr,
+                scratch.full_q.ptr,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features=2 * self.q_width,
+                stream=stream,
+                runtime=runtime,
+            )
+            if not launch_gguf_linear_pair(
+                layer.weight("attn_k"),
+                layer.weight("attn_v"),
+                scratch.norm.ptr,
+                scratch.full_k.ptr,
+                scratch.full_v.ptr,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features=self.kv_width,
+                stream=stream,
+                runtime=runtime,
+            ):
+                launch_gguf_linear(
+                    layer.weight("attn_k"),
+                    scratch.norm.ptr,
+                    scratch.full_k.ptr,
+                    rows=rows,
+                    in_features=self.hidden_size,
+                    out_features=self.kv_width,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                launch_gguf_linear(
+                    layer.weight("attn_v"),
+                    scratch.norm.ptr,
+                    scratch.full_v.ptr,
+                    rows=rows,
+                    in_features=self.hidden_size,
+                    out_features=self.kv_width,
+                    stream=stream,
+                    runtime=runtime,
+                )
+        qwen35_split_qgate_bf16(
+            scratch.full_q.ptr,
+            scratch.full_query_raw.ptr,
+            scratch.full_gate.ptr,
+            rows,
+            cfg.head_count,
+            cfg.key_length,
+            stream=stream,
+            runtime=runtime,
+        )
+        bf16_to_f32(
+            scratch.full_k.ptr,
+            scratch.full_key_raw.ptr,
+            rows * self.kv_width,
+            stream=stream,
+            library=cast_library,
+            runtime=runtime,
+        )
+        gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight(
+            scratch.full_query_raw.ptr,
+            scratch.full_key_raw.ptr,
+            layer.weight("attn_q_norm").allocation().tensor.ptr,
+            layer.weight("attn_k_norm").allocation().tensor.ptr,
+            scratch.cos_table.ptr,
+            scratch.sin_table.ptr,
+            scratch.position_tensor.ptr,
+            scratch.full_query.ptr,
+            scratch.full_key.ptr,
+            cfg.rms_norm_eps,
+            rows,
+            cfg.head_count,
+            cfg.head_count_kv,
+            cfg.key_length,
+            cfg.rope_dimension_count,
+            scratch.max_positions,
+            stream=stream,
+            runtime=runtime,
+        )
+        key_cache, value_cache = scratch.full_cache(layer_id)
+        qwen35_write_paged_kv_mixed_value_bf16_prompt_spans(
+            scratch.full_key.ptr,
+            scratch.full_v.ptr,
+            key_cache.ptr,
+            value_cache.ptr,
+            scratch.append_spans,
+            rows,
+            scratch.block_size,
+            cfg.head_count_kv,
+            cfg.key_length,
+            stream=stream,
+            library=kv_write_library,
+            runtime=runtime,
+        )
+        max_context_len = int(scratch.decode_spans.max_live_count)
+        if max_context_len < _GGUF_FULL_ATTN_DECODE_SPLIT_MIN_CONTEXT_DEFAULT:
+            qwen35_paged_full_attn_decode_context_bf16_batch_c1_exact_spans(
+                scratch.full_query.ptr,
+                key_cache.ptr,
+                value_cache.ptr,
+                scratch.full_query_raw.ptr,
+                scratch.decode_spans,
+                rows,
+                max_context_len,
+                scratch.block_size,
+                cfg.head_count,
+                cfg.head_count_kv,
+                cfg.key_length,
+                cfg.key_length ** -0.5,
+                stream=stream,
+                library=paged_attn_library,
+                runtime=runtime,
+            )
+            qwen35_full_attn_gate_mul_bf16(
+                scratch.full_query_raw.ptr,
+                scratch.full_gate.ptr,
+                scratch.full_gated.ptr,
+                rows * self.q_width,
+                stream=stream,
+                library=paged_attn_library,
+                runtime=runtime,
+            )
+            attention_path = "kv_live_spans_batch_c1_exact"
+        else:
+            chunk_size = int(scratch.block_size)
+            num_splits = min(
+                int(scratch.full_attn_split_count),
+                max(1, (max_context_len + chunk_size - 1) // chunk_size),
+            )
+            qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_batch_spans(
+                scratch.full_query.ptr,
+                key_cache.ptr,
+                value_cache.ptr,
+                scratch.full_gate.ptr,
+                scratch.full_gated.ptr,
+                scratch.full_attn_split_partial.ptr,
+                scratch.full_attn_split_m.ptr,
+                scratch.full_attn_split_l.ptr,
+                scratch.decode_spans,
+                rows,
+                chunk_size,
+                num_splits,
+                scratch.block_size,
+                cfg.head_count,
+                cfg.head_count_kv,
+                cfg.key_length,
+                cfg.key_length,
+                1,
+                cfg.key_length ** -0.5,
+                stream=stream,
+                library=paged_attn_library,
+                runtime=runtime,
+            )
+            attention_path = "kv_live_spans_batch_split_gqa"
+        launch_gguf_linear(
+            layer.weight("attn_output"),
+            scratch.full_gated.ptr,
+            scratch.attn_out.ptr,
+            rows=rows,
+            in_features=self.q_width,
+            out_features=self.hidden_size,
+            stream=stream,
+            runtime=runtime,
+        )
+        self._run_post_attention_ffn_rows(
+            layer_id,
+            hidden_ptr,
+            scratch.attn_out.ptr,
+            out_ptr,
+            scratch,
+            rows=rows,
+            stream=stream,
+        )
+        return attention_path
 
     def _run_native_attention_bulk_ffn_layer_rows(
         self,
@@ -3622,6 +4015,9 @@ class Qwen35GGUFResidentSession:
     _hidden_a: object | None = field(default=None, init=False)
     _hidden_b: object | None = field(default=None, init=False)
     _logits_buf: object | None = field(default=None, init=False)
+    _native_cu_seqlens_buf: object | None = field(default=None, init=False)
+    _native_state_indices_buf: object | None = field(default=None, init=False)
+    _native_token_ids_host: np.ndarray | None = field(default=None, init=False)
     _lm_block_values: object | None = field(default=None, init=False)
     _lm_block_indices: object | None = field(default=None, init=False)
     _lm_out_index: object | None = field(default=None, init=False)
@@ -3649,6 +4045,7 @@ class Qwen35GGUFResidentSession:
     _logits_host: np.ndarray | None = field(default=None, init=False)
     _buffers: tuple[object, ...] = field(default=(), init=False)
     _position: int = field(default=0, init=False)
+    _reset_current_slot_only: bool = field(default=False, init=False)
     _lm_head_threads: int = field(default=128, init=False)
     _lm_head_stage1_blocks: int = field(default=0, init=False)
     fastpath_safety: Qwen35GGUFFastPathSafety | None = field(default=None, init=False)
@@ -3795,6 +4192,23 @@ class Qwen35GGUFResidentSession:
             self.max_batch_size * self.runner.vocab_size * DType.FP32.itemsize,
             runtime=runtime,
         )
+        native_cu = np.arange(self.max_batch_size + 1, dtype=np.int32)
+        native_state_indices = np.arange(self.max_batch_size, dtype=np.int64)
+        self._native_cu_seqlens_buf = malloc(native_cu.nbytes, runtime=runtime)
+        self._native_state_indices_buf = malloc(native_state_indices.nbytes, runtime=runtime)
+        copy_host_to_device(
+            self._native_cu_seqlens_buf,
+            host_array_ptr(native_cu),
+            native_cu.nbytes,
+            runtime=runtime,
+        )
+        copy_host_to_device(
+            self._native_state_indices_buf,
+            host_array_ptr(native_state_indices),
+            native_state_indices.nbytes,
+            runtime=runtime,
+        )
+        self._native_token_ids_host = np.empty((self.max_batch_size,), dtype=np.int32)
         self._lm_head_threads = 128
         self._lm_head_stage1_blocks = lm_head_argmax_stage1_blocks(self.runner.vocab_size, threads=self._lm_head_threads)
         self._lm_block_values = malloc(
@@ -3825,6 +4239,8 @@ class Qwen35GGUFResidentSession:
             self._hidden_a,
             self._hidden_b,
             self._logits_buf,
+            self._native_cu_seqlens_buf,
+            self._native_state_indices_buf,
             self._lm_block_values,
             self._lm_block_indices,
             self._lm_out_index,
@@ -3929,8 +4345,96 @@ class Qwen35GGUFResidentSession:
         if self.scratch is None or self._target_scratch_owner is None:
             raise RuntimeError("GGUF resident session is closed")
         runtime = self.runtime or get_hip_runtime()
-        self._target_scratch_owner.zero_states(runtime)
+        if self._reset_current_slot_only:
+            self.scratch.zero_states(runtime)
+        else:
+            self._target_scratch_owner.zero_states(runtime)
         self._position = 0
+
+    def compact_target_slots(
+        self,
+        source_slots: tuple[int, ...] | list[int],
+        *,
+        stream: int = 0,
+    ) -> tuple[tuple[int, int], ...]:
+        """Pack live target rows into the physical prefix and reclaim the tail.
+
+        ``source_slots`` is ordered by stable scheduler request order. Persistent
+        recurrent state and the live paged-KV prefix are copied downward; block
+        tables remain physical-slot owned, so copied KV lands in the destination
+        slot's disjoint page range. Transient model scratch is intentionally not
+        copied because every decode step overwrites it.
+        """
+
+        if self._target_scratch_owner is None:
+            raise RuntimeError("GGUF resident session is closed")
+        owner = self._target_scratch_owner
+        sources = tuple(int(slot) for slot in source_slots)
+        if len(sources) > int(owner.slot_count):
+            raise ValueError("target compaction exceeds resident slot capacity")
+        if len(set(sources)) != len(sources):
+            raise ValueError("target compaction source slots must be unique")
+        if any(slot < 0 or slot >= int(owner.slot_count) for slot in sources):
+            raise ValueError("target compaction source slot outside resident capacity")
+        if sources != tuple(sorted(sources)):
+            raise ValueError("target compaction currently requires stable ascending source slots")
+
+        runtime = self.runtime or get_hip_runtime()
+        old_positions = list(self.row_positions)
+        moves = tuple((source, destination) for destination, source in enumerate(sources))
+
+        def copy_slot(buffer: object | None, source: int, destination: int, *, live_only: bool) -> None:
+            if buffer is None or source == destination:
+                return
+            slot_nbytes = int(buffer.nbytes) // int(owner.slot_count)
+            copy_nbytes = slot_nbytes
+            if live_only:
+                row_nbytes, remainder = divmod(slot_nbytes, int(owner.max_positions))
+                if remainder:
+                    raise ValueError("resident target KV slot is not position-major")
+                copy_nbytes = min(slot_nbytes, int(old_positions[source]) * row_nbytes)
+            if copy_nbytes <= 0:
+                return
+            runtime.memcpy_async(
+                int(buffer.ptr) + destination * slot_nbytes,
+                int(buffer.ptr) + source * slot_nbytes,
+                copy_nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                int(stream),
+            )
+
+        state_buffers = (
+            *owner.layer_conv_states,
+            *owner.layer_recurrent_states,
+        )
+        cache_buffers = (
+            *owner.full_key_caches,
+            *owner.full_value_caches,
+            *owner.full_bf16_mirror_key_caches,
+            *owner.full_bf16_mirror_value_caches,
+            *owner.full_k_scale_caches,
+            *owner.full_v_scale_caches,
+        )
+        copied = False
+        for source, destination in moves:
+            if source == destination:
+                continue
+            copied = True
+            for buffer in state_buffers:
+                copy_slot(buffer, source, destination, live_only=False)
+            for buffer in cache_buffers:
+                copy_slot(buffer, source, destination, live_only=True)
+        if copied:
+            if stream:
+                runtime.stream_synchronize(int(stream))
+            else:
+                runtime.device_synchronize()
+
+        compact_positions = [old_positions[source] for source in sources]
+        compact_positions.extend([0] * (int(owner.slot_count) - len(compact_positions)))
+        owner.set_full_attention_positions(tuple(compact_positions), runtime)
+        self._position = int(compact_positions[0]) if compact_positions else 0
+        return moves
 
     def _offload_token_embedding_to_host(self, *, runtime: HipRuntime) -> None:
         """Release the resident Q8_0 token embedding and serve lookups from host."""
@@ -4436,6 +4940,86 @@ class Qwen35GGUFResidentSession:
         finally:
             self._release_int8_prefill_oracle_buffers()
 
+    def prefill_slot(
+        self,
+        token_ids: list[int] | tuple[int, ...],
+        *,
+        slot: int,
+        use_bulk: bool | None = None,
+        bulk_attention_mode: str | None = None,
+        return_logits: bool = False,
+    ) -> Qwen35GGUFNextTokenProbeResult:
+        """Prefill one resident physical slot without resetting sibling rows."""
+
+        if self._target_scratch_owner is None or self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        slot = int(slot)
+        if slot < 0 or slot >= int(self.max_batch_size):
+            raise ValueError("prefill slot outside resident max_batch_size")
+        if int(self._target_scratch_owner.position_host[slot]) != 0:
+            raise ValueError("prefill slot must be empty")
+        if self._bulk_prefill_scratch is None:
+            raise RuntimeError("GGUF resident bulk prefill scratch is closed")
+        owner = self._target_scratch_owner
+        if owner.kv_storage_dtype != DType.BF16:
+            raise NotImplementedError("native GGUF slot prefill currently requires BF16 KV")
+        runtime = self.runtime or get_hip_runtime()
+        blocks = int(owner.blocks_per_slot)
+        local_blocks = np.arange(blocks, dtype=np.int32)
+        block_rows = int(self._bulk_prefill_scratch.rows)
+        block_table = np.tile(local_blocks, (block_rows, 1))
+        copy_host_to_device(
+            self._bulk_prefill_scratch.block_table,
+            host_array_ptr(block_table),
+            block_table.nbytes,
+            runtime=runtime,
+        )
+
+        def cache_slot(buffer):
+            if buffer is None:
+                return None
+            slot_nbytes = int(buffer.nbytes) // int(owner.slot_count)
+            return DeviceBuffer(int(buffer.ptr) + slot * slot_nbytes, slot_nbytes)
+
+        saved_scratch = self.scratch
+        saved_position = int(self._position)
+        saved_slot_reset = bool(self._reset_current_slot_only)
+        min_bulk_tokens = int(self.runner.weights.config.ssm_conv_kernel)
+        run_bulk = len(token_ids) >= min_bulk_tokens if use_bulk is None else bool(use_bulk)
+        slot_scratch = owner.for_slot(slot)
+        if run_bulk:
+            # Bulk prefill uses a slot-local block table, so its cache pointers
+            # must be rebased to the same slot. Token-serial prefill keeps the
+            # physical block ids and therefore must keep owner-level caches.
+            slot_scratch = replace(
+                slot_scratch,
+                full_key_caches=tuple(cache_slot(cache) for cache in owner.full_key_caches),
+                full_value_caches=tuple(cache_slot(cache) for cache in owner.full_value_caches),
+            )
+        self.scratch = slot_scratch
+        self._position = 0
+        self._reset_current_slot_only = True
+        completed_position: int | None = None
+        try:
+            result = self.prefill(
+                token_ids,
+                use_bulk=use_bulk,
+                bulk_attention_mode=bulk_attention_mode,
+                return_logits=return_logits,
+            )
+            completed_position = int(self._position)
+            return result
+        finally:
+            self._reset_current_slot_only = saved_slot_reset
+            self.scratch = saved_scratch
+            if completed_position is not None:
+                positions = list(owner.position_host.tolist())
+                positions[slot] = completed_position
+                owner.set_full_attention_positions(tuple(positions), runtime)
+            self._position = int(owner.position_host[0])
+            if slot == 0 and self._position == 0:
+                self._position = saved_position
+
     def _load_expert_sidecar_host_layer(self, layer_id: int) -> dict[str, GGUFExpertPackedTensor]:
         if self._expert_sidecar_reader is None or self._expert_sidecar_model_map is None:
             raise RuntimeError("GGUF expert sidecar loading was not enabled for this session")
@@ -4473,6 +5057,345 @@ class Qwen35GGUFResidentSession:
             for tensor in reversed(tuple(tensors.values())):
                 tensor.free(runtime=runtime)
             raise
+
+    def _native_compact_scratch(
+        self,
+        rows: int,
+        *,
+        span_role: str,
+        max_context_len: int | None = None,
+    ):
+        if self._target_scratch_owner is None:
+            raise RuntimeError("GGUF resident session is closed")
+        slots = tuple(range(int(rows)))
+        decode_spans = self.target_spans(slot_indices=slots, span_role=span_role)
+        if decode_spans.row_positions is None:
+            raise RuntimeError("native target spans require row positions")
+        positions = decode_spans.row_positions
+        current_max_context = int(decode_spans.max_live_count)
+        if max_context_len is not None:
+            requested = int(max_context_len)
+            if requested < current_max_context or requested > int(self.target_layout.max_sequence_length):
+                raise ValueError("native graph context bound is outside resident capacity")
+            decode_spans = replace(decode_spans, max_live_count=requested)
+        append_spans = replace(
+            decode_spans,
+            live_counts=positions,
+            max_live_count=max(int(self.row_positions[slot]) for slot in slots),
+        )
+        return replace(
+            self._target_scratch_owner,
+            block_table_tensor=decode_spans.base_offsets,
+            position_tensor=positions,
+            context_tensor=decode_spans.live_counts,
+            append_spans=append_spans,
+            decode_spans=decode_spans,
+        )
+
+    def _enqueue_native_rows_model(
+        self,
+        scratch,
+        *,
+        rows: int,
+        stream: int,
+        embedding_ready: bool,
+        capture_ids: tuple[int, ...] = (),
+    ) -> tuple[dict[str, str], dict[int, np.ndarray]]:
+        """Enqueue one compact native model step without host token/state updates."""
+
+        if (
+            self.runner is None
+            or self.runner.weights is None
+            or self._token_buf is None
+            or self._hidden_a is None
+            or self._hidden_b is None
+            or self._logits_buf is None
+            or self._native_cu_seqlens_buf is None
+            or self._native_state_indices_buf is None
+            or self._lm_block_values is None
+            or self._lm_block_indices is None
+            or self._lm_out_index is None
+            or self._lm_out_value is None
+        ):
+            raise RuntimeError("GGUF resident native-row buffers are closed")
+        runtime = self.runtime or get_hip_runtime()
+        if not embedding_ready:
+            launch_gguf_embedding(
+                self.runner.weights.root("token_embedding"),
+                self._token_buf.ptr,
+                self._hidden_a.ptr,
+                rows=rows,
+                hidden_size=self.runner.hidden_size,
+                vocab_size=self.runner.vocab_size,
+                stream=stream,
+                runtime=runtime,
+            )
+        src = self._hidden_a
+        dst = self._hidden_b
+        captures: dict[int, np.ndarray] = {}
+        execution_paths: dict[str, str] = {
+            "linear_attention": "not_applicable",
+            "full_attention": "not_applicable",
+            "moe": "selected_rows_batch" if self.runner.weights.config.is_moe else "dense_ffn_rows",
+            "lm_head": "row_linear_f32",
+        }
+        with (
+            wmma_prefill_session(False),
+            gemv_decode_session(self.use_gemv_decode),
+            native_batch_decode_session(True),
+        ):
+            for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
+                if layer_type == LINEAR_ATTENTION:
+                    execution_paths["linear_attention"] = self.runner._run_linear_attention_decode_rows_native(
+                        layer_id,
+                        src.ptr,
+                        dst.ptr,
+                        scratch,
+                        rows=rows,
+                        cu_seqlens_ptr=self._native_cu_seqlens_buf.ptr,
+                        state_indices_ptr=self._native_state_indices_buf.ptr,
+                        stream=stream,
+                    )
+                elif layer_type == FULL_ATTENTION:
+                    execution_paths["full_attention"] = self.runner._run_full_attention_decode_rows_native(
+                        layer_id,
+                        src.ptr,
+                        dst.ptr,
+                        scratch,
+                        rows=rows,
+                        stream=stream,
+                    )
+                else:
+                    raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+                src, dst = dst, src
+                if layer_id in capture_ids:
+                    if stream:
+                        runtime.stream_synchronize(stream)
+                    hidden = np.empty((rows, self.runner.hidden_size), dtype=np.uint16)
+                    copy_device_to_host(
+                        host_array_ptr(hidden),
+                        DeviceBuffer(src.ptr, hidden.nbytes),
+                        hidden.nbytes,
+                        runtime=runtime,
+                    )
+                    captures[layer_id] = hidden
+
+            gguf_rmsnorm_bf16_f32_weight(
+                src.ptr,
+                self.runner.weights.root("output_norm").allocation().tensor.ptr,
+                scratch.norm.ptr,
+                rows=rows,
+                hidden_size=self.runner.hidden_size,
+                eps=self.runner.weights.config.rms_norm_eps,
+                stream=stream,
+                runtime=runtime,
+            )
+            launch_gguf_linear(
+                self.runner.weights.root("lm_head"),
+                scratch.norm.ptr,
+                self._logits_buf.ptr,
+                rows=rows,
+                in_features=self.runner.hidden_size,
+                out_features=self.runner.vocab_size,
+                output_dtype=GGUF_OUTPUT_F32,
+                stream=stream,
+                runtime=runtime,
+            )
+            argmax_f32_rows_i32(
+                self._logits_buf.ptr,
+                self._lm_block_values.ptr,
+                self._lm_block_indices.ptr,
+                self._lm_out_index.ptr,
+                self._lm_out_value.ptr,
+                rows,
+                self.runner.vocab_size,
+                threads=self._lm_head_threads,
+                stream=stream,
+                library=self._lm_head_library,
+                runtime=runtime,
+            )
+        return execution_paths, captures
+
+    def step_rows_native(
+        self,
+        token_ids: tuple[int, ...] | list[int],
+        positions: tuple[int, ...] | list[int] | None = None,
+        *,
+        slot_indices: tuple[int, ...] | list[int] | None = None,
+        span_role: str = "decode",
+        return_logits: bool = True,
+        capture_layer_ids: tuple[int, ...] | list[int] | set[int] = (),
+        stream: int = 0,
+    ) -> Qwen35GGUFTargetRowsResult:
+        """Advance compact c>1 rows with native state, attention, and MoE families."""
+
+        if self.runner is None or self.runner.weights is None or self._target_scratch_owner is None:
+            raise RuntimeError("GGUF resident session is closed")
+        if (
+            self._token_buf is None
+            or self._hidden_a is None
+            or self._hidden_b is None
+            or self._logits_buf is None
+            or self._native_cu_seqlens_buf is None
+            or self._native_state_indices_buf is None
+            or self._native_token_ids_host is None
+        ):
+            raise RuntimeError("GGUF resident native-row buffers are closed")
+        tokens = tuple(int(token) for token in token_ids)
+        rows = len(tokens)
+        if rows <= 1:
+            raise ValueError("native GGUF target execution requires at least two rows")
+        if rows > int(self.max_batch_size):
+            raise ValueError("native target rows exceed resident max_batch_size")
+        slots = tuple(range(rows)) if slot_indices is None else tuple(int(slot) for slot in slot_indices)
+        if slots != tuple(range(rows)):
+            raise NotImplementedError("native GGUF target execution currently requires compact physical slots")
+        if span_role not in {"decode", "verify_chain", "verify_tree"}:
+            raise ValueError("span_role must be decode, verify_chain, or verify_tree")
+        for token in tokens:
+            if token < 0 or token >= int(self.runner.vocab_size):
+                raise ValueError(f"token_id {token} outside [0, {self.runner.vocab_size})")
+
+        current_positions = list(self.row_positions)
+        consumed_positions = tuple(current_positions[slot] for slot in slots)
+        if positions is not None and tuple(int(position) for position in positions) != consumed_positions:
+            raise ValueError("native target row positions do not match resident cursors")
+        owner = self._target_scratch_owner
+        owner.set_full_attention_positions(tuple(current_positions), self.runtime or get_hip_runtime())
+        scratch = self._native_compact_scratch(rows, span_role=span_role)
+        capture_ids = tuple(sorted({int(layer_id) for layer_id in capture_layer_ids}))
+        layer_count = len(self.runner.weights.config.layer_types)
+        if any(layer_id < 0 or layer_id >= layer_count for layer_id in capture_ids):
+            raise ValueError("capture_layer_ids contains an out-of-range layer")
+
+        runtime = self.runtime or get_hip_runtime()
+        self._copy_token_embeddings_to_device(
+            np.asarray(tokens, dtype=np.int64),
+            self._hidden_a.ptr,
+            rows=rows,
+            token_ids_device_ptr=self._token_buf.ptr,
+            stream=stream,
+        )
+        execution_paths, captures = self._enqueue_native_rows_model(
+            scratch,
+            rows=rows,
+            stream=stream,
+            embedding_ready=True,
+            capture_ids=capture_ids,
+        )
+
+        if return_logits:
+            if stream:
+                runtime.stream_synchronize(stream)
+            else:
+                runtime.device_synchronize()
+            logits = np.empty((rows, self.runner.vocab_size), dtype=np.float32)
+            copy_device_to_host(
+                host_array_ptr(logits),
+                DeviceBuffer(self._logits_buf.ptr, logits.nbytes),
+                logits.nbytes,
+                runtime=runtime,
+            )
+            if not np.all(np.isfinite(logits)):
+                raise FloatingPointError("GGUF native target-row logits contain NaN or Inf")
+            next_tokens = tuple(int(np.argmax(row)) for row in logits)
+            execution_paths["sampler"] = "host_argmax_full_logits"
+        else:
+            if stream:
+                runtime.stream_synchronize(stream)
+            else:
+                runtime.device_synchronize()
+            copy_device_to_host(
+                host_array_ptr(self._native_token_ids_host),
+                DeviceBuffer(self._lm_out_index.ptr, rows * DType.INT32.itemsize),
+                rows * DType.INT32.itemsize,
+                runtime=runtime,
+            )
+            next_tokens = tuple(int(token) for token in self._native_token_ids_host[:rows])
+            logits = np.empty((rows, 0), dtype=np.float32)
+            execution_paths["sampler"] = "argmax_rows_i32"
+
+        for slot in slots:
+            current_positions[slot] += 1
+        owner.set_full_attention_positions(tuple(current_positions), runtime)
+        self._position = int(current_positions[0])
+        return Qwen35GGUFTargetRowsResult(
+            token_ids=next_tokens,
+            positions=consumed_positions,
+            slot_indices=slots,
+            span_role=span_role,
+            logits=logits,
+            layer_hidden_bits=captures,
+            execution_paths=execution_paths,
+        )
+
+    def capture_native_rows_graph(
+        self,
+        *,
+        rows: int,
+        max_context_len: int,
+        span_role: str = "decode",
+    ) -> "Qwen35GGUFNativeRowsGraph":
+        """Capture one compact c>1 target step for host-fed graph replay."""
+
+        if self.runner is None or self.runner.weights is None or self._target_scratch_owner is None:
+            raise RuntimeError("GGUF resident session is closed")
+        if self.host_token_embedding_enabled:
+            raise RuntimeError("host token embedding is not compatible with native row graphs")
+        rows = int(rows)
+        if rows <= 1 or rows > int(self.max_batch_size):
+            raise ValueError("native row graph rows must be within [2, max_batch_size]")
+        if span_role not in {"decode", "verify_chain", "verify_tree"}:
+            raise ValueError("span_role must be decode, verify_chain, or verify_tree")
+        if self._token_buf is None:
+            raise RuntimeError("GGUF resident native token buffer is closed")
+        current_positions = list(self.row_positions)
+        if max(current_positions[:rows]) >= int(max_context_len):
+            raise ValueError("native row graph context bound must exceed current positions")
+        runtime = self.runtime or get_hip_runtime()
+        self._target_scratch_owner.set_full_attention_positions(tuple(current_positions), runtime)
+        scratch = self._native_compact_scratch(
+            rows,
+            span_role=span_role,
+            max_context_len=int(max_context_len),
+        )
+        graph = 0
+        stream = runtime.stream_create()
+        try:
+            runtime.stream_begin_capture(stream)
+            try:
+                execution_paths, _ = self._enqueue_native_rows_model(
+                    scratch,
+                    rows=rows,
+                    stream=stream,
+                    embedding_ready=False,
+                )
+            except Exception:
+                try:
+                    runtime.stream_end_capture(stream)
+                except Exception:
+                    pass
+                raise
+            graph = runtime.stream_end_capture(stream)
+            graph_exec = runtime.graph_instantiate(graph)
+        except Exception:
+            if graph:
+                try:
+                    runtime.graph_destroy(graph)
+                except Exception:
+                    pass
+            runtime.stream_destroy(stream)
+            raise
+        return Qwen35GGUFNativeRowsGraph(
+            session=self,
+            graph=graph,
+            graph_exec=graph_exec,
+            stream=stream,
+            rows=rows,
+            max_context_len=int(max_context_len),
+            span_role=span_role,
+            execution_paths={**execution_paths, "sampler": "argmax_rows_i32_graph"},
+        )
 
     def step_rows(
         self,
@@ -4914,14 +5837,29 @@ class Qwen35GGUFResidentSession:
             raise RuntimeError("GGUF resident lm-head buffers are closed")
         runtime = self.runtime or get_hip_runtime()
         index_host = np.empty((1,), dtype=np.int64)
-        copy_device_to_host(host_array_ptr(index_host), self._lm_out_index, runtime=runtime)
+        copy_device_to_host(
+            host_array_ptr(index_host),
+            self._lm_out_index,
+            index_host.nbytes,
+            runtime=runtime,
+        )
         logits = np.empty((0,), dtype=np.float32)
         logit = 0.0
         if return_logits:
             value_host = np.empty((1,), dtype=np.float32)
-            copy_device_to_host(host_array_ptr(value_host), self._lm_out_value, runtime=runtime)
+            copy_device_to_host(
+                host_array_ptr(value_host),
+                self._lm_out_value,
+                value_host.nbytes,
+                runtime=runtime,
+            )
             logit = float(value_host[0])
-            copy_device_to_host(host_array_ptr(self._logits_host), self._logits_buf, runtime=runtime)
+            copy_device_to_host(
+                host_array_ptr(self._logits_host),
+                self._logits_buf,
+                self._logits_host.nbytes,
+                runtime=runtime,
+            )
             if not np.all(np.isfinite(self._logits_host)):
                 raise FloatingPointError("GGUF resident lm-head logits contain NaN or Inf")
             logits = self._logits_host.copy()
@@ -5114,6 +6052,9 @@ class Qwen35GGUFResidentSession:
         self._hidden_a = None
         self._hidden_b = None
         self._logits_buf = None
+        self._native_cu_seqlens_buf = None
+        self._native_state_indices_buf = None
+        self._native_token_ids_host = None
         self._lm_block_values = None
         self._lm_block_indices = None
         self._lm_out_index = None
@@ -5135,6 +6076,98 @@ class Qwen35GGUFResidentSession:
         self.host_token_embedding_reason = None
 
     def __enter__(self) -> "Qwen35GGUFResidentSession":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
+
+
+@dataclass
+class Qwen35GGUFNativeRowsGraph:
+    """One-step native c>N HIP graph with host-fed tokens and row cursors."""
+
+    session: Qwen35GGUFResidentSession
+    graph: int
+    graph_exec: int
+    stream: int
+    rows: int
+    max_context_len: int
+    span_role: str
+    execution_paths: dict[str, str]
+    closed: bool = False
+
+    def step(self, token_ids: tuple[int, ...] | list[int]) -> Qwen35GGUFTargetRowsResult:
+        if self.closed:
+            raise RuntimeError("GGUF native row graph is closed")
+        if self.session._token_buf is None or self.session._native_token_ids_host is None:
+            raise RuntimeError("GGUF resident native-row buffers are closed")
+        tokens = tuple(int(token) for token in token_ids)
+        if len(tokens) != int(self.rows):
+            raise ValueError("native row graph token count must match captured rows")
+        if self.session.runner is None:
+            raise RuntimeError("GGUF resident session is closed")
+        for token in tokens:
+            if token < 0 or token >= int(self.session.runner.vocab_size):
+                raise ValueError("native row graph token id is out of range")
+        current_positions = list(self.session.row_positions)
+        consumed = tuple(current_positions[row] for row in range(self.rows))
+        if max(consumed) >= int(self.max_context_len):
+            raise ValueError("native row graph replay exceeds captured context bound")
+        runtime = self.session.runtime or get_hip_runtime()
+        token_host = np.asarray(tokens, dtype=np.int64)
+        copy_host_to_device(
+            self.session._token_buf,
+            host_array_ptr(token_host),
+            token_host.nbytes,
+            runtime=runtime,
+        )
+        if self.session._target_scratch_owner is None:
+            raise RuntimeError("GGUF resident target scratch is closed")
+        self.session._target_scratch_owner.set_full_attention_positions(
+            tuple(current_positions),
+            runtime,
+        )
+        runtime.graph_launch(self.graph_exec, self.stream)
+        runtime.stream_synchronize(self.stream)
+        copy_device_to_host(
+            host_array_ptr(self.session._native_token_ids_host),
+            DeviceBuffer(
+                self.session._lm_out_index.ptr,
+                self.rows * DType.INT32.itemsize,
+            ),
+            self.rows * DType.INT32.itemsize,
+            runtime=runtime,
+        )
+        next_tokens = tuple(
+            int(token) for token in self.session._native_token_ids_host[: self.rows]
+        )
+        for row in range(self.rows):
+            current_positions[row] += 1
+        self.session._target_scratch_owner.set_full_attention_positions(
+            tuple(current_positions),
+            runtime,
+        )
+        self.session._position = int(current_positions[0])
+        return Qwen35GGUFTargetRowsResult(
+            token_ids=next_tokens,
+            positions=consumed,
+            slot_indices=tuple(range(self.rows)),
+            span_role=self.span_role,
+            logits=np.empty((self.rows, 0), dtype=np.float32),
+            layer_hidden_bits={},
+            execution_paths=dict(self.execution_paths),
+        )
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        runtime = self.session.runtime or get_hip_runtime()
+        runtime.graph_exec_destroy(self.graph_exec)
+        runtime.graph_destroy(self.graph)
+        runtime.stream_destroy(self.stream)
+
+    def __enter__(self) -> "Qwen35GGUFNativeRowsGraph":
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:
@@ -5970,7 +7003,7 @@ class _FullStackScratch:
             ),
             moe_group_counts_zero=moe_group_counts_zero,
             moe_scatter_offsets_zero=moe_scatter_offsets_zero,
-            moe_selected_rows_capacity=moe_top_k,
+            moe_selected_rows_capacity=slot_count * moe_top_k,
             buffers=tuple(fields.values()) + tuple(state_buffers) + tuple(cache_buffers) + metadata_buffers,
             slot_count=slot_count,
             blocks_per_slot=block_count,
@@ -8100,6 +9133,7 @@ __all__ = [
     "Qwen35GGUFDecodeGraphWeightRole",
     "Qwen35GGUFFullAttentionPrefillResult",
     "Qwen35GGUFFullStackRunner",
+    "Qwen35GGUFNativeRowsGraph",
     "Qwen35GGUFNextTokenProbeResult",
     "Qwen35GGUFOneLayerProbe",
     "Qwen35GGUFFastPathSafety",

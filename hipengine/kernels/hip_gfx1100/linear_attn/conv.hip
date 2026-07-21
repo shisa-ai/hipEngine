@@ -83,6 +83,42 @@ __global__ void qwen35_linear_attn_conv_decode_lowp_kernel(
   out[channel] = silu_f32(acc);
 }
 
+// Batch-shaped sibling of the scalar decode kernel. Every grid-Y row owns one
+// independent token and selects its persistent Conv state through
+// state_indices. The arithmetic statements intentionally mirror the scalar
+// kernel exactly; only row/state pointer offsets differ.
+template <typename scalar_t>
+__global__ void qwen35_linear_attn_conv_decode_indexed_lowp_kernel(
+    const scalar_t* __restrict__ hidden_states,
+    float* __restrict__ conv_state,
+    const float* __restrict__ conv_weight,
+    float* __restrict__ out,
+    const int64_t* __restrict__ state_indices,
+    int64_t rows,
+    int64_t channels,
+    int64_t kernel_size) {
+  const int64_t row = static_cast<int64_t>(blockIdx.y);
+  const int64_t channel = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (row >= rows || channel >= channels) {
+    return;
+  }
+
+  const int64_t state_slot = state_indices[row];
+  const int64_t state_stride = channels * kernel_size;
+  const int64_t offset = state_slot * state_stride + channel * kernel_size;
+  const int64_t weight_offset = channel * kernel_size;
+  float acc = 0.0f;
+  for (int64_t idx = 0; idx < kernel_size - 1; ++idx) {
+    const float value = conv_state[offset + idx + 1];
+    acc += value * conv_weight[weight_offset + idx];
+    conv_state[offset + idx] = value;
+  }
+  const float newest = scalar_to_float_qwen35(hidden_states[row * channels + channel]);
+  acc += newest * conv_weight[weight_offset + kernel_size - 1];
+  conv_state[offset + kernel_size - 1] = newest;
+  out[row * channels + channel] = silu_f32(acc);
+}
+
 
 __global__ void qwen35_linear_attn_conv_prefill_kernel(
     const float* __restrict__ hidden_states,
@@ -487,6 +523,38 @@ extern "C" int hipengine_qwen35_linear_attn_conv_decode_bf16(
       conv_state,
       conv_weight,
       out,
+      channels,
+      kernel_size);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_linear_attn_conv_decode_indexed_bf16(
+    const uint16_t* hidden_states,
+    float* conv_state,
+    const float* conv_weight,
+    float* out,
+    const int64_t* state_indices,
+    int64_t rows,
+    int64_t channels,
+    int64_t kernel_size,
+    hipStream_t stream) {
+  if (rows <= 0 || !valid_conv_shape(channels, kernel_size) || state_indices == nullptr) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  const int blocks = static_cast<int>((channels + threads - 1) / threads);
+  hipLaunchKernelGGL(
+      (qwen35_linear_attn_conv_decode_indexed_lowp_kernel<uint16_t>),
+      dim3(static_cast<unsigned int>(blocks), static_cast<unsigned int>(rows)),
+      dim3(threads),
+      0,
+      stream,
+      hidden_states,
+      conv_state,
+      conv_weight,
+      out,
+      state_indices,
+      rows,
       channels,
       kernel_size);
   return static_cast<int>(hipGetLastError());

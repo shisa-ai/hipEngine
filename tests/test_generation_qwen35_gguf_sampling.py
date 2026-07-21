@@ -20,7 +20,14 @@ class _FakeTokenizer:
     eos_token_id = 99
 
     def encode(self, prompt: str) -> list[int]:
-        return {"first": [10, 11], "second": [20], "{": [5], "}": [4]}[prompt]
+        return {
+            "first": [10, 11],
+            "second": [20],
+            "third": [30],
+            "fourth": [40],
+            "{": [5],
+            "}": [4],
+        }[prompt]
 
     def decode(self, ids) -> str:
         table = {1: "B", 2: "C", 3: "D", 4: "}", 5: "{", 6: "X", 16: "Q", 99: "<eos>"}
@@ -34,6 +41,7 @@ def _generator() -> qwen35_gguf.Qwen35GGUFBringupGenerator:
     generator.model_path = "/tmp/fake.gguf"
     generator.weight_index = SimpleNamespace()
     generator.model_plugin = SimpleNamespace()
+    generator.native_batch_decode = True
     generator.tokenizer = _FakeTokenizer()
     return generator
 
@@ -539,6 +547,294 @@ def test_gguf_generate_detailed_records_scheduler_token_chunks_for_serial_rows(m
         ("step", 1, True),
         ("exit", True),
     ]
+
+
+def test_gguf_generic_quant_keeps_multi_prompt_serial_fallback(monkeypatch) -> None:
+    calls = []
+
+    class FakeSession:
+        def __init__(self, model_path):
+            calls.append(("init", str(model_path)))
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            pass
+
+        def prefill(self, token_ids, *, return_logits):
+            calls.append(("prefill", tuple(token_ids), bool(return_logits)))
+            return SimpleNamespace(token_id=1)
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+    generator = _generator()
+    generator.native_batch_decode = False
+
+    outputs = generator.generate_detailed(
+        _request(prompts=("first", "second"), max_tokens=1)
+    )
+
+    assert [output.text for output in outputs] == ["B", "B"]
+    assert calls == [
+        ("init", "/tmp/fake.gguf"),
+        ("prefill", (10, 11), False),
+        ("prefill", (20,), False),
+    ]
+    assert generator.last_batch_generation["path"] == "gguf_serial_greedy_decode"
+    assert generator.last_batch_generation["serial_decode_fallback"] is True
+
+
+def test_gguf_generate_detailed_uses_native_compact_rows_for_greedy_prompts(
+    monkeypatch,
+) -> None:
+    calls = []
+
+    class FakeSession:
+        def __init__(self, model_path, **kwargs):
+            calls.append(("init", kwargs))
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            pass
+
+        def prefill_slot(self, token_ids, *, slot, return_logits):
+            calls.append(
+                (
+                    "prefill_slot",
+                    tuple(token_ids),
+                    int(slot),
+                    bool(return_logits),
+                )
+            )
+            return SimpleNamespace(token_id=1)
+
+        def step_rows_native(self, token_ids, *, return_logits):
+            calls.append(("step_rows_native", tuple(token_ids), bool(return_logits)))
+            return SimpleNamespace(
+                token_ids=(2, 2),
+                execution_paths={
+                    "linear_attention": "indexed_conv_gdn",
+                    "full_attention": "kv_live_spans_batch_c1_exact",
+                    "moe": "selected_rows_batch",
+                    "lm_head": "row_linear_f32",
+                    "sampler": "argmax_rows_i32",
+                },
+            )
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+    generator = _generator()
+
+    outputs = generator.generate_detailed(
+        _request(prompts=("first", "second"), max_tokens=2)
+    )
+
+    assert [output.text for output in outputs] == ["BC", "BC"]
+    assert calls == [
+        ("init", {"max_sequence_length": 256, "max_batch_size": 2}),
+        ("prefill_slot", (10, 11), 0, False),
+        ("prefill_slot", (20,), 1, False),
+        ("step_rows_native", (1, 1), False),
+    ]
+    batch = generator.last_batch_generation
+    assert batch is not None
+    assert batch["path"] == "gguf_native_continuous_decode"
+    assert batch["native_decode_steps"] == 1
+    assert batch["serial_decode_fallback"] is False
+    assert batch["native_caware_decode"] is True
+    assert batch["native_sampler_rows"] is True
+    assert batch["throughput_claim_eligible"] is True
+    assert batch["native_execution_paths"]["linear_attention"] == "indexed_conv_gdn"
+    assert all(
+        chunk["chunk"]["telemetry"]["decode_state"]["native_caware_decode"]
+        for chunk in batch["scheduler_token_chunks"]
+    )
+
+
+def test_gguf_greedy_prompt_batch_replays_native_row_graph(monkeypatch) -> None:
+    calls = []
+
+    class FakeGraph:
+        def __enter__(self):
+            calls.append(("graph_enter",))
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            calls.append(("graph_exit", exc_type is None))
+
+        def step(self, token_ids):
+            calls.append(("graph_step", tuple(token_ids)))
+            return SimpleNamespace(token_ids=(3, 3), execution_paths={"sampler": "argmax_rows_i32_graph"})
+
+    class FakeSession:
+        host_token_embedding_enabled = False
+        target_layout = SimpleNamespace(max_sequence_length=256)
+
+        def __init__(self, model_path, **kwargs):
+            calls.append(("init", kwargs))
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            pass
+
+        def prefill_slot(self, token_ids, *, slot, return_logits):
+            calls.append(("prefill_slot", tuple(token_ids), int(slot), bool(return_logits)))
+            return SimpleNamespace(token_id=1)
+
+        def step_rows_native(self, token_ids, *, return_logits):
+            calls.append(("step_rows_native", tuple(token_ids), bool(return_logits)))
+            return SimpleNamespace(token_ids=(2, 2), execution_paths={"sampler": "argmax_rows_i32"})
+
+        def capture_native_rows_graph(self, *, rows, max_context_len):
+            calls.append(("capture_native_rows_graph", int(rows), int(max_context_len)))
+            return FakeGraph()
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+    generator = _generator()
+
+    outputs = generator.generate_detailed(
+        _request(prompts=("first", "second"), max_tokens=3)
+    )
+
+    assert [output.text for output in outputs] == ["BCD", "BCD"]
+    assert ("step_rows_native", (1, 1), False) in calls
+    assert ("capture_native_rows_graph", 2, 256) in calls
+    assert ("graph_step", (2, 2)) in calls
+    assert generator.last_batch_generation["native_decode_steps"] == 2
+
+
+def test_gguf_native_scheduler_reclaims_compacts_and_readmits(monkeypatch) -> None:
+    calls = []
+
+    class FakeGraph:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            calls.append(("graph_exit", exc_type is None))
+
+        def step(self, token_ids):
+            tokens = tuple(int(token) for token in token_ids)
+            calls.append(("graph_step", tokens))
+            outputs = {
+                (2, 1): (3, 99),
+                (3, 1): (4, 2),
+            }[tokens]
+            return SimpleNamespace(
+                token_ids=outputs,
+                execution_paths={"sampler": "argmax_rows_i32_graph"},
+            )
+
+    class FakeSession:
+        host_token_embedding_enabled = False
+        target_layout = SimpleNamespace(max_sequence_length=256)
+
+        def __init__(self, model_path, **kwargs):
+            calls.append(("init", kwargs))
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            pass
+
+        def prefill_slot(self, token_ids, *, slot, return_logits):
+            calls.append(("prefill_slot", tuple(token_ids), int(slot), bool(return_logits)))
+            return SimpleNamespace(token_id=1)
+
+        def step_rows_native(self, token_ids, *, return_logits):
+            calls.append(("step_rows_native", tuple(token_ids), bool(return_logits)))
+            return SimpleNamespace(
+                token_ids=(99, 2),
+                execution_paths={
+                    "linear_attention": "indexed_conv_gdn",
+                    "full_attention": "kv_live_spans_batch_c1_exact",
+                    "moe": "selected_rows_batch",
+                    "lm_head": "row_linear_f32",
+                    "sampler": "argmax_rows_i32",
+                },
+            )
+
+        def capture_native_rows_graph(self, *, rows, max_context_len):
+            calls.append(("capture_native_rows_graph", int(rows), int(max_context_len)))
+            return FakeGraph()
+
+        def compact_target_slots(self, source_slots):
+            calls.append(("compact_target_slots", tuple(source_slots)))
+
+        def step(self, token_id, *, return_logits):
+            calls.append(("step", int(token_id), bool(return_logits)))
+            return SimpleNamespace(token_id=int(token_id) + 1)
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+    generator = _generator()
+    generator.native_batch_capacity = 2
+
+    outputs = generator.generate_detailed(
+        _request(
+            prompts=("first", "second", "third", "fourth"),
+            max_tokens=4,
+        )
+    )
+
+    assert [output.text for output in outputs] == ["B<eos>", "BCD}", "B<eos>", "BCD}"]
+    assert calls == [
+        ("init", {"max_sequence_length": 256, "max_batch_size": 2}),
+        ("prefill_slot", (10, 11), 0, False),
+        ("prefill_slot", (20,), 1, False),
+        ("step_rows_native", (1, 1), False),
+        ("compact_target_slots", (1,)),
+        ("prefill_slot", (30,), 1, False),
+        ("capture_native_rows_graph", 2, 256),
+        ("graph_step", (2, 1)),
+        ("compact_target_slots", (0,)),
+        ("prefill_slot", (40,), 1, False),
+        ("graph_step", (3, 1)),
+        ("compact_target_slots", (1,)),
+        ("step", 2, False),
+        ("step", 3, False),
+        ("graph_exit", True),
+    ]
+    batch = generator.last_batch_generation
+    assert batch is not None
+    assert batch["path"] == "gguf_native_continuous_decode"
+    assert batch["serial_decode_fallback"] is False
+    assert batch["native_decode_steps"] == 3
+    scheduler = batch["continuous_scheduler"]
+    assert scheduler["continuous_batching"] is True
+    assert scheduler["capacity"] == 2
+    assert scheduler["admission_count"] == 4
+    assert scheduler["admission_waves"] == 3
+    assert scheduler["reclaim_count"] == 4
+    assert scheduler["compaction_events"] == 3
+    assert scheduler["compacted_slot_moves"] == 2
+    assert scheduler["mixed_prefill_decode_admissions"] == 2
+    assert scheduler["active_c_histogram"] == {"1": 2, "2": 3}
+    assert scheduler["single_row_tail_steps"] == 2
+    assert set(scheduler["request_observability"]) == {"0", "1", "2", "3"}
+    assert all(
+        row["submitted_timestamp"] <= row["admitted_timestamp"] <= row["completion_timestamp"]
+        for row in scheduler["request_observability"].values()
+    )
+    assert scheduler["graph_bucket_stats"] == {
+        "entries": 1,
+        "hits": 1,
+        "misses": 1,
+        "replay_kernel_hits": 2,
+        "replay_hit_rate": 0.5,
+        "miss_reasons": {"gguf_native_shape_absent": 1},
+        "kernel_time_histogram_ns": {
+            "le_10us": 0,
+            "le_100us": 0,
+            "le_1ms": 0,
+            "le_10ms": 0,
+            "gt_10ms": 0,
+        },
+    }
+    assert scheduler["final_request_to_slot"] == {}
 
 
 def test_gguf_stream_detailed_emits_live_greedy_telemetry(monkeypatch) -> None:

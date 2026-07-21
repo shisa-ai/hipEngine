@@ -23,6 +23,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
     gguf_q4_k_wmma_prefill_dual_bf16_bf16_out,
     register_gguf_q4_k_prefill_kernels,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
+    register_gguf_q6_k_pack8_gemv_kernels,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
     register_gguf_q6_k_t16_gemv_kernels,
 )
@@ -32,6 +35,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_mmq_prefill import (
     gguf_q8_0_mmq128_sparse_exact_correct_bf16,
     q8_mmq_d4x3_nbytes,
     register_gguf_q8_0_mmq_prefill_kernels,
+)
+from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_pack8_gemv import (
+    register_gguf_q8_0_pack8_gemv_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_prefill import (
     gguf_q8_0_wmma_prefill_dual_gate_up_bf16_bf16_out,
@@ -79,6 +85,7 @@ _wmma_prefill_session_enabled: bool | None = None
 # (P9.B1-P9.B4b) instead of the legacy ``pack8_gemv_*`` decoders.
 _GEMV_DECODE_ENV = "HIPENGINE_GGUF_GEMV_DECODE"
 _gemv_decode_session_enabled: bool | None = None
+_native_batch_decode_session_enabled = False
 
 # Quants currently shipping a batched ``wmma_prefill_*`` family. Values are
 # the raw GGUF K-block alignment constraints enforced before dispatching to
@@ -251,6 +258,19 @@ def gemv_decode_session(enabled: bool | None) -> Iterator[None]:
         set_gemv_decode_enabled(previous)
 
 
+@contextlib.contextmanager
+def native_batch_decode_session(enabled: bool = True) -> Iterator[None]:
+    """Use raw pack8 decode GEMVs for native c=2/4/8 row launches."""
+
+    global _native_batch_decode_session_enabled
+    previous = _native_batch_decode_session_enabled
+    _native_batch_decode_session_enabled = bool(enabled)
+    try:
+        yield
+    finally:
+        _native_batch_decode_session_enabled = previous
+
+
 def _env_gemv_decode_enabled() -> bool:
     raw = os.environ.get(_GEMV_DECODE_ENV, "")
     if not raw:
@@ -408,6 +428,7 @@ def launch_gguf_linear(
         rows=rows,
         use_gemv_decode=_resolve_use_gemv_decode(use_gemv_decode),
     )
+    dispatch = _native_batch_decode_dispatch(dispatch, rows=rows)
     dispatch = _wmma_prefill_dispatch(
         dispatch,
         rows=rows,
@@ -1116,6 +1137,29 @@ def _gemv_decode_dispatch(
     return GGUFLinearDispatch(rewritten_key, dispatch.abi)
 
 
+def _native_batch_decode_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    rows: int,
+) -> GGUFLinearDispatch:
+    """Select the exact raw pack8 GEMV family for compact c=2/4/8 decode."""
+
+    if not _native_batch_decode_session_enabled or rows <= 1 or rows > 8:
+        return dispatch
+    if dispatch.abi != "raw" or dispatch.key.quant != "gguf_q6_k":
+        return dispatch
+    variant = dispatch.key.variant
+    if not variant.startswith("prefill_"):
+        return dispatch
+    rewritten_key = KernelKey(
+        dispatch.key.backend,
+        dispatch.key.layer,
+        dispatch.key.quant,
+        f"pack8_gemv_{variant[len('prefill_') :]}",
+    )
+    return GGUFLinearDispatch(rewritten_key, dispatch.abi)
+
+
 def _wmma_prefill_dispatch(
     dispatch: GGUFLinearDispatch,
     *,
@@ -1263,8 +1307,10 @@ def _ensure_linear_kernel_registered(key: KernelKey) -> None:
     register_gguf_k_gemv_kernels()
     register_gguf_q4_k_gemv_kernels()
     register_gguf_q4_k_prefill_kernels()
+    register_gguf_q6_k_pack8_gemv_kernels()
     register_gguf_q6_k_t16_gemv_kernels()
     register_gguf_q8_0_mmq_prefill_kernels()
+    register_gguf_q8_0_pack8_gemv_kernels()
     register_gguf_q8_0_prefill_kernels()
     register_gguf_q8_0_t16_gemv_kernels()
     register_gguf_q8_0_t16_prefill_kernels()
@@ -1293,6 +1339,7 @@ __all__ = [
     "launch_gguf_linear_pair_concat",
     "launch_gguf_linear_raw_ptr",
     "launch_gguf_linear_triple",
+    "native_batch_decode_session",
     "q8_mmq_prefill_session",
     "resolve_gguf_linear_dispatch",
     "resolve_q8_mmq_prefill_policy",

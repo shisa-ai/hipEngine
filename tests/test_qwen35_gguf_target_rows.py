@@ -143,6 +143,349 @@ def test_ud_q3_k_m_c2_target_rows_match_independent_c1_boundaries_and_logits(
 
 @pytest.mark.skipif(not _MODEL.exists(), reason=f"local GGUF fixture not found: {_MODEL}")
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_ud_q3_k_m_c2_native_rows_match_independent_c1_boundaries_and_logits(
+    require_q3_model_vram: None,
+) -> None:
+    """Native indexed-state/attention/MoE rows must be full-logit exact."""
+
+    with Qwen35GGUFResidentSession(
+        _MODEL,
+        max_sequence_length=64,
+        max_batch_size=2,
+    ) as batch:
+        batch.select_prefill_quant("gguf_ud_q3_k_m")
+        assert batch.runner is not None
+        with ExitStack() as stack:
+            scalar_refs = tuple(
+                stack.enter_context(
+                    Qwen35GGUFResidentSession(
+                        _MODEL,
+                        max_sequence_length=64,
+                        shared_runner=batch.runner,
+                    )
+                )
+                for _ in range(2)
+            )
+            boundary_refs = tuple(
+                stack.enter_context(
+                    Qwen35GGUFResidentSession(
+                        _MODEL,
+                        max_sequence_length=64,
+                        shared_runner=batch.runner,
+                    )
+                )
+                for _ in range(2)
+            )
+            for tokens in ((9707, 11), (220, 264)):
+                actual = batch.step_rows_native(
+                    tokens,
+                    return_logits=True,
+                    capture_layer_ids=(0, 3, 39),
+                )
+                expected = [
+                    ref.step(token, return_logits=True)
+                    for ref, token in zip(scalar_refs, tokens, strict=True)
+                ]
+                expected_boundaries = [
+                    ref.step_rows(
+                        (token,),
+                        return_logits=False,
+                        capture_layer_ids=(0, 3, 39),
+                    )
+                    for ref, token in zip(boundary_refs, tokens, strict=True)
+                ]
+
+                assert actual.token_ids == tuple(result.token_id for result in expected)
+                np.testing.assert_array_equal(
+                    actual.logits,
+                    np.concatenate([result.logits for result in expected], axis=0),
+                )
+                for layer_id in (0, 3, 39):
+                    np.testing.assert_array_equal(
+                        actual.layer_hidden_bits[layer_id],
+                        np.concatenate(
+                            [
+                                result.layer_hidden_bits[layer_id]
+                                for result in expected_boundaries
+                            ],
+                            axis=0,
+                        ),
+                    )
+                assert actual.execution_paths == {
+                    "linear_attention": "indexed_conv_gdn",
+                    "full_attention": "kv_live_spans_batch_c1_exact",
+                    "moe": "selected_rows_batch",
+                    "lm_head": "row_linear_f32",
+                    "sampler": "host_argmax_full_logits",
+                }
+
+            assert batch.row_positions == (2, 2)
+
+
+@pytest.mark.skipif(not _MODEL.exists(), reason=f"local GGUF fixture not found: {_MODEL}")
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_ud_q3_k_m_c2_slot_prefill_then_native_decode_matches_c1(
+    require_q3_model_vram: None,
+) -> None:
+    """Slot-local bulk prefill must seed the exact native batch decode state."""
+
+    prompts = ((9707, 11, 220, 264), (11, 220, 264, 9707))
+    with Qwen35GGUFResidentSession(
+        _MODEL,
+        max_sequence_length=64,
+        max_batch_size=2,
+    ) as batch:
+        batch.select_prefill_quant("gguf_ud_q3_k_m")
+        assert batch.runner is not None
+        with ExitStack() as stack:
+            refs = tuple(
+                stack.enter_context(
+                    Qwen35GGUFResidentSession(
+                        _MODEL,
+                        max_sequence_length=64,
+                        shared_runner=batch.runner,
+                    )
+                )
+                for _ in range(2)
+            )
+            first_tokens: list[int] = []
+            for slot, (prompt, ref) in enumerate(zip(prompts, refs, strict=True)):
+                actual_prefill = batch.prefill_slot(
+                    prompt,
+                    slot=slot,
+                    return_logits=True,
+                )
+                expected_prefill = ref.prefill(prompt, return_logits=True)
+                assert actual_prefill.token_id == expected_prefill.token_id
+                np.testing.assert_array_equal(
+                    actual_prefill.logits,
+                    expected_prefill.logits,
+                )
+                first_tokens.append(actual_prefill.token_id)
+
+            actual = batch.step_rows_native(first_tokens, return_logits=True)
+            expected = [
+                ref.step(token, return_logits=True)
+                for ref, token in zip(refs, first_tokens, strict=True)
+            ]
+            assert actual.token_ids == tuple(result.token_id for result in expected)
+            np.testing.assert_array_equal(
+                actual.logits,
+                np.concatenate([result.logits for result in expected], axis=0),
+            )
+            assert batch.row_positions == (5, 5)
+
+
+@pytest.mark.skipif(not _MODEL.exists(), reason=f"local GGUF fixture not found: {_MODEL}")
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_ud_q3_k_m_c2_split_attention_after_prefill_matches_c1_full_logits(
+    require_q3_model_vram: None,
+) -> None:
+    """The long-context native reducer must use contiguous row/head gate strides."""
+
+    seed = (9707, 11, 220, 264)
+    prompts = tuple(
+        tuple(seed[(index + slot) % len(seed)] for index in range(1024))
+        for slot in range(2)
+    )
+    with Qwen35GGUFResidentSession(
+        _MODEL,
+        max_sequence_length=1280,
+        max_batch_size=2,
+    ) as batch:
+        batch.select_prefill_quant("gguf_ud_q3_k_m")
+        assert batch.runner is not None
+        with ExitStack() as stack:
+            refs = tuple(
+                stack.enter_context(
+                    Qwen35GGUFResidentSession(
+                        _MODEL,
+                        max_sequence_length=1280,
+                        shared_runner=batch.runner,
+                    )
+                )
+                for _ in range(2)
+            )
+            first_tokens: list[int] = []
+            for slot, (prompt, ref) in enumerate(zip(prompts, refs, strict=True)):
+                actual_prefill = batch.prefill_slot(prompt, slot=slot, return_logits=True)
+                expected_prefill = ref.prefill(prompt, return_logits=True)
+                assert actual_prefill.token_id == expected_prefill.token_id
+                np.testing.assert_array_equal(actual_prefill.logits, expected_prefill.logits)
+                first_tokens.append(actual_prefill.token_id)
+
+            actual = batch.step_rows_native(first_tokens, return_logits=True)
+            expected = [
+                ref.step(token, return_logits=True)
+                for ref, token in zip(refs, first_tokens, strict=True)
+            ]
+            assert actual.execution_paths["full_attention"] == "kv_live_spans_batch_split_gqa"
+            assert actual.token_ids == tuple(result.token_id for result in expected)
+            np.testing.assert_array_equal(
+                actual.logits,
+                np.concatenate([result.logits for result in expected], axis=0),
+            )
+            assert batch.row_positions == (1025, 1025)
+
+
+@pytest.mark.parametrize("rows", (4, 8))
+@pytest.mark.skipif(not _MODEL.exists(), reason=f"local GGUF fixture not found: {_MODEL}")
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_ud_q3_k_m_native_rows_c4_c8_match_independent_c1_full_logits(
+    rows: int,
+    require_q3_model_vram: None,
+) -> None:
+    """C=4/8 native rows must preserve every logit and generated id."""
+
+    tokens = (9707, 11, 220, 264, 9707, 11, 220, 264)[:rows]
+    with Qwen35GGUFResidentSession(
+        _MODEL,
+        max_sequence_length=64,
+        max_batch_size=rows,
+    ) as batch:
+        batch.select_prefill_quant("gguf_ud_q3_k_m")
+        assert batch.runner is not None
+        actual = batch.step_rows_native(tokens, return_logits=True)
+        expected_logits: list[np.ndarray] = []
+        expected_tokens: list[int] = []
+        for token in tokens:
+            with Qwen35GGUFResidentSession(
+                _MODEL,
+                max_sequence_length=64,
+                shared_runner=batch.runner,
+            ) as scalar:
+                expected = scalar.step(token, return_logits=True)
+                expected_tokens.append(expected.token_id)
+                expected_logits.append(expected.logits)
+
+        assert actual.token_ids == tuple(expected_tokens)
+        np.testing.assert_array_equal(
+            actual.logits,
+            np.concatenate(expected_logits, axis=0),
+        )
+        assert "fallback" not in " ".join(actual.execution_paths.values())
+        assert actual.execution_paths["linear_attention"] == "indexed_conv_gdn"
+        assert actual.execution_paths["moe"] == "selected_rows_batch"
+
+
+@pytest.mark.skipif(not _MODEL.exists(), reason=f"local GGUF fixture not found: {_MODEL}")
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_ud_q3_k_m_variable_short_slot_prefill_matches_independent_c1(
+    require_q3_model_vram: None,
+) -> None:
+    """Physical cache ids and slot-local cache pointers must not be mixed."""
+
+    prompts = (
+        (760, 4087, 369),
+        (657, 799, 1829, 13),
+        (17, 10, 17, 28),
+        (9419,),
+    )
+    with Qwen35GGUFResidentSession(
+        _MODEL,
+        max_sequence_length=256,
+        max_batch_size=4,
+    ) as batch:
+        batch.select_prefill_quant("gguf_ud_q3_k_m")
+        first_tokens = tuple(
+            batch.prefill_slot(prompt, slot=slot, return_logits=False).token_id
+            for slot, prompt in enumerate(prompts)
+        )
+        assert batch.row_positions == (3, 4, 4, 1)
+        actual = batch.step_rows_native(first_tokens, return_logits=True)
+        assert batch.runner is not None
+        expected_tokens: list[int] = []
+        expected_logits: list[np.ndarray] = []
+        for prompt, first_token in zip(prompts, first_tokens, strict=True):
+            with Qwen35GGUFResidentSession(
+                _MODEL,
+                max_sequence_length=256,
+                shared_runner=batch.runner,
+            ) as reference:
+                reference_first = reference.prefill(prompt, return_logits=False)
+                assert reference_first.token_id == first_token
+                expected = reference.step(first_token, return_logits=True)
+                expected_tokens.append(expected.token_id)
+                expected_logits.append(expected.logits)
+        assert actual.token_ids == tuple(expected_tokens)
+        np.testing.assert_array_equal(actual.logits, np.concatenate(expected_logits, axis=0))
+        assert batch.row_positions == (4, 5, 5, 2)
+
+
+@pytest.mark.skipif(not _MODEL.exists(), reason=f"local GGUF fixture not found: {_MODEL}")
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_ud_q3_k_m_reclaim_compact_and_readmit_matches_c1_full_logits(
+    require_q3_model_vram: None,
+) -> None:
+    """A surviving row keeps exact state/KV after a hole is reclaimed."""
+
+    prompts = (
+        (9707, 11, 220, 264),
+        (11, 220, 264, 9707),
+        (220, 264, 9707, 11),
+    )
+    with Qwen35GGUFResidentSession(
+        _MODEL,
+        max_sequence_length=64,
+        max_batch_size=2,
+    ) as batch:
+        batch.select_prefill_quant("gguf_ud_q3_k_m")
+        assert batch.runner is not None
+        with Qwen35GGUFResidentSession(
+            _MODEL,
+            max_sequence_length=64,
+            shared_runner=batch.runner,
+        ) as survivor_ref, Qwen35GGUFResidentSession(
+            _MODEL,
+            max_sequence_length=64,
+            shared_runner=batch.runner,
+        ) as admitted_ref:
+            first_a = batch.prefill_slot(prompts[0], slot=0, return_logits=False).token_id
+            first_b = batch.prefill_slot(prompts[1], slot=1, return_logits=True)
+            expected_first_b = survivor_ref.prefill(prompts[1], return_logits=True)
+            assert first_b.token_id == expected_first_b.token_id
+            np.testing.assert_array_equal(first_b.logits, expected_first_b.logits)
+
+            before_reclaim = batch.step_rows_native(
+                (first_a, first_b.token_id),
+                return_logits=True,
+            )
+            expected_survivor = survivor_ref.step(first_b.token_id, return_logits=True)
+            assert before_reclaim.token_ids[1] == expected_survivor.token_id
+            np.testing.assert_array_equal(before_reclaim.logits[1], expected_survivor.logits[0])
+
+            assert batch.compact_target_slots((1,)) == ((1, 0),)
+            assert batch.row_positions == (5, 0)
+            first_c = batch.prefill_slot(prompts[2], slot=1, return_logits=True)
+            expected_first_c = admitted_ref.prefill(prompts[2], return_logits=True)
+            assert first_c.token_id == expected_first_c.token_id
+            np.testing.assert_array_equal(first_c.logits, expected_first_c.logits)
+
+            after_readmit = batch.step_rows_native(
+                (before_reclaim.token_ids[1], first_c.token_id),
+                return_logits=True,
+            )
+            expected_after_readmit = (
+                survivor_ref.step(before_reclaim.token_ids[1], return_logits=True),
+                admitted_ref.step(first_c.token_id, return_logits=True),
+            )
+            assert after_readmit.token_ids == tuple(
+                result.token_id for result in expected_after_readmit
+            )
+            np.testing.assert_array_equal(
+                after_readmit.logits,
+                np.concatenate(
+                    [result.logits for result in expected_after_readmit],
+                    axis=0,
+                ),
+            )
+            assert batch.row_positions == (6, 5)
+            assert after_readmit.execution_paths["linear_attention"] == "indexed_conv_gdn"
+            assert after_readmit.execution_paths["moe"] == "selected_rows_batch"
+
+
+@pytest.mark.skipif(not _MODEL.exists(), reason=f"local GGUF fixture not found: {_MODEL}")
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_ud_q3_k_m_v2_verify_chain_uses_same_target_rows_as_c1(
     require_q3_model_vram: None,
 ) -> None:

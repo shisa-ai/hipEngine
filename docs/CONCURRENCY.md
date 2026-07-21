@@ -75,19 +75,24 @@ RadixCache eviction policies under variable-span KV, multi-tier KV storage
 
 ## Current answer
 
-**hipEngine now has most host-side continuous-batching scaffolding in code, but
-it still must not claim true retained c>N throughput.** Qwen/PARO BF16 c=2/c=4/c=8
-generated-token equality vs independent c=1 is green, and c=2/c=4/c=8 projection
-dispatch evidence selects the row-bounded native projection candidate from one
-combined catalog. C2 now deliberately keeps the no-flag sampler on
-`serial_lm_head` after an eight-run batched-sampler audit reproduced intermittent
-`[137,104]` / `[82,137]` flakes; c4/c8 keep row-aware `batched_lm_head`. The
-remaining hard gates are accepted retained scaling/graph replay evidence,
-full-native c4/c8 attention without rowchunk diagnostics, and any residual
-fallback labels.
+**hipEngine now has one accepted true c>N path: UD-Q3_K_M GGUF greedy prompt
+lists.** C=2/4/8 generated IDs and full-logit gates match independent c=1,
+native graph/profiler provenance passes, and GPU1 retained scaling reaches
+`207.780/211.177 tok/s` at C=8 512/4K. Inside one synchronous generate call,
+`ResidentBatchScheduler` admits stable request ids, reclaims EOS/length
+completions, compacts surviving recurrent state and live paged-KV prefixes,
+readmits pending prompts, and records full shape-key buckets plus timestamps.
+This does not close the destination persistent engine loop: cross-call HTTP
+admission, cancellation/disconnect, elastic KV/prefix sharing, and non-greedy
+native row sampling remain open. The older Qwen/PARO path below remains a
+separate experimental history and must not inherit the GGUF claim.
 
 What is in place:
 
+- UD-Q3_K_M GGUF has an accepted synchronous prompt-list scheduler and native
+  C=2/4/8 runner with no c>N serial fallback. The retained matrix, per-request
+  latency/memory, compaction gate, and rocprof symbols are in
+  [`benchmarks/results/2026-07-21-gpu1-q3-native-cn-retained.json`](../benchmarks/results/2026-07-21-gpu1-q3-native-cn-retained.json).
 - The server and `LLM.generate()` paths have prompt-list batching, `n>1`
   lowering, streaming through per-request queues, request ids, per-row seeds,
   and Prometheus metrics hooks.
@@ -107,7 +112,7 @@ What is in place:
 
 What is still not green:
 
-- The retained Qwen/PARO native c>N decode path is experimental. BF16 primitive
+- The retained Qwen/PARO native c>N decode path (distinct from accepted GGUF) is experimental. BF16 primitive
   c=2/4/8 KV append/full-attention correctness passes, and generated-token
   equality now passes for the c=2/c=4/c=8 512/128 gates under the
   correctness-first auto projection path (no-selected batch metadata using the

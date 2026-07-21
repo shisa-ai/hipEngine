@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-21
+
+- [hipEngine default] Qwen3.6-35B-A3B GGUF / gguf_ud_q3_k_m / GPU1 native c=N decode: first valid C=2/4/8 matrix moves retained c=1 aggregate `101.216 -> 207.780 tok/s` at C=8 512/128 (+105.28%) and `108.383 -> 211.177 tok/s` at C=8 4K/128 (+94.84%), with 25.973/26.397 tok/s/request, exact IDs/full-logit/compaction gates, C/context graph buckets, native rocprof symbols, bounded 16.372/18.107 GiB runtime peaks, admission/reclaim, and no c>N serial decode fallback; `benchmarks/results/2026-07-21-gpu1-q3-native-cn-retained.json`.
+
 ## 2026-07-20
 
 - [hipEngine default] Qwen3.6-35B-A3B GGUF / gguf_ud_q3_k_m / GPU1 fully-bulk prefill: guarded residual-D4 raw-Q8 MMQ moves retained 512 `774.185 -> 848.543 tok/s` (+9.60%) and matched mixed-pattern 4K `741.180 -> 831.393 tok/s` (+12.17%), while cached dense Q8 falls `2,052.066 -> 1,569.232 ms` (-23.53%) and total kernel sum `5,350.508 -> 4,815.413 ms` (-10.00%); the `1e-5` boundary repair is logit-bit-exact over 18 workloads x 9 positions, exact fallbacks remain, and bounded memory rises 16/128 MiB; `benchmarks/results/2026-07-20-gpu1-q3-guarded-d4x3-mmq-prefill.json`.

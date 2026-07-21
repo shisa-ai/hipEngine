@@ -141,14 +141,19 @@ the source-derived review below. The measured state is:
   `108.383 tok/s` at 4K. Task #32 starts from a fresh profile and may reopen a
   family only with a new measured premise. These current-code rows have not
   been rerun on GPU0/W7900.
-- **c=N GGUF:** the foundational target runtime is now row-shaped: one resident
-  weight set owns `[C,...]` token/hidden/logit scratch, per-slot linear state,
-  paged KV ranges, and `KVLiveSpans`. Its correctness-first executor serializes
-  each active row through the retained c=1 layer path and is bit-exact at C=2;
-  it is a diagnostic bridge, not a native c-aware throughput path or speed
-  claim. `Qwen35GGUFBringupGenerator.generate_detailed()` still loops over
-  prompts, and the existing GGUF c>N script remains a blocked command template
-  until task #29 promotes native c=2/4/8 kernel families and scheduler wiring.
+- **c=N GGUF, GPU1 RX 7900 XTX:** task #29 is promoted. One resident weight set
+  owns `[C,...]` token/hidden/logit scratch, per-slot linear state, paged KV
+  ranges, and `KVLiveSpans`; indexed Conv/GDN, row-batched paged attention,
+  selected-row MoE, row lm-head/argmax, and C/context HIP graphs advance C=2/4/8
+  natively. Greedy prompt lists use stable scheduler ids, EOS/length reclaim,
+  state/KV compaction, readmission into freed slots, full shape-key graph caches,
+  per-request timestamps, and explicit no-serial-fallback provenance. C=8 is
+  `207.780 tok/s` at 512/128 and `211.177 tok/s` at 4K/128, or `2.053x/1.948x`
+  retained c=1 aggregate, with exact IDs/full-logit gates and native rocprof
+  symbols. Evidence: [`benchmarks/results/2026-07-21-gpu1-q3-native-cn-retained.json`](../benchmarks/results/2026-07-21-gpu1-q3-native-cn-retained.json).
+  This is synchronous in-call prompt-list scheduling; persistent cross-call HTTP
+  admission, elastic KV/prefix sharing, cancellation, and non-greedy row
+  sampling remain outside task #29.
 - **GGUF MTP ABI:** locked and already implemented in shared infrastructure.
   Candidate-only `DraftBatch`, verifier-internal `TargetVerifyBatch`,
   `AcceptResult`, `KVLiveSpans(span_role="verify_chain")`, transactional
