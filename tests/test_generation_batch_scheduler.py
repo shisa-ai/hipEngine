@@ -17276,6 +17276,7 @@ def test_resident_scheduler_live_observability_snapshot_covers_d5_contract() -> 
         "prefill_chunk_tokens": 2,
         "fair_prefill_burst_chunks": 1,
         "consecutive_prefill_chunks": 1,
+        "cold_prefill_cohort_size": 0,
         "last_work_kind": "prefill",
     }
     assert loop_snapshot["physical_bucket"]["slot_to_request"] == [loop_request, None]

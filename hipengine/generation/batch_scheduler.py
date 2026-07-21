@@ -1213,12 +1213,38 @@ class ResidentBatchScheduler:
             slabs.append(slab)
         return tuple(slabs)
 
+    def prefill_request_ids(self) -> tuple[int, ...]:
+        """Return active request IDs that still need prompt prefill."""
+
+        return tuple(
+            request_id
+            for request_id in self.active_batch.active_request_ids
+            if self.active_batch.requests[request_id].remaining_prefill > 0
+            and not self.active_batch.requests[request_id].finished
+        )
+
     def prefill_request_count(self) -> int:
         """Return the number of active requests that still need prompt prefill."""
 
-        return sum(
-            request.remaining_prefill > 0 and not request.finished
-            for request in self.active_batch.requests.values()
+        return len(self.prefill_request_ids())
+
+    def prefill_requests_fit_within_chunks(
+        self,
+        *,
+        chunk_size: int,
+        max_chunks: int,
+    ) -> bool:
+        """Return whether every active prefill row fits a bounded chunk count."""
+
+        if chunk_size <= 0:
+            raise ValueError("chunk_size must be positive")
+        if max_chunks <= 0:
+            raise ValueError("max_chunks must be positive")
+        request_ids = self.prefill_request_ids()
+        return bool(request_ids) and all(
+            ceil(self.active_batch.requests[request_id].remaining_prefill / chunk_size)
+            <= max_chunks
+            for request_id in request_ids
         )
 
     def has_prefill_work(self) -> bool:

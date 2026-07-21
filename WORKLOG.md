@@ -170840,3 +170840,96 @@ HIPENGINE_BACKEND=hip_gfx1151 .venv/bin/python \
 
 Raw diagnostic is 374,257 bytes, SHA-256
 `172eb6f5a50121d95f29c98e1a20719109418c05fa9e4b0399e3c64e0bf2a29e`.
+
+## 2026-07-21 — Retain bounded cold-cohort admission priority
+
+Implemented the fair-policy form of the cold-cohort result without changing a
+package flag or adding a backend branch. When no row is decode-ready, fair
+scheduling now snapshots a cold prefill cohort only if every active row can
+finish inside the already-configured `fair_prefill_burst_chunks` bound. The
+gfx1151 GGUF package's existing fair:256/burst-2 setting therefore drains a
+simultaneous p512 cohort before first decode; burst-1 packages and prompts above
+the bound retain their previous behavior. The epoch is cleared by the first
+decode and cannot grow beyond resident capacity because no member frees a slot
+before decoding.
+
+The first bounded snapshot improved blocking **91.562 -> 101.078 tok/s
+(+10.39%)** and delayed admission **70.414 -> 74.688 (+6.07%)**, but exact SSE
+was flat **88.597 -> 88.542 (-0.06%)**. Letting bounded rows join the still-cold
+epoch did not help by itself (**88.637 SSE**) because each stream producer's
+first `next()` both submits and drives model ticks. The active poller repeatedly
+reacquired the non-fair model-loop mutex while peer submissions were already
+waiting.
+
+Added a generic admission-priority handoff: model polling waits for already-
+queued submissions to acquire and release the short mutable-loop lock before the
+next model tick. It does not hold a request-lifetime lock, enlarge the scheduler
+cohort, or delay a poll for submissions that were not already waiting. Coupled
+with bounded pre-decode cohort expansion, simultaneous SSE rows reach the
+scheduler before the next prefill transition; post-first-decode staggered
+arrivals still take normal fair scheduling.
+
+RED reproduced both independent failures:
+
+```text
+2 failed:
+- bounded pre-decode arrival decoded C1 at the third tick
+- _SubmissionPriority did not exist
+```
+
+GREEN:
+
+```text
+11 passed: burst policy, scheduler observability/policies, concurrent
+           submit/poll streaming, controlled server streaming, metrics
+python3 -m compileall + git diff --check: passed
+```
+
+The exact real-Uvicorn p512/d128 C1/C8 packet is
+`accepted_backend_packet`. All oracle, warmup, blocking, SSE, and live-admission
+rows are exact, native, fallback-free, and SLO-qualified; final graph/KV/
+workspace ownership is zero. Against retained clean F3Q fair serving:
+
+- blocking **91.562 -> 101.214 tok/s (+10.54%)**;
+- blocking wall **11.184 -> 10.117 s (-9.54%)**;
+- exact SSE **88.597 -> 99.152 tok/s (+11.91%)**;
+- delayed admission **70.414 -> 74.030 tok/s (+5.14%)**;
+- SSE TTFT p95 **3.947 -> 3.859 s (-2.23%)**;
+- SSE ITL p99 **0.496 -> 0.214 s (-56.81%)**.
+
+All eight SSE client requests begin within **1.51 ms** and all 1,024 completion
+tokens qualify. The static blocking interval records **0 native-C1 / 381 packed
+decode steps**; the cumulative post-SSE/post-live counters add 127 packed and
+127 C1 steps, consistent with full-width SSE and the intentionally fair delayed
+surface. Raw packet is 372,430 bytes, SHA-256
+`66e3168620700162a16d94836f5f13ad7c8c3a546cb5fc740d4bc6ed69a76a07`.
+
+The stronger global `protect_ttft` policy remains rejected despite exact
+**47.165 tok/s** `continuous_fixed` throughput: ITL p99 is **0.5060 s**, above
+the **0.5000 s** SLO, so only 184/360 tokens qualify and goodput is **24.106
+tok/s**. Raw rejection is 553,938 bytes, SHA-256
+`15bdf370311ce6b07880f916ef5f694196668b80d1df0318fa3862df6a1af386`.
+The retained bounded fair candidate passes the same production workload at
+**12/12 exact**, **46.894 throughput/goodput tok/s**, queue p99 **0.00340 s**,
+TTFT p95 **0.5407 s**, ITL p99 **0.2947 s**, and end-to-end p95 **5.005 s**;
+route and ownership gates pass. The top-level artifact is expectedly marked
+failed only because this implementation measurement used a dirty source tree.
+Raw safety packet is 558,153 bytes, SHA-256
+`61e98d384318906d6c25b41db2a750bf3cfd467bae8088220c3870579b03716c`.
+
+Exact performance command matches the preceding C1/C8 packet with
+`--hipengine-prefill-decode-policy fair`, port base 23600, and output
+`/tmp/gfx1151-gguf-cold-fair-admission-priority/result.json`. The production
+safety command is:
+
+```bash
+HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 \
+HIPENGINE_BACKEND=hip_gfx1151 HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 \
+  .venv/bin/python scripts/gguf_production_load_gate.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1151 --workloads continuous_fixed --skip-tuning \
+  --initial-policy fair --initial-prefill-chunk-tokens 256 \
+  --compiler-version-file /tmp/hipengine-gfx1151-f4-hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/gfx1151-fair-admission-priority-continuous-fixed.json
+```
