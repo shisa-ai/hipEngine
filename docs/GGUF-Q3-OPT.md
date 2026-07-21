@@ -94,8 +94,13 @@ raw-IQ, decode, and scheduler tranches:
 - Decode work retained the wave-uniform IQ3 address cleanup and aggregate
   MoE-tail/next-RMS fusion, rejected hierarchical top-k, IQ4 tile4, and routed
   stream overlap, and currently measures `101.216 tok/s` at 512 and
-  `108.383 tok/s` at 4K on GPU1. The source-derived 150–190 tok/s feasibility
-  argument remains valid, but hipEngine has not reached that band.
+  `108.383 tok/s` at 4K on GPU1. The final-tree profile put dense Q8 first, so
+  task #32 tested one source-derived block-serial raw-Q8 mapping. The fast
+  association cut representative leaves 34–55% but failed exact full logits at
+  512/1K/4K; preserving the current reduction association made those leaves
+  21–80% slower. Both forms were removed. The source-derived 150–190 tok/s
+  feasibility argument remains valid, but this bounded HIP campaign is closed
+  without reaching that band.
 
 The guarded-MMQ cache-only 4K trace is now the active prefill Amdahl ledger:
 
@@ -137,10 +142,11 @@ the source-derived review below. The measured state is:
   gate bit-for-bit and retains exact fallbacks for every non-admitted shape.
   Task #27's bounded changed-algebra tranche is complete; the ~3,000 tok/s
   objective remains open to a future, separately justified architecture.
-- **c=1 decode, GPU1 RX 7900 XTX:** `101.216 tok/s` at 512 and
-  `108.383 tok/s` at 4K. Task #32 starts from a fresh profile and may reopen a
-  family only with a new measured premise. These current-code rows have not
-  been rerun on GPU0/W7900.
+- **c=1 decode, GPU1 RX 7900 XTX:** retained rows remain `101.216 tok/s`
+  at 512 and `108.383 tok/s` at 4K. Task #32 is complete/no-hold: its final-tree
+  D0 ranked dense Q8 first, but the only new source-backed block-serial premise
+  either changed logits or regressed exact leaves. No candidate code remains.
+  These current-code rows have not been rerun on GPU0/W7900.
 - **c=N GGUF, GPU1 RX 7900 XTX:** task #29 is promoted. One resident weight set
   owns `[C,...]` token/hidden/logit scratch, per-slot linear state, paged KV
   ranges, and `KVLiveSpans`; indexed Conv/GDN, row-batched paged attention,
@@ -181,7 +187,7 @@ embedding/output fallbacks apply.
 | #29 | Promote native UD-Q3_K_M c=2/4/8 decode and replace the blocked template | **Completed:** exact native C=2/4/8 plus reclaim/readmit scheduling retained |
 | #30 | Materialize blk.40 and emit candidate-only `DraftBatch` rows | **Completed:** separate map/residency, raw Q3_K kernels, real one-step parity, and provider landed |
 | #31 | Integrate and benchmark GGUF MTP end to end | **Completed/no-hold:** exact shared-ABI transaction path; B=1/2/3 economics regressive, default disabled |
-| #32 | Reprofile residual c=1 Q3 decode | **D0 complete:** final tree is 8.82493 ms/token and 671 launches/token; dense Q8 remains first at 32.17%; one new premise is still profile-gated |
+| #32 | Reprofile residual c=1 Q3 decode | **Completed/no-hold:** final tree is 8.82493 ms/token and 671 launches/token; the source-shaped dense-Q8 block-serial candidate failed exact full logits, while its exact-association salvage regressed real leaves 21–80%; candidate removed |
 
 ## Executive recommendation
 
@@ -1628,9 +1634,17 @@ to infer a fundamental HIP ceiling. Task #32's final-tree D0 profile records
 `8.82493 ms/token` and `671` launches/token. Dense Q8 remains first at
 `2.83934 ms/token` (32.17%), ahead of full attention at `1.42134` (16.11%),
 lm-head Q6 at `1.05068` (11.91%), weighted IQ4 down at `1.00066` (11.34%),
-and IQ3 gate/up at `0.70532` (7.99%). The next bounded experiment must derive
-one new premise from this profile and must not repeat the rejected hierarchical
-top-k, IQ4 tile4, rowtile/repack, or stream-overlap premises.
+and IQ3 gate/up at `0.70532` (7.99%). Task #32 then tested exactly one new
+source-backed premise from that ranking: qwen-kernel's block-serial raw-Q8 work
+mapping. Its source association improved representative `8192x2048`,
+`4096x2048`, and `2048x4096` leaves by 53.02%, 54.76%, and 34.26%, but changed
+full logits at every required context. Emulating the existing reduction
+association restored BF16 bit equality and zero scratch, yet regressed the same
+leaves by 29.51%, 20.65%, and 80.26%. The candidate is removed and the retained
+`101.216/108.383 tok/s` rows are unchanged. This bounded local campaign is
+closed; reopening decode requires a genuinely different algorithm or resident
+layout, not another hierarchical-top-k, IQ4-tile, rowtile/repack, stream, or
+raw-Q8 reduction-geometry retry.
 
 For **concurrent and speculative execution**, task #29 retains native exact
 C=2/4/8 serving, task #30 retains a separately materialized/executed blk.40

@@ -1758,6 +1758,53 @@ used.
 Evidence:
 `benchmarks/results/2026-07-20-gpu1-q3-moe-branch-overlap-rejected.json`.
 
+### 12.13 Source-shaped Q8 block serialization does not transfer exactly
+
+Task #32's final-tree D0 left raw dense Q8 first at `2.83934 ms/token`, 32.17%
+of summed decode kernels and 200 launches/token. The production mix is broad:
+40 `8192x2048`, 30 `4096x2048`, 80 `2048x{4096,512}`, and 50 dual
+`512x2048` projection launches per token. That justified one new algorithmic
+premise rather than another launch-bound/load tweak: adapt qwen-kernel
+`52e240f9` `shaders/gemv_q8_0.comp` rank 11a so a local256 block assigns 16
+physical lanes per output and computes 16 output rows while consuming raw Q8_0
+bytes directly.
+
+The source-shaped association looked compelling on three real model leaves:
+
+| Raw-Q8 c=1 leaf | Current pack8 | Source-shaped block-serial | Delta |
+| --- | ---: | ---: | ---: |
+| `8192x2048` | 24.539 us | 11.530 us | **-53.02%** |
+| `4096x2048` | 14.517 us | 6.567 us | **-54.76%** |
+| `2048x4096` | 13.143 us | 8.640 us | **-34.26%** |
+
+That form did not preserve hipEngine's reduction association. One representative
+`8192x2048` primitive row differed in one BF16 value, and the required real
+model gate found all 248,320 FP32 logits bit-different after one decode step at
+512/1K/4K. Maximum absolute differences were `3.2123/0.9094/3.8803`; top-1
+happened to remain equal, but task #32 requires exact logits and therefore
+rejects the route.
+
+A bounded salvage made each physical lane emulate the current local128 kernel's
+eight accumulator chains and reproduced its `16/8/4/2/1`, then wave0..3,
+association. It restored zero BF16 mismatches on all three real leaves and used
+local256, VGPR32, no LDS, and zero scratch. It also reversed every speed result:
+
+| Raw-Q8 c=1 leaf | Current pack8 | Exact block-serial | Delta |
+| --- | ---: | ---: | ---: |
+| `8192x2048` | 25.157 us | 32.580 us | **+29.51%** |
+| `4096x2048` | 14.541 us | 17.544 us | **+20.65%** |
+| `2048x4096` | 12.969 us | 23.378 us | **+80.26%** |
+
+The numerical contract and speedup are therefore inseparable for this mapping:
+the source association is fast but inexact, and the exact association serializes
+enough work to lose to the retained kernel. Both candidate forms, wrappers,
+registry entries, and tests were removed. Do not reopen this as a TPR8/16/32 or
+thread-count sweep; a future dense-Q8 decode pass needs a different algebra or
+resident layout with an explicit exact boundary.
+
+Evidence:
+`benchmarks/results/2026-07-22-gpu1-q3-q8-blockserial-decode-rejected.json`.
+
 ---
 
 ## Summary
