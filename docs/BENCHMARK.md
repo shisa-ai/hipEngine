@@ -954,8 +954,21 @@ weakening A0 when backend telemetry is missing. Prefix/routing candidates requir
 cache-off generated-ID parity and state/KV/refcount gates. Sampled candidates
 add fixed-seed repeatability and distribution sanity. Pressure/cancellation and
 automatic-tool quality are separate later lanes and must not be mixed into the
-first deterministic performance denominator. The complete active board is
-[`AGENTIC-OPT.md`](AGENTIC-OPT.md).
+first deterministic performance denominator.
+
+A2 prefix decisions use a fail-closed concurrency funnel. Run one complete
+warmup and at least three balanced/rotated cache-off versus candidate pairs for
+every frozen family at C1 first, using `active_sse_wave_wall_s` goodput and
+validated buffered tool-ready latency as the primary metrics. C4/C8 measurement
+is authorized only when C1 improves at least one predeclared primary metric,
+passes every exactness/lifecycle and variance gate, and does not materially
+regress any C1 control. Promotion additionally requires the medium-repository C4
+guard. A failed prerequisite produces an explicit no-timing skip artifact; never
+infer missing C4/C8 timing from C1 or prior controls. The final decision artifact
+must hash the A1 control, C1 pair packet, C4/C8 disposition, and lifecycle packet,
+and must keep the candidate non-default when any promotion gate is false.
+
+The complete active board is [`AGENTIC-OPT.md`](AGENTIC-OPT.md).
 
 ### Speculative decode / DFlash rows
 

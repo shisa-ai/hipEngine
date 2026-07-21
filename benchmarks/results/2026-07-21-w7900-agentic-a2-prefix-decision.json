@@ -1,0 +1,188 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_agentic_a2_prefix_decision",
+  "created_at": "2026-07-21T15:38:22.627424+00:00",
+  "status": "rejected_default_off",
+  "passed": false,
+  "measurement_valid": true,
+  "correctness_claim": true,
+  "performance_claim": false,
+  "timing_claim": true,
+  "source_revision": "b8604358",
+  "decision": "retain HIPENGINE_PREFIX_CACHE=off; keep radix explicit diagnostic-only",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "target_rocm_index": 0
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "metric_scope": "active_sse_wave_wall_s",
+    "primary_metrics": [
+      "active-SSE exact generated-token goodput",
+      "buffered validated tool-ready latency"
+    ],
+    "workloads": {
+      "small_repo": 4096,
+      "growing_history": 4096,
+      "medium_repo": 10240
+    },
+    "logical_concurrency_funnel": [
+      1,
+      4,
+      8
+    ],
+    "c1_measured_pairs_per_family": 3,
+    "one_complete_warmup_per_condition": true,
+    "balanced_order": "family-and-pair parity alternates first mode; off-first 5 pairs, radix-first 4 pairs",
+    "c4_c8_prerequisite": "C1 prefix A/B passes every promotion guard",
+    "promotion_policy": {
+      "predeclared_primary_metric_improves": true,
+      "exactness_and_lifecycle_pass": true,
+      "variance_qualified": true,
+      "c1_no_material_regression": true,
+      "medium_c4_no_material_regression": true
+    },
+    "anti_gaming": "do not retarget snapshot placement to frozen prompt token patterns"
+  },
+  "inputs": {
+    "a1_control": {
+      "artifact": "benchmarks/results/2026-07-21-w7900-agentic-a1-repeated-baseline.json",
+      "sha256": "29133f5fb0fa36f0f83fe34565ad7df93214b8eb7e035ac56b5413713e495f3f",
+      "commit": "44c76674",
+      "status": "accepted_complete_baseline"
+    },
+    "c1_paired": {
+      "artifact": "benchmarks/results/2026-07-21-w7900-agentic-a2-c1-prefix-rejected.json",
+      "sha256": "8b8e3eb092bdb2061ee1de63a231c4a8fcb5d9a833c7587071d3b038406f5cb2",
+      "commit": "5d483f36",
+      "status": "rejected_c1_regression_and_sparse_reuse"
+    },
+    "c4_c8_disposition": {
+      "artifact": "benchmarks/results/2026-07-21-w7900-agentic-a2-c48-prefix-skipped.json",
+      "sha256": "e0e54cb0cbba3ce52e37e39d2c768b4a5d678c4c1651dbcd475534a50a6c0928",
+      "commit": "496dbd60",
+      "status": "skipped_failed_c1_prerequisite"
+    },
+    "lifecycle_pressure": {
+      "artifact": "benchmarks/results/2026-07-21-w7900-agentic-a2-prefix-lifecycle-closure.json",
+      "sha256": "6768e849fa2338da222e6ec8cc43ad48b99148c6faf9e7d70445af126ea4198a",
+      "commit": "b8604358",
+      "status": "passed_correctness_route_rejected_performance"
+    }
+  },
+  "c1_results": {
+    "families": {
+      "small_repo": {
+        "context_tokens": 4096,
+        "a1_c1_rate_tok_s": 16.239,
+        "a1_c1_tool_ready_ms": 1526.0,
+        "off_rate_tok_s_median": 13.060484564850627,
+        "radix_rate_tok_s_median": 4.727081126430852,
+        "paired_rate_delta_percent_median": -64.18649840464006,
+        "off_tool_ready_ms_median": 1892.5164855318144,
+        "radix_tool_ready_ms_median": 5246.946613013279,
+        "paired_tool_ready_delta_percent_median": 181.89852300051658,
+        "radix_hits": 0,
+        "radix_lookups": 12,
+        "off_variance_passed": true,
+        "radix_variance_passed": true,
+        "a1_no_material_regression_passed": false
+      },
+      "growing_history": {
+        "context_tokens": 4096,
+        "a1_c1_rate_tok_s": 15.1,
+        "a1_c1_tool_ready_ms": 1655.0,
+        "off_rate_tok_s_median": 12.248230975746699,
+        "radix_rate_tok_s_median": 4.2155805734175775,
+        "paired_rate_delta_percent_median": -65.63263271838551,
+        "off_tool_ready_ms_median": 2059.3578944681212,
+        "radix_tool_ready_ms_median": 6097.496198955923,
+        "paired_tool_ready_delta_percent_median": 196.0872520184622,
+        "radix_hits": 3,
+        "radix_lookups": 24,
+        "off_variance_passed": true,
+        "radix_variance_passed": false,
+        "a1_no_material_regression_passed": false
+      },
+      "medium_repo": {
+        "context_tokens": 10240,
+        "a1_c1_rate_tok_s": 4.127,
+        "a1_c1_tool_ready_ms": 4396.0,
+        "off_rate_tok_s_median": 3.8514606174211905,
+        "radix_rate_tok_s_median": 2.8376728283470665,
+        "paired_rate_delta_percent_median": -26.639335273320253,
+        "off_tool_ready_ms_median": 4808.649707003497,
+        "radix_tool_ready_ms_median": 6632.126365962904,
+        "paired_tool_ready_delta_percent_median": 38.814604851367164,
+        "radix_hits": 3,
+        "radix_lookups": 18,
+        "off_variance_passed": true,
+        "radix_variance_passed": false,
+        "a1_no_material_regression_passed": false
+      }
+    },
+    "all_correctness_gates_passed": true,
+    "all_final_ownership_bounded": true,
+    "all_target_gpu0_exclusive": true,
+    "all_variance_gates_passed": false,
+    "all_a1_no_material_regression_guards_passed": false,
+    "any_rate_improvement": false,
+    "any_tool_ready_improvement": false
+  },
+  "c4_c8_disposition": {
+    "status": "skipped_failed_c1_prerequisite",
+    "protocol_complete_skip": true,
+    "c1_prerequisite_passed": false,
+    "measurement_authorized": false,
+    "gpu_measurements_started": false,
+    "medium_c4_guard_evaluated": false,
+    "medium_c4_guard_result": "not_evaluated_after_failed_c1_prerequisite",
+    "inferred_timing_used": false
+  },
+  "lifecycle_pressure": {
+    "passed": true,
+    "active_and_completed_sources_exact": true,
+    "exact_survivor_ids_and_state_kv": true,
+    "bounded_declared_cache_bytes": true,
+    "zero_non_cache_final_owners": true,
+    "eviction_and_refcount_drain_exact": true,
+    "cancellation_disconnect_slow_deadline_fail_closed": true,
+    "fork_rollback_explicitly_rejected_for_resident_state": true,
+    "performance_promotion_allowed": false
+  },
+  "acceptance": {
+    "predeclared_primary_metric_improved": false,
+    "every_exactness_gate_passed": true,
+    "every_lifecycle_gate_passed": true,
+    "variance_qualified": false,
+    "c1_no_material_regression": false,
+    "medium_c4_no_material_regression": false,
+    "all_promotion_gates_passed": false,
+    "promote_radix": false,
+    "default_prefix_cache": "off",
+    "radix_availability": "explicit_diagnostic_only"
+  },
+  "rejection_reasons": [
+    "radix regresses active-SSE goodput and buffered tool-ready latency in every C1 family",
+    "all three C1 A1 no-material-regression guards fail",
+    "growing-history and medium-repo radix variance exceeds 5%",
+    "the failed C1 prerequisite forbids C4/C8 measurement and leaves the medium-C4 promotion guard unsatisfied",
+    "lifecycle correctness cannot override a failed performance funnel"
+  ],
+  "next_stage": {
+    "stage": "A3",
+    "action": "measure host processed-argmax versus native GPU sampling from prefix-cache-off control",
+    "preserve_guards": [
+      "C1",
+      "medium-C4",
+      "exact response IDs",
+      "state/KV ownership"
+    ]
+  }
+}

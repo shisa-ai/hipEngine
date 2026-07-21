@@ -34,11 +34,13 @@ The key workload distinction is:
 - both cases benefit from preserving exact resident state/KV ownership and
   avoiding full-vocabulary host readback.
 
-The repeated W7900 A1 packet now exists. It shows flat active-SSE goodput at 4K
-from C1 through C8, a modest long-context C4 gain, linearly worsening buffered
-tool-ready latency, and one full-vocabulary D2H row per generated token. The
-recommended next unit is therefore the frozen A2 cache-off/radix prefix A/B,
-followed by native GPU sampling; low-occupancy routing remains the C1 guard.
+The repeated W7900 A1 packet shows flat active-SSE goodput at 4K from C1 through
+C8, a modest long-context C4 gain, linearly worsening buffered tool-ready
+latency, and one full-vocabulary D2H row per generated token. A2 is now closed:
+the scoped radix route is exact and lifecycle-safe but decisively regresses every
+C1 family, so it remains explicit-only and cache-off remains the default. The
+next measured unit is native GPU sampling; low-occupancy routing remains the C1
+guard.
 
 ## Current status report
 
@@ -138,10 +140,12 @@ resident-session semantics.
 1. **Sessions and continuations re-prefill.** App-local sessions retain visible
    transcript data, not resident KV/decode state. Capabilities correctly report
    `resident_state_reuse=false`.
-2. **Prefix reuse is narrow and default-off.** The retained implementation is a
-   scoped GGUF radix opt-in with limited exact boundaries. Broader history,
-   sampled reuse, LRU pressure, fork/rollback semantics, and gfx1100 economics
-   remain open.
+2. **Prefix reuse is narrow, default-off, and performance-rejected for the
+   frozen agentic suite.** The scoped GGUF radix opt-in has exact active/current
+   and completed-source boundaries plus bounded LRU/COW/cancellation economics.
+   Resident device-state fork/rollback is explicitly unsupported. Broader
+   history and sampled reuse remain open only behind a future model-general
+   redesign; the measured latest-boundary policy is not a promotion candidate.
 3. **Tools and structured outputs are not fully constrained decoding.** Marker
    forcing, narrow JSON close repair, parsing, and result validation fail
    closed, but broad token-level JSON/tool/patch grammars are absent. A failed
@@ -254,6 +258,14 @@ state fork/rollback remains explicitly unsupported: app-local transcripts are
 deep-copied without forking or rolling back device state. This correctness
 closure cannot reverse the C1 performance rejection.
 `benchmarks/results/2026-07-21-w7900-agentic-a2-prefix-lifecycle-closure.json`.
+
+The final A2.4 decision therefore keeps `HIPENGINE_PREFIX_CACHE=off`. Every C1
+family regresses both primary metrics, all A1 guards fail, growing/medium radix
+variance exceeds 5%, and the failed C1 prerequisite intentionally prevents
+C4/C8 timing or a medium-C4 promotion claim. Radix remains an explicit
+diagnostic only; no prompt-conditioned snapshot retargeting is permitted. The
+next stage is A3 host versus native GPU sampling from the cache-off control.
+`benchmarks/results/2026-07-21-w7900-agentic-a2-prefix-decision.json`.
 
 ### P2 — Transfer low-occupancy/SLO routing to gfx1100
 
@@ -438,10 +450,11 @@ Every retained comparison requires:
   contract tests, timestamp/rollup math, and artifact validation.
 - **A1 — live W7900 baseline:** current package defaults, cache off, deterministic
   real-Uvicorn C1/C4/C8 packet.
-- **A2 — prefix A/B:** off/radix active and completed-source boundaries with
-  2K/8K/growing-history fixtures.
-- **A3 — sampled path:** host-logits baseline, then native GGUF candidate when
-  implemented.
+- **A2 — prefix A/B (closed, rejected):** exact/lifecycle-safe scoped radix,
+  but materially regressive at C1; cache-off remains default and C4/C8 was
+  skipped by prerequisite.
+- **A3 — sampled path (next):** host-logits baseline, then native GGUF candidate
+  when implemented.
 - **A4 — routing/SLO:** batch-window and prefill-policy A/B under delayed mixed
   arrivals.
 - **A5 — pressure/soak:** cancellation, slow consumer, queue/KV/cache pressure,
@@ -935,9 +948,9 @@ lower-loop TTFT, and no ITL claim is made.
 
 Short/growing C4/C8 provide no aggregate benefit, while medium C4 gains 12.17%
 and C8 gives back 6.25% versus C4. Every output token still records one FP32
-full-vocabulary D2H row (up to **1.473 GiB/run** at growing C8), making the next
-order evidence-driven: A2 prefix reuse first for repeated long prefill, then
-native GPU sampling; preserve C1 and medium-C4 guards. ROCm GPU0 is the W7900
+full-vocabulary D2H row (up to **1.473 GiB/run** at growing C8). A2 prefix reuse
+was evaluated next and rejected at C1; native GPU sampling is now the next
+measurement while preserving C1 and medium-C4 guards. ROCm GPU0 is the W7900
 target. Concurrent work explicitly pinned to the separate ROCm GPU1/XTX is not
 target contention and is recorded but allowed.
 
