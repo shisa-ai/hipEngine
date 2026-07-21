@@ -21,6 +21,7 @@ from hipengine.generation import (
     SubmitPollTextGenerator,
     TokenLogprob,
 )
+from hipengine.generation.sampling import SampleResult, SamplingMode
 from hipengine.kvcache import DeviceChunkedKVPool
 
 
@@ -1772,6 +1773,300 @@ def test_gguf_submit_poll_sampled_rows_use_packed_model_ticks(monkeypatch) -> No
     assert observability["fallback_reasons"] == {"host_sampling_required": 4}
 
 
+def test_gguf_resident_sampler_plan_admits_only_supported_stochastic_rows(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "1")
+    strict = _request(
+        temperature=0.0,
+        forced_tokens_pending=(7,),
+        forced_token_reason="tool_choice_required",
+        force_sequence_completion_token_sequences=((7, 8),),
+        force_sequence_completion_reason="tool_call_sequence_completion",
+    )
+
+    direct = qwen35_gguf._gguf_sampler_plan(strict)
+    resident = qwen35_gguf._gguf_sampler_plan(
+        strict,
+        native_gpu_available=True,
+    )
+
+    assert direct.mode is SamplingMode.PROCESSED_ARGMAX
+    assert direct.native_gpu_available is False
+    assert direct.fallback_reason == "processed_logits_required"
+    assert resident.mode is SamplingMode.PROCESSED_ARGMAX
+    assert resident.native_gpu_available is True
+    assert resident.fallback_reason == "processed_logits_required"
+    assert qwen35_gguf._gguf_native_sampler_plan_enabled(strict, resident) is False
+
+    dynamic = _request(temperature=0.8, json_object_close_forcing=True)
+    dynamic_plan = qwen35_gguf._gguf_sampler_plan(
+        dynamic,
+        native_gpu_available=True,
+    )
+    assert dynamic_plan.mode is SamplingMode.HOST_LOGITS_SAMPLE
+    assert dynamic_plan.fallback_reason == "native_gpu_unsupported_request"
+    assert qwen35_gguf._gguf_native_sampler_plan_enabled(dynamic, dynamic_plan) is False
+
+    sampled = _request(temperature=0.8, top_k=8, seed=3)
+    sampled_plan = qwen35_gguf._gguf_sampler_plan(
+        sampled,
+        native_gpu_available=True,
+    )
+    assert sampled_plan.mode is SamplingMode.GPU_SAMPLE
+    assert qwen35_gguf._gguf_native_sampler_plan_enabled(sampled, sampled_plan) is True
+
+    for unsupported in (
+        _request(temperature=0.8, top_k=65, seed=3),
+        _request(temperature=0.8, top_k=2, top_logprobs=3, seed=3),
+        _request(temperature=0.8, top_k=8, seed=3, forced_tokens_pending=(7,)),
+    ):
+        unsupported_plan = qwen35_gguf._gguf_sampler_plan(
+            unsupported,
+            native_gpu_available=True,
+        )
+        assert unsupported_plan.mode is SamplingMode.HOST_LOGITS_SAMPLE
+        assert unsupported_plan.fallback_reason == "native_gpu_unsupported_request"
+        assert (
+            qwen35_gguf._gguf_native_sampler_plan_enabled(
+                unsupported,
+                unsupported_plan,
+            )
+            is False
+        )
+
+
+def test_gguf_resident_mixed_native_and_host_sampler_rows_fail_closed_to_serial(
+    monkeypatch,
+) -> None:
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    runner._last_execution_manifest = {}
+    runner._last_physical_group_plan = {}
+    serial_calls: list[tuple[tuple[int, ...], str]] = []
+    runner._step_native_chunk = lambda *args, **kwargs: pytest.fail(
+        "mixed native/host rows must not share a full-logits packed result"
+    )
+    runner._step_native_serial = lambda rows, *, fallback_reason: serial_calls.append(
+        (
+            tuple(int(row.request_id) for row in rows),
+            str(fallback_reason),
+        )
+    )
+    rows = (
+        SimpleNamespace(
+            request_id=11,
+            native_sampled=True,
+            native_sampler=True,
+        ),
+        SimpleNamespace(
+            request_id=12,
+            native_sampled=True,
+            native_sampler=False,
+        ),
+    )
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", "1")
+
+    runner._step_native_rows(rows)
+
+    assert serial_calls == [((11, 12), "mixed_sampler_routes")]
+    assert runner._last_physical_group_plan["groups"][0]["execution_path"] == (
+        "serial_fallback"
+    )
+
+
+def test_gguf_submit_poll_stochastic_rows_use_batched_native_sampler_without_logits_d2h(
+    monkeypatch,
+) -> None:
+    calls: list[tuple] = []
+
+    class FakeFullStackRunner:
+        def __init__(self, model_path, **kwargs):
+            self.model_path = str(model_path)
+            self.runtime = SimpleNamespace()
+            self.backend = kwargs.get("backend", "hip_gfx1100")
+            self.target_arch = "gfx1100"
+            self.vocab_size = 128
+            self.weights = SimpleNamespace(config=SimpleNamespace(ssm_conv_kernel=4))
+
+    class FakeSession:
+        next_slot = 0
+
+        def __init__(self, model_path, **kwargs):
+            self.slot_id = FakeSession.next_slot
+            FakeSession.next_slot += 1
+            self.runtime = kwargs["runtime"]
+            self.runner = kwargs["shared_runner"]
+            self.position = 0
+            self._packed_decode_state_dirty = False
+            self._packed_decode_sessions = ()
+
+        def reset(self):
+            self.position = 0
+
+        def prefill(self, token_ids, *, return_logits=False):
+            self.position = len(token_ids)
+            calls.append(("prefill", self.slot_id, tuple(token_ids), bool(return_logits)))
+            return SimpleNamespace(token_id=1, logits=None)
+
+        def step(self, token_id, *, return_logits=False):  # pragma: no cover
+            raise AssertionError("native sampled c2 must stay on packed model steps")
+
+        def step_batch_native(
+            self,
+            token_ids,
+            *,
+            sessions,
+            positions,
+            return_logits=False,
+            scatter_state=True,
+            **kwargs,
+        ):
+            calls.append(
+                (
+                    "step_batch_native",
+                    tuple(int(token) for token in token_ids),
+                    tuple(session.slot_id for session in sessions),
+                    bool(return_logits),
+                    bool(scatter_state),
+                    dict(kwargs),
+                )
+            )
+            for session in sessions:
+                session.position += 1
+            self._packed_decode_state_dirty = True
+            self._packed_decode_sessions = tuple(sessions)
+            return [SimpleNamespace(token_id=1, logits=None) for _ in sessions]
+
+        @staticmethod
+        def _sample(params, state):
+            token_id = (5, 4, 2)[state.step_index]
+            state.observe(token_id)
+            return SampleResult(
+                token_id=token_id,
+                logit=1.0,
+                logprob=-0.25,
+                mode=SamplingMode.GPU_SAMPLE,
+                candidate_count=int(params.top_k),
+            )
+
+        def sample_native_from_last_logits(self, params, state):
+            calls.append(("sample_native_last", self.slot_id, state.step_index))
+            return self._sample(params, state)
+
+        def sample_native_from_packed_logits_rows(
+            self,
+            physical_rows,
+            params_rows,
+            states,
+        ):
+            calls.append(
+                (
+                    "sample_native_packed_rows",
+                    tuple(int(row) for row in physical_rows),
+                    tuple(state.step_index for state in states),
+                )
+            )
+            return tuple(
+                self._sample(params, state)
+                for params, state in zip(params_rows, states, strict=True)
+            )
+
+        def sample_native_from_packed_logits(
+            self,
+            physical_row,
+            params,
+            state,
+            *,
+            output_session,
+        ):  # pragma: no cover - compatible c2 rows must use one batch launch
+            raise AssertionError(
+                f"native row {physical_row} for slot {output_session.slot_id} "
+                "did not use the batch sampler"
+            )
+
+        def discard_packed_decode_state(self):
+            was_dirty = self._packed_decode_state_dirty
+            self._packed_decode_sessions = ()
+            self._packed_decode_state_dirty = False
+            return was_dirty
+
+        def flush_packed_decode_state(self):
+            self._packed_decode_state_dirty = False
+            return True
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFFullStackRunner", FakeFullStackRunner)
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+    monkeypatch.setenv("HIPENGINE_QWEN35_NATIVE_SAMPLER", "1")
+    generator = _generator()
+    generator.backend = "hip_gfx1100"
+    generator._shared_runner = None
+    generator._shared_runner_lock = threading.Lock()
+    generator._prepared_max_sequence_length = 64
+    generator._shared_session_pool = {}
+    generator._shared_session_pool_lock = threading.Lock()
+    generator._shared_mtp_draft_pool = {}
+    generator._shared_mtp_draft_pool_lock = threading.Lock()
+
+    adapter = SubmitPollTextGenerator(generator, capacity=2)
+    request = _request(
+        prompts=("first", "second"),
+        max_tokens=3,
+        temperature=0.8,
+        top_k=8,
+        seed=17,
+    )
+    outputs = adapter.generate_detailed(request)
+
+    assert [output.generated_token_ids for output in outputs] == [
+        (5, 4, 2),
+        (5, 4, 2),
+    ]
+    assert all(call[3] is False for call in calls if call[0] == "prefill")
+    packed_calls = [call for call in calls if call[0] == "step_batch_native"]
+    assert len(packed_calls) == 2
+    assert all(call[3] is False and call[4] is False for call in packed_calls)
+    assert len([call for call in calls if call[0] == "sample_native_last"]) == 2
+    packed_sample_calls = [
+        call for call in calls if call[0] == "sample_native_packed_rows"
+    ]
+    assert packed_sample_calls == [
+        ("sample_native_packed_rows", (0, 1), (1, 1)),
+        ("sample_native_packed_rows", (0, 1), (2, 2)),
+    ]
+
+    for output in outputs:
+        decode_state = _decode_state(output)
+        assert decode_state["execution_path"] == "gguf_packed_ar_native_sampler_decode"
+        assert decode_state["sampler_mode"] == "gpu_sample"
+        assert "sampler_fallback_reason" not in decode_state
+        assert decode_state["full_vocab_logits_d2h"] is False
+        assert decode_state["logits_d2h_bytes"] == 0
+        assert decode_state["native_sampler_rows"] is True
+        assert decode_state["native_caware_decode"] is True
+        assert decode_state["serial_decode_fallback"] is False
+        assert output.finish_details is not None
+        assert output.finish_details.to_json_dict()["sampler_mode"] == "gpu_sample"
+        assert len(output.token_logprobs) == 3
+        assert all(token.logprob == pytest.approx(-0.25) for token in output.token_logprobs)
+
+    assert generator.last_batch_generation is not None
+    assert generator.last_batch_generation["path"] == (
+        "gguf_packed_ar_native_sampler_decode"
+    )
+    assert generator.last_batch_generation["native_sampler_rows"] is True
+    observability = adapter.live_loop_snapshot()["runner"]["routes"]
+    assert observability["counts"]["native_sampler_requests"] == 2
+    assert observability["counts"]["native_sampler_batch_launches"] == 2
+    assert observability["counts"]["native_sampler_row_launches"] == 2
+    assert observability["counts"]["host_sampler_requests"] == 0
+    assert observability["fallback_reasons"] == {}
+
+
 def test_gguf_sampled_packed_unavailable_reports_model_serial_fallback(monkeypatch) -> None:
     calls: list[tuple] = []
     tokenizer = _FakeTokenizer()
@@ -2298,6 +2593,9 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
         "native_packed_graph_replays": 0,
         "native_c1_decode_steps": 2,
         "native_sampled_prefill_rows": 1,
+        "native_sampler_requests": 0,
+        "native_sampler_batch_launches": 0,
+        "native_sampler_row_launches": 0,
         "host_sampler_requests": 1,
         "serial_decode_fallback_steps": 0,
         "resident_fallback_requests": 1,

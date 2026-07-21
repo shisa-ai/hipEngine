@@ -4908,6 +4908,58 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         configured_context = configured_max_context_tokens()
         cached_context = getattr(app.state, "hipengine_effective_max_context_tokens", None)
         effective_context = configured_context if configured_context is not None else cached_context
+        gguf_native_candidate = Path(str(config.model)).suffix.lower() == ".gguf"
+        native_gpu_capability = {
+            "enabled": _env_flag(
+                "HIPENGINE_QWEN35_NATIVE_SAMPLER",
+                default=not gguf_native_candidate,
+            ),
+            "env": "HIPENGINE_QWEN35_NATIVE_SAMPLER",
+            "disable_env": "HIPENGINE_QWEN35_NATIVE_SAMPLER=0",
+            "scope": "paro_c1_and_serial_per_slot_c_gt_1",
+            "c_gt_1": "serial_per_slot_when_all_rows_supported",
+            "true_batched_c_gt_1": False,
+            "default_path": True,
+            "top_k_max": 64,
+            "top_p_min_p": "exact_full_vocab_top_k_0_and_bounded_top_k",
+            "selected_logprobs": True,
+            "top_logprobs": {
+                "full_vocab_top_k_0": True,
+                "bounded_top_k": True,
+                "max": 64,
+                "constraint": "top_k=0 or top_logprobs <= top_k <= 64",
+            },
+            "processors": [
+                "logit_bias",
+                "repetition_penalty",
+                "presence_penalty",
+                "frequency_penalty",
+                "suppress_token_ids",
+                "min_tokens",
+            ],
+            "post_selection_controls": [
+                "stop_token_ids",
+                "stop_token_sequences",
+            ],
+            "unsupported": list(NATIVE_GPU_SAMPLER_UNSUPPORTED_CAPABILITIES),
+        }
+        if gguf_native_candidate:
+            native_gpu_capability.update(
+                {
+                    "enable_env": "HIPENGINE_QWEN35_NATIVE_SAMPLER=1",
+                    "scope": "gguf_resident_c1_and_dense_compatible_c_gt_1",
+                    "c_gt_1": (
+                        "single_batched_launch_when_compatible_else_native_rows"
+                    ),
+                    "true_batched_c_gt_1": True,
+                    "default_path": False,
+                    "unsupported": [
+                        capability
+                        for capability in NATIVE_GPU_SAMPLER_UNSUPPORTED_CAPABILITIES
+                        if capability not in {"true_batched_c_gt_1", "gguf"}
+                    ],
+                }
+            )
         return {
             "object": "hipengine.capabilities",
             "model": {
@@ -5132,37 +5184,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "n",
                     "stop",
                 ],
-                "native_gpu": {
-                    "enabled": _env_flag("HIPENGINE_QWEN35_NATIVE_SAMPLER", default=True),
-                    "env": "HIPENGINE_QWEN35_NATIVE_SAMPLER",
-                    "disable_env": "HIPENGINE_QWEN35_NATIVE_SAMPLER=0",
-                    "scope": "paro_c1_and_serial_per_slot_c_gt_1",
-                    "c_gt_1": "serial_per_slot_when_all_rows_supported",
-                    "true_batched_c_gt_1": False,
-                    "default_path": True,
-                    "top_k_max": 64,
-                    "top_p_min_p": "exact_full_vocab_top_k_0_and_bounded_top_k",
-                    "selected_logprobs": True,
-                    "top_logprobs": {
-                        "full_vocab_top_k_0": True,
-                        "bounded_top_k": True,
-                        "max": 64,
-                        "constraint": "top_k=0 or top_logprobs <= top_k <= 64",
-                    },
-                    "processors": [
-                        "logit_bias",
-                        "repetition_penalty",
-                        "presence_penalty",
-                        "frequency_penalty",
-                        "suppress_token_ids",
-                        "min_tokens",
-                    ],
-                    "post_selection_controls": [
-                        "stop_token_ids",
-                        "stop_token_sequences",
-                    ],
-                    "unsupported": list(NATIVE_GPU_SAMPLER_UNSUPPORTED_CAPABILITIES),
-                },
+                "native_gpu": native_gpu_capability,
                 "speculative_mtp": _speculative_mtp_capability(config, engine=engine),
             },
             "cache": {

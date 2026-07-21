@@ -497,6 +497,168 @@ def _request_params(**overrides):
 
 
 @pytest.mark.skipif(not _has_gfx1100(), reason="gfx1100 HIP runtime not available")
+def test_gguf_native_sampler_workspace_batches_supported_rows_and_fails_closed(
+    hip_test_target_arch,
+) -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import copy_host_to_device, free, host_array_ptr, malloc
+    from hipengine.generation.sampling import RowSamplingState, select_token
+    from hipengine.kernels.backends import hip_target_arch_environment
+    from hipengine.kernels.hip_gfx1100.sampling import build_sampler
+    from hipengine.runtime.native_sampler import NativeSamplerWorkspace
+
+    logits = np.asarray(
+        [
+            [2.0, 0.5, 1.5, -2.0, 4.0, 3.0, -1.0, 2.5],
+            [0.0, 3.0, 1.0, 2.0, -1.0, 4.0, 2.5, -2.0],
+        ],
+        dtype=np.float32,
+    )
+    compiler_file = os.environ.get("HIPENGINE_COMPILER_VERSION_FILE")
+    compiler_version = (
+        pathlib.Path(compiler_file).read_text(encoding="utf-8")
+        if compiler_file
+        else None
+    )
+    with hip_target_arch_environment(hip_test_target_arch):
+        sampler_library = build_sampler(
+            load=True,
+            compiler_version=compiler_version,
+        )
+
+    runtime = get_hip_runtime()
+    logits_buf = malloc(logits.nbytes, runtime=runtime)
+    workspace = NativeSamplerWorkspace(
+        runtime=runtime,
+        vocab_size=int(logits.shape[1]),
+        sampler_library=sampler_library,
+    )
+    try:
+        copy_host_to_device(
+            logits_buf,
+            host_array_ptr(logits),
+            logits.nbytes,
+            runtime=runtime,
+        )
+        sampled_params = _request_params(
+            temperature=0.85,
+            top_k=4,
+            top_p=0.8,
+            min_p=0.1,
+            logprobs=True,
+            top_logprobs=3,
+        )
+        first_states = (
+            RowSamplingState(prompt_tokens=(1,), seed=91, step_index=3),
+            RowSamplingState(prompt_tokens=(2,), seed=92, step_index=3),
+        )
+        second_states = (
+            RowSamplingState(prompt_tokens=(1,), seed=91, step_index=3),
+            RowSamplingState(prompt_tokens=(2,), seed=92, step_index=3),
+        )
+        first = workspace.sample_rows(
+            logits_buf.ptr,
+            (sampled_params, sampled_params),
+            first_states,
+        )
+        second = workspace.sample_rows(
+            logits_buf.ptr,
+            (sampled_params, sampled_params),
+            second_states,
+        )
+        assert [sample.token_id for sample in first] == [
+            sample.token_id for sample in second
+        ]
+        assert [sample.logprob for sample in first] == [
+            sample.logprob for sample in second
+        ]
+        assert [sample.top_logprobs for sample in first] == [
+            sample.top_logprobs for sample in second
+        ]
+        assert all(sample.mode.value == "gpu_sample" for sample in first)
+        assert all(len(sample.top_logprobs) <= 3 for sample in first)
+        assert all(state.step_index == 4 for state in first_states)
+
+        processed_params = _request_params(
+            temperature=0.85,
+            top_k=1,
+            top_p=0.7,
+            min_p=0.2,
+            logit_bias=((1, 3.5), (4, -3.0)),
+            suppress_token_ids=(5,),
+            min_tokens=3,
+            eos_token_id=4,
+            repetition_penalty=1.2,
+            presence_penalty=0.25,
+            frequency_penalty=0.1,
+        )
+        expected_state = RowSamplingState(
+            prompt_tokens=(1, 1, 4),
+            generated_tokens=(2,),
+            seed=17,
+            step_index=1,
+        )
+        actual_state = RowSamplingState(
+            prompt_tokens=(1, 1, 4),
+            generated_tokens=(2,),
+            seed=17,
+            step_index=1,
+        )
+        expected = select_token(logits[0], processed_params, expected_state)
+        actual = workspace.sample(
+            logits_buf.ptr,
+            processed_params,
+            actual_state,
+        )
+        assert actual.token_id == expected.token_id
+        np.testing.assert_allclose(actual.logit, expected.logit, rtol=0, atol=1e-6)
+        np.testing.assert_allclose(actual.logprob, expected.logprob, rtol=0, atol=2e-5)
+        assert actual_state.generated_tokens == expected_state.generated_tokens
+        assert actual_state.step_index == expected_state.step_index == 2
+
+        full_filter = _request_params(
+            temperature=0.9,
+            top_k=0,
+            top_p=0.75,
+            min_p=0.12,
+            top_logprobs=4,
+        )
+        full_a = workspace.sample(
+            logits_buf.ptr,
+            full_filter,
+            RowSamplingState(prompt_tokens=(1,), seed=111, step_index=2),
+        )
+        full_b = workspace.sample(
+            logits_buf.ptr,
+            full_filter,
+            RowSamplingState(prompt_tokens=(1,), seed=111, step_index=2),
+        )
+        assert full_a == full_b
+
+        unsupported_state = RowSamplingState(
+            prompt_tokens=(1,),
+            forced_tokens_pending=(6,),
+        )
+        with pytest.raises(NotImplementedError, match="supports_native_gpu_sampling"):
+            workspace.sample(
+                logits_buf.ptr,
+                _request_params(temperature=0.0, logprobs=False),
+                unsupported_state,
+            )
+        with pytest.raises(NotImplementedError, match="supports_native_gpu_sampling"):
+            workspace.sample(
+                logits_buf.ptr,
+                _request_params(temperature=0.8, top_k=65),
+                unsupported_state,
+            )
+        assert unsupported_state.step_index == 0
+        assert unsupported_state.forced_tokens == (6,)
+    finally:
+        workspace.close()
+        free(logits_buf, runtime=runtime)
+
+
+@pytest.mark.skipif(not _has_gfx1100(), reason="gfx1100 HIP runtime not available")
 def test_c1_paro_native_sampler_route_matches_cpu_reference_and_updates_state(
     hip_test_target_arch,
 ) -> None:

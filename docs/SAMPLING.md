@@ -1,6 +1,6 @@
 # Sampling Design
 
-Last updated: 2026-06-18
+Last updated: 2026-07-21
 
 This document defines how hipEngine should grow from the current greedy-only
 Qwen3.5/PARO and GGUF generation paths to normal server/library sampling
@@ -41,8 +41,12 @@ route, and unsupported native shapes fail closed to host logits sampling:
   prefill. Fully GPU-sampler-eligible rows use serial per-slot native GPU
   sampling by default when the resident session exposes the native row sampler;
   `HIPENGINE_QWEN35_NATIVE_SAMPLER=0` disables that route for rollback or
-  bisection. GGUF still samples prompt rows serially because its bring-up path
-  has no c>N resident scheduler.
+  bisection. The GGUF resident model owner now has a separate correctness-ready,
+  explicit `HIPENGINE_QWEN35_NATIVE_SAMPLER=1` candidate: supported c1 rows use
+  one native row selection, and dense compatible c>N rows use one batched
+  selection launch over packed device logits. Heterogeneous/sparse native rows
+  split safely, while mixed native/host sampler groups run serially so a host
+  row can never cause an undeclared full-vocabulary D2H for a native row.
 - `PerRowSamplingParams` / `SamplerParamsBlock` carry the canonical scalar
   sampler metadata and logit-bias rows for scheduler/native-sampler shape.
   `ResidentBatchScheduler` now owns `RowSamplingState` rows, exposes them in
@@ -68,20 +72,22 @@ route, and unsupported native shapes fail closed to host logits sampling:
   the same native sampler state and report no full-vocabulary logits readback.
   A synthetic resident-session smoke covers full-vocab, full-vocab top-logprobs,
   top-k+processor, bounded top-k probability filters, and top-p route dispatch
-  against CPU references. Unsupported PARO route shapes still use the host
-  sampler and report
+  against CPU references. Unsupported PARO and explicit GGUF route shapes use
+  the host sampler and report
   `sampler_fallback_reason="native_gpu_unsupported_request"` while native
-  sampling is enabled. GGUF remains host-sampled; it reports the native
-  unsupported fallback reason only when `HIPENGINE_QWEN35_NATIVE_SAMPLER=1`
-  explicitly requests native fallback metadata for that non-native route. Host
-  decode-state telemetry marks
-  `full_vocab_logits_d2h=true` and reports the per-token full-vocab logits
-  vector byte count when the vocabulary/logits width is known.
+  sampling is enabled. Deterministic `processed_argmax`, forced-token queues,
+  sequence repair, JSON close, thinking queues, `top_k > 64`, and unsupported
+  bounded logprob combinations therefore remain host-backed. Host decode-state
+  telemetry marks `full_vocab_logits_d2h=true` and reports the per-token
+  full-vocabulary byte count; supported GGUF native rows instead report
+  `sampler_mode="gpu_sample"`, `native_sampler_rows=true`,
+  `full_vocab_logits_d2h=false`, and `logits_d2h_bytes=0`.
 
 The original user-visible failure for non-greedy Qwen3.5/PARO and GGUF requests
-is fixed for the host-logits path. Remaining implementation work is true batched
-native GPU sampler c>N, GGUF native integration, and native parity for remaining
-dynamic processor/response shapes.
+is fixed for the host-logits path. The GGUF native integration is now ready for
+A3 host/native measurement but remains explicit and carries no performance
+claim. Remaining work is promotion evidence, heterogeneous/sparse batch
+selection without row splitting, and native parity for dynamic response shapes.
 
 ## Native sampler promotion scope
 
@@ -110,11 +116,21 @@ Promotion blockers closed in this pass:
 - generator tests cover default c=1, default serial per-slot c>N, explicit
   opt-out host fallback, and unsupported native-shape fallback metadata.
 
-Remaining native-sampler gaps are not blockers for the scoped default because
-the planner falls back before native execution:
+The 2026-07-21 GGUF candidate is not part of the PARO default promotion. It is
+admitted only with `HIPENGINE_QWEN35_NATIVE_SAMPLER=1`, and only when
+`supports_native_gpu_sampling()` accepts the request. A real W7900 c4 gate
+repeated four fixed-seed rows exactly, matched same-shape forced-host Conv/GDN
+and logical live-KV bytes, passed stop/EOS/logprob telemetry, launched six
+batched sampler transitions, and drained all refs; artifact
+`benchmarks/results/2026-07-21-w7900-gguf-native-sampler-correctness.json`.
+It records `performance_claim=false` and does not promote the route.
 
-- true batched c>N token selection;
-- GGUF native sampler integration;
+Remaining native-sampler gaps are not blockers because the planner falls back
+before native execution:
+
+- heterogeneous/sparse c>N GGUF rows that cannot share launch-wide `top_k`,
+  `top_logprobs`, and RNG step values use native row launches;
+- PARO c>N selection remains serial per slot;
 - `top_logprobs > top_k` for bounded top-k requests;
 - forced-token queues, sequence-completion repair, JSON object close forcing,
   thinking-budget dynamic processors, and `top_k > 64`;
@@ -164,8 +180,8 @@ Unsupported native cases, ranked by likely ease and payoff:
 | P2 | Forced-token queues when already pending | A per-step forced-token fast path can emit the queued token and metadata without host logits sampling. It needs careful interaction with sequence repair, JSON close, and thinking-budget queues. |
 | Done | Request-constant native scalar buffer caching | Implemented for request-constant native sampler scalars and logit-bias buffers; the retained profiler artifact showed warmed native sampler H2D copies/token drop to zero. Dynamic history and step-index metadata remain per-step. |
 | P3 | `top_k > 64` | Raises register/shared-memory pressure in the bounded sampler. Needs a measured reason before increasing the cap. |
-| P3 | GGUF native sampling | Useful eventually, but GGUF lacks the PARO resident scheduler/runtime shape that made scoped native promotion easy. |
-| P3 | True batched c>N native token selection | Requires row-aware projection/sampling into `batch_lm_out_index` plus generated-token equality and replay readiness. This is larger than sampler-only work. |
+| Done (explicit candidate) | GGUF native sampling | The resident owner now keeps supported c1/dense-compatible c>N logits on device, batches compatible packed rows, reports zero full-vocabulary D2H, and passes fixed-seed/same-shape state-KV/stop/EOS/ownership gates. It remains explicit until A3 performance evidence. |
+| Partial | True batched c>N native token selection | GGUF dense compatible groups use one rows kernel; heterogeneous step/top-k/top-logprob or sparse physical rows split to native row launches. PARO remains serial per slot. |
 | P3 | Faster full-vocab top-p/min-p selector | Performance work after correctness parity; current exact path is acceptable for scoped native coverage but not the greedy-comparison target. |
 
 ## Hardware lane for this work
@@ -545,12 +561,14 @@ fully vectorized at first:
   prompt history, generated history, stable row seeds, and step indices.
 - `SamplerParamsBlock` represents all public sampler fields, not only
   temperature/top-k/top-p/repetition.
-- The first c>N functional paths project rows through native packed prefill and
-  sample each row serially: by the default native GPU sampler when all rows are
-  covered by the native sampler contract, otherwise by host logits fallback.
-- A true batched native c>N path should write selected token ids directly to
-  `batch_lm_out_index` so graph replay can feed the next step without host
-  token-list readback.
+- PARO c>N projects rows through native packed prefill and samples each row
+  serially. The explicit GGUF candidate instead samples dense compatible packed
+  logits with one rows launch, falling back to native row launches for
+  heterogeneous/sparse native groups and serial model steps for mixed
+  native/host groups.
+- A future fully device-chained c>N path should write selected token ids directly
+  to `batch_lm_out_index` so graph replay can feed the next step without even the
+  current tiny selected-id/logprob readback.
 - `n > 1` should derive stable row seeds from the request seed and choice index;
   rows should diverge when logits and sampler settings allow it.
 
@@ -578,19 +596,19 @@ fully vectorized at first:
 | S1: greedy-compatible unblock | Allow `temperature <= 0` with inert `top_p`/`top_k`; preserve current graph replay and argmax behavior. | Low | ~50-100 Python/tests | S0 | **Done for PARO and GGUF greedy-equivalent requests.** |
 | S2: host logits sampler | Add CPU/NumPy `select_token` over copied FP32 logits for temperature/top-k/top-p/min-p/seed. Disable graph replay for sampled requests. | Medium | ~400-700 Python/tests | S0 | **Done for PARO and GGUF c=1 plus serial multi-row host sampling.** |
 | S3: token-history/static processors | Add prompt/generated history, repetition/presence/frequency penalties, logit bias, suppress-token ids, min-token/EOS policy, and deterministic processed-argmax. | Medium | ~250-500 Python/tests | S2 | **Done for host sampler:** synthetic-logit processor tests, suppress/min-token fixtures, and fixed-seed generator fixtures pass. |
-| S4: token-level stop | Lower stop token IDs/sequences where possible and terminate rows early in generation, while retaining server stop-string trimming. | Medium | ~150-350 Python/tests | S2/S3 | **Done:** single-token IDs and multi-token server stop sequences finish PARO/GGUF host-sampled rows plus PARO c=1 and serial per-slot c>N native-sampled rows. |
-| S5: c>N sampler state | Carry `RowSamplingState` through `ResidentBatchScheduler` and batch decode work; rows may still sample serially. | Medium/High | ~400-800 Python/tests | S2/S3 | **Done for PARO host/native row samplers:** sampled prompt batches use scheduler-owned state, native packed prefill, and serial host-sampled decode or default serial per-slot native sampling when all rows are covered; `HIPENGINE_QWEN35_NATIVE_SAMPLER=0` disables native rows for rollback. GGUF remains serial by design until it gets a c>N resident scheduler. |
-| S6: GPU top-k/temperature sampler | Native row-wise kernels for logits processing, top-k selection beyond the current `k <= 8` helper, softmax, RNG, and sample selection. | Medium/High | ~500-900 HIP/Python/tests | S2/S3 | **Promoted for scoped PARO default:** standalone FP32 logits processors plus full-vocab `top_k=0` and bounded `1 <= top_k <= 64` temperature samplers pass CPU-reference filtering/logprob parity and fixed-seed determinism; synthetic resident-session route smoke covers full-vocab, full-vocab top-logprobs, top-k+processor dispatch, suppress/min-token masks, bounded top-k probability filters, and bounded top-k `top_logprobs`. Supported c=1 PARO requests and fully covered PARO c>N sampled rows use native sampling by default; native decode-state telemetry reports no full-vocab logits D2H (`full_vocab_logits_d2h=false`, `logits_d2h_bytes=0`) while host fallbacks report `full_vocab_logits_d2h=true` with known per-token vector bytes. Unsupported PARO rows fall back with `native_gpu_unsupported_request`; GGUF remains host-sampled unless explicitly requested for native fallback metadata. |
+| S4: token-level stop | Lower stop token IDs/sequences where possible and terminate rows early in generation, while retaining server stop-string trimming. | Medium | ~150-350 Python/tests | S2/S3 | **Done:** single-token IDs and multi-token server stop sequences finish PARO/GGUF host-sampled rows, promoted PARO native rows, and the explicit GGUF native candidate. |
+| S5: c>N sampler state | Carry `RowSamplingState` through `ResidentBatchScheduler` and batch decode work; rows may still sample serially. | Medium/High | ~400-800 Python/tests | S2/S3 | **Done for current paths:** PARO keeps scheduler-owned host/native row state and serial native selection. GGUF's model-owning loop keeps per-row state across true packed model steps and now performs one native sampler rows launch for dense compatible groups. |
+| S6: GPU top-k/temperature sampler | Native row-wise kernels for logits processing, top-k selection beyond the current `k <= 8` helper, softmax, RNG, and sample selection. | Medium/High | ~500-900 HIP/Python/tests | S2/S3 | **Promoted for scoped PARO default; correctness-ready for explicit GGUF:** standalone FP32 processors plus full-vocab `top_k=0` and bounded `1 <= top_k <= 64` samplers pass CPU-reference filtering/logprob parity and fixed-seed determinism. Supported native rows report zero full-vocabulary D2H; unsupported rows report explicit host fallback. GGUF additionally passes a real W7900 c4 fixed-seed/same-shape state-KV/stop/EOS/ownership gate but awaits A3 performance evidence before promotion. |
 | S7: exact GPU top-p | Full-vocab nucleus sampling without host logits readback. Requires efficient sort/select/cumulative probability strategy. | High | ~1000-2000 HIP/Python/tests | S6 | **Promoted for scoped PARO default:** standalone correctness-first GPU top-p/min-p sampler matches CPU retain counts, selected tokens, logprobs, tie order, and fixed-seed determinism on boundary fixtures; the synthetic resident-session route smoke covers top-p dispatch. Performance-oriented full-vocab nucleus selection remains future work. |
 | S8: logprobs responses | Return selected logprob and optional top-logprobs through library/server schemas. | Medium/High | ~300-700 Python/HIP/tests | S2, optional S6/S7 | **Done for host-logits server/library paths:** completion/chat response tests pass for selected logprob/top-logprobs cases, completion `echo+logprobs`, and buffered streaming logprobs. |
 
 The first useful user-facing milestone is S0+S1+S2. That gives correct normal
 sampling with a known performance tradeoff and no change to greedy performance.
-S3, S4, S5, and S8 are complete for the current host-sampler/PARO scheduler
-scope. S6 and S7 are promoted for the scoped PARO native default, while true
-batched c>N, GGUF native sampling, and broader
-sampler processor parity remain future native GPU work and should not block
-functional host support.
+S3, S4, S5, and S8 are complete for the current host/PARO/GGUF scheduler
+scope. S6 and S7 are promoted for the scoped PARO native default. GGUF native
+sampling is a correctness-ready explicit candidate with dense compatible c>N
+batch selection; A3 performance measurement and broader heterogeneous/dynamic
+processor parity remain open and do not block functional host support.
 
 ## Correctness and validation gates
 

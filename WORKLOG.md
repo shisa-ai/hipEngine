@@ -172300,3 +172300,54 @@ the benchmark protocol with the C1-first skip rule, scoreboard/changelog,
 optimization board, and refactor removal trigger. The four decision/lifecycle/
 C1/C4-C8 artifact tests pass with Ruff, JSON, README synchronization, Worklog
 conflict, and diff checks. A3 native sampling is the next measured stage.
+
+## 2026-07-22 — Complete the explicit GGUF native-sampler prerequisite
+
+Implemented task #234 without a new kernel body or backend branch. The GGUF
+resident session now reuses the registered standalone sampler over resident FP32
+logits; c1 uses one row selection and dense compatible packed c>N uses one rows
+launch. Packed prefill/decode can require device logits without copying them to
+host. Mixed native/host groups serialize so a host row cannot induce hidden
+full-vocabulary D2H for a native row, while incompatible native batch shapes
+fall back to native row launches. Admission is exactly
+`supports_native_gpu_sampling()`: deterministic `processed_argmax`, forced/tool
+queues, sequence repair, JSON/thinking dynamic queues, `top_k > 64`, and invalid
+bounded top-logprob shapes remain host-backed with explicit fallback metadata.
+Capabilities expose the GGUF route as explicit/default-off under
+`HIPENGINE_QWEN35_NATIVE_SAMPLER=1`; PARO semantics are unchanged.
+
+Real W7900/gfx1100 correctness command:
+
+```bash
+HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/agentic-w7900-hipcc-version.txt \
+uv run python scripts/gguf_native_sampler_gate.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --quant gguf_q4_k_m \
+  --prompt-tokens 256 --max-tokens 4 --max-sequence-length 512 \
+  --json /tmp/2026-07-21-gfx1100-gguf-native-sampler-c4-correctness.json
+```
+
+The final p256/c4 gate passes. Four fixed-seed rows repeat exact IDs and every
+Conv/GDN/logical live-KV byte. A same-physical-shape forced-host oracle matches
+all four selected trajectories and state/KV bytes while reporting
+`processed_logits_required`, full-vocabulary D2H, and no native rows. Native
+stop and EOS finish routes pass with `gpu_sample`; bounded selected/top-logprob
+metadata is complete. Supported rows report `full_vocab_logits_d2h=false` and
+`logits_d2h_bytes=0`. Observability records **6** native batch launches,
+**11** native requests, **4** host-oracle requests, and zero serial fallback.
+The final pool has **8/8 pages free, 0 refcounted, 0 pinned, 0 COW**, all four
+sessions returned, and no active requests. Published
+`benchmarks/results/2026-07-21-w7900-gguf-native-sampler-correctness.json`
+(SHA-256 `f8df3fd8e3e1d57514e166f3dec79e26a6cfeae97e8264f603c8253a81d09a86`).
+The earlier failed `bg-489`–`bg-492` attempts were harness-serialization and
+wrong-shape-oracle corrections, not retained correctness results; `bg-493` is
+the passing final gate. This unit has `performance_claim=false` and keeps GGUF
+native sampling explicit until task #229 runs the A3 host/native matrix.
+
+Validation passes **197 selected tests** across GGUF generation/native sampler,
+artifact contract, packed layout, shared sampling, and server capability/API
+telemetry. Targeted Ruff passes for all changed host/script/test files; the
+monolithic runner passes with its known pre-existing F401/F841/F821 baseline
+ignored, plus `py_compile`. JSON parsing, Worklog conflict check, artifact hash,
+and `git diff --check` pass.
