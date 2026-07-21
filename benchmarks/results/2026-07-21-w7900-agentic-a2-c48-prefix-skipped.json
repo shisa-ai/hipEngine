@@ -1,0 +1,77 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_agentic_a2_c48_prefix_skipped",
+  "created_at": "2026-07-21T15:21:20+00:00",
+  "status": "skipped_failed_c1_prerequisite",
+  "passed": false,
+  "measurement_valid": false,
+  "performance_claim": false,
+  "timing_claim": false,
+  "decision": "do not run the C4/C8 promotion matrix after the declared C1 prerequisite failed",
+  "source_revision": "5d483f36",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "target_rocm_index": 0
+  },
+  "planned_protocol": {
+    "workloads": [
+      "small_repo@4096",
+      "growing_history@4096",
+      "medium_repo@10240"
+    ],
+    "logical_concurrency": [
+      4,
+      8
+    ],
+    "warmups_per_condition": 1,
+    "measured_pairs_per_family": 3,
+    "required_variance_max": 0.05,
+    "primary_long_context_guard": {
+      "workload": "medium_repo",
+      "concurrency": 4,
+      "a1_tok_s": 4.629
+    },
+    "negative_scaling_guard": {
+      "workload": "medium_repo",
+      "concurrency": 8,
+      "a1_tok_s": 4.339
+    }
+  },
+  "prerequisite": {
+    "task": 225,
+    "required": "C1 prefix A/B passes",
+    "passed": false,
+    "artifact": "benchmarks/results/2026-07-21-w7900-agentic-a2-c1-prefix-rejected.json",
+    "artifact_sha256": "8b8e3eb092bdb2061ee1de63a231c4a8fcb5d9a833c7587071d3b038406f5cb2",
+    "commit": "5d483f36",
+    "c1_radix_hits": {
+      "small_repo": "0/12",
+      "growing_history": "3/24",
+      "medium_repo": "3/18"
+    },
+    "paired_active_sse_delta_percent": {
+      "small_repo": -64.18649840464006,
+      "growing_history": -65.63263271838551,
+      "medium_repo": -26.639335273320253
+    },
+    "paired_tool_ready_p50_delta_percent": {
+      "small_repo": 181.89852300051658,
+      "growing_history": 196.0872520184622,
+      "medium_repo": 38.814604851367164
+    },
+    "all_a1_no_material_regression_guards_passed": false,
+    "all_variance_gates_passed": false
+  },
+  "acceptance": {
+    "c1_prerequisite_passed": false,
+    "c4_c8_measurement_authorized": false,
+    "partial_matrix_used_for_promotion": false,
+    "gpu_measurements_started": false
+  },
+  "notes": [
+    "This is an intentional fail-closed protocol skip, not missing benchmark evidence.",
+    "C4/C8 client concurrency cannot rescue a route whose required C1 guard regresses every family and whose reusable boundaries are sparse.",
+    "No C4/C8 timing number is inferred from C1 or from prior A1 controls."
+  ]
+}
