@@ -4505,6 +4505,17 @@ class Qwen35GGUFResidentModelRunner:
         row.kv_allocation = allocation
         self._sample_kv_hip_memory()
 
+    @staticmethod
+    def _prefix_reuse_supported(row: _GGUFResidentLoopRow) -> bool:
+        if row.native_greedy:
+            return True
+        plan = row.sampler_plan
+        return bool(
+            row.native_sampled
+            and plan is not None
+            and plan.mode is SamplingMode.PROCESSED_ARGMAX
+        )
+
     def _prefix_source_for(
         self,
         row: _GGUFResidentLoopRow,
@@ -4513,7 +4524,7 @@ class Qwen35GGUFResidentModelRunner:
         if cache is None:
             row.prefix_fallback_reason = "cache_off"
             return None
-        if not row.native_greedy:
+        if not self._prefix_reuse_supported(row):
             row.prefix_fallback_reason = "sampling_unsupported"
             return None
         if len(row.prompt_ids) <= 256:
@@ -4747,7 +4758,7 @@ class Qwen35GGUFResidentModelRunner:
         tokens: tuple[int, ...],
         block_ids: tuple[int, ...],
     ) -> None:
-        if not row.native_greedy or tokens in self._prefix_state_snapshots:
+        if not self._prefix_reuse_supported(row) or tokens in self._prefix_state_snapshots:
             return
         lease = row.lease
         if lease is None:
@@ -4770,6 +4781,9 @@ class Qwen35GGUFResidentModelRunner:
             if callable(close):
                 close()
             raise RuntimeError("GGUF prefix snapshot returned the wrong block ids")
+        for prior_tokens, entry in tuple(self._prefix_state_snapshots.items()):
+            if not entry.retained and entry.owner_request_id == row.request_id:
+                self._evict_prefix_snapshot(prior_tokens)
         self._prefix_state_snapshots[tokens] = _GGUFPrefixSnapshotEntry(
             tokens=tokens,
             block_ids=block_ids,
@@ -4970,6 +4984,31 @@ class Qwen35GGUFResidentModelRunner:
                         self._prefill_native_chunk(row, model_chunk, final_chunk=final_chunk)
                     elif final_chunk:
                         self._prefill_native_row(row)
+                    raise_if_generation_deadline_expired(row.request)
+                elif (
+                    row.native_sampled
+                    and row.prefix_eligible
+                    and self._prefix_reuse_supported(row)
+                ):
+                    raise_if_generation_deadline_expired(row.request)
+                    if row.prefix_reused_tokens:
+                        if not model_chunk:
+                            if final_chunk:
+                                raise RuntimeError(
+                                    "GGUF prefix reuse requires an unmatched prompt suffix"
+                                )
+                        else:
+                            self._prefill_processed_argmax_chunk(
+                                row,
+                                model_chunk,
+                                final_chunk=final_chunk,
+                            )
+                    elif final_chunk:
+                        self._prefill_processed_argmax_chunk(
+                            row,
+                            row.prompt_ids,
+                            final_chunk=True,
+                        )
                     raise_if_generation_deadline_expired(row.request)
                 elif final_chunk:
                     raise_if_generation_deadline_expired(row.request)
@@ -5362,20 +5401,90 @@ class Qwen35GGUFResidentModelRunner:
             native_compact_prefill=native_compact_prefill,
         )
 
+    def _prepare_sampled_prefill(
+        self,
+        row: _GGUFResidentLoopRow,
+    ) -> tuple[GenerationRequest, RowSamplingState]:
+        if row.sampling_request is None and row.sampling_state is None:
+            sampling_request = _request_with_tokenizer_eos(
+                row.request,
+                self.generator.tokenizer,
+            )
+            sampling_state = _gguf_row_sampling_state(
+                sampling_request,
+                list(row.prompt_ids),
+                row_index=row.row_index,
+            )
+            row.sampling_request = sampling_request
+            row.sampler_plan = _gguf_sampler_plan(sampling_request)
+            row.sampling_state = sampling_state
+            return sampling_request, sampling_state
+        if row.sampling_request is None or row.sampling_state is None:
+            raise RuntimeError("GGUF sampled prefill has partial sampling state")
+        return row.sampling_request, row.sampling_state
+
+    def _finish_sampled_prefill(
+        self,
+        row: _GGUFResidentLoopRow,
+        result: Any,
+        *,
+        native_compact_prefill: bool,
+    ) -> None:
+        if row.slot is not None:
+            raise RuntimeError("GGUF sampled row was prefilled more than once")
+        lease = row.lease
+        if lease is None:
+            raise RuntimeError("GGUF sampled prefill finished without a session lease")
+        sampling_request, sampling_state = self._prepare_sampled_prefill(row)
+        sample = _select_from_gguf_logits(result, sampling_request, sampling_state)
+        full_vocab_logits_d2h, logits_d2h_bytes = _gguf_logits_d2h_metadata(result)
+        token = int(sample.token_id)
+        _gguf_queue_json_object_close_if_needed(
+            sampling_state,
+            self.generator.tokenizer,
+            _gguf_token_text(self.generator.tokenizer, sample),
+            remaining_tokens=max(0, int(sampling_request.max_tokens) - 1),
+        )
+        self._route_counts["native_sampled_prefill_rows"] += 1
+        self._route_counts["host_sampler_requests"] += 1
+        plan = row.sampler_plan
+        if plan is None:
+            raise RuntimeError("GGUF sampled prefill has no sampler plan")
+        self._fallback_reasons[str(plan.fallback_reason or plan.mode.value)] += 1
+        row.samples.append(sample)
+        row.full_vocab_logits_d2h = full_vocab_logits_d2h
+        row.logits_d2h_bytes = logits_d2h_bytes
+        self._refresh_prefix_cache(row)
+        row.slot = _GGUFARServingSlot(
+            request_id=row.request_id,
+            prompt_ids=list(row.prompt_ids),
+            session=lease.session,
+            prev_token=token,
+            seq_position=int(lease.session.position),
+            generated_ids=[token],
+            timing={
+                "prefill_ms": float(row.prefill_ms),
+                "prefill_chunk_count": float(row.prefill_chunk_count),
+                "request_total_ms": _timing_ms_since(row.submitted_at),
+            },
+            session_pool_key=lease.pool_key,
+            done=(
+                int(sampling_request.max_tokens) <= 1
+                or _gguf_finished(
+                    (token,),
+                    self.generator.tokenizer,
+                    sampling_request,
+                )
+            ),
+            native_compact_prefill=bool(native_compact_prefill),
+        )
+
     def _prefill_sampled_row(self, row: _GGUFResidentLoopRow) -> None:
         if row.slot is not None:
             return
         lease = row.lease or self._acquire_lease()
         row.lease = lease
-        sampling_request = _request_with_tokenizer_eos(
-            row.request,
-            self.generator.tokenizer,
-        )
-        sampling_state = _gguf_row_sampling_state(
-            sampling_request,
-            list(row.prompt_ids),
-            row_index=row.row_index,
-        )
+        self._prepare_sampled_prefill(row)
         start = time.perf_counter()
         native_compact_prefill = False
         if _gguf_device_kv_contiguous_base_row(lease.session) == 0:
@@ -5401,52 +5510,136 @@ class Qwen35GGUFResidentModelRunner:
                 )
             result = result_list[0]
             native_compact_prefill = True
-        sample = _select_from_gguf_logits(result, sampling_request, sampling_state)
-        full_vocab_logits_d2h, logits_d2h_bytes = _gguf_logits_d2h_metadata(result)
-        token = int(sample.token_id)
-        _gguf_queue_json_object_close_if_needed(
-            sampling_state,
-            self.generator.tokenizer,
-            _gguf_token_text(self.generator.tokenizer, sample),
-            remaining_tokens=max(0, int(sampling_request.max_tokens) - 1),
-        )
-        self._route_counts["native_sampled_prefill_rows"] += 1
-        self._route_counts["host_sampler_requests"] += 1
-        plan = _gguf_sampler_plan(sampling_request)
-        self._fallback_reasons[str(plan.fallback_reason or plan.mode.value)] += 1
-        row.sampling_request = sampling_request
-        row.sampler_plan = plan
-        row.sampling_state = sampling_state
-        row.samples.append(sample)
-        row.full_vocab_logits_d2h = full_vocab_logits_d2h
-        row.logits_d2h_bytes = logits_d2h_bytes
-        prefill_ms = _timing_ms_since(start)
-        row.prefill_ms += prefill_ms
+        row.prefill_ms += _timing_ms_since(start)
         row.prefill_chunk_count += 1
-        self._refresh_prefix_cache(row)
-        row.slot = _GGUFARServingSlot(
-            request_id=row.request_id,
-            prompt_ids=list(row.prompt_ids),
-            session=lease.session,
-            prev_token=token,
-            seq_position=int(lease.session.position),
-            generated_ids=[token],
-            timing={
-                "prefill_ms": float(row.prefill_ms),
-                "prefill_chunk_count": float(row.prefill_chunk_count),
-                "request_total_ms": _timing_ms_since(row.submitted_at),
-            },
-            session_pool_key=lease.pool_key,
-            done=(
-                int(sampling_request.max_tokens) <= 1
-                or _gguf_finished(
-                    (token,),
-                    self.generator.tokenizer,
-                    sampling_request,
-                )
-            ),
+        self._finish_sampled_prefill(
+            row,
+            result,
             native_compact_prefill=native_compact_prefill,
         )
+
+    def _prefill_processed_argmax_chunk(
+        self,
+        row: _GGUFResidentLoopRow,
+        chunk: tuple[int, ...],
+        *,
+        final_chunk: bool,
+    ) -> None:
+        if row.slot is not None:
+            raise RuntimeError("GGUF processed-argmax row was prefilled more than once")
+        if not chunk:
+            raise RuntimeError("GGUF processed-argmax prefill chunk must be non-empty")
+        sampling_request, _ = self._prepare_sampled_prefill(row)
+        plan = row.sampler_plan
+        if plan is None or plan.mode is not SamplingMode.PROCESSED_ARGMAX:
+            raise RuntimeError(
+                "GGUF prefix reuse only supports deterministic processed-argmax sampling"
+            )
+        lease = row.lease or self._acquire_lease()
+        row.lease = lease
+        session = lease.session
+        result = None
+        native_compact_prefill = False
+        final_prefix_boundary = (len(row.prompt_ids) // 256) * 256
+
+        if row.prefix_reused_tokens:
+            start = time.perf_counter()
+            for index, token_id in enumerate(chunk):
+                result = session.step(
+                    int(token_id),
+                    return_logits=bool(final_chunk and index == len(chunk) - 1),
+                )
+                if int(session.position) == final_prefix_boundary:
+                    self._refresh_prefix_cache(row)
+            self._route_counts["prefix_c1_suffix_prefill_chunks"] += 1
+            self._route_counts["prefix_c1_suffix_prefill_tokens"] += len(chunk)
+            self._route_counts["processed_argmax_prefix_c1_suffix_chunks"] += 1
+            self._route_counts["processed_argmax_prefix_c1_suffix_tokens"] += len(chunk)
+            row.prefill_ms += _timing_ms_since(start)
+            row.prefill_chunk_count += 1
+        else:
+            if not final_chunk or chunk != row.prompt_ids:
+                raise RuntimeError(
+                    "processed-argmax private radix prefill requires the complete prompt"
+                )
+            aligned_prompt = chunk[:final_prefix_boundary]
+            tail = chunk[final_prefix_boundary:]
+            if not aligned_prompt:
+                raise RuntimeError(
+                    "processed-argmax radix prefill requires an aligned prompt boundary"
+                )
+            operation_start = time.perf_counter()
+            if _gguf_device_kv_contiguous_base_row(session) == 0:
+                result = session.prefill(
+                    aligned_prompt,
+                    return_logits=not tail,
+                )
+            else:
+                prefill_batch = getattr(session, "prefill_batch_native", None)
+                if not callable(prefill_batch):
+                    raise RuntimeError(
+                        "processed-argmax radix prefill requires block-table-aware prefill"
+                    )
+                sample_kwargs = {} if not tail else {"sample_output": False}
+                try:
+                    with _temporary_env(
+                        {"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}
+                    ):
+                        results = prefill_batch(
+                            [aligned_prompt],
+                            sessions=[session],
+                            full_prompt_lengths=[len(row.prompt_ids)],
+                            return_logits=not tail,
+                            return_hidden_seeds=False,
+                            **sample_kwargs,
+                        )
+                except NotImplementedError as exc:
+                    raise RuntimeError(
+                        "processed-argmax radix prefill does not support private prefill"
+                    ) from exc
+                result_list = [] if results is None else list(results)
+                if len(result_list) != 1:
+                    raise RuntimeError(
+                        "processed-argmax private prefill did not return exactly one result"
+                    )
+                result = result_list[0]
+                native_compact_prefill = True
+            if int(getattr(session, "position", -1)) != final_prefix_boundary:
+                raise RuntimeError(
+                    "processed-argmax private prefill advanced to the wrong boundary"
+                )
+            row.prefill_ms += _timing_ms_since(operation_start)
+            row.prefill_chunk_count += 1
+            self._route_counts[
+                "processed_argmax_private_aligned_prefill_rows"
+            ] += 1
+            self._refresh_prefix_cache(row)
+            if tail:
+                tail_start = time.perf_counter()
+                for index, token_id in enumerate(tail):
+                    result = session.step(
+                        int(token_id),
+                        return_logits=index == len(tail) - 1,
+                    )
+                self._route_counts[
+                    "processed_argmax_private_c1_tail_chunks"
+                ] += 1
+                self._route_counts[
+                    "processed_argmax_private_c1_tail_tokens"
+                ] += len(tail)
+                row.prefill_ms += _timing_ms_since(tail_start)
+                row.prefill_chunk_count += 1
+
+        if final_chunk:
+            if result is None or getattr(result, "logits", None) is None:
+                raise RuntimeError(
+                    "processed-argmax final prefill did not return full-vocabulary logits"
+                )
+            self._finish_sampled_prefill(
+                row,
+                result,
+                native_compact_prefill=native_compact_prefill,
+            )
 
     def _prefill_native_chunk(
         self,

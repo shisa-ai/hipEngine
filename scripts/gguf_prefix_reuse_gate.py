@@ -6,9 +6,10 @@ The candidate goes through ``Qwen35GGUFResidentModelRunner`` with
 before continuation admission.  The continuation shares exact page-aligned
 KV, restores live or cache-owned Conv/GDN state, and executes only its non-empty
 suffix.  A private session then rebuilds the same continuation as the reference.
-The gate compares greedy output, every Conv/GDN state byte, logical block-table-
-ordered live K/V bytes, lifecycle/refcounts, and matched-context teacher-forced
-decode logits/state.
+The gate compares deterministic output, every Conv/GDN state byte, logical
+block-table-ordered live K/V bytes, lifecycle/refcounts, and matched-context
+teacher-forced decode logits/state. Greedy and forced-token processed-argmax
+routes are supported; stochastic sampling is intentionally outside this gate.
 
 This is a correctness/lifecycle diagnostic, not a performance benchmark.
 """
@@ -324,15 +325,28 @@ def _production_metadata_exact(
     )
 
 
-def _request(prompt: tuple[int, ...], *, max_tokens: int) -> Any:
+def _request(
+    prompt: tuple[int, ...],
+    *,
+    max_tokens: int,
+    sampler_mode: str,
+    forced_token_id: int,
+) -> Any:
     from hipengine.generation.registry import GenerationRequest
 
+    processed_argmax = sampler_mode == "processed_argmax"
     return GenerationRequest(
         prompts=(prompt,),
         max_tokens=int(max_tokens),
         temperature=0.0,
         top_p=1.0,
         ignore_eos=True,
+        forced_tokens_pending=(
+            (int(forced_token_id), int(forced_token_id) + 1)
+            if processed_argmax
+            else ()
+        ),
+        forced_token_reason=("tool_choice_required" if processed_argmax else None),
     )
 
 
@@ -355,6 +369,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     suffix_tokens = int(args.suffix_tokens)
     teacher_steps = int(args.teacher_forced_steps)
     source_lifecycle = str(args.source_lifecycle)
+    sampler_mode = str(args.sampler_mode)
     if boundary <= 0 or boundary % 256:
         raise ValueError("prefix_tokens must be a positive multiple of 256")
     if suffix_tokens <= 0:
@@ -409,7 +424,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         if pool is None:
             raise RuntimeError("GGUF resident runner did not configure a device KV pool")
 
-        source_request = _request(prefix, max_tokens=teacher_steps + 2)
+        source_request = _request(
+            prefix,
+            max_tokens=teacher_steps + 2,
+            sampler_mode=sampler_mode,
+            forced_token_id=int(args.forced_token_id),
+        )
         runner.register_batch((source_id,), source_request, prompt_rows=(prefix,))
         runner.reserve_admission(source_state)
         runner.prefill_batch(_prefill_work(source_id, prefix), commit=True)
@@ -443,6 +463,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         continuation_request = _request(
             continued_prompt,
             max_tokens=teacher_steps + 1,
+            sampler_mode=sampler_mode,
+            forced_token_id=int(args.forced_token_id),
         )
         runner.register_batch(
             (continuation_id,),
@@ -511,11 +533,21 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         # arithmetic can differ from scheduler chunking.  The gating reference
         # privately processes every token through the exact same 256+suffix
         # production chunks that prefix reuse replaces.
-        one_shot_result = oracle_session.prefill(continued_prompt, return_logits=False)
-        one_shot_token = int(one_shot_result.token_id)
-        one_shot_state = _capture_state(oracle_session)
-        one_shot_state_mismatches = _compare_states(candidate_initial, one_shot_state)
-        oracle_session.reset()
+        one_shot_applicable = len(continued_prompt) <= 8192
+        one_shot_token = None
+        one_shot_state_mismatches: list[dict[str, Any]] = []
+        if one_shot_applicable:
+            one_shot_result = oracle_session.prefill(
+                continued_prompt,
+                return_logits=False,
+            )
+            one_shot_token = int(one_shot_result.token_id)
+            one_shot_state = _capture_state(oracle_session)
+            one_shot_state_mismatches = _compare_states(
+                candidate_initial,
+                one_shot_state,
+            )
+            oracle_session.reset()
         with _temporary_env({_CAPTURE_PREFILL_GDN_ENV: "1"}):
             oracle_session.prefill_batch_native(
                 [prefix],
@@ -553,9 +585,38 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             semantic_boundary,
         )
         semantic_result = semantic_prefix_result
-        for suffix_token in suffix:
-            semantic_result = oracle_session.step(int(suffix_token), return_logits=False)
-        oracle_token = int(semantic_result.token_id)
+        for suffix_index, suffix_token in enumerate(suffix):
+            semantic_result = oracle_session.step(
+                int(suffix_token),
+                return_logits=bool(
+                    sampler_mode == "processed_argmax"
+                    and suffix_index == len(suffix) - 1
+                ),
+            )
+        if sampler_mode == "processed_argmax":
+            from hipengine.generation.qwen35_gguf import (
+                _gguf_row_sampling_state,
+                _request_with_tokenizer_eos,
+                _select_from_gguf_logits,
+            )
+
+            oracle_request = _request_with_tokenizer_eos(
+                continuation_request,
+                runner.generator.tokenizer,
+            )
+            oracle_sampling_state = _gguf_row_sampling_state(
+                oracle_request,
+                list(continued_prompt),
+                row_index=0,
+            )
+            oracle_sample = _select_from_gguf_logits(
+                semantic_result,
+                oracle_request,
+                oracle_sampling_state,
+            )
+            oracle_token = int(oracle_sample.token_id)
+        else:
+            oracle_token = int(semantic_result.token_id)
         reference_initial = _capture_state(oracle_session)
         initial_state_mismatches = _compare_states(candidate_initial, reference_initial)
 
@@ -592,9 +653,32 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             reference_logits.append(
                 np.ascontiguousarray(reference_result.logits, dtype=np.float32).copy()
             )
-            candidate_predicted.append(int(candidate_result.token_id))
-            reference_predicted.append(int(reference_result.token_id))
-            forced_token = int(reference_result.token_id)
+            if sampler_mode == "processed_argmax":
+                if (
+                    continuation_row.sampling_request is None
+                    or continuation_row.sampling_state is None
+                ):
+                    raise RuntimeError(
+                        "processed-argmax candidate lost its sampling state"
+                    )
+                candidate_sample = _select_from_gguf_logits(
+                    candidate_result,
+                    continuation_row.sampling_request,
+                    continuation_row.sampling_state,
+                )
+                reference_sample = _select_from_gguf_logits(
+                    reference_result,
+                    oracle_request,
+                    oracle_sampling_state,
+                )
+                candidate_next = int(candidate_sample.token_id)
+                reference_next = int(reference_sample.token_id)
+            else:
+                candidate_next = int(candidate_result.token_id)
+                reference_next = int(reference_result.token_id)
+            candidate_predicted.append(candidate_next)
+            reference_predicted.append(reference_next)
+            forced_token = reference_next
 
         metrics = evaluate_logits(
             np.stack(reference_logits, axis=0),
@@ -629,6 +713,22 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
         output_exact = continuation_token == oracle_token
         trajectory_exact = candidate_predicted == reference_predicted
+        candidate_sampler_mode = (
+            "unknown"
+            if continuation_row.sampler_plan is None
+            else str(continuation_row.sampler_plan.mode.value)
+        )
+        sampler_route_exact = bool(
+            candidate_sampler_mode == sampler_mode
+            and (
+                sampler_mode != "processed_argmax"
+                or (
+                    continuation_token == int(args.forced_token_id)
+                    and continuation_row.full_vocab_logits_d2h is True
+                    and int(continuation_row.logits_d2h_bytes or 0) > 0
+                )
+            )
+        )
         initial_state_exact = not initial_state_mismatches
         final_state_exact = not final_state_mismatches
         source_immutable = not source_immutability_mismatches
@@ -665,6 +765,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             and source_immutable
             and lifecycle_exact
             and production_metadata_exact
+            and sampler_route_exact
             and metrics.passed
         )
         payload = {
@@ -694,12 +795,26 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "suffix_tokens": suffix_tokens,
                 "teacher_forced_steps": teacher_steps,
                 "max_sequence_length": max_sequence_length,
-                "sampling": "greedy_top1_then_reference_teacher_forced",
+                "sampling": (
+                    "forced_sequence_processed_argmax_then_reference_teacher_forced"
+                    if sampler_mode == "processed_argmax"
+                    else "greedy_top1_then_reference_teacher_forced"
+                ),
                 "kv_dtype": "bf16",
                 "source_lifecycle": source_lifecycle,
+                "processor_forced_token_ids": (
+                    [int(args.forced_token_id), int(args.forced_token_id) + 1]
+                    if sampler_mode == "processed_argmax"
+                    else []
+                ),
             },
             "production_route": {
                 "prefix_cache_mode": "radix",
+                "requested_sampler_mode": sampler_mode,
+                "candidate_sampler_mode": candidate_sampler_mode,
+                "sampler_route_exact": sampler_route_exact,
+                "full_vocab_logits_d2h": continuation_row.full_vocab_logits_d2h,
+                "logits_d2h_bytes": continuation_row.logits_d2h_bytes,
                 "prefix_reused_tokens": int(continuation_row.prefix_reused_tokens),
                 "prefix_source_request_id": continuation_row.prefix_source_request_id,
                 "prefix_state_clone_bytes": int(continuation_row.prefix_state_clone_bytes),
@@ -729,9 +844,23 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "source_immutability_applicable": source_immutability_applicable,
                 "source_immutability_mismatches": source_immutability_mismatches,
                 "one_shot_bulk_diagnostic": {
+                    "applicable": one_shot_applicable,
+                    "skipped_reason": (
+                        None
+                        if one_shot_applicable
+                        else "diagnostic_bulk_prefill_limit_8192"
+                    ),
                     "predicted_token_id": one_shot_token,
-                    "output_exact": continuation_token == one_shot_token,
-                    "state_exact": not one_shot_state_mismatches,
+                    "output_exact": (
+                        continuation_token == one_shot_token
+                        if one_shot_applicable
+                        else None
+                    ),
+                    "state_exact": (
+                        not one_shot_state_mismatches
+                        if one_shot_applicable
+                        else None
+                    ),
                     "state_mismatch_summary": _summarize_mismatches(
                         one_shot_state_mismatches
                     ),
@@ -753,6 +882,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "forced_token_ids": forced_tokens,
                 "candidate_predicted_token_ids": candidate_predicted,
                 "reference_predicted_token_ids": reference_predicted,
+                "candidate_response_token_ids": candidate_predicted,
+                "reference_response_token_ids": reference_predicted,
                 "trajectory_exact": trajectory_exact,
                 "kl_mean": metrics.kl_mean,
                 "kl_max": metrics.kl_max,
@@ -842,6 +973,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--suffix-token-id", type=int, default=9708)
     parser.add_argument("--suffix-tokens", type=int, default=1)
     parser.add_argument("--teacher-forced-steps", type=int, default=4)
+    parser.add_argument(
+        "--sampler-mode",
+        choices=("greedy_fast", "processed_argmax"),
+        default="greedy_fast",
+    )
+    parser.add_argument("--forced-token-id", type=int, default=9709)
     parser.add_argument(
         "--source-lifecycle",
         choices=("active", "completed"),

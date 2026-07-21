@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import numpy as np
+
 from hipengine.generation.engine_loop import EngineLoopConfig
 from hipengine.generation.qwen35_gguf import Qwen35GGUFResidentModelRunner
 from hipengine.generation.registry import GenerationRequest
@@ -93,20 +95,35 @@ class _FakePrefixSession:
         self.snapshot_clone_calls.append((int(snapshot.source_slot_id), int(snapshot.position)))
         return int(snapshot.nbytes)
 
+    @staticmethod
+    def _result(*, return_logits: bool):
+        logits = None
+        if return_logits:
+            logits = np.full((1, 1024), -100.0, dtype=np.float32)
+            logits[0, 777] = 10.0
+        return SimpleNamespace(token_id=777, logits=logits)
+
+    def prefill(self, token_ids, *, return_logits: bool):
+        assert self.position == 0
+        prompt = tuple(int(token) for token in token_ids)
+        start = int(self.position)
+        self.position += len(prompt)
+        self.prefill_calls.append((prompt, start, int(self.position)))
+        return self._result(return_logits=return_logits)
+
     def prefill_batch_native(self, prompt_token_ids, *, sessions, **kwargs):
         assert sessions == [self]
         prompt = tuple(int(token) for token in prompt_token_ids[0])
         start = int(self.position)
         self.position += len(prompt)
         self.prefill_calls.append((prompt, start, int(self.position)))
-        return [SimpleNamespace(token_id=777)]
+        return [self._result(return_logits=bool(kwargs.get("return_logits", False)))]
 
     def step(self, token_id: int, *, return_logits: bool):
-        assert return_logits is False
         start = int(self.position)
         self.position += 1
         self.step_calls.append((int(token_id), start, int(self.position)))
-        return SimpleNamespace(token_id=777)
+        return self._result(return_logits=return_logits)
 
     def invalidate_device_kv_graphs(self) -> int:
         return 0
@@ -155,6 +172,7 @@ def _request(
     *,
     max_tokens: int,
     temperature: float = 0.0,
+    forced_token_id: int | None = None,
 ) -> GenerationRequest:
     return GenerationRequest(
         prompts=(prompt,),
@@ -162,6 +180,12 @@ def _request(
         temperature=temperature,
         top_p=1.0,
         ignore_eos=True,
+        forced_tokens_pending=(
+            () if forced_token_id is None else (int(forced_token_id),)
+        ),
+        forced_token_reason=(
+            None if forced_token_id is None else "tool_choice_required"
+        ),
     )
 
 
@@ -264,6 +288,153 @@ def test_resident_runner_reuses_exact_current_prefix_and_reclaims_source_first()
     assert runner.kv_pool.refcount(shared_block) == 0
     assert runner.kv_pool.stats.refcounted_pages == 0
     assert runner.available_session_count == 3
+    runner.close()
+
+
+def test_processed_argmax_reuses_completed_prefix_with_suffix_only_prefill() -> None:
+    owner = _FakePrefixOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=3)
+    runner.configure_engine_loop(
+        EngineLoopConfig(
+            max_active_requests=3,
+            kv_pool_initial_pages=9,
+            kv_pool_low_water_pages=9,
+            kv_pool_high_water_pages=9,
+            kv_pool_chunk_pages=9,
+            prefix_cache="radix",
+        )
+    )
+    prefix = tuple(range(1, 257))
+    source_request = _request(prefix, max_tokens=2, forced_token_id=811)
+    runner.register_batch((10,), source_request, prompt_rows=(prefix,))
+    runner.reserve_admission(SimpleNamespace(request_id=10))
+    source = runner._rows[10]
+    assert source.lease is not None
+    source.prefill_tokens_seen = len(prefix)
+    source.lease.session.position = len(prefix)
+    assert runner._refresh_prefix_cache(source) is True
+    source_snapshot = source.lease.session.snapshots[-1]
+    shared_block = source.kv_allocation.block_ids[0]
+
+    runner._release_row_resources(source, retain_prefix_snapshots=True)
+    runner._rows.pop(10)
+    assert runner.kv_pool.refcount(shared_block) == 1
+
+    continued_prompt = (*prefix, 999)
+    continued_request = _request(
+        continued_prompt,
+        max_tokens=2,
+        forced_token_id=812,
+    )
+    runner.register_batch((11,), continued_request, prompt_rows=(continued_prompt,))
+    runner.reserve_admission(SimpleNamespace(request_id=11))
+    continued = runner._rows[11]
+    assert continued.lease is not None
+    session = continued.lease.session
+    assert continued.sampler_plan.mode.value == "processed_argmax"
+    assert continued.prefix_reused_tokens == 256
+    assert continued.prefix_snapshot_hit is True
+    assert session.snapshot_clone_calls == [(source_snapshot.source_slot_id, 256)]
+
+    runner.prefill_batch(
+        WorkItem(
+            kind=WorkKind.PREFILL,
+            request_ids=(11,),
+            row_to_request=(11,),
+            token_rows=(prefix,),
+        ),
+        commit=True,
+    )
+    runner.prefill_batch(
+        WorkItem(
+            kind=WorkKind.PREFILL,
+            request_ids=(11,),
+            row_to_request=(11,),
+            token_rows=((999,),),
+        ),
+        commit=True,
+    )
+
+    assert session.prefill_calls == []
+    assert session.step_calls == [(999, 256, 257)]
+    assert continued.slot is not None
+    assert continued.slot.generated_ids == [812]
+    assert continued.sampling_state is not None
+    assert continued.sampling_state.generated_tokens == [812]
+    assert continued.full_vocab_logits_d2h is True
+    assert continued.logits_d2h_bytes == 4096
+    telemetry = runner._prefix_request_telemetry(continued)
+    assert telemetry["eligible"] is True
+    assert telemetry["lookup"] is True
+    assert telemetry["hit"] is True
+    assert telemetry["source"] == "completed_snapshot"
+    assert telemetry["reused_tokens"] == 256
+    assert telemetry["executed_prefill_tokens"] == 1
+    assert telemetry["fallback_reason"] is None
+
+    runner.rollback_admission(SimpleNamespace(request_id=11))
+    assert runner.kv_pool.refcount(shared_block) == 1
+    assert runner._evict_prefix_snapshot(prefix) is True
+    assert runner.kv_pool.refcount(shared_block) == 0
+    runner.close()
+
+
+def test_processed_argmax_radix_miss_captures_aligned_boundaries() -> None:
+    owner = _FakePrefixOwner()
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=3)
+    runner.configure_engine_loop(
+        EngineLoopConfig(
+            max_active_requests=3,
+            kv_pool_initial_pages=9,
+            kv_pool_low_water_pages=9,
+            kv_pool_high_water_pages=9,
+            kv_pool_chunk_pages=9,
+            prefix_cache="radix",
+        )
+    )
+    prompt = tuple(range(1, 514))
+    request = _request(prompt, max_tokens=2, forced_token_id=811)
+    runner.register_batch((12,), request, prompt_rows=(prompt,))
+    runner.reserve_admission(SimpleNamespace(request_id=12))
+    row = runner._rows[12]
+    assert row.prefix_eligible is True
+    assert row.prefix_lookup is True
+    assert row.prefix_fallback_reason == "miss"
+
+    runner.prefill_batch(
+        WorkItem(
+            kind=WorkKind.PREFILL,
+            request_ids=(12,),
+            row_to_request=(12,),
+            token_rows=(prompt,),
+        ),
+        commit=True,
+    )
+
+    assert row.lease is not None
+    session = row.lease.session
+    assert session.prefill_calls == [(prompt[:512], 0, 512)]
+    assert session.step_calls == [(513, 512, 513)]
+    assert session.snapshot_capture_calls == [512]
+    assert session.snapshots[0].closed is False
+    assert row.slot is not None
+    assert row.slot.generated_ids == [811]
+    assert runner._prefix_cache is not None
+    match = runner._prefix_cache.match(prompt)
+    assert match.hit is True
+    assert match.matched_token_count == 512
+    telemetry = runner._prefix_request_telemetry(row)
+    assert telemetry["eligible"] is True
+    assert telemetry["lookup"] is True
+    assert telemetry["hit"] is False
+    assert telemetry["matched_tokens"] == 0
+    assert telemetry["executed_prefill_tokens"] == 513
+    assert telemetry["fallback_reason"] == "miss"
+
+    runner._release_row_resources(row, retain_prefix_snapshots=True)
+    runner._rows.pop(12)
+    assert runner._evict_prefix_snapshot(prompt[:512]) is True
+    assert runner.kv_pool.stats.refcounted_pages == 0
     runner.close()
 
 

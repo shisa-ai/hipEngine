@@ -102,5 +102,16 @@ def test_completed_source_lifecycle_and_metadata_fail_closed() -> None:
         snapshot_hit=False,
     )
 
-    args = build_parser().parse_args(["--source-lifecycle", "completed"])
+    args = build_parser().parse_args(
+        [
+            "--source-lifecycle",
+            "completed",
+            "--sampler-mode",
+            "processed_argmax",
+            "--forced-token-id",
+            "811",
+        ]
+    )
     assert args.source_lifecycle == "completed"
+    assert args.sampler_mode == "processed_argmax"
+    assert args.forced_token_id == 811

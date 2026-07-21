@@ -172065,3 +172065,83 @@ separate correctness implementation for deterministic processed-argmax
 suffix-only reuse; stochastic sampling must remain explicit fallback. Task #225
 stays open and blocked until that implementation is committed/pushed and passes
 agentic-boundary output/state/KV/refcount/COW gates.
+
+## 2026-07-21 — Close deterministic processed-argmax prefix correctness
+
+Resolved task #233 without broadening radix to stochastic sampling. Prefix
+admission now accepts only `GREEDY_FAST` or deterministic
+`PROCESSED_ARGMAX`; `HOST_LOGITS_SAMPLE`/GPU sampling still fail closed as
+`sampling_unsupported`. Cache-off sampled execution is unchanged. On a radix
+miss, processed-argmax defers model work until the complete prompt is available,
+bulk-prefills the final 256-token boundary once, captures one bounded snapshot,
+and consumes only an unaligned tail through exact c1. On a hit, it restores the
+active/current or completed snapshot state/pages, skips all matched tokens,
+executes only the suffix through c1, asks for full-vocabulary logits on the final
+suffix token, and applies the original host processor state. A two-token forced
+sequence remains live across prefill and decode.
+
+Added RED/GREEN host coverage for processed-argmax completed-snapshot reuse,
+miss-to-aligned-snapshot creation, suffix-only execution, full-vocabulary D2H,
+forced-token selection, bounded promotion/eviction/refcount drain, and unchanged
+stochastic fallback. Snapshot capture now retains only the latest aligned state
+per active owner instead of copying every intermediate 256-token boundary.
+The first real p2048 gate then exposed recursive `RadixCache.stats` traversal;
+8K token-depth stats and entry-state enumeration are now iterative and have a
+new 8,192-token regression test. The p8192 gate also established that the
+non-gating one-shot 8,193-token diagnostic exceeds its private bulk-diagnostic
+limit; the gate skips only that diagnostic above 8,192 while retaining the
+independent exact 8,192-prefix plus c1-suffix semantic oracle.
+
+After waiting for GPU0/W7900 KFD ownership to clear, ran the final implementation
+on GPU0 for all four correctness combinations:
+
+```bash
+env HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/agentic-w7900-hipcc-version.txt \
+  uv run python scripts/gguf_prefix_reuse_gate.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --quant gguf_q4_k_m \
+  --prefix-tokens 2048 --suffix-tokens 1 \
+  --teacher-forced-steps 4 --max-sequence-length 2304 \
+  --source-lifecycle active \
+  --sampler-mode processed_argmax --forced-token-id 9709 \
+  --json /tmp/2026-07-21-gfx1100-gguf-processed-argmax-p2048-active-prefix-gate.json
+# Repeated with --source-lifecycle completed and its matching output; then with
+# --prefix-tokens 8192 --max-sequence-length 8448 for active and completed.
+```
+
+All p2048/p8192 active-current and completed-source gates pass the exact
+five-ID response trajectory `[9709, 9710, 13, 220, 16]`, including both forced
+processor tokens. Initial/final state, all 60 Conv/GDN plus 20 logical live-KV
+components, and source immutability are byte-exact. Teacher-forced KL mean/max
+is 0, top-1 is 100%, full-vocabulary D2H is 993,280 bytes, and state clone size
+is 66,846,720 bytes. The routes reuse 2,048/8,192 tokens over 8/32 pages
+(41,943,040/167,772,160 bytes). Page-aligned suffixes correctly require zero COW
+forks. Active refs drain to zero; completed refs follow `1->1->2->1->0` and
+explicit snapshot eviction leaves zero refcounted pages. Completed cache
+residency is exactly 108,789,760/234,618,880 bytes before eviction.
+
+Published correctness-only artifacts (`performance_claim=false`):
+
+- `benchmarks/results/2026-07-21-gfx1100-gguf-processed-argmax-p2048-active-prefix-correctness.json`
+  (SHA-256 `31504980ec737d32e6ce2be7611bfd48713e7276e528d0d97299cf0e72882324`);
+- `benchmarks/results/2026-07-21-gfx1100-gguf-processed-argmax-p2048-completed-prefix-correctness.json`
+  (SHA-256 `070a990c945109124451fcd4040be4f069a0e5e5822e38a23a6a9ac6aa3c7e2d`);
+- `benchmarks/results/2026-07-21-gfx1100-gguf-processed-argmax-p8192-active-prefix-correctness.json`
+  (SHA-256 `8aa6772ff650ac200d3b8336c8d3c4ee9d2a0dfc35cf5392376a9574360045b9`);
+- `benchmarks/results/2026-07-21-gfx1100-gguf-processed-argmax-p8192-completed-prefix-correctness.json`
+  (SHA-256 `41b7d7faf80ab6b636120ccc2b67942654f7906341887ea238a3313634b539eb`).
+
+This is A2.1 correctness and ownership evidence only. No performance timing is
+retained or claimed; radix remains default-off. Task #225 may resume only after
+this unit is committed and pushed.
+
+Final host validation passed **252 tests with 8 explicit GPU skips** across the
+GGUF sampled model loop, prefix runner/gate, radix/KV policy, dynamic-KV binding,
+arbitrary-C lifecycle, LLM path, chunked prefill, frozen A1/A2 artifacts, coding
+agent/live/conformance/quality traces, and prefix `/ready` server selections.
+Targeted Ruff, `git diff --check`, all four JSON fail-closed assertions,
+`resolve_worklog_conflict.py --check`, Markdown structure/table checks, and
+`sync_benchmark_readme.py --check` also pass. An optional repository-wide pytest
+run was stopped without failures after 33% when it entered unrelated long GPU
+matrices; it is not cited as the applicable validation gate.
