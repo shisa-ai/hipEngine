@@ -172682,3 +172682,27 @@ Validation:
 
 All failed/stopped packets remain diagnostics with no retained artifact or
 performance claim. The clean full A5 packet must restart from this source.
+
+## 2026-07-22 — Release pre-start controlled-stream reservations
+
+The next W7900 retry proved the resident cancellation drain worked: after the
+cancellation packet, resident active/pending rows and KV refs were all zero.
+The gate still waited because the server generation batcher reported one active
+request with no queued work, no live socket, and no active resident row. The
+remaining race was a controlled producer task cancelled before its coroutine
+body entered the `try/finally`; active ownership had been reserved synchronously
+at launch, but only the never-entered coroutine released it.
+
+Controlled-stream ownership release is now idempotent and runs both from the
+coroutine `finally` and the task done callback. Normal producers release before
+capacity waiters resume; pre-start cancellation falls back to the callback and
+cannot leave a stale admission count.
+
+Validation:
+
+- RED: a task cancelled immediately after `_launch_controlled_stream()` left `active_requests=1` after task completion.
+- GREEN: pre-start cancel, pending-cancellation drain, active-cap/live-neighbor, slow-consumer, cooperative close, forced shutdown, caller/HTTP disconnect, and resident lifecycle pass **10/10**.
+- Targeted Ruff, Python compilation, and diff checks pass with only the existing Starlette/httpx warning.
+
+The failed W7900 retry remains diagnostic-only. A5 must restart from the clean
+commit before retaining a pressure/soak result.

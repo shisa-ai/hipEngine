@@ -2276,10 +2276,15 @@ class _GenerationBatcher:
         self._stream_items[id(item)] = item
 
         def finished(done: asyncio.Task[None]) -> None:
+            self._release_controlled_stream(item)
             self._stream_tasks.discard(done)
             self._stream_items.pop(id(item), None)
 
         task.add_done_callback(finished)
+
+    def _release_controlled_stream(self, item: _QueuedGeneration) -> None:
+        if self._active_items.pop(id(item), None) is not None:
+            self._active_requests = max(0, self._active_requests - 1)
 
     async def _run_controlled_stream(self, item: _QueuedGeneration, engine: Any) -> None:
         try:
@@ -2303,8 +2308,7 @@ class _GenerationBatcher:
                 drain_cancellations = getattr(engine, "drain_generation_cancellations", None)
                 if callable(drain_cancellations):
                     await run_in_threadpool(drain_cancellations)
-            self._active_items.pop(id(item), None)
-            self._active_requests = max(0, self._active_requests - 1)
+            self._release_controlled_stream(item)
 
     async def _run_group(self, group: Sequence[_QueuedGeneration]) -> None:
         if not group:
