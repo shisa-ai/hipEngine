@@ -43,8 +43,10 @@ also closed before timing: native-eligible auto-tool sampling fails the frozen
 turn-1 strict-envelope oracle, while valid specific/required tool forcing remains
 explicit host fallback. The GGUF native sampler therefore stays default-off.
 A4 routing is also closed without promotion: every candidate fails a balanced
-mixed-arrival SLO or exact-ID gate. The next independent measured unit is A5
-pressure/soak on unchanged package defaults.
+mixed-arrival SLO or exact-ID gate. A5 now closes pressure/soak on unchanged
+package defaults: all nine workloads pass exactness, SLO, bounded-resource, and
+final-ownership gates across 122 requests. A6 automatic-tool quality is the next
+independent measured unit.
 
 ## Current status report
 
@@ -88,6 +90,7 @@ fail-safe envelopes; they do not prove broad live-model tool-use quality.
 | Same-loop serial C13 control | **31.708 aggregate tok/s** | same F1 artifact |
 | Coding-agent A1 active SSE | Small **16.239/15.995/16.020**, growing **15.100/15.231/15.036**, medium **4.127/4.629/4.339 tok/s** at C1/C4/C8 | `benchmarks/results/2026-07-21-w7900-agentic-a1-repeated-baseline.json` |
 | Coding-agent A4 routing/SLO | **Blocked, no performance row**: 8 candidates x 3 balanced mixed-arrival passes; control misses one TTFT SLO and alternatives produce 9 late p512/d48 ID mismatches | `benchmarks/results/2026-07-22-w7900-agentic-a4-routing-decision.json` |
+| Coding-agent A5 pressure/soak | **Passed correctness/SLO; no comparative performance claim**: 122 requests, 108 completions, 12 exact retryable rejects, one disconnect, one deadline; 80 s soak is 40/40 exact and final ownership is zero | `benchmarks/results/2026-07-22-w7900-agentic-a5-pressure-soak-closure.json` |
 | PARO direct selected-batch c2 | **121.923 aggregate tok/s**, +5.09% vs c1 and +20.81% vs serial c2 | `benchmarks/results/2026-07-18-gfx1100-paro-g2-selected-batch-c2-retained.json` |
 | PARO MTP N4 after parallel router | **66.303/66.259 tok/s**, about **0.592x true AR** | `benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-parallel-router-topk.json` |
 
@@ -125,7 +128,7 @@ resident-session semantics.
    package control misses TTFT p95 once; alternatives produce nine late
    `fixed-0011` p512/d48 trajectory mismatches after 20-24 exact IDs. A4 must
    localize that state/KV or physical-width transition before any C1/C2/C4/C8
-   promotion timing. Long-context pressure remains separate A5 coverage.
+   promotion timing. Long-context pressure is covered separately by the A5 closure.
 3. **GGUF has no promotable native sampled tool route.** The explicit candidate
    removes full-vocabulary D2H for supported c1 and dense compatible c>N rows,
    but specific/required tool forcing, close queues, and other dynamic processors
@@ -309,11 +312,35 @@ cancellation/backpressure/overload promotion rows. No timing is inferred, no
 runtime default changes, and gfx1100 remains on
 `protect_decode:256/burst-1` with the zero-ms package window. A4 can rerun only
 after a model-general exactness gate localizes and repairs the late state/KV or
-physical-width transition. A5 pressure/soak may proceed independently on the
-unchanged default. Artifacts:
+physical-width transition. A5 pressure/soak proceeded independently on the
+unchanged default and is closed below. Artifacts:
 `benchmarks/results/2026-07-22-w7900-agentic-a4-routing-screen-blocked.json`
 and
 `benchmarks/results/2026-07-22-w7900-agentic-a4-routing-decision.json`.
+
+The independent A5 pressure/soak packet is now complete on those unchanged
+defaults. One clean W7900 process serves all nine real-Uvicorn workloads over
+**122 requests**: **108 complete**, **12** overload rows receive exact retryable
+`429 engine_busy`, one row disconnects after two exact IDs with **44.5 ms**
+reclaim acknowledgement, and one deadline returns the distinct timeout path.
+All **2,482** observed generated IDs are exact, including the disconnected pair;
+completed rows own **2,480** IDs. The bounded 80-second soak completes **40/40**
+requests at **11.151 exact SLO-goodput tok/s**, while the overload wave completes
+**20** and rejects **12** at **21.717 tok/s**.
+
+Queue depth reaches its declared **16** cap, the slow consumer's stream queue
+peaks at **1/16**, resident active/pending rows peak at **4/3**, and the dynamic
+KV pool grows **3 -> 12 pages** then records **15 grow / 15 shrink** events with
+zero failures. The packet records **28 graph captures / 998 replays / 28
+invalidations**, releases **7,245,205,456 workspace bytes**, returns tracked
+memory below baseline, and closes with zero request, queue, KV ref/pin,
+graph-entry, workspace, or model owners. Forty-one KFD samples see only the
+target process on GPU0 and zero GPU1 activity. Cache remains off by the A2
+performance decision; cache-pressure/eviction coverage is cryptographically
+linked to the exact p2048/p8192 A2 lifecycle closure, whose explicit eviction
+ends with zero refs. This is valid bounded reliability and absolute SLO evidence,
+not a tuning comparison or multi-day soak claim. Artifact:
+`benchmarks/results/2026-07-22-w7900-agentic-a5-pressure-soak-closure.json`.
 
 ### P3 — Integrate native GGUF GPU sampling
 
@@ -523,9 +550,10 @@ Every retained comparison requires:
   three balanced delayed mixed-arrival passes, but the control misses one TTFT
   SLO and every faster alternative has at least one late p512/d48 ID mismatch;
   no occupancy/promotion timing or default change exists.
-- **A5 — pressure/soak (next):** cancellation, slow consumer, queue/KV/cache pressure,
-  eviction, and final ownership.
-- **A6 — quality lane:** automatic tool selection and repository-task oracles,
+- **A5 — pressure/soak (complete):** all nine workloads pass cancellation,
+  slow-consumer, queue/KV/cache pressure, eviction-link, SLO, GPU-exclusivity,
+  and final-ownership gates across 122 requests; no tuning comparison.
+- **A6 — quality lane (next):** automatic tool selection and repository-task oracles,
   reported separately from deterministic engine performance.
 
 ### Current implementation status
