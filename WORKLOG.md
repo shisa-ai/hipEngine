@@ -172475,3 +172475,59 @@ GREEN passes **15/15** across the production-load contract plus server-window
 and engine-loop package defaults. Ruff, Python compilation, protocol JSON, and
 diff checks pass; only the existing Starlette/httpx warning remains. This is a
 measurement-harness unit with no GPU result or performance claim.
+
+## 2026-07-22 — Stop A4 at the balanced mixed-arrival prerequisite
+
+Ran the frozen eight-candidate A4 screen from clean pushed `fb744f03` on the
+W7900 with GPU0 visibility pinned, cache/native-sampler/speculative paths off,
+exact GDN prefill, packed AR, BF16 KV, 12 delayed requests per candidate, and
+three one-third-rotated independently drained repetitions. The workload cycles
+`p64/d16`, `p128/d24`, `p256/d32`, `p512/d48`, `p64/d48`, `p128/d32`,
+`p256/d24`, and `p512/d16` at two arrivals/s. All 288 requests completed over
+24 candidate samples; routing used native c1/packed c2/c4 with no serial or
+resident fallback, and final ownership reclaimed all **288/288** requests with
+zero active/pending/queued/model owners and zero KV refs/pins.
+
+The prerequisite failed closed. The zero-window package control remained exact
+in all three repetitions but missed the declared **10 s TTFT p95** SLO in its
+third pass (**10.983 s**, versus 6.098/9.567 s earlier). Every apparently faster
+alternative failed independent-C1 generated-ID parity at least once. All nine
+mismatches are the late `fixed-0011` p512/d48 row: it emits 20-24 correct token
+`9710` IDs, then changes trajectory while still completing 48 response-owned
+IDs with `finish_reason=length`. HTTP/SSE framing, prompt counts, route, and
+ownership remain valid, so this is a state/KV/physical-width-transition
+correctness blocker rather than an accounting failure.
+
+Diagnostic-only candidate medians (none performance-eligible):
+
+| Candidate | Exact SLO-goodput (tok/s) | TTFT p95 (s) | ITL p99 (s) | Result |
+| --- | ---: | ---: | ---: | --- |
+| `pd256_b1_w0_control` | 27.969 | 9.567 | 0.0736 | rejected: one TTFT-SLO miss |
+| `pt256_b1_w0` | 41.443 | 0.948 | 0.3541 | rejected: one ID mismatch |
+| `fair128_b1_w0` | 35.815 | 1.629 | 0.1915 | rejected: two ID mismatches |
+| `fair256_b1_w0` | 43.942 | 0.983 | 0.2197 | rejected: one ID mismatch |
+| `fair256_b2_w0` | 45.817 | 0.851 | 0.2252 | rejected: one ID mismatch |
+| `pd256_b1_w5` | 29.979 | 8.788 | 0.0644 | rejected: one TTFT-SLO miss |
+| `fair256_b2_w5` | 39.537 | 1.075 | 0.2345 | rejected: three ID mismatches |
+| `fair256_b2_w100` | 38.408 | 0.992 | 0.2348 | rejected: one ID mismatch |
+
+The packet observed **8,640** generated IDs, of which **8,208** belong to fully
+exact rows. Goodput deltas up to +63.81% are explicitly diagnostic and cannot
+override correctness. The activity monitor sampled card0/card1 164 times at
+2 s cadence; card0 reached 84% use while card1 stayed at 0% throughout. Its CSV
+did not expose per-process KFD identity, so no uncontended performance claim is
+made.
+
+Published
+`benchmarks/results/2026-07-22-w7900-agentic-a4-routing-screen-blocked.json`
+(SHA-256 `cfad064f1a387a8c5e41d12167edc5377815649af67b20ed0294d713932e2969`).
+The 81,789,027-byte raw packet remains under `/tmp` with SHA-256
+`0063e199f3f4a12b1d3afa02901ee5c27a84373c6e82fa5f4dc14c9669e7f82a`.
+No candidate is selected; C1/C2/C4/C8 promotion timing, strict-tool guards, and
+cancellation/backpressure/overload rows are intentionally skipped rather than
+inferred. gfx1100 keeps `protect_decode:256/burst-1` and its zero-ms package
+window. Before rerunning A4, localize the late p512/d48 state/KV or width
+transition against its independent C1 trajectory, then restart all eight frozen
+candidates. The artifact/load-gate bundle passes **14/14**; targeted Ruff, JSON,
+Worklog conflict, and diff checks pass with only the existing Starlette/httpx
+warning.
