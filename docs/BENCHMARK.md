@@ -917,6 +917,15 @@ A1 uses `scripts/agentic_coding_live.py` against an already-running real server.
 It renders exact tokenizer-sized prefixes, builds deterministic prior tool
 transcripts, obtains an independent non-streaming c1 exact-token/tool oracle
 outside the measured window, and releases the measured SSE requests together.
+Retained server goodput uses `active_sse_wave_wall_s`: for each
+`(run_id, workload_id, turn_index)` wave, take maximum `response_done_at_s`
+minus minimum `submitted_at_s`, then sum the wave walls. This excludes the
+independent blocking oracles and tokenizer/control preparation between turns.
+The older `workload_wall_s` spans first measured submit through final tool-result
+submit and therefore includes those inter-turn controls; its scope is now
+explicitly `first_submit_to_last_tool_result_submit_including_inter_turn_control`
+and its tok/s is diagnostic only for live A1. Buffered public tool streams report
+validated tool-ready latency, not lower-loop TTFT, and still cannot report ITL.
 For example:
 
 ```bash

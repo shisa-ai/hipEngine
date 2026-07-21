@@ -123,7 +123,7 @@ class LiveHTTPTransport:
         *,
         messages: Sequence[Mapping[str, Any]],
         tools: Sequence[Mapping[str, Any]],
-        tool_choice: Mapping[str, Any],
+        tool_choice: Mapping[str, Any] | str,
     ) -> list[int]:
         rendered = self._json_request(
             "POST",
@@ -131,7 +131,9 @@ class LiveHTTPTransport:
             {
                 "messages": list(messages),
                 "tools": list(tools),
-                "tool_choice": dict(tool_choice),
+                "tool_choice": (
+                    dict(tool_choice) if isinstance(tool_choice, Mapping) else str(tool_choice)
+                ),
                 "enable_thinking": False,
             },
         )

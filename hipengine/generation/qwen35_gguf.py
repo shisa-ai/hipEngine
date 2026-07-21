@@ -768,7 +768,13 @@ class Qwen35GGUFBringupGenerator:
             result["packed_ar_prefill_reason"] = "backend_hook_unavailable"
             result["reason"] = "backend_hook_unavailable"
         else:
-            ar_widths = [width for width in (2, 4, 8) if width <= max_batch]
+            plain_ar_limit = self.server_plain_ar_max_active_requests
+            ar_max_batch = (
+                max_batch
+                if plain_ar_limit is None
+                else min(max_batch, max(1, int(plain_ar_limit)))
+            )
+            ar_widths = [width for width in (2, 4, 8) if width <= ar_max_batch]
             for width in sorted(set(ar_widths)):
                 for target_len in warm_prompt_lengths:
                     sessions: list[Qwen35GGUFResidentSession] = []
@@ -3842,6 +3848,11 @@ class Qwen35GGUFBringupGenerator:
                 row_index=0,
                 phase="answer",
             ),
+            generated_token_ids=(
+                tuple(generated_ids)
+                if finished or len(generated_ids) >= request.max_tokens
+                else None
+            ),
         )
         if finished:
             return
@@ -3864,6 +3875,11 @@ class Qwen35GGUFBringupGenerator:
                     request,
                     row_index=0,
                     phase="answer",
+                ),
+                generated_token_ids=(
+                    tuple(generated_ids)
+                    if finished or len(generated_ids) >= request.max_tokens
+                    else None
                 ),
             )
             if finished:
@@ -3913,6 +3929,11 @@ class Qwen35GGUFBringupGenerator:
                 full_vocab_logits_d2h=full_vocab_logits_d2h,
                 logits_d2h_bytes=logits_d2h_bytes,
             ),
+            generated_token_ids=(
+                tuple(generated_ids)
+                if finished or len(generated_ids) >= sampling_request.max_tokens
+                else None
+            ),
         )
         if finished:
             return
@@ -3948,6 +3969,11 @@ class Qwen35GGUFBringupGenerator:
                     forced_sample=sample,
                     full_vocab_logits_d2h=full_vocab_logits_d2h,
                     logits_d2h_bytes=logits_d2h_bytes,
+                ),
+                generated_token_ids=(
+                    tuple(generated_ids)
+                    if finished or len(generated_ids) >= sampling_request.max_tokens
+                    else None
                 ),
             )
             if finished:
@@ -4888,6 +4914,7 @@ class Qwen35GGUFResidentModelRunner:
                                 token_logprobs=output.token_logprobs,
                                 finish_details=output.finish_details,
                                 telemetry=output.telemetry,
+                                generated_token_ids=output.generated_token_ids,
                             ),
                         )
                     )
@@ -5226,7 +5253,30 @@ class Qwen35GGUFResidentModelRunner:
             row_index=row.row_index,
         )
         start = time.perf_counter()
-        result = lease.session.prefill(row.prompt_ids, return_logits=True)
+        native_compact_prefill = False
+        if _gguf_device_kv_contiguous_base_row(lease.session) == 0:
+            result = lease.session.prefill(row.prompt_ids, return_logits=True)
+        else:
+            prefill_batch = getattr(lease.session, "prefill_batch_native", None)
+            if not callable(prefill_batch):
+                raise RuntimeError(
+                    "shifted sampled GGUF KV requires block-table-aware prefill"
+                )
+            with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
+                results = prefill_batch(
+                    [row.prompt_ids],
+                    sessions=[lease.session],
+                    full_prompt_lengths=[len(row.prompt_ids)],
+                    return_logits=True,
+                    return_hidden_seeds=False,
+                )
+            result_list = [] if results is None else list(results)
+            if len(result_list) != 1:
+                raise RuntimeError(
+                    "shifted sampled GGUF prefill did not return exactly one result"
+                )
+            result = result_list[0]
+            native_compact_prefill = True
         sample = _select_from_gguf_logits(result, sampling_request, sampling_state)
         full_vocab_logits_d2h, logits_d2h_bytes = _gguf_logits_d2h_metadata(result)
         token = int(sample.token_id)
@@ -5271,6 +5321,7 @@ class Qwen35GGUFResidentModelRunner:
                     sampling_request,
                 )
             ),
+            native_compact_prefill=native_compact_prefill,
         )
 
     def _prefill_native_chunk(
@@ -5954,6 +6005,7 @@ class Qwen35GGUFResidentModelRunner:
                 native_sampler_rows=False,
                 sampler_plan=row.sampler_plan,
             ),
+            generated_token_ids=generated_ids if slot.done else None,
         )
 
     def _native_output(
@@ -6431,6 +6483,7 @@ def _gguf_scheduler_token_chunks(
                     serial_decode_fallback=serial_fallback,
                     native_sampler_rows=False,
                 ),
+                generated_token_ids=tuple(prefix) if final else None,
             )
             chunks.append(_gguf_scheduler_token_chunk_payload(request_id, token_index, int(token_id), chunk))
     return chunks
@@ -6464,6 +6517,8 @@ def _gguf_scheduler_token_chunk_payload(
         ]
     if chunk.finish_details is not None:
         payload["chunk"]["finish_details"] = chunk.finish_details.to_json_dict()
+    if chunk.generated_token_ids is not None:
+        payload["chunk"]["generated_token_ids"] = list(chunk.generated_token_ids)
     if chunk.telemetry is not None:
         payload["chunk"]["telemetry"] = chunk.telemetry.to_json_dict()
     return payload
@@ -6690,11 +6745,19 @@ def make_qwen35_gguf_bringup_generator(
     weight_index: GGUFModelInfo,
     model_plugin: Any,
 ) -> Qwen35GGUFBringupGenerator:
+    backend = "hip_gfx1100"
     return Qwen35GGUFBringupGenerator(
         model_path=model_path,
         weight_index=weight_index,
         model_plugin=model_plugin,
-        backend="hip_gfx1100",
+        backend=backend,
+        server_plain_ar_max_active_requests=int(
+            backend_package_capability(
+                backend,
+                "GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS",
+                4,
+            )
+        ),
     )
 
 

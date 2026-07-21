@@ -106,6 +106,47 @@ def test_llm_generate_dispatches_through_generation_registry(monkeypatch) -> Non
     )
 
 
+def test_llm_caps_resident_capacity_to_registered_plain_ar_width(monkeypatch) -> None:
+    import hipengine.generation as generation
+    import hipengine.loading as loading
+    import hipengine.models as models
+
+    class CappedFakeGenerator:
+        server_plain_ar_max_active_requests = 4
+
+        def generate(self, request: GenerationRequest) -> list[str]:
+            return [f"{prompt}!" for prompt in request.prompts]
+
+    fake_index = SimpleNamespace(
+        config={"architectures": ["CappedFakeForCausalLM"]},
+        model_path="/tmp/fake-model",
+    )
+    fake_plugin = SimpleNamespace(name="capped_fake_model")
+    monkeypatch.setattr(generation, "register_builtin_generators", lambda: None)
+    monkeypatch.setattr(loading, "load_weight_index", lambda model: fake_index)
+    monkeypatch.setattr(models, "resolve_model", lambda architecture: fake_plugin)
+    register_text_generator(
+        model="capped_fake_model",
+        backend="fake_backend",
+        quant="fake_quant",
+        factory=lambda **kwargs: CappedFakeGenerator(),
+        replace=True,
+    )
+
+    llm = LLM(
+        "/tmp/fake-model",
+        backend="fake_backend",
+        quant="fake_quant",
+        max_active_requests=8,
+    )
+    output = llm.generate(["a", "b"], SamplingParams(max_tokens=1))
+
+    assert output == ["a!", "b!"]
+    assert llm.max_active_requests == 8
+    assert llm.server_plain_ar_max_active_requests == 4
+    assert llm._text_generator._runner.capacity == 4
+
+
 def test_llm_generate_detailed_preserves_exact_token_prompt_rows(monkeypatch) -> None:
     import hipengine.generation as generation
     import hipengine.loading as loading

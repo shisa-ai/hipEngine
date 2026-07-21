@@ -938,6 +938,7 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "backend_prefill_timing": "GenerationTelemetry.timing_when_available",
         "choice_phase": True,
         "choice_finish_details": True,
+        "choice_generated_token_ids": "done_event_when_backend_supplies_exact_ids",
         "choice_token_accounting": True,
         "choice_token_accounting_scopes": ["live_delta", "buffered_delta", "final_choice"],
         "choice_decode_state": True,
@@ -1207,7 +1208,11 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "format",
         ],
         "format": "qwen_tool_call_json",
-        "compatibility_parser_repairs": ["duplicated_tool_call_start"],
+        "compatibility_parser_repairs": [
+            "duplicated_tool_call_start",
+            "incomplete_duplicate_tool_prefix_control_residue",
+            "outer_qwen_template_control_residue",
+        ],
         "malformed_json_compatibility": "invalid_tool_call_when_tools_enabled",
         "strict_malformed_blocks_rejected": True,
         "declared_tool_name_validation": True,
@@ -1227,7 +1232,11 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
         "required_tool_start_forcing": True,
         "required_tool_start_forcing_scope": "initial_or_after_tokenized_thinking_close",
         "specific_tool_name_prefix_forcing": True,
+        "specific_tool_name_prefix_forcing_scope": "atomic_tool_call_name_and_arguments_key",
+        "strict_tool_schema_prefix_anchor": True,
+        "strict_tool_schema_prefix_anchor_scope": "selected_closed_object_first_required_string_key",
         "tool_call_close_repair": True,
+        "tool_call_close_repair_scope": "tokenizer_safe_marker_or_object_envelope_then_stop",
     }
     assert body["features"]["reasoning_controls"] == {
         "enabled": True,
@@ -2542,6 +2551,48 @@ def test_startup_scratch_probe_uses_max_active_request_width() -> None:
     assert response.status_code == 200
     assert fake.scratch_prepares
     assert fake.scratch_prepares[0]["max_batch_size"] == 4
+
+
+def test_startup_scratch_probe_clamps_to_registered_plain_ar_route_width() -> None:
+    class CappedPlainARFakeLLM(FakeLLM):
+        server_plain_ar_max_active_requests = 4
+
+    fake = CappedPlainARFakeLLM(outputs=["warm"])
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        max_active_requests=8,
+    )
+    app = create_app(config, llm=fake)
+
+    with TestClient(app) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 200
+    assert fake.scratch_prepares
+    assert fake.scratch_prepares[0]["max_batch_size"] == 4
+    assert response.json()["startup"]["checks"]["scratch_probe"]["result"]["max_batch_size"] == 4
+
+
+def test_startup_scratch_probe_keeps_admission_width_for_enabled_mtp_route() -> None:
+    class CappedPlainARWithMTPFakeLLM(SpeculativeMTPFakeLLM):
+        server_plain_ar_max_active_requests = 4
+
+    fake = CappedPlainARWithMTPFakeLLM()
+    config = ServerConfig(
+        model="fake-path",
+        served_model_name="fake-model",
+        max_active_requests=8,
+        speculative_mtp_serving="opt_in",
+    )
+    app = create_app(config, llm=fake)
+
+    with TestClient(app) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 200
+    assert fake.scratch_prepares
+    assert fake.scratch_prepares[0]["max_batch_size"] == 8
 
 
 def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -13252,10 +13303,197 @@ def test_chat_completion_strips_qwen_terminal_residue_around_tool_call() -> None
     assert "<|im_end|>" not in response.text
 
 
+def test_chat_completion_strips_qwen_role_template_residue_around_tool_call() -> None:
+    fake = FakeLLM(
+        outputs=[
+            '<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>'
+            '<|endoftext|><|im_start|><|im_start|><|im_start|>user\n'
+            '<|im_start|><|im_start|>'
+        ]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read the readme"}],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "description": "Read a file",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "tool_calls"
+    assert choice["message"]["content"] == ""
+    assert choice["message"]["tool_calls"][0]["function"]["name"] == "read"
+    assert "<|endoftext|>" not in response.text
+    assert "<|im_start|>" not in response.text
+
+
+def _incomplete_duplicate_read_tool_output() -> str:
+    return (
+        '<tool_call>{"name":"read","arguments":{<|im_end|>\n\n'
+        '<|im_start|>assistant\n'
+        '<tool_call>{"name":"read","arguments":{"path":"pyproject.toml",'
+        '"mode":"summary"}}</tool_call>'
+        '<|im_end|><|endoftext|>'
+        '<|im_start|><|im_start|><|im_start|><|im_start|><|im_start|>'
+    )
+
+
+def test_chat_completion_strips_incomplete_duplicate_tool_prefix_control_residue() -> None:
+    fake = FakeLLM(outputs=[_incomplete_duplicate_read_tool_output()])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read pyproject"}],
+            "tool_choice": {"type": "function", "function": {"name": "read"}},
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "tool_calls"
+    assert choice["message"]["content"] == ""
+    _assert_openai_tool_call_shape(
+        choice["message"]["tool_calls"][0],
+        name="read",
+        arguments={"path": "pyproject.toml", "mode": "summary"},
+    )
+    assert "<|im_start|>" not in response.text
+
+
+def test_chat_completion_preserves_incomplete_duplicate_prefix_with_ordinary_content() -> None:
+    valid_call = (
+        '<tool_call>{"name":"read","arguments":{"path":"pyproject.toml",'
+        '"mode":"summary"}}</tool_call>'
+    )
+    raw_output = "Keep this literal prefix: " + _incomplete_duplicate_read_tool_output()
+    expected_content = raw_output.replace(valid_call, "").strip()
+    fake = FakeLLM(outputs=[raw_output])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read pyproject"}],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {"name": "read", "parameters": {"type": "object"}},
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "tool_calls"
+    assert choice["message"]["content"] == expected_content
+    assert choice["message"]["tool_calls"][0]["function"]["name"] == "read"
+
+
+def test_chat_completion_preserves_mismatched_incomplete_duplicate_tool_prefix() -> None:
+    valid_call = (
+        '<tool_call>{"name":"read","arguments":{"path":"pyproject.toml",'
+        '"mode":"summary"}}</tool_call>'
+    )
+    raw_output = _incomplete_duplicate_read_tool_output().replace(
+        '"name":"read"',
+        '"name":"write"',
+        1,
+    )
+    expected_content = raw_output.replace(valid_call, "").strip()
+    fake = FakeLLM(outputs=[raw_output])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read pyproject"}],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {"name": "read", "parameters": {"type": "object"}},
+                },
+                {
+                    "type": "function",
+                    "function": {"name": "write", "parameters": {"type": "object"}},
+                },
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "tool_calls"
+    assert choice["message"]["content"] == expected_content
+    assert choice["message"]["tool_calls"][0]["function"]["name"] == "read"
+
+
+def test_chat_completion_rejects_incomplete_duplicate_prefix_without_valid_call() -> None:
+    raw_output = (
+        '<tool_call>{"name":"read","arguments":{<|im_end|>\n\n'
+        '<|im_start|>assistant\n<|im_end|><|endoftext|>'
+    )
+    fake = FakeLLM(outputs=[raw_output])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read pyproject"}],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {"name": "read", "parameters": {"type": "object"}},
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert raw_output not in response.text
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "stop"
+    assert choice["finish_details"] == _stateless_finish_details("invalid_tool_call")
+    assert choice["message"] == {"role": "assistant", "content": ""}
+
+
 def test_chat_completion_terminal_cleanup_preserves_interior_literal_content() -> None:
     fake = FakeLLM(
         outputs=[
-            '<|im_end|>Keep <|im_end|> literal. '
+            '<|im_end|>Keep <|im_end|> and <|im_start|>user literal. '
             '<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>'
             '<|im_end|>'
         ]
@@ -13284,7 +13522,7 @@ def test_chat_completion_terminal_cleanup_preserves_interior_literal_content() -
     assert response.status_code == 200
     choice = response.json()["choices"][0]
     assert choice["finish_reason"] == "tool_calls"
-    assert choice["message"]["content"] == "Keep <|im_end|> literal."
+    assert choice["message"]["content"] == "Keep <|im_end|> and <|im_start|>user literal."
     assert choice["message"]["tool_calls"][0]["function"]["name"] == "read"
 
 
@@ -13922,7 +14160,7 @@ def test_chat_completion_tool_choice_none_suppresses_tool_call_start_token() -> 
         {"type": "function", "function": {"name": "read"}},
     ],
 )
-def test_chat_completion_required_tool_choice_forces_tool_call_start_tokens(tool_choice) -> None:
+def test_chat_completion_required_tool_choice_forces_atomic_tool_json_prefix(tool_choice) -> None:
     fake = FakeLLM(
         outputs=["ordinary answer"],
         token_map={
@@ -13947,12 +14185,17 @@ def test_chat_completion_required_tool_choice_forces_tool_call_start_tokens(tool
     )
 
     assert response.status_code == 200
-    assert fake.tokenize_calls == ["<tool_call>", '<tool_call>{"name":"read","arguments":', "</tool_call>"]
+    assert fake.tokenize_calls == [
+        "<tool_call>",
+        '<tool_call>{"name":"read","arguments":',
+        "</tool_call>",
+    ]
     params = fake.calls[-1][1]
-    assert params.forced_tokens_pending == (77, 78)
+    assert params.forced_tokens_pending == (77, 78, 90, 91, 92)
     assert params.forced_token_reason == "tool_choice_required"
-    assert params.force_sequence_completion_token_sequences == ((77, 78, 90, 91, 92), (88, 89))
+    assert params.force_sequence_completion_token_sequences == ((88, 89),)
     assert params.force_sequence_completion_reason == "tool_call_sequence_completion"
+    assert params.stop_token_sequences == ((88, 89),)
     choice = response.json()["choices"][0]
     assert choice["finish_reason"] == "stop"
     assert choice["finish_details"] == _stateless_finish_details("tool_required_not_satisfied")
@@ -13995,10 +14238,11 @@ def test_chat_completion_required_tool_choice_queues_tool_start_after_thinking_b
     ]
     params = fake.calls[-1][1]
     assert params.forced_tokens_pending == ()
-    assert params.post_thinking_forced_tokens_pending == (77, 78)
+    assert params.post_thinking_forced_tokens_pending == (77, 78, 90, 91, 92)
     assert params.post_thinking_forced_token_reason == "tool_choice_required"
-    assert params.force_sequence_completion_token_sequences == ((77, 78, 90, 91, 92), (88, 89))
+    assert params.force_sequence_completion_token_sequences == ((88, 89),)
     assert params.force_sequence_completion_reason == "tool_call_sequence_completion"
+    assert params.stop_token_sequences == ((88, 89),)
     assert params.thinking_close_token_ids == (91, 92)
     assert params.thinking_hard_token_cap == 512
     choice = response.json()["choices"][0]
@@ -14006,7 +14250,13 @@ def test_chat_completion_required_tool_choice_queues_tool_start_after_thinking_b
 
 
 def test_chat_completion_required_tool_choice_skips_name_prefix_with_multiple_tools() -> None:
-    fake = FakeLLM(outputs=["ordinary answer"], token_map={"<tool_call>": [77, 78], "</tool_call>": [88, 89]})
+    fake = FakeLLM(
+        outputs=["ordinary answer"],
+        token_map={
+            "<tool_call>": [77, 78],
+            "</tool_call>": [88, 89],
+        },
+    )
     app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
     client = TestClient(app)
 
@@ -14029,14 +14279,112 @@ def test_chat_completion_required_tool_choice_skips_name_prefix_with_multiple_to
     assert params.forced_tokens_pending == (77, 78)
     assert params.force_sequence_completion_token_sequences == ((88, 89),)
     assert params.force_sequence_completion_reason == "tool_call_sequence_completion"
+    assert params.stop_token_sequences == ((88, 89),)
 
 
-def test_chat_completion_specific_tool_choice_skips_noncomposable_name_prefix() -> None:
+@pytest.mark.parametrize(
+    ("schema_prefix_ids", "expected_close_sequences"),
+    [
+        (
+            (93, 94, 95, 96),
+            ((12445, 13766, 13042, 29), (510, 13766, 13042, 29)),
+        ),
+        (
+            (27, 12445, 13766, 13042, 29, 591),
+            ((510, 13766, 13042, 29),),
+        ),
+        (
+            (27, 510, 13766, 13042, 29, 591),
+            ((12445, 13766, 13042, 29),),
+        ),
+    ],
+)
+def test_chat_completion_specific_tool_choice_forces_schema_first_string_key_after_tool_result(
+    schema_prefix_ids: tuple[int, ...],
+    expected_close_sequences: tuple[tuple[int, ...], ...],
+) -> None:
+    schema_prefix = '<tool_call>{"name":"grep","arguments":{"pattern":"'
     fake = FakeLLM(
         outputs=["ordinary answer"],
         token_map={
             "<tool_call>": [77, 78],
-            '<tool_call>{"name":"read","arguments":': [90, 91, 92],
+            '<tool_call>{"name":"grep","arguments":': [90, 91, 92],
+            schema_prefix: list(schema_prefix_ids),
+            "</tool_call>": [510, 13766, 13042, 29],
+            "}}</tool_call>": [12445, 13766, 13042, 29],
+        },
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [
+                {"role": "user", "content": "read the readme"},
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "call_read",
+                            "type": "function",
+                            "function": {
+                                "name": "read",
+                                "arguments": '{"path":"README.md"}',
+                            },
+                        }
+                    ],
+                },
+                {"role": "tool", "tool_call_id": "call_read", "content": "file text"},
+                {"role": "user", "content": "grep the scheduler"},
+            ],
+            "tool_choice": {"type": "function", "function": {"name": "grep"}},
+            "tools": [
+                {"type": "function", "function": {"name": "read", "parameters": {"type": "object"}}},
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "grep",
+                        "strict": True,
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "pattern": {"type": "string", "minLength": 1},
+                                "path": {"type": "string", "minLength": 1},
+                            },
+                            "required": ["pattern", "path"],
+                            "additionalProperties": False,
+                        },
+                    },
+                },
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert fake.tokenize_calls == [
+        "<tool_call>",
+        '<tool_call>{"name":"grep","arguments":',
+        schema_prefix,
+        "</tool_call>",
+        "}}</tool_call>",
+    ]
+    params = fake.calls[-1][1]
+    assert params.forced_tokens_pending == schema_prefix_ids
+    assert params.forced_token_reason == "tool_choice_required"
+    assert params.force_sequence_completion_token_sequences == expected_close_sequences
+    assert params.force_sequence_completion_reason == "tool_call_sequence_completion"
+    assert params.stop_token_sequences == expected_close_sequences
+
+
+def test_chat_completion_specific_tool_choice_falls_back_for_non_string_first_required_schema() -> None:
+    fake = FakeLLM(
+        outputs=["ordinary answer"],
+        token_map={
+            "<tool_call>": [77, 78],
+            '<tool_call>{"name":"count","arguments":': [90, 91, 92],
             "</tool_call>": [88, 89],
         },
     )
@@ -14047,20 +14395,36 @@ def test_chat_completion_specific_tool_choice_skips_noncomposable_name_prefix() 
         "/v1/chat/completions",
         json={
             "model": "fake-model",
-            "messages": [{"role": "user", "content": "read the readme"}],
-            "tool_choice": {"type": "function", "function": {"name": "read"}},
+            "messages": [{"role": "user", "content": "count the matches"}],
+            "tool_choice": {"type": "function", "function": {"name": "count"}},
             "tools": [
-                {"type": "function", "function": {"name": "read", "parameters": {"type": "object"}}},
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "count",
+                        "strict": True,
+                        "parameters": {
+                            "type": "object",
+                            "properties": {"limit": {"type": "integer"}},
+                            "required": ["limit"],
+                            "additionalProperties": False,
+                        },
+                    },
+                }
             ],
         },
     )
 
     assert response.status_code == 200
-    assert fake.tokenize_calls == ["<tool_call>", '<tool_call>{"name":"read","arguments":', "</tool_call>"]
+    assert fake.tokenize_calls == [
+        "<tool_call>",
+        '<tool_call>{"name":"count","arguments":',
+        "</tool_call>",
+    ]
     params = fake.calls[-1][1]
-    assert params.forced_tokens_pending == (77, 78)
+    assert params.forced_tokens_pending == (90, 91, 92)
     assert params.force_sequence_completion_token_sequences == ((88, 89),)
-    assert params.force_sequence_completion_reason == "tool_call_sequence_completion"
+    assert params.stop_token_sequences == ((88, 89),)
 
 
 def test_chat_completion_strict_tool_schema_reports_schema_violation() -> None:
@@ -15161,6 +15525,60 @@ def test_streaming_chat_completion_returns_tool_call_deltas() -> None:
     )
 
 
+def test_streaming_chat_tool_done_exposes_response_owned_generated_ids() -> None:
+    raw_tool_call = '<tool_call>{"name":"bash","arguments":{"command":"pwd"}}</tool_call>'
+    fake = FakeLLM(
+        outputs=["should-not-buffer"],
+        stream_chunks=[
+            GenerationStreamChunk(
+                raw_tool_call,
+                generated_token_ids=(701, 702, 703),
+                finish_details=FinishDetails(reason="stop"),
+                telemetry=GenerationTelemetry.from_decode_counts(
+                    prompt_tokens=9,
+                    generated_tokens=3,
+                    row_index=0,
+                    phase="tool_call",
+                    sampler_mode="greedy_fast",
+                ),
+            )
+        ],
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "run pwd"}],
+            "stream": True,
+            "stream_options": {"include_hipengine": True, "include_usage": True},
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "description": "Run a command",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    done = next(
+        payload["choices"][0]
+        for payload in payloads
+        if payload.get("choices") and payload["choices"][0]["finish_reason"] == "tool_calls"
+    )
+    assert done["hipengine"]["generated_token_ids"] == [701, 702, 703]
+    assert done["hipengine"]["generated_tokens"] == 3
+    assert payloads[-1]["usage"]["completion_tokens"] == 3
+
+
 def test_streaming_chat_completion_strips_qwen_terminal_residue_around_tool_call() -> None:
     fake = FakeLLM(
         outputs=["should-not-buffer"],
@@ -15211,6 +15629,105 @@ def test_streaming_chat_completion_strips_qwen_terminal_residue_around_tool_call
         arguments={"command": "pwd"},
     )
     assert payloads[-1]["choices"][0]["finish_reason"] == "tool_calls"
+
+
+def test_streaming_chat_completion_strips_qwen_role_template_residue_around_tool_call() -> None:
+    fake = FakeLLM(
+        outputs=["should-not-buffer"],
+        stream_chunks=[
+            '<tool_call>{"name":"bash","arguments":{"command":"pwd"}}</tool_call>'
+            '<|endoftext|><|im_start|><|im_start|><|im_start|><|im_start|><|im_start|>'
+        ],
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "run pwd"}],
+            "stream": True,
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "description": "Run a command",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    content = "".join(
+        payload["choices"][0]["delta"].get("content", "")
+        for payload in payloads
+        if payload.get("choices")
+    )
+    assert content == ""
+    tool_choice = next(
+        payload["choices"][0]
+        for payload in payloads
+        if payload["choices"][0]["delta"].get("tool_calls")
+    )
+    _assert_openai_stream_tool_call_delta_shape(
+        tool_choice,
+        name="bash",
+        arguments={"command": "pwd"},
+    )
+    assert payloads[-1]["choices"][0]["finish_reason"] == "tool_calls"
+    assert "<|endoftext|>" not in response.text
+    assert "<|im_start|>" not in response.text
+
+
+def test_streaming_chat_completion_strips_incomplete_duplicate_tool_prefix_control_residue() -> None:
+    fake = FakeLLM(
+        outputs=["should-not-buffer"],
+        stream_chunks=[_incomplete_duplicate_read_tool_output()],
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "read pyproject"}],
+            "stream": True,
+            "tool_choice": {"type": "function", "function": {"name": "read"}},
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {"name": "read", "parameters": {"type": "object"}},
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    payloads = _sse_payloads(response.text)
+    content = "".join(
+        payload["choices"][0]["delta"].get("content", "")
+        for payload in payloads
+        if payload.get("choices")
+    )
+    assert content == ""
+    tool_choice = next(
+        payload["choices"][0]
+        for payload in payloads
+        if payload["choices"][0]["delta"].get("tool_calls")
+    )
+    _assert_openai_stream_tool_call_delta_shape(
+        tool_choice,
+        name="read",
+        arguments={"path": "pyproject.toml", "mode": "summary"},
+    )
+    assert payloads[-1]["choices"][0]["finish_reason"] == "tool_calls"
+    assert "<|im_start|>" not in response.text
 
 
 def test_streaming_chat_completion_parses_tool_call_after_literal_marker_text() -> None:
@@ -15312,6 +15829,10 @@ def test_streaming_chat_completion_n_uses_scheduler_chunks_for_tool_call_argumen
             return [
                 GenerationOutput(
                     text=raw_outputs[index],
+                    generated_token_ids=tuple(
+                        600 + index * 10 + token_index
+                        for token_index in range(len(chunk_texts[index]))
+                    ),
                     finish_details=FinishDetails(reason="stop", sampler_mode="greedy_fast"),
                     telemetry=GenerationTelemetry.from_decode_counts(
                         prompt_tokens=1,
@@ -15397,6 +15918,10 @@ def test_streaming_chat_completion_n_uses_scheduler_chunks_for_tool_call_argumen
         if payload.get("choices") and payload["choices"][0]["finish_reason"] == "tool_calls"
     ]
     assert [choice["index"] for choice in done] == [0, 1]
+    assert [choice["hipengine"]["generated_token_ids"] for choice in done] == [
+        [600, 601, 602, 603],
+        [610, 611, 612, 613],
+    ]
     assert {
         choice["hipengine"]["decode_state"]["execution_path"]
         for choice in done
@@ -17526,9 +18051,21 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
         "initial_or_after_tokenized_thinking_close"
     )
     assert artifact["capabilities"]["features"]["tools"]["specific_tool_name_prefix_forcing"] is True
+    assert artifact["capabilities"]["features"]["tools"]["specific_tool_name_prefix_forcing_scope"] == (
+        "atomic_tool_call_name_and_arguments_key"
+    )
+    assert artifact["capabilities"]["features"]["tools"]["strict_tool_schema_prefix_anchor"] is True
+    assert artifact["capabilities"]["features"]["tools"]["strict_tool_schema_prefix_anchor_scope"] == (
+        "selected_closed_object_first_required_string_key"
+    )
     assert artifact["capabilities"]["features"]["tools"]["tool_call_close_repair"] is True
+    assert artifact["capabilities"]["features"]["tools"]["tool_call_close_repair_scope"] == (
+        "tokenizer_safe_marker_or_object_envelope_then_stop"
+    )
     assert artifact["capabilities"]["features"]["tools"]["compatibility_parser_repairs"] == [
-        "duplicated_tool_call_start"
+        "duplicated_tool_call_start",
+        "incomplete_duplicate_tool_prefix_control_residue",
+        "outer_qwen_template_control_residue",
     ]
     assert (
         artifact["capabilities"]["features"]["tools"]["malformed_json_compatibility"]

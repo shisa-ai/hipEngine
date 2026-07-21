@@ -991,6 +991,19 @@ def _packed_prefill_requires_slot_local_full_attention(
     )
 
 
+def _validate_packed_ar_prefill_context(
+    layout: _GGUFPackedVerifyLayout,
+    *,
+    slot_local_full_prefill: bool,
+) -> None:
+    """Keep long contexts on the per-session full-attention cache path."""
+
+    if int(layout.max_live_count) >= 1024 and not slot_local_full_prefill:
+        raise NotImplementedError(
+            "packed paged AR prefill currently requires context < 1024"
+        )
+
+
 @dataclass(frozen=True)
 class _GGUFPackedARAttentionWorkspace:
     """Split-K intermediates sized for one physical packed-AR decode width."""
@@ -12729,8 +12742,10 @@ class Qwen35GGUFResidentSession:
             raise ValueError("prompt_token_ids must be non-empty")
         if len(prompt_tuple) != len(session_tuple):
             raise ValueError("prompt_token_ids and sessions must have the same length")
-        if return_logits:
-            raise NotImplementedError("GGUF packed AR prefill currently supports top-1 sampling only")
+        if return_logits and return_hidden_seeds:
+            raise ValueError("packed AR prefill cannot return logits and hidden seeds together")
+        if return_logits and not sample_output:
+            raise ValueError("return_logits requires sample_output")
         if return_hidden_seeds and not sample_output:
             raise ValueError("return_hidden_seeds requires sample_output")
         if self.runner is None or self.runner.weights is None or self.scratch is None:
@@ -12774,8 +12789,44 @@ class Qwen35GGUFResidentSession:
         )
         slot_capacity = max(1024, max_live_count)
         layout = _build_gguf_packed_verify_layout(slot_blocks, slot_capacity=slot_capacity)
-        if int(layout.max_live_count) >= 1024:
-            raise NotImplementedError("packed AR prefill currently requires context < 1024")
+        slot_local_full_prefill = (
+            _packed_prefill_requires_slot_local_full_attention(layout)
+            if _slot_local_full_attention is None
+            else bool(_slot_local_full_attention)
+        )
+        force_aotriton_slots = set(int(index) for index in _force_aotriton_slot_indices)
+        if any(index < 0 or index >= len(session_tuple) for index in force_aotriton_slots):
+            raise ValueError("forced AOTriton slot index is outside the packed slab")
+        device_kv_contiguous_base_rows = tuple(
+            _gguf_device_kv_contiguous_base_row(session)
+            for session in session_tuple
+        )
+        device_kv_nonidentity_scatter = any(
+            base_row is None for base_row in device_kv_contiguous_base_rows
+        )
+        if device_kv_nonidentity_scatter:
+            # Slot-local prefill cannot represent a shared prefix plus a
+            # non-contiguous COW suffix. Keep those sessions in packed scratch
+            # and scatter through their scheduler-owned block table below.
+            slot_local_full_prefill = False
+            force_aotriton_slots.clear()
+        self.last_packed_prefill_plan["device_kv_nonidentity_scatter"] = bool(
+            device_kv_nonidentity_scatter
+        )
+        self.last_packed_prefill_plan["device_kv_contiguous_base_rows"] = [
+            None if base_row is None else int(base_row)
+            for base_row in device_kv_contiguous_base_rows
+        ]
+        self.last_packed_prefill_plan["device_kv_shifted_contiguous_rebase"] = any(
+            base_row not in {None, 0}
+            for base_row in device_kv_contiguous_base_rows
+        )
+        if force_aotriton_slots and not slot_local_full_prefill:
+            raise ValueError("forced AOTriton slots require slot-local full attention")
+        _validate_packed_ar_prefill_context(
+            layout,
+            slot_local_full_prefill=slot_local_full_prefill,
+        )
         capture_layer_ids = self._normalize_layer_output_capture(
             capture_layer_output_hidden
         )
@@ -12839,40 +12890,6 @@ class Qwen35GGUFResidentSession:
             layer_conv_states=packed_state.layer_conv_states,
             layer_recurrent_states=packed_state.layer_recurrent_states,
         )
-        slot_local_full_prefill = (
-            _packed_prefill_requires_slot_local_full_attention(layout)
-            if _slot_local_full_attention is None
-            else bool(_slot_local_full_attention)
-        )
-        force_aotriton_slots = set(int(index) for index in _force_aotriton_slot_indices)
-        if any(index < 0 or index >= len(session_tuple) for index in force_aotriton_slots):
-            raise ValueError("forced AOTriton slot index is outside the packed slab")
-        device_kv_contiguous_base_rows = tuple(
-            _gguf_device_kv_contiguous_base_row(session)
-            for session in session_tuple
-        )
-        device_kv_nonidentity_scatter = any(
-            base_row is None for base_row in device_kv_contiguous_base_rows
-        )
-        if device_kv_nonidentity_scatter:
-            # Slot-local prefill cannot represent a shared prefix plus a
-            # non-contiguous COW suffix. Keep those sessions in packed scratch
-            # and scatter through their scheduler-owned block table below.
-            slot_local_full_prefill = False
-            force_aotriton_slots.clear()
-        self.last_packed_prefill_plan["device_kv_nonidentity_scatter"] = bool(
-            device_kv_nonidentity_scatter
-        )
-        self.last_packed_prefill_plan["device_kv_contiguous_base_rows"] = [
-            None if base_row is None else int(base_row)
-            for base_row in device_kv_contiguous_base_rows
-        ]
-        self.last_packed_prefill_plan["device_kv_shifted_contiguous_rebase"] = any(
-            base_row not in {None, 0}
-            for base_row in device_kv_contiguous_base_rows
-        )
-        if force_aotriton_slots and not slot_local_full_prefill:
-            raise ValueError("forced AOTriton slots require slot-local full attention")
         full_kv_row_nbytes = self._packed_full_kv_row_nbytes()
         with wmma_prefill_session(self.use_wmma_prefill), gemv_decode_session(self.use_gemv_decode):
             for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
@@ -13089,12 +13106,38 @@ class Qwen35GGUFResidentSession:
                 self.last_packed_prefill_plan["lm_head_sample_rows"] = int(
                     layout.slot_count
                 )
-                token_host = self._sample_target_block_rows_from_hidden(
+                self._enqueue_target_block_rows_from_hidden(
                     self._prefill_hidden_a.ptr,
                     int(layout.slot_count),
                     activation_dtype=GGUF_ACTIVATION_BF16,
                     stream=stream,
+                    require_logits=bool(return_logits),
                 )
+                token_host = self._read_target_block_row_tokens(
+                    int(layout.slot_count),
+                    stream=stream,
+                )
+
+        logits_host = None
+        if return_logits:
+            if self._verify_logits_buf is None:
+                raise RuntimeError("GGUF packed AR prefill logits buffer is closed")
+            logits_host = np.empty(
+                (int(layout.slot_count), self.runner.vocab_size),
+                dtype=np.float32,
+            )
+            copy_device_to_host(
+                host_array_ptr(logits_host),
+                DeviceBuffer(self._verify_logits_buf.ptr, logits_host.nbytes),
+                logits_host.nbytes,
+                runtime=runtime,
+            )
+            if not np.all(np.isfinite(logits_host)):
+                raise FloatingPointError("GGUF packed AR prefill lm-head logits contain NaN or Inf")
+        self.last_packed_prefill_plan["host_logits_d2h"] = bool(return_logits)
+        self.last_packed_prefill_plan["host_logits_d2h_bytes"] = (
+            0 if logits_host is None else int(logits_host.nbytes)
+        )
 
         hidden_host = None
         if hidden_seed_buf is not None:
@@ -13180,14 +13223,26 @@ class Qwen35GGUFResidentSession:
                 )
                 for slot_index in range(int(layout.slot_count))
             ]
-        return [
-            Qwen35GGUFNextTokenProbeResult(
-                token_id=int(token),
-                logit=0.0,
-                logits=np.empty((0,), dtype=np.float32),
+        results: list[Qwen35GGUFNextTokenProbeResult] = []
+        for slot_index, token in enumerate(token_host.tolist()):
+            token_id = int(token)
+            row_logits = (
+                np.empty((0,), dtype=np.float32)
+                if logits_host is None
+                else np.ascontiguousarray(logits_host[slot_index : slot_index + 1])
             )
-            for token in token_host.tolist()
-        ]
+            results.append(
+                Qwen35GGUFNextTokenProbeResult(
+                    token_id=token_id,
+                    logit=(
+                        0.0
+                        if logits_host is None
+                        else float(logits_host[slot_index, token_id])
+                    ),
+                    logits=row_logits,
+                )
+            )
+        return results
 
     def _enqueue_packed_decode_model_step(
         self,

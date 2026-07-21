@@ -55,6 +55,23 @@ def _generator() -> qwen35_gguf.Qwen35GGUFBringupGenerator:
     return generator
 
 
+def test_gfx1100_generator_factory_registers_plain_ar_width(monkeypatch) -> None:
+    monkeypatch.setattr(
+        qwen35_gguf,
+        "Qwen35GGUFBringupGenerator",
+        lambda **kwargs: SimpleNamespace(**kwargs),
+    )
+
+    generator = qwen35_gguf.make_qwen35_gguf_bringup_generator(
+        model_path="/tmp/fake.gguf",
+        weight_index=SimpleNamespace(),
+        model_plugin=SimpleNamespace(),
+    )
+
+    assert generator.backend == "hip_gfx1100"
+    assert generator.server_plain_ar_max_active_requests == 4
+
+
 def _request(**overrides) -> GenerationRequest:
     values = {
         "prompts": ("first",),
@@ -1894,6 +1911,7 @@ def test_gguf_resident_stream_reuses_registered_sampler_plan(monkeypatch) -> Non
     chunk = runner._native_stream_chunk(row)
 
     assert _decode_state(chunk)["sampler_mode"] == "greedy_fast"
+    assert chunk.generated_token_ids is None
 
 
 def test_gguf_empty_stop_suffix_skips_history_scan(monkeypatch) -> None:
@@ -1985,6 +2003,74 @@ def test_gguf_resident_full_prefill_rebases_reused_dynamic_kv_through_packed_pat
     assert row.slot.generated_ids == [7]
     assert row.slot.native_compact_prefill is True
     assert runner._route_counts["native_full_prefill_rows"] == 1
+
+
+def test_gguf_resident_sampled_prefill_rebases_shifted_dynamic_kv_through_packed_path() -> None:
+    calls: list[tuple] = []
+
+    class FakeSession:
+        position = 0
+        _device_kv_allocation = SimpleNamespace(
+            block_ids=(9,),
+            chunk_start_block_id=8,
+        )
+
+        def prefill(self, token_ids, **kwargs):
+            raise AssertionError(
+                f"shifted sampled KV must not use raw-cache full prefill: {token_ids!r} {kwargs!r}"
+            )
+
+        def prefill_batch_native(self, token_rows, *, sessions, **kwargs):
+            calls.append(
+                (
+                    tuple(tuple(int(token) for token in row) for row in token_rows),
+                    tuple(sessions),
+                    dict(kwargs),
+                )
+            )
+            self.position = len(token_rows[0])
+            logits = np.full((1, 128), -100.0, dtype=np.float32)
+            logits[0, 1] = 10.0
+            return [SimpleNamespace(token_id=1, logits=logits)]
+
+    session = FakeSession()
+    row = qwen35_gguf._GGUFResidentLoopRow(
+        request_id=1,
+        batch_id=0,
+        row_index=0,
+        request=_request(prompts=("first",), max_tokens=2, temperature=0.7, top_k=1),
+        prompt_ids=(10, 11),
+        native_greedy=False,
+        native_sampled=True,
+        submitted_at=0.0,
+        lease=qwen35_gguf._GGUFResidentSessionLease(
+            session=session,
+            pool_key=("continuous_ar_dynamic_kv", True, True, 256),
+        ),
+    )
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    runner.generator = SimpleNamespace(tokenizer=_FakeTokenizer())
+    runner._route_counts = Counter()
+    runner._fallback_reasons = Counter()
+    runner._refresh_prefix_cache = lambda candidate: None
+
+    runner._prefill_sampled_row(row)
+
+    assert len(calls) == 1
+    token_rows, sessions, kwargs = calls[0]
+    assert token_rows == ((10, 11),)
+    assert sessions == (session,)
+    assert kwargs == {
+        "full_prompt_lengths": [2],
+        "return_logits": True,
+        "return_hidden_seeds": False,
+    }
+    assert row.slot is not None
+    assert row.slot.generated_ids == [1]
+    assert row.slot.native_compact_prefill is True
+    assert runner._route_counts["native_sampled_prefill_rows"] == 1
 
 
 def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) -> None:
@@ -3820,8 +3906,10 @@ def test_gguf_prepare_request_scratch_warms_ar_packed_prefill_widths(monkeypatch
     monkeypatch.delenv("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN", raising=False)
 
     generator = _generator()
-    result = generator.prepare_request_scratch(max_prompt_tokens=4, max_batch_size=4)
+    generator.server_plain_ar_max_active_requests = 4
+    result = generator.prepare_request_scratch(max_prompt_tokens=4, max_batch_size=8)
 
+    assert result["max_batch_size"] == 8
     assert result["packed_ar_prefill_widths"] == [2, 4]
     assert result["packed_ar_prefill_skipped"] is False
     assert [call for call in calls if call[0] == "prefill_batch"] == [
@@ -4931,6 +5019,7 @@ def test_gguf_stream_detailed_emits_live_greedy_telemetry(monkeypatch) -> None:
 
     assert [chunk.text for chunk in chunks] == ["B", "C"]
     assert all(isinstance(chunk, GenerationStreamChunk) for chunk in chunks)
+    assert [chunk.generated_token_ids for chunk in chunks] == [None, (1, 2)]
     assert [_decode_state(chunk) for chunk in chunks] == [
         {
             "row_index": 0,

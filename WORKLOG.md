@@ -170975,3 +170975,973 @@ server ramp is removed here. The only stronger generic prefill policy measured,
 `protect_ttft`, is a genuine production blocker at **0.5060 s ITL p99 > 0.5 s**.
 Further optimization needs a new measured bottleneck at staggered or longer-
 prompt shapes rather than more tuning of this closed packet.
+
+## 2026-07-20 — Separate natural agent quality from performance artifacts
+
+Implemented the A6 automatic-tool quality lane without weakening the A0/A1
+all-success performance contract. `hipengine/benchmark/agentic_quality.py` and
+two new JSON schemas define a separate non-performance artifact. Natural
+`tool_choice=auto` responses require exact blocking response-owned generated
+IDs, but model failures such as `finish_details.reason=invalid_tool_call` are
+retained as scored outcomes rather than aborting the suite. Rollups include
+valid-call, correct-tool, exact-argument, success, repair, and outcome rates and
+intentionally contain no latency, tok/s, or goodput fields; setting
+`performance_claim=true` is rejected.
+
+Added `scripts/agentic_coding_quality.py`. Each turn is evaluated against a
+canonical valid fixture history so a failed attempt does not corrupt or cascade
+into later turns. The fake live transport retains one invalid second turn,
+finishes all four turns, and reports 3/4 successes. The deterministic live
+collector still uses forced tools plus an independent exact oracle and remains
+unchanged apart from allowing its prompt-count helper to render string
+`tool_choice="auto"`. No GPU run, result artifact, performance claim, or runtime
+default changed.
+
+RED/GREEN and validation:
+
+```bash
+python3 -m pytest -q tests/test_agentic_coding_quality.py
+# RED: ModuleNotFoundError: hipengine.benchmark.agentic_quality
+# GREEN: 5 passed
+python3 -m pytest -q tests/test_agentic_coding_quality.py \
+  tests/test_agentic_coding_live.py tests/test_agentic_coding_benchmark.py
+# 17 passed
+ruff check hipengine/benchmark/agentic_quality.py \
+  hipengine/benchmark/__init__.py scripts/agentic_coding_live.py \
+  scripts/agentic_coding_quality.py tests/test_agentic_coding_quality.py
+# All checks passed
+python3 -m json.tool \
+  benchmarks/schemas/agentic-coding-quality-records.schema.json >/dev/null
+python3 -m json.tool \
+  benchmarks/schemas/agentic-coding-quality-benchmark.schema.json >/dev/null
+python3 -m py_compile hipengine/benchmark/agentic_quality.py \
+  scripts/agentic_coding_quality.py
+```
+
+Next: add exact generated IDs to the response-owned SSE done event and consume
+them in A1 with strict equality to the independent oracle, then run A6 on the
+viable W7900 4K/c1 configuration.
+
+## 2026-07-20 — Publish response-owned exact IDs on tool SSE
+
+Extended `GenerationStreamChunk` with optional cumulative
+`generated_token_ids`. Final GGUF direct greedy/sampled streams, resident native
+chunks, and serialized scheduler chunks now populate the field without copying
+the growing ID history on every intermediate token; generic stream
+coercion, resident scheduler merge/finalization, engine-loop fallback,
+buffered/detail conversion, live phase rewriting, and final output conversion
+preserve it. This is host metadata only and does not alter model math, token
+selection, or kernel dispatch.
+
+When `stream_options.include_hipengine=true`, final completion/chat done choices
+now include `choices[].hipengine.generated_token_ids` and `generated_tokens`
+when the final backend chunk supplies exact IDs. Capabilities advertise
+`choice_generated_token_ids=done_event_when_backend_supplies_exact_ids`.
+Buffered validated tool argument fragments remain public-fragment timing, so the
+new exact response denominator does not manufacture per-token ITL.
+
+A1 now reads only IDs observed in the measured SSE response, validates their
+count, and requires exact sequence equality to the independent blocking oracle.
+A matching row records `generated_token_ids_source=response` and
+`sse_exact_ids_observed=true`; drift is rejected. Backends that omit IDs retain
+the explicit `matched_nonstreaming_oracle` diagnostic source and remain
+ineligible for an exact-token performance claim.
+
+RED/GREEN and validation:
+
+```bash
+python3 -m pytest -q \
+  tests/test_generation_registry.py::test_generation_stream_chunk_preserves_token_logprobs \
+  tests/test_server_api.py::test_streaming_chat_tool_done_exposes_response_owned_generated_ids \
+  tests/test_agentic_coding_live.py::test_sse_normalizer_uses_exact_response_ids_and_rejects_oracle_drift
+# RED: 3 failed
+# GREEN: 3 passed
+python3 -m pytest -q tests/test_server_api.py
+# 503 passed
+python3 -m pytest -q tests/test_generation_registry.py \
+  tests/test_agentic_coding_live.py tests/test_agentic_coding_benchmark.py \
+  tests/test_generation_qwen35_gguf_sampling.py
+# 99 passed
+python3 -m pytest -q tests/test_generation_batch_scheduler.py -k \
+  'resident_scheduler_record_generated_events_emit_decode_telemetry or \
+   resident_scheduler_reuses_complete_runner_stream_chunk or \
+   resident_engine_loop_token_events_carry_stream_telemetry or \
+   submit_poll_text_generator_preserves_stream_detailed_telemetry or \
+   submit_poll_text_generator_preserves_generate_detailed_telemetry_for_stream'
+# 5 passed
+ruff check hipengine/benchmark/agentic_live.py hipengine/generation/registry.py \
+  hipengine/generation/engine_loop.py hipengine/generation/batch_scheduler.py \
+  hipengine/generation/qwen35_gguf.py hipengine/server/api.py \
+  tests/test_agentic_coding_live.py tests/test_generation_registry.py \
+  tests/test_generation_qwen35_gguf_sampling.py tests/test_server_api.py
+# All checks passed
+```
+
+No GPU run or benchmark result was retained. Next: commit this API/collector
+unit, launch the viable W7900 4K/c1 cache-off server, run A6 quality, and rerun
+A1 deterministic collection with the quality/performance lanes kept separate.
+
+## 2026-07-20 — Measure W7900 A6 quality and block A1 before timing
+
+Ran the clean `4d01f89722b5b61f75e9717491f9a5a383a0e5eb` W7900/gfx1100
+Qwen3.6-35B-A3B UD-Q4_K_M server at the viable 4K/c1 cache-off shape. The
+server passed the full 4,095-position startup scratch probe and readiness in
+79.424736 seconds; readiness reported 25,176,309,760 bytes (23.447266 GiB)
+used and 23,125,295,104 bytes (21.537109 GiB) free, with zero active queue,
+session, and KV ownership before collection.
+
+Server command:
+
+```bash
+HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
+HIPENGINE_GENERATION_BATCH_WINDOW_MS=0 \
+HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 \
+HIPENGINE_GGUF_GDN_PREFILL_MODE=exact \
+HIPENGINE_GGUF_AR_STREAM_DECODE=0 \
+HIPENGINE_GGUF_AR_PACKED_DECODE=1 \
+HIPENGINE_MAX_PREFILL_CHUNK_TOKENS=256 \
+python3 -m hipengine.server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --served-model-name Qwen3.6-35B-A3B \
+  --max-context-tokens 4096 --max-active-requests 1 \
+  --prefix-cache off --metrics prometheus --eager-load \
+  --host 127.0.0.1 --port 8100
+```
+
+A6 command and result:
+
+```bash
+HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
+python3 scripts/agentic_coding_quality.py \
+  --base-url http://127.0.0.1:8100/v1 \
+  --model Qwen3.6-35B-A3B --backend hip_gfx1100 \
+  --workload small_repo --concurrency 1 --runs 1 \
+  --cache-mode off --max-tokens 128 \
+  --records-json /tmp/agentic-small-c1-quality-records.json \
+  --json /tmp/agentic-small-c1-quality.json
+# A6 quality collected: 0/4 successful tool turns (0.0%)
+```
+
+The four independent natural attempts contain 274 exact response-owned IDs.
+Turns 0 and 2 select the correct tool and exact arguments but publish Qwen
+role/EOT residue beside the tool call, so both score
+`content_alongside_tool_call`; turns 1 and 3 score `invalid_tool_call`. All
+request/session/KV/graph/workspace ownership is zero after collection. This is
+quality-only evidence with `performance_claim=false`, no timing/goodput fields,
+and no broad quality claim. The copied artifact is
+`benchmarks/results/2026-07-20-w7900-agentic-a6-small-c1-quality.json`
+(SHA-256 `4245dded403ba1afecc6838bc7b53a545d8669fd963f34517db6fd757b6711c0`).
+
+A1 command and result:
+
+```bash
+HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
+python3 scripts/agentic_coding_live.py \
+  --base-url http://127.0.0.1:8100/v1 \
+  --model Qwen3.6-35B-A3B --backend hip_gfx1100 \
+  --workload small_repo --concurrency 1 --runs 1 \
+  --cache-mode off --max-tokens 128 \
+  --records-json /tmp/agentic-small-c1-records.json \
+  --json /tmp/agentic-small-c1-a1.json
+# live agentic benchmark rejected: oracle did not finish with tool_calls
+```
+
+The collector accepted turn 0's blocking oracle and measured SSE. A focused
+normalization check confirms 2,504 prompt IDs, 32 exact generated IDs,
+`generated_token_ids_source=response`, `sse_exact_ids_observed=true`, exact
+`read(path="pyproject.toml", mode="summary")`, `finish_reason=tool_calls`, and
+`token_timing_mode=buffered_public`. The turn-1 independent blocking oracle then
+failed to produce a valid forced `grep` envelope, so the collector stopped
+before that measured SSE interval. It emitted no partial records or A1 artifact,
+and no latency/tok/s/goodput number is retained. The machine-readable blocked
+packet is
+`benchmarks/results/2026-07-20-w7900-agentic-a1-small-c1-blocked.json`.
+
+This closes the SSE ID-provenance blocker but not A1. The next correctness unit
+is a model-general constrained strict-tool JSON path or equivalent tool-envelope
+repair. It must not force fixture-specific IDs or expected arguments. Rerun the
+complete c1 workload before prefix/routing A/B; solve C4/C8 startup capacity
+separately.
+
+Validation after publishing the evidence:
+
+```bash
+python3 -m pytest -q tests/test_agentic_coding_quality.py \
+  tests/test_agentic_coding_live.py tests/test_agentic_coding_benchmark.py
+# 18 passed
+python3 -m json.tool \
+  benchmarks/results/2026-07-20-w7900-agentic-a6-small-c1-quality.json >/dev/null
+python3 -m json.tool \
+  benchmarks/results/2026-07-20-w7900-agentic-a1-small-c1-blocked.json >/dev/null
+cmp -s /tmp/agentic-small-c1-quality.json \
+  benchmarks/results/2026-07-20-w7900-agentic-a6-small-c1-quality.json
+# exact copy
+```
+
+## 2026-07-20 — Strip outer Qwen role/template residue from valid tool calls
+
+Promoted the two A6 `content_alongside_tool_call` failures into blocking and SSE
+regressions using their exact residue classes. Before the implementation,
+`_parse_chat_tool_calls()` successfully parsed the tool but published the full
+remaining `<|endoftext|><|im_start|>...` sequence as assistant content; both
+new endpoint tests failed on non-empty public content.
+
+The parser now discards a post-parse remainder only when the entire string is a
+grammar of Qwen `<|endoftext|>`, `<|im_start|>`, and `<|im_end|>` controls,
+whitespace, plus a chat-role label that follows an `im_start` marker. The rule
+is reached only after at least one valid tool block parses. Any ordinary
+character preserves the remainder, the existing outer-`im_end` behavior remains,
+interior literal `<|im_end|>` / `<|im_start|>user` text is retained, and non-tool
+structured output is unchanged. Blocking and SSE share the parser. Capabilities
+now advertise `outer_qwen_template_control_residue` under
+`features.tools.compatibility_parser_repairs`; `docs/API.md` records the narrow
+contract.
+
+RED/GREEN and validation:
+
+```bash
+python3 -m pytest -q \
+  tests/test_server_api.py::test_chat_completion_strips_qwen_role_template_residue_around_tool_call \
+  tests/test_server_api.py::test_streaming_chat_completion_strips_qwen_role_template_residue_around_tool_call \
+  tests/test_server_api.py::test_chat_completion_terminal_cleanup_preserves_interior_literal_content
+# RED: 2 failed, 1 passed
+# GREEN: 3 passed
+python3 -m pytest -q \
+  tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth \
+  tests/test_server_api.py::test_replay_artifact_redacts_failed_request \
+  tests/test_server_api.py::test_chat_completion_strips_qwen_terminal_residue_around_tool_call \
+  tests/test_server_api.py::test_chat_completion_strips_qwen_role_template_residue_around_tool_call \
+  tests/test_server_api.py::test_streaming_chat_completion_strips_qwen_terminal_residue_around_tool_call \
+  tests/test_server_api.py::test_streaming_chat_completion_strips_qwen_role_template_residue_around_tool_call \
+  tests/test_server_api.py::test_chat_completion_terminal_cleanup_preserves_interior_literal_content \
+  tests/test_server_api.py::test_chat_completion_parses_tool_call_after_literal_marker_text \
+  tests/test_server_api.py::test_streaming_chat_completion_parses_tool_call_after_literal_marker_text \
+  tests/test_server_api.py::test_chat_completion_response_format_json_schema_length_rejects_non_object_prefix
+# 10 passed
+python3 -m pytest -q tests/test_agentic_coding_quality.py \
+  tests/test_agentic_server_conformance.py tests/test_agentic_harness_traces.py \
+  tests/test_local_agent_config.py
+# 135 passed
+python3 -m pytest -q tests/test_server_api.py
+# 505 passed
+ruff check hipengine/server/api.py tests/test_server_api.py
+# All checks passed
+```
+
+This repairs the two valid-call A6 outcomes generically; it does not reinterpret
+the remaining `invalid_tool_call` rows. Forced-tool JSON constraints remain the
+next separate correctness unit.
+
+## 2026-07-20 — Force selected-tool JSON prefixes atomically
+
+Decoded the blocked turn-1 exact IDs with the model's GGUF tokenizer. The
+trajectory starts with `<tool_call>`, then immediately emits blank lines, Qwen
+role/template controls, an empty `<tool_response>`, and reasoning; it never
+emits the selected `grep` JSON body. The root cause is tokenizer composition:
+
+```text
+<tool_call>                                  -> [27,13766,13042,29]
+<tool_call>{"name":"grep","arguments":       -> [27,13766,13042,85806,591,3147,36940,2129,15889,763]
+```
+
+The longer prefix merges the `>{` boundary as token 85806, so the prior strategy
+could not force the short marker and then DFA-complete the longer token row. Its
+composition guard correctly declined the prefix, but that left only the marker
+forced.
+
+Specific function choices, plus `required` mode with exactly one function, now
+independently tokenize and queue the entire
+`<tool_call>{"name":"...","arguments":` prefix as the initial forced row. The
+change is model-general and request-owned: the declared selected tool name is
+JSON-escaped, but no prompt text, fixture token ID, argument key, or argument
+value is consulted. Multi-tool `required` still queues only `<tool_call>` so
+model tool selection is preserved. Thinking-budget requests hold the same
+atomic prefix until answer phase. Existing `</tool_call>` suffix completion is
+unchanged, and strict post-generation schema validation still owns arguments.
+Capabilities advertise
+`specific_tool_name_prefix_forcing_scope=atomic_tool_call_name_and_arguments_key`;
+`docs/API.md` and `docs/AGENTIC-OPT.md` record the scope and explicitly state
+that this is not full grammar-constrained JSON decoding.
+
+RED/GREEN and validation:
+
+```bash
+python3 -m pytest -q \
+  tests/test_server_api.py::test_chat_completion_required_tool_choice_forces_atomic_tool_json_prefix \
+  tests/test_server_api.py::test_chat_completion_required_tool_choice_queues_tool_start_after_thinking_budget \
+  tests/test_server_api.py::test_chat_completion_specific_tool_choice_forces_atomic_prefix_after_tool_result
+# RED: 4 failed (the first test is parameterized twice)
+# GREEN: 4 passed
+python3 -m pytest -q \
+  tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth \
+  tests/test_server_api.py::test_replay_artifact_redacts_failed_request \
+  tests/test_server_api.py::test_chat_completion_required_tool_choice_forces_atomic_tool_json_prefix \
+  tests/test_server_api.py::test_chat_completion_required_tool_choice_queues_tool_start_after_thinking_budget \
+  tests/test_server_api.py::test_chat_completion_required_tool_choice_skips_name_prefix_with_multiple_tools \
+  tests/test_server_api.py::test_chat_completion_specific_tool_choice_forces_atomic_prefix_after_tool_result
+# 7 passed
+python3 -m pytest -q tests/test_sampling.py \
+  tests/test_generation_qwen35_gguf_sampling.py \
+  tests/test_generation_qwen35_paro.py \
+  tests/test_generation_batch_scheduler.py tests/test_llm_generate.py
+# 529 passed
+python3 -m pytest -q tests/test_server_api.py
+# 505 passed
+python3 -m pytest -q tests/test_agentic_coding_live.py \
+  tests/test_agentic_coding_quality.py tests/test_agentic_server_conformance.py \
+  tests/test_agentic_harness_traces.py tests/test_local_agent_config.py
+# 142 passed
+ruff check hipengine/server/api.py tests/test_server_api.py
+# All checks passed
+```
+
+No GPU run or benchmark number changed. Next: commit this unit, then rerun the
+same clean W7900 4K/c1 A6 and A1 packets. A1 remains fail-closed until every
+turn passes its independent oracle and measured SSE.
+
+## 2026-07-20 — Post-tool-fix W7900 agentic A6/A1 rerun
+
+Reran the exact cache-off 4K/c1 `small_repo` packet on an idle Radeon Pro W7900
+from clean `f25362d0126804a70421f283208380d4d5863636`. The model remained
+`/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` (22,663,387,424 bytes, SHA-256
+`0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b`),
+HIP was 7.2.53211-3d9ef42, and no KFD process owned either GPU before startup.
+
+Exact server and collector commands:
+
+```bash
+HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
+HIPENGINE_GENERATION_BATCH_WINDOW_MS=0 \
+HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 \
+HIPENGINE_GGUF_GDN_PREFILL_MODE=exact \
+HIPENGINE_GGUF_AR_STREAM_DECODE=0 \
+HIPENGINE_GGUF_AR_PACKED_DECODE=1 \
+HIPENGINE_MAX_PREFILL_CHUNK_TOKENS=256 \
+python3 -m hipengine.server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --served-model-name Qwen3.6-35B-A3B \
+  --max-context-tokens 4096 --max-active-requests 1 \
+  --prefix-cache off --metrics prometheus --eager-load \
+  --host 127.0.0.1 --port 8100
+
+HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
+python3 scripts/agentic_coding_quality.py \
+  --base-url http://127.0.0.1:8100/v1 \
+  --model Qwen3.6-35B-A3B --backend hip_gfx1100 \
+  --workload small_repo --concurrency 1 --runs 1 \
+  --cache-mode off --max-tokens 128 \
+  --records-json /tmp/agentic-f25362d0-small-c1-quality-records.json \
+  --json /tmp/agentic-f25362d0-small-c1-quality.json
+
+HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
+python3 scripts/agentic_coding_live.py \
+  --base-url http://127.0.0.1:8100/v1 \
+  --model Qwen3.6-35B-A3B --backend hip_gfx1100 \
+  --workload small_repo --concurrency 1 --runs 1 \
+  --cache-mode off --max-tokens 128 \
+  --records-json /tmp/agentic-f25362d0-small-c1-records.json \
+  --json /tmp/agentic-f25362d0-small-c1-a1.json
+```
+
+Startup passed in `84.88688 s`, including the guarded 4,095-token scratch probe,
+at `23.447266 GiB` used / `21.537109 GiB` free. A6 completed all four turns and
+improved from 0/4 to **2/4 successes** over **274 exact response-owned IDs**.
+Turns 0 and 2 now pass with exact `read` arguments and empty public content;
+turns 1 (`grep`) and 3 (`run`) remain `invalid_tool_call`. The complete A6
+artifact SHA-256 is
+`64d6e44dd2c6c45931c4964860ff25c10dc48fd57daa760dd270ac5abe58eebc`.
+
+A1 rejected at the turn-0 independent blocking oracle before measured SSE with
+`oracle leaked raw model markup`; it emitted no records or complete artifact.
+A same-canonical-request diagnostic localized the failure. The 63 response-owned
+IDs begin with the atomic forced `read` prefix, after which the model emits an
+invalid `{` plus Qwen controls and later a second complete valid
+`read(path="pyproject.toml", mode="summary")` envelope. The parser extracts the
+valid call but publishes the unfinished first envelope and controls as content.
+The generated-ID hash is
+`4882704eb0d61a5ae2a6fd5521593c07fcb715a4a50a0ab0ae8dd82b0b9f9800`;
+the raw diagnostic response hash is
+`c6f40e1b8576080267222dd86cf871ce921f2be14bf47de7d830b70a8594c034`.
+
+Final request/session/KV/graph/workspace ownership was zero. Published bounded
+evidence:
+
+- `benchmarks/results/2026-07-20-w7900-agentic-a6-small-c1-post-tool-fixes-quality.json`
+- `benchmarks/results/2026-07-20-w7900-agentic-a1-small-c1-post-tool-fixes-blocked.json`
+
+Both files pass `python3 -m json.tool`; the A6 artifact is an exact copy of the
+collector output. No A1 latency, throughput, goodput, or complete-workload row
+is retained. Next: add an envelope-scoped RED case for the unfinished duplicate
+selected-tool prefix while preserving ordinary/interior literal content, then
+rerun A1 before opening any performance work.
+
+## 2026-07-20 — Strip incomplete duplicate forced-tool prefix residue
+
+Promoted the exact clean-`f25362d0` 63-ID A1 turn-0 shape into blocking and SSE
+regressions. The response begins with the atomically forced
+`<tool_call>{"name":"read","arguments":` prefix, emits an unmatched `{` and
+Qwen controls, then emits a second complete valid `read` block. Before the fix,
+the parser extracted the valid block but published the first incomplete prefix
+and controls as assistant content.
+
+The parser now removes that remainder only after a later valid call parses and
+only when all of these conditions hold:
+
+1. the remainder begins with the canonical prefix generated by
+   `_tool_call_name_prefix_text()`;
+2. its tool name exactly matches the first parsed call;
+3. after optional whitespace and at most one unmatched `{`, all remaining text
+   is recognized Qwen template controls/role labels;
+4. recognition runs before generic terminal-edge stripping.
+
+Ordinary text before the prefix and a mismatched incomplete tool name remain
+public byte-for-byte after the valid block is removed. Interior literal marker
+guards remain unchanged. An incomplete prefix without any valid later call
+still takes the `invalid_tool_call` route. No argument value is synthesized and
+no malformed-only output is reclassified. Blocking and SSE share this parser.
+Capabilities now advertise
+`incomplete_duplicate_tool_prefix_control_residue` under
+`features.tools.compatibility_parser_repairs`; `docs/API.md` records the narrow
+contract.
+
+RED/GREEN and validation:
+
+```bash
+python3 -m pytest -q \
+  tests/test_server_api.py::test_chat_completion_strips_incomplete_duplicate_tool_prefix_control_residue \
+  tests/test_server_api.py::test_streaming_chat_completion_strips_incomplete_duplicate_tool_prefix_control_residue \
+  tests/test_server_api.py::test_chat_completion_preserves_incomplete_duplicate_prefix_with_ordinary_content \
+  tests/test_server_api.py::test_chat_completion_rejects_incomplete_duplicate_prefix_without_valid_call
+# RED: 2 failed, 2 passed
+# GREEN: 4 passed
+python3 -m pytest -q \
+  tests/test_server_api.py::test_capabilities_endpoint_reports_manifest_and_auth \
+  tests/test_server_api.py::test_replay_artifact_redacts_failed_request \
+  tests/test_server_api.py::test_chat_completion_strips_incomplete_duplicate_tool_prefix_control_residue \
+  tests/test_server_api.py::test_streaming_chat_completion_strips_incomplete_duplicate_tool_prefix_control_residue \
+  tests/test_server_api.py::test_chat_completion_preserves_incomplete_duplicate_prefix_with_ordinary_content \
+  tests/test_server_api.py::test_chat_completion_preserves_mismatched_incomplete_duplicate_tool_prefix \
+  tests/test_server_api.py::test_chat_completion_rejects_incomplete_duplicate_prefix_without_valid_call \
+  tests/test_server_api.py::test_chat_completion_strips_qwen_terminal_residue_around_tool_call \
+  tests/test_server_api.py::test_chat_completion_strips_qwen_role_template_residue_around_tool_call \
+  tests/test_server_api.py::test_chat_completion_terminal_cleanup_preserves_interior_literal_content \
+  tests/test_server_api.py::test_chat_completion_parses_tool_call_after_literal_marker_text \
+  tests/test_server_api.py::test_streaming_chat_completion_parses_tool_call_after_literal_marker_text \
+  tests/test_server_api.py::test_chat_completion_auto_tool_rejects_unparseable_tool_markup
+# 13 passed
+python3 -m pytest -q tests/test_server_api.py
+# 510 passed
+python3 -m pytest -q tests/test_agentic_coding_live.py \
+  tests/test_agentic_coding_quality.py tests/test_agentic_server_conformance.py \
+  tests/test_agentic_harness_traces.py tests/test_local_agent_config.py
+# 142 passed
+ruff check hipengine/server/api.py tests/test_server_api.py
+# All checks passed
+```
+
+No GPU run or benchmark number changed. Next: commit this correctness unit and
+rerun the same clean W7900 4K/c1 deterministic A1 packet.
+
+## 2026-07-20 — Post-duplicate-prefix-fix W7900 deterministic A1 rerun
+
+Reran the exact cache-off 4K/c1 `small_repo` A1 packet on the Radeon Pro W7900
+from clean `5d6a28839dbf142bcb759ed23d344e2459906e38`. GPU 0 was idle before
+startup; the model, quant, and toolchain fingerprints were unchanged from the
+post-tool-fix packet.
+
+Exact commands:
+
+```bash
+HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
+HIPENGINE_GENERATION_BATCH_WINDOW_MS=0 \
+HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 \
+HIPENGINE_GGUF_GDN_PREFILL_MODE=exact \
+HIPENGINE_GGUF_AR_STREAM_DECODE=0 \
+HIPENGINE_GGUF_AR_PACKED_DECODE=1 \
+HIPENGINE_MAX_PREFILL_CHUNK_TOKENS=256 \
+python3 -m hipengine.server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --served-model-name Qwen3.6-35B-A3B \
+  --max-context-tokens 4096 --max-active-requests 1 \
+  --prefix-cache off --metrics prometheus --eager-load \
+  --host 127.0.0.1 --port 8100
+
+HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
+python3 scripts/agentic_coding_live.py \
+  --base-url http://127.0.0.1:8100/v1 \
+  --model Qwen3.6-35B-A3B --backend hip_gfx1100 \
+  --workload small_repo --concurrency 1 --runs 1 \
+  --cache-mode off --max-tokens 128 \
+  --records-json /tmp/agentic-5d6a2883-small-c1-records.json \
+  --json /tmp/agentic-5d6a2883-small-c1-a1.json
+```
+
+Startup passed in `88.385723 s`, including the guarded 4,095-token scratch
+probe, at `23.447266 GiB` used / `21.537109 GiB` free. The collector completed
+turn 0's independent blocking oracle and measured SSE normalization/equality
+before issuing the turn-1 blocking request. This proves turn 0 now passes both
+gates, but no partial record or timing is retained because the full packet did
+not complete.
+
+Turn 1 rejected with `oracle did not finish with tool_calls`. The same canonical
+blocking request uses 2,620 prompt tokens and generates 128 exact response-owned
+IDs (hash
+`868056699e24e22bb7b84ceb38b06f8290b9cf8ddec899d51104802625299e32`).
+It begins with the atomic `grep` prefix, emits an unmatched argument `{`, Qwen
+controls/tool-response framing, and then free-form reasoning to the token cap.
+The public response finishes `length` with detail `invalid_tool_call`, phase
+`reasoning`, no tool call, and empty public content. The raw diagnostic hash is
+`f0305518d55b5b7d5e6c480475161653338829758885ce2e80915c364fc6e1f4`.
+
+Final request/session/KV/graph/workspace ownership was zero. The collector wrote
+neither `/tmp/agentic-5d6a2883-small-c1-records.json` nor
+`/tmp/agentic-5d6a2883-small-c1-a1.json`; therefore no latency, throughput,
+goodput, or complete-workload row is retained. Published blocked packet:
+
+- `benchmarks/results/2026-07-20-w7900-agentic-a1-small-c1-post-duplicate-prefix-fix-blocked.json`
+  (SHA-256 `abe3d3466aa4949517a7d40c2a8f7bd3e479e02e1a50744f563c428f8b706530`)
+
+Next: implement model-general schema-aware in-envelope JSON constraints after
+the selected-tool prefix without benchmark-conditioned IDs or expected
+arguments, then rerun the complete A1 packet.
+
+## 2026-07-20 — Anchor selected strict-tool JSON and stop at the envelope
+
+The clean-`5d6a2883` turn-1 blocker did not require a full per-token vocabulary
+grammar. The selected function already supplies a validated declared schema, so
+the minimal model-general route now extends the atomic tool prefix only when:
+
+1. a specific function is selected directly or by single-tool `required`;
+2. that function declares `strict: true`;
+3. its parameters are an object with `additionalProperties: false`;
+4. its first required property exists and has `type: "string"`.
+
+For that shape, the independently tokenized forced prefix extends through the
+JSON-encoded first required key and opening quote, for example
+`<tool_call>{"name":"grep","arguments":{"pattern":"`. The model still owns
+the string value and all remaining keys/values. Non-strict, multi-tool,
+non-object, open-object, empty-required, and non-string-first schemas retain the
+shorter existing prefix and strict postvalidation remains authoritative.
+
+The strict-anchor route also tokenizes the structural argument/envelope close
+`}}</tool_call>` alongside the existing marker close. Each candidate is omitted
+if its full token sequence occurs within the forced prefix. The first candidate
+token queues the remaining suffix through the existing tokenizer-agnostic DFA;
+the same completed sequence is now a stop boundary, so a valid envelope cannot
+continue into hallucinated Qwen role/transcript text. The structural candidate
+is never enabled when schema anchoring did not actually tokenize successfully;
+this safety narrowing avoids triggering on ordinary `}}` under multi-tool or
+unsupported-schema generation. Capabilities now report
+`strict_tool_schema_prefix_anchor_scope=selected_closed_object_first_required_string_key`
+and
+`tool_call_close_repair_scope=tokenizer_safe_marker_or_object_envelope_then_stop`.
+`docs/API.md` and `docs/AGENTIC-OPT.md` describe the bounded contract and state
+that general JSON-schema grammar decoding remains unsupported.
+
+RED/GREEN evidence:
+
+```bash
+python3 -m pytest -q \
+  tests/test_server_api.py::test_chat_completion_specific_tool_choice_forces_schema_first_string_key_after_tool_result
+# RED 1: schema-derived prefix was not tokenized/forced
+# RED 2: safe close-tail candidate was absent
+# GREEN: parameterized anchor plus both forced-prefix overlap guards pass
+
+python3 -m pytest -q tests/test_server_api.py -k \
+  'capabilities or required_tool_choice or specific_tool_choice_forces_schema_first_string_key_after_tool_result or specific_tool_choice_falls_back_for_non_string_first_required_schema or replay'
+# 34 passed
+
+python3 -m pytest -q tests/test_sampling.py \
+  tests/test_generation_qwen35_gguf_sampling.py \
+  tests/test_generation_qwen35_paro.py \
+  tests/test_generation_batch_scheduler.py tests/test_llm_generate.py
+# 529 passed
+python3 -m pytest -q tests/test_server_api.py
+# 513 passed
+python3 -m pytest -q tests/test_agentic_coding_live.py \
+  tests/test_agentic_coding_quality.py tests/test_agentic_server_conformance.py \
+  tests/test_agentic_harness_traces.py tests/test_local_agent_config.py
+# 142 passed
+ruff check hipengine/server/api.py tests/test_server_api.py
+# All checks passed
+```
+
+Before commit, an explicitly dirty-tree W7900 design diagnostic ran the complete
+small-repo c1 A1 collector against the same 4K cache-off server protocol. All
+four independent blocking oracles and all four exact response-owned SSE gates
+passed: `read`, `grep`, `read`, and `run`, totaling 100 generated IDs, with zero
+final request/session/KV/graph/workspace ownership. The diagnostic files were:
+
+- `/tmp/agentic-schema-anchor-close-dirty-a1.json` (SHA-256
+  `c2b4d695db284534b3a8969ddb8ff43445119b18a1b79cfaca15bb0745adf131`)
+- `/tmp/agentic-schema-anchor-close-dirty-records.json` (SHA-256
+  `f967734a19e1f391c5134ffd17ad1b49ae2ae3956a9ca47e69c30d10f4dcb5f6`)
+
+That diagnostic has `performance_claim=false`; its timing/throughput fields are
+not retained, copied into `benchmarks/results/`, or promoted to any rollup. It
+establishes only that the bounded schema anchor plus safe close/stop route can
+clear all four correctness gates. Next: commit/push this correctness unit, then
+run the identical A1 collector from a clean commit before any performance lane.
+
+## 2026-07-20 — Clean W7900 post-schema-anchor A1 c1 completes
+
+Reran the exact deterministic `small_repo` A1 smoke from clean, pushed
+`f7a38fd198feb510b90dc5ca922da38c3ad9a691`; local `HEAD` and `origin/main`
+matched and `git status -sb` was clean before server startup. GPU 0 was idle at
+0% VRAM with no live `/dev/kfd` owner. Hardware/model/toolchain remained:
+
+- AMD Radeon Pro W7900, gfx1100, 48,301,604,864 physical VRAM bytes;
+- `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, GGUF Q4_K_M, BF16 KV,
+  22,663,387,424 bytes, SHA-256
+  `0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b`,
+  sampled SHA-256
+  `936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb`;
+- HIP `7.2.53211-3d9ef42`, `hipcc` SHA-256
+  `272d6acceae43b20d6c91e706d0272fe75d4c53b1e1717ccb8a5bc915e2aef6e`;
+- `benchmarks/prompts/agentic-coding-v1.json` file/canonical SHA-256
+  `44729fe15196fb232d64eed5a4628ba59ab9959b3a76ac041d2f194e5cc6ce5e`
+  and `small_repo` workload SHA-256
+  `067fbfd7c506bdb4b37d0aca54714aca24b5c219604b1809e701d5684e92482c`.
+
+Exact commands:
+
+```bash
+HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
+HIPENGINE_GENERATION_BATCH_WINDOW_MS=0 \
+HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 \
+HIPENGINE_GGUF_GDN_PREFILL_MODE=exact \
+HIPENGINE_GGUF_AR_STREAM_DECODE=0 \
+HIPENGINE_GGUF_AR_PACKED_DECODE=1 \
+HIPENGINE_MAX_PREFILL_CHUNK_TOKENS=256 \
+python3 -m hipengine.server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --served-model-name Qwen3.6-35B-A3B \
+  --max-context-tokens 4096 --max-active-requests 1 \
+  --prefix-cache off --metrics prometheus --eager-load \
+  --host 127.0.0.1 --port 8100
+
+HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
+python3 scripts/agentic_coding_live.py \
+  --base-url http://127.0.0.1:8100/v1 \
+  --model Qwen3.6-35B-A3B --backend hip_gfx1100 \
+  --workload small_repo --concurrency 1 --runs 1 \
+  --cache-mode off --max-tokens 128 \
+  --records-json /tmp/agentic-f7a38fd1-small-c1-records.json \
+  --json /tmp/agentic-f7a38fd1-small-c1-a1.json
+```
+
+Startup passed in `86.580089 s`, including raw warmup, chat smoke, and the exact
+4,095-token scratch probe. Final startup allocation was `23.447266 GiB` used /
+`21.537109 GiB` free. An external readiness waiter initially used the wrong
+`/v1/hipengine/ready` path and produced benign 404s; it was stopped and `/ready`
+was checked successfully before the collector began. No generation or ownership
+state was created by those GETs.
+
+The fail-closed collector completed the entire packet:
+
+- **4/4 independent blocking oracles passed**;
+- **4/4 measured SSE text/tool/exact-ID equality gates passed**;
+- turns were exact `read(path="pyproject.toml", mode="summary")` (**25 IDs**),
+  `grep(pattern="def admit", path="src")` (**23 IDs**),
+  `read(path="src/scheduler.py", mode="summary")` (**25 IDs**), and
+  `run(command="python -m pytest -q tests/test_scheduler.py")` (**27 IDs**);
+- all **100 generated IDs** are response-owned with
+  `sse_exact_ids_observed=true`, all four rows use `processed_argmax`, physical
+  width 1, and `token_timing_mode=buffered_public`;
+- strict schemas, declared tool names, exact fixture arguments, and transcript
+  links all pass; artifact validation is `{passed: true, failure_reasons: []}`;
+- final active/pending/model requests, sessions, stream producers, KV refs/pins,
+  graph owners, workspace owners, and cache bytes are all zero.
+
+Diagnostic rollup (not a performance claim): TTFT/tool-ready p50
+`1536.617911 ms`, p95 `1647.284634 ms`; complete-turn p50 `1536.737884 ms`;
+workload wall `11.016769499 s`; exact generated rate `9.077071097 tok/s`;
+validated tool calls `0.363082844/s`; full-vocabulary D2H `99,328,000 bytes`.
+Because this is one c1/single-family/single-run smoke without required warmups,
+repetitions, C4/C8, or medium/growing-history coverage, the artifact correctly
+pins `performance_claim=false` and no topline performance row is added.
+
+Artifacts and hashes:
+
+- `/tmp/agentic-f7a38fd1-small-c1-records.json` SHA-256
+  `fb9d44d2ad18010b907e07963c906c1cc6853e4d1efea0c2491609f352a0fb80`;
+- collector output `/tmp/agentic-f7a38fd1-small-c1-a1.json` and byte-identical
+  `benchmarks/results/2026-07-20-w7900-agentic-a1-small-c1-post-schema-anchor.json`
+  SHA-256
+  `c123b94567f864bcb031e977281feeef8ea6ee70ac7b94c803a6308a1ea1f2d4`;
+- artifact `turn_records_sha256`
+  `f4c1bcd10503fa7ff5be5b6979372b63281f2bf6c7ea40c97f8d925f4f0b6d0e`;
+- final readiness/sessions snapshots SHA-256
+  `569ff0d98a785ec3c3c769885c3e0b9139a3b26b1efe816be453f60275587178` /
+  `ede14f34d23bf255048455e0646be9aa1193c10892d4ea80532f8dbb19d1e613`;
+- server/collector logs SHA-256
+  `3ba91d25a0c5845caa8de4e5f4d47159de25e10c8510a2394f51e3ed179f37a2` /
+  `64e2f200f8dae0f1b4b7250c6372774928fbb587861c38bd573292d745ed26bf`.
+
+After shutdown both GPUs report 0% VRAM and no KFD PIDs. The benchmark README
+and changelog now promote the blocker to a completed diagnostic while keeping
+timing explicitly diagnostic and non-promotable. Next: solve startup capacity
+and run the full A1 C1/C4/C8 plus medium/growing-history repeated baseline
+before A2 prefix A/B.
+
+## 2026-07-20 — Localize and repair the A1 c4 sampled-KV capacity path
+
+Audited the prior 4K/c8 OOM instead of bypassing the startup guard. The missing
+clean `fee9ee85` 4K/c4 point used the same server protocol as the completed c1
+smoke except `--max-active-requests 4`. The unchanged 4,095-token scratch probe
+passed in `81.427 s`, including packed AR width-2/4 warmup, with `37.43 GiB`
+used / `7.56 GiB` free. Thus c4 is physically viable; the old c8 failure came
+from probing beyond the registered plain-AR physical route ceiling of four.
+
+The first c4 collector attempt failed closed before producing records or an A1
+artifact. A focused host RED proved that startup used admission width eight even
+though `server_plain_ar_max_active_requests=4`; its MTP-enabled control stayed
+green. Runtime localization then showed exactly one base-allocation row stayed
+correct while shifted rows either repeated the forced schema prefix or were
+cancelled. Sampled resident prefill, unlike greedy resident prefill, always used
+the raw KV base.
+
+Implemented the model-general repair:
+
+- shifted sampled allocations use `prefill_batch_native` and the scheduler-owned
+  block table instead of raw-cache prefill;
+- packed prefill supports `return_logits=True`, copies one finite FP32 vocabulary
+  row per slot, and preserves the existing host sampling processors/seed/state;
+- long shifted-contiguous chunks use their per-session slot-local AOTriton cache
+  view, while non-contiguous paged scatter remains rejected at context >= 1,024;
+- startup scratch width clamps to the registered plain-AR route ceiling unless
+  a configured MTP route is actually available. The probe remains enabled and
+  MTP startup-warmup request semantics are unchanged.
+
+RED/GREEN fixtures:
+
+```bash
+python3 -m pytest -q tests/test_generation_qwen35_gguf_sampling.py \
+  -k 'sampled_prefill_rebases_shifted_dynamic_kv_through_packed_path or full_prefill_rebases_reused_dynamic_kv_through_packed_path'
+python3 -m pytest -q tests/test_server_api.py \
+  -k 'startup_scratch_probe_clamps_to_registered_plain_ar_route_width or startup_scratch_probe_keeps_admission_width_for_enabled_mtp_route or startup_scratch_probe_uses_max_active_request_width'
+python3 -m pytest -q tests/test_gguf_packed_verify_layout.py \
+  -k long_packed_prefill_requires_slot_local_full_attention
+```
+
+The local 0.8B packed-prefill GPU fixture is absent and skips explicitly. The
+live W7900 model therefore supplied the math/route gate. Started the dirty-tree
+4K/c4 server with:
+
+```bash
+HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
+HIPENGINE_GENERATION_BATCH_WINDOW_MS=0 \
+HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 \
+HIPENGINE_GGUF_GDN_PREFILL_MODE=exact \
+HIPENGINE_GGUF_AR_STREAM_DECODE=0 \
+HIPENGINE_GGUF_AR_PACKED_DECODE=1 \
+HIPENGINE_MAX_PREFILL_CHUNK_TOKENS=256 \
+python3 -m hipengine.server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --served-model-name Qwen3.6-35B-A3B \
+  --max-context-tokens 4096 --max-active-requests 4 \
+  --prefix-cache off --metrics prometheus --eager-load \
+  --host 127.0.0.1 --port 8100
+```
+
+Then ran `scripts/agentic_coding_live.py` with the canonical `small_repo`,
+cache-off, 128-token protocol at `--concurrency 2 --runs 1` and
+`--concurrency 4 --runs 1`. Results were **8/8 c2 turns** and **16/16 c4
+turns**: all blocking oracles, measured SSE exact-ID equality gates, strict
+arguments, collector validation, and final ownership passed. Outputs were
+`/tmp/agentic-packed-sampled-prefill-dirty-c{2,4}-a1.json`; both pin
+`performance_claim=false`. Dirty/concurrently-contended timings are discarded
+and no benchmark artifact or rollup is published.
+
+Validation after implementation:
+
+```bash
+python3 -m pytest -q tests/test_gguf_packed_verify_layout.py \
+  tests/test_generation_qwen35_gguf_sampling.py
+python3 -m pytest -q tests/test_generation\*.py
+python3 -m pytest -q tests/test_server_api.py
+python3 -m pytest -q tests/test_agentic_server_conformance.py \
+  tests/test_agentic_harness_traces.py tests/test_local_agent_config.py
+```
+
+All passed: 39 packed-layout tests, 479 generation tests, 515 server tests, and
+130 agentic/config tests. Targeted Ruff and `git diff --check` pass; the runtime
+file retains pre-existing whole-file Ruff debt unrelated to this unit. After
+shutdown GPU 0 returned to baseline VRAM and all request/session/KV/graph/
+workspace ownership was zero. Next: commit/push this correctness unit, then run
+the clean 4K/C8-admission physical-c4 gate before defining the 8K/growing-history
+context split.
+
+## 2026-07-20 — Separate logical C8 admission from physical c4 residency
+
+Pushed sampled-prefill/c4 repair `84fd737a3415c8f75b3716359bb1a07e271a4b44`,
+confirmed local `HEAD == origin/main` and a clean tree, then launched the exact
+4K/cache-off server with `--max-active-requests 8`. The launch failed closed
+before chat smoke or any collector request:
+
+- resident preparation allocated eight 4K loop slots and reached `36.84375 GiB`
+  used / `8.140625 GiB` free;
+- raw warmup passed, but the scratch probe still logged `max_batch_size=8` and
+  failed with HIP OOM;
+- readiness remained false and no A1 records/artifact were emitted.
+
+The API probe clamp could not recover memory allocated earlier by the resident
+loop. Audit found that the gfx1100 generator factory did not attach
+`server_plain_ar_max_active_requests` at all; only the gfx1151 Q4 factory carried
+registry width metadata. `LLM` also propagated the logical admission setting
+directly into resident-loop capacity.
+
+Added the missing registry/loop contract without backend dispatch branches:
+
+- the gfx1100 GGUF factory advertises plain-AR physical width four through the
+  same generator field used by gfx1151 (whose registered width remains eight);
+- `LLM._get_text_generator()` caps resident capacity to the generator-advertised
+  plain-AR width while leaving `LLM.max_active_requests` and the outer HTTP queue
+  at the requested logical admission width;
+- scratch preparation independently caps plain-AR warm widths but can still use
+  a wider admission width for an enabled MTP warmup.
+
+Focused RED/GREEN tests assert the gfx1100 factory metadata and an LLM requested
+at C8 with registered physical c4 (`llm.max_active_requests == 8`, resident
+runner capacity `4`). Full validation passed:
+
+```bash
+python3 -m pytest -q tests/test_llm_generate.py tests/test_llm_gguf_generate_path.py
+python3 -m pytest -q tests/test_generation\*.py
+python3 -m pytest -q tests/test_server_api.py
+python3 -m ruff check hipengine/llm.py hipengine/generation/qwen35_gguf.py \
+  tests/test_llm_generate.py tests/test_generation_qwen35_gguf_sampling.py
+```
+
+Results: 16 LLM tests passed / four local-model tests skipped, 480 generation
+tests passed, 515 server tests passed, and targeted Ruff plus diff checks passed.
+
+A dirty-tree W7900 launch with the identical C8 command then passed startup:
+logical queue max `8`, scratch max batch `4`, packed AR widths `[2,4]`, final
+`37.427734 GiB` used / `7.556641 GiB` free. The complete canonical
+`small_repo --concurrency 8 --runs 1` collector passed **32/32 turns**, all
+blocking/SSE exact-ID/strict-argument gates, artifact validation, and final zero
+ownership. Output `/tmp/agentic-registry-cap-dirty-c8-a1.json` pins
+`performance_claim=false`; timing is discarded. Next: commit/push the registry
+capacity unit and repeat C8 from that clean commit before any retention.
+
+## 2026-07-20 — Close clean A1 C8 capacity across all workload families
+
+Committed/pushed the registry residency fix as
+`56c91f8738aa979b723579c248b1a4c1b94a23af`, verified a clean tree with local
+`HEAD == origin/main`, and reran the exact cache-off deterministic A1 protocol on
+W7900/GPU 0. The 4K server used logical `--max-active-requests 8` while readiness
+reported scratch max batch `4`, packed AR warm widths `[2,4]`, and final startup
+`37.427734 GiB` used / `7.556641 GiB` free.
+
+Clean 4K collector results:
+
+- `small_repo --concurrency 8 --runs 1`: **32/32 turns**, 800 exact
+  response-owned IDs, artifact SHA-256
+  `568fef9daa8848f8e3e42c8abe520b48d0df2d6231beab894c5b55168237f66d`;
+- `growing_history --concurrency 8 --runs 1`: **64/64 turns**, 1,592 IDs,
+  artifact SHA-256
+  `d5f0b06326934a66575e009835212cad3704c00a5a791be499b8f68df09c4f8a`.
+
+Both pass every blocking oracle, measured SSE exact-ID equality gate, strict
+argument check, collector validation, and final zero-ownership check. Public
+backend telemetry is choice-scoped and reports physical width one on every row;
+the startup probe proves width-2/4 allocation safety, but these collector
+artifacts do **not** claim physical-c4 model-step execution or performance.
+
+Used the same server tokenizer, exact tool schemas, forced choices, and canonical
+history builder to audit every frozen prompt before selecting the medium
+configuration. Results are recorded in
+`/tmp/agentic-context-requirements-56c91f87.json`:
+
+- small prompt counts `[2504, 2620, 2734, 2851]`, requiring `2851 + 128 = 2979`;
+- growing counts `[2498, 2609, 2717, 2831, 2936, 3051, 3175, 3281]`, requiring
+  `3281 + 128 = 3409`;
+- medium counts `[8644, 8757, 8876, 8998, 9112, 9229]`, requiring
+  `9229 + 128 = 9357`.
+
+Therefore small/growing retain 4,096 context and medium uses 10,240 context,
+leaving 883 tokens above the exact medium requirement without provisioning the
+old 12,288/c8 shape. The clean 10,240/C8-admission server passed the unchanged
+10,239-token startup guard with resident/scratch width four at
+`38.259766 GiB` used / `6.724609 GiB` free. Runtime sampling observed up to
+`43,567,579,136` bytes used and remained below physical VRAM.
+
+The first medium collector attempt is invalid and emitted no artifact: the
+explicit background **server** lifetime was only 600 seconds, so it began
+external graceful shutdown near the end of the collector and one stream lacked
+`[DONE]`. There was no HIP/runtime error. A fresh clean server with a 1,800-second
+lifetime repeated the same startup and completed
+`medium_repo --concurrency 8 --runs 1`: **48/48 turns**, 1,160 exact IDs, all
+blocking/SSE/strict/final-ownership gates passed, artifact SHA-256
+`77a321e66e7157a10ed6ca965f0b48e46317865464c5f24df0f0807af2120b88`.
+
+Published byte-identical collector outputs plus the compact capacity matrix:
+
+- `benchmarks/results/2026-07-20-w7900-agentic-a1-small-c8-capacity.json`;
+- `benchmarks/results/2026-07-20-w7900-agentic-a1-growing-history-c8-capacity.json`;
+- `benchmarks/results/2026-07-20-w7900-agentic-a1-medium-c8-capacity.json`;
+- `benchmarks/results/2026-07-20-w7900-agentic-a1-c8-capacity-matrix.json`
+  (SHA-256 `368a0513f4d9c16d103a49d2e9543938748e6538d76fd01c67d878811442952c`).
+
+All set `performance_claim=false`. Single-run/no-warmup TTFT, rates, and walls
+are diagnostic only; GPU 1 also had unrelated intermittent activity. The frozen
+retained-baseline protocol is now physically valid and model-general: contexts
+4,096/4,096/10,240 for small/growing/medium, logical C1/C4/C8, cache off, one
+complete discarded warmup then three measured runs per configuration. All nine
+configurations must pass before timing is promoted or A2 prefix A/B begins.
+
+## 2026-07-21 — Retain repeated W7900 coding-agent A1 baseline
+
+Ran the frozen deterministic A1 matrix from clean pushed source
+`44c76674c2693f7dfc994b40b4cfc3880abbbeac` on ROCm GPU0 / Radeon Pro W7900,
+with `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, BF16 KV, cache off,
+`HIPENGINE_GENERATION_BATCH_WINDOW_MS=0`, exact GDN prefill, packed AR decode,
+256-token prefill chunks, real localhost Uvicorn SSE, and independent blocking
+oracles. Configurations were small/growing at 4,096 and medium at 10,240,
+logical C1/C4/C8; each used one complete discarded warmup and three measured
+runs. Startup guards preserved registry-capped c4 residency at logical C8.
+
+The first rollup audit found that `workload_wall_s` spans first measured submit
+to final tool-result submit. Although each blocking oracle is outside its own
+measured SSE interval, oracles for later turns lie inside that first-to-last
+wall, making the initial **9.134/7.912/2.527 tok/s C1** figures validation-control
+inclusive rather than server throughput. Added a RED/GREEN contract for
+`active_sse_wave_wall_s`: group by `(run_id, workload_id, turn_index)`, subtract
+minimum submit from maximum response-done per concurrent wave, then sum waves.
+The builder now emits both scopes and labels the older one
+`first_submit_to_last_tool_result_submit_including_inter_turn_control`.
+`buffered_public` timing remains validated tool-ready latency, not lower-loop
+TTFT, and cannot support ITL.
+
+Correct active-SSE medians (exact response-owned generated tok/s):
+
+| Workload | C1 | C4 | C8 | C4/C1 | C8/C1 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| small_repo | 16.239 | 15.995 | 16.020 | 0.985x | 0.987x |
+| growing_history | 15.100 | 15.231 | 15.036 | 1.009x | 0.996x |
+| medium_repo | 4.127 | 4.629 | 4.339 | 1.122x | 1.052x |
+
+All 27 measured runs are <=0.91% stdev/median. The packet contains **702 strict
+tool turns / 17,316 exact response-owned IDs**; every blocking oracle, SSE ID,
+strict argument/schema, collector, and final request/session/KV/graph/workspace
+ownership gate passes. Linked semantic correctness is **KL max 0.041737 <=
+0.05 / top-1 98.89% >= 90%**, and the native-c8 token/state/KV oracle passes.
+Full-vocabulary host logits D2H reaches 1.473 GiB/run at growing C8.
+
+Corrected a measurement-coordination mistake during the long rows: ROCm GPU0 is
+the target W7900 (Linux DRM card1), while ROCm GPU1 is the separate RX 7900 XTX
+(DRM card0). Q3 work was explicitly `HIP_VISIBLE_DEVICES=1`; treating it as
+GPU0 contention was over-constrained. No Q3 process was stopped. Eleven medium
+C4 rows spanning peer activity were extremely stable (active-SSE rate 0.22%
+stdev/median), and the retained packet rejects only additional GPU0 owners while
+recording/allowing pinned GPU1 activity.
+
+Published
+`benchmarks/results/2026-07-21-w7900-agentic-a1-repeated-baseline.json`
+(SHA-256 `29133f5fb0fa36f0f83fe34565ad7df93214b8eb7e035ac56b5413713e495f3f`).
+Validation passed **150 agentic/live/quality/conformance/config/artifact tests**,
+targeted Ruff, `git diff --check`, and benchmark README synchronization.
+The result selects A2 cache-off/radix prefix A/B first, then native GPU sampling;
+short/growing C4/C8 have no aggregate win, medium C4 is the long-context guard,
+and C1 latency remains the non-regression guard.

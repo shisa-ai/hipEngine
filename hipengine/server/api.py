@@ -74,6 +74,8 @@ _THINKING_CLOSE_MARKER = "</think>"
 _TOOL_CALL_START_MARKER = "<tool_call>"
 _TOOL_CALL_END_MARKER = "</tool_call>"
 _CHAT_TEMPLATE_TERMINAL_MARKERS = ("<|im_end|>",)
+_CHAT_TEMPLATE_RESIDUE_MARKERS = ("<|endoftext|>", "<|im_start|>", "<|im_end|>")
+_CHAT_TEMPLATE_RESIDUE_ROLES = ("assistant", "developer", "system", "tool", "user")
 _TOOL_CALL_ARGUMENT_STREAM_CHARS = 128
 _CHAT_MESSAGE_ROLES = ("assistant", "developer", "system", "tool", "user")
 _CHAT_MESSAGE_ROLE_SET = frozenset(_CHAT_MESSAGE_ROLES)
@@ -1027,7 +1029,11 @@ def _tools_capability(*, tokenizer_backed: bool) -> dict[str, Any]:
         "unsupported_schema_keywords_rejected": True,
         "annotation_keywords_ignored": list(_JSON_SCHEMA_ANNOTATION_KEYWORDS),
         "format": "qwen_tool_call_json",
-        "compatibility_parser_repairs": ["duplicated_tool_call_start"],
+        "compatibility_parser_repairs": [
+            "duplicated_tool_call_start",
+            "incomplete_duplicate_tool_prefix_control_residue",
+            "outer_qwen_template_control_residue",
+        ],
         "malformed_json_compatibility": "invalid_tool_call_when_tools_enabled",
         "strict_malformed_blocks_rejected": True,
         "declared_tool_name_validation": True,
@@ -1049,7 +1055,17 @@ def _tools_capability(*, tokenizer_backed: bool) -> dict[str, Any]:
             "initial_or_after_tokenized_thinking_close" if tokenizer_backed else "none"
         ),
         "specific_tool_name_prefix_forcing": tokenizer_backed,
+        "specific_tool_name_prefix_forcing_scope": (
+            "atomic_tool_call_name_and_arguments_key" if tokenizer_backed else "none"
+        ),
+        "strict_tool_schema_prefix_anchor": tokenizer_backed,
+        "strict_tool_schema_prefix_anchor_scope": (
+            "selected_closed_object_first_required_string_key" if tokenizer_backed else "none"
+        ),
         "tool_call_close_repair": tokenizer_backed,
+        "tool_call_close_repair_scope": (
+            "tokenizer_safe_marker_or_object_envelope_then_stop" if tokenizer_backed else "none"
+        ),
     }
 
 
@@ -3606,6 +3622,27 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             scratch_probe_context_unknown = max_prompt_tokens is None
             scratch_probe_prompt_tokens = 64 if max_prompt_tokens is None else int(max_prompt_tokens)
             scratch_probe_batch_size = max(1, int(config.max_active_requests or 1))
+            mtp_startup_warmup_requested = str(config.speculative_mtp_serving) != "off"
+            mtp_route_enabled = (
+                mtp_startup_warmup_requested
+                and _engine_supports_speculative_mtp(engine)
+            )
+            if not mtp_route_enabled:
+                plain_ar_limit = getattr(
+                    engine,
+                    "server_plain_ar_max_active_requests",
+                    None,
+                )
+                if plain_ar_limit is not None:
+                    plain_ar_limit = int(plain_ar_limit)
+                    if plain_ar_limit < 1:
+                        raise ValueError(
+                            "server_plain_ar_max_active_requests must be positive"
+                        )
+                    scratch_probe_batch_size = min(
+                        scratch_probe_batch_size,
+                        plain_ar_limit,
+                    )
             if max_prompt_tokens is None and scratch_probe_batch_size <= 1:
                 startup_checks["scratch_probe"] = {"enabled": True, "status": "skipped", "reason": "unknown_context"}
             elif not callable(scratch_preparer):
@@ -3622,7 +3659,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     def run_scratch_probe() -> Any:
                         mtp_warmup_env = "HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP"
                         previous_mtp_warmup = os.environ.get(mtp_warmup_env)
-                        os.environ[mtp_warmup_env] = "1" if str(config.speculative_mtp_serving) != "off" else "0"
+                        os.environ[mtp_warmup_env] = "1" if mtp_startup_warmup_requested else "0"
                         try:
                             return scratch_preparer(
                                 max_prompt_tokens=scratch_probe_prompt_tokens,
@@ -3868,15 +3905,23 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             if isinstance(request, ChatCompletionRequest) and not uses_stored_chat_prompt
             else ()
         )
-        forced_tool_token_ids = (
-            _required_tool_sampling_forced_token_ids(request, engine)
+        forced_tool_token_ids, strict_tool_schema_prefix_anchored = (
+            _required_tool_sampling_forced_prefix(request, engine)
             if isinstance(request, ChatCompletionRequest) and not uses_stored_chat_prompt
-            else ()
+            else ((), False)
         )
         force_sequence_completion_token_sequences = (
-            _tool_call_sequence_completion_token_sequences(request, engine, forced_tool_token_ids)
+            _tool_call_sequence_completion_token_sequences(
+                request,
+                engine,
+                forced_tool_token_ids,
+                include_object_close=strict_tool_schema_prefix_anchored,
+            )
             if isinstance(request, ChatCompletionRequest)
             else ()
+        )
+        stop_token_sequences = tuple(
+            dict.fromkeys((*stop_token_sequences, *force_sequence_completion_token_sequences))
         )
         initial_forced_tool_token_ids = () if thinking_budget else forced_tool_token_ids
         post_thinking_forced_tool_token_ids = forced_tool_token_ids if thinking_budget else ()
@@ -4910,6 +4955,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "backend_prefill_timing": "GenerationTelemetry.timing_when_available",
                     "choice_phase": True,
                     "choice_finish_details": True,
+                    "choice_generated_token_ids": (
+                        "done_event_when_backend_supplies_exact_ids"
+                    ),
                     "choice_token_accounting": tokenizer_caps["count_tokens"],
                     "choice_token_accounting_scopes": (
                         ["live_delta", "buffered_delta", "final_choice"]
@@ -6053,6 +6101,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         index=index,
                         finish_details=finish_details,
                         token_accounting=token_accounting,
+                        final_stream_chunk=_stream_chunk_from_detail("", detail),
                         include_hipengine=include_hipengine,
                         stream_started_at=stream_started_at,
                         routing=routing_metadata,
@@ -8780,35 +8829,68 @@ def _coerce_generation_stream_chunk(value: Any) -> GenerationStreamChunk:
     token_logprobs = getattr(value, "token_logprobs", None)
     finish_details = getattr(value, "finish_details", None)
     telemetry = getattr(value, "telemetry", None)
-    if token_logprobs is not None or finish_details is not None or telemetry is not None:
+    generated_token_ids = getattr(value, "generated_token_ids", None)
+    if (
+        token_logprobs is not None
+        or finish_details is not None
+        or telemetry is not None
+        or generated_token_ids is not None
+    ):
         return GenerationStreamChunk(
             text=str(getattr(value, "text", value)),
             token_logprobs=_coerce_token_logprobs(token_logprobs),
             finish_details=finish_details,
             telemetry=telemetry,
+            generated_token_ids=generated_token_ids,
         )
-    if isinstance(value, Mapping) and (
-        "text" in value or "token_logprobs" in value or "finish_details" in value or "telemetry" in value
+    if isinstance(value, Mapping) and any(
+        key in value
+        for key in (
+            "text",
+            "token_logprobs",
+            "finish_details",
+            "telemetry",
+            "generated_token_ids",
+        )
     ):
         return GenerationStreamChunk(
             text=str(value.get("text", "")),
             token_logprobs=_coerce_token_logprobs(value.get("token_logprobs", ())),
             finish_details=value.get("finish_details"),
             telemetry=value.get("telemetry"),
+            generated_token_ids=value.get("generated_token_ids"),
         )
     return GenerationStreamChunk(text=str(value))
 
 
 def _stream_chunk_from_detail(text: str, detail: GenerationOutput | None) -> GenerationStreamChunk | None:
-    if detail is None or (detail.finish_details is None and detail.telemetry is None):
+    if detail is None or (
+        detail.finish_details is None
+        and detail.telemetry is None
+        and detail.generated_token_ids is None
+    ):
         return None
-    return GenerationStreamChunk(text=str(text), finish_details=detail.finish_details, telemetry=detail.telemetry)
+    return GenerationStreamChunk(
+        text=str(text),
+        finish_details=detail.finish_details,
+        telemetry=detail.telemetry,
+        generated_token_ids=detail.generated_token_ids,
+    )
 
 
 def _output_from_stream_chunk(chunk: GenerationStreamChunk | None, text: str) -> GenerationOutput | None:
-    if chunk is None or (chunk.finish_details is None and chunk.telemetry is None):
+    if chunk is None or (
+        chunk.finish_details is None
+        and chunk.telemetry is None
+        and chunk.generated_token_ids is None
+    ):
         return None
-    return GenerationOutput(text=str(text), finish_details=chunk.finish_details, telemetry=chunk.telemetry)
+    return GenerationOutput(
+        text=str(text),
+        finish_details=chunk.finish_details,
+        telemetry=chunk.telemetry,
+        generated_token_ids=chunk.generated_token_ids,
+    )
 
 
 def _backend_generation_targets(engine: Any) -> tuple[Any, ...]:
@@ -9020,6 +9102,9 @@ def _buffered_delta_stream_chunk(
                 native_sampler_rows=backend_state.native_sampler_rows,
                 continuation_eligible=token_state.continuation_eligible,
             )
+        ),
+        generated_token_ids=(
+            None if final_chunk is None else final_chunk.generated_token_ids
         ),
     )
 
@@ -9750,55 +9835,56 @@ def _no_tool_sampling_suppress_token_ids(
     return (int(token_ids[0]),)
 
 
-def _required_tool_sampling_forced_token_ids(
+def _required_tool_sampling_forced_prefix(
     request: ChatCompletionRequest,
     engine: Any,
-) -> tuple[int, ...]:
+) -> tuple[tuple[int, ...], bool]:
     if not request.tools:
-        return ()
+        return (), False
     mode, _name = _tool_choice_mode(request.tool_choice)
     if mode not in {"required", "function"}:
-        return ()
+        return (), False
     try:
-        token_ids = _tokenize_text(engine, _TOOL_CALL_START_MARKER)
+        start_ids = _tokenize_text(engine, _TOOL_CALL_START_MARKER)
     except OpenAIHTTPError:
-        return ()
-    return tuple(int(token_id) for token_id in token_ids)
+        return (), False
+    start = tuple(int(token_id) for token_id in start_ids)
+    name = _specific_tool_name_prefix_target(request)
+    if name is None:
+        return start, False
+    try:
+        prefix_ids = _tokenize_text(engine, _tool_call_name_prefix_text(name))
+    except OpenAIHTTPError:
+        return start, False
+    prefix = tuple(int(token_id) for token_id in prefix_ids)
+    if not prefix:
+        return start, False
+    schema_prefix = _specific_tool_first_required_string_prefix(request, name)
+    if schema_prefix is None:
+        return prefix, False
+    try:
+        schema_prefix_ids = _tokenize_text(engine, schema_prefix)
+    except OpenAIHTTPError:
+        return prefix, False
+    schema_prefix_tokens = tuple(int(token_id) for token_id in schema_prefix_ids)
+    if not schema_prefix_tokens:
+        return prefix, False
+    return schema_prefix_tokens, True
 
 
 def _tool_call_sequence_completion_token_sequences(
     request: ChatCompletionRequest,
     engine: Any,
     forced_tool_token_ids: Sequence[int],
+    *,
+    include_object_close: bool,
 ) -> tuple[tuple[int, ...], ...]:
-    sequences: list[tuple[int, ...]] = []
-    prefix_sequence = _specific_tool_name_prefix_token_sequence(request, engine, forced_tool_token_ids)
-    if prefix_sequence:
-        sequences.append(prefix_sequence)
-    sequences.extend(_tool_call_close_repair_token_sequences(request, engine))
-    return tuple(sequences)
-
-
-def _specific_tool_name_prefix_token_sequence(
-    request: ChatCompletionRequest,
-    engine: Any,
-    forced_tool_token_ids: Sequence[int],
-) -> tuple[int, ...]:
-    start_ids = tuple(int(token_id) for token_id in forced_tool_token_ids)
-    if not start_ids:
-        return ()
-    name = _specific_tool_name_prefix_target(request)
-    if name is None:
-        return ()
-    prefix_text = _tool_call_name_prefix_text(name)
-    try:
-        prefix_ids = _tokenize_text(engine, prefix_text)
-    except OpenAIHTTPError:
-        return ()
-    prefix = tuple(int(token_id) for token_id in prefix_ids)
-    if len(prefix) <= len(start_ids) or prefix[: len(start_ids)] != start_ids:
-        return ()
-    return prefix
+    return _tool_call_close_repair_token_sequences(
+        request,
+        engine,
+        forced_tool_token_ids,
+        include_object_close=include_object_close,
+    )
 
 
 def _specific_tool_name_prefix_target(request: ChatCompletionRequest) -> str | None:
@@ -9824,9 +9910,44 @@ def _tool_call_name_prefix_text(name: str) -> str:
     )
 
 
+def _specific_tool_first_required_string_prefix(
+    request: ChatCompletionRequest,
+    name: str,
+) -> str | None:
+    tool = _tool_map_by_name(request.tools).get(str(name))
+    if tool is None:
+        return None
+    function = _tool_function(tool)
+    if function.get("strict") is not True:
+        return None
+    schema = _tool_parameters_schema(tool)
+    if not isinstance(schema, Mapping) or schema.get("type") != "object":
+        return None
+    if schema.get("additionalProperties") is not False:
+        return None
+    required = schema.get("required")
+    properties = schema.get("properties")
+    if (
+        not isinstance(required, Sequence)
+        or isinstance(required, (str, bytes))
+        or not required
+        or not isinstance(properties, Mapping)
+    ):
+        return None
+    key = required[0]
+    property_schema = properties.get(key) if isinstance(key, str) else None
+    if not isinstance(property_schema, Mapping) or property_schema.get("type") != "string":
+        return None
+    encoded_key = json.dumps(key, ensure_ascii=False, separators=(",", ":"))
+    return f"{_tool_call_name_prefix_text(name)}{{{encoded_key}:\""
+
+
 def _tool_call_close_repair_token_sequences(
     request: ChatCompletionRequest,
     engine: Any,
+    forced_tool_token_ids: Sequence[int],
+    *,
+    include_object_close: bool,
 ) -> tuple[tuple[int, ...], ...]:
     if not request.tools:
         return ()
@@ -9834,12 +9955,34 @@ def _tool_call_close_repair_token_sequences(
     if mode not in {"required", "function"}:
         return ()
     try:
-        token_ids = _tokenize_text(engine, _TOOL_CALL_END_MARKER)
+        marker_ids = _tokenize_text(engine, _TOOL_CALL_END_MARKER)
     except OpenAIHTTPError:
         return ()
-    if not token_ids:
-        return ()
-    return (tuple(int(token_id) for token_id in token_ids),)
+    object_close_ids: tuple[int, ...] = ()
+    if include_object_close:
+        try:
+            object_close_ids = _tokenize_text(engine, f"}}}}{_TOOL_CALL_END_MARKER}")
+        except OpenAIHTTPError:
+            pass
+    full = tuple(int(token_id) for token_id in marker_ids)
+    object_close = tuple(int(token_id) for token_id in object_close_ids)
+    forced = tuple(int(token_id) for token_id in forced_tool_token_ids)
+    sequences: list[tuple[int, ...]] = []
+    for sequence in (object_close, full):
+        if sequence and sequence not in sequences and not _token_sequence_occurs(forced, sequence):
+            sequences.append(sequence)
+    return tuple(sequences)
+
+
+def _token_sequence_occurs(token_ids: Sequence[int], sequence: Sequence[int]) -> bool:
+    tokens = tuple(int(token_id) for token_id in token_ids)
+    target = tuple(int(token_id) for token_id in sequence)
+    if not target or len(target) > len(tokens):
+        return False
+    return any(
+        tokens[index : index + len(target)] == target
+        for index in range(len(tokens) - len(target) + 1)
+    )
 
 
 def _normalize_prompts(
@@ -11985,6 +12128,7 @@ def _live_splitter_span_stream_chunk(
         token_logprobs=tuple(token_logprobs),
         finish_details=tail_chunk.finish_details,
         telemetry=tail_chunk.telemetry,
+        generated_token_ids=tail_chunk.generated_token_ids,
     )
     return _stream_chunk_with_phase(chunk, phase)
 
@@ -12358,8 +12502,43 @@ def _valid_tool_call_blocks(text: str) -> tuple[_ToolCallBlock, ...]:
     return tuple(blocks)
 
 
+def _is_chat_template_control_residue(text: str) -> bool:
+    """Return whether text contains only leaked Qwen template controls/roles."""
+
+    residue = str(text)
+    cursor = 0
+    saw_marker = False
+    role_allowed = False
+    while cursor < len(residue):
+        if residue[cursor].isspace():
+            cursor += 1
+            continue
+        marker = next(
+            (item for item in _CHAT_TEMPLATE_RESIDUE_MARKERS if residue.startswith(item, cursor)),
+            None,
+        )
+        if marker is not None:
+            cursor += len(marker)
+            saw_marker = True
+            role_allowed = role_allowed or marker == "<|im_start|>"
+            continue
+        if role_allowed:
+            role = next(
+                (item for item in _CHAT_TEMPLATE_RESIDUE_ROLES if residue.startswith(item, cursor)),
+                None,
+            )
+            if role is not None:
+                role_end = cursor + len(role)
+                if role_end == len(residue) or residue[role_end] in "\r\n":
+                    cursor = role_end
+                    role_allowed = False
+                    continue
+        return False
+    return saw_marker
+
+
 def _strip_chat_template_terminal_edges(text: str) -> str:
-    """Remove repeated chat-template terminals only at parsed tool envelope edges."""
+    """Remove chat-template residue only around a parsed tool envelope."""
 
     stripped = str(text).strip()
     while stripped:
@@ -12371,7 +12550,22 @@ def _strip_chat_template_terminal_edges(text: str) -> str:
                 stripped = stripped[: -len(marker)].rstrip()
         if stripped == previous:
             break
+    if _is_chat_template_control_residue(stripped):
+        return ""
     return stripped
+
+
+def _is_incomplete_duplicate_tool_prefix_control_residue(text: str, *, tool_name: str) -> bool:
+    """Return whether text is an unfinished duplicate prefix plus Qwen controls."""
+
+    residue = str(text).strip()
+    prefix = _tool_call_name_prefix_text(tool_name)
+    if not residue.startswith(prefix):
+        return False
+    residue = residue[len(prefix) :].lstrip()
+    if residue.startswith("{"):
+        residue = residue[1:].lstrip()
+    return _is_chat_template_control_residue(residue)
 
 
 def _parse_chat_tool_calls(text: str) -> _ParsedChatOutput:
@@ -12390,7 +12584,13 @@ def _parse_chat_tool_calls(text: str) -> _ParsedChatOutput:
             return _ParsedChatOutput(text="", tool_calls=(parsed,))
     visible_text = "".join(text_parts).strip()
     if calls:
-        visible_text = _strip_chat_template_terminal_edges(visible_text)
+        if _is_incomplete_duplicate_tool_prefix_control_residue(
+            visible_text,
+            tool_name=calls[0].name,
+        ):
+            visible_text = ""
+        else:
+            visible_text = _strip_chat_template_terminal_edges(visible_text)
     return _ParsedChatOutput(text=visible_text, tool_calls=tuple(calls))
 
 
@@ -13733,6 +13933,7 @@ def _choice_hipengine_payload(
     finish_details: Mapping[str, Any] | None = None,
     tokens: Mapping[str, int] | None = None,
     stream_chunk: GenerationStreamChunk | None = None,
+    include_generated_token_ids: bool = False,
 ) -> dict[str, Any]:
     telemetry = None if stream_chunk is None else stream_chunk.telemetry
     payload: dict[str, Any] = {"phase": str(phase)}
@@ -13741,6 +13942,13 @@ def _choice_hipengine_payload(
         payload["phase"] = payload.get("decode_state", {}).get("phase", str(phase))
     if finish_details is not None:
         payload["finish_details"] = dict(finish_details)
+    if (
+        include_generated_token_ids
+        and stream_chunk is not None
+        and stream_chunk.generated_token_ids is not None
+    ):
+        payload["generated_token_ids"] = list(stream_chunk.generated_token_ids)
+        payload["generated_tokens"] = len(stream_chunk.generated_token_ids)
     if tokens is not None:
         token_payload = {str(key): max(0, int(value)) for key, value in tokens.items()}
         payload["tokens"] = token_payload
@@ -13879,6 +14087,7 @@ def _completion_stream_done(
             finish_details=finish_payload,
             tokens=tokens,
             stream_chunk=stream_chunk,
+            include_generated_token_ids=True,
         )
     return _sse(
         _attach_stream_hipengine(
@@ -14148,6 +14357,7 @@ def _stream_chunk_with_phase(
             stream_chunk.telemetry,
             decode_state=replace(stream_chunk.telemetry.decode_state, phase=phase),
         ),
+        generated_token_ids=stream_chunk.generated_token_ids,
     )
 
 
@@ -14666,6 +14876,7 @@ def _chat_stream_scheduler_tool_call_chunks(
     index: int = 0,
     finish_details: Mapping[str, Any] | None = None,
     token_accounting: _StreamTokenAccounting | None = None,
+    final_stream_chunk: GenerationStreamChunk | None = None,
     include_hipengine: bool = False,
     stream_started_at: _StreamTimingSource = None,
     routing: Mapping[str, Any] | None = None,
@@ -14700,6 +14911,15 @@ def _chat_stream_scheduler_tool_call_chunks(
     final_tokens = None
     if token_accounting is not None and token_accounting.streamed_tokens > 0:
         final_tokens = token_accounting.snapshot()
+    done_stream_chunk = last_stream_chunk
+    if final_stream_chunk is not None:
+        if done_stream_chunk is None:
+            done_stream_chunk = final_stream_chunk
+        elif final_stream_chunk.generated_token_ids is not None:
+            done_stream_chunk = replace(
+                done_stream_chunk,
+                generated_token_ids=final_stream_chunk.generated_token_ids,
+            )
     yield _chat_stream_done(
         response_id,
         created,
@@ -14708,7 +14928,7 @@ def _chat_stream_scheduler_tool_call_chunks(
         index=index,
         finish_details=finish_details,
         tokens=final_tokens,
-        stream_chunk=last_stream_chunk,
+        stream_chunk=done_stream_chunk,
         include_hipengine=include_hipengine,
         stream_started_at=stream_started_at,
         routing=routing,
@@ -14856,6 +15076,7 @@ def _chat_stream_done(
             finish_details=finish_payload,
             tokens=tokens,
             stream_chunk=stream_chunk,
+            include_generated_token_ids=True,
         )
         if extra_hipengine is not None:
             hipengine_payload.update(deepcopy(dict(extra_hipengine)))

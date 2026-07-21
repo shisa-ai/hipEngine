@@ -23,6 +23,13 @@ from hipengine.benchmark.agentic_live import (
     normalize_chat_sse_turn,
     render_workload_prefix,
 )
+from hipengine.benchmark.agentic_quality import (
+    AGENTIC_QUALITY_ARTIFACT_KIND,
+    AGENTIC_QUALITY_RECORDS_KIND,
+    build_agentic_quality_artifact,
+    normalize_chat_quality_turn,
+    validate_agentic_quality_artifact,
+)
 from hipengine.benchmark.correctness import LogitCorrectness, evaluate_logits
 from hipengine.benchmark.exact_tokens import (
     DEFAULT_EXACT_TOKEN_FIXTURE,
@@ -70,6 +77,8 @@ from hipengine.benchmark.speculative import (
 
 __all__ = [
     "AGENTIC_ARTIFACT_KIND",
+    "AGENTIC_QUALITY_ARTIFACT_KIND",
+    "AGENTIC_QUALITY_RECORDS_KIND",
     "AGENTIC_RECORDS_KIND",
     "AGENTIC_SCHEMA_VERSION",
     "AGENTIC_WORKLOAD_KIND",
@@ -99,6 +108,7 @@ __all__ = [
     "acceptance_summary",
     "aggregate_speculative_rows",
     "build_agentic_benchmark_artifact",
+    "build_agentic_quality_artifact",
     "build_canonical_turn_messages",
     "build_openai_tools",
     "build_prompt_records",
@@ -112,6 +122,7 @@ __all__ = [
     "load_agentic_workload_suite",
     "load_prompt_records",
     "normalize_chat_oracle",
+    "normalize_chat_quality_turn",
     "normalize_chat_sse_turn",
     "normalize_speculative_row",
     "percentile",
@@ -120,6 +131,7 @@ __all__ = [
     "load_exact_token_fixture",
     "validate_exact_token_parity",
     "validate_agentic_benchmark_artifact",
+    "validate_agentic_quality_artifact",
     "validate_artifact_provenance",
     "validate_benchmark_matrix",
     "validate_prompt_records",
