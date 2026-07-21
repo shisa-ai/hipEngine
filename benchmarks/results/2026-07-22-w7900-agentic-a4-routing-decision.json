@@ -1,0 +1,181 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_agentic_a4_routing_decision",
+  "created_at": "2026-07-22T03:00:00+09:00",
+  "status": "final_blocked_no_routing_candidate",
+  "passed": false,
+  "measurement_valid": false,
+  "correctness_claim": false,
+  "performance_claim": false,
+  "timing_claim": false,
+  "decision": "Retain gfx1100 protect_decode:256/burst-1 with the zero-ms package window; do not promote any A4 routing candidate.",
+  "source": {
+    "protocol_commit": "c445d0ca",
+    "harness_commit": "fb744f03",
+    "measurement_commit": "7cc2fee0",
+    "publication_base_commit": "7cc2fee0"
+  },
+  "evidence": {
+    "protocol": {
+      "artifact": "benchmarks/results/2026-07-22-w7900-agentic-a4-predeclared-protocol.json",
+      "sha256": "89e4fa25b75a534dd567f2023e9ea419272d3b6f1fd4ae5f227eaeee508692d1",
+      "status": "predeclared_ready",
+      "candidate_count": 8
+    },
+    "routing_screen": {
+      "artifact": "benchmarks/results/2026-07-22-w7900-agentic-a4-routing-screen-blocked.json",
+      "sha256": "cfad064f1a387a8c5e41d12167edc5377815649af67b20ed0294d713932e2969",
+      "status": "blocked_no_complete_slo_and_correctness_candidate",
+      "source_revision": "fb744f036e2ed84c6143aca867feb06d483d5bcc",
+      "source_clean": true
+    }
+  },
+  "screen_coverage": {
+    "hardware": "AMD Radeon Pro W7900 / gfx1100",
+    "model": "Qwen3.6-35B-A3B UD-Q4_K_M",
+    "kv_storage": "bf16",
+    "stream": "real localhost Uvicorn SSE",
+    "token_timing_mode": "live_exact",
+    "candidate_count": 8,
+    "balanced_repetitions_per_candidate": 3,
+    "candidate_samples": 24,
+    "requests": 288,
+    "observed_generated_tokens": 8640,
+    "fully_exact_row_generated_tokens": 8208,
+    "prompt_output_shapes": [
+      [64, 16],
+      [128, 24],
+      [256, 32],
+      [512, 48],
+      [64, 48],
+      [128, 32],
+      [256, 24],
+      [512, 16]
+    ],
+    "arrival_rate_per_second": 2.0,
+    "native_execution_paths": [
+      "native_c1_eager",
+      "native_c1_graph",
+      "packed_native"
+    ],
+    "serial_fallback_steps": 0,
+    "resident_fallback_requests": 0
+  },
+  "candidate_disposition": [
+    {
+      "id": "pd256_b1_w0_control",
+      "median_diagnostic_slo_goodput_tok_s": 27.968824387616145,
+      "median_ttft_p95_seconds": 9.56655323097948,
+      "median_itl_p99_seconds": 0.07357934210449457,
+      "result": "rejected_one_ttft_p95_slo_failure"
+    },
+    {
+      "id": "pt256_b1_w0",
+      "median_diagnostic_slo_goodput_tok_s": 41.442574139788405,
+      "median_ttft_p95_seconds": 0.9477263619191945,
+      "median_itl_p99_seconds": 0.3541444760048762,
+      "result": "rejected_one_generated_id_mismatch"
+    },
+    {
+      "id": "fair128_b1_w0",
+      "median_diagnostic_slo_goodput_tok_s": 35.81500899620908,
+      "median_ttft_p95_seconds": 1.6285077640786767,
+      "median_itl_p99_seconds": 0.19149226392619312,
+      "result": "rejected_two_generated_id_mismatches"
+    },
+    {
+      "id": "fair256_b1_w0",
+      "median_diagnostic_slo_goodput_tok_s": 43.94227558599812,
+      "median_ttft_p95_seconds": 0.9826488889520988,
+      "median_itl_p99_seconds": 0.21971984603442252,
+      "result": "rejected_one_generated_id_mismatch"
+    },
+    {
+      "id": "fair256_b2_w0",
+      "median_diagnostic_slo_goodput_tok_s": 45.8167071979051,
+      "median_ttft_p95_seconds": 0.8506726040504873,
+      "median_itl_p99_seconds": 0.2251961549045518,
+      "result": "rejected_one_generated_id_mismatch"
+    },
+    {
+      "id": "pd256_b1_w5",
+      "median_diagnostic_slo_goodput_tok_s": 29.979164902540656,
+      "median_ttft_p95_seconds": 8.78753166203387,
+      "median_itl_p99_seconds": 0.0644096479518339,
+      "result": "rejected_one_ttft_p95_slo_failure"
+    },
+    {
+      "id": "fair256_b2_w5",
+      "median_diagnostic_slo_goodput_tok_s": 39.53731214112996,
+      "median_ttft_p95_seconds": 1.0748643560800701,
+      "median_itl_p99_seconds": 0.23448586999438703,
+      "result": "rejected_three_generated_id_mismatches"
+    },
+    {
+      "id": "fair256_b2_w100_diagnostic",
+      "median_diagnostic_slo_goodput_tok_s": 38.407986729080825,
+      "median_ttft_p95_seconds": 0.9917132169939578,
+      "median_itl_p99_seconds": 0.23478709894698113,
+      "result": "rejected_one_generated_id_mismatch"
+    }
+  ],
+  "correctness_blocker": {
+    "mismatch_count": 9,
+    "affected_request": "fixed-0011",
+    "shape": "p512/d48",
+    "expected_token_id": 9710,
+    "correct_prefix_before_first_mismatch_tokens": {
+      "min": 20,
+      "max": 24
+    },
+    "finish_reason": "length",
+    "classification": "late delayed-arrival state/KV or physical-width-transition divergence",
+    "not_accounting_failure": [
+      "HTTP/SSE framing passed",
+      "prompt and response-owned token accounting passed",
+      "native route telemetry passed",
+      "all request/KV/queue/model ownership drained"
+    ]
+  },
+  "acceptance": {
+    "stage_1_screen_complete": true,
+    "all_candidates_complete": true,
+    "all_candidates_correct": false,
+    "all_candidates_slo_passing": false,
+    "complete_all_pass_candidates": 0,
+    "candidate_selected": false,
+    "c1_regression_guard_evaluated": false,
+    "occupancy_c1_c2_c4_c8_matrix_authorized": false,
+    "agentic_strict_tool_guard_authorized": false,
+    "cancellation_backpressure_overload_guard_authorized": false,
+    "default_change_authorized": false,
+    "inferred_timing_used": false,
+    "final_ownership_zero": true
+  },
+  "matrix_disposition": {
+    "stage_2_occupancy_matrix": "skipped_no_stage_1_candidate",
+    "stage_3_agentic_guard": "skipped_no_stage_1_candidate",
+    "stage_3_safety_packet": "skipped_no_stage_1_candidate",
+    "published_performance_rows": 0,
+    "diagnostic_timing_rows": 24
+  },
+  "runtime_defaults": {
+    "changed": false,
+    "prefill_decode_policy": "protect_decode",
+    "prefill_chunk_tokens": 256,
+    "fair_prefill_burst_chunks": 1,
+    "generation_batch_window_ms": 0.0,
+    "prefix_cache": "off",
+    "native_gpu_sampler": false
+  },
+  "next_actions": {
+    "a4_rerun_blocked_by": "Add a model-general exactness gate and repair for the late delayed p512/d48 transition, then restart all eight frozen candidates.",
+    "a5": "May proceed independently on current package defaults as a correctness/pressure packet; it must not imply A4 routing promotion.",
+    "a6": "May proceed independently as the separate no-performance quality lane."
+  },
+  "limitations": [
+    "Candidate goodput and latency values are diagnostic only because no candidate passed every correctness and SLO repetition.",
+    "No occupancy 1/2/4/8 promotion matrix, strict-tool timing guard, cancellation/backpressure/overload promotion packet, or default speed claim exists.",
+    "The device-activity monitor did not expose process-level KFD identity; this does not affect the fail-closed correctness decision and no uncontended performance claim is made."
+  ]
+}
