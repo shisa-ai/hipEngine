@@ -30,6 +30,7 @@ from hipengine.benchmark.agentic_quality import (
     normalize_chat_quality_turn,
     validate_agentic_quality_artifact,
 )
+from hipengine.benchmark.agentic_quality_oracle import evaluate_quality_oracle
 from hipengine.benchmark.correctness import LogitCorrectness, evaluate_logits
 from hipengine.benchmark.exact_tokens import (
     DEFAULT_EXACT_TOKEN_FIXTURE,
@@ -114,6 +115,7 @@ __all__ = [
     "build_prompt_records",
     "build_benchmark_matrix",
     "build_speculative_artifact",
+    "evaluate_quality_oracle",
     "collect_artifact_provenance",
     "collect_model_identity",
     "collect_repo_state",

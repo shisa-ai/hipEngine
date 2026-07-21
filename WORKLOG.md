@@ -172781,3 +172781,51 @@ provenance tests. Targeted Ruff, provenance validation with the real model,
 JSON parsing, README synchronization, Worklog conflict validation, changed-doc
 fence/trailing-space checks, and `git diff --check` pass; only the existing
 Starlette/httpx deprecation warning remains.
+
+## 2026-07-22 — Freeze broad external-oracle A6 quality protocol
+
+RED first added `tests/test_agentic_coding_quality_oracle.py`; collection failed
+because `hipengine.benchmark.agentic_quality_oracle` did not exist. The GREEN
+implementation separates prompts from scoring:
+
+- `benchmarks/prompts/agentic-quality-v2.json` defines **6 workloads / 24
+  turns**: repository 8, general-English 8, Japanese 4, and mixed
+  Japanese/English 4. It declares read, grep, lookup, bounded calculator,
+  committed-patch selection, and external-test tools. Fixture SHA-256 is
+  `74903e7225deebcab4427f08eb9a5d4a64015d86c24d134ecbcbde78abb50652`.
+- `benchmarks/oracles/agentic-quality-v2.json` independently stores synthetic
+  files/summaries/knowledge, exact-rational calculation, three one-region safe
+  patches, four file-hash test suites, and **24** expected result hashes. Oracle
+  SHA-256 is
+  `1252c2b0af2492f24c3d4bce5437e1806b6a771753574ed27af5ecff60f3f2b9`.
+  All 24 canonical cases execute. Equivalent `19 * 37` passes the same result
+  oracle as canonical `37 * 19` while remaining non-exact arguments, proving
+  oracle success is not copied from argument equality.
+- Patch rows select committed patch IDs; the oracle applies them in memory and
+  checks resulting file hashes. No model-generated code or command is executed.
+  Patch/test rollups report attempts, successes, and rates independently of
+  valid-call/correct-tool/schema/exact-argument rates.
+- Per-family quality distributions and external-oracle results are added only
+  for oracle-backed suites, preserving the byte-level shape of legacy A6
+  artifacts. Response-owned ID and zero-ownership requirements remain.
+- The live collector now accepts repeated `--workload` or `--all-workloads`,
+  assigns each workload/repetition an independent canonical valid history, and
+  uses an A6 system policy that says to choose an appropriate tool without
+  revealing the fixture's expected tool name. Optional clean canonical
+  source/model/hardware provenance is available for the retained live packet.
+
+The predeclared live matrix is cache-off/native-sampler-off W7900 c1, all six
+workloads, **2 runs / 48 turns**, temperature zero, 128-token cap, real localhost
+blocking OpenAI responses, response-owned IDs, and final zero ownership. It has
+no warmup/timing denominator: `performance_claim=false`, and artifacts contain
+no latency, tok/s, or goodput fields. Failures remain quality outcomes instead
+of aborting the matrix. This task does not claim a broad public model-quality
+leaderboard from the synthetic suite.
+
+GREEN targeted validation passes **27/27** broad/legacy A6 quality, live
+normalization, and deterministic artifact tests. The expanded agentic/server/
+harness/config/provenance guard passes **165/165**. Python compilation, targeted
+Ruff, six JSON parses, all 24 external-oracle executions, Worklog conflict and
+changed-doc checks, and `git diff --check` pass; only the existing Starlette/
+httpx warning remains. No GPU measurement is part of this protocol unit; commit
+it cleanly before starting the W7900 server.
