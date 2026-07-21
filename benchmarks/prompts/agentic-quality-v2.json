@@ -1,0 +1,437 @@
+{
+  "description": "Broad non-performance automatic-tool quality tasks across repository, general English, Japanese, and mixed Japanese/English families with independent external oracles.",
+  "kind": "hipengine.agentic_coding_workloads",
+  "quality_oracle": {
+    "file_sha256": "1252c2b0af2492f24c3d4bce5437e1806b6a771753574ed27af5ecff60f3f2b9",
+    "path": "../oracles/agentic-quality-v2.json"
+  },
+  "repository_context": {
+    "base": "A small synthetic operations repository contains scheduler, cache, migration, and bilingual release files. Choose the appropriate declared tool for each request. External committed oracles, not prompt wording, decide result, patch, and test success.",
+    "expansion_blocks": [
+      "src/scheduler.py owns pending-cap admission and exposes EngineBusy for retryable overload.",
+      "src/cache.py may evict only entries whose reference count is exactly zero.",
+      "docs/release.md and docs/release_ja.md define English and Japanese compatibility checks.",
+      "config/migration.json records a SQLite to PostgreSQL dual-write migration.",
+      "The calculator accepts bounded integer arithmetic with parentheses and exact rational division.",
+      "The lookup tool reads committed migration, bandwidth, release, and multilingual guidance.",
+      "Patch identifiers select committed one-region changes; an independent file-hash suite checks each result.",
+      "run_tests evaluates committed scheduler, cache, release, or full file-state checks without executing model-provided code."
+    ],
+    "name": "acme-operations-quality"
+  },
+  "schema_version": 1,
+  "suite": "agentic-quality-v2",
+  "tools": [
+    {
+      "description": "Read one committed synthetic file in raw or summary mode.",
+      "name": "read",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "enum": [
+              "raw",
+              "summary"
+            ],
+            "type": "string"
+          },
+          "path": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "mode"
+        ],
+        "type": "object"
+      },
+      "strict": true
+    },
+    {
+      "description": "Search exact text in one synthetic file or path prefix.",
+      "name": "grep",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "pattern": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "pattern",
+          "path"
+        ],
+        "type": "object"
+      },
+      "strict": true
+    },
+    {
+      "description": "Retrieve one committed operations knowledge-base entry.",
+      "name": "lookup",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "enum": [
+              "bilingual_release",
+              "gpu_bandwidth",
+              "postgres_cutover",
+              "release_check_ja",
+              "release_validation"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "type": "object"
+      },
+      "strict": true
+    },
+    {
+      "description": "Evaluate bounded integer arithmetic with +, -, *, /, and parentheses.",
+      "name": "calculate",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "expression": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "expression"
+        ],
+        "type": "object"
+      },
+      "strict": true
+    },
+    {
+      "description": "Apply one committed safe patch and run its external file-state check.",
+      "name": "apply_patch",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "patch_id": {
+            "enum": [
+              "cache_zero_ref_only",
+              "release_backward_compatible",
+              "scheduler_engine_busy"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "patch_id"
+        ],
+        "type": "object"
+      },
+      "strict": true
+    },
+    {
+      "description": "Run one committed external file-state validation suite.",
+      "name": "run_tests",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "suite": {
+            "enum": [
+              "cache",
+              "full",
+              "release",
+              "scheduler"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "suite"
+        ],
+        "type": "object"
+      },
+      "strict": true
+    }
+  ],
+  "workloads": [
+    {
+      "family": "repository",
+      "history_mode": "stable_prefix",
+      "id": "repository_scheduler_en",
+      "target_prefix_tokens": 768,
+      "turns": [
+        {
+          "expected_arguments": {
+            "path": "src/scheduler.py",
+            "pattern": "ValueError"
+          },
+          "expected_tool": "grep",
+          "oracle_case": "repo_scheduler_grep",
+          "tool_result": "src/scheduler.py:7 raises ValueError(\"full\").",
+          "user": "Locate the exact scheduler line that reports a full pending queue."
+        },
+        {
+          "expected_arguments": {
+            "mode": "summary",
+            "path": "src/scheduler.py"
+          },
+          "expected_tool": "read",
+          "oracle_case": "repo_scheduler_read",
+          "tool_result": "Admission raises ValueError when pending reaches the cap; EngineBusy is already declared.",
+          "user": "Inspect the scheduler implementation summary before choosing a fix."
+        },
+        {
+          "expected_arguments": {
+            "patch_id": "scheduler_engine_busy"
+          },
+          "expected_tool": "apply_patch",
+          "oracle_case": "repo_scheduler_patch",
+          "tool_result": "Patch applied; scheduler checks pass.",
+          "user": "Apply the bounded-admission patch that maps a full queue to the declared retryable engine error."
+        },
+        {
+          "expected_arguments": {
+            "suite": "scheduler"
+          },
+          "expected_tool": "run_tests",
+          "oracle_case": "repo_scheduler_test",
+          "tool_result": "scheduler: 1 check passed.",
+          "user": "Verify the scheduler fix with the focused external test suite."
+        }
+      ]
+    },
+    {
+      "family": "repository",
+      "history_mode": "stable_prefix",
+      "id": "repository_cache_en",
+      "target_prefix_tokens": 768,
+      "turns": [
+        {
+          "expected_arguments": {
+            "path": "src/cache.py",
+            "pattern": "refcount <= 1"
+          },
+          "expected_tool": "grep",
+          "oracle_case": "repo_cache_grep",
+          "tool_result": "src/cache.py:2 returns refcount <= 1.",
+          "user": "Find the cache condition that still allows an owned entry to be evicted."
+        },
+        {
+          "expected_arguments": {
+            "mode": "summary",
+            "path": "src/cache.py"
+          },
+          "expected_tool": "read",
+          "oracle_case": "repo_cache_read",
+          "tool_result": "can_evict currently permits refcount one, which violates unreferenced-only eviction.",
+          "user": "Read a concise summary of the cache ownership bug."
+        },
+        {
+          "expected_arguments": {
+            "patch_id": "cache_zero_ref_only"
+          },
+          "expected_tool": "apply_patch",
+          "oracle_case": "repo_cache_patch",
+          "tool_result": "Patch applied; cache checks pass.",
+          "user": "Apply the unreferenced-only cache eviction patch."
+        },
+        {
+          "expected_arguments": {
+            "suite": "cache"
+          },
+          "expected_tool": "run_tests",
+          "oracle_case": "repo_cache_test",
+          "tool_result": "cache: 1 check passed.",
+          "user": "Run the focused cache oracle after that patch."
+        }
+      ]
+    },
+    {
+      "family": "general_en",
+      "history_mode": "stable_prefix",
+      "id": "general_en_operations",
+      "target_prefix_tokens": 768,
+      "turns": [
+        {
+          "expected_arguments": {
+            "key": "postgres_cutover"
+          },
+          "expected_tool": "lookup",
+          "oracle_case": "general_en_cutover",
+          "tool_result": "Backfill, enable dual write, compare checksums, cut reads over, then retain a rollback window.",
+          "user": "Retrieve the approved SQLite-to-PostgreSQL cutover sequence from the operations knowledge base."
+        },
+        {
+          "expected_arguments": {
+            "expression": "37 * 19"
+          },
+          "expected_tool": "calculate",
+          "oracle_case": "general_en_calculate",
+          "tool_result": "703",
+          "user": "Use the calculator to determine 37 multiplied by 19."
+        },
+        {
+          "expected_arguments": {
+            "key": "gpu_bandwidth"
+          },
+          "expected_tool": "lookup",
+          "oracle_case": "general_en_bandwidth",
+          "tool_result": "Decode throughput rises when quantization lowers weight bytes or batching reuses each weight load.",
+          "user": "Look up the concrete reason quantization or batching can improve local GPU decode throughput."
+        },
+        {
+          "expected_arguments": {
+            "expression": "(144 + 96) / 8"
+          },
+          "expected_tool": "calculate",
+          "oracle_case": "general_en_share",
+          "tool_result": "30",
+          "user": "Calculate the per-worker share when 144 and 96 tasks are split evenly across 8 workers."
+        }
+      ]
+    },
+    {
+      "family": "general_en",
+      "history_mode": "growing_tool_results",
+      "id": "general_en_release",
+      "target_prefix_tokens": 768,
+      "turns": [
+        {
+          "expected_arguments": {
+            "mode": "summary",
+            "path": "docs/release.md"
+          },
+          "expected_tool": "read",
+          "oracle_case": "general_release_read",
+          "tool_result": "The English checklist covers API compatibility, cache-off logs, and three test groups.",
+          "user": "Open a summary of the English release checklist."
+        },
+        {
+          "expected_arguments": {
+            "path": "docs",
+            "pattern": "backward compatibility"
+          },
+          "expected_tool": "grep",
+          "oracle_case": "general_release_grep",
+          "tool_result": "docs/release.md:2 preserves backward compatibility.",
+          "user": "Find the line that explicitly requires backward compatibility in the release documentation."
+        },
+        {
+          "expected_arguments": {
+            "key": "release_validation"
+          },
+          "expected_tool": "lookup",
+          "oracle_case": "general_release_lookup",
+          "tool_result": "Run scheduler, cache, and release suites; verify backward-compatible API envelopes.",
+          "user": "Retrieve the approved release validation bundle."
+        },
+        {
+          "expected_arguments": {
+            "suite": "full"
+          },
+          "expected_tool": "run_tests",
+          "oracle_case": "general_release_full_test",
+          "tool_result": "full: 3 checks passed.",
+          "user": "Run the complete external validation after the canonical scheduler, cache, and release fixes."
+        }
+      ]
+    },
+    {
+      "family": "general_ja",
+      "history_mode": "stable_prefix",
+      "id": "general_ja_operations",
+      "target_prefix_tokens": 768,
+      "turns": [
+        {
+          "expected_arguments": {
+            "key": "release_check_ja"
+          },
+          "expected_tool": "lookup",
+          "oracle_case": "general_ja_lookup",
+          "tool_result": "後方互換性、キャッシュ無効化、構造化ログ、ロールバック手順を確認する。",
+          "user": "運用ナレッジベースから、リリース時に確認すべき項目を取得してください。"
+        },
+        {
+          "expected_arguments": {
+            "expression": "125 * 8"
+          },
+          "expected_tool": "calculate",
+          "oracle_case": "general_ja_calculate",
+          "tool_result": "1000",
+          "user": "計算ツールを使って125掛ける8を求めてください。"
+        },
+        {
+          "expected_arguments": {
+            "mode": "summary",
+            "path": "docs/release_ja.md"
+          },
+          "expected_tool": "read",
+          "oracle_case": "general_ja_read",
+          "tool_result": "日本語の確認項目は後方互換性、キャッシュ無効化、ログ形式を扱うが、英語の末尾文が互換性を曖昧にしている。",
+          "user": "日本語のリリース確認文書を要約モードで確認してください。"
+        },
+        {
+          "expected_arguments": {
+            "path": "docs",
+            "pattern": "後方互換性"
+          },
+          "expected_tool": "grep",
+          "oracle_case": "general_ja_grep",
+          "tool_result": "docs/release_ja.md:2 contains 後方互換性.",
+          "user": "docs内で「後方互換性」を含む行を検索してください。"
+        }
+      ]
+    },
+    {
+      "family": "mixed_ja_en",
+      "history_mode": "growing_tool_results",
+      "id": "mixed_ja_en_release",
+      "target_prefix_tokens": 768,
+      "turns": [
+        {
+          "expected_arguments": {
+            "path": "docs/release_ja.md",
+            "pattern": "API behavior may change"
+          },
+          "expected_tool": "grep",
+          "oracle_case": "mixed_release_grep",
+          "tool_result": "docs/release_ja.md:4 contains the ambiguous English line.",
+          "user": "Find the English line in docs that says API behavior may change（変更可能性の行を検索）."
+        },
+        {
+          "expected_arguments": {
+            "patch_id": "release_backward_compatible"
+          },
+          "expected_tool": "apply_patch",
+          "oracle_case": "mixed_release_patch",
+          "tool_result": "Patch applied; release check passes.",
+          "user": "Apply the patch that makes that English API statement backward-compatible（後方互換に修正）."
+        },
+        {
+          "expected_arguments": {
+            "suite": "release"
+          },
+          "expected_tool": "run_tests",
+          "oracle_case": "mixed_release_test",
+          "tool_result": "release: 1 check passed.",
+          "user": "Run the release validation suite after the bilingual documentation fix."
+        },
+        {
+          "expected_arguments": {
+            "expression": "48 * 3"
+          },
+          "expected_tool": "calculate",
+          "oracle_case": "mixed_release_calculate",
+          "tool_result": "144",
+          "user": "最後に、48 times 3 を計算ツールで確認してください。"
+        }
+      ]
+    }
+  ]
+}

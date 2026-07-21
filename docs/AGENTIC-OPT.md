@@ -553,8 +553,9 @@ Every retained comparison requires:
 - **A5 — pressure/soak (complete):** all nine workloads pass cancellation,
   slow-consumer, queue/KV/cache pressure, eviction-link, SLO, GPU-exclusivity,
   and final-ownership gates across 122 requests; no tuning comparison.
-- **A6 — quality lane (next):** automatic tool selection and repository-task oracles,
-  reported separately from deterministic engine performance.
+- **A6 — quality lane (measurement next):** the committed v2 packet expands to
+  24 externally scored turns across repository, general-English, Japanese, and
+  mixed Japanese/English families; live W7900 collection remains.
 
 ### Current implementation status
 
@@ -1049,3 +1050,43 @@ target. Concurrent work explicitly pinned to the separate ROCm GPU1/XTX is not
 target contention and is recorded but allowed.
 
 [Retained artifact](../benchmarks/results/2026-07-21-w7900-agentic-a1-repeated-baseline.json).
+
+## 2026-07-22 — Freeze broad A6 external-oracle quality packet
+
+The A6 lane now has a committed broad protocol instead of extrapolating the
+four-turn `small_repo` diagnostic. `benchmarks/prompts/agentic-quality-v2.json`
+contains **6 workloads / 24 turns**: 8 repository turns, 8 general-English
+turns, 4 Japanese turns, and 4 mixed Japanese/English turns. Prompts cover file
+inspection/search, operations lookup, bounded arithmetic, three safe patch
+selections, and four focused/full test selections. The quality system message
+asks the model to choose an appropriate declared tool; unlike the deterministic
+A1 policy, it does not say that the user specifically requested a tool name.
+
+`benchmarks/oracles/agentic-quality-v2.json` is a separately hashed external
+oracle over committed synthetic files, summaries, knowledge entries, exact
+rational arithmetic, one-region patch definitions, and post-patch file-hash
+test suites. It executes selected arguments rather than deriving success from
+fixture equality: for example, `19 * 37` passes the same result oracle as the
+canonical `37 * 19` while remaining a non-exact argument row. Patch output is
+never arbitrary model code; models select one of three committed safe patch IDs,
+and the oracle applies it to an in-memory file before checking scheduler, cache,
+release, or full expected hashes.
+
+The artifact contract still reports valid-call, correct-tool, schema-valid and
+exact arguments, repair counts, and outcomes. V2 additionally reports external
+result-oracle, patch, and test pass rates plus per-family distributions. Every
+turn continues to require response-owned generated IDs; final ownership must be
+zero. The multi-workload live collector uses independent canonical valid
+histories, supports repeated `--workload` or `--all-workloads`, and can attach
+clean canonical source/model/hardware provenance. Quality artifacts remain
+`performance_claim=false` and contain no TTFT, latency, tok/s, or goodput rollup.
+
+The predeclared first measurement is cache-off/native-sampler-off W7900 c1,
+all six workloads, **2 complete runs / 48 turns**, temperature zero, 128-token
+cap, and real localhost blocking OpenAI responses. It reports failures rather
+than aborting on invalid model envelopes; it makes no model-quality leaderboard
+claim beyond this committed synthetic packet. RED failed on the missing external
+oracle module. GREEN passes **27/27** broad/legacy quality, live-normalization,
+and deterministic artifact tests; all **24/24** committed oracle cases execute
+successfully with targeted Ruff, JSON parsing, Python compilation, and diff
+checks. No GPU result is claimed by this protocol unit.

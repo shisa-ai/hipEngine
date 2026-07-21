@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hipengine.dev/schemas/agentic-coding-quality-oracles.schema.json",
+  "title": "hipEngine external automatic-tool quality oracles",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind", "schema_version", "suite", "description", "files", "summaries",
+    "lookups", "patches", "test_suites", "cases"
+  ],
+  "properties": {
+    "kind": {"const": "hipengine.agentic_quality_oracles"},
+    "schema_version": {"const": 1},
+    "suite": {"type": "string", "minLength": 1},
+    "description": {"type": "string", "minLength": 1},
+    "files": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"type": "string"}
+    },
+    "summaries": {
+      "type": "object",
+      "additionalProperties": {"type": "string", "minLength": 1}
+    },
+    "lookups": {
+      "type": "object",
+      "additionalProperties": {"type": "string", "minLength": 1}
+    },
+    "patches": {
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/patch"}
+    },
+    "test_suites": {
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/testSuite"}
+    },
+    "cases": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"$ref": "#/$defs/case"}
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "patch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "old", "new", "test_suite"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "old": {"type": "string", "minLength": 1},
+        "new": {"type": "string", "minLength": 1},
+        "test_suite": {"type": "string", "minLength": 1}
+      }
+    },
+    "testSuite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required_file_sha256"],
+      "properties": {
+        "required_file_sha256": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {"$ref": "#/$defs/sha256"}
+        }
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "expected_result_sha256"],
+      "properties": {
+        "kind": {"enum": ["read", "grep", "lookup", "calculate", "patch", "test"]},
+        "expected_result_sha256": {"$ref": "#/$defs/sha256"},
+        "setup_patches": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

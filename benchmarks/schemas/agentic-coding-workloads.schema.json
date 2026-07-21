@@ -10,6 +10,15 @@
     "schema_version": {"const": 1},
     "suite": {"type": "string", "minLength": 1},
     "description": {"type": "string", "minLength": 1},
+    "quality_oracle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "file_sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "file_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
     "repository_context": {
       "type": "object",
       "additionalProperties": false,
@@ -53,6 +62,7 @@
       "required": ["id", "target_prefix_tokens", "history_mode", "turns"],
       "properties": {
         "id": {"type": "string", "minLength": 1},
+        "family": {"enum": ["repository", "general_en", "general_ja", "mixed_ja_en"]},
         "target_prefix_tokens": {"type": "integer", "minimum": 1},
         "history_mode": {"enum": ["stable_prefix", "growing_tool_results"]},
         "turns": {
@@ -70,7 +80,8 @@
         "user": {"type": "string", "minLength": 1},
         "expected_tool": {"type": "string", "minLength": 1},
         "expected_arguments": {"type": "object"},
-        "tool_result": {"type": "string", "minLength": 1}
+        "tool_result": {"type": "string", "minLength": 1},
+        "oracle_case": {"type": "string", "minLength": 1}
       }
     }
   }

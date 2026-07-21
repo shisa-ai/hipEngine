@@ -143,6 +143,7 @@ def build_canonical_turn_messages(
     turn_index: int,
     agent_id: str,
     prefix_text: str,
+    system_policy: str | None = None,
 ) -> list[dict[str, Any]]:
     """Build one turn from a stable fixture transcript, independent of random server IDs."""
 
@@ -153,7 +154,11 @@ def build_canonical_turn_messages(
     if turn_index < 0 or turn_index >= len(turns):
         raise AgenticBenchmarkError("turn_index is out of range")
     messages: list[dict[str, Any]] = [
-        {"role": "system", "content": _SYSTEM_POLICY + str(prefix_text)}
+        {
+            "role": "system",
+            "content": (system_policy if system_policy is not None else _SYSTEM_POLICY)
+            + str(prefix_text),
+        }
     ]
     for index in range(turn_index):
         prior = _mapping(turns[index], label=f"turns[{index}]")

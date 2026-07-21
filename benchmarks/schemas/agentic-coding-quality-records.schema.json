@@ -105,10 +105,12 @@
               "enum": [
                 "passed", "invalid_tool_call", "no_tool_call", "multiple_tool_calls",
                 "invalid_arguments", "schema_violation", "wrong_tool", "wrong_arguments",
-                "content_alongside_tool_call", "raw_markup_leak", "finish_mismatch"
+                "content_alongside_tool_call", "raw_markup_leak", "finish_mismatch",
+                "oracle_failed"
               ]
             },
-            "repair_count": {"type": "integer", "minimum": 0}
+            "repair_count": {"type": "integer", "minimum": 0},
+            "external_oracle": {"$ref": "#/$defs/externalOracle"}
           }
         },
         "finish": {
@@ -120,6 +122,27 @@
             "detail_reason": {"type": ["string", "null"]}
           }
         }
+      }
+    },
+    "externalOracle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_id", "kind", "oracle_file_sha256", "evaluated", "passed",
+        "result_sha256", "expected_result_sha256", "patch_applied",
+        "tests_passed", "error"
+      ],
+      "properties": {
+        "case_id": {"type": "string", "minLength": 1},
+        "kind": {"enum": ["read", "grep", "lookup", "calculate", "patch", "test"]},
+        "oracle_file_sha256": {"$ref": "#/$defs/sha256"},
+        "evaluated": {"const": true},
+        "passed": {"type": "boolean"},
+        "result_sha256": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+        "expected_result_sha256": {"$ref": "#/$defs/sha256"},
+        "patch_applied": {"type": ["boolean", "null"]},
+        "tests_passed": {"type": ["boolean", "null"]},
+        "error": {"type": ["string", "null"]}
       }
     },
     "finalOwnership": {
