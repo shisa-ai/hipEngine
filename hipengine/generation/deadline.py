@@ -42,6 +42,11 @@ class GenerationCancellationToken:
         return self._event.is_set()
 
     @property
+    def cancel_requested(self) -> bool:
+        with self._lock:
+            return bool(self._cancel_requested)
+
+    @property
     def finish_details(self) -> FinishDetails:
         with self._lock:
             return self._finish_details

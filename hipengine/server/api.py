@@ -2294,6 +2294,15 @@ class _GenerationBatcher:
         except Exception as exc:
             await _finish_stream_queued_generation(item, exception=exc)
         finally:
+            token = item.sampling.cancellation_token
+            if (
+                token is not None
+                and bool(getattr(token, "cancel_requested", False))
+                and not bool(getattr(token, "cancelled", False))
+            ):
+                drain_cancellations = getattr(engine, "drain_generation_cancellations", None)
+                if callable(drain_cancellations):
+                    await run_in_threadpool(drain_cancellations)
             self._active_items.pop(id(item), None)
             self._active_requests = max(0, self._active_requests - 1)
 

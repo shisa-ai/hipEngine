@@ -493,6 +493,15 @@ class SubmitPollTextGenerator:
         if callable(clear_dispatch):
             clear_dispatch(dispatch)
 
+    def drain_cancellations(self) -> int:
+        """Acknowledge queued row cancellation when no stream remains to poll."""
+
+        with self._loop_lock:
+            with self._cancel_commands_lock:
+                queued = len(self._cancel_commands)
+            self._drain_cancel_commands_locked()
+            return queued
+
     def _drain_cancel_commands_locked(self) -> None:
         with self._cancel_commands_lock:
             queued_commands = tuple(self._cancel_commands)

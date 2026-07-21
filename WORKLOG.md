@@ -172654,3 +172654,31 @@ Validation:
 
 No result from the failed full packet or focused nondeterminism diagnostic is a
 performance claim. The full A5 packet must run again from the committed harness.
+
+## 2026-07-22 — Drain orphaned resident cancellation commands on producer exit
+
+Transport shutdown alone did not close the lifecycle race. Two subsequent full
+packets both passed exact cancellation responses, including the explicit RST,
+but one resident row could still remain after the server producer had already
+exited (`generation_active_requests=0`, resident `active=1`). This localized the
+failure to a queued scheduler cancellation command with no surviving stream to
+perform the next `poll()`; the 1 request/s retry therefore failed before soak,
+while the 2 request/s diagnostic was stopped after its otherwise-green overload
+row began expected load shedding.
+
+`GenerationCancellationToken` now exposes its thread-safe requested state.
+`SubmitPollTextGenerator.drain_cancellations()` acknowledges queued scheduler
+commands under the existing loop lock, and `LLM` exposes a no-load delegation
+hook. A controlled server producer invokes that hook on exit only when
+cancellation was requested but not yet acknowledged. Ordinary completed streams
+pay no drain call, existing row-scoped cancellation remains scheduler-owned, and
+the hook closes the exact no-future-poll race without cancelling neighbors.
+
+Validation:
+
+- RED: the resident submit/poll test failed because no explicit cancellation drain existed.
+- GREEN: resident close/cancel/deadline/drain lifecycle plus controlled producer drain, active cap, cooperative close, caller cancel, and HTTP disconnect pass **6/6**.
+- Targeted Ruff, Python compilation, and full diff checks pass with only the existing Starlette/httpx warning.
+
+All failed/stopped packets remain diagnostics with no retained artifact or
+performance claim. The clean full A5 packet must restart from this source.

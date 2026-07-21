@@ -4491,6 +4491,62 @@ def test_generation_batcher_limits_controlled_stream_active_requests() -> None:
     asyncio.run(run())
 
 
+def test_generation_batcher_drains_pending_controlled_cancellation_on_exit() -> None:
+    class PendingCancellationLLM(FakeLLM):
+        supports_controlled_streaming = True
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.release = threading.Event()
+            self.token: GenerationCancellationToken | None = None
+            self.drain_calls = 0
+            self.drained = threading.Event()
+
+        def stream_detailed(self, prompt: str, sampling_params: SamplingParams):
+            del prompt
+            token = sampling_params.cancellation_token
+            assert token is not None
+            token.set_cancel_dispatch(lambda _details: None)
+            self.token = token
+            yield GenerationStreamChunk(text="first")
+            assert self.release.wait(timeout=5.0)
+
+        def drain_generation_cancellations(self) -> int:
+            self.drain_calls += 1
+            assert self.token is not None
+            self.token.acknowledge_cancel()
+            self.drained.set()
+            return 1
+
+    async def run() -> None:
+        fake = PendingCancellationLLM()
+        token = GenerationCancellationToken()
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.0,
+            max_active_requests=1,
+        )
+        stream = batcher.stream(
+            ("cancel-me",),
+            SamplingParams(max_tokens=8, cancellation_token=token),
+        )
+
+        assert (await anext(stream)).text == "first"
+        token.cancel(FinishDetails(reason="cancelled", cancelled=True))
+        assert token.cancel_requested is True
+        assert token.cancelled is False
+        fake.release.set()
+        with pytest.raises(StopAsyncIteration):
+            await anext(stream)
+        assert await asyncio.to_thread(fake.drained.wait, 5.0)
+
+        assert fake.drain_calls == 1
+        assert token.cancelled is True
+        assert batcher.active_requests() == 0
+
+    asyncio.run(run())
+
+
 def test_generation_batcher_bounds_slow_stream_queue_without_blocking_neighbor() -> None:
     class BurstStreamLLM(FakeLLM):
         supports_controlled_streaming = True
