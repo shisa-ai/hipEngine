@@ -184,6 +184,15 @@ class RequestResult:
 
 
 @dataclass(frozen=True)
+class TuningConfiguration:
+    candidate_id: str
+    prefill_decode_policy: str
+    prefill_chunk_tokens: int
+    fair_prefill_burst_chunks: int
+    batch_window_ms: float
+
+
+@dataclass(frozen=True)
 class TuningCandidate:
     prefill_decode_policy: str
     prefill_chunk_tokens: int
@@ -191,6 +200,11 @@ class TuningCandidate:
     ttft_p95_seconds: float
     itl_p99_seconds: float
     passed: bool
+    candidate_id: str = ""
+    fair_prefill_burst_chunks: int = 1
+    batch_window_ms: float = 0.0
+    end_to_end_p95_seconds: float = 0.0
+    measurement_repetitions: int = 1
 
 
 @dataclass
@@ -650,6 +664,165 @@ def _evaluate_workload(
     }
 
 
+def _load_tuning_protocol(
+    path: str | Path,
+) -> tuple[tuple[TuningConfiguration, ...], dict[str, Any]]:
+    protocol_path = Path(path)
+    payload = json.loads(protocol_path.read_text(encoding="utf-8"))
+    if payload.get("kind") != "gfx1100_agentic_a4_predeclared_protocol":
+        raise ValueError("tuning protocol kind is unsupported")
+    if payload.get("status") != "predeclared_ready":
+        raise ValueError("tuning protocol is not ready")
+    if payload.get("performance_claim") is not False or payload.get("timing_claim") is not False:
+        raise ValueError("tuning protocol must be a no-timing predeclaration")
+    try:
+        rows = payload["candidate_funnel"]["stage_1_mixed_arrival_screen"]["candidates"]
+    except (KeyError, TypeError) as exc:
+        raise ValueError("tuning protocol candidates are missing") from exc
+    if not isinstance(rows, list) or not rows:
+        raise ValueError("tuning protocol candidates must be a non-empty list")
+    configurations: list[TuningConfiguration] = []
+    for row in rows:
+        if not isinstance(row, Mapping):
+            raise ValueError("tuning protocol candidate must be an object")
+        candidate_id = str(row.get("id", ""))
+        policy = str(row.get("prefill_decode_policy", ""))
+        chunk = int(row.get("prefill_chunk_tokens", 0))
+        burst = int(row.get("fair_prefill_burst_chunks", 0))
+        window = float(row.get("batch_window_ms", -1.0))
+        if not candidate_id:
+            raise ValueError("tuning protocol candidate id must not be empty")
+        if policy not in {"protect_decode", "protect_ttft", "fair"}:
+            raise ValueError(f"unsupported tuning policy {policy!r}")
+        if chunk <= 0 or burst <= 0 or window < 0.0:
+            raise ValueError("tuning protocol chunk/burst/window values are invalid")
+        configurations.append(
+            TuningConfiguration(
+                candidate_id=candidate_id,
+                prefill_decode_policy=policy,
+                prefill_chunk_tokens=chunk,
+                fair_prefill_burst_chunks=burst,
+                batch_window_ms=window,
+            )
+        )
+    ids = [configuration.candidate_id for configuration in configurations]
+    if len(ids) != len(set(ids)):
+        raise ValueError("tuning protocol candidate ids must be unique")
+    return tuple(configurations), {
+        "path": str(protocol_path),
+        "sha256": hashlib.sha256(protocol_path.read_bytes()).hexdigest(),
+        "kind": str(payload["kind"]),
+        "source_revision": str(payload.get("source_revision", "")),
+        "candidate_count": len(configurations),
+    }
+
+
+def _rotated_tuning_plan(
+    configurations: Sequence[TuningConfiguration],
+    *,
+    repetitions: int,
+) -> tuple[tuple[TuningConfiguration, ...], ...]:
+    if not configurations:
+        raise ValueError("tuning configurations must not be empty")
+    if int(repetitions) <= 0:
+        raise ValueError("tuning repetitions must be positive")
+    rows = tuple(configurations)
+    step = max(1, math.ceil(len(rows) / int(repetitions)))
+    result = []
+    for repetition in range(int(repetitions)):
+        offset = (repetition * step) % len(rows)
+        result.append(rows[offset:] + rows[:offset])
+    return tuple(result)
+
+
+def _tuning_configuration_from_row(row: Mapping[str, Any]) -> TuningConfiguration:
+    configuration = row.get("configuration")
+    if isinstance(configuration, TuningConfiguration):
+        return configuration
+    if not isinstance(configuration, Mapping):
+        raise ValueError("tuning run configuration is missing")
+    return TuningConfiguration(**dict(configuration))
+
+
+def _tuning_candidate_from_row(row: Mapping[str, Any]) -> TuningCandidate:
+    candidate = row.get("candidate")
+    if isinstance(candidate, TuningCandidate):
+        return candidate
+    if not isinstance(candidate, Mapping):
+        raise ValueError("tuning run candidate is missing")
+    return TuningCandidate(**dict(candidate))
+
+
+def _aggregate_tuning_runs(
+    runs: Sequence[Mapping[str, Any]],
+    *,
+    configurations: Sequence[TuningConfiguration],
+    expected_repetitions: int,
+) -> tuple[list[dict[str, Any]], tuple[TuningCandidate, ...]]:
+    if int(expected_repetitions) <= 0:
+        raise ValueError("expected tuning repetitions must be positive")
+    grouped: dict[str, list[Mapping[str, Any]]] = {
+        configuration.candidate_id: [] for configuration in configurations
+    }
+    for row in runs:
+        configuration = _tuning_configuration_from_row(row)
+        if configuration.candidate_id not in grouped:
+            raise ValueError(f"undeclared tuning candidate {configuration.candidate_id!r}")
+        grouped[configuration.candidate_id].append(row)
+    aggregates: list[dict[str, Any]] = []
+    candidates: list[TuningCandidate] = []
+    expected_indices = set(range(int(expected_repetitions)))
+    for configuration in configurations:
+        rows = grouped[configuration.candidate_id]
+        observed_indices = {int(row.get("repetition", -1)) for row in rows}
+        if len(rows) != int(expected_repetitions) or observed_indices != expected_indices:
+            raise ValueError(
+                f"tuning candidate {configuration.candidate_id!r} is incomplete: "
+                f"expected repetitions {sorted(expected_indices)!r}, observed {sorted(observed_indices)!r}"
+            )
+        samples = [_tuning_candidate_from_row(row) for row in rows]
+        if any(
+            _tuning_configuration_from_row(row) != configuration
+            or sample.candidate_id != configuration.candidate_id
+            for row, sample in zip(rows, samples)
+        ):
+            raise ValueError(f"tuning candidate {configuration.candidate_id!r} configuration drifted")
+        aggregate = TuningCandidate(
+            prefill_decode_policy=configuration.prefill_decode_policy,
+            prefill_chunk_tokens=configuration.prefill_chunk_tokens,
+            goodput_generated_tokens_per_second=float(
+                statistics.median(
+                    sample.goodput_generated_tokens_per_second for sample in samples
+                )
+            ),
+            ttft_p95_seconds=float(
+                statistics.median(sample.ttft_p95_seconds for sample in samples)
+            ),
+            itl_p99_seconds=float(
+                statistics.median(sample.itl_p99_seconds for sample in samples)
+            ),
+            passed=all(sample.passed for sample in samples),
+            candidate_id=configuration.candidate_id,
+            fair_prefill_burst_chunks=configuration.fair_prefill_burst_chunks,
+            batch_window_ms=configuration.batch_window_ms,
+            end_to_end_p95_seconds=float(
+                statistics.median(sample.end_to_end_p95_seconds for sample in samples)
+            ),
+            measurement_repetitions=int(expected_repetitions),
+        )
+        candidates.append(aggregate)
+        aggregates.append(
+            {
+                "configuration": asdict(configuration),
+                "complete": True,
+                "all_repetitions_passed": aggregate.passed,
+                "aggregate": asdict(aggregate),
+                "samples": [asdict(sample) for sample in samples],
+            }
+        )
+    return aggregates, tuple(candidates)
+
+
 def _select_tuning_candidate(candidates: Sequence[TuningCandidate]) -> TuningCandidate:
     passing = [candidate for candidate in candidates if candidate.passed]
     if not passing:
@@ -660,7 +833,9 @@ def _select_tuning_candidate(candidates: Sequence[TuningCandidate]) -> TuningCan
             float(item.goodput_generated_tokens_per_second),
             -float(item.ttft_p95_seconds),
             -float(item.itl_p99_seconds),
+            -float(item.end_to_end_p95_seconds),
             -int(item.prefill_chunk_tokens),
+            -float(item.batch_window_ms),
             item.prefill_decode_policy,
         ),
     )
@@ -1444,7 +1619,31 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError("max-pending-requests must cover max-queued-requests")
     if int(args.stream_queue_max_chunks) < 2:
         raise ValueError("stream-queue-max-chunks must be at least two")
-    candidates = _parse_tuning_candidates(args.tuning_candidates)
+    if int(args.initial_fair_prefill_burst_chunks) <= 0:
+        raise ValueError("initial-fair-prefill-burst-chunks must be positive")
+    if int(args.tuning_repetitions) <= 0:
+        raise ValueError("tuning-repetitions must be positive")
+    parsed_candidates = _parse_tuning_candidates(args.tuning_candidates)
+    tuning_protocol_metadata: dict[str, Any] | None = None
+    if args.tuning_protocol is not None:
+        tuning_configurations, tuning_protocol_metadata = _load_tuning_protocol(
+            args.tuning_protocol
+        )
+    else:
+        tuning_configurations = tuple(
+            TuningConfiguration(
+                candidate_id=f"{policy}_{chunk}",
+                prefill_decode_policy=policy,
+                prefill_chunk_tokens=chunk,
+                fair_prefill_burst_chunks=int(args.initial_fair_prefill_burst_chunks),
+                batch_window_ms=float(args.batch_window_ms),
+            )
+            for policy, chunk in parsed_candidates
+        )
+    tuning_plans = _rotated_tuning_plan(
+        tuning_configurations,
+        repetitions=int(args.tuning_repetitions),
+    )
     slos = SLOThresholds(
         queue_p99_seconds=float(args.slo_queue_p99_seconds),
         ttft_p95_seconds=float(args.slo_ttft_p95_seconds),
@@ -1485,6 +1684,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "HIPENGINE_MAX_ACTIVE_REQUESTS": str(int(args.max_active_requests)),
         "HIPENGINE_MAX_PENDING_REQUESTS": str(int(args.max_pending_requests)),
         "HIPENGINE_MAX_PREFILL_CHUNK_TOKENS": str(int(args.initial_prefill_chunk_tokens)),
+        "HIPENGINE_FAIR_PREFILL_BURST_CHUNKS": str(
+            int(args.initial_fair_prefill_burst_chunks)
+        ),
         "HIPENGINE_KV_POOL_INITIAL_PAGES": str(low_water_pages),
         "HIPENGINE_KV_POOL_LOW_WATER_PAGES": str(low_water_pages),
         "HIPENGINE_KV_POOL_HIGH_WATER_PAGES": str(high_water_pages),
@@ -1501,6 +1703,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     )
     started_at = time.perf_counter()
     tuning_runs: list[dict[str, Any]] = []
+    tuning_aggregates: list[dict[str, Any]] = []
     selected: TuningCandidate | None = None
     workload_results: dict[str, dict[str, Any]] = {}
     selection_error: str | None = None
@@ -1665,62 +1868,111 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         ttft_p95_seconds=0.0,
                         itl_p99_seconds=0.0,
                         passed=True,
+                        candidate_id="focused_initial",
+                        fair_prefill_burst_chunks=int(
+                            args.initial_fair_prefill_burst_chunks
+                        ),
+                        batch_window_ms=float(args.batch_window_ms),
+                        end_to_end_p95_seconds=0.0,
                     )
-                for policy, chunk in (() if args.skip_tuning else candidates):
-                    adapter._loop.prefill_decode_policy = str(policy)
-                    adapter._loop.prefill_chunk_size = int(chunk)
-                    name = f"tuning_{policy}_{chunk}"
-                    summary = _execute_workload(
-                        name,
-                        tuning_specs,
-                        host="127.0.0.1",
-                        port=server.port,
-                        llm=llm,
-                        runner=runner,
-                        batcher=batcher,
-                        prompt_manifest=prompt_rows,
-                        reference_tokens=reference_tokens,
-                        reclaimed=reclaimed,
-                        timeline=timeline,
-                        capture_state=capture_state,
-                        slos=slos,
-                        stream_queue_limit=int(args.stream_queue_max_chunks),
-                        idle_timeout_seconds=float(args.idle_timeout_seconds),
-                        request_timeout_seconds=float(args.request_timeout_seconds),
-                    )
-                    goodput = float(summary["goodput"]["generated_tokens_per_second"] or 0.0)
-                    ttft_p95 = float(summary["latency_seconds"]["ttft"]["p95"] or math.inf)
-                    itl_p99 = float(summary["latency_seconds"]["itl"]["p99"] or math.inf)
-                    candidate = TuningCandidate(
-                        prefill_decode_policy=policy,
-                        prefill_chunk_tokens=chunk,
-                        goodput_generated_tokens_per_second=goodput,
-                        ttft_p95_seconds=ttft_p95,
-                        itl_p99_seconds=itl_p99,
-                        passed=bool(summary["passed"]),
-                    )
-                    tuning_runs.append(
-                        {
-                            "candidate": asdict(candidate),
-                            "workload": summary,
-                        }
-                    )
-                    print(
-                        f"{name}: passed={summary['passed']} goodput={goodput:.6f} "
-                        f"ttft_p95={ttft_p95:.6f} itl_p99={itl_p99:.6f}",
-                        file=sys.stderr,
-                        flush=True,
-                    )
+                for repetition, plan in (() if args.skip_tuning else enumerate(tuning_plans)):
+                    for order_index, configuration in enumerate(plan):
+                        adapter._loop.prefill_decode_policy = str(
+                            configuration.prefill_decode_policy
+                        )
+                        adapter._loop.prefill_chunk_size = int(
+                            configuration.prefill_chunk_tokens
+                        )
+                        adapter._loop.fair_prefill_burst_chunks = int(
+                            configuration.fair_prefill_burst_chunks
+                        )
+                        batcher._batch_window_seconds = (
+                            float(configuration.batch_window_ms) / 1000.0
+                        )
+                        name = (
+                            f"tuning_r{repetition}_{order_index}_"
+                            f"{configuration.candidate_id}"
+                        )
+                        summary = _execute_workload(
+                            name,
+                            tuning_specs,
+                            host="127.0.0.1",
+                            port=server.port,
+                            llm=llm,
+                            runner=runner,
+                            batcher=batcher,
+                            prompt_manifest=prompt_rows,
+                            reference_tokens=reference_tokens,
+                            reclaimed=reclaimed,
+                            timeline=timeline,
+                            capture_state=capture_state,
+                            slos=slos,
+                            stream_queue_limit=int(args.stream_queue_max_chunks),
+                            idle_timeout_seconds=float(args.idle_timeout_seconds),
+                            request_timeout_seconds=float(args.request_timeout_seconds),
+                        )
+                        goodput = float(
+                            summary["goodput"]["generated_tokens_per_second"] or 0.0
+                        )
+                        ttft_p95 = float(
+                            summary["latency_seconds"]["ttft"]["p95"] or math.inf
+                        )
+                        itl_p99 = float(
+                            summary["latency_seconds"]["itl"]["p99"] or math.inf
+                        )
+                        end_to_end_p95 = float(
+                            summary["latency_seconds"]["end_to_end"]["p95"]
+                            or math.inf
+                        )
+                        candidate = TuningCandidate(
+                            prefill_decode_policy=configuration.prefill_decode_policy,
+                            prefill_chunk_tokens=configuration.prefill_chunk_tokens,
+                            goodput_generated_tokens_per_second=goodput,
+                            ttft_p95_seconds=ttft_p95,
+                            itl_p99_seconds=itl_p99,
+                            passed=bool(summary["passed"]),
+                            candidate_id=configuration.candidate_id,
+                            fair_prefill_burst_chunks=(
+                                configuration.fair_prefill_burst_chunks
+                            ),
+                            batch_window_ms=configuration.batch_window_ms,
+                            end_to_end_p95_seconds=end_to_end_p95,
+                        )
+                        tuning_runs.append(
+                            {
+                                "repetition": int(repetition),
+                                "order_index": int(order_index),
+                                "configuration": asdict(configuration),
+                                "candidate": asdict(candidate),
+                                "workload": summary,
+                            }
+                        )
+                        print(
+                            f"{name}: passed={summary['passed']} goodput={goodput:.6f} "
+                            f"ttft_p95={ttft_p95:.6f} itl_p99={itl_p99:.6f} "
+                            f"e2e_p95={end_to_end_p95:.6f}",
+                            file=sys.stderr,
+                            flush=True,
+                        )
                 if not args.skip_tuning:
                     try:
-                        selected = _select_tuning_candidate(
-                            [TuningCandidate(**row["candidate"]) for row in tuning_runs]
+                        tuning_aggregates, aggregate_candidates = _aggregate_tuning_runs(
+                            tuning_runs,
+                            configurations=tuning_configurations,
+                            expected_repetitions=int(args.tuning_repetitions),
                         )
+                        selected = _select_tuning_candidate(aggregate_candidates)
                     except ValueError as exc:
                         selection_error = str(exc)
                 if selected is not None:
                     adapter._loop.prefill_decode_policy = selected.prefill_decode_policy
                     adapter._loop.prefill_chunk_size = selected.prefill_chunk_tokens
+                    adapter._loop.fair_prefill_burst_chunks = int(
+                        selected.fair_prefill_burst_chunks
+                    )
+                    batcher._batch_window_seconds = (
+                        float(selected.batch_window_ms) / 1000.0
+                    )
                     for name, specs in workloads.items():
                         if name == "idle_recovery":
                             time.sleep(float(args.idle_recovery_seconds))
@@ -1853,6 +2105,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "max_queued_requests": int(args.max_queued_requests),
             "stream_queue_max_chunks": int(args.stream_queue_max_chunks),
             "generation_batch_window_ms": float(args.batch_window_ms),
+            "selected_generation_batch_window_ms": (
+                None if selected is None else float(selected.batch_window_ms)
+            ),
+            "selected_fair_prefill_burst_chunks": (
+                None if selected is None else int(selected.fair_prefill_burst_chunks)
+            ),
             "sampling": "greedy_top1_ignore_eos",
             "speculative_decode": False,
             "slo_thresholds": asdict(slos),
@@ -1861,10 +2119,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "method": (
                 "configured focused validation; no selection claim"
                 if args.skip_tuning
-                else "maximize exact generated-token SLO goodput; tie-break lower TTFT p95, "
-                "ITL p99, then smaller prefill chunk"
+                else "maximize median exact generated-token SLO goodput across complete "
+                "balanced repetitions; tie-break lower TTFT p95, ITL p99, end-to-end p95, "
+                "smaller prefill chunk, then smaller batch window"
             ),
+            "protocol": tuning_protocol_metadata,
+            "repetitions": int(args.tuning_repetitions),
             "candidates": tuning_runs,
+            "candidate_runs": tuning_runs,
+            "candidate_aggregates": tuning_aggregates,
             "selected": None if selected is None else asdict(selected),
             "selection_error": selection_error,
         },
@@ -1916,9 +2179,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--batch-window-ms", type=float, default=100.0)
     parser.add_argument("--initial-policy", choices=("protect_decode", "protect_ttft", "fair"), default="fair")
     parser.add_argument("--initial-prefill-chunk-tokens", type=int, default=128)
+    parser.add_argument("--initial-fair-prefill-burst-chunks", type=int, default=1)
     parser.add_argument(
         "--tuning-candidates",
         default="protect_decode:128,protect_ttft:128,fair:128,fair:256",
+    )
+    parser.add_argument(
+        "--tuning-protocol",
+        type=Path,
+        help="Optional no-timing A4 protocol whose frozen candidate list replaces --tuning-candidates.",
+    )
+    parser.add_argument(
+        "--tuning-repetitions",
+        type=int,
+        default=1,
+        help="Balanced independently reset repetitions per tuning candidate.",
     )
     parser.add_argument(
         "--skip-tuning",

@@ -172451,3 +172451,27 @@ timing or performance claim. Protocol JSON assertions, Worklog conflict and
 diff checks pass; the targeted server-window, engine-loop default, and
 production-load policy bundle passes **12/12** with only the existing
 Starlette/httpx deprecation warning.
+
+## 2026-07-22 — Add balanced A4 protocol execution to the load gate
+
+Added benchmark-only orchestration needed to execute the frozen A4 packet
+without paying one model reload per candidate. RED first failed collection on
+missing protocol/aggregation helpers. The production load gate now validates
+and hashes the committed no-timing A4 protocol, loads its exact eight-candidate
+policy/chunk/burst/window list, runs independently drained repetitions with the
+predeclared one-third rotations, and selects only from complete all-pass median
+aggregates. Candidate application changes only the already-supported live
+scheduler and generation-batcher controls inside the benchmark-owned process;
+no runtime defaults or dispatch paths changed.
+
+Selection now records median exact SLO-goodput, TTFT p95, live-exact ITL p99,
+end-to-end p95, policy, chunk, fair-burst, window, repetition count, every raw
+candidate workload, and the protocol SHA-256. Tie-breaks follow the frozen
+order. The old `policy:chunk` CLI and `tuning.candidates` output remain
+compatible when no protocol is supplied. Focused/skip-tuning behavior is
+unchanged.
+
+GREEN passes **15/15** across the production-load contract plus server-window
+and engine-loop package defaults. Ruff, Python compilation, protocol JSON, and
+diff checks pass; only the existing Starlette/httpx warning remains. This is a
+measurement-harness unit with no GPU result or performance claim.

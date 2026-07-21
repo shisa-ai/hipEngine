@@ -7,14 +7,17 @@ from scripts.gguf_production_load_gate import (
     RequestResult,
     SLOThresholds,
     TuningCandidate,
+    _aggregate_tuning_runs,
     _build_workload_specs,
     _distribution,
     _evaluate_workload,
     _http_json,
     _LocalUvicorn,
     _openai_error_fields,
+    _load_tuning_protocol,
     _parse_workload_names,
     _poisson_arrival_offsets,
+    _rotated_tuning_plan,
     _select_tuning_candidate,
 )
 
@@ -251,4 +254,98 @@ def test_tuning_selection_maximizes_goodput_only_among_slo_passing_rows() -> Non
     with pytest.raises(ValueError, match="no SLO-passing"):
         _select_tuning_candidate(
             [TuningCandidate("protect_decode", 256, 80.0, 9.0, 0.1, False)]
+        )
+
+
+def test_a4_protocol_loader_and_rotation_preserve_predeclared_candidates() -> None:
+    configurations, metadata = _load_tuning_protocol(
+        "benchmarks/results/2026-07-22-w7900-agentic-a4-predeclared-protocol.json"
+    )
+
+    assert metadata["kind"] == "gfx1100_agentic_a4_predeclared_protocol"
+    assert len(configurations) == 8
+    assert configurations[0].candidate_id == "pd256_b1_w0_control"
+    assert configurations[-1].candidate_id == "fair256_b2_w100_diagnostic"
+    assert configurations[-1].batch_window_ms == 100.0
+    plans = _rotated_tuning_plan(configurations, repetitions=3)
+    assert [plan[0].candidate_id for plan in plans] == [
+        "pd256_b1_w0_control",
+        "fair256_b1_w0",
+        "fair256_b2_w5",
+    ]
+    assert all(set(plan) == set(configurations) for plan in plans)
+
+
+def test_a4_tuning_aggregation_uses_complete_medians_and_all_pass_gate() -> None:
+    configurations, _metadata = _load_tuning_protocol(
+        "benchmarks/results/2026-07-22-w7900-agentic-a4-predeclared-protocol.json"
+    )
+    configuration = configurations[0]
+    runs = []
+    for repetition, (goodput, ttft, itl, e2e, passed) in enumerate(
+        (
+            (40.0, 0.7, 0.20, 4.0, True),
+            (44.0, 0.5, 0.18, 3.5, True),
+            (42.0, 0.6, 0.19, 3.8, False),
+        )
+    ):
+        runs.append(
+            {
+                "repetition": repetition,
+                "configuration": configuration,
+                "candidate": TuningCandidate(
+                    configuration.prefill_decode_policy,
+                    configuration.prefill_chunk_tokens,
+                    goodput,
+                    ttft,
+                    itl,
+                    passed,
+                    candidate_id=configuration.candidate_id,
+                    fair_prefill_burst_chunks=configuration.fair_prefill_burst_chunks,
+                    batch_window_ms=configuration.batch_window_ms,
+                    end_to_end_p95_seconds=e2e,
+                ),
+            }
+        )
+
+    aggregates, candidates = _aggregate_tuning_runs(
+        runs,
+        configurations=(configuration,),
+        expected_repetitions=3,
+    )
+
+    assert len(aggregates) == len(candidates) == 1
+    assert candidates[0].goodput_generated_tokens_per_second == pytest.approx(42.0)
+    assert candidates[0].ttft_p95_seconds == pytest.approx(0.6)
+    assert candidates[0].itl_p99_seconds == pytest.approx(0.19)
+    assert candidates[0].end_to_end_p95_seconds == pytest.approx(3.8)
+    assert candidates[0].passed is False
+    assert aggregates[0]["complete"] is True
+    assert aggregates[0]["all_repetitions_passed"] is False
+
+
+def test_a4_tuning_aggregation_rejects_incomplete_candidate() -> None:
+    configurations, _metadata = _load_tuning_protocol(
+        "benchmarks/results/2026-07-22-w7900-agentic-a4-predeclared-protocol.json"
+    )
+    configuration = configurations[0]
+    with pytest.raises(ValueError, match="incomplete"):
+        _aggregate_tuning_runs(
+            [
+                {
+                    "repetition": 0,
+                    "configuration": configuration,
+                    "candidate": TuningCandidate(
+                        configuration.prefill_decode_policy,
+                        configuration.prefill_chunk_tokens,
+                        40.0,
+                        0.5,
+                        0.2,
+                        True,
+                        candidate_id=configuration.candidate_id,
+                    ),
+                }
+            ],
+            configurations=(configuration,),
+            expected_repetitions=3,
         )
