@@ -71,11 +71,28 @@ def _record(suite, turn_index: int, *, batch_id: str, timing_owner: bool) -> dic
             "logits_d2h_bytes": 0,
             "physical_width": 2 if batch_id == "batch-0" else 1,
             "serial_fallback": False,
+            "prefill_ms": 10.0 + turn_index,
         },
         "prefix": {
-            "lookup": turn_index > 0,
+            "block_size_tokens": 256,
+            "eligible": True,
+            "lookup": True,
             "hit": turn_index == 1,
+            "source": "completed_snapshot" if turn_index == 1 else None,
+            "matched_tokens": 256 if turn_index == 1 else 0,
             "reused_tokens": 256 if turn_index == 1 else 0,
+            "avoided_prefill_tokens": 256 if turn_index == 1 else 0,
+            "executed_prefill_tokens": (
+                2048 + turn_index * 32 - (256 if turn_index == 1 else 0)
+            ),
+            "reused_pages": 1 if turn_index == 1 else 0,
+            "reused_page_bytes": 4096 if turn_index == 1 else 0,
+            "state_clone_bytes": 384 if turn_index == 1 else 0,
+            "snapshot_hit": turn_index == 1,
+            "admission_fallback": False,
+            "fallback_reason": None if turn_index == 1 else "miss",
+            "cache_entries": 1 if turn_index == 1 else 0,
+            "cache_pages": 1 if turn_index == 1 else 0,
             "cache_bytes": 4096 if turn_index == 1 else 0,
         },
         "finish": {"reason": "tool_calls", "retry_count": 0},
@@ -167,11 +184,35 @@ def test_agentic_artifact_rolls_up_exact_turn_latency_and_goodput() -> None:
     assert artifact["rollup"]["active_sse_exact_generated_tok_s"] == pytest.approx(8 / 1.6)
     assert artifact["rollup"]["active_sse_validated_tool_calls_s"] == pytest.approx(4 / 1.6)
     assert artifact["rollup"]["prefix"] == {
-        "lookups": 3,
+        "eligible_turns": 4,
+        "lookups": 4,
         "hits": 1,
-        "hit_rate": pytest.approx(1 / 3),
+        "hit_rate": pytest.approx(1 / 4),
+        "source_turns": {"completed_snapshot": 1},
+        "fallback_turns": {"miss": 3},
+        "admission_fallbacks": 0,
+        "matched_tokens": 256,
         "reused_tokens": 256,
+        "avoided_prefill_tokens": 256,
+        "executed_prefill_tokens": 8128,
+        "reused_pages": 1,
+        "reused_page_bytes": 4096,
+        "reused_page_bytes_per_token": 16.0,
+        "state_clone_bytes": 384,
+        "state_clone_bytes_per_token": 1.5,
+        "max_cache_entries": 1,
+        "max_cache_pages": 1,
         "max_cache_bytes": 4096,
+        "max_cache_bytes_per_reused_token": 16.0,
+    }
+    assert artifact["rollup"]["backend"]["prefill_ms"] == {
+        "count": 4,
+        "p50": 11.5,
+        "p95": pytest.approx(12.85),
+        "p99": pytest.approx(12.97),
+        "min": 10.0,
+        "max": 13.0,
+        "sum": 46.0,
     }
     assert artifact["rollup"]["backend"]["physical_width_turns"] == {"1": 2, "2": 2}
     assert artifact["rollup"]["backend"]["full_vocab_logits_d2h_bytes"] == 0

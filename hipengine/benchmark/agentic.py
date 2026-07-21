@@ -368,6 +368,24 @@ def _validate_final_ownership(value: Any) -> dict[str, int]:
         raise AgenticBenchmarkError(
             "final_ownership.cache_resident_bytes exceeds allowed_cache_bytes"
         )
+    entries = _nonnegative_int(
+        ownership.get("cache_resident_entries", 0),
+        label="final_ownership.cache_resident_entries",
+    )
+    pages = _nonnegative_int(
+        ownership.get("cache_resident_pages", 0),
+        label="final_ownership.cache_resident_pages",
+    )
+    if allowed == 0 and any((entries, pages, resident)):
+        raise AgenticBenchmarkError(
+            "final_ownership reports cache residency when no cache bytes are allowed"
+        )
+    if resident > 0 and (entries == 0 or pages == 0):
+        raise AgenticBenchmarkError(
+            "final_ownership cache byte residency lacks entry/page ownership"
+        )
+    normalized["cache_resident_entries"] = entries
+    normalized["cache_resident_pages"] = pages
     normalized["cache_resident_bytes"] = resident
     normalized["allowed_cache_bytes"] = allowed
     return normalized
@@ -585,6 +603,13 @@ def _validate_turn_records(
             raise AgenticBenchmarkError(
                 f"record[{record_index}].backend.serial_fallback must be boolean"
             )
+        prefill_ms = backend.get("prefill_ms")
+        if prefill_ms is not None and (
+            not _is_finite_number(prefill_ms) or float(prefill_ms) < 0.0
+        ):
+            raise AgenticBenchmarkError(
+                f"record[{record_index}].backend.prefill_ms must be non-negative and finite"
+            )
 
         prefix = _mapping(record.get("prefix"), label=f"record[{record_index}].prefix")
         if not isinstance(prefix.get("lookup"), bool) or not isinstance(prefix.get("hit"), bool):
@@ -609,6 +634,222 @@ def _validate_turn_records(
             raise AgenticBenchmarkError(
                 f"record[{record_index}].prefix activity is incompatible with cache_mode=off"
             )
+        extended_prefix_fields = {
+            "block_size_tokens",
+            "eligible",
+            "source",
+            "matched_tokens",
+            "avoided_prefill_tokens",
+            "executed_prefill_tokens",
+            "reused_pages",
+            "reused_page_bytes",
+            "state_clone_bytes",
+            "snapshot_hit",
+            "admission_fallback",
+            "fallback_reason",
+            "cache_entries",
+            "cache_pages",
+        }
+        if configuration["cache_mode"] == "off" and extended_prefix_fields.intersection(
+            prefix
+        ):
+            missing = sorted(extended_prefix_fields.difference(prefix))
+            if missing:
+                raise AgenticBenchmarkError(
+                    f"record[{record_index}].prefix extended telemetry is incomplete: {missing}"
+                )
+            _positive_int(
+                prefix["block_size_tokens"],
+                label=f"record[{record_index}].prefix.block_size_tokens",
+            )
+            for field in ("eligible", "snapshot_hit", "admission_fallback"):
+                if prefix[field] is not False:
+                    raise AgenticBenchmarkError(
+                        f"record[{record_index}].prefix.{field} must be false when cache is off"
+                    )
+            zero_fields = (
+                "matched_tokens",
+                "avoided_prefill_tokens",
+                "reused_pages",
+                "reused_page_bytes",
+                "state_clone_bytes",
+                "cache_entries",
+                "cache_pages",
+            )
+            if any(
+                _nonnegative_int(
+                    prefix[field], label=f"record[{record_index}].prefix.{field}"
+                )
+                for field in zero_fields
+            ):
+                raise AgenticBenchmarkError(
+                    f"record[{record_index}].prefix off telemetry reports reused state"
+                )
+            executed_tokens = _nonnegative_int(
+                prefix["executed_prefill_tokens"],
+                label=f"record[{record_index}].prefix.executed_prefill_tokens",
+            )
+            if (
+                executed_tokens != int(prompt["token_count"])
+                or prefix["source"] is not None
+                or prefix["fallback_reason"] != "cache_off"
+            ):
+                raise AgenticBenchmarkError(
+                    f"record[{record_index}].prefix off telemetry is inconsistent"
+                )
+        if configuration["cache_mode"] == "radix":
+            for field in (
+                "eligible",
+                "snapshot_hit",
+                "admission_fallback",
+            ):
+                if not isinstance(prefix.get(field), bool):
+                    raise AgenticBenchmarkError(
+                        f"record[{record_index}].prefix.{field} must be boolean"
+                    )
+            block_size_tokens = _positive_int(
+                prefix.get("block_size_tokens"),
+                label=f"record[{record_index}].prefix.block_size_tokens",
+            )
+            matched_tokens = _nonnegative_int(
+                prefix.get("matched_tokens"),
+                label=f"record[{record_index}].prefix.matched_tokens",
+            )
+            avoided_tokens = _nonnegative_int(
+                prefix.get("avoided_prefill_tokens"),
+                label=f"record[{record_index}].prefix.avoided_prefill_tokens",
+            )
+            executed_tokens = _nonnegative_int(
+                prefix.get("executed_prefill_tokens"),
+                label=f"record[{record_index}].prefix.executed_prefill_tokens",
+            )
+            reused_pages = _nonnegative_int(
+                prefix.get("reused_pages"),
+                label=f"record[{record_index}].prefix.reused_pages",
+            )
+            reused_page_bytes = _nonnegative_int(
+                prefix.get("reused_page_bytes"),
+                label=f"record[{record_index}].prefix.reused_page_bytes",
+            )
+            state_clone_bytes = _nonnegative_int(
+                prefix.get("state_clone_bytes"),
+                label=f"record[{record_index}].prefix.state_clone_bytes",
+            )
+            cache_entries = _nonnegative_int(
+                prefix.get("cache_entries"),
+                label=f"record[{record_index}].prefix.cache_entries",
+            )
+            cache_pages = _nonnegative_int(
+                prefix.get("cache_pages"),
+                label=f"record[{record_index}].prefix.cache_pages",
+            )
+            source = prefix.get("source")
+            fallback_reason = prefix.get("fallback_reason")
+            if source not in {None, "active_current", "completed_snapshot"}:
+                raise AgenticBenchmarkError(
+                    f"record[{record_index}].prefix.source is unsupported"
+                )
+            if fallback_reason is not None and (
+                not isinstance(fallback_reason, str) or not fallback_reason
+            ):
+                raise AgenticBenchmarkError(
+                    f"record[{record_index}].prefix.fallback_reason is invalid"
+                )
+            prompt_tokens = int(prompt["token_count"])
+            if matched_tokens > prompt_tokens:
+                raise AgenticBenchmarkError(
+                    f"record[{record_index}].prefix matched boundary exceeds the prompt"
+                )
+            if (
+                avoided_tokens != reused_tokens
+                or executed_tokens + reused_tokens != prompt_tokens
+            ):
+                raise AgenticBenchmarkError(
+                    f"record[{record_index}].prefix prefill token accounting is inexact"
+                )
+            if reused_tokens != reused_pages * block_size_tokens or (
+                (reused_pages == 0) != (reused_page_bytes == 0)
+            ):
+                raise AgenticBenchmarkError(
+                    f"record[{record_index}].prefix page accounting is inexact"
+                )
+            if reused_pages and reused_page_bytes % reused_pages:
+                raise AgenticBenchmarkError(
+                    f"record[{record_index}].prefix page bytes are not uniform"
+                )
+            cache_bytes = int(prefix["cache_bytes"])
+            if (cache_entries == 0) != (cache_bytes == 0) or (
+                cache_pages and not cache_entries
+            ):
+                raise AgenticBenchmarkError(
+                    f"record[{record_index}].prefix cache residency is inconsistent"
+                )
+            if prefix["hit"] and (
+                not prefix["eligible"]
+                or not prefix["lookup"]
+                or source is None
+                or matched_tokens != reused_tokens
+                or matched_tokens >= prompt_tokens
+                or state_clone_bytes <= 0
+                or prefix["admission_fallback"]
+                or fallback_reason is not None
+                or prefix["snapshot_hit"] != (source == "completed_snapshot")
+            ):
+                raise AgenticBenchmarkError(
+                    f"record[{record_index}].prefix hit telemetry is inconsistent"
+                )
+            if not prefix["hit"] and any(
+                (
+                    reused_tokens,
+                    reused_pages,
+                    reused_page_bytes,
+                    state_clone_bytes,
+                    source is not None,
+                    prefix["snapshot_hit"],
+                )
+            ):
+                raise AgenticBenchmarkError(
+                    f"record[{record_index}].prefix miss reports reused state"
+                )
+            supported_fallbacks = {
+                "sampling_unsupported",
+                "prompt_too_short",
+                "miss",
+                "full_prompt_boundary_requires_suffix",
+                "state_source_unavailable",
+                "shared_admission_capacity",
+            }
+            if not prefix["hit"] and fallback_reason not in supported_fallbacks:
+                raise AgenticBenchmarkError(
+                    f"record[{record_index}].prefix miss has no explicit fallback"
+                )
+            if prefix["eligible"] != prefix["lookup"]:
+                raise AgenticBenchmarkError(
+                    f"record[{record_index}].prefix eligibility/lookup is inconsistent"
+                )
+            if prefix["admission_fallback"] != (
+                fallback_reason == "shared_admission_capacity"
+            ):
+                raise AgenticBenchmarkError(
+                    f"record[{record_index}].prefix admission fallback is inconsistent"
+                )
+            if fallback_reason in {"sampling_unsupported", "prompt_too_short", "miss"} and matched_tokens:
+                raise AgenticBenchmarkError(
+                    f"record[{record_index}].prefix fallback unexpectedly has a boundary"
+                )
+            if (
+                fallback_reason == "full_prompt_boundary_requires_suffix"
+                and matched_tokens != prompt_tokens
+            ):
+                raise AgenticBenchmarkError(
+                    f"record[{record_index}].prefix full-prompt fallback is inexact"
+                )
+            if fallback_reason in {"state_source_unavailable", "shared_admission_capacity"} and not (
+                0 < matched_tokens < prompt_tokens
+            ):
+                raise AgenticBenchmarkError(
+                    f"record[{record_index}].prefix matched fallback boundary is inexact"
+                )
 
         finish = _mapping(record.get("finish"), label=f"record[{record_index}].finish")
         if finish.get("reason") != "tool_calls":
@@ -664,10 +905,23 @@ def _rollup(records: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any], dict[
     completed_times: list[float] = []
     sse_wave_bounds: dict[tuple[str, str, int], list[tuple[float, float]]] = {}
     generated_tokens = 0
+    eligible_turns = 0
     lookups = 0
     hits = 0
+    matched_tokens = 0
     reused_tokens = 0
+    avoided_prefill_tokens = 0
+    executed_prefill_tokens = 0
+    reused_pages = 0
+    reused_page_bytes = 0
+    state_clone_bytes = 0
+    admission_fallbacks = 0
+    max_cache_entries = 0
+    max_cache_pages = 0
     max_cache_bytes = 0
+    prefix_sources: dict[str, int] = {}
+    prefix_fallbacks: dict[str, int] = {}
+    prefill_ms_values: list[float] = []
     logits_d2h_bytes = 0
     physical_width_turns: dict[str, int] = {}
     sampler_modes: dict[str, int] = {}
@@ -711,13 +965,33 @@ def _rollup(records: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any], dict[
         workloads.add(str(record["workload_id"]))
 
         prefix = _mapping(record["prefix"], label="prefix")
+        eligible_turns += int(prefix.get("eligible", False))
         lookups += int(prefix["lookup"])
         hits += int(prefix["hit"])
+        matched_tokens += int(prefix.get("matched_tokens", 0))
         reused_tokens += int(prefix["reused_tokens"])
+        avoided_prefill_tokens += int(prefix.get("avoided_prefill_tokens", 0))
+        executed_prefill_tokens += int(prefix.get("executed_prefill_tokens", 0))
+        reused_pages += int(prefix.get("reused_pages", 0))
+        reused_page_bytes += int(prefix.get("reused_page_bytes", 0))
+        state_clone_bytes += int(prefix.get("state_clone_bytes", 0))
+        admission_fallbacks += int(prefix.get("admission_fallback", False))
+        max_cache_entries = max(max_cache_entries, int(prefix.get("cache_entries", 0)))
+        max_cache_pages = max(max_cache_pages, int(prefix.get("cache_pages", 0)))
         max_cache_bytes = max(max_cache_bytes, int(prefix["cache_bytes"]))
+        source = prefix.get("source")
+        if source is not None:
+            source_name = str(source)
+            prefix_sources[source_name] = prefix_sources.get(source_name, 0) + 1
+        fallback = prefix.get("fallback_reason")
+        if fallback is not None:
+            fallback_name = str(fallback)
+            prefix_fallbacks[fallback_name] = prefix_fallbacks.get(fallback_name, 0) + 1
 
         backend = _mapping(record["backend"], label="backend")
         batches.add((str(record["run_id"]), str(backend["batch_id"])))
+        if backend.get("prefill_ms") is not None:
+            prefill_ms_values.append(float(backend["prefill_ms"]))
         logits_d2h_bytes += int(backend["logits_d2h_bytes"])
         width = str(int(backend["physical_width"]))
         physical_width_turns[width] = physical_width_turns.get(width, 0) + 1
@@ -767,13 +1041,38 @@ def _rollup(records: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any], dict[
         "active_sse_exact_generated_tok_s": generated_tokens / active_sse_wave_wall,
         "active_sse_validated_tool_calls_s": len(records) / active_sse_wave_wall,
         "prefix": {
+            "eligible_turns": eligible_turns,
             "lookups": lookups,
             "hits": hits,
             "hit_rate": (hits / lookups) if lookups else 0.0,
+            "source_turns": dict(sorted(prefix_sources.items())),
+            "fallback_turns": dict(sorted(prefix_fallbacks.items())),
+            "admission_fallbacks": admission_fallbacks,
+            "matched_tokens": matched_tokens,
             "reused_tokens": reused_tokens,
+            "avoided_prefill_tokens": avoided_prefill_tokens,
+            "executed_prefill_tokens": executed_prefill_tokens,
+            "reused_pages": reused_pages,
+            "reused_page_bytes": reused_page_bytes,
+            "reused_page_bytes_per_token": (
+                reused_page_bytes / reused_tokens if reused_tokens else 0.0
+            ),
+            "state_clone_bytes": state_clone_bytes,
+            "state_clone_bytes_per_token": (
+                state_clone_bytes / reused_tokens if reused_tokens else 0.0
+            ),
+            "max_cache_entries": max_cache_entries,
+            "max_cache_pages": max_cache_pages,
             "max_cache_bytes": max_cache_bytes,
+            "max_cache_bytes_per_reused_token": (
+                max_cache_bytes / reused_tokens if reused_tokens else 0.0
+            ),
         },
         "backend": {
+            "prefill_ms": {
+                **_latency_summary(prefill_ms_values),
+                "sum": sum(prefill_ms_values),
+            },
             "sampler_mode_turns": dict(sorted(sampler_modes.items())),
             "full_vocab_logits_d2h_bytes": logits_d2h_bytes,
             "physical_width_turns": dict(

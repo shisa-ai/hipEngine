@@ -20,7 +20,12 @@ from hipengine.benchmark.agentic_live import (
     normalize_chat_sse_turn,
     render_workload_prefix,
 )
-from scripts.agentic_coding_live import collect_live_records
+from scripts.agentic_coding_live import (
+    DEFAULT_A1_CONTROL,
+    _load_control_oracles,
+    _parser,
+    collect_live_records,
+)
 
 
 WORKLOADS = Path("benchmarks/prompts/agentic-coding-v1.json")
@@ -174,6 +179,59 @@ def _sse_events(suite, *, turn_index: int = 0, response_ids: bool = False):
     return events
 
 
+def test_retained_a1_control_is_exact_and_covers_radix_collection_keys() -> None:
+    controls, provenance = _load_control_oracles(
+        DEFAULT_A1_CONTROL,
+        workload_id="small_repo",
+        concurrency=1,
+    )
+
+    assert set(controls) == {("agent-0", index) for index in range(4)}
+    assert controls[("agent-0", 0)].prompt_token_count == 2504
+    assert controls[("agent-0", 0)].oracle.generated_token_ids
+    assert provenance == {
+        "path": str(DEFAULT_A1_CONTROL),
+        "sha256": "29133f5fb0fa36f0f83fe34565ad7df93214b8eb7e035ac56b5413713e495f3f",
+        "source_revision": "44c76674c2693f7dfc994b40b4cfc3880abbbeac",
+        "workload": "small_repo",
+        "concurrency": 1,
+        "measured_repeats": 3,
+    }
+    args = _parser().parse_args(
+        [
+            "--model",
+            "fake-model",
+            "--backend",
+            "fake",
+            "--cache-mode",
+            "radix",
+            "--records-json",
+            "/tmp/records.json",
+            "--json",
+            "/tmp/artifact.json",
+        ]
+    )
+    assert args.cache_off_control == DEFAULT_A1_CONTROL
+
+
+def test_retained_a1_control_covers_the_full_a2_concurrency_matrix() -> None:
+    for workload_id, turn_count in (
+        ("small_repo", 4),
+        ("growing_history", 8),
+        ("medium_repo", 6),
+    ):
+        for concurrency in (1, 4, 8):
+            controls, provenance = _load_control_oracles(
+                DEFAULT_A1_CONTROL,
+                workload_id=workload_id,
+                concurrency=concurrency,
+            )
+            assert len(controls) == concurrency * turn_count
+            assert provenance["workload"] == workload_id
+            assert provenance["concurrency"] == concurrency
+            assert provenance["measured_repeats"] == 3
+
+
 def test_prefix_renderer_hits_exact_target_and_roundtrips() -> None:
     suite = load_agentic_workload_suite(WORKLOADS)
 
@@ -272,6 +330,7 @@ def test_oracle_and_buffered_tool_sse_normalize_to_exact_a0_record() -> None:
         "logits_d2h_bytes": 0,
         "physical_width": 2,
         "serial_fallback": False,
+        "prefill_ms": 20.0,
     }
     assert record["prefix"] == {
         "lookup": False,
@@ -288,6 +347,96 @@ def test_oracle_and_buffered_tool_sse_normalize_to_exact_a0_record() -> None:
         match="oracle emitted content alongside a tool-only response",
     ):
         normalize_chat_oracle(suite, "small_repo", 0, content_oracle)
+
+
+def test_sse_normalizer_reads_fail_closed_radix_request_telemetry() -> None:
+    suite = load_agentic_workload_suite(WORKLOADS)
+    oracle = normalize_chat_oracle(suite, "small_repo", 0, _oracle_payload(suite))
+    events = _sse_events(suite, response_ids=True)
+    prefix = {
+        "mode": "radix",
+        "block_size_tokens": 256,
+        "eligible": True,
+        "lookup": True,
+        "hit": True,
+        "source": "completed_snapshot",
+        "matched_tokens": 2048,
+        "reused_tokens": 2048,
+        "avoided_prefill_tokens": 2048,
+        "executed_prefill_tokens": 456,
+        "reused_pages": 8,
+        "reused_page_bytes": 8 * 5_242_880,
+        "state_clone_bytes": 66_846_720,
+        "snapshot_hit": True,
+        "admission_fallback": False,
+        "fallback_reason": None,
+        "cache_resident_entries": 1,
+        "cache_resident_pages": 8,
+        "cache_resident_bytes": 108_789_760,
+    }
+    for _, event in events:
+        if not isinstance(event, dict):
+            continue
+        for choice in event.get("choices", []):
+            telemetry = choice.get("hipengine")
+            if isinstance(telemetry, dict):
+                telemetry["diagnostics"] = {"prefix_cache": copy.deepcopy(prefix)}
+
+    record = normalize_chat_sse_turn(
+        suite,
+        workload_id="small_repo",
+        turn_index=0,
+        run_id="run-0",
+        agent_id="agent-0",
+        session_id="session-0",
+        request_id="request-0",
+        prompt_token_ids=[1] * 2504,
+        submitted_at_s=10.0,
+        tool_result_submitted_at_s=10.33,
+        oracle=oracle,
+        events=events,
+        cache_mode="radix",
+    )
+
+    assert record["prefix"] == {
+        "block_size_tokens": 256,
+        "eligible": True,
+        "lookup": True,
+        "hit": True,
+        "source": "completed_snapshot",
+        "matched_tokens": 2048,
+        "reused_tokens": 2048,
+        "avoided_prefill_tokens": 2048,
+        "executed_prefill_tokens": 456,
+        "reused_pages": 8,
+        "reused_page_bytes": 8 * 5_242_880,
+        "state_clone_bytes": 66_846_720,
+        "snapshot_hit": True,
+        "admission_fallback": False,
+        "fallback_reason": None,
+        "cache_entries": 1,
+        "cache_pages": 8,
+        "cache_bytes": 108_789_760,
+    }
+    assert record["backend"]["prefill_ms"] == 20.0
+
+    missing = _sse_events(suite, response_ids=True)
+    with pytest.raises(AgenticBenchmarkError, match="missing radix prefix telemetry"):
+        normalize_chat_sse_turn(
+            suite,
+            workload_id="small_repo",
+            turn_index=0,
+            run_id="run-0",
+            agent_id="agent-0",
+            session_id="session-0",
+            request_id="request-0",
+            prompt_token_ids=[1] * 2504,
+            submitted_at_s=10.0,
+            tool_result_submitted_at_s=10.33,
+            oracle=oracle,
+            events=missing,
+            cache_mode="radix",
+        )
 
 
 def test_sse_normalizer_uses_exact_response_ids_and_rejects_oracle_drift() -> None:
@@ -496,9 +645,39 @@ def test_final_ownership_maps_ready_and_session_surfaces() -> None:
         "kv_pinned_pages": 0,
         "graph_owners": 0,
         "workspace_owners": 0,
+        "cache_resident_entries": 0,
+        "cache_resident_pages": 0,
         "cache_resident_bytes": 0,
         "allowed_cache_bytes": 0,
     }
+
+    radix_ownership = final_ownership_from_server(
+        {
+            "ready": True,
+            "queue": {"depth": 0, "worker_active": False, "active_requests": 0},
+            "kv_capacity": {
+                "pool": {"refcounted_pages": 8, "pinned_pages": 0}
+            },
+            "prefix_cache": {
+                "mode": "radix",
+                "snapshot_entries": 1,
+                "snapshot_limit": 1,
+                "snapshot_bytes": 66_846_720,
+                "retained_kv_pages": 8,
+                "retained_kv_bytes": 8 * 5_242_880,
+                "resident_bytes": 108_789_760,
+                "resident_limit_bytes": 108_789_760,
+            },
+            "graph_cache": {"entries": 4},
+        },
+        {"sessions": [], "continuations": {"active": 0}},
+        cache_mode="radix",
+    )
+    assert radix_ownership["kv_refcounted_pages"] == 0
+    assert radix_ownership["cache_resident_pages"] == 8
+    assert radix_ownership["cache_resident_entries"] == 1
+    assert radix_ownership["cache_resident_bytes"] == 108_789_760
+    assert radix_ownership["allowed_cache_bytes"] == 108_789_760
 
     with pytest.raises(AgenticBenchmarkError, match="server is not idle after agentic run"):
         final_ownership_from_server(

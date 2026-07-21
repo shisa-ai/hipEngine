@@ -2796,6 +2796,18 @@ def test_health_and_ready_report_eager_startup_diagnostics() -> None:
     assert body["context"]["effective_max_context_tokens"] == 131072
     assert body["kv_capacity"]["estimate"]["allocatable_context_tokens"] == 131072
     assert body["kv_capacity"]["storage"] == "auto"
+    assert body["prefix_cache"] == {
+        "mode": "off",
+        "block_size_tokens": 256,
+        "snapshot_entries": 0,
+        "snapshot_limit": 0,
+        "retained_snapshot_entries": 0,
+        "snapshot_bytes": 0,
+        "retained_kv_pages": 0,
+        "retained_kv_bytes": 0,
+        "resident_bytes": 0,
+        "resident_limit_bytes": 0,
+    }
     assert body["graph_cache"]["entries"] == 0.0
     assert body["queue"]["depth"] == 0
     assert body["queue"]["max_depth"] is None
@@ -2820,6 +2832,31 @@ def test_health_and_ready_report_eager_startup_diagnostics() -> None:
     serialized = json.dumps(body)
     assert "private startup prompt" not in serialized
     assert "private warmup output" not in serialized
+
+
+def test_ready_reports_bounded_prefix_cache_ownership() -> None:
+    fake = FakeLLM()
+    prefix = {
+        "mode": "radix",
+        "block_size_tokens": 256,
+        "snapshot_entries": 2,
+        "snapshot_limit": 4,
+        "retained_snapshot_entries": 2,
+        "snapshot_bytes": 1024,
+        "retained_kv_pages": 3,
+        "retained_kv_bytes": 12_288,
+        "resident_bytes": 13_312,
+        "resident_limit_bytes": 65_536,
+    }
+    fake.live_loop_snapshot = lambda: {"runner": {"prefix_cache": prefix}}
+    app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model", eager_load=False),
+        llm=fake,
+    )
+
+    body = TestClient(app).get("/ready").json()
+
+    assert body["prefix_cache"] == prefix
 
 
 def test_ready_reports_selected_visible_gpu_from_rocm_env(monkeypatch) -> None:
