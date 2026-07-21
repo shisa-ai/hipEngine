@@ -35,6 +35,7 @@ from hipengine.generation import (
     EngineLoopConfig,
     FinishDetails,
     GeneratedToken,
+    GenerationAdmissionRejected,
     GenerationCancellationToken,
     GenerationCancelled,
     GenerationRequest,
@@ -18078,15 +18079,24 @@ def test_resident_engine_loop_prefill_decode_policies() -> None:
 
     capped_loop = ResidentEngineLoop(_FakeSerialBridgeRunner(), capacity=1, max_pending_requests=1)
     capped_loop.submit([10], max_new_tokens=1)
-    with pytest.raises(ValueError, match="pending request queue is full"):
+    with pytest.raises(
+        GenerationAdmissionRejected,
+        match="pending request queue is full",
+    ) as capped_exc:
         capped_loop.submit([20], max_new_tokens=1)
+    assert capped_exc.value.to_json_dict() == {
+        "resource": "pending_request_queue",
+        "requested_units": 1,
+        "current_units": 1,
+        "capacity_units": 1,
+    }
 
     configured_loop = ResidentEngineLoop(
         _FakeSerialBridgeRunner(),
         config=EngineLoopConfig(max_active_requests=1, max_pending_requests=1),
     )
     configured_loop.submit([30], max_new_tokens=1)
-    with pytest.raises(ValueError, match="pending request queue is full"):
+    with pytest.raises(GenerationAdmissionRejected, match="pending request queue is full"):
         configured_loop.submit([40], max_new_tokens=1)
 
     chunk_runner = _FakeSerialBridgeRunner()

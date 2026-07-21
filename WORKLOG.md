@@ -172572,3 +172572,29 @@ unrecorded ambient variable.
 GREEN passes **14/14** production-load contract tests. Targeted Ruff, Python
 compilation, and diff checks pass with only the existing Starlette/httpx warning.
 No GPU result or performance claim changes in this harness unit.
+
+## 2026-07-22 — Map resident pending pressure to retryable admission rejection
+
+The first A5 cache-off pressure diagnostic exposed a real protocol bug: once the
+resident scheduler's `max_pending_requests=16` cap filled, its internal
+`ValueError` escaped through the streaming endpoint as HTTP/SSE
+`400 invalid_request`. The server contract and frozen A5 overload gate require
+bounded capacity pressure to be retryable `429 engine_busy` instead.
+
+RED changed the resident-loop cap expectation from `ValueError` to
+`GenerationAdmissionRejected`. `ResidentEngineLoop.submit()` now translates the
+already-bounded pending-cap condition at the engine boundary, preserving direct
+scheduler validation while reporting resource `pending_request_queue` with exact
+requested/current/capacity units. Existing server mapping then emits the normal
+retryable overload envelope and rejected-request counter. No scheduling,
+capacity, or default policy changes.
+
+Validation:
+
+- RED: `uv run pytest -q tests/test_generation_batch_scheduler.py::test_resident_engine_loop_prefill_decode_policies` failed with the old `ValueError`.
+- GREEN: the policy/cap test plus direct scheduler-cap test pass **2/2**.
+- Existing buffered and SSE `GenerationAdmissionRejected` server mappings pass **2/2** with only the existing Starlette/httpx warning.
+- Targeted Ruff on `engine_loop.py`, Python compilation, and diff checks pass. A whole-file Ruff check of the legacy scheduler test still reports its pre-existing undefined `Any` at line 15882; this unit does not alter that unrelated code.
+
+The in-flight old-source cache-off A5 pass remains a diagnostic only; it must be
+rerun from this repaired source before any retained pressure/soak result.

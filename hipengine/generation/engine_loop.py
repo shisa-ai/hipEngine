@@ -1264,8 +1264,28 @@ class ResidentEngineLoop:
         }
         return snapshot
 
-    def submit(self, prompt_tokens: Iterable[int], *, max_new_tokens: int, request_id: int | None = None) -> int:
-        return self.scheduler.submit(prompt_tokens, max_new_tokens=max_new_tokens, request_id=request_id)
+    def submit(
+        self,
+        prompt_tokens: Iterable[int],
+        *,
+        max_new_tokens: int,
+        request_id: int | None = None,
+    ) -> int:
+        max_pending = self.scheduler.max_pending_requests
+        pending = self.scheduler.pending_count
+        if max_pending is not None and pending >= max_pending:
+            raise GenerationAdmissionRejected(
+                f"pending request queue is full (max_pending_requests={max_pending})",
+                resource="pending_request_queue",
+                requested_units=1,
+                current_units=pending,
+                capacity_units=max_pending,
+            )
+        return self.scheduler.submit(
+            prompt_tokens,
+            max_new_tokens=max_new_tokens,
+            request_id=request_id,
+        )
 
     def cancel(self, request_id: int, *, reason: str = "cancel") -> bool:
         """Cancel a pending or active request and reclaim active scheduler state."""
