@@ -103,6 +103,7 @@ from hipengine.kernels.hip_gfx1100.linear.lm_head import (
     build_lm_head,
     lm_head_argmax_stage1_blocks,
 )
+from hipengine.kernels.hip_gfx1100.sampling import build_sampler
 from hipengine.kernels.hip_gfx1100.rotary.qwen35_rotary import qwen35_split_qgate_bf16
 from hipengine.kernels.hip_gfx1100.runtime import (
     advance_decode_position_i64,
@@ -121,6 +122,7 @@ from hipengine.kvcache import (
     KVLiveSpans,
     KVScaleMetadata,
 )
+from hipengine.runtime.native_sampler import NativeSamplerWorkspace
 from hipengine.runtime.qwen35_paro import AotritonPrefillStreamBridge
 from hipengine.kernels.hip_gfx1100.speculative import (
     build_dflash_commit,
@@ -9071,6 +9073,11 @@ class Qwen35GGUFResidentSession:
     _linear_state_snapshot_backups: tuple[object, ...] = field(default=(), init=False)
     _runtime_state_library: object | None = field(default=None, init=False)
     _lm_head_library: object | None = field(default=None, init=False)
+    _native_sampler_workspace: NativeSamplerWorkspace | None = field(
+        default=None,
+        init=False,
+        repr=False,
+    )
     _dflash_commit_library: object | None = field(default=None, init=False)
     _expert_pack8_library: object | None = field(default=None, init=False)
     _q6_pack8_library: object | None = field(default=None, init=False)
@@ -12547,6 +12554,7 @@ class Qwen35GGUFResidentSession:
         return_logits: bool = False,
         return_hidden_seeds: bool = False,
         sample_output: bool = True,
+        require_logits: bool = False,
         capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
         stream: int = 0,
     ) -> list[Qwen35GGUFNextTokenProbeResult | Qwen35GGUFPackedPrefillResult | None]:
@@ -12642,6 +12650,7 @@ class Qwen35GGUFResidentSession:
                 sum(len(chunk.slot_indices) for chunk in chunks) - len(prompt_tuple),
             ),
             "sample_output": bool(sample_output),
+            "device_logits_required": bool(require_logits),
             "output_norm_rows": 0,
             "lm_head_sample_rows": 0,
         }
@@ -12652,6 +12661,7 @@ class Qwen35GGUFResidentSession:
                 return_logits=return_logits,
                 return_hidden_seeds=return_hidden_seeds,
                 sample_output=sample_output,
+                require_logits=require_logits,
                 capture_layer_output_hidden=capture_layer_output_hidden,
                 stream=stream,
                 _slot_local_full_attention=bool(aotriton_eligible_slots),
@@ -12677,6 +12687,7 @@ class Qwen35GGUFResidentSession:
                 return_logits=return_logits,
                 return_hidden_seeds=return_hidden_seeds,
                 sample_output=sample_output,
+                require_logits=require_logits,
                 capture_layer_output_hidden=capture_layer_output_hidden,
                 stream=stream,
                 _slot_local_full_attention=bool(force_aotriton_slot_indices),
@@ -12729,6 +12740,7 @@ class Qwen35GGUFResidentSession:
         return_logits: bool = False,
         return_hidden_seeds: bool = False,
         sample_output: bool = True,
+        require_logits: bool = False,
         capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
         stream: int = 0,
         _slot_local_full_attention: bool | None = None,
@@ -13111,7 +13123,7 @@ class Qwen35GGUFResidentSession:
                     int(layout.slot_count),
                     activation_dtype=GGUF_ACTIVATION_BF16,
                     stream=stream,
-                    require_logits=bool(return_logits),
+                    require_logits=bool(return_logits or require_logits),
                 )
                 token_host = self._read_target_block_row_tokens(
                     int(layout.slot_count),
@@ -13405,6 +13417,7 @@ class Qwen35GGUFResidentSession:
         sessions: list["Qwen35GGUFResidentSession"] | tuple["Qwen35GGUFResidentSession", ...] | None = None,
         positions: list[int] | tuple[int, ...] | None = None,
         return_logits: bool = False,
+        require_logits: bool = False,
         stream: int = 0,
         scatter_state: bool = True,
         capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
@@ -13586,7 +13599,7 @@ class Qwen35GGUFResidentSession:
                 layer_output_callback=(
                     capture_layer_output if capture_layer_ids else None
                 ),
-                require_logits=bool(return_logits),
+                require_logits=bool(return_logits or require_logits),
             )
         )
         token_host = self._read_target_block_row_tokens(rows, stream=stream)
@@ -16144,6 +16157,146 @@ class Qwen35GGUFResidentSession:
         )
         return self._read_target_block_row_tokens(rows, stream=stream)
 
+    def sample_native_from_last_logits(
+        self,
+        params: object,
+        state: object,
+        *,
+        stream: int = 0,
+    ):
+        """Select from the latest c1 FP32 logits without full-vocab readback."""
+
+        if self._logits_buf is None:
+            raise RuntimeError("GGUF resident logits buffer is closed")
+        if self._lm_out_index is None or self._lm_out_value is None:
+            raise RuntimeError("GGUF resident lm-head outputs are closed")
+        workspace = self._native_sampler()
+        return workspace.sample(
+            self._logits_buf.ptr,
+            params,
+            state,
+            out_index_i64_ptr=self._lm_out_index.ptr,
+            out_value_f32_ptr=self._lm_out_value.ptr,
+            stream=int(stream),
+        )
+
+    def sample_native_from_packed_logits_rows(
+        self,
+        physical_rows: list[int] | tuple[int, ...],
+        params_rows: list[object] | tuple[object, ...],
+        states: list[object] | tuple[object, ...],
+        *,
+        stream: int = 0,
+    ):
+        """Select a contiguous compatible packed row group in one launch."""
+
+        row_tuple = tuple(int(row) for row in physical_rows)
+        params_tuple = tuple(params_rows)
+        state_tuple = tuple(states)
+        if not row_tuple:
+            raise ValueError("packed native sampler rows must be non-empty")
+        if len(row_tuple) != len(params_tuple) or len(row_tuple) != len(state_tuple):
+            raise ValueError("packed native sampler rows, params, and states must align")
+        if row_tuple != tuple(range(row_tuple[0], row_tuple[0] + len(row_tuple))):
+            raise NotImplementedError("packed native sampler rows must be contiguous")
+        if row_tuple[0] < 0 or row_tuple[-1] >= int(self._verify_lm_rows_capacity):
+            raise ValueError(
+                f"packed native sampler rows {row_tuple!r} exceed capacity "
+                f"{self._verify_lm_rows_capacity}"
+            )
+        if self._verify_logits_buf is None:
+            raise RuntimeError("GGUF packed logits buffer is closed")
+        logits_ptr = self._verify_logits_buf.ptr + (
+            row_tuple[0] * int(self.runner.vocab_size) * DType.FP32.itemsize
+        )
+        samples = self._native_sampler().sample_rows(
+            logits_ptr,
+            params_tuple,
+            state_tuple,
+            stream=int(stream),
+        )
+        self._last_packed_sampler_decode_path = "native_gpu_sampler_rows"
+        if self.last_packed_execution_manifest:
+            self.last_packed_execution_manifest["sampler_decode_path"] = (
+                "native_gpu_sampler_rows"
+            )
+            self.last_packed_execution_manifest["native_sampler_rows"] = len(
+                row_tuple
+            )
+        if self.last_packed_prefill_plan:
+            self.last_packed_prefill_plan["sampler_path"] = (
+                "native_gpu_sampler_rows"
+            )
+            self.last_packed_prefill_plan["native_sampler_rows"] = len(row_tuple)
+        return samples
+
+    def sample_native_from_packed_logits(
+        self,
+        physical_row: int,
+        params: object,
+        state: object,
+        *,
+        output_session: "Qwen35GGUFResidentSession",
+        stream: int = 0,
+    ):
+        """Select one active physical row from the latest packed FP32 logits."""
+
+        row = int(physical_row)
+        if row < 0 or row >= int(self._verify_lm_rows_capacity):
+            raise ValueError(
+                f"packed native sampler row {row} exceeds capacity "
+                f"{self._verify_lm_rows_capacity}"
+            )
+        if self._verify_logits_buf is None:
+            raise RuntimeError("GGUF packed logits buffer is closed")
+        if output_session._lm_out_index is None or output_session._lm_out_value is None:
+            raise RuntimeError("GGUF packed output session lm-head buffers are closed")
+        logits_ptr = self._verify_logits_buf.ptr + (
+            row * int(self.runner.vocab_size) * DType.FP32.itemsize
+        )
+        workspace = self._native_sampler()
+        sample = workspace.sample(
+            logits_ptr,
+            params,
+            state,
+            out_index_i64_ptr=output_session._lm_out_index.ptr,
+            out_value_f32_ptr=output_session._lm_out_value.ptr,
+            stream=int(stream),
+        )
+        self._last_packed_sampler_decode_path = "native_gpu_sampler_row"
+        if self.last_packed_execution_manifest:
+            self.last_packed_execution_manifest["sampler_decode_path"] = (
+                "native_gpu_sampler_row"
+            )
+            self.last_packed_execution_manifest["native_sampler_rows"] = 1
+        if self.last_packed_prefill_plan:
+            self.last_packed_prefill_plan["sampler_path"] = (
+                "native_gpu_sampler_row"
+            )
+            self.last_packed_prefill_plan["native_sampler_rows"] = 1
+        return sample
+
+    def _native_sampler(self) -> NativeSamplerWorkspace:
+        workspace = self._native_sampler_workspace
+        if workspace is not None and not workspace.closed:
+            return workspace
+        if self.runner is None or self._lm_head_library is None:
+            raise RuntimeError("GGUF resident session is closed")
+        build_kwargs = {
+            "load": True,
+            "compiler_version": self.compiler_version,
+            "require_cached": self.require_cached_build,
+        }
+        with hip_target_arch_environment(self.runner.target_arch):
+            sampler_library = build_sampler(**build_kwargs)
+        workspace = NativeSamplerWorkspace(
+            runtime=self.runtime or get_hip_runtime(),
+            vocab_size=self.runner.vocab_size,
+            sampler_library=sampler_library,
+        )
+        self._native_sampler_workspace = workspace
+        return workspace
+
     def _sample_from_hidden(
         self,
         hidden_ptr: int,
@@ -16405,6 +16558,10 @@ class Qwen35GGUFResidentSession:
         if self._moe_graph is not None:
             self._moe_graph.close()
             self._moe_graph = None
+        native_sampler = self._native_sampler_workspace
+        if native_sampler is not None:
+            native_sampler.close()
+            self._native_sampler_workspace = None
         for buffer in (
             self._verify_lm_out_values,
             self._verify_lm_out_indices_i32,

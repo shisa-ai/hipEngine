@@ -297,6 +297,18 @@ Required gates:
 - full-vocabulary D2H bytes reduced to zero on the retained native route;
 - c1 and c>N latency/goodput non-regression with exact API accounting.
 
+The correctness prerequisite is now complete. The explicit GGUF candidate admits
+exactly `supports_native_gpu_sampling()` rows, keeps forced/repair/JSON/thinking
+and unsupported stochastic shapes on host logits, and uses one sampler launch
+for dense compatible packed rows. The real W7900 p256/c4 gate repeats four
+fixed-seed rows exactly, matches same-shape forced-host Conv/GDN/logical live-KV
+bytes, passes stop/EOS/bounded-logprob and API telemetry, records six batch
+sampler launches, and drains all refs with zero COW. Supported rows report
+`full_vocab_logits_d2h=false` / `logits_d2h_bytes=0`. Artifact:
+`benchmarks/results/2026-07-21-w7900-gguf-native-sampler-correctness.json`.
+This is correctness evidence only (`performance_claim=false`); A3 host/native
+measurement decides promotion.
+
 ### P4 — Complete gfx1100 PARO c4/c8 resident serving
 
 Generalize one physical selected-batch algorithm rather than stacking c2 groups,
@@ -453,8 +465,8 @@ Every retained comparison requires:
 - **A2 — prefix A/B (closed, rejected):** exact/lifecycle-safe scoped radix,
   but materially regressive at C1; cache-off remains default and C4/C8 was
   skipped by prerequisite.
-- **A3 — sampled path (next):** host-logits baseline, then native GGUF candidate
-  when implemented.
+- **A3 — sampled path (next):** host-logits baseline versus the now
+  correctness-ready explicit native GGUF candidate.
 - **A4 — routing/SLO:** batch-window and prefill-policy A/B under delayed mixed
   arrivals.
 - **A5 — pressure/soak:** cancellation, slow consumer, queue/KV/cache pressure,

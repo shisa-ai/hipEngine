@@ -47,6 +47,7 @@ from hipengine.generation.sampling import (
     plan_sampler,
     row_seed_for_index,
     select_token,
+    supports_native_gpu_sampling,
     thinking_budget_state_from_params,
 )
 from hipengine.loading.gguf import GGUFModelInfo, GGUFReader
@@ -4013,6 +4014,7 @@ class _GGUFResidentLoopRow:
     native_greedy: bool
     native_sampled: bool
     submitted_at: float
+    native_sampler: bool = False
     prefill_tokens_seen: int = 0
     incremental_prefill: bool | None = None
     prefill_chunk_count: int = 0
@@ -4285,6 +4287,15 @@ class Qwen35GGUFResidentModelRunner:
                     "native_c1_decode_steps": int(self._route_counts["native_c1_decode_steps"]),
                     "native_sampled_prefill_rows": int(
                         self._route_counts["native_sampled_prefill_rows"]
+                    ),
+                    "native_sampler_requests": int(
+                        self._route_counts["native_sampler_requests"]
+                    ),
+                    "native_sampler_batch_launches": int(
+                        self._route_counts["native_sampler_batch_launches"]
+                    ),
+                    "native_sampler_row_launches": int(
+                        self._route_counts["native_sampler_row_launches"]
                     ),
                     "host_sampler_requests": int(
                         self._route_counts["host_sampler_requests"]
@@ -4901,7 +4912,10 @@ class Qwen35GGUFResidentModelRunner:
             raise ValueError("row_seeds must have one entry per prompt")
         batch_id = self._next_batch_id
         self._next_batch_id += 1
-        plan = _gguf_sampler_plan(request)
+        plan = _gguf_sampler_plan(
+            request,
+            native_gpu_available=_native_gpu_sampler_requested(),
+        )
         native_greedy = (
             plan.mode is SamplingMode.GREEDY_FAST
             and int(request.max_tokens) > 0
@@ -4909,6 +4923,10 @@ class Qwen35GGUFResidentModelRunner:
         native_sampled = (
             plan.mode is not SamplingMode.GREEDY_FAST
             and int(request.max_tokens) > 0
+        )
+        native_sampler = (
+            native_sampled
+            and _gguf_native_sampler_plan_enabled(request, plan)
         )
         now = time.perf_counter()
         for row_index, (request_id, prompt_ids) in enumerate(zip(ids, prompts, strict=True)):
@@ -4925,6 +4943,7 @@ class Qwen35GGUFResidentModelRunner:
                 native_greedy=native_greedy,
                 native_sampled=native_sampled,
                 submitted_at=now,
+                native_sampler=native_sampler,
                 sampler_plan=plan,
             )
 
@@ -5199,20 +5218,32 @@ class Qwen35GGUFResidentModelRunner:
             bool(item.get("native_greedy", False) or item.get("native_sampled", False))
             for item in metadata
         )
-        any_native_sampled = any(bool(item.get("native_sampled", False)) for item in metadata)
+        any_native_sampled = any(
+            bool(item.get("native_sampled", False)) for item in metadata
+        )
+        any_native_sampler = any(
+            bool(item.get("native_sampler", False)) for item in metadata
+        )
         serial_fallback = any(bool(item.get("serial_decode_fallback", False)) for item in metadata)
         self.generator.last_generation_outputs = output_tuple
         self.generator.last_batch_generation = _gguf_last_batch_generation(
             self.generator.tokenizer,
             request,
-            _gguf_sampler_plan(request),
+            _gguf_sampler_plan(
+                request,
+                native_gpu_available=any_native_sampler,
+            ),
             prompt_rows,
             generated_rows,
             {index: list(output.token_logprobs) for index, output in enumerate(output_tuple)},
             outputs=output_tuple,
             execution_path=(
                 (
-                    "gguf_packed_ar_host_sampler_decode"
+                    (
+                        "gguf_packed_ar_native_sampler_decode"
+                        if any_native_sampler
+                        else "gguf_packed_ar_host_sampler_decode"
+                    )
                     if any_native_sampled
                     else "gguf_packed_ar_server_decode"
                 )
@@ -5224,6 +5255,7 @@ class Qwen35GGUFResidentModelRunner:
             native_c1_decode_steps=native_c1_steps,
             native_caware_decode=native_steps > 0,
             serial_decode_fallback=serial_fallback,
+            native_sampler_rows=any_native_sampler,
         )
 
     def close(self) -> None:
@@ -5416,7 +5448,14 @@ class Qwen35GGUFResidentModelRunner:
                 row_index=row.row_index,
             )
             row.sampling_request = sampling_request
-            row.sampler_plan = _gguf_sampler_plan(sampling_request)
+            row.sampler_plan = _gguf_sampler_plan(
+                sampling_request,
+                native_gpu_available=_native_gpu_sampler_requested(),
+            )
+            row.native_sampler = _gguf_native_sampler_plan_enabled(
+                sampling_request,
+                row.sampler_plan,
+            )
             row.sampling_state = sampling_state
             return sampling_request, sampling_state
         if row.sampling_request is None or row.sampling_state is None:
@@ -5429,6 +5468,7 @@ class Qwen35GGUFResidentModelRunner:
         result: Any,
         *,
         native_compact_prefill: bool,
+        native_sample: Any | None = None,
     ) -> None:
         if row.slot is not None:
             raise RuntimeError("GGUF sampled row was prefilled more than once")
@@ -5436,8 +5476,22 @@ class Qwen35GGUFResidentModelRunner:
         if lease is None:
             raise RuntimeError("GGUF sampled prefill finished without a session lease")
         sampling_request, sampling_state = self._prepare_sampled_prefill(row)
-        sample = _select_from_gguf_logits(result, sampling_request, sampling_state)
-        full_vocab_logits_d2h, logits_d2h_bytes = _gguf_logits_d2h_metadata(result)
+        if native_sample is None:
+            if row.native_sampler:
+                raise RuntimeError("native GGUF prefill did not return a native sample")
+            sample = _select_from_gguf_logits(
+                result,
+                sampling_request,
+                sampling_state,
+            )
+            full_vocab_logits_d2h, logits_d2h_bytes = _gguf_logits_d2h_metadata(
+                result
+            )
+        else:
+            if not row.native_sampler:
+                raise RuntimeError("host GGUF prefill received a native sample")
+            sample = native_sample
+            full_vocab_logits_d2h, logits_d2h_bytes = False, 0
         token = int(sample.token_id)
         _gguf_queue_json_object_close_if_needed(
             sampling_state,
@@ -5446,11 +5500,16 @@ class Qwen35GGUFResidentModelRunner:
             remaining_tokens=max(0, int(sampling_request.max_tokens) - 1),
         )
         self._route_counts["native_sampled_prefill_rows"] += 1
-        self._route_counts["host_sampler_requests"] += 1
         plan = row.sampler_plan
         if plan is None:
             raise RuntimeError("GGUF sampled prefill has no sampler plan")
-        self._fallback_reasons[str(plan.fallback_reason or plan.mode.value)] += 1
+        if row.native_sampler:
+            self._route_counts["native_sampler_requests"] += 1
+        else:
+            self._route_counts["host_sampler_requests"] += 1
+            self._fallback_reasons[
+                str(plan.fallback_reason or plan.mode.value)
+            ] += 1
         row.samples.append(sample)
         row.full_vocab_logits_d2h = full_vocab_logits_d2h
         row.logits_d2h_bytes = logits_d2h_bytes
@@ -5484,24 +5543,31 @@ class Qwen35GGUFResidentModelRunner:
             return
         lease = row.lease or self._acquire_lease()
         row.lease = lease
-        self._prepare_sampled_prefill(row)
+        sampling_request, sampling_state = self._prepare_sampled_prefill(row)
         start = time.perf_counter()
         native_compact_prefill = False
         if _gguf_device_kv_contiguous_base_row(lease.session) == 0:
-            result = lease.session.prefill(row.prompt_ids, return_logits=True)
+            result = lease.session.prefill(
+                row.prompt_ids,
+                return_logits=not row.native_sampler,
+            )
         else:
             prefill_batch = getattr(lease.session, "prefill_batch_native", None)
             if not callable(prefill_batch):
                 raise RuntimeError(
                     "shifted sampled GGUF KV requires block-table-aware prefill"
                 )
+            native_logits_kwargs = (
+                {"require_logits": True} if row.native_sampler else {}
+            )
             with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
                 results = prefill_batch(
                     [row.prompt_ids],
                     sessions=[lease.session],
                     full_prompt_lengths=[len(row.prompt_ids)],
-                    return_logits=True,
+                    return_logits=not row.native_sampler,
                     return_hidden_seeds=False,
+                    **native_logits_kwargs,
                 )
             result_list = [] if results is None else list(results)
             if len(result_list) != 1:
@@ -5512,10 +5578,42 @@ class Qwen35GGUFResidentModelRunner:
             native_compact_prefill = True
         row.prefill_ms += _timing_ms_since(start)
         row.prefill_chunk_count += 1
+        native_sample = None
+        if row.native_sampler:
+            if native_compact_prefill:
+                sample_native = getattr(
+                    lease.session,
+                    "sample_native_from_packed_logits",
+                    None,
+                )
+                if not callable(sample_native):
+                    raise RuntimeError(
+                        "GGUF packed prefill has no native sampler integration"
+                    )
+                native_sample = sample_native(
+                    0,
+                    sampling_request,
+                    sampling_state,
+                    output_session=lease.session,
+                )
+            else:
+                sample_native = getattr(
+                    lease.session,
+                    "sample_native_from_last_logits",
+                    None,
+                )
+                if not callable(sample_native):
+                    raise RuntimeError(
+                        "GGUF session has no native sampler integration"
+                    )
+                native_sample = sample_native(sampling_request, sampling_state)
+        if native_sample is not None:
+            self._route_counts["native_sampler_row_launches"] += 1
         self._finish_sampled_prefill(
             row,
             result,
             native_compact_prefill=native_compact_prefill,
+            native_sample=native_sample,
         )
 
     def _prefill_processed_argmax_chunk(
@@ -5813,7 +5911,18 @@ class Qwen35GGUFResidentModelRunner:
         for group in groups:
             group_rows = [row_by_request[request_id] for request_id in group.request_ids]
             packed = False
-            if _gguf_ar_packed_decode_enabled() and (
+            serial_fallback_reason = "packed_decode_unavailable"
+            native_sampler_rows = any(
+                bool(getattr(row, "native_sampler", False)) for row in group_rows
+            )
+            host_sampler_rows = any(
+                bool(getattr(row, "native_sampled", False))
+                and not bool(getattr(row, "native_sampler", False))
+                for row in group_rows
+            )
+            if native_sampler_rows and host_sampler_rows:
+                serial_fallback_reason = "mixed_sampler_routes"
+            elif _gguf_ar_packed_decode_enabled() and (
                 group.active_rows > 1 or group.physical_rows > 1
             ):
                 packed = self._step_native_chunk(
@@ -5824,7 +5933,10 @@ class Qwen35GGUFResidentModelRunner:
             if packed:
                 execution_path = "packed_native"
             else:
-                self._step_native_serial(group_rows)
+                self._step_native_serial(
+                    group_rows,
+                    fallback_reason=serial_fallback_reason,
+                )
                 if group.active_rows == 1 and group.physical_rows == 1:
                     slot = group_rows[0].slot
                     graph = None if slot is None else slot.c1_decode_graph
@@ -6014,13 +6126,30 @@ class Qwen35GGUFResidentModelRunner:
                 slot.native_decode_steps += 1
             return True
 
-        return_logits = any(row.native_sampled for row in rows)
+        native_sampler_rows = any(row.native_sampler for row in rows)
+        sample_packed_native = getattr(
+            owner,
+            "sample_native_from_packed_logits",
+            None,
+        )
+        sample_packed_native_rows = getattr(
+            owner,
+            "sample_native_from_packed_logits_rows",
+            None,
+        )
+        if native_sampler_rows and not callable(sample_packed_native):
+            raise RuntimeError("GGUF packed session has no native sampler integration")
+        return_logits = any(
+            row.native_sampled and not row.native_sampler for row in rows
+        )
         batch_kwargs: dict[str, Any] = {
             "sessions": [slot.session for slot in concrete],
             "positions": [int(slot.seq_position) for slot in concrete],
             "return_logits": return_logits,
             "scatter_state": False,
         }
+        if native_sampler_rows:
+            batch_kwargs["require_logits"] = True
         if physical_rows is not None:
             batch_kwargs.update(
                 {
@@ -6046,26 +6175,80 @@ class Qwen35GGUFResidentModelRunner:
             )
         self._route_counts["native_packed_decode_steps"] += 1
         self._route_counts[f"native_c{width}_decode_steps"] += 1
-        manifest = getattr(owner, "last_packed_execution_manifest", None)
-        if isinstance(manifest, Mapping):
-            self._last_execution_manifest = copy.deepcopy(dict(manifest))
-        for row, slot, result in zip(rows, concrete, result_list, strict=True):
-            if row.native_sampled:
+        native_batch_samples: tuple[Any, ...] | None = None
+        if (
+            rows
+            and all(row.native_sampler for row in rows)
+            and callable(sample_packed_native_rows)
+        ):
+            if any(
+                row.sampling_request is None or row.sampling_state is None
+                for row in rows
+            ):
+                raise RuntimeError("GGUF native sampled batch has partial sampler state")
+            try:
+                native_batch_samples = tuple(
+                    sample_packed_native_rows(
+                        active_indices,
+                        tuple(row.sampling_request for row in rows),
+                        tuple(row.sampling_state for row in rows),
+                    )
+                )
+            except NotImplementedError:
+                native_batch_samples = None
+            else:
+                if len(native_batch_samples) != len(rows):
+                    raise RuntimeError(
+                        "GGUF native sampler batch returned the wrong row count"
+                    )
+                self._route_counts["native_sampler_batch_launches"] += 1
+        for row_index, (row, slot, result, physical_index) in enumerate(
+            zip(
+                rows,
+                concrete,
+                result_list,
+                active_indices,
+                strict=True,
+            )
+        ):
+            if row.native_sampler:
+                if row.sampling_request is None or row.sampling_state is None:
+                    raise RuntimeError("GGUF native sampled row has no sampler state")
+                if native_batch_samples is None:
+                    sample = sample_packed_native(
+                        int(physical_index),
+                        row.sampling_request,
+                        row.sampling_state,
+                        output_session=slot.session,
+                    )
+                    self._route_counts["native_sampler_row_launches"] += 1
+                else:
+                    sample = native_batch_samples[row_index]
+                self._record_sampled_result(row, sample)
+            elif row.native_sampled:
                 self._record_sampled_result(row, result)
             else:
                 self._record_native_token(row, int(getattr(result, "token_id")))
             slot.packed_decode_owner = owner
             slot.native_decode_steps += 1
+        manifest = getattr(owner, "last_packed_execution_manifest", None)
+        if isinstance(manifest, Mapping):
+            self._last_execution_manifest = copy.deepcopy(dict(manifest))
         return True
 
-    def _step_native_serial(self, rows: Sequence[_GGUFResidentLoopRow]) -> None:
+    def _step_native_serial(
+        self,
+        rows: Sequence[_GGUFResidentLoopRow],
+        *,
+        fallback_reason: str = "packed_decode_unavailable",
+    ) -> None:
         self._flush_rows(rows)
         native_c1 = len(rows) == 1
         if native_c1:
             self._route_counts["native_c1_decode_steps"] += 1
         else:
             self._route_counts["serial_decode_fallback_steps"] += 1
-            self._fallback_reasons["packed_decode_unavailable"] += 1
+            self._fallback_reasons[str(fallback_reason)] += 1
         for row in rows:
             slot = row.slot
             if slot is None:
@@ -6075,10 +6258,27 @@ class Qwen35GGUFResidentModelRunner:
                 if native_c1 and row.native_greedy
                 else slot.session.step(
                     int(slot.prev_token),
-                    return_logits=bool(row.native_sampled),
+                    return_logits=bool(
+                        row.native_sampled and not row.native_sampler
+                    ),
                 )
             )
-            if row.native_sampled:
+            if row.native_sampler:
+                if row.sampling_request is None or row.sampling_state is None:
+                    raise RuntimeError("GGUF native sampled row has no sampler state")
+                sample_native = getattr(
+                    slot.session,
+                    "sample_native_from_last_logits",
+                    None,
+                )
+                if not callable(sample_native):
+                    raise RuntimeError(
+                        "GGUF session has no native sampler integration"
+                    )
+                sample = sample_native(row.sampling_request, row.sampling_state)
+                self._route_counts["native_sampler_row_launches"] += 1
+                self._record_sampled_result(row, sample)
+            elif row.native_sampled:
                 self._record_sampled_result(row, result)
             else:
                 self._record_native_token(row, int(getattr(result, "token_id")))
@@ -6180,12 +6380,23 @@ class Qwen35GGUFResidentModelRunner:
         sampling_state = row.sampling_state
         if sampling_request is None or sampling_state is None:
             raise RuntimeError("GGUF sampled row has no sampling request/state")
-        sample = _select_from_gguf_logits(result, sampling_request, sampling_state)
+        if row.native_sampler:
+            sample = result
+            row.full_vocab_logits_d2h = False
+            row.logits_d2h_bytes = 0
+        else:
+            sample = _select_from_gguf_logits(
+                result,
+                sampling_request,
+                sampling_state,
+            )
+            full_vocab_logits_d2h, logits_d2h_bytes = _gguf_logits_d2h_metadata(
+                result
+            )
+            if full_vocab_logits_d2h is not None:
+                row.full_vocab_logits_d2h = full_vocab_logits_d2h
+                row.logits_d2h_bytes = logits_d2h_bytes
         row.samples.append(sample)
-        full_vocab_logits_d2h, logits_d2h_bytes = _gguf_logits_d2h_metadata(result)
-        if full_vocab_logits_d2h is not None:
-            row.full_vocab_logits_d2h = full_vocab_logits_d2h
-            row.logits_d2h_bytes = logits_d2h_bytes
         _gguf_queue_json_object_close_if_needed(
             sampling_state,
             self.generator.tokenizer,
@@ -6274,9 +6485,13 @@ class Qwen35GGUFResidentModelRunner:
         request = row.sampling_request or row.request
         sample = row.samples[-1] if row.samples else None
         execution_path = (
-            "gguf_packed_ar_host_sampler_decode"
-            if row.native_sampled
-            else "gguf_packed_ar_server_decode"
+            "gguf_packed_ar_native_sampler_decode"
+            if row.native_sampler
+            else (
+                "gguf_packed_ar_host_sampler_decode"
+                if row.native_sampled
+                else "gguf_packed_ar_server_decode"
+            )
         )
         return GenerationStreamChunk(
             text=(
@@ -6295,6 +6510,7 @@ class Qwen35GGUFResidentModelRunner:
                     self.generator.tokenizer,
                     request,
                     row.sampling_state,
+                    sampler_plan=row.sampler_plan,
                 )
                 if slot.done
                 else None
@@ -6319,7 +6535,7 @@ class Qwen35GGUFResidentModelRunner:
                 native_compact_prefill=slot.native_compact_prefill,
                 native_caware_decode=slot.native_decode_steps > 0,
                 serial_decode_fallback=slot.serial_decode_steps > 0,
-                native_sampler_rows=False,
+                native_sampler_rows=row.native_sampler,
                 timing=dict(slot.timing),
                 sampler_plan=row.sampler_plan,
                 diagnostics={"prefix_cache": self._prefix_request_telemetry(row)},
@@ -6347,6 +6563,7 @@ class Qwen35GGUFResidentModelRunner:
                 self.generator.tokenizer,
                 request,
                 row.sampling_state,
+                sampler_plan=row.sampler_plan,
             )
         )
         token_logprobs = tuple(
@@ -6354,9 +6571,13 @@ class Qwen35GGUFResidentModelRunner:
             for sample in row.samples
         )
         execution_path = (
-            "gguf_packed_ar_host_sampler_decode"
-            if row.native_sampled
-            else "gguf_packed_ar_server_decode"
+            "gguf_packed_ar_native_sampler_decode"
+            if row.native_sampler
+            else (
+                "gguf_packed_ar_host_sampler_decode"
+                if row.native_sampled
+                else "gguf_packed_ar_server_decode"
+            )
         )
         return GenerationOutput(
             text=(
@@ -6381,7 +6602,7 @@ class Qwen35GGUFResidentModelRunner:
                 native_compact_prefill=slot.native_compact_prefill,
                 native_caware_decode=slot.native_decode_steps > 0,
                 serial_decode_fallback=slot.serial_decode_steps > 0,
-                native_sampler_rows=False,
+                native_sampler_rows=row.native_sampler,
                 timing=timing,
                 sampler_plan=row.sampler_plan,
                 diagnostics={"prefix_cache": self._prefix_request_telemetry(row)},
@@ -6422,6 +6643,7 @@ class Qwen35GGUFResidentModelRunner:
         return {
             "native_greedy": bool(row.native_greedy),
             "native_sampled": bool(row.native_sampled),
+            "native_sampler": bool(row.native_sampler),
             "native_compact_prefill": bool(slot is not None and slot.native_compact_prefill),
             "native_decode_steps": 0 if slot is None else int(slot.native_decode_steps),
             "native_c1_decode_steps": (
@@ -6600,6 +6822,7 @@ def _gguf_last_batch_generation(
     native_c1_decode_steps: int = 0,
     native_caware_decode: bool = False,
     serial_decode_fallback: bool | None = None,
+    native_sampler_rows: bool = False,
 ) -> dict[str, Any]:
     request_ids = tuple(range(len(outputs)))
     path = execution_path or _gguf_execution_path(plan)
@@ -6617,13 +6840,13 @@ def _gguf_last_batch_generation(
         "serial_decode_fallback": serial_fallback,
         "native_compact_prefill": bool(native_compact_prefill),
         "native_caware_decode": bool(native_caware_decode),
-        "native_sampler_rows": False,
+        "native_sampler_rows": bool(native_sampler_rows),
         "throughput_claim_eligible": False,
         "sampler_plan_metadata": [
             {
                 "active_processors": list(plan.active_processors),
                 "sampler_fast_path_blockers": list(plan.fast_path_blockers),
-                "native_gpu_available": False,
+                "native_gpu_available": bool(plan.native_gpu_available),
                 **(
                     {"sampler_fallback_reason": plan.fallback_reason}
                     if plan.fallback_reason is not None
@@ -6646,6 +6869,7 @@ def _gguf_last_batch_generation(
         native_compact_prefill=bool(native_compact_prefill),
         native_caware_decode=bool(native_caware_decode),
         serial_decode_fallback=serial_fallback,
+        native_sampler_rows=bool(native_sampler_rows),
     )
     return payload
 
@@ -6769,6 +6993,7 @@ def _gguf_scheduler_token_chunks(
     native_compact_prefill: bool = False,
     native_caware_decode: bool = False,
     serial_decode_fallback: bool | None = None,
+    native_sampler_rows: bool = False,
 ) -> list[dict[str, Any]]:
     chunks: list[dict[str, Any]] = []
     serial_fallback = len(request_ids) > 1 if serial_decode_fallback is None else bool(serial_decode_fallback)
@@ -6808,7 +7033,8 @@ def _gguf_scheduler_token_chunks(
                     native_compact_prefill=bool(native_compact_prefill),
                     native_caware_decode=bool(native_caware_decode),
                     serial_decode_fallback=serial_fallback,
-                    native_sampler_rows=False,
+                    native_sampler_rows=bool(native_sampler_rows),
+                    sampler_plan=plan,
                 ),
                 generated_token_ids=tuple(prefix) if final else None,
             )
@@ -7018,8 +7244,15 @@ def _gguf_finish_details(
     tokenizer: Qwen35GGUFTokenizer,
     request: GenerationRequest,
     state: RowSamplingState | None = None,
+    *,
+    sampler_plan: Any | None = None,
 ) -> FinishDetails:
     details: FinishDetails
+    sampler_mode = (
+        _sampler_mode_value(request)
+        if sampler_plan is None
+        else str(sampler_plan.mode.value)
+    )
     if generated_ids:
         token_id = int(generated_ids[-1])
         eos_token_id = (
@@ -7032,19 +7265,19 @@ def _gguf_finish_details(
             and eos_token_id is not None
             and token_id == int(eos_token_id)
         ):
-            details = FinishDetails(reason="eos", eos_token_id=token_id, sampler_mode=_sampler_mode_value(request))
+            details = FinishDetails(reason="eos", eos_token_id=token_id, sampler_mode=sampler_mode)
             return finish_details_with_sampling_state(details, state)
         if token_id in {int(stop_id) for stop_id in request.stop_token_ids}:
-            details = FinishDetails(reason="stop", stop_sequence=(token_id,), sampler_mode=_sampler_mode_value(request))
+            details = FinishDetails(reason="stop", stop_sequence=(token_id,), sampler_mode=sampler_mode)
             return finish_details_with_sampling_state(details, state)
         sequence = _gguf_stop_sequence_match(generated_ids, request.stop_token_sequences)
         if sequence:
-            details = FinishDetails(reason="stop", stop_sequence=sequence, sampler_mode=_sampler_mode_value(request))
+            details = FinishDetails(reason="stop", stop_sequence=sequence, sampler_mode=sampler_mode)
             return finish_details_with_sampling_state(details, state)
     if len(generated_ids) >= max(0, int(request.max_tokens)):
-        details = FinishDetails(reason="length", length_limit=request.max_tokens, sampler_mode=_sampler_mode_value(request))
+        details = FinishDetails(reason="length", length_limit=request.max_tokens, sampler_mode=sampler_mode)
         return finish_details_with_sampling_state(details, state)
-    details = FinishDetails(reason="stop", sampler_mode=_sampler_mode_value(request))
+    details = FinishDetails(reason="stop", sampler_mode=sampler_mode)
     return finish_details_with_sampling_state(details, state)
 
 
@@ -7059,8 +7292,28 @@ def _sampler_mode_value(request: GenerationRequest) -> str:
     return _gguf_sampler_plan(request).mode.value
 
 
-def _gguf_sampler_plan(request: GenerationRequest):
-    return plan_sampler(request, native_gpu_requested=_native_gpu_sampler_requested())
+def _gguf_sampler_plan(
+    request: GenerationRequest,
+    *,
+    native_gpu_available: bool = False,
+):
+    native_requested = _native_gpu_sampler_requested()
+    return plan_sampler(
+        request,
+        native_gpu_available=bool(native_gpu_available and native_requested),
+        native_gpu_requested=native_requested,
+    )
+
+
+def _gguf_native_sampler_plan_enabled(
+    request: GenerationRequest,
+    plan: Any,
+) -> bool:
+    return bool(
+        plan.native_gpu_available
+        and plan.mode is SamplingMode.GPU_SAMPLE
+        and supports_native_gpu_sampling(request)
+    )
 
 
 def _native_gpu_sampler_requested() -> bool:
