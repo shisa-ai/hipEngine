@@ -1,0 +1,1541 @@
+{
+  "acceptance": {
+    "active_sse_improved": false,
+    "c1_no_material_regression": false,
+    "complete_matrix_measured": false,
+    "cpu_reference_distribution_sanity": true,
+    "default_native_sampler": false,
+    "fixed_seed_repeatability": true,
+    "frozen_sampled_tool_contract_passed": false,
+    "medium_c4_no_material_regression": false,
+    "native_full_vocab_d2h_zero": true,
+    "promote_native_sampler": false,
+    "strict_tool_forcing_fail_closed": true,
+    "tool_ready_improved": false
+  },
+  "blocker": {
+    "anti_gaming": "Do not tune seeds, sampling parameters, or grammar behavior to the frozen turn outputs; any new route must be model-general and independently schema-gated.",
+    "required_before_rerun": "either add separately correctness-gated native forced/dynamic queue handling, or prove a model-general auto-tool constrained-decoding route over every frozen family; then restart A3 from C1 before C4/C8",
+    "summary": "No current request route is both native-sampler eligible and valid across the frozen strict-tool workload: auto-tool rows fail the turn-1 envelope gate, while specific/required tool forcing and close queues are intentionally host-backed."
+  },
+  "commands": {
+    "host_auto_preflight": "env HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_COMPILER_VERSION_FILE=/tmp/agentic-w7900-hipcc-version.txt PYTHONPATH=. uv run python /tmp/a3_host_auto_all_diag.py",
+    "host_auto_server": "env HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_COMPILER_VERSION_FILE=/tmp/agentic-w7900-hipcc-version.txt HIPENGINE_GENERATION_BATCH_WINDOW_MS=0 HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 HIPENGINE_GGUF_GDN_PREFILL_MODE=exact HIPENGINE_GGUF_AR_STREAM_DECODE=0 HIPENGINE_GGUF_AR_PACKED_DECODE=1 HIPENGINE_MAX_PREFILL_CHUNK_TOKENS=256 PYTHONPATH=. HIPENGINE_QWEN35_NATIVE_SAMPLER=0 uv run python -m hipengine.server --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --served-model-name Qwen3.6-35B-A3B --max-context-tokens 4096 --max-active-requests 1 --prefix-cache off --metrics prometheus --eager-load --host 127.0.0.1 --port 18131 --log-level info",
+    "native_auto_preflight": "env HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_COMPILER_VERSION_FILE=/tmp/agentic-w7900-hipcc-version.txt PYTHONPATH=. uv run python /tmp/a3_retained_native_auto_hightemp.py",
+    "native_auto_server": "env HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_COMPILER_VERSION_FILE=/tmp/agentic-w7900-hipcc-version.txt HIPENGINE_GENERATION_BATCH_WINDOW_MS=0 HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 HIPENGINE_GGUF_GDN_PREFILL_MODE=exact HIPENGINE_GGUF_AR_STREAM_DECODE=0 HIPENGINE_GGUF_AR_PACKED_DECODE=1 HIPENGINE_MAX_PREFILL_CHUNK_TOKENS=256 PYTHONPATH=. HIPENGINE_QWEN35_NATIVE_SAMPLER=1 uv run python -m hipengine.server --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --served-model-name Qwen3.6-35B-A3B --max-context-tokens 4096 --max-active-requests 1 --prefix-cache off --metrics prometheus --eager-load --host 127.0.0.1 --port 18133 --log-level info",
+    "native_strict_preflight": "env HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_COMPILER_VERSION_FILE=/tmp/agentic-w7900-hipcc-version.txt PYTHONPATH=. uv run python /tmp/a3_native_strict_all_diag.py",
+    "native_strict_server": "env HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_COMPILER_VERSION_FILE=/tmp/agentic-w7900-hipcc-version.txt HIPENGINE_GENERATION_BATCH_WINDOW_MS=0 HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 HIPENGINE_GGUF_GDN_PREFILL_MODE=exact HIPENGINE_GGUF_AR_STREAM_DECODE=0 HIPENGINE_GGUF_AR_PACKED_DECODE=1 HIPENGINE_MAX_PREFILL_CHUNK_TOKENS=256 PYTHONPATH=. HIPENGINE_QWEN35_NATIVE_SAMPLER=1 uv run python -m hipengine.server --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --served-model-name Qwen3.6-35B-A3B --max-context-tokens 4096 --max-active-requests 1 --prefix-cache off --metrics prometheus --eager-load --host 127.0.0.1 --port 18132 --log-level info"
+  },
+  "correctness_claim": false,
+  "created_at": "2026-07-21T17:15:46.987479+00:00",
+  "decision": "keep HIPENGINE_QWEN35_NATIVE_SAMPLER default-off for GGUF; no A3 performance row is eligible",
+  "hardware": {
+    "hip": "7.2.53211-3d9ef42",
+    "hipcc_version": "HIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+    "peer": {
+      "activity_allowed": true,
+      "gpu": "AMD Radeon RX 7900 XTX",
+      "not_target_contention": true,
+      "rocm_index": 1
+    },
+    "peer_gpu1_process_observed": "pytest PID 1065350",
+    "target": {
+      "gfx": "gfx1100",
+      "gpu": "AMD Radeon Pro W7900",
+      "physical_vram_bytes": 48301604864,
+      "rocm_index": 0
+    },
+    "target_gpu0_other_kfd_processes_observed": 0
+  },
+  "kind": "gfx1100_agentic_a3_native_sampler_blocked",
+  "linked_correctness_prerequisite": {
+    "artifact": "benchmarks/results/2026-07-21-w7900-gguf-native-sampler-correctness.json",
+    "cpu_reference_distribution_sanity": true,
+    "fixed_seed_repeat_exact": true,
+    "native_full_vocab_d2h_zero": true,
+    "performance_claim": false,
+    "processors_stop_eos_logprobs_state_kv_ownership": true,
+    "sha256": "f8df3fd8e3e1d57514e166f3dec79e26a6cfeae97e8264f603c8253a81d09a86",
+    "status": "passed"
+  },
+  "matrix_disposition": {
+    "active_sse_comparison_available": false,
+    "c1_c4_c8_timing_skipped": true,
+    "c1_no_regression_guard_evaluated": false,
+    "full_host_native_matrix_started": false,
+    "inferred_timing_used": false,
+    "medium_c4_guard_evaluated": false,
+    "performance_conditions_measured": 0,
+    "skip_reason": "the C1 small_repo blocking oracle prerequisite failed before measured SSE: native-eligible auto-tool sampling is not strict-tool valid, while strict valid requests are explicit host fallback",
+    "tool_ready_comparison_available": false,
+    "warmup_runs_measured": 0
+  },
+  "measurement_valid": false,
+  "model": {
+    "kv_storage": "bf16",
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "UD-Q4_K_M",
+    "served_name": "Qwen3.6-35B-A3B",
+    "sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+    "size_bytes": 22663387424
+  },
+  "notes": [
+    "The blocking oracle is intentionally outside the measured SSE window; failure stops timing rather than assigning performance to invalid tool output.",
+    "Raw HTTP response files remain under /tmp and are identified by SHA-256 in each compact response row; they are not committed.",
+    "The lower-temperature sensitivity diagnostic also failed at small_repo turn 1 and is not used as a benchmark denominator.",
+    "No A3 latency, goodput, tool-ready, or speedup number is retained or inferred."
+  ],
+  "passed": false,
+  "performance_claim": false,
+  "preflight": {
+    "final_ownership": {
+      "all_zero": true,
+      "host": {
+        "active_requests": 0,
+        "allowed_cache_bytes": 0,
+        "cache_resident_bytes": 0,
+        "cache_resident_entries": 0,
+        "cache_resident_pages": 0,
+        "graph_owners": 0,
+        "kv_pinned_pages": 0,
+        "kv_refcounted_pages": 0,
+        "model_active_requests": 0,
+        "pending_requests": 0,
+        "session_count": 0,
+        "stream_producers": 0,
+        "workspace_owners": 0
+      },
+      "native": {
+        "active_requests": 0,
+        "allowed_cache_bytes": 0,
+        "cache_resident_bytes": 0,
+        "cache_resident_entries": 0,
+        "cache_resident_pages": 0,
+        "graph_owners": 0,
+        "kv_pinned_pages": 0,
+        "kv_refcounted_pages": 0,
+        "model_active_requests": 0,
+        "pending_requests": 0,
+        "session_count": 0,
+        "stream_producers": 0,
+        "workspace_owners": 0
+      },
+      "strict_native_server": {
+        "active_requests": 0,
+        "allowed_cache_bytes": 0,
+        "cache_resident_bytes": 0,
+        "cache_resident_entries": 0,
+        "cache_resident_pages": 0,
+        "graph_owners": 0,
+        "kv_pinned_pages": 0,
+        "kv_refcounted_pages": 0,
+        "model_active_requests": 0,
+        "pending_requests": 0,
+        "session_count": 0,
+        "stream_producers": 0,
+        "workspace_owners": 0
+      }
+    },
+    "native_eligible_auto_tool": {
+      "finding": "tool_choice=auto is native-eligible and removes full-vocabulary D2H, but the second frozen turn reaches max_tokens without one parseable strict tool call on both host and native samplers",
+      "host": {
+        "turn0_repeat0": {
+          "finish_details": {
+            "cache_action": "append_none",
+            "eos_token_id": 248046,
+            "phase": "tool_call",
+            "reason": "tool_calls",
+            "sampler_mode": "host_logits_sample",
+            "tool_call_tokens": 25
+          },
+          "finish_reason": "tool_calls",
+          "generated_token_ids": [
+            27,
+            13766,
+            13042,
+            85806,
+            591,
+            3147,
+            851,
+            2129,
+            15889,
+            21624,
+            2267,
+            3147,
+            3181,
+            4826,
+            70996,
+            75,
+            2129,
+            8255,
+            3147,
+            1648,
+            1,
+            12445,
+            13766,
+            13042,
+            1721,
+            91,
+            316,
+            6018,
+            91,
+            29,
+            248044,
+            248045,
+            248045,
+            248045,
+            248045,
+            248046
+          ],
+          "generated_token_ids_sha256": "d091f723369a283c623964261fd0867aab0ed47590157b20c4c7cc0bcd05399d",
+          "generated_tokens": 36,
+          "prompt": {
+            "token_count": 2508,
+            "token_ids_sha256": "7aef2e19ca4cdd0a44a8ff7e7ca0ee955ac0f577ad128df379a7b7f59a776013"
+          },
+          "raw_path": "/tmp/a3-host-auto-turn0-0.json",
+          "raw_sha256": "8dfe9bfce20e1585b352485ae441ca8a38dcfa022cbed1e2480dba1cc0ce6a7a",
+          "sampler": {
+            "active_processors": [
+              "repetition_penalty",
+              "presence_penalty",
+              "frequency_penalty"
+            ],
+            "execution_path": "gguf_packed_ar_host_sampler_decode",
+            "fallback_reason": "host_sampling_required",
+            "fast_path_blockers": [
+              "temperature",
+              "repetition_penalty",
+              "presence_penalty",
+              "frequency_penalty",
+              "logprobs",
+              "top_logprobs"
+            ],
+            "full_vocab_logits_d2h": true,
+            "logits_d2h_bytes_per_generated_token": 993280,
+            "logits_d2h_bytes_total": 35758080,
+            "mode": "host_logits_sample",
+            "native_sampler_rows": false,
+            "serial_decode_fallback": false
+          },
+          "tool_calls": [
+            {
+              "arguments": {
+                "mode": "summary",
+                "path": "pyproject.toml"
+              },
+              "name": "read"
+            }
+          ]
+        },
+        "turn0_repeat1": {
+          "finish_details": {
+            "cache_action": "append_none",
+            "eos_token_id": 248046,
+            "phase": "tool_call",
+            "reason": "tool_calls",
+            "sampler_mode": "host_logits_sample",
+            "tool_call_tokens": 25
+          },
+          "finish_reason": "tool_calls",
+          "generated_token_ids": [
+            27,
+            13766,
+            13042,
+            85806,
+            591,
+            3147,
+            851,
+            2129,
+            15889,
+            21624,
+            2267,
+            3147,
+            3181,
+            4826,
+            70996,
+            75,
+            2129,
+            8255,
+            3147,
+            1648,
+            1,
+            12445,
+            13766,
+            13042,
+            1721,
+            91,
+            316,
+            6018,
+            91,
+            29,
+            248044,
+            248045,
+            248045,
+            248045,
+            248045,
+            248046
+          ],
+          "generated_token_ids_sha256": "d091f723369a283c623964261fd0867aab0ed47590157b20c4c7cc0bcd05399d",
+          "generated_tokens": 36,
+          "prompt": {
+            "token_count": 2508,
+            "token_ids_sha256": "7aef2e19ca4cdd0a44a8ff7e7ca0ee955ac0f577ad128df379a7b7f59a776013"
+          },
+          "raw_path": "/tmp/a3-host-auto-turn0-1.json",
+          "raw_sha256": "6606482a8a7dbc7166a5831a1d63b752a906e43eca77b904884044f4acec5300",
+          "sampler": {
+            "active_processors": [
+              "repetition_penalty",
+              "presence_penalty",
+              "frequency_penalty"
+            ],
+            "execution_path": "gguf_packed_ar_host_sampler_decode",
+            "fallback_reason": "host_sampling_required",
+            "fast_path_blockers": [
+              "temperature",
+              "repetition_penalty",
+              "presence_penalty",
+              "frequency_penalty",
+              "logprobs",
+              "top_logprobs"
+            ],
+            "full_vocab_logits_d2h": true,
+            "logits_d2h_bytes_per_generated_token": 993280,
+            "logits_d2h_bytes_total": 35758080,
+            "mode": "host_logits_sample",
+            "native_sampler_rows": false,
+            "serial_decode_fallback": false
+          },
+          "tool_calls": [
+            {
+              "arguments": {
+                "mode": "summary",
+                "path": "pyproject.toml"
+              },
+              "name": "read"
+            }
+          ]
+        },
+        "turn1_failed": {
+          "finish_details": {
+            "cache_action": "append_none",
+            "continuation_eligible": false,
+            "length_limit": 64,
+            "phase": "tool_call",
+            "reason": "invalid_tool_call",
+            "sampler_mode": "host_logits_sample"
+          },
+          "finish_reason": "length",
+          "generated_token_ids": [
+            27,
+            13766,
+            13042,
+            85806,
+            591,
+            3147,
+            36940,
+            2129,
+            15889,
+            21624,
+            13927,
+            3147,
+            727,
+            16208,
+            2129,
+            2267,
+            3147,
+            3431,
+            29958,
+            27,
+            91,
+            316,
+            6018,
+            91,
+            1721,
+            91,
+            316,
+            4747,
+            91,
+            29,
+            846,
+            198,
+            27,
+            13766,
+            9367,
+            29,
+            198,
+            3431,
+            2600,
+            14779,
+            6971,
+            25,
+            262,
+            687,
+            16208,
+            1153,
+            8,
+            1411,
+            1744,
+            25,
+            198,
+            510,
+            13766,
+            9367,
+            1721,
+            91,
+            316,
+            6018,
+            91,
+            1721,
+            91,
+            316,
+            4747,
+            91
+          ],
+          "generated_token_ids_sha256": "7c628c91ac764646412bf63eac197e9f9bb12d26b1ba88977ff0ea242be445b7",
+          "generated_tokens": 64,
+          "prompt": {
+            "token_count": 2624,
+            "token_ids_sha256": "569096b4fad9d196daa18824de95d4586888decac3602ee2591d0bc5a245762f"
+          },
+          "raw_path": "/tmp/a3-host-auto-turn1-0.json",
+          "raw_sha256": "f88faaea79c825e7d64820b3c949e28f667af42924bec9deaaf63e35ed3c642c",
+          "sampler": {
+            "active_processors": [
+              "repetition_penalty",
+              "presence_penalty",
+              "frequency_penalty"
+            ],
+            "execution_path": "gguf_packed_ar_host_sampler_decode",
+            "fallback_reason": "host_sampling_required",
+            "fast_path_blockers": [
+              "temperature",
+              "repetition_penalty",
+              "presence_penalty",
+              "frequency_penalty",
+              "logprobs",
+              "top_logprobs"
+            ],
+            "full_vocab_logits_d2h": true,
+            "logits_d2h_bytes_per_generated_token": 993280,
+            "logits_d2h_bytes_total": 63569920,
+            "mode": "host_logits_sample",
+            "native_sampler_rows": false,
+            "serial_decode_fallback": false
+          },
+          "tool_calls": []
+        }
+      },
+      "host_full_vocab_d2h_bytes_turn1": 63569920,
+      "native": {
+        "turn0_repeat0": {
+          "finish_details": {
+            "cache_action": "append_none",
+            "eos_token_id": 248046,
+            "phase": "tool_call",
+            "reason": "tool_calls",
+            "sampler_mode": "gpu_sample",
+            "tool_call_tokens": 25
+          },
+          "finish_reason": "tool_calls",
+          "generated_token_ids": [
+            27,
+            13766,
+            13042,
+            85806,
+            591,
+            3147,
+            851,
+            2129,
+            15889,
+            21624,
+            2267,
+            3147,
+            3181,
+            4826,
+            70996,
+            75,
+            2129,
+            8255,
+            3147,
+            1648,
+            1,
+            12445,
+            13766,
+            13042,
+            1721,
+            91,
+            316,
+            6018,
+            91,
+            29,
+            248044,
+            248045,
+            248045,
+            248045,
+            248045,
+            248046
+          ],
+          "generated_token_ids_sha256": "d091f723369a283c623964261fd0867aab0ed47590157b20c4c7cc0bcd05399d",
+          "generated_tokens": 36,
+          "prompt": {
+            "token_count": 2508,
+            "token_ids_sha256": "7aef2e19ca4cdd0a44a8ff7e7ca0ee955ac0f577ad128df379a7b7f59a776013"
+          },
+          "raw_path": "/tmp/a3-retained-native-auto-hightemp-turn0-0.json",
+          "raw_sha256": "9b5f67248ae0a8162b6ee571497efffc3421e59246023953e4eae4c21f29ee36",
+          "sampler": {
+            "active_processors": [
+              "repetition_penalty",
+              "presence_penalty",
+              "frequency_penalty"
+            ],
+            "execution_path": "gguf_packed_ar_native_sampler_decode",
+            "fallback_reason": null,
+            "fast_path_blockers": [
+              "temperature",
+              "repetition_penalty",
+              "presence_penalty",
+              "frequency_penalty",
+              "logprobs",
+              "top_logprobs"
+            ],
+            "full_vocab_logits_d2h": false,
+            "logits_d2h_bytes_per_generated_token": 0,
+            "logits_d2h_bytes_total": 0,
+            "mode": "gpu_sample",
+            "native_sampler_rows": true,
+            "serial_decode_fallback": false
+          },
+          "tool_calls": [
+            {
+              "arguments": {
+                "mode": "summary",
+                "path": "pyproject.toml"
+              },
+              "name": "read"
+            }
+          ]
+        },
+        "turn0_repeat1": {
+          "finish_details": {
+            "cache_action": "append_none",
+            "eos_token_id": 248046,
+            "phase": "tool_call",
+            "reason": "tool_calls",
+            "sampler_mode": "gpu_sample",
+            "tool_call_tokens": 25
+          },
+          "finish_reason": "tool_calls",
+          "generated_token_ids": [
+            27,
+            13766,
+            13042,
+            85806,
+            591,
+            3147,
+            851,
+            2129,
+            15889,
+            21624,
+            2267,
+            3147,
+            3181,
+            4826,
+            70996,
+            75,
+            2129,
+            8255,
+            3147,
+            1648,
+            1,
+            12445,
+            13766,
+            13042,
+            1721,
+            91,
+            316,
+            6018,
+            91,
+            29,
+            248044,
+            248045,
+            248045,
+            248045,
+            248045,
+            248046
+          ],
+          "generated_token_ids_sha256": "d091f723369a283c623964261fd0867aab0ed47590157b20c4c7cc0bcd05399d",
+          "generated_tokens": 36,
+          "prompt": {
+            "token_count": 2508,
+            "token_ids_sha256": "7aef2e19ca4cdd0a44a8ff7e7ca0ee955ac0f577ad128df379a7b7f59a776013"
+          },
+          "raw_path": "/tmp/a3-retained-native-auto-hightemp-turn0-1.json",
+          "raw_sha256": "a5e42c2c25bb6b6296a8bbfa231d8d32072bcb5457becab368318130c7ffc59e",
+          "sampler": {
+            "active_processors": [
+              "repetition_penalty",
+              "presence_penalty",
+              "frequency_penalty"
+            ],
+            "execution_path": "gguf_packed_ar_native_sampler_decode",
+            "fallback_reason": null,
+            "fast_path_blockers": [
+              "temperature",
+              "repetition_penalty",
+              "presence_penalty",
+              "frequency_penalty",
+              "logprobs",
+              "top_logprobs"
+            ],
+            "full_vocab_logits_d2h": false,
+            "logits_d2h_bytes_per_generated_token": 0,
+            "logits_d2h_bytes_total": 0,
+            "mode": "gpu_sample",
+            "native_sampler_rows": true,
+            "serial_decode_fallback": false
+          },
+          "tool_calls": [
+            {
+              "arguments": {
+                "mode": "summary",
+                "path": "pyproject.toml"
+              },
+              "name": "read"
+            }
+          ]
+        },
+        "turn1_failed": {
+          "finish_details": {
+            "cache_action": "append_none",
+            "continuation_eligible": false,
+            "length_limit": 64,
+            "phase": "tool_call",
+            "reason": "invalid_tool_call",
+            "sampler_mode": "gpu_sample"
+          },
+          "finish_reason": "length",
+          "generated_token_ids": [
+            27,
+            13766,
+            13042,
+            85806,
+            591,
+            3147,
+            36940,
+            2129,
+            15889,
+            21624,
+            13927,
+            3147,
+            727,
+            16208,
+            2129,
+            2267,
+            3147,
+            3431,
+            29958,
+            27,
+            91,
+            316,
+            6018,
+            91,
+            1721,
+            91,
+            316,
+            4747,
+            91,
+            29,
+            846,
+            198,
+            27,
+            13766,
+            9367,
+            29,
+            198,
+            3431,
+            2600,
+            14779,
+            6971,
+            25,
+            20,
+            23,
+            25,
+            262,
+            687,
+            16208,
+            1153,
+            8,
+            1411,
+            11906,
+            58,
+            1835,
+            5491,
+            198,
+            510,
+            13766,
+            9367,
+            1721,
+            91,
+            316,
+            6018,
+            91
+          ],
+          "generated_token_ids_sha256": "27243aae6a6ec9871a2fca64f9530673643d32635bf04dc8de35d6497bd49798",
+          "generated_tokens": 64,
+          "prompt": {
+            "token_count": 2624,
+            "token_ids_sha256": "569096b4fad9d196daa18824de95d4586888decac3602ee2591d0bc5a245762f"
+          },
+          "raw_path": "/tmp/a3-retained-native-auto-hightemp-turn1-0.json",
+          "raw_sha256": "056744103caecfa6a4859aa5c0db015301c9aeb2245f040132d4ba279be40fb9",
+          "sampler": {
+            "active_processors": [
+              "repetition_penalty",
+              "presence_penalty",
+              "frequency_penalty"
+            ],
+            "execution_path": "gguf_packed_ar_native_sampler_decode",
+            "fallback_reason": null,
+            "fast_path_blockers": [
+              "temperature",
+              "repetition_penalty",
+              "presence_penalty",
+              "frequency_penalty",
+              "logprobs",
+              "top_logprobs"
+            ],
+            "full_vocab_logits_d2h": false,
+            "logits_d2h_bytes_per_generated_token": 0,
+            "logits_d2h_bytes_total": 0,
+            "mode": "gpu_sample",
+            "native_sampler_rows": true,
+            "serial_decode_fallback": false
+          },
+          "tool_calls": []
+        }
+      },
+      "native_zero_full_vocab_d2h": true,
+      "turn0_fixed_seed_repeat_exact": true,
+      "turn0_host_native_generated_ids_equal": true,
+      "turn1_host_invalid_tool_call": true,
+      "turn1_native_invalid_tool_call": true
+    },
+    "strict_forced_tool": {
+      "fallback_reason": "native_gpu_unsupported_request",
+      "finding": "specific strict-tool forcing and close queues preserve all four exact tool envelopes, but every row is host-backed and copies one 993,280-byte vocabulary row per generated token",
+      "fixed_seed_repeat_exact": true,
+      "full_vocab_logits_d2h_bytes_across_two_repeats": 198656000,
+      "generated_tokens_across_two_repeats": 200,
+      "sampler_mode": "host_logits_sample",
+      "turns": {
+        "turn0": {
+          "fixed_seed_repeat_exact": true,
+          "responses": [
+            {
+              "finish_details": {
+                "cache_action": "append_none",
+                "phase": "tool_call",
+                "reason": "tool_calls",
+                "sampler_mode": "host_logits_sample",
+                "stop_sequence": [
+                  12445,
+                  13766,
+                  13042,
+                  29
+                ],
+                "tool_call_tokens": 25
+              },
+              "finish_reason": "tool_calls",
+              "generated_token_ids": [
+                27,
+                13766,
+                13042,
+                85806,
+                591,
+                3147,
+                851,
+                2129,
+                15889,
+                21624,
+                2267,
+                3147,
+                3181,
+                4826,
+                70996,
+                75,
+                2129,
+                8255,
+                3147,
+                1648,
+                1,
+                12445,
+                13766,
+                13042,
+                29
+              ],
+              "generated_token_ids_sha256": "d12b1b8162c7902c0eea2f0237a6a231224a9e83f5a02084d97d691e9af7780d",
+              "generated_tokens": 25,
+              "prompt": {
+                "token_count": 2504,
+                "token_ids_sha256": "68513df3e37d6f7303eff1eeb2511a934c1ee22fb800f988dbebcf76b7d6b55c"
+              },
+              "raw_path": "/tmp/a3-native-strict-turn0-0.json",
+              "raw_sha256": "a8857208b3342abce13cdc9fe9e473c5b22d848821042f2342f46536f9e11e8a",
+              "sampler": {
+                "active_processors": [
+                  "repetition_penalty",
+                  "presence_penalty",
+                  "frequency_penalty",
+                  "stop_token_sequences",
+                  "forced_tokens_pending",
+                  "force_sequence_completion_token_sequences"
+                ],
+                "execution_path": "gguf_packed_ar_host_sampler_decode",
+                "fallback_reason": "native_gpu_unsupported_request",
+                "fast_path_blockers": [
+                  "temperature",
+                  "repetition_penalty",
+                  "presence_penalty",
+                  "frequency_penalty",
+                  "stop_token_sequences",
+                  "forced_tokens_pending",
+                  "force_sequence_completion_token_sequences",
+                  "logprobs",
+                  "top_logprobs"
+                ],
+                "full_vocab_logits_d2h": true,
+                "logits_d2h_bytes_per_generated_token": 993280,
+                "logits_d2h_bytes_total": 24832000,
+                "mode": "host_logits_sample",
+                "native_sampler_rows": false,
+                "serial_decode_fallback": false
+              },
+              "tool_calls": [
+                {
+                  "arguments": {
+                    "mode": "summary",
+                    "path": "pyproject.toml"
+                  },
+                  "name": "read"
+                }
+              ]
+            },
+            {
+              "finish_details": {
+                "cache_action": "append_none",
+                "phase": "tool_call",
+                "reason": "tool_calls",
+                "sampler_mode": "host_logits_sample",
+                "stop_sequence": [
+                  12445,
+                  13766,
+                  13042,
+                  29
+                ],
+                "tool_call_tokens": 25
+              },
+              "finish_reason": "tool_calls",
+              "generated_token_ids": [
+                27,
+                13766,
+                13042,
+                85806,
+                591,
+                3147,
+                851,
+                2129,
+                15889,
+                21624,
+                2267,
+                3147,
+                3181,
+                4826,
+                70996,
+                75,
+                2129,
+                8255,
+                3147,
+                1648,
+                1,
+                12445,
+                13766,
+                13042,
+                29
+              ],
+              "generated_token_ids_sha256": "d12b1b8162c7902c0eea2f0237a6a231224a9e83f5a02084d97d691e9af7780d",
+              "generated_tokens": 25,
+              "prompt": {
+                "token_count": 2504,
+                "token_ids_sha256": "68513df3e37d6f7303eff1eeb2511a934c1ee22fb800f988dbebcf76b7d6b55c"
+              },
+              "raw_path": "/tmp/a3-native-strict-turn0-1.json",
+              "raw_sha256": "5a4bca2d85a4bb9152768fb3839ca6feaf9509b12da03990b774c4c8b30306a3",
+              "sampler": {
+                "active_processors": [
+                  "repetition_penalty",
+                  "presence_penalty",
+                  "frequency_penalty",
+                  "stop_token_sequences",
+                  "forced_tokens_pending",
+                  "force_sequence_completion_token_sequences"
+                ],
+                "execution_path": "gguf_packed_ar_host_sampler_decode",
+                "fallback_reason": "native_gpu_unsupported_request",
+                "fast_path_blockers": [
+                  "temperature",
+                  "repetition_penalty",
+                  "presence_penalty",
+                  "frequency_penalty",
+                  "stop_token_sequences",
+                  "forced_tokens_pending",
+                  "force_sequence_completion_token_sequences",
+                  "logprobs",
+                  "top_logprobs"
+                ],
+                "full_vocab_logits_d2h": true,
+                "logits_d2h_bytes_per_generated_token": 993280,
+                "logits_d2h_bytes_total": 24832000,
+                "mode": "host_logits_sample",
+                "native_sampler_rows": false,
+                "serial_decode_fallback": false
+              },
+              "tool_calls": [
+                {
+                  "arguments": {
+                    "mode": "summary",
+                    "path": "pyproject.toml"
+                  },
+                  "name": "read"
+                }
+              ]
+            }
+          ]
+        },
+        "turn1": {
+          "fixed_seed_repeat_exact": true,
+          "responses": [
+            {
+              "finish_details": {
+                "cache_action": "append_none",
+                "phase": "tool_call",
+                "reason": "tool_calls",
+                "sampler_mode": "host_logits_sample",
+                "stop_sequence": [
+                  12445,
+                  13766,
+                  13042,
+                  29
+                ],
+                "tool_call_tokens": 23
+              },
+              "finish_reason": "tool_calls",
+              "generated_token_ids": [
+                27,
+                13766,
+                13042,
+                85806,
+                591,
+                3147,
+                36940,
+                2129,
+                15889,
+                21624,
+                13927,
+                3147,
+                727,
+                16208,
+                2129,
+                2267,
+                3147,
+                3431,
+                1,
+                12445,
+                13766,
+                13042,
+                29
+              ],
+              "generated_token_ids_sha256": "6c845c79f2abb2582825d4f5137adda7fc453a13a0dc4a50c573956bd0e1d2e5",
+              "generated_tokens": 23,
+              "prompt": {
+                "token_count": 2620,
+                "token_ids_sha256": "aa7c46fa2a89a8cadfa5f190122f6d24f54a135be37a4219283a91a38bff50f2"
+              },
+              "raw_path": "/tmp/a3-native-strict-turn1-0.json",
+              "raw_sha256": "f33d8d025ae29c21eb995c8d7d6e1508c6b5210123f206c6f66404ac2c1b7889",
+              "sampler": {
+                "active_processors": [
+                  "repetition_penalty",
+                  "presence_penalty",
+                  "frequency_penalty",
+                  "stop_token_sequences",
+                  "forced_tokens_pending",
+                  "force_sequence_completion_token_sequences"
+                ],
+                "execution_path": "gguf_packed_ar_host_sampler_decode",
+                "fallback_reason": "native_gpu_unsupported_request",
+                "fast_path_blockers": [
+                  "temperature",
+                  "repetition_penalty",
+                  "presence_penalty",
+                  "frequency_penalty",
+                  "stop_token_sequences",
+                  "forced_tokens_pending",
+                  "force_sequence_completion_token_sequences",
+                  "logprobs",
+                  "top_logprobs"
+                ],
+                "full_vocab_logits_d2h": true,
+                "logits_d2h_bytes_per_generated_token": 993280,
+                "logits_d2h_bytes_total": 22845440,
+                "mode": "host_logits_sample",
+                "native_sampler_rows": false,
+                "serial_decode_fallback": false
+              },
+              "tool_calls": [
+                {
+                  "arguments": {
+                    "path": "src",
+                    "pattern": "def admit"
+                  },
+                  "name": "grep"
+                }
+              ]
+            },
+            {
+              "finish_details": {
+                "cache_action": "append_none",
+                "phase": "tool_call",
+                "reason": "tool_calls",
+                "sampler_mode": "host_logits_sample",
+                "stop_sequence": [
+                  12445,
+                  13766,
+                  13042,
+                  29
+                ],
+                "tool_call_tokens": 23
+              },
+              "finish_reason": "tool_calls",
+              "generated_token_ids": [
+                27,
+                13766,
+                13042,
+                85806,
+                591,
+                3147,
+                36940,
+                2129,
+                15889,
+                21624,
+                13927,
+                3147,
+                727,
+                16208,
+                2129,
+                2267,
+                3147,
+                3431,
+                1,
+                12445,
+                13766,
+                13042,
+                29
+              ],
+              "generated_token_ids_sha256": "6c845c79f2abb2582825d4f5137adda7fc453a13a0dc4a50c573956bd0e1d2e5",
+              "generated_tokens": 23,
+              "prompt": {
+                "token_count": 2620,
+                "token_ids_sha256": "aa7c46fa2a89a8cadfa5f190122f6d24f54a135be37a4219283a91a38bff50f2"
+              },
+              "raw_path": "/tmp/a3-native-strict-turn1-1.json",
+              "raw_sha256": "02c525165ed0f3d0aa046dfc2724e1ca7e8a5c85f6ca8599a06d617a2fd10e92",
+              "sampler": {
+                "active_processors": [
+                  "repetition_penalty",
+                  "presence_penalty",
+                  "frequency_penalty",
+                  "stop_token_sequences",
+                  "forced_tokens_pending",
+                  "force_sequence_completion_token_sequences"
+                ],
+                "execution_path": "gguf_packed_ar_host_sampler_decode",
+                "fallback_reason": "native_gpu_unsupported_request",
+                "fast_path_blockers": [
+                  "temperature",
+                  "repetition_penalty",
+                  "presence_penalty",
+                  "frequency_penalty",
+                  "stop_token_sequences",
+                  "forced_tokens_pending",
+                  "force_sequence_completion_token_sequences",
+                  "logprobs",
+                  "top_logprobs"
+                ],
+                "full_vocab_logits_d2h": true,
+                "logits_d2h_bytes_per_generated_token": 993280,
+                "logits_d2h_bytes_total": 22845440,
+                "mode": "host_logits_sample",
+                "native_sampler_rows": false,
+                "serial_decode_fallback": false
+              },
+              "tool_calls": [
+                {
+                  "arguments": {
+                    "path": "src",
+                    "pattern": "def admit"
+                  },
+                  "name": "grep"
+                }
+              ]
+            }
+          ]
+        },
+        "turn2": {
+          "fixed_seed_repeat_exact": true,
+          "responses": [
+            {
+              "finish_details": {
+                "cache_action": "append_none",
+                "phase": "tool_call",
+                "reason": "tool_calls",
+                "sampler_mode": "host_logits_sample",
+                "stop_sequence": [
+                  12445,
+                  13766,
+                  13042,
+                  29
+                ],
+                "tool_call_tokens": 25
+              },
+              "finish_reason": "tool_calls",
+              "generated_token_ids": [
+                27,
+                13766,
+                13042,
+                85806,
+                591,
+                3147,
+                851,
+                2129,
+                15889,
+                21624,
+                2267,
+                3147,
+                3431,
+                2600,
+                14779,
+                6971,
+                2129,
+                8255,
+                3147,
+                1648,
+                1,
+                12445,
+                13766,
+                13042,
+                29
+              ],
+              "generated_token_ids_sha256": "3c5a9a4f2cb5064df574ff58f72d7a101d17c73d1a299ff6f7328ce8259128fe",
+              "generated_tokens": 25,
+              "prompt": {
+                "token_count": 2734,
+                "token_ids_sha256": "f3c1a86cb64a9a8b5df5bde0c2d03eb1acce4887015f993a4f16b03d66bf7cb9"
+              },
+              "raw_path": "/tmp/a3-native-strict-turn2-0.json",
+              "raw_sha256": "da046eaa09a0dbfc5d8a815daae54ee73e8fda90230e00c16507a17fda7be53c",
+              "sampler": {
+                "active_processors": [
+                  "repetition_penalty",
+                  "presence_penalty",
+                  "frequency_penalty",
+                  "stop_token_sequences",
+                  "forced_tokens_pending",
+                  "force_sequence_completion_token_sequences"
+                ],
+                "execution_path": "gguf_packed_ar_host_sampler_decode",
+                "fallback_reason": "native_gpu_unsupported_request",
+                "fast_path_blockers": [
+                  "temperature",
+                  "repetition_penalty",
+                  "presence_penalty",
+                  "frequency_penalty",
+                  "stop_token_sequences",
+                  "forced_tokens_pending",
+                  "force_sequence_completion_token_sequences",
+                  "logprobs",
+                  "top_logprobs"
+                ],
+                "full_vocab_logits_d2h": true,
+                "logits_d2h_bytes_per_generated_token": 993280,
+                "logits_d2h_bytes_total": 24832000,
+                "mode": "host_logits_sample",
+                "native_sampler_rows": false,
+                "serial_decode_fallback": false
+              },
+              "tool_calls": [
+                {
+                  "arguments": {
+                    "mode": "summary",
+                    "path": "src/scheduler.py"
+                  },
+                  "name": "read"
+                }
+              ]
+            },
+            {
+              "finish_details": {
+                "cache_action": "append_none",
+                "phase": "tool_call",
+                "reason": "tool_calls",
+                "sampler_mode": "host_logits_sample",
+                "stop_sequence": [
+                  12445,
+                  13766,
+                  13042,
+                  29
+                ],
+                "tool_call_tokens": 25
+              },
+              "finish_reason": "tool_calls",
+              "generated_token_ids": [
+                27,
+                13766,
+                13042,
+                85806,
+                591,
+                3147,
+                851,
+                2129,
+                15889,
+                21624,
+                2267,
+                3147,
+                3431,
+                2600,
+                14779,
+                6971,
+                2129,
+                8255,
+                3147,
+                1648,
+                1,
+                12445,
+                13766,
+                13042,
+                29
+              ],
+              "generated_token_ids_sha256": "3c5a9a4f2cb5064df574ff58f72d7a101d17c73d1a299ff6f7328ce8259128fe",
+              "generated_tokens": 25,
+              "prompt": {
+                "token_count": 2734,
+                "token_ids_sha256": "f3c1a86cb64a9a8b5df5bde0c2d03eb1acce4887015f993a4f16b03d66bf7cb9"
+              },
+              "raw_path": "/tmp/a3-native-strict-turn2-1.json",
+              "raw_sha256": "7182b7ba627c0408397566aea82610998f1c07148a8fa80a867eedcc8bc69470",
+              "sampler": {
+                "active_processors": [
+                  "repetition_penalty",
+                  "presence_penalty",
+                  "frequency_penalty",
+                  "stop_token_sequences",
+                  "forced_tokens_pending",
+                  "force_sequence_completion_token_sequences"
+                ],
+                "execution_path": "gguf_packed_ar_host_sampler_decode",
+                "fallback_reason": "native_gpu_unsupported_request",
+                "fast_path_blockers": [
+                  "temperature",
+                  "repetition_penalty",
+                  "presence_penalty",
+                  "frequency_penalty",
+                  "stop_token_sequences",
+                  "forced_tokens_pending",
+                  "force_sequence_completion_token_sequences",
+                  "logprobs",
+                  "top_logprobs"
+                ],
+                "full_vocab_logits_d2h": true,
+                "logits_d2h_bytes_per_generated_token": 993280,
+                "logits_d2h_bytes_total": 24832000,
+                "mode": "host_logits_sample",
+                "native_sampler_rows": false,
+                "serial_decode_fallback": false
+              },
+              "tool_calls": [
+                {
+                  "arguments": {
+                    "mode": "summary",
+                    "path": "src/scheduler.py"
+                  },
+                  "name": "read"
+                }
+              ]
+            }
+          ]
+        },
+        "turn3": {
+          "fixed_seed_repeat_exact": true,
+          "responses": [
+            {
+              "finish_details": {
+                "cache_action": "append_none",
+                "phase": "tool_call",
+                "reason": "tool_calls",
+                "sampler_mode": "host_logits_sample",
+                "stop_sequence": [
+                  12445,
+                  13766,
+                  13042,
+                  29
+                ],
+                "tool_call_tokens": 27
+              },
+              "finish_reason": "tool_calls",
+              "generated_token_ids": [
+                27,
+                13766,
+                13042,
+                85806,
+                591,
+                3147,
+                5917,
+                2129,
+                15889,
+                21624,
+                5454,
+                3147,
+                12305,
+                471,
+                76,
+                26864,
+                471,
+                80,
+                6813,
+                12333,
+                51845,
+                6971,
+                1,
+                12445,
+                13766,
+                13042,
+                29
+              ],
+              "generated_token_ids_sha256": "5debfc7b37d80110fea5d034c6261c48c91ce0a80a9e10ffb92cd4f817ee12d9",
+              "generated_tokens": 27,
+              "prompt": {
+                "token_count": 2851,
+                "token_ids_sha256": "5d74f0b86cfce1c414466fcf3aeb0b223cd7cb43db5793d321dbb6c5bafd17ce"
+              },
+              "raw_path": "/tmp/a3-native-strict-turn3-0.json",
+              "raw_sha256": "aeb3f5d7adda44996ca59eef1a061a67193c91d6c260c2b47040961d0a4f142c",
+              "sampler": {
+                "active_processors": [
+                  "repetition_penalty",
+                  "presence_penalty",
+                  "frequency_penalty",
+                  "stop_token_sequences",
+                  "forced_tokens_pending",
+                  "force_sequence_completion_token_sequences"
+                ],
+                "execution_path": "gguf_packed_ar_host_sampler_decode",
+                "fallback_reason": "native_gpu_unsupported_request",
+                "fast_path_blockers": [
+                  "temperature",
+                  "repetition_penalty",
+                  "presence_penalty",
+                  "frequency_penalty",
+                  "stop_token_sequences",
+                  "forced_tokens_pending",
+                  "force_sequence_completion_token_sequences",
+                  "logprobs",
+                  "top_logprobs"
+                ],
+                "full_vocab_logits_d2h": true,
+                "logits_d2h_bytes_per_generated_token": 993280,
+                "logits_d2h_bytes_total": 26818560,
+                "mode": "host_logits_sample",
+                "native_sampler_rows": false,
+                "serial_decode_fallback": false
+              },
+              "tool_calls": [
+                {
+                  "arguments": {
+                    "command": "python -m pytest -q tests/test_scheduler.py"
+                  },
+                  "name": "run"
+                }
+              ]
+            },
+            {
+              "finish_details": {
+                "cache_action": "append_none",
+                "phase": "tool_call",
+                "reason": "tool_calls",
+                "sampler_mode": "host_logits_sample",
+                "stop_sequence": [
+                  12445,
+                  13766,
+                  13042,
+                  29
+                ],
+                "tool_call_tokens": 27
+              },
+              "finish_reason": "tool_calls",
+              "generated_token_ids": [
+                27,
+                13766,
+                13042,
+                85806,
+                591,
+                3147,
+                5917,
+                2129,
+                15889,
+                21624,
+                5454,
+                3147,
+                12305,
+                471,
+                76,
+                26864,
+                471,
+                80,
+                6813,
+                12333,
+                51845,
+                6971,
+                1,
+                12445,
+                13766,
+                13042,
+                29
+              ],
+              "generated_token_ids_sha256": "5debfc7b37d80110fea5d034c6261c48c91ce0a80a9e10ffb92cd4f817ee12d9",
+              "generated_tokens": 27,
+              "prompt": {
+                "token_count": 2851,
+                "token_ids_sha256": "5d74f0b86cfce1c414466fcf3aeb0b223cd7cb43db5793d321dbb6c5bafd17ce"
+              },
+              "raw_path": "/tmp/a3-native-strict-turn3-1.json",
+              "raw_sha256": "427e2a62e46c9c1dbcfb011d1b8e082fca995dcda6273b0d7c76a989555d8961",
+              "sampler": {
+                "active_processors": [
+                  "repetition_penalty",
+                  "presence_penalty",
+                  "frequency_penalty",
+                  "stop_token_sequences",
+                  "forced_tokens_pending",
+                  "force_sequence_completion_token_sequences"
+                ],
+                "execution_path": "gguf_packed_ar_host_sampler_decode",
+                "fallback_reason": "native_gpu_unsupported_request",
+                "fast_path_blockers": [
+                  "temperature",
+                  "repetition_penalty",
+                  "presence_penalty",
+                  "frequency_penalty",
+                  "stop_token_sequences",
+                  "forced_tokens_pending",
+                  "force_sequence_completion_token_sequences",
+                  "logprobs",
+                  "top_logprobs"
+                ],
+                "full_vocab_logits_d2h": true,
+                "logits_d2h_bytes_per_generated_token": 993280,
+                "logits_d2h_bytes_total": 26818560,
+                "mode": "host_logits_sample",
+                "native_sampler_rows": false,
+                "serial_decode_fallback": false
+              },
+              "tool_calls": [
+                {
+                  "arguments": {
+                    "command": "python -m pytest -q tests/test_scheduler.py"
+                  },
+                  "name": "run"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "turns_total": 4,
+      "turns_valid": 4
+    }
+  },
+  "protocol": {
+    "fail_closed_prerequisite": "every frozen turn must produce one declared schema-valid tool envelope before any SSE timing is eligible",
+    "host_env": "HIPENGINE_QWEN35_NATIVE_SAMPLER=0",
+    "native_env": "HIPENGINE_QWEN35_NATIVE_SAMPLER=1",
+    "planned_context_tokens": {
+      "growing_history": 4096,
+      "medium_repo": 10240,
+      "small_repo": 4096
+    },
+    "planned_families": [
+      "small_repo",
+      "growing_history",
+      "medium_repo"
+    ],
+    "planned_logical_concurrency": [
+      1,
+      4,
+      8
+    ],
+    "planned_measured_runs_per_condition": 3,
+    "planned_transport": "real_localhost_uvicorn_sse",
+    "planned_warmup_runs_per_condition": 1,
+    "prefix_cache": "off",
+    "preflight_logical_concurrency": 1,
+    "preflight_transport": "real_localhost_uvicorn_blocking_oracle_before_measured_sse",
+    "preflight_workload": "small_repo",
+    "sampling": {
+      "enable_thinking": false,
+      "frequency_penalty": 0.02,
+      "logprobs": true,
+      "max_tokens": 64,
+      "min_p": 0.08,
+      "presence_penalty": 0.1,
+      "repetition_penalty": 1.05,
+      "seed": 17,
+      "temperature": 0.85,
+      "top_k": 8,
+      "top_logprobs": 3,
+      "top_p": 0.82
+    },
+    "server_common_environment": {
+      "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/agentic-w7900-hipcc-version.txt",
+      "HIPENGINE_GENERATION_BATCH_WINDOW_MS": "0",
+      "HIPENGINE_GGUF_AR_PACKED_DECODE": "1",
+      "HIPENGINE_GGUF_AR_STREAM_DECODE": "0",
+      "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact",
+      "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+      "HIPENGINE_MAX_PREFILL_CHUNK_TOKENS": "256",
+      "HIP_VISIBLE_DEVICES": "0",
+      "ROCR_VISIBLE_DEVICES": "0"
+    },
+    "stage": "A3",
+    "workload_suite": "benchmarks/prompts/agentic-coding-v1.json",
+    "workload_suite_sha256": "44729fe15196fb232d64eed5a4628ba59ab9959b3a76ac041d2f194e5cc6ce5e"
+  },
+  "retained_a1_guard": {
+    "artifact": "benchmarks/results/2026-07-21-w7900-agentic-a1-repeated-baseline.json",
+    "c1_exact_generated_tok_s": {
+      "growing_history": 15.100429631284543,
+      "medium_repo": 4.126513402948602,
+      "small_repo": 16.238546421444944
+    },
+    "medium_c4_exact_generated_tok_s": 4.62850805105621,
+    "metric_scope": "active_sse_wave_wall_s",
+    "sha256": "29133f5fb0fa36f0f83fe34565ad7df93214b8eb7e035ac56b5413713e495f3f"
+  },
+  "route_characterization_valid": true,
+  "schema": 1,
+  "source_clean_and_pushed": true,
+  "source_revision": "2f8f6bf19b00a7487965aa468df19d2271462d89",
+  "status": "blocked_fail_closed_tool_correctness",
+  "timing_claim": false
+}

@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last reviewed: **2026-07-21**
+Last reviewed: **2026-07-22**
 
 Latest retained hipEngine revisions in this scoreboard:
 `8a8ef4816d442b3b8766507c1eac1ae796e882eb` for bounded cold-cohort
@@ -1876,6 +1876,19 @@ untracked experiment files as part of the rollup gate.
 
 ## Blocked and Diagnostic Benchmark Attempts
 
+- **W7900 coding-agent A3 native-sampler screen, GGUF Q4_K_M:** clean pushed
+  `2f8f6bf1` stops at the real-Uvicorn C1 `small_repo` blocking-oracle
+  prerequisite before any measured SSE. Fixed-seed host/native auto-tool rows
+  repeat the valid first turn, but both reach the 64-token cap on turn 1 with
+  `invalid_tool_call`; native correctly reports `gpu_sample` and zero logits D2H
+  while host copies **63,569,920 bytes**. Two repeats of all **4/4** specific
+  strict-tool turns are exact and valid, but every row is
+  `host_logits_sample` / `native_gpu_unsupported_request`, totaling
+  **198,656,000 bytes** of D2H across 200 tokens. Final ownership is zero. No
+  route is both native-eligible and valid across the frozen tool workload, so no
+  C1/C4/C8 timing, active-SSE, tool-ready, or speedup number is retained or
+  inferred; keep GGUF native sampling default-off. [Blocked A3
+  artifact](results/2026-07-22-w7900-agentic-a3-native-sampler-blocked.json).
 - **W7900 coding-agent A2.4 final prefix decision, GGUF Q4_K_M:** the complete
   active-SSE-scoped funnel combines the A1 control, three-pair C1 rejection,
   protocol-complete C4/C8 skip, and passing lifecycle packet. Radix regresses

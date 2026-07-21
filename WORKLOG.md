@@ -172351,3 +172351,70 @@ telemetry. Targeted Ruff passes for all changed host/script/test files; the
 monolithic runner passes with its known pre-existing F401/F841/F821 baseline
 ignored, plus `py_compile`. JSON parsing, Worklog conflict check, artifact hash,
 and `git diff --check` pass.
+
+## 2026-07-22 — Stop A3 native sampling at the tool-contract preflight
+
+Resumed task #229 from clean pushed `2f8f6bf1` and kept the A2-selected
+cache-off control. The planned A3 packet was three frozen workload families x
+logical C1/C4/C8, host logits versus explicit GGUF native sampling, one complete
+warmup and three measurements per condition. Per the benchmark contract, each
+condition first requires a blocking fixed-seed tool oracle before any measured
+SSE interval; invalid tool output cannot receive an active-SSE or tool-ready
+rate.
+
+Ran fresh real-Uvicorn C1 servers on W7900 GPU0 with 4,096 context, BF16 KV,
+zero batch window, exact GDN prefill, packed AR, 256-token prefill chunks, cache
+off, and the common sampling request:
+
+```text
+temperature=0.85, top_k=8, top_p=0.82, min_p=0.08,
+repetition_penalty=1.05, presence_penalty=0.1,
+frequency_penalty=0.02, seed=17, max_tokens=64,
+logprobs=true, top_logprobs=3, enable_thinking=false
+```
+
+The host server used `HIPENGINE_QWEN35_NATIVE_SAMPLER=0`; candidate servers used
+`=1`. Exact commands and raw response hashes are recorded in the compact
+artifact; the one-off collectors were `/tmp/a3_host_auto_all_diag.py`,
+`/tmp/a3_retained_native_auto_hightemp.py`, and
+`/tmp/a3_native_strict_all_diag.py` against ports 18131/18133/18132.
+
+The fail-closed result is structural:
+
+- native-eligible `tool_choice=auto` repeats the exact valid first `small_repo`
+  `read` call on both host and native rows (36 response-owned IDs); native uses
+  `gpu_sample` with zero logits D2H and host uses `host_logits_sample`;
+- on frozen turn 1, both routes reach 64 tokens with `finish_reason=length` /
+  `finish_details.reason=invalid_tool_call` and no parseable call. Native still
+  reports zero D2H; host copies **63,569,920 bytes** of full-vocabulary logits;
+- using the specific strict tool choice restores all four exact fixture calls.
+  Two repeats each of `read`/`grep`/`read`/`run` are fixed-seed exact over
+  **200 total generated IDs**, but all rows report `host_logits_sample` /
+  `native_gpu_unsupported_request` and copy **198,656,000 bytes** total;
+- host, native-auto, and native-enabled strict servers all drain pending/active
+  requests, sessions, stream producers, KV refs/pins, graph/workspace owners,
+  and cache residency to zero. GPU0 had no competing KFD process; the independent
+  GPU1/XTX pytest process remained allowed peer activity.
+
+The linked p256/c4 correctness prerequisite still proves native fixed-seed,
+CPU-reference distribution, processors, stop/EOS/logprobs, Conv/GDN/live-KV,
+and ownership behavior. It does not supply a usable sampled tool route: auto is
+native but fails the frozen strict envelope, while specific/required forcing and
+close queues are valid only through explicit host fallback. A lower-temperature
+sensitivity diagnostic also failed turn 1 and is not a denominator.
+
+Stopped before all performance warmups/measurements rather than benchmark
+invalid output or a no-op native flag. No C1/C4/C8 timing, active-SSE,
+tool-ready, goodput, speedup, C1 guard, or medium-C4 result is retained or
+inferred. Published
+`benchmarks/results/2026-07-22-w7900-agentic-a3-native-sampler-blocked.json`
+(SHA-256 `b9bbf73d80740031659078473029e0dbe65e35106369e784abc5933361529240`).
+GGUF native sampling remains explicit/default-off. Before an A3 rerun, either a
+model-general native forced/dynamic-queue route or a constrained auto-tool route
+must pass every frozen family without seed/parameter/prompt tuning. A4 routing
+and SLO work can proceed independently.
+
+Validation passes **13/13** A2/A3/native-sampler artifact and README-sync tests,
+Ruff for the new artifact test, JSON parsing, Worklog conflict validation,
+README export synchronization, changed-section Markdown structure checks, and
+`git diff --check`.
