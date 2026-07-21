@@ -9,6 +9,7 @@ before native c>N sessions become correctness-green.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import os
 import threading
 import time
@@ -138,6 +139,43 @@ class _ResidentStreamState:
     cancelled_details: FinishDetails | None = None
 
 
+class _SubmissionPriority:
+    """Let queued admissions acquire the model-loop lock before the next tick."""
+
+    def __init__(self) -> None:
+        self._condition = threading.Condition()
+        self._waiting = 0
+
+    @property
+    def waiting_count(self) -> int:
+        with self._condition:
+            return self._waiting
+
+    @contextmanager
+    def submission(self, loop_lock: threading.Lock) -> Iterator[None]:
+        with self._condition:
+            self._waiting += 1
+        try:
+            loop_lock.acquire()
+        except BaseException:
+            with self._condition:
+                self._waiting -= 1
+                self._condition.notify_all()
+            raise
+        with self._condition:
+            self._waiting -= 1
+            self._condition.notify_all()
+        try:
+            yield
+        finally:
+            loop_lock.release()
+
+    def wait_for_submissions(self) -> None:
+        with self._condition:
+            while self._waiting:
+                self._condition.wait()
+
+
 @dataclass(frozen=True, slots=True)
 class EngineLoopEvent:
     """One externally visible event produced by ``ResidentEngineLoop.poll``."""
@@ -262,6 +300,7 @@ class SubmitPollTextGenerator:
         # Native runners therefore release it after each model transition so a
         # later D2 admission worker can enqueue between decode steps.
         self._loop_lock = threading.Lock()
+        self._submission_priority = _SubmissionPriority()
         self._stream_queue_max_chunks = int(stream_queue_max_chunks)
         self._stream_states_by_request: dict[int, _ResidentStreamState] = {}
         self._submissions_by_request: dict[int, GenerationSubmission] = {}
@@ -330,7 +369,7 @@ class SubmitPollTextGenerator:
     def submit_detailed(self, request: GenerationRequest) -> GenerationSubmission:
         """Submit rows without driving the shared loop to completion."""
 
-        with self._loop_lock:
+        with self._submission_priority.submission(self._loop_lock):
             return self._submit_detailed_locked(request)
 
     def _submit_detailed_locked(self, request: GenerationRequest) -> GenerationSubmission:
@@ -382,6 +421,7 @@ class SubmitPollTextGenerator:
     def poll(self, *, max_ticks: int = 1) -> tuple[EngineLoopEvent, ...]:
         """Advance shared model work without owning a request-lifetime lock."""
 
+        self._submission_priority.wait_for_submissions()
         with self._loop_lock:
             self._drain_cancel_commands_locked()
             events = self._loop.poll(max_ticks=max_ticks)
@@ -605,7 +645,7 @@ class SubmitPollTextGenerator:
                 yield GenerationStreamChunk.from_value(chunk)
             return
 
-        with self._loop_lock:
+        with self._submission_priority.submission(self._loop_lock):
             submission = self._submit_detailed_locked(request)
             state = _ResidentStreamState(submission)
             for request_id in submission.request_ids:
@@ -1186,6 +1226,7 @@ class ResidentEngineLoop:
         self.fair_prefill_burst_chunks = int(resolved_config.fair_prefill_burst_chunks)
         self._last_work_kind: WorkKind | None = None
         self._consecutive_prefill_chunks = 0
+        self._cold_prefill_cohort_request_ids: frozenset[int] = frozenset()
         self.scheduler = ResidentBatchScheduler(
             capacity=resolved_capacity,
             context_bucket_size=context_bucket_size,
@@ -1214,6 +1255,7 @@ class ResidentEngineLoop:
             "prefill_chunk_tokens": int(self.prefill_chunk_size),
             "fair_prefill_burst_chunks": int(self.fair_prefill_burst_chunks),
             "consecutive_prefill_chunks": int(self._consecutive_prefill_chunks),
+            "cold_prefill_cohort_size": len(self._cold_prefill_cohort_request_ids),
             "last_work_kind": (
                 None if self._last_work_kind is None else self._last_work_kind.value
             ),
@@ -1290,6 +1332,10 @@ class ResidentEngineLoop:
 
         decode = self.scheduler.next_decode_work()
         prefill_available = self.scheduler.has_prefill_work()
+        self._update_cold_prefill_cohort(
+            decode_available=decode is not None,
+            prefill_available=prefill_available,
+        )
         if self._choose_decode_first(decode_available=decode is not None, prefill_available=prefill_available):
             assert decode is not None
             events.extend(self._run_decode(decode))
@@ -1306,6 +1352,38 @@ class ResidentEngineLoop:
         events.extend(self._run_decode(decode))
         return tuple(events)
 
+    def _update_cold_prefill_cohort(
+        self,
+        *,
+        decode_available: bool,
+        prefill_available: bool,
+    ) -> None:
+        if self.prefill_decode_policy != "fair" or self.fair_prefill_burst_chunks <= 1:
+            self._cold_prefill_cohort_request_ids = frozenset()
+            return
+        current = frozenset(self.scheduler.prefill_request_ids())
+        if self._cold_prefill_cohort_request_ids:
+            additions = current.difference(self._cold_prefill_cohort_request_ids)
+            if additions and self.scheduler.prefill_requests_fit_within_chunks(
+                chunk_size=self.prefill_chunk_size,
+                max_chunks=self.fair_prefill_burst_chunks,
+            ):
+                # No member can free a physical slot before the first decode,
+                # so bounded pre-decode additions cannot extend this epoch past
+                # resident capacity. A decode clears the cohort below.
+                self._cold_prefill_cohort_request_ids |= additions
+            self._cold_prefill_cohort_request_ids &= current
+            return
+        if (
+            not decode_available
+            and prefill_available
+            and self.scheduler.prefill_requests_fit_within_chunks(
+                chunk_size=self.prefill_chunk_size,
+                max_chunks=self.fair_prefill_burst_chunks,
+            )
+        ):
+            self._cold_prefill_cohort_request_ids = current
+
     def _choose_decode_first(self, *, decode_available: bool, prefill_available: bool) -> bool:
         if not decode_available:
             return False
@@ -1314,6 +1392,8 @@ class ResidentEngineLoop:
         if self.prefill_decode_policy == "protect_decode":
             return True
         if self.prefill_decode_policy == "protect_ttft":
+            return False
+        if self._cold_prefill_cohort_request_ids:
             return False
         # A multi-chunk interruption only earns its ITL cost when more than one
         # prompt remains: completing the current row then forms a wider group
@@ -1349,6 +1429,7 @@ class ResidentEngineLoop:
         generated_events = self.scheduler.record_generated_events(generated)
         self._last_work_kind = work.kind
         self._consecutive_prefill_chunks = 0
+        self._cold_prefill_cohort_request_ids = frozenset()
         events = [EngineLoopEvent(kind="work", request_ids=work.request_ids, work_kind=work.kind)]
         for token_event in generated_events:
             events.append(
