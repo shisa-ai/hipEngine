@@ -1875,6 +1875,15 @@ untracked experiment files as part of the rollup gate.
 
 ## Blocked and Diagnostic Benchmark Attempts
 
+- **W7900 coding-agent A2 C1 prefix screen, GGUF Q4_K_M:** clean pushed
+  `3a4024af` completed one warmed `small_repo` off/radix pair with all **4/4 +
+  4/4 response-owned ID/tool/final-request-ownership gates exact**, but every
+  strict-tool request resolved `sampler_mode=processed_argmax`; the scoped radix
+  path explicitly returned `sampling_unsupported` on all four turns, producing
+  **0 eligible turns / 0 lookups / 0 hits / 0 reused tokens**. The remaining
+  pairs/workloads were stopped and the observed **13.268 vs 13.297 tok/s** and
+  **1855.2 vs 1871.5 ms** tool-ready p50 are diagnostic-only, not an A/B result.
+  [Blocked A2 artifact](results/2026-07-21-w7900-agentic-a2-c1-processed-argmax-blocked.json).
 - **W7900 coding-agent A1 capacity/A6 diagnostics, GGUF Q4_K_M:** clean
   `56c91f87` closes logical-C8 capacity for all frozen families at guarded
   **4K/4K/10,240** contexts and registry-capped c4 residency. Those one-run

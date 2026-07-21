@@ -172018,3 +172018,50 @@ JSON parsing, and benchmark README synchronization. This is A2.0 correctness and
 telemetry only: no timing is a performance claim, radix remains default-off, and
 agentic 2K/8K paired measurements plus pressure/lifecycle promotion gates remain
 for tasks #225-#227.
+
+## 2026-07-21 — Stop A2.1 on the processed-argmax prefix boundary
+
+Started task #225 from clean pushed source `3a4024af` in a detached measurement
+worktree, with the retained A1 packet SHA-256
+`29133f5fb0fa36f0f83fe34565ad7df93214b8eb7e035ac56b5413713e495f3f` as
+control. The planned protocol was three order-rotated off/radix pairs for
+small/growing/medium C1, one complete warmup before every measured condition,
+real Uvicorn SSE, contexts 4,096/4,096/10,240, and continuous KFD process
+ownership sampling. The exact A1 server environment and W7900/GPU0 mask were
+retained.
+
+The first complete warmed `small_repo` pair proved that the prerequisite route
+cannot exercise this workload. Both off and radix measured artifacts pass 4/4
+response-owned generated-ID, prompt-hash, strict tool, collector, and final
+request/session/KV ownership gates against A1. However, every forced-tool row
+resolves `sampler_mode=processed_argmax`, while the scoped radix admission gate
+accepts only `GREEDY_FAST`. All four radix rows therefore correctly report:
+
+- `fallback_reason=sampling_unsupported`;
+- zero eligible turns, lookups, hits, reused/avoided-prefill tokens, state-clone
+  bytes, and cache residency;
+- full private prefill of all 10,709 prompt tokens.
+
+The candidate thus did no prefix work. Observed off/radix active-SSE rates
+**13.267968 / 13.297160 tok/s** and buffered tool-ready p50
+**1855.159 / 1871.543 ms** are diagnostic-only and cannot be compared as a
+prefix result. They also sit below the retained A1 source's 16.239 tok/s / 1526
+ms controls, but no regression attribution is valid because the candidate route
+never ran and the required three-pair variance protocol did not complete.
+
+The first off condition had 113 target-server KFD ownership samples and zero
+GPU0 competitors. After the radix server stopped, the monitor briefly saw the
+already-exited off-server PID 135697 still present in KFD while `/proc` metadata
+was gone and mechanically classified it as unknown. Radix exclusivity is
+therefore unset rather than forged; the no-hit blocker independently invalidates
+the row.
+
+Stopped the remaining matrix immediately rather than benchmark a no-op flag.
+Published
+`benchmarks/results/2026-07-21-w7900-agentic-a2-c1-processed-argmax-blocked.json`
+(SHA-256 `2711466c5d3574d5440f8ba9affebd55aca3ba1e649fa484e95a67439880d2de`)
+with `performance_claim=false` and `timing_claim=false`. Task #233 now tracks a
+separate correctness implementation for deterministic processed-argmax
+suffix-only reuse; stochastic sampling must remain explicit fallback. Task #225
+stays open and blocked until that implementation is committed/pushed and passes
+agentic-boundary output/state/KV/refcount/COW gates.
