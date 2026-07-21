@@ -50,7 +50,7 @@ greedy tokens, detokenizes the generated IDs, and returns text through
 
 The resident target runtime owns row-shaped token/hidden/logit, per-slot linear state, paged KV, and `KVLiveSpans`. Native UD-Q3_K_M C=2/4/8 execution uses indexed Conv/GDN, row-batched paged attention, selected-row MoE, row lm-head/argmax, and C/context graph buckets. Greedy public prompt lists use stable scheduler request ids, reclaim EOS/length completions, compact surviving state/KV, and admit pending prompts into freed slots inside the same generate call. C=2/4/8 generated IDs match independent c=1 over 512/128 and 4K/128; stateful, C=4/8, variable-short-prompt, and reclaim/readmit full-logit gates are exact. GPU1 C=8 reaches `207.780/211.177 aggregate tok/s` (`25.973/26.397 tok/s/request`) at 512/4K. The retained artifact includes latency, memory, scaling, scheduler timestamps, and native rocprof symbols: [`benchmarks/results/2026-07-21-gpu1-q3-native-cn-retained.json`](../benchmarks/results/2026-07-21-gpu1-q3-native-cn-retained.json). These rows are GPU1-only; W7900 was not rerun. Persistent cross-call serving, elastic KV/prefix sharing, cancellation, and non-greedy native row sampling remain separate continuous-serving work.
 
-The real GGUF contains a trailing blk.40 MTP predictor. The 40-layer AR tensor map intentionally excludes it, but this is now an implementation boundary rather than an approval blocker: the shared candidate-only `DraftBatch` → verifier-internal `TargetVerifyBatch` → `AcceptResult` ABI, transactional `KVLiveSpans`, and graph buckets are already locked and landed. Remaining GGUF MTP work is a separate blk.40 draft-model materializer plus Q3_K gate/up kernels, followed by integration with the shared row-shaped target verifier; do not execute blk.40 as a 41st AR layer or fork a GGUF-specific speculative ABI.
+The real GGUF contains a trailing blk.40 MTP predictor. The 40-layer AR tensor map still intentionally excludes it. Task #30 now maps and materializes all 20 draft tensors in a separate resident owner, applies the documented target embedding/output fallbacks, executes raw Q3_K gate/up through registered selected kernels, and emits candidate-only `DraftBatch` rows from `Qwen35GGUFNextNDraftProvider`. The real empty-KV one-step gate matches llama.cpp's top-10 IDs/top-1 token, and provider logits exactly replay the direct executor. Task #31 now owns connection to the shared row-shaped `TargetVerifyBatch` → `AcceptResult` path, transactional `KVLiveSpans`, and end-to-end economics; blk.40 must never become a 41st AR layer or a GGUF-specific speculative ABI.
 
 The short answer to "can hipENGINE load GGUF quants easily now?" is:
 
@@ -60,7 +60,7 @@ The short answer to "can hipENGINE load GGUF quants easily now?" is:
 - **Native GGUF quant execution is not drop-in.** GGUF `Q4_K`, `Q5_K`, `Q6_K`, `Q8_0`, `Q8_K`, and `IQ*` tensors have GGML block layouts and quant math that differ from PARO/AWQ and from the current Marlin-K v0 layout. They need their own quant plugins, CPU oracles, and HIP kernels or a deliberate repack path.
 - **The new PARO/Marlin-K work makes this tractable.** hipEngine now has the pattern we want: file/checkpoint layout -> host repack -> explicit device layout -> raw-pointer kernel -> registry dispatch. GGUF should use the same architecture, not special-case dispatch.
 
-The intake implementation is past scanner/GEMV bring-up, public full-model bulk prefill, native C=2/4/8 decode, and synchronous prompt-list scheduling. Current Q3 performance/correctness is recorded above and in linked benchmark artifacts. The exact serial target executor remains the oracle/speculative bridge; the next independent boundary is blk.40 draft materialization and transactional MTP integration under the locked ABI.
+The intake implementation is past scanner/GEMV bring-up, public full-model bulk prefill, native C=2/4/8 decode, synchronous prompt-list scheduling, and separate blk.40 draft execution. Current Q3 performance/correctness is recorded above and in linked benchmark artifacts. The remaining speculative boundary is task #31's transactional proposer/target integration and economics under the locked ABI.
 
 Treat historical P8–P10 projections below as chronology, not current performance claims. Only the current status and retained artifacts/rollups establish measured speed.
 
@@ -254,7 +254,7 @@ and dense-BF16 fallback coverage for Q4_1/F16/IQ4_XS. See
 `benchmarks/results/2026-05-16-hipengine-gguf-qwen35-e2e-correctness-diagnostic.json`,
 `benchmarks/results/2026-05-17-hipengine-gguf-full-attn-gpu-prelude-diagnostic.json`,
 and `benchmarks/results/2026-05-17-hipengine-gguf-local-quant-coverage-diagnostic.json`.
-The original `qwen35moe` Qwen3.6 smoke remains a narrow public-API/no-torch gate. The later Q3 campaign adds all-row/full-logit/full-4K oracles and retained bulk-prefill/decode evidence; c=N and blk.40 MTP execution remain future work.
+The original `qwen35moe` Qwen3.6 smoke remains a narrow public-API/no-torch gate. The later Q3 campaign adds all-row/full-logit/full-4K oracles, retained bulk-prefill/native-c=N evidence, and separately mapped/executed blk.40 NextN proposal. End-to-end speculative verify/commit integration remains task #31.
 
 
 ## Why GGUF is attractive for hipEngine

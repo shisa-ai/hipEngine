@@ -733,12 +733,17 @@ class Qwen35GGUFFullStackRunner:
     runtime: HipRuntime | None = None
     compiler_version: str | None = None
     require_cached_build: bool = False
+    resident_weights: Qwen35GGUFResidentWeights | None = field(default=None, repr=False)
+    owns_resident_weights: bool = False
     weights: Qwen35GGUFResidentWeights | None = field(default=None, init=False)
 
     def __post_init__(self) -> None:
         self.runtime = self.runtime or get_hip_runtime()
         self.require_cached_build = bool(self.require_cached_build)
-        self.weights = materialize_qwen35_gguf_weights(self.model_path, runtime=self.runtime)
+        self.weights = self.resident_weights
+        if self.weights is None:
+            self.weights = materialize_qwen35_gguf_weights(self.model_path, runtime=self.runtime)
+            self.owns_resident_weights = True
 
     def _aotriton_prefill_library(self):
         """Return the cached AOTriton prefill shim handle."""
@@ -3553,9 +3558,25 @@ class Qwen35GGUFFullStackRunner:
                 runtime=runtime,
             )
 
+    def allocate_scratch(
+        self,
+        *,
+        max_sequence_length: int | None = None,
+        max_batch_size: int = 1,
+    ) -> "_FullStackScratch":
+        """Allocate batch-shaped state/KV scratch for AR or draft execution."""
+
+        return _FullStackScratch.allocate(
+            self,
+            runtime=self.runtime or get_hip_runtime(),
+            max_sequence_length=max_sequence_length,
+            max_batch_size=max_batch_size,
+        )
+
     def close(self) -> None:
         if self.weights is not None:
-            self.weights.free(runtime=self.runtime)
+            if self.owns_resident_weights:
+                self.weights.free(runtime=self.runtime)
             self.weights = None
 
     def __enter__(self) -> "Qwen35GGUFFullStackRunner":

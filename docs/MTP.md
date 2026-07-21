@@ -31,6 +31,15 @@
 > shared native verifier/commit infrastructure from DFlash, not fork a separate
 > c=1 native-loop tuning lane.
 
+> **GGUF NextN status (2026-07-21):** the local UD-Q3_K_M trailing blk.40 is no
+> longer an omitted/approval-blocked layer. It remains outside the 40-layer AR
+> map and is separately validated/materialized as a draft model with all 20
+> tensors plus target embedding/output fallbacks. Native raw Q3_K selected
+> gate/up kernels and the retained Q4_K/Q8_0/full-attention paths execute a real
+> one-step draft whose top-10 IDs/top-1 token match llama.cpp; a
+> `Qwen35GGUFNextNDraftProvider` emits candidate-only rows under the shared ABI.
+> End-to-end target verify/transactional commit/economics are task #31.
+
 > **Top priority for the next push:** MTP break-even sprint. Hold every exact
 > same-suite improvement, use `0.758x / 27.8 ms` as the locked sprint baseline,
 > and preserve the first retained break-even row while building margin with

@@ -154,13 +154,15 @@ the source-derived review below. The measured state is:
   This is synchronous in-call prompt-list scheduling; persistent cross-call HTTP
   admission, elastic KV/prefix sharing, cancellation, and non-greedy row
   sampling remain outside task #29.
-- **GGUF MTP ABI:** locked and already implemented in shared infrastructure.
-  Candidate-only `DraftBatch`, verifier-internal `TargetVerifyBatch`,
-  `AcceptResult`, `KVLiveSpans(span_role="verify_chain")`, transactional
-  state/KV commit, GPU accept summaries, and shape-keyed graph buckets are not
-  awaiting another approval decision. The missing work is implementation: the
-  AR loader intentionally excludes trailing blk.40, and no GGUF draft-model
-  materializer/provider invokes it yet.
+- **GGUF MTP proposer:** task #30 is implemented under the locked shared ABI.
+  The 40-layer AR map still excludes trailing blk.40; a separate strict tensor
+  map/materializer owns its 20 draft tensors and target embedding/output
+  fallbacks. Native raw Q3_K selected single/dual-SiLU kernels execute gate/up,
+  the existing Q4_K/Q8_0/full-attention paths execute the rest of the block,
+  and `Qwen35GGUFNextNDraftProvider` returns candidate-only `DraftBatch` rows.
+  A real one-step empty-KV gate matches llama.cpp's top-10 IDs and top-1 token
+  198, with top-10 logits within 0.06 absolute. Transactional target
+  verify/accept/commit integration and economics remain task #31.
 
 The real local UD-Q3_K_M blk.40 has 20 tensors: Q8_0 attention, output,
 shared-expert, and `nextn.eh_proj` weights; Q3_K expert gate/up; Q4_K expert
@@ -172,9 +174,9 @@ embedding/output fallbacks apply.
 |---:|---|---|
 | #27 | Land and close the first changed-algebra prefill tranche | **Completed:** guarded residual-D4 MMQ retained; ~3,000 tok/s objective remains unmet |
 | #28 | Build one row-shaped GGUF target executor for independent decode and verify rows | **Completed:** C=2 decode and V=2 serial-chain layer/full-logit parity are exact |
-| #29 | Promote native UD-Q3_K_M c=2/4/8 decode and replace the blocked template | #28 completed; native family-by-family promotion is next |
-| #30 | Materialize blk.40 and emit candidate-only `DraftBatch` rows | Locked shared ABI; can develop alongside #28 |
-| #31 | Integrate and benchmark GGUF MTP end to end | #28 + #30 |
+| #29 | Promote native UD-Q3_K_M c=2/4/8 decode and replace the blocked template | **Completed:** exact native C=2/4/8 plus reclaim/readmit scheduling retained |
+| #30 | Materialize blk.40 and emit candidate-only `DraftBatch` rows | **Completed:** separate map/residency, raw Q3_K kernels, real one-step parity, and provider landed |
+| #31 | Integrate and benchmark GGUF MTP end to end | **Unblocked:** #28 + #30 completed |
 | #32 | Reprofile residual c=1 Q3 decode | Independent, profile-gated |
 
 ## Executive recommendation
@@ -743,11 +745,11 @@ The active task graph already encodes the safe composition order:
 | #21 MoE tail + next RMS | Removes one boundary and hidden reread | ~0.3-1% | Build on stable D1 selected sum |
 | #16 overlap/broader fusion | Hide independent shared/routed work | 0-3%, uncertain | Require real overlap and >=1% wall |
 
-GGUF NextN remains outside the one-token AR optimization campaign, but it is
-not approval-blocked. The shared speculative ABI and verifier/commit contract
-are locked and landed. Current task #30 owns blk.40 materialization plus the
-missing Q3_K selected gate/up kernels; task #31 integrates that proposer after
-the row-shaped GGUF target executor in #28 exists.
+GGUF NextN remains outside the one-token AR optimization campaign. Task #30
+now owns and executes blk.40 separately from AR, including raw Q3_K selected
+gate/up kernels and a candidate-only provider under the locked speculative ABI.
+Task #31 is unblocked to connect that proposer to the completed row-shaped
+target verifier and transactional accept/commit path.
 
 The latency budget makes clear why #20/#21 alone cannot reach the target:
 
@@ -1621,12 +1623,11 @@ to infer a fundamental HIP ceiling. Task #32 starts from a fresh production
 profile; it must not repeat the rejected hierarchical top-k, IQ4 tile4,
 rowtile/repack, or stream-overlap premises.
 
-For **concurrent and speculative execution**, c=N currently has no native GGUF
-speed claim. Task #28 has landed the shared row-shaped target executor and exact
-serial fallback; #29 now owns c-aware family promotion plus independent c=2/4/8
-serving, #30 materializes the already-present blk.40 NextN weights under the
-locked shared ABI, and #31 performs end-to-end MTP integration and economics.
-No additional GGUF-MTP ABI approval is required.
+For **concurrent and speculative execution**, task #29 now retains native exact
+C=2/4/8 serving and task #30 retains a separately materialized/executed blk.40
+NextN proposer under the locked shared ABI. Task #31 now owns only end-to-end
+wiring to the row-shaped target verifier, transactional accept/commit, and MTP
+economics. No additional GGUF-MTP ABI approval is required.
 
 For future models and cards, bounded auto-tuning should make coverage and
 portability systematic: reconcile every tensor and runtime shape with its

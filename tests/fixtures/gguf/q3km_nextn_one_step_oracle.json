@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "model": "Qwen3.6-35B-A3B-UD-Q3_K_M.gguf",
+  "model_sha256": "8966dd0cd8c543c4228490a2a8b0e0814fc4f1e6a8e199ceed4de6754ae7b8e1",
+  "source": {
+    "implementation": "llama.cpp Vulkan LLM_GRAPH_TYPE_DECODER_MTP",
+    "commit": "263cc04a5405fc55122bf59383dd8195519b30f4",
+    "hardware": "AMD Radeon Pro W7900",
+    "input": "token=11, position=0, zero F32 target-hidden row, empty draft KV"
+  },
+  "input": {
+    "token_id": 11,
+    "token_dtype": "int32",
+    "position": 0,
+    "target_hidden_dtype": "float32",
+    "target_hidden_shape": [1, 2048],
+    "target_hidden_values": "all zeros",
+    "draft_kv": "empty"
+  },
+  "tolerance": {
+    "top1_id": "exact",
+    "top10_ids": "exact",
+    "top10_logits_atol": 0.06,
+    "top10_logits_rtol": 0.0
+  },
+  "token_id": 198,
+  "top10": [
+    [198, 14.3098698],
+    [1116, 12.61129],
+    [4297, 12.438242],
+    [21633, 12.3981495],
+    [271, 12.265028],
+    [367, 12.0092516],
+    [42294, 11.0460911],
+    [261, 11.0167637],
+    [2487, 10.8358622],
+    [220, 10.6224279]
+  ]
+}
