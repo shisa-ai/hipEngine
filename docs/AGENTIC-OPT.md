@@ -206,6 +206,15 @@ prefill tokens, reused pages/bytes, state-clone bytes, prefill time, and bounded
 final cache ownership. The 2K/8K paired measurements and lifecycle/pressure
 matrix remain open; this is not a performance result.
 
+The first A2.1 `small_repo` C1 pair then exposed a narrower production boundary:
+strict forced-tool rows resolve deterministic `processed_argmax`, not
+`greedy_fast`, so all four radix turns correctly reported
+`sampling_unsupported` with zero lookups/hits/reused tokens. The one observed
+pair is diagnostic-only and the rest of the timing matrix stopped. Task #233
+must add and independently state/KV-gate suffix-only deterministic
+processed-argmax reuse while preserving stochastic-sampling fallback before
+A2.1 resumes.
+
 Do not make radix caching default merely because p256+s1 is fast. Default
 promotion requires the multi-turn workload and bounded LRU/pressure gates.
 
