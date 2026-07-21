@@ -172213,3 +172213,18 @@ KFD ownership evidence, and the failed acceptance guards. Keep radix
 default-off. Per task #226's explicit prerequisite, the C4/C8 promotion matrix
 must not run after C1 fails; lifecycle correctness remains a separate negative
 closure input.
+
+## 2026-07-21 — Skip A2.2 C4/C8 after the C1 prerequisite fails
+
+Closed task #226 without launching GPU work. Its task contract begins "After C1
+prefix A/B passes" and forbids promotion from a partial/client-only matrix. The
+complete task #225 packet instead shows sparse reuse, **26.64-65.63%** paired
+active-SSE regressions, **38.81-196.09%** tool-ready regressions, failed A1
+C1 guards for every family, and failed growing/medium variance. C4/C8 cannot
+repair the required occupancy-one guard, so spending another 36 warmed server
+conditions would violate the predeclared funnel rather than add decision value.
+Published
+`benchmarks/results/2026-07-21-w7900-agentic-a2-c48-prefix-skipped.json` as a
+fail-closed no-timing artifact; it records the full planned protocol, task #225
+artifact/hash, failed prerequisite, and confirms that no C4/C8 GPU measurement
+or partial promotion occurred.
