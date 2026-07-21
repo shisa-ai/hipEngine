@@ -50,6 +50,7 @@ from hipengine.server.api import (
     _coerce_generation_output,
     _GenerationBatcher,
     _QueuedBatchResult,
+    _QueuedGeneration,
     _SPECULATIVE_MTP_AUTO_ROUTE,
     _SPECULATIVE_MTP_BATCH_ROUTE,
     _SPECULATIVE_MTP_DEFAULT_ROUTE,
@@ -4487,6 +4488,34 @@ def test_generation_batcher_limits_controlled_stream_active_requests() -> None:
         assert fake.max_active == 1
         assert batcher.active_requests() == 0
         assert batcher.queue_depth() == 0
+
+    asyncio.run(run())
+
+
+def test_generation_batcher_releases_prestart_cancelled_controlled_reservation() -> None:
+    async def run() -> None:
+        fake = FakeLLM()
+        fake.supports_controlled_streaming = True
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.0,
+            max_active_requests=1,
+        )
+        item = _QueuedGeneration(
+            prompts=("cancel-before-start",),
+            sampling=SamplingParams(max_tokens=1),
+            stream_queue=asyncio.Queue(maxsize=2),
+        )
+
+        batcher._launch_controlled_stream(item, fake)
+        assert item.producer_task is not None
+        assert batcher.active_requests() == 1
+        item.producer_task.cancel()
+        await asyncio.gather(item.producer_task, return_exceptions=True)
+        await asyncio.sleep(0)
+
+        assert batcher.active_requests() == 0
+        assert batcher.active() is False
 
     asyncio.run(run())
 
