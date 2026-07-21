@@ -172557,3 +172557,18 @@ Validation passes **21/21** across A4 decision/screen, production-load, and
 README synchronization contracts. Targeted Ruff, both compact JSON parses,
 benchmark/root README synchronization, Worklog conflict validation, and diff
 checks pass with only the existing Starlette/httpx warning.
+
+## 2026-07-22 — Expose prefix-cache provenance for A5 pressure
+
+Added a benchmark-only `--prefix-cache off|radix` selector to the production
+load/SLO gate before starting A5. RED first showed the parser lacked the field.
+The gate now resolves the same existing engine-loop mode through
+`HIPENGINE_PREFIX_CACHE`, records it in artifact configuration and provenance,
+and otherwise leaves runtime/default behavior unchanged. This lets the A5
+package-default soak remain cache-off while a separate correctness-only radix
+pressure pass records bounded snapshot eviction rather than relying on an
+unrecorded ambient variable.
+
+GREEN passes **14/14** production-load contract tests. Targeted Ruff, Python
+compilation, and diff checks pass with only the existing Starlette/httpx warning.
+No GPU result or performance claim changes in this harness unit.

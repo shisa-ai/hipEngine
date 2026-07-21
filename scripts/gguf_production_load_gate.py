@@ -73,6 +73,7 @@ _PROVENANCE_ENV_KEYS = (
     "HIPENGINE_BACKEND",
     "HIPENGINE_HIP_ARCH",
     "HIPENGINE_COMPILER_VERSION_FILE",
+    "HIPENGINE_PREFIX_CACHE",
     "HIP_VISIBLE_DEVICES",
     "ROCR_VISIBLE_DEVICES",
     "GPU_MAX_HW_QUEUES",
@@ -1684,6 +1685,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "HIPENGINE_MAX_ACTIVE_REQUESTS": str(int(args.max_active_requests)),
         "HIPENGINE_MAX_PENDING_REQUESTS": str(int(args.max_pending_requests)),
         "HIPENGINE_MAX_PREFILL_CHUNK_TOKENS": str(int(args.initial_prefill_chunk_tokens)),
+        "HIPENGINE_PREFIX_CACHE": str(args.prefix_cache),
         "HIPENGINE_FAIR_PREFILL_BURST_CHUNKS": str(
             int(args.initial_fair_prefill_burst_chunks)
         ),
@@ -2099,6 +2101,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "backend": str(args.backend),
             "quant": str(args.quant),
             "kv_dtype": "bf16",
+            "prefix_cache": str(args.prefix_cache),
             "max_sequence_length": max_sequence_length,
             "max_active_requests": int(args.max_active_requests),
             "max_pending_requests": int(args.max_pending_requests),
@@ -2166,6 +2169,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     parser.add_argument("--backend", choices=_SUPPORTED_BACKENDS, default="hip_gfx1151")
     parser.add_argument("--quant", default="gguf_q4_k_m")
+    parser.add_argument("--prefix-cache", choices=("off", "radix"), default="off")
     parser.add_argument(
         "--workloads",
         default=",".join(_CANONICAL_WORKLOADS),
