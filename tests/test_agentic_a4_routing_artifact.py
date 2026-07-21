@@ -14,6 +14,10 @@ PROTOCOL = (
     REPO_ROOT
     / "benchmarks/results/2026-07-22-w7900-agentic-a4-predeclared-protocol.json"
 )
+DECISION = (
+    REPO_ROOT
+    / "benchmarks/results/2026-07-22-w7900-agentic-a4-routing-decision.json"
+)
 
 
 def _sha256(path: Path) -> str:
@@ -88,3 +92,58 @@ def test_a4_routing_screen_stops_fail_closed_before_promotion_matrix() -> None:
     assert ownership["model_active_requests"] == 0
     assert ownership["generation_queue_depth"] == 0
     assert ownership["generation_active_requests"] == 0
+
+
+def test_a4_final_decision_binds_failed_screen_and_preserves_defaults() -> None:
+    payload = json.loads(DECISION.read_text(encoding="utf-8"))
+
+    assert payload["kind"] == "gfx1100_agentic_a4_routing_decision"
+    assert payload["status"] == "final_blocked_no_routing_candidate"
+    assert payload["passed"] is False
+    assert payload["measurement_valid"] is False
+    assert payload["correctness_claim"] is False
+    assert payload["performance_claim"] is False
+    assert payload["timing_claim"] is False
+    assert payload["evidence"]["protocol"]["sha256"] == _sha256(PROTOCOL)
+    assert payload["evidence"]["routing_screen"]["sha256"] == _sha256(ARTIFACT)
+
+    assert payload["screen_coverage"]["candidate_count"] == 8
+    assert payload["screen_coverage"]["candidate_samples"] == 24
+    assert payload["screen_coverage"]["requests"] == 288
+    assert payload["screen_coverage"]["observed_generated_tokens"] == 8640
+    assert payload["screen_coverage"]["fully_exact_row_generated_tokens"] == 8208
+    assert len(payload["candidate_disposition"]) == 8
+    assert all(row["result"].startswith("rejected_") for row in payload["candidate_disposition"])
+
+    blocker = payload["correctness_blocker"]
+    assert blocker["mismatch_count"] == 9
+    assert blocker["affected_request"] == "fixed-0011"
+    assert blocker["shape"] == "p512/d48"
+    assert blocker["expected_token_id"] == 9710
+    assert blocker["correct_prefix_before_first_mismatch_tokens"] == {
+        "min": 20,
+        "max": 24,
+    }
+
+    acceptance = payload["acceptance"]
+    assert acceptance["stage_1_screen_complete"] is True
+    assert acceptance["all_candidates_complete"] is True
+    assert acceptance["complete_all_pass_candidates"] == 0
+    assert acceptance["candidate_selected"] is False
+    assert acceptance["occupancy_c1_c2_c4_c8_matrix_authorized"] is False
+    assert acceptance["agentic_strict_tool_guard_authorized"] is False
+    assert acceptance["cancellation_backpressure_overload_guard_authorized"] is False
+    assert acceptance["default_change_authorized"] is False
+    assert acceptance["inferred_timing_used"] is False
+    assert acceptance["final_ownership_zero"] is True
+
+    assert payload["runtime_defaults"] == {
+        "changed": False,
+        "prefill_decode_policy": "protect_decode",
+        "prefill_chunk_tokens": 256,
+        "fair_prefill_burst_chunks": 1,
+        "generation_batch_window_ms": 0.0,
+        "prefix_cache": "off",
+        "native_gpu_sampler": False,
+    }
+    assert payload["matrix_disposition"]["published_performance_rows"] == 0

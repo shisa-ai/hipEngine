@@ -172531,3 +172531,29 @@ transition against its independent C1 trajectory, then restart all eight frozen
 candidates. The artifact/load-gate bundle passes **14/14**; targeted Ruff, JSON,
 Worklog conflict, and diff checks pass with only the existing Starlette/httpx
 warning.
+
+## 2026-07-22 — Publish the final A4 routing decision
+
+Closed the A4 decision without converting any failed candidate's diagnostic
+latency into a performance row. The final artifact hashes the frozen
+predeclaration (`89e4fa25...692d1`) and complete balanced screen
+(`cfad064f...e2969`), preserves all eight rejected dispositions, records zero
+complete correctness+SLO candidates, and keeps every stage-2/stage-3 skip
+explicit. The final decision is to retain gfx1100
+`protect_decode:256/burst-1`, the zero-ms generation window, cache off, and the
+native sampler off.
+
+Published
+`benchmarks/results/2026-07-22-w7900-agentic-a4-routing-decision.json`
+(SHA-256 `082de628453786aa2799b2d00909bd3619a03145f080390f17c2d9d648bc775f`).
+Updated the benchmark platform index, blocked-attempt rollup, changelog, and
+agentic optimization board. A4 is closed/blocked at stage 1; rerun requires a
+model-general exactness repair for the late delayed p512/d48 state/KV or
+physical-width transition. A5 may proceed independently as a pressure and
+correctness packet on unchanged defaults, and A6 remains the separate
+no-performance quality lane.
+
+Validation passes **21/21** across A4 decision/screen, production-load, and
+README synchronization contracts. Targeted Ruff, both compact JSON parses,
+benchmark/root README synchronization, Worklog conflict validation, and diff
+checks pass with only the existing Starlette/httpx warning.

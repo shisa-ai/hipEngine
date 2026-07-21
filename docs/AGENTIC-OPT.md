@@ -41,8 +41,10 @@ scoped radix route is exact and lifecycle-safe but decisively regresses every C1
 family, so it remains explicit-only and cache-off remains the default. A3 is
 also closed before timing: native-eligible auto-tool sampling fails the frozen
 turn-1 strict-envelope oracle, while valid specific/required tool forcing remains
-explicit host fallback. The GGUF native sampler therefore stays default-off; the
-next measured unit is low-occupancy routing/SLO policy.
+explicit host fallback. The GGUF native sampler therefore stays default-off.
+A4 routing is also closed without promotion: every candidate fails a balanced
+mixed-arrival SLO or exact-ID gate. The next independent measured unit is A5
+pressure/soak on unchanged package defaults.
 
 ## Current status report
 
@@ -85,6 +87,7 @@ fail-safe envelopes; they do not prove broad live-model tool-use quality.
 | Real OpenAI logical C13 | **111.380 aggregate tok/s**, physical c8 plus sparse c8 | same F1 artifact |
 | Same-loop serial C13 control | **31.708 aggregate tok/s** | same F1 artifact |
 | Coding-agent A1 active SSE | Small **16.239/15.995/16.020**, growing **15.100/15.231/15.036**, medium **4.127/4.629/4.339 tok/s** at C1/C4/C8 | `benchmarks/results/2026-07-21-w7900-agentic-a1-repeated-baseline.json` |
+| Coding-agent A4 routing/SLO | **Blocked, no performance row**: 8 candidates x 3 balanced mixed-arrival passes; control misses one TTFT SLO and alternatives produce 9 late p512/d48 ID mismatches | `benchmarks/results/2026-07-22-w7900-agentic-a4-routing-decision.json` |
 | PARO direct selected-batch c2 | **121.923 aggregate tok/s**, +5.09% vs c1 and +20.81% vs serial c2 | `benchmarks/results/2026-07-18-gfx1100-paro-g2-selected-batch-c2-retained.json` |
 | PARO MTP N4 after parallel router | **66.303/66.259 tok/s**, about **0.592x true AR** | `benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-parallel-router-topk.json` |
 
@@ -116,10 +119,13 @@ resident-session semantics.
    scaling.** Active-SSE goodput is flat from C1 through C8 while buffered
    tool-ready p50 grows about 4x/8x. Medium C4 is only **1.122x** C1 and C8 falls
    to **0.937x** C4. Prefix reuse and native sampling now have measured targets.
-2. **gfx1100 production-policy transfer is incomplete.** GGUF continuous
-   membership and physical c8 are retained, but the broader occupancy-adaptive
-   low-load, sampled API, prefix-economics, long-context pressure, and SLO packet
-   has not been independently transferred from gfx1151.
+2. **gfx1100 routing-policy promotion is correctness-blocked.** The balanced A4
+   screen completes all eight predeclared policy/chunk/burst/window candidates,
+   but no candidate passes all three delayed mixed-arrival repetitions. The
+   package control misses TTFT p95 once; alternatives produce nine late
+   `fixed-0011` p512/d48 trajectory mismatches after 20-24 exact IDs. A4 must
+   localize that state/KV or physical-width transition before any C1/C2/C4/C8
+   promotion timing. Long-context pressure remains separate A5 coverage.
 3. **GGUF has no promotable native sampled tool route.** The explicit candidate
    removes full-vocabulary D2H for supported c1 and dense compatible c>N rows,
    but specific/required tool forcing, close queues, and other dynamic processors
@@ -268,11 +274,11 @@ The final A2.4 decision therefore keeps `HIPENGINE_PREFIX_CACHE=off`. Every C1
 family regresses both primary metrics, all A1 guards fail, growing/medium radix
 variance exceeds 5%, and the failed C1 prerequisite intentionally prevents
 C4/C8 timing or a medium-C4 promotion claim. Radix remains an explicit
-diagnostic only; no prompt-conditioned snapshot retargeting is permitted. The
-next stage is A3 host versus native GPU sampling from the cache-off control.
+diagnostic only; no prompt-conditioned snapshot retargeting is permitted. This
+selected the now-closed A3 host/native screen from the cache-off control.
 `benchmarks/results/2026-07-21-w7900-agentic-a2-prefix-decision.json`.
 
-### P2 — Transfer low-occupancy/SLO routing to gfx1100
+### P2 — Transfer low-occupancy/SLO routing to gfx1100 — blocked
 
 Protect a lone coding agent from paying a masked wide-batch or artificial batch
 window while still filling physical c2/c4/c8 under concurrent arrivals.
@@ -286,6 +292,28 @@ Required gates:
   execution width changes;
 - cancellation/backpressure and overload behavior;
 - no material c1 regression for a retained c>N gain.
+
+The predeclared A4 stage-1 screen runs **8 candidates x 3 balanced repetitions**
+over 12 delayed mixed-shape requests per candidate: **288 requests / 8,640
+response-owned IDs** total. Native c1/c2/c4 routes and final ownership pass, but
+there is no complete correctness+SLO candidate. The zero-window
+`protect_decode:256/burst-1` control is exact but misses the 10 s TTFT p95 SLO
+once at **10.983 s**. Every apparently faster alternative changes the late
+`fixed-0011` p512/d48 trajectory in at least one pass after 20-24 correct token
+`9710` IDs; there are **9 mismatched rows** in total. The apparent median
+SLO-goodput gains up to **+63.81%** are diagnostic-only and invalid for
+promotion.
+
+The funnel therefore stops before occupancy C1/C2/C4/C8, strict-tool, and
+cancellation/backpressure/overload promotion rows. No timing is inferred, no
+runtime default changes, and gfx1100 remains on
+`protect_decode:256/burst-1` with the zero-ms package window. A4 can rerun only
+after a model-general exactness gate localizes and repairs the late state/KV or
+physical-width transition. A5 pressure/soak may proceed independently on the
+unchanged default. Artifacts:
+`benchmarks/results/2026-07-22-w7900-agentic-a4-routing-screen-blocked.json`
+and
+`benchmarks/results/2026-07-22-w7900-agentic-a4-routing-decision.json`.
 
 ### P3 — Integrate native GGUF GPU sampling
 
@@ -491,9 +519,11 @@ Every retained comparison requires:
   auto-tool rows fail the frozen turn-1 strict-envelope oracle, while all valid
   specific/required tool rows use explicit host fallback; no C1/C4/C8 timing or
   promotion claim exists.
-- **A4 — routing/SLO (next):** batch-window and prefill-policy A/B under delayed
-  mixed arrivals.
-- **A5 — pressure/soak:** cancellation, slow consumer, queue/KV/cache pressure,
+- **A4 — routing/SLO (closed, blocked at stage 1):** all eight candidates finish
+  three balanced delayed mixed-arrival passes, but the control misses one TTFT
+  SLO and every faster alternative has at least one late p512/d48 ID mismatch;
+  no occupancy/promotion timing or default change exists.
+- **A5 — pressure/soak (next):** cancellation, slow consumer, queue/KV/cache pressure,
   eviction, and final ownership.
 - **A6 — quality lane:** automatic tool selection and repository-task oracles,
   reported separately from deterministic engine performance.
