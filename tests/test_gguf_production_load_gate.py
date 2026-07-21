@@ -7,8 +7,10 @@ from scripts.gguf_production_load_gate import (
     RequestResult,
     SLOThresholds,
     TuningCandidate,
+    _PROVENANCE_ENV_KEYS,
     _aggregate_tuning_runs,
     _build_workload_specs,
+    build_parser,
     _distribution,
     _evaluate_workload,
     _http_json,
@@ -58,6 +60,14 @@ def test_poisson_offsets_are_seeded_monotonic_and_start_at_zero() -> None:
     assert all(left < right for left, right in zip(first, first[1:]))
     with pytest.raises(ValueError, match="positive"):
         _poisson_arrival_offsets(count=2, rate_per_second=0.0, seed=1)
+
+
+def test_pressure_gate_prefix_cache_cli_defaults_off_and_records_radix() -> None:
+    parser = build_parser()
+
+    assert parser.parse_args([]).prefix_cache == "off"
+    assert parser.parse_args(["--prefix-cache", "radix"]).prefix_cache == "radix"
+    assert "HIPENGINE_PREFIX_CACHE" in _PROVENANCE_ENV_KEYS
 
 
 def test_workload_selector_is_ordered_unique_and_fail_closed() -> None:
