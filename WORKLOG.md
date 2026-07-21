@@ -172829,3 +172829,93 @@ Ruff, six JSON parses, all 24 external-oracle executions, Worklog conflict and
 changed-doc checks, and `git diff --check` pass; only the existing Starlette/
 httpx warning remains. No GPU measurement is part of this protocol unit; commit
 it cleanly before starting the W7900 server.
+
+## 2026-07-22 — Complete broad A6 quality measurement on W7900
+
+Ran the predeclared packet from clean pushed
+`878d07a9ba8d3cd24cf44bd88d359be7b4921c2e`. The real server command was:
+
+```bash
+HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/agentic-w7900-hipcc-version.txt \
+HIPENGINE_GENERATION_BATCH_WINDOW_MS=0 \
+HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 \
+HIPENGINE_GGUF_GDN_PREFILL_MODE=exact \
+HIPENGINE_GGUF_AR_STREAM_DECODE=0 HIPENGINE_GGUF_AR_PACKED_DECODE=1 \
+HIPENGINE_MAX_PREFILL_CHUNK_TOKENS=256 \
+HIPENGINE_QWEN35_NATIVE_SAMPLER=0 PYTHONPATH=. \
+uv run python -m hipengine.server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --served-model-name Qwen3.6-35B-A3B \
+  --max-context-tokens 4096 --max-active-requests 1 \
+  --prefix-cache off --metrics prometheus --eager-load \
+  --host 127.0.0.1 --port 18140 --log-level info
+```
+
+Startup completed in **77.884 s** at **23.45 GiB used / 21.54 GiB free** after
+the exact 4,095-token scratch probe. Startup timing is diagnostic only. The
+collector command was:
+
+```bash
+HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/agentic-w7900-hipcc-version.txt \
+HIPENGINE_PREFIX_CACHE=off HIPENGINE_QWEN35_NATIVE_SAMPLER=0 PYTHONPATH=. \
+uv run python scripts/agentic_coding_quality.py \
+  --base-url http://127.0.0.1:18140/v1 \
+  --workloads benchmarks/prompts/agentic-quality-v2.json --all-workloads \
+  --model Qwen3.6-35B-A3B \
+  --model-path /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --target-arch gfx1100 \
+  --device-name 'AMD Radeon Pro W7900' --quant gguf_q4_k_m --kv-dtype bf16 \
+  --compiler-version-file /tmp/agentic-w7900-hipcc-version.txt \
+  --require-clean-provenance --concurrency 1 --runs 2 --max-tokens 128 \
+  --cache-mode off --timeout-s 600 --idle-timeout-s 60 \
+  --records-json /tmp/2026-07-22-w7900-agentic-a6-broad-records-v1.json \
+  --json /tmp/2026-07-22-w7900-agentic-a6-broad-quality-v1.json
+```
+
+The packet completes all **48/48 attempts** and both repeats are response-exact
+for every **24/24** workload/turn pair after excluding random call IDs. Prompt
+lengths are **1,420-1,751 tokens**. All **4,538 generated IDs** are retained
+from the blocking responses, generated-ID hashes validate, and no raw tool
+markup leaks. Aggregate quality:
+
+- complete success **10/48 (20.83%)**;
+- valid call / correct tool **18/48 (37.5%)**;
+- schema-valid calls **18/48** and exact arguments **16/48 (33.33%)**;
+- independent external-result oracle **16/48 (33.33%)**;
+- safe committed patch **0/6**; external test selection **8/8**;
+- outcomes: **10 passed / 20 invalid_tool_call / 10 no_tool_call / 6
+  content_alongside_tool_call / 2 wrong_arguments**;
+- repair attempts **0** by protocol; no retry/repair prompt is inferred.
+
+Family complete success is repository **2/16**, general English **4/16**,
+Japanese **0/8**, and mixed Japanese/English **4/8**. The two valid Japanese
+calls select `lookup` but choose the wrong key. Two exact external test calls
+still fail complete-turn quality because assistant content accompanies the tool
+call. No patch call produces a valid envelope.
+
+Final pending/active/stream/model/session/KV-ref/KV-pin/graph/workspace/cache
+ownership is zero. Fifty monitor samples at five-second intervals from startup
+through collection report only server PID 1604110 on target GPU0; card0 spans
+0-100% and card1 remains exactly 0%. The monitor log is 38,709 bytes with
+SHA-256 `47744bd643bee4de0e540ee6bcd02a7059d492e7fedb89147cf5d9f9fcc5e18b`.
+The server log SHA-256 is
+`124685057045c6de637447fe0cc8b35f10cf900ae9a2c183935b820641554762`.
+After shutdown no KFD process remains and W7900 VRAM returns to 27,947,008 bytes.
+
+The raw record packet is 164,852 bytes / SHA-256
+`ab68fa345e72f8eda36bb24ecf48a130ea1d5adce45589d6efe694993132c321`.
+Published the complete validated artifact at
+`benchmarks/results/2026-07-22-w7900-agentic-a6-broad-quality.json`, 173,842
+bytes / SHA-256
+`d60372d3af15c15a6e4ab3ece8fa25eba1e33f2b8544971a38e778fa6d3d8707`.
+Canonical source/model/hardware provenance is clean. The artifact contains no
+latency, TTFT, wall, tok/s, or goodput fields and sets
+`performance_claim=false`. This is a synthetic failure-distribution diagnostic,
+not a public quality benchmark, cross-model leaderboard, or performance claim.
+Publication validation passes **25/25** across the broad A6 artifact, external
+oracle, legacy quality, README synchronization, and provenance contracts.
+Targeted Ruff, complete artifact validation, JSON parsing, README sync, Worklog
+conflict validation, changed-doc structure/trailing-space checks, artifact hash,
+and `git diff --check` pass; only the existing Starlette/httpx warning remains.
