@@ -27,6 +27,7 @@ import random
 import shlex
 import socket
 import statistics
+import struct
 import subprocess
 import sys
 import threading
@@ -172,6 +173,7 @@ class RequestResult:
     prompt_exact: bool = True
     http_protocol_exact: bool = True
     disconnect_triggered: bool = False
+    cancellation_latency_seconds: float | None = None
     done_sentinel: bool = True
     error_status_code: int | None = None
     generated_ids: tuple[int, ...] = ()
@@ -535,11 +537,17 @@ def _evaluate_workload(
         for row in service_rows
         if row.end_to_end_seconds is not None
     ]
+    cancellation = [
+        float(row.cancellation_latency_seconds)
+        for row in rows
+        if row.cancellation_latency_seconds is not None
+    ]
     latency = {
         "queue": _distribution(queue),
         "ttft": _distribution(ttft),
         "itl": _distribution(itl),
         "end_to_end": _distribution(end_to_end),
+        "cancellation_ack": _distribution(cancellation),
     }
     exact_generated = sum(int(row.generated_count) for row in rows if row.exact)
     observed_generated = sum(int(row.generated_count) for row in rows)
@@ -914,6 +922,29 @@ def _openai_error_fields(
     )
 
 
+def _force_disconnect(response: Any, connection: http.client.HTTPConnection) -> None:
+    """Close a streaming client with an explicit transport-level disconnect."""
+
+    client_socket = getattr(connection, "sock", None)
+    if client_socket is not None:
+        try:
+            client_socket.setsockopt(
+                socket.SOL_SOCKET,
+                socket.SO_LINGER,
+                struct.pack("ii", 1, 0),
+            )
+        except OSError:
+            pass
+        try:
+            client_socket.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+    try:
+        response.close()
+    finally:
+        connection.close()
+
+
 def _stream_request(
     host: str,
     port: int,
@@ -990,8 +1021,7 @@ def _stream_request(
             and int(spec.disconnect_after_tokens) == 0
         ):
             disconnected = True
-            response.close()
-            connection.close()
+            _force_disconnect(response, connection)
         else:
             while True:
                 raw_line = response.readline()
@@ -1040,8 +1070,7 @@ def _stream_request(
                         and len(delta_times) >= int(spec.disconnect_after_tokens)
                     ):
                         disconnected = True
-                        response.close()
-                        connection.close()
+                        _force_disconnect(response, connection)
                         break
                 else:
                     finish_reason = str(choice.get("finish_reason"))
@@ -1367,6 +1396,11 @@ def _join_trace(
         prompt_exact=prompt_exact,
         http_protocol_exact=http_protocol_exact,
         disconnect_triggered=trace.disconnected_by_client,
+        cancellation_latency_seconds=(
+            max(0.0, float(reclaimed.completed_at - trace.completed_at))
+            if outcome in {"cancelled", "disconnected"} and reclaimed is not None
+            else None
+        ),
         done_sentinel=trace.done_sentinel,
         error_status_code=trace.error_status_code,
         generated_ids=generated,
