@@ -172625,3 +172625,32 @@ Validation:
 
 A5 must restart from this source; the stopped diagnostic carries no retained
 measurement or performance claim.
+
+## 2026-07-22 — Make the A5 socket disconnect deterministic
+
+The first clean post-cap A5 rerun reached the cancellation packet but one abrupt
+client close was not observed by Uvicorn. Request 44 remained the sole live row
+for the full 180-second idle bound (`active=1`, `pending=0`, slot 3, two
+refcounted+pinned KV pages) while all seven peers reclaimed and the server
+batcher drained. The run failed without an artifact; GPU0 exclusivity held and
+process teardown returned W7900 VRAM to idle. A focused immediate rerun of the
+same eight-row cancellation packet happened to pass **6 completed / 1
+disconnected / 1 timeout**, exact survivor IDs, and zero final ownership,
+confirming nondeterministic graceful-FIN observation rather than a reproducible
+model-state transition.
+
+The pressure client now marks its socket `SO_LINGER(1,0)`, calls
+`shutdown(SHUT_RDWR)`, and only then closes the HTTP wrappers. This makes the
+fixture an explicit abrupt transport disconnect instead of relying on FIN timing.
+The retained request row also records backend reclaim acknowledgement latency
+from client close to the captured reclaim callback, with a dedicated
+`cancellation_ack` distribution in the workload summary.
+
+Validation:
+
+- RED: the new transport-shutdown contract failed at import before `_force_disconnect` existed; the real W7900 full-packet diagnostic independently captured the leaked owner.
+- GREEN: production-load contracts pass **16/16**, including exact shutdown ordering and cancellation-latency rollup.
+- Targeted Ruff, Python compilation, and diff checks pass with only the existing Starlette/httpx warning.
+
+No result from the failed full packet or focused nondeterminism diagnostic is a
+performance claim. The full A5 packet must run again from the committed harness.
