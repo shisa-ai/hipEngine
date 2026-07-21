@@ -101,6 +101,29 @@ def test_nextn_provider_emits_only_candidate_rows_under_locked_abi() -> None:
     assert len(executor.calls) == 4
 
 
+def test_nextn_provider_advances_only_a_fully_accepted_tail() -> None:
+    executor = _FakeExecutor()
+    provider = Qwen35GGUFNextNDraftProvider(executor)
+    context = MtpProposalContext(
+        request_ids=(41,),
+        root_tokens=(9,),
+        root_positions=(12,),
+        target_hidden=Tensor.from_handle(77, (1, 8), DType.BF16, Device("hip", 0)),
+    )
+    provider.propose(context, candidate_budget=2)
+
+    assert provider.advance_full_accept_tail(41, accepted_count=1) is None
+    assert len(executor.calls) == 2
+    update = provider.advance_full_accept_tail(41, accepted_count=2)
+    assert update is not None
+    assert executor.calls[-1] == (41, 11, 14, 1002)
+    assert update.token_id == 12
+    with pytest.raises(ValueError, match="prior proposal"):
+        provider.advance_full_accept_tail(42, accepted_count=0)
+    with pytest.raises(ValueError, match="prior proposal budget"):
+        provider.advance_full_accept_tail(41, accepted_count=3)
+
+
 def _require_real_nextn() -> None:
     if not _MODEL.exists():
         pytest.skip(f"local GGUF fixture not found: {_MODEL}")

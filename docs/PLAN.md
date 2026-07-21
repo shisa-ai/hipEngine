@@ -966,7 +966,7 @@ SpecDec is planned as a scheduler + plugin feature that reuses the same target-m
 |------------|--------|-------------------|
 | Medusa-style heads | Planned | Model-advertised heads produce shallow candidate rows. |
 | Lookahead decoding | Planned | Scheduler-side n-gram/cache provider emits candidate chains. |
-| MTP (multi-token pred) | Foundation + GGUF proposer | Shared candidate-only/verify/accept ABI is landed; the Qwen3.6 GGUF trailing NextN block is separately mapped, materialized, natively executed, and exposed as a `DraftBatch` provider. Transactional end-to-end scheduler integration/economics remain. Detailed plan: [`docs/MTP.md`](MTP.md). |
+| MTP (multi-token pred) | Shared runtime + GGUF exact no-hold | Shared candidate-only/verify/accept ABI is landed. The Qwen3.6 GGUF trailing NextN block is separately mapped/materialized/executed, and the exact end-to-end route uses root-prefixed target rows, verify-chain spans, GPU accept, scheduler KV transactions, state/KV commit/rollback, and shape buckets. Matched B=1/2/3 economics are regressive, so GGUF MTP stays default-disabled. Detailed plan: [`docs/MTP.md`](MTP.md). |
 | EAGLE3 | Research | Draft-model plugin emits feature-conditioned candidate chains/trees. |
 | DFlash (draft model) | Research | z-lab/FastKMS-lineage draft-model plugin plus DDTree/tree-verify support; detailed native plan: [`docs/DFLASH.md`](DFLASH.md). |
 

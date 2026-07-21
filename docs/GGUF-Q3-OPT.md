@@ -154,15 +154,19 @@ the source-derived review below. The measured state is:
   This is synchronous in-call prompt-list scheduling; persistent cross-call HTTP
   admission, elastic KV/prefix sharing, cancellation, and non-greedy row
   sampling remain outside task #29.
-- **GGUF MTP proposer:** task #30 is implemented under the locked shared ABI.
+- **GGUF MTP:** tasks #30 and #31 are complete under the locked shared ABI.
   The 40-layer AR map still excludes trailing blk.40; a separate strict tensor
   map/materializer owns its 20 draft tensors and target embedding/output
   fallbacks. Native raw Q3_K selected single/dual-SiLU kernels execute gate/up,
   the existing Q4_K/Q8_0/full-attention paths execute the rest of the block,
   and `Qwen35GGUFNextNDraftProvider` returns candidate-only `DraftBatch` rows.
-  A real one-step empty-KV gate matches llama.cpp's top-10 IDs and top-1 token
-  198, with top-10 logits within 0.06 absolute. Transactional target
-  verify/accept/commit integration and economics remain task #31.
+  The target consumes root-prefixed `TargetVerifyBatch` rows with
+  `KVLiveSpans(span_role="verify_chain")`, GPU accept/CPU-oracle parity,
+  scheduler-owned transactions, per-row state snapshots, accepted-prefix KV
+  publication, rollback, and full shape-key stable-buffer buckets. B=1/2/3
+  logits, reject/partial/full commits, and real greedy output are exact. Matched
+  GPU1 D16 ratios are only `0.544x/0.346x/0.271x` AR at `1.071` visible
+  tokens/cycle, so public GGUF generation remains MTP-disabled.
 
 The real local UD-Q3_K_M blk.40 has 20 tensors: Q8_0 attention, output,
 shared-expert, and `nextn.eh_proj` weights; Q3_K expert gate/up; Q4_K expert
@@ -176,7 +180,7 @@ embedding/output fallbacks apply.
 | #28 | Build one row-shaped GGUF target executor for independent decode and verify rows | **Completed:** C=2 decode and V=2 serial-chain layer/full-logit parity are exact |
 | #29 | Promote native UD-Q3_K_M c=2/4/8 decode and replace the blocked template | **Completed:** exact native C=2/4/8 plus reclaim/readmit scheduling retained |
 | #30 | Materialize blk.40 and emit candidate-only `DraftBatch` rows | **Completed:** separate map/residency, raw Q3_K kernels, real one-step parity, and provider landed |
-| #31 | Integrate and benchmark GGUF MTP end to end | **Unblocked:** #28 + #30 completed |
+| #31 | Integrate and benchmark GGUF MTP end to end | **Completed/no-hold:** exact shared-ABI transaction path; B=1/2/3 economics regressive, default disabled |
 | #32 | Reprofile residual c=1 Q3 decode | Independent, profile-gated |
 
 ## Executive recommendation
@@ -748,8 +752,9 @@ The active task graph already encodes the safe composition order:
 GGUF NextN remains outside the one-token AR optimization campaign. Task #30
 now owns and executes blk.40 separately from AR, including raw Q3_K selected
 gate/up kernels and a candidate-only provider under the locked speculative ABI.
-Task #31 is unblocked to connect that proposer to the completed row-shaped
-target verifier and transactional accept/commit path.
+Task #31 connects that proposer to the row-shaped target verifier and shared
+transactional accept/commit path. The route is exact but remains an explicit
+diagnostic after the matched B=1/2/3 economics gate rejected promotion.
 
 The latency budget makes clear why #20/#21 alone cannot reach the target:
 
@@ -1623,11 +1628,12 @@ to infer a fundamental HIP ceiling. Task #32 starts from a fresh production
 profile; it must not repeat the rejected hierarchical top-k, IQ4 tile4,
 rowtile/repack, or stream-overlap premises.
 
-For **concurrent and speculative execution**, task #29 now retains native exact
-C=2/4/8 serving and task #30 retains a separately materialized/executed blk.40
-NextN proposer under the locked shared ABI. Task #31 now owns only end-to-end
-wiring to the row-shaped target verifier, transactional accept/commit, and MTP
-economics. No additional GGUF-MTP ABI approval is required.
+For **concurrent and speculative execution**, task #29 retains native exact
+C=2/4/8 serving, task #30 retains a separately materialized/executed blk.40
+NextN proposer, and task #31 completes exact end-to-end wiring through the
+shared row-shaped verifier, transactional accept/commit, and graph buckets.
+The first matched economics gate is materially negative, so public GGUF MTP is
+disabled by evidence rather than by an approval or ABI blocker.
 
 For future models and cards, bounded auto-tuning should make coverage and
 portability systematic: reconcile every tensor and runtime shape with its

@@ -4066,6 +4066,7 @@ class Qwen35GGUFResidentSession:
     _logits_host: np.ndarray | None = field(default=None, init=False)
     _buffers: tuple[object, ...] = field(default=(), init=False)
     _position: int = field(default=0, init=False)
+    _last_target_hidden_ptr: int = field(default=0, init=False)
     _reset_current_slot_only: bool = field(default=False, init=False)
     _lm_head_threads: int = field(default=128, init=False)
     _lm_head_stage1_blocks: int = field(default=0, init=False)
@@ -4280,6 +4281,25 @@ class Qwen35GGUFResidentSession:
         return int(self._position)
 
     @property
+    def last_target_hidden(self) -> Tensor:
+        """Final trunk hidden row that produced the most recent target sample.
+
+        Target-attached draft models consume the pre-output-norm trunk row
+        together with the next root token. The pointer is owned by the resident
+        target session and is valid until the next target forward overwrites
+        its scratch.
+        """
+
+        if self.runner is None or self._last_target_hidden_ptr == 0:
+            raise RuntimeError("GGUF resident session has no completed target hidden row")
+        return Tensor.from_handle(
+            self._last_target_hidden_ptr,
+            (1, self.runner.hidden_size),
+            DType.BF16,
+            Device("hip", 0),
+        )
+
+    @property
     def row_positions(self) -> tuple[int, ...]:
         """Next target-token position for every resident physical row."""
 
@@ -4371,6 +4391,7 @@ class Qwen35GGUFResidentSession:
         else:
             self._target_scratch_owner.zero_states(runtime)
         self._position = 0
+        self._last_target_hidden_ptr = 0
 
     def compact_target_slots(
         self,
@@ -4956,6 +4977,7 @@ class Qwen35GGUFResidentSession:
             runtime=runtime,
         )
         last_hidden_ptr = last_bulk_scratch.norm.ptr
+        self._last_target_hidden_ptr = int(last_src_ptr)
         try:
             return self._sample_from_hidden(last_hidden_ptr, return_logits=return_logits)
         finally:
@@ -5661,6 +5683,7 @@ class Qwen35GGUFResidentSession:
         position: int | None = None,
         *,
         return_logits: bool = True,
+        span_role: str = "decode",
     ) -> Qwen35GGUFNextTokenProbeResult:
         """Consume one generated token and return the next greedy token.
 
@@ -5675,16 +5698,32 @@ class Qwen35GGUFResidentSession:
         if position is not None and int(position) != self._position:
             raise ValueError(f"position {position} does not match session cursor {self._position}")
         with gemv_decode_session(self.use_gemv_decode):
-            hidden_ptr = self._run_token_to_final_hidden(int(token_id), position=self._position)
+            hidden_ptr = self._run_token_to_final_hidden(
+                int(token_id),
+                position=self._position,
+                span_role=span_role,
+            )
             self._position += 1
             return self._sample_from_hidden(hidden_ptr, return_logits=return_logits)
 
-    def _run_token_to_final_hidden(self, token_id: int, *, position: int, stream: int = 0) -> int:
-        if self._token_buf is None:
+    def _run_token_to_final_hidden(
+        self,
+        token_id: int,
+        *,
+        position: int,
+        span_role: str = "decode",
+        stream: int = 0,
+    ) -> int:
+        if self._token_buf is None or self.scratch is None:
             raise RuntimeError("GGUF resident session buffers are closed")
-        self._set_full_attention_position_device(position, stream=stream)
+        scratch = self.scratch.for_slot(0, span_role=span_role)
+        self._set_full_attention_position_device(position, stream=stream, scratch=scratch)
         self._set_token_id_device(int(token_id), stream=stream)
-        return self._run_current_hidden_to_final_hidden(position=position, stream=stream)
+        return self._run_current_hidden_to_final_hidden(
+            position=position,
+            stream=stream,
+            scratch=scratch,
+        )
 
     def _run_current_hidden_to_final_hidden(
         self,
@@ -5692,15 +5731,17 @@ class Qwen35GGUFResidentSession:
         position: int,
         max_context_len: int | None = None,
         stream: int = 0,
+        scratch=None,
     ) -> int:
         if self.runner is None or self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
+        scratch = self.scratch if scratch is None else scratch
         if self._hidden_a is None or self._hidden_b is None:
             raise RuntimeError("GGUF resident session buffers are closed")
         assert self.runner.weights is not None
         runtime = self.runtime or get_hip_runtime()
-        self.scratch.position_host[0] = int(position)
-        self.scratch.context_host[0] = int(position) + 1
+        scratch.position_host[0] = int(position)
+        scratch.context_host[0] = int(position) + 1
         src = self._hidden_a
         dst = self._hidden_b
         layer_types = self.runner.weights.config.layer_types
@@ -5713,13 +5754,13 @@ class Qwen35GGUFResidentSession:
                 next_norm_weight_ptr = (
                     self.runner.weights.layer(layer_id + 1).weight("attn_norm").allocation().tensor.ptr
                 )
-                next_norm_out_ptr = self.scratch.norm.ptr
+                next_norm_out_ptr = scratch.norm.ptr
             if layer_type == LINEAR_ATTENTION:
                 self.runner._run_linear_attention_layer(
                     layer_id,
                     src.ptr,
                     dst.ptr,
-                    self.scratch,
+                    scratch,
                     input_norm_ptr=input_norm_ptr,
                     next_norm_weight_ptr=next_norm_weight_ptr,
                     next_norm_out_ptr=next_norm_out_ptr,
@@ -5730,7 +5771,7 @@ class Qwen35GGUFResidentSession:
                     layer_id,
                     src.ptr,
                     dst.ptr,
-                    self.scratch,
+                    scratch,
                     position=position,
                     max_context_len=max_context_len,
                     input_norm_ptr=input_norm_ptr,
@@ -5742,17 +5783,18 @@ class Qwen35GGUFResidentSession:
                 raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
             input_norm_ptr = next_norm_out_ptr
             src, dst = dst, src
+        self._last_target_hidden_ptr = int(src.ptr)
         gguf_rmsnorm_bf16_f32_weight(
             src.ptr,
             self.runner.weights.root("output_norm").allocation().tensor.ptr,
-            self.scratch.norm.ptr,
+            scratch.norm.ptr,
             rows=1,
             hidden_size=self.runner.hidden_size,
             eps=self.runner.weights.config.rms_norm_eps,
             stream=stream,
             runtime=runtime,
         )
-        return self.scratch.norm.ptr
+        return scratch.norm.ptr
 
     def _set_token_id_device(self, token_id: int, *, stream: int = 0) -> None:
         if self.runner is None or self._token_buf is None:
@@ -5794,16 +5836,23 @@ class Qwen35GGUFResidentSession:
             runtime=self.runtime or get_hip_runtime(),
         )
 
-    def _set_full_attention_position_device(self, position: int, *, stream: int = 0) -> None:
+    def _set_full_attention_position_device(
+        self,
+        position: int,
+        *,
+        stream: int = 0,
+        scratch=None,
+    ) -> None:
         if self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
-        if position < 0 or position >= self.scratch.max_positions:
-            raise ValueError(f"GGUF resident full-attention position {position} exceeds cache capacity {self.scratch.max_positions}")
-        self.scratch.position_host[0] = int(position)
-        self.scratch.context_host[0] = int(position) + 1
+        scratch = self.scratch if scratch is None else scratch
+        if position < 0 or position >= scratch.max_positions:
+            raise ValueError(f"GGUF resident full-attention position {position} exceeds cache capacity {scratch.max_positions}")
+        scratch.position_host[0] = int(position)
+        scratch.context_host[0] = int(position) + 1
         set_decode_position_i64(
-            self.scratch.position_buf.ptr,
-            self.scratch.context_buf.ptr,
+            scratch.position_buf.ptr,
+            scratch.context_buf.ptr,
             int(position),
             stream=stream,
             library=self._runtime_state_library,

@@ -387,6 +387,40 @@ class Qwen35GGUFNextNDraftProvider:
             pad_token_id=self.pad_token_id,
         )
 
+    def advance_full_accept_tail(
+        self,
+        request_id: int,
+        *,
+        accepted_count: int,
+    ) -> Qwen35GGUFNextNStepResult | None:
+        """Append the last candidate when the whole proposed chain commits.
+
+        A B-token proposal executes inputs ``root, d1, ..., d{B-1}``, so its
+        draft KV already covers every partial-accept commit row. A full accept
+        additionally commits ``dB``; consume that final candidate once before
+        the next proposal so the resident draft KV has the same accepted prefix.
+        Rejected suffix cells need no copy or clear because the next root write
+        publishes a shorter context and overwrites the first rejected position.
+        """
+
+        rid = int(request_id)
+        results = self.last_results.get(rid)
+        if not results:
+            raise ValueError("GGUF NextN accept update requires a prior proposal")
+        accepted = int(accepted_count)
+        if accepted < 0 or accepted > len(results):
+            raise ValueError("accepted_count must be within the prior proposal budget")
+        if accepted < len(results):
+            return None
+        tail = results[-1]
+        return self.executor.run_step(
+            rid,
+            int(tail.token_id),
+            int(tail.position) + 1,
+            tail.hidden,
+            return_logits=False,
+        )
+
     def reset_request(self, request_id: int) -> None:
         self.executor.reset_request(int(request_id))
         self.last_results.pop(int(request_id), None)

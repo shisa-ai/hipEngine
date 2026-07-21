@@ -1,0 +1,923 @@
+"""Transactional GGUF NextN proposal and shared target-verifier integration."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, replace
+import time
+from typing import Any, Sequence
+
+import numpy as np
+
+from hipengine.core.device import Device
+from hipengine.core.dtype import DType
+from hipengine.core.hip import HipMemcpyKind, HipRuntime
+from hipengine.core.memory import (
+    DeviceBuffer,
+    copy_device_to_host,
+    copy_host_to_device,
+    free,
+    host_array_ptr,
+    malloc,
+)
+from hipengine.core.tensor import Tensor
+from hipengine.generation.batch_scheduler import ResidentBatchScheduler
+from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import build_dflash_accept
+from hipengine.kernels.registry import resolve
+from hipengine.kvcache import FixedPagedKVPolicy
+from hipengine.runtime.qwen35_gguf_nextn import Qwen35GGUFNextNDraftProvider
+from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+from hipengine.runtime.workspace import RuntimeWorkspace
+from hipengine.speculative import (
+    MtpProposalContext,
+    TargetAcceptSummary,
+    TargetCommitPlan,
+    TargetStateCommitBuffers,
+    TargetVerifyBatch,
+    TargetVerifyBufferOwner,
+    TargetVerifyBufferSpec,
+    TargetVerifyBuffers,
+)
+
+_GGUF_MTP_CANDIDATE_BUDGETS = (1, 2, 3)
+
+
+@dataclass
+class Qwen35GGUFVerifyGraphBucket:
+    """Stable shared-ABI buffers for one scheduler verify shape.
+
+    The correctness route is intentionally eager: ``captured`` remains false
+    until a row-native GGUF chain forward can be captured without changing its
+    serial target arithmetic. The scheduler still keys and reuses this bucket by
+    the full ``BatchShapeKey`` contract rather than inventing a GGUF ABI.
+    """
+
+    key: Any
+    owner: TargetVerifyBufferOwner
+    remaining_decode: Tensor
+    captured: bool = False
+    replay_count: int = 0
+
+    def to_json_dict(self) -> dict[str, object]:
+        return {
+            "mode": self.owner.spec.mode,
+            "bucket": self.owner.spec.bucket,
+            "max_rows": int(self.owner.spec.max_rows),
+            "max_requests": int(self.owner.spec.max_requests),
+            "captured": bool(self.captured),
+            "replay_count": int(self.replay_count),
+            "buffers": self.owner.compact_metadata(),
+        }
+
+
+@dataclass(frozen=True)
+class Qwen35GGUFPreparedVerify:
+    """Target rows and GPU accept summary awaiting transactional commit."""
+
+    batch: TargetVerifyBatch
+    buffers: TargetVerifyBuffers
+    summary: TargetAcceptSummary
+    target_top1: tuple[int, ...]
+    target_logits: np.ndarray
+    graph_bucket: Qwen35GGUFVerifyGraphBucket
+    initial_position: int
+    kv_journal_positions: tuple[int, ...]
+    gpu_accept_match_cpu: bool
+
+
+@dataclass(frozen=True)
+class Qwen35GGUFMTPGenerationResult:
+    """One-request greedy GGUF generation result with MTP economics."""
+
+    request_id: int
+    token_ids: tuple[int, ...]
+    candidate_budget: int
+    accepted_counts: tuple[int, ...]
+    target_forward_rows: int
+    cycles: int
+    prefill_seconds: float
+    decode_seconds: float
+    proposal_seconds: float
+    verify_seconds: float
+    gpu_accept_match_cpu: bool
+    graph_stats: dict[str, object]
+    cycle_records: tuple[dict[str, object], ...] = ()
+
+    @property
+    def accepted_draft_tokens(self) -> int:
+        return sum(self.accepted_counts)
+
+    @property
+    def visible_tokens_per_cycle(self) -> float:
+        if self.cycles <= 0:
+            return 1.0
+        return 1.0 + self.accepted_draft_tokens / self.cycles
+
+    @property
+    def decode_tok_s(self) -> float:
+        return 0.0 if self.decode_seconds <= 0.0 else len(self.token_ids) / self.decode_seconds
+
+    def to_json_dict(self) -> dict[str, object]:
+        return {
+            "request_id": int(self.request_id),
+            "token_ids": list(self.token_ids),
+            "candidate_budget": int(self.candidate_budget),
+            "accepted_counts": list(self.accepted_counts),
+            "accepted_draft_tokens": int(self.accepted_draft_tokens),
+            "target_forward_rows": int(self.target_forward_rows),
+            "cycles": int(self.cycles),
+            "visible_tokens_per_cycle": float(self.visible_tokens_per_cycle),
+            "prefill_seconds": float(self.prefill_seconds),
+            "decode_seconds": float(self.decode_seconds),
+            "proposal_seconds": float(self.proposal_seconds),
+            "verify_seconds": float(self.verify_seconds),
+            "decode_tok_s": float(self.decode_tok_s),
+            "gpu_accept_match_cpu": bool(self.gpu_accept_match_cpu),
+            "graph_stats": self.graph_stats,
+            "cycle_records": list(self.cycle_records),
+        }
+
+
+@dataclass
+class _StateJournal:
+    target: Qwen35GGUFResidentSession
+    max_rows: int
+    state_rows: tuple[tuple[DeviceBuffer, DeviceBuffer], ...]
+    initial_hidden: DeviceBuffer
+    row_hidden: DeviceBuffer
+    buffers: tuple[DeviceBuffer, ...]
+
+    @classmethod
+    def allocate(cls, target: Qwen35GGUFResidentSession, *, max_rows: int) -> "_StateJournal":
+        owner = target._target_scratch_owner
+        if owner is None or target.runner is None:
+            raise RuntimeError("GGUF target session is closed")
+        if int(owner.slot_count) != 1:
+            raise ValueError("transactional GGUF verifier currently requires one resident target slot")
+        runtime = target.runtime
+        assert runtime is not None
+        buffers: list[DeviceBuffer] = []
+        state_rows: list[tuple[DeviceBuffer, DeviceBuffer]] = []
+        for state in (*owner.layer_conv_states, *owner.layer_recurrent_states):
+            if state is None:
+                continue
+            snapshots = malloc(int(max_rows + 1) * int(state.nbytes), runtime=runtime)
+            buffers.append(snapshots)
+            state_rows.append((state, snapshots))
+        hidden_nbytes = int(target.runner.hidden_size) * DType.BF16.itemsize
+        initial_hidden = malloc(hidden_nbytes, runtime=runtime)
+        row_hidden = malloc(int(max_rows) * hidden_nbytes, runtime=runtime)
+        buffers.extend((initial_hidden, row_hidden))
+        return cls(
+            target=target,
+            max_rows=int(max_rows),
+            state_rows=tuple(state_rows),
+            initial_hidden=initial_hidden,
+            row_hidden=row_hidden,
+            buffers=tuple(buffers),
+        )
+
+    @property
+    def hidden_nbytes(self) -> int:
+        return int(self.initial_hidden.nbytes)
+
+    def capture_initial(self, *, stream: int = 0) -> None:
+        hidden = self.target.last_target_hidden
+        self._copy_d2d(self.initial_hidden.ptr, hidden.ptr, self.hidden_nbytes, stream=stream)
+        self._capture_state_index(0, stream=stream)
+
+    def capture_row(self, row: int, *, stream: int = 0) -> None:
+        row = int(row)
+        if row < 0 or row >= self.max_rows:
+            raise ValueError("verify journal row outside capacity")
+        hidden = self.target.last_target_hidden
+        self._copy_d2d(
+            self.row_hidden.ptr + row * self.hidden_nbytes,
+            hidden.ptr,
+            self.hidden_nbytes,
+            stream=stream,
+        )
+        self._capture_state_index(row + 1, stream=stream)
+
+    def restore_initial(self, *, stream: int = 0) -> None:
+        self._restore_state_index(0, stream=stream)
+        self._restore_hidden(self.initial_hidden.ptr, stream=stream)
+
+    def restore_row(self, row: int, *, stream: int = 0) -> None:
+        row = int(row)
+        if row < 0 or row >= self.max_rows:
+            raise ValueError("verify commit row outside journal capacity")
+        self._restore_state_index(row + 1, stream=stream)
+        self._restore_hidden(self.row_hidden.ptr + row * self.hidden_nbytes, stream=stream)
+
+    def hidden_rows_tensor(self, rows: int) -> Tensor:
+        if self.target.runner is None:
+            raise RuntimeError("GGUF target session is closed")
+        return Tensor.from_handle(
+            self.row_hidden.ptr,
+            (1, int(rows), int(self.target.runner.hidden_size)),
+            DType.BF16,
+            Device("hip", 0),
+        )
+
+    def close(self) -> None:
+        runtime = self.target.runtime
+        for buffer in reversed(self.buffers):
+            free(buffer, runtime=runtime)
+
+    def _capture_state_index(self, index: int, *, stream: int) -> None:
+        for state, snapshots in self.state_rows:
+            self._copy_d2d(
+                snapshots.ptr + int(index) * int(state.nbytes),
+                state.ptr,
+                int(state.nbytes),
+                stream=stream,
+            )
+
+    def _restore_state_index(self, index: int, *, stream: int) -> None:
+        for state, snapshots in self.state_rows:
+            self._copy_d2d(
+                state.ptr,
+                snapshots.ptr + int(index) * int(state.nbytes),
+                int(state.nbytes),
+                stream=stream,
+            )
+
+    def _restore_hidden(self, src_ptr: int, *, stream: int) -> None:
+        hidden = self.target._hidden_a
+        if hidden is None:
+            raise RuntimeError("GGUF target hidden storage is closed")
+        self._copy_d2d(hidden.ptr, int(src_ptr), self.hidden_nbytes, stream=stream)
+        self.target._last_target_hidden_ptr = int(hidden.ptr)
+
+    def _copy_d2d(self, dst: int, src: int, nbytes: int, *, stream: int) -> None:
+        runtime = self.target.runtime
+        if runtime is None:
+            raise RuntimeError("GGUF target runtime is closed")
+        runtime.memcpy_async(
+            int(dst),
+            int(src),
+            int(nbytes),
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            int(stream),
+        )
+
+
+class Qwen35GGUFTransactionalVerifier:
+    """Shared-ABI chain verifier with journaled GGUF state/KV commit.
+
+    Target rows execute with the retained exact c=1 arithmetic. Linear-attention
+    state and the target-hidden tap are snapshotted per verify row. Full-attention
+    K/V writes form an append journal in monotonically increasing positions;
+    commit publishes only the selected prefix by resetting resident span
+    position/context metadata, while rollback restores the pre-verify metadata.
+    Rejected suffix cells are unreachable and overwritten on later appends.
+    """
+
+    def __init__(
+        self,
+        target: Qwen35GGUFResidentSession,
+        *,
+        max_candidate_budget: int = 3,
+        backend: str = "hip_gfx1100",
+        quant: str = "gguf_ud_q3_k_m",
+    ) -> None:
+        if int(max_candidate_budget) not in _GGUF_MTP_CANDIDATE_BUDGETS:
+            raise ValueError("max_candidate_budget must be 1, 2, or 3")
+        if target.runner is None or target.runtime is None:
+            raise RuntimeError("GGUF target session is closed")
+        self.target = target
+        self.max_candidate_budget = int(max_candidate_budget)
+        self.backend = str(backend)
+        self.quant = str(quant)
+        self.workspace = RuntimeWorkspace(device=Device("hip", 0), runtime=target.runtime)
+        self.journal = _StateJournal.allocate(target, max_rows=self.max_candidate_budget + 1)
+        self._buckets: dict[object, Qwen35GGUFVerifyGraphBucket] = {}
+        self._prepared: Qwen35GGUFPreparedVerify | None = None
+        self._accept_kernel = resolve(
+            backend=self.backend,
+            layer="dflash_accept_chain",
+            quant=self.quant,
+            variant="i32",
+        )
+        self._accept_library = build_dflash_accept(
+            load=True,
+            compiler_version=target.compiler_version,
+            require_cached=target.require_cached_build,
+        )
+        self.closed = False
+
+    def graph_bucket(self, key: object, batch: TargetVerifyBatch) -> Qwen35GGUFVerifyGraphBucket:
+        cached = self._buckets.get(key)
+        if cached is not None:
+            return cached
+        rows = int(batch.rows)
+        requests = len(batch.request_ids)
+        spec = TargetVerifyBufferSpec(
+            backend=self.backend,
+            bucket=f"gguf-mtp-v{rows}-r{requests}",
+            device=Device("hip", 0),
+            max_rows=rows,
+            max_requests=requests,
+            mode=batch.mode,
+        )
+        owner = TargetVerifyBufferOwner.allocate(spec, workspace=self.workspace)
+        remaining = self.workspace.reserve_tensor(
+            f"target_verify/{self.backend}/{spec.bucket}/{spec.mode}/remaining_decode",
+            (requests,),
+            DType.INT32,
+        )
+        bucket = Qwen35GGUFVerifyGraphBucket(key=key, owner=owner, remaining_decode=remaining)
+        self._buckets[key] = bucket
+        return bucket
+
+    def prepare(
+        self,
+        batch: TargetVerifyBatch,
+        *,
+        transaction_id: int,
+        graph_bucket: Qwen35GGUFVerifyGraphBucket,
+        remaining_decode: Sequence[int],
+        return_logits: bool = False,
+        stream: int = 0,
+    ) -> Qwen35GGUFPreparedVerify:
+        if self.closed:
+            raise RuntimeError("GGUF transactional verifier is closed")
+        if self._prepared is not None:
+            raise RuntimeError("a GGUF target verification transaction is already open")
+        self._validate_chain(batch)
+        budgets = tuple(int(value) for value in remaining_decode)
+        if len(budgets) != len(batch.request_ids) or any(value < 0 for value in budgets):
+            raise ValueError("remaining_decode must be non-negative and align with requests")
+        if graph_bucket.owner.spec.mode != batch.mode or graph_bucket.owner.spec.max_rows < batch.rows:
+            raise ValueError("verify graph bucket does not cover target batch")
+        if int(self.target.position) != int(batch.positions[batch.root_rows[0]]):
+            raise ValueError("target verify root position does not match resident cursor")
+
+        initial_position = int(self.target.position)
+        self.journal.capture_initial(stream=stream)
+        logits: list[np.ndarray] = []
+        top1: list[int] = []
+        try:
+            for row, (token, position) in enumerate(zip(batch.tokens, batch.positions, strict=True)):
+                result = self.target.step(
+                    int(token),
+                    position=int(position),
+                    return_logits=return_logits,
+                    span_role=batch.mode,
+                )
+                top1.append(int(result.token_id))
+                if return_logits:
+                    logits.append(result.logits)
+                self.journal.capture_row(row, stream=stream)
+
+            buffers = graph_bucket.owner.bind(batch, transaction_id=int(transaction_id))
+            self._write_verify_inputs(buffers, batch, top1, graph_bucket.remaining_decode, budgets)
+            assert self._accept_kernel is not None
+            self._accept_kernel(
+                buffers.token_ids.ptr,
+                buffers.positions.ptr,
+                buffers.parent_rows.ptr,
+                buffers.draft_depths.ptr,
+                buffers.active_mask.ptr,
+                buffers.target_top1.ptr,
+                graph_bucket.remaining_decode.ptr,
+                buffers.accepted_counts.ptr,
+                buffers.commit_rows.ptr,
+                buffers.commit_tokens.ptr,
+                buffers.commit_positions.ptr,
+                buffers.next_tokens.ptr if buffers.next_tokens is not None else 0,
+                buffers.full_accept.ptr if buffers.full_accept is not None else 0,
+                buffers.committed_output_ids.ptr if buffers.committed_output_ids is not None else 0,
+                buffers.committed_output_lengths.ptr if buffers.committed_output_lengths is not None else 0,
+                batch.rows,
+                len(batch.request_ids),
+                buffers.committed_output_ids.shape[1] if buffers.committed_output_ids is not None else batch.rows,
+                stream=stream,
+                library=self._accept_library,
+                runtime=self.target.runtime,
+            )
+            payload = self._read_accept_payload(buffers, stream=stream)
+            gpu_summary = replace(
+                TargetAcceptSummary.from_gpu_payload(batch, payload),
+                transaction_id=int(transaction_id),
+            )
+            cpu_result = batch.accept_from_top1(
+                top1,
+                transaction_id=int(transaction_id),
+                remaining_decode=budgets,
+            )
+            cpu_summary = TargetAcceptSummary.from_accept_result(batch, cpu_result)
+            gpu_match = _summary_matches(gpu_summary, cpu_summary)
+            if not gpu_match:
+                raise RuntimeError("GGUF GPU accept summary does not match the CPU oracle")
+            graph_bucket.replay_count += 1
+            prepared = Qwen35GGUFPreparedVerify(
+                batch=batch,
+                buffers=buffers,
+                summary=gpu_summary,
+                target_top1=tuple(top1),
+                target_logits=(
+                    np.concatenate(logits, axis=0)
+                    if logits
+                    else np.empty((batch.rows, 0), dtype=np.float32)
+                ),
+                graph_bucket=graph_bucket,
+                initial_position=initial_position,
+                kv_journal_positions=tuple(int(position) for position in batch.positions),
+                gpu_accept_match_cpu=gpu_match,
+            )
+            self._prepared = prepared
+            return prepared
+        except Exception:
+            self.journal.restore_initial(stream=stream)
+            self._publish_position(initial_position, stream=stream)
+            self._synchronize(stream)
+            raise
+
+    def commit(
+        self,
+        prepared: Qwen35GGUFPreparedVerify,
+        plan: TargetCommitPlan,
+        *,
+        stream: int = 0,
+    ) -> TargetStateCommitBuffers:
+        self._require_open(prepared)
+        if plan.transaction_id != prepared.buffers.transaction_id:
+            raise ValueError("GGUF commit transaction_id must match prepared verify buffers")
+        if plan.request_ids != prepared.batch.request_ids or plan.mode != prepared.batch.mode:
+            raise ValueError("GGUF commit plan must match prepared target batch")
+        expected = prepared.summary
+        if (
+            plan.accepted_counts != expected.accepted_counts
+            or plan.commit_rows != expected.commit_rows
+            or plan.commit_positions != expected.commit_positions
+        ):
+            raise ValueError("GGUF commit plan must match GPU target accept summary")
+        selected_row = int(plan.commit_rows[0])
+        self.journal.restore_row(selected_row, stream=stream)
+        self._publish_position(int(plan.commit_positions[0]) + 1, stream=stream)
+        self._synchronize(stream)
+        target_hidden = self.target.last_target_hidden
+        hidden_dst = Tensor.from_handle(
+            target_hidden.ptr,
+            (1, 1, target_hidden.shape[1]),
+            target_hidden.dtype,
+            target_hidden.device,
+        )
+        return TargetStateCommitBuffers.for_plan(
+            plan,
+            accepted_counts=prepared.buffers.accepted_counts,
+            commit_rows=prepared.buffers.commit_rows,
+            commit_positions=prepared.buffers.commit_positions,
+            hidden_taps_src=self.journal.hidden_rows_tensor(prepared.batch.rows),
+            hidden_taps_dst=hidden_dst,
+        )
+
+    def rollback(self, prepared: Qwen35GGUFPreparedVerify, *, stream: int = 0) -> None:
+        self._require_open(prepared)
+        self.journal.restore_initial(stream=stream)
+        self._publish_position(prepared.initial_position, stream=stream)
+        self._synchronize(stream)
+        self._prepared = None
+
+    def finish(self, prepared: Qwen35GGUFPreparedVerify) -> None:
+        self._require_open(prepared)
+        self._prepared = None
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        if self._prepared is not None:
+            self.rollback(self._prepared)
+        self.closed = True
+        self.journal.close()
+        self.workspace.free()
+        self._buckets.clear()
+
+    def _validate_chain(self, batch: TargetVerifyBatch) -> None:
+        if batch.mode != "verify_chain":
+            raise ValueError("GGUF transactional verifier supports verify_chain only")
+        if len(batch.request_ids) != 1:
+            raise ValueError("GGUF transactional verifier currently supports one request")
+        if batch.rows > self.max_candidate_budget + 1:
+            raise ValueError("target verify rows exceed GGUF verifier capacity")
+        if batch.root_rows != (0,) or batch.candidate_rows != tuple(range(1, batch.rows)):
+            raise ValueError("GGUF verify chain requires root-first contiguous rows")
+        if batch.parent_rows != (-1, *tuple(range(batch.rows - 1))):
+            raise ValueError("GGUF verify chain requires linear parent rows")
+        if not all(batch.active_mask):
+            raise ValueError("GGUF verify chain does not execute inactive padding rows")
+        expected_positions = tuple(range(int(batch.positions[0]), int(batch.positions[0]) + batch.rows))
+        if batch.positions != expected_positions:
+            raise ValueError("GGUF verify chain positions must be contiguous")
+
+    def _write_verify_inputs(
+        self,
+        buffers: TargetVerifyBuffers,
+        batch: TargetVerifyBatch,
+        top1: Sequence[int],
+        remaining: Tensor,
+        budgets: Sequence[int],
+    ) -> None:
+        _copy_array(buffers.token_ids, np.asarray(batch.tokens, dtype=np.int32), self.target.runtime)
+        _copy_array(buffers.positions, np.asarray(batch.positions, dtype=np.int32), self.target.runtime)
+        _copy_array(buffers.parent_rows, np.asarray(batch.parent_rows, dtype=np.int32), self.target.runtime)
+        _copy_array(buffers.draft_depths, np.asarray(batch.draft_depths, dtype=np.int32), self.target.runtime)
+        _copy_array(buffers.row_to_request, np.asarray(batch.row_to_request, dtype=np.int32), self.target.runtime)
+        _copy_array(buffers.active_mask, np.asarray(batch.active_mask, dtype=np.uint8), self.target.runtime)
+        _copy_array(buffers.target_top1, np.asarray(top1, dtype=np.int32), self.target.runtime)
+        _copy_array(remaining, np.asarray(budgets, dtype=np.int32), self.target.runtime)
+
+    def _read_accept_payload(
+        self,
+        buffers: TargetVerifyBuffers,
+        *,
+        stream: int,
+    ) -> dict[str, tuple[int, ...] | tuple[bool, ...]]:
+        self._synchronize(stream)
+        return {
+            "accepted_counts": _read_int32(buffers.accepted_counts, self.target.runtime),
+            "commit_rows": _read_int32(buffers.commit_rows, self.target.runtime),
+            "commit_tokens": _read_int32(buffers.commit_tokens, self.target.runtime),
+            "commit_positions": _read_int32(buffers.commit_positions, self.target.runtime),
+            "next_tokens": _read_int32_required(buffers.next_tokens, self.target.runtime),
+            "full_accept": _read_bool_required(buffers.full_accept, self.target.runtime),
+        }
+
+    def _publish_position(self, next_position: int, *, stream: int) -> None:
+        owner = self.target._target_scratch_owner
+        if owner is None:
+            raise RuntimeError("GGUF target scratch is closed")
+        positions = list(owner.position_host.tolist())
+        positions[0] = int(next_position)
+        owner.set_full_attention_positions(tuple(positions), self.target.runtime)
+        self.target._position = int(next_position)
+
+    def _synchronize(self, stream: int) -> None:
+        runtime = self.target.runtime
+        if runtime is None:
+            raise RuntimeError("GGUF target runtime is closed")
+        if stream:
+            runtime.stream_synchronize(int(stream))
+        else:
+            runtime.device_synchronize()
+
+    def _require_open(self, prepared: Qwen35GGUFPreparedVerify) -> None:
+        if self._prepared is not prepared:
+            raise ValueError("prepared GGUF verification is not the open transaction")
+
+    def __enter__(self) -> "Qwen35GGUFTransactionalVerifier":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
+
+
+class Qwen35GGUFMTPDecodeSession:
+    """One-request GGUF MTP loop over the shared scheduler transaction ABI."""
+
+    def __init__(
+        self,
+        target: Qwen35GGUFResidentSession,
+        draft_provider: Qwen35GGUFNextNDraftProvider,
+        *,
+        candidate_budget: int = 1,
+        verifier: Qwen35GGUFTransactionalVerifier | None = None,
+        owns_verifier: bool = True,
+    ) -> None:
+        if int(candidate_budget) not in _GGUF_MTP_CANDIDATE_BUDGETS:
+            raise ValueError("candidate_budget must be 1, 2, or 3")
+        self.target = target
+        self.draft_provider = draft_provider
+        self.candidate_budget = int(candidate_budget)
+        self.verifier = verifier or Qwen35GGUFTransactionalVerifier(
+            target,
+            max_candidate_budget=max(_GGUF_MTP_CANDIDATE_BUDGETS),
+        )
+        self.owns_verifier = bool(owns_verifier if verifier is not None else True)
+
+    def generate(
+        self,
+        prompt_tokens: Sequence[int],
+        *,
+        max_new_tokens: int,
+        request_id: int = 0,
+        return_cycle_logits: bool = False,
+        use_bulk_prefill: bool | None = None,
+        prefill_draft: bool = True,
+    ) -> Qwen35GGUFMTPGenerationResult:
+        prompt = tuple(int(token) for token in prompt_tokens)
+        if not prompt:
+            raise ValueError("prompt_tokens must be non-empty")
+        if int(max_new_tokens) <= 0:
+            raise ValueError("max_new_tokens must be positive")
+        self.target.reset()
+        self.draft_provider.reset_request(int(request_id))
+        scheduler = ResidentBatchScheduler(capacity=1)
+        rid = scheduler.submit(prompt, max_new_tokens=int(max_new_tokens), request_id=int(request_id))
+        scheduler.admit_pending()
+        scheduler.next_prefill_work(chunk_size=len(prompt))
+
+        prefill_started = time.perf_counter()
+        if prefill_draft:
+            first = self._prefill_target_and_draft(prompt, request_id=rid)
+        else:
+            first = self.target.prefill(
+                prompt,
+                use_bulk=use_bulk_prefill,
+                return_logits=False,
+            )
+        prefill_seconds = time.perf_counter() - prefill_started
+        scheduler.record_generated(((rid, int(first.token_id)),))
+        if rid in scheduler.completed:
+            return Qwen35GGUFMTPGenerationResult(
+                request_id=rid,
+                token_ids=scheduler.completed[rid].generated_tokens,
+                candidate_budget=self.candidate_budget,
+                accepted_counts=(),
+                target_forward_rows=0,
+                cycles=0,
+                prefill_seconds=prefill_seconds,
+                decode_seconds=0.0,
+                proposal_seconds=0.0,
+                verify_seconds=0.0,
+                gpu_accept_match_cpu=True,
+                graph_stats=scheduler.graph_buckets.stats.to_json_dict(),
+            )
+
+        policy = self._register_kv_policy(rid)
+        root = int(first.token_id)
+        accepted_counts: list[int] = []
+        records: list[dict[str, object]] = []
+        proposal_seconds = 0.0
+        verify_seconds = 0.0
+        target_rows = 0
+        gpu_match = True
+        decode_started = time.perf_counter()
+        while rid not in scheduler.completed:
+            request = scheduler.active_batch.requests[rid]
+            remaining = int(request.remaining_decode)
+            if remaining <= 0:
+                break
+            budget = _largest_budget_at_most(min(self.candidate_budget, remaining))
+            proposal_started = time.perf_counter()
+            draft = self.draft_provider.propose(
+                MtpProposalContext(
+                    request_ids=(rid,),
+                    root_tokens=(root,),
+                    root_positions=(int(self.target.position),),
+                    target_hidden=self.target.last_target_hidden,
+                ),
+                candidate_budget=budget,
+                return_logits=return_cycle_logits,
+            )
+            proposal_seconds += time.perf_counter() - proposal_started
+            work = scheduler.next_speculative_verify_work(
+                draft,
+                root_tokens=(root,),
+                root_positions=(int(self.target.position),),
+            )
+            plan = scheduler.plan_speculative_verify(
+                policy,
+                work,
+                lambda key, batch=work.target_batch: self.verifier.graph_bucket(key, batch),
+                top_k=8,
+                experts_per_token=8,
+            )
+            bucket = plan.graph
+            if not isinstance(bucket, Qwen35GGUFVerifyGraphBucket):
+                raise TypeError("GGUF speculative graph cache returned an incompatible bucket")
+            prepared: Qwen35GGUFPreparedVerify | None = None
+            prepared_top1: tuple[int, ...] = ()
+            prepared_logits = np.empty((0, 0), dtype=np.float32)
+            prepared_gpu_match = False
+            draft_tail_advanced = False
+            try:
+                verify_started = time.perf_counter()
+                prepared = self.verifier.prepare(
+                    work.target_batch,
+                    transaction_id=plan.transaction.transaction_id,
+                    graph_bucket=bucket,
+                    remaining_decode=(remaining,),
+                    return_logits=return_cycle_logits,
+                )
+                verify_seconds += time.perf_counter() - verify_started
+                target_rows += prepared.batch.rows
+                prepared_top1 = prepared.target_top1
+                prepared_logits = prepared.target_logits
+                prepared_gpu_match = prepared.gpu_accept_match_cpu
+                buffer_plan = scheduler.bind_speculative_verify_buffers(plan, prepared.buffers)
+                commit = scheduler.plan_speculative_commit(buffer_plan, prepared.summary)
+                state_buffers = self.verifier.commit(prepared, commit.commit_plan)
+                state_plan = scheduler.bind_speculative_commit_buffers(commit, state_buffers)
+                committed_txn = scheduler.commit_speculative_kv_transaction(policy, state_plan)
+                scheduler.finalize_speculative_accept(committed_txn, state_plan)
+                self.verifier.finish(prepared)
+                prepared = None
+            except Exception:
+                if prepared is not None:
+                    self.verifier.rollback(prepared)
+                if not plan.transaction.committed and not plan.transaction.rolled_back:
+                    scheduler.rollback_speculative_kv_transaction(policy, plan)
+                raise
+
+            summary = commit.summary
+            accepted = int(summary.accepted_counts[0])
+            if rid not in scheduler.completed:
+                proposal_update_started = time.perf_counter()
+                draft_tail_advanced = (
+                    self.draft_provider.advance_full_accept_tail(
+                        rid,
+                        accepted_count=accepted,
+                    )
+                    is not None
+                )
+                proposal_seconds += time.perf_counter() - proposal_update_started
+            accepted_counts.append(accepted)
+            gpu_match = gpu_match and prepared_gpu_match
+            next_token = None if summary.next_tokens is None else summary.next_tokens[0]
+            record: dict[str, object] = {
+                "cycle": len(accepted_counts),
+                "budget": budget,
+                "root_token": root,
+                "root_position": int(work.target_batch.positions[0]),
+                "draft_tokens": list(draft.candidate_tokens),
+                "target_top1": list(prepared_top1),
+                "accepted": accepted,
+                "commit_row": int(summary.commit_rows[0]),
+                "commit_position": int(summary.commit_positions[0]),
+                "next_token": None if next_token is None else int(next_token),
+                "span_role": work.target_batch.mode,
+                "transaction_id": int(commit.commit_plan.transaction_id),
+                "graph_bucket": bucket.owner.spec.bucket,
+                "graph_replay_count": int(bucket.replay_count),
+                "draft_tail_advanced": draft_tail_advanced,
+            }
+            # ``prepared`` is cleared only after the transaction is fully
+            # committed, so use the summary-facing data in compact production
+            # records and keep full row logits as an explicit test-only option.
+            if return_cycle_logits:
+                record["candidate_logits_recorded"] = True
+                record["target_logits_shape"] = list(prepared_logits.shape)
+            records.append(record)
+            if next_token is None:
+                break
+            root = int(next_token)
+
+        decode_seconds = time.perf_counter() - decode_started
+        if rid not in scheduler.completed:
+            raise RuntimeError("GGUF MTP generation ended before scheduler completion")
+        return Qwen35GGUFMTPGenerationResult(
+            request_id=rid,
+            token_ids=scheduler.completed[rid].generated_tokens,
+            candidate_budget=self.candidate_budget,
+            accepted_counts=tuple(accepted_counts),
+            target_forward_rows=target_rows,
+            cycles=len(accepted_counts),
+            prefill_seconds=prefill_seconds,
+            decode_seconds=decode_seconds,
+            proposal_seconds=proposal_seconds,
+            verify_seconds=verify_seconds,
+            gpu_accept_match_cpu=gpu_match,
+            graph_stats=scheduler.graph_buckets.stats.to_json_dict(),
+            cycle_records=tuple(records),
+        )
+
+    def _prefill_target_and_draft(
+        self,
+        prompt: tuple[int, ...],
+        *,
+        request_id: int,
+    ):
+        if self.target.runner is None or self.target.runtime is None:
+            raise RuntimeError("GGUF target session is closed")
+        hidden_nbytes = int(self.target.runner.hidden_size) * DType.BF16.itemsize
+        zero = malloc(hidden_nbytes, runtime=self.target.runtime)
+        self.target.runtime.memset(zero.ptr, 0, zero.nbytes)
+        previous_hidden = Tensor.from_handle(
+            zero.ptr,
+            (1, self.target.runner.hidden_size),
+            DType.BF16,
+            Device("hip", 0),
+        )
+        result = None
+        try:
+            for position, token in enumerate(prompt):
+                self.draft_provider.executor.run_step(
+                    int(request_id),
+                    int(token),
+                    int(position),
+                    previous_hidden,
+                    return_logits=False,
+                )
+                result = self.target.step(
+                    int(token),
+                    position=int(position),
+                    return_logits=False,
+                )
+                previous_hidden = self.target.last_target_hidden
+        finally:
+            free(zero, runtime=self.target.runtime)
+        if result is None:
+            raise RuntimeError("GGUF MTP prompt prefill produced no target root")
+        return result
+
+    def _register_kv_policy(self, request_id: int) -> FixedPagedKVPolicy:
+        owner = self.target._target_scratch_owner
+        if owner is None:
+            raise RuntimeError("GGUF target scratch is closed")
+        policy = FixedPagedKVPolicy(
+            block_size=int(owner.block_size),
+            storage_dtype=owner.kv_storage_dtype,
+        )
+        policy.register(
+            int(request_id),
+            block_table=owner.block_table_tensor,
+            live_counts=owner.context_tensor,
+            max_live_count=int(self.target.position),
+            capacity_tokens=int(owner.max_positions),
+        )
+        return policy
+
+    def close(self) -> None:
+        if self.owns_verifier:
+            self.verifier.close()
+
+    def __enter__(self) -> "Qwen35GGUFMTPDecodeSession":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
+
+
+def _copy_array(tensor: Tensor, array: np.ndarray, runtime: HipRuntime | None) -> None:
+    contiguous = np.ascontiguousarray(array)
+    if contiguous.nbytes != tensor.numel * tensor.dtype.itemsize:
+        raise ValueError("host metadata bytes do not match target tensor")
+    copy_host_to_device(
+        DeviceBuffer(tensor.ptr, contiguous.nbytes),
+        host_array_ptr(contiguous),
+        contiguous.nbytes,
+        runtime=runtime,
+    )
+
+
+def _read_int32(tensor: Tensor, runtime: HipRuntime | None) -> tuple[int, ...]:
+    out = np.empty(tensor.shape, dtype=np.int32)
+    copy_device_to_host(
+        host_array_ptr(out),
+        DeviceBuffer(tensor.ptr, out.nbytes),
+        out.nbytes,
+        runtime=runtime,
+    )
+    return tuple(int(value) for value in out.reshape(-1).tolist())
+
+
+def _read_int32_required(tensor: Tensor | None, runtime: HipRuntime | None) -> tuple[int, ...]:
+    if tensor is None:
+        raise RuntimeError("GGUF GPU accept summary requires next_tokens")
+    return _read_int32(tensor, runtime)
+
+
+def _read_bool_required(tensor: Tensor | None, runtime: HipRuntime | None) -> tuple[bool, ...]:
+    if tensor is None:
+        raise RuntimeError("GGUF GPU accept summary requires full_accept")
+    out = np.empty(tensor.shape, dtype=np.uint8)
+    copy_device_to_host(
+        host_array_ptr(out),
+        DeviceBuffer(tensor.ptr, out.nbytes),
+        out.nbytes,
+        runtime=runtime,
+    )
+    return tuple(bool(value) for value in out.reshape(-1).tolist())
+
+
+def _summary_matches(left: TargetAcceptSummary, right: TargetAcceptSummary) -> bool:
+    return (
+        left.request_ids == right.request_ids
+        and left.accepted_counts == right.accepted_counts
+        and left.accepted_tokens == right.accepted_tokens
+        and left.commit_rows == right.commit_rows
+        and left.commit_tokens == right.commit_tokens
+        and left.commit_positions == right.commit_positions
+        and left.full_accept == right.full_accept
+        and left.next_tokens == right.next_tokens
+        and left.transaction_id == right.transaction_id
+        and left.mode == right.mode
+    )
+
+
+def _largest_budget_at_most(limit: int) -> int:
+    allowed = [budget for budget in _GGUF_MTP_CANDIDATE_BUDGETS if budget <= int(limit)]
+    if not allowed:
+        raise ValueError("remaining decode budget cannot form an MTP candidate batch")
+    return max(allowed)
+
+
+__all__ = [
+    "Qwen35GGUFMTPDecodeSession",
+    "Qwen35GGUFMTPGenerationResult",
+    "Qwen35GGUFPreparedVerify",
+    "Qwen35GGUFTransactionalVerifier",
+    "Qwen35GGUFVerifyGraphBucket",
+]

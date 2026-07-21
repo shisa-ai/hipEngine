@@ -328,11 +328,12 @@ def dflash_accept_chain_i32_packed_update_state(
 
 
 def register_dflash_accept_kernels(*, replace: bool = True) -> None:
-    register(
-        KernelKey("hip_gfx1100", "dflash_accept_chain", "w4_paro", "i32"),
-        dflash_accept_chain_i32,
-        replace=replace,
-    )
+    for quant in ("w4_paro", "gguf_ud_q3_k_m"):
+        register(
+            KernelKey("hip_gfx1100", "dflash_accept_chain", quant, "i32"),
+            dflash_accept_chain_i32,
+            replace=replace,
+        )
 
 
 def _check_accept_shape(rows: int, request_count: int, output_stride: int) -> None:

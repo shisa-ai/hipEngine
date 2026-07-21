@@ -31,14 +31,17 @@
 > shared native verifier/commit infrastructure from DFlash, not fork a separate
 > c=1 native-loop tuning lane.
 
-> **GGUF NextN status (2026-07-21):** the local UD-Q3_K_M trailing blk.40 is no
-> longer an omitted/approval-blocked layer. It remains outside the 40-layer AR
-> map and is separately validated/materialized as a draft model with all 20
-> tensors plus target embedding/output fallbacks. Native raw Q3_K selected
-> gate/up kernels and the retained Q4_K/Q8_0/full-attention paths execute a real
-> one-step draft whose top-10 IDs/top-1 token match llama.cpp; a
-> `Qwen35GGUFNextNDraftProvider` emits candidate-only rows under the shared ABI.
-> End-to-end target verify/transactional commit/economics are task #31.
+> **GGUF NextN status (2026-07-21):** the local UD-Q3_K_M trailing blk.40
+> remains outside the 40-layer AR map and is separately materialized/executed as
+> a draft model. `Qwen35GGUFNextNDraftProvider` now runs end to end through the
+> existing candidate-only `DraftBatch` -> root-prefixed `TargetVerifyBatch` ->
+> `AcceptResult` contract, `KVLiveSpans(span_role="verify_chain")`, GPU accept
+> summary, scheduler `KVTransaction`, per-row target state snapshots,
+> accepted-prefix KV publication, rollback, and full shape-key stable-buffer
+> buckets. B=1/2/3 target logits are scalar-exact; reject/partial/full commit and
+> real greedy output match AR. The matched GPU1 D16 row is economically rejected
+> at `0.544x/0.346x/0.271x` AR with only `1.071` visible tokens/cycle, so this
+> remains an explicit diagnostic and public GGUF generation stays MTP-disabled.
 
 > **Top priority for the next push:** MTP break-even sprint. Hold every exact
 > same-suite improvement, use `0.758x / 27.8 ms` as the locked sprint baseline,

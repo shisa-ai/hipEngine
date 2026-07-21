@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-07-21
 
+- [diagnostic no-hold] Qwen3.6-35B-A3B GGUF / gguf_ud_q3_k_m + blk.40 NextN / GPU1 raw code prompt D16: first shared-ABI end-to-end MTP row measures B1/B2/B3 AR `8.832/9.247/8.902` -> MTP `4.801/3.201/2.413 tok/s` (-45.64/-65.38/-72.90%) with exact greedy IDs, GPU/CPU accept parity, transactional reject/partial/full state+KV gates, and only `1.071` visible tokens/cycle, so GGUF MTP remains default-disabled; `benchmarks/results/2026-07-21-gpu1-q3-gguf-mtp-e2e-nohold.json`.
 - [hipEngine default] Qwen3.6-35B-A3B GGUF / gguf_ud_q3_k_m / GPU1 native c=N decode: first valid C=2/4/8 matrix moves retained c=1 aggregate `101.216 -> 207.780 tok/s` at C=8 512/128 (+105.28%) and `108.383 -> 211.177 tok/s` at C=8 4K/128 (+94.84%), with 25.973/26.397 tok/s/request, exact IDs/full-logit/compaction gates, C/context graph buckets, native rocprof symbols, bounded 16.372/18.107 GiB runtime peaks, admission/reclaim, and no c>N serial decode fallback; `benchmarks/results/2026-07-21-gpu1-q3-native-cn-retained.json`.
 
 ## 2026-07-20
