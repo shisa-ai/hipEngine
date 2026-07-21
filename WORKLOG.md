@@ -172598,3 +172598,30 @@ Validation:
 
 The in-flight old-source cache-off A5 pass remains a diagnostic only; it must be
 rerun from this repaired source before any retained pressure/soak result.
+
+## 2026-07-22 — Bound controlled-stream producers at the server active cap
+
+The same A5 diagnostic exposed a second independent overload defect after the
+soak launched 120 delayed SSE requests. `_GenerationBatcher._run()` bypassed
+`max_active_requests` whenever the backend supported controlled streaming, so
+47 localhost streams remained open while the process recorded zero CPU ticks
+for 10 seconds, both GPUs stayed at 0%, and `/ready` failed to answer within
+30 seconds. The invalid old-source run was terminated after 12 minutes; its KFD
+process exited and W7900 VRAM returned to idle.
+
+RED added a controlled-stream gate with active cap 1, queue cap 1, two survivor
+streams, and one overload request. The old batcher started both producers at
+once. The batcher now reserves active ownership synchronously before launching a
+controlled producer, leaves excess work in the bounded queue, and asynchronously
+waits for an active producer to finish before admission resumes. Queue overflow
+continues to return retryable `429 engine_busy`; no event-loop or worker thread
+is occupied while waiting for capacity.
+
+Validation:
+
+- RED: `test_generation_batcher_limits_controlled_stream_active_requests` failed because the second producer started while the first was live.
+- GREEN: controlled active-cap/queue rejection, live-neighbor admission, slow-consumer queue bounds, cooperative close, forced shutdown, buffered active cap, and queue rejection pass **7/7**.
+- Targeted Ruff, Python compilation, and diff checks pass with only the existing Starlette/httpx warning.
+
+A5 must restart from this source; the stopped diagnostic carries no retained
+measurement or performance claim.

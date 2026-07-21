@@ -2227,6 +2227,24 @@ class _GenerationBatcher:
                 if first.stream_queue is not None:
                     engine = self._engine_factory()
                     if _engine_supports_controlled_streaming(engine):
+                        active_limit = self._route_request_cap(first.route)
+                        if (
+                            active_limit is not None
+                            and self._active_requests >= active_limit
+                        ):
+                            self._queue.appendleft(first)
+                            active_streams = tuple(
+                                task for task in self._stream_tasks if not task.done()
+                            )
+                            if not active_streams:  # pragma: no cover - defensive invariant
+                                raise RuntimeError(
+                                    "controlled stream capacity is full without an active producer"
+                                )
+                            await asyncio.wait(
+                                active_streams,
+                                return_when=asyncio.FIRST_COMPLETED,
+                            )
+                            continue
                         self._launch_controlled_stream(first, engine)
                         continue
                 key = self._group_key(first)
@@ -2250,6 +2268,8 @@ class _GenerationBatcher:
                 self._worker = asyncio.create_task(self._run())
 
     def _launch_controlled_stream(self, item: _QueuedGeneration, engine: Any) -> None:
+        self._active_requests += 1
+        self._active_items[id(item)] = item
         task = asyncio.create_task(self._run_controlled_stream(item, engine))
         item.producer_task = task
         self._stream_tasks.add(task)
@@ -2262,8 +2282,6 @@ class _GenerationBatcher:
         task.add_done_callback(finished)
 
     async def _run_controlled_stream(self, item: _QueuedGeneration, engine: Any) -> None:
-        self._active_requests += 1
-        self._active_items[id(item)] = item
         try:
             if len(item.prompts) == 1:
                 await self._stream_single(item, engine=engine)
