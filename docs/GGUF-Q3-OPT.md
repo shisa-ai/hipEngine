@@ -181,7 +181,7 @@ embedding/output fallbacks apply.
 | #29 | Promote native UD-Q3_K_M c=2/4/8 decode and replace the blocked template | **Completed:** exact native C=2/4/8 plus reclaim/readmit scheduling retained |
 | #30 | Materialize blk.40 and emit candidate-only `DraftBatch` rows | **Completed:** separate map/residency, raw Q3_K kernels, real one-step parity, and provider landed |
 | #31 | Integrate and benchmark GGUF MTP end to end | **Completed/no-hold:** exact shared-ABI transaction path; B=1/2/3 economics regressive, default disabled |
-| #32 | Reprofile residual c=1 Q3 decode | Independent, profile-gated |
+| #32 | Reprofile residual c=1 Q3 decode | **D0 complete:** final tree is 8.82493 ms/token and 671 launches/token; dense Q8 remains first at 32.17%; one new premise is still profile-gated |
 
 ## Executive recommendation
 
@@ -1624,9 +1624,13 @@ new algebra/layout premise with its own explicit memory and correctness contract
 For **decode**, current GPU1 graph rows are `101.216/108.383 tok/s` at 512/4K.
 The same-model W7900/XTX qwen results still prove that approximately 145-190
 tok/s is feasible on gfx1100, and the retained HIP/Vulkan matrix gives no reason
-to infer a fundamental HIP ceiling. Task #32 starts from a fresh production
-profile; it must not repeat the rejected hierarchical top-k, IQ4 tile4,
-rowtile/repack, or stream-overlap premises.
+to infer a fundamental HIP ceiling. Task #32's final-tree D0 profile records
+`8.82493 ms/token` and `671` launches/token. Dense Q8 remains first at
+`2.83934 ms/token` (32.17%), ahead of full attention at `1.42134` (16.11%),
+lm-head Q6 at `1.05068` (11.91%), weighted IQ4 down at `1.00066` (11.34%),
+and IQ3 gate/up at `0.70532` (7.99%). The next bounded experiment must derive
+one new premise from this profile and must not repeat the rejected hierarchical
+top-k, IQ4 tile4, rowtile/repack, or stream-overlap premises.
 
 For **concurrent and speculative execution**, task #29 retains native exact
 C=2/4/8 serving, task #30 retains a separately materialized/executed blk.40

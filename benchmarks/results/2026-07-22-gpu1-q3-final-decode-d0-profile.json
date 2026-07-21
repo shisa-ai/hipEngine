@@ -1,0 +1,696 @@
+{
+  "schema": 1,
+  "status": "accepted_diagnostic_profile",
+  "performance_claim": false,
+  "date": "2026-07-22",
+  "purpose": "Task #32 final-tree D0 attribution for Qwen3.6-35B-A3B UD-Q3_K_M c=1 one-step graph decode after native c=N and transactional GGUF MTP landed.",
+  "hipengine_commit": "dddb60d1544fd1d5e6a8f6e5bf5dca7e0cd24b8e",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf",
+    "sha256": "8966dd0cd8c543c4228490a2a8b0e0814fc4f1e6a8e199ceed4de6754ae7b8e1",
+    "quant": "gguf_ud_q3_k_m",
+    "layers": 40,
+    "nextn_layer_omitted_from_ar": 40
+  },
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "visible_device": 1,
+    "rocprof_agent": 2,
+    "bdf": "0000:10:00.0",
+    "architecture": "gfx1100",
+    "wavefront_size": 32
+  },
+  "software": {
+    "branch": "q3-k-m",
+    "hip": "7.2.53211-3d9ef42",
+    "amd_clang": "22.0.0git",
+    "compiler_commit": "f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version-q3.txt",
+    "require_cached_build": true
+  },
+  "command": "OUT=/tmp/hipengine-q3-task32-d0-final-20260722-002522; LD_LIBRARY_PATH=/tmp/hipengine-roctx-sdk-override-gguf-direct:/opt/rocm/lib HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --selected-regions true --output-format csv -d $OUT -o q3-task32-d0-decode16 -- python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --quant gguf_ud_q3_k_m --token-id 9707 --prompt-length 512 --decode-tokens 16 --warmup-decode-tokens 1 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode native --no-use-wmma-prefill --no-use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --rocprof-selected-region measured_decode_graph --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build --json $OUT/bench.json",
+  "profile": {
+    "prompt_tokens": 512,
+    "decode_tokens": 16,
+    "graph_steps_per_replay": 1,
+    "total_kernel_ms": 141.198809,
+    "kernel_ms_per_token": 8.8249255625,
+    "total_dispatches": 10736,
+    "dispatches_per_token": 671.0,
+    "profiled_decode_tok_s": 88.12526531443564,
+    "profiled_decode_ms_per_token": 11.347483567078598,
+    "final_token_id": 68,
+    "finite_final_logits": true,
+    "tracked_peak_gib": 15.821619298309088,
+    "selected_region": "measured_decode_graph",
+    "parser_note": "qwen35_gguf_rocprof_summary single-CSV mode names its sole phase prefill; the source CSV is the measured_decode_graph selected region and is normalized here as decode."
+  },
+  "families": [
+    {
+      "rank": 1,
+      "name": "dense_q8_0_legacy_decode",
+      "ms": 45.429484,
+      "ms_per_token": 2.83934275,
+      "share_pct": 32.174126907826825,
+      "dispatches": 3200,
+      "dispatches_per_token": 200.0,
+      "traffic_proxy": {
+        "encoded_footprint_bytes_per_dispatch_proxy": 4456448,
+        "encoded_footprint_bytes_per_token_proxy": 891289600.0,
+        "effective_gb_s_proxy": 313.90701245913334,
+        "caveat": "Registry-family encoded-footprint proxy; selected/expert reuse and cache behavior mean this is not a DRAM-byte counter."
+      },
+      "resources": {
+        "vgpr_values": [
+          24,
+          72
+        ],
+        "accum_vgpr_values": [
+          0
+        ],
+        "sgpr_values": [
+          128
+        ],
+        "scratch_bytes_values": [
+          0
+        ],
+        "lds_bytes_values": [
+          512
+        ],
+        "workgroup_size_values": [
+          128
+        ]
+      },
+      "kernel_names": [
+        "void (anonymous namespace)::gguf_k_dual_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, int, int, int)",
+        "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int, int)"
+      ]
+    },
+    {
+      "rank": 2,
+      "name": "full_attention_decode",
+      "ms": 22.741387,
+      "ms_per_token": 1.4213366875,
+      "share_pct": 16.105934009684177,
+      "dispatches": 160,
+      "dispatches_per_token": 10.0,
+      "traffic_proxy": null,
+      "resources": {
+        "vgpr_values": [
+          40
+        ],
+        "accum_vgpr_values": [
+          0
+        ],
+        "sgpr_values": [
+          128
+        ],
+        "scratch_bytes_values": [
+          0
+        ],
+        "lds_bytes_values": [
+          0
+        ],
+        "workgroup_size_values": [
+          256
+        ]
+      },
+      "kernel_names": [
+        "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, float)"
+      ]
+    },
+    {
+      "rank": 3,
+      "name": "dense_q6_k_legacy_decode",
+      "ms": 16.810868,
+      "ms_per_token": 1.05067925,
+      "share_pct": 11.905814304708477,
+      "dispatches": 16,
+      "dispatches_per_token": 1.0,
+      "traffic_proxy": {
+        "encoded_footprint_bytes_per_dispatch_proxy": 255248590,
+        "encoded_footprint_bytes_per_token_proxy": 255248590.0,
+        "effective_gb_s_proxy": 242.93673830524395,
+        "caveat": "Registry-family encoded-footprint proxy; selected/expert reuse and cache behavior mean this is not a DRAM-byte counter."
+      },
+      "resources": {
+        "vgpr_values": [
+          56
+        ],
+        "accum_vgpr_values": [
+          0
+        ],
+        "sgpr_values": [
+          128
+        ],
+        "scratch_bytes_values": [
+          0
+        ],
+        "lds_bytes_values": [
+          512
+        ],
+        "workgroup_size_values": [
+          128
+        ]
+      },
+      "kernel_names": [
+        "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, float, 6>(unsigned short const*, unsigned char const*, float*, int, int, int, int)"
+      ]
+    },
+    {
+      "rank": 4,
+      "name": "moe_iq4_xs_weighted_down",
+      "ms": 16.010604,
+      "ms_per_token": 1.00066275,
+      "share_pct": 11.339050317343682,
+      "dispatches": 592,
+      "dispatches_per_token": 37.0,
+      "traffic_proxy": {
+        "encoded_footprint_bytes_per_dispatch_proxy": 4456448,
+        "encoded_footprint_bytes_per_token_proxy": 164888576.0,
+        "effective_gb_s_proxy": 164.77936847354417,
+        "caveat": "Registry-family encoded-footprint proxy; selected/expert reuse and cache behavior mean this is not a DRAM-byte counter."
+      },
+      "resources": {
+        "vgpr_values": [
+          80
+        ],
+        "accum_vgpr_values": [
+          0
+        ],
+        "sgpr_values": [
+          128
+        ],
+        "scratch_bytes_values": [
+          0
+        ],
+        "lds_bytes_values": [
+          512
+        ],
+        "workgroup_size_values": [
+          128
+        ]
+      },
+      "kernel_names": [
+        "(anonymous namespace)::gguf_iq4_xs_weighted_selected_down_kernel(unsigned short const*, long const*, float const*, unsigned char const*, unsigned short*, int, int, int, int, int)"
+      ]
+    },
+    {
+      "rank": 5,
+      "name": "moe_iq3_xxs_selected_dual_silu",
+      "ms": 11.285041,
+      "ms_per_token": 0.7053150625,
+      "share_pct": 7.992306082411786,
+      "dispatches": 624,
+      "dispatches_per_token": 39.0,
+      "traffic_proxy": {
+        "encoded_footprint_bytes_per_dispatch_proxy": 6422528,
+        "encoded_footprint_bytes_per_token_proxy": 250478592.0,
+        "effective_gb_s_proxy": 355.13007635506153,
+        "caveat": "Registry-family encoded-footprint proxy; selected/expert reuse and cache behavior mean this is not a DRAM-byte counter."
+      },
+      "resources": {
+        "vgpr_values": [
+          40
+        ],
+        "accum_vgpr_values": [
+          0
+        ],
+        "sgpr_values": [
+          128
+        ],
+        "scratch_bytes_values": [
+          0
+        ],
+        "lds_bytes_values": [
+          512
+        ],
+        "workgroup_size_values": [
+          256
+        ]
+      },
+      "kernel_names": [
+        "(anonymous namespace)::gguf_iq3_xxs_selected_dual_silu_gemv_kernel(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int, int, int, int, int)"
+      ]
+    },
+    {
+      "rank": 6,
+      "name": "gdn_decode",
+      "ms": 6.148046,
+      "ms_per_token": 0.384252875,
+      "share_pct": 4.354176953433084,
+      "dispatches": 480,
+      "dispatches_per_token": 30.0,
+      "traffic_proxy": null,
+      "resources": {
+        "vgpr_values": [
+          56
+        ],
+        "accum_vgpr_values": [
+          0
+        ],
+        "sgpr_values": [
+          128
+        ],
+        "scratch_bytes_values": [
+          0
+        ],
+        "lds_bytes_values": [
+          0
+        ],
+        "workgroup_size_values": [
+          128
+        ]
+      },
+      "kernel_names": [
+        "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, float, long, long, long, long)"
+      ]
+    },
+    {
+      "rank": 7,
+      "name": "rmsnorm",
+      "ms": 4.887308,
+      "ms_per_token": 0.30545675,
+      "share_pct": 3.4612954844399573,
+      "dispatches": 864,
+      "dispatches_per_token": 54.0,
+      "traffic_proxy": null,
+      "resources": {
+        "vgpr_values": [
+          16,
+          24
+        ],
+        "accum_vgpr_values": [
+          0
+        ],
+        "sgpr_values": [
+          128
+        ],
+        "scratch_bytes_values": [
+          0
+        ],
+        "lds_bytes_values": [
+          0
+        ],
+        "workgroup_size_values": [
+          256
+        ]
+      },
+      "kernel_names": [
+        "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+        "gguf_head_rmsnorm_partial_rotary_position_f32_weight_kernel(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long)",
+        "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)"
+      ]
+    },
+    {
+      "rank": 8,
+      "name": "router",
+      "ms": 4.828393,
+      "ms_per_token": 0.3017745625,
+      "share_pct": 3.4195706282480045,
+      "dispatches": 640,
+      "dispatches_per_token": 40.0,
+      "traffic_proxy": null,
+      "resources": {
+        "vgpr_values": [
+          40
+        ],
+        "accum_vgpr_values": [
+          0
+        ],
+        "sgpr_values": [
+          128
+        ],
+        "scratch_bytes_values": [
+          0
+        ],
+        "lds_bytes_values": [
+          512
+        ],
+        "workgroup_size_values": [
+          256
+        ]
+      },
+      "kernel_names": [
+        "void (anonymous namespace)::qwen35_router_topk_split_shared_coop_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short const*, float*, long*, float*, long, long, long)"
+      ]
+    },
+    {
+      "rank": 9,
+      "name": "moe_tail_next_rms",
+      "ms": 3.790497,
+      "ms_per_token": 0.2369060625,
+      "share_pct": 2.6845106037686195,
+      "dispatches": 592,
+      "dispatches_per_token": 37.0,
+      "traffic_proxy": null,
+      "resources": {
+        "vgpr_values": [
+          24
+        ],
+        "accum_vgpr_values": [
+          0
+        ],
+        "sgpr_values": [
+          128
+        ],
+        "scratch_bytes_values": [
+          0
+        ],
+        "lds_bytes_values": [
+          1024
+        ],
+        "workgroup_size_values": [
+          256
+        ]
+      },
+      "kernel_names": [
+        "void (anonymous namespace)::moe_tail_next_rmsnorm_out_kernel<unsigned short, float, false, false>(unsigned short const*, float const*, unsigned short const*, float const*, unsigned short const*, float const*, unsigned short*, unsigned short*, long, long, long, float)"
+      ]
+    },
+    {
+      "rank": 10,
+      "name": "other",
+      "ms": 3.035286,
+      "ms_per_token": 0.189705375,
+      "share_pct": 2.1496541093345907,
+      "dispatches": 1504,
+      "dispatches_per_token": 94.0,
+      "traffic_proxy": null,
+      "resources": {
+        "vgpr_values": [
+          8,
+          16,
+          24
+        ],
+        "accum_vgpr_values": [
+          0
+        ],
+        "sgpr_values": [
+          128
+        ],
+        "scratch_bytes_values": [
+          0
+        ],
+        "lds_bytes_values": [
+          0,
+          1024
+        ],
+        "workgroup_size_values": [
+          1,
+          128,
+          256
+        ]
+      },
+      "kernel_names": [
+        "(anonymous namespace)::advance_decode_position_i64_kernel(long*, long*)",
+        "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)",
+        "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)",
+        "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)",
+        "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)",
+        "(anonymous namespace)::qwen35_full_attn_gate_mul_bf16_kernel(float const*, unsigned short const*, unsigned short*, long)",
+        "(anonymous namespace)::qwen35_split_qgate_bf16_kernel(unsigned short const*, float*, unsigned short*, long, long, long)",
+        "gguf_q6_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+        "void (anonymous namespace)::dense_dual_gemv_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, long, long, long, long)"
+      ]
+    },
+    {
+      "rank": 11,
+      "name": "copy",
+      "ms": 1.843713,
+      "ms_per_token": 0.1152320625,
+      "share_pct": 1.3057567645630779,
+      "dispatches": 640,
+      "dispatches_per_token": 40.0,
+      "traffic_proxy": null,
+      "resources": {
+        "vgpr_values": [
+          16
+        ],
+        "accum_vgpr_values": [
+          0
+        ],
+        "sgpr_values": [
+          128
+        ],
+        "scratch_bytes_values": [
+          0
+        ],
+        "lds_bytes_values": [
+          0
+        ],
+        "workgroup_size_values": [
+          256
+        ]
+      },
+      "kernel_names": [
+        "__amd_rocclr_fillBufferAligned"
+      ]
+    },
+    {
+      "rank": 12,
+      "name": "linear_attn_conv",
+      "ms": 1.318738,
+      "ms_per_token": 0.082421125,
+      "share_pct": 0.9339583027219444,
+      "dispatches": 480,
+      "dispatches_per_token": 30.0,
+      "traffic_proxy": null,
+      "resources": {
+        "vgpr_values": [
+          16
+        ],
+        "accum_vgpr_values": [
+          0
+        ],
+        "sgpr_values": [
+          128
+        ],
+        "scratch_bytes_values": [
+          0
+        ],
+        "lds_bytes_values": [
+          0
+        ],
+        "workgroup_size_values": [
+          256
+        ]
+      },
+      "kernel_names": [
+        "void (anonymous namespace)::qwen35_linear_attn_conv_decode_lowp_kernel<unsigned short>(unsigned short const*, float*, float const*, float*, long, long)"
+      ]
+    },
+    {
+      "rank": 13,
+      "name": "silu_mul",
+      "ms": 1.148255,
+      "ms_per_token": 0.0717659375,
+      "share_pct": 0.813218615746256,
+      "dispatches": 656,
+      "dispatches_per_token": 41.0,
+      "traffic_proxy": null,
+      "resources": {
+        "vgpr_values": [
+          16
+        ],
+        "accum_vgpr_values": [
+          0
+        ],
+        "sgpr_values": [
+          128
+        ],
+        "scratch_bytes_values": [
+          0
+        ],
+        "lds_bytes_values": [
+          0
+        ],
+        "workgroup_size_values": [
+          256
+        ]
+      },
+      "kernel_names": [
+        "void (anonymous namespace)::silu_mul_separate_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long)"
+      ]
+    },
+    {
+      "rank": 14,
+      "name": "moe_q6_k_selected_legacy_decode",
+      "ms": 1.085812,
+      "ms_per_token": 0.06786325,
+      "share_pct": 0.7689951549095573,
+      "dispatches": 48,
+      "dispatches_per_token": 3.0,
+      "traffic_proxy": {
+        "encoded_footprint_bytes_per_dispatch_proxy": 55049401,
+        "encoded_footprint_bytes_per_token_proxy": 165148203.0,
+        "effective_gb_s_proxy": 2433.5439726214117,
+        "caveat": "Registry-family encoded-footprint proxy; selected/expert reuse and cache behavior mean this is not a DRAM-byte counter."
+      },
+      "resources": {
+        "vgpr_values": [
+          72
+        ],
+        "accum_vgpr_values": [
+          0
+        ],
+        "sgpr_values": [
+          128
+        ],
+        "scratch_bytes_values": [
+          0
+        ],
+        "lds_bytes_values": [
+          512
+        ],
+        "workgroup_size_values": [
+          128
+        ]
+      },
+      "kernel_names": [
+        "void (anonymous namespace)::gguf_k_selected_pack8_prefill_out_kernel<unsigned short, unsigned short, 6>(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int, int)"
+      ]
+    },
+    {
+      "rank": 15,
+      "name": "kv_write",
+      "ms": 0.360847,
+      "ms_per_token": 0.0225529375,
+      "share_pct": 0.2555595210438354,
+      "dispatches": 160,
+      "dispatches_per_token": 10.0,
+      "traffic_proxy": null,
+      "resources": {
+        "vgpr_values": [
+          8
+        ],
+        "accum_vgpr_values": [
+          0
+        ],
+        "sgpr_values": [
+          128
+        ],
+        "scratch_bytes_values": [
+          0
+        ],
+        "lds_bytes_values": [
+          0
+        ],
+        "workgroup_size_values": [
+          256
+        ]
+      },
+      "kernel_names": [
+        "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_position_tensor_kernel<unsigned short>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long)"
+      ]
+    },
+    {
+      "rank": 16,
+      "name": "moe_iq4_xs_selected_single",
+      "ms": 0.343488,
+      "ms_per_token": 0.021468,
+      "share_pct": 0.24326550799730895,
+      "dispatches": 32,
+      "dispatches_per_token": 2.0,
+      "traffic_proxy": {
+        "encoded_footprint_bytes_per_dispatch_proxy": 4456448,
+        "encoded_footprint_bytes_per_token_proxy": 8912896.0,
+        "effective_gb_s_proxy": 415.1712316005217,
+        "caveat": "Registry-family encoded-footprint proxy; selected/expert reuse and cache behavior mean this is not a DRAM-byte counter."
+      },
+      "resources": {
+        "vgpr_values": [
+          72
+        ],
+        "accum_vgpr_values": [
+          0
+        ],
+        "sgpr_values": [
+          128
+        ],
+        "scratch_bytes_values": [
+          0
+        ],
+        "lds_bytes_values": [
+          512
+        ],
+        "workgroup_size_values": [
+          128
+        ]
+      },
+      "kernel_names": [
+        "(anonymous namespace)::gguf_iq4_xs_selected_gemv_kernel(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)"
+      ]
+    },
+    {
+      "rank": 17,
+      "name": "moe_combine",
+      "ms": 0.131042,
+      "ms_per_token": 0.008190125,
+      "share_pct": 0.0928067318188215,
+      "dispatches": 48,
+      "dispatches_per_token": 3.0,
+      "traffic_proxy": null,
+      "resources": {
+        "vgpr_values": [
+          16
+        ],
+        "accum_vgpr_values": [
+          0
+        ],
+        "sgpr_values": [
+          128
+        ],
+        "scratch_bytes_values": [
+          0
+        ],
+        "lds_bytes_values": [
+          0
+        ],
+        "workgroup_size_values": [
+          256
+        ]
+      },
+      "kernel_names": [
+        "void (anonymous namespace)::weighted_sum_shared_gate_combine_residual_out_kernel<unsigned short, float>(unsigned short const*, float const*, unsigned short const*, float const*, unsigned short const*, unsigned short*, long, long)"
+      ]
+    }
+  ],
+  "comparison_to_prior_d0": {
+    "artifact": "benchmarks/results/2026-07-20-gpu1-q3-decode-d0-profile.json",
+    "prior_commit": "f9b217cc",
+    "prior_kernel_ms_per_token": 8.885841125,
+    "current_kernel_ms_per_token": 8.8249255625,
+    "delta_kernel_ms_per_token_pct": -0.6855351299115187,
+    "prior_dispatches_per_token": 708,
+    "current_dispatches_per_token": 671.0,
+    "dispatch_delta_per_token": -37.0,
+    "interpretation": "The retained MoE-tail plus next-RMS fusion removes exactly 37 launches/token; the major bottleneck order is otherwise stable on the final task-31 tree."
+  },
+  "closures_respected": {
+    "hierarchical_topk": "Rejected and removed; not rerun.",
+    "iq4_weighted_tile4": "Exact candidate regressed the real 37-layer family by 12.50% and was removed; not rerun.",
+    "iq3_wave_base": "Retained at VGPR40; broad rowtile/thread/repack sweeps remain closed.",
+    "stream_overlap": "Rejected after zero concurrent kernel timestamps; not rerun."
+  },
+  "handoff": {
+    "next_task": 38,
+    "first_audit_family": "dense_q8_0_legacy_decode",
+    "reason": "It remains first at 2.839343 ms/token (32.17%, 200 launches/token), more than twice any modifiable non-lm-head family.",
+    "constraint": "Implement only one new source/profile-backed algorithm or layout premise; do not repeat closed local geometry, top-k, IQ4 tile4, or overlap sweeps."
+  },
+  "raw_evidence": {
+    "bench_json": {
+      "path": "/tmp/hipengine-q3-task32-d0-final-20260722-002522/bench.json",
+      "sha256": "e46354e3550235b73b544bf374765c35f7fb45e075a9bd0ac2cd8e2f93ea286f"
+    },
+    "kernel_trace_csv": {
+      "path": "/tmp/hipengine-q3-task32-d0-final-20260722-002522/q3-task32-d0-decode16_kernel_trace.csv",
+      "sha256": "2d5320299a4425ab289f5b40ed913fd5ada5690da06a06f8f0e883a02135de1c"
+    },
+    "summary_json": {
+      "path": "/tmp/hipengine-q3-task32-d0-final-20260722-002522/summary.json",
+      "sha256": "8d02405679a2617ec56e4a8be20388896aab467242f66665bad1ee52789de987"
+    }
+  }
+}

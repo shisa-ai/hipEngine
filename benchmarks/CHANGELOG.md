@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-22
+
+- [diagnostic profile] Qwen3.6-35B-A3B GGUF / gguf_ud_q3_k_m / GPU1 selected decode16: final-tree graph attribution moves the prior D0 `8.88584 -> 8.82493 ms/token` (-0.69%) and `708 -> 671 launches/token` (-5.23%) after retained MoE-tail/next-RMS fusion; dense Q8 remains first at `2.83934 ms/token` (32.17%), with every ranked family scratch-free; `benchmarks/results/2026-07-22-gpu1-q3-final-decode-d0-profile.json`.
+
 ## 2026-07-21
 
 - [diagnostic no-hold] Qwen3.6-35B-A3B GGUF / gguf_ud_q3_k_m + blk.40 NextN / GPU1 raw code prompt D16: first shared-ABI end-to-end MTP row measures B1/B2/B3 AR `8.832/9.247/8.902` -> MTP `4.801/3.201/2.413 tok/s` (-45.64/-65.38/-72.90%) with exact greedy IDs, GPU/CPU accept parity, transactional reject/partial/full state+KV gates, and only `1.071` visible tokens/cycle, so GGUF MTP remains default-disabled; `benchmarks/results/2026-07-21-gpu1-q3-gguf-mtp-e2e-nohold.json`.
