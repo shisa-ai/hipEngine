@@ -1,0 +1,1685 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_agentic_a2_c1_prefix_paired_rejected",
+  "created_at": "2026-07-21T15:14:17.007612+00:00",
+  "status": "rejected_c1_regression_and_sparse_reuse",
+  "passed": false,
+  "measurement_valid": true,
+  "performance_claim": false,
+  "timing_claim": true,
+  "decision": "retain prefix_cache=off; do not run C4/C8 promotion matrix after the C1 prerequisite failed",
+  "source_revision": "fb9531b2a18a7d939389ae601fede3dc2b5a495f",
+  "source_clean_and_pushed": true,
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "target_rocm_index": 0,
+    "peer_gpu1_activity_allowed": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "workloads": {
+      "small_repo": 4096,
+      "growing_history": 4096,
+      "medium_repo": 10240
+    },
+    "logical_concurrency": 1,
+    "one_complete_warmup_per_condition": true,
+    "measured_pairs_per_family": 3,
+    "balanced_order": "family-and-pair parity alternates first mode; off-first 5 pairs, radix-first 4 pairs",
+    "server_environment": {
+      "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/agentic-w7900-hipcc-version.txt",
+      "HIPENGINE_GENERATION_BATCH_WINDOW_MS": "0",
+      "HIPENGINE_GGUF_AR_PACKED_DECODE": "1",
+      "HIPENGINE_GGUF_AR_STREAM_DECODE": "0",
+      "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact",
+      "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+      "HIPENGINE_MAX_PREFILL_CHUNK_TOKENS": "256",
+      "HIP_VISIBLE_DEVICES": "0",
+      "ROCR_VISIBLE_DEVICES": "0"
+    },
+    "primary_metrics": [
+      "buffered tool-ready latency",
+      "active-SSE exact generated-token goodput"
+    ],
+    "a1_control_path": "benchmarks/results/2026-07-21-w7900-agentic-a1-repeated-baseline.json",
+    "a1_control_sha256": "29133f5fb0fa36f0f83fe34565ad7df93214b8eb7e035ac56b5413713e495f3f"
+  },
+  "acceptance": {
+    "accepted": false,
+    "all_correctness_gates_passed": true,
+    "all_final_ownership_bounded": true,
+    "all_target_gpu0_exclusive": true,
+    "all_variance_gates_passed": false,
+    "all_a1_no_material_regression_guards_passed": false,
+    "any_usable_reuse_observed": true,
+    "rejection_reasons": [
+      "one or more primary-metric relative ranges exceed 5%",
+      "radix materially regresses A1 C1 primary guards",
+      "exact radix miss/tail handling is substantially slower than cache-off"
+    ]
+  },
+  "families": {
+    "small_repo": {
+      "context_tokens": 4096,
+      "a1_c1_baseline": {
+        "rate_tok_s": 16.239,
+        "tool_ready_ms": 1526.0
+      },
+      "off": {
+        "active_sse_exact_generated_tok_s": {
+          "count": 3,
+          "samples": [
+            13.302915523360387,
+            13.060484564850627,
+            13.033890227905703
+          ],
+          "median": 13.060484564850627,
+          "min": 13.033890227905703,
+          "max": 13.302915523360387,
+          "mean": 13.132430105372238,
+          "stdev": 0.14824227804283813,
+          "relative_range": 0.02059841609389481
+        },
+        "tool_ready_p50_ms": {
+          "count": 3,
+          "samples": [
+            1855.7982600759715,
+            1892.5164855318144,
+            1912.5667705666274
+          ],
+          "median": 1892.5164855318144,
+          "min": 1855.7982600759715,
+          "max": 1912.5667705666274,
+          "mean": 1886.960505391471,
+          "stdev": 28.789192977953448,
+          "relative_range": 0.029996309635687758
+        },
+        "prefill_ms_sum": {
+          "count": 3,
+          "samples": [
+            4411.18,
+            4450.425,
+            4471.589
+          ],
+          "median": 4450.425,
+          "min": 4411.18,
+          "max": 4471.589,
+          "mean": 4444.398,
+          "stdev": 30.65216741113081,
+          "relative_range": 0.013573759809456321
+        },
+        "full_vocab_logits_d2h_bytes_per_run": [
+          99328000,
+          99328000,
+          99328000
+        ],
+        "prefix": {
+          "eligible_turns": 0,
+          "lookups": 0,
+          "hits": 0,
+          "matched_tokens": 0,
+          "reused_tokens": 0,
+          "avoided_prefill_tokens": 0,
+          "executed_prefill_tokens": 32127,
+          "reused_pages": 0,
+          "reused_page_bytes": 0,
+          "state_clone_bytes": 0,
+          "max_cache_bytes": 0,
+          "max_cache_pages": 0,
+          "reused_page_bytes_per_token": 0.0,
+          "state_clone_bytes_per_token": 0.0,
+          "max_cache_bytes_per_reused_token": 0.0,
+          "fallback_turns": {
+            "cache_off": 12
+          },
+          "source_turns": {}
+        },
+        "variance_gate_passed": true
+      },
+      "radix": {
+        "active_sse_exact_generated_tok_s": {
+          "count": 3,
+          "samples": [
+            4.742391257431983,
+            4.677416847994518,
+            4.727081126430852
+          ],
+          "median": 4.727081126430852,
+          "min": 4.677416847994518,
+          "max": 4.742391257431983,
+          "mean": 4.715629743952451,
+          "stdev": 0.033967176670085385,
+          "relative_range": 0.013745143715467211
+        },
+        "tool_ready_p50_ms": {
+          "count": 3,
+          "samples": [
+            5231.467885023449,
+            5339.301157044247,
+            5246.946613013279
+          ],
+          "median": 5246.946613013279,
+          "min": 5231.467885023449,
+          "max": 5339.301157044247,
+          "mean": 5272.571885026991,
+          "stdev": 58.30518470093752,
+          "relative_range": 0.020551623634468507
+        },
+        "prefill_ms_sum": {
+          "count": 3,
+          "samples": [
+            17756.494,
+            17988.773,
+            17879.312
+          ],
+          "median": 17879.312,
+          "min": 17756.494,
+          "max": 17988.773,
+          "mean": 17874.859666666667,
+          "stdev": 116.20348925197386,
+          "relative_range": 0.012991495422195342
+        },
+        "full_vocab_logits_d2h_bytes_per_run": [
+          99328000,
+          99328000,
+          99328000
+        ],
+        "prefix": {
+          "eligible_turns": 12,
+          "lookups": 12,
+          "hits": 0,
+          "matched_tokens": 0,
+          "reused_tokens": 0,
+          "avoided_prefill_tokens": 0,
+          "executed_prefill_tokens": 32127,
+          "reused_pages": 0,
+          "reused_page_bytes": 0,
+          "state_clone_bytes": 0,
+          "max_cache_bytes": 66846720,
+          "max_cache_pages": 0,
+          "reused_page_bytes_per_token": 0.0,
+          "state_clone_bytes_per_token": 0.0,
+          "max_cache_bytes_per_reused_token": 0.0,
+          "fallback_turns": {
+            "miss": 12
+          },
+          "source_turns": {}
+        },
+        "variance_gate_passed": true
+      },
+      "paired_radix_vs_off": {
+        "active_sse_rate_delta_percent": {
+          "count": 3,
+          "samples": [
+            -64.35073763263266,
+            -64.18649840464006,
+            -63.73238500727803
+          ],
+          "median": -64.18649840464006,
+          "min": -64.35073763263266,
+          "max": -63.73238500727803,
+          "mean": -64.08987368151692,
+          "stdev": 0.3203002422098795,
+          "relative_range": 0.00963368684573583
+        },
+        "tool_ready_p50_delta_percent": {
+          "count": 3,
+          "samples": [
+            181.89852300051658,
+            182.12706192326004,
+            174.34057172596331
+          ],
+          "median": 181.89852300051658,
+          "min": 174.34057172596331,
+          "max": 182.12706192326004,
+          "mean": 179.4553855499133,
+          "stdev": 4.431032368427777,
+          "relative_range": 0.042806780774545465
+        }
+      },
+      "radix_vs_a1": {
+        "active_sse_rate_delta_percent": -70.89056514298386,
+        "tool_ready_p50_delta_percent": 243.83660635735774,
+        "no_material_regression_gate_passed": false
+      },
+      "usable_reuse_observed": false
+    },
+    "growing_history": {
+      "context_tokens": 4096,
+      "a1_c1_baseline": {
+        "rate_tok_s": 15.1,
+        "tool_ready_ms": 1655.0
+      },
+      "off": {
+        "active_sse_exact_generated_tok_s": {
+          "count": 3,
+          "samples": [
+            12.266230749868312,
+            12.248230975746699,
+            12.214475883286937
+          ],
+          "median": 12.248230975746699,
+          "min": 12.214475883286937,
+          "max": 12.266230749868312,
+          "mean": 12.242979202967316,
+          "stdev": 0.02627408212875705,
+          "relative_range": 0.004225497272533215
+        },
+        "tool_ready_p50_ms": {
+          "count": 3,
+          "samples": [
+            2059.3578944681212,
+            2039.024087076541,
+            2079.9116584821604
+          ],
+          "median": 2059.3578944681212,
+          "min": 2039.024087076541,
+          "max": 2079.9116584821604,
+          "mean": 2059.431213342274,
+          "stdev": 20.443884308158914,
+          "relative_range": 0.019854524323067984
+        },
+        "prefill_ms_sum": {
+          "count": 3,
+          "samples": [
+            9822.143,
+            9809.441,
+            9833.08
+          ],
+          "median": 9822.143,
+          "min": 9809.441,
+          "max": 9833.08,
+          "mean": 9821.554666666667,
+          "stdev": 11.830476843023863,
+          "relative_range": 0.002406704931907346
+        },
+        "full_vocab_logits_d2h_bytes_per_run": [
+          197662720,
+          197662720,
+          197662720
+        ],
+        "prefix": {
+          "eligible_turns": 0,
+          "lookups": 0,
+          "hits": 0,
+          "matched_tokens": 0,
+          "reused_tokens": 0,
+          "avoided_prefill_tokens": 0,
+          "executed_prefill_tokens": 69294,
+          "reused_pages": 0,
+          "reused_page_bytes": 0,
+          "state_clone_bytes": 0,
+          "max_cache_bytes": 0,
+          "max_cache_pages": 0,
+          "reused_page_bytes_per_token": 0.0,
+          "state_clone_bytes_per_token": 0.0,
+          "max_cache_bytes_per_reused_token": 0.0,
+          "fallback_turns": {
+            "cache_off": 24
+          },
+          "source_turns": {}
+        },
+        "variance_gate_passed": true
+      },
+      "radix": {
+        "active_sse_exact_generated_tok_s": {
+          "count": 3,
+          "samples": [
+            4.2155805734175775,
+            3.8995083432840754,
+            4.2691922036386085
+          ],
+          "median": 4.2155805734175775,
+          "min": 3.8995083432840754,
+          "max": 4.2691922036386085,
+          "mean": 4.128093706780087,
+          "stdev": 0.1997673722788384,
+          "relative_range": 0.08769464938843048
+        },
+        "tool_ready_p50_ms": {
+          "count": 3,
+          "samples": [
+            6097.496198955923,
+            6754.978448036127,
+            5991.524777025916
+          ],
+          "median": 6097.496198955923,
+          "min": 5991.524777025916,
+          "max": 6754.978448036127,
+          "mean": 6281.333141339322,
+          "stdev": 413.5968967284446,
+          "relative_range": 0.1252077321738942
+        },
+        "prefill_ms_sum": {
+          "count": 3,
+          "samples": [
+            40370.195,
+            43626.394,
+            39848.905
+          ],
+          "median": 40370.195,
+          "min": 39848.905,
+          "max": 43626.394,
+          "mean": 41281.831333333335,
+          "stdev": 2047.111718854234,
+          "relative_range": 0.0935712349172453
+        },
+        "full_vocab_logits_d2h_bytes_per_run": [
+          197662720,
+          197662720,
+          197662720
+        ],
+        "prefix": {
+          "eligible_turns": 24,
+          "lookups": 24,
+          "hits": 3,
+          "matched_tokens": 9216,
+          "reused_tokens": 9216,
+          "avoided_prefill_tokens": 9216,
+          "executed_prefill_tokens": 60078,
+          "reused_pages": 36,
+          "reused_page_bytes": 188743680,
+          "state_clone_bytes": 200540160,
+          "max_cache_bytes": 129761280,
+          "max_cache_pages": 12,
+          "reused_page_bytes_per_token": 20480.0,
+          "state_clone_bytes_per_token": 21760.0,
+          "max_cache_bytes_per_reused_token": 42240.0,
+          "fallback_turns": {
+            "miss": 21
+          },
+          "source_turns": {
+            "completed_snapshot": 3
+          }
+        },
+        "variance_gate_passed": false
+      },
+      "paired_radix_vs_off": {
+        "active_sse_rate_delta_percent": {
+          "count": 3,
+          "samples": [
+            -65.63263271838551,
+            -68.1626811985692,
+            -65.04809338990842
+          ],
+          "median": -65.63263271838551,
+          "min": -68.1626811985692,
+          "max": -65.04809338990842,
+          "mean": -66.28113576895437,
+          "stdev": 1.6554701626463841,
+          "relative_range": 0.04745486627094123
+        },
+        "tool_ready_p50_delta_percent": {
+          "count": 3,
+          "samples": [
+            196.0872520184622,
+            231.2848774494422,
+            188.06631053735714
+          ],
+          "median": 196.0872520184622,
+          "min": 188.06631053735714,
+          "max": 231.2848774494422,
+          "mean": 205.14614666842053,
+          "stdev": 22.98931949173085,
+          "relative_range": 0.2204047762779393
+        }
+      },
+      "radix_vs_a1": {
+        "active_sse_rate_delta_percent": -72.08224785816174,
+        "tool_ready_p50_delta_percent": 268.42877335081107,
+        "no_material_regression_gate_passed": false
+      },
+      "usable_reuse_observed": true
+    },
+    "medium_repo": {
+      "context_tokens": 10240,
+      "a1_c1_baseline": {
+        "rate_tok_s": 4.127,
+        "tool_ready_ms": 4396.0
+      },
+      "off": {
+        "active_sse_exact_generated_tok_s": {
+          "count": 3,
+          "samples": [
+            3.810874239276205,
+            3.8681122082513846,
+            3.8514606174211905
+          ],
+          "median": 3.8514606174211905,
+          "min": 3.810874239276205,
+          "max": 3.8681122082513846,
+          "mean": 3.843482354982927,
+          "stdev": 0.029441225802456967,
+          "relative_range": 0.014861366806212872
+        },
+        "tool_ready_p50_ms": {
+          "count": 3,
+          "samples": [
+            4864.306208502967,
+            4777.68630546052,
+            4808.649707003497
+          ],
+          "median": 4808.649707003497,
+          "min": 4777.68630546052,
+          "max": 4864.306208502967,
+          "mean": 4816.880740322328,
+          "stdev": 43.89264554447026,
+          "relative_range": 0.018013352670769586
+        },
+        "prefill_ms_sum": {
+          "count": 3,
+          "samples": [
+            32383.754999999997,
+            32094.07,
+            32146.725
+          ],
+          "median": 32146.725,
+          "min": 32094.07,
+          "max": 32383.754999999997,
+          "mean": 32208.18333333333,
+          "stdev": 154.3120049067246,
+          "relative_range": 0.009011337857899916
+        },
+        "full_vocab_logits_d2h_bytes_per_run": [
+          144025600,
+          144025600,
+          144025600
+        ],
+        "prefix": {
+          "eligible_turns": 0,
+          "lookups": 0,
+          "hits": 0,
+          "matched_tokens": 0,
+          "reused_tokens": 0,
+          "avoided_prefill_tokens": 0,
+          "executed_prefill_tokens": 160848,
+          "reused_pages": 0,
+          "reused_page_bytes": 0,
+          "state_clone_bytes": 0,
+          "max_cache_bytes": 0,
+          "max_cache_pages": 0,
+          "reused_page_bytes_per_token": 0.0,
+          "state_clone_bytes_per_token": 0.0,
+          "max_cache_bytes_per_reused_token": 0.0,
+          "fallback_turns": {
+            "cache_off": 18
+          },
+          "source_turns": {}
+        },
+        "variance_gate_passed": true
+      },
+      "radix": {
+        "active_sse_exact_generated_tok_s": {
+          "count": 3,
+          "samples": [
+            2.7715857732380984,
+            2.8376728283470665,
+            2.889867048217005
+          ],
+          "median": 2.8376728283470665,
+          "min": 2.7715857732380984,
+          "max": 2.889867048217005,
+          "mean": 2.83304188326739,
+          "stdev": 0.05927646448555406,
+          "relative_range": 0.041682492004479876
+        },
+        "tool_ready_p50_ms": {
+          "count": 3,
+          "samples": [
+            6906.03041194845,
+            6632.126365962904,
+            6402.528299018741
+          ],
+          "median": 6632.126365962904,
+          "min": 6402.528299018741,
+          "max": 6906.03041194845,
+          "mean": 6646.8950256433645,
+          "stdev": 252.07574142058647,
+          "relative_range": 0.07591865491492439
+        },
+        "prefill_ms_sum": {
+          "count": 3,
+          "samples": [
+            45521.052,
+            44511.778,
+            43915.081
+          ],
+          "median": 44511.778,
+          "min": 43915.081,
+          "max": 45521.052,
+          "mean": 44649.30366666667,
+          "stdev": 811.7700998154204,
+          "relative_range": 0.036079686594411145
+        },
+        "full_vocab_logits_d2h_bytes_per_run": [
+          144025600,
+          144025600,
+          144025600
+        ],
+        "prefix": {
+          "eligible_turns": 18,
+          "lookups": 18,
+          "hits": 3,
+          "matched_tokens": 26112,
+          "reused_tokens": 26112,
+          "avoided_prefill_tokens": 26112,
+          "executed_prefill_tokens": 134736,
+          "reused_pages": 102,
+          "reused_page_bytes": 534773760,
+          "state_clone_bytes": 200540160,
+          "max_cache_bytes": 245104640,
+          "max_cache_pages": 34,
+          "reused_page_bytes_per_token": 20480.0,
+          "state_clone_bytes_per_token": 7680.0,
+          "max_cache_bytes_per_reused_token": 28160.0,
+          "fallback_turns": {
+            "miss": 15
+          },
+          "source_turns": {
+            "completed_snapshot": 3
+          }
+        },
+        "variance_gate_passed": false
+      },
+      "paired_radix_vs_off": {
+        "active_sse_rate_delta_percent": {
+          "count": 3,
+          "samples": [
+            -27.271654764327714,
+            -26.639335273320253,
+            -24.966984339775923
+          ],
+          "median": -26.639335273320253,
+          "min": -27.271654764327714,
+          "max": -24.966984339775923,
+          "mean": -26.292658125807964,
+          "stdev": 1.190804444443493,
+          "relative_range": 0.08651381128342032
+        },
+        "tool_ready_p50_delta_percent": {
+          "count": 3,
+          "samples": [
+            41.97359532745865,
+            38.814604851367164,
+            33.14607403599934
+          ],
+          "median": 38.814604851367164,
+          "min": 33.14607403599934,
+          "max": 41.97359532745865,
+          "mean": 37.97809140494172,
+          "stdev": 4.47281780283188,
+          "relative_range": 0.2274278283976497
+        }
+      },
+      "radix_vs_a1": {
+        "active_sse_rate_delta_percent": -31.241269000555693,
+        "tool_ready_p50_delta_percent": 50.86729676894686,
+        "no_material_regression_gate_passed": false
+      },
+      "usable_reuse_observed": true
+    }
+  },
+  "condition_evidence": [
+    {
+      "label": "small_repo-pair1-order1-off",
+      "pair_index": 0,
+      "order_index": 0,
+      "cache_mode": "off",
+      "active_sse_exact_generated_tok_s": 13.302915523360387,
+      "tool_ready_p50_ms": 1855.7982600759715,
+      "prefill_ms_sum": 4411.18,
+      "full_vocab_logits_d2h_bytes": 99328000,
+      "prefix": {
+        "admission_fallbacks": 0,
+        "avoided_prefill_tokens": 0,
+        "eligible_turns": 0,
+        "executed_prefill_tokens": 10709,
+        "fallback_turns": {
+          "cache_off": 4
+        },
+        "hit_rate": 0.0,
+        "hits": 0,
+        "lookups": 0,
+        "matched_tokens": 0,
+        "max_cache_bytes": 0,
+        "max_cache_bytes_per_reused_token": 0.0,
+        "max_cache_entries": 0,
+        "max_cache_pages": 0,
+        "reused_page_bytes": 0,
+        "reused_page_bytes_per_token": 0.0,
+        "reused_pages": 0,
+        "reused_tokens": 0,
+        "source_turns": {},
+        "state_clone_bytes": 0,
+        "state_clone_bytes_per_token": 0.0
+      },
+      "final_ownership": {
+        "active_requests": 0,
+        "allowed_cache_bytes": 0,
+        "cache_resident_bytes": 0,
+        "cache_resident_entries": 0,
+        "cache_resident_pages": 0,
+        "graph_owners": 0,
+        "kv_pinned_pages": 0,
+        "kv_refcounted_pages": 0,
+        "model_active_requests": 0,
+        "pending_requests": 0,
+        "session_count": 0,
+        "stream_producers": 0,
+        "workspace_owners": 0
+      },
+      "validation_passed": true,
+      "target_gpu0_exclusive": true,
+      "gpu_ownership_samples": 116,
+      "target_server_samples": 115,
+      "artifact_sha256": "a169e58dee045feca53cc46f8bc717d287c6deaa7ce82a6697455621744aa721",
+      "records_sha256": "d108d1b19dcb022b12f96ba4293f0120ae9f43c6c171decf987ae7370863b40d",
+      "server_log_sha256": "ca993a56fcc2ae5215228f310d167d7d712861e25dc2fd5881218df54629b841"
+    },
+    {
+      "label": "small_repo-pair1-order2-radix",
+      "pair_index": 0,
+      "order_index": 1,
+      "cache_mode": "radix",
+      "active_sse_exact_generated_tok_s": 4.742391257431983,
+      "tool_ready_p50_ms": 5231.467885023449,
+      "prefill_ms_sum": 17756.494,
+      "full_vocab_logits_d2h_bytes": 99328000,
+      "prefix": {
+        "admission_fallbacks": 0,
+        "avoided_prefill_tokens": 0,
+        "eligible_turns": 4,
+        "executed_prefill_tokens": 10709,
+        "fallback_turns": {
+          "miss": 4
+        },
+        "hit_rate": 0.0,
+        "hits": 0,
+        "lookups": 4,
+        "matched_tokens": 0,
+        "max_cache_bytes": 66846720,
+        "max_cache_bytes_per_reused_token": 0.0,
+        "max_cache_entries": 1,
+        "max_cache_pages": 0,
+        "reused_page_bytes": 0,
+        "reused_page_bytes_per_token": 0.0,
+        "reused_pages": 0,
+        "reused_tokens": 0,
+        "source_turns": {},
+        "state_clone_bytes": 0,
+        "state_clone_bytes_per_token": 0.0
+      },
+      "final_ownership": {
+        "active_requests": 0,
+        "allowed_cache_bytes": 234618880,
+        "cache_resident_bytes": 124518400,
+        "cache_resident_entries": 1,
+        "cache_resident_pages": 11,
+        "graph_owners": 0,
+        "kv_pinned_pages": 0,
+        "kv_refcounted_pages": 0,
+        "model_active_requests": 0,
+        "pending_requests": 0,
+        "session_count": 0,
+        "stream_producers": 0,
+        "workspace_owners": 0
+      },
+      "validation_passed": true,
+      "target_gpu0_exclusive": true,
+      "gpu_ownership_samples": 127,
+      "target_server_samples": 126,
+      "artifact_sha256": "50ade91da6b3d7d630c6d4109869c732172e82a91f0c24f850458471f8ec9446",
+      "records_sha256": "ea2d853de60e7f485b74b041e9550e606d303d1b0a6f0f49d365186a5f8b1662",
+      "server_log_sha256": "71b409ee61121b03433c517e03c3055aa7aecc7dae2c87efa18c202654a43b59"
+    },
+    {
+      "label": "small_repo-pair2-order1-radix",
+      "pair_index": 1,
+      "order_index": 0,
+      "cache_mode": "radix",
+      "active_sse_exact_generated_tok_s": 4.677416847994518,
+      "tool_ready_p50_ms": 5339.301157044247,
+      "prefill_ms_sum": 17988.773,
+      "full_vocab_logits_d2h_bytes": 99328000,
+      "prefix": {
+        "admission_fallbacks": 0,
+        "avoided_prefill_tokens": 0,
+        "eligible_turns": 4,
+        "executed_prefill_tokens": 10709,
+        "fallback_turns": {
+          "miss": 4
+        },
+        "hit_rate": 0.0,
+        "hits": 0,
+        "lookups": 4,
+        "matched_tokens": 0,
+        "max_cache_bytes": 66846720,
+        "max_cache_bytes_per_reused_token": 0.0,
+        "max_cache_entries": 1,
+        "max_cache_pages": 0,
+        "reused_page_bytes": 0,
+        "reused_page_bytes_per_token": 0.0,
+        "reused_pages": 0,
+        "reused_tokens": 0,
+        "source_turns": {},
+        "state_clone_bytes": 0,
+        "state_clone_bytes_per_token": 0.0
+      },
+      "final_ownership": {
+        "active_requests": 0,
+        "allowed_cache_bytes": 234618880,
+        "cache_resident_bytes": 124518400,
+        "cache_resident_entries": 1,
+        "cache_resident_pages": 11,
+        "graph_owners": 0,
+        "kv_pinned_pages": 0,
+        "kv_refcounted_pages": 0,
+        "model_active_requests": 0,
+        "pending_requests": 0,
+        "session_count": 0,
+        "stream_producers": 0,
+        "workspace_owners": 0
+      },
+      "validation_passed": true,
+      "target_gpu0_exclusive": true,
+      "gpu_ownership_samples": 135,
+      "target_server_samples": 134,
+      "artifact_sha256": "916284ead256437f6ac14e596df1da051a6109e2ace0a3b439951d3a9084bc13",
+      "records_sha256": "58e7dd3b8e1b507d22f0dbca78b34ac148dd7b5b62325044252f139da2e5831a",
+      "server_log_sha256": "9a37d613b52ab2b4bbb15d1b4ea67b003ad1c48d8f2aea2548109473df20a859"
+    },
+    {
+      "label": "small_repo-pair2-order2-off",
+      "pair_index": 1,
+      "order_index": 1,
+      "cache_mode": "off",
+      "active_sse_exact_generated_tok_s": 13.060484564850627,
+      "tool_ready_p50_ms": 1892.5164855318144,
+      "prefill_ms_sum": 4450.425,
+      "full_vocab_logits_d2h_bytes": 99328000,
+      "prefix": {
+        "admission_fallbacks": 0,
+        "avoided_prefill_tokens": 0,
+        "eligible_turns": 0,
+        "executed_prefill_tokens": 10709,
+        "fallback_turns": {
+          "cache_off": 4
+        },
+        "hit_rate": 0.0,
+        "hits": 0,
+        "lookups": 0,
+        "matched_tokens": 0,
+        "max_cache_bytes": 0,
+        "max_cache_bytes_per_reused_token": 0.0,
+        "max_cache_entries": 0,
+        "max_cache_pages": 0,
+        "reused_page_bytes": 0,
+        "reused_page_bytes_per_token": 0.0,
+        "reused_pages": 0,
+        "reused_tokens": 0,
+        "source_turns": {},
+        "state_clone_bytes": 0,
+        "state_clone_bytes_per_token": 0.0
+      },
+      "final_ownership": {
+        "active_requests": 0,
+        "allowed_cache_bytes": 0,
+        "cache_resident_bytes": 0,
+        "cache_resident_entries": 0,
+        "cache_resident_pages": 0,
+        "graph_owners": 0,
+        "kv_pinned_pages": 0,
+        "kv_refcounted_pages": 0,
+        "model_active_requests": 0,
+        "pending_requests": 0,
+        "session_count": 0,
+        "stream_producers": 0,
+        "workspace_owners": 0
+      },
+      "validation_passed": true,
+      "target_gpu0_exclusive": true,
+      "gpu_ownership_samples": 117,
+      "target_server_samples": 116,
+      "artifact_sha256": "3aa7f575f1312ff70b9bd1dbd11408e2d3a9892b4197342d8e0153647c54af8f",
+      "records_sha256": "a76c443dd815d60634a2c2133ca664d9d7e65cb63007c738cf6ce35f3632c2d2",
+      "server_log_sha256": "9b06036319a36023eb3f2b5bfa9b7261abd744c61fadd3a34d60d29777c43096"
+    },
+    {
+      "label": "small_repo-pair3-order1-off",
+      "pair_index": 2,
+      "order_index": 0,
+      "cache_mode": "off",
+      "active_sse_exact_generated_tok_s": 13.033890227905703,
+      "tool_ready_p50_ms": 1912.5667705666274,
+      "prefill_ms_sum": 4471.589,
+      "full_vocab_logits_d2h_bytes": 99328000,
+      "prefix": {
+        "admission_fallbacks": 0,
+        "avoided_prefill_tokens": 0,
+        "eligible_turns": 0,
+        "executed_prefill_tokens": 10709,
+        "fallback_turns": {
+          "cache_off": 4
+        },
+        "hit_rate": 0.0,
+        "hits": 0,
+        "lookups": 0,
+        "matched_tokens": 0,
+        "max_cache_bytes": 0,
+        "max_cache_bytes_per_reused_token": 0.0,
+        "max_cache_entries": 0,
+        "max_cache_pages": 0,
+        "reused_page_bytes": 0,
+        "reused_page_bytes_per_token": 0.0,
+        "reused_pages": 0,
+        "reused_tokens": 0,
+        "source_turns": {},
+        "state_clone_bytes": 0,
+        "state_clone_bytes_per_token": 0.0
+      },
+      "final_ownership": {
+        "active_requests": 0,
+        "allowed_cache_bytes": 0,
+        "cache_resident_bytes": 0,
+        "cache_resident_entries": 0,
+        "cache_resident_pages": 0,
+        "graph_owners": 0,
+        "kv_pinned_pages": 0,
+        "kv_refcounted_pages": 0,
+        "model_active_requests": 0,
+        "pending_requests": 0,
+        "session_count": 0,
+        "stream_producers": 0,
+        "workspace_owners": 0
+      },
+      "validation_passed": true,
+      "target_gpu0_exclusive": true,
+      "gpu_ownership_samples": 116,
+      "target_server_samples": 115,
+      "artifact_sha256": "d3bea4c9f16393193f9645f0c048fea28510aa91437f9b2cc6b94d6902e61197",
+      "records_sha256": "ef57ea269f8ee781d23eb581734937c5387071a28bc2f148c9bcca50ae3eebad",
+      "server_log_sha256": "1f64174df008c71cdf09fe49550bf3e9a82ebac193de3ca72ce36f0304609731"
+    },
+    {
+      "label": "small_repo-pair3-order2-radix",
+      "pair_index": 2,
+      "order_index": 1,
+      "cache_mode": "radix",
+      "active_sse_exact_generated_tok_s": 4.727081126430852,
+      "tool_ready_p50_ms": 5246.946613013279,
+      "prefill_ms_sum": 17879.312,
+      "full_vocab_logits_d2h_bytes": 99328000,
+      "prefix": {
+        "admission_fallbacks": 0,
+        "avoided_prefill_tokens": 0,
+        "eligible_turns": 4,
+        "executed_prefill_tokens": 10709,
+        "fallback_turns": {
+          "miss": 4
+        },
+        "hit_rate": 0.0,
+        "hits": 0,
+        "lookups": 4,
+        "matched_tokens": 0,
+        "max_cache_bytes": 66846720,
+        "max_cache_bytes_per_reused_token": 0.0,
+        "max_cache_entries": 1,
+        "max_cache_pages": 0,
+        "reused_page_bytes": 0,
+        "reused_page_bytes_per_token": 0.0,
+        "reused_pages": 0,
+        "reused_tokens": 0,
+        "source_turns": {},
+        "state_clone_bytes": 0,
+        "state_clone_bytes_per_token": 0.0
+      },
+      "final_ownership": {
+        "active_requests": 0,
+        "allowed_cache_bytes": 234618880,
+        "cache_resident_bytes": 124518400,
+        "cache_resident_entries": 1,
+        "cache_resident_pages": 11,
+        "graph_owners": 0,
+        "kv_pinned_pages": 0,
+        "kv_refcounted_pages": 0,
+        "model_active_requests": 0,
+        "pending_requests": 0,
+        "session_count": 0,
+        "stream_producers": 0,
+        "workspace_owners": 0
+      },
+      "validation_passed": true,
+      "target_gpu0_exclusive": true,
+      "gpu_ownership_samples": 128,
+      "target_server_samples": 127,
+      "artifact_sha256": "39665f7d01cd1ded2b5d9e126d690551b63ca4cb9b8310ca1b202106bf0e3527",
+      "records_sha256": "77df6d2d24e3f66da37a4eda0371d461bd24c0bbfd22bf4622d686fe4a5d0b2c",
+      "server_log_sha256": "0314f1ec3bd4e5c6339fa7f704f754cbbc36b1f252465a2a65df6ec8f41e33bc"
+    },
+    {
+      "label": "growing_history-pair1-order1-radix",
+      "pair_index": 0,
+      "order_index": 0,
+      "cache_mode": "radix",
+      "active_sse_exact_generated_tok_s": 4.2155805734175775,
+      "tool_ready_p50_ms": 6097.496198955923,
+      "prefill_ms_sum": 40370.195,
+      "full_vocab_logits_d2h_bytes": 197662720,
+      "prefix": {
+        "admission_fallbacks": 0,
+        "avoided_prefill_tokens": 3072,
+        "eligible_turns": 8,
+        "executed_prefill_tokens": 20026,
+        "fallback_turns": {
+          "miss": 7
+        },
+        "hit_rate": 0.125,
+        "hits": 1,
+        "lookups": 8,
+        "matched_tokens": 3072,
+        "max_cache_bytes": 129761280,
+        "max_cache_bytes_per_reused_token": 42240.0,
+        "max_cache_entries": 1,
+        "max_cache_pages": 12,
+        "reused_page_bytes": 62914560,
+        "reused_page_bytes_per_token": 20480.0,
+        "reused_pages": 12,
+        "reused_tokens": 3072,
+        "source_turns": {
+          "completed_snapshot": 1
+        },
+        "state_clone_bytes": 66846720,
+        "state_clone_bytes_per_token": 21760.0
+      },
+      "final_ownership": {
+        "active_requests": 0,
+        "allowed_cache_bytes": 234618880,
+        "cache_resident_bytes": 129761280,
+        "cache_resident_entries": 1,
+        "cache_resident_pages": 12,
+        "graph_owners": 0,
+        "kv_pinned_pages": 0,
+        "kv_refcounted_pages": 0,
+        "model_active_requests": 0,
+        "pending_requests": 0,
+        "session_count": 0,
+        "stream_producers": 0,
+        "workspace_owners": 0
+      },
+      "validation_passed": true,
+      "target_gpu0_exclusive": true,
+      "gpu_ownership_samples": 179,
+      "target_server_samples": 178,
+      "artifact_sha256": "8bfb099502a2017ab35c879bab9eda693951940b7747b57ff8777b39fa30ac33",
+      "records_sha256": "4dd4d6820010ea02ea808d06abcd79ae4e91fa38d300385cb6b323dfa63ffa58",
+      "server_log_sha256": "6e43756edb353de0e1c18d205e45f252e93d95b1db671bdc8c5d36b08dcc6881"
+    },
+    {
+      "label": "growing_history-pair1-order2-off",
+      "pair_index": 0,
+      "order_index": 1,
+      "cache_mode": "off",
+      "active_sse_exact_generated_tok_s": 12.266230749868312,
+      "tool_ready_p50_ms": 2059.3578944681212,
+      "prefill_ms_sum": 9822.143,
+      "full_vocab_logits_d2h_bytes": 197662720,
+      "prefix": {
+        "admission_fallbacks": 0,
+        "avoided_prefill_tokens": 0,
+        "eligible_turns": 0,
+        "executed_prefill_tokens": 23098,
+        "fallback_turns": {
+          "cache_off": 8
+        },
+        "hit_rate": 0.0,
+        "hits": 0,
+        "lookups": 0,
+        "matched_tokens": 0,
+        "max_cache_bytes": 0,
+        "max_cache_bytes_per_reused_token": 0.0,
+        "max_cache_entries": 0,
+        "max_cache_pages": 0,
+        "reused_page_bytes": 0,
+        "reused_page_bytes_per_token": 0.0,
+        "reused_pages": 0,
+        "reused_tokens": 0,
+        "source_turns": {},
+        "state_clone_bytes": 0,
+        "state_clone_bytes_per_token": 0.0
+      },
+      "final_ownership": {
+        "active_requests": 0,
+        "allowed_cache_bytes": 0,
+        "cache_resident_bytes": 0,
+        "cache_resident_entries": 0,
+        "cache_resident_pages": 0,
+        "graph_owners": 0,
+        "kv_pinned_pages": 0,
+        "kv_refcounted_pages": 0,
+        "model_active_requests": 0,
+        "pending_requests": 0,
+        "session_count": 0,
+        "stream_producers": 0,
+        "workspace_owners": 0
+      },
+      "validation_passed": true,
+      "target_gpu0_exclusive": true,
+      "gpu_ownership_samples": 153,
+      "target_server_samples": 152,
+      "artifact_sha256": "0eb4f6a876d6102473846c41256a68341f5edcd0ef5a67ff98b0c71de97639df",
+      "records_sha256": "9dab129dfc19b2af5617527b9f3552d50b548bef431e837602d5db4d8f330f27",
+      "server_log_sha256": "06274b282faa0cb58df9ff4238372d3201626f2f9b696dcc10e7e3daeb0fb3ba"
+    },
+    {
+      "label": "growing_history-pair2-order1-off",
+      "pair_index": 1,
+      "order_index": 0,
+      "cache_mode": "off",
+      "active_sse_exact_generated_tok_s": 12.248230975746699,
+      "tool_ready_p50_ms": 2039.024087076541,
+      "prefill_ms_sum": 9809.441,
+      "full_vocab_logits_d2h_bytes": 197662720,
+      "prefix": {
+        "admission_fallbacks": 0,
+        "avoided_prefill_tokens": 0,
+        "eligible_turns": 0,
+        "executed_prefill_tokens": 23098,
+        "fallback_turns": {
+          "cache_off": 8
+        },
+        "hit_rate": 0.0,
+        "hits": 0,
+        "lookups": 0,
+        "matched_tokens": 0,
+        "max_cache_bytes": 0,
+        "max_cache_bytes_per_reused_token": 0.0,
+        "max_cache_entries": 0,
+        "max_cache_pages": 0,
+        "reused_page_bytes": 0,
+        "reused_page_bytes_per_token": 0.0,
+        "reused_pages": 0,
+        "reused_tokens": 0,
+        "source_turns": {},
+        "state_clone_bytes": 0,
+        "state_clone_bytes_per_token": 0.0
+      },
+      "final_ownership": {
+        "active_requests": 0,
+        "allowed_cache_bytes": 0,
+        "cache_resident_bytes": 0,
+        "cache_resident_entries": 0,
+        "cache_resident_pages": 0,
+        "graph_owners": 0,
+        "kv_pinned_pages": 0,
+        "kv_refcounted_pages": 0,
+        "model_active_requests": 0,
+        "pending_requests": 0,
+        "session_count": 0,
+        "stream_producers": 0,
+        "workspace_owners": 0
+      },
+      "validation_passed": true,
+      "target_gpu0_exclusive": true,
+      "gpu_ownership_samples": 153,
+      "target_server_samples": 152,
+      "artifact_sha256": "ffade05c5b0a86dbb216e84951623917434594425283c480aeac4a6f7c04c150",
+      "records_sha256": "a6ab3162268cfc57def81cc6289de59d52f86d2f69ef7c36a10716d89c0583db",
+      "server_log_sha256": "ad476ec005d31203002fd0afec93203332d43954c93a68450d6bf0dc667e220c"
+    },
+    {
+      "label": "growing_history-pair2-order2-radix",
+      "pair_index": 1,
+      "order_index": 1,
+      "cache_mode": "radix",
+      "active_sse_exact_generated_tok_s": 3.8995083432840754,
+      "tool_ready_p50_ms": 6754.978448036127,
+      "prefill_ms_sum": 43626.394,
+      "full_vocab_logits_d2h_bytes": 197662720,
+      "prefix": {
+        "admission_fallbacks": 0,
+        "avoided_prefill_tokens": 3072,
+        "eligible_turns": 8,
+        "executed_prefill_tokens": 20026,
+        "fallback_turns": {
+          "miss": 7
+        },
+        "hit_rate": 0.125,
+        "hits": 1,
+        "lookups": 8,
+        "matched_tokens": 3072,
+        "max_cache_bytes": 129761280,
+        "max_cache_bytes_per_reused_token": 42240.0,
+        "max_cache_entries": 1,
+        "max_cache_pages": 12,
+        "reused_page_bytes": 62914560,
+        "reused_page_bytes_per_token": 20480.0,
+        "reused_pages": 12,
+        "reused_tokens": 3072,
+        "source_turns": {
+          "completed_snapshot": 1
+        },
+        "state_clone_bytes": 66846720,
+        "state_clone_bytes_per_token": 21760.0
+      },
+      "final_ownership": {
+        "active_requests": 0,
+        "allowed_cache_bytes": 234618880,
+        "cache_resident_bytes": 129761280,
+        "cache_resident_entries": 1,
+        "cache_resident_pages": 12,
+        "graph_owners": 0,
+        "kv_pinned_pages": 0,
+        "kv_refcounted_pages": 0,
+        "model_active_requests": 0,
+        "pending_requests": 0,
+        "session_count": 0,
+        "stream_producers": 0,
+        "workspace_owners": 0
+      },
+      "validation_passed": true,
+      "target_gpu0_exclusive": true,
+      "gpu_ownership_samples": 190,
+      "target_server_samples": 189,
+      "artifact_sha256": "b83cc29fbcbbee6411cdfe0ca93a0877d9c91755f27c1445231f9583f6b7a1d3",
+      "records_sha256": "68ac7cbe861d3a21d60ae690a0277afbb626c2863803a3d5e9c7b856c38482f4",
+      "server_log_sha256": "5478b7bbef2164de240df94a2040364e06b80007e0d91041a794451d26df5745"
+    },
+    {
+      "label": "growing_history-pair3-order1-radix",
+      "pair_index": 2,
+      "order_index": 0,
+      "cache_mode": "radix",
+      "active_sse_exact_generated_tok_s": 4.2691922036386085,
+      "tool_ready_p50_ms": 5991.524777025916,
+      "prefill_ms_sum": 39848.905,
+      "full_vocab_logits_d2h_bytes": 197662720,
+      "prefix": {
+        "admission_fallbacks": 0,
+        "avoided_prefill_tokens": 3072,
+        "eligible_turns": 8,
+        "executed_prefill_tokens": 20026,
+        "fallback_turns": {
+          "miss": 7
+        },
+        "hit_rate": 0.125,
+        "hits": 1,
+        "lookups": 8,
+        "matched_tokens": 3072,
+        "max_cache_bytes": 129761280,
+        "max_cache_bytes_per_reused_token": 42240.0,
+        "max_cache_entries": 1,
+        "max_cache_pages": 12,
+        "reused_page_bytes": 62914560,
+        "reused_page_bytes_per_token": 20480.0,
+        "reused_pages": 12,
+        "reused_tokens": 3072,
+        "source_turns": {
+          "completed_snapshot": 1
+        },
+        "state_clone_bytes": 66846720,
+        "state_clone_bytes_per_token": 21760.0
+      },
+      "final_ownership": {
+        "active_requests": 0,
+        "allowed_cache_bytes": 234618880,
+        "cache_resident_bytes": 129761280,
+        "cache_resident_entries": 1,
+        "cache_resident_pages": 12,
+        "graph_owners": 0,
+        "kv_pinned_pages": 0,
+        "kv_refcounted_pages": 0,
+        "model_active_requests": 0,
+        "pending_requests": 0,
+        "session_count": 0,
+        "stream_producers": 0,
+        "workspace_owners": 0
+      },
+      "validation_passed": true,
+      "target_gpu0_exclusive": true,
+      "gpu_ownership_samples": 178,
+      "target_server_samples": 177,
+      "artifact_sha256": "41e3f043af7fdc337dbe138286fdac10ef676871f106d1929a822b8f5a9ed051",
+      "records_sha256": "5a2ec436c1038dea9d0208ab2e414d15cdb2c44a5ace0e37e73f931222b1161f",
+      "server_log_sha256": "355b94e0562c1cf68a92b33f16c2b55dc920107729f08270a5897d1e0242d903"
+    },
+    {
+      "label": "growing_history-pair3-order2-off",
+      "pair_index": 2,
+      "order_index": 1,
+      "cache_mode": "off",
+      "active_sse_exact_generated_tok_s": 12.214475883286937,
+      "tool_ready_p50_ms": 2079.9116584821604,
+      "prefill_ms_sum": 9833.08,
+      "full_vocab_logits_d2h_bytes": 197662720,
+      "prefix": {
+        "admission_fallbacks": 0,
+        "avoided_prefill_tokens": 0,
+        "eligible_turns": 0,
+        "executed_prefill_tokens": 23098,
+        "fallback_turns": {
+          "cache_off": 8
+        },
+        "hit_rate": 0.0,
+        "hits": 0,
+        "lookups": 0,
+        "matched_tokens": 0,
+        "max_cache_bytes": 0,
+        "max_cache_bytes_per_reused_token": 0.0,
+        "max_cache_entries": 0,
+        "max_cache_pages": 0,
+        "reused_page_bytes": 0,
+        "reused_page_bytes_per_token": 0.0,
+        "reused_pages": 0,
+        "reused_tokens": 0,
+        "source_turns": {},
+        "state_clone_bytes": 0,
+        "state_clone_bytes_per_token": 0.0
+      },
+      "final_ownership": {
+        "active_requests": 0,
+        "allowed_cache_bytes": 0,
+        "cache_resident_bytes": 0,
+        "cache_resident_entries": 0,
+        "cache_resident_pages": 0,
+        "graph_owners": 0,
+        "kv_pinned_pages": 0,
+        "kv_refcounted_pages": 0,
+        "model_active_requests": 0,
+        "pending_requests": 0,
+        "session_count": 0,
+        "stream_producers": 0,
+        "workspace_owners": 0
+      },
+      "validation_passed": true,
+      "target_gpu0_exclusive": true,
+      "gpu_ownership_samples": 159,
+      "target_server_samples": 158,
+      "artifact_sha256": "92ca0992bd3416fb8d57d65230cc6ad3a40f8340c2297b3a8ee6dfeeb5ffb827",
+      "records_sha256": "b6b0122b43c1e175f0e056bd67b0b76a15edeaf5a8b4bcd371acc0dbcd1d273f",
+      "server_log_sha256": "b986fcda8ba0e2983d307134a2c1908a882fa67c0694f0d742b0367852c00b1d"
+    },
+    {
+      "label": "medium_repo-pair1-order1-off",
+      "pair_index": 0,
+      "order_index": 0,
+      "cache_mode": "off",
+      "active_sse_exact_generated_tok_s": 3.810874239276205,
+      "tool_ready_p50_ms": 4864.306208502967,
+      "prefill_ms_sum": 32383.754999999997,
+      "full_vocab_logits_d2h_bytes": 144025600,
+      "prefix": {
+        "admission_fallbacks": 0,
+        "avoided_prefill_tokens": 0,
+        "eligible_turns": 0,
+        "executed_prefill_tokens": 53616,
+        "fallback_turns": {
+          "cache_off": 6
+        },
+        "hit_rate": 0.0,
+        "hits": 0,
+        "lookups": 0,
+        "matched_tokens": 0,
+        "max_cache_bytes": 0,
+        "max_cache_bytes_per_reused_token": 0.0,
+        "max_cache_entries": 0,
+        "max_cache_pages": 0,
+        "reused_page_bytes": 0,
+        "reused_page_bytes_per_token": 0.0,
+        "reused_pages": 0,
+        "reused_tokens": 0,
+        "source_turns": {},
+        "state_clone_bytes": 0,
+        "state_clone_bytes_per_token": 0.0
+      },
+      "final_ownership": {
+        "active_requests": 0,
+        "allowed_cache_bytes": 0,
+        "cache_resident_bytes": 0,
+        "cache_resident_entries": 0,
+        "cache_resident_pages": 0,
+        "graph_owners": 0,
+        "kv_pinned_pages": 0,
+        "kv_refcounted_pages": 0,
+        "model_active_requests": 0,
+        "pending_requests": 0,
+        "session_count": 0,
+        "stream_producers": 0,
+        "workspace_owners": 0
+      },
+      "validation_passed": true,
+      "target_gpu0_exclusive": true,
+      "gpu_ownership_samples": 252,
+      "target_server_samples": 251,
+      "artifact_sha256": "7d429429efefd088d9f44da09f341833827d60c15c75c1c3a14697a207cc8678",
+      "records_sha256": "f34a13b42b0e420713f7572a7933fdb0f41378c22b28c7e3c6d8d99008f888ac",
+      "server_log_sha256": "fef0786cdac5c86b75ba686548b8079689cb23aebbfbfe230e3279005c87ce62"
+    },
+    {
+      "label": "medium_repo-pair1-order2-radix",
+      "pair_index": 0,
+      "order_index": 1,
+      "cache_mode": "radix",
+      "active_sse_exact_generated_tok_s": 2.7715857732380984,
+      "tool_ready_p50_ms": 6906.03041194845,
+      "prefill_ms_sum": 45521.052,
+      "full_vocab_logits_d2h_bytes": 144025600,
+      "prefix": {
+        "admission_fallbacks": 0,
+        "avoided_prefill_tokens": 8704,
+        "eligible_turns": 6,
+        "executed_prefill_tokens": 44912,
+        "fallback_turns": {
+          "miss": 5
+        },
+        "hit_rate": 0.16666666666666666,
+        "hits": 1,
+        "lookups": 6,
+        "matched_tokens": 8704,
+        "max_cache_bytes": 245104640,
+        "max_cache_bytes_per_reused_token": 28160.0,
+        "max_cache_entries": 1,
+        "max_cache_pages": 34,
+        "reused_page_bytes": 178257920,
+        "reused_page_bytes_per_token": 20480.0,
+        "reused_pages": 34,
+        "reused_tokens": 8704,
+        "source_turns": {
+          "completed_snapshot": 1
+        },
+        "state_clone_bytes": 66846720,
+        "state_clone_bytes_per_token": 7680.0
+      },
+      "final_ownership": {
+        "active_requests": 0,
+        "allowed_cache_bytes": 486277120,
+        "cache_resident_bytes": 255590400,
+        "cache_resident_entries": 1,
+        "cache_resident_pages": 36,
+        "graph_owners": 0,
+        "kv_pinned_pages": 0,
+        "kv_refcounted_pages": 0,
+        "model_active_requests": 0,
+        "pending_requests": 0,
+        "session_count": 0,
+        "stream_producers": 0,
+        "workspace_owners": 0
+      },
+      "validation_passed": true,
+      "target_gpu0_exclusive": true,
+      "gpu_ownership_samples": 210,
+      "target_server_samples": 209,
+      "artifact_sha256": "eca8f4887014ee1eb0aaba936dcee896e457ed11166be64dcd37998bb7978958",
+      "records_sha256": "a4dd52b73d9d9dd95c32f92007b608e245dc1e8ff7e6205dd4dea59779a6f68a",
+      "server_log_sha256": "ef01daf03972c142b52e9ebc579a265c2746a8ea7f72c8e5e46854e002bcf35e"
+    },
+    {
+      "label": "medium_repo-pair2-order1-radix",
+      "pair_index": 1,
+      "order_index": 0,
+      "cache_mode": "radix",
+      "active_sse_exact_generated_tok_s": 2.8376728283470665,
+      "tool_ready_p50_ms": 6632.126365962904,
+      "prefill_ms_sum": 44511.778,
+      "full_vocab_logits_d2h_bytes": 144025600,
+      "prefix": {
+        "admission_fallbacks": 0,
+        "avoided_prefill_tokens": 8704,
+        "eligible_turns": 6,
+        "executed_prefill_tokens": 44912,
+        "fallback_turns": {
+          "miss": 5
+        },
+        "hit_rate": 0.16666666666666666,
+        "hits": 1,
+        "lookups": 6,
+        "matched_tokens": 8704,
+        "max_cache_bytes": 245104640,
+        "max_cache_bytes_per_reused_token": 28160.0,
+        "max_cache_entries": 1,
+        "max_cache_pages": 34,
+        "reused_page_bytes": 178257920,
+        "reused_page_bytes_per_token": 20480.0,
+        "reused_pages": 34,
+        "reused_tokens": 8704,
+        "source_turns": {
+          "completed_snapshot": 1
+        },
+        "state_clone_bytes": 66846720,
+        "state_clone_bytes_per_token": 7680.0
+      },
+      "final_ownership": {
+        "active_requests": 0,
+        "allowed_cache_bytes": 486277120,
+        "cache_resident_bytes": 255590400,
+        "cache_resident_entries": 1,
+        "cache_resident_pages": 36,
+        "graph_owners": 0,
+        "kv_pinned_pages": 0,
+        "kv_refcounted_pages": 0,
+        "model_active_requests": 0,
+        "pending_requests": 0,
+        "session_count": 0,
+        "stream_producers": 0,
+        "workspace_owners": 0
+      },
+      "validation_passed": true,
+      "target_gpu0_exclusive": true,
+      "gpu_ownership_samples": 210,
+      "target_server_samples": 209,
+      "artifact_sha256": "1c7680a111e3efba28e5db5f708c195d5d6b1edfab2c74365b59c914ee6e6d25",
+      "records_sha256": "6bd47bd9d29365709e7ddeabd01febc9ad2f972be48805f2a659f09d1725f463",
+      "server_log_sha256": "7779dcb6aa620862911b7027829bde8a0d7f6ce646d6f7bf20b846e75dc520ac"
+    },
+    {
+      "label": "medium_repo-pair2-order2-off",
+      "pair_index": 1,
+      "order_index": 1,
+      "cache_mode": "off",
+      "active_sse_exact_generated_tok_s": 3.8681122082513846,
+      "tool_ready_p50_ms": 4777.68630546052,
+      "prefill_ms_sum": 32094.07,
+      "full_vocab_logits_d2h_bytes": 144025600,
+      "prefix": {
+        "admission_fallbacks": 0,
+        "avoided_prefill_tokens": 0,
+        "eligible_turns": 0,
+        "executed_prefill_tokens": 53616,
+        "fallback_turns": {
+          "cache_off": 6
+        },
+        "hit_rate": 0.0,
+        "hits": 0,
+        "lookups": 0,
+        "matched_tokens": 0,
+        "max_cache_bytes": 0,
+        "max_cache_bytes_per_reused_token": 0.0,
+        "max_cache_entries": 0,
+        "max_cache_pages": 0,
+        "reused_page_bytes": 0,
+        "reused_page_bytes_per_token": 0.0,
+        "reused_pages": 0,
+        "reused_tokens": 0,
+        "source_turns": {},
+        "state_clone_bytes": 0,
+        "state_clone_bytes_per_token": 0.0
+      },
+      "final_ownership": {
+        "active_requests": 0,
+        "allowed_cache_bytes": 0,
+        "cache_resident_bytes": 0,
+        "cache_resident_entries": 0,
+        "cache_resident_pages": 0,
+        "graph_owners": 0,
+        "kv_pinned_pages": 0,
+        "kv_refcounted_pages": 0,
+        "model_active_requests": 0,
+        "pending_requests": 0,
+        "session_count": 0,
+        "stream_producers": 0,
+        "workspace_owners": 0
+      },
+      "validation_passed": true,
+      "target_gpu0_exclusive": true,
+      "gpu_ownership_samples": 248,
+      "target_server_samples": 247,
+      "artifact_sha256": "8d00b027cf35a7e84e7e85e8b004223d21f1847db7a1eb567bf4e41f85fcda90",
+      "records_sha256": "ee31f200aebfcbd5d478040510cafe3b0daa01df0c00e18316388483bbb9061e",
+      "server_log_sha256": "80a1dda19b5588550883866ead29d6717e34a3e421dc272a699106b25be7604d"
+    },
+    {
+      "label": "medium_repo-pair3-order1-off",
+      "pair_index": 2,
+      "order_index": 0,
+      "cache_mode": "off",
+      "active_sse_exact_generated_tok_s": 3.8514606174211905,
+      "tool_ready_p50_ms": 4808.649707003497,
+      "prefill_ms_sum": 32146.725,
+      "full_vocab_logits_d2h_bytes": 144025600,
+      "prefix": {
+        "admission_fallbacks": 0,
+        "avoided_prefill_tokens": 0,
+        "eligible_turns": 0,
+        "executed_prefill_tokens": 53616,
+        "fallback_turns": {
+          "cache_off": 6
+        },
+        "hit_rate": 0.0,
+        "hits": 0,
+        "lookups": 0,
+        "matched_tokens": 0,
+        "max_cache_bytes": 0,
+        "max_cache_bytes_per_reused_token": 0.0,
+        "max_cache_entries": 0,
+        "max_cache_pages": 0,
+        "reused_page_bytes": 0,
+        "reused_page_bytes_per_token": 0.0,
+        "reused_pages": 0,
+        "reused_tokens": 0,
+        "source_turns": {},
+        "state_clone_bytes": 0,
+        "state_clone_bytes_per_token": 0.0
+      },
+      "final_ownership": {
+        "active_requests": 0,
+        "allowed_cache_bytes": 0,
+        "cache_resident_bytes": 0,
+        "cache_resident_entries": 0,
+        "cache_resident_pages": 0,
+        "graph_owners": 0,
+        "kv_pinned_pages": 0,
+        "kv_refcounted_pages": 0,
+        "model_active_requests": 0,
+        "pending_requests": 0,
+        "session_count": 0,
+        "stream_producers": 0,
+        "workspace_owners": 0
+      },
+      "validation_passed": true,
+      "target_gpu0_exclusive": true,
+      "gpu_ownership_samples": 247,
+      "target_server_samples": 246,
+      "artifact_sha256": "676172175173af84f2f44747cc11dc64d6d45de4718aa3276d0029000e0fb2f6",
+      "records_sha256": "f5fea32c8ef2832974300c9c2e8f48dc169a9dca84fdd1d1a83c89854352cc2c",
+      "server_log_sha256": "c031560389e5e8c1b8252a73fab978e41dc2d519a925db61eb186e72576a318a"
+    },
+    {
+      "label": "medium_repo-pair3-order2-radix",
+      "pair_index": 2,
+      "order_index": 1,
+      "cache_mode": "radix",
+      "active_sse_exact_generated_tok_s": 2.889867048217005,
+      "tool_ready_p50_ms": 6402.528299018741,
+      "prefill_ms_sum": 43915.081,
+      "full_vocab_logits_d2h_bytes": 144025600,
+      "prefix": {
+        "admission_fallbacks": 0,
+        "avoided_prefill_tokens": 8704,
+        "eligible_turns": 6,
+        "executed_prefill_tokens": 44912,
+        "fallback_turns": {
+          "miss": 5
+        },
+        "hit_rate": 0.16666666666666666,
+        "hits": 1,
+        "lookups": 6,
+        "matched_tokens": 8704,
+        "max_cache_bytes": 245104640,
+        "max_cache_bytes_per_reused_token": 28160.0,
+        "max_cache_entries": 1,
+        "max_cache_pages": 34,
+        "reused_page_bytes": 178257920,
+        "reused_page_bytes_per_token": 20480.0,
+        "reused_pages": 34,
+        "reused_tokens": 8704,
+        "source_turns": {
+          "completed_snapshot": 1
+        },
+        "state_clone_bytes": 66846720,
+        "state_clone_bytes_per_token": 7680.0
+      },
+      "final_ownership": {
+        "active_requests": 0,
+        "allowed_cache_bytes": 486277120,
+        "cache_resident_bytes": 255590400,
+        "cache_resident_entries": 1,
+        "cache_resident_pages": 36,
+        "graph_owners": 0,
+        "kv_pinned_pages": 0,
+        "kv_refcounted_pages": 0,
+        "model_active_requests": 0,
+        "pending_requests": 0,
+        "session_count": 0,
+        "stream_producers": 0,
+        "workspace_owners": 0
+      },
+      "validation_passed": true,
+      "target_gpu0_exclusive": true,
+      "gpu_ownership_samples": 196,
+      "target_server_samples": 195,
+      "artifact_sha256": "940684de4da247fbf27e30586354a8b1158a2e6f91a31f6d3f4c51a6ca1c17ac",
+      "records_sha256": "16887fb6abc00f33efaad8cc52915616e880528d03b85c5403700809679e8fc5",
+      "server_log_sha256": "1752058414a2d936cc885355207102a51dcc8c0756ab47974f23ac4d41be0035"
+    }
+  ],
+  "correctness_gate_artifacts": [
+    {
+      "path": "benchmarks/results/2026-07-21-gfx1100-gguf-processed-argmax-p2048-active-prefix-correctness.json",
+      "sha256": "31504980ec737d32e6ce2be7611bfd48713e7276e528d0d97299cf0e72882324",
+      "passed": true
+    },
+    {
+      "path": "benchmarks/results/2026-07-21-gfx1100-gguf-processed-argmax-p2048-completed-prefix-correctness.json",
+      "sha256": "070a990c945109124451fcd4040be4f069a0e5e5822e38a23a6a9ac6aa3c7e2d",
+      "passed": true
+    },
+    {
+      "path": "benchmarks/results/2026-07-21-gfx1100-gguf-processed-argmax-p8192-active-prefix-correctness.json",
+      "sha256": "8aa6772ff650ac200d3b8336c8d3c4ee9d2a0dfc35cf5392376a9574360045b9",
+      "passed": true
+    },
+    {
+      "path": "benchmarks/results/2026-07-21-gfx1100-gguf-processed-argmax-p8192-completed-prefix-correctness.json",
+      "sha256": "41b7d7faf80ab6b636120ccc2b67942654f7906341887ea238a3313634b539eb",
+      "passed": true
+    }
+  ],
+  "raw_manifest": {
+    "path": "/tmp/agentic-a2-c1-fb9531b2/raw-manifest.json",
+    "sha256": "9efedad6c00a96f9d53c6c3717fb5b4c1401ac79991c1ad32a33ab7c8ad2c174",
+    "bytes": 1427759,
+    "committed": false
+  },
+  "notes": [
+    "Warmup and measured collections use the same live server per condition; all timing rows are measured collections only.",
+    "Small has zero measured hits. Growing and medium each hit only one warmup-carried completed snapshot per measured run; all adjacent-turn requests miss.",
+    "Full-vocabulary D2H remains required because strict forced-tool rows use deterministic processed_argmax.",
+    "Cache residency is declared bounded ownership, not a leak; every non-cache owner and KV ref/pin count is zero.",
+    "No C4/C8 promotion measurement is justified because the declared C1 prerequisite failed."
+  ]
+}

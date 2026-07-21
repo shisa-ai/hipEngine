@@ -1875,6 +1875,18 @@ untracked experiment files as part of the rollup gate.
 
 ## Blocked and Diagnostic Benchmark Attempts
 
+- **W7900 coding-agent A2.1 C1 prefix decision, GGUF Q4_K_M:** clean pushed
+  `fb9531b2` completed all **3 balanced off/radix pairs x 3 frozen families**
+  after deterministic `processed_argmax` became eligible. All response IDs,
+  tools, bounded cache ownership, and GPU0 exclusivity gates pass, but reuse is
+  sparse: small has **0/12 hits**, growing **3/24**, and medium **3/18**. Radix
+  versus paired off regresses median active-SSE goodput by **64.19% / 65.63% /
+  26.64%** and raises buffered tool-ready p50 by **181.90% / 196.09% / 38.81%**
+  for small/growing/medium. Candidate medians are only **4.727 / 4.216 / 2.838
+  tok/s** with **5.247 / 6.097 / 6.632 s** tool-ready, all materially below A1;
+  primary variance also fails on growing/medium. Keep radix default-off and do
+  not run the gated C4/C8 promotion matrix. [Rejected complete A2.1 C1
+  artifact](results/2026-07-21-w7900-agentic-a2-c1-prefix-rejected.json).
 - **W7900 coding-agent A2 C1 prefix screen, GGUF Q4_K_M:** clean pushed
   `3a4024af` completed one warmed `small_repo` off/radix pair with all **4/4 +
   4/4 response-owned ID/tool/final-request-ownership gates exact**, but every
