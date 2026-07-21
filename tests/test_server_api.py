@@ -4416,6 +4416,81 @@ def test_generation_batcher_controlled_stream_admits_while_neighbor_is_live() ->
     asyncio.run(run())
 
 
+def test_generation_batcher_limits_controlled_stream_active_requests() -> None:
+    class ControlledStreamLLM(FakeLLM):
+        supports_controlled_streaming = True
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.started = {
+                "first": threading.Event(),
+                "second": threading.Event(),
+                "third": threading.Event(),
+            }
+            self.release = {
+                "first": threading.Event(),
+                "second": threading.Event(),
+                "third": threading.Event(),
+            }
+            self.active = 0
+            self.max_active = 0
+            self.lock = threading.Lock()
+
+        def stream_detailed(self, prompt: str, sampling_params: SamplingParams):
+            del sampling_params
+            name = str(prompt)
+            with self.lock:
+                self.active += 1
+                self.max_active = max(self.max_active, self.active)
+            self.started[name].set()
+            try:
+                yield GenerationStreamChunk(text=f"{name}:0")
+                assert self.release[name].wait(timeout=5.0)
+                yield GenerationStreamChunk(text=f"{name}:1")
+            finally:
+                with self.lock:
+                    self.active -= 1
+
+    async def run() -> None:
+        fake = ControlledStreamLLM()
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.0,
+            max_active_requests=1,
+            max_queue_size=1,
+        )
+        sampling = SamplingParams(max_tokens=2)
+
+        async def collect(name: str) -> list[str]:
+            return [chunk.text async for chunk in batcher.stream((name,), sampling)]
+
+        first = asyncio.create_task(collect("first"))
+        assert await asyncio.to_thread(fake.started["first"].wait, 5.0)
+        second = asyncio.create_task(collect("second"))
+        await asyncio.sleep(0.05)
+
+        assert fake.started["second"].is_set() is False
+        assert batcher.active_requests() == 1
+        assert batcher.queue_depth() == 1
+        third = batcher.stream(("third",), sampling)
+        with pytest.raises(OpenAIHTTPError) as exc_info:
+            await anext(third)
+        assert exc_info.value.status_code == 429
+        assert exc_info.value.code == "engine_busy"
+        assert fake.started["third"].is_set() is False
+
+        fake.release["first"].set()
+        assert await first == ["first:0", "first:1"]
+        assert await asyncio.to_thread(fake.started["second"].wait, 5.0)
+        fake.release["second"].set()
+        assert await second == ["second:0", "second:1"]
+        assert fake.max_active == 1
+        assert batcher.active_requests() == 0
+        assert batcher.queue_depth() == 0
+
+    asyncio.run(run())
+
+
 def test_generation_batcher_bounds_slow_stream_queue_without_blocking_neighbor() -> None:
     class BurstStreamLLM(FakeLLM):
         supports_controlled_streaming = True
