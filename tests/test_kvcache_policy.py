@@ -145,6 +145,22 @@ def test_radix_cache_hits_full_blocks_and_misses_partial_edges() -> None:
     assert cache.stats.partial_block_misses == 1
 
 
+def test_radix_cache_long_context_stats_and_entry_states_are_iterative() -> None:
+    cache = RadixCache(block_size=256)
+    tokens = tuple(range(8192))
+    blocks = tuple(range(32))
+
+    inserted = cache.insert(1, tokens, blocks)
+
+    assert inserted.cached_tokens == 8192
+    assert inserted.cached_blocks == 32
+    assert cache.stats.entries == 32
+    states = cache.entry_states()
+    assert len(states) == 32
+    assert states[-1].matched_tokens == tokens
+    assert states[-1].block_ids == blocks
+
+
 def test_radix_cache_cancellation_removes_live_prefix_ownership() -> None:
     cache = RadixCache(block_size=2)
     cache.insert(1, [1, 2, 3, 4], [10, 11])

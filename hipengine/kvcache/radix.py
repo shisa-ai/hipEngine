@@ -314,7 +314,22 @@ class RadixCache:
         """Return all live prefix entries without exposing block pointers."""
 
         states: list[PrefixCacheEntryState] = []
-        self._collect_entry_states(self._root, (), states)
+        path: list[int] = []
+        if self._root.live:
+            states.append(_entry_state_from_node((), self._root))
+        stack = [iter(sorted(self._root.children.items()))]
+        while stack:
+            try:
+                token, node = next(stack[-1])
+            except StopIteration:
+                stack.pop()
+                if path:
+                    path.pop()
+                continue
+            path.append(token)
+            if node.live:
+                states.append(_entry_state_from_node(tuple(path), node))
+            stack.append(iter(sorted(node.children.items())))
         return tuple(states)
 
     def _node_for_tokens(self, tokens: tuple[int, ...]) -> _RadixNode | None:
@@ -328,21 +343,14 @@ class RadixCache:
             node = child
         return node
 
-    def _collect_entry_states(
-        self,
-        node: _RadixNode,
-        prefix: tuple[int, ...],
-        states: list[PrefixCacheEntryState],
-    ) -> None:
-        if node.live:
-            states.append(_entry_state_from_node(prefix, node))
-        for token in sorted(node.children):
-            self._collect_entry_states(node.children[token], (*prefix, token), states)
-
     def _entry_count(self, node: _RadixNode) -> int:
-        count = 1 if node.live else 0
-        for child in node.children.values():
-            count += self._entry_count(child)
+        count = 0
+        stack = [node]
+        while stack:
+            current = stack.pop()
+            if current.live:
+                count += 1
+            stack.extend(current.children.values())
         return count
 
 

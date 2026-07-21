@@ -210,10 +210,24 @@ The first A2.1 `small_repo` C1 pair then exposed a narrower production boundary:
 strict forced-tool rows resolve deterministic `processed_argmax`, not
 `greedy_fast`, so all four radix turns correctly reported
 `sampling_unsupported` with zero lookups/hits/reused tokens. The one observed
-pair is diagnostic-only and the rest of the timing matrix stopped. Task #233
-must add and independently state/KV-gate suffix-only deterministic
-processed-argmax reuse while preserving stochastic-sampling fallback before
-A2.1 resumes.
+pair remains diagnostic-only and the rest of that timing matrix stopped.
+
+A2.1 correctness now admits only deterministic `processed_argmax` beside the
+existing greedy route; stochastic host/GPU sampling still fails closed with
+`sampling_unsupported`. A private miss bulk-prefills the final aligned boundary
+once and consumes only an unaligned tail through exact c1, leaving one bounded
+snapshot. A hit restores active or completed state/pages, executes only the
+unmatched suffix through c1, requests full-vocabulary logits on the final
+suffix token, and applies the unchanged processor state. W7900 p2048+s1 and
+p8192+s1 active-current/completed-source gates preserve the exact five response
+IDs (including a two-token forced sequence), all Conv/GDN/live-KV bytes, and
+teacher-forced logits (`KL=0`, top-1 100%). They reuse 8/32 pages, clone
+66,846,720 state bytes, preserve expected zero-COW page-aligned behavior, and
+drain final refs to zero; completed cache residency is bounded at 108,789,760 /
+234,618,880 bytes before explicit eviction. Radix observability is iterative at
+8K depth, so telemetry no longer depends on Python's recursion limit. This is
+correctness-only; task #225 must still run the complete balanced A2.1 timing
+matrix before any performance or default-promotion claim.
 
 Do not make radix caching default merely because p256+s1 is fast. Default
 promotion requires the multi-turn workload and bounded LRU/pressure gates.
