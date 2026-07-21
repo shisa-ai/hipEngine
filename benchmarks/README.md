@@ -1875,6 +1875,17 @@ untracked experiment files as part of the rollup gate.
 
 ## Blocked and Diagnostic Benchmark Attempts
 
+- **W7900 coding-agent A2.3 prefix lifecycle/pressure closure, GGUF Q4_K_M:**
+  four real p2048/p8192 active-current/completed-source gates preserve exact
+  response IDs and Conv/GDN/live-KV state (`KL=0`, top-1 100%), bound
+  current/high-water pool bytes, and drain every ref after explicit eviction.
+  Real-agentic final cache residency is bounded at **124,518,400 / 129,761,280 /
+  255,590,400 bytes** for small/growing/medium with zero non-cache final owners;
+  targeted LRU, COW/refcount/pin, cancellation, disconnect, slow-consumer,
+  deadline, and admission rollback gates pass. Resident state fork/rollback is
+  explicitly unsupported while app-local transcript copies remain isolated.
+  This correctness closure does not promote the C1-regressive route.
+  [A2.3 lifecycle artifact](results/2026-07-21-w7900-agentic-a2-prefix-lifecycle-closure.json).
 - **W7900 coding-agent A2.1 C1 prefix decision, GGUF Q4_K_M:** clean pushed
   `fb9531b2` completed all **3 balanced off/radix pairs x 3 frozen families**
   after deterministic `processed_argmax` became eligible. All response IDs,

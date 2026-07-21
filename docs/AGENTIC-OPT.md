@@ -203,8 +203,9 @@ bound snapshot/page/byte ownership, and explicitly fall back for sampled and
 exact-full-prompt boundaries. The live collector now pins radix outputs to the
 retained A1 cache-off IDs and records hit source/boundary, avoided/executed
 prefill tokens, reused pages/bytes, state-clone bytes, prefill time, and bounded
-final cache ownership. The 2K/8K paired measurements and lifecycle/pressure
-matrix remain open; this is not a performance result.
+final cache ownership. The 2K/8K deterministic correctness gates are now
+closed as described below; this A2.0 packet itself carries no performance
+result.
 
 The first A2.1 `small_repo` C1 pair then exposed a narrower production boundary:
 strict forced-tool rows resolve deterministic `processed_argmax`, not
@@ -238,8 +239,21 @@ median goodput **64.19%/65.63%/26.64%** and worsens buffered tool-ready p50
 exceeds 5%. Exact miss/tail handling costs more than the sparse hits save.
 Therefore keep radix default-off and stop the prerequisite-gated C4/C8
 promotion matrix; do not optimize snapshot placement to these fixed prompts.
-Lifecycle/pressure correctness remains independently useful, but cannot reverse
-the C1 performance decision.
+Lifecycle/pressure correctness is also closed independently of speed. Four real
+W7900 p2048/p8192 active-current/completed-source gates preserve exact response
+IDs and all Conv/GDN/live-KV state (`KL=0`, top-1 100%), bound current/high-water
+pool bytes, retain completed cache residency only within declared limits, and
+drain every ref after eviction. The real agentic packet bounds final cache
+residency at **124,518,400/129,761,280/255,590,400 bytes** for
+small/growing/medium, with zero non-cache final owners; useful hits cost
+**42,240/28,160 bytes per reused token** for growing/medium. Host ownership
+checks close LRU replacement, COW/refcount/pin/unpin, admission rollback, and
+cache-owned eviction. Server control checks close cancellation, disconnect,
+slow-consumer backpressure, deadline reuse, and survivor isolation. Resident
+state fork/rollback remains explicitly unsupported: app-local transcripts are
+deep-copied without forking or rolling back device state. This correctness
+closure cannot reverse the C1 performance rejection.
+`benchmarks/results/2026-07-21-w7900-agentic-a2-prefix-lifecycle-closure.json`.
 
 ### P2 — Transfer low-occupancy/SLO routing to gfx1100
 
