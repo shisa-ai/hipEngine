@@ -1,0 +1,118 @@
+{
+  "a1_attempt": {
+    "blocked_expected_tool": "grep",
+    "blocked_stage": "independent blocking oracle before measured SSE",
+    "blocked_turn_index": 1,
+    "complete_artifact_emitted": false,
+    "failure": "oracle did not finish with tool_calls",
+    "records_artifact_emitted": false,
+    "turn_0_diagnostic": {
+      "arguments": {
+        "mode": "summary",
+        "path": "pyproject.toml"
+      },
+      "finish_reason": "tool_calls",
+      "generated_token_ids_source": "response",
+      "generated_tokens": 32,
+      "independent_oracle_exact_match": true,
+      "prompt_tokens": 2504,
+      "selected_tool": "read",
+      "sse_exact_ids_observed": true,
+      "token_timing_mode": "buffered_public"
+    }
+  },
+  "a6_quality_reference": {
+    "artifact": "benchmarks/results/2026-07-20-w7900-agentic-a6-small-c1-quality.json",
+    "artifact_sha256": "4245dded403ba1afecc6838bc7b53a545d8669fd963f34517db6fd757b6711c0",
+    "attempts": 4,
+    "final_ownership_zero": true,
+    "generated_tokens": 274,
+    "outcomes": {
+      "content_alongside_tool_call": 2,
+      "invalid_tool_call": 2
+    },
+    "response_owned_exact_ids": true,
+    "successes": 0
+  },
+  "blocker": {
+    "next_action": "Add a model-general constrained strict-tool JSON route or otherwise repair multi-turn tool-envelope quality without prompt-conditioned expected IDs/arguments; then rerun the complete small_repo C1 packet before any C4/C8 or prefix A/B claim.",
+    "summary": "The forced deterministic turn-1 independent oracle generated an invalid tool call rather than a valid grep envelope, so A1 rejected before opening that measured SSE interval."
+  },
+  "configuration": {
+    "a1_command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 python3 scripts/agentic_coding_live.py --base-url http://127.0.0.1:8100/v1 --model Qwen3.6-35B-A3B --backend hip_gfx1100 --workload small_repo --concurrency 1 --runs 1 --cache-mode off --max-tokens 128 --records-json /tmp/agentic-small-c1-records.json --json /tmp/agentic-small-c1-a1.json",
+    "batch_window_ms": 0.0,
+    "cache_mode": "off",
+    "concurrency": 1,
+    "max_active_requests": 1,
+    "max_context_tokens": 4096,
+    "max_tokens": 128,
+    "runs": 1,
+    "server_command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_GENERATION_BATCH_WINDOW_MS=0 HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 HIPENGINE_GGUF_GDN_PREFILL_MODE=exact HIPENGINE_GGUF_AR_STREAM_DECODE=0 HIPENGINE_GGUF_AR_PACKED_DECODE=1 HIPENGINE_MAX_PREFILL_CHUNK_TOKENS=256 python3 -m hipengine.server --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --served-model-name Qwen3.6-35B-A3B --max-context-tokens 4096 --max-active-requests 1 --prefix-cache off --metrics prometheus --eager-load --host 127.0.0.1 --port 8100",
+    "workload": "small_repo",
+    "workload_sha256": "067fbfd7c506bdb4b37d0aca54714aca24b5c219604b1809e701d5684e92482c",
+    "workload_suite": "benchmarks/prompts/agentic-coding-v1.json"
+  },
+  "created_at": "2026-07-20T08:36:05.421732+00:00",
+  "gates": {
+    "all_tool_envelopes_passed": false,
+    "complete_workload_passed": false,
+    "exact_performance_denominator_complete": false,
+    "final_performance_claim_eligible": false,
+    "startup_capacity_passed": true,
+    "turn_0_exact_response_ids_passed": true
+  },
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "hip_visible_devices": "0",
+    "hipcc_sha256": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394",
+    "hipcc_version": "HIP version: 7.2.53211-3d9ef42",
+    "physical_vram_bytes": 48301604864,
+    "rocr_visible_devices": "0",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_agentic_coding_a1_baseline_blocked",
+  "limitations": [
+    "No A1 latency, throughput, goodput, or complete-workload number is retained.",
+    "The turn-0 row is an exact-ID transport diagnostic only; buffered public tool fragments do not provide live-exact ITL.",
+    "A6 is one run of one four-turn synthetic workload and is quality evidence only.",
+    "C4/C8 and the medium/growing-history families remain unmeasured under this protocol."
+  ],
+  "model": {
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "served_name": "Qwen3.6-35B-A3B",
+    "sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+    "size_bytes": 22663387424
+  },
+  "performance_claim": false,
+  "raw_log_hashes": {
+    "a1_stderr": "602c9f4e36ca5f158ed6a7d7937fe244194ca7b557cbcc7362e8aab0d20d0914",
+    "a6_stdout": "c5de19af62fb39d38cc8b8cc9e2106d14acebb3b238a4d8fe27ddc2af6d844e6",
+    "readiness": "a24b67425a0db55a5fe6eb732ab67bb5b5f5742979cadc5adb9b5f16e92db49b",
+    "server": "17a8a120e1f8f1d7bd990a7b95400c9daec4c81c8e532e07420fe8114d01c5ea"
+  },
+  "schema": 1,
+  "scope": "A1 deterministic real-Uvicorn small_repo cache-off C1 smoke",
+  "source": {
+    "dirty": false,
+    "git_branch": "main",
+    "hipengine_commit": "4d01f89722b5b61f75e9717491f9a5a383a0e5eb",
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false
+  },
+  "startup": {
+    "final_ready": true,
+    "passed": true,
+    "scratch_probe_prompt_tokens": 4095,
+    "scratch_probe_status": "passed",
+    "startup_free_bytes": 23125295104,
+    "startup_free_gib": 21.537109,
+    "startup_total_seconds": 79.424736,
+    "startup_used_bytes": 25176309760,
+    "startup_used_gib": 23.447266
+  },
+  "status": "blocked"
+}

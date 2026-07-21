@@ -175,11 +175,15 @@ Non-streaming responses bind the accepted input without echoing its contents:
 }
 ```
 
-This object is at `hipengine.prompt_token_accounting`; exact outputs remain at
-`hipengine.token_accounting.choice_generated_token_ids`. Streaming token counts
-and timing are available with `stream_options.include_hipengine`; clients that
-need an exact generated-ID oracle should retain the non-streaming response.
-Capabilities advertise the contract under `features.exact_token_prompts`.
+This object is at `hipengine.prompt_token_accounting`; exact non-streaming
+outputs remain at `hipengine.token_accounting.choice_generated_token_ids`.
+Streaming token counts and timing are available with
+`stream_options.include_hipengine`; when the backend supplies cumulative exact
+IDs, the final SSE done choice also includes
+`choices[].hipengine.generated_token_ids` and `generated_tokens`. The field is
+omitted rather than retokenized when unavailable. Capabilities advertise the
+prompt contract under `features.exact_token_prompts` and the SSE surface under
+`features.stream_metadata.choice_generated_token_ids`.
 
 ### Chat completion
 
@@ -285,10 +289,16 @@ when a live stream chunk or final buffered response provides them, for example
 `backend_prefill_ms` and `backend_decode_ms`. It also includes `routing`
 metadata for the current single-model exact route. Choice chunks also get
 `choices[].hipengine.phase` (`think`, `answer`, `tool_call`, `structured`, or
-`done`) when a phase is known. Structured phases are server-authored final
-metadata for buffered result-validation streams; they are not decode-time
-grammar enforcement. When the served engine exposes `count_tokens`, live and
-buffered stream deltas also include `choices[].hipengine.tokens` with
+`done`) when a phase is known. A final done choice gets the cumulative
+backend-authored `generated_token_ids` and `generated_tokens` when its final
+`GenerationStreamChunk` or buffered `GenerationOutput` supplies exact IDs.
+These IDs describe the measured response even when validated tool arguments are
+published later as buffered fragments; they do not imply one public event per
+model token or make public-fragment ITL exact. Structured phases are
+server-authored final metadata for buffered result-validation streams; they are
+not decode-time grammar enforcement. When the served engine exposes
+`count_tokens`, live and buffered stream deltas also include
+`choices[].hipengine.tokens` with
 `delta_tokens`, cumulative `streamed_tokens`, and phase counters such as
 `reasoning_tokens` / `answer_tokens`; final choice chunks include usage-derived
 `prompt_tokens`, `completion_tokens`, and `total_tokens` in the same object.
@@ -371,9 +381,10 @@ available.
 
 The `/v1/hipengine/capabilities` manifest reports the same extension under
 `features.stream_metadata`, including metadata version, event names, timing
-field names plus the `backend_*` namespace for backend-authored timing,
-token-accounting/decode-state scopes (`live_delta`, `buffered_delta`, and
-`final_choice` when tokenizer counting is available), and
+field names plus the `backend_*` namespace for backend-authored timing, the
+`choice_generated_token_ids=done_event_when_backend_supplies_exact_ids`
+surface, token-accounting/decode-state scopes (`live_delta`, `buffered_delta`,
+and `final_choice` when tokenizer counting is available), and
 backend telemetry scopes (`live_chunk`, `buffered_delta_safe_decode_state`, and
 `buffered_done`) for engines that emit `GenerationStreamChunk` or
 `GenerationOutput` telemetry. `features.stream_metadata.live_many_chunks`
@@ -404,9 +415,12 @@ those signals.
 ### Exact generated-token accounting
 
 `GenerationOutput.generated_token_ids` is the authoritative completion-token
-sequence for non-streaming generation. Qwen3.5/Qwen3.6 PARO and GGUF generators
-populate it for greedy, sampled, packed, serial-fallback, and speculative MTP
-results, including a known-empty tuple when `max_tokens=0`.
+sequence for non-streaming generation. `GenerationStreamChunk.generated_token_ids`
+is the optional cumulative sequence through that live chunk; when present on
+the final chunk, it is the authoritative SSE response sequence. Qwen3.5/Qwen3.6
+PARO and GGUF generators populate exact output IDs for greedy, sampled, packed,
+serial-fallback, and speculative MTP results, including a known-empty tuple when
+`max_tokens=0`; the GGUF live/resident stream paths also carry cumulative IDs.
 
 When every choice carries exact IDs, non-streaming completion and chat responses
 include `choices[].hipengine.generated_token_ids` and `generated_tokens`, plus a
@@ -659,8 +673,11 @@ The server converts those blocks to OpenAI-compatible `message.tool_calls` in
 non-streaming responses or `delta.tool_calls` chunks in streaming responses, with
 `finish_reason: "tool_calls"`. After a tool block parses, repeated Qwen
 `<|im_end|>` template terminals are removed only from the outer edges of the
-remaining assistant text; legitimate interior literal text is preserved, and
-non-tool outputs are unchanged. Long streaming `function.arguments` strings are
+remaining assistant text. If that entire remainder consists only of Qwen
+`<|endoftext|>` / `<|im_start|>` / `<|im_end|>` controls, whitespace, and a
+marker-bound chat role label, it is discarded as leaked template residue.
+Ordinary or interior literal text is preserved, and non-tool outputs are
+unchanged. Long streaming `function.arguments` strings are
 split into concatenable fragments after the full tool-call block has been parsed
 and validated; the first chunk carries the function name, and all chunks carry
 the same tool-call id and index. Buffered c>N streams can preserve backend
@@ -718,8 +735,14 @@ counts and hashes, without raw reasoning or answer text.
 `features.tools.result_validation_failure_reasons`. Compatibility parsing
 recovers a common duplicated-start form,
 `<tool_call><tool_call>{...}</tool_call>`, when the inner JSON is otherwise a
-valid tool call; the manifest reports this under
-`features.tools.compatibility_parser_repairs`. Tool-enabled requests fail closed
+valid tool call, and removes an otherwise-empty outer Qwen template-control
+residue after a valid call. It also removes an unfinished canonical
+`<tool_call>{"name":"...","arguments":` duplicate prefix before a later valid
+call for the same tool only when the remaining text contains at most one
+unmatched argument-object opener followed entirely by recognized Qwen controls
+and role labels. Ordinary or mismatched content is preserved. The manifest
+reports these repairs under `features.tools.compatibility_parser_repairs`.
+Tool-enabled requests fail closed
 on unparseable `<tool_call>` markup, reported as
 `features.tools.malformed_json_compatibility =
 "invalid_tool_call_when_tools_enabled"`. Strict validation uses the same
@@ -730,20 +753,28 @@ When
 the first token of the Qwen `<tool_call>` start marker; this is a no-tool
 guard, not full grammar-constrained tool decoding. When
 `tool_choice="required"` or a specific function is requested and tokenization is
-available, the sampler forces the tokenized `<tool_call>` start marker before
-ordinary token selection. If a tokenized thinking budget is active, the same
-marker is queued until the `</think>` close sequence has moved the row into
-answer phase. This prevents ordinary prose from being selected as the first
-visible answer/tool token.
+available, the sampler forces a tool prefix before ordinary token selection.
 Specific function choices, plus `required` mode with exactly one function tool,
-also force the selected `<tool_call>{"name":"...","arguments":` prefix when
-tokenizer composition shows that prefix starts with the same tokenized
-`<tool_call>` marker. Multi-tool `required` mode leaves tool-name selection to
-the model, and argument JSON is still result-validated rather than
-grammar-constrained. Required and specific function modes also tokenize
-`</tool_call>` when possible; once that close marker begins, the host sampler
-forces the remaining suffix through model decoding so the closing tag is not
-left partially emitted.
+atomically queue the independently tokenized
+`<tool_call>{"name":"...","arguments":` prefix from its first token. This does
+not assume that separately tokenized `<tool_call>` IDs compose with the JSON
+suffix (Qwen tokenizers may merge the `>{` boundary). For a selected strict
+object schema with `additionalProperties: false` whose first `required` property
+has `type: "string"`, the atomic prefix extends through the encoded property key
+and opening value quote. The value and all remaining properties stay
+model-generated and strict-result-validated. Other schema shapes fall back to
+the name-and-arguments prefix. Multi-tool `required` mode queues only
+`<tool_call>` and leaves tool-name selection to the model. If a tokenized
+thinking budget is active, the applicable whole prefix is held until the
+`</think>` close sequence has moved the row into answer phase.
+
+Required and specific function modes also tokenize `</tool_call>` when
+possible. Strict-schema first-string-key anchoring additionally enables the
+structural `}}</tool_call>` envelope tail. A tail is used only when its complete
+token sequence does not occur in the forced opening prefix. Once an enabled
+tail begins, the host sampler forces its remaining tokens and stops at the
+completed sequence, preventing post-envelope transcript residue. This is a
+bounded tokenizer-aware repair, not a general JSON-schema grammar.
 
 The current post-generation schema subset covers `type`, `enum`, `const`,
 local references with `$ref` into `$defs` or `definitions`, schema composition
@@ -766,8 +797,9 @@ validation keywords are rejected before generation when strict tool validation
 would use the schema; remote, unresolved, non-object, or cyclic `$ref` targets
 are rejected before generation too. Annotation keys such as `title`,
 `description`, `default`, and `format` are
-accepted but ignored by validation. This is result validation only; decode-time
-JSON/schema constraints remain unsupported.
+accepted but ignored by validation. Apart from the selected strict-schema
+first-string-key anchor described above, this is result validation only;
+general decode-time JSON/schema grammars remain unsupported.
 
 ### Structured outputs
 
@@ -1310,7 +1342,8 @@ generated text.
 - Tool calling uses Qwen-style prompt markup and output parsing rather than a
   constrained decoder. With tools enabled, malformed `<tool_call>` JSON fails
   closed as an invalid tool call; the common duplicated-start wrapper is
-  repaired only when its inner tool JSON is otherwise valid.
+  repaired only when its inner tool JSON is otherwise valid, and pure outer
+  Qwen template-control residue is removed only after at least one call parses.
 - Unknown top-level request parameters are rejected instead of silently ignored.
 - Completion `usage` is exact when every `GenerationOutput` exposes generated
   token IDs. Prompt usage and legacy completion fallback counting require the

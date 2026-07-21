@@ -65,7 +65,7 @@ def _oracle_payload(suite, *, turn_index: int = 0) -> dict[str, object]:
     }
 
 
-def _sse_events(suite, *, turn_index: int = 0):
+def _sse_events(suite, *, turn_index: int = 0, response_ids: bool = False):
     turn = suite.workloads["small_repo"]["turns"][turn_index]
     arguments = json.dumps(turn["expected_arguments"], separators=(",", ":"))
     midpoint = len(arguments) // 2
@@ -88,7 +88,7 @@ def _sse_events(suite, *, turn_index: int = 0):
         "group_rows": 2,
         "timing_owner": True,
     }
-    return [
+    events = [
         (10.01, {"choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}]}),
         (
             10.20,
@@ -168,6 +168,10 @@ def _sse_events(suite, *, turn_index: int = 0):
         ),
         (10.32, "[DONE]"),
     ]
+    if response_ids:
+        events[3][1]["choices"][0]["hipengine"]["generated_token_ids"] = [11, 12, 13]
+        events[3][1]["choices"][0]["hipengine"]["generated_tokens"] = 3
+    return events
 
 
 def test_prefix_renderer_hits_exact_target_and_roundtrips() -> None:
@@ -286,6 +290,51 @@ def test_oracle_and_buffered_tool_sse_normalize_to_exact_a0_record() -> None:
         normalize_chat_oracle(suite, "small_repo", 0, content_oracle)
 
 
+def test_sse_normalizer_uses_exact_response_ids_and_rejects_oracle_drift() -> None:
+    suite = load_agentic_workload_suite(WORKLOADS)
+    oracle = normalize_chat_oracle(suite, "small_repo", 0, _oracle_payload(suite))
+
+    record = normalize_chat_sse_turn(
+        suite,
+        workload_id="small_repo",
+        turn_index=0,
+        run_id="run-0",
+        agent_id="agent-0",
+        session_id="session-0",
+        request_id="request-0",
+        prompt_token_ids=[1] * 2048,
+        submitted_at_s=10.0,
+        tool_result_submitted_at_s=10.33,
+        oracle=oracle,
+        events=_sse_events(suite, response_ids=True),
+        cache_mode="off",
+    )
+
+    assert record["output"]["generated_token_ids"] == [11, 12, 13]
+    assert record["output"]["generated_token_ids_source"] == "response"
+    assert record["output"]["sse_exact_ids_observed"] is True
+    assert record["timing"]["token_timing_mode"] == "buffered_public"
+
+    drifted = _sse_events(suite, response_ids=True)
+    drifted[3][1]["choices"][0]["hipengine"]["generated_token_ids"][-1] = 99
+    with pytest.raises(AgenticBenchmarkError, match="SSE generated token IDs differ from oracle"):
+        normalize_chat_sse_turn(
+            suite,
+            workload_id="small_repo",
+            turn_index=0,
+            run_id="run-0",
+            agent_id="agent-0",
+            session_id="session-0",
+            request_id="request-0",
+            prompt_token_ids=[1] * 2048,
+            submitted_at_s=10.0,
+            tool_result_submitted_at_s=10.33,
+            oracle=oracle,
+            events=drifted,
+            cache_mode="off",
+        )
+
+
 def test_sse_normalizer_rejects_incomplete_or_ambiguous_tool_streams() -> None:
     suite = load_agentic_workload_suite(WORKLOADS)
     oracle = normalize_chat_oracle(suite, "small_repo", 0, _oracle_payload(suite))
@@ -360,7 +409,7 @@ class _FakeLiveTransport:
         current_user = payload["messages"][-1]["content"]
         turns = self.suite.workloads["small_repo"]["turns"]
         turn_index = next(index for index, turn in enumerate(turns) if turn["user"] == current_user)
-        events = _sse_events(self.suite, turn_index=turn_index)
+        events = _sse_events(self.suite, turn_index=turn_index, response_ids=True)
         for _, event in events:
             if not isinstance(event, dict):
                 continue
@@ -416,7 +465,7 @@ def test_live_collector_builds_complete_multirun_records_with_fake_transport() -
     assert artifact["rollup"]["latency_ms"]["inter_token"]["count"] == 0
     assert artifact["rollup"]["backend"]["token_timing_mode_turns"] == {"buffered_public": 16}
     assert artifact["rollup"]["backend"]["generated_token_id_source_turns"] == {
-        "matched_nonstreaming_oracle": 16
+        "response": 16
     }
 
 

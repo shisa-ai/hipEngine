@@ -1,6 +1,6 @@
 # Agentic Serving Optimization Board
 
-Last updated: 2026-07-20
+Last updated: 2026-07-21
 
 `AGENTIC-OPT.md` is the active status, measurement, and optimization board for
 using hipEngine as a local coding-agent runtime. The functional server contract
@@ -34,10 +34,11 @@ The key workload distinction is:
 - both cases benefit from preserving exact resident state/KV ownership and
   avoiding full-vocabulary host readback.
 
-The recommended next unit is a W7900 GGUF coding-agent benchmark followed by
-three measured candidates: gfx1100 prefix reuse, low-occupancy routing, and GGUF
-native GPU sampling. The benchmark, not intuition, selects their order after the
-baseline packet exists.
+The repeated W7900 A1 packet now exists. It shows flat active-SSE goodput at 4K
+from C1 through C8, a modest long-context C4 gain, linearly worsening buffered
+tool-ready latency, and one full-vocabulary D2H row per generated token. The
+recommended next unit is therefore the frozen A2 cache-off/radix prefix A/B,
+followed by native GPU sampling; low-occupancy routing remains the C1 guard.
 
 ## Current status report
 
@@ -79,6 +80,7 @@ fail-safe envelopes; they do not prove broad live-model tool-use quality.
 | Real OpenAI GGUF physical c8 | **136.122 aggregate tok/s** | same F1 artifact |
 | Real OpenAI logical C13 | **111.380 aggregate tok/s**, physical c8 plus sparse c8 | same F1 artifact |
 | Same-loop serial C13 control | **31.708 aggregate tok/s** | same F1 artifact |
+| Coding-agent A1 active SSE | Small **16.239/15.995/16.020**, growing **15.100/15.231/15.036**, medium **4.127/4.629/4.339 tok/s** at C1/C4/C8 | `benchmarks/results/2026-07-21-w7900-agentic-a1-repeated-baseline.json` |
 | PARO direct selected-batch c2 | **121.923 aggregate tok/s**, +5.09% vs c1 and +20.81% vs serial c2 | `benchmarks/results/2026-07-18-gfx1100-paro-g2-selected-batch-c2-retained.json` |
 | PARO MTP N4 after parallel router | **66.303/66.259 tok/s**, about **0.592x true AR** | `benchmarks/results/2026-07-20-w7900-paro-mtp-n4plus-parallel-router-topk.json` |
 
@@ -106,10 +108,10 @@ resident-session semantics.
 
 ### Runtime and performance
 
-1. **No retained W7900 coding-agent workload packet.** Existing server rows use
-   throughput-oriented prompt/decode shapes. They do not measure repeated
-   assistant-tool-result turns, tool-call-ready latency, prefix hits, or
-   per-turn queue/prefill/decode ownership.
+1. **The retained coding-agent baseline exposes no useful 4K concurrency
+   scaling.** Active-SSE goodput is flat from C1 through C8 while buffered
+   tool-ready p50 grows about 4x/8x. Medium C4 is only **1.122x** C1 and C8 falls
+   to **0.937x** C4. Prefix reuse and native sampling now have measured targets.
 2. **gfx1100 production-policy transfer is incomplete.** GGUF continuous
    membership and physical c8 are retained, but the broader occupancy-adaptive
    low-load, sampled API, prefix-economics, long-context pressure, and SLO packet
@@ -168,13 +170,14 @@ with the full server contract gate green after each unit.
 
 ## Improvement priority order
 
-### P0 — Establish the W7900 coding-agent baseline
+### P0 — Establish the W7900 coding-agent baseline — complete
 
-Build and retain a real-Uvicorn benchmark that exercises several complete
-assistant -> tool call -> tool result turns. It must measure concurrency one as
-well as concurrent agent swarms, preserve exact prompt/tool identities, and
-finish with zero request/session/KV ownership. No optimization is promoted
-before this baseline exists.
+The retained real-Uvicorn A1 packet covers all three frozen workloads at
+C1/C4/C8 with one discarded warmup plus three measured runs each. It preserves
+17,316 response-owned IDs across 702 strict tool turns, passes all independent
+blocking/SSE and ownership gates, and explicitly separates active SSE waves from
+the oracle-inclusive first-to-last harness wall. See the 2026-07-21 closure
+below.
 
 ### P1 — Transfer and broaden gfx1100 GGUF prefix reuse
 
@@ -416,9 +419,9 @@ python3 scripts/agentic_coding_bench.py \
 ```
 
 A0 intentionally accepts only successful deterministic assistant-tool-result
-turns. Cancellation, deadline, slow-consumer, automatic-tool quality, and sampled
-records extend the schema in A3/A5/A6 rather than weakening the initial exact
-tool denominator.
+turns. Cancellation, deadline, slow-consumer, and sampled records remain A3/A5
+extensions; automatic-tool quality now uses the separate non-performance A6
+artifact below rather than weakening the initial exact tool denominator.
 
 A1 collection is implemented by `hipengine/benchmark/agentic_live.py` and
 `scripts/agentic_coding_live.py`. It:
@@ -436,16 +439,17 @@ A1 collection is implemented by `hipengine/benchmark/agentic_live.py` and
 - polls readiness, sessions/continuations, and KV refs/pins to close final
   ownership before A0 accepts the packet.
 
-Current validated tool SSE is often a safely buffered public projection rather
-than one event per generated model token. Such turns are explicitly labeled
-`token_timing_mode=buffered_public`; the candidate IDs are labeled
-`generated_token_ids_source=matched_nonstreaming_oracle` and
-`sse_exact_ids_observed=false`, and ITL is withheld instead of assigning
-fabricated per-token timestamps. Oracle/tool equality is useful diagnostic
-coverage, but it does **not** satisfy the retained exact-SSE-ID gate. A retained
-performance row requires the measured response to expose its own exact IDs, and
-a retained ITL row additionally requires `live_exact` lower-loop events. The
-first diagnostic command is:
+Validated tool SSE is often a safely buffered public projection rather than one
+event per generated model token. Such turns are explicitly labeled
+`token_timing_mode=buffered_public`, and ITL is withheld instead of assigning
+fabricated per-token timestamps. A1 now consumes cumulative response-owned IDs
+from the final SSE done choice, requires exact equality to the independent
+non-streaming oracle, and records `generated_token_ids_source=response` with
+`sse_exact_ids_observed=true`. If a backend omits the final IDs, the old
+`matched_nonstreaming_oracle`/false row remains diagnostic and cannot support a
+retained exact-token performance claim. Exact response IDs make the denominator
+valid; a retained ITL row additionally requires `live_exact` lower-loop events.
+The first diagnostic command is:
 
 ```bash
 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
@@ -458,9 +462,10 @@ python3 scripts/agentic_coding_live.py \
   --json /tmp/agentic-small-c1-a1.json
 ```
 
-The complete A1 baseline still requires clean cache-off C1/C4/C8 runs over all
-three workload families with warmup and repeated measurements. The initial
-single-family smoke is diagnostic, not a retained performance claim.
+The complete A1 baseline is retained across cache-off C1/C4/C8 for all three
+workload families with one warmup and three measurements per configuration.
+Earlier single-family rows remain diagnostics; only active SSE wave time from
+the repeated packet is a performance denominator.
 
 #### First W7900 A1 smoke: blocked before timing
 
@@ -513,11 +518,370 @@ template tokens, and then reasoning instead of the forced `grep` arguments. At
 `finish_details.reason=invalid_tool_call`, rather than publishing malformed
 output. No complete-workload artifact or timing row was retained.
 
-Next actions are now split by purpose. A live-agent quality lane should keep
-this natural multi-turn failure and measure repair/success rates. The
-performance lane needs a deterministic, non-prompt-conditioned way to obtain
-valid multi-turn envelopes; do not hardcode fixture argument tokens to make it
-pass. Independently, expose measured SSE response-owned generated IDs. C4/C8 for
-the 2K family also needs a capacity plan that passes the startup guard rather
-than bypassing it; the 8K family needs a separate lower-concurrency context
-configuration.
+Next actions are split by purpose. The A6 quality lane below keeps natural
+multi-turn failures and reports success rates without a performance denominator.
+The performance lane still needs a deterministic, non-prompt-conditioned way to
+obtain valid multi-turn envelopes; do not hardcode fixture argument tokens to
+make it pass. Response-owned SSE IDs are now implemented and live-verified, so
+that provenance issue is closed. C4/C8 for the 2K family still needs a capacity
+plan that passes the startup guard rather than bypassing it; the 8K family needs
+a separate lower-concurrency context configuration.
+
+## 2026-07-20 — Separate natural auto-tool quality from performance (A6)
+
+A6 now has a distinct fail-closed quality contract and live blocking collector:
+
+- `hipengine/benchmark/agentic_quality.py` normalizes natural `tool_choice=auto`
+  responses, requires blocking response-owned generated IDs, and preserves
+  model failures as explicit outcomes instead of aborting the workload;
+- `scripts/agentic_coding_quality.py` evaluates every turn against an independent
+  canonical valid prior transcript, so one failed attempt is measured without
+  corrupting or cascading into later turns;
+- `agentic-coding-quality-{records,benchmark}.schema.json` pin a separate
+  artifact kind whose `performance_claim` is always false;
+- rollups report valid-call, correct-tool, exact-argument, success, repair, and
+  outcome counts/rates, with no TTFT, tok/s, or goodput fields;
+- the deterministic A0/A1 validator remains unchanged and all-success: natural
+  quality rows cannot enter its exact latency/performance denominator.
+
+The fake-transport gate retains a turn with
+`finish_details.reason=invalid_tool_call`, completes all four turns, and reports
+three successes rather than rejecting the packet. The first clean W7900 run is
+now published as a bounded quality diagnostic below. The exact live command is:
+
+```bash
+HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
+python3 scripts/agentic_coding_quality.py \
+  --base-url http://127.0.0.1:8100/v1 \
+  --model Qwen3.6-35B-A3B --backend hip_gfx1100 \
+  --workload small_repo --concurrency 1 --runs 1 \
+  --cache-mode off --max-tokens 128 \
+  --records-json /tmp/agentic-small-c1-quality-records.json \
+  --json /tmp/agentic-small-c1-quality.json
+```
+
+RED/GREEN validation:
+
+```bash
+python3 -m pytest -q tests/test_agentic_coding_quality.py
+# RED: ModuleNotFoundError: hipengine.benchmark.agentic_quality
+# GREEN: 5 passed
+python3 -m pytest -q tests/test_agentic_coding_quality.py \
+  tests/test_agentic_coding_live.py tests/test_agentic_coding_benchmark.py
+# 17 passed
+ruff check hipengine/benchmark/agentic_quality.py \
+  hipengine/benchmark/__init__.py scripts/agentic_coding_live.py \
+  scripts/agentic_coding_quality.py tests/test_agentic_coding_quality.py
+# All checks passed
+```
+
+The clean `4d01f897` W7900/gfx1100 run completed all four independent
+`small_repo` attempts and retained **0/4 successes** over **274 exact
+response-owned generated IDs**. Two turns selected the correct tool and exact
+arguments but returned Qwen role/EOT residue in public content; two produced no
+valid call and ended as `invalid_tool_call`. The quality artifact contains no
+latency, tok/s, or goodput fields, sets `performance_claim=false`, and records
+zero final request/session/KV/graph/workspace ownership:
+[`2026-07-20-w7900-agentic-a6-small-c1-quality.json`](../benchmarks/results/2026-07-20-w7900-agentic-a6-small-c1-quality.json).
+This one-run/four-turn result is a failure-distribution diagnostic, not a broad
+model-quality score.
+
+## 2026-07-20 — Expose response-owned exact IDs on tool SSE
+
+`GenerationStreamChunk` now carries an optional cumulative
+`generated_token_ids` tuple. Final GGUF direct, resident, and scheduler-chunk
+stream events populate and preserve it without copying the growing ID history on
+every intermediate token; generic resident scheduling, stream
+coercion, buffered/detail projection, phase rewriting, and final output
+conversion no longer drop it. With `stream_options.include_hipengine=true`, the
+final completion/chat SSE done choice publishes `generated_token_ids` and
+`generated_tokens` when the final backend chunk supplies exact IDs. Capabilities
+advertise this as
+`choice_generated_token_ids=done_event_when_backend_supplies_exact_ids`.
+
+A1 reads only response IDs actually present in SSE, checks their count and exact
+sequence against the independent blocking oracle, and rejects drift before
+normalizing a record. Successful exact-ID tool streams use `source=response`
+and `sse_exact_ids_observed=true`. Buffered tool arguments remain
+`token_timing_mode=buffered_public`: exact IDs repair the throughput denominator,
+not ITL resolution. Backends that omit IDs retain the prior explicit diagnostic
+oracle source rather than receiving fabricated response provenance.
+
+RED/GREEN and validation:
+
+```bash
+python3 -m pytest -q \
+  tests/test_generation_registry.py::test_generation_stream_chunk_preserves_token_logprobs \
+  tests/test_server_api.py::test_streaming_chat_tool_done_exposes_response_owned_generated_ids \
+  tests/test_agentic_coding_live.py::test_sse_normalizer_uses_exact_response_ids_and_rejects_oracle_drift
+# RED: 3 failed
+# GREEN: 3 passed
+python3 -m pytest -q tests/test_server_api.py
+# 503 passed
+python3 -m pytest -q tests/test_generation_registry.py \
+  tests/test_agentic_coding_live.py tests/test_agentic_coding_benchmark.py \
+  tests/test_generation_qwen35_gguf_sampling.py
+# 99 passed
+```
+
+The clean W7900 rerun verifies the transport but still rejects the baseline.
+The 4K/c1 server passed its guarded 4,095-token startup probe in **79.425 s** at
+**23.447 GiB used / 21.537 GiB free**. A1 turn 0 then matched its independent
+oracle with **32 response-owned IDs**, exact
+`read(path="pyproject.toml", mode="summary")`, and
+`token_timing_mode=buffered_public`. Turn 1's independent blocking oracle did
+not finish with a valid forced `grep` tool call, so the collector correctly
+stopped before opening that measured SSE interval and emitted no partial A1
+records or performance artifact. The blocked packet is
+[`2026-07-20-w7900-agentic-a1-small-c1-blocked.json`](../benchmarks/results/2026-07-20-w7900-agentic-a1-small-c1-blocked.json).
+
+The next correctness unit is model-general strict-tool JSON constraint/repair,
+not fixture-conditioned argument forcing. A complete small-repo c1 packet must
+pass before prefix A/B or any latency/goodput claim. C4/C8 remains a separate
+startup-capacity blocker.
+
+## 2026-07-20 — Make selected-tool JSON prefix forcing atomic
+
+The blocked turn-1 IDs exposed a tokenizer-boundary bug rather than an argument
+oracle gap. Qwen tokenizes `<tool_call>` with a final `>` token, but tokenizes
+`<tool_call>{"name":"grep","arguments":` with a merged `>{` token. The prior
+route forced the short marker and attempted to complete the longer prefix with
+a token-sequence DFA; because those tokenizations are non-composable, only the
+marker was forced and the model could emit template text immediately after it.
+
+Specific function choices, and `required` with exactly one declared function,
+now tokenize and queue the entire selected
+`<tool_call>{"name":"...","arguments":` prefix atomically from token zero. A
+multi-tool `required` request still forces only the opening marker so tool
+selection remains model-owned. Thinking-budget requests hold the same complete
+prefix until answer phase, and the existing close-marker completion remains.
+No prompt text, benchmark token ID, expected argument key, or expected argument
+value is inspected or forced; arguments remain model-generated and strict-schema
+validated. Capabilities report the scope as
+`atomic_tool_call_name_and_arguments_key`.
+
+The host-only RED/GREEN and broad server/generation gates pass. No GPU result or
+performance claim changed. The next step is the clean W7900 A6/A1 rerun; only a
+complete all-success A1 packet can open prefix/routing performance work.
+
+## 2026-07-20 — Post-tool-fix W7900 A6/A1 remains blocked
+
+The clean `f25362d0` W7900 4K/c1 cache-off rerun improves the natural A6 lane
+from **0/4 to 2/4 successful turns** over the same **274 exact response-owned
+IDs**. The two previously valid `read` calls now have empty public content and
+pass exact-argument scoring. Natural `grep` and `run` remain
+`invalid_tool_call`; this is quality-only evidence and contains no timing.
+
+The deterministic A1 lane still fails closed before opening its first measured
+SSE interval. Atomic prefix forcing produces
+`<tool_call>{"name":"read","arguments":`, but the model starts an invalid
+argument object, emits Qwen controls, and later emits a second complete valid
+`read(path="pyproject.toml", mode="summary")` envelope. The parser extracts
+that later call but leaves the unfinished first envelope and controls in public
+content. A same-canonical-request diagnostic contains **63 response-owned IDs**
+and the exact parsed call, but it is not an A1 record or performance row.
+
+Final request/session/KV/graph/workspace ownership is zero. The next correctness
+unit is an envelope-scoped incomplete-duplicate-prefix repair after a valid
+call parses, with ordinary-content and interior-literal guards. C4/C8 and any
+prefix/routing performance work remain closed.
+
+## 2026-07-20 — Strip incomplete duplicate forced-prefix residue
+
+The exact 63-ID A1 turn-0 response is now a blocking and SSE regression. After a
+later valid tool block parses, public cleanup discards an earlier incomplete
+canonical `<tool_call>{"name":"...","arguments":` prefix only when its tool
+name exactly matches the first parsed call and the remainder contains optional
+whitespace, at most one unmatched `{`, and otherwise only recognized Qwen
+controls/role labels. The check runs on the original remainder before generic
+edge cleanup.
+
+This does not repair arguments or reinterpret malformed-only output. Ordinary
+text before the prefix, a mismatched tool name, interior literal markers, and an
+incomplete prefix without a later valid call are all preserved or rejected by
+their previous fail-closed routes. Blocking and SSE share the parser, and the
+capability manifest advertises
+`incomplete_duplicate_tool_prefix_control_residue`.
+
+The exact blocking/SSE tests fail before the implementation and pass afterward;
+ordinary, mismatched-name, literal-marker, and malformed-only guards pass. The
+final **510-test server** and **142-test agentic/config** gates are green. No GPU
+result or performance claim changed. Next: rerun the clean W7900 deterministic
+A1 packet before opening any performance lane.
+
+## 2026-07-20 — Deterministic A1 advances to the turn-1 JSON boundary
+
+Clean `5d6a2883` on the W7900 passes the 4,095-token startup probe and advances
+through turn 0's independent blocking oracle plus measured exact-SSE equality
+gate. The fail-closed collector then reaches turn 1, proving the duplicate-prefix
+cleanup repaired the previous boundary without retaining any partial timing.
+
+Turn 1 still fails before measured SSE. The response begins with the atomic
+`<tool_call>{"name":"grep","arguments":` prefix, emits `{`, Qwen template and
+tool-response controls, then produces free-form reasoning until the 128-token
+cap. It finishes `length` / `invalid_tool_call` with **128 response-owned IDs**,
+no parsed call, and empty public content. The collector emits no records or
+complete artifact; final ownership is zero.
+
+This is now an in-envelope generation problem, not a parser-residue problem.
+The next model-general unit must constrain JSON from the declared function
+schema after the selected-tool prefix while leaving argument keys/values
+model-selected—no fixture IDs, expected arguments, or prompt-conditioned repair.
+A complete A1 packet remains required before any performance lane opens.
+
+## 2026-07-20 — Anchor selected strict-tool JSON and stop at its envelope
+
+A full vocabulary JSON-schema grammar is not required for the blocked Qwen
+trajectory. For a selected function whose declared schema is strict, is an
+object with `additionalProperties: false`, and has a first required string
+property, hipEngine now atomically extends the existing forced tool prefix
+through that schema-derived property key and its opening value quote. The model
+still selects the string value and every remaining property; unsupported schema
+shapes retain the shorter name-and-arguments prefix and all results remain
+subject to independent strict postvalidation.
+
+The same narrow route enables tokenizer-derived `}}</tool_call>` completion in
+addition to the existing close-marker completion. A candidate is omitted if its
+complete token sequence appears in the forced opening prefix. Once either safe
+close candidate begins, its remainder is forced and the completed sequence is
+also a stop boundary, preventing post-envelope Qwen transcript continuation.
+The structural candidate is never enabled for multi-tool `required`, non-strict
+schemas, unsupported first-property types, or failed schema-prefix tokenization.
+Capabilities disclose both the schema-anchor scope and close/stop scope. This is
+not a general JSON grammar and does not inspect prompts, fixtures, expected
+arguments, or benchmark token IDs.
+
+A deliberately dirty-tree W7900 diagnostic justified the bounded design before
+commit: the complete four-turn small-repo c1 collector passed all four
+independent blocking oracles, all four response-owned SSE equality gates, and
+final zero-ownership checks over 100 generated IDs. That pre-commit diagnostic
+has `performance_claim=false`; none of its timing fields are retained.
+
+Clean committed `f7a38fd1` repeats the result: **4/4 blocking oracles + 4/4
+exact-SSE gates** pass for exact `read`/`grep`/`read`/`run` arguments over **100
+response-owned IDs**, with zero final ownership. The published
+[completed A1 diagnostic](../benchmarks/results/2026-07-20-w7900-agentic-a1-small-c1-post-schema-anchor.json)
+reports TTFT p50 **1536.618 ms** and **9.077 exact generated tok/s**, but remains
+`performance_claim=false`: this is one small-repo c1 run without the required
+warmups/repeats, C4/C8, or medium/growing-history coverage. Host validation is
+green across **529 generation tests**, **513 server tests**, and **142
+agentic/config tests**, plus Ruff. Next: solve capacity for the remaining A1
+matrix before opening A2 prefix A/B.
+
+## 2026-07-20 — Small-repo c4 is physically viable; sampled reuse repaired
+
+The missing guarded capacity point is now measured: clean `fee9ee85` with a
+4,096-token context and `--max-active-requests 4` passes the unchanged exact
+4,095-token startup probe, including packed width-2/4 warmup, at **37.43 GiB
+used / 7.56 GiB free**. Startup completed in **81.427 s**. This is capacity and
+correctness evidence, not a performance result.
+
+The first live c4 request then exposed two independent runtime defects. Sampled
+resident prefill addressed the raw KV cache base even when the scheduler had
+assigned a shifted dynamic allocation; after rebasing it through the same
+block-table-aware packed route used by greedy prefill, that route still rejected
+`return_logits=True`. The packed prefill path now returns one finite FP32 logits
+row per active slot for the existing host sampler, and long shifted-contiguous
+prompts remain on their per-session slot-local AOTriton cache view. Genuinely
+non-contiguous paged scatter remains conservatively limited below 1,024 context
+tokens. No requested sampling semantics are weakened or converted to top-1.
+
+The startup probe also now respects the registry-selected plain-AR physical
+width. An admission setting of C8 therefore probes the retained physical c4
+route instead of allocating an unsupported width-8 plain-AR workspace. An
+actually enabled MTP route retains its own admission-width warmup; the exact
+capacity guard remains mandatory in both cases.
+
+A dirty-tree correctness gate completed **8/8 c2 turns** and **16/16 c4 turns**
+for `small_repo`, with every independent blocking oracle, response-owned SSE ID
+equality check, strict tool argument check, and final zero-ownership check
+passing. Both collector outputs set `performance_claim=false`; their timings
+were discarded because the tree was dirty and host tests ran concurrently.
+Clean committed C8 admission/physical-c4 coverage and the 8K/growing-history
+context-capacity split remain required before A1 can become a retained baseline.
+
+## 2026-07-20 — Separate logical C8 admission from physical c4 residency
+
+The first clean `84fd737a` C8 launch still failed the startup guard before any
+collector request. Although the probe itself was intended to clamp, the LLM
+resident loop had already allocated eight 4K session slots: resident preparation
+used **36.84 GiB**, leaving **8.14 GiB**, and scratch warmup failed with HIP OOM.
+This run produced no A1 artifact and readiness remained false.
+
+The physical-width contract now crosses the entire registry boundary. The
+registered gfx1100 GGUF generator advertises plain-AR width four; `LLM` caps its
+resident loop to the generator-advertised width while preserving the caller's
+logical request/admission setting. The outer HTTP queue can therefore accept C8
+without allocating eight resident slots. The same mechanism preserves gfx1151's
+separately registered c8 width and avoids backend branches in `LLM` or server
+dispatch. Public choice-scoped telemetry in the C8 diagnostics reports width
+one, so this capacity result does not claim physical-c4 model-step execution.
+
+A dirty W7900 validation then reached readiness with logical
+`queue.max_active_requests=8`, scratch `max_batch_size=4`, packed AR warmups
+`[2,4]`, and the same **37.43 GiB used / 7.56 GiB free** c4-residency footprint.
+The full `small_repo` C8 collector passed **32/32 turns**, artifact validation,
+and final zero ownership. Its artifact sets `performance_claim=false` and its
+timing is discarded.
+
+## 2026-07-20 — Clean C8 capacity closes all frozen A1 families
+
+Clean pushed `56c91f87` repeats C8 correctness across every frozen family:
+
+- `small_repo`: exact prompts **2,504-2,851 tokens**, **32/32 turns** and 800
+  response-owned IDs pass at 4K context;
+- `growing_history`: exact prompts **2,498-3,281 tokens**, **64/64 turns** and
+  1,592 IDs pass at 4K context;
+- `medium_repo`: exact prompts **8,644-9,229 tokens**, **48/48 turns** and 1,160
+  IDs pass at 10,240 context.
+
+Including the 128-token output budget, their exact minimum contexts are
+**2,979 / 3,409 / 9,357** tokens. Both guarded servers retained logical C8 while
+probing resident width four: 4K used/free **37.43/7.56 GiB** and 10K used/free
+**38.26/6.72 GiB**. Every independent blocking oracle, response-owned SSE ID,
+strict tool argument, collector validation, and final request/session/KV/graph/
+workspace ownership check passed. The first medium attempt is excluded because
+its external background server expired at 600 seconds; the 30-minute retry
+completed cleanly.
+
+The [capacity matrix](../benchmarks/results/2026-07-20-w7900-agentic-a1-c8-capacity-matrix.json)
+and three linked collector artifacts all set `performance_claim=false`. Their
+single-run, no-warmup timing is non-promotable, and width-one public telemetry
+cannot support a physical-c4 claim. The now-frozen repeated baseline protocol is:
+4K for small/growing, 10,240 for medium; logical C1/C4/C8; one discarded complete
+workload warmup and three measured cache-off runs per configuration. All nine
+configurations must pass before A2 prefix A/B opens.
+
+## 2026-07-21 — Repeated W7900 A1 baseline retained
+
+Clean pushed source `44c76674` completes the frozen real-Uvicorn, cache-off
+matrix: three workload families x logical C1/C4/C8, each with one complete
+discarded warmup and three target-GPU-exclusive measured runs. Across **702
+strict tool turns** and **17,316 response-owned IDs**, every independent blocking
+oracle, SSE exact-ID comparison, strict argument/schema gate, and final
+request/session/KV/graph/workspace ownership check passes. All active-SSE rate
+rows have less than **0.91% stdev/median**.
+
+| Workload | C1 | C4 | C8 | C4/C1 | C8/C1 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Small, 4K | **16.239** | **15.995** | **16.020** | 0.985x | 0.987x |
+| Growing history, 4K | **15.100** | **15.231** | **15.036** | 1.009x | 0.996x |
+| Medium, 10,240 | **4.127** | **4.629** | **4.339** | 1.122x | 1.052x |
+
+Rates are exact generated tok/s over the sum of measured SSE wave walls. The
+original first-submit-to-last-tool-result rollup included independent blocking
+oracles between turns and produced misleading **9.134/7.912/2.527 tok/s** C1
+figures; it is retained only as an explicitly named diagnostic. The artifact and
+A0 builder now expose both scopes. Public tool SSE remains `buffered_public`, so
+its **1.526/1.655/4.396 s** C1 p50 is validated tool-ready latency, not true
+lower-loop TTFT, and no ITL claim is made.
+
+Short/growing C4/C8 provide no aggregate benefit, while medium C4 gains 12.17%
+and C8 gives back 6.25% versus C4. Every output token still records one FP32
+full-vocabulary D2H row (up to **1.473 GiB/run** at growing C8), making the next
+order evidence-driven: A2 prefix reuse first for repeated long prefill, then
+native GPU sampling; preserve C1 and medium-C4 guards. ROCm GPU0 is the W7900
+target. Concurrent work explicitly pinned to the separate ROCm GPU1/XTX is not
+target contention and is recorded but allowed.
+
+[Retained artifact](../benchmarks/results/2026-07-21-w7900-agentic-a1-repeated-baseline.json).

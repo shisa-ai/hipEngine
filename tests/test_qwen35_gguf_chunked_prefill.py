@@ -54,6 +54,49 @@ def test_qwen35_gguf_chunked_prefill_matches_unchunked() -> None:
     assert _kl_divergence(unchunked_res.logits.reshape(-1), chunked_res.logits.reshape(-1)) <= 0.1
 
 
+def test_qwen35_gguf_packed_prefill_returns_per_slot_logits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if not _hip_available():
+        pytest.skip("HIP runtime is not available")
+    monkeypatch.setenv("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN", "1")
+    prompts = ([760, 4087, 369, 220], [760, 4087, 369, 221])
+
+    with Qwen35GGUFResidentSession(MODEL, max_sequence_length=16) as owner:
+        assert owner.runner is not None
+        with Qwen35GGUFResidentSession(
+            MODEL,
+            shared_runner=owner.runner,
+            max_sequence_length=16,
+        ) as peer:
+            packed = owner.prefill_batch_native(
+                prompts,
+                sessions=(owner, peer),
+                return_logits=True,
+            )
+            packed_logits = [result.logits.copy() for result in packed if result is not None]
+            packed_tokens = [int(result.token_id) for result in packed if result is not None]
+            plan = dict(owner.last_packed_prefill_plan)
+
+            owner.reset()
+            peer.reset()
+            scalar = [
+                owner.prefill(prompts[0], return_logits=True),
+                peer.prefill(prompts[1], return_logits=True),
+            ]
+
+    assert len(packed_logits) == len(packed_tokens) == len(scalar) == 2
+    assert all(logits.shape == (1, 248320) for logits in packed_logits)
+    assert all(np.all(np.isfinite(logits)) for logits in packed_logits)
+    assert packed_tokens == [int(result.token_id) for result in scalar]
+    assert all(
+        _kl_divergence(result.logits.reshape(-1), logits.reshape(-1)) <= 0.05
+        for result, logits in zip(scalar, packed_logits, strict=True)
+    )
+    assert plan["host_logits_d2h"] is True
+    assert plan["host_logits_d2h_bytes"] == 2 * 248320 * np.dtype(np.float32).itemsize
+
+
 def _kl_divergence(reference_logits: np.ndarray, candidate_logits: np.ndarray) -> float:
     ref = reference_logits.astype(np.float64, copy=False)
     cand = candidate_logits.astype(np.float64, copy=False)

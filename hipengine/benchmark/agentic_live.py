@@ -313,6 +313,7 @@ def normalize_chat_sse_turn(
     finish_reason: str | None = None
     usage: Mapping[str, Any] = {}
     telemetry: Mapping[str, Any] = {}
+    response_generated_ids: tuple[int, ...] | None = None
     public_text: list[str] = []
 
     for raw_time, payload in events:
@@ -347,6 +348,24 @@ def normalize_chat_sse_turn(
             choice_telemetry = choice.get("hipengine")
             if isinstance(choice_telemetry, Mapping) and choice_telemetry:
                 telemetry = choice_telemetry
+                if choice_telemetry.get("generated_token_ids") is not None:
+                    observed_ids = _token_row(
+                        choice_telemetry.get("generated_token_ids"),
+                        label="SSE generated_token_ids",
+                    )
+                    if (
+                        response_generated_ids is not None
+                        and response_generated_ids != observed_ids
+                    ):
+                        raise AgenticBenchmarkError(
+                            "SSE generated token IDs changed within the response"
+                        )
+                    response_generated_ids = observed_ids
+                    generated_count = choice_telemetry.get("generated_tokens")
+                    if generated_count not in {None, len(observed_ids)}:
+                        raise AgenticBenchmarkError(
+                            "SSE generated token ID accounting is inexact"
+                        )
             if choice.get("finish_reason") is not None:
                 finish_reason = str(choice["finish_reason"])
                 response_done = observed_at
@@ -376,9 +395,19 @@ def normalize_chat_sse_turn(
         raise AgenticBenchmarkError("SSE tool turn leaked raw model markup")
     if visible_text.strip():
         raise AgenticBenchmarkError("SSE emitted content alongside a tool-only response")
+    if (
+        response_generated_ids is not None
+        and response_generated_ids != oracle.generated_token_ids
+    ):
+        raise AgenticBenchmarkError("SSE generated token IDs differ from oracle")
+    generated_ids = (
+        oracle.generated_token_ids
+        if response_generated_ids is None
+        else response_generated_ids
+    )
     completion_tokens = usage.get("completion_tokens")
-    if completion_tokens is not None and completion_tokens != len(oracle.generated_token_ids):
-        raise AgenticBenchmarkError("SSE completion token accounting differs from oracle")
+    if completion_tokens is not None and completion_tokens != len(generated_ids):
+        raise AgenticBenchmarkError("SSE completion token accounting differs from exact IDs")
     if first_public_token is None or tool_ready is None:
         raise AgenticBenchmarkError("SSE tool turn emitted no public tool arguments")
     if result_submitted < response_done:
@@ -410,7 +439,12 @@ def normalize_chat_sse_turn(
     if not isinstance(serial, bool):
         raise AgenticBenchmarkError("SSE serial_decode_fallback is invalid")
 
-    generated = list(oracle.generated_token_ids)
+    generated = list(generated_ids)
+    generated_source = (
+        "matched_nonstreaming_oracle"
+        if response_generated_ids is None
+        else "response"
+    )
     return {
         "workload_id": str(workload_id),
         "workload_sha256": suite.workload_sha256(workload_id),
@@ -426,8 +460,8 @@ def normalize_chat_sse_turn(
         "output": {
             "generated_token_ids": generated,
             "generated_token_ids_sha256": token_ids_sha256(generated),
-            "generated_token_ids_source": "matched_nonstreaming_oracle",
-            "sse_exact_ids_observed": False,
+            "generated_token_ids_source": generated_source,
+            "sse_exact_ids_observed": response_generated_ids is not None,
             "raw_markup_leaked": False,
         },
         "tool": {
