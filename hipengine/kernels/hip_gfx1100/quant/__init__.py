@@ -42,6 +42,13 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_iq_selected_prefill import (
     plan_gguf_iq_selected_prefill_build,
     register_gguf_iq_selected_prefill_kernels,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q3_k_gemv import (
+    build_gguf_q3_k_gemv,
+    gguf_q3_k_selected_dual_silu_gemv_bf16_bf16_out,
+    gguf_q3_k_selected_gemv_bf16_bf16_out,
+    plan_gguf_q3_k_gemv_build,
+    register_gguf_q3_k_gemv_kernels,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_embedding import (
     build_gguf_q6_k_embedding,
     gguf_q6_k_embedding_bf16_out,
@@ -135,6 +142,7 @@ __all__ = [
     "build_gguf_iq_gemv",
     "build_gguf_iq_selected_prefill",
     "build_gguf_k_gemv",
+    "build_gguf_q3_k_gemv",
     "build_gguf_q4_k_gemv",
     "build_gguf_q6_k_embedding",
     "build_paro_awq_gemv",
@@ -190,6 +198,8 @@ __all__ = [
     "gguf_iq4_xs_selected_grouped_prefill_compact_k512_wave32_bf16_bf16_out",
     "gguf_iq4_xs_selected_wmma_prefill_compact_bf16_bf16_out",
     "gguf_iq4_xs_weighted_selected_down_bf16_bf16_out",
+    "gguf_q3_k_selected_dual_silu_gemv_bf16_bf16_out",
+    "gguf_q3_k_selected_gemv_bf16_bf16_out",
     "gguf_q5_k_gemv_bf16_bf16_out",
     "gguf_q5_k_gemv_bf16_f32_out",
     "gguf_q5_k_gemv_f32_f32_out",
@@ -217,6 +227,7 @@ __all__ = [
     "plan_gguf_iq_gemv_build",
     "plan_gguf_iq_selected_prefill_build",
     "plan_gguf_k_gemv_build",
+    "plan_gguf_q3_k_gemv_build",
     "plan_gguf_q4_k_gemv_build",
     "plan_gguf_q6_k_embedding_build",
     "plan_paro_awq_gemv_build",
@@ -225,6 +236,7 @@ __all__ = [
     "register_gguf_iq_gemv_kernels",
     "register_gguf_iq_selected_prefill_kernels",
     "register_gguf_k_gemv_kernels",
+    "register_gguf_q3_k_gemv_kernels",
     "register_gguf_q4_k_gemv_kernels",
     "register_gguf_q6_k_embedding_kernels",
     "register_paro_awq_gemv_kernels",
