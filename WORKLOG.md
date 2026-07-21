@@ -172418,3 +172418,36 @@ Validation passes **13/13** A2/A3/native-sampler artifact and README-sync tests,
 Ruff for the new artifact test, JSON parsing, Worklog conflict validation,
 README export synchronization, changed-section Markdown structure checks, and
 `git diff --check`.
+
+## 2026-07-22 — Predeclare the A4 W7900 routing/SLO funnel
+
+Audited the live routing implementation, the frozen agentic protocol, the
+retained A1 control, and gfx1151 F4/bounded-cold-cohort evidence before starting
+any A4 timing. The key default-resolution finding is that hipEngine's actual
+server package batch window is now **0 ms**; the production-load harness's
+**100 ms** argparse default is not a package default. A4 therefore treats
+implicit package default versus explicit zero as a correctness-equivalence
+check, not a speed A/B. Positive **5 ms** and historical **100 ms** windows are
+explicit candidates only.
+
+Published the no-timing predeclaration
+`benchmarks/results/2026-07-22-w7900-agentic-a4-predeclared-protocol.json`. It
+freezes cache-off/native-sampler-off/exact-GDN/packed-AR controls; W7900 GPU0
+exclusivity; delayed mixed arrivals over eight prompt/output shapes; the
+`protect_decode:256`, `protect_ttft:256`, `fair:128`, and `fair:256` scheduler
+endpoints; an independently gated `fair:256/burst-2` gfx1151 transfer candidate;
+zero/5/100 ms window rows; balanced three-pass ordering; exact SLO-goodput as
+the primary metric; and C1/C2/C4/C8 plus delayed-admission, strict-tool,
+cancellation, backpressure, overload, state/KV, and final-ownership gates.
+
+Promotion requires a complete candidate to improve median exact SLO-goodput,
+keep C1 active-SSE and buffered tool-ready within **5%**, preserve independent
+C1 IDs and width-changing state/KV ownership, and pass the agentic/safety
+packet. ITL is reported only from `live_exact` one-token events; buffered agentic
+tool streams retain tool-ready percentiles and withhold ITL. Neutral, incomplete,
+or failed candidates leave gfx1100 on `protect_decode:256/burst-1` with the
+zero-ms package window. This unit changes no runtime code and makes no GPU
+timing or performance claim. Protocol JSON assertions, Worklog conflict and
+diff checks pass; the targeted server-window, engine-loop default, and
+production-load policy bundle passes **12/12** with only the existing
+Starlette/httpx deprecation warning.

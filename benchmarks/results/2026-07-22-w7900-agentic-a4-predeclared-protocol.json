@@ -1,0 +1,248 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_agentic_a4_predeclared_protocol",
+  "created_at": "2026-07-22T02:31:22+09:00",
+  "status": "predeclared_ready",
+  "passed": true,
+  "performance_claim": false,
+  "timing_claim": false,
+  "source_revision": "e7cd1a3726a357d3df62b67d3ab0d115ac6820d5",
+  "scope": "A4 routing and SLO policy audit before W7900 measurement",
+  "objective": "Select a low-occupancy and delayed-arrival routing policy only when it improves exact generated-token SLO-goodput without materially regressing C1 or violating exact state, KV, lifecycle, cancellation, backpressure, or overload gates.",
+  "frozen_controls": {
+    "model": {
+      "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "quant": "gguf_q4_k_m",
+      "kv_storage": "bf16",
+      "served_name": "Qwen3.6-35B-A3B"
+    },
+    "hardware": {
+      "target": "AMD Radeon Pro W7900",
+      "arch": "gfx1100",
+      "hip_visible_devices": "0",
+      "rocr_visible_devices": "0",
+      "target_gpu0_exclusive_required": true,
+      "peer_gpu1_activity": "allowed only when independently pinned and recorded as non-target contention"
+    },
+    "route": {
+      "prefix_cache": "off",
+      "native_gpu_sampler": false,
+      "speculative_decode": false,
+      "gdn_prefill_mode": "exact",
+      "packed_ar_decode": true,
+      "max_active_requests": 8,
+      "max_context_tokens": 4096
+    },
+    "linked_a1_control": {
+      "artifact": "benchmarks/results/2026-07-21-w7900-agentic-a1-repeated-baseline.json",
+      "sha256": "29133f5fb0fa36f0f83fe34565ad7df93214b8eb7e035ac56b5413713e495f3f",
+      "source_revision": "44c76674c2693f7dfc994b40b4cfc3880abbbeac",
+      "accepted_complete_baseline": true
+    },
+    "workload_fixture": {
+      "artifact": "benchmarks/prompts/agentic-coding-v1.json",
+      "sha256": "44729fe15196fb232d64eed5a4628ba59ab9959b3a76ac041d2f194e5cc6ce5e",
+      "families": [
+        "small_repo",
+        "growing_history",
+        "medium_repo"
+      ]
+    }
+  },
+  "audit_findings": {
+    "server_package_batch_window_ms": 0.0,
+    "production_gate_harness_default_batch_window_ms": 100.0,
+    "batch_window_interpretation": "The production gate's 100 ms argparse default is a harness default, not the hipEngine package default. Package-default rows must omit both CLI and environment overrides and must resolve to 0 ms. An explicit 0 ms row is an equivalence control; 5 ms and 100 ms are opt-in candidates and may not be relabeled as package defaults.",
+    "gfx1100_package_scheduler": {
+      "prefill_decode_policy": "protect_decode",
+      "prefill_chunk_tokens": 256,
+      "fair_prefill_burst_chunks": 1
+    },
+    "gfx1151_transfer_evidence": {
+      "production_artifact": "benchmarks/results/2026-07-19-gfx1151-gguf-f4-production-load-slo.json",
+      "production_sha256": "d76c7aa6dfb4f41333b452672e7cffcdb6d99e157ed0b7c63c244d99eef4471e",
+      "bounded_admission_artifact": "benchmarks/results/2026-07-21-gfx1151-gguf-bounded-cold-cohort-admission-retained.json",
+      "bounded_admission_sha256": "f0c687b41d4e58d9a9fe6287ca21b0d585434902ce90e8345df3a4907802be58",
+      "candidate_to_transfer_not_assume": "fair:256 with two-chunk bounded cold-cohort admission",
+      "non_transfer_rule": "gfx1151 timings and selection do not select a gfx1100 default; W7900 must independently pass the complete funnel"
+    },
+    "collector_limit": "scripts/agentic_coding_live.py releases simultaneous deterministic tool waves but does not implement delayed mixed arrivals or live-exact ITL. A4 SLO selection therefore uses response-owned IDs and live_exact token events from the production/server routing collectors; agentic tool rows remain the exact tool-envelope and buffered tool-ready guard."
+  },
+  "candidate_funnel": {
+    "stage_0_default_resolution": {
+      "rows": [
+        {
+          "id": "implicit_package_default",
+          "batch_window": "omit CLI and environment override",
+          "expected_batch_window_ms": 0.0,
+          "policy": "protect_decode",
+          "prefill_chunk_tokens": 256,
+          "fair_prefill_burst_chunks": 1
+        },
+        {
+          "id": "explicit_zero_equivalence",
+          "batch_window_ms": 0.0,
+          "policy": "protect_decode",
+          "prefill_chunk_tokens": 256,
+          "fair_prefill_burst_chunks": 1
+        }
+      ],
+      "gate": "Both rows must expose the expected scheduler/window metadata and produce exact identical response-owned C1 IDs with zero final ownership. This is a correctness equivalence check, not a speed comparison."
+    },
+    "stage_1_mixed_arrival_screen": {
+      "workload": {
+        "source": "scripts/gguf_production_load_gate.py continuous_fixed shape",
+        "requests": 12,
+        "arrival_rate_per_second": 2.0,
+        "prompt_output_shapes": [
+          [64, 16],
+          [128, 24],
+          [256, 32],
+          [512, 48],
+          [64, 48],
+          [128, 32],
+          [256, 24],
+          [512, 16]
+        ],
+        "stream_mode": "real localhost Uvicorn SSE",
+        "token_timing_mode": "live_exact",
+        "generated_token_id_source": "resident runner reclaim matched to independent C1 sessions"
+      },
+      "candidates": [
+        {
+          "id": "pd256_b1_w0_control",
+          "prefill_decode_policy": "protect_decode",
+          "prefill_chunk_tokens": 256,
+          "fair_prefill_burst_chunks": 1,
+          "batch_window_ms": 0.0,
+          "provenance": "gfx1100 package default"
+        },
+        {
+          "id": "pt256_b1_w0",
+          "prefill_decode_policy": "protect_ttft",
+          "prefill_chunk_tokens": 256,
+          "fair_prefill_burst_chunks": 1,
+          "batch_window_ms": 0.0,
+          "provenance": "scheduler endpoint control"
+        },
+        {
+          "id": "fair128_b1_w0",
+          "prefill_decode_policy": "fair",
+          "prefill_chunk_tokens": 128,
+          "fair_prefill_burst_chunks": 1,
+          "batch_window_ms": 0.0,
+          "provenance": "existing production-gate candidate"
+        },
+        {
+          "id": "fair256_b1_w0",
+          "prefill_decode_policy": "fair",
+          "prefill_chunk_tokens": 256,
+          "fair_prefill_burst_chunks": 1,
+          "batch_window_ms": 0.0,
+          "provenance": "existing production-gate candidate"
+        },
+        {
+          "id": "fair256_b2_w0",
+          "prefill_decode_policy": "fair",
+          "prefill_chunk_tokens": 256,
+          "fair_prefill_burst_chunks": 2,
+          "batch_window_ms": 0.0,
+          "provenance": "independent gfx1100 transfer candidate from retained gfx1151 policy"
+        },
+        {
+          "id": "pd256_b1_w5",
+          "prefill_decode_policy": "protect_decode",
+          "prefill_chunk_tokens": 256,
+          "fair_prefill_burst_chunks": 1,
+          "batch_window_ms": 5.0,
+          "provenance": "bounded positive-window candidate"
+        },
+        {
+          "id": "fair256_b2_w5",
+          "prefill_decode_policy": "fair",
+          "prefill_chunk_tokens": 256,
+          "fair_prefill_burst_chunks": 2,
+          "batch_window_ms": 5.0,
+          "provenance": "bounded positive-window plus gfx1151 transfer candidate"
+        },
+        {
+          "id": "fair256_b2_w100_diagnostic",
+          "prefill_decode_policy": "fair",
+          "prefill_chunk_tokens": 256,
+          "fair_prefill_burst_chunks": 2,
+          "batch_window_ms": 100.0,
+          "provenance": "historical production-gate window; diagnostic unless it passes the C1 latency guard"
+        }
+      ],
+      "measurement_order": "Run three fresh or independently reset balanced sweeps. Rotate candidate order by one third of the list per sweep. Do not select from a single unbalanced pass.",
+      "primary_metric": "exact generated-token SLO-goodput over the delayed mixed-arrival shape",
+      "tie_breakers": [
+        "lower TTFT p95",
+        "lower ITL p99",
+        "lower end-to-end p95",
+        "smaller prefill chunk",
+        "zero batch window"
+      ],
+      "early_rejection": "Reject any candidate immediately on generated-ID/state/KV/lifecycle drift, target-GPU contention, invalid live_exact timing, failed SLO, or greater than 5% C1 active-SSE or tool-ready regression. Missing timing is not inferred."
+    },
+    "stage_2_occupancy_matrix": {
+      "eligible_rows": "control plus every stage-1 candidate that improves median mixed SLO-goodput and passes all gates",
+      "occupancies": [1, 2, 4, 8],
+      "shape": {
+        "prompt_tokens": 512,
+        "decode_tokens": 128,
+        "stream": "live_exact SSE",
+        "warmups_per_configuration": 1,
+        "measured_repetitions": 3,
+        "delayed_admission": "join after 8 generated tokens"
+      },
+      "required_metrics": [
+        "queue wait p50/p95/p99 where exposed",
+        "lower-loop TTFT p50/p95/p99",
+        "ITL p50/p95/p99 only from live_exact one-token events",
+        "end-to-end p50/p95/p99",
+        "exact generated tok/s and SLO-goodput",
+        "physical c1/c2/c4/c8 step counts and occupancy transitions",
+        "active-SSE wall goodput",
+        "fallback counts",
+        "final state/KV/refcount/pin/graph/workspace ownership"
+      ],
+      "exactness": "Every row and delayed survivor must match its independent C1 generated-ID trajectory; physical width changes must preserve stable request identity, Conv/GDN state, live KV, and reclaim ownership."
+    },
+    "stage_3_agentic_and_safety_guards": {
+      "agentic_guard": "Run small_repo, growing_history, and medium_repo deterministic strict-tool waves for the selected candidate and paired package control. Require exact response-owned A1 IDs, valid strict tool envelopes, active-SSE goodput, buffered tool-ready p50/p95/p99, and zero final ownership. Withhold ITL because public tool streams are buffered_public.",
+      "safety_workloads": [
+        "ragged_burst",
+        "cancellation_disconnect",
+        "overload",
+        "idle_recovery"
+      ],
+      "safety_requirements": "Cancelled/disconnected/timed-out rows must not corrupt exact survivors; stream queues stay bounded; overload reports exact accepted and 429 engine_busy counts; final active/pending/session/KV/cache/graph/workspace/producer ownership is zero."
+    }
+  },
+  "slo_thresholds_seconds": {
+    "queue_p99": 10.0,
+    "ttft_p95": 10.0,
+    "itl_p99": 0.5,
+    "end_to_end_p95": 30.0,
+    "source": "retained production OpenAI load/SLO protocol"
+  },
+  "acceptance_policy": {
+    "material_regression_threshold_percent": 5.0,
+    "selection": "Choose the highest median exact SLO-goodput candidate only among complete passing rows. A candidate must improve the primary metric over pd256_b1_w0_control, keep C1 active-SSE and buffered tool-ready within 5%, pass the occupancy and delayed-admission exactness gates, and pass agentic and safety guards.",
+    "default_change": "No runtime default changes during measurement. Promotion, if any, is a separate implementation task and requires the final A4 decision artifact.",
+    "neutral_or_failed_result": "Retain gfx1100 protect_decode:256/burst1 with zero package batch window and record all candidates as rejected or neutral; do not infer unmeasured rows.",
+    "no_benchmark_gaming": "Do not alter prompts, token IDs, arrival order, thresholds, seeds, model routes, or candidate membership after observing W7900 results."
+  },
+  "planned_commands": {
+    "routing_matrix": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_COMPILER_VERSION_FILE=/tmp/agentic-w7900-hipcc-version.txt uv run python scripts/server_f1_concurrency_bench.py --engine hipengine --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --hipengine-kv-storage bf16 --hipengine-route-expectation native --concurrencies 1,2,4,8 --prompt-length 512 --decode-tokens 128 --ctx-per-seq 1024 --warmup-runs 1 --measured-runs 3 --streaming-primary --stream-warmup-runs 1 --stream-measured-runs 3 --live-concurrency 8 --live-join-after-tokens 8 --compiler-version-file /tmp/agentic-w7900-hipcc-version.txt --memory-domain vram --drm-card-index 0 --json <candidate-json>",
+    "mixed_slo": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_COMPILER_VERSION_FILE=/tmp/agentic-w7900-hipcc-version.txt uv run python scripts/gguf_production_load_gate.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --workloads continuous_fixed --max-active-requests 8 --batch-window-ms <0|5|100> --fixed-rate-per-second 2 --slo-queue-p99-seconds 10 --slo-ttft-p95-seconds 10 --slo-itl-p99-seconds 0.5 --slo-end-to-end-p95-seconds 30 --compiler-version-file /tmp/agentic-w7900-hipcc-version.txt --require-cached-build --json <candidate-json>",
+    "agentic_guard": "Use scripts/agentic_coding_live.py against a real localhost server with cache off, native sampler off, the retained exact A1 control, one untimed warmup, and three balanced measured runs per family."
+  },
+  "limitations": [
+    "The predeclaration contains no GPU timings and makes no performance claim.",
+    "The existing production-load collector is synthetic token-ID/SLO coverage, not a strict-tool workload; the final selection therefore requires the separate frozen agentic tool-envelope guard.",
+    "The package-default and explicit-zero batch-window controls resolve to the same numeric policy in this revision; their only valid purpose is default-resolution equivalence, not a claimed A/B speedup.",
+    "A task-specific benchmark driver may orchestrate the declared candidates, but it may not change the frozen candidate set, shapes, metrics, gates, or selection rule."
+  ]
+}
