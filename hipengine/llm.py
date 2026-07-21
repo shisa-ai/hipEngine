@@ -307,6 +307,15 @@ class LLM:
         payload = snapshot()
         return dict(payload) if isinstance(payload, dict) else None
 
+    def drain_generation_cancellations(self) -> int:
+        """Acknowledge queued resident cancellations without forcing model load."""
+
+        generator = self._text_generator
+        drainer = None if generator is None else getattr(generator, "drain_cancellations", None)
+        if not callable(drainer):
+            return 0
+        return int(drainer())
+
     @property
     def server_plain_ar_max_active_requests(self) -> int | None:
         """Return the registry-selected plain-AR HTTP grouping capability."""

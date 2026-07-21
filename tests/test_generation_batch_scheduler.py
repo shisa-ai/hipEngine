@@ -16986,6 +16986,28 @@ def test_submit_poll_text_generator_routes_concurrent_streams_and_reclaims_close
     assert blocking_adapter._loop.active_count == 0
     assert blocking_adapter._loop.completed == {}
 
+    drain_adapter = SubmitPollTextGenerator(
+        ConcurrentInner(),
+        capacity=2,
+        prefill_chunk_size=2,
+    )
+    drain_token = GenerationCancellationToken()
+    drain_submission = drain_adapter.submit_detailed(
+        replace(first_request, cancellation_token=drain_token)
+    )
+    drain_token.cancel(FinishDetails(reason="cancelled", cancelled=True))
+    assert drain_token.cancelled is False
+    assert drain_adapter.drain_cancellations() == 1
+    assert drain_token.cancelled is True
+    assert drain_adapter.generation_complete(drain_submission)
+    [drained_output] = drain_adapter.take_result(drain_submission)
+    assert drained_output.finish_details == FinishDetails(
+        reason="cancelled",
+        cancelled=True,
+    )
+    assert drain_adapter._runner.reclaims == [(0, "disconnect")]
+    assert drain_adapter._loop.active_count == 0
+
     completion_adapter = SubmitPollTextGenerator(
         ConcurrentInner(),
         capacity=2,
