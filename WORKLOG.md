@@ -172266,3 +172266,37 @@ Ruff/JSON/`git diff --check` pass separately. Published
 It records `correctness_claim=true`, `performance_claim=false`, and
 `timing_claim=false`: lifecycle is bounded and fail-closed, but cannot promote
 the A2 route after the complete C1 performance rejection.
+
+## 2026-07-21 — Publish the final A2 prefix decision
+
+Closed task #228 by aggregating the complete active-SSE-scoped funnel rather
+than treating the passing lifecycle packet as a performance proxy. The decision
+artifact hashes and binds:
+
+- retained A1 cache-off control `44c76674` / SHA-256
+  `29133f5fb0fa36f0f83fe34565ad7df93214b8eb7e035ac56b5413713e495f3f`;
+- complete C1 off/radix packet `5d483f36` / SHA-256
+  `8b8e3eb092bdb2061ee1de63a231c4a8fcb5d9a833c7587071d3b038406f5cb2`;
+- fail-closed C4/C8 disposition `496dbd60` / SHA-256
+  `e0e54cb0cbba3ce52e37e39d2c768b4a5d678c4c1651dbcd475534a50a6c0928`;
+- lifecycle/pressure closure `b8604358` / SHA-256
+  `6768e849fa2338da222e6ec8cc43ad48b99148c6faf9e7d70445af126ea4198a`.
+
+The final decision is negative and explicit. Radix regresses paired C1
+active-SSE goodput **64.19%/65.63%/26.64%** and worsens buffered tool-ready p50
+**181.90%/196.09%/38.81%** for small/growing/medium. No family improves either
+primary metric; every A1 C1 guard fails; growing/medium radix variance exceeds
+5%. The C1 failure correctly leaves C4/C8 unauthorized and the medium-C4 guard
+unsatisfied, with no inferred timing. Exact IDs/state/KV, lifecycle, bounded
+cache ownership, and final drain pass, but do not override the failed
+performance funnel.
+
+Published
+`benchmarks/results/2026-07-21-w7900-agentic-a2-prefix-decision.json`
+(SHA-256 `d0b9685b06c61589a5cba562b84493d5130a1cf980bb468639e754edd0442352`).
+`HIPENGINE_PREFIX_CACHE=off` remains the default; radix is explicit
+diagnostic-only and must not be retargeted to frozen prompt patterns. Updated
+the benchmark protocol with the C1-first skip rule, scoreboard/changelog,
+optimization board, and refactor removal trigger. The four decision/lifecycle/
+C1/C4-C8 artifact tests pass with Ruff, JSON, README synchronization, Worklog
+conflict, and diff checks. A3 native sampling is the next measured stage.
