@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+from dataclasses import dataclass
 import http.client
 import json
 import sys
@@ -41,6 +42,206 @@ from hipengine.benchmark.agentic_live import (  # noqa: E402
     normalize_chat_sse_turn,
     render_workload_prefix,
 )
+from hipengine.benchmark.prompts import file_sha256  # noqa: E402
+from hipengine.tokenization.identity import token_ids_sha256  # noqa: E402
+
+
+DEFAULT_A1_CONTROL = Path(
+    "benchmarks/results/2026-07-21-w7900-agentic-a1-repeated-baseline.json"
+)
+
+
+@dataclass(frozen=True)
+class _ControlOracleRecord:
+    prompt_token_count: int
+    prompt_token_ids_sha256: str
+    oracle: ChatToolOracle
+
+
+def _load_control_oracles(
+    path: str | Path,
+    *,
+    workload_id: str,
+    concurrency: int,
+) -> tuple[dict[tuple[str, int], _ControlOracleRecord], dict[str, Any]]:
+    control_path = Path(path)
+    payload = json.loads(control_path.read_text(encoding="utf-8"))
+    if payload.get("kind") != "gfx1100_agentic_a1_repeated_baseline":
+        raise AgenticBenchmarkError("cache-off control kind is unsupported")
+    if payload.get("status") != "accepted_complete_baseline":
+        raise AgenticBenchmarkError("cache-off control is not an accepted complete baseline")
+    if payload.get("source_clean_and_pushed") is not True:
+        raise AgenticBenchmarkError("cache-off control source is not clean and pushed")
+    acceptance = payload.get("acceptance")
+    if not isinstance(acceptance, Mapping) or not all(
+        acceptance.get(field) is True
+        for field in (
+            "all_correctness_gates_passed",
+            "all_final_ownership_zero",
+            "all_target_gpu0_exclusive",
+        )
+    ):
+        raise AgenticBenchmarkError("cache-off control acceptance gates are incomplete")
+    matches = [
+        row
+        for row in payload.get("configurations", ())
+        if isinstance(row, Mapping)
+        and row.get("workload") == str(workload_id)
+        and row.get("logical_concurrency") == int(concurrency)
+    ]
+    if len(matches) != 1:
+        raise AgenticBenchmarkError("cache-off control configuration is missing or ambiguous")
+    configuration = matches[0]
+    if not all(
+        configuration.get(field) is True
+        for field in (
+            "all_correctness_gates_passed",
+            "all_final_ownership_zero",
+            "target_gpu0_exclusive",
+            "variance_gate_passed",
+        )
+    ):
+        raise AgenticBenchmarkError("cache-off control configuration failed a retained gate")
+    command = configuration.get("server_command")
+    if not isinstance(command, list) or not any(
+        str(value) == "--prefix-cache"
+        and index + 1 < len(command)
+        and str(command[index + 1]) == "off"
+        for index, value in enumerate(command)
+    ):
+        raise AgenticBenchmarkError(
+            "cache-off control server command did not use prefix-cache off"
+        )
+
+    controls: dict[tuple[str, int], _ControlOracleRecord] = {}
+    observations: dict[tuple[str, int], int] = {}
+    samples = configuration.get("samples")
+    if not isinstance(samples, list) or len(samples) != int(
+        configuration.get("measured_runs", -1)
+    ):
+        raise AgenticBenchmarkError("cache-off control measured samples are incomplete")
+    for sample in samples:
+        if not isinstance(sample, Mapping):
+            raise AgenticBenchmarkError("cache-off control sample must be an object")
+        if sample.get("target_gpu0_exclusive") is not True:
+            raise AgenticBenchmarkError(
+                "cache-off control sample is not target-GPU exclusive"
+            )
+        ownership = sample.get("final_ownership")
+        if not isinstance(ownership, Mapping) or any(
+            int(value) != 0 for value in ownership.values()
+        ):
+            raise AgenticBenchmarkError(
+                "cache-off control sample did not drain ownership"
+            )
+        records = sample.get("turn_records")
+        coverage = sample.get("coverage")
+        if (
+            not isinstance(records, list)
+            or not isinstance(coverage, Mapping)
+            or len(records) != int(coverage.get("turns", -1))
+        ):
+            raise AgenticBenchmarkError(
+                "cache-off control turn records are incomplete"
+            )
+        for record in records:
+            if (
+                not isinstance(record, Mapping)
+                or record.get("workload_id") != str(workload_id)
+            ):
+                raise AgenticBenchmarkError(
+                    "cache-off control workload identity drifted"
+                )
+            agent_id = str(record.get("agent_id", ""))
+            turn_index = int(record.get("turn_index", -1))
+            if not agent_id or turn_index < 0:
+                raise AgenticBenchmarkError(
+                    "cache-off control request identity is invalid"
+                )
+            prompt = record.get("prompt")
+            output = record.get("output")
+            tool = record.get("tool")
+            finish = record.get("finish")
+            if not all(
+                isinstance(value, Mapping)
+                for value in (prompt, output, tool, finish)
+            ):
+                raise AgenticBenchmarkError(
+                    "cache-off control record envelope is invalid"
+                )
+            if (
+                output.get("generated_token_ids_source") != "response"
+                or output.get("sse_exact_ids_observed") is not True
+                or finish.get("reason") != "tool_calls"
+                or tool.get("arguments_json_valid") is not True
+                or tool.get("schema_valid") is not True
+                or tool.get("result_linked") is not True
+            ):
+                raise AgenticBenchmarkError(
+                    "cache-off control record failed exact response gates"
+                )
+            generated = tuple(
+                int(token) for token in output.get("generated_token_ids", ())
+            )
+            if (
+                not generated
+                or output.get("generated_token_ids_sha256")
+                != token_ids_sha256(generated)
+            ):
+                raise AgenticBenchmarkError(
+                    "cache-off control generated-token identity is invalid"
+                )
+            candidate = _ControlOracleRecord(
+                prompt_token_count=int(prompt.get("token_count", -1)),
+                prompt_token_ids_sha256=str(
+                    prompt.get("token_ids_sha256", "")
+                ),
+                oracle=ChatToolOracle(
+                    generated_token_ids=generated,
+                    name=str(tool.get("name", "")),
+                    arguments=dict(tool.get("arguments", {})),
+                    finish_reason="tool_calls",
+                ),
+            )
+            key = (agent_id, turn_index)
+            prior = controls.get(key)
+            if prior is not None and prior != candidate:
+                raise AgenticBenchmarkError(
+                    "cache-off control changed across measured repeats"
+                )
+            controls[key] = candidate
+            observations[key] = observations.get(key, 0) + 1
+    agent_turns: dict[str, set[int]] = {}
+    for agent_id, turn_index in controls:
+        agent_turns.setdefault(agent_id, set()).add(turn_index)
+    if set(agent_turns) != {
+        f"agent-{agent_index}" for agent_index in range(int(concurrency))
+    }:
+        raise AgenticBenchmarkError(
+            "cache-off control agent coverage is incomplete"
+        )
+    turn_sets = tuple(agent_turns.values())
+    if not turn_sets or any(turns != turn_sets[0] for turns in turn_sets):
+        raise AgenticBenchmarkError(
+            "cache-off control turn coverage is inconsistent"
+        )
+    expected_turns = set(range(len(turn_sets[0])))
+    if turn_sets[0] != expected_turns:
+        raise AgenticBenchmarkError(
+            "cache-off control turn coverage is not contiguous"
+        )
+    if any(count != len(samples) for count in observations.values()):
+        raise AgenticBenchmarkError(
+            "cache-off control repeat coverage is inconsistent"
+        )
+    return controls, {
+        "path": str(control_path),
+        "sha256": file_sha256(control_path),
+        "source_revision": str(payload.get("source_revision")),
+        "workload": str(workload_id),
+        "concurrency": int(concurrency),
+        "measured_repeats": len(samples),
+    }
 
 
 class LiveHTTPTransport:
@@ -263,14 +464,25 @@ def collect_live_records(
     max_tokens: int,
     cache_mode: str,
     idle_timeout_s: float,
+    control_artifact: str | Path | None = None,
 ) -> tuple[AgenticWorkloadSuite, dict[str, Any]]:
-    """Collect cache-off deterministic tool rounds from a running server."""
+    """Collect deterministic tool rounds from a running off/radix server."""
 
     if concurrency <= 0 or runs <= 0 or max_tokens <= 0:
         raise AgenticBenchmarkError("concurrency, runs, and max_tokens must be positive")
-    if cache_mode != "off":
-        raise AgenticBenchmarkError(
-            "A1 collector supports cache_mode=off only; radix telemetry is an A2 boundary"
+    if cache_mode not in {"off", "radix"}:
+        raise AgenticBenchmarkError("cache_mode must be off or radix")
+    controls: dict[tuple[str, int], _ControlOracleRecord] = {}
+    control_provenance: dict[str, Any] | None = None
+    if cache_mode == "radix":
+        if control_artifact is None:
+            raise AgenticBenchmarkError(
+                "radix collection requires a retained cache-off control artifact"
+            )
+        controls, control_provenance = _load_control_oracles(
+            control_artifact,
+            workload_id=workload_id,
+            concurrency=concurrency,
         )
     suite = load_agentic_workload_suite(workloads_path)
     if workload_id not in suite.workloads:
@@ -311,20 +523,36 @@ def collect_live_records(
                     tools=tools,
                     tool_choice=choice,
                 )
-                oracle_payload = _chat_payload(
-                    model=model,
-                    messages=messages,
-                    tools=tools,
-                    expected_tool=expected_tool,
-                    max_tokens=max_tokens,
-                    stream=False,
-                )
-                oracle = normalize_chat_oracle(
-                    suite,
-                    workload_id,
-                    turn_index,
-                    transport.chat_json(oracle_payload),
-                )
+                if cache_mode == "radix":
+                    control = controls.get((agent_id, turn_index))
+                    if control is None:
+                        raise AgenticBenchmarkError(
+                            "retained cache-off control has no matching agent turn"
+                        )
+                    if (
+                        len(prompt_ids) != control.prompt_token_count
+                        or token_ids_sha256(prompt_ids)
+                        != control.prompt_token_ids_sha256
+                    ):
+                        raise AgenticBenchmarkError(
+                            "radix prompt identity differs from retained cache-off control"
+                        )
+                    oracle = control.oracle
+                else:
+                    oracle_payload = _chat_payload(
+                        model=model,
+                        messages=messages,
+                        tools=tools,
+                        expected_tool=expected_tool,
+                        max_tokens=max_tokens,
+                        stream=False,
+                    )
+                    oracle = normalize_chat_oracle(
+                        suite,
+                        workload_id,
+                        turn_index,
+                        transport.chat_json(oracle_payload),
+                    )
                 stream_payload = _chat_payload(
                     model=model,
                     messages=messages,
@@ -383,8 +611,17 @@ def collect_live_records(
             "model": str(model),
             "require_complete_workloads": True,
             "performance_claim": False,
-            "collector": "real_http_sse_with_independent_nonstreaming_oracle",
+            "collector": (
+                "real_http_sse_with_retained_cache_off_control"
+                if cache_mode == "radix"
+                else "real_http_sse_with_independent_nonstreaming_oracle"
+            ),
             "token_timing_scope": "public_tool_fragments",
+            **(
+                {}
+                if control_provenance is None
+                else {"cache_off_control": control_provenance}
+            ),
         },
         "turn_records": records,
         "final_ownership": ownership,
@@ -393,7 +630,9 @@ def collect_live_records(
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Collect the A1 live coding-agent SSE diagnostic.")
+    parser = argparse.ArgumentParser(
+        description="Collect exact A1 cache-off or A2 radix coding-agent SSE rows."
+    )
     parser.add_argument("--base-url", default="http://127.0.0.1:8000/v1")
     parser.add_argument("--api-key")
     parser.add_argument("--workloads", type=Path, default=DEFAULT_AGENTIC_WORKLOADS)
@@ -403,7 +642,13 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--concurrency", type=int, default=1)
     parser.add_argument("--runs", type=int, default=1)
     parser.add_argument("--max-tokens", type=int, default=128)
-    parser.add_argument("--cache-mode", choices=("off",), default="off")
+    parser.add_argument("--cache-mode", choices=("off", "radix"), default="off")
+    parser.add_argument(
+        "--cache-off-control",
+        type=Path,
+        default=DEFAULT_A1_CONTROL,
+        help="Retained A1 exact control for radix collection (no live oracle warmup)",
+    )
     parser.add_argument("--timeout-s", type=float, default=600.0)
     parser.add_argument("--idle-timeout-s", type=float, default=30.0)
     parser.add_argument("--records-json", type=Path, required=True)
@@ -430,6 +675,9 @@ def main(argv: list[str] | None = None) -> int:
             max_tokens=args.max_tokens,
             cache_mode=args.cache_mode,
             idle_timeout_s=args.idle_timeout_s,
+            control_artifact=(
+                args.cache_off_control if args.cache_mode == "radix" else None
+            ),
         )
         artifact = build_agentic_benchmark_artifact(suite, records)
         args.records_json.parent.mkdir(parents=True, exist_ok=True)

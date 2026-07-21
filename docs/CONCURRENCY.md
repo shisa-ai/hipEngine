@@ -1175,9 +1175,9 @@ live pages **4 -> 3** (**5,242,880 bytes**). Paired HIP-current deltas are
 claimed. The fixed-capacity backing is preallocated in both modes. Default
 remains `off`: broader boundary/LRU/graph pressure is unmeasured, sampled reuse
 is unsupported, packed shared-prefix suffix arithmetic is not byte-exact to c1,
-gfx1100 has no transfer gate, and the completed cache carries explicit residency
-cost. The completed-source gate resets/unbinds the source before admission,
-restores a 66,846,720-byte cache-owned hybrid snapshot, reproduces boundary/
+the completed cache carries explicit residency cost, and gfx1100 economics are
+not yet measured. The completed-source gate resets/unbinds the source before
+admission, restores a 66,846,720-byte cache-owned hybrid snapshot, reproduces boundary/
 output/all Conv/GDN/live-KV/four teacher-forced steps byte-exactly (`KL=0`, top-1
 `100%`), and drains refs through **1->1->2->1->0**. Its clean one-warmup/three-pair
 packet moves continuation TTFT **249.446 -> 22.013 ms (11.332x, -91.18%)** with
@@ -1189,6 +1189,14 @@ snapshot + page residency is exactly **72,089,600 bytes**, tracked allocation is
 `benchmarks/results/2026-07-19-gfx1151-gguf-completed-prefix-reuse-correctness.json`,
 and
 `benchmarks/results/2026-07-19-gfx1151-gguf-completed-prefix-reuse-economics.json`.
+The matching gfx1100/W7900 correctness transfer now passes both active-current
+and completed-source p256+s1: output, all Conv/GDN/live-KV bytes, four
+teacher-forced steps (`KL=0`, top-1 100%), refcount/COW, cache eviction, and
+final drain are exact. This is correctness-only; agentic 2K/8K economics and
+pressure remain open. Evidence:
+`benchmarks/results/2026-07-21-gfx1100-gguf-active-prefix-reuse-correctness.json`
+and
+`benchmarks/results/2026-07-21-gfx1100-gguf-completed-prefix-reuse-correctness.json`.
 
 Exit: one package-default GGUF OpenAI owner preserves near-direct c1 performance
 at low occupancy, retains exact native scaling under load, and passes the
@@ -1332,8 +1340,10 @@ closure set prematurely.
 - [x] Completed-source greedy p256+s1 cache-owned snapshot restore/economics on
       gfx1151, with 11.332x TTFT, exact eviction/final drain, and 72,089,600-byte
       cache residency explicitly disclosed.
-- [ ] Broader historical boundaries/LRU pressure, sampled reuse, graph-safe
-      lifecycle, and gfx1100 transfer.
+- [x] Active-current and completed-source greedy p256+s1 correctness transfer to
+      gfx1100, including exact output/state/KV, COW/refcounts, eviction, and drain.
+- [ ] Agentic 2K/8K historical boundaries/economics, LRU pressure, sampled reuse,
+      and graph-safe lifecycle.
 - [ ] Long-context 4K/32K/128K admission and memory-pressure policies.
 - [ ] Graph-pool invalidation under real grow/shrink events.
 - [ ] DMS/KVTC tier movement under the stable-id/rebind contract.
@@ -1541,8 +1551,9 @@ load/SLO gate are retained, including scheduler-owned timeout/disconnect row
 isolation and a 120-request soak. Opt-in gfx1151 active-current greedy p256+s1
 prefix reuse is byte-exact and economics-retained; completed-source p256+s1
 snapshot restore is also correctness/economics-retained at 11.332x TTFT with
-exact eviction/final drain and 72,089,600-byte cache residency. Broader historical
-boundaries, sampled, and gfx1100 prefix reuse remain open. The gfx1100
-transfer, gfx1100 PARO owner c4/c8, normal sampled groups, long-context
-memory-pressure coverage, and complete project-wide production continuous
+exact eviction/final drain and 72,089,600-byte cache residency. gfx1100 now
+passes the matching active/completed p256+s1 correctness transfer, without a
+performance claim. Agentic 2K/8K economics, broader historical boundaries,
+pressure, and sampled reuse remain open. The gfx1100 PARO owner c4/c8, normal
+sampled groups, long-context memory-pressure coverage, and complete project-wide production continuous
 batching remain in progress.**

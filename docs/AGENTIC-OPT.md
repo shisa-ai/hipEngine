@@ -195,6 +195,17 @@ Required gates:
   fork/rollback rejection or support, and zero final ownership;
 - paired off/on TTFT, tool-call-ready, total-turn wall, and HBM economics.
 
+A2.0 is correctness-ready on gfx1100: active-current and completed-source
+p256+s1 both preserve exact output, every Conv/GDN/live-KV byte, and four
+teacher-forced steps (`KL=0`, top-1 100%) while refcounts/COW and final drain
+pass. Host gates preserve the latest aligned snapshot across an unaligned tail,
+bound snapshot/page/byte ownership, and explicitly fall back for sampled and
+exact-full-prompt boundaries. The live collector now pins radix outputs to the
+retained A1 cache-off IDs and records hit source/boundary, avoided/executed
+prefill tokens, reused pages/bytes, state-clone bytes, prefill time, and bounded
+final cache ownership. The 2K/8K paired measurements and lifecycle/pressure
+matrix remain open; this is not a performance result.
+
 Do not make radix caching default merely because p256+s1 is fast. Default
 promotion requires the multi-turn workload and bounded LRU/pressure gates.
 

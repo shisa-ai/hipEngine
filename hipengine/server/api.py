@@ -4546,8 +4546,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         model_identity = _server_model_identity(config, engine)
         readiness: _ReadinessState = app.state.hipengine_readiness
         effective_context = getattr(app.state, "hipengine_effective_max_context_tokens", None)
-        graph = _graph_bucket_metric_values(engine)
-        pool = _pool_metric_values(engine)
+        live_snapshot = _live_loop_snapshot(engine)
+        graph = _graph_bucket_metric_values(engine, live_snapshot=live_snapshot)
+        pool = _pool_metric_values(engine, live_snapshot=live_snapshot)
+        prefix_cache = _prefix_cache_metric_values(live_snapshot)
         diagnostics: list[str] = []
         if not readiness.ready:
             diagnostics.append("server startup is not ready; check startup.error and server logs")
@@ -4587,6 +4589,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "estimate": _kv_capacity_estimate_payload(engine),
                 "pool": pool,
             },
+            "prefix_cache": prefix_cache,
             "graph_cache": {
                 "entries": graph["entries"],
                 "hits": graph["hits"],
@@ -6842,6 +6845,27 @@ def _nested_mapping(owner: Mapping[str, Any] | None, key: str) -> Mapping[str, A
         return {}
     value = owner.get(key)
     return value if isinstance(value, Mapping) else {}
+
+
+def _prefix_cache_metric_values(
+    snapshot: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    runner = _nested_mapping(snapshot, "runner")
+    prefix = _nested_mapping(runner, "prefix_cache")
+    if not prefix:
+        return {
+            "mode": "off",
+            "block_size_tokens": 256,
+            "snapshot_entries": 0,
+            "snapshot_limit": 0,
+            "retained_snapshot_entries": 0,
+            "snapshot_bytes": 0,
+            "retained_kv_pages": 0,
+            "retained_kv_bytes": 0,
+            "resident_bytes": 0,
+            "resident_limit_bytes": 0,
+        }
+    return deepcopy(dict(prefix))
 
 
 def _resident_loop_metric_values(snapshot: Mapping[str, Any] | None) -> dict[str, Any]:

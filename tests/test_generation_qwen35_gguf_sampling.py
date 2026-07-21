@@ -1880,6 +1880,7 @@ def test_gguf_resident_stream_reuses_registered_sampler_plan(monkeypatch) -> Non
         prev_token=16,
         seq_position=3,
         generated_ids=[16],
+        timing={"prefill_ms": 7.5},
         native_decode_steps=1,
     )
     row = qwen35_gguf._GGUFResidentLoopRow(
@@ -1911,6 +1912,32 @@ def test_gguf_resident_stream_reuses_registered_sampler_plan(monkeypatch) -> Non
     chunk = runner._native_stream_chunk(row)
 
     assert _decode_state(chunk)["sampler_mode"] == "greedy_fast"
+    assert chunk.telemetry is not None
+    assert chunk.telemetry.timing == {"prefill_ms": 7.5}
+    assert chunk.telemetry.timing_scope == "choice"
+    assert chunk.telemetry.diagnostics == {
+        "prefix_cache": {
+            "mode": "off",
+            "block_size_tokens": 256,
+            "eligible": False,
+            "lookup": False,
+            "hit": False,
+            "source": None,
+            "matched_tokens": 0,
+            "reused_tokens": 0,
+            "avoided_prefill_tokens": 0,
+            "executed_prefill_tokens": 2,
+            "reused_pages": 0,
+            "reused_page_bytes": 0,
+            "state_clone_bytes": 0,
+            "snapshot_hit": False,
+            "admission_fallback": False,
+            "fallback_reason": "cache_off",
+            "cache_resident_entries": 0,
+            "cache_resident_pages": 0,
+            "cache_resident_bytes": 0,
+        }
+    }
     assert chunk.generated_token_ids is None
 
 

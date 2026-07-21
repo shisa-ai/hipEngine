@@ -4028,10 +4028,16 @@ class _GGUFResidentLoopRow:
     samples: list[Any] = field(default_factory=list)
     full_vocab_logits_d2h: bool | None = None
     logits_d2h_bytes: int | None = None
+    prefix_eligible: bool = False
+    prefix_lookup: bool = False
+    prefix_matched_tokens: int = 0
     prefix_reused_tokens: int = 0
     prefix_source_request_id: int | None = None
+    prefix_source_kind: str | None = None
     prefix_state_clone_bytes: int = 0
     prefix_snapshot_hit: bool = False
+    prefix_admission_fallback: bool = False
+    prefix_fallback_reason: str | None = None
 
 
 class Qwen35GGUFResidentModelRunner:
@@ -4226,7 +4232,7 @@ class Qwen35GGUFResidentModelRunner:
         buckets = copy.deepcopy(self._graph_buckets)
         for label, row in buckets.items():
             row["entries"] = int(active_entries.get(label, 0))
-        prefix_stats = None if self._prefix_cache is None else self._prefix_cache.stats.to_json_dict()
+        prefix_observability = self._prefix_cache_observability()
         return {
             "model_runner": {
                 "capacity": int(self.capacity),
@@ -4247,22 +4253,7 @@ class Qwen35GGUFResidentModelRunner:
                 ),
             },
             "kv_pool": pool_stats,
-            "prefix_cache": {
-                "mode": self._prefix_cache_mode,
-                "stats": prefix_stats,
-                "usable_hits": int(self._prefix_usable_hits),
-                "unusable_hits": int(self._prefix_unusable_hits),
-                "admission_fallbacks": int(self._prefix_admission_fallbacks),
-                "reused_tokens": int(self._prefix_reused_tokens),
-                "state_clone_bytes": int(self._prefix_state_clone_bytes),
-                "snapshot_entries": len(self._prefix_state_snapshots),
-                "snapshot_hits": int(self._prefix_snapshot_hits),
-                "snapshot_evictions": int(self._prefix_snapshot_evictions),
-                "snapshot_bytes": sum(
-                    int(getattr(entry.snapshot, "nbytes", 0))
-                    for entry in self._prefix_state_snapshots.values()
-                ),
-            },
+            "prefix_cache": prefix_observability,
             "graph_buckets": {
                 "entries": int(sum(active_entries.values())),
                 "captures_total": int(sum(row["captures"] for row in buckets.values())),
@@ -4421,6 +4412,8 @@ class Qwen35GGUFResidentModelRunner:
                 )
             except MemoryError:
                 self._prefix_admission_fallbacks += 1
+                row.prefix_admission_fallback = True
+                row.prefix_fallback_reason = "shared_admission_capacity"
             else:
                 try:
                     lease.session.bind_device_kv_allocation(pool, allocation)
@@ -4454,14 +4447,21 @@ class Qwen35GGUFResidentModelRunner:
                 self._available.pop()
                 row.lease = lease
                 row.kv_allocation = allocation
+                row.prefix_matched_tokens = len(matched_tokens)
                 row.prefix_reused_tokens = len(matched_tokens)
                 row.prefix_source_request_id = (
                     None
                     if prefix_source.source_row is None
                     else int(prefix_source.source_row.request_id)
                 )
+                row.prefix_source_kind = (
+                    "completed_snapshot"
+                    if prefix_source.snapshot is not None
+                    else "active_current"
+                )
                 row.prefix_state_clone_bytes = cloned_bytes
                 row.prefix_snapshot_hit = prefix_source.snapshot is not None
+                row.prefix_fallback_reason = None
                 if row.prefix_snapshot_hit:
                     self._prefix_snapshot_hits += 1
                 self._prefix_usable_hits += 1
@@ -4510,16 +4510,29 @@ class Qwen35GGUFResidentModelRunner:
         row: _GGUFResidentLoopRow,
     ) -> _GGUFPrefixReuseSource | None:
         cache = getattr(self, "_prefix_cache", None)
-        if cache is None or not row.native_greedy or len(row.prompt_ids) <= 256:
+        if cache is None:
+            row.prefix_fallback_reason = "cache_off"
             return None
+        if not row.native_greedy:
+            row.prefix_fallback_reason = "sampling_unsupported"
+            return None
+        if len(row.prompt_ids) <= 256:
+            row.prefix_fallback_reason = "prompt_too_short"
+            return None
+        row.prefix_eligible = True
         self._flush_all_packed_owners()
         for candidate in tuple(self._rows.values()):
             if candidate.request_id != row.request_id:
                 self._refresh_prefix_cache(candidate)
+        row.prefix_lookup = True
         match = cache.match(row.prompt_ids)
-        if not match.hit or match.matched_token_count >= len(row.prompt_ids):
-            if match.hit:
-                self._prefix_unusable_hits += 1
+        row.prefix_matched_tokens = int(match.matched_token_count)
+        if not match.hit:
+            row.prefix_fallback_reason = "miss"
+            return None
+        if match.matched_token_count >= len(row.prompt_ids):
+            self._prefix_unusable_hits += 1
+            row.prefix_fallback_reason = "full_prompt_boundary_requires_suffix"
             return None
         state = cache.entry_state(match.matched_tokens)
         for request_id in state.owner_request_ids:
@@ -4576,6 +4589,7 @@ class Qwen35GGUFResidentModelRunner:
                     snapshot=snapshot,
                 )
         self._prefix_unusable_hits += 1
+        row.prefix_fallback_reason = "state_source_unavailable"
         return None
 
     @staticmethod
@@ -4596,12 +4610,15 @@ class Qwen35GGUFResidentModelRunner:
         cache = getattr(self, "_prefix_cache", None)
         if cache is None:
             return False
-        cache.cancel(row.request_id)
         if row.lease is None or row.kv_allocation is None:
             return False
         tokens = self._processed_tokens(row)
         if not tokens or len(tokens) % 256 != 0:
+            # Keep the latest exact aligned boundary live while the request
+            # advances through a partial page. Normal completion can then
+            # promote that historical snapshot before request ownership drops.
             return False
+        cache.cancel(row.request_id)
         block_count = len(tokens) // 256
         block_ids = tuple(int(block_id) for block_id in row.kv_allocation.block_ids[:block_count])
         if len(block_ids) != block_count:
@@ -4615,6 +4632,113 @@ class Qwen35GGUFResidentModelRunner:
             return False
         self._capture_prefix_snapshot(row, tokens=tokens, block_ids=block_ids)
         return True
+
+    def _prefix_cache_observability(self) -> dict[str, Any]:
+        cache = getattr(self, "_prefix_cache", None)
+        pool = getattr(self, "_kv_pool", None)
+        entries = tuple(getattr(self, "_prefix_state_snapshots", {}).values())
+        retained_entries = tuple(entry for entry in entries if entry.retained)
+        retained_blocks = {
+            int(block_id)
+            for entry in retained_entries
+            for block_id in entry.block_ids
+        }
+        page_bytes = 0 if pool is None else int(pool.page_bytes)
+        snapshot_bytes = sum(
+            int(getattr(entry.snapshot, "nbytes", 0)) for entry in entries
+        )
+        max_snapshot_bytes = max(
+            (int(getattr(entry.snapshot, "nbytes", 0)) for entry in entries),
+            default=0,
+        )
+        retained_kv_bytes = len(retained_blocks) * page_bytes
+        pool_capacity_bytes = 0
+        if pool is not None:
+            stats = pool.stats
+            capacity_pages = (
+                int(pool.high_water_pages)
+                if pool.high_water_pages is not None
+                else int(stats.current_pages)
+            )
+            pool_capacity_bytes = capacity_pages * page_bytes
+        return {
+            "mode": getattr(self, "_prefix_cache_mode", "off"),
+            "block_size_tokens": 256,
+            "stats": None if cache is None else cache.stats.to_json_dict(),
+            "usable_hits": int(getattr(self, "_prefix_usable_hits", 0)),
+            "unusable_hits": int(getattr(self, "_prefix_unusable_hits", 0)),
+            "admission_fallbacks": int(
+                getattr(self, "_prefix_admission_fallbacks", 0)
+            ),
+            "reused_tokens": int(getattr(self, "_prefix_reused_tokens", 0)),
+            "state_clone_bytes": int(
+                getattr(self, "_prefix_state_clone_bytes", 0)
+            ),
+            "snapshot_entries": len(entries),
+            "snapshot_limit": int(
+                getattr(self, "_prefix_snapshot_limit", getattr(self, "capacity", 0))
+            ),
+            "retained_snapshot_entries": len(retained_entries),
+            "snapshot_hits": int(getattr(self, "_prefix_snapshot_hits", 0)),
+            "snapshot_evictions": int(
+                getattr(self, "_prefix_snapshot_evictions", 0)
+            ),
+            "snapshot_bytes": snapshot_bytes,
+            "retained_kv_pages": len(retained_blocks),
+            "retained_kv_bytes": retained_kv_bytes,
+            "resident_bytes": snapshot_bytes + retained_kv_bytes,
+            "resident_limit_bytes": (
+                int(
+                    getattr(
+                        self,
+                        "_prefix_snapshot_limit",
+                        getattr(self, "capacity", 0),
+                    )
+                )
+                * max_snapshot_bytes
+                + pool_capacity_bytes
+            ),
+        }
+
+    def _prefix_request_telemetry(
+        self,
+        row: _GGUFResidentLoopRow,
+    ) -> dict[str, Any]:
+        pool = getattr(self, "_kv_pool", None)
+        page_bytes = 0 if pool is None else int(pool.page_bytes)
+        reused_pages = (
+            0
+            if row.kv_allocation is None
+            else len(row.kv_allocation.reused_block_ids)
+        )
+        residency = self._prefix_cache_observability()
+        mode = getattr(self, "_prefix_cache_mode", "off")
+        fallback_reason = row.prefix_fallback_reason
+        if fallback_reason is None and mode == "off":
+            fallback_reason = "cache_off"
+        return {
+            "mode": mode,
+            "block_size_tokens": 256,
+            "eligible": bool(row.prefix_eligible),
+            "lookup": bool(row.prefix_lookup),
+            "hit": bool(row.prefix_reused_tokens),
+            "source": row.prefix_source_kind,
+            "matched_tokens": int(row.prefix_matched_tokens),
+            "reused_tokens": int(row.prefix_reused_tokens),
+            "avoided_prefill_tokens": int(row.prefix_reused_tokens),
+            "executed_prefill_tokens": max(
+                0, len(row.prompt_ids) - int(row.prefix_reused_tokens)
+            ),
+            "reused_pages": int(reused_pages),
+            "reused_page_bytes": int(reused_pages) * page_bytes,
+            "state_clone_bytes": int(row.prefix_state_clone_bytes),
+            "snapshot_hit": bool(row.prefix_snapshot_hit),
+            "admission_fallback": bool(row.prefix_admission_fallback),
+            "fallback_reason": fallback_reason,
+            "cache_resident_entries": int(residency["snapshot_entries"]),
+            "cache_resident_pages": int(residency["retained_kv_pages"]),
+            "cache_resident_bytes": int(residency["resident_bytes"]),
+        }
 
     def _capture_prefix_snapshot(
         self,
@@ -6003,7 +6127,9 @@ class Qwen35GGUFResidentModelRunner:
                 native_caware_decode=slot.native_decode_steps > 0,
                 serial_decode_fallback=slot.serial_decode_steps > 0,
                 native_sampler_rows=False,
+                timing=dict(slot.timing),
                 sampler_plan=row.sampler_plan,
+                diagnostics={"prefix_cache": self._prefix_request_telemetry(row)},
             ),
             generated_token_ids=generated_ids if slot.done else None,
         )
@@ -6065,6 +6191,7 @@ class Qwen35GGUFResidentModelRunner:
                 native_sampler_rows=False,
                 timing=timing,
                 sampler_plan=row.sampler_plan,
+                diagnostics={"prefix_cache": self._prefix_request_telemetry(row)},
             ),
         )
 
@@ -6093,6 +6220,7 @@ class Qwen35GGUFResidentModelRunner:
                 native_caware_decode=False,
                 serial_decode_fallback=False,
                 native_sampler_rows=False,
+                diagnostics={"prefix_cache": self._prefix_request_telemetry(row)},
             ),
         )
 
@@ -6109,10 +6237,16 @@ class Qwen35GGUFResidentModelRunner:
             "serial_decode_fallback": bool(
                 slot is not None and slot.serial_decode_steps > 0
             ),
+            "prefix_eligible": bool(row.prefix_eligible),
+            "prefix_lookup": bool(row.prefix_lookup),
+            "prefix_matched_tokens": int(row.prefix_matched_tokens),
             "prefix_reused_tokens": int(row.prefix_reused_tokens),
             "prefix_source_request_id": row.prefix_source_request_id,
+            "prefix_source_kind": row.prefix_source_kind,
             "prefix_state_clone_bytes": int(row.prefix_state_clone_bytes),
             "prefix_snapshot_hit": bool(row.prefix_snapshot_hit),
+            "prefix_admission_fallback": bool(row.prefix_admission_fallback),
+            "prefix_fallback_reason": row.prefix_fallback_reason,
         }
 
 
@@ -6561,6 +6695,7 @@ def _gguf_telemetry(
     group_rows: int | None = None,
     timing_owner: bool | None = None,
     sampler_plan: Any | None = None,
+    diagnostics: Mapping[str, Any] | None = None,
 ) -> GenerationTelemetry:
     if timing is not None and timing_scope is None:
         timing_scope = "choice"
@@ -6605,6 +6740,7 @@ def _gguf_telemetry(
         batch_id=batch_id,
         group_rows=group_rows,
         timing_owner=timing_owner,
+        diagnostics=diagnostics,
     )
 
 

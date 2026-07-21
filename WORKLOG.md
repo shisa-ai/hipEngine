@@ -171945,3 +171945,76 @@ targeted Ruff, `git diff --check`, and benchmark README synchronization.
 The result selects A2 cache-off/radix prefix A/B first, then native GPU sampling;
 short/growing C4/C8 have no aggregate win, medium C4 is the long-context guard,
 and C1 latency remains the non-regression guard.
+
+## 2026-07-21 — Prepare the gfx1100 A2 prefix correctness gate
+
+Audited the existing opt-in GGUF `RadixCache` path on W7900/gfx1100. It is
+backend-neutral model-loop/device-KV ownership code, so no kernel transfer or
+backend branch was required. The kernel-lineage stat audit still reports the
+pre-existing external qwen35/PARO drift; this unit ports none of it and changes
+no kernel.
+
+Closed one completed-source lifecycle defect before timing: an unaligned prompt
+or decode tail used to cancel the last live aligned radix boundary before
+returning, which left its captured snapshot impossible to promote at normal
+completion. `_refresh_prefix_cache()` now preserves the latest exact 256-token
+boundary until a newer aligned boundary is available. Host gates cover active-
+current and completed-source state clone/page sharing, an unaligned 513-token
+tail, bounded LRU eviction, refcount/COW drain, exact-full-prompt private
+fallback, and sampled private fallback.
+
+Made A2 measurement evidence fail closed and reusable:
+
+- per-choice telemetry now carries block boundary, eligibility/lookup/hit,
+  active-current versus completed-snapshot source, matched/reused/avoided/
+  executed prefill tokens, reused pages/bytes, state-clone bytes, explicit
+  fallback, cache resident entries/pages/bytes, and backend prefill time;
+- `/ready` exports bounded prefix snapshot/page/byte ownership and the live
+  collector rejects non-idle request/KV state while allowing only declared,
+  internally consistent bounded cache residency;
+- agentic rollups retain hit/source/fallback counts, token/page/state bytes,
+  bytes per reused token, cache maxima, and prefill-time summaries;
+- radix collection loads the retained A1 cache-off artifact rather than issuing
+  cache-perturbing live blocking oracles. The loader verifies accepted/clean/
+  GPU0-exclusive/variance/final-ownership gates, exact response-owned IDs and
+  hashes, repeat identity, and complete C1/C4/C8 coverage for all three frozen
+  workloads. Control SHA-256 remains
+  `29133f5fb0fa36f0f83fe34565ad7df93214b8eb7e035ac56b5413713e495f3f`.
+
+Ran the independent real-model gate twice from the final implementation worktree
+(after integrating `origin/main` at `4ab7c948`) with
+`HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0`, Qwen3.6-35B-A3B
+UD-Q4_K_M/BF16 KV, prefix token 9707 x256, suffix token 9708 x1, and four
+teacher-forced steps:
+
+```bash
+env HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/agentic-w7900-hipcc-version.txt \
+  uv run python scripts/gguf_prefix_reuse_gate.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --quant gguf_q4_k_m \
+  --prefix-tokens 256 --suffix-tokens 1 --teacher-forced-steps 4 \
+  --max-sequence-length 512 --source-lifecycle active \
+  --json /tmp/2026-07-21-gfx1100-gguf-active-prefix-reuse-correctness-final.json
+# Repeat with --source-lifecycle completed and the completed output path.
+```
+
+Both pass exact output, clone/semantic/initial/final state, every 60 Conv/GDN +
+20 logical live-KV component, and the five-ID predicted trajectory. Both report
+`KL mean/max=0`, top-1 `100%`, one reused 5,242,880-byte page, and a
+66,846,720-byte hybrid-state clone. Active-current refs drain
+**1->2->1->0**. Completed-source resets/unbinds before continuation admission,
+reports one snapshot hit and exact **72,089,600-byte** cache residency, then
+refs/eviction drain **1->1->2->1->0**. Published correctness-only artifacts:
+
+- `benchmarks/results/2026-07-21-gfx1100-gguf-active-prefix-reuse-correctness.json`
+  (SHA-256 `ba66eb2e7b694b634b43534b074c6cba0171c495cb5edb6ca95256ddd1eab21e`);
+- `benchmarks/results/2026-07-21-gfx1100-gguf-completed-prefix-reuse-correctness.json`
+  (SHA-256 `c583746921d0ba92987105f978a5d139cff6e9819800ded315253e61499fcd52`).
+
+Validation passed **793 tests** across the GGUF generation/resident/LLM and
+agentic benchmark/live/prefix/server bundles, targeted Ruff, `git diff --check`,
+JSON parsing, and benchmark README synchronization. This is A2.0 correctness and
+telemetry only: no timing is a performance claim, radix remains default-off, and
+agentic 2K/8K paired measurements plus pressure/lifecycle promotion gates remain
+for tasks #225-#227.
