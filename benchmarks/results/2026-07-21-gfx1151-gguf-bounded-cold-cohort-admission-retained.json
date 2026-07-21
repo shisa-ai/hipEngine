@@ -1,0 +1,175 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_gguf_bounded_cold_cohort_admission_retained",
+  "created_at": "2026-07-21T00:46:00+00:00",
+  "status": "retained_exact_clean_server_and_production_slo",
+  "passed": true,
+  "performance_claim": true,
+  "decision": "promote bounded cold-cohort admission priority under the existing fair scheduler policy",
+  "implementation_commit": "8a8ef4816d442b3b8766507c1eac1ae796e882eb",
+  "hardware": {
+    "host": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "amd_iommu": "off",
+    "gpu_max_hw_queues": 1,
+    "rocm": "HIP 7.15.0-0000000",
+    "tuned_profile": "accelerator-performance"
+  },
+  "model": {
+    "name": "Qwen3.6-35B-A3B UD-Q4_K_M GGUF",
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "prompt_tokens_per_request": 512,
+    "completion_tokens_per_request": 128,
+    "sampling": "greedy, MTP disabled"
+  },
+  "implementation": {
+    "cold_cohort": "When no row is decode-ready, fair scheduling snapshots a cold prefill cohort only if every active row fits within the existing fair_prefill_burst_chunks bound. New bounded rows may join only before the first decode; the first decode clears the epoch.",
+    "submission_priority": "A poller waits for submissions already queued on the short model-loop lock before starting the next model tick. Requests that were not already waiting receive no priority.",
+    "unchanged_contracts": [
+      "no backend or quant branch in engine/dispatch code",
+      "no new package or environment flag",
+      "burst-1 packages retain prior scheduling",
+      "prompts above the configured chunk bound retain prior scheduling",
+      "post-first-decode staggered admissions retain fair pressure-gated scheduling",
+      "resident capacity, graph, KV, and packed-workspace ownership are unchanged"
+    ]
+  },
+  "correctness": {
+    "red": [
+      "bounded pre-decode arrival decoded at C1 on the third tick",
+      "submission-priority handoff did not exist"
+    ],
+    "green": "11 focused tests passed across burst policy, scheduler policy/observability, concurrent submit/poll streaming, controlled server streaming, and metrics",
+    "compileall_passed": true,
+    "diff_check_passed": true,
+    "server_oracle_warmup_blocking_sse_live_all_exact": true,
+    "server_native_route_no_fallback": true,
+    "server_final_graph_kv_workspace_ownership_zero": true,
+    "continuous_fixed_exact_rows": 12,
+    "continuous_fixed_total_rows": 12
+  },
+  "baseline": {
+    "name": "clean retained F3Q fair:256/burst-2 serving",
+    "commit": "f3600c248ab8368a2cf808c65e8ace283fc6328c",
+    "artifact": "benchmarks/results/2026-07-20-gfx1151-gguf-gdn-shared-statecache24-c8-retained.json",
+    "c8": {
+      "blocking_tok_s": 91.56234113113928,
+      "blocking_wall_seconds": 11.183637152018491,
+      "exact_sse_tok_s": 88.59660534988375,
+      "delayed_admission_tok_s": 70.41417027896456,
+      "sse_ttft_p95_seconds": 3.947,
+      "sse_itl_p99_seconds": 0.496
+    }
+  },
+  "clean_server_replication": {
+    "provenance": "tracked-clean main at implementation commit; git status collected with --untracked-files=no",
+    "protocol": "real localhost Uvicorn C1/C8 p512/d128; fair:256/burst-2; 5 ms generation coalescing; one blocking warmup; one blocking and one exact-SSE measurement per width; delayed C8 admission",
+    "status": "accepted_backend_packet",
+    "c1": {
+      "blocking_tok_s": 44.35267566320948,
+      "exact_sse_tok_s": 43.177903318430005,
+      "sse_goodput_tok_s": 43.177903318430005
+    },
+    "c8": {
+      "blocking_tok_s": 101.6267047507817,
+      "blocking_wall_seconds": 10.07609173702076,
+      "exact_sse_tok_s": 99.01753746265481,
+      "sse_goodput_tok_s": 99.01753746265481,
+      "sse_ttft_p95_seconds": 3.75811455398798,
+      "sse_itl_p99_seconds": 0.21195402200100943,
+      "sse_end_to_end_p95_seconds": 10.339107451029122,
+      "delayed_admission_tok_s": 74.44997192828005,
+      "blocking_delta_vs_f3q_percent": 10.991815516411751,
+      "blocking_wall_delta_vs_f3q_percent": -9.90326670959486,
+      "exact_sse_delta_vs_f3q_percent": 11.762225055482611,
+      "delayed_delta_vs_f3q_percent": 5.73151914355674,
+      "all_1024_sse_completion_tokens_slo_qualified": true
+    },
+    "raw": {
+      "bytes": 372524,
+      "sha256": "dcf7f45ac294d7458de60d819597dcb7da9bca040db69d6d5890da2399cd5673"
+    }
+  },
+  "clean_production_safety": {
+    "provenance": "detached clean worktree at implementation commit",
+    "workload": "continuous_fixed under fair:256",
+    "status": "measurement_complete",
+    "passed": true,
+    "performance_claim": false,
+    "requests_exact": 12,
+    "requests_total": 12,
+    "exact_generated_tokens": 360,
+    "qualifying_generated_tokens": 360,
+    "throughput_tok_s": 47.120987032171,
+    "goodput_tok_s": 47.120987032171,
+    "latency_seconds": {
+      "queue_p99": 0.0018868620391003788,
+      "ttft_p95": 0.5572209249949083,
+      "itl_p99": 0.29911580798216164,
+      "end_to_end_p95": 4.845552883984055
+    },
+    "slo_threshold_seconds": {
+      "queue_p99": 10.0,
+      "ttft_p95": 10.0,
+      "itl_p99": 0.5,
+      "end_to_end_p95": 30.0
+    },
+    "route_passed": true,
+    "final_ownership_passed": true,
+    "memory_recovery_passed": true,
+    "clean_source_passed": true,
+    "raw": {
+      "bytes": 560165,
+      "sha256": "29a0f7c808aaaa907d7219c2d76e93fd9504828c58fb885f6d72018b8cdfec98"
+    }
+  },
+  "rejected_alternatives": {
+    "bounded_snapshot_without_submission_handoff": {
+      "blocking_tok_s": 101.078,
+      "exact_sse_tok_s": 88.542,
+      "delayed_admission_tok_s": 74.688,
+      "reason": "stream producer submissions remained serialized behind repeated non-fair poller lock reacquisition"
+    },
+    "bounded_epoch_expansion_without_submission_handoff": {
+      "exact_sse_tok_s": 88.637,
+      "reason": "admissions still reached the scheduler after the next model transition"
+    },
+    "global_protect_ttft": {
+      "continuous_fixed_throughput_tok_s": 47.165,
+      "continuous_fixed_goodput_tok_s": 24.106,
+      "itl_p99_seconds": 0.506,
+      "itl_slo_seconds": 0.5,
+      "qualifying_tokens": 184,
+      "exact_tokens": 360,
+      "reason": "failed the live ITL p99 SLO",
+      "raw_bytes": 553938,
+      "raw_sha256": "15bdf370311ce6b07880f916ef5f694196668b80d1df0318fa3862df6a1af386"
+    }
+  },
+  "external_comparison": {
+    "llamacpp_c_gt_1_eligible": false,
+    "reason": "The retained llama.cpp HIP and Vulkan C2/C4/C8 waves diverge from their independent C1 trajectories, so their raw C8 rates are diagnostic and cannot support a win/loss claim.",
+    "diagnostic_blocking_tok_s": {
+      "hipengine_current": 101.6267047507817,
+      "llamacpp_hip_raw": 103.724,
+      "llamacpp_vulkan_raw": 109.37
+    },
+    "hipengine_raw_delta_percent": {
+      "vs_llamacpp_hip": -2.0219961139353537,
+      "vs_llamacpp_vulkan": -7.0799078807884275
+    }
+  },
+  "commands": {
+    "server": "/home/lhl/hipEngine-main/.venv/bin/python scripts/server_f1_concurrency_bench.py --engine hipengine --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --hipengine-kv-storage bf16 --hipengine-route-expectation native --hipengine-prefill-decode-policy fair --hipengine-prefill-chunk-tokens 256 --generation-batch-window-ms 5 --concurrencies 1,8 --live-concurrency 8 --prompt-length 512 --decode-tokens 128 --ctx-per-seq 1024 --warmup-runs 1 --measured-runs 1 --streaming-primary --stream-warmup-runs 0 --stream-measured-runs 1 --live-join-after-tokens 8 --compiler-version-file /tmp/hipengine-gfx1151-native-cycle-hipcc-version.txt --memory-domain gtt --drm-card-index 0 --memory-poll-ms 10",
+    "production_safety": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_BACKEND=hip_gfx1151 HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 /home/lhl/hipEngine-main/.venv/bin/python scripts/gguf_production_load_gate.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1151 --workloads continuous_fixed --skip-tuning --initial-policy fair --initial-prefill-chunk-tokens 256 --compiler-version-file /tmp/hipengine-gfx1151-f4-hipcc-version.txt --require-cached-build"
+  },
+  "limitations": [
+    "The retained speed claim is one tracked-clean p512/d128 C1/C8 replication, bracketed by the earlier implementation measurement and multiple rejected/control packets; it is not a multi-repetition variance sweep.",
+    "The production safety packet is a correctness/SLO gate and explicitly sets performance_claim=false.",
+    "The policy benefit applies only when the whole cold cohort fits the existing configured burst bound; longer prompts and post-decode staggered arrivals intentionally retain fair scheduling.",
+    "C>1 llama.cpp rates remain diagnostic until the external server produces oracle-consistent waves."
+  ]
+}

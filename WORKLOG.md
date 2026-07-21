@@ -170933,3 +170933,45 @@ HIPENGINE_BACKEND=hip_gfx1151 HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 \
   --require-cached-build \
   --json /tmp/gfx1151-fair-admission-priority-continuous-fixed.json
 ```
+
+## 2026-07-21 — Publish clean bounded-admission server-ramp closure
+
+Repeated the minimum C1/C8 packet after committing the implementation at
+`8a8ef4816d442b3b8766507c1eac1ae796e882eb`. Git provenance is tracked-clean
+(`git status -sb --untracked-files=no`); the unrelated untracked benchmark
+backlog remains untouched. The real-Uvicorn packet is
+`accepted_backend_packet`, with every oracle, warmup, blocking, SSE, and live
+row exact/native/fallback-free and final graph/KV/workspace ownership zero:
+
+- C1: **44.353 blocking / 43.178 exact SSE tok/s**;
+- C8: **101.627 blocking / 99.018 exact SSE / 74.450 delayed tok/s**;
+- versus clean F3Q: **+10.99% / +11.76% / +5.73%** respectively;
+- C8 blocking wall: **11.184 -> 10.076 s (-9.90%)**;
+- C8 SSE: **1,024/1,024 completion tokens SLO-qualified**, TTFT p95
+  **3.7581 s**, ITL p99 **0.2120 s**.
+
+Raw clean server packet is 372,524 bytes, SHA-256
+`dcf7f45ac294d7458de60d819597dcb7da9bca040db69d6d5890da2399cd5673`.
+
+The production harness's first post-commit run passed the workload but rejected
+only its whole-repository cleanliness gate because it counts untracked files.
+To avoid deleting other agents' outputs, repeated the same 70-second gate from a
+detached clean worktree at `8a8ef481`. It exits zero as
+`measurement_complete`: **12/12 exact**, **360/360 SLO-qualified tokens**,
+**47.121 throughput/goodput tok/s**, queue p99 **0.00189 s**, TTFT p95
+**0.5572 s**, ITL p99 **0.2991 s**, and end-to-end p95 **4.8456 s**. Route,
+final ownership, memory recovery, and clean-source gates all pass. Raw clean
+safety packet is 560,165 bytes, SHA-256
+`29a0f7c808aaaa907d7219c2d76e93fd9504828c58fb885f6d72018b8cdfec98`.
+
+Published
+`benchmarks/results/2026-07-21-gfx1151-gguf-bounded-cold-cohort-admission-retained.json`
+(8,881 bytes, SHA-256
+`f0c687b41d4e58d9a9fe6287ca21b0d585434902ce90e8345df3a4907802be58`)
+and updated the benchmark scoreboard/changelog. The simultaneous p512 C8 ramp
+path is now exhausted: direct dense/selected-MoE, LM-head, short attention, and
+state families were closed by the preceding F3 work; the remaining partial-width
+server ramp is removed here. The only stronger generic prefill policy measured,
+`protect_ttft`, is a genuine production blocker at **0.5060 s ITL p99 > 0.5 s**.
+Further optimization needs a new measured bottleneck at staggered or longer-
+prompt shapes rather than more tuning of this closed packet.
