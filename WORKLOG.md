@@ -172706,3 +172706,78 @@ Validation:
 
 The failed W7900 retry remains diagnostic-only. A5 must restart from the clean
 commit before retaining a pressure/soak result.
+
+## 2026-07-22 — Close A5 pressure and soak on clean W7900 source
+
+The first clean full packet after the reservation-release repair passed from
+pushed source `414d6d9e0fc8a1333bbece4db851271f031936bf`. GPU visibility was pinned
+to W7900/GPU0, cache and native sampling remained off, and the A4-selected
+package defaults stayed `protect_decode:256/burst-1` with a zero-ms generation
+window. The exact command was:
+
+```bash
+HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/agentic-w7900-hipcc-version.txt \
+HIPENGINE_QWEN35_NATIVE_SAMPLER=0 PYTHONPATH=. \
+uv run python scripts/gguf_production_load_gate.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --quant gguf_q4_k_m --prefix-cache off \
+  --max-active-requests 8 --max-pending-requests 16 \
+  --max-queued-requests 16 --stream-queue-max-chunks 16 \
+  --batch-window-ms 0 --initial-policy protect_decode \
+  --initial-prefill-chunk-tokens 256 \
+  --initial-fair-prefill-burst-chunks 1 --skip-tuning \
+  --fixed-rate-per-second 2 --poisson-rate-per-second 2 \
+  --poisson-seed 1234 --soak-seconds 80 --soak-rate-per-second 0.5 \
+  --idle-recovery-seconds 1 --idle-timeout-seconds 180 \
+  --request-timeout-seconds 240 --slo-queue-p99-seconds 10 \
+  --slo-ttft-p95-seconds 10 --slo-itl-p99-seconds 0.5 \
+  --slo-end-to-end-p95-seconds 30 \
+  --compiler-version-file /tmp/agentic-w7900-hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/2026-07-22-w7900-agentic-a5-cache-off-pressure-raw-v7.json
+```
+
+All nine workloads pass exactness, metrics, and declared queue/TTFT/ITL/E2E SLOs.
+The packet handles **122 requests** as **108 completed / 12 rejected / 1
+disconnected / 1 timed out**. Completed requests own **2,480 exact IDs** and
+the disconnected request owns two more exact IDs, for **2,482 observed exact
+IDs**. The cancellation packet preserves all six survivor trajectories, bounds
+the slow-consumer stream queue at **1/16**, acknowledges the deliberate RST in
+**44.514 ms**, and returns the deadline through the distinct
+`deadline_exceeded` path. Overload completes **20** rows and rejects **12** with
+exact retryable `429 engine_busy` accounting at **21.717 SLO-goodput tok/s**.
+The bounded 80-second soak completes **40/40** rows at **11.151 tok/s**.
+
+Resource pressure is bounded: generation queue depth reaches its declared
+**16** cap; resident active/pending rows peak at **4/3**; the dynamic KV pool
+grows **3 -> 12 pages** (**62,914,560 bytes**) through **15** grow events and
+returns through **15** shrink events with zero failures. Graph ownership records
+**28 captures / 998 replays / 28 invalidations** and ends with zero entries.
+Workspace release records **42 events / 7,245,205,456 bytes** and ends at zero;
+tracked current memory ends **3,800,032 bytes below** prepared baseline. All
+request, pending, queue, model, KV ref/pin, graph, workspace, and batcher owners
+are zero after close. Forty-one KFD samples observe only PID 1551464 on the
+target GPU; GPU1 activity remains zero. The raw 8,646,674-byte packet remains
+outside git with SHA-256
+`538cb837190dec18810bf382c7548a2b2c1b9a7e0fb4c9ebda5d3e7fbef58502`;
+the monitor log hash is
+`adaaac621752a7f59a0b4d47a0bd341fecf609a0a12fd97c7b92cc77a7d8ce26`.
+
+Cache remains off by the rejected A2 performance decision. A5 therefore links
+cache-pressure and explicit p2048/p8192 snapshot eviction to the already exact
+A2 lifecycle closure (SHA-256
+`6768e849fa2338da222e6ec8cc43ad48b99148c6faf9e7d70445af126ea4198a`),
+which ends with zero cache refs; it does not retime the rejected radix route.
+Published
+`benchmarks/results/2026-07-22-w7900-agentic-a5-pressure-soak-closure.json`.
+This closes bounded reliability and absolute SLO evidence only: the 80-second
+soak is not a multi-day claim, and no tuning/default performance comparison is
+made. The compact artifact SHA-256 is
+`d41d7373a8308753aa988c05dfeb0f418b8cd45158cd2e7222eb8ab9f1a5ec0a`.
+Publication validation passes **31/31** across the new A5 artifact contract,
+production-load gate, benchmark README synchronization, and canonical
+provenance tests. Targeted Ruff, provenance validation with the real model,
+JSON parsing, README synchronization, Worklog conflict validation, changed-doc
+fence/trailing-space checks, and `git diff --check` pass; only the existing
+Starlette/httpx deprecation warning remains.
