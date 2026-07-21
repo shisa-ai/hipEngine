@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-21
+
+- [retained exact gfx1151 GGUF bounded cold-cohort admission priority] Radeon 8060S Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV real-Uvicorn p512/d128 C8 moves clean F3Q **91.562 -> 101.627 blocking tok/s (+10.99%)**, **88.597 -> 99.018 exact SSE (+11.76%)**, and **70.414 -> 74.450 delayed (+5.73%)** by draining only cohorts that fit the existing fair burst bound and handing the short loop lock to already-queued submissions; detached-clean `continuous_fixed` is **12/12 exact / 47.121 SLO-goodput tok/s / 0.2991 s ITL p99**, while global `protect_ttft` remains rejected at **0.5060 s > 0.5 s**. `benchmarks/results/2026-07-21-gfx1151-gguf-bounded-cold-cohort-admission-retained.json`.
+
 ## 2026-07-20
 
 - [retained exact gfx1151 GGUF physical-C8 indexed-GDN shared state cache 24] Reusing 24/128 old FP32 state rows across the dependency barrier improves the exact indexed-GDN leaf **204.996 -> 197.844 us (-3.49%)**, traced GDN **3.770 -> 3.468 ms (-8.02%)**, and tracked-clean p512/d128 direct C8 **158.804 -> 159.487 tok/s (+0.430%)**, with **320/320 exact** hidden/state. Server SSE/delayed improve **+0.94%/+0.91%** and blocking is flat within matched-run variance. `benchmarks/results/2026-07-20-gfx1151-gguf-gdn-shared-statecache24-c8-retained.json`.
