@@ -172625,3 +172625,50 @@ Validation:
 
 A5 must restart from this source; the stopped diagnostic carries no retained
 measurement or performance claim.
+
+## 2026-07-22 — Plan Laguna S 2.1 Q4_K_M and matched DFlash on gfx1151
+
+Added `docs/LAGUNA.md`, a correctness-first implementation plan for
+`poolside/Laguna-S-2.1-GGUF` Q4_K_M on the local Ryzen AI MAX+ 395 / Radeon
+8060S (`gfx1151`) host. The plan replaces the earlier discrete-W7900 capacity
+assumption with the measured Strix Halo model: 120.0 GiB HIP/GTT allocation
+domain over unified LPDDR5X, a 512 MiB visible-VRAM aperture that is not the
+capacity limit, and a 70.01 GiB target GGUF tensor payload. It records the
+48-layer mixed `FULL,SWA,SWA,SWA` contract, dual RoPE, variable 48/72 Q heads,
+softplus head gate, sigmoid/correction-bias top-10 MoE routing, shared expert,
+Q4/Q6/F16/F32 tensor inventory, BF16 KV/context budget, reusable hipEngine
+surfaces, staged L0-L10 implementation gates, risks, and support definition.
+Capacity and the inferred 22-24 tok/s short-context bandwidth roof are labeled
+as projections, not measurements.
+
+Expanded the same plan for Poolside's matched
+`poolside/Laguna-S-2.1-DFlash` revision
+`b0486d1586daa0d56435c508108171fc1c8daff9`. The completed local safetensors
+artifact is 2,229,962,896 bytes, SHA-256
+`f24f08781c697c19952c02fb2e7e9bdf2071b79a711c2a44b836a74b9b62a1f4`, with
+69 BF16 tensors / 1,114,977,792 parameters. The plan freezes its six 3072-wide
+SWA layers, fused QKV, per-head gate, block size 16, mask token 12, shared target
+embedding/LM head, and target capture depths `2,11,20,30,39,48`. It maps reuse
+from the existing Qwen DFlash provider/verifier/accept/commit path and records
+the required generalizations: nested Poolside config parsing, auxiliary norms,
+fused-QKV views, Laguna gates/SWA, a target-owned Q4_K embedding lookup, exact
+hidden taps, and a Laguna B+1 verifier. D0-D5 gates require true-AR identity,
+full mtp-bench categories plus heldouts, no prompt-conditioned routing, and the
+repository's greater-than-1.10x promotion threshold before default eligibility.
+No DFlash speedup is claimed.
+
+Validation:
+
+- Re-read all 1,318 lines of `docs/LAGUNA.md`; all 13 relative links and named
+  prompt/scanner paths exist, code fences balance, headings are unique, and no
+  conflict markers, tabs, or trailing whitespace remain.
+- Cross-checked the 221 GB/s read roof and 120 GiB unified-GTT model against
+  `docs/ROOFLINE-gfx1151.md`, the Q6_K/Q8_0-only current embedding lookup against
+  `docs/GGUF.md`, and the correctness/anti-gaming gates against
+  `docs/TESTING.md` and `docs/BENCHMARK.md`.
+- `uv run python` loaded the pinned DFlash snapshot as exactly 69 BF16 tensors;
+  the current Qwen-specific validator failed as expected with
+  `invalid DFlash config: 'block_size'`, preserving the loader change as a RED
+  implementation item rather than masking the incompatibility.
+- Documentation structure and diff/whitespace checks pass. No runtime code, GPU
+  benchmark, benchmark rollup, or performance default changed.
