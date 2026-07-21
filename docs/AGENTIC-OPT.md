@@ -1,6 +1,6 @@
 # Agentic Serving Optimization Board
 
-Last updated: 2026-07-21
+Last updated: 2026-07-22
 
 `AGENTIC-OPT.md` is the active status, measurement, and optimization board for
 using hipEngine as a local coding-agent runtime. The functional server contract
@@ -36,11 +36,13 @@ The key workload distinction is:
 
 The repeated W7900 A1 packet shows flat active-SSE goodput at 4K from C1 through
 C8, a modest long-context C4 gain, linearly worsening buffered tool-ready
-latency, and one full-vocabulary D2H row per generated token. A2 is now closed:
-the scoped radix route is exact and lifecycle-safe but decisively regresses every
-C1 family, so it remains explicit-only and cache-off remains the default. The
-next measured unit is native GPU sampling; low-occupancy routing remains the C1
-guard.
+latency, and one full-vocabulary D2H row per generated token. A2 is closed: the
+scoped radix route is exact and lifecycle-safe but decisively regresses every C1
+family, so it remains explicit-only and cache-off remains the default. A3 is
+also closed before timing: native-eligible auto-tool sampling fails the frozen
+turn-1 strict-envelope oracle, while valid specific/required tool forcing remains
+explicit host fallback. The GGUF native sampler therefore stays default-off; the
+next measured unit is low-occupancy routing/SLO policy.
 
 ## Current status report
 
@@ -118,10 +120,13 @@ resident-session semantics.
    membership and physical c8 are retained, but the broader occupancy-adaptive
    low-load, sampled API, prefix-economics, long-context pressure, and SLO packet
    has not been independently transferred from gfx1151.
-3. **GGUF sampled decoding uses host logits.** Functional host sampling is
-   correct and explicit, but may copy one full FP32 vocabulary row per generated
-   token. Native GPU sampler integration and true batched c>N selection remain
-   open.
+3. **GGUF has no promotable native sampled tool route.** The explicit candidate
+   removes full-vocabulary D2H for supported c1 and dense compatible c>N rows,
+   but specific/required tool forcing, close queues, and other dynamic processors
+   intentionally remain host-backed. Native-eligible `tool_choice=auto` fails the
+   frozen sampled-agent strict-envelope preflight, so the route remains
+   default-off and the host path still copies one FP32 vocabulary row per token
+   for valid strict tool turns.
 4. **gfx1100 PARO serving remains width-1.** The direct selected-batch c2 model
    step is retained, but physical c4/c8 and attachment to the shared resident
    OpenAI owner are not.
@@ -297,7 +302,7 @@ Required gates:
 - full-vocabulary D2H bytes reduced to zero on the retained native route;
 - c1 and c>N latency/goodput non-regression with exact API accounting.
 
-The correctness prerequisite is now complete. The explicit GGUF candidate admits
+The correctness prerequisite is complete. The explicit GGUF candidate admits
 exactly `supports_native_gpu_sampling()` rows, keeps forced/repair/JSON/thinking
 and unsupported stochastic shapes on host logits, and uses one sampler launch
 for dense compatible packed rows. The real W7900 p256/c4 gate repeats four
@@ -306,8 +311,25 @@ bytes, passes stop/EOS/bounded-logprob and API telemetry, records six batch
 sampler launches, and drains all refs with zero COW. Supported rows report
 `full_vocab_logits_d2h=false` / `logits_d2h_bytes=0`. Artifact:
 `benchmarks/results/2026-07-21-w7900-gguf-native-sampler-correctness.json`.
-This is correctness evidence only (`performance_claim=false`); A3 host/native
-measurement decides promotion.
+
+The A3 real-Uvicorn preflight then fails closed before measured SSE. At
+`temperature=0.85`, `top_k=8`, `top_p=0.82`, `min_p=0.08`, fixed seed 17, and
+the realistic penalty/logprob set, host and native auto-tool C1 both repeat the
+valid first `small_repo` turn but reach 64 tokens on turn 1 with
+`invalid_tool_call`. Native telemetry is correctly `gpu_sample` with zero logits
+D2H; host telemetry is `host_logits_sample` with **63,569,920 bytes** of
+full-vocabulary D2H on that failed turn. Conversely, two repeats of all four
+specific strict-tool turns are exact and valid under the native-enabled server,
+but every row reports `host_logits_sample` /
+`native_gpu_unsupported_request`, totaling **198,656,000 bytes** of D2H across
+200 generated tokens. All three servers drain request/session/KV/graph/workspace
+ownership to zero.
+
+No request route is therefore both native-eligible and valid across the frozen
+strict-tool workload. The C1/C4/C8 timing matrix did not start, no active-SSE or
+tool-ready number is retained or inferred, and GGUF native sampling remains
+explicit/default-off. Artifact:
+`benchmarks/results/2026-07-22-w7900-agentic-a3-native-sampler-blocked.json`.
 
 ### P4 — Complete gfx1100 PARO c4/c8 resident serving
 
@@ -465,10 +487,12 @@ Every retained comparison requires:
 - **A2 — prefix A/B (closed, rejected):** exact/lifecycle-safe scoped radix,
   but materially regressive at C1; cache-off remains default and C4/C8 was
   skipped by prerequisite.
-- **A3 — sampled path (next):** host-logits baseline versus the now
-  correctness-ready explicit native GGUF candidate.
-- **A4 — routing/SLO:** batch-window and prefill-policy A/B under delayed mixed
-  arrivals.
+- **A3 — sampled path (closed, blocked before timing):** native-eligible
+  auto-tool rows fail the frozen turn-1 strict-envelope oracle, while all valid
+  specific/required tool rows use explicit host fallback; no C1/C4/C8 timing or
+  promotion claim exists.
+- **A4 — routing/SLO (next):** batch-window and prefill-policy A/B under delayed
+  mixed arrivals.
 - **A5 — pressure/soak:** cancellation, slow consumer, queue/KV/cache pressure,
   eviction, and final ownership.
 - **A6 — quality lane:** automatic tool selection and repository-task oracles,

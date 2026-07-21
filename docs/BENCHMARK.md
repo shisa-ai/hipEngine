@@ -968,6 +968,20 @@ infer missing C4/C8 timing from C1 or prior controls. The final decision artifac
 must hash the A1 control, C1 pair packet, C4/C8 disposition, and lifecycle packet,
 and must keep the candidate non-default when any promotion gate is false.
 
+A3 native-sampler decisions have an earlier fail-closed sampled-tool prerequisite.
+Before any measured SSE interval, run the same fixed-seed blocking oracle through
+both host and native-eligible `tool_choice=auto` routes on `small_repo` C1. Every
+frozen turn must finish with one declared schema-valid tool call, exact response
+IDs/accounting, and the advertised sampler/D2H metadata. Separately prove that
+specific/required strict-tool forcing, close queues, unsupported processor shapes,
+stop/EOS, and bounded logprobs either run natively as advertised or report the
+explicit host fallback. A failed blocking oracle stops the C1/C4/C8 timing matrix
+and emits a no-timing blocked artifact; do not assign active-SSE/tool-ready rates
+to invalid tool output or infer wider-concurrency performance. Native promotion
+still requires fixed-seed repeatability, CPU-reference distribution sanity, zero
+full-vocabulary D2H on supported rows, one warmup plus three measurements for all
+frozen C1/C4/C8 conditions, no C1 regression, and the medium-C4 guard.
+
 The complete active board is [`AGENTIC-OPT.md`](AGENTIC-OPT.md).
 
 ### Speculative decode / DFlash rows

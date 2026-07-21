@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-22
+
+- [blocked gfx1100 coding-agent A3 native-sampler screen; no timing claim] W7900 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV real-Uvicorn C1 `small_repo` moves **planned host/native C1/C4/C8 matrix -> stopped at blocking-oracle preflight** (% delta n/a): fixed-seed auto-tool host/native both repeat a valid turn 0 but fail turn 1 as `invalid_tool_call`; native removes logits D2H while host copies **63,569,920 bytes**. Two repeats of all **4/4** forced-tool turns are exact but explicitly host-backed (**198,656,000 bytes / 200 tokens**), so no route is both native-eligible and frozen-tool valid. Keep GGUF native sampling default-off; no active-SSE/tool-ready rate is retained. `benchmarks/results/2026-07-22-w7900-agentic-a3-native-sampler-blocked.json`.
+
 ## 2026-07-21
 
 - [final rejected gfx1100 coding-agent A2 prefix decision] W7900 Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV aggregates active-SSE-scoped A1 control + complete three-pair C1 + prerequisite-gated C4/C8 skip + lifecycle closure: radix moves paired C1 goodput **-64.19%/-65.63%/-26.64%** and tool-ready **+181.90%/+196.09%/+38.81%**, with only **0/12, 3/24, 3/18** hits, failed A1 guards, and failed growing/medium variance. Exactness/lifecycle pass but cannot promote; keep cache off and radix explicit diagnostic-only. `benchmarks/results/2026-07-21-w7900-agentic-a2-prefix-decision.json`.
