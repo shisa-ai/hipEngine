@@ -172228,3 +172228,41 @@ Published
 fail-closed no-timing artifact; it records the full planned protocol, task #225
 artifact/hash, failed prerequisite, and confirms that no C4/C8 GPU measurement
 or partial promotion occurred.
+
+## 2026-07-21 — Close A2.3 prefix lifecycle and pressure correctness
+
+Closed task #227 without reopening rejected performance timing. The closure
+combines the four retained real-W7900 processed-argmax gates with the complete
+C1 ownership/economics packet and targeted fail-closed lifecycle tests:
+
+- p2048/p8192 active-current and completed-source reuse preserves the exact
+  five response IDs, every Conv/GDN/live-KV component, and teacher-forced
+  `KL=0` / top-1 100%; active refs drain to zero and completed snapshots follow
+  `1->1->2->1->0` through explicit eviction;
+- real pool current/high-water bytes are **141,557,760** at p2048 and
+  **519,045,120** at p8192; completed cache residency is bounded at
+  **108,789,760/234,618,880 bytes** before eviction;
+- final real-agentic cache residency is
+  **124,518,400/129,761,280/255,590,400 bytes** for
+  small/growing/medium, under declared **234,618,880/234,618,880/486,277,120**
+  byte limits, with every non-cache request/session/KV/pin/graph/workspace owner
+  at zero;
+- useful growing/medium snapshot hits cost **20,480 bytes of reused pages plus
+  21,760/7,680 state-clone bytes per token**, or **42,240/28,160 total cache
+  bytes per reused token**; small has no usable measured hit;
+- host gates close bounded latest-aligned LRU replacement, shared-page
+  COW/refcount/pin/unpin, source-preserving admission rollback, miss/full-prompt/
+  stochastic fallback, cache-owned eviction, and final drain;
+- server gates close cancelled queue admission, live-neighbor survival,
+  disconnect acknowledgement, bounded slow-consumer backpressure, deadline
+  acknowledgement/reuse, and app-local fork/rollback isolation. Resident device
+  state fork/rollback remains explicitly unsupported rather than implied.
+
+The exact mechanical lifecycle command recorded in the artifact passes **50/50**
+with only the existing Starlette/httpx warning; the artifact contract test and
+Ruff/JSON/`git diff --check` pass separately. Published
+`benchmarks/results/2026-07-21-w7900-agentic-a2-prefix-lifecycle-closure.json`
+(SHA-256 `6768e849fa2338da222e6ec8cc43ad48b99148c6faf9e7d70445af126ea4198a`).
+It records `correctness_claim=true`, `performance_claim=false`, and
+`timing_claim=false`: lifecycle is bounded and fail-closed, but cannot promote
+the A2 route after the complete C1 performance rejection.

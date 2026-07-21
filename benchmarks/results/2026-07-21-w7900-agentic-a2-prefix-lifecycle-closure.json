@@ -1,0 +1,339 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_agentic_a2_prefix_lifecycle_closure",
+  "created_at": "2026-07-21T15:27:24.012601+00:00",
+  "status": "passed_correctness_route_rejected_performance",
+  "passed": true,
+  "correctness_claim": true,
+  "performance_claim": false,
+  "timing_claim": false,
+  "source_revision": "496dbd60",
+  "decision": "lifecycle is fail-closed and bounded, but cannot promote the C1-regressive radix route",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "target_rocm_index": 0
+  },
+  "real_gpu_active_and_completed_gates": [
+    {
+      "artifact": "benchmarks/results/2026-07-21-gfx1100-gguf-processed-argmax-p2048-active-prefix-correctness.json",
+      "sha256": "31504980ec737d32e6ce2be7611bfd48713e7276e528d0d97299cf0e72882324",
+      "prefix_tokens": 2048,
+      "source_lifecycle": "active",
+      "response_ids_exact": true,
+      "candidate_response_token_ids": [
+        9709,
+        9710,
+        13,
+        220,
+        16
+      ],
+      "initial_state_exact": true,
+      "final_state_exact": true,
+      "kl_max": 0.0,
+      "top1_agreement": 1.0,
+      "lifecycle": {
+        "source_lifecycle": "active",
+        "source_released_before_continuation_admission": false,
+        "source_session_reset": true,
+        "source_refcount_before_release": 2,
+        "source_refcount_after_release": 1,
+        "shared_refcount_after_admission": 2,
+        "shared_refcount_after_continuation_release": 0,
+        "snapshot_evicted": false,
+        "final_refcounted_pages": 0,
+        "exact": true
+      },
+      "reused_tokens": 2048,
+      "reused_pages": 8,
+      "saved_live_bytes": 41943040,
+      "state_clone_bytes": 66846720,
+      "pool_current_bytes": 141557760,
+      "pool_high_water_bytes": 141557760,
+      "cow_fork_events": 0,
+      "pinned_pages": 0,
+      "cache_resident_bytes_before_eviction": 0,
+      "cache_resident_limit_bytes": 141557760,
+      "final_refcounted_pages": 0
+    },
+    {
+      "artifact": "benchmarks/results/2026-07-21-gfx1100-gguf-processed-argmax-p2048-completed-prefix-correctness.json",
+      "sha256": "070a990c945109124451fcd4040be4f069a0e5e5822e38a23a6a9ac6aa3c7e2d",
+      "prefix_tokens": 2048,
+      "source_lifecycle": "completed",
+      "response_ids_exact": true,
+      "candidate_response_token_ids": [
+        9709,
+        9710,
+        13,
+        220,
+        16
+      ],
+      "initial_state_exact": true,
+      "final_state_exact": true,
+      "kl_max": 0.0,
+      "top1_agreement": 1.0,
+      "lifecycle": {
+        "source_lifecycle": "completed",
+        "source_released_before_continuation_admission": true,
+        "source_session_reset": true,
+        "source_refcount_before_release": 1,
+        "source_refcount_after_release": 1,
+        "shared_refcount_after_admission": 2,
+        "shared_refcount_after_continuation_release": 1,
+        "snapshot_evicted": true,
+        "final_refcounted_pages": 0,
+        "exact": true
+      },
+      "reused_tokens": 2048,
+      "reused_pages": 8,
+      "saved_live_bytes": 41943040,
+      "state_clone_bytes": 66846720,
+      "pool_current_bytes": 141557760,
+      "pool_high_water_bytes": 141557760,
+      "cow_fork_events": 0,
+      "pinned_pages": 0,
+      "cache_resident_bytes_before_eviction": 108789760,
+      "cache_resident_limit_bytes": 342097920,
+      "final_refcounted_pages": 0
+    },
+    {
+      "artifact": "benchmarks/results/2026-07-21-gfx1100-gguf-processed-argmax-p8192-active-prefix-correctness.json",
+      "sha256": "8aa6772ff650ac200d3b8336c8d3c4ee9d2a0dfc35cf5392376a9574360045b9",
+      "prefix_tokens": 8192,
+      "source_lifecycle": "active",
+      "response_ids_exact": true,
+      "candidate_response_token_ids": [
+        9709,
+        9710,
+        13,
+        220,
+        16
+      ],
+      "initial_state_exact": true,
+      "final_state_exact": true,
+      "kl_max": 0.0,
+      "top1_agreement": 1.0,
+      "lifecycle": {
+        "source_lifecycle": "active",
+        "source_released_before_continuation_admission": false,
+        "source_session_reset": true,
+        "source_refcount_before_release": 2,
+        "source_refcount_after_release": 1,
+        "shared_refcount_after_admission": 2,
+        "shared_refcount_after_continuation_release": 0,
+        "snapshot_evicted": false,
+        "final_refcounted_pages": 0,
+        "exact": true
+      },
+      "reused_tokens": 8192,
+      "reused_pages": 32,
+      "saved_live_bytes": 167772160,
+      "state_clone_bytes": 66846720,
+      "pool_current_bytes": 519045120,
+      "pool_high_water_bytes": 519045120,
+      "cow_fork_events": 0,
+      "pinned_pages": 0,
+      "cache_resident_bytes_before_eviction": 0,
+      "cache_resident_limit_bytes": 519045120,
+      "final_refcounted_pages": 0
+    },
+    {
+      "artifact": "benchmarks/results/2026-07-21-gfx1100-gguf-processed-argmax-p8192-completed-prefix-correctness.json",
+      "sha256": "41b7d7faf80ab6b636120ccc2b67942654f7906341887ea238a3313634b539eb",
+      "prefix_tokens": 8192,
+      "source_lifecycle": "completed",
+      "response_ids_exact": true,
+      "candidate_response_token_ids": [
+        9709,
+        9710,
+        13,
+        220,
+        16
+      ],
+      "initial_state_exact": true,
+      "final_state_exact": true,
+      "kl_max": 0.0,
+      "top1_agreement": 1.0,
+      "lifecycle": {
+        "source_lifecycle": "completed",
+        "source_released_before_continuation_admission": true,
+        "source_session_reset": true,
+        "source_refcount_before_release": 1,
+        "source_refcount_after_release": 1,
+        "shared_refcount_after_admission": 2,
+        "shared_refcount_after_continuation_release": 1,
+        "snapshot_evicted": true,
+        "final_refcounted_pages": 0,
+        "exact": true
+      },
+      "reused_tokens": 8192,
+      "reused_pages": 32,
+      "saved_live_bytes": 167772160,
+      "state_clone_bytes": 66846720,
+      "pool_current_bytes": 519045120,
+      "pool_high_water_bytes": 519045120,
+      "cow_fork_events": 0,
+      "pinned_pages": 0,
+      "cache_resident_bytes_before_eviction": 234618880,
+      "cache_resident_limit_bytes": 719585280,
+      "final_refcounted_pages": 0
+    }
+  ],
+  "real_agentic_cache_economics": {
+    "artifact": "benchmarks/results/2026-07-21-w7900-agentic-a2-c1-prefix-rejected.json",
+    "sha256": "8b8e3eb092bdb2061ee1de63a231c4a8fcb5d9a833c7587071d3b038406f5cb2",
+    "families": {
+      "small_repo": {
+        "max_request_observed_cache_bytes": 66846720,
+        "max_request_observed_cache_pages": 0,
+        "max_final_cache_resident_bytes": 124518400,
+        "max_final_cache_resident_pages": 11,
+        "max_allowed_cache_bytes": 234618880,
+        "max_cache_bytes_per_reused_token": 0.0,
+        "reused_page_bytes_per_token": 0.0,
+        "state_clone_bytes_per_token": 0.0,
+        "all_non_cache_final_owners_zero": true
+      },
+      "growing_history": {
+        "max_request_observed_cache_bytes": 129761280,
+        "max_request_observed_cache_pages": 12,
+        "max_final_cache_resident_bytes": 129761280,
+        "max_final_cache_resident_pages": 12,
+        "max_allowed_cache_bytes": 234618880,
+        "max_cache_bytes_per_reused_token": 42240.0,
+        "reused_page_bytes_per_token": 20480.0,
+        "state_clone_bytes_per_token": 21760.0,
+        "all_non_cache_final_owners_zero": true
+      },
+      "medium_repo": {
+        "max_request_observed_cache_bytes": 245104640,
+        "max_request_observed_cache_pages": 34,
+        "max_final_cache_resident_bytes": 255590400,
+        "max_final_cache_resident_pages": 36,
+        "max_allowed_cache_bytes": 486277120,
+        "max_cache_bytes_per_reused_token": 28160.0,
+        "reused_page_bytes_per_token": 20480.0,
+        "state_clone_bytes_per_token": 7680.0,
+        "all_non_cache_final_owners_zero": true
+      }
+    },
+    "all_target_gpu0_exclusive": true,
+    "all_final_ownership_bounded": true,
+    "performance_route_accepted": false
+  },
+  "lifecycle_matrix": {
+    "active_current": {
+      "covered": true,
+      "evidence": [
+        "p2048 active exact gate",
+        "p8192 active exact gate"
+      ],
+      "expected_ref_path": "1->2->1->0 equivalent source/shared/final drain"
+    },
+    "completed_source": {
+      "covered": true,
+      "evidence": [
+        "p2048 completed snapshot gate",
+        "p8192 completed snapshot gate"
+      ],
+      "expected_ref_path": "1->1->2->1->0 with explicit eviction"
+    },
+    "hit_miss_source_boundaries": {
+      "covered": true,
+      "evidence": [
+        "four real GPU gates",
+        "18-condition agentic C1 packet"
+      ],
+      "sources": [
+        "active_current",
+        "completed_snapshot"
+      ],
+      "fallbacks": [
+        "miss",
+        "full_prompt_boundary_requires_suffix",
+        "sampling_unsupported"
+      ]
+    },
+    "bounded_lru_residency_and_eviction": {
+      "covered": true,
+      "snapshot_policy": "latest aligned snapshot per active owner, bounded by runner capacity",
+      "completed_p2048_resident_bytes": 108789760,
+      "completed_p8192_resident_bytes": 234618880,
+      "explicit_eviction_final_refcounted_pages": 0
+    },
+    "cow_refcount_pin": {
+      "covered": true,
+      "real_page_aligned_cow_events": 0,
+      "real_final_pinned_pages": 0,
+      "host_cow_fork_and_pin_unpin_gate": true,
+      "host_shared_prefix_reclaim_zero_only_gate": true
+    },
+    "cancellation_and_admission_rollback": {
+      "covered": true,
+      "prefix_runner_rollback_releases_destination_and_preserves_source": true,
+      "cancelled_queued_submit_skipped": true,
+      "live_neighbor_survives_member_cancellation": true
+    },
+    "disconnect_and_slow_consumer": {
+      "covered": true,
+      "slow_stream_queue_bounded_without_blocking_neighbor": true,
+      "stream_close_waits_for_backend_cancel_ack": true,
+      "http_disconnect_maps_to_cancelled_error": true
+    },
+    "deadline": {
+      "covered": true,
+      "gguf_decode_checks_deadline_after_step": true,
+      "deadline_waits_for_cancel_ack": true,
+      "timeout_returns_deadline_and_server_reuses": true
+    },
+    "fork_and_rollback": {
+      "covered": true,
+      "resident_state_reuse_supported": false,
+      "explicit_behavior": "server deep-copies app-local transcript; no resident prefix state is forked or rolled back",
+      "fork_cross_contamination_gate": true,
+      "rollback_visible_transcript_gate": true,
+      "fork_existing_target_and_capacity_rejection_gate": true
+    }
+  },
+  "mechanical_validation": {
+    "command": "uv run pytest -q tests/test_gguf_prefix_cache_runner.py tests/test_kvcache_policy.py tests/test_generation_qwen35_gguf_sampling.py::test_gguf_greedy_host_decode_checks_deadline_after_step tests/test_generation_qwen35_gguf_sampling.py::test_gguf_greedy_host_decode_checks_cancellation_after_step tests/test_server_api.py::test_ready_reports_bounded_prefix_cache_ownership tests/test_server_api.py::test_generation_batcher_bounds_slow_stream_queue_without_blocking_neighbor tests/test_server_api.py::test_generation_batcher_stream_close_waits_for_cooperative_backend_cancel tests/test_server_api.py::test_generation_batcher_skips_cancelled_queued_submit tests/test_server_api.py::test_generation_batcher_keeps_different_deadlines_separate tests/test_server_api.py::test_generation_batcher_live_neighbor_survives_member_cancellation tests/test_server_api.py::test_await_with_request_control_deadline_waits_for_child_cancel_ack tests/test_server_api.py::test_stream_completion_caller_cancel_records_one_cancelled_request tests/test_server_api.py::test_request_control_maps_http_disconnect_to_cancelled_error tests/test_server_api.py::test_completion_timeout_returns_deadline_error_and_server_reuses tests/test_server_api.py::test_chat_session_fork_branches_visible_transcript_without_cross_contamination tests/test_server_api.py::test_chat_session_rollback_trims_visible_transcript_for_next_turn tests/test_server_api.py::test_chat_session_fork_rejects_existing_target_and_session_cap",
+    "test_nodes": [
+      "tests/test_gguf_prefix_cache_runner.py",
+      "tests/test_kvcache_policy.py",
+      "tests/test_generation_qwen35_gguf_sampling.py::test_gguf_greedy_host_decode_checks_deadline_after_step",
+      "tests/test_generation_qwen35_gguf_sampling.py::test_gguf_greedy_host_decode_checks_cancellation_after_step",
+      "tests/test_server_api.py::test_ready_reports_bounded_prefix_cache_ownership",
+      "tests/test_server_api.py::test_generation_batcher_bounds_slow_stream_queue_without_blocking_neighbor",
+      "tests/test_server_api.py::test_generation_batcher_stream_close_waits_for_cooperative_backend_cancel",
+      "tests/test_server_api.py::test_generation_batcher_skips_cancelled_queued_submit",
+      "tests/test_server_api.py::test_generation_batcher_keeps_different_deadlines_separate",
+      "tests/test_server_api.py::test_generation_batcher_live_neighbor_survives_member_cancellation",
+      "tests/test_server_api.py::test_await_with_request_control_deadline_waits_for_child_cancel_ack",
+      "tests/test_server_api.py::test_stream_completion_caller_cancel_records_one_cancelled_request",
+      "tests/test_server_api.py::test_request_control_maps_http_disconnect_to_cancelled_error",
+      "tests/test_server_api.py::test_completion_timeout_returns_deadline_error_and_server_reuses",
+      "tests/test_server_api.py::test_chat_session_fork_branches_visible_transcript_without_cross_contamination",
+      "tests/test_server_api.py::test_chat_session_rollback_trims_visible_transcript_for_next_turn",
+      "tests/test_server_api.py::test_chat_session_fork_rejects_existing_target_and_session_cap"
+    ],
+    "passed": 50,
+    "failed": 0,
+    "warning": "Starlette httpx deprecation only"
+  },
+  "acceptance": {
+    "exact_survivor_ids_and_state_kv": true,
+    "bounded_declared_cache_bytes": true,
+    "zero_non_cache_final_owners": true,
+    "active_and_completed_sources_exact": true,
+    "eviction_and_refcount_drain_exact": true,
+    "cancellation_disconnect_slow_deadline_fail_closed": true,
+    "fork_rollback_explicitly_rejected_for_resident_state": true,
+    "performance_promotion_allowed": false
+  },
+  "notes": [
+    "Memory/current/high-water and cache bytes per reusable token are reported separately from speed.",
+    "The task does not attach new timing to lifecycle tests because task #225 already rejected the route at C1.",
+    "Generic server control gates compose with the prefix runner rollback gate at the shared cancellation acknowledgement boundary."
+  ]
+}
