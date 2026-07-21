@@ -172145,3 +172145,71 @@ Targeted Ruff, `git diff --check`, all four JSON fail-closed assertions,
 `sync_benchmark_readme.py --check` also pass. An optional repository-wide pytest
 run was stopped without failures after 33% when it entered unrelated long GPU
 matrices; it is not cited as the applicable validation gate.
+
+## 2026-07-21 — Reject A2.1 at the complete C1 agentic gate
+
+Resumed task #225 from clean pushed `fb9531b2` in detached worktree
+`/tmp/hipengine-a2-c1-fb9531b2`, retaining A1 control SHA-256
+`29133f5fb0fa36f0f83fe34565ad7df93214b8eb7e035ac56b5413713e495f3f`.
+The protocol completed one discarded full-workload warmup and one measured
+full-workload collection for every condition in three balanced off/radix pairs
+for `small_repo@4096`, `growing_history@4096`, and `medium_repo@10240` at C1.
+Each condition started a fresh real Uvicorn server on W7900 GPU0 with exact A1
+environment, BF16 KV, `max_active_requests=1`, zero batch window, and 256-token
+prefill chunks. The exact driver command was:
+
+```bash
+/home/lhl/mambaforge/envs/therock/bin/python3 \
+  /tmp/run_agentic_a2_c1_pairs_fb9531b2.py
+```
+
+The final raw manifest has 18 measured conditions, all source/artifact/tool/ID
+gates exact, bounded declared cache ownership, at least 115 target-server KFD
+samples per condition, and zero GPU0 competitor samples. One preliminary pair2
+radix condition was discarded and rerun after the monitor's `/proc/<pid>/stat`
+parser encountered a process name containing spaces; the final driver parses
+PPID after the closing command-name parenthesis and all retained conditions have
+continuous monitor coverage. Raw manifest:
+`/tmp/agentic-a2-c1-fb9531b2/raw-manifest.json` (1.4 MiB, uncommitted, SHA-256
+`9efedad6c00a96f9d53c6c3717fb5b4c1401ac79991c1ad32a33ab7c8ad2c174`).
+
+The result rejects agentic radix promotion decisively:
+
+- `small_repo`: off/radix median active-SSE **13.060/4.727 tok/s**
+  (**-64.19% paired**), tool-ready p50 **1.893/5.247 s** (**+181.90%**), and
+  **0/12** radix hits;
+- `growing_history`: **12.248/4.216 tok/s** (**-65.63%**),
+  **2.059/6.097 s** (**+196.09%**), and **3/24** hits;
+- `medium_repo`: **3.851/2.838 tok/s** (**-26.64%**),
+  **4.809/6.632 s** (**+38.81%**), and **3/18** hits.
+
+All radix medians materially fail the retained A1 guards
+(**16.239/15.100/4.127 tok/s**, **1.526/1.655/4.396 s**), while even current
+cache-off is below A1 by roughly 6.7-19.6%. Small primary relative ranges pass
+5%; growing and medium radix primary variance do not. Full-vocabulary D2H
+remains **99,328,000/197,662,720/144,025,600 bytes per measured run** because
+strict tools still use host processed-argmax. Growing's three snapshot hits
+reuse 9,216 tokens total at **20,480 page + 21,760 state = 42,240 cache bytes per
+token**. Medium reuses 26,112 tokens at **20,480 + 7,680 = 28,160 bytes per
+token**. Maximum declared cache residency is
+**124,518,400/129,761,280/255,590,400 bytes** for small/growing/medium, with
+all non-cache owners and KV refs/pins zero.
+
+The sparse hit pattern is structural, not a correctness failure. The Qwen tool
+chat template places the per-turn forced-tool instruction near token 292 before
+the stable repository/system body, while the bounded snapshot policy retains a
+later exact aligned boundary. Small adjacent turns therefore have only a
+256-token reusable boundary and no retained match; growing and medium retain
+only isolated warmup-carried boundaries. Exact radix misses then pay aligned
+snapshot creation plus c1 tail handling without enough avoided prefill to
+amortize it. Do not tune snapshot placement to these fixed prompts.
+
+Published
+`benchmarks/results/2026-07-21-w7900-agentic-a2-c1-prefix-rejected.json`
+(SHA-256 `8b8e3eb092bdb2061ee1de63a231c4a8fcb5d9a833c7587071d3b038406f5cb2`).
+It records `measurement_valid=true`, `performance_claim=false`, every paired
+sample, prefix/source/cache/D2H/prefill metric, correctness artifact reference,
+KFD ownership evidence, and the failed acceptance guards. Keep radix
+default-off. Per task #226's explicit prerequisite, the C4/C8 promotion matrix
+must not run after C1 fails; lifecycle correctness remains a separate negative
+closure input.

@@ -225,12 +225,21 @@ teacher-forced logits (`KL=0`, top-1 100%). They reuse 8/32 pages, clone
 66,846,720 state bytes, preserve expected zero-COW page-aligned behavior, and
 drain final refs to zero; completed cache residency is bounded at 108,789,760 /
 234,618,880 bytes before explicit eviction. Radix observability is iterative at
-8K depth, so telemetry no longer depends on Python's recursion limit. This is
-correctness-only; task #225 must still run the complete balanced A2.1 timing
-matrix before any performance or default-promotion claim.
+8K depth, so telemetry no longer depends on Python's recursion limit.
 
-Do not make radix caching default merely because p256+s1 is fast. Default
-promotion requires the multi-turn workload and bounded LRU/pressure gates.
+The complete A2.1 C1 matrix rejects this route for agentic promotion. Three
+balanced off/radix pairs per family pass exact response/tool, bounded ownership,
+and GPU0 exclusivity gates, but the retained latest-boundary snapshot rarely
+matches the next forced-tool prompt: small hits **0/12**, growing **3/24**, and
+medium **3/18** measured turns. Radix versus paired off regresses active-SSE
+median goodput **64.19%/65.63%/26.64%** and worsens buffered tool-ready p50
+**181.90%/196.09%/38.81%**. Radix medians **4.727/4.216/2.838 tok/s** and
+**5.247/6.097/6.632 s** all fail the A1 C1 guards, and growing/medium variance
+exceeds 5%. Exact miss/tail handling costs more than the sparse hits save.
+Therefore keep radix default-off and stop the prerequisite-gated C4/C8
+promotion matrix; do not optimize snapshot placement to these fixed prompts.
+Lifecycle/pressure correctness remains independently useful, but cannot reverse
+the C1 performance decision.
 
 ### P2 — Transfer low-occupancy/SLO routing to gfx1100
 
