@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unicodedata
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Mapping, Sequence
 
@@ -42,6 +43,9 @@ class Qwen35GGUFTokenizer:
     merge_ranks: dict[tuple[str, str], int] = field(init=False)
     byte_encoder: dict[int, str] = field(default_factory=bytes_to_unicode, init=False)
     byte_decoder: dict[str, int] = field(init=False)
+    atomic_tokens_by_prefix: dict[str, tuple[tuple[str, int], ...]] = field(
+        init=False, repr=False
+    )
     _cache: dict[str, tuple[str, ...]] = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
@@ -55,6 +59,14 @@ class Qwen35GGUFTokenizer:
                 continue
             self.merge_ranks[(left, right)] = rank
         self.byte_decoder = {value: key for key, value in self.byte_encoder.items()}
+        atomic: dict[str, list[tuple[str, int]]] = {}
+        for token_id, (token, kind) in enumerate(zip(self.tokens, self.token_types, strict=True)):
+            if token and int(kind) in {3, 4}:
+                atomic.setdefault(token[0], []).append((token, token_id))
+        self.atomic_tokens_by_prefix = {
+            prefix: tuple(sorted(items, key=lambda item: (-len(item[0]), item[1])))
+            for prefix, items in atomic.items()
+        }
 
     @classmethod
     def from_gguf_info(cls, info: GGUFModelInfo) -> "Qwen35GGUFTokenizer":
@@ -72,8 +84,41 @@ class Qwen35GGUFTokenizer:
         )
 
     def encode(self, text: str) -> list[int]:
+        return self._encode_text(text, _pretokenize_qwen35)
+
+    def _encode_text(
+        self,
+        text: str,
+        pretokenize: Callable[[str], list[str]],
+    ) -> list[int]:
         ids: list[int] = []
-        for chunk in _pretokenize_qwen35(text):
+        segment_start = 0
+        pos = 0
+        while pos < len(text):
+            match = next(
+                (
+                    item
+                    for item in self.atomic_tokens_by_prefix.get(text[pos], ())
+                    if text.startswith(item[0], pos)
+                ),
+                None,
+            )
+            if match is None:
+                pos += 1
+                continue
+            if segment_start < pos:
+                ids.extend(self._encode_chunks(pretokenize(text[segment_start:pos])))
+            token, token_id = match
+            ids.append(token_id)
+            pos += len(token)
+            segment_start = pos
+        if segment_start < len(text):
+            ids.extend(self._encode_chunks(pretokenize(text[segment_start:])))
+        return ids
+
+    def _encode_chunks(self, chunks: Sequence[str]) -> list[int]:
+        ids: list[int] = []
+        for chunk in chunks:
             encoded = "".join(self.byte_encoder[byte] for byte in chunk.encode("utf-8"))
             for piece in self._bpe(encoded):
                 try:
@@ -90,7 +135,7 @@ class Qwen35GGUFTokenizer:
             if idx < 0 or idx >= len(self.tokens):
                 raise ValueError(f"token id {idx} is outside vocabulary size {len(self.tokens)}")
             token = self.tokens[idx]
-            if skip_special and self.token_types[idx] != 1:
+            if skip_special and self.token_types[idx] == 3:
                 continue
             if all(char in self.byte_decoder for char in token):
                 pieces.append(token)
@@ -127,13 +172,121 @@ class Qwen35GGUFTokenizer:
         return word
 
 
+@dataclass
+class LagunaGGUFTokenizer(Qwen35GGUFTokenizer):
+    """Torch-free Laguna byte-BPE tokenizer loaded from GGUF metadata."""
+
+    bos_token_id: int | None = None
+    eot_token_id: int | None = None
+    separator_token_id: int | None = None
+    mask_token_id: int | None = None
+    unknown_token_id: int | None = None
+    add_bos_token: bool = False
+    chat_template: str = ""
+
+    @classmethod
+    def from_gguf_info(cls, info: GGUFModelInfo) -> "LagunaGGUFTokenizer":
+        metadata = info.metadata
+        model = metadata.get("tokenizer.ggml.model")
+        pre = metadata.get("tokenizer.ggml.pre")
+        if model != "gpt2" or pre != "laguna":
+            raise ValueError(
+                "Laguna GGUF tokenizer expected 'gpt2'/'laguna', "
+                f"got {model!r}/{pre!r}"
+            )
+        return cls(
+            tokens=tuple(str(token) for token in metadata["tokenizer.ggml.tokens"]),
+            merges=tuple(str(merge) for merge in metadata["tokenizer.ggml.merges"]),
+            token_types=tuple(int(kind) for kind in metadata["tokenizer.ggml.token_type"]),
+            bos_token_id=_optional_int(metadata.get("tokenizer.ggml.bos_token_id")),
+            eos_token_id=_optional_int(metadata.get("tokenizer.ggml.eos_token_id")),
+            eot_token_id=_optional_int(metadata.get("tokenizer.ggml.eot_token_id")),
+            padding_token_id=_optional_int(metadata.get("tokenizer.ggml.padding_token_id")),
+            separator_token_id=_optional_int(
+                metadata.get("tokenizer.ggml.seperator_token_id")
+            ),
+            mask_token_id=_optional_int(metadata.get("tokenizer.ggml.mask_token_id")),
+            unknown_token_id=_optional_int(metadata.get("tokenizer.ggml.unknown_token_id")),
+            add_bos_token=bool(metadata.get("tokenizer.ggml.add_bos_token", False)),
+            chat_template=str(metadata.get("tokenizer.chat_template", "")),
+        )
+
+    @property
+    def stop_token_ids(self) -> tuple[int, ...]:
+        values = (self.eos_token_id, self.eot_token_id)
+        return tuple(dict.fromkeys(int(value) for value in values if value is not None))
+
+    def encode(self, text: str, *, add_special_tokens: bool = False) -> list[int]:
+        ids = self._encode_text(text, _pretokenize_laguna)
+        if add_special_tokens and self.add_bos_token:
+            if self.bos_token_id is None:
+                raise ValueError("Laguna tokenizer requests BOS insertion but has no BOS token ID")
+            ids.insert(0, self.bos_token_id)
+        return ids
+
+
 def _pretokenize_qwen35(text: str) -> list[str]:
+    return _pretokenize_qwen_family(text, include_marks=True)
+
+
+def _pretokenize_laguna(text: str) -> list[str]:
+    """Mirror Poolside llama.cpp's newline split followed by Qwen2-style split."""
+
     chunks: list[str] = []
-    start = 0
+    for run in _split_newline_runs(text):
+        chunks.extend(_pretokenize_qwen_family(run, include_marks=False))
+    return chunks
+
+
+def _split_newline_runs(text: str) -> list[str]:
+    """Split around ``(?:\r?\n)+`` while retaining CRLF as one run."""
+
+    runs: list[str] = []
+    segment_start = 0
+    pos = 0
+    while pos < len(text):
+        newline_start = pos
+        if text[pos] == "\r" and pos + 1 < len(text) and text[pos + 1] == "\n":
+            pos += 2
+        elif text[pos] == "\n":
+            pos += 1
+        else:
+            pos += 1
+            continue
+        while pos < len(text):
+            if text[pos] == "\r" and pos + 1 < len(text) and text[pos + 1] == "\n":
+                pos += 2
+            elif text[pos] == "\n":
+                pos += 1
+            else:
+                break
+        if newline_start > segment_start:
+            runs.append(text[segment_start:newline_start])
+        runs.append(text[newline_start:pos])
+        segment_start = pos
+    if segment_start < len(text):
+        runs.append(text[segment_start:])
+    return runs
+
+
+def _pretokenize_qwen_family(text: str, *, include_marks: bool) -> list[str]:
+    chunks: list[str] = []
     end = len(text)
 
     def char(pos: int) -> str | None:
         return text[pos] if 0 <= pos < end else None
+
+    def word_char(value: str | None) -> bool:
+        return _is_letter(value) or (include_marks and _is_mark(value))
+
+    def punctuation_boundary(value: str | None) -> bool:
+        return (
+            value is None
+            or _is_whitespace(value)
+            or _is_letter(value)
+            or _is_number(value)
+            or (include_marks and _is_mark(value))
+        )
 
     pos = 0
     while pos < end:
@@ -147,63 +300,37 @@ def _pretokenize_qwen35(text: str) -> list[str]:
             if text[pos + 1].lower() in {"s", "t", "m", "d"}:
                 pos += 2
                 chunks.append(text[token_start:pos])
-                start = pos
                 continue
             if tail2 in {"re", "ve", "ll"}:
                 pos += 3
                 chunks.append(text[token_start:pos])
-                start = pos
                 continue
 
-        # regex: [^\r\n\p{L}\p{N}]?[\p{L}\p{M}]+
+        # Qwen35 consumes marks in the letter run; Laguna uses plain \p{L}+.
         if current not in {"\r", "\n"} and not _is_number(current):
-            next_char = char(pos + 1)
-            if (
-                _is_letter(current)
-                or _is_mark(current)
-                or _is_mark(next_char)
-                or _is_letter(next_char)
-            ):
+            if word_char(current) or word_char(char(pos + 1)):
                 pos += 1
-                while _is_letter(char(pos)) or _is_mark(char(pos)):
+                while word_char(char(pos)):
                     pos += 1
                 chunks.append(text[token_start:pos])
-                start = pos
                 continue
 
         # regex: \p{N}
         if _is_number(current):
             pos += 1
             chunks.append(text[token_start:pos])
-            start = pos
             continue
 
-        # regex: <space>?[^\s\p{L}\p{M}\p{N}]+[\r\n]*
+        # Punctuation branch; Qwen35 excludes marks, while Laguna does not.
         flags_char = char(pos + 1) if current == " " else current
-        if (
-            flags_char is not None
-            and not _is_whitespace(flags_char)
-            and not _is_letter(flags_char)
-            and not _is_mark(flags_char)
-            and not _is_number(flags_char)
-        ):
+        if not punctuation_boundary(flags_char):
             if current == " ":
                 pos += 1
-            while True:
-                flags_char = char(pos)
-                if (
-                    flags_char is None
-                    or _is_whitespace(flags_char)
-                    or _is_letter(flags_char)
-                    or _is_mark(flags_char)
-                    or _is_number(flags_char)
-                ):
-                    break
+            while not punctuation_boundary(char(pos)):
                 pos += 1
             while char(pos) in {"\r", "\n"}:
                 pos += 1
             chunks.append(text[token_start:pos])
-            start = pos
             continue
 
         num_whitespaces = 0
@@ -214,32 +341,22 @@ def _pretokenize_qwen35(text: str) -> list[str]:
                 last_end_r_or_n = pos + num_whitespaces + 1
             num_whitespaces += 1
 
-        # regex: \s*[\r\n]+
         if last_end_r_or_n > 0:
             pos = last_end_r_or_n
             chunks.append(text[token_start:pos])
-            start = pos
             continue
-
-        # regex: \s+(?!\S)
         if num_whitespaces > 1 and char(pos + num_whitespaces) is not None:
             pos += num_whitespaces - 1
             chunks.append(text[token_start:pos])
-            start = pos
             continue
-
-        # regex: \s+
         if num_whitespaces > 0:
             pos += num_whitespaces
             chunks.append(text[token_start:pos])
-            start = pos
             continue
 
         pos += 1
         chunks.append(text[token_start:pos])
-        start = pos
 
-    assert start == end
     return chunks
 
 
@@ -293,4 +410,4 @@ def _optional_int(value) -> int | None:
     return None if value is None else int(value)
 
 
-__all__ = ["Qwen35GGUFTokenizer", "bytes_to_unicode"]
+__all__ = ["LagunaGGUFTokenizer", "Qwen35GGUFTokenizer", "bytes_to_unicode"]
