@@ -172749,3 +172749,31 @@ standard `cpu-fixtures` smokes pass. The repository-wide
 `tests/fixtures/cpu_reference/moe/moe_ffn_selected_gguf_q4_k.json`, which has no
 standard `expected` field; this unit did not modify that fixture or checker.
 No HIP kernel, model-output claim, or performance path changed.
+
+## 2026-07-22 — Freeze completed Laguna S 2.1 Q4_K_M artifact
+
+The target download completed at
+`/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf`. Measured final size is
+**75,173,103,200 bytes** and `sha256sum` returned
+`7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f`, exactly
+matching the Hugging Face LFS object recorded in `docs/LAGUNA.md`.
+
+Exact scanner command:
+
+```bash
+uv run python scripts/inspect_gguf.py \
+  /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf \
+  --json --check-dequant --smoke-rows 1 --fail-on-unsupported-dequant
+```
+
+It passed all span checks and reported GGUF v3, `laguna`, MOSTLY_Q4_K_M, **814
+tensors / 75,169,369,088 tensor bytes**: F16 240 / 5,606,277,120 bytes; F32
+287 / 149,138,432; Q4_K 239 / 53,876,883,456; Q6_K 48 / 15,537,070,080. There
+are no unsupported dequant types. Sampled Q4_K, Q6_K, F16, and F32 rows all
+dequantized to finite values. The production `GGUFReader` plus strict Laguna
+map resolved plugin `laguna_gguf`, consumed **814/814**, and reported 48 layers
+(12 full, 36 SWA) with per-head gates throughout. At intake,
+`hipMemGetInfo` measured 128,844,787,712 free / 128,849,018,880 total bytes
+(119.996 / 120.000 GiB). Raw JSON and hash command output remain under `/tmp`
+and are not committed. This is artifact-integrity evidence only; no independent
+logit/token correctness or speed claim is made.

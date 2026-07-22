@@ -2,7 +2,8 @@
 
 Last updated: 2026-07-22
 
-Status: implementation plan; no Laguna runtime support or performance claim yet.
+Status: foundation implementation in progress; no end-to-end Laguna runtime or
+performance claim yet.
 
 This document defines the correctness-first plan for running
 [`poolside/Laguna-S-2.1-GGUF`](https://huggingface.co/poolside/Laguna-S-2.1-GGUF),
@@ -126,13 +127,16 @@ Relevant hipEngine contracts:
 - [`DFLASH.md`](DFLASH.md) — existing native DFlash provider, verifier, accept,
   commit, and prior gfx1151/gfx1100 lessons
 
-The local target GGUF download was incomplete when this plan was written, but
-its complete GGUF header and tensor directory were available for metadata
-analysis. Hugging Face records the final 75,173,103,200-byte Q4_K_M object with
-LFS SHA-256
-`7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f`.
-After download completion, rerun the scanner and verify that hash before
-implementing against the payload.
+The local target GGUF download completed on 2026-07-22. The final local object
+is exactly 75,173,103,200 bytes and its measured SHA-256 is
+`7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f`, matching
+the Hugging Face LFS object. The repository scanner validated all tensor spans
+and reported 814 tensors / 75,169,369,088 tensor bytes with no unsupported
+dequant types. One-row Q4_K, Q6_K, F16, and F32 dequantization smokes were all
+finite. The strict Laguna map consumed all 814 tensors, resolved 12 full + 36
+SWA layers, and detected per-head attention gates throughout. This freezes the
+artifact for implementation; it is not an independent model-output oracle or a
+performance result.
 
 The DFlash safetensors artifact completed during this review. Its local file is
 2,229,962,896 bytes and has SHA-256
