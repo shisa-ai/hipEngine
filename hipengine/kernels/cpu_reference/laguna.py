@@ -663,13 +663,49 @@ def laguna_sigmoid_correction_topk(
     softcap = float(router_logit_softcapping)
     if softcap < 0.0:
         raise ValueError("router_logit_softcapping must be non-negative")
-    scale = float(routed_scaling_factor)
-    if not np.isfinite(scale) or scale <= 0.0:
-        raise ValueError("routed_scaling_factor must be finite and positive")
 
     logits = np.matmul(x, router.T).astype(np.float32)
     if softcap > 0.0:
         logits = (np.tanh(logits / np.float32(softcap)) * np.float32(softcap)).astype(np.float32)
+    return laguna_sigmoid_correction_topk_from_logits(
+        logits,
+        bias,
+        experts_used=top_k,
+        routed_scaling_factor=routed_scaling_factor,
+        norm_topk_prob=norm_topk_prob,
+    )
+
+
+def laguna_sigmoid_correction_topk_from_logits(
+    router_logits: ArrayLike,
+    correction_bias: ArrayLike,
+    *,
+    experts_used: int,
+    routed_scaling_factor: float = 1.0,
+    norm_topk_prob: bool = True,
+) -> LagunaRoutingResult:
+    """Apply Laguna's selection-only correction and routing to FP32 logits.
+
+    This is the direct oracle for the native post-projection router kernel. The
+    logits are assumed to be after any model-specific softcap. Stable descending
+    selection keeps the lower expert ID on exact ties.
+    """
+
+    logits = np.asarray(router_logits, dtype=np.float32)
+    bias = np.asarray(correction_bias, dtype=np.float32)
+    if logits.ndim != 2:
+        raise ValueError("router_logits must have shape [tokens, experts]")
+    if bias.shape != (logits.shape[1],):
+        raise ValueError("correction_bias must have shape [experts]")
+    if not np.isfinite(logits).all() or not np.isfinite(bias).all():
+        raise ValueError("router_logits and correction_bias must be finite")
+    top_k = int(experts_used)
+    if top_k <= 0 or top_k > logits.shape[1]:
+        raise ValueError("experts_used must be within [1, number of experts]")
+    scale = float(routed_scaling_factor)
+    if not np.isfinite(scale) or scale <= 0.0:
+        raise ValueError("routed_scaling_factor must be finite and positive")
+
     routing_scores = _stable_sigmoid(logits)
     selection_scores = (routing_scores + bias[None, :]).astype(np.float32)
     selected = np.argsort(-selection_scores, axis=-1, kind="stable")[:, :top_k].astype(np.int64)
@@ -778,6 +814,7 @@ __all__ = [
     "laguna_model_forward",
     "laguna_rope_tables",
     "laguna_sigmoid_correction_topk",
+    "laguna_sigmoid_correction_topk_from_logits",
     "laguna_softplus_head_gate",
     "laguna_sparse_moe_forward",
     "register_laguna_cpu_reference_kernels",

@@ -1,5 +1,11 @@
 """gfx1100 MoE/router kernel wrappers."""
 
+from hipengine.kernels.hip_gfx1100.moe.laguna_router import (
+    build_laguna_router,
+    laguna_sigmoid_correction_topk_f32,
+    plan_laguna_router_build,
+    register_laguna_router_kernels,
+)
 from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
     build_qwen35_moe_group_scatter,
     plan_qwen35_moe_group_scatter_build,
@@ -40,8 +46,11 @@ from hipengine.kernels.hip_gfx1100.moe.router import (
 )
 
 __all__ = [
+    "build_laguna_router",
     "build_qwen35_moe_group_scatter",
+    "laguna_sigmoid_correction_topk_f32",
     "build_qwen35_router",
+    "plan_laguna_router_build",
     "plan_qwen35_moe_group_scatter_build",
     "plan_qwen35_router_build",
     "qwen35_moe_gather_packed_hidden_lowp",
@@ -69,6 +78,7 @@ __all__ = [
     "qwen35_router_topk_shared_out_fp16",
     "qwen35_router_topk_shared_sigmoid_out_bf16",
     "qwen35_router_topk_shared_sigmoid_out_fp16",
+    "register_laguna_router_kernels",
     "register_qwen35_moe_group_scatter_kernels",
     "register_qwen35_moe_prefill_kernels",
     "register_qwen35_router_kernels",

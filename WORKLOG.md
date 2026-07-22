@@ -173361,3 +173361,67 @@ global/SWA bodies are new in-tree Laguna kernels, not claimed parent ports.
 Bulk/prefill SWA remains
 L8 work after the eager full-model oracle; task #29 is closed for token-serial
 execution and unblocks the full session owner.
+
+## 2026-07-22 — Add Laguna sigmoid MoE and independent shared expert
+
+Closed L5 for eager c=1. RED first failed collection because the direct
+post-logit CPU oracle and `moe/laguna_router` module did not exist. The retained
+native router remains an unfused two-stage plan: the existing exact
+BF16-hidden/F32-weight projection writes logits, then the new
+`laguna_sigmoid_router_topk/f32/correction_bias` kernel writes full unbiased
+sigmoid probabilities and a separate corrected selection-score buffer, chooses
+stable lower-ID top-10 winners, gathers only unbiased probabilities,
+sum-normalizes, and emits both unscaled and 2.5-scaled route weights. Tests
+cover 256 experts, exact ties across wave32 boundaries, logits from -100 to 100,
+and correction flips that do not leak into route values.
+
+`runtime/laguna_moe.py` resolves every stage through exact four-axis gfx1151
+keys and rejects Qwen softmax/unnormalized contracts. Its layer gate validates
+all eight sparse tensor families, raw rank-3 byte strides, T16 replacement
+allocation strides, and Q4/Q6 layout keys. The explicit scratch owner executes
+Q4T16 selected dual gate/up, separate BF16 SiLU, Q6T16 down, and a 2.5-scaled
+weighted sum. In parallel it always executes Q4-pack8 shared gate/up, separate
+SiLU, and raw-Q6 down, then adds that result without a sigmoid shared gate or
+routed scaling. This is the required unfused fallback and the input to the L6
+session owner.
+
+The production-width fixture uses hidden 3072, routed/shared FFN width 1024,
+top-10, eleven physically distinct expert strides with nontrivial selected IDs,
+and a staged raw-GGUF CPU oracle. Router IDs/weights are exact; routed, shared,
+and combined hidden relative L2 are each <=0.02; final addition is BF16-exact to
+the independently read routed+shared buffers. The focused router/MoE bundle is
+7/7 green; the expanded CPU/materialization/registry bundle is 36/36 green.
+
+Prebuilt all eight touched/reused shared objects outside profiling and enforced
+cache-only loading. Production router command:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+HIPENGINE_REQUIRE_CACHED_BUILD=1 \
+rocprofv3 --kernel-trace --output-format csv \
+  -d /tmp/laguna-router-rocprof-1784730126 -- \
+  uv run pytest -q \
+  tests/test_laguna_router_gpu.py::test_laguna_bf16_f32_router_logits_match_cpu_at_production_shape \
+  tests/test_laguna_router_gpu.py::test_laguna_router_matches_adversarial_cpu_semantics
+```
+
+The 3072x256 projection took `10.820 us` (24 VGPR, zero scratch/LDS); the
+three-row 256-expert sigmoid/correction/top-k kernel took `33.623 us` (32 VGPR,
+512 B LDS, zero scratch). Production-width expert-chain command used the same
+environment and
+`tests/test_laguna_moe_gpu.py::test_laguna_unfused_moe_matches_production_shape_quant_oracle`
+under `/tmp/laguna-moe-rocprof-1784730102`. It records Q4T16 selected dual
+`250.550 us` (200 VGPR), Q6T16 selected down `121.628 us` (96 VGPR), shared Q4
+`20.799/34.264 us`, shared Q6 `76.183 us`, weighted sum `3.126 us`, final add
+`1.964 us`, and zero scratch throughout. The high selected-Q4 VGPR count is an
+existing correctness-first c1 body and will be judged only after the L6
+whole-model family profile; these timings are dispatch evidence, not throughput
+claims.
+
+Validation also includes Ruff, formatting, compileall, and `git diff --check`.
+The mandatory broad lineage command remains blocked before a report by the
+pre-existing absent `/home/lhl/amd-gpu-tuning/reference/atlas` checkout. The
+Laguna router is a new in-tree kernel, not claimed as a Qwen parent port. L5 is
+closed for eager c=1; layer-0 dense FFN and the complete session now move to L6,
+while batched routing remains L8.
