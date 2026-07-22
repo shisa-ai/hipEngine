@@ -22,6 +22,7 @@ from typing import Callable, Sequence
 
 import numpy as np
 
+from hipengine.benchmark.correctness import evaluate_logits
 from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.memory import (
     copy_device_to_host,
@@ -56,6 +57,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--out-features", type=int, default=1024)
     parser.add_argument("--top-k", type=int, default=10)
     parser.add_argument("--decode-patterns", default="rotating,hot,repeated")
+    parser.add_argument("--decode-threads", default="256")
     parser.add_argument("--route-sets", type=int, default=32)
     parser.add_argument("--prefill-tokens", default="16,32,64,128,512")
     parser.add_argument("--distributions", default="balanced,hot,zipf")
@@ -89,6 +91,15 @@ def _csv_names(value: str) -> tuple[str, ...]:
     return values
 
 
+def parse_decode_threads(value: str) -> tuple[int, ...]:
+    threads = _csv_ints(value)
+    if any(item not in {64, 128, 256} for item in threads):
+        raise ValueError("decode threads must be selected from 64, 128, and 256")
+    if len(set(threads)) != len(threads):
+        raise ValueError("decode threads must not contain duplicates")
+    return threads
+
+
 def validate_args(args: argparse.Namespace) -> None:
     if args.experts <= 0:
         raise ValueError("experts must be positive")
@@ -98,6 +109,7 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("out_features must be positive")
     if args.top_k <= 0 or args.top_k > args.experts:
         raise ValueError("top_k must be in [1, experts]")
+    parse_decode_threads(args.decode_threads)
     if args.route_sets <= 0:
         raise ValueError("route_sets must be positive")
     if args.warmup_ms < 0:
@@ -376,6 +388,7 @@ def _selected_launch(
     selected_ptrs: Sequence[int],
     weight_ptr: int,
     out_ptr: int,
+    threads: int,
     args: argparse.Namespace,
 ) -> Callable[[], None]:
     index = [0]
@@ -393,7 +406,7 @@ def _selected_launch(
             num_experts=args.experts,
             in_features=args.in_features,
             out_features=args.out_features,
-            threads=256,
+            threads=threads,
             library=library,
             runtime=runtime,
         )
@@ -410,6 +423,7 @@ def _dual_launch(
     gate_ptr: int,
     up_ptr: int,
     out_ptr: int,
+    threads: int,
     args: argparse.Namespace,
 ) -> Callable[[], None]:
     index = [0]
@@ -428,7 +442,7 @@ def _dual_launch(
             num_experts=args.experts,
             in_features=args.in_features,
             out_features=args.out_features,
-            threads=256,
+            threads=threads,
             library=library,
             runtime=runtime,
         )
@@ -455,22 +469,35 @@ def _decode_correctness(
         num_experts=args.experts,
         in_features=args.in_features,
         out_features=args.out_features,
-        threads=256,
         library=library,
         runtime=runtime,
     )
-    gguf_iq2_xs_selected_gemv_bf16_bf16_out(
-        x_ptr, selected_ptr, gate_ptr, out_ptr, **common
-    )
-    gate_bits = _read(out_buf, shape=shape, dtype=np.dtype(np.uint16))
-    gguf_iq2_xs_selected_gemv_bf16_bf16_out(
-        x_ptr, selected_ptr, up_ptr, out_ptr, **common
-    )
-    up_bits = _read(out_buf, shape=shape, dtype=np.dtype(np.uint16))
-    gguf_iq2_xs_selected_dual_silu_gemv_bf16_bf16_out(
-        x_ptr, selected_ptr, gate_ptr, up_ptr, out_ptr, **common
-    )
-    actual = _read(out_buf, shape=shape, dtype=np.dtype(np.uint16))
+
+    def run_single(weight_ptr: int, threads: int) -> np.ndarray:
+        gguf_iq2_xs_selected_gemv_bf16_bf16_out(
+            x_ptr,
+            selected_ptr,
+            weight_ptr,
+            out_ptr,
+            threads=threads,
+            **common,
+        )
+        return _read(out_buf, shape=shape, dtype=np.dtype(np.uint16))
+
+    def run_dual(threads: int) -> np.ndarray:
+        gguf_iq2_xs_selected_dual_silu_gemv_bf16_bf16_out(
+            x_ptr,
+            selected_ptr,
+            gate_ptr,
+            up_ptr,
+            out_ptr,
+            threads=threads,
+            **common,
+        )
+        return _read(out_buf, shape=shape, dtype=np.dtype(np.uint16))
+
+    gate_bits = run_single(gate_ptr, 256)
+    up_bits = run_single(up_ptr, 256)
     gate = _bf16_u16_to_f32(gate_bits)
     up = _bf16_u16_to_f32(up_bits)
     expected = _f32_to_bf16_u16(
@@ -478,12 +505,43 @@ def _decode_correctness(
         * (np.float32(1.0) / (np.float32(1.0) + np.exp(-gate)))
         * up
     )
+    actual = run_dual(256)
     mismatches = int(np.count_nonzero(actual != expected))
+    geometry = {}
+    for threads in parse_decode_threads(args.decode_threads):
+        candidate_gate = run_single(gate_ptr, threads)
+        candidate_up = run_single(up_ptr, threads)
+        candidate_dual = run_dual(threads)
+        projection_reference = np.concatenate((gate_bits, up_bits), axis=1)
+        projection_candidate = np.concatenate((candidate_gate, candidate_up), axis=1)
+        projection_result = evaluate_logits(
+            _bf16_u16_to_f32(projection_reference),
+            _bf16_u16_to_f32(projection_candidate),
+        )
+        dual_result = evaluate_logits(
+            _bf16_u16_to_f32(expected),
+            _bf16_u16_to_f32(candidate_dual),
+        )
+        geometry[str(threads)] = {
+            "passed": projection_result.passed and dual_result.passed,
+            "projection_bf16_bit_mismatches": int(
+                np.count_nonzero(projection_reference != projection_candidate)
+            ),
+            "dual_bf16_bit_mismatches": int(
+                np.count_nonzero(expected != candidate_dual)
+            ),
+            "projection_kl_max": projection_result.kl_max,
+            "projection_top1": projection_result.top1_agreement,
+            "dual_kl_max": dual_result.kl_max,
+            "dual_top1": dual_result.top1_agreement,
+        }
     return {
-        "passed": mismatches == 0,
+        "passed": mismatches == 0
+        and all(bool(result["passed"]) for result in geometry.values()),
         "bf16_bit_mismatches": mismatches,
         "elements": int(actual.size),
         "oracle": "selected-single gate/up plus BF16-boundary SiLU",
+        "geometry_vs_threads256": geometry,
     }
 
 
@@ -531,17 +589,25 @@ def _run_decode(
             pattern_buffers = [_copy(row) for row in host_sets]
             selected_buffers.extend(pattern_buffers)
             selected_ptrs = tuple(buffer.ptr for buffer in pattern_buffers)
-            launches = {
-                "selected_single": _selected_launch(
+            thread_counts = parse_decode_threads(args.decode_threads)
+            use_legacy_names = thread_counts == (256,)
+            launches = {}
+            launch_meta = {}
+            for threads in thread_counts:
+                suffix = "" if use_legacy_names else f"_t{threads}"
+                single_name = f"selected_single{suffix}"
+                dual_name = f"selected_dual_silu{suffix}"
+                launches[single_name] = _selected_launch(
                     library=library,
                     runtime=runtime,
                     x_ptr=x_buf.ptr,
                     selected_ptrs=selected_ptrs,
                     weight_ptr=gate_buf.ptr,
                     out_ptr=out_buf.ptr,
+                    threads=threads,
                     args=args,
-                ),
-                "selected_dual_silu": _dual_launch(
+                )
+                launches[dual_name] = _dual_launch(
                     library=library,
                     runtime=runtime,
                     x_ptr=x_buf.ptr,
@@ -549,9 +615,11 @@ def _run_decode(
                     gate_ptr=gate_buf.ptr,
                     up_ptr=up_buf.ptr,
                     out_ptr=out_buf.ptr,
+                    threads=threads,
                     args=args,
-                ),
-            }
+                )
+                launch_meta[single_name] = (threads, 1)
+                launch_meta[dual_name] = (threads, 2)
             warmup_count, samples = _measure_counterbalanced(
                 runtime,
                 launches,
@@ -559,31 +627,25 @@ def _run_decode(
                 iterations=args.decode_iters,
                 repeats=args.repeats,
             )
-            rows.append(
-                {
-                    "pattern": pattern,
-                    "route_sets": args.route_sets,
-                    "warmup_launches": warmup_count,
-                    "selected_single": _sample_summary(
-                        samples["selected_single"],
+            row = {
+                "pattern": pattern,
+                "route_sets": args.route_sets,
+                "warmup_launches": warmup_count,
+            }
+            for name, (threads, matrices) in launch_meta.items():
+                row[name] = {
+                    "threads": threads,
+                    **_sample_summary(
+                        samples[name],
                         raw_bytes=raw_weight_bytes_per_dispatch(
                             rows=args.top_k,
                             in_features=args.in_features,
                             out_features=args.out_features,
-                            matrices=1,
-                        ),
-                    ),
-                    "selected_dual_silu": _sample_summary(
-                        samples["selected_dual_silu"],
-                        raw_bytes=raw_weight_bytes_per_dispatch(
-                            rows=args.top_k,
-                            in_features=args.in_features,
-                            out_features=args.out_features,
-                            matrices=2,
+                            matrices=matrices,
                         ),
                     ),
                 }
-            )
+            rows.append(row)
         return correctness, {"cases": rows}
     finally:
         for buffer in reversed(selected_buffers):
@@ -790,15 +852,23 @@ def main(argv: Sequence[str] | None = None) -> None:
         else None
     )
     runtime = get_hip_runtime()
-    direct_library = build_gguf_iq_gemv(
-        load=True,
-        compiler_version=compiler_version,
-        require_cached=args.require_cached_build,
+    direct_library = (
+        build_gguf_iq_gemv(
+            load=True,
+            compiler_version=compiler_version,
+            require_cached=args.require_cached_build,
+        )
+        if args.mode in {"all", "decode"}
+        else None
     )
-    prefill_library = build_gguf_iq_selected_prefill(
-        load=True,
-        compiler_version=compiler_version,
-        require_cached=args.require_cached_build,
+    prefill_library = (
+        build_gguf_iq_selected_prefill(
+            load=True,
+            compiler_version=compiler_version,
+            require_cached=args.require_cached_build,
+        )
+        if args.mode in {"all", "prefill"}
+        else None
     )
 
     gate = _make_iq2_weight(

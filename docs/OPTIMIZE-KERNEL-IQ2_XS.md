@@ -335,7 +335,7 @@ Adjacent IQ2 eight-value groups share one scale nibble. Evaluate:
 - one 16-value logical task: 192 tasks at K3072;
 - one 32-value logical task: 96 tasks at K3072;
 - aligned 32-/64-bit loads for adjacent packed selectors;
-- local sizes 96/128/192/256 where mechanically valid.
+- local sizes 64/128/256 accepted by the existing reduction contract.
 
 The 16-value candidate can load and convert the shared scale once for two
 selectors. It also removes the current 384-on-256 second-iteration imbalance.
@@ -345,6 +345,23 @@ and can lose memory-level parallelism.
 Preserve the single primitive and dual/unfused equivalence. A changed reduction
 association is not bit-exact by assumption; it must pass the full primitive
 correctness gate before timing matters.
+
+**Retained decode result (2026-07-22):** pair16 uses one 32-bit selector load,
+one shared scale decode, and one block-scale conversion for two adjacent groups;
+local64 is the best tested geometry. Relative to branchless group8 at the same
+local64, pair16 improves selected single 10.20-13.50% and fused dual 4.48-8.86%
+across rotating/hot/repeated routes. Including the production local256 ->
+local64 change, rotating selected single/dual move
+`49.200/78.784 -> 33.296/56.922 us` (-32.33/-27.75%). The full E256 output is
+BF16-bit exact to local256, with KL 0 and top-1 1.0. VGPR rises to 64/96, but
+both leaves remain scratch-free and every route control wins.
+
+Task32 regressed every matched task16 geometry (single +10.46-18.45%, dual
++17.98-31.20%) and was removed. Pair16 grouped prefill was also restored to the
+branchless group8 schedule: despite large populated-expert scalar wins, it
+regressed balanced 16-token scalar by 5.25% and short rowbatch4 cases by up to
+3.61%. Evidence:
+[`../benchmarks/results/2026-07-22-gpu1-iq2-xs-pair16-local64.json`](../benchmarks/results/2026-07-22-gpu1-iq2-xs-pair16-local64.json).
 
 ### P4 — Adaptive row batching
 
@@ -581,7 +598,7 @@ and state/KV behavior before kernel model-level gates begin.
 | --- | --- | --- |
 | Representative benchmark | complete | committed E256 harness and accepted diagnostic baseline |
 | Branchless exact decode | complete | exact, branch-free selector decode; retained across full matrix |
-| Group width/geometry | queued | best exact/correctness-gated mapping selected or all rejected |
+| Group width/geometry | complete | pair16/local64 retained for decode; task32 and prefill pair16 rejected |
 | Adaptive rowbatch | queued | measured sparse/balanced/hot policy |
 | Output tile2 | queued | cold production-shape non-regression |
 | Q8_1 `sudot4` | queued | primitive gate, ISA proof, inclusive win; model gate later |

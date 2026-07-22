@@ -185,6 +185,37 @@ __device__ inline float iq2_xs_group_dot(
   return db * sum;
 }
 
+__device__ inline float iq2_xs_pair16_dot(
+    const uint8_t* __restrict__ block,
+    int group8_even,
+    const float* __restrict__ x_values) {
+  const int group32 = group8_even >> 2;
+  const int local8 = group8_even & 3;
+  const uint32_t packed_q =
+      load_u32_le(block + 2 + 2 * (4 * group32 + local8));
+  const uint16_t q0 = static_cast<uint16_t>(packed_q);
+  const uint16_t q1 = static_cast<uint16_t>(packed_q >> 16);
+  const uint8_t scale_byte = block[66 + group32];
+  const uint32_t scale =
+      (static_cast<uint32_t>(scale_byte) >> (4 * (local8 >> 1))) & 0x0FU;
+  const float db = fp16_bytes_to_float(block) *
+                   (0.5f + static_cast<float>(scale)) * 0.25f;
+  const uint32_t signs0 = iq3_sign_byte(static_cast<uint32_t>(q0 >> 9));
+  const uint32_t signs1 = iq3_sign_byte(static_cast<uint32_t>(q1 >> 9));
+  const uint16_t grid0 = IQ2_XS_GRID_PACKED[q0 & 511U];
+  const uint16_t grid1 = IQ2_XS_GRID_PACKED[q1 & 511U];
+  float sum0 = 0.0f;
+  float sum1 = 0.0f;
+#pragma unroll
+  for (int j = 0; j < 8; ++j) {
+    const uint32_t code0 = (static_cast<uint32_t>(grid0) >> (2 * j)) & 3U;
+    const uint32_t code1 = (static_cast<uint32_t>(grid1) >> (2 * j)) & 3U;
+    sum0 += iq2_xs_signed_magnitude(code0, (signs0 >> j) & 1U) * x_values[j];
+    sum1 += iq2_xs_signed_magnitude(code1, (signs1 >> j) & 1U) * x_values[8 + j];
+  }
+  return db * sum0 + db * sum1;
+}
+
 __device__ inline float iq3_xxs_group_dot(
     const uint8_t* __restrict__ block,
     int group8,
@@ -320,20 +351,20 @@ __global__ void gguf_iq2_xs_selected_gemv_kernel(
 
   float acc = 0.0f;
   if (valid_expert) {
-    const int groups8 = in_features / 8;
-    for (int group8_linear = threadIdx.x; group8_linear < groups8;
-         group8_linear += blockDim.x) {
-      const int block_idx = group8_linear >> 5;
-      const int group8 = group8_linear & 31;
-      const int x_offset = block_idx * QK_K + group8 * 8;
-      float x_values[8];
+    const int pairs16 = in_features / 16;
+    for (int pair16 = threadIdx.x; pair16 < pairs16;
+         pair16 += blockDim.x) {
+      const int block_idx = pair16 >> 4;
+      const int group8_even = (pair16 & 15) * 2;
+      const int x_offset = pair16 * 16;
+      float x_values[16];
 #pragma unroll
-      for (int j = 0; j < 8; ++j) {
+      for (int j = 0; j < 16; ++j) {
         x_values[j] = bf16_bits_to_float(x_row_ptr[x_offset + j]);
       }
       const uint8_t* __restrict__ block =
           weight_row + static_cast<int64_t>(block_idx) * IQ2_XS_BLOCK_BYTES;
-      acc += iq2_xs_group_dot(block, group8, x_values);
+      acc += iq2_xs_pair16_dot(block, group8_even, x_values);
     }
   }
   const float total = reduce_block_sum(acc);
@@ -376,22 +407,23 @@ __global__ void gguf_iq2_xs_selected_dual_silu_gemv_kernel(
   float gate_acc = 0.0f;
   float up_acc = 0.0f;
   if (valid_expert) {
-    const int groups8 = in_features / 8;
-    for (int group8_linear = threadIdx.x; group8_linear < groups8;
-         group8_linear += blockDim.x) {
-      const int block_idx =
-          __builtin_amdgcn_readfirstlane(group8_linear >> 5);
-      const int group8 = group8_linear & 31;
-      const int x_offset = block_idx * QK_K + group8 * 8;
-      float x_values[8];
+    const int pairs16 = in_features / 16;
+    for (int pair16 = threadIdx.x; pair16 < pairs16;
+         pair16 += blockDim.x) {
+      const int block_idx = pair16 >> 4;
+      const int group8_even = (pair16 & 15) * 2;
+      const int x_offset = pair16 * 16;
+      float x_values[16];
 #pragma unroll
-      for (int j = 0; j < 8; ++j) {
+      for (int j = 0; j < 16; ++j) {
         x_values[j] = bf16_bits_to_float(x_row_ptr[x_offset + j]);
       }
       const int64_t block_offset =
           static_cast<int64_t>(block_idx) * IQ2_XS_BLOCK_BYTES;
-      gate_acc += iq2_xs_group_dot(gate_row + block_offset, group8, x_values);
-      up_acc += iq2_xs_group_dot(up_row + block_offset, group8, x_values);
+      gate_acc += iq2_xs_pair16_dot(
+          gate_row + block_offset, group8_even, x_values);
+      up_acc += iq2_xs_pair16_dot(
+          up_row + block_offset, group8_even, x_values);
     }
   }
   reduce_block_pair(gate_acc, up_acc);
