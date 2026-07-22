@@ -141,6 +141,74 @@ def test_laguna_materialize_spec_matches_pack8_and_t16_repack_payloads() -> None
         assert runtime.buffers == {}
 
 
+def test_laguna_materialize_profile_separates_repack_allocation_and_upload() -> None:
+    tensor = tensor_info("q4_pack8", (16, 256), GGMLQuantizationType.Q4_K)
+    raw = np.zeros((16, 144), dtype=np.uint8)
+    runtime = FakeRuntime()
+    profiles = []
+
+    weight = _materialize_spec(
+        _spec_for_tensor("layers.0.ffn_gate", tensor),
+        _ArrayReader(tensor.name, raw),
+        device=None,
+        runtime=runtime,
+        backend="hip_gfx1151",
+        profile=profiles.append,
+    )
+    try:
+        assert len(profiles) == 1
+        profile = profiles[0]
+        assert profile.slot_path == "layers.0.ffn_gate"
+        assert profile.tensor_name == "q4_pack8"
+        assert profile.layout == "q4_k_pack8"
+        assert profile.source_nbytes == raw.nbytes
+        assert profile.resident_nbytes == weight.resident_nbytes
+        assert profile.allocation_count == 3
+        assert profile.upload_count == 3
+        assert profile.allocated_nbytes == weight.resident_nbytes
+        assert profile.uploaded_nbytes == weight.resident_nbytes
+        assert profile.source_map_seconds >= 0.0
+        assert profile.repack_seconds >= 0.0
+        assert profile.allocation_seconds >= 0.0
+        assert profile.upload_seconds >= 0.0
+        assert profile.total_seconds >= (
+            profile.source_map_seconds
+            + profile.repack_seconds
+            + profile.allocation_seconds
+            + profile.upload_seconds
+        )
+        assert profile.minor_faults >= 0
+        assert profile.major_faults >= 0
+        assert profile.read_bytes is None or profile.read_bytes >= 0
+        assert profile.rss_bytes > 0
+        assert profile.max_rss_bytes >= profile.rss_bytes
+    finally:
+        weight.free(runtime=runtime)
+
+
+def test_laguna_materialize_spec_frees_when_profile_callback_fails() -> None:
+    tensor = tensor_info("f16", (2, 4), GGMLQuantizationType.F16)
+    raw = np.arange(8, dtype=np.float16).reshape(2, 4)
+    runtime = FakeRuntime()
+
+    def reject_profile(profile) -> None:
+        del profile
+        raise RuntimeError("synthetic profile sink failure")
+
+    with pytest.raises(RuntimeError, match="synthetic profile sink"):
+        _materialize_spec(
+            _spec_for_tensor("layers.0.attn_q", tensor),
+            _ArrayReader(tensor.name, raw),
+            device=None,
+            runtime=runtime,
+            backend="hip_gfx1151",
+            profile=reject_profile,
+        )
+
+    assert runtime.freed == [0x1000]
+    assert runtime.buffers == {}
+
+
 def test_laguna_materialize_spec_frees_partial_pack8_allocations_on_failure() -> None:
     tensor = tensor_info("q4_pack8", (16, 256), GGMLQuantizationType.Q4_K)
     raw = np.zeros((16, 144), dtype=np.uint8)

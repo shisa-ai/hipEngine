@@ -173551,3 +173551,90 @@ unit. Task 32 closes under its explicit documented-arithmetic-blocker clause.
 This is correctness diagnosis, not exact-output or throughput evidence; public
 direct/eager wiring can proceed, while performance and DFlash economics retain
 their own gates.
+
+## 2026-07-22 — Profile Laguna's natural model-load phases
+
+Added opt-in per-tensor loading telemetry without changing the default
+materialization path. `LagunaGGUFMaterializationProfile` times source-map setup,
+CPU repack, HIP allocation, synchronous H2D, residual wall, allocation/upload
+counts and bytes, and phase-local `/proc/self/io` plus minor/major fault deltas.
+The natural lazy memmap behavior is preserved: source faults are charged to
+repack or H2D where pages are actually touched rather than hidden under a forced
+prefault copy. Profile callback failure frees the current weight and composes
+with the existing all-prior-weight cleanup.
+
+`scripts/laguna_gguf_load_smoke.py --profile-tensors` now emits all 814 records,
+layout aggregates, the 20 slowest tensors, process I/O/fault/RSS high-water,
+HIP/GTT snapshots, declared and observed cache state, exact command/model size,
+and optional precomputed SHA-256 provenance. The console retains only the
+compact summary; the full records stay in the requested JSON artifact.
+
+Full gfx1151 command:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 \
+uv run python -u scripts/laguna_gguf_load_smoke.py \
+  /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf \
+  --backend hip_gfx1151 --context-length 4096 --progress-every 25 \
+  --profile-tensors --cache-state warm \
+  --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f \
+  --output /tmp/laguna-load-profile-warm.json
+```
+
+The command's `warm` value was only a declared label. Measured physical reads
+were 73,051,406,336 bytes versus 75,169,369,088 GGUF source bytes, so the new
+classifier identifies the run as cold-streamed: full page-cache warmth cannot
+survive simultaneous 71.468 GiB resident allocation on this UMA host. Total
+load was 227.510 s; summed per-tensor wall was 225.536 s. Breakdown:
+
+- CPU repack: 217.278 s / 96.3% of total load wall;
+- HIP allocation: 3.641 s across 1,054 allocations;
+- H2D: 4.279 s for 76,737,907,712 bytes;
+- source-map setup: 0.107 s; other classified wall: 0.231 s;
+- Q4T16: 160.603 s for 118 tensors / 54,936,993,792 resident bytes;
+- Q6T16: 52.259 s for 24 tensors / 15,446,753,280 bytes;
+- pack8: 4.416 s for 120 tensors; all direct F16/F32/raw families together
+  consumed only 3.47 s total.
+
+The process incurred 21,658 major and 3,989,376 minor faults, process max RSS was
+1,588,633,600 bytes, and sampled GTT peaked at 77,024,133,120 bytes. Teardown
+was 0.226 s and returned all tracked bytes/allocations exactly; post-free GTT
+retained the known one-time 173,998,080-byte HIP context footprint.
+
+This replaces the earlier inference with a measured diagnosis: startup is
+almost entirely the Python/NumPy Q4/Q6 T16 transformation while faulting source
+pages, not allocation or upload. Poolside's 29.851-29.907 s accepted startup
+uses `--no-repack --no-mmap`, native GGUF-consuming kernels, and pinned async
+staging. The next high-leverage hipEngine experiment is a versioned repacked
+artifact cache (or compiled/GPU T16 transform); arena and overlap work are
+secondary until repack disappears.
+
+Validation:
+
+```bash
+uv run pytest -q tests/test_laguna_gguf_materialize_device.py \
+  tests/test_laguna_gguf_materialize.py tests/test_laguna_gguf_load_smoke.py
+HIPENGINE_HIP_ARCH=gfx1151 uv run pytest -q \
+  tests/test_laguna_gguf_materialize_gpu.py::test_completed_laguna_selected_slots_materialize_and_recover_gpu_memory
+uvx ruff check hipengine/loading/laguna_gguf_materialize.py \
+  scripts/laguna_gguf_load_smoke.py \
+  tests/test_laguna_gguf_materialize_device.py \
+  tests/test_laguna_gguf_materialize_gpu.py \
+  tests/test_laguna_gguf_load_smoke.py
+python3 -m compileall -q \
+  hipengine/loading/laguna_gguf_materialize.py \
+  scripts/laguna_gguf_load_smoke.py \
+  tests/test_laguna_gguf_materialize_device.py \
+  tests/test_laguna_gguf_materialize_gpu.py \
+  tests/test_laguna_gguf_load_smoke.py
+git diff --check
+```
+
+The fake/device/profile planning bundle is 15/15 green. The first isolated live
+rerun failed only the pre-existing 16 MiB post-free HIP tolerance after
+reproducing the measured ~149 MiB first-context retention; tracked ownership was
+already exact. The test now uses a documented 256 MiB allowance while
+retaining exact tracked-byte/allocation assertions, and the same isolated node
+passes. No broad
+suite was repeated because the repair changes only that local lifecycle bound.
+This is diagnostic evidence, not a retained startup-speed claim.
