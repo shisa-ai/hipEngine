@@ -174249,3 +174249,33 @@ uv run python scripts/laguna_target_ar_bench.py --help
 This unit adds the benchmark protocol only; no Laguna AR performance claim is
 made until the committed harness runs from a clean tracked revision and emits
 the retained artifact.
+
+## 2026-07-22 — Add matched Poolside Laguna AR baseline harness
+
+Added `scripts/laguna_poolside_ar_bench.py` to close the external-control part of
+L10 without conflating timing boundaries. It starts the pinned Poolside
+`llama-server` with native GGUF layouts (`--no-repack --no-mmap`, FA off), sends
+the exact rendered token IDs for all ten canonical prompts at 16/32-token
+horizons, alternates horizon order over two repetitions, requests raw generated
+IDs, and records native prompt/predicted timing plus complete HTTP wall. It also
+records binary/source identity, sampled GTT/RSS, server readiness, and exact or
+prefix equality against the retained hipEngine bulk trajectory.
+
+The artifact is deliberately cross-engine diagnostic: llama.cpp
+`predicted_ms` owns all generated tokens while hipEngine decode owns `horizon-1`
+post-TTFT forwards, and HTTP wall is not the resident in-process boundary. The
+harness therefore withholds a direct speed ratio rather than silently comparing
+incompatible denominators.
+
+Validation:
+
+```bash
+uv run pytest -q tests/test_laguna_poolside_ar_bench.py
+# 2 passed
+uvx ruff check scripts/laguna_poolside_ar_bench.py \
+  tests/test_laguna_poolside_ar_bench.py
+python3 -m compileall -q scripts/laguna_poolside_ar_bench.py \
+  tests/test_laguna_poolside_ar_bench.py
+uv run python scripts/laguna_poolside_ar_bench.py --help
+# clean / successful
+```
