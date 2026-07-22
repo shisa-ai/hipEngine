@@ -1,6 +1,6 @@
 # Laguna S 2.1 Q4_K_M and DFlash on gfx1151
 
-Last updated: 2026-07-22
+Last updated: 2026-07-23
 
 Status: eager all-resident c=1, exact chunked prefill/B+1 target rows, public
 blocking/streaming generation, and the canonical target-AR benchmark are
@@ -530,7 +530,7 @@ Critical details:
 | Q4_K token embedding | raw Q4_K/Q6_K/Q8_0 lookup is registered for gfx1100/gfx1151 | Reuse the BF16 row-dequant path for target tokens and DFlash root/mask rows. |
 | rank-3 selected experts | Q4/Q5/Q6 T16/raw selected kernels | Reuse for 256 experts/top-10; validate exact rank-3 strides. |
 | Q6_K LM head | native Q6 T16/GEMV path | Reuse untied output map. |
-| F16 projections | source-preserving mixed BF16/F32-activation, F16-weight single/dual/triple GEMV is registered | Reuse for eager Q/K/V/gate/O; add rows>1 tuning only after exact serial bring-up. |
+| F16 projections | source-preserving mixed BF16/F32-activation, F16-weight single/dual/triple GEMV is registered | Keep the exact GEMV for eager/decode and as the unfused fallback; the now-green bulk oracle activates the true rows>1 GEMM/WMMA work in L10/LPF-1. |
 | F32 norms/router weights | dense F32 and RMSNorm support | Reuse; 3072-wide router needs its own exact launch gate. |
 | head Q/K RMSNorm | existing Qwen full-attention primitives | Reuse with head dim 128 and variable Q-head counts. |
 | paged attention/KV | `KVLiveSpans`, BF16 block-256 global attention/write, and token-granular SWA ring kernels | Eager c=1 ownership is closed: global layers use admitted context, SWA layers use 512 physical slots with absolute positions and eviction masks; bulk prefill remains L8. |
@@ -1063,7 +1063,7 @@ the pre-final-norm DFlash capture. Its exact S 2.1 template is
 | --- | --- | --- |
 | Q4_K token embedding | Raw `embedding/gguf_q4_k/lookup_bf16_out` is registered for gfx1100/gfx1151 and the Laguna table stays source-native | Closed: synthetic and real rows are BF16-exact vs CPU, invalid IDs preserve caller rows, model-neutral resident dispatch resolves, and gfx1151 profiling shows `gguf_q4_k_embedding_bf16_out_kernel`. |
 | F32 RMSNorm / residual | GGUF BF16-input/F32-weight RMSNorm and add-RMSNorm are reusable | Wire under Laguna keys and prove layer-0 residual order; no new math is implied. |
-| F16 Q/K/V/gate/O projections | Source precision and pointers remain F16; registry-driven single/dual/triple kernels accept BF16/F32 activations and emit FP32/BF16 | Closed for exact eager GEMV: CPU parity covers 48/72 Q heads, eight KV heads, and dim 128; rows>1 WMMA tuning is deferred until the serial model oracle is green. |
+| F16 Q/K/V/gate/O projections | Source precision and pointers remain F16; registry-driven single/dual/triple kernels accept BF16/F32 activations and emit FP32/BF16 | Closed for exact eager and row-batched GEMV correctness: CPU parity covers 48/72 Q heads, eight KV heads, and dim 128. The row path is still decode-shaped and is the measured LPF-1 performance target below. |
 | Q/K head norm and RoPE | Exact Laguna YaRN/plain host tables feed the registered F32-input/F32-weight head-norm+rotate body | Closed for eager/bulk math: absolute positions, partial 64/full 128, 48/72 Q heads, eight KV heads, and dim 128 pass CPU parity on gfx1151. |
 | Global BF16 KV/attention | Complete dense `KVLiveSpans` plus block-256 paged BF16 writer/context attention accepts GQA ratios 6 and 9 and head dim 128 | Closed for eager c=1: the Laguna body preserves the proven block-256 page-table structure while consuming absolute positions and eviction metadata, 48/8 GQA matches direct CPU attention, and softplus remains the separate exact next stage. |
 | 512-token SWA | `KVLiveSpans.sliding_ring` plus native BF16 writer/context attention | Closed for eager c=1: 36 physical rings carry slot offsets, live counts, absolute token positions, eviction masks, and absolute query positions; 72/8 GQA passes 510/511/512/513 and repeated 1024/1025 wraps plus explicit eviction. Bulk prefill remains L8. |
@@ -1685,16 +1685,112 @@ oracle. Evidence:
 `benchmarks/results/2026-07-22-gfx1151-laguna-s21-target-ar-retained.json` and
 `benchmarks/results/2026-07-22-gfx1151-poolside-laguna-s21-target-ar-baseline.json`.
 
-Initial performance questions, in order:
+#### L10 prefill bottleneck review and transfer plan (2026-07-23)
 
-- Are F16 attention projections or selected experts the short-context c=1
-  bandwidth leader?
-- Does source-preserving F16 dense GEMV reach the expected gfx1151 bandwidth?
-- Is top-10 selected Q4/Q6 execution coalesced at expert width 1024?
-- Does a 256-row prefill chunk remain best for Laguna's all-attention model?
-- At what context does global paged attention overtake weight traffic?
-- Does SWA ring management add host synchronization or excess copies?
-- Does graph replay amortize at the actual Laguna output horizon?
+The first bulk promotion proves exact row execution, not an optimized prefill
+architecture. Segmenting the retained Greedy-4 trace at its embedding launches
+isolates three complete 55-row prefills from the nine c=1 decode rows. Their
+kernel spans are 2.345/2.346/2.349 s. The median prefill breaks down as follows;
+percentages are of the 2.346 s kernel span, not the unprofiled category wall:
+
+| 55-row prefill family | Calls | Median GPU time | Share |
+| --- | ---: | ---: | ---: |
+| source-F16 Q/K/V triple projection | 48 | 907.4 ms | 38.7% |
+| source-F16 attention output projection | 48 | 706.9 ms | 30.1% |
+| selected Q4T16 dual gate/up GEMV | 47 | 400.9 ms | 17.1% |
+| selected Q4T16/Q6T16 down GEMV | 47 | 223.3 ms | 9.5% |
+| global plus SWA prefill attention | 12 + 36 | 22.4 ms | 0.95% |
+| all remaining kernels and queue gaps | — | about 85 ms | about 3.6% |
+
+This resolves the earlier questions. Source-F16 QKV/O owns **68.8%** of the
+short-prompt kernel span and direct selected-expert GEMV owns another **26.6%**;
+attention is below 1%. Eliminating all source-F16 time would have only a
+steering/Amdahl ceiling of about 3.2x, while eliminating all attention time
+would be below 1.01x. These are bounds, not predicted gains. The qualified
+Poolside prompt rate of 70.45 tok/s remains directionally consistent with large
+headroom but is still not an apples-to-apples speed ratio.
+
+The source explains the profile. `laguna_f16w_{,triple_}gemv_kernel` launches
+one 256-thread block per `(row, output column)`. Every prompt row independently
+streams the same F16 weight row, uses no WMMA, and gets the library's `decode`
+build profile. The triple QKV wrapper reduces launch fanout but does not create
+a matrix tile or reuse weights across rows. `run_laguna_moe_rows(...)` likewise
+keeps `rows * top_k` lanes in row-major order and invokes the direct T16 decode
+GEMVs; it does not group lanes by expert or call the compact selected-MoE WMMA
+families. Dense layer 0 and every shared expert also explicitly disable GGUF
+WMMA prefill. The path is therefore row-parallel, but its dominant math remains
+decode-shaped.
+
+The transferable Qwen/PARO lessons are narrower than "turn on bulk":
+
+- use a true tiled GEMM/WMMA for rows>1 and keep GEMV for rows=1;
+- group routed rows by expert before selected WMMA, but measure real expert
+  occupancy and padding rather than assuming a 16-row tile wins;
+- share activation tiles across independent output waves where arithmetic order
+  permits it (`GPF-3A`, `GPF-5A`, and `LCP-3` precedents);
+- remove prompt-sized scratch, spills, and synchronous metadata readbacks only
+  after a profile names them (`GPF-2E`, Conv no-scratch, LCP-5A, and GPF-9C);
+- choose chunk and kernel policies per architecture and shape, with an exact
+  fallback, instead of copying gfx1100/gfx1151 thresholds blindly; and
+- do not start with AOTriton, graph replay, or host launch fusion when 95.4% of
+  the measured short-prompt span is two projection/expert families.
+
+Laguna prefill work proceeds in this order:
+
+1. **LPF-0 — dedicated profile and replay fixtures.** Add a cached-build,
+   prefill-only family trace for rows 16/32/55/64/122/128, plus a real-routing
+   replay artifact that records per-expert counts for top-10 lanes. Preserve the
+   current trace as the baseline; do not mix candidate selection with nine
+   decode rows again.
+2. **LPF-1 — source-F16 true bulk projection.** Register separate rows>1
+   `fp16_weight` variants for mixed BF16 activation/F16 weight with FP32
+   accumulation and FP32 or BF16 output. Start with a 16x16 tiled WMMA or a
+   torch-free rocBLAS/hipBLASLt control, compile the retained candidate with the
+   `prefill` profile, and route Q/K/V and O through it above a measured row
+   threshold. It is acceptable for three real GEMMs to replace the current
+   triple GEMV initially; fuse/group QKV only if a later trace shows launch or
+   activation rereads matter. Rows=1 must remain on the current exact GEMV.
+3. **LPF-2 — selected-expert weight reuse.** Feed Laguna's unchanged sigmoid,
+   correction-bias, top-10 IDs, and weights into the model-neutral Qwen group
+   count/prefix/scatter/tile-map ABI. Replay the existing Q4T16 dual and
+   Q4T16/Q6T16 down compact WMMA kernels against the direct-GEMV control. At 55
+   rows there are only 550 lanes across 256 experts, so 16-row padding may erase
+   the gain. If so, implement a measured small-M expert-grouped rowtile/pair-
+   reuse path for the observed 2-8-row experts rather than forcing compact
+   WMMA. Preserve Laguna's normalized uncorrected weights and 2.5 routed scale.
+4. **LPF-3 — dense and shared experts.** Pair dense/shared gate+up where the
+   existing GGUF ABI permits it, then select real raw/T16 WMMA prefill for Q4
+   and Q6 rows instead of merely setting a flag on a pack8 GEMV layout. Profile
+   this only after LPF-1/2; the current combined dense/shared family is about
+   71 ms of the 55-row span and is not the first bottleneck.
+5. **LPF-4 — chunk policy.** After weight-reusing kernels land, compare 64 with
+   128 first: all canonical 68-122-token prompts then fit in one chunk instead
+   of two complete 48-layer passes. Continue to 256/512 only with bounded
+   scratch, exact 511/512/513 SWA transitions, and measured wins. The PARO
+   256-row choice is precedent, not a Laguna default.
+6. **LPF-5 — long-context attention.** Reprofile at 512/1K/4K before changing
+   attention. The current global kernel has capacity-sized score scratch and a
+   serial V loop, and the SWA kernel repeatedly reduces over its 512-token
+   window, so a Flash/AOTriton-style route may become necessary later. Any such
+   route must preserve complete `KVLiveSpans`, global/SWA visibility, BF16 K/V
+   rounding, and the separate softplus gate. It is explicitly not LPF-1.
+7. **LPF-6 — submission, graph, and packed serving.** Reuse chunk metadata once,
+   remove proven D2H/synchronization boundaries, and consider graph capture or
+   multi-request packed prefill only after the dominant kernels are no longer
+   decode-shaped. Variable prompt/chunk state remains part of every graph key.
+
+Every LPF candidate is a registered variant with the current exact chain as its
+unfused rollback. Exact candidates pass byte comparison on lengths
+1/2/7/55/65 plus the affected tile/chunk boundaries. Reassociated GEMM/WMMA
+candidates additionally pass their production-shape CPU oracle, the frozen
+Poolside first-token gate (KL <= 0.05 and exact top-1), and the full ten-prompt
+four-category teacher-forced and free-running h16/h32 suite with deterministic
+outputs; report complete-ID equality even when the standard KL/top-1 gate is
+the admission rule. Performance admission uses balanced same-session
+current/candidate order, requires every category to remain non-regressive,
+keeps decode within 2%, excludes model load, and records the intended kernel
+name, duration, workgroup, VGPR/SGPR, LDS, and scratch from a prebuilt cached
+`rocprofv3` run. A kernel-only micro win does not promote the default.
 
 ## Laguna DFlash Follow-on Plan
 

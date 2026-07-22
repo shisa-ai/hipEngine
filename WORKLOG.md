@@ -174446,3 +174446,33 @@ python3 -m compileall -q hipengine/kernels/cpu_reference/laguna.py \
   tests/test_laguna_dflash_reference.py tests/test_laguna_dflash_drafter.py
 # clean / successful
 ```
+
+## 2026-07-23 — Review Qwen/PARO lessons and freeze Laguna prefill plan
+
+Reviewed the retained Qwen/PARO and GGUF prefill evidence against Laguna's
+current rows path. Segmenting the retained Laguna Greedy-4 trace at embedding
+dispatches isolates three 55-row prefills at 2.345/2.346/2.349 s of kernel span.
+The median is source-F16 QKV 907.4 ms (38.7%), source-F16 O 706.9 ms (30.1%),
+selected Q4T16 dual 400.9 ms (17.1%), selected Q4T16/Q6T16 down 223.3 ms
+(9.5%), and all global/SWA prefill attention only 22.4 ms (0.95%). Source-F16
+plus selected experts therefore owns 95.4% of the short-prompt span.
+
+The implementation audit explains the rates: F16 rows use one 256-thread GEMV
+block per `(row, output)` with no matrix tile/WMMA and the decode build profile;
+Laguna's top-10 lanes call direct T16 decode GEMVs without Qwen's grouped
+compact scheduler; dense layer 0 and shared experts explicitly disable GGUF
+WMMA prefill. The path is row-parallel but its dominant math is decode-shaped.
+The qualified Poolside 70.45 prompt tok/s remains directional only because its
+native/HTTP timing ownership differs.
+
+Updated `docs/LAGUNA.md` with LPF-0..LPF-6: dedicated prefill-only profile and
+routing replay; true mixed BF16-activation/F16-weight bulk projection first;
+real-routing compact-WMMA versus small-M grouped expert selection second;
+dense/shared expert WMMA; 64-to-128 chunk policy; long-context attention only
+after 512/1K/4K reprofiling; then submission/graph/packed serving. The plan
+carries Qwen's successful true-GEMM, grouped-MoE, activation-sharing,
+spill/scratch, and metadata lessons while explicitly rejecting blind threshold
+transfer or attention/graph-first tuning. It also freezes registry/fallback,
+CPU/Poolside/category correctness, balanced timing, and cached-profiler gates.
+No GPU run or new performance claim was made; this was a docs/process unit.
+Validation: full `docs/LAGUNA.md` reread and `git diff --check` clean.
