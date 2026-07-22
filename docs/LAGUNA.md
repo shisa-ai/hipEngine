@@ -998,12 +998,12 @@ the pre-final-norm DFlash capture. Its exact S 2.1 template is
 | Global BF16 KV/attention | Complete dense `KVLiveSpans` plus block-256 paged BF16 writer/context attention accepts GQA ratios 6 and 9 and head dim 128 | Closed for eager c=1: the Laguna body preserves the proven block-256 page-table structure while consuming absolute positions and eviction metadata, 48/8 GQA matches direct CPU attention, and softplus remains the separate exact next stage. |
 | 512-token SWA | `KVLiveSpans.sliding_ring` plus native BF16 writer/context attention | Closed for eager c=1: 36 physical rings carry slot offsets, live counts, absolute token positions, eviction masks, and absolute query positions; 72/8 GQA passes 510/511/512/513 and repeated 1024/1025 wraps plus explicit eviction. Bulk prefill remains L8. |
 | Per-head attention gate | Unfused `attention_gate/f32/softplus_broadcast_{f32,bf16}_out` is registered on gfx1100/gfx1151 | Closed: 72-head × 128-channel broadcast, extreme gate logits, and FP32/BF16 outputs match CPU; no fused path is added yet. |
-| Dense layer-0 MLP | Q4_K pack8 gate/up, raw Q6_K down, SiLU, and residual primitives are reusable | Add production-shape layer-0 vertical fixture and trace. |
+| Dense layer-0 MLP | Q4_K pack8 gate/up, raw Q6_K down, SiLU, and residual primitives are reusable | Wired into the complete 48-layer eager step; the all-layer smoke is finite. Frozen prompt/logit parity is the remaining whole-model gate. |
 | Router projection | BF16 hidden × F32 router weight → FP32 logits plus a separate `laguna_sigmoid_router_topk/f32/correction_bias` stage | Closed for eager c=1: stable sigmoid, separate uncorrected/corrected score buffers, lower-ID tie stability, top-10/256, unbiased gathered normalization, and a distinct 2.5-scaled weight buffer pass adversarial CPU parity. No Qwen softmax/shared-gate route is reused. |
-| Routed experts | Direct Laguna plan resolves rank-3 Q4T16 dual gate/up and Q6T16 down under exact gfx1151 registry keys | Closed for eager c=1: production 3072/1024 and top-10 execution validates source byte strides, T16 allocation strides, nontrivial selected IDs, separate SiLU, scaled weighted sum, CPU hidden tolerance, and the intended profiler-visible selected kernels. Bulk rows remain L8. |
-| Shared expert | Rank-2 Q4_K pack8 gate/up plus raw Q6_K down run in an independent always-on branch | Closed for eager c=1: separate gate/up → SiLU → down is added directly to the routed output, with no shared sigmoid gate and no application of the 2.5 routed scale. The unfused staged chain remains the model path. |
+| Routed experts | Direct Laguna plan resolves rank-3 Q4T16 dual gate/up plus layer-specific Q4T16 or Q6T16 down under exact gfx1151 registry keys | Closed for eager c=1: the real artifact's 24 Q4/23 Q6 down split and production 3072/1024 top-10 execution validate source byte strides, T16 allocation strides, nontrivial selected IDs, separate SiLU, scaled weighted sum, CPU hidden tolerance, and intended selected kernels. Bulk rows remain L8. |
+| Shared expert | Rank-2 Q4_K pack8 gate/up plus layer-specific Q4_K pack8 or raw Q6_K down run in an independent always-on branch | Closed for eager c=1: the real 24 Q4/23 Q6 split executes independently; separate gate/up → SiLU → down is added without a shared sigmoid gate or 2.5 routed scale. The unfused staged chain remains the model path. |
 | Final norm / Q6_K LM head | F32-weight RMSNorm, resident Q6T16 BF16→F32 linear sourced losslessly from raw Q6_K, GPU argmax, and sampler primitives are registered | Closed at root-probe scope: full 100,352-way logits are finite, KL is `6.87e-13` vs raw-Q6 CPU math, and top-1 is exactly `81364`; preserve full logits for later whole-model oracle gates. |
-| Session and hidden taps | Model map/resident weights plus `LagunaKVCache` now own all weights/KV metadata needed by each layer | No `laguna_gguf_runner.py`, scratch plan, post-layer capture ABI, or complete eager step exists. Build c=1/token-serial next and capture depths 2/11/20/30/39/48 only on request. |
+| Session and hidden taps | `LagunaGGUFResidentSession` owns all 814 weights, exact c=1 scratch, dual RoPE, global/SWA KV, logits/argmax, and optional caller-owned BF16 taps at depths 2/11/20/30/39/48 | Complete 48-layer one-token gfx1151 smoke is finite and teardown-exact; frozen 55-token first-logit plus greedy-32 parity remains the L6 closure gate. |
 | Public generator | Generic engine loop and server lifecycle exist | Built-ins register only Qwen paths; there is no Laguna generation key, tokenizer/template renderer, streaming owner, or model metadata route. |
 | Reasoning/tools | Generic server understands Qwen `<think>` plus JSON-in-`<tool_call>` | S 2.1 uses Poolside XML arguments: `<tool_call>name<arg_key>…</arg_key><arg_value>…</arg_value></tool_call>`, and reasoning history must stop its backward scan at the current `<assistant>` token. Implement the `poolside_v1` contracts from vLLM [`61c9ef98`](https://github.com/vllm-project/vllm/blob/61c9ef986a807aa3b9c6ccd25bb223b8f4116ac7/vllm/tool_parsers/poolside_v1_tool_parser.py#L48-L220) and its [assistant-scoped reasoning parser](https://github.com/vllm-project/vllm/blob/61c9ef986a807aa3b9c6ccd25bb223b8f4116ac7/vllm/reasoning/poolside_v1_reasoning_parser.py#L33-L69), including newline-less calls and incremental string values. |
 | Independent oracle | Closed for target AR: clean local Poolside checkout/build at `04b2b72c`, exact template/token fixtures, a complete 100,352-way first-token distribution, and 32 fresh-process-stable greedy IDs are checked in | Use the frozen fixture for L6 KL/top-1/greedy gates. Keep `-fa off`, `--no-mmap`, exact token-ID input, and fresh-process oracle constraints visible; target+DFlash diagnostics remain later work. |
@@ -1144,7 +1144,7 @@ Reuse existing selected-expert kernels only after validating:
 - 256 experts;
 - top-k 10;
 - expert-major source/T16 strides;
-- mixed Q4 gate/up and Q6 down layouts;
+- Q4 gate/up plus mixed Q4/Q6 down layouts;
 - production hidden 3072 and expert width 1024;
 - duplicate expert IDs across batch rows;
 - no dependency on Qwen shared-gate semantics.
@@ -1171,14 +1171,17 @@ Implemented eager c=1 foundation (2026-07-22):
   buffer, sum-normalizes, and writes both unscaled and 2.5-scaled weights;
 - `resolve_laguna_moe_plan(...)` requires the sigmoid/normalized model contract
   and exact gfx1151 registrations for router, Q4T16 selected dual gate/up,
-  separate BF16 SiLU, Q6T16 selected down, weighted sum, shared SiLU, and add;
+  separate BF16 SiLU, both Q4T16/Q6T16 selected-down keys, weighted sum,
+  shared SiLU, and add;
 - `validate_laguna_moe_layer(...)` checks all eight sparse weight families,
   rank-3 source shapes/byte strides, replacement layout keys, and complete T16
   allocation strides before launch. The staged owner allocates and frees every
   c=1 intermediate explicitly;
 - the production-width test uses hidden 3072, routed/shared width 1024, top-10,
-  nontrivial selected IDs, Q4T16 gate/up, Q6T16 down, Q4-pack8 shared gate/up,
-  and raw-Q6 shared down. The reused direct T16 bodies retain their existing
+  nontrivial selected IDs, Q4T16 gate/up, parametrized Q4T16/Q6T16 down,
+  Q4-pack8 shared gate/up, and matching Q4-pack8/raw-Q6 shared down. The real
+  artifact contains 24 Q4 and 23 Q6 routed/shared down layers. The reused direct
+  T16 bodies retain their existing
   byte-exact duplicate-expert-ID multi-row coverage; Laguna bulk orchestration
   remains L8. Routed, shared, and combined hidden relative L2 each
   stay at or below `0.02` versus a BF16-staged raw-GGUF CPU oracle; the shared
@@ -1195,9 +1198,10 @@ Implemented eager c=1 foundation (2026-07-22):
   scratch throughout. These are correctness/dispatch diagnostics, not a model
   throughput claim.
 
-L5 is closed for eager c=1 sparse MoE. Layer-0 dense FFN integration and the
-complete layer/session owner move to L6; batched routing and expert execution
-remain L8 after the frozen whole-model oracle passes.
+L5 is closed for eager c=1 sparse MoE, including the real artifact's mixed
+Q4/Q6 down layouts. The complete layer/session owner is now implemented in L6;
+batched routing and expert execution remain L8 after the frozen whole-model
+oracle passes.
 
 ### L6 — Eager full-model resident session
 
@@ -1254,6 +1258,32 @@ Acceptance:
 - repeated eager state transitions are stable;
 - closing the session returns tracked/GTT memory to the expected baseline;
 - no torch import appears on the generation path.
+
+Implemented eager resident foundation (2026-07-22):
+
+- `hipengine/runtime/laguna_gguf_runner.py` resolves an exact gfx1151 plan and
+  keeps all 814 replacement weights, 4K BF16 global/SWA KV, bounded c=1
+  scratch, both RoPE tables, full-vocabulary FP32 logits, and top-1 state under
+  one idempotent owner;
+- layer execution is the unfused reference order: BF16/F32-weight RMSNorm,
+  source-F16 Q/K/V/gate, per-family head norm+RoPE, complete-span KV append and
+  context, FP32 softplus gate, source-F16 output, add+FFN norm, then dense or
+  sigmoid-routed+shared FFN and residual add;
+- optional DFlash taps are caller-owned one-row BF16 destinations at exactly
+  depths 2/11/20/30/39/48. Normal AR allocates no tap storage and issues no
+  tap copy; requested taps are direct stream-ordered D2D writes;
+- all JIT libraries are held once by the session; constructor failure and
+  execution failure clean every owned buffer, shared weights are not freed by a
+  borrowing session, and owned close returns tracked allocations exactly;
+- a cache-only full-artifact smoke loaded 77,022,439,484 owned bytes in
+  206.291 s, executed all 48 layers for BOS in 77.221 ms, produced finite taps
+  and greedy token 72, and returned a 77,022,476,348-byte/1,347-allocation
+  tracked high-water exactly to zero.
+
+This closes construction, one-token execution, hidden-tap ABI, and lifecycle.
+It is not a throughput claim. L6 remains open only for the frozen 55-token
+first-logit and greedy-32 oracle/state gate; `scripts/laguna_gguf_correctness.py`
+implements that next check.
 
 ### L7 — Public generation, streaming, chat, and tools
 

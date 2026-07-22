@@ -8,6 +8,12 @@ from hipengine.runtime.gguf_linear import (
     launch_gguf_linear,
     resolve_gguf_linear_dispatch,
 )
+from hipengine.runtime.laguna_gguf_runner import (
+    LAGUNA_DFLASH_CAPTURE_DEPTHS,
+    LagunaEagerTokenResult,
+    LagunaGGUFResidentSession,
+    LagunaHiddenCaptureTargets,
+)
 from hipengine.runtime.prefill import PrefillConfig
 from hipengine.runtime.qwen35_gguf_runner import (
     Qwen35GGUFFullStackRunner,
@@ -36,6 +42,10 @@ __all__ = [
     "GGUF_OUTPUT_BF16",
     "GGUF_OUTPUT_F32",
     "GGUFLinearDispatch",
+    "LAGUNA_DFLASH_CAPTURE_DEPTHS",
+    "LagunaEagerTokenResult",
+    "LagunaGGUFResidentSession",
+    "LagunaHiddenCaptureTargets",
     "PrefillConfig",
     "Qwen35GGUFFullStackRunner",
     "Qwen35GGUFOneLayerProbe",

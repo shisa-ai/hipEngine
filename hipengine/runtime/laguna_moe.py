@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 import math
+from types import MappingProxyType
 from typing import Callable
 
 from hipengine.core.hip import HipRuntime
@@ -54,6 +56,7 @@ class LagunaMoEKernelPlan:
     selected_gate_up_key: KernelKey
     selected_silu_key: KernelKey
     selected_down_key: KernelKey
+    selected_down_keys: Mapping[str, KernelKey]
     routed_sum_key: KernelKey
     shared_silu_key: KernelKey
     add_key: KernelKey
@@ -62,6 +65,7 @@ class LagunaMoEKernelPlan:
     selected_gate_up: Callable
     selected_silu: Callable
     selected_down: Callable
+    selected_downs: Mapping[str, Callable]
     routed_sum: Callable
     shared_silu: Callable
     add: Callable
@@ -73,7 +77,7 @@ class LagunaMoEKernelPlan:
             self.router_select_key,
             self.selected_gate_up_key,
             self.selected_silu_key,
-            self.selected_down_key,
+            *tuple(self.selected_down_keys.values()),
             self.routed_sum_key,
             self.shared_silu_key,
             self.add_key,
@@ -184,7 +188,16 @@ def resolve_laguna_moe_plan(
         "shared_silu": KernelKey(backend, "silu_mul_separate", "bf16", _SILU_VARIANT),
         "add": KernelKey(backend, "elementwise", "bf16", _ADD_VARIANT),
     }
+    selected_down_keys = MappingProxyType(
+        {
+            quant: KernelKey(backend, "moe_linear", quant, _SELECTED_DOWN_VARIANT)
+            for quant in ("gguf_q4_k_t16_v1", "gguf_q6_k_t16_v1")
+        }
+    )
     functions = {name: _resolve_exact(key) for name, key in keys.items()}
+    selected_downs = MappingProxyType(
+        {quant: _resolve_exact(key) for quant, key in selected_down_keys.items()}
+    )
     return LagunaMoEKernelPlan(
         backend=backend,
         hidden_size=config.hidden_size,
@@ -198,6 +211,7 @@ def resolve_laguna_moe_plan(
         selected_gate_up_key=keys["selected_gate_up"],
         selected_silu_key=keys["selected_silu"],
         selected_down_key=keys["selected_down"],
+        selected_down_keys=selected_down_keys,
         routed_sum_key=keys["routed_sum"],
         shared_silu_key=keys["shared_silu"],
         add_key=keys["add"],
@@ -206,6 +220,7 @@ def resolve_laguna_moe_plan(
         selected_gate_up=functions["selected_gate_up"],
         selected_silu=functions["selected_silu"],
         selected_down=functions["selected_down"],
+        selected_downs=selected_downs,
         routed_sum=functions["routed_sum"],
         shared_silu=functions["shared_silu"],
         add=functions["add"],
@@ -286,6 +301,38 @@ def validate_laguna_moe_layer(
         plan.expert_ffn_size,
         plan.shared_ffn_size,
     )
+    selected_down = layer.weight("ffn_down_exps")
+    selected_down_contracts = {
+        "gguf_q4_k_t16_v1": (
+            LAYOUT_GGUF_Q4_K_T16,
+            (e, h, (f // _QK_K) * 144),
+        ),
+        "gguf_q6_k_t16_v1": (
+            LAYOUT_GGUF_Q6_K_T16,
+            (e, h, (f // _QK_K) * 210),
+        ),
+    }
+    try:
+        selected_down_layout, selected_down_byte_shape = selected_down_contracts[
+            selected_down.spec.quant_key
+        ]
+    except KeyError as exc:
+        raise ValueError("ffn_down_exps must use a registered Q4_K or Q6_K T16 layout") from exc
+
+    shared_down = layer.weight("ffn_down_shexp")
+    shared_down_contracts = {
+        "gguf_q4_k": (LAYOUT_Q4_K_PACK8, (h, (sf // _QK_K) * 144)),
+        "gguf_q6_k": (LAYOUT_RAW_GGUF, (h, (sf // _QK_K) * 210)),
+    }
+    try:
+        shared_down_layout, shared_down_byte_shape = shared_down_contracts[
+            shared_down.spec.quant_key
+        ]
+    except KeyError as exc:
+        raise ValueError(
+            "ffn_down_shexp must use a registered Q4_K pack8 or raw Q6_K layout"
+        ) from exc
+
     expected = {
         "ffn_gate_inp": ((e, h), LAYOUT_DENSE_F32, "f32", (e, h)),
         "exp_probs_b": ((e,), LAYOUT_DENSE_F32, "f32", (e,)),
@@ -303,13 +350,28 @@ def validate_laguna_moe_layer(
         ),
         "ffn_down_exps": (
             (e, h, f),
-            LAYOUT_GGUF_Q6_K_T16,
-            "gguf_q6_k_t16_v1",
-            (e, h, (f // _QK_K) * 210),
+            selected_down_layout,
+            selected_down.spec.quant_key,
+            selected_down_byte_shape,
         ),
-        "ffn_gate_shexp": ((sf, h), LAYOUT_Q4_K_PACK8, "gguf_q4_k", (sf, (h // _QK_K) * 144)),
-        "ffn_up_shexp": ((sf, h), LAYOUT_Q4_K_PACK8, "gguf_q4_k", (sf, (h // _QK_K) * 144)),
-        "ffn_down_shexp": ((h, sf), LAYOUT_RAW_GGUF, "gguf_q6_k", (h, (sf // _QK_K) * 210)),
+        "ffn_gate_shexp": (
+            (sf, h),
+            LAYOUT_Q4_K_PACK8,
+            "gguf_q4_k",
+            (sf, (h // _QK_K) * 144),
+        ),
+        "ffn_up_shexp": (
+            (sf, h),
+            LAYOUT_Q4_K_PACK8,
+            "gguf_q4_k",
+            (sf, (h // _QK_K) * 144),
+        ),
+        "ffn_down_shexp": (
+            (h, sf),
+            shared_down_layout,
+            shared_down.spec.quant_key,
+            shared_down_byte_shape,
+        ),
     }
     for name, (shape, layout, quant, byte_shape) in expected.items():
         weight = layer.weight(name)
@@ -327,11 +389,16 @@ def validate_laguna_moe_layer(
             )
 
     q4_t16_nbytes = e * (f // _T16_COLUMNS) * (h // _QK_K) * GGUF_Q4_K_TILE16_BLOCK_BYTES
-    q6_t16_nbytes = e * (h // _T16_COLUMNS) * (f // _QK_K) * GGUF_Q6_K_T16_BLOCK_BYTES
     for name in ("ffn_gate_exps", "ffn_up_exps"):
         if layer.weight(name).allocation("tiles").buffer.nbytes != q4_t16_nbytes:
             raise ValueError(f"{name} T16 allocation does not match rank-3 expert stride")
-    if layer.weight("ffn_down_exps").allocation("tiles").buffer.nbytes != q6_t16_nbytes:
+    selected_down_tile_bytes = (
+        GGUF_Q4_K_TILE16_BLOCK_BYTES
+        if selected_down.spec.quant_key == "gguf_q4_k_t16_v1"
+        else GGUF_Q6_K_T16_BLOCK_BYTES
+    )
+    selected_down_nbytes = e * (h // _T16_COLUMNS) * (f // _QK_K) * selected_down_tile_bytes
+    if selected_down.allocation("tiles").buffer.nbytes != selected_down_nbytes:
         raise ValueError("ffn_down_exps T16 allocation does not match rank-3 expert stride")
 
 
@@ -342,6 +409,7 @@ def run_laguna_moe_c1(
     *,
     stream: int = 0,
     runtime: HipRuntime | None = None,
+    libraries: Mapping[str, object] | None = None,
 ) -> DeviceBuffer:
     """Run the exact staged Laguna routed plus always-on shared expert path."""
 
@@ -358,7 +426,14 @@ def run_laguna_moe_c1(
     correction = layer.weight("exp_probs_b").allocation("raw").tensor.ptr
     gate_tiles = layer.weight("ffn_gate_exps").allocation("tiles").tensor.ptr
     up_tiles = layer.weight("ffn_up_exps").allocation("tiles").tensor.ptr
-    down_tiles = layer.weight("ffn_down_exps").allocation("tiles").tensor.ptr
+    down_weight = layer.weight("ffn_down_exps")
+    down_tiles = down_weight.allocation("tiles").tensor.ptr
+    try:
+        selected_down_fn = plan.selected_downs[down_weight.spec.quant_key]
+    except KeyError as exc:
+        raise ValueError(
+            f"no Laguna selected-down kernel for {down_weight.spec.quant_key!r}"
+        ) from exc
 
     plan.router_logits(
         hidden_bf16_ptr,
@@ -367,8 +442,7 @@ def run_laguna_moe_c1(
         1,
         h,
         e,
-        stream=stream,
-        runtime=runtime,
+        **_stage_kwargs("router_logits", libraries, stream=stream, runtime=runtime),
     )
     plan.router_select(
         scratch.router_logits.ptr,
@@ -382,8 +456,7 @@ def run_laguna_moe_c1(
         e,
         k,
         plan.routed_scaling_factor,
-        stream=stream,
-        runtime=runtime,
+        **_stage_kwargs("router_select", libraries, stream=stream, runtime=runtime),
     )
     plan.selected_gate_up(
         hidden_bf16_ptr,
@@ -397,8 +470,7 @@ def run_laguna_moe_c1(
         e,
         h,
         f,
-        stream=stream,
-        runtime=runtime,
+        **_stage_kwargs("selected_gate_up", libraries, stream=stream, runtime=runtime),
     )
     plan.selected_silu(
         scratch.expert_gate.ptr,
@@ -406,10 +478,9 @@ def run_laguna_moe_c1(
         scratch.expert_intermediate.ptr,
         k,
         f,
-        stream=stream,
-        runtime=runtime,
+        **_stage_kwargs("selected_silu", libraries, stream=stream, runtime=runtime),
     )
-    plan.selected_down(
+    selected_down_fn(
         scratch.expert_intermediate.ptr,
         scratch.selected_experts.ptr,
         down_tiles,
@@ -419,8 +490,7 @@ def run_laguna_moe_c1(
         e,
         f,
         h,
-        stream=stream,
-        runtime=runtime,
+        **_stage_kwargs("selected_down", libraries, stream=stream, runtime=runtime),
     )
     plan.routed_sum(
         scratch.expert_down.ptr,
@@ -428,8 +498,7 @@ def run_laguna_moe_c1(
         scratch.routed_output.ptr,
         k,
         h,
-        stream=stream,
-        runtime=runtime,
+        **_stage_kwargs("routed_sum", libraries, stream=stream, runtime=runtime),
     )
 
     shared_gate = layer.weight("ffn_gate_shexp")
@@ -445,6 +514,7 @@ def run_laguna_moe_c1(
         backend=plan.backend,
         stream=stream,
         runtime=runtime,
+        libraries=libraries,
         use_wmma_prefill=False,
         use_gemv_decode=False,
     )
@@ -458,6 +528,7 @@ def run_laguna_moe_c1(
         backend=plan.backend,
         stream=stream,
         runtime=runtime,
+        libraries=libraries,
         use_wmma_prefill=False,
         use_gemv_decode=False,
     )
@@ -467,8 +538,7 @@ def run_laguna_moe_c1(
         scratch.shared_intermediate.ptr,
         1,
         sf,
-        stream=stream,
-        runtime=runtime,
+        **_stage_kwargs("shared_silu", libraries, stream=stream, runtime=runtime),
     )
     launch_gguf_linear(
         shared_down,
@@ -480,6 +550,7 @@ def run_laguna_moe_c1(
         backend=plan.backend,
         stream=stream,
         runtime=runtime,
+        libraries=libraries,
         use_wmma_prefill=False,
         use_gemv_decode=False,
     )
@@ -488,10 +559,22 @@ def run_laguna_moe_c1(
         scratch.shared_output.ptr,
         scratch.output.ptr,
         h,
-        stream=stream,
-        runtime=runtime,
+        **_stage_kwargs("add", libraries, stream=stream, runtime=runtime),
     )
     return scratch.output
+
+
+def _stage_kwargs(
+    name: str,
+    libraries: Mapping[str, object] | None,
+    *,
+    stream: int,
+    runtime: HipRuntime | None,
+) -> dict[str, object]:
+    kwargs: dict[str, object] = {"stream": stream, "runtime": runtime}
+    if libraries is not None and (library := libraries.get(name)) is not None:
+        kwargs["library"] = library
+    return kwargs
 
 
 def _resolve_exact(key: KernelKey) -> Callable:
