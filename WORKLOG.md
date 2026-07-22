@@ -173490,3 +173490,64 @@ The session-owner suite is 7/7; mixed-Q4/Q6 production MoE is 2/2; the current
 runner/MoE/root bundle is green. No new kernel body was ported, so no new
 lineage claim is made. `scripts/laguna_gguf_correctness.py` is prepared for the
 next exact Poolside oracle run.
+
+## 2026-07-22 — Isolate the Laguna eager oracle split
+
+Ran the frozen 55-token Poolside oracle through the complete all-resident eager
+session with cached gfx1151 libraries:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 \
+uv run python -u scripts/laguna_gguf_correctness.py \
+  --backend hip_gfx1151 --greedy-tokens 32 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --output /tmp/laguna-eager-correctness-final.json
+```
+
+Measured load was 221.855 s and the first 55+32 token-serial pass was 4.946 s.
+First-token full-vocabulary KL is `6.621408e-6`, candidate/reference/session
+argmax are all `94557`, and all six DFlash capture depths are finite. A second
+independently allocated runtime state over borrowed resident weights repeated
+all 32 hipEngine IDs exactly and reproduced first logits with max-abs `0` in
+4.956 s. A third state teacher-forced the Poolside prefix in 4.959 s and matched
+31/32 local top-1 decisions. Peak tracked ownership while a second state existed
+was 77,307,008,120 bytes / 1,634 allocations; final current bytes and active
+allocations returned exactly to zero. HIP free retained 150,568,960 bytes after
+the process-local runtime/JIT context, consistent with earlier one-time cache
+behavior rather than a tracked owner leak.
+
+The strict greedy oracle agrees for 29 IDs, then differs at generated token 30.
+Poolside chooses token `604` over `372` by only `0.0342368` log-probability;
+hipEngine chooses `372` over `604` by `0.109314` raw-logit. When token `604` is
+forced, Poolside tokens 31 and 32 are again hipEngine top-1, proving the natural
+suffix mismatch is the consequence of this one low-margin arithmetic branch
+rather than a general KV/state progression failure. The script now records
+per-step competitors, a repeat-state gate, and an oracle teacher-forced gate;
+it intentionally returns `pass=false` until natural greedy-32 is exact.
+
+Because Poolside reports F16 K/V storage, also implemented and measured a
+one-off FP16-KV bisection. It produced the identical 29-token prefix and branch,
+while first-token KL worsened to `7.424845e-5`; the optional path and its tests
+were removed rather than retaining a non-improving duplicate dispatch route.
+BF16 remains the Laguna source-of-truth KV path.
+
+Focused validation after removing that diagnostic path:
+
+```bash
+uvx ruff check scripts/laguna_gguf_correctness.py \
+  tests/test_laguna_gguf_correctness.py
+uv run pytest -q tests/test_laguna_gguf_correctness.py \
+  tests/test_laguna_gguf_runner.py tests/test_laguna_kv_attention.py
+python3 -m compileall -q scripts/laguna_gguf_correctness.py \
+  tests/test_laguna_gguf_correctness.py
+git diff --check
+```
+
+The focused bundle is 15/15 green. Existing L2-L5 gfx1151 profiler entries cover
+the exact embedding, F16 projection, RoPE/gate, global/SWA attention, router,
+and routed/shared expert bodies exercised here; no kernel body changed in this
+unit. Task 32 closes under its explicit documented-arithmetic-blocker clause.
+This is correctness diagnosis, not exact-output or throughput evidence; public
+direct/eager wiring can proceed, while performance and DFlash economics retain
+their own gates.
