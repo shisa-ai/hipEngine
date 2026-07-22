@@ -201,6 +201,8 @@ def test_laguna_generator_exposes_poolside_v1_chat_reasoning_contract(generator)
     assert prompt.startswith("〈|EOS|〉<system>")
     assert generator.instance.chat_template_family == "poolside_v1"
     assert generator.instance.reasoning_parser_name == "poolside_v1"
+    assert generator.instance.tool_parser_name == "poolside_v1"
+    assert generator.instance.chat_tool_parser.name == "poolside_v1"
     assert generator.instance.chat_reasoning_parser.initially_open(prompt) is True
 
 

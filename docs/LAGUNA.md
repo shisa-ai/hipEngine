@@ -5,8 +5,8 @@ Last updated: 2026-07-22
 Status: eager all-resident c=1 and public blocking/streaming generation are
 implemented; first-token oracle and repeated-state gates pass, with one
 documented low-margin greedy-32 arithmetic split. Deterministic Poolside-v1
-reasoning parsing is green; XML tools, live chat transcripts, bulk prefill, and
-performance work remain.
+reasoning and XML tool parsing are green; live chat transcripts, bulk prefill,
+and performance work remain.
 
 This document defines the correctness-first plan for running
 [`poolside/Laguna-S-2.1-GGUF`](https://huggingface.co/poolside/Laguna-S-2.1-GGUF),
@@ -1075,7 +1075,7 @@ the pre-final-norm DFlash capture. Its exact S 2.1 template is
 | Session and hidden taps | `LagunaGGUFResidentSession` owns all 814 weights, exact c=1 scratch, dual RoPE, global/SWA KV, logits/argmax, and optional caller-owned BF16 taps at depths 2/11/20/30/39/48 | The 55-token oracle run is finite, repeat-exact, teardown-exact, and matches 29/32 autoregressive IDs; oracle teacher forcing is 31/32, isolating one low-margin branch rather than a cascading state bug. |
 | Public generator | Generic engine loop and server lifecycle exist | Closed for the initial c=1 boundary: concrete Laguna registration owns resident weights plus isolated sessions, supports blocking/streaming preformatted completion, suppresses EOT/stops, reports truthful routing metadata, and frees through public `LLM.close()`. Bulk rows and performance promotion remain L8/L9. |
 | Reasoning | Model-owned Poolside renderer plus assistant-scoped `poolside_v1` prompt state feed the generic blocking/live/buffered splitter | Closed at deterministic parser scope: all five frozen GGUF template cases render exactly; no-thinking, prompt-opened thinking, duplicate controls, fragmented closes, prior-turn controls, blocking/streaming, and stop-at-close fixtures separate `reasoning_content` without leaking complete control markers. Live-model transcript validation remains L7 task #24. |
-| Tools | Generic server still parses Qwen JSON-in-`<tool_call>` | S 2.1 emits Poolside XML arguments: `<tool_call>name<arg_key>…</arg_key><arg_value>…</arg_value></tool_call>`. Implement vLLM [`poolside_v1`](https://github.com/vllm-project/vllm/blob/61c9ef986a807aa3b9c6ccd25bb223b8f4116ac7/vllm/tool_parsers/poolside_v1_tool_parser.py#L48-L220), including newline-less calls and incremental string values, before advertising Laguna tool parsing. |
+| Tools | Model-owned `PoolsideV1ToolParser` feeds the generic strict OpenAI tool-result surface | Closed at deterministic parser scope: S 2.1 XML calls, newline-less names, schema-typed verbatim strings, JSON/safe-literal non-strings, multiple calls, stable streamed IDs/argument fragments, and malformed/incomplete fail-closed behavior are frozen. The loaded Laguna capability advertises `poolside_v1_xml`; live-model transcript validation remains L7 task #24. |
 | Independent oracle | Closed for target AR: clean local Poolside checkout/build at `04b2b72c`, exact template/token fixtures, a complete 100,352-way first-token distribution, and 32 fresh-process-stable greedy IDs are checked in | Use the frozen fixture for L6 KL/top-1/greedy gates. Keep `-fa off`, `--no-mmap`, exact token-ID input, and fresh-process oracle constraints visible; target+DFlash diagnostics remain later work. |
 
 Implemented root primitive slice (2026-07-22):
@@ -1437,9 +1437,9 @@ Implemented initial public c=1 boundary (2026-07-22):
   EOT 24 never leaks `</assistant>`, and incremental UTF-8 decoding does not
   emit transient replacement glyphs;
 - the first public support boundary is **preformatted completion**. Poolside-v1
-  chat/reasoning/tool output parsing and its full server transcript gate are
-  intentionally the separate parser tasks; they must not be advertised as
-  model-validated merely because raw completion works.
+  deterministic reasoning/tool parser gates are now green, but the full live-
+  model server transcript gate remains separate; parser fixtures must not be
+  advertised as model-quality validation merely because raw completion works.
 
 The committed `scripts/laguna_public_correctness.py` gate compares public
 blocking, public streaming, and direct eager execution while sharing only the
@@ -1478,10 +1478,39 @@ Implemented Poolside-v1 reasoning compatibility (2026-07-22):
   `reasoning_content`/`content`; capabilities report `poolside_v1` once the
   Laguna generator is loaded.
 
-This closes deterministic reasoning-parser task #22, not tool parsing or a live
-Laguna chat-quality claim. Poolside XML tool extraction/streaming remains task
-#23, and task #24 must run real blocking/streaming transcript prompts before L7
-is complete.
+This closes deterministic reasoning-parser task #22, not a live Laguna chat-
+quality claim. Tool parsing is closed separately below; task #24 must run real
+blocking/streaming reasoning and tool transcripts before L7 is complete.
+
+Implemented Poolside-v1 tool compatibility (2026-07-22):
+
+- `PoolsideV1ToolParser` follows vLLM's pinned
+  [`poolside_v1` envelope and typed-value extraction](https://github.com/vllm-project/vllm/blob/61c9ef986a807aa3b9c6ccd25bb223b8f4116ac7/vllm/tool_parsers/poolside_v1_tool_parser.py#L48-L220):
+  complete `<tool_call>name<arg_key>…</arg_key><arg_value>…</arg_value>`
+  blocks parse with or without a newline after the function name;
+- schema-declared string values preserve leading indentation, interior Unicode,
+  and trailing newlines verbatim. Other values use JSON, then safe Python
+  literal decoding, then a string fallback, before arguments are serialized as
+  valid JSON;
+- the parser returns all complete calls and the content before the first call,
+  matching the pinned vLLM non-streaming contract. hipEngine deliberately adds
+  malformed/incomplete-block reporting so its existing strict validation can
+  suppress unsafe output with `invalid_tool_call` rather than leaking XML;
+- the generation plugin owns the parser and advertises `poolside_v1_xml`; the
+  generic server selects it through the model protocol without a Laguna/backend
+  branch. Models without a parser retain the Qwen JSON parser;
+- blocking choices emit OpenAI function calls and `finish_reason=tool_calls`.
+  Strict streaming buffers until result validation, then emits 128-character
+  JSON argument deltas with one stable ID per call; fragmented source XML and
+  long escaped string values reconstruct exactly. Multiple calls require the
+  existing `parallel_tool_calls=true` opt-in and receive distinct IDs;
+- `tests/fixtures/laguna_poolside_v1_tools.json` freezes single, newline-less,
+  typed/verbatim, adjacent-multiple, ordinary, partial, malformed, and empty-name
+  outputs. Focused server tests cover blocking, fragmented SSE, stable IDs,
+  parallel opt-in, capability truthfulness, and fail-closed behavior.
+
+This closes deterministic tool-parser task #23. It does not claim that Laguna
+chooses the correct tool on live prompts; task #24 owns those transcript gates.
 
 ### L8 — Bulk prefill and graph replay
 

@@ -17,6 +17,7 @@ from typing import Any, Iterator, Sequence
 
 from hipengine.chat.poolside_v1 import (
     PoolsideV1ReasoningParser,
+    PoolsideV1ToolParser,
     render_poolside_v1_chat,
 )
 from hipengine.core.hip import HipRuntime, get_hip_runtime
@@ -63,6 +64,7 @@ class LagunaGGUFGenerator:
     server_plain_ar_max_active_requests: int = 1
     tokenizer: LagunaGGUFTokenizer = field(init=False)
     chat_reasoning_parser: PoolsideV1ReasoningParser = field(init=False)
+    chat_tool_parser: PoolsideV1ToolParser = field(init=False)
     last_generation_outputs: tuple[GenerationOutput, ...] = field(
         default=(), init=False, repr=False
     )
@@ -78,6 +80,7 @@ class LagunaGGUFGenerator:
     supports_stream_logprobs = False
     chat_template_family = "poolside_v1"
     reasoning_parser_name = "poolside_v1"
+    tool_parser_name = "poolside_v1"
 
     def __post_init__(self) -> None:
         self.model_path = Path(self.model_path).expanduser().resolve()
@@ -93,6 +96,7 @@ class LagunaGGUFGenerator:
             )
         self.tokenizer = LagunaGGUFTokenizer.from_gguf_info(self.weight_index)
         self.chat_reasoning_parser = PoolsideV1ReasoningParser(self.tokenizer)
+        self.chat_tool_parser = PoolsideV1ToolParser()
 
     @property
     def repacked_cache_path(self) -> Path | None:

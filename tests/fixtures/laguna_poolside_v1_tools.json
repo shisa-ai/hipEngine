@@ -1,0 +1,107 @@
+{
+  "schema": 1,
+  "contract": "poolside_v1",
+  "source": "vllm-project/vllm@61c9ef986a807aa3b9c6ccd25bb223b8f4116ac7/vllm/tool_parsers/poolside_v1_tool_parser.py",
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "get_weather",
+        "description": "Get weather for a city.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "city": {"type": "string"},
+            "days": {"type": "integer"}
+          },
+          "required": ["city"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "write_file",
+        "description": "Write content to a file.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "content": {"type": "string"},
+            "mode": {"type": "integer"},
+            "metadata": {"type": "object"},
+            "enabled": {"type": "boolean"},
+            "tags": {"type": "array"}
+          },
+          "required": ["content"]
+        }
+      }
+    }
+  ],
+  "cases": [
+    {
+      "name": "newline_less_single",
+      "output": "<tool_call>get_weather<arg_key>city</arg_key><arg_value>Paris</arg_value><arg_key>days</arg_key><arg_value> 3 </arg_value></tool_call>",
+      "content": "",
+      "calls": [
+        {"name": "get_weather", "arguments": {"city": "Paris", "days": 3}}
+      ],
+      "invalid": false
+    },
+    {
+      "name": "string_whitespace_and_typed_values",
+      "output": "Need a file.</think><tool_call>write_file\n<arg_key>content</arg_key>\n<arg_value>    def f():\n        return \"✓\"\n</arg_value>\n<arg_key>mode</arg_key><arg_value> 420 </arg_value><arg_key>metadata</arg_key><arg_value>{\"kind\":\"python\"}</arg_value><arg_key>enabled</arg_key><arg_value>True</arg_value><arg_key>tags</arg_key><arg_value>['a', 'b']</arg_value></tool_call>",
+      "content": "Need a file.</think>",
+      "calls": [
+        {
+          "name": "write_file",
+          "arguments": {
+            "content": "    def f():\n        return \"✓\"\n",
+            "mode": 420,
+            "metadata": {"kind": "python"},
+            "enabled": true,
+            "tags": ["a", "b"]
+          }
+        }
+      ],
+      "invalid": false
+    },
+    {
+      "name": "multiple_adjacent_calls",
+      "output": "<tool_call>get_weather\n<arg_key>city</arg_key><arg_value>Paris</arg_value></tool_call><tool_call>get_weather<arg_key>city</arg_key><arg_value>Tokyo</arg_value><arg_key>days</arg_key><arg_value>2</arg_value></tool_call>discarded trailing prose",
+      "content": "",
+      "calls": [
+        {"name": "get_weather", "arguments": {"city": "Paris"}},
+        {"name": "get_weather", "arguments": {"city": "Tokyo", "days": 2}}
+      ],
+      "invalid": false
+    },
+    {
+      "name": "ordinary_content",
+      "output": "No tool is needed.",
+      "content": "No tool is needed.",
+      "calls": [],
+      "invalid": false
+    },
+    {
+      "name": "partial_call",
+      "output": "<tool_call>get_weather<arg_key>city</arg_key><arg_value>Par",
+      "content": "<tool_call>get_weather<arg_key>city</arg_key><arg_value>Par",
+      "calls": [],
+      "invalid": true
+    },
+    {
+      "name": "malformed_complete_call",
+      "output": "<tool_call>get_weather<arg_key>city</arg_key><arg_value>Paris</tool_call>",
+      "content": "<tool_call>get_weather<arg_key>city</arg_key><arg_value>Paris</tool_call>",
+      "calls": [],
+      "invalid": true
+    },
+    {
+      "name": "empty_name",
+      "output": "<tool_call><arg_key>city</arg_key><arg_value>Paris</arg_value></tool_call>",
+      "content": "<tool_call><arg_key>city</arg_key><arg_value>Paris</arg_value></tool_call>",
+      "calls": [],
+      "invalid": true
+    }
+  ]
+}

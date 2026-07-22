@@ -173854,3 +173854,47 @@ Blocking and fragmented SSE tests emit reasoning/content without complete
 control-marker leakage. This closes task #22 at deterministic parser scope.
 Poolside XML tool output parsing remains task #23; real model transcript
 validation remains task #24, so no live chat-quality claim is made here.
+
+## 2026-07-22 — Implement Poolside-v1 tool-call compatibility
+
+Added a model-owned, torch-free `PoolsideV1ToolParser` based on vLLM
+`vllm-project/vllm@61c9ef986a807aa3b9c6ccd25bb223b8f4116ac7`
+`vllm/tool_parsers/poolside_v1_tool_parser.py`. It parses complete Poolside XML
+function envelopes with or without a newline after the name. Schema-declared
+strings retain whitespace and Unicode verbatim; non-string values decode as
+JSON, then safe Python literals, then strings. Multiple complete calls are
+returned in order and content follows the upstream before-first-call contract.
+
+Unlike the permissive upstream extraction result, malformed, incomplete, and
+empty-name envelopes are explicitly reported to hipEngine's strict generic
+validation surface. They therefore finish as `invalid_tool_call` with no raw XML
+leak. The server discovers parsers through the model chat protocol; Qwen models
+keep the existing JSON parser. Laguna now owns and advertises `poolside_v1_xml`.
+Blocking output emits normal OpenAI function calls. Strict SSE buffering emits
+validated JSON argument fragments with a stable per-call ID; parallel calls
+retain the existing explicit opt-in and distinct IDs.
+
+RED was collection failure because `PoolsideV1ToolParser` did not exist. GREEN:
+
+```bash
+uv run pytest -q tests/test_poolside_v1_tools.py
+# 6 passed
+uv run pytest -q tests/test_poolside_v1_reasoning.py \
+  tests/test_poolside_v1_tools.py tests/test_generation_laguna_gguf.py
+# 28 passed
+uv run pytest -q tests/test_server_api.py -k 'tool or capabilit'
+# 140 passed
+uv run pytest -q tests/test_agentic_server_conformance.py
+# 13 passed
+uvx ruff check hipengine/chat hipengine/generation/laguna_gguf.py \
+  hipengine/server/api.py tests/test_poolside_v1_tools.py
+python3 -m compileall -q hipengine/chat hipengine/generation/laguna_gguf.py \
+  hipengine/server/api.py tests/test_poolside_v1_tools.py
+# Ruff/compileall/git diff --check clean
+```
+
+`tests/fixtures/laguna_poolside_v1_tools.json` freezes newline-less single,
+verbatim/typed, adjacent multiple, ordinary, partial, malformed, and empty-name
+cases. This closes task #23 at deterministic parser/server scope. Task #24 must
+still validate actual Laguna reasoning and tool-selection transcripts, so no
+live agentic-quality claim is made.
