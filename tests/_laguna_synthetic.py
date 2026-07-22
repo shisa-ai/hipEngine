@@ -4,6 +4,12 @@ from pathlib import Path
 from typing import Any
 
 from hipengine.loading.gguf import GGUFModelInfo, GGUFTensorInfo
+from hipengine.quant.gguf import (
+    GGMLQuantizationType,
+    ggml_type_name,
+    nbytes_for_shape,
+    quant_shape_to_byte_shape,
+)
 
 
 def laguna_metadata() -> dict[str, Any]:
@@ -55,4 +61,69 @@ def make_laguna_info(
         metadata=laguna_metadata() if metadata is None else metadata,
         tensors=tensors,
         tensor_data_offset=0,
+    )
+
+
+def laguna_tensors() -> tuple[GGUFTensorInfo, ...]:
+    tensors = [
+        tensor_info("token_embd.weight", (100_352, 3_072), GGMLQuantizationType.Q4_K),
+        tensor_info("output_norm.weight", (3_072,), GGMLQuantizationType.F32),
+        tensor_info("output.weight", (100_352, 3_072), GGMLQuantizationType.Q6_K),
+    ]
+    for layer_id, heads in enumerate([48, 72, 72, 72] * 12):
+        prefix = f"blk.{layer_id}"
+        tensors.extend(
+            (
+                tensor_info(f"{prefix}.attn_norm.weight", (3_072,), GGMLQuantizationType.F32),
+                tensor_info(f"{prefix}.attn_q.weight", (heads * 128, 3_072), GGMLQuantizationType.F16),
+                tensor_info(f"{prefix}.attn_k.weight", (1_024, 3_072), GGMLQuantizationType.F16),
+                tensor_info(f"{prefix}.attn_v.weight", (1_024, 3_072), GGMLQuantizationType.F16),
+                tensor_info(f"{prefix}.attn_gate.weight", (heads, 3_072), GGMLQuantizationType.F16),
+                tensor_info(f"{prefix}.attn_q_norm.weight", (128,), GGMLQuantizationType.F32),
+                tensor_info(f"{prefix}.attn_k_norm.weight", (128,), GGMLQuantizationType.F32),
+                tensor_info(f"{prefix}.attn_output.weight", (3_072, heads * 128), GGMLQuantizationType.F16),
+                tensor_info(f"{prefix}.ffn_norm.weight", (3_072,), GGMLQuantizationType.F32),
+            )
+        )
+        if layer_id == 0:
+            tensors.extend(
+                (
+                    tensor_info(f"{prefix}.ffn_gate.weight", (12_288, 3_072), GGMLQuantizationType.Q4_K),
+                    tensor_info(f"{prefix}.ffn_up.weight", (12_288, 3_072), GGMLQuantizationType.Q4_K),
+                    tensor_info(f"{prefix}.ffn_down.weight", (3_072, 12_288), GGMLQuantizationType.Q6_K),
+                )
+            )
+        else:
+            tensors.extend(
+                (
+                    tensor_info(f"{prefix}.ffn_gate_inp.weight", (256, 3_072), GGMLQuantizationType.F32),
+                    tensor_info(f"{prefix}.exp_probs_b.bias", (256,), GGMLQuantizationType.F32),
+                    tensor_info(f"{prefix}.ffn_gate_exps.weight", (256, 1_024, 3_072), GGMLQuantizationType.Q4_K),
+                    tensor_info(f"{prefix}.ffn_up_exps.weight", (256, 1_024, 3_072), GGMLQuantizationType.Q4_K),
+                    tensor_info(f"{prefix}.ffn_down_exps.weight", (256, 3_072, 1_024), GGMLQuantizationType.Q6_K),
+                    tensor_info(f"{prefix}.ffn_gate_shexp.weight", (1_024, 3_072), GGMLQuantizationType.Q4_K),
+                    tensor_info(f"{prefix}.ffn_up_shexp.weight", (1_024, 3_072), GGMLQuantizationType.Q4_K),
+                    tensor_info(f"{prefix}.ffn_down_shexp.weight", (3_072, 1_024), GGMLQuantizationType.Q6_K),
+                )
+            )
+    return tuple(tensors)
+
+
+def tensor_info(
+    name: str,
+    shape: tuple[int, ...],
+    qtype: GGMLQuantizationType,
+) -> GGUFTensorInfo:
+    ggml_shape = tuple(reversed(shape))
+    return GGUFTensorInfo(
+        name=name,
+        shape=shape,
+        ggml_shape=ggml_shape,
+        ggml_type=int(qtype),
+        ggml_type_name=ggml_type_name(qtype),
+        n_elements=1,
+        nbytes=nbytes_for_shape(shape, qtype),
+        offset=0,
+        data_offset=0,
+        byte_shape=quant_shape_to_byte_shape(shape, qtype),
     )

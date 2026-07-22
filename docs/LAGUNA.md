@@ -222,7 +222,7 @@ Layer 1 switches to 72 query heads, for example
 Expected MoE tensor families, following the GGUF and reviewed llama.cpp map:
 
 - `blk.{layer}.ffn_gate_inp.weight` — F32 router projection;
-- `blk.{layer}.ffn_exp_probs_b.bias` — F32 selection correction bias;
+- `blk.{layer}.exp_probs_b.bias` — F32 selection correction bias;
 - `blk.{layer}.ffn_gate_exps.weight` — rank-3 routed expert gate weights;
 - `blk.{layer}.ffn_up_exps.weight` — rank-3 routed expert up weights;
 - `blk.{layer}.ffn_down_exps.weight` — rank-3 routed expert down weights;
