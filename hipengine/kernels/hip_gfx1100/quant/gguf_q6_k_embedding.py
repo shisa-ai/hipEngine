@@ -1,4 +1,4 @@
-"""Raw-pointer wrappers for GGUF Q6_K/Q8_0 token embedding lookup."""
+"""Raw-pointer wrappers for GGUF Q4_K/Q6_K/Q8_0 token embedding lookup."""
 
 from __future__ import annotations
 
@@ -49,6 +49,37 @@ def build_gguf_q6_k_embedding(
         dry_run=dry_run,
         load=load,
         require_cached=require_cached,
+    )
+
+
+def gguf_q4_k_embedding_bf16_out(
+    token_ids_ptr: int,
+    qweight_ptr: int,
+    out_ptr: int,
+    rows: int,
+    hidden_size: int,
+    vocab_size: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch GGUF Q4_K embedding lookup into BF16-bit output."""
+
+    _launch_embedding(
+        "gguf_q4_k",
+        "hipengine_gguf_q4_k_embedding_bf16_out",
+        token_ids_ptr,
+        qweight_ptr,
+        out_ptr,
+        rows,
+        hidden_size,
+        vocab_size,
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
     )
 
 
@@ -160,6 +191,11 @@ def _launch_embedding(
 
 def register_gguf_q6_k_embedding_kernels(*, replace: bool = True) -> None:
     register(
+        KernelKey("hip_gfx1100", "embedding", "gguf_q4_k", "lookup_bf16_out"),
+        gguf_q4_k_embedding_bf16_out,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "embedding", "gguf_q6_k", "lookup_bf16_out"),
         gguf_q6_k_embedding_bf16_out,
         replace=replace,
@@ -191,6 +227,7 @@ register_gguf_q6_k_embedding_kernels()
 
 __all__ = [
     "build_gguf_q6_k_embedding",
+    "gguf_q4_k_embedding_bf16_out",
     "gguf_q6_k_embedding_bf16_out",
     "gguf_q8_0_embedding_bf16_out",
     "plan_gguf_q6_k_embedding_build",

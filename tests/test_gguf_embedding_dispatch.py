@@ -24,10 +24,14 @@ def _fake_weight(*, layout: str, quant_key: str):
 
 
 def test_resolve_gguf_embedding_dispatch_uses_raw_quant_or_dense_fallback() -> None:
+    q4 = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q4_k")
     q6 = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q6_k")
     q8 = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q8_0")
     dense = _fake_weight(layout=LAYOUT_DENSE_BF16, quant_key="gguf_q4_1")
 
+    assert resolve_gguf_embedding_dispatch(q4).key == KernelKey(
+        "hip_gfx1100", "embedding", "gguf_q4_k", "lookup_bf16_out"
+    )
     assert resolve_gguf_embedding_dispatch(q6).key == KernelKey(
         "hip_gfx1100", "embedding", "gguf_q6_k", "lookup_bf16_out"
     )

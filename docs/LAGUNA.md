@@ -523,7 +523,7 @@ Critical details:
 | GGUF v3 scan and lazy spans | `hipengine/loading/gguf.py` | Add Laguna metadata/config validation. |
 | Q4_K/Q6_K dequant oracle | `hipengine/quant/gguf.py` and plugins | Reuse; add Laguna tensor fixtures. |
 | Q4_K dense projections | native pack8/T16 GGUF kernels | Reuse after shape gates. |
-| Q4_K token embedding | only Q6_K/Q8_0 lookup is currently registered | Add Q4_K row-dequant lookup to BF16 for target and DFlash roots. |
+| Q4_K token embedding | raw Q4_K/Q6_K/Q8_0 lookup is registered for gfx1100/gfx1151 | Reuse the BF16 row-dequant path for target tokens and DFlash root/mask rows. |
 | rank-3 selected experts | Q4/Q5/Q6 T16/raw selected kernels | Reuse for 256 experts/top-10; validate exact rank-3 strides. |
 | Q6_K LM head | native Q6 T16/GEMV path | Reuse untied output map. |
 | F16 projections | dense FP16 GEMV/WMMA kernels exist | Preserve F16 resident bytes; add Laguna projection plan. |
@@ -990,7 +990,7 @@ the pre-final-norm DFlash capture. Its exact S 2.1 template is
 
 | Forward stage | Existing concrete capability | Blocking gap / required gate |
 | --- | --- | --- |
-| Q4_K token embedding | Q6_K/Q8_0 raw lookup is registered and the Laguna Q4_K table remains raw | No `embedding/gguf_q4_k/lookup_bf16_out` key/body. Add row-dequant, invalid-ID checks, exact D2H comparison, registry resolve, and a profiler-visible gfx1151 launch. |
+| Q4_K token embedding | Raw `embedding/gguf_q4_k/lookup_bf16_out` is registered for gfx1100/gfx1151 and the Laguna table stays source-native | Closed: synthetic and real rows are BF16-exact vs CPU, invalid IDs preserve caller rows, model-neutral resident dispatch resolves, and gfx1151 profiling shows `gguf_q4_k_embedding_bf16_out_kernel`. |
 | F32 RMSNorm / residual | GGUF BF16-input/F32-weight RMSNorm and add-RMSNorm are reusable | Wire under Laguna keys and prove layer-0 residual order; no new math is implied. |
 | F16 Q/K/V/gate/O projections | Source precision and pointers are resident; dense FP16 kernels handle FP16 activation+weight | Laguna needs BF16/F32 activation with F16 weight and FP32/lowp output. Neither mixed variant is registered. Add single/dual/triple projection primitives and retain an unfused fallback. |
 | Q/K head norm and RoPE | The existing FP32-input/F32-weight head-norm+partial-rotate body accepts variable head counts/dimensions | Current table helper implements plain RoPE only. Add exact YaRN tables for full layers (partial 64) and plain SWA tables (full 128), absolute-position tests, and 48/72 Q-head gfx1151 coverage. |
@@ -1001,11 +1001,31 @@ the pre-final-norm DFlash capture. Its exact S 2.1 template is
 | Router projection | BF16 hidden × F32 router weight → FP32 logits is registered (gfx1151 256-thread override) | Existing selection is raw-logit top-k followed by softmax. Laguna requires `sigmoid(logits)`, correction bias for selection only, stable top-10, gather of unbiased probabilities, sum normalization, and 2.5 scaling. A separate kernel/key is mandatory. |
 | Routed experts | Q4_K/Q6_K rank-3 T16 selected GEMVs support arbitrary positive expert count and top-k-shaped rows | Registration is lazy through the Qwen runner and no 256-expert/top-10/3072×1024 Laguna gate exists. Add direct Laguna plan resolution, exact production-shape raw-byte tests, and rocprof evidence. |
 | Shared expert | Rank-2 Q4_K pack8 gate/up plus raw Q6_K down are reusable | Wire always-on SiLU shared output and add it independently of routed scale; do not reuse Qwen's sigmoid shared-gate combine semantics. |
-| Final norm / Q6_K LM head | F32-weight RMSNorm, raw Q6_K BF16→F32 linear, GPU argmax, and sampler primitives are registered | Add exact root probes, then preserve full logits for KL/top-1 oracle gates before using direct top-1 shortcuts. |
+| Final norm / Q6_K LM head | F32-weight RMSNorm, resident Q6T16 BF16→F32 linear sourced losslessly from raw Q6_K, GPU argmax, and sampler primitives are registered | Closed at root-probe scope: full 100,352-way logits are finite, KL is `6.87e-13` vs raw-Q6 CPU math, and top-1 is exactly `81364`; preserve full logits for later whole-model oracle gates. |
 | Session and hidden taps | Model map/resident weights expose every layer and metadata | No `laguna_gguf_runner.py`, KV/state owner, scratch plan, post-layer capture ABI, or eager step exists. Build c=1/token-serial first and capture depths 2/11/20/30/39/48 only on request. |
 | Public generator | Generic engine loop and server lifecycle exist | Built-ins register only Qwen paths; there is no Laguna generation key, tokenizer/template renderer, streaming owner, or model metadata route. |
 | Reasoning/tools | Generic server understands Qwen `<think>` plus JSON-in-`<tool_call>` | S 2.1 uses Poolside XML arguments: `<tool_call>name<arg_key>…</arg_key><arg_value>…</arg_value></tool_call>`, and reasoning history must stop its backward scan at the current `<assistant>` token. Implement the `poolside_v1` contracts from vLLM [`61c9ef98`](https://github.com/vllm-project/vllm/blob/61c9ef986a807aa3b9c6ccd25bb223b8f4116ac7/vllm/tool_parsers/poolside_v1_tool_parser.py#L48-L220) and its [assistant-scoped reasoning parser](https://github.com/vllm-project/vllm/blob/61c9ef986a807aa3b9c6ccd25bb223b8f4116ac7/vllm/reasoning/poolside_v1_reasoning_parser.py#L33-L69), including newline-less calls and incremental string values. |
 | Independent oracle | Closed for target AR: clean local Poolside checkout/build at `04b2b72c`, exact template/token fixtures, a complete 100,352-way first-token distribution, and 32 fresh-process-stable greedy IDs are checked in | Use the frozen fixture for L6 KL/top-1/greedy gates. Keep `-fa off`, `--no-mmap`, exact token-ID input, and fresh-process oracle constraints visible; target+DFlash diagnostics remain later work. |
+
+Implemented root primitive slice (2026-07-22):
+
+- the shared gfx11 embedding family now dequantizes raw GGUF Q4_K rows directly
+  to BF16 under `embedding/gguf_q4_k/lookup_bf16_out`; gfx1151 receives the
+  normal backend alias rather than a model/backend branch;
+- `GGUFDeviceWeight` is a structural runtime ABI, so Laguna and Qwen resident
+  owners use the same embedding/linear dispatch without importing a model-owned
+  weight type into those dispatch functions;
+- CPU and HIP tests cover exact Q4_K row selection, negative/out-of-vocabulary
+  IDs (caller output rows remain untouched), registry resolution on gfx1100 and
+  gfx1151, and the completed S 2.1 artifact;
+- `scripts/laguna_root_probe.py` materializes only the Q4_K embedding, F32 final
+  norm, and losslessly repacked Q6T16 LM head. For BOS `100257`, gfx1151 matches
+  raw-GGUF CPU math with embedding/norm max-abs `0`, logits max/mean abs
+  `5.72e-6`/`6.25e-7`, KL `6.87e-13`, and top-1 `81364 == 81364` over all
+  100,352 logits;
+- cached `rocprofv3 --kernel-trace` records Q4 lookup `9.818 us` (16 VGPR,
+  zero scratch/LDS), RMSNorm `7.614 us`, Q6T16 LM head `1.213 ms` (72 VGPR,
+  zero scratch, 512 B LDS), and argmax stage 1/2 `4.769/1.563 us`.
 
 The broad source-lineage scan is currently blocked before any report because the
 manifest's read-only `/home/lhl/amd-gpu-tuning/reference/atlas` and

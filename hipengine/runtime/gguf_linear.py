@@ -50,8 +50,8 @@ from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_GGUF_Q8_0_T16,
     LAYOUT_Q4_K_PACK8,
     LAYOUT_RAW_GGUF,
-    Qwen35GGUFDeviceWeight,
 )
+from hipengine.runtime.gguf_weight import GGUFDeviceWeight
 
 GGUF_ACTIVATION_BF16 = "bf16"
 GGUF_ACTIVATION_F32 = "f32"
@@ -196,7 +196,7 @@ _DISPATCH_TABLE: Mapping[tuple[str, str, str], GGUFLinearDispatch] = {
 
 
 def _weight_backend(
-    *weights: Qwen35GGUFDeviceWeight,
+    *weights: GGUFDeviceWeight,
     backend: str | None = None,
 ) -> str:
     """Return one explicit or resident-weight backend for a dispatch group."""
@@ -533,7 +533,7 @@ def _rowtile_dispatch(
 
 
 def resolve_gguf_linear_dispatch(
-    weight: Qwen35GGUFDeviceWeight,
+    weight: GGUFDeviceWeight,
     *,
     activation_dtype: str = GGUF_ACTIVATION_BF16,
     output_dtype: str = GGUF_OUTPUT_BF16,
@@ -580,7 +580,7 @@ def clear_gguf_linear_dispatch_cache() -> None:
 
 
 def launch_gguf_linear(
-    weight: Qwen35GGUFDeviceWeight,
+    weight: GGUFDeviceWeight,
     x_ptr: int,
     out_ptr: int,
     rows: int,
@@ -703,7 +703,7 @@ def launch_gguf_linear(
 
 
 def launch_gguf_linear_raw_ptr(
-    weight: Qwen35GGUFDeviceWeight,
+    weight: GGUFDeviceWeight,
     qweight_ptr: int,
     x_ptr: int,
     out_ptr: int,
@@ -763,8 +763,8 @@ def launch_gguf_linear_raw_ptr(
 
 
 def launch_gguf_linear_pair(
-    weight_a: Qwen35GGUFDeviceWeight,
-    weight_b: Qwen35GGUFDeviceWeight,
+    weight_a: GGUFDeviceWeight,
+    weight_b: GGUFDeviceWeight,
     x_ptr: int,
     out_a_ptr: int,
     out_b_ptr: int,
@@ -925,8 +925,8 @@ def launch_gguf_linear_pair(
 
 
 def _resolve_gguf_linear_pair_kind(
-    weight_a: Qwen35GGUFDeviceWeight,
-    weight_b: Qwen35GGUFDeviceWeight,
+    weight_a: GGUFDeviceWeight,
+    weight_b: GGUFDeviceWeight,
     *,
     rows: int,
     in_features: int,
@@ -1000,9 +1000,9 @@ def _resolve_gguf_linear_pair_kind(
 
 
 def launch_gguf_linear_triple(
-    weight_a: Qwen35GGUFDeviceWeight,
-    weight_b: Qwen35GGUFDeviceWeight,
-    weight_c: Qwen35GGUFDeviceWeight,
+    weight_a: GGUFDeviceWeight,
+    weight_b: GGUFDeviceWeight,
+    weight_c: GGUFDeviceWeight,
     x_ptr: int,
     out_a_ptr: int,
     out_b_ptr: int,
@@ -1108,8 +1108,8 @@ def launch_gguf_linear_triple(
 
 
 def launch_gguf_linear_pair_concat(
-    weight_a: Qwen35GGUFDeviceWeight,
-    weight_b: Qwen35GGUFDeviceWeight,
+    weight_a: GGUFDeviceWeight,
+    weight_b: GGUFDeviceWeight,
     x_ptr: int,
     out_ptr: int,
     rows: int,

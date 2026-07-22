@@ -19,6 +19,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_embedding import (
     build_gguf_q6_k_embedding,
+    gguf_q4_k_embedding_bf16_out,
     gguf_q6_k_embedding_bf16_out,
     gguf_q8_0_embedding_bf16_out,
     plan_gguf_q6_k_embedding_build,
@@ -153,6 +154,7 @@ __all__ = [
     "gguf_q5_k_gemv_bf16_f32_out",
     "gguf_q5_k_gemv_f32_f32_out",
     "gguf_q5_k_gemv_fp16_f32_out",
+    "gguf_q4_k_embedding_bf16_out",
     "gguf_q6_k_embedding_bf16_out",
     "gguf_q8_0_embedding_bf16_out",
     "gguf_q6_k_gemv_bf16_bf16_out",
