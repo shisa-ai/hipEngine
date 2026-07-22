@@ -49,10 +49,8 @@ __device__ inline IQ2Segment load_iq2_segment(
 #pragma unroll
   for (int j = 0; j < 8; ++j) {
     const uint32_t code = (static_cast<uint32_t>(grid) >> (2 * j)) & 3U;
-    const float magnitude =
-        code == 0U ? 8.0f : (code == 1U ? 25.0f : (code == 2U ? 43.0f : 0.0f));
     segment.magnitude[j] =
-        (signs & (1U << j)) != 0U ? -magnitude : magnitude;
+        iq2_xs_signed_magnitude(code, (signs >> j) & 1U);
   }
   return segment;
 }
@@ -733,10 +731,8 @@ __device__ inline half16_t load_iq2_weight_half16(
 #pragma unroll
     for (int j = 0; j < 8; ++j) {
       const uint32_t code = (static_cast<uint32_t>(grid) >> (2 * j)) & 3U;
-      const float magnitude =
-          code == 0U ? 8.0f : (code == 1U ? 25.0f : (code == 2U ? 43.0f : 0.0f));
       values[pair * 8 + j] = static_cast<half_t>(
-          dequant_scale * ((signs & (1U << j)) != 0U ? -magnitude : magnitude));
+          dequant_scale * iq2_xs_signed_magnitude(code, (signs >> j) & 1U));
     }
   }
   return values;
