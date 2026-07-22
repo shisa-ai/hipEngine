@@ -869,9 +869,12 @@ Implemented foundation (2026-07-22):
 - the streaming device loader now implements owned dense FP16/F32, raw GGUF,
   Q4_K pack8, and Q4_K/Q6_K T16 allocations with exact planned-byte checks and
   failure cleanup; fake-runtime payload/teardown tests are green;
-- live selected-slot and full-device materialization, streaming transient
-  measurements, and the load-only/free smoke remain pending and are not implied
-  by the dry-plan result.
+- live gfx1151 selected-slot materialization now passes for FP32, FP16, Q4_K
+  pack8, and tiny synthetic Q4T16/Q6T16 payloads with exact D2H readback; five
+  tracked allocations / 2,666,496 bytes return to zero after teardown;
+- full-device materialization, streaming transient measurements, and the
+  71.468-GiB load-only/free smoke remain pending and are not implied by the
+  selected-slot result.
 
 Plan:
 
