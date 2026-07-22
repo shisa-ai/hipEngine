@@ -174684,3 +174684,50 @@ uvx ruff check scripts/laguna_dflash_category_bench.py \
   tests/test_laguna_dflash_category_bench.py
 # clean
 ```
+
+## 2026-07-23 — Close Laguna DFlash D4 as exact but slower than AR
+
+The canonical B4 economics run completed on the Radeon 8060S/gfx1151 with the
+Q4_K_M target SHA-256 `7da520c5...c5753f` and pinned Poolside DFlash revision
+`b0486d1`, safetensors SHA-256 `f24f0878...b62a1f4`. It ran all ten committed
+four-category prompts, the fixed six-train/four-heldout split, two repetitions,
+alternating true AR/DFlash order, and 32 visible outputs per route. Target load
+49.013 s and drafter load 0.634 s are excluded; total process wall was 331.642 s.
+
+All 20 same-session pairs have exact IDs and finite logits, both modes are
+repeat-deterministic, the Poolside first-token gate passes (`KL=6.6214e-6`, exact
+top-1), every target/drafter cursor is valid, and tracked peak
+79,349,726,717 bytes returns to zero. The fixed-horizon derived state status was
+reclassified from exact raw positions after the focused predicate fix; source
+artifact SHA-256 before reclassification is
+`5fc1fff5ebc70c77a0aab749638ecc37e8fed3a855901fe4b0dfb3fdabc7a427`.
+No timing, acceptance, output, or memory measurement changed.
+
+The >1.10x D4 gate fails. Full-suite true AR is **16.388 tok/s**; DFlash is
+**10.715 tok/s (0.6538x, -34.62%)**. Train is 0.7209x and heldout 0.5744x;
+category ratios are code 0.8768x, general English 0.5236x, general Japanese
+0.5788x, and mixed Japanese/English 0.5815x. DFlash accepts 424/840 proposals
+(50.48%), or 0.6839 accepted/output, and spends 1.6935 target rows/output.
+Its 57.861 s decode wall splits into 6.721 s proposal, **50.493 s target verify
+(87.27%)**, and 0.645 s residual. Median TTFT regresses 3.478 -> 4.764 s and
+fixed-horizon E2E regresses 5.724 -> 4.000 output tok/s. AR remains default;
+DFlash public integration is deferred. Artifact:
+`benchmarks/results/2026-07-23-gfx1151-laguna-dflash-category-economics.json`.
+
+Exact measurement command:
+
+```bash
+env HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 \
+  uv run python -u scripts/laguna_dflash_category_bench.py \
+  /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf \
+  /home/lhl/.cache/huggingface/hub/models--poolside--Laguna-S-2.1-DFlash/snapshots/b0486d1586daa0d56435c508108171fc1c8daff9 \
+  --backend hip_gfx1151 --context-length 4096 --candidate-budget 4 \
+  --output-tokens 32 --repetitions 2 --warmup-output-tokens 6 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 \
+  --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f \
+  --drafter-sha256 f24f08781c697c19952c02fb2e7e9bdf2071b79a711c2a44b836a74b9b62a1f4 \
+  --drafter-revision b0486d1586daa0d56435c508108171fc1c8daff9 \
+  --output benchmarks/results/2026-07-23-gfx1151-laguna-dflash-category-economics.json
+```

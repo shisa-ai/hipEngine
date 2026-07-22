@@ -9,8 +9,9 @@ DFlash target verify/accept/commit are implemented. First-token, repeated-state,
 bulk-vs-serial, live Poolside-v1 reasoning/XML-tool, B4 draft top-k, and
 B1/B2/B4/B7/B15 target-cycle exactness gates pass, with one documented target-AR
 low-margin greedy-32 arithmetic split. The exact bulk-prefill path is retained
-as default; DFlash full-suite economics/public integration, higher-budget draft
-candidate parity, and long-context admission remain.
+as default. Full-suite DFlash B4 is exact but reaches only 0.6538x true-AR decode,
+so it is diagnostic-only; public integration, higher-budget draft candidate
+parity, prefill optimization, and long-context admission remain.
 
 This document defines the correctness-first plan for running
 [`poolside/Laguna-S-2.1-GGUF`](https://huggingface.co/poolside/Laguna-S-2.1-GGUF),
@@ -664,11 +665,13 @@ target:
 - root/query, logits, top-k, verifier, and commit scratch still require an exact
   plan and ownership audit.
 
-Planning estimate: add roughly 2.2-3.0 GiB to the target-only resident session.
-A short-context target+DFlash session and a single-request 256K target+DFlash
-session remain capacity-plausible on the 120 GiB GTT host, but neither is
-measured. DFlash admission must reserve verifier-shaped target scratch and must
-not rely on target-only headroom.
+The measured 4K B4 category session owns 79,349,505,533 resident bytes:
+77,099,132,853 target bytes (including lazy verifier resources) plus
+2,250,372,680 drafter bytes. Tracked peak is 79,349,726,717 bytes and teardown
+returns to zero, closing short-context capacity/lifecycle. A single-request 256K
+target+DFlash session remains capacity-plausible on the 120 GiB GTT host but is
+not measured. DFlash admission must reserve verifier-shaped target scratch and
+must not rely on target-only headroom.
 
 ## Inferred Performance Model
 
@@ -1993,6 +1996,37 @@ Only after D3:
 Reported Poolside/vLLM or other-hardware DFlash speedups are context only. They
 are not a gfx1151 or hipEngine baseline. A fixed-budget loss remains a valid
 exact diagnostic and leaves AR as default.
+
+D4 completed its admitted B4 decision on 2026-07-23. One resident target and
+pinned `b0486d1` BF16 drafter alternated true AR/DFlash over all ten canonical
+prompts, two repetitions, and a fixed 32-output horizon. All 20 pairs are exact
+and finite, both routes repeat deterministically, every target/drafter cursor
+satisfies a valid fixed-horizon commit boundary, the frozen Poolside first-token
+gate passes at KL `6.6214e-6` with exact top-1, and tracked ownership returns to
+zero.
+
+The economics reject promotion:
+
+| Scope | AR decode tok/s | DFlash B4 tok/s | Ratio | Draft acceptance | Target rows/output |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| full | 16.388 | 10.715 | 0.6538x | 50.48% | 1.6935 |
+| train | 16.445 | 11.855 | 0.7209x | 58.33% | 1.5323 |
+| heldout | 16.303 | 9.365 | 0.5744x | 41.15% | 1.9355 |
+| code | 16.564 | 14.522 | 0.8768x | 78.23% | 1.2500 |
+| general English | 16.714 | 8.751 | 0.5236x | 36.54% | 2.0968 |
+| general Japanese | 16.248 | 9.405 | 0.5788x | 40.63% | 1.9355 |
+| mixed Japanese/English | 15.879 | 9.234 | 0.5815x | 39.58% | 1.9355 |
+
+Across 210 cycles, proposal takes 6.721 s, target verification takes
+**50.493/57.861 s (87.27%)**, and post-verify/commit residual takes 0.645 s.
+Median TTFT also regresses `3.478 -> 4.764 s` because target AR uses bulk prefill
+while DFlash's hidden-capture seed is still serial. The primary D4 decode blocker
+is therefore excess verifier work plus insufficient non-code acceptance, not
+accept/commit overhead. AR remains default and D5 stays deferred. Artifact:
+`benchmarks/results/2026-07-23-gfx1151-laguna-dflash-category-economics.json`.
+The artifact explicitly records an offline repair to the derived fixed-horizon
+state predicate using its exact raw cursors; no measurement value changed and
+the complete >5-minute GPU run was not repeated under the focused-repair rule.
 
 ### D5 — Opt-in public/server integration
 
