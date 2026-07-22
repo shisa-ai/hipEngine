@@ -3,6 +3,8 @@
 Last reviewed: **2026-07-22**
 
 Latest retained hipEngine revisions in this scoreboard:
+`e99a30cb9183ce342f5a30fa4f774b14dc4c0677` for the Laguna S 2.1
+source-bound repacked cache and cold-start reduction,
 `8a8ef4816d442b3b8766507c1eac1ae796e882eb` for bounded cold-cohort
 admission priority and the clean gfx1151 C8 server-ramp/SLO closure,
 `44c76674c2693f7dfc994b40b4cfc3880abbbeac` for the repeated W7900
@@ -1104,10 +1106,38 @@ model-throughput toplines.
 
 ## Platform Records And Diagnostics
 
-The dated records below preserve protocols, blockers, commands, and artifact
-links without publishing their numeric rows as current results. Their removed
-tables remain recoverable from the linked compact artifacts, changelog, and
+The dated records below preserve scoped retained rows plus diagnostic protocols,
+blockers, commands, and artifact links. Removed or superseded tables remain
+recoverable from the linked compact artifacts, changelog, and
 [`benchmarks/HISTORY.md`](HISTORY.md).
+
+### gfx1151 Laguna S 2.1 cold startup, 2026-07-22
+
+**Status: retained for loader startup only; end-to-end generation throughput is
+not yet claimed.** On the Radeon 8060S/gfx1151 UMA host, the versioned
+`laguna-repacked-v1` artifact removes all runtime Q4T16/Q6T16/pack8 conversion.
+The timed scope begins at GGUF/cache open and ends with all 814 weights resident;
+cache construction and teardown are excluded. A run is cold-streamed only when
+`/proc/self/io` reports physical reads of at least 80% of the 75,169,369,088
+planned source bytes.
+
+| Route | Cache state | Load samples (s) | Median | Change vs natural | Loader correctness / lifecycle |
+| --- | --- | ---: | ---: | ---: | --- |
+| Natural GGUF + NumPy replacement-layout repack | Cold-streamed | 227.510 | 227.510 s | baseline | KL `6.6214e-6`, top-1 100%; exact tracked recovery |
+| **Versioned buffered repacked cache** | **Cold-streamed** | **48.812 / 47.951 / 48.202** | **48.202 s** | **-78.81%; 4.72x faster** | Same hipEngine IDs/logits; KL/top-1 gate and exact tracked recovery pass |
+
+The retained cache contains 262 transformed entries / 70,718,767,104 bytes and
+is source-bound by plan fingerprint, size/mtime, and the known GGUF SHA-256.
+Each cold profiled run physically read 72.1-72.3 GB and recorded zero repack;
+~40.4-41.6 s is now sequential reading and ~6.5-6.8 s is allocation/upload. A
+28.655 s partially cached run is diagnostic only. Poolside's external
+29.851-29.907 s `--no-repack --no-mmap` readiness is not a retained cross-engine
+comparison because its physical-read state was not instrumented. The cache
+reproduces the previously documented 29/32 natural Poolside greedy prefix,
+31/32 teacher-forced top-1, repeat logits max-abs `0`, and finite taps; the
+pre-existing low-margin token-30 branch means this is not exact Poolside
+Greedy-32 parity. [Retained startup
+artifact](results/2026-07-22-gfx1151-laguna-s21-repacked-cache-startup-retained.json).
 
 ### gfx1100 PARO context capacity and mixed-KV fidelity, 2026-07-14
 

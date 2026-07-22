@@ -1,0 +1,183 @@
+{
+  "acceptance": {
+    "not_claimed": "end-to-end generation throughput, exact Poolside greedy-32 parity, or cross-engine cold-start superiority",
+    "reason": "4.72x cold-start improvement, zero repack, model correctness gate passes, exact cache-vs-source trajectory, and lifecycle recovery",
+    "retained_for_loader_startup": true
+  },
+  "baseline": {
+    "allocation_seconds": 3.6411073288181797,
+    "cache_state_observed": "cold_streamed",
+    "load_seconds": 227.51028595800744,
+    "path": "natural source GGUF plus in-process NumPy repack",
+    "physical_read_bytes": 73051406336,
+    "repack_seconds": 217.27800636272877,
+    "tracked_recovered": true,
+    "upload_seconds": 4.2788458543946035
+  },
+  "cache": {
+    "artifact_committed": false,
+    "atomic_build": true,
+    "build_physical_read_bytes": 27805364224,
+    "build_seconds": 216.6752045629546,
+    "entry_count": 262,
+    "layout_version": "laguna-repacked-v1",
+    "layouts": [
+      "gguf_q4_k_t16_v1",
+      "gguf_q6_k_t16_v1",
+      "q4_k_pack8"
+    ],
+    "plan_fingerprint": "6e07582a5989995d2d821736f3387e94ce60dbf3bc8688bfb5cb386b40b9ae1a",
+    "resident_nbytes": 70718767104,
+    "schema": 1,
+    "validation_seconds": 0.007049018982797861
+  },
+  "candidate": {
+    "median_load_seconds": 48.20178521098569,
+    "path": "buffered one-tensor-at-a-time versioned repacked cache",
+    "repack_seconds": 0.0,
+    "samples": [
+      {
+        "allocation_seconds": 3.4203533189138398,
+        "cache_state_observed": "cold_streamed",
+        "free_seconds": 0.20185580401448533,
+        "load_seconds": 48.811694086994976,
+        "max_rss_bytes": 910110720,
+        "peak_gtt_bytes": 77024133120,
+        "physical_read_bytes": 72295862272,
+        "repack_seconds": 0.0,
+        "source_map_seconds": 41.62316622491926,
+        "tracked_allocations_recovered": true,
+        "tracked_recovered": true,
+        "upload_seconds": 3.0443198847933672
+      },
+      {
+        "allocation_seconds": 3.4309512552572414,
+        "cache_state_observed": "cold_streamed",
+        "free_seconds": 0.2810529409907758,
+        "load_seconds": 47.95082479604753,
+        "max_rss_bytes": 909529088,
+        "peak_gtt_bytes": 77024133120,
+        "physical_read_bytes": 72104198144,
+        "repack_seconds": 0.0,
+        "source_map_seconds": 40.39328256261069,
+        "tracked_allocations_recovered": true,
+        "tracked_recovered": true,
+        "upload_seconds": 3.3858333630487323
+      },
+      {
+        "cache_state_observed": "cold_streamed",
+        "correctness_run": true,
+        "load_seconds": 48.20178521098569,
+        "tracked_recovered": true
+      }
+    ],
+    "speedup": 4.719955598369736,
+    "steady_cold_sample_count": 3,
+    "wall_reduction_percent": 78.81336001666206
+  },
+  "correctness": {
+    "first_token_candidate": 94557,
+    "first_token_reference": 94557,
+    "greedy_matching_prefix_tokens": 29,
+    "greedy_total_tokens": 32,
+    "hidden_captures_finite": true,
+    "kl_divergence": 6.621408380303441e-06,
+    "kl_threshold": 0.05,
+    "loader_equivalence_passed": true,
+    "preexisting_model_oracle_limitation": "same documented low-margin natural token-30 branch; cache-backed IDs/logits reproduce source-repack hipEngine exactly",
+    "repeat_exact": true,
+    "repeat_first_logits_max_abs": 0.0,
+    "teacher_forced_top1_agreement": 0.96875,
+    "top1_agreement": 1.0,
+    "top1_threshold": 0.9,
+    "tracked_returned_to_baseline": true
+  },
+  "date": "2026-07-22",
+  "diagnostics": {
+    "next_bottleneck": "sequential disk reads (~40.4-41.6 s), then allocation/upload (~6.5-6.8 s)",
+    "partially_cached_load_seconds": 28.65536295302445,
+    "partially_cached_physical_read_bytes": 40067641344,
+    "poolside_comparability": "external startup reference; physical read/cache state was not instrumented, so no retained cross-engine speed claim",
+    "poolside_native_gguf_readiness_seconds": [
+      29.851,
+      29.907
+    ],
+    "rejected_mmap_cache_load_seconds": 82.81106317200465
+  },
+  "model": {
+    "artifact": "laguna-s-2.1-Q4_K_M.gguf",
+    "context_length": 4096,
+    "name": "poolside/Laguna-S-2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "size_bytes": 75173103200
+  },
+  "performance_claim": true,
+  "platform": {
+    "architecture": "gfx1151",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96 + PATCHED 440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+    "environment": {
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_HIP_ARCH": "gfx1151"
+    },
+    "gpu": "AMD Radeon 8060S Graphics",
+    "hip_total_bytes": 128849018880,
+    "hip_version": "7.15.0-0000000",
+    "os": "Linux 7.1.3-2-cachyos x86_64",
+    "processor": "AMD Ryzen AI MAX+ 395"
+  },
+  "protocol": {
+    "baseline_command": [
+      "/home/lhl/hipEngine-main/.venv/bin/python3",
+      "scripts/laguna_gguf_load_smoke.py",
+      "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1151",
+      "--context-length",
+      "4096",
+      "--progress-every",
+      "25",
+      "--profile-tensors",
+      "--cache-state",
+      "warm",
+      "--model-sha256",
+      "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+      "--output",
+      "/tmp/laguna-load-profile-warm.json"
+    ],
+    "cache_state_rule": "cold_streamed when process physical reads >=80% of 75,169,369,088 planned GGUF source bytes",
+    "candidate_command": [
+      "/home/lhl/hipEngine-main/.venv/bin/python3",
+      "scripts/laguna_gguf_load_smoke.py",
+      "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1151",
+      "--context-length",
+      "4096",
+      "--progress-every",
+      "100",
+      "--profile-tensors",
+      "--cache-state",
+      "unspecified",
+      "--model-sha256",
+      "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+      "--repacked-cache",
+      "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+      "--output",
+      "/tmp/laguna-load-cache-profile-3.json"
+    ],
+    "correctness_command": [
+      "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 uv run python -u scripts/laguna_gguf_correctness.py",
+      "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --backend hip_gfx1151 --greedy-tokens 32",
+      "--compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+      "--repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+      "--model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+    ],
+    "samples_include_two_profiled_loads_and_one_full_oracle_load": true,
+    "timing_scope": "GGUF/cache open through all 814 device weights resident; excludes cache construction and teardown"
+  },
+  "schema": 1,
+  "scope": "Laguna replacement-layout cache cold startup only",
+  "source_revision": "e99a30cb9183ce342f5a30fa4f774b14dc4c0677",
+  "status": "retained"
+}
