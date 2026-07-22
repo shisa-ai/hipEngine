@@ -14,6 +14,8 @@ from hipengine.runtime.laguna_gguf_runner import (
     LAGUNA_DFLASH_CAPTURE_DEPTHS,
     LagunaEagerScratch,
     LagunaHiddenCaptureTargets,
+    LagunaRowsScratch,
+    capture_laguna_hidden_rows,
     capture_laguna_hidden_tap,
     resolve_laguna_eager_kernel_plan,
 )
@@ -110,6 +112,25 @@ def test_laguna_eager_scratch_cleans_partial_allocation_failure() -> None:
     assert runtime.allocations == {}
 
 
+def test_laguna_rows_scratch_is_bounded_and_frees() -> None:
+    runtime = _FakeRuntime()
+    scratch = LagunaRowsScratch.allocate(_config(), max_rows=8, runtime=runtime)
+
+    assert scratch.max_rows == 8
+    assert scratch.token_ids.nbytes == 8 * DType.INT64.itemsize
+    assert scratch.positions.nbytes == 8 * DType.INT64.itemsize
+    assert scratch.hidden.nbytes == 8 * 3_072 * DType.BF16.itemsize
+    assert scratch.query.nbytes == 8 * 72 * 128 * DType.FP32.itemsize
+    assert scratch.logits.nbytes == 8 * 100_352 * DType.FP32.itemsize
+    assert scratch.nbytes == sum(buffer.nbytes for buffer in scratch.buffers)
+
+    scratch.free(runtime=runtime)
+    assert runtime.allocations == {}
+
+    with pytest.raises(ValueError, match="max_rows"):
+        LagunaRowsScratch.allocate(_config(), max_rows=0, runtime=runtime)
+
+
 def test_laguna_hidden_taps_are_caller_owned_exact_bf16_depths() -> None:
     hidden_size = 3_072
     row_nbytes = hidden_size * DType.BF16.itemsize
@@ -166,6 +187,37 @@ def test_laguna_hidden_taps_are_caller_owned_exact_bf16_depths() -> None:
             depth=2,
             targets=targets,
             hidden_size=hidden_size // 2,
+            runtime=runtime,
+        )
+
+    row_targets = LagunaHiddenCaptureTargets(
+        hidden_size=hidden_size,
+        buffers={2: DeviceBuffer(0x70000000, 3 * row_nbytes)},
+        rows=3,
+    )
+    capture_laguna_hidden_rows(
+        0x22340000,
+        depth=2,
+        rows=3,
+        targets=row_targets,
+        hidden_size=hidden_size,
+        runtime=runtime,
+        stream=9,
+    )
+    assert runtime.copies[-1] == (
+        row_targets.buffers[2].ptr,
+        0x22340000,
+        3 * row_nbytes,
+        HipMemcpyKind.DEVICE_TO_DEVICE,
+        9,
+    )
+    with pytest.raises(ValueError, match="capture rows"):
+        capture_laguna_hidden_rows(
+            0x22340000,
+            depth=2,
+            rows=2,
+            targets=row_targets,
+            hidden_size=hidden_size,
             runtime=runtime,
         )
 
@@ -296,9 +348,15 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
         lambda *args, **kwargs: Resource("moe_plan"),
     )
     monkeypatch.setattr(
+        runner_module.LagunaRowsScratch,
+        "allocate",
+        lambda *args, **kwargs: Resource("rows_scratch"),
+    )
+    moe_scratches = iter((Resource("moe_scratch"), Resource("rows_moe_scratch")))
+    monkeypatch.setattr(
         runner_module,
         "allocate_laguna_moe_scratch",
-        lambda *args, **kwargs: Resource("moe_scratch"),
+        lambda *args, **kwargs: next(moe_scratches),
     )
 
     session = runner_module.LagunaGGUFResidentSession(
@@ -312,6 +370,8 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
     session.close()
 
     assert events == [
+        "rows_moe_scratch",
+        "rows_scratch",
         "moe_scratch",
         "scratch",
         "kv",

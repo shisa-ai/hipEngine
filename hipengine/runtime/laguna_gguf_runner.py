@@ -1,8 +1,8 @@
-"""Torch-free eager c=1 resident runner for Poolside Laguna S 2.1 GGUF.
+"""Torch-free resident runner for Poolside Laguna S 2.1 GGUF.
 
-This is the correctness-first L6 path: token-serial BF16 execution, mixed
-full/SWA ``KVLiveSpans`` attention, deterministic owned scratch, greedy top-1,
-and optional caller-owned post-layer hidden taps for the matched DFlash model.
+The runner keeps exact eager c=1 decode while adding bounded chunked prompt and
+B+1 verifier rows over mixed global/SWA ``KVLiveSpans`` attention, deterministic
+owned scratch, greedy top-1, and caller-owned DFlash hidden taps.
 """
 
 from __future__ import annotations
@@ -59,6 +59,7 @@ from hipengine.runtime.laguna_moe import (
     allocate_laguna_moe_scratch,
     resolve_laguna_moe_plan,
     run_laguna_moe_c1,
+    run_laguna_moe_rows,
     validate_laguna_moe_layer,
 )
 from hipengine.runtime.laguna_rope import (
@@ -80,16 +81,20 @@ _I64_NBYTES = DType.INT64.itemsize
 
 @dataclass(frozen=True)
 class LagunaHiddenCaptureTargets:
-    """Caller-owned BF16 destinations for configured post-layer hidden rows."""
+    """Caller-owned BF16 destinations for one or more post-layer hidden rows."""
 
     hidden_size: int
     buffers: Mapping[int, DeviceBuffer]
+    rows: int = 1
 
     def __post_init__(self) -> None:
         hidden_size = int(self.hidden_size)
+        rows = int(self.rows)
         if hidden_size <= 0:
             raise ValueError("hidden_size must be positive")
-        expected_nbytes = hidden_size * _BF16_NBYTES
+        if rows <= 0:
+            raise ValueError("capture rows must be positive")
+        expected_nbytes = rows * hidden_size * _BF16_NBYTES
         normalized: dict[int, DeviceBuffer] = {}
         for raw_depth, buffer in self.buffers.items():
             depth = int(raw_depth)
@@ -101,13 +106,15 @@ class LagunaHiddenCaptureTargets:
             if not isinstance(buffer, DeviceBuffer):
                 raise TypeError("Laguna hidden capture destinations must be DeviceBuffer views")
             if buffer.nbytes != expected_nbytes:
+                row_label = "one BF16 hidden row" if rows == 1 else f"{rows} BF16 hidden rows"
                 raise ValueError(
-                    "each Laguna hidden capture target must hold exactly one BF16 hidden row; "
+                    f"each Laguna hidden capture target must hold exactly {row_label}; "
                     f"depth={depth} expected={expected_nbytes} actual={buffer.nbytes}"
                 )
             normalized[depth] = buffer
         object.__setattr__(self, "hidden_size", hidden_size)
         object.__setattr__(self, "buffers", MappingProxyType(normalized))
+        object.__setattr__(self, "rows", rows)
 
 
 @dataclass(frozen=True)
@@ -270,6 +277,120 @@ class LagunaEagerScratch:
             free(buffer, runtime=runtime)
 
 
+@dataclass
+class LagunaRowsScratch:
+    """Bounded row-major scratch for chunked prefill and B+1 verification."""
+
+    max_rows: int
+    max_query_width: int
+    max_query_heads: int
+    token_ids: DeviceBuffer
+    positions: DeviceBuffer
+    hidden: DeviceBuffer
+    norm: DeviceBuffer
+    query: DeviceBuffer
+    key: DeviceBuffer
+    value: DeviceBuffer
+    query_rotated: DeviceBuffer
+    key_rotated: DeviceBuffer
+    gate_logits: DeviceBuffer
+    context: DeviceBuffer
+    gated_context: DeviceBuffer
+    attention_output: DeviceBuffer
+    post_attention: DeviceBuffer
+    dense_gate: DeviceBuffer
+    dense_up: DeviceBuffer
+    dense_intermediate: DeviceBuffer
+    dense_output: DeviceBuffer
+    final_norm: DeviceBuffer
+    logits: DeviceBuffer
+    _closed: bool = False
+
+    @classmethod
+    def allocate(
+        cls,
+        config: LagunaGGUFConfig,
+        *,
+        max_rows: int,
+        runtime: HipRuntime | None = None,
+    ) -> "LagunaRowsScratch":
+        rows = int(max_rows)
+        if rows <= 0:
+            raise ValueError("max_rows must be positive")
+        max_heads = max(int(value) for value in config.head_counts)
+        max_query_width = max_heads * int(config.key_length)
+        kv_width = int(config.head_count_kv) * int(config.key_length)
+        hidden = int(config.hidden_size)
+        dense_ffn = int(config.feed_forward_length)
+        vocab = int(config.vocab_size)
+        sizes = (
+            rows * _I64_NBYTES,
+            rows * _I64_NBYTES,
+            rows * hidden * _BF16_NBYTES,
+            rows * hidden * _BF16_NBYTES,
+            rows * max_query_width * _F32_NBYTES,
+            rows * kv_width * _F32_NBYTES,
+            rows * kv_width * _F32_NBYTES,
+            rows * max_query_width * _F32_NBYTES,
+            rows * kv_width * _F32_NBYTES,
+            rows * max_heads * _F32_NBYTES,
+            rows * max_query_width * _F32_NBYTES,
+            rows * max_query_width * _BF16_NBYTES,
+            rows * hidden * _BF16_NBYTES,
+            rows * hidden * _BF16_NBYTES,
+            rows * dense_ffn * _BF16_NBYTES,
+            rows * dense_ffn * _BF16_NBYTES,
+            rows * dense_ffn * _BF16_NBYTES,
+            rows * hidden * _BF16_NBYTES,
+            rows * hidden * _BF16_NBYTES,
+            rows * vocab * _F32_NBYTES,
+        )
+        buffers: list[DeviceBuffer] = []
+        try:
+            buffers.extend(malloc(nbytes, runtime=runtime) for nbytes in sizes)
+        except Exception:
+            for buffer in reversed(buffers):
+                free(buffer, runtime=runtime)
+            raise
+        return cls(rows, max_query_width, max_heads, *buffers)
+
+    @property
+    def buffers(self) -> tuple[DeviceBuffer, ...]:
+        return (
+            self.token_ids,
+            self.positions,
+            self.hidden,
+            self.norm,
+            self.query,
+            self.key,
+            self.value,
+            self.query_rotated,
+            self.key_rotated,
+            self.gate_logits,
+            self.context,
+            self.gated_context,
+            self.attention_output,
+            self.post_attention,
+            self.dense_gate,
+            self.dense_up,
+            self.dense_intermediate,
+            self.dense_output,
+            self.final_norm,
+            self.logits,
+        )
+
+    @property
+    def nbytes(self) -> int:
+        return sum(buffer.nbytes for buffer in self.buffers)
+
+    def free(self, *, runtime: HipRuntime | None = None) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        for buffer in reversed(self.buffers):
+            free(buffer, runtime=runtime)
+
+
 @dataclass(frozen=True)
 class LagunaEagerLibraries:
     """Loaded JIT libraries, held once for the whole resident session."""
@@ -324,6 +445,22 @@ class LagunaEagerTokenResult:
     logits: DeviceBuffer
     final_hidden: DeviceBuffer
     post_layer_hidden: DeviceBuffer
+
+
+@dataclass(frozen=True)
+class LagunaVerifierRowsResult:
+    """Borrowed B+1 target rows with full logits and stable hidden taps."""
+
+    start_position: int
+    input_token_ids: tuple[int, ...]
+    logits: DeviceBuffer
+    final_hidden: DeviceBuffer
+    post_layer_hidden: DeviceBuffer
+    logits_row_stride: int
+
+    @property
+    def rows(self) -> int:
+        return len(self.input_token_ids)
 
 
 def resolve_laguna_eager_kernel_plan(
@@ -405,6 +542,8 @@ def capture_laguna_hidden_tap(
 
     if targets is None:
         return
+    if targets.rows != 1:
+        raise ValueError("single-row Laguna hidden capture requires rows=1 targets")
     if int(targets.hidden_size) != int(hidden_size):
         raise ValueError("Laguna hidden capture hidden_size does not match the session")
     target = targets.buffers.get(int(depth))
@@ -414,6 +553,37 @@ def capture_laguna_hidden_tap(
         target.ptr,
         int(source_bf16_ptr),
         int(hidden_size) * _BF16_NBYTES,
+        HipMemcpyKind.DEVICE_TO_DEVICE,
+        int(stream),
+    )
+
+
+def capture_laguna_hidden_rows(
+    source_bf16_ptr: int,
+    *,
+    depth: int,
+    rows: int,
+    targets: LagunaHiddenCaptureTargets | None,
+    hidden_size: int,
+    runtime: HipRuntime,
+    stream: int = 0,
+) -> None:
+    """Copy one requested row-batched tap into caller-owned storage."""
+
+    if targets is None:
+        return
+    parsed_rows = int(rows)
+    if parsed_rows <= 0 or targets.rows != parsed_rows:
+        raise ValueError("Laguna hidden capture rows must match the target row count")
+    if int(targets.hidden_size) != int(hidden_size):
+        raise ValueError("Laguna hidden capture hidden_size does not match the session")
+    target = targets.buffers.get(int(depth))
+    if target is None:
+        return
+    runtime.memcpy_async(
+        target.ptr,
+        int(source_bf16_ptr),
+        parsed_rows * int(hidden_size) * _BF16_NBYTES,
         HipMemcpyKind.DEVICE_TO_DEVICE,
         int(stream),
     )
@@ -499,17 +669,21 @@ class LagunaGGUFResidentSession:
         progress: Callable | None = None,
         repacked_cache: LagunaGGUFRepackedCache | str | Path | None = None,
         model_sha256: str | None = None,
+        prefill_chunk_size: int = 64,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
         self.backend = resolve_backend(backend)
         self.context_length = int(context_length)
+        self.prefill_chunk_size = int(prefill_chunk_size)
         self.position = -1
         self.last_result: LagunaEagerTokenResult | None = None
         self.weights: LagunaGGUFResidentWeights | None = None
         self.kv_cache: LagunaKVCache | None = None
         self.scratch: LagunaEagerScratch | None = None
         self.moe_scratch: LagunaMoEScratch | None = None
+        self.rows_scratch: LagunaRowsScratch | None = None
+        self.rows_moe_scratch: LagunaMoEScratch | None = None
         self.full_rope: LagunaDeviceRoPETables | None = None
         self.swa_rope: LagunaDeviceRoPETables | None = None
         self.libraries: LagunaEagerLibraries | None = None
@@ -521,6 +695,12 @@ class LagunaGGUFResidentSession:
         if self.context_length <= 0 or self.context_length > _INITIAL_MAX_CONTEXT:
             raise ValueError(
                 f"initial Laguna eager context_length must be within [1, {_INITIAL_MAX_CONTEXT}]"
+            )
+        if self.prefill_chunk_size <= 0 or self.prefill_chunk_size > min(
+            self.context_length, 512
+        ):
+            raise ValueError(
+                "Laguna prefill_chunk_size must be positive and no larger than context/512"
             )
         if resident_weights is not None and (
             repacked_cache is not None or model_sha256 is not None
@@ -590,6 +770,16 @@ class LagunaGGUFResidentSession:
                 self.moe_plan,
                 runtime=self.runtime,
             )
+            self.rows_scratch = LagunaRowsScratch.allocate(
+                config,
+                max_rows=self.prefill_chunk_size,
+                runtime=self.runtime,
+            )
+            self.rows_moe_scratch = allocate_laguna_moe_scratch(
+                self.moe_plan,
+                max_rows=self.prefill_chunk_size,
+                runtime=self.runtime,
+            )
         except BaseException:
             self._close(suppress_errors=True)
             raise
@@ -611,6 +801,8 @@ class LagunaGGUFResidentSession:
         assert self.kv_cache is not None
         assert self.scratch is not None
         assert self.moe_scratch is not None
+        assert self.rows_scratch is not None
+        assert self.rows_moe_scratch is not None
         assert self.full_rope is not None
         assert self.swa_rope is not None
         return (
@@ -618,6 +810,8 @@ class LagunaGGUFResidentSession:
             + self.kv_cache.resident_nbytes
             + self.scratch.nbytes
             + self.moe_scratch.nbytes
+            + self.rows_scratch.nbytes
+            + self.rows_moe_scratch.nbytes
             + self.full_rope.cos.buffer.nbytes
             + self.full_rope.sin.buffer.nbytes
             + self.swa_rope.cos.buffer.nbytes
@@ -692,22 +886,68 @@ class LagunaGGUFResidentSession:
         token_ids: Sequence[int],
         *,
         capture_last: LagunaHiddenCaptureTargets | None = None,
+        use_bulk: bool = True,
         stream: int = 0,
     ) -> LagunaEagerTokenResult:
-        """Token-serial correctness fallback; only the final row may emit taps."""
+        """Chunked exact prefill with an explicit token-serial fallback."""
 
         tokens = tuple(int(value) for value in token_ids)
         if not tokens:
             raise ValueError("Laguna eager prefill requires at least one token")
-        result: LagunaEagerTokenResult | None = None
-        for index, token in enumerate(tokens):
-            result = self.forward_token(
-                token,
-                captures=capture_last if index == len(tokens) - 1 else None,
+        if capture_last is not None and capture_last.rows != 1:
+            raise ValueError("Laguna prefill capture_last requires one-row targets")
+        if not use_bulk or len(tokens) == 1:
+            result: LagunaEagerTokenResult | None = None
+            for index, token in enumerate(tokens):
+                result = self.forward_token(
+                    token,
+                    captures=capture_last if index == len(tokens) - 1 else None,
+                    stream=stream,
+                )
+            assert result is not None
+            return result
+
+        last_chunk: tuple[int, ...] = ()
+        for start in range(0, len(tokens), self.prefill_chunk_size):
+            chunk = tokens[start : start + self.prefill_chunk_size]
+            self._execute_rows(
+                chunk,
+                capture_last=capture_last if start + len(chunk) == len(tokens) else None,
                 stream=stream,
             )
-        assert result is not None
-        return result
+            last_chunk = chunk
+        assert last_chunk
+        return self._project_rows_last(
+            input_token_id=last_chunk[-1],
+            position=self.position,
+            row_index=len(last_chunk) - 1,
+            stream=stream,
+        )
+
+    def verify_rows(
+        self,
+        root_token_id: int,
+        draft_token_ids: Sequence[int],
+        *,
+        captures: LagunaHiddenCaptureTargets | None = None,
+        stream: int = 0,
+    ) -> LagunaVerifierRowsResult:
+        """Execute one committed B+1 target block and expose every logits/tap row."""
+
+        tokens = (int(root_token_id), *(int(value) for value in draft_token_ids))
+        if len(tokens) > self.prefill_chunk_size:
+            raise ValueError(
+                f"Laguna verifier rows exceed prefill capacity {self.prefill_chunk_size}"
+            )
+        if captures is not None and captures.rows != len(tokens):
+            raise ValueError("Laguna verifier captures must provide exactly B+1 rows")
+        start_position = self.position + 1
+        self._execute_rows(tokens, capture_rows=captures, stream=stream)
+        return self._project_rows_all(
+            input_token_ids=tokens,
+            start_position=start_position,
+            stream=stream,
+        )
 
     def generate_greedy(
         self,
@@ -744,6 +984,449 @@ class LagunaGGUFResidentSession:
 
     def __exit__(self, exc_type, exc_value, traceback) -> None:
         self.close()
+
+    def _execute_rows(
+        self,
+        token_ids: Sequence[int],
+        *,
+        capture_last: LagunaHiddenCaptureTargets | None = None,
+        capture_rows: LagunaHiddenCaptureTargets | None = None,
+        stream: int,
+    ) -> None:
+        self._check_open()
+        if capture_last is not None and capture_rows is not None:
+            raise ValueError("Laguna row execution accepts capture_last or capture_rows, not both")
+        tokens = tuple(int(token) for token in token_ids)
+        rows = len(tokens)
+        if rows <= 0 or rows > self.prefill_chunk_size:
+            raise ValueError(
+                f"Laguna row count must be within [1, {self.prefill_chunk_size}]"
+            )
+        config = self.config
+        if any(token < 0 or token >= config.vocab_size for token in tokens):
+            raise ValueError(f"token IDs must be within [0, {config.vocab_size})")
+        start_position = self.position + 1
+        end_position = start_position + rows - 1
+        if end_position >= self.context_length:
+            raise ValueError("Laguna eager session exhausted its admitted context")
+        if capture_last is not None and capture_last.hidden_size != config.hidden_size:
+            raise ValueError("Laguna hidden capture hidden_size does not match the session")
+        if capture_rows is not None and (
+            capture_rows.hidden_size != config.hidden_size or capture_rows.rows != rows
+        ):
+            raise ValueError("Laguna row captures must match hidden_size and row count")
+
+        assert self.weights is not None
+        assert self.kv_cache is not None
+        assert self.rows_scratch is not None
+        assert self.libraries is not None
+        scratch = self.rows_scratch
+        positions = tuple(range(start_position, end_position + 1))
+        try:
+            _copy_i64_rows(scratch.token_ids, tokens, self.runtime)
+            _copy_i64_rows(scratch.positions, positions, self.runtime)
+            self.kv_cache.prepare_rows(positions)
+            launch_gguf_embedding(
+                self.weights.root("token_embedding"),
+                scratch.token_ids.ptr,
+                scratch.hidden.ptr,
+                rows,
+                config.hidden_size,
+                config.vocab_size,
+                backend=self.backend,
+                stream=stream,
+                libraries={"gguf_q4_k": self.libraries.embedding},
+                runtime=self.runtime,
+            )
+            for layer_id in range(config.block_count):
+                self._run_layer_rows(layer_id, rows=rows, stream=stream)
+                depth = layer_id + 1
+                capture_laguna_hidden_rows(
+                    scratch.hidden.ptr,
+                    depth=depth,
+                    rows=rows,
+                    targets=capture_rows,
+                    hidden_size=config.hidden_size,
+                    runtime=self.runtime,
+                    stream=stream,
+                )
+                capture_laguna_hidden_tap(
+                    scratch.hidden.ptr + (rows - 1) * config.hidden_size * _BF16_NBYTES,
+                    depth=depth,
+                    targets=capture_last,
+                    hidden_size=config.hidden_size,
+                    runtime=self.runtime,
+                    stream=stream,
+                )
+            self.kv_cache.commit_rows()
+            self.position = end_position
+        except BaseException:
+            self._close(suppress_errors=True)
+            raise
+
+    def _run_layer_rows(self, layer_id: int, *, rows: int, stream: int) -> None:
+        assert self.weights is not None
+        assert self.kv_cache is not None
+        assert self.rows_scratch is not None
+        assert self.kernel_plan is not None
+        assert self.libraries is not None
+        assert self.full_rope is not None
+        assert self.swa_rope is not None
+        config = self.weights.config
+        layer = self.weights.layer(layer_id)
+        scratch = self.rows_scratch
+        heads = config.head_count(layer_id)
+        q_width = heads * config.key_length
+        kv_width = config.head_count_kv * config.key_length
+        f16_libraries = {"fp16_weight": self.libraries.f16_projection}
+
+        self.kernel_plan.rmsnorm(
+            scratch.hidden.ptr,
+            layer.weight("attn_norm").allocation("raw").tensor.ptr,
+            scratch.norm.ptr,
+            rows,
+            config.hidden_size,
+            config.rms_norm_eps,
+            stream=stream,
+            library=self.libraries.gguf_ops,
+            runtime=self.runtime,
+        )
+        launch_f16_weight_linear_triple(
+            layer.weight("attn_q"),
+            layer.weight("attn_k"),
+            layer.weight("attn_v"),
+            scratch.norm.ptr,
+            scratch.query.ptr,
+            scratch.key.ptr,
+            scratch.value.ptr,
+            rows,
+            config.hidden_size,
+            q_width,
+            kv_width,
+            kv_width,
+            backend=self.backend,
+            stream=stream,
+            libraries=f16_libraries,
+            runtime=self.runtime,
+        )
+        launch_f16_weight_linear(
+            layer.weight("attn_gate"),
+            scratch.norm.ptr,
+            scratch.gate_logits.ptr,
+            rows,
+            config.hidden_size,
+            heads,
+            activation_dtype="bf16",
+            output_dtype="f32",
+            backend=self.backend,
+            stream=stream,
+            libraries=f16_libraries,
+            runtime=self.runtime,
+        )
+        rope = self.full_rope if layer.attention_type == FULL_ATTENTION else self.swa_rope
+        launch_laguna_head_rmsnorm_rope(
+            scratch.query.ptr,
+            scratch.key.ptr,
+            layer.weight("attn_q_norm").allocation("raw").tensor.ptr,
+            layer.weight("attn_k_norm").allocation("raw").tensor.ptr,
+            scratch.positions.ptr,
+            scratch.query_rotated.ptr,
+            scratch.key_rotated.ptr,
+            config.rms_norm_eps,
+            rows,
+            heads,
+            config.head_count_kv,
+            config.key_length,
+            rope,
+            backend=self.backend,
+            stream=stream,
+            library=self.libraries.gguf_ops,
+            runtime=self.runtime,
+        )
+        self.kv_cache.attend_prefill(
+            layer_id,
+            scratch.query_rotated.ptr,
+            scratch.key_rotated.ptr,
+            scratch.value.ptr,
+            scratch.context.ptr,
+            rows,
+            stream=stream,
+            library=self.libraries.kv_attention,
+        )
+        self.kv_cache.append_rows(
+            layer_id,
+            scratch.key_rotated.ptr,
+            scratch.value.ptr,
+            rows,
+            stream=stream,
+            library=self.libraries.kv_attention,
+        )
+        self.kernel_plan.attention_gate(
+            scratch.context.ptr,
+            scratch.gate_logits.ptr,
+            scratch.gated_context.ptr,
+            rows,
+            heads,
+            config.value_length,
+            stream=stream,
+            library=self.libraries.attention_gate,
+            runtime=self.runtime,
+        )
+        launch_f16_weight_linear(
+            layer.weight("attn_output"),
+            scratch.gated_context.ptr,
+            scratch.attention_output.ptr,
+            rows,
+            q_width,
+            config.hidden_size,
+            activation_dtype="bf16",
+            output_dtype="bf16",
+            backend=self.backend,
+            stream=stream,
+            libraries=f16_libraries,
+            runtime=self.runtime,
+        )
+        self.kernel_plan.add_rmsnorm(
+            scratch.hidden.ptr,
+            scratch.attention_output.ptr,
+            layer.weight("ffn_norm").allocation("raw").tensor.ptr,
+            scratch.norm.ptr,
+            scratch.post_attention.ptr,
+            rows,
+            config.hidden_size,
+            config.rms_norm_eps,
+            stream=stream,
+            library=self.libraries.gguf_ops,
+            runtime=self.runtime,
+        )
+        if layer.mlp_type == DENSE_MLP:
+            self._run_dense_ffn_rows(layer, rows=rows, stream=stream)
+        elif layer.mlp_type == SPARSE_MOE:
+            self._run_sparse_ffn_rows(layer, rows=rows, stream=stream)
+        else:
+            raise ValueError(f"unsupported Laguna MLP type {layer.mlp_type!r}")
+
+    def _run_dense_ffn_rows(
+        self,
+        layer: LagunaGGUFResidentLayerWeights,
+        *,
+        rows: int,
+        stream: int,
+    ) -> None:
+        assert self.weights is not None
+        assert self.rows_scratch is not None
+        assert self.kernel_plan is not None
+        assert self.libraries is not None
+        config = self.weights.config
+        scratch = self.rows_scratch
+        linear_libraries = self.libraries.linear
+        for slot, output in (("ffn_gate", scratch.dense_gate), ("ffn_up", scratch.dense_up)):
+            launch_gguf_linear(
+                layer.weight(slot),
+                scratch.norm.ptr,
+                output.ptr,
+                rows,
+                config.hidden_size,
+                config.feed_forward_length,
+                backend=self.backend,
+                stream=stream,
+                libraries=linear_libraries,
+                runtime=self.runtime,
+                use_wmma_prefill=False,
+                use_gemv_decode=False,
+            )
+        self.kernel_plan.dense_silu(
+            scratch.dense_gate.ptr,
+            scratch.dense_up.ptr,
+            scratch.dense_intermediate.ptr,
+            rows,
+            config.feed_forward_length,
+            stream=stream,
+            library=self.libraries.dense_silu,
+            runtime=self.runtime,
+        )
+        launch_gguf_linear(
+            layer.weight("ffn_down"),
+            scratch.dense_intermediate.ptr,
+            scratch.dense_output.ptr,
+            rows,
+            config.feed_forward_length,
+            config.hidden_size,
+            backend=self.backend,
+            stream=stream,
+            libraries=linear_libraries,
+            runtime=self.runtime,
+            use_wmma_prefill=False,
+            use_gemv_decode=False,
+        )
+        self.kernel_plan.add(
+            scratch.post_attention.ptr,
+            scratch.dense_output.ptr,
+            scratch.hidden.ptr,
+            rows * config.hidden_size,
+            stream=stream,
+            library=self.libraries.gguf_ops,
+            runtime=self.runtime,
+        )
+
+    def _run_sparse_ffn_rows(
+        self,
+        layer: LagunaGGUFResidentLayerWeights,
+        *,
+        rows: int,
+        stream: int,
+    ) -> None:
+        assert self.weights is not None
+        assert self.rows_scratch is not None
+        assert self.rows_moe_scratch is not None
+        assert self.kernel_plan is not None
+        assert self.libraries is not None
+        output = run_laguna_moe_rows(
+            self.rows_scratch.norm.ptr,
+            layer,
+            self.rows_moe_scratch,
+            rows=rows,
+            stream=stream,
+            runtime=self.runtime,
+            libraries=self.libraries.moe,
+        )
+        self.kernel_plan.add(
+            self.rows_scratch.post_attention.ptr,
+            output.ptr,
+            self.rows_scratch.hidden.ptr,
+            rows * self.weights.config.hidden_size,
+            stream=stream,
+            library=self.libraries.gguf_ops,
+            runtime=self.runtime,
+        )
+
+    def _project_rows_last(
+        self,
+        *,
+        input_token_id: int,
+        position: int,
+        row_index: int,
+        stream: int,
+    ) -> LagunaEagerTokenResult:
+        assert self.weights is not None
+        assert self.scratch is not None
+        assert self.rows_scratch is not None
+        assert self.kernel_plan is not None
+        assert self.libraries is not None
+        config = self.weights.config
+        scratch = self.rows_scratch
+        hidden_nbytes = config.hidden_size * _BF16_NBYTES
+        hidden_ptr = scratch.hidden.ptr + int(row_index) * hidden_nbytes
+        self.kernel_plan.rmsnorm(
+            hidden_ptr,
+            self.weights.root("output_norm").allocation("raw").tensor.ptr,
+            scratch.final_norm.ptr,
+            1,
+            config.hidden_size,
+            config.rms_norm_eps,
+            stream=stream,
+            library=self.libraries.gguf_ops,
+            runtime=self.runtime,
+        )
+        launch_gguf_linear(
+            self.weights.root("lm_head"),
+            scratch.final_norm.ptr,
+            scratch.logits.ptr,
+            1,
+            config.hidden_size,
+            config.vocab_size,
+            output_dtype=GGUF_OUTPUT_F32,
+            backend=self.backend,
+            stream=stream,
+            libraries=self.libraries.linear,
+            runtime=self.runtime,
+            use_wmma_prefill=False,
+            use_gemv_decode=False,
+        )
+        self.kernel_plan.argmax(
+            scratch.logits.ptr,
+            self.scratch.argmax_block_values.ptr,
+            self.scratch.argmax_block_indices.ptr,
+            self.scratch.argmax_id.ptr,
+            self.scratch.argmax_value.ptr,
+            config.vocab_size,
+            stream=stream,
+            library=self.libraries.argmax,
+            runtime=self.runtime,
+        )
+        if stream:
+            self.runtime.stream_synchronize(stream)
+        else:
+            self.runtime.device_synchronize()
+        result = LagunaEagerTokenResult(
+            position=int(position),
+            input_token_id=int(input_token_id),
+            next_token_id=_read_i64(self.scratch.argmax_id, self.runtime),
+            next_token_logit=_read_f32(self.scratch.argmax_value, self.runtime),
+            logits=_buffer_view(scratch.logits, 0, config.vocab_size * _F32_NBYTES),
+            final_hidden=_buffer_view(scratch.final_norm, 0, hidden_nbytes),
+            post_layer_hidden=_buffer_view(scratch.hidden, int(row_index) * hidden_nbytes, hidden_nbytes),
+        )
+        self.last_result = result
+        return result
+
+    def _project_rows_all(
+        self,
+        *,
+        input_token_ids: tuple[int, ...],
+        start_position: int,
+        stream: int,
+    ) -> LagunaVerifierRowsResult:
+        assert self.weights is not None
+        assert self.rows_scratch is not None
+        assert self.kernel_plan is not None
+        assert self.libraries is not None
+        config = self.weights.config
+        scratch = self.rows_scratch
+        rows = len(input_token_ids)
+        self.kernel_plan.rmsnorm(
+            scratch.hidden.ptr,
+            self.weights.root("output_norm").allocation("raw").tensor.ptr,
+            scratch.final_norm.ptr,
+            rows,
+            config.hidden_size,
+            config.rms_norm_eps,
+            stream=stream,
+            library=self.libraries.gguf_ops,
+            runtime=self.runtime,
+        )
+        launch_gguf_linear(
+            self.weights.root("lm_head"),
+            scratch.final_norm.ptr,
+            scratch.logits.ptr,
+            rows,
+            config.hidden_size,
+            config.vocab_size,
+            output_dtype=GGUF_OUTPUT_F32,
+            backend=self.backend,
+            stream=stream,
+            libraries=self.libraries.linear,
+            runtime=self.runtime,
+            use_wmma_prefill=False,
+            use_gemv_decode=False,
+        )
+        if stream:
+            self.runtime.stream_synchronize(stream)
+        else:
+            self.runtime.device_synchronize()
+        hidden_nbytes = rows * config.hidden_size * _BF16_NBYTES
+        return LagunaVerifierRowsResult(
+            start_position=int(start_position),
+            input_token_ids=input_token_ids,
+            logits=_buffer_view(
+                scratch.logits,
+                0,
+                rows * config.vocab_size * _F32_NBYTES,
+            ),
+            final_hidden=_buffer_view(scratch.final_norm, 0, hidden_nbytes),
+            post_layer_hidden=_buffer_view(scratch.hidden, 0, hidden_nbytes),
+            logits_row_stride=config.vocab_size,
+        )
 
     def _run_layer(self, layer_id: int, *, stream: int) -> None:
         assert self.weights is not None
@@ -1114,6 +1797,14 @@ class LagunaGGUFResidentSession:
             except BaseException as exc:  # best-effort teardown after HIP failures
                 errors.append(exc)
 
+        if self.rows_moe_scratch is not None:
+            scratch = self.rows_moe_scratch
+            self.rows_moe_scratch = None
+            release(lambda: scratch.free(runtime=self.runtime))
+        if self.rows_scratch is not None:
+            scratch = self.rows_scratch
+            self.rows_scratch = None
+            release(lambda: scratch.free(runtime=self.runtime))
         if self.moe_scratch is not None:
             scratch = self.moe_scratch
             self.moe_scratch = None
@@ -1160,6 +1851,32 @@ def _copy_i64(buffer: DeviceBuffer, value: int, runtime: HipRuntime) -> None:
     )
 
 
+def _copy_i64_rows(
+    buffer: DeviceBuffer,
+    values: Sequence[int],
+    runtime: HipRuntime,
+) -> None:
+    parsed = tuple(int(value) for value in values)
+    nbytes = len(parsed) * _I64_NBYTES
+    if not parsed or nbytes > buffer.nbytes:
+        raise ValueError("int64 row copy must be non-empty and fit the destination")
+    host = (ctypes.c_int64 * len(parsed))(*parsed)
+    runtime.memcpy(
+        buffer.ptr,
+        ctypes.addressof(host),
+        nbytes,
+        HipMemcpyKind.HOST_TO_DEVICE,
+    )
+
+
+def _buffer_view(buffer: DeviceBuffer, offset: int, nbytes: int) -> DeviceBuffer:
+    parsed_offset = int(offset)
+    parsed_nbytes = int(nbytes)
+    if parsed_offset < 0 or parsed_nbytes <= 0 or parsed_offset + parsed_nbytes > buffer.nbytes:
+        raise ValueError("borrowed device-buffer view exceeds its owner")
+    return DeviceBuffer(buffer.ptr + parsed_offset, parsed_nbytes)
+
+
 def _read_i64(buffer: DeviceBuffer, runtime: HipRuntime) -> int:
     host = ctypes.c_int64()
     runtime.memcpy(
@@ -1203,6 +1920,9 @@ __all__ = [
     "LagunaEagerTokenResult",
     "LagunaGGUFResidentSession",
     "LagunaHiddenCaptureTargets",
+    "LagunaRowsScratch",
+    "LagunaVerifierRowsResult",
+    "capture_laguna_hidden_rows",
     "capture_laguna_hidden_tap",
     "load_laguna_eager_libraries",
     "resolve_laguna_eager_kernel_plan",

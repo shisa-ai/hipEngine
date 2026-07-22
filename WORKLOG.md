@@ -174097,3 +174097,64 @@ rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-bulk-moe-trace -- \
 This closes the isolated bulk sigmoid/routed/shared expert primitive. Task #34
 remains in progress for full resident rows, stable DFlash taps, final logits,
 and model-level serial equality.
+
+## 2026-07-22 — Wire Laguna chunked prefill and B+1 resident rows
+
+Wired the exact bulk KV and row-MoE primitives through
+`LagunaGGUFResidentSession`. A bounded `LagunaRowsScratch` owns row-major token,
+position, hidden, mixed-projection, attention, dense-FFN, final-norm, and full
+logits buffers; a matching bounded MoE scratch owns routed/shared intermediates.
+The default chunk capacity is 64 and is validated against the admitted context
+and the 512-token SWA ring. The additional resident scratch is about 49 MiB at
+that default, small beside the 71.7 GiB model.
+
+`prefill()` now selects chunked rows for prompts longer than one token and keeps
+`use_bulk=False` as the explicit token-serial correctness/rollback path recorded
+in `docs/REFACTOR.md`. `forward_token()` and therefore normal AR decode remain on
+the prior c=1 path. Each chunk performs embedding, F32-weight norms, source-F16
+Q/K/V/gate/O rows, dual RoPE, global/SWA causal attention, dense or sigmoid MoE,
+and final hidden state row-wise. Current K/V is consumed by attention before the
+bulk writer commits it; the KV owner advances only after every layer succeeds.
+Only the final prompt row runs final norm/LM-head/argmax for normal AR.
+
+Added `verify_rows(root, drafts)` as the B+1 target surface. It executes and
+commits one bounded target block, emits full FP32 logits for every row, and can
+copy caller-owned BF16 taps at depths 2/11/20/30/39/48 for every row. Existing
+single-row taps remain unchanged and reject accidental multi-row targets. Task
+#37 will add speculative accept/rollback ownership; this unit deliberately does
+not claim rejected-row safety yet.
+
+RED was the missing `LagunaRowsScratch`/row-capture API. Focused validation:
+
+```bash
+uv run pytest -q tests/test_laguna_gguf_runner.py \
+  tests/test_generation_laguna_gguf.py tests/test_laguna_gguf_correctness.py
+# 25 passed; one TestClient deprecation warning
+uvx ruff check hipengine/runtime/laguna_gguf_runner.py \
+  tests/test_laguna_gguf_runner.py
+python3 -m compileall -q hipengine/runtime/laguna_gguf_runner.py \
+  tests/test_laguna_gguf_runner.py
+# clean
+```
+
+A real cache-backed gfx1151 gate then exercised the new default 55-row prompt
+path three times (main, repeat, teacher-forced) with one greedy token:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 uv run python -u \
+  scripts/laguna_gguf_correctness.py \
+  /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf \
+  --backend hip_gfx1151 --greedy-tokens 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 \
+  --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f \
+  > /tmp/laguna-bulk-greedy1.json
+```
+
+Result: `pass=true`, first token `94557`, KL `6.621408e-6`, exact repeat logits,
+all six taps finite with the established metrics, model load `49.476 s`, first
+bulk inference `2.364 s`, and exact tracked allocation recovery. Resident bytes
+increase from `77,022,439,484` to `77,073,914,940` (+49.09 MiB). This is the
+first model-level GREEN for bulk rows, but Task #34 remains in progress pending
+the committed multi-length serial/bulk KV/hidden/logits and B+1 verifier gate.
