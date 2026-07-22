@@ -278,8 +278,21 @@ Required evidence:
 - representative event and rocprof comparison;
 - no scratch and no unexpected VGPR cliff.
 
-Why first: it is format-specific, exact, small in scope, and the current HSACO
+Why first: it is format-specific, exact, small in scope, and the baseline HSACO
 shows the pathology directly.
+
+**Retained result (2026-07-22):** the exact arithmetic magnitude plus sign-bit
+OR removes 16/32 selector `v_cmpx` operations from selected single/dual and
+64/32 from grouped scalar/rowbatch4. Instruction counts fall
+`502/784/1305/1026 -> 406/595/951/841`. Rotating-distinct selected single/dual
+improve `57.881/106.136 -> 49.200/78.784 us` (-15.00/-25.77%); all hot/repeated
+decode controls and all 30 representative prefill leaves improve. Scalar
+prefill gains 21.21-32.26% and rowbatch4 gains 13.90-27.21%. Full-shape fused
+and grouped checks remain BF16-bit exact. Allocated VGPR rises from
+24/40/56/72 to 40/64/80/88 for selected-single/dual/grouped/rowbatch4, but all
+leaves remain scratch-free and the complete matrix is non-regressive, so the
+win is retained. Evidence:
+[`../benchmarks/results/2026-07-22-gpu1-iq2-xs-branchless-decode.json`](../benchmarks/results/2026-07-22-gpu1-iq2-xs-branchless-decode.json).
 
 ### P2 — Q8_1 plus `sudot4`
 
@@ -567,7 +580,7 @@ and state/KV behavior before kernel model-level gates begin.
 | Lane | State | Exit condition |
 | --- | --- | --- |
 | Representative benchmark | complete | committed E256 harness and accepted diagnostic baseline |
-| Branchless exact decode | queued | correctness, branch-free HSACO evidence, retained event win |
+| Branchless exact decode | complete | exact, branch-free selector decode; retained across full matrix |
 | Group width/geometry | queued | best exact/correctness-gated mapping selected or all rejected |
 | Adaptive rowbatch | queued | measured sparse/balanced/hot policy |
 | Output tile2 | queued | cold production-shape non-regression |

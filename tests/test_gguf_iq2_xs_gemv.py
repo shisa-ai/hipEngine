@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ctypes
 import os
+import re
 from pathlib import Path
 
 import numpy as np
@@ -27,14 +28,15 @@ from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data
 
 QK_K = 256
 IQ2_XS_BLOCK_BYTES = 74
-_HIP_SOURCE = (
+_QUANT_SOURCE_DIR = (
     Path(__file__).parents[1]
     / "hipengine"
     / "kernels"
     / "hip_gfx1100"
     / "quant"
-    / "gguf_iq_gemv.hip"
 )
+_HIP_SOURCE = _QUANT_SOURCE_DIR / "gguf_iq_gemv.hip"
+_PREFILL_SOURCE = _QUANT_SOURCE_DIR / "gguf_iq_selected_prefill.hip"
 
 
 def _hip_available() -> bool:
@@ -238,6 +240,27 @@ def test_iq2_xs_dual_silu_is_exact_to_single_projection_boundary(iq_library) -> 
         iq_library, x, selected, gate, up, out_features=out_features
     )
     np.testing.assert_array_equal(actual, expected)
+
+
+def test_iq2_xs_grid_supports_exact_branchless_magnitude_decoder() -> None:
+    direct_source = _HIP_SOURCE.read_text()
+    prefill_source = _PREFILL_SOURCE.read_text()
+    match = re.search(
+        r"IQ2_XS_GRID_PACKED\[512\] = \{(?P<body>.*?)\n\};",
+        direct_source,
+        re.DOTALL,
+    )
+    assert match is not None
+    packed = [int(value, 16) for value in re.findall(r"0x([0-9a-f]+)u", match["body"])]
+    assert len(packed) == 512
+    codes = [(value >> shift) & 3 for value in packed for shift in range(0, 16, 2)]
+    assert [codes.count(code) for code in range(4)] == [2114, 1142, 840, 0]
+    assert [8 + 17 * code + (code >> 1) for code in range(3)] == [8, 25, 43]
+    assert "iq2_xs_signed_magnitude" in direct_source
+    assert "8U + 17U * code + (code >> 1)" in direct_source
+    nested = "code == 0U ? 8.0f"
+    assert nested not in direct_source
+    assert nested not in prefill_source
 
 
 def test_iq2_xs_registry_build_and_raw_pointer_contract() -> None:

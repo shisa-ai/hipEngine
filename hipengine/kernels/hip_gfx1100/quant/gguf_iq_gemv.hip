@@ -146,6 +146,19 @@ __device__ inline uint32_t iq3_sign_byte(uint32_t selector) {
   return selector | ((static_cast<uint32_t>(__popc(selector)) & 1U) << 7);
 }
 
+// IQ2_XS_GRID_PACKED only contains selector codes 0, 1, and 2. This exact
+// arithmetic mapping avoids divergent control flow for magnitudes 8, 25, 43.
+__device__ inline float iq2_xs_signed_magnitude(uint32_t code, uint32_t sign) {
+  const uint32_t magnitude = 8U + 17U * code + (code >> 1);
+  union FloatBits {
+    float value;
+    uint32_t bits;
+  } signed_magnitude;
+  signed_magnitude.value = static_cast<float>(magnitude);
+  signed_magnitude.bits |= (sign & 1U) << 31;
+  return signed_magnitude.value;
+}
+
 __device__ inline float iq2_xs_group_dot(
     const uint8_t* __restrict__ block,
     int group8,
@@ -165,9 +178,9 @@ __device__ inline float iq2_xs_group_dot(
 #pragma unroll
   for (int j = 0; j < 8; ++j) {
     const uint32_t code = (static_cast<uint32_t>(grid) >> (2 * j)) & 3U;
-    const float magnitude =
-        code == 0U ? 8.0f : (code == 1U ? 25.0f : (code == 2U ? 43.0f : 0.0f));
-    sum += ((signs & (1U << j)) != 0U ? -magnitude : magnitude) * x_values[j];
+    const float signed_magnitude =
+        iq2_xs_signed_magnitude(code, (signs >> j) & 1U);
+    sum += signed_magnitude * x_values[j];
   }
   return db * sum;
 }

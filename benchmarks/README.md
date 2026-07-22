@@ -1891,6 +1891,17 @@ therefore diagnostic only. Rowbatch4 regresses balanced 16-token prefill by
 are BF16-bit exact. These are synthetic primitive/policy results, not Laguna
 model throughput or quality evidence.
 
+The retained exact branchless IQ2 decoder is
+[`2026-07-22-gpu1-iq2-xs-branchless-decode.json`](results/2026-07-22-gpu1-iq2-xs-branchless-decode.json).
+Replacing divergent selector ternaries with the exact arithmetic map and sign-bit
+OR moves rotating-distinct selected single/fused dual
+`57.881/106.136 -> 49.200/78.784 us` (-15.00/-25.77%). All hot/repeated decode
+controls improve 14.14-25.14%; all representative E256 prefill cases improve,
+with scalar -21.21% to -32.26% and rowbatch4 -13.90% to -27.21%. Fused decode
+and grouped prefill remain BF16-bit exact. The four kernels stay scratch-free;
+their increased VGPR40/64/80/88 allocation is accepted because every measured
+routing/size case wins. This remains primitive, not model-level, evidence.
+
 ## Update Checklist
 
 1. Choose one protocol tuple and record the old artifact before running.
