@@ -1,6 +1,6 @@
 # Concurrency and Continuous Batching
 
-Last updated: 2026-07-19.
+Last updated: 2026-07-22.
 
 This document is the source-of-truth roadmap and punchlist for making `c=N` a
 first-class model pipeline in hipEngine. The destination is fully native
@@ -131,9 +131,11 @@ live pages **4 -> 3** on gfx1151. A separate correctness gate resets the source
 before admission and restores the same boundary from a cache-owned snapshot with
 byte-exact state/KV and refcounts **1->1->2->1->0**. Its matched continuation
 TTFT is **249.446 -> 22.013 ms (11.332x)** at an exact **72,089,600-byte** cache
-residency cost and no unique-page saving. Broader historical boundaries, sampled
-reuse, gfx1100 transfer, gfx1100 PARO
-owner symmetry/c4/c8, and general prefix/continuation reuse remain open.
+residency cost and no unique-page saving. Broader historical boundaries,
+sampled reuse, promotable agentic prefix economics, gfx1100 PARO owner
+symmetry/c4/c8, and general prefix/continuation reuse remain open. The gfx1100
+deterministic prefix correctness transfer and agentic 2K/8K evaluation are
+closed, but the measured route is not promotable.
 Long-context pressure, matched external comparisons, and project-wide production
 promotion remain open.
 
@@ -169,6 +171,40 @@ vLLM/SGLang feature parity already exists. The constrained greedy
 Q4_K_M/BF16-KV loop is real continuous batching; production parity additionally
 requires adaptive low-occupancy dispatch, broad request-shape coverage,
 cache/memory economics, and SLO-based external evidence.
+
+### W7900 coding-agent evaluation conclusions (A1–A6)
+
+The frozen A1–A6 program is complete for Qwen3.6-35B-A3B UD-Q4_K_M/BF16-KV
+on gfx1100. These are the concurrency and serving conclusions; detailed
+commands and raw measurements remain in `WORKLOG.md` and the linked artifacts.
+
+| Stage | Measured conclusion | Retained decision |
+| --- | --- | --- |
+| A1 deterministic baseline | Exact active-SSE goodput at C1/C4/C8 is **16.239/15.995/16.020 tok/s** for small, **15.100/15.231/15.036** for growing, and **4.127/4.629/4.339** for medium. Only medium C4 provides a material gain (**1.122x C1**); short/growing wider groups are flat. | Preserve c1 at low occupancy and require a medium-C4 guard for wider-route promotion. [`A1 artifact`](../benchmarks/results/2026-07-21-w7900-agentic-a1-repeated-baseline.json). |
+| A2 prefix reuse | Deterministic active/completed p2048/p8192 state/KV/lifecycle is exact, but paired radix C1 goodput regresses **64.19%/65.63%/26.64%** and buffered tool-ready p50 worsens **181.90%/196.09%/38.81%** for small/growing/medium. | Keep `HIPENGINE_PREFIX_CACHE=off`; radix remains an explicit diagnostic, not a production concurrency feature. [`A2 decision`](../benchmarks/results/2026-07-21-w7900-agentic-a2-prefix-decision.json). |
+| A3 native GPU sampling | The gfx1100 sampler is fixed-seed/state/KV/API exact and native rows reduce full-vocabulary logits D2H to zero. The frozen auto-tool route nevertheless fails turn-1 strict-envelope validity; all valid specific/required tool rows remain explicit host fallback. | Keep `HIPENGINE_QWEN35_NATIVE_SAMPLER=0`; no C1/C4/C8 timing or speedup claim is eligible until a native-eligible tool-valid route exists. [`A3 blocked artifact`](../benchmarks/results/2026-07-22-w7900-agentic-a3-native-sampler-blocked.json). |
+| A4 routing/SLO | All **8 candidates x 3 balanced repetitions** complete (**288 requests / 8,640 IDs**), but no candidate passes every exactness and SLO gate. The package control misses TTFT p95 once (**10.983 s > 10 s**); faster alternatives produce nine late p512/d48 ID divergences after 20–24 exact IDs. | Keep `protect_decode:256/burst-1` and the zero-ms window. Diagnostic gains up to **63.81%** are invalid for promotion. [`A4 decision`](../benchmarks/results/2026-07-22-w7900-agentic-a4-routing-decision.json). |
+| A5 pressure/soak | After closing admission, disconnect, cancellation-drain, and pre-start reservation races, all **9/9** workloads pass over **122 requests**: 108 completions, 12 exact retryable rejects, one disconnect, and one deadline. Queue/KV/stream/graph/workspace memory is bounded, the 80-second soak is 40/40 exact, GPU0 is exclusive, and final ownership is zero. | Retain the corrected bounded lifecycle and unchanged package defaults. This is bounded SLO/reliability evidence, not a multi-day or comparative performance claim. [`A5 closure`](../benchmarks/results/2026-07-22-w7900-agentic-a5-pressure-soak-closure.json). |
+| A6 automatic-tool quality | Only **10/48** turns complete successfully; valid-call/correct-tool is **18/48**, exact arguments/external-oracle pass is **16/48**, safe patch success is **0/6**, and external-test selection is **8/8**. Repeated outputs are exact, so failures are reproducible rather than timing noise. | Autonomous tool-call formation is the dominant production blocker. This is a no-performance synthetic quality diagnostic. [`A6 artifact`](../benchmarks/results/2026-07-22-w7900-agentic-a6-broad-quality.json). |
+
+The retained gfx1100 coding-agent configuration is therefore cache off, native
+sampler off, `protect_decode:256/burst-1`, and a zero-ms generation window.
+Wider execution, prefix reuse, or native sampling may be promoted only after the
+same frozen correctness and SLO gates pass; diagnostic speed cannot override
+invalid IDs or tool envelopes.
+
+The next closure order is:
+
+1. add model-general tokenizer-aware constrained tool/JSON decoding, including
+   exact dynamic/forced close-queue handling and fail-closed fallback;
+2. reproduce and repair the late A4 p512/d48 physical-width transition while
+   comparing every survivor's state and logical block-table-ordered live KV;
+3. rerun the unchanged A3 and A4 protocols, promoting a default only if every
+   correctness, ownership, C1, medium-C4, and SLO gate passes.
+
+Do not tune seeds, token IDs, prompts, candidate ordering, or grammar branches
+to these frozen outputs. The repair must generalize across the committed
+repository/general/multilingual quality families and category heldouts.
 
 ### Model/backend coverage
 
@@ -1175,10 +1211,11 @@ live pages **4 -> 3** (**5,242,880 bytes**). Paired HIP-current deltas are
 claimed. The fixed-capacity backing is preallocated in both modes. Default
 remains `off`: broader boundary/LRU/graph pressure is unmeasured, sampled reuse
 is unsupported, packed shared-prefix suffix arithmetic is not byte-exact to c1,
-the completed cache carries explicit residency cost, and gfx1100 economics are
-not yet measured. The completed-source gate resets/unbinds the source before
-admission, restores a 66,846,720-byte cache-owned hybrid snapshot, reproduces boundary/
-output/all Conv/GDN/live-KV/four teacher-forced steps byte-exactly (`KL=0`, top-1
+the completed cache carries explicit residency cost, and the separately measured
+gfx1100 agentic economics reject promotion. The completed-source gate
+resets/unbinds the source before admission, restores a 66,846,720-byte
+cache-owned hybrid snapshot, and reproduces boundary/output/all Conv/GDN/live-KV
+and four teacher-forced steps byte-exactly (`KL=0`, top-1
 `100%`), and drains refs through **1->1->2->1->0**. Its clean one-warmup/three-pair
 packet moves continuation TTFT **249.446 -> 22.013 ms (11.332x, -91.18%)** with
 3/3 exact snapshot hits. Unique continuation pages stay **2 -> 2**; retained
@@ -1192,8 +1229,9 @@ and
 The matching gfx1100/W7900 correctness transfer now passes both active-current
 and completed-source p256+s1: output, all Conv/GDN/live-KV bytes, four
 teacher-forced steps (`KL=0`, top-1 100%), refcount/COW, cache eviction, and
-final drain are exact. This is correctness-only; agentic 2K/8K economics and
-pressure remain open. Evidence:
+final drain are exact. This p256 transfer is correctness-only; the separate
+agentic p2048/p8192 economics and pressure packet is closed and rejects
+promotion. Evidence:
 `benchmarks/results/2026-07-21-gfx1100-gguf-active-prefix-reuse-correctness.json`
 and
 `benchmarks/results/2026-07-21-gfx1100-gguf-completed-prefix-reuse-correctness.json`.
@@ -1342,8 +1380,10 @@ closure set prematurely.
       cache residency explicitly disclosed.
 - [x] Active-current and completed-source greedy p256+s1 correctness transfer to
       gfx1100, including exact output/state/KV, COW/refcounts, eviction, and drain.
-- [ ] Agentic 2K/8K historical boundaries/economics, LRU pressure, sampled reuse,
-      and graph-safe lifecycle.
+- [x] gfx1100 deterministic agentic p2048/p8192 active/completed prefix
+      correctness, C1 economics, LRU/pressure lifecycle, eviction, and final
+      drain; the performance decision rejects promotion and keeps cache off.
+- [ ] Sampled prefix reuse and broader graph-safe historical boundaries.
 - [ ] Long-context 4K/32K/128K admission and memory-pressure policies.
 - [ ] Graph-pool invalidation under real grow/shrink events.
 - [ ] DMS/KVTC tier movement under the stable-id/rebind contract.
@@ -1387,9 +1427,20 @@ multiple later gates.
     active-current p256+s1 reuse is byte-exact, 11.765x faster to first token,
     and saves one 5 MiB live page; completed-source reuse is byte-exact through
     **1->1->2->1->0** and 11.332x faster at 72,089,600-byte cache residency.
-15. **Ready — F5/H:** broaden historical/LRU and sampled reuse, close long-
-    context/memory pressure, transfer sampled/API and
-    prefix coverage to gfx1100, and run matched external serving comparisons.
+15. **Completed on gfx1100 — coding-agent A1–A6:** deterministic concurrency,
+    prefix economics/lifecycle, native-sampler correctness/tool preflight,
+    routing/SLO, bounded pressure/soak, and broad automatic-tool quality are
+    published. Prefix, native-sampler, and A4 routing candidates remain rejected.
+16. **Active — constrained tools:** add model-general tokenizer-aware tool/JSON
+    constraints with exact forced/dynamic close queues and fail-closed fallback.
+17. **Next — A4 exactness:** repair the late p512/d48 physical-width transition
+    divergence against independent c1 state/KV trajectories.
+18. **Then — A3/A4 rerun:** rerun the frozen W7900 gates and promote only a
+    candidate that passes every correctness, ownership, C1/medium-C4, and SLO
+    requirement.
+19. **Ready — F5/H:** broaden sampled prefix reuse and graph-safe historical
+    boundaries, close long-context/memory pressure, and run matched external
+    serving comparisons.
 
 Do not label C>8 grouping, general prefix caching, DMS, speculative
 integration, or external-engine parity from the retained gfx11 GGUF results;
@@ -1416,7 +1467,7 @@ Use only these status values:
 | GGUF Q4_K_M / BF16, c8 native group | `retained` | `retained` | `retained` |
 | GGUF Q4_K_M / BF16, live admission | `retained` | `retained` | `retained` |
 | GGUF Q4_K_M / BF16, arbitrary-C lowering | `retained` | `retained` | `retained` |
-| GGUF Q4_K_M / BF16, sampled OpenAI API | `not_started` | `retained` | `retained` |
+| GGUF Q4_K_M / BF16, sampled OpenAI API | `direct_eq_ok` | `retained` | `retained` |
 | PARO W4 / BF16, c2 | `retained` | `retained` | `retained` |
 | PARO W4 / BF16, c4 | `not_started` | `retained` | `retained` |
 | PARO W4 / BF16, c8 | `not_started` | `retained` | `retained` |
@@ -1553,7 +1604,8 @@ prefix reuse is byte-exact and economics-retained; completed-source p256+s1
 snapshot restore is also correctness/economics-retained at 11.332x TTFT with
 exact eviction/final drain and 72,089,600-byte cache residency. gfx1100 now
 passes the matching active/completed p256+s1 correctness transfer, without a
-performance claim. Agentic 2K/8K economics, broader historical boundaries,
-pressure, and sampled reuse remain open. The gfx1100 PARO owner c4/c8, normal
-sampled groups, long-context memory-pressure coverage, and complete project-wide production continuous
-batching remain in progress.**
+performance claim; its deterministic agentic p2048/p8192 economics/lifecycle
+packet is also closed but rejects promotion. Broader historical boundaries and
+sampled reuse remain open. The gfx1100 PARO owner c4/c8, model-general constrained
+tool sampling, long-context memory-pressure coverage, and complete project-wide
+production continuous batching remain in progress.**

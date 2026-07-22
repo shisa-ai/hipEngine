@@ -172919,3 +172919,27 @@ oracle, legacy quality, README synchronization, and provenance contracts.
 Targeted Ruff, complete artifact validation, JSON parsing, README sync, Worklog
 conflict validation, changed-doc structure/trailing-space checks, artifact hash,
 and `git diff --check` pass; only the existing Starlette/httpx warning remains.
+
+## 2026-07-22 — Record A1–A6 conclusions in the concurrency roadmap
+
+Updated `docs/CONCURRENCY.md` after completing the frozen W7900 coding-agent
+A1–A6 program. The roadmap now records the measured decisions rather than
+leaving the gfx1100 serving lane at its July 19 state: A1 shows flat
+small/growing C4/C8 and a bounded medium-C4 gain; A2 rejects radix on severe C1
+goodput/tool-ready regressions despite exact lifecycle; A3 retains exact native
+sampling and zero logits D2H but blocks promotion on auto-tool envelope validity;
+A4 rejects every routing candidate on exactness or SLO; A5 closes bounded
+pressure/soak after the admission/cancellation/reservation repairs; and A6
+identifies automatic tool-call formation as the dominant production blocker at
+10/48 complete turns.
+
+The documented gfx1100 defaults remain cache off, native sampler off,
+`protect_decode:256/burst-1`, and a zero-ms generation window. The active
+concurrency queue now follows the requested order: implement model-general
+tokenizer-aware tool/JSON constraints and exact close queues; repair the late
+A4 p512/d48 width-transition state/KV divergence; then rerun the unchanged A3
+and A4 protocols before any promotion. The coverage ledger advances gfx1100
+sampled OpenAI API from `not_started` to `direct_eq_ok`, reflecting the passing
+native state/KV/API gate without mislabeling the failed tool-validity gate as
+retained production support. No runtime code, default, or benchmark claim
+changed in this documentation unit.
