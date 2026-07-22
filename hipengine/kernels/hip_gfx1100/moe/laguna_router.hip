@@ -8,6 +8,26 @@
 
 namespace {
 
+__device__ inline float laguna_bf16_bits_to_float(uint16_t value) {
+  union {
+    uint32_t u32;
+    float f32;
+  } out;
+  out.u32 = static_cast<uint32_t>(value) << 16;
+  return out.f32;
+}
+
+__device__ inline uint16_t laguna_float_to_bf16_bits(float value) {
+  union {
+    float f32;
+    uint32_t u32;
+  } in;
+  in.f32 = value;
+  const uint32_t lsb = (in.u32 >> 16) & 1U;
+  in.u32 += 0x7FFFU + lsb;
+  return static_cast<uint16_t>(in.u32 >> 16);
+}
+
 __device__ inline float stable_sigmoid_f32(float value) {
   if (value >= 0.0f) {
     return 1.0f / (1.0f + expf(-value));
@@ -117,6 +137,27 @@ __global__ void laguna_sigmoid_correction_topk_kernel(
   }
 }
 
+__global__ void laguna_weighted_sum_rows_bf16_f32w_kernel(
+    const uint16_t* __restrict__ values,
+    const float* __restrict__ weights,
+    uint16_t* __restrict__ out,
+    int64_t top_k,
+    int64_t features) {
+  const int64_t token = static_cast<int64_t>(blockIdx.y);
+  const int64_t feature = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (feature >= features) return;
+  const int64_t lane_base = token * top_k;
+  float acc = 0.0f;
+  for (int64_t route = 0; route < top_k; ++route) {
+    const int64_t lane = lane_base + route;
+    acc = fmaf(
+        laguna_bf16_bits_to_float(values[lane * features + feature]),
+        weights[lane],
+        acc);
+  }
+  out[token * features + feature] = laguna_float_to_bf16_bits(acc);
+}
+
 }  // namespace
 
 extern "C" int hipengine_laguna_sigmoid_correction_topk_f32(
@@ -154,5 +195,35 @@ extern "C" int hipengine_laguna_sigmoid_correction_topk_f32(
       num_experts,
       top_k,
       routed_scaling_factor);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_laguna_weighted_sum_rows_bf16_f32w(
+    const uint16_t* values,
+    const float* weights,
+    uint16_t* out,
+    int64_t tokens,
+    int64_t top_k,
+    int64_t features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (tokens <= 0 || top_k <= 0 || top_k > 16 || features <= 0 ||
+      (threads != 64 && threads != 128 && threads != 256)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 grid(
+      static_cast<unsigned int>((features + threads - 1) / threads),
+      static_cast<unsigned int>(tokens));
+  hipLaunchKernelGGL(
+      laguna_weighted_sum_rows_bf16_f32w_kernel,
+      grid,
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      values,
+      weights,
+      out,
+      top_k,
+      features);
   return static_cast<int>(hipGetLastError());
 }

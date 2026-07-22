@@ -31,6 +31,7 @@ from hipengine.runtime.laguna_moe import (
     allocate_laguna_moe_scratch,
     resolve_laguna_moe_plan,
     run_laguna_moe_c1,
+    run_laguna_moe_rows,
     validate_laguna_moe_layer,
 )
 from tests._gguf_synthetic_weights import make_q4_k_weight, make_q6_k_weight
@@ -96,6 +97,10 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
     assert (plan.expert_ffn_size, plan.shared_ffn_size) == (1_024, 1_024)
     assert plan.routed_scaling_factor == pytest.approx(2.5)
     assert plan.router_select_key.layer == "laguna_sigmoid_router_topk"
+    assert (plan.routed_sum_rows_key.layer, plan.routed_sum_rows_key.variant) == (
+        "weighted_sum",
+        "laguna_rows",
+    )
     assert plan.selected_gate_up_key.quant == "gguf_q4_k_t16_v1"
     assert set(plan.selected_down_keys) == {
         "gguf_q4_k_t16_v1",
@@ -179,7 +184,9 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
 
     resident = {}
     scratch = None
+    bulk_scratch = None
     hidden_buffer = None
+    bulk_hidden_buffer = None
     try:
         for slot, (array, qtype, shape) in payloads.items():
             source = tensor_info(f"synthetic.{slot}", shape, qtype)
@@ -290,9 +297,51 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
             _f32_to_bf16_u16(actual),
             _f32_to_bf16_u16(_bf16_round(routed_actual + shared_actual)),
         )
+
+        bulk_hidden_bits = np.concatenate(
+            (
+                hidden_bits,
+                _f32_to_bf16_u16(hidden * np.float32(0.75)),
+                _f32_to_bf16_u16(hidden * np.float32(-0.5)),
+            ),
+            axis=0,
+        )
+        bulk_hidden_buffer = malloc(bulk_hidden_bits.nbytes)
+        copy_host_to_device(
+            bulk_hidden_buffer,
+            host_array_ptr(bulk_hidden_bits),
+            bulk_hidden_bits.nbytes,
+        )
+        bulk_scratch = allocate_laguna_moe_scratch(plan, max_rows=3)
+        bulk_output = run_laguna_moe_rows(
+            bulk_hidden_buffer.ptr,
+            layer,
+            bulk_scratch,
+            rows=3,
+        )
+        bulk_actual = _read_bf16(bulk_output, (3, h))
+        serial_actual = np.empty_like(bulk_actual)
+        for row in range(3):
+            copy_host_to_device(
+                hidden_buffer,
+                host_array_ptr(bulk_hidden_bits[row]),
+                bulk_hidden_bits[row].nbytes,
+            )
+            serial_output = run_laguna_moe_c1(hidden_buffer.ptr, layer, scratch)
+            serial_actual[row] = _read_bf16(serial_output, (1, h))[0]
+        np.testing.assert_array_equal(
+            _f32_to_bf16_u16(bulk_actual),
+            _f32_to_bf16_u16(serial_actual),
+        )
+        assert bulk_scratch.max_rows == 3
+        assert bulk_scratch.selected_experts.nbytes == 3 * k * np.dtype(np.int64).itemsize
     finally:
+        if bulk_scratch is not None:
+            bulk_scratch.free()
         if scratch is not None:
             scratch.free()
+        if bulk_hidden_buffer is not None:
+            free(bulk_hidden_buffer)
         if hidden_buffer is not None:
             free(hidden_buffer)
         for weight in reversed(tuple(resident.values())):

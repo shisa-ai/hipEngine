@@ -174044,3 +174044,56 @@ eight scalar controls total about `1396/5547 us`. Bulk rows writers appeared at
 correctness/dispatch evidence, not yet a retained full-model throughput claim.
 Task #34 remains in progress for bulk MoE, full resident rows, stable DFlash taps,
 and model-level equality.
+
+## 2026-07-22 — Add exact row-batched Laguna sigmoid MoE
+
+Continued Task #34 at the MoE boundary. RED extended the production-shape MoE
+gate with `run_laguna_moe_rows(...)` and failed during collection because that
+API did not exist. GREEN generalizes the bounded scratch owner with an explicit
+`max_rows` while retaining `max_rows=1` and the existing `run_laguna_moe_c1`
+path unchanged for normal decode.
+
+The rows path executes one multi-token router projection and one block per token
+for sigmoid/correction top-k, flattens `[tokens, top_k]` selected IDs into the
+existing direct Q4T16 gate/up and Q4/Q6T16 down ABIs, and runs shared gate/up,
+SiLU, down, and final add over all rows. A net-new registry variant
+`weighted_sum/bf16/laguna_rows` reduces contiguous expert lanes per token with
+the same ordered FP32 FMA and BF16 rounding as the c=1 reducer. The unfused c=1
+chain remains the fallback.
+
+The production 3072-hidden/1024-expert-FFN/top-10 test now compares three bulk
+rows against three scalar executions for both Q4_K and Q6_K selected/shared down
+layouts. Every combined BF16 output bit matches. Validation:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 uv run pytest -q \
+  tests/test_laguna_router_gpu.py tests/test_laguna_moe_gpu.py \
+  tests/test_laguna_gguf_runner.py
+# 16 passed
+python3 -m compileall -q hipengine/kernels/hip_gfx1100/moe/laguna_router.py \
+  hipengine/runtime/laguna_moe.py hipengine/runtime/laguna_gguf_runner.py \
+  tests/test_laguna_moe_gpu.py
+uvx ruff check hipengine/kernels/hip_gfx1100/moe/laguna_router.py \
+  hipengine/runtime/laguna_moe.py hipengine/runtime/laguna_gguf_runner.py \
+  tests/test_laguna_moe_gpu.py
+# clean
+```
+
+A cached-build rocprof run of the Q4 production-shape node emitted
+`laguna_weighted_sum_rows_bf16_f32w_kernel` at `2.725 us`, plus the intended
+rows-form sigmoid selector, direct selected Q4T16 dual/down, Q4 pack8 shared
+prefill, SiLU, and add families:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+HIPENGINE_REQUIRE_CACHED_BUILD=1 \
+rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-bulk-moe-trace -- \
+  .venv/bin/python -m pytest -q \
+  'tests/test_laguna_moe_gpu.py::test_laguna_unfused_moe_matches_production_shape_quant_oracle[GGMLQuantizationType.Q4_K]'
+# pass; /tmp/laguna-bulk-moe-trace/gfx1151/1887090_kernel_trace.csv
+```
+
+This closes the isolated bulk sigmoid/routed/shared expert primitive. Task #34
+remains in progress for full resident rows, stable DFlash taps, final logits,
+and model-level serial equality.
