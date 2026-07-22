@@ -34,6 +34,11 @@ from hipengine.kernels.registry import (
 
 BACKEND = "hip_gfx1151"
 TARGET_ARCH = hip_target_arch_for_backend(BACKEND)
+# Clean LPF-1 same-session rows 2..128 and canonical category gates admit the
+# exact 8x4/16x4 source-F16 tile for every bulk row count. Decode rows remain on
+# the separately registered GEMV fallback.
+LAGUNA_F16_PREFILL_STRATEGY = "tiled"
+LAGUNA_F16_PREFILL_MIN_ROWS = 2
 # Clean SOL-G5 p512/d128 evidence admits the state-bound composite GGUF graph
 # only when at least 128 decode transitions amortize capture/instantiate/close.
 GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS = 128
@@ -244,6 +249,8 @@ __all__ = [
     "GGUF_Q8_T16_PREFILL_TWO_WAVE",
     "GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS",
     "GGUF_ROUTER_F32_BF16_HIDDEN_THREADS",
+    "LAGUNA_F16_PREFILL_MIN_ROWS",
+    "LAGUNA_F16_PREFILL_STRATEGY",
     "PARO_FULL_ATTN_NATIVE_EXACT_WIDTHS",
     "PARO_NATIVE_BATCH_DECODE_DEFAULT",
     "PARO_RETAINED_BATCH_DEFAULTS",

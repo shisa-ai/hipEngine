@@ -174925,7 +174925,84 @@ python3 -m py_compile scripts/laguna_f16_prefill_bench.py \
 # clean
 ```
 
-Next: commit the reproducible harness, measure the clean same-session A/B in an
-isolated worktree so provenance has no shared-tree untracked dirtiness, rerun
-the canonical two-repeat target gate with explicit tiled selection there, then
-promote only the measured backend threshold.
+Committed the reproducible harness as `6b14c2da6`, then measured it from an
+isolated detached worktree so provenance reports staged/unstaged/untracked
+clean with zero untracked files. The three-pass same-session A/B passes all 90
+output checks and exact lifecycle recovery. Tiled is faster at every measured
+shape: row 2 **20.568 -> 21.327 tok/s (1.0369x)**, row 55
+**23.460 -> 48.760 (2.0784x)**, and row 128 **23.374 -> 50.240 (2.1494x)**.
+The complete weighted profile moves 69.8003 -> 33.9863 s (**2.0538x**), so the
+measured threshold is two rows. Load 48.931 s is excluded; all 77,125,390,396
+tracked bytes return to zero. Artifact SHA-256 is
+`e985bae3...279d4`:
+`benchmarks/results/2026-07-23-gfx1151-laguna-prefill-lpf1-ab.json`.
+
+Exact A/B command (run from `/tmp/hipengine-lpf1-clean`):
+
+```bash
+env -u HIPENGINE_LAGUNA_F16_PREFILL \
+  HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 \
+  /home/lhl/hipEngine-main/.venv/bin/python -u \
+  scripts/laguna_f16_prefill_bench.py \
+  /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf \
+  --backend hip_gfx1151 --context-length 4096 --repetitions 3 --warmups 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 \
+  --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f \
+  --output /tmp/laguna-prefill-lpf1-ab-clean.json
+```
+
+The clean two-repeat ten-prompt category gate also passes. Against the retained
+bulk-GEMV row, tiled moves prefill **23.333 -> 48.560 tok/s (+108.12%;
+2.081x)**, median TTFT **3.481 -> 1.692 s (-51.39%)**, and h16/h32 E2E
+**3.470/5.719 -> 5.955/8.717 tok/s (+71.61%/+52.42%)**. H32 decode is neutral
+**16.381 -> 16.386 tok/s (+0.030%)**. All 20 serial/tiled pairs and same-route
+repeats have complete-ID equality at h16/h32; all four category gates pass, the
+Poolside distribution remains KL `6.621408e-6` with top-1 `94557`, and tracked
+ownership returns to zero. The artifact explicitly records requested/effective
+`tiled` from row two and clean provenance. SHA-256 is
+`ca635061...59118`:
+`benchmarks/results/2026-07-23-gfx1151-laguna-prefill-lpf1-tiled.json`.
+
+Exact category command (same detached worktree):
+
+```bash
+env HIPENGINE_LAGUNA_F16_PREFILL=tiled HIPENGINE_HIP_ARCH=gfx1151 \
+  GPU_MAX_HW_QUEUES=1 /home/lhl/hipEngine-main/.venv/bin/python -u \
+  scripts/laguna_target_ar_bench.py \
+  /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf \
+  --backend hip_gfx1151 --context-length 4096 --chunk-size 64 \
+  --output-horizons 16,32 --repetitions 2 --warmup-output-tokens 2 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 \
+  --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f \
+  --output /tmp/laguna-prefill-lpf1-tiled-category-clean.json
+```
+
+Promoted the measured threshold through gfx1151 backend capabilities:
+`LAGUNA_F16_PREFILL_STRATEGY=tiled`, minimum rows 2. Rows=1 and gfx1100 retain
+GEMV; `HIPENGINE_LAGUNA_F16_PREFILL=gemv` remains the one-release rollback.
+Post-promotion focused validation:
+
+```bash
+env HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 uv run pytest -q \
+  tests/test_laguna_f16_projection.py tests/test_gfx1151_backend.py \
+  tests/test_laguna_target_ar_bench.py tests/test_laguna_f16_prefill_bench.py
+# 41 passed
+uvx ruff check hipengine/kernels/hip_gfx1151/__init__.py \
+  tests/test_gfx1151_backend.py tests/test_laguna_f16_projection.py \
+  scripts/laguna_f16_prefill_bench.py scripts/laguna_target_ar_bench.py \
+  tests/test_laguna_f16_prefill_bench.py tests/test_laguna_target_ar_bench.py
+# clean
+python3 scripts/sync_benchmark_readme.py --write
+python3 scripts/sync_benchmark_readme.py --check
+# synchronized
+```
+
+LPF-1 also changes DFlash B+1 target verification, which owned 87.27% of the
+pre-LPF-1 speculative decode wall. Marked that economics row stale rather than
+silently carrying it forward and created task #44, blocked on the remaining
+prefill plan, to rerun the full D4 category/heldout decision against the final
+current AR path. No speedup is inferred from projection microbenchmarks.

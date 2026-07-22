@@ -178,6 +178,26 @@ def test_laguna_f16_projection_runtime_forced_bulk_keeps_c1_gemv(monkeypatch) ->
     assert [name for name, _, _ in calls] == ["gemv", "tiled"]
 
 
+def test_laguna_f16_projection_runtime_auto_uses_measured_gfx1151_threshold(
+    monkeypatch,
+) -> None:
+    from hipengine.runtime.f16_weight_linear import _prefill_strategy
+
+    monkeypatch.delenv("HIPENGINE_LAGUNA_F16_PREFILL", raising=False)
+    assert _prefill_strategy(
+        rows=1, activation_dtype="bf16", backend="hip_gfx1151"
+    ) is None
+    assert _prefill_strategy(
+        rows=2, activation_dtype="bf16", backend="hip_gfx1151"
+    ) == "tiled"
+    assert _prefill_strategy(
+        rows=128, activation_dtype="bf16", backend="hip_gfx1151"
+    ) == "tiled"
+    assert _prefill_strategy(
+        rows=128, activation_dtype="bf16", backend="hip_gfx1100"
+    ) is None
+
+
 @pytest.mark.parametrize("q_heads", [48, 72])
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_laguna_f16_projection_single_dual_triple_match_cpu(q_heads: int) -> None:

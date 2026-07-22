@@ -1,0 +1,828 @@
+{
+  "command": [
+    "/home/lhl/.local/share/uv/python/cpython-3.10.20-linux-x86_64-gnu/bin/python3.10",
+    "scripts/laguna_f16_prefill_bench.py",
+    "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "--backend",
+    "hip_gfx1151",
+    "--context-length",
+    "4096",
+    "--repetitions",
+    "3",
+    "--warmups",
+    "1",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--require-cached-build",
+    "--repacked-cache",
+    "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+    "--model-sha256",
+    "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "--output",
+    "/tmp/laguna-prefill-lpf1-ab-clean.json"
+  ],
+  "correctness": {
+    "all_modes_and_repetitions_exact_next_token": true,
+    "pass": true,
+    "tracked_returned_to_baseline": true
+  },
+  "created_at": "2026-07-22T23:11:46.442740+00:00",
+  "kind": "hipengine_laguna_prefill_lpf1_ab",
+  "load": {
+    "resident_nbytes": 77125390396,
+    "seconds_excluded": 48.93074548698496
+  },
+  "memory": {
+    "gpu_free_after": 128693989376,
+    "gpu_free_before": 128844787712,
+    "hip_total_bytes": 128849018880,
+    "tracked_after": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 77125390396,
+      "peak_allocations": 1377,
+      "total_allocated_bytes": 77125390396,
+      "total_freed_bytes": 77125390396
+    },
+    "tracked_before": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 0,
+      "peak_allocations": 0,
+      "total_allocated_bytes": 0,
+      "total_freed_bytes": 0
+    }
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "repacked_cache": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+    "repacked_cache_manifest_sha256": "d328e0b73f8957eb051d3ed24d17a4aaf6a3d15fce3c45baf10c02f4de0cabfc",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "notes": [
+    "GEMV and tiled spans share one resident model, runtime, token stream, and bounded scratch owner.",
+    "The measured threshold keeps smaller rows on exact GEMV rather than averaging regressions away.",
+    "The separate canonical category artifact owns free-running h16/h32 correctness and E2E gates.",
+    "Run rocprofv3 separately with cached builds; do not profile model JIT compilation."
+  ],
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "same-session Laguna source-F16 prefill GEMV versus exact tiled candidate; one physical chunk; model load excluded",
+  "platform": {
+    "backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "hip_total_bytes": 128849018880,
+    "machine": "x86_64",
+    "target_arch": "gfx1151"
+  },
+  "promotion": {
+    "effective_profile_tokens": 1629,
+    "effective_speedup": 2.053776821175644,
+    "failed_checks": [],
+    "gemv_profile_seconds": 69.8003204006236,
+    "measured_min_rows": 2,
+    "pass": true,
+    "threshold_policy": "lowest measured row whose complete measured tail is strictly faster",
+    "thresholded_candidate_profile_seconds": 33.98632201948203
+  },
+  "protocol": {
+    "candidate_selection": "process-local HIPENGINE_LAGUNA_F16_PREFILL=tiled only inside candidate spans",
+    "context_length": 4096,
+    "control_selection": "process-local HIPENGINE_LAGUNA_F16_PREFILL=gemv only inside control spans",
+    "modes": [
+      "gemv",
+      "tiled"
+    ],
+    "one_physical_chunk": true,
+    "prefill_chunk_size": 128,
+    "prompt_suite": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "repetitions": 3,
+    "rows": [
+      2,
+      3,
+      4,
+      5,
+      7,
+      8,
+      15,
+      16,
+      17,
+      32,
+      55,
+      64,
+      65,
+      122,
+      128
+    ],
+    "timed_order": "alternating GEMV/tiled per shape and reversed next repetition",
+    "timing_scope": "reset complete through synchronized first-token projection; load excluded",
+    "token_source": {
+      "category": "mixed_ja_en",
+      "extension": "repeat_without_leading_bos",
+      "prompt_id": "mixed_ja_en_review",
+      "requested_tokens": 128,
+      "source_tokens": 122
+    },
+    "token_stream_sha256": "baaa51ff256f4fbbdfb34b59681e57b5b9b842b94f11cb08660763c24019f422",
+    "warmups_per_shape_and_mode": 1
+  },
+  "provenance": {
+    "build_profile": "laguna_prefill_lpf1_ab",
+    "collected_at": "2026-07-22T23:08:38.658041+00:00",
+    "command": [
+      "/home/lhl/.local/share/uv/python/cpython-3.10.20-linux-x86_64-gnu/bin/python3.10",
+      "scripts/laguna_f16_prefill_bench.py",
+      "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1151",
+      "--context-length",
+      "4096",
+      "--repetitions",
+      "3",
+      "--warmups",
+      "1",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--repacked-cache",
+      "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+      "--model-sha256",
+      "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+      "--output",
+      "/tmp/laguna-prefill-lpf1-ab-clean.json"
+    ],
+    "configured_backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "dirty": false,
+    "environment": {
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null,
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIP_VISIBLE_DEVICES": null,
+      "ROCR_VISIBLE_DEVICES": null
+    },
+    "git_branch": null,
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "hipengine_commit": "6b14c2da60bd51d56373e31fe9e16e15f4e969d9",
+    "kind": "hipengine_artifact_provenance",
+    "kv_dtype": "bf16",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        37586027312,
+        75172054624
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 75173103200,
+      "value": "05caf641aa0d991c0e447450420c042bfab22ae248b1f12aba4bd3774c2024c8"
+    },
+    "model_path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "model_revision": null,
+    "profiler": null,
+    "quant": "gguf_q4_k_m",
+    "repetitions": 3,
+    "repo_root": "/tmp/hipengine-lpf1-clean",
+    "resolved_backend": "hip_gfx1151",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "schema_version": 1,
+    "staged_dirty": false,
+    "target_arch": "gfx1151",
+    "timing_protocol": "same_session_balanced_gemv_vs_exact_tiled_prefill",
+    "unstaged_dirty": false,
+    "untracked_count": 0,
+    "untracked_dirty": false,
+    "warmups": 30
+  },
+  "repo": {
+    "revision": "6b14c2da60bd51d56373e31fe9e16e15f4e969d9",
+    "tracked_clean": true,
+    "tracked_status": [],
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "schema": 1,
+  "shapes": {
+    "122": {
+      "exact_next_token": true,
+      "gemv": {
+        "max_seconds": 5.21606851904653,
+        "median_seconds": 5.211830027983524,
+        "median_tok_s": 23.40828448835701,
+        "min_seconds": 5.211332197999582,
+        "rows": 122,
+        "samples_seconds": [
+          5.21606851904653,
+          5.211830027983524,
+          5.211332197999582
+        ]
+      },
+      "next_token_ids": {
+        "gemv": [
+          79,
+          79,
+          79
+        ],
+        "tiled": [
+          79,
+          79,
+          79
+        ]
+      },
+      "rows": 122,
+      "tiled": {
+        "max_seconds": 2.4385190430330113,
+        "median_seconds": 2.4380588040221483,
+        "median_tok_s": 50.03981027805091,
+        "min_seconds": 2.436960569000803,
+        "rows": 122,
+        "samples_seconds": [
+          2.4380588040221483,
+          2.436960569000803,
+          2.4385190430330113
+        ]
+      },
+      "tiled_vs_gemv_speedup": 2.1376966049323305
+    },
+    "128": {
+      "exact_next_token": true,
+      "gemv": {
+        "max_seconds": 5.479688741965219,
+        "median_seconds": 5.476079337066039,
+        "median_tok_s": 23.37438742598268,
+        "min_seconds": 5.47475548600778,
+        "rows": 128,
+        "samples_seconds": [
+          5.479688741965219,
+          5.47475548600778,
+          5.476079337066039
+        ]
+      },
+      "next_token_ids": {
+        "gemv": [
+          81,
+          81,
+          81
+        ],
+        "tiled": [
+          81,
+          81,
+          81
+        ]
+      },
+      "rows": 128,
+      "tiled": {
+        "max_seconds": 2.5499551880639046,
+        "median_seconds": 2.547756799031049,
+        "median_tok_s": 50.2402741300427,
+        "min_seconds": 2.545868439017795,
+        "rows": 128,
+        "samples_seconds": [
+          2.545868439017795,
+          2.5499551880639046,
+          2.547756799031049
+        ]
+      },
+      "tiled_vs_gemv_speedup": 2.149372867594221
+    },
+    "15": {
+      "exact_next_token": true,
+      "gemv": {
+        "max_seconds": 0.6496906459797174,
+        "median_seconds": 0.6495723139960319,
+        "median_tok_s": 23.09211719280824,
+        "min_seconds": 0.649447308969684,
+        "rows": 15,
+        "samples_seconds": [
+          0.6496906459797174,
+          0.6495723139960319,
+          0.649447308969684
+        ]
+      },
+      "next_token_ids": {
+        "gemv": [
+          30810,
+          30810,
+          30810
+        ],
+        "tiled": [
+          30810,
+          30810,
+          30810
+        ]
+      },
+      "rows": 15,
+      "tiled": {
+        "max_seconds": 0.34798839897848666,
+        "median_seconds": 0.34781490406021476,
+        "median_tok_s": 43.12638654898801,
+        "min_seconds": 0.3477516539860517,
+        "rows": 15,
+        "samples_seconds": [
+          0.34781490406021476,
+          0.34798839897848666,
+          0.3477516539860517
+        ]
+      },
+      "tiled_vs_gemv_speedup": 1.8675804469942323
+    },
+    "16": {
+      "exact_next_token": true,
+      "gemv": {
+        "max_seconds": 0.6919960170052946,
+        "median_seconds": 0.69197180098854,
+        "median_tok_s": 23.122329518547794,
+        "min_seconds": 0.6918982330244035,
+        "rows": 16,
+        "samples_seconds": [
+          0.6918982330244035,
+          0.6919960170052946,
+          0.69197180098854
+        ]
+      },
+      "next_token_ids": {
+        "gemv": [
+          638,
+          638,
+          638
+        ],
+        "tiled": [
+          638,
+          638,
+          638
+        ]
+      },
+      "rows": 16,
+      "tiled": {
+        "max_seconds": 0.3454451150028035,
+        "median_seconds": 0.34524745400995016,
+        "median_tok_s": 46.343571296948284,
+        "min_seconds": 0.34517922601662576,
+        "rows": 16,
+        "samples_seconds": [
+          0.3454451150028035,
+          0.34524745400995016,
+          0.34517922601662576
+        ]
+      },
+      "tiled_vs_gemv_speedup": 2.0042777809118824
+    },
+    "17": {
+      "exact_next_token": true,
+      "gemv": {
+        "max_seconds": 0.7335994089953601,
+        "median_seconds": 0.7334450689377263,
+        "median_tok_s": 23.178286582009044,
+        "min_seconds": 0.7334055448882282,
+        "rows": 17,
+        "samples_seconds": [
+          0.7335994089953601,
+          0.7334055448882282,
+          0.7334450689377263
+        ]
+      },
+      "next_token_ids": {
+        "gemv": [
+          8130,
+          8130,
+          8130
+        ],
+        "tiled": [
+          8130,
+          8130,
+          8130
+        ]
+      },
+      "rows": 17,
+      "tiled": {
+        "max_seconds": 0.4108488620258868,
+        "median_seconds": 0.4091199079994112,
+        "median_tok_s": 41.55261004806558,
+        "min_seconds": 0.40836057311389595,
+        "rows": 17,
+        "samples_seconds": [
+          0.40836057311389595,
+          0.4091199079994112,
+          0.4108488620258868
+        ]
+      },
+      "tiled_vs_gemv_speedup": 1.792738643602701
+    },
+    "2": {
+      "exact_next_token": true,
+      "gemv": {
+        "max_seconds": 0.09733288094867021,
+        "median_seconds": 0.0972404470667243,
+        "median_tok_s": 20.56757306584207,
+        "min_seconds": 0.09720150497741997,
+        "rows": 2,
+        "samples_seconds": [
+          0.09720150497741997,
+          0.0972404470667243,
+          0.09733288094867021
+        ]
+      },
+      "next_token_ids": {
+        "gemv": [
+          290,
+          290,
+          290
+        ],
+        "tiled": [
+          290,
+          290,
+          290
+        ]
+      },
+      "rows": 2,
+      "tiled": {
+        "max_seconds": 0.09414631896652281,
+        "median_seconds": 0.09377867996226996,
+        "median_tok_s": 21.326809044493498,
+        "min_seconds": 0.09370658395346254,
+        "rows": 2,
+        "samples_seconds": [
+          0.09370658395346254,
+          0.09414631896652281,
+          0.09377867996226996
+        ]
+      },
+      "tiled_vs_gemv_speedup": 1.0369142229966035
+    },
+    "3": {
+      "exact_next_token": true,
+      "gemv": {
+        "max_seconds": 0.1390141500160098,
+        "median_seconds": 0.13899690692778677,
+        "median_tok_s": 21.583214089494767,
+        "min_seconds": 0.13890235999133438,
+        "rows": 3,
+        "samples_seconds": [
+          0.13890235999133438,
+          0.1390141500160098,
+          0.13899690692778677
+        ]
+      },
+      "next_token_ids": {
+        "gemv": [
+          95,
+          95,
+          95
+        ],
+        "tiled": [
+          95,
+          95,
+          95
+        ]
+      },
+      "rows": 3,
+      "tiled": {
+        "max_seconds": 0.11044631502591074,
+        "median_seconds": 0.11043257999699563,
+        "median_tok_s": 27.16589615203789,
+        "min_seconds": 0.11026619700714946,
+        "rows": 3,
+        "samples_seconds": [
+          0.11043257999699563,
+          0.11044631502591074,
+          0.11026619700714946
+        ]
+      },
+      "tiled_vs_gemv_speedup": 1.2586585130182437
+    },
+    "32": {
+      "exact_next_token": true,
+      "gemv": {
+        "max_seconds": 1.3668810229282826,
+        "median_seconds": 1.366851058905013,
+        "median_tok_s": 23.411475443151257,
+        "min_seconds": 1.3664397060638294,
+        "rows": 32,
+        "samples_seconds": [
+          1.366851058905013,
+          1.3664397060638294,
+          1.3668810229282826
+        ]
+      },
+      "next_token_ids": {
+        "gemv": [
+          99,
+          99,
+          99
+        ],
+        "tiled": [
+          99,
+          99,
+          99
+        ]
+      },
+      "rows": 32,
+      "tiled": {
+        "max_seconds": 0.6569622840033844,
+        "median_seconds": 0.655326224048622,
+        "median_tok_s": 48.83064163418212,
+        "min_seconds": 0.6547717639477924,
+        "rows": 32,
+        "samples_seconds": [
+          0.6547717639477924,
+          0.655326224048622,
+          0.6569622840033844
+        ]
+      },
+      "tiled_vs_gemv_speedup": 2.0857566945216575
+    },
+    "4": {
+      "exact_next_token": true,
+      "gemv": {
+        "max_seconds": 0.18111603800207376,
+        "median_seconds": 0.18103130906820297,
+        "median_tok_s": 22.09562545058442,
+        "min_seconds": 0.18081487191375345,
+        "rows": 4,
+        "samples_seconds": [
+          0.18111603800207376,
+          0.18103130906820297,
+          0.18081487191375345
+        ]
+      },
+      "next_token_ids": {
+        "gemv": [
+          515,
+          515,
+          515
+        ],
+        "tiled": [
+          515,
+          515,
+          515
+        ]
+      },
+      "rows": 4,
+      "tiled": {
+        "max_seconds": 0.1262116190046072,
+        "median_seconds": 0.12618726200889796,
+        "median_tok_s": 31.698920606724506,
+        "min_seconds": 0.12607901904266328,
+        "rows": 4,
+        "samples_seconds": [
+          0.12607901904266328,
+          0.1262116190046072,
+          0.12618726200889796
+        ]
+      },
+      "tiled_vs_gemv_speedup": 1.434624273371093
+    },
+    "5": {
+      "exact_next_token": true,
+      "gemv": {
+        "max_seconds": 0.22291460703127086,
+        "median_seconds": 0.2227989910170436,
+        "median_tok_s": 22.441753336385226,
+        "min_seconds": 0.22260084701702,
+        "rows": 5,
+        "samples_seconds": [
+          0.2227989910170436,
+          0.22260084701702,
+          0.22291460703127086
+        ]
+      },
+      "next_token_ids": {
+        "gemv": [
+          330,
+          330,
+          330
+        ],
+        "tiled": [
+          330,
+          330,
+          330
+        ]
+      },
+      "rows": 5,
+      "tiled": {
+        "max_seconds": 0.14115576003678143,
+        "median_seconds": 0.14115223300177604,
+        "median_tok_s": 35.422748146939256,
+        "min_seconds": 0.14113030198495835,
+        "rows": 5,
+        "samples_seconds": [
+          0.14113030198495835,
+          0.14115576003678143,
+          0.14115223300177604
+        ]
+      },
+      "tiled_vs_gemv_speedup": 1.5784305092377833
+    },
+    "55": {
+      "exact_next_token": true,
+      "gemv": {
+        "max_seconds": 2.346591909066774,
+        "median_seconds": 2.3444294129731134,
+        "median_tok_s": 23.459866053399814,
+        "min_seconds": 2.343584408983588,
+        "rows": 55,
+        "samples_seconds": [
+          2.343584408983588,
+          2.3444294129731134,
+          2.346591909066774
+        ]
+      },
+      "next_token_ids": {
+        "gemv": [
+          83,
+          83,
+          83
+        ],
+        "tiled": [
+          83,
+          83,
+          83
+        ]
+      },
+      "rows": 55,
+      "tiled": {
+        "max_seconds": 1.1282995879882947,
+        "median_seconds": 1.1279751410475,
+        "median_tok_s": 48.75993982360636,
+        "min_seconds": 1.1273240679875016,
+        "rows": 55,
+        "samples_seconds": [
+          1.1279751410475,
+          1.1273240679875016,
+          1.1282995879882947
+        ]
+      },
+      "tiled_vs_gemv_speedup": 2.0784406744956687
+    },
+    "64": {
+      "exact_next_token": true,
+      "gemv": {
+        "max_seconds": 2.7291509329807013,
+        "median_seconds": 2.7267262649256736,
+        "median_tok_s": 23.471369613900183,
+        "min_seconds": 2.7256245400058106,
+        "rows": 64,
+        "samples_seconds": [
+          2.7267262649256736,
+          2.7291509329807013,
+          2.7256245400058106
+        ]
+      },
+      "next_token_ids": {
+        "gemv": [
+          35403,
+          35403,
+          35403
+        ],
+        "tiled": [
+          35403,
+          35403,
+          35403
+        ]
+      },
+      "rows": 64,
+      "tiled": {
+        "max_seconds": 1.2827041869750246,
+        "median_seconds": 1.2819496300071478,
+        "median_tok_s": 49.923958400489695,
+        "min_seconds": 1.2806165900547057,
+        "rows": 64,
+        "samples_seconds": [
+          1.2806165900547057,
+          1.2827041869750246,
+          1.2819496300071478
+        ]
+      },
+      "tiled_vs_gemv_speedup": 2.1270151346823747
+    },
+    "65": {
+      "exact_next_token": true,
+      "gemv": {
+        "max_seconds": 2.7680872649652883,
+        "median_seconds": 2.7679956869687885,
+        "median_tok_s": 23.482695549710563,
+        "min_seconds": 2.7677364730043337,
+        "rows": 65,
+        "samples_seconds": [
+          2.7677364730043337,
+          2.7679956869687885,
+          2.7680872649652883
+        ]
+      },
+      "next_token_ids": {
+        "gemv": [
+          8684,
+          8684,
+          8684
+        ],
+        "tiled": [
+          8684,
+          8684,
+          8684
+        ]
+      },
+      "rows": 65,
+      "tiled": {
+        "max_seconds": 1.3414732000092044,
+        "median_seconds": 1.3387351920828223,
+        "median_tok_s": 48.55329148318879,
+        "min_seconds": 1.3386491920100525,
+        "rows": 65,
+        "samples_seconds": [
+          1.3386491920100525,
+          1.3387351920828223,
+          1.3414732000092044
+        ]
+      },
+      "tiled_vs_gemv_speedup": 2.0676200217477687
+    },
+    "7": {
+      "exact_next_token": true,
+      "gemv": {
+        "max_seconds": 0.30742477905005217,
+        "median_seconds": 0.30662048794329166,
+        "median_tok_s": 22.829524690126462,
+        "min_seconds": 0.30655590794049203,
+        "rows": 7,
+        "samples_seconds": [
+          0.30742477905005217,
+          0.30655590794049203,
+          0.30662048794329166
+        ]
+      },
+      "next_token_ids": {
+        "gemv": [
+          81,
+          81,
+          81
+        ],
+        "tiled": [
+          81,
+          81,
+          81
+        ]
+      },
+      "rows": 7,
+      "tiled": {
+        "max_seconds": 0.17352228402160108,
+        "median_seconds": 0.17343187402002513,
+        "median_tok_s": 40.361669615538794,
+        "min_seconds": 0.17336506897117943,
+        "rows": 7,
+        "samples_seconds": [
+          0.17336506897117943,
+          0.17343187402002513,
+          0.17352228402160108
+        ]
+      },
+      "tiled_vs_gemv_speedup": 1.7679592616746334
+    },
+    "8": {
+      "exact_next_token": true,
+      "gemv": {
+        "max_seconds": 0.34867981798015535,
+        "median_seconds": 0.34815383004024625,
+        "median_tok_s": 22.978348390064266,
+        "min_seconds": 0.3480413290672004,
+        "rows": 8,
+        "samples_seconds": [
+          0.34867981798015535,
+          0.3480413290672004,
+          0.34815383004024625
+        ]
+      },
+      "next_token_ids": {
+        "gemv": [
+          515,
+          515,
+          515
+        ],
+        "tiled": [
+          515,
+          515,
+          515
+        ]
+      },
+      "rows": 8,
+      "tiled": {
+        "max_seconds": 0.19071251107379794,
+        "median_seconds": 0.19053606991656125,
+        "median_tok_s": 41.98680073281309,
+        "min_seconds": 0.19039934396278113,
+        "rows": 8,
+        "samples_seconds": [
+          0.19071251107379794,
+          0.19039934396278113,
+          0.19053606991656125
+        ]
+      },
+      "tiled_vs_gemv_speedup": 1.827233185783187
+    }
+  },
+  "status": "retained"
+}
