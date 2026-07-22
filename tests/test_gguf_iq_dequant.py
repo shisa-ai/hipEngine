@@ -18,7 +18,10 @@ model rows against a committed llama.cpp-generated fixture.
 
 from __future__ import annotations
 
+import base64
 import hashlib
+import json
+from pathlib import Path
 
 import numpy as np
 
@@ -34,6 +37,78 @@ from hipengine.quant.gguf import (
 
 def _f16_bytes(value: float) -> np.ndarray:
     return np.asarray([value], dtype=np.float16).view(np.uint8)
+
+
+def test_iq2_xs_layout_matches_ggml_block_contract() -> None:
+    layout = quant_layout(GGMLQuantizationType.IQ2_XS)
+    assert layout.block_size == 256
+    assert layout.type_size == 74
+    assert nbytes_for_shape((3, 512), GGMLQuantizationType.IQ2_XS) == 3 * 2 * 74
+    assert dequantization_supported(GGMLQuantizationType.IQ2_XS)
+
+
+def test_iq2_xs_compressed_grid_matches_llamacpp_1ebf790cd() -> None:
+    grid_bytes = np.asarray(gguf_quant._IQ2_XS_GRID_PACKED, dtype="<u2").tobytes()
+    assert hashlib.sha256(grid_bytes).hexdigest() == (
+        "f66435966ca8d64e9e4a6e3c91e64afcf9015e700ec85962f527283ebae207b9"
+    )
+
+
+def test_iq2_xs_matches_pinned_llamacpp_gguf_py_oracle() -> None:
+    fixture = Path(__file__).parent / "fixtures" / "gguf" / "iq2_xs_dequant_oracle.json"
+    payload = json.loads(fixture.read_text())
+    raw = np.frombuffer(base64.b64decode(payload["block_bytes_b64"]), dtype=np.uint8)
+    expected_bytes = base64.b64decode(payload["expected_f32_b64"])
+    expected = np.frombuffer(expected_bytes, dtype="<f4")
+    assert hashlib.sha256(raw).hexdigest() == payload["block_sha256"]
+    assert hashlib.sha256(expected_bytes).hexdigest() == payload["expected_sha256"]
+    actual = dequantize_gguf_data(raw.reshape(1, 74), GGMLQuantizationType.IQ2_XS)
+    np.testing.assert_array_equal(actual.reshape(-1), expected)
+
+
+def _iq2_xs_block(d: float, qs: np.ndarray, scales: np.ndarray) -> np.ndarray:
+    qs_bytes = np.asarray(qs, dtype="<u2").reshape(32).view(np.uint8)
+    scales = np.asarray(scales, dtype=np.uint8).reshape(8)
+    return np.concatenate([_f16_bytes(d), qs_bytes, scales]).reshape(1, 74)
+
+
+def test_iq2_xs_dequantizes_base_grid() -> None:
+    block = _iq2_xs_block(
+        2.0,
+        np.zeros(32, dtype=np.uint16),
+        np.zeros(8, dtype=np.uint8),
+    )
+    out = dequantize_gguf_data(block, GGMLQuantizationType.IQ2_XS)
+    assert out.shape == (1, 256)
+    # grid[0] is eight 0x08 magnitudes and db = 2 * 0.5 * 0.25.
+    np.testing.assert_array_equal(out[0], np.full(256, 2.0, dtype=np.float32))
+
+
+def test_iq2_xs_grid_and_sign_selectors() -> None:
+    qs = np.zeros(32, dtype=np.uint16)
+    qs[0] = np.uint16(1)  # grid[1] starts with 0x2b, then seven 0x08 values.
+    qs[1] = np.uint16(1 << 9)  # sign selector 1 -> sign bits 0 and 7.
+    block = _iq2_xs_block(2.0, qs, np.zeros(8, dtype=np.uint8))
+    out = dequantize_gguf_data(block, GGMLQuantizationType.IQ2_XS)
+    expected = np.full(256, 2.0, dtype=np.float32)
+    expected[0] = 10.75
+    expected[8] = -2.0
+    expected[15] = -2.0
+    np.testing.assert_array_equal(out[0], expected)
+
+
+def test_iq2_xs_scale_nibbles_and_later_groups_are_independent() -> None:
+    scales = np.zeros(8, dtype=np.uint8)
+    scales[0] = np.uint8(0x53)
+    scales[7] = np.uint8(0x21)
+    block = _iq2_xs_block(2.0, np.zeros(32, dtype=np.uint16), scales)
+    out = dequantize_gguf_data(block, GGMLQuantizationType.IQ2_XS)
+    expected = np.full(256, 2.0, dtype=np.float32)
+    expected[0:16] = 14.0  # low nibble 3: db = 1.75; grid magnitude 8.
+    expected[16:32] = 22.0  # high nibble 5: db = 2.75.
+    expected[224:240] = 6.0  # low nibble 1: db = 0.75.
+    expected[240:256] = 10.0  # high nibble 2: db = 1.25.
+    np.testing.assert_array_equal(out[0], expected)
 
 
 def test_iq3_xxs_layout_matches_ggml_block_contract() -> None:

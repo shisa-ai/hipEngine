@@ -217,6 +217,7 @@ GGUF_QUANT_LAYOUTS: dict[GGMLQuantizationType, GGUFQuantLayout] = {
         256,
         2 + QK_K // 4 + QK_K // 32,
         "uint8_blocks",
+        dequant_supported=True,
     ),
     GGMLQuantizationType.IQ3_XXS: _layout(
         GGMLQuantizationType.IQ3_XXS,
@@ -308,6 +309,47 @@ _NUMPY_STORAGE_DTYPES = {
 
 _IQ4_NL_KVALUES = (-127, -104, -83, -65, -49, -35, -22, -10, 1, 13, 25, 38, 53, 69, 89, 113)
 _MXFP4_KVALUES = (0, 1, 2, 3, 4, 6, 8, 12, 0, -1, -2, -3, -4, -6, -8, -12)
+
+# IQ2_XS codebook from llama.cpp@1ebf790cd gguf-py/gguf/quants.py. Each
+# little-endian u16 packs eight 2-bit selectors mapped through (8, 25, 43).
+_IQ2_XS_GRID_PACKED = np.frombuffer(
+    bytes.fromhex(
+        "00000200050008000a0011001400160019002000220025002800410044004600"
+        "49005000520055005800610064008000820085008800910094009900a0000101"
+        "04010601090110011201150118011a0121012401400142014501480151015401"
+        "6001680181018401900100020202050208021102140220024102440250025502"
+        "80028a0201040404060409041004120415041804210424044004420445044804"
+        "5104540456046004810484049004000502050505080511051405200541054405"
+        "500561058005010604061006260640064206840600080208050808080a081108"
+        "14082008250841084408500858088008a008aa08010904091009400981098909"
+        "000a200a280a960aa00a01100410061009101010121015101810211024104010"
+        "4210451048105110541060106a10811084109010001102110511081111111411"
+        "2011411144115011801194119611011204120612101240126012001402140514"
+        "0814111414142014411444144914501464148014011504151015401500161416"
+        "49160118041810181218401854188618001905196619511aa91a002002200520"
+        "08200a201120142020204120442050208020a020012104211021402148216521"
+        "002222228022a82201240424102429244024002541255225992501261a26a626"
+        "002808280a28202855288828a22868299029082a202a822a882a8a2a01400440"
+        "0640094010401240154018402140244040404240454048404a40514054406040"
+        "6540814084409040004102410541084111411441204141414441504180418541"
+        "a241014204421042124229424042004402440544084411441444194420444144"
+        "4444504480449444014504451045244540459a4500460a464446504601480448"
+        "1048404845485448624800491149444950496949044a00500250055008501150"
+        "145020502850415044505050805001510451105115514051425100524452aa52"
+        "0154045410542154405460548154a154005508558055885521566856a1560058"
+        "14584158505899581a5940594259855a0160046010604060546062608660a960"
+        "006124624a62926200641664106540654565a46501686a682569066a546a626a"
+        "00800280058008801180148020802a8041804480508080808280a880aa800181"
+        "0481068110814081518159810082208280828282a082a8820184048410841284"
+        "158440846084898400854485a58518866a860088088825885a8880888288a888"
+        "0689228a808a888a968aa88a0190049010904090569084900091229164915692"
+        "89920094059444945094589429959095929541965198a6984999159a609a00a0"
+        "02a008a00aa020a02aa0a0a051a159a1a6a100a202a208a22aa280a2a0a240a4"
+        "95a465a698a60aa820a822a828a8a0a8a8a804a984a986a928aa2aaa91aaaaaa"
+    ),
+    dtype="<u2",
+).copy()
+_IQ2_XS_GRID_MAGNITUDES = np.array([8, 25, 43, 0], dtype=np.uint8)
 
 # IQ3_XXS codebook from llama.cpp@1ebf790cd ggml-common.h (GGML_TABLE iq3xxs_grid).
 # Each u32 packs four unsigned grid magnitudes (little-endian byte order).
@@ -648,6 +690,46 @@ def _dequant_iq4_nl_blocks(blocks: np.ndarray) -> np.ndarray:
     return d * qs
 
 
+def _dequant_iq2_xs_blocks(blocks: np.ndarray) -> np.ndarray:
+    """Dequantize IQ2_XS blocks (74 bytes per 256 values).
+
+    Mirrors llama.cpp ``dequantize_row_iq2_xs``. Each 32-value group has four
+    grid/sign words and two 4-bit scales; one fp16 super-scale covers the full
+    256-value block.
+    """
+
+    n_blocks = blocks.shape[0]
+    d, rest = _split(blocks, [2])
+    qs_raw, scales = _split(rest, [2 * QK_K // 8])
+    d = d.view(np.float16).astype(np.float32).reshape(n_blocks, 1, 1)
+    qs = np.ascontiguousarray(qs_raw).view("<u2").reshape(
+        n_blocks, QK_K // 32, 4
+    )
+
+    scale_nibbles = (
+        scales[:, :, None]
+        >> np.array([0, 4], dtype=np.uint8).reshape(1, 1, 2)
+    ) & np.uint8(0x0F)
+    db = d * (np.float32(0.5) + scale_nibbles.astype(np.float32)) * np.float32(0.25)
+    db = np.repeat(db[:, :, :, None], 2, axis=2)
+
+    grid_idx = qs & np.uint16(511)
+    packed = _IQ2_XS_GRID_PACKED[grid_idx]
+    selectors = (
+        packed[:, :, :, None]
+        >> (2 * np.arange(8, dtype=np.uint16)).reshape(1, 1, 1, 8)
+    ) & np.uint16(3)
+    grid = _IQ2_XS_GRID_MAGNITUDES[selectors].astype(np.float32)
+
+    sign_bytes = _KSIGNS_IQ2XS[qs >> np.uint16(9)]
+    sign_bits = (
+        sign_bytes[:, :, :, None]
+        >> np.arange(8, dtype=np.uint8).reshape(1, 1, 1, 8)
+    ) & np.uint8(1)
+    signs = np.float32(1.0) - np.float32(2.0) * sign_bits.astype(np.float32)
+    return (db * grid * signs).reshape(n_blocks, QK_K)
+
+
 def _dequant_iq3_xxs_blocks(blocks: np.ndarray) -> np.ndarray:
     """Dequantize IQ3_XXS blocks (98 bytes per 256 values).
 
@@ -767,6 +849,7 @@ _DEQUANT_BLOCKS: dict[GGMLQuantizationType, Callable[[np.ndarray], np.ndarray]] 
     GGMLQuantizationType.Q4_K: _dequant_q4_k_blocks,
     GGMLQuantizationType.Q5_K: _dequant_q5_k_blocks,
     GGMLQuantizationType.Q6_K: _dequant_q6_k_blocks,
+    GGMLQuantizationType.IQ2_XS: _dequant_iq2_xs_blocks,
     GGMLQuantizationType.IQ3_XXS: _dequant_iq3_xxs_blocks,
     GGMLQuantizationType.IQ4_NL: _dequant_iq4_nl_blocks,
     GGMLQuantizationType.IQ4_XS: _dequant_iq4_xs_blocks,
