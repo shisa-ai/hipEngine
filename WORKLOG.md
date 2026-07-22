@@ -174158,3 +174158,63 @@ bulk inference `2.364 s`, and exact tracked allocation recovery. Resident bytes
 increase from `77,022,439,484` to `77,073,914,940` (+49.09 MiB). This is the
 first model-level GREEN for bulk rows, but Task #34 remains in progress pending
 the committed multi-length serial/bulk KV/hidden/logits and B+1 verifier gate.
+
+## 2026-07-22 — Close Laguna bulk prefill/B+1 correctness task
+
+Added `scripts/laguna_bulk_correctness.py` and retained
+`benchmarks/results/2026-07-22-gfx1151-laguna-bulk-prefill-verifier-correctness.json`
+at resident implementation revision `b4605359e`. One cache-backed model load
+feeds fresh borrowed serial and bulk sessions for each case. The gate hashes
+complete span metadata and every live BF16 K/V row, rather than accepting logits
+as a proxy for cache correctness.
+
+Exact lengths 1/2/7/55/65 cover singleton fallback, short rows, the natural
+55-token Poolside oracle prompt, and the 64-row chunk boundary. Every case has:
+
+- full FP32 logits `max_abs=0` and identical SHA-256;
+- exact next token;
+- bit-exact final-norm and pre-final-norm BF16 hidden;
+- bit-exact BF16 taps at depths 2/11/20/30/39/48;
+- exact global/SWA live metadata and every live BF16 K/V row;
+- fresh-session teardown.
+
+The dedicated B+1 gate uses a seven-token serial prefix and target inputs
+`[81,12123,1009,8286,10167]`. One five-row `verify_rows` call is exact to five
+`forward_token` calls for full logits (`max_abs=0`), final/pre-final hidden, all
+six all-row taps, and live KV. Speculative rollback remains task #37.
+
+Diagnostic one-sample timings (not a retained performance claim):
+
+| Shape | Serial | Bulk | Ratio |
+| --- | ---: | ---: | ---: |
+| p1 | 0.0691 s | 0.0553 s | 1.249x (singleton fallback/warmth diagnostic) |
+| p2 | 0.1101 s | 0.0983 s | 1.120x |
+| p7 | 0.3840 s | 0.3082 s | 1.246x |
+| p55 | 3.1030 s | 2.3552 s | 1.317x |
+| p65 | 3.6872 s | 2.8019 s | 1.316x |
+| B+1=5 | 0.2776 s | 0.2286 s | 1.214x |
+
+The exact command is embedded in the artifact. Load was 50.255 s, resident
+bytes `77,073,914,940`, tracked peak `77,410,106,488`, and all tracked bytes and
+allocations returned to zero.
+
+A separate cached-build full-model trace ran the 55-row gate three times under
+`rocprofv3` and still returned `pass=true`, first token `94557`, KL
+`6.621408e-6`, exact repeat logits, and exact lifecycle recovery. Trace:
+`/tmp/laguna-bulk-full-trace/gfx1151/1907275_kernel_trace.csv`.
+
+- 3,690 total calls / 26 families;
+- 36 global bulk-attention calls, 204.304 us median / 7.372 ms total;
+- 108 SWA bulk-attention calls, 551.756 us median / 59.679 ms total;
+- global/SWA row writers 3.267/2.845 us median;
+- 141 sigmoid routers and `laguna_weighted_sum_rows` reducers;
+- expected rows-form Q4 pack8 shared and Q4/Q6 T16 selected expert families;
+- 144 F16 triple Q/K/V calls, 20.279 ms median / 2.734 s total;
+- 144 F16 BF16-output O projections, 15.890 ms median / 2.126 s total.
+
+This confirms dispatch and makes the next Task #35 target concrete: rows-form
+source-F16 projections dominate; attention metadata/math is not the short-prompt
+bottleneck. Updated `docs/LAGUNA.md` and `docs/KERNELS.md`. Task #34 is complete
+for its declared 4K-initial multi-length/chunk-boundary and B+1 surface; the
+separate L8 512/1K/4K context progression and graph replay remain later L9/L10
+work, not inferred from this gate.
