@@ -1935,6 +1935,17 @@ The full E256 output is BF16-bit exact. Tile2 is now default, while explicit
 tile1 four-axis variants remain for rollback. Tile2 is local64/LDS512B/scratch0
 at VGPR80/136. This remains synthetic primitive evidence.
 
+The rejected Q8_1/`sudot4` decode experiment is
+[`2026-07-23-gpu1-iq2-xs-q8-1-dp4a-rejected.json`](results/2026-07-23-gpu1-iq2-xs-q8-1-dp4a-rejected.json).
+Llama.cpp-shaped packed-byte expansion plus tile2 made prequantized fused decode
+1.47-4.83% faster, emitted `v_dot4_i32_iu8`, stayed scratch-free, and passed the
+primitive quality gate (projection/fused KL mean `0.000330/0.006713`, top-1
+`1.0`). Its 3.32-3.41 us activation quantizer nevertheless moves retained exact
+-> inclusive fused decode `54.299 -> 55.532 us` (+2.27%) for rotating-distinct,
+`51.338 -> 50.760 us` (-1.13%) for hot, and `47.461 -> 48.468 us` (+2.12%) for
+repeated experts. The representative cold/repeated regressions reject the lane;
+candidate code was removed and no Q8_1 sidecar or fusion is retained.
+
 ## Update Checklist
 
 1. Choose one protocol tuple and record the old artifact before running.
