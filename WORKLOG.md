@@ -173802,3 +173802,55 @@ python3 -m compileall -q hipengine/generation/laguna_gguf.py \
 The first boundary is deliberately preformatted completion. Poolside-v1
 reasoning/tool parsing and chat transcript validation remain tasks #22-#24;
 raw public generation no longer blocks that work.
+
+## 2026-07-22 — Implement Poolside-v1 reasoning compatibility
+
+Added a model-owned, torch-free `poolside_v1` chat/reasoning contract rather
+than branching on Laguna inside the server. `hipengine/chat/poolside_v1.py`
+transcribes the frozen S 2.1 GGUF Jinja behavior and reproduces all five checked-
+in no-thinking, thinking, tools, and tool-history renderings byte-for-byte.
+`LagunaGGUFGenerator` now exposes that renderer, a named `poolside_v1`
+capability, and a reasoning parser initialized from its atomic GGUF token IDs.
+
+The prompt-state parser follows vLLM
+`vllm-project/vllm@61c9ef986a807aa3b9c6ccd25bb223b8f4116ac7`
+`vllm/reasoning/poolside_v1_reasoning_parser.py`: reverse scanning stops at the
+current `<assistant>` token. Prior-user/few-shot `</think>` markers therefore
+cannot short-circuit a prompt ending in `<assistant><think>`, while
+`<assistant></think>` deterministically selects direct-answer mode.
+
+The generic reasoning splitter now accepts an initial open state, handles
+prompt-opened and duplicate explicit markers, and strips complete controls over
+arbitrary chunk boundaries. The server carries that state through blocking,
+live c=1/c>1 streams, buffered scheduler streams/logprobs, tool buffering,
+finish details, response-format visibility, and token accounting. With no
+model-owned parser, the existing Qwen default-closed behavior is unchanged.
+Capabilities now name the loaded model's chat-template and reasoning-parser
+family instead of unconditionally reporting Qwen.
+
+RED was the new focused suite failing because `hipengine.chat` and initial-open
+splitter/server support did not exist. GREEN validation:
+
+```bash
+uv run pytest -q tests/test_poolside_v1_reasoning.py \
+  tests/test_generation_laguna_gguf.py
+# 22 passed
+uv run pytest -q tests/test_server_api.py -k 'capabilit or reasoning or thinking'
+# 49 passed
+uv run pytest -q tests/test_agentic_server_conformance.py
+# 13 passed
+uvx ruff check hipengine/chat hipengine/generation/laguna_gguf.py \
+  hipengine/server/api.py tests/test_poolside_v1_reasoning.py \
+  tests/test_generation_laguna_gguf.py
+python3 -m compileall -q hipengine/chat hipengine/generation/laguna_gguf.py \
+  hipengine/server/api.py tests/test_poolside_v1_reasoning.py \
+  tests/test_generation_laguna_gguf.py
+# Ruff/compileall/git diff --check clean
+```
+
+`tests/fixtures/laguna_poolside_v1_reasoning.json` freezes direct, prompt-open,
+duplicate-marker, fragmented-close, stop-at-close, and prior-turn scope cases.
+Blocking and fragmented SSE tests emit reasoning/content without complete
+control-marker leakage. This closes task #22 at deterministic parser scope.
+Poolside XML tool output parsing remains task #23; real model transcript
+validation remains task #24, so no live chat-quality claim is made here.

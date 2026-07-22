@@ -2639,6 +2639,7 @@ class _ParsedToolCall:
 class _ParsedChatOutput:
     text: str
     tool_calls: tuple[_ParsedToolCall, ...]
+    reasoning_initially_open: bool = False
 
 
 @dataclass(frozen=True)
@@ -4922,6 +4923,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         engine = getattr(app.state, "hipengine_llm", None)
         model_identity = _server_model_identity(config, engine)
         tokenizer_caps = _tokenizer_capability_flags(engine)
+        chat_protocol_target = _model_chat_protocol_target(engine)
+        chat_template_family = str(
+            getattr(chat_protocol_target, "chat_template_family", "qwen")
+        )
+        reasoning_parser_name = str(
+            getattr(chat_protocol_target, "reasoning_parser_name", "qwen_tags")
+        )
         stream_logprobs = _engine_supports_stream_logprobs(engine)
         configured_context = configured_max_context_tokens()
         cached_context = getattr(app.state, "hipengine_effective_max_context_tokens", None)
@@ -5002,7 +5010,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 "name": None if engine is None else type(engine).__name__,
             },
             "chat_template": {
-                "family": "qwen",
+                "family": chat_template_family,
+                "reasoning_parser": reasoning_parser_name,
                 "reasoning_tags": True,
                 "tool_call_tags": True,
             },
@@ -5619,6 +5628,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             choices = []
             visible_generated_texts: list[str] = []
             requested_cache_action = _session_cache_action(request)
+            reasoning_initially_open = _reasoning_initially_open_for_prompt(
+                getattr(app.state, "hipengine_llm", None),
+                prompt,
+            )
             for index, (output, detail) in enumerate(zip(batch.outputs, batch.details, strict=True)):
                 previous_text = "" if continuation is None else continuation.generated_texts[index]
                 output = f"{previous_text}{output}"
@@ -5626,7 +5639,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 server_stop = text != output
                 raw_parsed = _parse_chat_tool_calls(text)
                 tool_validation = _validate_chat_tool_result(request, raw_parsed, text)
-                parsed = tool_validation.parsed
+                parsed = replace(
+                    tool_validation.parsed,
+                    reasoning_initially_open=reasoning_initially_open,
+                )
                 message, parsed_finish_reason = _chat_message_from_parsed(parsed)
                 if tool_validation.failed:
                     finish_reason = _strict_tool_failure_finish_reason(
@@ -5694,7 +5710,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 if effective_cache_action != requested_cache_action:
                     choice["finish_details"]["cache_action"] = effective_cache_action
                 if request.logprobs:
-                    choice["logprobs"] = _chat_visible_content_logprobs(detail, text)
+                    choice["logprobs"] = _chat_visible_content_logprobs(
+                        detail,
+                        text,
+                        initially_open=reasoning_initially_open,
+                    )
                 if _continuation_can_create(
                     request,
                     finish_reason=finish_reason,
@@ -5838,7 +5858,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         _StreamTokenAccounting.for_engine(engine) if include_hipengine else None
                         for _index in range(n)
                     ]
-                    splitters = [_ReasoningSplitter() for _index in range(n)]
+                    splitters = [
+                        _ReasoningSplitter(
+                            initially_open=_reasoning_initially_open_for_prompt(
+                                engine,
+                                row_prompt,
+                            )
+                        )
+                        for row_prompt in prompts
+                    ]
                     full_text = ["" for _index in range(n)]
                     last_stream_chunks: list[GenerationStreamChunk | None] = [None for _index in range(n)]
                     for index in range(n):
@@ -5988,7 +6016,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 server_stop = text != output
                 raw_parsed = _parse_chat_tool_calls(text)
                 tool_validation = _validate_chat_tool_result(request, raw_parsed, text)
-                parsed = tool_validation.parsed
+                reasoning_initially_open = _reasoning_initially_open_for_prompt(
+                    getattr(app.state, "hipengine_llm", None),
+                    prompts[index],
+                )
+                parsed = replace(
+                    tool_validation.parsed,
+                    reasoning_initially_open=reasoning_initially_open,
+                )
                 detail = batch.details[index]
                 if tool_validation.failed:
                     finish_reason = _strict_tool_failure_finish_reason(
@@ -6010,7 +6045,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 )
                 if structured_failure is not None:
                     finish_reason = "stop"
-                    parsed = _ParsedChatOutput(text="", tool_calls=())
+                    parsed = _ParsedChatOutput(
+                        text="",
+                        tool_calls=(),
+                        reasoning_initially_open=reasoning_initially_open,
+                    )
                 structured_length_failure = _structured_length_failure_reason(
                     request,
                     _chat_response_format_text_from_parsed(parsed),
@@ -6058,7 +6097,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     },
                     engine=getattr(app.state, "hipengine_llm", None),
                 )
-                logprobs = _chat_visible_content_logprobs(batch.details[index], text) if request.logprobs else None
+                logprobs = (
+                    _chat_visible_content_logprobs(
+                        batch.details[index],
+                        text,
+                        initially_open=reasoning_initially_open,
+                    )
+                    if request.logprobs
+                    else None
+                )
                 token_accounting = (
                     _StreamTokenAccounting.for_engine(getattr(app.state, "hipengine_llm", None))
                     if include_hipengine
@@ -6077,7 +6124,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 use_scheduler_logprobs = bool(request.logprobs)
                 scheduler_logprob_safe_text = (
                     not use_scheduler_logprobs
-                    or _scheduler_chunks_support_chat_logprob_stream(text, scheduler_chunks)
+                    or _scheduler_chunks_support_chat_logprob_stream(
+                        text,
+                        scheduler_chunks,
+                        initially_open=reasoning_initially_open,
+                    )
                 )
                 scheduler_done_phase = (
                     "structured"
@@ -6165,6 +6216,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         index=index,
                         include_logprobs=use_scheduler_logprobs,
                         content_phase=scheduler_content_phase,
+                        reasoning_initially_open=reasoning_initially_open,
                         finish_details=finish_details,
                         token_accounting=token_accounting,
                         include_hipengine=include_hipengine,
@@ -6351,7 +6403,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         last_stream_chunk: GenerationStreamChunk | None = None
         splitter_source_chunks: list[_LiveSourceChunk] = []
         splitter_source_offset = 0
-        splitter = _ReasoningSplitter()
+        splitter = _ReasoningSplitter(
+            initially_open=_reasoning_initially_open_for_prompt(
+                getattr(app.state, "hipengine_llm", None),
+                prompt,
+            )
+        )
         buffer_tool_output = bool(request.tools)
 
         try:
@@ -6743,7 +6800,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         if buffer_tool_output:
             parsed = _parse_chat_tool_calls(text)
             tool_validation = _validate_chat_tool_result(request, parsed, text)
-            parsed = tool_validation.parsed
+            parsed = replace(
+                tool_validation.parsed,
+                reasoning_initially_open=_reasoning_initially_open_for_prompt(
+                    engine,
+                    prompt,
+                ),
+            )
             stream_finish_reason = "stop" if tool_validation.failed else "tool_calls" if parsed.tool_calls else finish_reason
             finish_details = _chat_finish_details_payload(
                 None,
@@ -7725,6 +7788,78 @@ def _thinking_control_from_request(
     return control
 
 
+def _model_chat_protocol_target(engine: Any | None) -> Any | None:
+    if engine is None:
+        return None
+    return getattr(engine, "_text_generator", None) or engine
+
+
+def _model_template_thinking_enabled(thinking: _ThinkingControl) -> bool:
+    if thinking.enabled is not None:
+        return bool(thinking.enabled)
+    return bool(
+        thinking.effort
+        or thinking.allow_unbounded
+        or thinking.max_think_tokens is not None
+        or thinking.min_answer_tokens is not None
+        or thinking.hard_think_cap is not None
+        or thinking.soft_close_window is not None
+        or thinking.hard_close_message
+        or thinking.hard_close_sequence
+    )
+
+
+def _render_chat_prompt_with_model_protocol(
+    request: ChatCompletionRequest,
+    *,
+    thinking: _ThinkingControl,
+    engine: Any | None,
+    validate_tool_transcript: bool,
+) -> str:
+    target = _model_chat_protocol_target(engine)
+    renderer = getattr(target, "render_chat_prompt", None)
+    if not callable(renderer):
+        return render_chat_prompt(
+            request.messages,
+            tools=request.tools,
+            tool_choice=request.tool_choice,
+            thinking=thinking,
+            response_format=request.response_format,
+            guided_json=request.guided_json,
+            guided_regex=request.guided_regex,
+            guided_choice=request.guided_choice,
+            guided_patch=request.guided_patch,
+            guided_diff=request.guided_diff,
+            validate_tool_transcript=validate_tool_transcript,
+        )
+
+    if validate_tool_transcript:
+        # Keep the generic API's role/tool-transcript validation in front of a
+        # model-owned renderer. The discarded rendering has no side effects.
+        render_chat_prompt(
+            request.messages,
+            tools=request.tools,
+            tool_choice=request.tool_choice,
+            thinking=thinking,
+            response_format=request.response_format,
+            guided_json=request.guided_json,
+            guided_regex=request.guided_regex,
+            guided_choice=request.guided_choice,
+            guided_patch=request.guided_patch,
+            guided_diff=request.guided_diff,
+            validate_tool_transcript=True,
+        )
+    tools = request.tools if _tool_choice_name(request.tool_choice) != "none" else None
+    return str(
+        renderer(
+            request.messages,
+            tools=tools,
+            enable_thinking=_model_template_thinking_enabled(thinking),
+            add_generation_prompt=True,
+        )
+    )
+
+
 def _render_chat_prompt_for_request(
     request: ChatCompletionRequest,
     *,
@@ -7737,17 +7872,10 @@ def _render_chat_prompt_for_request(
         request,
         chat_default_max_tokens=chat_default_max_tokens,
     )
-    prompt = render_chat_prompt(
-        request.messages,
-        tools=request.tools,
-        tool_choice=request.tool_choice,
+    prompt = _render_chat_prompt_with_model_protocol(
+        request,
         thinking=thinking,
-        response_format=request.response_format,
-        guided_json=request.guided_json,
-        guided_regex=request.guided_regex,
-        guided_choice=request.guided_choice,
-        guided_patch=request.guided_patch,
-        guided_diff=request.guided_diff,
+        engine=engine,
         validate_tool_transcript=validate_tool_transcript,
     )
     if engine is None:
@@ -7766,17 +7894,10 @@ def _render_chat_prompt_for_request(
             chat_default_max_tokens=chat_default_max_tokens,
             generation_budget=generation_budget,
         )
-        adjusted_prompt = render_chat_prompt(
-            request.messages,
-            tools=request.tools,
-            tool_choice=request.tool_choice,
+        adjusted_prompt = _render_chat_prompt_with_model_protocol(
+            request,
             thinking=adjusted,
-            response_format=request.response_format,
-            guided_json=request.guided_json,
-            guided_regex=request.guided_regex,
-            guided_choice=request.guided_choice,
-            guided_patch=request.guided_patch,
-            guided_diff=request.guided_diff,
+            engine=engine,
             validate_tool_transcript=validate_tool_transcript,
         )
         if adjusted == thinking and adjusted_prompt == prompt:
@@ -11547,7 +11668,10 @@ def _enrich_chat_tool_finish_details(
 ) -> None:
     if parsed is None or not parsed.tool_calls or not callable(token_counter):
         return
-    split = _split_reasoning(parsed.text)
+    split = _split_reasoning(
+        parsed.text,
+        initially_open=parsed.reasoning_initially_open,
+    )
     reasoning_tokens = _safe_count(token_counter, split.reasoning_content)
     answer_tokens = _safe_count(token_counter, split.content)
     tool_call_tokens = sum(
@@ -11822,7 +11946,10 @@ def _chat_response_format_text(message: Mapping[str, Any]) -> str:
 def _chat_response_format_text_from_parsed(parsed: _ParsedChatOutput) -> str:
     if parsed.tool_calls:
         return ""
-    return _split_reasoning(parsed.text).content
+    return _split_reasoning(
+        parsed.text,
+        initially_open=parsed.reasoning_initially_open,
+    ).content
 
 
 def _is_length_finish_payload(payload: Mapping[str, Any]) -> bool:
@@ -11984,8 +12111,13 @@ def _chat_logprobs(detail: GenerationOutput, text: str) -> dict[str, Any]:
     return payload
 
 
-def _chat_visible_content_logprobs(detail: GenerationOutput, text: str) -> dict[str, Any]:
-    split = _split_reasoning(text)
+def _chat_visible_content_logprobs(
+    detail: GenerationOutput,
+    text: str,
+    *,
+    initially_open: bool = False,
+) -> dict[str, Any]:
+    split = _split_reasoning(text, initially_open=initially_open)
     if split.content == text:
         return _chat_logprobs(detail, text)
     tokens = _visible_content_token_logprobs(detail.token_logprobs, text, split.content)
@@ -12398,13 +12530,13 @@ _REASONING_CLOSE_TAG = "</think>"
 
 
 class _ReasoningSplitter:
-    """Incrementally split Qwen/DeepSeek-style thinking tags from answer text."""
+    """Incrementally split thinking tags, including prompt-opened reasoning."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, initially_open: bool = False) -> None:
         self._buffer = ""
         self._buffer_start = 0
         self._input_length = 0
-        self._in_reasoning = False
+        self._in_reasoning = bool(initially_open)
 
     @property
     def pending_text_length(self) -> int:
@@ -12435,20 +12567,27 @@ class _ReasoningSplitter:
     def _drain(self, *, final: bool) -> list[_ReasoningPart]:
         outputs: list[_ReasoningPart] = []
         while self._buffer:
-            tag = _REASONING_CLOSE_TAG if self._in_reasoning else _REASONING_OPEN_TAG
-            index = self._buffer.find(tag)
-            if index >= 0:
+            markers = (
+                (self._buffer.find(_REASONING_OPEN_TAG), _REASONING_OPEN_TAG, True),
+                (self._buffer.find(_REASONING_CLOSE_TAG), _REASONING_CLOSE_TAG, False),
+            )
+            found = min((item for item in markers if item[0] >= 0), default=None)
+            if found is not None:
+                index, tag, next_state = found
                 self._append(outputs, self._buffer[:index], self._buffer_start)
                 self._buffer = self._buffer[index + len(tag) :]
                 self._buffer_start += index + len(tag)
-                self._in_reasoning = not self._in_reasoning
+                self._in_reasoning = next_state
                 continue
             if final:
                 self._append(outputs, self._buffer, self._buffer_start)
                 self._buffer_start += len(self._buffer)
                 self._buffer = ""
                 break
-            keep = _tag_suffix_len(self._buffer, tag)
+            keep = max(
+                _tag_suffix_len(self._buffer, _REASONING_OPEN_TAG),
+                _tag_suffix_len(self._buffer, _REASONING_CLOSE_TAG),
+            )
             emit_len = len(self._buffer) - keep
             if emit_len > 0:
                 self._append(outputs, self._buffer[:emit_len], self._buffer_start)
@@ -12513,8 +12652,17 @@ def _looks_like_partial_json(text: str) -> bool:
     return False
 
 
-def _split_reasoning(text: str) -> _ReasoningSplit:
-    splitter = _ReasoningSplitter()
+def _reasoning_initially_open_for_prompt(engine: Any | None, prompt: str) -> bool:
+    target = _model_chat_protocol_target(engine)
+    parser = getattr(target, "chat_reasoning_parser", None)
+    detector = getattr(parser, "initially_open", None)
+    if not callable(detector):
+        return False
+    return bool(detector(str(prompt)))
+
+
+def _split_reasoning(text: str, *, initially_open: bool = False) -> _ReasoningSplit:
+    splitter = _ReasoningSplitter(initially_open=initially_open)
     parts = splitter.feed(text) + splitter.finish()
     content = "".join(part for field, part in parts if field == "content")
     reasoning = "".join(part for field, part in parts if field == "reasoning_content")
@@ -12720,7 +12868,10 @@ def _tool_arguments_json(arguments: Any) -> str:
 
 
 def _chat_message_from_parsed(parsed: _ParsedChatOutput) -> tuple[dict[str, Any], str]:
-    split = _split_reasoning(parsed.text)
+    split = _split_reasoning(
+        parsed.text,
+        initially_open=parsed.reasoning_initially_open,
+    )
     message: dict[str, Any] = {"role": "assistant", "content": split.content}
     if split.reasoning_content:
         message["reasoning_content"] = split.reasoning_content
@@ -14557,10 +14708,12 @@ def _withheld_scheduler_logprob_chunks_payload(
 def _scheduler_chunks_support_chat_logprob_stream(
     text: str,
     chunks: Sequence[Mapping[str, Any]],
+    *,
+    initially_open: bool = False,
 ) -> bool:
     if not _scheduler_chunks_match_completion_text(text, chunks, require_logprobs=True):
         return False
-    splitter = _ReasoningSplitter()
+    splitter = _ReasoningSplitter(initially_open=initially_open)
     last_stream_chunk: GenerationStreamChunk | None = None
     for raw_chunk in chunks:
         stream_chunk = _scheduler_payload_stream_chunk(raw_chunk)
@@ -14768,7 +14921,10 @@ def _chat_stream_parsed(
     kv_pool: Mapping[str, float] | None = None,
     done_phase: str = "done",
 ) -> Iterator[str]:
-    split = _split_reasoning(parsed.text)
+    split = _split_reasoning(
+        parsed.text,
+        initially_open=parsed.reasoning_initially_open,
+    )
     if split.reasoning_content:
         token_payload = (
             token_accounting.observe("think", split.reasoning_content)
@@ -15011,6 +15167,7 @@ def _chat_stream_scheduler_text_chunks(
     index: int = 0,
     include_logprobs: bool = False,
     content_phase: str = "answer",
+    reasoning_initially_open: bool = False,
     finish_details: Mapping[str, Any] | None = None,
     token_accounting: _StreamTokenAccounting | None = None,
     include_hipengine: bool = False,
@@ -15019,7 +15176,7 @@ def _chat_stream_scheduler_text_chunks(
     kv_pool: Mapping[str, float] | None = None,
     done_phase: str = "done",
 ) -> Iterator[str]:
-    splitter = _ReasoningSplitter()
+    splitter = _ReasoningSplitter(initially_open=reasoning_initially_open)
     last_stream_chunk: GenerationStreamChunk | None = None
     for raw_chunk in scheduler_chunks:
         stream_chunk = _scheduler_payload_stream_chunk(raw_chunk)
