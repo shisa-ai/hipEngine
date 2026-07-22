@@ -1,0 +1,68 @@
+{
+  "schema": "hipengine.iq2_xs_laguna_primitive.v1",
+  "date": "2026-07-22",
+  "status": "accepted_kernel_primitive",
+  "scope": "synthetic Laguna-shaped IQ2_XS selected gate/up; no model download",
+  "measured_base_commit": "0e58a23e",
+  "hardware": {
+    "gpu_index": 1,
+    "name": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "rocm_hip": "7.2.53211-3d9ef42"
+  },
+  "lineage": {
+    "repo": "llama.cpp-hip",
+    "commit": "1ebf790cda38d827559548f67b0469189690cc8c",
+    "files": [
+      "ggml/src/ggml-common.h",
+      "ggml/src/ggml-quants.c",
+      "ggml/src/ggml-cuda/convert.cu"
+    ]
+  },
+  "correctness": {
+    "cpu_oracle": "torch-free dequantize_gguf_data plus selected matmul",
+    "decode_k3072_n1024_bf16_bit_exact": true,
+    "grouped_scalar_k3072_n1024_bf16_bit_exact": true,
+    "rowbatch4_vs_scalar_bf16_bit_exact": true,
+    "wmma_k3072": {
+      "max_relative": 0.0078125,
+      "kl_mean": 0.000012775607639469134,
+      "kl_max": 0.00032228255757364016,
+      "top1_agreement": 1.0,
+      "passed": true
+    }
+  },
+  "microbenchmark": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 scripts/iq2_xs_laguna_microbench.py --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build --experts 16 --in-features 3072 --out-features 128 --rows-per-expert 1,2,3,4,8,16 --warmup 3 --iters 100 --json /tmp/iq2-xs-laguna-micro.json",
+    "shape": {
+      "experts": 16,
+      "in_features": 3072,
+      "out_features": 128
+    },
+    "warmup": 3,
+    "iterations": 100,
+    "rows": [
+      {"rows_per_expert": 1, "base_ms": 0.0443651390, "rowbatch4_ms": 0.0411527586, "delta_percent": -7.2408},
+      {"rows_per_expert": 2, "base_ms": 0.0351246405, "rowbatch4_ms": 0.0217673492, "delta_percent": -38.0283},
+      {"rows_per_expert": 3, "base_ms": 0.0453074884, "rowbatch4_ms": 0.0251149702, "delta_percent": -44.5677},
+      {"rows_per_expert": 4, "base_ms": 0.0642501020, "rowbatch4_ms": 0.0264594102, "delta_percent": -58.8181},
+      {"rows_per_expert": 8, "base_ms": 0.1251048660, "rowbatch4_ms": 0.0518031597, "delta_percent": -58.5922},
+      {"rows_per_expert": 16, "base_ms": 0.2449020958, "rowbatch4_ms": 0.1019019127, "delta_percent": -58.3908}
+    ],
+    "decision": "select rowbatch4 unconditionally at K=3072; retain the measured four-rows-per-expert crossover at K<=2048"
+  },
+  "rocprof": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv --output-file /tmp/hipengine-iq2-xs-prefill-prod-profile/iq2-xs-prefill-prod -- bash -lc 'cd /home/lhl/hipEngine-main && PYTHONPATH=. python3 -m pytest -q tests/test_gguf_iq2_xs_selected_prefill.py -k laguna_k3072_n1024'",
+    "trace": "/tmp/hipengine-iq2-xs-prefill-prod-profile/iq2-xs-prefill-prod_kernel_trace.csv",
+    "sha256": "43476eb0016cdfc8577a6c9d48a0c818d3a807af24a91e2cf7d1c5acb3b0c39f",
+    "rowbatch4_k3072_n1024_us": 58.08,
+    "rowbatch4": {"vgpr": 72, "lds_bytes": 512, "scratch_bytes": 0},
+    "selected_single_us": [60.2, 62.16],
+    "selected_single": {"vgpr": 24, "lds_bytes": 512, "scratch_bytes": 0}
+  },
+  "limitations": [
+    "No Laguna weights or model-level KL/top-1 were tested.",
+    "The microbenchmark is a synthetic kernel scheduling screen, not model throughput.",
+    "Laguna loader/model mapping, wall throughput, memory peak, and long-context K/V remain open."
+  ]
+}

@@ -76,6 +76,9 @@ def test_qwen35moe_iq_grouped_prefill_policy_defaults_on_with_optout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     assert qgr._iq_grouped_prefill_enabled() is True
+    assert qgr._COMPACT_MOE_IQ_GROUPED_DUAL_KEYS[("gguf_iq2_xs", "gguf_iq2_xs")].variant == (
+        "selected_dual_grouped_prefill_compact_auto_bf16_bf16_out"
+    )
     assert qgr._COMPACT_MOE_IQ_GROUPED_DUAL_KEYS[("gguf_iq3_xxs", "gguf_iq3_xxs")].variant == (
         "selected_dual_grouped_prefill_compact_auto_bf16_bf16_out"
     )
@@ -121,15 +124,23 @@ def test_qwen35moe_iq_compact_wmma_is_not_admitted_to_runtime() -> None:
     )
 
 
-def test_qwen35moe_iq_grouped_scalar_uses_direct_q6_compact_fallback(
+@pytest.mark.parametrize(
+    ("gate_quant", "down_quant"),
+    [("gguf_iq4_xs", "gguf_q6_k"), ("gguf_iq2_xs", "gguf_iq3_xxs")],
+)
+def test_qwen35moe_iq_grouped_scalar_uses_direct_compact_down_fallback(
     monkeypatch: pytest.MonkeyPatch,
+    gate_quant: str,
+    down_quant: str,
 ) -> None:
     runner, scratch = _fake_runner_and_scratch()
-    _set_iq_weights(runner, gate_quant="gguf_iq4_xs", down_quant="gguf_q6_k")
+    _set_iq_weights(runner, gate_quant=gate_quant, down_quant=down_quant)
     calls: list[tuple[str, object]] = []
     _patch_common_moe_kernels(monkeypatch, calls)
     _patch_compact_scheduler(monkeypatch, calls)
-    _patch_iq_compact_registry(monkeypatch, calls, down_quant="gguf_q6_k")
+    _patch_iq_compact_registry(
+        monkeypatch, calls, gate_quant=gate_quant, down_quant=down_quant
+    )
     monkeypatch.setattr(qgr, "qwen35_moe_wmma_tile_map", _fail_if_called("tile_map"))
     monkeypatch.setattr(qgr, "_read_i64_device_scalar", _fail_if_called("scalar_d2h"))
     monkeypatch.setattr(qgr, "_launch_selected_raw_gguf_moe_pair", _fail_if_called("raw_pair"))
@@ -550,8 +561,11 @@ def _patch_iq_compact_registry(
     calls: list[tuple[str, object]],
     *,
     down_quant: str,
+    gate_quant: str | None = None,
 ) -> None:
-    gate_quant = "gguf_iq4_xs" if down_quant == "gguf_q6_k" else "gguf_iq3_xxs"
+    gate_quant = gate_quant or (
+        "gguf_iq4_xs" if down_quant == "gguf_q6_k" else "gguf_iq3_xxs"
+    )
     gate_key = qgr._COMPACT_MOE_IQ_GROUPED_DUAL_KEYS[(gate_quant, gate_quant)]
     down_key = KernelKey(
         "hip_gfx1100",
@@ -594,7 +608,7 @@ def _patch_iq_compact_registry(
         },
         **{key: (lambda *args, **kwargs: None) for key in qgr._COMPACT_MOE_FUSED_KEYS},
     }
-    if down_quant != "gguf_q6_k":
+    if down_quant in qgr._COMPACT_MOE_IQ_GROUPED_DOWN_KEYS:
         available[down_key] = fake_down
 
     def fake_resolve(*, backend: str, layer: str, quant: str, variant: str = "", missing: str = "error"):

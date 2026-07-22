@@ -182,13 +182,17 @@ def plan_qwen35_gguf_materialization(
     requested_decode_repack = gguf_decode_repack_enabled(decode_repack)
     contract_q3_f32_linear = any(
         GGMLQuantizationType(tensor.ggml_type)
-        in {GGMLQuantizationType.IQ3_XXS, GGMLQuantizationType.IQ4_XS}
+        in {
+            GGMLQuantizationType.IQ2_XS,
+            GGMLQuantizationType.IQ3_XXS,
+            GGMLQuantizationType.IQ4_XS,
+        }
         for layer in model_map.layers
         for tensor in layer.tensors.values()
     )
-    # UD-Q3_K_M's retained exact prefill/native-row kernels consume raw GGUF
-    # Q8/Q6 layouts. Keep that model plugin's one resident layout instead of
-    # silently replacing it with main's Q4-oriented T16 decode residents.
+    # Raw-IQ models' selected kernels consume compressed rank-3 GGUF layouts.
+    # Keep one compatible resident plan instead of silently mixing it with the
+    # Q4-oriented T16 decode residents.
     use_decode_repack = requested_decode_repack and not contract_q3_f32_linear
     root_specs = {
         slot: _spec_for_tensor(
@@ -626,11 +630,13 @@ def _spec_for_tensor(
     if qtype in (
         GGMLQuantizationType.IQ3_XXS,
         GGMLQuantizationType.Q3_K,
-    ) or (qtype == GGMLQuantizationType.IQ4_XS and _is_selected_expert_tensor(slot_path, tensor)):
-        # UD-Q3_K_M routed experts stay compressed on device (native selected
-        # GEMV kernels); only the rank-3 expert tensors take this path. Rank-2
-        # IQ4_XS tensors keep the dense-BF16 fallback below; rank-2 IQ3_XXS /
-        # Q3_K remain unsupported rather than silently expanding to BF16.
+    ) or (
+        qtype in (GGMLQuantizationType.IQ2_XS, GGMLQuantizationType.IQ4_XS)
+        and _is_selected_expert_tensor(slot_path, tensor)
+    ):
+        # Native selected GEMV keeps routed rank-3 IQ2/IQ3/IQ4 experts raw.
+        # Rank-2 IQ2_XS/IQ4_XS tensors keep the dense-BF16 fallback below;
+        # rank-2 IQ3_XXS/Q3_K remain unsupported rather than silently expanding.
         if not _is_selected_expert_tensor(slot_path, tensor):
             raise ValueError(
                 f"unsupported Qwen3.5 GGUF tensor type {tensor.ggml_type_name!r} outside "
@@ -645,6 +651,7 @@ def _spec_for_tensor(
         )
     if qtype in (
         GGMLQuantizationType.Q4_1,
+        GGMLQuantizationType.IQ2_XS,
         GGMLQuantizationType.IQ4_XS,
         GGMLQuantizationType.F16,
         GGMLQuantizationType.BF16,

@@ -75,7 +75,7 @@ The distinction is native compressed execution, not merely parsing the type id.
 | `Q3_K` | Native selected-MoE | Implemented for Qwen NextN, but absent from the Laguna S 2.1 files |
 | `IQ4_NL`, `MXFP4` | CPU dequant only | No retained native compressed execution kernel |
 | `IQ1_S`, `IQ1_M` | Layout only | CPU dequant and native execution missing |
-| `IQ2_XS` | Native selected decode + CPU dequant | Laguna K=3072 selected gate/up decode is primitive-correct; compact prefill remains in progress |
+| `IQ2_XS` | Native selected decode/prefill + CPU dequant | Laguna K=3072,N=1024 gate/up primitives are exact; full model validation remains open |
 | `IQ2_XXS`, `IQ2_S` | Layout only | CPU dequant and native execution missing |
 | `IQ3_S` | Layout only | CPU dequant and native execution missing |
 
@@ -408,13 +408,19 @@ already covered, and Qwen evidence gives it a much better quality prior than
 
 Required surface:
 
-- CPU dequant/oracle;
-- selected single and dual-SiLU decode for rank-3 routed gate/up;
-- selected compact prefill;
-- any required weighted selected-down fallback if a future mapping places it
-  there;
-- exact tensor-role inventory test and model-level KL/top-1 gate;
-- rocprof symbol proof and wall/memory evidence.
+- **Done:** CPU dequant/oracle, with a pinned independent llama.cpp fixture;
+- **Done:** selected single and dual-SiLU decode for rank-3 routed gate/up;
+- **Done:** exact grouped/rowbatch compact prefill plus a correctness-gated WMMA
+  diagnostic at Laguna K=3072;
+- **Not currently required:** weighted selected-down IQ2_XS; the pinned
+  `UD-Q2_K_XL` inventory places IQ2_XS in routed gate/up, not down;
+- **Partial:** synthetic tensor-role materialization tests pass, but the exact
+  Laguna model mapping and model-level KL/top-1 gate remain open;
+- **Partial:** rocprof symbol/resource proof is complete; model wall/memory and
+  long-context evidence remain open.
+
+These completed primitive bullets do **not** make the Laguna recipe supported;
+the acceptance gates below still require the model-level work.
 
 ### P2 — Optional single-card Q3/IQ4 ladder
 

@@ -1874,6 +1874,13 @@ systematically one code below the CPU/HIP oracle. The retained portable shader
 eliminates those scale mismatches; both the gfx1100-matched and current strict
 gfx1151 matrices now pass 22/22 comparisons and all 232 burst rows.
 
+The retained synthetic Laguna-shape IQ2_XS primitive packet is
+[`2026-07-22-gpu1-iq2-xs-laguna-primitives.json`](results/2026-07-22-gpu1-iq2-xs-laguna-primitives.json).
+At K=3072/N=128/E=16, rowbatch4 reduces event time by 7.24-58.82% versus
+row-at-a-time grouping across 1-16 rows/expert and remains BF16-bit exact;
+K=3072/N=1024 also passes exact selected/grouped gates. This is a kernel
+schedule result, not Laguna model throughput or quality evidence.
+
 ## Update Checklist
 
 1. Choose one protocol tuple and record the old artifact before running.
