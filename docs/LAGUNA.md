@@ -872,9 +872,14 @@ Implemented foundation (2026-07-22):
 - live gfx1151 selected-slot materialization now passes for FP32, FP16, Q4_K
   pack8, and tiny synthetic Q4T16/Q6T16 payloads with exact D2H readback; five
   tracked allocations / 2,666,496 bytes return to zero after teardown;
-- full-device materialization, streaming transient measurements, and the
-  71.468-GiB load-only/free smoke remain pending and are not implied by the
-  selected-slot result.
+- the first full 814-tensor gfx1151 load/free smoke completed in 239.427 s:
+  1,054 tracked allocations / 76,737,907,712 bytes (71.468 GiB), 77,024,133,120
+  bytes sampled GTT use, and 329,875,456 bytes sampled peak host RSS; teardown
+  took 0.373 s and returned tracked allocations/bytes to zero;
+- post-free GTT retained 173,998,080 bytes versus 22,913,024 before load and HIP
+  free retained the matching one-time context/allocator footprint; no tracked
+  resident-weight allocation leaked. L3 is closed for target weight residency,
+  while KV/scratch ownership moves to the eager-session gate.
 
 Plan:
 

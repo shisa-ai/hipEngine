@@ -172911,3 +172911,38 @@ fresh diagnostic process, `hipMemGetInfo` moved from 128,844,787,712 free to
 one-time difference than tracked payload is HIP context/allocator startup, not
 a tracked weight leak; same-process guarded tests measure after the tiny HIP
 warmup and enforce recovery within 16 MiB. Full-model loading remains pending.
+
+## 2026-07-22 — Complete full Laguna 814-tensor load/free smoke
+
+Ran the admitted target-only 4K streaming load on the gfx1151 120-GiB GTT pool:
+
+The measured invocation used the inline body now retained in
+`scripts/laguna_gguf_load_smoke.py`; the reproducible equivalent command is:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 uv run python -u \
+  scripts/laguna_gguf_load_smoke.py \
+  /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf \
+  --context-length 4096 --backend hip_gfx1151 \
+  --output /tmp/laguna-full-load-smoke.json
+```
+
+The helper reports progress plus `hipMemGetInfo`, sysfs GTT/VRAM, process RSS,
+and tracked allocation snapshots. It was syntax/Ruff/`--help` checked after the
+inline run; the expensive four-minute load was not repeated.
+
+All 814 logical tensors loaded in 239.427 s. The resident set exactly matched the
+dry plan at 76,737,907,712 bytes (71.468 GiB) across 1,054 HIP allocations.
+At full residency, `hipMemGetInfo` reported 51,843,579,904 bytes free of
+128,849,018,880, sysfs GTT use was 77,024,133,120 bytes, VRAM use was
+259,076,096 bytes, and sampled process RSS peaked at 329,875,456 bytes. This is
+a lifecycle measurement, not a decode-performance result.
+
+`resident.free()` completed in 0.373 s. Tracked state returned from 1,054
+allocations / 76,737,907,712 bytes to zero / zero, with total freed exactly equal
+to total allocated. GTT settled at 173,998,080 bytes and HIP free at
+128,695,812,096 bytes versus 22,913,024 GTT / 128,844,787,712 HIP free before
+the first allocation. The 151,085,056-byte GTT difference is the one-time HIP
+context/allocator footprint; no hipEngine-tracked resident weight survived.
+The machine remained healthy and L3 target weight residency is now closed. KV,
+scratch, and layer-state ownership remain part of the eager-session work.
