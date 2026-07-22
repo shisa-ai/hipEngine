@@ -632,6 +632,17 @@ class LagunaVerifierRowsResult:
 
 
 @dataclass(frozen=True)
+class LagunaPrefillRoutingReplay:
+    """Host-owned selected-expert lanes from one diagnostic prefill pass."""
+
+    result: LagunaEagerTokenResult
+    rows: int
+    expert_count: int
+    top_k: int
+    selected_experts: Mapping[int, tuple[int, ...]]
+
+
+@dataclass(frozen=True)
 class LagunaDFlashVerifyResult:
     """One GPU-accepted target chain after transactional prefix commit."""
 
@@ -775,6 +786,46 @@ def capture_laguna_hidden_rows(
         target.ptr,
         int(source_bf16_ptr),
         parsed_rows * int(hidden_size) * _BF16_NBYTES,
+        HipMemcpyKind.DEVICE_TO_DEVICE,
+        int(stream),
+    )
+
+
+def capture_laguna_routing_rows(
+    selected_experts_ptr: int,
+    *,
+    layer_id: int,
+    leading_dense_layers: int,
+    sparse_layers: int,
+    rows: int,
+    top_k: int,
+    capture: DeviceBuffer,
+    runtime: HipRuntime,
+    stream: int = 0,
+) -> None:
+    """Copy one sparse layer's selected IDs into a bounded diagnostic plane."""
+
+    parsed_rows = int(rows)
+    parsed_top_k = int(top_k)
+    dense_layers = int(leading_dense_layers)
+    sparse_count = int(sparse_layers)
+    layer = int(layer_id)
+    if parsed_rows <= 0 or parsed_top_k <= 0 or sparse_count <= 0:
+        raise ValueError("Laguna routing replay dimensions must be positive")
+    sparse_index = layer - dense_layers
+    if sparse_index < 0 or sparse_index >= sparse_count:
+        raise ValueError("Laguna routing replay layer is outside the sparse layer range")
+    layer_nbytes = parsed_rows * parsed_top_k * _I64_NBYTES
+    expected_nbytes = sparse_count * layer_nbytes
+    if capture.nbytes != expected_nbytes:
+        raise ValueError(
+            "Laguna routing replay capture buffer must exactly match all sparse planes: "
+            f"expected={expected_nbytes} actual={capture.nbytes}"
+        )
+    runtime.memcpy_async(
+        capture.ptr + sparse_index * layer_nbytes,
+        int(selected_experts_ptr),
+        layer_nbytes,
         HipMemcpyKind.DEVICE_TO_DEVICE,
         int(stream),
     )
@@ -1124,6 +1175,63 @@ class LagunaGGUFResidentSession:
             stream=stream,
         )
 
+    def prefill_routing_replay(
+        self,
+        token_ids: Sequence[int],
+        *,
+        stream: int = 0,
+    ) -> LagunaPrefillRoutingReplay:
+        """Run one physical prefill chunk and return host-owned expert selections.
+
+        This is a diagnostic-only LPF replay surface. Normal generation allocates
+        no capture buffer and performs no extra copies.
+        """
+
+        self._check_open()
+        self._check_no_staged_verifier()
+        tokens = tuple(int(value) for value in token_ids)
+        rows = len(tokens)
+        if rows <= 0 or rows > self.prefill_chunk_size:
+            raise ValueError(
+                f"Laguna routing replay rows must be within [1, {self.prefill_chunk_size}]"
+            )
+        config = self.config
+        sparse_layers = config.block_count - config.leading_dense_block_count
+        layer_lanes = rows * config.expert_used_count
+        total_lanes = sparse_layers * layer_lanes
+        capture = malloc(total_lanes * _I64_NBYTES, runtime=self.runtime)
+        try:
+            self._execute_rows(tokens, routing_capture=capture, stream=stream)
+            result = self._project_rows_last(
+                input_token_id=tokens[-1],
+                position=self.position,
+                row_index=rows - 1,
+                stream=stream,
+            )
+            host = (ctypes.c_int64 * total_lanes)()
+            self.runtime.memcpy(
+                ctypes.addressof(host),
+                capture.ptr,
+                capture.nbytes,
+                HipMemcpyKind.DEVICE_TO_HOST,
+            )
+            selected = {
+                layer_id: tuple(
+                    int(host[(layer_id - config.leading_dense_block_count) * layer_lanes + lane])
+                    for lane in range(layer_lanes)
+                )
+                for layer_id in range(config.leading_dense_block_count, config.block_count)
+            }
+            return LagunaPrefillRoutingReplay(
+                result=result,
+                rows=rows,
+                expert_count=config.expert_count,
+                top_k=config.expert_used_count,
+                selected_experts=MappingProxyType(selected),
+            )
+        finally:
+            free(capture, runtime=self.runtime)
+
     def verify_rows(
         self,
         root_token_id: int,
@@ -1386,6 +1494,7 @@ class LagunaGGUFResidentSession:
         capture_last: LagunaHiddenCaptureTargets | None = None,
         capture_rows: LagunaHiddenCaptureTargets | None = None,
         stage_verifier_kv: bool = False,
+        routing_capture: DeviceBuffer | None = None,
         stream: int,
     ) -> None:
         self._check_open()
@@ -1439,6 +1548,7 @@ class LagunaGGUFResidentSession:
                     layer_id,
                     rows=rows,
                     stage_verifier_kv=stage_verifier_kv,
+                    routing_capture=routing_capture,
                     stream=stream,
                 )
                 depth = layer_id + 1
@@ -1520,6 +1630,7 @@ class LagunaGGUFResidentSession:
         *,
         rows: int,
         stage_verifier_kv: bool = False,
+        routing_capture: DeviceBuffer | None = None,
         stream: int,
     ) -> None:
         assert self.weights is not None
@@ -1678,6 +1789,19 @@ class LagunaGGUFResidentSession:
             self._run_dense_ffn_rows(layer, rows=rows, stream=stream)
         elif layer.mlp_type == SPARSE_MOE:
             self._run_sparse_ffn_rows(layer, rows=rows, stream=stream)
+            if routing_capture is not None:
+                assert self.rows_moe_scratch is not None
+                capture_laguna_routing_rows(
+                    self.rows_moe_scratch.selected_experts.ptr,
+                    layer_id=layer_id,
+                    leading_dense_layers=config.leading_dense_block_count,
+                    sparse_layers=config.block_count - config.leading_dense_block_count,
+                    rows=rows,
+                    top_k=config.expert_used_count,
+                    capture=routing_capture,
+                    runtime=self.runtime,
+                    stream=stream,
+                )
         else:
             raise ValueError(f"unsupported Laguna MLP type {layer.mlp_type!r}")
 

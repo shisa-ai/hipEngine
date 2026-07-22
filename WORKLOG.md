@@ -174731,3 +174731,43 @@ env HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 \
   --drafter-revision b0486d1586daa0d56435c508108171fc1c8daff9 \
   --output benchmarks/results/2026-07-23-gfx1151-laguna-dflash-category-economics.json
 ```
+
+## 2026-07-23 — Add the Laguna LPF-0 prefill-only profiling surface
+
+Re-read `docs/LAGUNA.md` end to end after DFlash D4 and began its ordered
+prefill plan. The retained short-prompt trace still ranks true source-F16 bulk
+projection first (68.8% of the 55-row kernel span), selected-expert weight reuse
+second (26.6%), and attention below 1%; LPF-1/LPF-2 remain the first candidate
+families rather than graph/AOTriton work.
+
+Added `scripts/laguna_prefill_profile.py` for the predeclared physical row
+shapes 16/32/55/64/122/128. The timing route executes one complete synchronized
+prefill per reset with rotating shape order and no decode rows. A separate
+zero-overhead-when-disabled resident diagnostic copies all 47 sparse layers'
+`rows * top_k` selected IDs into one bounded device slab and transfers it once,
+so the artifact can report exact per-layer/per-expert occupancy, group-size
+histograms, and 16-row compact-WMMA padding pressure without adding 47 timed D2H
+boundaries. The 128-row shape extends the longest canonical prompt by repeating
+it without the leading BOS and records that construction explicitly.
+
+RED was collection failure for the absent script and routing-capture helper.
+GREEN validation:
+
+```bash
+uv run pytest -q tests/test_laguna_prefill_profile.py \
+  tests/test_laguna_gguf_runner.py
+# 15 passed
+uvx ruff check scripts/laguna_prefill_profile.py \
+  hipengine/runtime/laguna_gguf_runner.py \
+  tests/test_laguna_prefill_profile.py tests/test_laguna_gguf_runner.py
+# clean
+python3 -m py_compile scripts/laguna_prefill_profile.py \
+  hipengine/runtime/laguna_gguf_runner.py
+# clean
+```
+
+The broad lineage scan remains blocked before reporting because the legacy
+`/home/lhl/amd-gpu-tuning/reference/atlas` checkout is absent. HIP itself is
+healthy on Radeon 8060S/gfx1151. The next action is to commit this harness,
+prebuild on the clean revision, then run the dedicated timing/routing packet and
+cached `rocprofv3` trace before LPF-1 kernel work.
