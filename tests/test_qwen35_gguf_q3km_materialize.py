@@ -46,6 +46,7 @@ def _tensor_info(
 @pytest.mark.parametrize(
     ("qtype", "quant_key"),
     [
+        (GGMLQuantizationType.IQ2_XS, "gguf_iq2_xs"),
         (GGMLQuantizationType.IQ3_XXS, "gguf_iq3_xxs"),
         (GGMLQuantizationType.IQ4_XS, "gguf_iq4_xs"),
         (GGMLQuantizationType.Q3_K, "gguf_q3_k"),
@@ -69,9 +70,12 @@ def test_rank3_iq_and_q3_experts_stay_raw_without_model_fixture(
         assert spec.sidecar_layouts == ()
 
 
-def test_rank2_iq4_xs_keeps_dense_bf16_fallback_without_model_fixture() -> None:
+@pytest.mark.parametrize("qtype", [GGMLQuantizationType.IQ2_XS, GGMLQuantizationType.IQ4_XS])
+def test_rank2_iq2_iq4_xs_keep_dense_bf16_fallback_without_model_fixture(
+    qtype: GGMLQuantizationType,
+) -> None:
     tensor = _tensor_info(
-        GGMLQuantizationType.IQ4_XS,
+        qtype,
         (8, 256),
         name="blk.0.ffn_gate.weight",
     )
@@ -79,7 +83,7 @@ def test_rank2_iq4_xs_keeps_dense_bf16_fallback_without_model_fixture() -> None:
     spec = _spec_for_tensor("layers.0.ffn_gate", tensor, decode_repack=False)
 
     assert spec.layout == LAYOUT_DENSE_BF16
-    assert spec.quant_key == "gguf_iq4_xs"
+    assert spec.quant_key == f"gguf_{qtype.name.lower()}"
     assert spec.allocation_names == ("raw",)
 
 

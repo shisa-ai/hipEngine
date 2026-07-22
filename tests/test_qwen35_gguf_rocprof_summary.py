@@ -78,7 +78,17 @@ def _write_csv(path: Path, rows: Sequence[dict[str, object]]) -> None:
 @pytest.mark.parametrize(
     "name,expected",
     [
-        # Raw-IQ selected direct GEMV (UD-Q3_K_M).
+        # Raw-IQ selected direct/grouped kernels.
+        ("gguf_iq2_xs_selected_gemv_kernel", "moe_iq2_xs_selected_single"),
+        ("gguf_iq2_xs_selected_dual_silu_gemv_kernel", "moe_iq2_xs_selected_dual_silu"),
+        (
+            "gguf_iq2_xs_selected_dual_grouped_prefill_compact_rowbatch4_kernel",
+            "moe_iq2_xs_grouped_dual_prefill",
+        ),
+        (
+            "gguf_iq_selected_dual_wmma_prefill_compact_kernel<2>",
+            "moe_iq2_xs_wmma_dual_prefill",
+        ),
         ("gguf_iq3_xxs_selected_gemv_kernel", "moe_iq3_xxs_selected_single"),
         ("gguf_iq3_xxs_selected_dual_silu_gemv_kernel", "moe_iq3_xxs_selected_dual_silu"),
         ("gguf_iq4_xs_selected_gemv_kernel", "moe_iq4_xs_selected_single"),

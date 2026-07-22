@@ -60,7 +60,13 @@ SCHEMA = "p9_gguf_rocprof_summary_v1"
 # B/w, Q6_K ~0.8203 B/w, Q8_0 ~1.0625 B/w. Per-block headers (d/dmin/scales)
 # are amortised over 256 K's so the effective average dominates.
 _QWEN36_35B_A3B_DEFAULT_FOOTPRINTS_PER_DISPATCH: dict[str, int | None] = {
-    # ------------------------------------------------------- Raw IQ3/IQ4 MoE
+    # --------------------------------------------------- Raw IQ2/IQ3/IQ4 MoE
+    # IQ2_XS Laguna footprints depend on active experts/rows; exact artifacts
+    # must supply overrides rather than assume a full-model routing pattern.
+    "moe_iq2_xs_selected_single": None,
+    "moe_iq2_xs_selected_dual_silu": None,
+    "moe_iq2_xs_grouped_dual_prefill": None,
+    "moe_iq2_xs_wmma_dual_prefill": None,
     # UD-Q3_K_M uses hidden=2048, expert_ffn=512, top_k=8. IQ3_XXS encodes
     # 256 values in 98 bytes; IQ4_XS encodes 256 values in 136 bytes. Gate/up
     # and down have the same 2048*512 weight count per selected expert.
@@ -249,7 +255,15 @@ def classify_kernel(name: str) -> str:
 
     lower = name.lower()
     base = _normalise_kernel_name(lower)
-    # -------------------------------------------- GGUF raw IQ3_XXS / IQ4_XS
+    # ------------------------------------ GGUF raw IQ2_XS/IQ3_XXS/IQ4_XS
+    if "gguf_iq_selected_dual_wmma_prefill_compact_kernel<2>" in lower:
+        return "moe_iq2_xs_wmma_dual_prefill"
+    if "gguf_iq2_xs_selected_dual_grouped_prefill_compact" in base:
+        return "moe_iq2_xs_grouped_dual_prefill"
+    if "gguf_iq2_xs_selected_dual_silu_gemv" in base:
+        return "moe_iq2_xs_selected_dual_silu"
+    if "gguf_iq2_xs_selected_gemv" in base:
+        return "moe_iq2_xs_selected_single"
     if "gguf_iq3_xxs_selected_dual_grouped_prefill_compact" in base:
         return "moe_iq3_xxs_grouped_dual_prefill"
     if "gguf_iq4_xs_selected_dual_grouped_prefill_compact" in base:

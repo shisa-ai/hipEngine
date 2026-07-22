@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-07-22
 
+- [retained kernel micro] synthetic Laguna IQ2_XS / K3072-N128-E16 / GPU1 grouped prefill: base `0.04437/0.03512/0.04531/0.06425/0.12510/0.24490 ms` -> rowbatch4 `0.04115/0.02177/0.02511/0.02646/0.05180/0.10190 ms` (-7.24/-38.03/-44.57/-58.82/-58.59/-58.39% at 1/2/3/4/8/16 rows per expert) with BF16-bit-exact scalar output, so K=3072 auto selects rowbatch4; `benchmarks/results/2026-07-22-gpu1-iq2-xs-laguna-primitives.json`.
 - [rejected] Qwen3.6-35B-A3B GGUF / gguf_ud_q3_k_m / GPU1 c=1 dense-Q8 decode: qwen-kernel-shaped block serialization moves representative raw-Q8 leaves `24.539/14.517/13.143 -> 11.530/6.567/8.640 us` (-53.02/-54.76/-34.26%) but changes all 248,320 full logits at 512/1K/4K; preserving exact reduction association instead moves `25.157/14.541/12.969 -> 32.580/17.544/23.378 us` (+29.51/+20.65/+80.26%), so candidate code is removed and retained decode stays `101.216/108.383 tok/s`; `benchmarks/results/2026-07-22-gpu1-q3-q8-blockserial-decode-rejected.json`.
 - [diagnostic profile] Qwen3.6-35B-A3B GGUF / gguf_ud_q3_k_m / GPU1 selected decode16: final-tree graph attribution moves the prior D0 `8.88584 -> 8.82493 ms/token` (-0.69%) and `708 -> 671 launches/token` (-5.23%) after retained MoE-tail/next-RMS fusion; dense Q8 remains first at `2.83934 ms/token` (32.17%), with every ranked family scratch-free; `benchmarks/results/2026-07-22-gpu1-q3-final-decode-d0-profile.json`.
 

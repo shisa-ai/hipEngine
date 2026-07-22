@@ -20020,6 +20020,12 @@ _COMPACT_MOE_FUSED_KEYS = (
     KernelKey("hip_gfx1100", "shared_gate_combine+residual", "w4_paro", "batch_out"),
 )
 _COMPACT_MOE_IQ_GROUPED_DUAL_KEYS = {
+    ("gguf_iq2_xs", "gguf_iq2_xs"): KernelKey(
+        "hip_gfx1100",
+        "moe_linear",
+        "gguf_iq2_xs",
+        "selected_dual_grouped_prefill_compact_auto_bf16_bf16_out",
+    ),
     ("gguf_iq3_xxs", "gguf_iq3_xxs"): KernelKey(
         "hip_gfx1100",
         "moe_linear",

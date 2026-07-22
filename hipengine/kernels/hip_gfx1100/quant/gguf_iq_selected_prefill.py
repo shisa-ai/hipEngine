@@ -23,6 +23,15 @@ _OUTPUT_NAME = "gguf_iq_selected_prefill.so"
 _QK_K = 256
 _MAX_GROUPED_IN_FEATURES = 3072
 
+_SYMBOL_IQ2_GROUPED_DUAL = (
+    "hipengine_gguf_iq2_xs_selected_dual_grouped_prefill_compact_bf16_bf16_out"
+)
+_SYMBOL_IQ2_GROUPED_DUAL_ROWBATCH4 = (
+    "hipengine_gguf_iq2_xs_selected_dual_grouped_prefill_compact_rowbatch4_bf16_bf16_out"
+)
+_SYMBOL_IQ2_WMMA_DUAL = (
+    "hipengine_gguf_iq2_xs_selected_dual_wmma_prefill_compact_bf16_bf16_out"
+)
 _SYMBOL_IQ3_GROUPED_DUAL = (
     "hipengine_gguf_iq3_xxs_selected_dual_grouped_prefill_compact_bf16_bf16_out"
 )
@@ -95,6 +104,108 @@ def _extra_flags() -> tuple[str, ...]:
     # parent edit invalidates this JIT artifact as well.
     parent_tag = int(hashlib.sha256(_PARENT_SOURCE.read_bytes()).hexdigest()[:8], 16)
     return ("-mcumode", f"-DHIPENGINE_IQ_GEMV_SOURCE_TAG={parent_tag}")
+
+
+def gguf_iq2_xs_selected_dual_grouped_prefill_compact_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    gate_weight_ptr: int,
+    up_weight_ptr: int,
+    out_ptr: int,
+    *,
+    compact_rows: int,
+    in_features: int,
+    out_features: int,
+    num_experts: int,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _launch_grouped_dual(
+        _SYMBOL_IQ2_GROUPED_DUAL,
+        x_ptr,
+        expert_start_compact_ptr,
+        gate_weight_ptr,
+        up_weight_ptr,
+        out_ptr,
+        compact_rows=compact_rows,
+        in_features=in_features,
+        out_features=out_features,
+        num_experts=num_experts,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_iq2_xs_selected_dual_grouped_prefill_compact_rowbatch4_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    gate_weight_ptr: int,
+    up_weight_ptr: int,
+    out_ptr: int,
+    *,
+    compact_rows: int,
+    in_features: int,
+    out_features: int,
+    num_experts: int,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _launch_grouped_dual(
+        _SYMBOL_IQ2_GROUPED_DUAL_ROWBATCH4,
+        x_ptr,
+        expert_start_compact_ptr,
+        gate_weight_ptr,
+        up_weight_ptr,
+        out_ptr,
+        compact_rows=compact_rows,
+        in_features=in_features,
+        out_features=out_features,
+        num_experts=num_experts,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_iq2_xs_selected_dual_grouped_prefill_compact_auto_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    gate_weight_ptr: int,
+    up_weight_ptr: int,
+    out_ptr: int,
+    *,
+    compact_rows: int,
+    in_features: int,
+    out_features: int,
+    num_experts: int,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Select row-batch 4 for Laguna width or its measured short-K crossover."""
+
+    fn = (
+        gguf_iq2_xs_selected_dual_grouped_prefill_compact_rowbatch4_bf16_bf16_out
+        if in_features > 2048 or compact_rows >= 4 * num_experts
+        else gguf_iq2_xs_selected_dual_grouped_prefill_compact_bf16_bf16_out
+    )
+    fn(
+        x_ptr,
+        expert_start_compact_ptr,
+        gate_weight_ptr,
+        up_weight_ptr,
+        out_ptr,
+        compact_rows=compact_rows,
+        in_features=in_features,
+        out_features=out_features,
+        num_experts=num_experts,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
 
 
 def gguf_iq3_xxs_selected_dual_grouped_prefill_compact_bf16_bf16_out(
@@ -361,6 +472,44 @@ def gguf_iq4_xs_selected_grouped_prefill_compact_auto_bf16_bf16_out(
         in_features=in_features,
         out_features=out_features,
         num_experts=num_experts,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_iq2_xs_selected_dual_wmma_prefill_compact_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_wmma_ptr: int,
+    tile_expert_ptr: int,
+    gate_weight_ptr: int,
+    up_weight_ptr: int,
+    out_ptr: int,
+    *,
+    compact_rows: int,
+    in_features: int,
+    out_features: int,
+    num_experts: int,
+    wmma_total_rows: int,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _launch_wmma_dual(
+        _SYMBOL_IQ2_WMMA_DUAL,
+        x_ptr,
+        expert_start_compact_ptr,
+        expert_start_wmma_ptr,
+        tile_expert_ptr,
+        gate_weight_ptr,
+        up_weight_ptr,
+        out_ptr,
+        compact_rows=compact_rows,
+        in_features=in_features,
+        out_features=out_features,
+        num_experts=num_experts,
+        wmma_total_rows=wmma_total_rows,
         stream=stream,
         library=library,
         runtime=runtime,
@@ -661,6 +810,26 @@ def _check_launch(runtime: HipRuntime, err: int) -> None:
 def register_gguf_iq_selected_prefill_kernels(*, replace: bool = True) -> None:
     for quant, variant, fn in (
         (
+            "gguf_iq2_xs",
+            "selected_dual_grouped_prefill_compact_bf16_bf16_out",
+            gguf_iq2_xs_selected_dual_grouped_prefill_compact_bf16_bf16_out,
+        ),
+        (
+            "gguf_iq2_xs",
+            "selected_dual_grouped_prefill_compact_rowbatch4_bf16_bf16_out",
+            gguf_iq2_xs_selected_dual_grouped_prefill_compact_rowbatch4_bf16_bf16_out,
+        ),
+        (
+            "gguf_iq2_xs",
+            "selected_dual_grouped_prefill_compact_auto_bf16_bf16_out",
+            gguf_iq2_xs_selected_dual_grouped_prefill_compact_auto_bf16_bf16_out,
+        ),
+        (
+            "gguf_iq2_xs",
+            "selected_dual_wmma_prefill_compact_bf16_bf16_out",
+            gguf_iq2_xs_selected_dual_wmma_prefill_compact_bf16_bf16_out,
+        ),
+        (
             "gguf_iq3_xxs",
             "selected_dual_grouped_prefill_compact_bf16_bf16_out",
             gguf_iq3_xxs_selected_dual_grouped_prefill_compact_bf16_bf16_out,
@@ -723,6 +892,10 @@ register_gguf_iq_selected_prefill_kernels()
 
 __all__ = [
     "build_gguf_iq_selected_prefill",
+    "gguf_iq2_xs_selected_dual_grouped_prefill_compact_auto_bf16_bf16_out",
+    "gguf_iq2_xs_selected_dual_grouped_prefill_compact_bf16_bf16_out",
+    "gguf_iq2_xs_selected_dual_grouped_prefill_compact_rowbatch4_bf16_bf16_out",
+    "gguf_iq2_xs_selected_dual_wmma_prefill_compact_bf16_bf16_out",
     "gguf_iq3_xxs_selected_dual_grouped_prefill_compact_auto_bf16_bf16_out",
     "gguf_iq3_xxs_selected_dual_grouped_prefill_compact_bf16_bf16_out",
     "gguf_iq3_xxs_selected_dual_grouped_prefill_compact_rowbatch4_bf16_bf16_out",
