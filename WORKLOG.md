@@ -174367,3 +174367,39 @@ first-token distribution remains authoritative.
 Artifacts:
 `benchmarks/results/2026-07-22-gfx1151-laguna-s21-target-ar-retained.json` and
 `benchmarks/results/2026-07-22-gfx1151-poolside-laguna-s21-target-ar-baseline.json`.
+
+## 2026-07-22 — Implement Poolside Laguna DFlash safetensors schema
+
+Started D0/D1 by generalizing the torch-free DFlash loader without regressing
+the existing z-lab Qwen artifact. `DFlashDraftModel` and
+`DFlashLagunaForCausalLM` now enter through an architecture parser registry.
+The Laguna parser normalizes nested block/mask/48-layer metadata, target layer
+IDs `1,10,19,29,38,47`, checked post-layer capture depths
+`2,11,20,30,39,48`, six 512-token SWA layers, causal mode, per-head gating,
+fused QKV, and the shared 100352-token vocabulary.
+
+Safetensors validation now consumes the exact Poolside contract: 69 BF16
+tensors / 2,229,955,584 payload bytes, including six auxiliary target-hidden
+norms, six fused `(11264,3072)` QKV matrices, and six `(72,3072)` gates. Device
+weights expose non-owning Q/K/V row views over fused storage, so K/V context
+materialization can reuse the existing generic DFlash ABI without copying or
+owning duplicate projections. Missing gates, unsupported architecture, and
+capture off-by-one errors fail before allocation. The original Qwen metadata
+suite remains green. D0 remains open for the BF16 GGUF container and strict
+target GGUF hash/root pairing; standalone draft execution/parity remains D1.
+
+RED/GREEN validation:
+
+```bash
+uv run pytest -q tests/test_laguna_dflash_metadata.py
+# RED: 6 failed before implementation (nested block_size/schema unsupported)
+uv run pytest -q tests/test_laguna_dflash_metadata.py \
+  tests/test_dflash_metadata.py tests/test_dflash_drafter.py \
+  tests/test_dflash_context_kv.py
+# 31 passed, 1 skipped (the skip is the unrelated unavailable legacy /models fixture)
+uvx ruff check hipengine/loading/dflash.py hipengine/loading/__init__.py \
+  tests/test_laguna_dflash_metadata.py tests/test_dflash_metadata.py
+python3 -m compileall -q hipengine/loading/dflash.py \
+  hipengine/loading/__init__.py tests/test_laguna_dflash_metadata.py
+# clean / successful
+```

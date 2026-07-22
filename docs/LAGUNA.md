@@ -1724,6 +1724,16 @@ Acceptance: both safetensors and GGUF resolve to one normalized logical config;
 wrong target, off-by-one captures, missing gate, duplicate root tables, and
 unsupported layout fail before allocation.
 
+The safetensors half of D0 is implemented as of 2026-07-22. The architecture
+registry now preserves the original `DFlashDraftModel` schema while normalizing
+`DFlashLagunaForCausalLM` into one config with nested block/target fields,
+zero-based target IDs and checked one-based capture depths, causal/SWA/gate/QKV
+contracts, and the draft vocabulary. Validation consumes the exact local
+69-tensor/2,229,955,584-byte payload, requires all six auxiliary norms and six
+attention gates, and exposes non-owning Q/K/V row views over each fused BF16 QKV
+allocation. Missing gates and off-by-one captures fail before allocation. D0
+remains open for the BF16 GGUF container and exact target-GGUF hash/root pairing.
+
 ### D1 — Standalone Laguna drafter parity
 
 Implement the draft forward independently of speculative control:

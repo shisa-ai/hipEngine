@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 from hipengine.core.hip import HipRuntime
 from hipengine.core.device import Device
+from hipengine.core.dtype import DType, dtype_itemsize
 from hipengine.core.tensor import Tensor
 from hipengine.loading.materialize import DeviceTensorAllocation, DeviceWeightMap, load_tensor_info_to_device
 from hipengine.loading.qwen35_paro import (
@@ -49,13 +50,37 @@ class DFlashDraftConfig:
     vocab_size: int
     dtype: str
     layer_types: tuple[str, ...]
+    decoder_arch: str = "qwen"
+    target_capture_depths: tuple[int, ...] = ()
+    rms_norm_eps: float = 1.0e-6
+    max_position_embeddings: int = 0
+    sliding_windows: tuple[int, ...] = ()
+    attention_gate_type: str = "none"
+    qkv_layout: str = "separate"
+    aux_hidden_norm_count: int = 0
+    causal: bool = False
+    draft_vocab_size: int = 0
+
+    @property
+    def q_features(self) -> int:
+        return self.num_attention_heads * self.head_dim
+
+    @property
+    def kv_features(self) -> int:
+        return self.num_key_value_heads * self.head_dim
+
+    @property
+    def qkv_features(self) -> int:
+        return self.q_features + 2 * self.kv_features
 
     def to_json_dict(self) -> dict[str, Any]:
         return {
             "architecture": self.architecture,
+            "decoder_arch": self.decoder_arch,
             "block_size": self.block_size,
             "mask_token_id": self.mask_token_id,
             "target_layer_ids": list(self.target_layer_ids),
+            "target_capture_depths": list(self.target_capture_depths),
             "num_target_layers": self.num_target_layers,
             "hidden_size": self.hidden_size,
             "target_hidden_size": self.target_hidden_size,
@@ -66,7 +91,15 @@ class DFlashDraftConfig:
             "num_key_value_heads": self.num_key_value_heads,
             "head_dim": self.head_dim,
             "rope_theta": self.rope_theta,
+            "rms_norm_eps": self.rms_norm_eps,
+            "max_position_embeddings": self.max_position_embeddings,
+            "sliding_windows": list(self.sliding_windows),
+            "attention_gate_type": self.attention_gate_type,
+            "qkv_layout": self.qkv_layout,
+            "aux_hidden_norm_count": self.aux_hidden_norm_count,
+            "causal": self.causal,
             "vocab_size": self.vocab_size,
+            "draft_vocab_size": self.draft_vocab_size,
             "dtype": self.dtype,
             "layer_types": list(self.layer_types),
         }
@@ -81,7 +114,50 @@ class DFlashDrafterDeviceWeights:
     layer_limit: int
 
     def tensor(self, name: str) -> Tensor:
-        return self.weights[name]
+        try:
+            return self.weights[name]
+        except KeyError:
+            return self._fused_qkv_row_view(name)
+
+    def qkv_row_views(self, layer: int) -> tuple[Tensor, Tensor, Tensor]:
+        """Return zero-copy Q/K/V views over one fused Laguna QKV allocation."""
+
+        prefix = f"layers.{int(layer)}.self_attn"
+        return (
+            self.tensor(f"{prefix}.q_proj.weight"),
+            self.tensor(f"{prefix}.k_proj.weight"),
+            self.tensor(f"{prefix}.v_proj.weight"),
+        )
+
+    def _fused_qkv_row_view(self, name: str) -> Tensor:
+        if self.config.qkv_layout != "fused_qkv":
+            raise KeyError(name)
+        suffixes = {
+            ".q_proj.weight": (0, self.config.q_features),
+            ".k_proj.weight": (self.config.q_features, self.config.kv_features),
+            ".v_proj.weight": (
+                self.config.q_features + self.config.kv_features,
+                self.config.kv_features,
+            ),
+        }
+        for suffix, (row_start, row_count) in suffixes.items():
+            if not name.endswith(suffix):
+                continue
+            prefix = name[: -len(suffix)]
+            fused = self.weights[f"{prefix}.qkv_proj.weight"]
+            if fused.dtype != DType.BF16 or fused.shape != (
+                self.config.qkv_features,
+                self.config.hidden_size,
+            ):
+                raise ValueError("fused QKV allocation does not match normalized DFlash config")
+            row_bytes = self.config.hidden_size * dtype_itemsize(fused.dtype)
+            return Tensor.from_handle(
+                fused.ptr + row_start * row_bytes,
+                (row_count, self.config.hidden_size),
+                fused.dtype,
+                fused.device,
+            )
+        raise KeyError(name)
 
     def allocation(self, name: str) -> DeviceTensorAllocation:
         return self.weights.allocation(name)
@@ -165,35 +241,144 @@ class DFlashArtifactValidation:
         }
 
 
+DFlashDraftConfigParser = Callable[[Mapping[str, Any]], DFlashDraftConfig]
+_DFLASH_DRAFT_CONFIG_PARSERS: dict[str, DFlashDraftConfigParser] = {}
+
+
+def register_dflash_draft_config_parser(
+    architecture: str,
+    parser: DFlashDraftConfigParser,
+    *,
+    replace: bool = False,
+) -> None:
+    """Register an architecture-specific HF DFlash config normalizer."""
+
+    name = str(architecture)
+    if not name:
+        raise ValueError("DFlash architecture must be non-empty")
+    if name in _DFLASH_DRAFT_CONFIG_PARSERS and not replace:
+        raise ValueError(f"DFlash architecture {name!r} is already registered")
+    _DFLASH_DRAFT_CONFIG_PARSERS[name] = parser
+
+
 def dflash_draft_config_from_hf(config: Mapping[str, Any]) -> DFlashDraftConfig:
     architectures = config.get("architectures") or ()
     architecture = str(architectures[0]) if architectures else "DFlashDraftModel"
-    dflash_config = config.get("dflash_config") if isinstance(config.get("dflash_config"), Mapping) else {}
-    target_layer_ids = tuple(int(x) for x in (dflash_config.get("target_layer_ids") or ()))
+    parser = _DFLASH_DRAFT_CONFIG_PARSERS.get(architecture)
+    if parser is None:
+        supported = ", ".join(sorted(_DFLASH_DRAFT_CONFIG_PARSERS))
+        raise ValueError(
+            f"unregistered DFlash architecture {architecture!r}; expected one of: {supported}"
+        )
+    return parser(config)
+
+
+def _parse_qwen_dflash_config(config: Mapping[str, Any]) -> DFlashDraftConfig:
+    dflash_config = _dflash_config_mapping(config)
+    target_layer_ids = _int_tuple(dflash_config.get("target_layer_ids"))
     hidden_size = int(config["hidden_size"])
     num_layers = int(config["num_hidden_layers"])
-    layer_types = tuple(str(x) for x in (config.get("layer_types") or ("full_attention",) * num_layers))
     num_attention_heads = int(config["num_attention_heads"])
-    head_dim = int(config.get("head_dim", hidden_size // num_attention_heads))
+    capture_depths = _int_tuple(config.get("eagle_aux_hidden_state_layer_ids"))
+    if not capture_depths:
+        capture_depths = tuple(layer + 1 for layer in target_layer_ids)
     return DFlashDraftConfig(
-        architecture=architecture,
+        architecture="DFlashDraftModel",
+        decoder_arch="qwen",
         block_size=int(config["block_size"]),
         mask_token_id=int(dflash_config["mask_token_id"]),
         target_layer_ids=target_layer_ids,
+        target_capture_depths=capture_depths,
         num_target_layers=int(config.get("num_target_layers", 0) or 0),
         hidden_size=hidden_size,
-        target_hidden_size=hidden_size,
+        target_hidden_size=int(config.get("target_hidden_size", hidden_size)),
         target_hidden_concat_size=len(target_layer_ids) * hidden_size,
         intermediate_size=int(config["intermediate_size"]),
         num_hidden_layers=num_layers,
         num_attention_heads=num_attention_heads,
         num_key_value_heads=int(config.get("num_key_value_heads", num_attention_heads)),
-        head_dim=head_dim,
+        head_dim=int(config.get("head_dim", hidden_size // num_attention_heads)),
         rope_theta=float(config.get("rope_theta", 10000.0)),
+        rms_norm_eps=float(config.get("rms_norm_eps", 1.0e-6)),
+        max_position_embeddings=int(config.get("max_position_embeddings", 0) or 0),
+        sliding_windows=_normalized_sliding_windows(config, num_layers),
+        attention_gate_type="none",
+        qkv_layout="separate",
+        aux_hidden_norm_count=0,
+        causal=bool(dflash_config.get("causal", False)),
         vocab_size=int(config["vocab_size"]),
-        dtype=str(config.get("dtype", "bfloat16")),
-        layer_types=layer_types,
+        draft_vocab_size=int(config.get("draft_vocab_size", config["vocab_size"])),
+        dtype=str(config.get("dtype", config.get("torch_dtype", "bfloat16"))),
+        layer_types=_layer_types(config, num_layers),
     )
+
+
+def _parse_laguna_dflash_config(config: Mapping[str, Any]) -> DFlashDraftConfig:
+    dflash_config = _dflash_config_mapping(config)
+    target_layer_ids = _int_tuple(dflash_config.get("target_layer_ids"))
+    capture_depths = _int_tuple(config.get("eagle_aux_hidden_state_layer_ids"))
+    if not capture_depths:
+        capture_depths = tuple(layer + 1 for layer in target_layer_ids)
+    hidden_size = int(config["hidden_size"])
+    num_layers = int(config["num_hidden_layers"])
+    num_attention_heads = int(config["num_attention_heads"])
+    gating = str(config.get("gating", "per-head")).replace("-", "_")
+    return DFlashDraftConfig(
+        architecture="DFlashLagunaForCausalLM",
+        decoder_arch="laguna",
+        block_size=int(dflash_config["block_size"]),
+        mask_token_id=int(dflash_config["mask_token_id"]),
+        target_layer_ids=target_layer_ids,
+        target_capture_depths=capture_depths,
+        num_target_layers=int(dflash_config["num_target_layers"]),
+        hidden_size=hidden_size,
+        target_hidden_size=int(config.get("target_hidden_size", hidden_size)),
+        target_hidden_concat_size=len(target_layer_ids) * hidden_size,
+        intermediate_size=int(config["intermediate_size"]),
+        num_hidden_layers=num_layers,
+        num_attention_heads=num_attention_heads,
+        num_key_value_heads=int(config["num_key_value_heads"]),
+        head_dim=int(config["head_dim"]),
+        rope_theta=float(config["rope_theta"]),
+        rms_norm_eps=float(config.get("rms_norm_eps", 1.0e-6)),
+        max_position_embeddings=int(config.get("max_position_embeddings", 0) or 0),
+        sliding_windows=_normalized_sliding_windows(config, num_layers),
+        attention_gate_type=gating,
+        qkv_layout="fused_qkv",
+        aux_hidden_norm_count=len(target_layer_ids),
+        causal=bool(dflash_config.get("causal", False)),
+        vocab_size=int(config["vocab_size"]),
+        draft_vocab_size=int(config.get("draft_vocab_size", config["vocab_size"])),
+        dtype=str(config.get("torch_dtype", config.get("dtype", "bfloat16"))),
+        layer_types=_layer_types(config, num_layers),
+    )
+
+
+def _dflash_config_mapping(config: Mapping[str, Any]) -> Mapping[str, Any]:
+    value = config.get("dflash_config")
+    return value if isinstance(value, Mapping) else {}
+
+
+def _int_tuple(value: object) -> tuple[int, ...]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
+        return ()
+    return tuple(int(item) for item in value)
+
+
+def _layer_types(config: Mapping[str, Any], num_layers: int) -> tuple[str, ...]:
+    return tuple(str(item) for item in (config.get("layer_types") or ("full_attention",) * num_layers))
+
+
+def _normalized_sliding_windows(config: Mapping[str, Any], num_layers: int) -> tuple[int, ...]:
+    explicit = _int_tuple(config.get("sliding_windows"))
+    if explicit:
+        return explicit
+    window = int(config.get("sliding_window", 0) or 0)
+    return tuple(window if layer_type == "sliding_attention" else 0 for layer_type in _layer_types(config, num_layers))
+
+
+register_dflash_draft_config_parser("DFlashDraftModel", _parse_qwen_dflash_config)
+register_dflash_draft_config_parser("DFlashLagunaForCausalLM", _parse_laguna_dflash_config)
 
 
 def validate_dflash_drafter_metadata(
@@ -383,16 +568,30 @@ def dflash_drafter_runtime_tensor_names(
     layers = config.num_hidden_layers if layer_limit is None else int(layer_limit)
     if layers < 0 or layers > config.num_hidden_layers:
         raise ValueError(f"layer_limit must be in [0, {config.num_hidden_layers}], got {layer_limit}")
-    names = ["fc.weight", "hidden_norm.weight"]
+    names = [
+        *(f"aux_hidden_norms.{index}.weight" for index in range(config.aux_hidden_norm_count)),
+        "fc.weight",
+        "hidden_norm.weight",
+    ]
     for layer in range(layers):
         prefix = f"layers.{layer}"
+        attention = (
+            (
+                f"{prefix}.self_attn.qkv_proj.weight",
+                f"{prefix}.self_attn.g_proj.weight",
+            )
+            if config.qkv_layout == "fused_qkv"
+            else (
+                f"{prefix}.self_attn.q_proj.weight",
+                f"{prefix}.self_attn.k_proj.weight",
+                f"{prefix}.self_attn.v_proj.weight",
+            )
+        )
         names.extend(
             (
                 f"{prefix}.input_layernorm.weight",
                 f"{prefix}.post_attention_layernorm.weight",
-                f"{prefix}.self_attn.q_proj.weight",
-                f"{prefix}.self_attn.k_proj.weight",
-                f"{prefix}.self_attn.v_proj.weight",
+                *attention,
                 f"{prefix}.self_attn.o_proj.weight",
                 f"{prefix}.self_attn.q_norm.weight",
                 f"{prefix}.self_attn.k_norm.weight",
@@ -414,7 +613,7 @@ def load_dflash_drafter_bf16_weights(
     validate: bool = True,
     layer_limit: int | None = None,
 ) -> DFlashDrafterDeviceWeights:
-    """Materialize z-lab DFlash drafter BF16 weights without importing PyTorch.
+    """Materialize registered DFlash drafter BF16 weights without PyTorch.
 
     BF16 payloads are copied byte-for-byte from safetensors storage via the raw
     header offsets, avoiding NumPy's missing bfloat16 dtype support and avoiding
@@ -453,22 +652,49 @@ def load_dflash_drafter_bf16_weights(
 
 def dflash_drafter_tensor_requirements(config: DFlashDraftConfig) -> tuple[TensorRequirement, ...]:
     reqs: list[TensorRequirement] = [
+        *(
+            TensorRequirement(
+                f"aux_hidden_norms.{index}.weight",
+                "BF16",
+                (config.hidden_size,),
+                "per-capture target hidden norm",
+            )
+            for index in range(config.aux_hidden_norm_count)
+        ),
         TensorRequirement("fc.weight", "BF16", (config.hidden_size, config.target_hidden_concat_size), "target hidden projection"),
         TensorRequirement("hidden_norm.weight", "BF16", (config.hidden_size,), "post-fc target hidden norm"),
         TensorRequirement("norm.weight", "BF16", (config.hidden_size,), "final drafter norm"),
     ]
-    attn_q = config.num_attention_heads * config.head_dim
-    attn_kv = config.num_key_value_heads * config.head_dim
     for layer in range(config.num_hidden_layers):
         prefix = f"layers.{layer}"
+        attention_requirements = (
+            (
+                TensorRequirement(
+                    f"{prefix}.self_attn.qkv_proj.weight",
+                    "BF16",
+                    (config.qkv_features, config.hidden_size),
+                    "fused Q/K/V rows",
+                ),
+                TensorRequirement(
+                    f"{prefix}.self_attn.g_proj.weight",
+                    "BF16",
+                    (_attention_gate_width(config), config.hidden_size),
+                    "Laguna softplus attention gate",
+                ),
+            )
+            if config.qkv_layout == "fused_qkv"
+            else (
+                TensorRequirement(f"{prefix}.self_attn.q_proj.weight", "BF16", (config.q_features, config.hidden_size)),
+                TensorRequirement(f"{prefix}.self_attn.k_proj.weight", "BF16", (config.kv_features, config.hidden_size)),
+                TensorRequirement(f"{prefix}.self_attn.v_proj.weight", "BF16", (config.kv_features, config.hidden_size)),
+            )
+        )
         reqs.extend(
             (
                 TensorRequirement(f"{prefix}.input_layernorm.weight", "BF16", (config.hidden_size,)),
                 TensorRequirement(f"{prefix}.post_attention_layernorm.weight", "BF16", (config.hidden_size,)),
-                TensorRequirement(f"{prefix}.self_attn.q_proj.weight", "BF16", (attn_q, config.hidden_size)),
-                TensorRequirement(f"{prefix}.self_attn.k_proj.weight", "BF16", (attn_kv, config.hidden_size)),
-                TensorRequirement(f"{prefix}.self_attn.v_proj.weight", "BF16", (attn_kv, config.hidden_size)),
-                TensorRequirement(f"{prefix}.self_attn.o_proj.weight", "BF16", (config.hidden_size, attn_q)),
+                *attention_requirements,
+                TensorRequirement(f"{prefix}.self_attn.o_proj.weight", "BF16", (config.hidden_size, config.q_features)),
                 TensorRequirement(f"{prefix}.self_attn.q_norm.weight", "BF16", (config.head_dim,)),
                 TensorRequirement(f"{prefix}.self_attn.k_norm.weight", "BF16", (config.head_dim,)),
                 TensorRequirement(f"{prefix}.mlp.gate_proj.weight", "BF16", (config.intermediate_size, config.hidden_size)),
@@ -477,6 +703,16 @@ def dflash_drafter_tensor_requirements(config: DFlashDraftConfig) -> tuple[Tenso
             )
         )
     return tuple(reqs)
+
+
+def _attention_gate_width(config: DFlashDraftConfig) -> int:
+    if config.attention_gate_type == "per_head":
+        return config.num_attention_heads
+    if config.attention_gate_type == "per_element":
+        return config.q_features
+    raise ValueError(
+        f"DFlash architecture {config.architecture!r} has no supported attention gate"
+    )
 
 
 def dflash_target_tensor_requirements(config: DFlashTargetConfig) -> tuple[TensorRequirement, ...]:
@@ -517,8 +753,8 @@ def dflash_target_tensor_requirements(config: DFlashTargetConfig) -> tuple[Tenso
 
 def _validate_dflash_config(config: DFlashDraftConfig, *, target_config: DFlashTargetConfig | None) -> tuple[str, ...]:
     errors: list[str] = []
-    if config.architecture != "DFlashDraftModel":
-        errors.append(f"expected architecture DFlashDraftModel, got {config.architecture!r}")
+    if config.architecture not in _DFLASH_DRAFT_CONFIG_PARSERS:
+        errors.append(f"unregistered DFlash architecture {config.architecture!r}")
     if config.block_size <= 0:
         errors.append(f"block_size must be positive, got {config.block_size}")
     if config.mask_token_id < 0:
@@ -531,8 +767,18 @@ def _validate_dflash_config(config: DFlashDraftConfig, *, target_config: DFlashT
         )
     if len(set(config.target_layer_ids)) != len(config.target_layer_ids):
         errors.append(f"target_layer_ids must be unique, got {list(config.target_layer_ids)}")
+    expected_depths = tuple(layer + 1 for layer in config.target_layer_ids)
+    if config.target_capture_depths != expected_depths:
+        errors.append(
+            "post-layer capture depths must equal zero-based target_layer_ids + 1: "
+            f"expected {list(expected_depths)}, got {list(config.target_capture_depths)}"
+        )
     if len(config.layer_types) != config.num_hidden_layers:
         errors.append(f"layer_types length {len(config.layer_types)} does not match num_hidden_layers {config.num_hidden_layers}")
+    if config.sliding_windows and len(config.sliding_windows) != config.num_hidden_layers:
+        errors.append(
+            f"sliding_windows length {len(config.sliding_windows)} does not match num_hidden_layers {config.num_hidden_layers}"
+        )
     if config.hidden_size <= 0 or config.intermediate_size <= 0:
         errors.append("hidden_size and intermediate_size must be positive")
     if config.num_attention_heads <= 0 or config.num_key_value_heads <= 0 or config.head_dim <= 0:
@@ -541,6 +787,36 @@ def _validate_dflash_config(config: DFlashDraftConfig, *, target_config: DFlashT
         errors.append(
             f"num_attention_heads {config.num_attention_heads} must be divisible by num_key_value_heads {config.num_key_value_heads}"
         )
+    if config.rms_norm_eps <= 0.0:
+        errors.append(f"rms_norm_eps must be positive, got {config.rms_norm_eps}")
+    if config.draft_vocab_size != config.vocab_size:
+        errors.append(
+            f"draft_vocab_size {config.draft_vocab_size} does not match target vocab_size {config.vocab_size}"
+        )
+    if config.decoder_arch == "laguna":
+        if config.qkv_layout != "fused_qkv":
+            errors.append("Laguna DFlash requires fused_qkv projection layout")
+        if config.aux_hidden_norm_count != len(config.target_layer_ids):
+            errors.append(
+                "Laguna DFlash auxiliary norm count must match target capture count"
+            )
+        if config.attention_gate_type not in {"per_head", "per_element"}:
+            errors.append(
+                f"Laguna DFlash attention gate must be per_head or per_element, got {config.attention_gate_type!r}"
+            )
+        if not config.causal:
+            errors.append("Laguna DFlash requires causal=true")
+        if any(layer_type != "sliding_attention" for layer_type in config.layer_types):
+            errors.append("Laguna DFlash currently requires sliding_attention for every draft layer")
+        if any(window <= 0 for window in config.sliding_windows):
+            errors.append("Laguna DFlash sliding windows must all be positive")
+    elif config.decoder_arch == "qwen":
+        if config.qkv_layout != "separate":
+            errors.append("Qwen DFlash requires separate Q/K/V projection layout")
+        if config.aux_hidden_norm_count != 0:
+            errors.append("Qwen DFlash does not support auxiliary hidden norms")
+    else:
+        errors.append(f"unsupported DFlash decoder architecture {config.decoder_arch!r}")
     if target_config is not None:
         if config.num_target_layers != target_config.num_hidden_layers:
             errors.append(
