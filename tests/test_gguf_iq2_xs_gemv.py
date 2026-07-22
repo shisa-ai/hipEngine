@@ -21,7 +21,11 @@ from hipengine.core.memory import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_iq_gemv import (
     build_gguf_iq_gemv,
     gguf_iq2_xs_selected_dual_silu_gemv_bf16_bf16_out,
+    gguf_iq2_xs_selected_dual_silu_gemv_tile1_bf16_bf16_out,
+    gguf_iq2_xs_selected_dual_silu_gemv_tile2_bf16_bf16_out,
     gguf_iq2_xs_selected_gemv_bf16_bf16_out,
+    gguf_iq2_xs_selected_gemv_tile1_bf16_bf16_out,
+    gguf_iq2_xs_selected_gemv_tile2_bf16_bf16_out,
     plan_gguf_iq_gemv_build,
 )
 from hipengine.kernels.registry import resolve
@@ -131,6 +135,7 @@ def _run_selected(
     qweight: np.ndarray,
     *,
     out_features: int,
+    wrapper=gguf_iq2_xs_selected_gemv_bf16_bf16_out,
 ) -> np.ndarray:
     out = np.zeros((selected.size, out_features), dtype=np.uint16)
     buffers = []
@@ -143,7 +148,7 @@ def _run_selected(
         copy_host_to_device(x_buf, host_array_ptr(x_bf16), x_bf16.nbytes)
         copy_host_to_device(selected_buf, host_array_ptr(selected), selected.nbytes)
         copy_host_to_device(weight_buf, host_array_ptr(qweight), qweight.nbytes)
-        gguf_iq2_xs_selected_gemv_bf16_bf16_out(
+        wrapper(
             x_buf.ptr,
             selected_buf.ptr,
             weight_buf.ptr,
@@ -170,6 +175,7 @@ def _run_dual(
     up: np.ndarray,
     *,
     out_features: int,
+    wrapper=gguf_iq2_xs_selected_dual_silu_gemv_bf16_bf16_out,
 ) -> np.ndarray:
     out = np.zeros((selected.size, out_features), dtype=np.uint16)
     buffers = []
@@ -180,7 +186,7 @@ def _run_dual(
         buffers.extend([*allocated, out_buf])
         for buffer, array in zip(allocated, arrays, strict=True):
             copy_host_to_device(buffer, host_array_ptr(array), array.nbytes)
-        gguf_iq2_xs_selected_dual_silu_gemv_bf16_bf16_out(
+        wrapper(
             allocated[0].ptr,
             allocated[1].ptr,
             allocated[2].ptr,
@@ -243,6 +249,51 @@ def test_iq2_xs_dual_silu_is_exact_to_single_projection_boundary(iq_library) -> 
     np.testing.assert_array_equal(actual, expected)
 
 
+def test_iq2_xs_tile2_is_exact_for_odd_output_tail(iq_library) -> None:
+    in_features = 3072
+    out_features = 23
+    x = _f32_to_bf16_u16(_make_x(2, in_features))
+    selected = np.asarray([1, 0, 0, 1], dtype=np.int64)
+    gate = _make_iq2_xs_weight(2, out_features, in_features, seed=0x1A6D)
+    up = _make_iq2_xs_weight(2, out_features, in_features, seed=0x1A6E)
+    expected_single = _run_selected(
+        iq_library,
+        x,
+        selected,
+        gate,
+        out_features=out_features,
+        wrapper=gguf_iq2_xs_selected_gemv_tile1_bf16_bf16_out,
+    )
+    actual_single = _run_selected(
+        iq_library,
+        x,
+        selected,
+        gate,
+        out_features=out_features,
+        wrapper=gguf_iq2_xs_selected_gemv_tile2_bf16_bf16_out,
+    )
+    np.testing.assert_array_equal(actual_single, expected_single)
+    expected_dual = _run_dual(
+        iq_library,
+        x,
+        selected,
+        gate,
+        up,
+        out_features=out_features,
+        wrapper=gguf_iq2_xs_selected_dual_silu_gemv_tile1_bf16_bf16_out,
+    )
+    actual_dual = _run_dual(
+        iq_library,
+        x,
+        selected,
+        gate,
+        up,
+        out_features=out_features,
+        wrapper=gguf_iq2_xs_selected_dual_silu_gemv_tile2_bf16_bf16_out,
+    )
+    np.testing.assert_array_equal(actual_dual, expected_dual)
+
+
 def test_iq2_xs_grid_supports_exact_branchless_magnitude_decoder() -> None:
     direct_source = _HIP_SOURCE.read_text()
     prefill_source = _PREFILL_SOURCE.read_text()
@@ -280,6 +331,12 @@ def test_iq2_xs_registry_build_and_raw_pointer_contract() -> None:
         .default
         == 64
     )
+    assert gguf_iq2_xs_selected_gemv_bf16_bf16_out.__globals__[
+        "_SYMBOL_IQ2_SELECTED"
+    ].endswith("selected_gemv_tile2_bf16_bf16_out")
+    assert gguf_iq2_xs_selected_dual_silu_gemv_bf16_bf16_out.__globals__[
+        "_SYMBOL_IQ2_DUAL_SILU"
+    ].endswith("selected_dual_silu_gemv_tile2_bf16_bf16_out")
     assert resolve(
         backend="hip_gfx1100",
         layer="moe_linear",
@@ -292,6 +349,18 @@ def test_iq2_xs_registry_build_and_raw_pointer_contract() -> None:
         quant="gguf_iq2_xs",
         variant="selected_dual_silu_gemv_decode_bf16_bf16_out",
     ) is gguf_iq2_xs_selected_dual_silu_gemv_bf16_bf16_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="moe_linear",
+        quant="gguf_iq2_xs",
+        variant="selected_gemv_decode_tile1_bf16_bf16_out",
+    ) is gguf_iq2_xs_selected_gemv_tile1_bf16_bf16_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="moe_linear",
+        quant="gguf_iq2_xs",
+        variant="selected_dual_silu_gemv_decode_tile1_bf16_bf16_out",
+    ) is gguf_iq2_xs_selected_dual_silu_gemv_tile1_bf16_bf16_out
     artifact = plan_gguf_iq_gemv_build(compiler_version="test-compiler")
     assert _HIP_SOURCE in artifact.sources
     source = _HIP_SOURCE.read_text()

@@ -253,7 +253,7 @@ throughput.
 | 2 | Q8_1 activation plus raw-IQ2 `sudot4` | decode/small batch | 1.5-3x | medium; approximate |
 | 3 | 16-/32-value tasks, wider loads, geometry sweep | both | 10-30% | medium |
 | 4 | Adaptive rowbatch1/2/4 | prefill | measured 0.64-13.09% vs prior policy | low-medium |
-| 5 | Tile two output columns while sharing activations | decode | 5-20% | medium |
+| 5 | Tile two output columns while sharing activations | decode | measured 2.12-8.82% | medium |
 | 6 | IQ2-specific integer MMQ/WMMA | large prefill | 1.5-3x | high |
 | 7 | Wave-uniform address, reduction, and codegen cleanup | both | 2-10% | low |
 | 8 | Fuse Q8_1 quantization into its producer | Q8_1 path | several us/layer | medium |
@@ -413,6 +413,18 @@ in a repeated cache-hot microbenchmark but regressed the real 37-layer family by
 12.50%. Its fourfold smaller grid lost cold, distinct-weight latency hiding.
 An IQ2 tile is retainable only after a cold/distinct-expert production-shape
 trace, not a repeated one-weight microbenchmark.
+
+**Retained result (2026-07-22):** tile2 shares each 16-value BF16 activation
+load/conversion across two independent output-column weight streams and keeps
+each column's pair16 accumulation and wave reduction association unchanged. At
+E256/K3072/N1024/top-10, tile1 -> tile2 improves rotating single/dual
+`33.569/57.176 -> 30.955/55.964 us` (-7.79/-2.12%); hot improves
+8.62/4.04% and repeated improves 8.82/4.94%. An independent full-protocol repeat
+also wins all six leaves. Full-shape projections/fused output are BF16-bit exact.
+Tile2 remains scratch-free at local64/VGPR80 single and VGPR136 fused dual,
+with LDS512B. It is promoted to the default while explicit tile1 four-axis
+variants remain for rollback. Evidence:
+[`../benchmarks/results/2026-07-22-gpu1-iq2-xs-output-tile2.json`](../benchmarks/results/2026-07-22-gpu1-iq2-xs-output-tile2.json).
 
 ### P6 — Integer MMQ/WMMA for populated prefill
 
@@ -615,7 +627,7 @@ and state/KV behavior before kernel model-level gates begin.
 | Branchless exact decode | complete | exact, branch-free selector decode; retained across full matrix |
 | Group width/geometry | complete | pair16/local64 retained for decode; task32 and prefill pair16 rejected |
 | Adaptive rowbatch | complete | exact batch1/2/4 sparse policy retained; rowbatch8 rejected |
-| Output tile2 | queued | cold production-shape non-regression |
+| Output tile2 | complete | exact tile2 retained across cold/hot/repeated routes |
 | Q8_1 `sudot4` | queued | primitive gate, ISA proof, inclusive win; model gate later |
 | Integer MMQ | deferred behind scalar work | populated-expert crossover and retained full-shape win |
 | Laguna model validation | blocked on integration | all-tensor runner plus model-level gates |

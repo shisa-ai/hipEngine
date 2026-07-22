@@ -1,0 +1,288 @@
+{
+  "schema": "hipengine.iq2_xs_tuning_bench.v1",
+  "created_at": "2026-07-22T17:53:08.390570+00:00",
+  "scope": "synthetic Laguna-shaped raw IQ2_XS primitives; no model throughput",
+  "command": "PYTHONPATH=. python3 scripts/iq2_xs_tuning_bench.py --mode decode --require-cached-build --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --decode-threads 64 --decode-patterns rotating,hot,repeated --route-sets 32 --warmup-ms 250 --decode-iters 200 --repeats 5 --json /tmp/iq2-xs-output-tile2-final.json",
+  "hardware": {
+    "gpu_index": "1",
+    "name": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100"
+  },
+  "shape": {
+    "experts": 256,
+    "in_features": 3072,
+    "out_features": 1024,
+    "top_k": 10
+  },
+  "timing": {
+    "warmup_ms_per_case": 250.0,
+    "decode_iterations": 200,
+    "prefill_iterations": 10,
+    "repeats": 5,
+    "counterbalanced": true
+  },
+  "source_lineage": {
+    "llama_cpp": "1ebf790cda38d827559548f67b0469189690cc8c",
+    "qwen_kernel": "52e240f9c6d91750d0e5e692976cfb67fd9bc603"
+  },
+  "decode": {
+    "cases": [
+      {
+        "pattern": "rotating",
+        "route_sets": 32,
+        "warmup_launches": 5576,
+        "selected_single_t64": {
+          "threads": 64,
+          "samples_ms": [
+            0.031112434864044188,
+            0.033569259643554686,
+            0.03368226528167725,
+            0.03358205556869507,
+            0.033460655212402345
+          ],
+          "median_ms": 0.033569259643554686,
+          "raw_weight_bytes_per_dispatch": 9093120,
+          "approx_effective_gb_s": 270.8763939554408
+        },
+        "selected_dual_silu_t64": {
+          "threads": 64,
+          "samples_ms": [
+            0.053260607719421385,
+            0.05712783813476562,
+            0.0572608470916748,
+            0.05717604637145996,
+            0.05727584362030029
+          ],
+          "median_ms": 0.05717604637145996,
+          "raw_weight_bytes_per_dispatch": 18186240,
+          "approx_effective_gb_s": 318.07445869635814
+        },
+        "selected_single_tile2_t64": {
+          "threads": 64,
+          "samples_ms": [
+            0.0302876353263855,
+            0.030954635143280028,
+            0.03123284101486206,
+            0.030942440032958984,
+            0.0311000394821167
+          ],
+          "median_ms": 0.030954635143280028,
+          "raw_weight_bytes_per_dispatch": 9093120,
+          "approx_effective_gb_s": 293.756329477333
+        },
+        "selected_dual_silu_tile2_t64": {
+          "threads": 64,
+          "samples_ms": [
+            0.055400424003601074,
+            0.05642282962799072,
+            0.05583203315734863,
+            0.05596443653106689,
+            0.05613303184509277
+          ],
+          "median_ms": 0.05596443653106689,
+          "raw_weight_bytes_per_dispatch": 18186240,
+          "approx_effective_gb_s": 324.960655860521
+        }
+      },
+      {
+        "pattern": "hot",
+        "route_sets": 32,
+        "warmup_launches": 5524,
+        "selected_single_t64": {
+          "threads": 64,
+          "samples_ms": [
+            0.030497634410858156,
+            0.03172484397888184,
+            0.03153764963150024,
+            0.03162105083465576,
+            0.03146224498748779
+          ],
+          "median_ms": 0.03153764963150024,
+          "raw_weight_bytes_per_dispatch": 9093120,
+          "approx_effective_gb_s": 288.32586150990994
+        },
+        "selected_dual_silu_t64": {
+          "threads": 64,
+          "samples_ms": [
+            0.053132219314575194,
+            0.053803024291992185,
+            0.053911023139953614,
+            0.05397762298583984,
+            0.05372121810913086
+          ],
+          "median_ms": 0.053803024291992185,
+          "raw_weight_bytes_per_dispatch": 18186240,
+          "approx_effective_gb_s": 338.0151996903037
+        },
+        "selected_single_tile2_t64": {
+          "threads": 64,
+          "samples_ms": [
+            0.02875643014907837,
+            0.02887963056564331,
+            0.02894362449645996,
+            0.028738429546356203,
+            0.028819224834442138
+          ],
+          "median_ms": 0.028819224834442138,
+          "raw_weight_bytes_per_dispatch": 9093120,
+          "approx_effective_gb_s": 315.5227127806964
+        },
+        "selected_dual_silu_tile2_t64": {
+          "threads": 64,
+          "samples_ms": [
+            0.05196660995483399,
+            0.05162200927734375,
+            0.051581811904907224,
+            0.05177100658416748,
+            0.05162940979003906
+          ],
+          "median_ms": 0.05162940979003906,
+          "raw_weight_bytes_per_dispatch": 18186240,
+          "approx_effective_gb_s": 352.24574663855054
+        }
+      },
+      {
+        "pattern": "repeated",
+        "route_sets": 32,
+        "warmup_launches": 5736,
+        "selected_single_t64": {
+          "threads": 64,
+          "samples_ms": [
+            0.02888702392578125,
+            0.030117440223693847,
+            0.02984004020690918,
+            0.029955039024353026,
+            0.029858040809631347
+          ],
+          "median_ms": 0.029858040809631347,
+          "raw_weight_bytes_per_dispatch": 9093120,
+          "approx_effective_gb_s": 304.5450991903936
+        },
+        "selected_dual_silu_t64": {
+          "threads": 64,
+          "samples_ms": [
+            0.05079700469970703,
+            0.051588215827941895,
+            0.05181721210479737,
+            0.05159740924835205,
+            0.05185221672058105
+          ],
+          "median_ms": 0.05159740924835205,
+          "raw_weight_bytes_per_dispatch": 18186240,
+          "approx_effective_gb_s": 352.464208279621
+        },
+        "selected_single_tile2_t64": {
+          "threads": 64,
+          "samples_ms": [
+            0.027068219184875487,
+            0.027224016189575196,
+            0.027505218982696533,
+            0.027216215133666993,
+            0.02730181932449341
+          ],
+          "median_ms": 0.027224016189575196,
+          "raw_weight_bytes_per_dispatch": 9093120,
+          "approx_effective_gb_s": 334.01096798796345
+        },
+        "selected_dual_silu_tile2_t64": {
+          "threads": 64,
+          "samples_ms": [
+            0.048973588943481444,
+            0.04905439376831055,
+            0.048984193801879884,
+            0.049108996391296386,
+            0.04904858589172363
+          ],
+          "median_ms": 0.04904858589172363,
+          "raw_weight_bytes_per_dispatch": 18186240,
+          "approx_effective_gb_s": 370.7801085264053
+        }
+      }
+    ]
+  },
+  "correctness": {
+    "decode": {
+      "passed": true,
+      "bf16_bit_mismatches": 0,
+      "elements": 10240,
+      "oracle": "selected-single gate/up plus BF16-boundary SiLU",
+      "geometry_vs_threads256": {
+        "64": {
+          "passed": true,
+          "projection_bf16_bit_mismatches": 0,
+          "dual_bf16_bit_mismatches": 0,
+          "projection_kl_max": 0.0,
+          "projection_top1": 1.0,
+          "dual_kl_max": 0.0,
+          "dual_top1": 1.0
+        },
+        "tile2_64": {
+          "passed": true,
+          "projection_bf16_bit_mismatches": 0,
+          "dual_bf16_bit_mismatches": 0,
+          "projection_kl_max": 0.0,
+          "projection_top1": 1.0,
+          "dual_kl_max": 0.0,
+          "dual_top1": 1.0
+        }
+      }
+    }
+  },
+  "status": "accepted_exact_decode_improvement",
+  "measured_base_commit": "f1f501613cfbfed4e1cc99c09d72ac4dd647433b",
+  "measured_script_sha256": "ed6421dc08eb97f9072c99b0c8014cf222247a872c4f9195285d7bab4b79d27d",
+  "measured_kernel_source_sha256": "120d1bb2f5ce4f4d8d330a9154b809c84e47ec54c804430ed93ed54d29c8764b",
+  "baseline_artifact": "benchmarks/results/2026-07-22-gpu1-iq2-xs-pair16-local64.json",
+  "exact_command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 scripts/iq2_xs_tuning_bench.py --mode decode --require-cached-build --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --decode-threads 64 --decode-patterns rotating,hot,repeated --route-sets 32 --warmup-ms 250 --decode-iters 200 --repeats 5 --json /tmp/iq2-xs-output-tile2-final.json",
+  "change": {
+    "summary": "Compute two adjacent output columns per selected IQ2_XS workgroup while sharing BF16 activation loads and conversions.",
+    "output_columns_per_workgroup": 2,
+    "threads": 64,
+    "strict_math": true,
+    "default_promoted": true,
+    "tile1_fallback_registered": true
+  },
+  "comparison": {
+    "tile1_vs_tile2_us": {
+      "rotating": {
+        "selected_single": [33.569, 30.955],
+        "selected_dual_silu": [57.176, 55.964]
+      },
+      "hot": {
+        "selected_single": [31.538, 28.819],
+        "selected_dual_silu": [53.803, 51.629]
+      },
+      "repeated": {
+        "selected_single": [29.858, 27.224],
+        "selected_dual_silu": [51.597, 49.049]
+      }
+    },
+    "tile2_improvement_percent": {
+      "rotating": {
+        "selected_single": -7.79,
+        "selected_dual_silu": -2.12
+      },
+      "hot": {
+        "selected_single": -8.62,
+        "selected_dual_silu": -4.04
+      },
+      "repeated": {
+        "selected_single": -8.82,
+        "selected_dual_silu": -4.94
+      }
+    },
+    "independent_repeat": "The same six leaves improved by 1.88-9.59% in an earlier full-protocol repeat."
+  },
+  "device_code": {
+    "rocprof_trace_sha256": "a616f5a3927a07f49991228c951d0436fd90d3c2117c23d0e9f3e3aba5f7f999",
+    "tile1_single": {"workgroup_x": 64, "vgpr": 64, "lds_bytes": 512, "scratch_bytes": 0},
+    "tile1_dual_silu": {"workgroup_x": 64, "vgpr": 96, "lds_bytes": 512, "scratch_bytes": 0},
+    "tile2_single": {"workgroup_x": 64, "vgpr": 80, "lds_bytes": 512, "scratch_bytes": 0},
+    "tile2_dual_silu": {"workgroup_x": 64, "vgpr": 136, "lds_bytes": 512, "scratch_bytes": 0}
+  },
+  "limitations": [
+    "Synthetic valid IQ2_XS bytes and deterministic routing, not Laguna model throughput.",
+    "Tile2 raises VGPR substantially, especially for fused dual-SiLU, but remains scratch-free and wins cold rotating plus hot/repeated controls.",
+    "Full-model quality/performance remains blocked on Laguna runner integration."
+  ]
+}
