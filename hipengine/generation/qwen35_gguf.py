@@ -26,7 +26,7 @@ from hipengine.dispatch import (
     WorkKind,
     plan_physical_batch_groups,
 )
-from hipengine.generation.batch_scheduler import CompletedRequest, GeneratedToken
+from hipengine.generation.batch_scheduler import CompletedRequest, GeneratedToken, ResidentBatchScheduler
 from hipengine.generation.constraints import token_sequence_state_for_tokens
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
 from hipengine.generation.engine_loop import GenerationAdmissionRejected
@@ -64,6 +64,7 @@ from hipengine.kernels.backends import (
     resolve_backend,
 )
 from hipengine.quant.gguf import dequantize_gguf_data
+from hipengine.runtime.prefill import PrefillConfig
 from hipengine.runtime.qwen35_gguf_runner import (
     Qwen35GGUFFullStackRunner,
     Qwen35GGUFResidentSession,
@@ -592,6 +593,14 @@ def _free_mtp_buffers(buffers: list[Any], *, runtime: Any) -> None:
         free(buffer, runtime=runtime)
 
 
+@dataclass(frozen=True)
+class _GGUFNativeBatchRun:
+    generated_ids: dict[int, list[int]]
+    native_decode_steps: int
+    execution_paths: dict[str, str]
+    scheduling: dict[str, Any]
+
+
 @dataclass
 class Qwen35GGUFBringupGenerator:
     """Public API GGUF greedy generator over a persistent resident session."""
@@ -600,6 +609,11 @@ class Qwen35GGUFBringupGenerator:
     weight_index: GGUFModelInfo
     model_plugin: Any
     backend: str = "auto"
+    bulk_prefill_attention_mode: str = "bulk"
+    prefill_quant: str | None = None
+    prefill_attn_aotriton_min_tokens: int | None = None
+    native_batch_decode: bool = False
+    native_batch_capacity: int = 8
     engine_loop_config_defaults: Mapping[str, Any] = field(default_factory=dict, repr=False)
     server_plain_ar_max_active_requests: int | None = None
     tokenizer: Qwen35GGUFTokenizer = field(init=False)
@@ -627,6 +641,15 @@ class Qwen35GGUFBringupGenerator:
     supports_stream_logprobs: ClassVar[bool] = True
 
     def __post_init__(self) -> None:
+        if self.bulk_prefill_attention_mode not in {"bulk", "native"}:
+            raise ValueError("bulk_prefill_attention_mode must be 'bulk' or 'native'")
+        if (
+            self.prefill_attn_aotriton_min_tokens is not None
+            and int(self.prefill_attn_aotriton_min_tokens) < 0
+        ):
+            raise ValueError("prefill_attn_aotriton_min_tokens must be non-negative")
+        if int(self.native_batch_capacity) < 2 or int(self.native_batch_capacity) > 8:
+            raise ValueError("native_batch_capacity must be within [2, 8]")
         self.backend = resolve_backend(self.backend)
         self.tokenizer = Qwen35GGUFTokenizer.from_gguf_info(self.weight_index)
         self._defer_resident_session_policy_resolution = True
@@ -1094,6 +1117,7 @@ class Qwen35GGUFBringupGenerator:
             if use_gemv_decode is not None:
                 session_kwargs["use_gemv_decode"] = bool(use_gemv_decode)
             with Qwen35GGUFResidentSession(self.model_path, **session_kwargs) as session:
+                self._configure_session(session)
                 yield session, False
             return
         session, key, reused = self._acquire_shared_session(
@@ -1103,6 +1127,7 @@ class Qwen35GGUFBringupGenerator:
             use_gemv_decode=use_gemv_decode,
         )
         try:
+            self._configure_session(session)
             yield session, reused
         except Exception:
             session.close()
@@ -1137,6 +1162,24 @@ class Qwen35GGUFBringupGenerator:
             return
         with self._shared_mtp_draft_pool_lock:
             self._shared_mtp_draft_pool.setdefault(int(key), []).append(draft)
+
+    def _configure_session(self, session: Qwen35GGUFResidentSession) -> None:
+        # Prefill correctness policy is selected by the generator registry
+        # factory, not by a quant branch in runtime dispatch.
+        session.default_bulk_attention_mode = getattr(
+            self,
+            "bulk_prefill_attention_mode",
+            "bulk",
+        )
+        prefill_quant = getattr(self, "prefill_quant", None)
+        if prefill_quant is not None:
+            session.select_prefill_quant(prefill_quant)
+        aotriton_min_tokens = getattr(self, "prefill_attn_aotriton_min_tokens", None)
+        if aotriton_min_tokens is not None:
+            session.prefill_config = replace(
+                session.prefill_config or PrefillConfig(),
+                attn_aotriton_min_tokens=int(aotriton_min_tokens),
+            )
 
     def tokenize(self, text: str) -> tuple[int, ...]:
         return tuple(int(token) for token in self.tokenizer.encode(str(text)))
@@ -1251,6 +1294,79 @@ class Qwen35GGUFBringupGenerator:
             and (_gguf_ar_packed_decode_enabled() or _gguf_ar_stream_decode_enabled())
         ):
             return self._generate_ar_serving_slots(shared_runner, request, plan=plan)
+        if (
+            plan.mode is SamplingMode.GREEDY_FAST
+            and len(request.prompts) > 1
+            and bool(getattr(self, "native_batch_decode", False))
+        ):
+            prompt_rows_by_request = {
+                row_index: _encode_prompt(self.tokenizer, prompt)
+                for row_index, prompt in enumerate(request.prompts)
+            }
+            if any(not prompt_ids for prompt_ids in prompt_rows_by_request.values()):
+                raise ValueError("GGUF prompt tokenization produced no token IDs")
+            max_sequence_length = max(
+                256,
+                max(len(prompt_ids) for prompt_ids in prompt_rows_by_request.values())
+                + int(request.max_tokens),
+            )
+            native_capacity = min(
+                int(getattr(self, "native_batch_capacity", 8)),
+                len(prompt_rows_by_request),
+            )
+            with Qwen35GGUFResidentSession(
+                self.model_path,
+                max_sequence_length=max_sequence_length,
+                max_batch_size=native_capacity,
+            ) as session:
+                self._configure_session(session)
+                native_run = self._generate_greedy_batch(
+                    session,
+                    prompt_rows_by_request,
+                    request,
+                    capacity=native_capacity,
+                )
+                generated_ids_by_request = native_run.generated_ids
+            outputs = [
+                GenerationOutput(
+                    text=self.tokenizer.decode(generated_ids_by_request[row_index]),
+                    generated_token_ids=tuple(generated_ids_by_request[row_index]),
+                    finish_details=_gguf_finish_details(
+                        generated_ids_by_request[row_index],
+                        self.tokenizer,
+                        request,
+                    ),
+                    telemetry=_gguf_telemetry(
+                        prompt_rows_by_request[row_index],
+                        generated_ids_by_request[row_index],
+                        request,
+                        row_index=row_index,
+                        request_id=str(row_index),
+                        phase="answer",
+                        execution_path="gguf_native_continuous_decode",
+                        native_compact_prefill=False,
+                        native_caware_decode=True,
+                        serial_decode_fallback=False,
+                        native_sampler_rows=True,
+                    ),
+                )
+                for row_index in range(len(prompt_rows_by_request))
+            ]
+            self.last_generation_outputs = tuple(outputs)
+            self.last_batch_generation = _gguf_last_batch_generation(
+                self.tokenizer,
+                request,
+                plan,
+                prompt_rows_by_request,
+                generated_ids_by_request,
+                token_logprobs_by_request,
+                outputs=self.last_generation_outputs,
+                native_batch=True,
+                native_decode_steps=native_run.native_decode_steps,
+                execution_paths=native_run.execution_paths,
+                scheduling=native_run.scheduling,
+            )
+            return outputs
         session_open_start = time.perf_counter()
         with self._resident_session_scope(
             shared_runner=shared_runner,
@@ -3747,6 +3863,263 @@ class Qwen35GGUFBringupGenerator:
                 if timing is not None:
                     _timing_add(timing, "decode_ms", decode_start)
         return generated_ids
+
+    def _generate_greedy_batch(
+        self,
+        session: Qwen35GGUFResidentSession,
+        prompt_rows_by_request: dict[int, list[int]],
+        request: GenerationRequest,
+        *,
+        capacity: int,
+    ) -> _GGUFNativeBatchRun:
+        """Continuously admit and compact greedy rows around native c-aware decode."""
+
+        if len(prompt_rows_by_request) <= 1:
+            raise ValueError("native GGUF greedy batch requires at least two prompts")
+        if int(capacity) < 2 or int(capacity) > 8:
+            raise ValueError("native GGUF greedy batch capacity must be within [2, 8]")
+
+        scheduler = ResidentBatchScheduler(capacity=int(capacity), context_bucket_size=256)
+        for request_id in sorted(prompt_rows_by_request):
+            scheduler.submit(
+                prompt_rows_by_request[request_id],
+                max_new_tokens=int(request.max_tokens),
+                request_id=int(request_id),
+                sampling_row_index=int(request_id),
+            )
+
+        native_decode_steps = 0
+        single_row_tail_steps = 0
+        eager_native_ready = False
+        execution_paths: dict[str, str] = {}
+        graph_objects: list[object] = []
+        graph_bucket_labels: list[str] = []
+        active_c_histogram: dict[int, int] = {}
+        admission_history: list[dict[str, int]] = []
+        admission_waves = 0
+        reclaim_count = 0
+        compaction_events = 0
+        compacted_slot_moves = 0
+        mixed_prefill_decode_admissions = 0
+        peak_active_rows = 0
+
+        config = getattr(getattr(getattr(session, "runner", None), "weights", None), "config", None)
+        experts_per_token = int(getattr(config, "expert_used_count", 0) or 0)
+        kv_storage = getattr(getattr(session, "kv_storage_dtype", None), "value", "bf16")
+        resident_max_sequence_length = int(
+            getattr(
+                getattr(session, "target_layout", None),
+                "max_sequence_length",
+                max(len(tokens) for tokens in prompt_rows_by_request.values())
+                + int(request.max_tokens),
+            )
+        )
+
+        def compact_after_reclaim(completed_count: int) -> None:
+            nonlocal compaction_events, compacted_slot_moves
+            if completed_count <= 0:
+                return
+            moves = scheduler.compact()
+            if scheduler.active_count or scheduler.pending_count:
+                source_slots = tuple(int(move.old_slot) for move in moves)
+                session.compact_target_slots(source_slots)
+                compaction_events += 1
+                compacted_slot_moves += sum(
+                    int(move.old_slot) != int(move.new_slot) for move in moves
+                )
+
+        def admit_available() -> None:
+            nonlocal admission_waves, reclaim_count, mixed_prefill_decode_admissions, peak_active_rows
+            while scheduler.pending_count and scheduler.active_count < int(capacity):
+                admitted = scheduler.admit_pending()
+                if not admitted:
+                    break
+                admission_waves += 1
+                if native_decode_steps or single_row_tail_steps:
+                    mixed_prefill_decode_admissions += len(admitted)
+                peak_active_rows = max(peak_active_rows, scheduler.active_count)
+                completed_in_wave = 0
+                for request_id in admitted:
+                    work = scheduler.next_prefill_work(
+                        chunk_size=resident_max_sequence_length,
+                    )
+                    if work is None or work.request_ids != (int(request_id),):
+                        raise RuntimeError("GGUF scheduler prefill order diverged from admission order")
+                    slot = scheduler.active_batch.slot_for(request_id)
+                    admission_history.append(
+                        {
+                            "request_id": int(request_id),
+                            "slot": int(slot),
+                            "wave": int(admission_waves),
+                        }
+                    )
+                    raise_if_generation_deadline_expired(request)
+                    result = session.prefill_slot(
+                        work.token_rows[0],
+                        slot=slot,
+                        return_logits=False,
+                    )
+                    first_token = int(result.token_id)
+                    finished = (
+                        not request.ignore_eos
+                        and first_token == int(self.tokenizer.eos_token_id)
+                    )
+                    completed = scheduler.record_generated(
+                        (GeneratedToken(int(request_id), first_token, finished=finished),)
+                    )
+                    completed_in_wave += len(completed)
+                    reclaim_count += len(completed)
+                compact_after_reclaim(completed_in_wave)
+
+        def graph_for(key):
+            def create_graph(_key):
+                current_positions = tuple(
+                    int(position)
+                    for position in getattr(
+                        session,
+                        "row_positions",
+                        (max(0, int(_key.context_bucket) - 1),) * int(_key.active_c),
+                    )[: int(_key.active_c)]
+                )
+                required_bound = max(current_positions) + 1
+                max_sequence_length = resident_max_sequence_length
+                context_bound = min(
+                    max_sequence_length,
+                    max(required_bound, int(_key.context_bucket)),
+                )
+                graph = session.capture_native_rows_graph(
+                    rows=int(_key.active_c),
+                    max_context_len=context_bound,
+                )
+                graph_objects.append(graph)
+                return graph
+
+            return scheduler.graph_buckets.get_or_create(
+                key,
+                create_graph,
+                miss_reason="gguf_native_shape_absent",
+            )
+
+        try:
+            while scheduler.pending_count or scheduler.active_count:
+                admit_available()
+                if scheduler.active_count == 0:
+                    continue
+                work = scheduler.next_decode_work(
+                    top_k=experts_per_token,
+                    experts_per_token=experts_per_token,
+                    replay_steps=1,
+                    kv_storage_dtype=str(kv_storage),
+                    layer_plan="qwen35_gguf_native",
+                )
+                if work is None:
+                    raise RuntimeError("GGUF scheduler has active rows but no decode work")
+                request_ids = tuple(int(request_id) for request_id in work.request_ids)
+                current_tokens = tuple(
+                    int(scheduler.active_batch.requests[request_id].generated_tokens[-1])
+                    for request_id in request_ids
+                )
+                active_rows = len(request_ids)
+                active_c_histogram[active_rows] = active_c_histogram.get(active_rows, 0) + 1
+                key = scheduler.shape_key(
+                    mode=WorkKind.DECODE,
+                    top_k=experts_per_token,
+                    experts_per_token=experts_per_token,
+                    replay_steps=1,
+                    kv_storage_dtype=str(kv_storage),
+                    layer_plan="qwen35_gguf_native",
+                )
+                bucket_label = (
+                    f"decode:c={key.active_c}:ctx={key.context_bucket}:"
+                    f"mask={''.join('1' if active else '0' for active in key.active_mask)}:"
+                    f"top_k={key.top_k}:experts={key.experts_per_token}"
+                )
+                if bucket_label not in graph_bucket_labels:
+                    graph_bucket_labels.append(bucket_label)
+
+                raise_if_generation_deadline_expired(request)
+                if active_rows == 1:
+                    step = session.step(current_tokens[0], return_logits=False)
+                    next_tokens = (int(step.token_id),)
+                    single_row_tail_steps += 1
+                    execution_paths["single_row_tail"] = "resident_slot0_c1"
+                elif not eager_native_ready or getattr(session, "host_token_embedding_enabled", False):
+                    step = session.step_rows_native(current_tokens, return_logits=False)
+                    next_tokens = tuple(int(token) for token in step.token_ids)
+                    execution_paths.update(dict(step.execution_paths))
+                    native_decode_steps += 1
+                    eager_native_ready = True
+                else:
+                    graph = graph_for(key)
+                    step = graph.step(current_tokens)
+                    scheduler.graph_buckets.record_replay_kernel_hit()
+                    next_tokens = tuple(int(token) for token in step.token_ids)
+                    execution_paths.update(dict(step.execution_paths))
+                    native_decode_steps += 1
+
+                completed = scheduler.record_generated(
+                    tuple(
+                        GeneratedToken(
+                            request_id,
+                            token_id,
+                            finished=(
+                                not request.ignore_eos
+                                and token_id == int(self.tokenizer.eos_token_id)
+                            ),
+                        )
+                        for request_id, token_id in zip(request_ids, next_tokens, strict=True)
+                    )
+                )
+                reclaim_count += len(completed)
+                compact_after_reclaim(len(completed))
+                peak_active_rows = max(peak_active_rows, scheduler.active_count)
+        finally:
+            for graph in reversed(graph_objects):
+                close = getattr(graph, "close", None)
+                if callable(close):
+                    close()
+                    continue
+                exit_graph = getattr(graph, "__exit__", None)
+                if callable(exit_graph):
+                    exit_graph(None, None, None)
+
+        generated = {
+            request_id: list(scheduler.completed[request_id].generated_tokens)
+            for request_id in sorted(prompt_rows_by_request)
+        }
+        graph_stats = scheduler.graph_buckets.stats.to_json_dict()
+        scheduling = {
+            "continuous_batching": True,
+            "capacity": int(capacity),
+            "admission_count": len(admission_history),
+            "admission_waves": int(admission_waves),
+            "admission_history": admission_history,
+            "reclaim_count": int(reclaim_count),
+            "compaction_events": int(compaction_events),
+            "compacted_slot_moves": int(compacted_slot_moves),
+            "mixed_prefill_decode_admissions": int(mixed_prefill_decode_admissions),
+            "peak_active_rows": int(peak_active_rows),
+            "active_c_histogram": {
+                str(active_rows): int(steps)
+                for active_rows, steps in sorted(active_c_histogram.items())
+            },
+            "graph_bucket_keys": graph_bucket_labels,
+            "graph_bucket_stats": graph_stats,
+            "single_row_tail_steps": int(single_row_tail_steps),
+            "stable_request_ids": sorted(prompt_rows_by_request),
+            "request_observability": {
+                str(request_id): scheduler.completed[request_id].observability.to_json_dict()
+                for request_id in sorted(prompt_rows_by_request)
+            },
+            "final_request_to_slot": scheduler.active_batch.request_to_slot,
+            "serial_decode_fallback": False,
+        }
+        return _GGUFNativeBatchRun(
+            generated_ids=generated,
+            native_decode_steps=native_decode_steps,
+            execution_paths=execution_paths,
+            scheduling=scheduling,
+        )
 
     def _generate_sampled(
         self,
@@ -6831,18 +7204,31 @@ def _gguf_last_batch_generation(
     *,
     outputs: tuple[GenerationOutput, ...],
     execution_path: str | None = None,
+    native_batch: bool = False,
     native_compact_prefill: bool = False,
     native_decode_steps: int = 0,
     native_c1_decode_steps: int = 0,
     native_caware_decode: bool = False,
     serial_decode_fallback: bool | None = None,
     native_sampler_rows: bool = False,
+    execution_paths: dict[str, str] | None = None,
+    scheduling: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     request_ids = tuple(range(len(outputs)))
-    path = execution_path or _gguf_execution_path(plan)
+    path = (
+        "gguf_native_continuous_decode"
+        if native_batch
+        else execution_path or _gguf_execution_path(plan)
+    )
     prompt_lengths = [len(prompt_rows_by_request.get(request_id, ())) for request_id in request_ids]
     decode_steps = max((len(generated_ids_by_request.get(request_id, ())) for request_id in request_ids), default=0)
-    serial_fallback = len(request_ids) > 1 if serial_decode_fallback is None else bool(serial_decode_fallback)
+    native_caware_decode = bool(native_caware_decode or native_batch)
+    native_sampler_rows = bool(native_sampler_rows or native_batch)
+    serial_fallback = (
+        False
+        if native_batch
+        else len(request_ids) > 1 if serial_decode_fallback is None else bool(serial_decode_fallback)
+    )
     payload: dict[str, Any] = {
         "path": path,
         "batch_size": len(request_ids),
@@ -6853,14 +7239,14 @@ def _gguf_last_batch_generation(
         "native_c1_decode_steps": int(native_c1_decode_steps),
         "serial_decode_fallback": serial_fallback,
         "native_compact_prefill": bool(native_compact_prefill),
-        "native_caware_decode": bool(native_caware_decode),
-        "native_sampler_rows": bool(native_sampler_rows),
-        "throughput_claim_eligible": False,
+        "native_caware_decode": native_caware_decode,
+        "native_sampler_rows": native_sampler_rows,
+        "throughput_claim_eligible": bool(native_batch and native_decode_steps > 0),
         "sampler_plan_metadata": [
             {
                 "active_processors": list(plan.active_processors),
                 "sampler_fast_path_blockers": list(plan.fast_path_blockers),
-                "native_gpu_available": bool(plan.native_gpu_available),
+                "native_gpu_available": bool(plan.native_gpu_available or native_batch),
                 **(
                     {"sampler_fallback_reason": plan.fallback_reason}
                     if plan.fallback_reason is not None
@@ -6871,6 +7257,10 @@ def _gguf_last_batch_generation(
             for _request_id in request_ids
         ],
     }
+    if execution_paths:
+        payload["native_execution_paths"] = dict(execution_paths)
+    if scheduling:
+        payload["continuous_scheduler"] = dict(scheduling)
     payload["scheduler_token_chunks"] = _gguf_scheduler_token_chunks(
         request_ids,
         prompt_rows_by_request,
@@ -6881,9 +7271,9 @@ def _gguf_last_batch_generation(
         plan=plan,
         execution_path=path,
         native_compact_prefill=bool(native_compact_prefill),
-        native_caware_decode=bool(native_caware_decode),
+        native_caware_decode=native_caware_decode,
         serial_decode_fallback=serial_fallback,
-        native_sampler_rows=bool(native_sampler_rows),
+        native_sampler_rows=native_sampler_rows,
     )
     return payload
 
@@ -7357,6 +7747,26 @@ def make_qwen35_gguf_bringup_generator(
     )
 
 
+def make_qwen35_gguf_ud_q3_k_m_generator(
+    *,
+    model_path: str | Path,
+    weight_index: GGUFModelInfo,
+    model_plugin: Any,
+) -> Qwen35GGUFBringupGenerator:
+    """Select exact fully-bulk prefill and native c>N decode for UD-Q3_K_M."""
+
+    return Qwen35GGUFBringupGenerator(
+        model_path=model_path,
+        weight_index=weight_index,
+        model_plugin=model_plugin,
+        backend="hip_gfx1100",
+        bulk_prefill_attention_mode="bulk",
+        prefill_quant="gguf_ud_q3_k_m",
+        prefill_attn_aotriton_min_tokens=0,
+        native_batch_decode=True,
+    )
+
+
 def make_qwen35_gguf_bringup_generator_gfx1151(
     *,
     model_path: str | Path,
@@ -7421,10 +7831,17 @@ _GGUF_GENERATOR_FACTORIES_BY_BACKEND = {
     "hip_gfx1151": make_qwen35_gguf_bringup_generator_gfx1151,
 }
 _GGUF_GENERATOR_FACTORY_OVERRIDES = {
+    ("hip_gfx1100", "gguf_ud_q3_k_m"): make_qwen35_gguf_ud_q3_k_m_generator,
     ("hip_gfx1151", "gguf_q4_k_m"): make_qwen35_gguf_q4_k_m_generator_gfx1151,
 }
 for _model in ("qwen3_5_gguf", "qwen3_5_moe_gguf"):
-    for _quant in ("gguf_q4_k_m", "gguf_q8_0", "gguf_q4_1", "gguf_ud_q4_k_xl"):
+    for _quant in (
+        "gguf_q4_k_m",
+        "gguf_q8_0",
+        "gguf_q4_1",
+        "gguf_ud_q4_k_xl",
+        "gguf_ud_q3_k_m",
+    ):
         for _backend, _default_factory in _GGUF_GENERATOR_FACTORIES_BY_BACKEND.items():
             register_text_generator(
                 model=_model,
@@ -7441,4 +7858,5 @@ __all__ = [
     "Qwen35GGUFBringupGenerator",
     "make_qwen35_gguf_bringup_generator",
     "make_qwen35_gguf_bringup_generator_gfx1151",
+    "make_qwen35_gguf_ud_q3_k_m_generator",
 ]

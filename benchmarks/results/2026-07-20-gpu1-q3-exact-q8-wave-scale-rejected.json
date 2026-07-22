@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-20",
+  "status": "rejected",
+  "performance_claim": false,
+  "measurement_class": "bounded production-shape microbenchmark rejection",
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "backend": "hip_gfx1100",
+    "physical_device": 1,
+    "visible_device": 1
+  },
+  "software": {
+    "branch": "q3-k-m",
+    "base_commit": "2e2a97a3",
+    "hip_version": "7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e"
+  },
+  "model_context": {
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf",
+    "quant": "gguf_ud_q3_k_m",
+    "retained_512_tok_s": 707.4203859661214,
+    "retained_4096_mixed_tok_s": 626.076725107456,
+    "retained_q8_profile_ms": 2056.866834
+  },
+  "hypothesis": "All 32 lanes in each wave read the same FP16 Q8 block scale, so loading/decoding it once in lane zero and broadcasting it might reduce redundant instructions without changing any weight value or FMA.",
+  "candidate": {
+    "kernel": "gguf_q8_0_exact_prefill_tiled_out_kernel<bf16,bf16,16,4,true>",
+    "change": "For each column and K iteration, lane zero decoded the FP16 block scale and __shfl-broadcast it; every lane retained its own int8 quant byte and original multiply/FMA order.",
+    "red": "The candidate primitive fixture failed collection because its wave-scale wrapper and registry key did not exist.",
+    "green": "The candidate registry key resolved and two primitive shapes were BF16-bit equal to exact pack8.",
+    "source_retained": false,
+    "tests_retained": false
+  },
+  "microbench": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 /tmp/q8_exact_wave_scale_micro.py",
+    "script_sha256": "6a99aaa59d4d66a3098a8fb1210a24dce815c00235c75e90ee8031a2d449a18e",
+    "output_sha256": "bf67903d6ebe0b9f9af4088d0ea2faff62f67474ad30581a5a6b5764bf2f0b40",
+    "rows": [
+      {"shape": [1024, 2048, 512], "tile16x4_ms": 0.3890839871019125, "wave_scale_ms": 0.8469810709357262, "delta_pct": 117.6859236085388, "bit_mismatches": 0},
+      {"shape": [1024, 2048, 2048], "tile16x4_ms": 1.4469979796558619, "wave_scale_ms": 3.0554879922419786, "delta_pct": 111.16048779616557, "bit_mismatches": 0},
+      {"shape": [1024, 2048, 4096], "tile16x4_ms": 3.0931889778003097, "wave_scale_ms": 9.02580190449953, "delta_pct": 191.79600629891485, "bit_mismatches": 0},
+      {"shape": [1024, 2048, 8192], "tile16x4_ms": 6.469169980846345, "wave_scale_ms": 17.574828932993114, "delta_pct": 171.6705386475846, "bit_mismatches": 0},
+      {"shape": [1024, 512, 2048], "tile16x4_ms": 0.7349590305238962, "wave_scale_ms": 1.0199230164289474, "delta_pct": 38.77277155189483, "bit_mismatches": 0},
+      {"shape": [1024, 4096, 2048], "tile16x4_ms": 3.0098569113761187, "wave_scale_ms": 8.603777969256043, "delta_pct": 185.85338846963197, "bit_mismatches": 0},
+      {"shape": [4096, 2048, 512], "tile16x4_ms": 1.461657928302884, "wave_scale_ms": 3.3625720534473658, "delta_pct": 130.0519149067671, "bit_mismatches": 0},
+      {"shape": [4096, 2048, 2048], "tile16x4_ms": 5.988484947010875, "wave_scale_ms": 11.353180976584554, "delta_pct": 89.58352700295995, "bit_mismatches": 0},
+      {"shape": [4096, 2048, 8192], "tile16x4_ms": 30.133964959532022, "wave_scale_ms": 72.85655604209751, "delta_pct": 141.77553846611016, "bit_mismatches": 0}
+    ],
+    "delta_pct_range": [38.77277155189483, 191.79600629891485],
+    "all_bit_mismatches": 0
+  },
+  "rocprof": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-q8-wave-scale-reject-trace-20260720-152352 -o q8-wave-scale -- python3 -m pytest -q tests/test_gguf_q8_0_pack8_gemv_decode.py -k tile16x4-wave-scale",
+    "trace_path": "/tmp/hipengine-q8-wave-scale-reject-trace-20260720-152352/q8-wave-scale_kernel_trace.csv",
+    "trace_sha256": "4b9dfa5607c6f0b613bd880cdd930434ffa2fbe9fcd3ad1646c45b651e53fd3a",
+    "vgpr": 136,
+    "lds_bytes": 1024,
+    "scratch_bytes": 0,
+    "workgroup_x": 128,
+    "conclusion": "Resources match retained 16x4, so the regression is instruction latency: sixteen wave shuffles per K iteration cost far more than uniform cached scale loads/conversions."
+  },
+  "decision": {
+    "accepted": false,
+    "reason": "Every production shape regressed by 38.77% to 191.80% despite exact outputs and zero scratch.",
+    "cleanup": "Removed the wave-scale template mode, HIP export, Python wrapper/registry key, and temporary tests; production sources are byte-identical to 2e2a97a3.",
+    "next_action": "Close dense-Q8 local schedule/codegen experiments at retained 16x4 and move to exact GDN, the next measured Amdahl family."
+  }
+}

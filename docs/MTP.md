@@ -64,6 +64,15 @@
 > Cache/reuse that state-bound control before extending provider commit/proposal;
 > DFlash/gfx1151 still require independent gates.
 >
+> **GGUF NextN status (2026-07-21):** the UD-Q3_K_M trailing blk.40
+> remains outside the 40-layer AR map and is separately materialized/executed as
+> a draft model. `Qwen35GGUFNextNDraftProvider` runs through candidate-only
+> `DraftBatch`, root-prefixed `TargetVerifyBatch`, `KVLiveSpans(span_role="verify_chain")`,
+> scheduler `KVTransaction`, GPU accept, accepted-prefix publication, and rollback.
+> B=1/2/3 target logits and greedy output are exact, but matched GPU1 D16 is only
+> **0.544x/0.346x/0.271x** AR with **1.071** visible tokens/cycle. The route remains
+> diagnostic and public GGUF generation stays MTP-disabled.
+>
 > **Top priority for the next push:** MTP break-even sprint. Hold every exact
 > same-suite improvement, use `0.758x / 27.8 ms` as the locked sprint baseline,
 > and preserve the first retained break-even row while building margin with

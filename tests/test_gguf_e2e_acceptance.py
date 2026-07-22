@@ -8,6 +8,8 @@ import pytest
 
 QWEN35MOE_FIXTURE = Path("tests/fixtures/gguf/qwen36_35b_a3b_q4km_smoke.json")
 QWEN35MOE_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
+QWEN35MOE_Q3_FIXTURE = Path("tests/fixtures/gguf/qwen36_35b_a3b_ud_q3km_smoke.json")
+QWEN35MOE_Q3_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf")
 
 FIXTURES = {
     "gguf_q4_k_m": (
@@ -124,6 +126,59 @@ def test_qwen35moe_gguf_e2e_fixture_declares_public_api_gate() -> None:
     assert set(acceptance["required_kernel_families"]) == {
         "gguf_q4_k",
         "gguf_q5_k",
+        "gguf_q6_k",
+        "gguf_q8_0",
+        "qwen35_router",
+        "paro_combine",
+    }
+
+
+def test_qwen35moe_ud_q3km_e2e_fixture_pins_llamacpp_first_token() -> None:
+    fixture = json.loads(QWEN35MOE_Q3_FIXTURE.read_text())
+
+    assert fixture["schema_version"] == 1
+    assert fixture["model"] == {
+        "path": str(QWEN35MOE_Q3_MODEL),
+        "file_size_bytes": 17104402720,
+        "sha256": "8966dd0cd8c543c4228490a2a8b0e0814fc4f1e6a8e199ceed4de6754ae7b8e1",
+        "quant": "gguf_ud_q3_k_m",
+        "architecture": "qwen35moe",
+    }
+    assert fixture["oracle"]["commit"] == "1ebf790cda38d827559548f67b0469189690cc8c"
+    assert fixture["oracle"]["scope"] == "first_generated_token"
+    assert fixture["prompt"] == "Hello"
+    assert fixture["prompt_ids"] == [9419]
+    assert fixture["sampling"] == {
+        "max_new_tokens": 1,
+        "temperature": 0.0,
+        "top_p": 1.0,
+        "ignore_eos": True,
+    }
+    assert fixture["expected_generated_text"] == ","
+    assert fixture["expected_generated_token_ids"] == [11]
+    assert fixture["decode_graph"] == {
+        "oracle": "resident eager direct decode",
+        "max_new_tokens": 3,
+        "expected_generated_text": ",, a",
+        "expected_generated_token_ids": [11, 11, 264],
+    }
+
+    acceptance = fixture["acceptance"]
+    assert acceptance["public_api"] == "hipengine.LLM.generate"
+    assert acceptance["backend"] == "hip_gfx1100"
+    assert acceptance["quant"] == "gguf_ud_q3_k_m"
+    assert acceptance["torch_hot_path_allowed"] is False
+    assert acceptance["deterministic_required"] is True
+    assert acceptance["expected_text_match_required"] is True
+    assert acceptance["expected_token_ids_match_required"] is True
+    assert acceptance["finite_logits_required"] is True
+    assert acceptance["external_token_oracle"] == "llama.cpp + llama-tokenize"
+    assert acceptance["bulk_prefill_attention_mode"] == "bulk"
+    assert acceptance["prefill_quant"] == "gguf_ud_q3_k_m"
+    assert acceptance["prefill_attn_aotriton_min_tokens"] == 0
+    assert set(acceptance["required_kernel_families"]) == {
+        "gguf_iq3_xxs",
+        "gguf_iq4_xs",
         "gguf_q6_k",
         "gguf_q8_0",
         "qwen35_router",

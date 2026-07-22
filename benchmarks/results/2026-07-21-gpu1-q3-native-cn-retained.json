@@ -1,0 +1,371 @@
+{
+  "schema": 1,
+  "date": "2026-07-21",
+  "status": "accepted",
+  "performance_claim": true,
+  "scope": "native UD-Q3_K_M c=N decode and synchronous prompt-list continuous scheduling",
+  "source_commit_base": "294b5dd7c92277b8b98f7edf00150e4ba3eece49",
+  "source_tree": "task-29 implementation and evidence are committed as one logical unit",
+  "hardware": {
+    "label": "GPU1 AMD Radeon RX 7900 XTX",
+    "architecture": "gfx1100",
+    "vram_bytes": 25753026560,
+    "default_project_hardware": false,
+    "w7900_verified": false
+  },
+  "software": {
+    "python": "3.12.9",
+    "hip": "7.2.53211-3d9ef42",
+    "amd_clang": "22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "kernel": "Linux 7.1.3-2-cachyos x86_64"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf",
+    "family": "Qwen3.6-35B-A3B",
+    "quant": "gguf_ud_q3_k_m",
+    "backend": "hip_gfx1100",
+    "kv_storage": "bf16",
+    "speculative_decode": false
+  },
+  "protocol": {
+    "script": "scripts/qwen35_batch_gguf_diagnostic.py",
+    "prompt_fixture": "tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json",
+    "prompt_rows": "cyclically rotated fixture IDs; standard rows use the same source sequence at distinct rotations",
+    "sampled_output_tokens_per_row": 129,
+    "timed_native_decode_tokens_per_row": 128,
+    "warmup": 1,
+    "repeats": 3,
+    "sampling": "greedy GPU row argmax; ignore EOS",
+    "prefill": "resident slots are prefetched serially into disjoint state/KV while sharing one weight set",
+    "decode": "all active rows advance in one native model step and one C/context-shaped HIP graph replay",
+    "serial_decode_fallback": false,
+    "throughput_units": "generated target tokens per wall second"
+  },
+  "correctness": {
+    "status": "passed",
+    "generated_ids": {
+      "c2_c4_c8_512_128_vs_independent_c1": "all 129 sampled IDs equal; 128 timed native decode steps",
+      "c2_c4_c8_4096_128_vs_independent_c1": true,
+      "rotated_prompt_c2_c4_c8_512_128_vs_independent_c1": true,
+      "all_source_artifacts_status": "eq_ok"
+    },
+    "full_logits": {
+      "c2_stateful_short_decode": "array-exact at layer boundaries and FP32 lm-head over two steps",
+      "c2_split_attention_prefill_boundary": "array-exact at 1K context",
+      "c4_c8_native_rows": "array-exact FP32 logits and generated IDs against independent c=1",
+      "variable_short_prompt_rows": "array-exact C=4 logits after physical slots with lengths [3,4,4,1]",
+      "reclaim_compact_readmit": "array-exact survivor and newly admitted row logits after slot 1 -> slot 0 state/KV compaction"
+    },
+    "quality_gate": {
+      "kl_max": 0.0,
+      "top1_agreement": 1.0,
+      "required_kl_max": 0.05,
+      "required_top1_min": 0.9
+    },
+    "tests": [
+      "tests/test_qwen35_gguf_target_rows.py",
+      "tests/test_generation_qwen35_gguf_sampling.py::test_gguf_native_scheduler_reclaims_compacts_and_readmits",
+      "tests/test_qwen35_linear_attn_decode_batch_indexed.py",
+      "tests/test_gguf_gemv_decode_dispatch.py"
+    ]
+  },
+  "c1_decode_baselines": {
+    "512": {
+      "aggregate_tok_s": 101.216,
+      "source": "benchmarks/results/2026-07-20-gpu1-q3-moe-tail-next-rms-retained.json"
+    },
+    "4096": {
+      "aggregate_tok_s": 108.383,
+      "source": "benchmarks/results/2026-07-20-gpu1-q3-moe-tail-next-rms-retained.json"
+    }
+  },
+  "scaling": [
+    {
+      "prompt_tokens_per_row": 512,
+      "c": 2,
+      "prefill_tok_s_aggregate": 864.5690325540328,
+      "decode_tok_s_aggregate": 118.12491961286052,
+      "decode_tok_s_per_request": 59.06245980643026,
+      "aggregate_over_c1": 1.167058,
+      "per_request_over_c1": 0.583529,
+      "decode_step_latency_p50_ms": 16.865112993400544,
+      "decode_step_latency_p95_ms": 17.542961984872818,
+      "runtime_peak_gib": 15.903169613331556,
+      "correctness_harness_peak_gib": 16.250146634876728,
+      "active_mask": [true, true],
+      "graph_bucket": "native_fixed:c=2:ctx_bound=641:mask=11:top_k=8:experts=8",
+      "status": "eq_ok"
+    },
+    {
+      "prompt_tokens_per_row": 512,
+      "c": 4,
+      "prefill_tok_s_aggregate": 864.5488751669038,
+      "decode_tok_s_aggregate": 151.77187954122584,
+      "decode_tok_s_per_request": 37.94296988530646,
+      "aggregate_over_c1": 1.499485,
+      "per_request_over_c1": 0.374871,
+      "decode_step_latency_p50_ms": 26.12432249588892,
+      "decode_step_latency_p95_ms": 27.96411409508437,
+      "runtime_peak_gib": 16.059434305876493,
+      "correctness_harness_peak_gib": 16.406411327421665,
+      "active_mask": [true, true, true, true],
+      "graph_bucket": "native_fixed:c=4:ctx_bound=641:mask=1111:top_k=8:experts=8",
+      "status": "eq_ok"
+    },
+    {
+      "prompt_tokens_per_row": 512,
+      "c": 8,
+      "prefill_tok_s_aggregate": 863.9005417106831,
+      "decode_tok_s_aggregate": 207.78031317152744,
+      "decode_tok_s_per_request": 25.97253914644093,
+      "aggregate_over_c1": 2.052841,
+      "per_request_over_c1": 0.256605,
+      "decode_step_latency_p50_ms": 38.546773546840996,
+      "decode_step_latency_p95_ms": 39.91698904428631,
+      "runtime_peak_gib": 16.371963690966368,
+      "correctness_harness_peak_gib": 16.71894071251154,
+      "active_mask": [true, true, true, true, true, true, true, true],
+      "graph_bucket": "native_fixed:c=8:ctx_bound=641:mask=11111111:top_k=8:experts=8",
+      "status": "eq_ok"
+    },
+    {
+      "prompt_tokens_per_row": 4096,
+      "c": 2,
+      "prefill_tok_s_aggregate": 900.3098678928259,
+      "decode_tok_s_aggregate": 130.27556710724934,
+      "decode_tok_s_per_request": 65.13778355362467,
+      "aggregate_over_c1": 1.201993,
+      "per_request_over_c1": 0.600996,
+      "decode_step_latency_p50_ms": 15.1879254844971,
+      "decode_step_latency_p95_ms": 16.056253109127283,
+      "runtime_peak_gib": 17.226364698261023,
+      "correctness_harness_peak_gib": 18.827963046729565,
+      "active_mask": [true, true],
+      "graph_bucket": "native_fixed:c=2:ctx_bound=4225:mask=11:top_k=8:experts=8",
+      "status": "eq_ok"
+    },
+    {
+      "prompt_tokens_per_row": 4096,
+      "c": 4,
+      "prefill_tok_s_aggregate": 897.6868132491998,
+      "decode_tok_s_aggregate": 157.92594338679197,
+      "decode_tok_s_per_request": 39.48148584669799,
+      "aggregate_over_c1": 1.45711,
+      "per_request_over_c1": 0.364277,
+      "decode_step_latency_p50_ms": 25.23825754178688,
+      "decode_step_latency_p95_ms": 26.02222899440676,
+      "runtime_peak_gib": 17.519778829067945,
+      "correctness_harness_peak_gib": 19.121377177536488,
+      "active_mask": [true, true, true, true],
+      "graph_bucket": "native_fixed:c=4:ctx_bound=4225:mask=1111:top_k=8:experts=8",
+      "status": "eq_ok"
+    },
+    {
+      "prompt_tokens_per_row": 4096,
+      "c": 8,
+      "prefill_tok_s_aggregate": 894.0359117894154,
+      "decode_tok_s_aggregate": 211.17683753031565,
+      "decode_tok_s_per_request": 26.397104691289456,
+      "aggregate_over_c1": 1.948431,
+      "per_request_over_c1": 0.243554,
+      "decode_step_latency_p50_ms": 37.88754250854254,
+      "decode_step_latency_p95_ms": 38.36475999560207,
+      "runtime_peak_gib": 18.10660709068179,
+      "correctness_harness_peak_gib": 19.708205439150333,
+      "active_mask": [true, true, true, true, true, true, true, true],
+      "graph_bucket": "native_fixed:c=8:ctx_bound=4225:mask=11111111:top_k=8:experts=8",
+      "status": "eq_ok"
+    }
+  ],
+  "rotated_prompt_confirmation_512": [
+    {
+      "c": 2,
+      "decode_tok_s_aggregate": 116.58602421645631,
+      "latency_p50_ms": 16.899034555535764,
+      "latency_p95_ms": 18.326180055737495,
+      "status": "eq_ok"
+    },
+    {
+      "c": 4,
+      "decode_tok_s_aggregate": 151.63786313405274,
+      "latency_p50_ms": 26.023222017101943,
+      "latency_p95_ms": 27.91097911540419,
+      "status": "eq_ok"
+    },
+    {
+      "c": 8,
+      "decode_tok_s_aggregate": 210.63966523636296,
+      "latency_p50_ms": 37.87769400514662,
+      "latency_p95_ms": 38.67093496955931,
+      "status": "eq_ok"
+    }
+  ],
+  "continuous_scheduler": {
+    "public_path": "Qwen35GGUFBringupGenerator.generate_detailed() greedy prompt lists",
+    "capacity": "configurable 2..8; lists larger than capacity remain pending",
+    "stable_identity": "ResidentBatchScheduler request_id -> physical slot maps",
+    "admission": "free prefix slots are filled before each decode step",
+    "completion": "EOS and max-token completion reclaim scheduler ownership immediately",
+    "compaction": "persistent Conv/GDN state plus each live paged-KV prefix copy downward; transient scratch is overwritten",
+    "readmission": "new prompt prefill runs in reclaimed slots between decode steps",
+    "sampling": "row-aligned GPU argmax and per-request scheduler sampling state for the greedy-fast path",
+    "graph_cache": "BatchShapeKey(mode,C,context bucket,active mask,KV,layer plan,top-k,experts,replay)",
+    "provenance": {
+      "execution_path": "gguf_native_continuous_decode",
+      "native_caware_decode": true,
+      "serial_decode_fallback": false,
+      "request_admission_completion_timestamps": true,
+      "single_row_tail_is_explicit": true
+    },
+    "validated_schedule": {
+      "capacity": 2,
+      "requests": 4,
+      "admission_waves": 3,
+      "reclaims": 4,
+      "compaction_events": 3,
+      "physical_slot_moves": 2,
+      "mixed_prefill_decode_admissions": 2,
+      "active_c_histogram": {
+        "2": 3,
+        "1": 2
+      },
+      "graph_cache_entries": 1,
+      "graph_cache_hits": 1,
+      "graph_cache_misses": 1,
+      "graph_replays": 2
+    },
+    "scope_limit": "This is synchronous prompt-list continuous scheduling inside one generate call, not the persistent HTTP engine loop, elastic KV pool, cancellation, or prefix-sharing destination in docs/CONCURRENCY.md."
+  },
+  "profiler": {
+    "status": "captured",
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-q3-cn-c8-profile-20260721-034922 -o q3-cn-c8 -- python3 scripts/qwen35_batch_gguf_diagnostic.py --fixture tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --rows 8 --backend hip_gfx1100 --quant gguf_ud_q3_k_m --prompt-length 512 --max-new-tokens 3 --warmup 0 --repeats 1 --hardware-label 'AMD Radeon RX 7900 XTX, gfx1100' --json /tmp/hipengine-q3-cn-c8-profile.json",
+    "raw_trace": "/tmp/hipengine-q3-cn-c8-profile-20260721-034922/q3-cn-c8_kernel_trace.csv",
+    "raw_trace_sha256": "140289893b482ca3071866e55b2f4d7195ce306c289aee746d0feaae428eb131",
+    "trace_rows": 41844,
+    "native_graph_steps": 2,
+    "native_model_launches_per_step": 827,
+    "native_trace_span_ms": [44.913491, 38.457821],
+    "native_kernel_sum_ms": [40.803827, 34.733848],
+    "families": [
+      {
+        "name": "indexed_conv",
+        "symbol_contains": "qwen35_linear_attn_conv_decode_indexed_lowp_kernel",
+        "calls": 60,
+        "total_ms": 0.334282,
+        "median_us": 5.06,
+        "workgroup": 256,
+        "vgpr": 16,
+        "lds_bytes": 0,
+        "scratch_bytes": 0
+      },
+      {
+        "name": "segmented_gdn",
+        "symbol_contains": "qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel",
+        "calls": 60,
+        "total_ms": 5.920819,
+        "median_us": 91.981,
+        "workgroup": 128,
+        "vgpr": 80,
+        "lds_bytes": 0,
+        "scratch_bytes": 0
+      },
+      {
+        "name": "row_batched_paged_attention",
+        "symbol_contains": "qwen35_paged_full_attn_decode_context_tensor_batch_kernel",
+        "calls": 20,
+        "total_ms": 5.190851,
+        "median_us": 233.002,
+        "workgroup": 256,
+        "vgpr": 40,
+        "lds_bytes": 0,
+        "scratch_bytes": 0
+      },
+      {
+        "name": "selected_iq3_rows",
+        "symbol_contains": "gguf_iq3_xxs_selected_dual_silu_gemv_kernel",
+        "calls": 78,
+        "total_ms": 11.515834,
+        "median_us": 126.821,
+        "workgroup": 256,
+        "vgpr": 40,
+        "lds_bytes": 512,
+        "scratch_bytes": 0
+      },
+      {
+        "name": "selected_iq4_rows",
+        "symbol_contains": "gguf_iq4_xs_weighted_selected_down_kernel",
+        "calls": 74,
+        "total_ms": 14.517136,
+        "median_us": 168.6415,
+        "workgroup": 128,
+        "vgpr": 80,
+        "lds_bytes": 512,
+        "scratch_bytes": 0
+      },
+      {
+        "name": "row_lm_head",
+        "symbol_contains": "gguf_k_pack8_prefill_out_kernel<unsigned short, float, 6>",
+        "calls": 2,
+        "total_ms": 18.928617,
+        "median_us": 9464.3085,
+        "workgroup": 128,
+        "vgpr": 56,
+        "lds_bytes": 512,
+        "scratch_bytes": 0
+      },
+      {
+        "name": "row_argmax_stage1",
+        "symbol_contains": "argmax_rows_stage1_i32_kernel",
+        "calls": 2,
+        "total_ms": 0.03992,
+        "median_us": 19.96,
+        "workgroup": 128,
+        "vgpr": 16,
+        "lds_bytes": 0,
+        "scratch_bytes": 0
+      },
+      {
+        "name": "row_argmax_stage2",
+        "symbol_contains": "argmax_rows_stage2_i32_kernel",
+        "calls": 2,
+        "total_ms": 0.0096,
+        "median_us": 4.8,
+        "workgroup": 128,
+        "vgpr": 16,
+        "lds_bytes": 0,
+        "scratch_bytes": 0
+      }
+    ],
+    "correctness_status": "eq_ok",
+    "notes": "The trace also contains eight independent c=1 correctness sessions. Counts above are isolated to the two contiguous native C=8 graph model ranges ending in row argmax."
+  },
+  "commands": {
+    "standard_matrix": [
+      "env HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 python3 scripts/qwen35_batch_gguf_diagnostic.py --fixture tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json --rows 2 --backend hip_gfx1100 --quant gguf_ud_q3_k_m --max-new-tokens 129 --prompt-length 512 --warmup 1 --repeats 3 --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --hardware-label 'AMD Radeon RX 7900 XTX, gfx1100'",
+      "env HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 python3 scripts/qwen35_batch_gguf_diagnostic.py --fixture tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json --rows 4 --backend hip_gfx1100 --quant gguf_ud_q3_k_m --max-new-tokens 129 --prompt-length 512 --warmup 1 --repeats 3 --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --hardware-label 'AMD Radeon RX 7900 XTX, gfx1100'",
+      "env HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 python3 scripts/qwen35_batch_gguf_diagnostic.py --fixture tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json --rows 8 --backend hip_gfx1100 --quant gguf_ud_q3_k_m --max-new-tokens 129 --prompt-length 512 --warmup 1 --repeats 3 --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --hardware-label 'AMD Radeon RX 7900 XTX, gfx1100'",
+      "env HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 python3 scripts/qwen35_batch_gguf_diagnostic.py --fixture tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json --rows 2 --backend hip_gfx1100 --quant gguf_ud_q3_k_m --max-new-tokens 129 --prompt-length 4096 --warmup 1 --repeats 3 --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --hardware-label 'AMD Radeon RX 7900 XTX, gfx1100'",
+      "env HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 python3 scripts/qwen35_batch_gguf_diagnostic.py --fixture tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json --rows 4 --backend hip_gfx1100 --quant gguf_ud_q3_k_m --max-new-tokens 129 --prompt-length 4096 --warmup 1 --repeats 3 --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --hardware-label 'AMD Radeon RX 7900 XTX, gfx1100'",
+      "env HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 python3 scripts/qwen35_batch_gguf_diagnostic.py --fixture tests/fixtures/gguf/qwen35_0_8b_q4_k_m_e2e.json --rows 8 --backend hip_gfx1100 --quant gguf_ud_q3_k_m --max-new-tokens 129 --prompt-length 4096 --warmup 1 --repeats 3 --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --hardware-label 'AMD Radeon RX 7900 XTX, gfx1100'"
+    ],
+    "focused_gpu_gate": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 -m pytest -q tests/test_generation_qwen35_gguf_sampling.py tests/test_qwen35_linear_attn_decode_batch_indexed.py tests/test_qwen35_gguf_target_rows.py tests/test_gguf_gemv_decode_dispatch.py",
+    "public_smoke": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 -c \"from hipengine import LLM, SamplingParams; llm=LLM('/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf',backend='hip_gfx1100',quant='gguf_ud_q3_k_m'); print(llm.generate(['The answer is','Name one color.','2+2=','Hello'],SamplingParams(max_tokens=3,temperature=0.0,ignore_eos=True)))\"",
+    "full_suite": "HIP_VISIBLE_DEVICES=1 PYTHONPATH=. python3 -m pytest -q"
+  },
+  "source_evidence": {
+    "standard_matrix_sha256": {
+      "c2_512": "948985a4e1f43f3f371385123b24092ad7070bfc6783824865f73798b459fe7a",
+      "c4_512": "b811c1b6b9baff4d2761e6875bce0ef6e02dcc58d1ec237ae593a62c46cf9e96",
+      "c8_512": "13f8ab3657f4ff78592c4141103aec93060a5e54e0b355e45a89f5585251dc0e",
+      "c2_4096": "d1dcce377245a1675bc7993f0ff2ac4122adb6a8ca06485f51ce563725d31fe7",
+      "c4_4096": "cd1fbf3fb1f56a4cc91fdde867a7788193b0e2bcf37cb2d3a1568ee40fd30634",
+      "c8_4096": "d88d7dfa626eddf7621adc9c38da4cdae55131447fafa24b4e419fbf62eb3799"
+    },
+    "rotated_512_sha256": {
+      "c2": "246a9b5e37c1bd9e0d2389a0dfc0d7218b5e84899a66e1429ecde8ebcfcadfda",
+      "c4": "2e57bbec177b778cfd976b5604a10cdb29de0747920f9b282c77ff73f899821c",
+      "c8": "e8f8744c60de7fc2dbc2278decbdac6d3e7ddca0b52a9e31ca6b8bc855b9bf92"
+    }
+  },
+  "conclusion": "The first valid UD-Q3_K_M c=N claim is accepted on GPU1/RX 7900 XTX. C=8 reaches 207.780 tok/s at 512 and 211.177 tok/s at 4K, 2.053x and 1.948x the retained c=1 aggregate controls, with exact generated IDs, exact full-logit gates, native profiler symbols, bounded memory, row argmax, and no c>N serial decode fallback."
+}

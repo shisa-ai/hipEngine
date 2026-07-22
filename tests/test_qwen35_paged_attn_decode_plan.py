@@ -5,6 +5,7 @@ import ctypes
 import numpy as np
 import pytest
 
+import hipengine.kernels.hip_gfx1100.attention.paged_attn_decode as paged_attn_decode
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.hip import get_hip_runtime
@@ -21,6 +22,7 @@ from hipengine.kernels.hip_gfx1100.attention import (
     qwen35_full_attn_gate_mul_bf16,
     qwen35_full_attn_gate_mul_fp16,
     qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans,
+    qwen35_paged_full_attn_decode_context_bf16_batch_q3_c1_exact_spans,
     qwen35_paged_full_attn_decode_context_bf16_batch_spans,
     qwen35_paged_full_attn_decode_context_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_bf16_spans,
@@ -37,6 +39,7 @@ from hipengine.kernels.hip_gfx1100.attention import (
     qwen35_paged_full_attn_decode_split_k_warp_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_spans,
     qwen35_paged_full_attn_decode_split_k_warp_gate_fp16_spans,
+    qwen35_paged_full_attn_prefill_gqa_gate_bf16_decode_order_spans,
     qwen35_paged_full_attn_prefill_gqa_gate_fp16_spans,
     qwen35_paged_full_attn_prefill_gqa_gate_tree_fp16_spans,
     qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_spans,
@@ -158,6 +161,15 @@ def test_qwen35_paged_attn_decode_registers_span_variant() -> None:
             variant="bf16_context_batch_paged_c1_exact_spans",
         )
         is qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="paged_attn_decode",
+            quant="gguf_ud_q3_k_m",
+            variant="bf16_context_batch_native_exact_spans",
+        )
+        is qwen35_paged_full_attn_decode_context_bf16_batch_q3_c1_exact_spans
     )
     assert (
         resolve(
@@ -351,6 +363,15 @@ def test_qwen35_paged_attn_decode_registers_span_variant() -> None:
     assert (
         resolve(
             backend="hip_gfx1100",
+            layer="full_attn_prefill",
+            quant="gguf_ud_q3_k_m",
+            variant="causal_gqa_gate_bf16",
+        )
+        is qwen35_paged_full_attn_prefill_gqa_gate_bf16_decode_order_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
             layer="paged_attn_prefill",
             quant="w4_paro",
             variant="bf16_gqa_gate_fp16_spans",
@@ -384,6 +405,103 @@ def test_qwen35_paged_attn_decode_registers_span_variant() -> None:
         )
         is qwen35_paged_full_attn_prefill_varlen_gqa_gate_fp16_spans
     )
+
+
+def test_qwen35_decode_order_prefill_uses_query_batch_gqa_crossover(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, tuple, dict]] = []
+
+    def record(name: str):
+        def launch(*args, **kwargs):
+            calls.append((name, args, kwargs))
+
+        return launch
+
+    monkeypatch.setattr(paged_attn_decode, "_launch_prefill_gqa_gate", record("dense"))
+    monkeypatch.setattr(
+        paged_attn_decode,
+        "qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_batch_spans",
+        record("warp"),
+    )
+    monkeypatch.setattr(
+        paged_attn_decode,
+        "qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_batch_spans",
+        record("gqa"),
+    )
+
+    def spans(rows: int, blocks: int) -> KVLiveSpans:
+        return KVLiveSpans.paged_uniform(
+            block_table=_tensor(0x1000, (rows, blocks), "int32"),
+            live_counts=_tensor(0x2000, (rows,), "int64"),
+            max_live_count=rows,
+            storage_dtype="bf16",
+            row_positions=_tensor(0x3000, (rows,), "int64"),
+            span_role="prefill",
+        )
+
+    common = {
+        "query_ptr": 0x100000,
+        "key_cache_ptr": 0x200000,
+        "value_cache_ptr": 0x300000,
+        "gate_ptr": 0x400000,
+        "out_ptr": 0x500000,
+        "split_partial_out_ptr": 0x600000,
+        "split_partial_m_ptr": 0x700000,
+        "split_partial_l_ptr": 0x800000,
+        "split_batch_rows": 16,
+        "block_size": 256,
+        "num_q_heads": 16,
+        "num_kv_heads": 2,
+        "head_dim": 256,
+        "gate_stride1": 256,
+        "gate_stride2": 1,
+        "scale": 0.0625,
+        "library": object(),
+        "runtime": object(),
+    }
+
+    qwen35_paged_full_attn_prefill_gqa_gate_bf16_decode_order_spans(
+        spans=spans(1, 4),
+        rows=1,
+        max_context_len=1024,
+        split_count=4,
+        **common,
+    )
+    assert [name for name, _, _ in calls] == ["warp"]
+    assert calls[0][1][9:12] == (1, 256, 4)
+
+    calls.clear()
+    qwen35_paged_full_attn_prefill_gqa_gate_bf16_decode_order_spans(
+        spans=spans(5, 5),
+        rows=5,
+        max_context_len=1026,
+        split_count=5,
+        **common,
+    )
+    assert [name for name, _, _ in calls] == ["dense", "gqa"]
+    dense_args = calls[0][1]
+    assert dense_args[7:9] == (2, 1023)
+    assert dense_args[6].base_offsets.shape == (2, 5)
+    gqa_args = calls[1][1]
+    assert gqa_args[0] == common["query_ptr"] + 2 * 16 * 256 * 4
+    assert gqa_args[3] == common["gate_ptr"] + 2 * 16 * 256 * 2
+    assert gqa_args[8].base_offsets.shape == (3, 5)
+    assert gqa_args[8].base_offsets.ptr == 0x1000 + 2 * 5 * 4
+    assert gqa_args[9:12] == (3, 256, 5)
+
+    calls.clear()
+    qwen35_paged_full_attn_prefill_gqa_gate_bf16_decode_order_spans(
+        spans=spans(4, 17),
+        rows=4,
+        max_context_len=4097,
+        split_count=17,
+        **common,
+    )
+    assert [name for name, _, _ in calls] == ["gqa"]
+    gqa_args = calls[0][1]
+    assert gqa_args[8].base_offsets.shape == (4, 17)
+    assert gqa_args[9:12] == (4, 256, 17)
 
 
 def test_qwen35_paged_attn_decode_build_plan_is_dry_run_safe(tmp_path) -> None:
@@ -667,7 +785,18 @@ def test_qwen35_paged_attn_decode_batch_honors_shared_physical_blocks(batch_kern
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
-def test_qwen35_paged_attn_decode_batch_c1_exact_matches_c1_model_shape() -> None:
+@pytest.mark.parametrize(
+    ("batch_kernel", "bit_exact"),
+    (
+        (qwen35_paged_full_attn_decode_context_bf16_batch_c1_exact_spans, True),
+        (qwen35_paged_full_attn_decode_context_bf16_batch_q3_c1_exact_spans, False),
+    ),
+    ids=("main", "q3-retained"),
+)
+def test_qwen35_paged_attn_decode_batch_c1_exact_matches_c1_model_shape(
+    batch_kernel,
+    bit_exact: bool,
+) -> None:
     runtime = get_hip_runtime()
     rows = 2
     block_size = 256
@@ -714,7 +843,7 @@ def test_qwen35_paged_attn_decode_batch_c1_exact_matches_c1_model_shape() -> Non
             max_live_count=max_context_len,
             storage_dtype=DType.BF16,
         )
-        qwen35_paged_full_attn_decode_context_bf16_batch_c1_exact_spans(
+        batch_kernel(
             query_b.ptr,
             key_b.ptr,
             value_b.ptr,
@@ -755,4 +884,10 @@ def test_qwen35_paged_attn_decode_batch_c1_exact_matches_c1_model_shape() -> Non
         for buffer in reversed(buffers):
             free(buffer, runtime=runtime)
 
-    np.testing.assert_array_equal(batch_out, c1_out)
+    if bit_exact:
+        np.testing.assert_array_equal(batch_out, c1_out)
+    else:
+        # The retained Q3 reduction is full-model exact at its admitted native
+        # short-context shapes; this wider synthetic context differs only at
+        # sub-2e-6 FP32 accumulation noise.
+        np.testing.assert_allclose(batch_out, c1_out, rtol=3e-4, atol=2e-6)

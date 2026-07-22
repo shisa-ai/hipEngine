@@ -7,6 +7,7 @@ from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
 from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
+from hipengine.kernels.hip_gfx1100.convert.cast import f32_to_bf16
 from hipengine.kernels.registry import KernelKey, register
 
 _SOURCE = Path(__file__).with_name("gdn.hip")
@@ -20,6 +21,10 @@ _SYMBOL_CHAIN_C1_EXACT_TLOOP_BF16 = "hipengine_qwen35_gdn_chain_recurrent_rmsnor
 _SYMBOL_CHAIN_TLOOP_FP16 = "hipengine_qwen35_gdn_chain_recurrent_rmsnorm_gate_lowp_tloop_fp16"
 _SYMBOL_PREFILL = "hipengine_qwen35_gdn_prefill_recurrent_f32"
 _SYMBOL_PREFILL_K2 = "hipengine_qwen35_gdn_prefill_recurrent_k2_f32"
+_SYMBOL_PREFILL_K2_DECODE_ORDER = "hipengine_qwen35_gdn_prefill_recurrent_k2_decode_order_f32"
+_SYMBOL_PREFILL_EXACT_LDS32 = (
+    "hipengine_qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_f32"
+)
 _SYMBOL_PREFILL_SEGMENTS_K2 = "hipengine_qwen35_gdn_prefill_recurrent_segments_k2_f32"
 _SYMBOL_PREFILL_NORMALIZED_WAVE32_XOR = (
     "hipengine_qwen35_gdn_prefill_recurrent_normalized_wave32_xor_f32"
@@ -34,6 +39,9 @@ _SYMBOL_PREFILL_NORMALIZED_SEGMENTS_CLUSTER8 = (
     "hipengine_qwen35_gdn_prefill_recurrent_normalized_segments_cluster8_f32"
 )
 _SYMBOL_PREFILL_PREPARE = "hipengine_qwen35_linear_attn_prefill_prepare_f32_bf16"
+_SYMBOL_PREFILL_PREPARE_DECODE_ORDER = (
+    "hipengine_qwen35_linear_attn_prefill_prepare_decode_order_f32_bf16"
+)
 _SYMBOL_PREFILL_PREPARE_PEER_NORMALIZED = (
     "hipengine_qwen35_linear_attn_prefill_prepare_peer_normalized_f32_bf16"
 )
@@ -737,6 +745,44 @@ def qwen35_gdn_prefill_recurrent_normalized_cluster8_f32(
     )
 
 
+def qwen35_gdn_prefill_recurrent_k2_decode_order_f32(
+    query_ptr: int,
+    key_ptr: int,
+    value_ptr: int,
+    beta_ptr: int,
+    decay_ptr: int,
+    recurrent_state_ptr: int,
+    out_ptr: int,
+    tokens: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch state-parallel K2 prefill with decode-order K reduction."""
+
+    _launch_prefill_recurrent(
+        _SYMBOL_PREFILL_K2_DECODE_ORDER,
+        query_ptr,
+        key_ptr,
+        value_ptr,
+        beta_ptr,
+        decay_ptr,
+        recurrent_state_ptr,
+        out_ptr,
+        tokens,
+        num_v_heads,
+        head_k_dim,
+        head_v_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def qwen35_gdn_prefill_recurrent_segments_k2_f32(
     query_ptr: int,
     key_ptr: int,
@@ -944,6 +990,52 @@ def qwen35_linear_attn_prefill_prepare_peer_normalized_f32_bf16(
 
     _launch_linear_attn_prefill_prepare(
         _SYMBOL_PREFILL_PREPARE_PEER_NORMALIZED,
+        conv_out_ptr,
+        a_ptr,
+        b_ptr,
+        dt_bias_ptr,
+        a_log_ptr,
+        query_ptr,
+        key_ptr,
+        value_ptr,
+        beta_ptr,
+        decay_ptr,
+        tokens,
+        num_k_heads,
+        num_v_heads,
+        head_k_dim,
+        head_v_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen35_linear_attn_prefill_prepare_decode_order_f32_bf16(
+    conv_out_ptr: int,
+    a_ptr: int,
+    b_ptr: int,
+    dt_bias_ptr: int,
+    a_log_ptr: int,
+    query_ptr: int,
+    key_ptr: int,
+    value_ptr: int,
+    beta_ptr: int,
+    decay_ptr: int,
+    tokens: int,
+    num_k_heads: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Prepare GDN tensors with the fused c=1 Q/K reduction order."""
+
+    _launch_linear_attn_prefill_prepare(
+        _SYMBOL_PREFILL_PREPARE_DECODE_ORDER,
         conv_out_ptr,
         a_ptr,
         b_ptr,
@@ -3021,6 +3113,16 @@ def register_qwen35_linear_attn_gdn_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "gdn_prefill_recurrent", "w4_paro", "f32_k2_decode_order"),
+        qwen35_gdn_prefill_recurrent_k2_decode_order_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "gdn_prefill_recurrent", "w4_paro", "f32_decode_order_exact_lds32"),
+        qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_f32,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "gdn_prefill_recurrent", "w4_paro", "f32_k2_segments"),
         qwen35_gdn_prefill_recurrent_segments_k2_f32,
         replace=replace,
@@ -3028,6 +3130,11 @@ def register_qwen35_linear_attn_gdn_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "linear_attn_prefill_prepare", "w4_paro", "f32_bf16"),
         qwen35_linear_attn_prefill_prepare_f32_bf16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "linear_attn_prefill_prepare", "w4_paro", "f32_bf16_decode_order"),
+        qwen35_linear_attn_prefill_prepare_decode_order_f32_bf16,
         replace=replace,
     )
     register(
@@ -3078,6 +3185,11 @@ def register_qwen35_linear_attn_gdn_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "gdn_prefill_recurrent", "gguf_qwen35", "f32_k2"),
         qwen35_gdn_prefill_recurrent_k2_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "gdn_prefill_recurrent", "gguf_qwen35", "f32_k2_decode_order"),
+        qwen35_gdn_prefill_recurrent_k2_decode_order_f32,
         replace=replace,
     )
     register(
@@ -3342,6 +3454,40 @@ def register_qwen35_linear_attn_gdn_kernels(*, replace: bool = True) -> None:
     )
     register(
         KernelKey("hip_gfx1100", "gdn_prefill_rmsnorm_gate", "gguf_qwen35", "bf16"),
+        qwen35_gdn_prefill_rmsnorm_gate_bf16,
+        replace=replace,
+    )
+    # UD-Q3_K_M needs the split prefill chain and the retained BF16
+    # recurrent-output boundary to preserve its resident decode contract.
+    # Keep both on the quant plugin axis so Q4/Q8 retain the one-launch-shorter
+    # F32 recurrent-output decode route.
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "gdn_decode_output_cast",
+            "gguf_ud_q3_k_m",
+            "f32_to_bf16_exact",
+        ),
+        f32_to_bf16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "gdn_prefill_recurrent", "gguf_ud_q3_k_m", "decode_order_bf16"),
+        qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "gdn_prefill_recurrent", "gguf_ud_q3_k_m", "f32_k2"),
+        qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "linear_attn_prefill_prepare", "gguf_ud_q3_k_m", "f32_bf16"),
+        qwen35_linear_attn_prefill_prepare_decode_order_f32_bf16,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "gdn_prefill_rmsnorm_gate", "gguf_ud_q3_k_m", "bf16"),
         qwen35_gdn_prefill_rmsnorm_gate_bf16,
         replace=replace,
     )

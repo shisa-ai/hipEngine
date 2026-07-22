@@ -1,0 +1,116 @@
+{
+  "schema": 1,
+  "status": "rejected",
+  "performance_claim": false,
+  "date": "2026-07-20",
+  "purpose": "Evaluate exact hierarchical local-wave/global-union MoE top-k as task #20 before the Q3 D1 decode campaign.",
+  "hipengine_base_commit": "73c81fdc",
+  "candidate_retained": false,
+  "source": {
+    "review": "/home/lhl/qwen-kernel/HIPENGINE-Q3-OPT.md",
+    "schedule": "/home/lhl/qwen-kernel/shaders/moe_route_select_hier.comp",
+    "schedule_commit": "92d0d5a36629c0de28b5fe1a4f8e47b6c3c1362f",
+    "qwen_kernel_head": "52e240f9c6d91750d0e5e692976cfb67fd9bc603"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf",
+    "sha256": "8966dd0cd8c543c4228490a2a8b0e0814fc4f1e6a8e199ceed4de6754ae7b8e1",
+    "quant": "gguf_ud_q3_k_m"
+  },
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "visible_device": 1,
+    "bdf": "0000:10:00.0",
+    "architecture": "gfx1100",
+    "wavefront_size": 32
+  },
+  "candidate": {
+    "shape_scope": {
+      "experts": [256, 512],
+      "top_k": [1, 8, 10, 16],
+      "threads": 256
+    },
+    "algorithm": "Each wave retained its exact local top-k; one wave selected the global top-k over num_waves*top_k value/ID pairs. Lower expert IDs won ties, non-finite values were sanitized for the adversarial gate, slot order and selected-logit softmax order were preserved.",
+    "surfaces": [
+      "standalone batched selector",
+      "combined-weight last-router-workgroup BF16/FP16 selector",
+      "split expert/shared last-router-workgroup BF16/FP16 selector"
+    ],
+    "rollback": "Existing iterative whole-block selector remained in the same qwen35_router code object during A/B.",
+    "post_decision": "All candidate source, Python policy wiring, env selector, and candidate-only tests were removed after the full-model rejection; git diff against base is empty before this artifact/docs closure."
+  },
+  "correctness": {
+    "status": "pass_before_performance_rejection",
+    "standalone": "Bit-exact selected IDs and routing-weight F32 bits versus the current selector for 256/512 experts, top-k 1/8/10/16, three rows, adversarial ties, and NaN/Inf inputs after the shared sanitation premise.",
+    "fused_split": "Bit-exact logits, IDs, and routing-weight F32 bits at 256 experts/top-k 8/local256.",
+    "full_model": {
+      "legacy_final_ids": [220, 220, 220],
+      "candidate_final_ids": [220, 220, 220],
+      "finite_logits": true,
+      "tracked_peak_gib_legacy": 15.804706819355488,
+      "tracked_peak_gib_candidate": 15.804706819355488
+    },
+    "development_note": "The first implementation failed after top-1 because a shuffle-down winner was valid only in lane 0; broadcasting the winning ID fixed candidate removal before any performance result was accepted."
+  },
+  "microprofile": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-router-hier-repeat-20260720-015930 -o repeat -- python3 /tmp/hipengine_router_hier_bench.py",
+    "warmup_launches_discarded": 10,
+    "measured_launches_per_symbol": 100,
+    "standalone_256x8": {
+      "legacy_median_us": 14.1,
+      "candidate_median_us": 14.88,
+      "median_delta_pct": 5.53191489361704,
+      "legacy_mean_us": 14.43331,
+      "candidate_mean_us": 15.47776,
+      "mean_delta_pct": 7.236385832494419
+    },
+    "split_fused_256x8_hidden2048": {
+      "legacy_median_us": 16.1005,
+      "candidate_median_us": 13.36,
+      "median_delta_pct": -17.02121052141239,
+      "legacy_mean_us": 15.74814,
+      "candidate_mean_us": 13.59256,
+      "mean_delta_pct": -13.68783869079141
+    },
+    "resources": {
+      "legacy_vgpr": 40,
+      "candidate_vgpr": 40,
+      "legacy_scratch_bytes": 0,
+      "candidate_scratch_bytes": 0,
+      "workgroup_size": 256
+    },
+    "interpretation": "The fused leaf improved in isolation while the standalone selector regressed; graph-replay full-model measurement was mandatory and authoritative."
+  },
+  "full_model_512_128": {
+    "command_template": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_ROUTER_TOPK_HIERARCHICAL=<0|1> PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --quant gguf_ud_q3_k_m --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode native --no-use-wmma-prefill --no-use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build --json <output>",
+    "legacy": {
+      "prefill_tok_s_samples": [18.818981120723375, 19.601741805340374, 19.589718534166717],
+      "prefill_tok_s_median": 19.589718534166717,
+      "decode_tok_s_samples": [99.20139459514178, 99.20843180787914, 99.04147221892443],
+      "decode_tok_s_median": 99.20139459514178,
+      "decode_stdev_pct": 0.09518845372885114
+    },
+    "candidate": {
+      "prefill_tok_s_samples": [19.351719800330564, 19.40955085738271, 19.337150180169633],
+      "prefill_tok_s_median": 19.351719800330564,
+      "decode_tok_s_samples": [98.72768460371537, 98.05736305598067, 98.00863902814076],
+      "decode_tok_s_median": 98.05736305598067,
+      "decode_stdev_pct": 0.4097754032951605
+    },
+    "delta": {
+      "prefill_tok_s_pct": -1.214916556463308,
+      "decode_tok_s_pct": -1.1532413872104241
+    }
+  },
+  "decision": {
+    "accepted": false,
+    "reason": "The production Q3 graph-replay gate regressed decode by 1.15% and prefill by 1.21% despite exact outputs and a faster isolated fused leaf. This triggers task #20's stop rule before 4K, Q4, or PARO expansion.",
+    "next": "Keep the current iterative selector and use these same-commit off/on controls as D0 evidence. Proceed to task #15 raw-IQ decode attribution and IQ4 down work distribution."
+  },
+  "raw_evidence": {
+    "legacy_model_json": {"path": "/tmp/hipengine-q3-router-legacy-512x128.json", "sha256": "58878575480a0bbab6b3878169739cd463acc18a38bc4bdb987b9b16309674ee"},
+    "candidate_model_json": {"path": "/tmp/hipengine-q3-router-hier-512x128.json", "sha256": "d20dc6e830d5a273c559d9e9ce207acced97e1cd8d5ae16e74b4703f9aab8d88"},
+    "repeat_microtrace_csv": {"path": "/tmp/hipengine-router-hier-repeat-20260720-015930/repeat_kernel_trace.csv", "sha256": "c88eb7c96720c80cfb56e48db47e46a4fab794b733dba1a954c49ffa1a38262a"},
+    "correctness_trace_csv": {"path": "/tmp/hipengine-router-hier-trace-20260720-015826/router-hier_kernel_trace.csv", "sha256": "cb128e5c593633cd5dfafbf516255658ad958b96d1046f1fa4f25c0ae3b7b669"}
+  }
+}

@@ -139,6 +139,14 @@ closed, but the measured route is not promotable.
 Long-context pressure, matched external comparisons, and project-wide production
 promotion remain open.
 
+The merged UD-Q3_K_M branch also retains a separate direct/native GPU1
+RX 7900 XTX result: exact C=2/4/8 IDs and full logits, native graph/profiler
+provenance, and **207.780/211.177 aggregate tok/s** at C8 512/4K. Its synchronous
+prompt-list scheduler, compaction, and admission evidence remain useful direct
+oracles; current persistent-server ownership and the broader agentic conclusions
+below remain the governing production contract. See
+[`2026-07-21-gpu1-q3-native-cn-retained.json`](../benchmarks/results/2026-07-21-gpu1-q3-native-cn-retained.json).
+
 ### Production OpenAI serving objective
 
 The next target is not merely a wider retained batch. It is one production

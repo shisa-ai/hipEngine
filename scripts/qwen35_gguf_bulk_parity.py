@@ -26,6 +26,7 @@ from hipengine.kernels.hip_gfx1100.fused import gguf_rmsnorm_bf16_f32_weight
 from hipengine.loading.qwen35_gguf import FULL_ATTENTION, LINEAR_ATTENTION
 from hipengine.quant.gguf import bf16_to_float32
 from hipengine.runtime.gguf_embedding import launch_gguf_embedding
+from hipengine.runtime.prefill import PrefillConfig
 from hipengine.runtime.qwen35_gguf_runner import (
     Qwen35GGUFFullStackRunner,
     Qwen35GGUFResidentSession,
@@ -36,6 +37,7 @@ from hipengine.runtime.qwen35_gguf_runner import (
 DEFAULT_MODEL = "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf"
 DEFAULT_TOKEN_IDS = (760, 4087, 369, 220)
 DEFAULT_LAYER_LIMITS = (0, 1, 2, 3, 4, 8, 12, 14, 20, 40)
+_QUANT_ATTN_AOTRITON_MIN_TOKENS = {"gguf_ud_q3_k_m": 0}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -51,6 +53,13 @@ def main(argv: list[str] | None = None) -> int:
         default=",".join(str(limit) for limit in DEFAULT_LAYER_LIMITS),
         help="Comma/space separated layer-limit values to scan.",
     )
+    parser.add_argument("--quant", default="gguf_q4_k_m")
+    parser.add_argument(
+        "--attn-aotriton-min-tokens",
+        type=int,
+        default=None,
+        help="AOTriton crossover; unset uses the selected quant policy.",
+    )
     parser.add_argument("--json", type=Path, default=None)
     parser.add_argument("--compiler-version-file", type=Path, default=None)
     parser.add_argument("--require-cached-build", action="store_true")
@@ -61,6 +70,14 @@ def main(argv: list[str] | None = None) -> int:
     if len(token_ids) < 4:
         raise ValueError("qwen35moe GGUF bulk prefill requires at least four tokens")
     compiler_version = args.compiler_version_file.read_text() if args.compiler_version_file else None
+    default_aotriton_threshold = PrefillConfig().attn_aotriton_min_tokens
+    aotriton_threshold = (
+        _QUANT_ATTN_AOTRITON_MIN_TOKENS.get(args.quant, default_aotriton_threshold)
+        if args.attn_aotriton_min_tokens is None
+        else int(args.attn_aotriton_min_tokens)
+    )
+    if aotriton_threshold < 0:
+        raise ValueError("--attn-aotriton-min-tokens must be non-negative")
 
     started = time.perf_counter()
     sample = _sample_serial_and_bulk(
@@ -68,14 +85,25 @@ def main(argv: list[str] | None = None) -> int:
         token_ids,
         compiler_version=compiler_version,
         require_cached_build=bool(args.require_cached_build),
+        prefill_quant=args.quant,
+        attn_aotriton_min_tokens=aotriton_threshold,
     )
-    layer_scan = _scan_layer_drift(args.model, token_ids, layer_limits)
+    layer_scan = _scan_layer_drift(
+        args.model,
+        token_ids,
+        layer_limits,
+        prefill_quant=args.quant,
+        attn_aotriton_min_tokens=aotriton_threshold,
+    )
     elapsed = time.perf_counter() - started
 
     artifact: dict[str, Any] = {
         "schema": 1,
         "status": "diagnostic",
         "model": str(args.model),
+        "quant": args.quant,
+        "prefill_quant": args.quant,
+        "attn_aotriton_min_tokens": aotriton_threshold,
         "token_ids": token_ids,
         "elapsed_seconds": elapsed,
         "native_attention_bulk_ffn_default_allowed": sample["native_attention_bulk_ffn_comparison"]["top1_match"]
@@ -132,13 +160,17 @@ def _sample_serial_and_bulk(
     *,
     compiler_version: str | None,
     require_cached_build: bool,
+    prefill_quant: str = "gguf_qwen35",
+    attn_aotriton_min_tokens: int = 512,
 ) -> dict[str, Any]:
     with Qwen35GGUFResidentSession(
         model,
         max_sequence_length=max(256, len(token_ids) + 8),
         compiler_version=compiler_version,
         require_cached_build=require_cached_build,
+        prefill_config=PrefillConfig(attn_aotriton_min_tokens=attn_aotriton_min_tokens),
     ) as session:
+        session.select_prefill_quant(prefill_quant)
         serial_started = time.perf_counter()
         serial = session.prefill(token_ids, use_bulk=False, return_logits=True)
         serial_seconds = time.perf_counter() - serial_started
@@ -195,17 +227,25 @@ def _sample_serial_and_bulk(
     }
 
 
-def _scan_layer_drift(model: str | Path, token_ids: list[int], layer_limits: Iterable[int]) -> dict[str, Any]:
+def _scan_layer_drift(
+    model: str | Path,
+    token_ids: list[int],
+    layer_limits: Iterable[int],
+    *,
+    prefill_quant: str = "gguf_qwen35",
+    attn_aotriton_min_tokens: int = 512,
+) -> dict[str, Any]:
     runtime = get_hip_runtime()
     out: dict[str, Any] = {}
     with Qwen35GGUFFullStackRunner(model, runtime=runtime) as runner:
+        runner.select_prefill_quant(prefill_quant)
         max_layer = int(runner.weights.config.block_count)  # type: ignore[union-attr]
         limits = tuple(sorted(set(int(limit) for limit in layer_limits)))
         for limit in limits:
             if limit < 0 or limit > max_layer:
                 raise ValueError(f"layer limit {limit} outside [0, {max_layer}]")
         serial_by_limit = {
-            limit: runner.run_prompt_hidden(token_ids, layer_limit=limit)
+            limit: _serial_hidden_rows(runner, token_ids, layer_limit=limit)
             for limit in limits
         }
         # The legacy "aotriton" label now means the fast fully-bulk scheduler
@@ -215,7 +255,13 @@ def _scan_layer_drift(model: str | Path, token_ids: list[int], layer_limits: Ite
             entries = []
             first_drift: int | None = None
             for limit in limits:
-                bulk_hidden = _layerwise_bulk_hidden(runner, token_ids, layer_limit=limit, full_attention_mode=mode)
+                bulk_hidden = _layerwise_bulk_hidden(
+                    runner,
+                    token_ids,
+                    layer_limit=limit,
+                    full_attention_mode=mode,
+                    attn_aotriton_min_tokens=attn_aotriton_min_tokens,
+                )
                 metrics = _hidden_comparison(serial_by_limit[limit], bulk_hidden)
                 layer_type = "embedding" if limit == 0 else runner.weights.config.layer_types[limit - 1]  # type: ignore[union-attr]
                 entry = {
@@ -234,12 +280,92 @@ def _scan_layer_drift(model: str | Path, token_ids: list[int], layer_limits: Ite
     return out
 
 
+def _serial_hidden_rows(
+    runner: Qwen35GGUFFullStackRunner,
+    token_ids: list[int],
+    *,
+    layer_limit: int,
+) -> np.ndarray:
+    """Return every token's serial hidden row after ``layer_limit`` layers."""
+
+    if runner.weights is None:
+        raise RuntimeError("runner is closed")
+    runtime = runner.runtime or get_hip_runtime()
+    rows = len(token_ids)
+    token = np.empty((1,), dtype=np.int64)
+    hidden = np.empty((rows, runner.hidden_size), dtype=np.uint16)
+    buffers = []
+    try:
+        token_buf = malloc(token.nbytes, runtime=runtime)
+        hidden_a = malloc(runner.hidden_size * DType.BF16.itemsize, runtime=runtime)
+        hidden_b = malloc(runner.hidden_size * DType.BF16.itemsize, runtime=runtime)
+        scratch = _FullStackScratch.allocate(
+            runner,
+            runtime=runtime,
+            max_sequence_length=max(256, rows + 8),
+        )
+        buffers = [token_buf, hidden_a, hidden_b, *scratch.buffers]
+        scratch.zero_states(runtime)
+        for position, token_id in enumerate(token_ids):
+            scratch.set_full_attention_position(position, runtime)
+            token[0] = int(token_id)
+            copy_host_to_device(token_buf, host_array_ptr(token), token.nbytes, runtime=runtime)
+            launch_gguf_embedding(
+                runner.weights.root("token_embedding"),
+                token_buf.ptr,
+                hidden_a.ptr,
+                rows=1,
+                hidden_size=runner.hidden_size,
+                vocab_size=runner.vocab_size,
+                runtime=runtime,
+            )
+            src = hidden_a
+            dst = hidden_b
+            for layer_id, layer_type in enumerate(
+                runner.weights.config.layer_types[:layer_limit]
+            ):
+                if layer_type == LINEAR_ATTENTION:
+                    runner._run_linear_attention_layer(layer_id, src.ptr, dst.ptr, scratch)
+                elif layer_type == FULL_ATTENTION:
+                    runner._run_full_attention_layer(
+                        layer_id,
+                        src.ptr,
+                        dst.ptr,
+                        scratch,
+                        position=position,
+                    )
+                else:
+                    raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+                src, dst = dst, src
+            gguf_rmsnorm_bf16_f32_weight(
+                src.ptr,
+                runner.weights.root("output_norm").allocation().tensor.ptr,
+                scratch.norm.ptr,
+                rows=1,
+                hidden_size=runner.hidden_size,
+                eps=runner.weights.config.rms_norm_eps,
+                runtime=runtime,
+            )
+            copy_device_to_host(
+                host_array_ptr(hidden[position : position + 1]),
+                scratch.norm,
+                hidden[position : position + 1].nbytes,
+                runtime=runtime,
+            )
+        runtime.device_synchronize()
+        return hidden
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+
 def _layerwise_bulk_hidden(
     runner: Qwen35GGUFFullStackRunner,
     token_ids: list[int],
     *,
     layer_limit: int,
     full_attention_mode: str,
+    attn_aotriton_min_tokens: int = 512,
 ) -> np.ndarray:
     if runner.weights is None:
         raise RuntimeError("runner is closed")
@@ -282,7 +408,16 @@ def _layerwise_bulk_hidden(
                 if full_attention_mode == "aotriton":
                     key_cache, value_cache = decode_scratch.full_cache(layer_id)
                     layer_scratch = replace(bulk_scratch, key_cache=key_cache, value_cache=value_cache)
-                    runner._run_full_attention_prefill_layer_aotriton(layer_id, src.ptr, dst.ptr, layer_scratch)
+                    runner._run_full_attention_prefill_layer_aotriton(
+                        layer_id,
+                        src.ptr,
+                        dst.ptr,
+                        layer_scratch,
+                        cos_table_ptr=decode_scratch.cos_table.ptr,
+                        sin_table_ptr=decode_scratch.sin_table.ptr,
+                        max_positions=int(decode_scratch.max_positions),
+                        attn_aotriton_min_tokens=attn_aotriton_min_tokens,
+                    )
                 elif full_attention_mode == "native":
                     for row in range(rows):
                         decode_scratch.set_full_attention_position(row, runtime)
@@ -310,21 +445,30 @@ def _layerwise_bulk_hidden(
         runtime.device_synchronize()
         hidden = np.empty((rows, runner.hidden_size), dtype=np.uint16)
         copy_device_to_host(host_array_ptr(hidden), bulk_scratch.norm, hidden.nbytes, runtime=runtime)
-        return hidden[-1:]
+        return hidden
     finally:
         for buffer in reversed(buffers):
             free(buffer, runtime=runtime)
 
 
 def _hidden_comparison(ref_bits: np.ndarray, cand_bits: np.ndarray) -> dict[str, Any]:
-    ref = bf16_to_float32(np.asarray(ref_bits, dtype=np.uint16))
-    cand = bf16_to_float32(np.asarray(cand_bits, dtype=np.uint16))
+    ref_bits = np.asarray(ref_bits, dtype=np.uint16)
+    cand_bits = np.asarray(cand_bits, dtype=np.uint16)
+    if ref_bits.shape != cand_bits.shape:
+        raise ValueError(f"hidden shape mismatch: {ref_bits.shape} vs {cand_bits.shape}")
+    ref = bf16_to_float32(ref_bits)
+    cand = bf16_to_float32(cand_bits)
     diff = ref - cand
+    row_mismatch_counts = np.count_nonzero(ref_bits != cand_bits, axis=1)
     return {
         "bit_equal": bool(np.array_equal(ref_bits, cand_bits)),
         "max_abs": float(np.max(np.abs(diff))),
         "mean_abs": float(np.mean(np.abs(diff))),
         "nonzero_count": int(np.count_nonzero(diff)),
+        "mismatched_rows": [
+            int(row) for row in np.flatnonzero(row_mismatch_counts)
+        ],
+        "row_mismatch_counts": [int(count) for count in row_mismatch_counts],
     }
 
 

@@ -18,6 +18,24 @@ MODEL = Path("/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf")
 pytestmark = pytest.mark.skipif(not MODEL.exists(), reason=f"local GGUF fixture not found: {MODEL}")
 
 
+def _kl_divergence(reference_logits: np.ndarray, candidate_logits: np.ndarray) -> float:
+    ref = reference_logits.astype(np.float64, copy=False)
+    cand = candidate_logits.astype(np.float64, copy=False)
+    ref_exp = np.exp(ref - float(np.max(ref)))
+    cand_exp = np.exp(cand - float(np.max(cand)))
+    ref_prob = ref_exp / float(np.sum(ref_exp))
+    cand_prob = cand_exp / float(np.sum(cand_exp))
+    return float(np.sum(ref_prob * (np.log(ref_prob + 1.0e-30) - np.log(cand_prob + 1.0e-30))))
+
+
+def _hip_available() -> bool:
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError:
+        return False
+    return True
+
+
 def test_qwen35_gguf_one_layer_probe_runs_finite_deterministic_hidden() -> None:
     if not _hip_available():
         pytest.skip("HIP runtime is not available")
@@ -90,11 +108,14 @@ def test_qwen35moe_prefill_default_selects_fast_bulk_with_native_fallback(monkey
 
     default = session.prefill([760, 4087, 369, 220], return_logits=False)
     native = session.prefill([760, 4087, 369, 220], bulk_attention_mode="native", return_logits=True)
+    session.default_bulk_attention_mode = "native"
+    plugin_default = session.prefill([760, 4087, 369, 220], return_logits=False)
 
-    assert default.token_id == native.token_id == 42
+    assert default.token_id == native.token_id == plugin_default.token_id == 42
     assert calls == [
         ([760, 4087, 369, 220], "bulk", False),
         ([760, 4087, 369, 220], "native", True),
+        ([760, 4087, 369, 220], "native", False),
     ]
 
 
