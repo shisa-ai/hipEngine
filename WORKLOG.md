@@ -173898,3 +173898,37 @@ verbatim/typed, adjacent multiple, ordinary, partial, malformed, and empty-name
 cases. This closes task #23 at deterministic parser/server scope. Task #24 must
 still validate actual Laguna reasoning and tool-selection transcripts, so no
 live agentic-quality claim is made.
+
+## 2026-07-22 — Add live Poolside-v1 transcript gate harness
+
+Added `scripts/laguna_poolside_v1_e2e.py` to run one resident Laguna model
+through blocking and token-fragmented SSE chat requests for thinking-disabled
+EOT, prompt-open thinking, mixed text plus one tool, two parallel tools, and
+UTF-8/quote/backslash/newline tool arguments. The harness normalizes random call
+IDs, reconstructs OpenAI argument deltas, requires blocking/stream token-ID and
+message equality, checks capability truthfulness and control-marker suppression,
+replays the malformed/partial deterministic fixture, and verifies exact tracked
+allocation recovery. Its JSON output is explicitly a correctness artifact with
+`performance_claim=false`.
+
+Two disposable live probes established useful prompt choices before freezing
+the harness: no-thinking returned exact `OK` + EOT; the simple 2+2 thinking case
+closed immediately and returned `4`; a harder multiplication prompt produced
+non-empty prompt-open reasoning; single, adjacent-multiple, and mixed-text tool
+prompts emitted correct Poolside XML that the server normalized to OpenAI calls.
+The first UTF-8 prompt with thinking enabled spent all 192 tokens reasoning and
+hit length before calling, so the final parser gate disables thinking for that
+orthogonal argument-escaping case rather than conflating reasoning budget with
+parser correctness.
+
+Harness validation before the live retained run:
+
+```bash
+uvx ruff check scripts/laguna_poolside_v1_e2e.py
+python3 -m compileall -q scripts/laguna_poolside_v1_e2e.py
+uv run python scripts/laguna_poolside_v1_e2e.py --help
+# clean / exits 0 (TestClient deprecation warning only)
+```
+
+Task #24 remains in progress until the complete blocking/streaming run emits and
+validates a committed artifact.
