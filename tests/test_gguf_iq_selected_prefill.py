@@ -308,9 +308,9 @@ def test_iq_selected_prefill_wrappers_validate_before_loading() -> None:
         gguf_iq4_xs_selected_dual_grouped_prefill_compact_bf16_bf16_out(
             **{**scalar, "in_features": 511}
         )
-    with pytest.raises(ValueError, match="at most 2048"):
+    with pytest.raises(ValueError, match="at most 3072"):
         gguf_iq3_xxs_selected_dual_grouped_prefill_compact_bf16_bf16_out(
-            **{**scalar, "in_features": 2304}
+            **{**scalar, "in_features": 3328}
         )
     with pytest.raises(ValueError, match="exactly 512"):
         gguf_iq4_xs_selected_grouped_prefill_compact_k512_wave32_bf16_bf16_out(
@@ -430,10 +430,12 @@ def test_grouped_iq3_auto_uses_measured_four_rows_per_expert_crossover(
     assert calls == [expected]
 
 
-def test_grouped_iq3_rowbatch4_is_bit_exact_across_batch_boundaries(libraries) -> None:
+@pytest.mark.parametrize("in_features", [2048, 3072])
+def test_grouped_iq3_rowbatch4_is_bit_exact_across_batch_boundaries(
+    libraries, in_features: int
+) -> None:
     grouped_library, _ = libraries
     meta = _compact_meta([0, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, 31, 32, 33])
-    in_features = 2048
     out_features = 19
     x_bf16 = _f32_to_bf16_u16(_make_x(meta.compact_rows, in_features))
     gate = _make_iq3_weight(meta.num_experts, out_features, in_features)
@@ -517,10 +519,12 @@ def test_grouped_wave32_iq4_down_is_bit_exact_to_local128_fallback(
     np.testing.assert_array_equal(actual, expected)
 
 
-def test_grouped_iq4_auto_keeps_local128_for_general_k(libraries) -> None:
+@pytest.mark.parametrize("in_features", [1024, 3072])
+def test_grouped_iq4_auto_keeps_local128_for_general_k(
+    libraries, in_features: int
+) -> None:
     grouped_library, _ = libraries
     meta = _compact_meta([0, 2, 3, 5])
-    in_features = 1024
     out_features = 23
     x_bf16 = _f32_to_bf16_u16(_make_x(meta.compact_rows, in_features))
     qweight = _make_iq4_weight(meta.num_experts, out_features, in_features)
@@ -593,15 +597,15 @@ def test_compact_wmma_dual_passes_scalar_quality_gate(
     assert result.passed, result
 
 
+@pytest.mark.parametrize("in_features", [2048, 3072])
 @pytest.mark.parametrize("quant", ["gguf_iq3_xxs", "gguf_iq4_xs"])
-def test_grouped_and_wmma_dual_cover_full_2048_gate_up_shape(
-    libraries, quant: str
+def test_grouped_and_wmma_dual_cover_full_gate_up_shapes(
+    libraries, quant: str, in_features: int
 ) -> None:
-    """Exercise the production hidden=2048 gate/up shape, including blk.39 IQ4."""
+    """Exercise Qwen K=2048 and Laguna K=3072 gate/up shapes."""
 
     grouped_library, direct_library = libraries
     meta = _compact_meta([1, 15, 16, 17])
-    in_features = 2048
     out_features = 16
     x_bf16 = _f32_to_bf16_u16(_make_x(meta.compact_rows, in_features))
     if quant == "gguf_iq3_xxs":
@@ -662,7 +666,8 @@ def test_grouped_and_wmma_dual_cover_full_2048_gate_up_shape(
     max_rel = float(
         np.max(np.abs(actual_f32 - expected_f32) / np.maximum(np.abs(expected_f32), 1.0))
     )
-    assert max_rel <= 0.04
+    max_rel_limit = 0.05 if in_features == 3072 else 0.04
+    assert max_rel <= max_rel_limit
     result = evaluate_logits(expected_f32, actual_f32)
     assert result.passed, result
 

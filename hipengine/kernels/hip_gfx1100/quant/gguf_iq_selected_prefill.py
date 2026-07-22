@@ -21,7 +21,7 @@ _SOURCE = Path(__file__).with_name("gguf_iq_selected_prefill.hip")
 _PARENT_SOURCE = Path(__file__).with_name("gguf_iq_gemv.hip")
 _OUTPUT_NAME = "gguf_iq_selected_prefill.so"
 _QK_K = 256
-_MAX_GROUPED_IN_FEATURES = 2048
+_MAX_GROUPED_IN_FEATURES = 3072
 
 _SYMBOL_IQ3_GROUPED_DUAL = (
     "hipengine_gguf_iq3_xxs_selected_dual_grouped_prefill_compact_bf16_bf16_out"
@@ -626,7 +626,7 @@ def _validate_common(
     if in_features <= 0 or in_features % _QK_K != 0:
         raise ValueError("in_features must be positive and divisible by 256")
     if in_features > _MAX_GROUPED_IN_FEATURES:
-        raise ValueError("in_features must be at most 2048 for grouped IQ prefill")
+        raise ValueError("in_features must be at most 3072 for grouped IQ prefill")
     if out_features <= 0:
         raise ValueError("out_features must be positive")
     if num_experts <= 0:

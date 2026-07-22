@@ -163,12 +163,41 @@ __global__ void gguf_iq3_xxs_selected_dual_grouped_prefill_compact_kernel(
   if (begin >= end) return;
 
   const int groups8 = in_features / 8;
-  const bool active = threadIdx.x < groups8;
   const int row_bytes = (in_features / QK_K) * IQ3_XXS_BLOCK_BYTES;
   const int64_t expert_bytes = static_cast<int64_t>(out_features) * row_bytes;
   const int64_t weight_offset =
       static_cast<int64_t>(expert) * expert_bytes +
       static_cast<int64_t>(out_col) * row_bytes;
+  const int64_t out_stride = static_cast<int64_t>(2) * out_features;
+
+  // K=3072 has 384 eight-value groups. Preserve the direct selected kernel's
+  // per-thread group order without retaining two gate/up segments in VGPRs.
+  if (groups8 > blockDim.x) {
+    for (int64_t row = begin; row < end; ++row) {
+      float gate_acc = 0.0f;
+      float up_acc = 0.0f;
+      for (int group = threadIdx.x; group < groups8; group += blockDim.x) {
+        const IQ3Segment gate_segment =
+            load_iq3_segment(gate_weight + weight_offset, group);
+        const IQ3Segment up_segment =
+            load_iq3_segment(up_weight + weight_offset, group);
+        const uint16_t* __restrict__ x_segment =
+            x + row * in_features + group * 8;
+        gate_acc += dot_iq3_segment(gate_segment, x_segment);
+        up_acc += dot_iq3_segment(up_segment, x_segment);
+      }
+      reduce_block_pair(gate_acc, up_acc);
+      if (threadIdx.x == 0) {
+        out[row * out_stride + out_col] = float_to_bf16_bits(gate_acc);
+        out[row * out_stride + out_features + out_col] =
+            float_to_bf16_bits(up_acc);
+      }
+      __syncthreads();
+    }
+    return;
+  }
+
+  const bool active = threadIdx.x < groups8;
   IQ3Segment gate_segment{};
   IQ3Segment up_segment{};
   int x_offset = 0;
@@ -179,7 +208,6 @@ __global__ void gguf_iq3_xxs_selected_dual_grouped_prefill_compact_kernel(
     x_offset = group * 8;
   }
 
-  const int64_t out_stride = static_cast<int64_t>(2) * out_features;
   for (int64_t row = begin; row < end; ++row) {
     float gate_acc = 0.0f;
     float up_acc = 0.0f;
@@ -221,12 +249,56 @@ __global__ void gguf_iq3_xxs_selected_dual_grouped_prefill_compact_rowbatch4_ker
   if (begin >= end) return;
 
   const int groups8 = in_features / 8;
-  const bool active = threadIdx.x < groups8;
   const int row_bytes = (in_features / QK_K) * IQ3_XXS_BLOCK_BYTES;
   const int64_t expert_bytes = static_cast<int64_t>(out_features) * row_bytes;
   const int64_t weight_offset =
       static_cast<int64_t>(expert) * expert_bytes +
       static_cast<int64_t>(out_col) * row_bytes;
+  constexpr int ROW_BATCH = 4;
+  __shared__ float wave_sums_gate[ROW_BATCH * 8];
+  __shared__ float wave_sums_up[ROW_BATCH * 8];
+  const int64_t out_stride = static_cast<int64_t>(2) * out_features;
+
+  if (groups8 > blockDim.x) {
+    for (int64_t row_base = begin; row_base < end; row_base += ROW_BATCH) {
+      float gate_acc[ROW_BATCH] = {};
+      float up_acc[ROW_BATCH] = {};
+      for (int group = threadIdx.x; group < groups8; group += blockDim.x) {
+        const IQ3Segment gate_segment =
+            load_iq3_segment(gate_weight + weight_offset, group);
+        const IQ3Segment up_segment =
+            load_iq3_segment(up_weight + weight_offset, group);
+#pragma unroll
+        for (int row_idx = 0; row_idx < ROW_BATCH; ++row_idx) {
+          const int64_t row = row_base + row_idx;
+          if (row < end) {
+            const uint16_t* __restrict__ x_segment =
+                x + row * in_features + group * 8;
+            gate_acc[row_idx] += dot_iq3_segment(gate_segment, x_segment);
+            up_acc[row_idx] += dot_iq3_segment(up_segment, x_segment);
+          }
+        }
+      }
+      reduce_block_pairs_batched(
+          gate_acc, up_acc, wave_sums_gate, wave_sums_up);
+      if (threadIdx.x == 0) {
+#pragma unroll
+        for (int row_idx = 0; row_idx < ROW_BATCH; ++row_idx) {
+          const int64_t row = row_base + row_idx;
+          if (row < end) {
+            out[row * out_stride + out_col] =
+                float_to_bf16_bits(gate_acc[row_idx]);
+            out[row * out_stride + out_features + out_col] =
+                float_to_bf16_bits(up_acc[row_idx]);
+          }
+        }
+      }
+      __syncthreads();
+    }
+    return;
+  }
+
+  const bool active = threadIdx.x < groups8;
   IQ3Segment gate_segment{};
   IQ3Segment up_segment{};
   int x_offset = 0;
@@ -237,10 +309,6 @@ __global__ void gguf_iq3_xxs_selected_dual_grouped_prefill_compact_rowbatch4_ker
     x_offset = group * 8;
   }
 
-  constexpr int ROW_BATCH = 4;
-  __shared__ float wave_sums_gate[ROW_BATCH * 8];
-  __shared__ float wave_sums_up[ROW_BATCH * 8];
-  const int64_t out_stride = static_cast<int64_t>(2) * out_features;
   for (int64_t row_base = begin; row_base < end; row_base += ROW_BATCH) {
     float gate_acc[ROW_BATCH] = {};
     float up_acc[ROW_BATCH] = {};
@@ -673,7 +741,7 @@ inline bool valid_common(
     int64_t num_experts) {
   return x != nullptr && expert_start_compact != nullptr && qweight != nullptr &&
       out != nullptr && compact_rows > 0 && in_features > 0 &&
-      (in_features % QK_K) == 0 && in_features <= 2048 && out_features > 0 &&
+      (in_features % QK_K) == 0 && in_features <= 3072 && out_features > 0 &&
       num_experts > 0;
 }
 
