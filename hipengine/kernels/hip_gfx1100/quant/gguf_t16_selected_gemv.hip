@@ -411,6 +411,247 @@ __global__ __launch_bounds__(128, 4) void qk_t16_selected_gemv_kernel(
 
 
 template <typename scalar_t>
+__global__ __launch_bounds__(128, 2) void q4_k_t16_selected_dual_pairreuse_compact_gemv_kernel(
+    const scalar_t* __restrict__ x,
+    const int64_t* __restrict__ expert_start_compact,
+    const uint8_t* __restrict__ tiles_a,
+    const uint8_t* __restrict__ tiles_b,
+    scalar_t* __restrict__ out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t num_experts) {
+  const int64_t global_tile = blockIdx.x;
+  const int64_t compact_row = blockIdx.y;
+  const int tid = threadIdx.x;
+  if (compact_row >= compact_rows) return;
+
+  const int64_t expert_id =
+      find_expert_for_compact_row(expert_start_compact, compact_row, num_experts);
+  if (expert_id < 0) return;
+  const int64_t group_start = expert_start_compact[expert_id];
+  const int64_t group_end = expert_start_compact[expert_id + 1];
+  if (((compact_row - group_start) & 1) != 0) return;
+  const int64_t paired_row = compact_row + 1 < group_end ? compact_row + 1 : -1;
+
+  const int64_t out_tiles_a = out_features_a / T16_COLS;
+  const int64_t out_tiles_b = out_features_b / T16_COLS;
+  const bool use_b = global_tile >= out_tiles_a;
+  const int64_t local_tile = use_b ? global_tile - out_tiles_a : global_tile;
+  if ((!use_b && local_tile >= out_tiles_a) || (use_b && local_tile >= out_tiles_b)) return;
+
+  const int64_t blocks_per_row = in_features / QK_K;
+  const int64_t out_stride = out_features_a + out_features_b;
+  const int64_t out_base = use_b ? out_features_a : 0;
+  const int64_t out_tiles = use_b ? out_tiles_b : out_tiles_a;
+  const uint8_t* __restrict__ tiles = use_b ? tiles_b : tiles_a;
+  const scalar_t* __restrict__ x0 = x + compact_row * in_features;
+  const scalar_t* __restrict__ x1 = paired_row >= 0 ? x + paired_row * in_features : nullptr;
+
+  float acc0[T16_COLS];
+  float acc1[T16_COLS];
+#pragma unroll
+  for (int col = 0; col < T16_COLS; ++col) {
+    acc0[col] = 0.0f;
+    acc1[col] = 0.0f;
+  }
+
+  for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
+    const uint8_t* __restrict__ tile = expert_tile_ptr<Q4_T16_BLOCK_BYTES>(
+        tiles, expert_id, local_tile, blk, out_tiles, blocks_per_row);
+    const int64_t k_base = blk * QK_K;
+    for (int k_in_block = tid; k_in_block < QK_K; k_in_block += blockDim.x) {
+      const float xv0 = scalar_to_float<scalar_t>(x0[k_base + k_in_block]);
+      const float xv1 = paired_row >= 0
+                            ? scalar_to_float<scalar_t>(x1[k_base + k_in_block])
+                            : 0.0f;
+#pragma unroll
+      for (int col = 0; col < T16_COLS; ++col) {
+        const float wv = t16_q4_weight(tile, k_in_block, col);
+        acc0[col] += xv0 * wv;
+        if (paired_row >= 0) acc1[col] += xv1 * wv;
+      }
+    }
+  }
+
+#pragma unroll
+  for (int col = 0; col < T16_COLS; ++col) GGUF_T16_WAVE_REDUCE(acc0[col]);
+  if (paired_row >= 0) {
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) GGUF_T16_WAVE_REDUCE(acc1[col]);
+  }
+
+  __shared__ float xchg0[4 * T16_COLS];
+  __shared__ float xchg1[4 * T16_COLS];
+  const int sub_id = tid >> 5;
+  const int sub_lane = tid & 31;
+  if (sub_lane == 0) {
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) {
+      xchg0[sub_id * T16_COLS + col] = acc0[col];
+      if (paired_row >= 0) xchg1[sub_id * T16_COLS + col] = acc1[col];
+    }
+  }
+  __syncthreads();
+
+  if (tid == 0) {
+    scalar_t* __restrict__ out0 =
+        out + compact_row * out_stride + out_base + local_tile * T16_COLS;
+    scalar_t* __restrict__ out1 = paired_row >= 0
+                                      ? out + paired_row * out_stride + out_base +
+                                            local_tile * T16_COLS
+                                      : nullptr;
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) {
+      float total0 = 0.0f;
+      float total1 = 0.0f;
+      for (int g = 0; g < 4; ++g) {
+        total0 += xchg0[g * T16_COLS + col];
+        if (paired_row >= 0) total1 += xchg1[g * T16_COLS + col];
+      }
+      out0[col] = float_to_scalar<scalar_t>(total0);
+      if (paired_row >= 0) out1[col] = float_to_scalar<scalar_t>(total1);
+    }
+  }
+}
+
+template <typename scalar_t, int qtype>
+__global__ __launch_bounds__(128, 2) void qk_t16_selected_pairreuse_compact_gemv_kernel(
+    const scalar_t* __restrict__ x,
+    const int64_t* __restrict__ expert_start_compact,
+    const uint8_t* __restrict__ tiles,
+    scalar_t* __restrict__ out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts) {
+  static_assert(qtype == 4 || qtype == 5 || qtype == 6, "qtype must be 4, 5, or 6");
+  const int64_t out_tile = blockIdx.x;
+  const int64_t compact_row = blockIdx.y;
+  const int tid = threadIdx.x;
+  if (compact_row >= compact_rows) return;
+
+  const int64_t expert_id =
+      find_expert_for_compact_row(expert_start_compact, compact_row, num_experts);
+  if (expert_id < 0) return;
+  const int64_t group_start = expert_start_compact[expert_id];
+  const int64_t group_end = expert_start_compact[expert_id + 1];
+  if (((compact_row - group_start) & 1) != 0) return;
+  const int64_t paired_row = compact_row + 1 < group_end ? compact_row + 1 : -1;
+
+  const int64_t blocks_per_row = in_features / QK_K;
+  const int64_t out_tiles = out_features / T16_COLS;
+  const scalar_t* __restrict__ x0 = x + compact_row * in_features;
+  const scalar_t* __restrict__ x1 = paired_row >= 0 ? x + paired_row * in_features : nullptr;
+
+  float acc0[T16_COLS];
+  float acc1[T16_COLS];
+#pragma unroll
+  for (int col = 0; col < T16_COLS; ++col) {
+    acc0[col] = 0.0f;
+    acc1[col] = 0.0f;
+  }
+
+  for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
+    const uint8_t* __restrict__ tile;
+    if constexpr (qtype == 4) {
+      tile = expert_tile_ptr<Q4_T16_BLOCK_BYTES>(
+          tiles, expert_id, out_tile, blk, out_tiles, blocks_per_row);
+    } else if constexpr (qtype == 5) {
+      tile = expert_tile_ptr<Q5_T16_BLOCK_BYTES>(
+          tiles, expert_id, out_tile, blk, out_tiles, blocks_per_row);
+    } else {
+      tile = expert_tile_ptr<Q6_T16_BLOCK_BYTES>(
+          tiles, expert_id, out_tile, blk, out_tiles, blocks_per_row);
+    }
+    const int64_t k_base = blk * QK_K;
+    for (int k_in_block = tid; k_in_block < QK_K; k_in_block += blockDim.x) {
+      const float xv0 = scalar_to_float<scalar_t>(x0[k_base + k_in_block]);
+      const float xv1 = paired_row >= 0
+                            ? scalar_to_float<scalar_t>(x1[k_base + k_in_block])
+                            : 0.0f;
+      if constexpr (qtype == 4) {
+#pragma unroll
+        for (int col = 0; col < T16_COLS; ++col) {
+          const float wv = t16_q4_weight(tile, k_in_block, col);
+          acc0[col] += xv0 * wv;
+          if (paired_row >= 0) acc1[col] += xv1 * wv;
+        }
+      } else if constexpr (qtype == 5) {
+        const int sb = k_in_block >> 5;
+        const int lane32 = k_in_block & 31;
+#pragma unroll
+        for (int col = 0; col < T16_COLS; ++col) {
+          const float d = fp16_bytes_to_float(tile + Q5_T16_D_OFFSET + col * 2);
+          const float dmin = fp16_bytes_to_float(tile + Q5_T16_DMIN_OFFSET + col * 2);
+          const float scale =
+              d * static_cast<float>(tile[Q5_T16_SCALE_OFFSET + sb * T16_COLS + col]);
+          const float minv =
+              dmin * static_cast<float>(tile[Q5_T16_MIN_OFFSET + sb * T16_COLS + col]);
+          const float q = static_cast<float>(t16_q5_quant(tile, sb, lane32, col));
+          const float wv = scale * q - minv;
+          acc0[col] += xv0 * wv;
+          if (paired_row >= 0) acc1[col] += xv1 * wv;
+        }
+      } else {
+        const int g16 = k_in_block >> 4;
+#pragma unroll
+        for (int col = 0; col < T16_COLS; ++col) {
+          const float d = fp16_bytes_to_float(tile + Q6_T16_D_OFFSET + col * 2);
+          const int8_t* __restrict__ scales =
+              reinterpret_cast<const int8_t*>(tile + Q6_T16_SCALE_OFFSET);
+          const float scale = d * static_cast<float>(scales[g16 * T16_COLS + col]);
+          const float q = static_cast<float>(t16_q6_quant(tile, k_in_block, col));
+          const float wv = scale * q;
+          acc0[col] += xv0 * wv;
+          if (paired_row >= 0) acc1[col] += xv1 * wv;
+        }
+      }
+    }
+  }
+
+#pragma unroll
+  for (int col = 0; col < T16_COLS; ++col) GGUF_T16_WAVE_REDUCE(acc0[col]);
+  if (paired_row >= 0) {
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) GGUF_T16_WAVE_REDUCE(acc1[col]);
+  }
+
+  __shared__ float xchg0[4 * T16_COLS];
+  __shared__ float xchg1[4 * T16_COLS];
+  const int sub_id = tid >> 5;
+  const int sub_lane = tid & 31;
+  if (sub_lane == 0) {
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) {
+      xchg0[sub_id * T16_COLS + col] = acc0[col];
+      if (paired_row >= 0) xchg1[sub_id * T16_COLS + col] = acc1[col];
+    }
+  }
+  __syncthreads();
+
+  if (tid == 0) {
+    scalar_t* __restrict__ out0 =
+        out + compact_row * out_features + out_tile * T16_COLS;
+    scalar_t* __restrict__ out1 = paired_row >= 0
+                                      ? out + paired_row * out_features + out_tile * T16_COLS
+                                      : nullptr;
+#pragma unroll
+    for (int col = 0; col < T16_COLS; ++col) {
+      float total0 = 0.0f;
+      float total1 = 0.0f;
+      for (int g = 0; g < 4; ++g) {
+        total0 += xchg0[g * T16_COLS + col];
+        if (paired_row >= 0) total1 += xchg1[g * T16_COLS + col];
+      }
+      out0[col] = float_to_scalar<scalar_t>(total0);
+      if (paired_row >= 0) out1[col] = float_to_scalar<scalar_t>(total1);
+    }
+  }
+}
+
+template <typename scalar_t>
 __global__ __launch_bounds__(256, 2) void q4_k_t16_selected_dual_direct_gemv_kernel(
     const scalar_t* __restrict__ x,
     const int64_t* __restrict__ selected,
@@ -1411,6 +1652,64 @@ int launch_qk_single(const void* x,
   return hipGetLastError();
 }
 
+template <typename scalar_t>
+int launch_q4_dual_pairreuse_compact(const void* x,
+                                     const void* expert_start_compact,
+                                     const void* tiles_a,
+                                     const void* tiles_b,
+                                     void* out,
+                                     int64_t compact_rows,
+                                     int64_t in_features,
+                                     int64_t out_features_a,
+                                     int64_t out_features_b,
+                                     int64_t num_experts,
+                                     hipStream_t stream) {
+  if (!x || !expert_start_compact || !tiles_a || !tiles_b || !out ||
+      compact_rows <= 0 || in_features <= 0 || out_features_a <= 0 ||
+      out_features_b <= 0 || num_experts <= 0 || (in_features % QK_K) != 0 ||
+      (out_features_a % T16_COLS) != 0 || (out_features_b % T16_COLS) != 0) {
+    return hipErrorInvalidValue;
+  }
+  const dim3 block(128);
+  const dim3 grid(
+      static_cast<unsigned int>((out_features_a + out_features_b) / T16_COLS),
+      static_cast<unsigned int>(compact_rows));
+  hipLaunchKernelGGL(
+      (q4_k_t16_selected_dual_pairreuse_compact_gemv_kernel<scalar_t>),
+      grid, block, 0, stream, reinterpret_cast<const scalar_t*>(x),
+      reinterpret_cast<const int64_t*>(expert_start_compact),
+      reinterpret_cast<const uint8_t*>(tiles_a),
+      reinterpret_cast<const uint8_t*>(tiles_b), reinterpret_cast<scalar_t*>(out),
+      compact_rows, in_features, out_features_a, out_features_b, num_experts);
+  return hipGetLastError();
+}
+
+template <typename scalar_t, int qtype>
+int launch_qk_pairreuse_compact(const void* x,
+                                const void* expert_start_compact,
+                                const void* tiles,
+                                void* out,
+                                int64_t compact_rows,
+                                int64_t in_features,
+                                int64_t out_features,
+                                int64_t num_experts,
+                                hipStream_t stream) {
+  if (!x || !expert_start_compact || !tiles || !out || compact_rows <= 0 ||
+      in_features <= 0 || out_features <= 0 || num_experts <= 0 ||
+      (in_features % QK_K) != 0 || (out_features % T16_COLS) != 0) {
+    return hipErrorInvalidValue;
+  }
+  const dim3 block(128);
+  const dim3 grid(static_cast<unsigned int>(out_features / T16_COLS),
+                  static_cast<unsigned int>(compact_rows));
+  hipLaunchKernelGGL(
+      (qk_t16_selected_pairreuse_compact_gemv_kernel<scalar_t, qtype>),
+      grid, block, 0, stream, reinterpret_cast<const scalar_t*>(x),
+      reinterpret_cast<const int64_t*>(expert_start_compact),
+      reinterpret_cast<const uint8_t*>(tiles), reinterpret_cast<scalar_t*>(out),
+      compact_rows, in_features, out_features, num_experts);
+  return hipGetLastError();
+}
 
 template <typename scalar_t>
 int launch_q4_dual_direct(const void* x,
@@ -1808,6 +2107,16 @@ extern "C" int hipengine_gguf_q4_k_t16_selected_dual_gemv_decode_compact_fp16_fp
                                 out_features_b, num_experts, stream);
 }
 
+extern "C" int hipengine_gguf_q4_k_t16_selected_dual_pairreuse_gemv_decode_compact_bf16_bf16_out(
+    const void* x, const void* expert_start_compact, const void* tiles_a,
+    const void* tiles_b, void* out, int64_t compact_rows, int64_t in_features,
+    int64_t out_features_a, int64_t out_features_b, int64_t num_experts,
+    hipStream_t stream) {
+  return launch_q4_dual_pairreuse_compact<uint16_t>(
+      x, expert_start_compact, tiles_a, tiles_b, out, compact_rows, in_features,
+      out_features_a, out_features_b, num_experts, stream);
+}
+
 extern "C" int hipengine_gguf_q4_k_t16_selected_gemv_decode_compact_bf16_bf16_out(
     const void* x, const void* expert_start_compact, const void* tiles, void* out,
     int64_t compact_rows, int64_t in_features, int64_t out_features,
@@ -1824,6 +2133,15 @@ extern "C" int hipengine_gguf_q4_k_t16_selected_gemv_decode_compact_fp16_fp16_ou
   return launch_qk_single<half_t, 4>(x, expert_start_compact, tiles, out,
                                     compact_rows, in_features, out_features,
                                     num_experts, stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_t16_selected_pairreuse_gemv_decode_compact_bf16_bf16_out(
+    const void* x, const void* expert_start_compact, const void* tiles, void* out,
+    int64_t compact_rows, int64_t in_features, int64_t out_features,
+    int64_t num_experts, hipStream_t stream) {
+  return launch_qk_pairreuse_compact<uint16_t, 4>(
+      x, expert_start_compact, tiles, out, compact_rows, in_features,
+      out_features, num_experts, stream);
 }
 
 extern "C" int hipengine_gguf_q5_k_t16_selected_gemv_decode_compact_bf16_bf16_out(
@@ -1844,6 +2162,15 @@ extern "C" int hipengine_gguf_q5_k_t16_selected_gemv_decode_compact_fp16_fp16_ou
                                     num_experts, stream);
 }
 
+extern "C" int hipengine_gguf_q5_k_t16_selected_pairreuse_gemv_decode_compact_bf16_bf16_out(
+    const void* x, const void* expert_start_compact, const void* tiles, void* out,
+    int64_t compact_rows, int64_t in_features, int64_t out_features,
+    int64_t num_experts, hipStream_t stream) {
+  return launch_qk_pairreuse_compact<uint16_t, 5>(
+      x, expert_start_compact, tiles, out, compact_rows, in_features,
+      out_features, num_experts, stream);
+}
+
 extern "C" int hipengine_gguf_q6_k_t16_selected_gemv_decode_compact_bf16_bf16_out(
     const void* x, const void* expert_start_compact, const void* tiles, void* out,
     int64_t compact_rows, int64_t in_features, int64_t out_features,
@@ -1860,4 +2187,13 @@ extern "C" int hipengine_gguf_q6_k_t16_selected_gemv_decode_compact_fp16_fp16_ou
   return launch_qk_single<half_t, 6>(x, expert_start_compact, tiles, out,
                                     compact_rows, in_features, out_features,
                                     num_experts, stream);
+}
+
+extern "C" int hipengine_gguf_q6_k_t16_selected_pairreuse_gemv_decode_compact_bf16_bf16_out(
+    const void* x, const void* expert_start_compact, const void* tiles, void* out,
+    int64_t compact_rows, int64_t in_features, int64_t out_features,
+    int64_t num_experts, hipStream_t stream) {
+  return launch_qk_pairreuse_compact<uint16_t, 6>(
+      x, expert_start_compact, tiles, out, compact_rows, in_features,
+      out_features, num_experts, stream);
 }

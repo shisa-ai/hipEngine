@@ -37,12 +37,24 @@ _Q6_SINGLE_PAIRREUSE_DIRECT_BF16 = "hipengine_gguf_q6_k_t16_selected_pairreuse_g
 _Q6_SINGLE_DIRECT_FP16 = "hipengine_gguf_q6_k_t16_selected_gemv_fp16_fp16_out"
 _Q4_DUAL_BF16 = "hipengine_gguf_q4_k_t16_selected_dual_gemv_decode_compact_bf16_bf16_out"
 _Q4_DUAL_FP16 = "hipengine_gguf_q4_k_t16_selected_dual_gemv_decode_compact_fp16_fp16_out"
+_Q4_DUAL_PAIRREUSE_BF16 = (
+    "hipengine_gguf_q4_k_t16_selected_dual_pairreuse_gemv_decode_compact_bf16_bf16_out"
+)
 _Q4_SINGLE_BF16 = "hipengine_gguf_q4_k_t16_selected_gemv_decode_compact_bf16_bf16_out"
 _Q4_SINGLE_FP16 = "hipengine_gguf_q4_k_t16_selected_gemv_decode_compact_fp16_fp16_out"
+_Q4_SINGLE_PAIRREUSE_BF16 = (
+    "hipengine_gguf_q4_k_t16_selected_pairreuse_gemv_decode_compact_bf16_bf16_out"
+)
 _Q5_SINGLE_BF16 = "hipengine_gguf_q5_k_t16_selected_gemv_decode_compact_bf16_bf16_out"
 _Q5_SINGLE_FP16 = "hipengine_gguf_q5_k_t16_selected_gemv_decode_compact_fp16_fp16_out"
+_Q5_SINGLE_PAIRREUSE_BF16 = (
+    "hipengine_gguf_q5_k_t16_selected_pairreuse_gemv_decode_compact_bf16_bf16_out"
+)
 _Q6_SINGLE_BF16 = "hipengine_gguf_q6_k_t16_selected_gemv_decode_compact_bf16_bf16_out"
 _Q6_SINGLE_FP16 = "hipengine_gguf_q6_k_t16_selected_gemv_decode_compact_fp16_fp16_out"
+_Q6_SINGLE_PAIRREUSE_BF16 = (
+    "hipengine_gguf_q6_k_t16_selected_pairreuse_gemv_decode_compact_bf16_bf16_out"
+)
 
 _QK_K = 256
 _T16_COLS = 16
@@ -654,6 +666,42 @@ def gguf_q4_k_t16_selected_dual_gemv_decode_compact_bf16_bf16_out(
     )
 
 
+def gguf_q4_k_t16_selected_dual_pairreuse_gemv_decode_compact_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact BF16 compact Q4T16 dual GEMV with adjacent pair reuse."""
+
+    _launch_dual(
+        _Q4_DUAL_PAIRREUSE_BF16,
+        x_ptr,
+        expert_start_compact_ptr,
+        tiles_a_ptr,
+        tiles_b_ptr,
+        out_ptr,
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_q4_k_t16_selected_dual_gemv_decode_compact_fp16_fp16_out(
     x_ptr: int,
     expert_start_compact_ptr: int,
@@ -708,6 +756,38 @@ def gguf_q4_k_t16_selected_gemv_decode_compact_bf16_bf16_out(
 
     _launch_single(
         _Q4_SINGLE_BF16,
+        x_ptr,
+        expert_start_compact_ptr,
+        tiles_ptr,
+        out_ptr,
+        compact_rows,
+        in_features,
+        out_features,
+        num_experts,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q4_k_t16_selected_pairreuse_gemv_decode_compact_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features: int,
+    num_experts: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact BF16 compact Q4T16 down GEMV with adjacent pair reuse."""
+
+    _launch_single(
+        _Q4_SINGLE_PAIRREUSE_BF16,
         x_ptr,
         expert_start_compact_ptr,
         tiles_ptr,
@@ -786,6 +866,38 @@ def gguf_q5_k_t16_selected_gemv_decode_compact_bf16_bf16_out(
     )
 
 
+def gguf_q5_k_t16_selected_pairreuse_gemv_decode_compact_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features: int,
+    num_experts: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact BF16 compact Q5T16 down GEMV with adjacent pair reuse."""
+
+    _launch_single(
+        _Q5_SINGLE_PAIRREUSE_BF16,
+        x_ptr,
+        expert_start_compact_ptr,
+        tiles_ptr,
+        out_ptr,
+        compact_rows,
+        in_features,
+        out_features,
+        num_experts,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_q5_k_t16_selected_gemv_decode_compact_fp16_fp16_out(
     x_ptr: int,
     expert_start_compact_ptr: int,
@@ -836,6 +948,38 @@ def gguf_q6_k_t16_selected_gemv_decode_compact_bf16_bf16_out(
 
     _launch_single(
         _Q6_SINGLE_BF16,
+        x_ptr,
+        expert_start_compact_ptr,
+        tiles_ptr,
+        out_ptr,
+        compact_rows,
+        in_features,
+        out_features,
+        num_experts,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q6_k_t16_selected_pairreuse_gemv_decode_compact_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features: int,
+    num_experts: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact BF16 compact Q6T16 down GEMV with adjacent pair reuse."""
+
+    _launch_single(
+        _Q6_SINGLE_PAIRREUSE_BF16,
         x_ptr,
         expert_start_compact_ptr,
         tiles_ptr,
@@ -1199,6 +1343,10 @@ def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
             gguf_q4_k_t16_selected_dual_gemv_decode_compact_fp16_fp16_out,
         ),
         (
+            "selected_dual_t16_pairreuse_gemv_decode_compact_bf16_bf16_out",
+            gguf_q4_k_t16_selected_dual_pairreuse_gemv_decode_compact_bf16_bf16_out,
+        ),
+        (
             "selected_dual_t16_gemv_decode_bf16_bf16_out",
             gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
         ),
@@ -1288,6 +1436,31 @@ def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
             replace=replace,
         )
 
+    for quant_key, compact_pairreuse_fn in (
+        (
+            "gguf_q4_k_t16_v1",
+            gguf_q4_k_t16_selected_pairreuse_gemv_decode_compact_bf16_bf16_out,
+        ),
+        (
+            "gguf_q5_k_t16_v1",
+            gguf_q5_k_t16_selected_pairreuse_gemv_decode_compact_bf16_bf16_out,
+        ),
+        (
+            "gguf_q6_k_t16_v1",
+            gguf_q6_k_t16_selected_pairreuse_gemv_decode_compact_bf16_bf16_out,
+        ),
+    ):
+        register(
+            KernelKey(
+                "hip_gfx1100",
+                "moe_linear",
+                quant_key,
+                "selected_t16_pairreuse_gemv_decode_compact_bf16_bf16_out",
+            ),
+            compact_pairreuse_fn,
+            replace=replace,
+        )
+
     for quant_key, direct_q8_dp4a in (
         ("gguf_q5_k_t16_v1", gguf_q5_k_t16_selected_q8_1_dp4a_gemv_bf16_bf16_out),
     ):
@@ -1310,21 +1483,25 @@ __all__ = [
     "gguf_q4_k_t16_selected_dual_silu_q8_1_dp4a_gemv_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_gemv_decode_compact_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_gemv_decode_compact_fp16_fp16_out",
+    "gguf_q4_k_t16_selected_dual_pairreuse_gemv_decode_compact_bf16_bf16_out",
     "gguf_q4_k_t16_selected_gemv_bf16_bf16_out",
     "gguf_q4_k_t16_selected_gemv_fp16_fp16_out",
     "gguf_q4_k_t16_selected_gemv_decode_compact_bf16_bf16_out",
     "gguf_q4_k_t16_selected_gemv_decode_compact_fp16_fp16_out",
+    "gguf_q4_k_t16_selected_pairreuse_gemv_decode_compact_bf16_bf16_out",
     "gguf_q5_k_t16_selected_gemv_bf16_bf16_out",
     "gguf_q5_k_t16_selected_pairreuse_gemv_bf16_bf16_out",
     "gguf_q5_k_t16_selected_q8_1_dp4a_gemv_bf16_bf16_out",
     "gguf_q5_k_t16_selected_gemv_fp16_fp16_out",
     "gguf_q5_k_t16_selected_gemv_decode_compact_bf16_bf16_out",
     "gguf_q5_k_t16_selected_gemv_decode_compact_fp16_fp16_out",
+    "gguf_q5_k_t16_selected_pairreuse_gemv_decode_compact_bf16_bf16_out",
     "gguf_q6_k_t16_selected_gemv_bf16_bf16_out",
     "gguf_q6_k_t16_selected_pairreuse_gemv_bf16_bf16_out",
     "gguf_q6_k_t16_selected_gemv_fp16_fp16_out",
     "gguf_q6_k_t16_selected_gemv_decode_compact_bf16_bf16_out",
     "gguf_q6_k_t16_selected_gemv_decode_compact_fp16_fp16_out",
+    "gguf_q6_k_t16_selected_pairreuse_gemv_decode_compact_bf16_bf16_out",
     "plan_gguf_t16_selected_gemv_build",
     "register_gguf_t16_selected_gemv_kernels",
 ]

@@ -175006,3 +175006,52 @@ pre-LPF-1 speculative decode wall. Marked that economics row stale rather than
 silently carrying it forward and created task #44, blocked on the remaining
 prefill plan, to rerun the full D4 category/heldout decision against the final
 current AR path. No speedup is inferred from projection microbenchmarks.
+
+## 2026-07-23 — Add exact Laguna LPF-2 compact expert-pair candidate
+
+Started LPF-2 from the retained real-routing replay rather than forcing the
+existing 16-row compact WMMA. At 55 rows, 76.25% of active expert groups contain
+at most four lanes and naïve WMMA padding executes 4.396x useful rows. In
+contrast, adjacent pairing after exact expert grouping covers 84.19% of useful
+lanes and lowers the selected compute-block count to 57.90% of direct without
+padding. At 128 rows the coverage is 91.71% and the compute-block ratio is
+54.15%. These are routing-derived bounds, not measured speedups.
+
+Added compact-adjacent Q4T16 dual gate/up and Q4/Q5/Q6T16 single-down kernels.
+They consume the existing model-neutral count/prefix/scatter compact ABI, pair
+rows relative to each expert's exact compact start, and preserve each row's
+established 128-thread K partition, four-wave reduction, and BF16 rounding.
+Unlike the physical-C8 pair kernels, the compact variants have no 64-lane mask
+limit. Laguna's opt-in `compact_pair` route sorts its unchanged sigmoid/top-10
+lanes, uses the unchanged normalized/scaled weights, applies the exact packed
+SiLU/down chain, then maps results back to original top-k order for the weighted
+sum. The backend default remains `direct`; the diagnostic selector is
+`HIPENGINE_LAGUNA_MOE_PREFILL=auto|direct|compact_pair`.
+
+RED was the expected import failure for the absent compact-pair wrappers.
+Focused GREEN and integration validation:
+
+```bash
+env HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 uv run pytest -q \
+  tests/test_gguf_t16_selected_gemv_decode.py -k compact_pairreuse
+# 1 passed
+env HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 uv run pytest -q \
+  tests/test_gguf_t16_selected_gemv_decode.py -k compact_down_pairreuse
+# 3 passed
+env HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 uv run pytest -q \
+  tests/test_laguna_moe_gpu.py
+# 5 passed
+```
+
+The irregular primitive fixtures use 132 compact lanes and are byte-exact to
+direct Q4 dual plus Q4/Q5/Q6 down. The production H=3072/F=1024 Laguna fixture is
+byte-exact for both actual selected-down quants and checks the complete grouped
+weighted-sum output against direct rows.
+
+A prebuilt, require-cached gfx1151 `rocprofv3 --kernel-trace` smoke confirms the
+new names and plausible resources: Q4 dual 238.241 us / 128 VGPR, Q4 down
+198.330 us / 128 VGPR, and Q6 down 204.944 us / 112 VGPR; all launch at 128
+threads with 128 SGPR, 512 B LDS, and zero scratch. Raw trace stays under
+`/tmp/laguna-compact-pair-trace`. This is the correctness/dispatch unit only;
+full-model balanced timing remains the next LPF-2 action and no performance
+claim or default promotion is made.

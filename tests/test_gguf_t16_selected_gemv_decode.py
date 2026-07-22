@@ -24,9 +24,11 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_selected_dual_silu_q8_1_dp4a_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_gemv_decode_compact_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_gemv_decode_compact_fp16_fp16_out,
+    gguf_q4_k_t16_selected_dual_pairreuse_gemv_decode_compact_bf16_bf16_out,
     gguf_q4_k_t16_selected_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_gemv_fp16_fp16_out,
     gguf_q4_k_t16_selected_gemv_decode_compact_bf16_bf16_out,
+    gguf_q4_k_t16_selected_pairreuse_gemv_decode_compact_bf16_bf16_out,
     gguf_q4_k_t16_selected_gemv_decode_compact_fp16_fp16_out,
     gguf_q5_k_t16_selected_gemv_bf16_bf16_out,
     gguf_q5_k_t16_selected_pairreuse_gemv_bf16_bf16_out,
@@ -34,11 +36,13 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q5_k_t16_selected_gemv_fp16_fp16_out,
     gguf_q5_k_t16_selected_gemv_decode_compact_bf16_bf16_out,
     gguf_q5_k_t16_selected_gemv_decode_compact_fp16_fp16_out,
+    gguf_q5_k_t16_selected_pairreuse_gemv_decode_compact_bf16_bf16_out,
     gguf_q6_k_t16_selected_gemv_bf16_bf16_out,
     gguf_q6_k_t16_selected_pairreuse_gemv_bf16_bf16_out,
     gguf_q6_k_t16_selected_gemv_fp16_fp16_out,
     gguf_q6_k_t16_selected_gemv_decode_compact_bf16_bf16_out,
     gguf_q6_k_t16_selected_gemv_decode_compact_fp16_fp16_out,
+    gguf_q6_k_t16_selected_pairreuse_gemv_decode_compact_bf16_bf16_out,
     plan_gguf_t16_selected_gemv_build,
     register_gguf_t16_selected_gemv_kernels,
 )
@@ -776,6 +780,117 @@ def test_q4_t16_direct_dual_pairreuse_matches_production_bits(t16_selected_libra
 
     np.testing.assert_array_equal(actual_a, ref_a)
     np.testing.assert_array_equal(actual_b, ref_b)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_q4_t16_compact_pairreuse_matches_direct_bits_beyond_64_lanes(
+    t16_selected_library,
+) -> None:
+    """Compact expert groups may pair arbitrary prompt lanes without reassociation."""
+
+    counts = [0, 3, 17, 1, 64, 2, 45]
+    expert_start = np.concatenate([[0], np.cumsum(counts)]).astype(np.int64)
+    selected = np.repeat(np.arange(len(counts), dtype=np.int64), counts)
+    rows = int(selected.size)
+    in_features, out_features = 512, 256
+    rng = np.random.default_rng(20260723)
+    qa = _stack_experts(make_q4_k_weight, out_features, in_features, len(counts), seed=79)
+    qb = _stack_experts(make_q4_k_weight, out_features, in_features, len(counts), seed=83)
+    ta = repack_gguf_q4_k_tile16(qa).tiles
+    tb = repack_gguf_q4_k_tile16(qb).tiles
+    x_bf16 = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+    )
+
+    ref_a, ref_b = _run_direct_dual(
+        gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
+        x_bf16,
+        selected,
+        ta,
+        tb,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+    candidate = _run_dual(
+        gguf_q4_k_t16_selected_dual_pairreuse_gemv_decode_compact_bf16_bf16_out,
+        x_bf16,
+        expert_start,
+        ta,
+        tb,
+        out_features,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+
+    np.testing.assert_array_equal(candidate[:, :out_features], ref_a)
+    np.testing.assert_array_equal(candidate[:, out_features:], ref_b)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.parametrize(
+    ("builder", "repack", "direct_fn", "compact_pair_fn"),
+    (
+        (
+            make_q4_k_weight,
+            repack_gguf_q4_k_tile16,
+            gguf_q4_k_t16_selected_gemv_bf16_bf16_out,
+            gguf_q4_k_t16_selected_pairreuse_gemv_decode_compact_bf16_bf16_out,
+        ),
+        (
+            make_q5_k_weight,
+            repack_gguf_q5_k_tile16,
+            gguf_q5_k_t16_selected_gemv_bf16_bf16_out,
+            gguf_q5_k_t16_selected_pairreuse_gemv_decode_compact_bf16_bf16_out,
+        ),
+        (
+            make_q6_k_weight,
+            repack_gguf_q6_k_tile16,
+            gguf_q6_k_t16_selected_gemv_bf16_bf16_out,
+            gguf_q6_k_t16_selected_pairreuse_gemv_decode_compact_bf16_bf16_out,
+        ),
+    ),
+)
+def test_t16_compact_down_pairreuse_matches_direct_bits_beyond_64_lanes(
+    builder,
+    repack,
+    direct_fn,
+    compact_pair_fn,
+    t16_selected_library,
+) -> None:
+    counts = [0, 3, 17, 1, 64, 2, 45]
+    expert_start = np.concatenate([[0], np.cumsum(counts)]).astype(np.int64)
+    selected = np.repeat(np.arange(len(counts), dtype=np.int64), counts)
+    rows = int(selected.size)
+    in_features, out_features = 512, 256
+    rng = np.random.default_rng(20260724)
+    qweight = _stack_experts(builder, out_features, in_features, len(counts), seed=89)
+    tiles = repack(qweight).tiles
+    x_bf16 = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+    )
+
+    reference = _run_direct_single(
+        direct_fn,
+        x_bf16,
+        selected,
+        tiles,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+    candidate = _run_single(
+        compact_pair_fn,
+        x_bf16,
+        expert_start,
+        tiles,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+
+    np.testing.assert_array_equal(candidate, reference)
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")

@@ -1841,8 +1841,17 @@ artifacts have clean provenance. The gfx1151 backend capability now makes tiled
 the default from row two; `HIPENGINE_LAGUNA_F16_PREFILL=gemv` remains a one-
 release rollback. Evidence:
 `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-lpf1-{ab,tiled}.json`.
-LPF-2 is next, with compact WMMA measured first only as a control against the
-routing replay and a small-M grouped reuse path preferred if padding loses.
+LPF-2 is in progress. The routing replay makes a no-padding compact-pair path
+the first exact candidate: grouping covers 84.19%/91.71% of lanes in pairs at
+55/128 rows and reduces the computed selected-row blocks to 57.90%/54.15% of
+direct. New Q4T16 dual and Q4/Q6T16 down kernels pair adjacent lanes relative
+to exact expert starts, preserving each row's 128-thread reduction and BF16
+bits beyond the old 64-lane mask. The complete Laguna production-shape fixture
+is byte-exact for both down quants and a cached gfx1151 trace confirms 128-thread,
+zero-scratch dispatch. `HIPENGINE_LAGUNA_MOE_PREFILL=compact_pair` remains a
+diagnostic while `direct` stays the backend default; balanced full-model timing
+must still decide retention. The 16-row compact WMMA route remains only a
+padding-stressed control, not a presumed promotion.
 
 Every LPF candidate is a registered variant with the current exact chain as its
 unfused rollback. Exact candidates pass byte comparison on lengths
