@@ -172810,3 +172810,32 @@ headroom. Layout counts are dense_f16 240, dense_f32 287, Q4T16 118, Q6T16 24,
 Q4 pack8 120, and raw 25. These are deterministic byte-accounting results, not
 proof that allocations or kernels execute; actual materialization/load/free
 remains pending.
+
+## 2026-07-22 — Add Laguna GGUF tokenizer and HF token fixtures
+
+Added torch-free `LagunaGGUFTokenizer` beside the existing Qwen byte-BPE path.
+It requires GGUF `tokenizer.ggml.model=gpt2` and `pre=laguna`, applies Poolside's
+newline-run boundary before the Qwen2-style Unicode splitter, and preserves
+CRLF as one BPE boundary. It loads BOS/EOS/EOT/PAD/SEP/MASK/UNK IDs
+`2/2/24/9/8/12/0`, the GGUF BOS-insertion flag, raw chat-template source, and
+stop IDs `(2,24)`. GGUF control/user-defined tokens are longest-match atomic, so
+chat markers embedded in normal text retain IDs 18/19/23-26. Control-token
+skipping suppresses EOT `</assistant>` while preserving user-defined thinking
+and tool markers, matching the HF decode contract.
+
+The independent token oracle was the official Poolside HF fast tokenizer
+snapshot `poolside/Laguna-S-2.1@179ee67cf0fff5391c67fe1a392ea849fa6d643f`
+(`tokenizers==0.23.1`, no Transformers import). Checked-in fixtures cover
+English, contractions/digits, Japanese+English, LF, CRLF, punctuation before a
+newline run, a combining mark, atomic chat/control strings, and embedded EOT.
+A local expanded 23-case comparison matched HF IDs with and without BOS
+insertion, including empty text and whitespace boundaries; added-token decode
+semantics matched as well.
+
+RED: `uv run pytest -q tests/test_laguna_gguf_tokenizer.py` failed at collection
+because `LagunaGGUFTokenizer` did not exist. GREEN: tokenizer tests plus model
+import/config tests pass **21/21**; focused Ruff and `compileall` pass. The
+existing Qwen tokenizer file remains source-compatible (its local model-backed
+cases skip on this host). The GGUF chat template is loaded but rendered
+chat/tool fixtures and Poolside llama.cpp token parity remain pending; no claim
+that the full L0 tokenizer/template oracle is closed is made.

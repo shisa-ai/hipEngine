@@ -823,6 +823,20 @@ Requirements:
 - chat template is read from GGUF metadata and rendered through the existing
   safe template surface.
 
+Implemented foundation (2026-07-22):
+
+- the model/config and strict 814-tensor mapping plugins are registered and
+  covered by synthetic plus completed-artifact tests;
+- `LagunaGGUFTokenizer` loads the `gpt2`/`laguna` GGUF vocabulary, BOS 2, EOS 2,
+  EOT 24, PAD 9, SEP 8, MASK 12, UNK 0, BOS insertion, stop IDs, and the raw chat
+  template while suppressing EOT text under special-token skipping;
+- five checked-in prompt fixtures plus CRLF, newline/punctuation, and combining-
+  mark boundaries match Poolside's HF fast tokenizer at revision
+  `179ee67cf0fff5391c67fe1a392ea849fa6d643f`; an expanded 23-case local
+  comparison also matched, including atomic chat/control tokens;
+- rendered chat-template fixtures and the authoritative Poolside llama.cpp token
+  oracle remain pending, so HF parity is not yet the full L0 acceptance gate.
+
 Acceptance:
 
 - scanner resolves `laguna` to the Laguna model plugin;
