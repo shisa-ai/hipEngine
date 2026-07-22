@@ -79,7 +79,9 @@ def test_builtin_mixed_gguf_quant_plugins_are_registered() -> None:
         "gguf_q4_1": ("gguf_block_q4_1", "block32_scale_min", "gguf_dense_bf16_fallback"),
         "gguf_q5_k": ("gguf_block_q5_k", "block256_subblock32_scale_min", "gguf_k_gemv"),
         "gguf_q6_k": ("gguf_block_q6_k", "block256_subblock16_scale", "gguf_k_gemv"),
-        "gguf_iq4_xs": ("gguf_iq4_xs", "block256_iq4_xs", "gguf_dense_bf16_fallback"),
+        "gguf_q3_k": ("gguf_block_q3_k", "block256_subblock16_scale", "gguf_k_gemv"),
+        "gguf_iq3_xxs": ("gguf_iq3_xxs", "block256_iq3_xxs", "gguf_iq_gemv"),
+        "gguf_iq4_xs": ("gguf_iq4_xs", "block256_iq4_xs", "gguf_iq_gemv"),
     }
     for name, (storage, granularity, kernel_family) in expected.items():
         plugin = resolve_quant(name)

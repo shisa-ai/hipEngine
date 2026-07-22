@@ -20,6 +20,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from hipengine.kernels.hip_gfx1100.convert.cast import f32_to_bf16
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_recurrent_decode_order_exact_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_f32,
@@ -60,6 +61,19 @@ from hipengine.runtime import qwen35_gguf_runner as qgr
 def _reset_segment_threshold(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_GDN_PREFILL_MODE", raising=False)
+
+
+def test_q3_decode_output_width_policy_is_registry_selected() -> None:
+    register_qwen35_linear_attn_gdn_kernels()
+    runner = object.__new__(qgr.Qwen35GGUFFullStackRunner)
+    runner.backend = "hip_gfx1100"
+    runner._gguf_prefill_quant = "gguf_ud_q3_k_m"
+
+    assert runner._gdn_decode_output_cast_fn() is f32_to_bf16
+
+    runner._gguf_prefill_quant = "gguf_qwen35"
+    runner.__dict__.pop("_gguf_gdn_decode_output_cast_fn_cache", None)
+    assert runner._gdn_decode_output_cast_fn() is None
 
 
 def test_resolve_gguf_gdn_prefill_plan_returns_complete_chain() -> None:
@@ -1014,13 +1028,13 @@ def test_segment_threshold_env_override_invalid_values_fall_back_to_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD", "not-a-number")
-    assert qgr._gguf_gdn_prefill_segment_threshold() == 1025
+    assert qgr._gguf_gdn_prefill_segment_threshold() == 256
     monkeypatch.setenv("HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD", "0")
     assert qgr._gguf_gdn_prefill_segment_threshold() == 1
     monkeypatch.setenv("HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD", "128")
     assert qgr._gguf_gdn_prefill_segment_threshold() == 128
     monkeypatch.delenv("HIPENGINE_GGUF_GDN_PREFILL_SEGMENT_THRESHOLD", raising=False)
-    assert qgr._gguf_gdn_prefill_segment_threshold() == 1025
+    assert qgr._gguf_gdn_prefill_segment_threshold() == 256
 
 
 def _new_runner() -> qgr.Qwen35GGUFFullStackRunner:

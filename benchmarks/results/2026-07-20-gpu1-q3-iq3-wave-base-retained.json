@@ -1,0 +1,239 @@
+{
+  "schema": 1,
+  "status": "accepted_verified_subwindow_default",
+  "performance_claim": {
+    "headline_e2e": false,
+    "kernel_subwindow": true,
+    "directional_graph_wall": true,
+    "reason": "The production 624-dispatch IQ3 family improves 2.05% with lower VGPR allocation, while counterbalanced 512/128 graph wall improves 0.20% and 1K/4K controls are exact and non-regressive. The small topline delta is not promoted as a new broad throughput headline."
+  },
+  "date": "2026-07-20",
+  "purpose": "Retain D1C's bounded wave-uniform IQ3_XXS block-base cleanup after D1A was obsolete and D1B output tiling was rejected.",
+  "hipengine_base_commit": "80eb19db",
+  "production_source_base_commit": "955fbb66",
+  "candidate_retained": true,
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf",
+    "size_bytes": 17104402720,
+    "size_gib": 15.929716378450394,
+    "sha256": "8966dd0cd8c543c4228490a2a8b0e0814fc4f1e6a8e199ceed4de6754ae7b8e1",
+    "architecture": "qwen35moe",
+    "quant": "gguf_ud_q3_k_m",
+    "ar_layers": 40,
+    "iq3_gate_up_layers": 39
+  },
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "visible_device": 1,
+    "physical_gpu": 1,
+    "bdf": "0000:10:00.0",
+    "architecture": "gfx1100",
+    "compute_units": 96,
+    "wavefront_size": 32,
+    "cross_card_status": "W7900 throughput not rerun because the user directed ongoing tests to GPU1 while GPU0 was owned by another process; no W7900 performance claim is made."
+  },
+  "software": {
+    "hip": "7.2.53211-3d9ef42",
+    "amd_clang": "22.0.0git",
+    "compiler_commit": "f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "kernel_build_profile": "decode with -mllvm -amdgpu-unroll-threshold-local=600 -mcumode",
+    "require_cached_build": true,
+    "qwen_source_reference": "qwen-kernel@52e240f9c6d91750d0e5e692976cfb67fd9bc603"
+  },
+  "change": {
+    "file": "hipengine/kernels/hip_gfx1100/quant/gguf_iq_gemv.hip",
+    "scope": "production IQ3_XXS fused dual gate+up+SiLU kernel only",
+    "description": "Use __builtin_amdgcn_readfirstlane for group8_linear >> 5. Every active wave owns one 256-value IQ3 super-block, so the block index and the two gate/up block bases are wave-uniform and can remain in SGPRs.",
+    "numerical_contract_change": false,
+    "base_source_sha256": "7a478cad0859be956fb97fc2b3596efd322a384c9bd1a7201c58390d352ef733",
+    "candidate_source_sha256": "c1b5f118d8875e60e1748d9eec5e6481324c84a1fed69092d968da5d865860c7"
+  },
+  "commands": {
+    "targeted_tests": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 -m pytest tests/test_gguf_iq_gemv.py tests/test_qwen35_gguf_iq_dispatch.py -q",
+    "selected_decode16_profile": "LD_LIBRARY_PATH=/tmp/hipengine-roctx-sdk-override-gguf-direct:<ROCm-sysdeps> HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --memory-copy-trace --selected-regions true --output-format csv -d /tmp/hipengine-q3-iq3-wavebase-decode16-20260720-024554 -o q3-iq3-wavebase-decode16 -- python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --quant gguf_ud_q3_k_m --token-id 9707 --prompt-length 512 --decode-tokens 16 --warmup-decode-tokens 1 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode native --no-use-wmma-prefill --no-use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --rocprof-selected-region measured_decode_graph --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build --json <out>/bench.json",
+    "graph_wall_template": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --quant gguf_ud_q3_k_m --token-id 9707 --prompt-length <512|1024|4096> --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode native --no-use-wmma-prefill --no-use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build --json <out>.json",
+    "graph_wall_ab_method": "Both ABI-identical cached libraries were built before measurement. Base .so SHA-256 80817633678fd7156b979948860df74394e549e24af28e5c466112b0cd520a08 and candidate .so SHA-256 2b783ba55c52abe6ed24ce4afc665ce056d4676a5e565c4102c9657014dcdce5 were copied in turn to the candidate cache output path before each fresh process. The 512 sequence was current,candidate,candidate,current,current,candidate; 1K was current,candidate; 4K was candidate,current.",
+    "eager_wall_template": "Same graph_wall_template at prompt 512 with --no-graph-replay-decode; sequence current,candidate,candidate,current.",
+    "graph_correctness": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 scripts/qwen35_gguf_decode_graph_smoke.py --fixture tests/fixtures/gguf/qwen36_35b_a3b_ud_q3km_smoke.json --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build --json /tmp/hipengine-q3-iq3-wavebase-graph-smoke.json"
+  },
+  "code_object": {
+    "current": {
+      "so_sha256": "80817633678fd7156b979948860df74394e549e24af28e5c466112b0cd520a08",
+      "hsaco_sha256": "53c0a72478ac56f58e4bcad29dda30f0d3cb1896d01f098c7e74d145e4e8ed67",
+      "logical_vgpr": 42,
+      "allocated_vgpr": 48,
+      "private_bytes": 0,
+      "function_bytes": 2788,
+      "vector_mad_u64": 2,
+      "vector_add_co": 9,
+      "global_load_instructions": 11,
+      "vmcnt_waits": 8
+    },
+    "candidate": {
+      "so_sha256": "2b783ba55c52abe6ed24ce4afc665ce056d4676a5e565c4102c9657014dcdce5",
+      "hsaco_sha256": "c8a11b19285a0f3a99be9ebde104a9acf25c882d2fda3cd0e1173bda2bcd173a",
+      "logical_vgpr": 37,
+      "allocated_vgpr": 40,
+      "private_bytes": 0,
+      "function_bytes": 2788,
+      "vector_mad_u64": 0,
+      "vector_add_co": 1,
+      "global_load_instructions": 11,
+      "vmcnt_waits": 9
+    },
+    "interpretation": "The aux reconstruction was already one packed dword load, and the four indexed codebook loads remain unchanged. The retained win is narrower: one explicit readfirstlane converts both per-lane 64-bit IQ3 weight-block address chains to wave-scalar arithmetic and lowers VGPR allocation 48->40 without changing loads, function size, or scratch."
+  },
+  "selected_decode16_profile": {
+    "current": {
+      "dispatches_total": 11328,
+      "summed_kernel_ms": 142.173458,
+      "kernel_ms_per_token": 8.885841125,
+      "iq3_dispatches": 624,
+      "iq3_ms": 11.496612,
+      "iq3_ms_per_token": 0.71853825,
+      "iq3_duration_us": {"min": 16.52, "median": 17.12, "mean": 18.42405769230769, "max": 40.16},
+      "iq3_allocated_vgpr": 48,
+      "iq3_scratch_bytes": 0,
+      "profiled_wall_tok_s": 86.78981500908758,
+      "final_token_id": 68
+    },
+    "candidate": {
+      "dispatches_total": 11328,
+      "summed_kernel_ms": 141.46397,
+      "kernel_ms_per_token": 8.841498125,
+      "iq3_dispatches": 624,
+      "iq3_ms": 11.261385,
+      "iq3_ms_per_token": 0.7038365625,
+      "iq3_duration_us": {"min": 16.281, "median": 16.96, "mean": 18.047091346153845, "max": 38.921},
+      "iq3_allocated_vgpr": 40,
+      "iq3_scratch_bytes": 0,
+      "profiled_wall_tok_s": 86.9585104140243,
+      "final_token_id": 68
+    },
+    "delta": {
+      "iq3_ms_pct": -2.046054959495891,
+      "iq3_ms_saved_per_token": 0.0147016875,
+      "summed_kernel_ms_pct": -0.4990298540815008,
+      "dispatch_delta": 0,
+      "selected_region_memory_copy_events": 0
+    }
+  },
+  "graph_wall_512_128": {
+    "current": {
+      "decode_tok_s_samples": [99.81038732188306, 100.33352784846613, 100.35312822448755],
+      "median": 100.33352784846613,
+      "mean": 100.16568113161225,
+      "min": 99.81038732188306,
+      "max": 100.35312822448755,
+      "stdev_pct_of_median": 0.30682614523178375,
+      "latency_ms_per_token": 9.966758086193295
+    },
+    "candidate": {
+      "decode_tok_s_samples": [100.62461455990002, 100.53620671391721, 100.36429731228421],
+      "median": 100.53620671391721,
+      "mean": 100.50837286203381,
+      "min": 100.36429731228421,
+      "max": 100.62461455990002,
+      "stdev_pct_of_median": 0.13166586075885275,
+      "latency_ms_per_token": 9.946665312781988
+    },
+    "paired_candidate_delta_tok_s": [0.8142272380169686, 0.20267886545107672, 0.011169087796659483],
+    "median_delta_pct": 0.2020051221135022,
+    "predicted_delta_from_iq3_profile_pct": 0.1477251224373255,
+    "iq3_saving_share_of_observed_wall_saving_pct": 73.16903047205574,
+    "final_ids_all": [220, 220, 220, 220, 220, 220],
+    "final_logit_all": 13.923458099365234,
+    "tracked_peak_gib_all": 15.804706819355488
+  },
+  "context_non_regression": {
+    "1024_128": {
+      "current_decode_tok_s": 106.51046268014493,
+      "candidate_decode_tok_s": 106.51449313920072,
+      "delta_pct": 0.0037840968430513655,
+      "current_and_candidate_final_id": 232,
+      "current_and_candidate_final_logit": 10.251853942871094,
+      "tracked_peak_gib": 15.980183139443398
+    },
+    "4096_128": {
+      "current_decode_tok_s": 108.47095278555432,
+      "candidate_decode_tok_s": 108.5144592899261,
+      "delta_pct": 0.040108898515711644,
+      "current_and_candidate_final_id": 1510,
+      "current_and_candidate_final_logit": 11.430221557617188,
+      "tracked_peak_gib": 16.950474798679352
+    }
+  },
+  "eager_control_512_128": {
+    "current_decode_tok_s": [8.87498022879935, 8.720050124163075],
+    "candidate_decode_tok_s": [8.804766695648013, 8.757941605660744],
+    "current_median": 8.797515176481213,
+    "candidate_median": 8.781354150654378,
+    "median_delta_pct": -0.18369989141977516,
+    "interpretation": "Pair directions disagree and eager is host/launch dominated at about 114 ms/token. Treat this as flat noise, not a candidate performance claim; all generated tails, final ID 220, final logit, and memory are exact. The production one-step graph route is the performance scoreboard."
+  },
+  "correctness": {
+    "targeted_gpu_tests": "26 passed",
+    "production_shape_primitive_ab": {
+      "shape": "top-8 rows, K=2048, N=512, 3 experts",
+      "compared_bf16_outputs": 4096,
+      "bit_mismatches": 0
+    },
+    "graph_smoke": {
+      "eager_ids": [11, 11, 264],
+      "graph_ids": [11, 11, 264],
+      "expected_ids": [11, 11, 264],
+      "final_logit_max_abs": 0.0,
+      "kl_eager_to_graph": 0.0,
+      "top1_agreement": 1.0,
+      "passed": true
+    },
+    "all_wall_logits_finite": true,
+    "current_candidate_ids_and_final_logits_exact_at_512_1k_4k_and_eager": true
+  },
+  "excluded_attempts": {
+    "first_profile_launch": "Excluded before measurement. Changing the parent IQ source changed the grouped-prefill cache tag; the first rocprof process attempted a nested hipcc build and was stopped. The dependent .so was prebuilt outside rocprof before the retained trace."
+  },
+  "decision": {
+    "accepted": true,
+    "promote_wave_uniform_base_default": true,
+    "rollback": "Revert the single readfirstlane source hunk; no runtime flag is retained for a semantics-neutral source/codegen hint.",
+    "reason": "Bit-exact production math, zero private bytes, lower allocated VGPR, a repeatable 624-dispatch production-family reduction, Amdahl-consistent counterbalanced graph-wall gain, and exact/non-regressive 1K/4K controls satisfy the bounded D1C gate.",
+    "campaign_result": "D1A skipped as obsolete; D1B rejected; D1C retained. After this change the D0 ordering remains dense Q8, attention, dense Q6/lm-head, weighted IQ4, then IQ3, so task #15 stops rather than opening another IQ sweep."
+  },
+  "raw_evidence": {
+    "current_decode16_bench": {"path": "/tmp/hipengine-q3-d0-decode16-20260720-021235/bench.json", "sha256": "b1ab75df6d97da926ac37f8ae3f5fad253dd77f5d39b2506323b08d165eef133"},
+    "current_decode16_trace": {"path": "/tmp/hipengine-q3-d0-decode16-20260720-021235/q3-d0-decode16_kernel_trace.csv", "sha256": "d354ecc42cc96b3fb8c3be64cb3e9f5ab768ce850b0814895e30bb57ee24976d"},
+    "candidate_decode16_bench": {"path": "/tmp/hipengine-q3-iq3-wavebase-decode16-20260720-024554/bench.json", "sha256": "b11b8fd724b1d8b2bf4409782fda4970d93fd5e7bb930c9b07cda989c70f6419"},
+    "candidate_decode16_trace": {"path": "/tmp/hipengine-q3-iq3-wavebase-decode16-20260720-024554/q3-iq3-wavebase-decode16_kernel_trace.csv", "sha256": "0882983436de7926f91e8ee4e7cca08120cf570e520511e924fbadd2df626c9d"},
+    "wall_512": {
+      "dir": "/tmp/hipengine-q3-iq3-wavebase-wall512-20260720-024802",
+      "files": {
+        "1-current.json": "fd6cbe7cc9c529b80fde0d134587003a49dabe26fa20f683b13d12d4be2ecdf3",
+        "2-candidate.json": "ae42929cb0db76ed7dcbc039fd7f9ad83b8c4bb1ba88b3e3a16ed6dcd0507c20",
+        "3-candidate.json": "99057f85dfc91bff91e1415f76f76542313f981c6b0311b138c5673240d1ec2a",
+        "4-current.json": "0773910587749e77d933987d294d93b86529c9c4eae51ffc6a0cd6781de50a80",
+        "5-current.json": "ec5b91c2a0b7b65406d2ffed9de48a0b5871dcdc0489824d25f007c942ee2cbb",
+        "6-candidate.json": "bf004f5b2327a6b928188b0ed2ee998034b4a126dd0e9f5776ec0c807a639c41"
+      }
+    },
+    "contexts": {
+      "dir": "/tmp/hipengine-q3-iq3-wavebase-contexts-20260720-025242",
+      "files": {
+        "1-c1024-current.json": "58face52ca3409e4ac444ab86e3304816a1d55b266e6e939ec7753a71c924dfa",
+        "2-c1024-candidate.json": "0b6f96ee771311e13db29c2980e8642afafcc18d5d348cfa40038c661a1c284b",
+        "3-c4096-candidate.json": "1728c6f097e4d4b5b29280c1ea0177a5ac1a3922b3796b61cb0a83c2bb510cf2",
+        "4-c4096-current.json": "415dc30cc868a5ecc37324319b91e98443f2279b98122f73aaa2f3dddeaa4d02"
+      }
+    },
+    "eager": {
+      "dir": "/tmp/hipengine-q3-iq3-wavebase-eager512-20260720-030359",
+      "files": {
+        "1-current.json": "af51669c75fa153aca07048340e989567bff604b81ff44674bcfb116980ae38a",
+        "2-candidate.json": "49267c9139b47640e331c71c56ef46da856a0f46ff63270bc3c0290976050c47",
+        "3-candidate.json": "ca713ee20c031565455769af252191a2644a9a829b2a487b142b47f68360b3fa",
+        "4-current.json": "4c81cad21e3f4694ed59de5794d0e07b80517f26056cfde0c93966c184b4d991"
+      }
+    },
+    "graph_smoke": {"path": "/tmp/hipengine-q3-iq3-wavebase-graph-smoke.json", "sha256": "583d17e60203abc2089160c749e07fe6931f31457f903b0649bdae5579479045"}
+  }
+}

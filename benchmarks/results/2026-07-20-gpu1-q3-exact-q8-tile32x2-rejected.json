@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-20",
+  "status": "rejected",
+  "performance_claim": false,
+  "measurement_class": "bounded production-shape microbenchmark rejection",
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "backend": "hip_gfx1100",
+    "physical_device": 1,
+    "visible_device": 1
+  },
+  "software": {
+    "branch": "q3-k-m",
+    "base_commit": "f2969ab4",
+    "hip_version": "7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e"
+  },
+  "model_context": {
+    "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf",
+    "quant": "gguf_ud_q3_k_m",
+    "retained_512_tok_s": 707.4203859661214,
+    "retained_4096_mixed_tok_s": 626.076725107456,
+    "retained_q8_profile_ms": 2056.866834
+  },
+  "hypothesis": "With the same 64 accumulators as retained 16x4, exact 32x2 might trade doubled raw-Q8 dequantization for halved activation loads and improve all dense-Q8 production shapes.",
+  "candidate": {
+    "kernel": "gguf_q8_0_exact_prefill_tiled_out_kernel<bf16,bf16,32,2>",
+    "exactness": "Each accumulator retained the scalar K traversal and wave/cross-wave reduction association.",
+    "red": "The candidate primitive fixture failed collection because the tile32x2 wrapper and registry key did not exist.",
+    "green": "The candidate registry key resolved and two primitive shapes were BF16-bit equal to exact pack8.",
+    "source_retained": false,
+    "tests_retained": false
+  },
+  "microbench": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 /tmp/q8_exact_tile32x2_micro.py",
+    "script_sha256": "76f90642e36c0719cab1ef314191d8579f70c780893d76244c6081462bb11b90",
+    "output_sha256": "0ec9bd696006c81afa9d7557b4575cd8d53f2185984428d0574da0c0aa18d474",
+    "rows": [
+      {"shape": [1024, 2048, 512], "tile16x4_ms": 0.40444498881697655, "tile32x2_ms": 0.6343480199575424, "delta_pct": 56.844079540469686, "bit_mismatches": 0},
+      {"shape": [1024, 2048, 2048], "tile16x4_ms": 1.5612579882144928, "tile32x2_ms": 2.2950569400563836, "delta_pct": 47.00049302428793, "bit_mismatches": 0},
+      {"shape": [1024, 2048, 4096], "tile16x4_ms": 2.9141739942133427, "tile32x2_ms": 5.536663928069174, "delta_pct": 89.99084951905047, "bit_mismatches": 0},
+      {"shape": [1024, 2048, 8192], "tile16x4_ms": 6.44105498213321, "tile32x2_ms": 11.136949993669987, "delta_pct": 72.90568120537213, "bit_mismatches": 0},
+      {"shape": [1024, 512, 2048], "tile16x4_ms": 0.7385880453512073, "tile32x2_ms": 0.7997800130397081, "delta_pct": 8.284992977296746, "bit_mismatches": 0},
+      {"shape": [1024, 4096, 2048], "tile16x4_ms": 2.8983739903196692, "tile32x2_ms": 5.242581013590097, "delta_pct": 80.88007383104758, "bit_mismatches": 0},
+      {"shape": [4096, 2048, 512], "tile16x4_ms": 1.6237790696322918, "tile32x2_ms": 2.2881069453433156, "delta_pct": 40.91245466425812, "bit_mismatches": 0},
+      {"shape": [4096, 2048, 2048], "tile16x4_ms": 5.900577991269529, "tile32x2_ms": 8.823273004963994, "delta_pct": 49.53235120387991, "bit_mismatches": 0},
+      {"shape": [4096, 2048, 8192], "tile16x4_ms": 31.173313967883587, "tile32x2_ms": 45.09158595465124, "delta_pct": 44.648034537190995, "bit_mismatches": 0}
+    ],
+    "delta_pct_range": [8.284992977296746, 89.99084951905047],
+    "all_bit_mismatches": 0
+  },
+  "rocprof": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-q8-tile32x2-reject-trace-20260720-151541 -o q8-tile32x2 -- python3 -m pytest -q tests/test_gguf_q8_0_pack8_gemv_decode.py -k tile32x2",
+    "trace_path": "/tmp/hipengine-q8-tile32x2-reject-trace-20260720-151541/q8-tile32x2_kernel_trace.csv",
+    "trace_sha256": "cc57e2556d262764797875753e5e622ad6a3cfc7254a20134ac9828236e6e183",
+    "vgpr": 136,
+    "lds_bytes": 1024,
+    "scratch_bytes": 0,
+    "workgroup_x": 128,
+    "conclusion": "Resources match retained 16x4, so the regression is not spilling; doubling Q8 weight decode/reload work dominates the saved activation loads."
+  },
+  "decision": {
+    "accepted": false,
+    "reason": "Every production shape regressed materially despite exact outputs and zero scratch.",
+    "cleanup": "Removed the tile32x2 HIP export, Python wrapper/registry key, and temporary tests; production sources are byte-identical to f2969ab4.",
+    "next_action": "Do not increase exact-Q8 output columns by reducing row reuse. Evaluate the bounded shared gate/up pair or move to the next Amdahl family after quantifying its maximum contribution."
+  }
+}

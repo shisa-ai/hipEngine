@@ -426,11 +426,12 @@ def dflash_accept_chain_i32_native_cycle(
 
 
 def register_dflash_accept_kernels(*, replace: bool = True) -> None:
-    register(
-        KernelKey("hip_gfx1100", "dflash_accept_chain", "w4_paro", "i32"),
-        dflash_accept_chain_i32,
-        replace=replace,
-    )
+    for quant in ("w4_paro", "gguf_ud_q3_k_m"):
+        register(
+            KernelKey("hip_gfx1100", "dflash_accept_chain", quant, "i32"),
+            dflash_accept_chain_i32,
+            replace=replace,
+        )
     register(
         KernelKey("hip_gfx1100", "speculative_accept_commit", "w4_gguf", "native_v1_i32"),
         dflash_accept_chain_i32_native_cycle,

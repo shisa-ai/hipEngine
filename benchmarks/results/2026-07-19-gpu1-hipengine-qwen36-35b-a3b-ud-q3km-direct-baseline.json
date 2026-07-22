@@ -1,0 +1,387 @@
+{
+  "schema": 1,
+  "status": "diagnostic_retained_direct_baseline",
+  "performance_claim": false,
+  "date": "2026-07-19",
+  "purpose": "Correctness-safe UD-Q3_K_M direct x_rows prefill and c=1 one-step graph baseline before grouped IQ prefill or row-stationary decode tuning.",
+  "hipengine_base_commit": "24f80496baf2607a48723a238eaec86111684b53",
+  "hipengine_unprofiled_commit": "46383ff88fcb22e49096a2c80bdceafb431f91fe",
+  "hipengine_profile_commit": "24f80496baf2607a48723a238eaec86111684b53",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf",
+    "size_bytes": 17104402720,
+    "size_gib": 15.929716378450394,
+    "sha256": "8966dd0cd8c543c4228490a2a8b0e0814fc4f1e6a8e199ceed4de6754ae7b8e1",
+    "architecture": "qwen35moe",
+    "quant": "gguf_ud_q3_k_m",
+    "ar_layers": 40,
+    "nextn_layer_omitted": 40
+  },
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "visible_device": 1,
+    "rocprof_agent": 2,
+    "architecture": "gfx1100",
+    "compute_units": 96,
+    "wavefront_size": 32,
+    "max_engine_clock_mhz": 2371
+  },
+  "software": {
+    "hip": "7.2.53211-3d9ef42",
+    "amd_clang": "22.0.0git",
+    "compiler_commit": "f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "rocprofv3": "/home/lhl/mambaforge/envs/therock/bin/rocprofv3",
+    "python": "python3",
+    "kernel_build_profile": "decode",
+    "kernel_build_flags": [
+      "-O3",
+      "-mllvm",
+      "-amdgpu-unroll-threshold-local=600",
+      "-mcumode",
+      "--offload-arch=gfx1100"
+    ]
+  },
+  "commands": {
+    "unprofiled_512_128": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --quant gguf_ud_q3_k_m --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode native --no-use-wmma-prefill --no-use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build --json /tmp/hipengine-q3-direct-512-128-bench.json",
+    "selected_prefill": "LD_LIBRARY_PATH=/tmp/hipengine-roctx-sdk-override-gguf-eager:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib/rocm_sysdeps/lib:$LD_LIBRARY_PATH HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/rocprofv3 --kernel-trace --selected-regions true --output-format csv -d /tmp/hipengine-q3-direct-profile-20260719-220736/prefill -o q3-direct-prefill -- python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --quant gguf_ud_q3_k_m --token-id 9707 --prompt-length 512 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode native --no-use-wmma-prefill --no-use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --rocprof-selected-region prefill --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build --json /tmp/hipengine-q3-direct-profile-20260719-220736/prefill/bench.json",
+    "selected_decode16": "LD_LIBRARY_PATH=/tmp/hipengine-roctx-sdk-override-gguf-direct:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib/rocm_sysdeps/lib:$LD_LIBRARY_PATH HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/rocprofv3 --kernel-trace --selected-regions true --output-format csv -d /tmp/hipengine-q3-direct-profile-20260719-220736/decode16 -o q3-direct-decode16 -- python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --quant gguf_ud_q3_k_m --token-id 9707 --prompt-length 512 --decode-tokens 16 --warmup-decode-tokens 1 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode native --no-use-wmma-prefill --no-use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --rocprof-selected-region measured_decode_graph --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build --json /tmp/hipengine-q3-direct-profile-20260719-220736/decode16/bench.json",
+    "profile_summary": "python3 scripts/qwen35_gguf_rocprof_summary.py --prefill-csv /tmp/hipengine-q3-direct-profile-20260719-220736/prefill/q3-direct-prefill_kernel_trace.csv --decode-csv /tmp/hipengine-q3-direct-profile-20260719-220736/decode16/q3-direct-decode16_kernel_trace.csv --tokens-prefill 512 --tokens-decode 16 --prefill-config-json /tmp/hipengine-q3-direct-profile-20260719-220736/prefill-footprints-xrows512.json --json /tmp/hipengine-q3-direct-profile-20260719-220736/summary-combined.json --quiet",
+    "graph_correctness": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 scripts/qwen35_gguf_decode_graph_smoke.py --fixture tests/fixtures/gguf/qwen36_35b_a3b_ud_q3km_smoke.json --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build --json /tmp/hipengine-q3-graph-smoke-policy-final.json"
+  },
+  "unprofiled_512_128": {
+    "prompt": {
+      "source": "repeated_token_id",
+      "token_id": 9707,
+      "tokens": 512
+    },
+    "decode_tokens": 128,
+    "warmup_decode_tokens": 1,
+    "warmup_runs": 1,
+    "measured_runs": 3,
+    "persistent_session": true,
+    "bulk_prefill_attention_mode": "native",
+    "graph_replay_decode": true,
+    "graph_steps_per_replay": 1,
+    "graph_capture_excluded": true,
+    "prefill_tok_s": {
+      "samples": [
+        19.577033011551343,
+        19.313119670911192,
+        19.45233061006774
+      ],
+      "median": 19.45233061006774,
+      "stdev_pct_of_median": 0.6787007841038067
+    },
+    "prefill_seconds": {
+      "samples": [
+        26.153094787034206,
+        26.510476231924258,
+        26.320753552019596
+      ],
+      "median": 26.320753552019596
+    },
+    "decode_tok_s": {
+      "samples": [
+        99.01527621226106,
+        99.92885510442714,
+        98.92722023761162
+      ],
+      "median": 99.01527621226106,
+      "stdev_pct_of_median": 0.5601407353247972
+    },
+    "decode_seconds": {
+      "samples": [
+        1.2927298180293292,
+        1.2809113030089065,
+        1.2938804880250245
+      ],
+      "median": 1.2927298180293292
+    },
+    "decode_cycle_wall_ms": 10.099451703354134,
+    "final_token_ids": [220, 220, 220],
+    "finite_final_logits_all": true,
+    "tracked_peak_allocated_gib": 15.804706819355488,
+    "sampled_hip_peak_gib": 16.296875,
+    "resident_weights_gib": 15.478060245513916,
+    "resident_weight_bytes_by_quant": {
+      "gguf_iq3_xxs": 8015314944,
+      "gguf_iq4_xs": 5561647104,
+      "gguf_q6_k": 1494958080,
+      "gguf_q8_0": 1492910080,
+      "bf16": 49971200,
+      "f32": 4639232
+    }
+  },
+  "encoded_iq_byte_ledger": {
+    "scope": "encoded expert weight bytes only; activation, route metadata, output, cache-line overfetch, and non-IQ weights are excluded",
+    "c1_per_dispatch": {
+      "moe_iq3_xxs_selected_dual_silu": 6422528,
+      "moe_iq4_xs_weighted_down": 4456448,
+      "moe_iq4_xs_selected_single": 4456448
+    },
+    "dispatches_per_ar_forward": {
+      "moe_iq3_xxs_selected_dual_silu": 39,
+      "moe_iq4_xs_weighted_down": 37,
+      "moe_iq4_xs_selected_single": 2
+    },
+    "bytes_per_ar_token": {
+      "iq3_gate_up": 250478592,
+      "iq4_down_and_blk39_gate_up": 173801472,
+      "combined": 424280064
+    },
+    "direct_x_rows_512": {
+      "multiplier": 512,
+      "combined_bytes": 217231392768,
+      "combined_gib": 202.3125
+    }
+  },
+  "selected_prefill_profile": {
+    "profiled_host_seconds": 30.43341708695516,
+    "trace_span_ms": 30432.075941,
+    "summed_kernel_ms": 4396.14483,
+    "summed_kernel_ms_per_token": 8.58622037109375,
+    "kernel_active_fraction_of_trace_span": 0.1444576058012933,
+    "dispatches": 185078,
+    "dispatches_per_token": 361.48046875,
+    "iq_combined": {
+      "kernel_ms": 994.668454,
+      "kernel_ms_per_token": 1.94271182421875,
+      "share_of_summed_kernel_time": 0.22625925497545535,
+      "encoded_weight_bytes": 217231392768,
+      "back_calculated_encoded_weight_gb_s": 218.3957799148218
+    },
+    "iq_families": {
+      "moe_iq3_xxs_selected_dual_silu": {
+        "dispatches": 39,
+        "total_ms": 585.202382,
+        "average_dispatch_ms": 15.005189282051282,
+        "encoded_weight_bytes_per_dispatch": 3288334336,
+        "back_calculated_encoded_weight_gb_s": 219.1464748754218
+      },
+      "moe_iq4_xs_weighted_down": {
+        "dispatches": 37,
+        "total_ms": 396.750679,
+        "average_dispatch_ms": 10.722991324324324,
+        "encoded_weight_bytes_per_dispatch": 2281701376,
+        "back_calculated_encoded_weight_gb_s": 212.78590152582953
+      },
+      "moe_iq4_xs_selected_single": {
+        "dispatches": 2,
+        "total_ms": 12.715393,
+        "average_dispatch_ms": 6.3576965,
+        "encoded_weight_bytes_per_dispatch": 2281701376,
+        "back_calculated_encoded_weight_gb_s": 358.8880620520341
+      }
+    },
+    "top_non_iq_buckets": {
+      "dense_q8_row_direct": {
+        "dispatches": 61440,
+        "total_ms": 1679.901025
+      },
+      "full_attention_row_decode": {
+        "dispatches": 5120,
+        "total_ms": 587.075566
+      },
+      "gdn_row_decode": {
+        "dispatches": 15360,
+        "total_ms": 334.194276
+      },
+      "rmsnorm": {
+        "dispatches": 25641,
+        "total_ms": 234.143912
+      }
+    },
+    "interpretation": "The three IQ families already use one x_rows=512 launch per applicable layer, only 78 IQ launches total. Most of the 185078-launch wall comes from the correctness-safe native row scheduler around dense, GDN, attention, norm, and glue work. Grouped IQ reuse can attack 994.7 ms of profiled kernel time, but cannot by itself close the 26.32 s unprofiled prefill wall unless it also enables a parity-safe broader bulk schedule or removes host synchronization."
+  },
+  "selected_decode16_profile": {
+    "reason_for_16_tokens": "A 16-replay selected region is the established stable rocprofv3 graph-trace window on this host; the throughput scoreboard uses the true unprofiled 128-token run.",
+    "profiled_host_seconds": 0.19081272510811687,
+    "profiled_host_ms_per_token": 11.925795319257304,
+    "trace_span_ms": 183.378687,
+    "trace_span_ms_per_token": 11.4611679375,
+    "summed_kernel_ms": 142.270539,
+    "summed_kernel_ms_per_token": 8.8919086875,
+    "kernel_active_fraction_of_trace_span": 0.7758291943708813,
+    "dispatches": 11328,
+    "dispatches_per_token": 708,
+    "iq_combined": {
+      "kernel_ms": 27.956435,
+      "kernel_ms_per_token": 1.7472771875,
+      "share_of_summed_kernel_time": 0.1965019265162129,
+      "encoded_weight_bytes": 6788481024,
+      "encoded_weight_bytes_per_token": 424280064,
+      "back_calculated_encoded_weight_gb_s": 242.8235582970432
+    },
+    "iq_families": {
+      "moe_iq3_xxs_selected_dual_silu": {
+        "dispatches": 624,
+        "dispatches_per_token": 39,
+        "total_ms": 11.529866,
+        "average_dispatch_us": 18.477349358974358,
+        "median_dispatch_us": 17.28,
+        "back_calculated_encoded_weight_gb_s": 347.5892496929279
+      },
+      "moe_iq4_xs_weighted_down": {
+        "dispatches": 592,
+        "dispatches_per_token": 37,
+        "total_ms": 16.075244,
+        "average_dispatch_us": 27.15412837837838,
+        "median_dispatch_us": 25.28,
+        "back_calculated_encoded_weight_gb_s": 164.11677583245395
+      },
+      "moe_iq4_xs_selected_single": {
+        "dispatches": 32,
+        "dispatches_per_token": 2,
+        "total_ms": 0.351325,
+        "average_dispatch_us": 10.97890625,
+        "median_dispatch_us": 10.86,
+        "back_calculated_encoded_weight_gb_s": 405.91001494342845
+      }
+    },
+    "top_buckets_ms_per_token": {
+      "dense_q8_row_direct": 2.8413708125,
+      "full_attention_decode": 1.4187780625,
+      "dense_q6_lm_head": 1.05360475,
+      "moe_iq4_xs_weighted_down": 1.00470275,
+      "moe_iq3_xxs_selected_dual_silu": 0.720616625,
+      "rmsnorm": 0.492458875,
+      "gdn_decode": 0.3744826875,
+      "router": 0.3301515625
+    },
+    "finite_final_logits": true,
+    "final_token_id": 68
+  },
+  "iq_code_object": {
+    "shared_object": "/home/lhl/.cache/hipengine/build/gguf_iq_gemv-d9f0cbf382bd1b24/gguf_iq_gemv.so",
+    "shared_object_bytes": 44288,
+    "shared_object_sha256": "80817633678fd7156b979948860df74394e549e24af28e5c466112b0cd520a08",
+    "hsaco_sha256": "53c0a72478ac56f58e4bcad29dda30f0d3cb1896d01f098c7e74d145e4e8ed67",
+    "kernels": {
+      "iq3_selected_single": {
+        "code_bytes": 1844,
+        "logical_vgpr": 24,
+        "allocated_vgpr": 24,
+        "sgpr": 128,
+        "scratch_bytes": 0,
+        "lds_bytes": 512
+      },
+      "iq3_dual_silu": {
+        "code_bytes": 2788,
+        "logical_vgpr": 42,
+        "allocated_vgpr": 48,
+        "sgpr": 128,
+        "scratch_bytes": 0,
+        "lds_bytes": 512,
+        "workgroup": [256, 1, 1],
+        "decode_grid": [131072, 8, 1],
+        "static_isa_instructions": 541,
+        "static_global_load_forms": {
+          "global_load_b128": 1,
+          "global_load_b32": 6,
+          "global_load_d16_b16": 3,
+          "global_load_d16_hi_b16": 1
+        },
+        "static_barriers": 1,
+        "static_waitcnt": 30,
+        "static_waitcnt_depctr": 5
+      },
+      "iq4_selected_single": {
+        "code_bytes": 2740,
+        "logical_vgpr": 71,
+        "allocated_vgpr": 72,
+        "sgpr": 128,
+        "scratch_bytes": 0,
+        "lds_bytes": 512,
+        "workgroup": [128, 1, 1],
+        "decode_grid": [65536, 8, 1]
+      },
+      "iq4_weighted_down": {
+        "code_bytes": 2580,
+        "logical_vgpr": 78,
+        "allocated_vgpr": 80,
+        "sgpr": 128,
+        "scratch_bytes": 0,
+        "lds_bytes": 512,
+        "workgroup": [128, 1, 1],
+        "decode_grid": [262144, 1, 1],
+        "static_isa_instructions": 492,
+        "static_global_load_forms": {
+          "global_load_b128": 5,
+          "global_load_b32": 1,
+          "global_load_u8": 1,
+          "global_load_i8": 32
+        },
+        "static_barriers": 2,
+        "static_waitcnt": 42,
+        "static_waitcnt_depctr": 2
+      }
+    },
+    "inference": "No active IQ kernel spills and allocated VGPRs are at or below 80, so gross occupancy loss is not the first explanation. LLVM coalesced the IQ3 source's four-byte aux reconstruction into packed dword loads; there is no obvious unaligned byte-load miss. IQ4 still emits 32 indexed i8 nonlinear-codebook loads plus a dense wait schedule, while the weighted composite serializes eight fallback-equivalent route projections and carries the required trailing barrier. The IQ4 pattern is a concrete task-15 codegen/source hypothesis, not proof that LLVM-versus-ACO alone explains the end-to-end gap."
+  },
+  "correctness": {
+    "graph_eager_token_ids": [11, 11, 264],
+    "graph_replay_token_ids": [11, 11, 264],
+    "graph_final_logit_max_abs": 0.0,
+    "graph_kl": 0.0,
+    "graph_top1_agreement": 1.0,
+    "graph_policy_groups_passed": 10,
+    "iq3_single_fallback_seen_on_active_path": false,
+    "dense_bf16_expert_expansion_seen": false,
+    "unprofiled_final_ids_stable": true,
+    "passed": true
+  },
+  "contextual_comparisons": {
+    "qwen_kernel_same_model_512_128": {
+      "source_commit": "52e240f9c6d91750d0e5e692976cfb67fd9bc603",
+      "prefill_tok_s": 829.3,
+      "decode_tok_s": 189.96,
+      "decode_ms_per_token": 5.264,
+      "hipengine_prefill_ratio": 0.023456325346759607,
+      "hipengine_decode_ratio": 0.521242768015693,
+      "qwen_decode_speedup_over_hipengine": 1.9184918455691513,
+      "classification": "Contextual same-model engine target, not a controlled kernel-only ratio and not rerun in this task. Because both engines use the same 15.930 GiB GGUF, model file bytes do not explain the 1.918x decode gap."
+    },
+    "qwen_kernel_grouped_prefill_evidence": {
+      "xxt_grouped_tok_s": 858.33,
+      "xtx_grouped_median_tok_s": 1153.31,
+      "classification": "Prior campaign ceiling/context only; not substituted for the July-19 baseline."
+    },
+    "hipengine_q4_context": {
+      "model_size_gib": 21.107,
+      "model_size_ratio_q4_over_q3": 1.3250078970993733,
+      "prefill_tok_s": 3073.85,
+      "decode_tok_s": 105.791,
+      "q3_decode_delta_pct": -6.404820625326291,
+      "classification": "Different quant formats and active paths; context only. The smaller Q3 file does not currently produce a decode win."
+    }
+  },
+  "attribution": {
+    "model_bytes": "The 1.325x Q4/Q3 file-size ratio is only a cross-format context. The same-model qwen-kernel comparison removes file size as an explanation for hipEngine's remaining 1.918x decode gap.",
+    "algorithm_and_fusion": "IQ3 dual gate/up+SiLU and IQ4 routing-weighted down are fused, but exact fallback ordering makes IQ4 process routes serially. Direct prefill rereads 202.3125 GiB of IQ encoded weights and the surrounding native scheduler remains row-serial.",
+    "hip_graph_floor": "The selected graph window has 708 dispatches/token, 8.892 ms/token summed kernel time, 11.461 ms/token trace span, and 11.926 ms/token profiled host wall. The unprofiled 10.099 ms cycle is the scoreboard. qwen-kernel's 5.264 ms total is already below hipEngine's profiled summed-kernel time, so submission/replay overhead alone cannot close the gap.",
+    "codegen": "Scratch is zero and VGPR allocation is moderate. IQ3 packed loads look reasonable; IQ4 codebook loads/waits are a targeted future hypothesis. No broad ACO, wave64, LDS, or hand-ISA conclusion is supported by this profile."
+  },
+  "decision": {
+    "retain_direct_path": true,
+    "promote_as_speed_claim": false,
+    "next_task": 11,
+    "next_action": "Use this exact direct route/byte baseline for grouped scalar and compact-WMMA IQ prefill, while treating the non-IQ row-serial launch wall as an explicit broader-bulk parity blocker. Decode rowtile/codegen tuning remains task 15 after the prefill pass.",
+    "external_baseline_rerun": false
+  },
+  "raw_evidence": {
+    "unprofiled_bench_json": "/tmp/hipengine-q3-direct-512-128-bench.json",
+    "prefill_bench_json": "/tmp/hipengine-q3-direct-profile-20260719-220736/prefill/bench.json",
+    "prefill_kernel_trace_csv": "/tmp/hipengine-q3-direct-profile-20260719-220736/prefill/q3-direct-prefill_kernel_trace.csv",
+    "decode16_bench_json": "/tmp/hipengine-q3-direct-profile-20260719-220736/decode16/bench.json",
+    "decode16_kernel_trace_csv": "/tmp/hipengine-q3-direct-profile-20260719-220736/decode16/q3-direct-decode16_kernel_trace.csv",
+    "combined_summary_json": "/tmp/hipengine-q3-direct-profile-20260719-220736/summary-combined.json",
+    "sha256": {
+      "unprofiled_bench_json": "4b9567f77555a445230316a8d387ee0de412b45023ea6d958d967a33a0d7ef09",
+      "prefill_bench_json": "cec343465bda88e06f26e90de0d6fac3fde5336b3a22ce94605d41bc642232a5",
+      "prefill_kernel_trace_csv": "0e3d7f9db713728a6cf7e177f0e333655f22fa19eaaaf3f69f3c9b354192c1ba",
+      "decode16_bench_json": "f8866531dfc4d50ed5ecaf1d9751e3d32aabfd706899e4ffc1c6bb8377c9a461",
+      "decode16_kernel_trace_csv": "72319748f2fe3f8aad0b091323d7c2c853ca769b2fb3d61f24705948ac73eeea",
+      "combined_summary_json": "81e4d9c74c070c7786a0e81dae3f833c9c8852be44f264ef953fb661e461a36e"
+    }
+  }
+}

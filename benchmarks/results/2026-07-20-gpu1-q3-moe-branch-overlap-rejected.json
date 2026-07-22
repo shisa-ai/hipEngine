@@ -1,0 +1,206 @@
+{
+  "schema": 1,
+  "status": "rejected_no_hold",
+  "performance_claim": false,
+  "date": "2026-07-20",
+  "purpose": "Bound task #16's routed/shared MoE overlap experiment on Qwen3.6-35B-A3B UD-Q3_K_M before any decode-graph DAG integration.",
+  "hipengine_base_commit": "e9804052d784fcd76006659c6f36d429b15f46c6",
+  "source_reference": "qwen-kernel@52e240f9c6d91750d0e5e692976cfb67fd9bc603 leaves router/routed experts and the shared expert as independent branches before the layer-tail join.",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf",
+    "size_bytes": 17104402720,
+    "size_gib": 15.929716378450394,
+    "sha256": "8966dd0cd8c543c4228490a2a8b0e0814fc4f1e6a8e199ceed4de6754ae7b8e1",
+    "quant": "gguf_ud_q3_k_m",
+    "layers": 40,
+    "hidden_size": 2048,
+    "activation_dtype": "bf16"
+  },
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "visible_device": 1,
+    "physical_gpu": 1,
+    "rocprof_agent": 2,
+    "bdf": "0000:10:00.0",
+    "architecture": "gfx1100",
+    "compute_units": 96,
+    "wavefront_size": 32,
+    "cross_card_status": "GPU0/W7900 was untouched; no W7900 throughput claim is made."
+  },
+  "software": {
+    "hip": "7.2.53211-3d9ef42",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version-q3.txt",
+    "require_cached_build": true,
+    "rocprof": "rocprofv3 kernel trace scoped to measured eager decode with ROCTX selected regions"
+  },
+  "premise": {
+    "branches_exposed": true,
+    "shared_input": "scratch.post_norm",
+    "routed_outputs": [
+      "scratch.ffn_intermediate",
+      "scratch.moe_down_out"
+    ],
+    "shared_outputs": [
+      "scratch.ffn_gate_up",
+      "scratch.moe_shared_intermediate",
+      "scratch.moe_shared_out"
+    ],
+    "join": "The existing shared-gate/residual/next-RMS tail consumes both branch outputs.",
+    "eligible_boundaries": 39,
+    "eligibility_reason": "The 39 IQ3_XXS selected-dual+SiLU layers do not use ffn_gate_up, so selected and shared scratch is disjoint. Layer 39's exact fallback can reuse ffn_gate_up and remained serial.",
+    "prior_serial_graph_upper_bound": "The retained graph trace puts roughly 0.51 ms/token of shared gate/up + SiLU + down kernel work behind the longer routed branch, enough to justify the required eager probe but not itself evidence of overlap."
+  },
+  "experimental_implementation": {
+    "scope": "uncommitted eager-only diagnostic, removed after the stop gate",
+    "route": "HIPENGINE_GGUF_MOE_BRANCH_OVERLAP=1",
+    "main_stream": "default eager stream: router -> selected gate/up -> selected down -> tail",
+    "aux_stream": "one reusable nonblocking HIP stream: shared gate/up -> SiLU -> shared down",
+    "dependencies": "Reusable disable-timing HIP events explicitly forked aux work after post_norm and joined it before the tail.",
+    "graph_policy": "Non-default graph-capture streams deliberately stayed serial until eager overlap and >=1% full-step gates passed.",
+    "unit_gate_before_measurement": "20 passed across tests/test_hip_runtime.py and tests/test_qwen35_gguf_iq_dispatch.py; RED first failed on missing event/DAG APIs.",
+    "retained_code": false,
+    "retained_flag": false
+  },
+  "correctness": {
+    "matched_eager_decode16": {
+      "generated_preview_token_ids": [107561, 11, 57815, 7004, 1001, 318, 17, 23, 220, 220, 220, 220, 17, 27, 341, 318],
+      "generated_tail_token_ids": [57815, 7004, 1001, 318, 17, 23, 220, 220, 220, 220, 17, 27, 341, 318, 1993, 68],
+      "control_candidate_equal": true,
+      "final_token_id": 68,
+      "final_logit": 11.941744804382324,
+      "finite_logits": true,
+      "tracked_peak_gib": 15.804706819355488
+    },
+    "eager_overlap_vs_serial_graph": {
+      "eager_generated_token_ids": [11, 11, 264],
+      "graph_generated_token_ids": [11, 11, 264],
+      "expected_generated_token_ids": [11, 11, 264],
+      "kl_eager_to_graph": 0.0,
+      "top1_agreement": 1.0,
+      "final_logit_max_abs": 0.0,
+      "passed": true
+    },
+    "state_reset_note": "The 16-token eager run preserved the full generated sequence, and the independent session graph smoke preserved eager/graph trajectory and final logits."
+  },
+  "matched_eager_decode16": {
+    "workload": "512 prompt tokens, 16 measured eager decode tokens, one warmup token, persistent session, native-attention row-bulk prefill, grouped raw-IQ prefill default, no GEMV decode rewrite",
+    "control": {
+      "queues": {
+        "queue_1_stream_0": 10769
+      },
+      "dispatches": 10769,
+      "summed_kernel_ms": 250.552409,
+      "trace_span_ms": 1771.215802,
+      "decode_seconds": 1.7726338360225782,
+      "decode_ms_per_token": 110.78961475141114,
+      "decode_tok_s": 9.02611677316319,
+      "target_shared_branch_dispatches": 1872,
+      "target_shared_branch_kernel_ms": 14.44827,
+      "target_shared_branch_kernel_ms_per_token": 0.903016875,
+      "target_shared_branch_span_ms": 229.975799
+    },
+    "candidate": {
+      "queues": {
+        "queue_1_stream_0": 8897,
+        "queue_2_stream_1": 1872
+      },
+      "dispatches": 10769,
+      "summed_kernel_ms": 251.990835,
+      "trace_span_ms": 1815.138683,
+      "decode_seconds": 1.8166021700017154,
+      "decode_ms_per_token": 113.53763562510721,
+      "decode_tok_s": 8.807652145425374,
+      "aux_branches": 624,
+      "aux_dispatches": 1872,
+      "aux_kernel_ms": 14.529514,
+      "aux_kernel_ms_per_token": 0.908094625,
+      "aux_branch_span_ms": 230.185255,
+      "aux_branch_span_ms_per_token": 14.3865784375,
+      "aux_branch_span_median_us": 339.0635
+    },
+    "delta": {
+      "decode_tok_s_pct": -2.4203611943883097,
+      "decode_ms_per_token": 2.7480208736960776,
+      "decode_ms_per_token_pct": 2.4803957301070767,
+      "summed_kernel_ms": 1.4384259999999927,
+      "summed_kernel_pct": 0.5741018438980561,
+      "trace_span_ms": 43.92288099999996,
+      "trace_span_pct": 2.4798153308255078,
+      "shared_branch_kernel_pct": 0.5623095360205665,
+      "dispatches": 0
+    },
+    "interpretation": "The profiler-scoped eager wall regressed by 2.48%. Kernel work was nearly unchanged; the extra event/two-stream submission gaps expanded the trace span by 43.92 ms over 16 tokens."
+  },
+  "timeline_stop_gate": {
+    "required": "Profiler-visible concurrent kernel intervals, not merely distinct stream/queue labels.",
+    "observed_aux_branches": 624,
+    "cross_queue_overlapping_kernel_pairs": 0,
+    "cross_queue_kernel_overlap_ns": 0,
+    "branches_with_any_concurrent_kernel": 0,
+    "passed": false,
+    "first_branch_example_us_relative_to_nearby_add_rms_start": {
+      "router": [202.762, 219.443],
+      "shared_gate_up": [374.444, 386.844],
+      "shared_silu": [521.876, 525.836],
+      "shared_down": [715.497, 722.378],
+      "selected_iq3_gate_up": [893.559, 930.72],
+      "selected_iq4_down": [1063.721, 1123.521]
+    },
+    "interpretation": "HIP created two queues, but Python/ctypes submission gaps left only one kernel executing at a time. Shared work completed before the selected kernels were submitted, so the queue split did not realize device concurrency."
+  },
+  "stop_decision": {
+    "decision": "reject and remove",
+    "reasons": [
+      "Zero profiler-visible kernel overlap across all 624 eligible branch pairs.",
+      "Matched 512/16 eager wall regressed 9.0261 -> 8.8077 tok/s (-2.42%), far below the required >=1% gain.",
+      "The experiment therefore failed before graph-DAG integration, repeated 512/128 and 4K/128 gates, or Q4/PARO transfer."
+    ],
+    "graph_dag_attempted": false,
+    "context_4096_attempted": false,
+    "q4_paro_transfer_attempted": false,
+    "production_default_changed": false,
+    "future_reopen_condition": "Only a device-side/C submission design that first demonstrates overlapping real kernel timestamps without per-layer event overhead; do not retry the Python eager stream split or infer concurrency from queue IDs."
+  },
+  "related_prior_evidence": {
+    "artifact": "benchmarks/results/2026-06-11-hipengine-mtp-moe-cdispatch-overlap-nohold.json",
+    "note": "A separate W7900 PARO MTP C-dispatch stream split was also exact but regressed graph-off and all-cycle graph-auto wall. It is contextual evidence, not the current GPU1 decision source."
+  },
+  "commands": {
+    "correctness": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_GGUF_MOE_BRANCH_OVERLAP=1 PYTHONPATH=. python3 scripts/qwen35_gguf_decode_graph_smoke.py --fixture tests/fixtures/gguf/qwen36_35b_a3b_ud_q3km_smoke.json --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build --json /tmp/hipengine-q3-moe-branch-overlap-graph-smoke.json",
+    "profile_template": "LD_LIBRARY_PATH=/tmp/hipengine-roctx-sdk-override-gguf-direct:<ROCm-sysdeps> HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_GGUF_MOE_BRANCH_OVERLAP=<0|1> PYTHONPATH=. rocprofv3 --kernel-trace --selected-regions true --output-format csv -d <out> -o <name> -- python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --quant gguf_ud_q3_k_m --token-id 9707 --prompt-length 512 --decode-tokens 16 --warmup-decode-tokens 1 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode native --no-use-wmma-prefill --no-use-gemv-decode --no-graph-replay-decode --rocprof-selected-region measured_decode --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build --json <out>/bench.json"
+  },
+  "raw_evidence": {
+    "control": {
+      "bench": {
+        "path": "/tmp/hipengine-q3-moe-branch-serial-eager-decode16-20260720-053011/bench.json",
+        "sha256": "f64dd1ffbdc034c9a0eedf1a0a34a3c85221cf61f8d938af6861536736811a03"
+      },
+      "trace": {
+        "path": "/tmp/hipengine-q3-moe-branch-serial-eager-decode16-20260720-053011/q3-moe-branch-serial-eager-decode16_kernel_trace.csv",
+        "sha256": "e73f8acc3abc8189a71884419380c0db95217d40402b28566648927635a4be3d"
+      },
+      "agent": {
+        "path": "/tmp/hipengine-q3-moe-branch-serial-eager-decode16-20260720-053011/q3-moe-branch-serial-eager-decode16_agent_info.csv",
+        "sha256": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00"
+      }
+    },
+    "candidate": {
+      "bench": {
+        "path": "/tmp/hipengine-q3-moe-branch-overlap-eager-decode16-20260720-052707/bench.json",
+        "sha256": "87ae2e783961634637a481a2cde1761560a7f144d47df9875ec56b410052cad9"
+      },
+      "trace": {
+        "path": "/tmp/hipengine-q3-moe-branch-overlap-eager-decode16-20260720-052707/q3-moe-branch-overlap-eager-decode16_kernel_trace.csv",
+        "sha256": "9f37b911382da9a4e31c92959514c730d8ce9620355bc678454340427f4f1989"
+      },
+      "agent": {
+        "path": "/tmp/hipengine-q3-moe-branch-overlap-eager-decode16-20260720-052707/q3-moe-branch-overlap-eager-decode16_agent_info.csv",
+        "sha256": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00"
+      }
+    },
+    "correctness": {
+      "path": "/tmp/hipengine-q3-moe-branch-overlap-graph-smoke.json",
+      "sha256": "0e14d3fe4dc7a7b793aaaee267c2a04418f19212698ea046f929a16c269f2bf0"
+    }
+  }
+}

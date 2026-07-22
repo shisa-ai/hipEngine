@@ -1,0 +1,263 @@
+{
+  "schema": 1,
+  "status": "rejected",
+  "performance_claim": false,
+  "date": "2026-07-22",
+  "purpose": "Evaluate the one new task-#32 premise selected from the final-tree Q3 c=1 decode profile: transfer qwen-kernel's raw-Q8 block-serial output mapping without reopening previously closed local launch-bound/load sweeps.",
+  "hipengine_base_commit": "85b2b23d",
+  "candidate_retained": false,
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf",
+    "sha256": "8966dd0cd8c543c4228490a2a8b0e0814fc4f1e6a8e199ceed4de6754ae7b8e1",
+    "quant": "gguf_ud_q3_k_m",
+    "ar_layers": 40,
+    "hidden_size": 2048,
+    "vocabulary_size": 248320,
+    "activation_dtype": "bf16"
+  },
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "visible_device": 1,
+    "bdf": "0000:10:00.0",
+    "architecture": "gfx1100",
+    "wavefront_size": 32,
+    "cross_card_status": "GPU0/W7900 was not used; no W7900 claim is made."
+  },
+  "software": {
+    "hip": "7.2.53211-3d9ef42",
+    "amd_clang": "22.0.0git",
+    "compiler_commit": "f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version-q3.txt",
+    "require_cached_build": true
+  },
+  "profile_trigger": {
+    "artifact": "benchmarks/results/2026-07-22-gpu1-q3-final-decode-d0-profile.json",
+    "dense_q8_ms_per_token": 2.83934275,
+    "dense_q8_share_pct": 32.174126907826825,
+    "dense_q8_launches_per_token": 200,
+    "production_shape_mix_per_token": {
+      "8192x2048_single": 40,
+      "4096x2048_single": 30,
+      "2048x4096_or_2048x512_single": 80,
+      "512x2048_dual_projection_launches": 50
+    }
+  },
+  "source_reference": {
+    "repo": "/home/lhl/qwen-kernel",
+    "commit": "52e240f9c6d91750d0e5e692976cfb67fd9bc603",
+    "file": "shaders/gemv_q8_0.comp",
+    "file_sha256": "3aaeb6cc1521694b70bc992025cba30aee8e5e3e95389f3339b5c376ae573f30",
+    "rank": "11a",
+    "adaptation": "Consume raw GGUF block_q8_0 bytes directly; fixed K=2048/4096; assign 16 physical lanes per output and 16 output rows per local256 block.",
+    "lineage_check": "scripts/check_lineage.py does not track qwen-kernel. The external repo was clean for this file and exactly at the pinned commit; the manifest check reported only the previously documented nano-vllm-amd drift and clean pinned llama.cpp MMQ sources."
+  },
+  "source_association_candidate": {
+    "numerical_contract": "Follow the source work/reduction association rather than hipEngine's retained local128 pack8 association.",
+    "real_weight_event_micro": [
+      {
+        "tensor": "blk.0.attn_qkv.weight",
+        "shape": [8192, 2048],
+        "control_samples_us": [28.389878273010254, 20.688016414642334],
+        "candidate_samples_us": [11.17596983909607, 11.883524656295776],
+        "control_median_us": 24.538947343826294,
+        "candidate_median_us": 11.529747247695923,
+        "delta_pct": -53.01449941536849,
+        "bf16_mismatches": 1,
+        "max_abs": 3.814697265625e-06
+      },
+      {
+        "tensor": "blk.0.attn_gate.weight",
+        "shape": [4096, 2048],
+        "control_samples_us": [14.743257761001587, 14.290130138397217],
+        "candidate_samples_us": [6.804572343826294, 6.329067349433899],
+        "control_median_us": 14.516693949699402,
+        "candidate_median_us": 6.566819846630096,
+        "delta_pct": -54.763668164499144,
+        "bf16_mismatches": 0,
+        "max_abs": 0.0
+      },
+      {
+        "tensor": "blk.0.ssm_out.weight",
+        "shape": [2048, 4096],
+        "control_samples_us": [12.909120321273804, 13.377729654312134],
+        "candidate_samples_us": [8.27127754688263, 9.008882641792297],
+        "control_median_us": 13.143424987792969,
+        "candidate_median_us": 8.640080094337463,
+        "delta_pct": -34.263100353507646,
+        "bf16_mismatches": 0,
+        "max_abs": 0.0
+      }
+    ],
+    "full_model_one_step_gate": [
+      {
+        "prompt_length": 512,
+        "prefill_token": 107561,
+        "control_decode_token": 11,
+        "candidate_decode_token": 11,
+        "full_logit_bit_mismatches": 248320,
+        "max_abs": 3.212331533432007,
+        "mean_abs": 0.5727091431617737,
+        "control_selected_logit": 13.857003211975098,
+        "candidate_selected_logit": 13.0077543258667
+      },
+      {
+        "prompt_length": 1024,
+        "prefill_token": 13099,
+        "control_decode_token": 536,
+        "candidate_decode_token": 536,
+        "full_logit_bit_mismatches": 248320,
+        "max_abs": 0.9093831777572632,
+        "mean_abs": 0.1279628425836563,
+        "control_selected_logit": 9.406360626220703,
+        "candidate_selected_logit": 9.270666122436523
+      },
+      {
+        "prompt_length": 4096,
+        "prefill_token": 13883,
+        "control_decode_token": 220,
+        "candidate_decode_token": 220,
+        "full_logit_bit_mismatches": 248320,
+        "max_abs": 3.880335807800293,
+        "mean_abs": 0.5012117624282837,
+        "control_selected_logit": 12.492874145507812,
+        "candidate_selected_logit": 13.967329978942871
+      }
+    ],
+    "decision": "Rejected at the required exact full-logit gate. Equal one-step top-1 IDs do not satisfy task #32's exact-logit contract."
+  },
+  "exact_association_salvage": {
+    "numerical_contract": "Each physical lane emulates eight retained local128 accumulator chains, reproduces the offset 16/8/4/2/1 reduction association, then adds wave0..3 in the retained order before BF16 storage.",
+    "real_weight_event_micro": [
+      {
+        "tensor": "blk.0.attn_qkv.weight",
+        "shape": [8192, 2048],
+        "control_samples_us": [28.769614696502686, 21.544268131256104],
+        "candidate_samples_us": [33.169682025909424, 31.9893479347229],
+        "control_median_us": 25.156941413879395,
+        "candidate_median_us": 32.57951498031616,
+        "delta_pct": 29.505071559858397,
+        "bf16_mismatches": 0,
+        "max_abs": 0.0
+      },
+      {
+        "tensor": "blk.0.attn_gate.weight",
+        "shape": [4096, 2048],
+        "control_samples_us": [14.481432437896729, 14.601407051086426],
+        "candidate_samples_us": [18.279365301132202, 16.80832028388977],
+        "control_median_us": 14.541419744491577,
+        "candidate_median_us": 17.543842792510986,
+        "delta_pct": 20.64738588648989,
+        "bf16_mismatches": 0,
+        "max_abs": 0.0
+      },
+      {
+        "tensor": "blk.0.ssm_out.weight",
+        "shape": [2048, 4096],
+        "control_samples_us": [12.955992221832275, 12.981375455856323],
+        "candidate_samples_us": [23.297970294952393, 23.457036018371582],
+        "control_median_us": 12.9686838388443,
+        "candidate_median_us": 23.377503156661987,
+        "delta_pct": 80.2611849217944,
+        "bf16_mismatches": 0,
+        "max_abs": 0.0
+      }
+    ],
+    "rocprof_smoke": {
+      "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-q3-q8-blockserial-exact-profile -o q8-blockserial-exact -- python3 -m pytest -q tests/test_gguf_q8_0_pack8_gemv_decode.py -k blockserial_bf16",
+      "test_result": "2 passed",
+      "kernel_k2048_duration_us": 24.48,
+      "kernel_k4096_duration_us": 44.441,
+      "workgroup_size": 256,
+      "allocated_vgpr": 32,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0,
+      "trace": "/tmp/hipengine-q3-q8-blockserial-exact-profile/q8-blockserial-exact_kernel_trace.csv",
+      "trace_sha256": "53f86fec1ff1a4ff04c81632de765bc2e7e92a83c63106d6f19d52a705776275"
+    },
+    "decision": "Rejected before runtime promotion or full wall A/B because every representative exact real-weight leaf regressed by 20.65-80.26%."
+  },
+  "commands": {
+    "candidate_tests": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt PYTHONPATH=. uv run pytest -q tests/test_gguf_q8_0_pack8_gemv_decode.py -k blockserial --tb=short",
+    "real_weight_micro": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 <temporary event-timed real-weight A/B harness>; each result counterbalanced control,candidate,candidate,control after 10 warmups and 400 timed launches per sample",
+    "candidate_full_model_gate": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python /tmp/q3_q8_blockserial_correctness.py",
+    "final_wall_template": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --quant gguf_ud_q3_k_m --token-id 9707 --prompt-length <512|1024|4096> --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode native --no-use-wmma-prefill --no-use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build --json <out>.json",
+    "lineage": "python3 scripts/check_lineage.py --kind kernel --diff stat"
+  },
+  "final_retained_path": {
+    "source_state": "Candidate HIP body, Python wrapper, registry entry, and candidate-only tests removed. Production source is byte-identical to hipengine base commit 85b2b23d.",
+    "retained_decode_tok_s": {
+      "512": 101.21645606552306,
+      "4096": 108.38277597824656
+    },
+    "retained_source": "benchmarks/results/2026-07-20-gpu1-q3-moe-tail-next-rms-retained.json",
+    "fresh_wall_controls": {
+      "protocol": "One warmup plus three measured persistent-session 128-token one-step graph runs per context after removing all candidate code.",
+      "512": {
+        "decode_tok_s_samples": [99.88616629336966, 100.12904600396313, 100.01247155302109],
+        "median": 100.01247155302109,
+        "stdev_pct_of_median": 0.12145719153452496,
+        "final_token_ids": [220, 220, 220],
+        "finite_final_logits_all": true,
+        "tracked_peak_gib": 15.825037267059088,
+        "raw_path": "/tmp/hipengine-q3-task39-final-wall-20260722/512.json",
+        "raw_sha256": "39d87ebb041ceb08522cd5c32e5b19b11e3a0f1156750b6d81233dbd70b5ccc5"
+      },
+      "1024": {
+        "decode_tok_s_samples": [106.05681708685309, 106.08180830350783, 106.04647822464129],
+        "median": 106.05681708685309,
+        "stdev_pct_of_median": 0.01712702403946013,
+        "final_token_ids": [232, 232, 232],
+        "finite_final_logits_all": true,
+        "tracked_peak_gib": 16.016630683094263,
+        "raw_path": "/tmp/hipengine-q3-task39-final-wall-20260722/1024.json",
+        "raw_sha256": "ef1c446c2078f23763c536287dfbb91f205613d6eb28138d4f88a61ba2a8e25f"
+      },
+      "4096": {
+        "decode_tok_s_samples": [109.59531186328333, 107.96387922104614, 107.90222201812709],
+        "median": 107.96387922104614,
+        "stdev_pct_of_median": 0.889373379594141,
+        "final_token_ids": [1510, 1510, 1510],
+        "finite_final_logits_all": true,
+        "tracked_peak_gib": 17.07965763285756,
+        "raw_path": "/tmp/hipengine-q3-task39-final-wall-20260722/4096.json",
+        "raw_sha256": "463f197c78c6f65bcbaffd3a0cb1f859cc34ab377b1ffc03bf25d8a104b10947"
+      },
+      "interpretation": "All contexts are stable, finite, and preserve the retained final IDs. With no production-code change and no candidate A/B, these closure controls do not replace the prior counterbalanced 101.216/108.383 tok/s retained rows."
+    },
+    "final_graph_eager_exact_gate": {
+      "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 /tmp/q3_task39_final_graph_eager.py",
+      "prefill_mode": "exact fully-bulk registered gguf_ud_q3_k_m path; one eager decode step versus one captured graph step",
+      "contexts": [512, 1024, 4096],
+      "eager_ids": [[111843, 224322], [2042, 230483], [13883, 13883]],
+      "graph_ids": [[111843, 224322], [2042, 230483], [13883, 13883]],
+      "full_logit_bit_mismatches": [0, 0, 0],
+      "max_abs": [0.0, 0.0, 0.0],
+      "finite": [true, true, true],
+      "passed": true,
+      "raw_path": "/tmp/hipengine-q3-task39-final-graph-eager.json",
+      "raw_sha256": "5bf5ede420ede9753b157f1aeef00bb393b234ec378e9c03ac4e4737582185af"
+    }
+  },
+  "validation": {
+    "candidate_primitive_and_wrapper": "3 passed for both source-association and exact-association forms before removal; the exact rocprof subset reported 2 passed.",
+    "final_raw_q8_module": "30 passed after candidate removal.",
+    "final_decode_dispatch_bundle": "29 passed after candidate removal.",
+    "final_graph_eager_512_1k_4k": "passed; exact IDs, zero full-logit bit mismatches, finite logits.",
+    "cpu_reference_fixtures": "7 passed.",
+    "compileall": "passed",
+    "artifact_json": "passed",
+    "worklog_conflict_check": "passed",
+    "git_diff_check": "passed",
+    "production_source_diff": "empty across hipengine/, tests/, and scripts/ after candidate removal",
+    "clean_full_suite": "No failure through 69% after approximately 45 minutes; intentionally stopped while long local-model tests held about 70% of GPU1 VRAM. The prior task-#30 clean full suite reached 100% exit 0, task #31's final model gates passed, and this task retains no production/test code.",
+    "lineage": "Reviewed; manifest output contains only previously documented nano-vllm-amd drift, and the qwen-kernel source file is clean at pinned commit 52e240f9."
+  },
+  "decision": {
+    "accepted": false,
+    "default_changed": false,
+    "reason": "The source association delivered a large leaf speedup but violated the required exact model-logit boundary; preserving that boundary made every measured production leaf slower. The stop condition fired after this single premise.",
+    "closure": "Do not retry block-serial TPR8/16/32, thread-count, launch-bound, scale-load, or reduction-geometry variants. Reopen dense-Q8 c=1 decode only for a genuinely different algorithm or resident layout with an explicit exact boundary.",
+    "headline": "No new speed claim. Retained GPU1 512/4K c=1 decode rows remain 101.216/108.383 tok/s; W7900 remains unverified."
+  }
+}

@@ -1,0 +1,203 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-20",
+  "status": "accepted",
+  "performance_claim": true,
+  "measurement_class": "counterbalanced exact default-path promotion with traced sub-window",
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "backend": "hip_gfx1100",
+    "physical_device": 1,
+    "visible_device": 1
+  },
+  "software": {
+    "branch": "q3-k-m",
+    "base_commit": "a2adbeb1",
+    "hip_version": "7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "compiler_path": "/opt/rocm/lib/llvm/bin"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf",
+    "sha256": "8966dd0cd8c543c4228490a2a8b0e0814fc4f1e6a8e199ceed4de6754ae7b8e1",
+    "quant": "gguf_ud_q3_k_m",
+    "architecture": "qwen35moe"
+  },
+  "diagnosis": {
+    "baseline_artifact": "benchmarks/results/2026-07-20-gpu1-q3-exact-gdn-lds32-prefill.json",
+    "baseline_total_kernel_ms": 5971.05855,
+    "baseline_iq3_ms": 1093.855516,
+    "baseline_iq3_share_pct": 18.31928973464847,
+    "closed_designs_not_repeated": [
+      "IQ3 output-column tile 2 raised allocated VGPR 48 to 72 and regressed matched leaf time about 50%.",
+      "Raw-IQ compact WMMA changed the model trajectory and collapsed under a static upper-bound grid.",
+      "Decode output-row tile 8 and a duplicate resident IQ repack are explicitly closed."
+    ],
+    "new_premise": "The exact expert-major IQ3 leaf already retains one gate/up weight row across routed prompt rows, but serializes every row through two whole-block barriers. Batch four independent compact rows through one reduction/barrier pair while preserving each row's original lane dot, wave32 shuffle tree, and serial wave-0..7 accumulation."
+  },
+  "change": {
+    "summary": "Add an exact IQ3 grouped-prefill row-batch-4 leaf and select it only at the measured four-rows-per-expert crossover.",
+    "kernel": "gguf_iq3_xxs_selected_dual_grouped_prefill_compact_rowbatch4_kernel",
+    "wrapper": "gguf_iq3_xxs_selected_dual_grouped_prefill_compact_rowbatch4_bf16_bf16_out",
+    "registry": "hip_gfx1100/moe_linear/gguf_iq3_xxs/selected_dual_grouped_prefill_compact_auto_bf16_bf16_out",
+    "crossover": "rowbatch4 when compact_rows >= 4*num_experts; retained RT1 grouped leaf below it",
+    "exactness": "Every row keeps the same eight IQ3 terms per lane, wave32 shuffle offsets 16/8/4/2/1, and thread-0 wave partial accumulation 0 through 7. Independent row accumulators are interleaved only to amortize barriers.",
+    "generic_fallback": "RT1 grouped remains the small-assignment fallback and HIPENGINE_GGUF_IQ_GROUPED_PREFILL=0 retains the direct selected-single chain.",
+    "new_weight_layout": false,
+    "host_synchronization_added": false,
+    "global_scratch_allocation_added": false
+  },
+  "correctness": {
+    "red": {
+      "command": "PYTHONPATH=. uv run pytest -q tests/test_gguf_iq_selected_prefill.py --collect-only",
+      "result": "Collection failed on the missing rowbatch4 wrapper import."
+    },
+    "focused": {
+      "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_gguf_iq_selected_prefill.py tests/test_qwen35_gguf_compact_moe_wmma_routing.py tests/test_qwen35_gguf_rocprof_summary.py",
+      "passed": true
+    },
+    "primitive": {
+      "in_features": 2048,
+      "out_features": 19,
+      "expert_counts": [0, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, 31, 32, 33],
+      "bf16_bit_mismatches_vs_rt1": 0
+    },
+    "production_micro": {
+      "shape": "E=256,K=2048,N=512",
+      "compact_rows": [256, 512, 768, 1024, 2048, 4096, 8192, 32768],
+      "bf16_bit_mismatches": [0, 0, 0, 0, 0, 0, 0, 0]
+    },
+    "full_model": {
+      "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_qwen35_gguf_q3_bulk_prefill_correctness.py",
+      "passed": true,
+      "tests": 2,
+      "mixed64_kl": 0.0,
+      "mixed64_top1": 1.0,
+      "all_row_layer_limits": [0, 3, 4, 40],
+      "all_row_bit_equal": true
+    },
+    "mixed_4096": {
+      "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python /tmp/q3_pack8_4k_mixed.py",
+      "script_sha256": "7845c231d754b1401e61620ba63b479e82829e141fd6762ac47bf009ddab27d8",
+      "token_pattern": [9707, 11, 220, 264, 73, 13, 107561, 13883],
+      "samples_tok_s": [686.770391251653, 682.2272083055786],
+      "median_tok_s": 684.4987997786159,
+      "median_seconds": 5.984006271522958,
+      "token_id": 14626,
+      "logit": 10.020184516906738,
+      "finite": true,
+      "matches_strict_serial_token_and_logit": true,
+      "output_sha256": [
+        "6afb3f02292f8d1e5c185c2e3bbe917862b0dfd846b5b3a49ffa6bae748c385a",
+        "9acdff0e50861f785ed89d8c3049c550c294e81407b691ff9b76bfa47f3d316e"
+      ]
+    }
+  },
+  "microbench": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python /tmp/hipengine_q3_iq3_rowbatch4_micro.py",
+    "script_sha256": "f3e0d3cbb5952bf1318ab274e5d05040514660515157d4e8372b445527eb2efa",
+    "output_sha256": "29dde719921a0f6516e447cc90cebd2eb8550c5c4a47d0e479848e1c45efc9e4",
+    "warmup": 2,
+    "iterations": 7,
+    "shape": "E=256,K=2048,N=512",
+    "rows": {
+      "1": {"rt1_median_ms": 0.614018, "rowbatch4_median_ms": 0.924623, "delta_pct": 50.58565058353339},
+      "2": {"rt1_median_ms": 0.738909, "rowbatch4_median_ms": 0.939563, "delta_pct": 27.155441333100548},
+      "3": {"rt1_median_ms": 0.978403, "rowbatch4_median_ms": 0.980973, "delta_pct": 0.2626729476504108},
+      "4": {"rt1_median_ms": 1.099285, "rowbatch4_median_ms": 1.034244, "delta_pct": -5.91666401342692},
+      "8": {"rt1_median_ms": 1.828164, "rowbatch4_median_ms": 1.626172, "delta_pct": -11.04889933288261},
+      "16": {"rt1_median_ms": 3.579087, "rowbatch4_median_ms": 3.124952, "delta_pct": -12.68857113559967},
+      "32": {"rt1_median_ms": 6.84818, "rowbatch4_median_ms": 5.928769, "delta_pct": -13.425625494656979},
+      "128": {"rt1_median_ms": 27.735408, "rowbatch4_median_ms": 23.370299, "delta_pct": -15.738398367891326}
+    }
+  },
+  "measurements": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --quant gguf_ud_q3_k_m --token-id 9707 --prompt-length <512|4096> --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --no-use-wmma-prefill --no-use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build",
+    "sequence": "rowbatch4 three runs, RT1 three-run control, rowbatch4 three-run repeat",
+    "prefill_512": {
+      "rowbatch4_samples_tok_s": [740.5053003842396, 760.197127267285, 751.89766973918, 752.0991451029362, 776.7546509497873, 774.1854456533248],
+      "rowbatch4_six_sample_median_tok_s": 756.1481361851106,
+      "rt1_control_samples_tok_s": [738.4293276654864, 758.1349482285066, 754.2990434474821],
+      "rt1_control_median_tok_s": 754.2990434474821,
+      "counterbalanced_delta_pct": 0.24514053858233353,
+      "final_three_run_median_tok_s": 774.1854456533248,
+      "final_three_run_samples_tok_s": [752.0991451029362, 776.7546509497873, 774.1854456533248],
+      "prior_retained_median_tok_s": 763.2213892265611,
+      "final_delta_vs_prior_pct": 1.436549942327292,
+      "tracked_peak_gib": 15.805444963276386,
+      "interpretation": "The 512 headline is within run spread; retention is not based on claiming a large 512 wall gain."
+    },
+    "prefill_4096_repeated": {
+      "rowbatch4_samples_tok_s": [679.5331475708233, 679.7011753008904, 682.1750530081016, 681.2371785496432, 678.5375629411541, 669.4835041239633],
+      "rowbatch4_six_sample_median_tok_s": 679.6171614358568,
+      "rt1_control_samples_tok_s": [670.2986600925383, 669.6559077571682, 670.6462831248626],
+      "rt1_control_median_tok_s": 670.2986600925383,
+      "counterbalanced_delta_pct": 1.3902013979905758,
+      "prior_retained_median_tok_s": 671.5078415729744,
+      "delta_vs_prior_pct": 1.2076284684757743,
+      "tracked_peak_gib": 16.95465761423111
+    },
+    "prefill_4096_mixed": {
+      "samples_tok_s": [686.770391251653, 682.2272083055786],
+      "median_tok_s": 684.4987997786159,
+      "median_seconds": 5.984006271522958,
+      "prior_retained_tok_s": 670.4170596768051,
+      "delta_vs_prior_pct": 2.100444775167154
+    },
+    "raw_json_sha256": {
+      "rowbatch4_512_first": "313f652cd808d6fe1d366216867d437632990aa9da7f13a570bed38c6125f083",
+      "rowbatch4_4096_first": "cee50a664d879c31a744d63423aa2211b364c0d4fa23590529bcca19dfc5b01b",
+      "rt1_512_control": "20e67729510f5d4bbf60202b667058a06bb1bf957c045bc93cb7412363ae8612",
+      "rt1_4096_control": "744ea580462dca9ce8b0d1aabb351d3c5a9c2e3763f90b714d89de35af907da1",
+      "rowbatch4_512_repeat": "e29ffb85a55ed1e07af4ca9f5785770977b30c5bc2e1dbc231f8eb8dd664fe31",
+      "rowbatch4_4096_repeat": "19e8fb693f1283f22fdd6ac16d590b9d8a658d2f8a4b13d61a03b75193373184"
+    }
+  },
+  "rocprof": {
+    "command": "LD_LIBRARY_PATH=/tmp/hipengine-roctx-sdk-override-gguf-eager:<ROCm-sysdeps> HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --selected-regions true --output-format csv -d /tmp/hipengine-q3-iq3-rowbatch4-profile-20260720 -o q3-iq3-rowbatch4-prefill -- uv run python scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --quant gguf_ud_q3_k_m --token-id 9707 --prompt-length 4096 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --no-use-wmma-prefill --no-use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --rocprof-selected-region prefill --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build",
+    "profiled_prefill_tok_s": 678.9968237234252,
+    "trace_path": "/tmp/hipengine-q3-iq3-rowbatch4-profile-20260720/q3-iq3-rowbatch4-prefill_kernel_trace.csv",
+    "trace_sha256": "ed719f0a2ede16a8863b015fe53769b696a6a34c9dc5eb53f9659524234d67dc",
+    "summary_sha256": "a3f473443f98bfb666f4ffb892683c952a0cdd5d4ff74eac3f8082de028ba244",
+    "trace_launches": 8705,
+    "trace_kernel_sum_ms": 5827.503013,
+    "trace_span_ms": 6030.124388,
+    "delta_total_kernel_sum_pct": -2.4041890696248513,
+    "delta_trace_span_pct": -1.7312361377605723,
+    "iq3_rowbatch4": {
+      "count": 129,
+      "total_ms": 961.231268,
+      "share_pct": 16.494736525329703,
+      "rt1_baseline_ms": 1093.855516,
+      "delta_vs_rt1_pct": -12.12447586176455,
+      "vgpr": 80,
+      "lds_bytes": 512,
+      "scratch_bytes": 0,
+      "workgroup_x": 256
+    },
+    "postchange_bottlenecks_ms": {
+      "dense_q8_exact": 2048.793087,
+      "dense_q8_exact_share_pct": 35.157306352816126,
+      "grouped_iq3": 961.231268,
+      "grouped_iq3_share_pct": 16.494736525329703,
+      "full_attention": 936.899961,
+      "full_attention_share_pct": 16.077211095557782,
+      "exact_gdn_recurrent": 871.085344,
+      "exact_gdn_recurrent_share_pct": 14.94783172238233,
+      "grouped_iq4_down": 503.408441,
+      "grouped_iq4_down_share_pct": 8.638493019686062
+    }
+  },
+  "acceptance": {
+    "exact_primitive": true,
+    "exact_full_model": true,
+    "expected_rowbatch4_symbol_present": true,
+    "unexpected_rt1_symbol_present_at_512_or_4096": false,
+    "crossover_keeps_rt1_below_four_rows_per_expert": true,
+    "scratch_bytes": 0,
+    "host_synchronization_added": false,
+    "memory_regression": false,
+    "accepted": true
+  },
+  "next_action": "Dense exact Q8 remains first but its local schedules are closed. Full attention and grouped IQ3 are now nearly tied at about 16% each; continue task #24 with one new exact full-attention premise rather than reopening closed IQ3 row/output tiling or repack work. The approximately 3000 tok/s objective remains open."
+}

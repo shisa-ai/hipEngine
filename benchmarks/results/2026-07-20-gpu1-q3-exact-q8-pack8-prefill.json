@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-20",
+  "status": "accepted",
+  "performance_claim": true,
+  "measurement_class": "three-run exact default-path promotion",
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "backend": "hip_gfx1100",
+    "physical_device": 1,
+    "visible_device": 1
+  },
+  "software": {
+    "branch": "q3-k-m",
+    "base_commit": "6768bb6e4e288793d72e910ebe7da848c5bced47",
+    "hip_version": "7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "compiler_path": "/opt/rocm/lib/llvm/bin"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf",
+    "sha256": "8966dd0cd8c543c4228490a2a8b0e0814fc4f1e6a8e199ceed4de6754ae7b8e1",
+    "quant": "gguf_ud_q3_k_m",
+    "architecture": "qwen35moe"
+  },
+  "diagnosis": {
+    "baseline_profile": "/tmp/hipengine-q3-exact-fastbulk-4k-profile-20260720-130719/q3-exact-fastbulk-4k-prefill_kernel_trace.csv",
+    "total_kernel_ms": 19141.166627,
+    "dense_q8_scalar_prefill_ms": 13687.886,
+    "dense_q8_share_pct": 71.51,
+    "grouped_iq3_iq4_ms": 2825.958,
+    "grouped_iq3_iq4_share_pct": 14.76,
+    "conclusion": "After exact bulk scheduling, dense Q8_0 projections—not selected MoE—are the first residual bottleneck."
+  },
+  "change": {
+    "summary": "Route rows>1 raw-Q8_0 BF16 projections through the existing exact eight-output kernel when WMMA is not selected.",
+    "dispatch": "Package-local registry policy rewrites prefill_bf16_bf16_out to pack8_gemv_bf16_bf16_out only for raw gguf_q8_0, rows>1, and out_features divisible by eight.",
+    "math": "Each output keeps the scalar kernel's per-thread K traversal and block reduction association; eight independent outputs share one workgroup.",
+    "fallbacks": "Explicit WMMA opt-in retains precedence; unaligned outputs and other quants keep their existing prefill keys; rows=1 decode policy is unchanged.",
+    "new_weight_layout": false,
+    "host_synchronization_added": false
+  },
+  "correctness": {
+    "red": {
+      "command": "PYTHONPATH=. uv run pytest -q tests/test_gguf_linear_dispatch.py -k 'exact_pack8_prefill_is_default or exact_pack8_prefill_requires or wmma_prefill_kwarg_can_force_off or falsy_values_keep'",
+      "expected_failures": 3,
+      "reason": "rows>1 Q8_0 still resolved the one-output prefill key"
+    },
+    "primitive": {
+      "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_gguf_q8_0_pack8_gemv_decode.py",
+      "passed": true,
+      "tests": 23,
+      "new_multirow_cases": 2,
+      "new_case_shapes": [[4, 512, 256], [3, 2048, 512]],
+      "bit_mismatches": 0
+    },
+    "full_model": {
+      "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run pytest -q tests/test_qwen35_gguf_q3_bulk_prefill_correctness.py",
+      "passed": true,
+      "tests": 2,
+      "mixed64_kl": 0.0,
+      "mixed64_top1": 1.0,
+      "all_row_layer_limits": [0, 3, 4, 40],
+      "all_row_bit_equal": true
+    },
+    "mixed_4096": {
+      "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 /tmp/q3_pack8_4k_mixed.py",
+      "script_sha256": "7845c231d754b1401e61620ba63b479e82829e141fd6762ac47bf009ddab27d8",
+      "token_pattern": [9707, 11, 220, 264, 73, 13, 107561, 13883],
+      "token_id": 14626,
+      "logit": 10.020184516906738,
+      "finite": true,
+      "matches_prechange_exact_token_and_logit": true
+    }
+  },
+  "measurements": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --quant gguf_ud_q3_k_m --token-id 9707 --prompt-length <512|4096> --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --no-use-wmma-prefill --no-use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build",
+    "baseline": {
+      "artifact": "benchmarks/results/2026-07-20-gpu1-q3-exact-fully-bulk-prefill.json",
+      "prefill_tok_s_512": 218.59762044402657,
+      "prefill_tok_s_4096_mixed": 211.93610782823998
+    },
+    "prefill_512": {
+      "samples_tok_s": [360.53880194763514, 369.3079120769126, 364.413966353105],
+      "median_tok_s": 364.413966353105,
+      "stdev_pct": 1.2058833545607681,
+      "median_seconds": 1.4049955470254645,
+      "delta_vs_baseline_pct": 66.70536742938413,
+      "tracked_peak_gib": 15.805444963276386
+    },
+    "prefill_4096_repeated": {
+      "samples_tok_s": [343.57811321908804, 342.7328139164148, 342.2814573938474],
+      "median_tok_s": 342.7328139164148,
+      "stdev_pct": 0.19205226889388388,
+      "median_seconds": 11.951000411063433,
+      "tracked_peak_gib": 16.95465761423111
+    },
+    "prefill_4096_mixed": {
+      "seconds": 11.945103636942804,
+      "tok_s": 342.90200608492324,
+      "prechange_seconds": 19.326579326065257,
+      "prechange_tok_s": 211.93610782823998,
+      "delta_vs_baseline_pct": 61.7949907633589,
+      "tracked_peak_gib": 16.95465761423111
+    }
+  },
+  "rocprof": {
+    "command": "LD_LIBRARY_PATH=/tmp/hipengine-roctx-sdk-override-gguf-eager:<ROCm-sysdeps> HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --selected-regions true --output-format csv -d /tmp/hipengine-q3-pack8-prefill-profile-20260720-133814 -o q3-pack8-prefill -- python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --quant gguf_ud_q3_k_m --token-id 9707 --prompt-length 4096 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --no-use-wmma-prefill --no-use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --rocprof-selected-region prefill --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build",
+    "profiled_prefill_tok_s": 341.21794710008044,
+    "trace_launches": 8705,
+    "trace_kernel_sum_ms": 11832.588143,
+    "trace_span_ms": 11996.099731,
+    "delta_kernel_sum_pct": -38.182513252304695,
+    "q8_pack8": {
+      "symbol": "gguf_k_pack8_prefill_out_kernel<unsigned short, unsigned short, 8>",
+      "count": 790,
+      "total_ms": 5958.32779,
+      "share_pct": 50.36,
+      "median_us": 4787.816,
+      "vgpr": 72,
+      "scratch_bytes": 0,
+      "workgroup_x": 128,
+      "delta_vs_scalar_q8_pct": -56.47006564782904
+    },
+    "postchange_bottlenecks_ms": {
+      "dense_q8_pack8": 5958.32779,
+      "grouped_iq4": 1716.221,
+      "exact_gdn": 1326.134,
+      "grouped_iq3": 1312.046,
+      "warp_split_attention": 822.339
+    }
+  },
+  "acceptance": {
+    "exact_primitive": true,
+    "exact_full_model": true,
+    "expected_pack8_symbol_present": true,
+    "unexpected_scalar_q8_symbol_present": false,
+    "scratch_bytes": 0,
+    "host_synchronization_added": false,
+    "memory_regression": false,
+    "accepted": true
+  },
+  "notes": [
+    "This is the first profile-driven step toward the approximately 3000 tok/s goal; it is not a claim that the target is closed.",
+    "The 4K repeated-token three-run row is paired with a same-pattern mixed-token run because the prior strict 4K oracle used the listed mixed pattern.",
+    "The post-change profile still attributes 50.36% to dense Q8 pack8, so exact row reuse remains ahead of selected-IQ work in Amdahl order.",
+    "Raw profiler CSV and transient benchmark JSONs remain under /tmp and are intentionally not committed."
+  ]
+}

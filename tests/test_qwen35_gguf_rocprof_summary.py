@@ -78,6 +78,27 @@ def _write_csv(path: Path, rows: Sequence[dict[str, object]]) -> None:
 @pytest.mark.parametrize(
     "name,expected",
     [
+        # Raw-IQ selected direct GEMV (UD-Q3_K_M).
+        ("gguf_iq3_xxs_selected_gemv_kernel", "moe_iq3_xxs_selected_single"),
+        ("gguf_iq3_xxs_selected_dual_silu_gemv_kernel", "moe_iq3_xxs_selected_dual_silu"),
+        ("gguf_iq4_xs_selected_gemv_kernel", "moe_iq4_xs_selected_single"),
+        ("gguf_iq4_xs_weighted_selected_down_kernel", "moe_iq4_xs_weighted_down"),
+        (
+            "gguf_iq3_xxs_selected_dual_grouped_prefill_compact_kernel",
+            "moe_iq3_xxs_grouped_dual_prefill",
+        ),
+        (
+            "gguf_iq4_xs_selected_dual_grouped_prefill_compact_kernel",
+            "moe_iq4_xs_grouped_dual_prefill",
+        ),
+        (
+            "gguf_iq4_xs_selected_grouped_prefill_compact_kernel",
+            "moe_iq4_xs_grouped_down_prefill",
+        ),
+        (
+            "gguf_iq4_xs_selected_grouped_prefill_compact_k512_wave32_kernel",
+            "moe_iq4_xs_grouped_down_prefill",
+        ),
         # MoE compact selected -- P8 WMMA prefill and P9.B GEMV decode + legacy
         ("gguf_q4_k_selected_dual_wmma_prefill_compact_kernel<unsigned short>", "moe_q4_k_selected_dual_wmma_prefill"),
         ("gguf_q4_k_t16_selected_dual_wmma_prefill_compact32_kernel<unsigned short>", "moe_q4_k_selected_dual_wmma_prefill"),
@@ -100,6 +121,14 @@ def _write_csv(path: Path, rows: Sequence[dict[str, object]]) -> None:
         ("gguf_q8_0_prefill_wmma_kernel<unsigned short, unsigned short, 32, 32>", "dense_q8_0_wmma_prefill"),
         ("gguf_q8_0_prefill_dual_wmma_kernel<unsigned short, unsigned short, 16, 32>", "dense_q8_0_wmma_prefill"),
         ("gguf_q8_0_t16_prefill_wmma_kernel<unsigned short, unsigned short, 64, 32>", "dense_q8_0_wmma_prefill"),
+        (
+            "gguf_q8_0_exact_prefill_tiled_out_kernel<unsigned short, unsigned short, 8, 2>",
+            "dense_q8_0_exact_prefill",
+        ),
+        (
+            "gguf_q8_0_exact_prefill_tiled_out_kernel<unsigned short, unsigned short, 8, 4>",
+            "dense_q8_0_exact_prefill",
+        ),
         ("gguf_q8_0_pack8_gemv_kernel<unsigned short>", "other"),  # legacy non-decode pack8
         ("gguf_q8_0_pack8_gemv_decode_kernel<unsigned short>", "dense_q8_0_pack8_gemv_decode_p9"),
         ("gguf_q8_0_pack8_dual_gate_up_gemv_decode_kernel<unsigned short>", "dense_q8_0_pack8_gemv_decode_p9"),
@@ -107,6 +136,7 @@ def _write_csv(path: Path, rows: Sequence[dict[str, object]]) -> None:
         ("q8_0_t16_dual_gemv_kernel<unsigned short, unsigned short>", "dense_q8_0_t16_gemv_decode_p9"),
         ("q8_0_t16_dual_split_gemv_kernel<unsigned short, unsigned short>", "dense_q8_0_t16_gemv_decode_p9"),
         ("gguf_k_pack8_prefill_out_kernel<unsigned short, unsigned short, 8>", "dense_q8_0_legacy_decode"),
+        ("gguf_k_dual_prefill_out_kernel<unsigned short, unsigned short, 8>", "dense_q8_0_legacy_decode"),
         ("gguf_k_pack8_prefill_out_kernel<unsigned short, float, 6>", "dense_q6_k_legacy_decode"),
         # Dense Q4_K / Q6_K
         ("gguf_q4_k_pack8_gemv_decode_kernel<unsigned short, unsigned short>", "dense_q4_k_pack8_gemv_decode_p9"),
@@ -137,6 +167,7 @@ def _write_csv(path: Path, rows: Sequence[dict[str, object]]) -> None:
         ("silu_mul_dual_out_kernel<unsigned short>", "silu_mul"),
         ("weighted_lanes_sum_out_kernel<unsigned short, float>", "moe_combine"),
         ("shared_gate_combine_residual_batch_out_kernel<unsigned short>", "moe_combine"),
+        ("moe_tail_next_rmsnorm_out_kernel<unsigned short, float, false, false>", "moe_tail_next_rms"),
         ("gguf_rmsnorm_bf16_f32_weight_kernel<unsigned short>", "rmsnorm"),
         # KV + runtime
         ("qwen35_write_paged_kv_cache_kernel", "kv_write"),
@@ -279,6 +310,19 @@ def test_summary_single_csv_prefill_phase(tmp_path: Path) -> None:
         assert b["ms_per_token"] == pytest.approx(b["total_ms"] / 512, abs=1e-6)
 
 
+def test_iq_default_footprints_use_exact_encoded_block_bytes() -> None:
+    footprints = SCRIPT._QWEN36_35B_A3B_DEFAULT_FOOTPRINTS_PER_DISPATCH
+
+    assert footprints["moe_iq3_xxs_selected_single"] == 8 * 512 * (2048 // 256) * 98
+    assert footprints["moe_iq3_xxs_selected_dual_silu"] == 8 * 2 * 512 * (2048 // 256) * 98
+    assert footprints["moe_iq4_xs_selected_single"] == 8 * 2048 * (512 // 256) * 136
+    assert footprints["moe_iq4_xs_weighted_down"] == 8 * 2048 * (512 // 256) * 136
+    assert footprints["moe_iq3_xxs_grouped_dual_prefill"] is None
+    assert footprints["moe_iq4_xs_grouped_dual_prefill"] is None
+    assert footprints["moe_iq4_xs_grouped_down_prefill"] is None
+    assert footprints["dense_q8_0_exact_prefill"] is None
+
+
 def test_summary_effective_gb_s_uses_footprint_overrides(tmp_path: Path) -> None:
     csv_path = tmp_path / "decode.csv"
     # One Q8_0 P9 decode dispatch in 1 ms. With a footprint of 1 GB (1e9 bytes)
@@ -388,6 +432,59 @@ def test_paired_mode_strips_prefill_prefix(tmp_path: Path) -> None:
     assert decode["ms_per_token"] == pytest.approx(6.0 / 128, abs=1e-6)
 
 
+def test_paired_mode_applies_phase_specific_footprints(tmp_path: Path) -> None:
+    prefill_csv = tmp_path / "prefill.csv"
+    decode_csv = tmp_path / "decode.csv"
+    kernel = "gguf_iq3_xxs_selected_dual_silu_gemv_kernel"
+    row = {
+        "Kernel_Name": kernel,
+        "Start_Timestamp": 0,
+        "End_Timestamp": 1_000_000,
+    }
+    _write_csv(prefill_csv, [row])
+    _write_csv(decode_csv, [row])
+    prefill_config = tmp_path / "prefill-config.json"
+    decode_config = tmp_path / "decode-config.json"
+    prefill_config.write_text(
+        json.dumps({"moe_iq3_xxs_selected_dual_silu": 512_000_000})
+    )
+    decode_config.write_text(
+        json.dumps({"moe_iq3_xxs_selected_dual_silu": 1_000_000})
+    )
+    out_path = tmp_path / "out.json"
+
+    rc = SCRIPT.main(
+        [
+            "--prefill-csv",
+            str(prefill_csv),
+            "--decode-csv",
+            str(decode_csv),
+            "--prefill-config-json",
+            str(prefill_config),
+            "--decode-config-json",
+            str(decode_config),
+            "--json",
+            str(out_path),
+            "--quiet",
+        ]
+    )
+
+    assert rc == 0
+    summary = json.loads(out_path.read_text())
+    prefill_bucket = summary["phases"]["prefill"]["buckets"][0]
+    decode_bucket = summary["phases"]["decode"]["buckets"][0]
+    assert prefill_bucket["footprint_bytes_per_dispatch"] == 512_000_000
+    assert prefill_bucket["effective_gb_s"] == pytest.approx(512.0)
+    assert decode_bucket["footprint_bytes_per_dispatch"] == 1_000_000
+    assert decode_bucket["effective_gb_s"] == pytest.approx(1.0)
+    assert summary["phase_footprints_used"]["prefill"][
+        "moe_iq3_xxs_selected_dual_silu"
+    ] == 512_000_000
+    assert summary["phase_footprints_used"]["decode"][
+        "moe_iq3_xxs_selected_dual_silu"
+    ] == 1_000_000
+
+
 def test_paired_mode_without_strip_keeps_prefix(tmp_path: Path) -> None:
     prefill_csv = tmp_path / "prefill.csv"
     paired_csv = tmp_path / "paired.csv"
@@ -417,7 +514,8 @@ def test_paired_mode_without_strip_keeps_prefix(tmp_path: Path) -> None:
     # Without the strip flag, the decode phase reports the full CSV.
     assert decode["total_dispatches"] == 2
     assert any(
-        "prefill prefix not subtracted" in note for note in summary["notes"]
+        "no prefill-prefix subtraction was requested" in note
+        for note in summary["notes"]
     )
 
 

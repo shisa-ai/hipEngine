@@ -56,7 +56,33 @@ class GGUFIQ4XSQuant:
     compute_dtype: str = "fp32_accum"
     scale_granularity: str = "block256_iq4_xs"
     calibration_artifact: str = "gguf"
-    kernel_family: str = "gguf_dense_bf16_fallback"
+    kernel_family: str = "gguf_iq_gemv"
+
+
+@dataclass(frozen=True)
+class GGUFIQ3XXSQuant:
+    """GGUF iq3_xxs weight-only quantization contract."""
+
+    name: str = "gguf_iq3_xxs"
+    weight_storage: str = "gguf_iq3_xxs"
+    activation_preprocess: str = "none"
+    compute_dtype: str = "fp32_accum"
+    scale_granularity: str = "block256_iq3_xxs"
+    calibration_artifact: str = "gguf"
+    kernel_family: str = "gguf_iq_gemv"
+
+
+@dataclass(frozen=True)
+class GGUFQ3KQuant:
+    """GGUF block_q3_K weight-only quantization contract."""
+
+    name: str = "gguf_q3_k"
+    weight_storage: str = "gguf_block_q3_k"
+    activation_preprocess: str = "none"
+    compute_dtype: str = "fp32_accum"
+    scale_granularity: str = "block256_subblock16_scale"
+    calibration_artifact: str = "gguf"
+    kernel_family: str = "gguf_k_gemv"
 
 
 @dataclass(frozen=True)
@@ -77,6 +103,8 @@ GGUF_Q4_1 = register_quant(GGUFQ41Quant())
 GGUF_Q5_K = register_quant(GGUFQ5KQuant())
 GGUF_Q6_K = register_quant(GGUFQ6KQuant())
 GGUF_IQ4_XS = register_quant(GGUFIQ4XSQuant())
+GGUF_IQ3_XXS = register_quant(GGUFIQ3XXSQuant())
+GGUF_Q3_K = register_quant(GGUFQ3KQuant())
 
 
 __all__ = [
@@ -85,7 +113,11 @@ __all__ = [
     "GGUFQ5KQuant",
     "GGUFQ6KQuant",
     "GGUFIQ4XSQuant",
+    "GGUFIQ3XXSQuant",
+    "GGUFQ3KQuant",
+    "GGUF_IQ3_XXS",
     "GGUF_IQ4_XS",
+    "GGUF_Q3_K",
     "GGUF_Q4_1",
     "GGUF_Q5_K",
     "GGUF_Q6_K",

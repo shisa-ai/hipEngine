@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import ctypes
+from dataclasses import replace
 from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
+from hipengine.core.tensor import Tensor
 from hipengine.kernels.registry import KernelKey, register
 from hipengine.kvcache import KVLiveSpans
 
@@ -22,8 +24,14 @@ _SYMBOL_CONTEXT_BATCH_FIXED256 = (
     "hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans"
 )
 _SYMBOL_CONTEXT_BATCH_C1_EXACT = "hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_c1_exact_spans"
+_SYMBOL_CONTEXT_BATCH_Q3_C1_EXACT = (
+    "hipengine_qwen35_paged_full_attn_decode_context_bf16_batch_q3_c1_exact_spans"
+)
 _SYMBOL_SPLIT_CONTEXT = "hipengine_qwen35_paged_full_attn_decode_split_k_context_bf16_spans"
 _SYMBOL_SPLIT_WARP_CONTEXT = "hipengine_qwen35_paged_full_attn_decode_split_k_warp_context_bf16_spans"
+_SYMBOL_SPLIT_WARP_CONTEXT_BATCH = (
+    "hipengine_qwen35_paged_full_attn_decode_split_k_warp_context_batch_bf16_spans"
+)
 _SYMBOL_SPLIT_GQA_CONTEXT = "hipengine_qwen35_paged_full_attn_decode_split_k_gqa_context_bf16_spans"
 _SYMBOL_SPLIT_GQA_CONTEXT_BATCH = "hipengine_qwen35_paged_full_attn_decode_split_k_gqa_context_batch_bf16_spans"
 _SYMBOL_SPLIT_REDUCE = "hipengine_qwen35_paged_full_attn_decode_split_k_reduce_f32"
@@ -39,6 +47,9 @@ _SYMBOL_SPLIT_PARALLEL_REDUCE_GATE_BF16 = (
     "hipengine_qwen35_paged_full_attn_decode_split_k_parallel_reduce_gate_bf16"
 )
 _SYMBOL_SPLIT_REDUCE_GATE_FP16 = "hipengine_qwen35_paged_full_attn_decode_split_k_reduce_gate_fp16"
+_SYMBOL_SPLIT_REDUCE_GATE_BF16_BATCH = (
+    "hipengine_qwen35_paged_full_attn_decode_split_k_reduce_gate_bf16_batch"
+)
 _SYMBOL_SPLIT_REDUCE_GATE_FP16_BATCH = "hipengine_qwen35_paged_full_attn_decode_split_k_reduce_gate_fp16_batch"
 _SYMBOL_SPLIT_GQA_GATE_FP16_BATCH_DIRECT = (
     "hipengine_qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_batch_direct_spans"
@@ -53,6 +64,9 @@ _SYMBOL_SPLIT_GQA_INT8_HADAMARD_GROUP32_CONTEXT_FP16 = "hipengine_qwen35_paged_f
 _SYMBOL_SPLIT_GQA_INT8_KEY_BF16_VALUE_CONTEXT_F32 = "hipengine_qwen35_paged_full_attn_decode_split_k_gqa_context_int8_key_bf16_value_scale_f32_spans"
 _SYMBOL_SPLIT_GQA_INT8_KEY_BF16_VALUE_CONTEXT_FP16 = "hipengine_qwen35_paged_full_attn_decode_split_k_gqa_context_int8_key_bf16_value_scale_fp16_spans"
 _SYMBOL_PREFILL_GQA_GATE_BF16 = "hipengine_qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans"
+_SYMBOL_PREFILL_GQA_GATE_BF16_DECODE_ORDER = (
+    "hipengine_qwen35_paged_full_attn_prefill_gqa_gate_bf16_decode_order_spans"
+)
 _SYMBOL_PREFILL_GQA_GATE_INT8_F32 = "hipengine_qwen35_paged_full_attn_prefill_gqa_gate_int8_scale_f32_spans"
 _SYMBOL_PREFILL_GQA_GATE_INT8_FP16 = "hipengine_qwen35_paged_full_attn_prefill_gqa_gate_int8_scale_fp16_spans"
 _SYMBOL_PREFILL_GQA_GATE_INT8_HADAMARD_GROUP32_F32 = "hipengine_qwen35_paged_full_attn_prefill_gqa_gate_int8_hadamard_group32_scale_f32_spans"
@@ -425,6 +439,76 @@ def qwen35_paged_full_attn_decode_context_bf16_batch_c1_exact_spans(
     library = library or build_qwen35_paged_attn_decode(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_CONTEXT_BATCH_C1_EXACT)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_float,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(max_context_len),
+        ctypes.c_int64(block_size),
+        ctypes.c_int64(block_table_len),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_float(scale),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def qwen35_paged_full_attn_decode_context_bf16_batch_q3_c1_exact_spans(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    out_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    max_context_len: int,
+    block_size: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run the retained Q3 256-thread generic batch reduction."""
+
+    block_table_len = _check_decode_batch_shape(
+        spans,
+        rows,
+        max_context_len,
+        block_size,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+    )
+    library = library or build_qwen35_paged_attn_decode(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_CONTEXT_BATCH_Q3_C1_EXACT)
     fn.argtypes = [
         ctypes.c_void_p,
         ctypes.c_void_p,
@@ -1075,6 +1159,143 @@ def qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_batch_spans(
     )
     _launch_gate_reduce_batch(
         _SYMBOL_SPLIT_REDUCE_GATE_FP16_BATCH,
+        partial_out_ptr,
+        partial_m_ptr,
+        partial_l_ptr,
+        gate_ptr,
+        out_ptr,
+        rows,
+        num_q_heads,
+        num_splits,
+        head_dim,
+        gate_stride1,
+        gate_stride2,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_batch_spans(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    gate_ptr: int,
+    out_ptr: int,
+    partial_out_ptr: int,
+    partial_m_ptr: int,
+    partial_l_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    chunk_size: int,
+    num_splits: int,
+    block_size: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    gate_stride1: int,
+    gate_stride2: int,
+    scale: float,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run row-batched decode-order warp split-K with BF16 gate/output."""
+
+    _launch_split_gate_batch(
+        _SYMBOL_SPLIT_WARP_CONTEXT_BATCH,
+        _SYMBOL_SPLIT_REDUCE_GATE_BF16_BATCH,
+        query_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        gate_ptr,
+        out_ptr,
+        partial_out_ptr,
+        partial_m_ptr,
+        partial_l_ptr,
+        spans,
+        rows,
+        chunk_size,
+        num_splits,
+        block_size,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        gate_stride1,
+        gate_stride2,
+        scale,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def _launch_split_gate_batch(
+    context_symbol: str,
+    reduce_symbol: str,
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    gate_ptr: int,
+    out_ptr: int,
+    partial_out_ptr: int,
+    partial_m_ptr: int,
+    partial_l_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    chunk_size: int,
+    num_splits: int,
+    block_size: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    gate_stride1: int,
+    gate_stride2: int,
+    scale: float,
+    *,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    block_table_len = _check_qwen35_gqa_batch_shape(
+        spans,
+        rows,
+        chunk_size,
+        num_splits,
+        block_size,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+    )
+    _check_positive(gate_stride1, "gate_stride1")
+    _check_positive(gate_stride2, "gate_stride2")
+    library = library or build_qwen35_paged_attn_decode(load=True)
+    runtime = runtime or get_hip_runtime()
+    _launch_split_context_batch(
+        query_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        partial_out_ptr,
+        partial_m_ptr,
+        partial_l_ptr,
+        spans,
+        rows,
+        chunk_size,
+        num_splits,
+        block_size,
+        block_table_len,
+        num_q_heads,
+        num_kv_heads,
+        head_dim,
+        scale,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+        symbol=context_symbol,
+    )
+    _launch_gate_reduce_batch(
+        reduce_symbol,
         partial_out_ptr,
         partial_m_ptr,
         partial_l_ptr,
@@ -2770,12 +2991,24 @@ def qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans(
     gate_stride2: int,
     scale: float,
     *,
+    split_partial_out_ptr: int = 0,
+    split_partial_m_ptr: int = 0,
+    split_partial_l_ptr: int = 0,
+    split_batch_rows: int = 0,
+    split_count: int = 0,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
     """Run native append-then-attend causal GQA prefill with BF16 gate/output."""
 
+    _ = (
+        split_partial_out_ptr,
+        split_partial_m_ptr,
+        split_partial_l_ptr,
+        split_batch_rows,
+        split_count,
+    )
     _launch_prefill_gqa_gate(
         _SYMBOL_PREFILL_GQA_GATE_BF16,
         query_ptr,
@@ -2796,6 +3029,208 @@ def qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans(
         stream=stream,
         library=library,
         runtime=runtime,
+    )
+
+
+def qwen35_paged_full_attn_prefill_gqa_gate_bf16_decode_order_spans(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    gate_ptr: int,
+    out_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    max_context_len: int,
+    block_size: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    gate_stride1: int,
+    gate_stride2: int,
+    scale: float,
+    *,
+    split_partial_out_ptr: int = 0,
+    split_partial_m_ptr: int = 0,
+    split_partial_l_ptr: int = 0,
+    split_batch_rows: int = 0,
+    split_count: int = 0,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run BF16 prefill with the resident decode arithmetic by context."""
+
+    rows = int(rows)
+    max_context_len = int(max_context_len)
+    chunk_start = max_context_len - rows
+    if rows <= 0 or chunk_start < 0:
+        raise ValueError("decode-order prefill rows must end at max_context_len")
+    library = library or build_qwen35_paged_attn_decode(load=True)
+    runtime = runtime or get_hip_runtime()
+
+    # Resident decode uses the dense 256-thread wave partition below context
+    # 1024. Only launch that kernel for the matching prefix; this also bounds
+    # its dynamic score LDS independently of long prompt context.
+    unsplit_rows = min(rows, max(0, 1023 - chunk_start))
+    if unsplit_rows:
+        _launch_prefill_gqa_gate(
+            _SYMBOL_PREFILL_GQA_GATE_BF16_DECODE_ORDER,
+            query_ptr,
+            key_cache_ptr,
+            value_cache_ptr,
+            gate_ptr,
+            out_ptr,
+            _slice_uniform_spans(spans, 0, unsplit_rows),
+            unsplit_rows,
+            chunk_start + unsplit_rows,
+            block_size,
+            num_q_heads,
+            num_kv_heads,
+            head_dim,
+            gate_stride1,
+            gate_stride2,
+            scale,
+            stream=stream,
+            library=library,
+            runtime=runtime,
+        )
+
+    if unsplit_rows == rows:
+        return
+    if min(split_partial_out_ptr, split_partial_m_ptr, split_partial_l_ptr) <= 0:
+        raise ValueError("decode-order split prefill requires nonzero partial workspaces")
+    _check_positive(split_batch_rows, "split_batch_rows")
+    _check_positive(split_count, "split_count")
+
+    # The resident c=1 crossover keeps the per-Q-head warp producer below
+    # context 4096. Prefill query batches provide enough independent blocks for
+    # grouped-GQA sooner: use it from two rows while retaining the resident
+    # singleton policy. Both producers preserve each Q head's arithmetic order.
+    _launch_decode_order_split_range(
+        qwen35_paged_full_attn_decode_split_k_warp_gate_bf16_batch_spans,
+        qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_batch_spans,
+        query_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        gate_ptr,
+        out_ptr,
+        split_partial_out_ptr,
+        split_partial_m_ptr,
+        split_partial_l_ptr,
+        spans,
+        row_start=unsplit_rows,
+        row_end=rows,
+        chunk_start=chunk_start,
+        split_batch_rows=split_batch_rows,
+        split_count=split_count,
+        block_size=block_size,
+        num_q_heads=num_q_heads,
+        num_kv_heads=num_kv_heads,
+        head_dim=head_dim,
+        gate_stride1=gate_stride1,
+        gate_stride2=gate_stride2,
+        scale=scale,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def _launch_decode_order_split_range(
+    singleton_launch,
+    grouped_launch,
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    gate_ptr: int,
+    out_ptr: int,
+    partial_out_ptr: int,
+    partial_m_ptr: int,
+    partial_l_ptr: int,
+    spans: KVLiveSpans,
+    *,
+    row_start: int,
+    row_end: int,
+    chunk_start: int,
+    split_batch_rows: int,
+    split_count: int,
+    block_size: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    gate_stride1: int,
+    gate_stride2: int,
+    scale: float,
+    stream: int,
+    library: ctypes.CDLL,
+    runtime: HipRuntime,
+) -> None:
+    q_row_bytes = num_q_heads * head_dim * DType.FP32.itemsize
+    lowp_row_bytes = num_q_heads * head_dim * DType.BF16.itemsize
+    for batch_start in range(int(row_start), int(row_end), int(split_batch_rows)):
+        batch_end = min(int(row_end), batch_start + int(split_batch_rows))
+        batch_rows = batch_end - batch_start
+        max_batch_context = chunk_start + batch_end
+        num_splits = (max_batch_context + block_size - 1) // block_size
+        if num_splits > split_count:
+            raise ValueError(
+                f"decode-order split count {num_splits} exceeds workspace capacity {split_count}"
+            )
+        launch = (
+            grouped_launch
+            if batch_rows >= 2 or max_batch_context >= 4096
+            else singleton_launch
+        )
+        launch(
+            query_ptr + batch_start * q_row_bytes,
+            key_cache_ptr,
+            value_cache_ptr,
+            gate_ptr + batch_start * lowp_row_bytes,
+            out_ptr + batch_start * lowp_row_bytes,
+            partial_out_ptr,
+            partial_m_ptr,
+            partial_l_ptr,
+            _slice_uniform_spans(spans, batch_start, batch_rows),
+            batch_rows,
+            block_size,
+            num_splits,
+            block_size,
+            num_q_heads,
+            num_kv_heads,
+            head_dim,
+            gate_stride1,
+            gate_stride2,
+            scale,
+            stream=stream,
+            library=library,
+            runtime=runtime,
+        )
+
+
+def _slice_uniform_spans(spans: KVLiveSpans, row_start: int, rows: int) -> KVLiveSpans:
+    if spans.spans_mode != "uniform" or spans.base_offsets.ndim != 2:
+        raise ValueError("decode-order prefill requires row-major uniform spans")
+    if spans.token_positions is not None or spans.evict_mask is not None:
+        raise ValueError("decode-order prefill does not support token-position or evict-mask slices")
+    table_rows, block_table_len = spans.base_offsets.shape
+    row_start = int(row_start)
+    rows = int(rows)
+    if row_start < 0 or rows <= 0 or row_start + rows > table_rows:
+        raise ValueError("span slice is outside the available rows")
+
+    def tensor_slice(tensor: Tensor | None, *, elements_per_row: int = 1) -> Tensor | None:
+        if tensor is None:
+            return None
+        ptr = tensor.ptr + row_start * elements_per_row * tensor.dtype.itemsize
+        shape = (rows, elements_per_row) if elements_per_row != 1 else (rows,)
+        return Tensor.from_handle(ptr, shape, tensor.dtype, tensor.device)
+
+    return replace(
+        spans,
+        base_offsets=tensor_slice(spans.base_offsets, elements_per_row=block_table_len),
+        live_counts=tensor_slice(spans.live_counts),
+        request_ids=tensor_slice(spans.request_ids),
+        row_positions=tensor_slice(spans.row_positions),
     )
 
 
@@ -3479,6 +3914,16 @@ def register_qwen35_paged_attn_decode_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey(
+            "hip_gfx1100",
+            "paged_attn_decode",
+            "gguf_ud_q3_k_m",
+            "bf16_context_batch_native_exact_spans",
+        ),
+        qwen35_paged_full_attn_decode_context_bf16_batch_q3_c1_exact_spans,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "paged_attn_decode", "w4_paro", "bf16_split_k_spans"),
         qwen35_paged_full_attn_decode_split_k_bf16_spans,
         replace=replace,
@@ -3701,6 +4146,16 @@ def register_qwen35_paged_attn_decode_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "full_attn_prefill", "gguf_qwen35", "causal_gqa_gate_bf16"),
         qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "full_attn_prefill",
+            "gguf_ud_q3_k_m",
+            "causal_gqa_gate_bf16",
+        ),
+        qwen35_paged_full_attn_prefill_gqa_gate_bf16_decode_order_spans,
         replace=replace,
     )
     register(

@@ -24,10 +24,12 @@ from hipengine.kernels.registry import _KERNELS
 from hipengine.loading.qwen35_gguf_materialize import LAYOUT_RAW_GGUF
 from hipengine.runtime.gguf_linear import (
     GGUF_OUTPUT_BF16,
+    GGUF_OUTPUT_F32,
     gemv_decode_session,
     gguf_gemv_decode_enabled,
     launch_gguf_linear,
     launch_gguf_linear_pair_concat,
+    native_batch_decode_session,
     q4k_rowtile_session,
     set_gemv_decode_enabled,
 )
@@ -57,6 +59,12 @@ _Q8_GEMV_DECODE = KernelKey(
     "hip_gfx1100", "linear", "gguf_q8_0", "pack8_gemv_decode_bf16_bf16_out"
 )
 _Q8_PREFILL = KernelKey("hip_gfx1100", "linear", "gguf_q8_0", "prefill_bf16_bf16_out")
+_Q8_EXACT_PREFILL_TILE8X4 = KernelKey(
+    "hip_gfx1100", "linear", "gguf_q8_0", "exact_prefill_tile8x4_bf16_bf16_out"
+)
+_Q6_PACK8_F32 = KernelKey(
+    "hip_gfx1100", "linear", "gguf_q6_k", "pack8_gemv_bf16_f32_out"
+)
 _Q8_WMMA_DUAL_PREFILL = KernelKey(
     "hip_gfx1100", "linear", "gguf_q8_0", "wmma_prefill_dual_gate_up_bf16_bf16_out"
 )
@@ -81,6 +89,7 @@ def _capture_launch(
     output_dtype: str = GGUF_OUTPUT_BF16,
     extra_keys: tuple[KernelKey, ...] = (),
     remove_keys: tuple[KernelKey, ...] = (),
+    native_batch_decode: bool = False,
 ):
     weight = _fake_weight(layout=layout, quant_key=quant_key)
     captured: dict[str, object] = {"key": None, "args": None, "kwargs": None}
@@ -117,18 +126,19 @@ def _capture_launch(
             # registry stores ``None`` and the resolver treats it the same
             # as an unregistered key (see ``_KERNELS.get`` short-circuit).
             register(k, None, replace=True)
-        launch_gguf_linear(
-            weight,
-            x_ptr=100,
-            out_ptr=200,
-            rows=rows,
-            in_features=in_features,
-            out_features=out_features,
-            output_dtype=output_dtype,
-            stream=7,
-            runtime="runtime-sentinel",
-            use_gemv_decode=use_gemv_decode,
-        )
+        with native_batch_decode_session(native_batch_decode):
+            launch_gguf_linear(
+                weight,
+                x_ptr=100,
+                out_ptr=200,
+                rows=rows,
+                in_features=in_features,
+                out_features=out_features,
+                output_dtype=output_dtype,
+                stream=7,
+                runtime="runtime-sentinel",
+                use_gemv_decode=use_gemv_decode,
+            )
     finally:
         for k, fn in originals.items():
             if fn is None:
@@ -145,6 +155,34 @@ def _capture_launch(
 # ---------------------------------------------------------------------------
 # Default off + opt-in precedence.
 # ---------------------------------------------------------------------------
+
+
+def test_native_batch_decode_routes_c2_c8_q6_head_to_exact_pack8_and_restores() -> None:
+    for rows in (2, 4, 8):
+        key, _, _ = _capture_launch(
+            rows=rows,
+            native_batch_decode=True,
+            quant_key="gguf_q6_k",
+            output_dtype=GGUF_OUTPUT_F32,
+            extra_keys=(_Q6_PACK8_F32,),
+        )
+        assert key == _Q6_PACK8_F32
+    key, _, _ = _capture_launch(rows=2)
+    assert key == _Q8_DECODE_PACK8
+
+
+def test_native_batch_decode_keeps_c1_and_bulk_rows_outside_bucket() -> None:
+    key, _, _ = _capture_launch(rows=1, native_batch_decode=True)
+    assert key == _Q8_DECODE_PACK8
+    key, _, _ = _capture_launch(rows=2, native_batch_decode=True)
+    assert key == _Q8_DECODE_PACK8
+    key, _, _ = _capture_launch(
+        rows=9,
+        native_batch_decode=True,
+        extra_keys=(_Q8_EXACT_PREFILL_TILE8X4,),
+    )
+    assert key == _Q8_EXACT_PREFILL_TILE8X4
+
 
 
 def test_p9_c1_pair_concat_routes_q8_dual_wmma_prefill(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -294,7 +332,7 @@ def test_gemv_decode_prefill_path_unaffected_by_opt_in() -> None:
     set_gemv_decode_enabled(True)
     with q4k_rowtile_session(False):
         key, _, _ = _capture_launch(rows=4)
-    assert key == _Q8_PREFILL
+    assert key == _Q8_DECODE_PACK8
 
 
 def test_gemv_decode_fallback_when_registry_key_missing() -> None:

@@ -1,0 +1,101 @@
+{
+  "schema": 1,
+  "status": "accepted_diagnostic_profile",
+  "performance_claim": false,
+  "date": "2026-07-20",
+  "purpose": "Post-#11/#20 D0 attribution for Qwen3.6-35B-A3B UD-Q3_K_M one-step graph decode before IQ4 down work-distribution changes.",
+  "hipengine_commit": "f9b217cc",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf",
+    "sha256": "8966dd0cd8c543c4228490a2a8b0e0814fc4f1e6a8e199ceed4de6754ae7b8e1",
+    "quant": "gguf_ud_q3_k_m",
+    "layers": 40,
+    "nextn_layer_omitted": 40
+  },
+  "hardware": {
+    "device": "AMD Radeon RX 7900 XTX",
+    "visible_device": 1,
+    "rocprof_agent": 2,
+    "bdf": "0000:10:00.0",
+    "architecture": "gfx1100",
+    "wavefront_size": 32
+  },
+  "software": {
+    "hip": "7.2.53211-3d9ef42",
+    "amd_clang": "22.0.0git",
+    "compiler_commit": "f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "require_cached_build": true
+  },
+  "command": "LD_LIBRARY_PATH=/tmp/hipengine-roctx-sdk-override-gguf-direct:<ROCm-sysdeps> HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --memory-copy-trace --selected-regions true --output-format csv -d /tmp/hipengine-q3-d0-decode16-20260720-021235 -o q3-d0-decode16 -- python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf --quant gguf_ud_q3_k_m --token-id 9707 --prompt-length 512 --decode-tokens 16 --warmup-decode-tokens 1 --warmup-runs 0 --measured-runs 1 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode native --no-use-wmma-prefill --no-use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --rocprof-selected-region measured_decode_graph --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --require-cached-build --json <out>/bench.json",
+  "profile": {
+    "prompt_tokens": 512,
+    "decode_tokens": 16,
+    "graph_steps_per_replay": 1,
+    "total_kernel_ms": 142.173458,
+    "kernel_ms_per_token": 8.885841125,
+    "total_dispatches": 11328,
+    "dispatches_per_token": 708,
+    "profiled_decode_tok_s": 86.78981500908758,
+    "final_token_id": 68,
+    "finite_final_logits": true,
+    "tracked_peak_gib": 15.804706819355488,
+    "selected_region_h2d_d2h_events": 0
+  },
+  "families": [
+    {"name": "dense_q8_0_legacy_decode", "ms": 45.428985, "ms_per_token": 2.8393115625, "share_pct": 31.95321098541473, "dispatches": 3200},
+    {"name": "full_attention_decode", "ms": 22.730854, "ms_per_token": 1.420678375, "share_pct": 15.988113618225421, "dispatches": 160},
+    {"name": "dense_q6_k_legacy_decode", "ms": 16.898459, "ms_per_token": 1.0561536875, "share_pct": 11.885804310956551, "dispatches": 16},
+    {"name": "moe_iq4_xs_weighted_down", "ms": 16.057443, "ms_per_token": 1.0035901875, "share_pct": 11.294262111849315, "dispatches": 592},
+    {"name": "moe_iq3_xxs_selected_dual_silu", "ms": 11.496612, "ms_per_token": 0.71853825, "share_pct": 8.086327899543669, "dispatches": 624},
+    {"name": "rmsnorm", "ms": 7.932626, "ms_per_token": 0.495789125, "share_pct": 5.579540732560644, "dispatches": 1456},
+    {"name": "gdn_decode", "ms": 5.950308, "ms_per_token": 0.37189425, "share_pct": 4.185245321950318, "dispatches": 480},
+    {"name": "router", "ms": 5.346786, "ms_per_token": 0.334174125, "share_pct": 3.7607483669701556, "dispatches": 640},
+    {"name": "other", "ms": 3.04291, "ms_per_token": 0.190181875, "share_pct": 2.1402799388898592, "dispatches": 1504},
+    {"name": "device_fill", "ms": 1.83494, "ms_per_token": 0.11468375, "share_pct": 1.2906347118602124, "dispatches": 640},
+    {"name": "linear_attn_conv", "ms": 1.311171, "ms_per_token": 0.0819481875, "share_pct": 0.922233318683154, "dispatches": 480},
+    {"name": "silu_mul", "ms": 1.139652, "ms_per_token": 0.07122825, "share_pct": 0.8015926573298934, "dispatches": 656},
+    {"name": "moe_combine", "ms": 1.120248, "ms_per_token": 0.0700155, "share_pct": 0.7879445402530759, "dispatches": 640},
+    {"name": "moe_q6_k_selected", "ms": 1.098775, "ms_per_token": 0.0686734375, "share_pct": 0.7728411585796837, "dispatches": 48},
+    {"name": "kv_write", "ms": 0.433005, "ms_per_token": 0.0270628125, "share_pct": 0.304561066524808, "dispatches": 160},
+    {"name": "moe_iq4_xs_selected_single", "ms": 0.350684, "ms_per_token": 0.02191775, "share_pct": 0.24665926040850747, "dispatches": 32}
+  ],
+  "iq4_weighted_down": {
+    "runtime_contract": "Task-19 weighted composite already consumes all top-8 selected slots in one launch per ordinary IQ4-down layer, BF16-rounds every slot projection, applies routing FMAs in slot order, and emits one BF16 selected-sum row.",
+    "launches_per_token": 37,
+    "workgroup_size": 128,
+    "workgroups_per_launch": 2048,
+    "vgpr": 80,
+    "scratch_bytes": 0,
+    "lds_bytes": 512,
+    "duration_us": {"min": 24.48, "median": 25.12, "mean": 27.12405912162162, "max": 60.6},
+    "effective_encoded_weight_gb_s": 164.29871281498552,
+    "layer_mean_us": {"0": 27.9153, "1": 27.7578, "2": 27.6427, "3": 27.6328, "4": 27.7577, "5": 27.8355, "6": 27.9227, "7": 27.5853, "8": 27.6928, "9": 27.6928, "10": 27.6878, "11": 27.8003, "12": 27.8253, "13": 27.5228, "14": 27.5428, "15": 27.3077, "16": 27.083, "17": 26.7527, "18": 26.593, "19": 26.7252, "20": 26.4852, "21": 26.5478, "22": 26.5001, "23": 27.1352, "24": 27.0026, "25": 27.0054, "26": 27.3654, "27": 27.0452, "28": 27.1752, "29": 27.1477, "30": 26.7405, "31": 26.1952, "32": 26.3928, "33": 26.3727, "35": 26.2402, "36": 26.1053, "37": 25.8578}
+  },
+  "iq3_gate_up": {
+    "launches_per_token": 39,
+    "workgroup_size": 256,
+    "vgpr": 48,
+    "scratch_bytes": 0,
+    "duration_us": {"min": 16.52, "median": 17.12, "mean": 18.42405769230769, "max": 40.16}
+  },
+  "topk_control": {
+    "status": "rejected_and_removed_before_this_trace",
+    "artifact": "benchmarks/results/2026-07-20-gpu1-q3-hierarchical-topk-rejected.json",
+    "decode_tok_s_legacy": 99.20139459514178,
+    "decode_tok_s_hierarchical": 98.05736305598067,
+    "delta_pct": -1.1532413872104241
+  },
+  "decision": {
+    "d1a": "skip",
+    "d1a_reason": "The review's 4,096-block per-slot IQ4 down route is no longer production. Selected-single IQ4 appears only twice/token for blk.39 gate/up and is 0.0219 ms/token.",
+    "d1b": "proceed_reframed",
+    "d1b_design": "Compare current local128 sequential-slot, one-output weighted composite against an exact local256 wave-per-slot, four-output tile. Expected grid is 512 workgroups per launch, with identical per-slot BF16 and routing accumulation order.",
+    "amdahl_upper_bound_ms_per_token": 1.0035901875,
+    "note": "Fresh 512/1K/4K non-profiled graph baselines and a 512 eager control remain before any promotion claim."
+  },
+  "raw_evidence": {
+    "bench_json": {"path": "/tmp/hipengine-q3-d0-decode16-20260720-021235/bench.json", "sha256": "b1ab75df6d97da926ac37f8ae3f5fad253dd77f5d39b2506323b08d165eef133"},
+    "kernel_trace_csv": {"path": "/tmp/hipengine-q3-d0-decode16-20260720-021235/q3-d0-decode16_kernel_trace.csv", "sha256": "d354ecc42cc96b3fb8c3be64cb3e9f5ab768ce850b0814895e30bb57ee24976d"},
+    "summary_json": {"path": "/tmp/hipengine-q3-d0-decode16-20260720-021235/summary.json", "sha256": "879dd484cb85725aee4808070997b9d5eb05e4de051e7d345c73a73f8e5f23b6"}
+  }
+}
