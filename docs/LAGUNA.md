@@ -1791,6 +1791,26 @@ Laguna prefill work proceeds in this order:
    multi-request packed prefill only after the dominant kernels are no longer
    decode-shaped. Variable prompt/chunk state remains part of every graph key.
 
+LPF-0 is closed on gfx1151. The dedicated prefill-only harness executes one
+physical chunk at rows `16/32/55/64/122/128`, with three timed passes in rotating
+order and no decode rows. Median rates are
+`23.141/23.421/23.450/23.453/23.368/23.377 tok/s`; all repeated next tokens and
+the separate routing replay agree, and tracked ownership returns exactly to its
+baseline. A cached-build trace contains exactly 12 complete passes and 1,006
+embedding-to-argmax dispatches per pass. At 55 rows, source-F16 QKV/O consumes
+`907.232 + 706.832 ms` (**68.99%**) of the `2.340 s` median kernel sum,
+selected Q4/Q6 direct GEMV consumes `618.885 ms` (**26.45%**), and attention is
+`22.365 ms` (**0.96%**), confirming LPF-1 remains first.
+
+The replay also makes LPF-2's padding risk concrete. At 55 rows, 25,850 top-10
+lanes occupy 6,892 `(layer, expert)` groups; **76.25% of groups contain at most
+four rows**, and padding every nonempty group to 16 rows would execute **4.396x**
+the useful lanes. At 128 rows that ratio is still **2.704x**. The existing
+compact-WMMA route therefore remains a control to measure, not a presumed win;
+a small-M grouped rowtile/pair-reuse route is the stronger candidate if compact
+replay loses. Evidence:
+`benchmarks/results/2026-07-23-gfx1151-laguna-prefill-lpf0-profile.json`.
+
 Every LPF candidate is a registered variant with the current exact chain as its
 unfused rollback. Exact candidates pass byte comparison on lengths
 1/2/7/55/65 plus the affected tile/chunk boundaries. Reassociated GEMM/WMMA
