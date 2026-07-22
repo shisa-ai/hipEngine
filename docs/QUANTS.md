@@ -75,7 +75,7 @@ The distinction is native compressed execution, not merely parsing the type id.
 | `Q3_K` | Native selected-MoE | Implemented for Qwen NextN, but absent from the Laguna S 2.1 files |
 | `IQ4_NL`, `MXFP4` | CPU dequant only | No retained native compressed execution kernel |
 | `IQ1_S`, `IQ1_M` | Layout only | CPU dequant and native execution missing |
-| `IQ2_XS` | CPU dequant only | Native compressed execution missing |
+| `IQ2_XS` | Native selected decode + CPU dequant | Laguna K=3072 selected gate/up decode is primitive-correct; compact prefill remains in progress |
 | `IQ2_XXS`, `IQ2_S` | Layout only | CPU dequant and native execution missing |
 | `IQ3_S` | Layout only | CPU dequant and native execution missing |
 
