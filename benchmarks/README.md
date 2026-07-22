@@ -3,6 +3,8 @@
 Last reviewed: **2026-07-22**
 
 Latest retained hipEngine revisions in this scoreboard:
+`ee1649e3fa372bd115ae7afed9aa2a0e81932afc` for the exact Laguna S 2.1
+canonical target-AR category benchmark and bulk-prefill promotion,
 `e99a30cb9183ce342f5a30fa4f774b14dc4c0677` for the Laguna S 2.1
 source-bound repacked cache and cold-start reduction,
 `8a8ef4816d442b3b8766507c1eac1ae796e882eb` for bounded cold-cohort
@@ -1111,11 +1113,51 @@ blockers, commands, and artifact links. Removed or superseded tables remain
 recoverable from the linked compact artifacts, changelog, and
 [`benchmarks/HISTORY.md`](HISTORY.md).
 
-### gfx1151 Laguna S 2.1 cold startup, 2026-07-22
+### gfx1151 Laguna S 2.1 target AR and cold startup, 2026-07-22
 
-**Status: retained for loader startup only; end-to-end generation throughput is
-not yet claimed.** On the Radeon 8060S/gfx1151 UMA host, the versioned
-`laguna-repacked-v1` artifact removes all runtime Q4T16/Q6T16/pack8 conversion.
+**Status: retained for exact target-only c=1 AR and loader startup; Laguna
+DFlash remains unclaimed.** The AR protocol uses the full ten-prompt
+`mtpbench-code-general-ja` suite (`code`, `general_en`, `general_ja`, and
+`mixed_ja_en`), prompt lengths 68-122, greedy 16/32-token horizons, two
+repetitions, balanced serial/bulk order, and one warmup per route. Model load is
+excluded. Every serial/bulk pair and same-route repeat has exact generated IDs;
+the frozen Poolside first-token distribution passes at KL `6.6214e-6` and exact
+top-1, and lifecycle recovery is exact.
+
+| hipEngine route | Prefill tok/s | Median TTFT | Decode tok/s, h32 | E2E tok/s, h16 | E2E tok/s, h32 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Token-serial prefill + eager c=1 decode | 17.418 | 4.628 s | 16.381 | 2.727 | 4.670 |
+| **Default 64-row bulk prefill + same eager c=1 decode** | **23.333** | **3.481 s** | **16.381** | **3.470** | **5.719** |
+| Change | **+33.95%** | **-24.79%** | +0.004% | **+27.27%** | **+22.47%** |
+
+The retained default therefore changes prompt execution only; decode is the
+same exact c=1 path and is neutral. Every category independently passes the
+predeclared prefill/decode/e2e promotion guard. Tracked peak is
+`77,409,922,168` bytes, resident ownership is `77,073,914,940` bytes, and all
+tracked allocations return to zero.
+
+A separate cached-build trace passes exact Greedy-4/repeat/teacher-forced gates
+and records 12,789 launches / 33 families over three 55-row prefills plus nine
+c=1 decode rows. Source-F16 QKV/O projections dominate at 2.877/2.244 s total;
+selected Q4 dual/down families use 1.280/0.717 s. Global/SWA prefill attention
+uses 0.007/0.060 s and global/SWA decode attention 0.003/0.029 s, confirming
+attention metadata is not the current short-context bottleneck.
+
+The matched clean Poolside llama.cpp `04b2b72c` raw-token diagnostic reports
+70.463/70.451 prompt tok/s and 19.063/18.882 native predicted tok/s at h16/h32,
+with 29.658 s readiness, 76.10 GB sampled GTT, and 1.11 GB sampled RSS. It is
+**not** a direct speed ratio: Poolside `predicted_ms` owns all output tokens,
+hipEngine decode owns `horizon-1` post-TTFT forwards, and its HTTP wall differs
+from the resident in-process boundary. Same-server Poolside output is also only
+28/40 exact to hipEngine and 18/20 prompt/horizon groups repeat-deterministic;
+the frozen fresh-process Poolside distribution remains the correctness oracle.
+Artifacts: [retained hipEngine target AR](results/2026-07-22-gfx1151-laguna-s21-target-ar-retained.json)
+and [qualified Poolside baseline](results/2026-07-22-gfx1151-poolside-laguna-s21-target-ar-baseline.json).
+
+#### Cold startup
+
+On the Radeon 8060S/gfx1151 UMA host, the versioned `laguna-repacked-v1`
+artifact removes all runtime Q4T16/Q6T16/pack8 conversion.
 The timed scope begins at GGUF/cache open and ends with all 814 weights resident;
 cache construction and teardown are excluded. A run is cold-streamed only when
 `/proc/self/io` reports physical reads of at least 80% of the 75,169,369,088

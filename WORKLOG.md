@@ -174279,3 +174279,91 @@ python3 -m compileall -q scripts/laguna_poolside_ar_bench.py \
 uv run python scripts/laguna_poolside_ar_bench.py --help
 # clean / successful
 ```
+
+## 2026-07-22 — Retain Laguna target AR and qualified Poolside control
+
+Ran the committed `ee1649e3f` target harness from a clean tracked tree on the
+Ryzen AI MAX+ 395 / Radeon 8060S (`gfx1151`), HIP 7.15, model SHA-256
+`7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f`, Q4_K_M,
+BF16 KV, ten canonical prompts/four categories, 68-122 prompt tokens, greedy
+h16/h32, two repetitions, one warmup per route:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 uv run python -u \
+  scripts/laguna_target_ar_bench.py \
+  /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf \
+  --backend hip_gfx1151 --context-length 4096 --chunk-size 64 \
+  --output-horizons 16,32 --repetitions 2 --warmup-output-tokens 2 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 \
+  --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f \
+  --output /tmp/laguna-target-ar-category.json
+```
+
+Retained result:
+
+| Route | Prefill | Median TTFT | h16 E2E | h32 E2E | h32 decode |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| serial | 17.418 tok/s | 4.628 s | 2.727 tok/s | 4.670 tok/s | 16.381 tok/s |
+| default bulk64 | 23.333 tok/s | 3.481 s | 3.470 tok/s | 5.719 tok/s | 16.381 tok/s |
+| delta | +33.95% | -24.79% | +27.27% | +22.47% | +0.004% |
+
+All 20 serial/bulk pairs are exact at h16/h32, both routes are deterministic
+across repeats, all four category gates pass, Poolside first-token KL is
+`6.621408e-6` with exact top-1 `94557`, and tracked bytes/allocations return to
+zero. Load is 49.570 s and explicitly excluded. Resident ownership is
+77,073,914,940 bytes; tracked peak is 77,409,922,168 bytes. Bulk prefill remains
+the default; decode is unchanged.
+
+Dispatch evidence used a prebuilt cached binary and did not wrap the category
+timing run:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+HIPENGINE_REQUIRE_CACHED_BUILD=1 \
+rocprofv3 --kernel-trace --output-format csv \
+  -d /tmp/laguna-target-ar-trace-ee1649 -- \
+  .venv/bin/python -u scripts/laguna_gguf_correctness.py \
+  /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf \
+  --backend hip_gfx1151 --greedy-tokens 4 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 \
+  --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f
+```
+
+Greedy-4/repeat/teacher-force/lifecycle pass. The trace has 12,789 calls / 33
+families / 7.546 s kernel time over three bulk prefills and nine c=1 decode
+rows. F16 QKV/O total 2.877/2.244 s, selected Q4 dual/down 1.280/0.717 s,
+global/SWA prefill attention 0.007/0.060 s, and global/SWA decode attention
+0.003/0.029 s. F16 projections and selected experts remain the optimization
+queue; attention metadata is not the short-context bottleneck.
+
+The clean `77c726fb5` external harness then ran Poolside llama.cpp
+`04b2b72c`, binary SHA-256
+`1a3b09cfb9a8034d44239224ac362afce4555b85da376a3a7e1f4ecaffee0419`:
+
+```bash
+GPU_MAX_HW_QUEUES=1 uv run python -u scripts/laguna_poolside_ar_bench.py \
+  --server-bin /home/lhl/models/hipengine_sources/poolside-llama.cpp-laguna/build-hip-gfx1151/bin/llama-server \
+  --model /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf \
+  --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f \
+  --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl \
+  --hipengine-artifact /tmp/laguna-target-ar-category.json \
+  --context-length 4096 --output-horizons 16,32 --repetitions 2 \
+  --output /tmp/laguna-poolside-ar-category.json
+```
+
+Poolside readiness is 29.658 s; native prompt is 70.463/70.451 tok/s and native
+predicted output is 19.063/18.882 tok/s at h16/h32. Sampled GTT/RSS peaks are
+76,099,600,384 / 1,107,603,456 bytes. These are qualified native/HTTP metrics,
+not a cross-engine ratio: timing ownership differs. Same-server Poolside output
+is 28/40 exact to hipEngine and only 18/20 prompt/horizon groups are repeat
+stable (`mixed_ja_en_translate` varies); the frozen fresh-process Poolside
+first-token distribution remains authoritative.
+
+Artifacts:
+`benchmarks/results/2026-07-22-gfx1151-laguna-s21-target-ar-retained.json` and
+`benchmarks/results/2026-07-22-gfx1151-poolside-laguna-s21-target-ar-baseline.json`.

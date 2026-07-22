@@ -2,10 +2,11 @@
 
 Last updated: 2026-07-22
 
-Status: eager all-resident c=1, exact chunked prefill/B+1 target rows, and public
-blocking/streaming generation are implemented. First-token, repeated-state,
-bulk-vs-serial, and live Poolside-v1 reasoning/XML-tool gates pass, with one
-documented low-margin greedy-32 arithmetic split. Target performance,
+Status: eager all-resident c=1, exact chunked prefill/B+1 target rows, public
+blocking/streaming generation, and the canonical target-AR benchmark are
+implemented. First-token, repeated-state, bulk-vs-serial, and live Poolside-v1
+reasoning/XML-tool gates pass, with one documented low-margin greedy-32
+arithmetic split. The exact bulk-prefill path is retained as default;
 accept/rollback integration, long-context admission, and DFlash work remain.
 
 This document defines the correctness-first plan for running
@@ -1117,7 +1118,7 @@ Poolside llama.cpp target oracle + template/token fixtures
   -> public blocking/streaming generation
   -> poolside_v1 parsing + server conformance
   -> bulk prefill/verifier rows
-  -> exact target AR benchmark and default promotion
+  -> exact target AR benchmark and bulk-default promotion (closed at c=1/4K)
   -> Laguna DFlash drafter/target verify/economics
 ```
 
@@ -1593,7 +1594,8 @@ A cached-build full-model `rocprofv3` gate records the intended rows families:
 Q4 pack8 shared projections, and selected Q4/Q6 T16 experts. It also identifies
 the next optimization target for L10/task #35: source-F16 triple and BF16-output
 single rows dominate the trace at 2.734/2.126 s total, while global/SWA attention
-uses only 0.007/0.060 s total. No graph or retained AR throughput claim is made.
+uses only 0.007/0.060 s total. This dispatch gate predates and is separate from
+the retained target-AR timing packet below; graph replay remains unclaimed.
 
 Graph replay comes last. Capture keys must include all state that can change
 semantics: context bucket, layer attention pattern, live spans, absolute
@@ -1653,6 +1655,35 @@ For any retained speed path:
    removal trigger in [`REFACTOR.md`](REFACTOR.md).
 8. Update `WORKLOG.md`, `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, and a
    compact `benchmarks/results/*.json` artifact.
+
+The first retained c=1/4K target packet closes Task #35 at hipEngine revision
+`ee1649e3f`. It runs all ten canonical prompts (68-122 tokens) across four
+categories, greedy horizons 16/32, two repetitions, and balanced serial/bulk
+order. The 64-row default is exact against serial and repeat-deterministic on
+every prompt/horizon. It improves weighted prefill `17.418 -> 23.333 tok/s`
+(+33.95%), median TTFT `4.628 -> 3.481 s` (-24.79%), and E2E h16/h32
+`2.727/4.670 -> 3.470/5.719 tok/s` (+27.27%/+22.47%); the unchanged eager c=1
+decode remains neutral at 16.381 tok/s. Every category passes its predeclared
+non-regression gate, KL is `6.6214e-6` with exact Poolside first token, and all
+tracked allocations recover.
+
+A separate exact Greedy-4 trace records 12,789 launches / 33 families over
+three bulk prefills plus nine decode rows. Source-F16 QKV/O families account for
+2.877/2.244 s, selected Q4 dual/down for 1.280/0.717 s, while global/SWA
+prefill attention totals 0.007/0.060 s and decode attention 0.003/0.029 s.
+F16 projections and selected experts—not attention metadata—remain the next
+short-context optimization targets.
+
+The clean matched Poolside llama.cpp `04b2b72c` raw-token baseline is retained
+only as a qualified external control: native prompt is 70.45 tok/s and native
+predicted output is 19.06/18.88 tok/s at h16/h32. No cross-engine ratio is
+claimed because its `predicted_ms` owns all generated tokens and HTTP wall,
+whereas hipEngine decode owns `horizon-1` post-TTFT forwards in process.
+Poolside same-server output is also not repeat-stable on one mixed prompt, so
+the fresh-process frozen distribution remains the independent correctness
+oracle. Evidence:
+`benchmarks/results/2026-07-22-gfx1151-laguna-s21-target-ar-retained.json` and
+`benchmarks/results/2026-07-22-gfx1151-poolside-laguna-s21-target-ar-baseline.json`.
 
 Initial performance questions, in order:
 
