@@ -172987,3 +172987,103 @@ SWA `KVLiveSpans`, Laguna MoE, eager session, oracle parity, public generation,
 and Laguna DFlash draft/verify/economics. Parser tasks are intentionally blocked
 behind a real public generator; DFlash economics remains behind an exact true-AR
 baseline and full prompt-suite gate.
+
+## 2026-07-22 — Freeze Poolside Laguna target oracle on gfx1151
+
+Built the clean, detached Poolside llama.cpp `laguna` checkout at
+`04b2b72cb54048ead292884adbe11f284e3ec950` for native gfx1151 without changing
+its tracked source. The build uses `GGML_HIP=ON`, `AMDGPU_TARGETS=gfx1151`,
+Release mode, and GNU 16.1.1; the source needed only the command-line compiler
+workaround `CXXFLAGS='-include cmath'`. The resulting `llama-server` reports
+version `1 (04b2b72c)` and has SHA-256
+`1a3b09cfb9a8034d44239224ac362afce4555b85da376a3a7e1f4ecaffee0419`.
+The hardware was AMD RYZEN AI MAX+ 395 / Radeon 8060S, gfx1151, with a reported
+122,880 MiB UMA pool. The target remained the 75,173,103,200-byte Q4_K_M GGUF
+with SHA-256 `7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f`.
+
+The default mmap loader did not behave like hipEngine's streaming converter on
+this host. A default-repack attempt was stopped after 21 minutes, and a
+`--no-repack` mmap attempt was stopped after 31 minutes while still loading;
+the latter was single-thread CPU-bound with about 47.9 GiB file-backed RSS and
+75 GiB GTT allocated. Poolside's source disables its pinned async upload path
+when mmap is enabled. Adding `--no-mmap` selected four pinned asynchronous ROCm
+staging buffers and reduced fresh model readiness to 25.877 seconds initially
+and 29.851-29.907 seconds for the accepted no-cache/no-FA oracle launches.
+This is an oracle startup diagnostic, not a retained runtime performance row.
+
+The accepted fresh-process command was:
+
+```bash
+cd /home/lhl/models/hipengine_sources/poolside-llama.cpp-laguna
+GPU_MAX_HW_QUEUES=1 \
+  build-hip-gfx1151/bin/llama-server \
+  -m /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf \
+  --host 127.0.0.1 --port 18081 -c 4096 -ngl 999 \
+  -fa off --jinja --parallel 1 --no-warmup --no-repack --no-mmap \
+  --cache-ram 0 --metrics -lv 4 \
+  --log-file /tmp/poolside-laguna-oracle-server.log
+```
+
+`-fa off` is required for this pinned build on gfx1151: the first FA prompt
+faulted after `flash_attn_ext_f16` repeatedly reported no compatible device code
+for HIP arch 1300, followed by an HSA hardware exception. The unfused path
+completed normally. Requests pass the fixture's exact 55 token IDs to
+`/completion`; passing the rendered prompt string made llama.cpp add a second
+BOS.
+
+The temperature-zero, penalty-neutral first token was ID 94557,
+`Deterministic`, with log-probability `-0.0011345621896907687`. Setting
+`n_probs=100352` returned one finite pre-sampler softmax log-probability for
+every vocabulary ID. Two fresh-process captures were bit-exact after indexing
+by token ID: zero changed float32 values and maximum absolute delta 0.0. The
+dense array SHA-256 is
+`6525179e1fa353fe8afb565ebf64110ceb1847efeec8ec062ff810d3fcb561fc`.
+The values sum to 1.000007193074377 in float64 after serializing Poolside's
+float32 probabilities and are equivalent to raw logits up to the shared
+additive log-normalizer.
+
+Two fresh-process greedy-32 captures also matched all IDs exactly:
+
+```text
+94557, 3505, 3011, 515, 2407, 365, 2291, 10723,
+1687, 948, 1482, 4217, 81, 53551, 2027, 565,
+17124, 20104, 365, 955, 13957, 81, 769, 7408,
+6282, 365, 340, 955, 10511, 604, 5546, 83
+```
+
+The two decode rates were diagnostic 18.357 and 18.472 tok/s with 55-token
+prompt rates 54.214 and 50.952 tok/s. A sequential second completion in the same
+server process diverged after a common prefix even with `--cache-ram 0`; it is
+not accepted as oracle evidence. Oracle comparisons must launch a fresh
+Poolside process until that reference state-reset limitation is understood.
+hipEngine's own repeated-state gate remains strict.
+
+Frozen artifacts:
+
+- `tests/fixtures/laguna_poolside_v1_template.json`: five rendered/tokenized
+  no-thinking, thinking, oracle, tools, and tool-history cases;
+- `tests/fixtures/laguna_poolside_v1_oracle.json`: complete provenance, command,
+  constraints, first token, top-10, and greedy-32 metadata;
+- `tests/fixtures/laguna_poolside_v1_first_token_logprobs.npy`: all 100,352
+  float32 first-step log-probabilities indexed by token ID.
+
+Validation:
+
+```bash
+uv run pytest -q \
+  tests/test_laguna_poolside_oracle.py tests/test_laguna_gguf_tokenizer.py
+uvx ruff check \
+  tests/test_laguna_poolside_oracle.py tests/test_laguna_gguf_tokenizer.py
+python3 -m json.tool tests/fixtures/laguna_poolside_v1_oracle.json >/dev/null
+python3 -m json.tool tests/fixtures/laguna_poolside_v1_template.json >/dev/null
+python3 scripts/check_lineage.py --file '*laguna*' --diff stat
+python3 scripts/check_lineage.py --file 'src/models/dflash.cpp' --diff stat
+python3 scripts/check_lineage.py --kind template --diff stat
+```
+
+Results: 9/9 tests passed; Ruff and JSON validation passed; Laguna source,
+Poolside DFlash source, and S 2.1 template lineage are clean. The broad
+`--file '*dflash*'` filter still reaches the absent legacy
+`/home/lhl/amd-gpu-tuning/nano-vllm-amd` checkout and fails before a report, so
+only the exact Poolside DFlash source filter is accepted here. Target L0 oracle
+work is closed; next is the complete CPU YaRN/SWA/layer fixture bundle.

@@ -753,6 +753,49 @@ Acceptance:
 - tokenizer and template fixtures are committed or reproducibly generated;
 - no hipEngine performance claim is made.
 
+#### Target oracle frozen on gfx1151 (2026-07-22)
+
+The target-only part of L0 is frozen in
+`tests/fixtures/laguna_poolside_v1_oracle.json` and
+`tests/fixtures/laguna_poolside_v1_first_token_logprobs.npy`. The read-only
+Poolside checkout is pinned at `04b2b72cb54048ead292884adbe11f284e3ec950`;
+the native `llama-server` binary SHA-256 is
+`1a3b09cfb9a8034d44239224ac362afce4555b85da376a3a7e1f4ecaffee0419`.
+The accepted launch is:
+
+```bash
+GPU_MAX_HW_QUEUES=1 \
+  build-hip-gfx1151/bin/llama-server \
+  -m /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf \
+  --host 127.0.0.1 --port 18081 -c 4096 -ngl 999 \
+  -fa off --jinja --parallel 1 --no-warmup --no-repack --no-mmap \
+  --cache-ram 0 --metrics -lv 4
+```
+
+Exact prompt token IDs are sent to `/completion`; sending the rendered string
+would add a second BOS. Two fresh-process captures agreed exactly on all 32
+greedy IDs, beginning with token `94557` (`Deterministic`). Two fresh-process
+full-vocabulary captures also agreed bit-for-bit over all 100,352 float32
+pre-sampler log-probabilities. Those values are equivalent to raw logits up to
+the shared additive log-normalizer and are the L6 KL/top-1 oracle.
+
+The Poolside reference has three gfx1151 constraints that must remain visible:
+
+- `--no-mmap` is required to select its pinned asynchronous ROCm upload path;
+  fresh model readiness was 29.851-29.907 seconds, while the mmap path remained
+  unready after 31 minutes;
+- Poolside's `flash_attn_ext_f16` build faults on this device after reporting no
+  compatible device code for HIP arch 1300, so correctness uses the unfused
+  attention fallback with `-fa off`;
+- a second sequential completion in the same Poolside server process diverged
+  after a shared greedy prefix, even with prompt cache disabled. Oracle captures
+  therefore use one request per fresh process. hipEngine's own repeated-state
+  acceptance remains strict and may not inherit this limitation.
+
+These are oracle diagnostics, not a hipEngine or llama.cpp performance claim.
+The target+DFlash L0 diagnostic remains behind the later DFlash integration
+milestone.
+
 ### L1 — CPU reference and tiny Laguna fixture
 
 Likely paths:
@@ -834,8 +877,10 @@ Implemented foundation (2026-07-22):
   mark boundaries match Poolside's HF fast tokenizer at revision
   `179ee67cf0fff5391c67fe1a392ea849fa6d643f`; an expanded 23-case local
   comparison also matched, including atomic chat/control tokens;
-- rendered chat-template fixtures and the authoritative Poolside llama.cpp token
-  oracle remain pending, so HF parity is not yet the full L0 acceptance gate.
+- five rendered no-thinking/thinking/tool/history fixtures match both the HF
+  tokenizer and the pinned Poolside llama.cpp tokenization; the independent
+  target oracle now fixes the exact 55-token no-thinking prompt, full first-step
+  distribution, and 32 canonical greedy IDs.
 
 Acceptance:
 
@@ -932,7 +977,7 @@ the pre-final-norm DFlash capture. Its exact S 2.1 template is
 | Session and hidden taps | Model map/resident weights expose every layer and metadata | No `laguna_gguf_runner.py`, KV/state owner, scratch plan, post-layer capture ABI, or eager step exists. Build c=1/token-serial first and capture depths 2/11/20/30/39/48 only on request. |
 | Public generator | Generic engine loop and server lifecycle exist | Built-ins register only Qwen paths; there is no Laguna generation key, tokenizer/template renderer, streaming owner, or model metadata route. |
 | Reasoning/tools | Generic server understands Qwen `<think>` plus JSON-in-`<tool_call>` | S 2.1 uses Poolside XML arguments: `<tool_call>name<arg_key>…</arg_key><arg_value>…</arg_value></tool_call>`, and reasoning history must stop its backward scan at the current `<assistant>` token. Implement the `poolside_v1` contracts from vLLM [`61c9ef98`](https://github.com/vllm-project/vllm/blob/61c9ef986a807aa3b9c6ccd25bb223b8f4116ac7/vllm/tool_parsers/poolside_v1_tool_parser.py#L48-L220) and its [assistant-scoped reasoning parser](https://github.com/vllm-project/vllm/blob/61c9ef986a807aa3b9c6ccd25bb223b8f4116ac7/vllm/reasoning/poolside_v1_reasoning_parser.py#L33-L69), including newline-less calls and incremental string values. |
-| Independent oracle | Poolside branch and exact source commit are identified remotely | No local Poolside llama.cpp build, rendered template fixtures, first-token logits, or deterministic target IDs exist yet. This remains the first execution dependency, not a post-hoc check. |
+| Independent oracle | Closed for target AR: clean local Poolside checkout/build at `04b2b72c`, exact template/token fixtures, a complete 100,352-way first-token distribution, and 32 fresh-process-stable greedy IDs are checked in | Use the frozen fixture for L6 KL/top-1/greedy gates. Keep `-fa off`, `--no-mmap`, exact token-ID input, and fresh-process oracle constraints visible; target+DFlash diagnostics remain later work. |
 
 The broad source-lineage scan is currently blocked before any report because the
 manifest's read-only `/home/lhl/amd-gpu-tuning/reference/atlas` and
@@ -1403,19 +1448,17 @@ full suite, with all correctness/state/memory and category-heldout gates green.
    reusable rotary kernel. Prefer the simplest exact unfused path first.
 4. How the KV owner represents different physical capacities for global and SWA
    layers while preserving `KVLiveSpans`.
-5. Which pinned Poolside/llama.cpp commit and command will be the external
-   oracle after the download completes.
-6. The first public support boundary: preformatted completion only, or blocking
+5. The first public support boundary: preformatted completion only, or blocking
    chat in the same milestone. Preformatted completion should remain the
    debugging baseline even if chat ships simultaneously.
-7. Whether the safetensors or Poolside BF16 GGUF is the canonical DFlash input.
+6. Whether the safetensors or Poolside BF16 GGUF is the canonical DFlash input.
    Normalize both logically, but choose one first implementation artifact.
-8. Whether fused QKV is represented as zero-copy row views or a dedicated dense
+7. Whether fused QKV is represented as zero-copy row views or a dedicated dense
    kernel; do not repack/split 69 tensors merely to satisfy old Qwen names.
-9. Whether target hidden taps become an optional general resident-session ABI or
+8. Whether target hidden taps become an optional general resident-session ABI or
    remain a Laguna+DFlash capability. They must be inactive at zero cost in AR.
-10. The first DFlash budget. Poolside's serving example uses seven; correctness
-    should still progress through B1/B2/B4 before B7 and B15.
+9. The first DFlash budget. Poolside's serving example uses seven; correctness
+   should still progress through B1/B2/B4 before B7 and B15.
 
 Resolve these decisions in `WORKLOG.md` as implementation begins. Architecture
 or phase changes that outgrow this document must also update [`PLAN.md`](PLAN.md).
