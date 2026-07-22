@@ -266,6 +266,31 @@ throughput.
 
 Priority number is execution guidance, not a promise to keep a candidate.
 
+## Optimization results summary
+
+Unless a row says otherwise, timings are HIP-event medians on GPU1
+(RX 7900 XTX/gfx1100) at the representative `E=256,K=3072,N=1024,top_k=10`
+shape. A negative percentage means lower latency. Percentages from different
+rows must not be added because several use different immediate baselines.
+
+| ID | Optimization | Main measured result | Correctness/resource result | Decision |
+| --- | --- | --- | --- | --- |
+| P0 | Representative benchmark and routing controls | Established rotating selected single/dual at `57.881/106.136 us`; repeated-hot routes were 20-22% faster and therefore unsuitable as the sole control. Found rowbatch4 ranged from +6.30% at balanced 16 tokens to -57.46% at 512 tokens. | Exact fused/grouped checks; sustained warmup and counterbalanced order. | **Retained infrastructure.** All later decisions use this harness. |
+| P1 | Branchless selector magnitude/sign decode | Rotating single/dual `57.881/106.136 -> 49.200/78.784 us` (-15.00/-25.77%). Scalar prefill improved 21.21-32.26%; rowbatch4 improved 13.90-27.21%. | BF16-bit exact; scratch0. Instructions fell `502/784/1305/1026 -> 406/595/951/841`. | **Retained everywhere.** |
+| P2 | Q8_1 + raw-IQ2 `sudot4` decode | Prequantized fused decode improved 1.47-4.83%, but quantizer-inclusive rotating/hot/repeated changed by +2.27/-1.13/+2.12%. | Primitive KL/top-1 passed; `v_dot4_i32_iu8` present; scratch0. | **Rejected and removed.** Two of three inclusive controls regressed. |
+| P3 | Pair16/shared-scale decode + local geometry | Pair16 vs group8 at matched local64 improved single 10.20-13.50% and dual 4.48-8.86%. Including local256 -> local64, rotating single/dual `49.200/78.784 -> 33.296/56.922 us` (-32.33/-27.75%). | BF16-bit exact; local64, VGPR64/96, scratch0. | **Retained for decode.** Task32 regressed 10.46-31.20%; pair16 prefill regressed up to 5.25%, so both were removed. |
+| P4 | Adaptive batch1/2/4 prefill | Versus unconditional rowbatch4, auto improved every 16/32/64-token case by 0.64-13.09%; balanced 16 `1.378 -> 1.198 ms` (-13.09%). | BF16-bit exact; local256/VGPR88/LDS512B/scratch0. | **Retained for sparse prefill.** Standalone batch2 never won; batch8 regressed 14/15 cases. |
+| P5 | Two-output selected-decode tile | Tile1 -> tile2 improved rotating single/dual `33.569/57.176 -> 30.955/55.964 us` (-7.79/-2.12%); hot/repeated improved 4.04-8.82%. | BF16-bit exact; local64, VGPR80/136, LDS512B, scratch0. | **Retained as decode default.** Tile1 remains rollback. |
+| P6 | LDS-staged raw-IQ2 x D4-Q8_1 integer MMQ32 | Quantizer-inclusive exact-auto -> MMQ32 improved 256-token cases by 22.49-28.76% and 512-token cases by 45.03-49.86%. It regressed 16-64 tokens by 45.92-129.45% and 128-token hot/Zipf by 10.41-19.97%. | Populated fixture max-relative <=0.05; representative KL max <=0.00453/top-1 >=0.98125; local128/VGPR104/LDS10240B/scratch0. | **Retained explicit, not runtime default.** Requires shape policy, runtime scratch ownership, and Laguna all-layer quality. |
+| P7 | Additional address/reduction/codegen cleanup | No separate post-P6 experiment yet; the high-value selector and shared-scale codegen issues were already removed by P1/P3. | No independent measurement. | **Open only with a new device-code premise.** |
+| P8 | Fuse Q8 quantization into producer | Not attempted. P2 decode was rejected; P6's inclusive D4 quantizer is already only 0.03-0.06 ms in its winning 256/512-token region. | Would change producer/workspace ownership and needs model integration. | **Deferred.** Not justified before runtime/model promotion. |
+
+The retained exact decode sequence is cumulatively substantial: rotating
+selected single moves `57.881 -> 30.955 us` (-46.52%) and fused dual-SiLU moves
+`106.136 -> 55.964 us` (-47.27%) from P0 to the P5 default. P6 is a separate,
+approximate populated-prefill path and is compared against the retained exact
+P4 auto route, not against the P0 decode baseline.
+
 ## Candidate details and precedent
 
 ### P1 — Exact branchless magnitude/sign decode
