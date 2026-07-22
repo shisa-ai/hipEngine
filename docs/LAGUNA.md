@@ -903,6 +903,64 @@ Acceptance:
 - forced over-budget and naïve-all-layers-full-KV plans fail before allocation;
 - all allocations free cleanly after a load-only smoke.
 
+### Post-L3 runtime gap audit (2026-07-22)
+
+The full resident load proves capacity and ownership, not executability. A fresh
+registry/runtime audit at hipEngine `d4d7b3ae8` used the completed S 2.1 artifact
+and concrete `hip_gfx1151` package. The authoritative target reference is
+Poolside llama.cpp
+[`04b2b72c`](https://github.com/poolsideai/llama.cpp/blob/04b2b72cb54048ead292884adbe11f284e3ec950/src/models/laguna.cpp#L156-L350):
+it selects interleaved SWA ownership, separate full/SWA RoPE inputs, FP32
+softplus gating, selection-biased sigmoid MoE, an independent shared expert, and
+the pre-final-norm DFlash capture. Its exact S 2.1 template is
+[`poolside-Laguna-S-2.1.jinja`](https://github.com/poolsideai/llama.cpp/blob/04b2b72cb54048ead292884adbe11f284e3ec950/models/templates/poolside-Laguna-S-2.1.jinja#L1-L92).
+
+| Forward stage | Existing concrete capability | Blocking gap / required gate |
+| --- | --- | --- |
+| Q4_K token embedding | Q6_K/Q8_0 raw lookup is registered and the Laguna Q4_K table remains raw | No `embedding/gguf_q4_k/lookup_bf16_out` key/body. Add row-dequant, invalid-ID checks, exact D2H comparison, registry resolve, and a profiler-visible gfx1151 launch. |
+| F32 RMSNorm / residual | GGUF BF16-input/F32-weight RMSNorm and add-RMSNorm are reusable | Wire under Laguna keys and prove layer-0 residual order; no new math is implied. |
+| F16 Q/K/V/gate/O projections | Source precision and pointers are resident; dense FP16 kernels handle FP16 activation+weight | Laguna needs BF16/F32 activation with F16 weight and FP32/lowp output. Neither mixed variant is registered. Add single/dual/triple projection primitives and retain an unfused fallback. |
+| Q/K head norm and RoPE | The existing FP32-input/F32-weight head-norm+partial-rotate body accepts variable head counts/dimensions | Current table helper implements plain RoPE only. Add exact YaRN tables for full layers (partial 64) and plain SWA tables (full 128), absolute-position tests, and 48/72 Q-head gfx1151 coverage. |
+| Global BF16 KV/attention | Uniform block-256 `KVLiveSpans` write/context attention accepts GQA ratios 6 and 9 and head dim 128 | Revalidate at Laguna shapes and ensure the ungated context path feeds softplus rather than a Qwen sigmoid gate. |
+| 512-token SWA | Capacity is planned as 36 bounded rings | Current wrappers require `spans_mode="uniform"` and parent attention consumes only page table + live count; it cannot represent a token-granular wrapped window with absolute positions. Add a real `KVLiveSpans` SWA writer/reader using token positions/eviction and 511/512/513 boundary tests. |
+| Per-head attention gate | CPU FP32 softplus oracle exists | No gfx1151 softplus-broadcast key exists. Add unfused FP32 softplus+head broadcast before O projection, then consider fusion only after exact parity. |
+| Dense layer-0 MLP | Q4_K pack8 gate/up, raw Q6_K down, SiLU, and residual primitives are reusable | Add production-shape layer-0 vertical fixture and trace. |
+| Router projection | BF16 hidden × F32 router weight → FP32 logits is registered (gfx1151 256-thread override) | Existing selection is raw-logit top-k followed by softmax. Laguna requires `sigmoid(logits)`, correction bias for selection only, stable top-10, gather of unbiased probabilities, sum normalization, and 2.5 scaling. A separate kernel/key is mandatory. |
+| Routed experts | Q4_K/Q6_K rank-3 T16 selected GEMVs support arbitrary positive expert count and top-k-shaped rows | Registration is lazy through the Qwen runner and no 256-expert/top-10/3072×1024 Laguna gate exists. Add direct Laguna plan resolution, exact production-shape raw-byte tests, and rocprof evidence. |
+| Shared expert | Rank-2 Q4_K pack8 gate/up plus raw Q6_K down are reusable | Wire always-on SiLU shared output and add it independently of routed scale; do not reuse Qwen's sigmoid shared-gate combine semantics. |
+| Final norm / Q6_K LM head | F32-weight RMSNorm, raw Q6_K BF16→F32 linear, GPU argmax, and sampler primitives are registered | Add exact root probes, then preserve full logits for KL/top-1 oracle gates before using direct top-1 shortcuts. |
+| Session and hidden taps | Model map/resident weights expose every layer and metadata | No `laguna_gguf_runner.py`, KV/state owner, scratch plan, post-layer capture ABI, or eager step exists. Build c=1/token-serial first and capture depths 2/11/20/30/39/48 only on request. |
+| Public generator | Generic engine loop and server lifecycle exist | Built-ins register only Qwen paths; there is no Laguna generation key, tokenizer/template renderer, streaming owner, or model metadata route. |
+| Reasoning/tools | Generic server understands Qwen `<think>` plus JSON-in-`<tool_call>` | S 2.1 uses Poolside XML arguments: `<tool_call>name<arg_key>…</arg_key><arg_value>…</arg_value></tool_call>`, and reasoning history must stop its backward scan at the current `<assistant>` token. Implement the `poolside_v1` contracts from vLLM [`61c9ef98`](https://github.com/vllm-project/vllm/blob/61c9ef986a807aa3b9c6ccd25bb223b8f4116ac7/vllm/tool_parsers/poolside_v1_tool_parser.py#L48-L220) and its [assistant-scoped reasoning parser](https://github.com/vllm-project/vllm/blob/61c9ef986a807aa3b9c6ccd25bb223b8f4116ac7/vllm/reasoning/poolside_v1_reasoning_parser.py#L33-L69), including newline-less calls and incremental string values. |
+| Independent oracle | Poolside branch and exact source commit are identified remotely | No local Poolside llama.cpp build, rendered template fixtures, first-token logits, or deterministic target IDs exist yet. This remains the first execution dependency, not a post-hoc check. |
+
+The broad source-lineage scan is currently blocked before any report because the
+manifest's read-only `/home/lhl/amd-gpu-tuning/reference/atlas` and
+`/home/lhl/amd-gpu-tuning/nano-vllm-amd` checkouts are absent. New Laguna work
+must use Poolside's pinned commit above as its architecture source, record
+in-tree extensions as new kernels rather than pretending to refresh unavailable
+Qwen parents, and rerun the lineage checker if those checkouts are restored.
+
+Ordered critical path:
+
+```text
+Poolside llama.cpp target oracle + template/token fixtures
+  -> CPU YaRN/SWA/full-layer fixtures
+  -> Q4 embedding + mixed-F16 projection/head-gate primitives
+  -> global/SWA KVLiveSpans attention and Laguna MoE
+  -> eager layer/full-model session + stable hidden taps
+  -> first-logit/32-token oracle gate
+  -> public blocking/streaming generation
+  -> poolside_v1 parsing + server conformance
+  -> bulk prefill/verifier rows
+  -> exact target AR benchmark and default promotion
+  -> Laguna DFlash drafter/target verify/economics
+```
+
+Do not use the existing Qwen generator as a renamed shortcut: its linear
+attention state, sigmoid attention gate, softmax router/shared-gate semantics,
+and uniform full-attention KV owner are all wrong for Laguna.
+
 ### L4 — Attention, RoPE, SWA, and output gate
 
 Likely kernel work:

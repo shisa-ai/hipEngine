@@ -172946,3 +172946,44 @@ the first allocation. The 151,085,056-byte GTT difference is the one-time HIP
 context/allocator footprint; no hipEngine-tracked resident weight survived.
 The machine remained healthy and L3 target weight residency is now closed. KV,
 scratch, and layer-state ownership remain part of the eager-session work.
+
+## 2026-07-22 — Audit Laguna end-to-end runtime gaps
+
+Pinned Poolside's authoritative llama.cpp `laguna` branch at
+`04b2b72cb54048ead292884adbe11f284e3ec950` and inspected
+`src/models/laguna.cpp` plus the exact S 2.1 Jinja template. The source confirms
+that execution must use interleaved SWA ownership, separate full-YaRN/SWA-plain
+RoPE parameters, gate projection from attention pre-norm input, FP32 softplus
+per-head broadcast before O projection, sigmoid/correction-bias top-k, an
+independent always-on shared expert, and a pre-final-norm DFlash capture. It also
+confirms Poolside's XML argument protocol rather than hipEngine's current Qwen
+JSON-in-tool-call protocol.
+
+A concrete `hip_gfx1151` registry probe found Q6 embedding, F32-weight head
+norm/partial rotate, and raw Q6 BF16→F32 linear available. It found no Q4_K
+embedding key, no mixed BF16/F32-activation × F16-weight projection key, no
+softplus head-gate key, no Laguna sigmoid/correction router key, and no Laguna
+generator registration. Existing selected T16 expert bodies are reusable only
+after their lazy registration and a new production 256-expert/top-10 gate.
+Current paged writer/attention wrappers require uniform spans; the context
+bridge consumes page table + live count and therefore cannot represent a
+512-token ring after token-granular wrap while preserving absolute RoPE
+positions. The Qwen router is mathematically incompatible because it selects
+raw logits and softmax-normalizes top-k.
+
+The broad required lineage command and a narrowed Qwen-kernel command both fail
+before reporting drift because the manifest paths
+`/home/lhl/amd-gpu-tuning/reference/atlas` and
+`/home/lhl/amd-gpu-tuning/nano-vllm-amd` are absent. This was recorded as an
+external-reference blocker, not bypassed as a clean scan. New Laguna kernels
+will cite Poolside's pinned architecture source and remain in-tree; the lineage
+scan must be rerun if the old parent checkouts return.
+
+Expanded `docs/LAGUNA.md` with a stage-by-stage capability/gap table and a strict
+critical path. Added ordered tasks for the Poolside target oracle, complete CPU
+YaRN/SWA fixtures, Q4 embedding/root probes, mixed-F16/softplus primitives,
+SWA `KVLiveSpans`, Laguna MoE, eager session, oracle parity, public generation,
+`poolside_v1` parsing, bulk prefill/verifier rows, target benchmark promotion,
+and Laguna DFlash draft/verify/economics. Parser tasks are intentionally blocked
+behind a real public generator; DFlash economics remains behind an exact true-AR
+baseline and full prompt-suite gate.
