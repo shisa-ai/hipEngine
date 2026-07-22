@@ -172701,3 +172701,27 @@ parse of the complete header in the partial local GGUF resolves 48 layers,
 lineage command is currently blocked by the absent read-only reference path
 `/home/lhl/amd-gpu-tuning/reference/atlas`; no kernel was ported or changed in
 this unit.
+
+## 2026-07-22 — Add strict Laguna GGUF tensor mapping
+
+Added a payload-independent Laguna root/layer tensor map and validation report.
+The map covers the untied Q4_K embedding / Q6_K LM head / F32 final norm, all
+nine common attention+norm tensors per layer, dense gate/up/down for leading
+layer 0, and router, `exp_probs_b` correction bias, rank-3 routed experts, and
+always-on shared expert for layers 1-47. Shape validation uses each layer's
+48/72 Q-head width, accepts only per-head or per-element attention gate layouts,
+and preserves exact expert-major rank-3 strides. Source-type validation keeps
+F16 attention and F32 norm/router/bias tensors exact while admitting the
+Q4_K/Q6_K down-projection mixture present in Q4_K_M. Corrected the initial
+`docs/LAGUNA.md` tensor-family spelling from nonexistent
+`ffn_exp_probs_b.bias` to the actual `exp_probs_b.bias`.
+
+RED: `uv run pytest -q tests/test_laguna_gguf_mapping.py` failed at collection
+on the absent mapping API. GREEN: Laguna config+mapping pass **16/16**; the
+adjacent Qwen mapping file is **5 skipped** because its independent local model
+path is absent. Focused Ruff and `compileall` pass. A read-only parse of the
+complete tensor directory in the still-partial target file passes strict mapping
+for **814/814 tensors**, 48 layers, per-head gates throughout, and root types
+Q4_K/F32/Q6_K. Missing correction bias/output, unexpected names, variable-Q
+shape drift, invalid gate width, and source-type drift all fail before payload
+allocation. No model payload bytes, HIP kernels, or performance paths are used.
