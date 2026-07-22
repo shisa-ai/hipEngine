@@ -11,7 +11,7 @@ later phases.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 from hipengine.core.dtype import DType
@@ -208,6 +208,87 @@ def project_dflash_target_hidden_bf16(
     return out_projected
 
 
+def project_laguna_dflash_target_hidden_bf16(
+    target_hidden_taps: Sequence[Tensor],
+    normalized_concat: Tensor,
+    out_projected: Tensor,
+    projection_scratch: Tensor,
+    weights: DFlashDrafterDeviceWeights,
+    *,
+    stream: int = 0,
+    libraries: dict[str, object] | None = None,
+    threads: int = 128,
+) -> Tensor:
+    """Run Laguna's per-tap norms before the shared DFlash FC+hidden norm.
+
+    The correctness-first path emits one RMSNorm launch per tap and row so
+    separate caller-owned target capture buffers can land directly in row-major
+    concatenated storage without an intermediate transpose. A fused strided
+    variant may replace this only after exactness is established.
+    """
+
+    config = weights.config
+    taps = tuple(target_hidden_taps)
+    if config.decoder_arch != "laguna":
+        raise ValueError("per-tap target projection is specific to Laguna DFlash")
+    if len(taps) != config.aux_hidden_norm_count:
+        raise ValueError(
+            f"Laguna DFlash tap count must be {config.aux_hidden_norm_count}, got {len(taps)}"
+        )
+    if not taps:
+        raise ValueError("Laguna DFlash requires target hidden taps")
+    rows = int(taps[0].shape[0]) if taps[0].ndim == 2 else -1
+    for index, tap in enumerate(taps):
+        if tap.shape != (rows, config.target_hidden_size):
+            raise ValueError(
+                f"target hidden tap {index} must have shape {(rows, config.target_hidden_size)}"
+            )
+        if tap.dtype != DType.BF16 or tap.device != taps[0].device:
+            raise ValueError("Laguna DFlash target hidden taps must be BF16 on one device")
+    expected_concat = (rows, config.target_hidden_concat_size)
+    if normalized_concat.shape != expected_concat or normalized_concat.dtype != DType.BF16:
+        raise ValueError(f"normalized_concat must be BF16 with shape {expected_concat}")
+    if normalized_concat.device != taps[0].device:
+        raise ValueError("normalized_concat must share the target tap device")
+
+    norm_library = None if libraries is None else libraries.get("norm")
+    itemsize = DType.BF16.itemsize
+    for row in range(rows):
+        for index, tap in enumerate(taps):
+            source = Tensor.from_handle(
+                tap.ptr + row * config.target_hidden_size * itemsize,
+                (1, config.target_hidden_size),
+                DType.BF16,
+                tap.device,
+            )
+            destination = Tensor.from_handle(
+                normalized_concat.ptr
+                + (row * config.target_hidden_concat_size + index * config.target_hidden_size)
+                * itemsize,
+                (1, config.target_hidden_size),
+                DType.BF16,
+                tap.device,
+            )
+            dflash_rmsnorm_bf16(
+                source,
+                weights.tensor(f"aux_hidden_norms.{index}.weight"),
+                destination,
+                eps=config.rms_norm_eps,
+                stream=stream,
+                library=norm_library,
+                threads=threads,
+            )
+    return project_dflash_target_hidden_bf16(
+        normalized_concat,
+        out_projected,
+        projection_scratch,
+        weights,
+        stream=stream,
+        libraries=libraries,
+        threads=threads,
+    )
+
+
 def dflash_add_bf16(a: Tensor, b: Tensor, out: Tensor, *, stream: int = 0, library: object | None = None, threads: int = 256) -> Tensor:
     """Elementwise BF16 residual add for DFlash block wiring."""
 
@@ -323,6 +404,71 @@ def project_dflash_bf16_to_f32(
         library=library,  # type: ignore[arg-type]
     )
     return out
+
+
+def gate_laguna_dflash_attention_bf16(
+    normalized_query: Tensor,
+    attention_context: Tensor,
+    gate_logits: Tensor,
+    gated_context: Tensor,
+    weights: DFlashDrafterDeviceWeights,
+    *,
+    layer: int,
+    gate_kernel: Callable,
+    stream: int = 0,
+    projection_library: object | None = None,
+    library: object | None = None,
+    runtime: object | None = None,
+    threads: int = 128,
+) -> Tensor:
+    """Project and apply Poolside Laguna's per-head softplus attention gate."""
+
+    config = weights.config
+    layer_id = int(layer)
+    if config.decoder_arch != "laguna" or config.attention_gate_type != "per_head":
+        raise ValueError("Laguna DFlash gate helper requires a per-head Laguna config")
+    if layer_id < 0 or layer_id >= weights.layer_limit:
+        raise ValueError(f"DFlash layer must be within [0, {weights.layer_limit})")
+    if normalized_query.ndim != 2:
+        raise ValueError("normalized_query must have shape [rows, hidden_size]")
+    rows = int(normalized_query.shape[0])
+    if normalized_query.shape != (rows, config.hidden_size):
+        raise ValueError("normalized_query hidden width does not match DFlash config")
+    expected_context = (rows, config.q_features)
+    if attention_context.shape != expected_context or gated_context.shape != expected_context:
+        raise ValueError(f"attention context tensors must have shape {expected_context}")
+    if gate_logits.shape != (rows, config.num_attention_heads):
+        raise ValueError("gate_logits must have shape [rows, num_attention_heads]")
+    for name, tensor, dtype in (
+        ("normalized_query", normalized_query, DType.BF16),
+        ("attention_context", attention_context, DType.BF16),
+        ("gate_logits", gate_logits, DType.FP32),
+        ("gated_context", gated_context, DType.BF16),
+    ):
+        if tensor.dtype != dtype:
+            raise ValueError(f"{name} must use {dtype.name} storage")
+        if tensor.device != normalized_query.device:
+            raise ValueError(f"{name} must share the normalized query device")
+    project_dflash_bf16_to_f32(
+        normalized_query,
+        weights.tensor(f"layers.{layer_id}.self_attn.g_proj.weight"),
+        gate_logits,
+        stream=stream,
+        library=projection_library,
+        threads=threads,
+    )
+    gate_kernel(
+        attention_context.ptr,
+        gate_logits.ptr,
+        gated_context.ptr,
+        rows,
+        config.num_attention_heads,
+        config.head_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+    return gated_context
 
 
 def project_dflash_qkv_bf16_mixed(
@@ -783,10 +929,12 @@ __all__ = [
     "dflash_gqa_attention_bf16",
     "dflash_head_rmsnorm_rotary_f32",
     "dflash_rmsnorm_bf16",
+    "gate_laguna_dflash_attention_bf16",
     "draft_batch_from_topk",
     "project_dflash_bf16_to_bf16",
     "project_dflash_bf16_to_f32",
     "project_dflash_qkv_bf16_mixed",
+    "project_laguna_dflash_target_hidden_bf16",
     "prepare_dflash_noise_inputs_bf16",
     "project_dflash_target_hidden_bf16",
     "dflash_silu_mul_bf16",

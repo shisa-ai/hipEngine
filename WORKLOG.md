@@ -174403,3 +174403,46 @@ python3 -m compileall -q hipengine/loading/dflash.py \
   hipengine/loading/__init__.py tests/test_laguna_dflash_metadata.py
 # clean / successful
 ```
+
+## 2026-07-22 — Add Laguna DFlash unfused reference and GPU boundaries
+
+Added the D1 correctness-first reference path before implementing a resident
+six-layer runner. The NumPy oracle now covers Poolside's exact ordering:
+per-capture auxiliary RMSNorm, feature concat, FC + hidden norm, projected
+context as layer-local K/V, causal 512-token SWA over committed context plus
+consecutive root/mask query rows, per-head softplus attention gating, dense
+SwiGLU residuals, final norm, and target-owned output projection. The one-layer
+oracle is cross-checked against the corresponding query slice of the already
+validated full Laguna layer, and a future query perturbation leaves earlier
+query output exact, proving the noise block is causal.
+
+Added torch-free GPU boundary helpers without a new kernel body. The unfused
+Laguna target-fusion path RMS-normalizes each caller-owned tap/row directly into
+row-major concat storage and then reuses the generic DFlash FC+hidden norm. The
+attention helper projects `(rows,72)` F32 gate logits and invokes the existing
+registered Laguna `softplus_broadcast_bf16_out` gate over BF16 context. This
+keeps fused QKV row views, K/V materialization, and target gate kernels shared
+rather than introducing a second Laguna implementation. Full resident execution,
+Poolside intermediate/candidate parity, and a gfx1151 trace remain open.
+
+RED/GREEN validation:
+
+```bash
+uv run pytest -q tests/test_laguna_dflash_reference.py
+# RED: import error before the DFlash reference contract existed
+uv run pytest -q tests/test_laguna_dflash_drafter.py
+# RED: import error before the Laguna GPU boundary helpers existed
+uv run pytest -q tests/test_laguna_dflash_reference.py \
+  tests/test_laguna_dflash_drafter.py tests/test_laguna_cpu_reference.py \
+  tests/test_dflash_drafter.py tests/test_dflash_context_kv.py
+# 40 passed
+uvx ruff check hipengine/kernels/cpu_reference/laguna.py \
+  hipengine/kernels/cpu_reference/__init__.py \
+  hipengine/speculative/dflash_drafter.py hipengine/speculative/__init__.py \
+  tests/test_laguna_dflash_reference.py tests/test_laguna_dflash_drafter.py
+python3 -m compileall -q hipengine/kernels/cpu_reference/laguna.py \
+  hipengine/kernels/cpu_reference/__init__.py \
+  hipengine/speculative/dflash_drafter.py hipengine/speculative/__init__.py \
+  tests/test_laguna_dflash_reference.py tests/test_laguna_dflash_drafter.py
+# clean / successful
+```
