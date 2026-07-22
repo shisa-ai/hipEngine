@@ -172672,3 +172672,32 @@ Validation:
   implementation item rather than masking the incompatibility.
 - Documentation structure and diff/whitespace checks pass. No runtime code, GPU
   benchmark, benchmark rollup, or performance default changed.
+
+## 2026-07-22 — Add Laguna model and GGUF metadata contract
+
+Started the payload-independent Laguna implementation while the target GGUF is
+still downloading (local file 41,282,032,534 bytes at inspection). Added a
+registered torch-free `LagunaGGUFModel` for both GGUF architecture `laguna` and
+HF architecture `LagunaForCausalLM`. Its representative unfused layer plans
+keep full versus sliding attention, YaRN versus plain RoPE, the softplus head
+gate before `o_proj`, dense layer-0 MLP, and Laguna sigmoid/shared-expert MoE
+explicit without backend or quant branches.
+
+Added strict `LagunaGGUFConfig`/`LagunaRoPEConfig` metadata normalization. It
+handles scalar or per-layer Q-head counts, defaults Poolside's optional SWA
+pattern to `FULL,SWA,SWA,SWA`, preserves the all-full family form when no window
+is declared, separates full/SWA RoPE contracts, records leading dense versus
+sparse layers, and rejects malformed dimensions, missing SWA RoPE, non-divisible
+GQA heads, and non-sigmoid expert routing before allocation. New synthetic
+metadata fixtures mirror the complete local S 2.1 header.
+
+RED: `uv run pytest -q tests/test_laguna_gguf_config.py` failed at collection
+because `hipengine.loading.laguna_gguf` did not exist. GREEN: the new config
+suite plus existing model/quant import tests pass **16/16**. `uvx ruff check`
+passes on all changed Python files, focused `compileall` passes, and a read-only
+parse of the complete header in the partial local GGUF resolves 48 layers,
+3072 hidden, vocab 100352, 12 full + 36 SWA layers, and Q heads
+`48,72,72,72,...` exactly. HIP remains available as gfx1151. The broad kernel
+lineage command is currently blocked by the absent read-only reference path
+`/home/lhl/amd-gpu-tuning/reference/atlas`; no kernel was ported or changed in
+this unit.

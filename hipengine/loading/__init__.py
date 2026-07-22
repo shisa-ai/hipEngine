@@ -40,6 +40,15 @@ from hipengine.loading.gguf import (
     scan_gguf,
 )
 from hipengine.loading.hf_cache import resolve_model_path
+from hipengine.loading.laguna_gguf import (
+    DENSE_MLP,
+    FULL_ATTENTION as LAGUNA_FULL_ATTENTION,
+    SPARSE_MOE,
+    SLIDING_ATTENTION,
+    LagunaGGUFConfig,
+    LagunaRoPEConfig,
+    laguna_gguf_config_from_metadata,
+)
 from hipengine.loading.materialize import (
     DeviceTensorAllocation,
     DeviceWeightMap,
@@ -152,6 +161,12 @@ __all__ = [
     "GGUFReader",
     "GGUFTensorInfo",
     "MissingGGUFTensorError",
+    "DENSE_MLP",
+    "LAGUNA_FULL_ATTENTION",
+    "SPARSE_MOE",
+    "SLIDING_ATTENTION",
+    "LagunaGGUFConfig",
+    "LagunaRoPEConfig",
     "DeviceTensorAllocation",
     "DeviceWeightMap",
     "MissingWeightsError",
@@ -233,6 +248,7 @@ __all__ = [
     "load_tensors_to_device",
     "load_gguf_index",
     "load_weight_index",
+    "laguna_gguf_config_from_metadata",
     "build_or_load_qwen35moe_expert_sidecar",
     "dequantize_packed_expert_tensor",
     "materialize_qwen35_gguf_weights",
