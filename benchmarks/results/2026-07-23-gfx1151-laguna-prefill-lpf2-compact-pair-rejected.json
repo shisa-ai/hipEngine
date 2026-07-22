@@ -1,0 +1,461 @@
+{
+  "command": [
+    "/home/lhl/.local/share/uv/python/cpython-3.10.20-linux-x86_64-gnu/bin/python3.10",
+    "scripts/laguna_moe_prefill_bench.py",
+    "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "--backend",
+    "hip_gfx1151",
+    "--context-length",
+    "4096",
+    "--repetitions",
+    "3",
+    "--warmups",
+    "1",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--require-cached-build",
+    "--repacked-cache",
+    "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+    "--model-sha256",
+    "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "--output",
+    "/tmp/laguna-prefill-lpf2-ab.json"
+  ],
+  "correctness": {
+    "all_modes_and_repetitions_exact_next_token": true,
+    "pass": true,
+    "tracked_returned_to_baseline": true
+  },
+  "created_at": "2026-07-22T23:53:19.082975+00:00",
+  "kind": "hipengine_laguna_prefill_lpf2_ab",
+  "load": {
+    "resident_nbytes": 77130718580,
+    "seconds_excluded": 49.242258690996096
+  },
+  "memory": {
+    "gpu_free_after": 128693985280,
+    "gpu_free_before": 128844787712,
+    "hip_total_bytes": 128849018880,
+    "tracked_after": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 77130718580,
+      "peak_allocations": 1395,
+      "total_allocated_bytes": 77130718580,
+      "total_freed_bytes": 77130718580
+    },
+    "tracked_before": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 0,
+      "peak_allocations": 0,
+      "total_allocated_bytes": 0,
+      "total_freed_bytes": 0
+    }
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "repacked_cache": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+    "repacked_cache_manifest_sha256": "d328e0b73f8957eb051d3ed24d17a4aaf6a3d15fce3c45baf10c02f4de0cabfc",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "notes": [
+    "Direct and compact-pair spans share one resident model, runtime, token stream, and bounded scratch owner.",
+    "The candidate groups exact top-10 lanes without padding and restores original lane order for weighted sum.",
+    "The separate canonical category artifact must own free-running h16/h32 and E2E promotion gates.",
+    "Run rocprofv3 separately with cached builds; do not profile model JIT compilation."
+  ],
+  "pass": false,
+  "performance_claim": false,
+  "performance_claim_scope": "same-session Laguna direct selected-MoE prefill versus exact compact expert-pair candidate; LPF-1 tiled F16 default active; one physical chunk; model load excluded",
+  "platform": {
+    "backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "hip_total_bytes": 128849018880,
+    "machine": "x86_64",
+    "target_arch": "gfx1151"
+  },
+  "promotion": {
+    "compact_pair_profile_seconds": 28.520513024181128,
+    "direct_profile_seconds": 25.22142516914755,
+    "effective_profile_tokens": 1251,
+    "effective_speedup": 0.8843257885215303,
+    "failed_checks": [
+      "candidate_not_faster_at_every_profile_shape",
+      "effective_profile_not_faster"
+    ],
+    "pass": false,
+    "policy": "candidate median strictly faster at every retained profile shape",
+    "slower_or_equal_rows": [
+      16,
+      32,
+      55,
+      64,
+      122,
+      128
+    ]
+  },
+  "protocol": {
+    "candidate_selection": "process-local HIPENGINE_LAGUNA_MOE_PREFILL=compact_pair only inside candidate spans",
+    "context_length": 4096,
+    "control_selection": "process-local HIPENGINE_LAGUNA_MOE_PREFILL=direct only inside control spans",
+    "f16_prefill_selection": "gfx1151 retained LPF-1 backend default",
+    "modes": [
+      "direct",
+      "compact_pair"
+    ],
+    "one_physical_chunk": true,
+    "prefill_chunk_size": 128,
+    "prompt_suite": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "repetitions": 3,
+    "rows": [
+      16,
+      32,
+      55,
+      64,
+      122,
+      128
+    ],
+    "timed_order": "alternating direct/compact_pair per shape and reversed next repetition",
+    "timing_scope": "reset complete through synchronized first-token projection; load excluded",
+    "token_source": {
+      "category": "mixed_ja_en",
+      "extension": "repeat_without_leading_bos",
+      "prompt_id": "mixed_ja_en_review",
+      "requested_tokens": 128,
+      "source_tokens": 122
+    },
+    "token_stream_sha256": "baaa51ff256f4fbbdfb34b59681e57b5b9b842b94f11cb08660763c24019f422",
+    "warmups_per_shape_and_mode": 1
+  },
+  "provenance": {
+    "build_profile": "laguna_prefill_lpf2_ab",
+    "collected_at": "2026-07-22T23:51:17.766825+00:00",
+    "command": [
+      "/home/lhl/.local/share/uv/python/cpython-3.10.20-linux-x86_64-gnu/bin/python3.10",
+      "scripts/laguna_moe_prefill_bench.py",
+      "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1151",
+      "--context-length",
+      "4096",
+      "--repetitions",
+      "3",
+      "--warmups",
+      "1",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--repacked-cache",
+      "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+      "--model-sha256",
+      "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+      "--output",
+      "/tmp/laguna-prefill-lpf2-ab.json"
+    ],
+    "configured_backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "dirty": true,
+    "environment": {
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null,
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIP_VISIBLE_DEVICES": null,
+      "ROCR_VISIBLE_DEVICES": null
+    },
+    "git_branch": "main",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "hipengine_commit": "2d6a50c054edc8dc73e23511d69b1f2849606b1c",
+    "kind": "hipengine_artifact_provenance",
+    "kv_dtype": "bf16",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        37586027312,
+        75172054624
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 75173103200,
+      "value": "05caf641aa0d991c0e447450420c042bfab22ae248b1f12aba4bd3774c2024c8"
+    },
+    "model_path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "model_revision": null,
+    "profiler": null,
+    "quant": "gguf_q4_k_m",
+    "repetitions": 3,
+    "repo_root": "/home/lhl/hipEngine-main",
+    "resolved_backend": "hip_gfx1151",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "schema_version": 1,
+    "staged_dirty": false,
+    "target_arch": "gfx1151",
+    "timing_protocol": "same_session_balanced_direct_vs_compact_pair_selected_moe_prefill",
+    "unstaged_dirty": false,
+    "untracked_count": 255,
+    "untracked_dirty": true,
+    "warmups": 12
+  },
+  "repo": {
+    "revision": "2d6a50c054edc8dc73e23511d69b1f2849606b1c",
+    "tracked_clean": true,
+    "tracked_status": [],
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "schema": 1,
+  "shapes": {
+    "122": {
+      "compact_pair": {
+        "max_seconds": 2.7263404390541837,
+        "median_seconds": 2.7251509519992396,
+        "median_tok_s": 44.768162259231076,
+        "min_seconds": 2.7247737450525165,
+        "rows": 122,
+        "samples_seconds": [
+          2.7247737450525165,
+          2.7251509519992396,
+          2.7263404390541837
+        ]
+      },
+      "compact_pair_vs_direct_speedup": 0.8971373080207817,
+      "direct": {
+        "max_seconds": 2.445547041017562,
+        "median_seconds": 2.4448345890268683,
+        "median_tok_s": 49.90112645966792,
+        "min_seconds": 2.4414437380619347,
+        "rows": 122,
+        "samples_seconds": [
+          2.4414437380619347,
+          2.4448345890268683,
+          2.445547041017562
+        ]
+      },
+      "exact_next_token": true,
+      "next_token_ids": {
+        "compact_pair": [
+          79,
+          79,
+          79
+        ],
+        "direct": [
+          79,
+          79,
+          79
+        ]
+      },
+      "rows": 122
+    },
+    "128": {
+      "compact_pair": {
+        "max_seconds": 2.8415956230601296,
+        "median_seconds": 2.8404178409837186,
+        "median_tok_s": 45.06379242980318,
+        "min_seconds": 2.8394927949411795,
+        "rows": 128,
+        "samples_seconds": [
+          2.8415956230601296,
+          2.8404178409837186,
+          2.8394927949411795
+        ]
+      },
+      "compact_pair_vs_direct_speedup": 0.8979121744760269,
+      "direct": {
+        "max_seconds": 2.5546752550872043,
+        "median_seconds": 2.5504457600181922,
+        "median_tok_s": 50.187305296422764,
+        "min_seconds": 2.5458458110224456,
+        "rows": 128,
+        "samples_seconds": [
+          2.5458458110224456,
+          2.5504457600181922,
+          2.5546752550872043
+        ]
+      },
+      "exact_next_token": true,
+      "next_token_ids": {
+        "compact_pair": [
+          81,
+          81,
+          81
+        ],
+        "direct": [
+          81,
+          81,
+          81
+        ]
+      },
+      "rows": 128
+    },
+    "16": {
+      "compact_pair": {
+        "max_seconds": 0.41751999501138926,
+        "median_seconds": 0.41707522002980113,
+        "median_tok_s": 38.362384605004245,
+        "min_seconds": 0.41701064293738455,
+        "rows": 16,
+        "samples_seconds": [
+          0.41751999501138926,
+          0.41701064293738455,
+          0.41707522002980113
+        ]
+      },
+      "compact_pair_vs_direct_speedup": 0.8292546629869834,
+      "direct": {
+        "max_seconds": 0.34598716197069734,
+        "median_seconds": 0.34586157102603465,
+        "median_tok_s": 46.26128295356527,
+        "min_seconds": 0.3453126819804311,
+        "rows": 16,
+        "samples_seconds": [
+          0.34586157102603465,
+          0.34598716197069734,
+          0.3453126819804311
+        ]
+      },
+      "exact_next_token": true,
+      "next_token_ids": {
+        "compact_pair": [
+          638,
+          638,
+          638
+        ],
+        "direct": [
+          638,
+          638,
+          638
+        ]
+      },
+      "rows": 16
+    },
+    "32": {
+      "compact_pair": {
+        "max_seconds": 0.7668449080083519,
+        "median_seconds": 0.7659899740247056,
+        "median_tok_s": 41.776003714335694,
+        "min_seconds": 0.7659849539631978,
+        "rows": 32,
+        "samples_seconds": [
+          0.7668449080083519,
+          0.7659849539631978,
+          0.7659899740247056
+        ]
+      },
+      "compact_pair_vs_direct_speedup": 0.8575467934832145,
+      "direct": {
+        "max_seconds": 0.6569088510004804,
+        "median_seconds": 0.656872246065177,
+        "median_tok_s": 48.7157132786287,
+        "min_seconds": 0.6560651590116322,
+        "rows": 32,
+        "samples_seconds": [
+          0.6569088510004804,
+          0.6560651590116322,
+          0.656872246065177
+        ]
+      },
+      "exact_next_token": true,
+      "next_token_ids": {
+        "compact_pair": [
+          99,
+          99,
+          99
+        ],
+        "direct": [
+          99,
+          99,
+          99
+        ]
+      },
+      "rows": 32
+    },
+    "55": {
+      "compact_pair": {
+        "max_seconds": 1.2940615030238405,
+        "median_seconds": 1.2936581210233271,
+        "median_tok_s": 42.51509661338743,
+        "min_seconds": 1.2931852310430259,
+        "rows": 55,
+        "samples_seconds": [
+          1.2936581210233271,
+          1.2940615030238405,
+          1.2931852310430259
+        ]
+      },
+      "compact_pair_vs_direct_speedup": 0.8731976104308289,
+      "direct": {
+        "max_seconds": 1.13005901791621,
+        "median_seconds": 1.1296191799920052,
+        "median_tok_s": 48.688974987472555,
+        "min_seconds": 1.129174769972451,
+        "rows": 55,
+        "samples_seconds": [
+          1.1296191799920052,
+          1.129174769972451,
+          1.13005901791621
+        ]
+      },
+      "exact_next_token": true,
+      "next_token_ids": {
+        "compact_pair": [
+          83,
+          83,
+          83
+        ],
+        "direct": [
+          83,
+          83,
+          83
+        ]
+      },
+      "rows": 55
+    },
+    "64": {
+      "compact_pair": {
+        "max_seconds": 1.4641062640585005,
+        "median_seconds": 1.4638461850117892,
+        "median_tok_s": 43.720440477484026,
+        "min_seconds": 1.4634586309548467,
+        "rows": 64,
+        "samples_seconds": [
+          1.4638461850117892,
+          1.4641062640585005,
+          1.4634586309548467
+        ]
+      },
+      "compact_pair_vs_direct_speedup": 0.8749238547690825,
+      "direct": {
+        "max_seconds": 1.2819654740160331,
+        "median_seconds": 1.2807539469795302,
+        "median_tok_s": 49.9705662831917,
+        "min_seconds": 1.2800529149826616,
+        "rows": 64,
+        "samples_seconds": [
+          1.2800529149826616,
+          1.2807539469795302,
+          1.2819654740160331
+        ]
+      },
+      "exact_next_token": true,
+      "next_token_ids": {
+        "compact_pair": [
+          35403,
+          35403,
+          35403
+        ],
+        "direct": [
+          35403,
+          35403,
+          35403
+        ]
+      },
+      "rows": 64
+    }
+  },
+  "status": "rejected"
+}
