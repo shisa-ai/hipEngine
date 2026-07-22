@@ -840,6 +840,22 @@ Likely paths:
   from `qwen35_gguf_materialize.py`;
 - targeted materialization tests and a dry-run byte estimator.
 
+Implemented foundation (2026-07-22):
+
+- the dry planner covers all 814 tensors exactly once and preserves every F16
+  attention/F32 metadata tensor at source precision;
+- rank-2 Q4_K projections use existing pack8 allocation contracts, rank-3
+  selected experts use Q4_K/Q6_K T16 replacement layouts, Q6_K rank-2 down
+  projections remain raw, and the Q4_K embedding remains raw pending its native
+  lookup kernel;
+- 4K BF16 KV uses 12 full-context layers plus 36 512-token SWA rings;
+- with measured 119.996 GiB HIP-free memory, the current dry estimate is
+  71.468 GiB resident weights + 0.258 GiB KV + 2 GiB scratch + 1.230 GiB maximum
+  loader transient + 8 GiB reserve = 82.956 GiB peak and 37.040 GiB headroom;
+- actual device materialization, streaming transient measurements, allocation
+  teardown, and the load-only smoke remain pending and are not implied by the
+  dry-plan result.
+
 Plan:
 
 - keep F32 norms/router/correction tensors dense F32;
