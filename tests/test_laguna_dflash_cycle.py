@@ -17,6 +17,7 @@ from hipengine.runtime.laguna_gguf_runner import (
 from hipengine.speculative.laguna_dflash import (
     LagunaDFlashDraftResult,
     LagunaDFlashResidentCycle,
+    LagunaDFlashResidentDrafter,
 )
 
 
@@ -231,6 +232,24 @@ class _FakeDrafter:
         self._closed = True
 
 
+def test_laguna_dflash_drafter_reset_retains_owner_and_resets_kv() -> None:
+    class ResetKV:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def reset(self) -> None:
+            self.calls += 1
+
+    drafter = object.__new__(LagunaDFlashResidentDrafter)
+    drafter._closed = False
+    drafter.kv_cache = ResetKV()
+
+    drafter.reset_state()
+
+    assert drafter.kv_cache.calls == 1
+    assert drafter._closed is False
+
+
 def test_laguna_resident_cycle_requires_b_plus_one_append_capacity() -> None:
     target = _FakeTarget()
     drafter = _FakeDrafter(target)
@@ -259,6 +278,10 @@ def test_laguna_resident_cycle_normalizes_chain_and_commits_capture_prefix() -> 
     assert result.accept_summary.commit_rows == (1,)
     assert result.visible_output_ids == (20, 99)
     assert result.verifier_addresses_stable
+    assert result.proposal_seconds == 0.0
+    assert result.target_verify_seconds >= 0.0
+    assert result.draft_commit_enqueue_seconds >= 0.0
+    assert result.cycle_host_seconds >= result.target_verify_seconds
     captures, positions, stream = drafter.append_calls[-1]
     assert captures == ((2, 0), (2, 1))
     assert positions == (5, 6)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
@@ -398,6 +399,13 @@ class LagunaDFlashResidentDrafter:
             if self.kv_cache.pending_positions:
                 self.kv_cache.discard_rows()
             raise
+
+    def reset_state(self) -> None:
+        """Reset projected draft context while retaining weights and addresses."""
+
+        self._check_open()
+        assert self.kv_cache is not None
+        self.kv_cache.reset()
 
     def propose(
         self,
@@ -1001,6 +1009,10 @@ class LagunaDFlashCycleResult:
     target_result: LagunaDFlashVerifyResult
     accept_summary: TargetAcceptSummary
     verifier_addresses_stable: bool
+    proposal_seconds: float
+    target_verify_seconds: float
+    draft_commit_enqueue_seconds: float
+    cycle_host_seconds: float
 
     @property
     def visible_output_ids(self) -> tuple[int, ...]:
@@ -1106,6 +1118,7 @@ class LagunaDFlashResidentCycle:
     ) -> LagunaDFlashCycleResult:
         """Propose B rows, verify B+1 once, and commit only the accepted prefix."""
 
+        cycle_started = time.perf_counter()
         self._check_open()
         if remaining_decode is not None:
             if isinstance(remaining_decode, bool) or not isinstance(remaining_decode, int):
@@ -1118,11 +1131,13 @@ class LagunaDFlashResidentCycle:
         stops = {int(value) for value in stop_token_ids}
         if int(root_token_id) in stops:
             raise ValueError("a stop root must not enter another Laguna DFlash cycle")
+        proposal_started = time.perf_counter()
         proposed = proposal or self.drafter.propose(
             root_token_id=int(root_token_id),
             root_position=root_position,
             stream=stream,
         )
+        proposal_seconds = time.perf_counter() - proposal_started if proposal is None else 0.0
         all_candidates = tuple(int(value) for value in proposed.candidate_token_ids)
         if len(all_candidates) != self.drafter.candidate_budget:
             raise ValueError("Laguna DFlash proposal candidate count does not match its budget")
@@ -1157,6 +1172,7 @@ class LagunaDFlashResidentCycle:
             root_positions=(root_position,),
         )
         try:
+            target_started = time.perf_counter()
             target_result = self.target.verify_dflash_chain(
                 int(root_token_id),
                 candidates,
@@ -1164,6 +1180,7 @@ class LagunaDFlashResidentCycle:
                 remaining_decode=effective_remaining,
                 stream=stream,
             )
+            target_verify_seconds = time.perf_counter() - target_started
             oracle = target_batch.accept_from_top1(
                 target_result.target_top1_ids,
                 remaining_decode=(effective_remaining,)
@@ -1173,11 +1190,13 @@ class LagunaDFlashResidentCycle:
             summary = TargetAcceptSummary.from_accept_result(target_batch, oracle)
             _validate_cycle_summary(target_result, summary)
             committed_positions = target_batch.positions[: target_result.committed_rows]
+            draft_commit_started = time.perf_counter()
             self.drafter.append_target_hidden(
                 self._verify_capture.prefix_tensors(target_result.committed_rows),
                 positions=committed_positions,
                 stream=stream,
             )
+            draft_commit_enqueue_seconds = time.perf_counter() - draft_commit_started
         except BaseException:
             self._fail_closed()
             raise
@@ -1191,6 +1210,10 @@ class LagunaDFlashResidentCycle:
             target_result=target_result,
             accept_summary=summary,
             verifier_addresses_stable=True,
+            proposal_seconds=proposal_seconds,
+            target_verify_seconds=target_verify_seconds,
+            draft_commit_enqueue_seconds=draft_commit_enqueue_seconds,
+            cycle_host_seconds=time.perf_counter() - cycle_started,
         )
 
     def close(self) -> None:
