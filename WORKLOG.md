@@ -175080,3 +175080,68 @@ uv run python scripts/laguna_moe_prefill_bench.py --help
 ```
 
 No performance measurement or claim is made in this harness-only unit.
+
+## 2026-07-23 — Reject and remove Laguna LPF-2 compact-pair routing
+
+Ran the predeclared balanced full-model gate at `2d6a50c05` on Radeon
+8060S/gfx1151 with the retained LPF-1 tiled F16 default. Exact command:
+
+```bash
+env -u HIPENGINE_LAGUNA_MOE_PREFILL -u HIPENGINE_LAGUNA_F16_PREFILL \
+  HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 \
+  uv run python -u scripts/laguna_moe_prefill_bench.py \
+  /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf \
+  --backend hip_gfx1151 --context-length 4096 \
+  --repetitions 3 --warmups 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 \
+  --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f \
+  --output /tmp/laguna-prefill-lpf2-ab.json
+```
+
+The candidate is exact but loses decisively at every shape:
+
+| rows | direct tok/s | compact-pair tok/s | delta |
+| ---: | ---: | ---: | ---: |
+| 16 | 46.261 | 38.362 | -17.07% |
+| 32 | 48.716 | 41.776 | -14.25% |
+| 55 | 48.689 | 42.515 | -12.68% |
+| 64 | 49.971 | 43.720 | -12.51% |
+| 122 | 49.901 | 44.768 | -10.29% |
+| 128 | 50.187 | 45.064 | -10.21% |
+
+The weighted profile is **49.601 -> 43.863 tok/s (-11.57%; 0.8843x)**.
+All 36 direct/candidate next-token IDs agree and tracked ownership returns from
+77,130,718,580 bytes / 1,395 allocations exactly to zero. Model load was
+49.242 s and excluded. Artifact SHA-256 is `bb130ace...642f5`:
+`benchmarks/results/2026-07-23-gfx1151-laguna-prefill-lpf2-compact-pair-rejected.json`.
+
+Applied the recorded refactor trigger immediately: removed
+`HIPENGINE_LAGUNA_MOE_PREFILL`, the always-provisioned compact scratch/group
+library, the Laguna runtime route, and the temporary full-model A/B harness.
+The registered compact Q4/Q5/Q6 primitives and their byte-exact fixtures remain
+as model-neutral building blocks. The 16-row compact-WMMA control is not a
+viable follow-up: real routing pads useful rows by 4.396x at 55 and 2.704x at
+128, reassociates the direct reduction, and has a weaker work bound than the
+rejected no-padding candidate. LPF-3 is next; no default or benchmark rollup
+changed.
+
+Post-removal focused validation:
+
+```bash
+env HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 uv run pytest -q \
+  tests/test_gguf_t16_selected_gemv_decode.py \
+  -k 'compact_pairreuse or compact_down_pairreuse'
+# 4 passed
+env HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 uv run pytest -q \
+  tests/test_laguna_moe_gpu.py
+# 4 passed
+uv run pytest -q tests/test_laguna_gguf_runner.py \
+  -k 'libraries or moe or scratch'
+# 3 passed
+uvx ruff check hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.py \
+  hipengine/runtime/laguna_gguf_runner.py hipengine/runtime/laguna_moe.py \
+  tests/test_laguna_moe_gpu.py
+# clean
+```

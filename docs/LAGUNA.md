@@ -1841,17 +1841,23 @@ artifacts have clean provenance. The gfx1151 backend capability now makes tiled
 the default from row two; `HIPENGINE_LAGUNA_F16_PREFILL=gemv` remains a one-
 release rollback. Evidence:
 `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-lpf1-{ab,tiled}.json`.
-LPF-2 is in progress. The routing replay makes a no-padding compact-pair path
-the first exact candidate: grouping covers 84.19%/91.71% of lanes in pairs at
-55/128 rows and reduces the computed selected-row blocks to 57.90%/54.15% of
-direct. New Q4T16 dual and Q4/Q6T16 down kernels pair adjacent lanes relative
-to exact expert starts, preserving each row's 128-thread reduction and BF16
-bits beyond the old 64-lane mask. The complete Laguna production-shape fixture
-is byte-exact for both down quants and a cached gfx1151 trace confirms 128-thread,
-zero-scratch dispatch. `HIPENGINE_LAGUNA_MOE_PREFILL=compact_pair` remains a
-diagnostic while `direct` stays the backend default; balanced full-model timing
-must still decide retention. The 16-row compact WMMA route remains only a
-padding-stressed control, not a presumed promotion.
+LPF-2 is closed as a measured rejection. The no-padding compact-pair candidate
+grouped exact top-10 lanes and covered 84.19%/91.71% of them in pairs at 55/128
+rows while preserving direct Q4/Q5/Q6 T16 reduction and BF16 bits. That compute-
+block bound did not translate to wall time: balanced same-session full-model
+prefill regressed every measured shape, from **46.261 -> 38.362 tok/s (-17.07%)**
+at 16 rows to **50.187 -> 45.064 tok/s (-10.21%)** at 128 rows; 55 rows moved
+**48.689 -> 42.515 tok/s (-12.68%)**, and the weighted profile was **0.8843x /
+-11.57%**. All 36 direct/candidate next-token results agreed and lifecycle
+recovery was exact, so this is a performance rejection rather than a correctness
+failure. The Laguna selector, grouping library, compact scratch, runtime route,
+and temporary A/B harness were removed; direct selected GEMV remains the only
+runtime path. The exact generally useful compact-pair kernel primitives and
+fixtures remain registered. A 16-row compact WMMA route is not viable here: the
+replay requires 4.396x/2.704x useful-row work at 55/128 rows, reassociates the
+direct reduction, and has a weaker bound than the already rejected no-padding
+candidate. LPF-3 is next. Evidence:
+`benchmarks/results/2026-07-23-gfx1151-laguna-prefill-lpf2-compact-pair-rejected.json`.
 
 Every LPF candidate is a registered variant with the current exact chain as its
 unfused rollback. Exact candidates pass byte comparison on lengths
