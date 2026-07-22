@@ -30,8 +30,10 @@ def test_laguna_f16_projection_registry_resolves_all_mixed_variants() -> None:
     from hipengine.kernels.hip_gfx1100.linear.laguna_f16_projection import (
         laguna_f16w_gemv_bf16_f32_out,
         laguna_f16w_triple_gemv_bf16_f32_out,
+        register_laguna_f16_projection_kernels,
     )
 
+    register_laguna_f16_projection_kernels()
     assert (
         resolve(
             backend="hip_gfx1100",
@@ -114,6 +116,8 @@ def test_laguna_f16_projection_single_dual_triple_match_cpu(q_heads: int) -> Non
         laguna_f16w_dual_gemv_bf16_f32_out,
         laguna_f16w_gemv_bf16_bf16_out,
         laguna_f16w_gemv_bf16_f32_out,
+        laguna_f16w_gemv_f32_bf16_out,
+        laguna_f16w_gemv_f32_f32_out,
         laguna_f16w_triple_gemv_bf16_f32_out,
     )
 
@@ -135,6 +139,7 @@ def test_laguna_f16_projection_single_dual_triple_match_cpu(q_heads: int) -> Non
     allocations = []
     try:
         dx = _upload(x_bits, runtime, allocations)
+        dx_f32 = _upload(x_f32, runtime, allocations)
         dwa = _upload(wa, runtime, allocations)
         dwb = _upload(wb, runtime, allocations)
         dwc = _upload(wc, runtime, allocations)
@@ -142,6 +147,8 @@ def test_laguna_f16_projection_single_dual_triple_match_cpu(q_heads: int) -> Non
         db = _alloc((rows, out_b), np.float32, runtime, allocations)
         dc = _alloc((rows, out_c), np.float32, runtime, allocations)
         da_bf16 = _alloc((rows, out_a), np.uint16, runtime, allocations)
+        da_f32_input = _alloc((rows, out_a), np.float32, runtime, allocations)
+        da_f32_input_bf16 = _alloc((rows, out_a), np.uint16, runtime, allocations)
 
         laguna_f16w_gemv_bf16_f32_out(
             dx.ptr, dwa.ptr, da.ptr, rows, in_features, out_a, library=library, runtime=runtime
@@ -150,6 +157,26 @@ def test_laguna_f16_projection_single_dual_triple_match_cpu(q_heads: int) -> Non
             dx.ptr,
             dwa.ptr,
             da_bf16.ptr,
+            rows,
+            in_features,
+            out_a,
+            library=library,
+            runtime=runtime,
+        )
+        laguna_f16w_gemv_f32_f32_out(
+            dx_f32.ptr,
+            dwa.ptr,
+            da_f32_input.ptr,
+            rows,
+            in_features,
+            out_a,
+            library=library,
+            runtime=runtime,
+        )
+        laguna_f16w_gemv_f32_bf16_out(
+            dx_f32.ptr,
+            dwa.ptr,
+            da_f32_input_bf16.ptr,
             rows,
             in_features,
             out_a,
@@ -190,6 +217,10 @@ def test_laguna_f16_projection_single_dual_triple_match_cpu(q_heads: int) -> Non
         actual_b = _download(db, (rows, out_b), np.float32, runtime)
         actual_c = _download(dc, (rows, out_c), np.float32, runtime)
         actual_a_bf16 = bf16_to_float32(_download(da_bf16, (rows, out_a), np.uint16, runtime))
+        actual_f32_input = _download(da_f32_input, (rows, out_a), np.float32, runtime)
+        actual_f32_input_bf16 = bf16_to_float32(
+            _download(da_f32_input_bf16, (rows, out_a), np.uint16, runtime)
+        )
     finally:
         for allocation in reversed(allocations):
             free(allocation, runtime=runtime)
@@ -199,6 +230,12 @@ def test_laguna_f16_projection_single_dual_triple_match_cpu(q_heads: int) -> Non
     np.testing.assert_allclose(actual_c, expected_c, rtol=2e-5, atol=2e-5)
     np.testing.assert_array_equal(
         actual_a_bf16, bf16_to_float32(float_array_to_bf16_bits(expected_a))
+    )
+    expected_f32_input = x_f32 @ wa.astype(np.float32).T
+    np.testing.assert_allclose(actual_f32_input, expected_f32_input, rtol=2e-5, atol=2e-5)
+    np.testing.assert_array_equal(
+        actual_f32_input_bf16,
+        bf16_to_float32(float_array_to_bf16_bits(actual_f32_input)),
     )
 
 

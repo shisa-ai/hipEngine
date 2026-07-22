@@ -530,8 +530,8 @@ Critical details:
 | F32 norms/router weights | dense F32 and RMSNorm support | Reuse; 3072-wide router needs its own exact launch gate. |
 | head Q/K RMSNorm | existing Qwen full-attention primitives | Reuse with head dim 128 and variable Q-head counts. |
 | paged attention/KV | `KVLiveSpans`, BF16 paged attention/write | Add per-layer global/SWA capacity and visibility. |
-| standard RoPE | existing rotary kernels/tables | Add YaRN and dual per-layer config. |
-| softplus attention gate | helper math exists in HIP source | Expose unfused primitive and optional fused multiply. |
+| dual RoPE | exact host YaRN/plain tables plus F32-weight head RMSNorm+partial/full rotary are registered | Reuse absolute-position tables per layer family; bound table residency to admitted context. |
+| softplus attention gate | unfused FP32 per-head broadcast emits FP32 or BF16 | Reuse before F16 O projection; fuse only after whole-layer exact parity. |
 | softmax router | existing Qwen route selection | Add Laguna sigmoid + correction-bias semantics. |
 | shared expert | Qwen GGUF MoE machinery | Wire an always-on, ungated Laguna shared expert. |
 | byte-BPE | Qwen GGUF tokenizer is close | Generalize BOS/EOT/control/template handling. |
@@ -993,10 +993,10 @@ the pre-final-norm DFlash capture. Its exact S 2.1 template is
 | Q4_K token embedding | Raw `embedding/gguf_q4_k/lookup_bf16_out` is registered for gfx1100/gfx1151 and the Laguna table stays source-native | Closed: synthetic and real rows are BF16-exact vs CPU, invalid IDs preserve caller rows, model-neutral resident dispatch resolves, and gfx1151 profiling shows `gguf_q4_k_embedding_bf16_out_kernel`. |
 | F32 RMSNorm / residual | GGUF BF16-input/F32-weight RMSNorm and add-RMSNorm are reusable | Wire under Laguna keys and prove layer-0 residual order; no new math is implied. |
 | F16 Q/K/V/gate/O projections | Source precision and pointers remain F16; registry-driven single/dual/triple kernels accept BF16/F32 activations and emit FP32/BF16 | Closed for exact eager GEMV: CPU parity covers 48/72 Q heads, eight KV heads, and dim 128; rows>1 WMMA tuning is deferred until the serial model oracle is green. |
-| Q/K head norm and RoPE | The existing FP32-input/F32-weight head-norm+partial-rotate body accepts variable head counts/dimensions | Current table helper implements plain RoPE only. Add exact YaRN tables for full layers (partial 64) and plain SWA tables (full 128), absolute-position tests, and 48/72 Q-head gfx1151 coverage. |
+| Q/K head norm and RoPE | Exact Laguna YaRN/plain host tables feed the registered F32-input/F32-weight head-norm+rotate body | Closed for eager/bulk math: absolute positions, partial 64/full 128, 48/72 Q heads, eight KV heads, and dim 128 pass CPU parity on gfx1151. |
 | Global BF16 KV/attention | Uniform block-256 `KVLiveSpans` write/context attention accepts GQA ratios 6 and 9 and head dim 128 | Revalidate at Laguna shapes and ensure the ungated context path feeds softplus rather than a Qwen sigmoid gate. |
 | 512-token SWA | Capacity is planned as 36 bounded rings | Current wrappers require `spans_mode="uniform"` and parent attention consumes only page table + live count; it cannot represent a token-granular wrapped window with absolute positions. Add a real `KVLiveSpans` SWA writer/reader using token positions/eviction and 511/512/513 boundary tests. |
-| Per-head attention gate | CPU FP32 softplus oracle exists | No gfx1151 softplus-broadcast key exists. Add unfused FP32 softplus+head broadcast before O projection, then consider fusion only after exact parity. |
+| Per-head attention gate | Unfused `attention_gate/f32/softplus_broadcast_{f32,bf16}_out` is registered on gfx1100/gfx1151 | Closed: 72-head × 128-channel broadcast, extreme gate logits, and FP32/BF16 outputs match CPU; no fused path is added yet. |
 | Dense layer-0 MLP | Q4_K pack8 gate/up, raw Q6_K down, SiLU, and residual primitives are reusable | Add production-shape layer-0 vertical fixture and trace. |
 | Router projection | BF16 hidden × F32 router weight → FP32 logits is registered (gfx1151 256-thread override) | Existing selection is raw-logit top-k followed by softmax. Laguna requires `sigmoid(logits)`, correction bias for selection only, stable top-10, gather of unbiased probabilities, sum normalization, and 2.5 scaling. A separate kernel/key is mandatory. |
 | Routed experts | Q4_K/Q6_K rank-3 T16 selected GEMVs support arbitrary positive expert count and top-k-shaped rows | Registration is lazy through the Qwen runner and no 256-expert/top-10/3072×1024 Laguna gate exists. Add direct Laguna plan resolution, exact production-shape raw-byte tests, and rocprof evidence. |
@@ -1084,6 +1084,26 @@ Acceptance for every new/ported kernel:
   duration on gfx1151;
 - fused output matches the unfused chain;
 - `KVLiveSpans` remains the only attention/KV ABI.
+
+Implemented L4 primitive foundation (2026-07-22):
+
+- source-F16 Q/K/V/gate/O projections now accept BF16 or FP32 activations and
+  emit FP32 or BF16; single/dual/triple registry paths preserve all resident F16
+  bytes and cover 48/72 Q heads plus eight KV heads at dimension 128;
+- full-layer partial-64 YaRN and SWA full-128 plain tables are generated by the
+  independently validated CPU equations, materialized as bounded FP32 tables,
+  and indexed by absolute positions rather than wrapped slots;
+- the existing exact F32-input/F32-weight head RMSNorm+rotate body is exposed
+  under Laguna registry keys and passes production-head CPU parity for both RoPE
+  contracts;
+- an unfused FP32 per-head softplus broadcast emits FP32 or BF16 and passes
+  extreme-logit/broadcast parity. No speculative fusion is present, so this is
+  also the required unfused fallback;
+- cached gfx1151 traces show mixed projection, head-normalize/rotate, and
+  softplus kernels with expected names, zero scratch, and plausible durations.
+
+L4's attention context/KV ownership itself remains in the next `KVLiveSpans`
+global/SWA task; the projection, RoPE, and output-gate blockers are closed.
 
 ### L5 — Laguna MoE
 
