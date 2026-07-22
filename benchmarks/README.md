@@ -1881,6 +1881,16 @@ row-at-a-time grouping across 1-16 rows/expert and remains BF16-bit exact;
 K=3072/N=1024 also passes exact selected/grouped gates. This is a kernel
 schedule result, not Laguna model throughput or quality evidence.
 
+The counterbalanced E256/K3072/N1024 tuning baseline is
+[`2026-07-22-gpu1-iq2-xs-laguna-tuning-baseline.json`](results/2026-07-22-gpu1-iq2-xs-laguna-tuning-baseline.json).
+Rotating-distinct top-10 selected single/fused-dual leaves are
+`57.881/106.136 us`; repeated-expert cache-hot leaves are 20-22% faster and are
+therefore diagnostic only. Rowbatch4 regresses balanced 16-token prefill by
+6.30%, wins 8.35-29.92% at 32 tokens depending on routing skew, and wins
+30.71-57.46% at 64-512 tokens. Full-shape fused decode and grouped prefill gates
+are BF16-bit exact. These are synthetic primitive/policy results, not Laguna
+model throughput or quality evidence.
+
 ## Update Checklist
 
 1. Choose one protocol tuple and record the old artifact before running.
