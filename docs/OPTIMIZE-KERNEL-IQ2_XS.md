@@ -149,8 +149,10 @@ artifacts:
 The committed representative harness now supersedes this temporary driver for
 future comparisons; this table remains useful historical cross-format context.
 
-A second diagnostic compared the fastest exact scalar or rowbatch leaf at
-`E=16,K=3072,N=128` with equal counts per expert:
+A second **historical, pre-optimization** diagnostic on source `8addd867`
+compared the minimum event median among the explicitly launched exact scalar
+and rowbatch leaves at `E=16,K=3072,N=128` with equal counts per expert. These
+are not registered auto/default-policy timings:
 
 | Rows/expert | IQ2_XS | IQ3_XXS | IQ4_XS |
 | ---: | ---: | ---: | ---: |
@@ -160,8 +162,10 @@ A second diagnostic compared the fastest exact scalar or rowbatch leaf at
 | 8 | 48.428 us | 37.399 us | 34.793 us |
 | 16 | 97.458 us | 74.761 us | 59.216 us |
 
-This used five alternating 200-iteration event samples after warmup. The driver
-and result SHA-256 values were
+Each cell is total latency for one dual gate+up dispatch over
+`16 * rows/expert` compact rows, not latency per row. This used five alternating
+200-iteration event samples after warmup. The driver and result SHA-256 values
+were
 `1090e383038c43464d27ae6097eb922cacdec6cf3f500548869024aa13727ebc`
 and `f869226677be9e9ca507d59385e48c926b4b855ed645ca25b32949d190cc23bc`.
 It remains diagnostic-only; the committed harness below is the canonical IQ2
