@@ -3,11 +3,13 @@
 Last updated: 2026-07-23
 
 Status: eager all-resident c=1, exact chunked prefill/B+1 target rows, public
-blocking/streaming generation, and the canonical target-AR benchmark are
-implemented. First-token, repeated-state, bulk-vs-serial, and live Poolside-v1
-reasoning/XML-tool gates pass, with one documented low-margin greedy-32
-arithmetic split. The exact bulk-prefill path is retained as default;
-accept/rollback integration, long-context admission, and DFlash work remain.
+blocking/streaming generation, the canonical target-AR benchmark, and a
+standalone Poolside-matched DFlash drafter through admitted budget B4 are
+implemented. First-token, repeated-state, bulk-vs-serial, live Poolside-v1
+reasoning/XML-tool, and B4 draft top-k gates pass, with one documented target-AR
+low-margin greedy-32 arithmetic split. The exact bulk-prefill path is retained
+as default; DFlash verify/accept/commit and economics, higher draft budgets, and
+long-context admission remain.
 
 This document defines the correctness-first plan for running
 [`poolside/Laguna-S-2.1-GGUF`](https://huggingface.co/poolside/Laguna-S-2.1-GGUF),
@@ -145,9 +147,14 @@ performance result.
 The DFlash safetensors artifact completed during this review. Its local file is
 2,229,962,896 bytes and has SHA-256
 `f24f08781c697c19952c02fb2e7e9bdf2071b79a711c2a44b836a74b9b62a1f4`, matching
-the Hugging Face LFS object. Poolside also publishes
-`laguna-s-2.1-DFlash-BF16.gguf` at 2,233,764,000 bytes with LFS SHA-256
-`24614292a4477f3ae5203c3875edcde0bc219f02616a9c9f65791e29b18a67ee`.
+the Hugging Face LFS object. Poolside's GGUF repository changed its DFlash
+object on 2026-07-22 under `Correct DFlash config`: the prior 2,233,764,000-byte
+object was `24614292...a67ee`, while the current 2,233,764,224-byte object is
+`2ee8aa30...1bfd4`. Neither tensor payload is bit-identical to the pinned
+published safetensors. The independent matched oracle therefore uses a local
+Poolside conversion of revision `b0486d1`, SHA-256
+`ad3d1efffa8763e11e55baf6fedddcbf9138b3077928b55e5da6625745808bd2`;
+this local conversion is evidence only and is never committed.
 
 ## Measured gfx1151 Host Snapshot
 
@@ -1849,15 +1856,37 @@ Acceptance: layer hidden states, final hidden, logits/top-k, and all 15 possible
 candidate positions meet the agreed oracle tolerances; gfx1151 trace shows the
 intended BF16 dense/SWA/gate and Q6 LM-head kernels.
 
-The correctness-first D1 reference boundary is implemented as of 2026-07-22.
-The NumPy oracle independently normalizes every target tap before concat/FC,
-keeps projected context as layer-local K/V input, applies causal 512-token SWA
-across committed context plus the root/mask block, runs the softplus per-head
-gate and dense SwiGLU residual order, and emits target-head logits for query rows
-only. The GPU boundary now has an exact unfused per-tap normalization/concat
-path and a reusable BF16-context/F32-gate softplus helper; fused QKV row views
-feed the existing K/V ABI. D1 remains open for the resident six-layer runner,
-all-15-row Poolside intermediate/logit parity, and profiler evidence.
+The correctness-first D1 path is resident and admitted through `B=4` as of
+2026-07-23. `LagunaDFlashResidentDrafter` owns the 69-tensor BF16 drafter, six
+projected-context K/V rings, bounded capture destinations, root/mask scratch,
+and target-owned Q4 embedding/Q6 head. Target rows append transactionally;
+root/mask K/V is visible to causal prefill attention but discarded rather than
+committed. The query residual stays F32 around BF16 projections, while the exact
+unfused per-tap normalization/concat and F32-context/F32-gate-to-BF16 softplus
+paths preserve the existing fallback and `KVLiveSpans` ABI.
+
+A Poolside intermediate callback exposed and fixed the decisive parity bug: the
+first resident draft incorrectly passed BF16 Q/K norm vectors to Laguna's target
+F32-weight norm+RoPE kernel. The drafter now uses its BF16-weight norm+RoPE ABI
+and int32 query positions. Against a GGUF converted directly from pinned
+`poolside/Laguna-S-2.1-DFlash@b0486d1` (the published GGUF payload is not
+bit-identical to those published safetensors), `B=4` matches the Poolside root
+and all 12 top-k IDs exactly. First-row Poolside-to-hipEngine KL is
+`2.3420e-5`, top-1 is exact, teardown returns all `79,324,054,196` tracked bytes,
+and a cached gfx1151 trace shows the intended six BF16 norm+RoPE/SWA/gate
+layers plus target Q6 head. The proposal kernel span is `31.729 ms` (host wall
+`32.030 ms`); this is correctness evidence, not yet an end-to-end speed claim.
+
+`B=7` and `B=15` remain unadmitted rather than being hidden by the B4 result.
+The full 15-row Poolside-tap diagnostic reaches only `12/15` top-1 with maximum
+KL `0.05525`; live hipEngine target taps reach `11/15`. Two attempted precision
+changes did not solve this: F32 projected context left candidate IDs unchanged,
+and a full duplicated-F32 query path regressed first-row parity while adding
+about 4.24 GiB and raising proposal wall to 311 ms, so both were removed. The
+resident implementation is complete for the B1/B2/B4 product boundary, but
+D1's stated all-15-row acceptance remains open; higher budgets are a correctness
+blocker for D3/D4 promotion. Evidence:
+`benchmarks/results/2026-07-23-gfx1151-laguna-dflash-drafter-b4.json`.
 
 ### D2 — Target hidden and draft-context ownership
 

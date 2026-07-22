@@ -441,7 +441,7 @@ def gate_laguna_dflash_attention_bf16(
         raise ValueError("gate_logits must have shape [rows, num_attention_heads]")
     for name, tensor, dtype in (
         ("normalized_query", normalized_query, DType.BF16),
-        ("attention_context", attention_context, DType.BF16),
+        ("attention_context", attention_context, DType.FP32),
         ("gate_logits", gate_logits, DType.FP32),
         ("gated_context", gated_context, DType.BF16),
     ):

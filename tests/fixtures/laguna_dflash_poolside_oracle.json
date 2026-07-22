@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "description": "Poolside llama.cpp Laguna DFlash first-block oracle for oracle_no_thinking",
+  "prompt_case": "oracle_no_thinking",
+  "prompt_tokens": 55,
+  "root_token_id": 94557,
+  "root_position": 55,
+  "candidate_positions": 15,
+  "admitted_candidate_budget": 4,
+  "top_k": 3,
+  "candidate_topk_token_ids": [
+    [3505, 32121, 8095],
+    [3011, 2607, 19775],
+    [515, 6043, 2084],
+    [365, 2407, 405],
+    [2291, 2200, 365],
+    [2291, 10723, 365],
+    [365, 1687, 515],
+    [1687, 462, 365],
+    [948, 462, 2200],
+    [948, 1927, 340],
+    [948, 462, 83],
+    [948, 2799, 462],
+    [2799, 24446, 395],
+    [24446, 2799, 395],
+    [24446, 1927, 1687]
+  ],
+  "candidate_probabilities": [
+    0.997,
+    0.001,
+    0.0
+  ],
+  "candidate_logits": [
+    23.496910095214844,
+    16.604610443115234,
+    15.814620971679688
+  ],
+  "provenance": {
+    "hardware": "AMD Radeon 8060S gfx1151",
+    "poolside_llama_cpp_commit": "04b2b72cb54048ead292884adbe11f284e3ec950",
+    "target_repo": "poolside/Laguna-S-2.1-GGUF",
+    "target_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "drafter_repo": "poolside/Laguna-S-2.1-DFlash",
+    "drafter_revision": "b0486d1586daa0d56435c508108171fc1c8daff9",
+    "drafter_safetensors_sha256": "f24f08781c697c19952c02fb2e7e9bdf2071b79a711c2a44b836a74b9b62a1f4",
+    "matched_local_gguf_sha256": "ad3d1efffa8763e11e55baf6fedddcbf9138b3077928b55e5da6625745808bd2",
+    "note": "The matched GGUF was converted from the pinned safetensors with the Poolside fork because the published GGUF tensor payload differs from the published safetensors payload. IDs/probabilities came from Poolside debug candidate rows; first-row logits came from an eval-callback readback of result_output. hipEngine admits B<=4, whose 12 top-k IDs match exactly. B15 remains diagnostic-only: Poolside-tap comparison reached 12/15 top-1, max KL 0.05525, so B7/B15 are not promoted."
+  },
+  "poolside_command": "GPU_MAX_HW_QUEUES=1 llama-server -m laguna-s-2.1-Q4_K_M.gguf -md laguna-s-2.1-DFlash-BF16-from-b048.gguf --spec-type draft-dflash --spec-draft-n-max 15 --spec-draft-n-min 0 --spec-draft-p-min 0 -ctkd bf16 -ctvd bf16 -fa off -c 4096 -ngl 999 --parallel 1 --no-warmup --no-repack --no-mmap --cache-ram 0 -lv 5"
+}

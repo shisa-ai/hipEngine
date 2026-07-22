@@ -275,6 +275,10 @@ def test_laguna_kv_owner_allocates_12_global_36_bounded_rings_and_tears_down() -
     assert cache.pending_positions == (2, 3, 4)
     with pytest.raises(RuntimeError, match="bulk positions are pending"):
         cache.prepare_position(2)
+    cache.discard_rows()
+    assert cache.position == 1
+    assert cache.pending_positions == ()
+    cache.prepare_rows((2, 3, 4))
     cache.commit_rows()
     assert cache.position == 4
     assert cache.pending_positions == ()
