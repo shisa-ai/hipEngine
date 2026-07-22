@@ -175055,3 +175055,28 @@ threads with 128 SGPR, 512 B LDS, and zero scratch. Raw trace stays under
 `/tmp/laguna-compact-pair-trace`. This is the correctness/dispatch unit only;
 full-model balanced timing remains the next LPF-2 action and no performance
 claim or default promotion is made.
+
+## 2026-07-23 — Add balanced Laguna LPF-2 full-model gate
+
+Added `scripts/laguna_moe_prefill_bench.py` before measuring the compact-pair
+candidate. The harness keeps one resident target and the retained LPF-1 tiled
+F16 path, alternates `direct`/`compact_pair` ordering across rows
+16/32/55/64/122/128 and repetitions, synchronizes each complete one-chunk
+prefill through first-token projection, and excludes model load. Promotion
+requires every shape's candidate median to be strictly faster, all repeated
+next-token IDs to agree, and tracked ownership to recover exactly; a separate
+canonical category artifact remains mandatory before any default change.
+
+Validation:
+
+```bash
+uv run pytest -q tests/test_laguna_moe_prefill_bench.py
+# 3 passed
+uvx ruff check scripts/laguna_moe_prefill_bench.py \
+  tests/test_laguna_moe_prefill_bench.py
+python3 -m compileall -q scripts/laguna_moe_prefill_bench.py
+uv run python scripts/laguna_moe_prefill_bench.py --help
+# clean
+```
+
+No performance measurement or claim is made in this harness-only unit.
