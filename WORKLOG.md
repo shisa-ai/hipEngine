@@ -173101,6 +173101,15 @@ F401/F821/F841 findings excluded), registry and seven canonical CPU-fixture
 smokes, smoke build planning, the cached paged-attention HIP smoke
 (`max_abs=3.73e-08`), lineage reporting, and `git diff --check` pass. The four
 external lineage DRIFT entries are unchanged historical reference-repo drift;
-no external code was copied and no kernel body changed. A clean committed A3/A4
-protocol rerun remains the next task; this unit makes no default or performance
-claim.
+no external code was copied and no kernel body changed.
+
+Post-commit clean-source closure at `29a0c75d` repeated both task-local W7900
+commands above with output paths suffixed `-clean-29a0c75d.json`. The state
+oracle passed exact tokens, **560/560** captured layer comparisons, all
+Conv/GDN/live-BF16-KV checkpoints, and final state. The production response gate
+passed **12/12** rows and **360/360** generated IDs, including `fixed-0011`
+**48/48** with the authoritative 9710 transition token; all SLO, ownership, and
+memory gates passed (`54.505390` exact SLO-goodput tok/s, diagnostic only).
+These clean runs close the width-transition correctness task. A fresh complete
+A3/A4 promotion rerun remains the next task; this unit makes no default or
+performance claim.
