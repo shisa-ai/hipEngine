@@ -174621,3 +174621,36 @@ rocprofv3 --kernel-trace --output-format csv \
   --max-new-tokens 5
 # rc=0; intended row-argmax/accept/global+SWA commit kernels observed
 ```
+
+## 2026-07-23 — Add Laguna DFlash category economics harness
+
+Added `scripts/laguna_dflash_category_bench.py` for the D4 gate. It keeps one
+resident target and matched pinned B4 drafter, alternates true no-DFlash AR and
+DFlash in the same process, and runs two repetitions of all 10 committed
+`mtpbench-code-general-ja` prompts. The artifact carries full/train/four-heldout
+and per-category weighted decode/TTFT/e2e metrics, acceptance, target
+rows/output, synchronized cycle wall and proposal/verify/residual splits,
+exact generated IDs, finite/state/address gates, tracked memory, fingerprints,
+and exact command/provenance. AR uses the retained exact bulk prefill; DFlash
+uses the current serial hidden-capture seed, deliberately exposing its TTFT cost
+for the deferred prefill review rather than hiding it behind a derived control.
+
+The drafter now has a request-state reset that retains weights and stable
+addresses, and each resident cycle reports host phase timings. Final draft
+append work is synchronized by the benchmark before cycle wall stops. Promotion
+fails closed unless the canonical suite is exact/finite/state-aligned and
+weighted DFlash decode exceeds true AR by more than 1.10x.
+
+Validation:
+
+```bash
+uv run pytest -q tests/test_laguna_dflash_category_bench.py \
+  tests/test_laguna_dflash_cycle.py tests/test_laguna_dflash_resident.py \
+  tests/test_laguna_dflash_drafter.py tests/test_laguna_dflash_reference.py \
+  tests/test_laguna_dflash_metadata.py
+# 29 passed
+uvx ruff check scripts/laguna_dflash_category_bench.py \
+  hipengine/speculative/laguna_dflash.py \
+  tests/test_laguna_dflash_category_bench.py tests/test_laguna_dflash_cycle.py
+# clean
+```
