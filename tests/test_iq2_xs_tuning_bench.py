@@ -27,6 +27,10 @@ def test_production_defaults_and_raw_byte_accounting() -> None:
         1024,
         10,
     )
+    assert module.parse_decode_threads(args.decode_threads) == (256,)
+    assert module.parse_decode_threads("64,128,256") == (64, 128, 256)
+    with pytest.raises(ValueError, match="decode threads"):
+        module.parse_decode_threads("96,256")
     single = module.raw_weight_bytes_per_dispatch(
         rows=10,
         in_features=3072,

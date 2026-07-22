@@ -1902,6 +1902,17 @@ and grouped prefill remain BF16-bit exact. The four kernels stay scratch-free;
 their increased VGPR40/64/80/88 allocation is accepted because every measured
 routing/size case wins. This remains primitive, not model-level, evidence.
 
+The retained decode geometry extension is
+[`2026-07-22-gpu1-iq2-xs-pair16-local64.json`](results/2026-07-22-gpu1-iq2-xs-pair16-local64.json).
+Pairing adjacent shared-scale selectors and selecting local64 moves the
+branchless-local256 rotating single/dual `49.200/78.784 -> 33.296/56.922 us`
+(-32.33/-27.75%); hot/repeated controls improve 16.40-28.10%. The full E256
+geometry sweep is BF16-bit exact to local256. Task32 regressed every matched
+pair16 leaf by 10.46-31.20% and was removed. Pair16 grouped prefill was also
+restored to group8 because short/sparse rows regressed up to 5.25%, despite
+large populated-expert scalar wins. The retained decode leaves are local64,
+VGPR64/96, LDS512B, and scratch0. This is synthetic primitive evidence.
+
 ## Update Checklist
 
 1. Choose one protocol tuple and record the old artifact before running.

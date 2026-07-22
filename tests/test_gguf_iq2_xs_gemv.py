@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+import inspect
 import os
 import re
 from pathlib import Path
@@ -258,12 +259,27 @@ def test_iq2_xs_grid_supports_exact_branchless_magnitude_decoder() -> None:
     assert [8 + 17 * code + (code >> 1) for code in range(3)] == [8, 25, 43]
     assert "iq2_xs_signed_magnitude" in direct_source
     assert "8U + 17U * code + (code >> 1)" in direct_source
+    assert "iq2_xs_pair16_dot" in direct_source
+    assert "const int pairs16 = in_features / 16" in direct_source
+    assert "const int quads32 = in_features / 32" not in direct_source
     nested = "code == 0U ? 8.0f"
     assert nested not in direct_source
     assert nested not in prefill_source
 
 
 def test_iq2_xs_registry_build_and_raw_pointer_contract() -> None:
+    assert (
+        inspect.signature(gguf_iq2_xs_selected_gemv_bf16_bf16_out)
+        .parameters["threads"]
+        .default
+        == 64
+    )
+    assert (
+        inspect.signature(gguf_iq2_xs_selected_dual_silu_gemv_bf16_bf16_out)
+        .parameters["threads"]
+        .default
+        == 64
+    )
     assert resolve(
         backend="hip_gfx1100",
         layer="moe_linear",
