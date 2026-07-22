@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import base64
+import struct
+
 import pytest
 
 from scripts.laguna_prefill_profile import (
@@ -59,8 +62,17 @@ def test_routing_replay_summary_records_per_expert_counts_and_padding() -> None:
     assert summary["compact_padding_lanes"] == 8
     assert summary["compact_padding_overhead_ratio"] == pytest.approx(2 / 3)
     assert summary["max_expert_lanes"] == 4
-    assert summary["layers"]["1"]["per_expert_counts"] == [[0, 2], [1, 1], [2, 3]]
-    assert summary["layers"]["2"]["per_expert_counts"] == [[1, 4], [3, 2]]
+    assert summary["layers"]["1"]["per_expert_counts_encoding"] == (
+        "uint16_le_dense_expert_id_order_base64"
+    )
+    assert struct.unpack(
+        "<4H",
+        base64.b64decode(summary["layers"]["1"]["per_expert_counts_u16_le_base64"]),
+    ) == (2, 1, 3, 0)
+    assert struct.unpack(
+        "<4H",
+        base64.b64decode(summary["layers"]["2"]["per_expert_counts_u16_le_base64"]),
+    ) == (0, 4, 0, 2)
     assert len(summary["selected_ids_sha256"]) == 64
 
 
