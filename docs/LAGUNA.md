@@ -1753,6 +1753,16 @@ Acceptance: layer hidden states, final hidden, logits/top-k, and all 15 possible
 candidate positions meet the agreed oracle tolerances; gfx1151 trace shows the
 intended BF16 dense/SWA/gate and Q6 LM-head kernels.
 
+The correctness-first D1 reference boundary is implemented as of 2026-07-22.
+The NumPy oracle independently normalizes every target tap before concat/FC,
+keeps projected context as layer-local K/V input, applies causal 512-token SWA
+across committed context plus the root/mask block, runs the softplus per-head
+gate and dense SwiGLU residual order, and emits target-head logits for query rows
+only. The GPU boundary now has an exact unfused per-tap normalization/concat
+path and a reusable BF16-context/F32-gate softplus helper; fused QKV row views
+feed the existing K/V ABI. D1 remains open for the resident six-layer runner,
+all-15-row Poolside intermediate/logit parity, and profiler evidence.
+
 ### D2 — Target hidden and draft-context ownership
 
 Wire the target runner to capture post-layer depths `2,11,20,30,39,48` during

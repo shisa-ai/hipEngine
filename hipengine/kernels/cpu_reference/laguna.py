@@ -114,6 +114,16 @@ class LagunaAttentionResult:
 
 
 @dataclass(frozen=True)
+class LagunaDFlashProjectionResult:
+    """Intermediates from Poolside's auxiliary-tap fusion boundary."""
+
+    normalized_taps: tuple[np.ndarray, ...]
+    concatenated: np.ndarray
+    projected: np.ndarray
+    normalized: np.ndarray
+
+
+@dataclass(frozen=True)
 class LagunaSparseMoEResult:
     routing: LagunaRoutingResult
     routed_output_unscaled: np.ndarray
@@ -290,6 +300,60 @@ def laguna_head_rmsnorm(
     return rmsnorm(value, norm_weight, eps=float(eps)).astype(np.float32)
 
 
+def laguna_dflash_project_target_hidden(
+    target_hidden_taps: tuple[ArrayLike, ...] | list[ArrayLike],
+    auxiliary_norm_weights: tuple[ArrayLike, ...] | list[ArrayLike],
+    projection_weight: ArrayLike,
+    hidden_norm_weight: ArrayLike,
+    *,
+    eps: float = 1.0e-6,
+) -> LagunaDFlashProjectionResult:
+    """Normalize six target taps independently, concatenate, then run FC+norm."""
+
+    taps = tuple(np.asarray(tap, dtype=np.float32) for tap in target_hidden_taps)
+    norms = tuple(np.asarray(weight, dtype=np.float32) for weight in auxiliary_norm_weights)
+    if not taps:
+        raise ValueError("Laguna DFlash requires at least one target hidden tap")
+    if len(norms) != len(taps):
+        raise ValueError("one auxiliary norm weight is required for each target hidden tap")
+    if taps[0].ndim != 2:
+        raise ValueError("target hidden taps must have shape [rows, target_hidden]")
+    rows, target_hidden = taps[0].shape
+    if rows <= 0 or target_hidden <= 0:
+        raise ValueError("target hidden tap dimensions must be positive")
+    for index, (tap, weight) in enumerate(zip(taps, norms, strict=True)):
+        if tap.shape != (rows, target_hidden):
+            raise ValueError(
+                f"target hidden tap {index} must have shape {(rows, target_hidden)}"
+            )
+        if weight.shape != (target_hidden,):
+            raise ValueError(
+                f"auxiliary norm weight {index} must have shape {(target_hidden,)}"
+            )
+
+    normalized_taps = tuple(
+        laguna_head_rmsnorm(tap, weight, eps=eps)
+        for tap, weight in zip(taps, norms, strict=True)
+    )
+    concatenated = np.concatenate(normalized_taps, axis=1).astype(np.float32)
+    projection = np.asarray(projection_weight, dtype=np.float32)
+    if projection.ndim != 2 or projection.shape[1] != concatenated.shape[1]:
+        raise ValueError(
+            "projection_weight must have shape [draft_hidden, tap_count * target_hidden]"
+        )
+    hidden_norm = np.asarray(hidden_norm_weight, dtype=np.float32)
+    if hidden_norm.shape != (projection.shape[0],):
+        raise ValueError("hidden_norm_weight must have shape [draft_hidden]")
+    projected = linear(concatenated, projection).astype(np.float32)
+    normalized = laguna_head_rmsnorm(projected, hidden_norm, eps=eps)
+    return LagunaDFlashProjectionResult(
+        normalized_taps=normalized_taps,
+        concatenated=concatenated,
+        projected=projected,
+        normalized=normalized,
+    )
+
+
 def laguna_attention_forward(
     hidden: ArrayLike,
     weights: LagunaAttentionWeights,
@@ -410,6 +474,65 @@ def laguna_attention_forward(
         context=attention,
         gated_context=gated,
         output=output,
+    )
+
+
+def laguna_dflash_attention_forward(
+    query_hidden: ArrayLike,
+    projected_context: ArrayLike,
+    weights: LagunaAttentionWeights,
+    config: LagunaAttentionConfig,
+    *,
+    context_positions: ArrayLike,
+    query_positions: ArrayLike,
+    eps: float = 1.0e-6,
+) -> LagunaAttentionResult:
+    """Run one Laguna draft attention layer over context K/V plus causal queries.
+
+    DFlash's projected target context is used only to produce layer-local K/V;
+    query rows begin from target-owned root/mask embeddings and flow through the
+    six draft layers. Concatenating context and query rows and taking only the
+    query outputs is the exact unfused reference for that boundary.
+    """
+
+    query = np.asarray(query_hidden, dtype=np.float32)
+    context = np.asarray(projected_context, dtype=np.float32)
+    if query.ndim != 2 or context.ndim != 2:
+        raise ValueError("DFlash query/context hidden must be rank-2")
+    if query.shape[0] <= 0:
+        raise ValueError("DFlash query block must contain at least one row")
+    if query.shape[1] != context.shape[1]:
+        raise ValueError("DFlash query/context hidden widths must match")
+    context_pos = np.asarray(context_positions, dtype=np.int64)
+    query_pos = np.asarray(query_positions, dtype=np.int64)
+    if context_pos.shape != (context.shape[0],):
+        raise ValueError("context_positions must match projected context rows")
+    if query_pos.shape != (query.shape[0],):
+        raise ValueError("query_positions must match query rows")
+    if context_pos.size and query_pos.size and int(context_pos.max()) >= int(query_pos.min()):
+        raise ValueError("DFlash committed context positions must precede query positions")
+    if query_pos.size > 1 and not np.all(np.diff(query_pos) == 1):
+        raise ValueError("DFlash query positions must be consecutive")
+
+    combined = np.concatenate((context, query), axis=0)
+    combined_positions = np.concatenate((context_pos, query_pos))
+    full = laguna_attention_forward(
+        combined,
+        weights,
+        config,
+        positions=combined_positions,
+        eps=eps,
+    )
+    start = context.shape[0]
+    return LagunaAttentionResult(
+        normalized=full.normalized[start:].copy(),
+        query_normalized=full.query_normalized[start:].copy(),
+        key_normalized=full.key_normalized[start:].copy(),
+        value=full.value[start:].copy(),
+        gate_logits=full.gate_logits[start:].copy(),
+        context=full.context[start:].copy(),
+        gated_context=full.gated_context[start:].copy(),
+        output=full.output[start:].copy(),
     )
 
 
@@ -545,6 +668,89 @@ def laguna_layer_forward(
         ffn_output=ffn_output,
         hidden=output,
         sparse_moe=sparse_result,
+    )
+
+
+def laguna_dflash_layer_forward(
+    query_hidden: ArrayLike,
+    projected_context: ArrayLike,
+    layer: LagunaReferenceLayer,
+    *,
+    context_positions: ArrayLike,
+    query_positions: ArrayLike,
+    eps: float = 1.0e-6,
+) -> LagunaLayerResult:
+    """Run one dense Laguna DFlash decoder layer in exact residual order."""
+
+    x = np.asarray(query_hidden, dtype=np.float32)
+    attention = laguna_dflash_attention_forward(
+        x,
+        projected_context,
+        layer.weights.attention,
+        layer.config,
+        context_positions=context_positions,
+        query_positions=query_positions,
+        eps=eps,
+    )
+    post_attention = (x + attention.output).astype(np.float32)
+    ffn_normalized = laguna_head_rmsnorm(
+        post_attention,
+        layer.weights.ffn_norm,
+        eps=eps,
+    )
+    if not isinstance(layer.weights.mlp, LagunaDenseFFNWeights):
+        raise TypeError("Laguna DFlash draft layers require dense FFN weights")
+    ffn_output = laguna_dense_ffn_forward(ffn_normalized, layer.weights.mlp)
+    return LagunaLayerResult(
+        attention=attention,
+        post_attention=post_attention,
+        ffn_normalized=ffn_normalized,
+        ffn_output=ffn_output,
+        hidden=(post_attention + ffn_output).astype(np.float32),
+        sparse_moe=None,
+    )
+
+
+def laguna_dflash_model_forward(
+    query_hidden: ArrayLike,
+    projected_context: ArrayLike,
+    layers: tuple[LagunaReferenceLayer, ...] | list[LagunaReferenceLayer],
+    final_norm_weight: ArrayLike,
+    output_weight: ArrayLike,
+    *,
+    context_positions: ArrayLike,
+    query_positions: ArrayLike,
+    eps: float = 1.0e-6,
+) -> LagunaModelResult:
+    """Run standalone Laguna DFlash draft layers and target-owned output head."""
+
+    hidden = np.asarray(query_hidden, dtype=np.float32)
+    context = np.asarray(projected_context, dtype=np.float32)
+    if hidden.ndim != 2 or context.ndim != 2 or hidden.shape[1] != context.shape[1]:
+        raise ValueError("DFlash query/context must be rank-2 with matching hidden width")
+    hidden_states: list[np.ndarray] = [hidden.copy()]
+    layer_results: list[LagunaLayerResult] = []
+    for layer in layers:
+        result = laguna_dflash_layer_forward(
+            hidden,
+            context,
+            layer,
+            context_positions=context_positions,
+            query_positions=query_positions,
+            eps=eps,
+        )
+        layer_results.append(result)
+        hidden = result.hidden
+        hidden_states.append(hidden.copy())
+    final_hidden = laguna_head_rmsnorm(hidden, final_norm_weight, eps=eps)
+    output = np.asarray(output_weight, dtype=np.float32)
+    if output.ndim != 2 or output.shape[1] != final_hidden.shape[1]:
+        raise ValueError("output_weight must have shape [vocab, draft_hidden]")
+    return LagunaModelResult(
+        hidden_states=tuple(hidden_states),
+        layers=tuple(layer_results),
+        final_hidden=final_hidden,
+        logits=linear(final_hidden, output).astype(np.float32),
     )
 
 
