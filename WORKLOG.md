@@ -174218,3 +174218,34 @@ bottleneck. Updated `docs/LAGUNA.md` and `docs/KERNELS.md`. Task #34 is complete
 for its declared 4K-initial multi-length/chunk-boundary and B+1 surface; the
 separate L8 512/1K/4K context progression and graph replay remain later L9/L10
 work, not inferred from this gate.
+
+## 2026-07-22 — Add fail-closed Laguna target AR category harness
+
+Added `scripts/laguna_target_ar_bench.py` plus CPU-only contract tests. The
+harness uses all ten frozen `mtpbench-code-general-ja` prompts across
+`code`/`general_en`/`general_ja`/`mixed_ja_en`, balanced serial/bulk order, two
+repetitions, and predeclared 16/32 output horizons. It records synchronized TTFT,
+weighted prefill/decode/e2e rates, exact generated IDs, full command/model/cache/
+repo/platform provenance, tracked/device memory, category rollups, and the
+Poolside first-token distribution gate. Promotion is fail-closed on exact
+serial/bulk IDs, same-mode repeat determinism, lifecycle recovery, the accepted
+full-logits/hidden/KV bulk artifact, suite-level speedups, and every category.
+Model load is recorded but excluded from target throughput.
+
+RED was the interrupted/incomplete harness (`SyntaxError: '{' was never closed`)
+and missing promotion contract. GREEN:
+
+```bash
+uv run pytest -q tests/test_laguna_target_ar_bench.py
+# 3 passed
+uvx ruff check scripts/laguna_target_ar_bench.py \
+  tests/test_laguna_target_ar_bench.py
+python3 -m compileall -q scripts/laguna_target_ar_bench.py \
+  tests/test_laguna_target_ar_bench.py
+uv run python scripts/laguna_target_ar_bench.py --help
+# clean / successful
+```
+
+This unit adds the benchmark protocol only; no Laguna AR performance claim is
+made until the committed harness runs from a clean tracked revision and emits
+the retained artifact.
