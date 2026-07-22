@@ -173932,3 +173932,10 @@ uv run python scripts/laguna_poolside_v1_e2e.py --help
 
 Task #24 remains in progress until the complete blocking/streaming run emits and
 validates a committed artifact.
+
+The first retained-run attempt exited before loading weights: the harness asked
+`LLM._text_generator.inner` for the model renderer while the public generator
+was still lazy and therefore `None`. The fix resolves the generator through the
+public `LLM.count_tokens("")` tokenizer surface before capabilities/rendering;
+this loads metadata/tokenizer only, not resident weights. No model request or
+measurement was lost.

@@ -452,6 +452,9 @@ def run_gate(
             llm=llm,
         )
     )
+    # Resolve the lazy public generator before querying model-owned chat
+    # capabilities or rendering the first prompt. This does not load weights.
+    llm.count_tokens("")
     started = time.perf_counter()
     results: list[dict[str, Any]] = []
     capabilities: dict[str, Any] = {}
