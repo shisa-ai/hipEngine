@@ -41,6 +41,7 @@ from hipengine.loading.laguna_gguf_materialize import (
     LAYOUT_DENSE_F32,
     LAYOUT_Q4_K_PACK8,
     LAYOUT_RAW_GGUF,
+    LagunaGGUFRepackedCache,
     LagunaGGUFResidentLayerWeights,
     LagunaGGUFResidentWeights,
     materialize_laguna_gguf_weights,
@@ -495,6 +496,8 @@ class LagunaGGUFResidentSession:
         require_cached_build: bool = False,
         available_bytes: int | None = None,
         progress: Callable | None = None,
+        repacked_cache: LagunaGGUFRepackedCache | str | Path | None = None,
+        model_sha256: str | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -517,6 +520,12 @@ class LagunaGGUFResidentSession:
         if self.context_length <= 0 or self.context_length > _INITIAL_MAX_CONTEXT:
             raise ValueError(
                 f"initial Laguna eager context_length must be within [1, {_INITIAL_MAX_CONTEXT}]"
+            )
+        if resident_weights is not None and (
+            repacked_cache is not None or model_sha256 is not None
+        ):
+            raise ValueError(
+                "repacked_cache/model_sha256 apply only when the session owns model loading"
             )
         try:
             if resident_weights is None:
@@ -547,6 +556,8 @@ class LagunaGGUFResidentSession:
                     runtime=self.runtime,
                     backend=self.backend,
                     progress=progress,
+                    repacked_cache=repacked_cache,
+                    repacked_cache_source_sha256=model_sha256,
                 )
             else:
                 self.weights = resident_weights

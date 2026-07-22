@@ -10,7 +10,9 @@ from hipengine.core.hip import HipMemcpyKind
 from hipengine.loading.laguna_gguf_materialize import (
     _materialize_spec,
     _spec_for_tensor,
+    build_laguna_repacked_cache,
     materialize_laguna_gguf_weights,
+    open_laguna_repacked_cache,
 )
 from hipengine.quant.gguf import GGMLQuantizationType
 from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_pack8, repack_gguf_q4_k_tile16
@@ -161,6 +163,7 @@ def test_laguna_materialize_profile_separates_repack_allocation_and_upload() -> 
         assert profile.slot_path == "layers.0.ffn_gate"
         assert profile.tensor_name == "q4_pack8"
         assert profile.layout == "q4_k_pack8"
+        assert profile.source_kind == "gguf"
         assert profile.source_nbytes == raw.nbytes
         assert profile.resident_nbytes == weight.resident_nbytes
         assert profile.allocation_count == 3
@@ -224,6 +227,66 @@ def test_laguna_materialize_spec_frees_partial_pack8_allocations_on_failure() ->
         )
 
     assert runtime.freed == [0x1000]
+    assert runtime.buffers == {}
+
+
+def test_laguna_repacked_cache_reloads_exact_replacement_payloads(tmp_path) -> None:
+    output_norm = np.arange(3_072, dtype=np.float32)
+    q4_pack = np.zeros((1_024, 1_728), dtype=np.uint8)
+    reader = FakeReader(
+        {
+            "output_norm.weight": output_norm,
+            "blk.1.ffn_gate_shexp.weight": q4_pack,
+        }
+    )
+    selected = ("root.output_norm", "layers.1.ffn_gate_shexp")
+    cache_path = tmp_path / "laguna-repacked-v1"
+
+    manifest = build_laguna_repacked_cache(
+        reader,
+        cache_path,
+        selected_slots=selected,
+        source_sha256="synthetic-sha256",
+    )
+    assert manifest["schema"] == 1
+    assert manifest["source"]["sha256"] == "synthetic-sha256"
+    assert set(manifest["entries"]) == {"layers.1.ffn_gate_shexp"}
+
+    # Only the direct F32 source remains available. Cacheable GGUF payloads must
+    # reload from their versioned replacement artifacts rather than source data.
+    reader.arrays = {"output_norm.weight": output_norm}
+    with pytest.raises(ValueError, match="SHA-256"):
+        open_laguna_repacked_cache(cache_path, reader, source_sha256="wrong-sha256")
+    open_laguna_repacked_cache(
+        cache_path,
+        reader,
+        source_sha256="synthetic-sha256",
+    )
+    runtime = FakeRuntime()
+    profiles = []
+    resident = materialize_laguna_gguf_weights(
+        reader,
+        selected_slots=selected,
+        context_length=4_096,
+        available_bytes=120 * 2**30,
+        runtime=runtime,
+        backend="hip_gfx1151",
+        repacked_cache=cache_path,
+        repacked_cache_source_sha256="synthetic-sha256",
+        profile=profiles.append,
+    )
+    try:
+        assert _device_bytes(resident.root("output_norm"), runtime, "raw") == output_norm.tobytes()
+        expected_pack = repack_gguf_q4_k_pack8(q4_pack)
+        cached_pack = resident.layer(1).weight("ffn_gate_shexp")
+        assert [profile.source_kind for profile in profiles] == ["gguf", "repacked_cache"]
+        assert profiles[1].repack_seconds == 0.0
+        for name in ("qweight", "scales", "mins"):
+            assert (
+                _device_bytes(cached_pack, runtime, name) == getattr(expected_pack, name).tobytes()
+            )
+    finally:
+        resident.free(runtime=runtime)
     assert runtime.buffers == {}
 
 

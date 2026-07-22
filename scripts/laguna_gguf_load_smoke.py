@@ -15,10 +15,12 @@ from typing import Any
 
 from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.memory import memory_stats, reset_memory_stats
+from hipengine.loading.gguf import GGUFReader
 from hipengine.loading.laguna_gguf_materialize import (
     LagunaGGUFMaterializationProfile,
     LagunaGGUFResidentWeights,
     materialize_laguna_gguf_weights,
+    open_laguna_repacked_cache,
 )
 
 
@@ -43,6 +45,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--model-sha256",
         help="precomputed model SHA-256 provenance (the loader does not rehash 70 GiB)",
+    )
+    parser.add_argument(
+        "--repacked-cache",
+        type=Path,
+        help="validated versioned replacement-layout cache built by laguna_repacked_cache.py",
     )
     parser.add_argument(
         "--sysfs-device",
@@ -173,8 +180,10 @@ def _profile_summary(
         "major_faults",
     )
     grouped: dict[str, list[LagunaGGUFMaterializationProfile]] = defaultdict(list)
+    grouped_source: dict[str, list[LagunaGGUFMaterializationProfile]] = defaultdict(list)
     for profile in profiles:
         grouped[profile.layout].append(profile)
+        grouped_source[profile.source_kind].append(profile)
 
     def summarize(rows: list[LagunaGGUFMaterializationProfile]) -> dict[str, Any]:
         result: dict[str, Any] = {"tensor_count": len(rows)}
@@ -201,11 +210,15 @@ def _profile_summary(
     return {
         "overall": summarize(profiles),
         "by_layout": {layout: summarize(rows) for layout, rows in sorted(grouped.items())},
+        "by_source_kind": {
+            source_kind: summarize(rows) for source_kind, rows in sorted(grouped_source.items())
+        },
         "slowest_tensors": [
             {
                 "slot_path": row.slot_path,
                 "tensor_name": row.tensor_name,
                 "layout": row.layout,
+                "source_kind": row.source_kind,
                 "source_nbytes": row.source_nbytes,
                 "resident_nbytes": row.resident_nbytes,
                 "total_seconds": row.total_seconds,
@@ -231,6 +244,16 @@ def main() -> int:
         raise SystemExit(f"model is not a file: {args.model}")
 
     runtime = get_hip_runtime()
+    reader = GGUFReader(args.model)
+    repacked_cache = (
+        open_laguna_repacked_cache(
+            args.repacked_cache,
+            reader,
+            source_sha256=args.model_sha256,
+        )
+        if args.repacked_cache is not None
+        else None
+    )
     sysfs_device = _detect_sysfs_device(args.sysfs_device)
     reset_memory_stats()
     before = _snapshot(runtime, sysfs_device)
@@ -277,13 +300,14 @@ def main() -> int:
 
     try:
         resident = materialize_laguna_gguf_weights(
-            args.model,
+            reader,
             context_length=args.context_length,
             available_bytes=int(before["hip_free_bytes"]),
             runtime=runtime,
             backend=args.backend,
             progress=progress,
             profile=record_profile if args.profile_tensors else None,
+            repacked_cache=repacked_cache,
         )
         loaded = _snapshot(runtime, sysfs_device)
         for key in peak:
@@ -325,6 +349,17 @@ def main() -> int:
                 "sha256": args.model_sha256,
             },
             "backend": args.backend,
+            "repacked_cache": (
+                None
+                if repacked_cache is None
+                else {
+                    "path": str(repacked_cache.path),
+                    "layout_version": repacked_cache.manifest["layout_version"],
+                    "plan_fingerprint": repacked_cache.plan_fingerprint,
+                    "entry_count": repacked_cache.manifest["entry_count"],
+                    "resident_nbytes": repacked_cache.manifest["resident_nbytes"],
+                }
+            ),
             "cache_state_declared": args.cache_state,
             "cache_state_observed": _observed_cache_state(read_bytes, source_nbytes),
             "context_length": args.context_length,
