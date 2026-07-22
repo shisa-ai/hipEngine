@@ -100,6 +100,27 @@ def _finite(values: Iterable[float]) -> bool:
     return all(math.isfinite(float(value)) for value in values)
 
 
+def _fixed_horizon_state_aligned(
+    *,
+    target_position: int,
+    drafter_context_tokens: int,
+    expected_prediction_position: int,
+) -> bool:
+    """Accept either valid fixed-horizon commit boundary.
+
+    A correction/bonus remains predicted but uncommitted at ``expected``. When
+    the remaining-output limit suppresses that bonus, its accepted final row is
+    already committed at ``expected + 1``. Both own the same exact visible
+    output, and the drafter must align to the target in either case.
+    """
+
+    return bool(
+        int(target_position)
+        in (int(expected_prediction_position), int(expected_prediction_position) + 1)
+        and int(drafter_context_tokens) == int(target_position) + 1
+    )
+
+
 def _reset_request(
     target: LagunaGGUFResidentSession,
     drafter: LagunaDFlashResidentDrafter,
@@ -222,9 +243,10 @@ def _run_dflash(
     target_rows = sum(int(row["target_verify_rows"]) for row in cycle_rows)
     proposed = drafter.candidate_budget * len(cycle_rows)
     expected_position = len(prompt["token_ids"]) + output_tokens - 2
-    state_aligned = bool(
-        target.position == expected_position
-        and drafter.committed_context_tokens == target.position + 1
+    state_aligned = _fixed_horizon_state_aligned(
+        target_position=target.position,
+        drafter_context_tokens=drafter.committed_context_tokens,
+        expected_prediction_position=expected_position,
     )
     return {
         "mode": "dflash",
@@ -269,6 +291,7 @@ def _run_dflash(
         "target_position": target.position,
         "expected_target_position": expected_position,
         "drafter_context_tokens": drafter.committed_context_tokens,
+        "final_output_committed": target.position == expected_position + 1,
         "state_aligned": state_aligned,
     }
 

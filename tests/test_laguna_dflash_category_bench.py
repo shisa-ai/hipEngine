@@ -5,6 +5,7 @@ import pytest
 from scripts.laguna_dflash_category_bench import (
     _aggregate_scope,
     _correctness,
+    _fixed_horizon_state_aligned,
     _pair_rows,
     _promotion_gate,
 )
@@ -100,6 +101,29 @@ def _pairs(*, spec_decode_seconds: float = 0.8) -> list[dict[str, object]]:
         peak_allocated_bytes=100,
         allocated_after_load_bytes=90,
         backend="hip_gfx1151",
+    )
+
+
+def test_laguna_dflash_fixed_horizon_accepts_prediction_or_committed_boundary() -> None:
+    assert _fixed_horizon_state_aligned(
+        target_position=30,
+        drafter_context_tokens=31,
+        expected_prediction_position=30,
+    )
+    assert _fixed_horizon_state_aligned(
+        target_position=31,
+        drafter_context_tokens=32,
+        expected_prediction_position=30,
+    )
+    assert not _fixed_horizon_state_aligned(
+        target_position=32,
+        drafter_context_tokens=33,
+        expected_prediction_position=30,
+    )
+    assert not _fixed_horizon_state_aligned(
+        target_position=31,
+        drafter_context_tokens=31,
+        expected_prediction_position=30,
     )
 
 
