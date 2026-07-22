@@ -77,9 +77,9 @@ def test_laguna_tiny_pack8_and_t16_gpu_payloads_match_host_repack() -> None:
         )
         try:
             for name in names:
-                assert _readback(weight.allocation(name), runtime) == getattr(
-                    expected, name
-                ).tobytes()
+                assert (
+                    _readback(weight.allocation(name), runtime) == getattr(expected, name).tobytes()
+                )
         finally:
             weight.free(runtime=runtime)
 
@@ -97,6 +97,7 @@ def test_completed_laguna_selected_slots_materialize_and_recover_gpu_memory() ->
     free_before, total_before = runtime.mem_get_info()
     reset_memory_stats()
     stats_before = memory_stats()
+    profiles = []
 
     resident = materialize_laguna_gguf_weights(
         reader,
@@ -105,37 +106,48 @@ def test_completed_laguna_selected_slots_materialize_and_recover_gpu_memory() ->
         available_bytes=free_before,
         runtime=runtime,
         backend="hip_gfx1151",
+        profile=profiles.append,
     )
     free_loaded, total_loaded = runtime.mem_get_info()
     stats_loaded = memory_stats()
     try:
         assert total_loaded == total_before
         assert resident.resident_nbytes == sum(
-            resident.admission.weights.root_specs[slot].resident_nbytes
-            for slot in ("output_norm",)
+            resident.admission.weights.root_specs[slot].resident_nbytes for slot in ("output_norm",)
         ) + sum(
             resident.admission.weights.layer_specs[layer][slot].resident_nbytes
             for layer, slot in ((0, "attn_gate"), (1, "ffn_gate_shexp"))
         )
-        assert stats_loaded["current_allocated_bytes"] - stats_before[
-            "current_allocated_bytes"
-        ] == resident.resident_nbytes
+        assert (
+            stats_loaded["current_allocated_bytes"] - stats_before["current_allocated_bytes"]
+            == resident.resident_nbytes
+        )
         assert stats_loaded["active_allocations"] - stats_before["active_allocations"] == 5
+        assert len(profiles) == len(selected)
+        assert sum(profile.allocation_count for profile in profiles) == 5
+        assert sum(profile.upload_count for profile in profiles) == 5
+        assert sum(profile.allocated_nbytes for profile in profiles) == resident.resident_nbytes
+        assert sum(profile.uploaded_nbytes for profile in profiles) == resident.resident_nbytes
+        assert all(profile.total_seconds > 0.0 for profile in profiles)
         assert free_loaded <= free_before
 
         norm_raw = np.ascontiguousarray(reader.tensor_data("output_norm.weight"))
         assert _readback(resident.root("output_norm").allocation(), runtime) == norm_raw.tobytes()
 
         gate_raw = np.ascontiguousarray(reader.tensor_data("blk.0.attn_gate.weight"))
-        assert _readback(resident.layer(0).weight("attn_gate").allocation(), runtime) == gate_raw.tobytes()
+        assert (
+            _readback(resident.layer(0).weight("attn_gate").allocation(), runtime)
+            == gate_raw.tobytes()
+        )
 
         shared_raw = np.ascontiguousarray(reader.tensor_data("blk.1.ffn_gate_shexp.weight"))
         shared_expected = repack_gguf_q4_k_pack8(shared_raw)
         shared = resident.layer(1).weight("ffn_gate_shexp")
         for name in ("qweight", "scales", "mins"):
-            assert _readback(shared.allocation(name), runtime) == getattr(
-                shared_expected, name
-            ).tobytes()
+            assert (
+                _readback(shared.allocation(name), runtime)
+                == getattr(shared_expected, name).tobytes()
+            )
     finally:
         resident.free(runtime=runtime)
 
@@ -145,7 +157,9 @@ def test_completed_laguna_selected_slots_materialize_and_recover_gpu_memory() ->
     assert stats_after["current_allocated_bytes"] == stats_before["current_allocated_bytes"]
     assert stats_after["active_allocations"] == stats_before["active_allocations"]
     assert free_after >= free_loaded
-    assert free_after >= free_before - 16 * 2**20
+    # The process's first HIP allocation may retain the ~150 MiB runtime context;
+    # tracked Laguna ownership above must still recover exactly.
+    assert free_after >= free_before - 256 * 2**20
 
 
 class _ArrayReader:

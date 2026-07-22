@@ -956,6 +956,45 @@ Implemented foundation (2026-07-22):
   the L4 KV owner is now closed, while scratch ownership remains in the eager-
   session gate.
 
+Structured natural-path loading telemetry now records each tensor's source-map,
+CPU-repack, HIP-allocation, and H2D wall; faults and physical read bytes are
+attributed to the phase where lazy GGUF pages are actually touched. The load
+smoke also records `/proc/self/io`, minor/major faults, RSS/high-water, HIP/GTT,
+layout aggregates, and the 20 slowest tensors. Its cache-state argument is a
+label only; the result independently classifies observed physical reads as
+warm, partial, or cold-streamed.
+
+The first complete profiled run used:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 \
+uv run python -u scripts/laguna_gguf_load_smoke.py \
+  /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf \
+  --backend hip_gfx1151 --context-length 4096 --progress-every 25 \
+  --profile-tensors --cache-state warm \
+  --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f \
+  --output /tmp/laguna-load-profile-warm.json
+```
+
+Despite the declared label, `/proc/self/io` measured 73,051,406,336 physical
+read bytes for 75,169,369,088 source bytes, so this was observably a
+**cold-streamed**, not warm-cached, load. Total load was 227.510 s. The 814
+per-tensor intervals account for 225.536 s: CPU replacement-layout repack is
+217.278 s (96.3% of total wall), HIP allocation is 3.641 s, H2D is 4.279 s,
+source-map setup is 0.107 s, and classified other work is 0.231 s. Q4T16 alone
+uses 160.603 s, Q6T16 52.259 s, and pack8 4.416 s. Process counters record
+21,658 major and 3,989,376 minor faults; max process RSS reached 1,588,633,600
+bytes and sampled GTT reached 77,024,133,120 bytes. Teardown took 0.226 s and
+returned all 1,054 tracked allocations / 76,737,907,712 bytes exactly.
+
+This proves the startup gap is not primarily `hipMalloc` or H2D. It is the
+current Python/NumPy whole-model Q4/Q6 T16 transform while faulting 68 GiB of
+source pages. Poolside's accepted `--no-repack --no-mmap` path avoids that
+persistent transform and reaches readiness in 29.851-29.907 s. The ordered
+optimization targets are therefore a versioned repacked artifact cache or
+compiled/GPU T16 transform first, followed by arena/pinned/overlapped upload
+only after new telemetry shows those phases have become material.
+
 Plan:
 
 - keep F32 norms/router/correction tensors dense F32;
