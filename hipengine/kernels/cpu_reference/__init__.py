@@ -12,6 +12,12 @@ from hipengine.kernels.cpu_reference.fixtures import (
     run_fixture,
     save_fixture,
 )
+from hipengine.kernels.cpu_reference.laguna import (
+    LagunaRoutingResult,
+    laguna_sigmoid_correction_topk,
+    laguna_softplus_head_gate,
+    register_laguna_cpu_reference_kernels,
+)
 from hipengine.kernels.cpu_reference.ops import (
     attention_decode,
     awq_pack8_dequant_transposed,
@@ -60,7 +66,7 @@ from hipengine.kernels.cpu_reference.ops import (
     qwen35_gguf_mtp_moe_routing,
     qwen35_gguf_mtp_nextn_layer_logits,
     qwen35_gguf_mtp_shared_head_logits,
-    register_cpu_reference_kernels,
+    register_cpu_reference_kernels as _register_base_cpu_reference_kernels,
     rmsnorm,
     rotate,
     write_paged_kv_int8_block16,
@@ -69,11 +75,18 @@ from hipengine.kernels.cpu_reference.ops import (
     write_paged_kv_int8_per_token_head,
 )
 
+
+def register_cpu_reference_kernels(*, replace: bool = True) -> None:
+    _register_base_cpu_reference_kernels(replace=replace)
+    register_laguna_cpu_reference_kernels(replace=replace)
+
+
 register_cpu_reference_kernels()
 
 __all__ = [
     "LayerCheckResult",
     "LayerFixture",
+    "LagunaRoutingResult",
     "Tolerances",
     "attention_decode",
     "awq_pack8_dequant_transposed",
@@ -101,6 +114,8 @@ __all__ = [
     "gguf_q8_0_gemv",
     "gguf_quant_gemv",
     "kv_dequant_int8_per_token_head",
+    "laguna_sigmoid_correction_topk",
+    "laguna_softplus_head_gate",
     "linear",
     "linear_attn_conv_prefill_segments",
     "lm_head",
@@ -124,6 +139,7 @@ __all__ = [
     "qwen35_gguf_mtp_nextn_layer_logits",
     "qwen35_gguf_mtp_shared_head_logits",
     "register_cpu_reference_kernels",
+    "register_laguna_cpu_reference_kernels",
     "rmsnorm",
     "rotate",
     "run_fixture",

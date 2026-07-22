@@ -172725,3 +172725,27 @@ for **814/814 tensors**, 48 layers, per-head gates throughout, and root types
 Q4_K/F32/Q6_K. Missing correction bias/output, unexpected names, variable-Q
 shape drift, invalid gate width, and source-type drift all fail before payload
 allocation. No model payload bytes, HIP kernels, or performance paths are used.
+
+## 2026-07-22 — Add Laguna CPU reference gate and router math
+
+Added torch-free NumPy oracles for the first Laguna-specific math boundaries.
+`laguna_softplus_head_gate()` computes stable FP32 softplus and broadcasts one
+scalar across each attention head before `o_proj`.
+`laguna_sigmoid_correction_topk()` returns router logits, unbiased sigmoid
+scores, bias-adjusted selection scores, stable lower-ID top-k experts,
+uncorrected optionally normalized routing weights, and the separately scaled
+routed weights. It also implements the model's optional tanh logit softcap and
+uses a branch-stable sigmoid for extreme finite logits. Both primitives register
+under architecture-specific CPU-reference keys; the package registry restore
+function now restores the Laguna keys with the base set.
+
+RED: `uv run pytest -q tests/test_laguna_cpu_reference.py` failed at collection
+because the Laguna CPU-reference module did not exist. GREEN: its deterministic
+broadcast, bias-selection/unbiased-weight, tie, softcap/extreme, validation, and
+registry tests pass **7/7**. The adjacent CPU-reference and kernel-registry
+bundle passes **36/36**; focused Ruff, `compileall`, registry smoke, and all seven
+standard `cpu-fixtures` smokes pass. The repository-wide
+`scripts/check_fixtures.py` command still stops on the pre-existing special
+`tests/fixtures/cpu_reference/moe/moe_ffn_selected_gguf_q4_k.json`, which has no
+standard `expected` field; this unit did not modify that fixture or checker.
+No HIP kernel, model-output claim, or performance path changed.
