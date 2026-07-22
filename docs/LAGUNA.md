@@ -4,9 +4,9 @@ Last updated: 2026-07-22
 
 Status: eager all-resident c=1 and public blocking/streaming generation are
 implemented; first-token oracle and repeated-state gates pass, with one
-documented low-margin greedy-32 arithmetic split. Deterministic Poolside-v1
-reasoning and XML tool parsing are green; live chat transcripts, bulk prefill,
-and performance work remain.
+documented low-margin greedy-32 arithmetic split. Deterministic and live
+Poolside-v1 reasoning/XML-tool server gates are green; bulk prefill and target
+performance work remain.
 
 This document defines the correctness-first plan for running
 [`poolside/Laguna-S-2.1-GGUF`](https://huggingface.co/poolside/Laguna-S-2.1-GGUF),
@@ -1074,8 +1074,8 @@ the pre-final-norm DFlash capture. Its exact S 2.1 template is
 | Final norm / Q6_K LM head | F32-weight RMSNorm, resident Q6T16 BF16→F32 linear sourced losslessly from raw Q6_K, GPU argmax, and sampler primitives are registered | Closed at root-probe scope: full 100,352-way logits are finite, KL is `6.87e-13` vs raw-Q6 CPU math, and top-1 is exactly `81364`; preserve full logits for later whole-model oracle gates. |
 | Session and hidden taps | `LagunaGGUFResidentSession` owns all 814 weights, exact c=1 scratch, dual RoPE, global/SWA KV, logits/argmax, and optional caller-owned BF16 taps at depths 2/11/20/30/39/48 | The 55-token oracle run is finite, repeat-exact, teardown-exact, and matches 29/32 autoregressive IDs; oracle teacher forcing is 31/32, isolating one low-margin branch rather than a cascading state bug. |
 | Public generator | Generic engine loop and server lifecycle exist | Closed for the initial c=1 boundary: concrete Laguna registration owns resident weights plus isolated sessions, supports blocking/streaming preformatted completion, suppresses EOT/stops, reports truthful routing metadata, and frees through public `LLM.close()`. Bulk rows and performance promotion remain L8/L9. |
-| Reasoning | Model-owned Poolside renderer plus assistant-scoped `poolside_v1` prompt state feed the generic blocking/live/buffered splitter | Closed at deterministic parser scope: all five frozen GGUF template cases render exactly; no-thinking, prompt-opened thinking, duplicate controls, fragmented closes, prior-turn controls, blocking/streaming, and stop-at-close fixtures separate `reasoning_content` without leaking complete control markers. Live-model transcript validation remains L7 task #24. |
-| Tools | Model-owned `PoolsideV1ToolParser` feeds the generic strict OpenAI tool-result surface | Closed at deterministic parser scope: S 2.1 XML calls, newline-less names, schema-typed verbatim strings, JSON/safe-literal non-strings, multiple calls, stable streamed IDs/argument fragments, and malformed/incomplete fail-closed behavior are frozen. The loaded Laguna capability advertises `poolside_v1_xml`; live-model transcript validation remains L7 task #24. |
+| Reasoning | Model-owned Poolside renderer plus assistant-scoped `poolside_v1` prompt state feed the generic blocking/live/buffered splitter | Closed for c=1 server parsing: frozen deterministic scope/control fixtures pass, and the live gfx1151 gate proves thinking-disabled EOT plus prompt-open non-empty reasoning with exact blocking/stream IDs and no marker leakage. |
+| Tools | Model-owned `PoolsideV1ToolParser` feeds the generic strict OpenAI tool-result surface | Closed for c=1 server parsing: deterministic XML/newline-less/typed/malformed fixtures pass, and live gfx1151 blocking/streaming emits exact mixed text+single, adjacent-multiple, and escaped UTF-8 OpenAI calls with stable IDs and truthful `poolside_v1_xml` capability. |
 | Independent oracle | Closed for target AR: clean local Poolside checkout/build at `04b2b72c`, exact template/token fixtures, a complete 100,352-way first-token distribution, and 32 fresh-process-stable greedy IDs are checked in | Use the frozen fixture for L6 KL/top-1/greedy gates. Keep `-fa off`, `--no-mmap`, exact token-ID input, and fresh-process oracle constraints visible; target+DFlash diagnostics remain later work. |
 
 Implemented root primitive slice (2026-07-22):
@@ -1509,8 +1509,46 @@ Implemented Poolside-v1 tool compatibility (2026-07-22):
   outputs. Focused server tests cover blocking, fragmented SSE, stable IDs,
   parallel opt-in, capability truthfulness, and fail-closed behavior.
 
-This closes deterministic tool-parser task #23. It does not claim that Laguna
-chooses the correct tool on live prompts; task #24 owns those transcript gates.
+This closes deterministic tool-parser task #23. Live transcript behavior is
+closed separately below.
+
+Live Poolside-v1 parser/API gate (2026-07-22):
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 \
+uv run python -u scripts/laguna_poolside_v1_e2e.py \
+  /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf \
+  --backend hip_gfx1151 \
+  --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f \
+  --output benchmarks/results/2026-07-22-gfx1151-laguna-poolside-v1-e2e-correctness.json
+```
+
+The source-`9805df7f7` run completed in 159.651 s with `pass=true` and
+`performance_claim=false`. All five live cases produced identical blocking and
+streaming generated IDs and normalized messages:
+
+- thinking-disabled `Reply with exactly: OK` emitted `[5887,24]`, visible `OK`,
+  and EOT stop without leaking `</assistant>`;
+- thinking-enabled multiplication emitted 64 non-empty prompt-open reasoning
+  tokens and correctly finished at the declared length with no answer leakage;
+- mixed output emitted visible `Checking.` plus one `get_weather` call with
+  `{"city":"Paris","days":2}`;
+- parallel output emitted two distinct calls for Paris/2 and Tokyo/3 in order;
+- `write_file` preserved `café 東京`, quotes, a backslash, and an interior newline
+  exactly through XML extraction, JSON serialization, and SSE reconstruction.
+
+Every streamed call kept one stable ID and every public response omitted all
+reasoning/tool/EOT control markup. The same run replayed all seven deterministic
+ordinary/newline-less/typed/partial/malformed/empty-name tool fixtures; unsafe
+cases failed closed. Capabilities reported `poolside_v1` reasoning and
+`poolside_v1_xml` tools. Closing the shared model plus ten isolated sessions
+returned tracked ownership from a 77,022,439,484-byte peak exactly to zero.
+These timings are lifecycle diagnostics, not AR throughput measurements.
+
+Focused validation then passed 29 Laguna parser/generator tests, 174 server
+reasoning/tool/capability tests, and 13 agentic conformance tests. This closes
+L7 parser/transcript task #24 for the declared c=1 greedy server surface; it is
+not a broad chat-quality or benchmark claim.
 
 ### L8 — Bulk prefill and graph replay
 
