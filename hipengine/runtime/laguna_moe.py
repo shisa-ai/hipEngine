@@ -58,6 +58,7 @@ class LagunaMoEKernelPlan:
     selected_down_key: KernelKey
     selected_down_keys: Mapping[str, KernelKey]
     routed_sum_key: KernelKey
+    routed_sum_rows_key: KernelKey
     shared_silu_key: KernelKey
     add_key: KernelKey
     router_logits: Callable
@@ -67,6 +68,7 @@ class LagunaMoEKernelPlan:
     selected_down: Callable
     selected_downs: Mapping[str, Callable]
     routed_sum: Callable
+    routed_sum_rows: Callable
     shared_silu: Callable
     add: Callable
 
@@ -79,6 +81,7 @@ class LagunaMoEKernelPlan:
             self.selected_silu_key,
             *tuple(self.selected_down_keys.values()),
             self.routed_sum_key,
+            self.routed_sum_rows_key,
             self.shared_silu_key,
             self.add_key,
         )
@@ -86,9 +89,10 @@ class LagunaMoEKernelPlan:
 
 @dataclass(frozen=True)
 class LagunaMoEScratch:
-    """Owned caller-visible buffers for the exact unfused c=1 MoE chain."""
+    """Owned bounded buffers for the exact scalar or row-batched MoE chain."""
 
     plan: LagunaMoEKernelPlan
+    max_rows: int
     router_logits: DeviceBuffer
     routing_scores: DeviceBuffer
     selection_scores: DeviceBuffer
@@ -185,6 +189,7 @@ def resolve_laguna_moe_plan(
             _SELECTED_DOWN_VARIANT,
         ),
         "routed_sum": KernelKey(backend, "weighted_sum", "bf16", _WEIGHTED_SUM_VARIANT),
+        "routed_sum_rows": KernelKey(backend, "weighted_sum", "bf16", "laguna_rows"),
         "shared_silu": KernelKey(backend, "silu_mul_separate", "bf16", _SILU_VARIANT),
         "add": KernelKey(backend, "elementwise", "bf16", _ADD_VARIANT),
     }
@@ -213,6 +218,7 @@ def resolve_laguna_moe_plan(
         selected_down_key=keys["selected_down"],
         selected_down_keys=selected_down_keys,
         routed_sum_key=keys["routed_sum"],
+        routed_sum_rows_key=keys["routed_sum_rows"],
         shared_silu_key=keys["shared_silu"],
         add_key=keys["add"],
         router_logits=functions["router_logits"],
@@ -222,6 +228,7 @@ def resolve_laguna_moe_plan(
         selected_down=functions["selected_down"],
         selected_downs=selected_downs,
         routed_sum=functions["routed_sum"],
+        routed_sum_rows=functions["routed_sum_rows"],
         shared_silu=functions["shared_silu"],
         add=functions["add"],
     )
@@ -230,32 +237,36 @@ def resolve_laguna_moe_plan(
 def allocate_laguna_moe_scratch(
     plan: LagunaMoEKernelPlan,
     *,
+    max_rows: int = 1,
     runtime: HipRuntime | None = None,
 ) -> LagunaMoEScratch:
-    """Allocate all c=1 router/routed/shared intermediates with failure cleanup."""
+    """Allocate bounded router/routed/shared intermediates with failure cleanup."""
 
+    rows = int(max_rows)
+    if rows <= 0:
+        raise ValueError("max_rows must be positive")
     h = plan.hidden_size
     e = plan.expert_count
     k = plan.top_k
     f = plan.expert_ffn_size
     sf = plan.shared_ffn_size
     sizes = (
-        e * _F32_NBYTES,
-        e * _F32_NBYTES,
-        e * _F32_NBYTES,
-        k * _I64_NBYTES,
-        k * _F32_NBYTES,
-        k * _F32_NBYTES,
-        k * f * _BF16_NBYTES,
-        k * f * _BF16_NBYTES,
-        k * f * _BF16_NBYTES,
-        k * h * _BF16_NBYTES,
-        h * _BF16_NBYTES,
-        sf * _BF16_NBYTES,
-        sf * _BF16_NBYTES,
-        sf * _BF16_NBYTES,
-        h * _BF16_NBYTES,
-        h * _BF16_NBYTES,
+        rows * e * _F32_NBYTES,
+        rows * e * _F32_NBYTES,
+        rows * e * _F32_NBYTES,
+        rows * k * _I64_NBYTES,
+        rows * k * _F32_NBYTES,
+        rows * k * _F32_NBYTES,
+        rows * k * f * _BF16_NBYTES,
+        rows * k * f * _BF16_NBYTES,
+        rows * k * f * _BF16_NBYTES,
+        rows * k * h * _BF16_NBYTES,
+        rows * h * _BF16_NBYTES,
+        rows * sf * _BF16_NBYTES,
+        rows * sf * _BF16_NBYTES,
+        rows * sf * _BF16_NBYTES,
+        rows * h * _BF16_NBYTES,
+        rows * h * _BF16_NBYTES,
     )
     buffers: list[DeviceBuffer] = []
     try:
@@ -264,7 +275,7 @@ def allocate_laguna_moe_scratch(
         for buffer in reversed(buffers):
             free(buffer, runtime=runtime)
         raise
-    return LagunaMoEScratch(plan, *buffers)
+    return LagunaMoEScratch(plan, rows, *buffers)
 
 
 def validate_laguna_moe_layer(
@@ -414,6 +425,8 @@ def run_laguna_moe_c1(
     """Run the exact staged Laguna routed plus always-on shared expert path."""
 
     plan = scratch.plan
+    if scratch.max_rows < 1:
+        raise ValueError("Laguna MoE scratch cannot execute one row")
     validate_laguna_moe_layer(layer, plan)
     h, e, k, f, sf = (
         plan.hidden_size,
@@ -564,6 +577,174 @@ def run_laguna_moe_c1(
     return scratch.output
 
 
+def run_laguna_moe_rows(
+    hidden_bf16_ptr: int,
+    layer: LagunaGGUFResidentLayerWeights,
+    scratch: LagunaMoEScratch,
+    *,
+    rows: int,
+    stream: int = 0,
+    runtime: HipRuntime | None = None,
+    libraries: Mapping[str, object] | None = None,
+) -> DeviceBuffer:
+    """Run exact row-batched sigmoid MoE with contiguous top-k expert lanes."""
+
+    plan = scratch.plan
+    tokens = int(rows)
+    if tokens <= 0 or tokens > scratch.max_rows:
+        raise ValueError(f"rows must be within [1, {scratch.max_rows}]")
+    validate_laguna_moe_layer(layer, plan)
+    h, e, k, f, sf = (
+        plan.hidden_size,
+        plan.expert_count,
+        plan.top_k,
+        plan.expert_ffn_size,
+        plan.shared_ffn_size,
+    )
+    lanes = tokens * k
+    router = layer.weight("ffn_gate_inp").allocation("raw").tensor.ptr
+    correction = layer.weight("exp_probs_b").allocation("raw").tensor.ptr
+    gate_tiles = layer.weight("ffn_gate_exps").allocation("tiles").tensor.ptr
+    up_tiles = layer.weight("ffn_up_exps").allocation("tiles").tensor.ptr
+    down_weight = layer.weight("ffn_down_exps")
+    down_tiles = down_weight.allocation("tiles").tensor.ptr
+    try:
+        selected_down_fn = plan.selected_downs[down_weight.spec.quant_key]
+    except KeyError as exc:
+        raise ValueError(
+            f"no Laguna selected-down kernel for {down_weight.spec.quant_key!r}"
+        ) from exc
+
+    plan.router_logits(
+        hidden_bf16_ptr,
+        router,
+        scratch.router_logits.ptr,
+        tokens,
+        h,
+        e,
+        **_stage_kwargs("router_logits", libraries, stream=stream, runtime=runtime),
+    )
+    plan.router_select(
+        scratch.router_logits.ptr,
+        correction,
+        scratch.routing_scores.ptr,
+        scratch.selection_scores.ptr,
+        scratch.selected_experts.ptr,
+        scratch.routing_weights.ptr,
+        scratch.scaled_routing_weights.ptr,
+        tokens,
+        e,
+        k,
+        plan.routed_scaling_factor,
+        **_stage_kwargs("router_select", libraries, stream=stream, runtime=runtime),
+    )
+    plan.selected_gate_up(
+        hidden_bf16_ptr,
+        scratch.selected_experts.ptr,
+        gate_tiles,
+        up_tiles,
+        scratch.expert_gate.ptr,
+        scratch.expert_up.ptr,
+        tokens,
+        lanes,
+        e,
+        h,
+        f,
+        **_stage_kwargs("selected_gate_up", libraries, stream=stream, runtime=runtime),
+    )
+    plan.selected_silu(
+        scratch.expert_gate.ptr,
+        scratch.expert_up.ptr,
+        scratch.expert_intermediate.ptr,
+        lanes,
+        f,
+        **_stage_kwargs("selected_silu", libraries, stream=stream, runtime=runtime),
+    )
+    selected_down_fn(
+        scratch.expert_intermediate.ptr,
+        scratch.selected_experts.ptr,
+        down_tiles,
+        scratch.expert_down.ptr,
+        lanes,
+        lanes,
+        e,
+        f,
+        h,
+        **_stage_kwargs("selected_down", libraries, stream=stream, runtime=runtime),
+    )
+    plan.routed_sum_rows(
+        scratch.expert_down.ptr,
+        scratch.scaled_routing_weights.ptr,
+        scratch.routed_output.ptr,
+        tokens,
+        k,
+        h,
+        **_stage_kwargs("routed_sum_rows", libraries, stream=stream, runtime=runtime),
+    )
+
+    shared_gate = layer.weight("ffn_gate_shexp")
+    shared_up = layer.weight("ffn_up_shexp")
+    shared_down = layer.weight("ffn_down_shexp")
+    launch_gguf_linear(
+        shared_gate,
+        hidden_bf16_ptr,
+        scratch.shared_gate.ptr,
+        tokens,
+        h,
+        sf,
+        backend=plan.backend,
+        stream=stream,
+        runtime=runtime,
+        libraries=libraries,
+        use_wmma_prefill=False,
+        use_gemv_decode=False,
+    )
+    launch_gguf_linear(
+        shared_up,
+        hidden_bf16_ptr,
+        scratch.shared_up.ptr,
+        tokens,
+        h,
+        sf,
+        backend=plan.backend,
+        stream=stream,
+        runtime=runtime,
+        libraries=libraries,
+        use_wmma_prefill=False,
+        use_gemv_decode=False,
+    )
+    plan.shared_silu(
+        scratch.shared_gate.ptr,
+        scratch.shared_up.ptr,
+        scratch.shared_intermediate.ptr,
+        tokens,
+        sf,
+        **_stage_kwargs("shared_silu", libraries, stream=stream, runtime=runtime),
+    )
+    launch_gguf_linear(
+        shared_down,
+        scratch.shared_intermediate.ptr,
+        scratch.shared_output.ptr,
+        tokens,
+        sf,
+        h,
+        backend=plan.backend,
+        stream=stream,
+        runtime=runtime,
+        libraries=libraries,
+        use_wmma_prefill=False,
+        use_gemv_decode=False,
+    )
+    plan.add(
+        scratch.routed_output.ptr,
+        scratch.shared_output.ptr,
+        scratch.output.ptr,
+        tokens * h,
+        **_stage_kwargs("add", libraries, stream=stream, runtime=runtime),
+    )
+    return scratch.output
+
+
 def _stage_kwargs(
     name: str,
     libraries: Mapping[str, object] | None,
@@ -596,5 +777,6 @@ __all__ = [
     "allocate_laguna_moe_scratch",
     "resolve_laguna_moe_plan",
     "run_laguna_moe_c1",
+    "run_laguna_moe_rows",
     "validate_laguna_moe_layer",
 ]

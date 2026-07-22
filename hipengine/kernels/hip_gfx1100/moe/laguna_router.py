@@ -14,9 +14,20 @@ from hipengine.kernels.registry import KernelKey, register
 _SOURCE = Path(__file__).with_name("laguna_router.hip")
 _OUTPUT_NAME = "laguna_router.so"
 _SYMBOL = "hipengine_laguna_sigmoid_correction_topk_f32"
+_WEIGHTED_SUM_ROWS_SYMBOL = "hipengine_laguna_weighted_sum_rows_bf16_f32w"
 _THREADS = 256
 _MAX_EXPERTS = 256
 _MAX_TOP_K = 16
+_WEIGHTED_SUM_ROWS_ARGTYPES = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
 _ARGTYPES = (
     ctypes.c_void_p,  # logits [tokens, experts] f32
     ctypes.c_void_p,  # correction bias [experts] f32
@@ -120,6 +131,49 @@ def laguna_sigmoid_correction_topk_f32(
         runtime.check(int(err))
 
 
+def laguna_weighted_sum_rows_bf16_f32w(
+    values_ptr: int,
+    weights_ptr: int,
+    out_ptr: int,
+    tokens: int,
+    top_k: int,
+    features: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Reduce contiguous selected-expert lanes independently for every token."""
+
+    if int(tokens) <= 0 or int(top_k) <= 0 or int(top_k) > _MAX_TOP_K:
+        raise ValueError("tokens must be positive and top_k must be within [1, 16]")
+    if int(features) <= 0:
+        raise ValueError("features must be positive")
+    if int(threads) not in {64, 128, 256}:
+        raise ValueError("threads must be one of 64, 128, 256")
+    library = library or build_laguna_router(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        _WEIGHTED_SUM_ROWS_SYMBOL,
+        _WEIGHTED_SUM_ROWS_ARGTYPES,
+        ctypes.c_int,
+    )
+    err = fn(
+        values_ptr,
+        weights_ptr,
+        out_ptr,
+        int(tokens),
+        int(top_k),
+        int(features),
+        int(threads),
+        int(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def register_laguna_router_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey(
@@ -129,6 +183,11 @@ def register_laguna_router_kernels(*, replace: bool = True) -> None:
             "correction_bias",
         ),
         laguna_sigmoid_correction_topk_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "weighted_sum", "bf16", "laguna_rows"),
+        laguna_weighted_sum_rows_bf16_f32w,
         replace=replace,
     )
 
@@ -165,6 +224,7 @@ register_laguna_router_kernels()
 __all__ = [
     "build_laguna_router",
     "laguna_sigmoid_correction_topk_f32",
+    "laguna_weighted_sum_rows_bf16_f32w",
     "plan_laguna_router_build",
     "register_laguna_router_kernels",
 ]

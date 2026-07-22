@@ -307,6 +307,7 @@ class LagunaEagerLibraries:
             "selected_silu": self.dense_silu,
             "selected_down": self.selected_experts,
             "routed_sum": self.routed_sum,
+            "routed_sum_rows": self.router_select,
             "shared_silu": self.dense_silu,
             "add": self.gguf_ops,
         }
