@@ -29,7 +29,9 @@ def _hip_available() -> bool:
 def test_laguna_f16_projection_registry_resolves_all_mixed_variants() -> None:
     from hipengine.kernels.hip_gfx1100.linear.laguna_f16_projection import (
         laguna_f16w_gemv_bf16_f32_out,
+        laguna_f16w_tiled_bf16_f32_out,
         laguna_f16w_triple_gemv_bf16_f32_out,
+        laguna_f16w_triple_tiled_bf16_f32_out,
         register_laguna_f16_projection_kernels,
     )
 
@@ -51,6 +53,24 @@ def test_laguna_f16_projection_registry_resolves_all_mixed_variants() -> None:
             variant="bf16_f32_out",
         )
         is laguna_f16w_triple_gemv_bf16_f32_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="linear",
+            quant="fp16_weight",
+            variant="tiled_bf16_f32_out",
+        )
+        is laguna_f16w_tiled_bf16_f32_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="linear_triple",
+            quant="fp16_weight",
+            variant="tiled_bf16_f32_out",
+        )
+        is laguna_f16w_triple_tiled_bf16_f32_out
     )
 
 
@@ -105,6 +125,57 @@ def test_laguna_f16_projection_runtime_uses_resident_weight_abi() -> None:
             {"threads": 128, "stream": 7, "runtime": "sentinel"},
         )
     ]
+
+
+def test_laguna_f16_projection_runtime_forced_bulk_keeps_c1_gemv(monkeypatch) -> None:
+    from hipengine.kernels.hip_gfx1100.linear.laguna_f16_projection import (
+        register_laguna_f16_projection_kernels,
+    )
+    from hipengine.kernels.registry import KernelKey, register
+    from hipengine.runtime.f16_weight_linear import launch_f16_weight_linear
+
+    register_laguna_f16_projection_kernels()
+    gemv_key = KernelKey("hip_gfx1100", "linear", "fp16_weight", "bf16_f32_out")
+    bulk_key = KernelKey(
+        "hip_gfx1100", "linear", "fp16_weight", "tiled_bf16_f32_out"
+    )
+    originals = {
+        key: resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant)
+        for key in (gemv_key, bulk_key)
+    }
+    calls = []
+
+    def fake(name):
+        def kernel(*args, **kwargs):
+            calls.append((name, args, kwargs))
+
+        return kernel
+
+    register(gemv_key, fake("gemv"), replace=True)
+    register(bulk_key, fake("tiled"), replace=True)
+    weight = SimpleNamespace(
+        backend="hip_gfx1100",
+        spec=SimpleNamespace(layout="dense_f16", quant_key="fp16"),
+        allocation=lambda name: SimpleNamespace(tensor=SimpleNamespace(ptr=11)),
+    )
+    monkeypatch.setenv("HIPENGINE_LAGUNA_F16_PREFILL", "tiled")
+    try:
+        for rows in (1, 2):
+            launch_f16_weight_linear(
+                weight,
+                x_ptr=10,
+                out_ptr=20,
+                rows=rows,
+                in_features=3072,
+                out_features=6144,
+                backend="hip_gfx1100",
+                runtime="sentinel",
+            )
+    finally:
+        for key, fn in originals.items():
+            register(key, fn, replace=True)
+
+    assert [name for name, _, _ in calls] == ["gemv", "tiled"]
 
 
 @pytest.mark.parametrize("q_heads", [48, 72])
@@ -237,6 +308,65 @@ def test_laguna_f16_projection_single_dual_triple_match_cpu(q_heads: int) -> Non
         actual_f32_input_bf16,
         bf16_to_float32(float_array_to_bf16_bits(actual_f32_input)),
     )
+
+
+@pytest.mark.parametrize("rows", [2, 3, 4, 5, 17])
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_laguna_f16_projection_tiled_is_bit_exact_to_gemv(rows: int) -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1100.linear.laguna_f16_projection import (
+        build_laguna_f16_projection,
+        build_laguna_f16_projection_prefill,
+        laguna_f16w_gemv_bf16_bf16_out,
+        laguna_f16w_gemv_bf16_f32_out,
+        laguna_f16w_tiled_bf16_bf16_out,
+        laguna_f16w_tiled_bf16_f32_out,
+    )
+
+    rng = np.random.default_rng(701 + rows)
+    in_features, out_features = 512, 35
+    x_bits = float_array_to_bf16_bits(
+        rng.normal(0.0, 0.1, size=(rows, in_features)).astype(np.float32)
+    )
+    weight = rng.normal(0.0, 0.05, size=(out_features, in_features)).astype(np.float16)
+    runtime = get_hip_runtime()
+    decode = build_laguna_f16_projection(load=True)
+    prefill = build_laguna_f16_projection_prefill(load=True)
+    allocations = []
+    try:
+        dx = _upload(x_bits, runtime, allocations)
+        dw = _upload(weight, runtime, allocations)
+        gemv_f32 = _alloc((rows, out_features), np.float32, runtime, allocations)
+        tiled_f32 = _alloc((rows, out_features), np.float32, runtime, allocations)
+        gemv_bf16 = _alloc((rows, out_features), np.uint16, runtime, allocations)
+        tiled_bf16 = _alloc((rows, out_features), np.uint16, runtime, allocations)
+        laguna_f16w_gemv_bf16_f32_out(
+            dx.ptr, dw.ptr, gemv_f32.ptr, rows, in_features, out_features,
+            library=decode, runtime=runtime,
+        )
+        laguna_f16w_tiled_bf16_f32_out(
+            dx.ptr, dw.ptr, tiled_f32.ptr, rows, in_features, out_features,
+            library=prefill, runtime=runtime,
+        )
+        laguna_f16w_gemv_bf16_bf16_out(
+            dx.ptr, dw.ptr, gemv_bf16.ptr, rows, in_features, out_features,
+            library=decode, runtime=runtime,
+        )
+        laguna_f16w_tiled_bf16_bf16_out(
+            dx.ptr, dw.ptr, tiled_bf16.ptr, rows, in_features, out_features,
+            library=prefill, runtime=runtime,
+        )
+        runtime.device_synchronize()
+        actual_gemv_f32 = _download(gemv_f32, (rows, out_features), np.float32, runtime)
+        actual_tiled_f32 = _download(tiled_f32, (rows, out_features), np.float32, runtime)
+        actual_gemv_bf16 = _download(gemv_bf16, (rows, out_features), np.uint16, runtime)
+        actual_tiled_bf16 = _download(tiled_bf16, (rows, out_features), np.uint16, runtime)
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+
+    np.testing.assert_array_equal(actual_tiled_f32, actual_gemv_f32)
+    np.testing.assert_array_equal(actual_tiled_bf16, actual_gemv_bf16)
 
 
 def _upload(array: np.ndarray, runtime, allocations):

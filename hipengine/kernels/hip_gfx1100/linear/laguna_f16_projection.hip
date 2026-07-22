@@ -7,6 +7,10 @@ namespace {
 
 using half_t = _Float16;
 
+constexpr int kExactSmallTileM = 8;
+constexpr int kExactLargeTileM = 16;
+constexpr int kExactTileN = 4;
+
 __device__ inline float bf16_to_f32(uint16_t value) {
   union { uint32_t u; float f; } out;
   out.u = static_cast<uint32_t>(value) << 16;
@@ -135,6 +139,124 @@ __global__ void laguna_f16w_triple_gemv_kernel(
   if (threadIdx.x == 0) out[row * width + local_col] = total;
 }
 
+template <typename out_t, int TILE_M>
+__global__ void laguna_f16w_tiled_exact_kernel(
+    const uint16_t* __restrict__ x,
+    const half_t* __restrict__ weight,
+    out_t* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  const int64_t row_base = static_cast<int64_t>(blockIdx.y) * TILE_M;
+  const int64_t col_base = static_cast<int64_t>(blockIdx.x) * kExactTileN;
+  float acc[TILE_M][kExactTileN] = {};
+  for (int64_t k = threadIdx.x; k < in_features; k += blockDim.x) {
+    float x_values[TILE_M];
+    float weight_values[kExactTileN];
+#pragma unroll
+    for (int row = 0; row < TILE_M; ++row) {
+      const int64_t global_row = row_base + row;
+      x_values[row] = global_row < rows
+          ? bf16_to_f32(x[global_row * in_features + k])
+          : 0.0f;
+    }
+#pragma unroll
+    for (int col = 0; col < kExactTileN; ++col) {
+      const int64_t global_col = col_base + col;
+      weight_values[col] = global_col < out_features
+          ? static_cast<float>(weight[global_col * in_features + k])
+          : 0.0f;
+    }
+#pragma unroll
+    for (int row = 0; row < TILE_M; ++row) {
+#pragma unroll
+      for (int col = 0; col < kExactTileN; ++col) {
+        // Preserve the GEMV thread-local K sequence exactly; the tile changes
+        // only when each activation/weight load is reused.
+        acc[row][col] += x_values[row] * weight_values[col];
+      }
+    }
+  }
+#pragma unroll
+  for (int row = 0; row < TILE_M; ++row) {
+#pragma unroll
+    for (int col = 0; col < kExactTileN; ++col) {
+      const float total = block_sum(acc[row][col]);
+      if (threadIdx.x == 0) {
+        const int64_t global_row = row_base + row;
+        const int64_t global_col = col_base + col;
+        if (global_row < rows && global_col < out_features) {
+          store_scalar(out, global_row * out_features + global_col, total);
+        }
+      }
+    }
+  }
+}
+
+template <typename out_t, int TILE_M>
+int launch_tiled_exact_shape(
+    const uint16_t* x,
+    const half_t* weight,
+    out_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || in_features <= 0 || out_features <= 0 || threads != 256) {
+    return hipErrorInvalidValue;
+  }
+  laguna_f16w_tiled_exact_kernel<out_t, TILE_M><<<
+      dim3((out_features + kExactTileN - 1) / kExactTileN,
+           (rows + TILE_M - 1) / TILE_M),
+      dim3(threads),
+      0,
+      stream>>>(x, weight, out, rows, in_features, out_features);
+  return hipGetLastError();
+}
+
+template <typename out_t>
+int launch_tiled_exact(
+    const uint16_t* x,
+    const half_t* weight,
+    out_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows < kExactLargeTileM) {
+    return launch_tiled_exact_shape<out_t, kExactSmallTileM>(
+        x, weight, out, rows, in_features, out_features, threads, stream);
+  }
+  return launch_tiled_exact_shape<out_t, kExactLargeTileM>(
+      x, weight, out, rows, in_features, out_features, threads, stream);
+}
+
+int launch_triple_tiled_exact(
+    const uint16_t* x,
+    const half_t* wa,
+    const half_t* wb,
+    const half_t* wc,
+    float* oa,
+    float* ob,
+    float* oc,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_a,
+    int64_t out_b,
+    int64_t out_c,
+    int64_t threads,
+    hipStream_t stream) {
+  hipError_t error = static_cast<hipError_t>(
+      launch_tiled_exact(x, wa, oa, rows, in_features, out_a, threads, stream));
+  if (error != hipSuccess) return error;
+  error = static_cast<hipError_t>(
+      launch_tiled_exact(x, wb, ob, rows, in_features, out_b, threads, stream));
+  if (error != hipSuccess) return error;
+  return launch_tiled_exact(x, wc, oc, rows, in_features, out_c, threads, stream);
+}
+
 template <typename x_t, typename out_t>
 int launch_single(const x_t* x, const half_t* weight, out_t* out, int64_t rows,
                   int64_t in_features, int64_t out_features, int64_t threads, hipStream_t stream) {
@@ -169,3 +291,6 @@ extern "C" int hipengine_laguna_f16w_gemv_f32_f32_out(const float* x, const half
 extern "C" int hipengine_laguna_f16w_gemv_f32_bf16_out(const float* x, const half_t* w, uint16_t* out, int64_t r, int64_t k, int64_t n, int64_t t, hipStream_t s) { return launch_single(x,w,out,r,k,n,t,s); }
 extern "C" int hipengine_laguna_f16w_dual_gemv_bf16_f32_out(const uint16_t* x, const half_t* wa, const half_t* wb, float* oa, float* ob, int64_t r, int64_t k, int64_t na, int64_t nb, int64_t t, hipStream_t s) { return launch_dual(x,wa,wb,oa,ob,r,k,na,nb,t,s); }
 extern "C" int hipengine_laguna_f16w_triple_gemv_bf16_f32_out(const uint16_t* x, const half_t* wa, const half_t* wb, const half_t* wc, float* oa, float* ob, float* oc, int64_t r, int64_t k, int64_t na, int64_t nb, int64_t nc, int64_t t, hipStream_t s) { return launch_triple(x,wa,wb,wc,oa,ob,oc,r,k,na,nb,nc,t,s); }
+extern "C" int hipengine_laguna_f16w_tiled_bf16_f32_out(const uint16_t* x, const half_t* w, float* out, int64_t r, int64_t k, int64_t n, int64_t t, hipStream_t s) { return launch_tiled_exact(x,w,out,r,k,n,t,s); }
+extern "C" int hipengine_laguna_f16w_tiled_bf16_bf16_out(const uint16_t* x, const half_t* w, uint16_t* out, int64_t r, int64_t k, int64_t n, int64_t t, hipStream_t s) { return launch_tiled_exact(x,w,out,r,k,n,t,s); }
+extern "C" int hipengine_laguna_f16w_triple_tiled_bf16_f32_out(const uint16_t* x, const half_t* wa, const half_t* wb, const half_t* wc, float* oa, float* ob, float* oc, int64_t r, int64_t k, int64_t na, int64_t nb, int64_t nc, int64_t t, hipStream_t s) { return launch_triple_tiled_exact(x,wa,wb,wc,oa,ob,oc,r,k,na,nb,nc,t,s); }

@@ -566,6 +566,7 @@ class LagunaEagerLibraries:
     embedding: object
     gguf_ops: object
     f16_projection: object
+    f16_projection_prefill: object
     attention_gate: object
     kv_attention: object
     dense_silu: object
@@ -577,6 +578,14 @@ class LagunaEagerLibraries:
     router_select: object
     selected_experts: object
     routed_sum: object
+
+    @property
+    def f16_linear(self) -> Mapping[str, object]:
+        return {
+            "fp16_weight": self.f16_projection,
+            "fp16_weight:tiled_bf16_f32_out": self.f16_projection_prefill,
+            "fp16_weight:tiled_bf16_bf16_out": self.f16_projection_prefill,
+        }
 
     @property
     def linear(self) -> Mapping[str, object]:
@@ -850,6 +859,7 @@ def load_laguna_eager_libraries(
     from hipengine.kernels.hip_gfx1100.fused.paro_silu import build_paro_silu
     from hipengine.kernels.hip_gfx1100.linear.laguna_f16_projection import (
         build_laguna_f16_projection,
+        build_laguna_f16_projection_prefill,
     )
     from hipengine.kernels.hip_gfx1100.linear.lm_head import build_lm_head
     from hipengine.kernels.hip_gfx1100.moe.laguna_router import build_laguna_router
@@ -879,6 +889,7 @@ def load_laguna_eager_libraries(
             embedding=build_gguf_q6_k_embedding(**kwargs),
             gguf_ops=build_gguf_ops(**kwargs),
             f16_projection=build_laguna_f16_projection(**kwargs),
+            f16_projection_prefill=build_laguna_f16_projection_prefill(**kwargs),
             attention_gate=build_laguna_attention(**kwargs),
             kv_attention=build_laguna_kv_attention(**kwargs),
             dense_silu=build_paro_silu(**kwargs),
@@ -1646,7 +1657,7 @@ class LagunaGGUFResidentSession:
         heads = config.head_count(layer_id)
         q_width = heads * config.key_length
         kv_width = config.head_count_kv * config.key_length
-        f16_libraries = {"fp16_weight": self.libraries.f16_projection}
+        f16_libraries = self.libraries.f16_linear
 
         self.kernel_plan.rmsnorm(
             scratch.hidden.ptr,
@@ -2041,7 +2052,7 @@ class LagunaGGUFResidentSession:
         heads = config.head_count(layer_id)
         q_width = heads * config.key_length
         kv_width = config.head_count_kv * config.key_length
-        f16_libraries = {"fp16_weight": self.libraries.f16_projection}
+        f16_libraries = self.libraries.f16_linear
 
         self.kernel_plan.rmsnorm(
             scratch.hidden.ptr,

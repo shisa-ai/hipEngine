@@ -174833,3 +174833,71 @@ after the focused size repair; timings, selected-ID hashes, occupancy summaries,
 outputs, memory, and provenance did not change. Final artifact SHA-256 is
 `0664ead7...41ba`, size 302,573 bytes:
 `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-lpf0-profile.json`.
+
+## 2026-07-23 — Implement Laguna LPF-1 exact tiled source-F16 candidate
+
+Started from the frozen LPF-0 result: source-F16 QKV/O owns 68.99% of the
+55-row kernel sum because every `(row,output)` GEMV independently rereads both
+operands. The broad lineage command remains blocked by the absent legacy Atlas
+checkout; the required narrowed Laguna scan is clean at Poolside `04b2b72c`:
+
+```bash
+python3 scripts/check_lineage.py --file '*laguna*' --diff stat
+# tracked_sources: 2 changed_or_dirty: 0
+```
+
+Added RED/GREEN registry, dispatch, tile-boundary, F32-output, and BF16-output
+tests before the kernel. The retained candidate is a prefill-profile 8x4/16x4
+row/column tile: every 256-thread block computes four output columns and eight
+rows below M16 or sixteen rows at/above M16. It reuses X across columns and
+weights across rows but deliberately preserves each output's original
+thread-local `k = tid + n*256` sequence and the existing wave/block reduction
+tree. Rows=1 remains on the original decode GEMV. The candidate is separately
+registered as `tiled_bf16_{f32,bf16}_out`, with a separately loaded prefill
+artifact and `HIPENGINE_LAGUNA_F16_PREFILL=tiled` candidate selection; `auto`
+stays on GEMV until the clean two-repeat gate.
+
+A 16x16 F16-WMMA control was measured first. On zero-data production geometry,
+it reduced 55-row QKV/O from about `20.34/15.85 ms` to `2.62/1.03 ms`, and its
+one-repeat ten-prompt screen reached 60.650 tok/s prefill. It was rejected:
+`general_en_explain`, `mixed_ja_en_translate`, and `mixed_ja_en_review` changed
+free-running h32 trajectories (the mixed prompts diverged at token zero). The
+control was removed rather than retained behind a dead flag.
+
+The exact tiled candidate is byte-identical to GEMV on synthetic rows
+2/3/4/5/17 for both output dtypes. Production 55-row event medians are about
+`20.3 -> 5.1 ms` for QKV and `15.9 -> 3.8 ms` for O. A dirty-tree exploratory
+canonical screen (one balanced repetition, all ten prompts, h16/h32) passed
+complete-ID equality and every category guard: suite prefill
+**17.415 -> 48.875 tok/s (2.806x)**, h16/h32 E2E **2.193x/1.872x**, and h32
+decode **16.3716 -> 16.3718 tok/s**. This is candidate evidence, not the
+retained claim; the clean two-repeat protocol still follows after the candidate
+commit.
+
+Final cached-only profiler command used a precomputed compiler version and no
+compiler child:
+
+```bash
+env HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 \
+  rocprofv3 --kernel-trace --output-format csv \
+  -d /tmp/laguna-lpf1-rocprof-final -- \
+  uv run python /tmp/laguna_lpf1_trace.py
+```
+
+The representative 55x9216x3072 BF16-output dispatch is
+`laguna_f16w_tiled_exact_kernel<unsigned short, 16>` at **3.798202 ms**, 256
+threads, grid `196608x4`, 96 VGPR, 128 SGPR, 512 B LDS, and zero scratch.
+Focused validation:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 uv run pytest -q tests/test_laguna_f16_projection.py
+# 10 passed
+uv run pytest -q tests/test_laguna_gguf_runner.py \
+  tests/test_laguna_f16_projection.py -k 'not tiled_is_bit_exact'
+# 15 passed
+uvx ruff check hipengine/kernels/hip_gfx1100/linear/laguna_f16_projection.py \
+  hipengine/kernels/hip_gfx1100/linear/__init__.py \
+  hipengine/runtime/f16_weight_linear.py \
+  hipengine/runtime/laguna_gguf_runner.py tests/test_laguna_f16_projection.py
+# clean
+```
