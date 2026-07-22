@@ -1363,10 +1363,17 @@ def test_gguf_deferred_packed_decode_flush_copies_full_live_kv(monkeypatch) -> N
 
     runtime = FakeRuntime()
     positions: list[int] = []
+    position_streams: list[int] = []
+
+    def record_position(position_ptr, context_ptr, position, **kwargs) -> None:
+        del position_ptr, context_ptr
+        positions.append(int(position))
+        position_streams.append(int(kwargs.get("stream", 0)))
+
     monkeypatch.setattr(
         gguf_runner,
         "set_decode_position_i64",
-        lambda position_ptr, context_ptr, position, **kwargs: positions.append(int(position)),
+        record_position,
     )
 
     owner._scatter_packed_decode_state(
@@ -1374,7 +1381,7 @@ def test_gguf_deferred_packed_decode_flush_copies_full_live_kv(monkeypatch) -> N
         layout,
         packed_state,
         runtime=runtime,
-        stream=0,
+        stream=7,
         copy_full_kv=True,
     )
 
@@ -1395,21 +1402,24 @@ def test_gguf_deferred_packed_decode_flush_copies_full_live_kv(monkeypatch) -> N
         ),
     ]
     assert positions == [6, 8]
+    assert position_streams == [7, 7]
     assert [session._position for session in sessions] == [6, 8]
 
     runtime.copies.clear()
     positions.clear()
+    position_streams.clear()
     owner._scatter_packed_decode_state(
         sessions,
         layout,
         packed_state,
         runtime=runtime,
-        stream=0,
+        stream=7,
         copy_kv=False,
     )
 
     assert runtime.copies == []
     assert positions == [6, 8]
+    assert position_streams == [7, 7]
 
 
 def test_gguf_contiguous_device_kv_cache_view_rebases_shifted_allocation() -> None:

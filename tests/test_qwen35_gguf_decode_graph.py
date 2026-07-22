@@ -196,6 +196,30 @@ def test_decode_graph_close_releases_device_kv_pin_after_destroy() -> None:
     assert calls == [("exec", 12), ("graph", 11), ("stream", 13)]
 
 
+def test_decode_graph_input_seed_updates_feedback_buffer_before_cross_stream_capture(
+    monkeypatch,
+) -> None:
+    calls: list[tuple] = []
+    session = object.__new__(Qwen35GGUFResidentSession)
+    session.runner = SimpleNamespace(vocab_size=128)
+    session._lm_out_index = _buffer(0x1234)
+    session._runtime_state_library = object()
+    session.runtime = SimpleNamespace(
+        device_synchronize=lambda: calls.append(("synchronize",)),
+    )
+    monkeypatch.setattr(
+        gguf_runner,
+        "set_i64_scalar",
+        lambda ptr, value, **kwargs: calls.append(
+            ("seed", int(ptr), int(value), int(kwargs.get("stream", -1)))
+        ),
+    )
+
+    session._seed_decode_graph_input_token(42)
+
+    assert calls == [("seed", 0x1234, 42, 0), ("synchronize",)]
+
+
 def test_decode_graph_capability_uses_runner_resolved_backend(monkeypatch) -> None:
     observed: list[str] = []
 

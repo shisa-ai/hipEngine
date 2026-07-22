@@ -6310,6 +6310,7 @@ class Qwen35GGUFResidentModelRunner:
                     steps_per_replay=1,
                     max_replay_steps=remaining,
                     attention_max_context_len=int(slot.seq_position) + remaining,
+                    input_token_id=int(slot.prev_token),
                 )
                 slot.c1_decode_graph = graph
         if graph is None:

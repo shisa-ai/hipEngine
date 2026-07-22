@@ -2564,6 +2564,9 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
     assert [call for call in calls if call[0] == "graph_replay"] == [
         ("graph_replay", 2, 1)
     ]
+    capture_calls = [call for call in calls if call[0] == "capture_decode_graph"]
+    assert len(capture_calls) == 1
+    assert capture_calls[0][2]["input_token_id"] == 1
     assert [call for call in calls if call[0] == "step"][-1][2] == 1
     assert runner.active_request_ids == ()
     assert runner.available_session_count == 2
@@ -2654,6 +2657,59 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
     assert len(observability["routes"]["recent_completed"]) == 5
     assert observability["graph_buckets"]["captures_total"] == 0
     assert observability["graph_buckets"]["buckets"] == {}
+
+
+def test_gguf_c1_graph_seeds_survivor_token_after_packed_width_transition() -> None:
+    captures: list[dict[str, object]] = []
+
+    class FakeSession:
+        feedback_token = 9709  # Last packed physical row, not the surviving owner row.
+
+        def decode_graph_min_replay_steps(self):
+            return 1
+
+        def capture_decode_graph(self, **kwargs):
+            captures.append(dict(kwargs))
+            self.feedback_token = int(kwargs.get("input_token_id", self.feedback_token))
+            session = self
+
+            class FakeGraph:
+                def replay(self, steps):
+                    assert int(steps) == 1
+
+                def read_sample(self, *, return_logits=False):
+                    assert return_logits is False
+                    return SimpleNamespace(
+                        token_id=9710 if session.feedback_token == 9710 else 2
+                    )
+
+            return FakeGraph()
+
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    slot = SimpleNamespace(
+        session=FakeSession(),
+        c1_decode_graph=None,
+        seq_position=536,
+        generated_ids=[9710] * 24,
+        prev_token=9710,
+    )
+    row = SimpleNamespace(slot=slot, request=SimpleNamespace(max_tokens=48))
+
+    result = runner._step_native_c1_graph(row)
+
+    assert result.token_id == 9710
+    assert captures == [
+        {
+            "position": 536,
+            "steps_per_replay": 1,
+            "max_replay_steps": 24,
+            "attention_max_context_len": 560,
+            "input_token_id": 9710,
+        }
+    ]
+    assert slot.c1_decode_graph is not None
 
 
 def test_gguf_resident_runner_lowers_c13_to_declared_physical_groups(monkeypatch) -> None:

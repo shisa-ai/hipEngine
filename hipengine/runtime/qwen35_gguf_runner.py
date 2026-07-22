@@ -1843,7 +1843,7 @@ class Qwen35GGUFFullStackRunner:
             backend=self.backend,
             layer="paged_attn_decode",
             quant="w4_paro",
-            variant="bf16_context_batch_c1_exact_spans",
+            variant="bf16_context_batch_paged_c1_exact_spans",
         )
         self.runtime = self.runtime or get_hip_runtime()
         self.require_cached_build = bool(self.require_cached_build)
@@ -14361,6 +14361,27 @@ class Qwen35GGUFResidentSession:
             self._hidden_seed_fp32_populated = True
         return int(out_ptr)
 
+    def _seed_decode_graph_input_token(self, token_id: int) -> None:
+        """Publish the authoritative host token before cross-stream graph capture."""
+
+        if self.runner is None or self._lm_out_index is None:
+            raise RuntimeError("GGUF resident session is closed")
+        token_id = int(token_id)
+        if token_id < 0 or token_id >= self.runner.vocab_size:
+            raise ValueError(f"token_id {token_id} outside [0, {self.runner.vocab_size})")
+        runtime = self.runtime or get_hip_runtime()
+        set_i64_scalar(
+            self._lm_out_index.ptr,
+            token_id,
+            stream=0,
+            library=self._runtime_state_library,
+            runtime=runtime,
+        )
+        # Whole-step capture uses a newly-created nonblocking stream. A packed
+        # width transition leaves each row's authoritative token on the host,
+        # so make the default-stream seed visible before that stream captures.
+        runtime.device_synchronize()
+
     def _set_token_id_device(self, token_id: int, *, stream: int = 0) -> None:
         if self.runner is None or self._token_buf is None:
             raise RuntimeError("GGUF resident session is closed")
@@ -15220,6 +15241,7 @@ class Qwen35GGUFResidentSession:
                 session.scratch.position_buf.ptr,
                 session.scratch.context_buf.ptr,
                 end_position,
+                stream=stream,
                 library=session._runtime_state_library,
                 runtime=runtime,
             )
@@ -16467,18 +16489,23 @@ class Qwen35GGUFResidentSession:
         attention_max_context_len: int | None = None,
         capture_hidden_seed_fp32: bool = False,
         record_hidden_seeds: bool = False,
+        input_token_id: int | None = None,
     ):
         """Capture one session-bound GGUF decode transition window.
 
         The returned graph owns a full shape/state key and refuses replay after
-        any cursor drift. Whole-step capture is incompatible with the optional
-        nested per-layer MoE graph diagnostic.
+        any cursor drift. ``input_token_id`` re-seeds graph device feedback
+        after packed-width execution, where the per-session scalar is not the
+        authoritative row token. Whole-step capture is incompatible with the
+        optional nested per-layer MoE graph diagnostic.
         """
 
         if _gguf_moe_graph_enabled():
             raise RuntimeError("whole-step GGUF graph cannot nest the per-layer MoE graph diagnostic")
         from hipengine.runtime.gguf_decode_graph import capture_qwen35_gguf_decode_graph
 
+        if input_token_id is not None:
+            self._seed_decode_graph_input_token(int(input_token_id))
         graph = capture_qwen35_gguf_decode_graph(
             self,
             position=int(position),
