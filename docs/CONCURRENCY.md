@@ -195,12 +195,26 @@ invalid IDs or tool envelopes.
 
 The next closure order is:
 
-1. add model-general tokenizer-aware constrained tool/JSON decoding, including
-   exact dynamic/forced close-queue handling and fail-closed fallback;
+1. **Completed:** model-general tokenizer-aware constrained tool/JSON decoding,
+   including exact dynamic/forced close-queue handling and fail-closed fallback;
 2. reproduce and repair the late A4 p512/d48 physical-width transition while
    comparing every survivor's state and logical block-table-ordered live KV;
 3. rerun the unchanged A3 and A4 protocols, promoting a default only if every
    correctness, ownership, C1, medium-C4, and SLO gate passes.
+
+The completed first item masks tokenizer-decoded candidates before processed
+argmax or host sampling. Tool-enabled chat admits either normal text in `auto`
+or one canonical `<tool_call>` envelope with a declared name and root-object
+JSON arguments; `required` and specific-tool requests admit only the envelope.
+EOS is withheld until the selected branch is valid, partial close markers and
+budget-fitting deterministic suffixes use the existing forced-token queue, and
+every forced token is revalidated against the same grammar. Missing tokenizer
+callbacks, token-decode failures, empty token text, and an empty constrained
+candidate set fail closed. Native GPU sampling and raw-target MTP remain blocked
+for these rows, so this is a host processed-logits correctness path, not an A3
+performance promotion. JSON Schema values still use the existing strict
+post-generation validator; this unit enforces envelope/name/root JSON syntax
+and does not claim schema-guided argument quality or a rerun of A6.
 
 Do not tune seeds, token IDs, prompts, candidate ordering, or grammar branches
 to these frozen outputs. The repair must generalize across the committed
@@ -1431,9 +1445,10 @@ multiple later gates.
     prefix economics/lifecycle, native-sampler correctness/tool preflight,
     routing/SLO, bounded pressure/soak, and broad automatic-tool quality are
     published. Prefix, native-sampler, and A4 routing candidates remain rejected.
-16. **Active — constrained tools:** add model-general tokenizer-aware tool/JSON
-    constraints with exact forced/dynamic close queues and fail-closed fallback.
-17. **Next — A4 exactness:** repair the late p512/d48 physical-width transition
+16. **Completed — constrained tools:** tokenizer-aware host candidate masking
+    now enforces canonical tool envelopes, declared names, root-object JSON,
+    exact forced/dynamic close queues, and fail-closed fallback.
+17. **Active — A4 exactness:** repair the late p512/d48 physical-width transition
     divergence against independent c1 state/KV trajectories.
 18. **Then — A3/A4 rerun:** rerun the frozen W7900 gates and promote only a
     candidate that passes every correctness, ownership, C1/medium-C4, and SLO
@@ -1606,6 +1621,8 @@ exact eviction/final drain and 72,089,600-byte cache residency. gfx1100 now
 passes the matching active/completed p256+s1 correctness transfer, without a
 performance claim; its deterministic agentic p2048/p8192 economics/lifecycle
 packet is also closed but rejects promotion. Broader historical boundaries and
-sampled reuse remain open. The gfx1100 PARO owner c4/c8, model-general constrained
-tool sampling, long-context memory-pressure coverage, and complete project-wide
-production continuous batching remain in progress.**
+sampled reuse remain open. Model-general tokenizer-aware constrained tool
+sampling is now implemented on the host processed-logits path. The gfx1100 PARO
+owner c4/c8, A4 width-transition exactness, long-context memory-pressure
+coverage, and complete project-wide production continuous batching remain in
+progress.**

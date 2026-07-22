@@ -17,6 +17,7 @@ from numbers import Integral
 from typing import Iterable, Mapping, Sequence
 
 from hipengine.dispatch import ActiveBatch, BatchShapeKey, RequestState, WorkItem, WorkKind
+from hipengine.generation.constraints import ToolCallConstraintSpec
 from hipengine.generation.registry import FinishDetails, GenerationStreamChunk, GenerationTelemetry
 from hipengine.generation.sampling import (
     RowSamplingState,
@@ -71,6 +72,7 @@ class PerRowSamplingParams:
     force_sequence_completion_token_sequences: tuple[tuple[int, ...], ...] = ()
     force_sequence_completion_reason: str | None = None
     json_object_close_forcing: bool = False
+    tool_call_constraint: ToolCallConstraintSpec | None = None
     thinking_close_token_ids: tuple[int, ...] = ()
     thinking_hard_token_cap: int | None = None
     thinking_soft_close_window: int = 0
@@ -128,6 +130,11 @@ class PerRowSamplingParams:
         if int(self.top_logprobs) < 0:
             raise ValueError("top_logprobs must be non-negative")
         logit_bias = normalize_logit_bias_pairs(self.logit_bias)
+        tool_constraint = self.tool_call_constraint
+        if tool_constraint is not None and not isinstance(tool_constraint, ToolCallConstraintSpec):
+            if not isinstance(tool_constraint, Mapping):
+                raise TypeError("tool_call_constraint must be ToolCallConstraintSpec or a mapping")
+            tool_constraint = ToolCallConstraintSpec(**tool_constraint)
         object.__setattr__(self, "temperature", float(self.temperature))
         object.__setattr__(self, "top_k", int(self.top_k))
         object.__setattr__(self, "top_p", float(self.top_p))
@@ -162,6 +169,7 @@ class PerRowSamplingParams:
             None if self.force_sequence_completion_reason is None else str(self.force_sequence_completion_reason),
         )
         object.__setattr__(self, "json_object_close_forcing", bool(self.json_object_close_forcing))
+        object.__setattr__(self, "tool_call_constraint", tool_constraint)
         object.__setattr__(self, "thinking_close_token_ids", close_token_ids)
         object.__setattr__(
             self,
@@ -203,6 +211,7 @@ class SamplerParamsBlock:
     force_sequence_completion_rows: tuple[tuple[tuple[int, ...], ...], ...] = ()
     force_sequence_completion_reasons: tuple[str | None, ...] = ()
     json_object_close_forcing_rows: tuple[bool, ...] = ()
+    tool_call_constraint_rows: tuple[ToolCallConstraintSpec | None, ...] = ()
     thinking_close_token_rows: tuple[tuple[int, ...], ...] = ()
     thinking_hard_token_caps: tuple[int | None, ...] = ()
     thinking_soft_close_windows: tuple[int, ...] = ()
@@ -255,6 +264,10 @@ class SamplerParamsBlock:
             _check_len("json_object_close_forcing_rows", self.json_object_close_forcing_rows, rows)
         else:
             object.__setattr__(self, "json_object_close_forcing_rows", tuple(False for _ in range(rows)))
+        if self.tool_call_constraint_rows:
+            _check_len("tool_call_constraint_rows", self.tool_call_constraint_rows, rows)
+        else:
+            object.__setattr__(self, "tool_call_constraint_rows", tuple(None for _ in range(rows)))
         if self.thinking_close_token_rows:
             _check_len("thinking_close_token_rows", self.thinking_close_token_rows, rows)
         else:
@@ -334,6 +347,15 @@ class SamplerParamsBlock:
             "json_object_close_forcing_rows",
             tuple(bool(value) for value in self.json_object_close_forcing_rows),
         )
+        tool_constraints: list[ToolCallConstraintSpec | None] = []
+        for constraint in self.tool_call_constraint_rows:
+            if constraint is None or isinstance(constraint, ToolCallConstraintSpec):
+                tool_constraints.append(constraint)
+            elif isinstance(constraint, Mapping):
+                tool_constraints.append(ToolCallConstraintSpec(**constraint))
+            else:
+                raise TypeError("tool_call_constraint_rows must contain ToolCallConstraintSpec or None")
+        object.__setattr__(self, "tool_call_constraint_rows", tuple(tool_constraints))
         close_token_rows = tuple(tuple(int(token) for token in row) for row in self.thinking_close_token_rows)
         if any(token < 0 for row in close_token_rows for token in row):
             raise ValueError("thinking_close_token_rows must contain non-negative token ids")
@@ -399,6 +421,7 @@ class SamplerParamsBlock:
             force_sequence_completion_rows=tuple(row.force_sequence_completion_token_sequences for row in params),
             force_sequence_completion_reasons=tuple(row.force_sequence_completion_reason for row in params),
             json_object_close_forcing_rows=tuple(row.json_object_close_forcing for row in params),
+            tool_call_constraint_rows=tuple(row.tool_call_constraint for row in params),
             thinking_close_token_rows=tuple(row.thinking_close_token_ids for row in params),
             thinking_hard_token_caps=tuple(row.thinking_hard_token_cap for row in params),
             thinking_soft_close_windows=tuple(row.thinking_soft_close_window for row in params),
@@ -430,6 +453,7 @@ class SamplerParamsBlock:
             force_sequence_completion_token_sequences=self.force_sequence_completion_rows[index],
             force_sequence_completion_reason=self.force_sequence_completion_reasons[index],
             json_object_close_forcing=self.json_object_close_forcing_rows[index],
+            tool_call_constraint=self.tool_call_constraint_rows[index],
             thinking_close_token_ids=self.thinking_close_token_rows[index],
             thinking_hard_token_cap=self.thinking_hard_token_caps[index],
             thinking_soft_close_window=self.thinking_soft_close_windows[index],
@@ -1066,6 +1090,7 @@ class ResidentBatchScheduler:
             force_sequence_completion_token_sequences=sampling_params.force_sequence_completion_token_sequences,
             force_sequence_completion_reason=sampling_params.force_sequence_completion_reason,
             json_object_close_forcing=sampling_params.json_object_close_forcing,
+            tool_call_constraint=sampling_params.tool_call_constraint,
             thinking_budget=thinking_budget_state_from_params(sampling_params),
         )
         self._observability[rid] = _RequestObservabilityState(

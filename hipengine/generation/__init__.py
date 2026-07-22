@@ -27,6 +27,8 @@ from hipengine.generation.constraints import (
     JsonObjectConstraintState,
     ThinkingBudgetState,
     TokenSequenceDFAState,
+    ToolCallConstraintSpec,
+    ToolCallConstraintState,
     normalize_token_sequences,
     token_sequence_state_for_tokens,
 )
@@ -168,6 +170,8 @@ __all__ = [
     "TextGenerator",
     "ThinkingBudgetState",
     "TokenSequenceDFAState",
+    "ToolCallConstraintSpec",
+    "ToolCallConstraintState",
     "TokenLogprob",
     "active_processor_names",
     "add_engine_loop_config_args",

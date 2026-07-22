@@ -43,7 +43,6 @@ from hipengine.generation.registry import (
 from hipengine.generation.sampling import (
     RowSamplingState,
     SamplingMode,
-    clone_thinking_budget_state,
     plan_sampler,
     row_seed_for_index,
     thinking_budget_state_from_params,
@@ -3133,6 +3132,7 @@ def _per_row_sampling_params(request: GenerationRequest) -> PerRowSamplingParams
         force_sequence_completion_token_sequences=request.force_sequence_completion_token_sequences,
         force_sequence_completion_reason=request.force_sequence_completion_reason,
         json_object_close_forcing=request.json_object_close_forcing,
+        tool_call_constraint=request.tool_call_constraint,
         thinking_close_token_ids=request.thinking_close_token_ids,
         thinking_hard_token_cap=request.thinking_hard_token_cap,
         thinking_soft_close_window=request.thinking_soft_close_window,
@@ -3153,39 +3153,7 @@ def _slot_sampler_state_clones(
 
 
 def _clone_row_sampling_state(state: RowSamplingState) -> RowSamplingState:
-    thinking_budget = clone_thinking_budget_state(state.thinking_budget)
-    if thinking_budget is not None:
-        return RowSamplingState(
-            prompt_tokens=state.prompt_tokens,
-            seed=state.seed,
-            request_id=state.request_id,
-            row_index=state.row_index,
-            generated_tokens=tuple(state.generated_tokens),
-            step_index=state.step_index,
-            stop_token_sequences=state.stop_token_sequences,
-            post_thinking_forced_tokens_pending=state.post_thinking_forced_tokens_pending.pending_tokens,
-            post_thinking_forced_token_reason=state.post_thinking_forced_token_reason,
-            force_sequence_completion_token_sequences=state.force_sequence_completion_token_sequences,
-            force_sequence_completion_reason=state.force_sequence_completion_reason,
-            json_object_close_forcing=state.json_object_close_forcing,
-            thinking_budget=thinking_budget,
-        )
-    return RowSamplingState(
-        prompt_tokens=state.prompt_tokens,
-        seed=state.seed,
-        request_id=state.request_id,
-        row_index=state.row_index,
-        generated_tokens=tuple(state.generated_tokens),
-        step_index=state.step_index,
-        stop_token_sequences=state.stop_token_sequences,
-        forced_tokens_pending=state.forced_tokens,
-        forced_token_reason=state.forced_token_reason,
-        post_thinking_forced_tokens_pending=state.post_thinking_forced_tokens_pending.pending_tokens,
-        post_thinking_forced_token_reason=state.post_thinking_forced_token_reason,
-        force_sequence_completion_token_sequences=state.force_sequence_completion_token_sequences,
-        force_sequence_completion_reason=state.force_sequence_completion_reason,
-        json_object_close_forcing=state.json_object_close_forcing,
-    )
+    return state.clone()
 
 
 def _generation_output_from_steps(
@@ -3552,6 +3520,7 @@ def _row_sampling_state(
         force_sequence_completion_token_sequences=request.force_sequence_completion_token_sequences,
         force_sequence_completion_reason=request.force_sequence_completion_reason,
         json_object_close_forcing=request.json_object_close_forcing,
+        tool_call_constraint=request.tool_call_constraint,
         thinking_budget=thinking_budget_state_from_params(request),
     )
 

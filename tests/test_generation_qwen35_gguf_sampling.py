@@ -21,7 +21,7 @@ from hipengine.generation import (
     SubmitPollTextGenerator,
     TokenLogprob,
 )
-from hipengine.generation.sampling import SampleResult, SamplingMode
+from hipengine.generation.sampling import SampleResult, SamplingMode, ToolCallConstraintSpec
 from hipengine.kvcache import DeviceChunkedKVPool
 
 
@@ -4836,6 +4836,80 @@ def test_gguf_sampled_request_forced_token_overrides_logits(monkeypatch) -> None
     assert decode_state["forced_token_id"] == 2
     assert decode_state["forced_token_reason"] == "tool_choice_required"
     assert decode_state["forced_tokens_remaining"] == 0
+
+
+def test_gguf_tool_constraint_masks_disabled_thinking_and_undeclared_tool(monkeypatch) -> None:
+    class ToolTokenizer(_FakeTokenizer):
+        def encode(self, prompt: str) -> list[int]:
+            if prompt in {"first", "second", "long", "long2", "{", "}"}:
+                return super().encode(prompt)
+            return []
+
+        def decode(self, ids) -> str:
+            table = {
+                0: "<think>",
+                1: "<tool_call>",
+                2: '{"name":"read","arguments":',
+                3: '{"path":"README.md"}',
+                4: "}</tool_call>",
+                5: '{"name":"write","arguments":',
+                99: "<eos>",
+            }
+            return "".join(table[int(token)] for token in ids)
+
+    class FakeSession:
+        step_index = 0
+
+        def __init__(self, model_path, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            pass
+
+        def prefill(self, token_ids, *, return_logits=True):
+            logits = np.full((1, 100), -10.0, dtype=np.float32)
+            logits[0, 0] = 10.0
+            logits[0, 1] = 9.0
+            return SimpleNamespace(token_id=0, logits=logits)
+
+        def step(self, token_id: int, *, return_logits=True):
+            self.step_index += 1
+            logits = np.full((1, 100), -10.0, dtype=np.float32)
+            if self.step_index == 1:
+                logits[0, 5] = 10.0
+                logits[0, 2] = 9.0
+            elif self.step_index == 2:
+                logits[0, 3] = 9.0
+            else:
+                logits[0, 4] = 9.0
+            return SimpleNamespace(token_id=int(np.argmax(logits[0])), logits=logits)
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+    generator = _generator()
+    generator.tokenizer = ToolTokenizer()
+    constraint = ToolCallConstraintSpec(
+        tool_names=("read",),
+        mode="auto",
+        forbidden_text_prefixes=("<think>",),
+    )
+
+    outputs = generator.generate_detailed(
+        _request(
+            max_tokens=4,
+            tool_call_constraint=constraint,
+            stop_token_sequences=((4,),),
+        )
+    )
+
+    assert outputs[0].text == '<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>'
+    assert outputs[0].generated_token_ids == (1, 2, 3, 4)
+    decode_state = _decode_state(outputs[0])
+    assert decode_state["sampler_mode"] == "processed_argmax"
+    assert decode_state["active_processors"] == ["stop_token_sequences", "tool_call_constraint"]
+    assert decode_state["sampler_fast_path_blockers"] == ["stop_token_sequences", "tool_call_constraint"]
 
 
 def test_gguf_json_object_close_forcing_goes_through_decode(monkeypatch) -> None:

@@ -1,6 +1,6 @@
 # Agentic Inference Roadmap
 
-Last updated: 2026-06-18
+Last updated: 2026-07-22
 
 `AGENTIC.md` is the implementation handoff for making hipEngine useful as a
 local **agent runtime**. The scope is not broad project management; it is the
@@ -91,15 +91,17 @@ Already available or recently added:
   specific function choices, functions with `"strict": true`, and explicit
   `parallel_tool_calls`; failures return normal chat responses with no
   successful `tool_calls` and stable `finish_details.reason`.
-- Tokenizer-backed tool-call start controls: no-tool mode suppresses the first
-  `<tool_call>` token; required/specific tool modes force the tokenized
-  `<tool_call>` marker immediately, or after tokenized `</think>` close when a
-  thinking budget is active. Specific function choices, plus `required` mode
-  with exactly one function tool, also force the tokenized
+- Tokenizer-backed tool controls: no-tool mode suppresses the first
+  `<tool_call>` token; tool-enabled host sampling masks candidates to either
+  normal text or one canonical declared-name/root-object-JSON envelope in
+  `auto`, and to only that envelope in required/specific modes. Required/specific
+  modes force the tokenized `<tool_call>` marker immediately, or after tokenized
+  `</think>` close when a thinking budget is active. Specific function choices,
+  plus `required` mode with exactly one function tool, also force the tokenized
   `<tool_call>{"name":"...","arguments":` prefix when tokenizer composition
-  proves it is aligned with the forced start marker. Required/specific tool
-  modes repair tokenized `</tool_call>` close markers by forcing the remaining
-  suffix once the marker starts.
+  proves it is aligned with the forced start marker. Auto/required/specific modes
+  repair tokenized `</tool_call>` close markers by forcing the remaining suffix
+  once the marker starts.
 - Qwen no-think / thinking-effort compatibility via `enable_thinking`,
   `reasoning_effort`, `chat_template_kwargs`, and nested `thinking`/`reasoning`
   request objects. Numeric budget aliases and explicit budget fields are
@@ -114,16 +116,19 @@ Already available or recently added:
 
 Known baseline limitations:
 
-- Tool calling is prompt-and-parse plus limited marker repair, not full
-  constrained decoding. A duplicated `<tool_call>` start marker wrapping valid
-  inner tool JSON is recovered in compatibility parsing. Tool-enabled requests
-  now fail closed on unparseable `<tool_call>` markup, including malformed or
-  unclosed JSON blocks, by returning a normal chat response with
+- Tool calling now combines prompt/rendering, tokenizer-aware host candidate
+  constraints, and post-generation parsing/validation. The decode constraint is
+  deliberately narrower than full JSON Schema guidance: it enforces branch
+  choice, one canonical envelope, a declared tool name, and root-object JSON
+  syntax, while schema semantics remain post-generation. A duplicated
+  `<tool_call>` start marker wrapping valid inner tool JSON is still recovered in
+  compatibility parsing. Tool-enabled requests fail closed on unparseable
+  markup, including malformed or unclosed JSON blocks, with
   `finish_details.reason="invalid_tool_call"` and no assistant content. The
-  parser selects valid tool-call spans by successful JSON tool-call parsing, so
-  literal marker text before a later valid call is preserved as assistant
-  content and marker-looking text inside JSON arguments does not prematurely
-  terminate the tool-call block.
+  parser selects valid spans by successful JSON tool-call parsing, so literal
+  marker text before a later valid call is preserved as assistant content and
+  marker-looking text inside JSON arguments does not prematurely terminate the
+  tool-call block.
 - Thinking control is still not constrained decoding. Tokenized thinking caps
   are enforced only on host-sampled PARO/GGUF rows: the soft window applies a
   sparse close-token bias ramp, EOS is suppressed until answer phase when an
@@ -263,8 +268,9 @@ Current code reality:
   queues, thinking budgets, and logprob requests are normal AR-sampling
   features but raw-argmax MTP blockers.
 - These tests prove the server contract and diagnostics; they do not prove a
-  particular live model will reliably choose the right tool without future
-  decode-time grammar/schema constraints.
+  particular live model will reliably choose the right tool or arguments. The
+  canonical envelope/root-JSON grammar is implemented, but schema-guided argument
+  quality and broad live-model reruns remain separate gates.
 
 ## Core primitives to add
 
@@ -563,17 +569,21 @@ Current code reality:
   safe. It is covered by fixtures for complete objects, nested object/array
   suffixes, escaped delimiters inside strings, and invalid root/trailing/mismatch
   cases.
-- Full JSON/tool/patch grammar constraints are still absent from the public
-  server path. The JSON object state is wired into length-finished root-object
-  JSON continuation eligibility for JSON-object and JSON Schema result-
-  validation requests, so structurally invalid prefixes report
-  `schema_violation` and remain non-continuable. It is also wired into host
-  decode-time close-suffix forcing for JSON-object requests and object-root
-  JSON Schema / guided-JSON requests: when the remaining decode budget exactly
-  fits the tokenizer-lowered close suffix, the suffix is queued through
+- `ToolCallConstraintState` adds a model-independent canonical tool-envelope
+  grammar over tokenizer-decoded text. It supports `auto` text/tool branching,
+  required-only tool branching, declared names, configurable markers, strict
+  root-object JSON syntax, EOS admission, unique structural suffixes, and
+  fail-closed candidate/forced-token validation. `RowSamplingState` applies it
+  after tokenized thinking closes and clones it without sharing mutable state.
+- The JSON object state is wired into length-finished root-object JSON
+  continuation eligibility for JSON-object and JSON Schema result-validation
+  requests, so structurally invalid prefixes report `schema_violation` and
+  remain non-continuable. It also masks host candidates and provides
+  decode-time close-suffix forcing for JSON-object requests and object-root JSON
+  Schema / guided-JSON requests: when the remaining decode budget exactly fits
+  the tokenizer-lowered close suffix, the suffix is queued through
   `ForcedTokenQueue` so it still goes through normal model decode/KV updates.
-  Full token masks, schema grammar constraints, and native/MTP parity remain
-  future work.
+  Full schema/regex/patch token masks and native/MTP parity remain future work.
 
 ### Session/cache control
 
@@ -1390,10 +1400,11 @@ Current code reality:
 - `RowSamplingState` can also bind tokenizer-aware sequence-completion repair
   rules. Once a configured delimiter prefix is selected, the remaining delimiter
   suffix is queued as forced tokens. The server uses this today for selected
-  tool-name prefix completion and required/specific tool-call `</tool_call>`
-  close repair, plus JSON-object structural close-suffix forcing for object-root
-  structured-output requests when the remaining budget exactly fits the lowered
-  suffix. Full grammar processors remain future server/controller work.
+  tool-name prefix completion and auto/required/specific tool-call
+  `</tool_call>` close repair, plus canonical envelope/root-JSON candidate masks
+  and JSON-object structural close-suffix forcing when the remaining budget
+  exactly fits the lowered suffix. Full schema/regex/patch grammar processors
+  remain future server/controller work.
 
 Implement:
 
@@ -1634,16 +1645,23 @@ Exit gates:
 
 ### P2 — Tool-call and structured-output reliability
 
-The current tool-call support is enough for local smoke tests; harness-grade tool
-use needs decoding constraints and better protocol coverage.
+The host processed-logits path now has tokenizer-aware canonical tool-call
+constraints; harness-grade quality still needs broad reruns and schema-guided
+argument decoding.
 
 Current state:
 
 - Chat requests accept OpenAI-style `tools`, `tool_choice`, and
   `parallel_tool_calls`.
-- Tool output remains prompt-and-parse: Qwen-style `<tool_call>{...}</tool_call>`
-  blocks are parsed after generation and converted to OpenAI `tool_calls`.
-  Compatibility parsing recovers the common
+- Qwen-style `<tool_call>{...}</tool_call>` blocks are still parsed after
+  generation and converted to OpenAI `tool_calls`. Tool-enabled tokenizer
+  encode/decode-backed requests also mask host-sampler candidates before
+  selection: `auto` admits
+  either normal text or one canonical envelope, while `required` and specific
+  choices admit only a canonical envelope with a declared name and root-object
+  JSON arguments. When thinking is not disabled, one optional configured
+  thinking envelope may precede the final branch even without a token budget.
+  Compatibility parsing still recovers the common
   `<tool_call><tool_call>{...}</tool_call>` duplicated-start wrapper when the
   inner JSON is valid, including under strict tool validation before schema
   checks. Endpoint regressions pin the repaired non-streaming message and
@@ -1702,10 +1720,12 @@ Current state:
   until the `</think>` close sequence moves the row into answer phase. This uses
   the same host forced-token queue family as thinking hard-close, so it routes
   through processed AR sampling and blocks current raw-argmax MTP verification.
-- Required and specific function modes also tokenize the Qwen `</tool_call>`
-  close marker when possible. If generation begins that close marker, host row
-  state forces the remaining suffix through model decoding so the closing tag is
-  not left half-emitted.
+- Auto, required, and specific function modes tokenize the Qwen
+  `</tool_call>` close marker when possible. If generation begins that close
+  marker, host row state forces the remaining suffix through model decoding so
+  the closing tag is not left half-emitted. A unique deterministic envelope or
+  structural close suffix is also queued when the remaining token budget fits it
+  exactly; every queued token is revalidated against the same grammar.
 - Specific function choices, plus `required` mode with exactly one function
   tool, best-effort tokenize the Qwen
   `<tool_call>{"name":"...","arguments":` prefix. If that full prefix starts
@@ -1760,33 +1780,42 @@ Current state:
   keep their text and may use deterministic buffered continuation handles. The
   capabilities manifest advertises the supported format, fence labels, allowed
   `fenced` policies, and default policy under `features.structured_outputs`.
-- Auto-mode constraints, full argument/schema grammar forcing, and
-  grammar-constrained JSON/tool generation remain future work. Public
+- Tool-envelope/name/root-JSON syntax is constrained on the host sampler for
+  auto, required, and specific choices. Token decode errors, empty token text,
+  missing tokenizer callbacks, and an empty allowed-candidate set fail closed;
+  native GPU sampling and raw-target MTP therefore reject/fall back for these
+  rows. Full decode-time argument/schema enforcement remains future work. Public
   structured-output controls still use post-generation result validation for
-  schema correctness, but JSON-object and object-root JSON Schema / guided-JSON
-  requests now also use `JsonObjectConstraintState` for host decode-time
+  schema correctness, while JSON-object and object-root JSON Schema / guided-JSON
+  requests also use `JsonObjectConstraintState` for host candidate masking and
   structural close-suffix forcing when the remaining budget exactly fits the
   suffix.
 
 #### P2.1 Strict tool-call mode
 
-Implement:
+Implemented for tokenizer encode/decode-backed host processed-logits selection;
+without both capabilities, prompt/parse plus strict result validation remains
+the fail-closed fallback:
 
-- decode-time enforcement for `tool_choice="auto"` and stronger
-  required/specific argument constraints;
-- structured refusal/error when a required call cannot be produced under budget.
-
-Exit gates:
-
-- server result-validation and decode-time fixtures cover `none`, `required`,
-  and specific function choice;
+- `auto` allows either plain text or one canonical tool envelope and cannot
+  switch from visible content to a later tool call;
+- `required` and specific choices allow only canonical envelopes, with declared
+  tool-name and root-object JSON syntax enforced before token selection;
+- one optional model-configured thinking envelope may precede the final branch
+  when thinking is enabled, including without a tokenized hard cap;
 - no-tool mode suppresses `<tool_call>` starts;
 - required/specific-tool modes force `<tool_call>` starts when tokenization is
   available, including after tokenized thinking close;
 - specific-tool and single-tool required modes force the selected function-name
   prefix when tokenizer composition is safe;
-- required/specific-tool modes repair partial `</tool_call>` close markers when
-  tokenization is available, and still do not return ordinary prose as success.
+- auto/required/specific modes repair partial `</tool_call>` markers and queue a
+  unique budget-fitting close suffix through the shared forced-token path;
+- missing/failed token decoding and empty constrained candidate sets fail closed,
+  while native GPU and raw-target MTP paths remain blocked.
+
+The server's post-generation validator remains authoritative for full function
+JSON Schema semantics and for stable required-call failure metadata when the
+budget ends before a valid envelope completes.
 
 #### P2.2 Tool JSON schema validation
 
@@ -1860,13 +1889,14 @@ Current code reality:
   use buffered response paths so invalid choices are not emitted as successful
   deltas, and deterministic buffered continuation handles inherit the original
   choice list across partial length stops;
-- host decode-time structural close-suffix forcing is implemented for
-  JSON-object mode and object-root JSON Schema / guided-JSON requests. It can
-  force a suffix only when the current prefix plus that suffix parses as a valid
-  JSON root object. This covers brace/bracket closes and value-string quote
-  repair at the exact remaining-budget boundary; unfinished keys, missing
-  values, escape-state strings, token masks, and schema-constrained generation
-  remain future grammar work.
+- host decode-time root-object syntax masking and structural close-suffix
+  forcing are implemented for JSON-object mode and object-root JSON Schema /
+  guided-JSON requests. Candidate tokens must preserve a valid strict JSON-object
+  prefix before processed argmax/sampling. A suffix is forced only when the
+  current prefix plus that suffix parses as a valid JSON root object, covering
+  brace/bracket closes and value-string quote repair at the exact remaining-
+  budget boundary. Missing values and escape-state strings cannot be fabricated;
+  JSON Schema constraints remain post-generation work.
 
 #### P2.4 Guidance / grammar plugin interface
 
@@ -1885,21 +1915,22 @@ Exit gates:
 
 Current code reality:
 
-- `/v1/hipengine/capabilities` reports `features.grammars.enabled=false`,
-  `strict_decoding=false`, an empty supported grammar list, and known
-  unsupported grammar/guidance fields (`grammar`, `guided_grammar`, and
-  `guided_decoding_backend`).
-  JSON, regex, choice, and patch/diff guidance are reported separately under
-  `features.grammars.result_validation_only` because they do not install
-  grammar masks; the narrow parse-validated object-root close-suffix path is
-  advertised separately under
-  `features.structured_outputs.decode_time_close_forcing`.
+- `/v1/hipengine/capabilities` reports the user-supplied grammar plugin surface
+  as `features.grammars.enabled=false`, `strict_decoding=false`, with an empty
+  supported grammar list and known unsupported fields (`grammar`,
+  `guided_grammar`, and `guided_decoding_backend`). Tool strict decoding is
+  advertised separately under `features.tools`, and root-object JSON syntax
+  masking/close forcing under `features.structured_outputs`; neither implies a
+  general user-supplied grammar backend. JSON Schema, regex, choice, and
+  patch/diff guidance remain listed under
+  `features.grammars.result_validation_only` for semantics not covered by those
+  syntax constraints.
 - Requests that send those grammar/guidance fields are rejected before
   generation through the normal unsupported-parameter path with `error.param`
   set to the rejected field. JSON-object / JSON-schema / guided JSON support
-  remains result-validation plus the narrow host close-suffix path described
-  above, not grammar decoding. Regex / choice / patch-diff support remains
-  result-validation-only. Tests cover every advertised unsupported
+  adds host root-object syntax masking and close forcing but still uses
+  post-generation JSON Schema validation. Regex / choice / patch-diff support
+  remains result-validation-only. Tests cover every advertised unsupported
   grammar/guidance field.
 
 #### P2.5 Patch/diff constrained mode
@@ -2228,8 +2259,8 @@ Current code reality:
 - The scheduler owns per-request `RowSamplingState` and per-row
   `PerRowSamplingParams` for c>N batches. Its `SamplerParamsBlock` preserves
   row-aligned sampler knobs, deterministic per-row seeds, forced-token queues,
-  post-thinking forced-token queues, sequence-completion repair metadata, and
-  thinking-budget fields.
+  post-thinking forced-token queues, sequence-completion repair metadata,
+  JSON/tool constraints, and thinking-budget fields.
 - `SamplerParamsBlock` now exposes the shared `plan_sampler()` outcome for each
   request row, plus JSON-ready per-row metadata containing sampler mode,
   active processors, fast-path blockers, host-logits use, native availability,
@@ -2274,7 +2305,8 @@ Current state:
   generic host fallback reason. The capabilities manifest now advertises the
   same current native-sampler blockers enforced by `supports_native_gpu_sampling`,
   including forced-token queues, post-thinking forced-token queues,
-  sequence-completion repairs, and JSON object close forcing. It also separates
+  sequence-completion repairs, JSON object close forcing, and tool-call
+  constraints. It also separates
   native GPU pre-selection
   `processors` from `post_selection_controls` for stop token ids and
   multi-token stop sequences, which PARO c=1 and serial per-slot c>N native
@@ -2459,9 +2491,11 @@ Current code reality:
   visible-only resident re-prefill, transcript replay through normal rendering,
   and downgrade reasons for unsafe visible-only finishes. Session metadata advertises
   `transcript_message_copy="json_deep_copy"` plus deep-copy guarantees for
-  forks, rollbacks, and snapshot export. Multi-model routing and strict tool
-  decoding remain advertised as unsupported until their runtime paths exist. Tensor
-  parallelism is advertised as disabled with single-process topology and
+  forks, rollbacks, and snapshot export. Multi-model routing remains
+  unsupported. Tokenizer-backed tools advertise strict canonical-envelope,
+  declared-name, and root-JSON-syntax decoding; full schema-guided argument
+  decoding remains unsupported. Tensor parallelism is advertised as disabled
+  with single-process topology and
   explicit unsupported multi-GPU/sharding features. Request timeouts and
   client-disconnect cancellation are advertised as supported with cooperative
   backend deadline/cancel checks and `preemptive_decode_cancel=false`; token
@@ -3015,8 +3049,8 @@ edge-case hardening:
    EOS suppression, forced-token telemetry, and
    `thinking_budget_exhausted` finish details. Native GPU and MTP paths stay
    blocked/fallback until they implement the same policy.
-4. **Tool and structured fail-safe behavior.** Keep prompt-and-parse tool calls
-   and post-generation structured-output validation fail-closed: no raw
+4. **Tool and structured fail-safe behavior.** Keep constrained-and-parsed tool
+   calls and post-generation structured-output validation fail-closed: no raw
    `<tool_call>` or `<think>` leakage, no successful `tool_calls` on invalid
    outputs, no successful visible content on suppressed schema violations,
    literal marker text must not steal parser state from a later valid tool
@@ -3024,8 +3058,9 @@ edge-case hardening:
 5. **Sampler/MTP guard completeness.** Raw-argmax speculative/MTP verification
    remains limited to greedy-fast rows. Every field that changes token
    selection or post-accept finish behavior (`logit_bias`, penalties,
-   suppressions, min-token/EOS policy, stop controls, forced tokens, thinking
-   budgets, logprobs) must keep an advertised blocker and a test.
+   suppressions, min-token/EOS policy, stop controls, forced tokens, tool/JSON
+   constraints, thinking budgets, logprobs) must keep an advertised blocker and
+   a test.
 
 ### P2 — Core but allowed to fail closed
 
@@ -3069,13 +3104,14 @@ above and in P3/P4 until the server advertises those capabilities.
    speculative verify plans preserve `raw_target_top1`,
    `processed_target_verification=false`, and
    `compatible_sampling_modes=("greedy_fast",)` metadata.
-4. **Decode-time grammar constraints.** Tokenizer-aware JSON/tool/patch grammars
-   should reuse the shared DFA/forced-token path. Current result-validation plus
-   narrow JSON close-suffix forcing is acceptable because strict decoding is
-   advertised as unsupported, grammar/guidance fields that would imply token
-   masks (`grammar`, `guided_grammar`, `guided_decoding_backend`) reject before
-   generation on completion and chat endpoints, and supported JSON/regex/choice/
-   patch guidance is advertised as result-validation-only.
+4. **Decode-time grammar constraints.** Tokenizer-aware tool envelopes and
+   root-object JSON now reuse shared row state and forced-token queues on the host
+   sampler, with candidate masking before processed argmax/sampling and explicit
+   native/MTP blockers. Full JSON Schema, regex, choice, patch, and user-supplied
+   grammar token masks remain unimplemented: `grammar`, `guided_grammar`, and
+   `guided_decoding_backend` still reject before generation, while supported
+   JSON/regex/choice/patch guidance advertises its remaining validation-only
+   scope precisely.
 5. **Additional context policies.** `auto_clear_transient`, `new_session`, and
    `truncate_oldest_visible` cover the currently safe transcript-prefix
    policies. The current `auto_clear_transient` path is a deterministic no-op
@@ -3140,8 +3176,8 @@ Remaining P3 work:
 4. **Patch/tool/JSON grammar completeness and retry/repair policies.** Full
    token-level patch grammar enforcement, broad JSON Schema decoding, and
    automatic retry/repair are later policies unless a concrete agent harness
-   cannot operate with current fail-closed validation and narrow JSON
-   close-suffix forcing.
+   cannot operate with current fail-closed envelope/root-JSON syntax constraints
+   plus post-generation schema validation.
 5. **Production-serving polish.** True mid-kernel or mid-graph preemption,
    richer cache/KV byte accounting, advanced fair-share routing beyond the
    current FIFO-compatible batcher policy, and other production multi-tenant
