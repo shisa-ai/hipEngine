@@ -2,11 +2,11 @@
 
 Last updated: 2026-07-22
 
-Status: eager all-resident c=1 and public blocking/streaming generation are
-implemented; first-token oracle and repeated-state gates pass, with one
-documented low-margin greedy-32 arithmetic split. Deterministic and live
-Poolside-v1 reasoning/XML-tool server gates are green; bulk prefill and target
-performance work remain.
+Status: eager all-resident c=1, exact chunked prefill/B+1 target rows, and public
+blocking/streaming generation are implemented. First-token, repeated-state,
+bulk-vs-serial, and live Poolside-v1 reasoning/XML-tool gates pass, with one
+documented low-margin greedy-32 arithmetic split. Target performance,
+accept/rollback integration, long-context admission, and DFlash work remain.
 
 This document defines the correctness-first plan for running
 [`poolside/Laguna-S-2.1-GGUF`](https://huggingface.co/poolside/Laguna-S-2.1-GGUF),
@@ -1559,8 +1559,41 @@ Bulk prefill comes after eager parity:
 - SWA prefill at 72 Q heads with bounded history;
 - batched sigmoid/correction/top-10 routing;
 - selected routed experts and shared expert over prompt rows;
-- chunked prefill sized from gfx1151 profiles, initially testing 256 rows;
+- chunked prefill sized from gfx1151 profiles, initially testing 64 rows before
+  any larger-chunk promotion;
 - exact final prompt hidden/KV comparison against token-serial eager.
+
+The correctness-first rows path is implemented at a bounded default chunk size
+of 64. Normal prompts longer than one token now execute row-major embedding,
+F32-weight norms, source-F16 projections, dual RoPE, global/SWA causal
+attention, dense/sigmoid MoE, and final hidden state. Only the final prompt row
+runs LM-head/argmax; c=1 decode is unchanged. The retained serial prefill
+selector is documented in `docs/REFACTOR.md` and remains the independent oracle.
+
+`verify_rows(root, drafts)` executes one committed B+1 block, returns full FP32
+logits for every target row, and copies BF16 DFlash taps at depths
+2/11/20/30/39/48 into caller-owned row buffers. Speculative rejection rollback
+is intentionally deferred to D3/task #37; this surface alone does not make
+rejected target rows safe to commit.
+
+The accepted gfx1151 artifact
+`benchmarks/results/2026-07-22-gfx1151-laguna-bulk-prefill-verifier-correctness.json`
+compares lengths 1/2/7/55/65, including the 64-row chunk boundary. Every case is
+bit-exact to token-serial execution for complete FP32 logits, final and
+pre-final BF16 hidden, all six taps, next token, and a SHA-256 over complete
+live-span metadata plus every live BF16 K/V row. The five-row B+1 gate after a
+seven-token prefix is exact on the same surfaces. Tracked allocations return to
+zero. Timings are diagnostics only: length-55 is `3.1030 -> 2.3552 s` (1.317x),
+length-65 is `3.6872 -> 2.8019 s` (1.316x), and B+1 is
+`0.2776 -> 0.2286 s` (1.214x).
+
+A cached-build full-model `rocprofv3` gate records the intended rows families:
+36 global and 108 SWA prefill-attention/write launches over three 55-row passes,
+141 row routers/reducers, 144 source-F16 triple/single projections, rows-form
+Q4 pack8 shared projections, and selected Q4/Q6 T16 experts. It also identifies
+the next optimization target for L10/task #35: source-F16 triple and BF16-output
+single rows dominate the trace at 2.734/2.126 s total, while global/SWA attention
+uses only 0.007/0.060 s total. No graph or retained AR throughput claim is made.
 
 Graph replay comes last. Capture keys must include all state that can change
 semantics: context bucket, layer attention pattern, live spans, absolute
