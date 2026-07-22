@@ -172885,3 +172885,29 @@ not run in this unit and remains the next gate.
 Per the user-added serving requirement, follow-on tasks now explicitly cover the
 Poolside `poolside_v1` reasoning parser, tool-call parser, and blocking/streaming
 end-to-end parser fixtures after the target runtime is generating real output.
+
+## 2026-07-22 — Validate selective Laguna materialization on gfx1151
+
+Added a HIP-availability-guarded selective materialization gate. Tiny synthetic
+Q4_K pack8, Q4T16, and Q6T16 residents matched their host repacks byte-for-byte
+after D2H readback. The completed GGUF then materialized
+`root.output_norm`, `layers.0.attn_gate`, and
+`layers.1.ffn_gate_shexp`, exercising source FP32, source-preserving FP16, and
+three-allocation Q4_K pack8 from the real payload. All device bytes matched the
+GGUF/repacked host oracle.
+
+Exact GPU test:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 uv run pytest -q \
+  tests/test_laguna_gguf_materialize_gpu.py
+```
+
+Result: **2/2 passed**. The real selected set owned five allocations totaling
+2,666,496 bytes; process-local tracked state returned from five allocations /
+2,666,496 bytes to zero allocations / zero bytes after `resident.free()`. In a
+fresh diagnostic process, `hipMemGetInfo` moved from 128,844,787,712 free to
+128,691,617,792 after load and 128,695,812,096 after free. The much larger
+one-time difference than tracked payload is HIP context/allocator startup, not
+a tracked weight leak; same-process guarded tests measure after the tiny HIP
+warmup and enforce recovery within 16 MiB. Full-model loading remains pending.
