@@ -252,7 +252,7 @@ throughput.
 | 1 | Exact branchless magnitude/sign decode | both | 20-50% | low |
 | 2 | Q8_1 activation plus raw-IQ2 `sudot4` | decode/small batch | 1.5-3x | medium; approximate |
 | 3 | 16-/32-value tasks, wider loads, geometry sweep | both | 10-30% | medium |
-| 4 | Adaptive rowbatch1/2/4/8 | prefill | 15-40% at populated experts | low-medium |
+| 4 | Adaptive rowbatch1/2/4 | prefill | measured 0.64-13.09% vs prior policy | low-medium |
 | 5 | Tile two output columns while sharing activations | decode | 5-20% | medium |
 | 6 | IQ2-specific integer MMQ/WMMA | large prefill | 1.5-3x | high |
 | 7 | Wave-uniform address, reduction, and codegen cleanup | both | 2-10% | low |
@@ -365,14 +365,14 @@ regressed balanced 16-token scalar by 5.25% and short rowbatch4 cases by up to
 
 ### P4 — Adaptive row batching
 
-Add or evaluate rowbatch2 and rowbatch8 alongside scalar and rowbatch4. Prefer a
+Evaluate rowbatch2 and rowbatch8 alongside scalar and rowbatch4. Prefer a
 block-uniform decision from `end - begin`, so one launch can handle a mixed
-routing distribution without a host scalar read:
+routing distribution without a host scalar read. The retained policy is:
 
-- one row: scalar;
-- two to three rows: rowbatch2 candidate;
-- four to seven rows: rowbatch4;
-- eight or more rows: rowbatch8 candidate.
+- one row: batch1;
+- two rows: batch2;
+- three or more rows: batch4;
+- at a global average of four rows/expert, use the original rowbatch4 symbol.
 
 Useful hipEngine precedent:
 
@@ -386,6 +386,21 @@ Useful hipEngine precedent:
 
 Monitor VGPR carefully. Rowbatch8 doubles the gate/up accumulator set and must
 stay scratch-free.
+
+**Retained result (2026-07-22):** the sparse adaptive kernel reads only the
+existing device-resident expert prefix, makes a block-uniform batch1/2/4 choice,
+and remains BF16-bit exact to grouped scalar. Against the previous unconditional
+K3072 rowbatch4 policy, auto improves every 16/32/64-token representative leaf
+by 0.64-13.09%; balanced 16 tokens move `1.378 -> 1.198 ms` (-13.09%), and
+balanced 32 moves `2.179 -> 1.919 ms` (-11.91%). At 128/512 tokens auto selects
+the exact same rowbatch4 symbol as before. Rocprof records adaptive at
+local256/VGPR88/LDS512B/scratch0.
+
+Standalone rowbatch2 never won against base/rowbatch4/adaptive. Rowbatch8 won
+only balanced five-row experts by 4.15%; it regressed the other 14 leaves by
+12.25-96.50% and raised the all-in adaptive register/codegen cost, so its
+external candidate was removed. Evidence:
+[`../benchmarks/results/2026-07-22-gpu1-iq2-xs-adaptive-rowbatch.json`](../benchmarks/results/2026-07-22-gpu1-iq2-xs-adaptive-rowbatch.json).
 
 ### P5 — Two-output selected decode tile
 
@@ -599,7 +614,7 @@ and state/KV behavior before kernel model-level gates begin.
 | Representative benchmark | complete | committed E256 harness and accepted diagnostic baseline |
 | Branchless exact decode | complete | exact, branch-free selector decode; retained across full matrix |
 | Group width/geometry | complete | pair16/local64 retained for decode; task32 and prefill pair16 rejected |
-| Adaptive rowbatch | queued | measured sparse/balanced/hot policy |
+| Adaptive rowbatch | complete | exact batch1/2/4 sparse policy retained; rowbatch8 rejected |
 | Output tile2 | queued | cold production-shape non-regression |
 | Q8_1 `sudot4` | queued | primitive gate, ISA proof, inclusive win; model gate later |
 | Integer MMQ | deferred behind scalar work | populated-expert crossover and retained full-shape win |

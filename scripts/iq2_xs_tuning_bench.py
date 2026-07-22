@@ -38,6 +38,8 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_iq_gemv import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_iq_selected_prefill import (
     build_gguf_iq_selected_prefill,
+    gguf_iq2_xs_selected_dual_grouped_prefill_compact_adaptive_bf16_bf16_out,
+    gguf_iq2_xs_selected_dual_grouped_prefill_compact_auto_bf16_bf16_out,
     gguf_iq2_xs_selected_dual_grouped_prefill_compact_bf16_bf16_out,
     gguf_iq2_xs_selected_dual_grouped_prefill_compact_rowbatch4_bf16_bf16_out,
 )
@@ -155,6 +157,35 @@ def grouped_raw_weight_bytes_per_dispatch(
     if row_batch <= 0:
         raise ValueError("row_batch must be positive")
     weight_visits = int(np.sum((counts + row_batch - 1) // row_batch))
+    return raw_weight_bytes_per_dispatch(
+        rows=weight_visits,
+        in_features=in_features,
+        out_features=out_features,
+        matrices=matrices,
+    )
+
+
+def adaptive_row_batch(count: int) -> int:
+    if count <= 1:
+        return 1
+    if count == 2:
+        return 2
+    return 4
+
+
+def adaptive_grouped_raw_weight_bytes_per_dispatch(
+    counts: np.ndarray,
+    *,
+    in_features: int,
+    out_features: int,
+    matrices: int,
+) -> int:
+    counts = np.asarray(counts, dtype=np.int64)
+    weight_visits = sum(
+        (int(count) + adaptive_row_batch(int(count)) - 1)
+        // adaptive_row_batch(int(count))
+        for count in counts
+    )
     return raw_weight_bytes_per_dispatch(
         rows=weight_visits,
         in_features=in_features,
@@ -723,32 +754,50 @@ def _run_prefill_case(
             compact_rows=compact_rows,
             args=args,
         )
-        rowbatch4 = _prefill_launch(
-            gguf_iq2_xs_selected_dual_grouped_prefill_compact_rowbatch4_bf16_bf16_out,
-            library=library,
-            runtime=runtime,
-            x_ptr=x_buf.ptr,
-            starts_ptr=starts_buf.ptr,
-            gate_ptr=gate_buf.ptr,
-            up_ptr=up_buf.ptr,
-            out_ptr=out_buf.ptr,
-            compact_rows=compact_rows,
-            args=args,
-        )
+        candidate_wrappers = {
+            "rowbatch4": (
+                gguf_iq2_xs_selected_dual_grouped_prefill_compact_rowbatch4_bf16_bf16_out
+            ),
+            "adaptive": (
+                gguf_iq2_xs_selected_dual_grouped_prefill_compact_adaptive_bf16_bf16_out
+            ),
+            "auto": (
+                gguf_iq2_xs_selected_dual_grouped_prefill_compact_auto_bf16_bf16_out
+            ),
+        }
+        launches = {"base": base}
+        for name, wrapper in candidate_wrappers.items():
+            launches[name] = _prefill_launch(
+                wrapper,
+                library=library,
+                runtime=runtime,
+                x_ptr=x_buf.ptr,
+                starts_ptr=starts_buf.ptr,
+                gate_ptr=gate_buf.ptr,
+                up_ptr=up_buf.ptr,
+                out_ptr=out_buf.ptr,
+                compact_rows=compact_rows,
+                args=args,
+            )
         correctness = None
         if check_correctness:
             base()
             expected = _read(out_buf, shape=out_shape, dtype=np.dtype(np.uint16))
-            rowbatch4()
-            actual = _read(out_buf, shape=out_shape, dtype=np.dtype(np.uint16))
-            mismatches = int(np.count_nonzero(actual != expected))
+            candidates = {}
+            for name in candidate_wrappers:
+                launches[name]()
+                actual = _read(out_buf, shape=out_shape, dtype=np.dtype(np.uint16))
+                mismatches = int(np.count_nonzero(actual != expected))
+                candidates[name] = {
+                    "passed": mismatches == 0,
+                    "bf16_bit_mismatches": mismatches,
+                }
             correctness = {
-                "passed": mismatches == 0,
-                "bf16_bit_mismatches": mismatches,
-                "elements": int(actual.size),
+                "passed": all(bool(row["passed"]) for row in candidates.values()),
+                "candidates": candidates,
+                "elements": int(expected.size),
                 "oracle": "grouped scalar",
             }
-        launches = {"base": base, "rowbatch4": rowbatch4}
         warmup_count, samples = _measure_counterbalanced(
             runtime,
             launches,
@@ -776,24 +825,42 @@ def _run_prefill_case(
                     row_batch=1,
                 ),
             ),
-            "rowbatch4": _sample_summary(
-                samples["rowbatch4"],
-                raw_bytes=grouped_raw_weight_bytes_per_dispatch(
-                    counts,
-                    in_features=args.in_features,
-                    out_features=args.out_features,
-                    matrices=2,
-                    row_batch=4,
-                ),
-            ),
         }
-        case["rowbatch4_vs_base_percent"] = float(
-            100.0
-            * (
-                case["rowbatch4"]["median_ms"] / case["base"]["median_ms"]
-                - 1.0
-            )
+        case["rowbatch4"] = _sample_summary(
+            samples["rowbatch4"],
+            raw_bytes=grouped_raw_weight_bytes_per_dispatch(
+                counts,
+                in_features=args.in_features,
+                out_features=args.out_features,
+                matrices=2,
+                row_batch=4,
+            ),
         )
+        adaptive_raw_bytes = adaptive_grouped_raw_weight_bytes_per_dispatch(
+            counts,
+            in_features=args.in_features,
+            out_features=args.out_features,
+            matrices=2,
+        )
+        case["adaptive"] = _sample_summary(
+            samples["adaptive"],
+            raw_bytes=adaptive_raw_bytes,
+        )
+        if args.in_features > 2048 and compact_rows < 4 * args.experts:
+            auto_raw_bytes = adaptive_raw_bytes
+        elif compact_rows >= 4 * args.experts:
+            auto_raw_bytes = case["rowbatch4"]["raw_weight_bytes_per_dispatch"]
+        else:
+            auto_raw_bytes = case["base"]["raw_weight_bytes_per_dispatch"]
+        case["auto"] = _sample_summary(
+            samples["auto"],
+            raw_bytes=int(auto_raw_bytes),
+        )
+        for name in candidate_wrappers:
+            case[f"{name}_vs_base_percent"] = float(
+                100.0
+                * (case[name]["median_ms"] / case["base"]["median_ms"] - 1.0)
+            )
         return correctness, case
     finally:
         free(out_buf)
