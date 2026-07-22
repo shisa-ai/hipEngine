@@ -174786,3 +174786,50 @@ uvx ruff check scripts/laguna_prefill_profile.py \
   tests/test_laguna_prefill_profile.py
 # clean
 ```
+
+The clean measurement at `4b47132eb` then passed on Radeon 8060S/gfx1151.
+Repacked-cache load was 49.566 s and excluded. Three rotating-order synchronized
+passes at physical rows 16/32/55/64/122/128 reached median
+**23.141/23.421/23.450/23.453/23.368/23.377 tok/s**. Every shape repeated one
+next token exactly, the six independent routing replays reproduced that token,
+and tracked bytes/allocations returned exactly to baseline.
+
+The route replay records all 47 x `rows*10` selected IDs. At 55 rows it has
+25,850 useful lanes across 6,892 active `(layer,expert)` groups; 76.25% of groups
+have at most four lanes and naïve 16-row compact padding would execute 4.396x
+useful lanes. At 128 rows the ratio remains 2.704x. This ranks LPF-1 true F16
+bulk first and makes existing compact WMMA a measured LPF-2 control rather than
+a presumed promotion.
+
+Exact timing/routing command:
+
+```bash
+env HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 \
+  uv run python -u scripts/laguna_prefill_profile.py \
+  /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf \
+  --backend hip_gfx1151 --context-length 4096 \
+  --rows 16,32,55,64,122,128 --repetitions 3 --warmups 1 \
+  --routing-tile-rows 16 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 \
+  --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f \
+  --output benchmarks/results/2026-07-23-gfx1151-laguna-prefill-lpf0-profile.json
+```
+
+A second clean run at `dbfeecf83` used the same six shapes, two repetitions,
+zero warmups, and `--skip-routing-replay` under cached-only `rocprofv3`. It
+produced 12 complete embedding-to-argmax spans with exactly 1,006 dispatches
+per pass. The 55-row median kernel sum is 2.340 s: source-F16 QKV triple
+907.232 ms (38.78%), source-F16 O 706.832 ms (30.21%), selected Q4 gate/up
+397.911 ms (17.01%), selected Q4/Q6 down 220.974 ms (9.44%), and global+SWA
+attention 22.365 ms (0.96%). Dominant kernels report zero scratch; F16 QKV/O
+use 256 threads, 16 VGPR, 128 SGPR, and 512 B LDS. Raw CSV SHA-256 is
+`078baf3f...227ca` and remains under `/tmp`; its compact summary is attached to
+the retained artifact.
+
+The readable first artifact (SHA-256 `1057f933...632c`) was losslessly encoded
+after the focused size repair; timings, selected-ID hashes, occupancy summaries,
+outputs, memory, and provenance did not change. Final artifact SHA-256 is
+`0664ead7...41ba`, size 302,573 bytes:
+`benchmarks/results/2026-07-23-gfx1151-laguna-prefill-lpf0-profile.json`.

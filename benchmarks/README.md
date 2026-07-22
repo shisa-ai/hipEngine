@@ -3,6 +3,8 @@
 Last reviewed: **2026-07-23**
 
 Latest retained hipEngine revisions in this scoreboard:
+`dbfeecf83363023d3ac9d72736c68da632af0726` for the Laguna S 2.1 LPF-0
+prefill-only shape trace and real-routing replay,
 `b83d9aaae0b4afd59508d081f65b2da7c473e59a` for the exact Laguna S 2.1
 full-suite DFlash diagnostic and fixed-horizon state gate,
 `ee1649e3fa372bd115ae7afed9aa2a0e81932afc` for the exact Laguna S 2.1
@@ -1145,6 +1147,19 @@ c=1 decode rows. Source-F16 QKV/O projections dominate at 2.877/2.244 s total;
 selected Q4 dual/down families use 1.280/0.717 s. Global/SWA prefill attention
 uses 0.007/0.060 s and global/SWA decode attention 0.003/0.029 s, confirming
 attention metadata is not the current short-context bottleneck.
+
+LPF-0 removes that trace contamination. One physical chunk at rows
+16/32/55/64/122/128 reaches median
+23.141/23.421/23.450/23.453/23.368/23.377 tok/s over three rotating-order
+passes; repeated next tokens, routing-replay outputs, and lifecycle are exact.
+The cached trace has 12 complete passes and 1,006 embedding-to-argmax
+dispatches/pass. Its 55-row kernel sum is 2.340 s: source-F16 QKV/O is
+**68.99%**, selected Q4/Q6 direct GEMV is **26.45%**, and attention is
+**0.96%**. Real top-10 routing produces 6,892 nonempty `(layer, expert)` groups at 55 rows; 76.25% have at most four
+lanes, so naïve 16-row compact-WMMA padding would execute 4.396x useful lanes
+(2.704x at 128 rows). LPF-1 true source-F16 bulk projection therefore remains
+first; LPF-2 compact WMMA is a control rather than an assumed win.
+[LPF-0 profile and routing artifact](results/2026-07-23-gfx1151-laguna-prefill-lpf0-profile.json).
 
 The matched clean Poolside llama.cpp `04b2b72c` raw-token diagnostic reports
 70.463/70.451 prompt tok/s and 19.063/18.882 native predicted tok/s at h16/h32,
