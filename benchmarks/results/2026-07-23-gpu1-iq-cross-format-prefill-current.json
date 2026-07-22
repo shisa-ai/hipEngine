@@ -1,0 +1,77 @@
+{
+  "schema": "hipengine.iq_cross_format_prefill_diagnostic.v1",
+  "created_at": "2026-07-22T19:01:12+00:00",
+  "status": "diagnostic",
+  "performance_claim": false,
+  "scope": "Synthetic exact raw-IQ dual gate/up prefill leaf comparison; no model throughput claim",
+  "hardware": {
+    "gpu_index": "1",
+    "name": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100"
+  },
+  "shape": {
+    "experts": 16,
+    "in_features": 3072,
+    "out_features": 128,
+    "equal_rows_per_expert": [1, 2, 4, 8, 16]
+  },
+  "selection": "Minimum event median among explicitly launched exact base and rowbatch4 leaves; not registered auto/default policy",
+  "timing": {
+    "warmup_launches_per_leaf": 20,
+    "iterations": 200,
+    "repeats": 5,
+    "alternating_order": true,
+    "unit": "us per dual gate/up dispatch"
+  },
+  "old": {
+    "code_commit": "8addd86771c3b55d382dccc5a9b739f1ff093b56",
+    "driver_sha256": "1090e383038c43464d27ae6097eb922cacdec6cf3f500548869024aa13727ebc",
+    "raw_output_sha256": "f869226677be9e9ca507d59385e48c926b4b855ed645ca25b32949d190cc23bc"
+  },
+  "current": {
+    "measured_commit": "5046fd72c76f3fb8cb2e1208e8836272adb83276",
+    "code_commit": "2627d0447b831188e8aae2b2c01c3c72846748e9",
+    "exact_command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 /tmp/compare_iq_prefill.py > /tmp/compare-iq-prefill-current.json",
+    "driver_sha256": "1090e383038c43464d27ae6097eb922cacdec6cf3f500548869024aa13727ebc",
+    "raw_output_sha256": "23e98a42209801c5b166a64c6c2b15c3fa0689c28a8a42300d436831b7bf8382"
+  },
+  "correctness": "Timing uses existing correctness-gated exact grouped/rowbatch leaves; this driver adds no new output oracle.",
+  "rows": [
+    {
+      "rows_per_expert": 1,
+      "compact_rows": 16,
+      "old_us": {"IQ2_XS": 20.452, "IQ3_XXS": 12.289, "IQ4_XS": 13.705},
+      "current_us": {"IQ2_XS": 15.733, "IQ3_XXS": 12.546, "IQ4_XS": 13.573},
+      "current_vs_old_percent": {"IQ2_XS": -23.07, "IQ3_XXS": 2.09, "IQ4_XS": -0.96}
+    },
+    {
+      "rows_per_expert": 2,
+      "compact_rows": 32,
+      "old_us": {"IQ2_XS": 22.584, "IQ3_XXS": 16.232, "IQ4_XS": 15.866},
+      "current_us": {"IQ2_XS": 19.191, "IQ3_XXS": 16.217, "IQ4_XS": 15.729},
+      "current_vs_old_percent": {"IQ2_XS": -15.02, "IQ3_XXS": -0.09, "IQ4_XS": -0.86}
+    },
+    {
+      "rows_per_expert": 4,
+      "compact_rows": 64,
+      "old_us": {"IQ2_XS": 25.977, "IQ3_XXS": 19.954, "IQ4_XS": 21.984},
+      "current_us": {"IQ2_XS": 23.178, "IQ3_XXS": 20.116, "IQ4_XS": 21.496},
+      "current_vs_old_percent": {"IQ2_XS": -10.78, "IQ3_XXS": 0.81, "IQ4_XS": -2.22}
+    },
+    {
+      "rows_per_expert": 8,
+      "compact_rows": 128,
+      "old_us": {"IQ2_XS": 48.428, "IQ3_XXS": 37.399, "IQ4_XS": 34.793},
+      "current_us": {"IQ2_XS": 42.657, "IQ3_XXS": 37.288, "IQ4_XS": 34.579},
+      "current_vs_old_percent": {"IQ2_XS": -11.92, "IQ3_XXS": -0.30, "IQ4_XS": -0.61}
+    },
+    {
+      "rows_per_expert": 16,
+      "compact_rows": 256,
+      "old_us": {"IQ2_XS": 97.458, "IQ3_XXS": 74.761, "IQ4_XS": 59.216},
+      "current_us": {"IQ2_XS": 86.580, "IQ3_XXS": 74.542, "IQ4_XS": 59.277},
+      "current_vs_old_percent": {"IQ2_XS": -11.16, "IQ3_XXS": -0.29, "IQ4_XS": 0.10}
+    }
+  ],
+  "summary": "Current IQ2 is 10.78-23.07% faster than the old pre-P1 source across this screen; IQ3/IQ4 differ by -2.22% to +2.09%, consistent with run variance and no relevant kernel change."
+}

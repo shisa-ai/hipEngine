@@ -1881,6 +1881,17 @@ row-at-a-time grouping across 1-16 rows/expert and remains BF16-bit exact;
 K=3072/N=1024 also passes exact selected/grouped gates. This is a kernel
 schedule result, not Laguna model throughput or quality evidence.
 
+The old/current narrow cross-format diagnostic is
+[`2026-07-23-gpu1-iq-cross-format-prefill-current.json`](results/2026-07-23-gpu1-iq-cross-format-prefill-current.json).
+At E16/K3072/N128 with equal 1/2/4/8/16 rows per expert, the fastest explicit
+exact scalar/rowbatch IQ2 leaf moves
+`20.452/22.584/25.977/48.428/97.458 -> 15.733/19.191/23.178/42.657/86.580 us`
+(-10.78% to -23.07%) from pre-optimization source `8addd867` to the current
+kernel tree. IQ3/IQ4 move by at most 2.22% between the two sessions, consistent
+with run variance and no relevant kernel change. These are complete dual gate/up
+dispatch latencies, not per-row or runtime-default timings, and remain a narrow
+synthetic diagnostic rather than model throughput evidence.
+
 The counterbalanced E256/K3072/N1024 tuning baseline is
 [`2026-07-22-gpu1-iq2-xs-laguna-tuning-baseline.json`](results/2026-07-22-gpu1-iq2-xs-laguna-tuning-baseline.json).
 Rotating-distinct top-10 selected single/fused-dual leaves are
