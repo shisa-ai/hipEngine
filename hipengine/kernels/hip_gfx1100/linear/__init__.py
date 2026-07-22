@@ -17,6 +17,17 @@ from hipengine.kernels.hip_gfx1100.linear.dense_gemv import (
     plan_dense_gemv_build,
     register_dense_gemv_kernels,
 )
+from hipengine.kernels.hip_gfx1100.linear.laguna_f16_projection import (
+    build_laguna_f16_projection,
+    laguna_f16w_dual_gemv_bf16_f32_out,
+    laguna_f16w_gemv_bf16_bf16_out,
+    laguna_f16w_gemv_bf16_f32_out,
+    laguna_f16w_gemv_f32_bf16_out,
+    laguna_f16w_gemv_f32_f32_out,
+    laguna_f16w_triple_gemv_bf16_f32_out,
+    plan_laguna_f16_projection_build,
+    register_laguna_f16_projection_kernels,
+)
 from hipengine.kernels.hip_gfx1100.linear.lm_head import (
     argmax_f32,
     argmax_f32_rows_i32,
@@ -32,6 +43,7 @@ from hipengine.kernels.hip_gfx1100.linear.lm_head import (
 
 __all__ = [
     "build_dense_gemv",
+    "build_laguna_f16_projection",
     "dense_dual_gemv_out_bf16",
     "dense_dual_gemv_out_bf16_wmma",
     "dense_dual_gemv_out_fp16",
@@ -49,10 +61,18 @@ __all__ = [
     "argmax_f32",
     "argmax_f32_rows_i32",
     "build_lm_head",
+    "laguna_f16w_dual_gemv_bf16_f32_out",
+    "laguna_f16w_gemv_bf16_bf16_out",
+    "laguna_f16w_gemv_bf16_f32_out",
+    "laguna_f16w_gemv_f32_bf16_out",
+    "laguna_f16w_gemv_f32_f32_out",
+    "laguna_f16w_triple_gemv_bf16_f32_out",
     "lm_head_argmax_stage1_blocks",
     "lm_head_fp16_argmax_bf16",
     "lm_head_fp16_argmax_bf16_rows_i32",
+    "plan_laguna_f16_projection_build",
     "plan_lm_head_build",
+    "register_laguna_f16_projection_kernels",
     "register_lm_head_kernels",
     "topk_f32_rows_i32",
     "w8a16_lm_head_argmax_rows_bf16",

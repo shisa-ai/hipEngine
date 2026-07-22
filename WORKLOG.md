@@ -173217,3 +173217,36 @@ pre-existingly blocked because `/home/lhl/amd-gpu-tuning/reference/atlas` is
 absent; this kernel is an in-tree Laguna extension and does not claim a parent
 port. Root primitive work is closed and the eager runner can now share target
 embedding/final-head ownership with the matched DFlash drafter.
+
+## 2026-07-22 — Add Laguna source-F16 mixed projections
+
+Added the first attention-side runtime slice for Laguna: a raw-pointer gfx11
+GEMV family that preserves resident F16 Q/K/V/gate/O weights while accepting
+BF16 or FP32 activations and emitting BF16 or FP32 outputs. The four-axis keys
+cover single projections plus BF16-to-FP32 dual and triple projection launches.
+`hipengine/runtime/f16_weight_linear.py` supplies a structural resident-weight
+dispatch ABI with no model/backend branch; it validates dense-F16 source layout,
+shared backend ownership, and routes through the registry.
+
+RED was the missing projection module. GREEN covers single, dual, and triple
+math against FP32 CPU matmul at production attention widths: 48/72 Q heads,
+eight KV heads, head dim 128, and both FP32 and BF16 output contracts. The
+source weights remain FP16 throughout.
+
+Validation and trace:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 uv run pytest -q \
+  tests/test_laguna_f16_projection.py
+HIPENGINE_HIP_ARCH=gfx1151 rocprofv3 --kernel-trace \
+  --output-format csv -d /tmp/laguna-f16-projection-rocprof -- \
+  uv run pytest -q \
+  'tests/test_laguna_f16_projection.py::test_laguna_f16_projection_single_dual_triple_match_cpu[72]'
+```
+
+Four tests pass. The cached 72-head trace records single BF16->F32 102.431 us,
+single BF16->BF16 104.756 us, dual 129.122 us, and triple 127.198 us. Every
+kernel uses 16 VGPR, 128 SGPR, 512 B LDS, and zero scratch. This is the exact
+eager GEMV path, not a performance claim; rows>1 WMMA tuning waits until the
+serial full-model oracle is green. Task #28 remains open for the dual-RoPE
+integration and softplus head-gate primitive.
