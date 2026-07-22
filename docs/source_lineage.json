@@ -357,6 +357,24 @@
       "path": "ggml/src/ggml-cuda/quantize.cu",
       "kind": "kernel",
       "family": "UD-Q3_K_M D4 Q8_1 activation-quantization layout"
+    },
+    {
+      "repo": "llama.cpp-hip",
+      "path": "ggml/src/ggml-common.h",
+      "kind": "kernel",
+      "family": "IQ2_XS block contract and compressed grid tables"
+    },
+    {
+      "repo": "llama.cpp-hip",
+      "path": "ggml/src/ggml-quants.c",
+      "kind": "kernel",
+      "family": "IQ2_XS scalar dequantization reference"
+    },
+    {
+      "repo": "llama.cpp-hip",
+      "path": "ggml/src/ggml-cuda/convert.cu",
+      "kind": "kernel",
+      "family": "IQ2_XS GPU block dequantization schedule"
     }
   ],
   "external_artifacts": [
