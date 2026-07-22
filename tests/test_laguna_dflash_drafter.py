@@ -80,7 +80,7 @@ def test_laguna_dflash_gate_projects_softplus_head_scalars(monkeypatch) -> None:
     config = dflash_draft_config_from_hf(_config())
     weights = _weights(config)
     normalized = _tensor(0x1000, (3, 4))
-    context = _tensor(0x2000, (3, 4))
+    context = _tensor(0x2000, (3, 4), dtype="fp32")
     gate_logits = _tensor(0x3000, (3, 2), dtype="fp32")
     gated = _tensor(0x4000, (3, 4))
     projection_calls = []

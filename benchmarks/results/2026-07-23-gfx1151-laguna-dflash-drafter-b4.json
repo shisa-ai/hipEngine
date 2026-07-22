@@ -1,0 +1,78 @@
+{
+  "schema": 1,
+  "date": "2026-07-23",
+  "status": "accepted",
+  "scope": "standalone Laguna S 2.1 DFlash drafter, admitted B=4",
+  "hardware": "AMD Radeon 8060S (gfx1151)",
+  "target": {
+    "repo": "poolside/Laguna-S-2.1-GGUF",
+    "quant": "Q4_K_M",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "drafter": {
+    "repo": "poolside/Laguna-S-2.1-DFlash",
+    "revision": "b0486d1586daa0d56435c508108171fc1c8daff9",
+    "safetensors_sha256": "f24f08781c697c19952c02fb2e7e9bdf2071b79a711c2a44b836a74b9b62a1f4"
+  },
+  "workload": {
+    "prompt_case": "oracle_no_thinking",
+    "prompt_tokens": 55,
+    "root_token_id": 94557,
+    "root_position": 55,
+    "candidate_budget": 4,
+    "top_k": 3
+  },
+  "correctness": {
+    "poolside_topk_rows_expected": [
+      [3505, 32121, 8095],
+      [3011, 2607, 19775],
+      [515, 6043, 2084],
+      [365, 2407, 405]
+    ],
+    "hipengine_topk_rows_actual": [
+      [3505, 32121, 8095],
+      [3011, 2607, 19775],
+      [515, 6043, 2084],
+      [365, 2407, 405]
+    ],
+    "topk_id_agreement": "12/12",
+    "root_match": true,
+    "first_row_poolside_to_hipengine_kl": 0.000023420187062583864,
+    "first_row_top1_agreement": 1.0,
+    "lifecycle_passed": true,
+    "memory_after_close_bytes": 0,
+    "all15_diagnostic": {
+      "status": "blocked",
+      "poolside_tap_top1_agreement": "12/15",
+      "poolside_tap_max_kl": 0.0552467405796051,
+      "live_hipengine_tap_top1_agreement": "11/15",
+      "reason": "B7/B15 exceed the >=90% top-1 gate; only B<=4 is admitted"
+    }
+  },
+  "memory": {
+    "drafter_resident_nbytes": 2250102392,
+    "combined_peak_allocated_bytes": 79324054196,
+    "combined_peak_allocations": 1533
+  },
+  "timing_seconds": {
+    "target_load": 49.70285067195073,
+    "drafter_load": 1.2687530730036087,
+    "serial_target_and_draft_context": 3.211755993019324,
+    "proposal_host_wall": 0.032030040048994124,
+    "close": 0.20194504800019786
+  },
+  "profile": {
+    "command": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/rocprof-laguna-dflash-b4 -- env HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 uv run python -u scripts/laguna_dflash_drafter_smoke.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf /home/lhl/.cache/huggingface/hub/models--poolside--Laguna-S-2.1-DFlash/snapshots/b0486d1586daa0d56435c508108171fc1c8daff9 --backend hip_gfx1151 --context-length 4096 --candidate-budget 4 --top-k 3 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "proposal_kernel_span_ms": 31.729415,
+    "families": {
+      "dflash_dense_bf16_to_f32_wmma": {"launches": 24, "total_ms": 4.416573, "median_us": 64.461, "workgroup": 32, "vgpr": 32, "sgpr": 128, "lds_bytes": 0, "scratch_bytes": 0},
+      "dflash_head_rmsnorm_rotary_f32": {"launches": 6, "total_ms": 0.025729, "median_us": 4.248, "workgroup": 128, "vgpr": 16, "sgpr": 128, "lds_bytes": 0, "scratch_bytes": 0},
+      "laguna_swa_attention_prefill_bf16": {"launches": 6, "total_ms": 1.14495, "median_us": 188.7745, "workgroup": 128, "vgpr": 16, "sgpr": 128, "lds_bytes": 1024, "scratch_bytes": 0},
+      "laguna_softplus_head_gate_bf16": {"launches": 6, "total_ms": 0.014147, "median_us": 2.4845, "workgroup": 256, "vgpr": 24, "sgpr": 128, "lds_bytes": 0, "scratch_bytes": 0},
+      "dflash_dense_bf16_to_bf16_wmma": {"launches": 24, "total_ms": 20.493388, "median_us": 894.819, "workgroup": 32, "vgpr": 32, "sgpr": 128, "lds_bytes": 0, "scratch_bytes": 0},
+      "q6_k_t16_lm_head": {"launches": 1, "total_ms": 4.561241, "workgroup": 128, "vgpr": 72, "sgpr": 128, "lds_bytes": 512, "scratch_bytes": 0},
+      "topk_rows_i32": {"launches": 1, "total_ms": 0.25584, "workgroup": 256, "vgpr": 32, "sgpr": 128, "lds_bytes": 0, "scratch_bytes": 0}
+    }
+  },
+  "smoke_command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 uv run python -u scripts/laguna_dflash_drafter_smoke.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf /home/lhl/.cache/huggingface/hub/models--poolside--Laguna-S-2.1-DFlash/snapshots/b0486d1586daa0d56435c508108171fc1c8daff9 --backend hip_gfx1151 --context-length 4096 --candidate-budget 4 --top-k 3 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+}

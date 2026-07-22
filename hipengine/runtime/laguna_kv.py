@@ -153,6 +153,20 @@ class LagunaKVCache:
         self.position = self._pending_positions[-1]
         self._pending_positions = ()
 
+    def discard_rows(self) -> None:
+        """Discard prepared transient query rows without advancing committed state.
+
+        DFlash noise blocks use ``attend_prefill`` against current K/V rows but
+        must not append those speculative query rows to the projected-context
+        cache. Clearing only the pending position transaction preserves every
+        committed payload/span and allows the same positions to be retried.
+        """
+
+        self._check_open()
+        if not self._pending_positions:
+            raise RuntimeError("no Laguna KV bulk positions are pending")
+        self._pending_positions = ()
+
     def append(
         self,
         layer_id: int,

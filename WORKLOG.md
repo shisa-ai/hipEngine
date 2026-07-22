@@ -174476,3 +174476,76 @@ transfer or attention/graph-first tuning. It also freezes registry/fallback,
 CPU/Poolside/category correctness, balanced timing, and cached-profiler gates.
 No GPU run or new performance claim was made; this was a docs/process unit.
 Validation: full `docs/LAGUNA.md` reread and `git diff --check` clean.
+
+## 2026-07-23 — Admit resident Laguna DFlash through B4
+
+Implemented the standalone resident Poolside Laguna DFlash drafter over the
+live 77 GB target session. The owner now loads all 69 BF16 draft tensors,
+captures target depths `2,11,20,30,39,48`, projects/commits target context into
+six bounded 512-token K/V rings, embeds one root plus mask rows from the target
+Q4 table, executes six causal gated Laguna layers, and projects candidate rows
+through the target Q6 head. Pending root/mask rows are discarded transactionally
+instead of contaminating committed draft context. F32 residual storage around
+BF16 projections reduces avoidable accumulation drift; 13 tiny norm vectors are
+expanded once from BF16 to F32 for the existing mixed residual+norm kernels.
+Teardown is exact.
+
+A matched Poolside oracle required converting the pinned safetensors to GGUF:
+the published GGUF BF16 payload (both pre/post `Correct DFlash config`) differs
+from `poolside/Laguna-S-2.1-DFlash@b0486d1`. The matched conversion hash is
+`ad3d1eff...5808bd2`; the safetensors hash is `f24f0878...b62a1f4` and the
+Poolside fork is `04b2b72c`. Poolside eval-callback taps isolated the first live
+bug: DFlash BF16 Q/K norm vectors had been passed to Laguna's target F32-weight
+norm+RoPE kernel. A RED dispatch test now rejects that ABI; the live path uses
+the BF16-weight DFlash norm+RoPE kernel and int32 positions.
+
+Retained correctness on the 55-token `oracle_no_thinking` prompt at `B=4`:
+root `94557` exact and Poolside/hipEngine top-k rows are exactly
+`[3505,32121,8095]`, `[3011,2607,19775]`, `[515,6043,2084]`, and
+`[365,2407,405]` (`12/12` IDs). First-row Poolside-to-hipEngine KL is
+`2.3420187e-5`, top-1 agreement is 100%, resident draft bytes are
+`2,250,102,392`, combined peak tracked allocation is `79,324,054,196` bytes,
+and post-close bytes/allocations are zero. Target/drafter/context/proposal/close
+walls were 49.703/1.269/3.212/0.03203/0.20195 s. The strict runner now rejects
+budgets above the admitted `B=4` rather than presenting partial parity as green.
+
+Higher-budget diagnostics remain blocked. With Poolside target taps, B15 gets
+`12/15` top-1 and max KL `0.0552467`; with live hipEngine taps it gets `11/15`.
+An F32 context projection added about 377 MB without changing candidate IDs. A
+full duplicated-F32 query path raised resident draft memory to 6.49 GB and
+proposal wall to 0.311 s while regressing the first candidate to token 83. Both
+experiments were removed. B7/B15 therefore remain unadmitted for D3/D4.
+
+Cached `rocprofv3 --kernel-trace` on admitted B4 recorded a 31.729 ms proposal
+kernel span: 24 BF16-to-F32 draft projection launches (4.417 ms), six BF16
+norm+RoPE launches (0.0257 ms), six causal SWA launches (1.145 ms), six
+softplus-gate launches (0.0141 ms), 24 BF16-output dense launches (20.493 ms),
+one target Q6T16 LM-head launch (4.561 ms), and one top-k launch (0.2558 ms).
+All named kernels have zero scratch; detailed workgroup/register/LDS evidence
+and exact commands are in
+`benchmarks/results/2026-07-23-gfx1151-laguna-dflash-drafter-b4.json`.
+
+Validation:
+
+```bash
+uv run pytest -q tests/test_laguna_dflash_resident.py \
+  tests/test_laguna_dflash_drafter.py \
+  tests/test_laguna_dflash_reference.py \
+  tests/test_laguna_dflash_metadata.py
+# 19 passed
+uvx ruff check hipengine/speculative/laguna_dflash.py \
+  tests/test_laguna_dflash_resident.py \
+  scripts/laguna_dflash_drafter_smoke.py
+# clean
+HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 uv run python -u \
+  scripts/laguna_dflash_drafter_smoke.py <target.gguf> <b048-drafter> \
+  --backend hip_gfx1151 --candidate-budget 4 --top-k 3 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --repacked-cache <cache> --model-sha256 <sha>
+# passed=true; exact 12/12 Poolside top-k IDs; lifecycle_passed=true
+rocprofv3 --kernel-trace --output-format csv \
+  --output-directory /tmp/rocprof-laguna-dflash-b4 -- env \
+  HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 uv run python -u \
+  scripts/laguna_dflash_drafter_smoke.py <same args>
+# rc=0; intended DFlash/SWA/gate/Q6/top-k names observed
+```
