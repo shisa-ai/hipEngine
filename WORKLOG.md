@@ -174662,3 +174662,25 @@ the pinned safetensors snapshot directory. Corrected the default/validation and
 artifact dtype to revision `b0486d1` safetensors SHA-256 `f24f0878...b62a1f4`.
 This is a harness preflight failure, not a model, kernel, loader-performance, or
 correctness result.
+
+The complete 331.642 s category run then measured all 40 alternating route runs
+and all 20 same-session pairs exact/finite/repeat-deterministic with full tracked
+recovery, but the harness returned `1` because its fixed-horizon state predicate
+mistakenly required the final visible token to remain uncommitted. Raw positions
+show the only two valid states: 6 pairs end at the AR prediction boundary and 14
+pairs end exactly one row later because `remaining_decode` suppresses the bonus
+after committing the final accepted row; every drafter cursor equals target + 1.
+Updated the predicate to admit those two documented boundaries and reject any
+other cursor. The complete timing/equality evidence is retained and will be
+reclassified offline from its exact raw rows rather than repeating a >5 minute
+GPU run after this isolated derived-gate repair, per the focused-repair policy.
+
+Focused validation:
+
+```bash
+uv run pytest -q tests/test_laguna_dflash_category_bench.py
+# 4 passed
+uvx ruff check scripts/laguna_dflash_category_bench.py \
+  tests/test_laguna_dflash_category_bench.py
+# clean
+```
