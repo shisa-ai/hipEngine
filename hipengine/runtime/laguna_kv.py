@@ -167,6 +167,41 @@ class LagunaKVCache:
             raise RuntimeError("no Laguna KV bulk positions are pending")
         self._pending_positions = ()
 
+    def reset(self) -> None:
+        """Reset request metadata while retaining payload allocations and addresses."""
+
+        self._check_open()
+        if self._pending_positions:
+            raise RuntimeError("cannot reset Laguna KV while bulk rows are pending")
+        _copy_i64(self._row_position, -1, self.runtime)
+        seen: set[tuple[int, int, int]] = set()
+        for state in self.layers:
+            spans = state.spans
+            signature = (
+                spans.live_counts.ptr,
+                spans.token_positions.ptr,
+                spans.evict_mask.ptr,
+            )
+            if signature in seen:
+                continue
+            seen.add(signature)
+            self.runtime.memset(
+                spans.live_counts.ptr,
+                0,
+                spans.live_counts.numel * spans.live_counts.dtype.itemsize,
+            )
+            self.runtime.memset(
+                spans.token_positions.ptr,
+                0xFF,
+                spans.token_positions.numel * spans.token_positions.dtype.itemsize,
+            )
+            self.runtime.memset(
+                spans.evict_mask.ptr,
+                1,
+                spans.evict_mask.numel * spans.evict_mask.dtype.itemsize,
+            )
+        self.position = -1
+
     def append(
         self,
         layer_id: int,

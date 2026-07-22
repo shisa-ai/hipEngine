@@ -1,0 +1,142 @@
+{
+  "schema": 1,
+  "date": "2026-07-23",
+  "kind": "laguna_dflash_target_verify_accept_commit_correctness",
+  "status": "retained_opt_in_correctness_path",
+  "hardware": {
+    "gpu": "AMD Radeon 8060S",
+    "arch": "gfx1151",
+    "backend": "hip_gfx1151",
+    "rocm": "TheRock ROCm 7.15.0"
+  },
+  "model": {
+    "id": "poolside/Laguna-S-2.1-GGUF",
+    "quant": "Q4_K_M",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "context_length": 4096
+  },
+  "drafter": {
+    "id": "poolside/Laguna-S-2.1-DFlash",
+    "revision": "b0486d1586daa0d56435c508108171fc1c8daff9",
+    "safetensors_sha256": "f24f0878...b62a1f4",
+    "admission_note": "B7/B15 target-cycle exactness is diagnostic; standalone Poolside candidate parity remains admitted only through B4."
+  },
+  "workload": {
+    "prompt_suite": "single frozen oracle_no_thinking correctness prompt",
+    "prompt_tokens": 55,
+    "max_new_tokens": 12,
+    "budgets": [1, 2, 4, 7, 15],
+    "true_ar_ids": [94557, 3505, 3011, 515, 2407, 365, 2291, 10723, 1687, 948, 1482, 4217]
+  },
+  "command": "HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 uv run python -u scripts/laguna_dflash_e2e_smoke.py <target.gguf> <b048-drafter> --backend hip_gfx1151 --budgets 1,2,4,7,15 --max-new-tokens 12 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --repacked-cache <cache> --model-sha256 <sha>",
+  "correctness": {
+    "passed": true,
+    "all_exact_match_true_ar": true,
+    "all_committed_prefixes_exact_ar": true,
+    "all_target_drafter_states_aligned": true,
+    "all_verifier_addresses_stable": true,
+    "reject_partial_full_covered": true,
+    "max_token_boundary_covered": true,
+    "eos_inside_draft": "focused CPU contract test",
+    "swa_wrap_511_512_513": "focused staged-prefix and Laguna KV GPU fixtures",
+    "lifecycle_exact": true
+  },
+  "rows": [
+    {
+      "candidate_budget": 1,
+      "passed": true,
+      "cycles": 6,
+      "accepted_draft_tokens": 5,
+      "generated_draft_tokens": 6,
+      "target_verify_rows": 12,
+      "rejected_target_rows": 1,
+      "accept_shapes": [[1, 2, 0], [1, 2, 0], [1, 2, 0], [1, 2, 0], [1, 2, 0], [0, 1, 1]],
+      "cycle_wall_ms": [133.482618, 133.374977, 132.869618, 132.942555, 133.253178, 132.543666],
+      "resident_bytes": 79347194453,
+      "verifier_address_digest_sha256": "3732926bdd065d3af521390cdc27a49593c8855b10247c37c2e1fd34d71b05b1"
+    },
+    {
+      "candidate_budget": 2,
+      "passed": true,
+      "cycles": 4,
+      "accepted_draft_tokens": 7,
+      "generated_draft_tokens": 8,
+      "target_verify_rows": 12,
+      "rejected_target_rows": 1,
+      "accept_shapes": [[2, 3, 0], [1, 2, 1], [2, 3, 0], [2, 3, 0]],
+      "cycle_wall_ms": [179.523989, 176.550578, 177.010451, 177.542289],
+      "resident_bytes": 79347964813,
+      "verifier_address_digest_sha256": "09f0af5cba510eb40f5b70cac07477bf0e601840270371a5cf71425f3e74bb8c"
+    },
+    {
+      "candidate_budget": 4,
+      "passed": true,
+      "cycles": 3,
+      "accepted_draft_tokens": 8,
+      "generated_draft_tokens": 12,
+      "target_verify_rows": 15,
+      "rejected_target_rows": 4,
+      "accept_shapes": [[3, 4, 1], [4, 5, 0], [1, 2, 3]],
+      "cycle_wall_ms": [268.011140, 270.352024, 267.875105],
+      "resident_bytes": 79349505533,
+      "verifier_address_digest_sha256": "149ad5bb6be4f3e52ecce2e6d78c30bf5913a95582eea5f3d982d7fc44a4934c"
+    },
+    {
+      "candidate_budget": 7,
+      "passed": true,
+      "cycles": 3,
+      "accepted_draft_tokens": 8,
+      "generated_draft_tokens": 21,
+      "target_verify_rows": 24,
+      "rejected_target_rows": 13,
+      "accept_shapes": [[3, 4, 4], [5, 6, 2], [0, 1, 7]],
+      "cycle_wall_ms": [402.284453, 403.963454, 399.222848],
+      "resident_bytes": 79351816613,
+      "verifier_address_digest_sha256": "5b19165002b5dd179f714ce9fe6b3163bddab3b934760ed4b053bb75cc681ca6"
+    },
+    {
+      "candidate_budget": 15,
+      "passed": true,
+      "cycles": 3,
+      "accepted_draft_tokens": 8,
+      "generated_draft_tokens": 45,
+      "target_verify_rows": 48,
+      "rejected_target_rows": 37,
+      "accept_shapes": [[3, 4, 12], [5, 6, 10], [0, 1, 15]],
+      "cycle_wall_ms": [767.298199, 768.271936, 767.386425],
+      "resident_bytes": 79357979493,
+      "verifier_address_digest_sha256": "b8d752ac5ab54e050d165e14a1164b0f28fdd55b917c540a03751a480cf145fe"
+    }
+  ],
+  "memory": {
+    "peak_tracked_bytes": 79358606181,
+    "post_close_bytes": 0,
+    "post_close_allocations": 0
+  },
+  "timing_scope": "Diagnostic wall only; not a D4 full-suite economics or speedup claim.",
+  "process_seconds": 78.83983449096559,
+  "profile": {
+    "command": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/rocprof-laguna-dflash-d3-b4 -- env HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 uv run python -u scripts/laguna_dflash_e2e_smoke.py <same model/drafter/cache args> --budgets 4 --max-new-tokens 5 --require-cached-build",
+    "trace": "/tmp/rocprof-laguna-dflash-d3-b4/gfx1151/2094401_kernel_trace.csv",
+    "passed": true,
+    "accept_kernel": {
+      "name": "dflash_accept_chain_i32_kernel",
+      "launches": 1,
+      "duration_ns": 6492,
+      "scratch_bytes": 0
+    },
+    "target_row_argmax": {
+      "launches": 2,
+      "duration_ns": 17833,
+      "scratch_bytes": 0
+    },
+    "accepted_kv_commit": {
+      "global_launches": 12,
+      "swa_launches": 36,
+      "duration_ns": 91212,
+      "scratch_bytes": 0
+    },
+    "lm_head_to_kv_commit_window_ns": 9817857,
+    "lm_head_to_kv_commit_kernel_sum_ns": 5658181
+  }
+}

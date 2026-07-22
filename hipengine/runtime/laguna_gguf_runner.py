@@ -76,7 +76,9 @@ _EXPECTED_LAYER_TYPES = tuple(
 )
 _BF16_NBYTES = DType.BF16.itemsize
 _F32_NBYTES = DType.FP32.itemsize
+_I32_NBYTES = DType.INT32.itemsize
 _I64_NBYTES = DType.INT64.itemsize
+_U8_NBYTES = DType.BOOL.itemsize
 
 
 @dataclass(frozen=True)
@@ -391,6 +393,172 @@ class LagunaRowsScratch:
             free(buffer, runtime=runtime)
 
 
+@dataclass
+class LagunaVerifierScratch:
+    """Stable target-verifier staging, argmax, and accept-summary storage.
+
+    K/V rows remain outside the canonical cache until GPU acceptance selects a
+    committed prefix.  One fixed allocation therefore makes reject/partial/full
+    acceptance safe across SWA wrap without snapshotting overwritten ring rows.
+    """
+
+    max_rows: int
+    layer_count: int
+    kv_width: int
+    argmax_blocks: int
+    staged_keys: DeviceBuffer
+    staged_values: DeviceBuffer
+    argmax_block_values: DeviceBuffer
+    argmax_block_indices: DeviceBuffer
+    target_top1: DeviceBuffer
+    target_top1_values: DeviceBuffer
+    token_ids: DeviceBuffer
+    positions: DeviceBuffer
+    parent_rows: DeviceBuffer
+    draft_depths: DeviceBuffer
+    active_mask: DeviceBuffer
+    remaining_decode: DeviceBuffer
+    accepted_counts: DeviceBuffer
+    commit_rows: DeviceBuffer
+    commit_tokens: DeviceBuffer
+    commit_positions: DeviceBuffer
+    next_tokens: DeviceBuffer
+    full_accept: DeviceBuffer
+    committed_output_ids: DeviceBuffer
+    committed_output_lengths: DeviceBuffer
+    packed_payload: DeviceBuffer
+    _closed: bool = False
+
+    @classmethod
+    def allocate(
+        cls,
+        config: LagunaGGUFConfig,
+        *,
+        max_rows: int,
+        runtime: HipRuntime | None = None,
+    ) -> "LagunaVerifierScratch":
+        rows = int(max_rows)
+        layers = int(config.block_count)
+        kv_width = int(config.head_count_kv) * int(config.key_length)
+        blocks = lm_head_argmax_stage1_blocks(int(config.vocab_size))
+        if rows <= 0 or layers <= 0 or kv_width <= 0 or blocks <= 0:
+            raise ValueError("Laguna verifier scratch dimensions must be positive")
+        sizes = (
+            layers * rows * kv_width * _F32_NBYTES,
+            layers * rows * kv_width * _F32_NBYTES,
+            rows * blocks * _F32_NBYTES,
+            rows * blocks * _I32_NBYTES,
+            rows * _I32_NBYTES,
+            rows * _F32_NBYTES,
+            rows * _I32_NBYTES,
+            rows * _I32_NBYTES,
+            rows * _I32_NBYTES,
+            rows * _I32_NBYTES,
+            rows * _U8_NBYTES,
+            _I32_NBYTES,
+            _I32_NBYTES,
+            _I32_NBYTES,
+            _I32_NBYTES,
+            _I32_NBYTES,
+            _I32_NBYTES,
+            _U8_NBYTES,
+            rows * _I32_NBYTES,
+            _I32_NBYTES,
+            7 * _I32_NBYTES,
+        )
+        buffers: list[DeviceBuffer] = []
+        try:
+            buffers.extend(malloc(nbytes, runtime=runtime) for nbytes in sizes)
+        except Exception:
+            for buffer in reversed(buffers):
+                free(buffer, runtime=runtime)
+            raise
+        return cls(rows, layers, kv_width, blocks, *buffers)
+
+    @property
+    def buffers(self) -> tuple[DeviceBuffer, ...]:
+        return (
+            self.staged_keys,
+            self.staged_values,
+            self.argmax_block_values,
+            self.argmax_block_indices,
+            self.target_top1,
+            self.target_top1_values,
+            self.token_ids,
+            self.positions,
+            self.parent_rows,
+            self.draft_depths,
+            self.active_mask,
+            self.remaining_decode,
+            self.accepted_counts,
+            self.commit_rows,
+            self.commit_tokens,
+            self.commit_positions,
+            self.next_tokens,
+            self.full_accept,
+            self.committed_output_ids,
+            self.committed_output_lengths,
+            self.packed_payload,
+        )
+
+    @property
+    def nbytes(self) -> int:
+        return sum(buffer.nbytes for buffer in self.buffers)
+
+    @property
+    def layer_stride_nbytes(self) -> int:
+        return self.max_rows * self.kv_width * _F32_NBYTES
+
+    def key_ptr(self, layer_id: int) -> int:
+        self._check_layer(layer_id)
+        return self.staged_keys.ptr + int(layer_id) * self.layer_stride_nbytes
+
+    def value_ptr(self, layer_id: int) -> int:
+        self._check_layer(layer_id)
+        return self.staged_values.ptr + int(layer_id) * self.layer_stride_nbytes
+
+    def address_signature(self) -> dict[str, int]:
+        names = (
+            "staged_keys",
+            "staged_values",
+            "argmax_block_values",
+            "argmax_block_indices",
+            "target_top1",
+            "target_top1_values",
+            "token_ids",
+            "positions",
+            "parent_rows",
+            "draft_depths",
+            "active_mask",
+            "remaining_decode",
+            "accepted_counts",
+            "commit_rows",
+            "commit_tokens",
+            "commit_positions",
+            "next_tokens",
+            "full_accept",
+            "committed_output_ids",
+            "committed_output_lengths",
+            "packed_payload",
+        )
+        return {
+            f"verifier.{name}": buffer.ptr
+            for name, buffer in zip(names, self.buffers, strict=True)
+        }
+
+    def free(self, *, runtime: HipRuntime | None = None) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        for buffer in reversed(self.buffers):
+            free(buffer, runtime=runtime)
+
+    def _check_layer(self, layer_id: int) -> None:
+        layer = int(layer_id)
+        if layer < 0 or layer >= self.layer_count:
+            raise IndexError(f"verifier layer {layer} outside [0, {self.layer_count})")
+
+
 @dataclass(frozen=True)
 class LagunaEagerLibraries:
     """Loaded JIT libraries, held once for the whole resident session."""
@@ -461,6 +629,29 @@ class LagunaVerifierRowsResult:
     @property
     def rows(self) -> int:
         return len(self.input_token_ids)
+
+
+@dataclass(frozen=True)
+class LagunaDFlashVerifyResult:
+    """One GPU-accepted target chain after transactional prefix commit."""
+
+    rows_result: LagunaVerifierRowsResult
+    target_top1_ids: tuple[int, ...]
+    target_top1_values: tuple[float, ...]
+    accepted_draft_count: int
+    accepted_token_ids: tuple[int, ...]
+    commit_row: int
+    commit_token_id: int
+    commit_position: int
+    next_token_id: int | None
+    full_accept: bool
+    committed_input_ids: tuple[int, ...]
+    visible_output_ids: tuple[int, ...]
+    packed_payload: tuple[int, ...]
+
+    @property
+    def committed_rows(self) -> int:
+        return len(self.committed_input_ids)
 
 
 def resolve_laguna_eager_kernel_plan(
@@ -684,6 +875,7 @@ class LagunaGGUFResidentSession:
         self.moe_scratch: LagunaMoEScratch | None = None
         self.rows_scratch: LagunaRowsScratch | None = None
         self.rows_moe_scratch: LagunaMoEScratch | None = None
+        self.verifier_scratch: LagunaVerifierScratch | None = None
         self.full_rope: LagunaDeviceRoPETables | None = None
         self.swa_rope: LagunaDeviceRoPETables | None = None
         self.libraries: LagunaEagerLibraries | None = None
@@ -691,6 +883,10 @@ class LagunaGGUFResidentSession:
         self.moe_plan: LagunaMoEKernelPlan | None = None
         self._owns_weights = resident_weights is None
         self._closed = False
+        self._compiler_version = compiler_version
+        self._require_cached_build = bool(require_cached_build)
+        self._dflash_accept_library = None
+        self._staged_verifier_tokens: tuple[int, ...] | None = None
 
         if self.context_length <= 0 or self.context_length > _INITIAL_MAX_CONTEXT:
             raise ValueError(
@@ -812,6 +1008,7 @@ class LagunaGGUFResidentSession:
             + self.moe_scratch.nbytes
             + self.rows_scratch.nbytes
             + self.rows_moe_scratch.nbytes
+            + (self.verifier_scratch.nbytes if self.verifier_scratch is not None else 0)
             + self.full_rope.cos.buffer.nbytes
             + self.full_rope.sin.buffer.nbytes
             + self.swa_rope.cos.buffer.nbytes
@@ -828,6 +1025,7 @@ class LagunaGGUFResidentSession:
         """Append and execute one token, then return the borrowed top-1 result."""
 
         self._check_open()
+        self._check_no_staged_verifier()
         config = self.config
         token = int(token_id)
         if token < 0 or token >= config.vocab_size:
@@ -891,6 +1089,8 @@ class LagunaGGUFResidentSession:
     ) -> LagunaEagerTokenResult:
         """Chunked exact prefill with an explicit token-serial fallback."""
 
+        self._check_open()
+        self._check_no_staged_verifier()
         tokens = tuple(int(value) for value in token_ids)
         if not tokens:
             raise ValueError("Laguna eager prefill requires at least one token")
@@ -934,6 +1134,8 @@ class LagunaGGUFResidentSession:
     ) -> LagunaVerifierRowsResult:
         """Execute one committed B+1 target block and expose every logits/tap row."""
 
+        self._check_open()
+        self._check_no_staged_verifier()
         tokens = (int(root_token_id), *(int(value) for value in draft_token_ids))
         if len(tokens) > self.prefill_chunk_size:
             raise ValueError(
@@ -948,6 +1150,198 @@ class LagunaGGUFResidentSession:
             start_position=start_position,
             stream=stream,
         )
+
+    def verify_dflash_chain(
+        self,
+        root_token_id: int,
+        draft_token_ids: Sequence[int],
+        *,
+        captures: LagunaHiddenCaptureTargets | None = None,
+        remaining_decode: int | None = None,
+        stream: int = 0,
+    ) -> LagunaDFlashVerifyResult:
+        """Verify, GPU-accept, and transactionally commit one linear DFlash chain.
+
+        Root plus draft rows execute once against canonical prior K/V, but their
+        per-layer K/V rows are staged separately. Only ``root + accepted`` rows
+        are appended after the provider-neutral accept kernel returns its compact
+        seven-int payload; rejected suffix rows therefore cannot corrupt SWA
+        slots even across positions 511/512/513.
+        """
+
+        self._check_open()
+        self._check_no_staged_verifier()
+        drafts = tuple(int(value) for value in draft_token_ids)
+        if not drafts:
+            raise ValueError("Laguna DFlash verification requires at least one draft token")
+        tokens = (int(root_token_id), *drafts)
+        rows = len(tokens)
+        if rows > self.prefill_chunk_size:
+            raise ValueError(
+                f"Laguna DFlash verifier rows exceed capacity {self.prefill_chunk_size}"
+            )
+        if remaining_decode is not None:
+            if isinstance(remaining_decode, bool) or not isinstance(remaining_decode, int):
+                raise TypeError("remaining_decode must be an integer or None")
+            if remaining_decode < 0:
+                raise ValueError("remaining_decode must be non-negative")
+        if captures is not None and captures.rows != rows:
+            raise ValueError("Laguna DFlash captures must provide exactly B+1 rows")
+
+        self._ensure_verifier_resources()
+        start_position = self.position + 1
+        positions = tuple(range(start_position, start_position + rows))
+        self._execute_rows(
+            tokens,
+            capture_rows=captures,
+            stage_verifier_kv=True,
+            stream=stream,
+        )
+        try:
+            rows_result = self._project_rows_all(
+                input_token_ids=tokens,
+                start_position=start_position,
+                stream=stream,
+            )
+            assert self.verifier_scratch is not None
+            assert self.libraries is not None
+            verifier = self.verifier_scratch
+            from hipengine.kernels.hip_gfx1100.linear.lm_head import argmax_f32_rows_i32
+            from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import (
+                dflash_accept_chain_i32_packed,
+            )
+
+            argmax_f32_rows_i32(
+                rows_result.logits.ptr,
+                verifier.argmax_block_values.ptr,
+                verifier.argmax_block_indices.ptr,
+                verifier.target_top1.ptr,
+                verifier.target_top1_values.ptr,
+                rows,
+                self.config.vocab_size,
+                stream=stream,
+                library=self.libraries.argmax,
+                runtime=self.runtime,
+            )
+            _copy_i32_rows(verifier.token_ids, tokens, self.runtime)
+            _copy_i32_rows(verifier.positions, positions, self.runtime)
+            _copy_i32_rows(verifier.parent_rows, (-1, *range(rows - 1)), self.runtime)
+            _copy_i32_rows(verifier.draft_depths, tuple(range(rows)), self.runtime)
+            _copy_u8_rows(verifier.active_mask, (1,) * rows, self.runtime)
+            remaining_ptr: int | None = None
+            if remaining_decode is not None:
+                _copy_i32_rows(verifier.remaining_decode, (remaining_decode,), self.runtime)
+                remaining_ptr = verifier.remaining_decode.ptr
+            dflash_accept_chain_i32_packed(
+                verifier.token_ids.ptr,
+                verifier.positions.ptr,
+                verifier.parent_rows.ptr,
+                verifier.draft_depths.ptr,
+                verifier.active_mask.ptr,
+                verifier.target_top1.ptr,
+                remaining_ptr,
+                verifier.accepted_counts.ptr,
+                verifier.commit_rows.ptr,
+                verifier.commit_tokens.ptr,
+                verifier.commit_positions.ptr,
+                verifier.next_tokens.ptr,
+                verifier.full_accept.ptr,
+                verifier.committed_output_ids.ptr,
+                verifier.committed_output_lengths.ptr,
+                verifier.packed_payload.ptr,
+                rows,
+                1,
+                rows,
+                stream=stream,
+                library=self._dflash_accept_library,
+                runtime=self.runtime,
+            )
+            if stream:
+                self.runtime.stream_synchronize(stream)
+            else:
+                self.runtime.device_synchronize()
+            target_top1 = _read_i32_rows(verifier.target_top1, rows, self.runtime)
+            target_values = _read_f32_rows(verifier.target_top1_values, rows, self.runtime)
+            payload = _read_i32_rows(verifier.packed_payload, 7, self.runtime)
+            accepted, commit_row, commit_token, commit_position, next_raw, full_raw, _ = payload
+            _validate_laguna_dflash_accept_payload(
+                tokens=tokens,
+                positions=positions,
+                target_top1=target_top1,
+                remaining_decode=remaining_decode,
+                payload=payload,
+            )
+            self._commit_staged_verifier_rows(accepted + 1, stream=stream)
+        except BaseException:
+            if not self.closed and self._staged_verifier_tokens is not None:
+                self._discard_staged_verifier_rows()
+            raise
+
+        next_token = None if next_raw < 0 else next_raw
+        accepted_tokens = drafts[:accepted]
+        committed_inputs = tokens[: accepted + 1]
+        visible = (*accepted_tokens, *((next_token,) if next_token is not None else ()))
+        hidden_nbytes = self.config.hidden_size * _BF16_NBYTES
+        commit_hidden_offset = commit_row * hidden_nbytes
+        logits_row_nbytes = self.config.vocab_size * _F32_NBYTES
+        self.last_result = LagunaEagerTokenResult(
+            position=commit_position,
+            input_token_id=commit_token,
+            next_token_id=target_top1[commit_row],
+            next_token_logit=target_values[commit_row],
+            logits=_buffer_view(
+                rows_result.logits,
+                commit_row * logits_row_nbytes,
+                logits_row_nbytes,
+            ),
+            final_hidden=_buffer_view(
+                rows_result.final_hidden,
+                commit_hidden_offset,
+                hidden_nbytes,
+            ),
+            post_layer_hidden=_buffer_view(
+                rows_result.post_layer_hidden,
+                commit_hidden_offset,
+                hidden_nbytes,
+            ),
+        )
+        return LagunaDFlashVerifyResult(
+            rows_result=rows_result,
+            target_top1_ids=target_top1,
+            target_top1_values=target_values,
+            accepted_draft_count=accepted,
+            accepted_token_ids=accepted_tokens,
+            commit_row=commit_row,
+            commit_token_id=commit_token,
+            commit_position=commit_position,
+            next_token_id=next_token,
+            full_accept=bool(full_raw),
+            committed_input_ids=committed_inputs,
+            visible_output_ids=visible,
+            packed_payload=payload,
+        )
+
+    def reset_state(self) -> None:
+        """Reset request state while retaining weights and stable scratch."""
+
+        self._check_open()
+        self._check_no_staged_verifier()
+        assert self.kv_cache is not None
+        self.kv_cache.reset()
+        self.position = -1
+        self.last_result = None
+
+    def verifier_address_signature(self) -> dict[str, int]:
+        """Return stable semantic pointers used by verifier graph buckets."""
+
+        self._check_open()
+        self._ensure_verifier_resources()
+        assert self.rows_scratch is not None
+        assert self.verifier_scratch is not None
+        signature = self.verifier_scratch.address_signature()
+        for index, buffer in enumerate(self.rows_scratch.buffers):
+            signature[f"rows_scratch.{index}"] = buffer.ptr
+        return signature
 
     def generate_greedy(
         self,
@@ -991,9 +1385,11 @@ class LagunaGGUFResidentSession:
         *,
         capture_last: LagunaHiddenCaptureTargets | None = None,
         capture_rows: LagunaHiddenCaptureTargets | None = None,
+        stage_verifier_kv: bool = False,
         stream: int,
     ) -> None:
         self._check_open()
+        self._check_no_staged_verifier()
         if capture_last is not None and capture_rows is not None:
             raise ValueError("Laguna row execution accepts capture_last or capture_rows, not both")
         tokens = tuple(int(token) for token in token_ids)
@@ -1039,7 +1435,12 @@ class LagunaGGUFResidentSession:
                 runtime=self.runtime,
             )
             for layer_id in range(config.block_count):
-                self._run_layer_rows(layer_id, rows=rows, stream=stream)
+                self._run_layer_rows(
+                    layer_id,
+                    rows=rows,
+                    stage_verifier_kv=stage_verifier_kv,
+                    stream=stream,
+                )
                 depth = layer_id + 1
                 capture_laguna_hidden_rows(
                     scratch.hidden.ptr,
@@ -1058,13 +1459,69 @@ class LagunaGGUFResidentSession:
                     runtime=self.runtime,
                     stream=stream,
                 )
-            self.kv_cache.commit_rows()
-            self.position = end_position
+            if stage_verifier_kv:
+                self._staged_verifier_tokens = tokens
+            else:
+                self.kv_cache.commit_rows()
+                self.position = end_position
         except BaseException:
             self._close(suppress_errors=True)
             raise
 
-    def _run_layer_rows(self, layer_id: int, *, rows: int, stream: int) -> None:
+    def _commit_staged_verifier_rows(self, rows: int, *, stream: int) -> None:
+        """Append only the accepted verifier prefix into canonical target K/V."""
+
+        self._check_open()
+        tokens = self._staged_verifier_tokens
+        if tokens is None:
+            raise RuntimeError("no Laguna verifier transaction is staged")
+        commit_rows = int(rows)
+        if commit_rows <= 0 or commit_rows > len(tokens):
+            raise ValueError("committed verifier rows must be a non-empty staged prefix")
+        assert self.kv_cache is not None
+        assert self.verifier_scratch is not None
+        pending = self.kv_cache.pending_positions
+        if len(pending) != len(tokens):
+            raise RuntimeError("staged verifier token and KV position counts diverged")
+        commit_positions = pending[:commit_rows]
+        try:
+            self.kv_cache.discard_rows()
+            self.kv_cache.prepare_rows(commit_positions)
+            for layer_id in range(self.config.block_count):
+                self.kv_cache.append_rows(
+                    layer_id,
+                    self.verifier_scratch.key_ptr(layer_id),
+                    self.verifier_scratch.value_ptr(layer_id),
+                    commit_rows,
+                    stream=stream,
+                    library=self.libraries.kv_attention if self.libraries is not None else None,
+                )
+            self.kv_cache.commit_rows()
+            self.position = commit_positions[-1]
+            self._staged_verifier_tokens = None
+        except BaseException:
+            self._close(suppress_errors=True)
+            raise
+
+    def _discard_staged_verifier_rows(self) -> None:
+        """Cancel a pre-commit verifier transaction without touching canonical K/V."""
+
+        self._check_open()
+        if self._staged_verifier_tokens is None:
+            raise RuntimeError("no Laguna verifier transaction is staged")
+        assert self.kv_cache is not None
+        if self.kv_cache.pending_positions:
+            self.kv_cache.discard_rows()
+        self._staged_verifier_tokens = None
+
+    def _run_layer_rows(
+        self,
+        layer_id: int,
+        *,
+        rows: int,
+        stage_verifier_kv: bool = False,
+        stream: int,
+    ) -> None:
         assert self.weights is not None
         assert self.kv_cache is not None
         assert self.rows_scratch is not None
@@ -1153,14 +1610,32 @@ class LagunaGGUFResidentSession:
             stream=stream,
             library=self.libraries.kv_attention,
         )
-        self.kv_cache.append_rows(
-            layer_id,
-            scratch.key_rotated.ptr,
-            scratch.value.ptr,
-            rows,
-            stream=stream,
-            library=self.libraries.kv_attention,
-        )
+        if stage_verifier_kv:
+            assert self.verifier_scratch is not None
+            row_nbytes = rows * kv_width * _F32_NBYTES
+            self.runtime.memcpy_async(
+                self.verifier_scratch.key_ptr(layer_id),
+                scratch.key_rotated.ptr,
+                row_nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+            self.runtime.memcpy_async(
+                self.verifier_scratch.value_ptr(layer_id),
+                scratch.value.ptr,
+                row_nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+        else:
+            self.kv_cache.append_rows(
+                layer_id,
+                scratch.key_rotated.ptr,
+                scratch.value.ptr,
+                rows,
+                stream=stream,
+                library=self.libraries.kv_attention,
+            )
         self.kernel_plan.attention_gate(
             scratch.context.ptr,
             scratch.gate_logits.ptr,
@@ -1797,6 +2272,10 @@ class LagunaGGUFResidentSession:
             except BaseException as exc:  # best-effort teardown after HIP failures
                 errors.append(exc)
 
+        if self.verifier_scratch is not None:
+            scratch = self.verifier_scratch
+            self.verifier_scratch = None
+            release(lambda: scratch.free(runtime=self.runtime))
         if self.rows_moe_scratch is not None:
             scratch = self.rows_moe_scratch
             self.rows_moe_scratch = None
@@ -1836,6 +2315,32 @@ class LagunaGGUFResidentSession:
         if errors and not suppress_errors:
             raise RuntimeError("one or more Laguna session resources failed to free") from errors[0]
 
+    def _ensure_verifier_resources(self) -> None:
+        if self.verifier_scratch is not None:
+            return
+        from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import (
+            build_dflash_accept,
+        )
+
+        target_arch = hip_target_arch_for_backend(self.backend)
+        with hip_target_arch_environment(target_arch):
+            library = build_dflash_accept(
+                load=True,
+                compiler_version=self._compiler_version,
+                require_cached=self._require_cached_build,
+            )
+        scratch = LagunaVerifierScratch.allocate(
+            self.config,
+            max_rows=self.prefill_chunk_size,
+            runtime=self.runtime,
+        )
+        self._dflash_accept_library = library
+        self.verifier_scratch = scratch
+
+    def _check_no_staged_verifier(self) -> None:
+        if self._staged_verifier_tokens is not None:
+            raise RuntimeError("a Laguna verifier transaction is already staged")
+
     def _check_open(self) -> None:
         if self._closed:
             raise RuntimeError("Laguna GGUF resident session is closed")
@@ -1869,12 +2374,85 @@ def _copy_i64_rows(
     )
 
 
+def _copy_i32_rows(
+    buffer: DeviceBuffer,
+    values: Sequence[int],
+    runtime: HipRuntime,
+) -> None:
+    parsed = tuple(int(value) for value in values)
+    nbytes = len(parsed) * _I32_NBYTES
+    if not parsed or nbytes > buffer.nbytes:
+        raise ValueError("int32 row copy must be non-empty and fit the destination")
+    host = (ctypes.c_int32 * len(parsed))(*parsed)
+    runtime.memcpy(
+        buffer.ptr,
+        ctypes.addressof(host),
+        nbytes,
+        HipMemcpyKind.HOST_TO_DEVICE,
+    )
+
+
+def _copy_u8_rows(
+    buffer: DeviceBuffer,
+    values: Sequence[int],
+    runtime: HipRuntime,
+) -> None:
+    parsed = tuple(int(value) for value in values)
+    if not parsed or len(parsed) > buffer.nbytes or any(value not in {0, 1} for value in parsed):
+        raise ValueError("uint8 row copy must contain boolean values and fit the destination")
+    host = (ctypes.c_uint8 * len(parsed))(*parsed)
+    runtime.memcpy(
+        buffer.ptr,
+        ctypes.addressof(host),
+        len(parsed),
+        HipMemcpyKind.HOST_TO_DEVICE,
+    )
+
+
 def _buffer_view(buffer: DeviceBuffer, offset: int, nbytes: int) -> DeviceBuffer:
     parsed_offset = int(offset)
     parsed_nbytes = int(nbytes)
     if parsed_offset < 0 or parsed_nbytes <= 0 or parsed_offset + parsed_nbytes > buffer.nbytes:
         raise ValueError("borrowed device-buffer view exceeds its owner")
     return DeviceBuffer(buffer.ptr + parsed_offset, parsed_nbytes)
+
+
+def _read_i32_rows(
+    buffer: DeviceBuffer,
+    rows: int,
+    runtime: HipRuntime,
+) -> tuple[int, ...]:
+    count = int(rows)
+    nbytes = count * _I32_NBYTES
+    if count <= 0 or nbytes > buffer.nbytes:
+        raise ValueError("int32 row read must be non-empty and fit the source")
+    host = (ctypes.c_int32 * count)()
+    runtime.memcpy(
+        ctypes.addressof(host),
+        buffer.ptr,
+        nbytes,
+        HipMemcpyKind.DEVICE_TO_HOST,
+    )
+    return tuple(int(value) for value in host)
+
+
+def _read_f32_rows(
+    buffer: DeviceBuffer,
+    rows: int,
+    runtime: HipRuntime,
+) -> tuple[float, ...]:
+    count = int(rows)
+    nbytes = count * _F32_NBYTES
+    if count <= 0 or nbytes > buffer.nbytes:
+        raise ValueError("float32 row read must be non-empty and fit the source")
+    host = (ctypes.c_float * count)()
+    runtime.memcpy(
+        ctypes.addressof(host),
+        buffer.ptr,
+        nbytes,
+        HipMemcpyKind.DEVICE_TO_HOST,
+    )
+    return tuple(float(value) for value in host)
 
 
 def _read_i64(buffer: DeviceBuffer, runtime: HipRuntime) -> int:
@@ -1899,6 +2477,46 @@ def _read_f32(buffer: DeviceBuffer, runtime: HipRuntime) -> float:
     return float(host.value)
 
 
+def _validate_laguna_dflash_accept_payload(
+    *,
+    tokens: tuple[int, ...],
+    positions: tuple[int, ...],
+    target_top1: tuple[int, ...],
+    remaining_decode: int | None,
+    payload: tuple[int, ...],
+) -> None:
+    """Cross-check the GPU's compact chain summary before canonical commit."""
+
+    if len(tokens) < 2 or len(tokens) != len(positions) or len(tokens) != len(target_top1):
+        raise ValueError("Laguna DFlash accept inputs must align root plus draft rows")
+    if len(payload) != 7:
+        raise ValueError("Laguna DFlash packed accept payload must contain seven fields")
+    accepted = 0
+    draft_count = len(tokens) - 1
+    limit = draft_count if remaining_decode is None else min(draft_count, remaining_decode)
+    while accepted < limit and tokens[accepted + 1] == target_top1[accepted]:
+        accepted += 1
+    expected_next = (
+        -1
+        if remaining_decode is not None and accepted >= remaining_decode
+        else target_top1[accepted]
+    )
+    expected = (
+        accepted,
+        accepted,
+        tokens[accepted],
+        positions[accepted],
+        expected_next,
+        int(accepted == draft_count),
+        accepted + 1,
+    )
+    if payload != expected:
+        raise RuntimeError(
+            "Laguna DFlash GPU accept summary disagrees with the CPU chain oracle: "
+            f"expected={expected} actual={payload}"
+        )
+
+
 def _resolve_exact(key: KernelKey) -> Callable:
     if not is_registered(key):
         raise LookupError(f"required Laguna eager kernel is not registered: {key.display()}")
@@ -1914,6 +2532,7 @@ def _resolve_exact(key: KernelKey) -> Callable:
 
 __all__ = [
     "LAGUNA_DFLASH_CAPTURE_DEPTHS",
+    "LagunaDFlashVerifyResult",
     "LagunaEagerKernelPlan",
     "LagunaEagerLibraries",
     "LagunaEagerScratch",
@@ -1922,6 +2541,7 @@ __all__ = [
     "LagunaHiddenCaptureTargets",
     "LagunaRowsScratch",
     "LagunaVerifierRowsResult",
+    "LagunaVerifierScratch",
     "capture_laguna_hidden_rows",
     "capture_laguna_hidden_tap",
     "load_laguna_eager_libraries",

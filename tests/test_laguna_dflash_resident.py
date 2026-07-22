@@ -59,6 +59,16 @@ def test_laguna_dflash_capture_owner_allocates_exact_depth_rows_and_frees() -> N
     assert tuple(owner.targets.buffers) == CAPTURE_DEPTHS
     assert len(owner.tensors) == 6
     assert all(tensor.shape == (3, 3072) for tensor in owner.tensors)
+    prefix = owner.prefix_tensors(2)
+    assert all(tensor.shape == (2, 3072) for tensor in prefix)
+    assert tuple(tensor.ptr for tensor in prefix) == tuple(
+        tensor.ptr for tensor in owner.tensors
+    )
+    prefix_targets = owner.prefix_targets(2)
+    assert prefix_targets.rows == 2
+    assert all(buffer.nbytes == 2 * 3072 * 2 for buffer in prefix_targets.buffers.values())
+    with pytest.raises(ValueError, match="prefix rows"):
+        owner.prefix_tensors(4)
     assert owner.nbytes == 6 * 3 * 3072 * 2
     allocated = set(runtime.allocations)
     owner.free()

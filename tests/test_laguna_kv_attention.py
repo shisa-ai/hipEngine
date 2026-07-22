@@ -193,6 +193,7 @@ class _FakeRuntime:
         self.allocations: dict[int, int] = {}
         self.freed: list[int] = []
         self.copies: list[tuple[int, int, HipMemcpyKind]] = []
+        self.memsets: list[tuple[int, int, int]] = []
         self.fail_malloc_at = fail_malloc_at
         self.malloc_calls = 0
 
@@ -215,6 +216,12 @@ class _FakeRuntime:
         )
         assert kind == HipMemcpyKind.HOST_TO_DEVICE
         self.copies.append((int(dst), int(count), kind))
+
+    def memset(self, dst: int, value: int, nbytes: int) -> None:
+        assert int(dst) in self.allocations or any(
+            base < int(dst) < base + size for base, size in self.allocations.items()
+        )
+        self.memsets.append((int(dst), int(value), int(nbytes)))
 
 
 def _production_config() -> SimpleNamespace:
@@ -286,6 +293,12 @@ def test_laguna_kv_owner_allocates_12_global_36_bounded_rings_and_tears_down() -
         cache.prepare_rows((5, 7))
     with pytest.raises(ValueError, match="capacity"):
         cache.prepare_rows(tuple(range(5, 5 + 513)))
+
+    cache.reset()
+    assert cache.position == -1
+    assert cache.pending_positions == ()
+    assert len(runtime.memsets) == 48 * 3
+    assert {value for _, value, _ in runtime.memsets} == {0, 1, 0xFF}
 
     allocated_count = len(runtime.allocations)
     assert allocated_count > 96

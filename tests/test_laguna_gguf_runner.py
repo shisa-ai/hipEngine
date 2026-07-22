@@ -366,6 +366,7 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
         repacked_cache="/synthetic/laguna-repacked-v1",
         model_sha256="synthetic-sha256",
     )
+    assert session.verifier_scratch is None
     session.close()
     session.close()
 

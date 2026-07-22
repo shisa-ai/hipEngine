@@ -3,13 +3,14 @@
 Last updated: 2026-07-23
 
 Status: eager all-resident c=1, exact chunked prefill/B+1 target rows, public
-blocking/streaming generation, the canonical target-AR benchmark, and a
-standalone Poolside-matched DFlash drafter through admitted budget B4 are
-implemented. First-token, repeated-state, bulk-vs-serial, live Poolside-v1
-reasoning/XML-tool, and B4 draft top-k gates pass, with one documented target-AR
+blocking/streaming generation, the canonical target-AR benchmark, a standalone
+Poolside-matched DFlash drafter through admitted budget B4, and transactional
+DFlash target verify/accept/commit are implemented. First-token, repeated-state,
+bulk-vs-serial, live Poolside-v1 reasoning/XML-tool, B4 draft top-k, and
+B1/B2/B4/B7/B15 target-cycle exactness gates pass, with one documented target-AR
 low-margin greedy-32 arithmetic split. The exact bulk-prefill path is retained
-as default; DFlash verify/accept/commit and economics, higher draft budgets, and
-long-context admission remain.
+as default; DFlash full-suite economics/public integration, higher-budget draft
+candidate parity, and long-context admission remain.
 
 This document defines the correctness-first plan for running
 [`poolside/Laguna-S-2.1-GGUF`](https://huggingface.co/poolside/Laguna-S-2.1-GGUF),
@@ -1578,11 +1579,12 @@ attention, dense/sigmoid MoE, and final hidden state. Only the final prompt row
 runs LM-head/argmax; c=1 decode is unchanged. The retained serial prefill
 selector is documented in `docs/REFACTOR.md` and remains the independent oracle.
 
-`verify_rows(root, drafts)` executes one committed B+1 block, returns full FP32
-logits for every target row, and copies BF16 DFlash taps at depths
-2/11/20/30/39/48 into caller-owned row buffers. Speculative rejection rollback
-is intentionally deferred to D3/task #37; this surface alone does not make
-rejected target rows safe to commit.
+`verify_rows(root, drafts)` remains the committed B+1 diagnostic: it returns
+full FP32 logits for every target row and copies BF16 DFlash taps at depths
+2/11/20/30/39/48 into caller-owned row buffers. D3's
+`verify_dflash_chain(root, drafts)` is the production transaction: it stages all
+per-layer K/V, runs GPU accept, and appends only the accepted prefix, so rejected
+target rows are now safe across global and SWA ownership.
 
 The accepted gfx1151 artifact
 `benchmarks/results/2026-07-22-gfx1151-laguna-bulk-prefill-verifier-correctness.json`
@@ -1884,8 +1886,9 @@ changes did not solve this: F32 projected context left candidate IDs unchanged,
 and a full duplicated-F32 query path regressed first-row parity while adding
 about 4.24 GiB and raising proposal wall to 311 ms, so both were removed. The
 resident implementation is complete for the B1/B2/B4 product boundary, but
-D1's stated all-15-row acceptance remains open; higher budgets are a correctness
-blocker for D3/D4 promotion. Evidence:
+D1's stated all-15-row Poolside candidate-parity acceptance remains open. D3 now
+proves target-cycle output/state exactness at higher budgets despite those weaker
+proposals; B7/B15 remain diagnostic and blocked from D4 promotion. Evidence:
 `benchmarks/results/2026-07-23-gfx1151-laguna-dflash-drafter-b4.json`.
 
 ### D2 — Target hidden and draft-context ownership
@@ -1907,6 +1910,16 @@ Acceptance: append-only cache equals full rebuild for crafted windows and 32+
 cycles; 511/512/513 wrap is exact; rejected target rows never enter committed
 draft context; target-only AR has no hidden-capture overhead when DFlash is off.
 
+D2's online ownership boundary is implemented as of 2026-07-23. The target
+writes six BF16 post-layer tap planes while producing each verifier row; the
+cycle exposes only the accepted leading views to the drafter's projected-context
+append. Draft and target cursors are checked after every cycle, fixed capture and
+verifier addresses remain stable, and failures after either owner advances close
+both owners rather than permit reuse. The verifier K/V transaction described
+below is the rollback mechanism: rejected target taps and K/V never become
+canonical. Target-only AR allocates neither verifier scratch nor capture planes;
+those resources are lazy DFlash-cycle ownership.
+
 ### D3 — Laguna B+1 verifier, accept, and commit
 
 Adapt the provider-neutral speculative cycle to Laguna target rows:
@@ -1927,6 +1940,39 @@ the same target session protocol.
 
 Acceptance: reject/partial/full, EOS inside draft, max-token boundary, SWA wrap,
 and multi-cycle sequences all match true AR IDs and committed state exactly.
+
+D3 is implemented and passes its correctness ladder as of 2026-07-23. Laguna
+stages each layer's verifier K/V in fixed F32 row planes (about 24 MiB at the
+64-row target bucket) while attention consumes canonical prior K/V plus current
+causal rows. The target does not append verifier rows during the 48-layer pass.
+After row-wise GPU argmax, the shared DFlash accept kernel writes one seven-int
+summary; only `root + accepted` staged rows are converted to BF16 and appended
+to the 12 global and 36 SWA caches. This avoids snapshot/restore entirely and is
+safe when a rejected suffix crosses ring slots 511/512/513. Payloads are checked
+against the provider-neutral CPU chain oracle before commit. Stop-containing
+proposals are truncated at the first stop and suppress the bonus when accepted;
+remaining decode limits cover the max-token boundary. Stable bucket pointers are
+asserted after every cycle, and request state can reset without reallocating
+weights or scratch.
+
+The same resident target was reset and compared against a true serial AR run for
+12 generated IDs at `B=1,2,4,7,15`. Every budget produced exactly
+`[94557,3505,3011,515,2407,365,2291,10723,1687,948,1482,4217]`; all committed
+prefixes and target/drafter cursors matched. The ladder covered full, partial,
+and zero acceptance: accepted/drafted totals were `5/6`, `7/8`, `8/12`, `8/21`,
+and `8/45`, with 1/1/4/13/37 rejected target rows. Peak tracked allocation was
+`79,358,606,181` bytes and teardown returned to zero bytes/allocations. B7/B15
+here prove target correction/rollback correctness only; they do not override D1's
+B4 Poolside candidate-parity admission or qualify those budgets for D4.
+
+A cached B4 `rocprofv3 --kernel-trace` captured the intended zero-scratch path:
+one 6.492-us `dflash_accept_chain_i32_kernel`, two row-argmax launches totaling
+17.833 us, then exactly 12 global plus 36 SWA accepted-prefix writes totaling
+91.212 us. The Q6 LM-head-to-final-KV-commit window was 9.818 ms device timeline
+(5.658 ms kernel sum). Full commands, per-budget cycle shapes, address digests,
+and lifecycle evidence are in
+`benchmarks/results/2026-07-23-gfx1151-laguna-dflash-verify-commit.json`.
+These timings are diagnostic, not D4 economics or a speedup claim.
 
 ### D4 — Full-suite economics
 
@@ -2055,8 +2101,10 @@ full suite, with all correctness/state/memory and category-heldout gates green.
    kernel; do not repack/split 69 tensors merely to satisfy old Qwen names.
 8. Whether target hidden taps become an optional general resident-session ABI or
    remain a Laguna+DFlash capability. They must be inactive at zero cost in AR.
-9. The first DFlash budget. Poolside's serving example uses seven; correctness
-   should still progress through B1/B2/B4 before B7 and B15.
+9. **Resolved for correctness:** the target-cycle ladder progressed through
+   B1/B2/B4/B7/B15. B4 remains the highest candidate-parity-admitted product
+   budget until D1's Poolside mismatch is resolved; D4 must still sweep fixed
+   budgets without promoting B7/B15 from target-correction evidence alone.
 
 Resolve these decisions in `WORKLOG.md` as implementation begins. Architecture
 or phase changes that outgrow this document must also update [`PLAN.md`](PLAN.md).
