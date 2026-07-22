@@ -173149,3 +173149,71 @@ change that unrelated fixture or driver. The Laguna tests themselves import
 neither torch nor GPU libraries. Target-side L1 is closed and unblocks the Q4_K
 embedding, mixed-F16/YaRN/gate, and Laguna MoE kernel tasks. DFlash-specific
 auxiliary-tap/draft/accept fixtures remain in the later DFlash milestones.
+
+## 2026-07-22 — Land Laguna Q4_K embedding and root probes
+
+Added a net-new raw GGUF Q4_K token-row kernel to the existing gfx11
+Q6_K/Q8_0 embedding family. It dequantizes source-native `block_q4_K` bytes
+straight to BF16, registers as
+`embedding/gguf_q4_k/lookup_bf16_out`, and is inherited by the peer gfx1151
+backend through the normal alias package. The CPU reference now exposes the
+matching Q4_K row oracle. Synthetic tests cover exact repeated-row selection,
+negative and out-of-vocabulary IDs (invalid rows preserve caller-owned output),
+wrapper validation, and explicit gfx1100/gfx1151 registry resolution.
+
+Removed the architecture-owned runtime type dependency from GGUF embedding and
+linear dispatch. The new structural `GGUFDeviceWeight` ABI admits both Qwen and
+Laguna resident owners; layout and backend continue to select four-axis registry
+keys, with no model/backend conditional in dispatch.
+
+Added `scripts/laguna_root_probe.py` and a real-artifact test. The probe
+materializes only `root.token_embedding`, `root.output_norm`, and
+`root.lm_head`, then executes Q4_K embedding -> BF16/F32-weight final RMSNorm ->
+losslessly materialized Q6T16 BF16-to-F32 LM head -> GPU argmax. Its independent
+CPU path dequantizes the raw Q4_K row and raw Q6_K output matrix in bounded
+chunks. On completed S 2.1 Q4_K_M, BOS token `100257` produced:
+
+- embedding max abs `0.0` and final-norm max abs `0.0` at BF16;
+- all 100,352 logits finite;
+- logits max/mean abs `5.72205e-6` / `6.24759e-7`;
+- KL `6.86994e-13` and CPU/GPU top-1 `81364 == 81364`.
+
+Prebuilt all four `.so` files outside profiling with the cached hipcc-version
+contract, then ran:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 rocprofv3 --kernel-trace \
+  --output-format csv -d /tmp/laguna-root-rocprof -- \
+  uv run python scripts/laguna_root_probe.py \
+  /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf \
+  --backend hip_gfx1151 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --output /tmp/laguna-root-rocprof-result.json
+```
+
+The trace records `gguf_q4_k_embedding_bf16_out_kernel` at 9.818 us, 16 VGPR,
+128 SGPR, zero scratch/LDS; `gguf_rmsnorm_bf16_f32_weight_kernel` at 7.614 us;
+Q6T16 LM-head at 1.213 ms, 72 VGPR, zero scratch, 512 B LDS; and argmax stage
+1/2 at 4.769/1.563 us. The output JSON passed.
+
+Validation:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 uv run pytest -q \
+  tests/test_gguf_q6_k_embedding.py \
+  tests/test_gguf_embedding_dispatch.py \
+  tests/test_gguf_linear_dispatch.py \
+  tests/test_laguna_root_probe.py \
+  tests/test_laguna_gguf_materialize_gpu.py
+uvx ruff check <changed Python files>
+python3 -m compileall -q hipengine scripts/laguna_root_probe.py \
+  tests/test_gguf_q6_k_embedding.py tests/test_laguna_root_probe.py
+```
+
+Result: 57 passed and two unrelated local Qwen real-model cases skipped; Ruff,
+compileall, and `git diff --check` passed. The broad kernel-lineage check remains
+pre-existingly blocked because `/home/lhl/amd-gpu-tuning/reference/atlas` is
+absent; this kernel is an in-tree Laguna extension and does not claim a parent
+port. Root primitive work is closed and the eager runner can now share target
+embedding/final-head ownership with the matched DFlash drafter.

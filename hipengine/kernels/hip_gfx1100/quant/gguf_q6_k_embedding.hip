@@ -1,10 +1,11 @@
-// GGUF Q6_K/Q8_0 token embedding lookup kernels.
+// GGUF Q4_K/Q6_K/Q8_0 token embedding lookup kernels.
 
 #include <hip/hip_runtime.h>
 
 #include <cstdint>
 
 constexpr int QK_K = 256;
+constexpr int Q4_K_BLOCK_BYTES = 144;
 constexpr int Q6_K_BLOCK_BYTES = 210;
 constexpr int Q8_0_BLOCK = 32;
 constexpr int Q8_0_BLOCK_BYTES = 34;
@@ -51,6 +52,38 @@ __device__ inline uint16_t float_to_bf16_bits(float value) {
   return static_cast<uint16_t>(in.u32 >> 16);
 }
 
+__device__ inline uint8_t q4_k_scale(const uint8_t* scales, int subblock) {
+  if (subblock < 4) {
+    return scales[subblock] & 0x3Fu;
+  }
+  const int idx = subblock - 4;
+  return (scales[8 + idx] & 0x0Fu) | ((scales[idx] >> 2) & 0x30u);
+}
+
+__device__ inline uint8_t q4_k_min(const uint8_t* scales, int subblock) {
+  if (subblock < 4) {
+    return scales[4 + subblock] & 0x3Fu;
+  }
+  const int idx = subblock - 4;
+  return (scales[8 + idx] >> 4) | ((scales[4 + idx] >> 2) & 0x30u);
+}
+
+__device__ inline float q4_k_weight(const uint8_t* row, int k) {
+  const int block_idx = k / QK_K;
+  const int within = k - block_idx * QK_K;
+  const int subblock = within >> 5;
+  const int lane = within & 31;
+  const uint8_t* block = row + static_cast<int64_t>(block_idx) * Q4_K_BLOCK_BYTES;
+  const float d = fp16_bytes_to_float(block);
+  const float dmin = fp16_bytes_to_float(block + 2);
+  const uint8_t* scales = block + 4;
+  const uint8_t* qs = block + 16;
+  const uint8_t packed = qs[(subblock >> 1) * 32 + lane];
+  const uint8_t q = (subblock & 1) ? (packed >> 4) : (packed & 0x0Fu);
+  return d * static_cast<float>(q4_k_scale(scales, subblock)) * static_cast<float>(q) -
+         dmin * static_cast<float>(q4_k_min(scales, subblock));
+}
+
 __device__ inline float q8_0_weight(const uint8_t* row, int k) {
   const int block_idx = k / Q8_0_BLOCK;
   const int lane = k & (Q8_0_BLOCK - 1);
@@ -81,6 +114,31 @@ __device__ inline float q6_k_weight(const uint8_t* row, int k) {
   const int q = static_cast<int>(low | (high << 4)) - 32;
   const int scale = static_cast<int>(scales[within >> 4]);
   return d * static_cast<float>(scale * q);
+}
+
+__launch_bounds__(256, 2)
+__global__ void gguf_q4_k_embedding_bf16_out_kernel(
+    const int64_t* __restrict__ token_ids,
+    const uint8_t* __restrict__ qweight,
+    uint16_t* __restrict__ out,
+    int rows,
+    int hidden_size,
+    int vocab_size) {
+  const int row = static_cast<int>(blockIdx.y);
+  const int k0 = static_cast<int>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (row >= rows) {
+    return;
+  }
+  const int64_t token_id64 = token_ids[row];
+  if (token_id64 < 0 || token_id64 >= static_cast<int64_t>(vocab_size)) {
+    return;
+  }
+  const int token_id = static_cast<int>(token_id64);
+  const int64_t row_bytes = (static_cast<int64_t>(hidden_size) / QK_K) * Q4_K_BLOCK_BYTES;
+  const uint8_t* __restrict__ weight_row = qweight + static_cast<int64_t>(token_id) * row_bytes;
+  for (int k = k0; k < hidden_size; k += static_cast<int>(gridDim.x) * blockDim.x) {
+    out[static_cast<int64_t>(row) * hidden_size + k] = float_to_bf16_bits(q4_k_weight(weight_row, k));
+  }
 }
 
 __launch_bounds__(256, 2)
@@ -131,6 +189,34 @@ __global__ void gguf_q8_0_embedding_bf16_out_kernel(
   for (int k = k0; k < hidden_size; k += static_cast<int>(gridDim.x) * blockDim.x) {
     out[static_cast<int64_t>(row) * hidden_size + k] = float_to_bf16_bits(q8_0_weight(weight_row, k));
   }
+}
+
+extern "C" int hipengine_gguf_q4_k_embedding_bf16_out(
+    const int64_t* token_ids,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t rows,
+    int64_t hidden_size,
+    int64_t vocab_size,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || hidden_size <= 0 || vocab_size <= 0 || hidden_size % QK_K != 0) {
+    return hipErrorInvalidValue;
+  }
+  if (threads <= 0) {
+    threads = 256;
+  }
+  const dim3 block(static_cast<unsigned int>(threads));
+  const int64_t blocks_x = (hidden_size + threads - 1) / threads;
+  const dim3 grid(static_cast<unsigned int>(blocks_x), static_cast<unsigned int>(rows));
+  gguf_q4_k_embedding_bf16_out_kernel<<<grid, block, 0, stream>>>(
+      token_ids,
+      qweight,
+      out,
+      static_cast<int>(rows),
+      static_cast<int>(hidden_size),
+      static_cast<int>(vocab_size));
+  return hipGetLastError();
 }
 
 extern "C" int hipengine_gguf_q6_k_embedding_bf16_out(

@@ -12,11 +12,8 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_embedding import (
 )
 from hipengine.kernels.hip_gfx1100.runtime.state import register_runtime_state_kernels
 from hipengine.kernels.registry import KernelKey, resolve
-from hipengine.loading.qwen35_gguf_materialize import (
-    LAYOUT_DENSE_BF16,
-    LAYOUT_RAW_GGUF,
-    Qwen35GGUFDeviceWeight,
-)
+from hipengine.loading.qwen35_gguf_materialize import LAYOUT_DENSE_BF16, LAYOUT_RAW_GGUF
+from hipengine.runtime.gguf_weight import GGUFDeviceWeight
 
 GGUF_EMBEDDING_OUTPUT_BF16 = "bf16"
 
@@ -29,11 +26,11 @@ class GGUFEmbeddingDispatch:
     abi: str
 
 
-_RAW_EMBEDDING_QUANTS = frozenset({"gguf_q6_k", "gguf_q8_0"})
+_RAW_EMBEDDING_QUANTS = frozenset({"gguf_q4_k", "gguf_q6_k", "gguf_q8_0"})
 
 
 def resolve_gguf_embedding_dispatch(
-    weight: Qwen35GGUFDeviceWeight,
+    weight: GGUFDeviceWeight,
     *,
     output_dtype: str = GGUF_EMBEDDING_OUTPUT_BF16,
     backend: str | None = None,
@@ -58,7 +55,7 @@ def resolve_gguf_embedding_dispatch(
 
 
 def launch_gguf_embedding(
-    weight: Qwen35GGUFDeviceWeight,
+    weight: GGUFDeviceWeight,
     token_ids_ptr: int,
     out_ptr: int,
     rows: int,
