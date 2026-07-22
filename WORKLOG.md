@@ -174771,3 +174771,18 @@ The broad lineage scan remains blocked before reporting because the legacy
 healthy on Radeon 8060S/gfx1151. The next action is to commit this harness,
 prebuild on the clean revision, then run the dedicated timing/routing packet and
 cached `rocprofv3` trace before LPF-1 kernel work.
+
+The first clean LPF-0 run passed, but its readable sparse `[expert,count]` lists
+made the otherwise compact artifact 2.6 MiB. Changed only the artifact encoding:
+each layer now stores a dense 256-entry little-endian uint16 count vector as
+base64, while human-readable occupancy histograms/maxima stay unchanged. This
+retains every per-expert count and cuts JSON overhead; no model execution,
+routing value, timing, or gate changes. Focused validation:
+
+```bash
+uv run pytest -q tests/test_laguna_prefill_profile.py
+# 5 passed
+uvx ruff check scripts/laguna_prefill_profile.py \
+  tests/test_laguna_prefill_profile.py
+# clean
+```

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 from collections import Counter
 from datetime import datetime, timezone
 import hashlib
@@ -12,6 +13,7 @@ import math
 from pathlib import Path
 import platform
 import statistics
+import struct
 import sys
 import time
 from typing import Any, Mapping, Sequence
@@ -151,10 +153,13 @@ def _summarize_routing_replay(
             active_groups += 1
             padded_lanes += ((count + parsed_tile - 1) // parsed_tile) * parsed_tile
             maximum = max(maximum, count)
+        dense_counts = [counts.get(expert_id, 0) for expert_id in range(parsed_experts)]
+        packed_counts = struct.pack(f"<{parsed_experts}H", *dense_counts)
         layers[str(layer_id)] = {
             "active_experts": len(ordered),
             "max_expert_lanes": max(counts.values()),
-            "per_expert_counts": [[expert_id, count] for expert_id, count in ordered],
+            "per_expert_counts_encoding": "uint16_le_dense_expert_id_order_base64",
+            "per_expert_counts_u16_le_base64": base64.b64encode(packed_counts).decode("ascii"),
         }
         flattened.extend(selected)
     actual_lanes = len(flattened)
