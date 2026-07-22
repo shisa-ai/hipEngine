@@ -27,7 +27,6 @@ from hipengine.kernels.hip_gfx1100.moe.router import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
     gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out,
     gguf_q8_0_t16_wmma_prefill_auto_4wave_bf16_bf16_out,
-    gguf_q8_0_t16_wmma_prefill_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100 import (
     GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS as GFX1100_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS,
@@ -66,6 +65,8 @@ from hipengine.kernels.hip_gfx1151 import (
     GGUF_Q8_T16_PREFILL_TWO_WAVE,
     GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS,
     GGUF_ROUTER_F32_BF16_HIDDEN_THREADS,
+    LAGUNA_F16_PREFILL_MIN_ROWS,
+    LAGUNA_F16_PREFILL_STRATEGY,
     GGUF_GDN_INDEXED_SINGLETON_DECODE,
     GGUF_GDN_PREFILL_AUTO_MODE,
     GGUF_GDN_PREFILL_EXACT_MODE,
@@ -206,6 +207,23 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
 
     assert TARGET_ARCH == "gfx1151"
     assert GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS == 128
+    assert LAGUNA_F16_PREFILL_STRATEGY == "tiled"
+    assert LAGUNA_F16_PREFILL_MIN_ROWS == 2
+    assert (
+        backend_package_capability(
+            "hip_gfx1151", "LAGUNA_F16_PREFILL_STRATEGY"
+        )
+        == "tiled"
+    )
+    assert (
+        backend_package_capability(
+            "hip_gfx1151", "LAGUNA_F16_PREFILL_MIN_ROWS"
+        )
+        == 2
+    )
+    assert backend_package_capability(
+        "hip_gfx1100", "LAGUNA_F16_PREFILL_STRATEGY", None
+    ) is None
     assert GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS == 4096
     assert GFX1100_GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS == 4096
     assert GGUF_PREFILL_ROUTER_SELECT_THREADS == 128

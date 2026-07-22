@@ -3,10 +3,12 @@
 Last reviewed: **2026-07-23**
 
 Latest retained hipEngine revisions in this scoreboard:
+`6b14c2da60bd51d56373e31fe9e16e15f4e969d9` for the exact Laguna S 2.1
+LPF-1 tiled source-F16 prefill and canonical target-AR gate,
 `dbfeecf83363023d3ac9d72736c68da632af0726` for the Laguna S 2.1 LPF-0
 prefill-only shape trace and real-routing replay,
-`b83d9aaae0b4afd59508d081f65b2da7c473e59a` for the exact Laguna S 2.1
-full-suite DFlash diagnostic and fixed-horizon state gate,
+`b83d9aaae0b4afd59508d081f65b2da7c473e59a` for the exact pre-LPF-1
+Laguna S 2.1 full-suite DFlash diagnostic and fixed-horizon state gate,
 `ee1649e3fa372bd115ae7afed9aa2a0e81932afc` for the exact Laguna S 2.1
 canonical target-AR category benchmark and bulk-prefill promotion,
 `e99a30cb9183ce342f5a30fa4f774b14dc4c0677` for the Laguna S 2.1
@@ -1119,8 +1121,9 @@ recoverable from the linked compact artifacts, changelog, and
 
 ### gfx1151 Laguna S 2.1 target AR, DFlash, and cold startup, 2026-07-23
 
-**Status: retained for exact target-only c=1 AR and loader startup; matched B4
-DFlash is exact but diagnostic-only and remains off.** The AR protocol uses the
+**Status: retained for exact target-only c=1 AR and loader startup; the matched
+B4 DFlash row is exact but stale after LPF-1 changed target-verifier rows, so
+DFlash remains off pending refresh.** The AR protocol uses the
 full ten-prompt `mtpbench-code-general-ja` suite (`code`, `general_en`,
 `general_ja`, and
 `mixed_ja_en`), prompt lengths 68-122, greedy 16/32-token horizons, two
@@ -1131,35 +1134,44 @@ top-1, and lifecycle recovery is exact.
 
 | hipEngine route | Prefill tok/s | Median TTFT | Decode tok/s, h32 | E2E tok/s, h16 | E2E tok/s, h32 |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Token-serial prefill + eager c=1 decode | 17.418 | 4.628 s | 16.381 | 2.727 | 4.670 |
-| **Default 64-row bulk prefill + same eager c=1 decode** | **23.333** | **3.481 s** | **16.381** | **3.470** | **5.719** |
-| Change | **+33.95%** | **-24.79%** | +0.004% | **+27.27%** | **+22.47%** |
+| Token-serial prefill + eager c=1 decode | 17.425 | 4.625 s | 16.384 | 2.727 | 4.671 |
+| Previous 64-row bulk GEMV prefill + same eager c=1 decode | 23.333 | 3.481 s | 16.381 | 3.470 | 5.719 |
+| **Default LPF-1 exact tiled prefill + same eager c=1 decode** | **48.560** | **1.692 s** | **16.386** | **5.955** | **8.717** |
+| LPF-1 change vs previous default | **+108.12% (2.081x)** | **-51.39%** | +0.030% | **+71.61%** | **+52.42%** |
 
-The retained default therefore changes prompt execution only; decode is the
-same exact c=1 path and is neutral. Every category independently passes the
-predeclared prefill/decode/e2e promotion guard. Tracked peak is
-`77,409,922,168` bytes, resident ownership is `77,073,914,940` bytes, and all
-tracked allocations return to zero.
+LPF-1 changes prompt execution only; rows=1 decode stays on the original exact
+GEMV and is neutral. Every serial/tiled pair and same-route repeat is exact at
+both horizons, the Poolside distribution remains KL `6.6214e-6` with exact
+top-1, every category independently passes the predeclared
+prefill/decode/e2e guard, and tracked ownership returns exactly to baseline.
+The measured artifact explicitly records forced `tiled` selection; the
+post-gate gfx1151 capability makes that same registered path automatic from two
+rows while unsupported backends retain GEMV.
 
-A separate cached-build trace passes exact Greedy-4/repeat/teacher-forced gates
-and records 12,789 launches / 33 families over three 55-row prefills plus nine
-c=1 decode rows. Source-F16 QKV/O projections dominate at 2.877/2.244 s total;
-selected Q4 dual/down families use 1.280/0.717 s. Global/SWA prefill attention
-uses 0.007/0.060 s and global/SWA decode attention 0.003/0.029 s, confirming
-attention metadata is not the current short-context bottleneck.
+The same-session LPF-1 A/B holds one resident model/runtime and alternates GEMV
+and tiled execution at rows 2/3/4/5/7/8/15/16/17/32/55/64/65/122/128. Every
+mode/repetition returns the same next token. Tiled is faster at every measured
+shape, from **20.568 -> 21.327 tok/s (1.0369x)** at two rows through
+**23.460 -> 48.760 (2.0784x)** at 55 and **23.374 -> 50.240 (2.1494x)** at
+128; the weighted measured profile improves **2.0538x**. The retained threshold
+is therefore two rows, with rows=1 permanently on GEMV.
 
-LPF-0 removes that trace contamination. One physical chunk at rows
-16/32/55/64/122/128 reaches median
-23.141/23.421/23.450/23.453/23.368/23.377 tok/s over three rotating-order
-passes; repeated next tokens, routing-replay outputs, and lifecycle are exact.
-The cached trace has 12 complete passes and 1,006 embedding-to-argmax
-dispatches/pass. Its 55-row kernel sum is 2.340 s: source-F16 QKV/O is
-**68.99%**, selected Q4/Q6 direct GEMV is **26.45%**, and attention is
-**0.96%**. Real top-10 routing produces 6,892 nonempty `(layer, expert)` groups at 55 rows; 76.25% have at most four
-lanes, so naïve 16-row compact-WMMA padding would execute 4.396x useful lanes
-(2.704x at 128 rows). LPF-1 true source-F16 bulk projection therefore remains
-first; LPF-2 compact WMMA is a control rather than an assumed win.
-[LPF-0 profile and routing artifact](results/2026-07-23-gfx1151-laguna-prefill-lpf0-profile.json).
+LPF-0 explains the gain. One physical chunk at rows 16/32/55/64/122/128 had
+reached only 23.141/23.421/23.450/23.453/23.368/23.377 tok/s. Its cached
+55-row trace assigns **68.99%** of kernel sum to source-F16 QKV/O, **26.45%**
+to selected Q4/Q6 direct GEMV, and **0.96%** to attention. LPF-1 replaces that
+first family with a reduction-order-preserving 8x4/16x4 tile; the cached
+55x9216x3072 O launch is **3.798 ms**, 256 threads, 96 VGPR, 128 SGPR, 512 B
+LDS, and zero scratch. A faster reassociated WMMA control was rejected after
+changing three free-running trajectories.
+
+Real top-10 routing still produces 6,892 nonempty `(layer, expert)` groups at 55
+rows; 76.25% have at most four lanes, so naïve 16-row compact-WMMA padding would
+execute 4.396x useful lanes (2.704x at 128 rows). LPF-2 compact WMMA remains a
+control rather than an assumed win; a small-M grouped reuse path is the stronger
+fallback candidate. Artifacts: [LPF-0 profile and routing](results/2026-07-23-gfx1151-laguna-prefill-lpf0-profile.json),
+[LPF-1 same-session A/B](results/2026-07-23-gfx1151-laguna-prefill-lpf1-ab.json),
+and [LPF-1 canonical category gate](results/2026-07-23-gfx1151-laguna-prefill-lpf1-tiled.json).
 
 The matched clean Poolside llama.cpp `04b2b72c` raw-token diagnostic reports
 70.463/70.451 prompt tok/s and 19.063/18.882 native predicted tok/s at h16/h32,
@@ -1169,13 +1181,15 @@ hipEngine decode owns `horizon-1` post-TTFT forwards, and its HTTP wall differs
 from the resident in-process boundary. Same-server Poolside output is also only
 28/40 exact to hipEngine and 18/20 prompt/horizon groups repeat-deterministic;
 the frozen fresh-process Poolside distribution remains the correctness oracle.
-Artifacts: [retained hipEngine target AR](results/2026-07-22-gfx1151-laguna-s21-target-ar-retained.json)
+Artifacts: [retained LPF-1 hipEngine target AR](results/2026-07-23-gfx1151-laguna-prefill-lpf1-tiled.json),
+[previous bulk-GEMV hipEngine row](results/2026-07-22-gfx1151-laguna-s21-target-ar-retained.json),
 and [qualified Poolside baseline](results/2026-07-22-gfx1151-poolside-laguna-s21-target-ar-baseline.json).
 
-#### Matched B4 DFlash economics
+#### Pre-LPF-1 matched B4 DFlash economics (stale)
 
-The admitted Poolside revision `b0486d1` BF16 drafter ran in one resident
-process against a true no-DFlash target path over the same 10 prompts, fixed 32
+At the pre-LPF-1 source, the admitted Poolside revision `b0486d1` BF16 drafter
+ran in one resident process against a true no-DFlash target path over the same
+10 prompts, fixed 32
 visible outputs, two repetitions, and alternating route order. Decode timing
 starts after each synchronized first token and includes 31 visible outputs;
 model load is excluded. All **20/20** AR/DFlash pairs are exact, all values are
@@ -1203,12 +1217,14 @@ DFlash still seeds target hidden captures serially. Fixed-horizon E2E moves
 79,349,505,533 bytes (target 77,099,132,853; drafter 2,250,372,680), tracked
 peak is 79,349,726,717 bytes, and teardown is exact.
 
-The >1.10x promotion gate therefore fails decisively on decode before TTFT is
-considered; AR stays default and D5 public integration remains deferred. The
-artifact preserves the complete raw timing run plus an explicit offline
-reclassification of its derived fixed-horizon state predicate; no measurement
-or acceptance value changed and the >5-minute GPU run was not repeated after
-that isolated gate repair. [Diagnostic artifact](results/2026-07-23-gfx1151-laguna-dflash-category-economics.json).
+The pre-LPF-1 >1.10x promotion gate failed decisively on decode before TTFT was
+considered. LPF-1 now changes every B+1 target verifier with two or more rows,
+so these economics are no longer a current promotion decision; the full suite
+must be refreshed after the remaining prefill plan stabilizes. AR stays default
+and DFlash remains off. The artifact preserves the complete historical timing
+run plus an explicit offline reclassification of its derived fixed-horizon
+state predicate; no measurement or acceptance value changed.
+[Stale diagnostic artifact](results/2026-07-23-gfx1151-laguna-dflash-category-economics.json).
 
 #### Cold startup
 

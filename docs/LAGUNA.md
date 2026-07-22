@@ -8,10 +8,12 @@ Poolside-matched DFlash drafter through admitted budget B4, and transactional
 DFlash target verify/accept/commit are implemented. First-token, repeated-state,
 bulk-vs-serial, live Poolside-v1 reasoning/XML-tool, B4 draft top-k, and
 B1/B2/B4/B7/B15 target-cycle exactness gates pass, with one documented target-AR
-low-margin greedy-32 arithmetic split. The exact bulk-prefill path is retained
-as default. Full-suite DFlash B4 is exact but reaches only 0.6538x true-AR decode,
-so it is diagnostic-only; public integration, higher-budget draft candidate
-parity, prefill optimization, and long-context admission remain.
+low-margin greedy-32 arithmetic split. LPF-1 exact tiled source-F16 prefill is
+retained from two rows and moves canonical prefill to 48.560 tok/s. The
+pre-LPF-1 full-suite DFlash B4 run was exact at 0.6538x true-AR decode, but is
+now stale because the promoted tile changes B+1 verification; DFlash remains
+off pending a post-prefill refresh. Public integration, higher-budget draft
+candidate parity, LPF-2 through LPF-6, and long-context admission remain.
 
 This document defines the correctness-first plan for running
 [`poolside/Laguna-S-2.1-GGUF`](https://huggingface.co/poolside/Laguna-S-2.1-GGUF),
@@ -1074,7 +1076,7 @@ the pre-final-norm DFlash capture. Its exact S 2.1 template is
 | --- | --- | --- |
 | Q4_K token embedding | Raw `embedding/gguf_q4_k/lookup_bf16_out` is registered for gfx1100/gfx1151 and the Laguna table stays source-native | Closed: synthetic and real rows are BF16-exact vs CPU, invalid IDs preserve caller rows, model-neutral resident dispatch resolves, and gfx1151 profiling shows `gguf_q4_k_embedding_bf16_out_kernel`. |
 | F32 RMSNorm / residual | GGUF BF16-input/F32-weight RMSNorm and add-RMSNorm are reusable | Wire under Laguna keys and prove layer-0 residual order; no new math is implied. |
-| F16 Q/K/V/gate/O projections | Source precision and pointers remain F16; registry-driven single/dual/triple kernels accept BF16/F32 activations and emit FP32/BF16 | Closed for exact eager and row-batched GEMV correctness: CPU parity covers 48/72 Q heads, eight KV heads, and dim 128. The row path is still decode-shaped and is the measured LPF-1 performance target below. |
+| F16 Q/K/V/gate/O projections | Source precision and pointers remain F16; registry-driven single/dual/triple kernels accept BF16/F32 activations and emit FP32/BF16 | Closed and promoted on gfx1151: eager/decode keeps exact GEMV; rows>=2 resolve the reduction-order-preserving 8x4/16x4 tile. CPU/primitive parity plus same-session rows 2..128 and the full category gate are exact; canonical prefill improves 23.333->48.560 tok/s. Unsupported backends retain GEMV. |
 | Q/K head norm and RoPE | Exact Laguna YaRN/plain host tables feed the registered F32-input/F32-weight head-norm+rotate body | Closed for eager/bulk math: absolute positions, partial 64/full 128, 48/72 Q heads, eight KV heads, and dim 128 pass CPU parity on gfx1151. |
 | Global BF16 KV/attention | Complete dense `KVLiveSpans` plus block-256 paged BF16 writer/context attention accepts GQA ratios 6 and 9 and head dim 128 | Closed for eager c=1: the Laguna body preserves the proven block-256 page-table structure while consuming absolute positions and eviction metadata, 48/8 GQA matches direct CPU attention, and softplus remains the separate exact next stage. |
 | 512-token SWA | `KVLiveSpans.sliding_ring` plus native BF16 writer/context attention | Closed for eager c=1: 36 physical rings carry slot offsets, live counts, absolute token positions, eviction masks, and absolute query positions; 72/8 GQA passes 510/511/512/513 and repeated 1024/1025 wraps plus explicit eviction. Bulk prefill remains L8. |
@@ -1800,7 +1802,7 @@ baseline. A cached-build trace contains exactly 12 complete passes and 1,006
 embedding-to-argmax dispatches per pass. At 55 rows, source-F16 QKV/O consumes
 `907.232 + 706.832 ms` (**68.99%**) of the `2.340 s` median kernel sum,
 selected Q4/Q6 direct GEMV consumes `618.885 ms` (**26.45%**), and attention is
-`22.365 ms` (**0.96%**), confirming LPF-1 remains first.
+`22.365 ms` (**0.96%**), confirming LPF-1 was the correct first candidate.
 
 The replay also makes LPF-2's padding risk concrete. At 55 rows, 25,850 top-10
 lanes occupy 6,892 `(layer, expert)` groups; **76.25% of groups contain at most
@@ -1810,6 +1812,37 @@ compact-WMMA route therefore remains a control to measure, not a presumed win;
 a small-M grouped rowtile/pair-reuse route is the stronger candidate if compact
 replay loses. Evidence:
 `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-lpf0-profile.json`.
+
+LPF-1 is closed and promoted on gfx1151. A reassociated 16x16 F16-WMMA control
+reached 60.65 tok/s but changed three of ten free-running trajectories and was
+removed. The retained 8x4/16x4 row/column tile instead preserves the original
+thread-local K order and wave/block reduction tree while reusing activations
+across four output columns and weights across rows. Synthetic F32/BF16 outputs
+are bit-exact to GEMV, and cached profiling names
+`laguna_f16w_tiled_exact_kernel<unsigned short, 16>` at **3.798 ms** for the
+55x9216x3072 O projection (256 threads, 96 VGPR, 128 SGPR, 512 B LDS, zero
+scratch).
+
+The clean same-session A/B alternates GEMV/tiled order over three passes at rows
+2/3/4/5/7/8/15/16/17/32/55/64/65/122/128. All 90 outputs agree. Every shape
+wins: two rows move **20.568 -> 21.327 tok/s (1.0369x)**, 55 rows
+**23.460 -> 48.760 (2.0784x)**, and 128 rows **23.374 -> 50.240 (2.1494x)**;
+the weighted profile is **2.0538x**. The measured gfx1151 threshold is therefore
+two rows, while rows=1 and unsupported backends retain the registered GEMV.
+
+The clean two-repeat canonical category gate then moves the previous bulk-GEMV
+prefill **23.333 -> 48.560 tok/s (+108.12%; 2.081x)**, median TTFT
+**3.481 -> 1.692 s (-51.39%)**, and h16/h32 E2E
+**3.470/5.719 -> 5.955/8.717 tok/s (+71.61%/+52.42%)**. Decode is neutral at
+16.386 tok/s. All 20 serial/tiled pairs and same-route repeats have complete-ID
+equality at h16/h32; all four categories pass, the Poolside first-token gate
+remains KL `6.6214e-6` with exact top-1, lifecycle recovery is exact, and both
+artifacts have clean provenance. The gfx1151 backend capability now makes tiled
+the default from row two; `HIPENGINE_LAGUNA_F16_PREFILL=gemv` remains a one-
+release rollback. Evidence:
+`benchmarks/results/2026-07-23-gfx1151-laguna-prefill-lpf1-{ab,tiled}.json`.
+LPF-2 is next, with compact WMMA measured first only as a control against the
+routing replay and a small-M grouped reuse path preferred if padding loses.
 
 Every LPF candidate is a registered variant with the current exact chain as its
 unfused rollback. Exact candidates pass byte comparison on lengths
@@ -2017,15 +2050,15 @@ Reported Poolside/vLLM or other-hardware DFlash speedups are context only. They
 are not a gfx1151 or hipEngine baseline. A fixed-budget loss remains a valid
 exact diagnostic and leaves AR as default.
 
-D4 completed its admitted B4 decision on 2026-07-23. One resident target and
-pinned `b0486d1` BF16 drafter alternated true AR/DFlash over all ten canonical
-prompts, two repetitions, and a fixed 32-output horizon. All 20 pairs are exact
-and finite, both routes repeat deterministically, every target/drafter cursor
-satisfies a valid fixed-horizon commit boundary, the frozen Poolside first-token
-gate passes at KL `6.6214e-6` with exact top-1, and tracked ownership returns to
-zero.
+D4 completed one admitted B4 decision on 2026-07-23 before LPF-1. One resident
+target and pinned `b0486d1` BF16 drafter alternated true AR/DFlash over all ten
+canonical prompts, two repetitions, and a fixed 32-output horizon. All 20 pairs
+are exact and finite, both routes repeat deterministically, every
+target/drafter cursor satisfies a valid fixed-horizon commit boundary, the
+frozen Poolside first-token gate passes at KL `6.6214e-6` with exact top-1, and
+tracked ownership returns to zero.
 
-The economics reject promotion:
+Those pre-LPF-1 economics rejected promotion:
 
 | Scope | AR decode tok/s | DFlash B4 tok/s | Ratio | Draft acceptance | Target rows/output |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -2042,7 +2075,11 @@ Across 210 cycles, proposal takes 6.721 s, target verification takes
 Median TTFT also regresses `3.478 -> 4.764 s` because target AR uses bulk prefill
 while DFlash's hidden-capture seed is still serial. The primary D4 decode blocker
 is therefore excess verifier work plus insufficient non-code acceptance, not
-accept/commit overhead. AR remains default and D5 stays deferred. Artifact:
+accept/commit overhead. LPF-1 now routes every B+1 verifier with at least two
+rows through the retained tile, so this table is historical evidence rather
+than a current promotion decision. Refresh the complete D4 protocol only after
+the remaining prefill candidates stabilize; do not extrapolate a new ratio from
+projection microbenchmarks. AR remains default and D5 stays deferred. Artifact:
 `benchmarks/results/2026-07-23-gfx1151-laguna-dflash-category-economics.json`.
 The artifact explicitly records an offline repair to the derived fixed-horizon
 state predicate using its exact raw cursors; no measurement value changed and
