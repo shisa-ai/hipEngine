@@ -172839,3 +172839,23 @@ existing Qwen tokenizer file remains source-compatible (its local model-backed
 cases skip on this host). The GGUF chat template is loaded but rendered
 chat/tool fixtures and Poolside llama.cpp token parity remain pending; no claim
 that the full L0 tokenizer/template oracle is closed is made.
+
+## 2026-07-22 — Validate completed-artifact Laguna foundation on gfx1151
+
+Ran the combined completed-artifact foundation bundle across Laguna
+config/mapping/materialization/tokenizer/CPU math plus adjacent GGUF reader,
+Q4_K/Q6_K pack8/T16 round-trip, quant-layout, kernel-registry, and CPU-reference
+tests: **95/95 passed**. Full `compileall` over `hipengine tests scripts` and
+focused Ruff over every Laguna-touched Python path passed. Registry smoke,
+seven standard CPU fixture smokes, and the no-GPU smoke-add build plan passed;
+`git diff --check` and the WORKLOG conflict check passed.
+
+A fresh live load-plan smoke against the completed artifact and current gfx1151
+HIP pool again mapped 814 tensors and measured source 75,169,369,088 bytes,
+resident weights 76,737,907,712, BF16 4K mixed full/SWA KV 276,824,064, maximum
+loader transient 1,321,205,760, scratch 2,147,483,648, and reserve
+8,589,934,592. Peak is 89,073,355,776 bytes against 128,844,787,712 free /
+128,849,018,880 total, leaving 39,771,431,936 bytes of planned headroom. This
+closes the dry planning validation only. No 71.468-GiB device weight load,
+allocation teardown smoke, target forward, llama.cpp token/logit oracle, or
+performance benchmark has run yet.
