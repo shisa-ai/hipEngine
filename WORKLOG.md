@@ -174654,3 +174654,11 @@ uvx ruff check scripts/laguna_dflash_category_bench.py \
   tests/test_laguna_dflash_category_bench.py tests/test_laguna_dflash_cycle.py
 # clean
 ```
+
+The first retained launch stopped after target loading, before drafter loading or
+timing: the harness default incorrectly passed the evidence-only locally
+converted BF16 GGUF to the native drafter loader, whose implemented contract is
+the pinned safetensors snapshot directory. Corrected the default/validation and
+artifact dtype to revision `b0486d1` safetensors SHA-256 `f24f0878...b62a1f4`.
+This is a harness preflight failure, not a model, kernel, loader-performance, or
+correctness result.

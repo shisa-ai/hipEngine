@@ -49,9 +49,12 @@ from scripts.laguna_target_ar_bench import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_DRAFTER = Path("/home/lhl/models/gguf/laguna-s-2.1-DFlash-BF16-from-b048.gguf")
+DEFAULT_DRAFTER = Path(
+    "/home/lhl/.cache/huggingface/hub/models--poolside--Laguna-S-2.1-DFlash/"
+    "snapshots/b0486d1586daa0d56435c508108171fc1c8daff9"
+)
 DEFAULT_DRAFTER_REVISION = "b0486d1586daa0d56435c508108171fc1c8daff9"
-DEFAULT_DRAFTER_SHA256 = "ad3d1efffa8763e11e55baf6fedddcbf9138b3077928b55e5da6625745808bd2"
+DEFAULT_DRAFTER_SHA256 = "f24f08781c697c19952c02fb2e7e9bdf2071b79a711c2a44b836a74b9b62a1f4"
 DEFAULT_OUTPUT = (
     ROOT / "benchmarks/results/2026-07-23-gfx1151-laguna-dflash-category-economics.json"
 )
@@ -557,9 +560,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
     if args.warmup_output_tokens <= args.candidate_budget:
         raise ValueError("warmup output tokens must exceed the candidate budget")
-    for label, path in (("target", args.model), ("drafter", args.drafter)):
-        if not path.is_file():
-            raise FileNotFoundError(f"Laguna {label} model not found: {path}")
+    if not args.model.is_file():
+        raise FileNotFoundError(f"Laguna target model not found: {args.model}")
+    if not args.drafter.is_dir():
+        raise FileNotFoundError(f"Laguna DFlash safetensors snapshot not found: {args.drafter}")
     if not args.model_sha256 or not args.drafter_sha256 or not args.drafter_revision:
         raise ValueError("retained Laguna DFlash economics requires model fingerprints")
     repo = _repo_state()
@@ -739,7 +743,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         drafter_name="poolside/Laguna-S-2.1-DFlash",
         drafter_path=str(args.drafter.resolve()),
         drafter_revision=args.drafter_revision,
-        drafter_dtype="bf16 GGUF",
+        drafter_dtype="bf16 safetensors",
     )
     artifact = build_speculative_artifact(
         run_tag="laguna-s21-dflash-category-economics-b4",
