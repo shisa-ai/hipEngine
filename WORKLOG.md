@@ -173087,3 +173087,65 @@ Poolside DFlash source, and S 2.1 template lineage are clean. The broad
 `/home/lhl/amd-gpu-tuning/nano-vllm-amd` checkout and fails before a report, so
 only the exact Poolside DFlash source filter is accepted here. Target L0 oracle
 work is closed; next is the complete CPU YaRN/SWA/layer fixture bundle.
+
+## 2026-07-22 — Complete target Laguna CPU YaRN/SWA/layer oracle
+
+Extended the torch-free NumPy reference from the initial softplus/router
+primitives through a complete compact two-layer Laguna model. The target CPU
+path now includes per-layer RoPE configuration, GGUF factor-32 YaRN tables,
+plain SWA RoPE, split-half partial rotation, absolute-position causal/window
+masks, per-head RMSNorm, variable-head GQA, per-head softplus gating, dense
+SwiGLU, sigmoid/correction-bias routed experts, an independent shared expert,
+architecture residual order, final RMSNorm, and explicit untied LM-head logits.
+The 512-token window uses the Transformers/Poolside strict lower bound
+`query - 512 < key <= query`, so last-row visibility is 511/512/512 at sequence
+lengths 511/512/513. A wrapped physical-slot case proves masking uses absolute
+token positions rather than slot indices.
+
+Added the optional independent fixture generator
+`scripts/capture_laguna_cpu_reference.py`. It runs only outside the runtime in
+the existing vLLM environment with PyTorch 2.12 ROCm and Transformers 5.12,
+using native `LagunaForCausalLM` from Poolside model revision
+`179ee67cf0fff5391c67fe1a392ea849fa6d643f`. Deterministic named FP32 parameters
+produce a compact 286-KiB fixture with production 48/72 query heads, eight KV
+heads, 256 routed experts, top-10 selection, routed scale 2.5, dense layer 0,
+sparse SWA layer 1, and seven untied logits. It also freezes production
+partial-64 YaRN and full-128 SWA tables at positions
+`0,1,8191,8192,8193,262143`. Repeating capture produced a byte-identical file;
+fixture SHA-256 is
+`6d043814f7a2a7a97ec3ae65ebe074a4b57d249d86935ef4074435601be2ebaa`.
+
+RED was the expected collection failure because the new reference dataclasses
+and functions did not exist. GREEN and the narrow deterministic guard were:
+
+```bash
+uv run pytest -q tests/test_laguna_cpu_reference.py
+uv run pytest -q tests/test_laguna_cpu_reference.py \
+  tests/test_laguna_gguf_config.py tests/test_laguna_gguf_mapping.py
+uvx ruff check hipengine/kernels/cpu_reference/laguna.py \
+  hipengine/kernels/cpu_reference/__init__.py \
+  tests/test_laguna_cpu_reference.py \
+  scripts/capture_laguna_cpu_reference.py
+python3 -m compileall -q hipengine/kernels/cpu_reference/laguna.py \
+  tests/test_laguna_cpu_reference.py \
+  scripts/capture_laguna_cpu_reference.py
+python3 -m json.tool tests/fixtures/laguna_cpu_reference.json >/dev/null
+/home/lhl/miniforge3/envs/vllm/bin/python \
+  scripts/capture_laguna_cpu_reference.py \
+  --output /tmp/laguna_cpu_reference_repeat.json
+cmp tests/fixtures/laguna_cpu_reference.json \
+  /tmp/laguna_cpu_reference_repeat.json
+```
+
+Results: 14/14 Laguna CPU tests passed, the 30-test Laguna CPU/config/map
+bundle passed, and the expanded CPU-reference/registry/Laguna bundle passed
+47/47; Ruff, compile, JSON, source-lineage, registry smoke, CPU-fixture smoke,
+and byte-exact fixture regeneration passed. The seven schema-v1 fixtures also
+pass when named explicitly to `scripts/check_fixtures.py`. Its default recursive
+directory invocation remains pre-existingly incompatible with
+`tests/fixtures/cpu_reference/moe/moe_ffn_selected_gguf_q4_k.json`, which is a
+legacy MoE artifact without the schema-v1 `expected` field; this task did not
+change that unrelated fixture or driver. The Laguna tests themselves import
+neither torch nor GPU libraries. Target-side L1 is closed and unblocks the Q4_K
+embedding, mixed-F16/YaRN/gate, and Laguna MoE kernel tasks. DFlash-specific
+auxiliary-tap/draft/accept fixtures remain in the later DFlash milestones.
