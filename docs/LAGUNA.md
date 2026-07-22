@@ -837,6 +837,34 @@ Acceptance:
 - global and SWA attention masks pass boundary cases at 511/512/513 tokens;
 - no GPU dependency in the reference tests.
 
+Implemented target foundation (2026-07-22):
+
+- `hipengine/kernels/cpu_reference/laguna.py` now provides FP32 full-YaRN and
+  SWA-plain split-half RoPE tables, partial rotation, absolute-position causal
+  and sliding masks, per-head RMSNorm, gated GQA, dense SwiGLU, sigmoid/corrected
+  top-10 routed experts, the independently added shared expert, exact residual
+  order, and explicit untied LM-head logits;
+- production RoPE fixtures cover full-layer partial-64 YaRN at positions
+  `0/1/8191/8192/8193/262143` and SWA full-128 plain RoPE at the same positions.
+  The GGUF `yarn_attn_factor=1` is treated as the multiplier before ggml's
+  default `1 + 0.1*ln(factor)` magnitude correction, matching the independent
+  Transformers output for factor 32;
+- the compact two-layer fixture preserves the production 48/72 Q-head counts,
+  eight KV heads, 256 experts, top-10 selection, factor 2.5, dense layer 0, and
+  sparse SWA layer 1 while reducing hidden/head/expert widths where legal;
+- checked-in expected intermediates and logits were captured from Hugging Face
+  Transformers 5.12 against Poolside model revision
+  `179ee67cf0fff5391c67fe1a392ea849fa6d643f`. The optional capture script uses
+  torch only outside the runtime, and repeated capture is byte-exact;
+- 14 target CPU-reference tests pass without torch or GPU, including independent
+  Transformers parity, 511/512/513 mask boundaries, wrapped-slot absolute
+  positions, correction-bias semantics, shared addition, residual order, and
+  rejection of a missing untied output tensor.
+
+Target-side L1 is closed. DFlash auxiliary-tap, fused-QKV, six-layer draft, and
+accept/commit fixtures remain in the DFlash milestones rather than blocking the
+target embedding/projection/MoE kernel path.
+
 ### L2 — Model, metadata, tensor map, and tokenizer plugins
 
 Likely new paths (names may change during design review):
