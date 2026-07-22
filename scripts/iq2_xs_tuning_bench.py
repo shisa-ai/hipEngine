@@ -33,8 +33,10 @@ from hipengine.core.memory import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_iq_gemv import (
     build_gguf_iq_gemv,
-    gguf_iq2_xs_selected_dual_silu_gemv_bf16_bf16_out,
-    gguf_iq2_xs_selected_gemv_bf16_bf16_out,
+    gguf_iq2_xs_selected_dual_silu_gemv_tile1_bf16_bf16_out,
+    gguf_iq2_xs_selected_dual_silu_gemv_tile2_bf16_bf16_out,
+    gguf_iq2_xs_selected_gemv_tile1_bf16_bf16_out,
+    gguf_iq2_xs_selected_gemv_tile2_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_iq_selected_prefill import (
     build_gguf_iq_selected_prefill,
@@ -421,13 +423,14 @@ def _selected_launch(
     out_ptr: int,
     threads: int,
     args: argparse.Namespace,
+    wrapper=gguf_iq2_xs_selected_gemv_tile1_bf16_bf16_out,
 ) -> Callable[[], None]:
     index = [0]
 
     def launch() -> None:
         selected_ptr = selected_ptrs[index[0] % len(selected_ptrs)]
         index[0] += 1
-        gguf_iq2_xs_selected_gemv_bf16_bf16_out(
+        wrapper(
             x_ptr,
             selected_ptr,
             weight_ptr,
@@ -456,13 +459,14 @@ def _dual_launch(
     out_ptr: int,
     threads: int,
     args: argparse.Namespace,
+    wrapper=gguf_iq2_xs_selected_dual_silu_gemv_tile1_bf16_bf16_out,
 ) -> Callable[[], None]:
     index = [0]
 
     def launch() -> None:
         selected_ptr = selected_ptrs[index[0] % len(selected_ptrs)]
         index[0] += 1
-        gguf_iq2_xs_selected_dual_silu_gemv_bf16_bf16_out(
+        wrapper(
             x_ptr,
             selected_ptr,
             gate_ptr,
@@ -504,8 +508,12 @@ def _decode_correctness(
         runtime=runtime,
     )
 
-    def run_single(weight_ptr: int, threads: int) -> np.ndarray:
-        gguf_iq2_xs_selected_gemv_bf16_bf16_out(
+    def run_single(
+        weight_ptr: int,
+        threads: int,
+        wrapper=gguf_iq2_xs_selected_gemv_tile1_bf16_bf16_out,
+    ) -> np.ndarray:
+        wrapper(
             x_ptr,
             selected_ptr,
             weight_ptr,
@@ -515,8 +523,11 @@ def _decode_correctness(
         )
         return _read(out_buf, shape=shape, dtype=np.dtype(np.uint16))
 
-    def run_dual(threads: int) -> np.ndarray:
-        gguf_iq2_xs_selected_dual_silu_gemv_bf16_bf16_out(
+    def run_dual(
+        threads: int,
+        wrapper=gguf_iq2_xs_selected_dual_silu_gemv_tile1_bf16_bf16_out,
+    ) -> np.ndarray:
+        wrapper(
             x_ptr,
             selected_ptr,
             gate_ptr,
@@ -565,6 +576,37 @@ def _decode_correctness(
             "projection_top1": projection_result.top1_agreement,
             "dual_kl_max": dual_result.kl_max,
             "dual_top1": dual_result.top1_agreement,
+        }
+        tile2_gate = run_single(
+            gate_ptr, threads, gguf_iq2_xs_selected_gemv_tile2_bf16_bf16_out
+        )
+        tile2_up = run_single(
+            up_ptr, threads, gguf_iq2_xs_selected_gemv_tile2_bf16_bf16_out
+        )
+        tile2_dual = run_dual(
+            threads, gguf_iq2_xs_selected_dual_silu_gemv_tile2_bf16_bf16_out
+        )
+        tile2_projection = np.concatenate((tile2_gate, tile2_up), axis=1)
+        tile2_projection_result = evaluate_logits(
+            _bf16_u16_to_f32(projection_reference),
+            _bf16_u16_to_f32(tile2_projection),
+        )
+        tile2_dual_result = evaluate_logits(
+            _bf16_u16_to_f32(expected),
+            _bf16_u16_to_f32(tile2_dual),
+        )
+        geometry[f"tile2_{threads}"] = {
+            "passed": tile2_projection_result.passed and tile2_dual_result.passed,
+            "projection_bf16_bit_mismatches": int(
+                np.count_nonzero(projection_reference != tile2_projection)
+            ),
+            "dual_bf16_bit_mismatches": int(
+                np.count_nonzero(expected != tile2_dual)
+            ),
+            "projection_kl_max": tile2_projection_result.kl_max,
+            "projection_top1": tile2_projection_result.top1_agreement,
+            "dual_kl_max": tile2_dual_result.kl_max,
+            "dual_top1": tile2_dual_result.top1_agreement,
         }
     return {
         "passed": mismatches == 0
@@ -628,6 +670,8 @@ def _run_decode(
                 suffix = "" if use_legacy_names else f"_t{threads}"
                 single_name = f"selected_single{suffix}"
                 dual_name = f"selected_dual_silu{suffix}"
+                single_tile2_name = f"selected_single_tile2{suffix}"
+                dual_tile2_name = f"selected_dual_silu_tile2{suffix}"
                 launches[single_name] = _selected_launch(
                     library=library,
                     runtime=runtime,
@@ -649,8 +693,33 @@ def _run_decode(
                     threads=threads,
                     args=args,
                 )
+                launches[single_tile2_name] = _selected_launch(
+                    library=library,
+                    runtime=runtime,
+                    x_ptr=x_buf.ptr,
+                    selected_ptrs=selected_ptrs,
+                    weight_ptr=gate_buf.ptr,
+                    out_ptr=out_buf.ptr,
+                    threads=threads,
+                    args=args,
+                    wrapper=gguf_iq2_xs_selected_gemv_tile2_bf16_bf16_out,
+                )
+                launches[dual_tile2_name] = _dual_launch(
+                    library=library,
+                    runtime=runtime,
+                    x_ptr=x_buf.ptr,
+                    selected_ptrs=selected_ptrs,
+                    gate_ptr=gate_buf.ptr,
+                    up_ptr=up_buf.ptr,
+                    out_ptr=out_buf.ptr,
+                    threads=threads,
+                    args=args,
+                    wrapper=gguf_iq2_xs_selected_dual_silu_gemv_tile2_bf16_bf16_out,
+                )
                 launch_meta[single_name] = (threads, 1)
                 launch_meta[dual_name] = (threads, 2)
+                launch_meta[single_tile2_name] = (threads, 1)
+                launch_meta[dual_tile2_name] = (threads, 2)
             warmup_count, samples = _measure_counterbalanced(
                 runtime,
                 launches,

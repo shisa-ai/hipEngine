@@ -1925,6 +1925,16 @@ local256/VGPR88/LDS512B/scratch0. Standalone rowbatch2 never won. Rowbatch8 won
 only the balanced five-row case (-4.15%) and regressed the other 14 leaves by
 12.25-96.50%, so it was removed. This remains synthetic primitive evidence.
 
+The retained selected-decode tile is
+[`2026-07-22-gpu1-iq2-xs-output-tile2.json`](results/2026-07-22-gpu1-iq2-xs-output-tile2.json).
+Sharing BF16 activation loads/conversions across two adjacent output columns
+moves tile1 -> tile2 rotating selected single/dual
+`33.569/57.176 -> 30.955/55.964 us` (-7.79/-2.12%); hot/repeated controls improve
+4.04-8.82%, and an independent full-protocol repeat also wins all six leaves.
+The full E256 output is BF16-bit exact. Tile2 is now default, while explicit
+tile1 four-axis variants remain for rollback. Tile2 is local64/LDS512B/scratch0
+at VGPR80/136. This remains synthetic primitive evidence.
+
 ## Update Checklist
 
 1. Choose one protocol tuple and record the old artifact before running.
