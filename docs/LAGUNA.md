@@ -526,7 +526,7 @@ Critical details:
 | Q4_K token embedding | raw Q4_K/Q6_K/Q8_0 lookup is registered for gfx1100/gfx1151 | Reuse the BF16 row-dequant path for target tokens and DFlash root/mask rows. |
 | rank-3 selected experts | Q4/Q5/Q6 T16/raw selected kernels | Reuse for 256 experts/top-10; validate exact rank-3 strides. |
 | Q6_K LM head | native Q6 T16/GEMV path | Reuse untied output map. |
-| F16 projections | dense FP16 GEMV/WMMA kernels exist | Preserve F16 resident bytes; add Laguna projection plan. |
+| F16 projections | source-preserving mixed BF16/F32-activation, F16-weight single/dual/triple GEMV is registered | Reuse for eager Q/K/V/gate/O; add rows>1 tuning only after exact serial bring-up. |
 | F32 norms/router weights | dense F32 and RMSNorm support | Reuse; 3072-wide router needs its own exact launch gate. |
 | head Q/K RMSNorm | existing Qwen full-attention primitives | Reuse with head dim 128 and variable Q-head counts. |
 | paged attention/KV | `KVLiveSpans`, BF16 paged attention/write | Add per-layer global/SWA capacity and visibility. |
@@ -992,7 +992,7 @@ the pre-final-norm DFlash capture. Its exact S 2.1 template is
 | --- | --- | --- |
 | Q4_K token embedding | Raw `embedding/gguf_q4_k/lookup_bf16_out` is registered for gfx1100/gfx1151 and the Laguna table stays source-native | Closed: synthetic and real rows are BF16-exact vs CPU, invalid IDs preserve caller rows, model-neutral resident dispatch resolves, and gfx1151 profiling shows `gguf_q4_k_embedding_bf16_out_kernel`. |
 | F32 RMSNorm / residual | GGUF BF16-input/F32-weight RMSNorm and add-RMSNorm are reusable | Wire under Laguna keys and prove layer-0 residual order; no new math is implied. |
-| F16 Q/K/V/gate/O projections | Source precision and pointers are resident; dense FP16 kernels handle FP16 activation+weight | Laguna needs BF16/F32 activation with F16 weight and FP32/lowp output. Neither mixed variant is registered. Add single/dual/triple projection primitives and retain an unfused fallback. |
+| F16 Q/K/V/gate/O projections | Source precision and pointers remain F16; registry-driven single/dual/triple kernels accept BF16/F32 activations and emit FP32/BF16 | Closed for exact eager GEMV: CPU parity covers 48/72 Q heads, eight KV heads, and dim 128; rows>1 WMMA tuning is deferred until the serial model oracle is green. |
 | Q/K head norm and RoPE | The existing FP32-input/F32-weight head-norm+partial-rotate body accepts variable head counts/dimensions | Current table helper implements plain RoPE only. Add exact YaRN tables for full layers (partial 64) and plain SWA tables (full 128), absolute-position tests, and 48/72 Q-head gfx1151 coverage. |
 | Global BF16 KV/attention | Uniform block-256 `KVLiveSpans` write/context attention accepts GQA ratios 6 and 9 and head dim 128 | Revalidate at Laguna shapes and ensure the ungated context path feeds softplus rather than a Qwen sigmoid gate. |
 | 512-token SWA | Capacity is planned as 36 bounded rings | Current wrappers require `spans_mode="uniform"` and parent attention consumes only page table + live count; it cannot represent a token-granular wrapped window with absolute positions. Add a real `KVLiveSpans` SWA writer/reader using token positions/eviction and 511/512/513 boundary tests. |
