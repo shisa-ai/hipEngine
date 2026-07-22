@@ -544,13 +544,13 @@ experiments documented in [`ROOFLINE.md`](ROOFLINE.md) and
 
 ## Full-model readiness
 
-The pinned model is being downloaded outside the repository to:
+The pinned model is available outside the repository at:
 
 ```text
 /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf
 ```
 
-Model weights and partial downloads are never committed. On completion verify:
+Model weights and partial downloads are never committed. It was verified with:
 
 ```bash
 stat -c '%s %n' /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf
