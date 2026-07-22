@@ -155,6 +155,15 @@ def test_qwen35_paged_attn_decode_registers_span_variant() -> None:
             backend="hip_gfx1100",
             layer="paged_attn_decode",
             quant="w4_paro",
+            variant="bf16_context_batch_paged_c1_exact_spans",
+        )
+        is qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="paged_attn_decode",
+            quant="w4_paro",
             variant="bf16_split_k_spans",
         )
         is qwen35_paged_full_attn_decode_split_k_bf16_spans

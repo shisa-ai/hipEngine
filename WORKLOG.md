@@ -173023,3 +173023,84 @@ with no observed failure and was not used as closure evidence. The standalone
 `tests/fixtures/cpu_reference/moe/moe_ffn_selected_gguf_q4_k.json` multi-output
 shape (`KeyError: expected`); the supported `smoke.py --mode cpu-fixtures` gate
 passes and this change does not touch that fixture or loader.
+
+## 2026-07-22 — Repair gfx1100 A4 physical-width transitions
+
+Localized the blocked A4 `fixed-0011` p512/d48 trajectory from the retained
+81,789,027-byte raw screen instead of rerunning an unmodified failure. In the
+failing `protect_ttft:256/burst-1` repetition, request 23 occupied physical row
+0 beside request 22. The pair stayed exact through 24 output IDs, but the
+packed sampler published its final physical row into only the owner session's
+`_lm_out_index`: request 22's token was **9709**, while the surviving owner
+request 23's authoritative token was **9710**. Request 22 then retired and the
+next plan changed from physical c2 to a c1 graph. That graph consumed stale
+9709 device feedback, emitted 2 at generated index 24, and followed the exact
+bad suffix recorded in A4. The request-owned Conv/GDN/KV slot and host token
+remained stable; the graph-input scalar had the wrong physical-row ownership.
+
+Added an explicit optional `input_token_id` contract to GGUF c1 graph capture.
+The resident loop now supplies the surviving row's host-owned `prev_token`, and
+the session publishes it to graph feedback before capture on the graph's
+separate stream. Deferred packed state also updates each position/context
+scalar on the same scatter stream as Conv/GDN/KV copies. RED host coverage
+reproduced the stale 9709 owner scalar and output 2, required 9710 at capture,
+and pinned stream 7 cursor writes; GREEN returns 9710 and preserves the
+same-stream scatter contract.
+
+The required current-system-HIP state gate exposed a second registry-boundary
+collision before closure. `bf16_context_batch_c1_exact_spans` intentionally
+matches PARO's dense-c1 reduction, but GGUF c1 uses the paged warp reduction.
+At p512 the pre-fix packed c4→c3→c2→c1 gate kept tokens exact but first diverged
+at full-attention layer 3, with **350/560** hidden comparisons and every
+post-divergence Conv/GDN/live-KV checkpoint failing. A separate registered
+`bf16_context_batch_paged_c1_exact_spans` GGUF route now selects the existing
+fixed-256 paged reduction; PARO retains its dense-c1 key and gfx1151 retains the
+same already-proven fixed-256 body. No backend or quant branch was added.
+
+The final dirty-tree W7900 gates, used only for implementation correctness and
+not as performance evidence, pass:
+
+```bash
+HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 PYTHONPATH=. \
+uv run python scripts/gguf_packed_ar_state_oracle.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --rows 4 --lifecycle shrink_sparse \
+  --prefill-mode packed --gdn-prefill-mode exact --decode-mode eager \
+  --capture-layer-hidden --prompt-length 512 \
+  --alternate-prompt-length 512 --decode-steps 4 \
+  --compiler-version-file /tmp/agentic-w7900-hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/2026-07-22-w7900-a4-width-state-green.json
+# passed: exact tokens; 560/560 layer outputs; every Conv/GDN/live-BF16-KV
+# checkpoint exact through c4 -> sparse c3 -> c2 -> physical-c4 masked c1
+
+HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 \
+HIPENGINE_QWEN35_NATIVE_SAMPLER=0 HIPENGINE_GGUF_GDN_PREFILL_MODE=exact \
+PYTHONPATH=. uv run python scripts/gguf_production_load_gate.py \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --backend hip_gfx1100 --quant gguf_q4_k_m --prefix-cache off \
+  --workloads continuous_fixed --max-active-requests 8 \
+  --max-pending-requests 16 --max-queued-requests 16 \
+  --stream-queue-max-chunks 16 --batch-window-ms 0 \
+  --initial-policy protect_ttft --initial-prefill-chunk-tokens 256 \
+  --initial-fair-prefill-burst-chunks 1 --skip-tuning \
+  --fixed-rate-per-second 2 --slo-queue-p99-seconds 10 \
+  --slo-ttft-p95-seconds 10 --slo-itl-p99-seconds 0.5 \
+  --slo-end-to-end-p95-seconds 30 \
+  --compiler-version-file /tmp/agentic-w7900-hipcc-version.txt \
+  --require-cached-build \
+  --json /tmp/2026-07-22-w7900-a4-width-transition-green.json
+# workload passed: 12/12 exact rows, 360/360 IDs, fixed-0011 48/48 9710;
+# every SLO/ownership/memory gate passed; top-level status is failed only
+# because the required clean-source gate correctly rejects an uncommitted tree
+```
+
+The focused host/registry/runtime bundle passes **229/229** tests. Python
+compilation, focused Ruff (with only the runner's unrelated historical
+F401/F821/F841 findings excluded), registry and seven canonical CPU-fixture
+smokes, smoke build planning, the cached paged-attention HIP smoke
+(`max_abs=3.73e-08`), lineage reporting, and `git diff --check` pass. The four
+external lineage DRIFT entries are unchanged historical reference-repo drift;
+no external code was copied and no kernel body changed. A clean committed A3/A4
+protocol rerun remains the next task; this unit makes no default or performance
+claim.
