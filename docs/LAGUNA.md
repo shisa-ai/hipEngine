@@ -529,7 +529,7 @@ Critical details:
 | F16 projections | source-preserving mixed BF16/F32-activation, F16-weight single/dual/triple GEMV is registered | Reuse for eager Q/K/V/gate/O; add rows>1 tuning only after exact serial bring-up. |
 | F32 norms/router weights | dense F32 and RMSNorm support | Reuse; 3072-wide router needs its own exact launch gate. |
 | head Q/K RMSNorm | existing Qwen full-attention primitives | Reuse with head dim 128 and variable Q-head counts. |
-| paged attention/KV | `KVLiveSpans`, BF16 paged attention/write | Add per-layer global/SWA capacity and visibility. |
+| paged attention/KV | `KVLiveSpans`, BF16 block-256 global attention/write, and token-granular SWA ring kernels | Eager c=1 ownership is closed: global layers use admitted context, SWA layers use 512 physical slots with absolute positions and eviction masks; bulk prefill remains L8. |
 | dual RoPE | exact host YaRN/plain tables plus F32-weight head RMSNorm+partial/full rotary are registered | Reuse absolute-position tables per layer family; bound table residency to admitted context. |
 | softplus attention gate | unfused FP32 per-head broadcast emits FP32 or BF16 | Reuse before F16 O projection; fuse only after whole-layer exact parity. |
 | softmax router | existing Qwen route selection | Add Laguna sigmoid + correction-bias semantics. |
@@ -951,8 +951,9 @@ Implemented foundation (2026-07-22):
   took 0.373 s and returned tracked allocations/bytes to zero;
 - post-free GTT retained 173,998,080 bytes versus 22,913,024 before load and HIP
   free retained the matching one-time context/allocator footprint; no tracked
-  resident-weight allocation leaked. L3 is closed for target weight residency,
-  while KV/scratch ownership moves to the eager-session gate.
+  resident-weight allocation leaked. L3 is closed for target weight residency;
+  the L4 KV owner is now closed, while scratch ownership remains in the eager-
+  session gate.
 
 Plan:
 
@@ -994,15 +995,15 @@ the pre-final-norm DFlash capture. Its exact S 2.1 template is
 | F32 RMSNorm / residual | GGUF BF16-input/F32-weight RMSNorm and add-RMSNorm are reusable | Wire under Laguna keys and prove layer-0 residual order; no new math is implied. |
 | F16 Q/K/V/gate/O projections | Source precision and pointers remain F16; registry-driven single/dual/triple kernels accept BF16/F32 activations and emit FP32/BF16 | Closed for exact eager GEMV: CPU parity covers 48/72 Q heads, eight KV heads, and dim 128; rows>1 WMMA tuning is deferred until the serial model oracle is green. |
 | Q/K head norm and RoPE | Exact Laguna YaRN/plain host tables feed the registered F32-input/F32-weight head-norm+rotate body | Closed for eager/bulk math: absolute positions, partial 64/full 128, 48/72 Q heads, eight KV heads, and dim 128 pass CPU parity on gfx1151. |
-| Global BF16 KV/attention | Uniform block-256 `KVLiveSpans` write/context attention accepts GQA ratios 6 and 9 and head dim 128 | Revalidate at Laguna shapes and ensure the ungated context path feeds softplus rather than a Qwen sigmoid gate. |
-| 512-token SWA | Capacity is planned as 36 bounded rings | Current wrappers require `spans_mode="uniform"` and parent attention consumes only page table + live count; it cannot represent a token-granular wrapped window with absolute positions. Add a real `KVLiveSpans` SWA writer/reader using token positions/eviction and 511/512/513 boundary tests. |
+| Global BF16 KV/attention | Complete dense `KVLiveSpans` plus block-256 paged BF16 writer/context attention accepts GQA ratios 6 and 9 and head dim 128 | Closed for eager c=1: the Laguna body preserves the proven block-256 page-table structure while consuming absolute positions and eviction metadata, 48/8 GQA matches direct CPU attention, and softplus remains the separate exact next stage. |
+| 512-token SWA | `KVLiveSpans.sliding_ring` plus native BF16 writer/context attention | Closed for eager c=1: 36 physical rings carry slot offsets, live counts, absolute token positions, eviction masks, and absolute query positions; 72/8 GQA passes 510/511/512/513 and repeated 1024/1025 wraps plus explicit eviction. Bulk prefill remains L8. |
 | Per-head attention gate | Unfused `attention_gate/f32/softplus_broadcast_{f32,bf16}_out` is registered on gfx1100/gfx1151 | Closed: 72-head × 128-channel broadcast, extreme gate logits, and FP32/BF16 outputs match CPU; no fused path is added yet. |
 | Dense layer-0 MLP | Q4_K pack8 gate/up, raw Q6_K down, SiLU, and residual primitives are reusable | Add production-shape layer-0 vertical fixture and trace. |
 | Router projection | BF16 hidden × F32 router weight → FP32 logits is registered (gfx1151 256-thread override) | Existing selection is raw-logit top-k followed by softmax. Laguna requires `sigmoid(logits)`, correction bias for selection only, stable top-10, gather of unbiased probabilities, sum normalization, and 2.5 scaling. A separate kernel/key is mandatory. |
 | Routed experts | Q4_K/Q6_K rank-3 T16 selected GEMVs support arbitrary positive expert count and top-k-shaped rows | Registration is lazy through the Qwen runner and no 256-expert/top-10/3072×1024 Laguna gate exists. Add direct Laguna plan resolution, exact production-shape raw-byte tests, and rocprof evidence. |
 | Shared expert | Rank-2 Q4_K pack8 gate/up plus raw Q6_K down are reusable | Wire always-on SiLU shared output and add it independently of routed scale; do not reuse Qwen's sigmoid shared-gate combine semantics. |
 | Final norm / Q6_K LM head | F32-weight RMSNorm, resident Q6T16 BF16→F32 linear sourced losslessly from raw Q6_K, GPU argmax, and sampler primitives are registered | Closed at root-probe scope: full 100,352-way logits are finite, KL is `6.87e-13` vs raw-Q6 CPU math, and top-1 is exactly `81364`; preserve full logits for later whole-model oracle gates. |
-| Session and hidden taps | Model map/resident weights expose every layer and metadata | No `laguna_gguf_runner.py`, KV/state owner, scratch plan, post-layer capture ABI, or eager step exists. Build c=1/token-serial first and capture depths 2/11/20/30/39/48 only on request. |
+| Session and hidden taps | Model map/resident weights plus `LagunaKVCache` now own all weights/KV metadata needed by each layer | No `laguna_gguf_runner.py`, scratch plan, post-layer capture ABI, or complete eager step exists. Build c=1/token-serial next and capture depths 2/11/20/30/39/48 only on request. |
 | Public generator | Generic engine loop and server lifecycle exist | Built-ins register only Qwen paths; there is no Laguna generation key, tokenizer/template renderer, streaming owner, or model metadata route. |
 | Reasoning/tools | Generic server understands Qwen `<think>` plus JSON-in-`<tool_call>` | S 2.1 uses Poolside XML arguments: `<tool_call>name<arg_key>…</arg_key><arg_value>…</arg_value></tool_call>`, and reasoning history must stop its backward scan at the current `<assistant>` token. Implement the `poolside_v1` contracts from vLLM [`61c9ef98`](https://github.com/vllm-project/vllm/blob/61c9ef986a807aa3b9c6ccd25bb223b8f4116ac7/vllm/tool_parsers/poolside_v1_tool_parser.py#L48-L220) and its [assistant-scoped reasoning parser](https://github.com/vllm-project/vllm/blob/61c9ef986a807aa3b9c6ccd25bb223b8f4116ac7/vllm/reasoning/poolside_v1_reasoning_parser.py#L33-L69), including newline-less calls and incremental string values. |
 | Independent oracle | Closed for target AR: clean local Poolside checkout/build at `04b2b72c`, exact template/token fixtures, a complete 100,352-way first-token distribution, and 32 fresh-process-stable greedy IDs are checked in | Use the frozen fixture for L6 KL/top-1/greedy gates. Keep `-fa off`, `--no-mmap`, exact token-ID input, and fresh-process oracle constraints visible; target+DFlash diagnostics remain later work. |
@@ -1100,10 +1101,28 @@ Implemented L4 primitive foundation (2026-07-22):
   extreme-logit/broadcast parity. No speculative fusion is present, so this is
   also the required unfused fallback;
 - cached gfx1151 traces show mixed projection, head-normalize/rotate, and
-  softplus kernels with expected names, zero scratch, and plausible durations.
+  softplus kernels with expected names, zero scratch, and plausible durations;
+- `KVLiveSpans.sliding_ring` now makes physical slot mapping, live count,
+  absolute per-slot positions, eviction state, and absolute query position
+  mandatory for SWA. The in-tree writer overwrites `position % 512`, updates
+  metadata on device, and the reader applies `query - 512 < key <= query`;
+- `LagunaKVCache` allocates the production 12 global + 36 SWA split. At 4K its
+  exact BF16 K/V payload is 264 MiB; 243 tracked payload/metadata allocations
+  free back to the pre-allocation counter baseline. Dense global spans fill the
+  same absolute-position and eviction fields as SWA instead of using a legacy
+  naked `(block_table, context_len)` bridge;
+- token-serial gfx1151 tests match direct CPU attention for 48/8 and 72/8 GQA
+  at positions 510/511/512/513 and after repeated wraps at 1024/1025, including
+  one explicitly evicted live slot;
+- cached profiling records native global/SWA writers at `1.603/1.523 us`
+  median over 1026 launches each (16 VGPR, zero scratch/LDS), the complete-span
+  global reader at `730.650 us`, and the correctness-first SWA reader at
+  `1123.828 us` median over six boundary launches (16 VGPR, zero scratch,
+  1024 B LDS). These are dispatch diagnostics, not a throughput claim.
 
-L4's attention context/KV ownership itself remains in the next `KVLiveSpans`
-global/SWA task; the projection, RoPE, and output-gate blockers are closed.
+L4 is closed for eager c=1 attention, dual RoPE, and unfused output gating.
+Bulk/prefill SWA execution remains deliberately in L8 after the full-model eager
+oracle is green.
 
 ### L5 — Laguna MoE
 
@@ -1514,8 +1533,9 @@ full suite, with all correctness/state/memory and category-heldout gates green.
    convenience.
 3. Whether YaRN tables are generated on host and uploaded or computed in a
    reusable rotary kernel. Prefer the simplest exact unfused path first.
-4. How the KV owner represents different physical capacities for global and SWA
-   layers while preserving `KVLiveSpans`.
+4. **Resolved:** `LagunaKVCache` owns admitted block-256 global pages and
+   512-slot SWA rings per layer; both expose complete `KVLiveSpans` with live
+   counts, absolute positions, eviction masks, and current query position.
 5. The first public support boundary: preformatted completion only, or blocking
    chat in the same milestone. Preformatted completion should remain the
    debugging baseline even if chat ships simultaneously.
