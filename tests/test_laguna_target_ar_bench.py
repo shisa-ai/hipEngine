@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import pytest
 
+import scripts.laguna_target_ar_bench as benchmark
 from scripts.laguna_target_ar_bench import (
     _aggregate,
+    _laguna_f16_prefill_configuration,
     _paired_correctness,
     _promotion_gate,
 )
@@ -124,6 +126,41 @@ def test_paired_correctness_requires_serial_bulk_and_repeat_determinism() -> Non
     failed = _paired_correctness(rows, (4,))
     assert failed["pass"] is False
     assert failed["same_mode_repeat_deterministic"] is False
+
+
+def test_f16_prefill_configuration_records_requested_and_resolved_strategy(
+    monkeypatch,
+) -> None:
+    capabilities = {
+        "LAGUNA_F16_PREFILL_STRATEGY": "tiled",
+        "LAGUNA_F16_PREFILL_MIN_ROWS": 8,
+    }
+    monkeypatch.setattr(
+        benchmark,
+        "backend_package_capability",
+        lambda _backend, name, default=None: capabilities.get(name, default),
+    )
+
+    monkeypatch.setenv("HIPENGINE_LAGUNA_F16_PREFILL", "auto")
+    automatic = _laguna_f16_prefill_configuration("hip_gfx1151")
+    assert automatic == {
+        "requested": "auto",
+        "backend_strategy": "tiled",
+        "backend_min_rows": 8,
+        "effective_strategy": "tiled",
+        "effective_min_rows": 8,
+        "rows_one_always_gemv": True,
+    }
+
+    monkeypatch.setenv("HIPENGINE_LAGUNA_F16_PREFILL", "tiled")
+    forced = _laguna_f16_prefill_configuration("hip_gfx1151")
+    assert forced["effective_strategy"] == "tiled"
+    assert forced["effective_min_rows"] == 2
+
+    monkeypatch.setenv("HIPENGINE_LAGUNA_F16_PREFILL", "gemv")
+    disabled = _laguna_f16_prefill_configuration("hip_gfx1151")
+    assert disabled["effective_strategy"] == "gemv"
+    assert disabled["effective_min_rows"] is None
 
 
 def test_promotion_gate_is_fail_closed_per_category() -> None:
