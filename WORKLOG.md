@@ -172859,3 +172859,29 @@ loader transient 1,321,205,760, scratch 2,147,483,648, and reserve
 closes the dry planning validation only. No 71.468-GiB device weight load,
 allocation teardown smoke, target forward, llama.cpp token/logit oracle, or
 performance benchmark has run yet.
+
+## 2026-07-22 — Implement Laguna streaming resident-weight loader
+
+Extended the dry planner into an owned streaming materializer. The public loader
+validates the completed tensor map, computes full-model admission before the
+first allocation, rejects unknown selected-slot paths, and can materialize a
+debug subset or all 814 weights in deterministic root/layer order. Resident
+records preserve layer attention/MLP kinds, tracked bytes, and reverse-order
+teardown; any tensor, progress-callback, or later-load failure frees all device
+buffers completed by the attempt.
+
+Per-layout materialization now covers source-preserving FP16/F32, raw GGUF bytes,
+Q4_K pack8 (`qweight/scales/mins`), rank-3 Q4T16, and rank-2/rank-3 Q6T16. Each
+logical tensor verifies actual allocation names and bytes against its dry spec.
+Allocation inside a multi-buffer pack8 conversion is exception-safe, fixing the
+otherwise easy leak when a later scales/mins allocation fails.
+
+RED: `uv run pytest -q tests/test_laguna_gguf_materialize_device.py` failed at
+collection because the device materializer did not exist. GREEN: five fake-HIP
+payload/ownership/failure tests pass; the combined materialization/map bundle
+passes **19/19** and focused Ruff/`compileall` pass. Live gfx1151 allocation has
+not run in this unit and remains the next gate.
+
+Per the user-added serving requirement, follow-on tasks now explicitly cover the
+Poolside `poolside_v1` reasoning parser, tool-call parser, and blocking/streaming
+end-to-end parser fixtures after the target runtime is generating real output.

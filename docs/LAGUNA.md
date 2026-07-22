@@ -866,9 +866,12 @@ Implemented foundation (2026-07-22):
 - with measured 119.996 GiB HIP-free memory, the current dry estimate is
   71.468 GiB resident weights + 0.258 GiB KV + 2 GiB scratch + 1.230 GiB maximum
   loader transient + 8 GiB reserve = 82.956 GiB peak and 37.040 GiB headroom;
-- actual device materialization, streaming transient measurements, allocation
-  teardown, and the load-only smoke remain pending and are not implied by the
-  dry-plan result.
+- the streaming device loader now implements owned dense FP16/F32, raw GGUF,
+  Q4_K pack8, and Q4_K/Q6_K T16 allocations with exact planned-byte checks and
+  failure cleanup; fake-runtime payload/teardown tests are green;
+- live selected-slot and full-device materialization, streaming transient
+  measurements, and the load-only/free smoke remain pending and are not implied
+  by the dry-plan result.
 
 Plan:
 

@@ -3,15 +3,35 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from pathlib import Path
 from types import MappingProxyType
 from typing import Mapping
 
-from hipengine.loading.gguf import GGUFTensorInfo
-from hipengine.loading.laguna_gguf import LagunaGGUFConfig, LagunaGGUFModelMap
+from hipengine.core.device import Device
+from hipengine.core.dtype import DType
+from hipengine.core.hip import HipRuntime, get_hip_runtime
+from hipengine.loading.gguf import GGUFReader, GGUFTensorInfo
+from hipengine.loading.laguna_gguf import (
+    LagunaGGUFConfig,
+    LagunaGGUFModelMap,
+    build_laguna_gguf_tensor_map,
+)
+from hipengine.loading.materialize import (
+    DeviceTensorAllocation,
+    load_host_array_to_device_as_dtype,
+)
 from hipengine.quant.gguf import GGMLQuantizationType
-from hipengine.quant.gguf_q4_k import GGUF_Q4_K_TILE16_BLOCK_BYTES
-from hipengine.quant.gguf_t16 import GGUF_Q6_K_T16_BLOCK_BYTES
+from hipengine.quant.gguf_q4_k import (
+    GGUF_Q4_K_TILE16_BLOCK_BYTES,
+    repack_gguf_q4_k_pack8,
+    repack_gguf_q4_k_tile16,
+)
+from hipengine.quant.gguf_t16 import (
+    GGUF_Q6_K_T16_BLOCK_BYTES,
+    repack_gguf_q6_k_tile16,
+)
 
 LAYOUT_DENSE_F16 = "dense_f16"
 LAYOUT_DENSE_F32 = "dense_f32"
@@ -131,6 +151,70 @@ class LagunaMemoryAdmissionPlan:
         return self.headroom_bytes >= 0
 
 
+@dataclass(frozen=True)
+class LagunaGGUFDeviceWeight:
+    """Owned device allocations for one Laguna logical weight."""
+
+    spec: LagunaGGUFWeightSpec
+    allocations: Mapping[str, DeviceTensorAllocation]
+    backend: str
+
+    def allocation(self, name: str | None = None) -> DeviceTensorAllocation:
+        key = next(iter(self.allocations)) if name is None else name
+        return self.allocations[key]
+
+    @property
+    def resident_nbytes(self) -> int:
+        return sum(allocation.buffer.nbytes for allocation in self.allocations.values())
+
+    def free(self, *, runtime: HipRuntime | None = None) -> None:
+        for allocation in reversed(tuple(self.allocations.values())):
+            allocation.free(runtime=runtime)
+
+
+@dataclass(frozen=True)
+class LagunaGGUFResidentLayerWeights:
+    layer_id: int
+    attention_type: str
+    mlp_type: str
+    weights: Mapping[str, LagunaGGUFDeviceWeight]
+
+    def weight(self, slot: str) -> LagunaGGUFDeviceWeight:
+        return self.weights[slot]
+
+
+@dataclass(frozen=True)
+class LagunaGGUFResidentWeights:
+    """Device-resident selected or full Laguna weight set with owned teardown."""
+
+    config: LagunaGGUFConfig
+    root_weights: Mapping[str, LagunaGGUFDeviceWeight]
+    layers: tuple[LagunaGGUFResidentLayerWeights, ...]
+    backend: str
+    admission: LagunaMemoryAdmissionPlan
+
+    def root(self, slot: str) -> LagunaGGUFDeviceWeight:
+        return self.root_weights[slot]
+
+    def layer(self, layer_id: int) -> LagunaGGUFResidentLayerWeights:
+        return self.layers[layer_id]
+
+    @property
+    def weights(self) -> tuple[LagunaGGUFDeviceWeight, ...]:
+        return (
+            *tuple(self.root_weights.values()),
+            *tuple(weight for layer in self.layers for weight in layer.weights.values()),
+        )
+
+    @property
+    def resident_nbytes(self) -> int:
+        return sum(weight.resident_nbytes for weight in self.weights)
+
+    def free(self, *, runtime: HipRuntime | None = None) -> None:
+        for weight in reversed(self.weights):
+            weight.free(runtime=runtime)
+
+
 def plan_laguna_gguf_materialization(
     model_map: LagunaGGUFModelMap,
 ) -> LagunaGGUFMaterializationPlan:
@@ -234,6 +318,227 @@ def plan_laguna_memory_admission(
             f"required={peak} available={available} deficit={-headroom}"
         )
     return result
+
+
+def materialize_laguna_gguf_weights(
+    reader_or_path: GGUFReader | str | Path,
+    *,
+    selected_slots: Iterable[str] | None = None,
+    context_length: int = 4_096,
+    available_bytes: int | None = None,
+    storage_dtype: str = "bf16",
+    scratch_nbytes: int = DEFAULT_LAGUNA_SCRATCH_BYTES,
+    safety_reserve_nbytes: int = DEFAULT_LAGUNA_SAFETY_RESERVE_BYTES,
+    device: Device | None = None,
+    runtime: HipRuntime | None = None,
+    backend: str = "hip_gfx1151",
+    progress: Callable[[int, int, LagunaGGUFWeightSpec], None] | None = None,
+) -> LagunaGGUFResidentWeights:
+    """Stream selected or all planned Laguna weights into owned device buffers."""
+
+    reader = (
+        GGUFReader(reader_or_path)
+        if isinstance(reader_or_path, (str, Path))
+        else reader_or_path
+    )
+    model_map = build_laguna_gguf_tensor_map(reader.info)
+    plan = plan_laguna_gguf_materialization(model_map)
+    active_runtime = runtime if runtime is not None else get_hip_runtime()
+    if available_bytes is None:
+        try:
+            available_bytes = int(active_runtime.mem_get_info()[0])
+        except AttributeError as exc:
+            raise ValueError(
+                "available_bytes is required when the runtime has no mem_get_info()"
+            ) from exc
+    admission = plan_laguna_memory_admission(
+        plan,
+        context_length=context_length,
+        available_bytes=available_bytes,
+        storage_dtype=storage_dtype,
+        scratch_nbytes=scratch_nbytes,
+        safety_reserve_nbytes=safety_reserve_nbytes,
+    )
+
+    specs_by_path = {spec.slot_path: spec for spec in plan.specs}
+    selected = None if selected_slots is None else {str(item) for item in selected_slots}
+    if selected is not None:
+        unknown = tuple(sorted(selected - set(specs_by_path)))
+        if unknown:
+            raise ValueError(f"unknown selected Laguna slots: {unknown}")
+    selected_count = len(plan.specs) if selected is None else len(selected)
+    completed: list[LagunaGGUFDeviceWeight] = []
+    complete_count = 0
+    try:
+        root_weights: dict[str, LagunaGGUFDeviceWeight] = {}
+        for slot, spec in plan.root_specs.items():
+            if selected is not None and spec.slot_path not in selected:
+                continue
+            weight = _materialize_spec(
+                spec,
+                reader,
+                device=device,
+                runtime=active_runtime,
+                backend=backend,
+            )
+            root_weights[slot] = weight
+            completed.append(weight)
+            complete_count += 1
+            if progress is not None:
+                progress(complete_count, selected_count, spec)
+
+        resident_layers: list[LagunaGGUFResidentLayerWeights] = []
+        for layer in model_map.layers:
+            layer_weights: dict[str, LagunaGGUFDeviceWeight] = {}
+            for slot, spec in plan.layer_specs[layer.layer_id].items():
+                if selected is not None and spec.slot_path not in selected:
+                    continue
+                weight = _materialize_spec(
+                    spec,
+                    reader,
+                    device=device,
+                    runtime=active_runtime,
+                    backend=backend,
+                )
+                layer_weights[slot] = weight
+                completed.append(weight)
+                complete_count += 1
+                if progress is not None:
+                    progress(complete_count, selected_count, spec)
+            resident_layers.append(
+                LagunaGGUFResidentLayerWeights(
+                    layer_id=layer.layer_id,
+                    attention_type=layer.attention_type,
+                    mlp_type=layer.mlp_type,
+                    weights=MappingProxyType(layer_weights),
+                )
+            )
+    except Exception:
+        for weight in reversed(completed):
+            weight.free(runtime=active_runtime)
+        raise
+
+    return LagunaGGUFResidentWeights(
+        config=plan.config,
+        root_weights=MappingProxyType(root_weights),
+        layers=tuple(resident_layers),
+        backend=backend,
+        admission=admission,
+    )
+
+
+def _materialize_spec(
+    spec: LagunaGGUFWeightSpec,
+    reader: GGUFReader,
+    *,
+    device: Device | None,
+    runtime: HipRuntime,
+    backend: str,
+) -> LagunaGGUFDeviceWeight:
+    import numpy as np
+
+    raw = np.ascontiguousarray(reader.tensor_data(spec.source.name))
+    allocations: dict[str, DeviceTensorAllocation] = {}
+    try:
+        if spec.layout == LAYOUT_DENSE_F16:
+            allocations["raw"] = load_host_array_to_device_as_dtype(
+                spec.source.name,
+                raw,
+                DType.FP16,
+                source_dtype="F16",
+                device=device,
+                runtime=runtime,
+            )
+        elif spec.layout == LAYOUT_DENSE_F32:
+            allocations["raw"] = load_host_array_to_device_as_dtype(
+                spec.source.name,
+                raw,
+                DType.FP32,
+                source_dtype="F32",
+                device=device,
+                runtime=runtime,
+            )
+        elif spec.layout == LAYOUT_RAW_GGUF:
+            allocations["raw"] = load_host_array_to_device_as_dtype(
+                spec.source.name,
+                raw,
+                DType.INT8,
+                source_dtype="I8",
+                device=device,
+                runtime=runtime,
+            )
+        elif spec.layout == LAYOUT_Q4_K_PACK8:
+            packed = repack_gguf_q4_k_pack8(raw)
+            allocations["qweight"] = load_host_array_to_device_as_dtype(
+                f"{spec.source.name}.pack8.qweight",
+                packed.qweight,
+                DType.INT32,
+                source_dtype="I32",
+                device=device,
+                runtime=runtime,
+            )
+            allocations["scales"] = load_host_array_to_device_as_dtype(
+                f"{spec.source.name}.pack8.scales",
+                packed.scales,
+                DType.FP32,
+                source_dtype="F32",
+                device=device,
+                runtime=runtime,
+            )
+            allocations["mins"] = load_host_array_to_device_as_dtype(
+                f"{spec.source.name}.pack8.mins",
+                packed.mins,
+                DType.FP32,
+                source_dtype="F32",
+                device=device,
+                runtime=runtime,
+            )
+        elif spec.layout == LAYOUT_GGUF_Q4_K_T16:
+            packed = repack_gguf_q4_k_tile16(raw)
+            allocations["tiles"] = load_host_array_to_device_as_dtype(
+                f"{spec.source.name}.q4_t16.tiles",
+                packed.tiles,
+                DType.INT8,
+                source_dtype="I8",
+                device=device,
+                runtime=runtime,
+            )
+        elif spec.layout == LAYOUT_GGUF_Q6_K_T16:
+            packed = repack_gguf_q6_k_tile16(raw if raw.ndim == 3 else raw[None, ...])
+            allocations["tiles"] = load_host_array_to_device_as_dtype(
+                f"{spec.source.name}.q6_t16.tiles",
+                packed.tiles,
+                DType.INT8,
+                source_dtype="I8",
+                device=device,
+                runtime=runtime,
+            )
+        else:
+            raise ValueError(f"unsupported Laguna materialization layout {spec.layout!r}")
+
+        actual_names = tuple(allocations)
+        if actual_names != spec.allocation_names:
+            raise ValueError(
+                f"Laguna allocation names differ for {spec.slot_path}: "
+                f"planned={spec.allocation_names} actual={actual_names}"
+            )
+        for name, allocation in allocations.items():
+            planned_nbytes = int(spec.allocation_nbytes[name])
+            if allocation.buffer.nbytes != planned_nbytes:
+                raise ValueError(
+                    f"Laguna allocation bytes differ for {spec.slot_path}.{name}: "
+                    f"planned={planned_nbytes} actual={allocation.buffer.nbytes}"
+                )
+    except Exception:
+        for allocation in reversed(tuple(allocations.values())):
+            allocation.free(runtime=runtime)
+        raise
+
+    return LagunaGGUFDeviceWeight(
+        spec=spec,
+        allocations=MappingProxyType(allocations),
+        backend=backend,
+    )
 
 
 def _plan_kv_memory(
@@ -416,11 +721,15 @@ __all__ = [
     "LAYOUT_GGUF_Q6_K_T16",
     "LAYOUT_Q4_K_PACK8",
     "LAYOUT_RAW_GGUF",
+    "LagunaGGUFDeviceWeight",
     "LagunaGGUFMaterializationPlan",
+    "LagunaGGUFResidentLayerWeights",
+    "LagunaGGUFResidentWeights",
     "LagunaGGUFWeightSpec",
     "LagunaKVMemoryPlan",
     "LagunaMemoryAdmissionError",
     "LagunaMemoryAdmissionPlan",
+    "materialize_laguna_gguf_weights",
     "plan_laguna_gguf_materialization",
     "plan_laguna_memory_admission",
 ]
