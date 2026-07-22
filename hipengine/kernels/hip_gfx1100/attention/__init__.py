@@ -1,5 +1,14 @@
 """gfx1100 attention and KV-cache kernel wrappers."""
 
+from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
+    build_laguna_kv_attention,
+    laguna_global_attention_decode_bf16_spans,
+    laguna_global_write_kv_f32_spans,
+    laguna_swa_attention_decode_bf16_spans,
+    laguna_swa_write_kv_f32_spans,
+    plan_laguna_kv_attention_build,
+    register_laguna_kv_attention_kernels,
+)
 from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
     build_qwen35_paged_attn_decode,
     plan_qwen35_paged_attn_decode_build,
@@ -78,6 +87,7 @@ from hipengine.kernels.hip_gfx1100.attention.paged_kv_write import (
 )
 
 __all__ = [
+    "build_laguna_kv_attention",
     "build_qwen35_paged_attn_decode",
     "aotriton_attn_fwd_compact_varlen",
     "aotriton_attn_fwd_compact_varlen_gqa_per_q_head",
@@ -86,7 +96,12 @@ __all__ = [
     "aotriton_gate_mul_fp16_inplace",
     "build_aotriton_wrap",
     "build_qwen35_paged_kv_write",
+    "laguna_global_attention_decode_bf16_spans",
+    "laguna_global_write_kv_f32_spans",
+    "laguna_swa_attention_decode_bf16_spans",
+    "laguna_swa_write_kv_f32_spans",
     "plan_aotriton_wrap_build",
+    "plan_laguna_kv_attention_build",
     "plan_qwen35_paged_attn_decode_build",
     "plan_qwen35_paged_kv_write_build",
     "qwen35_full_attn_decode_context_bf16",
@@ -146,6 +161,7 @@ __all__ = [
     "qwen35_write_paged_kv_mixed_value_fp16_prompt_spans",
     "qwen35_write_paged_kv_mixed_value_fp16_spans",
     "register_aotriton_wrap_kernels",
+    "register_laguna_kv_attention_kernels",
     "register_qwen35_paged_attn_decode_kernels",
     "register_qwen35_paged_kv_write_kernels",
 ]

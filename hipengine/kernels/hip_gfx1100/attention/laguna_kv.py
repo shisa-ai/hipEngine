@@ -1,0 +1,413 @@
+"""Laguna global and token-granular SWA ``KVLiveSpans`` kernels."""
+
+from __future__ import annotations
+
+import ctypes
+from pathlib import Path
+
+from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
+from hipengine.core.dtype import DType
+from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
+from hipengine.kernels.registry import KernelKey, register
+from hipengine.kvcache import KVLiveSpans
+
+_SOURCE = Path(__file__).with_name("laguna_kv_attention.hip")
+_OUTPUT_NAME = "laguna_kv_attention.so"
+_SYMBOL_GLOBAL_WRITE = "hipengine_laguna_global_write_kv_f32_bf16_spans"
+_SYMBOL_GLOBAL_ATTENTION = "hipengine_laguna_global_attention_decode_bf16_spans"
+_SYMBOL_SWA_WRITE = "hipengine_laguna_swa_write_kv_f32_bf16_spans"
+_SYMBOL_SWA_ATTENTION = "hipengine_laguna_swa_attention_decode_bf16_spans"
+_LAGUNA_KV_HEADS = 8
+_LAGUNA_HEAD_DIM = 128
+_GLOBAL_BLOCK_SIZE = 256
+_MAX_EAGER_GLOBAL_CONTEXT = 4096
+
+
+def plan_laguna_kv_attention_build(
+    *,
+    cache_root: str | Path | None = None,
+    compiler_version: str | None = None,
+    profile: ProfileName = "decode",
+) -> BuildArtifact:
+    return plan_hip_build(
+        sources=[_SOURCE],
+        family="laguna_kv_attention",
+        profile=profile,
+        cache_root=cache_root,
+        compiler_version=compiler_version,
+        output_name=_OUTPUT_NAME,
+    )
+
+
+def build_laguna_kv_attention(
+    *,
+    cache_root: str | Path | None = None,
+    compiler_version: str | None = None,
+    profile: ProfileName = "decode",
+    dry_run: bool = False,
+    load: bool = True,
+    require_cached: bool = False,
+) -> ctypes.CDLL | BuildArtifact:
+    return build_hip(
+        sources=[_SOURCE],
+        family="laguna_kv_attention",
+        profile=profile,
+        cache_root=cache_root,
+        compiler_version=compiler_version,
+        output_name=_OUTPUT_NAME,
+        dry_run=dry_run,
+        load=load,
+        require_cached=require_cached,
+    )
+
+
+def laguna_global_write_kv_f32_spans(
+    key_ptr: int,
+    value_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    spans: KVLiveSpans,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Append one F32 K/V row to complete block-256 global spans."""
+
+    capacity = _check_global_spans(spans, num_kv_heads, head_dim)
+    library = library or build_laguna_kv_attention(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_GLOBAL_WRITE)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(key_ptr),
+        ctypes.c_void_p(value_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_void_p(spans.token_positions.ptr),
+        ctypes.c_void_p(spans.evict_mask.ptr),
+        ctypes.c_void_p(spans.row_positions.ptr),
+        ctypes.c_int64(capacity),
+        ctypes.c_int64(_GLOBAL_BLOCK_SIZE),
+        ctypes.c_int64(spans.base_offsets.numel),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def laguna_global_attention_decode_bf16_spans(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    out_ptr: int,
+    spans: KVLiveSpans,
+    max_context_len: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run ungated block-256 global GQA through complete dense spans."""
+
+    capacity = _check_global_spans(spans, num_kv_heads, head_dim)
+    if int(max_context_len) != capacity:
+        raise ValueError("max_context_len must equal the global span capacity")
+    if capacity > _MAX_EAGER_GLOBAL_CONTEXT:
+        raise ValueError("eager Laguna global attention currently supports at most 4096 tokens")
+    _check_laguna_attention_shape(num_q_heads, num_kv_heads, head_dim)
+    library = library or build_laguna_kv_attention(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_GLOBAL_ATTENTION)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_float,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_void_p(spans.token_positions.ptr),
+        ctypes.c_void_p(spans.evict_mask.ptr),
+        ctypes.c_void_p(spans.row_positions.ptr),
+        ctypes.c_int64(capacity),
+        ctypes.c_int64(_GLOBAL_BLOCK_SIZE),
+        ctypes.c_int64(spans.base_offsets.numel),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_float(scale),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def laguna_swa_write_kv_f32_spans(
+    key_ptr: int,
+    value_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    spans: KVLiveSpans,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Append one F32 K/V row into a token-granular BF16 SWA ring."""
+
+    capacity = _check_swa_spans(spans, num_kv_heads, head_dim)
+    library = library or build_laguna_kv_attention(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_SWA_WRITE)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(key_ptr),
+        ctypes.c_void_p(value_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_void_p(spans.token_positions.ptr),
+        ctypes.c_void_p(spans.evict_mask.ptr),
+        ctypes.c_void_p(spans.row_positions.ptr),
+        ctypes.c_int64(capacity),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def laguna_swa_attention_decode_bf16_spans(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    out_ptr: int,
+    spans: KVLiveSpans,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    scale: float,
+    *,
+    sliding_window: int | None = None,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Decode absolute-position GQA over live, non-evicted SWA ring slots."""
+
+    capacity = _check_swa_spans(spans, num_kv_heads, head_dim)
+    _check_laguna_attention_shape(num_q_heads, num_kv_heads, head_dim)
+    window = capacity if sliding_window is None else int(sliding_window)
+    if window <= 0 or window > capacity:
+        raise ValueError("sliding_window must be in [1, ring capacity]")
+    library = library or build_laguna_kv_attention(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_SWA_ATTENTION)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_float,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(query_ptr),
+        ctypes.c_void_p(key_cache_ptr),
+        ctypes.c_void_p(value_cache_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(spans.base_offsets.ptr),
+        ctypes.c_void_p(spans.live_counts.ptr),
+        ctypes.c_void_p(spans.token_positions.ptr),
+        ctypes.c_void_p(spans.evict_mask.ptr),
+        ctypes.c_void_p(spans.row_positions.ptr),
+        ctypes.c_int64(capacity),
+        ctypes.c_int64(window),
+        ctypes.c_int64(num_q_heads),
+        ctypes.c_int64(num_kv_heads),
+        ctypes.c_int64(head_dim),
+        ctypes.c_float(scale),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def register_laguna_kv_attention_kernels(*, replace: bool = True) -> None:
+    registrations = (
+        (
+            "laguna_kv_write",
+            "global_f32_spans",
+            laguna_global_write_kv_f32_spans,
+        ),
+        (
+            "laguna_kv_write",
+            "swa_f32_spans",
+            laguna_swa_write_kv_f32_spans,
+        ),
+        (
+            "laguna_attention_decode",
+            "global_context_spans",
+            laguna_global_attention_decode_bf16_spans,
+        ),
+        (
+            "laguna_attention_decode",
+            "swa_context_spans",
+            laguna_swa_attention_decode_bf16_spans,
+        ),
+    )
+    for layer, variant, kernel in registrations:
+        register(
+            KernelKey("hip_gfx1100", layer, "bf16", variant),
+            kernel,
+            replace=replace,
+        )
+
+
+def _check_global_spans(
+    spans: KVLiveSpans,
+    num_kv_heads: int,
+    head_dim: int,
+) -> int:
+    if spans.spans_mode != "uniform":
+        raise ValueError("Laguna global KV requires uniform spans")
+    if spans.storage_dtype != DType.BF16:
+        raise ValueError("Laguna global KV requires bf16 storage")
+    if spans.token_positions is None or spans.evict_mask is None:
+        raise ValueError("Laguna global KV requires token_positions and evict_mask")
+    if spans.row_positions is None:
+        raise ValueError("Laguna global KV requires absolute row_positions")
+    capacity = spans.token_positions.numel
+    if spans.evict_mask.numel != capacity or spans.max_live_count != capacity:
+        raise ValueError("Laguna global span metadata must match its logical capacity")
+    if (_GLOBAL_BLOCK_SIZE * spans.base_offsets.numel) < capacity:
+        raise ValueError("Laguna global block table is too short for its logical capacity")
+    _check_laguna_kv_shape(num_kv_heads, head_dim)
+    return capacity
+
+
+def _check_swa_spans(
+    spans: KVLiveSpans,
+    num_kv_heads: int,
+    head_dim: int,
+) -> int:
+    if spans.spans_mode != "sliding_ring":
+        raise ValueError("Laguna SWA requires sliding_ring spans")
+    if spans.storage_dtype != DType.BF16:
+        raise ValueError("Laguna SWA requires bf16 storage")
+    if spans.token_positions is None or spans.evict_mask is None:
+        raise ValueError("Laguna SWA requires token_positions and evict_mask")
+    if spans.row_positions is None:
+        raise ValueError("Laguna SWA requires absolute row_positions")
+    _check_laguna_kv_shape(num_kv_heads, head_dim)
+    return spans.base_offsets.numel
+
+
+def _check_laguna_kv_shape(num_kv_heads: int, head_dim: int) -> None:
+    if int(num_kv_heads) != _LAGUNA_KV_HEADS:
+        raise ValueError(f"num_kv_heads must be {_LAGUNA_KV_HEADS} for Laguna")
+    if int(head_dim) != _LAGUNA_HEAD_DIM:
+        raise ValueError(f"head_dim must be {_LAGUNA_HEAD_DIM} for Laguna")
+
+
+def _check_laguna_attention_shape(
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+) -> None:
+    _check_laguna_kv_shape(num_kv_heads, head_dim)
+    if int(num_q_heads) % int(num_kv_heads):
+        raise ValueError("num_q_heads must be divisible by num_kv_heads")
+    if int(num_q_heads) not in {48, 72}:
+        raise ValueError("num_q_heads must be a Laguna production width (48 or 72)")
+
+
+def _check_launch(runtime: HipRuntime, err: int) -> None:
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+register_laguna_kv_attention_kernels()
+
+__all__ = [
+    "build_laguna_kv_attention",
+    "laguna_global_attention_decode_bf16_spans",
+    "laguna_global_write_kv_f32_spans",
+    "laguna_swa_attention_decode_bf16_spans",
+    "laguna_swa_write_kv_f32_spans",
+    "plan_laguna_kv_attention_build",
+    "register_laguna_kv_attention_kernels",
+]

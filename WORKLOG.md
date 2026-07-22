@@ -173287,3 +173287,77 @@ with 24 VGPR and zero scratch. The targeted projection/RoPE/CPU bundle passes
 22/22; Ruff, compileall, and diff checks pass. Projection, RoPE, and head-gate
 blockers are closed. Global/SWA attention context and physical KV ownership
 remain deliberately in task #29.
+
+## 2026-07-22 — Add Laguna global/SWA KVLiveSpans attention ownership
+
+Closed the eager c=1 attention/KV portion of L4. `KVLiveSpans` now has a
+validated `sliding_ring` mode whose complete device ABI is physical slot
+offsets, one live count, absolute per-slot token positions, an eviction mask,
+and the current absolute query/append position. The new in-tree gfx11 SWA
+writer stores F32 K/V as BF16 at `position % capacity`, updates absolute slot
+metadata on device, and clears the overwritten slot's eviction bit. Its ungated
+GQA reader consumes every span field and applies Poolside/Transformers' strict
+`query - 512 < key <= query` visibility before the existing separate softplus
+gate stage.
+
+A pre-commit architecture audit rejected an initial global wrapper that carried
+the public object but still delegated to a legacy body reading only page table
+and count. The retained in-tree global writer/context preserves the proven
+block-256 page-table structure while actually reading the complete ABI. Dense
+global spans fill absolute positions and eviction bits uniformly; no Qwen
+sigmoid gate is included. The model-owned `LagunaKVCache` enforces token-serial
+positions, dispatches only through four-axis keys, and allocates 12
+admitted-context global caches plus 36 physical 512-token SWA rings. At 4K the
+exact K/V payload is 264 MiB. The production owner has 243 tracked
+payload/metadata allocations; a live gfx1151 test returns allocated bytes and
+allocation count exactly to their incoming baselines. Forced partial-allocation
+failure also frees every prior buffer.
+
+RED was the expected absence of `KVLiveSpans.sliding_ring`, the native SWA
+module, and the Laguna KV owner. GREEN validates 48/8 and 72/8 GQA against
+direct FP32 CPU attention over BF16-rounded cache values. The token-serial test
+covers positions 510/511/512/513, repeated wraps at 1024/1025, non-identity
+page/slot mappings, exact absolute and physical ownership after wrap, and
+explicit global/SWA eviction of positions 100/700. Global and SWA outputs pass
+`rtol=atol=3e-4`.
+
+Prebuilt `laguna_kv_attention.so` outside profiling, then enforced cache-only
+loading:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+HIPENGINE_REQUIRE_CACHED_BUILD=1 \
+rocprofv3 --kernel-trace --output-format csv \
+  -d /tmp/laguna-kv-rocprof-final3-1784729089 -- \
+  uv run pytest -q \
+  'tests/test_laguna_kv_attention.py::test_laguna_global_and_swa_token_serial_attention_match_cpu_across_wraps'
+```
+
+The trace records 1,026 native global writes at `1.603 us` median and 1,026
+native SWA writes at `1.523 us` median (16 VGPR, zero scratch/LDS). The complete
+48-head global reader took `730.650 us`; six boundary SWA-reader launches took
+`1123.828 us` median (16 VGPR, zero scratch, 1024 B LDS). Both readers are
+correctness-first paths; these values are dispatch diagnostics, not a throughput
+claim. Optimization waits for the whole-model eager oracle and a kernel-family
+profile rather than weakening the span ABI.
+
+Validation:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 uv run pytest -q \
+  tests/test_laguna_kv_attention.py tests/test_kvcache_spans.py
+uvx ruff check <changed Python files>
+uvx ruff format --check <changed Python files>
+python3 -m compileall -q <changed Python files>
+python3 scripts/check_lineage.py --kind kernel --diff stat
+```
+
+The focused KV bundle passes 11/11 and the expanded Laguna CPU/projection/
+RoPE/KV/registry bundle passes 37/37; Ruff, formatting, compileall, and diff
+checks pass. The broad lineage command remains pre-existingly blocked before a
+report because `/home/lhl/amd-gpu-tuning/reference/atlas` is absent. The
+global/SWA bodies are new in-tree Laguna kernels, not claimed parent ports.
+Bulk/prefill SWA remains
+L8 work after the eager full-model oracle; task #29 is closed for token-serial
+execution and unblocks the full session owner.
