@@ -35,6 +35,11 @@
       "path": "/home/lhl/amd-gpu-tuning/reference/vllm",
       "baseline_ref": "28ee78a",
       "baseline_note": "vLLM reference head when the FLA chunkwise/WY GDN algebra lineage was registered."
+    },
+    "poolside-llama-laguna": {
+      "path": "/home/lhl/models/hipengine_sources/poolside-llama.cpp-laguna",
+      "baseline_ref": "04b2b72cb54048ead292884adbe11f284e3ec950",
+      "baseline_note": "Pinned Poolside Laguna target and DFlash oracle source used for hipEngine Laguna bring-up."
     }
   },
   "files": [
@@ -79,6 +84,30 @@
       "kind": "kernel",
       "family": "FLA Woodbury-Young representation",
       "baseline_ref": "cb10b7e"
+    },
+    {
+      "repo": "poolside-llama-laguna",
+      "path": "src/models/laguna.cpp",
+      "kind": "dispatch",
+      "family": "Poolside Laguna target architecture and graph contract"
+    },
+    {
+      "repo": "poolside-llama-laguna",
+      "path": "src/models/dflash.cpp",
+      "kind": "dispatch",
+      "family": "Poolside Laguna DFlash draft architecture and graph contract"
+    },
+    {
+      "repo": "poolside-llama-laguna",
+      "path": "conversion/laguna.py",
+      "kind": "layout",
+      "family": "Poolside Laguna HF to GGUF metadata and tensor conversion"
+    },
+    {
+      "repo": "poolside-llama-laguna",
+      "path": "models/templates/poolside-Laguna-S-2.1.jinja",
+      "kind": "template",
+      "family": "Poolside Laguna S 2.1 chat, reasoning, and tool protocol"
     },
     {
       "repo": "nano-vllm-amd",
@@ -337,6 +366,36 @@
     }
   ],
   "external_artifacts": [
+    {
+      "name": "poolside/Laguna-S-2.1-GGUF laguna-s-2.1-Q4_K_M.gguf",
+      "kind": "gguf_target_model",
+      "source_revision": "Poolside GGUF file matched by Hugging Face LFS SHA-256",
+      "local_path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+      "bytes": 75173103200,
+      "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+      "tokenizer_reference_revision": "179ee67cf0fff5391c67fe1a392ea849fa6d643f",
+      "note": "Completed Laguna target artifact; benchmark rows must record this exact hash and Q4_K_M quant."
+    },
+    {
+      "name": "Poolside Laguna gfx1151 llama-server oracle",
+      "kind": "oracle_runtime_binary",
+      "source_revision": "04b2b72cb54048ead292884adbe11f284e3ec950",
+      "local_path": "/home/lhl/models/hipengine_sources/poolside-llama.cpp-laguna/build-hip-gfx1151/bin/llama-server",
+      "bytes": 15976,
+      "sha256": "1a3b09cfb9a8034d44239224ac362afce4555b85da376a3a7e1f4ecaffee0419",
+      "build_config": "Release; GGML_HIP=ON; AMDGPU_TARGETS=gfx1151; GNU 16.1.1; CXXFLAGS=-include cmath",
+      "note": "Target-only correctness oracle. Accepted gfx1151 execution uses --no-mmap, --no-repack, -fa off, --cache-ram 0, exact prompt token IDs, and one request per fresh process."
+    },
+    {
+      "name": "poolside/Laguna-S-2.1-DFlash",
+      "kind": "hf_drafter_model",
+      "snapshot_revision": "b0486d1586daa0d56435c508108171fc1c8daff9",
+      "local_snapshot_path": "/home/lhl/.cache/huggingface/hub/models--poolside--Laguna-S-2.1-DFlash/snapshots/b0486d1586daa0d56435c508108171fc1c8daff9",
+      "code_files": {
+        "model.safetensors_lfs_sha256": "f24f08781c697c19952c02fb2e7e9bdf2071b79a711c2a44b836a74b9b62a1f4"
+      },
+      "note": "Matched six-layer Laguna DFlash drafter; target embedding and LM head remain target-owned."
+    },
     {
       "name": "z-lab/Qwen3.6-35B-A3B-DFlash",
       "kind": "hf_drafter_model",

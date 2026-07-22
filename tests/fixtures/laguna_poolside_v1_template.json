@@ -1,0 +1,84 @@
+{
+  "schema": 1,
+  "renderer": "Poolside/Hugging Face Jinja semantics: generation passthrough and json.dumps tojson",
+  "poolside_llama_commit": "04b2b72cb54048ead292884adbe11f284e3ec950",
+  "target_gguf_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+  "template_sha256": "2d3c724b3c2e9eb71fe9ccc5423ff268a370a8bfa89e9238b6de14fe000825c8",
+  "cases": [
+    {
+      "name": "no_thinking",
+      "messages": [{"role": "user", "content": "Reply with OK."}],
+      "tools": [],
+      "enable_thinking": false,
+      "add_generation_prompt": true,
+      "rendered": "〈|EOS|〉<system>You are a helpful, conversationally-fluent assistant made by Poolside. You are here to be helpful to users through natural language conversations.</system>\n<user>Reply with OK.</user>\n<assistant></think>",
+      "token_ids": [2, 97, 6453, 55620, 515, 330, 6408, 81, 12123, 1009, 8286, 10167, 18263, 2637, 565, 30810, 638, 83, 1239, 515, 1973, 367, 445, 6408, 367, 1667, 1388, 5882, 2930, 22746, 4187, 6453, 99, 268, 97, 1437, 99, 13109, 466, 10492, 4187, 1437, 99, 268, 23, 19]
+    },
+    {
+      "name": "thinking",
+      "messages": [{"role": "user", "content": "Reply with OK."}],
+      "tools": [],
+      "enable_thinking": true,
+      "add_generation_prompt": true,
+      "rendered": "〈|EOS|〉<system>You are a helpful, conversationally-fluent assistant made by Poolside. You are here to be helpful to users through natural language conversations.</system>\n<user>Reply with OK.</user>\n<assistant><think>",
+      "token_ids": [2, 97, 6453, 55620, 515, 330, 6408, 81, 12123, 1009, 8286, 10167, 18263, 2637, 565, 30810, 638, 83, 1239, 515, 1973, 367, 445, 6408, 367, 1667, 1388, 5882, 2930, 22746, 4187, 6453, 99, 268, 97, 1437, 99, 13109, 466, 10492, 4187, 1437, 99, 268, 23, 18]
+    },
+    {
+      "name": "oracle_no_thinking",
+      "messages": [{"role": "user", "content": "Explain in one paragraph why deterministic unit tests matter in software engineering."}],
+      "tools": [],
+      "enable_thinking": false,
+      "add_generation_prompt": true,
+      "rendered": "〈|EOS|〉<system>You are a helpful, conversationally-fluent assistant made by Poolside. You are here to be helpful to users through natural language conversations.</system>\n<user>Explain in one paragraph why deterministic unit tests matter in software engineering.</user>\n<assistant></think>",
+      "token_ids": [2, 97, 6453, 55620, 515, 330, 6408, 81, 12123, 1009, 8286, 10167, 18263, 2637, 565, 30810, 638, 83, 1239, 515, 1973, 367, 445, 6408, 367, 1667, 1388, 5882, 2930, 22746, 4187, 6453, 99, 268, 97, 1437, 99, 53225, 365, 896, 10222, 3203, 24446, 3505, 3011, 6043, 365, 2291, 10723, 4187, 1437, 99, 268, 23, 19]
+    },
+    {
+      "name": "tools",
+      "messages": [
+        {"role": "system", "content": "Be precise."},
+        {"role": "user", "content": "Weather in Paris?"}
+      ],
+      "tools": [{
+        "type": "function",
+        "function": {
+          "name": "get_weather",
+          "description": "Get weather for a city.",
+          "parameters": {
+            "type": "object",
+            "properties": {"city": {"type": "string"}, "days": {"type": "integer"}},
+            "required": ["city"]
+          }
+        }
+      }],
+      "enable_thinking": true,
+      "add_generation_prompt": true,
+      "rendered": "〈|EOS|〉<system>Be precise.\n\n### Tools\n\nYou may call functions to assist with the user query.\nAll available function signatures are listed below:\n<available_tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get weather for a city.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}, \"days\": {\"type\": \"integer\"}}, \"required\": [\"city\"]}}}\n</available_tools></system>\n<user>Weather in Paris?</user>\n<assistant><think>",
+      "token_ids": [2, 97, 6453, 99, 6606, 10897, 83, 350, 740, 3574, 350, 2505, 1298, 1524, 1905, 367, 14169, 466, 340, 989, 2465, 83, 268, 2974, 1904, 727, 12702, 515, 8036, 3681, 95, 268, 97, 10721, 45345, 99, 268, 6003, 1868, 1034, 444, 2453, 633, 444, 2453, 1034, 6812, 865, 1034, 444, 620, 90648, 633, 444, 6255, 1034, 444, 1949, 12092, 405, 330, 5705, 9501, 444, 13355, 1034, 6812, 1868, 1034, 444, 2427, 633, 444, 12496, 1034, 6812, 15756, 1034, 6812, 1868, 1034, 444, 1349, 11058, 444, 18303, 1034, 6812, 1868, 1034, 444, 14719, 77412, 444, 7803, 1034, 5832, 15756, 2803, 14372, 268, 532, 10721, 45345, 1181, 6453, 99, 268, 97, 1437, 99, 24986, 365, 22345, 23638, 1437, 99, 268, 23, 18]
+    },
+    {
+      "name": "tool_history",
+      "messages": [
+        {"role": "user", "content": "Weather?"},
+        {"role": "assistant", "reasoning": "Need current data.", "content": "", "tool_calls": [{"function": {"name": "get_weather", "arguments": {"city": "Paris", "days": 2}}}]},
+        {"role": "tool", "content": "18 C"},
+        {"role": "assistant", "reasoning_content": "Now answer.", "content": "It is 18 C."}
+      ],
+      "tools": [{
+        "type": "function",
+        "function": {
+          "name": "get_weather",
+          "description": "Get weather for a city.",
+          "parameters": {
+            "type": "object",
+            "properties": {"city": {"type": "string"}, "days": {"type": "integer"}},
+            "required": ["city"]
+          }
+        }
+      }],
+      "enable_thinking": true,
+      "add_generation_prompt": false,
+      "rendered": "〈|EOS|〉<system>You are a helpful, conversationally-fluent assistant made by Poolside. You are here to be helpful to users through natural language conversations.\n\n### Tools\n\nYou may call functions to assist with the user query.\nAll available function signatures are listed below:\n<available_tools>\n{\"type\": \"function\", \"function\": {\"name\": \"get_weather\", \"description\": \"Get weather for a city.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}, \"days\": {\"type\": \"integer\"}}, \"required\": [\"city\"]}}}\n</available_tools></system>\n<user>Weather?</user>\n<assistant><think>Need current data.</think><tool_call>get_weather<arg_key>city</arg_key><arg_value>Paris</arg_value><arg_key>days</arg_key><arg_value>2</arg_value></tool_call></assistant>\n<tool_response>18 C</tool_response>\n<assistant><think>Now answer.</think>It is 18 C.</assistant>\n",
+      "token_ids": [2, 97, 6453, 55620, 515, 330, 6408, 81, 12123, 1009, 8286, 10167, 18263, 2637, 565, 30810, 638, 83, 1239, 515, 1973, 367, 445, 6408, 367, 1667, 1388, 5882, 2930, 22746, 83, 350, 740, 3574, 350, 2505, 1298, 1524, 1905, 367, 14169, 466, 340, 989, 2465, 83, 268, 2974, 1904, 727, 12702, 515, 8036, 3681, 95, 268, 97, 10721, 45345, 99, 268, 6003, 1868, 1034, 444, 2453, 633, 444, 2453, 1034, 6812, 865, 1034, 444, 620, 90648, 633, 444, 6255, 1034, 444, 1949, 12092, 405, 330, 5705, 9501, 444, 13355, 1034, 6812, 1868, 1034, 444, 2427, 633, 444, 12496, 1034, 6812, 15756, 1034, 6812, 1868, 1034, 444, 1349, 11058, 444, 18303, 1034, 6812, 1868, 1034, 444, 14719, 77412, 444, 7803, 1034, 5832, 15756, 2803, 14372, 268, 532, 10721, 45345, 1181, 6453, 99, 268, 97, 1437, 99, 24986, 23638, 1437, 99, 268, 23, 18, 20465, 1292, 632, 83, 19, 25, 620, 90648, 97, 1143, 5432, 99, 15756, 532, 1143, 5432, 1170, 1143, 5518, 99, 71070, 532, 1143, 5518, 1170, 1143, 5432, 99, 18303, 532, 1143, 5432, 1170, 1143, 5518, 99, 87, 532, 1143, 5518, 99, 26, 24, 268, 97, 11525, 18390, 99, 86, 93, 407, 532, 11525, 18390, 99, 268, 23, 18, 5623, 1675, 83, 19, 3360, 395, 290, 86, 93, 407, 83, 24, 268]
+    }
+  ]
+}

@@ -542,6 +542,29 @@ must not import PyTorch/HF code into hipEngine's production hot path.
 `docs/source_lineage.json` under `external_artifacts` and must be restated in
 benchmark JSON:
 
+- Laguna architecture/oracle source: Poolside `llama.cpp` branch `laguna`,
+  detached local checkout
+  `/home/lhl/models/hipengine_sources/poolside-llama.cpp-laguna` at
+  `04b2b72cb54048ead292884adbe11f284e3ec950`. Tracked files are
+  `src/models/{laguna,dflash}.cpp`, `conversion/laguna.py`, and the S 2.1 Jinja
+  template. `python3 scripts/check_lineage.py --file '*laguna*' --diff stat`,
+  the exact DFlash-path filter, and the template-kind filter are clean at this
+  baseline; the broad legacy scan remains blocked when old parent checkouts are
+  absent.
+- Laguna target: `poolside/Laguna-S-2.1-GGUF`
+  `laguna-s-2.1-Q4_K_M.gguf`, local 75,173,103,200-byte file SHA-256
+  `7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f`.
+- Laguna target oracle binary: native gfx1151 Poolside `llama-server` from the
+  pinned commit above, SHA-256
+  `1a3b09cfb9a8034d44239224ac362afce4555b85da376a3a7e1f4ecaffee0419`.
+  The frozen command requires `--no-mmap --no-repack -fa off --cache-ram 0`
+  and one exact-token request per fresh process; see
+  `tests/fixtures/laguna_poolside_v1_oracle.json`. Poolside FA faults on this
+  build, and same-process sequential completions are not accepted as oracle
+  evidence.
+- Laguna drafter: `poolside/Laguna-S-2.1-DFlash`, local snapshot
+  `b0486d1586daa0d56435c508108171fc1c8daff9`, safetensors LFS SHA-256
+  `f24f08781c697c19952c02fb2e7e9bdf2071b79a711c2a44b836a74b9b62a1f4`.
 - Drafter: `z-lab/Qwen3.6-35B-A3B-DFlash`, local snapshot
   `42d3b34d588423cdae7ba8f53a8cf7789346a719`; observed blobs include
   `dflash.py` blob `74d3ee2a48fbb1e65e25e19ab6cd89e2b28cd120`, `config.json`

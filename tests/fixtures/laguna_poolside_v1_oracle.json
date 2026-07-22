@@ -1,0 +1,128 @@
+{
+  "schema": 1,
+  "captured_at": "2026-07-22",
+  "purpose": "Poolside Laguna S 2.1 target-only correctness oracle for hipEngine bring-up",
+  "source": {
+    "repository": "poolside llama.cpp laguna branch",
+    "commit": "04b2b72cb54048ead292884adbe11f284e3ec950",
+    "checkout": "/home/lhl/models/hipengine_sources/poolside-llama.cpp-laguna",
+    "checkout_clean": true,
+    "server_binary": "build-hip-gfx1151/bin/llama-server",
+    "server_binary_sha256": "1a3b09cfb9a8034d44239224ac362afce4555b85da376a3a7e1f4ecaffee0419",
+    "server_version": "1 (04b2b72c)",
+    "compiler": "GNU 16.1.1",
+    "build_type": "Release",
+    "build_backend": "GGML_HIP=ON",
+    "build_target": "AMDGPU_TARGETS=gfx1151"
+  },
+  "model": {
+    "repository": "poolside/Laguna-S-2.1-GGUF",
+    "file": "laguna-s-2.1-Q4_K_M.gguf",
+    "local_path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "bytes": 75173103200,
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M",
+    "tensor_count": 814,
+    "vocab_size": 100352
+  },
+  "hardware": {
+    "gpu": "AMD Radeon 8060S Graphics",
+    "gpu_arch": "gfx1151",
+    "processor": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+    "uma_pool_mib": 122880,
+    "kernel": "Linux 7.1.3-2-cachyos x86_64"
+  },
+  "server": {
+    "environment": {
+      "GPU_MAX_HW_QUEUES": "1"
+    },
+    "command": "build-hip-gfx1151/bin/llama-server -m /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --host 127.0.0.1 --port 18081 -c 4096 -ngl 999 -fa off --jinja --parallel 1 --no-warmup --no-repack --no-mmap --cache-ram 0 --metrics -lv 4 --log-file /tmp/poolside-laguna-oracle-server.log",
+    "context_length": 4096,
+    "target_only": true,
+    "flash_attention": false,
+    "repack": false,
+    "mmap": false,
+    "prompt_cache_bytes": 0,
+    "fresh_start_model_loaded_seconds": [29.85096, 29.907383],
+    "load_note": "--no-mmap selects Poolside's pinned asynchronous ROCm upload path. The mmap path remained unready after 31 minutes on this UMA host."
+  },
+  "prompt": {
+    "template_fixture": "laguna_poolside_v1_template.json",
+    "case": "oracle_no_thinking",
+    "rendered_sha256": "ea42d7342ac80ab94e826ed2cbbe1a81637599bed909f72436d6e73fc9a5ff7f",
+    "token_ids_i32le_sha256": "4159bfb36657e9aa03497074bbf02766fc9cd4a7e12091238481cbd2d6b18cbc",
+    "token_count": 55,
+    "pass_as_token_ids": true,
+    "note": "Passing exact token IDs avoids llama-server adding a second BOS to the already-rendered Poolside prompt."
+  },
+  "sampling": {
+    "temperature": 0.0,
+    "top_k": 0,
+    "top_p": 1.0,
+    "min_p": 0.0,
+    "typical_p": 1.0,
+    "repeat_penalty": 1.0,
+    "frequency_penalty": 0.0,
+    "presence_penalty": 0.0,
+    "dry_multiplier": 0.0,
+    "seed": 4242
+  },
+  "first_token": {
+    "id": 94557,
+    "text": "Deterministic",
+    "logprob": -0.0011345621896907687,
+    "full_distribution": {
+      "semantics": "Pre-sampler full-vocabulary softmax log-probabilities, equivalent to raw logits up to the shared additive log-normalizer",
+      "path": "laguna_poolside_v1_first_token_logprobs.npy",
+      "dtype": "float32",
+      "shape": [100352],
+      "index": "token_id",
+      "count": 100352,
+      "finite_count": 100352,
+      "probability_sum_float64": 1.000007193074377,
+      "dense_bytes_sha256": "6525179e1fa353fe8afb565ebf64110ceb1847efeec8ec062ff810d3fcb561fc",
+      "npy_sha256": "6d7241d3cb7251949d4b938f276bccb317d7996e837819aa1c516c4c1d85aa39",
+      "fresh_process_repeat_exact": true,
+      "fresh_process_repeat_changed_values": 0,
+      "fresh_process_repeat_max_abs_delta": 0.0
+    },
+    "top10": [
+      {"id": 94557, "text": "Deterministic", "logprob": -0.0011345621896907687},
+      {"id": 355, "text": "**", "logprob": -7.020820140838623},
+      {"id": 674, "text": "In", "logprob": -9.741060256958008},
+      {"id": 72337, "text": " Deterministic", "logprob": -10.173654556274414},
+      {"id": 48428, "text": "Determin", "logprob": -10.344308853149414},
+      {"id": 102, "text": "A", "logprob": -10.70614242553711},
+      {"id": 785, "text": "The", "logprob": -11.01371955871582},
+      {"id": 740, "text": "###", "logprob": -11.269262313842773},
+      {"id": 378, "text": "##", "logprob": -11.447105407714844},
+      {"id": 105, "text": "D", "logprob": -11.517562866210938}
+    ]
+  },
+  "greedy32": {
+    "token_ids": [94557, 3505, 3011, 515, 2407, 365, 2291, 10723, 1687, 948, 1482, 4217, 81, 53551, 2027, 565, 17124, 20104, 365, 955, 13957, 81, 769, 7408, 6282, 365, 340, 955, 10511, 604, 5546, 83],
+    "text": "Deterministic unit tests are essential in software engineering because they ensure consistent, repeatable results by eliminating variability in test outcomes, which builds trust in the test suite's reliability.",
+    "stop_type": "limit",
+    "fresh_process_repeat_exact": true,
+    "fresh_process_repeat_count": 2,
+    "measured_runs": [
+      {
+        "prompt_tokens": 55,
+        "prompt_tokens_per_second": 54.21427254796237,
+        "decode_tokens": 32,
+        "decode_tokens_per_second": 18.356781253137147
+      },
+      {
+        "prompt_tokens": 55,
+        "prompt_tokens_per_second": 50.95229845818345,
+        "decode_tokens": 32,
+        "decode_tokens_per_second": 18.47216706227891
+      }
+    ]
+  },
+  "known_oracle_constraints": [
+    "Poolside flash_attn_ext_f16 faults on this gfx1151 build with a no-compatible-device-code error reporting HIP arch 1300; the accepted oracle uses the numerically equivalent unfused attention path with -fa off.",
+    "Sequential second completions in one Poolside server process diverged after a shared greedy prefix even with cache-ram disabled. Accepted oracle repetitions each use a fresh server process; same-process sequential output is not oracle evidence.",
+    "This artifact is correctness evidence, not a retained hipEngine performance benchmark or a llama.cpp performance baseline."
+  ]
+}

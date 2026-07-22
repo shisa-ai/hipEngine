@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -8,6 +10,9 @@ from hipengine.loading.gguf import GGUFReader
 from hipengine.tokenization.gguf import LagunaGGUFTokenizer, _pretokenize_laguna
 
 MODEL = Path("/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf")
+POOLSIDE_TEMPLATE_FIXTURE = (
+    Path(__file__).parent / "fixtures" / "laguna_poolside_v1_template.json"
+)
 
 
 @pytest.fixture(scope="module")
@@ -62,6 +67,26 @@ def test_laguna_tokenizer_matches_hf_fast_tokenizer_prompt_fixtures(
     for text, expected in fixtures.items():
         assert tokenizer.encode(text, add_special_tokens=False) == expected
         assert tokenizer.encode(text, add_special_tokens=True) == [2, *expected]
+
+
+def test_laguna_poolside_template_fixture_matches_gguf_tokenizer(
+    tokenizer: LagunaGGUFTokenizer,
+) -> None:
+    fixture = json.loads(POOLSIDE_TEMPLATE_FIXTURE.read_text())
+    assert fixture["poolside_llama_commit"] == (
+        "04b2b72cb54048ead292884adbe11f284e3ec950"
+    )
+    assert hashlib.sha256(tokenizer.chat_template.encode()).hexdigest() == fixture[
+        "template_sha256"
+    ]
+    cases = {case["name"]: case for case in fixture["cases"]}
+    assert cases["no_thinking"]["rendered"].endswith("<assistant></think>")
+    assert cases["thinking"]["rendered"].endswith("<assistant><think>")
+    assert "<arg_key>city</arg_key><arg_value>Paris</arg_value>" in cases[
+        "tool_history"
+    ]["rendered"]
+    for case in cases.values():
+        assert tokenizer.encode(case["rendered"]) == case["token_ids"]
 
 
 def test_laguna_tokenizer_suppresses_eot_text_when_skipping_special(
