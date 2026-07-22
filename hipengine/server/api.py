@@ -1014,8 +1014,12 @@ def _tool_schema_subset() -> list[str]:
     ]
 
 
-def _tools_capability(*, tokenizer_backed: bool) -> dict[str, Any]:
-    return {
+def _tools_capability(
+    *,
+    tokenizer_backed: bool,
+    tool_parser: Any | None = None,
+) -> dict[str, Any]:
+    capability = {
         "enabled": True,
         "strict_decoding": False,
         "strict_result_validation": True,
@@ -1067,6 +1071,10 @@ def _tools_capability(*, tokenizer_backed: bool) -> dict[str, Any]:
             "tokenizer_safe_marker_or_object_envelope_then_stop" if tokenizer_backed else "none"
         ),
     }
+    parser_capability = getattr(tool_parser, "capabilities", None)
+    if isinstance(parser_capability, Mapping):
+        capability.update(dict(parser_capability))
+    return capability
 
 
 def _structured_outputs_capability() -> dict[str, Any]:
@@ -2640,6 +2648,8 @@ class _ParsedChatOutput:
     text: str
     tool_calls: tuple[_ParsedToolCall, ...]
     reasoning_initially_open: bool = False
+    tool_parser_name: str | None = None
+    invalid_tool_call_blocks: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -4930,6 +4940,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         reasoning_parser_name = str(
             getattr(chat_protocol_target, "reasoning_parser_name", "qwen_tags")
         )
+        chat_tool_parser = getattr(chat_protocol_target, "chat_tool_parser", None)
         stream_logprobs = _engine_supports_stream_logprobs(engine)
         configured_context = configured_max_context_tokens()
         cached_context = getattr(app.state, "hipengine_effective_max_context_tokens", None)
@@ -5144,7 +5155,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     "fit_context": tokenizer_caps["count_tokens"],
                     "session_aware_chat": tokenizer_caps["count_tokens"],
                 },
-                "tools": _tools_capability(tokenizer_backed=tokenizer_caps["tokenize"]),
+                "tools": _tools_capability(
+                    tokenizer_backed=tokenizer_caps["tokenize"],
+                    tool_parser=chat_tool_parser,
+                ),
                 "reasoning_controls": {
                     "enabled": True,
                     "fields": _reasoning_control_fields(),
@@ -5637,7 +5651,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 output = f"{previous_text}{output}"
                 text, finish_reason = _apply_stop(output, request.stop)
                 server_stop = text != output
-                raw_parsed = _parse_chat_tool_calls(text)
+                raw_parsed = _parse_chat_tool_calls_for_engine(
+                    getattr(app.state, "hipengine_llm", None),
+                    text,
+                    tools=request.tools,
+                )
                 tool_validation = _validate_chat_tool_result(request, raw_parsed, text)
                 parsed = replace(
                     tool_validation.parsed,
@@ -6014,7 +6032,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             for index, output in enumerate(batch.outputs):
                 text, finish_reason = _apply_stop(output, request.stop)
                 server_stop = text != output
-                raw_parsed = _parse_chat_tool_calls(text)
+                raw_parsed = _parse_chat_tool_calls_for_engine(
+                    getattr(app.state, "hipengine_llm", None),
+                    text,
+                    tools=request.tools,
+                )
                 tool_validation = _validate_chat_tool_result(request, raw_parsed, text)
                 reasoning_initially_open = _reasoning_initially_open_for_prompt(
                     getattr(app.state, "hipengine_llm", None),
@@ -6798,7 +6820,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         )
         final_kv_pool = _kv_pool_stream_payload(engine) if include_hipengine else None
         if buffer_tool_output:
-            parsed = _parse_chat_tool_calls(text)
+            parsed = _parse_chat_tool_calls_for_engine(
+                engine,
+                text,
+                tools=request.tools,
+            )
             tool_validation = _validate_chat_tool_result(request, parsed, text)
             parsed = replace(
                 tool_validation.parsed,
@@ -12780,6 +12806,60 @@ def _is_incomplete_duplicate_tool_prefix_control_residue(text: str, *, tool_name
     return _is_chat_template_control_residue(residue)
 
 
+def _parse_chat_tool_calls_for_engine(
+    engine: Any | None,
+    text: str,
+    *,
+    tools: Sequence[Mapping[str, Any]] | None,
+) -> _ParsedChatOutput:
+    target = _model_chat_protocol_target(engine)
+    parser = getattr(target, "chat_tool_parser", None)
+    parse = getattr(parser, "parse", None)
+    if not callable(parse):
+        return _parse_chat_tool_calls(text)
+    parser_name = str(getattr(parser, "name", type(parser).__name__))
+    try:
+        result = parse(str(text), tools=tools)
+        content = getattr(result, "content")
+        raw_calls = getattr(result, "tool_calls")
+        invalid_blocks = getattr(result, "invalid_blocks", ())
+        if not isinstance(content, str):
+            raise TypeError("model tool parser content must be a string")
+        calls: list[_ParsedToolCall] = []
+        for raw_call in raw_calls:
+            name = getattr(raw_call, "name")
+            arguments = getattr(raw_call, "arguments")
+            raw_text = getattr(raw_call, "raw_text", "")
+            if not isinstance(name, str) or not name:
+                raise TypeError("model tool parser call name must be a non-empty string")
+            calls.append(
+                _ParsedToolCall(
+                    id=f"call_{uuid.uuid4().hex[:24]}",
+                    name=name,
+                    arguments=(
+                        arguments
+                        if isinstance(arguments, str)
+                        else _tool_arguments_json(arguments)
+                    ),
+                    raw_text=str(raw_text),
+                )
+            )
+        return _ParsedChatOutput(
+            text=content,
+            tool_calls=tuple(calls),
+            tool_parser_name=parser_name,
+            invalid_tool_call_blocks=tuple(str(block) for block in invalid_blocks),
+        )
+    except Exception:
+        _LOGGER.exception("model-owned chat tool parser failed")
+        return _ParsedChatOutput(
+            text=str(text),
+            tool_calls=(),
+            tool_parser_name=parser_name,
+            invalid_tool_call_blocks=(str(text),),
+        )
+
+
 def _parse_chat_tool_calls(text: str) -> _ParsedChatOutput:
     calls: list[_ParsedToolCall] = []
     text_parts: list[str] = []
@@ -12890,8 +12970,12 @@ def _validate_chat_tool_result(
         return _ToolValidationResult(parsed)
     mode, required_name = _tool_choice_mode(request.tool_choice)
     strict = _strict_tool_validation_enabled(request)
-    malformed_blocks = _malformed_tool_call_blocks(raw_text) if strict else ()
-    unparseable_blocks = _unparseable_tool_call_blocks(raw_text)
+    if parsed.tool_parser_name is not None:
+        malformed_blocks = parsed.invalid_tool_call_blocks if strict else ()
+        unparseable_blocks = parsed.invalid_tool_call_blocks
+    else:
+        malformed_blocks = _malformed_tool_call_blocks(raw_text) if strict else ()
+        unparseable_blocks = _unparseable_tool_call_blocks(raw_text)
     if strict:
         if mode == "none":
             if parsed.tool_calls or malformed_blocks:
