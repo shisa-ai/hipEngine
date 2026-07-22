@@ -28,6 +28,8 @@ def test_production_defaults_and_raw_byte_accounting() -> None:
         10,
     )
     assert module.parse_decode_threads(args.decode_threads) == (256,)
+    assert args.include_mmq32 is False
+    assert module.parse_args(["--include-mmq32"]).include_mmq32 is True
     assert module.parse_decode_threads("64,128,256") == (64, 128, 256)
     with pytest.raises(ValueError, match="decode threads"):
         module.parse_decode_threads("96,256")

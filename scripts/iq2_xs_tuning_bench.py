@@ -31,6 +31,11 @@ from hipengine.core.memory import (
     host_array_ptr,
     malloc,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_iq2_xs_mmq_prefill import (
+    build_gguf_iq2_xs_mmq_prefill,
+    build_iq2_xs_mmq32_metadata,
+    gguf_iq2_xs_selected_dual_mmq32_prefill_q8_1_d4_bf16_bf16_out,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_iq_gemv import (
     build_gguf_iq_gemv,
     gguf_iq2_xs_selected_dual_silu_gemv_tile1_bf16_bf16_out,
@@ -44,6 +49,11 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_iq_selected_prefill import (
     gguf_iq2_xs_selected_dual_grouped_prefill_compact_auto_bf16_bf16_out,
     gguf_iq2_xs_selected_dual_grouped_prefill_compact_bf16_bf16_out,
     gguf_iq2_xs_selected_dual_grouped_prefill_compact_rowbatch4_bf16_bf16_out,
+)
+from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_mmq_prefill import (
+    build_gguf_q8_0_mmq_prefill,
+    gguf_q8_0_mmq128_quantize_bf16_d4,
+    q8_mmq_d4_nbytes,
 )
 
 
@@ -65,6 +75,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--route-sets", type=int, default=32)
     parser.add_argument("--prefill-tokens", default="16,32,64,128,512")
     parser.add_argument("--distributions", default="balanced,hot,zipf")
+    parser.add_argument(
+        "--include-mmq32",
+        action="store_true",
+        help="measure the IQ2_XS x D4-Q8_1 integer-MMQ32 prefill candidate",
+    )
     parser.add_argument("--warmup-ms", type=float, default=250.0)
     parser.add_argument("--decode-iters", type=int, default=200)
     parser.add_argument("--prefill-iters", type=int, default=10)
@@ -788,6 +803,8 @@ def _prefill_launch(
 def _run_prefill_case(
     *,
     library,
+    mmq_library,
+    quant_library,
     runtime: HipRuntime,
     gate_buf,
     up_buf,
@@ -810,6 +827,7 @@ def _run_prefill_case(
     x_buf = _copy(x)
     starts_buf = _copy(starts)
     out_buf = malloc(int(np.prod(out_shape)) * np.dtype(np.uint16).itemsize)
+    mmq_buffers = []
     try:
         base = _prefill_launch(
             gguf_iq2_xs_selected_dual_grouped_prefill_compact_bf16_bf16_out,
@@ -848,6 +866,60 @@ def _run_prefill_case(
                 compact_rows=compact_rows,
                 args=args,
             )
+
+        mmq = None
+        if args.include_mmq32:
+            metadata = build_iq2_xs_mmq32_metadata(counts.tolist())
+            mmq_starts_buf = _copy(metadata.expert_start_mmq)
+            tile_expert_buf = _copy(metadata.tile_expert)
+            xq_buf = malloc(q8_mmq_d4_nbytes(compact_rows, args.in_features))
+            mmq_buffers.extend((mmq_starts_buf, tile_expert_buf, xq_buf))
+
+            def quantize() -> None:
+                gguf_q8_0_mmq128_quantize_bf16_d4(
+                    x_buf.ptr,
+                    xq_buf.ptr,
+                    compact_rows,
+                    args.in_features,
+                    library=quant_library,
+                    runtime=runtime,
+                )
+
+            def launch_mmq() -> None:
+                gguf_iq2_xs_selected_dual_mmq32_prefill_q8_1_d4_bf16_bf16_out(
+                    xq_buf.ptr,
+                    starts_buf.ptr,
+                    mmq_starts_buf.ptr,
+                    tile_expert_buf.ptr,
+                    gate_buf.ptr,
+                    up_buf.ptr,
+                    out_buf.ptr,
+                    compact_rows=compact_rows,
+                    in_features=args.in_features,
+                    out_features=args.out_features,
+                    num_experts=args.experts,
+                    mmq_total_rows=metadata.mmq_total_rows,
+                    library=mmq_library,
+                    runtime=runtime,
+                )
+
+            def launch_mmq_inclusive() -> None:
+                quantize()
+                launch_mmq()
+
+            quantize()
+            launches.update(
+                {
+                    "q8_d4_quantize": quantize,
+                    "mmq32_prequantized": launch_mmq,
+                    "mmq32_inclusive": launch_mmq_inclusive,
+                }
+            )
+            mmq = {
+                "metadata": metadata,
+                "launch": launch_mmq,
+                "quantize": quantize,
+            }
         correctness = None
         if check_correctness:
             base()
@@ -860,6 +932,27 @@ def _run_prefill_case(
                 candidates[name] = {
                     "passed": mismatches == 0,
                     "bf16_bit_mismatches": mismatches,
+                }
+            if mmq is not None:
+                mmq["quantize"]()
+                mmq["launch"]()
+                actual = _read(out_buf, shape=out_shape, dtype=np.dtype(np.uint16))
+                expected_f32 = _bf16_u16_to_f32(expected)
+                actual_f32 = _bf16_u16_to_f32(actual)
+                quality = evaluate_logits(expected_f32, actual_f32)
+                max_relative = float(
+                    np.max(
+                        np.abs(actual_f32 - expected_f32)
+                        / np.maximum(np.abs(expected_f32), 1.0)
+                    )
+                )
+                candidates["mmq32"] = {
+                    "passed": quality.passed,
+                    "bf16_bit_mismatches": int(np.count_nonzero(actual != expected)),
+                    "max_relative": max_relative,
+                    "kl_mean": quality.kl_mean,
+                    "kl_max": quality.kl_max,
+                    "top1": quality.top1_agreement,
                 }
             correctness = {
                 "passed": all(bool(row["passed"]) for row in candidates.values()),
@@ -930,8 +1023,28 @@ def _run_prefill_case(
                 100.0
                 * (case[name]["median_ms"] / case["base"]["median_ms"] - 1.0)
             )
+        if mmq is not None:
+            mmq_raw_bytes = grouped_raw_weight_bytes_per_dispatch(
+                counts,
+                in_features=args.in_features,
+                out_features=args.out_features,
+                matrices=2,
+                row_batch=32,
+            )
+            case["q8_d4_quantize"] = _sample_summary(
+                samples["q8_d4_quantize"], raw_bytes=0
+            )
+            for name in ("mmq32_prequantized", "mmq32_inclusive"):
+                case[name] = _sample_summary(samples[name], raw_bytes=mmq_raw_bytes)
+                case[f"{name}_vs_auto_percent"] = float(
+                    100.0
+                    * (case[name]["median_ms"] / case["auto"]["median_ms"] - 1.0)
+                )
+            case["mmq32_total_rows"] = mmq["metadata"].mmq_total_rows
         return correctness, case
     finally:
+        for buffer in reversed(mmq_buffers):
+            free(buffer)
         free(out_buf)
         free(starts_buf)
         free(x_buf)
@@ -940,6 +1053,8 @@ def _run_prefill_case(
 def _run_prefill(
     *,
     library,
+    mmq_library,
+    quant_library,
     runtime: HipRuntime,
     gate_buf,
     up_buf,
@@ -952,6 +1067,8 @@ def _run_prefill(
         for distribution in _csv_names(args.distributions):
             correctness, case = _run_prefill_case(
                 library=library,
+                mmq_library=mmq_library,
+                quant_library=quant_library,
                 runtime=runtime,
                 gate_buf=gate_buf,
                 up_buf=up_buf,
@@ -1004,6 +1121,25 @@ def main(argv: Sequence[str] | None = None) -> None:
             require_cached=args.require_cached_build,
         )
         if args.mode in {"all", "prefill"}
+        else None
+    )
+    include_mmq32 = args.include_mmq32 and args.mode in {"all", "prefill"}
+    mmq_library = (
+        build_gguf_iq2_xs_mmq_prefill(
+            load=True,
+            compiler_version=compiler_version,
+            require_cached=args.require_cached_build,
+        )
+        if include_mmq32
+        else None
+    )
+    quant_library = (
+        build_gguf_q8_0_mmq_prefill(
+            load=True,
+            compiler_version=compiler_version,
+            require_cached=args.require_cached_build,
+        )
+        if include_mmq32
         else None
     )
 
@@ -1067,6 +1203,8 @@ def main(argv: Sequence[str] | None = None) -> None:
         if args.mode in {"all", "prefill"}:
             prefill_correctness, prefill = _run_prefill(
                 library=prefill_library,
+                mmq_library=mmq_library,
+                quant_library=quant_library,
                 runtime=runtime,
                 gate_buf=gate_buf,
                 up_buf=up_buf,

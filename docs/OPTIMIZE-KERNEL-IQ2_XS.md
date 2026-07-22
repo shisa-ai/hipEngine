@@ -73,7 +73,9 @@ The current gfx1100 implementation provides:
 - grouped scalar compact prefill;
 - rowbatch4 grouped compact prefill;
 - an auto prefill route;
-- a correctness-gated, test-only compact FP16-WMMA route.
+- a correctness-gated, test-only compact FP16-WMMA route;
+- an explicit 32-row raw-IQ2 x D4-Q8_1 integer-MMQ prefill route for
+  populated experts (model-default promotion remains gated).
 
 The source lives in:
 
@@ -99,7 +101,9 @@ On GPU1, an RX 7900 XTX/gfx1100:
 - retained tile2 selected single/dual use local64, VGPR80/136, LDS512 B,
   and scratch0;
 - grouped base/rowbatch4/adaptive/WMMA remain scratch-free, with adaptive at
-  local256/VGPR88/LDS512 B.
+  local256/VGPR88/LDS512 B;
+- integer MMQ32 is local128/VGPR104/LDS10240 B/scratch0 and its D4 quantizer is
+  local256/VGPR24/LDS0/scratch0.
 
 The accepted primitive packet is
 [`../benchmarks/results/2026-07-22-gpu1-iq2-xs-laguna-primitives.json`](../benchmarks/results/2026-07-22-gpu1-iq2-xs-laguna-primitives.json).
@@ -256,7 +260,7 @@ throughput.
 | 3 | 16-/32-value tasks, wider loads, geometry sweep | both | 10-30% | medium |
 | 4 | Adaptive rowbatch1/2/4 | prefill | measured 0.64-13.09% vs prior policy | low-medium |
 | 5 | Tile two output columns while sharing activations | decode | measured 2.12-8.82% | medium |
-| 6 | IQ2-specific integer MMQ/WMMA | large prefill | 1.5-3x | high |
+| 6 | IQ2-specific integer MMQ/WMMA | large prefill | measured inclusive 1.29-2.00x at 256/512 tokens | retained explicit; model gate pending |
 | 7 | Wave-uniform address, reduction, and codegen cleanup | both | 2-10% | low |
 | 8 | Fuse Q8_1 quantization into its producer | Q8_1 path | several us/layer | medium |
 
@@ -445,15 +449,42 @@ production schedule. Sparse expert padding made related raw-IQ WMMA experiments
 catastrophically slow, including a sampled Q3 path that collapsed to
 0.370 tok/s.
 
-A future IQ2 path should instead follow the pinned llama.cpp IQ2 MMQ concepts:
+The retained explicit IQ2 path follows the pinned llama.cpp IQ2 MMQ concepts:
 
-- Q8_1 activation tiles;
-- IQ2 expanded into packed integer fragments;
-- integer dot/WMMA accumulation;
-- scalar or rowbatch fallback below a measured per-expert population threshold.
+- caller-owned D4-Q8_1 activation tiles;
+- IQ2 expanded directly into packed signed-byte fragments;
+- one LDS-staged 32-column x K256 weight tile reused across both 16-row halves;
+- RDNA3 integer WMMA accumulation;
+- exact scalar/rowbatch fallback below the measured populated threshold.
 
-This lane starts only after scalar/rowbatch tuning and only if the representative
-routing harness shows enough experts at 16 or more rows to amortize tiles.
+**Retained explicit result (2026-07-23):** the first register-only MMQ32 body
+was still 0.61-5.19% slower inclusively at 512 tokens because every row half
+and WMMA half-wave decoded the same raw IQ2 fragment. Source-shaped LDS staging
+removed that fourfold duplicate expansion. The cache-only
+E256/K3072/N1024/top-10 matrix moves exact auto -> quantizer-inclusive MMQ32 by
+`7.755 -> 5.528`, `8.201 -> 5.842`, and `7.647 -> 5.927 ms` at 256 balanced,
+hot, and Zipf routing (-28.72/-28.76/-22.49%); at 512 tokens it moves
+`13.740 -> 6.889`, `14.410 -> 7.726`, and `14.377 -> 7.902 ms`
+(-49.86/-46.38/-45.03%). The D4 quantizer is only 0.03-0.06 ms in this region.
+
+Padding defines the fallback boundary: 16-64 tokens regress 45.92-129.45%, and
+128-token hot/Zipf regress 10.41-19.97%. A conservative synthetic admission is
+therefore `compact_rows >= 2560` for this exact E256/K3072/N1024/top-10 shape;
+it is not a generic shape rule. At the smaller matched E16/K3072/N128/16-row
+screen, inclusive IQ2 MMQ32 is `154.99 us` versus exact IQ2/IQ3/IQ4
+`87.58/74.76/59.22 us`, so it does not supersede the other raw-IQ kernels in
+that sparse/narrow regime. The primitive gate passes on populated expert
+counts `1/15/16/17/31/32/33/64` (max-relative <= 0.05) and representative E256
+checks pass KL/top-1 (`KL max <= 0.00453`, top-1 >= 0.98125), with finite
+outputs. Rocprof confirms local128/VGPR104/LDS10240B/scratch0 and the intended
+integer-WMMA symbol.
+
+The explicit four-axis primitive and benchmark route are retained, but are not
+promoted to the Laguna runtime default. D4 is approximate, the all-layer Laguna
+model KL/top-1 gate is unavailable until integration lands, and runtime
+ownership of Q8 scratch plus MMQ tile metadata is still open. The exact adaptive
+and rowbatch kernels remain registered fallbacks. Evidence:
+[`../benchmarks/results/2026-07-23-gpu1-iq2-xs-mmq32-prefill.json`](../benchmarks/results/2026-07-23-gpu1-iq2-xs-mmq32-prefill.json).
 
 ### P7 — Codegen and reduction cleanup
 
@@ -504,9 +535,12 @@ closed for the rejected scalar-dot implementation.
 
 ### Phase D — large-prefill path
 
-12. Measure expert population distributions from real Laguna prompts.
-13. Implement integer MMQ only if enough work occupies complete tiles.
-14. Keep scalar/rowbatch fallback for sparse experts.
+12. Synthetic integer MMQ32 primitive, inclusive crossover, and profiler gate:
+    complete; explicit route retained.
+13. Measure expert population distributions and all-layer quality from real
+    Laguna prompts once model integration is available.
+14. Promote only with runtime-owned Q8/tile scratch and a shape-aware policy;
+    keep scalar/rowbatch fallback for sparse experts.
 
 ## Representative benchmark matrix
 
@@ -643,7 +677,7 @@ and state/KV behavior before kernel model-level gates begin.
 | Adaptive rowbatch | complete | exact batch1/2/4 sparse policy retained; rowbatch8 rejected |
 | Output tile2 | complete | exact tile2 retained across cold/hot/repeated routes |
 | Q8_1 `sudot4` | rejected; code removed | primitive/ISA gates passed, but inclusive rotating/repeated decode regressed 2.27/2.12% |
-| Integer MMQ | queued | populated-expert crossover and retained full-shape win |
+| Integer MMQ | retained explicit; model gate pending | 22.49-49.86% inclusive win at 256/512 tokens; runtime promotion waits on Laguna all-layer quality and scratch ownership |
 | Laguna model validation | blocked on integration | all-tensor runner plus model-level gates |
 
 ## Source lineage

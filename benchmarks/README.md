@@ -1946,6 +1946,24 @@ primitive quality gate (projection/fused KL mean `0.000330/0.006713`, top-1
 repeated experts. The representative cold/repeated regressions reject the lane;
 candidate code was removed and no Q8_1 sidecar or fusion is retained.
 
+The retained explicit integer-prefill primitive is
+[`2026-07-23-gpu1-iq2-xs-mmq32-prefill.json`](results/2026-07-23-gpu1-iq2-xs-mmq32-prefill.json).
+At E256/K3072/N1024/top-10, raw IQ2 signed-byte fragments are expanded once per
+32-column x K256 tile into LDS and reused across four 16x16 RDNA3 integer-WMMA
+minitiles. Exact auto -> D4-quantizer-inclusive MMQ32 moves the 256-token
+balanced/hot/Zipf cases `7.755/8.201/7.647 -> 5.528/5.842/5.927 ms`
+(-28.72/-28.76/-22.49%) and the 512-token cases
+`13.740/14.410/14.377 -> 6.889/7.726/7.902 ms`
+(-49.86/-46.38/-45.03%). The populated-expert fixture passes max-relative
+`<=0.05`; representative E256 quality has KL max `<=0.00453`, top-1
+`>=0.98125`, and finite outputs. Rocprof records local128/VGPR104/LDS10240B and
+scratch0; the D4 quantizer is local256/VGPR24/scratch0. Short padding remains a
+hard blocker: 16-64 tokens regress 45.92-129.45%, and 128-token hot/Zipf regress
+10.41-19.97%. The four-axis primitive and optional benchmark route are retained,
+but runtime default promotion waits on Laguna all-layer quality and ownership of
+Q8/tile scratch; exact adaptive/rowbatch remains unchanged. This is synthetic
+primitive evidence, not Laguna model throughput or quality evidence.
+
 ## Update Checklist
 
 1. Choose one protocol tuple and record the old artifact before running.

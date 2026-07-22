@@ -1,0 +1,1058 @@
+{
+  "schema": "hipengine.iq2_xs_mmq32_prefill.v1",
+  "created_at": "2026-07-23T03:50:00+00:00",
+  "status": "retained_explicit_model_gate_pending",
+  "scope": "synthetic Laguna-shaped raw IQ2_XS selected dual prefill; no Laguna model throughput or model-quality claim",
+  "measured_base_commit": "5f54321e9fd06dea9bcbb70bc86f6700c2f4292a",
+  "hardware": {
+    "gpu_index": "1",
+    "name": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100"
+  },
+  "shape": {
+    "experts": 256,
+    "in_features": 3072,
+    "out_features": 1024,
+    "top_k": 10
+  },
+  "source_lineage": {
+    "llama_cpp_hip": "1ebf790cda38d827559548f67b0469189690cc8c",
+    "files": [
+      "ggml/src/ggml-cuda/mmq.cuh",
+      "ggml/src/ggml-cuda/mma.cuh"
+    ],
+    "algorithm": "D4 block_q8_1_mmq activations plus raw IQ2_XS signed-byte expansion, LDS K256 weight-tile reuse, and RDNA3 i8 WMMA"
+  },
+  "commands": {
+    "crossover": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt PYTHONPATH=. python3 scripts/iq2_xs_tuning_bench.py --mode prefill --include-mmq32 --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --hardware-gpu 'AMD Radeon RX 7900 XTX' --prefill-tokens 16,32,64,256 --distributions balanced,hot,zipf --warmup-ms 250 --prefill-iters 10 --repeats 5 --json /tmp/iq2-mmq32-lds-crossover.json",
+    "populated": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt PYTHONPATH=. python3 scripts/iq2_xs_tuning_bench.py --mode prefill --include-mmq32 --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --hardware-gpu 'AMD Radeon RX 7900 XTX' --prefill-tokens 128,512 --distributions balanced,hot,zipf --warmup-ms 250 --prefill-iters 10 --repeats 5 --json /tmp/iq2-mmq32-lds-prod.json",
+    "profile": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv --output-file /tmp/hipengine-iq2-mmq32-rocprof/iq2-mmq32 -- bash -lc 'cd /home/lhl/hipEngine-main && PYTHONPATH=. python3 scripts/iq2_xs_tuning_bench.py --mode prefill --include-mmq32 --require-cached-build --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --experts 16 --out-features 128 --top-k 10 --prefill-tokens 64 --distributions zipf --warmup-ms 0 --prefill-iters 1 --repeats 1 --skip-correctness'"
+  },
+  "timing": {
+    "warmup_ms_per_case": 250.0,
+    "decode_iterations": 200,
+    "prefill_iterations": 10,
+    "repeats": 5,
+    "counterbalanced": true
+  },
+  "cases": [
+    {
+      "tokens": 16,
+      "compact_rows": 160,
+      "distribution": "balanced",
+      "active_experts": 160,
+      "count_min": 0,
+      "count_max": 1,
+      "count_mean_active": 1.0,
+      "mmq32_total_rows": 5120,
+      "auto": {
+        "samples_ms": [
+          1.1999731063842773,
+          1.1327842712402343,
+          1.2026688575744628,
+          1.1323322296142577,
+          1.1794286727905274
+        ],
+        "median_ms": 1.1794286727905274
+      },
+      "q8_d4_quantize": {
+        "samples_ms": [
+          0.0059321001172065735,
+          0.005375999957323074,
+          0.005608100071549415,
+          0.005492100119590759,
+          0.005700099840760231
+        ],
+        "median_ms": 0.005608100071549415
+      },
+      "mmq32_prequantized": {
+        "samples_ms": [
+          2.8206819534301757,
+          2.7055452346801756,
+          2.8015819549560548,
+          2.7879138946533204,
+          2.791189956665039
+        ],
+        "median_ms": 2.791189956665039
+      },
+      "mmq32_inclusive": {
+        "samples_ms": [
+          2.7181421279907227,
+          2.7080610275268553,
+          2.7008567810058595,
+          2.8159061431884767,
+          2.699856758117676
+        ],
+        "median_ms": 2.7080610275268553
+      },
+      "mmq32_inclusive_vs_auto_percent": 129.60786777547005
+    },
+    {
+      "tokens": 16,
+      "compact_rows": 160,
+      "distribution": "hot",
+      "active_experts": 88,
+      "count_min": 0,
+      "count_max": 10,
+      "count_mean_active": 1.8181818181818181,
+      "mmq32_total_rows": 2816,
+      "auto": {
+        "samples_ms": [
+          0.9300299644470215,
+          0.8828334808349609,
+          0.9300259590148926,
+          0.893885612487793,
+          0.9180418968200683
+        ],
+        "median_ms": 0.9180418968200683
+      },
+      "q8_d4_quantize": {
+        "samples_ms": [
+          0.0056200999766588215,
+          0.005552000179886818,
+          0.0055240999907255174,
+          0.005536099895834923,
+          0.005508000031113625
+        ],
+        "median_ms": 0.005536099895834923
+      },
+      "mmq32_prequantized": {
+        "samples_ms": [
+          1.6159894943237305,
+          1.5433165550231933,
+          1.6085294723510741,
+          1.5852291107177734,
+          1.6093572616577148
+        ],
+        "median_ms": 1.6085294723510741
+      },
+      "mmq32_inclusive": {
+        "samples_ms": [
+          1.5663687705993652,
+          1.5496207237243653,
+          1.5662527084350586,
+          1.615493392944336,
+          1.5725607872009277
+        ],
+        "median_ms": 1.5663687705993652
+      },
+      "mmq32_inclusive_vs_auto_percent": 70.62061938839439
+    },
+    {
+      "tokens": 16,
+      "compact_rows": 160,
+      "distribution": "zipf",
+      "active_experts": 82,
+      "count_min": 0,
+      "count_max": 26,
+      "count_mean_active": 1.951219512195122,
+      "mmq32_total_rows": 2624,
+      "auto": {
+        "samples_ms": [
+          0.9001776695251464,
+          0.8557251930236817,
+          0.8969575881958007,
+          0.8635373115539551,
+          0.8833495140075683
+        ],
+        "median_ms": 0.8833495140075683
+      },
+      "q8_d4_quantize": {
+        "samples_ms": [
+          0.005592099949717521,
+          0.00546410009264946,
+          0.0054200001060962675,
+          0.005528099834918976,
+          0.005540100112557411
+        ],
+        "median_ms": 0.005528099834918976
+      },
+      "mmq32_prequantized": {
+        "samples_ms": [
+          1.5032720565795898,
+          1.4411834716796874,
+          1.5073601722717285,
+          1.4837238311767578,
+          1.502840232849121
+        ],
+        "median_ms": 1.502840232849121
+      },
+      "mmq32_inclusive": {
+        "samples_ms": [
+          1.4723318099975586,
+          1.4518155097961425,
+          1.4700676918029785,
+          1.5147643089294434,
+          1.4745878219604491
+        ],
+        "median_ms": 1.4723318099975586
+      },
+      "mmq32_inclusive_vs_auto_percent": 66.67601970118298
+    },
+    {
+      "tokens": 32,
+      "compact_rows": 320,
+      "distribution": "balanced",
+      "active_experts": 256,
+      "count_min": 1,
+      "count_max": 2,
+      "count_mean_active": 1.25,
+      "mmq32_total_rows": 8192,
+      "auto": {
+        "samples_ms": [
+          1.9374807357788086,
+          1.8220796585083008,
+          1.9341808319091798,
+          1.8032112121582031,
+          1.9125406265258789
+        ],
+        "median_ms": 1.9125406265258789
+      },
+      "q8_d4_quantize": {
+        "samples_ms": [
+          0.007676099985837936,
+          0.00702809989452362,
+          0.007336100190877914,
+          0.006992100179195404,
+          0.007580099999904633
+        ],
+        "median_ms": 0.007336100190877914
+      },
+      "mmq32_prequantized": {
+        "samples_ms": [
+          4.425779724121094,
+          4.312174224853516,
+          4.430759429931641,
+          4.438371658325195,
+          4.454619979858398
+        ],
+        "median_ms": 4.430759429931641
+      },
+      "mmq32_inclusive": {
+        "samples_ms": [
+          4.317750549316406,
+          4.321614456176758,
+          4.311554336547852,
+          4.433407592773437,
+          4.322842407226562
+        ],
+        "median_ms": 4.321614456176758
+      },
+      "mmq32_inclusive_vs_auto_percent": 125.96196892439093
+    },
+    {
+      "tokens": 32,
+      "compact_rows": 320,
+      "distribution": "hot",
+      "active_experts": 168,
+      "count_min": 0,
+      "count_max": 20,
+      "count_mean_active": 1.9047619047619047,
+      "mmq32_total_rows": 5376,
+      "auto": {
+        "samples_ms": [
+          1.6291934967041015,
+          1.553016757965088,
+          1.6300176620483398,
+          1.5630008697509765,
+          1.6179052352905274
+        ],
+        "median_ms": 1.6179052352905274
+      },
+      "q8_d4_quantize": {
+        "samples_ms": [
+          0.00748400017619133,
+          0.00702809989452362,
+          0.007364100217819214,
+          0.007064100354909897,
+          0.007304099947214126
+        ],
+        "median_ms": 0.007304099947214126
+      },
+      "mmq32_prequantized": {
+        "samples_ms": [
+          3.0159284591674806,
+          2.9197311401367188,
+          3.0170124053955076,
+          2.997332000732422,
+          3.0279165267944337
+        ],
+        "median_ms": 3.0159284591674806
+      },
+      "mmq32_inclusive": {
+        "samples_ms": [
+          2.9262996673583985,
+          2.9233354568481444,
+          2.9169795989990233,
+          2.9966524124145506,
+          2.9280794143676756
+        ],
+        "median_ms": 2.9262996673583985
+      },
+      "mmq32_inclusive_vs_auto_percent": 80.86965809421605
+    },
+    {
+      "tokens": 32,
+      "compact_rows": 320,
+      "distribution": "zipf",
+      "active_experts": 131,
+      "count_min": 0,
+      "count_max": 52,
+      "count_mean_active": 2.4427480916030535,
+      "mmq32_total_rows": 4224,
+      "auto": {
+        "samples_ms": [
+          1.470771884918213,
+          1.4063912391662599,
+          1.4658799171447754,
+          1.4224152565002441,
+          1.4610516548156738
+        ],
+        "median_ms": 1.4610516548156738
+      },
+      "q8_d4_quantize": {
+        "samples_ms": [
+          0.007332099974155426,
+          0.0070119999349117276,
+          0.007356099784374237,
+          0.007227999716997146,
+          0.007280000299215317
+        ],
+        "median_ms": 0.007280000299215317
+      },
+      "mmq32_prequantized": {
+        "samples_ms": [
+          2.4124420166015623,
+          2.332012939453125,
+          2.411314010620117,
+          2.4061460494995117,
+          2.4121219635009767
+        ],
+        "median_ms": 2.411314010620117
+      },
+      "mmq32_inclusive": {
+        "samples_ms": [
+          2.3396772384643554,
+          2.3325931549072267,
+          2.3428972244262694,
+          2.405617904663086,
+          2.3514251708984375
+        ],
+        "median_ms": 2.3428972244262694
+      },
+      "mmq32_inclusive_vs_auto_percent": 60.3569057058321
+    },
+    {
+      "tokens": 64,
+      "compact_rows": 640,
+      "distribution": "balanced",
+      "active_experts": 256,
+      "count_min": 2,
+      "count_max": 3,
+      "count_mean_active": 2.5,
+      "mmq32_total_rows": 8192,
+      "auto": {
+        "samples_ms": [
+          2.4898548126220703,
+          2.3767936706542967,
+          2.4932788848876952,
+          2.3763216018676756,
+          2.490634727478027
+        ],
+        "median_ms": 2.4898548126220703
+      },
+      "q8_d4_quantize": {
+        "samples_ms": [
+          0.010792099684476853,
+          0.009892100095748901,
+          0.010764200240373611,
+          0.010060100257396698,
+          0.010752099752426147
+        ],
+        "median_ms": 0.010752099752426147
+      },
+      "mmq32_prequantized": {
+        "samples_ms": [
+          4.595013427734375,
+          4.486992263793946,
+          4.602481460571289,
+          4.56646957397461,
+          4.613625717163086
+        ],
+        "median_ms": 4.595013427734375
+      },
+      "mmq32_inclusive": {
+        "samples_ms": [
+          4.481824493408203,
+          4.503408813476563,
+          4.475128555297852,
+          4.5698974609375,
+          4.4838203430175785
+        ],
+        "median_ms": 4.4838203430175785
+      },
+      "mmq32_inclusive_vs_auto_percent": 80.08360649333042
+    },
+    {
+      "tokens": 64,
+      "compact_rows": 640,
+      "distribution": "hot",
+      "active_experts": 256,
+      "count_min": 1,
+      "count_max": 40,
+      "count_mean_active": 2.5,
+      "mmq32_total_rows": 8448,
+      "auto": {
+        "samples_ms": [
+          2.7156692504882813,
+          2.6555328369140625,
+          2.758382034301758,
+          2.654096794128418,
+          2.7269256591796873
+        ],
+        "median_ms": 2.7156692504882813
+      },
+      "q8_d4_quantize": {
+        "samples_ms": [
+          0.010624100267887116,
+          0.009992100298404694,
+          0.01066809967160225,
+          0.01175609976053238,
+          0.010588099807500839
+        ],
+        "median_ms": 0.010624100267887116
+      },
+      "mmq32_prequantized": {
+        "samples_ms": [
+          4.662902450561523,
+          4.592833709716797,
+          4.693310928344727,
+          4.662830352783203,
+          4.677610778808594
+        ],
+        "median_ms": 4.662902450561523
+      },
+      "mmq32_inclusive": {
+        "samples_ms": [
+          4.594033432006836,
+          4.598385620117187,
+          4.5685375213623045,
+          4.664622497558594,
+          4.603458023071289
+        ],
+        "median_ms": 4.598385620117187
+      },
+      "mmq32_inclusive_vs_auto_percent": 69.32789658720004
+    },
+    {
+      "tokens": 64,
+      "compact_rows": 640,
+      "distribution": "zipf",
+      "active_experts": 204,
+      "count_min": 0,
+      "count_max": 104,
+      "count_mean_active": 3.1372549019607843,
+      "mmq32_total_rows": 6688,
+      "auto": {
+        "samples_ms": [
+          2.5633756637573244,
+          2.500491142272949,
+          2.5778839111328127,
+          2.483514976501465,
+          2.585036277770996
+        ],
+        "median_ms": 2.5633756637573244
+      },
+      "q8_d4_quantize": {
+        "samples_ms": [
+          0.010620100051164627,
+          0.009952100366353989,
+          0.010448099672794342,
+          0.009888099879026413,
+          0.010596100240945816
+        ],
+        "median_ms": 0.010448099672794342
+      },
+      "mmq32_prequantized": {
+        "samples_ms": [
+          3.8024776458740233,
+          3.7219242095947265,
+          3.7999492645263673,
+          3.7809253692626954,
+          3.8072135925292967
+        ],
+        "median_ms": 3.7999492645263673
+      },
+      "mmq32_inclusive": {
+        "samples_ms": [
+          3.716324234008789,
+          3.7372726440429687,
+          3.729584884643555,
+          3.801173782348633,
+          3.7344806671142576
+        ],
+        "median_ms": 3.7344806671142576
+      },
+      "mmq32_inclusive_vs_auto_percent": 45.68604672014247
+    },
+    {
+      "tokens": 128,
+      "compact_rows": 1280,
+      "distribution": "balanced",
+      "active_experts": 256,
+      "count_min": 5,
+      "count_max": 5,
+      "count_mean_active": 5.0,
+      "mmq32_total_rows": 8192,
+      "auto": {
+        "samples_ms": [
+          4.904331970214844,
+          4.827003860473633,
+          4.905992889404297,
+          4.815940475463867,
+          4.943086242675781
+        ],
+        "median_ms": 4.904331970214844
+      },
+      "q8_d4_quantize": {
+        "samples_ms": [
+          0.018400199711322784,
+          0.017840200662612916,
+          0.01841620057821274,
+          0.01788419932126999,
+          0.01862419992685318
+        ],
+        "median_ms": 0.018400199711322784
+      },
+      "mmq32_prequantized": {
+        "samples_ms": [
+          4.889099884033203,
+          4.796563720703125,
+          4.90185317993164,
+          4.891089248657226,
+          4.906086349487305
+        ],
+        "median_ms": 4.891089248657226
+      },
+      "mmq32_inclusive": {
+        "samples_ms": [
+          4.821235656738281,
+          4.832683563232422,
+          4.822075653076172,
+          4.916838455200195,
+          4.823321533203125
+        ],
+        "median_ms": 4.823321533203125
+      },
+      "mmq32_inclusive_vs_auto_percent": -1.651813896443266
+    },
+    {
+      "tokens": 128,
+      "compact_rows": 1280,
+      "distribution": "hot",
+      "active_experts": 256,
+      "count_min": 2,
+      "count_max": 80,
+      "count_mean_active": 5.0,
+      "mmq32_total_rows": 8704,
+      "auto": {
+        "samples_ms": [
+          4.183319091796875,
+          4.123618316650391,
+          4.187947082519531,
+          4.132254791259766,
+          4.205791854858399
+        ],
+        "median_ms": 4.183319091796875
+      },
+      "q8_d4_quantize": {
+        "samples_ms": [
+          0.017284099757671357,
+          0.01620810031890869,
+          0.017124199867248537,
+          0.017248100042343138,
+          0.01740420013666153
+        ],
+        "median_ms": 0.017248100042343138
+      },
+      "mmq32_prequantized": {
+        "samples_ms": [
+          5.068759155273438,
+          4.992114639282226,
+          5.061235427856445,
+          5.05482177734375,
+          5.0668281555175785
+        ],
+        "median_ms": 5.061235427856445
+      },
+      "mmq32_inclusive": {
+        "samples_ms": [
+          5.009614944458008,
+          5.001562881469726,
+          5.005768966674805,
+          5.056195449829102,
+          4.99957160949707
+        ],
+        "median_ms": 5.005768966674805
+      },
+      "mmq32_inclusive_vs_auto_percent": 19.660223301891612
+    },
+    {
+      "tokens": 128,
+      "compact_rows": 1280,
+      "distribution": "zipf",
+      "active_experts": 256,
+      "count_min": 1,
+      "count_max": 209,
+      "count_mean_active": 5.0,
+      "mmq32_total_rows": 8640,
+      "auto": {
+        "samples_ms": [
+          4.516818618774414,
+          4.440198135375977,
+          4.5135986328125,
+          4.468494415283203,
+          4.548675537109375
+        ],
+        "median_ms": 4.5135986328125
+      },
+      "q8_d4_quantize": {
+        "samples_ms": [
+          0.017180100083351135,
+          0.016180099546909334,
+          0.017000199854373933,
+          0.016092200577259064,
+          0.017444199323654173
+        ],
+        "median_ms": 0.017000199854373933
+      },
+      "mmq32_prequantized": {
+        "samples_ms": [
+          5.049391555786133,
+          4.981195068359375,
+          5.049988174438477,
+          5.032487869262695,
+          5.063956451416016
+        ],
+        "median_ms": 5.049391555786133
+      },
+      "mmq32_inclusive": {
+        "samples_ms": [
+          4.976271057128907,
+          4.990559387207031,
+          4.988975143432617,
+          5.041724014282226,
+          4.987044143676758
+        ],
+        "median_ms": 4.988975143432617
+      },
+      "mmq32_inclusive_vs_auto_percent": 10.532095325540759
+    },
+    {
+      "tokens": 256,
+      "compact_rows": 2560,
+      "distribution": "balanced",
+      "active_experts": 256,
+      "count_min": 10,
+      "count_max": 10,
+      "count_mean_active": 10.0,
+      "mmq32_total_rows": 8192,
+      "auto": {
+        "samples_ms": [
+          7.812309265136719,
+          7.795980834960938,
+          7.751504516601562,
+          7.677623748779297,
+          7.7568412780761715
+        ],
+        "median_ms": 7.7568412780761715
+      },
+      "q8_d4_quantize": {
+        "samples_ms": [
+          0.030852299928665162,
+          0.028424298763275145,
+          0.03369939923286438,
+          0.031428399682044986,
+          0.03242039978504181
+        ],
+        "median_ms": 0.031428399682044986
+      },
+      "mmq32_prequantized": {
+        "samples_ms": [
+          5.561444854736328,
+          5.502264022827148,
+          5.499572372436523,
+          5.4717041015625,
+          5.500048828125
+        ],
+        "median_ms": 5.500048828125
+      },
+      "mmq32_inclusive": {
+        "samples_ms": [
+          5.551412963867188,
+          5.5565849304199215,
+          5.478044128417968,
+          5.540116882324218,
+          5.4716438293457035
+        ],
+        "median_ms": 5.540116882324218
+      },
+      "mmq32_inclusive_vs_auto_percent": -28.577668619019857
+    },
+    {
+      "tokens": 256,
+      "compact_rows": 2560,
+      "distribution": "hot",
+      "active_experts": 256,
+      "count_min": 5,
+      "count_max": 160,
+      "count_mean_active": 10.0,
+      "mmq32_total_rows": 9216,
+      "auto": {
+        "samples_ms": [
+          8.203602600097657,
+          8.137761688232422,
+          8.212530517578125,
+          8.134294128417968,
+          8.220130920410156
+        ],
+        "median_ms": 8.203602600097657
+      },
+      "q8_d4_quantize": {
+        "samples_ms": [
+          0.03234440088272095,
+          0.031172400712966918,
+          0.032288399338722226,
+          0.03212830126285553,
+          0.03214839994907379
+        ],
+        "median_ms": 0.03214839994907379
+      },
+      "mmq32_prequantized": {
+        "samples_ms": [
+          5.857186508178711,
+          5.791007995605469,
+          5.848308944702149,
+          5.8610576629638675,
+          5.853932952880859
+        ],
+        "median_ms": 5.853932952880859
+      },
+      "mmq32_inclusive": {
+        "samples_ms": [
+          5.815871810913086,
+          5.8441322326660154,
+          5.8329723358154295,
+          5.887969207763672,
+          5.832548904418945
+        ],
+        "median_ms": 5.8329723358154295
+      },
+      "mmq32_inclusive_vs_auto_percent": -28.89742933493642
+    },
+    {
+      "tokens": 256,
+      "compact_rows": 2560,
+      "distribution": "zipf",
+      "active_experts": 256,
+      "count_min": 2,
+      "count_max": 418,
+      "count_mean_active": 10.0,
+      "mmq32_total_rows": 9344,
+      "auto": {
+        "samples_ms": [
+          7.6382568359375,
+          7.6278564453125,
+          7.6557975769042965,
+          7.605912780761718,
+          7.66258544921875
+        ],
+        "median_ms": 7.6382568359375
+      },
+      "q8_d4_quantize": {
+        "samples_ms": [
+          0.029788300395011902,
+          0.029873400926589966,
+          0.029628300666809083,
+          0.02868430018424988,
+          0.030024299025535585
+        ],
+        "median_ms": 0.029788300395011902
+      },
+      "mmq32_prequantized": {
+        "samples_ms": [
+          5.946261978149414,
+          5.882217788696289,
+          5.926605987548828,
+          5.92296257019043,
+          5.947786331176758
+        ],
+        "median_ms": 5.926605987548828
+      },
+      "mmq32_inclusive": {
+        "samples_ms": [
+          5.917481994628906,
+          5.929830169677734,
+          5.9211784362792965,
+          5.97735481262207,
+          5.923834228515625
+        ],
+        "median_ms": 5.923834228515625
+      },
+      "mmq32_inclusive_vs_auto_percent": -22.44520764679747
+    },
+    {
+      "tokens": 512,
+      "compact_rows": 5120,
+      "distribution": "balanced",
+      "active_experts": 256,
+      "count_min": 20,
+      "count_max": 20,
+      "count_mean_active": 20.0,
+      "mmq32_total_rows": 8192,
+      "auto": {
+        "samples_ms": [
+          13.698091125488281,
+          13.676319885253907,
+          13.714340209960938,
+          13.681324768066407,
+          13.704649353027344
+        ],
+        "median_ms": 13.698091125488281
+      },
+      "q8_d4_quantize": {
+        "samples_ms": [
+          0.054824501276016235,
+          0.057328599691390994,
+          0.054200601577758786,
+          0.057900500297546384,
+          0.05936049818992615
+        ],
+        "median_ms": 0.057328599691390994
+      },
+      "mmq32_prequantized": {
+        "samples_ms": [
+          6.794181060791016,
+          6.665167999267578,
+          6.790805816650391,
+          6.722773742675781,
+          6.794974517822266
+        ],
+        "median_ms": 6.790805816650391
+      },
+      "mmq32_inclusive": {
+        "samples_ms": [
+          6.8436134338378904,
+          6.917430114746094,
+          6.890479278564453,
+          6.8474067687988285,
+          6.855467224121094
+        ],
+        "median_ms": 6.855467224121094
+      },
+      "mmq32_inclusive_vs_auto_percent": -49.953120027322605
+    },
+    {
+      "tokens": 512,
+      "compact_rows": 5120,
+      "distribution": "hot",
+      "active_experts": 256,
+      "count_min": 10,
+      "count_max": 320,
+      "count_mean_active": 20.0,
+      "mmq32_total_rows": 10496,
+      "auto": {
+        "samples_ms": [
+          14.356312561035157,
+          14.303329467773438,
+          14.381922912597656,
+          14.309806823730469,
+          14.392794799804687
+        ],
+        "median_ms": 14.356312561035157
+      },
+      "q8_d4_quantize": {
+        "samples_ms": [
+          0.0698756992816925,
+          0.05748860239982605,
+          0.06004859805107117,
+          0.05729259848594666,
+          0.061636698246002194
+        ],
+        "median_ms": 0.06004859805107117
+      },
+      "mmq32_prequantized": {
+        "samples_ms": [
+          7.556958770751953,
+          7.533494567871093,
+          7.585947418212891,
+          7.5537353515625,
+          7.586499786376953
+        ],
+        "median_ms": 7.556958770751953
+      },
+      "mmq32_inclusive": {
+        "samples_ms": [
+          7.606082916259766,
+          7.5874786376953125,
+          7.5810394287109375,
+          7.633164978027343,
+          7.582096099853516
+        ],
+        "median_ms": 7.5874786376953125
+      },
+      "mmq32_inclusive_vs_auto_percent": -47.148833619792555
+    },
+    {
+      "tokens": 512,
+      "compact_rows": 5120,
+      "distribution": "zipf",
+      "active_experts": 256,
+      "count_min": 3,
+      "count_max": 836,
+      "count_mean_active": 20.0,
+      "mmq32_total_rows": 11040,
+      "auto": {
+        "samples_ms": [
+          14.373442077636719,
+          14.32130126953125,
+          14.37232666015625,
+          14.31817169189453,
+          14.323324584960938
+        ],
+        "median_ms": 14.323324584960938
+      },
+      "q8_d4_quantize": {
+        "samples_ms": [
+          0.06109259724617004,
+          0.05284450054168701,
+          0.06036459803581238,
+          0.05260850191116333,
+          0.05604060292243958
+        ],
+        "median_ms": 0.05604060292243958
+      },
+      "mmq32_prequantized": {
+        "samples_ms": [
+          7.849439239501953,
+          7.802255249023437,
+          7.869127655029297,
+          7.842540740966797,
+          7.848040771484375
+        ],
+        "median_ms": 7.848040771484375
+      },
+      "mmq32_inclusive": {
+        "samples_ms": [
+          7.880271911621094,
+          7.878864288330078,
+          7.896580505371094,
+          7.900872802734375,
+          7.892549896240235
+        ],
+        "median_ms": 7.892549896240235
+      },
+      "mmq32_inclusive_vs_auto_percent": -44.89722096693127
+    }
+  ],
+  "admission_observation": {
+    "all_256_token_cases_win_percent": [
+      -28.72,
+      -28.76,
+      -22.49
+    ],
+    "all_512_token_cases_win_percent": [
+      -49.86,
+      -46.38,
+      -45.03
+    ],
+    "shortest_uniform_safe_policy": "compact_rows >= 2560 at E256/K3072/N1024/top10 (256 tokens); model integration remains blocked on Laguna all-layer quality",
+    "not_promoted_reason": "D4 is approximate and Laguna all-layer/model KL/top-1 plus runtime scratch/metadata ownership are not implemented; 16-64 tokens regress 45.92-129.45% and 128-token hot/Zipf regress 10.41-19.97%."
+  },
+  "cache_only_confirmation": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-q3.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 scripts/iq2_xs_tuning_bench.py --mode prefill --include-mmq32 --require-cached-build --compiler-version-file /tmp/hipengine-hipcc-version-q3.txt --hardware-gpu 'AMD Radeon RX 7900 XTX' --prefill-tokens 16,32,64,128,256,512 --distributions balanced,hot,zipf --warmup-ms 250 --prefill-iters 10 --repeats 5 --json /tmp/iq2-mmq32-final.json",
+    "repository_gate_passed": true,
+    "auto_to_inclusive_ms": {
+      "256_balanced": [7.7551, 5.528],
+      "256_hot": [8.2005, 5.8419],
+      "256_zipf": [7.6465, 5.9268],
+      "512_balanced": [13.7395, 6.8892],
+      "512_hot": [14.4098, 7.7262],
+      "512_zipf": [14.3766, 7.9021]
+    },
+    "inclusive_delta_percent": {
+      "256_balanced": -28.72,
+      "256_hot": -28.76,
+      "256_zipf": -22.49,
+      "512_balanced": -49.86,
+      "512_hot": -46.38,
+      "512_zipf": -45.03
+    }
+  },
+  "correctness": {
+    "dedicated_populated_expert_fixture": {
+      "counts": [
+        1,
+        15,
+        16,
+        17,
+        31,
+        32,
+        33,
+        64
+      ],
+      "max_relative_limit": 0.05,
+      "repository_kl_top1_gate_passed": true
+    },
+    "representative_e256_16_balanced": {
+      "passed": true,
+      "bf16_bit_mismatches": 207350,
+      "max_relative": 0.1064453125,
+      "kl_mean": 0.0005243314100245718,
+      "kl_max": 0.0030943678688960564,
+      "top1": 0.98125
+    },
+    "representative_e256_128_balanced": {
+      "passed": true,
+      "bf16_bit_mismatches": 1653947,
+      "max_relative": 0.100341796875,
+      "kl_mean": 0.0005638372115664492,
+      "kl_max": 0.004529363578737813,
+      "top1": 0.98828125
+    },
+    "finite_outputs": true,
+    "fallback": "registered exact selected_dual_grouped_prefill_compact_auto_bf16_bf16_out remains unchanged"
+  },
+  "device_code": {
+    "rocprof_trace_sha256": "89f74a803d647232f5207d334affa3549764e7075a4f8111b69ef790826e9678",
+    "candidate": {
+      "workgroup_x": 128,
+      "vgpr": 104,
+      "lds_bytes": 10240,
+      "scratch_bytes": 0,
+      "profile_duration_ns": 379124,
+      "profile_grid": [
+        1024,
+        26,
+        1
+      ]
+    },
+    "quantizer": {
+      "workgroup_x": 256,
+      "vgpr": 24,
+      "lds_bytes": 0,
+      "scratch_bytes": 0
+    },
+    "expected_integer_intrinsic": "__builtin_amdgcn_wmma_i32_16x16x16_iu8_w32"
+  },
+  "cross_format_context": {
+    "matched_e16_k3072_n128_rows_per_expert_16_us": {
+      "iq2_exact_auto": 87.58161544799805,
+      "iq2_mmq32_inclusive": 154.98826026916504,
+      "iq3_exact_historical": 74.761,
+      "iq4_exact_historical": 59.216
+    },
+    "note": "MMQ32 is selected for large-N populated prefill only; at N128/R16 its 32-row padding is slower than exact IQ2/IQ3/IQ4. Decode remains on exact IQ2 tile2."
+  },
+  "decision": "Retain the explicit four-axis MMQ32 primitive and benchmark route. Do not promote it to Laguna runtime default until all-layer model quality and runtime scratch/metadata ownership exist; use exact adaptive/rowbatch fallback below the measured populated threshold."
+}
