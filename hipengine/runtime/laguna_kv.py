@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -45,7 +46,9 @@ class LagunaKVLayerState:
     append_spans: KVLiveSpans
     spans: KVLiveSpans
     write_variant: str
+    write_rows_variant: str
     attention_variant: str
+    attention_prefill_variant: str
 
     @property
     def payload_nbytes(self) -> int:
@@ -74,6 +77,7 @@ class LagunaKVCache:
         self._row_position = row_position
         self.runtime = runtime
         self.position = -1
+        self._pending_positions: tuple[int, ...] = ()
         self._closed = False
 
     @property
@@ -92,6 +96,10 @@ class LagunaKVCache:
     def closed(self) -> bool:
         return self._closed
 
+    @property
+    def pending_positions(self) -> tuple[int, ...]:
+        return self._pending_positions
+
     def layer(self, layer_id: int) -> LagunaKVLayerState:
         self._check_open()
         layer = int(layer_id)
@@ -103,6 +111,8 @@ class LagunaKVCache:
         """Publish one consecutive absolute token position to every layer."""
 
         self._check_open()
+        if self._pending_positions:
+            raise RuntimeError("cannot prepare one token while bulk positions are pending")
         parsed = int(position)
         if parsed < 0 or parsed >= self.context_length:
             raise ValueError("position must be within the admitted context")
@@ -112,6 +122,36 @@ class LagunaKVCache:
             )
         _copy_i64(self._row_position, parsed, self.runtime)
         self.position = parsed
+
+    def prepare_rows(self, positions: Sequence[int]) -> None:
+        """Publish one bounded consecutive chunk without committing its final position."""
+
+        self._check_open()
+        if self._pending_positions:
+            raise RuntimeError("Laguna KV bulk positions are already pending")
+        parsed = tuple(int(position) for position in positions)
+        if not parsed:
+            raise ValueError("Laguna KV bulk positions must be non-empty")
+        if len(parsed) > self.sliding_window:
+            raise ValueError("Laguna KV bulk rows cannot exceed the SWA ring capacity")
+        expected_start = self.position + 1
+        if parsed != tuple(range(expected_start, expected_start + len(parsed))):
+            raise ValueError(
+                f"Laguna KV bulk positions must be consecutive from {expected_start}"
+            )
+        if parsed[-1] >= self.context_length:
+            raise ValueError("Laguna KV bulk positions exceed the admitted context")
+        _copy_i64(self._row_position, parsed[0], self.runtime)
+        self._pending_positions = parsed
+
+    def commit_rows(self) -> None:
+        """Commit the currently prepared chunk after every layer has appended it."""
+
+        self._check_open()
+        if not self._pending_positions:
+            raise RuntimeError("no Laguna KV bulk positions are pending")
+        self.position = self._pending_positions[-1]
+        self._pending_positions = ()
 
     def append(
         self,
@@ -140,6 +180,35 @@ class LagunaKVCache:
             runtime=self.runtime,
         )
 
+    def append_rows(
+        self,
+        layer_id: int,
+        key_ptr: int,
+        value_ptr: int,
+        rows: int,
+        *,
+        stream: int = 0,
+        library=None,
+    ) -> None:
+        """Append all current F32 K/V rows after bulk attention has consumed them."""
+
+        state = self.layer(layer_id)
+        self._check_bulk_rows(rows)
+        fn = self._resolve("laguna_kv_write", state.write_rows_variant)
+        fn(
+            key_ptr,
+            value_ptr,
+            state.key_cache.ptr,
+            state.value_cache.ptr,
+            state.append_spans,
+            int(rows),
+            _LAGUNA_KV_HEADS,
+            _LAGUNA_HEAD_DIM,
+            stream=stream,
+            library=library,
+            runtime=self.runtime,
+        )
+
     def attend(
         self,
         layer_id: int,
@@ -161,6 +230,59 @@ class LagunaKVCache:
             state.value_cache.ptr,
             out_ptr,
             state.spans,
+        )
+        if state.attention_type == FULL_ATTENTION:
+            fn(
+                *common,
+                self.context_length,
+                state.q_heads,
+                _LAGUNA_KV_HEADS,
+                _LAGUNA_HEAD_DIM,
+                scale,
+                stream=stream,
+                library=library,
+                runtime=self.runtime,
+            )
+        else:
+            fn(
+                *common,
+                state.q_heads,
+                _LAGUNA_KV_HEADS,
+                _LAGUNA_HEAD_DIM,
+                scale,
+                sliding_window=self.sliding_window,
+                stream=stream,
+                library=library,
+                runtime=self.runtime,
+            )
+
+    def attend_prefill(
+        self,
+        layer_id: int,
+        query_ptr: int,
+        current_key_ptr: int,
+        current_value_ptr: int,
+        out_ptr: int,
+        rows: int,
+        *,
+        scale: float = _LAGUNA_HEAD_DIM**-0.5,
+        stream: int = 0,
+        library=None,
+    ) -> None:
+        """Run causal bulk attention over prior state plus uncommitted current rows."""
+
+        state = self.layer(layer_id)
+        self._check_bulk_rows(rows)
+        fn = self._resolve("laguna_attention_prefill", state.attention_prefill_variant)
+        common = (
+            query_ptr,
+            current_key_ptr,
+            current_value_ptr,
+            state.key_cache.ptr,
+            state.value_cache.ptr,
+            out_ptr,
+            state.spans,
+            int(rows),
         )
         if state.attention_type == FULL_ATTENTION:
             fn(
@@ -257,6 +379,14 @@ class LagunaKVCache:
     def _check_prepared(self) -> None:
         if self.position < 0:
             raise RuntimeError("prepare_position must run before KV append/attention")
+        if self._pending_positions:
+            raise RuntimeError("token-serial KV operations cannot run while bulk rows are pending")
+
+    def _check_bulk_rows(self, rows: int) -> None:
+        if not self._pending_positions:
+            raise RuntimeError("prepare_rows must run before bulk KV operations")
+        if int(rows) != len(self._pending_positions):
+            raise ValueError("bulk KV rows must match the prepared position count")
 
     def _check_open(self) -> None:
         if self._closed:
@@ -359,7 +489,9 @@ def allocate_laguna_kv_cache(
                 )
                 append_spans = decode_spans
                 write_variant = "global_f32_spans"
+                write_rows_variant = "global_f32_rows_spans"
                 attention_variant = "global_context_spans"
+                attention_prefill_variant = "global_context_rows_spans"
             else:
                 capacity = sliding_window
                 physical_capacity = sliding_window
@@ -392,7 +524,9 @@ def allocate_laguna_kv_cache(
                 )
                 append_spans = decode_spans
                 write_variant = "swa_f32_spans"
+                write_rows_variant = "swa_f32_rows_spans"
                 attention_variant = "swa_context_spans"
+                attention_prefill_variant = "swa_context_rows_spans"
             states.append(
                 LagunaKVLayerState(
                     layer_id=layer_id,
@@ -405,7 +539,9 @@ def allocate_laguna_kv_cache(
                     append_spans=append_spans,
                     spans=decode_spans,
                     write_variant=write_variant,
+                    write_rows_variant=write_rows_variant,
                     attention_variant=attention_variant,
+                    attention_prefill_variant=attention_prefill_variant,
                 )
             )
 
