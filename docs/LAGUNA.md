@@ -2,8 +2,9 @@
 
 Last updated: 2026-07-22
 
-Status: foundation implementation in progress; no end-to-end Laguna runtime or
-performance claim yet.
+Status: eager all-resident c=1 execution is implemented; first-token oracle and
+repeated-state gates pass, with one documented low-margin greedy-32 arithmetic
+split. Public generation, bulk prefill, and performance work remain.
 
 This document defines the correctness-first plan for running
 [`poolside/Laguna-S-2.1-GGUF`](https://huggingface.co/poolside/Laguna-S-2.1-GGUF),
@@ -998,12 +999,12 @@ the pre-final-norm DFlash capture. Its exact S 2.1 template is
 | Global BF16 KV/attention | Complete dense `KVLiveSpans` plus block-256 paged BF16 writer/context attention accepts GQA ratios 6 and 9 and head dim 128 | Closed for eager c=1: the Laguna body preserves the proven block-256 page-table structure while consuming absolute positions and eviction metadata, 48/8 GQA matches direct CPU attention, and softplus remains the separate exact next stage. |
 | 512-token SWA | `KVLiveSpans.sliding_ring` plus native BF16 writer/context attention | Closed for eager c=1: 36 physical rings carry slot offsets, live counts, absolute token positions, eviction masks, and absolute query positions; 72/8 GQA passes 510/511/512/513 and repeated 1024/1025 wraps plus explicit eviction. Bulk prefill remains L8. |
 | Per-head attention gate | Unfused `attention_gate/f32/softplus_broadcast_{f32,bf16}_out` is registered on gfx1100/gfx1151 | Closed: 72-head × 128-channel broadcast, extreme gate logits, and FP32/BF16 outputs match CPU; no fused path is added yet. |
-| Dense layer-0 MLP | Q4_K pack8 gate/up, raw Q6_K down, SiLU, and residual primitives are reusable | Wired into the complete 48-layer eager step; the all-layer smoke is finite. Frozen prompt/logit parity is the remaining whole-model gate. |
+| Dense layer-0 MLP | Q4_K pack8 gate/up, raw Q6_K down, SiLU, and residual primitives are reusable | Wired into the complete 48-layer eager step; the frozen first-token distribution passes at KL `6.62e-6` with exact top-1. The only greedy-32 mismatch is the documented token-30 low-margin arithmetic split. |
 | Router projection | BF16 hidden × F32 router weight → FP32 logits plus a separate `laguna_sigmoid_router_topk/f32/correction_bias` stage | Closed for eager c=1: stable sigmoid, separate uncorrected/corrected score buffers, lower-ID tie stability, top-10/256, unbiased gathered normalization, and a distinct 2.5-scaled weight buffer pass adversarial CPU parity. No Qwen softmax/shared-gate route is reused. |
 | Routed experts | Direct Laguna plan resolves rank-3 Q4T16 dual gate/up plus layer-specific Q4T16 or Q6T16 down under exact gfx1151 registry keys | Closed for eager c=1: the real artifact's 24 Q4/23 Q6 down split and production 3072/1024 top-10 execution validate source byte strides, T16 allocation strides, nontrivial selected IDs, separate SiLU, scaled weighted sum, CPU hidden tolerance, and intended selected kernels. Bulk rows remain L8. |
 | Shared expert | Rank-2 Q4_K pack8 gate/up plus layer-specific Q4_K pack8 or raw Q6_K down run in an independent always-on branch | Closed for eager c=1: the real 24 Q4/23 Q6 split executes independently; separate gate/up → SiLU → down is added without a shared sigmoid gate or 2.5 routed scale. The unfused staged chain remains the model path. |
 | Final norm / Q6_K LM head | F32-weight RMSNorm, resident Q6T16 BF16→F32 linear sourced losslessly from raw Q6_K, GPU argmax, and sampler primitives are registered | Closed at root-probe scope: full 100,352-way logits are finite, KL is `6.87e-13` vs raw-Q6 CPU math, and top-1 is exactly `81364`; preserve full logits for later whole-model oracle gates. |
-| Session and hidden taps | `LagunaGGUFResidentSession` owns all 814 weights, exact c=1 scratch, dual RoPE, global/SWA KV, logits/argmax, and optional caller-owned BF16 taps at depths 2/11/20/30/39/48 | Complete 48-layer one-token gfx1151 smoke is finite and teardown-exact; frozen 55-token first-logit plus greedy-32 parity remains the L6 closure gate. |
+| Session and hidden taps | `LagunaGGUFResidentSession` owns all 814 weights, exact c=1 scratch, dual RoPE, global/SWA KV, logits/argmax, and optional caller-owned BF16 taps at depths 2/11/20/30/39/48 | The 55-token oracle run is finite, repeat-exact, teardown-exact, and matches 29/32 autoregressive IDs; oracle teacher forcing is 31/32, isolating one low-margin branch rather than a cascading state bug. |
 | Public generator | Generic engine loop and server lifecycle exist | Built-ins register only Qwen paths; there is no Laguna generation key, tokenizer/template renderer, streaming owner, or model metadata route. |
 | Reasoning/tools | Generic server understands Qwen `<think>` plus JSON-in-`<tool_call>` | S 2.1 uses Poolside XML arguments: `<tool_call>name<arg_key>…</arg_key><arg_value>…</arg_value></tool_call>`, and reasoning history must stop its backward scan at the current `<assistant>` token. Implement the `poolside_v1` contracts from vLLM [`61c9ef98`](https://github.com/vllm-project/vllm/blob/61c9ef986a807aa3b9c6ccd25bb223b8f4116ac7/vllm/tool_parsers/poolside_v1_tool_parser.py#L48-L220) and its [assistant-scoped reasoning parser](https://github.com/vllm-project/vllm/blob/61c9ef986a807aa3b9c6ccd25bb223b8f4116ac7/vllm/reasoning/poolside_v1_reasoning_parser.py#L33-L69), including newline-less calls and incremental string values. |
 | Independent oracle | Closed for target AR: clean local Poolside checkout/build at `04b2b72c`, exact template/token fixtures, a complete 100,352-way first-token distribution, and 32 fresh-process-stable greedy IDs are checked in | Use the frozen fixture for L6 KL/top-1/greedy gates. Keep `-fa off`, `--no-mmap`, exact token-ID input, and fresh-process oracle constraints visible; target+DFlash diagnostics remain later work. |
@@ -1281,9 +1282,42 @@ Implemented eager resident foundation (2026-07-22):
   tracked high-water exactly to zero.
 
 This closes construction, one-token execution, hidden-tap ABI, and lifecycle.
-It is not a throughput claim. L6 remains open only for the frozen 55-token
-first-logit and greedy-32 oracle/state gate; `scripts/laguna_gguf_correctness.py`
-implements that next check.
+It is not a throughput claim.
+
+Frozen-oracle validation used:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 \
+uv run python -u scripts/laguna_gguf_correctness.py \
+  --backend hip_gfx1151 --greedy-tokens 32 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --output /tmp/laguna-eager-correctness-final.json
+```
+
+The 55-token prompt loaded in 221.855 s and the first autoregressive pass took
+4.946 s. First-token top-1 is exactly `94557`; full-vocabulary KL against the
+Poolside log-probability oracle is `6.6214e-6`, well inside the `0.05` gate.
+All six hidden taps are finite, a second independently allocated runtime state
+repeats the complete hipEngine 32-token sequence exactly with first-logit
+max-abs `0`, and tracked allocations/bytes return exactly to zero.
+
+The strict 32-ID oracle clause remains blocked at one arithmetic decision
+boundary. hipEngine and Poolside agree on the first 29 generated IDs. For token
+30, Poolside chooses `604` over `372` by only `0.0342368` log-probability, while
+hipEngine chooses `372` over `604` by `0.109314` raw-logit. Replaying all prior
+Poolside IDs under teacher forcing gives 31/32 top-1 agreement; tokens 31 and 32
+return to exact local top-1 after forcing token `604`. Thus the later natural
+mismatch is a consequence of one low-margin branch, not corrupted KV/state
+progression. An explicit FP16-KV bisection retained the same 29-token prefix and
+branch while worsening first-token KL to `7.4248e-5`; that experimental path
+was removed and BF16 KV remains the source-of-truth default.
+
+The script deliberately reports `pass=false` while exact greedy-32 parity is
+not met. This is the documented arithmetic-bisection outcome allowed by the L6
+task, not an exact-output or throughput claim. Public direct/eager integration
+may proceed, but performance promotion and target+DFlash economics remain
+subject to their independent correctness gates.
 
 ### L7 — Public generation, streaming, chat, and tools
 

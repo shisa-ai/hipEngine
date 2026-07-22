@@ -62,6 +62,27 @@ def _kl_from_reference_log_probs(
     return float(np.sum(probabilities * (reference - candidate)))
 
 
+def _greedy_step_metrics(
+    logits: np.ndarray,
+    *,
+    expected_id: int,
+    top_n: int = 5,
+) -> dict[str, object]:
+    values = np.asarray(logits, dtype=np.float32)
+    top = np.argpartition(values, -top_n)[-top_n:]
+    top = top[np.argsort(values[top])[::-1]]
+    expected = int(expected_id)
+    top1_id = int(top[0])
+    return {
+        "expected_id": expected,
+        "expected_logit": float(values[expected]),
+        "expected_is_top1": top1_id == expected,
+        "expected_margin_to_top1": float(values[expected] - values[top1_id]),
+        "top": [{"id": int(token_id), "logit": float(values[token_id])} for token_id in top],
+        "top1_margin": float(values[top[0]] - values[top[1]]),
+    }
+
+
 def run_correctness(
     model: str | Path,
     *,
@@ -121,13 +142,88 @@ def run_correctness(
         kl = _kl_from_reference_log_probs(reference_log_probs, candidate_logits)
         candidate_top1 = int(np.argmax(candidate_logits))
         reference_top1 = int(oracle["first_token"]["id"])
+        first_logits = candidate_logits.copy()
+        first_logits_finite = bool(np.isfinite(first_logits).all())
+        first_max_logit = float(np.max(first_logits))
+        first_min_logit = float(np.min(first_logits))
 
         generated = [first.next_token_id]
+        greedy_step_logits = [
+            _greedy_step_metrics(candidate_logits, expected_id=expected_greedy[0])
+        ]
         result = first
         while len(generated) < greedy_tokens:
             result = session.forward_token(result.next_token_id)
             generated.append(result.next_token_id)
+            copy_device_to_host(
+                host_array_ptr(candidate_logits),
+                result.logits,
+                runtime=runtime,
+            )
+            greedy_step_logits.append(
+                _greedy_step_metrics(
+                    candidate_logits,
+                    expected_id=expected_greedy[len(generated) - 1],
+                )
+            )
         inference_seconds = time.perf_counter() - inference_started
+
+        repeat_started = time.perf_counter()
+        assert session.weights is not None
+        repeat_session = LagunaGGUFResidentSession(
+            resident_weights=session.weights,
+            context_length=int(oracle["server"]["context_length"]),
+            backend=backend,
+            runtime=runtime,
+            compiler_version=compiler_version,
+            require_cached_build=require_cached,
+        )
+        try:
+            repeat_first = repeat_session.prefill(prompt_ids)
+            copy_device_to_host(
+                host_array_ptr(candidate_logits),
+                repeat_first.logits,
+                runtime=runtime,
+            )
+            repeat_first_logits_max_abs = float(np.max(np.abs(candidate_logits - first_logits)))
+            repeat_generated = [repeat_first.next_token_id]
+            repeat_result = repeat_first
+            while len(repeat_generated) < greedy_tokens:
+                repeat_result = repeat_session.forward_token(repeat_result.next_token_id)
+                repeat_generated.append(repeat_result.next_token_id)
+        finally:
+            repeat_session.close()
+        repeat_seconds = time.perf_counter() - repeat_started
+
+        teacher_forced_started = time.perf_counter()
+        teacher_forced_session = LagunaGGUFResidentSession(
+            resident_weights=session.weights,
+            context_length=int(oracle["server"]["context_length"]),
+            backend=backend,
+            runtime=runtime,
+            compiler_version=compiler_version,
+            require_cached_build=require_cached,
+        )
+        teacher_forced_steps: list[dict[str, object]] = []
+        try:
+            teacher_result = teacher_forced_session.prefill(prompt_ids)
+            for index, expected_id in enumerate(expected_greedy):
+                copy_device_to_host(
+                    host_array_ptr(candidate_logits),
+                    teacher_result.logits,
+                    runtime=runtime,
+                )
+                teacher_forced_steps.append(
+                    _greedy_step_metrics(candidate_logits, expected_id=expected_id)
+                )
+                if index + 1 < greedy_tokens:
+                    teacher_result = teacher_forced_session.forward_token(expected_id)
+        finally:
+            teacher_forced_session.close()
+        teacher_forced_seconds = time.perf_counter() - teacher_forced_started
+        teacher_forced_matches = sum(
+            bool(step["expected_is_top1"]) for step in teacher_forced_steps
+        )
 
         capture_metrics: dict[str, dict[str, float | bool]] = {}
         for depth, buffer in capture_targets.buffers.items():
@@ -161,15 +257,28 @@ def run_correctness(
                 "session_argmax": first.next_token_id,
                 "top1_agreement": float(candidate_top1 == reference_top1),
                 "kl_divergence": kl,
-                "finite_logits": bool(np.isfinite(candidate_logits).all()),
-                "max_logit": float(np.max(candidate_logits)),
-                "min_logit": float(np.min(candidate_logits)),
+                "finite_logits": first_logits_finite,
+                "max_logit": first_max_logit,
+                "min_logit": first_min_logit,
             },
             "greedy": {
                 "expected": list(expected_greedy),
                 "actual": list(generated_tuple),
                 "exact": generated_tuple == expected_greedy,
                 "matching_prefix_tokens": prefix_matches,
+                "step_logits": greedy_step_logits,
+            },
+            "repeat": {
+                "actual": [int(value) for value in repeat_generated],
+                "exact": tuple(repeat_generated) == generated_tuple,
+                "first_logits_max_abs": repeat_first_logits_max_abs,
+                "seconds": repeat_seconds,
+            },
+            "teacher_forced": {
+                "top1_agreement": teacher_forced_matches / greedy_tokens,
+                "top1_matches": teacher_forced_matches,
+                "steps": teacher_forced_steps,
+                "seconds": teacher_forced_seconds,
             },
             "hidden_captures": capture_metrics,
             "hip_total_bytes": total_before,
@@ -226,6 +335,8 @@ def main() -> int:
         and float(first["kl_divergence"]) <= 0.05
         and float(first["top1_agreement"]) >= 0.9
         and bool(result["greedy"]["exact"])
+        and bool(result["repeat"]["exact"])
+        and float(result["repeat"]["first_logits_max_abs"]) <= 1e-6
         and captures_pass
         and bool(result["tracked_returned_to_baseline"])
     )
