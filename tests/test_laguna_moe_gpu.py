@@ -29,6 +29,7 @@ from hipengine.models.laguna import LAGUNA_GGUF
 from hipengine.quant.gguf import GGMLQuantizationType
 from hipengine.runtime.laguna_moe import (
     allocate_laguna_moe_scratch,
+    laguna_moe_prefill_strategy,
     resolve_laguna_moe_plan,
     run_laguna_moe_c1,
     run_laguna_moe_rows,
@@ -107,7 +108,15 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
         "gguf_q6_k_t16_v1",
     }
     assert plan.selected_down_keys["gguf_q6_k_t16_v1"] == plan.selected_down_key
+    assert set(plan.compact_down_keys) == {
+        "gguf_q4_k_t16_v1",
+        "gguf_q6_k_t16_v1",
+    }
+    assert plan.compact_group_count_key.layer == "moe_group_count"
+    assert "pairreuse" in plan.compact_gate_up_key.variant
+    assert plan.compact_weighted_sum_key.layer == "weighted_lanes_sum"
     assert all(key.backend == "hip_gfx1151" for key in plan.kernel_keys)
+    assert laguna_moe_prefill_strategy("hip_gfx1151") == "direct"
 
     sparse_sequence = LAGUNA_GGUF.decode_layer_sequence(
         attention_kind="sliding_attention",
@@ -117,6 +126,14 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
     assert "selected_expert_mlp" in sparse_sequence
     assert "laguna_shared_expert" in sparse_sequence
     assert "laguna_routed_shared_combine" in sparse_sequence
+
+
+def test_laguna_moe_prefill_strategy_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HIPENGINE_LAGUNA_MOE_PREFILL", "unknown")
+    with pytest.raises(ValueError, match="HIPENGINE_LAGUNA_MOE_PREFILL"):
+        laguna_moe_prefill_strategy("hip_gfx1151")
 
 
 def test_laguna_moe_plan_rejects_qwen_softmax_or_unnormalized_contracts() -> None:
@@ -140,6 +157,7 @@ def test_laguna_moe_plan_rejects_qwen_softmax_or_unnormalized_contracts() -> Non
 )
 def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
     down_qtype: GGMLQuantizationType,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Keep production H/F/top-k and nontrivial rank-3 strides while reducing the
     # synthetic expert inventory; the separate router test covers all 256 IDs.
@@ -320,6 +338,21 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
             rows=3,
         )
         bulk_actual = _read_bf16(bulk_output, (3, h))
+        monkeypatch.setenv("HIPENGINE_LAGUNA_MOE_PREFILL", "compact_pair")
+        compact_output = run_laguna_moe_rows(
+            bulk_hidden_buffer.ptr,
+            layer,
+            bulk_scratch,
+            rows=3,
+        )
+        compact_actual = _read_bf16(compact_output, (3, h))
+        np.testing.assert_array_equal(
+            _f32_to_bf16_u16(compact_actual),
+            _f32_to_bf16_u16(bulk_actual),
+        )
+        assert bulk_scratch.compact_group_counts.nbytes == e * np.dtype(np.int32).itemsize
+        assert bulk_scratch.compact_gate_up.nbytes == 3 * k * 2 * f * np.dtype(np.uint16).itemsize
+        monkeypatch.setenv("HIPENGINE_LAGUNA_MOE_PREFILL", "direct")
         serial_actual = np.empty_like(bulk_actual)
         for row in range(3):
             copy_host_to_device(

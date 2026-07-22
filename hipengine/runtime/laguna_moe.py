@@ -5,12 +5,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 import math
+import os
 from types import MappingProxyType
 from typing import Callable
 
-from hipengine.core.hip import HipRuntime
+from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.memory import DeviceBuffer, free, malloc
-from hipengine.kernels.backends import load_backend_kernel_package
+from hipengine.kernels.backends import backend_package_capability, load_backend_kernel_package
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
 from hipengine.loading.laguna_gguf import LagunaGGUFConfig, SPARSE_MOE
 from hipengine.loading.laguna_gguf_materialize import (
@@ -38,6 +39,8 @@ _SELECTED_DOWN_VARIANT = "selected_t16_gemv_decode_bf16_bf16_out"
 _SILU_VARIANT = "out"
 _WEIGHTED_SUM_VARIANT = "out"
 _ADD_VARIANT = "add"
+_LAGUNA_MOE_PREFILL_ENV = "HIPENGINE_LAGUNA_MOE_PREFILL"
+_LAGUNA_MOE_PREFILL_STRATEGIES = frozenset({"auto", "direct", "compact_pair"})
 
 
 @dataclass(frozen=True)
@@ -59,6 +62,13 @@ class LagunaMoEKernelPlan:
     selected_down_keys: Mapping[str, KernelKey]
     routed_sum_key: KernelKey
     routed_sum_rows_key: KernelKey
+    compact_group_count_key: KernelKey
+    compact_group_prefix_key: KernelKey
+    compact_group_scatter_key: KernelKey
+    compact_gate_up_key: KernelKey
+    compact_silu_key: KernelKey
+    compact_down_keys: Mapping[str, KernelKey]
+    compact_weighted_sum_key: KernelKey
     shared_silu_key: KernelKey
     add_key: KernelKey
     router_logits: Callable
@@ -69,6 +79,13 @@ class LagunaMoEKernelPlan:
     selected_downs: Mapping[str, Callable]
     routed_sum: Callable
     routed_sum_rows: Callable
+    compact_group_count: Callable
+    compact_group_prefix: Callable
+    compact_group_scatter: Callable
+    compact_gate_up: Callable
+    compact_silu: Callable
+    compact_downs: Mapping[str, Callable]
+    compact_weighted_sum: Callable
     shared_silu: Callable
     add: Callable
 
@@ -82,6 +99,13 @@ class LagunaMoEKernelPlan:
             *tuple(self.selected_down_keys.values()),
             self.routed_sum_key,
             self.routed_sum_rows_key,
+            self.compact_group_count_key,
+            self.compact_group_prefix_key,
+            self.compact_group_scatter_key,
+            self.compact_gate_up_key,
+            self.compact_silu_key,
+            *tuple(self.compact_down_keys.values()),
+            self.compact_weighted_sum_key,
             self.shared_silu_key,
             self.add_key,
         )
@@ -104,6 +128,15 @@ class LagunaMoEScratch:
     expert_intermediate: DeviceBuffer
     expert_down: DeviceBuffer
     routed_output: DeviceBuffer
+    compact_group_counts: DeviceBuffer
+    compact_scatter_offsets: DeviceBuffer
+    compact_expert_start: DeviceBuffer
+    compact_total: DeviceBuffer
+    compact_sorted_lanes: DeviceBuffer
+    compact_sorted_experts: DeviceBuffer
+    compact_sorted_weights: DeviceBuffer
+    compact_lane_to_row: DeviceBuffer
+    compact_gate_up: DeviceBuffer
     shared_gate: DeviceBuffer
     shared_up: DeviceBuffer
     shared_intermediate: DeviceBuffer
@@ -124,6 +157,15 @@ class LagunaMoEScratch:
             self.expert_intermediate,
             self.expert_down,
             self.routed_output,
+            self.compact_group_counts,
+            self.compact_scatter_offsets,
+            self.compact_expert_start,
+            self.compact_total,
+            self.compact_sorted_lanes,
+            self.compact_sorted_experts,
+            self.compact_sorted_weights,
+            self.compact_lane_to_row,
+            self.compact_gate_up,
             self.shared_gate,
             self.shared_up,
             self.shared_intermediate,
@@ -190,6 +232,27 @@ def resolve_laguna_moe_plan(
         ),
         "routed_sum": KernelKey(backend, "weighted_sum", "bf16", _WEIGHTED_SUM_VARIANT),
         "routed_sum_rows": KernelKey(backend, "weighted_sum", "bf16", "laguna_rows"),
+        "compact_group_count": KernelKey(backend, "moe_group_count", "w4_paro", "qwen35"),
+        "compact_group_prefix": KernelKey(backend, "moe_group_prefix", "w4_paro", "qwen35"),
+        "compact_group_scatter": KernelKey(
+            backend,
+            "moe_group_scatter_gather",
+            "w4_paro",
+            "qwen35_lowp",
+        ),
+        "compact_gate_up": KernelKey(
+            backend,
+            "moe_linear",
+            "gguf_q4_k_t16_v1",
+            "selected_dual_t16_pairreuse_gemv_decode_compact_bf16_bf16_out",
+        ),
+        "compact_silu": KernelKey(backend, "silu_mul_dual", "bf16", _SILU_VARIANT),
+        "compact_weighted_sum": KernelKey(
+            backend,
+            "weighted_lanes_sum",
+            "bf16",
+            _WEIGHTED_SUM_VARIANT,
+        ),
         "shared_silu": KernelKey(backend, "silu_mul_separate", "bf16", _SILU_VARIANT),
         "add": KernelKey(backend, "elementwise", "bf16", _ADD_VARIANT),
     }
@@ -199,9 +262,23 @@ def resolve_laguna_moe_plan(
             for quant in ("gguf_q4_k_t16_v1", "gguf_q6_k_t16_v1")
         }
     )
+    compact_down_keys = MappingProxyType(
+        {
+            quant: KernelKey(
+                backend,
+                "moe_linear",
+                quant,
+                "selected_t16_pairreuse_gemv_decode_compact_bf16_bf16_out",
+            )
+            for quant in ("gguf_q4_k_t16_v1", "gguf_q6_k_t16_v1")
+        }
+    )
     functions = {name: _resolve_exact(key) for name, key in keys.items()}
     selected_downs = MappingProxyType(
         {quant: _resolve_exact(key) for quant, key in selected_down_keys.items()}
+    )
+    compact_downs = MappingProxyType(
+        {quant: _resolve_exact(key) for quant, key in compact_down_keys.items()}
     )
     return LagunaMoEKernelPlan(
         backend=backend,
@@ -219,6 +296,13 @@ def resolve_laguna_moe_plan(
         selected_down_keys=selected_down_keys,
         routed_sum_key=keys["routed_sum"],
         routed_sum_rows_key=keys["routed_sum_rows"],
+        compact_group_count_key=keys["compact_group_count"],
+        compact_group_prefix_key=keys["compact_group_prefix"],
+        compact_group_scatter_key=keys["compact_group_scatter"],
+        compact_gate_up_key=keys["compact_gate_up"],
+        compact_silu_key=keys["compact_silu"],
+        compact_down_keys=compact_down_keys,
+        compact_weighted_sum_key=keys["compact_weighted_sum"],
         shared_silu_key=keys["shared_silu"],
         add_key=keys["add"],
         router_logits=functions["router_logits"],
@@ -229,6 +313,13 @@ def resolve_laguna_moe_plan(
         selected_downs=selected_downs,
         routed_sum=functions["routed_sum"],
         routed_sum_rows=functions["routed_sum_rows"],
+        compact_group_count=functions["compact_group_count"],
+        compact_group_prefix=functions["compact_group_prefix"],
+        compact_group_scatter=functions["compact_group_scatter"],
+        compact_gate_up=functions["compact_gate_up"],
+        compact_silu=functions["compact_silu"],
+        compact_downs=compact_downs,
+        compact_weighted_sum=functions["compact_weighted_sum"],
         shared_silu=functions["shared_silu"],
         add=functions["add"],
     )
@@ -262,6 +353,15 @@ def allocate_laguna_moe_scratch(
         rows * k * f * _BF16_NBYTES,
         rows * k * h * _BF16_NBYTES,
         rows * h * _BF16_NBYTES,
+        e * 4,
+        e * 4,
+        (e + 1) * _I64_NBYTES,
+        _I64_NBYTES,
+        rows * k * _I64_NBYTES,
+        rows * k * _I64_NBYTES,
+        rows * k * _F32_NBYTES,
+        rows * k * _I64_NBYTES,
+        rows * k * 2 * f * _BF16_NBYTES,
         rows * sf * _BF16_NBYTES,
         rows * sf * _BF16_NBYTES,
         rows * sf * _BF16_NBYTES,
@@ -577,6 +677,27 @@ def run_laguna_moe_c1(
     return scratch.output
 
 
+def laguna_moe_prefill_strategy(backend: str) -> str:
+    """Resolve the registered Laguna row-MoE route with an explicit rollback."""
+
+    requested = os.environ.get(_LAGUNA_MOE_PREFILL_ENV, "auto").strip().lower()
+    if not requested:
+        requested = "auto"
+    if requested not in _LAGUNA_MOE_PREFILL_STRATEGIES:
+        choices = "|".join(sorted(_LAGUNA_MOE_PREFILL_STRATEGIES))
+        raise ValueError(f"{_LAGUNA_MOE_PREFILL_ENV} must be one of {choices}")
+    if requested != "auto":
+        return requested
+    selected = str(
+        backend_package_capability(backend, "LAGUNA_MOE_PREFILL_STRATEGY", "direct")
+    ).strip().lower()
+    if selected not in _LAGUNA_MOE_PREFILL_STRATEGIES - {"auto"}:
+        raise RuntimeError(
+            "backend LAGUNA_MOE_PREFILL_STRATEGY must resolve to direct or compact_pair"
+        )
+    return selected
+
+
 def run_laguna_moe_rows(
     hidden_bf16_ptr: int,
     layer: LagunaGGUFResidentLayerWeights,
@@ -638,49 +759,69 @@ def run_laguna_moe_rows(
         plan.routed_scaling_factor,
         **_stage_kwargs("router_select", libraries, stream=stream, runtime=runtime),
     )
-    plan.selected_gate_up(
-        hidden_bf16_ptr,
-        scratch.selected_experts.ptr,
-        gate_tiles,
-        up_tiles,
-        scratch.expert_gate.ptr,
-        scratch.expert_up.ptr,
-        tokens,
-        lanes,
-        e,
-        h,
-        f,
-        **_stage_kwargs("selected_gate_up", libraries, stream=stream, runtime=runtime),
-    )
-    plan.selected_silu(
-        scratch.expert_gate.ptr,
-        scratch.expert_up.ptr,
-        scratch.expert_intermediate.ptr,
-        lanes,
-        f,
-        **_stage_kwargs("selected_silu", libraries, stream=stream, runtime=runtime),
-    )
-    selected_down_fn(
-        scratch.expert_intermediate.ptr,
-        scratch.selected_experts.ptr,
-        down_tiles,
-        scratch.expert_down.ptr,
-        lanes,
-        lanes,
-        e,
-        f,
-        h,
-        **_stage_kwargs("selected_down", libraries, stream=stream, runtime=runtime),
-    )
-    plan.routed_sum_rows(
-        scratch.expert_down.ptr,
-        scratch.scaled_routing_weights.ptr,
-        scratch.routed_output.ptr,
-        tokens,
-        k,
-        h,
-        **_stage_kwargs("routed_sum_rows", libraries, stream=stream, runtime=runtime),
-    )
+    if laguna_moe_prefill_strategy(plan.backend) == "compact_pair":
+        try:
+            compact_down_fn = plan.compact_downs[down_weight.spec.quant_key]
+        except KeyError as exc:
+            raise ValueError(
+                f"no Laguna compact selected-down kernel for {down_weight.spec.quant_key!r}"
+            ) from exc
+        _run_laguna_moe_rows_compact_pair(
+            hidden_bf16_ptr,
+            scratch,
+            gate_tiles=gate_tiles,
+            up_tiles=up_tiles,
+            down_tiles=down_tiles,
+            compact_down_fn=compact_down_fn,
+            tokens=tokens,
+            stream=stream,
+            runtime=runtime,
+            libraries=libraries,
+        )
+    else:
+        plan.selected_gate_up(
+            hidden_bf16_ptr,
+            scratch.selected_experts.ptr,
+            gate_tiles,
+            up_tiles,
+            scratch.expert_gate.ptr,
+            scratch.expert_up.ptr,
+            tokens,
+            lanes,
+            e,
+            h,
+            f,
+            **_stage_kwargs("selected_gate_up", libraries, stream=stream, runtime=runtime),
+        )
+        plan.selected_silu(
+            scratch.expert_gate.ptr,
+            scratch.expert_up.ptr,
+            scratch.expert_intermediate.ptr,
+            lanes,
+            f,
+            **_stage_kwargs("selected_silu", libraries, stream=stream, runtime=runtime),
+        )
+        selected_down_fn(
+            scratch.expert_intermediate.ptr,
+            scratch.selected_experts.ptr,
+            down_tiles,
+            scratch.expert_down.ptr,
+            lanes,
+            lanes,
+            e,
+            f,
+            h,
+            **_stage_kwargs("selected_down", libraries, stream=stream, runtime=runtime),
+        )
+        plan.routed_sum_rows(
+            scratch.expert_down.ptr,
+            scratch.scaled_routing_weights.ptr,
+            scratch.routed_output.ptr,
+            tokens,
+            k,
+            h,
+            **_stage_kwargs("routed_sum_rows", libraries, stream=stream, runtime=runtime),
+        )
 
     shared_gate = layer.weight("ffn_gate_shexp")
     shared_up = layer.weight("ffn_up_shexp")
@@ -745,6 +886,123 @@ def run_laguna_moe_rows(
     return scratch.output
 
 
+def _run_laguna_moe_rows_compact_pair(
+    hidden_bf16_ptr: int,
+    scratch: LagunaMoEScratch,
+    *,
+    gate_tiles: int,
+    up_tiles: int,
+    down_tiles: int,
+    compact_down_fn: Callable,
+    tokens: int,
+    stream: int,
+    runtime: HipRuntime | None,
+    libraries: Mapping[str, object] | None,
+) -> None:
+    """Group routed lanes by expert and reuse each T16 weight row across pairs."""
+
+    plan = scratch.plan
+    e, k, h, f = (
+        plan.expert_count,
+        plan.top_k,
+        plan.hidden_size,
+        plan.expert_ffn_size,
+    )
+    lanes = tokens * k
+    active_runtime = runtime or get_hip_runtime()
+    active_runtime.memset_async(
+        scratch.compact_group_counts.ptr,
+        0,
+        scratch.compact_group_counts.nbytes,
+        stream,
+    )
+    plan.compact_group_count(
+        scratch.selected_experts.ptr,
+        scratch.compact_group_counts.ptr,
+        lanes,
+        e,
+        **_stage_kwargs("compact_group", libraries, stream=stream, runtime=active_runtime),
+    )
+    plan.compact_group_prefix(
+        scratch.compact_group_counts.ptr,
+        scratch.compact_scatter_offsets.ptr,
+        scratch.compact_expert_start.ptr,
+        scratch.compact_total.ptr,
+        e,
+        1,
+        **_stage_kwargs("compact_group", libraries, stream=stream, runtime=active_runtime),
+    )
+    active_runtime.memset_async(
+        scratch.compact_scatter_offsets.ptr,
+        0,
+        scratch.compact_scatter_offsets.nbytes,
+        stream,
+    )
+    plan.compact_group_scatter(
+        hidden_bf16_ptr,
+        scratch.selected_experts.ptr,
+        scratch.scaled_routing_weights.ptr,
+        scratch.compact_expert_start.ptr,
+        scratch.compact_scatter_offsets.ptr,
+        scratch.compact_sorted_lanes.ptr,
+        scratch.compact_sorted_experts.ptr,
+        scratch.compact_sorted_weights.ptr,
+        scratch.expert_down.ptr,
+        lanes,
+        e,
+        k,
+        h,
+        **_stage_kwargs("compact_group", libraries, stream=stream, runtime=active_runtime),
+    )
+    plan.compact_gate_up(
+        scratch.expert_down.ptr,
+        scratch.compact_expert_start.ptr,
+        gate_tiles,
+        up_tiles,
+        scratch.compact_gate_up.ptr,
+        lanes,
+        h,
+        f,
+        f,
+        e,
+        **_stage_kwargs("compact_gate_up", libraries, stream=stream, runtime=active_runtime),
+    )
+    plan.compact_silu(
+        scratch.compact_gate_up.ptr,
+        scratch.expert_intermediate.ptr,
+        lanes,
+        f,
+        **_stage_kwargs("compact_silu", libraries, stream=stream, runtime=active_runtime),
+    )
+    compact_down_fn(
+        scratch.expert_intermediate.ptr,
+        scratch.compact_expert_start.ptr,
+        down_tiles,
+        scratch.expert_down.ptr,
+        lanes,
+        f,
+        h,
+        e,
+        **_stage_kwargs("compact_down", libraries, stream=stream, runtime=active_runtime),
+    )
+    plan.compact_weighted_sum(
+        scratch.expert_down.ptr,
+        scratch.compact_sorted_weights.ptr,
+        scratch.compact_sorted_lanes.ptr,
+        scratch.compact_lane_to_row.ptr,
+        scratch.routed_output.ptr,
+        tokens,
+        k,
+        h,
+        **_stage_kwargs(
+            "compact_weighted_sum",
+            libraries,
+            stream=stream,
+            runtime=active_runtime,
+        ),
+    )
+
+
 def _stage_kwargs(
     name: str,
     libraries: Mapping[str, object] | None,
@@ -775,6 +1033,7 @@ __all__ = [
     "LagunaMoEKernelPlan",
     "LagunaMoEScratch",
     "allocate_laguna_moe_scratch",
+    "laguna_moe_prefill_strategy",
     "resolve_laguna_moe_plan",
     "run_laguna_moe_c1",
     "run_laguna_moe_rows",
