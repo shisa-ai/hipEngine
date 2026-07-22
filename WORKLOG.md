@@ -174549,3 +174549,75 @@ rocprofv3 --kernel-trace --output-format csv \
   scripts/laguna_dflash_drafter_smoke.py <same args>
 # rc=0; intended DFlash/SWA/gate/Q6/top-k names observed
 ```
+
+## 2026-07-23 — Complete Laguna DFlash target verify/accept/commit
+
+Implemented the D2/D3 online cycle without allowing rejected verifier rows to
+touch canonical target state. Each of Laguna's 48 layers now leaves current
+F32 K/V rows in fixed verifier planes while causal attention reads prior
+canonical K/V plus those current rows. Row-wise GPU argmax feeds the shared
+DFlash accept kernel; its seven-int packed summary is checked against the CPU
+chain oracle, then only `root + accepted` rows are converted/appended to the 12
+global and 36 SWA BF16 caches. This avoids ring snapshots and makes rejected
+suffixes safe across 511/512/513. Hidden captures use accepted prefix views for
+the six-layer drafter context. Target and draft cursors are checked after every
+cycle; stale addresses fail closed, and any cross-owner partial failure closes
+both owners. Verifier resources remain lazy, so target-only AR allocates no D3
+scratch or hidden capture planes.
+
+`LagunaDFlashResidentCycle` now normalizes the linear proposal into the shared
+`DraftBatch`/`TargetVerifyBatch`/`TargetAcceptSummary` contracts, seeds prompt
+context, and handles correction/bonus semantics. Remaining-decode limits cover
+the max-token boundary. A proposal containing EOS is target-verified only
+through its first stop candidate and suppresses the bonus when that candidate
+is accepted. Request reset retains resident weights and fixed addresses while
+resetting all global/SWA `KVLiveSpans` metadata.
+
+A single resident target was reset between true serial AR and DFlash ladders on
+the 55-token `oracle_no_thinking` prompt. B1/B2/B4/B7/B15 all generated the
+same 12 IDs:
+`[94557,3505,3011,515,2407,365,2291,10723,1687,948,1482,4217]`.
+Accepted/drafted totals were 5/6, 7/8, 8/12, 8/21, and 8/45; rejected target-row
+totals were 1/1/4/13/37. Every committed generation prefix matched AR, target
+and drafter positions agreed after every cycle, and every fixed verifier address
+digest stayed stable. Peak tracked allocation was 79,358,606,181 bytes; close
+returned to zero bytes and allocations. B7/B15 establish target
+correction/rollback exactness only: D1's Poolside candidate parity remains
+admitted through B4, so the higher budgets are diagnostic and cannot be promoted
+by D4 without resolving that gate.
+
+Cached B4 `rocprofv3 --kernel-trace` recorded one zero-scratch
+`dflash_accept_chain_i32_kernel` at 6.492 us, two row-argmax launches totaling
+17.833 us, and exactly 12 global plus 36 SWA accepted-prefix writes totaling
+91.212 us. The Q6 LM-head-to-final-KV-commit window was 9.818 ms device timeline
+and 5.658 ms kernel sum. This is dispatch/correctness evidence, not a D4 speedup
+claim. Artifact:
+`benchmarks/results/2026-07-23-gfx1151-laguna-dflash-verify-commit.json`.
+
+Validation:
+
+```bash
+uv run pytest -q tests/test_laguna_dflash_cycle.py \
+  tests/test_laguna_dflash_resident.py tests/test_laguna_dflash_drafter.py \
+  tests/test_laguna_dflash_reference.py tests/test_laguna_dflash_metadata.py \
+  tests/test_laguna_gguf_runner.py tests/test_laguna_kv_attention.py \
+  tests/test_dflash_accept_kernels.py
+# 45 passed
+uvx ruff check hipengine/runtime/laguna_gguf_runner.py \
+  hipengine/runtime/laguna_kv.py hipengine/speculative/laguna_dflash.py \
+  scripts/laguna_dflash_e2e_smoke.py tests/test_laguna_dflash_cycle.py
+# clean
+HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 uv run python -u \
+  scripts/laguna_dflash_e2e_smoke.py <target.gguf> <b048-drafter> \
+  --backend hip_gfx1151 --budgets 1,2,4,7,15 --max-new-tokens 12 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --repacked-cache <cache> --model-sha256 <sha>
+# passed=true; exact AR IDs/state/cursors/addresses at all five budgets;
+# post-close bytes=0 allocations=0
+rocprofv3 --kernel-trace --output-format csv \
+  --output-directory /tmp/rocprof-laguna-dflash-d3-b4 -- env \
+  HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 uv run python -u \
+  scripts/laguna_dflash_e2e_smoke.py <same args> --budgets 4 \
+  --max-new-tokens 5
+# rc=0; intended row-argmax/accept/global+SWA commit kernels observed
+```

@@ -40,6 +40,8 @@ from hipengine.loading.safetensors import load_weight_index
 from hipengine.runtime.gguf_embedding import launch_gguf_embedding
 from hipengine.runtime.gguf_linear import GGUF_OUTPUT_F32, launch_gguf_linear
 from hipengine.runtime.laguna_gguf_runner import (
+    LagunaDFlashVerifyResult,
+    LagunaEagerTokenResult,
     LagunaGGUFResidentSession,
     LagunaHiddenCaptureTargets,
 )
@@ -47,6 +49,11 @@ from hipengine.runtime.laguna_kv import LagunaKVCache, allocate_laguna_kv_cache
 from hipengine.runtime.laguna_rope import (
     LagunaDeviceRoPETables,
     materialize_laguna_rope_tables,
+)
+from hipengine.speculative.interfaces import (
+    DraftBatch,
+    TargetAcceptSummary,
+    TargetVerifyBatch,
 )
 from hipengine.speculative.dflash_drafter import (
     dflash_head_rmsnorm_rotary_f32,
@@ -142,6 +149,42 @@ class LagunaDFlashCaptureOwner:
     @property
     def nbytes(self) -> int:
         return sum(buffer.nbytes for buffer in self.buffers)
+
+    def prefix_tensors(self, rows: int) -> tuple[Tensor, ...]:
+        """Return non-owning leading-row views for accepted-prefix commit."""
+
+        count = self._validate_prefix_rows(rows)
+        return tuple(
+            Tensor.from_handle(
+                tensor.ptr,
+                (count, self.hidden_size),
+                tensor.dtype,
+                tensor.device,
+            )
+            for tensor in self.tensors
+        )
+
+    def prefix_targets(self, rows: int) -> LagunaHiddenCaptureTargets:
+        """Return exact-size caller targets for a stop-truncated verifier chain."""
+
+        count = self._validate_prefix_rows(rows)
+        nbytes = count * self.hidden_size * DType.BF16.itemsize
+        return LagunaHiddenCaptureTargets(
+            hidden_size=self.hidden_size,
+            rows=count,
+            buffers={
+                depth: DeviceBuffer(buffer.ptr, nbytes)
+                for depth, buffer in zip(self.depths, self.buffers, strict=True)
+            },
+        )
+
+    def _validate_prefix_rows(self, rows: int) -> int:
+        if self._closed:
+            raise RuntimeError("Laguna DFlash capture owner is closed")
+        count = int(rows)
+        if count <= 0 or count > self.rows:
+            raise ValueError("capture prefix rows must be within the owner capacity")
+        return count
 
     def free(self) -> None:
         if self._closed:
@@ -949,8 +992,270 @@ class LagunaDFlashResidentDrafter:
             raise errors[0]
 
 
+@dataclass(frozen=True)
+class LagunaDFlashCycleResult:
+    """One proposal plus provider-neutral target accept/commit result."""
+
+    proposal: LagunaDFlashDraftResult
+    target_batch: TargetVerifyBatch
+    target_result: LagunaDFlashVerifyResult
+    accept_summary: TargetAcceptSummary
+    verifier_addresses_stable: bool
+
+    @property
+    def visible_output_ids(self) -> tuple[int, ...]:
+        return self.target_result.visible_output_ids
+
+
+class LagunaDFlashResidentCycle:
+    """Single-request Laguna DFlash proposal/verify/accept/commit adapter.
+
+    Target and drafter remain caller-owned. This owner contributes only stable
+    one-row prompt captures and one fixed B+1 verifier-capture bucket. Any
+    cross-owner commit failure closes both model owners so partially advanced
+    state can never be reused.
+    """
+
+    def __init__(
+        self,
+        target: LagunaGGUFResidentSession,
+        drafter: LagunaDFlashResidentDrafter,
+        *,
+        request_id: int = 0,
+    ) -> None:
+        if target.closed or drafter._closed:
+            raise ValueError("Laguna DFlash cycle requires open target and drafter owners")
+        if drafter.target is not target:
+            raise ValueError("Laguna DFlash cycle target must own the drafter target roots")
+        if drafter.max_append_rows < drafter.candidate_budget + 1:
+            raise ValueError("Laguna DFlash cycle requires B+1 draft-context append capacity")
+        self.target = target
+        self.drafter = drafter
+        self.request_id = int(request_id)
+        self._closed = False
+        self._failed = False
+        self._context_capture = drafter.allocate_captures(rows=1)
+        try:
+            self._verify_capture = drafter.allocate_captures(
+                rows=drafter.candidate_budget + 1
+            )
+        except BaseException:
+            self._context_capture.free()
+            raise
+        self._address_signature = self.address_signature()
+
+    @property
+    def closed(self) -> bool:
+        return self._closed
+
+    @property
+    def failed(self) -> bool:
+        return self._failed
+
+    def address_signature(self) -> dict[str, int]:
+        signature = self.target.verifier_address_signature()
+        for label, owner in (
+            ("context_capture", self._context_capture),
+            ("verify_capture", self._verify_capture),
+        ):
+            for index, buffer in enumerate(owner.buffers):
+                signature[f"{label}.{index}"] = buffer.ptr
+        return signature
+
+    def prefill(
+        self,
+        token_ids: Sequence[int],
+        *,
+        stream: int = 0,
+    ) -> LagunaEagerTokenResult:
+        """Serially seed exact target and projected draft context together."""
+
+        self._check_open()
+        tokens = tuple(int(value) for value in token_ids)
+        if not tokens:
+            raise ValueError("Laguna DFlash prefill requires at least one token")
+        if self.target.position + 1 != self.drafter.committed_context_tokens:
+            raise RuntimeError("Laguna target and drafter context positions diverged")
+        result: LagunaEagerTokenResult | None = None
+        try:
+            for token in tokens:
+                result = self.target.forward_token(
+                    token,
+                    captures=self._context_capture.targets,
+                    stream=stream,
+                )
+                self.drafter.append_target_hidden(
+                    self._context_capture,
+                    positions=(result.position,),
+                    stream=stream,
+                )
+        except BaseException:
+            self._fail_closed()
+            raise
+        assert result is not None
+        return result
+
+    def run_cycle(
+        self,
+        root_token_id: int,
+        *,
+        proposal: LagunaDFlashDraftResult | None = None,
+        remaining_decode: int | None = None,
+        stop_token_ids: Sequence[int] = (),
+        stream: int = 0,
+    ) -> LagunaDFlashCycleResult:
+        """Propose B rows, verify B+1 once, and commit only the accepted prefix."""
+
+        self._check_open()
+        if remaining_decode is not None:
+            if isinstance(remaining_decode, bool) or not isinstance(remaining_decode, int):
+                raise TypeError("remaining_decode must be an integer or None")
+            if remaining_decode < 0:
+                raise ValueError("remaining_decode must be non-negative")
+        root_position = self.target.position + 1
+        if root_position != self.drafter.committed_context_tokens:
+            raise RuntimeError("Laguna target and drafter context positions diverged")
+        stops = {int(value) for value in stop_token_ids}
+        if int(root_token_id) in stops:
+            raise ValueError("a stop root must not enter another Laguna DFlash cycle")
+        proposed = proposal or self.drafter.propose(
+            root_token_id=int(root_token_id),
+            root_position=root_position,
+            stream=stream,
+        )
+        all_candidates = tuple(int(value) for value in proposed.candidate_token_ids)
+        if len(all_candidates) != self.drafter.candidate_budget:
+            raise ValueError("Laguna DFlash proposal candidate count does not match its budget")
+        stop_depth = next(
+            (index + 1 for index, token in enumerate(all_candidates) if token in stops),
+            None,
+        )
+        candidates = (
+            all_candidates if stop_depth is None else all_candidates[:stop_depth]
+        )
+        effective_remaining = remaining_decode
+        if stop_depth is not None:
+            effective_remaining = (
+                stop_depth
+                if remaining_decode is None
+                else min(int(remaining_decode), stop_depth)
+            )
+        depths = tuple(range(1, len(candidates) + 1))
+        draft = DraftBatch(
+            request_ids=(self.request_id,),
+            candidate_tokens=candidates,
+            parent_positions=tuple(root_position + depth - 1 for depth in depths),
+            draft_depths=depths,
+            row_to_request=(self.request_id,) * len(candidates),
+            tree_parents=(-1, *range(len(candidates) - 1)),
+            active_mask=(True,) * len(candidates),
+            mode="verify_chain",
+        )
+        target_batch = TargetVerifyBatch.from_draft(
+            draft,
+            root_tokens=(int(root_token_id),),
+            root_positions=(root_position,),
+        )
+        try:
+            target_result = self.target.verify_dflash_chain(
+                int(root_token_id),
+                candidates,
+                captures=self._verify_capture.prefix_targets(len(candidates) + 1),
+                remaining_decode=effective_remaining,
+                stream=stream,
+            )
+            oracle = target_batch.accept_from_top1(
+                target_result.target_top1_ids,
+                remaining_decode=(effective_remaining,)
+                if effective_remaining is not None
+                else None,
+            )
+            summary = TargetAcceptSummary.from_accept_result(target_batch, oracle)
+            _validate_cycle_summary(target_result, summary)
+            committed_positions = target_batch.positions[: target_result.committed_rows]
+            self.drafter.append_target_hidden(
+                self._verify_capture.prefix_tensors(target_result.committed_rows),
+                positions=committed_positions,
+                stream=stream,
+            )
+        except BaseException:
+            self._fail_closed()
+            raise
+        addresses_stable = self.address_signature() == self._address_signature
+        if not addresses_stable:
+            self._fail_closed()
+            raise RuntimeError("Laguna DFlash verifier addresses changed inside a fixed bucket")
+        return LagunaDFlashCycleResult(
+            proposal=proposed,
+            target_batch=target_batch,
+            target_result=target_result,
+            accept_summary=summary,
+            verifier_addresses_stable=True,
+        )
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        self._verify_capture.free()
+        self._context_capture.free()
+
+    def __enter__(self) -> "LagunaDFlashResidentCycle":
+        self._check_open()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self.close()
+
+    def _fail_closed(self) -> None:
+        self._failed = True
+        for owner in (self.drafter, self.target):
+            try:
+                owner.close()
+            except BaseException:
+                pass
+
+    def _check_open(self) -> None:
+        if self._closed:
+            raise RuntimeError("Laguna DFlash cycle is closed")
+        if self._failed:
+            raise RuntimeError("Laguna DFlash cycle failed closed")
+
+
+def _validate_cycle_summary(
+    result: LagunaDFlashVerifyResult,
+    summary: TargetAcceptSummary,
+) -> None:
+    expected_next = None if summary.next_tokens is None else summary.next_tokens[0]
+    expected = (
+        summary.accepted_counts[0],
+        summary.accepted_tokens[0],
+        summary.commit_rows[0],
+        summary.commit_tokens[0],
+        summary.commit_positions[0],
+        expected_next,
+        summary.full_accept[0],
+    )
+    actual = (
+        result.accepted_draft_count,
+        result.accepted_token_ids,
+        result.commit_row,
+        result.commit_token_id,
+        result.commit_position,
+        result.next_token_id,
+        result.full_accept,
+    )
+    if actual != expected:
+        raise RuntimeError(
+            "Laguna target result disagrees with provider-neutral accept summary: "
+            f"expected={expected} actual={actual}"
+        )
+
+
 __all__ = [
     "LagunaDFlashCaptureOwner",
+    "LagunaDFlashCycleResult",
     "LagunaDFlashDraftResult",
+    "LagunaDFlashResidentCycle",
     "LagunaDFlashResidentDrafter",
 ]
