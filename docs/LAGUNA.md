@@ -2,9 +2,11 @@
 
 Last updated: 2026-07-22
 
-Status: eager all-resident c=1 execution is implemented; first-token oracle and
-repeated-state gates pass, with one documented low-margin greedy-32 arithmetic
-split. Public generation, bulk prefill, and performance work remain.
+Status: eager all-resident c=1 and public blocking/streaming generation are
+implemented; first-token oracle and repeated-state gates pass, with one
+documented low-margin greedy-32 arithmetic split. Deterministic Poolside-v1
+reasoning parsing is green; XML tools, live chat transcripts, bulk prefill, and
+performance work remain.
 
 This document defines the correctness-first plan for running
 [`poolside/Laguna-S-2.1-GGUF`](https://huggingface.co/poolside/Laguna-S-2.1-GGUF),
@@ -1071,8 +1073,9 @@ the pre-final-norm DFlash capture. Its exact S 2.1 template is
 | Shared expert | Rank-2 Q4_K pack8 gate/up plus layer-specific Q4_K pack8 or raw Q6_K down run in an independent always-on branch | Closed for eager c=1: the real 24 Q4/23 Q6 split executes independently; separate gate/up → SiLU → down is added without a shared sigmoid gate or 2.5 routed scale. The unfused staged chain remains the model path. |
 | Final norm / Q6_K LM head | F32-weight RMSNorm, resident Q6T16 BF16→F32 linear sourced losslessly from raw Q6_K, GPU argmax, and sampler primitives are registered | Closed at root-probe scope: full 100,352-way logits are finite, KL is `6.87e-13` vs raw-Q6 CPU math, and top-1 is exactly `81364`; preserve full logits for later whole-model oracle gates. |
 | Session and hidden taps | `LagunaGGUFResidentSession` owns all 814 weights, exact c=1 scratch, dual RoPE, global/SWA KV, logits/argmax, and optional caller-owned BF16 taps at depths 2/11/20/30/39/48 | The 55-token oracle run is finite, repeat-exact, teardown-exact, and matches 29/32 autoregressive IDs; oracle teacher forcing is 31/32, isolating one low-margin branch rather than a cascading state bug. |
-| Public generator | Generic engine loop and server lifecycle exist | Built-ins register only Qwen paths; there is no Laguna generation key, tokenizer/template renderer, streaming owner, or model metadata route. |
-| Reasoning/tools | Generic server understands Qwen `<think>` plus JSON-in-`<tool_call>` | S 2.1 uses Poolside XML arguments: `<tool_call>name<arg_key>…</arg_key><arg_value>…</arg_value></tool_call>`, and reasoning history must stop its backward scan at the current `<assistant>` token. Implement the `poolside_v1` contracts from vLLM [`61c9ef98`](https://github.com/vllm-project/vllm/blob/61c9ef986a807aa3b9c6ccd25bb223b8f4116ac7/vllm/tool_parsers/poolside_v1_tool_parser.py#L48-L220) and its [assistant-scoped reasoning parser](https://github.com/vllm-project/vllm/blob/61c9ef986a807aa3b9c6ccd25bb223b8f4116ac7/vllm/reasoning/poolside_v1_reasoning_parser.py#L33-L69), including newline-less calls and incremental string values. |
+| Public generator | Generic engine loop and server lifecycle exist | Closed for the initial c=1 boundary: concrete Laguna registration owns resident weights plus isolated sessions, supports blocking/streaming preformatted completion, suppresses EOT/stops, reports truthful routing metadata, and frees through public `LLM.close()`. Bulk rows and performance promotion remain L8/L9. |
+| Reasoning | Model-owned Poolside renderer plus assistant-scoped `poolside_v1` prompt state feed the generic blocking/live/buffered splitter | Closed at deterministic parser scope: all five frozen GGUF template cases render exactly; no-thinking, prompt-opened thinking, duplicate controls, fragmented closes, prior-turn controls, blocking/streaming, and stop-at-close fixtures separate `reasoning_content` without leaking complete control markers. Live-model transcript validation remains L7 task #24. |
+| Tools | Generic server still parses Qwen JSON-in-`<tool_call>` | S 2.1 emits Poolside XML arguments: `<tool_call>name<arg_key>…</arg_key><arg_value>…</arg_value></tool_call>`. Implement vLLM [`poolside_v1`](https://github.com/vllm-project/vllm/blob/61c9ef986a807aa3b9c6ccd25bb223b8f4116ac7/vllm/tool_parsers/poolside_v1_tool_parser.py#L48-L220), including newline-less calls and incremental string values, before advertising Laguna tool parsing. |
 | Independent oracle | Closed for target AR: clean local Poolside checkout/build at `04b2b72c`, exact template/token fixtures, a complete 100,352-way first-token distribution, and 32 fresh-process-stable greedy IDs are checked in | Use the frozen fixture for L6 KL/top-1/greedy gates. Keep `-fa off`, `--no-mmap`, exact token-ID input, and fresh-process oracle constraints visible; target+DFlash diagnostics remain later work. |
 
 Implemented root primitive slice (2026-07-22):
@@ -1448,6 +1451,37 @@ rendered-text tokenization is exact, EOT markup is absent, finish metadata is
 `hip_gfx1151` / `gguf_q4_k_m`, and took 54.846 s blocking including 49.773 s
 model load, 4.966 s resident streaming, and 4.961 s direct eager. These timings
 are correctness diagnostics, not a throughput promotion.
+
+Implemented Poolside-v1 reasoning compatibility (2026-07-22):
+
+- `hipengine/chat/poolside_v1.py` is a torch-free transcription of the frozen
+  S 2.1 GGUF template. It reproduces all five checked-in no-thinking, thinking,
+  tool-declaration, and tool-history renderings byte-for-byte; the existing
+  Laguna tokenizer fixture already proves those strings lower to the frozen
+  token IDs exactly;
+- `PoolsideV1ReasoningParser` follows vLLM's
+  [assistant-scoped backward scan](https://github.com/vllm-project/vllm/blob/61c9ef986a807aa3b9c6ccd25bb223b8f4116ac7/vllm/reasoning/poolside_v1_reasoning_parser.py#L33-L69):
+  it stops at the current atomic `<assistant>` token, so a prior turn's
+  `</think>` cannot make a new prompt-opened reasoning span look closed;
+- the generation plugin exposes renderer/parser capabilities rather than
+  adding a Laguna branch to the server. The generic server carries the prompt's
+  initial reasoning state through blocking choices, live one/many streams,
+  buffered scheduler chunks, visible logprobs, tool buffering, finish details,
+  and token accounting;
+- the splitter accepts both prompt-opened output (`reasoning</think>answer`) and
+  output carrying an explicit/duplicate `<think>`, removes complete control
+  markers across arbitrary chunk boundaries, and preserves Qwen's prior
+  default-closed behavior when no model parser is registered;
+- `tests/fixtures/laguna_poolside_v1_reasoning.json` freezes no-thinking,
+  thinking, duplicate-marker, stop-at-close, and prior-turn scope cases.
+  Focused server tests prove blocking and fragmented streaming emit only
+  `reasoning_content`/`content`; capabilities report `poolside_v1` once the
+  Laguna generator is loaded.
+
+This closes deterministic reasoning-parser task #22, not tool parsing or a live
+Laguna chat-quality claim. Poolside XML tool extraction/streaming remains task
+#23, and task #24 must run real blocking/streaming transcript prompts before L7
+is complete.
 
 ### L8 — Bulk prefill and graph replay
 

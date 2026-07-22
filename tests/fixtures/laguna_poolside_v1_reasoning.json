@@ -1,0 +1,80 @@
+{
+  "schema": 1,
+  "contract": "poolside_v1",
+  "upstream": {
+    "repository": "vllm-project/vllm",
+    "commit": "61c9ef986a807aa3b9c6ccd25bb223b8f4116ac7",
+    "source": "vllm/reasoning/poolside_v1_reasoning_parser.py"
+  },
+  "markers": {
+    "assistant": "<assistant>",
+    "assistant_token_id": 23,
+    "reasoning_start": "<think>",
+    "reasoning_start_token_id": 18,
+    "reasoning_end": "</think>",
+    "reasoning_end_token_id": 19
+  },
+  "output_cases": [
+    {
+      "name": "no_thinking_direct",
+      "prompt_case": "no_thinking",
+      "initially_open": false,
+      "chunks": ["Direct answer."],
+      "content": "Direct answer.",
+      "reasoning_content": ""
+    },
+    {
+      "name": "thinking_prompt_open",
+      "prompt_case": "thinking",
+      "initially_open": true,
+      "chunks": ["Inspect state.", "</th", "ink>", "Final answer."],
+      "content": "Final answer.",
+      "reasoning_content": "Inspect state."
+    },
+    {
+      "name": "thinking_duplicate_open",
+      "prompt_case": "thinking",
+      "initially_open": true,
+      "chunks": ["<think>Inspect state.</think>Final answer."],
+      "content": "Final answer.",
+      "reasoning_content": "Inspect state."
+    },
+    {
+      "name": "no_thinking_duplicate_close",
+      "prompt_case": "no_thinking",
+      "initially_open": false,
+      "chunks": ["</think>Direct answer."],
+      "content": "Direct answer.",
+      "reasoning_content": ""
+    },
+    {
+      "name": "stop_at_reasoning_close",
+      "prompt_case": "thinking",
+      "initially_open": true,
+      "chunks": ["Stopped plan."],
+      "content": "",
+      "reasoning_content": "Stopped plan.",
+      "stop": "</think>"
+    }
+  ],
+  "scope_cases": [
+    {
+      "name": "prior_close_current_open",
+      "token_ids": [23, 18, 700, 19, 24, 701, 23, 18],
+      "reasoning_end": false,
+      "initially_open": true
+    },
+    {
+      "name": "prior_open_current_preclosed",
+      "token_ids": [23, 18, 700, 19, 24, 701, 23, 19],
+      "reasoning_end": true,
+      "initially_open": false
+    },
+    {
+      "name": "prior_close_current_unmarked",
+      "token_ids": [23, 18, 700, 19, 24, 701, 23, 702],
+      "reasoning_end": false,
+      "initially_open": false
+    }
+  ]
+}

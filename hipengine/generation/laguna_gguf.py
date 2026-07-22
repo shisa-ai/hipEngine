@@ -15,6 +15,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterator, Sequence
 
+from hipengine.chat.poolside_v1 import (
+    PoolsideV1ReasoningParser,
+    render_poolside_v1_chat,
+)
 from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
 from hipengine.generation.registry import (
@@ -58,6 +62,7 @@ class LagunaGGUFGenerator:
     context_length: int = _LAGUNA_INITIAL_CONTEXT
     server_plain_ar_max_active_requests: int = 1
     tokenizer: LagunaGGUFTokenizer = field(init=False)
+    chat_reasoning_parser: PoolsideV1ReasoningParser = field(init=False)
     last_generation_outputs: tuple[GenerationOutput, ...] = field(
         default=(), init=False, repr=False
     )
@@ -71,6 +76,8 @@ class LagunaGGUFGenerator:
     supports_speculative_mtp = False
     supports_stream_many = False
     supports_stream_logprobs = False
+    chat_template_family = "poolside_v1"
+    reasoning_parser_name = "poolside_v1"
 
     def __post_init__(self) -> None:
         self.model_path = Path(self.model_path).expanduser().resolve()
@@ -85,6 +92,7 @@ class LagunaGGUFGenerator:
                 f"Laguna public context_length must be within [1, {_LAGUNA_INITIAL_CONTEXT}]"
             )
         self.tokenizer = LagunaGGUFTokenizer.from_gguf_info(self.weight_index)
+        self.chat_reasoning_parser = PoolsideV1ReasoningParser(self.tokenizer)
 
     @property
     def repacked_cache_path(self) -> Path | None:
@@ -114,6 +122,21 @@ class LagunaGGUFGenerator:
         return self.tokenizer.decode(
             tuple(int(token) for token in token_ids),
             skip_special=bool(skip_special),
+        )
+
+    def render_chat_prompt(
+        self,
+        messages: Sequence[Any],
+        *,
+        tools: Sequence[Any] | None = None,
+        enable_thinking: bool = False,
+        add_generation_prompt: bool = True,
+    ) -> str:
+        return render_poolside_v1_chat(
+            messages,
+            tools=tools,
+            enable_thinking=bool(enable_thinking),
+            add_generation_prompt=bool(add_generation_prompt),
         )
 
     def prepare(

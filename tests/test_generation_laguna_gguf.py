@@ -22,7 +22,12 @@ class _FakeTokenizer:
     eos_token_id = 2
     eot_token_id = 24
     stop_token_ids = (2, 24)
-    tokens = tuple(chr(ord("a") + (index % 26)) for index in range(30))
+    _tokens = [chr(ord("a") + (index % 26)) for index in range(30)]
+    _tokens[18] = "<think>"
+    _tokens[19] = "</think>"
+    _tokens[23] = "<assistant>"
+    tokens = tuple(_tokens)
+    token_to_id = {token: index for index, token in enumerate(tokens)}
     token_types = tuple(1 for _ in range(30))
     byte_decoder = {}
 
@@ -37,7 +42,28 @@ class _FakeTokenizer:
 
     def encode(self, text: str, *, add_special_tokens: bool = False) -> list[int]:
         assert not add_special_tokens
-        return [7, 8] if text == "prompt" else [int(part) for part in text.split()]
+        if text == "prompt":
+            return [7, 8]
+        if any(marker in text for marker in ("<think>", "</think>", "<assistant>")):
+            ids = []
+            cursor = 0
+            while cursor < len(text):
+                marker = next(
+                    (
+                        item
+                        for item in ("<think>", "</think>", "<assistant>")
+                        if text.startswith(item, cursor)
+                    ),
+                    None,
+                )
+                if marker is None:
+                    ids.append(7)
+                    cursor += 1
+                else:
+                    ids.append(self.token_to_id[marker])
+                    cursor += len(marker)
+            return ids
+        return [int(part) for part in text.split()]
 
     def decode(self, token_ids, *, skip_special: bool = False) -> str:
         values = []
@@ -163,6 +189,19 @@ def test_laguna_generator_registers_concrete_gfx1151_key() -> None:
     assert GenerationKey("laguna_gguf", "hip_gfx1151", "gguf_q4_k_m") in set(
         registered_text_generators()
     )
+
+
+def test_laguna_generator_exposes_poolside_v1_chat_reasoning_contract(generator) -> None:
+    prompt = generator.instance.render_chat_prompt(
+        [{"role": "user", "content": "Reply with OK."}],
+        enable_thinking=True,
+    )
+
+    assert prompt.endswith("<assistant><think>")
+    assert prompt.startswith("〈|EOS|〉<system>")
+    assert generator.instance.chat_template_family == "poolside_v1"
+    assert generator.instance.reasoning_parser_name == "poolside_v1"
+    assert generator.instance.chat_reasoning_parser.initially_open(prompt) is True
 
 
 def test_laguna_blocking_generation_suppresses_eot_and_retains_weights(generator) -> None:
