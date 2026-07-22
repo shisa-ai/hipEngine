@@ -173250,3 +173250,40 @@ kernel uses 16 VGPR, 128 SGPR, 512 B LDS, and zero scratch. This is the exact
 eager GEMV path, not a performance claim; rows>1 WMMA tuning waits until the
 serial full-model oracle is green. Task #28 remains open for the dual-RoPE
 integration and softplus head-gate primitive.
+
+## 2026-07-22 — Complete Laguna dual-RoPE and softplus primitives
+
+Closed the remaining attention-prelude portion of task #28. Added bounded host
+materialization of the independently validated Laguna RoPE tables and exposed
+the existing F32-input/F32-weight head RMSNorm+split-half rotate kernel under a
+Laguna registry key. Full layers use factor-32 partial-64 YaRN; SWA layers use
+plain full-128 RoPE. Both take absolute int64 positions, so later 512-slot ring
+wrap cannot alter phase.
+
+Added an unfused FP32 per-head softplus broadcast with FP32 and BF16 outputs.
+The kernel computes one gate scalar per `(row, Q head)` and broadcasts across
+128 channels; extreme logits `-100/-20/20/100` are covered. No fused composite
+was introduced, so the exact unfused chain remains available by construction.
+Production-shape GPU tests cover 48/72 Q heads, eight KV heads, head dim 128,
+positions around 511/513 and the YaRN boundary at 8193, and CPU parity for both
+RoPE contracts. The mixed F16 projection tests were strengthened to execute
+both BF16 and FP32 activation variants.
+
+The profiler run prebuilt `gguf_ops.so` and `laguna_attention.so` outside the
+profiler and enforced cache-only loading:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 \
+HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+HIPENGINE_REQUIRE_CACHED_BUILD=1 \
+rocprofv3 --kernel-trace --output-format csv \
+  -d /tmp/laguna-rope-softplus-rocprof -- \
+  uv run pytest -q tests/test_laguna_rope_softplus_gpu.py
+```
+
+Four tests passed. The 48/72-head norm+RoPE kernels took 13.505/13.426 us with
+16 VGPR and zero scratch; FP32/BF16 softplus broadcasts took 2.485/1.764 us
+with 24 VGPR and zero scratch. The targeted projection/RoPE/CPU bundle passes
+22/22; Ruff, compileall, and diff checks pass. Projection, RoPE, and head-gate
+blockers are closed. Global/SWA attention context and physical KV ownership
+remain deliberately in task #29.
