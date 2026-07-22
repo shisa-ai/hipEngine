@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-23
+
+- [diagnostic retained gfx1151 Laguna DFlash; not promoted] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M + matched pinned B4 BF16 drafter / canonical ten-prompt, four-category, two-repeat greedy-32 suite moves true AR decode **16.388 -> 10.715 tok/s (-34.62%; 0.6538x)**, median TTFT **3.478 -> 4.764 s (+36.98%)**, and E2E **5.724 -> 4.000 output tok/s (-30.12%)** with **424/840 (50.48%)** draft acceptance and **1.6935 target rows/output**; all 20 pairs are exact/finite/repeat-deterministic with exact lifecycle, but 50.493/57.861 decode seconds are target verification, so the >1.10x gate fails and AR remains default. `benchmarks/results/2026-07-23-gfx1151-laguna-dflash-category-economics.json`.
+
 ## 2026-07-22
 
 - [retained gfx1151 Laguna target-only AR] Radeon 8060S Poolside Laguna S 2.1 / Q4_K_M / canonical ten-prompt four-category greedy h16/h32 moves serial-to-bulk prefill **17.418 -> 23.333 tok/s (+33.95%)**, median TTFT **4.628 -> 3.481 s (-24.79%)**, and h16/h32 E2E **2.727/4.670 -> 3.470/5.719 tok/s (+27.27%/+22.47%)** with decode neutral at **16.381 tok/s**; all serial/bulk/repeat IDs, Poolside distribution, category guards, trace dispatch, and lifecycle gates pass. Clean Poolside `04b2b72c` separately reports **70.45 prompt / 18.88-19.06 predicted tok/s** under incompatible native/HTTP scopes and remains qualified diagnostic-only. `benchmarks/results/2026-07-22-gfx1151-laguna-s21-target-ar-retained.json`, `benchmarks/results/2026-07-22-gfx1151-poolside-laguna-s21-target-ar-baseline.json`.

@@ -1,8 +1,10 @@
 # hipEngine Topline Benchmarks
 
-Last reviewed: **2026-07-22**
+Last reviewed: **2026-07-23**
 
 Latest retained hipEngine revisions in this scoreboard:
+`b83d9aaae0b4afd59508d081f65b2da7c473e59a` for the exact Laguna S 2.1
+full-suite DFlash diagnostic and fixed-horizon state gate,
 `ee1649e3fa372bd115ae7afed9aa2a0e81932afc` for the exact Laguna S 2.1
 canonical target-AR category benchmark and bulk-prefill promotion,
 `e99a30cb9183ce342f5a30fa4f774b14dc4c0677` for the Laguna S 2.1
@@ -1113,11 +1115,12 @@ blockers, commands, and artifact links. Removed or superseded tables remain
 recoverable from the linked compact artifacts, changelog, and
 [`benchmarks/HISTORY.md`](HISTORY.md).
 
-### gfx1151 Laguna S 2.1 target AR and cold startup, 2026-07-22
+### gfx1151 Laguna S 2.1 target AR, DFlash, and cold startup, 2026-07-23
 
-**Status: retained for exact target-only c=1 AR and loader startup; Laguna
-DFlash remains unclaimed.** The AR protocol uses the full ten-prompt
-`mtpbench-code-general-ja` suite (`code`, `general_en`, `general_ja`, and
+**Status: retained for exact target-only c=1 AR and loader startup; matched B4
+DFlash is exact but diagnostic-only and remains off.** The AR protocol uses the
+full ten-prompt `mtpbench-code-general-ja` suite (`code`, `general_en`,
+`general_ja`, and
 `mixed_ja_en`), prompt lengths 68-122, greedy 16/32-token horizons, two
 repetitions, balanced serial/bulk order, and one warmup per route. Model load is
 excluded. Every serial/bulk pair and same-route repeat has exact generated IDs;
@@ -1153,6 +1156,44 @@ from the resident in-process boundary. Same-server Poolside output is also only
 the frozen fresh-process Poolside distribution remains the correctness oracle.
 Artifacts: [retained hipEngine target AR](results/2026-07-22-gfx1151-laguna-s21-target-ar-retained.json)
 and [qualified Poolside baseline](results/2026-07-22-gfx1151-poolside-laguna-s21-target-ar-baseline.json).
+
+#### Matched B4 DFlash economics
+
+The admitted Poolside revision `b0486d1` BF16 drafter ran in one resident
+process against a true no-DFlash target path over the same 10 prompts, fixed 32
+visible outputs, two repetitions, and alternating route order. Decode timing
+starts after each synchronized first token and includes 31 visible outputs;
+model load is excluded. All **20/20** AR/DFlash pairs are exact, all values are
+finite, both routes are repeat-deterministic, target/drafter cursors satisfy one
+of the two valid fixed-horizon commit boundaries, the frozen Poolside
+first-token gate passes, and tracked ownership returns to zero.
+
+| Scope | True AR decode tok/s | DFlash B4 decode tok/s | DFlash / AR | Draft acceptance | Accepted / output | Target rows / output |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Full 10 prompts | **16.388** | 10.715 | **0.6538x (-34.62%)** | 50.48% | 0.6839 | 1.6935 |
+| Train, 6 prompts | 16.445 | 11.855 | 0.7209x | 58.33% | 0.7151 | 1.5323 |
+| Heldout, 4 prompts | 16.303 | 9.365 | 0.5744x | 41.15% | 0.6371 | 1.9355 |
+| `code` | 16.564 | 14.522 | 0.8768x | 78.23% | 0.7823 | 1.2500 |
+| `general_en` | 16.714 | 8.751 | 0.5236x | 36.54% | 0.6129 | 2.0968 |
+| `general_ja` | 16.248 | 9.405 | 0.5788x | 40.63% | 0.6290 | 1.9355 |
+| `mixed_ja_en` | 15.879 | 9.234 | 0.5815x | 39.58% | 0.6129 | 1.9355 |
+
+Across 210 cycles, DFlash accepts 424/840 proposed tokens; 18.10% of cycles
+accept zero and 30.48% accept all four. The synchronized decode wall is 57.861
+s: proposal is 6.721 s, target verification is **50.493 s (87.27%)**, and
+post-verify/commit residual is 0.645 s. Median TTFT regresses
+**3.478 -> 4.764 s (+36.98%)** because AR uses the retained bulk prefill while
+DFlash still seeds target hidden captures serially. Fixed-horizon E2E moves
+**5.724 -> 4.000 output tok/s (-30.12%)**. Combined resident ownership is
+79,349,505,533 bytes (target 77,099,132,853; drafter 2,250,372,680), tracked
+peak is 79,349,726,717 bytes, and teardown is exact.
+
+The >1.10x promotion gate therefore fails decisively on decode before TTFT is
+considered; AR stays default and D5 public integration remains deferred. The
+artifact preserves the complete raw timing run plus an explicit offline
+reclassification of its derived fixed-horizon state predicate; no measurement
+or acceptance value changed and the >5-minute GPU run was not repeated after
+that isolated gate repair. [Diagnostic artifact](results/2026-07-23-gfx1151-laguna-dflash-category-economics.json).
 
 #### Cold startup
 
