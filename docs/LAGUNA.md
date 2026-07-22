@@ -1416,6 +1416,39 @@ Acceptance:
   Q4_K_M truthfully;
 - unsupported modes fail closed with actionable errors.
 
+Implemented initial public c=1 boundary (2026-07-22):
+
+- `hipengine/generation/laguna_gguf.py` is registered only for the concrete
+  `(laguna_gguf, hip_gfx1151, gguf_q4_k_m)` key. `backend="auto"` and
+  `quant="auto"` resolve to those concrete values on this host; gfx1100,
+  c>1, speculative, non-greedy sampling, logprobs, non-BF16 KV, and unsupported
+  processors fail closed instead of silently taking another model path;
+- the generator discovers a validated sibling `laguna-repacked-v1` artifact,
+  owns one immutable resident weight set, and allocates isolated 4K BF16
+  KV/scratch state per blocking or streaming request. `LLM.close()` now reaches
+  compatibility-generator ownership and frees the shared 71.47 GiB weight set;
+- both text and exact-token prompts use the Laguna GGUF tokenizer without
+  implicit BOS insertion. Default EOS/EOT, caller stop IDs/sequences,
+  `min_tokens`, `ignore_eos`, max-token finish, deadlines, and cooperative
+  cancellation are explicit. Stop suffixes are withheld from streaming text;
+  EOT 24 never leaks `</assistant>`, and incremental UTF-8 decoding does not
+  emit transient replacement glyphs;
+- the first public support boundary is **preformatted completion**. Poolside-v1
+  chat/reasoning/tool output parsing and its full server transcript gate are
+  intentionally the separate parser tasks; they must not be advertised as
+  model-validated merely because raw completion works.
+
+The committed `scripts/laguna_public_correctness.py` gate compares public
+blocking, public streaming, and direct eager execution while sharing only the
+immutable weights. On the frozen 55-token prompt and 32-token horizon all three
+produce the exact same 32 IDs, blocking/streaming text is identical, frozen
+rendered-text tokenization is exact, EOT markup is absent, finish metadata is
+`length/32`, and tracked bytes/allocations return exactly to zero after
+`LLM.close()`. The measured run used the cache-backed public path, reported
+`hip_gfx1151` / `gguf_q4_k_m`, and took 54.846 s blocking including 49.773 s
+model load, 4.966 s resident streaming, and 4.961 s direct eager. These timings
+are correctness diagnostics, not a throughput promotion.
+
 ### L8 — Bulk prefill and graph replay
 
 Bulk prefill comes after eager parity:

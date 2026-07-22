@@ -173722,3 +173722,83 @@ python3 -m compileall -q hipengine/loading/laguna_gguf_materialize.py \
   scripts/laguna_gguf_load_smoke.py scripts/laguna_repacked_cache.py
 # ruff/compileall/git diff --check clean
 ```
+
+## 2026-07-22 — Laguna public c=1 generation and streaming
+
+Implemented the initial public Laguna boundary under a concrete generation
+plugin rather than adding model/backend branches to `LLM`:
+
+- `hipengine/generation/laguna_gguf.py` registers exactly
+  `(laguna_gguf, hip_gfx1151, gguf_q4_k_m)` and is lazily imported with the
+  builtin generators.
+- `LLM.generate()`, `generate_detailed()`, `stream()`, and `stream_detailed()`
+  accept preformatted text or exact token IDs through `LagunaGGUFTokenizer`.
+  Text never gets a second implicit BOS.
+- The generator auto-discovers the validated sibling
+  `laguna-s-2.1-Q4_K_M.hipengine-repacked-v1`, owns one resident weight set, and
+  creates/frees isolated token-serial BF16 KV/scratch sessions per request.
+- EOT 24/default EOS, caller stop IDs and multi-token sequences, min-token,
+  ignore-EOS, max-token, deadline, and cooperative cancellation behavior is
+  explicit. Matched stop suffixes are withheld from blocking and streaming
+  text; EOT never leaks `</assistant>`. Streaming uses an incremental UTF-8
+  decoder for byte-BPE pieces.
+- Unsupported c>1, speculative, non-greedy sampling, logprobs, non-BF16 KV, and
+  unimplemented processor modes fail closed with named fields. The generator
+  advertises a c=1 server route cap and marks its token-serial metadata
+  ineligible for throughput claims.
+- Fixed the generic compatibility owner so `SubmitPollTextGenerator.close()`
+  delegates through `_SubmitPollTextRunner.close()` to the inner generator;
+  without this, public `LLM.close()` could not free Laguna's shared weights.
+- Added `scripts/laguna_public_correctness.py` and 13 host tests covering exact
+  registration, text/exact-token prompts, sibling cache discovery, blocking,
+  streaming, stop/EOT suppression, max-token finish, cancellation, deadline,
+  context/batch/sampling rejection, scratch-probe ownership, server
+  backend/quant/ready metadata, and public close.
+
+Live public gate:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 \
+uv run python -u scripts/laguna_public_correctness.py \
+  /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf \
+  --backend hip_gfx1151 --max-tokens 32 \
+  --output /tmp/laguna-public-correctness.json
+```
+
+Result: `pass=true`. The frozen rendered prompt retokenizes exactly to all 55
+IDs. Public blocking, public streaming, and a direct borrowed eager session all
+produce the same 32 IDs
+`[94557,3505,3011,515,2407,365,2291,10723,1687,948,1482,4217,81,53551,2027,565,17124,20104,365,955,13957,81,769,7408,6282,365,340,955,10511,372,340,901]`.
+Blocking and stream text are identical, EOT markup is absent, both finish as
+`length/32`, and `LLM.close()` returns tracked ownership from the
+77,022,439,484-byte peak exactly to zero. Diagnostic timing was 54.846 s
+blocking including 49.773 s cache-backed model load, 4.966 s resident stream,
+and 4.961 s direct eager. This is a correctness/lifecycle gate, not a retained
+throughput row.
+
+Validation:
+
+```bash
+uv run pytest -q tests/test_generation_laguna_gguf.py
+# 13 passed (one TestClient deprecation warning)
+uv run pytest -q tests/test_generation_laguna_gguf.py tests/test_llm_generate.py \
+  tests/test_llm_gguf_generate_path.py tests/test_generation_registry.py
+# 40 passed, 4 skipped
+uv run pytest -q \
+  tests/test_generation_batch_scheduler.py::test_submit_poll_text_generator_preserves_prompt_order_and_row_seeds \
+  tests/test_generation_batch_scheduler.py::test_submit_poll_text_generator_reuses_one_loop_across_generate_calls \
+  tests/test_generation_batch_scheduler.py::test_submit_poll_text_generator_preserves_stream_detailed_telemetry \
+  tests/test_generation_batch_scheduler.py::test_submit_poll_text_generator_preserves_generate_detailed_telemetry_for_stream
+# 4 passed
+uvx ruff check hipengine/generation/laguna_gguf.py \
+  hipengine/generation/__init__.py hipengine/generation/engine_loop.py \
+  scripts/laguna_public_correctness.py tests/test_generation_laguna_gguf.py
+python3 -m compileall -q hipengine/generation/laguna_gguf.py \
+  hipengine/generation/__init__.py hipengine/generation/engine_loop.py \
+  scripts/laguna_public_correctness.py tests/test_generation_laguna_gguf.py
+# ruff/compileall/git diff --check clean
+```
+
+The first boundary is deliberately preformatted completion. Poolside-v1
+reasoning/tool parsing and chat transcript validation remain tasks #22-#24;
+raw public generation no longer blocks that work.

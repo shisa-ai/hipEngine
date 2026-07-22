@@ -939,6 +939,15 @@ class _SubmitPollTextRunner:
             self._rows.pop(rid, None)
             self._outputs.pop(rid, None)
 
+    def close(self) -> None:
+        """Release resources owned by the compatibility generator."""
+
+        self._rows.clear()
+        self._outputs.clear()
+        closer = getattr(self._inner, "close", None)
+        if callable(closer):
+            closer()
+
     def _subset_request(self, request_ids: tuple[int, ...]) -> GenerationRequest:
         rows = tuple(self._rows[request_id] for request_id in request_ids)
         request = rows[0].request
