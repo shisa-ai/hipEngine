@@ -172943,3 +172943,83 @@ sampled OpenAI API from `not_started` to `direct_eq_ok`, reflecting the passing
 native state/KV/API gate without mislabeling the failed tool-validity gate as
 retained production support. No runtime code, default, or benchmark claim
 changed in this documentation unit.
+
+## 2026-07-22 — Add tokenizer-aware constrained tool decoding
+
+Completed the first post-A6 closure item with a tokenizer-agnostic host grammar
+rather than prompt- or fixture-specific token rules. `ToolCallConstraintSpec`
+and `ToolCallConstraintState` now enforce one canonical configurable tool
+envelope, declared tool names, strict root-object JSON arguments, `auto`
+text-versus-tool branching, required-only tool branching, EOS admission, and a
+unique parse-validated close suffix. `JsonObjectConstraintState` also exposes
+strict prefix acceptance so object-root structured requests mask invalid tokens
+instead of only attempting a final close.
+
+The shared host sampler applies tokenizer-decoded candidate masks before
+processed argmax, top-k, top-p, or multinomial selection. Forced tokens are
+revalidated against the same constraint, valid EOS is not fed back as literal
+special-token text, `ignore_eos` keeps EOS subject to the grammar, token decode
+errors/empty text are rejected candidate-by-candidate, and an empty allowed set
+fails closed. Dynamic partial-marker completion and exact-budget structural
+closes use the existing model-decoded `ForcedTokenQueue`. Constraint state starts
+after a tokenized thinking close when a budget is active, accepts an optional
+model-configured thinking envelope when no token budget owns the phase, and
+clones without sharing mutable queues/state.
+
+The field is carried through `SamplingParams`, `GenerationRequest`, scheduler
+row blocks, PARO/GGUF row state, and both host-logits runtime paths. Actual GGUF
+and PARO tokenizers provide per-token text; PARO constraint decoding explicitly
+keeps special tokens instead of silently dropping them. Servers advertise and
+install strict masks only when both tokenization and detokenization are callable;
+otherwise prompt/parse plus existing fail-closed result validation remains the
+fallback. Tool-enabled chat builds
+an `auto`, `required`, or specific-name grammar from the declared tools,
+includes automatic-mode close-marker repair, and advertises the exact strict
+scope as canonical envelope + declared name + root-JSON syntax. Structured
+outputs separately advertise tokenizer-backed strict root-object syntax. Native GPU
+sampling and raw-target MTP list the constraint as unsupported and fall back/
+reject before entering an inexact route. Full function JSON Schema semantics
+remain in the existing post-generation validator; no schema-guided argument
+quality, A3 promotion, A6 rerun, or performance claim is made.
+
+RED fixtures first covered invalid/undeclared high-logit candidates, auto prose
+followed by a late tool call, malformed JSON, custom markers, nested/escaped
+arguments, and missing tokenizer text. GREEN coverage additionally pins
+pre-top-k masking, forced-close validation, fail-closed decode errors/empty text,
+thinking-close transition, complete-envelope EOS/`ignore_eos`, GGUF integration,
+server lowering/capabilities, scheduler propagation, native/MTP blockers, and
+state cloning.
+
+Validation on the final tree:
+
+```bash
+PYTHONPATH=. uv run pytest -q \
+  tests/test_sampling.py tests/test_generation_qwen35_gguf_sampling.py \
+  tests/test_generation_batch_scheduler.py tests/test_generation_qwen35_paro.py \
+  tests/test_qwen35_resident_batch_layout.py
+# passed
+
+PYTHONPATH=. uv run pytest -q tests/test_server_api.py \
+  -k 'tool or capabilities_endpoint_reports_manifest_and_auth or replay_artifact_redacts_failed_request'
+# passed; only the existing Starlette/httpx deprecation warning
+
+python3 -m compileall -q hipengine tests scripts
+uv run ruff check <all changed Python/test files>
+python3 scripts/smoke.py --mode registry
+python3 scripts/smoke.py --mode cpu-fixtures
+python3 scripts/smoke.py --mode smoke-add-plan
+git diff --check
+python3 scripts/resolve_worklog_conflict.py WORKLOG.md --check
+# passed; canonical CPU fixture smoke passed all seven fixtures
+```
+
+A real Qwen3.6-35B-A3B GGUF tokenizer-only check encoded the canonical `read`
+envelope into 19 tokens and its optional-thinking form into 28 tokens, proved
+whole-text round-trip equality for both, accepted each individually decoded
+token prefix, and ended in the complete grammar state. A full
+`uv run pytest -q` attempt exceeded the 600-second command budget at 38%
+with no observed failure and was not used as closure evidence. The standalone
+`scripts/check_fixtures.py` also encounters the pre-existing nested
+`tests/fixtures/cpu_reference/moe/moe_ffn_selected_gguf_q4_k.json` multi-output
+shape (`KeyError: expected`); the supported `smoke.py --mode cpu-fixtures` gate
+passes and this change does not touch that fixture or loader.

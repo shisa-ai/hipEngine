@@ -10511,15 +10511,28 @@ class Qwen35ParoResidentSession:
         self.runtime.device_synchronize()
         logits_host = np.empty((self.vocab_size,), dtype=np.float32)
         copy_device_to_host(host_array_ptr(logits_host), self.lm_logits, runtime=self.runtime)
-        sample = select_token(logits_host, params, state)
+        sample = select_token(
+            logits_host,
+            params,
+            state,
+            token_text_for_id=lambda token_id: _decode_token_for_constraint(
+                self.tokenizer,
+                int(token_id),
+            ),
+        )
         index_host = np.array([sample.token_id], dtype=np.int64)
         value_host = np.array([sample.logit], dtype=np.float32)
         copy_host_to_device(self.lm_out_index, host_array_ptr(index_host), runtime=self.runtime)
         copy_host_to_device(self.lm_out_value, host_array_ptr(value_host), runtime=self.runtime)
         token_id = int(sample.token_id)
+        token_text = (
+            _decode_token_for_constraint(self.tokenizer, token_id)
+            if state.has_token_text_constraint
+            else _decode_token_cached(self.tokenizer, token_id)
+        )
         return Qwen35ParoAutoregressiveStepResult(
             token_id=token_id,
-            token_text=_decode_token_cached(self.tokenizer, token_id),
+            token_text=token_text,
             logit=float(sample.logit),
             logprob=sample.logprob,
             top_logprobs=sample.top_logprobs,
@@ -14170,6 +14183,19 @@ def _decode_token_cached(tokenizer: Any | None, token_id: int) -> str:
         return tokenizer.decode([int(token_id)])
     except Exception:
         return ""
+
+
+def _decode_token_for_constraint(tokenizer: Any | None, token_id: int) -> str:
+    if tokenizer is None:
+        raise RuntimeError("tokenizer-aware constraints require a tokenizer")
+    ids = [int(token_id)]
+    try:
+        return tokenizer.decode(ids, skip_special_tokens=False)
+    except TypeError:
+        try:
+            return tokenizer.decode(ids, skip_special=False)
+        except TypeError:
+            return tokenizer.decode(ids)
 
 
 def _decode_token(model: Path, token_id: int) -> str:

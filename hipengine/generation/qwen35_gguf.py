@@ -3763,7 +3763,7 @@ class Qwen35GGUFBringupGenerator:
         result = session.prefill(prompt_ids, return_logits=True)
         raise_if_generation_deadline_expired(request)
         full_vocab_logits_d2h, logits_d2h_bytes = _gguf_logits_d2h_metadata(result)
-        sample = _select_from_gguf_logits(result, sampling_request, state)
+        sample = _select_from_gguf_logits(result, sampling_request, state, self.tokenizer)
         samples.append(sample)
         generated_ids = [int(sample.token_id)]
         _gguf_queue_json_object_close_if_needed(
@@ -3796,7 +3796,7 @@ class Qwen35GGUFBringupGenerator:
             if step_full_vocab_logits_d2h is not None:
                 full_vocab_logits_d2h = step_full_vocab_logits_d2h
                 logits_d2h_bytes = step_logits_d2h_bytes
-            sample = _select_from_gguf_logits(step, sampling_request, state)
+            sample = _select_from_gguf_logits(step, sampling_request, state, self.tokenizer)
             samples.append(sample)
             generated_ids.append(int(sample.token_id))
             _gguf_queue_json_object_close_if_needed(
@@ -3902,7 +3902,7 @@ class Qwen35GGUFBringupGenerator:
         result = session.prefill(prompt_ids, return_logits=True)
         raise_if_generation_deadline_expired(request)
         full_vocab_logits_d2h, logits_d2h_bytes = _gguf_logits_d2h_metadata(result)
-        sample = _select_from_gguf_logits(result, sampling_request, state)
+        sample = _select_from_gguf_logits(result, sampling_request, state, self.tokenizer)
         generated_ids.append(int(sample.token_id))
         _gguf_queue_json_object_close_if_needed(
             state,
@@ -3943,7 +3943,7 @@ class Qwen35GGUFBringupGenerator:
             step = session.step(generated_ids[-1], return_logits=True)
             raise_if_generation_deadline_expired(request)
             full_vocab_logits_d2h, logits_d2h_bytes = _gguf_logits_d2h_metadata(step)
-            sample = _select_from_gguf_logits(step, sampling_request, state)
+            sample = _select_from_gguf_logits(step, sampling_request, state, self.tokenizer)
             generated_ids.append(int(sample.token_id))
             _gguf_queue_json_object_close_if_needed(
                 state,
@@ -5483,6 +5483,7 @@ class Qwen35GGUFResidentModelRunner:
                 result,
                 sampling_request,
                 sampling_state,
+                self.generator.tokenizer,
             )
             full_vocab_logits_d2h, logits_d2h_bytes = _gguf_logits_d2h_metadata(
                 result
@@ -6389,6 +6390,7 @@ class Qwen35GGUFResidentModelRunner:
                 result,
                 sampling_request,
                 sampling_state,
+                self.generator.tokenizer,
             )
             full_vocab_logits_d2h, logits_d2h_bytes = _gguf_logits_d2h_metadata(
                 result
@@ -6669,11 +6671,21 @@ def _select_from_gguf_logits(
     result: Any,
     request: GenerationRequest,
     state: RowSamplingState,
+    tokenizer: Qwen35GGUFTokenizer | None = None,
 ):
     logits = getattr(result, "logits", None)
     if logits is None:
         raise RuntimeError("GGUF sampled generation requires logits from the resident session")
-    return select_token(logits.reshape(-1), request, state)
+    return select_token(
+        logits.reshape(-1),
+        request,
+        state,
+        token_text_for_id=(
+            None
+            if tokenizer is None
+            else lambda token_id: tokenizer.decode([int(token_id)])
+        ),
+    )
 
 
 def _gguf_logits_d2h_metadata(result: Any) -> tuple[bool | None, int | None]:
@@ -6728,6 +6740,7 @@ def _gguf_row_sampling_state(
         force_sequence_completion_token_sequences=request.force_sequence_completion_token_sequences,
         force_sequence_completion_reason=request.force_sequence_completion_reason,
         json_object_close_forcing=request.json_object_close_forcing,
+        tool_call_constraint=request.tool_call_constraint,
         thinking_budget=thinking_budget_state_from_params(request),
     )
 
