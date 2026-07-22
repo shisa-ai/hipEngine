@@ -160,7 +160,9 @@ def lm_head_fp16_argmax_bf16_rows_i32(
         ctypes.c_void_p(block_values_f32_ptr),
         ctypes.c_void_p(block_indices_i32_ptr),
         ctypes.c_void_p(out_indices_i32_ptr),
-        ctypes.c_void_p(out_values_f32_ptr) if out_values_f32_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_void_p(out_values_f32_ptr)
+        if out_values_f32_ptr is not None
+        else ctypes.c_void_p(),
         ctypes.c_int64(rows),
         ctypes.c_int64(hidden_size),
         ctypes.c_int64(vocab_size),
@@ -252,7 +254,9 @@ def argmax_f32_rows_i32(
         ctypes.c_void_p(block_values_f32_ptr),
         ctypes.c_void_p(block_indices_i32_ptr),
         ctypes.c_void_p(out_indices_i32_ptr),
-        ctypes.c_void_p(out_values_f32_ptr) if out_values_f32_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_void_p(out_values_f32_ptr)
+        if out_values_f32_ptr is not None
+        else ctypes.c_void_p(),
         ctypes.c_int64(rows),
         ctypes.c_int64(vocab_size),
         ctypes.c_int64(threads),
@@ -297,7 +301,9 @@ def topk_f32_rows_i32(
     fn.restype = ctypes.c_int
     err = fn(
         ctypes.c_void_p(logits_f32_ptr),
-        ctypes.c_void_p(out_values_f32_ptr) if out_values_f32_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_void_p(out_values_f32_ptr)
+        if out_values_f32_ptr is not None
+        else ctypes.c_void_p(),
         ctypes.c_void_p(out_indices_i32_ptr),
         ctypes.c_int64(rows),
         ctypes.c_int64(vocab_size),
@@ -402,10 +408,10 @@ def w8a16_lm_head_argmax_rows_bf16(
         ctypes.c_void_p,  # block_indices i32 scratch
         ctypes.c_void_p,  # out_indices i32
         ctypes.c_void_p,  # out_values f32 (nullable)
-        ctypes.c_int64,   # rows
-        ctypes.c_int64,   # hidden_size
-        ctypes.c_int64,   # vocab_size
-        ctypes.c_int64,   # threads
+        ctypes.c_int64,  # rows
+        ctypes.c_int64,  # hidden_size
+        ctypes.c_int64,  # vocab_size
+        ctypes.c_int64,  # threads
         ctypes.c_void_p,  # stream
     ]
     fn.restype = ctypes.c_int
@@ -416,7 +422,9 @@ def w8a16_lm_head_argmax_rows_bf16(
         ctypes.c_void_p(block_values_f32_ptr),
         ctypes.c_void_p(block_indices_i32_ptr),
         ctypes.c_void_p(out_indices_i32_ptr),
-        ctypes.c_void_p(out_values_f32_ptr) if out_values_f32_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_void_p(out_values_f32_ptr)
+        if out_values_f32_ptr is not None
+        else ctypes.c_void_p(),
         ctypes.c_int64(rows),
         ctypes.c_int64(hidden_size),
         ctypes.c_int64(vocab_size),
@@ -440,6 +448,11 @@ def register_lm_head_kernels(*, replace: bool = True) -> None:
     )
     register(
         KernelKey("hip_gfx1100", "argmax", "w4_paro", "f32"),
+        argmax_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "argmax", "f32", "top1_i64"),
         argmax_f32,
         replace=replace,
     )
@@ -490,4 +503,3 @@ def _check_topk(top_k: int) -> None:
 
 
 register_lm_head_kernels()
-

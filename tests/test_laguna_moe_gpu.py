@@ -97,7 +97,11 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
     assert plan.routed_scaling_factor == pytest.approx(2.5)
     assert plan.router_select_key.layer == "laguna_sigmoid_router_topk"
     assert plan.selected_gate_up_key.quant == "gguf_q4_k_t16_v1"
-    assert plan.selected_down_key.quant == "gguf_q6_k_t16_v1"
+    assert set(plan.selected_down_keys) == {
+        "gguf_q4_k_t16_v1",
+        "gguf_q6_k_t16_v1",
+    }
+    assert plan.selected_down_keys["gguf_q6_k_t16_v1"] == plan.selected_down_key
     assert all(key.backend == "hip_gfx1151" for key in plan.kernel_keys)
 
     sparse_sequence = LAGUNA_GGUF.decode_layer_sequence(
@@ -125,7 +129,13 @@ def test_laguna_moe_plan_rejects_qwen_softmax_or_unnormalized_contracts() -> Non
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
-def test_laguna_unfused_moe_matches_production_shape_quant_oracle() -> None:
+@pytest.mark.parametrize(
+    "down_qtype",
+    (GGMLQuantizationType.Q4_K, GGMLQuantizationType.Q6_K),
+)
+def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
+    down_qtype: GGMLQuantizationType,
+) -> None:
     # Keep production H/F/top-k and nontrivial rank-3 strides while reducing the
     # synthetic expert inventory; the separate router test covers all 256 IDs.
     config = replace(
@@ -141,26 +151,30 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle() -> None:
     correction = np.zeros(e, dtype=np.float32)
     correction[selected_order] = np.linspace(1.0, 0.1, k, dtype=np.float32)
     q4_base = make_q4_k_weight(f, h)
-    q6_base = make_q6_k_weight(h, f)
+    down_base = (
+        make_q4_k_weight(h, f)
+        if down_qtype == GGMLQuantizationType.Q4_K
+        else make_q6_k_weight(h, f)
+    )
     gate_experts = np.stack([np.roll(q4_base, 7 * expert, axis=0) for expert in range(e)], axis=0)
     up_experts = np.stack(
         [np.roll(q4_base, 11 * expert + 3, axis=0) for expert in range(e)], axis=0
     )
     down_experts = np.stack(
-        [np.roll(q6_base, 13 * expert + 5, axis=0) for expert in range(e)], axis=0
+        [np.roll(down_base, 13 * expert + 5, axis=0) for expert in range(e)], axis=0
     )
     shared_gate = np.roll(q4_base, 17, axis=0).copy()
     shared_up = np.roll(q4_base, 29, axis=0).copy()
-    shared_down = np.roll(q6_base, 31, axis=0).copy()
+    shared_down = np.roll(down_base, 31, axis=0).copy()
     payloads = {
         "ffn_gate_inp": (router, GGMLQuantizationType.F32, (e, h)),
         "exp_probs_b": (correction, GGMLQuantizationType.F32, (e,)),
         "ffn_gate_exps": (gate_experts, GGMLQuantizationType.Q4_K, (e, f, h)),
         "ffn_up_exps": (up_experts, GGMLQuantizationType.Q4_K, (e, f, h)),
-        "ffn_down_exps": (down_experts, GGMLQuantizationType.Q6_K, (e, h, f)),
+        "ffn_down_exps": (down_experts, down_qtype, (e, h, f)),
         "ffn_gate_shexp": (shared_gate, GGMLQuantizationType.Q4_K, (f, h)),
         "ffn_up_shexp": (shared_up, GGMLQuantizationType.Q4_K, (f, h)),
-        "ffn_down_shexp": (shared_down, GGMLQuantizationType.Q6_K, (h, f)),
+        "ffn_down_shexp": (shared_down, down_qtype, (h, f)),
     }
 
     resident = {}
@@ -188,10 +202,12 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle() -> None:
             f,
             (h // 256) * 144,
         )
+        down_block_bytes = 144 if down_qtype == GGMLQuantizationType.Q4_K else 210
+        down_tile_bytes = 2_368 if down_qtype == GGMLQuantizationType.Q4_K else 3_360
         assert layer.weight("ffn_down_exps").spec.source.byte_shape == (
             e,
             h,
-            (f // 256) * 210,
+            (f // 256) * down_block_bytes,
         )
         assert layer.weight("ffn_gate_exps").allocation("tiles").tensor.shape == (
             e,
@@ -203,7 +219,7 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle() -> None:
             e,
             h // 16,
             f // 256,
-            3_360,
+            down_tile_bytes,
         )
 
         rng = np.random.default_rng(1138)
@@ -238,7 +254,7 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle() -> None:
                 gguf_quant_gemv(
                     intermediate,
                     down_experts[expert],
-                    GGMLQuantizationType.Q6_K,
+                    down_qtype,
                 )
             )[0]
         routed_expected = _bf16_round(
@@ -253,7 +269,7 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle() -> None:
             gguf_quant_gemv(
                 shared_intermediate,
                 shared_down,
-                GGMLQuantizationType.Q6_K,
+                down_qtype,
             )
         )
         expected = _bf16_round(routed_expected + shared_expected)

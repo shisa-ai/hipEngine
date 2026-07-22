@@ -173425,3 +173425,68 @@ pre-existing absent `/home/lhl/amd-gpu-tuning/reference/atlas` checkout. The
 Laguna router is a new in-tree kernel, not claimed as a Qwen parent port. L5 is
 closed for eager c=1; layer-0 dense FFN and the complete session now move to L6,
 while batched routing remains L8.
+
+## 2026-07-22 — Bring up the all-resident Laguna eager session
+
+Added the first complete target-only `LagunaGGUFResidentSession`: all 814
+replacement weights stay resident, the admitted context is capped at 4K, and
+each token executes all 48 layers through exact gfx1151 registry keys. The
+owner carries one BF16 hidden row, widest-layer Q/K/V/context scratch, one
+reused MoE scratch chain, 12 global BF16 KV families, 36 physical 512-token SWA
+rings, dual absolute-position RoPE tables, full 100,352-way FP32 logits, and a
+generic `argmax/f32/top1_i64` alias. Token-serial prefill and diagnostic greedy
+state progression are available; public generation remains L7.
+
+The first full load exposed an L5 fixture blind spot before execution: the real
+Q4_K_M artifact uses Q4_K rather than Q6_K for 24/47 routed expert-down tensors
+and the matching 24/47 shared expert-down tensors. The remaining 23/47 use
+Q6_K. `LagunaMoEKernelPlan` now resolves both exact selected T16 down keys and
+dispatches from each resident weight's quant key; validation accepts either
+lossless Q4T16/Q6T16 selected layout and Q4-pack8/raw-Q6 shared layout. The
+production-width staged raw-GGUF oracle is parametrized over both down quants;
+both pass with routed/shared/combined relative L2 <= 0.02. This is a registry
+repair, not a model-code quant branch.
+
+Hidden capture is a caller-owned BF16 ABI limited to post-layer depths
+2/11/20/30/39/48. `targets=None` issues no copy or allocation; requested rows
+are direct stream-ordered D2D copies. Constructor allocation failures free
+scratch/KV/RoPE in reverse order, owned sessions free weights, shared sessions
+do not, close is idempotent, and any execution `BaseException` closes the whole
+session before propagating.
+
+The first real all-layer smoke used:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 \
+uv run python scripts/laguna_gguf_smoke.py \
+  --backend hip_gfx1151 --context-length 4096 \
+  --prompt-token-id 2 --max-new-tokens 1 --capture-hidden \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build --output /tmp/laguna-eager-smoke.json
+```
+
+All cached libraries loaded, all 814 tensors materialized in 206.291 s, one
+full 48-layer token completed in 77.221 ms, greedy top-1 was token 72, and all
+six hidden taps were finite. Exact owned bytes were 77,022,439,484; the tracked
+high-water including six caller taps was 77,022,476,348 bytes over 1,347
+allocations. Teardown returned tracked bytes and allocations exactly to zero.
+This is a correctness/lifecycle smoke, not a throughput or Poolside-parity
+claim; the frozen 55-token first-logit and greedy-32 gate remains next.
+
+RED/GREEN and support validation:
+
+```bash
+uv run pytest -q tests/test_laguna_gguf_runner.py
+HIPENGINE_HIP_ARCH=gfx1151 uv run pytest -q \
+  tests/test_laguna_moe_gpu.py::test_laguna_unfused_moe_matches_production_shape_quant_oracle
+uv run pytest -q tests/test_laguna_gguf_runner.py \
+  tests/test_laguna_moe_gpu.py tests/test_laguna_root_probe.py
+uvx ruff check <changed Python files>
+uvx ruff format --check <changed Python files>
+python3 -m compileall -q <changed Python files>
+```
+
+The session-owner suite is 7/7; mixed-Q4/Q6 production MoE is 2/2; the current
+runner/MoE/root bundle is green. No new kernel body was ported, so no new
+lineage claim is made. `scripts/laguna_gguf_correctness.py` is prepared for the
+next exact Poolside oracle run.
