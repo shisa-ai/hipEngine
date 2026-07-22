@@ -17,6 +17,7 @@ from hipengine.runtime.laguna_gguf_runner import (
     LagunaRowsScratch,
     capture_laguna_hidden_rows,
     capture_laguna_hidden_tap,
+    capture_laguna_routing_rows,
     resolve_laguna_eager_kernel_plan,
 )
 from tests._laguna_synthetic import make_laguna_info
@@ -129,6 +130,78 @@ def test_laguna_rows_scratch_is_bounded_and_frees() -> None:
 
     with pytest.raises(ValueError, match="max_rows"):
         LagunaRowsScratch.allocate(_config(), max_rows=0, runtime=runtime)
+
+
+def test_laguna_routing_replay_copies_each_sparse_layer_to_a_bounded_plane() -> None:
+    runtime = _FakeRuntime()
+    rows = 3
+    top_k = 10
+    layers = 47
+    layer_nbytes = rows * top_k * DType.INT64.itemsize
+    capture = DeviceBuffer(0x71000000, layers * layer_nbytes)
+
+    capture_laguna_routing_rows(
+        0x12340000,
+        layer_id=1,
+        leading_dense_layers=1,
+        sparse_layers=layers,
+        rows=rows,
+        top_k=top_k,
+        capture=capture,
+        runtime=runtime,
+        stream=5,
+    )
+    capture_laguna_routing_rows(
+        0x22340000,
+        layer_id=47,
+        leading_dense_layers=1,
+        sparse_layers=layers,
+        rows=rows,
+        top_k=top_k,
+        capture=capture,
+        runtime=runtime,
+        stream=5,
+    )
+
+    assert runtime.copies == [
+        (
+            capture.ptr,
+            0x12340000,
+            layer_nbytes,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            5,
+        ),
+        (
+            capture.ptr + 46 * layer_nbytes,
+            0x22340000,
+            layer_nbytes,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            5,
+        ),
+    ]
+
+    with pytest.raises(ValueError, match="capture buffer"):
+        capture_laguna_routing_rows(
+            0x12340000,
+            layer_id=1,
+            leading_dense_layers=1,
+            sparse_layers=layers,
+            rows=rows,
+            top_k=top_k,
+            capture=DeviceBuffer(capture.ptr, capture.nbytes - 8),
+            runtime=runtime,
+        )
+    with pytest.raises(ValueError, match="sparse layer range"):
+        capture_laguna_routing_rows(
+            0x12340000,
+            layer_id=0,
+            leading_dense_layers=1,
+            sparse_layers=layers,
+            rows=rows,
+            top_k=top_k,
+            capture=capture,
+            runtime=runtime,
+        )
 
 
 def test_laguna_hidden_taps_are_caller_owned_exact_bf16_depths() -> None:
