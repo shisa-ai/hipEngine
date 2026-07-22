@@ -107,6 +107,7 @@ def register_builtin_generators() -> None:
     global _BUILTINS_REGISTERED
     if _BUILTINS_REGISTERED:
         return
+    from hipengine.generation import laguna_gguf as _laguna_gguf  # noqa: F401
     from hipengine.generation import qwen35_gguf as _qwen35_gguf  # noqa: F401
     from hipengine.generation import qwen35_paro as _qwen35_paro  # noqa: F401
 

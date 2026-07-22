@@ -1,0 +1,383 @@
+from __future__ import annotations
+
+import time
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+from hipengine.generation import (
+    GenerationCancellationToken,
+    GenerationCancelled,
+    GenerationDeadlineExceeded,
+    GenerationKey,
+    GenerationRequest,
+    registered_text_generators,
+)
+from hipengine.llm import LLM, SamplingParams
+from hipengine.models.laguna import LAGUNA_GGUF
+
+
+class _FakeTokenizer:
+    eos_token_id = 2
+    eot_token_id = 24
+    stop_token_ids = (2, 24)
+    tokens = tuple(chr(ord("a") + (index % 26)) for index in range(30))
+    token_types = tuple(1 for _ in range(30))
+    byte_decoder = {}
+
+    _text = {
+        2: "〈|EOS|〉",
+        10: "A",
+        11: "B",
+        12: "C",
+        13: "D",
+        24: "</assistant>",
+    }
+
+    def encode(self, text: str, *, add_special_tokens: bool = False) -> list[int]:
+        assert not add_special_tokens
+        return [7, 8] if text == "prompt" else [int(part) for part in text.split()]
+
+    def decode(self, token_ids, *, skip_special: bool = False) -> str:
+        values = []
+        for token_id in token_ids:
+            token = int(token_id)
+            if skip_special and token in self.stop_token_ids:
+                continue
+            values.append(self._text.get(token, f"T{token}"))
+        return "".join(values)
+
+
+class _FakeWeights:
+    def __init__(self) -> None:
+        self.config = SimpleNamespace(context_length=262_144)
+        self.backend = "hip_gfx1151"
+        self.freed = False
+
+    def free(self, *, runtime=None) -> None:
+        del runtime
+        self.freed = True
+
+
+class _FakeSession:
+    sequences: list[tuple[int, ...]] = []
+    events: list[tuple] = []
+    prefill_hook = None
+    resident_nbytes = 1_234
+
+    def __init__(self, *, resident_weights, context_length, backend, runtime, **kwargs) -> None:
+        del kwargs
+        self.weights = resident_weights
+        self.context_length = int(context_length)
+        self.backend = str(backend)
+        self.runtime = runtime
+        self.sequence = self.sequences.pop(0)
+        self.index = 0
+        self.closed = False
+        self.events.append(("open", self.context_length, self.backend))
+
+    @staticmethod
+    def _result(token_id: int):
+        return SimpleNamespace(next_token_id=int(token_id), next_token_logit=1.0)
+
+    def prefill(self, token_ids):
+        self.events.append(("prefill", tuple(int(token) for token in token_ids)))
+        if self.prefill_hook is not None:
+            self.prefill_hook()
+        token = self.sequence[self.index]
+        self.index += 1
+        return self._result(token)
+
+    def forward_token(self, token_id: int):
+        self.events.append(("forward", int(token_id)))
+        token = self.sequence[self.index]
+        self.index += 1
+        return self._result(token)
+
+    def close(self) -> None:
+        self.closed = True
+        self.events.append(("close",))
+
+
+def _request(**overrides) -> GenerationRequest:
+    values = {
+        "prompts": ((7, 8),),
+        "max_tokens": 3,
+        "temperature": 0.0,
+        "top_p": 1.0,
+        "ignore_eos": False,
+    }
+    values.update(overrides)
+    return GenerationRequest(**values)
+
+
+@pytest.fixture
+def generator(monkeypatch, tmp_path):
+    from hipengine.generation import laguna_gguf
+
+    model = tmp_path / "laguna.gguf"
+    model.touch()
+    cache = model.with_suffix(".hipengine-repacked-v1")
+    cache.mkdir()
+    tokenizer = _FakeTokenizer()
+    weights = _FakeWeights()
+    materialize_calls = []
+
+    monkeypatch.setattr(
+        laguna_gguf.LagunaGGUFTokenizer,
+        "from_gguf_info",
+        classmethod(lambda cls, info: tokenizer),
+    )
+
+    def materialize(path, **kwargs):
+        materialize_calls.append((Path(path), kwargs))
+        return weights
+
+    monkeypatch.setattr(laguna_gguf, "materialize_laguna_gguf_weights", materialize)
+    monkeypatch.setattr(laguna_gguf, "LagunaGGUFResidentSession", _FakeSession)
+    monkeypatch.setattr(laguna_gguf, "get_hip_runtime", lambda: SimpleNamespace())
+    _FakeSession.sequences = []
+    _FakeSession.events = []
+    _FakeSession.prefill_hook = None
+    instance = laguna_gguf.LagunaGGUFGenerator(
+        model_path=model,
+        weight_index=SimpleNamespace(metadata={}),
+        model_plugin=LAGUNA_GGUF,
+        backend="hip_gfx1151",
+    )
+    yield SimpleNamespace(
+        instance=instance,
+        tokenizer=tokenizer,
+        weights=weights,
+        materialize_calls=materialize_calls,
+        model=model,
+        cache=cache,
+    )
+    instance.close()
+
+
+def test_laguna_generator_registers_concrete_gfx1151_key() -> None:
+    from hipengine.generation import laguna_gguf  # noqa: F401
+
+    assert GenerationKey("laguna_gguf", "hip_gfx1151", "gguf_q4_k_m") in set(
+        registered_text_generators()
+    )
+
+
+def test_laguna_blocking_generation_suppresses_eot_and_retains_weights(generator) -> None:
+    _FakeSession.sequences = [(10, 11, 24)]
+
+    output = generator.instance.generate_detailed(_request())[0]
+
+    assert output.text == "AB"
+    assert output.generated_token_ids == (10, 11, 24)
+    assert output.finish_details is not None
+    assert output.finish_details.to_json_dict() == {
+        "reason": "stop",
+        "stop_sequence": [24],
+        "sampler_mode": "greedy_fast",
+    }
+    assert output.telemetry is not None
+    state = output.telemetry.to_json_dict()["decode_state"]
+    assert state["execution_path"] == "laguna_eager_c1"
+    assert state["prompt_tokens"] == 2
+    assert state["generated_tokens"] == 3
+    assert generator.weights.freed is False
+    assert generator.materialize_calls[0][1]["repacked_cache"] == generator.cache
+    assert _FakeSession.events[-1] == ("close",)
+
+    generator.instance.close()
+    assert generator.weights.freed is True
+
+
+def test_laguna_text_prompt_uses_tokenizer_without_implicit_bos(generator) -> None:
+    _FakeSession.sequences = [(10,)]
+
+    output = generator.instance.generate_detailed(_request(prompts=("prompt",), max_tokens=1))[0]
+
+    assert output.generated_token_ids == (10,)
+    assert ("prefill", (7, 8)) in _FakeSession.events
+
+
+def test_laguna_prepare_request_scratch_is_c1_and_reclaims_session(generator) -> None:
+    _FakeSession.sequences = [(10,)]
+
+    result = generator.instance.prepare_request_scratch(
+        max_prompt_tokens=55,
+        max_new_tokens=32,
+        max_batch_size=1,
+    )
+
+    assert result == {
+        "schema": 1,
+        "backend": "hip_gfx1151",
+        "execution_path": "laguna_eager_c1",
+        "max_batch_size": 1,
+        "max_sequence_length": 86,
+        "resident_session_nbytes": 1_234,
+        "released_after_probe": True,
+    }
+    assert _FakeSession.events[-1] == ("close",)
+    with pytest.raises(NotImplementedError, match="batch size 1"):
+        generator.instance.prepare_request_scratch(
+            max_prompt_tokens=55,
+            max_new_tokens=32,
+            max_batch_size=2,
+        )
+
+
+def test_laguna_stream_matches_blocking_and_finishes_with_cumulative_ids(generator) -> None:
+    _FakeSession.sequences = [(10, 11, 24)]
+
+    chunks = list(generator.instance.stream_detailed(_request()))
+
+    assert "".join(chunk.text for chunk in chunks) == "AB"
+    assert chunks[-1].text == ""
+    assert chunks[-1].generated_token_ids == (10, 11, 24)
+    assert chunks[-1].finish_details is not None
+    assert chunks[-1].finish_details.stop_sequence == (24,)
+    assert all(chunk.finish_details is None for chunk in chunks[:-1])
+    assert _FakeSession.events[-1] == ("close",)
+
+
+def test_laguna_max_tokens_and_multitoken_stop_are_exact(generator) -> None:
+    _FakeSession.sequences = [(10, 11), (10, 11, 12)]
+
+    length = generator.instance.generate_detailed(_request(max_tokens=2))[0]
+    stopped = generator.instance.generate_detailed(_request(stop_token_sequences=((10, 11),)))[0]
+
+    assert length.text == "AB"
+    assert length.generated_token_ids == (10, 11)
+    assert length.finish_details is not None
+    assert length.finish_details.to_json_dict() == {
+        "reason": "length",
+        "length_limit": 2,
+        "sampler_mode": "greedy_fast",
+    }
+    assert stopped.text == ""
+    assert stopped.generated_token_ids == (10, 11)
+    assert stopped.finish_details is not None
+    assert stopped.finish_details.stop_sequence == (10, 11)
+
+
+def test_laguna_ignore_eos_continues_but_never_leaks_eot_markup(generator) -> None:
+    _FakeSession.sequences = [(24, 10)]
+
+    output = generator.instance.generate_detailed(_request(max_tokens=2, ignore_eos=True))[0]
+
+    assert output.text == "A"
+    assert output.generated_token_ids == (24, 10)
+    assert output.finish_details is not None
+    assert output.finish_details.reason == "length"
+
+
+def test_laguna_unsupported_sampling_and_batch_fail_before_loading(generator) -> None:
+    with pytest.raises(NotImplementedError, match="greedy"):
+        generator.instance.generate_detailed(_request(temperature=0.5))
+    with pytest.raises(ValueError, match="exactly one prompt"):
+        generator.instance.generate_detailed(_request(prompts=((7,), (8,))))
+
+    assert generator.materialize_calls == []
+
+
+def test_laguna_cancellation_after_prefill_closes_request_state(generator) -> None:
+    token = GenerationCancellationToken()
+    _FakeSession.sequences = [(10, 11)]
+    _FakeSession.prefill_hook = token.cancel
+
+    with pytest.raises(GenerationCancelled):
+        generator.instance.generate_detailed(_request(max_tokens=2, cancellation_token=token))
+
+    assert _FakeSession.events[-1] == ("close",)
+    assert generator.weights.freed is False
+
+
+def test_laguna_expired_deadline_and_context_overflow_fail_closed(generator) -> None:
+    with pytest.raises(GenerationDeadlineExceeded):
+        generator.instance.generate_detailed(_request(deadline_at=time.perf_counter() - 1.0))
+    with pytest.raises(ValueError, match="4096"):
+        generator.instance.generate_detailed(_request(prompts=(tuple(range(4_096)),), max_tokens=2))
+
+    assert generator.materialize_calls == []
+
+
+def test_laguna_tokenizer_hooks_and_zero_token_request_do_not_load(generator) -> None:
+    assert generator.instance.tokenize("prompt") == (7, 8)
+    assert generator.instance.count_tokens("prompt") == 2
+    assert generator.instance.detokenize((10, 11)) == "AB"
+
+    output = generator.instance.generate_detailed(_request(max_tokens=0))[0]
+    assert output.text == ""
+    assert output.generated_token_ids == ()
+    assert output.finish_details is not None
+    assert output.finish_details.reason == "length"
+    assert generator.materialize_calls == []
+
+
+def test_laguna_server_metadata_reports_resolved_model_backend_and_quant(
+    generator, monkeypatch
+) -> None:
+    from fastapi.testclient import TestClient
+
+    from hipengine.generation import laguna_gguf
+    from hipengine.server import ServerConfig, create_app
+
+    llm = LLM(str(generator.model), backend="hip_gfx1151")
+    monkeypatch.setattr(
+        llm,
+        "_load_model_metadata",
+        lambda: (SimpleNamespace(metadata={}), LAGUNA_GGUF),
+    )
+    monkeypatch.setattr(
+        laguna_gguf.LagunaGGUFTokenizer,
+        "from_gguf_info",
+        classmethod(lambda cls, info: generator.tokenizer),
+    )
+    llm._get_text_generator()
+    app = create_app(
+        ServerConfig(
+            model=str(generator.model),
+            served_model_name="laguna-s-2.1",
+            backend="hip_gfx1151",
+            quant="auto",
+            eager_load=False,
+            max_active_requests=1,
+        ),
+        llm=llm,
+    )
+
+    with TestClient(app) as client:
+        model = client.get("/v1/models").json()["data"][0]["hipengine"]
+        capabilities = client.get("/v1/hipengine/capabilities").json()
+        ready = client.get("/ready")
+
+    assert model["backend"] == "hip_gfx1151"
+    assert model["quant"] == "gguf_q4_k_m"
+    assert capabilities["model"]["backend"] == "hip_gfx1151"
+    assert capabilities["model"]["quant"] == "gguf_q4_k_m"
+    assert ready.status_code == 200
+
+
+def test_laguna_public_llm_resolves_generator_and_close_releases_weights(
+    generator, monkeypatch
+) -> None:
+    from hipengine.generation import laguna_gguf
+
+    _FakeSession.sequences = [(10, 11)]
+    llm = LLM(str(generator.model), backend="hip_gfx1151")
+    monkeypatch.setattr(
+        llm, "_load_model_metadata", lambda: (SimpleNamespace(metadata={}), LAGUNA_GGUF)
+    )
+    monkeypatch.setattr(
+        laguna_gguf.LagunaGGUFTokenizer,
+        "from_gguf_info",
+        classmethod(lambda cls, info: generator.tokenizer),
+    )
+
+    outputs = llm.generate_detailed((7, 8), SamplingParams(max_tokens=2))
+
+    assert outputs[0].text == "AB"
+    assert outputs[0].generated_token_ids == (10, 11)
+    llm.close()
+    assert generator.weights.freed is True
