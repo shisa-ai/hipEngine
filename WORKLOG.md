@@ -173992,3 +173992,55 @@ python3 -m json.tool \
 
 This closes task #24 for the declared c=1 greedy Poolside-v1 parser/server
 surface. It is not a broad chat-quality or performance claim.
+
+## 2026-07-22 — Add exact Laguna bulk global/SWA KV rows
+
+Started Task #34 with the attention/KV primitive boundary. The initial lineage
+check remains mechanically blocked by the absent read-only
+`/home/lhl/amd-gpu-tuning/reference/atlas` checkout; `docs/LAGUNA.md` already
+records that blocker. ROCm and gfx1151 were healthy.
+
+RED added rows-form registry/API and a wrap-crossing bulk-vs-serial gate; it
+failed on the absent `laguna_global_attention_prefill_bf16_spans` import. GREEN
+adds registry-keyed global/SWA bulk attention and write variants while retaining
+the scalar decode fallback. `KVLiveSpans` remains the only cache ABI: its scalar
+absolute row position is the consecutive chunk start, while per-slot absolute
+positions and eviction masks remain authoritative. Attention consumes prior
+BF16 cache plus current F32 K/V rounded to BF16 in-kernel before any current rows
+are written. This avoids SWA future-row overwrites hiding keys needed by earlier
+queries in the same chunk. The post-attention rows writer then commits all
+payload/metadata, and the owner advances its position only through
+`commit_rows()`.
+
+Correctness uses permuted physical offsets and explicit eviction, seeds positions
+0..507, then runs positions 508..515 across the 512-slot ring wrap. Both 48/8
+global and 72/8 SWA outputs are bit-exact to append+decode per row; final token
+positions and masks are exact. Validation:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 uv run pytest -q tests/test_laguna_kv_attention.py
+# 7 passed
+python3 -m compileall -q hipengine/kernels/hip_gfx1100/attention/laguna_kv.py \
+  hipengine/runtime/laguna_kv.py tests/test_laguna_kv_attention.py
+uvx ruff check hipengine/kernels/hip_gfx1100/attention/laguna_kv.py \
+  hipengine/runtime/laguna_kv.py tests/test_laguna_kv_attention.py
+# clean
+```
+
+After a normal cache warmup, the profiled process used
+`HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt` plus
+`HIPENGINE_REQUIRE_CACHED_BUILD=1` and did not spawn `hipcc`:
+
+```bash
+rocprofv3 --kernel-trace --output-format csv -d /tmp/laguna-bulk-kv-trace -- \
+  .venv/bin/python -m pytest -q \
+  tests/test_laguna_kv_attention.py::test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap
+# pass; /tmp/laguna-bulk-kv-trace/gfx1151/1878556_kernel_trace.csv
+```
+
+The intended kernels ran: global/SWA bulk attention `1058.825/1672.777 us`;
+eight scalar controls total about `1396/5547 us`. Bulk rows writers appeared at
+`1.683-59.231 us` global and `1.563-49.854 us` SWA. This is primitive
+correctness/dispatch evidence, not yet a retained full-model throughput claim.
+Task #34 remains in progress for bulk MoE, full resident rows, stable DFlash taps,
+and model-level equality.

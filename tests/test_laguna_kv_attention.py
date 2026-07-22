@@ -84,8 +84,12 @@ def test_kv_live_spans_sliding_ring_requires_complete_absolute_metadata() -> Non
 def test_laguna_swa_build_plan_registry_and_validation(tmp_path) -> None:
     from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
         laguna_global_attention_decode_bf16_spans,
+        laguna_global_attention_prefill_bf16_spans,
+        laguna_global_write_kv_rows_f32_spans,
         laguna_swa_attention_decode_bf16_spans,
+        laguna_swa_attention_prefill_bf16_spans,
         laguna_swa_write_kv_f32_spans,
+        laguna_swa_write_kv_rows_f32_spans,
         plan_laguna_kv_attention_build,
         register_laguna_kv_attention_kernels,
     )
@@ -129,6 +133,42 @@ def test_laguna_swa_build_plan_registry_and_validation(tmp_path) -> None:
             variant="swa_context_spans",
         )
         is laguna_swa_attention_decode_bf16_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1151",
+            layer="laguna_attention_prefill",
+            quant="bf16",
+            variant="global_context_rows_spans",
+        )
+        is laguna_global_attention_prefill_bf16_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1151",
+            layer="laguna_attention_prefill",
+            quant="bf16",
+            variant="swa_context_rows_spans",
+        )
+        is laguna_swa_attention_prefill_bf16_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1151",
+            layer="laguna_kv_write",
+            quant="bf16",
+            variant="global_f32_rows_spans",
+        )
+        is laguna_global_write_kv_rows_f32_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1151",
+            layer="laguna_kv_write",
+            quant="bf16",
+            variant="swa_f32_rows_spans",
+        )
+        is laguna_swa_write_kv_rows_f32_spans
     )
 
     with pytest.raises(ValueError, match="num_kv_heads"):
@@ -230,6 +270,18 @@ def test_laguna_kv_owner_allocates_12_global_36_bounded_rings_and_tears_down() -
     with pytest.raises(ValueError, match="token-serial"):
         cache.prepare_position(3)
     assert cache.position == 1
+
+    cache.prepare_rows((2, 3, 4))
+    assert cache.pending_positions == (2, 3, 4)
+    with pytest.raises(RuntimeError, match="bulk positions are pending"):
+        cache.prepare_position(2)
+    cache.commit_rows()
+    assert cache.position == 4
+    assert cache.pending_positions == ()
+    with pytest.raises(ValueError, match="consecutive"):
+        cache.prepare_rows((5, 7))
+    with pytest.raises(ValueError, match="capacity"):
+        cache.prepare_rows(tuple(range(5, 5 + 513)))
 
     allocated_count = len(runtime.allocations)
     assert allocated_count > 96
@@ -488,6 +540,218 @@ def test_laguna_global_and_swa_token_serial_attention_match_cpu_across_wraps() -
         for allocation in reversed(allocations):
             free(allocation, runtime=runtime)
         cache.free()
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
+        build_laguna_kv_attention,
+    )
+    from hipengine.runtime.laguna_kv import allocate_laguna_kv_cache
+
+    runtime = get_hip_runtime()
+    library = build_laguna_kv_attention(
+        load=True,
+        require_cached=_require_cached_build(),
+    )
+    config = SimpleNamespace(
+        block_count=2,
+        layer_types=(FULL_ATTENTION, SLIDING_ATTENTION),
+        head_counts=(48, 72),
+        head_count_kv=8,
+        key_length=128,
+        value_length=128,
+        sliding_window=512,
+    )
+    serial = allocate_laguna_kv_cache(
+        config,
+        context_length=520,
+        backend="hip_gfx1151",
+        runtime=runtime,
+    )
+    bulk = allocate_laguna_kv_cache(
+        config,
+        context_length=520,
+        backend="hip_gfx1151",
+        runtime=runtime,
+    )
+    rng = np.random.default_rng(1207)
+    seed_rows = 508
+    rows = 8
+    keys = rng.normal(0.0, 0.12, size=(seed_rows + rows, 8, 128)).astype(np.float32)
+    values = rng.normal(0.0, 0.12, size=(seed_rows + rows, 8, 128)).astype(np.float32)
+    query_global = rng.normal(0.0, 0.12, size=(rows, 48, 128)).astype(np.float32)
+    query_swa = rng.normal(0.0, 0.12, size=(rows, 72, 128)).astype(np.float32)
+    allocations = []
+    try:
+        key_rows = malloc(keys.nbytes, runtime=runtime)
+        value_rows = malloc(values.nbytes, runtime=runtime)
+        global_query_rows = malloc(query_global.nbytes, runtime=runtime)
+        swa_query_rows = malloc(query_swa.nbytes, runtime=runtime)
+        global_bulk_out = malloc(query_global.nbytes, runtime=runtime)
+        swa_bulk_out = malloc(query_swa.nbytes, runtime=runtime)
+        global_serial_out = malloc(query_global[0].nbytes, runtime=runtime)
+        swa_serial_out = malloc(query_swa[0].nbytes, runtime=runtime)
+        allocations.extend(
+            (
+                key_rows,
+                value_rows,
+                global_query_rows,
+                swa_query_rows,
+                global_bulk_out,
+                swa_bulk_out,
+                global_serial_out,
+                swa_serial_out,
+            )
+        )
+        for buffer, array in (
+            (key_rows, keys),
+            (value_rows, values),
+            (global_query_rows, query_global),
+            (swa_query_rows, query_swa),
+        ):
+            copy_host_to_device(buffer, host_array_ptr(array), array.nbytes, runtime=runtime)
+
+        # Populate both owners through the bulk write path, then compare one
+        # wrap-crossing 508..515 chunk against the established token-serial path.
+        seed_positions = tuple(range(seed_rows))
+        for cache in (serial, bulk):
+            cache.prepare_rows(seed_positions)
+            for layer_id in range(2):
+                cache.append_rows(
+                    layer_id,
+                    key_rows.ptr,
+                    value_rows.ptr,
+                    seed_rows,
+                    library=library,
+                )
+            cache.commit_rows()
+            cache.evict_position(0, 200)
+            cache.evict_swa_position(1, 200)
+
+        row_bytes = 8 * 128 * np.dtype(np.float32).itemsize
+        positions = tuple(range(seed_rows, seed_rows + rows))
+        bulk.prepare_rows(positions)
+        bulk.attend_prefill(
+            0,
+            global_query_rows.ptr,
+            key_rows.ptr + seed_rows * row_bytes,
+            value_rows.ptr + seed_rows * row_bytes,
+            global_bulk_out.ptr,
+            rows,
+            library=library,
+        )
+        bulk.append_rows(
+            0,
+            key_rows.ptr + seed_rows * row_bytes,
+            value_rows.ptr + seed_rows * row_bytes,
+            rows,
+            library=library,
+        )
+        bulk.attend_prefill(
+            1,
+            swa_query_rows.ptr,
+            key_rows.ptr + seed_rows * row_bytes,
+            value_rows.ptr + seed_rows * row_bytes,
+            swa_bulk_out.ptr,
+            rows,
+            library=library,
+        )
+        bulk.append_rows(
+            1,
+            key_rows.ptr + seed_rows * row_bytes,
+            value_rows.ptr + seed_rows * row_bytes,
+            rows,
+            library=library,
+        )
+        bulk.commit_rows()
+
+        expected_global = np.empty_like(query_global)
+        expected_swa = np.empty_like(query_swa)
+        for row, position in enumerate(positions):
+            serial.prepare_position(position)
+            for layer_id, (query, output) in enumerate(
+                (
+                    (query_global[row], global_serial_out),
+                    (query_swa[row], swa_serial_out),
+                )
+            ):
+                serial.append(
+                    layer_id,
+                    key_rows.ptr + position * row_bytes,
+                    value_rows.ptr + position * row_bytes,
+                    library=library,
+                )
+                serial.attend(
+                    layer_id,
+                    (global_query_rows if layer_id == 0 else swa_query_rows).ptr
+                    + row * query.nbytes,
+                    output.ptr,
+                    library=library,
+                )
+                runtime.device_synchronize()
+                destination = expected_global[row] if layer_id == 0 else expected_swa[row]
+                copy_device_to_host(
+                    host_array_ptr(destination),
+                    output,
+                    destination.nbytes,
+                    runtime=runtime,
+                )
+
+        actual_global = np.empty_like(query_global)
+        actual_swa = np.empty_like(query_swa)
+        runtime.device_synchronize()
+        copy_device_to_host(
+            host_array_ptr(actual_global),
+            global_bulk_out,
+            actual_global.nbytes,
+            runtime=runtime,
+        )
+        copy_device_to_host(
+            host_array_ptr(actual_swa),
+            swa_bulk_out,
+            actual_swa.nbytes,
+            runtime=runtime,
+        )
+        np.testing.assert_array_equal(actual_global, expected_global)
+        np.testing.assert_array_equal(actual_swa, expected_swa)
+        assert bulk.position == serial.position == 515
+
+        for layer_id in range(2):
+            bulk_state = bulk.layer(layer_id)
+            serial_state = serial.layer(layer_id)
+            capacity = bulk_state.capacity
+            for field, dtype in (("token_positions", np.int64), ("evict_mask", np.bool_)):
+                bulk_values = np.empty(capacity, dtype=dtype)
+                serial_values = np.empty(capacity, dtype=dtype)
+                bulk_tensor = getattr(bulk_state.spans, field)
+                serial_tensor = getattr(serial_state.spans, field)
+                runtime.memcpy(
+                    host_array_ptr(bulk_values),
+                    bulk_tensor.ptr,
+                    bulk_values.nbytes,
+                    HipMemcpyKind.DEVICE_TO_HOST,
+                )
+                runtime.memcpy(
+                    host_array_ptr(serial_values),
+                    serial_tensor.ptr,
+                    serial_values.nbytes,
+                    HipMemcpyKind.DEVICE_TO_HOST,
+                )
+                np.testing.assert_array_equal(bulk_values, serial_values)
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+        bulk.free()
+        serial.free()
 
 
 def _attention_reference(
