@@ -172777,3 +172777,36 @@ map resolved plugin `laguna_gguf`, consumed **814/814**, and reported 48 layers
 (119.996 / 120.000 GiB). Raw JSON and hash command output remain under `/tmp`
 and are not committed. This is artifact-integrity evidence only; no independent
 logit/token correctness or speed claim is made.
+
+## 2026-07-22 — Add Laguna dry materialization and UMA admission plan
+
+Added `hipengine/loading/laguna_gguf_materialize.py`, a payload-free planner that
+consumes the strict 814-tensor map before any allocation. It keeps all 240 F16
+attention tensors as FP16 and all 287 F32 norm/router/correction tensors as
+FP32. The initial replacement choices are raw Q4_K embedding, Q6_K-T16 LM head,
+rank-2 Q4_K pack8, rank-3 Q4_K/Q6_K T16 selected experts, and raw rank-2 Q6_K
+down projections. Each spec records exact named allocation bytes and
+source+replacement loader-transient bytes; optional sidecars remain absent.
+
+The KV planner counts 12 global layers at requested context and 36 SWA layers at
+`min(context,512)`, preserving the 8-KV-head x 128 K/V BF16 contract. Admission
+adds resident weights, KV, configurable scratch, maximum one-tensor streaming
+transient, and a safety reserve, then raises before allocation if the peak
+exceeds available UMA. It explicitly rejects an all-layers-full-KV plan when
+SWA is present.
+
+RED: `uv run pytest -q tests/test_laguna_gguf_materialize.py` failed at
+collection because the planner module did not exist. GREEN: six planner tests
+pass, including the completed artifact integration. The combined Laguna
+config/map/planner plus existing Q4_K/Q6_K pack8/T16 round-trip and quant-layout
+bundle passes **49/49**; focused Ruff and `compileall` pass.
+
+On the completed Q4_K_M with `hipMemGetInfo` free=128,844,787,712 bytes, the 4K
+dry plan measured: source 75,169,369,088 bytes (70.007 GiB), resident weights
+76,737,907,712 (71.468 GiB), maximum loader transient 1,321,205,760 (1.230 GiB),
+BF16 KV 276,824,064 (0.258 GiB), scratch 2 GiB, and safety reserve 8 GiB. Peak
+is 89,073,355,776 bytes (82.956 GiB), leaving 39,771,431,936 bytes (37.040 GiB)
+headroom. Layout counts are dense_f16 240, dense_f32 287, Q4T16 118, Q6T16 24,
+Q4 pack8 120, and raw 25. These are deterministic byte-accounting results, not
+proof that allocations or kernels execute; actual materialization/load/free
+remains pending.
