@@ -149,27 +149,33 @@ artifacts:
 The committed representative harness now supersedes this temporary driver for
 future comparisons; this table remains useful historical cross-format context.
 
-A second **historical, pre-optimization** diagnostic on source `8addd867`
-compared the minimum event median among the explicitly launched exact scalar
-and rowbatch leaves at `E=16,K=3072,N=128` with equal counts per expert. These
-are not registered auto/default-policy timings:
+A second diagnostic compares the pre-optimization source `8addd867` with a
+current-source rerun after the retained IQ2 work. Both runs select the minimum
+event median among the explicitly launched exact scalar and rowbatch leaves at
+`E=16,K=3072,N=128` with equal counts per expert; these are not registered
+auto/default-policy timings:
 
-| Rows/expert | IQ2_XS | IQ3_XXS | IQ4_XS |
-| ---: | ---: | ---: | ---: |
-| 1 | 20.452 us | 12.289 us | 13.705 us |
-| 2 | 22.584 us | 16.232 us | 15.866 us |
-| 4 | 25.977 us | 19.954 us | 21.984 us |
-| 8 | 48.428 us | 37.399 us | 34.793 us |
-| 16 | 97.458 us | 74.761 us | 59.216 us |
+| Rows/expert | IQ2_XS old | IQ2_XS current | IQ3_XXS old | IQ3_XXS current | IQ4_XS old | IQ4_XS current |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 20.452 us | 15.733 us | 12.289 us | 12.546 us | 13.705 us | 13.573 us |
+| 2 | 22.584 us | 19.191 us | 16.232 us | 16.217 us | 15.866 us | 15.729 us |
+| 4 | 25.977 us | 23.178 us | 19.954 us | 20.116 us | 21.984 us | 21.496 us |
+| 8 | 48.428 us | 42.657 us | 37.399 us | 37.288 us | 34.793 us | 34.579 us |
+| 16 | 97.458 us | 86.580 us | 74.761 us | 74.542 us | 59.216 us | 59.277 us |
 
 Each cell is total latency for one dual gate+up dispatch over
-`16 * rows/expert` compact rows, not latency per row. This used five alternating
-200-iteration event samples after warmup. The driver and result SHA-256 values
-were
-`1090e383038c43464d27ae6097eb922cacdec6cf3f500548869024aa13727ebc`
-and `f869226677be9e9ca507d59385e48c926b4b855ed645ca25b32949d190cc23bc`.
-It remains diagnostic-only; the committed harness below is the canonical IQ2
-baseline.
+`16 * rows/expert` compact rows, not latency per row. Both runs used five
+alternating 200-iteration event samples after 20 warmup launches per leaf. The
+same driver has SHA-256
+`1090e383038c43464d27ae6097eb922cacdec6cf3f500548869024aa13727ebc`;
+the old/current raw outputs have SHA-256
+`f869226677be9e9ca507d59385e48c926b4b855ed645ca25b32949d190cc23bc` and
+`23e98a42209801c5b166a64c6c2b15c3fa0689c28a8a42300d436831b7bf8382`.
+Current IQ2 is 10.78-23.07% faster across this narrow screen, while the
+unchanged IQ3/IQ4 results move by at most 2.22% between sessions. Evidence:
+[`../benchmarks/results/2026-07-23-gpu1-iq-cross-format-prefill-current.json`](../benchmarks/results/2026-07-23-gpu1-iq-cross-format-prefill-current.json).
+This remains diagnostic-only; the committed E256 harness below is the canonical
+IQ2 baseline.
 
 ### Representative E256 baseline
 

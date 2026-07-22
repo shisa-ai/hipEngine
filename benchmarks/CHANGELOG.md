@@ -19,6 +19,7 @@ Examples:
 
 ## 2026-07-23
 
+- [diagnostic comparison] synthetic raw-IQ prefill / E16-K3072-N128 equal 1/2/4/8/16 rows-expert / GPU1: fastest explicit exact IQ2 scalar/rowbatch leaf moves pre-optimization -> current `20.452/22.584/25.977/48.428/97.458 -> 15.733/19.191/23.178/42.657/86.580 us` (-10.78% to -23.07%), while unchanged IQ3/IQ4 differ by at most 2.22%; dual-dispatch, not per-row/default-policy timing; `benchmarks/results/2026-07-23-gpu1-iq-cross-format-prefill-current.json`.
 - [retained explicit kernel] synthetic Laguna IQ2_XS / E256-K3072-N1024-top10 prefill / GPU1: LDS-staged raw-IQ2 x D4-Q8_1 MMQ32 moves exact auto -> quantizer-inclusive 256-token balanced/hot/Zipf `7.755/8.201/7.647 -> 5.528/5.842/5.927 ms` (-28.72/-28.76/-22.49%) and 512-token `13.740/14.410/14.377 -> 6.889/7.726/7.902 ms` (-49.86/-46.38/-45.03%), with KL max <=0.00453, top-1 >=0.98125, local128/VGPR104/LDS10240B/scratch0; short cases regress, so runtime default waits on Laguna model quality and scratch ownership; `benchmarks/results/2026-07-23-gpu1-iq2-xs-mmq32-prefill.json`.
 - [rejected kernel] synthetic Laguna IQ2_XS / E256-K3072-N1024-top10 decode / GPU1: packed Q8_1/`sudot4` tile2 moves prequantized fused decode down 1.47-4.83%, but the required 3.32-3.41 us quantizer moves rotating/hot/repeated exact -> inclusive `54.299/51.338/47.461 -> 55.532/50.760/48.468 us` (+2.27/-1.13/+2.12%); primitive quality/ISA/scratch gates pass, but cold/repeated regression rejects and removes the candidate; `benchmarks/results/2026-07-23-gpu1-iq2-xs-q8-1-dp4a-rejected.json`.
 
