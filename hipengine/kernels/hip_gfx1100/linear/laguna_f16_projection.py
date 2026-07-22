@@ -92,6 +92,26 @@ def build_laguna_f16_projection(
     )
 
 
+def build_laguna_f16_projection_prefill(
+    *,
+    cache_root: str | Path | None = None,
+    compiler_version: str | None = None,
+    dry_run: bool = False,
+    load: bool = True,
+    require_cached: bool = False,
+) -> ctypes.CDLL | BuildArtifact:
+    """Build the rows>1 tiled variants with the dedicated prefill profile."""
+
+    return build_laguna_f16_projection(
+        cache_root=cache_root,
+        compiler_version=compiler_version,
+        profile="prefill",
+        dry_run=dry_run,
+        load=load,
+        require_cached=require_cached,
+    )
+
+
 def _single(
     symbol,
     x_ptr,
@@ -227,6 +247,62 @@ def laguna_f16w_gemv_f32_bf16_out(
     )
 
 
+def laguna_f16w_tiled_bf16_f32_out(
+    x_ptr,
+    weight_ptr,
+    out_ptr,
+    rows,
+    in_features,
+    out_features,
+    *,
+    threads=256,
+    stream=0,
+    library=None,
+    runtime=None,
+):
+    _single(
+        "hipengine_laguna_f16w_tiled_bf16_f32_out",
+        x_ptr,
+        weight_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        threads=threads,
+        stream=stream,
+        library=library or build_laguna_f16_projection_prefill(load=True),
+        runtime=runtime,
+    )
+
+
+def laguna_f16w_tiled_bf16_bf16_out(
+    x_ptr,
+    weight_ptr,
+    out_ptr,
+    rows,
+    in_features,
+    out_features,
+    *,
+    threads=256,
+    stream=0,
+    library=None,
+    runtime=None,
+):
+    _single(
+        "hipengine_laguna_f16w_tiled_bf16_bf16_out",
+        x_ptr,
+        weight_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        threads=threads,
+        stream=stream,
+        library=library or build_laguna_f16_projection_prefill(load=True),
+        runtime=runtime,
+    )
+
+
 def laguna_f16w_dual_gemv_bf16_f32_out(
     x_ptr,
     weight_a_ptr,
@@ -311,6 +387,51 @@ def laguna_f16w_triple_gemv_bf16_f32_out(
         runtime.check(int(err))
 
 
+def laguna_f16w_triple_tiled_bf16_f32_out(
+    x_ptr,
+    weight_a_ptr,
+    weight_b_ptr,
+    weight_c_ptr,
+    out_a_ptr,
+    out_b_ptr,
+    out_c_ptr,
+    rows,
+    in_features,
+    out_a_features,
+    out_b_features,
+    out_c_features,
+    *,
+    threads=256,
+    stream=0,
+    library=None,
+    runtime=None,
+):
+    _validate(rows, in_features, (out_a_features, out_b_features, out_c_features), threads)
+    library = library or build_laguna_f16_projection_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library, "hipengine_laguna_f16w_triple_tiled_bf16_f32_out", _TRIPLE_ARGS, ctypes.c_int
+    )
+    err = fn(
+        x_ptr,
+        weight_a_ptr,
+        weight_b_ptr,
+        weight_c_ptr,
+        out_a_ptr,
+        out_b_ptr,
+        out_c_ptr,
+        rows,
+        in_features,
+        out_a_features,
+        out_b_features,
+        out_c_features,
+        threads,
+        stream,
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def _validate(rows: int, in_features: int, outputs: tuple[int, ...], threads: int) -> None:
     if rows <= 0:
         raise ValueError("rows must be positive")
@@ -332,6 +453,16 @@ def register_laguna_f16_projection_kernels(*, replace: bool = True) -> None:
     for variant, fn in variants:
         register(KernelKey("hip_gfx1100", "linear", "fp16_weight", variant), fn, replace=replace)
     register(
+        KernelKey("hip_gfx1100", "linear", "fp16_weight", "tiled_bf16_f32_out"),
+        laguna_f16w_tiled_bf16_f32_out,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "linear", "fp16_weight", "tiled_bf16_bf16_out"),
+        laguna_f16w_tiled_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "linear_pair", "fp16_weight", "bf16_f32_out"),
         laguna_f16w_dual_gemv_bf16_f32_out,
         replace=replace,
@@ -341,18 +472,27 @@ def register_laguna_f16_projection_kernels(*, replace: bool = True) -> None:
         laguna_f16w_triple_gemv_bf16_f32_out,
         replace=replace,
     )
+    register(
+        KernelKey("hip_gfx1100", "linear_triple", "fp16_weight", "tiled_bf16_f32_out"),
+        laguna_f16w_triple_tiled_bf16_f32_out,
+        replace=replace,
+    )
 
 
 register_laguna_f16_projection_kernels()
 
 __all__ = [
     "build_laguna_f16_projection",
+    "build_laguna_f16_projection_prefill",
     "laguna_f16w_dual_gemv_bf16_f32_out",
     "laguna_f16w_gemv_bf16_bf16_out",
     "laguna_f16w_gemv_bf16_f32_out",
     "laguna_f16w_gemv_f32_bf16_out",
     "laguna_f16w_gemv_f32_f32_out",
+    "laguna_f16w_tiled_bf16_bf16_out",
+    "laguna_f16w_tiled_bf16_f32_out",
     "laguna_f16w_triple_gemv_bf16_f32_out",
+    "laguna_f16w_triple_tiled_bf16_f32_out",
     "plan_laguna_f16_projection_build",
     "register_laguna_f16_projection_kernels",
 ]

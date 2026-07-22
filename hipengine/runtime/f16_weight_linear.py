@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import ctypes
+import os
 from typing import Mapping
 
-from hipengine.kernels.backends import load_backend_kernel_package
+from hipengine.kernels.backends import backend_package_capability, load_backend_kernel_package
 from hipengine.kernels.hip_gfx1100.linear.laguna_f16_projection import (
     register_laguna_f16_projection_kernels,
 )
@@ -15,6 +16,8 @@ from hipengine.runtime.gguf_weight import GGUFDeviceWeight
 LAYOUT_DENSE_F16 = "dense_f16"
 SOURCE_QUANT_FP16 = "fp16"
 F16_WEIGHT = "fp16_weight"
+_ENV_PREFILL_MODE = "HIPENGINE_LAGUNA_F16_PREFILL"
+_PREFILL_MODES = frozenset({"auto", "gemv", "tiled"})
 
 
 def _variant(activation_dtype: str, output_dtype: str) -> str:
@@ -23,6 +26,28 @@ def _variant(activation_dtype: str, output_dtype: str) -> str:
     if output_dtype not in {"bf16", "f32"}:
         raise ValueError(f"unsupported output dtype {output_dtype!r}")
     return f"{activation_dtype}_{output_dtype}_out"
+
+
+def _prefill_strategy(
+    *, rows: int, activation_dtype: str, backend: str
+) -> str | None:
+    if rows <= 1 or activation_dtype != "bf16":
+        return None
+    mode = os.environ.get(_ENV_PREFILL_MODE, "auto").strip().lower() or "auto"
+    if mode not in _PREFILL_MODES:
+        expected = ", ".join(sorted(_PREFILL_MODES))
+        raise ValueError(f"{_ENV_PREFILL_MODE} must be one of: {expected}")
+    if mode == "gemv":
+        return None
+    if mode == "tiled":
+        return mode
+    strategy = backend_package_capability(
+        backend, "LAGUNA_F16_PREFILL_STRATEGY", None
+    )
+    minimum = int(
+        backend_package_capability(backend, "LAGUNA_F16_PREFILL_MIN_ROWS", 0) or 0
+    )
+    return str(strategy) if strategy == "tiled" and rows >= minimum > 0 else None
 
 
 def _backend(weights: tuple[GGUFDeviceWeight, ...], backend: str | None) -> str:
@@ -62,7 +87,11 @@ def _resolve(key: KernelKey):
 
 
 def _kwargs(key: KernelKey, libraries: Mapping[str, ctypes.CDLL] | None, **kwargs):
-    library = None if libraries is None else libraries.get(key.quant)
+    library = None
+    if libraries is not None:
+        library = libraries.get(f"{key.quant}:{key.variant}")
+        if library is None:
+            library = libraries.get(key.quant)
     if library is not None:
         kwargs["library"] = library
     return kwargs
@@ -85,9 +114,13 @@ def launch_f16_weight_linear(
     runtime=None,
 ) -> None:
     resolved_backend = _backend((weight,), backend)
-    key = KernelKey(
-        resolved_backend, "linear", F16_WEIGHT, _variant(activation_dtype, output_dtype)
+    variant = _variant(activation_dtype, output_dtype)
+    strategy = _prefill_strategy(
+        rows=rows, activation_dtype=activation_dtype, backend=resolved_backend
     )
+    if strategy is not None:
+        variant = f"{strategy}_{variant}"
+    key = KernelKey(resolved_backend, "linear", F16_WEIGHT, variant)
     fn = _resolve(key)
     fn(
         x_ptr,
@@ -161,7 +194,13 @@ def launch_f16_weight_linear_triple(
     runtime=None,
 ) -> None:
     resolved_backend = _backend((weight_a, weight_b, weight_c), backend)
-    key = KernelKey(resolved_backend, "linear_triple", F16_WEIGHT, "bf16_f32_out")
+    variant = "bf16_f32_out"
+    strategy = _prefill_strategy(
+        rows=rows, activation_dtype="bf16", backend=resolved_backend
+    )
+    if strategy is not None:
+        variant = f"{strategy}_{variant}"
+    key = KernelKey(resolved_backend, "linear_triple", F16_WEIGHT, variant)
     fn = _resolve(key)
     fn(
         x_ptr,
