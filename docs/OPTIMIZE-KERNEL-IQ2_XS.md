@@ -140,8 +140,8 @@ artifacts:
 - `/tmp/compare-iq-decode.json`, SHA-256
   `d3e294b564cf66a5720cd45548e1517a3bf867aa83c25c4dc5ee58ff5258fdde`.
 
-Task #22 must replace this diagnostic with a committed, reproducible harness
-before it becomes a canonical benchmark row.
+The committed representative harness now supersedes this temporary driver for
+future comparisons; this table remains useful historical cross-format context.
 
 A second diagnostic compared the fastest exact scalar or rowbatch leaf at
 `E=16,K=3072,N=128` with equal counts per expert:
@@ -158,7 +158,37 @@ This used five alternating 200-iteration event samples after warmup. The driver
 and result SHA-256 values were
 `1090e383038c43464d27ae6097eb922cacdec6cf3f500548869024aa13727ebc`
 and `f869226677be9e9ca507d59385e48c926b4b855ed645ca25b32949d190cc23bc`.
-It is also diagnostic-only pending Task #22.
+It remains diagnostic-only; the committed harness below is the canonical IQ2
+baseline.
+
+### Representative E256 baseline
+
+Task #22 added `scripts/iq2_xs_tuning_bench.py` with sustained warmup,
+counterbalanced order, rotating decode routes, full E256/K3072/N1024 shapes,
+and representative balanced/hot/Zipf prefill distributions. The accepted
+baseline is
+[`../benchmarks/results/2026-07-22-gpu1-iq2-xs-laguna-tuning-baseline.json`](../benchmarks/results/2026-07-22-gpu1-iq2-xs-laguna-tuning-baseline.json).
+
+At top-10 decode, rotating distinct experts measure 57.881 us selected-single
+and 106.136 us fused dual-SiLU. A fixed hot set is 51.781/92.138 us and one
+repeated expert is 46.496/83.122 us, confirming that repeated cache-hot routing
+is 20-22% faster than the cold/distinct control and cannot select a production
+candidate by itself. Fused dual correctness is BF16-bit exact to selected-single
+gate/up plus the rounded SiLU boundary over 10,240 elements.
+
+For prefill, rowbatch4 versus scalar is distribution-dependent at short prompts:
+
+- 16 balanced tokens: `1.764 -> 1.875 ms` (+6.30%, reject rowbatch4);
+- 16 hot/Zipf: -17.09%/-21.33%;
+- 32 balanced/hot/Zipf: -8.35%/-20.20%/-29.92%;
+- 64 tokens: -30.71% to -42.44%;
+- 128 tokens: -42.66% to -48.34%;
+- 512 tokens: -54.08% to -57.46%.
+
+The full-shape rowbatch output is BF16-bit exact to grouped scalar over 327,680
+elements. This baseline confirms that the K3072 unconditional rowbatch policy is
+not optimal for sparse balanced routing; Task #25 must use per-expert population
+rather than one global width rule.
 
 ### Clock-ramp finding
 
@@ -536,7 +566,7 @@ and state/KV behavior before kernel model-level gates begin.
 
 | Lane | State | Exit condition |
 | --- | --- | --- |
-| Representative benchmark | next | committed E256 decode/prefill harness and baseline artifact |
+| Representative benchmark | complete | committed E256 harness and accepted diagnostic baseline |
 | Branchless exact decode | queued | correctness, branch-free HSACO evidence, retained event win |
 | Group width/geometry | queued | best exact/correctness-gated mapping selected or all rejected |
 | Adaptive rowbatch | queued | measured sparse/balanced/hot policy |
