@@ -995,6 +995,33 @@ optimization targets are therefore a versioned repacked artifact cache or
 compiled/GPU T16 transform first, followed by arena/pinned/overlapped upload
 only after new telemetry shows those phases have become material.
 
+The first retained startup optimization is now a versioned, source-bound
+replacement-layout cache. `scripts/laguna_repacked_cache.py` atomically builds
+and validates `laguna-repacked-v1`: 262 Q4T16/Q6T16/pack8 entries totaling
+70,718,767,104 bytes, keyed by the full materialization-plan fingerprint,
+source size/mtime, and optional precomputed GGUF SHA-256. Direct F16/F32/raw
+weights continue to stream from the original GGUF, so the cache does not add a
+second copy of those 552 tensors. A failed/incomplete build never replaces an
+existing artifact.
+
+Reading each cached tensor into one bounded host array before H2D is critical.
+The rejected direct-mmap upload took 82.811 s because synchronous HIP copies
+faulted mapped pages one at a time. Buffered sequential reads reduce the three
+steady cold-streamed loads to 48.812/47.951/48.202 s (median 48.202 s), with
+72.1-72.3 GB of measured physical reads, zero repack time, and exact tracked
+teardown. This is **78.81% less startup wall / 4.72x faster** than the 227.510 s
+natural source-repack baseline. A partially cached diagnostic reached 28.655 s,
+but is not the cold-start claim. The cold median remains 1.61x slower than
+Poolside's 29.851-29.907 s native-GGUF startup, with ~40.4-41.6 s now in
+sequential source reads and ~6.5-6.8 s in allocation/upload; overlap/pinned
+staging is therefore the next loader target rather than more repack work.
+
+The cache is wired through the full resident session and frozen-oracle harness.
+A cache-backed run reproduces the prior result exactly: first token `94557`, KL
+`6.6214e-6`, the same 29-token strict Poolside prefix, repeat logits max-abs
+`0`, teacher-forced top-1 31/32, finite taps, and exact lifecycle recovery. Cache
+artifacts remain local and must never be committed.
+
 Plan:
 
 - keep F32 norms/router/correction tensors dense F32;

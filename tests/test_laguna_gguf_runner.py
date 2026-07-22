@@ -250,17 +250,20 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
     weights = Resource("weights")
     weights.config = config
     weights.backend = "hip_gfx1151"
+    materialize_kwargs = {}
     monkeypatch.setattr(runner_module, "GGUFReader", lambda path: SimpleNamespace(info=object()))
     monkeypatch.setattr(
         runner_module,
         "laguna_gguf_config_from_metadata",
         lambda info: config,
     )
-    monkeypatch.setattr(
-        runner_module,
-        "materialize_laguna_gguf_weights",
-        lambda *args, **kwargs: weights,
-    )
+
+    def materialize(*args, **kwargs):
+        del args
+        materialize_kwargs.update(kwargs)
+        return weights
+
+    monkeypatch.setattr(runner_module, "materialize_laguna_gguf_weights", materialize)
     monkeypatch.setattr(
         runner_module.LagunaGGUFResidentSession,
         "_validate_resident_weights",
@@ -302,6 +305,8 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
         "/synthetic/laguna.gguf",
         backend="hip_gfx1151",
         runtime=SimpleNamespace(),
+        repacked_cache="/synthetic/laguna-repacked-v1",
+        model_sha256="synthetic-sha256",
     )
     session.close()
     session.close()
@@ -315,6 +320,19 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
         "weights",
     ]
     assert session.closed
+    assert materialize_kwargs["repacked_cache"] == "/synthetic/laguna-repacked-v1"
+    assert materialize_kwargs["repacked_cache_source_sha256"] == "synthetic-sha256"
+
+
+def test_laguna_borrowed_session_rejects_loader_cache_options() -> None:
+    weights = SimpleNamespace(config=_config(), backend="hip_gfx1151")
+    with pytest.raises(ValueError, match="apply only when the session owns"):
+        runner_module.LagunaGGUFResidentSession(
+            resident_weights=weights,
+            backend="hip_gfx1151",
+            runtime=SimpleNamespace(),
+            repacked_cache="/synthetic/laguna-repacked-v1",
+        )
 
 
 def test_laguna_eager_plan_rejects_non_s21_shapes() -> None:

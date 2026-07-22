@@ -173638,3 +173638,87 @@ retaining exact tracked-byte/allocation assertions, and the same isolated node
 passes. No broad
 suite was repeated because the repair changes only that local lifecycle bound.
 This is diagnostic evidence, not a retained startup-speed claim.
+
+## 2026-07-22 — Laguna versioned repacked cache and retained startup reduction
+
+Implemented the measured loader's highest-leverage fix rather than tuning the
+minor allocation/upload phases. `hipengine/loading/laguna_gguf_materialize.py`
+now builds, validates, and consumes an atomic `laguna-repacked-v1` host artifact
+for only the 262 transformed Q4T16/Q6T16/pack8 slots. The manifest binds all
+entries to a full plan fingerprint, source file size/mtime, and optional known
+SHA-256. Every payload revalidates allocation name, dtype, shape, and bytes
+before upload. Temporary builds are removed on failure and an existing target
+is never overwritten. Direct F16/F32/raw tensors remain sourced from GGUF.
+
+Added `scripts/laguna_repacked_cache.py` for explicit build/validate telemetry,
+`--repacked-cache` support to the load smoke, and cache/model-hash plumbing
+through `LagunaGGUFResidentSession` and the frozen-oracle command. Synthetic
+coverage proves cache/source mismatch rejection, exact replacement payloads,
+zero repack on cache hits, session argument propagation, and owned cleanup.
+
+Full cache build command:
+
+```bash
+uv run python -u scripts/laguna_repacked_cache.py \
+  /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf \
+  /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 \
+  --source-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f \
+  --progress-every 10 --output /tmp/laguna-cache-build.json
+```
+
+The one-time build produced 262 entries / 70,718,767,104 bytes in 216.675 s,
+with plan fingerprint
+`6e07582a5989995d2d821736f3387e94ce60dbf3bc8688bfb5cb386b40b9ae1a`.
+Validation reopens it in 0.007 s without reading payload bytes. The artifact is
+local model data and is not committed.
+
+The first cache-backed load used mmap payloads and took 82.811 s: HIP's
+synchronous copy faulted 67.7 GB of mapped cache pages one page at a time. This
+route was rejected. The retained loader instead performs an eager bounded read
+of one replacement tensor before H2D. Full cold-streamed load samples were
+48.812, 47.951, and 48.202 s (median 48.202 s), versus the measured natural
+source-repack baseline 227.510 s: **-78.81% wall / 4.72x faster**. The retained
+runs physically read 72.1-72.3 GB, report zero repack, spend ~40.4-41.6 s in
+sequential reads and ~6.5-6.8 s in allocation/upload, and recover all
+76,737,907,712 tracked bytes / 1,054 allocations. A partially cached 28.655 s
+sample is diagnostic only. The cold median remains 1.61x slower than Poolside's
+29.851-29.907 s `--no-repack --no-mmap` startup, so next loader work is
+read/upload overlap or pinned staging, not another repack implementation.
+
+Frozen-oracle cache-backed command:
+
+```bash
+HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 \
+uv run python -u scripts/laguna_gguf_correctness.py \
+  /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf \
+  --backend hip_gfx1151 --greedy-tokens 32 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 \
+  --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f \
+  --output /tmp/laguna-eager-correctness-repacked-cache.json
+```
+
+It reproduced the prior source-repack result exactly: load 48.202 s,
+first-token ID `94557`, KL `6.621408e-6`, strict Poolside prefix 29/32, repeated
+hipEngine sequence exact with first-logit max-abs `0`, teacher-forced top-1
+31/32, finite taps, and tracked lifecycle exact. The command remains exit 1
+solely because the already documented low-margin Poolside token-30 branch is
+not exact; the cache changes no model bytes or arithmetic.
+
+Validation:
+
+```bash
+uv run pytest -q tests/test_laguna_gguf_materialize_device.py \
+  tests/test_laguna_gguf_materialize.py tests/test_laguna_gguf_runner.py \
+  tests/test_laguna_gguf_correctness.py tests/test_laguna_gguf_load_smoke.py
+# 26 passed
+uvx ruff check hipengine/loading/laguna_gguf_materialize.py \
+  hipengine/runtime/laguna_gguf_runner.py scripts/laguna_gguf_correctness.py \
+  scripts/laguna_gguf_load_smoke.py scripts/laguna_repacked_cache.py \
+  tests/test_laguna_gguf_materialize_device.py tests/test_laguna_gguf_runner.py
+python3 -m compileall -q hipengine/loading/laguna_gguf_materialize.py \
+  hipengine/runtime/laguna_gguf_runner.py scripts/laguna_gguf_correctness.py \
+  scripts/laguna_gguf_load_smoke.py scripts/laguna_repacked_cache.py
+# ruff/compileall/git diff --check clean
+```

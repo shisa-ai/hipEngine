@@ -5,8 +5,13 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+import hashlib
+import json
+import os
 from pathlib import Path
 import resource
+import shutil
+import tempfile
 import time
 from types import MappingProxyType
 from typing import Any, Mapping
@@ -46,6 +51,9 @@ DEFAULT_LAGUNA_SCRATCH_BYTES = 2 * 2**30
 DEFAULT_LAGUNA_SAFETY_RESERVE_BYTES = 8 * 2**30
 _GGUF_K_BLOCK = 256
 _T16_COLUMNS = 16
+_LAGUNA_REPACKED_CACHE_SCHEMA = 1
+_LAGUNA_REPACKED_CACHE_LAYOUT_VERSION = "laguna-repacked-v1"
+_REPACKED_CACHE_LAYOUTS = frozenset({LAYOUT_Q4_K_PACK8, LAYOUT_GGUF_Q4_K_T16, LAYOUT_GGUF_Q6_K_T16})
 
 
 class LagunaMemoryAdmissionError(MemoryError):
@@ -85,6 +93,7 @@ class LagunaGGUFMaterializationProfile:
     slot_path: str
     tensor_name: str
     layout: str
+    source_kind: str
     source_nbytes: int
     resident_nbytes: int
     source_map_seconds: float
@@ -158,6 +167,71 @@ class LagunaGGUFMaterializationPlan:
             if source_type == GGMLQuantizationType.F32 and spec.resident_dtype != "fp32":
                 contractions.append(spec.slot_path)
         return tuple(contractions)
+
+
+@dataclass(frozen=True)
+class LagunaGGUFRepackedCache:
+    """Validated versioned host artifact containing replacement-layout arrays."""
+
+    path: Path
+    manifest: Mapping[str, Any]
+    plan_fingerprint: str
+
+    def has(self, spec: LagunaGGUFWeightSpec) -> bool:
+        return spec.slot_path in self.manifest["entries"]
+
+    def payloads(self, spec: LagunaGGUFWeightSpec) -> Mapping[str, _ResidentPayload]:
+        import numpy as np
+
+        try:
+            entry = self.manifest["entries"][spec.slot_path]
+        except KeyError as exc:
+            raise KeyError(f"Laguna repacked cache has no entry for {spec.slot_path}") from exc
+        if entry["layout"] != spec.layout:
+            raise ValueError(
+                f"Laguna repacked cache layout mismatch for {spec.slot_path}: "
+                f"cache={entry['layout']} plan={spec.layout}"
+            )
+        payloads: dict[str, _ResidentPayload] = {}
+        for name in spec.allocation_names:
+            try:
+                metadata = entry["allocations"][name]
+            except KeyError as exc:
+                raise ValueError(
+                    f"Laguna repacked cache allocation missing: {spec.slot_path}.{name}"
+                ) from exc
+            relative = Path(metadata["file"])
+            artifact = (self.path / relative).resolve()
+            if not artifact.is_relative_to(self.path.resolve()):
+                raise ValueError(f"Laguna repacked cache path escapes root: {relative}")
+            if not artifact.is_file():
+                raise FileNotFoundError(f"Laguna repacked cache payload missing: {artifact}")
+            # Read each replacement tensor eagerly into a bounded host buffer.
+            # Uploading directly from an mmap forces HIP's synchronous copy to
+            # fault tens of GiB one page at a time and is much slower on UMA.
+            array = np.load(artifact, allow_pickle=False)
+            expected_shape = tuple(int(value) for value in metadata["shape"])
+            if tuple(array.shape) != expected_shape:
+                raise ValueError(
+                    f"Laguna repacked cache shape mismatch for {spec.slot_path}.{name}: "
+                    f"cache={array.shape} expected={expected_shape}"
+                )
+            if array.dtype.str != metadata["numpy_dtype"]:
+                raise ValueError(
+                    f"Laguna repacked cache dtype mismatch for {spec.slot_path}.{name}: "
+                    f"cache={array.dtype.str} expected={metadata['numpy_dtype']}"
+                )
+            if int(array.nbytes) != int(spec.allocation_nbytes[name]):
+                raise ValueError(
+                    f"Laguna repacked cache byte mismatch for {spec.slot_path}.{name}: "
+                    f"cache={array.nbytes} expected={spec.allocation_nbytes[name]}"
+                )
+            payloads[name] = _ResidentPayload(
+                array=array,
+                dtype=DType.parse(metadata["runtime_dtype"]),
+                source_dtype=str(metadata["source_dtype"]),
+            )
+        return MappingProxyType(payloads)
 
 
 @dataclass(frozen=True)
@@ -293,6 +367,206 @@ def plan_laguna_gguf_materialization(
     return plan
 
 
+def build_laguna_repacked_cache(
+    reader_or_path: GGUFReader | str | Path,
+    cache_path: str | Path,
+    *,
+    selected_slots: Iterable[str] | None = None,
+    source_sha256: str | None = None,
+    progress: Callable[[int, int, LagunaGGUFWeightSpec], None] | None = None,
+) -> dict[str, Any]:
+    """Build an atomic host cache for only the transformed replacement layouts."""
+
+    import numpy as np
+
+    reader = (
+        GGUFReader(reader_or_path) if isinstance(reader_or_path, (str, Path)) else reader_or_path
+    )
+    model_map = build_laguna_gguf_tensor_map(reader.info)
+    plan = plan_laguna_gguf_materialization(model_map)
+    specs_by_path = {spec.slot_path: spec for spec in plan.specs}
+    selected = None if selected_slots is None else {str(item) for item in selected_slots}
+    if selected is not None:
+        unknown = tuple(sorted(selected - set(specs_by_path)))
+        if unknown:
+            raise ValueError(f"unknown selected Laguna cache slots: {unknown}")
+    cache_specs = tuple(
+        spec
+        for spec in plan.specs
+        if spec.layout in _REPACKED_CACHE_LAYOUTS
+        and (selected is None or spec.slot_path in selected)
+    )
+    if not cache_specs:
+        raise ValueError("Laguna repacked cache selection contains no transformed layouts")
+
+    target = Path(cache_path).expanduser().resolve()
+    if target.exists():
+        raise FileExistsError(f"Laguna repacked cache already exists: {target}")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    required_nbytes = sum(spec.resident_nbytes for spec in cache_specs)
+    free_nbytes = shutil.disk_usage(target.parent).free
+    if free_nbytes < required_nbytes + 64 * 2**20:
+        raise OSError(
+            "insufficient disk space for Laguna repacked cache: "
+            f"required={required_nbytes + 64 * 2**20} free={free_nbytes}"
+        )
+
+    temporary = Path(tempfile.mkdtemp(prefix=f".{target.name}.tmp-", dir=target.parent))
+    entries: dict[str, Any] = {}
+    try:
+        for index, spec in enumerate(cache_specs, start=1):
+            raw = np.ascontiguousarray(reader.tensor_data(spec.source.name))
+            payloads = _resident_payloads(spec, raw)
+            allocation_entries: dict[str, Any] = {}
+            slot_digest = hashlib.sha256(spec.slot_path.encode("utf-8")).hexdigest()[:16]
+            for name, payload in payloads.items():
+                filename = f"{index:04d}-{slot_digest}-{name}.npy"
+                artifact = temporary / filename
+                np.save(artifact, payload.array, allow_pickle=False)
+                allocation_entries[name] = {
+                    "file": filename,
+                    "shape": [int(value) for value in payload.array.shape],
+                    "numpy_dtype": payload.array.dtype.str,
+                    "runtime_dtype": payload.dtype.value,
+                    "source_dtype": payload.source_dtype,
+                    "nbytes": int(payload.array.nbytes),
+                }
+            entries[spec.slot_path] = {
+                "tensor_name": spec.source.name,
+                "layout": spec.layout,
+                "source_nbytes": int(spec.source.nbytes),
+                "resident_nbytes": spec.resident_nbytes,
+                "allocations": allocation_entries,
+            }
+            if progress is not None:
+                progress(index, len(cache_specs), spec)
+
+        manifest = {
+            "schema": _LAGUNA_REPACKED_CACHE_SCHEMA,
+            "layout_version": _LAGUNA_REPACKED_CACHE_LAYOUT_VERSION,
+            "source": {**_source_identity(reader), "sha256": source_sha256},
+            "plan_fingerprint": _materialization_plan_fingerprint(plan),
+            "cacheable_layouts": sorted(_REPACKED_CACHE_LAYOUTS),
+            "entry_count": len(entries),
+            "resident_nbytes": required_nbytes,
+            "entries": entries,
+        }
+        manifest_path = temporary / "manifest.json"
+        manifest_path.write_text(
+            json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        os.replace(temporary, target)
+        return manifest
+    except BaseException:
+        shutil.rmtree(temporary, ignore_errors=True)
+        raise
+
+
+def open_laguna_repacked_cache(
+    cache_path: str | Path,
+    reader_or_path: GGUFReader | str | Path,
+    *,
+    source_sha256: str | None = None,
+) -> LagunaGGUFRepackedCache:
+    """Open and validate a cache against the current source and layout plan."""
+
+    reader = (
+        GGUFReader(reader_or_path) if isinstance(reader_or_path, (str, Path)) else reader_or_path
+    )
+    cache_root = Path(cache_path).expanduser().resolve()
+    manifest_path = cache_root / "manifest.json"
+    if not manifest_path.is_file():
+        raise FileNotFoundError(f"Laguna repacked cache manifest missing: {manifest_path}")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if int(manifest.get("schema", -1)) != _LAGUNA_REPACKED_CACHE_SCHEMA:
+        raise ValueError(f"unsupported Laguna repacked cache schema: {manifest.get('schema')}")
+    if manifest.get("layout_version") != _LAGUNA_REPACKED_CACHE_LAYOUT_VERSION:
+        raise ValueError(
+            f"unsupported Laguna repacked cache layout: {manifest.get('layout_version')}"
+        )
+
+    plan = plan_laguna_gguf_materialization(build_laguna_gguf_tensor_map(reader.info))
+    fingerprint = _materialization_plan_fingerprint(plan)
+    if manifest.get("plan_fingerprint") != fingerprint:
+        raise ValueError("Laguna repacked cache plan fingerprint does not match source")
+    expected_source = _source_identity(reader)
+    cached_source = manifest.get("source", {})
+    for field in ("size_bytes", "mtime_ns"):
+        expected = expected_source.get(field)
+        cached = cached_source.get(field)
+        if expected is not None and cached is not None and int(expected) != int(cached):
+            raise ValueError(
+                f"Laguna repacked cache source {field} mismatch: cache={cached} source={expected}"
+            )
+    if source_sha256 is not None and cached_source.get("sha256") != source_sha256:
+        raise ValueError("Laguna repacked cache source SHA-256 mismatch")
+
+    specs = {spec.slot_path: spec for spec in plan.specs}
+    entries = manifest.get("entries")
+    if not isinstance(entries, dict) or not entries:
+        raise ValueError("Laguna repacked cache has no entries")
+    for slot_path, entry in entries.items():
+        spec = specs.get(slot_path)
+        if spec is None or spec.layout not in _REPACKED_CACHE_LAYOUTS:
+            raise ValueError(f"Laguna repacked cache has unexpected slot: {slot_path}")
+        if entry.get("layout") != spec.layout:
+            raise ValueError(f"Laguna repacked cache layout mismatch for {slot_path}")
+        if set(entry.get("allocations", {})) != set(spec.allocation_names):
+            raise ValueError(f"Laguna repacked cache allocation names mismatch for {slot_path}")
+        for name in spec.allocation_names:
+            metadata = entry["allocations"][name]
+            if int(metadata.get("nbytes", -1)) != int(spec.allocation_nbytes[name]):
+                raise ValueError(
+                    f"Laguna repacked cache allocation bytes mismatch for {slot_path}.{name}"
+                )
+    return LagunaGGUFRepackedCache(
+        path=cache_root,
+        manifest=MappingProxyType(manifest),
+        plan_fingerprint=fingerprint,
+    )
+
+
+def _source_identity(reader: GGUFReader) -> dict[str, Any]:
+    path = Path(reader.info.path).expanduser()
+    try:
+        stat = path.stat()
+    except (FileNotFoundError, OSError):
+        return {"path": str(path), "size_bytes": None, "mtime_ns": None}
+    return {
+        "path": str(path.resolve()),
+        "size_bytes": int(stat.st_size),
+        "mtime_ns": int(stat.st_mtime_ns),
+    }
+
+
+def _materialization_plan_fingerprint(plan: LagunaGGUFMaterializationPlan) -> str:
+    rows = []
+    for spec in plan.specs:
+        rows.append(
+            {
+                "slot_path": spec.slot_path,
+                "tensor_name": spec.source.name,
+                "ggml_type": int(spec.source.ggml_type),
+                "shape": [int(value) for value in spec.source.shape],
+                "data_offset": int(spec.source.data_offset),
+                "source_nbytes": int(spec.source.nbytes),
+                "layout": spec.layout,
+                "resident_dtype": spec.resident_dtype,
+                "allocations": dict(spec.allocation_nbytes),
+            }
+        )
+    payload = json.dumps(
+        {
+            "layout_version": _LAGUNA_REPACKED_CACHE_LAYOUT_VERSION,
+            "specs": rows,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
 def plan_laguna_memory_admission(
     weights: LagunaGGUFMaterializationPlan,
     *,
@@ -363,6 +637,8 @@ def materialize_laguna_gguf_weights(
     backend: str = "hip_gfx1151",
     progress: Callable[[int, int, LagunaGGUFWeightSpec], None] | None = None,
     profile: Callable[[LagunaGGUFMaterializationProfile], None] | None = None,
+    repacked_cache: LagunaGGUFRepackedCache | str | Path | None = None,
+    repacked_cache_source_sha256: str | None = None,
 ) -> LagunaGGUFResidentWeights:
     """Stream selected or all planned Laguna weights into owned device buffers."""
 
@@ -371,6 +647,19 @@ def materialize_laguna_gguf_weights(
     )
     model_map = build_laguna_gguf_tensor_map(reader.info)
     plan = plan_laguna_gguf_materialization(model_map)
+    cache = (
+        open_laguna_repacked_cache(
+            repacked_cache,
+            reader,
+            source_sha256=repacked_cache_source_sha256,
+        )
+        if isinstance(repacked_cache, (str, Path))
+        else repacked_cache
+    )
+    if repacked_cache_source_sha256 is not None and cache is not None:
+        cached_sha256 = cache.manifest["source"].get("sha256")
+        if cached_sha256 != repacked_cache_source_sha256:
+            raise ValueError("Laguna repacked cache source SHA-256 mismatch")
     active_runtime = runtime if runtime is not None else get_hip_runtime()
     if available_bytes is None:
         try:
@@ -409,6 +698,7 @@ def materialize_laguna_gguf_weights(
                 runtime=active_runtime,
                 backend=backend,
                 profile=profile,
+                repacked_cache=cache,
             )
             root_weights[slot] = weight
             completed.append(weight)
@@ -429,6 +719,7 @@ def materialize_laguna_gguf_weights(
                     runtime=active_runtime,
                     backend=backend,
                     profile=profile,
+                    repacked_cache=cache,
                 )
                 layer_weights[slot] = weight
                 completed.append(weight)
@@ -457,6 +748,46 @@ def materialize_laguna_gguf_weights(
     )
 
 
+@dataclass(frozen=True)
+class _ResidentPayload:
+    array: Any
+    dtype: DType
+    source_dtype: str
+
+
+def _resident_payloads(
+    spec: LagunaGGUFWeightSpec,
+    raw: Any,
+) -> Mapping[str, _ResidentPayload]:
+    if spec.layout == LAYOUT_DENSE_F16:
+        payloads = {"raw": _ResidentPayload(raw, DType.FP16, "F16")}
+    elif spec.layout == LAYOUT_DENSE_F32:
+        payloads = {"raw": _ResidentPayload(raw, DType.FP32, "F32")}
+    elif spec.layout == LAYOUT_RAW_GGUF:
+        payloads = {"raw": _ResidentPayload(raw, DType.INT8, "I8")}
+    elif spec.layout == LAYOUT_Q4_K_PACK8:
+        packed = repack_gguf_q4_k_pack8(raw)
+        payloads = {
+            "qweight": _ResidentPayload(packed.qweight, DType.INT32, "I32"),
+            "scales": _ResidentPayload(packed.scales, DType.FP32, "F32"),
+            "mins": _ResidentPayload(packed.mins, DType.FP32, "F32"),
+        }
+    elif spec.layout == LAYOUT_GGUF_Q4_K_T16:
+        packed = repack_gguf_q4_k_tile16(raw)
+        payloads = {"tiles": _ResidentPayload(packed.tiles, DType.INT8, "I8")}
+    elif spec.layout == LAYOUT_GGUF_Q6_K_T16:
+        packed = repack_gguf_q6_k_tile16(raw if raw.ndim == 3 else raw[None, ...])
+        payloads = {"tiles": _ResidentPayload(packed.tiles, DType.INT8, "I8")}
+    else:
+        raise ValueError(f"unsupported Laguna materialization layout {spec.layout!r}")
+    if tuple(payloads) != spec.allocation_names:
+        raise ValueError(
+            f"Laguna payload names differ for {spec.slot_path}: "
+            f"planned={spec.allocation_names} actual={tuple(payloads)}"
+        )
+    return MappingProxyType(payloads)
+
+
 def _materialize_spec(
     spec: LagunaGGUFWeightSpec,
     reader: GGUFReader,
@@ -465,6 +796,7 @@ def _materialize_spec(
     runtime: HipRuntime,
     backend: str,
     profile: Callable[[LagunaGGUFMaterializationProfile], None] | None = None,
+    repacked_cache: LagunaGGUFRepackedCache | None = None,
 ) -> LagunaGGUFDeviceWeight:
     import numpy as np
 
@@ -472,7 +804,15 @@ def _materialize_spec(
     total_before = _process_counters() if profile is not None else None
     source_started = time.perf_counter()
     source_before = _process_counters() if profile is not None else None
-    raw = np.ascontiguousarray(reader.tensor_data(spec.source.name))
+    cache_hit = repacked_cache is not None and repacked_cache.has(spec)
+    source_kind = "repacked_cache" if cache_hit else "gguf"
+    if cache_hit:
+        assert repacked_cache is not None
+        payloads = repacked_cache.payloads(spec)
+        raw = None
+    else:
+        raw = np.ascontiguousarray(reader.tensor_data(spec.source.name))
+        payloads = None
     source_map_seconds = time.perf_counter() - source_started
     source_after = _process_counters() if profile is not None else None
     source_delta = _counter_delta(source_before, source_after)
@@ -491,85 +831,24 @@ def _materialize_spec(
         repack_delta = repack_delta + _counter_delta(before, _process_counters())
         return result
 
+    if payloads is None:
+        assert raw is not None
+        if spec.layout in _REPACKED_CACHE_LAYOUTS:
+            payloads = measured_repack(lambda: _resident_payloads(spec, raw))
+        else:
+            payloads = _resident_payloads(spec, raw)
+
     allocations: dict[str, DeviceTensorAllocation] = {}
     try:
-        if spec.layout == LAYOUT_DENSE_F16:
-            allocations["raw"] = load_host_array_to_device_as_dtype(
-                spec.source.name,
-                raw,
-                DType.FP16,
-                source_dtype="F16",
+        for name, payload in payloads.items():
+            allocations[name] = load_host_array_to_device_as_dtype(
+                f"{spec.source.name}.{name}",
+                payload.array,
+                payload.dtype,
+                source_dtype=payload.source_dtype,
                 device=device,
                 runtime=timed_runtime,
             )
-        elif spec.layout == LAYOUT_DENSE_F32:
-            allocations["raw"] = load_host_array_to_device_as_dtype(
-                spec.source.name,
-                raw,
-                DType.FP32,
-                source_dtype="F32",
-                device=device,
-                runtime=timed_runtime,
-            )
-        elif spec.layout == LAYOUT_RAW_GGUF:
-            allocations["raw"] = load_host_array_to_device_as_dtype(
-                spec.source.name,
-                raw,
-                DType.INT8,
-                source_dtype="I8",
-                device=device,
-                runtime=timed_runtime,
-            )
-        elif spec.layout == LAYOUT_Q4_K_PACK8:
-            packed = measured_repack(lambda: repack_gguf_q4_k_pack8(raw))
-            allocations["qweight"] = load_host_array_to_device_as_dtype(
-                f"{spec.source.name}.pack8.qweight",
-                packed.qweight,
-                DType.INT32,
-                source_dtype="I32",
-                device=device,
-                runtime=timed_runtime,
-            )
-            allocations["scales"] = load_host_array_to_device_as_dtype(
-                f"{spec.source.name}.pack8.scales",
-                packed.scales,
-                DType.FP32,
-                source_dtype="F32",
-                device=device,
-                runtime=timed_runtime,
-            )
-            allocations["mins"] = load_host_array_to_device_as_dtype(
-                f"{spec.source.name}.pack8.mins",
-                packed.mins,
-                DType.FP32,
-                source_dtype="F32",
-                device=device,
-                runtime=timed_runtime,
-            )
-        elif spec.layout == LAYOUT_GGUF_Q4_K_T16:
-            packed = measured_repack(lambda: repack_gguf_q4_k_tile16(raw))
-            allocations["tiles"] = load_host_array_to_device_as_dtype(
-                f"{spec.source.name}.q4_t16.tiles",
-                packed.tiles,
-                DType.INT8,
-                source_dtype="I8",
-                device=device,
-                runtime=timed_runtime,
-            )
-        elif spec.layout == LAYOUT_GGUF_Q6_K_T16:
-            packed = measured_repack(
-                lambda: repack_gguf_q6_k_tile16(raw if raw.ndim == 3 else raw[None, ...])
-            )
-            allocations["tiles"] = load_host_array_to_device_as_dtype(
-                f"{spec.source.name}.q6_t16.tiles",
-                packed.tiles,
-                DType.INT8,
-                source_dtype="I8",
-                device=device,
-                runtime=timed_runtime,
-            )
-        else:
-            raise ValueError(f"unsupported Laguna materialization layout {spec.layout!r}")
 
         actual_names = tuple(allocations)
         if actual_names != spec.allocation_names:
@@ -610,6 +889,7 @@ def _materialize_spec(
             slot_path=spec.slot_path,
             tensor_name=spec.source.name,
             layout=spec.layout,
+            source_kind=source_kind,
             source_nbytes=spec.source.nbytes,
             resident_nbytes=spec.resident_nbytes,
             source_map_seconds=source_map_seconds,
@@ -935,13 +1215,16 @@ __all__ = [
     "LagunaGGUFDeviceWeight",
     "LagunaGGUFMaterializationPlan",
     "LagunaGGUFMaterializationProfile",
+    "LagunaGGUFRepackedCache",
     "LagunaGGUFResidentLayerWeights",
     "LagunaGGUFResidentWeights",
     "LagunaGGUFWeightSpec",
     "LagunaKVMemoryPlan",
     "LagunaMemoryAdmissionError",
     "LagunaMemoryAdmissionPlan",
+    "build_laguna_repacked_cache",
     "materialize_laguna_gguf_weights",
+    "open_laguna_repacked_cache",
     "plan_laguna_gguf_materialization",
     "plan_laguna_memory_admission",
 ]

@@ -92,6 +92,8 @@ def run_correctness(
     greedy_tokens: int,
     compiler_version: str | None,
     require_cached: bool,
+    repacked_cache: Path | None = None,
+    model_sha256: str | None = None,
 ) -> dict[str, object]:
     template = json.loads(template_path.read_text(encoding="utf-8"))
     oracle = json.loads(oracle_path.read_text(encoding="utf-8"))
@@ -120,6 +122,8 @@ def run_correctness(
             compiler_version=compiler_version,
             require_cached_build=require_cached,
             progress=_progress,
+            repacked_cache=repacked_cache,
+            model_sha256=model_sha256,
         )
         load_seconds = time.perf_counter() - load_started
         row_nbytes = session.config.hidden_size * 2
@@ -245,6 +249,8 @@ def run_correctness(
         return {
             "schema": 1,
             "model": str(model),
+            "model_sha256": model_sha256,
+            "repacked_cache": None if repacked_cache is None else str(repacked_cache),
             "backend": backend,
             "context_length": int(oracle["server"]["context_length"]),
             "prompt_tokens": len(prompt_ids),
@@ -301,6 +307,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--greedy-tokens", type=int, default=32)
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
+    parser.add_argument("--repacked-cache", type=Path)
+    parser.add_argument("--model-sha256")
     parser.add_argument("--output", type=Path)
     return parser.parse_args()
 
@@ -317,6 +325,8 @@ def main() -> int:
         greedy_tokens=args.greedy_tokens,
         compiler_version=_compiler_version(args.compiler_version_file),
         require_cached=args.require_cached_build,
+        repacked_cache=args.repacked_cache,
+        model_sha256=args.model_sha256,
     )
     runtime = get_hip_runtime()
     runtime.device_synchronize()
