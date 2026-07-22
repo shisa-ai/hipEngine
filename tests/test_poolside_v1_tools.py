@@ -12,6 +12,10 @@ from hipengine.generation import GenerationOutput
 from hipengine.server import ServerConfig, create_app
 
 FIXTURE = Path(__file__).parent / "fixtures" / "laguna_poolside_v1_tools.json"
+LIVE_E2E_ARTIFACT = (
+    Path(__file__).parents[1]
+    / "benchmarks/results/2026-07-22-gfx1151-laguna-poolside-v1-e2e-correctness.json"
+)
 
 
 class _PoolsideToolFakeLLM:
@@ -275,3 +279,54 @@ def test_poolside_v1_capabilities_advertise_xml_parser() -> None:
     assert tools["parser"] == "poolside_v1"
     assert tools["string_argument_whitespace"] == "schema_typed_verbatim"
     assert tools["incremental_string_values"] is True
+
+
+def test_poolside_v1_live_e2e_artifact_covers_required_transcripts() -> None:
+    artifact = json.loads(LIVE_E2E_ARTIFACT.read_text(encoding="utf-8"))
+
+    assert artifact["status"] == "accepted"
+    assert artifact["pass"] is True
+    assert artifact["performance_claim"] is False
+    assert artifact["model"]["sha256"] == (
+        "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+    )
+    assert artifact["model"]["backend"] == "hip_gfx1151"
+    assert artifact["capability_checks"] == {
+        "chat_family": True,
+        "reasoning_parser": True,
+        "tool_format": True,
+        "tool_parser": True,
+    }
+    assert artifact["lifecycle"]["checks"] == {
+        "tracked_allocations": True,
+        "tracked_bytes": True,
+    }
+    cases = {case["name"]: case for case in artifact["cases"]}
+    assert set(cases) == {
+        "thinking_disabled_eot",
+        "thinking_enabled_open_length",
+        "mixed_text_single_tool",
+        "multiple_tools",
+        "utf8_escaped_tool_arguments",
+    }
+    assert all(case["pass"] for case in cases.values())
+    assert all(
+        case["blocking"]["generated_token_ids"] == case["stream"]["generated_token_ids"]
+        for case in cases.values()
+    )
+    assert all(all(case["checks"].values()) for case in cases.values())
+    assert cases["thinking_enabled_open_length"]["blocking"]["message"][
+        "reasoning_content"
+    ]
+    assert cases["thinking_disabled_eot"]["blocking"]["finish_details"][
+        "stop_sequence"
+    ] == [24]
+    assert len(cases["multiple_tools"]["blocking"]["message"]["tool_calls"]) == 2
+    escaped = cases["utf8_escaped_tool_arguments"]["blocking"]["message"][
+        "tool_calls"
+    ][0]["function"]["arguments"]
+    assert json.loads(escaped)["content"] == 'café 東京 "quoted" \\slash\nline2'
+    assert artifact["deterministic_tool_fixture"]["pass"] is True
+    assert all(
+        case["pass"] for case in artifact["deterministic_tool_fixture"]["cases"]
+    )

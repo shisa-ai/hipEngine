@@ -173939,3 +173939,56 @@ was still lazy and therefore `None`. The fix resolves the generator through the
 public `LLM.count_tokens("")` tokenizer surface before capabilities/rendering;
 this loads metadata/tokenizer only, not resident weights. No model request or
 measurement was lost.
+
+## 2026-07-22 — Close live Poolside-v1 parser/API transcript gate
+
+Retained artifact:
+`benchmarks/results/2026-07-22-gfx1151-laguna-poolside-v1-e2e-correctness.json`.
+The exact command is recorded in the artifact and used the completed S 2.1 GGUF
+SHA-256 `7da520c5...c5753f`, source `9805df7f7`, `hip_gfx1151`, and
+`GPU_MAX_HW_QUEUES=1`. Result: `status=accepted`, `pass=true`,
+`performance_claim=false`, elapsed 159.651 s.
+
+All five live prompts matched blocking versus token-fragmented streaming at the
+exact generated-ID and normalized OpenAI-message levels:
+
+- thinking-disabled EOT: `[5887,24]`, visible `OK`, stop sequence 24;
+- thinking-enabled prompt-open reasoning: 64 non-empty reasoning tokens and the
+  expected `length` finish;
+- mixed text/call: visible `Checking.` plus `get_weather(Paris,2)`;
+- parallel calls: ordered `get_weather(Paris,2)` and `get_weather(Tokyo,3)` with
+  distinct call IDs;
+- escaped arguments: `write_file` preserved `café 東京`, double quotes, one
+  backslash, and an interior newline exactly through XML -> JSON -> SSE.
+
+All streamed IDs were stable per call, public payloads contained no complete
+thinking/tool/EOT controls, loaded capabilities named `poolside_v1` and
+`poolside_v1_xml`, and the seven deterministic ordinary/newline-less/typed/
+partial/malformed/empty-name cases passed. The model plus ten isolated request
+sessions reached 77,022,439,484 tracked peak bytes; close returned active bytes
+and allocations exactly to zero. Timings are lifecycle diagnostics only.
+
+Final focused validation:
+
+```bash
+uv run pytest -q tests/test_poolside_v1_tools.py
+# 7 passed
+uv run pytest -q tests/test_poolside_v1_reasoning.py \
+  tests/test_poolside_v1_tools.py tests/test_generation_laguna_gguf.py
+# 29 passed
+uv run pytest -q tests/test_server_api.py \
+  -k 'tool or reasoning or thinking or capabilit'
+# 174 passed
+uv run pytest -q tests/test_agentic_server_conformance.py
+# 13 passed
+uvx ruff check tests/test_poolside_v1_tools.py \
+  scripts/laguna_poolside_v1_e2e.py
+python3 -m compileall -q tests/test_poolside_v1_tools.py \
+  scripts/laguna_poolside_v1_e2e.py
+python3 -m json.tool \
+  benchmarks/results/2026-07-22-gfx1151-laguna-poolside-v1-e2e-correctness.json
+# all clean; TestClient deprecation warning only
+```
+
+This closes task #24 for the declared c=1 greedy Poolside-v1 parser/server
+surface. It is not a broad chat-quality or performance claim.
