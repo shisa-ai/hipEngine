@@ -174901,3 +174901,31 @@ uvx ruff check hipengine/kernels/hip_gfx1100/linear/laguna_f16_projection.py \
   hipengine/runtime/laguna_gguf_runner.py tests/test_laguna_f16_projection.py
 # clean
 ```
+
+Added the retained LPF-1 A/B harness after the candidate commit. It holds one
+resident model/runtime, alternates exact GEMV and tiled dispatch per shape and
+reverses order on the next repetition, covers rows
+2/3/4/5/7/8/15/16/17/32/55/64/65/122/128, requires exact next-token IDs, and
+chooses the lowest measured row whose complete tail is strictly faster. Smaller
+rows remain on GEMV rather than being averaged into a favorable suite number.
+The target-AR artifact now records requested, backend-default, and effective
+F16-prefill selection so an env-forced candidate cannot be mistaken for the
+default path. RED was collection failure for the absent harness. GREEN:
+
+```bash
+uv run pytest -q tests/test_laguna_f16_prefill_bench.py \
+  tests/test_laguna_target_ar_bench.py
+# 7 passed
+uvx ruff check scripts/laguna_f16_prefill_bench.py \
+  scripts/laguna_target_ar_bench.py tests/test_laguna_f16_prefill_bench.py \
+  tests/test_laguna_target_ar_bench.py
+# clean
+python3 -m py_compile scripts/laguna_f16_prefill_bench.py \
+  scripts/laguna_target_ar_bench.py
+# clean
+```
+
+Next: commit the reproducible harness, measure the clean same-session A/B in an
+isolated worktree so provenance has no shared-tree untracked dirtiness, rerun
+the canonical two-repeat target gate with explicit tiled selection there, then
+promote only the measured backend threshold.

@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 import platform
 import statistics
@@ -23,6 +24,7 @@ from hipengine.benchmark.provenance import collect_artifact_provenance
 from hipengine.chat.poolside_v1 import render_poolside_v1_chat
 from hipengine.core.hip import HipMemcpyKind, get_hip_runtime
 from hipengine.core.memory import host_array_ptr, memory_stats
+from hipengine.kernels.backends import backend_package_capability
 from hipengine.loading.gguf import GGUFReader
 from hipengine.runtime.laguna_gguf_runner import LagunaGGUFResidentSession
 from hipengine.tokenization.gguf import LagunaGGUFTokenizer
@@ -409,6 +411,40 @@ def _promotion_gate(
     }
 
 
+def _laguna_f16_prefill_configuration(backend: str) -> dict[str, Any]:
+    requested = os.environ.get("HIPENGINE_LAGUNA_F16_PREFILL", "auto").strip().lower() or "auto"
+    if requested not in {"auto", "gemv", "tiled"}:
+        raise ValueError(
+            "HIPENGINE_LAGUNA_F16_PREFILL must be one of: auto, gemv, tiled"
+        )
+    backend_strategy = backend_package_capability(
+        backend, "LAGUNA_F16_PREFILL_STRATEGY", None
+    )
+    backend_min_rows = int(
+        backend_package_capability(backend, "LAGUNA_F16_PREFILL_MIN_ROWS", 0) or 0
+    )
+    if requested == "tiled":
+        effective_strategy = "tiled"
+        effective_min_rows = 2
+    elif requested == "gemv":
+        effective_strategy = "gemv"
+        effective_min_rows = None
+    elif backend_strategy == "tiled" and backend_min_rows > 1:
+        effective_strategy = "tiled"
+        effective_min_rows = backend_min_rows
+    else:
+        effective_strategy = "gemv"
+        effective_min_rows = None
+    return {
+        "requested": requested,
+        "backend_strategy": backend_strategy,
+        "backend_min_rows": backend_min_rows or None,
+        "effective_strategy": effective_strategy,
+        "effective_min_rows": effective_min_rows,
+        "rows_one_always_gemv": True,
+    }
+
+
 def _repo_state() -> dict[str, Any]:
     revision = subprocess.check_output(("git", "rev-parse", "HEAD"), cwd=ROOT, text=True).strip()
     tracked = subprocess.check_output(
@@ -437,6 +473,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     repo = _repo_state()
     if not repo["tracked_clean"]:
         raise RuntimeError("retained Laguna AR benchmark requires a clean tracked worktree")
+    f16_prefill = _laguna_f16_prefill_configuration(args.backend)
     provenance = collect_artifact_provenance(
         repo_root=ROOT,
         configured_backend=args.backend,
@@ -588,6 +625,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "decode_scope": "horizon-1 synchronized forward_token calls after first token",
             "e2e_scope": "TTFT plus decode scope; model load excluded",
             "fixed_horizon_after_stop": True,
+            "f16_prefill": f16_prefill,
             "protocol_eligible": protocol_eligible,
         },
         "load": {
