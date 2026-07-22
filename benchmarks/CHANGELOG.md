@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-23
+
+- [rejected kernel] synthetic Laguna IQ2_XS / E256-K3072-N1024-top10 decode / GPU1: packed Q8_1/`sudot4` tile2 moves prequantized fused decode down 1.47-4.83%, but the required 3.32-3.41 us quantizer moves rotating/hot/repeated exact -> inclusive `54.299/51.338/47.461 -> 55.532/50.760/48.468 us` (+2.27/-1.13/+2.12%); primitive quality/ISA/scratch gates pass, but cold/repeated regression rejects and removes the candidate; `benchmarks/results/2026-07-23-gpu1-iq2-xs-q8-1-dp4a-rejected.json`.
+
 ## 2026-07-22
 
 - [retained exact kernel] synthetic Laguna IQ2_XS / E256-K3072-N1024-top10 decode / GPU1: output tile2 shares activation loads across adjacent columns and moves tile1 rotating selected single/dual `33.569/57.176 -> 30.955/55.964 us` (-7.79/-2.12%), with all hot/repeated controls improving 4.04-8.82%, BF16-bit-exact full output, and scratch0; `benchmarks/results/2026-07-22-gpu1-iq2-xs-output-tile2.json`.

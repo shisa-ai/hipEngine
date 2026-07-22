@@ -2,7 +2,7 @@
 
 _Status: active gfx1100 optimization ledger for Laguna S 2.1 `UD-Q2_K_XL`.
 Primitive correctness is established; model support and model-level quality remain
-open. Last updated: 2026-07-22._
+open. Last updated: 2026-07-23._
 
 This document is the working plan for improving hipEngine's native IQ2_XS
 selected-MoE kernels. It records the current evidence, the most likely
@@ -80,11 +80,12 @@ The source lives in:
 - `hipengine/kernels/hip_gfx1100/quant/gguf_iq_gemv.hip`;
 - `hipengine/kernels/hip_gfx1100/quant/gguf_iq_selected_prefill.hip`.
 
-The current selected schedule assigns one eight-value group to a logical work
-item. At Laguna `K=3072`, there are 384 groups. A local256 block therefore gives
-lanes 0-127 two groups and lanes 128-255 one group. The grouped prefill kernels
-use the same reduction boundary; rowbatch4 reuses each decoded segment over up
-to four compact rows.
+The retained selected-decode schedule assigns one adjacent 16-value selector
+pair to a logical task, uses local64, and computes two output columns per
+workgroup while sharing BF16 activation loads/conversions. At Laguna `K=3072`,
+there are 192 pair16 tasks. Grouped prefill intentionally keeps its faster
+branchless eight-value tasks; its adaptive sparse path makes a block-uniform
+batch1/2/4 choice, while denser calls preserve rowbatch4.
 
 ### Established correctness and resource evidence
 
@@ -95,9 +96,10 @@ On GPU1, an RX 7900 XTX/gfx1100:
 - rowbatch4 is BF16-bit exact to grouped scalar;
 - compact WMMA passes top-1 `1.0`, KL max `0.0003223`, and max-relative
   `0.0078125` at K=3072;
-- selected single uses VGPR24, LDS512 B, and scratch0;
-- selected dual uses VGPR40, LDS512 B, and scratch0;
-- grouped base/rowbatch4/WMMA use VGPR56/72/64 and scratch0.
+- retained tile2 selected single/dual use local64, VGPR80/136, LDS512 B,
+  and scratch0;
+- grouped base/rowbatch4/adaptive/WMMA remain scratch-free, with adaptive at
+  local256/VGPR88/LDS512 B.
 
 The accepted primitive packet is
 [`../benchmarks/results/2026-07-22-gpu1-iq2-xs-laguna-primitives.json`](../benchmarks/results/2026-07-22-gpu1-iq2-xs-laguna-primitives.json).
@@ -250,7 +252,7 @@ throughput.
 | ---: | --- | --- | ---: | --- |
 | 0 | Representative, counterbalanced benchmark and policy screen | both | prevents false wins; small immediate policy gain | low |
 | 1 | Exact branchless magnitude/sign decode | both | 20-50% | low |
-| 2 | Q8_1 activation plus raw-IQ2 `sudot4` | decode/small batch | 1.5-3x | medium; approximate |
+| 2 | Q8_1 activation plus raw-IQ2 `sudot4` | decode/small batch | measured prequantized -1.47% to -4.83%; inclusive regressive on 2/3 routes | rejected; approximate |
 | 3 | 16-/32-value tasks, wider loads, geometry sweep | both | 10-30% | medium |
 | 4 | Adaptive rowbatch1/2/4 | prefill | measured 0.64-13.09% vs prior policy | low-medium |
 | 5 | Tile two output columns while sharing activations | decode | measured 2.12-8.82% | medium |
@@ -324,9 +326,19 @@ Cautionary precedent:
 - a callable c1 fused-SiLU dp4a diagnostic regressed and stayed off;
 - a Q5 T16 path improved its leaf but regressed end-to-end.
 
-For IQ2 the dequant control-flow burden is larger, so this remains a strong
-candidate. It is nevertheless a separate relaxed-math lane until Laguna
-model-level quality passes.
+Measured outcome (2026-07-23): **rejected and removed**. The initial scalar
+signed-byte expansion was 39-52% slower than the retained exact tile2 path.
+Porting llama.cpp's packed-byte sign transform and sharing two output columns
+made the prequantized local64 candidate 1.47-4.83% faster for fused dual-SiLU,
+but the required 3.32-3.41 us Q8_1 quantizer changed rotating/hot/repeated
+inclusive fused decode by +2.27/-1.13/+2.12%, respectively. Local128 did not
+beat the retained local64 exact path; local256 was slower globally. Primitive
+quality passed (projection/fused KL mean `0.000330/0.006713`, top-1 `1.0`), the
+fused candidate was BF16-bit exact to its unfused candidate boundary, rocprof
+showed scratch0, and disassembly confirmed `v_dot4_i32_iu8`. Because the
+representative cold and repeated controls regressed inclusively, no runtime
+route, activation sidecar, or fusion was retained. Evidence:
+[`../benchmarks/results/2026-07-23-gpu1-iq2-xs-q8-1-dp4a-rejected.json`](../benchmarks/results/2026-07-23-gpu1-iq2-xs-q8-1-dp4a-rejected.json).
 
 ### P3 — Pair shared-scale groups and use wider loads
 
@@ -462,7 +474,8 @@ IQ3 family by 2.05% with exact outputs.
 Do not build fusion around an unproven dot path. If P2 wins, first keep a
 caller-owned sidecar and prove it is reused for gate and up. Then consider
 fusing activation quantization into the preceding norm/router producer to remove
-one launch and one activation read.
+one launch and one activation read. P2 did not win inclusively, so this lane is
+closed for the rejected scalar-dot implementation.
 
 ## Recommended execution order
 
@@ -483,10 +496,11 @@ one launch and one activation read.
 
 ### Phase C — approximate integer path
 
-9. Port caller-owned Q8_1 plus raw IQ2 `sudot4`.
-10. Require primitive KL/top-1, ISA proof, and quantizer-inclusive timing.
-11. When the Laguna runner is ready, run model-level KL/top-1 and held-out
-    prompt categories before enabling it by default.
+9. Port caller-owned Q8_1 plus raw IQ2 `sudot4`: complete, rejected, removed.
+10. Primitive KL/top-1, ISA proof, and inclusive timing: complete; performance
+    gate failed.
+11. Do not spend a Laguna model-quality run on this removed implementation;
+    reopen only for a materially different inclusive algorithm.
 
 ### Phase D — large-prefill path
 
@@ -628,8 +642,8 @@ and state/KV behavior before kernel model-level gates begin.
 | Group width/geometry | complete | pair16/local64 retained for decode; task32 and prefill pair16 rejected |
 | Adaptive rowbatch | complete | exact batch1/2/4 sparse policy retained; rowbatch8 rejected |
 | Output tile2 | complete | exact tile2 retained across cold/hot/repeated routes |
-| Q8_1 `sudot4` | queued | primitive gate, ISA proof, inclusive win; model gate later |
-| Integer MMQ | deferred behind scalar work | populated-expert crossover and retained full-shape win |
+| Q8_1 `sudot4` | rejected; code removed | primitive/ISA gates passed, but inclusive rotating/repeated decode regressed 2.27/2.12% |
+| Integer MMQ | queued | populated-expert crossover and retained full-shape win |
 | Laguna model validation | blocked on integration | all-tensor runner plus model-level gates |
 
 ## Source lineage
