@@ -1913,6 +1913,18 @@ restored to group8 because short/sparse rows regressed up to 5.25%, despite
 large populated-expert scalar wins. The retained decode leaves are local64,
 VGPR64/96, LDS512B, and scratch0. This is synthetic primitive evidence.
 
+The retained sparse-prefill policy is
+[`2026-07-22-gpu1-iq2-xs-adaptive-rowbatch.json`](results/2026-07-22-gpu1-iq2-xs-adaptive-rowbatch.json).
+For K3072 below four compact rows/expert on average, each block selects batch1,
+batch2, or batch4 from its device-resident expert count; denser calls preserve
+the original rowbatch4 symbol. Versus unconditional rowbatch4, all nine
+16/32/64-token balanced/hot/Zipf leaves improve by 0.64-13.09%, including
+balanced 16 `1.378 -> 1.198 ms` (-13.09%) and balanced 32
+`2.179 -> 1.919 ms` (-11.91%). Outputs are BF16-bit exact; adaptive is
+local256/VGPR88/LDS512B/scratch0. Standalone rowbatch2 never won. Rowbatch8 won
+only the balanced five-row case (-4.15%) and regressed the other 14 leaves by
+12.25-96.50%, so it was removed. This remains synthetic primitive evidence.
+
 ## Update Checklist
 
 1. Choose one protocol tuple and record the old artifact before running.

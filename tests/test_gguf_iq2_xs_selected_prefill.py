@@ -16,6 +16,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_iq_gemv import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_iq_selected_prefill import (
     build_gguf_iq_selected_prefill,
+    gguf_iq2_xs_selected_dual_grouped_prefill_compact_adaptive_bf16_bf16_out,
     gguf_iq2_xs_selected_dual_grouped_prefill_compact_auto_bf16_bf16_out,
     gguf_iq2_xs_selected_dual_grouped_prefill_compact_bf16_bf16_out,
     gguf_iq2_xs_selected_dual_grouped_prefill_compact_rowbatch4_bf16_bf16_out,
@@ -79,6 +80,9 @@ def test_iq2_xs_prefill_registry_contract() -> None:
         "selected_dual_grouped_prefill_compact_rowbatch4_bf16_bf16_out": (
             gguf_iq2_xs_selected_dual_grouped_prefill_compact_rowbatch4_bf16_bf16_out
         ),
+        "selected_dual_grouped_prefill_compact_adaptive_bf16_bf16_out": (
+            gguf_iq2_xs_selected_dual_grouped_prefill_compact_adaptive_bf16_bf16_out
+        ),
         "selected_dual_grouped_prefill_compact_auto_bf16_bf16_out": (
             gguf_iq2_xs_selected_dual_grouped_prefill_compact_auto_bf16_bf16_out
         ),
@@ -97,7 +101,12 @@ def test_iq2_xs_prefill_registry_contract() -> None:
 
 @pytest.mark.parametrize(
     ("in_features", "compact_rows", "num_experts", "expected"),
-    [(2048, 11, 3, "base"), (2048, 12, 3, "rowbatch4"), (3072, 1, 256, "rowbatch4")],
+    [
+        (2048, 11, 3, "base"),
+        (2048, 12, 3, "rowbatch4"),
+        (3072, 1023, 256, "adaptive"),
+        (3072, 1024, 256, "rowbatch4"),
+    ],
 )
 def test_iq2_xs_auto_policy_uses_laguna_width_and_short_k_crossover(
     monkeypatch: pytest.MonkeyPatch,
@@ -115,6 +124,10 @@ def test_iq2_xs_auto_policy_uses_laguna_width_and_short_k_crossover(
     monkeypatch.setattr(
         f"{module}.gguf_iq2_xs_selected_dual_grouped_prefill_compact_rowbatch4_bf16_bf16_out",
         lambda *args, **kwargs: calls.append("rowbatch4"),
+    )
+    monkeypatch.setattr(
+        f"{module}.gguf_iq2_xs_selected_dual_grouped_prefill_compact_adaptive_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("adaptive"),
     )
     gguf_iq2_xs_selected_dual_grouped_prefill_compact_auto_bf16_bf16_out(
         1,
@@ -165,9 +178,9 @@ def test_iq2_xs_grouped_scalar_is_exact_at_k3072(libraries) -> None:
     np.testing.assert_array_equal(actual, np.concatenate((expected_gate, expected_up), axis=1))
 
 
-def test_iq2_xs_rowbatch4_and_auto_are_exact_at_k3072(libraries) -> None:
+def test_iq2_xs_rowbatch4_adaptive_and_auto_are_exact_at_k3072(libraries) -> None:
     grouped_library, _ = libraries
-    meta = _compact_meta([0, 3, 4, 5, 15, 16, 17, 31])
+    meta = _compact_meta([0, 1, 2, 3, 4, 7, 8, 9, 15, 16, 17, 31])
     in_features = 3072
     out_features = 23
     x = _f32_to_bf16_u16(_make_x(meta.compact_rows, in_features))
@@ -183,6 +196,7 @@ def test_iq2_xs_rowbatch4_and_auto_are_exact_at_k3072(libraries) -> None:
     )
     for wrapper in (
         gguf_iq2_xs_selected_dual_grouped_prefill_compact_rowbatch4_bf16_bf16_out,
+        gguf_iq2_xs_selected_dual_grouped_prefill_compact_adaptive_bf16_bf16_out,
         gguf_iq2_xs_selected_dual_grouped_prefill_compact_auto_bf16_bf16_out,
     ):
         actual = _run_dual_grouped(

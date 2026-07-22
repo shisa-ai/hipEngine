@@ -266,35 +266,22 @@ __global__ void gguf_iq2_xs_selected_dual_grouped_prefill_compact_kernel(
   }
 }
 
-__launch_bounds__(256, 2)
-__global__ void gguf_iq2_xs_selected_dual_grouped_prefill_compact_rowbatch4_kernel(
+template <int ROW_BATCH>
+__device__ __forceinline__ void iq2_xs_grouped_rowbatch_body(
     const uint16_t* __restrict__ x,
-    const int64_t* __restrict__ expert_start_compact,
     const uint8_t* __restrict__ gate_weight,
     const uint8_t* __restrict__ up_weight,
     uint16_t* __restrict__ out,
-    int compact_rows,
+    int64_t begin,
+    int64_t end,
     int in_features,
     int out_features,
-    int num_experts) {
-  const int out_col = blockIdx.x;
-  const int expert = blockIdx.y;
-  if (out_col >= out_features || expert >= num_experts) return;
-  const int64_t begin = expert_start_compact[expert];
-  const int64_t end = expert_start_compact[expert + 1];
-  if (begin >= end) return;
-
+    int out_col,
+    int64_t weight_offset,
+    float* __restrict__ wave_sums_gate,
+    float* __restrict__ wave_sums_up) {
   const int groups8 = in_features / 8;
-  const int row_bytes = (in_features / QK_K) * IQ2_XS_BLOCK_BYTES;
-  const int64_t expert_bytes = static_cast<int64_t>(out_features) * row_bytes;
-  const int64_t weight_offset =
-      static_cast<int64_t>(expert) * expert_bytes +
-      static_cast<int64_t>(out_col) * row_bytes;
-  constexpr int ROW_BATCH = 4;
-  __shared__ float wave_sums_gate[ROW_BATCH * 8];
-  __shared__ float wave_sums_up[ROW_BATCH * 8];
   const int64_t out_stride = static_cast<int64_t>(2) * out_features;
-
   for (int64_t row_base = begin; row_base < end; row_base += ROW_BATCH) {
     float gate_acc[ROW_BATCH] = {};
     float up_acc[ROW_BATCH] = {};
@@ -329,6 +316,90 @@ __global__ void gguf_iq2_xs_selected_dual_grouped_prefill_compact_rowbatch4_kern
       }
     }
     __syncthreads();
+  }
+}
+
+template <int ROW_BATCH>
+__launch_bounds__(256, 2)
+__global__ void gguf_iq2_xs_selected_dual_grouped_prefill_compact_rowbatch_kernel(
+    const uint16_t* __restrict__ x,
+    const int64_t* __restrict__ expert_start_compact,
+    const uint8_t* __restrict__ gate_weight,
+    const uint8_t* __restrict__ up_weight,
+    uint16_t* __restrict__ out,
+    int compact_rows,
+    int in_features,
+    int out_features,
+    int num_experts) {
+  const int out_col = blockIdx.x;
+  const int expert = blockIdx.y;
+  if (out_col >= out_features || expert >= num_experts) return;
+  const int64_t begin = expert_start_compact[expert];
+  const int64_t end = expert_start_compact[expert + 1];
+  if (begin >= end) return;
+
+  const int row_bytes = (in_features / QK_K) * IQ2_XS_BLOCK_BYTES;
+  const int64_t expert_bytes = static_cast<int64_t>(out_features) * row_bytes;
+  const int64_t weight_offset =
+      static_cast<int64_t>(expert) * expert_bytes +
+      static_cast<int64_t>(out_col) * row_bytes;
+  __shared__ float wave_sums_gate[ROW_BATCH * 8];
+  __shared__ float wave_sums_up[ROW_BATCH * 8];
+  iq2_xs_grouped_rowbatch_body<ROW_BATCH>(
+      x,
+      gate_weight,
+      up_weight,
+      out,
+      begin,
+      end,
+      in_features,
+      out_features,
+      out_col,
+      weight_offset,
+      wave_sums_gate,
+      wave_sums_up);
+}
+
+// Every block sees one expert's row count, so this decision is wave-uniform and
+// adapts mixed routing without copying expert counts back to the host.
+__launch_bounds__(256, 2)
+__global__ void gguf_iq2_xs_selected_dual_grouped_prefill_compact_adaptive_kernel(
+    const uint16_t* __restrict__ x,
+    const int64_t* __restrict__ expert_start_compact,
+    const uint8_t* __restrict__ gate_weight,
+    const uint8_t* __restrict__ up_weight,
+    uint16_t* __restrict__ out,
+    int compact_rows,
+    int in_features,
+    int out_features,
+    int num_experts) {
+  const int out_col = blockIdx.x;
+  const int expert = blockIdx.y;
+  if (out_col >= out_features || expert >= num_experts) return;
+  const int64_t begin = expert_start_compact[expert];
+  const int64_t end = expert_start_compact[expert + 1];
+  if (begin >= end) return;
+
+  const int row_bytes = (in_features / QK_K) * IQ2_XS_BLOCK_BYTES;
+  const int64_t expert_bytes = static_cast<int64_t>(out_features) * row_bytes;
+  const int64_t weight_offset =
+      static_cast<int64_t>(expert) * expert_bytes +
+      static_cast<int64_t>(out_col) * row_bytes;
+  __shared__ float wave_sums_gate[4 * 8];
+  __shared__ float wave_sums_up[4 * 8];
+  const int64_t rows = end - begin;
+  if (rows == 1) {
+    iq2_xs_grouped_rowbatch_body<1>(
+        x, gate_weight, up_weight, out, begin, end, in_features, out_features,
+        out_col, weight_offset, wave_sums_gate, wave_sums_up);
+  } else if (rows == 2) {
+    iq2_xs_grouped_rowbatch_body<2>(
+        x, gate_weight, up_weight, out, begin, end, in_features, out_features,
+        out_col, weight_offset, wave_sums_gate, wave_sums_up);
+  } else {
+    iq2_xs_grouped_rowbatch_body<4>(
+        x, gate_weight, up_weight, out, begin, end, in_features, out_features,
+        out_col, weight_offset, wave_sums_gate, wave_sums_up);
   }
 }
 
@@ -1090,7 +1161,33 @@ extern "C" int hipengine_gguf_iq2_xs_selected_dual_grouped_prefill_compact_rowba
     int64_t num_experts,
     hipStream_t stream) {
   return launch_grouped_dual(
-      gguf_iq2_xs_selected_dual_grouped_prefill_compact_rowbatch4_kernel,
+      (gguf_iq2_xs_selected_dual_grouped_prefill_compact_rowbatch_kernel<4>),
+      x,
+      expert_start_compact,
+      gate_weight,
+      up_weight,
+      out,
+      compact_rows,
+      in_features,
+      out_features,
+      num_experts,
+      256,
+      stream);
+}
+
+extern "C" int hipengine_gguf_iq2_xs_selected_dual_grouped_prefill_compact_adaptive_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* expert_start_compact,
+    const uint8_t* gate_weight,
+    const uint8_t* up_weight,
+    uint16_t* out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts,
+    hipStream_t stream) {
+  return launch_grouped_dual(
+      gguf_iq2_xs_selected_dual_grouped_prefill_compact_adaptive_kernel,
       x,
       expert_start_compact,
       gate_weight,

@@ -44,6 +44,29 @@ def test_production_defaults_and_raw_byte_accounting() -> None:
         out_features=1024,
         matrices=2,
     ) == 2 * single
+    assert [module.adaptive_row_batch(count) for count in (0, 1, 2, 3, 4, 7, 8)] == [
+        1,
+        1,
+        2,
+        4,
+        4,
+        4,
+        4,
+    ]
+    counts = np.asarray([0, 1, 2, 3, 4, 7, 8], dtype=np.int64)
+    adaptive = module.adaptive_grouped_raw_weight_bytes_per_dispatch(
+        counts,
+        in_features=3072,
+        out_features=1024,
+        matrices=2,
+    )
+    expected_visits = 0 + 1 + 1 + 1 + 1 + 2 + 2
+    assert adaptive == module.raw_weight_bytes_per_dispatch(
+        rows=expected_visits,
+        in_features=3072,
+        out_features=1024,
+        matrices=2,
+    )
 
 
 @pytest.mark.parametrize("assignments", [1, 160, 320, 1280, 5120])
