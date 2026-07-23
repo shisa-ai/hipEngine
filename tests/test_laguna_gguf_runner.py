@@ -162,6 +162,12 @@ def test_laguna_prefill_policy_decouples_matrix_and_attention_rows() -> None:
     )
 
     assert (policy.matrix_rows, policy.attention_rows) == (512, 128)
+    assert policy.attention_ranges(511) == (
+        (0, 128),
+        (128, 128),
+        (256, 128),
+        (384, 127),
+    )
     assert (automatic.matrix_rows, automatic.attention_rows) == (256, 128)
     with pytest.raises(ValueError, match="attention rows"):
         LagunaPrefillChunkPolicy.resolve(

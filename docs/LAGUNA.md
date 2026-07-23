@@ -2445,20 +2445,34 @@ and MoE allocation bytes before model materialization and feeds a conservative
 floor into UMA admission. Production 512/128 requires **334,651,392 row bytes +
 77,301,776 MoE bytes = 411,953,168 bytes (0.384 GiB)**, below the existing
 2-GiB admission floor. Allocation and exact byte estimates share one source of
-truth. The next unit must make layer attention consume the independent tile;
-this unit alone does not change the 128-row default or claim performance.
+truth.
+
+The second substrate unit makes the policy executable. One M256/M512 layer now
+runs norm, QKV/gate, output projection, and MoE across the full matrix rows while
+global/SWA attention consumes resident position-backed slices of at most 128
+rows. Slices borrow the existing device position array; they do not upload a
+new scalar or change `KVLiveSpans`/kernel signatures. Each completed slice
+appends its rounded BF16 K/V before the next slice, preserving causal visibility
+and ring overwrite order. A low-level cached gfx1151 fixture seeds positions
+0..383, compares ordinary 128+2 chunks with one pending 130-row transaction,
+and matches every context/K/V/span byte through absolute positions
+**511/512/513**. The staged verifier remains fail-closed above one attention
+tile. Full-model 128/256/512 timing and state/KV gates remain pending, so the
+128-row default and performance headline are unchanged.
 
 - [x] Add bounded 256/512-row scratch and admission accounting after AR-O1/O2
   establish the layouts they actually need.
-- [ ] Decouple projection/MoE row tiles from attention query tiles, following
+- [x] Decouple projection/MoE row tiles from attention query tiles, following
   the proven Qwen prefill configuration pattern. Matrix work may use M256/512
   while SWA/global attention remains at its independently measured query tile.
 - [ ] Compare 128/256/512 on 512/1K/4K with exact final cursor, KV state, and
   511/512/513 wrap behavior. Canonical 68-122-token prompts will not benefit
   from a larger maximum by themselves; this phase targets matrix occupancy and
   long-context passes.
-- [ ] Keep request/chunk metadata resident and reusable, but do not add graph
-  capture unless kernel-span residual has become material.
+- [x] Keep request/chunk metadata resident and reusable, but do not add graph
+  capture unless kernel-span residual has become material. Attention slices
+  borrow one-element views into the existing device positions allocation; no
+  per-slice host metadata copy or graph path is added.
 
 #### AR-O4 — dense/shared/router residual
 

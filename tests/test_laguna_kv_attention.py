@@ -360,6 +360,71 @@ def test_laguna_kv_owner_allocates_12_global_36_bounded_rings_and_tears_down() -
     cache.free()
 
 
+def test_laguna_kv_bulk_slice_uses_resident_row_position_view() -> None:
+    from hipengine.runtime.laguna_kv import allocate_laguna_kv_cache
+
+    runtime = _FakeRuntime()
+    cache = allocate_laguna_kv_cache(
+        _production_config(),
+        context_length=4096,
+        backend="hip_gfx1151",
+        runtime=runtime,
+    )
+    calls: list[tuple[str, tuple, dict]] = []
+
+    def resolve(layer: str, variant: str):
+        del variant
+
+        def record(*args, **kwargs):
+            calls.append((layer, args, kwargs))
+
+        return record
+
+    cache._resolve = resolve
+    positions_ptr = 0x71000000
+    try:
+        cache.prepare_rows(tuple(range(256)))
+        cache.attend_prefill(
+            1,
+            0x1000,
+            0x2000,
+            0x3000,
+            0x4000,
+            128,
+            row_offset=128,
+            row_positions_ptr=positions_ptr + 128 * DType.INT64.itemsize,
+        )
+        cache.append_rows(
+            1,
+            0x2000,
+            0x3000,
+            128,
+            row_offset=128,
+            row_positions_ptr=positions_ptr + 128 * DType.INT64.itemsize,
+        )
+
+        attention_spans = calls[0][1][6]
+        append_spans = calls[1][1][4]
+        assert attention_spans.row_positions.ptr == positions_ptr + 128 * 8
+        assert append_spans.row_positions.ptr == positions_ptr + 128 * 8
+        assert attention_spans.live_counts.ptr == cache.layer(1).spans.live_counts.ptr
+        assert append_spans.live_counts.ptr == cache.layer(1).append_spans.live_counts.ptr
+        with pytest.raises(ValueError, match="slice"):
+            cache.attend_prefill(
+                1,
+                0x1000,
+                0x2000,
+                0x3000,
+                0x4000,
+                129,
+                row_offset=128,
+                row_positions_ptr=positions_ptr + 128 * 8,
+            )
+        cache.discard_rows()
+    finally:
+        cache.free()
+
+
 def test_laguna_kv_owner_cleans_partial_allocation_failure() -> None:
     from hipengine.runtime.laguna_kv import allocate_laguna_kv_cache
 
@@ -894,6 +959,195 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
         wave32.free()
         bulk.free()
         serial.free()
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_laguna_swa_resident_attention_slices_match_128_row_chunks_at_511_512_513() -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
+        build_laguna_kv_attention,
+    )
+    from hipengine.runtime.laguna_kv import allocate_laguna_kv_cache
+
+    runtime = get_hip_runtime()
+    library = build_laguna_kv_attention(
+        load=True,
+        require_cached=_require_cached_build(),
+    )
+    config = SimpleNamespace(
+        block_count=1,
+        layer_types=(SLIDING_ATTENTION,),
+        head_counts=(72,),
+        head_count_kv=8,
+        key_length=128,
+        value_length=128,
+        sliding_window=512,
+    )
+    baseline = allocate_laguna_kv_cache(
+        config,
+        context_length=514,
+        backend="hip_gfx1151",
+        runtime=runtime,
+    )
+    sliced = allocate_laguna_kv_cache(
+        config,
+        context_length=514,
+        backend="hip_gfx1151",
+        runtime=runtime,
+    )
+    rng = np.random.default_rng(1513)
+    seed_rows = 384
+    rows = 130
+    keys = rng.normal(0.0, 0.12, size=(seed_rows + rows, 8, 128)).astype(np.float32)
+    values = rng.normal(0.0, 0.12, size=(seed_rows + rows, 8, 128)).astype(np.float32)
+    queries = rng.normal(0.0, 0.12, size=(rows, 72, 128)).astype(np.float32)
+    positions = np.arange(seed_rows, seed_rows + rows, dtype=np.int64)
+    allocations = []
+    try:
+        key_rows = malloc(keys.nbytes, runtime=runtime)
+        value_rows = malloc(values.nbytes, runtime=runtime)
+        query_rows = malloc(queries.nbytes, runtime=runtime)
+        baseline_out = malloc(queries.nbytes, runtime=runtime)
+        sliced_out = malloc(queries.nbytes, runtime=runtime)
+        position_rows = malloc(positions.nbytes, runtime=runtime)
+        allocations.extend(
+            (key_rows, value_rows, query_rows, baseline_out, sliced_out, position_rows)
+        )
+        for buffer, array in (
+            (key_rows, keys),
+            (value_rows, values),
+            (query_rows, queries),
+            (position_rows, positions),
+        ):
+            copy_host_to_device(buffer, host_array_ptr(array), array.nbytes, runtime=runtime)
+
+        row_bytes = 8 * 128 * np.dtype(np.float32).itemsize
+        query_row_bytes = 72 * 128 * np.dtype(np.float32).itemsize
+        seed_positions = tuple(range(seed_rows))
+        for cache in (baseline, sliced):
+            cache.prepare_rows(seed_positions)
+            cache.append_rows(0, key_rows.ptr, value_rows.ptr, seed_rows, library=library)
+            cache.commit_rows()
+
+        for offset, count in ((0, 128), (128, 2)):
+            chunk_positions = tuple(int(value) for value in positions[offset : offset + count])
+            baseline.prepare_rows(chunk_positions)
+            baseline.attend_prefill(
+                0,
+                query_rows.ptr + offset * query_row_bytes,
+                key_rows.ptr + (seed_rows + offset) * row_bytes,
+                value_rows.ptr + (seed_rows + offset) * row_bytes,
+                baseline_out.ptr + offset * query_row_bytes,
+                count,
+                library=library,
+            )
+            baseline.append_rows(
+                0,
+                key_rows.ptr + (seed_rows + offset) * row_bytes,
+                value_rows.ptr + (seed_rows + offset) * row_bytes,
+                count,
+                library=library,
+            )
+            baseline.commit_rows()
+
+        sliced.prepare_rows(tuple(int(value) for value in positions))
+        for offset, count in ((0, 128), (128, 2)):
+            slice_position_ptr = position_rows.ptr + offset * DType.INT64.itemsize
+            sliced.attend_prefill(
+                0,
+                query_rows.ptr + offset * query_row_bytes,
+                key_rows.ptr + (seed_rows + offset) * row_bytes,
+                value_rows.ptr + (seed_rows + offset) * row_bytes,
+                sliced_out.ptr + offset * query_row_bytes,
+                count,
+                row_offset=offset,
+                row_positions_ptr=slice_position_ptr,
+                library=library,
+            )
+            sliced.append_rows(
+                0,
+                key_rows.ptr + (seed_rows + offset) * row_bytes,
+                value_rows.ptr + (seed_rows + offset) * row_bytes,
+                count,
+                row_offset=offset,
+                row_positions_ptr=slice_position_ptr,
+                library=library,
+            )
+        sliced.commit_rows()
+        runtime.device_synchronize()
+
+        baseline_context = np.empty_like(queries)
+        sliced_context = np.empty_like(queries)
+        copy_device_to_host(
+            host_array_ptr(baseline_context),
+            baseline_out,
+            baseline_context.nbytes,
+            runtime=runtime,
+        )
+        copy_device_to_host(
+            host_array_ptr(sliced_context),
+            sliced_out,
+            sliced_context.nbytes,
+            runtime=runtime,
+        )
+        np.testing.assert_array_equal(sliced_context, baseline_context)
+        assert baseline.position == sliced.position == 513
+
+        baseline_state = baseline.layer(0)
+        sliced_state = sliced.layer(0)
+        for baseline_buffer, sliced_buffer, dtype in (
+            (baseline_state.key_cache, sliced_state.key_cache, np.uint16),
+            (baseline_state.value_cache, sliced_state.value_cache, np.uint16),
+        ):
+            baseline_values = np.empty(baseline_buffer.nbytes // np.dtype(dtype).itemsize, dtype=dtype)
+            sliced_values = np.empty_like(baseline_values)
+            copy_device_to_host(
+                host_array_ptr(baseline_values),
+                baseline_buffer,
+                baseline_values.nbytes,
+                runtime=runtime,
+            )
+            copy_device_to_host(
+                host_array_ptr(sliced_values),
+                sliced_buffer,
+                sliced_values.nbytes,
+                runtime=runtime,
+            )
+            np.testing.assert_array_equal(sliced_values, baseline_values)
+        for field, dtype in (
+            ("live_counts", np.int64),
+            ("token_positions", np.int64),
+            ("evict_mask", np.bool_),
+        ):
+            baseline_tensor = getattr(baseline_state.spans, field)
+            sliced_tensor = getattr(sliced_state.spans, field)
+            baseline_values = np.empty(baseline_tensor.numel, dtype=dtype)
+            sliced_values = np.empty_like(baseline_values)
+            runtime.memcpy(
+                host_array_ptr(baseline_values),
+                baseline_tensor.ptr,
+                baseline_values.nbytes,
+                HipMemcpyKind.DEVICE_TO_HOST,
+            )
+            runtime.memcpy(
+                host_array_ptr(sliced_values),
+                sliced_tensor.ptr,
+                sliced_values.nbytes,
+                HipMemcpyKind.DEVICE_TO_HOST,
+            )
+            np.testing.assert_array_equal(sliced_values, baseline_values)
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+        sliced.free()
+        baseline.free()
 
 
 def _attention_reference(

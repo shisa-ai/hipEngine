@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import ctypes
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Protocol
 
 from hipengine.core.device import Device
@@ -253,20 +253,27 @@ class LagunaKVCache:
         value_ptr: int,
         rows: int,
         *,
+        row_offset: int = 0,
+        row_positions_ptr: int | None = None,
         stream: int = 0,
         library=None,
     ) -> None:
-        """Append all current F32 K/V rows after bulk attention has consumed them."""
+        """Append all or one resident-position-backed slice of current F32 K/V rows."""
 
         state = self.layer(layer_id)
-        self._check_bulk_rows(rows)
+        spans = self._bulk_slice_spans(
+            state.append_spans,
+            row_offset=row_offset,
+            rows=rows,
+            row_positions_ptr=row_positions_ptr,
+        )
         fn = self._resolve("laguna_kv_write", state.write_rows_variant)
         fn(
             key_ptr,
             value_ptr,
             state.key_cache.ptr,
             state.value_cache.ptr,
-            state.append_spans,
+            spans,
             int(rows),
             _LAGUNA_KV_HEADS,
             _LAGUNA_HEAD_DIM,
@@ -331,14 +338,21 @@ class LagunaKVCache:
         out_ptr: int,
         rows: int,
         *,
+        row_offset: int = 0,
+        row_positions_ptr: int | None = None,
         scale: float = _LAGUNA_HEAD_DIM**-0.5,
         stream: int = 0,
         library=None,
     ) -> None:
-        """Run causal bulk attention over prior state plus uncommitted current rows."""
+        """Run causal attention over all or one resident-position-backed row slice."""
 
         state = self.layer(layer_id)
-        self._check_bulk_rows(rows)
+        spans = self._bulk_slice_spans(
+            state.spans,
+            row_offset=row_offset,
+            rows=rows,
+            row_positions_ptr=row_positions_ptr,
+        )
         fn = self._resolve("laguna_attention_prefill", state.attention_prefill_variant)
         common = (
             query_ptr,
@@ -347,7 +361,7 @@ class LagunaKVCache:
             state.key_cache.ptr,
             state.value_cache.ptr,
             out_ptr,
-            state.spans,
+            spans,
             int(rows),
         )
         if state.attention_type == FULL_ATTENTION:
@@ -448,11 +462,32 @@ class LagunaKVCache:
         if self._pending_positions:
             raise RuntimeError("token-serial KV operations cannot run while bulk rows are pending")
 
-    def _check_bulk_rows(self, rows: int) -> None:
+    def _bulk_slice_spans(
+        self,
+        spans: KVLiveSpans,
+        *,
+        row_offset: int,
+        rows: int,
+        row_positions_ptr: int | None,
+    ) -> KVLiveSpans:
         if not self._pending_positions:
             raise RuntimeError("prepare_rows must run before bulk KV operations")
-        if int(rows) != len(self._pending_positions):
-            raise ValueError("bulk KV rows must match the prepared position count")
+        offset = int(row_offset)
+        count = int(rows)
+        if offset < 0 or count <= 0 or offset + count > len(self._pending_positions):
+            raise ValueError("bulk KV slice must fit the prepared position count")
+        if offset == 0 and count == len(self._pending_positions) and row_positions_ptr is None:
+            return spans
+        if row_positions_ptr is None:
+            raise ValueError("bulk KV slice requires a resident row_positions_ptr")
+        assert spans.row_positions is not None
+        row_positions = Tensor.from_handle(
+            int(row_positions_ptr),
+            (1,),
+            DType.INT64,
+            spans.row_positions.device,
+        )
+        return replace(spans, row_positions=row_positions)
 
     def _check_open(self) -> None:
         if self._closed:
