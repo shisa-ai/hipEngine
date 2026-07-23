@@ -9,12 +9,12 @@ DFlash target verify/accept/commit are implemented. First-token, repeated-state,
 bulk-vs-serial, live Poolside-v1 reasoning/XML-tool, B4 draft top-k, and
 B1/B2/B4/B7/B15 target-cycle exactness gates pass, with one documented target-AR
 low-margin greedy-32 arithmetic split. LPF-1 exact tiled source-F16 prefill and
-LPF-4's 128-row chunk policy are retained; the paired canonical row reaches
-49.641 prompt tok/s, while LPF-2/3 are measured rejections. The pre-LPF-1 full-
+LPF-4's 128-row chunk policy are retained; the pre-LPF-5 paired canonical row
+reaches 49.641 prompt tok/s, while LPF-2/3 are measured rejections. The pre-LPF-1 full-
 suite DFlash B4 run was exact at 0.6538x true-AR decode, but is now stale because
 the promoted prefill routes change B+1 verification; DFlash remains off pending
 a post-prefill refresh. DFlash public integration, higher-budget draft candidate
-parity, LPF-5/6, and long-context admission remain.
+parity, LPF-5 global attention/LPF-6, and long-context admission remain.
 
 This document defines the correctness-first plan for running
 [`poolside/Laguna-S-2.1-GGUF`](https://huggingface.co/poolside/Laguna-S-2.1-GGUF),
@@ -1906,18 +1906,28 @@ the raw trace has SHA-256 `7ca2217d...313ea5`. This is a one-pass attribution
 baseline, not a speedup or supported long-context throughput claim. Evidence:
 `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-lpf5-long-context-profile.json`.
 
-The first LPF-5 candidate is separately registered and not yet default. The
-wave32-exact SWA body maps four dimensions per lane and reconstructs the
-baseline 128-thread stride-64/32/16..1 dot-product tree before preserving the
-same sequential max, denominator, and value accumulation. It consumes the same
-complete ring `KVLiveSpans` and removes all per-token block barriers without
-changing arithmetic. The 508..515 wrap/eviction fixture is F32 byte-exact to
-both baseline bulk and scalar attention. A ten-pair directional leaf screen at
-128 rows / 512 live tokens moves **20.434 -> 9.229 ms (2.214x)**; cached tracing
-names the candidate at **9.123 ms**, 32 threads, 32 VGPR, zero LDS/scratch versus
-baseline **20.355 ms**, 128 threads, 16 VGPR, 1,024 B LDS, zero scratch. This
-ranks the candidate for the clean full-model 512/1K/4K A/B; baseline remains
-default until that gate passes.
+The first LPF-5 candidate is closed and promoted on gfx1151. The wave32-exact
+SWA body maps four dimensions per lane and reconstructs the baseline 128-thread
+stride-64/32/16..1 dot-product tree before preserving the same sequential max,
+denominator, and value accumulation. It consumes complete ring `KVLiveSpans`
+and removes all per-token block barriers without changing arithmetic. The
+508..515 wrap/eviction fixture is F32 byte-exact to both baseline bulk and
+scalar attention. A ten-pair leaf screen moves **20.434 -> 9.229 ms (2.214x)**;
+cached tracing names the candidate at **9.123 ms**, 32 threads, 32 VGPR, zero
+LDS/scratch versus baseline **20.355 ms**, 128 threads, 16 VGPR, 1,024 B LDS,
+zero scratch.
+
+The clean shared-weight full-model gate then moves 512/1K/4K prefill
+**43.760/39.748/33.800 -> 47.395/44.855/38.552 tok/s
+(+8.31%/+12.85%/+14.06%)**, saving **0.898/2.933/14.939 s**. Every complete
+100,352-way FP32 logit vector, final/pre-final BF16 hidden vector, next-logit
+bit pattern, token ID, and cursor is exact; tracked ownership returns to zero.
+A prior complete timing pass independently reproduced **1.082/1.128/1.140x**
+before a post-timing artifact bug, so the result is not a single observation.
+The gfx1151 backend capability now selects wave32 exact automatically; explicit
+baseline selection remains a one-release rollback, and unmeasured backends keep
+the 128-thread route. Evidence:
+`benchmarks/results/2026-07-23-gfx1151-laguna-prefill-lpf5-swa-wave32.json`.
 
 Every LPF candidate is a registered variant with the current exact chain as its
 unfused rollback. Exact candidates pass byte comparison on lengths

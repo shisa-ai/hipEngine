@@ -52,7 +52,11 @@ from hipengine.runtime.f16_weight_linear import (
 )
 from hipengine.runtime.gguf_embedding import launch_gguf_embedding
 from hipengine.runtime.gguf_linear import GGUF_OUTPUT_F32, launch_gguf_linear
-from hipengine.runtime.laguna_kv import LagunaKVCache, allocate_laguna_kv_cache
+from hipengine.runtime.laguna_kv import (
+    LagunaKVCache,
+    allocate_laguna_kv_cache,
+    resolve_laguna_swa_prefill_variant,
+)
 from hipengine.runtime.laguna_moe import (
     LagunaMoEKernelPlan,
     LagunaMoEScratch,
@@ -923,14 +927,17 @@ class LagunaGGUFResidentSession:
         repacked_cache: LagunaGGUFRepackedCache | str | Path | None = None,
         model_sha256: str | None = None,
         prefill_chunk_size: int = 128,
-        swa_prefill_variant: str = "swa_context_rows_spans",
+        swa_prefill_variant: str | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
         self.backend = resolve_backend(backend)
         self.context_length = int(context_length)
         self.prefill_chunk_size = int(prefill_chunk_size)
-        self.swa_prefill_variant = str(swa_prefill_variant)
+        self.swa_prefill_variant = resolve_laguna_swa_prefill_variant(
+            self.backend,
+            swa_prefill_variant,
+        )
         self.position = -1
         self.last_result: LagunaEagerTokenResult | None = None
         self.weights: LagunaGGUFResidentWeights | None = None

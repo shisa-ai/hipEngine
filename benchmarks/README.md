@@ -3,6 +3,8 @@
 Last reviewed: **2026-07-23**
 
 Latest retained hipEngine revisions in this scoreboard:
+`bd8877fdf029a6c23880cc8fb4fb04401adf93a7` for the exact Laguna S 2.1
+LPF-5 wave32 SWA full-model gate,
 `9fb6bda7f810e3b6ad18603858b72a88bb75ad72` for the Laguna S 2.1 LPF-5
 512/1K/4K long-context attribution profile,
 `8ceb7d3a0068822b23ba6729cd9c91cacb701309` for the exact Laguna S 2.1
@@ -1126,7 +1128,8 @@ recoverable from the linked compact artifacts, changelog, and
 ### gfx1151 Laguna S 2.1 target AR, DFlash, and cold startup, 2026-07-23
 
 **Status: retained for exact target-only c=1 AR and loader startup; LPF-1's
-exact tile and LPF-4's 128-row chunks are default. The matched B4 DFlash row is
+exact tile, LPF-4's 128-row chunks, and LPF-5's wave32-exact SWA reader are
+default. The matched B4 DFlash row is
 exact but stale after those target-verifier changes, so DFlash remains off
 pending refresh.** The AR protocol uses the
 full ten-prompt `mtpbench-code-general-ja` suite (`code`, `general_en`,
@@ -1143,7 +1146,7 @@ top-1, and lifecycle recovery is exact.
 | Previous 64-row bulk GEMV prefill + same eager c=1 decode | 23.333 | 3.481 s | 16.381 | 3.470 | 5.719 |
 | LPF-1 exact tiled prefill, 64-row chunks + same eager c=1 decode | 48.560 | 1.692 s | 16.386 | 5.955 | 8.717 |
 | LPF-1 change vs previous default | **+108.12% (2.081x)** | **-51.39%** | +0.030% | **+71.61%** | **+52.42%** |
-| **Default LPF-1 tile + LPF-4 128-row chunks + same eager c=1 decode** | **49.641** | **1.639 s** | **16.390** | **6.042** | **8.811** |
+| Pre-LPF-5 LPF-1 tile + LPF-4 128-row chunks + same eager c=1 decode | 49.641 | 1.639 s | 16.390 | 6.042 | 8.811 |
 | LPF-4 paired change vs same-session 64-row control | **+2.27%** | **-3.15%** | -0.010% | **+1.49%** | **+1.08%** |
 
 LPF-1 changes prompt execution only; rows=1 decode stays on the original exact
@@ -1201,6 +1204,16 @@ final cursors/IDs, the existing 511/512/513 CPU/GPU fixtures, trace segmentation
 and lifecycle pass. This is diagnostic attribution—not a speedup, repeated
 throughput row, or long-context support claim—and ranks the bounded but serial
 SWA reader before global attention. [LPF-5 profile](results/2026-07-23-gfx1151-laguna-prefill-lpf5-long-context-profile.json).
+
+The promoted LPF-5 wave32-exact reader reconstructs the baseline 128-thread
+reduction tree without per-token block barriers. The clean shared-weight gate
+moves 512/1K/4K prefill **43.760/39.748/33.800 -> 47.395/44.855/38.552 tok/s
+(+8.31%/+12.85%/+14.06%)**, saving **0.898/2.933/14.939 s**. Complete FP32
+logits, final/pre-final BF16 hidden, next-logit bits, IDs, and cursors match at
+every length; lifecycle is exact. A prior complete timing pass independently
+reproduced **1.082/1.128/1.140x** before a post-timing harness failure. gfx1151
+therefore defaults to wave32 exact; explicit baseline and unmeasured-backend
+fallback remain. [Retained LPF-5 SWA gate](results/2026-07-23-gfx1151-laguna-prefill-lpf5-swa-wave32.json).
 
 The matched clean Poolside llama.cpp `04b2b72c` raw-token diagnostic reports
 70.463/70.451 prompt tok/s and 19.063/18.882 native predicted tok/s at h16/h32,

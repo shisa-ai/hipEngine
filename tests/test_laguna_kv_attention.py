@@ -253,7 +253,10 @@ def _production_config() -> SimpleNamespace:
 
 
 def test_laguna_kv_owner_allocates_12_global_36_bounded_rings_and_tears_down() -> None:
-    from hipengine.runtime.laguna_kv import allocate_laguna_kv_cache
+    from hipengine.runtime.laguna_kv import (
+        allocate_laguna_kv_cache,
+        resolve_laguna_swa_prefill_variant,
+    )
 
     runtime = _FakeRuntime()
     cache = allocate_laguna_kv_cache(
@@ -281,11 +284,20 @@ def test_laguna_kv_owner_allocates_12_global_36_bounded_rings_and_tears_down() -
     assert all(layer.spans.token_positions is not None for layer in cache.layers)
     assert all(layer.spans.evict_mask is not None for layer in cache.layers)
     assert all(
-        layer.attention_prefill_variant == "swa_context_rows_spans"
+        layer.attention_prefill_variant == "swa_context_rows_wave32_exact_spans"
         for layer in cache.layers
         if layer.attention_type == SLIDING_ATTENTION
     )
     assert cache.allocation_count == 243
+    assert (
+        resolve_laguna_swa_prefill_variant("hip_gfx1151")
+        == "swa_context_rows_wave32_exact_spans"
+    )
+    assert resolve_laguna_swa_prefill_variant("hip_gfx1100") == "swa_context_rows_spans"
+    assert (
+        resolve_laguna_swa_prefill_variant("hip_gfx1151", "swa_context_rows_spans")
+        == "swa_context_rows_spans"
+    )
 
     cache.prepare_position(0)
     cache.prepare_position(1)
@@ -623,6 +635,7 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
         context_length=520,
         backend="hip_gfx1151",
         runtime=runtime,
+        swa_prefill_variant="swa_context_rows_spans",
     )
     wave32 = allocate_laguna_kv_cache(
         config,
