@@ -2792,19 +2792,24 @@ Proceed in measured Amdahl order:
    **7.150%/4.774%**.
    The graph owner, selector, capability, paired tail, and tests are removed;
    eager D7 remains the only runtime route.
-14. **NEXT:** resume exact kernel/submission optimization from eager D7. Its
-   short decode span exceeds kernel sum by **3.385 ms**, but ROCm graph replay
-   does not recover that residual.
+14. **SELECTED (D9):** contract every sparse routed/shared tail with its
+   next input RMSNorm. The retained D7 trace has 47 adjacent BF16 add/add/RMS
+   triples totaling **0.517 ms/token** short; one exact dual-output composite
+   removes **94 dispatches/token (869 -> 775)** while preserving both BF16 add
+   boundaries. Task #280 implements the separately registered leaf and task
+   #281 owns clean context/category retention.
 
 **50 tok/s is a credible W7900 target, not a current claim.** D7 must reduce the
 canonical **21.548 ms to 20 ms**, another **7.74%**. The clean short kernel sum
 is **17.268 ms** and median span is **20.715 ms**, so the measured device window
 does not impose a 20-ms floor. The rejected tile16 traffic model was not
-cache-visible; one-step graph replay must now remove at least **1.548 ms/token**
-from the canonical h32 wall to reach the target. The near-4K profile remains led
-by global attention. Every retained candidate uses the full category/heldout
-suite and the same exact/quality lanes above. Laguna DFlash/MTP economics must
-use D7 or a later true-AR baseline rather than the historical D0 row.
+cache-visible and ROCm graph replay regressed. D9 is the next bounded exact
+route, but even eliminating its complete measured kernel window plus transferring
+the recent pair-launch gap reaches only a modeled **48.17 tok/s**; it must
+compound with later work. The near-4K profile remains led by global attention.
+Every retained candidate uses the full category/heldout suite and the same
+exact/quality lanes above. Laguna DFlash/MTP economics must use D7 or a later
+true-AR baseline rather than the historical D0 row.
 
 ### D8 one-step graph replay (exact, performance-rejected, removed)
 
@@ -2993,6 +2998,74 @@ regresses every unprofiled context. The
 capture/state-tail and graph scheduling overhead exceed any host-submission
 saving. Task #278 therefore removes the route and kernel optimization resumes
 from eager D7.
+
+### D9 aggregate MoE tail plus next RMSNorm (selected design)
+
+The next candidate is a measured launch-contraction boundary, not another graph
+or quant-math rewrite. Splitting every retained D7 token from embedding through
+argmax finds exactly **47** adjacent sequences of:
+
+```text
+BF16 routed + shared add
+BF16 post-attention + MoE add
+F32-weight RMSNorm for the next layer (or final output_norm)
+```
+
+All 45 IQ3-down layers already emit one weighted BF16 `routed_output`. The other
+two sparse layers run their exact selected-down plus weighted-sum fallback before
+the tail, so the candidate never serializes selected slots. Short/512/1K/
+near-4K control windows are **0.517/0.516/0.518/0.519 ms/token**. Replacing each
+three-kernel boundary with one call removes **94 launches/token**, or 10.82% of
+D7's 869 dispatches, and leaves dense layer 0 plus all rows>1 paths unchanged.
+
+The proposed four-axis key is
+`(hip_gfx1100, moe_tail+next_rmsnorm, bf16,
+laguna_aggregate_gguf_f32_weight_out)`. One local256 workgroup emits both the
+post-MoE BF16 hidden row and the BF16 next-normalized row. The arithmetic
+contract is stricter than qwen-kernel's F32 `add_rms3.comp` and the existing Q3
+composite:
+
+1. round `routed + shared` to BF16;
+2. reread that value, add BF16 `post_attention`, and round the hidden row to
+   BF16;
+3. store that hidden row before accumulating squares in the exact current
+   `idx=tid,tid+256,...` order;
+4. use the same local256 stride-128..1 reduction and `rsqrtf(sum/3072 + eps)`;
+5. multiply the stored BF16 hidden value by the F32 next norm weight and round
+   the normalized output to BF16.
+
+The host supplies either layer `L+1`'s `attn_norm` pointer or the final
+`output_norm` pointer. This changes neither dispatch axes nor model arithmetic.
+The current two BF16 adds plus standalone F32-weight RMSNorm remain the required
+unfused fallback for registry misses, rows>1, unsupported backends, explicit
+rollback, and any failed gate. Source scheduling references are qwen-kernel
+`52e240f9` `shaders/add_rms3.comp` and the in-tree Q3
+`moe_tail_next_rmsnorm_out_kernel`; neither reference's one-round/shared-sigmoid
+math may be copied into Laguna.
+
+The short measured window is 2.995% of kernel sum and 2.497% of span. Its
+zero-cost kernel-only ceiling is **47.55 tok/s**. A planning-only transfer that
+scales the measured Q3 fused body from hidden 2048 to 3072 and applies the
+consistent D6/D7 span-minus-kernel reduction per removed launch models
+**0.347 ms/token** saved and **47.17 tok/s**. Even a zero-cost body plus that
+launch-gap transfer reaches only **48.17 tok/s**. These are Amdahl bounds, not a
+performance claim.
+
+RED requires BF16-bit-exact residual and normalized outputs at hidden 17/3072,
+including values where omitting the first BF16 boundary changes bits, plus
+explicit rows>1/registry/backend fallback. GREEN requires all 47 real-model
+boundaries exact, local256/LDS1024/scratch0 tracing, and exactly
+**869 -> 775** dispatches/token. Promotion additionally requires clean short/
+512/1K/near-4K kernel-sum and span wins plus the complete ten-prompt,
+four-category h16/h32 exact state/KV/lifecycle gate. Evidence and full gate:
+`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-d9-moe-tail-next-rms-design.json`.
+
+A local256 token8 SWA sibling remains a separate later screen. Token4 already
+eliminates the second key pass, so token8 needs a measured score/value
+breakdown rather than an assumed 2x. Fusing attention with its softplus gate is
+also deferred: the current gate family is only **0.117 ms/token** and 48
+launches, below D9's measured boundary. Near-4K global attention remains a
+separate requirement.
 
 ## Laguna DFlash Follow-on Plan
 
