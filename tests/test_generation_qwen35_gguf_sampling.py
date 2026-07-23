@@ -18,6 +18,7 @@ from hipengine.generation import (
     GenerationDeadlineExceeded,
     GenerationRequest,
     GenerationStreamChunk,
+    PreparedPromptInput,
     SubmitPollTextGenerator,
     TokenLogprob,
 )
@@ -2543,7 +2544,14 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
     assert [call[2] for call in calls if call[0] == "session_init"][-2:] == [128, 128]
 
     first = adapter.generate_detailed(_request(prompts=("first", "second"), max_tokens=3))
-    second = adapter.generate_detailed(_request(prompts=("first",), max_tokens=2))
+    prepared = PreparedPromptInput(
+        source_text="first",
+        token_ids=(10, 11),
+        tokenize_ms=1.25,
+        render_ms=2.5,
+        admission_prepare_ms=3.75,
+    )
+    second = adapter.generate_detailed(_request(prompts=(prepared,), max_tokens=2))
     greedy_last = dict(generator.last_batch_generation or {})
     sampled = adapter.generate_detailed(
         _request(prompts=("first",), max_tokens=2, temperature=0.7, seed=17)
@@ -2560,6 +2568,17 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
         assert output.telemetry.timing is not None
         assert "tokenize_ms" in output.telemetry.timing
         assert output.telemetry.timing["tokenize_ms"] >= 0.0
+    assert second[0].telemetry is not None
+    assert second[0].telemetry.timing is not None
+    assert second[0].telemetry.timing["tokenize_ms"] == 1.25
+    assert second[0].telemetry.timing["prompt_encode_ms"] == 1.25
+    assert second[0].telemetry.timing["render_ms"] == 2.5
+    assert second[0].telemetry.timing["admission_prepare_ms"] == 3.75
+    assert zero[0].telemetry is not None
+    assert zero[0].telemetry.timing is not None
+    assert zero[0].telemetry.timing["prompt_encode_ms"] >= 0.0
+    assert zero[0].telemetry.timing["render_ms"] == 0.0
+    assert zero[0].telemetry.timing["admission_prepare_ms"] == 0.0
     assert [call[0] for call in calls].count("runner_init") == 1
     assert [call[0] for call in calls].count("session_init") == 4
     packed_calls = [call for call in calls if call[0] == "step_batch_native"]

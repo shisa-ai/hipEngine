@@ -14,6 +14,7 @@ from hipengine.generation import (
     GenerationDeadlineExceeded,
     GenerationRequest,
     GenerationStreamChunk,
+    PreparedPromptInput,
     SubmitPollTextGenerator,
     TokenLogprob,
 )
@@ -3269,8 +3270,15 @@ def test_qwen35_paro_resident_model_owner_keeps_stable_slots_and_native_c2(monke
     owner = adapter._runner
     assert isinstance(owner, qwen35.Qwen35ParoResidentModelRunner)
 
+    prepared = PreparedPromptInput(
+        source_text="first",
+        token_ids=tuple(prompt_rows["first"]),
+        tokenize_ms=1.25,
+        render_ms=2.5,
+        admission_prepare_ms=3.75,
+    )
     outputs = adapter.generate_detailed(
-        _request(prompts=("first", "second"), max_tokens=3, ignore_eos=True)
+        _request(prompts=(prepared, "second"), max_tokens=3, ignore_eos=True)
     )
 
     assert [output.generated_token_ids for output in outputs] == [
@@ -3282,6 +3290,12 @@ def test_qwen35_paro_resident_model_owner_keeps_stable_slots_and_native_c2(monke
         assert output.telemetry is not None
         assert output.telemetry.timing is not None
         assert output.telemetry.timing["tokenize_ms"] >= 0.0
+    assert outputs[0].telemetry is not None
+    assert outputs[0].telemetry.timing is not None
+    assert outputs[0].telemetry.timing["tokenize_ms"] == 1.25
+    assert outputs[0].telemetry.timing["prompt_encode_ms"] == 1.25
+    assert outputs[0].telemetry.timing["render_ms"] == 2.5
+    assert outputs[0].telemetry.timing["admission_prepare_ms"] == 3.75
     assert calls[0] == ("session_init", 4096, 4)
     assert [call for call in calls if call[0] == "prefill"] == [
         ("prefill", (0,), (10, 11), (0, 1), (0,), False),

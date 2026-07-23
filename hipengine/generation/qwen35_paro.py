@@ -2176,6 +2176,9 @@ class _ParoResidentLoopRow:
     native_greedy: bool
     submitted_at: float
     tokenize_ms: float = 0.0
+    prompt_encode_ms: float = 0.0
+    render_ms: float = 0.0
+    admission_prepare_ms: float = 0.0
     sampling_state: RowSamplingState | None = None
     model_slot: int | None = None
     prefill_tokens_seen: int = 0
@@ -2249,7 +2252,9 @@ class Qwen35ParoResidentModelRunner:
         if len(ids) != len(values):
             raise ValueError("request_ids and tokenize_ms must have the same length")
         for request_id, value in zip(ids, values, strict=True):
-            self._row(request_id).tokenize_ms = value
+            row = self._row(request_id)
+            row.tokenize_ms = value
+            row.prompt_encode_ms = value
 
     def scheduler_max_new_tokens(self, request: GenerationRequest) -> int:
         return max(1, int(request.max_tokens))
@@ -2372,6 +2377,11 @@ class Qwen35ParoResidentModelRunner:
         for row_index, (request_id, prompt_ids) in enumerate(zip(ids, prompts, strict=True)):
             if request_id in self._rows or request_id in self._outputs:
                 raise ValueError(f"request_id {request_id} is already registered")
+            source_prompt = request.prompts[row_index]
+            prompt_encode_ms = max(
+                0.0,
+                float(getattr(source_prompt, "tokenize_ms", 0.0)),
+            )
             self._rows[request_id] = _ParoResidentLoopRow(
                 request_id=request_id,
                 batch_id=batch_id,
@@ -2382,6 +2392,13 @@ class Qwen35ParoResidentModelRunner:
                 sampler_plan=sampler_plan,
                 native_greedy=native_greedy,
                 submitted_at=now,
+                tokenize_ms=prompt_encode_ms,
+                prompt_encode_ms=prompt_encode_ms,
+                render_ms=max(0.0, float(getattr(source_prompt, "render_ms", 0.0))),
+                admission_prepare_ms=max(
+                    0.0,
+                    float(getattr(source_prompt, "admission_prepare_ms", 0.0)),
+                ),
                 sampling_state=(
                     None
                     if native_greedy or int(request.max_tokens) <= 0
@@ -3047,6 +3064,9 @@ class Qwen35ParoResidentModelRunner:
             native_sampler_rows=False,
             timing={
                 "tokenize_ms": float(row.tokenize_ms),
+                "prompt_encode_ms": float(row.prompt_encode_ms),
+                "render_ms": float(row.render_ms),
+                "admission_prepare_ms": float(row.admission_prepare_ms),
                 "request_total_ms": (time.perf_counter() - row.submitted_at) * 1000.0,
             },
             diagnostics={
