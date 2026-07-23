@@ -824,6 +824,7 @@ def test_models_endpoint_reports_served_model_name_and_auth() -> None:
             "sessions": True,
             "grammars": False,
             "speculative_mtp": False,
+            "speculative": False,
             "tensor_parallel": False,
             "multiple_models": False,
         },
@@ -2640,6 +2641,9 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
         quant: str,
         max_active_requests: int | None = None,
         prefix_cache: str | None = None,
+        speculative_provider: str | None = None,
+        draft_model: str | None = None,
+        speculative_candidate_budget: int = 4,
     ) -> FakeLLM:
         captured.update(
             {
@@ -2648,6 +2652,9 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
                 "quant": quant,
                 "max_active_requests": max_active_requests,
                 "prefix_cache": prefix_cache,
+                "speculative_provider": speculative_provider,
+                "draft_model": draft_model,
+                "speculative_candidate_budget": speculative_candidate_budget,
             }
         )
         return fake
@@ -2675,6 +2682,9 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
         "quant": "auto",
         "max_active_requests": 8,
         "prefix_cache": "radix",
+        "speculative_provider": None,
+        "draft_model": None,
+        "speculative_candidate_budget": 4,
     }
 
 

@@ -353,9 +353,9 @@ class LLM:
     def supports_speculative(self) -> bool:
         """Whether an explicit public speculative provider is attached."""
 
-        generator = self._text_generator
-        if generator is None:
+        if self.speculative_provider is None:
             return False
+        generator = self._get_text_generator()
         supports = getattr(generator, "supports_speculative", None)
         if supports is not None and not bool(supports):
             return False

@@ -294,6 +294,7 @@ def test_llm_attaches_explicit_speculative_provider_without_changing_default_rou
         speculative_candidate_budget=4,
     )
 
+    assert llm.supports_speculative is True
     assert llm.generate("one", SamplingParams(max_tokens=1)) == ["ar:one"]
     assert [item.text for item in llm.generate_speculative_detailed("two", SamplingParams(max_tokens=1))] == [
         "spec:two"

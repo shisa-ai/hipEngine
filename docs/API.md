@@ -1,6 +1,6 @@
 # OpenAI-Compatible Server API
 
-Last updated: 2026-07-20
+Last updated: 2026-07-23
 
 hipEngine ships a thin FastAPI layer that adapts OpenAI-style requests to the
 torch-free `hipengine.LLM.generate()` library API. Server dependencies are
@@ -95,6 +95,31 @@ uses one shared target-weight runner plus per-request resident target/MTP slot
 state; c=2 is the implementation target and c=4/c=8 have functional smoke
 coverage.
 
+Generic draft-model providers are a separate explicit-only route. For the
+pinned Poolside Laguna B4 DFlash owner, start the server with:
+
+```bash
+hipengine serve \
+  --model /path/to/Laguna-S-2.1-Q4_K_M.gguf \
+  --backend hip_gfx1151 \
+  --quant gguf_q4_k_m \
+  --speculative-provider dflash \
+  --draft-model /path/to/Laguna-S-2.1-DFlash/snapshot \
+  --speculative-candidate-budget 4
+```
+
+Ordinary completion/chat requests still use target-only AR. Select the retained
+provider per request with `"speculative": true`, or with the explicit object
+`{"enabled":true,"provider":"dflash","candidate_budget":4}`. Both blocking
+and streaming c=1 routes are exposed. The current Laguna adapter admits only raw
+greedy target top-1 with BF16 KV; sampled/processed logits, logprobs, thinking
+budget controls, forced/suppressed tool controls, structured processors, custom
+EOS policy, non-BF16 KV, another provider, or another budget fail closed before
+resident target/drafter allocation. Token/string stops remain supported. The capabilities manifest
+reports this under `sampling.speculative`, including pinned target/drafter
+identities, exactness mode, and the D4 `0.9469x` fallback evidence. This is an
+opt-in correctness route, not a throughput claim or automatic/default policy.
+
 Set `HIPENGINE_API_KEY` or pass `--api-key` to require OpenAI-style bearer
 authentication:
 
@@ -110,7 +135,7 @@ curl -H 'Authorization: Bearer local-secret' http://127.0.0.1:8000/v1/models
 | `GET /health` | Built in | Unauthenticated liveness probe; does not imply model readiness. |
 | `GET /ready` | Built in | Unauthenticated readiness/capacity probe. Returns HTTP 200 when ready and HTTP 503 while startup is not ready. |
 | `GET /v1/models` | Built in | Returns the single served model id plus `hipengine` status metadata: backend/quant, loaded state, compact capability summary, context defaults, KV policy/estimate, routing count, and capabilities URL. |
-| `GET /v1/hipengine/capabilities` | Built in | Authenticated hipEngine manifest for served model/config, context defaults, tokenizer availability, streaming/logprobs/tool/reasoning support, sampling execution/native/MTP status, request-timeout support, cache/session status, routing count, tensor-parallel topology/status, and unsupported fields. |
+| `GET /v1/hipengine/capabilities` | Built in | Authenticated hipEngine manifest for served model/config, context defaults, tokenizer availability, streaming/logprobs/tool/reasoning support, sampling execution/native/MTP/generic speculative-provider status, request-timeout support, cache/session status, routing count, tensor-parallel topology/status, and unsupported fields. |
 | `GET /v1/hipengine/sessions` | Built in | Authenticated metadata-only listing for app-local chat transcript sessions plus continuation-handle counts. Does not include prompt, generated, or tool-result text. |
 | `DELETE /v1/hipengine/sessions/{session_id}` | Built in | Authenticated deletion of one app-local chat transcript session. Returns whether a session was removed. |
 | `POST /v1/hipengine/sessions/{session_id}/fork` | Built in | Authenticated app-local transcript fork into a new session id. Clones visible transcript messages only; no resident KV state is reused. |
@@ -1329,6 +1354,15 @@ generated text.
   `incompatible_conditions`, for example `temperature > 0` and
   `eos_token_id set` and `ignore_eos=true`, so inert greedy `top_p` / `top_k` /
   `min_p` settings are not mistaken for MTP blockers.
+- `sampling.speculative` describes the generic draft-model provider configured
+  by `--speculative-provider`, `--draft-model`, and
+  `--speculative-candidate-budget`. It remains explicit-only through the
+  top-level `speculative` request extension; `speculative_mtp` is a separate,
+  mutually exclusive compatibility route. The admitted Laguna DFlash adapter is
+  streaming-compatible and target-corrected, but B4/c=1/raw-greedy/BF16-only.
+  D4 measured `0.9469x` full-suite decode versus true AR, so capability and
+  per-choice telemetry deliberately advertise no performance claim and AR stays
+  default.
 - The capabilities manifest reports `parallelism.tensor_parallel` as disabled
   with `world_size=1`, `mode="single_process"`, no collective backend, and a
   stable unsupported-feature list for multi-GPU weight/KV sharding, collectives,

@@ -244,6 +244,10 @@ _SPECULATIVE_MTP_AUTO_REJECTION_REASON = "compatibility_mtp_not_exact"
 _SPECULATIVE_MTP_AUTO_EVIDENCE = (
     "benchmarks/results/2026-07-11-sol-s1-gfx1151-server-auto-route-gate.json"
 )
+_SPECULATIVE_PROVIDER_ROUTE = "speculative"
+_SPECULATIVE_PROVIDER_ALLOWED_REQUEST_KEYS = frozenset(
+    {"enabled", "provider", "candidate_budget"}
+)
 _GGUF_DEFAULT_AR_MAX_ACTIVE_REQUESTS = 4
 _GGUF_MTP_MAX_ACTIVE_REQUESTS = 4
 _UNSUPPORTED_GRAMMAR_FIELDS = (
@@ -311,6 +315,9 @@ class ServerConfig:
     max_chat_sessions: int | None = None
     queue_retry_after_seconds: int = 1
     speculative_mtp_serving: str = "off"
+    speculative_provider: str | None = None
+    draft_model: str | None = None
+    speculative_candidate_budget: int = 4
     created: int = field(default_factory=lambda: int(time.time()))
 
     def __post_init__(self) -> None:
@@ -321,6 +328,26 @@ class ServerConfig:
                 + ", ".join(_SPECULATIVE_MTP_SERVING_MODES)
             )
         object.__setattr__(self, "speculative_mtp_serving", mode)
+        provider = (
+            None
+            if self.speculative_provider is None
+            else str(self.speculative_provider).strip()
+        )
+        drafter = None if self.draft_model is None else str(self.draft_model).strip()
+        if provider == "":
+            raise ValueError("speculative_provider must be non-empty when set")
+        if drafter == "":
+            raise ValueError("draft_model must be non-empty when set")
+        if provider is None and drafter is not None:
+            raise ValueError("draft_model requires speculative_provider")
+        if provider is not None and drafter is None:
+            raise ValueError("speculative_provider requires draft_model")
+        candidate_budget = int(self.speculative_candidate_budget)
+        if candidate_budget <= 0:
+            raise ValueError("speculative_candidate_budget must be positive")
+        object.__setattr__(self, "speculative_provider", provider)
+        object.__setattr__(self, "draft_model", drafter)
+        object.__setattr__(self, "speculative_candidate_budget", candidate_budget)
         if int(self.stream_queue_max_chunks) < 2:
             raise ValueError("stream_queue_max_chunks must be at least 2")
         if float(self.shutdown_grace_seconds) < 0.0:
@@ -1232,6 +1259,49 @@ def _speculative_mtp_capability(config: ServerConfig, *, engine: Any | None = No
     return payload
 
 
+def _speculative_provider_capability(
+    config: ServerConfig,
+    *,
+    engine: Any | None = None,
+) -> dict[str, Any]:
+    """Describe the generic explicit provider without implying default routing."""
+
+    configured = config.speculative_provider is not None
+    supported = configured and _engine_supports_speculative(engine)
+    payload: dict[str, Any] = {
+        "configured": bool(configured),
+        "serving_route": bool(supported),
+        "request_field": "speculative",
+        "configured_provider": config.speculative_provider,
+        "policy": "explicit_only",
+        "default_enabled": False,
+        "streaming_compatible": bool(
+            supported and _engine_supports_speculative_streaming(engine)
+        ),
+        "candidate_budget": int(config.speculative_candidate_budget),
+        "compatibility_guard": "raw_greedy_bf16_c1",
+        "processed_target_verification": False,
+    }
+    if not supported:
+        return payload
+    capabilities = _engine_speculative_capabilities(engine)
+    payload.update(capabilities)
+    payload.update(
+        {
+            "configured": True,
+            "serving_route": True,
+            "request_field": "speculative",
+            "configured_provider": config.speculative_provider,
+            "policy": "explicit_only",
+            "default_enabled": False,
+            "streaming_compatible": _engine_supports_speculative_streaming(engine),
+            "candidate_budget": int(config.speculative_candidate_budget),
+            "compatibility_guard": "raw_greedy_bf16_c1",
+        }
+    )
+    return payload
+
+
 def _replay_capability_snapshot(config: ServerConfig, *, engine: Any | None = None) -> dict[str, Any]:
     tokenizer_caps = _tokenizer_capability_flags(engine)
     tokenizer_backed = tokenizer_caps["tokenize"]
@@ -1295,6 +1365,7 @@ def _replay_capability_snapshot(config: ServerConfig, *, engine: Any | None = No
                 "stop",
             ],
             "speculative_mtp": _speculative_mtp_capability(config, engine=engine),
+            "speculative": _speculative_provider_capability(config, engine=engine),
         },
         "cache": {
             "prefix_cache": config.prefix_cache,
@@ -1418,6 +1489,11 @@ def _model_capability_summary(config: ServerConfig | None = None, *, engine: Any
             False
             if config is None
             else bool(_speculative_mtp_capability(config, engine=engine)["serving_route"])
+        ),
+        "speculative": (
+            False
+            if config is None
+            else bool(_speculative_provider_capability(config, engine=engine)["serving_route"])
         ),
         "tensor_parallel": False,
         "multiple_models": False,
@@ -1576,6 +1652,7 @@ class CompletionRequest(_OpenAIBaseModel):
     continuation_id: Any | None = None
     session: Any | None = None
     speculative_mtp: bool | dict[str, Any] | None = None
+    speculative: bool | dict[str, Any] | None = None
 
 
 class ChatMessage(_OpenAIBaseModel):
@@ -1638,6 +1715,7 @@ class ChatCompletionRequest(_OpenAIBaseModel):
     continuation_id: Any | None = None
     session: Any | None = None
     speculative_mtp: bool | dict[str, Any] | None = None
+    speculative: bool | dict[str, Any] | None = None
 
 
 class SessionForkRequest(_OpenAIBaseModel):
@@ -2177,6 +2255,7 @@ class _GenerationBatcher:
         prompts: Sequence[PromptInput],
         sampling: SamplingParams,
         *,
+        route: str = _SPECULATIVE_MTP_DEFAULT_ROUTE,
         error_extra: Mapping[str, Any] | None = None,
     ) -> AsyncIterator[GenerationStreamChunk]:
         """Yield generated stream chunks through a per-request queue owned by the batcher."""
@@ -2189,6 +2268,7 @@ class _GenerationBatcher:
             prompts=prompt_tuple,
             sampling=sampling,
             stream_queue=queue,
+            route=str(route),
         )
         self._queue.append(item)
         if self._worker is None or self._worker.done():
@@ -2393,6 +2473,8 @@ class _GenerationBatcher:
         engine = self._engine_factory()
         if str(route) == _SPECULATIVE_MTP_BATCH_ROUTE:
             raw_outputs = await _generate_speculative_mtp_detailed(engine, prompts, sampling)
+        elif str(route) == _SPECULATIVE_PROVIDER_ROUTE:
+            raw_outputs = await _generate_speculative_detailed(engine, prompts, sampling)
         else:
             raw_outputs = await _generate_detailed(engine, prompts, sampling)
         outputs = list(raw_outputs)
@@ -2418,6 +2500,7 @@ class _GenerationBatcher:
                 self._engine_factory() if engine is None else engine,
                 item.prompts[0],
                 item.sampling,
+                route=item.route,
             ):
                 if _queued_generation_cancelled(item):
                     raise GenerationCancelled(_queued_generation_finish_details(item))
@@ -2566,8 +2649,21 @@ def _finish_queued_generation(
         item.stream_queue.put_nowait(event)
 
 
-async def _stream_engine_text(engine: Any, prompt: PromptInput, sampling: SamplingParams) -> AsyncIterator[Any]:
-    detailed_streamer = getattr(engine, "stream_detailed", None)
+async def _stream_engine_text(
+    engine: Any,
+    prompt: PromptInput,
+    sampling: SamplingParams,
+    *,
+    route: str = _SPECULATIVE_MTP_DEFAULT_ROUTE,
+) -> AsyncIterator[Any]:
+    if str(route) == _SPECULATIVE_PROVIDER_ROUTE:
+        detailed_streamer = _engine_speculative_stream_callable(engine)
+        if detailed_streamer is None:
+            raise NotImplementedError(
+                "speculative provider streaming is not supported by this engine"
+            )
+    else:
+        detailed_streamer = getattr(engine, "stream_detailed", None)
     if callable(detailed_streamer):
         iterator = iter(detailed_streamer(prompt, sampling))
         done = False
@@ -3368,6 +3464,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 quant=config.quant,
                 max_active_requests=config.max_active_requests,
                 prefix_cache=prefix_cache_mode,
+                speculative_provider=config.speculative_provider,
+                draft_model=config.draft_model,
+                speculative_candidate_budget=config.speculative_candidate_budget,
             )
         app.state.hipengine_readiness.model_loaded = True
         return app.state.hipengine_llm
@@ -3377,15 +3476,22 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         batch_window_seconds=float(config.generation_batch_window_ms) / 1000.0,
         max_queue_size=config.max_queued_requests,
         max_active_requests=config.max_active_requests,
-        route_max_active_requests=(
-            {
-                _SPECULATIVE_MTP_DEFAULT_ROUTE: _GGUF_DEFAULT_AR_MAX_ACTIVE_REQUESTS,
-                _SPECULATIVE_MTP_BATCH_ROUTE: _GGUF_MTP_MAX_ACTIVE_REQUESTS,
-                _SPECULATIVE_MTP_AUTO_ROUTE: _GGUF_DEFAULT_AR_MAX_ACTIVE_REQUESTS,
-            }
-            if _server_model_uses_gguf(config, llm)
-            else None
-        ),
+        route_max_active_requests={
+            **(
+                {_SPECULATIVE_PROVIDER_ROUTE: 1}
+                if config.speculative_provider is not None
+                else {}
+            ),
+            **(
+                {
+                    _SPECULATIVE_MTP_DEFAULT_ROUTE: _GGUF_DEFAULT_AR_MAX_ACTIVE_REQUESTS,
+                    _SPECULATIVE_MTP_BATCH_ROUTE: _GGUF_MTP_MAX_ACTIVE_REQUESTS,
+                    _SPECULATIVE_MTP_AUTO_ROUTE: _GGUF_DEFAULT_AR_MAX_ACTIVE_REQUESTS,
+                }
+                if _server_model_uses_gguf(config, llm)
+                else {}
+            ),
+        },
         retry_after_seconds=config.queue_retry_after_seconds,
         stream_queue_max_chunks=config.stream_queue_max_chunks,
     )
@@ -4032,7 +4138,6 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
             async with session_lock:
                 engine = get_llm()
-                await ensure_resident_context(engine, preparation_sampling(request), phase="preparation")
                 sampling = sampling_params(
                     request,
                     prompts,
@@ -4045,6 +4150,18 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         sampling,
                         row_seeds=_row_seeds_for_request(request.seed, len(prompts)),
                     )
+                generation_route = _generation_route_for_request(
+                    config,
+                    request,
+                    engine=engine,
+                    sampling=sampling,
+                    prompt_count=len(prompts),
+                )
+                await ensure_resident_context(
+                    engine,
+                    preparation_sampling(request),
+                    phase="preparation",
+                )
                 _validate_context_budget(
                     effective_max_context_tokens(engine),
                     engine,
@@ -4061,12 +4178,6 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             )
                         }
                     },
-                )
-                generation_route = _speculative_mtp_route_for_request(
-                    config,
-                    request,
-                    engine=engine,
-                    sampling=sampling,
                 )
             if _request_logprobs_enabled(request):
                 raw_outputs = await _generate_detailed(engine, tuple(prompts), sampling)
@@ -4246,16 +4357,27 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 route_unsupported_grammar=True,
             )
 
-            async def prepare_stream() -> tuple[Any, SamplingParams]:
+            async def prepare_stream() -> tuple[Any, SamplingParams, str]:
                 async with session_lock:
                     engine = get_llm()
-                    await ensure_resident_context(engine, preparation_sampling(request), phase="preparation")
                     sampling = sampling_params(
                         request,
                         (prompt,),
                         engine,
                         deadline_at=control.deadline_at,
                         cancellation_token=control.cancellation_token,
+                    )
+                    generation_route = _generation_route_for_request(
+                        config,
+                        request,
+                        engine=engine,
+                        sampling=sampling,
+                        prompt_count=1,
+                    )
+                    await ensure_resident_context(
+                        engine,
+                        preparation_sampling(request),
+                        phase="preparation",
                     )
                     _validate_context_budget(
                         effective_max_context_tokens(engine),
@@ -4273,9 +4395,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             }
                         },
                     )
-                    return engine, sampling
+                    return engine, sampling, generation_route
 
-            engine, sampling = await _await_with_request_control(prepare_stream(), control)
+            engine, sampling, generation_route = await _await_with_request_control(
+                prepare_stream(),
+                control,
+            )
             if include_hipengine:
                 routing_metadata = _routing_response_metadata(
                     config,
@@ -4287,6 +4412,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 generation_batcher.stream(
                     (prompt,),
                     sampling,
+                    route=generation_route,
                     error_extra=route_rejection_extra(
                         requested_model=request.model,
                         reason="engine_busy",
@@ -5227,6 +5353,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 ],
                 "native_gpu": native_gpu_capability,
                 "speculative_mtp": _speculative_mtp_capability(config, engine=engine),
+                "speculative": _speculative_provider_capability(config, engine=engine),
             },
             "cache": {
                 "prefix_cache": prefix_cache_mode,
@@ -5577,7 +5704,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             async def prepare_prompt() -> _ChatContextRender:
                 async with session_lock:
                     engine = get_llm()
-                    await ensure_resident_context(engine, preparation_sampling(request), phase="preparation")
+                    speculative_enabled, _provider, _budget = (
+                        _request_speculative_provider_config(request)
+                    )
+                    if not speculative_enabled:
+                        await ensure_resident_context(
+                            engine,
+                            preparation_sampling(request),
+                            phase="preparation",
+                        )
                     if continuation is not None:
                         return _ChatContextRender(
                             prompt=continuation.resume_prompts()[0],
@@ -6434,16 +6569,27 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         buffer_tool_output = bool(request.tools)
 
         try:
-            async def prepare_stream() -> tuple[Any, SamplingParams]:
+            async def prepare_stream() -> tuple[Any, SamplingParams, str]:
                 async with session_lock:
                     engine = get_llm()
-                    await ensure_resident_context(engine, preparation_sampling(request), phase="preparation")
                     sampling = sampling_params(
                         request,
                         (prompt,),
                         engine,
                         deadline_at=control.deadline_at,
                         cancellation_token=control.cancellation_token,
+                    )
+                    generation_route = _generation_route_for_request(
+                        config,
+                        request,
+                        engine=engine,
+                        sampling=sampling,
+                        prompt_count=1,
+                    )
+                    await ensure_resident_context(
+                        engine,
+                        preparation_sampling(request),
+                        phase="preparation",
                     )
                     _validate_context_budget(
                         effective_max_context_tokens(engine),
@@ -6461,9 +6607,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             }
                         },
                     )
-                    return engine, sampling
+                    return engine, sampling, generation_route
 
-            engine, sampling = await _await_with_request_control(prepare_stream(), control)
+            engine, sampling, generation_route = await _await_with_request_control(
+                prepare_stream(),
+                control,
+            )
             if include_hipengine:
                 routing_metadata = _routing_response_metadata(
                     config,
@@ -6483,6 +6632,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 generation_batcher.stream(
                     (prompt,),
                     sampling,
+                    route=generation_route,
                     error_extra=route_rejection_extra(
                         requested_model=request.model,
                         reason="engine_busy",
@@ -8907,6 +9057,50 @@ def _engine_supports_stream_many(engine: Any | None) -> bool:
     return False
 
 
+def _engine_speculative_callable(
+    engine: Any | None,
+) -> Callable[[tuple[PromptInput, ...], SamplingParams], Any] | None:
+    if engine is None:
+        return None
+    supports = getattr(engine, "supports_speculative", None)
+    if supports is not None and not bool(supports):
+        return None
+    runner = getattr(engine, "generate_speculative_detailed", None)
+    return runner if callable(runner) else None
+
+
+def _engine_speculative_stream_callable(
+    engine: Any | None,
+) -> Callable[[PromptInput, SamplingParams], Any] | None:
+    if engine is None:
+        return None
+    supports = getattr(engine, "supports_speculative", None)
+    if supports is not None and not bool(supports):
+        return None
+    streamer = getattr(engine, "stream_speculative_detailed", None)
+    return streamer if callable(streamer) else None
+
+
+def _engine_supports_speculative(engine: Any | None) -> bool:
+    return _engine_speculative_callable(engine) is not None
+
+
+def _engine_supports_speculative_streaming(engine: Any | None) -> bool:
+    return _engine_speculative_stream_callable(engine) is not None
+
+
+def _engine_speculative_capabilities(engine: Any | None) -> dict[str, Any]:
+    if engine is None:
+        return {}
+    raw = getattr(engine, "speculative_capabilities", {})
+    capabilities = raw() if callable(raw) else raw
+    if capabilities is None:
+        return {}
+    if not isinstance(capabilities, Mapping):
+        raise TypeError("engine speculative_capabilities must be a mapping")
+    return deepcopy(dict(capabilities))
+
+
 def _engine_speculative_mtp_callable(engine: Any | None) -> Callable[[tuple[str, ...], SamplingParams], Any] | None:
     if engine is None:
         return None
@@ -8958,6 +9152,19 @@ async def _generate_detailed(
     if callable(detailed):
         return list(await run_in_threadpool(detailed, prompts, sampling))
     return [_coerce_generation_output(item) for item in await run_in_threadpool(engine.generate, prompts, sampling)]
+
+
+async def _generate_speculative_detailed(
+    engine: Any,
+    prompts: tuple[PromptInput, ...],
+    sampling: SamplingParams,
+) -> list[Any]:
+    runner = _engine_speculative_callable(engine)
+    if runner is None:
+        raise NotImplementedError(
+            "speculative provider serving is not supported by this engine"
+        )
+    return list(await run_in_threadpool(runner, prompts, sampling))
 
 
 async def _generate_speculative_mtp_detailed(
@@ -10246,6 +10453,76 @@ def _request_n(request: CompletionRequest | ChatCompletionRequest) -> int:
     return n
 
 
+def _request_speculative_provider_config(
+    request: CompletionRequest | ChatCompletionRequest,
+) -> tuple[bool | None, str | None, int | None]:
+    raw = getattr(request, "speculative", None)
+    if raw is None:
+        return None, None, None
+    if isinstance(raw, bool):
+        return raw, None, None
+    if not isinstance(raw, Mapping):
+        raise OpenAIHTTPError(
+            400,
+            "speculative must be a boolean or object",
+            code="unsupported_parameter",
+            param="speculative",
+        )
+    unknown = set(raw) - _SPECULATIVE_PROVIDER_ALLOWED_REQUEST_KEYS
+    if unknown:
+        raise OpenAIHTTPError(
+            400,
+            "speculative contains unsupported fields: "
+            + ", ".join(sorted(str(key) for key in unknown)),
+            code="unsupported_parameter",
+            param="speculative",
+        )
+    enabled = raw.get("enabled", True)
+    if not isinstance(enabled, bool):
+        raise OpenAIHTTPError(
+            400,
+            "speculative.enabled must be a boolean",
+            code="unsupported_parameter",
+            param="speculative",
+        )
+    provider = raw.get("provider")
+    if provider is not None:
+        provider = str(provider).strip()
+        if not provider:
+            raise OpenAIHTTPError(
+                400,
+                "speculative.provider must be non-empty",
+                code="unsupported_parameter",
+                param="speculative",
+            )
+    budget = raw.get("candidate_budget")
+    if budget is not None:
+        if isinstance(budget, bool):
+            raise OpenAIHTTPError(
+                400,
+                "speculative.candidate_budget must be a positive integer",
+                code="unsupported_parameter",
+                param="speculative",
+            )
+        try:
+            budget = int(budget)
+        except (TypeError, ValueError) as exc:
+            raise OpenAIHTTPError(
+                400,
+                "speculative.candidate_budget must be a positive integer",
+                code="unsupported_parameter",
+                param="speculative",
+            ) from exc
+        if budget <= 0:
+            raise OpenAIHTTPError(
+                400,
+                "speculative.candidate_budget must be a positive integer",
+                code="unsupported_parameter",
+                param="speculative",
+            )
+    return enabled, provider, budget
+
+
 def _request_speculative_mtp_enabled(request: CompletionRequest | ChatCompletionRequest) -> bool | None:
     raw = getattr(request, "speculative_mtp", None)
     if raw is None:
@@ -10335,6 +10612,135 @@ def _speculative_mtp_route_for_request(
     if explicit_requested:
         return _SPECULATIVE_MTP_BATCH_ROUTE
     return _SPECULATIVE_MTP_AUTO_ROUTE
+
+
+def _speculative_provider_route_for_request(
+    config: ServerConfig,
+    request: CompletionRequest | ChatCompletionRequest,
+    *,
+    engine: Any | None,
+    sampling: SamplingParams,
+    prompt_count: int,
+) -> str | None:
+    enabled, requested_provider, requested_budget = (
+        _request_speculative_provider_config(request)
+    )
+    if not enabled:
+        return None
+    if _request_speculative_mtp_enabled(request):
+        raise OpenAIHTTPError(
+            400,
+            "speculative and speculative_mtp cannot both be enabled",
+            code="unsupported_parameter",
+            param="speculative",
+        )
+    configured_provider = config.speculative_provider
+    if configured_provider is None:
+        raise OpenAIHTTPError(
+            400,
+            "speculative provider serving is not configured for this server",
+            code="unsupported_parameter",
+            param="speculative",
+        )
+    selected_provider = requested_provider or configured_provider
+    if selected_provider != configured_provider:
+        raise OpenAIHTTPError(
+            400,
+            "requested speculative provider does not match the configured provider",
+            code="unsupported_parameter",
+            param="speculative",
+        )
+    candidate_budget = (
+        int(config.speculative_candidate_budget)
+        if requested_budget is None
+        else int(requested_budget)
+    )
+    if candidate_budget != int(config.speculative_candidate_budget):
+        raise OpenAIHTTPError(
+            400,
+            "requested speculative candidate budget does not match the configured owner",
+            code="unsupported_parameter",
+            param="speculative",
+        )
+    blockers = [
+        blocker
+        for blocker in speculative_mtp_sampling_blockers(sampling)
+        if blocker not in {"stop_token_ids", "stop_token_sequences"}
+    ]
+    if float(sampling.top_p) != 1.0:
+        blockers.append("top_p")
+    if int(sampling.top_k) != 0:
+        blockers.append("top_k")
+    if float(sampling.min_p) != 0.0:
+        blockers.append("min_p")
+    if str(sampling.kv_storage) not in {"auto", "bf16"}:
+        blockers.append("kv_storage")
+    if str(sampling.kv_scale_dtype) != "fp16":
+        blockers.append("kv_scale_dtype")
+    if str(sampling.kv_scale_granularity) != "per_token_head":
+        blockers.append("kv_scale_granularity")
+    if int(prompt_count) != 1 or _request_n(request) != 1:
+        blockers.append("c")
+    blockers = list(dict.fromkeys(blockers))
+    if blockers:
+        raise OpenAIHTTPError(
+            400,
+            "speculative provider requires raw greedy BF16 c=1 generation",
+            code="unsupported_parameter",
+            param="speculative",
+            extra={
+                "hipengine": {
+                    "speculative": {
+                        "provider": selected_provider,
+                        "candidate_budget": candidate_budget,
+                        "blockers": blockers,
+                        "compatibility_guard": "raw_greedy_bf16_c1",
+                    }
+                }
+            },
+        )
+    if not _engine_supports_speculative(engine):
+        raise OpenAIHTTPError(
+            501,
+            "speculative provider is not supported by this model/backend",
+            error_type="unsupported_feature",
+            code="unsupported_feature",
+            param="speculative",
+        )
+    if bool(getattr(request, "stream", False)) and not _engine_supports_speculative_streaming(engine):
+        raise OpenAIHTTPError(
+            501,
+            "speculative provider does not support streaming",
+            error_type="unsupported_feature",
+            code="unsupported_feature",
+            param="speculative",
+        )
+    return _SPECULATIVE_PROVIDER_ROUTE
+
+
+def _generation_route_for_request(
+    config: ServerConfig,
+    request: CompletionRequest | ChatCompletionRequest,
+    *,
+    engine: Any | None,
+    sampling: SamplingParams,
+    prompt_count: int,
+) -> str:
+    provider_route = _speculative_provider_route_for_request(
+        config,
+        request,
+        engine=engine,
+        sampling=sampling,
+        prompt_count=prompt_count,
+    )
+    if provider_route is not None:
+        return provider_route
+    return _speculative_mtp_route_for_request(
+        config,
+        request,
+        engine=engine,
+        sampling=sampling,
+    )
 
 
 def _unsupported_agentic_request_param(request: CompletionRequest | ChatCompletionRequest) -> str | None:

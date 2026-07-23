@@ -253,6 +253,31 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--speculative-provider",
+        default=os.environ.get("HIPENGINE_SPECULATIVE_PROVIDER"),
+        help=(
+            "Explicit generic speculative provider key; requires --draft-model "
+            "and remains request opt-in (env HIPENGINE_SPECULATIVE_PROVIDER)"
+        ),
+    )
+    parser.add_argument(
+        "--draft-model",
+        default=os.environ.get("HIPENGINE_DRAFT_MODEL"),
+        help=(
+            "Pinned draft-model path for --speculative-provider "
+            "(env HIPENGINE_DRAFT_MODEL)"
+        ),
+    )
+    parser.add_argument(
+        "--speculative-candidate-budget",
+        type=_positive_int,
+        default=int(os.environ.get("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", "4")),
+        help=(
+            "Fixed candidate budget for the explicit speculative owner "
+            "(env HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET; default: 4)"
+        ),
+    )
+    parser.add_argument(
         "--metrics",
         choices=("off", "prometheus"),
         default=os.environ.get("HIPENGINE_METRICS", "off"),
@@ -325,6 +350,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         max_active_requests=args.max_active_requests,
         max_chat_sessions=args.max_chat_sessions,
         speculative_mtp_serving=args.speculative_mtp_serving,
+        speculative_provider=args.speculative_provider,
+        draft_model=args.draft_model,
+        speculative_candidate_budget=args.speculative_candidate_budget,
     )
     app = create_app(config)
     try:
