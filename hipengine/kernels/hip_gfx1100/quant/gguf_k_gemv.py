@@ -115,6 +115,22 @@ def _make_unequal_dual_pack8_wrapper(quant: str, symbol: str):
     return wrapper
 
 
+def _make_wave32x2_wrapper(symbol: str):
+    def wrapper(*args, **kwargs) -> None:
+        kwargs.setdefault("threads", 32)
+        _launch_wave32x2(symbol, *args, **kwargs)
+
+    return wrapper
+
+
+def _make_unequal_wave32x2_wrapper(symbol: str):
+    def wrapper(*args, **kwargs) -> None:
+        kwargs.setdefault("threads", 32)
+        _launch_unequal_wave32x2(symbol, *args, **kwargs)
+
+    return wrapper
+
+
 def _make_pack8_wrapper(quant: str, symbol: str):
     def wrapper(*args, **kwargs) -> None:
         _launch(quant, symbol, *args, require_pack8=True, **kwargs)
@@ -183,6 +199,15 @@ gguf_q5_k_pair_pack8_gemv_decode_bf16_bf16_out = _make_dual_pack8_wrapper(
 )
 gguf_q5_k_pair_pack8_gemv_decode_bf16_f32_out = _make_unequal_dual_pack8_wrapper(
     "gguf_q5_k", _symbol("gguf_q5_k", "pair_pack8_gemv_decode_bf16_f32_out")
+)
+gguf_q5_k_wave32x2_gemv_decode_bf16_bf16_out = _make_wave32x2_wrapper(
+    _symbol("gguf_q5_k", "wave32x2_gemv_decode_bf16_bf16_out")
+)
+gguf_q5_k_wave32x2_gemv_decode_bf16_f32_out = _make_wave32x2_wrapper(
+    _symbol("gguf_q5_k", "wave32x2_gemv_decode_bf16_f32_out")
+)
+gguf_q5_k_pair_wave32x2_gemv_decode_bf16_f32_out = _make_unequal_wave32x2_wrapper(
+    _symbol("gguf_q5_k", "pair_wave32x2_gemv_decode_bf16_f32_out")
 )
 gguf_q5_k_selected_gemv_bf16_bf16_out = _make_selected_wrapper("gguf_q5_k", _symbol("gguf_q5_k", "selected_gemv_bf16_bf16_out"))
 gguf_q5_k_selected_silu_gemv_bf16_bf16_out = _make_selected_silu_wrapper(
@@ -272,6 +297,16 @@ def register_gguf_k_gemv_kernels(*, replace: bool = True) -> None:
             "pack8_gemv_decode_bf16_f32_out",
         ),
         gguf_q6_k_pair_pack8_gemv_decode_bf16_f32_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear_pair",
+            "gguf_q5_k",
+            "wave32x2_gemv_decode_bf16_f32_out",
+        ),
+        gguf_q5_k_pair_wave32x2_gemv_decode_bf16_f32_out,
         replace=replace,
     )
 
@@ -372,6 +407,70 @@ def _launch_unequal_dual(
         threads,
         require_pack8=require_pack8,
     )
+    library = library or build_gguf_k_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = _cached_fn(
+        library,
+        symbol,
+        [_VOID, _VOID, _VOID, _VOID, _VOID, _I64, _I64, _I64, _I64, _I64, _VOID],
+    )
+    err = fn(
+        x_ptr,
+        qweight_a_ptr,
+        qweight_b_ptr,
+        out_a_ptr,
+        out_b_ptr,
+        rows,
+        in_features,
+        out_features,
+        out_features_b,
+        threads,
+        stream,
+    )
+    _check_launch(runtime, err)
+
+
+def _launch_wave32x2(
+    symbol: str,
+    x_ptr: int,
+    qweight_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 32,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _validate_wave32x2(rows, in_features, out_features, threads)
+    library = library or build_gguf_k_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = _cached_fn(library, symbol, [_VOID, _VOID, _VOID, _I64, _I64, _I64, _I64, _VOID])
+    err = fn(x_ptr, qweight_ptr, out_ptr, rows, in_features, out_features, threads, stream)
+    _check_launch(runtime, err)
+
+
+def _launch_unequal_wave32x2(
+    symbol: str,
+    x_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    out_features_b: int,
+    *,
+    threads: int = 32,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _validate_wave32x2(rows, in_features, out_features, threads)
+    _validate_wave32x2(rows, in_features, out_features_b, threads)
     library = library or build_gguf_k_gemv(load=True)
     runtime = runtime or get_hip_runtime()
     fn = _cached_fn(
@@ -529,6 +628,24 @@ def _validate(
         raise ValueError(f"threads must be one of {allowed}")
 
 
+def _validate_wave32x2(
+    rows: int,
+    in_features: int,
+    out_features: int,
+    threads: int,
+) -> None:
+    if rows != 1:
+        raise ValueError("rows must be exactly 1 for GGUF Q5_K wave32x2 decode")
+    if in_features <= 0 or in_features % _QTYPE_BLOCK_SIZE["gguf_q5_k"] != 0:
+        raise ValueError("in_features must be positive and divisible by GGUF Q5_K block size 256")
+    if out_features <= 0:
+        raise ValueError("out_features must be positive")
+    if out_features % 2 != 0:
+        raise ValueError("out_features must be divisible by 2 for GGUF Q5_K wave32x2")
+    if threads != 32:
+        raise ValueError("threads must be 32 for GGUF Q5_K wave32x2")
+
+
 def _check_launch(runtime: HipRuntime, err: int) -> None:
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
@@ -575,6 +692,7 @@ _WRAPPERS = {
         "pack8_gemv_bf16_bf16_out": gguf_q5_k_pack8_gemv_bf16_bf16_out,
         "pack8_gemv_decode_bf16_f32_out": gguf_q5_k_pack8_gemv_decode_bf16_f32_out,
         "pack8_gemv_decode_bf16_bf16_out": gguf_q5_k_pack8_gemv_decode_bf16_bf16_out,
+        "wave32x2_gemv_decode_bf16_bf16_out": gguf_q5_k_wave32x2_gemv_decode_bf16_bf16_out,
         "selected_gemv_bf16_bf16_out": gguf_q5_k_selected_gemv_bf16_bf16_out,
         "selected_silu_gemv_bf16_bf16_out": gguf_q5_k_selected_silu_gemv_bf16_bf16_out,
         "selected_pack8_gemv_bf16_bf16_out": gguf_q5_k_selected_pack8_gemv_bf16_bf16_out,
@@ -633,6 +751,9 @@ __all__ = [
     "gguf_q5_k_pack8_gemv_decode_bf16_f32_out",
     "gguf_q5_k_pair_pack8_gemv_decode_bf16_bf16_out",
     "gguf_q5_k_pair_pack8_gemv_decode_bf16_f32_out",
+    "gguf_q5_k_pair_wave32x2_gemv_decode_bf16_f32_out",
+    "gguf_q5_k_wave32x2_gemv_decode_bf16_bf16_out",
+    "gguf_q5_k_wave32x2_gemv_decode_bf16_f32_out",
     "gguf_q5_k_selected_gemv_bf16_bf16_out",
     "gguf_q5_k_selected_silu_gemv_bf16_bf16_out",
     "gguf_q5_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out",

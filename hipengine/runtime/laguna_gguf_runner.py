@@ -91,6 +91,8 @@ _F32_NBYTES = DType.FP32.itemsize
 _I32_NBYTES = DType.INT32.itemsize
 _I64_NBYTES = DType.INT64.itemsize
 _U8_NBYTES = DType.BOOL.itemsize
+_Q5_WAVE32X2_OUTPUT_VARIANT = "wave32x2_gemv_decode_bf16_bf16_out"
+_Q5_WAVE32X2_QUERY_GATE_VARIANT = "wave32x2_gemv_decode_bf16_f32_out"
 _PROJECTION_LAYOUT_BY_QUANT = MappingProxyType(
     {
         "fp16": LAYOUT_DENSE_F16,
@@ -688,7 +690,14 @@ class LagunaEagerLibraries:
         }
 
 
-def _launch_laguna_f16_weight_linear(weight, *args, libraries, **kwargs) -> None:
+def _launch_laguna_f16_weight_linear(
+    weight,
+    *args,
+    libraries,
+    registered_variant=None,
+    **kwargs,
+) -> None:
+    del registered_variant
     launch_f16_weight_linear(weight, *args, libraries=libraries.f16_linear, **kwargs)
 
 
@@ -726,6 +735,7 @@ def launch_laguna_weight_linear(
     stream: int = 0,
     libraries: LagunaEagerLibraries,
     runtime: HipRuntime | None = None,
+    registered_variant: str | None = None,
 ) -> None:
     """Dispatch one Laguna projection from its validated resident layout."""
 
@@ -748,6 +758,7 @@ def launch_laguna_weight_linear(
         stream=stream,
         libraries=libraries,
         runtime=runtime,
+        registered_variant=registered_variant,
     )
 
 
@@ -904,6 +915,7 @@ def launch_laguna_attention_projections(
     stream: int,
     libraries: LagunaEagerLibraries,
     runtime: HipRuntime | None,
+    query_gate_decode_variant: str | None = None,
 ) -> bool:
     """Launch exact attention projections and report both raw pairs fused.
 
@@ -935,6 +947,7 @@ def launch_laguna_attention_projections(
             use_wmma_prefill=False,
             use_gemv_decode=rows == 1,
             registered_decode_only=True,
+            registered_decode_variant=query_gate_decode_variant,
         )
 
     kv_fused = False
@@ -1461,6 +1474,8 @@ class LagunaGGUFResidentSession:
         swa_decode_variant: str | None = None,
         swa_prefill_variant: str | None = None,
         use_moe_tail_next_rmsnorm: bool = True,
+        use_q5_wave32x2_output: bool = False,
+        use_q5_wave32x2_query_gate: bool = False,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -1476,6 +1491,16 @@ class LagunaGGUFResidentSession:
             swa_prefill_variant,
         )
         self.selected_down_mode = resolve_laguna_selected_down_mode(self.backend)
+        self.use_q5_wave32x2_output = bool(use_q5_wave32x2_output)
+        self.use_q5_wave32x2_query_gate = bool(use_q5_wave32x2_query_gate)
+        self._q5_output_variant = (
+            _Q5_WAVE32X2_OUTPUT_VARIANT if self.use_q5_wave32x2_output else None
+        )
+        self._q5_query_gate_variant = (
+            _Q5_WAVE32X2_QUERY_GATE_VARIANT
+            if self.use_q5_wave32x2_query_gate
+            else None
+        )
         self.position = -1
         self.last_result: LagunaEagerTokenResult | None = None
         self.weights: LagunaGGUFResidentWeights | None = None
@@ -2248,6 +2273,7 @@ class LagunaGGUFResidentSession:
             stream=stream,
             libraries=self.libraries,
             runtime=self.runtime,
+            query_gate_decode_variant=self._q5_query_gate_variant,
         )
         rope = self.full_rope if layer.attention_type == FULL_ATTENTION else self.swa_rope
         launch_laguna_head_rmsnorm_rope(
@@ -2327,6 +2353,7 @@ class LagunaGGUFResidentSession:
             stream=stream,
             libraries=self.libraries,
             runtime=self.runtime,
+            registered_variant=self._q5_output_variant,
         )
         self.kernel_plan.add_rmsnorm(
             scratch.hidden.ptr,
@@ -2633,6 +2660,7 @@ class LagunaGGUFResidentSession:
             stream=stream,
             libraries=self.libraries,
             runtime=self.runtime,
+            query_gate_decode_variant=self._q5_query_gate_variant,
         )
         rope = self.full_rope if layer.attention_type == FULL_ATTENTION else self.swa_rope
         launch_laguna_head_rmsnorm_rope(
@@ -2690,6 +2718,7 @@ class LagunaGGUFResidentSession:
             stream=stream,
             libraries=self.libraries,
             runtime=self.runtime,
+            registered_variant=self._q5_output_variant,
         )
         self.kernel_plan.add_rmsnorm(
             scratch.hidden.ptr,

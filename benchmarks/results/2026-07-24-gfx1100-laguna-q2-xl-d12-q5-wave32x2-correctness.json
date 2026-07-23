@@ -1,0 +1,190 @@
+{
+  "schema": 1,
+  "date": "2026-07-24",
+  "kind": "hipengine_laguna_q2_xl_d12_q5_wave32x2_correctness",
+  "status": "correctness_admitted_pending_formal_performance_gate",
+  "pass": true,
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "rocm": "HIP version: 7.2.53211-3d9ef42",
+    "hipcc": "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)"
+  },
+  "model": {
+    "id": "poolside/Laguna-S-2.1-UD-Q2_K_XL",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "quant": "UD-Q2_K_XL",
+    "kv_dtype": "bf16"
+  },
+  "source": {
+    "base_revision": "c4786bc4a",
+    "design_artifact": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d12-q5-wave32x2-design.json",
+    "implementation_files": {
+      "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip": "4a4c2f689628cdea0c88529fd94050e89fe1c1f2481eca2767ad70c9ffc5c535",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.py": "8af38c4d7168cd54ab71a1a8588013c4ab0ac15ac0d2804be70316180a6dab70",
+      "hipengine/runtime/gguf_linear.py": "812ac111f428f012123d54fed73457af8aeec11decbe8588289c09f7d4ecea87",
+      "hipengine/runtime/laguna_gguf_runner.py": "64d73b1f326d40a54ca64dd4e470c8cc6d96cc28eab415eb0c93ec4ef31b2888"
+    },
+    "lineage_check": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "lineage_result": "completed; only already-documented nano-vllm-amd drift",
+    "vulkan_reference_revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9"
+  },
+  "implementation": {
+    "registry_keys": [
+      [
+        "hip_gfx1100",
+        "linear",
+        "gguf_q5_k",
+        "wave32x2_gemv_decode_bf16_bf16_out"
+      ],
+      [
+        "hip_gfx1100",
+        "linear_pair",
+        "gguf_q5_k",
+        "wave32x2_gemv_decode_bf16_f32_out"
+      ]
+    ],
+    "direct_oracle_wrapper": "gguf_q5_k_wave32x2_gemv_decode_bf16_f32_out is exported for standalone F32 bit checks but is not registered as a production linear route",
+    "schedule": "one local32 wave owns two adjacent output columns; each lane reconstructs baseline logical threads l,l+32,l+64,l+96, retains their [t,t+128] K order, performs four independent 16..1 shuffle trees, and adds logical groups 0..3",
+    "weights": "raw 176-byte GGUF Q5_K blocks; no repack or sidecar",
+    "coefficient_exchange": "lanes 0..7 construct output-0 scale/min pairs and lanes 8..15 construct output-1 pairs; native-wave shuffles replace 1024 B LDS and all block barriers",
+    "scope": "gfx1100 c=1 Laguna attention output and unequal query/gate roles only",
+    "fallback": "registered pack8 singleton/pair remains the default and handles rows>1, gfx1151, registry miss, unsupported layout/shape, shared-expert roles, and explicit selector disable",
+    "runtime_selectors": {
+      "use_q5_wave32x2_output": false,
+      "use_q5_wave32x2_query_gate": false,
+      "note": "constructor-only correctness/performance selectors; task #293 decides independent family defaults"
+    }
+  },
+  "red_green": {
+    "red": "tests/test_gguf_q5_k_pack8_gemv_decode.py failed collection because the three wave32x2 wrappers did not exist",
+    "synthetic_green": {
+      "cases": [
+        "K256/N8 and K512/N16 reduction-association-sensitive BF16 activations",
+        "all Q5 scale/min packing branches and high-bit planes",
+        "signed zero, infinities, and NaNs with exact defined bits and matching NaN classes",
+        "K6144/K9216 N3072 BF16-output production shapes",
+        "K3072 N6144+48 and N9216+72 F32 unequal-pair boundaries"
+      ],
+      "finite_output_bits_exact": true,
+      "nonfinite_classes_exact": true,
+      "pair_boundary_exact": true,
+      "wrapper_scope_checks": [
+        "rows must equal 1",
+        "N must be even",
+        "local size must equal 32",
+        "gfx1151 key absent"
+      ]
+    },
+    "focused_test_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run pytest -q tests/test_gguf_q5_k_pack8_gemv_decode.py",
+    "focused_result": "14 passed",
+    "broader_focused_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run pytest -q tests/test_gguf_q5_k_pack8_gemv_decode.py tests/test_gguf_linear_dispatch.py tests/test_laguna_gguf_runner.py tests/test_generation_laguna_gguf.py tests/test_kernel_registry.py",
+    "broader_focused_result": "133 passed; one Starlette deprecation warning",
+    "dispatch_tests": "explicit same-ABI singleton/pair resolution, rows>1 and registry-miss pack8 fallback, and Laguna role forwarding pass",
+    "ruff_compileall_diff_check": true
+  },
+  "actual_weight_screen": {
+    "status": "provisional_positive_screen_not_formal_admission",
+    "performance_claim": false,
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run python -u /tmp/bench_d12_quick.py",
+    "protocol": "20 warmups/mode; 5 counterbalanced repetitions; 100 launches per HIP-event sample and 100 per synchronized-wall sample",
+    "formal_gate_gap": "task #293 must rerun 50 warmups/mode, 15 repetitions, and at least 200 launches/sample before promotion",
+    "outputs_bit_exact": true,
+    "rows": [
+      {
+        "shape": "blk.0 attention output K6144/N3072 BF16",
+        "baseline_event_us": 36.801559925079346,
+        "candidate_event_us": 30.657179355621338,
+        "event_delta_pct": -16.695978599729855,
+        "baseline_wall_us": 37.21868968568742,
+        "candidate_wall_us": 30.116200214251876,
+        "wall_delta_pct": -19.083126062245103
+      },
+      {
+        "shape": "blk.1 attention output K9216/N3072 BF16",
+        "baseline_event_us": 55.880208015441895,
+        "candidate_event_us": 42.36403942108154,
+        "event_delta_pct": -24.18775640675014,
+        "baseline_wall_us": 55.20864040590823,
+        "candidate_wall_us": 42.02636075206101,
+        "wall_delta_pct": -23.87720392483438
+      },
+      {
+        "shape": "blk.0 query/gate K3072/N6144+48 F32",
+        "baseline_event_us": 34.67576026916504,
+        "candidate_event_us": 28.76612901687622,
+        "event_delta_pct": -17.04254270538339,
+        "baseline_wall_us": 34.84686021693051,
+        "candidate_wall_us": 28.45357987098396,
+        "wall_delta_pct": -18.34679023058825
+      },
+      {
+        "shape": "blk.1 query/gate K3072/N9216+72 F32",
+        "baseline_event_us": 43.66862773895264,
+        "candidate_event_us": 38.665809631347656,
+        "event_delta_pct": -11.456320856958001,
+        "baseline_wall_us": 43.23987057432532,
+        "candidate_wall_us": 39.31601997464895,
+        "wall_delta_pct": -9.07461226770241
+      }
+    ],
+    "harness_sha256": "18df20217136d79b7c1af119e8b326b9fb10e03e1509d67eb28caa236b8aea52",
+    "raw_sha256": "82be3a3507476582cd021086dcb3ff596a1d382360d8975825cea095fb0bfccc"
+  },
+  "full_model_correctness": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_d12_correctness_gate.py",
+    "prompt_id": "code_merge_intervals",
+    "prompt_tokens": 69,
+    "decode_steps": 16,
+    "all_layer_hidden_checks": 48,
+    "full_logits_exact": true,
+    "final_hidden_exact": true,
+    "post_layer_hidden_exact": true,
+    "full_kv_and_live_spans_exact": true,
+    "reset_exact": true,
+    "lifecycle_exact": true,
+    "tracked_peak_bytes": 40455911848,
+    "tracked_peak_allocations": 1496,
+    "tracked_returned_to_baseline": true,
+    "harness_sha256": "3ffe9420cf43116b9c65f58b665f36a132b08718ddd1361df4857ac735914d30",
+    "raw_sha256": "856b4379f307bb1d349f7a5d3bb220490aa6491ea099cd60dd15890b271680c1"
+  },
+  "rocprof": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-d12-trace-1539583 --output-file epyc -- .venv/bin/python -u /tmp/trace_d12.py",
+    "cache_only": true,
+    "rows": [
+      {
+        "kernel": "gguf_q5_k_wave32x2_decode_out_kernel<unsigned short, unsigned short>",
+        "shape": "K9216/N3072",
+        "duration_us": 55.72,
+        "workgroup_size_x": 32,
+        "workgroups_x": 1536,
+        "vgpr": 96,
+        "sgpr": 128,
+        "lds_bytes": 0,
+        "scratch_bytes": 0
+      },
+      {
+        "kernel": "gguf_q5_k_unequal_pair_wave32x2_decode_out_kernel<unsigned short, float>",
+        "shape": "K3072/N9216+72",
+        "duration_us": 43.08,
+        "workgroup_size_x": 32,
+        "workgroups_x": 4644,
+        "vgpr": 96,
+        "sgpr": 128,
+        "lds_bytes": 0,
+        "scratch_bytes": 0
+      }
+    ],
+    "trace_sha256": "fc65c5a577dd8c929d0693a703184beca631b8f6952e62a9255759cac4b01a50",
+    "harness_sha256": "0e950fad0c14a2c1f76be8a58ddccefd4269a116f3bc09ee1c1b41f55b200d66"
+  },
+  "acceptance": {
+    "correctness_admitted": true,
+    "performance_promoted": false,
+    "next_action": "Task #293 runs the frozen 50-warmup/15x200 actual-weight family gate, then clean short/512/1K/near-4K and complete category predicates before independently promoting or removing each family selector."
+  }
+}

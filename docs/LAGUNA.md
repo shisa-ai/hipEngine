@@ -3454,6 +3454,22 @@ the other passes. Synthetic/adversarial reduction fixtures, production weights,
 all 48 hidden rows, logits/argmax bits, complete K/V plus `KVLiveSpans`, reset,
 and lifecycle precede any clean model run.
 
+The implementation now clears that correctness admission. Two separately
+registered gfx1100 role siblings keep raw 176-byte blocks and default-off
+selectors; the standalone F32 singleton wrapper remains an unregistered oracle; rows>1, gfx1151, registry miss, unsupported layout/shape, and
+selector disable retain pack8. Synthetic K256/K512 and all four production
+shapes are finite-bit exact; non-finite fixtures match every defined bit and
+NaN class. A shared-weight 69-token prompt plus 16 decode-step gate matches all
+48 post-layer hidden rows, full logits/argmax, final/post-layer hidden, complete
+K/V and `KVLiveSpans`, reset, and lifecycle. Cached tracing names the BF16
+singleton and F32 unequal-pair candidates at local32, VGPR96, LDS0, and
+scratch0 with exactly 1,536/4,644 workgroups. A deliberately sub-formal
+5x100 actual-weight screen is positive for every leaf (**16.70-24.19%** HIP-
+event contraction for attention output and **11.46-17.04%** for query/gate),
+but it is not promotion evidence. Task #293 must still run the frozen
+50-warmup/15x200 gate and clean model/category predicates. Correctness artifact:
+`benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d12-q5-wave32x2-correctness.json`.
+
 The Amdahl bound is finally large enough to matter. Canonical D9 is **21.217
 ms/token**. The two Q5 families total **4.848 ms/token**; a planning-only
 10/20/25/30% contraction models **48.234/49.389/49.988/50.601 tok/s**. Reaching
