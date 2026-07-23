@@ -2481,15 +2481,18 @@ tok/s**. D4 revision `73a2583b` makes four wave32 units compute four exact SWA
 slot dots concurrently before baseline-order softmax/value consumption and
 reaches **43.081 tok/s**. D5 revision `35b1602e` combines each same-input
 raw-Q5 shared gate/up pair while preserving both singleton reduction trees and
-BF16 stores, reaching **44.501 tok/s**. D6 revision `22e6144ce` is now the
-default: one unequal-width raw-Q5 F32 `linear_pair` launch owns each attention
-query/per-head-gate pair while preserving both singleton output buffers. It
-measures **45.433 tok/s (22.010 ms/token)** at h32, **+2.093%** versus D5 and
-**+132.23%** versus D0. D5 -> D6 h32 E2E improves **11.860 -> 11.921 output
-tok/s (+0.518%)** while bulk prefill is neutral at **43.167 -> 43.159 tok/s
-(-0.018%)** and median TTFT improves **1.871 -> 1.870 s (-0.081%)**. Every
-category's decode/E2E row, exactness gate, and lifecycle check passes. Evidence:
-`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-q5-query-gate-pair-retained.json`.
+BF16 stores, reaching **44.501 tok/s**. D6 revision `22e6144ce` combines each
+unequal-width raw-Q5 attention query/per-head-gate pair and reaches **45.433
+tok/s**. D7 implementation `973382e68`, measured clean at `51a437bc7`, is now
+the default: one raw-Q6 F32 `linear_pair` launch owns each of 47 attention K/V
+pairs plus layer 47's Q6 query/per-head-gate pair while preserving every
+singleton output. It measures **46.409 tok/s (21.548 ms/token)** at h32,
+**+2.147%** versus D6 and **+137.21%** versus D0. D6 -> D7 h32 E2E improves
+**11.921 -> 11.972 output tok/s (+0.423%)** while bulk prefill remains within
+guard at **43.159 -> 43.093 tok/s (-0.152%)** and median TTFT is **1.870 ->
+1.873 s (+0.172% wall)**. Every category's decode/E2E row, exactness gate, and
+lifecycle check passes. Evidence:
+`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-q6-attention-pair-retained.json`.
 
 The frozen clean D0 at `e6120872` profiles 16 c=1 rows after the canonical
 69-token `code_merge_intervals` bulk prefill; the stable 14 rows contain exactly
@@ -2690,9 +2693,22 @@ improves **3.21%/2.15%/1.95%/1.38%**, and profiled child throughput improves
 promoting the D6 headline above. Evidence:
 `benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-q5-query-gate-pair-retained.json`.
 
-A code-identical reanalysis of those retained traces ranks short attention-output
-Q5, selected IQ2, retained query/gate Q5, SWA, weighted IQ3, and attention K/V
-Q6 at **2.628/2.285/2.151/2.118/2.110/1.407 ms/token**. Q6 K/V is the next
+D7 cleanly retains the Q6 pair boundary. The registered
+`linear_pair/gguf_q6_k/pack8_gemv_decode_bf16_f32_out` flattened pack grid
+preserves singleton F32 output bytes for K3072 N1024+1024 and N9216+72. Actual
+global K/V, SWA K/V, and layer-47 query/gate medians improve
+**37.36%/36.65%/8.80%**. Rows>1, registry/shape misses, mixed pairs, and
+unmeasured backends retain the established unfused path. Clean tracing removes
+48 dispatches/token (**917 -> 869**) at local128/VGPR56/SGPR128/LDS512/scratch0.
+Short/512/1K/near-4K kernel sum improves **2.38%/1.60%/1.46%/0.86%**, span
+improves **2.63%/2.00%/1.82%/1.17%**, and profiled child throughput improves
+**3.33%/1.80%/2.31%/1.53%**. All trace and complete category gates pass,
+promoting the D7 headline above. Evidence:
+`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-q6-attention-pair-retained.json`.
+
+The preceding code-identical D6 reanalysis ranked short attention-output Q5,
+selected IQ2, retained query/gate Q5, SWA, weighted IQ3, and attention K/V Q6
+at **2.628/2.285/2.151/2.118/2.110/1.407 ms/token**. Q6 K/V was the next
 bounded exact candidate: 47 same-input K3072/N1024 pairs account for **94
 launches/token** at **14.920 us** median per singleton and
 local128/VGPR48/SGPR128/LDS1024/scratch0. One registered equal-width
@@ -2737,22 +2753,24 @@ Proceed in measured Amdahl order:
 8. **DONE:** reprofile D6; short attention-output Q5, IQ2, retained Q5 pair,
    SWA, IQ3, and Q6 K/V rank at 2.628/2.285/2.151/2.118/2.110/1.407 ms/token,
    while near-4K remains global-attention dominated;
-9. **NEXT:** implement exact equal-width Q6 K/V pairing to remove 47 launches,
-   then reprofile the still-larger Q5/IQ2/IQ3 and submission families; and
-10. admit Laguna-specific one-step graph replay only after higher-share kernel
-   work. D6's short decode span still exceeds kernel sum by about **3.55 ms**,
-   so submission remains material but is not yet the only plausible route.
+9. **DONE:** exact raw-Q6 attention pairing removes 48 launches/token, improves
+   every clean context and category decode/E2E row, and promotes D7 to 46.409
+   tok/s; and
+10. **NEXT:** reprofile D7 and select the next higher-share Q5/IQ2/IQ3 or
+   submission candidate. Admit Laguna-specific one-step graph replay only when
+   its exact state/capture route and same-suite wall beat the remaining kernel
+   work. D7's short decode span still exceeds kernel sum by about **3.45 ms**,
+   so submission is material but is not yet the only plausible route.
 
-**50 tok/s is a credible W7900 target, not a current claim.** D6 must reduce the
-canonical **22.010 ms to 20 ms**, another **10.05%**. The clean short kernel sum
-is already **17.689 ms** and median span is **21.274 ms**, so the measured device
-window does not impose a 20-ms floor. The selected Q6 pair's perfect 0.703-ms
-kernel ceiling would still leave **1.307 ms** to 20 ms, so no single ranked
-bounded leaf closes the remaining gap. The near-4K profile remains led by global
-attention. Every retained candidate uses the full category/heldout suite
-and the same exact/quality lanes above. Laguna DFlash/MTP optimization resumes
-only after the selected D7 candidate is decided so speculative speedups are
-measured against the improved true-AR baseline.
+**50 tok/s is a credible W7900 target, not a current claim.** D7 must reduce the
+canonical **21.548 ms to 20 ms**, another **7.74%**. The clean short kernel sum
+is **17.268 ms** and median span is **20.715 ms**, so the measured device window
+does not impose a 20-ms floor. No currently ranked single bounded leaf closes
+the remaining 1.548-ms gap; reprofile before selecting D8. The near-4K profile
+remains led by global attention. Every retained candidate uses the full
+category/heldout suite and the same exact/quality lanes above. Laguna DFlash/MTP
+economics must use D7 or a later true-AR baseline rather than the historical D0
+row.
 
 ## Laguna DFlash Follow-on Plan
 
