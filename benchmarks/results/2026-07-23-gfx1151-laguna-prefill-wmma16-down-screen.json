@@ -1,0 +1,336 @@
+{
+  "command": [
+    "/home/lhl/.local/share/uv/python/cpython-3.10.20-linux-x86_64-gnu/bin/python3.10",
+    "scripts/laguna_wmma16_down_prefill_bench.py",
+    "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "--backend",
+    "hip_gfx1151",
+    "--context-length",
+    "4096",
+    "--rows",
+    "256,512",
+    "--repetitions",
+    "3",
+    "--warmups",
+    "1",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--require-cached-build",
+    "--repacked-cache",
+    "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+    "--model-sha256",
+    "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "--output",
+    "/tmp/2026-07-23-gfx1151-laguna-prefill-wmma16-down-screen.json"
+  ],
+  "correctness": {
+    "finite": true,
+    "max_kl_divergence": 0.00013053735838745986,
+    "next_token_ids_agree": true,
+    "pass": true,
+    "thresholds": {
+      "max_kl_divergence": 0.05,
+      "minimum_top1_agreement": 1.0
+    },
+    "top1_agreement": 1.0,
+    "tracked_returned_to_baseline": true
+  },
+  "created_at": "2026-07-23T09:52:13.972960+00:00",
+  "kind": "hipengine_laguna_prefill_wmma16_down_screen",
+  "load": {
+    "resident_nbytes": 77434444260,
+    "seconds_excluded": 50.314974209992215
+  },
+  "memory": {
+    "gpu_free_after": 128693649408,
+    "gpu_free_before": 128844787712,
+    "hip_total_bytes": 128849018880,
+    "tracked_after": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 77434444260,
+      "peak_allocations": 1401,
+      "total_allocated_bytes": 77434444260,
+      "total_freed_bytes": 77434444260
+    },
+    "tracked_before": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 0,
+      "peak_allocations": 0,
+      "total_allocated_bytes": 0,
+      "total_freed_bytes": 0
+    }
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "repacked_cache": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+    "repacked_cache_manifest_sha256": "d328e0b73f8957eb051d3ed24d17a4aaf6a3d15fce3c45baf10c02f4de0cabfc",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "notes": [
+    "Natural token routing comes from the complete 48-layer model, not a synthetic bucket map.",
+    "The candidate reuses resident Q4T16/Q6T16 tiles and caller-owned bounded metadata scratch.",
+    "A passing screen admits, but does not replace, the full category quality/E2E gate."
+  ],
+  "pass": true,
+  "performance_claim": false,
+  "performance_claim_scope": "candidate-selection screen only; full ten-prompt category quality/E2E gate is required before promotion",
+  "platform": {
+    "backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "hip_total_bytes": 128849018880,
+    "machine": "x86_64",
+    "target_arch": "gfx1151"
+  },
+  "protocol": {
+    "candidate_selection": "session-local selected_down_mode=wmma16_down; device grouping/gather, one scalar padded-row read per sparse layer, M16 T16-WMMA Q4/Q6 down",
+    "context_length": 4096,
+    "control_selection": "session-local selected_down_mode=adaptive_grouped_smallm; retained gfx1151 default",
+    "modes": [
+      "adaptive_grouped_smallm",
+      "wmma16_down"
+    ],
+    "prefill_chunk_size": 512,
+    "prompt_suite": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "repetitions": 3,
+    "rows": [
+      256,
+      512
+    ],
+    "timed_order": "counterbalanced per shape and repetition",
+    "timing_scope": "reset excluded; prefill through synchronized first-token projection; full-logit D2H excluded; model load excluded",
+    "token_source": {
+      "category": "mixed_ja_en",
+      "extension": "repeat_without_leading_bos",
+      "prompt_id": "mixed_ja_en_review",
+      "requested_tokens": 512,
+      "source_tokens": 122
+    },
+    "token_stream_sha256": "bc8bfde48180330d8eccc176d8aaa22a797f50b9f2ae8f86de8a3ff49a49e786",
+    "warmups_per_shape_and_mode": 1
+  },
+  "provenance": {
+    "build_profile": "laguna_prefill_wmma16_down_screen",
+    "collected_at": "2026-07-23T09:49:31.555478+00:00",
+    "command": [
+      "/home/lhl/.local/share/uv/python/cpython-3.10.20-linux-x86_64-gnu/bin/python3.10",
+      "scripts/laguna_wmma16_down_prefill_bench.py",
+      "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1151",
+      "--context-length",
+      "4096",
+      "--rows",
+      "256,512",
+      "--repetitions",
+      "3",
+      "--warmups",
+      "1",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--repacked-cache",
+      "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+      "--model-sha256",
+      "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+      "--output",
+      "/tmp/2026-07-23-gfx1151-laguna-prefill-wmma16-down-screen.json"
+    ],
+    "configured_backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "dirty": true,
+    "environment": {
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null,
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIP_VISIBLE_DEVICES": "0",
+      "ROCR_VISIBLE_DEVICES": null
+    },
+    "git_branch": "main",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "hipengine_commit": "b9e153467948de606603ea4aa9d5dbb0d7a140ce",
+    "kind": "hipengine_artifact_provenance",
+    "kv_dtype": "bf16",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        37586027312,
+        75172054624
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 75173103200,
+      "value": "05caf641aa0d991c0e447450420c042bfab22ae248b1f12aba4bd3774c2024c8"
+    },
+    "model_path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "model_revision": null,
+    "profiler": null,
+    "quant": "gguf_q4_k_m",
+    "repetitions": 3,
+    "repo_root": "/home/lhl/hipEngine-main",
+    "resolved_backend": "hip_gfx1151",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "schema_version": 1,
+    "staged_dirty": false,
+    "target_arch": "gfx1151",
+    "timing_protocol": "same_session_balanced_grouped_smallm_vs_wmma16_down_prefill",
+    "unstaged_dirty": false,
+    "untracked_count": 255,
+    "untracked_dirty": true,
+    "warmups": 4
+  },
+  "repo": {
+    "revision": "b9e153467948de606603ea4aa9d5dbb0d7a140ce",
+    "tracked_clean": true,
+    "tracked_status": [],
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "schema": 1,
+  "screen": {
+    "aggregate_speedup": 1.093780671985848,
+    "baseline_seconds": 43.73922703694552,
+    "candidate_seconds": 39.98902902309783,
+    "failed_checks": [],
+    "pass": true,
+    "policy": "final logits finite; KL<=0.05; all final top-1/next IDs agree; M16 faster at both 256/512 and in aggregate",
+    "slower_rows": []
+  },
+  "shapes": {
+    "256": {
+      "adaptive_grouped_smallm": {
+        "max_seconds": 4.703644155990332,
+        "median_seconds": 4.689413195010275,
+        "median_tok_s": 54.59105208992766,
+        "min_seconds": 4.681504847947508,
+        "rows": 256,
+        "samples_seconds": [
+          4.681504847947508,
+          4.689413195010275,
+          4.703644155990332
+        ]
+      },
+      "next_token_ids": {
+        "adaptive_grouped_smallm": [
+          565,
+          565,
+          565
+        ],
+        "wmma16_down": [
+          565,
+          565,
+          565
+        ]
+      },
+      "next_token_ids_agree": true,
+      "quality": [
+        {
+          "baseline_top1": 565,
+          "candidate_top1": 565,
+          "finite": true,
+          "kl_divergence": 2.9589299424952197e-05,
+          "top1_agreement": true
+        },
+        {
+          "baseline_top1": 565,
+          "candidate_top1": 565,
+          "finite": true,
+          "kl_divergence": 2.9589299424952197e-05,
+          "top1_agreement": true
+        },
+        {
+          "baseline_top1": 565,
+          "candidate_top1": 565,
+          "finite": true,
+          "kl_divergence": 2.9589299424952197e-05,
+          "top1_agreement": true
+        }
+      ],
+      "rows": 256,
+      "wmma16_down": {
+        "max_seconds": 4.283888163976371,
+        "median_seconds": 4.28285949898418,
+        "median_tok_s": 59.77314923842791,
+        "min_seconds": 4.2823136961087584,
+        "rows": 256,
+        "samples_seconds": [
+          4.2823136961087584,
+          4.283888163976371,
+          4.28285949898418
+        ]
+      },
+      "wmma16_vs_grouped_smallm_speedup": 1.094925760726571
+    },
+    "512": {
+      "adaptive_grouped_smallm": {
+        "max_seconds": 9.905929205007851,
+        "median_seconds": 9.892962942947634,
+        "median_tok_s": 51.75395914779888,
+        "min_seconds": 9.865772690041922,
+        "rows": 512,
+        "samples_seconds": [
+          9.892962942947634,
+          9.865772690041922,
+          9.905929205007851
+        ]
+      },
+      "next_token_ids": {
+        "adaptive_grouped_smallm": [
+          2930,
+          2930,
+          2930
+        ],
+        "wmma16_down": [
+          2930,
+          2930,
+          2930
+        ]
+      },
+      "next_token_ids_agree": true,
+      "quality": [
+        {
+          "baseline_top1": 2930,
+          "candidate_top1": 2930,
+          "finite": true,
+          "kl_divergence": 0.00013053735838745986,
+          "top1_agreement": true
+        },
+        {
+          "baseline_top1": 2930,
+          "candidate_top1": 2930,
+          "finite": true,
+          "kl_divergence": 0.00013053735838745986,
+          "top1_agreement": true
+        },
+        {
+          "baseline_top1": 2930,
+          "candidate_top1": 2930,
+          "finite": true,
+          "kl_divergence": 0.00013053735838745986,
+          "top1_agreement": true
+        }
+      ],
+      "rows": 512,
+      "wmma16_down": {
+        "max_seconds": 9.047231929027475,
+        "median_seconds": 9.046550135011785,
+        "median_tok_s": 56.596160122792824,
+        "min_seconds": 9.046185599989258,
+        "rows": 512,
+        "samples_seconds": [
+          9.046185599989258,
+          9.046550135011785,
+          9.047231929027475
+        ]
+      },
+      "wmma16_vs_grouped_smallm_speedup": 1.0935619429842187
+    }
+  },
+  "status": "screen_passed"
+}
