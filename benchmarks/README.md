@@ -3,6 +3,8 @@
 Last reviewed: **2026-07-23**
 
 Latest retained hipEngine revisions in this scoreboard:
+`cdc43b36635cb23fbfcf674d7cd9698b65630a7a` for the post-matrix512 Laguna
+512/1K/4K all-family attribution,
 `af59b711e23ea3b9a6ae0f5ed172ef6e5a85a69e` for the exact gfx1151 Laguna
 matrix512/attention128 prefill-chunk default,
 `2ec20c8a06197a9dff9a5acd30e75d6fe52844b5` for the quality-gated gfx1151
@@ -1904,6 +1906,19 @@ remains below the existing 2-GiB admission floor. gfx1151 now defaults M512
 matrix work while attention stays at 128; explicit overrides and unmeasured
 backends retain M128. Canonical <=122-token category throughput is unchanged.
 [Retained matrix-chunk default](results/2026-07-23-gfx1151-laguna-matrix-chunk-retained.json).
+
+The cached post-matrix512 attribution shows where those retained changes move
+the bottleneck. At 512/1K/4K, kernel sum is **7.426/15.998/78.763 s** and
+span-minus-sum is only **0.140%/0.171%/0.159%**. Global+SWA attention rises to
+**13.42%/19.93%/34.88%** of kernel sum; global alone grows
+**3.05%/6.30%/21.34%**, SWA remains **10.36%/13.63%/13.54%**, and selected Q4
+gate/up is still largest at **49.69%/46.19%/37.63%**. Relative to the same
+pre-matrix 4K trace, source-F16 falls **26.575 -> 7.120 s (-73.21%)** and
+selected down **16.461 -> 8.680 s (-47.27%)**, while global/SWA stays nearly
+flat at **16.808/10.661 s**. This is attribution, not a new speedup claim; it
+selects SWA query-group reuse and then tiled global attention while leaving host
+submission deferred.
+[Post-matrix512 all-family profile](results/2026-07-23-gfx1151-laguna-prefill-post-matrix512-all-family-profile.json).
 
 A matched Poolside llama.cpp `04b2b72c` control now uses the identical Laguna
 Q4_K_M model hash, deterministic token stream, BF16 KV, and 128-row microbatch.

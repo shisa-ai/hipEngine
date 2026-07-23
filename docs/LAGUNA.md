@@ -2517,7 +2517,21 @@ must not be revived without a different resident layout or execution schedule.
 Attention is not the short-prompt first move, but it will become dominant as the
 linear families accelerate and already matters at 4K.
 
-- [ ] Reprofile at 512/1K/4K after AR-O1 through AR-O4.
+The clean cached post-AR-O3 profile at matrix512/attention128 now replaces the
+pre-matrix attribution. Kernel sum is **7.426/15.998/78.763 s** at 512/1K/4K,
+with span-minus-sum only **0.140%/0.171%/0.159%**. Global plus SWA attention is
+**13.42%/19.93%/34.88%**: global grows **3.05% -> 6.30% -> 21.34%**, while SWA
+is **10.36%/13.63%/13.54%**. Selected Q4 gate/up remains the largest family at
+**49.69%/46.19%/37.63%**. Relative to the pre-matrix 4K profile, retained
+AR-O1/O2/O3 cuts complete source-F16 **26.575 -> 7.120 s (-73.21%)** and
+selected down **16.461 -> 8.680 s (-47.27%)**, while global/SWA attention stays
+essentially flat at **16.808/10.661 s** and therefore rises to the declared
+context target. Perfectly removing all 4K attention has only a **1.535x**
+kernel-sum ceiling; global alone is **1.271x** and SWA alone **1.157x**. Evidence:
+`benchmarks/results/2026-07-23-gfx1151-laguna-prefill-post-matrix512-all-family-profile.json`.
+
+- [x] Reprofile at 512/1K/4K after AR-O1 through AR-O3; repeat after any AR-O4
+  promotion before final attention admission.
 - [ ] For SWA, process multiple query rows per tile, reuse the 512-token K/V
   window, and use online softmax instead of one serial scan per score/value.
 - [ ] For global layers, screen the existing torch-free AOTriton adapter as a
