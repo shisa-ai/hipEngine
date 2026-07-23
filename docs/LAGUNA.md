@@ -2267,13 +2267,17 @@ repeat either experiment unchanged.
   `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-ar-o1-q8-dp4a-screen.json`
   and
   `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-ar-o1-q8-dp4a-category-rejected.json`.
-- [ ] Build one device-resident expert grouping/scatter pass with no scalar D2H
-  boundary. Quantize each producer activation once, not once per selected
-  expert or output projection.
-- [ ] Implement adaptive small-M grouped Q4/Q6 schedules for the measured
-  1/2/4/8-row populations. One expert/output tile should reuse decoded weights
-  across all rows in its bucket; do not launch a nominal GEMV independently for
-  each lane.
+- [x] Build one device-resident expert grouping/scatter pass with no scalar D2H
+  boundary. The exact BF16 route needs no activation quantization; a deterministic
+  one-pass compact-active kernel emits starts, active experts, lane order, and
+  routing weights, with staged count/prefix/scatter kept as the unfused fallback.
+- [x] Implement adaptive small-M grouped Q4/Q6 schedules for the measured
+  1/2/4/8-row populations. C16xR4 reuses each decoded T16 tile across up to four
+  packed rows and falls back to direct below 32 token rows. Clean rows
+  32/55/64/122/128 improve 2.63-6.92%, aggregate wall improves 5.461%, and all
+  36 IDs agree; the category gate remains mandatory before default promotion.
+  Evidence:
+  `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-grouped-down-ab.json`.
 - [ ] Add an M16/M32 integer-MMQ/WMMA route only where measured occupancy pays
   for padding. Use the landed IQ2 MMQ32 work as a scheduling reference, not as
   a quant-format shortcut; Laguna Q4_K/Q6_K decode and scales need their own
