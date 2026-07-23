@@ -26,7 +26,9 @@ class GGUFEmbeddingDispatch:
     abi: str
 
 
-_RAW_EMBEDDING_QUANTS = frozenset({"gguf_q4_k", "gguf_q6_k", "gguf_q8_0"})
+_RAW_EMBEDDING_QUANTS = frozenset(
+    {"gguf_q4_k", "gguf_q5_k", "gguf_q6_k", "gguf_q8_0"}
+)
 
 
 def resolve_gguf_embedding_dispatch(

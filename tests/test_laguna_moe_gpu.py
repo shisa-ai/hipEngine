@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ctypes
 from dataclasses import replace
+from pathlib import Path
 from types import MappingProxyType
 
 import numpy as np
@@ -20,10 +21,12 @@ from hipengine.loading.laguna_gguf import (
     SPARSE_MOE,
     laguna_gguf_config_from_metadata,
 )
+from hipengine.loading.gguf import GGUFReader
 from hipengine.loading.laguna_gguf_materialize import (
     LagunaGGUFResidentLayerWeights,
     _materialize_spec,
     _spec_for_tensor,
+    materialize_laguna_gguf_weights,
 )
 from hipengine.models.laguna import LAGUNA_GGUF
 from hipengine.quant.gguf import GGMLQuantizationType
@@ -47,6 +50,7 @@ def _hip_available() -> bool:
 
 
 HIP_AVAILABLE = _hip_available()
+LAGUNA_Q2_MODEL = Path("/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf")
 
 
 def _f32_to_bf16_u16(array: np.ndarray) -> np.ndarray:
@@ -102,9 +106,16 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
         "laguna_rows",
     )
     assert plan.selected_gate_up_key.quant == "gguf_q4_k_t16_v1"
+    assert set(plan.selected_gate_up_keys) == {
+        "gguf_q4_k_t16_v1",
+        "gguf_iq2_xs",
+        "gguf_iq3_xxs",
+    }
     assert set(plan.selected_down_keys) == {
         "gguf_q4_k_t16_v1",
         "gguf_q6_k_t16_v1",
+        "gguf_iq3_xxs",
+        "gguf_iq4_xs",
     }
     assert plan.selected_down_keys["gguf_q6_k_t16_v1"] == plan.selected_down_key
     assert all(key.backend == "hip_gfx1151" for key in plan.kernel_keys)
@@ -346,6 +357,221 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
             free(hidden_buffer)
         for weight in reversed(tuple(resident.values())):
             weight.free()
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.skipif(
+    not LAGUNA_Q2_MODEL.exists(),
+    reason=f"local Laguna Q2 XL fixture not found: {LAGUNA_Q2_MODEL}",
+)
+@pytest.mark.parametrize(
+    ("layer_id", "gate_quant", "down_quant", "shared_gate_quant", "shared_down_quant"),
+    (
+        (1, "gguf_iq2_xs", "gguf_iq3_xxs", "gguf_q5_k", "gguf_q6_k"),
+        (47, "gguf_iq3_xxs", "gguf_iq4_xs", "gguf_q6_k", "gguf_q8_0"),
+    ),
+)
+def test_laguna_q2_xl_actual_sparse_layer_matches_quant_oracle(
+    layer_id: int,
+    gate_quant: str,
+    down_quant: str,
+    shared_gate_quant: str,
+    shared_down_quant: str,
+) -> None:
+    runtime = _runtime()
+    reader = GGUFReader(LAGUNA_Q2_MODEL)
+    slots = tuple(
+        f"layers.{layer_id}.{slot}"
+        for slot in (
+            "ffn_gate_inp",
+            "exp_probs_b",
+            "ffn_gate_exps",
+            "ffn_up_exps",
+            "ffn_down_exps",
+            "ffn_gate_shexp",
+            "ffn_up_shexp",
+            "ffn_down_shexp",
+        )
+    )
+    resident = None
+    scratch = None
+    bulk_scratch = None
+    hidden_buffer = None
+    bulk_hidden_buffer = None
+    try:
+        resident = materialize_laguna_gguf_weights(
+            reader,
+            selected_slots=slots,
+            context_length=4_096,
+            available_bytes=runtime.mem_get_info()[0],
+            safety_reserve_nbytes=4 * 2**30,
+            backend="hip_gfx1100",
+            runtime=runtime,
+        )
+        plan = resolve_laguna_moe_plan(resident.config, backend="hip_gfx1100")
+        layer = resident.layer(layer_id)
+        validate_laguna_moe_layer(layer, plan)
+        assert layer.weight("ffn_gate_exps").spec.quant_key == gate_quant
+        assert layer.weight("ffn_down_exps").spec.quant_key == down_quant
+        assert layer.weight("ffn_gate_shexp").spec.quant_key == shared_gate_quant
+        assert layer.weight("ffn_down_shexp").spec.quant_key == shared_down_quant
+
+        h, k = plan.hidden_size, plan.top_k
+        rng = np.random.default_rng(233 + layer_id)
+        hidden_bits = _f32_to_bf16_u16(
+            rng.normal(0.0, 2.0e-4, size=(1, h)).astype(np.float32)
+        )
+        hidden = _bf16_u16_to_f32(hidden_bits)
+        hidden_buffer = malloc(hidden_bits.nbytes, runtime=runtime)
+        copy_host_to_device(
+            hidden_buffer,
+            host_array_ptr(hidden_bits),
+            hidden_bits.nbytes,
+            runtime=runtime,
+        )
+        scratch = allocate_laguna_moe_scratch(plan, runtime=runtime)
+        output_buffer = run_laguna_moe_c1(
+            hidden_buffer.ptr,
+            layer,
+            scratch,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+
+        selected = _read_array(scratch.selected_experts, np.int64, (k,))
+        scaled = _read_array(scratch.scaled_routing_weights, np.float32, (k,))
+        actual = _read_bf16(output_buffer, (1, h))
+        routed_actual = _read_bf16(scratch.routed_output, (1, h))
+        shared_actual = _read_bf16(scratch.shared_output, (1, h))
+
+        gate_tensor = reader.tensor_info(f"blk.{layer_id}.ffn_gate_exps.weight")
+        up_tensor = reader.tensor_info(f"blk.{layer_id}.ffn_up_exps.weight")
+        down_tensor = reader.tensor_info(f"blk.{layer_id}.ffn_down_exps.weight")
+        gate_experts = np.asarray(reader.tensor_data(gate_tensor.name))
+        up_experts = np.asarray(reader.tensor_data(up_tensor.name))
+        down_experts = np.asarray(reader.tensor_data(down_tensor.name))
+        route_outputs = np.empty((k, h), dtype=np.float32)
+        for route, expert in enumerate(selected.tolist()):
+            gate = _bf16_round(
+                gguf_quant_gemv(
+                    hidden,
+                    gate_experts[expert],
+                    GGMLQuantizationType(gate_tensor.ggml_type),
+                )
+            )
+            up = _bf16_round(
+                gguf_quant_gemv(
+                    hidden,
+                    up_experts[expert],
+                    GGMLQuantizationType(up_tensor.ggml_type),
+                )
+            )
+            intermediate = _bf16_round(_silu(gate) * up)
+            route_outputs[route] = _bf16_round(
+                gguf_quant_gemv(
+                    intermediate,
+                    down_experts[expert],
+                    GGMLQuantizationType(down_tensor.ggml_type),
+                )
+            )[0]
+        routed_expected = _bf16_round(
+            np.sum(route_outputs * scaled[:, None], axis=0, dtype=np.float32)[None, :]
+        )
+
+        shared_gate_tensor = reader.tensor_info(f"blk.{layer_id}.ffn_gate_shexp.weight")
+        shared_up_tensor = reader.tensor_info(f"blk.{layer_id}.ffn_up_shexp.weight")
+        shared_down_tensor = reader.tensor_info(f"blk.{layer_id}.ffn_down_shexp.weight")
+        shared_gate = _bf16_round(
+            gguf_quant_gemv(
+                hidden,
+                np.asarray(reader.tensor_data(shared_gate_tensor.name)),
+                GGMLQuantizationType(shared_gate_tensor.ggml_type),
+            )
+        )
+        shared_up = _bf16_round(
+            gguf_quant_gemv(
+                hidden,
+                np.asarray(reader.tensor_data(shared_up_tensor.name)),
+                GGMLQuantizationType(shared_up_tensor.ggml_type),
+            )
+        )
+        shared_intermediate = _bf16_round(_silu(shared_gate) * shared_up)
+        shared_expected = _bf16_round(
+            gguf_quant_gemv(
+                shared_intermediate,
+                np.asarray(reader.tensor_data(shared_down_tensor.name)),
+                GGMLQuantizationType(shared_down_tensor.ggml_type),
+            )
+        )
+        expected = _bf16_round(routed_expected + shared_expected)
+        for candidate, reference in (
+            (routed_actual, routed_expected),
+            (shared_actual, shared_expected),
+            (actual, expected),
+        ):
+            relative_l2 = float(
+                np.linalg.norm(candidate.astype(np.float64) - reference.astype(np.float64))
+                / max(np.linalg.norm(reference.astype(np.float64)), 1.0e-12)
+            )
+            assert relative_l2 <= 0.02
+        assert np.isfinite(actual).all()
+
+        bulk_hidden_bits = np.concatenate(
+            (
+                hidden_bits,
+                _f32_to_bf16_u16(hidden * np.float32(0.75)),
+                _f32_to_bf16_u16(hidden * np.float32(-0.5)),
+            ),
+            axis=0,
+        )
+        bulk_hidden_buffer = malloc(bulk_hidden_bits.nbytes, runtime=runtime)
+        copy_host_to_device(
+            bulk_hidden_buffer,
+            host_array_ptr(bulk_hidden_bits),
+            bulk_hidden_bits.nbytes,
+            runtime=runtime,
+        )
+        bulk_scratch = allocate_laguna_moe_scratch(plan, max_rows=3, runtime=runtime)
+        bulk_output = run_laguna_moe_rows(
+            bulk_hidden_buffer.ptr,
+            layer,
+            bulk_scratch,
+            rows=3,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        bulk_actual = _read_bf16(bulk_output, (3, h))
+        serial_actual = np.empty_like(bulk_actual)
+        for row in range(3):
+            copy_host_to_device(
+                hidden_buffer,
+                host_array_ptr(bulk_hidden_bits[row]),
+                bulk_hidden_bits[row].nbytes,
+                runtime=runtime,
+            )
+            serial_output = run_laguna_moe_c1(
+                hidden_buffer.ptr,
+                layer,
+                scratch,
+                runtime=runtime,
+            )
+            runtime.device_synchronize()
+            serial_actual[row] = _read_bf16(serial_output, (1, h))[0]
+        np.testing.assert_array_equal(
+            _f32_to_bf16_u16(bulk_actual),
+            _f32_to_bf16_u16(serial_actual),
+        )
+    finally:
+        if bulk_scratch is not None:
+            bulk_scratch.free(runtime=runtime)
+        if scratch is not None:
+            scratch.free(runtime=runtime)
+        if bulk_hidden_buffer is not None:
+            free(bulk_hidden_buffer, runtime=runtime)
+        if hidden_buffer is not None:
+            free(hidden_buffer, runtime=runtime)
+        if resident is not None:
+            resident.free(runtime=runtime)
 
 
 class _ArrayReader:
