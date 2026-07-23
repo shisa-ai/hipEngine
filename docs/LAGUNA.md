@@ -2385,6 +2385,21 @@ not matrix prefill as a class.
   reduction schedule, not all precision-preserving matrix designs. Evidence:
   `benchmarks/results/2026-07-23-gfx1151-laguna-f16-wmma-screen.json` and
   `benchmarks/results/2026-07-23-gfx1151-laguna-f16-wmma-category-rejected.json`.
+  Component and full/SWA-family bisection then rejected every direct partial
+  route. A new `wmma_comp_*` leaf computes each K16 matrix partial from zero and
+  Kahan-accumulates those FP32 partials. It keeps the same source bytes and
+  requires no sidecar. M16/M128/M256/M512 CPU-quality passes; M128 uses two RT4
+  row blocks at local128/VGPR152/LDS2048/scratch0. A dirty production-family
+  probe remains **7.289x/7.538x** faster than exact for full/SWA. The all-layer
+  compensated schedule narrowly fails at KL **0.060389**, but one-load
+  component/family bisection finds a principled quality-safe boundary: apply
+  compensated QKV/gate/O only to the 36 SWA layers and leave the 12 full-
+  attention layers exact. Across all ten prompts and 320 teacher-forced steps,
+  this diagnostic reaches maximum KL **0.043888**, top-1 **318/320 (99.375%)**,
+  and **1.2955x** prefill while every broader schedule still fails. Exact tiled
+  remains default. Next, run the compensated production-shape screen from a
+  clean revision, wire an explicit SWA-only quality route, and require the full
+  repeated category/state/KV/E2E/lifecycle gate before promotion.
 - [x] Account for residency explicitly. The candidate directly consumes the
   existing 5.61-GB row-major source-F16 allocations and allocates no persistent
   sidecar; only 4,096/10,240/17,408 B bounded per-block LDS is used at
