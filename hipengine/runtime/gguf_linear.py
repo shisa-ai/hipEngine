@@ -703,6 +703,7 @@ def launch_gguf_linear(
     runtime=None,
     use_wmma_prefill: bool | None = None,
     use_gemv_decode: bool | None = None,
+    registered_variant: str | None = None,
 ) -> None:
     """Launch a GGUF resident linear projection through the kernel registry.
 
@@ -740,6 +741,7 @@ def launch_gguf_linear(
         f_gemv,
         use_wmma,
         f_rowtile,
+        registered_variant,
         bool(_native_batch_decode_session_enabled),
         None if mmq_session is None else id(mmq_session),
     )
@@ -754,6 +756,11 @@ def launch_gguf_linear(
         )
         dispatch = _pack8_decode_dispatch(dispatch, rows=rows, out_features=out_features)
         dispatch = _gemv_decode_dispatch(dispatch, rows=rows, use_gemv_decode=f_gemv)
+        dispatch = _registered_variant_dispatch(
+            dispatch,
+            rows=rows,
+            variant=registered_variant,
+        )
         dispatch = _native_batch_decode_dispatch(dispatch, rows=rows)
         # The small-B row-tile path is the weight-amortized replacement for the
         # per-row (non-WMMA) prefill alias. It does not override an explicit WMMA
@@ -909,6 +916,7 @@ def launch_gguf_linear_pair(
     use_gemv_decode: bool | None = None,
     threads: int = 0,
     registered_decode_only: bool = False,
+    registered_decode_variant: str | None = None,
 ) -> bool:
     """Launch a supported pair of GGUF projections, returning True when fused.
 
@@ -952,6 +960,7 @@ def launch_gguf_linear_pair(
         use_wmma,
         use_gemv,
         bool(registered_decode_only),
+        registered_decode_variant,
     )
     pair_kind = _PAIR_DISPATCH_RESOLVE_CACHE.get(cache_key)
     if pair_kind is None:
@@ -968,6 +977,7 @@ def launch_gguf_linear_pair(
             use_wmma=use_wmma,
             use_gemv=use_gemv,
             registered_decode_only=bool(registered_decode_only),
+            registered_decode_variant=registered_decode_variant,
         )
         _PAIR_DISPATCH_RESOLVE_CACHE[cache_key] = pair_kind
 
@@ -1033,12 +1043,18 @@ def launch_gguf_linear_pair(
     if pair_kind in {
         "registered_raw_decode_pair_equal",
         "registered_raw_decode_pair_unequal",
+        "registered_raw_decode_pair_custom",
     }:
+        pair_variant = (
+            registered_decode_variant
+            if pair_kind == "registered_raw_decode_pair_custom"
+            else f"pack8_gemv_decode_{activation_dtype}_{output_dtype}_out"
+        )
         pair_key = KernelKey(
             resolved_backend,
             "linear_pair",
             weight_a.spec.quant_key,
-            f"pack8_gemv_decode_{activation_dtype}_{output_dtype}_out",
+            pair_variant,
         )
         pair_fn = resolve(
             backend=pair_key.backend,
@@ -1060,7 +1076,10 @@ def launch_gguf_linear_pair(
             in_features,
             out_features,
         )
-        if pair_kind == "registered_raw_decode_pair_unequal":
+        if pair_kind in {
+            "registered_raw_decode_pair_unequal",
+            "registered_raw_decode_pair_custom",
+        }:
             pair_args = (*pair_args, out_features_b)
         pair_fn(*pair_args, **pair_kwargs)
         return True
@@ -1115,6 +1134,7 @@ def _resolve_gguf_linear_pair_kind(
     use_wmma: bool,
     use_gemv: bool,
     registered_decode_only: bool,
+    registered_decode_variant: str | None,
 ) -> str:
     dispatch_a = _pack8_decode_dispatch(
         resolve_gguf_linear_dispatch(
@@ -1183,6 +1203,24 @@ def _resolve_gguf_linear_pair_kind(
         ):
             return "none"
         return "q8_t16_dual_split"
+
+    custom_pair_key = KernelKey(
+        backend,
+        "linear_pair",
+        dispatch_a.key.quant,
+        registered_decode_variant or "",
+    )
+    if (
+        registered_decode_variant is not None
+        and output_dtype == GGUF_OUTPUT_F32
+        and use_gemv
+        and rows == 1
+        and dispatch_a.abi == "raw"
+        and dispatch_b.abi == "raw"
+        and dispatch_a.key == dispatch_b.key
+        and is_registered(custom_pair_key)
+    ):
+        return "registered_raw_decode_pair_custom"
 
     registered_pair_key = KernelKey(
         backend,
@@ -1716,6 +1754,27 @@ def _gemv_decode_dispatch(
         # ABI does not match the GGUF launcher.
         return dispatch
     return GGUFLinearDispatch(rewritten_key, dispatch.abi)
+
+
+def _registered_variant_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    rows: int,
+    variant: str | None,
+) -> GGUFLinearDispatch:
+    """Resolve an explicit same-ABI four-axis sibling or retain the default."""
+
+    if variant is None or rows != 1 or dispatch.abi != "raw":
+        return dispatch
+    key = KernelKey(
+        dispatch.key.backend,
+        dispatch.key.layer,
+        dispatch.key.quant,
+        variant,
+    )
+    if not is_registered(key):
+        return dispatch
+    return GGUFLinearDispatch(key, dispatch.abi)
 
 
 def _native_batch_decode_dispatch(

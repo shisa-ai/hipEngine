@@ -446,8 +446,12 @@ def test_laguna_projection_dispatches_by_resident_layout(monkeypatch) -> None:
         4,
         8,
         libraries=libraries,
+        registered_variant="wave32x2_gemv_decode_bf16_bf16_out",
     )
     assert calls[-1][1][1]["use_gemv_decode"] is True
+    assert calls[-1][1][1]["registered_variant"] == (
+        "wave32x2_gemv_decode_bf16_bf16_out"
+    )
 
     with pytest.raises(ValueError, match="resident layout"):
         runner_module.launch_laguna_weight_linear(
@@ -508,6 +512,7 @@ def test_laguna_attention_projection_pairs_are_decode_only_and_fail_closed(
         stream=7,
         libraries=libraries,
         runtime="runtime-sentinel",
+        query_gate_decode_variant="wave32x2_gemv_decode_bf16_f32_out",
     )
     assert [name for name, _ in calls] == ["pair", "pair"]
     qg_args, qg_kwargs = calls[0][1]
@@ -515,12 +520,16 @@ def test_laguna_attention_projection_pairs_are_decode_only_and_fail_closed(
     assert qg_kwargs["out_features_b"] == 72
     assert qg_kwargs["output_dtype"] == "f32"
     assert qg_kwargs["registered_decode_only"] is True
+    assert qg_kwargs["registered_decode_variant"] == (
+        "wave32x2_gemv_decode_bf16_f32_out"
+    )
     assert qg_kwargs["libraries"] is libraries.linear
     kv_args, kv_kwargs = calls[1][1]
     assert kv_args == (k_weight, v_weight, 10, 30, 40, 1, 3072, 1024)
     assert kv_kwargs["out_features_b"] == 1024
     assert kv_kwargs["output_dtype"] == "f32"
     assert kv_kwargs["registered_decode_only"] is True
+    assert kv_kwargs.get("registered_decode_variant") is None
     assert kv_kwargs["libraries"] is libraries.linear
 
     calls.clear()
