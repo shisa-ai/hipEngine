@@ -502,16 +502,10 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
         repacked_cache="/synthetic/laguna-repacked-v1",
         model_sha256="synthetic-sha256",
         safety_reserve_nbytes=4 * 2**30,
-        selected_gate_up_mode="fused_silu",
     )
     assert session.prefill_chunk_size == 128
-    assert session.selected_gate_up_mode == "fused_silu"
     assert session.swa_prefill_variant == "swa_context_rows_wave32_exact_spans"
     assert session.verifier_scratch is None
-    session.set_selected_gate_up_mode("split")
-    assert session.selected_gate_up_mode == "split"
-    with pytest.raises(ValueError, match="HIPENGINE_LAGUNA_SELECTED_GATE_UP"):
-        session.set_selected_gate_up_mode("invalid")
     session.close()
     session.close()
 
