@@ -1360,3 +1360,87 @@ def test_wmma_prefill_pair_still_fuses_q4_k_pack8_dual_prefill() -> None:
         gl.gguf_q4_k_pack8_dual_prefill_bf16_bf16_out = original  # type: ignore[assignment]
     assert fused is True
     assert len(pair_calls) == 1
+
+
+def test_registered_q5_decode_pair_is_exact_scope_and_falls_back() -> None:
+    weight_a = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q5_k")
+    weight_b = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q5_k")
+    pair_key = KernelKey(
+        "hip_gfx1100",
+        "linear_pair",
+        "gguf_q5_k",
+        "pack8_gemv_decode_bf16_bf16_out",
+    )
+    original = resolve(
+        backend=pair_key.backend,
+        layer=pair_key.layer,
+        quant=pair_key.quant,
+        variant=pair_key.variant,
+    )
+    calls: list[tuple[tuple, dict]] = []
+
+    def fake_pair(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    register(pair_key, fake_pair, replace=True)
+    try:
+        assert launch_gguf_linear_pair(
+            weight_a,
+            weight_b,
+            x_ptr=100,
+            out_a_ptr=200,
+            out_b_ptr=300,
+            rows=1,
+            in_features=3072,
+            out_features=1024,
+            use_wmma_prefill=False,
+            use_gemv_decode=True,
+            registered_decode_only=True,
+        )
+        assert not launch_gguf_linear_pair(
+            weight_a,
+            weight_b,
+            x_ptr=100,
+            out_a_ptr=200,
+            out_b_ptr=300,
+            rows=2,
+            in_features=3072,
+            out_features=1024,
+            use_wmma_prefill=False,
+            use_gemv_decode=True,
+            registered_decode_only=True,
+        )
+        assert not launch_gguf_linear_pair(
+            weight_a,
+            weight_b,
+            x_ptr=100,
+            out_a_ptr=200,
+            out_b_ptr=300,
+            rows=1,
+            in_features=3072,
+            out_features=1024,
+            out_features_b=2048,
+            use_wmma_prefill=False,
+            use_gemv_decode=True,
+            registered_decode_only=True,
+        )
+        assert not launch_gguf_linear_pair(
+            weight_a,
+            weight_b,
+            x_ptr=100,
+            out_a_ptr=200,
+            out_b_ptr=300,
+            rows=1,
+            in_features=3072,
+            out_features=1024,
+            use_wmma_prefill=False,
+            use_gemv_decode=False,
+            registered_decode_only=True,
+        )
+    finally:
+        register(pair_key, original, replace=True)
+
+    assert len(calls) == 1
+    args, kwargs = calls[0]
+    assert args == (100, 10, 10, 200, 300, 1, 3072, 1024)
+    assert kwargs["stream"] == 0

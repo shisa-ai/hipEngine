@@ -20,6 +20,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     gguf_q5_k_pack8_gemv_bf16_f32_out,
     gguf_q5_k_pack8_gemv_decode_bf16_bf16_out,
     gguf_q5_k_pack8_gemv_decode_bf16_f32_out,
+    gguf_q5_k_pair_pack8_gemv_decode_bf16_bf16_out,
     register_gguf_k_gemv_kernels,
 )
 from hipengine.kernels.registry import resolve
@@ -79,6 +80,12 @@ def test_q5_k_pack8_decode_registry_keys_resolve() -> None:
     register_gguf_k_gemv_kernels()
     assert resolve(
         backend="hip_gfx1100",
+        layer="linear_pair",
+        quant="gguf_q5_k",
+        variant="pack8_gemv_decode_bf16_bf16_out",
+    ) is gguf_q5_k_pair_pack8_gemv_decode_bf16_bf16_out
+    assert resolve(
+        backend="hip_gfx1100",
         layer="linear",
         quant="gguf_q5_k",
         variant="pack8_gemv_decode_bf16_bf16_out",
@@ -92,6 +99,17 @@ def test_q5_k_pack8_decode_registry_keys_resolve() -> None:
 
 
 def test_q5_k_pack8_decode_wrapper_rejects_unaligned_shape() -> None:
+    with pytest.raises(ValueError, match="divisible by 8"):
+        gguf_q5_k_pair_pack8_gemv_decode_bf16_bf16_out(
+            1,
+            2,
+            3,
+            4,
+            5,
+            rows=1,
+            in_features=256,
+            out_features=7,
+        )
     with pytest.raises(ValueError, match="divisible by 8"):
         gguf_q5_k_pack8_gemv_decode_bf16_bf16_out(
             1,
@@ -145,3 +163,59 @@ def test_q5_k_pack8_decode_is_bit_exact_to_existing_raw_pack8(
 
     np.testing.assert_array_equal(actual_bf16, baseline_bf16)
     np.testing.assert_array_equal(actual_f32, baseline_f32)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_q5_k_pack8_decode_pair_is_bit_exact_to_two_singletons() -> None:
+    rows, in_features, out_features = 1, 3072, 1024
+    rng = np.random.default_rng(20260724)
+    x = _f32_to_bf16_u16(rng.normal(0.0, 0.2, size=(rows, in_features)))
+    qweight_a = make_q5_k_weight(out_features, in_features)
+    qweight_b = np.roll(qweight_a, 17, axis=0).copy()
+    library = build_gguf_k_gemv(load=True)
+
+    expected_a = _run(
+        gguf_q5_k_pack8_gemv_decode_bf16_bf16_out,
+        x,
+        qweight_a,
+        out_dtype=np.uint16,
+        library=library,
+    )
+    expected_b = _run(
+        gguf_q5_k_pack8_gemv_decode_bf16_bf16_out,
+        x,
+        qweight_b,
+        out_dtype=np.uint16,
+        library=library,
+    )
+
+    x_buf = malloc(x.nbytes)
+    qweight_a_buf = malloc(qweight_a.nbytes)
+    qweight_b_buf = malloc(qweight_b.nbytes)
+    actual_a = np.empty((rows, out_features), dtype=np.uint16)
+    actual_b = np.empty((rows, out_features), dtype=np.uint16)
+    actual_a_buf = malloc(actual_a.nbytes)
+    actual_b_buf = malloc(actual_b.nbytes)
+    try:
+        copy_host_to_device(x_buf, host_array_ptr(x), x.nbytes)
+        copy_host_to_device(qweight_a_buf, host_array_ptr(qweight_a), qweight_a.nbytes)
+        copy_host_to_device(qweight_b_buf, host_array_ptr(qweight_b), qweight_b.nbytes)
+        gguf_q5_k_pair_pack8_gemv_decode_bf16_bf16_out(
+            x_buf.ptr,
+            qweight_a_buf.ptr,
+            qweight_b_buf.ptr,
+            actual_a_buf.ptr,
+            actual_b_buf.ptr,
+            rows,
+            in_features,
+            out_features,
+            library=library,
+        )
+        copy_device_to_host(host_array_ptr(actual_a), actual_a_buf, actual_a.nbytes)
+        copy_device_to_host(host_array_ptr(actual_b), actual_b_buf, actual_b.nbytes)
+    finally:
+        for buffer in (actual_b_buf, actual_a_buf, qweight_b_buf, qweight_a_buf, x_buf):
+            free(buffer)
+
+    np.testing.assert_array_equal(actual_a, expected_a)
+    np.testing.assert_array_equal(actual_b, expected_b)
