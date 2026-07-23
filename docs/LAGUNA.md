@@ -2736,9 +2736,10 @@ The explicit all-shape candidate has max KL **0.017681** but only **18/21
 (85.714%)** top-1 because M122 differs in all three repeats. The shape-qualified
 M128+ policy excludes that failure: M128/M256/M512 are finite at max KL
 **0.001725**, top-1 **9/9**, exact cursor, deterministic logits/hidden/KV state,
-and exact lifecycle. Therefore only an adaptive route with retained exact
-fallback below 128 is admitted to the complete category gate; the public default
-is unchanged. The initial evaluator's all-shape top-1 rejection was repaired by
+and exact lifecycle. Therefore `adaptive_expert_major_wmma_comp` selects the
+candidate only at M128+ and retains the exact grouped route below it for the
+complete category gate; the public default is unchanged. The initial evaluator's
+all-shape top-1 rejection was repaired by
 applying quality to candidate-selected shapes without changing any measurement
 (`97564550b`). Evidence:
 `benchmarks/results/2026-07-24-gfx1151-laguna-expert-major-wmma-screen.json`.
