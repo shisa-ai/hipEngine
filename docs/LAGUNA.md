@@ -1906,6 +1906,19 @@ the raw trace has SHA-256 `7ca2217d...313ea5`. This is a one-pass attribution
 baseline, not a speedup or supported long-context throughput claim. Evidence:
 `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-lpf5-long-context-profile.json`.
 
+The first LPF-5 candidate is separately registered and not yet default. The
+wave32-exact SWA body maps four dimensions per lane and reconstructs the
+baseline 128-thread stride-64/32/16..1 dot-product tree before preserving the
+same sequential max, denominator, and value accumulation. It consumes the same
+complete ring `KVLiveSpans` and removes all per-token block barriers without
+changing arithmetic. The 508..515 wrap/eviction fixture is F32 byte-exact to
+both baseline bulk and scalar attention. A ten-pair directional leaf screen at
+128 rows / 512 live tokens moves **20.434 -> 9.229 ms (2.214x)**; cached tracing
+names the candidate at **9.123 ms**, 32 threads, 32 VGPR, zero LDS/scratch versus
+baseline **20.355 ms**, 128 threads, 16 VGPR, 1,024 B LDS, zero scratch. This
+ranks the candidate for the clean full-model 512/1K/4K A/B; baseline remains
+default until that gate passes.
+
 Every LPF candidate is a registered variant with the current exact chain as its
 unfused rollback. Exact candidates pass byte comparison on lengths
 1/2/7/55/65 plus the affected tile/chunk boundaries. Reassociated GEMM/WMMA

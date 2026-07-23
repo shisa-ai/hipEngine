@@ -28,6 +28,24 @@ __device__ inline uint16_t laguna_float_to_bf16_bits(float value) {
   return static_cast<uint16_t>(in.u32 >> 16);
 }
 
+__device__ __forceinline__ float laguna_ordered_mul_f32(float lhs, float rhs) {
+  float product;
+  asm volatile(
+      "v_mul_f32_e32 %[product], %[lhs], %[rhs]"
+      : [product] "=v"(product)
+      : [lhs] "v"(lhs), [rhs] "v"(rhs));
+  return product;
+}
+
+__device__ __forceinline__ float laguna_ordered_add_f32(float lhs, float rhs) {
+  float result;
+  asm volatile(
+      "v_add_f32_e32 %[result], %[lhs], %[rhs]"
+      : [result] "=v"(result)
+      : [lhs] "v"(lhs), [rhs] "v"(rhs));
+  return result;
+}
+
 __device__ inline int64_t laguna_global_physical_slot(
     const int32_t* base_offsets,
     int64_t logical_slot,
@@ -744,6 +762,167 @@ __global__ __launch_bounds__(128) void laguna_swa_attention_prefill_bf16_kernel(
   out[q_offset + dim] = output_acc / fmaxf(shared_denom, 1.0e-20f);
 }
 
+__device__ __forceinline__ float laguna_wave32_sum_128_exact(
+    float product_0,
+    float product_32,
+    float product_64,
+    float product_96) {
+  // Match the baseline 128-thread shared tree: stride 64 pairs 0+64 and
+  // 32+96, stride 32 combines those pairs, then one wave finishes 16..1.
+  float sum = laguna_ordered_add_f32(
+      laguna_ordered_add_f32(product_0, product_64),
+      laguna_ordered_add_f32(product_32, product_96));
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    sum = laguna_ordered_add_f32(sum, __shfl_down(sum, offset));
+  }
+  return sum;
+}
+
+__global__ __launch_bounds__(32) void laguna_swa_attention_prefill_wave32_exact_bf16_kernel(
+    const float* query,
+    const float* current_key,
+    const float* current_value,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* out,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t rows,
+    int64_t capacity,
+    int64_t sliding_window,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale) {
+  const int64_t query_row = static_cast<int64_t>(blockIdx.y);
+  const int64_t q_head = static_cast<int64_t>(blockIdx.x);
+  const int64_t lane = static_cast<int64_t>(threadIdx.x);
+  if (query_row >= rows || q_head >= num_q_heads || lane >= 32) return;
+
+  const int64_t start_position = row_positions[0];
+  const int64_t query_position = start_position + query_row;
+  const int64_t prior_live_count = live_counts[0];
+  const int64_t query_live_count =
+      query_position + 1 < capacity ? query_position + 1 : capacity;
+  const int64_t live_count =
+      prior_live_count > query_live_count ? prior_live_count : query_live_count;
+  const int64_t q_group = num_q_heads / num_kv_heads;
+  const int64_t kv_head = q_head / q_group;
+  const int64_t q_offset = (query_row * num_q_heads + q_head) * head_dim;
+  const int64_t scan_slots = live_count < capacity ? live_count : capacity;
+  const int64_t start_slot = start_position % capacity;
+  if (live_count <= 0 || start_position < 0 || query_position < start_position) {
+#pragma unroll
+    for (int part = 0; part < 4; ++part) {
+      out[q_offset + lane + part * 32] = 0.0f;
+    }
+    return;
+  }
+
+  float max_score = -3.4028234663852886e38f;
+  for (int64_t logical_slot = 0; logical_slot < scan_slots; ++logical_slot) {
+    int64_t current_row = logical_slot - start_slot;
+    if (current_row < 0) current_row += capacity;
+    const bool from_current = current_row <= query_row && current_row < rows;
+    const int64_t key_position = from_current
+        ? start_position + current_row
+        : token_positions[logical_slot];
+    const bool visible = (from_current || evict_mask[logical_slot] == 0) &&
+                         key_position >= 0 && key_position <= query_position &&
+                         key_position > query_position - sliding_window;
+    if (!visible) continue;
+    const int64_t physical_slot = static_cast<int64_t>(base_offsets[logical_slot]);
+    const bool physical_valid =
+        from_current || (physical_slot >= 0 && physical_slot < capacity);
+    const int64_t key_base = from_current
+        ? (current_row * num_kv_heads + kv_head) * head_dim
+        : (physical_slot * num_kv_heads + kv_head) * head_dim;
+    float products[4];
+#pragma unroll
+    for (int part = 0; part < 4; ++part) {
+      const int64_t dim = lane + part * 32;
+      const float key_value = from_current
+          ? laguna_bf16_bits_to_float(
+                laguna_float_to_bf16_bits(current_key[key_base + dim]))
+          : (physical_valid
+                 ? laguna_bf16_bits_to_float(key_cache[key_base + dim])
+                 : 0.0f);
+      products[part] = physical_valid
+          ? laguna_ordered_mul_f32(query[q_offset + dim], key_value)
+          : 0.0f;
+    }
+    const float dot = laguna_wave32_sum_128_exact(
+        products[0], products[1], products[2], products[3]);
+    if (lane == 0 && physical_valid) {
+      max_score = fmaxf(max_score, dot * scale);
+    }
+  }
+  max_score = __shfl(max_score, 0);
+
+  float denominator = 0.0f;
+  float output_acc[4] = {};
+  for (int64_t logical_slot = 0; logical_slot < scan_slots; ++logical_slot) {
+    int64_t current_row = logical_slot - start_slot;
+    if (current_row < 0) current_row += capacity;
+    const bool from_current = current_row <= query_row && current_row < rows;
+    const int64_t key_position = from_current
+        ? start_position + current_row
+        : token_positions[logical_slot];
+    const bool visible = (from_current || evict_mask[logical_slot] == 0) &&
+                         key_position >= 0 && key_position <= query_position &&
+                         key_position > query_position - sliding_window;
+    if (!visible) continue;
+    const int64_t physical_slot = static_cast<int64_t>(base_offsets[logical_slot]);
+    const bool physical_valid =
+        from_current || (physical_slot >= 0 && physical_slot < capacity);
+    const int64_t kv_base = from_current
+        ? (current_row * num_kv_heads + kv_head) * head_dim
+        : (physical_slot * num_kv_heads + kv_head) * head_dim;
+    float products[4];
+#pragma unroll
+    for (int part = 0; part < 4; ++part) {
+      const int64_t dim = lane + part * 32;
+      const float key_value = from_current
+          ? laguna_bf16_bits_to_float(
+                laguna_float_to_bf16_bits(current_key[kv_base + dim]))
+          : (physical_valid
+                 ? laguna_bf16_bits_to_float(key_cache[kv_base + dim])
+                 : 0.0f);
+      products[part] = physical_valid
+          ? laguna_ordered_mul_f32(query[q_offset + dim], key_value)
+          : 0.0f;
+    }
+    const float dot = laguna_wave32_sum_128_exact(
+        products[0], products[1], products[2], products[3]);
+    float weight = 0.0f;
+    if (lane == 0) {
+      weight = physical_valid ? expf(dot * scale - max_score) : 0.0f;
+      denominator += weight;
+    }
+    weight = __shfl(weight, 0);
+    if (physical_valid) {
+#pragma unroll
+      for (int part = 0; part < 4; ++part) {
+        const int64_t dim = lane + part * 32;
+        const float value = from_current
+            ? laguna_bf16_bits_to_float(
+                  laguna_float_to_bf16_bits(current_value[kv_base + dim]))
+            : laguna_bf16_bits_to_float(value_cache[kv_base + dim]);
+        output_acc[part] += weight * value;
+      }
+    }
+  }
+  denominator = __shfl(denominator, 0);
+  const float safe_denominator = fmaxf(denominator, 1.0e-20f);
+#pragma unroll
+  for (int part = 0; part < 4; ++part) {
+    out[q_offset + lane + part * 32] = output_acc[part] / safe_denominator;
+  }
+}
+
 }  // namespace
 
 extern "C" int hipengine_laguna_global_write_kv_f32_bf16_spans(
@@ -1072,6 +1251,58 @@ extern "C" int hipengine_laguna_swa_attention_decode_bf16_spans(
       token_positions,
       evict_mask,
       row_positions,
+      capacity,
+      sliding_window,
+      num_q_heads,
+      num_kv_heads,
+      head_dim,
+      scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_laguna_swa_attention_prefill_wave32_exact_bf16_spans(
+    const float* query,
+    const float* current_key,
+    const float* current_value,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* out,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t rows,
+    int64_t capacity,
+    int64_t sliding_window,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream) {
+  if (rows <= 0 || rows > capacity || capacity <= 0 || sliding_window <= 0 ||
+      sliding_window > capacity || num_q_heads <= 0 || num_kv_heads <= 0 ||
+      num_q_heads % num_kv_heads != 0 || head_dim != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      laguna_swa_attention_prefill_wave32_exact_bf16_kernel,
+      dim3(static_cast<unsigned int>(num_q_heads), static_cast<unsigned int>(rows)),
+      dim3(32),
+      0,
+      stream,
+      query,
+      current_key,
+      current_value,
+      key_cache,
+      value_cache,
+      out,
+      base_offsets,
+      live_counts,
+      token_positions,
+      evict_mask,
+      row_positions,
+      rows,
       capacity,
       sliding_window,
       num_q_heads,
