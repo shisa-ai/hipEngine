@@ -192,6 +192,127 @@ def test_llm_generate_detailed_preserves_exact_token_prompt_rows(monkeypatch) ->
     assert calls["request"].prompt_input_kind == "token_ids"
 
 
+def test_llm_attaches_explicit_speculative_provider_without_changing_default_route(
+    monkeypatch,
+) -> None:
+    import hipengine.generation as generation
+    import hipengine.loading as loading
+    import hipengine.models as models
+    import hipengine.speculative.registry as speculative_registry
+    from hipengine.generation import GenerationOutput
+    from hipengine.speculative.registry import (
+        SpeculativeProviderKey,
+        register_speculative_provider,
+    )
+
+    events: list[object] = []
+
+    class FakeProvider:
+        provider_name = "test_dflash"
+
+        def generate_detailed(self, request: GenerationRequest):
+            events.append(("spec_generate", request.prompts))
+            return [GenerationOutput(text=f"spec:{prompt}") for prompt in request.prompts]
+
+        def stream_detailed(self, request: GenerationRequest):
+            events.append(("spec_stream", request.prompts))
+            yield GenerationStreamChunk(text="spec-stream")
+
+        def capabilities(self):
+            return {"provider": self.provider_name, "candidate_budget": 4}
+
+        def close(self) -> None:
+            events.append("provider_close")
+
+    class FakeGenerator:
+        def __init__(self) -> None:
+            self.provider = None
+
+        def attach_speculative_provider(self, provider) -> None:
+            self.provider = provider
+            events.append("attached")
+
+        @property
+        def supports_speculative(self) -> bool:
+            return self.provider is not None
+
+        def speculative_capabilities(self):
+            return {} if self.provider is None else self.provider.capabilities()
+
+        def generate_speculative_detailed(self, request: GenerationRequest):
+            return self.provider.generate_detailed(request)
+
+        def stream_speculative_detailed(self, request: GenerationRequest):
+            return self.provider.stream_detailed(request)
+
+        def generate(self, request: GenerationRequest) -> list[str]:
+            events.append(("ar_generate", request.prompts))
+            return [f"ar:{prompt}" for prompt in request.prompts]
+
+        def close(self) -> None:
+            if self.provider is not None:
+                self.provider.close()
+            events.append("generator_close")
+
+    fake_index = SimpleNamespace(
+        config={"architectures": ["FakeSpecForCausalLM"]},
+        model_path="/tmp/fake-model",
+    )
+    fake_plugin = SimpleNamespace(name="fake_spec_model")
+    monkeypatch.setattr(generation, "register_builtin_generators", lambda: None)
+    monkeypatch.setattr(loading, "load_weight_index", lambda model: fake_index)
+    monkeypatch.setattr(models, "resolve_model", lambda architecture: fake_plugin)
+    monkeypatch.setattr(
+        speculative_registry,
+        "register_builtin_speculative_providers",
+        lambda: None,
+    )
+    register_text_generator(
+        model="fake_spec_model",
+        backend="fake_backend",
+        quant="fake_quant",
+        factory=lambda **kwargs: FakeGenerator(),
+        replace=True,
+    )
+    register_speculative_provider(
+        SpeculativeProviderKey(
+            "test_dflash",
+            "fake_spec_model",
+            "fake_backend",
+            "fake_quant",
+        ),
+        lambda *, target_generator, config: FakeProvider(),
+        replace=True,
+    )
+
+    llm = LLM(
+        "/tmp/fake-model",
+        backend="fake_backend",
+        quant="fake_quant",
+        speculative_provider="test_dflash",
+        draft_model="/tmp/fake-drafter",
+        speculative_candidate_budget=4,
+    )
+
+    assert llm.generate("one", SamplingParams(max_tokens=1)) == ["ar:one"]
+    assert [item.text for item in llm.generate_speculative_detailed("two", SamplingParams(max_tokens=1))] == [
+        "spec:two"
+    ]
+    assert [item.text for item in llm.stream_speculative_detailed("three", SamplingParams(max_tokens=1))] == [
+        "spec-stream"
+    ]
+    assert llm.supports_speculative is True
+    assert llm.speculative_capabilities == {
+        "provider": "test_dflash",
+        "candidate_budget": 4,
+    }
+    llm.close()
+
+    assert events[0] == "attached"
+    assert ("ar_generate", ("one",)) in events
+    assert events[-2:] == ["provider_close", "generator_close"]
+
+
 def test_generation_request_rejects_invalid_token_prompt_rows() -> None:
     import pytest
 

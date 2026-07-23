@@ -167,15 +167,38 @@ class LLM:
         quant: str = AUTO_QUANT,
         max_active_requests: int | None = None,
         prefix_cache: str | None = None,
+        speculative_provider: str | None = None,
+        draft_model: str | None = None,
+        speculative_candidate_budget: int = 4,
     ) -> None:
         if max_active_requests is not None and int(max_active_requests) <= 0:
             raise ValueError("max_active_requests must be positive when set")
+        provider = (
+            None
+            if speculative_provider is None
+            else str(speculative_provider).strip()
+        )
+        drafter = None if draft_model is None else str(draft_model).strip()
+        if provider == "":
+            raise ValueError("speculative_provider must be non-empty when set")
+        if drafter == "":
+            raise ValueError("draft_model must be non-empty when set")
+        if provider is None and drafter is not None:
+            raise ValueError("draft_model requires speculative_provider")
+        if provider is not None and drafter is None:
+            raise ValueError("speculative_provider requires draft_model")
+        candidate_budget = int(speculative_candidate_budget)
+        if candidate_budget <= 0:
+            raise ValueError("speculative_candidate_budget must be positive")
         self.model = model
         self.backend = backend
         self.quant = quant
         self.max_active_requests = (
             None if max_active_requests is None else int(max_active_requests)
         )
+        self.speculative_provider = provider
+        self.draft_model = drafter
+        self.speculative_candidate_budget = candidate_budget
         if prefix_cache is None:
             self.prefix_cache = None
         else:
@@ -257,6 +280,101 @@ class LLM:
         if supports is not None and not bool(supports):
             return False
         return callable(getattr(generator, "generate_speculative_mtp_detailed", None))
+
+    def generate_speculative_detailed(
+        self,
+        prompts: Any,
+        sampling_params: SamplingParams | None = None,
+    ):
+        """Return output through the explicitly configured speculative provider."""
+
+        from hipengine.generation import GenerationOutput
+
+        prompt_tuple = _normalize_prompts(prompts)
+        if not prompt_tuple:
+            return []
+        generator = self._get_text_generator()
+        supports = getattr(generator, "supports_speculative", None)
+        detailed = getattr(generator, "generate_speculative_detailed", None)
+        if supports is not None and not bool(supports):
+            raise NotImplementedError(
+                "speculative generation is not supported by this generator"
+            )
+        if not callable(detailed):
+            raise NotImplementedError(
+                "speculative generation is not supported by this generator"
+            )
+        request = _generation_request(
+            prompt_tuple,
+            sampling_params or SamplingParams(),
+        )
+        outputs = list(detailed(request))
+        if len(outputs) != len(prompt_tuple):
+            raise RuntimeError(
+                f"generator returned {len(outputs)} speculative outputs for "
+                f"{len(prompt_tuple)} prompts"
+            )
+        return [
+            output
+            if isinstance(output, GenerationOutput)
+            else GenerationOutput(text=str(output))
+            for output in outputs
+        ]
+
+    def stream_speculative_detailed(
+        self,
+        prompt: Any,
+        sampling_params: SamplingParams | None = None,
+    ):
+        """Yield chunks through the explicitly configured speculative provider."""
+
+        from hipengine.generation import GenerationStreamChunk
+        from hipengine.generation.registry import normalize_prompt_input
+
+        generator = self._get_text_generator()
+        supports = getattr(generator, "supports_speculative", None)
+        streamer = getattr(generator, "stream_speculative_detailed", None)
+        if supports is not None and not bool(supports):
+            raise NotImplementedError(
+                "speculative streaming is not supported by this generator"
+            )
+        if not callable(streamer):
+            raise NotImplementedError(
+                "speculative streaming is not supported by this generator"
+            )
+        request = _generation_request(
+            (normalize_prompt_input(prompt),),
+            sampling_params or SamplingParams(),
+        )
+        for chunk in streamer(request):
+            yield GenerationStreamChunk.from_value(chunk)
+
+    @property
+    def supports_speculative(self) -> bool:
+        """Whether an explicit public speculative provider is attached."""
+
+        generator = self._text_generator
+        if generator is None:
+            return False
+        supports = getattr(generator, "supports_speculative", None)
+        if supports is not None and not bool(supports):
+            return False
+        return callable(getattr(generator, "generate_speculative_detailed", None))
+
+    @property
+    def speculative_capabilities(self) -> dict[str, Any]:
+        """Return truthful provider metadata without loading model weights."""
+
+        if self.speculative_provider is None:
+            return {}
+        generator = self._get_text_generator()
+        capabilities = getattr(generator, "speculative_capabilities", None)
+        if not callable(capabilities):
+            return {}
+        payload = capabilities()
+        if not isinstance(payload, Mapping):
+            raise TypeError("speculative_capabilities must return a mapping")
+        return dict(payload)
 
     def stream(
         self,
@@ -484,6 +602,37 @@ class LLM:
             weight_index=weight_index,
             model_plugin=model_plugin,
         )
+        if self.speculative_provider is not None:
+            from hipengine.speculative.registry import (
+                SpeculativeProviderConfig,
+                register_builtin_speculative_providers,
+                resolve_speculative_provider,
+            )
+
+            register_builtin_speculative_providers()
+            provider_factory = resolve_speculative_provider(
+                provider=self.speculative_provider,
+                target_model=model_plugin.name,
+                backend=backend,
+                quant=quant,
+            )
+            provider = provider_factory(
+                target_generator=generator,
+                config=SpeculativeProviderConfig(
+                    provider=self.speculative_provider,
+                    draft_model=self.draft_model or "",
+                    candidate_budget=self.speculative_candidate_budget,
+                ),
+            )
+            attach = getattr(generator, "attach_speculative_provider", None)
+            if not callable(attach):
+                closer = getattr(provider, "close", None)
+                if callable(closer):
+                    closer()
+                raise TypeError(
+                    "registered target generator cannot attach a speculative provider"
+                )
+            attach(provider)
         loop_config = _engine_loop_config_with_generator_defaults(
             engine_loop_config_from_env(),
             generator,

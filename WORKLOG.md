@@ -175765,3 +175765,51 @@ not hidden, and no prompt/category/token-specific routing is allowed.
 `docs/LAGUNA.md` now records the exact ownership, hash, stop, capability, and RED
 matrix required for implementation. This is an architecture audit only; no D5
 support claim or performance measurement is made yet.
+
+## 2026-07-23 — Add the Laguna DFlash library provider boundary
+
+Implemented the first D5 logical unit without changing target-only defaults.
+`hipengine.speculative.registry` now resolves a concrete provider key across
+provider, target model, backend, and quant. `LLM` accepts explicit
+`speculative_provider`, `draft_model`, and fixed candidate-budget configuration,
+then exposes provider-neutral blocking/streaming detailed methods. A normal
+`generate()` call still uses the base target generator.
+
+The registered `(dflash, laguna_gguf, hip_gfx1151, gguf_q4_k_m)` adapter:
+
+- requires B4 and validates the source-bound target cache SHA plus pinned
+  content-addressed drafter blob/revision before allocation;
+- lazily retains one target session, drafter, and fixed B+1 cycle, then resets
+  both request states before and after every blocking/streaming request;
+- preserves AR stop/EOS/output-limit text and cumulative-ID semantics, discards
+  unobservable staged suffixes at request reset, and closes cycle -> drafter ->
+  target session -> target weights;
+- fails closed before load on processed/sampled/custom-EOS/non-BF16 requests;
+- reports explicit-only policy, both model identities, B4, target-corrected
+  greedy exactness, the 0.9469x D4 fallback reason/evidence, and no performance
+  claim in capabilities and per-request telemetry.
+
+The target materializer now receives the provider-bound source SHA so opening the
+sibling repacked cache validates the claimed identity against the current GGUF.
+The generic registry and LLM attachment have synthetic RED/GREEN coverage; the
+adapter's fake resident cycle covers blocking/streaming parity, EOT suppression,
+reset counts, pre-load rejection, telemetry, and close order. `docs/PLAN.md`
+marks DFlash partial rather than research-only. OpenAI routing remains the next
+D5 unit; no live GPU support claim is made by this commit.
+
+Validation:
+
+```bash
+uv run pytest -q tests/test_speculative_provider_registry.py \
+  tests/test_generation_laguna_dflash.py \
+  tests/test_generation_laguna_gguf.py tests/test_llm_generate.py
+# 38 passed
+uvx ruff check hipengine/speculative/{__init__,registry}.py \
+  hipengine/generation/{laguna_dflash,laguna_gguf}.py hipengine/llm.py \
+  tests/test_speculative_provider_registry.py \
+  tests/test_generation_laguna_dflash.py \
+  tests/test_generation_laguna_gguf.py tests/test_llm_generate.py
+python3 -m compileall -q hipengine/generation/laguna_dflash.py \
+  hipengine/speculative/registry.py hipengine/llm.py
+# clean
+```

@@ -63,6 +63,16 @@ from hipengine.speculative.mtp import (
     compile_mtp_chain,
 )
 from hipengine.speculative.mtp_native import NativeMtpChainProposer, NativeMtpStateSnapshot, NativeMtpStepResult
+from hipengine.speculative.registry import (
+    SpeculativeProviderConfig,
+    SpeculativeProviderFactory,
+    SpeculativeProviderKey,
+    SpeculativeTextProvider,
+    register_builtin_speculative_providers,
+    register_speculative_provider,
+    registered_speculative_providers,
+    resolve_speculative_provider,
+)
 from hipengine.speculative.verify_graph import (
     DFlashVerifyGraphAddresses,
     DFlashVerifyGraphBucketKey,
@@ -151,6 +161,14 @@ from hipengine.speculative.ladder import (
 
 __all__ = [
     "AdaptiveBudgetConfig",
+    "SpeculativeProviderConfig",
+    "SpeculativeProviderFactory",
+    "SpeculativeProviderKey",
+    "SpeculativeTextProvider",
+    "register_builtin_speculative_providers",
+    "register_speculative_provider",
+    "registered_speculative_providers",
+    "resolve_speculative_provider",
     "AdaptiveBudgetController",
     "AdaptiveBudgetDecision",
     "TargetVerifyBufferOwner",
