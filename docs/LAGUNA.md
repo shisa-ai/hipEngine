@@ -2706,6 +2706,20 @@ improves **2.63%/2.00%/1.82%/1.17%**, and profiled child throughput improves
 promoting the D7 headline above. Evidence:
 `benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-q6-attention-pair-retained.json`.
 
+The code-identical D7 residual analysis ranks Q5 attention output, selected IQ2
+dual+SiLU, retained Q5 query/gate, weighted IQ3 down, and token4 SWA at
+**2.646/2.317/2.171/2.134/2.119 ms/token**. The first family contains 47
+raw-Q5 BF16-output N3072 projections: K6144 in 12 global layers and K9216 in 35
+SWA layers. Existing local128/VGPR72/LDS1024/scratch0 pack8 blocks reread a
+304.35-MB/token BF16 activation proxy around 836.96 MB of encoded weights. The
+selected D8 RED is one exact 16-output workgroup that preserves each output's
+K/reduction/BF16 order while halving duplicate activation reads; tile32 is only
+a secondary screen. The traffic proxy predicts **13.33%** less combined
+weight-plus-activation traffic, **0.353 ms/token** savings, and only **47.181
+tok/s**, so actual-weight global/SWA timing decides retention and this cannot
+reach 50 alone. Evidence:
+`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-d7-residual-profile.json`.
+
 The preceding code-identical D6 reanalysis ranked short attention-output Q5,
 selected IQ2, retained query/gate Q5, SWA, weighted IQ3, and attention K/V Q6
 at **2.628/2.285/2.151/2.118/2.110/1.407 ms/token**. Q6 K/V was the next
@@ -2756,17 +2770,21 @@ Proceed in measured Amdahl order:
 9. **DONE:** exact raw-Q6 attention pairing removes 48 launches/token, improves
    every clean context and category decode/E2E row, and promotes D7 to 46.409
    tok/s; and
-10. **NEXT:** reprofile D7 and select the next higher-share Q5/IQ2/IQ3 or
-   submission candidate. Admit Laguna-specific one-step graph replay only when
-   its exact state/capture route and same-suite wall beat the remaining kernel
-   work. D7's short decode span still exceeds kernel sum by about **3.45 ms**,
-   so submission is material but is not yet the only plausible route.
+10. **DONE:** reprofile D7; Q5 attention output is the largest named short leaf
+   at 2.646 ms/token and its exact tile16 activation-reuse screen is selected;
+11. **NEXT:** implement and actual-weight gate exact Q5 attention-output tile16,
+   admitting tile32 only if both production shapes beat tile16 without spill.
+   Admit Laguna-specific one-step graph replay only when its exact state/capture
+   route and same-suite wall beat the remaining kernel work. D7's short decode
+   span still exceeds kernel sum by about **3.45 ms**, so submission is material
+   but is not yet the only plausible route.
 
 **50 tok/s is a credible W7900 target, not a current claim.** D7 must reduce the
 canonical **21.548 ms to 20 ms**, another **7.74%**. The clean short kernel sum
 is **17.268 ms** and median span is **20.715 ms**, so the measured device window
-does not impose a 20-ms floor. No currently ranked single bounded leaf closes
-the remaining 1.548-ms gap; reprofile before selecting D8. The near-4K profile
+does not impose a 20-ms floor. The selected tile16 traffic model reaches only
+**47.181 tok/s** and leaves 1.195 ms to 20 ms; it cannot close the target alone.
+The near-4K profile
 remains led by global attention. Every retained candidate uses the full
 category/heldout suite and the same exact/quality lanes above. Laguna DFlash/MTP
 economics must use D7 or a later true-AR baseline rather than the historical D0
