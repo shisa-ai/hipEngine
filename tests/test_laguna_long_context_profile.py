@@ -1,0 +1,171 @@
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+import pytest
+
+from scripts.laguna_long_context_profile import (
+    _parse_lengths,
+    _summarize_samples,
+    _timing_order,
+)
+from scripts.laguna_long_context_trace_summary import (
+    _aggregate_segments,
+    _segment_requests,
+    _summarize_segment,
+    attach_summary,
+)
+
+
+def test_lpf5_length_parser_and_order_are_strict_and_balanced() -> None:
+    assert _parse_lengths("512,1024,4096") == (512, 1024, 4096)
+    assert _timing_order((512, 1024, 4096), 0) == (512, 1024, 4096)
+    assert _timing_order((512, 1024, 4096), 1) == (4096, 1024, 512)
+    with pytest.raises(argparse.ArgumentTypeError, match="positive"):
+        _parse_lengths("512,0")
+    with pytest.raises(argparse.ArgumentTypeError, match="distinct"):
+        _parse_lengths("512,512")
+
+
+def test_lpf5_timing_summary_preserves_rates_and_repeat_ids() -> None:
+    summary = _summarize_samples(
+        [
+            {"length": 512, "prefill_seconds": 10.0, "next_token_id": 7},
+            {"length": 512, "prefill_seconds": 12.0, "next_token_id": 7},
+        ]
+    )
+    assert summary["median_seconds"] == 11.0
+    assert summary["median_tok_s"] == pytest.approx(512 / 11)
+    assert summary["repeat_deterministic"] is True
+
+    with pytest.raises(ValueError, match="one length"):
+        _summarize_samples(
+            [
+                {"length": 512, "prefill_seconds": 1.0, "next_token_id": 1},
+                {"length": 1024, "prefill_seconds": 1.0, "next_token_id": 1},
+            ]
+        )
+
+
+def _row(
+    dispatch: int,
+    name: str,
+    start: int,
+    duration: int,
+    *,
+    grid_y: int = 1,
+) -> dict[str, str]:
+    return {
+        "Dispatch_Id": str(dispatch),
+        "Kernel_Name": name,
+        "Start_Timestamp": str(start),
+        "End_Timestamp": str(start + duration),
+        "Grid_Size_Y": str(grid_y),
+        "Workgroup_Size_X": "128",
+        "Grid_Size_X": "9216",
+        "VGPR_Count": "16",
+        "SGPR_Count": "128",
+        "LDS_Block_Size": "1024",
+        "Scratch_Size": "0",
+    }
+
+
+def _request_rows(start: int, chunks: int) -> list[dict[str, str]]:
+    rows = []
+    timestamp = start
+    dispatch = start
+    for _ in range(chunks):
+        rows.append(
+            _row(
+                dispatch,
+                "gguf_q4_k_embedding_bf16_out_kernel",
+                timestamp,
+                10,
+                grid_y=128,
+            )
+        )
+        rows.append(
+            _row(
+                dispatch + 1,
+                "laguna_global_attention_prefill_bf16_kernel",
+                timestamp + 10,
+                30,
+                grid_y=128,
+            )
+        )
+        rows.append(
+            _row(
+                dispatch + 2,
+                "laguna_swa_attention_prefill_bf16_kernel",
+                timestamp + 40,
+                20,
+                grid_y=128,
+            )
+        )
+        timestamp += 60
+        dispatch += 3
+    rows.append(_row(dispatch, "argmax_stage2_kernel", timestamp, 10))
+    return rows
+
+
+def test_lpf5_trace_segments_requests_and_attributes_attention() -> None:
+    rows = [
+        _row(0, "__amd_rocclr_copyBuffer", 0, 5),
+        *_request_rows(100, 1),
+        *_request_rows(1000, 4),
+    ]
+    segments = _segment_requests(rows)
+    assert [(item["length"], item["chunks"]) for item in segments] == [
+        (128, 1),
+        (512, 4),
+    ]
+    summary = _summarize_segment(segments[1])
+    assert summary["dispatches"] == 13
+    assert summary["attention_duration_ns"] == 200
+    assert summary["families"]["global_attention"]["calls"] == 4
+    assert summary["families"]["swa_attention"]["calls"] == 4
+    assert summary["attention_share_of_kernel_sum"] == pytest.approx(200 / 250)
+    aggregate = _aggregate_segments([summary])
+    assert aggregate["512"]["median_attention_duration_ns"] == 200
+
+
+def test_lpf5_trace_attachment_fails_closed_on_segment_order(tmp_path: Path) -> None:
+    child = {
+        "pass": True,
+        "performance_claim": False,
+        "protocol": {"warmup_rows": 128, "lengths": [512, 1024, 4096]},
+        "rows": [
+            {"length": 512},
+            {"length": 1024},
+            {"length": 4096},
+        ],
+    }
+    rows = [
+        *_request_rows(100, 1),
+        *_request_rows(1000, 4),
+        *_request_rows(2000, 8),
+        *_request_rows(3000, 32),
+    ]
+    attached = attach_summary(
+        child,
+        rows,
+        trace_path=tmp_path / "trace.csv",
+        trace_sha256="abc",
+    )
+    assert set(attached["profiler"]["lengths"]) == {"512", "1024", "4096"}
+    assert len(attached["profiler"]["attention_resources"]) == 2
+
+    bad_rows = [
+        *_request_rows(100, 1),
+        *_request_rows(1000, 8),
+        *_request_rows(2000, 4),
+        *_request_rows(3000, 32),
+    ]
+    with pytest.raises(ValueError, match="do not match child order"):
+        attach_summary(
+            child,
+            bad_rows,
+            trace_path=tmp_path / "trace.csv",
+            trace_sha256="abc",
+        )

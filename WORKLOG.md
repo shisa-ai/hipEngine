@@ -175352,3 +175352,37 @@ uvx ruff check hipengine/runtime/laguna_gguf_runner.py \
 git diff --check
 # clean
 ```
+
+## 2026-07-23 — Add Laguna LPF-5 long-context attribution gate
+
+Added `scripts/laguna_long_context_profile.py` for the documented 512/1K/4K
+reprofile before any attention change. It uses the promoted 128-row chunks, one
+resident model, a deterministic repeated canonical token stream, synchronized
+prefill-only timing, exact final cursors/repeated next IDs, bounded ownership,
+and no performance claim. A 128-row warmup prebuilds the same dispatch families;
+model load remains excluded.
+
+Added `scripts/laguna_long_context_trace_summary.py` to fail-closed on the raw
+cached-only `rocprofv3` trace. It segments each logical request from its first
+Q4 embedding through argmax stage 2, sums embedding `Grid_Size_Y` across chunks
+to prove the 128/512/1024/4096 order, and records global/SWA attention calls,
+duration/share, complete kernel sum/span, and resource metadata. Raw CSV stays
+under `/tmp`; only its SHA-256 and compact attribution are attached.
+
+Validation:
+
+```bash
+uv run pytest -q tests/test_laguna_long_context_profile.py
+# 4 passed
+uvx ruff check scripts/laguna_long_context_profile.py \
+  scripts/laguna_long_context_trace_summary.py \
+  tests/test_laguna_long_context_profile.py
+python3 -m compileall -q scripts/laguna_long_context_profile.py \
+  scripts/laguna_long_context_trace_summary.py
+uv run python scripts/laguna_long_context_profile.py --help
+uv run python scripts/laguna_long_context_trace_summary.py --help
+# clean
+```
+
+No long-context measurement or attention-change claim is made in this harness-
+only unit.

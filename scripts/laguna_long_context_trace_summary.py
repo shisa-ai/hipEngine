@@ -1,0 +1,263 @@
+#!/usr/bin/env python3
+"""Attach a compact LPF-5 attention summary to a Laguna rocprofv3 trace."""
+
+from __future__ import annotations
+
+import argparse
+from collections import defaultdict
+import csv
+from datetime import datetime, timezone
+import hashlib
+import json
+from pathlib import Path
+import statistics
+from typing import Any, Mapping, Sequence
+
+_RESOURCE_FIELDS = (
+    "Kernel_Name",
+    "Workgroup_Size_X",
+    "Grid_Size_X",
+    "Grid_Size_Y",
+    "VGPR_Count",
+    "SGPR_Count",
+    "LDS_Block_Size",
+    "Scratch_Size",
+)
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--child", type=Path, required=True)
+    parser.add_argument("--trace", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    return parser.parse_args()
+
+
+def _duration_ns(row: Mapping[str, Any]) -> int:
+    return int(row["End_Timestamp"]) - int(row["Start_Timestamp"])
+
+
+def _is_embedding(name: str) -> bool:
+    return "q4_k_embedding_bf16_out_kernel" in name
+
+
+def _is_argmax_end(name: str) -> bool:
+    return "argmax_stage2_kernel" in name
+
+
+def _attention_family(name: str) -> str | None:
+    if "laguna_global_attention_prefill_bf16_kernel" in name:
+        return "global_attention"
+    if "laguna_swa_attention_prefill_bf16_kernel" in name:
+        return "swa_attention"
+    return None
+
+
+def _read_trace(path: Path) -> list[dict[str, str]]:
+    with path.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    required = {
+        "Kernel_Name",
+        "Start_Timestamp",
+        "End_Timestamp",
+        "Grid_Size_Y",
+    }
+    if not rows or not required.issubset(rows[0]):
+        raise ValueError("rocprof trace is empty or missing required kernel columns")
+    rows.sort(key=lambda row: (int(row["Start_Timestamp"]), int(row["Dispatch_Id"])))
+    return rows
+
+
+def _segment_requests(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    segments: list[dict[str, Any]] = []
+    current: list[Mapping[str, Any]] = []
+    started = False
+    for row in rows:
+        name = str(row["Kernel_Name"])
+        if _is_embedding(name):
+            if not started:
+                current = []
+                started = True
+        if not started:
+            continue
+        current.append(row)
+        if not _is_argmax_end(name):
+            continue
+        embedding_rows = [
+            int(item["Grid_Size_Y"])
+            for item in current
+            if _is_embedding(str(item["Kernel_Name"]))
+        ]
+        if not embedding_rows:
+            raise ValueError("profile segment ended without an embedding launch")
+        segments.append(
+            {
+                "length": sum(embedding_rows),
+                "chunks": len(embedding_rows),
+                "rows": list(current),
+            }
+        )
+        current = []
+        started = False
+    if started:
+        raise ValueError("rocprof trace ended inside a Laguna prefill request")
+    return segments
+
+
+def _summarize_segment(segment: Mapping[str, Any]) -> dict[str, Any]:
+    rows = list(segment["rows"])
+    kernel_sum = sum(_duration_ns(row) for row in rows)
+    if kernel_sum <= 0:
+        raise ValueError("profile segment kernel sum must be positive")
+    start = min(int(row["Start_Timestamp"]) for row in rows)
+    end = max(int(row["End_Timestamp"]) for row in rows)
+    family_calls: dict[str, int] = defaultdict(int)
+    family_duration: dict[str, int] = defaultdict(int)
+    for row in rows:
+        family = _attention_family(str(row["Kernel_Name"]))
+        if family is None:
+            continue
+        family_calls[family] += 1
+        family_duration[family] += _duration_ns(row)
+    attention_ns = sum(family_duration.values())
+    return {
+        "length": int(segment["length"]),
+        "chunks": int(segment["chunks"]),
+        "dispatches": len(rows),
+        "kernel_sum_ns": kernel_sum,
+        "kernel_span_ns": end - start,
+        "attention_duration_ns": attention_ns,
+        "attention_share_of_kernel_sum": attention_ns / kernel_sum,
+        "families": {
+            family: {
+                "calls": family_calls[family],
+                "duration_ns": family_duration[family],
+                "share_of_kernel_sum": family_duration[family] / kernel_sum,
+            }
+            for family in ("global_attention", "swa_attention")
+        },
+    }
+
+
+def _aggregate_segments(segments: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    grouped: dict[int, list[Mapping[str, Any]]] = defaultdict(list)
+    for segment in segments:
+        grouped[int(segment["length"])].append(segment)
+    result = {}
+    for length, selected in sorted(grouped.items()):
+        result[str(length)] = {
+            "passes": len(selected),
+            "chunks_per_pass": [int(item["chunks"]) for item in selected],
+            "dispatches_per_pass": [int(item["dispatches"]) for item in selected],
+            "median_kernel_sum_ns": statistics.median(
+                int(item["kernel_sum_ns"]) for item in selected
+            ),
+            "median_kernel_span_ns": statistics.median(
+                int(item["kernel_span_ns"]) for item in selected
+            ),
+            "median_attention_duration_ns": statistics.median(
+                int(item["attention_duration_ns"]) for item in selected
+            ),
+            "median_attention_share_of_kernel_sum": statistics.median(
+                float(item["attention_share_of_kernel_sum"]) for item in selected
+            ),
+            "families": {
+                family: {
+                    "calls_per_pass": [
+                        int(item["families"][family]["calls"]) for item in selected
+                    ],
+                    "median_duration_ns": statistics.median(
+                        int(item["families"][family]["duration_ns"])
+                        for item in selected
+                    ),
+                    "median_share_of_kernel_sum": statistics.median(
+                        float(item["families"][family]["share_of_kernel_sum"])
+                        for item in selected
+                    ),
+                }
+                for family in ("global_attention", "swa_attention")
+            },
+        }
+    return result
+
+
+def _trace_resources(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, str]]:
+    resources = {}
+    for row in rows:
+        family = _attention_family(str(row["Kernel_Name"]))
+        if family is None:
+            continue
+        resources.setdefault(family, {field: str(row[field]) for field in _RESOURCE_FIELDS})
+    return [resources[key] for key in sorted(resources)]
+
+
+def attach_summary(
+    child: Mapping[str, Any],
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    trace_path: Path,
+    trace_sha256: str,
+) -> dict[str, Any]:
+    raw_segments = _segment_requests(rows)
+    summarized = [_summarize_segment(segment) for segment in raw_segments]
+    expected = [int(child["protocol"]["warmup_rows"])] + [
+        int(row["length"]) for row in child["rows"]
+    ]
+    actual = [int(segment["length"]) for segment in summarized]
+    if actual != expected:
+        raise ValueError(f"profile segment lengths {actual} do not match child order {expected}")
+    warmup = summarized[0]
+    timed = summarized[1:]
+    required = {int(value) for value in child["protocol"]["lengths"]}
+    if {int(segment["length"]) for segment in timed} != required:
+        raise ValueError("profile trace does not cover every required LPF-5 length")
+    output = dict(child)
+    output["profiler"] = {
+        "kind": "rocprofv3_kernel_trace_laguna_lpf5_long_context",
+        "attached_at": datetime.now(timezone.utc).isoformat(),
+        "raw_csv_committed": False,
+        "raw_csv_path": str(trace_path),
+        "raw_csv_sha256": trace_sha256,
+        "segmentation": (
+            "request starts at its first Q4 embedding, includes every chunk, and ends at "
+            "argmax stage 2; summed embedding Grid_Size_Y equals logical context length"
+        ),
+        "warmup": warmup,
+        "lengths": _aggregate_segments(timed),
+        "attention_resources": _trace_resources(rows),
+    }
+    output["derived_artifact_repairs"] = [
+        {
+            "kind": "attach_rocprof_summary",
+            "source_child_sha256": hashlib.sha256(
+                (json.dumps(child, indent=2, sort_keys=True) + "\n").encode("utf-8")
+            ).hexdigest(),
+            "source_trace_sha256": trace_sha256,
+            "measurement_values_changed": False,
+        }
+    ]
+    return output
+
+
+def main() -> int:
+    args = _parse_args()
+    child = json.loads(args.child.read_text(encoding="utf-8"))
+    if not child.get("pass") or child.get("performance_claim"):
+        raise ValueError("LPF-5 child must be a passing attribution-only artifact")
+    rows = _read_trace(args.trace)
+    trace_bytes = args.trace.read_bytes()
+    result = attach_summary(
+        child,
+        rows,
+        trace_path=args.trace,
+        trace_sha256=hashlib.sha256(trace_bytes).hexdigest(),
+    )
+    payload = json.dumps(result, indent=2, sort_keys=True) + "\n"
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(payload, encoding="utf-8")
+    print(payload, end="")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
