@@ -2401,13 +2401,15 @@ acceptance are out of scope until AR itself is substantially faster.
 
 The W7900 UD-Q2_K_XL route changes the decode priority established by the
 mixed-F16 Q4 model on gfx1151. D0 measured **19.596 decode tok/s (51.032
-ms/token)** on the retained full category suite. Exact dense decode at clean
-revision `fc08ca0e` is now the default and measures **35.419 tok/s (28.233
-ms/token)** at h32, an **81.04%** gain, while h32 E2E improves **8.557 ->
-10.618 output tok/s (+24.08%)** and bulk prefill improves **0.774%**. Every
-category's prefill/decode/E2E row, exactness gate, and lifecycle check passes.
-The retained artifact is
-`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-dense-decode-retained.json`.
+ms/token)** on the retained full category suite. Exact dense decode at D1
+revision `fc08ca0e` first reached **35.419 tok/s**. D2 revision `ae20392bb` is
+now the default: exact IQ3 selected-down K1024 uses local128 and measures
+**38.301 tok/s (26.109 ms/token)** at h32, **+8.135%** versus D1 and **+95.76%**
+versus D0. D1 -> D2 h32 E2E improves **10.618 -> 11.403 output tok/s
+(+7.393%)**, bulk prefill improves **40.401 -> 43.266 tok/s (+7.093%)**, and
+median TTFT falls **2.000 -> 1.865 s (-6.743%)**. Every category's
+prefill/decode/E2E row, exactness gate, and lifecycle check passes. Evidence:
+`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-iq3-local128-retained.json`.
 
 The frozen clean D0 at `e6120872` profiles 16 c=1 rows after the canonical
 69-token `code_merge_intervals` bulk prefill; the stable 14 rows contain exactly
@@ -2478,6 +2480,21 @@ clean family time falls **4.040 -> 4.002 ms (-0.94%)** and total kernel sum fall
 positive, but its 0.51% decode delta is not promoted as a new headline because
 it exceeds the physically attributable leaf gain. Evidence:
 `benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-iq3-wave-base-retained.json`.
+
+D2 right-sizes the same exact IQ3 selected-down schedule. At K1024 there are
+only 128 eight-value work units, so local256's final four waves do no arithmetic
+and contribute only +0 to the established reduction. The wrapper defaults only
+K1024 to local128; all other shapes and the explicit rollback retain local256.
+Actual `E256/K1024/N3072/top-10` weights are BF16-bit exact and improve the
+clean paired median **43.61%**. Local64 is rejected because its per-thread
+second group changes one of 30,720 BF16 outputs. Clean cached profiling confirms
+local128/VGPR32/LDS512/scratch0, moves the 45-call family **4.002 -> 2.258
+ms/token (-43.57%)**, and reduces total kernel sum **23.097 -> 21.302 ms/token
+(-7.77%)** without changing 1,055 dispatches/token. The full category suite
+replaces the D1 headline as recorded above. The earlier 29.452 tok/s W7900
+DFlash row is D0-relative and no longer a current speedup claim; target/DFlash
+economics require a fresh matched rerun after AR optimization closes. Evidence:
+`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-iq3-local128-retained.json`.
 
 A second clean D0 at `b4973769` extends the same synthetic canonical token
 stream to 512/1K/3,968 prompt tokens and profiles eight c=1 steps at each shape

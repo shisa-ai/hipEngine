@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-23
 
+- [retained exact gfx1100 Laguna Q2 XL IQ3 K1024 default] Radeon Pro W7900 Poolside Laguna S 2.1 UD-Q2_K_XL / ten-prompt h16/h32 target AR moves D1 -> D2 h32 decode **35.419 -> 38.301 tok/s (+8.135%)**, prefill **40.401 -> 43.266 tok/s (+7.093%)**, and h32 E2E **10.618 -> 11.403 tok/s (+7.393%)** by removing four idle waves from exact K1024 selected-down; actual weights are bit-exact, the 45-call family falls **4.002 -> 2.258 ms/token (-43.57%)**, and every category/correctness/lifecycle gate passes; `benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-iq3-local128-retained.json`.
+
 - [retained exact gfx1100 Laguna Q2 XL IQ3 sub-window] Radeon Pro W7900 wave-uniform IQ3 selected-down addressing is bit-exact and improves two actual `E256/K1024/N3072/top-10` paired micro medians **0.69%/0.75%** plus the clean 45-call family **4.040 -> 4.002 ms/token (-0.94%)**; the full ten-prompt suite is non-regressive with every category positive and h32 decode **+0.510%**, but the conservative **35.419 tok/s** headline remains unchanged; `benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-iq3-wave-base-retained.json`.
 
 - [rejected gfx1100 Laguna Q2 XL SWA decode transfer] Radeon Pro W7900 one-wave/two-wave reduction-order-exact SWA schedules preserve exact positions 508-515 plus eviction but move the SWA family **4.212 -> 4.274/4.210 ms** short and **27.823 -> 29.016/28.638 ms (+4.29%/+2.93%)** at the 512-token physical window; both candidates are removed before a category run and local128 remains default; `benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-swa-decode-rejected.json`.
