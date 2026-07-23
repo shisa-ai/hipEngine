@@ -1276,6 +1276,15 @@ The [D6 artifact](results/2026-07-23-gfx1100-laguna-q2-xl-q5-query-gate-pair-ret
 and [D0 artifact](results/2026-07-23-gfx1100-laguna-q2-xl-target-ar.json)
 remain frozen baselines.
 
+The exact D8 one-step HIP graph screen is rejected and removed. A 956-step
+state trajectory is byte-exact, but counterbalanced steady-state graph
+throughput is **2.247%/1.995%/1.502%/1.146% slower** than eager at
+short/512/1K/near-4K. Capture-inclusive canonical h16/h32 decode falls
+**46.827/46.409 -> 43.480/44.193 tok/s (-7.150%/-4.774%)**, while h16/h32 E2E
+falls **6.881/11.972 -> 6.819/11.839 (-0.902%/-1.110%)**; every category
+regresses both horizons. D7 remains the only runtime route and the 50 tok/s
+headline remains unmet. [D8 rejection artifact](results/2026-07-23-gfx1100-laguna-q2-xl-decode-graph-rejected.json).
+
 Exact D7 benchmark command:
 
 ```bash

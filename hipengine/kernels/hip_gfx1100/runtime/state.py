@@ -32,7 +32,6 @@ _SYMBOL_PREPARE_PACKED_DECODE_METADATA_FROM_POSITIONS = (
 _SYMBOL_COMMIT_PACKED_DECODE_GRAPH_STEP = "hipengine_commit_packed_decode_graph_step"
 _SYMBOL_RECORD_U16_ROWS_INDEXED = "hipengine_record_u16_rows_indexed"
 _SYMBOL_ADVANCE_POSITION = "hipengine_advance_decode_position_i64"
-_SYMBOL_ADVANCE_LAGUNA_POSITION_PAIR = "hipengine_advance_laguna_position_pair_i64"
 _SYMBOL_ADVANCE_POSITIONS = "hipengine_advance_decode_positions_i64"
 _SYMBOL_RECORD_I64_INDEXED = "hipengine_record_i64_scalar_indexed"
 _SYMBOL_RECORD_F32_ROW_INDEXED = "hipengine_record_f32_row_indexed"
@@ -779,29 +778,6 @@ def advance_decode_position_i64(
     _check_launch(runtime, err)
 
 
-def advance_laguna_position_pair_i64(
-    rope_position_i64_ptr: int,
-    kv_position_i64_ptr: int,
-    *,
-    stream: int = 0,
-    library: ctypes.CDLL | None = None,
-    runtime: HipRuntime | None = None,
-) -> None:
-    """Increment Laguna RoPE/KV position scalars to one identical value."""
-
-    library = library or build_runtime_state(load=True)
-    runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_ADVANCE_LAGUNA_POSITION_PAIR)
-    fn.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(rope_position_i64_ptr),
-        ctypes.c_void_p(kv_position_i64_ptr),
-        ctypes.c_void_p(stream),
-    )
-    _check_launch(runtime, err)
-
-
 def advance_decode_positions_i64(
     positions_i64_ptr: int,
     contexts_i64_ptr: int,
@@ -1068,11 +1044,6 @@ def register_runtime_state_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "decode_position", "w4_paro", "advance_vector_i64"),
         advance_decode_positions_i64,
-        replace=replace,
-    )
-    register(
-        KernelKey("hip_gfx1100", "decode_position", "laguna", "advance_pair_i64"),
-        advance_laguna_position_pair_i64,
         replace=replace,
     )
     register(

@@ -2785,15 +2785,16 @@ Proceed in measured Amdahl order:
    schedule regresses global/SWA actual weights **16.69%/19.04%**; tile16 and
    tile32 are removed without spending clean full-model/category runs; and
 12. **DONE:** freeze the Laguna one-step graph ABI, fail-closed eligibility,
-   lifecycle, RED gates, and 3.385-ms residual model below;
-13. **DONE (correctness only):** implement the pointer-bound graph, exact eager
-   fallback, device-fed token/position state, paired position tail, and
-   deterministic teardown. A 956-step real Q2 XL trajectory is byte-exact at
-   short, 255/256, 510-513, 1023/1024, continuation, fallback, and reset gates;
-   and
-14. **NEXT:** measure the candidate cleanly and retain it only after
-   cold-inclusive E2E and every category improve. D7's short decode span exceeds
-   kernel sum by **3.385 ms**, making submission the largest bounded premise.
+   lifecycle, RED gates, and 3.385-ms residual model below; and
+13. **REJECTED:** the pointer-bound graph passes a 956-step exact state gate but
+   regresses unprofiled short/512/1K/near-4K throughput by **2.247%, 1.995%,
+   1.502%, and 1.146%** and capture-inclusive canonical h16/h32 decode by
+   **7.150%/4.774%**.
+   The graph owner, selector, capability, paired tail, and tests are removed;
+   eager D7 remains the only runtime route.
+14. **NEXT:** resume exact kernel/submission optimization from eager D7. Its
+   short decode span exceeds kernel sum by **3.385 ms**, but ROCm graph replay
+   does not recover that residual.
 
 **50 tok/s is a credible W7900 target, not a current claim.** D7 must reduce the
 canonical **21.548 ms to 20 ms**, another **7.74%**. The clean short kernel sum
@@ -2805,7 +2806,7 @@ by global attention. Every retained candidate uses the full category/heldout
 suite and the same exact/quality lanes above. Laguna DFlash/MTP economics must
 use D7 or a later true-AR baseline rather than the historical D0 row.
 
-### D8 one-step graph replay (correctness admitted, performance pending)
+### D8 one-step graph replay (exact, performance-rejected, removed)
 
 This design is Laguna-specific. It reuses HIP graph mechanics and the small
 runtime-state kernel family, but it does not inherit Qwen/PARO graph correctness.
@@ -2925,20 +2926,32 @@ Task #277 must add the tests before default wiring:
    gates pass, and every graph/session/reset/continuation/error lifecycle returns
    tracked ownership to zero.
 
-The task #277 implementation passes the frozen state/lifecycle gate on the real
+The task #277 implementation passed the frozen state/lifecycle gate on the real
 UD-Q2_K_XL model. Two resident sessions remained byte-exact for every ID,
 argmax-value bit pattern, complete FP32 logits, BF16 final/post-layer hidden,
 all 48 complete K/V allocations, and every live-span metadata allocation across
-**956** graph transitions. Checkpoints cover positions 69-72, 255/256,
+**956** graph transitions. Checkpoints covered positions 69-72, 255/256,
 510-513, and 1023/1024, then exact retained-prefix suffix prefill, a forced eager
-fallback, graph resumption, reset, and third replay. Capture is non-executing,
-replay performs no tracked device allocation, one cached trace contains exactly
-one `hipGraphLaunch` and one `advance_laguna_position_pair_i64_kernel` tail, and
-teardown returns **40,455,911,848 bytes / 1,496 allocations** to zero. This is a
-correctness result only: sparse diagnostic samples were slower than eager, so
-the graph stays explicit opt-in and task #278 owns clean retain/reject evidence.
-Artifact:
-`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-decode-graph-correctness.json`.
+fallback, graph resumption, reset, and third replay. Capture was non-executing,
+replay performed no tracked device allocation, one cached trace contained one
+`hipGraphLaunch` and one paired-position tail, and teardown returned
+**40,455,911,848 bytes / 1,496 allocations** to zero.
+
+Task #278 nevertheless rejects and removes the route. Counterbalanced
+unprofiled graph throughput regresses eager by **2.247%/1.995%/1.502%/1.146%**
+at short/512/1K/near-4K. Cached traces also increase kernel sum at every context
+by **3.018%/1.076%/0.524%/0.151%**; short/512 dispatch span regresses. The full
+capture-inclusive ten-prompt gate is exact and returns ownership to zero, but
+h16/h32 decode falls **46.827/46.409 -> 43.480/44.193 tok/s
+(-7.150%/-4.774%)** and E2E falls **6.881/11.972 -> 6.819/11.839
+(-0.902%/-1.110%)**. Every category regresses both decode and E2E horizons.
+ROCm graph-node scheduling costs more than the host submission it replaces for
+this chain, so there is no minimum replay horizon to admit. Canonical eager D7
+remains the only route; no selector, graph owner, capability, paired tail, or
+runtime-state debt remains. Evidence:
+`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-decode-graph-correctness.json`
+and
+`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-decode-graph-rejected.json`.
 
 Graph capture/instantiate latency, first replay, and warm replay are separate
 measurements. The canonical fresh-session run includes lazy capture in its
@@ -2974,11 +2987,12 @@ Ignoring `g` and `C` only to show the ceiling:
 Reaching 50 tok/s requires
 `r > (1.548 + g + C/31) / 3.385`; even with zero overhead the graph must remove
 **45.73%** of the residual. At 50% removal only **0.145 ms/token** remains for
-all graph and amortized capture overhead. Thus 50 tok/s is plausible but not
-assumed. Task #278 measures this exact inequality and either promotes the graph
-with a compact retained artifact and rollup updates or removes/default-disables
-it with a rejection artifact. Kernel optimization resumes if the state gate or
-cold-inclusive wall fails.
+all graph and amortized capture overhead. The clean result resolves the model
+negatively: graph h32 is **44.193 tok/s**, not 50, and even steady-state replay
+regresses every unprofiled context. The
+capture/state-tail and graph scheduling overhead exceed any host-submission
+saving. Task #278 therefore removes the route and kernel optimization resumes
+from eager D7.
 
 ## Laguna DFlash Follow-on Plan
 

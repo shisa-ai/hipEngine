@@ -4,9 +4,6 @@
 # score-parallel SWA decode candidate on W7900. The clean category gate follows
 # the atomic default commit; other backends retain the registered baseline.
 LAGUNA_SWA_DECODE_VARIANT = "swa_context_token4_exact_spans"
-# The session-local Laguna graph is admitted only after its exact W7900 state
-# trajectory gate. gfx1151 and unmeasured backends remain eager.
-LAGUNA_DECODE_GRAPH_SUPPORTED = True
 
 # Clean W7900 SOL-G5 p512/d24 evidence admits the state-bound composite GGUF
 # graph when at least 24 decode transitions amortize capture/instantiate/close.
@@ -67,7 +64,6 @@ GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS = True
 GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE = "baseline"
 
 __all__ = [
-    "LAGUNA_DECODE_GRAPH_SUPPORTED",
     "LAGUNA_SWA_DECODE_VARIANT",
     "GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS",
     "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
