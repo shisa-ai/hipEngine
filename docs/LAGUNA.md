@@ -2650,6 +2650,61 @@ remains deferred. Evidence:
   eviction masks, BF16 K/V rounding, and the separate softplus output gate.
   Keep the exact global/SWA kernels as fallbacks below the selected threshold.
 
+#### External pp512 control — llama.cpp Vulkan `c0bc8591e`
+
+A read-only same-GGUF/same-device `GGML_VK_PERF_LOGGER` capture explains the
+remaining headline gap. The user's unprofiled build measures **344.56 +/- 3.16
+tok/s** (**1.486 s**) at pp512. The instrumented benchmark's wall is perturbed
+to 316.13 tok/s, but its complete Vulkan operation sum is **1.478897 s**
+(**346.20 tok/s implied**), within **0.48%** of the user's unprofiled wall.
+The retained hipEngine profile is **71.456 tok/s / 7.150503 s kernel sum**, or
+**4.835x** the Vulkan operation sum; the explicit SWA-online candidate reaches
+76.226 tok/s but is still **4.520x** behind the user's row.
+
+The shape-matched family comparison is decisive:
+
+| Homologous pp512 family | hipEngine | Vulkan | hip/Vulkan | Share of mapped gap |
+| --- | ---: | ---: | ---: | ---: |
+| selected Q4 gate/up | 3.674 s | 0.646 s | 5.687x | 53.39% |
+| selected Q4/Q6 down | 1.100 s | 0.367 s | 3.001x | 12.93% |
+| source-F16 projection | 0.895 s | 0.280 s | 3.192x | 10.84% |
+| attention | 0.744 s | 0.039 s | 18.933x | 12.42% |
+| dense/shared quant projection | 0.640 s | 0.063 s | 10.179x | 10.18% |
+
+These families cover **99.76%** of the kernel-sum difference. Token streams and
+numerical policies are not identical: llama-bench uses its pp512 token stream,
+F16 KV, and unchecked backend numerics, while hipEngine uses the canonical
+stream, BF16 KV, `KVLiveSpans`, and the complete quality lane. The family ratios
+are therefore actionable attribution, not a bit-identical prompt comparison.
+
+The source audit identifies three mechanisms to transfer as designs, not code:
+
+1. Vulkan quantizes each contiguous F32 producer row once to Q8_1, counts and
+   ballot-compacts routes by expert, then runs Q4_K/Q6_K integer-dot MMQ over
+   expert-major **32x32** tiles. One decoded weight tile is reused across up to
+   32 natural routed rows. hipEngine's active Q4 gate/up kernel still launches
+   one row/output tile and rereads the selected expert. This is the primary gap,
+   but the next route must be a genuinely new WMMA/packed-dot matrix schedule:
+   the exact scalar C4/C8/C16 grouped gate/up screen already lost, and the
+   inclusive Q8_1 route failed category quality at max KL **0.171561**.
+2. Vulkan Flash Attention owns **16 query rows x 64 key rows** in one
+   256-thread cooperative-matrix workgroup, performs both QK and PV with
+   `VK_KHR_cooperative_matrix`, and carries online softmax state. It runs one
+   512-row attention graph per layer rather than four 128-row slices. After the
+   current SWA-online category decision, the valid successor is an in-tree
+   `KVLiveSpans`-aware cooperative tile, not another row2-only scan.
+3. Vulkan fuses multi-add/matmul tails, RMSNorm+mul+RoPE+KV set, and the complete
+   sigmoid/bias/top-k/normalization router pattern. These are useful memory-
+   traffic targets after matrix kernels, but hipEngine's **0.144%** pp512
+   span-minus-sum rejects submission-only work as the next lane.
+
+Finish the already-admitted SWA-online category gate without changing its
+policy. Then pivot the primary prefill campaign to quality-safe expert-major
+Q4/Q6 matrix reuse, followed by dense/shared MMQ and broader compensated F16
+matrix-core coverage. Exact source paths, commit permalinks, raw hashes, and the
+complete operation ledger are in
+`benchmarks/results/2026-07-23-gfx1151-laguna-llamacpp-vulkan-pp512-profile.json`.
+
 #### AR-O6 — submission and serving only after a new profile asks for it
 
 Graph replay, cross-layer launch fusion, and packed multi-request prefill remain

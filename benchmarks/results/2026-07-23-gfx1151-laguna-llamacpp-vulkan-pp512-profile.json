@@ -1,0 +1,209 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-23T20:20:22+00:00",
+  "kind": "external_llamacpp_vulkan_laguna_pp512_profile",
+  "status": "accepted_read_only_diagnostic",
+  "performance_claim": false,
+  "scope": "shape-matched same-device/same-GGUF pp512 control and source attribution; not a retained hipEngine route or quality result",
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "path": "/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "size_bytes_reported_by_llama_bench": 75169369088,
+    "parameters": 117561977600,
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "platform": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "driver": "RADV STRIX_HALO",
+    "backend": "Vulkan",
+    "uma": true,
+    "subgroup_size": 64,
+    "shared_memory_bytes": 65536,
+    "fp16": "dot2",
+    "bf16": false,
+    "integer_dot_product": true,
+    "matrix_core_api": "VK_KHR_cooperative_matrix"
+  },
+  "llamacpp": {
+    "repo": "/home/lhl/llama.cpp/llama.cpp-vulkan",
+    "revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "build_number": 10107,
+    "tracked_clean": true,
+    "build": {
+      "type": "Release",
+      "ggml_native": true,
+      "ggml_vulkan": true,
+      "validation": false,
+      "shader_debug_info": false
+    }
+  },
+  "protocol": {
+    "user_unprofiled_command": "llama.cpp-vulkan/build/bin/llama-bench -fa 1 -m /models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "profile_command": "GGML_VK_PERF_LOGGER=1 GGML_VK_PERF_LOGGER_CONCURRENT=1 GGML_VK_PERF_LOGGER_FREQUENCY=1 build/bin/llama-bench -fa 1 -m /models/gguf/laguna-s-2.1-Q4_K_M.gguf -p 512 -n 0 -r 1 --no-warmup -o json",
+    "prompt_rows": 512,
+    "generation_rows": 0,
+    "batch": 2048,
+    "ubatch": 512,
+    "kv_dtype": "f16",
+    "flash_attention": true,
+    "gpu_layers": -1,
+    "profile_repetitions": 1,
+    "profile_warmup": false,
+    "note": "The hipEngine comparator uses the same model, device, and 512-row matrix shape but a deterministic canonical token stream, BF16 KV, attention128 slicing, and reset-through-first-token timing. Family ratios are therefore homologous attribution, not bit-identical prompt or numerical-policy comparisons."
+  },
+  "throughput": {
+    "user_unprofiled_pp512_tok_s_mean": 344.56,
+    "user_unprofiled_pp512_tok_s_stddev": 3.16,
+    "user_unprofiled_pp512_wall_seconds_derived": 1.4859530996052936,
+    "profiled_bench_pp512_tok_s": 316.132405,
+    "profiled_bench_wall_seconds": 1.619574559,
+    "vulkan_internal_operation_sum_seconds": 1.478897165,
+    "vulkan_internal_operation_sum_implied_tok_s": 346.2039228400306,
+    "internal_sum_vs_user_wall_gap_percent": 0.4771078593076912,
+    "profiled_bench_over_internal_sum_percent": 9.512317511271979,
+    "interpretation": "The perf logger perturbs reported benchmark wall. Its internal GPU operation sum reproduces the user's unprofiled wall within 0.48%, so use the user row for throughput and the internal sum only for attribution."
+  },
+  "vulkan_operation_attribution": {
+    "total_seconds": 1.478897165,
+    "families": {
+      "selected_q4_gate_up": {
+        "seconds": 0.64605921,
+        "share_percent": 43.68520173611936,
+        "evidence": "46 bulk fused Q4_K MUL_MAT_ID gate/up groups plus one one-row Q4_K MUL_MAT_ID gate/up group"
+      },
+      "selected_q4_q6_down": {
+        "seconds": 0.366533386,
+        "share_percent": 24.78423751660921,
+        "evidence": "24 Q4_K and 22 Q6_K bulk MUL_MAT_ID groups plus one one-row Q6_K weighted down group"
+      },
+      "source_f16_matmul": {
+        "seconds": 0.280486679,
+        "share_percent": 18.965935268393054,
+        "evidence": "five F16 MUL_MAT/fused timing groups covering 12 global, 36 SWA, and one special layer"
+      },
+      "flash_attention": {
+        "seconds": 0.03928673,
+        "share_percent": 2.6564882893666244,
+        "evidence": "48 FLASH_ATTN_EXT groups: one special, 11 global, 36 SWA"
+      },
+      "dense_shared_quant_matmul": {
+        "seconds": 0.062907,
+        "share_percent": 4.253642612128478,
+        "evidence": "Q4_K paired shared projections and Q4_K/Q6_K dense/shared/output matrix groups"
+      },
+      "remaining_router_norm_rope_activation_and_misc": {
+        "seconds": 0.08362416,
+        "share_percent": 5.6544945773832795,
+        "evidence": "remainder of the complete perf-logger sum"
+      }
+    }
+  },
+  "hipengine_comparator": {
+    "artifact": "benchmarks/results/2026-07-23-gfx1151-laguna-post-global-online-all-family-profile.json",
+    "revision": "7c211f2412872dab76de5edd70ec155c7ca88f75",
+    "pp512_tok_s": 71.45578253432781,
+    "pp512_wall_seconds": 7.165270350989886,
+    "pp512_kernel_sum_seconds": 7.150503326,
+    "pp512_dispatches": 1484,
+    "kernel_sum_over_vulkan_internal_sum": 4.835024026839621,
+    "user_vulkan_throughput_over_hipengine": 4.82200242110671,
+    "explicit_swa_online_candidate_tok_s": 76.226,
+    "user_vulkan_throughput_over_explicit_swa_online_candidate": 4.520250308291659
+  },
+  "homologous_family_gaps": {
+    "selected_q4_gate_up": {
+      "hipengine_seconds": 3.674109122,
+      "vulkan_seconds": 0.64605921,
+      "hipengine_over_vulkan": 5.686954175608766,
+      "share_of_total_kernel_sum_gap_percent": 53.38963648114282
+    },
+    "selected_q4_q6_down": {
+      "hipengine_seconds": 1.100114762,
+      "vulkan_seconds": 0.366533386,
+      "hipengine_over_vulkan": 3.0014039757895342,
+      "share_of_total_kernel_sum_gap_percent": 12.934279200209083
+    },
+    "source_f16_projection": {
+      "hipengine_seconds": 0.895180047,
+      "vulkan_seconds": 0.280486679,
+      "hipengine_over_vulkan": 3.191524282691514,
+      "share_of_total_kernel_sum_gap_percent": 10.838082732663143
+    },
+    "attention": {
+      "hipengine_seconds": 0.743817896,
+      "vulkan_seconds": 0.03928673,
+      "hipengine_over_vulkan": 18.933056938055167,
+      "share_of_total_kernel_sum_gap_percent": 12.422074911417672
+    },
+    "dense_shared_quant_projection": {
+      "hipengine_seconds": 0.640322115,
+      "vulkan_seconds": 0.062907,
+      "hipengine_over_vulkan": 10.178869044780392,
+      "share_of_total_kernel_sum_gap_percent": 10.180804142757896
+    },
+    "mapped_gap_coverage_percent": 99.76487746819062
+  },
+  "source_findings": [
+    {
+      "rank": 1,
+      "finding": "Vulkan converts contiguous F32 activation rows once to Q8_1, counts routes per expert, compacts row IDs in subgroup ballots, and runs Q4_K/Q6_K integer-dot MMQ over expert-major 32x32 tiles. One weight tile is reused across up to 32 routed rows instead of being reread for each token-slot lane.",
+      "sources": [
+        "https://github.com/ggerganov/llama.cpp/blob/c0bc8591e8815c63cb01dd3f051a8b0df02501c9/ggml/src/ggml-vulkan/ggml-vulkan.cpp#L9837-L9894",
+        "https://github.com/ggerganov/llama.cpp/blob/c0bc8591e8815c63cb01dd3f051a8b0df02501c9/ggml/src/ggml-vulkan/ggml-vulkan.cpp#L10037-L10135",
+        "https://github.com/ggerganov/llama.cpp/blob/c0bc8591e8815c63cb01dd3f051a8b0df02501c9/ggml/src/ggml-vulkan/vulkan-shaders/mul_mm_id_funcs.glsl#L1-L68",
+        "https://github.com/ggerganov/llama.cpp/blob/c0bc8591e8815c63cb01dd3f051a8b0df02501c9/ggml/src/ggml-vulkan/vulkan-shaders/mul_mmq.comp#L87-L268"
+      ]
+    },
+    {
+      "rank": 2,
+      "finding": "The fast MoE path is packed integer dot, not cooperative matrix: shader generation emits q8_1 mul_mmq only outside coopmat variants. On AMD, large MUL_MAT_ID is disabled and the routed width n=10 selects the small 32x32 K-quant integer tile with WMITER=1 to control registers.",
+      "sources": [
+        "https://github.com/ggerganov/llama.cpp/blob/c0bc8591e8815c63cb01dd3f051a8b0df02501c9/ggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp#L588-L629",
+        "https://github.com/ggerganov/llama.cpp/blob/c0bc8591e8815c63cb01dd3f051a8b0df02501c9/ggml/src/ggml-vulkan/ggml-vulkan.cpp#L4038-L4062",
+        "https://github.com/ggerganov/llama.cpp/blob/c0bc8591e8815c63cb01dd3f051a8b0df02501c9/ggml/src/ggml-vulkan/ggml-vulkan.cpp#L6685-L6694",
+        "https://github.com/ggerganov/llama.cpp/blob/c0bc8591e8815c63cb01dd3f051a8b0df02501c9/ggml/src/ggml-vulkan/ggml-vulkan.cpp#L8586-L8616"
+      ]
+    },
+    {
+      "rank": 3,
+      "finding": "Flash attention owns sixteen query rows by sixty-four key rows per 256-thread workgroup, uses KHR cooperative matrices for QK and PV, and carries online max/denominator/output state. The complete 512-row attention graph runs once per layer rather than four 128-row slices.",
+      "sources": [
+        "https://github.com/ggerganov/llama.cpp/blob/c0bc8591e8815c63cb01dd3f051a8b0df02501c9/ggml/src/ggml-vulkan/ggml-vulkan.cpp#L3574-L3676",
+        "https://github.com/ggerganov/llama.cpp/blob/c0bc8591e8815c63cb01dd3f051a8b0df02501c9/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_cm1.comp#L17-L67",
+        "https://github.com/ggerganov/llama.cpp/blob/c0bc8591e8815c63cb01dd3f051a8b0df02501c9/ggml/src/ggml-vulkan/vulkan-shaders/flash_attn_cm1.comp#L267-L553"
+      ]
+    },
+    {
+      "rank": 4,
+      "finding": "Vulkan applies graph-pattern fusions for multi-add, matmul tails, RMSNorm+mul+RoPE+KV set, and the complete sigmoid/bias/top-k/normalization router chain. These reduce intermediate traffic, but hipEngine's <=0.208% kernel-span residual means submission-only work cannot explain the 4.83x pp512 gap.",
+      "sources": [
+        "https://github.com/ggerganov/llama.cpp/blob/c0bc8591e8815c63cb01dd3f051a8b0df02501c9/ggml/src/ggml-vulkan/ggml-vulkan.cpp#L16640-L16745"
+      ]
+    }
+  ],
+  "policy_implications": {
+    "keep_current_swa_category_gate": true,
+    "defer_submission_only_optimization": true,
+    "next_primary_target": "A genuinely new quality-safe expert-major Q4/Q6 matrix path: reuse Laguna's resident group metadata, process natural routed rows in matrix tiles, pair gate/up, and use WMMA or packed dot without repeating the rejected scalar C4/C8/C16 grouped gate/up schedule.",
+    "quality_constraint": "Do not copy Vulkan's Q8_1 activation route directly. hipEngine's inclusive Q8 gate/up improved category prefill 4.070% but failed the declared max-KL gate at 0.171561. Any reassociated/MMQ route must pass the full ten-prompt category and Poolside gates.",
+    "secondary_targets": [
+      "Replace per-row Q4/Q6 dense/shared pack8 prefill kernels with matrix-row MMQ/WMMA schedules.",
+      "Extend compensated source-F16 matrix-core coverage only where the full quality lane passes.",
+      "After the current SWA online decision, design a KVLiveSpans-aware M16xK64 cooperative-matrix attention tile and raise the attention tile above 128 only with exact cursor/ring coverage."
+    ],
+    "anti_repeat": [
+      "Do not repeat the exact scalar grouped Q4 gate/up C4/C8/C16 schedule; production-weight M55 already measured 8.213/6.530/24.337 ms versus 6.35-6.39 ms direct.",
+      "Do not promote the rejected Q8_1 gate/up route or tune it to fixed prompts.",
+      "Do not prioritize graph/launch work while pp512 span-minus-sum remains 0.144%."
+    ]
+  },
+  "raw": {
+    "directory": "/tmp/llama-vulkan-laguna-pp512-profile-c0bc8591e-retry",
+    "bench_path": "/tmp/llama-vulkan-laguna-pp512-profile-c0bc8591e-retry/bench.json",
+    "bench_sha256": "e4b72a193dfb167fcd17d7d49b89c49d9a70a1b1bff6666f4dcd93868c0c9987",
+    "profile_path": "/tmp/llama-vulkan-laguna-pp512-profile-c0bc8591e-retry/profile.log",
+    "profile_sha256": "99c254a8ef5be07c38d9cc64a358e93c44716cab17d9e28c3520a214f5029570",
+    "process_wall_seconds_including_load": 66.75248670578003
+  }
+}

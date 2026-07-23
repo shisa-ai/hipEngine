@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-23
 
+- [external diagnostic gfx1151 Laguna llama.cpp Vulkan pp512 profile] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / retained hipEngine **71.456 tok/s / 7.150503 s kernel** vs user llama.cpp Vulkan `c0bc8591e` **344.56 +/- 3.16 tok/s** and **1.478897 s** internal operation sum: homologous selected gate/up, selected down, source-F16, attention, and dense/shared families are **5.687x/3.001x/3.192x/18.933x/10.179x** slower in hipEngine and explain **99.76%** of the gap; source audit selects quality-safe expert-major matrix reuse rather than copying the previously quality-rejected Q8 route or prioritizing submission; `benchmarks/results/2026-07-23-gfx1151-laguna-llamacpp-vulkan-pp512-profile.json`.
+
 - [quality-lane admitted gfx1151 Laguna SWA online-qrow2 screen] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / exact context-qualified SWA qrow2 -> online SWA qrow2 improves repeated 512/1K/4K **71.354/68.156/63.995 -> 76.226/74.538/70.885 tok/s (+6.828%/+9.364%/+10.766%)** with max full-vocabulary KL **0.016558**, top-1 **9/9**, exact IDs/cursors, deterministic state, and lifecycle pass; category gate still required and no default changes; `benchmarks/results/2026-07-23-gfx1151-laguna-swa-qrow2-online-screen.json`.
 
 - [candidate gfx1151 Laguna SWA online-qrow2 leaf] Radeon 8060S Laguna BF16 KVLiveSpans M128 / exact two-pass qrow2 -> online one-pass qrow2 improves full-window **7.893 -> 2.552 ms (3.093x)** and start508 wrap **8.676 -> 2.987 ms (2.904x)** with max-abs **3.45e-8**, synthetic KL **1.11e-15**, top-1 100%, complete wrap fixture, and cached local32/VGPR56/LDS0/scratch0 trace; explicit only pending full-model/category gates; `benchmarks/results/2026-07-23-gfx1151-laguna-swa-qrow2-online-leaf-screen.json`.

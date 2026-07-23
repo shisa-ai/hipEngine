@@ -1814,6 +1814,22 @@ return to zero. State hashes differ as declared for online softmax. No backend
 default changes before the complete ten-prompt gate.
 [SWA online model screen](results/2026-07-23-gfx1151-laguna-swa-qrow2-online-screen.json).
 
+A read-only same-device/same-GGUF llama.cpp Vulkan pp512 profile now gives a
+concrete external control. The user's unprofiled `c0bc8591e` build measures
+**344.56 +/- 3.16 tok/s**; the instrumented Vulkan operation sum is **1.478897
+s** (**346.20 tok/s implied**) and reproduces that wall within **0.48%**, while
+perf-logger overhead lowers its own reported benchmark row to 316.13 tok/s.
+Against hipEngine's retained **71.456 tok/s / 7.150503 s kernel sum**, homologous
+selected gate/up, selected down, source-F16, attention, and dense/shared families
+are **5.687x/3.001x/3.192x/18.933x/10.179x** slower and explain **99.76%** of
+the kernel-sum gap. Source attribution shows expert-major 32x32 Q4/Q6 x Q8_1
+integer-dot MMQ, M16xK64 cooperative-matrix Flash Attention, and graph-pattern
+fusion. The transfer decision is not to copy unchecked Q8 numerics: hipEngine's
+prior Q8 gate/up route failed max KL at **0.171561**. Finish the current SWA
+quality decision, then prioritize a new quality-safe expert-major matrix path;
+submission-only work remains deferred at **0.144%** pp512 span residual.
+[llama.cpp Vulkan pp512 profile](results/2026-07-23-gfx1151-laguna-llamacpp-vulkan-pp512-profile.json).
+
 The earlier post-LPF all-family profile established the pre-AR-O1 bottleneck.
 Three alternating non-profiled repetitions measure
 **47.453/44.848/38.541 tok/s** at 512/1K/4K. One cached trace covers a 128-row
