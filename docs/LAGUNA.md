@@ -2084,11 +2084,19 @@ Laguna's mixed F16/Q4/Q6 active bytes and is not the current priority. Prefill
 should reuse weights across rows and move onto matrix instructions instead of
 paying decode-shaped costs per row.
 
-The same-model Poolside llama.cpp raw-token control is only 70.45 prompt tok/s.
-That is the cleanest compatibility reference, but it is not an upper bound: it
-suggests that the current llama.cpp Laguna path may also be under-optimized.
-Before publishing a cross-engine ratio, run the identical Q4_K_M file and token
-streams at 128/512/1K/4K with homologous in-process timing.
+The earlier same-model Poolside llama.cpp raw-token control was 70.45 prompt
+tok/s over the short canonical suite. AR-O0 now adds a matched long-shape
+control with the identical Q4_K_M hash, deterministic token stream, BF16 KV,
+and 128-row microbatch. Poolside native `prompt_ms` measures
+**80.235/103.868/105.435/120.530 tok/s** at 128/512/1K/4K. At the three shapes
+with balanced hipEngine timing, that is a diagnostic **2.189/2.351/3.127x**.
+The ratio remains qualified because Poolside excludes HTTP/sampling and
+hipEngine includes final argmax bookkeeping; Poolside also rounds the requested
+4,097-slot endpoint context to 4,352. Nevertheless, the same-model control
+proves that the current 38-47 tok/s long-prefill path is not a model-imposed
+ceiling. Poolside itself is still far below the cross-model gpt-oss directional
+number, so the 200-500 tok/s target remains an optimization objective rather
+than a comparator-derived promise.
 
 ### What the retained profiles actually say
 
@@ -2160,13 +2168,55 @@ implementing against the pre-LPF attribution.
 - [ ] Preserve the 128-row real-routing histogram and add 256/512-row replays.
   Report useful rows per `(layer, expert)`, padding factors for 2/4/8/16/32-row
   tiles, and hot/Zipf as well as natural routing.
-- [ ] Capture matched llama.cpp Laguna Q4_K_M 128/512/1K/4K controls with the
-  same token streams and timing boundary. Separately record reproducible
-  metadata for the gpt-oss and Nemotron directional rows if available.
-- [ ] Audit the merged kernel catalog and run `scripts/check_lineage.py` before
+- [x] Capture matched llama.cpp Laguna Q4_K_M 128/512/1K/4K controls with the
+  same token streams and native prompt timing. Poolside reaches
+  80.235/103.868/105.435/120.530 tok/s; model/token/KV/microbatch hashes match,
+  and build, clocks, memory, and timing qualifications are retained in
+  `benchmarks/results/2026-07-23-gfx1151-poolside-laguna-prefill-matched-control.json`.
+  Reproducible metadata for the gpt-oss and Nemotron directional rows remains
+  unavailable, so those rows stay explicitly directional.
+- [x] Audit the merged kernel catalog and run `scripts/check_lineage.py` before
   new kernel work. In particular inspect the existing exact Q4 dual-SiLU,
   Q4/Q5 T16 Q8_1/dp4a, grouped compact-MoE, IQ MMQ32, Qwen GGUF Q8T16/MMQ,
   F32-router, device-metadata, and AOTriton paths before writing duplicates.
+
+##### Merged-main transfer audit (2026-07-23)
+
+The audit imported each lazy candidate family, refreshed the gfx1151 backend
+aliases, and resolved all 17 inspected four-axis keys. Fifteen focused
+registry/build/argument-policy tests pass. The result is not “write a new MoE
+stack”: most leaf kernels already exist, but the complete device-resident
+Laguna scheduler and a useful small-M selected layout do not.
+
+| Existing family | Laguna compatibility | Decision |
+| --- | --- | --- |
+| direct Q4T16 dual + fused SiLU | Exact resident `tiles`, selected-ID, K3072/N1024, and BF16-output ABI match. The fused output is bit-identical to dual projection followed by the registered separate SiLU chain. | **Screened and rejected as a runtime default.** Same-session full-model timing is exact but only +0.129% in aggregate and regresses rows 16/64. Candidate runtime wiring was removed; the registered leaf and its bit gate remain. |
+| direct Q4T16 Q8_1/dp4a + fused SiLU | Resident T16 and selected-ID ABI match. It needs one caller-owned GGML Q8_1 buffer of `rows * (K/32) * 36` bytes. This is quality-gated, not byte-exact. | **Second screen only.** Quantize each token row once before top-10 expansion and include quantization in timing. There is no qualified Q4/Q6 single-down peer; do not build one unless gate/up wins inclusively. |
+| group count/prefix/scatter-gather/tile-map + weighted-lane sum | Raw-pointer metadata and BF16 packed-row ABI are model-neutral; passing Laguna's already-scaled routing weights preserves normalized uncorrected sigmoid probabilities and the 2.5 scale. Registrations still carry Qwen/PARO names. | Reuse bodies through new generic registry aliases and Laguna-owned bounded scratch; do not call Qwen runner helpers or add model branches. |
+| Q4T16 dual and Q4T16/Q6T16 compact WMMA | Existing Laguna allocations match the kernel `tiles` layouts exactly. The output can return through `sorted_lanes`, a static lane-to-token map, and weighted-lane sum. | Replay control, not the default design. M16 padding is already 4.396x at 55 rows and 2.704x at 128. gfx1151 also has no admitted no-read compact-WMMA launch policy, so the current complete Qwen orchestration may read one device scalar. |
+| compact exact pair-reuse | Layout and arithmetic match. | Do not rewire: LPF-2 already rejected its stronger no-padding bound at 0.8843x weighted full-model throughput. |
+| IQ2_XS MMQ32 | Exact K3072/N1024 Laguna Q2 XL gate/up shapes, raw-IQ weights, D4-Q8_1 input, and compact metadata match. It pads populated experts to M32. | Q2-XL-specific later lane. It is a scheduling reference for Q4_K_M, not a quant-format shortcut; prior synthetic evidence wins at 256/512 rows and loses at short shapes. |
+| Qwen raw-Q8/Q8T16 MMQ and WMMA | Guarded correction, activation reuse, and tile schedules are useful references, but weight formats and admitted K/N shapes do not match Laguna Q4/Q6 selected experts. | Do not route or duplicate residency. Reuse only scheduler/correctness ideas in a Q4/Q6-specific kernel. |
+| 256-thread BF16-hidden/F32 router | Laguna already resolves `router_logits/f32/bf16_hidden` to this exact gfx1151 wrapper. | No AR-O1 work. Revisit only if a post-matrix profile makes router material. |
+| contiguous prefill metadata | The helper writes Qwen attention/GDN metadata, not Laguna's span/ring contract. Kernel-span residual is only 0.28-0.34%. | Do not port. Only the grouped-expert count/prefix/scatter metadata is relevant now. |
+| AOTriton | Torch-free adapter exists, but it does not directly consume Laguna's global/SWA `KVLiveSpans`, physical ring, eviction, and separate gate ABI. | Keep as an AR-O5 global-attention ceiling after matrix work; not an AR-O1 dependency. |
+
+The first ranked item is now closed: exact fused Q4 dual-SiLU failed its strict
+same-session full-model screen and did not become a runtime route. The remaining
+AR-O1 order is therefore: (1) inclusive direct Q8_1/dp4a gate/up A/B through the
+quality lane; (2) preserve and extend the natural-routing replay to 256/512,
+then add a generic no-D2H grouping substrate and small-M Q4/Q6 kernels; and (3)
+admit M16/M32 only at a measured crossover. This deliberately excludes the rejected
+compact-pair route, raw-Q4 duplication, Q8T16 substitution, router retuning,
+metadata work, and attention work.
+
+Lineage status is bounded and explicit. Poolside Laguna source/layout is clean
+at `04b2b72c`; llama.cpp HIP `mmq.cuh`, `mma.cuh`, and `quantize.cu` are clean
+at `1ebf790c`. The broad kernel scan is blocked by the absent read-only Atlas
+checkout, and the Qwen/PARO filters are blocked by the absent
+`/home/lhl/amd-gpu-tuning/nano-vllm-amd` checkout. No external source is being
+copied in this phase; restore and inspect those checkouts before any future
+external port.
 
 Exit: one compact current-main artifact with a complete Amdahl table and a
 ranked first candidate. If the inferred 55/35 split is wrong, reorder AR-O1 and
@@ -2179,10 +2229,27 @@ GEMVs over `rows * top_k`; the prior exact pair-reuse candidate lost 11.57%, and
 blanket M16 compact WMMA would execute 4.396x useful lanes at 55 rows. Do not
 repeat either experiment unchanged.
 
-- [ ] First screen already-landed primitives: exact Q4 dual+SiLU fusion and
-  direct Q8_1/dp4a for Q4 gate/up. Only if that wins inclusively should a
-  single-output Q4/Q6 down sibling be developed. Include activation-quantization
-  cost and full-model quality; a prequantized leaf win is not sufficient.
+- [ ] First screen already-landed primitives. **Exact Q4 dual+SiLU is complete
+  and rejected:** one-load, same-session, counterbalanced rows
+  16/32/55/64/122/128 are exact in all 36 timed IDs, but split -> fused median
+  rates are `46.380->46.300`, `48.917->49.000`, `49.088->49.137`,
+  `50.558->50.527`, `51.081->51.194`, and `51.412->51.549 tok/s`. Aggregate
+  wall improves only 0.129%, while rows 16/64 regress 0.172%/0.060%; the strict
+  all-shape gate fails, candidate runtime code is removed, and the original
+  split chain stays default. Next screen direct Q8_1/dp4a for Q4 gate/up. Only
+  if that wins inclusively should a single-output Q4/Q6 down sibling be
+  developed. Include activation-quantization cost and full-model quality; a
+  prequantized leaf win is not sufficient. Evidence:
+  `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-ar-o1-fused-silu-rejected.json`.
+  The inclusive Q8 screen is now wired but remains default-off and unqualified:
+  `HIPENGINE_LAGUNA_SELECTED_GATE_UP=q8_dp4a` allocates one bounded
+  `rows * (K/32) * 36` workspace, quantizes each producer row once before
+  top-10 expansion, launches the existing fused Q4T16 q8_1/dp4a leaf, and
+  keeps c=1 AR decode on exact split. The same-session harness owns balanced
+  16/32/55/64/122/128 timing and treats next-ID agreement as diagnostic; it
+  cannot promote without the separate Poolside/category quality gate. Remove
+  this runtime route and scratch immediately if either inclusive performance
+  or quality fails.
 - [ ] Build one device-resident expert grouping/scatter pass with no scalar D2H
   boundary. Quantize each producer activation once, not once per selected
   expert or output projection.
