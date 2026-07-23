@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-import ctypes
 from dataclasses import dataclass
 import math
 from types import MappingProxyType
 from typing import Callable
 
-from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
+from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.memory import DeviceBuffer, free, malloc
 from hipengine.kernels.backends import (
     backend_package_capability,
@@ -50,14 +49,10 @@ _SELECTED_DOWN_MODES = frozenset(
         "adaptive_grouped_smallm",
         "grouped_smallm_fused",
         "adaptive_grouped_smallm_fused",
-        "wmma16_down",
-        "adaptive_wmma16_down",
     }
 )
 _BASELINE_SELECTED_DOWN_MODE = "direct"
 _GROUPED_SMALLM_MIN_ROWS = 32
-_WMMA16_DOWN_MIN_ROWS = 256
-_WMMA_TILE_ROWS = 16
 
 
 def resolve_laguna_selected_down_mode(
@@ -122,8 +117,6 @@ class LagunaMoEKernelPlan:
     grouped_compact_key: KernelKey
     grouped_gather_key: KernelKey
     grouped_smallm_down_keys: Mapping[str, KernelKey]
-    grouped_wmma_tile_map_key: KernelKey
-    grouped_wmma16_down_keys: Mapping[str, KernelKey]
     grouped_weighted_sum_key: KernelKey
     grouped_weighted_sum_shared_add_key: KernelKey
     shared_silu_key: KernelKey
@@ -142,8 +135,6 @@ class LagunaMoEKernelPlan:
     grouped_compact: Callable
     grouped_gather: Callable
     grouped_smallm_downs: Mapping[str, Callable]
-    grouped_wmma_tile_map: Callable
-    grouped_wmma16_downs: Mapping[str, Callable]
     grouped_weighted_sum: Callable
     grouped_weighted_sum_shared_add: Callable
     shared_silu: Callable
@@ -166,8 +157,6 @@ class LagunaMoEKernelPlan:
             self.grouped_compact_key,
             self.grouped_gather_key,
             *tuple(self.grouped_smallm_down_keys.values()),
-            self.grouped_wmma_tile_map_key,
-            *tuple(self.grouped_wmma16_down_keys.values()),
             self.grouped_weighted_sum_key,
             self.grouped_weighted_sum_shared_add_key,
             self.shared_silu_key,
@@ -201,15 +190,11 @@ class LagunaMoEScratch:
     grouped_sorted_experts: DeviceBuffer
     grouped_sorted_weights: DeviceBuffer
     grouped_lane_to_row: DeviceBuffer
-    grouped_wmma_expert_start: DeviceBuffer
-    grouped_wmma_tile_expert: DeviceBuffer
-    grouped_wmma_total: DeviceBuffer
     shared_gate: DeviceBuffer
     shared_up: DeviceBuffer
     shared_intermediate: DeviceBuffer
     shared_output: DeviceBuffer
     output: DeviceBuffer
-    grouped_wmma_total_host: ctypes.c_int64
 
     @property
     def buffers(self) -> tuple[DeviceBuffer, ...]:
@@ -234,19 +219,12 @@ class LagunaMoEScratch:
             self.grouped_sorted_experts,
             self.grouped_sorted_weights,
             self.grouped_lane_to_row,
-            self.grouped_wmma_expert_start,
-            self.grouped_wmma_tile_expert,
-            self.grouped_wmma_total,
             self.shared_gate,
             self.shared_up,
             self.shared_intermediate,
             self.shared_output,
             self.output,
         )
-
-    @property
-    def grouped_wmma_tile_capacity(self) -> int:
-        return self.max_rows * self.plan.top_k
 
     @property
     def nbytes(self) -> int:
@@ -324,9 +302,6 @@ def resolve_laguna_moe_plan(
         ),
         "grouped_gather": KernelKey(
             backend, "moe_gather_packed_hidden", "generic", "bf16_lanes"
-        ),
-        "grouped_wmma_tile_map": KernelKey(
-            backend, "moe_wmma_tile_map", "generic", "tile16"
         ),
         "grouped_weighted_sum": KernelKey(
             backend, "weighted_lanes_sum", "bf16", _WEIGHTED_SUM_VARIANT
@@ -409,20 +384,6 @@ def resolve_laguna_moe_plan(
     grouped_smallm_downs = MappingProxyType(
         {quant: _resolve_exact(key) for quant, key in grouped_smallm_down_keys.items()}
     )
-    grouped_wmma16_down_keys = MappingProxyType(
-        {
-            quant: KernelKey(
-                backend,
-                "moe_linear",
-                quant,
-                "selected_wmma_prefill_compact_bf16_bf16_out",
-            )
-            for quant in ("gguf_q4_k_t16_v1", "gguf_q6_k_t16_v1")
-        }
-    )
-    grouped_wmma16_downs = MappingProxyType(
-        {quant: _resolve_exact(key) for quant, key in grouped_wmma16_down_keys.items()}
-    )
     selected_down_route_specs = {
         "gguf_q4_k_t16_v1": ("t16", "tiles", "selected_down"),
         "gguf_q6_k_t16_v1": ("t16", "tiles", "selected_down"),
@@ -503,8 +464,6 @@ def resolve_laguna_moe_plan(
         grouped_compact_key=keys["grouped_compact"],
         grouped_gather_key=keys["grouped_gather"],
         grouped_smallm_down_keys=grouped_smallm_down_keys,
-        grouped_wmma_tile_map_key=keys["grouped_wmma_tile_map"],
-        grouped_wmma16_down_keys=grouped_wmma16_down_keys,
         grouped_weighted_sum_key=keys["grouped_weighted_sum"],
         grouped_weighted_sum_shared_add_key=keys[
             "grouped_weighted_sum_shared_add"
@@ -515,8 +474,6 @@ def resolve_laguna_moe_plan(
         grouped_compact=functions["grouped_compact"],
         grouped_gather=functions["grouped_gather"],
         grouped_smallm_downs=grouped_smallm_downs,
-        grouped_wmma_tile_map=functions["grouped_wmma_tile_map"],
-        grouped_wmma16_downs=grouped_wmma16_downs,
         grouped_weighted_sum=functions["grouped_weighted_sum"],
         grouped_weighted_sum_shared_add=functions[
             "grouped_weighted_sum_shared_add"
@@ -563,9 +520,6 @@ def allocate_laguna_moe_scratch(
         rows * k * _I64_NBYTES,
         rows * k * _F32_NBYTES,
         rows * k * _I64_NBYTES,
-        (e + 1) * _I64_NBYTES,
-        rows * k * _I64_NBYTES,
-        _I64_NBYTES,
         rows * sf * _BF16_NBYTES,
         rows * sf * _BF16_NBYTES,
         rows * sf * _BF16_NBYTES,
@@ -579,7 +533,7 @@ def allocate_laguna_moe_scratch(
         for buffer in reversed(buffers):
             free(buffer, runtime=runtime)
         raise
-    return LagunaMoEScratch(plan, rows, *buffers, ctypes.c_int64())
+    return LagunaMoEScratch(plan, rows, *buffers)
 
 
 def validate_laguna_moe_layer(
@@ -1091,113 +1045,6 @@ def _launch_grouped_smallm_down(
         )
 
 
-def _launch_grouped_wmma16_down(
-    layer: LagunaGGUFResidentLayerWeights,
-    scratch: LagunaMoEScratch,
-    *,
-    tokens: int,
-    lanes: int,
-    stream: int,
-    runtime: HipRuntime | None,
-    libraries: Mapping[str, object] | None,
-) -> None:
-    """Group on device and launch the bounded M16 T16-WMMA down control."""
-
-    plan = scratch.plan
-    weight = layer.weight("ffn_down_exps")
-    try:
-        grouped_down = plan.grouped_wmma16_downs[weight.spec.quant_key]
-    except KeyError as exc:
-        raise ValueError(
-            f"no Laguna grouped WMMA16 selected-down route for {weight.spec.quant_key!r}"
-        ) from exc
-    active_runtime = runtime or get_hip_runtime()
-    plan.grouped_compact(
-        scratch.selected_experts.ptr,
-        scratch.scaled_routing_weights.ptr,
-        scratch.grouped_expert_start.ptr,
-        scratch.grouped_active_experts.ptr,
-        scratch.grouped_active_count.ptr,
-        scratch.grouped_sorted_lanes.ptr,
-        scratch.grouped_sorted_experts.ptr,
-        scratch.grouped_sorted_weights.ptr,
-        lanes,
-        plan.expert_count,
-        **_stage_kwargs(
-            "grouped_metadata", libraries, stream=stream, runtime=active_runtime
-        ),
-    )
-    plan.grouped_gather(
-        scratch.expert_intermediate.ptr,
-        scratch.grouped_sorted_lanes.ptr,
-        scratch.expert_gate.ptr,
-        lanes * plan.expert_ffn_size,
-        lanes,
-        1,
-        plan.expert_ffn_size,
-        **_stage_kwargs(
-            "grouped_gather", libraries, stream=stream, runtime=active_runtime
-        ),
-    )
-    plan.grouped_wmma_tile_map(
-        scratch.grouped_expert_start.ptr,
-        scratch.grouped_wmma_expert_start.ptr,
-        scratch.grouped_wmma_tile_expert.ptr,
-        scratch.grouped_wmma_total.ptr,
-        plan.expert_count,
-        **_stage_kwargs(
-            "grouped_metadata", libraries, stream=stream, runtime=active_runtime
-        ),
-    )
-    if stream:
-        active_runtime.stream_synchronize(stream)
-    active_runtime.memcpy(
-        ctypes.addressof(scratch.grouped_wmma_total_host),
-        scratch.grouped_wmma_total.ptr,
-        _I64_NBYTES,
-        HipMemcpyKind.DEVICE_TO_HOST,
-    )
-    wmma_total_rows = int(scratch.grouped_wmma_total_host.value)
-    if (
-        wmma_total_rows <= 0
-        or wmma_total_rows % _WMMA_TILE_ROWS
-        or wmma_total_rows > scratch.grouped_wmma_tile_capacity * _WMMA_TILE_ROWS
-    ):
-        raise ValueError("Laguna grouped WMMA16 scheduler produced an invalid row count")
-    grouped_down(
-        scratch.expert_gate.ptr,
-        scratch.grouped_expert_start.ptr,
-        scratch.grouped_wmma_expert_start.ptr,
-        scratch.grouped_wmma_tile_expert.ptr,
-        weight.allocation("tiles").tensor.ptr,
-        scratch.expert_down.ptr,
-        lanes,
-        plan.expert_ffn_size,
-        plan.hidden_size,
-        plan.expert_count,
-        wmma_total_rows,
-        **_stage_kwargs(
-            "grouped_wmma_down", libraries, stream=stream, runtime=active_runtime
-        ),
-    )
-    plan.grouped_weighted_sum(
-        scratch.expert_down.ptr,
-        scratch.grouped_sorted_weights.ptr,
-        scratch.grouped_sorted_lanes.ptr,
-        scratch.grouped_lane_to_row.ptr,
-        scratch.routed_output.ptr,
-        tokens,
-        plan.top_k,
-        plan.hidden_size,
-        **_stage_kwargs(
-            "grouped_weighted_sum",
-            libraries,
-            stream=stream,
-            runtime=active_runtime,
-        ),
-    )
-
-
 def run_laguna_moe_c1(
     hidden_bf16_ptr: int,
     layer: LagunaGGUFResidentLayerWeights,
@@ -1418,21 +1265,7 @@ def run_laguna_moe_rows(
         selected_down_mode == "adaptive_grouped_smallm"
         and tokens >= _GROUPED_SMALLM_MIN_ROWS
     ) or use_grouped_fused_combine
-    use_grouped_wmma16 = selected_down_mode == "wmma16_down" or (
-        selected_down_mode == "adaptive_wmma16_down"
-        and tokens >= _WMMA16_DOWN_MIN_ROWS
-    )
-    if use_grouped_wmma16:
-        _launch_grouped_wmma16_down(
-            layer,
-            scratch,
-            tokens=tokens,
-            lanes=lanes,
-            stream=stream,
-            runtime=runtime,
-            libraries=libraries,
-        )
-    elif use_grouped_smallm:
+    if use_grouped_smallm:
         _launch_grouped_smallm_down(
             layer,
             scratch,
