@@ -2758,6 +2758,17 @@ full-suite component/layer-scope bisection; do not infer quality from the
 single-prefill M128 screen or promote the all-layer route. Evidence:
 `benchmarks/results/2026-07-24-gfx1151-laguna-expert-major-wmma-category-rejected.json`.
 
+A complete component bisection does not find a retainable half. Q4 gate/up-only
+preserves **1.545x** prefill but reaches max KL **0.988050** at **312/320**
+top-1; Q4/Q6 down-only preserves **1.095x** but reaches max KL **1.183662** at
+**311/320**. Both are numerically worse than the combined route's KL
+**0.527791**, demonstrating partial error cancellation rather than identifying
+one bad projection. All three frozen Poolside fallback checks and lifecycle
+pass. The only remaining principled screen is combined Q4/Q6 WMMA scoped by
+Laguna's architecture-defined global-versus-SWA layer families; do not tune a
+layer ID list from prompt outcomes. Evidence:
+`benchmarks/results/2026-07-24-gfx1151-laguna-expert-major-wmma-component-rejected.json`.
+
 #### AR-O6 — submission and serving only after a new profile asks for it
 
 Graph replay, cross-layer launch fusion, and packed multi-request prefill remain

@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-24
 
+- [rejected component bisection gfx1151 Laguna expert-major WMMA] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / uniformly-M128 exact grouped -> Q4 gate/up-only improves prefill **73.470 -> 113.530 tok/s (1.545x)** but reaches max KL **0.988050** at **312/320** top-1; Q4/Q6 down-only reaches **80.418 tok/s (1.095x)** but max KL **1.183662** at **311/320**. Both are worse numerically than combined KL **0.527791**, so neither component is retained and only an architecture-derived layer-family screen remains; `benchmarks/results/2026-07-24-gfx1151-laguna-expert-major-wmma-component-rejected.json`.
+
 - [rejected quality-lane gfx1151 Laguna expert-major Q4/Q6 WMMA] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / exact adaptive grouped-small-M -> adaptive-M128 expert-major compensated WMMA improves uniformly-M128 ten-prompt weighted prefill **73.046 -> 130.557 tok/s (+78.731%)**, TTFT **1.758 -> 0.981 s (1.792x)**, and h16/h32 E2E **+40.048%/+26.142%** with every category faster and neutral decode, but maximum teacher-forced KL is **0.527791** (>0.05) despite **314/320** top-1; exact grouped remains default and the leaf stays diagnostic for component/layer-scope bisection; `benchmarks/results/2026-07-24-gfx1151-laguna-expert-major-wmma-category-rejected.json`.
 
 ## 2026-07-23
