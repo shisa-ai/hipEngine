@@ -1,0 +1,796 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_q2_xl_d7_residual_profile",
+  "date": "2026-07-23",
+  "status": "diagnostic_next_candidate",
+  "pass": true,
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "rocm": "HIP version: 7.2.53211-3d9ef42",
+    "hipcc": "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)"
+  },
+  "model": {
+    "id": "poolside/Laguna-S-2.1-UD-Q2_K_XL",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "kv_dtype": "bf16",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "source": {
+    "profiled_revision": "51a437bc729eb5476a8bf71a31b2a9718e880263",
+    "current_revision": "711b92b9709fa8bf869c6a55265a75bf9713f809",
+    "profiled_runtime_code_identical_to_current": true,
+    "retained_artifact": "benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-q6-attention-pair-retained.json",
+    "profile_commands": [
+      "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q2-xl-q6-pair-profile-51a437bc7-short --output-file epyc -- .venv/bin/python -u /tmp/laguna_decode_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id code_merge_intervals --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 16 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --output /tmp/laguna-q2-xl-q6-pair-profile-51a437bc7-short/bench.json",
+      "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q2-xl-q6-pair-profile-51a437bc7-512 --output-file epyc -- .venv/bin/python -u /tmp/laguna_decode_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id code_merge_intervals --prompt-length 512 --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 8 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --output /tmp/laguna-q2-xl-q6-pair-profile-51a437bc7-512/bench.json",
+      "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q2-xl-q6-pair-profile-51a437bc7-1024 --output-file epyc -- .venv/bin/python -u /tmp/laguna_decode_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id code_merge_intervals --prompt-length 1024 --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 8 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --output /tmp/laguna-q2-xl-q6-pair-profile-51a437bc7-1024/bench.json",
+      "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q2-xl-q6-pair-profile-51a437bc7-3968 --output-file epyc -- .venv/bin/python -u /tmp/laguna_decode_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id code_merge_intervals --prompt-length 3968 --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 8 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --output /tmp/laguna-q2-xl-q6-pair-profile-51a437bc7-3968/bench.json"
+    ],
+    "warmup_steps_excluded": 2,
+    "profile_summary_sha256": "edfd8c93ca60378ae0115542eaf3ab76f511ee44f1aabc0b47f58a435f4a604c"
+  },
+  "contexts": [
+    {
+      "label": "short",
+      "prompt_tokens": 69,
+      "stable_steps": 14,
+      "dispatches_per_token": 869,
+      "kernel_sum_ms_per_token": 17.26786307142857,
+      "span_median_ms_per_token": 20.714699,
+      "span_minus_sum_median_ms_per_token": 3.384629,
+      "profiled_child_tok_s": 44.22889933396254,
+      "families": [
+        {
+          "family": "q5_attention_output",
+          "ms_per_token": 2.6461625,
+          "kernel_sum_share_pct": 15.324203632227913,
+          "calls_per_token": 47.0
+        },
+        {
+          "family": "selected_iq2_dual_silu",
+          "ms_per_token": 2.3166095714285713,
+          "kernel_sum_share_pct": 13.415728175778948,
+          "calls_per_token": 46.0
+        },
+        {
+          "family": "q5_query_gate_pair",
+          "ms_per_token": 2.1709550714285712,
+          "kernel_sum_share_pct": 12.572227741489543,
+          "calls_per_token": 47.0
+        },
+        {
+          "family": "selected_iq3_weighted_down",
+          "ms_per_token": 2.1344049285714286,
+          "kernel_sum_share_pct": 12.360562043736714,
+          "calls_per_token": 45.0
+        },
+        {
+          "family": "swa_attention_decode",
+          "ms_per_token": 2.118759285714286,
+          "kernel_sum_share_pct": 12.269956490563025,
+          "calls_per_token": 36.0
+        },
+        {
+          "family": "q6_attention_pair",
+          "ms_per_token": 0.9388891428571429,
+          "kernel_sum_share_pct": 5.43720516530288,
+          "calls_per_token": 48.0
+        },
+        {
+          "family": "q5_shared_pair",
+          "ms_per_token": 0.8964038571428572,
+          "kernel_sum_share_pct": 5.191168434883226,
+          "calls_per_token": 46.0
+        },
+        {
+          "family": "all_other",
+          "ms_per_token": 0.8006566428571429,
+          "kernel_sum_share_pct": 4.636686308810906,
+          "calls_per_token": 203.0
+        },
+        {
+          "family": "q6_bf16_projection",
+          "ms_per_token": 0.5950955,
+          "kernel_sum_share_pct": 3.446260243889968,
+          "calls_per_token": 50.0
+        },
+        {
+          "family": "global_attention_decode",
+          "ms_per_token": 0.5168443571428571,
+          "kernel_sum_share_pct": 2.993099696267736,
+          "calls_per_token": 12.0
+        },
+        {
+          "family": "add_rmsnorm",
+          "ms_per_token": 0.3946339285714286,
+          "kernel_sum_share_pct": 2.285366330153442,
+          "calls_per_token": 48.0
+        },
+        {
+          "family": "router_select",
+          "ms_per_token": 0.3929715714285714,
+          "kernel_sum_share_pct": 2.275739446178391,
+          "calls_per_token": 47.0
+        },
+        {
+          "family": "q4_lm_head",
+          "ms_per_token": 0.38031978571428576,
+          "kernel_sum_share_pct": 2.2024716326571023,
+          "calls_per_token": 1.0
+        },
+        {
+          "family": "rmsnorm",
+          "ms_per_token": 0.3361146428571428,
+          "kernel_sum_share_pct": 1.9464750297521096,
+          "calls_per_token": 49.0
+        },
+        {
+          "family": "router_projection",
+          "ms_per_token": 0.31558021428571426,
+          "kernel_sum_share_pct": 1.8275580074981812,
+          "calls_per_token": 47.0
+        },
+        {
+          "family": "bf16_add",
+          "ms_per_token": 0.19767264285714287,
+          "kernel_sum_share_pct": 1.1447429368617839,
+          "calls_per_token": 95.0
+        },
+        {
+          "family": "q5_layer0_mlp",
+          "ms_per_token": 0.11578942857142857,
+          "kernel_sum_share_pct": 0.6705486839481251,
+          "calls_per_token": 2.0
+        }
+      ],
+      "q5_attention_output_median_us": 61.48,
+      "q5_attention_output_resources": [
+        [
+          128,
+          72,
+          128,
+          1024,
+          0,
+          49152,
+          1,
+          1
+        ]
+      ],
+      "generated_ids_exact_to_d6": true,
+      "finite": true,
+      "lifecycle": true,
+      "trace_sha256": "0bd5b34312806101c5cf197628d674049b5f4a9f8814c07d34181d321785436a",
+      "bench_sha256": "164b864205c43c2ed6ed814e466f3a3a0037037604b4f22e1becb2d90f5c9bcd",
+      "bench_generated_ids_sha256": "b9b3dec37207e040b8ece7ce0c99fed4a4fc8a748a17735a0ea77881f32236ec"
+    },
+    {
+      "label": "512",
+      "prompt_tokens": 512,
+      "stable_steps": 6,
+      "dispatches_per_token": 869,
+      "kernel_sum_ms_per_token": 30.651083,
+      "span_median_ms_per_token": 34.301568,
+      "span_minus_sum_median_ms_per_token": 3.6308555,
+      "profiled_child_tok_s": 27.2870951573422,
+      "families": [
+        {
+          "family": "swa_attention_decode",
+          "ms_per_token": 13.094330666666666,
+          "kernel_sum_share_pct": 42.72061338474294,
+          "calls_per_token": 36.0
+        },
+        {
+          "family": "global_attention_decode",
+          "ms_per_token": 2.9881033333333336,
+          "kernel_sum_share_pct": 9.748769181608798,
+          "calls_per_token": 12.0
+        },
+        {
+          "family": "q5_attention_output",
+          "ms_per_token": 2.6308003333333336,
+          "kernel_sum_share_pct": 8.583058332174865,
+          "calls_per_token": 47.0
+        },
+        {
+          "family": "selected_iq2_dual_silu",
+          "ms_per_token": 2.316645,
+          "kernel_sum_share_pct": 7.558117930123382,
+          "calls_per_token": 46.0
+        },
+        {
+          "family": "q5_query_gate_pair",
+          "ms_per_token": 2.1677975,
+          "kernel_sum_share_pct": 7.072498873857083,
+          "calls_per_token": 47.0
+        },
+        {
+          "family": "selected_iq3_weighted_down",
+          "ms_per_token": 2.101177,
+          "kernel_sum_share_pct": 6.855147663134773,
+          "calls_per_token": 45.0
+        },
+        {
+          "family": "q6_attention_pair",
+          "ms_per_token": 0.9295741666666666,
+          "kernel_sum_share_pct": 3.0327612458805016,
+          "calls_per_token": 48.0
+        },
+        {
+          "family": "q5_shared_pair",
+          "ms_per_token": 0.8915735,
+          "kernel_sum_share_pct": 2.9087830273403394,
+          "calls_per_token": 46.0
+        },
+        {
+          "family": "all_other",
+          "ms_per_token": 0.8115206666666667,
+          "kernel_sum_share_pct": 2.647608460251361,
+          "calls_per_token": 203.0
+        },
+        {
+          "family": "q6_bf16_projection",
+          "ms_per_token": 0.5956565,
+          "kernel_sum_share_pct": 1.9433456886335796,
+          "calls_per_token": 50.0
+        },
+        {
+          "family": "router_select",
+          "ms_per_token": 0.39077633333333334,
+          "kernel_sum_share_pct": 1.2749185186485361,
+          "calls_per_token": 47.0
+        },
+        {
+          "family": "add_rmsnorm",
+          "ms_per_token": 0.3906298333333333,
+          "kernel_sum_share_pct": 1.2744405583754848,
+          "calls_per_token": 48.0
+        },
+        {
+          "family": "q4_lm_head",
+          "ms_per_token": 0.37589633333333333,
+          "kernel_sum_share_pct": 1.2263721100273466,
+          "calls_per_token": 1.0
+        },
+        {
+          "family": "rmsnorm",
+          "ms_per_token": 0.3338701666666667,
+          "kernel_sum_share_pct": 1.08926058719252,
+          "calls_per_token": 49.0
+        },
+        {
+          "family": "router_projection",
+          "ms_per_token": 0.3190625,
+          "kernel_sum_share_pct": 1.0409501680576834,
+          "calls_per_token": 47.0
+        },
+        {
+          "family": "bf16_add",
+          "ms_per_token": 0.199055,
+          "kernel_sum_share_pct": 0.6494224037695503,
+          "calls_per_token": 95.0
+        },
+        {
+          "family": "q5_layer0_mlp",
+          "ms_per_token": 0.11461416666666667,
+          "kernel_sum_share_pct": 0.3739318661812591,
+          "calls_per_token": 2.0
+        }
+      ],
+      "q5_attention_output_median_us": 61.001,
+      "q5_attention_output_resources": [
+        [
+          128,
+          72,
+          128,
+          1024,
+          0,
+          49152,
+          1,
+          1
+        ]
+      ],
+      "generated_ids_exact_to_d6": true,
+      "finite": true,
+      "lifecycle": true,
+      "trace_sha256": "12345b619a97b158e2aef7978b9a724923563710f330543ebaf4e8ec406dffe7",
+      "bench_sha256": "1515a2b3177113682fa9fa07f0023d2bba8f1f62ca1ab5c336d6bb1bcf2c8e77",
+      "bench_generated_ids_sha256": "15c06eaa2c8da02bbda1e2aa0f41a17448f80554b0eff5b0f658ed0184afb460"
+    },
+    {
+      "label": "1024",
+      "prompt_tokens": 1024,
+      "stable_steps": 6,
+      "dispatches_per_token": 869,
+      "kernel_sum_ms_per_token": 33.65189083333333,
+      "span_median_ms_per_token": 37.309833,
+      "span_minus_sum_median_ms_per_token": 3.6511625,
+      "profiled_child_tok_s": 25.23534167357248,
+      "families": [
+        {
+          "family": "swa_attention_decode",
+          "ms_per_token": 13.13495,
+          "kernel_sum_share_pct": 39.03183350098529,
+          "calls_per_token": 36.0
+        },
+        {
+          "family": "global_attention_decode",
+          "ms_per_token": 5.907608333333333,
+          "kernel_sum_share_pct": 17.555056155957953,
+          "calls_per_token": 12.0
+        },
+        {
+          "family": "q5_attention_output",
+          "ms_per_token": 2.6553208333333336,
+          "kernel_sum_share_pct": 7.890554639215543,
+          "calls_per_token": 47.0
+        },
+        {
+          "family": "selected_iq2_dual_silu",
+          "ms_per_token": 2.3284388333333337,
+          "kernel_sum_share_pct": 6.9191916878172455,
+          "calls_per_token": 46.0
+        },
+        {
+          "family": "q5_query_gate_pair",
+          "ms_per_token": 2.1460478333333337,
+          "kernel_sum_share_pct": 6.377198368917805,
+          "calls_per_token": 47.0
+        },
+        {
+          "family": "selected_iq3_weighted_down",
+          "ms_per_token": 2.1098753333333335,
+          "kernel_sum_share_pct": 6.269708123632181,
+          "calls_per_token": 45.0
+        },
+        {
+          "family": "q5_shared_pair",
+          "ms_per_token": 0.9231421666666666,
+          "kernel_sum_share_pct": 2.743210392660204,
+          "calls_per_token": 46.0
+        },
+        {
+          "family": "q6_attention_pair",
+          "ms_per_token": 0.9207178333333333,
+          "kernel_sum_share_pct": 2.7360062407587846,
+          "calls_per_token": 48.0
+        },
+        {
+          "family": "all_other",
+          "ms_per_token": 0.8100486666666666,
+          "kernel_sum_share_pct": 2.407141609600986,
+          "calls_per_token": 203.0
+        },
+        {
+          "family": "q6_bf16_projection",
+          "ms_per_token": 0.5914458333333333,
+          "kernel_sum_share_pct": 1.757541162434434,
+          "calls_per_token": 50.0
+        },
+        {
+          "family": "add_rmsnorm",
+          "ms_per_token": 0.3909175,
+          "kernel_sum_share_pct": 1.1616509215963076,
+          "calls_per_token": 48.0
+        },
+        {
+          "family": "router_select",
+          "ms_per_token": 0.387283,
+          "kernel_sum_share_pct": 1.1508506369466263,
+          "calls_per_token": 47.0
+        },
+        {
+          "family": "q4_lm_head",
+          "ms_per_token": 0.376397,
+          "kernel_sum_share_pct": 1.1185017860190074,
+          "calls_per_token": 1.0
+        },
+        {
+          "family": "rmsnorm",
+          "ms_per_token": 0.3343975,
+          "kernel_sum_share_pct": 0.9936960203994482,
+          "calls_per_token": 49.0
+        },
+        {
+          "family": "router_projection",
+          "ms_per_token": 0.32012983333333334,
+          "kernel_sum_share_pct": 0.9512982046650226,
+          "calls_per_token": 47.0
+        },
+        {
+          "family": "bf16_add",
+          "ms_per_token": 0.20038883333333335,
+          "kernel_sum_share_pct": 0.5954757024673378,
+          "calls_per_token": 95.0
+        },
+        {
+          "family": "q5_layer0_mlp",
+          "ms_per_token": 0.1147815,
+          "kernel_sum_share_pct": 0.34108484592581956,
+          "calls_per_token": 2.0
+        }
+      ],
+      "q5_attention_output_median_us": 61.601,
+      "q5_attention_output_resources": [
+        [
+          128,
+          72,
+          128,
+          1024,
+          0,
+          49152,
+          1,
+          1
+        ]
+      ],
+      "generated_ids_exact_to_d6": true,
+      "finite": true,
+      "lifecycle": true,
+      "trace_sha256": "c4f39d9ea36cee2ef314aef6bf04069ab1e0404adf6cd0c67881965f4a9e5945",
+      "bench_sha256": "4dde72f6711c34d01806c2f0277fb4a20885d3c0f02ebb5faa1954b18611881b",
+      "bench_generated_ids_sha256": "3f5924a9b3972ddf397918a09c1e644f825e928f4c25185ce3ea9eb46e350910"
+    },
+    {
+      "label": "3968",
+      "prompt_tokens": 3968,
+      "stable_steps": 6,
+      "dispatches_per_token": 869,
+      "kernel_sum_ms_per_token": 50.3951845,
+      "span_median_ms_per_token": 54.1225445,
+      "span_minus_sum_median_ms_per_token": 3.718813,
+      "profiled_child_tok_s": 17.700778454430274,
+      "families": [
+        {
+          "family": "global_attention_decode",
+          "ms_per_token": 22.658060666666668,
+          "kernel_sum_share_pct": 44.96076538159448,
+          "calls_per_token": 12.0
+        },
+        {
+          "family": "swa_attention_decode",
+          "ms_per_token": 13.136419166666666,
+          "kernel_sum_share_pct": 26.066814313710207,
+          "calls_per_token": 36.0
+        },
+        {
+          "family": "q5_attention_output",
+          "ms_per_token": 2.6348836666666666,
+          "kernel_sum_share_pct": 5.2284433380071595,
+          "calls_per_token": 47.0
+        },
+        {
+          "family": "selected_iq2_dual_silu",
+          "ms_per_token": 2.3191935,
+          "kernel_sum_share_pct": 4.602014107121683,
+          "calls_per_token": 46.0
+        },
+        {
+          "family": "q5_query_gate_pair",
+          "ms_per_token": 2.173737,
+          "kernel_sum_share_pct": 4.313382362951762,
+          "calls_per_token": 47.0
+        },
+        {
+          "family": "selected_iq3_weighted_down",
+          "ms_per_token": 2.1006903333333335,
+          "kernel_sum_share_pct": 4.168434651396769,
+          "calls_per_token": 45.0
+        },
+        {
+          "family": "q6_attention_pair",
+          "ms_per_token": 0.9384258333333334,
+          "kernel_sum_share_pct": 1.862133937287864,
+          "calls_per_token": 48.0
+        },
+        {
+          "family": "q5_shared_pair",
+          "ms_per_token": 0.8925715,
+          "kernel_sum_share_pct": 1.7711444235311808,
+          "calls_per_token": 46.0
+        },
+        {
+          "family": "all_other",
+          "ms_per_token": 0.816684,
+          "kernel_sum_share_pct": 1.6205595993006037,
+          "calls_per_token": 203.0
+        },
+        {
+          "family": "q6_bf16_projection",
+          "ms_per_token": 0.5957341666666667,
+          "kernel_sum_share_pct": 1.1821251823508387,
+          "calls_per_token": 50.0
+        },
+        {
+          "family": "add_rmsnorm",
+          "ms_per_token": 0.3919858333333333,
+          "kernel_sum_share_pct": 0.7778239869988636,
+          "calls_per_token": 48.0
+        },
+        {
+          "family": "router_select",
+          "ms_per_token": 0.39151216666666666,
+          "kernel_sum_share_pct": 0.7768840823802652,
+          "calls_per_token": 47.0
+        },
+        {
+          "family": "q4_lm_head",
+          "ms_per_token": 0.3759983333333333,
+          "kernel_sum_share_pct": 0.7460997257254476,
+          "calls_per_token": 1.0
+        },
+        {
+          "family": "rmsnorm",
+          "ms_per_token": 0.3372525,
+          "kernel_sum_share_pct": 0.6692157263557593,
+          "calls_per_token": 49.0
+        },
+        {
+          "family": "router_projection",
+          "ms_per_token": 0.3189783333333333,
+          "kernel_sum_share_pct": 0.6329539945097995,
+          "calls_per_token": 47.0
+        },
+        {
+          "family": "bf16_add",
+          "ms_per_token": 0.198629,
+          "kernel_sum_share_pct": 0.3941428173558924,
+          "calls_per_token": 95.0
+        },
+        {
+          "family": "q5_layer0_mlp",
+          "ms_per_token": 0.1144285,
+          "kernel_sum_share_pct": 0.22706236942142757,
+          "calls_per_token": 2.0
+        }
+      ],
+      "q5_attention_output_median_us": 61.161,
+      "q5_attention_output_resources": [
+        [
+          128,
+          72,
+          128,
+          1024,
+          0,
+          49152,
+          1,
+          1
+        ]
+      ],
+      "generated_ids_exact_to_d6": true,
+      "finite": true,
+      "lifecycle": true,
+      "trace_sha256": "87017641b52353188d5679bd990db84db5094a177bfb217657668b3f66b6c17e",
+      "bench_sha256": "62c3358e42dd9816a817e5812c1a2429d1ca999eb9cf661054fcb9e1245c2c58",
+      "bench_generated_ids_sha256": "e331c81ee7475428340453e76ddd8145f8be94e1c6d3164761fa77c5c432f8e0"
+    }
+  ],
+  "short_context_ranking": [
+    {
+      "family": "q5_attention_output",
+      "ms_per_token": 2.6461625,
+      "kernel_sum_share_pct": 15.324203632227913,
+      "calls_per_token": 47.0
+    },
+    {
+      "family": "selected_iq2_dual_silu",
+      "ms_per_token": 2.3166095714285713,
+      "kernel_sum_share_pct": 13.415728175778948,
+      "calls_per_token": 46.0
+    },
+    {
+      "family": "q5_query_gate_pair",
+      "ms_per_token": 2.1709550714285712,
+      "kernel_sum_share_pct": 12.572227741489543,
+      "calls_per_token": 47.0
+    },
+    {
+      "family": "selected_iq3_weighted_down",
+      "ms_per_token": 2.1344049285714286,
+      "kernel_sum_share_pct": 12.360562043736714,
+      "calls_per_token": 45.0
+    },
+    {
+      "family": "swa_attention_decode",
+      "ms_per_token": 2.118759285714286,
+      "kernel_sum_share_pct": 12.269956490563025,
+      "calls_per_token": 36.0
+    },
+    {
+      "family": "q6_attention_pair",
+      "ms_per_token": 0.9388891428571429,
+      "kernel_sum_share_pct": 5.43720516530288,
+      "calls_per_token": 48.0
+    },
+    {
+      "family": "q5_shared_pair",
+      "ms_per_token": 0.8964038571428572,
+      "kernel_sum_share_pct": 5.191168434883226,
+      "calls_per_token": 46.0
+    },
+    {
+      "family": "all_other",
+      "ms_per_token": 0.8006566428571429,
+      "kernel_sum_share_pct": 4.636686308810906,
+      "calls_per_token": 203.0
+    },
+    {
+      "family": "q6_bf16_projection",
+      "ms_per_token": 0.5950955,
+      "kernel_sum_share_pct": 3.446260243889968,
+      "calls_per_token": 50.0
+    },
+    {
+      "family": "global_attention_decode",
+      "ms_per_token": 0.5168443571428571,
+      "kernel_sum_share_pct": 2.993099696267736,
+      "calls_per_token": 12.0
+    },
+    {
+      "family": "add_rmsnorm",
+      "ms_per_token": 0.3946339285714286,
+      "kernel_sum_share_pct": 2.285366330153442,
+      "calls_per_token": 48.0
+    },
+    {
+      "family": "router_select",
+      "ms_per_token": 0.3929715714285714,
+      "kernel_sum_share_pct": 2.275739446178391,
+      "calls_per_token": 47.0
+    },
+    {
+      "family": "q4_lm_head",
+      "ms_per_token": 0.38031978571428576,
+      "kernel_sum_share_pct": 2.2024716326571023,
+      "calls_per_token": 1.0
+    },
+    {
+      "family": "rmsnorm",
+      "ms_per_token": 0.3361146428571428,
+      "kernel_sum_share_pct": 1.9464750297521096,
+      "calls_per_token": 49.0
+    },
+    {
+      "family": "router_projection",
+      "ms_per_token": 0.31558021428571426,
+      "kernel_sum_share_pct": 1.8275580074981812,
+      "calls_per_token": 47.0
+    },
+    {
+      "family": "bf16_add",
+      "ms_per_token": 0.19767264285714287,
+      "kernel_sum_share_pct": 1.1447429368617839,
+      "calls_per_token": 95.0
+    },
+    {
+      "family": "q5_layer0_mlp",
+      "ms_per_token": 0.11578942857142857,
+      "kernel_sum_share_pct": 0.6705486839481251,
+      "calls_per_token": 2.0
+    }
+  ],
+  "q5_attention_output_opportunity": {
+    "layers_per_token": 47,
+    "global_layers": 12,
+    "swa_layers": 35,
+    "shapes": [
+      {
+        "layers": 12,
+        "out_features": 3072,
+        "in_features": 6144
+      },
+      {
+        "layers": 35,
+        "out_features": 3072,
+        "in_features": 9216
+      }
+    ],
+    "activation_dtype": "bf16",
+    "output_dtype": "bf16",
+    "quant": "gguf_q5_k",
+    "current_output_tile": 8,
+    "current_blocks_per_layer": 384,
+    "short_ms_per_token": 2.6461625,
+    "short_median_us_per_layer": 61.48,
+    "kernel_sum_share_pct": 15.324203632227913,
+    "encoded_weight_bytes_per_token": 836960256,
+    "current_activation_read_bytes_per_token": 304349184,
+    "current_weight_plus_activation_proxy_bytes_per_token": 1141309440,
+    "resources": [
+      [
+        128,
+        72,
+        128,
+        1024,
+        0,
+        49152,
+        1,
+        1
+      ]
+    ],
+    "modeled_tiles": [
+      {
+        "output_tile": 16,
+        "blocks_per_layer": 192,
+        "activation_read_bytes_per_token": 152174592,
+        "activation_read_reduction_pct": 50.0,
+        "weight_plus_activation_proxy_bytes_per_token": 989134848,
+        "weight_plus_activation_proxy_reduction_pct": 13.33333333333333,
+        "traffic_proportional_modeled_savings_ms_per_token": 0.3528216666666666,
+        "traffic_proportional_approx_h32_decode_tok_s": 47.18106507274835,
+        "traffic_proportional_remaining_ms_to_20ms": 1.1949433201243487
+      },
+      {
+        "output_tile": 32,
+        "blocks_per_layer": 96,
+        "activation_read_bytes_per_token": 76087296,
+        "activation_read_reduction_pct": 75.0,
+        "weight_plus_activation_proxy_bytes_per_token": 913047552,
+        "weight_plus_activation_proxy_reduction_pct": 19.999999999999996,
+        "traffic_proportional_modeled_savings_ms_per_token": 0.5292324999999999,
+        "traffic_proportional_approx_h32_decode_tok_s": 47.577060892735716,
+        "traffic_proportional_remaining_ms_to_20ms": 1.0185324867910168
+      }
+    ]
+  },
+  "selected_candidate": {
+    "name": "exact_q5_attention_output_tile16_screen",
+    "registry_key": [
+      "hip_gfx1100",
+      "linear",
+      "gguf_q5_k",
+      "pack16_gemv_decode_bf16_bf16_out"
+    ],
+    "scope": "47 rows=1 raw-Q5 attention-output projections at N3072 and K6144/K9216",
+    "design": "one local128 workgroup owns 16 adjacent outputs, shares each BF16 activation load across both exact pack8 column groups, and preserves every output's current thread-local K order, coefficient decode, reduction tree, and BF16 store",
+    "fallback": "the separately registered pack8 local128 primitive remains for rows>1, registry/shape misses, non-BF16 output, unmeasured backends, and any resource/performance rejection",
+    "selection_rationale": "Q5 attention output is D7's largest named short-context leaf at 2.646 ms/token; unlike already-tuned IQ2 tile2/branchless/local64 and previously fused Q5/Q6 pairs, its 304.35 MB/token duplicated activation reads have no prior output-tile screen",
+    "red_gate": "synthetic and actual K6144/K9216 N3072 outputs must be BF16-bit exact to pack8; odd/unsupported widths must fail closed to the registered pack8 fallback",
+    "performance_gate": "counterbalanced actual global and SWA weights must both improve with zero scratch and acceptable occupancy; clean short/context kernel sum/span and canonical category decode/E2E must improve with exact IDs/state/KV/lifecycle",
+    "secondary_screen": "tile32 may be measured in the same exact micro only; it is retainable only if both real shapes beat tile16 without spill or any output change",
+    "traffic_model": {
+      "caveat": "source-weight plus compulsory activation-read proxy only; it excludes caches, dequant compute, output traffic, and launch effects and is not a hardware counter",
+      "tiles": [
+        {
+          "output_tile": 16,
+          "blocks_per_layer": 192,
+          "activation_read_bytes_per_token": 152174592,
+          "activation_read_reduction_pct": 50.0,
+          "weight_plus_activation_proxy_bytes_per_token": 989134848,
+          "weight_plus_activation_proxy_reduction_pct": 13.33333333333333,
+          "traffic_proportional_modeled_savings_ms_per_token": 0.3528216666666666,
+          "traffic_proportional_approx_h32_decode_tok_s": 47.18106507274835,
+          "traffic_proportional_remaining_ms_to_20ms": 1.1949433201243487
+        },
+        {
+          "output_tile": 32,
+          "blocks_per_layer": 96,
+          "activation_read_bytes_per_token": 76087296,
+          "activation_read_reduction_pct": 75.0,
+          "weight_plus_activation_proxy_bytes_per_token": 913047552,
+          "weight_plus_activation_proxy_reduction_pct": 19.999999999999996,
+          "traffic_proportional_modeled_savings_ms_per_token": 0.5292324999999999,
+          "traffic_proportional_approx_h32_decode_tok_s": 47.577060892735716,
+          "traffic_proportional_remaining_ms_to_20ms": 1.0185324867910168
+        }
+      ]
+    }
+  },
+  "next_target_assessment": {
+    "canonical_d7_ms_per_token": 21.547764986791016,
+    "remaining_ms_to_20ms": 1.547764986791016,
+    "additional_speedup_required_pct": 7.73882493395508,
+    "short_kernel_sum_ms": 17.26786307142857,
+    "short_span_median_ms": 20.714699,
+    "short_span_minus_sum_median_ms": 3.384629,
+    "candidate_cannot_reach_50_alone_under_traffic_model": true
+  },
+  "notes": [
+    "This diagnostic reuses retained tracked-clean D7 traces; the current docs/artifact revision has identical hipengine/scripts/tests content and no new GPU throughput claim is made.",
+    "The selected candidate is shape/quant/rows qualified and contains no prompt, token, category, or route-ID condition.",
+    "The tile16 traffic model reaches about 47.18 tok/s, so later IQ2/IQ3/submission work must still compound even if the screen matches the model.",
+    "Near-4K remains dominated by global attention at 22.658 ms/token; the D8 short-context candidate does not replace that separate long-context requirement."
+  ]
+}

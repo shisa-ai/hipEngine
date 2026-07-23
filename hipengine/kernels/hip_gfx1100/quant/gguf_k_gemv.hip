@@ -709,6 +709,82 @@ __global__ void gguf_k_pack8_prefill_out_kernel(
   }
 }
 
+// Decode-only raw-Q6 projection pair. One flattened output-pack range covers
+// equal-width K/V and Laguna layer-47's unequal query/gate without idle blocks;
+// every workgroup preserves the established pack8 singleton's K traversal,
+// reduction tree, and F32 store.
+template <typename scalar_t, typename out_t>
+__launch_bounds__(256, 2)
+__global__ void gguf_q6_k_pair_pack8_decode_out_kernel(
+    const scalar_t* __restrict__ x,
+    const uint8_t* __restrict__ qweight_a,
+    const uint8_t* __restrict__ qweight_b,
+    out_t* __restrict__ out_a,
+    out_t* __restrict__ out_b,
+    int rows,
+    int in_features,
+    int out_features_a,
+    int out_features_b) {
+  const int row = blockIdx.y;
+  if (row >= rows) return;
+  const int packs_a = out_features_a >> 3;
+  const int flat_pack = blockIdx.x;
+  const bool projection_b = flat_pack >= packs_a;
+  const int out_pack = projection_b ? flat_pack - packs_a : flat_pack;
+  const int out_features = projection_b ? out_features_b : out_features_a;
+  const uint8_t* __restrict__ qweight = projection_b ? qweight_b : qweight_a;
+  out_t* __restrict__ out = projection_b ? out_b : out_a;
+  const int tid = threadIdx.x;
+  const int out_col = out_pack << 3;
+  const int row_bytes = gguf_k_row_bytes(6, in_features);
+  const scalar_t* __restrict__ x_row =
+      x + static_cast<int64_t>(row) * in_features;
+  const uint8_t* __restrict__ w0 =
+      qweight + static_cast<int64_t>(out_col + 0) * row_bytes;
+  const uint8_t* __restrict__ w1 =
+      qweight + static_cast<int64_t>(out_col + 1) * row_bytes;
+  const uint8_t* __restrict__ w2 =
+      qweight + static_cast<int64_t>(out_col + 2) * row_bytes;
+  const uint8_t* __restrict__ w3 =
+      qweight + static_cast<int64_t>(out_col + 3) * row_bytes;
+  const uint8_t* __restrict__ w4 =
+      qweight + static_cast<int64_t>(out_col + 4) * row_bytes;
+  const uint8_t* __restrict__ w5 =
+      qweight + static_cast<int64_t>(out_col + 5) * row_bytes;
+  const uint8_t* __restrict__ w6 =
+      qweight + static_cast<int64_t>(out_col + 6) * row_bytes;
+  const uint8_t* __restrict__ w7 =
+      qweight + static_cast<int64_t>(out_col + 7) * row_bytes;
+
+  float acc0 = 0.0f, acc1 = 0.0f, acc2 = 0.0f, acc3 = 0.0f;
+  float acc4 = 0.0f, acc5 = 0.0f, acc6 = 0.0f, acc7 = 0.0f;
+  for (int k = tid; k < in_features; k += blockDim.x) {
+    const float xv = scalar_to_float<scalar_t>(x_row[k]);
+    acc0 += xv * q6_k_weight(w0, k);
+    acc1 += xv * q6_k_weight(w1, k);
+    acc2 += xv * q6_k_weight(w2, k);
+    acc3 += xv * q6_k_weight(w3, k);
+    acc4 += xv * q6_k_weight(w4, k);
+    acc5 += xv * q6_k_weight(w5, k);
+    acc6 += xv * q6_k_weight(w6, k);
+    acc7 += xv * q6_k_weight(w7, k);
+  }
+
+  GGUF_K_PACK8_REDUCE(acc0, acc1, acc2, acc3, acc4, acc5, acc6, acc7,
+                      r0, r1, r2, r3, r4, r5, r6, r7);
+  if (tid == 0) {
+    const int64_t out_base = static_cast<int64_t>(row) * out_features + out_col;
+    store_output<out_t>(out, out_base + 0, r0);
+    store_output<out_t>(out, out_base + 1, r1);
+    store_output<out_t>(out, out_base + 2, r2);
+    store_output<out_t>(out, out_base + 3, r3);
+    store_output<out_t>(out, out_base + 4, r4);
+    store_output<out_t>(out, out_base + 5, r5);
+    store_output<out_t>(out, out_base + 6, r6);
+    store_output<out_t>(out, out_base + 7, r7);
+  }
+}
+
 // Decode-specialized raw Q5_K pack8. The legacy generic pack8 body decodes
 // d/dmin and the packed 6-bit scale/min fields independently for every K
 // element and output channel. This schedule hoists those 8x8 coefficients once
@@ -1183,6 +1259,42 @@ int launch_gguf_k_pack8_gemv_out(
 }
 
 template <typename out_t>
+int launch_gguf_q6_k_pair_pack8_decode_out(
+    const uint16_t* x,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    out_t* out_a,
+    out_t* out_b,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || qweight_a == nullptr || qweight_b == nullptr ||
+      out_a == nullptr || out_b == nullptr || rows <= 0 || in_features <= 0 ||
+      (in_features % QK_K) != 0 || out_features_a <= 0 || out_features_b <= 0 ||
+      (out_features_a % 8) != 0 || (out_features_b % 8) != 0 || threads != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 grid(
+      static_cast<unsigned int>((out_features_a + out_features_b) / 8),
+      static_cast<unsigned int>(rows));
+  gguf_q6_k_pair_pack8_decode_out_kernel<uint16_t, out_t>
+      <<<grid, dim3(128), 0, stream>>>(
+          x,
+          qweight_a,
+          qweight_b,
+          out_a,
+          out_b,
+          static_cast<int>(rows),
+          static_cast<int>(in_features),
+          static_cast<int>(out_features_a),
+          static_cast<int>(out_features_b));
+  return static_cast<int>(hipGetLastError());
+}
+
+template <typename out_t>
 int launch_gguf_q5_k_pack8_decode_out(
     const uint16_t* x,
     const uint8_t* qweight,
@@ -1650,6 +1762,16 @@ extern "C" int hipengine_##NAME##_gemv_rowtile_f32_f32_out( \
 HIPENGINE_GGUF_K_EXPORTS(gguf_q8_0, 8)
 HIPENGINE_GGUF_K_EXPORTS(gguf_q5_k, 5)
 HIPENGINE_GGUF_K_EXPORTS(gguf_q6_k, 6)
+
+extern "C" int hipengine_gguf_q6_k_pair_pack8_gemv_decode_bf16_f32_out(
+    const uint16_t* x, const uint8_t* qweight_a, const uint8_t* qweight_b,
+    float* out_a, float* out_b, int64_t rows, int64_t in_features,
+    int64_t out_features_a, int64_t out_features_b, int64_t threads,
+    hipStream_t stream) {
+  return launch_gguf_q6_k_pair_pack8_decode_out<float>(
+      x, qweight_a, qweight_b, out_a, out_b, rows, in_features, out_features_a,
+      out_features_b, threads, stream);
+}
 
 extern "C" int hipengine_gguf_q5_k_pack8_gemv_decode_bf16_bf16_out(
     const uint16_t* x, const uint8_t* qweight, uint16_t* out, int64_t rows,
