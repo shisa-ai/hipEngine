@@ -19,6 +19,7 @@ from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
 from hipengine.core.memory import DeviceBuffer, free, malloc
 from hipengine.kernels.backends import (
+    backend_package_capability,
     hip_target_arch_environment,
     hip_target_arch_for_backend,
     load_backend_kernel_package,
@@ -1111,6 +1112,30 @@ class LagunaDFlashVerifyResult:
         return len(self.committed_input_ids)
 
 
+def resolve_laguna_q5_wave32x2_variants(
+    backend: str,
+    *,
+    output: bool | None = None,
+    query_gate: bool | None = None,
+) -> tuple[str | None, str | None]:
+    """Resolve D12 role variants from backend metadata with explicit rollback."""
+
+    output_enabled = (
+        bool(backend_package_capability(backend, "LAGUNA_Q5_WAVE32X2_OUTPUT", False))
+        if output is None
+        else bool(output)
+    )
+    query_gate_enabled = (
+        bool(backend_package_capability(backend, "LAGUNA_Q5_WAVE32X2_QUERY_GATE", False))
+        if query_gate is None
+        else bool(query_gate)
+    )
+    return (
+        _Q5_WAVE32X2_OUTPUT_VARIANT if output_enabled else None,
+        _Q5_WAVE32X2_QUERY_GATE_VARIANT if query_gate_enabled else None,
+    )
+
+
 def resolve_laguna_eager_kernel_plan(
     config: LagunaGGUFConfig,
     *,
@@ -1474,8 +1499,8 @@ class LagunaGGUFResidentSession:
         swa_decode_variant: str | None = None,
         swa_prefill_variant: str | None = None,
         use_moe_tail_next_rmsnorm: bool = True,
-        use_q5_wave32x2_output: bool = False,
-        use_q5_wave32x2_query_gate: bool = False,
+        use_q5_wave32x2_output: bool | None = None,
+        use_q5_wave32x2_query_gate: bool | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -1491,16 +1516,15 @@ class LagunaGGUFResidentSession:
             swa_prefill_variant,
         )
         self.selected_down_mode = resolve_laguna_selected_down_mode(self.backend)
-        self.use_q5_wave32x2_output = bool(use_q5_wave32x2_output)
-        self.use_q5_wave32x2_query_gate = bool(use_q5_wave32x2_query_gate)
-        self._q5_output_variant = (
-            _Q5_WAVE32X2_OUTPUT_VARIANT if self.use_q5_wave32x2_output else None
+        self._q5_output_variant, self._q5_query_gate_variant = (
+            resolve_laguna_q5_wave32x2_variants(
+                self.backend,
+                output=use_q5_wave32x2_output,
+                query_gate=use_q5_wave32x2_query_gate,
+            )
         )
-        self._q5_query_gate_variant = (
-            _Q5_WAVE32X2_QUERY_GATE_VARIANT
-            if self.use_q5_wave32x2_query_gate
-            else None
-        )
+        self.use_q5_wave32x2_output = self._q5_output_variant is not None
+        self.use_q5_wave32x2_query_gate = self._q5_query_gate_variant is not None
         self.position = -1
         self.last_result: LagunaEagerTokenResult | None = None
         self.weights: LagunaGGUFResidentWeights | None = None

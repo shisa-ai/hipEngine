@@ -1,0 +1,684 @@
+{
+  "acceptance_policy": {
+    "clean_every_context_output_query_gate_kernel_sum_span_child": true,
+    "counterbalanced_canonical_aggregate_decode_and_e2e_improve": true,
+    "counterbalanced_every_category_decode_and_e2e_improve": true,
+    "counterbalanced_prefill_ttft_within_half_percent": true,
+    "formal_actual_weight_50_warmup_15x200_both_events_and_wall": true,
+    "full_model_state_kv_lifecycle_exact": true,
+    "pass": true,
+    "quality_ids_and_lifecycle": true
+  },
+  "canonical_full_suite": {
+    "aggregate": {
+      "candidate": {
+        "h16_decode_tok_s": 49.47626960494559,
+        "h16_e2e_output_tok_s": 6.922846633947174,
+        "h32_decode_tok_s": 48.986821075337886,
+        "h32_e2e_output_tok_s": 12.117376749789402,
+        "prefill_tok_s": 43.027623928807614,
+        "ttft_median_seconds": 1.873566108464729
+      },
+      "candidate_vs_control_pct": {
+        "h16_decode_tok_s": 4.194945479427803,
+        "h16_e2e_output_tok_s": 0.5643488106385375,
+        "h32_decode_tok_s": 4.124403155044432,
+        "h32_e2e_output_tok_s": 1.0006412915899432,
+        "prefill_tok_s": 0.01619058165742704,
+        "ttft_median_seconds": 0.03163087605377868
+      },
+      "control": {
+        "h16_decode_tok_s": 47.48432793672718,
+        "h16_e2e_output_tok_s": 6.883996879433696,
+        "h32_decode_tok_s": 47.04643636938308,
+        "h32_e2e_output_tok_s": 11.997326546478456,
+        "prefill_tok_s": 43.02065863394192,
+        "ttft_median_seconds": 1.8729736704844981
+      }
+    },
+    "categories": {
+      "code": {
+        "candidate": {
+          "h16_decode_tok_s": 50.27945842911875,
+          "h16_e2e_output_tok_s": 7.729204914896931,
+          "h32_decode_tok_s": 49.80545345427101,
+          "h32_e2e_output_tok_s": 13.365857756379935,
+          "prefill_tok_s": 43.17794044856617,
+          "ttft_median_seconds": 1.7722575754742138
+        },
+        "candidate_vs_control_pct": {
+          "h16_decode_tok_s": 4.176946542015725,
+          "h16_e2e_output_tok_s": 0.6057766845689594,
+          "h32_decode_tok_s": 4.159254037080684,
+          "h32_e2e_output_tok_s": 1.0845941256923952,
+          "prefill_tok_s": 0.004448357271225056,
+          "ttft_median_seconds": -0.07030106717693663
+        },
+        "control": {
+          "h16_decode_tok_s": 48.26351711973098,
+          "h16_e2e_output_tok_s": 7.682665120841363,
+          "h32_decode_tok_s": 47.8166380075459,
+          "h32_e2e_output_tok_s": 13.22244786357882,
+          "prefill_tok_s": 43.17601982494886,
+          "ttft_median_seconds": 1.7735043679713272
+        }
+      },
+      "general_en": {
+        "candidate": {
+          "h16_decode_tok_s": 50.87267700727899,
+          "h16_e2e_output_tok_s": 8.529759150087688,
+          "h32_decode_tok_s": 50.296171991035386,
+          "h32_e2e_output_tok_s": 14.563453602372686,
+          "prefill_tok_s": 43.01260503292494,
+          "ttft_median_seconds": 1.5845901290304027
+        },
+        "candidate_vs_control_pct": {
+          "h16_decode_tok_s": 4.488742791485301,
+          "h16_e2e_output_tok_s": 0.6888753753738985,
+          "h32_decode_tok_s": 4.458712341989757,
+          "h32_e2e_output_tok_s": 1.236429559007246,
+          "prefill_tok_s": -0.0198238279243812,
+          "ttft_median_seconds": 0.0226154739441764
+        },
+        "control": {
+          "h16_decode_tok_s": 48.68723237372951,
+          "h16_e2e_output_tok_s": 8.471401749486482,
+          "h32_decode_tok_s": 48.14933179184672,
+          "h32_e2e_output_tok_s": 14.385585965261791,
+          "prefill_tok_s": 43.02113346839483,
+          "ttft_median_seconds": 1.5842318474897183
+        }
+      },
+      "general_ja": {
+        "candidate": {
+          "h16_decode_tok_s": 48.831205235843,
+          "h16_e2e_output_tok_s": 6.3844417728761815,
+          "h32_decode_tok_s": 48.338918344771976,
+          "h32_e2e_output_tok_s": 11.266745446494632,
+          "prefill_tok_s": 42.97580635769523,
+          "ttft_median_seconds": 2.195620313519612
+        },
+        "candidate_vs_control_pct": {
+          "h16_decode_tok_s": 4.014310767105167,
+          "h16_e2e_output_tok_s": 0.490965209358718,
+          "h32_decode_tok_s": 3.878116414121835,
+          "h32_e2e_output_tok_s": 0.874701483163709,
+          "prefill_tok_s": -0.0012344179721512916,
+          "ttft_median_seconds": -0.011007065848955833
+        },
+        "control": {
+          "h16_decode_tok_s": 46.946621936647986,
+          "h16_e2e_output_tok_s": 6.353249528029808,
+          "h32_decode_tok_s": 46.53426536159303,
+          "h32_e2e_output_tok_s": 11.169049603953559,
+          "prefill_tok_s": 42.976336865321265,
+          "ttft_median_seconds": 2.19586201349739
+        }
+      },
+      "mixed_ja_en": {
+        "candidate": {
+          "h16_decode_tok_s": 47.29195066846075,
+          "h16_e2e_output_tok_s": 5.273703914381899,
+          "h32_decode_tok_s": 46.85480193570389,
+          "h32_e2e_output_tok_s": 9.472050104570277,
+          "prefill_tok_s": 42.882245062797885,
+          "ttft_median_seconds": 2.71876522450475
+        },
+        "candidate_vs_control_pct": {
+          "h16_decode_tok_s": 4.130627102947049,
+          "h16_e2e_output_tok_s": 0.49144106655856223,
+          "h32_decode_tok_s": 3.9861208916884827,
+          "h32_e2e_output_tok_s": 0.8341730515128765,
+          "prefill_tok_s": 0.06656733832590689,
+          "ttft_median_seconds": 0.037591533196290605
+        },
+        "control": {
+          "h16_decode_tok_s": 45.41598565588809,
+          "h16_e2e_output_tok_s": 5.24791351224525,
+          "h32_decode_tok_s": 45.05870738702491,
+          "h32_e2e_output_tok_s": 9.393690470125954,
+          "prefill_tok_s": 42.85371848303006,
+          "ttft_median_seconds": 2.717743583023548
+        }
+      }
+    },
+    "checks": {
+      "aggregate_decode_and_e2e_improve": true,
+      "aggregate_prefill_within_half_percent": true,
+      "aggregate_ttft_within_half_percent": true,
+      "all_category_decode_and_e2e_improve": true,
+      "all_category_prefill_within_half_percent": true,
+      "cross_mode_repeat_and_candidate_ids_exact": true,
+      "lifecycle": true,
+      "pass": true,
+      "quality_gate": true,
+      "raw_pass": true
+    },
+    "comparison_sha256": "f7c49d6dffeed932be8c0a48bc68679fa0404b4c2f6f716a1819207ed2990658",
+    "effective_repetitions": 4,
+    "note": "Each one-way process pair retained small order-correlated drift in the unaffected c>1 prefill lane; the predeclared predicates pass only after pooling synchronized seconds from both complete process-order pairs.",
+    "process_order_pairs": [
+      "control then candidate",
+      "candidate then control"
+    ],
+    "protocol": "two complete two-repetition canonical-suite pairs; process order control/candidate then candidate/control; pooled synchronized seconds",
+    "source_sha256": {
+      "candidate": [
+        "5e0788b217623eb0b929ce4a12b138fe191942e687bba2fbcc0ce33a543b2834",
+        "14ccaf1e4e0061969bf80db99395b1f63f9cb0b676fa16260d2e1284bd0be086"
+      ],
+      "control": [
+        "aca4592c9fd52caa6f718deb5ad39a03852831768576460dc12246c80ce83b59",
+        "4c9ca211e9cc51c4b6a1a2f02a6278b039592d91dffe08dc0da9dc132eee1a26"
+      ]
+    }
+  },
+  "change": {
+    "candidate": "registered local32 wave32x2 Q5 singleton and unequal-pair decode",
+    "control": "registered local128 pack8 Q5 singleton and unequal-pair decode",
+    "default_policy": "gfx1100 backend capabilities enable both role siblings; other backends default to pack8",
+    "fallback": "pack8 remains registered for explicit rollback, rows>1, gfx1151, shared-expert roles, registry miss, and unsupported shapes",
+    "implementation_revision": "338d3afca01aa884ff3a68e0175566bc51e5ceae",
+    "registry_keys": [
+      [
+        "hip_gfx1100",
+        "linear",
+        "gguf_q5_k",
+        "wave32x2_gemv_decode_bf16_bf16_out"
+      ],
+      [
+        "hip_gfx1100",
+        "linear_pair",
+        "gguf_q5_k",
+        "wave32x2_gemv_decode_bf16_f32_out"
+      ]
+    ],
+    "scope": "47 attention-output BF16 projections and 47 attention query/per-head-gate F32 pairs per c=1 token"
+  },
+  "clean_profiles": {
+    "command": "bash /tmp/run_laguna_d12_clean_profiles.sh && python3 /tmp/analyze_laguna_d12_clean_profiles.py",
+    "protocol": "cached rocprofv3 traces; two disclosed warmup rows excluded; candidate/control process order alternated by context",
+    "rows": [
+      {
+        "candidate_resources": {
+          "output": [
+            [
+              "void (anonymous namespace)::gguf_q5_k_wave32x2_decode_out_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+              32,
+              96,
+              128,
+              0,
+              0
+            ]
+          ],
+          "query_gate": [
+            [
+              "void (anonymous namespace)::gguf_q5_k_unequal_pair_wave32x2_decode_out_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, unsigned char const*, float*, float*, int, int, int)",
+              32,
+              96,
+              128,
+              0,
+              0
+            ]
+          ]
+        },
+        "context": "short",
+        "dispatches_per_token": 775,
+        "finite_and_lifecycle": true,
+        "generated_ids_exact": true,
+        "kernel_sum_ms_per_token": {
+          "candidate": 16.48574592857143,
+          "control": 17.260260642857144,
+          "delta_pct": -4.487271254540614
+        },
+        "output_ms_per_token": {
+          "candidate": 2.185993214285718,
+          "control": 2.6629225,
+          "delta_pct": -17.909994966593366
+        },
+        "profiled_child_tok_s": {
+          "candidate": 47.19018887736743,
+          "control": 44.836665735581064,
+          "delta_pct": 5.249103837618052
+        },
+        "query_gate_ms_per_token": {
+          "candidate": 1.837707714285715,
+          "control": 2.1635759999999995,
+          "delta_pct": -15.061559460554408
+        },
+        "sha256": {
+          "candidate_bench": "3fb103c4efd0405ca4c85406e6624f0fce52896a29ff123509a58fc972e785f0",
+          "candidate_trace": "95024673f518c9b9a577ee9097155eade80500a685a39e4070f68e0203924306",
+          "control_bench": "25672526dcaeffbde99aa54a4aafe43b985a7732f4ee6f9e67879162c18ac4bf",
+          "control_trace": "f09399a744fe5f0c571ba17a504d2c5096737c62fe6351ec272b895dd8b54dfe"
+        },
+        "span_median_ms_per_token": {
+          "candidate": 19.566539,
+          "control": 20.383096000000002,
+          "delta_pct": -4.006049915086518
+        },
+        "stable_steps": 14
+      },
+      {
+        "candidate_resources": {
+          "output": [
+            [
+              "void (anonymous namespace)::gguf_q5_k_wave32x2_decode_out_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+              32,
+              96,
+              128,
+              0,
+              0
+            ]
+          ],
+          "query_gate": [
+            [
+              "void (anonymous namespace)::gguf_q5_k_unequal_pair_wave32x2_decode_out_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, unsigned char const*, float*, float*, int, int, int)",
+              32,
+              96,
+              128,
+              0,
+              0
+            ]
+          ]
+        },
+        "context": "512",
+        "dispatches_per_token": 775,
+        "finite_and_lifecycle": true,
+        "generated_ids_exact": true,
+        "kernel_sum_ms_per_token": {
+          "candidate": 29.661983499999998,
+          "control": 30.542977166666667,
+          "delta_pct": -2.884439397833649
+        },
+        "output_ms_per_token": {
+          "candidate": 2.1723243333333326,
+          "control": 2.6348390000000013,
+          "delta_pct": -17.553811320792978
+        },
+        "profiled_child_tok_s": {
+          "candidate": 28.604753074223925,
+          "control": 27.73018588398569,
+          "delta_pct": 3.1538453939585764
+        },
+        "query_gate_ms_per_token": {
+          "candidate": 1.7997546666666666,
+          "control": 2.152799833333334,
+          "delta_pct": -16.39934940537514
+        },
+        "sha256": {
+          "candidate_bench": "013c6a7bb28182d7284321b88a4b3e336a5452767d81e130ad6daf8d45f02055",
+          "candidate_trace": "67f8f6be2900cc8b0301cd73c090f3d0ec162e195e6987ae3e425f508e680f36",
+          "control_bench": "e18333830208d2ad0c80e9eb613b855016fff769600c34d9f9c855f46f02c649",
+          "control_trace": "d85ee821addd0cd67257b50a2c108cd26f5e41fa00032ecd850b50913330aa62"
+        },
+        "span_median_ms_per_token": {
+          "candidate": 32.9867225,
+          "control": 33.834501,
+          "delta_pct": -2.5056627848597635
+        },
+        "stable_steps": 6
+      },
+      {
+        "candidate_resources": {
+          "output": [
+            [
+              "void (anonymous namespace)::gguf_q5_k_wave32x2_decode_out_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+              32,
+              96,
+              128,
+              0,
+              0
+            ]
+          ],
+          "query_gate": [
+            [
+              "void (anonymous namespace)::gguf_q5_k_unequal_pair_wave32x2_decode_out_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, unsigned char const*, float*, float*, int, int, int)",
+              32,
+              96,
+              128,
+              0,
+              0
+            ]
+          ]
+        },
+        "context": "1024",
+        "dispatches_per_token": 775,
+        "finite_and_lifecycle": true,
+        "generated_ids_exact": true,
+        "kernel_sum_ms_per_token": {
+          "candidate": 32.686842166666665,
+          "control": 33.514602,
+          "delta_pct": -2.4698483166630814
+        },
+        "output_ms_per_token": {
+          "candidate": 2.190801333333332,
+          "control": 2.648951666666666,
+          "delta_pct": -17.295533893596936
+        },
+        "profiled_child_tok_s": {
+          "candidate": 26.49466791133745,
+          "control": 25.669618323203924,
+          "delta_pct": 3.2141092935056514
+        },
+        "query_gate_ms_per_token": {
+          "candidate": 1.8007693333333321,
+          "control": 2.1498903333333335,
+          "delta_pct": -16.23901436212799
+        },
+        "sha256": {
+          "candidate_bench": "8d780f2a0d36b2535ee652b84bb8b3bf0afbb9d0d99d37bd725155c00f4fdbe8",
+          "candidate_trace": "625d1a2b59622fc9612c599d85ae0799969027f0475dc3dedf09cc0cc63fa9e9",
+          "control_bench": "0da7e0a371b65b3b2e8329228b80ee2bac6cccaa001601bbddb48b760dd3f7aa",
+          "control_trace": "26b240c8cdf110746f394e4976d3855d3c278dfe91c0ae7dcfe6161d334daca2"
+        },
+        "span_median_ms_per_token": {
+          "candidate": 36.001511,
+          "control": 36.7727225,
+          "delta_pct": -2.097237973065491
+        },
+        "stable_steps": 6
+      },
+      {
+        "candidate_resources": {
+          "output": [
+            [
+              "void (anonymous namespace)::gguf_q5_k_wave32x2_decode_out_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+              32,
+              96,
+              128,
+              0,
+              0
+            ]
+          ],
+          "query_gate": [
+            [
+              "void (anonymous namespace)::gguf_q5_k_unequal_pair_wave32x2_decode_out_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, unsigned char const*, float*, float*, int, int, int)",
+              32,
+              96,
+              128,
+              0,
+              0
+            ]
+          ]
+        },
+        "context": "3968",
+        "dispatches_per_token": 775,
+        "finite_and_lifecycle": true,
+        "generated_ids_exact": true,
+        "kernel_sum_ms_per_token": {
+          "candidate": 49.383206,
+          "control": 50.250117333333336,
+          "delta_pct": -1.7251926549398666
+        },
+        "output_ms_per_token": {
+          "candidate": 2.174803333333334,
+          "control": 2.640385166666668,
+          "delta_pct": -17.633102897676988
+        },
+        "profiled_child_tok_s": {
+          "candidate": 18.170213196531726,
+          "control": 17.913074988539925,
+          "delta_pct": 1.4354777622284765
+        },
+        "query_gate_ms_per_token": {
+          "candidate": 1.8104521666666669,
+          "control": 2.1580794999999995,
+          "delta_pct": -16.108180135779648
+        },
+        "sha256": {
+          "candidate_bench": "86edcc62b926b45722bd5a2bad358c70c71deacb0c45ab13192a6f02cf0da0cb",
+          "candidate_trace": "1438490d37a22c4e145c10ac7904cbd6343d074e8100dad8f096791e339dd9da",
+          "control_bench": "89acd9c5a1022dab7d45fa212e4a6e2735486ff7cd7a4584be08075df7c47ff1",
+          "control_trace": "c8785852ee408dc19d5e0a8bfc19838a150e29a7b6deb963b6a27ce3d4970198"
+        },
+        "span_median_ms_per_token": {
+          "candidate": 52.774251,
+          "control": 53.647943999999995,
+          "delta_pct": -1.6285675365303787
+        },
+        "stable_steps": 6
+      }
+    ],
+    "summary_sha256": "dbcf560956de1c668f5ace2b5f1838fa9d6bba73ecc42cc3e9151839222704c7"
+  },
+  "correctness": {
+    "focused_result": "133 passed; one Starlette deprecation warning",
+    "full_model": {
+      "all_layer_hidden_checks": 48,
+      "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/laguna_d12_correctness_gate.py",
+      "decode_steps": 16,
+      "final_hidden_exact": true,
+      "full_kv_and_live_spans_exact": true,
+      "full_logits_exact": true,
+      "harness_sha256": "3ffe9420cf43116b9c65f58b665f36a132b08718ddd1361df4857ac735914d30",
+      "lifecycle_exact": true,
+      "post_layer_hidden_exact": true,
+      "prompt_id": "code_merge_intervals",
+      "prompt_tokens": 69,
+      "raw_sha256": "856b4379f307bb1d349f7a5d3bb220490aa6491ea099cd60dd15890b271680c1",
+      "reset_exact": true,
+      "tracked_peak_allocations": 1496,
+      "tracked_peak_bytes": 40455911848,
+      "tracked_returned_to_baseline": true
+    },
+    "rocprof": {
+      "cache_only": true,
+      "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-d12-trace-1539583 --output-file epyc -- .venv/bin/python -u /tmp/trace_d12.py",
+      "harness_sha256": "0e950fad0c14a2c1f76be8a58ddccefd4269a116f3bc09ee1c1b41f55b200d66",
+      "rows": [
+        {
+          "duration_us": 55.72,
+          "kernel": "gguf_q5_k_wave32x2_decode_out_kernel<unsigned short, unsigned short>",
+          "lds_bytes": 0,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "shape": "K9216/N3072",
+          "vgpr": 96,
+          "workgroup_size_x": 32,
+          "workgroups_x": 1536
+        },
+        {
+          "duration_us": 43.08,
+          "kernel": "gguf_q5_k_unequal_pair_wave32x2_decode_out_kernel<unsigned short, float>",
+          "lds_bytes": 0,
+          "scratch_bytes": 0,
+          "sgpr": 128,
+          "shape": "K3072/N9216+72",
+          "vgpr": 96,
+          "workgroup_size_x": 32,
+          "workgroups_x": 4644
+        }
+      ],
+      "trace_sha256": "fc65c5a577dd8c929d0693a703184beca631b8f6952e62a9255759cac4b01a50"
+    },
+    "source_artifact": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d12-q5-wave32x2-correctness.json",
+    "source_sha256": "296f5ee5c68c91e9995745613a4ae3a6501b54460fc2307d63887289bc5f5203"
+  },
+  "date": "2026-07-24",
+  "formal_actual_weight_micro": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/bench_laguna_d12_formal.py",
+    "protocol": "50 warmups per mode; 15 counterbalanced repetitions; 200 launches per HIP-event sample and 200 per synchronized-wall sample",
+    "raw_sha256": "5d2ade7b7db9aaf43b73aac6eecd06662548c9fce0f85f9276538579c9bdcbd0",
+    "rows": [
+      {
+        "event_delta_pct": -19.678931037087555,
+        "event_us": {
+          "base": 35.854759216308594,
+          "candidate": 28.79892587661743
+        },
+        "exact": true,
+        "name": "output_k6144_n3072",
+        "wall_delta_pct": -16.866451479515632,
+        "wall_us": {
+          "base": 35.2707551792264,
+          "candidate": 29.32183037046343
+        }
+      },
+      {
+        "event_delta_pct": -24.796159286002673,
+        "event_us": {
+          "base": 52.769107818603516,
+          "candidate": 39.6843957901001
+        },
+        "exact": true,
+        "name": "output_k9216_n3072",
+        "wall_delta_pct": -23.733460178960165,
+        "wall_us": {
+          "base": 52.640935173258185,
+          "candidate": 40.14741978608072
+        }
+      },
+      {
+        "event_delta_pct": -18.637348267263242,
+        "event_us": {
+          "base": 34.597411155700684,
+          "candidate": 28.14937114715576
+        },
+        "exact": true,
+        "name": "pair_k3072_n6144+48",
+        "wall_delta_pct": -17.877394497863452,
+        "wall_us": {
+          "base": 34.57819519098848,
+          "candidate": 28.396514826454222
+        }
+      },
+      {
+        "event_delta_pct": -13.632849556812754,
+        "event_us": {
+          "base": 45.6854772567749,
+          "candidate": 39.457244873046875
+        },
+        "exact": true,
+        "name": "pair_k3072_n9216+72",
+        "wall_delta_pct": -10.392922016829086,
+        "wall_us": {
+          "base": 45.294385054148734,
+          "candidate": 40.58697493746877
+        }
+      }
+    ]
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "hipcc": "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)",
+    "rocm": "HIP version: 7.2.53211-3d9ef42",
+    "target_arch": "gfx1100"
+  },
+  "kind": "hipengine_laguna_q2_xl_d12_q5_wave32x2_retained",
+  "model": {
+    "id": "poolside/Laguna-S-2.1-UD-Q2_K_XL",
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "W7900/gfx1100 Laguna S 2.1 UD-Q2_K_XL exact target-only c=1 AR; canonical ten-prompt four-category h16/h32; model load excluded",
+  "provenance": {
+    "build_profile": "laguna_target_ar_category",
+    "collected_at": "2026-07-23T22:10:26.990421+00:00",
+    "command": [
+      "/home/lhl/.local/share/uv/python/cpython-3.10.16-linux-x86_64-gnu/bin/python3.10",
+      "/tmp/laguna_d12_target_ar_bench.py",
+      "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+      "--prompts",
+      "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "--template",
+      "tests/fixtures/laguna_poolside_v1_template.json",
+      "--oracle",
+      "tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json",
+      "--oracle-logprobs",
+      "tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy",
+      "--bulk-correctness-artifact",
+      "benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-bulk-correctness.json",
+      "--backend",
+      "hip_gfx1100",
+      "--context-length",
+      "4096",
+      "--chunk-size",
+      "128",
+      "--output-horizons",
+      "16,32",
+      "--repetitions",
+      "2",
+      "--warmup-output-tokens",
+      "2",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+      "--require-cached-build",
+      "--direct-gguf",
+      "--safety-reserve-gib",
+      "4",
+      "--model-sha256",
+      "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+      "--quant-label",
+      "UD-Q2_K_XL",
+      "--enable-d12",
+      "--output",
+      "/tmp/laguna-q2-xl-d12-candidate-target-ar-v2.json"
+    ],
+    "configured_backend": "hip_gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "dirty": false,
+    "environment": {
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null,
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HIP_VISIBLE_DEVICES": "0",
+      "ROCR_VISIBLE_DEVICES": null
+    },
+    "git_branch": "main",
+    "hipcc_version": "HIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+    "hipengine_commit": "338d3afca01aa884ff3a68e0175566bc51e5ceae",
+    "kind": "hipengine_artifact_provenance",
+    "kv_dtype": "bf16",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        19841767952,
+        39683535904
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 39684584480,
+      "value": "df888623f998292ac71205832949069be4151323f2b6a293625764fcf9cac3c9"
+    },
+    "model_path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "model_revision": null,
+    "profiler": null,
+    "quant": "UD-Q2_K_XL",
+    "repetitions": 2,
+    "repo_root": "/home/lhl/hipEngine-main",
+    "resolved_backend": "hip_gfx1100",
+    "rocm_version": "HIP version: 7.2.53211-3d9ef42",
+    "schema_version": 1,
+    "staged_dirty": false,
+    "target_arch": "gfx1100",
+    "timing_protocol": "balanced_serial_vs_bulk_prefill_plus_eager_c1_decode",
+    "unstaged_dirty": false,
+    "untracked_count": 0,
+    "untracked_dirty": false,
+    "warmups": 2
+  },
+  "rollup": {
+    "additional_speedup_required_pct_for_50": 2.0682683677389946,
+    "baseline_d9_h32_decode_tok_s": 47.04643636938308,
+    "baseline_d9_h32_e2e_output_tok_s": 11.997326546478456,
+    "candidate_d12_h32_decode_tok_s": 48.986821075337886,
+    "candidate_d12_h32_e2e_output_tok_s": 12.117376749789402,
+    "candidate_ms_per_token": 20.4136536735478,
+    "h32_decode_delta_pct": 4.124403155044432,
+    "h32_e2e_delta_pct": 1.0006412915899432,
+    "prefill_delta_pct": 0.01619058165742704,
+    "remaining_ms_to_20": 0.4136536735477989
+  },
+  "schema": 1,
+  "status": "retained"
+}
