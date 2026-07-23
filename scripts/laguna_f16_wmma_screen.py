@@ -208,12 +208,28 @@ def _load_library_ceiling(path: Path, rows: Sequence[int]) -> dict[int, dict[str
         "pass"
     ):
         raise ValueError("library ceiling must be a passing Laguna F16 ceiling artifact")
-    shapes = payload["summary"]["shapes"]
+    summary = payload["summary"]
+    shapes = summary.get("shapes")
+    if shapes is not None:
+        return {
+            row: {
+                family: float(
+                    shapes[str(row)]["families"][family][
+                        "hipblaslt_inclusive"
+                    ]["gpu_ms_median"]
+                )
+                for family in _FAMILIES
+            }
+            for row in rows
+        }
+    compact_rows = tuple(int(value) for value in summary.get("rows", ()))
+    if any(row not in compact_rows for row in rows):
+        raise ValueError("library ceiling does not cover every requested row")
     return {
         row: {
             family: float(
-                shapes[str(row)]["families"][family]["hipblaslt_inclusive"][
-                    "gpu_ms_median"
+                summary[f"hipblaslt_inclusive_{family}_ms"][
+                    compact_rows.index(row)
                 ]
             )
             for family in _FAMILIES
