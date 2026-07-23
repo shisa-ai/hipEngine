@@ -2769,6 +2769,17 @@ Laguna's architecture-defined global-versus-SWA layer families; do not tune a
 layer ID list from prompt outcomes. Evidence:
 `benchmarks/results/2026-07-24-gfx1151-laguna-expert-major-wmma-component-rejected.json`.
 
+The final architecture-derived scope screen also closes without a route.
+Global-only (12 layers) reaches **82.020 tok/s (1.115x)** but max KL
+**0.628301** at **310/320** top-1; SWA-only (36 layers) reaches **110.711 tok/s
+(1.505x)** but max KL **1.205779** at **312/320**. Both are numerically worse
+than all-layer KL **0.527791**, and every frozen Poolside/lifecycle check still
+passes. No arbitrary layer subset is admissible. Remove all temporary
+expert-major runtime/category/component/scope selectors and retain only the
+independently tested registered leaf, CPU-quality fixture, trace, and rejection
+evidence. Evidence:
+`benchmarks/results/2026-07-24-gfx1151-laguna-expert-major-wmma-layer-family-rejected.json`.
+
 #### AR-O6 — submission and serving only after a new profile asks for it
 
 Graph replay, cross-layer launch fusion, and packed multi-request prefill remain

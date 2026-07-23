@@ -18,7 +18,6 @@ from hipengine.core.memory import (
 from hipengine.kernels.cpu_reference import gguf_quant_gemv
 from hipengine.kernels.registry import KernelKey
 from hipengine.loading.laguna_gguf import (
-    FULL_ATTENTION,
     SLIDING_ATTENTION,
     SPARSE_MOE,
     laguna_gguf_config_from_metadata,
@@ -33,7 +32,6 @@ from hipengine.loading.laguna_gguf_materialize import (
 from hipengine.models.laguna import LAGUNA_GGUF
 from hipengine.quant.gguf import GGMLQuantizationType
 from hipengine.runtime.laguna_moe import (
-    _expert_major_components_for_mode,
     allocate_laguna_moe_scratch,
     resolve_laguna_moe_plan,
     resolve_laguna_selected_down_mode,
@@ -126,14 +124,6 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
         "gguf_q4_k_t16_v1",
         "gguf_q6_k_t16_v1",
     }
-    assert set(plan.expert_major_comp_keys) == {
-        "gguf_q4_k_t16_v1",
-        "gguf_q6_k_t16_v1",
-    }
-    assert all(
-        key.variant == "selected_t16_expert_major_wmma_comp_bf16_bf16_out"
-        for key in plan.expert_major_comp_keys.values()
-    )
     assert plan.grouped_weighted_sum_shared_add_key == KernelKey(
         "hip_gfx1151", "weighted_lanes_sum+shared_add", "bf16", "out"
     )
@@ -156,24 +146,6 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
     assert "laguna_routed_shared_combine" in sparse_sequence
 
 
-def test_expert_major_layer_family_policy_is_architecture_scoped() -> None:
-    assert _expert_major_components_for_mode(
-        "adaptive_expert_major_wmma_comp_swa", 127, SLIDING_ATTENTION
-    ) == (False, False)
-    assert _expert_major_components_for_mode(
-        "adaptive_expert_major_wmma_comp_swa", 128, SLIDING_ATTENTION
-    ) == (True, True)
-    assert _expert_major_components_for_mode(
-        "adaptive_expert_major_wmma_comp_swa", 128, FULL_ATTENTION
-    ) == (False, False)
-    assert _expert_major_components_for_mode(
-        "adaptive_expert_major_wmma_comp_global", 128, FULL_ATTENTION
-    ) == (True, True)
-    assert _expert_major_components_for_mode(
-        "adaptive_expert_major_wmma_comp_global", 128, SLIDING_ATTENTION
-    ) == (False, False)
-
-
 def test_laguna_selected_down_default_is_backend_qualified() -> None:
     assert resolve_laguna_selected_down_mode("hip_gfx1100") == "direct"
     assert (
@@ -190,30 +162,6 @@ def test_laguna_selected_down_default_is_backend_qualified() -> None:
             "hip_gfx1151", "adaptive_grouped_smallm_fused"
         )
         == "adaptive_grouped_smallm_fused"
-    )
-    assert (
-        resolve_laguna_selected_down_mode(
-            "hip_gfx1151", "expert_major_wmma_comp"
-        )
-        == "expert_major_wmma_comp"
-    )
-    for component_mode in (
-        "expert_major_gate_up_comp",
-        "adaptive_expert_major_gate_up_comp",
-        "expert_major_down_comp",
-        "adaptive_expert_major_down_comp",
-        "adaptive_expert_major_wmma_comp_swa",
-        "adaptive_expert_major_wmma_comp_global",
-    ):
-        assert (
-            resolve_laguna_selected_down_mode("hip_gfx1151", component_mode)
-            == component_mode
-        )
-    assert (
-        resolve_laguna_selected_down_mode(
-            "hip_gfx1151", "adaptive_expert_major_wmma_comp"
-        )
-        == "adaptive_expert_major_wmma_comp"
     )
     for rejected in ("wmma16_down", "adaptive_wmma16_down", "invalid"):
         with pytest.raises(ValueError, match="unsupported Laguna selected-down mode"):
@@ -288,9 +236,6 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
     bulk_scratch = None
     grouped_scratch = None
     fused_scratch = None
-    expert_major_scratch = None
-    adaptive_expert_major_scratch = None
-    component_scratches = []
     hidden_buffer = None
     bulk_hidden_buffer = None
     try:
@@ -452,76 +397,6 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
             _f32_to_bf16_u16(fused_actual),
             _f32_to_bf16_u16(grouped_actual),
         )
-        expert_major_scratch = allocate_laguna_moe_scratch(plan, max_rows=3)
-        expert_major_output = run_laguna_moe_rows(
-            bulk_hidden_buffer.ptr,
-            layer,
-            expert_major_scratch,
-            rows=3,
-            selected_down_mode="expert_major_wmma_comp",
-        )
-        expert_major_actual = _read_bf16(expert_major_output, (3, h))
-        assert np.isfinite(expert_major_actual).all()
-        ref = bulk_actual.astype(np.float64)
-        cand = expert_major_actual.astype(np.float64)
-        ref -= ref.max(axis=-1, keepdims=True)
-        cand -= cand.max(axis=-1, keepdims=True)
-        ref_logp = ref - np.log(np.exp(ref).sum(axis=-1, keepdims=True))
-        cand_logp = cand - np.log(np.exp(cand).sum(axis=-1, keepdims=True))
-        max_kl = float(
-            np.max(np.sum(np.exp(ref_logp) * (ref_logp - cand_logp), axis=-1))
-        )
-        assert max_kl <= 0.05
-        # Isolate candidate Q4 gate/up from candidate Q4/Q6 down without
-        # weakening the exact grouped fallback or its fused combine boundary.
-        for component_mode in (
-            "expert_major_gate_up_comp",
-            "expert_major_down_comp",
-        ):
-            component_scratch = allocate_laguna_moe_scratch(plan, max_rows=3)
-            component_scratches.append(component_scratch)
-            component_output = run_laguna_moe_rows(
-                bulk_hidden_buffer.ptr,
-                layer,
-                component_scratch,
-                rows=3,
-                selected_down_mode=component_mode,
-            )
-            component_actual = _read_bf16(component_output, (3, h))
-            assert np.isfinite(component_actual).all()
-            component_logits = component_actual.astype(np.float64)
-            component_logits -= component_logits.max(axis=-1, keepdims=True)
-            component_logp = component_logits - np.log(
-                np.exp(component_logits).sum(axis=-1, keepdims=True)
-            )
-            component_kl = float(
-                np.max(
-                    np.sum(
-                        np.exp(ref_logp) * (ref_logp - component_logp),
-                        axis=-1,
-                    )
-                )
-            )
-            assert component_kl <= 0.05
-        # The dedicated 51-row Q4/Q6 leaf fixture owns the >=90% top-1 gate;
-        # these three near-zero full-MoE rows only verify runtime composition.
-        adaptive_expert_major_scratch = allocate_laguna_moe_scratch(
-            plan, max_rows=3
-        )
-        adaptive_expert_major_output = run_laguna_moe_rows(
-            bulk_hidden_buffer.ptr,
-            layer,
-            adaptive_expert_major_scratch,
-            rows=3,
-            selected_down_mode="adaptive_expert_major_wmma_comp",
-        )
-        adaptive_expert_major_actual = _read_bf16(
-            adaptive_expert_major_output, (3, h)
-        )
-        np.testing.assert_array_equal(
-            _f32_to_bf16_u16(adaptive_expert_major_actual),
-            _f32_to_bf16_u16(fused_actual),
-        )
         serial_actual = np.empty_like(bulk_actual)
         for row in range(3):
             copy_host_to_device(
@@ -540,12 +415,6 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
         assert grouped_scratch.grouped_active_experts.nbytes == e * np.dtype(np.int64).itemsize
         assert grouped_scratch.grouped_sorted_lanes.nbytes == 3 * k * np.dtype(np.int64).itemsize
     finally:
-        for component_scratch in reversed(component_scratches):
-            component_scratch.free()
-        if adaptive_expert_major_scratch is not None:
-            adaptive_expert_major_scratch.free()
-        if expert_major_scratch is not None:
-            expert_major_scratch.free()
         if fused_scratch is not None:
             fused_scratch.free()
         if grouped_scratch is not None:
