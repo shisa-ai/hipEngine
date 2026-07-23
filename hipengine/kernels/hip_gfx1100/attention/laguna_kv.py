@@ -548,6 +548,7 @@ def laguna_swa_attention_prefill_bf16_spans(
     scale: float,
     *,
     sliding_window: int | None = None,
+    start_position: int | None = None,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -608,6 +609,7 @@ def laguna_swa_attention_prefill_wave32_exact_bf16_spans(
     scale: float,
     *,
     sliding_window: int | None = None,
+    start_position: int | None = None,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -668,6 +670,7 @@ def laguna_swa_attention_prefill_qrow2_exact_bf16_spans(
     scale: float,
     *,
     sliding_window: int | None = None,
+    start_position: int | None = None,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -713,7 +716,7 @@ def laguna_swa_attention_prefill_qrow2_exact_bf16_spans(
     _check_launch(runtime, err)
 
 
-def laguna_swa_attention_prefill_qrow2_32_exact_bf16_spans(
+def laguna_swa_attention_prefill_qrow2_32_c128_exact_bf16_spans(
     query_ptr: int,
     current_key_ptr: int,
     current_value_ptr: int,
@@ -728,15 +731,18 @@ def laguna_swa_attention_prefill_qrow2_32_exact_bf16_spans(
     scale: float,
     *,
     sliding_window: int | None = None,
+    start_position: int | None = None,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Use query-row pairing from 32 rows and exact wave32 below that crossover."""
+    """Pair query rows only after both measured row/context crossovers."""
 
     kernel = (
         laguna_swa_attention_prefill_qrow2_exact_bf16_spans
         if int(rows) >= 32
+        and start_position is not None
+        and int(start_position) >= 128
         else laguna_swa_attention_prefill_wave32_exact_bf16_spans
     )
     kernel(
@@ -753,6 +759,7 @@ def laguna_swa_attention_prefill_qrow2_32_exact_bf16_spans(
         head_dim,
         scale,
         sliding_window=sliding_window,
+        start_position=start_position,
         stream=stream,
         library=library,
         runtime=runtime,
@@ -818,8 +825,8 @@ def register_laguna_kv_attention_kernels(*, replace: bool = True) -> None:
         ),
         (
             "laguna_attention_prefill",
-            "swa_context_rows_qrow2_32_exact_spans",
-            laguna_swa_attention_prefill_qrow2_32_exact_bf16_spans,
+            "swa_context_rows_qrow2_32_c128_exact_spans",
+            laguna_swa_attention_prefill_qrow2_32_c128_exact_bf16_spans,
         ),
     )
     for layer, variant, kernel in registrations:
@@ -913,7 +920,7 @@ __all__ = [
     "laguna_swa_attention_decode_bf16_spans",
     "laguna_swa_attention_decode_token4_exact_bf16_spans",
     "laguna_swa_attention_prefill_bf16_spans",
-    "laguna_swa_attention_prefill_qrow2_32_exact_bf16_spans",
+    "laguna_swa_attention_prefill_qrow2_32_c128_exact_bf16_spans",
     "laguna_swa_attention_prefill_qrow2_exact_bf16_spans",
     "laguna_swa_attention_prefill_wave32_exact_bf16_spans",
     "laguna_swa_write_kv_f32_spans",
