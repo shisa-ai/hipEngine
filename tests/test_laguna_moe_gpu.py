@@ -18,6 +18,7 @@ from hipengine.core.memory import (
 from hipengine.kernels.cpu_reference import gguf_quant_gemv
 from hipengine.kernels.registry import KernelKey
 from hipengine.loading.laguna_gguf import (
+    FULL_ATTENTION,
     SLIDING_ATTENTION,
     SPARSE_MOE,
     laguna_gguf_config_from_metadata,
@@ -32,6 +33,7 @@ from hipengine.loading.laguna_gguf_materialize import (
 from hipengine.models.laguna import LAGUNA_GGUF
 from hipengine.quant.gguf import GGMLQuantizationType
 from hipengine.runtime.laguna_moe import (
+    _expert_major_components_for_mode,
     allocate_laguna_moe_scratch,
     resolve_laguna_moe_plan,
     resolve_laguna_selected_down_mode,
@@ -154,6 +156,24 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
     assert "laguna_routed_shared_combine" in sparse_sequence
 
 
+def test_expert_major_layer_family_policy_is_architecture_scoped() -> None:
+    assert _expert_major_components_for_mode(
+        "adaptive_expert_major_wmma_comp_swa", 127, SLIDING_ATTENTION
+    ) == (False, False)
+    assert _expert_major_components_for_mode(
+        "adaptive_expert_major_wmma_comp_swa", 128, SLIDING_ATTENTION
+    ) == (True, True)
+    assert _expert_major_components_for_mode(
+        "adaptive_expert_major_wmma_comp_swa", 128, FULL_ATTENTION
+    ) == (False, False)
+    assert _expert_major_components_for_mode(
+        "adaptive_expert_major_wmma_comp_global", 128, FULL_ATTENTION
+    ) == (True, True)
+    assert _expert_major_components_for_mode(
+        "adaptive_expert_major_wmma_comp_global", 128, SLIDING_ATTENTION
+    ) == (False, False)
+
+
 def test_laguna_selected_down_default_is_backend_qualified() -> None:
     assert resolve_laguna_selected_down_mode("hip_gfx1100") == "direct"
     assert (
@@ -182,6 +202,8 @@ def test_laguna_selected_down_default_is_backend_qualified() -> None:
         "adaptive_expert_major_gate_up_comp",
         "expert_major_down_comp",
         "adaptive_expert_major_down_comp",
+        "adaptive_expert_major_wmma_comp_swa",
+        "adaptive_expert_major_wmma_comp_global",
     ):
         assert (
             resolve_laguna_selected_down_mode("hip_gfx1151", component_mode)

@@ -15,7 +15,12 @@ from hipengine.kernels.backends import (
     load_backend_kernel_package,
 )
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
-from hipengine.loading.laguna_gguf import LagunaGGUFConfig, SPARSE_MOE
+from hipengine.loading.laguna_gguf import (
+    FULL_ATTENTION,
+    SLIDING_ATTENTION,
+    LagunaGGUFConfig,
+    SPARSE_MOE,
+)
 from hipengine.loading.laguna_gguf_materialize import (
     LAYOUT_DENSE_F32,
     LAYOUT_GGUF_Q4_K_T16,
@@ -56,11 +61,52 @@ _SELECTED_DOWN_MODES = frozenset(
         "adaptive_expert_major_gate_up_comp",
         "expert_major_down_comp",
         "adaptive_expert_major_down_comp",
+        "adaptive_expert_major_wmma_comp_swa",
+        "adaptive_expert_major_wmma_comp_global",
+    }
+)
+_EXPERT_MAJOR_GATE_UP_MODES = frozenset(
+    {
+        "expert_major_wmma_comp",
+        "adaptive_expert_major_wmma_comp",
+        "expert_major_gate_up_comp",
+        "adaptive_expert_major_gate_up_comp",
+        "adaptive_expert_major_wmma_comp_swa",
+        "adaptive_expert_major_wmma_comp_global",
+    }
+)
+_EXPERT_MAJOR_DOWN_MODES = frozenset(
+    {
+        "expert_major_wmma_comp",
+        "adaptive_expert_major_wmma_comp",
+        "expert_major_down_comp",
+        "adaptive_expert_major_down_comp",
+        "adaptive_expert_major_wmma_comp_swa",
+        "adaptive_expert_major_wmma_comp_global",
     }
 )
 _BASELINE_SELECTED_DOWN_MODE = "direct"
 _GROUPED_SMALLM_MIN_ROWS = 32
 _EXPERT_MAJOR_MIN_ROWS = 128
+
+
+def _expert_major_components_for_mode(
+    selected_down_mode: str,
+    tokens: int,
+    attention_type: str,
+) -> tuple[bool, bool]:
+    """Return gate/up and down admission for one architecture-derived mode."""
+
+    adaptive = selected_down_mode.startswith("adaptive_expert_major_")
+    enabled = not adaptive or int(tokens) >= _EXPERT_MAJOR_MIN_ROWS
+    if selected_down_mode == "adaptive_expert_major_wmma_comp_swa":
+        enabled = bool(enabled and attention_type == SLIDING_ATTENTION)
+    elif selected_down_mode == "adaptive_expert_major_wmma_comp_global":
+        enabled = bool(enabled and attention_type == FULL_ATTENTION)
+    return (
+        bool(enabled and selected_down_mode in _EXPERT_MAJOR_GATE_UP_MODES),
+        bool(enabled and selected_down_mode in _EXPERT_MAJOR_DOWN_MODES),
+    )
 
 
 def resolve_laguna_selected_down_mode(
@@ -1536,21 +1582,16 @@ def run_laguna_moe_rows(
         **_stage_kwargs("router_select", libraries, stream=stream, runtime=runtime),
     )
     adaptive_expert_major = selected_down_mode.startswith("adaptive_expert_major_")
-    expert_major_enabled = (
-        not adaptive_expert_major or tokens >= _EXPERT_MAJOR_MIN_ROWS
+    use_expert_major_gate_up, use_expert_major_down = (
+        _expert_major_components_for_mode(
+            selected_down_mode,
+            tokens,
+            layer.attention_type,
+        )
     )
-    use_expert_major_gate_up = expert_major_enabled and selected_down_mode in {
-        "expert_major_wmma_comp",
-        "adaptive_expert_major_wmma_comp",
-        "expert_major_gate_up_comp",
-        "adaptive_expert_major_gate_up_comp",
-    }
-    use_expert_major_down = expert_major_enabled and selected_down_mode in {
-        "expert_major_wmma_comp",
-        "adaptive_expert_major_wmma_comp",
-        "expert_major_down_comp",
-        "adaptive_expert_major_down_comp",
-    }
+    expert_major_enabled = bool(
+        use_expert_major_gate_up or use_expert_major_down
+    )
     if use_expert_major_gate_up:
         _launch_expert_major_comp_gate_up(
             hidden_bf16_ptr,

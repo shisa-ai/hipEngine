@@ -47,6 +47,12 @@ CANDIDATE_MODES = (
     "adaptive_expert_major_wmma_comp",
 )
 MODES = (BASELINE_MODE, *CANDIDATE_MODES)
+LAYER_CANDIDATE_MODES = (
+    "adaptive_expert_major_wmma_comp_global",
+    "adaptive_expert_major_wmma_comp_swa",
+    "adaptive_expert_major_wmma_comp",
+)
+LAYER_MODES = (BASELINE_MODE, *LAYER_CANDIDATE_MODES)
 DEFAULT_SOURCE_REJECTION = (
     ROOT
     / "benchmarks/results/2026-07-24-gfx1151-laguna-expert-major-wmma-category-rejected.json"
@@ -62,6 +68,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--oracle", type=Path, default=DEFAULT_ORACLE)
     parser.add_argument("--oracle-logprobs", type=Path, default=DEFAULT_ORACLE_LOGPROBS)
     parser.add_argument("--source-rejection", type=Path, default=DEFAULT_SOURCE_REJECTION)
+    parser.add_argument(
+        "--bisection",
+        choices=("components", "layer_families"),
+        default="components",
+    )
     parser.add_argument("--backend", default="hip_gfx1151")
     parser.add_argument("--context-length", type=int, default=4096)
     parser.add_argument("--chunk-size", type=int, default=128)
@@ -75,9 +86,22 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _mode_order(prompt_index: int, repetition: int) -> tuple[str, ...]:
-    offset = (int(prompt_index) + int(repetition)) % len(MODES)
-    return MODES[offset:] + MODES[:offset]
+def _bisection_modes(kind: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    if kind == "components":
+        return MODES, CANDIDATE_MODES
+    if kind == "layer_families":
+        return LAYER_MODES, LAYER_CANDIDATE_MODES
+    raise ValueError(f"unknown expert-major bisection {kind!r}")
+
+
+def _mode_order(
+    prompt_index: int,
+    repetition: int,
+    *,
+    modes: tuple[str, ...] = MODES,
+) -> tuple[str, ...]:
+    offset = (int(prompt_index) + int(repetition)) % len(modes)
+    return modes[offset:] + modes[:offset]
 
 
 def _expanded_token_ids(prompt: Mapping[str, Any], target: int = 128) -> tuple[int, ...]:
@@ -95,29 +119,31 @@ def _expanded_token_ids(prompt: Mapping[str, Any], target: int = 128) -> tuple[i
 
 def _load_source_rejection(args: argparse.Namespace) -> dict[str, Any]:
     artifact = json.loads(args.source_rejection.read_text(encoding="utf-8"))
+    expected = {
+        "components": (
+            "hipengine_laguna_prefill_expert_major_wmma_category",
+            "rejected_category_gate",
+        ),
+        "layer_families": (
+            "hipengine_laguna_expert_major_component_bisection",
+            "component_bisection_rejected",
+        ),
+    }[args.bisection]
     passed = bool(
-        artifact.get("kind") == "hipengine_laguna_prefill_expert_major_wmma_category"
-        and artifact.get("status") == "rejected_category_gate"
+        artifact.get("kind") == expected[0]
+        and artifact.get("status") == expected[1]
         and artifact.get("pass") is False
         and artifact.get("model", {}).get("sha256") == args.model_sha256
-        and artifact.get("quality", {})
-        .get("teacher_forced", {})
-        .get("max_kl_divergence", 0.0)
-        > 0.05
     )
     if not passed:
-        raise ValueError("source expert-major category rejection is not accepted")
+        raise ValueError("source expert-major rejection is not accepted")
     return {
         "pass": True,
         "path": str(args.source_rejection.resolve()),
         "sha256": _sha256_bytes(args.source_rejection.read_bytes()),
         "revision": artifact.get("repo", {}).get("revision"),
-        "max_kl_divergence": artifact["quality"]["teacher_forced"][
-            "max_kl_divergence"
-        ],
-        "prefill_speedup": artifact["performance"]["candidate_vs_retained"][
-            "prefill_speedup"
-        ],
+        "source_kind": artifact.get("kind"),
+        "source_status": artifact.get("status"),
     }
 
 
@@ -125,8 +151,10 @@ def _open_mode_session(
     owner: LagunaGGUFResidentSession,
     args: argparse.Namespace,
     mode: str,
+    *,
+    modes: tuple[str, ...] = MODES,
 ):
-    if mode not in MODES:
+    if mode not in modes:
         raise ValueError(f"unknown expert-major component mode {mode!r}")
     session = _session(owner, args)
     session.set_selected_down_mode(mode)
@@ -146,6 +174,8 @@ def _poolside_oracle(
     owner: LagunaGGUFResidentSession,
     args: argparse.Namespace,
     mode: str,
+    *,
+    modes: tuple[str, ...] = MODES,
 ) -> dict[str, Any]:
     template = json.loads(args.template.read_text(encoding="utf-8"))
     oracle = json.loads(args.oracle.read_text(encoding="utf-8"))
@@ -153,7 +183,7 @@ def _poolside_oracle(
         case for case in template["cases"] if case["name"] == oracle["prompt"]["case"]
     )
     prompt_ids = tuple(int(value) for value in prompt_case["token_ids"])
-    session = _open_mode_session(owner, args, mode)
+    session = _open_mode_session(owner, args, mode, modes=modes)
     try:
         result = session.prefill(prompt_ids, use_bulk=True)
         logits = np.empty(session.config.vocab_size, dtype=np.float32)
@@ -190,8 +220,9 @@ def _time_prefill(
     *,
     mode: str,
     repetition: int,
+    modes: tuple[str, ...] = MODES,
 ) -> dict[str, Any]:
-    session = _open_mode_session(owner, args, mode)
+    session = _open_mode_session(owner, args, mode, modes=modes)
     token_ids = _expanded_token_ids(prompt)
     try:
         started = time.perf_counter()
@@ -218,25 +249,30 @@ def _teacher_forced_prompt(
     owner: LagunaGGUFResidentSession,
     prompt: Mapping[str, Any],
     args: argparse.Namespace,
+    *,
+    modes: tuple[str, ...] = MODES,
+    candidate_modes: tuple[str, ...] = CANDIDATE_MODES,
 ) -> dict[str, list[dict[str, Any]]]:
-    sessions = {mode: _open_mode_session(owner, args, mode) for mode in MODES}
+    sessions = {
+        mode: _open_mode_session(owner, args, mode, modes=modes) for mode in modes
+    }
     logits = {
         mode: np.empty(sessions[mode].config.vocab_size, dtype=np.float32)
-        for mode in MODES
+        for mode in modes
     }
     token_ids = _expanded_token_ids(prompt)
-    candidate_steps = {mode: [] for mode in CANDIDATE_MODES}
+    candidate_steps = {mode: [] for mode in candidate_modes}
     try:
         results = {
-            mode: sessions[mode].prefill(token_ids, use_bulk=True) for mode in MODES
+            mode: sessions[mode].prefill(token_ids, use_bulk=True) for mode in modes
         }
         for index in range(args.teacher_forced_tokens):
-            for mode in MODES:
+            for mode in modes:
                 _copy_logits(sessions[mode], results[mode], logits[mode])
             baseline_logp = _normalized_log_probs(logits[BASELINE_MODE])
             probabilities = np.exp(baseline_logp)
             baseline_top1 = int(np.argmax(logits[BASELINE_MODE]))
-            for mode in CANDIDATE_MODES:
+            for mode in candidate_modes:
                 candidate_logp = _normalized_log_probs(logits[mode])
                 kl = float(
                     np.sum(probabilities * (baseline_logp - candidate_logp))
@@ -257,7 +293,7 @@ def _teacher_forced_prompt(
                 )
             if index + 1 < args.teacher_forced_tokens:
                 results = {
-                    mode: sessions[mode].forward_token(baseline_top1) for mode in MODES
+                    mode: sessions[mode].forward_token(baseline_top1) for mode in modes
                 }
     finally:
         for session in sessions.values():
@@ -275,13 +311,18 @@ def _teacher_forced_prompt(
                 "steps": candidate_steps[mode],
             }
         ]
-        for mode in CANDIDATE_MODES
+        for mode in candidate_modes
     }
 
 
-def _aggregate_performance(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+def _aggregate_performance(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    benchmark_modes: tuple[str, ...] = MODES,
+    candidate_modes: tuple[str, ...] = CANDIDATE_MODES,
+) -> dict[str, Any]:
     modes: dict[str, Any] = {}
-    for mode in MODES:
+    for mode in benchmark_modes:
         selected = [row for row in rows if row["mode"] == mode]
         total_tokens = sum(int(row["prompt_tokens"]) for row in selected)
         total_seconds = float(sum(float(row["prefill_seconds"]) for row in selected))
@@ -308,7 +349,7 @@ def _aggregate_performance(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "modes": modes,
         "speedups_vs_retained": {
             mode: baseline_seconds / float(modes[mode]["prefill_seconds"])
-            for mode in CANDIDATE_MODES
+            for mode in candidate_modes
         },
     }
 
@@ -360,17 +401,18 @@ def _evaluate(
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
+    benchmark_modes, candidate_modes = _bisection_modes(args.bisection)
     if args.repetitions < 3:
-        raise ValueError("component bisection requires at least three repetitions")
+        raise ValueError("expert-major bisection requires at least three repetitions")
     if args.teacher_forced_tokens != 32:
-        raise ValueError("component bisection requires 32 teacher-forced steps")
+        raise ValueError("expert-major bisection requires 32 teacher-forced steps")
     if args.chunk_size != 128:
-        raise ValueError("component bisection requires chunk size 128")
+        raise ValueError("expert-major bisection requires chunk size 128")
     if not args.model.is_file():
         raise FileNotFoundError(f"Laguna model not found: {args.model}")
     repo = _repo_state()
     if not repo["tracked_clean"]:
-        raise RuntimeError("component bisection requires a clean tracked worktree")
+        raise RuntimeError("expert-major bisection requires a clean tracked worktree")
     source_rejection = _load_source_rejection(args)
     provenance = collect_artifact_provenance(
         repo_root=ROOT,
@@ -381,9 +423,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         quant="gguf_q4_k_m",
         kv_dtype="bf16",
         command=(str(Path(sys.executable).resolve()), *sys.argv),
-        build_profile="laguna_expert_major_component_bisection",
+        build_profile=f"laguna_expert_major_{args.bisection}_bisection",
         timing_protocol="one_owner_counterbalanced_m128_prefill_plus_multiway_teacher_force",
-        warmups=len(MODES),
+        warmups=len(benchmark_modes),
         repetitions=args.repetitions,
     )
     reader = GGUFReader(args.model)
@@ -395,7 +437,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     tracked_before = memory_stats()
     owner = None
     rows = []
-    teacher_rows = {mode: [] for mode in CANDIDATE_MODES}
+    teacher_rows = {mode: [] for mode in candidate_modes}
     oracle_by_mode = {}
     load_started = time.perf_counter()
     try:
@@ -412,21 +454,24 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             prefill_chunk_size=args.chunk_size,
         )
         load_seconds = time.perf_counter() - load_started
-        for mode in MODES:
-            warmup = _open_mode_session(owner, args, mode)
+        for mode in benchmark_modes:
+            warmup = _open_mode_session(owner, args, mode, modes=benchmark_modes)
             try:
                 warmup.prefill(_expanded_token_ids(prompts[0]), use_bulk=True)
             finally:
                 warmup.close()
         for repetition in range(args.repetitions):
             for prompt_index, prompt in enumerate(prompts):
-                for mode in _mode_order(prompt_index, repetition):
+                for mode in _mode_order(
+                    prompt_index, repetition, modes=benchmark_modes
+                ):
                     row = _time_prefill(
                         owner,
                         prompt,
                         args,
                         mode=mode,
                         repetition=repetition,
+                        modes=benchmark_modes,
                     )
                     rows.append(row)
                     print(
@@ -436,8 +481,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         flush=True,
                     )
         for prompt in prompts:
-            prompt_rows = _teacher_forced_prompt(owner, prompt, args)
-            for mode in CANDIDATE_MODES:
+            prompt_rows = _teacher_forced_prompt(
+                owner,
+                prompt,
+                args,
+                modes=benchmark_modes,
+                candidate_modes=candidate_modes,
+            )
+            for mode in candidate_modes:
                 teacher_rows[mode].extend(prompt_rows[mode])
                 steps = prompt_rows[mode][0]["steps"]
                 matches = sum(bool(step["top1_agreement"]) for step in steps)
@@ -448,8 +499,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     file=sys.stderr,
                     flush=True,
                 )
-        for mode in CANDIDATE_MODES:
-            oracle_by_mode[mode] = _poolside_oracle(owner, args, mode)
+        for mode in candidate_modes:
+            oracle_by_mode[mode] = _poolside_oracle(
+                owner, args, mode, modes=benchmark_modes
+            )
         resident_nbytes = owner.resident_nbytes
     finally:
         if owner is not None:
@@ -457,11 +510,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     tracked_after = memory_stats()
     gpu_free_after, gpu_total_after = runtime.mem_get_info()
     if gpu_total_after != gpu_total:
-        raise RuntimeError("HIP total memory changed during component bisection")
+        raise RuntimeError("HIP total memory changed during expert-major bisection")
 
-    performance = _aggregate_performance(rows)
+    performance = _aggregate_performance(
+        rows,
+        benchmark_modes=benchmark_modes,
+        candidate_modes=candidate_modes,
+    )
     quality_by_mode = {
-        mode: _teacher_forced_quality(teacher_rows[mode]) for mode in CANDIDATE_MODES
+        mode: _teacher_forced_quality(teacher_rows[mode]) for mode in candidate_modes
     }
     evaluation = _evaluate(performance, quality_by_mode, oracle_by_mode)
     recovered = bool(
@@ -476,11 +533,18 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         evaluation["failed_check"] = "tracked_lifecycle_not_recovered"
     manifest_path = args.repacked_cache / "manifest.json"
     prompt_payload = args.prompts.read_bytes()
+    artifact_scope = (
+        "component" if args.bisection == "components" else "layer_families"
+    )
     return {
         "schema": 1,
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "kind": "hipengine_laguna_expert_major_component_bisection",
-        "status": "component_quality_admitted" if evaluation["pass"] else "component_bisection_rejected",
+        "kind": f"hipengine_laguna_expert_major_{artifact_scope}_bisection",
+        "status": (
+            f"{artifact_scope}_quality_admitted"
+            if evaluation["pass"]
+            else f"{artifact_scope}_bisection_rejected"
+        ),
         "pass": bool(evaluation["pass"]),
         "performance_claim": False,
         "provenance": provenance,
@@ -502,7 +566,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "hip_total_bytes": gpu_total,
         },
         "protocol": {
-            "modes": list(MODES),
+            "bisection": args.bisection,
+            "modes": list(benchmark_modes),
             "chunk_size": args.chunk_size,
             "prompt_tokens": 128,
             "prompt_expansion": "repeat without leading BOS, then truncate; identical for every mode",
@@ -534,9 +599,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "command": [str(Path(sys.executable).resolve()), *sys.argv],
         "notes": [
             "All ten prompts/four categories are uniformly expanded to M128; no prompt-conditioned dispatch is used.",
-            "Gate/up-only keeps exact grouped Q4/Q6 down; down-only keeps exact selected Q4 gate/up.",
-            "All adaptive component modes retain the exact grouped fallback below M128 and exact c=1 decode.",
-            "This is a component admission diagnostic, not a retained default or topline claim.",
+            (
+                "Gate/up-only keeps exact grouped Q4/Q6 down; down-only keeps exact selected Q4 gate/up."
+                if args.bisection == "components"
+                else "Layer-family scopes are derived only from Laguna global-versus-SWA architecture metadata."
+            ),
+            "All adaptive modes retain the exact grouped fallback below M128 and exact c=1 decode.",
+            "This is a quality admission diagnostic, not a retained default or topline claim.",
         ],
     }
 
