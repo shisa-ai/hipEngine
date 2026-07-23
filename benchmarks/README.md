@@ -3,6 +3,8 @@
 Last reviewed: **2026-07-23**
 
 Latest retained hipEngine revisions in this scoreboard:
+`804e9484f3da0031628805f5bbef62a43badffaa` for exact bounded Laguna
+stateful-session KV continuation,
 `71f2af038cf5eea88f1997d178d815cfaad15681` for prefix-aware exact Laguna
 stop-safe streaming,
 `a95adcac82d8ae0b018fe1167b5108422afa47a9` for the full exact Laguna
@@ -1444,6 +1446,18 @@ remain fully suppressed, all text/IDs/finish details match, and complete E2E is
 neutral. This host-only delayed-arrival scope is anchored to the retained 16.384
 tok/s rate and proves emission timing, not model throughput. [Retained S3
 prefix-aware stop artifact](results/2026-07-23-laguna-prefix-aware-stop-streaming.json).
+
+Serving lane S4 retains one auth/session-scoped, 900-second, exact-prefix Laguna
+KV slot. Clean measured revision `804e9484f3da0031628805f5bbef62a43badffaa`
+moves nine-token continuation wall from **2,607.195/10,347.413/21,619.917 ms**
+with reset/full prefill to **260.699/303.268/314.255 ms** with exact 128/512/1K
+prefix reuse: **10.00x/34.12x/68.80x**, saving **2.347/10.044/21.306 s**. A
+canonical rendered Poolside chat follow-up moves **1,670.692 -> 411.907 ms
+(4.06x)**. Every next ID matches; each first measured shape and chat copy hashes
+all **277,434,816 bytes** of global/SWA K/V plus span metadata identically with
+exact positions and no pending rows; lifecycle returns to zero. Model load is
+excluded. Reuse is explicit-session only and global radix stays off. [Retained
+S4 stateful-KV artifact](results/2026-07-23-gfx1151-laguna-stateful-kv.json).
 
 LPF-1 changes prompt execution only; rows=1 decode stays on the original exact
 GEMV and is neutral. Every serial/tiled pair and same-route repeat is exact at

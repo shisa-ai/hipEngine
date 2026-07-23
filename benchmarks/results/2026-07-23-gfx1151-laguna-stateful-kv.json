@@ -1,0 +1,401 @@
+{
+  "canonical_chat": {
+    "control": {
+      "generated_token_ids": [
+        1172
+      ],
+      "prefill_ms": 1669.7591219563037,
+      "prefix_reused_tokens": 0,
+      "request_total_ms": 1670.4603179823607,
+      "resident_kv_reused": false,
+      "session_prepare_mode": "reset",
+      "session_prepare_ms": 0.5057490197941661,
+      "wall_ms": 1670.6918330164626
+    },
+    "first_prompt_tokens": 69,
+    "prompt_id": "code_merge_intervals",
+    "retained_prefix_tokens": 72,
+    "reuse": {
+      "generated_token_ids": [
+        1172
+      ],
+      "prefill_ms": 411.3684289623052,
+      "prefix_reused_tokens": 72,
+      "request_total_ms": 411.72371490392834,
+      "resident_kv_reused": true,
+      "session_prepare_mode": "reuse",
+      "session_prepare_ms": 0.187271973118186,
+      "wall_ms": 411.907359957695
+    },
+    "second_prompt_tokens": 89,
+    "seed_generated_token_ids": [
+      605,
+      2825,
+      268,
+      1172
+    ],
+    "seed_text": "```python\ndef",
+    "state_digest": {
+      "copied_nbytes": 277434816,
+      "kv_position": 88,
+      "pending_positions": [],
+      "session_position": 88,
+      "sha256": "3e2f46d355f406b19cef9909a00e88afeb1a5dd9d4d8ba5b23d2c213e2126a12"
+    }
+  },
+  "gates": {
+    "all_ids_equal": true,
+    "all_reuse_faster": true,
+    "all_reuse_modes": true,
+    "all_state_digests_equal": true,
+    "canonical_chat_exact": true,
+    "lifecycle_recovered": true
+  },
+  "lifecycle": {
+    "after": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 77125438836,
+      "peak_allocations": 1395,
+      "total_allocated_bytes": 77125438836,
+      "total_freed_bytes": 77125438836
+    },
+    "before": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 0,
+      "peak_allocations": 0,
+      "total_allocated_bytes": 0,
+      "total_freed_bytes": 0
+    },
+    "recovered": true
+  },
+  "load_seconds": 49.943511446006596,
+  "platform": {
+    "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.43",
+    "python": "3.10.20"
+  },
+  "prefix_lengths": [
+    128,
+    512,
+    1024
+  ],
+  "provenance": {
+    "build_profile": "laguna_stateful_kv",
+    "collected_at": "2026-07-23T09:40:31.144691+00:00",
+    "command": [
+      "/home/lhl/.local/share/uv/python/cpython-3.10.20-linux-x86_64-gnu/bin/python3.10",
+      "scripts/laguna_stateful_kv_bench.py",
+      "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1151",
+      "--context-length",
+      "4096",
+      "--prefix-lengths",
+      "128,512,1024",
+      "--suffix-tokens",
+      "8",
+      "--warmups",
+      "1",
+      "--repetitions",
+      "2",
+      "--model-sha256",
+      "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+      "--output",
+      "/tmp/2026-07-23-gfx1151-laguna-stateful-kv-final.json"
+    ],
+    "configured_backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "dirty": false,
+    "environment": {
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null,
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIP_VISIBLE_DEVICES": "0",
+      "ROCR_VISIBLE_DEVICES": null
+    },
+    "git_branch": null,
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "hipengine_commit": "804e9484f3da0031628805f5bbef62a43badffaa",
+    "kind": "hipengine_artifact_provenance",
+    "kv_dtype": "bf16",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        37586027312,
+        75172054624
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 75173103200,
+      "value": "05caf641aa0d991c0e447450420c042bfab22ae248b1f12aba4bd3774c2024c8"
+    },
+    "model_path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "model_revision": null,
+    "profiler": null,
+    "quant": "Q4_K_M mixed GGUF v3",
+    "repetitions": 2,
+    "repo_root": "/tmp/hipengine-s4-804e9484f",
+    "resolved_backend": "hip_gfx1151",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "schema_version": 1,
+    "staged_dirty": false,
+    "target_arch": "gfx1151",
+    "timing_protocol": "seed_then_exact_suffix_reuse_then_full_reset_control",
+    "unstaged_dirty": false,
+    "untracked_count": 0,
+    "untracked_dirty": false,
+    "warmups": 1
+  },
+  "rows": [
+    {
+      "control": {
+        "generated_token_ids": [
+          405
+        ],
+        "prefill_ms": 2608.849629992619,
+        "prefix_reused_tokens": 0,
+        "request_total_ms": 2609.750479925424,
+        "resident_kv_reused": false,
+        "session_prepare_mode": "reset",
+        "session_prepare_ms": 0.6971780676394701,
+        "wall_ms": 2610.0794069934636
+      },
+      "prefix_tokens": 128,
+      "repetition": 0,
+      "reuse": {
+        "generated_token_ids": [
+          405
+        ],
+        "prefill_ms": 260.9341189963743,
+        "prefix_reused_tokens": 128,
+        "request_total_ms": 261.159232002683,
+        "resident_kv_reused": true,
+        "session_prepare_mode": "reuse",
+        "session_prepare_ms": 0.05992199294269085,
+        "wall_ms": 261.37686998117715
+      },
+      "seed_token_id": 1976,
+      "seed_wall_ms": 2346.5140799526125,
+      "state_digest": {
+        "copied_nbytes": 277434816,
+        "kv_position": 136,
+        "pending_positions": [],
+        "session_position": 136,
+        "sha256": "dc922ebbc7b2540a9a070be7c64f605811667edfc33015a2fe66d1e78f6908aa"
+      },
+      "suffix_tokens": 9
+    },
+    {
+      "control": {
+        "generated_token_ids": [
+          405
+        ],
+        "prefill_ms": 2603.299193899147,
+        "prefix_reused_tokens": 0,
+        "request_total_ms": 2604.0868930285797,
+        "resident_kv_reused": false,
+        "session_prepare_mode": "reset",
+        "session_prepare_ms": 0.6040539592504501,
+        "wall_ms": 2604.3107729637995
+      },
+      "prefix_tokens": 128,
+      "repetition": 1,
+      "reuse": {
+        "generated_token_ids": [
+          405
+        ],
+        "prefill_ms": 259.55918908584863,
+        "prefix_reused_tokens": 128,
+        "request_total_ms": 259.7992189694196,
+        "resident_kv_reused": true,
+        "session_prepare_mode": "reuse",
+        "session_prepare_ms": 0.05986203905194998,
+        "wall_ms": 260.0209559313953
+      },
+      "seed_token_id": 1976,
+      "seed_wall_ms": 2349.8768620193005,
+      "state_digest": null,
+      "suffix_tokens": 9
+    },
+    {
+      "control": {
+        "generated_token_ids": [
+          3791
+        ],
+        "prefill_ms": 10348.47924800124,
+        "prefix_reused_tokens": 0,
+        "request_total_ms": 10349.201253964566,
+        "resident_kv_reused": false,
+        "session_prepare_mode": "reset",
+        "session_prepare_ms": 0.5442120600491762,
+        "wall_ms": 10349.567431025207
+      },
+      "prefix_tokens": 512,
+      "repetition": 0,
+      "reuse": {
+        "generated_token_ids": [
+          3791
+        ],
+        "prefill_ms": 302.25723201874644,
+        "prefix_reused_tokens": 512,
+        "request_total_ms": 302.49095102772117,
+        "resident_kv_reused": true,
+        "session_prepare_mode": "reuse",
+        "session_prepare_ms": 0.06462098099291325,
+        "wall_ms": 302.8260499704629
+      },
+      "seed_token_id": 23246,
+      "seed_wall_ms": 10056.927917990834,
+      "state_digest": {
+        "copied_nbytes": 277434816,
+        "kv_position": 520,
+        "pending_positions": [],
+        "session_position": 520,
+        "sha256": "d13bdc89392585822bbe99cab96337db4b00a46b6dc02985526443a50c577057"
+      },
+      "suffix_tokens": 9
+    },
+    {
+      "control": {
+        "generated_token_ids": [
+          3791
+        ],
+        "prefill_ms": 10344.131218036637,
+        "prefix_reused_tokens": 0,
+        "request_total_ms": 10344.936660956591,
+        "resident_kv_reused": false,
+        "session_prepare_mode": "reset",
+        "session_prepare_ms": 0.6350520998239517,
+        "wall_ms": 10345.258594956249
+      },
+      "prefix_tokens": 512,
+      "repetition": 1,
+      "reuse": {
+        "generated_token_ids": [
+          3791
+        ],
+        "prefill_ms": 303.1083600362763,
+        "prefix_reused_tokens": 512,
+        "request_total_ms": 303.3845479367301,
+        "resident_kv_reused": true,
+        "session_prepare_mode": "reuse",
+        "session_prepare_ms": 0.10229193139821291,
+        "wall_ms": 303.70994994882494
+      },
+      "seed_token_id": 23246,
+      "seed_wall_ms": 10057.776340050623,
+      "state_digest": null,
+      "suffix_tokens": 9
+    },
+    {
+      "control": {
+        "generated_token_ids": [
+          31387
+        ],
+        "prefill_ms": 21630.604960024357,
+        "prefix_reused_tokens": 0,
+        "request_total_ms": 21631.299151922576,
+        "resident_kv_reused": false,
+        "session_prepare_mode": "reset",
+        "session_prepare_ms": 0.5130929639562964,
+        "wall_ms": 21631.779583985917
+      },
+      "prefix_tokens": 1024,
+      "repetition": 0,
+      "reuse": {
+        "generated_token_ids": [
+          31387
+        ],
+        "prefill_ms": 313.2701530121267,
+        "prefix_reused_tokens": 1024,
+        "request_total_ms": 313.4973000269383,
+        "resident_kv_reused": true,
+        "session_prepare_mode": "reuse",
+        "session_prepare_ms": 0.06409990601241589,
+        "wall_ms": 313.9483960112557
+      },
+      "seed_token_id": 897,
+      "seed_wall_ms": 21303.63860493526,
+      "state_digest": {
+        "copied_nbytes": 277434816,
+        "kv_position": 1032,
+        "pending_positions": [],
+        "session_position": 1032,
+        "sha256": "378e61556fec8293451a9bf190bacfd70bd52dd266de0c1694eab77ffe18f751"
+      },
+      "suffix_tokens": 9
+    },
+    {
+      "control": {
+        "generated_token_ids": [
+          31387
+        ],
+        "prefill_ms": 21606.878009974025,
+        "prefix_reused_tokens": 0,
+        "request_total_ms": 21607.597499969415,
+        "resident_kv_reused": false,
+        "session_prepare_mode": "reset",
+        "session_prepare_ms": 0.5702599883079529,
+        "wall_ms": 21608.054518001154
+      },
+      "prefix_tokens": 1024,
+      "repetition": 1,
+      "reuse": {
+        "generated_token_ids": [
+          31387
+        ],
+        "prefill_ms": 313.8792969984934,
+        "prefix_reused_tokens": 1024,
+        "request_total_ms": 314.1015940345824,
+        "resident_kv_reused": true,
+        "session_prepare_mode": "reuse",
+        "session_prepare_ms": 0.05207792855799198,
+        "wall_ms": 314.56177798099816
+      },
+      "seed_token_id": 897,
+      "seed_wall_ms": 21316.92713603843,
+      "state_digest": null,
+      "suffix_tokens": 9
+    }
+  ],
+  "schema": "hipengine.laguna_stateful_kv_bench.v1",
+  "suffix_tokens": 9,
+  "summaries": {
+    "1024": {
+      "all_ids_equal": true,
+      "all_reuse_modes": true,
+      "control_wall_ms_median": 21619.917050993536,
+      "reuse_wall_ms_median": 314.2550869961269,
+      "samples": 2,
+      "saved_wall_ms_median": 21305.66196399741,
+      "speedup": 68.79734949607989,
+      "suffix_tokens": 9
+    },
+    "128": {
+      "all_ids_equal": true,
+      "all_reuse_modes": true,
+      "control_wall_ms_median": 2607.1950899786316,
+      "reuse_wall_ms_median": 260.6989129562862,
+      "samples": 2,
+      "saved_wall_ms_median": 2346.4961770223454,
+      "speedup": 10.00079003173981,
+      "suffix_tokens": 9
+    },
+    "512": {
+      "all_ids_equal": true,
+      "all_reuse_modes": true,
+      "control_wall_ms_median": 10347.413012990728,
+      "reuse_wall_ms_median": 303.26799995964393,
+      "samples": 2,
+      "saved_wall_ms_median": 10044.145013031084,
+      "speedup": 34.119699455160664,
+      "suffix_tokens": 9
+    }
+  },
+  "timestamp_utc": "2026-07-23T09:44:53.753832+00:00"
+}
