@@ -51,17 +51,12 @@ from hipengine.runtime.f16_weight_linear import (
     launch_f16_weight_linear_triple,
 )
 from hipengine.runtime.gguf_embedding import launch_gguf_embedding
-from hipengine.runtime.gguf_linear import (
-    GGUF_OUTPUT_F32,
-    launch_gguf_linear,
-    launch_gguf_linear_pair,
-)
+from hipengine.runtime.gguf_linear import GGUF_OUTPUT_F32, launch_gguf_linear
 from hipengine.runtime.laguna_kv import LagunaKVCache, allocate_laguna_kv_cache
 from hipengine.runtime.laguna_moe import (
     LagunaMoEKernelPlan,
     LagunaMoEScratch,
     allocate_laguna_moe_scratch,
-    laguna_dense_shared_prefill_strategy,
     resolve_laguna_moe_plan,
     run_laguna_moe_c1,
     run_laguna_moe_rows,
@@ -1835,16 +1830,11 @@ class LagunaGGUFResidentSession:
         config = self.weights.config
         scratch = self.rows_scratch
         linear_libraries = self.libraries.linear
-        dense_gate = layer.weight("ffn_gate")
-        dense_up = layer.weight("ffn_up")
-        paired = False
-        if laguna_dense_shared_prefill_strategy(self.backend) == "dual":
-            paired = launch_gguf_linear_pair(
-                dense_gate,
-                dense_up,
+        for slot, output in (("ffn_gate", scratch.dense_gate), ("ffn_up", scratch.dense_up)):
+            launch_gguf_linear(
+                layer.weight(slot),
                 scratch.norm.ptr,
-                scratch.dense_gate.ptr,
-                scratch.dense_up.ptr,
+                output.ptr,
                 rows,
                 config.hidden_size,
                 config.feed_forward_length,
@@ -1855,25 +1845,6 @@ class LagunaGGUFResidentSession:
                 use_wmma_prefill=False,
                 use_gemv_decode=False,
             )
-        if not paired:
-            for weight, output in (
-                (dense_gate, scratch.dense_gate),
-                (dense_up, scratch.dense_up),
-            ):
-                launch_gguf_linear(
-                    weight,
-                    scratch.norm.ptr,
-                    output.ptr,
-                    rows,
-                    config.hidden_size,
-                    config.feed_forward_length,
-                    backend=self.backend,
-                    stream=stream,
-                    libraries=linear_libraries,
-                    runtime=self.runtime,
-                    use_wmma_prefill=False,
-                    use_gemv_decode=False,
-                )
         self.kernel_plan.dense_silu(
             scratch.dense_gate.ptr,
             scratch.dense_up.ptr,

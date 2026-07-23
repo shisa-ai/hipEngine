@@ -175206,3 +175206,61 @@ uv run python scripts/laguna_dense_shared_prefill_bench.py --help
 ```
 
 No performance measurement or claim is made in this harness-only unit.
+
+## 2026-07-23 — Reject and remove Laguna LPF-3 Q4 dual prefill
+
+Ran the predeclared balanced gate at `e2bd2fe3c` on Radeon 8060S/gfx1151:
+
+```bash
+env -u HIPENGINE_LAGUNA_DENSE_SHARED_PREFILL \
+  -u HIPENGINE_LAGUNA_F16_PREFILL HIPENGINE_HIP_ARCH=gfx1151 \
+  GPU_MAX_HW_QUEUES=1 uv run python -u \
+  scripts/laguna_dense_shared_prefill_bench.py \
+  /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf \
+  --backend hip_gfx1151 --context-length 4096 \
+  --repetitions 3 --warmups 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 \
+  --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f \
+  --output /tmp/laguna-prefill-lpf3-dense-shared-ab.json
+```
+
+The exact dual route regresses every measured shape:
+
+| rows | split tok/s | dual tok/s | delta |
+| ---: | ---: | ---: | ---: |
+| 16 | 46.274 | 45.985 | -0.63% |
+| 32 | 48.726 | 48.404 | -0.66% |
+| 55 | 48.672 | 48.352 | -0.66% |
+| 64 | 49.973 | 49.636 | -0.67% |
+| 122 | 50.073 | 49.727 | -0.69% |
+| 128 | 50.377 | 49.977 | -0.79% |
+
+The weighted result is **49.696 -> 49.345 tok/s (-0.71%; 0.9929x)**. All 36
+next-token results agree; 77,125,390,396 tracked bytes / 1,377 allocations
+recover exactly to zero. Load was 48.532 s and excluded. Artifact SHA-256 is
+`0069d725...7320f`:
+`benchmarks/results/2026-07-23-gfx1151-laguna-prefill-lpf3-dense-shared-rejected.json`.
+
+Applied the refactor trigger: removed the selector, Laguna pair routes, generic
+held-library extension, integration fixtures, and temporary A/B harness. The
+existing generic Q4 dual kernel is unchanged. The remaining real-WMMA idea is
+not incremental under Laguna's current pack8/raw dense/shared residency and has
+only a roughly 6% post-LPF-1 Amdahl ceiling from the pre-LPF-1 71 ms family; it
+is deferred until replacement layouts are revisited or a later profile makes
+this family dominant. LPF-4 chunk policy is next; no default or rollup changed.
+
+Post-removal validation:
+
+```bash
+env HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 uv run pytest -q \
+  tests/test_laguna_moe_gpu.py
+# 4 passed
+uv run pytest -q tests/test_laguna_gguf_runner.py -k 'libraries or scratch'
+# 3 passed
+uvx ruff check hipengine/runtime/gguf_linear.py hipengine/runtime/laguna_moe.py \
+  hipengine/runtime/laguna_gguf_runner.py tests/test_laguna_moe_gpu.py \
+  tests/test_laguna_gguf_runner.py
+# clean
+```

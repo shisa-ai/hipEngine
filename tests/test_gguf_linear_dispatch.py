@@ -1173,11 +1173,9 @@ def test_wmma_prefill_pair_still_fuses_q4_k_pack8_dual_prefill() -> None:
             rows=4,
             in_features=1024,
             out_features=2048,
-            libraries={"gguf_q4_k": "q4-library"},
             use_wmma_prefill=True,
         )
     finally:
         gl.gguf_q4_k_pack8_dual_prefill_bf16_bf16_out = original  # type: ignore[assignment]
     assert fused is True
     assert len(pair_calls) == 1
-    assert pair_calls[0][1]["library"] == "q4-library"
