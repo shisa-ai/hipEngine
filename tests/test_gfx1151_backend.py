@@ -796,6 +796,8 @@ def test_gguf_fused_linear_matching_uses_resident_backend() -> None:
             out_features_b=4096,
             backend="hip_gfx1151",
             use_wmma=False,
+            use_gemv=False,
+            registered_decode_only=False,
         )
         == "q8_raw_dual"
     )

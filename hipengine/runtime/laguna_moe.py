@@ -23,7 +23,7 @@ from hipengine.loading.laguna_gguf_materialize import (
 )
 from hipengine.quant.gguf_q4_k import GGUF_Q4_K_TILE16_BLOCK_BYTES
 from hipengine.quant.gguf_t16 import GGUF_Q6_K_T16_BLOCK_BYTES
-from hipengine.runtime.gguf_linear import launch_gguf_linear
+from hipengine.runtime.gguf_linear import launch_gguf_linear, launch_gguf_linear_pair
 
 _QK_K = 256
 _T16_COLUMNS = 16
@@ -901,34 +901,52 @@ def run_laguna_moe_c1(
     shared_gate = layer.weight("ffn_gate_shexp")
     shared_up = layer.weight("ffn_up_shexp")
     shared_down = layer.weight("ffn_down_shexp")
-    launch_gguf_linear(
+    shared_pair = launch_gguf_linear_pair(
         shared_gate,
-        hidden_bf16_ptr,
-        scratch.shared_gate.ptr,
-        1,
-        h,
-        sf,
-        backend=plan.backend,
-        stream=stream,
-        runtime=runtime,
-        libraries=libraries,
-        use_wmma_prefill=False,
-        use_gemv_decode=True,
-    )
-    launch_gguf_linear(
         shared_up,
         hidden_bf16_ptr,
+        scratch.shared_gate.ptr,
         scratch.shared_up.ptr,
         1,
         h,
         sf,
         backend=plan.backend,
         stream=stream,
-        runtime=runtime,
         libraries=libraries,
+        runtime=runtime,
         use_wmma_prefill=False,
         use_gemv_decode=True,
+        registered_decode_only=True,
     )
+    if not shared_pair:
+        launch_gguf_linear(
+            shared_gate,
+            hidden_bf16_ptr,
+            scratch.shared_gate.ptr,
+            1,
+            h,
+            sf,
+            backend=plan.backend,
+            stream=stream,
+            runtime=runtime,
+            libraries=libraries,
+            use_wmma_prefill=False,
+            use_gemv_decode=True,
+        )
+        launch_gguf_linear(
+            shared_up,
+            hidden_bf16_ptr,
+            scratch.shared_up.ptr,
+            1,
+            h,
+            sf,
+            backend=plan.backend,
+            stream=stream,
+            runtime=runtime,
+            libraries=libraries,
+            use_wmma_prefill=False,
+            use_gemv_decode=True,
+        )
     plan.shared_silu(
         scratch.shared_gate.ptr,
         scratch.shared_up.ptr,
