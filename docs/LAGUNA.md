@@ -1859,6 +1859,15 @@ direct reduction, and has a weaker bound than the already rejected no-padding
 candidate. LPF-3 is next. Evidence:
 `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-lpf2-compact-pair-rejected.json`.
 
+LPF-3 is in progress with the narrowest exact candidate first. The existing
+Q4 pack8 dual-prefill ABI now optionally pairs gate/up for dense layer 0 and
+all 47 shared experts, sharing each activation load while preserving separate
+output buffers and the established Q4 arithmetic. `HIPENGINE_LAGUNA_DENSE_SHARED_PREFILL=dual`
+is diagnostic; `auto` still resolves to `split`, and any unsupported pair falls
+back to the two registered singleton launches. Production-shape shared-expert
+outputs and the dense-row orchestration fixture are exact. Balanced full-model
+timing must decide whether the pair is retained before raw/T16 WMMA work.
+
 Every LPF candidate is a registered variant with the current exact chain as its
 unfused rollback. Exact candidates pass byte comparison on lengths
 1/2/7/55/65 plus the affected tile/chunk boundaries. Reassociated GEMM/WMMA
