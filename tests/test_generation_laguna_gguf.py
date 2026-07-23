@@ -99,7 +99,7 @@ class _FakeSession:
         self.context_length = int(context_length)
         self.backend = str(backend)
         self.runtime = runtime
-        self.sequence = self.sequences.pop(0)
+        self.sequence: tuple[int, ...] | None = None
         self.index = 0
         self.closed = False
         self.events.append(("open", self.context_length, self.backend))
@@ -110,6 +110,8 @@ class _FakeSession:
 
     def prefill(self, token_ids):
         self.events.append(("prefill", tuple(int(token) for token in token_ids)))
+        self.sequence = self.sequences.pop(0)
+        self.index = 0
         if self.prefill_hook is not None:
             self.prefill_hook()
         token = self.sequence[self.index]
@@ -118,9 +120,15 @@ class _FakeSession:
 
     def forward_token(self, token_id: int):
         self.events.append(("forward", int(token_id)))
+        assert self.sequence is not None
         token = self.sequence[self.index]
         self.index += 1
         return self._result(token)
+
+    def reset_state(self) -> None:
+        self.events.append(("reset",))
+        self.sequence = None
+        self.index = 0
 
     def close(self) -> None:
         self.closed = True
@@ -163,7 +171,13 @@ def generator(monkeypatch, tmp_path):
 
     monkeypatch.setattr(laguna_gguf, "materialize_laguna_gguf_weights", materialize)
     monkeypatch.setattr(laguna_gguf, "LagunaGGUFResidentSession", _FakeSession)
-    monkeypatch.setattr(laguna_gguf, "get_hip_runtime", lambda: SimpleNamespace())
+    monkeypatch.setattr(
+        laguna_gguf,
+        "get_hip_runtime",
+        lambda: SimpleNamespace(
+            device_synchronize=lambda: _FakeSession.events.append(("sync",))
+        ),
+    )
     _FakeSession.sequences = []
     _FakeSession.events = []
     _FakeSession.prefill_hook = None
@@ -229,10 +243,38 @@ def test_laguna_blocking_generation_suppresses_eot_and_retains_weights(generator
     assert output.telemetry.timing["tokenize_ms"] == 0.0
     assert generator.weights.freed is False
     assert generator.materialize_calls[0][1]["repacked_cache"] == generator.cache
-    assert _FakeSession.events[-1] == ("close",)
+    assert [event for event in _FakeSession.events if event[0] == "open"] == [
+        ("open", 4_096, "hip_gfx1151")
+    ]
+    assert ("close",) not in _FakeSession.events
+    assert output.telemetry.diagnostics is not None
+    assert output.telemetry.diagnostics["session_prepare_mode"] == "create"
+    assert output.telemetry.timing["session_prepare_ms"] >= 0.0
 
     generator.instance.close()
     assert generator.weights.freed is True
+    assert _FakeSession.events[-1] == ("close",)
+
+
+def test_laguna_sequential_requests_reuse_one_reset_session(generator) -> None:
+    _FakeSession.sequences = [(10,), (11,)]
+
+    first = generator.instance.generate_detailed(_request(max_tokens=1))[0]
+    second = generator.instance.generate_detailed(_request(max_tokens=1))[0]
+
+    assert first.generated_token_ids == (10,)
+    assert second.generated_token_ids == (11,)
+    assert sum(event[0] == "open" for event in _FakeSession.events) == 1
+    assert sum(event[0] == "reset" for event in _FakeSession.events) == 1
+    assert ("close",) not in _FakeSession.events
+    assert first.telemetry is not None
+    assert second.telemetry is not None
+    assert first.telemetry.diagnostics is not None
+    assert second.telemetry.diagnostics is not None
+    assert first.telemetry.diagnostics["session_prepare_mode"] == "create"
+    assert second.telemetry.diagnostics["session_prepare_mode"] == "reset"
+    assert second.telemetry.timing is not None
+    assert second.telemetry.timing["session_prepare_ms"] >= 0.0
 
 
 def test_laguna_text_prompt_uses_tokenizer_without_implicit_bos(generator) -> None:
@@ -245,6 +287,21 @@ def test_laguna_text_prompt_uses_tokenizer_without_implicit_bos(generator) -> No
     assert output.telemetry is not None
     assert output.telemetry.timing is not None
     assert output.telemetry.timing["tokenize_ms"] > 0.0
+
+
+def test_laguna_prepare_eagerly_materializes_pooled_session(generator) -> None:
+    _FakeSession.sequences = [(10,)]
+
+    prepared = generator.instance.prepare(max_sequence_length=128)
+    output = generator.instance.generate_detailed(_request(max_tokens=1))[0]
+
+    assert prepared == 128
+    assert output.generated_token_ids == (10,)
+    assert sum(event[0] == "open" for event in _FakeSession.events) == 1
+    assert sum(event[0] == "reset" for event in _FakeSession.events) == 1
+    assert output.telemetry is not None
+    assert output.telemetry.diagnostics is not None
+    assert output.telemetry.diagnostics["session_prepare_mode"] == "reset"
 
 
 def test_laguna_prepare_request_scratch_is_c1_and_reclaims_session(generator) -> None:
@@ -288,7 +345,7 @@ def test_laguna_stream_matches_blocking_and_finishes_with_cumulative_ids(generat
     assert chunks[-1].telemetry.timing is not None
     assert chunks[-1].telemetry.timing["tokenize_ms"] == 0.0
     assert all(chunk.finish_details is None for chunk in chunks[:-1])
-    assert _FakeSession.events[-1] == ("close",)
+    assert ("close",) not in _FakeSession.events
 
 
 def test_laguna_max_tokens_and_multitoken_stop_are_exact(generator) -> None:
@@ -331,9 +388,9 @@ def test_laguna_unsupported_sampling_and_batch_fail_before_loading(generator) ->
     assert generator.materialize_calls == []
 
 
-def test_laguna_cancellation_after_prefill_closes_request_state(generator) -> None:
+def test_laguna_cancellation_retires_session_and_next_request_recreates(generator) -> None:
     token = GenerationCancellationToken()
-    _FakeSession.sequences = [(10, 11)]
+    _FakeSession.sequences = [(10, 11), (12,)]
     _FakeSession.prefill_hook = token.cancel
 
     with pytest.raises(GenerationCancelled):
@@ -341,6 +398,46 @@ def test_laguna_cancellation_after_prefill_closes_request_state(generator) -> No
 
     assert _FakeSession.events[-1] == ("close",)
     assert generator.weights.freed is False
+
+    _FakeSession.prefill_hook = None
+    output = generator.instance.generate_detailed(_request(max_tokens=1))[0]
+
+    assert output.generated_token_ids == (12,)
+    assert sum(event[0] == "open" for event in _FakeSession.events) == 2
+    assert output.telemetry is not None
+    assert output.telemetry.diagnostics is not None
+    assert output.telemetry.diagnostics["session_prepare_mode"] == "recreate_after_error"
+
+
+def test_laguna_prefill_error_retires_session_before_recreate(generator) -> None:
+    _FakeSession.sequences = [(10,), (11,)]
+
+    def fail_prefill(*_args) -> None:
+        raise RuntimeError("synthetic prefill failure")
+
+    _FakeSession.prefill_hook = fail_prefill
+    with pytest.raises(RuntimeError, match="synthetic prefill failure"):
+        generator.instance.generate_detailed(_request(max_tokens=1))
+
+    assert _FakeSession.events[-1] == ("close",)
+    _FakeSession.prefill_hook = None
+    output = generator.instance.generate_detailed(_request(max_tokens=1))[0]
+
+    assert output.generated_token_ids == (11,)
+    assert output.telemetry is not None
+    assert output.telemetry.diagnostics is not None
+    assert output.telemetry.diagnostics["session_prepare_mode"] == "recreate_after_error"
+
+
+def test_laguna_abandoned_stream_retires_session(generator) -> None:
+    _FakeSession.sequences = [(10, 11)]
+    stream = generator.instance.stream_detailed(_request(max_tokens=2))
+
+    first = next(stream)
+    stream.close()
+
+    assert first.text == "A"
+    assert _FakeSession.events[-1] == ("close",)
 
 
 def test_laguna_expired_deadline_and_context_overflow_fail_closed(generator) -> None:
@@ -412,6 +509,21 @@ def test_laguna_server_metadata_reports_resolved_model_backend_and_quant(
     assert capabilities["model"]["backend"] == "hip_gfx1151"
     assert capabilities["model"]["quant"] == "gguf_q4_k_m"
     assert ready.status_code == 200
+
+
+def test_laguna_generator_closes_pooled_session_before_shared_weights(generator) -> None:
+    events = _FakeSession.events
+    original_free = generator.weights.free
+
+    def record_free(*, runtime=None) -> None:
+        events.append(("weights_free",))
+        original_free(runtime=runtime)
+
+    generator.weights.free = record_free
+    generator.instance.prepare(max_sequence_length=128)
+    generator.instance.close()
+
+    assert events[-2:] == [("close",), ("weights_free",)]
 
 
 def test_laguna_generator_attaches_one_generic_provider_and_closes_it_before_weights(
