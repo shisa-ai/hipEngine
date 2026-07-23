@@ -371,6 +371,113 @@ def test_laguna_projection_dispatches_by_resident_layout(monkeypatch) -> None:
         )
 
 
+def test_laguna_attention_query_gate_pair_is_decode_only_and_fail_closed(
+    monkeypatch,
+) -> None:
+    calls: list[tuple[str, object]] = []
+    libraries = SimpleNamespace(linear={"gguf_q5_k": object()})
+
+    def weight(name: str, layout: str = LAYOUT_RAW_GGUF):
+        return SimpleNamespace(spec=SimpleNamespace(name=name, layout=layout))
+
+    def pair_launch(*args, **kwargs):
+        calls.append(("pair", (args, kwargs)))
+        return bool(kwargs["use_gemv_decode"])
+
+    def qkv_launch(*args, **kwargs):
+        calls.append(("qkv", (args, kwargs)))
+
+    def singleton_launch(weight_arg, *args, **kwargs):
+        calls.append((f"single:{weight_arg.spec.name}", (args, kwargs)))
+
+    monkeypatch.setattr(runner_module, "launch_gguf_linear_pair", pair_launch)
+    monkeypatch.setattr(runner_module, "launch_laguna_qkv", qkv_launch)
+    monkeypatch.setattr(runner_module, "launch_laguna_weight_linear", singleton_launch)
+    q_weight = weight("q")
+    k_weight = weight("k")
+    v_weight = weight("v")
+    gate_weight = weight("gate")
+
+    assert runner_module.launch_laguna_attention_projections(
+        q_weight,
+        k_weight,
+        v_weight,
+        gate_weight,
+        10,
+        20,
+        30,
+        40,
+        50,
+        1,
+        3072,
+        9216,
+        1024,
+        1024,
+        72,
+        backend="hip_gfx1100",
+        stream=7,
+        libraries=libraries,
+        runtime="runtime-sentinel",
+    )
+    assert [name for name, _ in calls] == ["pair", "single:k", "single:v"]
+    pair_args, pair_kwargs = calls[0][1]
+    assert pair_args == (q_weight, gate_weight, 10, 20, 50, 1, 3072, 9216)
+    assert pair_kwargs["out_features_b"] == 72
+    assert pair_kwargs["output_dtype"] == "f32"
+    assert pair_kwargs["registered_decode_only"] is True
+    assert pair_kwargs["libraries"] is libraries.linear
+    assert all(call[1][1]["output_dtype"] == "f32" for call in calls[1:])
+
+    calls.clear()
+    assert not runner_module.launch_laguna_attention_projections(
+        q_weight,
+        k_weight,
+        v_weight,
+        gate_weight,
+        10,
+        20,
+        30,
+        40,
+        50,
+        4,
+        3072,
+        9216,
+        1024,
+        1024,
+        72,
+        backend="hip_gfx1100",
+        stream=0,
+        libraries=libraries,
+        runtime=None,
+    )
+    assert [name for name, _ in calls] == ["pair", "qkv", "single:gate"]
+    assert calls[0][1][1]["use_gemv_decode"] is False
+
+    calls.clear()
+    assert not runner_module.launch_laguna_attention_projections(
+        weight("q", LAYOUT_DENSE_F16),
+        weight("k", LAYOUT_DENSE_F16),
+        weight("v", LAYOUT_DENSE_F16),
+        weight("gate", LAYOUT_DENSE_F16),
+        10,
+        20,
+        30,
+        40,
+        50,
+        1,
+        3072,
+        9216,
+        1024,
+        1024,
+        72,
+        backend="hip_gfx1100",
+        stream=0,
+        libraries=libraries,
+        runtime=None,
+    )
+    assert [name for name, _ in calls] == ["qkv", "single:gate"]
+
+
 def test_laguna_session_constructor_failure_frees_partial_state_in_reverse(
     monkeypatch,
 ) -> None:
