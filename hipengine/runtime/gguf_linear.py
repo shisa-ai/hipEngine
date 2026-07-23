@@ -899,6 +899,8 @@ def launch_gguf_linear_pair(
     out_features: int,
     *,
     out_features_b: int | None = None,
+    activation_dtype: str = GGUF_ACTIVATION_BF16,
+    output_dtype: str = GGUF_OUTPUT_BF16,
     backend: str | None = None,
     stream: int = 0,
     libraries: Mapping[str, ctypes.CDLL] | None = None,
@@ -910,8 +912,9 @@ def launch_gguf_linear_pair(
 ) -> bool:
     """Launch a supported pair of GGUF projections, returning True when fused.
 
-    The pair fast paths cover registered exact raw decode pairs, Q8_0 dual
-    decode GEMV, Q4_K pack8 dual prefill, and the P8.2 raw-Q4_K dual WMMA
+    The pair fast paths cover registered exact raw decode pairs (including
+    unequal-width F32 output), Q8_0 dual decode GEMV, Q4_K pack8 dual prefill,
+    and the P8.2 raw-Q4_K dual WMMA
     prefill. There is still no Q8_0 dual WMMA
     prefill; when ``use_wmma_prefill`` would otherwise route Q8_0 rows>1 to
     the WMMA family, the pair function returns ``False`` so the caller falls
@@ -943,6 +946,8 @@ def launch_gguf_linear_pair(
         in_features,
         out_features,
         out_features_b,
+        activation_dtype,
+        output_dtype,
         resolved_backend,
         use_wmma,
         use_gemv,
@@ -957,6 +962,8 @@ def launch_gguf_linear_pair(
             in_features=in_features,
             out_features=out_features,
             out_features_b=out_features_b,
+            activation_dtype=activation_dtype,
+            output_dtype=output_dtype,
             backend=resolved_backend,
             use_wmma=use_wmma,
             use_gemv=use_gemv,
@@ -1023,12 +1030,15 @@ def launch_gguf_linear_pair(
         )
         return True
 
-    if pair_kind == "registered_raw_decode_pair":
+    if pair_kind in {
+        "registered_raw_decode_pair_equal",
+        "registered_raw_decode_pair_unequal",
+    }:
         pair_key = KernelKey(
             resolved_backend,
             "linear_pair",
             weight_a.spec.quant_key,
-            "pack8_gemv_decode_bf16_bf16_out",
+            f"pack8_gemv_decode_{activation_dtype}_{output_dtype}_out",
         )
         pair_fn = resolve(
             backend=pair_key.backend,
@@ -1040,7 +1050,7 @@ def launch_gguf_linear_pair(
         pair_library = None if libraries is None else libraries.get(pair_key.quant)
         if pair_library is not None:
             pair_kwargs["library"] = pair_library
-        pair_fn(
+        pair_args = (
             x_ptr,
             weight_a.allocation("raw").tensor.ptr,
             weight_b.allocation("raw").tensor.ptr,
@@ -1049,8 +1059,10 @@ def launch_gguf_linear_pair(
             rows,
             in_features,
             out_features,
-            **pair_kwargs,
         )
+        if pair_kind == "registered_raw_decode_pair_unequal":
+            pair_args = (*pair_args, out_features_b)
+        pair_fn(*pair_args, **pair_kwargs)
         return True
 
     if pair_kind == "q8_raw_dual":
@@ -1097,20 +1109,34 @@ def _resolve_gguf_linear_pair_kind(
     in_features: int,
     out_features: int,
     out_features_b: int,
+    activation_dtype: str,
+    output_dtype: str,
     backend: str,
     use_wmma: bool,
     use_gemv: bool,
     registered_decode_only: bool,
 ) -> str:
     dispatch_a = _pack8_decode_dispatch(
-        resolve_gguf_linear_dispatch(weight_a, backend=backend, rows=rows),
+        resolve_gguf_linear_dispatch(
+            weight_a,
+            activation_dtype=activation_dtype,
+            output_dtype=output_dtype,
+            backend=backend,
+            rows=rows,
+        ),
         rows=rows,
         out_features=out_features,
     )
     dispatch_b = _pack8_decode_dispatch(
-        resolve_gguf_linear_dispatch(weight_b, backend=backend, rows=rows),
+        resolve_gguf_linear_dispatch(
+            weight_b,
+            activation_dtype=activation_dtype,
+            output_dtype=output_dtype,
+            backend=backend,
+            rows=rows,
+        ),
         rows=rows,
-        out_features=out_features,
+        out_features=out_features_b,
     )
     if use_wmma and rows > 1:
         q4_prefill_raw = KernelKey(
@@ -1140,7 +1166,9 @@ def _resolve_gguf_linear_pair_kind(
         "t16_dual_gemv_decode_bf16_bf16_out",
     )
     if (
-        dispatch_a.abi == "t16"
+        activation_dtype == GGUF_ACTIVATION_BF16
+        and output_dtype == GGUF_OUTPUT_BF16
+        and dispatch_a.abi == "t16"
         and dispatch_b.abi == "t16"
         and dispatch_a.key.quant == "gguf_q8_0_t16_v1"
         and dispatch_b.key.quant == "gguf_q8_0_t16_v1"
@@ -1160,18 +1188,20 @@ def _resolve_gguf_linear_pair_kind(
         backend,
         "linear_pair",
         dispatch_a.key.quant,
-        "pack8_gemv_decode_bf16_bf16_out",
+        f"pack8_gemv_decode_{activation_dtype}_{output_dtype}_out",
     )
     if (
         use_gemv
         and rows == 1
-        and out_features_b == out_features
         and dispatch_a.abi == "raw"
         and dispatch_b.abi == "raw"
-        and dispatch_a.key.quant == dispatch_b.key.quant
+        and dispatch_a.key == dispatch_b.key
         and is_registered(registered_pair_key)
     ):
-        return "registered_raw_decode_pair"
+        if output_dtype == GGUF_OUTPUT_F32:
+            return "registered_raw_decode_pair_unequal"
+        if out_features_b == out_features:
+            return "registered_raw_decode_pair_equal"
 
     if registered_decode_only:
         return "none"
