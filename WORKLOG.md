@@ -175813,3 +175813,58 @@ python3 -m compileall -q hipengine/generation/laguna_dflash.py \
   hipengine/speculative/registry.py hipengine/llm.py
 # clean
 ```
+
+## 2026-07-23 — Route explicit speculative providers through OpenAI serving
+
+Completed the second D5 implementation unit while preserving AR as the default.
+`ServerConfig` and `hipengine serve` now accept a paired generic provider/draft
+owner plus fixed candidate budget through CLI or environment. Completion and
+chat request models accept `speculative=true` or the explicit
+`{enabled, provider, candidate_budget}` object. The generation batcher carries a
+separate c=1 `speculative` route through blocking and live streaming without
+adding a Laguna/DFlash branch to server dispatch; `speculative_mtp` remains a
+separate mutually exclusive compatibility route.
+
+The route validates provider/budget/engine/stream support and raw-greedy BF16
+sampling before resident preparation. Stop token IDs/sequences remain allowed;
+sampling, processed logits, custom EOS policy, logprobs, thinking-budget,
+forced/suppressed-tool, and structured processors, non-BF16 KV, and c>1 fail
+closed. Chat prompt rendering skips the
+normal eager preparation only for explicit speculative requests so incompatible
+chat requests also fail before target/drafter allocation. Normal requests and
+startup warmup remain target-only AR.
+
+`sampling.speculative` and `/v1/models` now report configuration, availability,
+request field, explicit-only/default-off policy, streaming compatibility, fixed
+budget, target-corrected exactness, target/drafter identities, and the retained
+D4 fallback evidence/no-performance-claim metadata supplied by the provider.
+`docs/API.md`, `docs/ENVS.md`, and `docs/LAGUNA.md` document the exact CLI,
+request schema, constraints, and remaining live D5 gate.
+
+Validation:
+
+```bash
+uv run pytest -q tests/test_server_speculative_provider.py \
+  tests/test_llm_generate.py tests/test_generation_laguna_gguf.py \
+  tests/test_generation_laguna_dflash.py \
+  tests/test_speculative_provider_registry.py
+# 55 passed
+
+uv run pytest -q tests/test_server_api.py
+# 517 passed, 1 isolated route-map expectation exposed an over-broad inactive
+# speculative cap registration; every other server test passed
+
+uv run pytest -q \
+  tests/test_server_api.py::test_server_auto_quant_keeps_gguf_route_group_limits \
+  tests/test_server_api.py::test_models_endpoint_reports_served_model_name_and_auth \
+  tests/test_server_api.py::test_lazy_server_passes_max_active_requests_to_llm
+# 3 passed after the scoped expectation/constructor repair; full suite not
+# repeated under the focused-repair rule
+
+uvx ruff check hipengine/llm.py hipengine/server/api.py \
+  hipengine/server/__main__.py tests/test_llm_generate.py \
+  tests/test_server_api.py tests/test_server_speculative_provider.py
+python3 -m compileall -q hipengine/llm.py hipengine/server/api.py \
+  hipengine/server/__main__.py tests/test_server_speculative_provider.py
+# clean
+```

@@ -2212,7 +2212,8 @@ AR denominator remains **16.347 tok/s** and the required >1.10x full-suite gate
 still fails. Median TTFT is **1.619 -> 4.783 s** and fixed-horizon E2E is
 **8.860 -> 4.489 output tok/s (0.5066x)** because DFlash prompt capture remains
 serial. Code benefits materially; heldout and every non-code category regress.
-Keep AR default and D5 deferred. Evidence:
+Keep AR default; D5 may expose this exact path only as an explicit opt-in with
+no performance claim. Evidence:
 `benchmarks/results/2026-07-23-gfx1151-laguna-dflash-category-economics-post-prefill.json`.
 
 ### D5 — Opt-in public/server integration
@@ -2258,6 +2259,19 @@ The concrete D5 contract after the D4 rejection is:
   fail-closed sampling/provider/budget behavior, truthful capabilities, request
   route separation, cancellation/reset, and close ordering before the live
   ten-prompt gate.
+
+D5 implementation status (2026-07-23): the library and OpenAI boundaries are
+implemented. `LLM` resolves the four-axis provider, retains the source-bound
+Laguna target plus pinned B4 drafter/cycle, and exposes provider-neutral
+blocking/streaming detailed methods without changing `LLM.generate()`. The
+server accepts `--speculative-provider`, `--draft-model`, and the fixed candidate
+budget, advertises `sampling.speculative`, and routes only requests carrying the
+generic `speculative` extension; the older `speculative_mtp` route remains
+separate and mutually exclusive. Synthetic blocking/streaming, capability,
+identity, reset/close, default-AR isolation, CLI/env, and fail-before-prepare
+gates pass. The live full-suite/ten-prompt public equality and cancellation
+lifecycle gate remains D5's final support criterion, so this is not yet a live
+support or performance claim.
 
 Automatic routing is a later model-general policy. Never key route/budget to
 known prompt IDs, benchmark categories, candidate token IDs, or fixed-suite
