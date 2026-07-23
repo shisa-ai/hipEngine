@@ -3,6 +3,8 @@
 Last reviewed: **2026-07-23**
 
 Latest retained hipEngine revisions in this scoreboard:
+`1686d52ba9c12c2c463d3e266f52f8534a76ca7b` for the exact adaptive Laguna
+Q4/Q6 grouped-small-M down shape gate (category promotion still pending),
 `0081d150c08a95423f29fec8fd26779f53c8f730` for request-local exact Laguna
 prompt preparation and preprocessing telemetry,
 `8ae07d693b6f98d6c44aae90090df6c6d77e8d78` for exact gfx1151 Laguna S 2.1
@@ -1457,6 +1459,19 @@ runtime route, and harnesses; exact split remains the only production path, and
 the independently tested leaf remains kernel-only evidence.
 [Positive selected-Q8 screen](results/2026-07-23-gfx1151-laguna-prefill-ar-o1-q8-dp4a-screen.json).
 [Rejected selected-Q8 category gate](results/2026-07-23-gfx1151-laguna-prefill-ar-o1-q8-dp4a-category-rejected.json).
+
+The quality-preserving AR-O1 follow-up passes its clean adaptive grouped-down
+shape gate. One deterministic device pass compacts active experts and routing
+metadata; exact C16xR4 Q4/Q6 down reuses each decoded T16 tile across up to four
+packed rows, restores lane order before weighted sum, and falls back to direct
+below 32 token rows. Three counterbalanced repetitions move direct -> adaptive
+at 16/32/55/64/122/128 from **46.447/48.907/49.018/50.461/51.084/51.413** to
+**46.409/50.194/51.159/52.889/54.447/54.969 tok/s**. The direct fallback is
+`0.99918x`; active grouped shapes gain **2.63-6.92%**; aggregate wall improves
+**24.7986 -> 23.5145 s (1.05461x)**. All 36 IDs agree and lifecycle returns to
+zero. This is retained candidate evidence, not a default promotion: the complete
+ten-prompt h16/h32 quality/E2E gate is still required.
+[Retained grouped-down shape gate](results/2026-07-23-gfx1151-laguna-prefill-grouped-down-ab.json).
 
 A matched Poolside llama.cpp `04b2b72c` control now uses the identical Laguna
 Q4_K_M model hash, deterministic token stream, BF16 KV, and 128-row microbatch.
