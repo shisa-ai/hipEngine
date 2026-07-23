@@ -9,6 +9,7 @@ from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind
 from hipengine.core.memory import DeviceBuffer
 from hipengine.loading.laguna_gguf import laguna_gguf_config_from_metadata
+from hipengine.loading.laguna_gguf_materialize import LAYOUT_DENSE_F16, LAYOUT_RAW_GGUF
 from hipengine.runtime import laguna_gguf_runner as runner_module
 from hipengine.runtime.laguna_gguf_runner import (
     LAGUNA_DFLASH_CAPTURE_DEPTHS,
@@ -295,6 +296,68 @@ def test_laguna_hidden_taps_are_caller_owned_exact_bf16_depths() -> None:
         )
 
 
+def test_laguna_projection_dispatches_by_resident_layout(monkeypatch) -> None:
+    calls: list[tuple[str, object]] = []
+    libraries = SimpleNamespace(
+        f16_linear={"fp16_weight": object()},
+        linear={"gguf_q5_k": object()},
+    )
+
+    def f16_launch(weight, *args, **kwargs):
+        del args
+        calls.append(("f16", (weight, kwargs)))
+
+    def raw_launch(weight, *args, **kwargs):
+        del args
+        calls.append(("raw", (weight, kwargs)))
+
+    monkeypatch.setattr(runner_module, "launch_f16_weight_linear", f16_launch)
+    monkeypatch.setattr(runner_module, "launch_gguf_linear", raw_launch)
+    f16_weight = SimpleNamespace(spec=SimpleNamespace(layout=LAYOUT_DENSE_F16))
+    raw_weight = SimpleNamespace(spec=SimpleNamespace(layout=LAYOUT_RAW_GGUF))
+
+    runner_module.launch_laguna_weight_linear(
+        f16_weight,
+        1,
+        2,
+        3,
+        4,
+        5,
+        output_dtype="f32",
+        backend="hip_gfx1100",
+        stream=7,
+        libraries=libraries,
+        runtime=object(),
+    )
+    runner_module.launch_laguna_weight_linear(
+        raw_weight,
+        1,
+        2,
+        3,
+        4,
+        5,
+        output_dtype="bf16",
+        backend="hip_gfx1100",
+        stream=7,
+        libraries=libraries,
+        runtime=object(),
+    )
+
+    assert [name for name, _ in calls] == ["f16", "raw"]
+    assert calls[0][1][1]["libraries"] is libraries.f16_linear
+    assert calls[1][1][1]["libraries"] is libraries.linear
+    with pytest.raises(ValueError, match="resident layout"):
+        runner_module.launch_laguna_weight_linear(
+            SimpleNamespace(spec=SimpleNamespace(layout="unsupported")),
+            1,
+            2,
+            3,
+            4,
+            5,
+            libraries=libraries,
+        )
+
+
 def test_laguna_session_constructor_failure_frees_partial_state_in_reverse(
     monkeypatch,
 ) -> None:
@@ -438,6 +501,7 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
         runtime=SimpleNamespace(),
         repacked_cache="/synthetic/laguna-repacked-v1",
         model_sha256="synthetic-sha256",
+        safety_reserve_nbytes=4 * 2**30,
     )
     assert session.prefill_chunk_size == 128
     assert session.swa_prefill_variant == "swa_context_rows_wave32_exact_spans"
@@ -458,6 +522,7 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
     assert session.closed
     assert materialize_kwargs["repacked_cache"] == "/synthetic/laguna-repacked-v1"
     assert materialize_kwargs["repacked_cache_source_sha256"] == "synthetic-sha256"
+    assert materialize_kwargs["safety_reserve_nbytes"] == 4 * 2**30
 
 
 def test_laguna_borrowed_session_rejects_loader_cache_options() -> None:
