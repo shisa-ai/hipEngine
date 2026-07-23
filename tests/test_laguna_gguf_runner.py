@@ -371,11 +371,11 @@ def test_laguna_projection_dispatches_by_resident_layout(monkeypatch) -> None:
         )
 
 
-def test_laguna_attention_query_gate_pair_is_decode_only_and_fail_closed(
+def test_laguna_attention_projection_pairs_are_decode_only_and_fail_closed(
     monkeypatch,
 ) -> None:
     calls: list[tuple[str, object]] = []
-    libraries = SimpleNamespace(linear={"gguf_q5_k": object()})
+    libraries = SimpleNamespace(linear={"gguf_q5_k": object(), "gguf_q6_k": object()})
 
     def weight(name: str, layout: str = LAYOUT_RAW_GGUF):
         return SimpleNamespace(spec=SimpleNamespace(name=name, layout=layout))
@@ -419,14 +419,19 @@ def test_laguna_attention_query_gate_pair_is_decode_only_and_fail_closed(
         libraries=libraries,
         runtime="runtime-sentinel",
     )
-    assert [name for name, _ in calls] == ["pair", "single:k", "single:v"]
-    pair_args, pair_kwargs = calls[0][1]
-    assert pair_args == (q_weight, gate_weight, 10, 20, 50, 1, 3072, 9216)
-    assert pair_kwargs["out_features_b"] == 72
-    assert pair_kwargs["output_dtype"] == "f32"
-    assert pair_kwargs["registered_decode_only"] is True
-    assert pair_kwargs["libraries"] is libraries.linear
-    assert all(call[1][1]["output_dtype"] == "f32" for call in calls[1:])
+    assert [name for name, _ in calls] == ["pair", "pair"]
+    qg_args, qg_kwargs = calls[0][1]
+    assert qg_args == (q_weight, gate_weight, 10, 20, 50, 1, 3072, 9216)
+    assert qg_kwargs["out_features_b"] == 72
+    assert qg_kwargs["output_dtype"] == "f32"
+    assert qg_kwargs["registered_decode_only"] is True
+    assert qg_kwargs["libraries"] is libraries.linear
+    kv_args, kv_kwargs = calls[1][1]
+    assert kv_args == (k_weight, v_weight, 10, 30, 40, 1, 3072, 1024)
+    assert kv_kwargs["out_features_b"] == 1024
+    assert kv_kwargs["output_dtype"] == "f32"
+    assert kv_kwargs["registered_decode_only"] is True
+    assert kv_kwargs["libraries"] is libraries.linear
 
     calls.clear()
     assert not runner_module.launch_laguna_attention_projections(
@@ -450,8 +455,39 @@ def test_laguna_attention_query_gate_pair_is_decode_only_and_fail_closed(
         libraries=libraries,
         runtime=None,
     )
-    assert [name for name, _ in calls] == ["pair", "qkv", "single:gate"]
+    assert [name for name, _ in calls] == ["pair", "pair", "qkv", "single:gate"]
     assert calls[0][1][1]["use_gemv_decode"] is False
+    assert calls[1][1][1]["use_gemv_decode"] is False
+
+    calls.clear()
+
+    def query_only_pair(*args, **kwargs):
+        calls.append(("pair", (args, kwargs)))
+        return args[0].spec.name == "q"
+
+    monkeypatch.setattr(runner_module, "launch_gguf_linear_pair", query_only_pair)
+    assert not runner_module.launch_laguna_attention_projections(
+        q_weight,
+        k_weight,
+        v_weight,
+        gate_weight,
+        10,
+        20,
+        30,
+        40,
+        50,
+        1,
+        3072,
+        9216,
+        1024,
+        1024,
+        72,
+        backend="hip_gfx1100",
+        stream=0,
+        libraries=libraries,
+        runtime=None,
+    )
+    assert [name for name, _ in calls] == ["pair", "pair", "single:k", "single:v"]
 
     calls.clear()
     assert not runner_module.launch_laguna_attention_projections(
