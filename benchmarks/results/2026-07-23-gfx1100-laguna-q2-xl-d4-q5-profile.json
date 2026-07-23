@@ -1,0 +1,148 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_q2_xl_d4_dense_q5_profile",
+  "date": "2026-07-23",
+  "status": "diagnostic_next_candidate",
+  "pass": true,
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100"
+  },
+  "model": {
+    "id": "poolside/Laguna-S-2.1-UD-Q2_K_XL",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "source": {
+    "revision": "73a2583beecc0a92964e9885fc15a2b28802eddf",
+    "trace_sha256": "7fa40b3d31f864346d990f60bebaafebc1d9a2aa3bfd4843e7630c4b23e03059",
+    "prompt_tokens": 69,
+    "decode_steps": 16,
+    "warmup_steps_excluded": 2,
+    "stable_steps": 14,
+    "dispatches_per_token": 1010,
+    "kernel_sum_ms_per_token": 18.98300514285714,
+    "span_median_ms_per_token": 22.877656
+  },
+  "dense_q5": {
+    "calls_per_token": 235,
+    "ms_per_token": 7.122754214285718,
+    "kernel_sum_share_pct": 37.52174200387783,
+    "span_share_pct": 31.134108381932645,
+    "encoded_weight_bytes_per_token": 1931331072,
+    "encoded_weight_proxy_gb_s": 271.1494758764012,
+    "resource_sets": {
+      "workgroup": [128],
+      "vgpr": [48, 72],
+      "static_lds_bytes": [1024],
+      "scratch_bytes": [0]
+    },
+    "groups": [
+      {
+        "output_dtype": "bf16",
+        "out_features": 3072,
+        "calls_per_token": 47,
+        "mean_us": 57.58554103343465,
+        "median_us": 62.960499999999996,
+        "min_us": 40.0,
+        "max_us": 66.12,
+        "ms_per_token": 2.706520428571427,
+        "encoded_weight_bytes_per_token": 836960256,
+        "encoded_weight_proxy_gb_s": 309.2384772583334
+      },
+      {
+        "output_dtype": "f32",
+        "out_features": 9216,
+        "calls_per_token": 35,
+        "mean_us": 49.738861224489796,
+        "median_us": 49.68,
+        "min_us": 48.44,
+        "max_us": 51.441,
+        "ms_per_token": 1.7408601428571424,
+        "encoded_weight_bytes_per_token": 681246720,
+        "encoded_weight_proxy_gb_s": 391.3276565008382
+      },
+      {
+        "output_dtype": "bf16",
+        "out_features": 1024,
+        "calls_per_token": 92,
+        "mean_us": 16.971941770186337,
+        "median_us": 16.96,
+        "min_us": 16.24,
+        "max_us": 18.12,
+        "ms_per_token": 1.5614186428571448,
+        "encoded_weight_bytes_per_token": 198967296,
+        "encoded_weight_proxy_gb_s": 127.42725784029443
+      },
+      {
+        "output_dtype": "f32",
+        "out_features": 72,
+        "calls_per_token": 35,
+        "mean_us": 12.725179591836735,
+        "median_us": 12.72,
+        "min_us": 12.401,
+        "max_us": 13.281,
+        "ms_per_token": 0.4453812857142881,
+        "encoded_weight_bytes_per_token": 5322240,
+        "encoded_weight_proxy_gb_s": 11.949850994444825
+      },
+      {
+        "output_dtype": "f32",
+        "out_features": 6144,
+        "calls_per_token": 12,
+        "mean_us": 33.197410714285716,
+        "median_us": 33.1405,
+        "min_us": 31.28,
+        "max_us": 36.24,
+        "ms_per_token": 0.39836892857142886,
+        "encoded_weight_bytes_per_token": 155713536,
+        "encoded_weight_proxy_gb_s": 390.87771367710985
+      },
+      {
+        "output_dtype": "f32",
+        "out_features": 48,
+        "calls_per_token": 12,
+        "mean_us": 12.698416666666667,
+        "median_us": 12.68,
+        "min_us": 12.44,
+        "max_us": 13.2,
+        "ms_per_token": 0.15238099999999993,
+        "encoded_weight_bytes_per_token": 1216512,
+        "encoded_weight_proxy_gb_s": 7.983357505200782
+      },
+      {
+        "output_dtype": "bf16",
+        "out_features": 12288,
+        "calls_per_token": 2,
+        "mean_us": 58.91189285714286,
+        "median_us": 58.8805,
+        "min_us": 58.32,
+        "max_us": 59.92,
+        "ms_per_token": 0.1178237857142857,
+        "encoded_weight_bytes_per_token": 51904512,
+        "encoded_weight_proxy_gb_s": 440.52660237776394
+      }
+    ]
+  },
+  "selected_candidate": {
+    "name": "exact_q5_shared_gate_up_pair_dispatch",
+    "scope": "46 same-input Q5_K shared gate/up pairs, each K3072/N1024 with separate BF16 outputs",
+    "baseline_calls_per_token": 92,
+    "candidate_calls_per_token": 46,
+    "launches_removed_per_token": 46,
+    "baseline_ms_per_token": 1.5614186428571448,
+    "baseline_encoded_weight_bytes_per_token": 198967296,
+    "baseline_encoded_weight_proxy_gb_s": 127.42725784029443,
+    "design": "one registered linear_pair launch uses independent block sets for gate and up while preserving the exact single-projection K order, coefficient hoist, reduction tree, and BF16 stores; the two registered singleton launches remain the unfused fallback",
+    "red_gate": "pair output must be BF16-bit exact to two current pack8 decode launches at synthetic K3072/N1024 and actual Laguna shared weights; unsupported rows/shapes must decline to singleton fallback",
+    "retention_gate": "paired actual-weight family time and clean full-model Q5/kernel/span must improve with exact IDs/state/KV/lifecycle; canonical category suite required before default promotion"
+  },
+  "notes": [
+    "Encoded-weight bandwidth is a source-byte proxy, not a hardware counter; activations, cache-line waste, and dequant compute are excluded.",
+    "The N3072 group combines 12 K6144 global-attention output tensors and 35 K9216 SWA output tensors because rocprof grid geometry does not encode K.",
+    "No prompt-conditioned or token-conditioned behavior is proposed. The candidate is shape/quant/rows qualified through the kernel registry."
+  ]
+}
