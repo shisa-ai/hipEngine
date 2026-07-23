@@ -175648,3 +175648,25 @@ uv run python scripts/laguna_dflash_category_bench.py --help
 ```
 
 No refreshed economics measurement is claimed in this harness-only unit.
+
+## 2026-07-23 — Repair DFlash refresh variant provenance
+
+The first refresh attempt stopped immediately after the 49 s target load and
+before warmup/timing because the harness tried to read the intentionally removed
+`target.global_prefill_variant` candidate selector. Global attention remained
+on its original registered baseline after the LPF-5 rejection; its resolved
+variant lives on the KV layer state, while SWA has the promoted session-level
+selector.
+
+Added a tested helper that reads global provenance from the live full-attention
+KV layer and SWA provenance from the session. No benchmark row was executed or
+lost.
+
+```bash
+uv run pytest -q tests/test_laguna_dflash_category_bench.py
+# 5 passed
+uvx ruff check scripts/laguna_dflash_category_bench.py \
+  tests/test_laguna_dflash_category_bench.py
+git diff --check
+# clean
+```
