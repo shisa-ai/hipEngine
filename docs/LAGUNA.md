@@ -2711,6 +2711,30 @@ broader compensated F16 matrix-core coverage. Exact source paths, commit
 permalinks, raw hashes, and the complete operation ledger are in
 `benchmarks/results/2026-07-23-gfx1151-laguna-llamacpp-vulkan-pp512-profile.json`.
 
+#### Vulkan-transfer expert-major compensated WMMA leaf
+
+The first in-tree transfer candidate is explicit-only. It consumes the existing
+one-pass device compact metadata, gathers natural routed rows once, and runs
+Q4T16 gate/up plus Q4/Q6T16 down as one wave-owned 16-row-by-16-column WMMA
+tile per active expert/output tile. Every K16 WMMA starts from zero and is
+Kahan-accumulated in FP32 before the BF16 boundary; this deliberately chooses
+the quality-safe compensated lane rather than reviving the rejected inclusive
+Q8_1 route. The ordinary selected GEMV and grouped-small-M chains remain the
+unfused/exact fallbacks, and no backend default selects the candidate.
+
+The Q4/Q6 CPU fixture passes finite/KL<=0.05/top-1>=90%, the complete synthetic
+MoE composition stays within KL 0.05, and cached gfx1151 tracing names both
+`<unsigned short,4>` and `<unsigned short,6>` kernels with local32, zero
+LDS/scratch, and high **184/200 VGPR** pressure. A seven-shape synthetic
+production-dimension screen shows why a full-model threshold decision is still
+required: packed gather plus both Q4 gate/up launches improves the current dual
+route at every M32-512 shape (**1.052x** at M32, **5.777x** at M512), while one
+Q6 down launch crosses from **0.791-0.866x** at M32-64 to **1.420-2.381x** at
+M122-256 and **2.179x** at M512. Retain the explicit candidate and run a clean
+same-weight M32/55/64/122/128/256/512 model screen before defining any adaptive
+selector or category gate. Evidence:
+`benchmarks/results/2026-07-24-gfx1151-laguna-expert-major-wmma-leaf-screen.json`.
+
 #### AR-O6 — submission and serving only after a new profile asks for it
 
 Graph replay, cross-layer launch fusion, and packed multi-request prefill remain

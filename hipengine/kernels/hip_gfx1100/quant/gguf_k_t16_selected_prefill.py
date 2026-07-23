@@ -31,6 +31,10 @@ _SYMBOLS = {
     ("gguf_q6_k_t16", "bf16"): "hipengine_gguf_q6_k_t16_selected_wmma_prefill_compact_bf16_bf16_out",
     ("gguf_q6_k_t16", "fp16"): "hipengine_gguf_q6_k_t16_selected_wmma_prefill_compact_fp16_fp16_out",
 }
+_EXPERT_MAJOR_COMP_SYMBOLS = {
+    "gguf_q4_k_t16": "hipengine_gguf_q4_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out",
+    "gguf_q6_k_t16": "hipengine_gguf_q6_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out",
+}
 
 
 def _extra_flags() -> tuple[str, ...]:
@@ -146,6 +150,60 @@ gguf_q6_k_t16_selected_wmma_prefill_compact_bf16_bf16_out = _make_wrapper("gguf_
 gguf_q6_k_t16_selected_wmma_prefill_compact_fp16_fp16_out = _make_wrapper("gguf_q6_k_t16", "fp16")
 
 
+def _make_expert_major_comp_wrapper(quant: str):
+    symbol = _EXPERT_MAJOR_COMP_SYMBOLS[quant]
+
+    def wrapper(
+        x_ptr: int,
+        expert_start_compact_ptr: int,
+        active_experts_ptr: int,
+        active_count_ptr: int,
+        tiles_ptr: int,
+        out_ptr: int,
+        compact_rows: int,
+        in_features: int,
+        out_features: int,
+        num_experts: int,
+        *,
+        stream: int = 0,
+        library: ctypes.CDLL | None = None,
+        runtime: HipRuntime | None = None,
+    ) -> None:
+        _launch_expert_major_comp(
+            symbol,
+            x_ptr,
+            expert_start_compact_ptr,
+            active_experts_ptr,
+            active_count_ptr,
+            tiles_ptr,
+            out_ptr,
+            compact_rows,
+            in_features,
+            out_features,
+            num_experts,
+            stream=stream,
+            library=library,
+            runtime=runtime,
+        )
+
+    wrapper.__name__ = (
+        f"{quant}_selected_expert_major_wmma_comp_bf16_bf16_out"
+    )
+    wrapper.__qualname__ = wrapper.__name__
+    wrapper.__doc__ = (
+        f"Launch {quant} expert-major compensated WMMA prefill (BF16->BF16)."
+    )
+    return wrapper
+
+
+gguf_q4_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out = (
+    _make_expert_major_comp_wrapper("gguf_q4_k_t16")
+)
+gguf_q6_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out = (
+    _make_expert_major_comp_wrapper("gguf_q6_k_t16")
+)
+
+
 def _launch_k_t16(
     symbol: str,
     x_ptr: int,
@@ -199,6 +257,78 @@ def _launch_k_t16(
     )
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
+
+
+def _launch_expert_major_comp(
+    symbol: str,
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    active_experts_ptr: int,
+    active_count_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features: int,
+    num_experts: int,
+    *,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_expert_major_common(
+        compact_rows, in_features, out_features, num_experts
+    )
+    library = library or build_gguf_k_t16_selected_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(expert_start_compact_ptr),
+        ctypes.c_void_p(active_experts_ptr),
+        ctypes.c_void_p(active_count_ptr),
+        ctypes.c_void_p(tiles_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(compact_rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_int64(num_experts),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def _check_expert_major_common(
+    compact_rows: int,
+    in_features: int,
+    out_features: int,
+    num_experts: int,
+) -> None:
+    _check_positive(compact_rows, "compact_rows")
+    _check_positive(in_features, "in_features")
+    _check_positive(out_features, "out_features")
+    _check_positive(num_experts, "num_experts")
+    if in_features % _QK_K != 0:
+        raise ValueError(
+            f"in_features must be divisible by GGUF K-family block size {_QK_K}"
+        )
+    if out_features % 16 != 0:
+        raise ValueError("out_features must be a multiple of 16")
 
 
 def _check_common(
@@ -272,16 +402,39 @@ def register_gguf_k_t16_selected_prefill_kernels(*, replace: bool = True) -> Non
             replace=replace,
         )
 
+    for quant_key, fn in (
+        (
+            "gguf_q4_k_t16_v1",
+            gguf_q4_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out,
+        ),
+        (
+            "gguf_q6_k_t16_v1",
+            gguf_q6_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out,
+        ),
+    ):
+        register(
+            KernelKey(
+                "hip_gfx1100",
+                "moe_linear",
+                quant_key,
+                "selected_t16_expert_major_wmma_comp_bf16_bf16_out",
+            ),
+            fn,
+            replace=replace,
+        )
+
 
 register_gguf_k_t16_selected_prefill_kernels()
 
 
 __all__ = [
     "build_gguf_k_t16_selected_prefill",
+    "gguf_q4_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out",
     "gguf_q4_k_t16_selected_wmma_prefill_compact_bf16_bf16_out",
     "gguf_q4_k_t16_selected_wmma_prefill_compact_fp16_fp16_out",
     "gguf_q5_k_t16_selected_wmma_prefill_compact_bf16_bf16_out",
     "gguf_q5_k_t16_selected_wmma_prefill_compact_fp16_fp16_out",
+    "gguf_q6_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out",
     "gguf_q6_k_t16_selected_wmma_prefill_compact_bf16_bf16_out",
     "gguf_q6_k_t16_selected_wmma_prefill_compact_fp16_fp16_out",
     "plan_gguf_k_t16_selected_prefill_build",

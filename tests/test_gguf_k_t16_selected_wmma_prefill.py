@@ -36,10 +36,12 @@ from hipengine.core.memory import (
 from hipengine.kernels.cpu_reference import gguf_quant_gemv
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
     build_gguf_k_t16_selected_prefill,
+    gguf_q4_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out,
     gguf_q4_k_t16_selected_wmma_prefill_compact_bf16_bf16_out,
     gguf_q4_k_t16_selected_wmma_prefill_compact_fp16_fp16_out,
     gguf_q5_k_t16_selected_wmma_prefill_compact_bf16_bf16_out,
     gguf_q5_k_t16_selected_wmma_prefill_compact_fp16_fp16_out,
+    gguf_q6_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out,
     gguf_q6_k_t16_selected_wmma_prefill_compact_bf16_bf16_out,
     gguf_q6_k_t16_selected_wmma_prefill_compact_fp16_fp16_out,
     plan_gguf_k_t16_selected_prefill_build,
@@ -94,6 +96,10 @@ _WRAPPERS: dict[tuple[str, str], Any] = {
     ("gguf_q6_k_t16_v1", "bf16"): gguf_q6_k_t16_selected_wmma_prefill_compact_bf16_bf16_out,
     ("gguf_q6_k_t16_v1", "fp16"): gguf_q6_k_t16_selected_wmma_prefill_compact_fp16_fp16_out,
 }
+_EXPERT_MAJOR_COMP_WRAPPERS = {
+    "gguf_q4_k_t16_v1": gguf_q4_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out,
+    "gguf_q6_k_t16_v1": gguf_q6_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -137,6 +143,40 @@ def test_gguf_k_t16_selected_wmma_registry_and_build_plan(
     lb4 = plan_gguf_k_t16_selected_prefill_build(compiler_version="test-compiler")
     assert "-DHIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS=4" in lb4.flags
     assert lb4.cache_key != artifact.cache_key
+
+
+@pytest.mark.parametrize("quant", list(_EXPERT_MAJOR_COMP_WRAPPERS))
+def test_laguna_expert_major_compensated_wmma_registry_and_contract(
+    quant: str,
+) -> None:
+    wrapper = _EXPERT_MAJOR_COMP_WRAPPERS[quant]
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_linear",
+            quant=quant,
+            variant="selected_t16_expert_major_wmma_comp_bf16_bf16_out",
+        )
+        is wrapper
+    )
+    kwargs = dict(
+        x_ptr=1,
+        expert_start_compact_ptr=2,
+        active_experts_ptr=3,
+        active_count_ptr=4,
+        tiles_ptr=5,
+        out_ptr=6,
+        compact_rows=17,
+        in_features=256,
+        out_features=32,
+        num_experts=2,
+    )
+    with pytest.raises(ValueError, match="compact_rows"):
+        wrapper(**{**kwargs, "compact_rows": 0})
+    with pytest.raises(ValueError, match="block size 256"):
+        wrapper(**{**kwargs, "in_features": 128})
+    with pytest.raises(ValueError, match="out_features.*multiple of 16"):
+        wrapper(**{**kwargs, "out_features": 24})
 
 
 @pytest.mark.parametrize("wrapper", list(_WRAPPERS.values()))
@@ -369,6 +409,69 @@ def _run_selected_t16_gpu(fixture: CompactT16Fixture) -> np.ndarray:
     return _decode_output(host_out, fixture.dtype)
 
 
+def _run_expert_major_comp_gpu(fixture: CompactT16Fixture) -> np.ndarray:
+    from hipengine.core.hip import get_hip_runtime
+
+    runtime = get_hip_runtime()
+    library = build_gguf_k_t16_selected_prefill(load=True)
+    host_out = np.zeros(
+        (fixture.compact_rows, fixture.out_features), dtype=np.uint16
+    )
+    wrapper = _EXPERT_MAJOR_COMP_WRAPPERS[fixture.quant]
+    active = np.flatnonzero(np.diff(fixture.expert_start_compact)).astype(np.int64)
+    active_count = np.asarray([active.size], dtype=np.int64)
+
+    bufs = []
+    try:
+        arrays = (
+            fixture.x_host,
+            fixture.expert_start_compact,
+            active,
+            active_count,
+            fixture.tiles,
+        )
+        for arr in arrays:
+            dev = malloc(arr.nbytes, runtime=runtime)
+            copy_host_to_device(
+                dev,
+                host_array_ptr(np.ascontiguousarray(arr)),
+                runtime=runtime,
+            )
+            bufs.append(dev)
+        out_dev = malloc(host_out.nbytes, runtime=runtime)
+        bufs.append(out_dev)
+        wrapper(
+            bufs[0].ptr,
+            bufs[1].ptr,
+            bufs[2].ptr,
+            bufs[3].ptr,
+            bufs[4].ptr,
+            out_dev.ptr,
+            fixture.compact_rows,
+            fixture.in_features,
+            fixture.out_features,
+            fixture.num_experts,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(host_out), out_dev, runtime=runtime)
+    finally:
+        for buf in reversed(bufs):
+            free(buf, runtime=runtime)
+    return _decode_output(host_out, "bf16")
+
+
+def _max_softmax_kl(reference: np.ndarray, candidate: np.ndarray) -> float:
+    ref = reference.astype(np.float64)
+    cand = candidate.astype(np.float64)
+    ref -= ref.max(axis=-1, keepdims=True)
+    cand -= cand.max(axis=-1, keepdims=True)
+    ref_logp = ref - np.log(np.exp(ref).sum(axis=-1, keepdims=True))
+    cand_logp = cand - np.log(np.exp(cand).sum(axis=-1, keepdims=True))
+    return float(np.max(np.sum(np.exp(ref_logp) * (ref_logp - cand_logp), axis=-1)))
+
+
 _SELECTED_CASES = [
     pytest.param([4, 0, 5], 256, 16, id="empty-middle-out16"),
     pytest.param([16, 17, 31], 256, 32, id="exact-plus-padding-out32"),
@@ -429,6 +532,28 @@ def test_p10_b2_b3_k_t16_selected_wmma_fp16_matches_cpu_selected_reference(
     )
     actual = _run_selected_t16_gpu(fixture)
     np.testing.assert_allclose(actual, fixture.reference, **_TOLERANCES[(quant, "fp16")])
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("quant", list(_EXPERT_MAJOR_COMP_WRAPPERS))
+def test_laguna_expert_major_compensated_wmma_matches_cpu_quality_gate(
+    quant: str,
+) -> None:
+    fixture = _build_compact_t16_fixture(
+        quant=quant,
+        counts=[0, 1, 2, 15, 16, 17],
+        in_features=512,
+        out_features=64,
+        dtype="bf16",
+        seed=17,
+    )
+    actual = _run_expert_major_comp_gpu(fixture)
+
+    assert np.isfinite(actual).all()
+    assert _max_softmax_kl(fixture.reference, actual) <= 0.05
+    assert np.mean(
+        fixture.reference.argmax(axis=-1) == actual.argmax(axis=-1)
+    ) >= 0.9
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")

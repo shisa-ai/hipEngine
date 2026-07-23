@@ -39,6 +39,7 @@ _ROUTER_SELECT_VARIANT = "correction_bias"
 _SELECTED_DUAL_VARIANT = "selected_dual_t16_gemv_decode_bf16_bf16_out"
 _SELECTED_DOWN_VARIANT = "selected_t16_gemv_decode_bf16_bf16_out"
 _SELECTED_WEIGHTED_DOWN_VARIANT = "selected_weighted_down_gemv_decode_bf16_bf16_out"
+_EXPERT_MAJOR_COMP_VARIANT = "selected_t16_expert_major_wmma_comp_bf16_bf16_out"
 _SILU_VARIANT = "out"
 _WEIGHTED_SUM_VARIANT = "out"
 _ADD_VARIANT = "add"
@@ -49,6 +50,7 @@ _SELECTED_DOWN_MODES = frozenset(
         "adaptive_grouped_smallm",
         "grouped_smallm_fused",
         "adaptive_grouped_smallm_fused",
+        "expert_major_wmma_comp",
     }
 )
 _BASELINE_SELECTED_DOWN_MODE = "direct"
@@ -117,6 +119,7 @@ class LagunaMoEKernelPlan:
     grouped_compact_key: KernelKey
     grouped_gather_key: KernelKey
     grouped_smallm_down_keys: Mapping[str, KernelKey]
+    expert_major_comp_keys: Mapping[str, KernelKey]
     grouped_weighted_sum_key: KernelKey
     grouped_weighted_sum_shared_add_key: KernelKey
     shared_silu_key: KernelKey
@@ -135,6 +138,7 @@ class LagunaMoEKernelPlan:
     grouped_compact: Callable
     grouped_gather: Callable
     grouped_smallm_downs: Mapping[str, Callable]
+    expert_major_comp: Mapping[str, Callable]
     grouped_weighted_sum: Callable
     grouped_weighted_sum_shared_add: Callable
     shared_silu: Callable
@@ -157,6 +161,7 @@ class LagunaMoEKernelPlan:
             self.grouped_compact_key,
             self.grouped_gather_key,
             *tuple(self.grouped_smallm_down_keys.values()),
+            *tuple(self.expert_major_comp_keys.values()),
             self.grouped_weighted_sum_key,
             self.grouped_weighted_sum_shared_add_key,
             self.shared_silu_key,
@@ -384,6 +389,23 @@ def resolve_laguna_moe_plan(
     grouped_smallm_downs = MappingProxyType(
         {quant: _resolve_exact(key) for quant, key in grouped_smallm_down_keys.items()}
     )
+    expert_major_comp_keys = MappingProxyType(
+        {
+            quant: KernelKey(
+                backend,
+                "moe_linear",
+                quant,
+                _EXPERT_MAJOR_COMP_VARIANT,
+            )
+            for quant in ("gguf_q4_k_t16_v1", "gguf_q6_k_t16_v1")
+        }
+    )
+    expert_major_comp = MappingProxyType(
+        {
+            quant: _resolve_exact(key)
+            for quant, key in expert_major_comp_keys.items()
+        }
+    )
     selected_down_route_specs = {
         "gguf_q4_k_t16_v1": ("t16", "tiles", "selected_down"),
         "gguf_q6_k_t16_v1": ("t16", "tiles", "selected_down"),
@@ -464,6 +486,7 @@ def resolve_laguna_moe_plan(
         grouped_compact_key=keys["grouped_compact"],
         grouped_gather_key=keys["grouped_gather"],
         grouped_smallm_down_keys=grouped_smallm_down_keys,
+        expert_major_comp_keys=expert_major_comp_keys,
         grouped_weighted_sum_key=keys["grouped_weighted_sum"],
         grouped_weighted_sum_shared_add_key=keys[
             "grouped_weighted_sum_shared_add"
@@ -474,6 +497,7 @@ def resolve_laguna_moe_plan(
         grouped_compact=functions["grouped_compact"],
         grouped_gather=functions["grouped_gather"],
         grouped_smallm_downs=grouped_smallm_downs,
+        expert_major_comp=expert_major_comp,
         grouped_weighted_sum=functions["grouped_weighted_sum"],
         grouped_weighted_sum_shared_add=functions[
             "grouped_weighted_sum_shared_add"
@@ -981,6 +1005,126 @@ def _launch_selected_down(
     )
 
 
+def _launch_expert_major_comp_gate_up(
+    hidden_ptr: int,
+    layer: LagunaGGUFResidentLayerWeights,
+    scratch: LagunaMoEScratch,
+    *,
+    tokens: int,
+    lanes: int,
+    stream: int,
+    runtime: HipRuntime | None,
+    libraries: Mapping[str, object] | None,
+) -> None:
+    """Compact natural routes once and run compensated expert-major gate/up."""
+
+    plan = scratch.plan
+    active_runtime = runtime or get_hip_runtime()
+    plan.grouped_compact(
+        scratch.selected_experts.ptr,
+        scratch.scaled_routing_weights.ptr,
+        scratch.grouped_expert_start.ptr,
+        scratch.grouped_active_experts.ptr,
+        scratch.grouped_active_count.ptr,
+        scratch.grouped_sorted_lanes.ptr,
+        scratch.grouped_sorted_experts.ptr,
+        scratch.grouped_sorted_weights.ptr,
+        lanes,
+        plan.expert_count,
+        **_stage_kwargs(
+            "grouped_metadata", libraries, stream=stream, runtime=active_runtime
+        ),
+    )
+    # expert_down is the only lane-by-hidden scratch and is dead until the down
+    # projection, so reuse it as packed expert-major hidden input.
+    plan.grouped_gather(
+        hidden_ptr,
+        scratch.grouped_sorted_lanes.ptr,
+        scratch.expert_down.ptr,
+        lanes * plan.hidden_size,
+        tokens,
+        plan.top_k,
+        plan.hidden_size,
+        **_stage_kwargs(
+            "grouped_gather", libraries, stream=stream, runtime=active_runtime
+        ),
+    )
+    gate = layer.weight("ffn_gate_exps")
+    up = layer.weight("ffn_up_exps")
+    try:
+        expert_major = plan.expert_major_comp[gate.spec.quant_key]
+    except KeyError as exc:
+        raise ValueError(
+            f"no Laguna expert-major gate/up route for {gate.spec.quant_key!r}"
+        ) from exc
+    launch_kwargs = _stage_kwargs(
+        "expert_major_comp", libraries, stream=stream, runtime=active_runtime
+    )
+    for weight, output in (
+        (gate, scratch.expert_gate),
+        (up, scratch.expert_up),
+    ):
+        expert_major(
+            scratch.expert_down.ptr,
+            scratch.grouped_expert_start.ptr,
+            scratch.grouped_active_experts.ptr,
+            scratch.grouped_active_count.ptr,
+            weight.allocation("tiles").tensor.ptr,
+            output.ptr,
+            lanes,
+            plan.hidden_size,
+            plan.expert_ffn_size,
+            plan.expert_count,
+            **launch_kwargs,
+        )
+    plan.selected_silu(
+        scratch.expert_gate.ptr,
+        scratch.expert_up.ptr,
+        scratch.expert_intermediate.ptr,
+        lanes,
+        plan.expert_ffn_size,
+        **_stage_kwargs(
+            "selected_silu", libraries, stream=stream, runtime=active_runtime
+        ),
+    )
+
+
+def _launch_expert_major_comp_down(
+    layer: LagunaGGUFResidentLayerWeights,
+    scratch: LagunaMoEScratch,
+    *,
+    lanes: int,
+    stream: int,
+    runtime: HipRuntime | None,
+    libraries: Mapping[str, object] | None,
+) -> None:
+    """Run compensated expert-major down in the existing compact route order."""
+
+    plan = scratch.plan
+    weight = layer.weight("ffn_down_exps")
+    try:
+        expert_major = plan.expert_major_comp[weight.spec.quant_key]
+    except KeyError as exc:
+        raise ValueError(
+            f"no Laguna expert-major down route for {weight.spec.quant_key!r}"
+        ) from exc
+    expert_major(
+        scratch.expert_intermediate.ptr,
+        scratch.grouped_expert_start.ptr,
+        scratch.grouped_active_experts.ptr,
+        scratch.grouped_active_count.ptr,
+        weight.allocation("tiles").tensor.ptr,
+        scratch.expert_down.ptr,
+        lanes,
+        plan.expert_ffn_size,
+        plan.hidden_size,
+        plan.expert_count,
+        **_stage_kwargs(
+            "expert_major_comp", libraries, stream=stream, runtime=runtime
+        ),
+    )
+
+
 def _launch_grouped_smallm_down(
     layer: LagunaGGUFResidentLayerWeights,
     scratch: LagunaMoEScratch,
@@ -1284,25 +1428,50 @@ def run_laguna_moe_rows(
         plan.routed_scaling_factor,
         **_stage_kwargs("router_select", libraries, stream=stream, runtime=runtime),
     )
-    _launch_selected_gate_up(
-        hidden_bf16_ptr,
-        layer,
-        scratch,
-        x_rows=tokens,
-        lanes=lanes,
-        stream=stream,
-        runtime=runtime,
-        libraries=libraries,
-    )
-    use_grouped_fused_combine = selected_down_mode == "grouped_smallm_fused" or (
-        selected_down_mode == "adaptive_grouped_smallm_fused"
-        and tokens >= _GROUPED_SMALLM_MIN_ROWS
+    use_expert_major = selected_down_mode == "expert_major_wmma_comp"
+    if use_expert_major:
+        _launch_expert_major_comp_gate_up(
+            hidden_bf16_ptr,
+            layer,
+            scratch,
+            tokens=tokens,
+            lanes=lanes,
+            stream=stream,
+            runtime=runtime,
+            libraries=libraries,
+        )
+    else:
+        _launch_selected_gate_up(
+            hidden_bf16_ptr,
+            layer,
+            scratch,
+            x_rows=tokens,
+            lanes=lanes,
+            stream=stream,
+            runtime=runtime,
+            libraries=libraries,
+        )
+    use_grouped_fused_combine = use_expert_major or (
+        selected_down_mode == "grouped_smallm_fused"
+        or (
+            selected_down_mode == "adaptive_grouped_smallm_fused"
+            and tokens >= _GROUPED_SMALLM_MIN_ROWS
+        )
     )
     use_grouped_smallm = selected_down_mode == "grouped_smallm" or (
         selected_down_mode == "adaptive_grouped_smallm"
         and tokens >= _GROUPED_SMALLM_MIN_ROWS
-    ) or use_grouped_fused_combine
-    if use_grouped_smallm:
+    ) or (use_grouped_fused_combine and not use_expert_major)
+    if use_expert_major:
+        _launch_expert_major_comp_down(
+            layer,
+            scratch,
+            lanes=lanes,
+            stream=stream,
+            runtime=runtime,
+            libraries=libraries,
+        )
+    elif use_grouped_smallm:
         _launch_grouped_smallm_down(
             layer,
             scratch,
