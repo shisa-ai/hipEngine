@@ -1603,6 +1603,15 @@ model identity, and lifecycle pass. This admits M16 for a measured 256/512
 crossover screen; it does not admit blanket M32 or claim throughput.
 [Routing-crossover diagnostic](results/2026-07-23-gfx1151-laguna-routing-256-512.json).
 
+The admitted M16 control then passes its clean three-repeat 256/512 screen.
+Retained grouped-small-M -> Q4T16/Q6T16 single-output WMMA moves median prefill
+**54.591->59.773 tok/s (+9.493%)** and **51.754->56.596 tok/s (+9.356%)**,
+with **+9.378%** aggregate synchronized wall. All six next IDs and final
+full-logit top-1 values agree, maximum KL is `1.3054e-4`, and lifecycle returns
+to zero. This is a positive diagnostic rather than a promotion claim; the full
+ten-prompt category quality/E2E gate remains mandatory.
+[Positive M16 down screen](results/2026-07-23-gfx1151-laguna-prefill-wmma16-down-screen.json).
+
 A matched Poolside llama.cpp `04b2b72c` control now uses the identical Laguna
 Q4_K_M model hash, deterministic token stream, BF16 KV, and 128-row microbatch.
 Three alternating native `prompt_ms` samples measure

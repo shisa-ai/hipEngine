@@ -2299,9 +2299,14 @@ repeat either experiment unchanged.
   for padding. The first M16 control is now wired over resident Q4T16/Q6T16:
   device compact/gather, one exact padded-row scalar read per sparse layer,
   bounded tile metadata, single-output WMMA down, and ordered weighted combine.
-  It remains diagnostic while the clean counterbalanced 256/512 full-model
-  wall plus final-logit KL/top-1 screen runs; a win must still pass the complete
-  category quality/E2E gate before promotion. The retained replay reports
+  The clean three-repeat counterbalanced screen passes: retained grouped-small-M
+  -> M16 moves **54.591->59.773 tok/s (+9.493%)** at 256 rows and
+  **51.754->56.596 tok/s (+9.356%)** at 512, with **+9.378%** aggregate wall,
+  identical next IDs/top-1, maximum final-logit KL `1.3054e-4`, and exact
+  lifecycle recovery. This admits but does not replace the complete category
+  quality/E2E gate before promotion. Evidence:
+  `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-wmma16-down-screen.json`.
+  The retained replay reports
   natural/Zipf overhead of 1.803/2.049x at 256 and 1.379/1.465x at 512.
   Natural/Zipf M32 remains 2.924/3.421x and 1.867/2.134x, so it is hot-only
   unless an inclusive timing result overturns that bound. Use the landed IQ2
