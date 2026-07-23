@@ -16,6 +16,19 @@ _ARGTYPES_WEIGHTED_LANES = (
     ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,
     ctypes.c_void_p,
 )
+_ARGTYPES_WEIGHTED_LANES_SHARED_ADD = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
 # shared / shared_batch input ptr counts: 3 (no-residual combines) or 4 (residual
 # variants).  Verifier hot path is the 4-ptr residual variant.
 _ARGTYPES_SHARED_3 = (
@@ -61,6 +74,9 @@ _SOURCE = Path(__file__).with_name("paro_combine.hip")
 _OUTPUT_NAME = "paro_combine.so"
 _SYMBOL_WEIGHTED_LANES = "hipengine_weighted_lanes_sum_out_bf16_f32w"
 _SYMBOL_WEIGHTED_LANES_FP16 = "hipengine_weighted_lanes_sum_out_fp16_f32w"
+_SYMBOL_WEIGHTED_LANES_SHARED_ADD = (
+    "hipengine_weighted_lanes_sum_shared_add_out_bf16_f32w"
+)
 _SYMBOL_WEIGHTED_SUM = "hipengine_weighted_sum_out_bf16_f32w"
 _SYMBOL_WEIGHTED_SUM_FP16 = "hipengine_weighted_sum_out_fp16_f32w"
 _SYMBOL_WEIGHTED_SHARED_RESIDUAL = "hipengine_weighted_sum_shared_gate_combine_residual_out_bf16_f32w"
@@ -168,6 +184,51 @@ def weighted_lanes_sum_out_bf16_f32w(
         library,
         runtime,
     )
+
+
+def weighted_lanes_sum_shared_add_out_bf16_f32w(
+    values_ptr: int,
+    weights_ptr: int,
+    sorted_lanes_ptr: int,
+    lane_to_row_ptr: int,
+    shared_ptr: int,
+    out_ptr: int,
+    tokens: int,
+    top_k: int,
+    features: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact grouped weighted reduction plus BF16 shared-output add."""
+
+    _check_positive(tokens, "tokens")
+    _check_positive(top_k, "top_k")
+    _check_vector_shape(features, threads)
+    library = library or build_paro_combine(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        _SYMBOL_WEIGHTED_LANES_SHARED_ADD,
+        _ARGTYPES_WEIGHTED_LANES_SHARED_ADD,
+        ctypes.c_int,
+    )
+    err = fn(
+        values_ptr,
+        weights_ptr,
+        sorted_lanes_ptr,
+        lane_to_row_ptr,
+        shared_ptr,
+        out_ptr,
+        tokens,
+        top_k,
+        features,
+        threads,
+        stream,
+    )
+    _check_launch(runtime, err)
 
 
 def weighted_lanes_sum_out_fp16_f32w(
@@ -1344,6 +1405,16 @@ def register_paro_combine_kernels(*, replace: bool = True) -> None:
         register(
             KernelKey("hip_gfx1100", "weighted_lanes_sum", quant, "out_fp16"),
             weighted_lanes_sum_out_fp16_f32w,
+            replace=replace,
+        )
+        register(
+            KernelKey(
+                "hip_gfx1100",
+                "weighted_lanes_sum+shared_add",
+                quant,
+                "out",
+            ),
+            weighted_lanes_sum_shared_add_out_bf16_f32w,
             replace=replace,
         )
         register(

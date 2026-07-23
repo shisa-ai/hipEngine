@@ -18,6 +18,7 @@ from hipengine.kernels.hip_gfx1100.fused import (
     shared_gate_combine_residual_out_fp16,
     weighted_lanes_sum_out_bf16_f32w,
     weighted_lanes_sum_out_fp16_f32w,
+    weighted_lanes_sum_shared_add_out_bf16_f32w,
     weighted_sum_out_bf16_f32w,
     weighted_sum_out_fp16_f32w,
     weighted_sum_f32_shared_f32_gate_combine_residual_batch_out_f32_accum_f32w,
@@ -75,6 +76,15 @@ def test_paro_combine_registers_bf16_fp16_and_w4_paro_variants() -> None:
         assert (
             resolve(backend="hip_gfx1100", layer="weighted_lanes_sum", quant=quant, variant="out_fp16")
             is weighted_lanes_sum_out_fp16_f32w
+        )
+        assert (
+            resolve(
+                backend="hip_gfx1100",
+                layer="weighted_lanes_sum+shared_add",
+                quant=quant,
+                variant="out",
+            )
+            is weighted_lanes_sum_shared_add_out_bf16_f32w
         )
         assert (
             resolve(backend="hip_gfx1100", layer="weighted_sum", quant=quant, variant="out")
@@ -287,6 +297,10 @@ def test_paro_combine_wrappers_validate_before_gpu_load() -> None:
         weighted_lanes_sum_out_bf16_f32w(0, 0, 0, 0, 0, 0, 8, 16)
     with pytest.raises(ValueError, match="top_k must be positive"):
         weighted_lanes_sum_out_fp16_f32w(0, 0, 0, 0, 0, 2, 0, 16)
+    with pytest.raises(ValueError, match="features must be positive"):
+        weighted_lanes_sum_shared_add_out_bf16_f32w(
+            0, 0, 0, 0, 0, 0, 2, 4, 0
+        )
     with pytest.raises(ValueError, match="rows must be positive"):
         weighted_sum_out_bf16_f32w(0, 0, 0, 0, 8)
     with pytest.raises(ValueError, match="features must be positive"):
@@ -538,3 +552,79 @@ def test_f32_residual_combine_kernels_match_cpu_reference() -> None:
         rtol=1.0e-6,
         atol=1.0e-6,
     )
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_weighted_lanes_shared_add_matches_exact_unfused_cpu_boundaries() -> None:
+    rng = np.random.default_rng(20260723)
+    tokens = 3
+    top_k = 4
+    features = 19
+    rows = tokens * top_k
+    sorted_lanes = rng.permutation(rows).astype(np.int64)
+    lane_to_row = np.empty(rows, dtype=np.int64)
+    lane_to_row[sorted_lanes] = np.arange(rows, dtype=np.int64)
+    values = _bf16_bits(rng.normal(size=(rows, features)).astype(np.float32))
+    weights = rng.normal(size=rows).astype(np.float32)
+    shared = _bf16_bits(rng.normal(size=(tokens, features)).astype(np.float32))
+
+    libm = ctypes.CDLL("libm.so.6")
+    fmaf = libm.fmaf
+    fmaf.argtypes = (ctypes.c_float, ctypes.c_float, ctypes.c_float)
+    fmaf.restype = ctypes.c_float
+    values_f32 = _bf16_to_f32(values)
+    selected = np.empty((tokens, features), dtype=np.float32)
+    for token in range(tokens):
+        for feature in range(features):
+            acc = ctypes.c_float(0.0)
+            for slot in range(top_k):
+                row = int(lane_to_row[token * top_k + slot])
+                acc = ctypes.c_float(
+                    fmaf(
+                        ctypes.c_float(values_f32[row, feature]),
+                        ctypes.c_float(weights[row]),
+                        acc,
+                    )
+                )
+            selected[token, feature] = acc.value
+    selected_rounded = _bf16_to_f32(_bf16_bits(selected))
+    expected = _bf16_bits(selected_rounded + _bf16_to_f32(shared))
+    out = np.empty_like(expected)
+
+    library = build_paro_combine(load=True)
+    bufs = []
+    try:
+        values_d = _dev(np.ascontiguousarray(values))
+        weights_d = _dev(np.ascontiguousarray(weights))
+        sorted_lanes_d = _dev(np.ascontiguousarray(sorted_lanes))
+        lane_to_row_d = _dev(np.zeros(rows, dtype=np.int64))
+        shared_d = _dev(np.ascontiguousarray(shared))
+        out_d = _dev(out)
+        bufs.extend(
+            (
+                values_d,
+                weights_d,
+                sorted_lanes_d,
+                lane_to_row_d,
+                shared_d,
+                out_d,
+            )
+        )
+        weighted_lanes_sum_shared_add_out_bf16_f32w(
+            values_d.ptr,
+            weights_d.ptr,
+            sorted_lanes_d.ptr,
+            lane_to_row_d.ptr,
+            shared_d.ptr,
+            out_d.ptr,
+            tokens,
+            top_k,
+            features,
+            library=library,
+        )
+        copy_device_to_host(host_array_ptr(out), out_d, out.nbytes)
+    finally:
+        for buf in reversed(bufs):
+            free(buf)
+
+    np.testing.assert_array_equal(out, expected)
