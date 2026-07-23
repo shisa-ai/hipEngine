@@ -2404,14 +2404,16 @@ mixed-F16 Q4 model on gfx1151. D0 measured **19.596 decode tok/s (51.032
 ms/token)** on the retained full category suite. Exact dense decode at D1
 revision `fc08ca0e` first reached **35.419 tok/s**. D2 revision `ae20392bb`
 right-sized exact IQ3 selected-down K1024 to local128 and reached **38.301
-tok/s**. D3 revision `fe89c210c` is now the default: it preserves each D2
-projection's BF16 boundary while contracting scaled routing into the IQ3 down
-leaf and measures **38.840 tok/s (25.747 ms/token)** at h32, **+1.407%** versus
-D2 and **+98.52%** versus D0. D2 -> D3 h32 E2E improves **11.403 -> 11.448
-output tok/s (+0.399%)** while unchanged bulk prefill is **43.264 tok/s
-(-0.004%)** and median TTFT remains **1.865 s (+0.016%)**. Every category's
-decode/E2E row, exactness gate, and lifecycle check passes. Evidence:
-`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-iq3-weighted-down-retained.json`.
+tok/s**. D3 revision `fe89c210c` preserves each D2 projection's BF16 boundary
+while contracting scaled routing into the IQ3 down leaf and reaches **38.840
+tok/s**. D4 revision `73a2583b` is now the default: four wave32 units compute
+four exact SWA slot dots concurrently before baseline-order softmax/value
+consumption. It measures **43.081 tok/s (23.212 ms/token)** at h32, **+10.919%**
+versus D3 and **+120.20%** versus D0. D3 -> D4 h32 E2E improves **11.448 ->
+11.760 output tok/s (+2.724%)** while bulk prefill stays within guard at **43.264
+-> 43.168 tok/s (-0.223%)** and median TTFT is **1.870 s (+0.272%)**. Every
+category's decode/E2E row, exactness gate, and lifecycle check passes. Evidence:
+`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-swa-token4-retained.json`.
 
 The frozen clean D0 at `e6120872` profiles 16 c=1 rows after the canonical
 69-token `code_merge_intervals` bulk prefill; the stable 14 rows contain exactly
@@ -2538,10 +2540,22 @@ and profiled throughput is **18.476/17.418/13.485 tok/s**. This is
 **+46.76%/+44.29%/+33.84%** versus D0 at the same regimes. Dense Q5 is now
 **7.12 ms/token**, but SWA remains **27.776/27.846/27.901 ms** and consumes
 **58.99%/55.58%/41.71%** of kernel sum; global attention remains
-**2.976/5.885/22.638 ms**. Thus token/score-parallel or split/online SWA is the
+**2.976/5.885/22.638 ms**. Thus token/score-parallel or split/online SWA was the
 mandatory next 512+ target, with global attention additionally mandatory near
 4K. Evidence:
 `benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-decode-context-d3-profile.json`.
+
+D4 closes that SWA item with exact four-slot score parallelism. Focused tracing
+moves six calls **792.747 -> 237.722 us median (-70.01%; 3.335x)**. Clean short,
+512, 1K, and near-4K traces move SWA **4.202/27.776/27.846/27.901 ->
+2.118/13.111/13.096/13.104 ms/token (-49.60%/-52.80%/-52.97%/-53.03%)**;
+kernel sum falls **9.59%/31.09%/29.47%/22.17%**, span falls
+**8.62%/28.87%/27.45%/21.00%**, and profiled child throughput rises
+**8.56%/38.56%/37.52%/25.51%**. The local128 leaf uses VGPR24, **4,120 B
+dynamic LDS**, static-LDS0, and scratch0 while dispatches remain 1,010/token.
+The baseline stays registered and explicitly selectable; gfx1151 and unmeasured
+backends retain it. Evidence:
+`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-swa-token4-retained.json`.
 
 The Qwen3.6 UD-Q3_K_M final D0 is a useful tactics comparison, not a model ratio:
 it uses 671 dispatches, 8.825 ms summed kernels, and 11.347 ms profiled wall per
@@ -2565,25 +2579,24 @@ Proceed in measured Amdahl order:
 4. **DONE:** reprofile at 512/1K/near-4K after D3; SWA is now 41.71-58.99%
    of kernel sum and remains the mandatory next target, while near-4K global
    attention remains 22.638 ms/token;
-5. **PARTIAL:** token4 score-parallel SWA preserves `KVLiveSpans`, wrap,
-   eviction, and exact reduction/softmax boundaries; dirty full-model screens
-   cut SWA 50.22% short and 52.83% at 512, so gfx1100 selects it pending clean
-   traces and the canonical category gate;
-6. complete that clean D4 decision, then address near-4K global attention; and
-7. admit Laguna-specific one-step graph replay only after kernel work. D3's
-   decode span still exceeds kernel sum by **4.15 ms**, so submission remains
-   material but trails SWA plus the dense/selected matrix families in Amdahl
-   order.
+5. **DONE:** token4 score-parallel SWA preserves `KVLiveSpans`, wrap,
+   eviction, and exact reduction/softmax boundaries; clean full-model traces
+   cut SWA 49.60% short and 52.80-53.03% at 512/1K/near-4K, and the complete
+   category suite promotes D4 to 43.081 tok/s;
+6. address near-4K global attention and the remaining dense-Q5 decode family;
+   and
+7. admit Laguna-specific one-step graph replay only after kernel work. D4's
+   short decode span still exceeds kernel sum by **3.91 ms**, so submission
+   remains material but trails the remaining matrix families in Amdahl order.
 
-**50 tok/s is a credible W7900 target, not a current claim.** D3 must reduce the
-canonical **25.747 ms to 20 ms**. The remaining short profile has 4.202 ms SWA,
-7.090 ms Q5, 2.276 ms IQ2 gate/up, 2.108 ms weighted IQ3 down, and 4.15 ms of
-span-over-kernel wall; the prior
-long-context profile also requires SWA and eventually global attention. Every
-retained candidate uses the full category/heldout suite and the same
-exact/quality lanes above. Laguna DFlash/MTP optimization resumes only after
-this target path is reprofiled so speculative speedups are measured against the
-improved true-AR baseline.
+**50 tok/s is a credible W7900 target, not a current claim.** D4 must reduce the
+canonical **23.212 ms to 20 ms**. The clean short profile has 2.118 ms SWA,
+7.123 ms Q5, 2.290 ms IQ2 gate/up, 2.106 ms weighted IQ3 down, and 3.91 ms of
+span-over-kernel wall; the near-4K profile is now led by 22.632 ms global
+attention. Every retained candidate uses the full category/heldout suite and
+the same exact/quality lanes above. Laguna DFlash/MTP optimization resumes only
+after this target path is reprofiled so speculative speedups are measured
+against the improved true-AR baseline.
 
 ## Laguna DFlash Follow-on Plan
 
