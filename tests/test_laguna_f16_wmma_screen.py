@@ -86,8 +86,20 @@ def test_laguna_f16_wmma_loads_only_passing_library_ceiling(tmp_path) -> None:
     loaded = _load_library_ceiling(artifact, DEFAULT_ROWS)
 
     assert loaded[128]["full"] == pytest.approx(1.28)
-    payload = json.loads(artifact.read_text(encoding="utf-8"))
-    payload["pass"] = False
-    artifact.write_text(json.dumps(payload), encoding="utf-8")
+    compact = {
+        "kind": "hipengine_laguna_f16_library_ceiling",
+        "pass": True,
+        "summary": {
+            "rows": list(DEFAULT_ROWS),
+            "hipblaslt_inclusive_full_ms": [row / 10.0 for row in DEFAULT_ROWS],
+            "hipblaslt_inclusive_swa_ms": [row / 20.0 for row in DEFAULT_ROWS],
+        },
+    }
+    artifact.write_text(json.dumps(compact), encoding="utf-8")
+    loaded = _load_library_ceiling(artifact, DEFAULT_ROWS)
+    assert loaded[128]["full"] == pytest.approx(12.8)
+    assert loaded[128]["swa"] == pytest.approx(6.4)
+    compact["pass"] = False
+    artifact.write_text(json.dumps(compact), encoding="utf-8")
     with pytest.raises(ValueError, match="passing Laguna F16 ceiling"):
         _load_library_ceiling(artifact, DEFAULT_ROWS)
