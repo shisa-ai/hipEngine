@@ -12,6 +12,7 @@ from hipengine.generation import (
     GenerationDeadlineExceeded,
     GenerationKey,
     GenerationRequest,
+    GenerationStreamChunk,
     registered_text_generators,
 )
 from hipengine.llm import LLM, SamplingParams
@@ -398,6 +399,55 @@ def test_laguna_server_metadata_reports_resolved_model_backend_and_quant(
     assert capabilities["model"]["backend"] == "hip_gfx1151"
     assert capabilities["model"]["quant"] == "gguf_q4_k_m"
     assert ready.status_code == 200
+
+
+def test_laguna_generator_attaches_one_generic_provider_and_closes_it_before_weights(
+    generator,
+) -> None:
+    events: list[str] = []
+
+    class FakeProvider:
+        provider_name = "fake_dflash"
+
+        def generate_detailed(self, request):
+            events.append("generate")
+            return [SimpleNamespace(text="spec")]
+
+        def stream_detailed(self, request):
+            events.append("stream")
+            yield GenerationStreamChunk(text="chunk")
+
+        def capabilities(self):
+            return {"provider": self.provider_name}
+
+        def close(self) -> None:
+            events.append("provider_close")
+
+    original_free = generator.weights.free
+
+    def record_free(*, runtime=None) -> None:
+        events.append("weights_free")
+        original_free(runtime=runtime)
+
+    generator.weights.free = record_free
+    provider = FakeProvider()
+    generator.instance.attach_speculative_provider(provider)
+
+    assert generator.instance.supports_speculative is True
+    assert generator.instance.speculative_capabilities() == {
+        "provider": "fake_dflash"
+    }
+    assert generator.instance.generate_speculative_detailed(_request())[0].text == "spec"
+    assert [chunk.text for chunk in generator.instance.stream_speculative_detailed(_request())] == [
+        "chunk"
+    ]
+    with pytest.raises(RuntimeError, match="already attached"):
+        generator.instance.attach_speculative_provider(FakeProvider())
+
+    generator.instance.prepare(max_sequence_length=2)
+    generator.instance.close()
+
+    assert events[-2:] == ["provider_close", "weights_free"]
 
 
 def test_laguna_public_llm_resolves_generator_and_close_releases_weights(

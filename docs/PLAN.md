@@ -1073,7 +1073,7 @@ SpecDec is planned as a scheduler + plugin feature that reuses the same target-m
 | Lookahead decoding | Planned | Scheduler-side n-gram/cache provider emits candidate chains. |
 | MTP (multi-token pred) | Research | Qwen3.5 MTP layers provide `DraftBatch` chains attached to the target model; detailed native plan: [`docs/MTP.md`](MTP.md). |
 | EAGLE3 | Research | Draft-model plugin emits feature-conditioned candidate chains/trees. |
-| DFlash (draft model) | Research | z-lab/FastKMS-lineage draft-model plugin plus DDTree/tree-verify support; detailed native plan: [`docs/DFLASH.md`](DFLASH.md). |
+| DFlash (draft model) | Partial | Generic four-axis public-provider registry plus an explicit-only Poolside Laguna B4 library owner; OpenAI routing and broader DFlash/DDTree serving remain. Detailed native plan: [`docs/DFLASH.md`](DFLASH.md). |
 
 Method-specific details live in `docs/MTP.md` and `docs/DFLASH.md`; the shared
 contract below remains authoritative for plugin boundaries and scheduler/KV

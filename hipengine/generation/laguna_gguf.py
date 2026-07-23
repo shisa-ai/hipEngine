@@ -74,6 +74,12 @@ class LagunaGGUFGenerator:
     _load_seconds: float | None = field(default=None, init=False, repr=False)
     _lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
     _closed: bool = field(default=False, init=False, repr=False)
+    _speculative_provider: Any | None = field(default=None, init=False, repr=False)
+    _repacked_cache_source_sha256: str | None = field(
+        default=None,
+        init=False,
+        repr=False,
+    )
 
     supports_speculative_mtp = False
     supports_stream_many = False
@@ -116,6 +122,66 @@ class LagunaGGUFGenerator:
 
     def count_tokens(self, text: str) -> int:
         return len(self.tokenize(text))
+
+    @property
+    def supports_speculative(self) -> bool:
+        return self._speculative_provider is not None
+
+    def attach_speculative_provider(self, provider: Any) -> None:
+        """Attach one registry-resolved provider before target materialization."""
+
+        if provider is None:
+            raise TypeError("speculative provider must not be None")
+        for name in ("generate_detailed", "stream_detailed", "capabilities", "close"):
+            if not callable(getattr(provider, name, None)):
+                raise TypeError(f"speculative provider must implement {name}()")
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("Laguna generator is closed")
+            if self._weights is not None:
+                raise RuntimeError(
+                    "speculative provider must attach before target materialization"
+                )
+            if self._speculative_provider is not None:
+                raise RuntimeError("a speculative provider is already attached")
+            self._speculative_provider = provider
+
+    def bind_repacked_cache_source_sha256(self, sha256: str) -> None:
+        """Require a source-bound sibling cache before later target loading."""
+
+        digest = str(sha256).strip().lower()
+        if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
+            raise ValueError("repacked-cache source SHA-256 must be 64 lowercase hex chars")
+        with self._lock:
+            if self._weights is not None:
+                raise RuntimeError("target source identity must bind before materialization")
+            existing = self._repacked_cache_source_sha256
+            if existing is not None and existing != digest:
+                raise RuntimeError("target source identity is already bound differently")
+            self._repacked_cache_source_sha256 = digest
+
+    def speculative_capabilities(self) -> dict[str, Any]:
+        provider = self._speculative_provider
+        return {} if provider is None else dict(provider.capabilities())
+
+    def generate_speculative_detailed(
+        self,
+        request: GenerationRequest,
+    ) -> list[GenerationOutput]:
+        provider = self._speculative_provider
+        if provider is None:
+            raise NotImplementedError("Laguna speculative provider is not configured")
+        return list(provider.generate_detailed(request))
+
+    def stream_speculative_detailed(
+        self,
+        request: GenerationRequest,
+    ) -> Iterator[GenerationStreamChunk]:
+        provider = self._speculative_provider
+        if provider is None:
+            raise NotImplementedError("Laguna speculative provider is not configured")
+        for chunk in provider.stream_detailed(request):
+            yield GenerationStreamChunk.from_value(chunk)
 
     def detokenize(
         self,
@@ -301,9 +367,22 @@ class LagunaGGUFGenerator:
             if self._closed:
                 return
             self._closed = True
+            provider, self._speculative_provider = self._speculative_provider, None
             weights, self._weights = self._weights, None
+            error: BaseException | None = None
+            if provider is not None:
+                try:
+                    provider.close()
+                except BaseException as exc:  # pragma: no cover - defensive cleanup
+                    error = exc
             if weights is not None:
-                weights.free(runtime=self._runtime)
+                try:
+                    weights.free(runtime=self._runtime)
+                except BaseException as exc:  # pragma: no cover - defensive cleanup
+                    if error is None:
+                        error = exc
+            if error is not None:
+                raise error
 
     def _prepare_request(self, request: GenerationRequest) -> tuple[int, ...]:
         _validate_public_request(request)
@@ -385,6 +464,7 @@ class LagunaGGUFGenerator:
             runtime=runtime,
             backend=self.backend,
             repacked_cache=self.repacked_cache_path,
+            repacked_cache_source_sha256=self._repacked_cache_source_sha256,
         )
         self._runtime = runtime
         self._weights = weights
