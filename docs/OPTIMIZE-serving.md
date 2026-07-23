@@ -1,6 +1,6 @@
 # hipEngine Serving-Latency Optimization Plan
 
-Status: 2026-07-23 (active; S0-S3 complete, S4-S5 pending).
+Status: 2026-07-23 (active; S0-S4 complete, S5 pending).
 
 Scope: resident Poolside Laguna S 2.1 Q4_K_M serving on the local Ryzen AI
 MAX+ 395 / Radeon 8060S (`gfx1151`) host, starting with exact greedy `c=1`.
@@ -198,8 +198,8 @@ stable `S*` IDs belong in commits, artifacts, and `WORKLOG.md`.
 | S1 | #18 | Pool/reset one generator-owned Laguna resident session | **31.800 ms setup and 34.877 ms direct TTFT saved** | **complete** |
 | S2 | #19 | Render/encode once into request-local prepared prompt ownership | **6 -> 1 prompt encodes; 8.17/8.70 ms isolated 4K blocking/streaming TTFT saved** | **complete** |
 | S3 | #20 | Prefix-aware stop-safe streaming holdback | **184.536/123.243 ms useful-content delay removed in deterministic nonmatch/failed-prefix lanes** | **complete** |
-| S4 | #21 | Exact stateful Laguna KV continuation | seconds on guaranteed-hit follow-up turns | pending |
-| S5 | #22 | Native scheduler-owned Laguna prefill/decode ticks | seconds under contention; c=1 exact first | pending, blocked by S4 |
+| S4 | #21 | Exact stateful Laguna KV continuation | **2.347/10.044/21.306 s saved at exact 128/512/1K hits; canonical chat 1.671 -> 0.412 s** | **complete** |
+| S5 | #22 | Native scheduler-owned Laguna prefill/decode ticks | seconds under contention; c=1 exact first | pending |
 
 The separate model-prefill campaign runs in parallel. S1-S5 may consume its
 new default kernels after those commits land, but must compare against the
@@ -486,6 +486,46 @@ structural. Do not enable general radix matching by default.
 
 Only after this lane is positive should Laguna evaluate shared-prefix radix
 snapshots across unrelated requests.
+
+### Retained result (2026-07-23)
+
+Production revision `ccc24292cf60c95ec36fc757d5d5ac2f07ca0ba3` retains one
+bounded generator-owned KV continuation slot for an explicit chat session. The
+opaque key is SHA-256 over auth principal plus session ID; entries expire after
+900 seconds and are replaced on the next incompatible request. Reuse requires
+an exact processed-token prefix, a nonempty suffix, matching session/KV
+position, and a safe transcript commit mode. The retained prefix is exactly
+`prompt + generated[:-1]`; the final sampled-but-unprocessed token must be the
+first matching continuation suffix token. Every mismatch fails closed to reset
+plus full prefill.
+
+Clean measured revision `804e9484f3da0031628805f5bbef62a43badffaa` runs
+the production Q4_K_M generator on Radeon 8060S/gfx1151, BF16 KV, 4K capacity,
+chunk 128, natural-corpus token prefixes, one warmup, and two measured samples.
+Each nine-token continuation is compared with an identical reset/full-prefill
+control:
+
+| Exact reusable prefix | Full control wall | Resident reuse wall | Saved | Speedup |
+| ---: | ---: | ---: | ---: | ---: |
+| 128 | 2,607.195 ms | **260.699 ms** | **2,346.496 ms** | **10.00x** |
+| 512 | 10,347.413 ms | **303.268 ms** | **10,044.145 ms** | **34.12x** |
+| 1,024 | 21,619.917 ms | **314.255 ms** | **21,305.662 ms** | **68.80x** |
+
+The canonical `code_merge_intervals` rendered-chat gate retains 72 processed
+IDs from a 69-token first prompt plus three of four generated IDs. The 89-token
+follow-up moves **1,670.692 -> 411.907 ms (4.06x; 1,258.784 ms saved)** and
+produces the same next ID `1172`.
+
+For the first measured sample at every synthetic shape and for canonical chat,
+the reuse and full-control arms have byte-identical SHA-256 over all
+**277,434,816 copied bytes** of 12 global plus 36 SWA K/V payloads and live-span
+metadata; session/KV positions are exact at 136/520/1,032 and 88 with no pending
+rows. Every next ID agrees, reuse telemetry reports the exact prefix count, and
+tracked allocations recover from zero to zero. Model load (49.944 s) is
+excluded. Artifact:
+[`2026-07-23-gfx1151-laguna-stateful-kv.json`](../benchmarks/results/2026-07-23-gfx1151-laguna-stateful-kv.json),
+SHA-256 `b21e26a4...72d7a8`. This is explicit-session reuse only; global radix
+matching remains off.
 
 ---
 
