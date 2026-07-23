@@ -79,14 +79,15 @@ backend/quant branches in engine code.
 ### End-to-end completion audit (2026-07-23)
 
 The thread objective is closed for one precise product boundary: the pinned
-Laguna S 2.1 Q4_K_M artifact on gfx1151, c=1, at most 4K BF16 KV, raw greedy
-generation, public blocking/streaming chat and tools, plus the pinned B4 DFlash
+Laguna S 2.1 Q4_K_M artifact on gfx1151, exact physical c=1 model ticks with
+at most two scheduler-resident rows, at most 4K BF16 KV, raw greedy generation,
+public blocking/streaming chat and tools, plus the pinned B4 DFlash
 owner as an explicit opt-in. “Complete” below does not broaden that boundary.
 
 | Deliverable | Implementation and focused gates | Retained evidence | Audit verdict |
 | --- | --- | --- | --- |
 | Source-bound resident load | `hipengine/loading/laguna_gguf*.py`, `hipengine/runtime/laguna_gguf_runner.py`; config/map/materialization/device/lifecycle suites | `2026-07-22-gfx1151-laguna-s21-repacked-cache-startup-retained.json` | Complete; cache/source trajectories agree and tracked ownership returns to zero. |
-| Target AR and public serving | `hipengine/generation/laguna_gguf.py`; direct, `LLM`, OpenAI blocking/streaming, bulk/serial, EOT/cancel/capability tests | target-AR, LPF-1/4/5, bulk-correctness, and qualified Poolside artifacts under `benchmarks/results/` | Complete for c=1/4K. Current D4 true-AR control is 16.384 decode tok/s; 512/1K/4K prefill is exact at 47.395/44.855/38.552 tok/s. |
+| Target AR and public serving | `hipengine/generation/laguna_gguf.py`; direct, `LLM`, OpenAI blocking/streaming, resident admission/reclaim, EOT/cancel/capability tests | target-AR, LPF-1/4/5, bulk-correctness, `2026-07-23-gfx1151-laguna-native-scheduler.json`, and qualified Poolside artifacts under `benchmarks/results/` | Complete for exact physical c=1/4K and logical two-slot serving. Current D4 true-AR control is 16.384 decode tok/s; 512/1K/4K prefill is exact at 47.395/44.855/38.552 tok/s. Native scheduling adds bounded c2 ownership, not c>1 model math or a speedup claim. |
 | Poolside-v1 reasoning and tools | `hipengine/chat/poolside_v1.py`; frozen renderer/reasoning/tool fixtures plus generic server conformance | `2026-07-22-gfx1151-laguna-poolside-v1-e2e-correctness.json` | Complete: 5/5 live blocking/streaming cases and 7/7 deterministic tool fixtures, including multiple calls and escaped UTF-8. |
 | B4 DFlash correctness and public route | `hipengine/speculative/laguna_dflash.py`, `hipengine/generation/laguna_dflash.py`, provider registry/server route; drafter, B+1, rollback, API, and public-gate suites | drafter-B4, verify-commit, post-prefill economics, and `2026-07-23-gfx1151-laguna-dflash-public-e2e.json` | Complete as explicit-only: 10/10 AR, 10/10 blocking, and 10/10 streaming public rows are exact. AR remains default. |
 | Ownership and truthful capability surface | shared target weights with isolated target/drafter/cycle request state; finish/cancel/close and fail-before-load gates | parser peak 77,022,439,484 bytes and public DFlash peak 79,817,890,405 bytes both recover to zero | Complete for the supported boundary; identity, revision, budget, exactness, fallback, and no-performance-claim metadata pass. |

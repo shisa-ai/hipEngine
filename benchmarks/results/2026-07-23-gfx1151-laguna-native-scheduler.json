@@ -1,0 +1,453 @@
+{
+  "correctness_claim": true,
+  "created_at": "2026-07-23T11:23:17.218484+00:00",
+  "gates": {
+    "active_occupancy": {
+      "final_server_active_rows": 0,
+      "final_server_free_slots": 2,
+      "final_server_occupied_slots": 0,
+      "host_observed_occupied_slots": [
+        1,
+        2
+      ],
+      "host_observed_runner_active_sessions": [
+        1,
+        2
+      ]
+    },
+    "cancellation_ack": {
+      "active_rows_after": 0,
+      "available_sessions_after": 2,
+      "cancel_requested_before_poll": true,
+      "cancelled_after_reclaim": true,
+      "cancelled_before_reclaim": false
+    },
+    "delayed_prefill_before_prior_completion": true,
+    "direct_native_three_id_match": [
+      19,
+      110,
+      3091
+    ],
+    "host_test_evidence": {
+      "covers": [
+        "two-prompt routing",
+        "protect-decode stagger bound",
+        "prefix-aware SSE",
+        "stateful KV",
+        "dispatched cancellation acknowledged after reclaim",
+        "bounded pending overload/recovery",
+        "20-request ownership soak",
+        "scratch ownership"
+      ],
+      "laguna_file": "44 passed",
+      "submit_poll_tick_budget_bundle": "9 passed"
+    },
+    "lifecycle": {
+      "fair_c1_final_equals_baseline": true,
+      "fair_c2_final_equals_baseline": true,
+      "final_resident_active_rows": 0,
+      "final_resident_free_slots": 2,
+      "final_resident_occupied_slots": 0,
+      "protect_decode_c2_final_equals_baseline": true
+    },
+    "server_exactness": {
+      "all_blocking_mismatches": 0,
+      "all_live_admissions_before_first_completion": true,
+      "all_policy_packets_passed": true,
+      "all_routes_exact": true
+    },
+    "stateful_kv_copied_nbytes_each": 277434816,
+    "stateful_kv_sha256": "38f4d0054bbae5f1bab27fa5616af363ec94be59641b0894805ffb7428558087",
+    "stateful_positions": {
+      "kv": 8,
+      "pending": [],
+      "prefix_reused_tokens": 7,
+      "session": 8
+    },
+    "stateful_reuse_next_ids": {
+      "full_control": [
+        24
+      ],
+      "reuse": [
+        24
+      ]
+    }
+  },
+  "hardware": {
+    "architecture": "gfx1151",
+    "backend": "hip_gfx1151",
+    "hip_hardware_queues": 1,
+    "host": "AMD Ryzen AI MAX+ 395 / Radeon 8060S",
+    "kv_dtype": "bf16",
+    "memory_domain": "UMA GTT"
+  },
+  "implementation": {
+    "cancellation_ack_gate_commit": "fe59e77d0",
+    "execution_path": "laguna_resident_scheduler_c1",
+    "native_scheduler_core_commit": "27d28e1c0",
+    "physical_model_transition": "exact c=1; no c>N packed claim",
+    "protect_decode_tick_bound_commit": "1e4af85ec",
+    "resident_capacity": 2
+  },
+  "kind": "hipengine_laguna_native_scheduler_policy_suite",
+  "limitations": [
+    "No compatibility-bridge c2 baseline exists because the old Laguna route was capped at c1; this packet is not a speedup claim.",
+    "Policy measurements use one p32/d8 synthetic exact-output shape and do not justify a package-default policy change.",
+    "protect-ttft predates the opt-in through-shutdown sampler; fair and protect-decode provide teardown lifecycle evidence.",
+    "SSE exactness is blocking-c1 oracle text plus exact completion count because the OpenAI stream omits generated token IDs."
+  ],
+  "model": {
+    "full_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "name": "Poolside Laguna S 2.1",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sampled_sha256": "afd2e25fc149b8b4a57723c33dd2d719a30f7f270cb93d632d4bc090ae0b83a9",
+    "size_bytes": 75173103200
+  },
+  "performance_claim": false,
+  "policies": {
+    "fair": {
+      "command": "/home/lhl/hipEngine-main/.venv/bin/python scripts/server_f1_concurrency_bench.py --engine hipengine --model /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --served-model-name poolside-laguna-s-2.1 --hipengine-python /home/lhl/hipEngine-main/.venv/bin/python --hipengine-route-expectation scheduler-c1 --hipengine-top-k 0 --hipengine-prefill-decode-policy fair --hipengine-kv-storage bf16 --concurrencies 1,2 --prompt-token-id 7 --prompt-length 32 --decode-tokens 8 --oracle-rows 2 --warmup-runs 1 --measured-runs 3 --streaming-primary --stream-warmup-runs 1 --stream-measured-runs 3 --ctx-per-seq 256 --live-concurrency 2 --live-join-after-tokens 2 --compiler-version-file /tmp/hipengine-hipcc-version.txt --port-base 19600 --memory-sample-through-shutdown --work-dir /tmp/hipengine-s5-fair --json /tmp/2026-07-23-gfx1151-laguna-s5-fair.json",
+      "final_resident_metrics": {
+        "hipengine_completion_tokens_total": 144.0,
+        "hipengine_graph_bucket_captures_total": 0.0,
+        "hipengine_graph_bucket_invalidations_total": 0.0,
+        "hipengine_graph_bucket_replays_total": 0.0,
+        "hipengine_kv_pool_current_bytes": 0.0,
+        "hipengine_kv_pool_current_pages": 0.0,
+        "hipengine_kv_pool_high_water_observed_bytes": 0.0,
+        "hipengine_kv_pool_high_water_observed_pages": 0.0,
+        "hipengine_kv_pool_pinned_pages": 0.0,
+        "hipengine_kv_pool_refcounted_pages": 0.0,
+        "hipengine_prompt_tokens_total": 576.0,
+        "hipengine_request_cancelled_total": 0.0,
+        "hipengine_request_completed_total": 18.0,
+        "hipengine_request_failed_total": 0.0,
+        "hipengine_request_rejected_total": 0.0,
+        "hipengine_requests_total": 18.0,
+        "hipengine_resident_bucket_active_rows": 0.0,
+        "hipengine_resident_bucket_capacity": 2.0,
+        "hipengine_resident_bucket_free_slots": 2.0,
+        "hipengine_resident_bucket_occupied_slots": 0.0,
+        "hipengine_resident_packed_workspace_current_bytes": 0.0,
+        "hipengine_resident_packed_workspace_release_events_total": 0.0,
+        "hipengine_resident_packed_workspace_released_bytes_total": 0.0,
+        "hipengine_resident_requests_admitted_total": 19.0,
+        "hipengine_resident_requests_reclaimed_total": 19.0,
+        "hipengine_resident_work_decode_total": 89.0,
+        "hipengine_resident_work_prefill_total": 19.0,
+        "hipengine_resident_work_reclaim_total": 19.0
+      },
+      "live_admission": {
+        "admission_during_first_request": true,
+        "batch_wall_seconds": 1.9522664450341836,
+        "exact_rows": 2,
+        "join_trigger": {
+          "at_seconds": 0.6746430400526151,
+          "first_request_done_before_join": false,
+          "source": "c1_oracle_prefill_plus_decode_offset"
+        },
+        "request_completion_offsets_seconds": [
+          0.9794846300501376,
+          1.9522664450341836
+        ],
+        "request_start_offsets_seconds": [
+          9.023002348840237e-05,
+          0.6747293820371851
+        ]
+      },
+      "packet_passed": true,
+      "packet_status": "accepted_backend_packet",
+      "raw_sha256": "f6d6b0ad3d6dfe5d942c22ce3ccf36b9ca66fa86cc5743b1e889138bcd73634e",
+      "raw_source": "/tmp/2026-07-23-gfx1151-laguna-s5-fair.json",
+      "rows": {
+        "1": {
+          "blocking_exact_tok_s": 8.271596386016112,
+          "blocking_mismatches": 0,
+          "exact_blocking_rows": 3,
+          "execution_paths": [
+            "laguna_resident_scheduler_c1"
+          ],
+          "memory": {
+            "baseline_bytes": 18677760,
+            "final_bytes": 18677760,
+            "peak_bytes": 77429022720,
+            "peak_delta_bytes": 77410344960,
+            "scope": "through_shutdown"
+          },
+          "resident_capacity": 1.0,
+          "route_ok": true,
+          "sse_end_to_end_p95_seconds": 0.9689498350489885,
+          "sse_exact_tok_s": 8.25367670383035,
+          "sse_itl_p99_seconds": 0.05810482404194772,
+          "sse_measured_runs": 3,
+          "sse_slo_goodput_tok_s": 8.25367670383035,
+          "sse_slo_passed_runs": 3,
+          "sse_ttft_p95_seconds": 0.6216360790422186
+        },
+        "2": {
+          "blocking_exact_tok_s": 8.32632232281298,
+          "blocking_mismatches": 0,
+          "exact_blocking_rows": 6,
+          "execution_paths": [
+            "laguna_resident_scheduler_c1"
+          ],
+          "memory": {
+            "baseline_bytes": 18677760,
+            "final_bytes": 18677760,
+            "peak_bytes": 77831675904,
+            "peak_delta_bytes": 77812998144,
+            "scope": "through_shutdown"
+          },
+          "resident_capacity": 2.0,
+          "route_ok": true,
+          "sse_end_to_end_p95_seconds": 1.9302692570490763,
+          "sse_exact_tok_s": 8.28751963575821,
+          "sse_itl_p99_seconds": 0.11557991802692413,
+          "sse_measured_runs": 3,
+          "sse_slo_goodput_tok_s": 8.287380799356708,
+          "sse_slo_passed_runs": 2,
+          "sse_ttft_p95_seconds": 1.2953976659337059
+        }
+      },
+      "source_revision": "fe59e77d065c7bf88cfa1635d71cd64b0e415005"
+    },
+    "protect-decode": {
+      "command": "/home/lhl/hipEngine-main/.venv/bin/python scripts/server_f1_concurrency_bench.py --engine hipengine --model /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --served-model-name poolside-laguna-s-2.1 --hipengine-python /home/lhl/hipEngine-main/.venv/bin/python --hipengine-route-expectation scheduler-c1 --hipengine-top-k 0 --hipengine-prefill-decode-policy protect_decode --hipengine-kv-storage bf16 --concurrencies 1,2 --prompt-token-id 7 --prompt-length 32 --decode-tokens 8 --oracle-rows 2 --warmup-runs 1 --measured-runs 3 --streaming-primary --stream-warmup-runs 1 --stream-measured-runs 3 --ctx-per-seq 256 --live-concurrency 2 --live-join-after-tokens 2 --compiler-version-file /tmp/hipengine-hipcc-version.txt --port-base 19500 --memory-sample-through-shutdown --work-dir /tmp/hipengine-s5-protect-decode --json /tmp/2026-07-23-gfx1151-laguna-s5-protect-decode.json",
+      "final_resident_metrics": {
+        "hipengine_completion_tokens_total": 144.0,
+        "hipengine_graph_bucket_captures_total": 0.0,
+        "hipengine_graph_bucket_invalidations_total": 0.0,
+        "hipengine_graph_bucket_replays_total": 0.0,
+        "hipengine_kv_pool_current_bytes": 0.0,
+        "hipengine_kv_pool_current_pages": 0.0,
+        "hipengine_kv_pool_high_water_observed_bytes": 0.0,
+        "hipengine_kv_pool_high_water_observed_pages": 0.0,
+        "hipengine_kv_pool_pinned_pages": 0.0,
+        "hipengine_kv_pool_refcounted_pages": 0.0,
+        "hipengine_prompt_tokens_total": 576.0,
+        "hipengine_request_cancelled_total": 0.0,
+        "hipengine_request_completed_total": 18.0,
+        "hipengine_request_failed_total": 0.0,
+        "hipengine_request_rejected_total": 0.0,
+        "hipengine_requests_total": 18.0,
+        "hipengine_resident_bucket_active_rows": 0.0,
+        "hipengine_resident_bucket_capacity": 2.0,
+        "hipengine_resident_bucket_free_slots": 2.0,
+        "hipengine_resident_bucket_occupied_slots": 0.0,
+        "hipengine_resident_packed_workspace_current_bytes": 0.0,
+        "hipengine_resident_packed_workspace_release_events_total": 0.0,
+        "hipengine_resident_packed_workspace_released_bytes_total": 0.0,
+        "hipengine_resident_requests_admitted_total": 19.0,
+        "hipengine_resident_requests_reclaimed_total": 19.0,
+        "hipengine_resident_work_decode_total": 145.0,
+        "hipengine_resident_work_prefill_total": 19.0,
+        "hipengine_resident_work_reclaim_total": 19.0
+      },
+      "live_admission": {
+        "admission_during_first_request": true,
+        "batch_wall_seconds": 1.9440340069122612,
+        "exact_rows": 2,
+        "join_trigger": {
+          "at_seconds": 0.7012309209676459,
+          "first_request_done_before_join": false,
+          "source": "c1_oracle_prefill_plus_decode_offset"
+        },
+        "request_completion_offsets_seconds": [
+          0.9726567500038072,
+          1.9440340069122612
+        ],
+        "request_start_offsets_seconds": [
+          0.00014476198703050613,
+          0.7013245159760118
+        ]
+      },
+      "packet_passed": true,
+      "packet_status": "accepted_backend_packet",
+      "raw_sha256": "83cf1e1bc1ea89be12f517a0e5e092c3bf44b459b9173d2635c41003ac022ffd",
+      "raw_source": "/tmp/2026-07-23-gfx1151-laguna-s5-protect-decode.json",
+      "rows": {
+        "1": {
+          "blocking_exact_tok_s": 8.273646181195904,
+          "blocking_mismatches": 0,
+          "exact_blocking_rows": 3,
+          "execution_paths": [
+            "laguna_resident_scheduler_c1"
+          ],
+          "memory": {
+            "baseline_bytes": 18677760,
+            "final_bytes": 174997504,
+            "peak_bytes": 77654507520,
+            "peak_delta_bytes": 77635829760,
+            "scope": "through_shutdown"
+          },
+          "resident_capacity": 1.0,
+          "route_ok": true,
+          "sse_end_to_end_p95_seconds": 0.9671883330447599,
+          "sse_exact_tok_s": 8.269182906957658,
+          "sse_itl_p99_seconds": 0.05789480498060584,
+          "sse_measured_runs": 3,
+          "sse_slo_goodput_tok_s": 8.269182906957658,
+          "sse_slo_passed_runs": 3,
+          "sse_ttft_p95_seconds": 0.6208235080121085
+        },
+        "2": {
+          "blocking_exact_tok_s": 8.315715433064602,
+          "blocking_mismatches": 0,
+          "exact_blocking_rows": 6,
+          "execution_paths": [
+            "laguna_resident_scheduler_c1"
+          ],
+          "memory": {
+            "baseline_bytes": 18677760,
+            "final_bytes": 18677760,
+            "peak_bytes": 77831675904,
+            "peak_delta_bytes": 77812998144,
+            "scope": "through_shutdown"
+          },
+          "resident_capacity": 2.0,
+          "route_ok": true,
+          "sse_end_to_end_p95_seconds": 1.9358520830282941,
+          "sse_exact_tok_s": 8.26286271229988,
+          "sse_itl_p99_seconds": 0.5598625289276242,
+          "sse_measured_runs": 3,
+          "sse_slo_goodput_tok_s": 4.13143135614994,
+          "sse_slo_passed_runs": 0,
+          "sse_ttft_p95_seconds": 1.5864690740127116
+        }
+      },
+      "source_revision": "fe59e77d065c7bf88cfa1635d71cd64b0e415005"
+    },
+    "protect-ttft": {
+      "command": "/home/lhl/hipEngine-main/.venv/bin/python scripts/server_f1_concurrency_bench.py --engine hipengine --model /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --served-model-name poolside-laguna-s-2.1 --hipengine-python /home/lhl/hipEngine-main/.venv/bin/python --hipengine-route-expectation scheduler-c1 --hipengine-top-k 0 --hipengine-prefill-decode-policy protect_ttft --hipengine-kv-storage bf16 --concurrencies 1,2 --prompt-token-id 7 --prompt-length 32 --decode-tokens 8 --oracle-rows 2 --warmup-runs 1 --measured-runs 3 --streaming-primary --stream-warmup-runs 1 --stream-measured-runs 3 --ctx-per-seq 256 --live-concurrency 2 --live-join-after-tokens 2 --compiler-version-file /tmp/hipengine-hipcc-version.txt --port-base 19400 --work-dir /tmp/hipengine-s5-protect-ttft --json /tmp/2026-07-23-gfx1151-laguna-s5-protect-ttft.json",
+      "final_resident_metrics": {
+        "hipengine_completion_tokens_total": 144.0,
+        "hipengine_graph_bucket_captures_total": 0.0,
+        "hipengine_graph_bucket_invalidations_total": 0.0,
+        "hipengine_graph_bucket_replays_total": 0.0,
+        "hipengine_kv_pool_current_bytes": 0.0,
+        "hipengine_kv_pool_current_pages": 0.0,
+        "hipengine_kv_pool_high_water_observed_bytes": 0.0,
+        "hipengine_kv_pool_high_water_observed_pages": 0.0,
+        "hipengine_kv_pool_pinned_pages": 0.0,
+        "hipengine_kv_pool_refcounted_pages": 0.0,
+        "hipengine_prompt_tokens_total": 576.0,
+        "hipengine_request_cancelled_total": 0.0,
+        "hipengine_request_completed_total": 18.0,
+        "hipengine_request_failed_total": 0.0,
+        "hipengine_request_rejected_total": 0.0,
+        "hipengine_requests_total": 18.0,
+        "hipengine_resident_bucket_active_rows": 0.0,
+        "hipengine_resident_bucket_capacity": 2.0,
+        "hipengine_resident_bucket_free_slots": 2.0,
+        "hipengine_resident_bucket_occupied_slots": 0.0,
+        "hipengine_resident_packed_workspace_current_bytes": 0.0,
+        "hipengine_resident_packed_workspace_release_events_total": 0.0,
+        "hipengine_resident_packed_workspace_released_bytes_total": 0.0,
+        "hipengine_resident_requests_admitted_total": 19.0,
+        "hipengine_resident_requests_reclaimed_total": 19.0,
+        "hipengine_resident_work_decode_total": 81.0,
+        "hipengine_resident_work_prefill_total": 19.0,
+        "hipengine_resident_work_reclaim_total": 19.0
+      },
+      "live_admission": {
+        "admission_during_first_request": true,
+        "batch_wall_seconds": 1.947488690027967,
+        "exact_rows": 2,
+        "join_trigger": {
+          "at_seconds": 0.6749005749588832,
+          "first_request_done_before_join": false,
+          "source": "c1_oracle_prefill_plus_decode_offset"
+        },
+        "request_completion_offsets_seconds": [
+          0.976538478047587,
+          1.947488690027967
+        ],
+        "request_start_offsets_seconds": [
+          0.00010526797268539667,
+          0.6749511000234634
+        ]
+      },
+      "packet_passed": true,
+      "packet_status": "accepted_backend_packet",
+      "raw_sha256": "a76895bd2fc4f26a0bbdaf039372ae276d2457e2f9392fcf476a7c7e01e8dfb8",
+      "raw_source": "/tmp/2026-07-23-gfx1151-laguna-s5-protect-ttft.json",
+      "rows": {
+        "1": {
+          "blocking_exact_tok_s": 8.295386529145677,
+          "blocking_mismatches": 0,
+          "exact_blocking_rows": 3,
+          "execution_paths": [
+            "laguna_resident_scheduler_c1"
+          ],
+          "memory": {
+            "baseline_bytes": 176222208,
+            "final_bytes": 77429022720,
+            "peak_bytes": 77429022720,
+            "peak_delta_bytes": 77252800512,
+            "scope": "resident_final_pre_shutdown"
+          },
+          "resident_capacity": 1.0,
+          "route_ok": true,
+          "sse_end_to_end_p95_seconds": 0.9670145330019295,
+          "sse_exact_tok_s": 8.270439398530874,
+          "sse_itl_p99_seconds": 0.05806735600344837,
+          "sse_measured_runs": 3,
+          "sse_slo_goodput_tok_s": 8.270439398530874,
+          "sse_slo_passed_runs": 3,
+          "sse_ttft_p95_seconds": 0.6215583040611818
+        },
+        "2": {
+          "blocking_exact_tok_s": 8.305716579483914,
+          "blocking_mismatches": 0,
+          "exact_blocking_rows": 6,
+          "execution_paths": [
+            "laguna_resident_scheduler_c1"
+          ],
+          "memory": {
+            "baseline_bytes": 18677760,
+            "final_bytes": 77831675904,
+            "peak_bytes": 77831675904,
+            "peak_delta_bytes": 77812998144,
+            "scope": "resident_final_pre_shutdown"
+          },
+          "resident_capacity": 2.0,
+          "route_ok": true,
+          "sse_end_to_end_p95_seconds": 1.9328905590809882,
+          "sse_exact_tok_s": 8.275878336899483,
+          "sse_itl_p99_seconds": 0.11608511104714125,
+          "sse_measured_runs": 3,
+          "sse_slo_goodput_tok_s": 8.275878336899483,
+          "sse_slo_passed_runs": 3,
+          "sse_ttft_p95_seconds": 1.24107897200156
+        }
+      },
+      "source_revision": "8648415bee4d7e0c1a1687eb770fb958e62d23d0"
+    }
+  },
+  "policy_result": {
+    "fair": "2/3 c2 SSE SLO runs; highest median c2 exact/SLO goodput (~8.287 tok/s)",
+    "protect_decode": "0/3 c2 SSE SLO runs at 0.5-s ITL threshold; exact and lifecycle-safe after tick-bound fix",
+    "protect_ttft": "3/3 c2 SSE SLO runs; lowest c2 TTFT p95 median (1.2411 s)",
+    "selection": "no package-default policy change from this one short load shape"
+  },
+  "protocol": {
+    "concurrencies": [
+      1,
+      2
+    ],
+    "decode_tokens": 8,
+    "live_admission": "request B released after c1 oracle prefill plus two decode-token offsets",
+    "per_width": "1 warmup + 3 blocking measurements + 1 SSE warmup + 3 SSE measurements",
+    "prompt_shape": "32 raw token IDs; final ID cycles 7..10",
+    "sampling": "temperature=0, top_k=0, top_p=1, ignore_eos=true, MTP off",
+    "server": "real localhost Uvicorn OpenAI /v1/completions blocking and SSE",
+    "slo_seconds": {
+      "end_to_end_p95": 30.0,
+      "itl_p99": 0.5,
+      "ttft_p95": 10.0
+    }
+  },
+  "schema": 1,
+  "status": "accepted_native_scheduler_correctness_and_policy_evidence"
+}
