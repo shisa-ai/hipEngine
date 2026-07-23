@@ -16,6 +16,8 @@ from hipengine.runtime.laguna_gguf_runner import (
     LagunaEagerLibraries,
     LagunaEagerScratch,
     LagunaHiddenCaptureTargets,
+    LagunaPrefillChunkPolicy,
+    LagunaPrefillScratchPlan,
     LagunaRowsScratch,
     capture_laguna_hidden_rows,
     capture_laguna_hidden_tap,
@@ -139,12 +141,54 @@ def test_laguna_rows_scratch_is_bounded_and_frees() -> None:
     assert scratch.query.nbytes == 8 * 72 * 128 * DType.FP32.itemsize
     assert scratch.logits.nbytes == 8 * 100_352 * DType.FP32.itemsize
     assert scratch.nbytes == sum(buffer.nbytes for buffer in scratch.buffers)
+    assert scratch.nbytes == LagunaRowsScratch.planned_nbytes(_config(), max_rows=8)
 
     scratch.free(runtime=runtime)
     assert runtime.allocations == {}
 
     with pytest.raises(ValueError, match="max_rows"):
         LagunaRowsScratch.allocate(_config(), max_rows=0, runtime=runtime)
+
+
+def test_laguna_prefill_policy_decouples_matrix_and_attention_rows() -> None:
+    policy = LagunaPrefillChunkPolicy.resolve(
+        context_length=4_096,
+        matrix_rows=512,
+        attention_rows=128,
+    )
+    automatic = LagunaPrefillChunkPolicy.resolve(
+        context_length=4_096,
+        matrix_rows=256,
+    )
+
+    assert (policy.matrix_rows, policy.attention_rows) == (512, 128)
+    assert (automatic.matrix_rows, automatic.attention_rows) == (256, 128)
+    with pytest.raises(ValueError, match="attention rows"):
+        LagunaPrefillChunkPolicy.resolve(
+            context_length=4_096,
+            matrix_rows=128,
+            attention_rows=256,
+        )
+    with pytest.raises(ValueError, match="context/512"):
+        LagunaPrefillChunkPolicy.resolve(context_length=4_096, matrix_rows=513)
+
+
+def test_laguna_prefill_scratch_plan_accounts_for_matrix_capacity() -> None:
+    config = _config()
+    policy = LagunaPrefillChunkPolicy.resolve(
+        context_length=4_096,
+        matrix_rows=512,
+        attention_rows=128,
+    )
+    moe_plan = runner_module.resolve_laguna_moe_plan(config, backend="hip_gfx1151")
+
+    plan = LagunaPrefillScratchPlan.build(config, moe_plan, policy=policy)
+
+    assert plan.rows_nbytes == 334_651_392
+    assert plan.moe_nbytes == 77_301_776
+    assert plan.total_nbytes == 411_953_168
+    assert plan.matrix_rows == 512
+    assert plan.attention_rows == 128
 
 
 def test_laguna_routing_replay_copies_each_sparse_layer_to_a_bounded_plane() -> None:
@@ -536,7 +580,13 @@ def test_laguna_session_constructor_failure_frees_partial_state_in_reverse(
     monkeypatch.setattr(
         runner_module,
         "resolve_laguna_moe_plan",
-        lambda *args, **kwargs: Resource("moe_plan"),
+        lambda *args, **kwargs: SimpleNamespace(
+            hidden_size=3_072,
+            expert_count=256,
+            top_k=10,
+            expert_ffn_size=1_024,
+            shared_ffn_size=1_024,
+        ),
     )
     monkeypatch.setattr(
         runner_module,
@@ -615,7 +665,13 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
     monkeypatch.setattr(
         runner_module,
         "resolve_laguna_moe_plan",
-        lambda *args, **kwargs: Resource("moe_plan"),
+        lambda *args, **kwargs: SimpleNamespace(
+            hidden_size=3_072,
+            expert_count=256,
+            top_k=10,
+            expert_ffn_size=1_024,
+            shared_ffn_size=1_024,
+        ),
     )
     monkeypatch.setattr(
         runner_module.LagunaRowsScratch,
@@ -638,6 +694,9 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch)
         safety_reserve_nbytes=4 * 2**30,
     )
     assert session.prefill_chunk_size == 128
+    assert session.prefill_attention_chunk_size == 128
+    assert session.prefill_scratch_plan.total_nbytes == 102_992_912
+    assert materialize_kwargs["scratch_nbytes"] == 2 * 2**30
     assert session.swa_prefill_variant == "swa_context_rows_wave32_exact_spans"
     assert session.selected_down_mode == "adaptive_grouped_smallm_fused"
     assert session.verifier_scratch is None
