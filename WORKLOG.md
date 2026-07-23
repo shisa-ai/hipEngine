@@ -175264,3 +175264,30 @@ uvx ruff check hipengine/runtime/gguf_linear.py hipengine/runtime/laguna_moe.py 
   tests/test_laguna_gguf_runner.py
 # clean
 ```
+
+## 2026-07-23 — Add balanced Laguna LPF-4 chunk-policy gate
+
+Added `scripts/laguna_chunk_prefill_bench.py` to compare the retained 64-row
+prefill policy against 128 rows in one resident session. Every canonical prompt
+crosses 64 tokens and fits 128, so the candidate executes one complete 48-layer
+pass instead of two. The predeclared promotion gate alternates order across
+prompts and repetitions, requires at least two repetitions, exact outputs at
+16/32-token horizons, same-mode determinism, the frozen Poolside oracle, exact
+tracked lifecycle recovery, faster aggregate and every-category prefill, no
+aggregate or category E2E regression, and decode within 2%. Load is excluded.
+The resident session is allocated once at 128 rows and only its scheduling
+chunk changes, avoiding scratch-size/allocation confounding.
+
+Validation:
+
+```bash
+uv run pytest -q tests/test_laguna_chunk_prefill_bench.py
+# 3 passed
+uvx ruff check scripts/laguna_chunk_prefill_bench.py \
+  tests/test_laguna_chunk_prefill_bench.py
+python3 -m compileall -q scripts/laguna_chunk_prefill_bench.py
+uv run python scripts/laguna_chunk_prefill_bench.py --help
+# clean
+```
+
+No performance measurement or default change is made in this harness-only unit.
