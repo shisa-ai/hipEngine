@@ -10,6 +10,11 @@ using half_t = _Float16;
 constexpr int kExactSmallTileM = 8;
 constexpr int kExactLargeTileM = 16;
 constexpr int kExactTileN = 4;
+constexpr int kWmmaWave = 32;
+constexpr int kWmmaTile = 16;
+
+using half16_t = half_t __attribute__((ext_vector_type(16)));
+using float8_t = float __attribute__((ext_vector_type(8)));
 
 __device__ inline float bf16_to_f32(uint16_t value) {
   union { uint32_t u; float f; } out;
@@ -233,6 +238,125 @@ int launch_tiled_exact(
       x, weight, out, rows, in_features, out_features, threads, stream);
 }
 
+__device__ inline half16_t zero_half16() {
+  half16_t values;
+#pragma unroll
+  for (int i = 0; i < kWmmaTile; ++i) values[i] = static_cast<half_t>(0.0f);
+  return values;
+}
+
+__device__ inline float8_t zero_float8() {
+  float8_t values;
+#pragma unroll
+  for (int i = 0; i < 8; ++i) values[i] = 0.0f;
+  return values;
+}
+
+__device__ inline half16_t load_bf16_half16(
+    const uint16_t* __restrict__ x,
+    int64_t row,
+    int64_t k_base,
+    int64_t in_features,
+    bool valid) {
+  if (!valid) return zero_half16();
+  half16_t values;
+#pragma unroll
+  for (int i = 0; i < kWmmaTile; ++i) {
+    values[i] = static_cast<half_t>(
+        bf16_to_f32(x[row * in_features + k_base + i]));
+  }
+  return values;
+}
+
+// One wave computes a 16-row x 16-column tile directly from the resident
+// row-major F16 source weight. BF16 activations are converted to F16 in
+// registers; no repack, sidecar, or inference-time staging is introduced.
+template <typename out_t>
+__launch_bounds__(kWmmaWave, 4)
+__global__ void laguna_f16w_wmma_kernel(
+    const uint16_t* __restrict__ x,
+    const half_t* __restrict__ weight,
+    out_t* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  const int lane16 = threadIdx.x & 15;
+  const int half_id = threadIdx.x >> 4;
+  const int64_t row_base = static_cast<int64_t>(blockIdx.y) * kWmmaTile;
+  const int64_t col_base = static_cast<int64_t>(blockIdx.x) * kWmmaTile;
+  const int64_t load_row = row_base + lane16;
+  const int64_t load_col = col_base + lane16;
+  const bool valid_row = load_row < rows;
+  const bool valid_col = load_col < out_features;
+  float8_t acc = zero_float8();
+
+  for (int64_t k_base = 0; k_base < in_features; k_base += kWmmaTile) {
+    const half16_t a = load_bf16_half16(
+        x, load_row, k_base, in_features, valid_row);
+    const half16_t b = valid_col
+        ? *reinterpret_cast<const half16_t*>(
+              weight + load_col * in_features + k_base)
+        : zero_half16();
+    acc = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a, b, acc);
+  }
+
+  if (!valid_col) return;
+#pragma unroll
+  for (int j = 0; j < 8; ++j) {
+    const int64_t store_row = row_base + half_id + 2 * j;
+    if (store_row < rows) {
+      store_scalar(out, store_row * out_features + load_col, acc[j]);
+    }
+  }
+}
+
+template <typename out_t>
+int launch_wmma(
+    const uint16_t* x,
+    const half_t* weight,
+    out_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || in_features <= 0 || out_features <= 0 ||
+      (in_features % kWmmaTile) != 0 || threads != 256) {
+    return hipErrorInvalidValue;
+  }
+  laguna_f16w_wmma_kernel<out_t><<<
+      dim3((out_features + kWmmaTile - 1) / kWmmaTile,
+           (rows + kWmmaTile - 1) / kWmmaTile),
+      dim3(kWmmaWave),
+      0,
+      stream>>>(x, weight, out, rows, in_features, out_features);
+  return hipGetLastError();
+}
+
+int launch_triple_wmma(
+    const uint16_t* x,
+    const half_t* wa,
+    const half_t* wb,
+    const half_t* wc,
+    float* oa,
+    float* ob,
+    float* oc,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_a,
+    int64_t out_b,
+    int64_t out_c,
+    int64_t threads,
+    hipStream_t stream) {
+  hipError_t error = static_cast<hipError_t>(
+      launch_wmma(x, wa, oa, rows, in_features, out_a, threads, stream));
+  if (error != hipSuccess) return error;
+  error = static_cast<hipError_t>(
+      launch_wmma(x, wb, ob, rows, in_features, out_b, threads, stream));
+  if (error != hipSuccess) return error;
+  return launch_wmma(x, wc, oc, rows, in_features, out_c, threads, stream);
+}
+
 int launch_triple_tiled_exact(
     const uint16_t* x,
     const half_t* wa,
@@ -294,3 +418,6 @@ extern "C" int hipengine_laguna_f16w_triple_gemv_bf16_f32_out(const uint16_t* x,
 extern "C" int hipengine_laguna_f16w_tiled_bf16_f32_out(const uint16_t* x, const half_t* w, float* out, int64_t r, int64_t k, int64_t n, int64_t t, hipStream_t s) { return launch_tiled_exact(x,w,out,r,k,n,t,s); }
 extern "C" int hipengine_laguna_f16w_tiled_bf16_bf16_out(const uint16_t* x, const half_t* w, uint16_t* out, int64_t r, int64_t k, int64_t n, int64_t t, hipStream_t s) { return launch_tiled_exact(x,w,out,r,k,n,t,s); }
 extern "C" int hipengine_laguna_f16w_triple_tiled_bf16_f32_out(const uint16_t* x, const half_t* wa, const half_t* wb, const half_t* wc, float* oa, float* ob, float* oc, int64_t r, int64_t k, int64_t na, int64_t nb, int64_t nc, int64_t t, hipStream_t s) { return launch_triple_tiled_exact(x,wa,wb,wc,oa,ob,oc,r,k,na,nb,nc,t,s); }
+extern "C" int hipengine_laguna_f16w_wmma_bf16_f32_out(const uint16_t* x, const half_t* w, float* out, int64_t r, int64_t k, int64_t n, int64_t t, hipStream_t s) { return launch_wmma(x,w,out,r,k,n,t,s); }
+extern "C" int hipengine_laguna_f16w_wmma_bf16_bf16_out(const uint16_t* x, const half_t* w, uint16_t* out, int64_t r, int64_t k, int64_t n, int64_t t, hipStream_t s) { return launch_wmma(x,w,out,r,k,n,t,s); }
+extern "C" int hipengine_laguna_f16w_triple_wmma_bf16_f32_out(const uint16_t* x, const half_t* wa, const half_t* wb, const half_t* wc, float* oa, float* ob, float* oc, int64_t r, int64_t k, int64_t na, int64_t nb, int64_t nc, int64_t t, hipStream_t s) { return launch_triple_wmma(x,wa,wb,wc,oa,ob,oc,r,k,na,nb,nc,t,s); }

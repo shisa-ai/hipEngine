@@ -74,6 +74,44 @@ def test_laguna_f16_projection_registry_resolves_all_mixed_variants() -> None:
     )
 
 
+def test_laguna_f16_projection_registry_resolves_matrix_variants() -> None:
+    from hipengine.kernels.hip_gfx1100.linear.laguna_f16_projection import (
+        laguna_f16w_triple_wmma_bf16_f32_out,
+        laguna_f16w_wmma_bf16_bf16_out,
+        laguna_f16w_wmma_bf16_f32_out,
+        register_laguna_f16_projection_kernels,
+    )
+
+    register_laguna_f16_projection_kernels()
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="linear",
+            quant="fp16_weight",
+            variant="wmma_bf16_f32_out",
+        )
+        is laguna_f16w_wmma_bf16_f32_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="linear",
+            quant="fp16_weight",
+            variant="wmma_bf16_bf16_out",
+        )
+        is laguna_f16w_wmma_bf16_bf16_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="linear_triple",
+            quant="fp16_weight",
+            variant="wmma_bf16_f32_out",
+        )
+        is laguna_f16w_triple_wmma_bf16_f32_out
+    )
+
+
 def test_laguna_f16_projection_runtime_uses_resident_weight_abi() -> None:
     from hipengine.kernels.hip_gfx1100.linear.laguna_f16_projection import (
         register_laguna_f16_projection_kernels,
@@ -387,6 +425,140 @@ def test_laguna_f16_projection_tiled_is_bit_exact_to_gemv(rows: int) -> None:
 
     np.testing.assert_array_equal(actual_tiled_f32, actual_gemv_f32)
     np.testing.assert_array_equal(actual_tiled_bf16, actual_gemv_bf16)
+
+
+@pytest.mark.parametrize("rows", [16, 17])
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_laguna_f16_projection_wmma_passes_cpu_quality_gate(rows: int) -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1100.linear.laguna_f16_projection import (
+        build_laguna_f16_projection_prefill,
+        laguna_f16w_wmma_bf16_bf16_out,
+        laguna_f16w_wmma_bf16_f32_out,
+    )
+
+    rng = np.random.default_rng(0xF160 + rows)
+    in_features, out_features = 64, 35
+    x_bits = float_array_to_bf16_bits(
+        rng.normal(0.0, 0.1, size=(rows, in_features)).astype(np.float32)
+    )
+    x_round = bf16_to_float32(x_bits)
+    weight = rng.normal(
+        0.0, 0.05, size=(out_features, in_features)
+    ).astype(np.float16)
+    expected = x_round @ weight.astype(np.float32).T
+    runtime = get_hip_runtime()
+    library = build_laguna_f16_projection_prefill(load=True)
+    allocations = []
+    try:
+        dx = _upload(x_bits, runtime, allocations)
+        dw = _upload(weight, runtime, allocations)
+        out_f32 = _alloc((rows, out_features), np.float32, runtime, allocations)
+        out_bf16 = _alloc((rows, out_features), np.uint16, runtime, allocations)
+        laguna_f16w_wmma_bf16_f32_out(
+            dx.ptr,
+            dw.ptr,
+            out_f32.ptr,
+            rows,
+            in_features,
+            out_features,
+            library=library,
+            runtime=runtime,
+        )
+        laguna_f16w_wmma_bf16_bf16_out(
+            dx.ptr,
+            dw.ptr,
+            out_bf16.ptr,
+            rows,
+            in_features,
+            out_features,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        actual_f32 = _download(out_f32, (rows, out_features), np.float32, runtime)
+        actual_bf16 = _download(out_bf16, (rows, out_features), np.uint16, runtime)
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+
+    np.testing.assert_allclose(actual_f32, expected, rtol=3e-4, atol=3e-4)
+    np.testing.assert_array_equal(
+        actual_bf16, float_array_to_bf16_bits(actual_f32)
+    )
+    shifted_expected = expected - np.max(expected, axis=1, keepdims=True)
+    shifted_actual = actual_f32 - np.max(actual_f32, axis=1, keepdims=True)
+    p = np.exp(shifted_expected)
+    q = np.exp(shifted_actual)
+    p /= np.sum(p, axis=1, keepdims=True)
+    q /= np.sum(q, axis=1, keepdims=True)
+    kl = np.sum(p * (np.log(p) - np.log(q)), axis=1)
+    top1 = np.mean(np.argmax(expected, axis=1) == np.argmax(actual_f32, axis=1))
+    assert float(np.max(kl)) <= 0.05
+    assert float(top1) >= 0.9
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_laguna_f16_projection_triple_wmma_matches_three_cpu_matrices() -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1100.linear.laguna_f16_projection import (
+        build_laguna_f16_projection_prefill,
+        laguna_f16w_triple_wmma_bf16_f32_out,
+    )
+
+    rng = np.random.default_rng(0x3F16)
+    rows, in_features = 16, 64
+    widths = (19, 11, 7)
+    x_bits = float_array_to_bf16_bits(
+        rng.normal(0.0, 0.1, size=(rows, in_features)).astype(np.float32)
+    )
+    x_round = bf16_to_float32(x_bits)
+    weights = tuple(
+        rng.normal(0.0, 0.05, size=(width, in_features)).astype(np.float16)
+        for width in widths
+    )
+    runtime = get_hip_runtime()
+    library = build_laguna_f16_projection_prefill(load=True)
+    allocations = []
+    try:
+        dx = _upload(x_bits, runtime, allocations)
+        device_weights = tuple(
+            _upload(weight, runtime, allocations) for weight in weights
+        )
+        outputs = tuple(
+            _alloc((rows, width), np.float32, runtime, allocations) for width in widths
+        )
+        laguna_f16w_triple_wmma_bf16_f32_out(
+            dx.ptr,
+            *(weight.ptr for weight in device_weights),
+            *(out.ptr for out in outputs),
+            rows,
+            in_features,
+            *widths,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        actual = tuple(
+            _download(out, (rows, width), np.float32, runtime)
+            for out, width in zip(outputs, widths, strict=True)
+        )
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+
+    for got, weight in zip(actual, weights, strict=True):
+        expected = x_round @ weight.astype(np.float32).T
+        np.testing.assert_allclose(got, expected, rtol=3e-4, atol=3e-4)
+
+
+def test_laguna_f16_projection_wmma_rejects_non_tile_k() -> None:
+    from hipengine.kernels.hip_gfx1100.linear.laguna_f16_projection import (
+        laguna_f16w_wmma_bf16_f32_out,
+    )
+
+    with pytest.raises(ValueError, match="multiple of 16"):
+        laguna_f16w_wmma_bf16_f32_out(1, 2, 3, 16, 63, 32)
 
 
 def _upload(array: np.ndarray, runtime, allocations):

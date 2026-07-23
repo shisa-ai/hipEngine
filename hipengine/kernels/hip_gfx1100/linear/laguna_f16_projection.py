@@ -303,6 +303,64 @@ def laguna_f16w_tiled_bf16_bf16_out(
     )
 
 
+def laguna_f16w_wmma_bf16_f32_out(
+    x_ptr,
+    weight_ptr,
+    out_ptr,
+    rows,
+    in_features,
+    out_features,
+    *,
+    threads=256,
+    stream=0,
+    library=None,
+    runtime=None,
+):
+    _validate_wmma(rows, in_features, (out_features,), threads)
+    _single(
+        "hipengine_laguna_f16w_wmma_bf16_f32_out",
+        x_ptr,
+        weight_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        threads=threads,
+        stream=stream,
+        library=library or build_laguna_f16_projection_prefill(load=True),
+        runtime=runtime,
+    )
+
+
+def laguna_f16w_wmma_bf16_bf16_out(
+    x_ptr,
+    weight_ptr,
+    out_ptr,
+    rows,
+    in_features,
+    out_features,
+    *,
+    threads=256,
+    stream=0,
+    library=None,
+    runtime=None,
+):
+    _validate_wmma(rows, in_features, (out_features,), threads)
+    _single(
+        "hipengine_laguna_f16w_wmma_bf16_bf16_out",
+        x_ptr,
+        weight_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        threads=threads,
+        stream=stream,
+        library=library or build_laguna_f16_projection_prefill(load=True),
+        runtime=runtime,
+    )
+
+
 def laguna_f16w_dual_gemv_bf16_f32_out(
     x_ptr,
     weight_a_ptr,
@@ -432,6 +490,55 @@ def laguna_f16w_triple_tiled_bf16_f32_out(
         runtime.check(int(err))
 
 
+def laguna_f16w_triple_wmma_bf16_f32_out(
+    x_ptr,
+    weight_a_ptr,
+    weight_b_ptr,
+    weight_c_ptr,
+    out_a_ptr,
+    out_b_ptr,
+    out_c_ptr,
+    rows,
+    in_features,
+    out_a_features,
+    out_b_features,
+    out_c_features,
+    *,
+    threads=256,
+    stream=0,
+    library=None,
+    runtime=None,
+):
+    outputs = (out_a_features, out_b_features, out_c_features)
+    _validate_wmma(rows, in_features, outputs, threads)
+    library = library or build_laguna_f16_projection_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_laguna_f16w_triple_wmma_bf16_f32_out",
+        _TRIPLE_ARGS,
+        ctypes.c_int,
+    )
+    err = fn(
+        x_ptr,
+        weight_a_ptr,
+        weight_b_ptr,
+        weight_c_ptr,
+        out_a_ptr,
+        out_b_ptr,
+        out_c_ptr,
+        rows,
+        in_features,
+        out_a_features,
+        out_b_features,
+        out_c_features,
+        threads,
+        stream,
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def _validate(rows: int, in_features: int, outputs: tuple[int, ...], threads: int) -> None:
     if rows <= 0:
         raise ValueError("rows must be positive")
@@ -441,6 +548,16 @@ def _validate(rows: int, in_features: int, outputs: tuple[int, ...], threads: in
         raise ValueError("out_features must be positive")
     if threads not in _ALLOWED_THREADS:
         raise ValueError("threads must be one of 32, 64, 128, 256")
+
+
+def _validate_wmma(
+    rows: int, in_features: int, outputs: tuple[int, ...], threads: int
+) -> None:
+    _validate(rows, in_features, outputs, threads)
+    if in_features % 16:
+        raise ValueError("WMMA in_features must be a multiple of 16")
+    if threads != 256:
+        raise ValueError("WMMA compatibility threads must be 256")
 
 
 def register_laguna_f16_projection_kernels(*, replace: bool = True) -> None:
@@ -463,6 +580,16 @@ def register_laguna_f16_projection_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "linear", "fp16_weight", "wmma_bf16_f32_out"),
+        laguna_f16w_wmma_bf16_f32_out,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "linear", "fp16_weight", "wmma_bf16_bf16_out"),
+        laguna_f16w_wmma_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "linear_pair", "fp16_weight", "bf16_f32_out"),
         laguna_f16w_dual_gemv_bf16_f32_out,
         replace=replace,
@@ -475,6 +602,11 @@ def register_laguna_f16_projection_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "linear_triple", "fp16_weight", "tiled_bf16_f32_out"),
         laguna_f16w_triple_tiled_bf16_f32_out,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "linear_triple", "fp16_weight", "wmma_bf16_f32_out"),
+        laguna_f16w_triple_wmma_bf16_f32_out,
         replace=replace,
     )
 
@@ -493,6 +625,9 @@ __all__ = [
     "laguna_f16w_tiled_bf16_f32_out",
     "laguna_f16w_triple_gemv_bf16_f32_out",
     "laguna_f16w_triple_tiled_bf16_f32_out",
+    "laguna_f16w_triple_wmma_bf16_f32_out",
+    "laguna_f16w_wmma_bf16_bf16_out",
+    "laguna_f16w_wmma_bf16_f32_out",
     "plan_laguna_f16_projection_build",
     "register_laguna_f16_projection_kernels",
 ]
