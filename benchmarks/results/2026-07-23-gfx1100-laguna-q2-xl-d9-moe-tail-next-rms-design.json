@@ -1,0 +1,232 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_q2_xl_d9_moe_tail_next_rms_design",
+  "date": "2026-07-23",
+  "status": "selected_design",
+  "pass": true,
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "rocm": "HIP version: 7.2.53211-3d9ef42",
+    "hipcc": "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)"
+  },
+  "model": {
+    "id": "poolside/Laguna-S-2.1-UD-Q2_K_XL",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "kv_dtype": "bf16",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "source": {
+    "profiled_revision": "51a437bc729eb5476a8bf71a31b2a9718e880263",
+    "current_revision": "b9eb69eb3075d06e10cbe448ef83d8083766e8ef",
+    "profiled_runtime_code_identical_to_current": true,
+    "d7_retained_artifact": "benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-q6-attention-pair-retained.json",
+    "d7_residual_artifact": "benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-d7-residual-profile.json",
+    "q3_transfer_artifact": "benchmarks/results/2026-07-20-gpu1-q3-moe-tail-next-rms-retained.json",
+    "qwen_kernel_reference": {
+      "repository": "/home/lhl/qwen-kernel",
+      "commit": "52e240f9c6d91750d0e5e692976cfb67fd9bc603",
+      "file": "shaders/add_rms3.comp",
+      "use": "scheduling premise only; Laguna must preserve two BF16 add boundaries rather than the reference F32 three-stream sum"
+    },
+    "in_tree_reference": {
+      "source": "hipengine/kernels/hip_gfx1100/fused/paro_combine.hip",
+      "kernel": "moe_tail_next_rmsnorm_out_kernel",
+      "use": "one-workgroup dual-output RMS structure only; the Laguna variant removes the shared sigmoid gate and adds the missing routed-plus-shared BF16 boundary"
+    },
+    "lineage_check": "python3 scripts/check_lineage.py --kind kernel --diff stat; only previously catalogued parent drift, no Laguna/Q3-tail reference change"
+  },
+  "measured_d7_sequence": {
+    "method": "Split each retained D7 token from embedding through argmax and identify every adjacent gguf_bf16_add, gguf_bf16_add, gguf_rmsnorm triple. There are exactly 47: sparse layers 1..46 feed the next layer attn_norm, and sparse layer 47 feeds output_norm.",
+    "contexts": [
+      {
+        "label": "short",
+        "prompt_tokens": 69,
+        "stable_steps": 14,
+        "dispatches_per_token": 869,
+        "sparse_boundaries_per_token": 47,
+        "current_dispatches_per_boundary": 3,
+        "candidate_dispatches_per_boundary": 1,
+        "dispatches_removed_per_token": 94,
+        "candidate_dispatches_per_token": 775,
+        "current_first_add_ms_per_token": 0.10714914285714286,
+        "current_second_add_ms_per_token": 0.08815778571428572,
+        "current_next_rms_ms_per_token": 0.3218889285714286,
+        "current_boundary_ms_per_token": 0.5171958571428572,
+        "current_boundary_mean_us": 11.004167173252279,
+        "current_boundary_median_us": 10.96,
+        "kernel_sum_ms_per_token": 17.26786307142857,
+        "kernel_sum_share_pct": 2.995135269508884,
+        "span_median_ms_per_token": 20.714699,
+        "span_share_pct": 2.496757771584599,
+        "trace_sha256": "0bd5b34312806101c5cf197628d674049b5f4a9f8814c07d34181d321785436a",
+        "generated_ids_exact": true,
+        "finite": true,
+        "lifecycle": true
+      },
+      {
+        "label": "512",
+        "prompt_tokens": 512,
+        "stable_steps": 6,
+        "dispatches_per_token": 869,
+        "sparse_boundaries_per_token": 47,
+        "current_dispatches_per_boundary": 3,
+        "candidate_dispatches_per_boundary": 1,
+        "dispatches_removed_per_token": 94,
+        "candidate_dispatches_per_token": 775,
+        "current_first_add_ms_per_token": 0.10854133333333332,
+        "current_second_add_ms_per_token": 0.08820033333333333,
+        "current_next_rms_ms_per_token": 0.3194365,
+        "current_boundary_ms_per_token": 0.5161781666666667,
+        "current_boundary_mean_us": 10.982514184397163,
+        "current_boundary_median_us": 10.92,
+        "kernel_sum_ms_per_token": 30.651083,
+        "kernel_sum_share_pct": 1.6840454435710044,
+        "span_median_ms_per_token": 34.301568,
+        "span_share_pct": 1.5048238222423729,
+        "trace_sha256": "12345b619a97b158e2aef7978b9a724923563710f330543ebaf4e8ec406dffe7",
+        "generated_ids_exact": true,
+        "finite": true,
+        "lifecycle": true
+      },
+      {
+        "label": "1024",
+        "prompt_tokens": 1024,
+        "stable_steps": 6,
+        "dispatches_per_token": 869,
+        "sparse_boundaries_per_token": 47,
+        "current_dispatches_per_boundary": 3,
+        "candidate_dispatches_per_boundary": 1,
+        "dispatches_removed_per_token": 94,
+        "candidate_dispatches_per_token": 775,
+        "current_first_add_ms_per_token": 0.10943416666666667,
+        "current_second_add_ms_per_token": 0.08867466666666667,
+        "current_next_rms_ms_per_token": 0.319924,
+        "current_boundary_ms_per_token": 0.5180328333333333,
+        "current_boundary_mean_us": 11.021975177304965,
+        "current_boundary_median_us": 10.96,
+        "kernel_sum_ms_per_token": 33.65189083333333,
+        "kernel_sum_share_pct": 1.5393870017556466,
+        "span_median_ms_per_token": 37.309833,
+        "span_share_pct": 1.388461946032654,
+        "trace_sha256": "c4f39d9ea36cee2ef314aef6bf04069ab1e0404adf6cd0c67881965f4a9e5945",
+        "generated_ids_exact": true,
+        "finite": true,
+        "lifecycle": true
+      },
+      {
+        "label": "3968",
+        "prompt_tokens": 3968,
+        "stable_steps": 6,
+        "dispatches_per_token": 869,
+        "sparse_boundaries_per_token": 47,
+        "current_dispatches_per_boundary": 3,
+        "candidate_dispatches_per_boundary": 1,
+        "dispatches_removed_per_token": 94,
+        "candidate_dispatches_per_token": 775,
+        "current_first_add_ms_per_token": 0.10898116666666667,
+        "current_second_add_ms_per_token": 0.0874145,
+        "current_next_rms_ms_per_token": 0.3228325,
+        "current_boundary_ms_per_token": 0.5192281666666667,
+        "current_boundary_mean_us": 11.047407801418439,
+        "current_boundary_median_us": 11.0,
+        "kernel_sum_ms_per_token": 50.3951845,
+        "kernel_sum_share_pct": 1.0303130583174405,
+        "span_median_ms_per_token": 54.1225445,
+        "span_share_pct": 0.9593565333327349,
+        "trace_sha256": "87017641b52353188d5679bd990db84db5094a177bfb217657668b3f66b6c17e",
+        "generated_ids_exact": true,
+        "finite": true,
+        "lifecycle": true
+      }
+    ],
+    "selected_aggregate_abi": {
+      "iq3_layers": 45,
+      "other_sparse_layers": 2,
+      "contract": "Every sparse route has already produced one BF16 routed_output before the tail. The two non-IQ3 layers use the existing selected-down plus weighted-sum fallback first, so no slot-serial work enters the candidate."
+    }
+  },
+  "selected_candidate": {
+    "name": "exact_laguna_aggregate_moe_tail_next_rms",
+    "registry_key": [
+      "hip_gfx1100",
+      "moe_tail+next_rmsnorm",
+      "bf16",
+      "laguna_aggregate_gguf_f32_weight_out"
+    ],
+    "scope": "Laguna rows=1 sparse layers only: 47 routed/shared/residual tails, including output_norm at layer 47; bulk prefill/verifier rows and the dense layer-0 tail remain unchanged",
+    "outputs": [
+      "BF16 post-MoE hidden/residual",
+      "BF16 next-layer attn_norm or final output_norm"
+    ],
+    "arithmetic_order": [
+      "moe_bf16 = BF16(F32(routed_output_bf16) + F32(shared_output_bf16))",
+      "hidden_bf16 = BF16(F32(post_attention_bf16) + F32(moe_bf16))",
+      "store hidden_bf16 before RMS accumulation",
+      "per thread, accumulate F32(hidden_bf16)^2 over idx=tid,tid+256,... exactly as gguf_rmsnorm_bf16_f32_weight_kernel",
+      "reduce the same 256 partials with the same stride-128..1 tree and rsqrtf(sum/3072 + eps)",
+      "next_norm_bf16 = BF16(F32(hidden_bf16) * inv_rms * next_norm_weight_f32)"
+    ],
+    "work_distribution": "one local256 workgroup per token, 1,024 B reduction LDS, zero scratch target; emit both outputs and use a host-selected next attn_norm/output_norm pointer without a backend or quant branch",
+    "fallback": "The current registered BF16 routed+shared add, post-attention residual add, and F32-weight RMSNorm remain the mandatory unfused chain. Registry miss, rows != 1, unsupported backend, captures requiring an unmodified boundary, or any exactness/performance failure takes that chain.",
+    "selection_rationale": "After tile16 and graph rejection, this is the largest fresh exact launch-contraction boundary with a measured current sequence and a proven in-tree/source scheduling premise: 47 three-kernel boundaries, 0.517 ms/token short, and 94 removable launches. Attention-gate fusion owns only 0.117 ms/token and 48 launches; Q5 tile16 regressed, and IQ2/IQ3/token4 are already retained-tuned families."
+  },
+  "amdahl_bound": {
+    "short_current_boundary_ms_per_token": 0.5171958571428572,
+    "short_kernel_sum_share_pct": 2.995135269508884,
+    "short_span_share_pct": 2.496757771584599,
+    "dispatches_removed_per_token": 94,
+    "dispatch_reduction_pct": 10.817031070195627,
+    "kernel_only_zero_cost_ceiling": {
+      "canonical_ms_per_token": 21.030569129648157,
+      "canonical_decode_tok_s": 47.54983062204604
+    },
+    "transfer_model_not_claim": {
+      "q3_fused_mean_us_at_hidden2048": 6.244653716216216,
+      "linear_hidden_scaled_candidate_us_at_3072": 9.366980574324323,
+      "candidate_fused_ms_per_token": 0.4402480869932432,
+      "direct_kernel_savings_ms_per_token": 0.07694777014961401,
+      "recent_pair_span_minus_kernel_ms_per_removed_launch": [
+        0.0028613905775076013,
+        0.002894385416666682
+      ],
+      "mean_launch_gap_transfer_ms_per_removed_launch": 0.0028778879970871416,
+      "launch_gap_savings_ms_per_token": 0.2705214717261913,
+      "total_modeled_savings_ms_per_token": 0.3474692418758053,
+      "modeled_canonical_ms_per_token": 21.20029574491521,
+      "modeled_canonical_decode_tok_s": 47.169153300130034,
+      "caveat": "Cross-model/GPU Q3 duration scaling and D6/D7 launch-gap attribution are planning estimates, not W7900 measurements of this candidate."
+    },
+    "zero_kernel_plus_launch_transfer_ceiling": {
+      "canonical_ms_per_token": 20.760047657921966,
+      "canonical_decode_tok_s": 48.169446259358814
+    },
+    "cannot_reach_50_alone": true
+  },
+  "red_green_gate": {
+    "red": [
+      "A new four-axis wrapper/key is required; collection must fail before it exists.",
+      "Synthetic hidden=17 and production hidden=3072 cases include values where omitting the routed+shared BF16 boundary changes bits.",
+      "Compare both fused outputs bit-for-bit with the exact three-kernel chain, including final output_norm weights and eps.",
+      "Runtime routing proves rows>1, registry miss, explicit fallback, dense layer 0, and unsupported backend execute the old chain."
+    ],
+    "green": [
+      "All 47 real-model layer boundaries match hidden and normalized BF16 buffers exactly; full logits, IDs, complete KV/live spans, and lifecycle match D7.",
+      "Cached rocprof names exactly 47 candidate calls/token, 869 -> 775 dispatches/token, local256, 1,024 B LDS, and zero scratch.",
+      "Counterbalanced candidate versus three-kernel actual-session timing is positive before spending the clean context/category gate."
+    ],
+    "promotion": [
+      "Short/512/1K/near-4K clean kernel sum and median span all improve with exact IDs/finite output/teardown.",
+      "The canonical ten-prompt/four-category h16/h32 suite improves aggregate and every category decode/E2E, preserves prefill/TTFT guards, Poolside KL/top-1, accepted bulk state, and tracked ownership.",
+      "If any mechanical or full-suite gate fails, remove runtime selection and keep only independently useful exact leaf coverage."
+    ]
+  },
+  "deferred_after_candidate": [
+    "A local256 token8 SWA sibling is a separate exact screen after D9; token4 already removes the second key pass, so its remaining short benefit needs a measured score/value decomposition rather than assuming 2x.",
+    "Fusing attention decode with per-head softplus gating remains lower bounded at the current 0.117 ms/token gate family plus 48 launches.",
+    "Near-4K remains dominated by global attention at 22.658 ms/token and is not solved by this context-independent tail contraction."
+  ]
+}
