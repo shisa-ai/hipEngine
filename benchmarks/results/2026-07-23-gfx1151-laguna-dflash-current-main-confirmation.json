@@ -1,0 +1,221 @@
+{
+  "kind": "hipengine_laguna_dflash_current_main_confirmation",
+  "schema_version": 1,
+  "date": "2026-07-23",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "backend": "hip_gfx1151",
+    "hip_total_bytes": 128849018880
+  },
+  "software": {
+    "hipengine_revision": "8f8baf9a100bc9598b633cb040193dcfcdb80ebe",
+    "tracked_clean": true,
+    "python": "3.10.20",
+    "hip_version": "7.15.0-0000000",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6"
+  },
+  "models": {
+    "target": {
+      "name": "poolside/Laguna-S-2.1-GGUF",
+      "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+      "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+      "quant": "Q4_K_M mixed GGUF v3 / hipEngine repacked-v1",
+      "kv_dtype": "bf16"
+    },
+    "drafter": {
+      "name": "poolside/Laguna-S-2.1-DFlash",
+      "path": "/home/lhl/.cache/huggingface/hub/models--poolside--Laguna-S-2.1-DFlash/snapshots/b0486d1586daa0d56435c508108171fc1c8daff9",
+      "revision": "b0486d1586daa0d56435c508108171fc1c8daff9",
+      "sha256": "f24f08781c697c19952c02fb2e7e9bdf2071b79a711c2a44b836a74b9b62a1f4",
+      "dtype": "bf16 safetensors"
+    }
+  },
+  "protocol": {
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompt_count": 10,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "heldout_prompt_count": 4,
+    "repetitions": 2,
+    "measured_pairs": 20,
+    "output_tokens_including_first": 32,
+    "timed_decode_output_tokens_per_run": 31,
+    "candidate_budget": 4,
+    "context_length": 4096,
+    "prefill_chunk_size": 128,
+    "target_global_prefill_variant": "global_context_rows_spans",
+    "target_swa_prefill_variant": "swa_context_rows_wave32_exact_spans",
+    "sampling": "greedy argmax fixed horizon after stop",
+    "mode_order": "alternating AR/DFlash by repetition plus prompt index",
+    "warmups": {
+      "ar": 1,
+      "dflash": 1
+    },
+    "timing": {
+      "prefill": "start through synchronized first-token argmax",
+      "decode": "31 synchronized visible outputs after TTFT; DFlash accepted-prefix append included",
+      "e2e": "TTFT plus decode; model loading excluded"
+    },
+    "cached_builds_required": true
+  },
+  "measurements": {
+    "current_main": {
+      "ar": {
+        "prefill_tok_s_weighted": 50.38909347662356,
+        "ttft_median_seconds": 1.6204259844962507,
+        "decode_tok_s_weighted": 16.38390541254204,
+        "e2e_output_tok_s_weighted": 8.87223488600105
+      },
+      "dflash_b4": {
+        "prefill_tok_s_weighted": 16.906107517189103,
+        "ttft_median_seconds": 4.766889171965886,
+        "decode_tok_s_weighted": 15.527353659360617,
+        "e2e_output_tok_s_weighted": 4.502567697697802
+      },
+      "ratios": {
+        "prefill_dflash_over_ar": 0.3355112456038163,
+        "decode_dflash_over_ar": 0.9477199280871261,
+        "e2e_dflash_over_ar": 0.5074896861445953
+      }
+    },
+    "previous_post_prefill": {
+      "artifact": "benchmarks/results/2026-07-23-gfx1151-laguna-dflash-category-economics-post-prefill.json",
+      "ar_prefill_tok_s_weighted": 50.36678082149774,
+      "ar_decode_tok_s_weighted": 16.346677850749348,
+      "dflash_prefill_tok_s_weighted": 16.853670641764147,
+      "dflash_decode_tok_s_weighted": 15.479439024424286,
+      "decode_dflash_over_ar": 0.9469470901523084
+    },
+    "delta_vs_previous_percent": {
+      "ar_prefill": 0.04430033995004301,
+      "ar_decode": 0.22773778337463746,
+      "dflash_prefill": 0.31113029641753887,
+      "dflash_decode": 0.3095372827188969,
+      "decode_ratio_percentage_points": 0.07728379348177494
+    },
+    "scopes": {
+      "full": {
+        "ar_decode_tok_s": 16.38390541254204,
+        "dflash_decode_tok_s": 15.527353659360617,
+        "speedup": 0.9477199280871261,
+        "draft_acceptance": 0.5047619047619047,
+        "target_rows_per_output": 1.6935483870967742
+      },
+      "train": {
+        "ar_decode_tok_s": 16.441217085835923,
+        "dflash_decode_tok_s": 17.18042533293397,
+        "speedup": 1.0449606767697797,
+        "draft_acceptance": 0.5833333333333334,
+        "target_rows_per_output": 1.532258064516129
+      },
+      "heldout": {
+        "ar_decode_tok_s": 16.298683181056695,
+        "dflash_decode_tok_s": 13.568977340426859,
+        "speedup": 0.8325198538859591,
+        "draft_acceptance": 0.4114583333333333,
+        "target_rows_per_output": 1.935483870967742
+      },
+      "code": {
+        "ar_decode_tok_s": 16.561578855467115,
+        "dflash_decode_tok_s": 21.01995851769923,
+        "speedup": 1.2692001590633593,
+        "draft_acceptance": 0.782258064516129
+      },
+      "general_en": {
+        "ar_decode_tok_s": 16.70694168654985,
+        "dflash_decode_tok_s": 12.689631395742074,
+        "speedup": 0.7595424485115689,
+        "draft_acceptance": 0.36538461538461536
+      },
+      "general_ja": {
+        "ar_decode_tok_s": 16.244531468493225,
+        "dflash_decode_tok_s": 13.647007230754948,
+        "speedup": 0.8400985437606338,
+        "draft_acceptance": 0.40625
+      },
+      "mixed_ja_en": {
+        "ar_decode_tok_s": 15.872619659017834,
+        "dflash_decode_tok_s": 13.371831339066839,
+        "speedup": 0.842446403071833,
+        "draft_acceptance": 0.3958333333333333
+      }
+    },
+    "dflash_components": {
+      "cycles": 210,
+      "draft_tokens_proposed": 840,
+      "accepted_draft_tokens": 424,
+      "proposal_seconds": 6.640103216399439,
+      "target_verify_seconds": 32.644427470862865,
+      "post_verify_residual_seconds": 0.642435044515878,
+      "target_verify_delta_vs_pre_lpf1_percent": -35.348117128061595,
+      "decode_delta_vs_pre_lpf1_percent": 44.908253218894444
+    }
+  },
+  "correctness": {
+    "pass": true,
+    "all_20_pairs_exact_ar_vs_dflash": true,
+    "finite_logits": true,
+    "same_mode_repeat_deterministic": true,
+    "target_drafter_state_aligned": true,
+    "poolside_first_token_kl": 0.000006621408380303441,
+    "poolside_top1_agreement": 1.0,
+    "tracked_memory_returned_to_baseline": true
+  },
+  "memory": {
+    "target_resident_bytes": 77175826165,
+    "drafter_resident_bytes": 2250372680,
+    "combined_resident_bytes": 79426198845,
+    "peak_tracked_bytes": 79426420029,
+    "peak_tracked_gib": 73.97161799389869,
+    "peak_allocations": 1700,
+    "final_tracked_bytes": 0,
+    "final_active_allocations": 0
+  },
+  "load": {
+    "target_seconds_excluded": 49.74184357293416,
+    "drafter_seconds_excluded": 0.6693367939442396,
+    "total_process_seconds": 272.0569541909499
+  },
+  "promotion_gate": {
+    "pass": false,
+    "required_full_decode_speedup": 1.1,
+    "observed_full_decode_speedup": 0.9477199280871261,
+    "failed_checks": [
+      "full_suite_decode_speedup_gt_1p10",
+      "heldout_decode_non_regression",
+      "category_general_en_decode_non_regression",
+      "category_general_ja_decode_non_regression",
+      "category_mixed_ja_en_decode_non_regression"
+    ]
+  },
+  "decision": "The current merged main reproduces the retained post-prefill result within 0.32% on every weighted throughput metric. DFlash B4 remains exact but reaches only 0.9477x full-suite AR decode, 0.8325x heldout decode, and 0.5075x E2E; AR remains default and DFlash remains explicit-only with no performance claim.",
+  "commands": {
+    "environment": {
+      "HIP_VISIBLE_DEVICES": "0",
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "GPU_MAX_HW_QUEUES": "1"
+    },
+    "benchmark": "uv run python scripts/laguna_dflash_category_bench.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf /home/lhl/.cache/huggingface/hub/models--poolside--Laguna-S-2.1-DFlash/snapshots/b0486d1586daa0d56435c508108171fc1c8daff9 --backend hip_gfx1151 --context-length 4096 --chunk-size 128 --candidate-budget 4 --output-tokens 32 --repetitions 2 --warmup-output-tokens 6 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --drafter-sha256 f24f08781c697c19952c02fb2e7e9bdf2071b79a711c2a44b836a74b9b62a1f4 --drafter-revision b0486d1586daa0d56435c508108171fc1c8daff9 --output /tmp/laguna-dflash-category-current-main-8f8baf9a1.json"
+  },
+  "sources": {
+    "raw_artifact": {
+      "path": "/tmp/laguna-dflash-category-current-main-8f8baf9a1.json",
+      "sha256": "ea84c3a6944333443c4891c7b63dbc6c5bd1b1e0ebedfe93a9d12930cff482b4",
+      "bytes": 542826
+    },
+    "previous_artifact": "benchmarks/results/2026-07-23-gfx1151-laguna-dflash-category-economics-post-prefill.json"
+  },
+  "notes": [
+    "The first cached-build attempt failed before model load because the merged shared gguf_k_gemv source had a new cache key. All Laguna/DFlash libraries were prebuilt outside the timed run and the retained retry required cached builds.",
+    "The small current-versus-previous throughput changes are treated as confirmation-scale variance, not a new kernel speedup.",
+    "DFlash prefill remains the serial hidden-capture path while AR uses exact bulk prefill."
+  ]
+}
