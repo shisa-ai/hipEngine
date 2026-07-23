@@ -89,6 +89,8 @@ def test_laguna_swa_build_plan_registry_and_validation(tmp_path) -> None:
         laguna_swa_attention_decode_bf16_spans,
         laguna_swa_attention_decode_token4_exact_bf16_spans,
         laguna_swa_attention_prefill_bf16_spans,
+        laguna_swa_attention_prefill_qrow2_32_exact_bf16_spans,
+        laguna_swa_attention_prefill_qrow2_exact_bf16_spans,
         laguna_swa_attention_prefill_wave32_exact_bf16_spans,
         laguna_swa_write_kv_f32_spans,
         laguna_swa_write_kv_rows_f32_spans,
@@ -175,6 +177,24 @@ def test_laguna_swa_build_plan_registry_and_validation(tmp_path) -> None:
     assert (
         resolve(
             backend="hip_gfx1151",
+            layer="laguna_attention_prefill",
+            quant="bf16",
+            variant="swa_context_rows_qrow2_exact_spans",
+        )
+        is laguna_swa_attention_prefill_qrow2_exact_bf16_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1151",
+            layer="laguna_attention_prefill",
+            quant="bf16",
+            variant="swa_context_rows_qrow2_32_exact_spans",
+        )
+        is laguna_swa_attention_prefill_qrow2_32_exact_bf16_spans
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1151",
             layer="laguna_kv_write",
             quant="bf16",
             variant="global_f32_rows_spans",
@@ -205,6 +225,40 @@ def test_laguna_swa_build_plan_registry_and_validation(tmp_path) -> None:
             128,
             128**-0.5,
         )
+
+
+def test_laguna_swa_qrow2_auto_falls_back_below_32_rows(monkeypatch) -> None:
+    import hipengine.kernels.hip_gfx1100.attention.laguna_kv as module
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        module,
+        "laguna_swa_attention_prefill_wave32_exact_bf16_spans",
+        lambda *args, **kwargs: calls.append("wave32"),
+    )
+    monkeypatch.setattr(
+        module,
+        "laguna_swa_attention_prefill_qrow2_exact_bf16_spans",
+        lambda *args, **kwargs: calls.append("qrow2"),
+    )
+    common = (1, 2, 3, 4, 5, 6, _ring_spans())
+    module.laguna_swa_attention_prefill_qrow2_32_exact_bf16_spans(
+        *common,
+        31,
+        72,
+        8,
+        128,
+        128**-0.5,
+    )
+    module.laguna_swa_attention_prefill_qrow2_32_exact_bf16_spans(
+        *common,
+        32,
+        72,
+        8,
+        128,
+        128**-0.5,
+    )
+    assert calls == ["wave32", "qrow2"]
 
 
 class _FakeRuntime:
@@ -760,6 +814,13 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
         runtime=runtime,
         swa_prefill_variant="swa_context_rows_wave32_exact_spans",
     )
+    qrow2 = allocate_laguna_kv_cache(
+        config,
+        context_length=520,
+        backend="hip_gfx1151",
+        runtime=runtime,
+        swa_prefill_variant="swa_context_rows_qrow2_exact_spans",
+    )
     rng = np.random.default_rng(1207)
     seed_rows = 508
     rows = 8
@@ -776,6 +837,7 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
         global_bulk_out = malloc(query_global.nbytes, runtime=runtime)
         swa_bulk_out = malloc(query_swa.nbytes, runtime=runtime)
         swa_wave32_out = malloc(query_swa.nbytes, runtime=runtime)
+        swa_qrow2_out = malloc(query_swa.nbytes, runtime=runtime)
         global_serial_out = malloc(query_global[0].nbytes, runtime=runtime)
         swa_serial_out = malloc(query_swa[0].nbytes, runtime=runtime)
         allocations.extend(
@@ -787,6 +849,7 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
                 global_bulk_out,
                 swa_bulk_out,
                 swa_wave32_out,
+                swa_qrow2_out,
                 global_serial_out,
                 swa_serial_out,
             )
@@ -802,7 +865,7 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
         # Populate both owners through the bulk write path, then compare one
         # wrap-crossing 508..515 chunk against the established token-serial path.
         seed_positions = tuple(range(seed_rows))
-        for cache in (serial, bulk, wave32):
+        for cache in (serial, bulk, wave32, qrow2):
             cache.prepare_rows(seed_positions)
             for layer_id in range(2):
                 cache.append_rows(
@@ -872,6 +935,25 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
         )
         wave32.commit_rows()
 
+        qrow2.prepare_rows(positions)
+        qrow2.attend_prefill(
+            1,
+            swa_query_rows.ptr,
+            key_rows.ptr + seed_rows * row_bytes,
+            value_rows.ptr + seed_rows * row_bytes,
+            swa_qrow2_out.ptr,
+            rows,
+            library=library,
+        )
+        qrow2.append_rows(
+            1,
+            key_rows.ptr + seed_rows * row_bytes,
+            value_rows.ptr + seed_rows * row_bytes,
+            rows,
+            library=library,
+        )
+        qrow2.commit_rows()
+
         expected_global = np.empty_like(query_global)
         expected_swa = np.empty_like(query_swa)
         for row, position in enumerate(positions):
@@ -907,6 +989,7 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
         actual_global = np.empty_like(query_global)
         actual_swa = np.empty_like(query_swa)
         actual_swa_wave32 = np.empty_like(query_swa)
+        actual_swa_qrow2 = np.empty_like(query_swa)
         runtime.device_synchronize()
         copy_device_to_host(
             host_array_ptr(actual_global),
@@ -926,10 +1009,17 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
             actual_swa_wave32.nbytes,
             runtime=runtime,
         )
+        copy_device_to_host(
+            host_array_ptr(actual_swa_qrow2),
+            swa_qrow2_out,
+            actual_swa_qrow2.nbytes,
+            runtime=runtime,
+        )
         np.testing.assert_array_equal(actual_global, expected_global)
         np.testing.assert_array_equal(actual_swa, expected_swa)
         np.testing.assert_array_equal(actual_swa_wave32, actual_swa)
-        assert bulk.position == serial.position == 515
+        np.testing.assert_array_equal(actual_swa_qrow2, actual_swa_wave32)
+        assert bulk.position == serial.position == wave32.position == qrow2.position == 515
 
         for layer_id in range(2):
             bulk_state = bulk.layer(layer_id)
@@ -956,6 +1046,7 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
     finally:
         for allocation in reversed(allocations):
             free(allocation, runtime=runtime)
+        qrow2.free()
         wave32.free()
         bulk.free()
         serial.free()

@@ -2543,6 +2543,14 @@ kernel-sum ceiling; global alone is **1.271x** and SWA alone **1.157x**. Evidenc
   wave32 route remains default. Continue with query-row tiling/online softmax,
   not another unchanged serial query-head group. Evidence:
   `benchmarks/results/2026-07-23-gfx1151-laguna-swa-qgroup9-rejected.json`.
+  The next exact leaf pairs two adjacent query rows while preserving each row's
+  logical-slot order, reduction tree, max/denominator order, BF16 boundaries,
+  and complete `KVLiveSpans`. The 508..515 fixture is byte-exact; direct qrow2
+  is slower at M16 but improves an actual full-window M32/M55/M64/M122/M128 leaf
+  by **1.118/1.217/1.145/1.092/1.163x**. A registered threshold wrapper keeps
+  wave32 below 32 rows. This remains an explicit candidate until a clean
+  matrix512/attention128 full-model screen and complete category/state/KV/
+  lifecycle gate pass; gfx1151's default is unchanged.
 - [ ] For global layers, screen the existing torch-free AOTriton adapter as a
   ceiling, then implement/adapt a tiled causal GQA route only if the measured
   threshold warrants it. The rejected paired-head exact kernel is not a Flash
