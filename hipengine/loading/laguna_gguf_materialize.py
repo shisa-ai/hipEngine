@@ -1085,8 +1085,24 @@ def _spec_for_tensor(
             resident_dtype="fp16",
             allocations={"raw": tensor.nbytes},
         )
+    raw_quant_keys = {
+        GGMLQuantizationType.Q5_K: "gguf_q5_k",
+        GGMLQuantizationType.Q8_0: "gguf_q8_0",
+        GGMLQuantizationType.IQ2_XS: "gguf_iq2_xs",
+        GGMLQuantizationType.IQ3_XXS: "gguf_iq3_xxs",
+        GGMLQuantizationType.IQ4_XS: "gguf_iq4_xs",
+    }
+    if qtype in raw_quant_keys:
+        return _spec(
+            slot_path,
+            tensor,
+            quant_key=raw_quant_keys[qtype],
+            layout=LAYOUT_RAW_GGUF,
+            resident_dtype=qtype.name.lower(),
+            allocations={"raw": tensor.nbytes},
+        )
     if qtype == GGMLQuantizationType.Q4_K:
-        if slot_path == "root.token_embedding":
+        if slot_path in {"root.token_embedding", "root.lm_head"}:
             return _spec(
                 slot_path,
                 tensor,

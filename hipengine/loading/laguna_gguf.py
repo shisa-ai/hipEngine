@@ -586,30 +586,56 @@ def _tensor_type_errors(
 ) -> list[str]:
     q = GGMLQuantizationType
     expected: dict[str, tuple[int, ...]] = {
-        "token_embd.weight": (int(q.Q4_K),),
+        "token_embd.weight": (int(q.Q4_K), int(q.Q5_K)),
         "output_norm.weight": (int(q.F32),),
-        "output.weight": (int(q.Q6_K),),
+        "output.weight": (int(q.Q4_K), int(q.Q6_K)),
     }
     for layer_id in range(config.block_count):
         prefix = f"blk.{layer_id}"
         expected.update(
             {
                 f"{prefix}.attn_norm.weight": (int(q.F32),),
-                f"{prefix}.attn_q.weight": (int(q.F16),),
-                f"{prefix}.attn_k.weight": (int(q.F16),),
-                f"{prefix}.attn_v.weight": (int(q.F16),),
-                f"{prefix}.attn_gate.weight": (int(q.F16),),
+                f"{prefix}.attn_q.weight": (
+                    int(q.F16),
+                    int(q.Q5_K),
+                    int(q.Q6_K),
+                ),
+                f"{prefix}.attn_k.weight": (
+                    int(q.F16),
+                    int(q.Q6_K),
+                    int(q.Q8_0),
+                ),
+                f"{prefix}.attn_v.weight": (
+                    int(q.F16),
+                    int(q.Q6_K),
+                    int(q.Q8_0),
+                ),
+                f"{prefix}.attn_gate.weight": (
+                    int(q.F16),
+                    int(q.Q5_K),
+                    int(q.Q6_K),
+                ),
                 f"{prefix}.attn_q_norm.weight": (int(q.F32),),
                 f"{prefix}.attn_k_norm.weight": (int(q.F32),),
-                f"{prefix}.attn_output.weight": (int(q.F16),),
+                f"{prefix}.attn_output.weight": (
+                    int(q.F16),
+                    int(q.Q5_K),
+                    int(q.Q6_K),
+                ),
                 f"{prefix}.ffn_norm.weight": (int(q.F32),),
             }
         )
         if config.mlp_type(layer_id) == DENSE_MLP:
             expected.update(
                 {
-                    f"{prefix}.ffn_gate.weight": (int(q.Q4_K),),
-                    f"{prefix}.ffn_up.weight": (int(q.Q4_K),),
+                    f"{prefix}.ffn_gate.weight": (
+                        int(q.Q4_K),
+                        int(q.Q5_K),
+                    ),
+                    f"{prefix}.ffn_up.weight": (
+                        int(q.Q4_K),
+                        int(q.Q5_K),
+                    ),
                     f"{prefix}.ffn_down.weight": (int(q.Q6_K),),
                 }
             )
@@ -618,17 +644,36 @@ def _tensor_type_errors(
                 {
                     f"{prefix}.ffn_gate_inp.weight": (int(q.F32),),
                     f"{prefix}.exp_probs_b.bias": (int(q.F32),),
-                    f"{prefix}.ffn_gate_exps.weight": (int(q.Q4_K),),
-                    f"{prefix}.ffn_up_exps.weight": (int(q.Q4_K),),
+                    f"{prefix}.ffn_gate_exps.weight": (
+                        int(q.Q4_K),
+                        int(q.IQ2_XS),
+                        int(q.IQ3_XXS),
+                    ),
+                    f"{prefix}.ffn_up_exps.weight": (
+                        int(q.Q4_K),
+                        int(q.IQ2_XS),
+                        int(q.IQ3_XXS),
+                    ),
                     f"{prefix}.ffn_down_exps.weight": (
                         int(q.Q4_K),
                         int(q.Q6_K),
+                        int(q.IQ3_XXS),
+                        int(q.IQ4_XS),
                     ),
-                    f"{prefix}.ffn_gate_shexp.weight": (int(q.Q4_K),),
-                    f"{prefix}.ffn_up_shexp.weight": (int(q.Q4_K),),
+                    f"{prefix}.ffn_gate_shexp.weight": (
+                        int(q.Q4_K),
+                        int(q.Q5_K),
+                        int(q.Q6_K),
+                    ),
+                    f"{prefix}.ffn_up_shexp.weight": (
+                        int(q.Q4_K),
+                        int(q.Q5_K),
+                        int(q.Q6_K),
+                    ),
                     f"{prefix}.ffn_down_shexp.weight": (
                         int(q.Q4_K),
                         int(q.Q6_K),
+                        int(q.Q8_0),
                     ),
                 }
             )

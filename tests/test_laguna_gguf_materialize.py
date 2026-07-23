@@ -19,14 +19,26 @@ from hipengine.loading.laguna_gguf_materialize import (
     plan_laguna_gguf_materialization,
     plan_laguna_memory_admission,
 )
-from tests._laguna_synthetic import laguna_tensors, make_laguna_info
+from tests._laguna_synthetic import (
+    laguna_q2_xl_tensors,
+    laguna_tensors,
+    make_laguna_info,
+)
 
 MODEL = Path("/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf")
+Q2_XL_MODEL = Path("/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf")
 
 
 def _plan():
     model_map = build_laguna_gguf_tensor_map(
         make_laguna_info(tensors=laguna_tensors())
+    )
+    return plan_laguna_gguf_materialization(model_map)
+
+
+def _q2_xl_plan():
+    model_map = build_laguna_gguf_tensor_map(
+        make_laguna_info(tensors=laguna_q2_xl_tensors())
     )
     return plan_laguna_gguf_materialization(model_map)
 
@@ -57,6 +69,57 @@ def test_laguna_materialization_plan_covers_all_tensors_without_f16_contraction(
     assert sparse["ffn_gate_shexp"].layout == LAYOUT_Q4_K_PACK8
     assert sparse["ffn_down_shexp"].layout == LAYOUT_RAW_GGUF
     assert plan.precision_contractions == ()
+
+
+def test_laguna_q2_xl_materialization_plan_keeps_compressed_weights_raw() -> None:
+    tensors = laguna_q2_xl_tensors()
+    plan = _q2_xl_plan()
+
+    assert len(plan.tensor_names) == 814
+    assert set(plan.tensor_names) == {tensor.name for tensor in tensors}
+    assert plan.source_nbytes == sum(tensor.nbytes for tensor in tensors)
+    assert plan.resident_nbytes == plan.source_nbytes
+    assert plan.root_specs["token_embedding"].quant_key == "gguf_q5_k"
+    assert plan.root_specs["token_embedding"].layout == LAYOUT_RAW_GGUF
+    assert plan.root_specs["lm_head"].quant_key == "gguf_q4_k"
+    assert plan.root_specs["lm_head"].layout == LAYOUT_RAW_GGUF
+
+    sparse = plan.layer_specs[1]
+    assert sparse["attn_q"].quant_key == "gguf_q5_k"
+    assert sparse["attn_k"].quant_key == "gguf_q6_k"
+    assert sparse["ffn_gate_exps"].quant_key == "gguf_iq2_xs"
+    assert sparse["ffn_gate_exps"].layout == LAYOUT_RAW_GGUF
+    assert sparse["ffn_down_exps"].quant_key == "gguf_iq3_xxs"
+    assert sparse["ffn_gate_shexp"].quant_key == "gguf_q5_k"
+    assert sparse["ffn_down_shexp"].quant_key == "gguf_q6_k"
+
+    tail = plan.layer_specs[47]
+    assert tail["attn_k"].quant_key == "gguf_q8_0"
+    assert tail["ffn_gate_exps"].quant_key == "gguf_iq3_xxs"
+    assert tail["ffn_down_exps"].quant_key == "gguf_iq4_xs"
+    assert tail["ffn_down_shexp"].quant_key == "gguf_q8_0"
+    assert plan.precision_contractions == ()
+
+
+def test_laguna_q2_xl_admits_on_48gb_with_four_gib_reserve() -> None:
+    plan = _q2_xl_plan()
+
+    with pytest.raises(LagunaMemoryAdmissionError, match="exceeds available"):
+        plan_laguna_memory_admission(
+            plan,
+            context_length=4_096,
+            available_bytes=48_301_604_864,
+        )
+    admission = plan_laguna_memory_admission(
+        plan,
+        context_length=4_096,
+        available_bytes=48_301_604_864,
+        safety_reserve_nbytes=4 * 2**30,
+    )
+
+    assert admission.passed
+    assert admission.headroom_bytes > 0
+    assert admission.safety_reserve_nbytes == 4 * 2**30
 
 
 def test_laguna_materialization_plan_preserves_rank3_expert_contract() -> None:
@@ -112,6 +175,26 @@ def test_laguna_admission_rejects_peak_over_budget_before_allocation() -> None:
             context_length=4_096,
             available_bytes=accepted.peak_required_nbytes - 1,
         )
+
+
+def test_completed_laguna_q2_xl_dry_plan_covers_814_tensors() -> None:
+    if not Q2_XL_MODEL.exists():
+        pytest.skip(f"local Laguna Q2 XL GGUF not found: {Q2_XL_MODEL}")
+    reader = GGUFReader(Q2_XL_MODEL)
+    model_map = build_laguna_gguf_tensor_map(reader.info)
+
+    plan = plan_laguna_gguf_materialization(model_map)
+    admission = plan_laguna_memory_admission(
+        plan,
+        context_length=4_096,
+        available_bytes=48_301_604_864,
+        safety_reserve_nbytes=4 * 2**30,
+    )
+
+    assert len(plan.tensor_names) == 814
+    assert set(plan.tensor_names) == {tensor.name for tensor in reader.info.tensors}
+    assert plan.resident_nbytes == plan.source_nbytes == 39_680_849_600
+    assert admission.passed
 
 
 def test_completed_laguna_artifact_dry_plan_covers_814_tensors() -> None:

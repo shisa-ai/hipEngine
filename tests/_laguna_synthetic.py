@@ -109,6 +109,62 @@ def laguna_tensors() -> tuple[GGUFTensorInfo, ...]:
     return tuple(tensors)
 
 
+def laguna_q2_xl_tensors() -> tuple[GGUFTensorInfo, ...]:
+    """Exact tensor-type recipe from Laguna-S-2.1-UD-Q2_K_XL."""
+
+    result: list[GGUFTensorInfo] = []
+    for tensor in laguna_tensors():
+        name = tensor.name
+        qtype = GGMLQuantizationType(tensor.ggml_type)
+        if name == "token_embd.weight":
+            qtype = GGMLQuantizationType.Q5_K
+        elif name == "output.weight":
+            qtype = GGMLQuantizationType.Q4_K
+        elif name.startswith("blk."):
+            layer_id = int(name.split(".", 2)[1])
+            suffix = name.split(".", 2)[2]
+            if suffix in {"attn_q.weight", "attn_gate.weight", "attn_output.weight"}:
+                qtype = (
+                    GGMLQuantizationType.Q6_K
+                    if layer_id == 47
+                    else GGMLQuantizationType.Q5_K
+                )
+            elif suffix in {"attn_k.weight", "attn_v.weight"}:
+                qtype = (
+                    GGMLQuantizationType.Q8_0
+                    if layer_id == 47
+                    else GGMLQuantizationType.Q6_K
+                )
+            elif suffix in {"ffn_gate.weight", "ffn_up.weight"}:
+                qtype = GGMLQuantizationType.Q5_K
+            elif suffix == "ffn_gate_exps.weight" or suffix == "ffn_up_exps.weight":
+                qtype = (
+                    GGMLQuantizationType.IQ3_XXS
+                    if layer_id == 47
+                    else GGMLQuantizationType.IQ2_XS
+                )
+            elif suffix == "ffn_down_exps.weight":
+                qtype = (
+                    GGMLQuantizationType.IQ4_XS
+                    if layer_id >= 46
+                    else GGMLQuantizationType.IQ3_XXS
+                )
+            elif suffix in {"ffn_gate_shexp.weight", "ffn_up_shexp.weight"}:
+                qtype = (
+                    GGMLQuantizationType.Q6_K
+                    if layer_id == 47
+                    else GGMLQuantizationType.Q5_K
+                )
+            elif suffix == "ffn_down_shexp.weight":
+                qtype = (
+                    GGMLQuantizationType.Q8_0
+                    if layer_id == 47
+                    else GGMLQuantizationType.Q6_K
+                )
+        result.append(tensor_info(name, tensor.shape, qtype))
+    return tuple(result)
+
+
 def tensor_info(
     name: str,
     shape: tuple[int, ...],
