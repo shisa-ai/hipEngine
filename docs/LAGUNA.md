@@ -2400,13 +2400,20 @@ acceptance are out of scope until AR itself is substantially faster.
 ## Laguna Q2 XL Decode Optimization Campaign
 
 The W7900 UD-Q2_K_XL route changes the decode priority established by the
-mixed-F16 Q4 model on gfx1151. The retained full category suite measures
-**19.596 decode tok/s (51.032 ms/token)**. A clean current-main D0 at
-`e6120872` profiles 16 c=1 rows after the canonical 69-token
-`code_merge_intervals` bulk prefill; the stable 14 rows contain exactly **1,055
-dispatches/token**, **44.572 ms/token** mean summed kernels, and **49.929 ms**
-median embedding-to-argmax span. The profiled child wall is 18.974 tok/s; this
-is attribution under `rocprofv3`, not a replacement performance claim.
+mixed-F16 Q4 model on gfx1151. D0 measured **19.596 decode tok/s (51.032
+ms/token)** on the retained full category suite. Exact dense decode at clean
+revision `fc08ca0e` is now the default and measures **35.419 tok/s (28.233
+ms/token)** at h32, an **81.04%** gain, while h32 E2E improves **8.557 ->
+10.618 output tok/s (+24.08%)** and bulk prefill improves **0.774%**. Every
+category's prefill/decode/E2E row, exactness gate, and lifecycle check passes.
+The retained artifact is
+`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-dense-decode-retained.json`.
+
+The frozen clean D0 at `e6120872` profiles 16 c=1 rows after the canonical
+69-token `code_merge_intervals` bulk prefill; the stable 14 rows contain exactly
+**1,055 dispatches/token**, **44.572 ms/token** mean summed kernels, and **49.929
+ms** median embedding-to-argmax span. The profiled child wall is 18.974 tok/s;
+this is attribution under `rocprofv3`, not a replacement performance claim.
 
 The source quant recipe has a **4.144 GB active encoded-weight proxy/token**:
 each dense/router tensor once, ten of 256 rows from each rank-3 expert tensor,
@@ -2432,6 +2439,27 @@ resource sets, all per-row sums/spans, generated IDs, exact command, hashes, and
 traffic caveats are in
 `benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-decode-d0-profile.json`.
 
+D1 keeps the same 1,055 dispatches but replaces generic dense leaves. Its clean
+profile reduces kernel sum **44.572 -> 23.142 ms (-48.08%)**, median dispatch
+span **49.929 -> 27.554 ms**, and profiled child wall **52.703 -> 28.820 ms
+(-45.32%)**. Exact Q5 falls **27.303 -> 7.133 ms (-73.87%)** and the Q4 lm-head
+falls **1.618 -> 0.376 ms (-76.75%)**. The new short-context order is:
+
+| D1 family | Mean ms/token | Kernel share | Calls/token |
+| --- | ---: | ---: | ---: |
+| dense Q5 BF16/F32 outputs | **7.133** | **30.82%** | 235 |
+| SWA decode attention | **4.212** | **18.20%** | 36 |
+| selected IQ3 down | **4.040** | **17.46%** | 45 |
+| selected IQ2 dual+SiLU | **2.295** | **9.92%** | 46 |
+| dense Q6 BF16/F32 outputs | **2.050** | **8.86%** | 146 |
+| global decode attention | **0.504** | **2.18%** | 12 |
+| Q4 lm-head | **0.376** | **1.63%** | 1 |
+| all other kernels | **2.532** | **10.94%** | 534 |
+
+The Q5 symbols are local128, VGPR48/72, LDS1024, and scratch0. Trace SHA-256 is
+`18d02d7896c43d9a6986243e562e741ff520d279d2dcc2995f207c227c61515a`.
+SWA and IQ3 down are now the two largest individual short-context families.
+
 A second clean D0 at `b4973769` extends the same synthetic canonical token
 stream to 512/1K/3,968 prompt tokens and profiles eight c=1 steps at each shape
 (six stable rows after two disclosed warmups):
@@ -2454,39 +2482,34 @@ fully classified, and scratch-free. Evidence:
 
 The Qwen3.6 UD-Q3_K_M final D0 is a useful tactics comparison, not a model ratio:
 it uses 671 dispatches, 8.825 ms summed kernels, and 11.347 ms profiled wall per
-token on an RX 7900 XTX. Qwen moved dense raw projections onto dedicated pack8
-decode families, fused selected dual+SiLU and weighted down/tail work, and uses
-one-step graph replay. Laguna already benefits from the IQ2 dual+SiLU tactic,
-but `_launch_laguna_raw_weight_linear()` explicitly forces
-`use_gemv_decode=False`; every dense Q5/Q6/Q8 call therefore remains on a generic
-`prefill_out` alias. The exact Q6 decode body is registered but disabled, and
-the existing exact Q4 decode module is not loaded by generic dispatch. Laguna's
-IQ3 down still has a separate 47-launch weighted reduction.
+token on an RX 7900 XTX. D1 has now transferred its dedicated dense pack8
+strategy to Laguna: raw Q4/Q5/Q6/Q8 rows=1 use exact decode leaves, rows>1 keep
+their existing prefill route, and registry misses preserve the generic
+fallback. Laguna already benefits from IQ2 dual+SiLU, but IQ3 down still has a
+separate 47-launch projection/reduction tail and no graph replay.
 
 Proceed in measured Amdahl order:
 
-1. add an exact dense Q5_K pack8 decode body and route all c=1 Laguna raw Q5
-   projections through it; preserve bulk dispatch and the generic fallback;
+1. **DONE:** exact Q5 plus existing exact Q4/Q6/Q8 dense decode leaves reduce
+   canonical D0 wall by 45.3% under profiling and full-suite wall by 44.8%;
 2. adapt the retained wave32-exact SWA prefill schedule to c=1 decode, where it
-   grows from 4.2 ms short to 27.9 ms at its 512-token physical window, without
+   is 4.2 ms short and reaches 27.9 ms at its 512-token physical window, without
    weakening `KVLiveSpans` or 511/512/513 wrap fixtures;
 3. screen the landed weighted IQ3 selected-down and MoE-tail fusion patterns;
-4. activate/measure the existing exact Q6 and Q4 decode families, including the
-   Q4 lm-head, then address the 22.7-ms near-4K global-attention route and
-   reprofile at 128/512/1K/near-4K; and
-5. admit Laguna-specific one-step graph replay only after the kernel work. The
-   decode span exceeds kernel sum by **5.42 ms / 10.8%**, so the prefill AR-O6
-   graph defer no longer applies automatically, but graph capture is not the
-   first 61.3% bottleneck.
+4. reprofile at 128/512/1K/near-4K after SWA/IQ3, then address the 22.7-ms
+   near-4K global-attention route; and
+5. admit Laguna-specific one-step graph replay only after kernel work. D1's
+   decode span still exceeds kernel sum by **4.43 ms / 16.1%**, so submission
+   remains material but trails SWA plus IQ3 in Amdahl order.
 
-**50 tok/s is a credible W7900 target, not a current claim.** It requires reducing
-51.032 ms to 20 ms. The 4.144 GB proxy and the 70.7 GB/s Q5 result show enough
-bandwidth headroom, but one local geometry tweak cannot close the full gap; Q5,
-SWA/IQ3/lm-head, and submission improvements must compound. Every retained
-candidate uses the full category/heldout suite and the same exact/quality lanes
-above. Laguna DFlash/MTP optimization resumes only after this target path is
-reprofiled so speculative speedups are measured against the improved true-AR
-baseline.
+**50 tok/s is a credible W7900 target, not a current claim.** D1 must reduce the
+canonical **28.233 ms to 20 ms**. The remaining short profile has 4.212 ms SWA,
+4.040 ms IQ3 down, 7.133 ms Q5, and 4.43 ms of span-over-kernel wall; the prior
+long-context profile also requires SWA and eventually global attention. Every
+retained candidate uses the full category/heldout suite and the same
+exact/quality lanes above. Laguna DFlash/MTP optimization resumes only after
+this target path is reprofiled so speculative speedups are measured against the
+improved true-AR baseline.
 
 ## Laguna DFlash Follow-on Plan
 
