@@ -1,0 +1,189 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-23T19:19:57+00:00",
+  "kind": "hipengine_laguna_post_global_online_all_family_profile",
+  "status": "accepted_attribution_baseline",
+  "pass": true,
+  "performance_claim": false,
+  "scope": "retained-default Poolside Laguna S 2.1 Q4_K_M gfx1151 c=1 prefill attribution",
+  "repo": {
+    "revision": "7c211f2412872dab76de5edd70ec155c7ca88f75",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "repacked_cache_manifest_sha256": "d328e0b73f8957eb051d3ed24d17a4aaf6a3d15fce3c45baf10c02f4de0cabfc"
+  },
+  "platform": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "gpu_max_hw_queues": 1
+  },
+  "protocol": {
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "token_stream_sha256": "12f068e7d4d96062bcd911e14221d937037bc782c006f4502766fe9136cf0eb1",
+    "lengths": [512, 1024, 4096],
+    "matrix_rows": 512,
+    "attention_rows": 128,
+    "warmup_rows": 128,
+    "repetitions": 1,
+    "timing_scope": "reset complete through synchronized first-token projection; resident load excluded",
+    "profiler": "cached-only rocprofv3 --kernel-trace"
+  },
+  "load": {
+    "seconds_excluded": 52.58354657399468,
+    "resident_nbytes": 77434399092
+  },
+  "lengths": {
+    "512": {
+      "prefill_tok_s": 71.45578253432781,
+      "prefill_seconds": 7.165270350989886,
+      "kernel_sum_seconds": 7.150503326,
+      "kernel_span_seconds": 7.160777387,
+      "span_minus_sum_percent": 0.14347689426363117,
+      "attention_seconds": 0.743817896,
+      "attention_share_percent": 10.402315222977354,
+      "global_seconds": 0.046638681,
+      "global_share_percent": 0.6522433299263947,
+      "swa_seconds": 0.697179215,
+      "swa_share_percent": 9.750071893050958,
+      "selected_gate_up_share_percent": 51.38252448104658,
+      "selected_down_share_percent": 15.385137407039087,
+      "source_f16_share_percent": 12.519119370870424,
+      "dispatches": 1484,
+      "next_token_id": 2930
+    },
+    "1024": {
+      "prefill_tok_s": 68.30748005796343,
+      "prefill_seconds": 14.991037572035566,
+      "kernel_sum_seconds": 14.956864923,
+      "kernel_span_seconds": 14.983503948,
+      "span_minus_sum_percent": 0.17778902112917172,
+      "attention_seconds": 2.169782881,
+      "attention_share_percent": 14.5069363945609,
+      "global_seconds": 0.185073666,
+      "global_share_percent": 1.2373827466704066,
+      "swa_seconds": 1.984709215,
+      "swa_share_percent": 13.269553647890492,
+      "selected_gate_up_share_percent": 49.23290511019078,
+      "selected_down_share_percent": 14.600244979427096,
+      "source_f16_share_percent": 11.938422030235514,
+      "dispatches": 2967,
+      "next_token_id": 95
+    },
+    "4096": {
+      "prefill_tok_s": 64.07100623910351,
+      "prefill_seconds": 63.929072453058325,
+      "kernel_sum_seconds": 63.788942667,
+      "kernel_span_seconds": 63.921815010,
+      "span_minus_sum_percent": 0.20786697464584397,
+      "attention_seconds": 12.643970630,
+      "attention_share_percent": 19.8215711083437,
+      "global_seconds": 2.939259871,
+      "global_share_percent": 4.607788980519613,
+      "swa_seconds": 9.704710759,
+      "swa_share_percent": 15.213782127824087,
+      "selected_gate_up_share_percent": 46.264187480046104,
+      "selected_down_share_percent": 13.588927250685323,
+      "source_f16_share_percent": 11.249803067691283,
+      "dispatches": 11865,
+      "next_token_id": 7772
+    }
+  },
+  "comparison_to_post_swa_qrow2": {
+    "artifact": "benchmarks/results/2026-07-23-gfx1151-laguna-post-qrow2-global-screen.json",
+    "512": {
+      "prefill_wall_delta_percent": -2.7830046802598485,
+      "kernel_sum_delta_percent": -2.7960372005299217,
+      "global_duration_delta_percent": -79.49210110043379,
+      "swa_duration_delta_percent": -0.0323533741303228,
+      "attention_duration_delta_percent": -19.571862975641473
+    },
+    "1024": {
+      "prefill_wall_delta_percent": -5.316752048823059,
+      "kernel_sum_delta_percent": -5.33399350349667,
+      "global_duration_delta_percent": -81.61512505611711,
+      "swa_duration_delta_percent": 0.023515370395887913,
+      "attention_duration_delta_percent": -27.453974524024083
+    },
+    "4096": {
+      "prefill_wall_delta_percent": -17.982934254686743,
+      "kernel_sum_delta_percent": -18.030927429369292,
+      "global_duration_delta_percent": -82.52861162045988,
+      "swa_duration_delta_percent": 0.021033952718085835,
+      "attention_duration_delta_percent": -52.33357286306446
+    }
+  },
+  "resources": {
+    "global_qrow2_online": {
+      "kernel": "laguna_global_attention_prefill_qrow2_online_bf16_kernel",
+      "workgroup": 32,
+      "grid_x": 1536,
+      "grid_y": 64,
+      "vgpr": 48,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0
+    },
+    "swa_qrow2_exact": {
+      "kernel": "laguna_swa_attention_prefill_qrow2_exact_bf16_kernel",
+      "workgroup": 32,
+      "grid_x": 2304,
+      "grid_y": 64,
+      "vgpr": 56,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0
+    },
+    "swa_wave32_fallback": {
+      "kernel": "laguna_swa_attention_prefill_wave32_exact_bf16_kernel",
+      "workgroup": 32,
+      "grid_x": 2304,
+      "grid_y": 128,
+      "vgpr": 32,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0
+    }
+  },
+  "ceilings_4096": {
+    "perfect_global_removal_speedup": 1.0483036186212167,
+    "perfect_swa_removal_speedup": 1.1794369711214203,
+    "perfect_attention_removal_speedup": 1.2472182528685893
+  },
+  "correctness": {
+    "pass": true,
+    "final_positions_exact": true,
+    "repeat_next_token_deterministic": true,
+    "tracked_returned_to_baseline": true,
+    "boundary_fixtures_linked": true
+  },
+  "lifecycle": {
+    "active_allocations_before": 0,
+    "active_allocations_after": 0,
+    "current_allocated_bytes_before": 0,
+    "current_allocated_bytes_after": 0,
+    "total_allocated_bytes": 77434399092,
+    "total_freed_bytes": 77434399092
+  },
+  "decision": {
+    "global_query_head_sharing": "defer",
+    "global_reason": "global is 4.61% of 4K kernel sum with only a 1.048x perfect-removal ceiling after the retained online qrow2 route; the prior high-VGPR query-head-group schedule regressed, so another grouped-head kernel is not the next bottleneck",
+    "swa_online_query_row_screen": "justified",
+    "swa_reason": "SWA is now the largest attention family at 15.21% of 4K kernel sum with a 1.179x perfect-removal ceiling; permit one bounded online-softmax qrow2 leaf screen before closing AR-O5",
+    "submission_work": "defer because span-minus-sum remains at most 0.208%"
+  },
+  "raw": {
+    "child_path": "/tmp/laguna-post-global-online-profile-7c211f241-retry/child.json",
+    "child_sha256": "e95b7e2d09f0efa748ad53996d65b0552f0a0212243ca56b4fe94a8fcb0848ba",
+    "trace_path": "/tmp/laguna-post-global-online-profile-7c211f241-retry/gfx1151/3238995_kernel_trace.csv",
+    "trace_sha256": "46d433bf0efd944a8ec421dedd8d23edf7b2f6db1569f6fd95002cc2fdab51fc",
+    "summary_path": "/tmp/laguna-post-global-online-profile-7c211f241-retry/summary.json",
+    "summary_sha256": "480328bca15df1412b7d9e5b95c459351321b23cfddc9be452b4b67bf49bef5a"
+  }
+}

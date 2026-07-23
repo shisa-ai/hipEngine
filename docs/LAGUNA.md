@@ -2547,6 +2547,20 @@ any next route must be an in-tree raw-pointer head-dim-128 tiled causal kernel
 that consumes complete `KVLiveSpans`. Evidence:
 `benchmarks/results/2026-07-23-gfx1151-laguna-post-qrow2-global-screen.json`.
 
+The clean cached post-global-online profile closes the next attribution loop.
+Synchronized prefill is **71.456/68.307/64.071 tok/s** and kernel sum is
+**7.151/14.957/63.789 s** at 512/1K/4K, with span-minus-sum still only
+**0.144%/0.178%/0.208%**. Relative to post-SWA-qrow2, global duration falls
+**79.49%/81.62%/82.53%** and complete kernel sum falls
+**2.80%/5.33%/18.03%**. At 4K, global is now **2.939 s / 4.61%**, SWA is
+**9.705 s / 15.21%**, and complete attention is **19.82%**. Perfect global
+removal has only a **1.048x** ceiling, so another high-register grouped-query-
+head route is not the next experiment. SWA retains a **1.179x** perfect-removal
+ceiling; permit one bounded online-softmax qrow2 leaf screen, then close AR-O5
+unless that production leaf is both quality-safe and faster. Submission work
+remains deferred. Evidence:
+`benchmarks/results/2026-07-23-gfx1151-laguna-post-global-online-all-family-profile.json`.
+
 - [x] Reprofile at 512/1K/4K after AR-O1 through AR-O3; repeat after any AR-O4
   promotion before final attention admission.
 - [x] For SWA, process multiple query rows per tile and reuse the 512-token K/V
