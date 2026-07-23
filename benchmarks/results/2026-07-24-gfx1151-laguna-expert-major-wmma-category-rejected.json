@@ -1,0 +1,249 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-23T21:39:36.479397+00:00",
+  "kind": "hipengine_laguna_prefill_expert_major_wmma_category",
+  "status": "rejected_category_gate",
+  "pass": false,
+  "performance_claim": false,
+  "performance_claim_scope": "rejected same-owner adaptive-M128 expert-major compensated Q4/Q6 WMMA route over all ten canonical categories uniformly expanded to 128 prompt tokens at h16/h32; exact grouped-small-M remains the gfx1151 default",
+  "repo": {
+    "revision": "e1b3f89f59caf4e4e17c604398dae25cd1f7c022",
+    "tracked_clean": true,
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "repacked_cache": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+    "repacked_cache_manifest_sha256": "d328e0b73f8957eb051d3ed24d17a4aaf6a3d15fce3c45baf10c02f4de0cabfc"
+  },
+  "platform": {
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "hip_total_bytes": 128849018880,
+    "gpu_max_hw_queues": 1,
+    "rocm_version": "HIP version: 7.15.0-0000000"
+  },
+  "protocol": {
+    "comparison": "expert_major_wmma",
+    "modes": [
+      "adaptive_grouped_smallm_fused",
+      "adaptive_expert_major_wmma_comp"
+    ],
+    "chunk_size": 128,
+    "context_length": 4096,
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "prompt_tokens": 128,
+    "prompt_expansion": "repeat each canonical prompt without repeating its leading BOS, then truncate; apply identically to both modes",
+    "output_horizons": [
+      16,
+      32
+    ],
+    "repetitions": 3,
+    "warmup_output_tokens_per_mode": 2,
+    "teacher_forced_tokens_per_prompt": 32,
+    "timed_order": "alternating adaptive_grouped_smallm_fused/adaptive_expert_major_wmma_comp per prompt and reversed next repetition",
+    "timing_scope": "prefill plus fixed-horizon decode; resident model load excluded",
+    "decode_route": "identical exact c=1 path for both modes"
+  },
+  "shape_screen": {
+    "path": "benchmarks/results/2026-07-24-gfx1151-laguna-expert-major-wmma-screen.json",
+    "sha256": "282a560b63aa53e4a40709fb64deda53e302b5574461d31af8d96428cff25e26",
+    "source_revision": "30bd3744ea769166bcfe76ac4986231e456cf55d",
+    "pass": true,
+    "adaptive_threshold_rows": 128,
+    "aggregate_speedup": 1.6606186917383978
+  },
+  "performance": {
+    "adaptive_grouped_smallm_fused": {
+      "prefill_tok_s": 73.04635949461371,
+      "ttft_median_seconds": 1.7576146864448674,
+      "h16_e2e_output_tok_s": 5.926001690399096,
+      "h32_e2e_output_tok_s": 8.586376553658278,
+      "h16_decode_tok_s": 15.828567770315024,
+      "h32_decode_tok_s": 15.700001062211513
+    },
+    "adaptive_expert_major_wmma_comp": {
+      "prefill_tok_s": 130.5567417591946,
+      "ttft_median_seconds": 0.9806260014884174,
+      "h16_e2e_output_tok_s": 8.299254576174668,
+      "h32_e2e_output_tok_s": 10.83103738798327,
+      "h16_decode_tok_s": 15.83167989633452,
+      "h32_decode_tok_s": 15.703711042609696
+    },
+    "candidate_vs_retained": {
+      "prefill_speedup": 1.7873134631551568,
+      "ttft_speedup": 1.7923394686426,
+      "h16_e2e_speedup": 1.4004813042190916,
+      "h32_e2e_speedup": 1.2614211967408582,
+      "h16_decode_speedup": 1.0001966145051566,
+      "h32_decode_speedup": 1.0002363044679732,
+      "categories": {
+        "code": {
+          "prefill_speedup": 1.792518293342623,
+          "h16_e2e_speedup": 1.4031536353994534,
+          "h32_e2e_speedup": 1.2632641888959488
+        },
+        "general_en": {
+          "prefill_speedup": 1.8105296631376535,
+          "h16_e2e_speedup": 1.4116270978851087,
+          "h32_e2e_speedup": 1.268353471580158
+        },
+        "general_ja": {
+          "prefill_speedup": 1.7864804632410851,
+          "h16_e2e_speedup": 1.3982470023096105,
+          "h32_e2e_speedup": 1.259337749654976
+        },
+        "mixed_ja_en": {
+          "prefill_speedup": 1.7550457154400105,
+          "h16_e2e_speedup": 1.386338532772366,
+          "h32_e2e_speedup": 1.2529283236657578
+        }
+      }
+    }
+  },
+  "quality": {
+    "teacher_forced": {
+      "pass": false,
+      "failed_checks": [
+        "max_kl_above_0.05"
+      ],
+      "steps": 320,
+      "top1_matches": 314,
+      "top1_agreement": 0.98125,
+      "max_kl_divergence": 0.5277908719463109,
+      "finite": true,
+      "categories": {
+        "code": {
+          "steps": 128,
+          "top1_matches": 126,
+          "top1_agreement": 0.984375,
+          "max_kl_divergence": 0.4339216159136236
+        },
+        "general_en": {
+          "steps": 64,
+          "top1_matches": 62,
+          "top1_agreement": 0.96875,
+          "max_kl_divergence": 0.18588204419128115
+        },
+        "general_ja": {
+          "steps": 64,
+          "top1_matches": 64,
+          "top1_agreement": 1.0,
+          "max_kl_divergence": 0.3294641705177081
+        },
+        "mixed_ja_en": {
+          "steps": 64,
+          "top1_matches": 62,
+          "top1_agreement": 0.96875,
+          "max_kl_divergence": 0.5277908719463109
+        }
+      },
+      "thresholds": {
+        "max_kl_divergence": 0.05,
+        "minimum_suite_top1_agreement": 0.9,
+        "minimum_each_category_top1_agreement": 0.9
+      }
+    },
+    "poolside_oracle": {
+      "pass": true,
+      "kl_divergence": 0.00009721235133095365,
+      "top1_agreement": 1.0,
+      "reference_top1": 94557,
+      "candidate_top1": 94557,
+      "finite_logits": true
+    },
+    "free_running": {
+      "all_pairs_exact": false,
+      "exact_pairs": 15,
+      "pairs": 30,
+      "same_mode_repeat_deterministic": true,
+      "mismatched_prompts": [
+        "code_lru_cache",
+        "code_markdown_table",
+        "general_en_explain",
+        "general_en_plan",
+        "mixed_ja_en_review"
+      ],
+      "mismatch_repetitions_per_prompt": 3
+    }
+  },
+  "memory": {
+    "resident_nbytes": 77125438836,
+    "tracked_returned_to_baseline": true,
+    "tracked_peak_allocated_bytes": 77900501084,
+    "tracked_after_current_allocated_bytes": 0,
+    "tracked_after_active_allocations": 0
+  },
+  "promotion": {
+    "pass": false,
+    "failed_checks": [
+      "teacher_forced_quality_failed"
+    ],
+    "decision": "reject the adaptive all-layer runtime route and keep exact grouped-small-M as the gfx1151 default; retain the independently tested expert-major leaf for component and layer-scope bisection",
+    "reason": "maximum teacher-forced KL 0.527791 exceeded the declared 0.05 limit despite 314/320 top-1 agreement and positive performance in every category"
+  },
+  "load": {
+    "seconds_excluded": 50.991248604957946
+  },
+  "raw_output": {
+    "path": "/tmp/laguna-expert-major-wmma-category.raw.json",
+    "bytes": 303298,
+    "sha256": "a49a7023a7a5d722963b207c4cddf744d0cd24e91fa4e687e9a8f553d477be9e",
+    "stderr_path": "/tmp/laguna-expert-major-wmma-category.stderr.log",
+    "stderr_sha256": "208c517e27b12df632bc4e26cc19164d90d9f88ed552968856b5d965ce973f81",
+    "committed": false,
+    "omitted_fields": [
+      "rows",
+      "teacher_forced_prompts",
+      "free_running_pairs"
+    ]
+  },
+  "command": [
+    "HIP_VISIBLE_DEVICES=0",
+    "HIPENGINE_HIP_ARCH=gfx1151",
+    "HIPENGINE_GPU_MAX_HW_QUEUES=1",
+    "PYTHONPATH=.",
+    ".venv/bin/python",
+    "-u",
+    "scripts/laguna_grouped_down_category_bench.py",
+    "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "--comparison",
+    "expert_major_wmma",
+    "--shape-screen",
+    "benchmarks/results/2026-07-24-gfx1151-laguna-expert-major-wmma-screen.json",
+    "--backend",
+    "hip_gfx1151",
+    "--context-length",
+    "4096",
+    "--chunk-size",
+    "128",
+    "--output-horizons",
+    "16,32",
+    "--repetitions",
+    "3",
+    "--warmup-output-tokens",
+    "2",
+    "--teacher-forced-tokens",
+    "32",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--require-cached-build",
+    "--repacked-cache",
+    "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+    "--model-sha256",
+    "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "--output",
+    "/tmp/laguna-expert-major-wmma-category.raw.json"
+  ]
+}

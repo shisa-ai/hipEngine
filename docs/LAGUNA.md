@@ -2744,6 +2744,20 @@ applying quality to candidate-selected shapes without changing any measurement
 (`97564550b`). Evidence:
 `benchmarks/results/2026-07-24-gfx1151-laguna-expert-major-wmma-screen.json`.
 
+The complete category gate rejects that adaptive all-layer route despite its
+large wall advantage. Uniformly extending all ten category prompts to M128 moves
+weighted prefill **73.046 -> 130.557 tok/s (1.787x)**, TTFT **1.758 -> 0.981 s
+(1.792x)**, and h16/h32 E2E **1.400x/1.261x**; every category improves prefill
+**1.755-1.811x** and decode is neutral. But the 320-step full-vocabulary lane
+reaches maximum KL **0.527791** (>0.05) with top-1 **314/320 (98.125%)**.
+Every category remains above 96.875% top-1, the Poolside fallback oracle and
+lifecycle pass, and repeats are deterministic, so this is cumulative matrix
+arithmetic drift rather than a routing or ownership failure. The public default
+therefore remains exact grouped-small-M. Retain the registered leaf only for a
+full-suite component/layer-scope bisection; do not infer quality from the
+single-prefill M128 screen or promote the all-layer route. Evidence:
+`benchmarks/results/2026-07-24-gfx1151-laguna-expert-major-wmma-category-rejected.json`.
+
 #### AR-O6 — submission and serving only after a new profile asks for it
 
 Graph replay, cross-layer launch fusion, and packed multi-request prefill remain
