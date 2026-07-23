@@ -177749,3 +177749,7 @@ Vulkan local sizes verbatim will close the measured gap.
 
 - The first clean `protect_decode` c2 server run exposed a real lifecycle bug after all c1 arms passed: one c2 request failed with `submit+poll text generation exceeded 16 ticks; missing request_ids=[2]`. A deterministic two-row Laguna RED reproduced it. The generic finite stall guard assumed all ready rows decode together, but `protect_decode` may finish the first ready row before prefill admits the later row, consuming one full decode span per row.
 - `_submit_poll_max_ticks` now receives the active scheduler policy. `fair`/`protect_ttft` retain the longest-row bound; only `protect_decode` covers the exact serial-stagger worst case. This changes no scheduling or model work. The Laguna RED passes; the focused Laguna file reports **43 passed**, and nine submit/poll/tick-budget tests pass with `py_compile` and diff checks. The blocked c2 policy packet is rerun from the new clean revision.
+
+## 2026-07-23 — Gate Laguna scheduler cancellation acknowledgement
+
+- Added a native-runner lifecycle test proving cancellation publication ordering, not merely final reason: after dispatch, `cancel_requested=True` while `cancelled=False`; one shared-loop poll reclaims the active row and only then acknowledges the token, publishes `cancelled=True`, emits `FinishDetails(reason="cancelled")`, clears active ownership, and returns both session leases. The focused Laguna file now reports **44 passed**. This is the S5 cancellation-ack gate cited by the retained server packet.
