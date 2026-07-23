@@ -2597,6 +2597,16 @@ that consumes complete `KVLiveSpans`. Evidence:
   valid experiment must tile keys and avoid doubled whole-context score storage
   rather than repeat unchanged query-row grouping. Evidence:
   `benchmarks/results/2026-07-23-gfx1151-laguna-global-qrow2-rejected.json`.
+  The next explicit `global_context_rows_qrow2_online_spans` leaf removes those
+  score rows entirely: one wave streams BF16 K/V across two adjacent queries
+  while maintaining online max, denominator, and output state. Across M128 with
+  context capacity 4096 and prior context 0/128/384/896/1920/3968, retained ->
+  online improves **3.720/4.624/5.336/5.714/5.856/5.867x** with maximum output
+  error `5.96e-8`; the 4K synthetic gate has KL `1.14e-15` and 100% top-1.
+  Cached tracing confirms **86.752 -> 14.807 ms (5.859x)**, local32/VGPR48,
+  zero LDS/scratch, and the intended symbol. This is an explicit quality-lane
+  candidate only; run the clean repeated full-model and complete category gates
+  before selecting any runtime default.
 - [ ] Preserve complete `KVLiveSpans`, physical SWA rings, absolute positions,
   eviction masks, BF16 K/V rounding, and the separate softplus output gate.
   Keep the exact global/SWA kernels as fallbacks below the selected threshold.
