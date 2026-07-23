@@ -1,0 +1,128 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-23T18:48:18+00:00",
+  "kind": "hipengine_laguna_prefill_ar_o5_global_qrow2_online_ab",
+  "status": "quality_lane_admitted",
+  "pass": true,
+  "performance_claim": true,
+  "scope": "Poolside Laguna S 2.1 Q4_K_M c=1 prefill with matrix512/attention128 and complete global KVLiveSpans",
+  "repo": {
+    "revision": "1368f1709efdda7b3236ca75d71c5d0a557b3d2c",
+    "tracked_clean": true
+  },
+  "model": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "repacked_cache_manifest_sha256": "d328e0b73f8957eb051d3ed24d17a4aaf6a3d15fce3c45baf10c02f4de0cabfc"
+  },
+  "platform": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "gpu_max_hw_queues": 1
+  },
+  "candidate": {
+    "baseline_variant": "global_context_rows_spans",
+    "candidate_variant": "global_context_rows_qrow2_online_spans",
+    "design": "one wave streams each BF16 K/V row across two adjacent query rows and maintains per-row online max, denominator, and output state without whole-context score LDS",
+    "default_changed": false,
+    "fallback": "global_context_rows_spans"
+  },
+  "protocol": {
+    "lengths": [512, 1024, 4096],
+    "matrix_rows": 512,
+    "attention_rows": 128,
+    "context_length": 4096,
+    "repetitions": 3,
+    "warmup_rows_per_mode": 128,
+    "balanced_order": true,
+    "timing_scope": "prefill through device synchronize; shared resident weight load and per-run session construction excluded",
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "candidate_variant": "global_context_rows_qrow2_online_spans"
+  },
+  "measurements": {
+    "512": {
+      "baseline_samples_seconds": [7.385852041072212, 7.33902485400904, 7.340435420977883],
+      "candidate_samples_seconds": [7.170985892997123, 7.163390039931983, 7.162351348088123],
+      "baseline_median_tok_s": 69.75063066923515,
+      "candidate_median_tok_s": 71.47453889092733,
+      "speedup": 1.024715306587938,
+      "seconds_saved": 0.17704538104590029
+    },
+    "1024": {
+      "baseline_samples_seconds": [15.827717761974782, 15.813211680040695, 15.809818630921654],
+      "candidate_samples_seconds": [15.008921574102715, 14.99684260005597, 14.995634913095273],
+      "baseline_median_tok_s": 64.75597878022997,
+      "candidate_median_tok_s": 68.28103936999234,
+      "speedup": 1.0544360637606263,
+      "seconds_saved": 0.8163690799847245
+    },
+    "4096": {
+      "baseline_samples_seconds": [77.89425666199531, 77.90693736600224, 77.817311224062],
+      "candidate_samples_seconds": [63.92429684102535, 63.910804601968266, 64.86671628896147],
+      "baseline_median_tok_s": 52.584107937170195,
+      "candidate_median_tok_s": 64.07579281140043,
+      "speedup": 1.2185391237968897,
+      "seconds_saved": 13.969959820969962
+    },
+    "median_wall_sum_speedup": 1.1738218745250957
+  },
+  "correctness": {
+    "pass": true,
+    "finite_logits": true,
+    "max_full_vocabulary_kl": 0.0075887621250003146,
+    "top1_matches": 9,
+    "top1_total": 9,
+    "top1_agreement": 1.0,
+    "next_token_ids_exact": true,
+    "final_cursors_exact": true,
+    "same_mode_repeat_deterministic": true,
+    "exact_full_state_pairs": 0,
+    "hash_differences_expected_for_online_softmax": true,
+    "primitive_max_abs": 5.960464477539063e-08,
+    "primitive_max_synthetic_kl": 1.1381295714559243e-15,
+    "primitive_top1_agreement": 1.0,
+    "boundary_fixture": "tests/test_laguna_kv_attention.py::test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap"
+  },
+  "lifecycle": {
+    "pass": true,
+    "tracked_active_allocations_before": 0,
+    "tracked_active_allocations_after": 0,
+    "tracked_current_bytes_before": 0,
+    "tracked_current_bytes_after": 0,
+    "total_allocated_bytes": 91364226692,
+    "total_freed_bytes": 91364226692
+  },
+  "trace": {
+    "baseline_median_ms": 86.751983,
+    "candidate_median_ms": 14.807291,
+    "candidate_speedup": 5.859,
+    "candidate_symbol": "laguna_global_attention_prefill_qrow2_online_bf16_kernel",
+    "candidate_workgroup": 32,
+    "candidate_grid_x": 1536,
+    "candidate_grid_y": 64,
+    "candidate_vgpr": 48,
+    "candidate_sgpr": 128,
+    "candidate_lds_bytes": 0,
+    "candidate_scratch_bytes": 0,
+    "raw_sha256": "9230c9367ef085bfeb8830130c7f3eb8247e15944c5c1f7c27f154bf4a100daf"
+  },
+  "promotion": {
+    "pass": true,
+    "failed_checks": [],
+    "effective_speedup": 1.1738218745250957,
+    "policy": "finite logits, KL <=0.05, top-1 agreement, deterministic repeats, exact cursor; every 512/1K/4K length >1.00x; lifecycle exact",
+    "next": "complete ten-prompt four-category teacher-forced, free-running, Poolside-oracle, and lifecycle gate before changing a backend capability"
+  },
+  "raw": {
+    "path": "/tmp/laguna-global-qrow2-online-three-repeat.json",
+    "sha256": "94d9da39f74e3cfbb7b99dbc733c6453e4ddfaa710aefa708b959be149bc5965"
+  },
+  "limitations": [
+    "This admits the candidate to the category quality lane; it does not change the runtime default.",
+    "Complete ten-prompt category and heldout quality/performance evidence is still required before promotion.",
+    "Online softmax changes full-model hidden/KV/logit bytes; quality thresholds, not byte equality, govern admission."
+  ]
+}
