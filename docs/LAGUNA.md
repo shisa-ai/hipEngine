@@ -2314,8 +2314,17 @@ repeat either experiment unchanged.
   and
   `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-wmma16-down-category-rejected.json`.
 - [ ] After gate/up, evaluate fused SiLU and routing-weighted down/combine to
-  remove the largest expert intermediates. Keep the unfused staged chain
-  registered and do not introduce order-dependent atomics across ten experts.
+  remove the largest expert intermediates. The exact grouped-combine candidate
+  is now wired explicitly: it preserves all ten slot-order FMAs, rounds selected
+  output to BF16, adds the BF16 shared output, and rounds again while removing
+  one add launch and the routed-output round trip. The unfused registered chain
+  remains. A dirty counterbalanced full-model screen is exact and effectively
+  flat (**0.99964x** aggregate; shape medians **0.99817-1.00152x**), while the
+  production-shape combine sub-window improves **1.246-1.310x** at 32-128 rows.
+  A checked-in clean micro plus full-model screen now decides whether this exact
+  physical saving is retained by the performance-first policy; category
+  non-regression remains mandatory before any default promotion. Do not
+  introduce order-dependent atomics across ten experts.
 
 Stop rule: remove a candidate that is slower inclusively at every natural
 shape, or whose best applicable family speedup is below 2x with no material

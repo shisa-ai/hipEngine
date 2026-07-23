@@ -48,6 +48,8 @@ _SELECTED_DOWN_MODES = frozenset(
         "direct",
         "grouped_smallm",
         "adaptive_grouped_smallm",
+        "grouped_smallm_fused",
+        "adaptive_grouped_smallm_fused",
         "wmma16_down",
         "adaptive_wmma16_down",
     }
@@ -123,6 +125,7 @@ class LagunaMoEKernelPlan:
     grouped_wmma_tile_map_key: KernelKey
     grouped_wmma16_down_keys: Mapping[str, KernelKey]
     grouped_weighted_sum_key: KernelKey
+    grouped_weighted_sum_shared_add_key: KernelKey
     shared_silu_key: KernelKey
     add_key: KernelKey
     router_logits: Callable
@@ -142,6 +145,7 @@ class LagunaMoEKernelPlan:
     grouped_wmma_tile_map: Callable
     grouped_wmma16_downs: Mapping[str, Callable]
     grouped_weighted_sum: Callable
+    grouped_weighted_sum_shared_add: Callable
     shared_silu: Callable
     add: Callable
 
@@ -165,6 +169,7 @@ class LagunaMoEKernelPlan:
             self.grouped_wmma_tile_map_key,
             *tuple(self.grouped_wmma16_down_keys.values()),
             self.grouped_weighted_sum_key,
+            self.grouped_weighted_sum_shared_add_key,
             self.shared_silu_key,
             self.add_key,
         )
@@ -325,6 +330,12 @@ def resolve_laguna_moe_plan(
         ),
         "grouped_weighted_sum": KernelKey(
             backend, "weighted_lanes_sum", "bf16", _WEIGHTED_SUM_VARIANT
+        ),
+        "grouped_weighted_sum_shared_add": KernelKey(
+            backend,
+            "weighted_lanes_sum+shared_add",
+            "bf16",
+            _WEIGHTED_SUM_VARIANT,
         ),
         "shared_silu": KernelKey(backend, "silu_mul_separate", "bf16", _SILU_VARIANT),
         "add": KernelKey(backend, "elementwise", "bf16", _ADD_VARIANT),
@@ -495,6 +506,9 @@ def resolve_laguna_moe_plan(
         grouped_wmma_tile_map_key=keys["grouped_wmma_tile_map"],
         grouped_wmma16_down_keys=grouped_wmma16_down_keys,
         grouped_weighted_sum_key=keys["grouped_weighted_sum"],
+        grouped_weighted_sum_shared_add_key=keys[
+            "grouped_weighted_sum_shared_add"
+        ],
         grouped_count=functions["grouped_count"],
         grouped_prefix_active=functions["grouped_prefix_active"],
         grouped_scatter=functions["grouped_scatter"],
@@ -504,6 +518,9 @@ def resolve_laguna_moe_plan(
         grouped_wmma_tile_map=functions["grouped_wmma_tile_map"],
         grouped_wmma16_downs=grouped_wmma16_downs,
         grouped_weighted_sum=functions["grouped_weighted_sum"],
+        grouped_weighted_sum_shared_add=functions[
+            "grouped_weighted_sum_shared_add"
+        ],
         shared_silu=functions["shared_silu"],
         add=functions["add"],
     )
@@ -1000,6 +1017,7 @@ def _launch_grouped_smallm_down(
     stream: int,
     runtime: HipRuntime | None,
     libraries: Mapping[str, object] | None,
+    defer_weighted_sum: bool = False,
 ) -> None:
     """Group lane-order intermediates on device and run exact small-M down."""
 
@@ -1054,22 +1072,23 @@ def _launch_grouped_smallm_down(
             "grouped_down", libraries, stream=stream, runtime=active_runtime
         ),
     )
-    plan.grouped_weighted_sum(
-        scratch.expert_down.ptr,
-        scratch.grouped_sorted_weights.ptr,
-        scratch.grouped_sorted_lanes.ptr,
-        scratch.grouped_lane_to_row.ptr,
-        scratch.routed_output.ptr,
-        tokens,
-        plan.top_k,
-        plan.hidden_size,
-        **_stage_kwargs(
-            "grouped_weighted_sum",
-            libraries,
-            stream=stream,
-            runtime=active_runtime,
-        ),
-    )
+    if not defer_weighted_sum:
+        plan.grouped_weighted_sum(
+            scratch.expert_down.ptr,
+            scratch.grouped_sorted_weights.ptr,
+            scratch.grouped_sorted_lanes.ptr,
+            scratch.grouped_lane_to_row.ptr,
+            scratch.routed_output.ptr,
+            tokens,
+            plan.top_k,
+            plan.hidden_size,
+            **_stage_kwargs(
+                "grouped_weighted_sum",
+                libraries,
+                stream=stream,
+                runtime=active_runtime,
+            ),
+        )
 
 
 def _launch_grouped_wmma16_down(
@@ -1391,10 +1410,14 @@ def run_laguna_moe_rows(
         runtime=runtime,
         libraries=libraries,
     )
+    use_grouped_fused_combine = selected_down_mode == "grouped_smallm_fused" or (
+        selected_down_mode == "adaptive_grouped_smallm_fused"
+        and tokens >= _GROUPED_SMALLM_MIN_ROWS
+    )
     use_grouped_smallm = selected_down_mode == "grouped_smallm" or (
         selected_down_mode == "adaptive_grouped_smallm"
         and tokens >= _GROUPED_SMALLM_MIN_ROWS
-    )
+    ) or use_grouped_fused_combine
     use_grouped_wmma16 = selected_down_mode == "wmma16_down" or (
         selected_down_mode == "adaptive_wmma16_down"
         and tokens >= _WMMA16_DOWN_MIN_ROWS
@@ -1418,6 +1441,7 @@ def run_laguna_moe_rows(
             stream=stream,
             runtime=runtime,
             libraries=libraries,
+            defer_weighted_sum=use_grouped_fused_combine,
         )
     else:
         _launch_selected_down(
@@ -1493,13 +1517,32 @@ def run_laguna_moe_rows(
         use_wmma_prefill=False,
         use_gemv_decode=tokens == 1,
     )
-    plan.add(
-        scratch.routed_output.ptr,
-        scratch.shared_output.ptr,
-        scratch.output.ptr,
-        tokens * h,
-        **_stage_kwargs("add", libraries, stream=stream, runtime=runtime),
-    )
+    if use_grouped_fused_combine:
+        plan.grouped_weighted_sum_shared_add(
+            scratch.expert_down.ptr,
+            scratch.grouped_sorted_weights.ptr,
+            scratch.grouped_sorted_lanes.ptr,
+            scratch.grouped_lane_to_row.ptr,
+            scratch.shared_output.ptr,
+            scratch.output.ptr,
+            tokens,
+            k,
+            h,
+            **_stage_kwargs(
+                "grouped_weighted_sum_shared_add",
+                libraries,
+                stream=stream,
+                runtime=runtime,
+            ),
+        )
+    else:
+        plan.add(
+            scratch.routed_output.ptr,
+            scratch.shared_output.ptr,
+            scratch.output.ptr,
+            tokens * h,
+            **_stage_kwargs("add", libraries, stream=stream, runtime=runtime),
+        )
     return scratch.output
 
 

@@ -3,8 +3,10 @@ from __future__ import annotations
 import pytest
 
 from scripts.laguna_grouped_down_prefill_bench import (
+    FUSED_COMBINE_MODES,
     MODES,
     _comparison_summary,
+    _grouped_combine_summary,
     _mode_order,
     _set_mode,
 )
@@ -36,6 +38,52 @@ def test_grouped_down_mode_order_is_counterbalanced() -> None:
     assert _mode_order(0, 0) == MODES
     assert _mode_order(1, 0) == tuple(reversed(MODES))
     assert _mode_order(0, 1) == tuple(reversed(MODES))
+
+
+def test_grouped_combine_mode_order_and_nonregression_screen() -> None:
+    rows = (16, 32)
+    assert FUSED_COMBINE_MODES == (
+        "adaptive_grouped_smallm",
+        "adaptive_grouped_smallm_fused",
+    )
+    assert _mode_order(0, 0, modes=FUSED_COMBINE_MODES) == FUSED_COMBINE_MODES
+    result = _grouped_combine_summary(
+        {
+            FUSED_COMBINE_MODES[0]: {16: [1.0, 1.0], 32: [1.0, 1.0]},
+            FUSED_COMBINE_MODES[1]: {16: [1.001, 1.001], 32: [0.999, 0.999]},
+        },
+        {
+            mode: {row: [row, row] for row in rows}
+            for mode in FUSED_COMBINE_MODES
+        },
+        rows=rows,
+    )
+
+    assert result["correctness"]["pass"] is True
+    assert result["screen"]["pass"] is True
+    assert result["screen"]["effective_speedup"] == pytest.approx(1.0)
+
+
+def test_grouped_combine_screen_rejects_mismatch_or_material_regression() -> None:
+    rows = (16, 32)
+    tokens = {
+        mode: {row: [row, row] for row in rows}
+        for mode in FUSED_COMBINE_MODES
+    }
+    tokens[FUSED_COMBINE_MODES[1]][32][-1] = 999
+    result = _grouped_combine_summary(
+        {
+            FUSED_COMBINE_MODES[0]: {16: [1.0, 1.0], 32: [1.0, 1.0]},
+            FUSED_COMBINE_MODES[1]: {16: [1.0, 1.0], 32: [1.01, 1.01]},
+        },
+        tokens,
+        rows=rows,
+    )
+
+    assert result["correctness"]["pass"] is False
+    assert result["screen"]["pass"] is False
+    assert "output_ids_not_exact" in result["screen"]["failed_checks"]
+    assert "candidate_below_no_regression_floor" in result["screen"]["failed_checks"]
 
 
 def test_grouped_down_summary_allows_exact_direct_fallback_and_gates_grouped_gain() -> None:
