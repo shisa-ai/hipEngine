@@ -63,6 +63,7 @@ from hipengine.runtime.gguf_linear import (
 from hipengine.runtime.laguna_kv import (
     LagunaKVCache,
     allocate_laguna_kv_cache,
+    resolve_laguna_global_prefill_variant,
     resolve_laguna_swa_decode_variant,
     resolve_laguna_swa_prefill_variant,
 )
@@ -1474,6 +1475,7 @@ class LagunaGGUFResidentSession:
         model_sha256: str | None = None,
         prefill_chunk_size: int | None = None,
         prefill_attention_chunk_size: int | None = None,
+        global_prefill_variant: str | None = None,
         swa_decode_variant: str | None = None,
         swa_prefill_variant: str | None = None,
     ) -> None:
@@ -1501,6 +1503,10 @@ class LagunaGGUFResidentSession:
         )
         self.prefill_chunk_size = self.prefill_chunk_policy.matrix_rows
         self.prefill_attention_chunk_size = self.prefill_chunk_policy.attention_rows
+        self.global_prefill_variant = resolve_laguna_global_prefill_variant(
+            self.backend,
+            global_prefill_variant,
+        )
         self.swa_decode_variant = resolve_laguna_swa_decode_variant(
             self.backend,
             swa_decode_variant,
@@ -1610,6 +1616,7 @@ class LagunaGGUFResidentSession:
                 backend=self.backend,
                 device=self.device,
                 runtime=self.runtime,
+                global_prefill_variant=self.global_prefill_variant,
                 swa_decode_variant=self.swa_decode_variant,
                 swa_prefill_variant=self.swa_prefill_variant,
             )
