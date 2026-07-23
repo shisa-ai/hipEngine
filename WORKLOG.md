@@ -175183,3 +175183,26 @@ uvx ruff check hipengine/runtime/gguf_linear.py hipengine/runtime/laguna_moe.py 
 ```
 
 This is candidate wiring only; no speed claim or default change is made.
+
+## 2026-07-23 — Add balanced Laguna LPF-3 dense/shared gate
+
+Added `scripts/laguna_dense_shared_prefill_bench.py` to compare `split` and
+`dual` in one resident session with LPF-1 tiled F16 held at its retained
+default. It alternates order across rows 16/32/55/64/122/128 and repetitions,
+requires exact repeated next tokens, lifecycle recovery, and a strictly faster
+candidate median at every profile shape. Model load is excluded; a canonical
+category run remains mandatory before promotion.
+
+Validation:
+
+```bash
+uv run pytest -q tests/test_laguna_dense_shared_prefill_bench.py
+# 3 passed
+uvx ruff check scripts/laguna_dense_shared_prefill_bench.py \
+  tests/test_laguna_dense_shared_prefill_bench.py
+python3 -m compileall -q scripts/laguna_dense_shared_prefill_bench.py
+uv run python scripts/laguna_dense_shared_prefill_bench.py --help
+# clean
+```
+
+No performance measurement or claim is made in this harness-only unit.
