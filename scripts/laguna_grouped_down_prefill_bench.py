@@ -36,8 +36,13 @@ from scripts.laguna_target_ar_bench import (
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE_ROWS = (16, 32, 55, 64, 122, 128)
 MODES = ("direct", "adaptive_grouped_smallm")
+FUSED_COMBINE_MODES = (
+    "adaptive_grouped_smallm",
+    "adaptive_grouped_smallm_fused",
+)
 GROUPED_MIN_ROWS = 32
 FALLBACK_MIN_RATIO = 0.995
+COMBINE_EFFECTIVE_FLOOR = 0.998
 DEFAULT_OUTPUT = Path(
     "benchmarks/results/2026-07-23-gfx1151-laguna-prefill-grouped-down-ab.json"
 )
@@ -61,6 +66,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--rows", type=_parse_rows, default=PROFILE_ROWS)
     parser.add_argument("--repetitions", type=int, default=3)
     parser.add_argument("--warmups", type=int, default=1)
+    parser.add_argument(
+        "--comparison",
+        choices=("grouped_down", "grouped_combine"),
+        default="grouped_down",
+    )
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--repacked-cache", type=Path, default=DEFAULT_CACHE)
@@ -69,14 +79,24 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _mode_order(shape_index: int, repetition: int) -> tuple[str, str]:
+def _mode_order(
+    shape_index: int,
+    repetition: int,
+    *,
+    modes: tuple[str, str] = MODES,
+) -> tuple[str, str]:
     """Alternate A/B order for every shape and reverse it on the next pass."""
 
-    return MODES if (int(shape_index) + int(repetition)) % 2 == 0 else tuple(reversed(MODES))
+    return modes if (int(shape_index) + int(repetition)) % 2 == 0 else tuple(reversed(modes))
 
 
-def _set_mode(owner: LagunaGGUFResidentSession, mode: str) -> None:
-    if mode not in MODES:
+def _set_mode(
+    owner: LagunaGGUFResidentSession,
+    mode: str,
+    *,
+    modes: tuple[str, str] = MODES,
+) -> None:
+    if mode not in modes:
         raise ValueError(f"unknown Laguna grouped-down mode {mode!r}")
     owner.set_selected_down_mode(mode)
 
@@ -183,8 +203,109 @@ def _comparison_summary(
     }
 
 
+def _grouped_combine_summary(
+    samples: Mapping[str, Mapping[int, Sequence[float]]],
+    next_tokens: Mapping[str, Mapping[int, Sequence[int]]],
+    *,
+    rows: Sequence[int],
+) -> dict[str, Any]:
+    parsed_rows = tuple(int(value) for value in rows)
+    if not parsed_rows or tuple(sorted(set(parsed_rows))) != parsed_rows:
+        raise ValueError("grouped-combine comparison rows must be sorted and distinct")
+    if set(samples) != set(FUSED_COMBINE_MODES) or set(next_tokens) != set(
+        FUSED_COMBINE_MODES
+    ):
+        raise ValueError(
+            f"grouped-combine comparison requires modes {FUSED_COMBINE_MODES}"
+        )
+
+    baseline, candidate = FUSED_COMBINE_MODES
+    shapes: dict[str, Any] = {}
+    exact = True
+    baseline_seconds = 0.0
+    candidate_seconds = 0.0
+    total_tokens = 0
+    regressed_rows: list[int] = []
+    for value in parsed_rows:
+        mode_summaries: dict[str, Any] = {}
+        mode_tokens: dict[str, list[int]] = {}
+        sample_counts: set[int] = set()
+        for mode in FUSED_COMBINE_MODES:
+            mode_samples = [float(item) for item in samples[mode][value]]
+            mode_ids = [int(item) for item in next_tokens[mode][value]]
+            if len(mode_samples) != len(mode_ids):
+                raise ValueError(f"rows={value} mode={mode} timing/token counts differ")
+            sample_counts.add(len(mode_samples))
+            mode_summaries[mode] = _summarize_timing_samples(
+                mode_samples, rows=value
+            )
+            mode_tokens[mode] = mode_ids
+        if sample_counts == {0} or len(sample_counts) != 1:
+            raise ValueError(f"rows={value} modes require equal non-empty sample counts")
+        shape_ids = mode_tokens[baseline] + mode_tokens[candidate]
+        shape_exact = len(set(shape_ids)) == 1
+        exact = exact and shape_exact
+        speedup = (
+            mode_summaries[baseline]["median_seconds"]
+            / mode_summaries[candidate]["median_seconds"]
+        )
+        if speedup < FALLBACK_MIN_RATIO:
+            regressed_rows.append(value)
+        baseline_seconds += sum(float(item) for item in samples[baseline][value])
+        candidate_seconds += sum(float(item) for item in samples[candidate][value])
+        total_tokens += value * len(samples[baseline][value])
+        shapes[str(value)] = {
+            "rows": value,
+            "route": "grouped_combine" if value >= GROUPED_MIN_ROWS else "direct_fallback",
+            baseline: mode_summaries[baseline],
+            candidate: mode_summaries[candidate],
+            "fused_vs_unfused_speedup": speedup,
+            "next_token_ids": mode_tokens,
+            "exact_next_token": shape_exact,
+        }
+
+    effective_speedup = (
+        baseline_seconds / candidate_seconds if candidate_seconds > 0.0 else None
+    )
+    failed: list[str] = []
+    if not exact:
+        failed.append("output_ids_not_exact")
+    if regressed_rows:
+        failed.append("candidate_below_no_regression_floor")
+    if (
+        effective_speedup is None
+        or not math.isfinite(effective_speedup)
+        or effective_speedup < COMBINE_EFFECTIVE_FLOOR
+    ):
+        failed.append("effective_profile_below_nonregression_floor")
+    return {
+        "shapes": shapes,
+        "correctness": {
+            "pass": exact,
+            "all_modes_and_repetitions_exact_next_token": exact,
+        },
+        "screen": {
+            "pass": not failed,
+            "failed_checks": failed,
+            "regressed_rows": regressed_rows,
+            "shape_min_ratio": FALLBACK_MIN_RATIO,
+            "effective_min_ratio": COMBINE_EFFECTIVE_FLOOR,
+            "policy": (
+                "exact IDs; each shape >=0.995x; aggregate >=0.998x; "
+                "kernel-subwindow evidence required separately"
+            ),
+            "effective_profile_tokens": total_tokens,
+            "baseline_profile_seconds": baseline_seconds,
+            "candidate_profile_seconds": candidate_seconds,
+            "effective_speedup": effective_speedup,
+        },
+    }
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     rows = tuple(int(value) for value in args.rows)
+    comparison_kind = str(args.comparison)
+    modes = FUSED_COMBINE_MODES if comparison_kind == "grouped_combine" else MODES
     if rows != PROFILE_ROWS:
         raise ValueError(
             f"retained grouped-down A/B requires exact rows {PROFILE_ROWS}"
@@ -216,11 +337,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         quant="gguf_q4_k_m",
         kv_dtype="bf16",
         command=(str(Path(sys.executable).resolve()), *sys.argv),
-        build_profile="laguna_prefill_grouped_down_ab",
-        timing_protocol=(
-            "same_session_balanced_direct_vs_adaptive_grouped_smallm_down_prefill"
+        build_profile=(
+            "laguna_prefill_grouped_combine_ab"
+            if comparison_kind == "grouped_combine"
+            else "laguna_prefill_grouped_down_ab"
         ),
-        warmups=args.warmups * len(rows) * len(MODES),
+        timing_protocol=(
+            "same_session_balanced_grouped_combine_prefill"
+            if comparison_kind == "grouped_combine"
+            else "same_session_balanced_direct_vs_adaptive_grouped_smallm_down_prefill"
+        ),
+        warmups=args.warmups * len(rows) * len(modes),
         repetitions=args.repetitions,
     )
     reader = GGUFReader(args.model)
@@ -231,8 +358,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     runtime = get_hip_runtime()
     gpu_free_before, gpu_total = runtime.mem_get_info()
     tracked_before = memory_stats()
-    samples = {mode: {value: [] for value in rows} for mode in MODES}
-    next_tokens = {mode: {value: [] for value in rows} for mode in MODES}
+    samples = {mode: {value: [] for value in rows} for mode in modes}
+    next_tokens = {mode: {value: [] for value in rows} for mode in modes}
     owner: LagunaGGUFResidentSession | None = None
     load_started = time.perf_counter()
     try:
@@ -251,15 +378,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         load_seconds = time.perf_counter() - load_started
         for _ in range(args.warmups):
             for shape_index, value in enumerate(rows):
-                for mode in _mode_order(shape_index, 0):
+                for mode in _mode_order(shape_index, 0, modes=modes):
                     owner.reset_state()
-                    _set_mode(owner, mode)
+                    _set_mode(owner, mode, modes=modes)
                     owner.prefill(token_stream[:value], use_bulk=True)
         for repetition in range(args.repetitions):
             for shape_index, value in enumerate(rows):
-                for mode in _mode_order(shape_index, repetition):
+                for mode in _mode_order(shape_index, repetition, modes=modes):
                     owner.reset_state()
-                    _set_mode(owner, mode)
+                    _set_mode(owner, mode, modes=modes)
                     started = time.perf_counter()
                     result = owner.prefill(token_stream[:value], use_bulk=True)
                     runtime.device_synchronize()
@@ -281,16 +408,21 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if gpu_total_after != gpu_total:
         raise RuntimeError("HIP total memory changed during grouped-down A/B")
 
-    comparison = _comparison_summary(samples, next_tokens, rows=rows)
+    comparison = (
+        _grouped_combine_summary(samples, next_tokens, rows=rows)
+        if comparison_kind == "grouped_combine"
+        else _comparison_summary(samples, next_tokens, rows=rows)
+    )
     recovered = bool(
         tracked_after["current_allocated_bytes"]
         == tracked_before["current_allocated_bytes"]
         and tracked_after["active_allocations"]
         == tracked_before["active_allocations"]
     )
+    decision_key = "screen" if comparison_kind == "grouped_combine" else "promotion"
     passed = bool(
         comparison["correctness"]["pass"]
-        and comparison["promotion"]["pass"]
+        and comparison[decision_key]["pass"]
         and recovered
     )
     prompts_payload = args.prompts.read_bytes()
@@ -301,14 +433,25 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "schema": 1,
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "kind": "hipengine_laguna_prefill_grouped_down_ab",
-        "status": "retained" if passed else "rejected",
+        "kind": (
+            "hipengine_laguna_prefill_grouped_combine_ab"
+            if comparison_kind == "grouped_combine"
+            else "hipengine_laguna_prefill_grouped_down_ab"
+        ),
+        "status": (
+            "screen_passed" if passed and comparison_kind == "grouped_combine"
+            else "retained" if passed
+            else "rejected"
+        ),
         "pass": passed,
-        "performance_claim": passed,
+        "performance_claim": bool(passed and comparison_kind == "grouped_down"),
         "performance_claim_scope": (
-            "same-session Laguna direct selected-down prefill versus exact adaptive grouped-"
-            "small-M Q4/Q6 down; retained tiled F16 default active; one physical chunk; "
-            "model load excluded"
+            "exact grouped weighted-reduction+shared-add candidate screen; no default or "
+            "wall claim without separate kernel and category evidence"
+            if comparison_kind == "grouped_combine"
+            else "same-session Laguna direct selected-down prefill versus exact adaptive "
+            "grouped-small-M Q4/Q6 down; retained tiled F16 default active; one physical "
+            "chunk; model load excluded"
         ),
         "provenance": provenance,
         "repo": repo,
@@ -328,15 +471,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         },
         "protocol": {
             "rows": list(rows),
-            "modes": list(MODES),
+            "modes": list(modes),
             "one_physical_chunk": True,
             "prefill_chunk_size": max(rows),
             "context_length": args.context_length,
             "repetitions": args.repetitions,
             "warmups_per_shape_and_mode": args.warmups,
             "timed_order": (
-                "alternating direct/adaptive_grouped_smallm per shape and reversed "
-                "next repetition"
+                f"alternating {modes[0]}/{modes[1]} per shape and reversed next repetition"
             ),
             "timing_scope": (
                 "reset complete through synchronized first-token projection; load excluded"
@@ -346,10 +488,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "token_stream_sha256": _sha256_json(token_stream),
             "token_source": token_source,
             "candidate_selection": (
-                "session-local selected_down_mode=adaptive_grouped_smallm; direct below "
-                f"{GROUPED_MIN_ROWS} rows"
+                "session-local selected_down_mode=adaptive_grouped_smallm_fused; direct "
+                f"below {GROUPED_MIN_ROWS} rows"
+                if comparison_kind == "grouped_combine"
+                else "session-local selected_down_mode=adaptive_grouped_smallm; direct "
+                f"below {GROUPED_MIN_ROWS} rows"
             ),
-            "control_selection": "session-local selected_down_mode=direct",
+            "control_selection": (
+                "session-local selected_down_mode=adaptive_grouped_smallm"
+                if comparison_kind == "grouped_combine"
+                else "session-local selected_down_mode=direct"
+            ),
             "f16_prefill_selection": "gfx1151 retained LPF-1 backend default",
         },
         "load": {
@@ -370,10 +519,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         },
         "command": [str(Path(sys.executable).resolve()), *sys.argv],
         "notes": [
-            "Direct and adaptive grouped spans share one resident model, runtime, "
-            "token stream, and bounded scratch owner.",
-            "The candidate groups exact top-10 lanes without padding and restores "
-            "original lane order for weighted sum.",
+            "Both modes share one resident model, runtime, token stream, and bounded "
+            "scratch owner.",
+            (
+                "The fused candidate preserves slot-order FMA and selected/shared BF16 "
+                "boundaries while removing the final add launch."
+                if comparison_kind == "grouped_combine"
+                else "The candidate groups exact top-10 lanes without padding and "
+                "restores original lane order for weighted sum."
+            ),
             "The separate canonical category artifact must own free-running h16/h32 "
             "and E2E promotion gates.",
             "Run rocprofv3 separately with cached builds; do not profile model JIT "

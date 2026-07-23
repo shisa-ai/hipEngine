@@ -131,6 +131,9 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
     assert plan.grouped_wmma_tile_map_key == KernelKey(
         "hip_gfx1151", "moe_wmma_tile_map", "generic", "tile16"
     )
+    assert plan.grouped_weighted_sum_shared_add_key == KernelKey(
+        "hip_gfx1151", "weighted_lanes_sum+shared_add", "bf16", "out"
+    )
     assert plan.grouped_prefix_active_key == KernelKey(
         "hip_gfx1151", "moe_group_prefix", "generic", "active_experts"
     )
@@ -160,6 +163,12 @@ def test_laguna_selected_down_default_is_backend_qualified() -> None:
     assert (
         resolve_laguna_selected_down_mode("hip_gfx1151", "adaptive_wmma16_down")
         == "adaptive_wmma16_down"
+    )
+    assert (
+        resolve_laguna_selected_down_mode(
+            "hip_gfx1151", "adaptive_grouped_smallm_fused"
+        )
+        == "adaptive_grouped_smallm_fused"
     )
     with pytest.raises(ValueError, match="unsupported Laguna selected-down mode"):
         resolve_laguna_selected_down_mode("hip_gfx1151", "invalid")
@@ -232,6 +241,7 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
     scratch = None
     bulk_scratch = None
     grouped_scratch = None
+    fused_scratch = None
     wmma_scratch = None
     hidden_buffer = None
     bulk_hidden_buffer = None
@@ -381,6 +391,19 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
             _f32_to_bf16_u16(grouped_actual),
             _f32_to_bf16_u16(bulk_actual),
         )
+        fused_scratch = allocate_laguna_moe_scratch(plan, max_rows=3)
+        fused_output = run_laguna_moe_rows(
+            bulk_hidden_buffer.ptr,
+            layer,
+            fused_scratch,
+            rows=3,
+            selected_down_mode="grouped_smallm_fused",
+        )
+        fused_actual = _read_bf16(fused_output, (3, h))
+        np.testing.assert_array_equal(
+            _f32_to_bf16_u16(fused_actual),
+            _f32_to_bf16_u16(grouped_actual),
+        )
         wmma_scratch = allocate_laguna_moe_scratch(plan, max_rows=3)
         wmma_output = run_laguna_moe_rows(
             bulk_hidden_buffer.ptr,
@@ -418,6 +441,8 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
     finally:
         if wmma_scratch is not None:
             wmma_scratch.free()
+        if fused_scratch is not None:
+            fused_scratch.free()
         if grouped_scratch is not None:
             grouped_scratch.free()
         if bulk_scratch is not None:

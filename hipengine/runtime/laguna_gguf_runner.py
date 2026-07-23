@@ -669,6 +669,7 @@ class LagunaEagerLibraries:
             "grouped_down": self.selected_experts,
             "grouped_wmma_down": self.selected_wmma_prefill,
             "grouped_weighted_sum": self.routed_sum,
+            "grouped_weighted_sum_shared_add": self.routed_sum,
             "routed_sum": self.routed_sum,
             "routed_sum_rows": self.router_select,
             "shared_silu": self.dense_silu,
