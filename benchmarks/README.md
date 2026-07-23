@@ -1346,6 +1346,16 @@ eviction, generated-ID, state, and lifecycle gates all pass. The full suite
 therefore promotes **43.081 tok/s** h32 decode. [D4 retained
 artifact](results/2026-07-23-gfx1100-laguna-q2-xl-swa-token4-retained.json).
 
+A direct inventory/trace join now splits D4's remaining dense-Q5 family. Its
+**235 calls/token consume 7.123 ms (37.52% of kernel sum)** across a **1.931 GB
+encoded-weight proxy**, or 271.1 GB/s; this proxy excludes activations, cache
+waste, and dequant compute. The same-input K3072/N1024 shared gate/up pair is
+**92 calls and 1.561 ms/token** at only 127.4 GB/s. The next bounded candidate
+therefore combines each of the 46 pairs into one registered `linear_pair`
+launch with independent block sets, exact singleton arithmetic, and the two
+singletons retained as fallback. This is an attribution/design decision, not a
+speedup claim. [D4 Q5 profile](results/2026-07-23-gfx1100-laguna-q2-xl-d4-q5-profile.json).
+
 No Q2-to-Q4 speed ratio is claimed: the retained Q4_K_M controls use a
 different tensor recipe on gfx1151.
 

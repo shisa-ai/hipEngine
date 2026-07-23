@@ -2557,6 +2557,17 @@ The baseline stays registered and explicitly selectable; gfx1151 and unmeasured
 backends retain it. Evidence:
 `benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-swa-token4-retained.json`.
 
+The retained D4 trace plus exact GGUF inventory makes dense Q5 the next bounded
+short-context family: **235 calls/token, 7.123 ms, and 37.52% of kernel sum**
+for a 1.931-GB encoded-weight proxy (271.1 GB/s). The most underfilled subset is
+46 same-input K3072/N1024 shared gate/up pairs: **92 launches and 1.561
+ms/token** at 127.4 GB/s proxy. The next RED candidate is one registered Q5
+`linear_pair` launch per pair using independent block sets and the current
+single-projection K order, coefficient hoist, reduction tree, and BF16 stores.
+The two singletons remain the unfused fallback; actual-weight family timing and
+the full exact category gate decide retention. Evidence:
+`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-d4-q5-profile.json`.
+
 The Qwen3.6 UD-Q3_K_M final D0 is a useful tactics comparison, not a model ratio:
 it uses 671 dispatches, 8.825 ms summed kernels, and 11.347 ms profiled wall per
 token on an RX 7900 XTX. D1 has now transferred its dedicated dense pack8
