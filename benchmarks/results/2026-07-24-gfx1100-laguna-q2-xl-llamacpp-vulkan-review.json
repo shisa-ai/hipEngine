@@ -1,0 +1,225 @@
+{
+  "schema": 1,
+  "date": "2026-07-24",
+  "kind": "laguna_q2_xl_llamacpp_vulkan_protocol_and_transfer_review",
+  "status": "diagnostic_complete",
+  "pass": true,
+  "performance_claim": false,
+  "comparison_scope": "Source-backed diagnostic comparison of llama.cpp Vulkan tg128 and retained hipEngine D9 c=1 decode on the same W7900 and exact UD-Q2_K_XL file; not a cross-engine product-throughput claim",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "vulkan_driver": "RADV NAVI31",
+    "vulkan_subgroup_size": 64,
+    "vulkan_shared_memory_bytes": 65536,
+    "vulkan_integer_dot": true
+  },
+  "model": {
+    "id": "poolside/Laguna-S-2.1-UD-Q2_K_XL",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "file_bytes": 39684584480,
+    "llama_reported_tensor_bytes": 39680849600,
+    "parameters": 117561977600,
+    "quant": "UD-Q2_K_XL"
+  },
+  "llamacpp": {
+    "source_path": "/home/lhl/llama.cpp/llama.cpp-vulkan",
+    "source_revision": "c0bc8591e8815c63cb01dd3f051a8b0df02501c9",
+    "tracked_source_clean": true,
+    "untracked_pi_task_state_excluded": true,
+    "binary": "/home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench",
+    "binary_sha256": "0d466d22faf045c7bfd8c03bac28fd8f581a3a82edafacf99e51202ab5988759",
+    "backend": "Vulkan",
+    "kv_type": "f16",
+    "flash_attention": true,
+    "user_reported_tg128_tok_s": 93.67,
+    "user_reported_tg128_stddev_tok_s": 0.16,
+    "independent_tg128": {
+      "command": "GGML_VK_VISIBLE_DEVICES=0 /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench -fa on -m /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf -p 0 -n 128 -r 3 -o json",
+      "warmup": "one untimed generation token",
+      "repetitions": 3,
+      "tokens_per_repetition": 128,
+      "avg_tok_s": 94.512989,
+      "stddev_tok_s": 0.140616,
+      "samples_tok_s": [94.6513, 94.5176, 94.3701],
+      "avg_ms_per_token": 10.580556287347974,
+      "raw_json_sha256": "c2d7ed24dbf901dd603f5e28ea006fca03006712bc92baee7eafe2ab9050dad4"
+    },
+    "matched_average_depth_tg31": {
+      "purpose": "Match hipEngine h32's 31 timed post-TTFT calls and its mean timed position 101.4 without claiming prompt or arithmetic equivalence",
+      "command": "GGML_VK_VISIBLE_DEVICES=0 /home/lhl/llama.cpp/llama.cpp-vulkan/build/bin/llama-bench -fa on -m /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf -p 0 -n 31 -d 86 -r 3 -o json",
+      "untimed_depth_tokens": 86,
+      "timed_tokens_per_repetition": 31,
+      "timed_position_range": [86, 116],
+      "timed_mean_position": 101.0,
+      "avg_tok_s": 94.151664,
+      "stddev_tok_s": 0.331287,
+      "samples_tok_s": [93.7846, 94.2418, 94.4285],
+      "avg_ms_per_token": 10.621161193709758,
+      "raw_json_sha256": "345232c55b62afc527287274dbd7eb756c0cbbb16344816afa2066f260dc5e7f"
+    },
+    "tg128_ablations": {
+      "protocol": "Same binary/model/device, -fa on, p0/n128, one warmup token, three repetitions; only the named environment variable changes",
+      "rows": [
+        {
+          "name": "default",
+          "environment": {},
+          "avg_tok_s": 94.512989,
+          "stddev_tok_s": 0.140616,
+          "avg_ms_per_token": 10.580556287347974,
+          "delta_tok_s_pct_vs_default": 0.0,
+          "delta_ms_per_token_vs_default": 0.0,
+          "raw_json_sha256": "c2d7ed24dbf901dd603f5e28ea006fca03006712bc92baee7eafe2ab9050dad4"
+        },
+        {
+          "name": "no_graph_optimize",
+          "environment": {"GGML_VK_DISABLE_GRAPH_OPTIMIZE": "1"},
+          "avg_tok_s": 93.489331,
+          "stddev_tok_s": 0.05182,
+          "avg_ms_per_token": 10.696407700254053,
+          "delta_tok_s_pct_vs_default": -1.0830871087994076,
+          "delta_ms_per_token_vs_default": 0.11585141290607837,
+          "raw_json_sha256": "6c8c47c1a5083bd4d9597b9d27b4a445195f4b06834406657a60461522058857"
+        },
+        {
+          "name": "no_fusion",
+          "environment": {"GGML_VK_DISABLE_FUSION": "1"},
+          "avg_tok_s": 74.864648,
+          "stddev_tok_s": 0.038527,
+          "avg_ms_per_token": 13.357439415196342,
+          "delta_tok_s_pct_vs_default": -20.789037790350704,
+          "delta_ms_per_token_vs_default": 2.776883127848368,
+          "raw_json_sha256": "cef65805b3f7f47a13dda755c92168734756848fdeeb1a7a1a1874169929814a"
+        },
+        {
+          "name": "no_graph_optimize_no_fusion",
+          "environment": {
+            "GGML_VK_DISABLE_GRAPH_OPTIMIZE": "1",
+            "GGML_VK_DISABLE_FUSION": "1"
+          },
+          "avg_tok_s": 74.514127,
+          "stddev_tok_s": 0.046071,
+          "avg_ms_per_token": 13.420273983750759,
+          "delta_tok_s_pct_vs_default": -21.15990850739046,
+          "delta_ms_per_token_vs_default": 2.8397176964027846,
+          "raw_json_sha256": "29a517fd547104aefe022d349d741a59565919df6b4dc69f4d0e8e34d5c8a4cc"
+        },
+        {
+          "name": "no_mmvq",
+          "environment": {"GGML_VK_DISABLE_MMVQ": "1"},
+          "avg_tok_s": 98.568447,
+          "stddev_tok_s": 0.032082,
+          "avg_ms_per_token": 10.145234407517853,
+          "delta_tok_s_pct_vs_default": 4.2909001639975575,
+          "delta_ms_per_token_vs_default": -0.4353218798301217,
+          "raw_json_sha256": "71a2a8b7018f073220708c0bd775eebf0df05b76c1536eceaede1189bd714495"
+        }
+      ]
+    }
+  },
+  "hipengine": {
+    "revision": "30cf6f0755ee53afc1c72e9106fbab887ea067bc",
+    "retained_artifact": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d9-moe-tail-next-rms-retained.json",
+    "backend": "hip_gfx1100",
+    "kv_type": "bf16",
+    "context_capacity": 4096,
+    "prompt_count": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "prompt_tokens": [69, 79, 75, 83, 68, 68, 97, 92, 111, 122],
+    "mean_prompt_tokens": 86.4,
+    "h32_timed_forward_calls": 620,
+    "timed_position_range": [68, 152],
+    "timed_mean_position": 101.4,
+    "sampling": "GPU greedy argmax plus synchronized ID and max-logit scalar reads",
+    "h32_decode_tok_s": 47.132308286752306,
+    "h32_ms_per_token": 21.216868775363473,
+    "dispatches_per_token": 775
+  },
+  "protocol_comparison": {
+    "same_exact_model_file": true,
+    "same_physical_gpu": true,
+    "same_c1_full_model_projection_scope": true,
+    "context_shape_explains_gap": false,
+    "tg128_vs_hipengine_diagnostic_ratio": 2.0052696851803713,
+    "matched_depth_tg31_vs_hipengine_diagnostic_ratio": 1.997603500070113,
+    "cross_engine_speed_ratio_eligible": false,
+    "differences": [
+      "llama-bench clears state and times 128 forced-random one-token llama_decode calls at positions 0..127; hipEngine times natural greedy trajectories after 68..122-token prompts at positions 68..152.",
+      "llama-bench synchronizes each decode but does not sample, run device argmax, or read a token/logit; hipEngine includes its GPU argmax, device synchronization, and two scalar device-to-host reads.",
+      "llama.cpp uses F16 KV and a context sized to depth+generation; hipEngine uses BF16 KV with a 4096-token admitted allocation and KVLiveSpans.",
+      "llama-bench measures three long in-context repetitions after one warmup token; hipEngine aggregates two repetitions over ten category prompts and checks exact natural outputs, first-token KL/top-1, bulk state, and lifecycle.",
+      "Both exclude model load. llama-bench also excludes context construction and optional untimed depth setup; hipEngine decode excludes session construction and prefill."
+    ],
+    "conclusion": "The published 93.67 tok/s is reproducible and protocol/context differences do not explain the approximately 2x model-step gap, but only a matched natural-token harness with the same sampling/readback and KV arithmetic can support a formal cross-engine throughput ratio."
+  },
+  "source_findings": [
+    {
+      "finding": "llama-bench tg128 is forced-token model evaluation, not generated-token sampling",
+      "source": "tools/llama-bench/llama-bench.cpp:2154-2171,2362-2382,2391-2461",
+      "evidence": "Each iteration calls llama_decode on one random token, synchronizes, and assigns another random token; timing surrounds the complete test_gen call after memory clear."
+    },
+    {
+      "finding": "Vulkan graph fusion is the largest directly measured control",
+      "source": "ggml/src/ggml-vulkan/ggml-vulkan.cpp:6801-6805,13106-13167,16637-16770",
+      "evidence": "The backend detects and fuses multi-add, RMS/add, top-k MoE sigmoid/correction/normalization, matvec post-ops, and selected-down scaling; disabling fusion costs 2.777 ms/token and 20.79% throughput."
+    },
+    {
+      "finding": "Graph reordering and dependency-scoped barriers are real but secondary in this tg128 control",
+      "source": "ggml/src/ggml-vulkan/ggml-vulkan.cpp:14832-14870,16940-16947",
+      "evidence": "The backend synchronizes overlapping read/write dependencies and sorts the graph for parallelism; disabling graph optimization costs 0.116 ms/token and 1.08% throughput."
+    },
+    {
+      "finding": "Q8_1 integer-dot MMVQ is not the Laguna c=1 optimum on this RADV/W7900 build",
+      "source": "ggml/src/ggml-vulkan/ggml-vulkan.cpp:6810-6813,9142-9209; vulkan-shaders/mul_mat_vecq_funcs.glsl",
+      "evidence": "The default AMD heuristic selects MMVQ for K>=2048 except Q8_0, but disabling MMVQ improves 0.435 ms/token and 4.29%; do not port Q8_1 quantization blindly."
+    },
+    {
+      "finding": "The default trace places independent attention projections and routed/shared MoE branches in concurrent dependency groups",
+      "source": "cache-only GGML_VK_PERF_LOGGER_CONCURRENT trace at c0bc8591e",
+      "evidence": "Grouped records pair flash attention with query/gate projections, pair routed gate/up projections, and pair shared projections/adds; per-node timing mode intentionally serializes these groups and is not a wall-time decomposition."
+    },
+    {
+      "finding": "The decode shaders use raw IQ2_XS/IQ3_XXS layouts and subgroup reductions",
+      "source": "ggml/src/ggml-vulkan/vulkan-shaders/{mul_mat_vec_iq2_xs.comp,mul_mat_vec_iq3_xxs.comp,mul_mat_vec_base.glsl,types.glsl}",
+      "evidence": "Raw block layouts feed specialization-constant workgroups; result reduction uses subgroupAdd, with the W7900 reporting subgroup size 64."
+    }
+  ],
+  "transfer_priorities": [
+    {
+      "rank": 1,
+      "candidate": "Finish D11 exact persistent router/top-k contraction",
+      "rationale": "It is already selected from a measured 0.896-ms adjacent D9 window, is one concrete slice of Vulkan's dominant fusion advantage, and has an exact in-tree persistent-counter precedent.",
+      "expected_bound": "47 fewer dispatches/token; full-window zero-cost ceiling 49.21 tok/s, so not target closure alone"
+    },
+    {
+      "rank": 2,
+      "candidate": "Audit and port exact Vulkan-style raw Q5 attention-output and query/gate GEMV geometry",
+      "rationale": "These are D9's 2.659- and 2.189-ms short families and Vulkan's trace shows materially shorter fused/grouped Q5 windows. This is distinct from the rejected HIP tile16 traffic-sharing design.",
+      "gate": "Preserve hipEngine's current BF16/reduction contract, compare actual K6144/K9216/K3072 weights, require scratch0 and both production shapes faster before model runs"
+    },
+    {
+      "rank": 3,
+      "candidate": "Extend exact graph-level post-op fusion around Q5 output, IQ3 selected-down weighting, and shared/routed combines",
+      "rationale": "Disabling all Vulkan fusions costs 2.777 ms/token; hipEngine D9 has removed only bounded pair/tail launches and still dispatches 775 kernels/token.",
+      "gate": "One fusion boundary at a time with registered primitive fallback and full category non-regression; do not infer the whole Vulkan ablation transfers additively"
+    },
+    {
+      "rank": 4,
+      "candidate": "Prototype a source-backed one-wave raw attention kernel rather than token16 extrapolation",
+      "rationale": "D9 short SWA+global attention is about 2.67 ms/token and Vulkan flash-attention groups are much shorter, but D10 token8 failed the full category policy despite mechanical wins.",
+      "gate": "New algorithm/geometry, complete KVLiveSpans and exact-order proof; no promotion from a single context or token8 barrier arithmetic"
+    },
+    {
+      "rank": 5,
+      "candidate": "Defer generic graph replay, stream overlap, and Q8_1 MMVQ",
+      "rationale": "hipEngine graph replay and prior stream tactics regressed; Vulkan graph ordering is only a 0.116-ms control; disabling Vulkan MMVQ is faster by 4.29%.",
+      "gate": "Reopen only with a new measured mechanism, not source analogy"
+    }
+  ],
+  "notes": [
+    "The Vulkan perf logger perturbs and can serialize dependency groups; its operator totals are attribution evidence, not the 94.5 tok/s wall.",
+    "The user-reported 93.67 +/- 0.16 tok/s is independently reproduced at 94.513 +/- 0.141 tok/s on the same file/device.",
+    "The matched-depth control remains around 94.15 tok/s, so starting-context depth is not the source of the gap."
+  ]
+}

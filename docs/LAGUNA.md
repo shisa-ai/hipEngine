@@ -3298,6 +3298,58 @@ kernel sum/span/profiled child plus aggregate and every-category h16/h32 decode
 and E2E to improve with prefill/TTFT inside 0.5%. Evidence:
 `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d11-persistent-router-design.json`.
 
+### llama.cpp Vulkan c=1 transfer review (diagnostic)
+
+The user's same-W7900 Vulkan `tg128` result is real, but not directly the same
+product metric as canonical D9. At read-only llama.cpp revision `c0bc8591e`, an
+independent same-file run reproduces **94.513 +/- 0.141 tok/s** across three
+128-token repetitions versus the reported **93.67 +/- 0.16 tok/s**. Source
+inspection of `tools/llama-bench/llama-bench.cpp` shows that `tg128` clears the
+context, then times 128 one-row `llama_decode` calls at positions 0..127. Every
+call synchronizes, but the next token is random: there is no sampler, device
+argmax, or token/logit readback. Canonical hipEngine D9 instead times 31
+post-TTFT calls per natural trajectory, includes GPU argmax plus two scalar
+reads, uses BF16 rather than F16 KV, and hard-gates ten prompts/four categories,
+full generated IDs, oracle KL/top-1, state, and lifecycle.
+
+Context depth does not explain the gap. The ten D9 prompts are 68..122 tokens;
+its h32 calls cover positions 68..152 with mean **101.4**. A matched diagnostic
+Vulkan `-d 86 -n 31` run covers positions 86..116 with mean 101 and still
+measures **94.152 +/- 0.331 tok/s**. Thus the roughly **2.0x** model-step gap is
+genuine enough to guide engineering, but it is not a retained cross-engine
+throughput ratio until a natural-token harness matches sampling/readback, KV
+arithmetic, prompt trajectories, and correctness gates.
+
+The source and same-build ablations materially change the optimization ranking:
+
+- Vulkan graph fusion is the largest isolated control. `GGML_VK_DISABLE_FUSION`
+  moves **94.513 -> 74.865 tok/s**, or **10.581 -> 13.357 ms/token (+2.777
+  ms, -20.79% throughput)**. The backend fuses Laguna-relevant top-k sigmoid/
+  correction/normalization, multi-add, matvec post-add/scale, selected-down
+  weighting, and RMS/mul/RoPE/KV-write subgraphs. D11 remains rank 1 because it
+  contracts one measured **0.896-ms** router/top-k boundary with exact fallback.
+- Graph sorting plus dependency-scoped barriers are source-confirmed and place
+  independent Q/K/V/gate and routed/shared MoE work in concurrent groups, but
+  disabling graph optimization alone costs only **0.116 ms/token / 1.08%**.
+  hipEngine's graph replay and prior stream tactics regressed, so generic replay
+  does not reopen.
+- The default AMD heuristic's Q8_1 integer-dot MMVQ is not optimal here:
+  `GGML_VK_DISABLE_MMVQ=1` improves **94.513 -> 98.568 tok/s (+4.29%)**. Do not
+  port activation quantization blindly. The useful next source transfer is the
+  raw one-wave/subgroup Q5 geometry for D9's **2.659-ms attention-output** and
+  **2.189-ms query/gate** families, with current HIP reduction/BF16 bits and
+  actual K6144/K9216/K3072 weights as hard gates. This is distinct from the
+  rejected tile16 traffic-sharing design.
+- After D11 and the raw-Q5 geometry screen, rank exact post-op fusion around Q5
+  output, IQ3 selected-down weighting, and shared/routed combines ahead of a
+  new one-wave attention algorithm. Token16 extrapolation remains closed by
+  D10. Generic graph replay, stream overlap, and Q8_1 MMVQ stay deferred.
+
+The Vulkan performance logger can serialize dependency groups and heavily
+perturbs wall time, so its operator totals are attribution only. Complete
+protocol, commands, hashes, source references, ablations, and transfer ranking:
+`benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-llamacpp-vulkan-review.json`.
+
 ## Laguna DFlash Follow-on Plan
 
 DFlash work begins as architecture support during the target port but remains a
