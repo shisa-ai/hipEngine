@@ -430,6 +430,7 @@ class SubmitPollTextGenerator:
                 prompt_rows,
                 self._prefill_chunk_size,
                 max_new_tokens=max_new_tokens,
+                prefill_decode_policy=self._loop.prefill_decode_policy,
             ),
         )
         self._register_submission_cancellation_locked(submission)
@@ -1018,6 +1019,7 @@ def _submit_poll_max_ticks(
     prefill_chunk_size: int,
     *,
     max_new_tokens: int,
+    prefill_decode_policy: str = "fair",
 ) -> int:
     """Return a finite bound that covers real chunked prefill and token decode."""
 
@@ -1028,14 +1030,21 @@ def _submit_poll_max_ticks(
         max(1, (len(row) + chunk_size - 1) // chunk_size)
         for row in prompt_rows
     )
-    # Decode advances every ready row once per tick, so the longest request—not
-    # the sum across rows—sets the steady decode bound. Under fair scheduling,
-    # however, early rows may decode between serial prompt chunks before the
-    # final row becomes ready. Cover that stagger with one additional prefill
-    # span; the historical rows+4 margin remains larger for short prompts and
-    # still accommodates cancellation or late concurrent admission.
+    # Decode normally advances every ready row once per tick, so the longest
+    # request—not the sum across rows—sets the steady decode bound. With
+    # protect_decode, however, the first row can become ready before later
+    # prompt chunks and then run to completion; the same submission can
+    # therefore consume one full decode span per staggered row. This is only a
+    # finite stall guard, not a scheduling target, so cover that exact worst
+    # case rather than abort valid work near completion.
+    policy = str(prefill_decode_policy)
+    if policy not in PREFILL_DECODE_POLICIES:
+        raise ValueError(f"unknown prefill/decode policy: {policy!r}")
+    decode_ticks = max(1, int(max_new_tokens)) * (
+        len(prompt_rows) if policy == "protect_decode" else 1
+    )
     stagger_margin = max(len(prompt_rows) + 4, prefill_ticks)
-    return max(8, prefill_ticks + max(1, int(max_new_tokens)) + stagger_margin)
+    return max(8, prefill_ticks + decode_ticks + stagger_margin)
 
 
 def add_engine_loop_config_args(

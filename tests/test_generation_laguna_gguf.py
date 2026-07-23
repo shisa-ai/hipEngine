@@ -273,6 +273,27 @@ def test_laguna_native_runner_admits_later_prefill_between_decode_ticks(generato
         adapter.close()
 
 
+def test_laguna_native_runner_protect_decode_bound_covers_staggered_rows(generator) -> None:
+    _FakeSession.sequences = [tuple(range(10, 18)), tuple(range(10, 18))]
+    adapter = SubmitPollTextGenerator(
+        generator.instance,
+        config=EngineLoopConfig(
+            max_active_requests=2,
+            prefill_decode_policy="protect_decode",
+        ),
+    )
+    try:
+        outputs = adapter.generate_detailed(
+            _request(prompts=((7, 8), (9, 8)), max_tokens=8)
+        )
+        assert [output.generated_token_ids for output in outputs] == [
+            tuple(range(10, 18)),
+            tuple(range(10, 18)),
+        ]
+    finally:
+        adapter.close()
+
+
 def test_laguna_native_runner_routes_two_prompt_outputs_by_request_id(generator) -> None:
     _FakeSession.sequences = [(10, 11), (13, 14)]
     adapter = SubmitPollTextGenerator(generator.instance, capacity=2)

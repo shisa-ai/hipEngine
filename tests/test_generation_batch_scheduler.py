@@ -16066,7 +16066,14 @@ def test_submit_poll_tick_budget_covers_c8_fair_prefill_stagger() -> None:
         prompt_rows,
         256,
         max_new_tokens=128,
+        prefill_decode_policy="fair",
     ) == 160
+    assert _submit_poll_max_ticks(
+        prompt_rows,
+        256,
+        max_new_tokens=128,
+        prefill_decode_policy="protect_decode",
+    ) == 1_056
 
 
 def test_submit_poll_text_generator_preserves_prompt_order_and_row_seeds() -> None:
