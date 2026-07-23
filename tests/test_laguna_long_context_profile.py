@@ -12,6 +12,7 @@ from scripts.laguna_long_context_profile import (
 )
 from scripts.laguna_long_context_trace_summary import (
     _aggregate_segments,
+    _kernel_family,
     _segment_requests,
     _summarize_segment,
     attach_summary,
@@ -109,7 +110,7 @@ def _request_rows(start: int, chunks: int) -> list[dict[str, str]]:
     return rows
 
 
-def test_lpf5_trace_segments_requests_and_attributes_attention() -> None:
+def test_lpf5_trace_segments_requests_and_attributes_all_families() -> None:
     rows = [
         _row(0, "__amd_rocclr_copyBuffer", 0, 5),
         *_request_rows(100, 1),
@@ -123,11 +124,33 @@ def test_lpf5_trace_segments_requests_and_attributes_attention() -> None:
     summary = _summarize_segment(segments[1])
     assert summary["dispatches"] == 13
     assert summary["attention_duration_ns"] == 200
+    assert summary["families"]["embedding"]["calls"] == 4
     assert summary["families"]["global_attention"]["calls"] == 4
     assert summary["families"]["swa_attention"]["calls"] == 4
+    assert summary["families"]["lm_head_argmax"]["calls"] == 1
+    assert sum(item["duration_ns"] for item in summary["families"].values()) == 250
     assert summary["attention_share_of_kernel_sum"] == pytest.approx(200 / 250)
     aggregate = _aggregate_segments([summary])
     assert aggregate["512"]["median_attention_duration_ns"] == 200
+    assert aggregate["512"]["families"]["embedding"]["calls_per_pass"] == [4]
+
+
+@pytest.mark.parametrize(
+    ("kernel_name", "family"),
+    [
+        ("laguna_f16w_tiled_exact_kernel<unsigned short, 16>", "source_f16_projection"),
+        ("q4_k_t16_selected_dual_direct_gemv_kernel<unsigned short>", "selected_q4_gate_up"),
+        ("qk_t16_selected_direct_gemv_kernel<unsigned short, 6>", "selected_q4_q6_down"),
+        ("laguna_global_write_kv_rows_bf16_kernel", "prefill_kv_write"),
+        ("laguna_sigmoid_correction_topk_f32_kernel", "router"),
+        ("q4_k_pack8_gemv_kernel<unsigned short>", "dense_shared_quant_projection"),
+        ("silu_mul_separate_out_kernel<unsigned short>", "activation_reduce_residual"),
+        ("gguf_rmsnorm_bf16_f32_weight_kernel", "norm_rope_gate"),
+        ("unrecognized_kernel", "other"),
+    ],
+)
+def test_lpf5_trace_family_classifier(kernel_name: str, family: str) -> None:
+    assert _kernel_family(kernel_name) == family
 
 
 def test_lpf5_trace_attachment_fails_closed_on_segment_order(tmp_path: Path) -> None:
@@ -155,6 +178,7 @@ def test_lpf5_trace_attachment_fails_closed_on_segment_order(tmp_path: Path) -> 
     )
     assert set(attached["profiler"]["lengths"]) == {"512", "1024", "4096"}
     assert len(attached["profiler"]["attention_resources"]) == 2
+    assert attached["profiler"]["family_resources"]
 
     bad_rows = [
         *_request_rows(100, 1),
