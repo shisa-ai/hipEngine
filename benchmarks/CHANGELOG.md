@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-23
 
+- [current-main all-family attribution; diagnostic, not promoted] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / chunk-128 512/1K/4K prefill moves retained post-wave32 **47.395/44.855/38.552 -> 47.453/44.848/38.541 tok/s (+0.12%/-0.02%/-0.03%)** within variance while complete 128/512/1K/4K tracing assigns selected experts **56.78/53.23/50.48/43.45%**, source-F16 **33.40/30.82/29.12/25.02%**, dense/shared **6.55/6.06/5.71/4.94%**, and attention **2.46/9.17/14.01/26.01%**, ranking selected experts first with exact IDs/cursors/boundaries/lifecycle and <0.001% unclassified time; `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-current-main-all-family-profile.json`.
+
 - [current-main confirmation; diagnostic, not promoted] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M + pinned B4 drafter / canonical ten-prompt four-category greedy-32 moves weighted AR/DFlash prefill **50.367/16.854 -> 50.389/16.906 tok/s (+0.04%/+0.31%)** and decode **16.347/15.479 -> 16.384/15.527 tok/s (+0.23%/+0.31%)** after merging current main; the full ratio is **0.9469x -> 0.9477x**, all 20 pairs/oracle/state/lifecycle gates pass, and the sub-0.32% movement is confirmation-scale variance with no promotion change. `benchmarks/results/2026-07-23-gfx1151-laguna-dflash-current-main-confirmation.json`.
 
 - [diagnostic comparison] synthetic raw-IQ prefill / E16-K3072-N128 equal 1/2/4/8/16 rows-expert / GPU1: fastest explicit exact IQ2 scalar/rowbatch leaf moves pre-optimization -> current `20.452/22.584/25.977/48.428/97.458 -> 15.733/19.191/23.178/42.657/86.580 us` (-10.78% to -23.07%), while unchanged IQ3/IQ4 differ by at most 2.22%; dual-dispatch, not per-row/default-policy timing; `benchmarks/results/2026-07-23-gpu1-iq-cross-format-prefill-current.json`.
