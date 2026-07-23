@@ -2333,8 +2333,9 @@ repeat either experiment unchanged.
   direct and explicit unfused grouped selection remains the rollback. This is
   a launch/traffic promotion, not a standalone model-wall headline. Evidence:
   `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-grouped-combine-screen.json`
-  and the retained category artifact. Do not introduce order-dependent atomics
-  across ten experts.
+  and
+  `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-grouped-combine-retained.json`.
+  Do not introduce order-dependent atomics across ten experts.
 
 Stop rule: remove a candidate that is slower inclusively at every natural
 shape, or whose best applicable family speedup is below 2x with no material
