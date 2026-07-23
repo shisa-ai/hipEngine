@@ -101,6 +101,13 @@ def _make_dual_wrapper(quant: str, symbol: str):
     return wrapper
 
 
+def _make_dual_pack8_wrapper(quant: str, symbol: str):
+    def wrapper(*args, **kwargs) -> None:
+        _launch_dual(quant, symbol, *args, require_pack8=True, **kwargs)
+
+    return wrapper
+
+
 def _make_pack8_wrapper(quant: str, symbol: str):
     def wrapper(*args, **kwargs) -> None:
         _launch(quant, symbol, *args, require_pack8=True, **kwargs)
@@ -164,6 +171,9 @@ gguf_q5_k_pack8_gemv_decode_bf16_f32_out = _make_pack8_wrapper(
 gguf_q5_k_pack8_gemv_decode_bf16_bf16_out = _make_pack8_wrapper(
     "gguf_q5_k", _symbol("gguf_q5_k", "pack8_gemv_decode_bf16_bf16_out")
 )
+gguf_q5_k_pair_pack8_gemv_decode_bf16_bf16_out = _make_dual_pack8_wrapper(
+    "gguf_q5_k", _symbol("gguf_q5_k", "pair_pack8_gemv_decode_bf16_bf16_out")
+)
 gguf_q5_k_selected_gemv_bf16_bf16_out = _make_selected_wrapper("gguf_q5_k", _symbol("gguf_q5_k", "selected_gemv_bf16_bf16_out"))
 gguf_q5_k_selected_silu_gemv_bf16_bf16_out = _make_selected_silu_wrapper(
     "gguf_q5_k", _symbol("gguf_q5_k", "selected_silu_gemv_bf16_bf16_out")
@@ -221,6 +231,16 @@ def register_gguf_k_gemv_kernels(*, replace: bool = True) -> None:
     for quant in ("gguf_q8_0", "gguf_q5_k", "gguf_q6_k"):
         for variant, fn in _WRAPPERS[quant].items():
             register(KernelKey("hip_gfx1100", "linear", quant, variant), fn, replace=replace)
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear_pair",
+            "gguf_q5_k",
+            "pack8_gemv_decode_bf16_bf16_out",
+        ),
+        gguf_q5_k_pair_pack8_gemv_decode_bf16_bf16_out,
+        replace=replace,
+    )
 
 
 def _launch(
@@ -263,8 +283,9 @@ def _launch_dual(
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
+    require_pack8: bool = False,
 ) -> None:
-    _validate(quant, rows, in_features, out_features, threads)
+    _validate(quant, rows, in_features, out_features, threads, require_pack8=require_pack8)
     library = library or build_gguf_k_gemv(load=True)
     runtime = runtime or get_hip_runtime()
     fn = _cached_fn(library, symbol, [_VOID, _VOID, _VOID, _VOID, _VOID, _I64, _I64, _I64, _I64, _VOID])
@@ -519,6 +540,7 @@ __all__ = [
     "gguf_q5_k_gemv_bf16_bf16_out",
     "gguf_q5_k_pack8_gemv_decode_bf16_bf16_out",
     "gguf_q5_k_pack8_gemv_decode_bf16_f32_out",
+    "gguf_q5_k_pair_pack8_gemv_decode_bf16_bf16_out",
     "gguf_q5_k_selected_gemv_bf16_bf16_out",
     "gguf_q5_k_selected_silu_gemv_bf16_bf16_out",
     "gguf_q5_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out",

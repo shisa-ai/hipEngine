@@ -2568,6 +2568,19 @@ The two singletons remain the unfused fallback; actual-weight family timing and
 the full exact category gate decide retention. Evidence:
 `benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-d4-q5-profile.json`.
 
+The source-dirty implementation now passes that RED boundary. One four-axis
+`linear_pair/gguf_q5_k/pack8_gemv_decode_bf16_bf16_out` launch uses independent
+projection workgroups around the exact singleton block body; Laguna asks only
+for registered decode pairs, so every registry/shape miss still executes the
+two primitives and rows>1 is unchanged. Synthetic K3072/N1024 outputs are
+BF16-bit exact to two singleton launches, the actual layer-1 CPU-quant oracle
+passes, and d32 IDs/lifecycle remain exact. Actual `blk.1` gate/up wall improves
+**28.148 -> 16.373 us/pair (-41.83%)**. Cached full-model tracing confirms
+local128/VGPR72/LDS1024/scratch0, removes 46 dispatches/token, moves the pair
+family **1.561 -> 0.891 ms/token (-42.94%)**, kernel sum **18.983 -> 18.240 ms
+(-3.92%)**, and span **22.878 -> 21.963 ms (-4.00%)**. These are implementation
+diagnostics; commit first, then rerun clean trace and category retention gates.
+
 The Qwen3.6 UD-Q3_K_M final D0 is a useful tactics comparison, not a model ratio:
 it uses 671 dispatches, 8.825 ms summed kernels, and 11.347 ms profiled wall per
 token on an RX 7900 XTX. D1 has now transferred its dedicated dense pack8
