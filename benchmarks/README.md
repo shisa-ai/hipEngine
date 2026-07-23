@@ -3,6 +3,8 @@
 Last reviewed: **2026-07-23**
 
 Latest retained hipEngine revisions in this scoreboard:
+`b7a0d7751a96cac2c0c93530f4f1119a39bd0ad2` for the clean gfx1151 Laguna
+source-F16 rocBLAS/hipBLASLt matrix ceiling,
 `fe59e77d065c7bf88cfa1635d71cd64b0e415005` for exact Laguna native
 scheduler ownership, cancellation acknowledgement, and the retained c1/c2
 server policy packet,
@@ -1718,6 +1720,21 @@ natural/Zipf padding, so it is closed without another category run. Exact
 adaptive grouped-small-M plus fused grouped combine remains the gfx1151
 production default.
 [Rejected M16 category gate](results/2026-07-23-gfx1151-laguna-prefill-wmma16-down-category-rejected.json).
+
+AR-O2 now has a clean source-F16 matrix-library ceiling at every declared
+M16/32/64/128/256/512 shape. The harness screens all seven hipBLASLt algorithms
+returned for each production Q/K/V/gate/O M/K/N, then counterbalances exact,
+rocBLAS, and selected hipBLASLt full/SWA family sequences. The inclusive library
+controls conservatively pay BF16->F32->FP16 input casts before QKV/gate and O,
+plus O's FP32->BF16 boundary. At M128, hipBLASLt moves full/SWA
+**13.009/18.661 -> 1.132/1.293 ms (11.497x/14.431x)**; the synthetic 12-full/
+36-SWA projection sum moves **827.901 -> 60.129 ms (13.769x)**. M16 through
+M512 weighted inclusive speedups are **3.866/6.629/10.125/13.769/17.804/
+23.263x**. A seeded nonzero mapping smoke passes, every selected algorithm uses
+zero workspace, and tracked ownership returns to zero. This is a synthetic
+matrix ceiling selecting custom WMMA work, not a runtime route, quality result,
+or model-throughput change.
+[Source-F16 library ceiling](results/2026-07-23-gfx1151-laguna-f16-library-ceiling.json).
 
 A matched Poolside llama.cpp `04b2b72c` control now uses the identical Laguna
 Q4_K_M model hash, deterministic token stream, BF16 KV, and 128-row microbatch.
