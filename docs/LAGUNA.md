@@ -87,7 +87,7 @@ owner as an explicit opt-in. “Complete” below does not broaden that boundary
 | Deliverable | Implementation and focused gates | Retained evidence | Audit verdict |
 | --- | --- | --- | --- |
 | Source-bound resident load | `hipengine/loading/laguna_gguf*.py`, `hipengine/runtime/laguna_gguf_runner.py`; config/map/materialization/device/lifecycle suites | `2026-07-22-gfx1151-laguna-s21-repacked-cache-startup-retained.json` | Complete; cache/source trajectories agree and tracked ownership returns to zero. |
-| Target AR and public serving | `hipengine/generation/laguna_gguf.py`; direct, `LLM`, OpenAI blocking/streaming, resident admission/reclaim, EOT/cancel/capability tests | target-AR, LPF-1/4/5, bulk-correctness, `2026-07-23-gfx1151-laguna-native-scheduler.json`, and qualified Poolside artifacts under `benchmarks/results/` | Complete for exact physical c=1/4K and logical two-slot serving. Current D4 true-AR control is 16.384 decode tok/s; 512/1K/4K prefill is exact at 47.395/44.855/38.552 tok/s. Native scheduling adds bounded c2 ownership, not c>1 model math or a speedup claim. |
+| Target AR and public serving | `hipengine/generation/laguna_gguf.py`; direct, `LLM`, OpenAI blocking/streaming, resident admission/reclaim, EOT/cancel/capability tests | target-AR, LPF-1/4/5, bulk-correctness, `2026-07-23-gfx1151-laguna-native-scheduler.json`, and qualified Poolside artifacts under `benchmarks/results/` | Complete for exact physical c=1/4K and logical two-slot serving. The retained quality-gated canonical prefill row is 69.037 tok/s; the AR-O3 deterministic long-stream matrix512/attention128 screen reaches exact 69.069/63.925/51.989 tok/s at 512/1K/4K. The D4 true-AR decode control remains 16.384 tok/s. Native scheduling adds bounded c2 ownership, not c>1 model math or a speedup claim. |
 | Poolside-v1 reasoning and tools | `hipengine/chat/poolside_v1.py`; frozen renderer/reasoning/tool fixtures plus generic server conformance | `2026-07-22-gfx1151-laguna-poolside-v1-e2e-correctness.json` | Complete: 5/5 live blocking/streaming cases and 7/7 deterministic tool fixtures, including multiple calls and escaped UTF-8. |
 | B4 DFlash correctness and public route | `hipengine/speculative/laguna_dflash.py`, `hipengine/generation/laguna_dflash.py`, provider registry/server route; drafter, B+1, rollback, API, and public-gate suites | drafter-B4, verify-commit, post-prefill economics, and `2026-07-23-gfx1151-laguna-dflash-public-e2e.json` | Complete as explicit-only: 10/10 AR, 10/10 blocking, and 10/10 streaming public rows are exact. AR remains default. |
 | Ownership and truthful capability surface | shared target weights with isolated target/drafter/cycle request state; finish/cancel/close and fail-before-load gates | parser peak 77,022,439,484 bytes and public DFlash peak 79,817,890,405 bytes both recover to zero | Complete for the supported boundary; identity, revision, budget, exactness, fallback, and no-performance-claim metadata pass. |
@@ -2059,10 +2059,11 @@ behavior changes.
 
 ### Why the 4-10x target is credible but not yet a claim
 
-The current merged-main canonical result is **50.389 prefill tok/s** and
-**16.384 decode tok/s** on the Radeon 8060S/gfx1151. The retained long-context
-AR results are **47.395/44.855/38.552 tok/s** at 512/1K/4K. Model loading is
-excluded from all of these values.
+The campaign-entry merged-main canonical result was **50.389 prefill tok/s**
+and **16.384 decode tok/s** on the Radeon 8060S/gfx1151. The retained
+pre-matrix long-context AR results were **47.395/44.855/38.552 tok/s** at
+512/1K/4K. Model loading is excluded from all of these values; later AR-O2/O3
+results below supersede this as the active implementation status.
 
 The following llama.cpp numbers were reported during this planning session and
 are directional controls, not retained hipEngine evidence. Their exact prompt,
@@ -2072,7 +2073,7 @@ batch/chunk, build, power, and timing scopes still need to be captured:
 | --- | ---: | ---: | ---: | --- |
 | gpt-oss 120B MXFP4 | about 6B | 720 tok/s | 56 tok/s | user-reported; protocol capture pending |
 | Nemotron Super 3 120B-A12B | about 12B | 276 tok/s | 14.86 tok/s | user-reported; protocol/quant capture pending |
-| Laguna S 2.1 Q4_K_M in hipEngine | about 7.83B prefill linear work | 50.389 tok/s | 16.384 tok/s | retained current-main AR evidence |
+| Laguna S 2.1 Q4_K_M in hipEngine | about 7.83B prefill linear work | 50.389 tok/s | 16.384 tok/s | retained AR-O0 campaign-entry evidence |
 
 Laguna's active linear work can be estimated directly from the published
 shapes. Per prefill token it evaluates approximately 2.803B attention-projection
@@ -2108,7 +2109,7 @@ with balanced hipEngine timing, that is a diagnostic **2.189/2.351/3.127x**.
 The ratio remains qualified because Poolside excludes HTTP/sampling and
 hipEngine includes final argmax bookkeeping; Poolside also rounds the requested
 4,097-slot endpoint context to 4,352. Nevertheless, the same-model control
-proves that the current 38-47 tok/s long-prefill path is not a model-imposed
+proves that the then-current 38-47 tok/s long-prefill path is not a model-imposed
 ceiling. Poolside itself is still far below the cross-model gpt-oss directional
 number, so the 200-500 tok/s target remains an optimization objective rather
 than a comparator-derived promise.
@@ -2438,9 +2439,10 @@ become a hard runtime dependency without an explicit package decision.
 
 #### AR-O3 — larger row substrate and independent chunk policies
 
-The retained default owner allocates one global 128-row scratch shape. That is adequate
-for exact LPF but can starve grouped experts and matrix tiles. Do not simply set
-the global chunk to 512.
+The pre-AR-O3 owner allocated one global 128-row scratch shape. That was adequate
+for exact LPF but could starve grouped experts and matrix tiles. The retained
+solution below does not simply set every global tile to 512; matrix/MoE and
+attention capacities remain independent.
 
 The first AR-O3 substrate unit is implemented without changing execution
 scheduling. `LagunaPrefillChunkPolicy` now carries independent bounded
@@ -2470,15 +2472,28 @@ repetitions, fixes attention at 128 rows, excludes session construction and
 post-run hashing from timed prefill, and hashes final logits/hidden plus every
 visible K/V/span byte. A larger policy is eligible only if every length and the
 weighted wall improve, all fields/repeats are exact to M128, and each session
-plus final tracked ownership recovers. The clean run remains pending, so the
-128-row default and performance headline are unchanged.
+plus final tracked ownership recovers. The clean two-repeat run passes and
+selects M512. With attention fixed at 128,
+M128 median 512/1K/4K throughput is **64.997/60.385/49.540 tok/s**, M256 is
+**67.586/62.702/51.083 (+3.983%/+3.837%/+3.116%)**, and M512 is
+**69.069/63.925/51.989 (+6.266%/+5.862%/+4.943%)**. Aggregate median wall
+improves **107.516 -> 102.218 s (1.05183x)** and weighted throughput improves
+**52.383 -> 55.098 tok/s (+5.183%)**. Every repeated M128/M256/M512 row is
+exact for next token/value, complete logits, final/post-layer hidden, cursor,
+and all visible global/SWA K/V plus span bytes; repeats and lifecycle pass.
+M512 row/MoE scratch is **411,953,168 bytes**, still below the existing 2-GiB
+admission floor. gfx1151 now advertises matrix512/attention128 as its package
+default; explicit overrides and unmeasured backends retain the 128-row fallback.
+Canonical 68-122-token category throughput remains the AR-O2 69.037 tok/s row
+because those prompts do not cross M128. Evidence:
+`benchmarks/results/2026-07-23-gfx1151-laguna-matrix-chunk-retained.json`.
 
 - [x] Add bounded 256/512-row scratch and admission accounting after AR-O1/O2
   establish the layouts they actually need.
 - [x] Decouple projection/MoE row tiles from attention query tiles, following
   the proven Qwen prefill configuration pattern. Matrix work may use M256/512
   while SWA/global attention remains at its independently measured query tile.
-- [ ] Compare 128/256/512 on 512/1K/4K with exact final cursor, KV state, and
+- [x] Compare 128/256/512 on 512/1K/4K with exact final cursor, KV state, and
   511/512/513 wrap behavior. Canonical 68-122-token prompts will not benefit
   from a larger maximum by themselves; this phase targets matrix occupancy and
   long-context passes.
