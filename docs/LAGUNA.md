@@ -2715,6 +2715,32 @@ DFlash becomes performance-eligible or default-eligible only after D4 exceeds
 the repository's greater-than-1.10x same-protocol true-AR promotion gate on the
 full suite, with all correctness/state/memory and category-heldout gates green.
 
+### UD-Q2_K_XL direct resident path (gfx1100, 2026-07-23)
+
+The pinned Unsloth `Laguna-S-2.1-UD-Q2_K_XL.gguf` path is now admitted for
+direct `LagunaGGUFResidentSession` use on the W7900. Its 814 tensors remain in
+source layouts: Q5/Q6/Q8 dense and shared projections, IQ2/IQ3 gate/up, IQ3/IQ4
+down, Q5 embedding, and Q4 LM head all dispatch through four-axis keys. The
+existing Q4_K_M F16/T16/pack8 path and unfused fallbacks remain intact. A
+4-GiB explicit safety reserve is required on the 48-GB card; the generic
+8-GiB default intentionally still rejects this model.
+
+The independent Poolside llama.cpp `04b2b72c` gfx1100 oracle is frozen in
+`tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json` and its complete
+100,352-way distribution. hipEngine matches first-token ID `94557` with KL
+`0.000156823`, repeats its logits and 32-token trajectory exactly, and reaches
+31/32 teacher-forced top-1 agreement. The free-running prefix is 24 tokens:
+Poolside serial AR selects `4019` at step 25, while both hipEngine and a fresh
+79-token Poolside teacher-forced prefill select `3062`; Poolside's own
+teacher-forced margin is `0.1139603` log-probability. This split is disclosed
+and is not represented as complete cross-runtime ID equality. All taps are
+finite and tracked ownership returns to zero. Compact evidence:
+`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-correctness.json`.
+
+This is a direct resident correctness qualification, not yet a public API,
+throughput, long-context, or DFlash promotion. Those require their own complete
+category-suite and lifecycle artifacts below.
+
 ## Resolved Decisions and Deferred Extensions
 
 1. A minimal concrete Laguna resident runner landed without first extracting a

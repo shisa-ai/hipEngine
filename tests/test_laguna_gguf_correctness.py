@@ -6,6 +6,7 @@ import pytest
 from scripts.laguna_gguf_correctness import (
     _greedy_step_metrics,
     _kl_from_reference_log_probs,
+    _quality_gate_passes,
 )
 
 
@@ -14,6 +15,24 @@ def test_laguna_correctness_kl_ignores_shared_logit_offset() -> None:
     candidate = reference + np.float32(17.0)
 
     assert _kl_from_reference_log_probs(reference, candidate) == pytest.approx(0.0, abs=1e-12)
+
+
+def test_laguna_quality_gate_reports_but_does_not_require_strict_greedy_ids() -> None:
+    result = {
+        "first_token": {
+            "finite_logits": True,
+            "kl_divergence": 0.001,
+            "top1_agreement": 1.0,
+        },
+        "greedy": {"exact": False},
+        "teacher_forced": {"top1_agreement": 31 / 32},
+        "repeat": {"exact": True, "first_logits_max_abs": 0.0},
+        "tracked_returned_to_baseline": True,
+    }
+
+    assert _quality_gate_passes(result, captures_pass=True)
+    result["teacher_forced"]["top1_agreement"] = 0.875
+    assert not _quality_gate_passes(result, captures_pass=True)
 
 
 def test_laguna_greedy_step_metrics_exposes_low_margin_mismatch() -> None:

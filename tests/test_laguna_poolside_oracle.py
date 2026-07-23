@@ -6,25 +6,35 @@ import struct
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 FIXTURES = Path(__file__).parent / "fixtures"
 TEMPLATE_FIXTURE = FIXTURES / "laguna_poolside_v1_template.json"
 ORACLE_FIXTURE = FIXTURES / "laguna_poolside_v1_oracle.json"
+Q2_XL_ORACLE_FIXTURE = FIXTURES / "laguna_poolside_q2_xl_v1_oracle.json"
+_ORACLES = (
+    (ORACLE_FIXTURE, "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"),
+    (Q2_XL_ORACLE_FIXTURE, "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"),
+)
 
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def test_laguna_poolside_oracle_provenance_matches_template() -> None:
+@pytest.mark.parametrize(("oracle_fixture", "expected_model_sha256"), _ORACLES)
+def test_laguna_poolside_oracle_provenance_matches_template(
+    oracle_fixture: Path,
+    expected_model_sha256: str,
+) -> None:
     template = json.loads(TEMPLATE_FIXTURE.read_text())
-    oracle = json.loads(ORACLE_FIXTURE.read_text())
+    oracle = json.loads(oracle_fixture.read_text())
     prompt = next(
         case for case in template["cases"] if case["name"] == oracle["prompt"]["case"]
     )
 
     assert oracle["source"]["commit"] == template["poolside_llama_commit"]
-    assert oracle["model"]["sha256"] == template["target_gguf_sha256"]
+    assert oracle["model"]["sha256"] == expected_model_sha256
     assert hashlib.sha256(prompt["rendered"].encode()).hexdigest() == oracle["prompt"][
         "rendered_sha256"
     ]
@@ -40,8 +50,11 @@ def test_laguna_poolside_oracle_provenance_matches_template() -> None:
     assert oracle["server"]["mmap"] is False
 
 
-def test_laguna_poolside_first_token_distribution_is_complete() -> None:
-    oracle = json.loads(ORACLE_FIXTURE.read_text())
+@pytest.mark.parametrize("oracle_fixture", (ORACLE_FIXTURE, Q2_XL_ORACLE_FIXTURE))
+def test_laguna_poolside_first_token_distribution_is_complete(
+    oracle_fixture: Path,
+) -> None:
+    oracle = json.loads(oracle_fixture.read_text())
     first = oracle["first_token"]
     distribution = first["full_distribution"]
     path = FIXTURES / distribution["path"]
@@ -70,8 +83,11 @@ def test_laguna_poolside_first_token_distribution_is_complete() -> None:
         assert float(logprobs[expected["id"]]) == expected["logprob"]
 
 
-def test_laguna_poolside_greedy_oracle_has_two_fresh_start_repeats() -> None:
-    oracle = json.loads(ORACLE_FIXTURE.read_text())
+@pytest.mark.parametrize("oracle_fixture", (ORACLE_FIXTURE, Q2_XL_ORACLE_FIXTURE))
+def test_laguna_poolside_greedy_oracle_has_two_fresh_start_repeats(
+    oracle_fixture: Path,
+) -> None:
+    oracle = json.loads(oracle_fixture.read_text())
     greedy = oracle["greedy32"]
 
     assert len(greedy["token_ids"]) == 32

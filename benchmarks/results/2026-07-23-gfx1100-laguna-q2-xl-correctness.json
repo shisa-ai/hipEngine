@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-23",
+  "status": "accepted_correctness",
+  "scope": "direct resident Laguna S 2.1 UD-Q2_K_XL target correctness",
+  "source_revision": "bb7df1082aaa7aca608d7b629f3b5b9ea0f29a8f",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "gpu_arch": "gfx1100",
+    "vram_bytes": 48301604864,
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "kernel": "Linux 7.1.3-2-cachyos x86_64"
+  },
+  "model": {
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "bytes": 39684584480,
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "tensor_count": 814,
+    "context_length": 4096
+  },
+  "independent_oracle": {
+    "implementation": "poolsideai/llama.cpp",
+    "revision": "04b2b72cb54048ead292884adbe11f284e3ec950",
+    "server_binary_sha256": "7effcb8074386fb8c613f7bfb4ce0201830d1c89d5993dcc87c16de526eba3cb",
+    "backend": "HIP gfx1100",
+    "flash_attention": false,
+    "mmap": false,
+    "repack": false,
+    "fresh_process_distribution_repeat_exact": true,
+    "fresh_process_greedy_repeat_exact": true,
+    "fixture": "tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json",
+    "distribution": "tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy"
+  },
+  "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python scripts/laguna_gguf_correctness.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --oracle tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json --backend hip_gfx1100 --greedy-tokens 32 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --output /tmp/laguna-q2-xl-correctness-final.json",
+  "quality_gate": {
+    "pass": true,
+    "first_token_reference": 94557,
+    "first_token_candidate": 94557,
+    "first_token_top1_agreement": 1.0,
+    "first_token_kl": 0.00015682291693663912,
+    "finite_logits": true,
+    "teacher_forced_top1_matches": 31,
+    "teacher_forced_steps": 32,
+    "teacher_forced_top1_agreement": 0.96875,
+    "max_allowed_kl": 0.05,
+    "min_allowed_top1_agreement": 0.9
+  },
+  "trajectory": {
+    "hipengine_repeat_exact": true,
+    "repeat_first_logits_max_abs": 0.0,
+    "strict_cross_runtime_greedy_exact": false,
+    "matching_prefix_tokens": 24,
+    "oracle_step_25": 4019,
+    "hipengine_step_25": 3062,
+    "poolside_fresh_teacher_forced_step_25": 3062,
+    "poolside_teacher_forced_margin_over_4019_logprob": 0.11396026611328125,
+    "note": "Complete IDs are reported but are not the declared KL/top-1 quality gate. The pinned reference itself changes step 25 between serial AR and a fresh 79-token teacher-forced prefill."
+  },
+  "lifecycle": {
+    "resident_nbytes": 40068332284,
+    "peak_tracked_nbytes": 40455851832,
+    "peak_allocations": 1466,
+    "active_allocations_after": 0,
+    "tracked_nbytes_after": 0,
+    "tracked_returned_to_baseline": true,
+    "all_hidden_taps_finite": true
+  },
+  "diagnostic_timing": {
+    "model_load_seconds": 10.252803587005474,
+    "three_pass_inference_seconds": {
+      "natural_and_capture": 2.861129519995302,
+      "repeat": 2.879314919002354,
+      "teacher_forced": 2.884290909045376
+    },
+    "performance_claim": false
+  },
+  "raw_result_sha256": "388a34b5dbbef45531666bc8dc58b3edf4b2334a07f9dd418187e5fc83adee7c"
+}
