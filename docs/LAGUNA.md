@@ -2675,6 +2675,18 @@ improves **3.21%/2.15%/1.95%/1.38%**, and profiled child throughput improves
 promoting the D6 headline above. Evidence:
 `benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-q5-query-gate-pair-retained.json`.
 
+A code-identical reanalysis of those retained traces ranks short attention-output
+Q5, selected IQ2, retained query/gate Q5, SWA, weighted IQ3, and attention K/V
+Q6 at **2.628/2.285/2.151/2.118/2.110/1.407 ms/token**. Q6 K/V is the next
+bounded exact candidate: 47 same-input K3072/N1024 pairs account for **94
+launches/token** at **14.920 us** median per singleton and
+local128/VGPR48/SGPR128/LDS1024/scratch0. One registered equal-width
+`linear_pair/gguf_q6_k` dispatch can preserve the existing arithmetic while
+keeping both singleton fallbacks. Perfect one-side overlap is only **0.703 ms /
+3.98% kernel sum / 3.31% span**, approximately **46.933 tok/s**, so later work
+must still compound. Evidence:
+`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-d6-residual-profile.json`.
+
 The Qwen3.6 UD-Q3_K_M final D0 is a useful tactics comparison, not a model ratio:
 it uses 671 dispatches, 8.825 ms summed kernels, and 11.347 ms profiled wall per
 token on an RX 7900 XTX. D1 has now transferred its dedicated dense pack8
@@ -2707,22 +2719,25 @@ Proceed in measured Amdahl order:
 7. **DONE:** exact unequal-width Q5 attention query/gate pairing removes 47
    launches/token, improves every clean context and category decode/E2E row,
    and promotes D6 to 45.433 tok/s;
-8. **NEXT:** reprofile D6 to rank the remaining attention-output Q5, IQ2, IQ3,
-   submission, and near-4K global families before selecting another exact
-   kernel; and
-9. admit Laguna-specific one-step graph replay only after higher-share kernel
+8. **DONE:** reprofile D6; short attention-output Q5, IQ2, retained Q5 pair,
+   SWA, IQ3, and Q6 K/V rank at 2.628/2.285/2.151/2.118/2.110/1.407 ms/token,
+   while near-4K remains global-attention dominated;
+9. **NEXT:** implement exact equal-width Q6 K/V pairing to remove 47 launches,
+   then reprofile the still-larger Q5/IQ2/IQ3 and submission families; and
+10. admit Laguna-specific one-step graph replay only after higher-share kernel
    work. D6's short decode span still exceeds kernel sum by about **3.55 ms**,
    so submission remains material but is not yet the only plausible route.
 
 **50 tok/s is a credible W7900 target, not a current claim.** D6 must reduce the
 canonical **22.010 ms to 20 ms**, another **10.05%**. The clean short kernel sum
 is already **17.689 ms** and median span is **21.274 ms**, so the measured device
-window does not impose a 20-ms floor; however, no currently ranked single
-bounded leaf closes the remaining 2.010 ms. The near-4K profile remains led by
-global attention. Every retained candidate uses the full category/heldout suite
+window does not impose a 20-ms floor. The selected Q6 pair's perfect 0.703-ms
+kernel ceiling would still leave **1.307 ms** to 20 ms, so no single ranked
+bounded leaf closes the remaining gap. The near-4K profile remains led by global
+attention. Every retained candidate uses the full category/heldout suite
 and the same exact/quality lanes above. Laguna DFlash/MTP optimization resumes
-only after this target path is reprofiled so speculative speedups are measured
-against the improved true-AR baseline.
+only after the selected D7 candidate is decided so speculative speedups are
+measured against the improved true-AR baseline.
 
 ## Laguna DFlash Follow-on Plan
 
