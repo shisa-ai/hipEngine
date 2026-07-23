@@ -209,6 +209,9 @@ gguf_q6_k_gemv_bf16_fp16_out = _make_wrapper("gguf_q6_k", _symbol("gguf_q6_k", "
 gguf_q6_k_gemv_bf16_bf16_out = _make_wrapper("gguf_q6_k", _symbol("gguf_q6_k", "gemv_bf16_bf16_out"))
 gguf_q6_k_pack8_gemv_bf16_f32_out = _make_pack8_wrapper("gguf_q6_k", _symbol("gguf_q6_k", "pack8_gemv_bf16_f32_out"))
 gguf_q6_k_pack8_gemv_bf16_bf16_out = _make_pack8_wrapper("gguf_q6_k", _symbol("gguf_q6_k", "pack8_gemv_bf16_bf16_out"))
+gguf_q6_k_pair_pack8_gemv_decode_bf16_f32_out = _make_unequal_dual_pack8_wrapper(
+    "gguf_q6_k", _symbol("gguf_q6_k", "pair_pack8_gemv_decode_bf16_f32_out")
+)
 gguf_q6_k_selected_gemv_bf16_bf16_out = _make_selected_wrapper("gguf_q6_k", _symbol("gguf_q6_k", "selected_gemv_bf16_bf16_out"))
 gguf_q6_k_selected_silu_gemv_bf16_bf16_out = _make_selected_silu_wrapper(
     "gguf_q6_k", _symbol("gguf_q6_k", "selected_silu_gemv_bf16_bf16_out")
@@ -259,6 +262,16 @@ def register_gguf_k_gemv_kernels(*, replace: bool = True) -> None:
             "pack8_gemv_decode_bf16_f32_out",
         ),
         gguf_q5_k_pair_pack8_gemv_decode_bf16_f32_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear_pair",
+            "gguf_q6_k",
+            "pack8_gemv_decode_bf16_f32_out",
+        ),
+        gguf_q6_k_pair_pack8_gemv_decode_bf16_f32_out,
         replace=replace,
     )
 
@@ -637,6 +650,7 @@ __all__ = [
     "gguf_q6_k_gemv_bf16_f32_out",
     "gguf_q6_k_gemv_bf16_fp16_out",
     "gguf_q6_k_gemv_bf16_bf16_out",
+    "gguf_q6_k_pair_pack8_gemv_decode_bf16_f32_out",
     "gguf_q6_k_selected_gemv_bf16_bf16_out",
     "gguf_q6_k_selected_silu_gemv_bf16_bf16_out",
     "gguf_q6_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out",

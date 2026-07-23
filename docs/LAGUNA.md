@@ -1692,10 +1692,13 @@ single rows dominate the trace at 2.734/2.126 s total, while global/SWA attentio
 uses only 0.007/0.060 s total. This dispatch gate predates and is separate from
 the retained target-AR timing packet below; graph replay remains unclaimed.
 
-Graph replay comes last. Capture keys must include all state that can change
-semantics: context bucket, layer attention pattern, live spans, absolute
-position, KV addresses/capacities, scratch addresses, active width, and sampler
-mode. Existing Qwen/PARO graph admission does not automatically certify Laguna.
+Graph replay comes last. The static capture key plus the per-replay state ticket
+must jointly cover every semantic axis: context capacity, layer attention
+pattern, live-span policy, absolute position, KV addresses/capacities, scratch
+addresses, active width, and sampler mode. Existing Qwen/PARO graph admission
+does not automatically certify Laguna. The exact c=1 ABI, lifecycle, RED gates,
+and bounded performance model are frozen in the D8 design below; graph replay
+remains unclaimed until those gates pass.
 
 Acceptance:
 
@@ -1704,7 +1707,9 @@ Acceptance:
 - 512/1K/4K prefill is exact before performance tuning;
 - graph/eager generated IDs and every hidden/KV transition match over the full
   measured horizon;
-- graph capture/instantiate time is excluded from decode throughput;
+- graph capture/instantiate time is reported separately and excluded only from
+  the steady-state replay number; cold capture remains included in request/E2E
+  promotion accounting; and
 - retain graph only if same-device end-to-end wall improves without regression.
 
 ### L9 — Context and concurrency progression
@@ -2563,15 +2568,18 @@ tok/s**. D4 revision `73a2583b` makes four wave32 units compute four exact SWA
 slot dots concurrently before baseline-order softmax/value consumption and
 reaches **43.081 tok/s**. D5 revision `35b1602e` combines each same-input
 raw-Q5 shared gate/up pair while preserving both singleton reduction trees and
-BF16 stores, reaching **44.501 tok/s**. D6 revision `22e6144ce` is now the
-default: one unequal-width raw-Q5 F32 `linear_pair` launch owns each attention
-query/per-head-gate pair while preserving both singleton output buffers. It
-measures **45.433 tok/s (22.010 ms/token)** at h32, **+2.093%** versus D5 and
-**+132.23%** versus D0. D5 -> D6 h32 E2E improves **11.860 -> 11.921 output
-tok/s (+0.518%)** while bulk prefill is neutral at **43.167 -> 43.159 tok/s
-(-0.018%)** and median TTFT improves **1.871 -> 1.870 s (-0.081%)**. Every
-category's decode/E2E row, exactness gate, and lifecycle check passes. Evidence:
-`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-q5-query-gate-pair-retained.json`.
+BF16 stores, reaching **44.501 tok/s**. D6 revision `22e6144ce` combines each
+unequal-width raw-Q5 attention query/per-head-gate pair and reaches **45.433
+tok/s**. D7 implementation `973382e68`, measured clean at `51a437bc7`, is now
+the default: one raw-Q6 F32 `linear_pair` launch owns each of 47 attention K/V
+pairs plus layer 47's Q6 query/per-head-gate pair while preserving every
+singleton output. It measures **46.409 tok/s (21.548 ms/token)** at h32,
+**+2.147%** versus D6 and **+137.21%** versus D0. D6 -> D7 h32 E2E improves
+**11.921 -> 11.972 output tok/s (+0.423%)** while bulk prefill remains within
+guard at **43.159 -> 43.093 tok/s (-0.152%)** and median TTFT is **1.870 ->
+1.873 s (+0.172% wall)**. Every category's decode/E2E row, exactness gate, and
+lifecycle check passes. Evidence:
+`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-q6-attention-pair-retained.json`.
 
 The frozen clean D0 at `e6120872` profiles 16 c=1 rows after the canonical
 69-token `code_merge_intervals` bulk prefill; the stable 14 rows contain exactly
@@ -2772,9 +2780,40 @@ improves **3.21%/2.15%/1.95%/1.38%**, and profiled child throughput improves
 promoting the D6 headline above. Evidence:
 `benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-q5-query-gate-pair-retained.json`.
 
-A code-identical reanalysis of those retained traces ranks short attention-output
-Q5, selected IQ2, retained query/gate Q5, SWA, weighted IQ3, and attention K/V
-Q6 at **2.628/2.285/2.151/2.118/2.110/1.407 ms/token**. Q6 K/V is the next
+D7 cleanly retains the Q6 pair boundary. The registered
+`linear_pair/gguf_q6_k/pack8_gemv_decode_bf16_f32_out` flattened pack grid
+preserves singleton F32 output bytes for K3072 N1024+1024 and N9216+72. Actual
+global K/V, SWA K/V, and layer-47 query/gate medians improve
+**37.36%/36.65%/8.80%**. Rows>1, registry/shape misses, mixed pairs, and
+unmeasured backends retain the established unfused path. Clean tracing removes
+48 dispatches/token (**917 -> 869**) at local128/VGPR56/SGPR128/LDS512/scratch0.
+Short/512/1K/near-4K kernel sum improves **2.38%/1.60%/1.46%/0.86%**, span
+improves **2.63%/2.00%/1.82%/1.17%**, and profiled child throughput improves
+**3.33%/1.80%/2.31%/1.53%**. All trace and complete category gates pass,
+promoting the D7 headline above. Evidence:
+`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-q6-attention-pair-retained.json`.
+
+The code-identical D7 residual analysis ranks Q5 attention output, selected IQ2
+dual+SiLU, retained Q5 query/gate, weighted IQ3 down, and token4 SWA at
+**2.646/2.317/2.171/2.134/2.119 ms/token**. The first family contains 47
+raw-Q5 BF16-output N3072 projections: K6144 in 12 global layers and K9216 in 35
+SWA layers. Existing local128/VGPR72/LDS1024/scratch0 pack8 blocks reread a
+304.35-MB/token BF16 activation proxy around 836.96 MB of encoded weights. D8
+screened one exact 16-output workgroup that preserved each output's
+K/reduction/BF16 order while halving nominal duplicate activation reads. Both
+synthetic and actual K6144/K9216 N3072 outputs were BF16-bit exact, but the best
+scratch-free local256/VGPR88/LDS2048 schedule regressed production HIP-event
+time **16.69%/19.04%**. The proxy therefore described nominal traffic, not a
+cache-visible win. Tile16/tile32 were removed before full-model measurement;
+one-step graph replay is now the bounded route against the 3.385-ms short
+span-minus-kernel residual. Evidence:
+`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-d7-residual-profile.json`
+and
+`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-q5-output-tile16-rejected.json`.
+
+The preceding code-identical D6 reanalysis ranked short attention-output Q5,
+selected IQ2, retained query/gate Q5, SWA, weighted IQ3, and attention K/V Q6
+at **2.628/2.285/2.151/2.118/2.110/1.407 ms/token**. Q6 K/V was the next
 bounded exact candidate: 47 same-input K3072/N1024 pairs account for **94
 launches/token** at **14.920 us** median per singleton and
 local128/VGPR48/SGPR128/LDS1024/scratch0. One registered equal-width
@@ -2819,22 +2858,223 @@ Proceed in measured Amdahl order:
 8. **DONE:** reprofile D6; short attention-output Q5, IQ2, retained Q5 pair,
    SWA, IQ3, and Q6 K/V rank at 2.628/2.285/2.151/2.118/2.110/1.407 ms/token,
    while near-4K remains global-attention dominated;
-9. **NEXT:** implement exact equal-width Q6 K/V pairing to remove 47 launches,
-   then reprofile the still-larger Q5/IQ2/IQ3 and submission families; and
-10. admit Laguna-specific one-step graph replay only after higher-share kernel
-   work. D6's short decode span still exceeds kernel sum by about **3.55 ms**,
-   so submission remains material but is not yet the only plausible route.
+9. **DONE:** exact raw-Q6 attention pairing removes 48 launches/token, improves
+   every clean context and category decode/E2E row, and promotes D7 to 46.409
+   tok/s; and
+10. **DONE:** reprofile D7; Q5 attention output is the largest named short leaf
+   at 2.646 ms/token and exact tile16 activation reuse is the first screen;
+11. **REJECTED:** tile16 is exact and scratch-free, but the best production
+   schedule regresses global/SWA actual weights **16.69%/19.04%**; tile16 and
+   tile32 are removed without spending clean full-model/category runs; and
+12. **DONE:** freeze the Laguna one-step graph ABI, fail-closed eligibility,
+   lifecycle, RED gates, and 3.385-ms residual model below; and
+13. **REJECTED:** the pointer-bound graph passes a 956-step exact state gate but
+   regresses unprofiled short/512/1K/near-4K throughput by **2.247%, 1.995%,
+   1.502%, and 1.146%** and capture-inclusive canonical h16/h32 decode by
+   **7.150%/4.774%**.
+   The graph owner, selector, capability, paired tail, and tests are removed;
+   eager D7 remains the only runtime route.
+14. **NEXT:** resume exact kernel/submission optimization from eager D7. Its
+   short decode span exceeds kernel sum by **3.385 ms**, but ROCm graph replay
+   does not recover that residual.
 
-**50 tok/s is a credible W7900 target, not a current claim.** D6 must reduce the
-canonical **22.010 ms to 20 ms**, another **10.05%**. The clean short kernel sum
-is already **17.689 ms** and median span is **21.274 ms**, so the measured device
-window does not impose a 20-ms floor. The selected Q6 pair's perfect 0.703-ms
-kernel ceiling would still leave **1.307 ms** to 20 ms, so no single ranked
-bounded leaf closes the remaining gap. The near-4K profile remains led by global
-attention. Every retained candidate uses the full category/heldout suite
-and the same exact/quality lanes above. Laguna DFlash/MTP optimization resumes
-only after the selected D7 candidate is decided so speculative speedups are
-measured against the improved true-AR baseline.
+**50 tok/s is a credible W7900 target, not a current claim.** D7 must reduce the
+canonical **21.548 ms to 20 ms**, another **7.74%**. The clean short kernel sum
+is **17.268 ms** and median span is **20.715 ms**, so the measured device window
+does not impose a 20-ms floor. The rejected tile16 traffic model was not
+cache-visible; one-step graph replay must now remove at least **1.548 ms/token**
+from the canonical h32 wall to reach the target. The near-4K profile remains led
+by global attention. Every retained candidate uses the full category/heldout
+suite and the same exact/quality lanes above. Laguna DFlash/MTP economics must
+use D7 or a later true-AR baseline rather than the historical D0 row.
+
+### D8 one-step graph replay (exact, performance-rejected, removed)
+
+This design is Laguna-specific. It reuses HIP graph mechanics and the small
+runtime-state kernel family, but it does not inherit Qwen/PARO graph correctness.
+The current eager ownership audit is:
+
+| Semantic state | Current owner | Current per-token action |
+| --- | --- | --- |
+| input token | `LagunaEagerScratch.token_id` | host writes the previous top-1 ID |
+| RoPE position | `LagunaEagerScratch.position` | host writes `session.position + 1` |
+| KV query/write position | `LagunaKVCache._row_position` through every `KVLiveSpans.row_positions` | `prepare_position()` writes the same absolute position |
+| dense/SWA visibility | per-layer `base_offsets`, `live_counts`, `token_positions`, `evict_mask` | KV append kernels update metadata; attention reads it |
+| next token/value | `argmax_id` / `argmax_value` | argmax writes device scalars, then eager synchronizes and reads both |
+| committed cursor | `session.position` and `kv_cache.position` | host advances both only after the complete step succeeds |
+
+The graph must remove Python/ctypes submission of the **869** D7 launches, not
+change any model arithmetic. Its fixed one-step body is:
+
+1. read the input ID directly from `scratch.argmax_id` and launch the existing
+   quantized embedding into `scratch.hidden`;
+2. run the unchanged 48-layer c=1 chain, with RoPE reading
+   `scratch.position` and all KV write/attention leaves reading their complete
+   device-resident `KVLiveSpans`;
+3. run the unchanged final norm, Q4 LM head, and exact F32 top-1 reduction back
+   into `scratch.argmax_id` / `scratch.argmax_value`; and
+4. run one registered `decode_position/laguna/advance_pair_i64` tail that sets
+   both position scalars to the same next append position.
+
+Before the first replay after eager prefill, reset, or exact prefix reuse, the
+host primes both device position scalars to `p + 1`, where
+`p == session.position == kv_cache.position`. The top-1 scalar already contains
+the token produced by the final prefill/suffix row. After one successful replay,
+the model has appended that input at `p + 1`, argmax contains the following
+input, both device positions contain `p + 2`, and the host commits both cursors
+to `p + 1`. Synchronize/readback failure is state-ambiguous and retires the
+whole session, matching eager failure ownership. `scratch.token_id` remains the
+unfused eager staging buffer and exact fallback.
+
+The graph executable is session-local and pointer-bound but position-independent.
+Global/SWA launch geometry is fixed by the admitted 4K capacity; the kernels
+already read live counts, absolute token positions, eviction masks, and the SWA
+ring slot from device memory. One captured step can therefore survive ordinary
+session reset and exact continuation reuse while allocations and registered
+variants remain unchanged. Reset/prefill marks the handle unprimed; it does not
+make a second graph. The next replay re-primes dynamic state. The retained
+continuation invariant is unchanged: physical KV contains
+`prompt + generated[:-1]`, and the final generated token remains the device
+input waiting in `argmax_id`.
+
+Capture identity and replay state are deliberately separate:
+
+- `LagunaDecodeGraphKey` fingerprints schema, backend/target arch, model/config
+  identity, all quant/layout roles, layer/head pattern, 4K/global/SWA capacities,
+  BF16 KV, selected-down and attention variants, every weight/RoPE/scratch/MoE/
+  KV/span/control pointer, and the one-step raw-greedy sampler contract;
+- `LagunaDecodeReplayTicket` carries the session lifecycle epoch, committed host
+  cursor, expected next absolute position, dense-span policy, pending-transaction
+  state, remaining capacity, and whether device controls have been primed for
+  this epoch; and
+- reset, eager prefill/decode, and accepted continuation update the ticket.
+  Close/address change destroys graph exec, graph, then stream. Manual eviction,
+  verifier staging/rollback, or any pointer/variant change invalidates replay
+  until a reset or a new exact capture.
+
+This split avoids hashing or reading hundreds of megabytes of live KV on every
+step while still covering the old L8 semantic-key requirement. For admitted raw
+AR, global live count is `p + 1`, SWA live count is `min(p + 1, 512)`, and slot
+positions/eviction state are deterministic from the cursor because explicit
+manual eviction is not eligible. The RED state gate fingerprints all payload and
+metadata at checkpoints rather than trusting that inference.
+
+#### Fail-closed eligibility
+
+The first implementation is eligible only when every condition holds:
+
+- backend capability explicitly certifies gfx1100; target arch is gfx1100,
+  physical width is c=1, context is at most 4K, KV is BF16, and all current
+  Laguna D7 registry variants resolve before capture;
+- the request is exact raw greedy: temperature 0, top-p 1, top-k 0, min-p 0,
+  no penalties/bias/suppression/forced tokens/logprobs, and no external logits
+  processor. Host EOS/EOT/stop-sequence checks remain supported because one
+  replay exposes exactly one token before the next model transition;
+- no hidden-tap capture, DFlash/MTP verifier, staged/pending KV transaction,
+  explicit eviction, sampling, multi-step replay, user stream, c>1 batch, or
+  diagnostic full-logit readback is active;
+- session and KV cursors agree, the next position fits capacity, all static
+  addresses match the key, and the dynamic ticket is primed for the current
+  lifecycle epoch; and
+- any miss runs the existing eager `forward_token()` path. Graph support never
+  removes or numerically changes that fallback.
+
+A one-step graph is intentional. Multi-step replay cannot observe host stop,
+cancellation, deadline, or stream backpressure between tokens and is outside D8.
+Likewise, gfx1151 remains eager until it passes its own device-specific gate; the
+Qwen gfx1151 graph rejection is an additional warning, not evidence about Laguna.
+
+#### RED/GREEN and lifecycle gates
+
+Task #277 must add the tests before default wiring:
+
+1. host-only key/ticket tests cover every axis above, pointer and variant drift,
+   reset/re-prime, exact continuation, double-close, partial-capture cleanup, and
+   every fail-closed reason;
+2. a GPU eager-versus-graph trajectory gate runs identical real Q2 XL sessions
+   and compares every generated ID, top-1 value bits, complete FP32 logits,
+   post-layer/final BF16 hidden, both position scalars, and a digest over all 48
+   K/V payloads plus every `KVLiveSpans` field after each selected step;
+3. checkpoints include short state, global position 255/256, SWA
+   510/511/512/513 wrap, repeated-ring 1023/1024, reset then a third-or-later
+   replay, and exact retained-prefix + unmatched-suffix continuation. This
+   specifically guards the prior Qwen third-launch/state-corruption class;
+4. capture must not execute or mutate state. Replays allocate zero bytes, use one
+   `hipGraphLaunch` per token, retain the expected D7 kernel symbols plus only
+   the paired position tail, and preserve the unfused eager result after graph
+   use; and
+5. the complete train+heldout four-category h16/h32 suite remains deterministic,
+   serial/bulk/graph IDs are exact, Poolside KL/top-1 and accepted bulk-state
+   gates pass, and every graph/session/reset/continuation/error lifecycle returns
+   tracked ownership to zero.
+
+The task #277 implementation passed the frozen state/lifecycle gate on the real
+UD-Q2_K_XL model. Two resident sessions remained byte-exact for every ID,
+argmax-value bit pattern, complete FP32 logits, BF16 final/post-layer hidden,
+all 48 complete K/V allocations, and every live-span metadata allocation across
+**956** graph transitions. Checkpoints covered positions 69-72, 255/256,
+510-513, and 1023/1024, then exact retained-prefix suffix prefill, a forced eager
+fallback, graph resumption, reset, and third replay. Capture was non-executing,
+replay performed no tracked device allocation, one cached trace contained one
+`hipGraphLaunch` and one paired-position tail, and teardown returned
+**40,455,911,848 bytes / 1,496 allocations** to zero.
+
+Task #278 nevertheless rejects and removes the route. Counterbalanced
+unprofiled graph throughput regresses eager by **2.247%/1.995%/1.502%/1.146%**
+at short/512/1K/near-4K. Cached traces also increase kernel sum at every context
+by **3.018%/1.076%/0.524%/0.151%**; short/512 dispatch span regresses. The full
+capture-inclusive ten-prompt gate is exact and returns ownership to zero, but
+h16/h32 decode falls **46.827/46.409 -> 43.480/44.193 tok/s
+(-7.150%/-4.774%)** and E2E falls **6.881/11.972 -> 6.819/11.839
+(-0.902%/-1.110%)**. Every category regresses both decode and E2E horizons.
+ROCm graph-node scheduling costs more than the host submission it replaces for
+this chain, so there is no minimum replay horizon to admit. Canonical eager D7
+remains the only route; no selector, graph owner, capability, paired tail, or
+runtime-state debt remains. Evidence:
+`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-decode-graph-correctness.json`
+and
+`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-decode-graph-rejected.json`.
+
+Graph capture/instantiate latency, first replay, and warm replay are separate
+measurements. The canonical fresh-session run includes lazy capture in its
+request/E2E wall; steady-state replay may report capture separately but cannot
+hide it in model/session construction. Pooled-session and exact-prefix-reuse
+rows additionally show amortized behavior. Promotion requires a clean cached
+`rocprofv3` trace at short/512/1K/near-4K, non-regressive kernel sum, lower span
+and host wall at every context, positive complete-suite and every-category h16/
+h32 decode **and E2E**, no prefill/TTFT regression outside the existing guard,
+and an eager rollback switch. A graph that only improves a single prompt or a
+capture-excluded number is rejected.
+
+#### Bounded performance model
+
+Let `r` be the fraction of D7's measured **3.385 ms/token** short submission
+residual removed, `g` the added per-token graph launch/sync/read/state-tail cost,
+and `C` the one-time capture/instantiate cost. The canonical h32 row has 31
+model-forward calls, so the cold bound is:
+
+```text
+T_h32 = 21.548 ms - (3.385 ms * r) + g + C / 31
+```
+
+Ignoring `g` and `C` only to show the ceiling:
+
+| residual removed | modeled h32 ms/token | modeled tok/s |
+| ---: | ---: | ---: |
+| 25% | 20.702 | 48.31 |
+| 50% | 19.856 | 50.36 |
+| 75% | 19.009 | 52.61 |
+| 100% | 18.163 | 55.06 |
+
+Reaching 50 tok/s requires
+`r > (1.548 + g + C/31) / 3.385`; even with zero overhead the graph must remove
+**45.73%** of the residual. At 50% removal only **0.145 ms/token** remains for
+all graph and amortized capture overhead. The clean result resolves the model
+negatively: graph h32 is **44.193 tok/s**, not 50, and even steady-state replay
+regresses every unprofiled context. The
+capture/state-tail and graph scheduling overhead exceed any host-submission
+saving. Task #278 therefore removes the route and kernel optimization resumes
+from eager D7.
 
 ## Laguna DFlash Follow-on Plan
 

@@ -1,0 +1,93 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_q2_xl_q5_output_tile16_rejected",
+  "date": "2026-07-23",
+  "status": "rejected",
+  "pass": false,
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "rocm": "HIP version: 7.2.53211-3d9ef42",
+    "hipcc": "AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)"
+  },
+  "model": {
+    "id": "poolside/Laguna-S-2.1-UD-Q2_K_XL",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "source": {
+    "parent_revision": "fd9585062adb667008857fa750b948087a5b8e0f",
+    "candidate_state": "source-dirty exact experiment; removed after the production-shape admission gate failed",
+    "candidate": "raw Q5_K BF16-to-BF16 attention-output tile16",
+    "baseline": "pack8_gemv_decode_bf16_bf16_out",
+    "diagnostic_parent": "benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-d7-residual-profile.json"
+  },
+  "correctness": {
+    "synthetic_shapes": [
+      [1, 6144, 3072],
+      [1, 9216, 3072]
+    ],
+    "synthetic_bf16_bit_exact": true,
+    "actual_weight_bf16_bit_exact": true,
+    "focused_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 uv run pytest -q tests/test_gguf_q5_k_pack8_gemv_decode.py -x",
+    "focused_result": "10 passed"
+  },
+  "best_candidate": {
+    "schedule": "local256 with two exact logical local128 pack8 groups sharing one 256-value BF16 activation superblock through LDS",
+    "workgroup_size": 256,
+    "vgpr_count": 88,
+    "sgpr_count": 128,
+    "lds_block_size_bytes": 2048,
+    "scratch_size_bytes": 0,
+    "resource_trace_median_ns_swa": 66420.0
+  },
+  "actual_weight_micro": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python /tmp/bench_laguna_q5_output_tile16.py",
+    "protocol": "50 warmups per mode, 15 counterbalanced repetitions, 300 launches per sample, HIP-event and synchronized-wall timing",
+    "cases": [
+      {
+        "label": "global",
+        "weight": "blk.0.attn_output.weight",
+        "shape": [3072, 6144],
+        "bit_exact": true,
+        "baseline_event_us": 36.14267667134603,
+        "candidate_event_us": 42.17609723409017,
+        "candidate_event_change_pct": 16.693341828574205,
+        "baseline_wall_us": 36.20321666666667,
+        "candidate_wall_us": 42.23396666666667,
+        "candidate_wall_change_pct": 16.658050182465356
+      },
+      {
+        "label": "swa",
+        "weight": "blk.1.attn_output.weight",
+        "shape": [3072, 9216],
+        "bit_exact": true,
+        "baseline_event_us": 51.193529764811196,
+        "candidate_event_us": 60.940233866373696,
+        "candidate_event_change_pct": 19.038937432796587,
+        "baseline_wall_us": 51.264986666666665,
+        "candidate_wall_us": 61.006949999999996,
+        "candidate_wall_change_pct": 19.003151988855805
+      }
+    ]
+  },
+  "raw_evidence": {
+    "micro_json_sha256": "b03f0e8636d4001d645d441982d73669ab3a7f38b47f70d03d19ddc3a658c52a",
+    "resource_trace_csv_sha256": "ce10baa29f47258635d8b66ea6a06d9efcd006846a8c3204206e94600f5d9f60",
+    "micro_script_sha256": "fe55e0e032c3c1ea9cee5646604bf9f9ac76098dee7ccec04289ecb484e627c0",
+    "resource_script_sha256": "2bf83611ba14e4fea57139efcb2e3c273959841ca1a35e6e40a39e84ef620235"
+  },
+  "decision": {
+    "admission_rule": "both K6144 and K9216 N3072 actual-weight shapes must be faster before clean context and category gates",
+    "admitted": false,
+    "reason": "the best scratch-free exact tile16 schedule regressed both production shapes by 16.69-19.04%",
+    "full_model_profile_run": false,
+    "category_gate_run": false,
+    "runtime_default_changed": false,
+    "candidate_source_retained": false,
+    "baseline_after_decision": "Laguna D7"
+  }
+}

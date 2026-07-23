@@ -1008,11 +1008,11 @@ def launch_laguna_attention_projections(
     runtime: HipRuntime | None,
     compensated_wmma_eligible: bool = False,
 ) -> bool:
-    """Launch exact attention projections and report a fused query/gate pair.
+    """Launch exact attention projections and report both raw pairs fused.
 
-    The registered raw pair is decode-only and fail-closed. F16 projections,
-    rows greater than one, mixed quants, unsupported shapes, and registry
-    misses retain the established QKV plus gate fallback.
+    Registered query/gate and K/V pairs are decode-only and fail closed.
+    Rows greater than one, registry/shape/quant misses, and unmeasured layouts
+    retain the established fused-QKV or singleton fallbacks.
     """
 
     q_gate_fused = False
@@ -1039,7 +1039,33 @@ def launch_laguna_attention_projections(
             use_gemv_decode=rows == 1,
             registered_decode_only=True,
         )
-    if not q_gate_fused:
+
+    kv_fused = False
+    if (
+        k_weight.spec.layout == LAYOUT_RAW_GGUF
+        and v_weight.spec.layout == LAYOUT_RAW_GGUF
+    ):
+        kv_fused = launch_gguf_linear_pair(
+            k_weight,
+            v_weight,
+            x_ptr,
+            k_ptr,
+            v_ptr,
+            rows,
+            in_features,
+            k_features,
+            out_features_b=v_features,
+            output_dtype=GGUF_OUTPUT_F32,
+            backend=backend,
+            stream=stream,
+            libraries=libraries.linear,
+            runtime=runtime,
+            use_wmma_prefill=False,
+            use_gemv_decode=rows == 1,
+            registered_decode_only=True,
+        )
+
+    if not q_gate_fused and not kv_fused:
         launch_laguna_qkv(
             q_weight,
             k_weight,
@@ -1075,25 +1101,45 @@ def launch_laguna_attention_projections(
         )
         return False
 
-    for weight, out_ptr, out_features in (
-        (k_weight, k_ptr, k_features),
-        (v_weight, v_ptr, v_features),
-    ):
-        launch_laguna_weight_linear(
-            weight,
-            x_ptr,
-            out_ptr,
-            rows,
-            in_features,
-            out_features,
-            output_dtype=GGUF_OUTPUT_F32,
-            backend=backend,
-            stream=stream,
-            libraries=libraries,
-            runtime=runtime,
-            compensated_wmma_eligible=compensated_wmma_eligible,
-        )
-    return True
+    if not q_gate_fused:
+        for weight, out_ptr, out_features in (
+            (q_weight, q_ptr, q_features),
+            (gate_weight, gate_ptr, gate_features),
+        ):
+            launch_laguna_weight_linear(
+                weight,
+                x_ptr,
+                out_ptr,
+                rows,
+                in_features,
+                out_features,
+                output_dtype=GGUF_OUTPUT_F32,
+                backend=backend,
+                stream=stream,
+                libraries=libraries,
+                runtime=runtime,
+                compensated_wmma_eligible=compensated_wmma_eligible,
+            )
+    if not kv_fused:
+        for weight, out_ptr, out_features in (
+            (k_weight, k_ptr, k_features),
+            (v_weight, v_ptr, v_features),
+        ):
+            launch_laguna_weight_linear(
+                weight,
+                x_ptr,
+                out_ptr,
+                rows,
+                in_features,
+                out_features,
+                output_dtype=GGUF_OUTPUT_F32,
+                backend=backend,
+                stream=stream,
+                libraries=libraries,
+                runtime=runtime,
+                compensated_wmma_eligible=compensated_wmma_eligible,
+            )
+    return q_gate_fused and kv_fused
 
 
 @dataclass(frozen=True)
