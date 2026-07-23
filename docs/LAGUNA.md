@@ -2349,8 +2349,18 @@ loads but is not a matrix-core GEMM. The removed 16x16 WMMA control reached only
 60.65 tok/s and changed three trajectories; that rejects that implementation,
 not matrix prefill as a class.
 
-- [ ] Establish a torch-free rocBLAS/hipBLASLt FP16-input/F16-weight/FP32-
+- [x] Establish a torch-free rocBLAS/hipBLASLt FP16-input/F16-weight/FP32-
   accumulate ceiling at Laguna's real M/K/N shapes before tuning a custom body.
+  Clean gfx1151 M16/32/64/128/256/512 timing screens all seven returned
+  hipBLASLt algorithms per shape, then counterbalances exact, rocBLAS, and
+  selected hipBLASLt full/SWA family sequences. At M128, conservative inclusive
+  hipBLASLt is **11.497x/14.431x** faster than the retained exact full/SWA
+  projection families; the synthetic 12-full/36-SWA sum is **827.901 -> 60.129
+  ms (13.769x)**. The inclusive control pays BF16->F32->FP16 before QKV/gate
+  and O plus the O FP32->BF16 boundary; every selected algorithm uses zero
+  workspace. The nonzero math smoke and lifecycle pass. This is a library
+  ceiling, not a runtime/model-throughput claim. Evidence:
+  `benchmarks/results/2026-07-23-gfx1151-laguna-f16-library-ceiling.json`.
   BF16 hidden values may be converted once to FP16 only through the quality
   lane and only if range/finite checks pass.
 - [ ] Develop a tiled matrix-core path for Q/K/V/gate and O at M=16..512.

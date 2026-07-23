@@ -200,7 +200,7 @@ stable `S*` IDs belong in commits, artifacts, and `WORKLOG.md`.
 | S3 | #20 | Prefix-aware stop-safe streaming holdback | **184.536/123.243 ms useful-content delay removed in deterministic nonmatch/failed-prefix lanes** | **complete** |
 | S4 | #21 | Exact stateful Laguna KV continuation | **2.347/10.044/21.306 s saved at exact 128/512/1K hits; canonical chat 1.671 -> 0.412 s** | **complete** |
 | S5 | #22 | Native scheduler-owned Laguna prefill/decode ticks | exact two-slot c1 model ticks; c2 OpenAI policy/lifecycle packet retained | **complete** |
-| Q1 | #23 | Audit and port retained serving improvements to Qwen GGUF/PARO | only genuine Qwen deltas; do not duplicate native ownership | queued after S5 |
+| Q1 | #23 | Audit and port retained serving improvements to Qwen GGUF/PARO | prepared timing and prefix-safe stops ported; unsafe duplicate KV route rejected | **complete** |
 
 The separate model-prefill campaign runs in parallel. S1-S5 may consume its
 new default kernels after those commits land, but must compare against the
@@ -682,21 +682,29 @@ their documented synchronized host boundaries.
 
 ## 12. Qwen follow-up after Laguna S5
 
-Task Q1/#23 is deliberately blocked on S5 so the Laguna campaign finishes one
-coherent ownership transition before shared server surfaces move again. Qwen
-GGUF and PARO already use native resident model runners; this follow-up is an
-audit/port lane, not permission to reimplement working Qwen machinery.
+Task Q1/#23 followed S5 so the Laguna campaign completed one coherent ownership
+transition before shared server surfaces moved again. Qwen GGUF and PARO already
+use native resident model runners; this was an audit/port lane, not permission
+to reimplement working Qwen machinery.
 
 | Serving optimization | Current Qwen status | Follow-up action |
 | --- | --- | --- |
 | Sidecar-free HF GGUF tokenizer | complete for Qwen GGUF | Retain; no port work. PARO/non-GGUF tokenizers keep their model-native boundary. |
-| Request-local prepared prompt | shared server path is active | Verify `render_ms`, `prompt_encode_ms`, and `admission_prepare_ms` survive Qwen native scheduler ownership; currently tokenizer timing has the strongest direct coverage. |
-| Resident session pooling | already native in Qwen GGUF/PARO | Do not port Laguna S1 or add a second pool. Confirm readiness/reclaim telemetry only. |
-| Prefix-aware multi-token stop streaming | Laguna implementation only | Audit Qwen token/chunk emission for blanket longest-stop holdback. Port the bounded proper-prefix matcher only if the same delay exists, with Qwen blocking/stream exactness tests. |
-| Explicit auth-scoped chat KV continuation | Qwen has resident/radix prefix snapshots, not Laguna's one-slot owner | Map explicit chat-session guarantees onto existing Qwen snapshot ownership. Do not duplicate KV storage; require principal/session/model/tokenizer scoping, exact prefix/state gates, bounded reclamation, and fail-closed fallback. |
-| Native scheduler-owned prefill/decode ticks | already implemented for Qwen GGUF/PARO | Use Qwen as the architectural precedent for Laguna S5; no Qwen port is expected. Recheck queue/TTFT/ITL telemetry parity after shared S5 changes. |
+| Request-local prepared prompt | complete in the shared server path | Qwen GGUF and PARO resident rows now preserve exact `prompt_encode_ms`, `render_ms`, and `admission_prepare_ms` beside `tokenize_ms`, including zero-token/reclaim output. |
+| Resident session pooling | already native in Qwen GGUF/PARO | No Laguna S1 pool was added. Existing readiness/reclaim ownership remains authoritative. |
+| Prefix-aware multi-token stop streaming | complete in the shared resident stream router | The router now holds only proper token-sequence suffixes, releases a failed prefix immediately, suppresses an exact stop suffix, and preserves an empty terminal metadata chunk. This applies to Qwen GGUF/PARO and remains non-regressive for Laguna's backend-local decoder. |
+| Explicit auth-scoped chat KV continuation | deliberately remains unsupported for Qwen | Qwen GGUF's radix snapshots are model-wide rather than principal/session scoped; PARO has no equivalent snapshot owner. `supports_resident_session_kv` therefore stays false and stateful streaming fails closed. Do not relabel global radix hits or duplicate Laguna's cache; a future port must add scoped keys/state/KV lifecycle to the existing owners and pass independent Qwen gates. |
+| Native scheduler-owned prefill/decode ticks | already implemented for Qwen GGUF/PARO | No scheduler port was needed. Shared stop routing and timing fields preserve Qwen's native queue/TTFT/ITL ownership. |
 
-Qwen promotion evidence must use the relevant Qwen model/quant/hardware and
-cannot inherit Laguna's millisecond or state-reuse numbers. Record Qwen baseline
-and candidate separately, preserve existing radix default policy, and keep only
-exact, same-suite non-regressive changes.
+Focused gates prove exact-stop suppression, failed-prefix release after the
+second token rather than the maximum stop width, terminal finish preservation,
+and prepared-prompt timing values **1.25/2.5/3.75 ms** through both Qwen resident
+owners. The relevant generic stream bundle, Qwen GGUF live-stream bundle, Qwen
+PARO stream bundle, and all Laguna generation tests pass. There is no model-wall
+or throughput claim: these changes remove avoidable visibility delay and repair
+telemetry ownership without changing model execution.
+
+Future Qwen promotion evidence must still use the relevant Qwen
+model/quant/hardware and cannot inherit Laguna's millisecond or state-reuse
+numbers. Preserve existing radix default policy and keep only exact, same-suite
+non-regressive changes.

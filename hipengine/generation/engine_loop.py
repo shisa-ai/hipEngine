@@ -134,7 +134,12 @@ class GenerationSubmission:
 class _ResidentStreamState:
     submission: GenerationSubmission
     events: deque[tuple[int, GenerationStreamChunk]] = field(default_factory=deque)
+    pending_stop_chunks_by_request: dict[
+        int,
+        list[tuple[int, GenerationStreamChunk]],
+    ] = field(default_factory=dict)
     emitted_text_request_ids: set[int] = field(default_factory=set)
+    emitted_terminal_request_ids: set[int] = field(default_factory=set)
     overflowed_request_ids: set[int] = field(default_factory=set)
     cancelled_details: FinishDetails | None = None
 
@@ -722,7 +727,9 @@ class SubmitPollTextGenerator:
                     request_id, chunk = queued
                     if chunk.text:
                         state.emitted_text_request_ids.add(request_id)
-                    if chunk.text or chunk.token_logprobs:
+                    if chunk.finish_details is not None:
+                        state.emitted_terminal_request_ids.add(request_id)
+                    if chunk.text or chunk.token_logprobs or chunk.finish_details is not None:
                         yield chunk
                     continue
                 if state.overflowed_request_ids:
@@ -769,7 +776,10 @@ class SubmitPollTextGenerator:
                     if isinstance(output, GenerationOutput)
                     else GenerationOutput(text=str(output))
                 )
-                if request_id in state.emitted_text_request_ids:
+                if (
+                    request_id in state.emitted_text_request_ids
+                    or request_id in state.emitted_terminal_request_ids
+                ):
                     continue
                 yield GenerationStreamChunk(
                     text=generation_output.text,
@@ -793,11 +803,12 @@ class SubmitPollTextGenerator:
             state = self._stream_states_by_request.get(request_id)
             if state is None:
                 continue
-            if len(state.events) >= self._stream_queue_max_chunks:
-                state.overflowed_request_ids.add(request_id)
-                self._loop.cancel(request_id, reason="cancel")
-                continue
-            state.events.append((request_id, event.stream_chunk))
+            for stream_chunk in _stop_safe_resident_stream_chunks(state, event):
+                if len(state.events) >= self._stream_queue_max_chunks:
+                    state.overflowed_request_ids.add(request_id)
+                    self._loop.cancel(request_id, reason="cancel")
+                    break
+                state.events.append((request_id, stream_chunk))
 
     def _unregister_stream_state_locked(self, state: _ResidentStreamState) -> None:
         for request_id in state.submission.request_ids:
@@ -993,6 +1004,86 @@ def _surrogate_prompt_tokens(prompt: Any) -> tuple[int, ...]:
     if isinstance(prompt, str):
         return (len(prompt.encode("utf-8")),)
     return (len(prompt),)
+
+
+def _stop_safe_resident_stream_chunks(
+    state: _ResidentStreamState,
+    event: EngineLoopEvent,
+) -> tuple[GenerationStreamChunk, ...]:
+    """Hold only token chunks that can still complete a configured stop."""
+
+    assert event.request_id is not None and event.token_id is not None
+    assert event.stream_chunk is not None
+    request_id = int(event.request_id)
+    chunk = event.stream_chunk
+    pending = state.pending_stop_chunks_by_request.setdefault(request_id, [])
+    pending.append((int(event.token_id), chunk))
+    finish = chunk.finish_details
+    if finish is not None:
+        suppressed = _resident_stream_suppressed_suffix(
+            pending,
+            finish,
+            state.submission.request,
+        )
+        if suppressed <= 0:
+            output = tuple(item[1] for item in pending)
+        else:
+            output = (
+                *(item[1] for item in pending[:-suppressed]),
+                replace(chunk, text="", token_logprobs=()),
+            )
+        state.pending_stop_chunks_by_request.pop(request_id, None)
+        return output
+
+    prefixes = _resident_stream_proper_stop_prefixes(
+        state.submission.request.stop_token_sequences
+    )
+    token_ids = tuple(item[0] for item in pending)
+    retained = max(
+        (
+            len(prefix)
+            for prefix in prefixes
+            if len(prefix) <= len(token_ids)
+            and token_ids[-len(prefix) :] == prefix
+        ),
+        default=0,
+    )
+    emit_count = len(pending) - retained
+    output = tuple(item[1] for item in pending[:emit_count])
+    del pending[:emit_count]
+    return output
+
+
+def _resident_stream_proper_stop_prefixes(
+    stop_sequences: Sequence[Sequence[int]],
+) -> frozenset[tuple[int, ...]]:
+    return frozenset(
+        tuple(int(token) for token in sequence[:width])
+        for sequence in stop_sequences
+        for width in range(1, len(sequence))
+    )
+
+
+def _resident_stream_suppressed_suffix(
+    pending: Sequence[tuple[int, GenerationStreamChunk]],
+    finish: FinishDetails,
+    request: GenerationRequest,
+) -> int:
+    if finish.stop_sequence:
+        return min(len(pending), len(finish.stop_sequence))
+    token_ids = tuple(item[0] for item in pending)
+    if finish.reason == "stop":
+        for sequence in request.stop_token_sequences:
+            normalized = tuple(int(token) for token in sequence)
+            if normalized and len(normalized) <= len(token_ids) and token_ids[
+                -len(normalized) :
+            ] == normalized:
+                return len(normalized)
+        if token_ids and token_ids[-1] in set(request.stop_token_ids):
+            return 1
+    if finish.reason == "eos" and finish.eos_token_id is not None:
+        return 1
+    return 0
 
 
 def _events_advance_submission_tick(
