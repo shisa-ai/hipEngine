@@ -1,9 +1,9 @@
 """Public greedy generation for Poolside Laguna S 2.1 GGUF.
 
 The initial route deliberately stays c=1 and token-serial.  It owns one shared
-resident weight set, creates isolated eager KV/scratch state per request, and
-fails closed for sampling or speculative features that the Laguna runner has
-not correctness-gated yet.
+resident weight set plus one resettable eager KV/scratch session under the
+existing generator lock, and fails closed for sampling or speculative features
+that the Laguna runner has not correctness-gated yet.
 """
 
 from __future__ import annotations
@@ -71,6 +71,8 @@ class LagunaGGUFGenerator:
     last_batch_generation: dict[str, Any] | None = field(default=None, init=False, repr=False)
     _runtime: HipRuntime | None = field(default=None, init=False, repr=False)
     _weights: LagunaGGUFResidentWeights | None = field(default=None, init=False, repr=False)
+    _session: LagunaGGUFResidentSession | None = field(default=None, init=False, repr=False)
+    _session_recreate_pending: bool = field(default=False, init=False, repr=False)
     _load_seconds: float | None = field(default=None, init=False, repr=False)
     _lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
     _closed: bool = field(default=False, init=False, repr=False)
@@ -223,6 +225,7 @@ class LagunaGGUFGenerator:
             )
         with self._lock:
             self._prepare_locked()
+            self._ensure_session_locked()
         return requested
 
     def prepare_request_scratch(
@@ -384,13 +387,21 @@ class LagunaGGUFGenerator:
                 return
             self._closed = True
             provider, self._speculative_provider = self._speculative_provider, None
+            session, self._session = self._session, None
             weights, self._weights = self._weights, None
+            self._session_recreate_pending = False
             error: BaseException | None = None
             if provider is not None:
                 try:
                     provider.close()
                 except BaseException as exc:  # pragma: no cover - defensive cleanup
                     error = exc
+            if session is not None:
+                try:
+                    session.close()
+                except BaseException as exc:  # pragma: no cover - defensive cleanup
+                    if error is None:
+                        error = exc
             if weights is not None:
                 try:
                     weights.free(runtime=self._runtime)
@@ -433,7 +444,9 @@ class LagunaGGUFGenerator:
         with self._lock:
             self._prepare_locked()
             raise_if_generation_deadline_expired(request)
-            session = self._open_session_locked()
+            session, session_prepare_seconds, session_prepare_mode = (
+                self._acquire_session_locked()
+            )
             generated: list[int] = []
             prefill_started = time.perf_counter()
             prefill_seconds = 0.0
@@ -457,6 +470,8 @@ class LagunaGGUFGenerator:
                         prefill_seconds=prefill_seconds,
                         decode_seconds=decode_seconds,
                         tokenize_ms=tokenize_ms,
+                        session_prepare_seconds=session_prepare_seconds,
+                        session_prepare_mode=session_prepare_mode,
                     )
                     yield _LagunaTokenStep(
                         token_id=token_id,
@@ -472,8 +487,9 @@ class LagunaGGUFGenerator:
                     decode_seconds += time.perf_counter() - decode_started
                     raise_if_generation_deadline_expired(request)
                 raise RuntimeError(f"Laguna token loop exhausted unexpectedly at step {step_index}")
-            finally:
-                session.close()
+            except BaseException:
+                self._retire_session_locked(session, suppress_errors=True)
+                raise
 
     def _prepare_locked(self) -> None:
         if self._closed:
@@ -504,6 +520,64 @@ class LagunaGGUFGenerator:
             runtime=self._runtime,
         )
 
+    def _ensure_session_locked(self) -> LagunaGGUFResidentSession:
+        session = self._session
+        if session is not None:
+            return session
+        try:
+            session = self._open_session_locked()
+            assert self._runtime is not None
+            self._runtime.device_synchronize()
+        except BaseException:
+            if session is not None:
+                try:
+                    session.close()
+                except BaseException:  # pragma: no cover - preserve allocation failure
+                    pass
+            raise
+        self._session = session
+        self._session_recreate_pending = False
+        return session
+
+    def _acquire_session_locked(
+        self,
+    ) -> tuple[LagunaGGUFResidentSession, float, str]:
+        started = time.perf_counter()
+        session = self._session
+        if session is None:
+            mode = "recreate_after_error" if self._session_recreate_pending else "create"
+            try:
+                session = self._ensure_session_locked()
+            except BaseException:
+                self._session_recreate_pending = True
+                raise
+            self._session_recreate_pending = False
+        else:
+            mode = "reset"
+            try:
+                session.reset_state()
+                assert self._runtime is not None
+                self._runtime.device_synchronize()
+            except BaseException:
+                self._retire_session_locked(session, suppress_errors=True)
+                raise
+        return session, time.perf_counter() - started, mode
+
+    def _retire_session_locked(
+        self,
+        session: LagunaGGUFResidentSession,
+        *,
+        suppress_errors: bool,
+    ) -> None:
+        if self._session is session:
+            self._session = None
+        self._session_recreate_pending = True
+        try:
+            session.close()
+        except BaseException:
+            if not suppress_errors:
+                raise
+
     def _empty_output(
         self,
         prompt_ids: tuple[int, ...],
@@ -527,6 +601,8 @@ class LagunaGGUFGenerator:
                 prefill_seconds=0.0,
                 decode_seconds=0.0,
                 tokenize_ms=tokenize_ms,
+                session_prepare_seconds=0.0,
+                session_prepare_mode="none",
             ),
         )
 
@@ -722,6 +798,8 @@ def _laguna_telemetry(
     prefill_seconds: float,
     decode_seconds: float,
     tokenize_ms: float,
+    session_prepare_seconds: float,
+    session_prepare_mode: str,
 ) -> GenerationTelemetry:
     suppressed = 0 if finish is None else _suppressed_suffix_length(finish)
     answer_tokens = max(0, len(generated_ids) - suppressed)
@@ -739,6 +817,7 @@ def _laguna_telemetry(
         event="completed" if finish is not None else "token",
         timing={
             "tokenize_ms": max(0.0, float(tokenize_ms)),
+            "session_prepare_ms": max(0.0, float(session_prepare_seconds)) * 1_000.0,
             "prefill_ms": float(prefill_seconds) * 1_000.0,
             "decode_ms": float(decode_seconds) * 1_000.0,
         },
@@ -754,6 +833,7 @@ def _laguna_telemetry(
             "backend": "hip_gfx1151",
             "model": "laguna_gguf",
             "quant": _LAGUNA_QUANT,
+            "session_prepare_mode": str(session_prepare_mode),
         },
     )
 
