@@ -63,7 +63,10 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--repacked-cache", type=Path, default=DEFAULT_CACHE)
+    parser.add_argument("--direct-gguf", action="store_true")
+    parser.add_argument("--safety-reserve-gib", type=float, default=8.0)
     parser.add_argument("--model-sha256")
+    parser.add_argument("--quant-label", default="Q4_K_M mixed GGUF v3")
     parser.add_argument("--output", type=Path)
     return parser.parse_args()
 
@@ -426,6 +429,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError("--lengths must contain positive integers")
     if args.verifier_prefix_length <= 0 or args.verifier_rows <= 0:
         raise ValueError("verifier prefix/rows must be positive")
+    if args.safety_reserve_gib <= 0.0:
+        raise ValueError("--safety-reserve-gib must be positive")
     sequence = _sequence(args.template, args.oracle)
     required = max(max(args.lengths), args.verifier_prefix_length + args.verifier_rows)
     if required > len(sequence):
@@ -442,8 +447,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             runtime=runtime,
             compiler_version=_compiler_version(args.compiler_version_file),
             require_cached_build=args.require_cached_build,
+            safety_reserve_nbytes=int(args.safety_reserve_gib * 2**30),
             progress=_progress,
-            repacked_cache=args.repacked_cache,
+            repacked_cache=None if args.direct_gguf else args.repacked_cache,
             model_sha256=args.model_sha256,
             prefill_chunk_size=args.chunk_size,
         )
@@ -498,7 +504,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         source_revision = "unknown"
     return {
         "schema": 1,
-        "date": "2026-07-22",
+        "date": "2026-07-23",
         "status": "accepted" if passed else "rejected",
         "pass": passed,
         "performance_claim": False,
@@ -507,7 +513,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "model": {
             "path": str(args.model.resolve()),
             "sha256": args.model_sha256,
-            "quant": "Q4_K_M mixed GGUF v3",
+            "quant": args.quant_label,
         },
         "backend": args.backend,
         "context_length": args.context_length,
