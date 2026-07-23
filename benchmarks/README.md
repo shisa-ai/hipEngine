@@ -3,6 +3,8 @@
 Last reviewed: **2026-07-23**
 
 Latest retained hipEngine revisions in this scoreboard:
+`71f2af038cf5eea88f1997d178d815cfaad15681` for prefix-aware exact Laguna
+stop-safe streaming,
 `1686d52ba9c12c2c463d3e266f52f8534a76ca7b` for the exact adaptive Laguna
 Q4/Q6 grouped-small-M down shape gate (category promotion still pending),
 `0081d150c08a95423f29fec8fd26779f53c8f730` for request-local exact Laguna
@@ -1352,6 +1354,17 @@ every candidate sample encodes the rendered prompt once. This CPU-only isolated
 scope uses the Q4_K_M GGUF for tokenizer metadata and an immediate deterministic
 fake response; it is not Laguna model TTFT. [Retained S2 prepared-prompt
 artifact](results/2026-07-23-laguna-prepared-prompt-fastapi.json).
+
+Serving lane S3 removes blanket longest-stop holdback while preserving exact
+suppression. Clean revision `71f2af038cf5eea88f1997d178d815cfaad15681`
+uses the production Laguna stream with deterministic 61-ms fake resident-token
+arrivals. A nonmatching first token moves useful-content TTFT **184.738 -> 0.203
+ms (-184.536 ms; -99.89%)**; a one-token prefix disproved by the second token
+moves **184.695 -> 61.452 ms (-123.243 ms; -66.73%)**. Exact four-token stops
+remain fully suppressed, all text/IDs/finish details match, and complete E2E is
+neutral. This host-only delayed-arrival scope is anchored to the retained 16.384
+tok/s rate and proves emission timing, not model throughput. [Retained S3
+prefix-aware stop artifact](results/2026-07-23-laguna-prefix-aware-stop-streaming.json).
 
 LPF-1 changes prompt execution only; rows=1 decode stays on the original exact
 GEMV and is neutral. Every serial/tiled pair and same-route repeat is exact at

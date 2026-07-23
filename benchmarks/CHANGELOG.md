@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-23
 
+- [retained exact Laguna serving S3] Poolside Laguna S 2.1 / host-only production stream with deterministic 61-ms token arrivals moves nonmatching-stop useful-content TTFT **184.738 -> 0.203 ms (-184.536 ms; -99.89%)** and one-token failed-prefix TTFT **184.695 -> 61.452 ms (-123.243 ms; -66.73%)** by retaining only suffixes that can still complete a stop; exact-stop suppression, text, IDs, finishes, and E2E remain non-regressive, and this proves emission timing rather than model throughput; `benchmarks/results/2026-07-23-laguna-prefix-aware-stop-streaming.json`.
+
 - [retained candidate gfx1151 Laguna AR-O1 shape gate; category pending] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / exact adaptive grouped-small-M Q4/Q6 selected down moves direct -> adaptive rows 32/55/64/122/128 **48.907/49.018/50.461/51.084/51.413 -> 50.194/51.159/52.889/54.447/54.969 tok/s (+2.63%/+4.37%/+4.81%/+6.58%/+6.92%)** and aggregate wall **24.7986 -> 23.5145 s (+5.461%)**; rows 16 uses the direct fallback at 0.99918x, all 36 IDs and lifecycle are exact, and default promotion awaits the full category gate; `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-grouped-down-ab.json`.
 
 - [retained exact Laguna serving S2] Ryzen AI MAX+ 395 Poolside Laguna S 2.1 Q4_K_M tokenizer metadata / FastAPI TestClient immediate-model 4K useful-content TTFT moves **15.334 -> 7.167 ms (-53.26%)** blocking and **15.483 -> 6.786 ms (-56.17%)** streaming by replacing six rendered-prompt encodes with one request-local exact-ID owner; canonical ten-prompt pooled TTFT improves **21.12%/22.49%**, exact usage matches, and this CPU-only isolated preprocessing scope is not model TTFT; `benchmarks/results/2026-07-23-laguna-prepared-prompt-fastapi.json`.

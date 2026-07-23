@@ -1,0 +1,220 @@
+{
+  "baseline_revision": "a95adcac82d8ae0b018fe1167b5108422afa47a9",
+  "candidate_revision": "71f2af038cf5eea88f1997d178d815cfaad15681",
+  "commands": {
+    "baseline": "cd /tmp/hipengine-s3-baseline-a95adcac8 && PYTHONPATH=$PWD /home/lhl/hipEngine-main/.venv/bin/python /home/lhl/hipEngine-main/scripts/laguna_stop_holdback_bench.py --decode-interval-ms 61 --warmups 2 --repetitions 20 --output /tmp/2026-07-23-laguna-stop-holdback-baseline.json",
+    "candidate": "PYTHONPATH=. /home/lhl/hipEngine-main/.venv/bin/python scripts/laguna_stop_holdback_bench.py --decode-interval-ms 61 --warmups 2 --repetitions 20 --output /tmp/2026-07-23-laguna-stop-holdback-candidate.json"
+  },
+  "correctness": {
+    "all_finish_details_equal": true,
+    "all_generated_ids_equal": true,
+    "all_visible_text_equal": true,
+    "complete_laguna_generation_tests": "30 passed",
+    "exact_stop_suppressed": true
+  },
+  "date": "2026-07-23",
+  "metrics": {
+    "exact_stop": {
+      "end_to_end_ms_median": {
+        "delta": -0.8117664838209748,
+        "new": 183.955104497727,
+        "old": 184.76687098154798,
+        "percent": -0.4393463392590835
+      },
+      "finishes": {
+        "new": [
+          {
+            "reason": "stop",
+            "sampler_mode": "greedy_fast",
+            "stop_sequence": [
+              13,
+              14,
+              15,
+              16
+            ]
+          }
+        ],
+        "old": [
+          {
+            "reason": "stop",
+            "sampler_mode": "greedy_fast",
+            "stop_sequence": [
+              13,
+              14,
+              15,
+              16
+            ]
+          }
+        ]
+      },
+      "generated_token_ids": {
+        "new": [
+          [
+            13,
+            14,
+            15,
+            16
+          ]
+        ],
+        "old": [
+          [
+            13,
+            14,
+            15,
+            16
+          ]
+        ]
+      },
+      "texts": {
+        "new": [
+          ""
+        ],
+        "old": [
+          ""
+        ]
+      },
+      "useful_content_ttft_ms_median": null
+    },
+    "failed_prefix_after_one": {
+      "end_to_end_ms_median": {
+        "delta": -0.7473050500266254,
+        "new": 184.029029449448,
+        "old": 184.77633449947461,
+        "percent": -0.4044376418933404
+      },
+      "finishes": {
+        "new": [
+          {
+            "length_limit": 4,
+            "reason": "length",
+            "sampler_mode": "greedy_fast"
+          }
+        ],
+        "old": [
+          {
+            "length_limit": 4,
+            "reason": "length",
+            "sampler_mode": "greedy_fast"
+          }
+        ]
+      },
+      "generated_token_ids": {
+        "new": [
+          [
+            13,
+            10,
+            11,
+            12
+          ]
+        ],
+        "old": [
+          [
+            13,
+            10,
+            11,
+            12
+          ]
+        ]
+      },
+      "texts": {
+        "new": [
+          "DABC"
+        ],
+        "old": [
+          "DABC"
+        ]
+      },
+      "useful_content_ttft_ms_median": {
+        "delta": -123.2429335359484,
+        "new": 61.451632471289486,
+        "old": 184.69456600723788,
+        "percent": -66.72796942554265
+      }
+    },
+    "nonmatching_first_token": {
+      "end_to_end_ms_median": {
+        "delta": -0.7243880536407232,
+        "new": 184.10763697465882,
+        "old": 184.83202502829954,
+        "percent": -0.391916960023464
+      },
+      "finishes": {
+        "new": [
+          {
+            "length_limit": 4,
+            "reason": "length",
+            "sampler_mode": "greedy_fast"
+          }
+        ],
+        "old": [
+          {
+            "length_limit": 4,
+            "reason": "length",
+            "sampler_mode": "greedy_fast"
+          }
+        ]
+      },
+      "generated_token_ids": {
+        "new": [
+          [
+            10,
+            11,
+            12,
+            13
+          ]
+        ],
+        "old": [
+          [
+            10,
+            11,
+            12,
+            13
+          ]
+        ]
+      },
+      "texts": {
+        "new": [
+          "ABCD"
+        ],
+        "old": [
+          "ABCD"
+        ]
+      },
+      "useful_content_ttft_ms_median": {
+        "delta": -184.53590851277113,
+        "new": 0.20257552387192845,
+        "old": 184.73848403664306,
+        "percent": -99.89034470812712
+      }
+    }
+  },
+  "model_context": {
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "retained_decode_rate_tok_s": 16.384,
+    "simulated_decode_interval_ms": 61.0
+  },
+  "notes": [
+    "The 61 ms arrival interval is deterministic sleep anchored to retained 16.384 tok/s decode; reported savings prove emission timing, not model throughput.",
+    "Nonmatching first-token output avoids three decode intervals; a one-token partial stop prefix that fails avoids two.",
+    "Exact stop output remains fully suppressed and end-to-end completion wall remains one four-token replay in both arms."
+  ],
+  "protocol": {
+    "generated_tokens_per_sample": 4,
+    "repetitions": 20,
+    "stop_width_tokens": 4,
+    "warmups": 2,
+    "workloads": [
+      "nonmatching_first_token",
+      "failed_prefix_after_one",
+      "exact_stop"
+    ]
+  },
+  "raw_sha256": {
+    "baseline": "e36a00798bcebfdd4511389fd45838b0eee8d41c431a82803d39b587d2c0099f",
+    "candidate": "adfcd691ad8a74e9ca77de239129490cb6cefe3d1ddd964c30c317212a78bd32"
+  },
+  "schema": "hipengine.benchmark.laguna_prefix_aware_stop_streaming.v1",
+  "scope": "host-only production Laguna streaming path with deterministic delayed fake resident session; no GPU/model/tokenizer wall",
+  "status": "retained_default"
+}
