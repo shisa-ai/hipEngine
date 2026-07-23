@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-23
 
+- [positive quality-lane gfx1151 Laguna AR-O1 screen; not promoted] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / quantizer-inclusive selected-Q4 gate/up rows 16/32/55/64/122/128 moves split -> Q8_1/dp4a **46.365/48.916/49.011/50.381/50.925/51.184 -> 47.527/50.435/50.784/52.260/52.964/53.316 tok/s (+2.51% to +4.17%; +3.773% aggregate)** with all 36 next IDs agreeing and exact lifecycle; frozen Poolside diagnostic KL is `1.2837e-4` with exact first top-1 and 31/32 teacher-forced top-1, but split remains default pending full category/long-context/trace gates; `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-ar-o1-q8-dp4a-screen.json`.
+
 - [merged historical gfx1100 Qwen3.6 UD-Q3_K_M baseline] Radeon Pro W7900 same-model retained evidence moves no prior W7900 Q3 row -> **614.089/92.285**, **623.583/97.373**, and **616.135/98.111 prefill/decode tok/s** at 512/128, 1K/128, and 4K/128; all measured logits/IDs, selected-kernel CPU oracles, 512/1K/4K positions, graph replay, and zero-scratch gates pass at measured revision `44a1f963`, while current production code remains the newer optimized Q3 route. `benchmarks/results/2026-07-19-w7900-qwen36-q3-k-m-benchmark.json`.
 
 - [diagnostic gfx1100 Laguna Q2 XL decode context D0] W7900 512/1K/near-4K traces keep dense Q5 flat at **27.3-27.4 ms/token**, while SWA saturates at **27.823/27.903/27.927 ms** and global attention grows **2.988/5.922/22.713 ms**; total kernel sum is **70.686/73.947/90.605 ms**, all **1,055 dispatches/token** are classified/scratch-free, and this ranks wave32 SWA as mandatory for 512+ plus global attention near 4K without replacing canonical short-suite throughput. `benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-decode-context-profile.json`.

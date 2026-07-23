@@ -145,7 +145,7 @@ def test_committed_hipengine_d32_prompt_token_fixture_is_self_consistent() -> No
     assert fixture["model"].endswith("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
     assert fixture["prompts_file"] == str(D32_PROMPTS)
     assert fixture["prompt_render"] == "raw"
-    assert fixture["tokenization"] == "hipengine.gguf.qwen35.byte_bpe_approx"
+    assert fixture["tokenization"] == "hipengine.gguf.qwen35.hf_tokenizers_from_gguf"
     assert fixture["tokenizer_model"] == "gpt2"
     assert fixture["tokenizer_pre"] == "qwen35"
     rows = fixture["prompts"]

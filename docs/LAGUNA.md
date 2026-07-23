@@ -2241,15 +2241,27 @@ repeat either experiment unchanged.
   developed. Include activation-quantization cost and full-model quality; a
   prequantized leaf win is not sufficient. Evidence:
   `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-ar-o1-fused-silu-rejected.json`.
-  The inclusive Q8 screen is now wired but remains default-off and unqualified:
-  `HIPENGINE_LAGUNA_SELECTED_GATE_UP=q8_dp4a` allocates one bounded
-  `rows * (K/32) * 36` workspace, quantizes each producer row once before
-  top-10 expansion, launches the existing fused Q4T16 q8_1/dp4a leaf, and
-  keeps c=1 AR decode on exact split. The same-session harness owns balanced
-  16/32/55/64/122/128 timing and treats next-ID agreement as diagnostic; it
-  cannot promote without the separate Poolside/category quality gate. Remove
-  this runtime route and scratch immediately if either inclusive performance
-  or quality fails.
+  The inclusive Q8 screen is now positive but remains default-off pending the
+  complete quality lane. `HIPENGINE_LAGUNA_SELECTED_GATE_UP=q8_dp4a` allocates
+  one bounded `rows * (K/32) * 36` workspace, quantizes each producer row once
+  before top-10 expansion, launches the existing fused Q4T16 q8_1/dp4a leaf,
+  and keeps c=1 AR decode on exact split. In one resident session, balanced
+  split -> Q8 median rates at rows 16/32/55/64/122/128 are
+  `46.365->47.527`, `48.916->50.435`, `49.011->50.784`,
+  `50.381->52.260`, `50.925->52.964`, and `51.184->53.316 tok/s`
+  (+2.51% to +4.17%); aggregate measured wall improves 3.773%. All 36
+  next-token IDs agree and tracked ownership returns exactly to zero. The
+  frozen Poolside diagnostic also passes first-token KL `1.2837e-4` with exact
+  top-1, 31/32 teacher-forced top-1, and exact same-route replay, but its
+  29/32 free-running prefix is only the already-declared relaxed quality
+  behavior—not complete category evidence. The committed category harness now
+  requires three counterbalanced timing repetitions plus full-logit
+  teacher-forced and free-running h16/h32 reporting over all ten prompts and
+  four categories. No default changes before that gate, 128/512/1K/4K state
+  coverage, and a cached kernel trace pass. Remove this runtime route and
+  scratch immediately if any required quality or performance gate fails.
+  Evidence:
+  `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-ar-o1-q8-dp4a-screen.json`.
 - [ ] Build one device-resident expert grouping/scatter pass with no scalar D2H
   boundary. Quantize each producer activation once, not once per selected
   expert or output projection.
