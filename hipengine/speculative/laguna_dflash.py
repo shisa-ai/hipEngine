@@ -455,7 +455,7 @@ class LagunaDFlashResidentDrafter:
             self.config.vocab_size,
             backend=self.backend,
             stream=stream,
-            libraries={"gguf_q4_k": self.target.libraries.embedding},
+            libraries=self.target.libraries.embedding_libraries,
             runtime=self.runtime,
         )
         gguf_f32_bf16_add_out_f32(

@@ -1,0 +1,566 @@
+{
+  "schema": 2,
+  "status": "accepted_diagnostic_profile",
+  "performance_claim": false,
+  "date": "2026-07-23",
+  "purpose": "Laguna UD-Q2_K_XL W7900 c=1 decode context-regime attribution at 512, 1K, and near-4K after the short-context D0.",
+  "provenance": {
+    "hipengine_commit": "b4973769a230dc1a5a9c3a59b3f5233ebfc5f61d",
+    "branch": "main",
+    "dirty": false,
+    "command_template": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q2-xl-decode-profile-b4973769-l{L} --output-file laguna-q2-xl-decode-l{L}-d8 -- uv run python -u /tmp/laguna_decode_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id mixed_ja_en_review --prompt-length {L} --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 8 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --output /tmp/laguna-q2-xl-decode-profile-b4973769-l{L}/bench.json",
+    "length_values": [
+      512,
+      1024,
+      3968
+    ],
+    "child_script_sha256": "ab9e7b87b540e97c7fb9511610352f64242cf78285183e5a4b0ed511281a6b95",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+    "compiler_version_sha256": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394",
+    "require_cached_build": true,
+    "prebuilt_outside_profiler": true
+  },
+  "model": {
+    "id": "poolside/Laguna-S-2.1-UD-Q2_K_XL",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "size_bytes": 39684584480,
+    "quant": "UD-Q2_K_XL",
+    "active_encoded_weight_bytes_proxy": 4143906560,
+    "profiled_kernel_assigned_weight_bytes_proxy": 4142617344,
+    "traffic_proxy_caveat": "Counts each full dense/router tensor once and 10/256 of each rank-3 expert tensor. It excludes activation/KV/cache traffic, metadata, dequant compute, cache effects, and selected-expert address variation; it is not a DRAM counter."
+  },
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "visible_device": 0,
+    "architecture": "gfx1100",
+    "cu_count": 96,
+    "wavefront_size": 32,
+    "gpu_max_hw_queues": 1
+  },
+  "workload": {
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "shape_source_prompt": "mixed_ja_en_review",
+    "token_extension": "repeat_without_leading_bos",
+    "prefill_route": "bulk_exact_chunk128",
+    "prompt_lengths": [
+      512,
+      1024,
+      3968
+    ],
+    "decode_steps_per_length": 8,
+    "stable_decode_steps_per_length": 6,
+    "discarded_decode_steps_per_length": 2,
+    "context_capacity": 4096
+  },
+  "short_context_reference": {
+    "artifact": "benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-decode-d0-profile.json",
+    "prompt_tokens": 69,
+    "decode_positions": [
+      69,
+      84
+    ],
+    "stable_kernel_sum_ms_mean": 44.571654071428576,
+    "stable_kernel_span_ms_median": 49.9293925,
+    "profiled_child_wall_ms_median": 52.70268896128982,
+    "profiled_child_wall_tok_s_median": 18.974363921630278,
+    "dense_q5_ms": 27.302565785714286,
+    "swa_attention_ms": 4.236747285714285,
+    "global_attention_ms": 0.5085767142857143
+  },
+  "contexts": [
+    {
+      "prompt_tokens": 512,
+      "decode_positions": [
+        512,
+        519
+      ],
+      "decode_steps": 8,
+      "stable_decode_steps": 6,
+      "discarded_decode_steps": 2,
+      "dispatches_per_token": 1055,
+      "all_kernel_sum_ms": [
+        71.046594,
+        70.700703,
+        70.656777,
+        70.651311,
+        70.751123,
+        70.631824,
+        70.701349,
+        70.722868
+      ],
+      "all_kernel_span_ms": [
+        79.481435,
+        76.496918,
+        76.335792,
+        76.404519,
+        76.462895,
+        76.338665,
+        76.469693,
+        76.568522
+      ],
+      "stable_kernel_sum_ms_mean": 70.68587533333333,
+      "stable_kernel_sum_ms_median": 70.679063,
+      "stable_kernel_span_ms_median": 76.433707,
+      "stable_span_minus_sum_ms_median": 5.73249,
+      "stable_span_minus_sum_share_of_span_pct": 7.499950251006405,
+      "profiled_child_wall_ms_median": 79.43196047563106,
+      "profiled_child_wall_tok_s_median": 12.58939089520257,
+      "families": [
+        {
+          "name": "swa_attention_decode",
+          "ms_per_token_mean": 27.82296433333333,
+          "share_pct": 39.3614200887074,
+          "dispatches_per_token": 36.0
+        },
+        {
+          "name": "dense_q5",
+          "ms_per_token_mean": 27.31757866666667,
+          "share_pct": 38.646446037267246,
+          "dispatches_per_token": 235.0
+        },
+        {
+          "name": "selected_iq3_down",
+          "ms_per_token_mean": 4.028814,
+          "share_pct": 5.699602616507647,
+          "dispatches_per_token": 45.0
+        },
+        {
+          "name": "global_attention_decode",
+          "ms_per_token_mean": 2.9879316666666664,
+          "share_pct": 4.2270561870762435,
+          "dispatches_per_token": 12.0
+        },
+        {
+          "name": "other",
+          "ms_per_token_mean": 2.5690703333333333,
+          "share_pct": 3.6344889572610795,
+          "dispatches_per_token": 534.0
+        },
+        {
+          "name": "selected_iq2_dual_silu",
+          "ms_per_token_mean": 2.3448865,
+          "share_pct": 3.3173338930051024,
+          "dispatches_per_token": 46.0
+        },
+        {
+          "name": "dense_q6",
+          "ms_per_token_mean": 2.00045,
+          "share_pct": 2.830056203684936,
+          "dispatches_per_token": 146.0
+        },
+        {
+          "name": "lm_head_q4",
+          "ms_per_token_mean": 1.6141798333333333,
+          "share_pct": 2.283596016490348,
+          "dispatches_per_token": 1.0
+        }
+      ],
+      "finite_final_logits": true,
+      "generated_token_ids": [
+        2930,
+        22746,
+        4187,
+        6453,
+        99,
+        268,
+        33586,
+        81,
+        1548
+      ],
+      "tracked_returned_to_baseline": true,
+      "resident_nbytes": 40068332284,
+      "prompt_token_ids_sha256": "0c16e1b8638b29335240144c2783ca8b1d49c70b3489ad15e457cf98118c1b1c",
+      "profile_token_source": {
+        "category": "mixed_ja_en",
+        "extension": "repeat_without_leading_bos",
+        "prompt_id": "mixed_ja_en_review",
+        "requested_tokens": 512,
+        "source_tokens": 122
+      },
+      "complete_dispatch_assignment": true,
+      "all_decode_scratch_zero": true
+    },
+    {
+      "prompt_tokens": 1024,
+      "decode_positions": [
+        1024,
+        1031
+      ],
+      "decode_steps": 8,
+      "stable_decode_steps": 6,
+      "discarded_decode_steps": 2,
+      "dispatches_per_token": 1055,
+      "all_kernel_sum_ms": [
+        74.298088,
+        73.903806,
+        73.946436,
+        74.010212,
+        73.980854,
+        74.060078,
+        73.94428,
+        73.740047
+      ],
+      "all_kernel_span_ms": [
+        84.213401,
+        79.976287,
+        80.150138,
+        80.198279,
+        80.072379,
+        80.173926,
+        80.099818,
+        79.589736
+      ],
+      "stable_kernel_sum_ms_mean": 73.9469845,
+      "stable_kernel_sum_ms_median": 73.963645,
+      "stable_kernel_span_ms_median": 80.124978,
+      "stable_span_minus_sum_ms_median": 6.134693,
+      "stable_span_minus_sum_share_of_span_pct": 7.656405222351512,
+      "profiled_child_wall_ms_median": 82.8388775116764,
+      "profiled_child_wall_tok_s_median": 12.071626632785396,
+      "families": [
+        {
+          "name": "swa_attention_decode",
+          "ms_per_token_mean": 27.90334616666667,
+          "share_pct": 37.73425834107768,
+          "dispatches_per_token": 36.0
+        },
+        {
+          "name": "dense_q5",
+          "ms_per_token_mean": 27.4235025,
+          "share_pct": 37.08535606343759,
+          "dispatches_per_token": 235.0
+        },
+        {
+          "name": "global_attention_decode",
+          "ms_per_token_mean": 5.9221505,
+          "share_pct": 8.008643679040084,
+          "dispatches_per_token": 12.0
+        },
+        {
+          "name": "selected_iq3_down",
+          "ms_per_token_mean": 4.0464645,
+          "share_pct": 5.472115634411028,
+          "dispatches_per_token": 45.0
+        },
+        {
+          "name": "other",
+          "ms_per_token_mean": 2.6751778333333336,
+          "share_pct": 3.6176969911914845,
+          "dispatches_per_token": 534.0
+        },
+        {
+          "name": "selected_iq2_dual_silu",
+          "ms_per_token_mean": 2.3392901666666663,
+          "share_pct": 3.1634693185719653,
+          "dispatches_per_token": 46.0
+        },
+        {
+          "name": "dense_q6",
+          "ms_per_token_mean": 2.023448833333333,
+          "share_pct": 2.736350707219621,
+          "dispatches_per_token": 146.0
+        },
+        {
+          "name": "lm_head_q4",
+          "ms_per_token_mean": 1.613604,
+          "share_pct": 2.182109265050558,
+          "dispatches_per_token": 1.0
+        }
+      ],
+      "finite_final_logits": true,
+      "generated_token_ids": [
+        95,
+        350,
+        10841,
+        92590,
+        35046,
+        50105,
+        314,
+        74689,
+        46406
+      ],
+      "tracked_returned_to_baseline": true,
+      "resident_nbytes": 40068332284,
+      "prompt_token_ids_sha256": "0c16e1b8638b29335240144c2783ca8b1d49c70b3489ad15e457cf98118c1b1c",
+      "profile_token_source": {
+        "category": "mixed_ja_en",
+        "extension": "repeat_without_leading_bos",
+        "prompt_id": "mixed_ja_en_review",
+        "requested_tokens": 1024,
+        "source_tokens": 122
+      },
+      "complete_dispatch_assignment": true,
+      "all_decode_scratch_zero": true
+    },
+    {
+      "prompt_tokens": 3968,
+      "decode_positions": [
+        3968,
+        3975
+      ],
+      "decode_steps": 8,
+      "stable_decode_steps": 6,
+      "discarded_decode_steps": 2,
+      "dispatches_per_token": 1055,
+      "all_kernel_sum_ms": [
+        91.437622,
+        90.524211,
+        90.537575,
+        90.741692,
+        90.612883,
+        90.531088,
+        90.586054,
+        90.622648
+      ],
+      "all_kernel_span_ms": [
+        98.625354,
+        96.453514,
+        96.504127,
+        96.633179,
+        96.495138,
+        96.44105,
+        96.478328,
+        96.49118
+      ],
+      "stable_kernel_sum_ms_mean": 90.60532333333333,
+      "stable_kernel_sum_ms_median": 90.5994685,
+      "stable_kernel_span_ms_median": 96.493159,
+      "stable_span_minus_sum_ms_median": 5.8918805,
+      "stable_span_minus_sum_share_of_span_pct": 6.10600850988825,
+      "profiled_child_wall_ms_median": 99.24825804773718,
+      "profiled_child_wall_tok_s_median": 10.075743591580341,
+      "families": [
+        {
+          "name": "swa_attention_decode",
+          "ms_per_token_mean": 27.92705,
+          "share_pct": 30.822747464028694,
+          "dispatches_per_token": 36.0
+        },
+        {
+          "name": "dense_q5",
+          "ms_per_token_mean": 27.401074833333332,
+          "share_pct": 30.242235031297096,
+          "dispatches_per_token": 235.0
+        },
+        {
+          "name": "global_attention_decode",
+          "ms_per_token_mean": 22.713347833333334,
+          "share_pct": 25.068447413152363,
+          "dispatches_per_token": 12.0
+        },
+        {
+          "name": "selected_iq3_down",
+          "ms_per_token_mean": 4.058779166666667,
+          "share_pct": 4.479625498089756,
+          "dispatches_per_token": 45.0
+        },
+        {
+          "name": "other",
+          "ms_per_token_mean": 2.569777,
+          "share_pct": 2.8362318078661826,
+          "dispatches_per_token": 534.0
+        },
+        {
+          "name": "selected_iq2_dual_silu",
+          "ms_per_token_mean": 2.306374,
+          "share_pct": 2.5455171011475155,
+          "dispatches_per_token": 46.0
+        },
+        {
+          "name": "dense_q6",
+          "ms_per_token_mean": 2.007296833333333,
+          "share_pct": 2.2154292479577267,
+          "dispatches_per_token": 146.0
+        },
+        {
+          "name": "lm_head_q4",
+          "ms_per_token_mean": 1.6216236666666668,
+          "share_pct": 1.7897664364606687,
+          "dispatches_per_token": 1.0
+        }
+      ],
+      "finite_final_logits": true,
+      "generated_token_ids": [
+        13044,
+        17630,
+        19306,
+        315,
+        46804,
+        12879,
+        73803,
+        7772,
+        33383
+      ],
+      "tracked_returned_to_baseline": true,
+      "resident_nbytes": 40068332284,
+      "prompt_token_ids_sha256": "0c16e1b8638b29335240144c2783ca8b1d49c70b3489ad15e457cf98118c1b1c",
+      "profile_token_source": {
+        "category": "mixed_ja_en",
+        "extension": "repeat_without_leading_bos",
+        "prompt_id": "mixed_ja_en_review",
+        "requested_tokens": 3968,
+        "source_tokens": 122
+      },
+      "complete_dispatch_assignment": true,
+      "all_decode_scratch_zero": true
+    }
+  ],
+  "trend": [
+    {
+      "prompt_tokens": 69,
+      "decode_positions": [
+        69,
+        84
+      ],
+      "stable_kernel_sum_ms_mean": 44.571654071428576,
+      "stable_kernel_span_ms_median": 49.9293925,
+      "profiled_child_wall_ms_median": 52.70268896128982,
+      "profiled_child_wall_tok_s_median": 18.974363921630278,
+      "dense_q5_ms": 27.302565785714286,
+      "swa_attention_ms": 4.236747285714285,
+      "global_attention_ms": 0.5085767142857143
+    },
+    {
+      "prompt_tokens": 512,
+      "decode_positions": [
+        512,
+        519
+      ],
+      "stable_kernel_sum_ms_mean": 70.68587533333333,
+      "stable_kernel_span_ms_median": 76.433707,
+      "profiled_child_wall_ms_median": 79.43196047563106,
+      "profiled_child_wall_tok_s_median": 12.58939089520257,
+      "dense_q5_ms": 27.31757866666667,
+      "swa_attention_ms": 27.82296433333333,
+      "global_attention_ms": 2.9879316666666664
+    },
+    {
+      "prompt_tokens": 1024,
+      "decode_positions": [
+        1024,
+        1031
+      ],
+      "stable_kernel_sum_ms_mean": 73.9469845,
+      "stable_kernel_span_ms_median": 80.124978,
+      "profiled_child_wall_ms_median": 82.8388775116764,
+      "profiled_child_wall_tok_s_median": 12.071626632785396,
+      "dense_q5_ms": 27.4235025,
+      "swa_attention_ms": 27.90334616666667,
+      "global_attention_ms": 5.9221505
+    },
+    {
+      "prompt_tokens": 3968,
+      "decode_positions": [
+        3968,
+        3975
+      ],
+      "stable_kernel_sum_ms_mean": 90.60532333333333,
+      "stable_kernel_span_ms_median": 96.493159,
+      "profiled_child_wall_ms_median": 99.24825804773718,
+      "profiled_child_wall_tok_s_median": 10.075743591580341,
+      "dense_q5_ms": 27.401074833333332,
+      "swa_attention_ms": 27.92705,
+      "global_attention_ms": 22.713347833333334
+    }
+  ],
+  "analysis": {
+    "dense_q5_invariant": "Dense Q5 remains 27.3-27.4 ms/token across 69 through 3975 admitted positions; it is the short-context first target.",
+    "swa_saturation": "SWA grows from 4.237 ms at positions 69-84 to 27.823 ms at 512 and then plateaus near 27.9 ms because its physical/live window is bounded at 512.",
+    "global_scaling": "Global attention grows from 0.509/2.988/5.922 to 22.713 ms at short/512/1K/near-4K and becomes the second family near 4K.",
+    "submission_gap": "Span-minus-kernel remains roughly 5.4-6.2 ms despite context growth, confirming a mostly fixed 1,055-launch submission floor rather than hidden context-proportional host work.",
+    "regime_order": {
+      "canonical_short": [
+        "dense_q5",
+        "swa_attention_decode",
+        "selected_iq3_down"
+      ],
+      "512_to_1024": [
+        "swa_attention_decode",
+        "dense_q5",
+        "global_attention_decode"
+      ],
+      "near_4096": [
+        "swa_attention_decode",
+        "dense_q5",
+        "global_attention_decode"
+      ],
+      "near_4096_individual_symbols": [
+        "swa_attention_decode",
+        "global_attention_decode",
+        "dense_q5_bf16_out",
+        "dense_q5_f32_out"
+      ]
+    },
+    "optimization_consequence": "Start with reusable exact dense Q5 for the retained short-suite baseline, but 512+ decode cannot approach 50 tok/s without the existing wave32-exact SWA schedule adapted to c=1; near 4K also requires a new global-attention route. Reprofile after each retained family."
+  },
+  "correctness": {
+    "all_final_logits_finite": true,
+    "all_lifecycle_exact": true,
+    "all_dispatches_classified": true,
+    "all_decode_scratch_zero": true,
+    "canonical_full_suite_artifact": "benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-target-ar.json"
+  },
+  "raw_evidence": [
+    {
+      "prompt_tokens": 512,
+      "bench_json": {
+        "path": "/tmp/laguna-q2-xl-decode-profile-b4973769-l512/bench.json",
+        "sha256": "a0f62d00c64a2eff95b696c09df274e5f54e89984f72aece5d5294a3bcd34a84",
+        "size_bytes": 7980
+      },
+      "kernel_trace_csv": {
+        "path": "/tmp/laguna-q2-xl-decode-profile-b4973769-l512/laguna-q2-xl-decode-l512-d8_kernel_trace.csv",
+        "sha256": "7c274378d66afb82eb7d7abc42bc18455e52e4271a48fa12b84b8228b7c758d4",
+        "size_bytes": 3568407
+      },
+      "agent_info_csv": {
+        "path": "/tmp/laguna-q2-xl-decode-profile-b4973769-l512/laguna-q2-xl-decode-l512-d8_agent_info.csv",
+        "sha256": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+        "size_bytes": 1585
+      },
+      "raw_dispatch_rows": 13077,
+      "raw_kernel_symbols": 40
+    },
+    {
+      "prompt_tokens": 1024,
+      "bench_json": {
+        "path": "/tmp/laguna-q2-xl-decode-profile-b4973769-l1024/bench.json",
+        "sha256": "14282d2a3e36c334ea1fb9c14c02b2c9f97a9a73e79adb0b7a5af17ba7ce67a3",
+        "size_bytes": 14169
+      },
+      "kernel_trace_csv": {
+        "path": "/tmp/laguna-q2-xl-decode-profile-b4973769-l1024/laguna-q2-xl-decode-l1024-d8_kernel_trace.csv",
+        "sha256": "15bd29554420cb07c1d0d687367b7d6d9f4ffdfd92e65cb01301b029b41b41f4",
+        "size_bytes": 4747751
+      },
+      "agent_info_csv": {
+        "path": "/tmp/laguna-q2-xl-decode-profile-b4973769-l1024/laguna-q2-xl-decode-l1024-d8_agent_info.csv",
+        "sha256": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+        "size_bytes": 1585
+      },
+      "raw_dispatch_rows": 17293,
+      "raw_kernel_symbols": 40
+    },
+    {
+      "prompt_tokens": 3968,
+      "bench_json": {
+        "path": "/tmp/laguna-q2-xl-decode-profile-b4973769-l3968/bench.json",
+        "sha256": "c7c34ae2c51b5965b8d832df7f7c99294c9a608b097fadf71af8fa0a087638c0",
+        "size_bytes": 49817
+      },
+      "kernel_trace_csv": {
+        "path": "/tmp/laguna-q2-xl-decode-profile-b4973769-l3968/laguna-q2-xl-decode-l3968-d8_kernel_trace.csv",
+        "sha256": "ff527da1983812dd277b4d69d1641fd9a23b67c00beee7dfdf42b764c22a78fb",
+        "size_bytes": 11523735
+      },
+      "agent_info_csv": {
+        "path": "/tmp/laguna-q2-xl-decode-profile-b4973769-l3968/laguna-q2-xl-decode-l3968-d8_agent_info.csv",
+        "sha256": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00",
+        "size_bytes": 1585
+      },
+      "raw_dispatch_rows": 41535,
+      "raw_kernel_symbols": 40
+    }
+  ]
+}

@@ -1102,14 +1102,6 @@ def _patch_common_moe_kernels(monkeypatch: pytest.MonkeyPatch, calls: list[tuple
         lambda *args, **kwargs: calls.append(("router", (args[1].spec.source.name, args[3], args[5]))),
     )
     monkeypatch.setattr(qgr, "qwen35_router_select", lambda *args, **kwargs: calls.append(("router_select", None)))
-    monkeypatch.setattr(
-        qgr,
-        "qwen35_router_topk_split_shared_coop_out_bf16",
-        lambda *args, **kwargs: (
-            calls.append(("router_split_coop", args[1:4] + args[6:10])),
-            calls.append(("router_split_coop_threads", kwargs.get("threads"))),
-        ),
-    )
     monkeypatch.setattr(qgr, "copy_host_to_device", lambda *args, **kwargs: calls.append(("zero", None)))
     monkeypatch.setattr(qgr, "silu_mul_separate_out_bf16", lambda *args, **kwargs: calls.append(("silu_separate", None)))
     monkeypatch.setattr(

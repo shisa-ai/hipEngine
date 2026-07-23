@@ -3,6 +3,10 @@
 Last reviewed: **2026-07-23**
 
 Latest retained hipEngine revisions in this scoreboard:
+`6ba1ddec95e224c1cc337c69ac2c4ea611ff0472` for the first W7900 Laguna S 2.1
+UD-Q2_K_XL B4 DFlash decode win,
+`09cca232f49e73f68fd09d4ace8509fa3201681e` for the first W7900 Laguna S 2.1
+UD-Q2_K_XL target-only AR baseline,
 `b2618b725a39dc199b0009c23a0ec3d5a6342fa1` for the matched Poolside
 llama.cpp Laguna S 2.1 128/512/1K/4K prefill-control harness,
 `7ded0d5f42b107d3bf10f1d096f8a93ae194be9b` for the current Laguna S 2.1
@@ -1136,14 +1140,19 @@ are linked from the platform index and
 model-throughput toplines.
 
 
-## Merged UD-Q3_K_M GPU1 Records
+## Merged UD-Q3_K_M GPU1 and W7900 Records
 
-These rows retain the branch's exact direct/native evidence under its original
-GPU1 RX 7900 XTX scopes. They do not replace the W7900 Q4_K_M or project-wide
-serving toplines above.
+These rows retain exact direct/native evidence under the original RX 7900 XTX
+GPU1 and Radeon Pro W7900 scopes. They do not replace the W7900 Q4_K_M or
+project-wide serving toplines above. The three W7900 rows are the
+correctness-first branch baseline measured at `44a1f963`; current production Q3
+code is the later optimized route represented by the GPU1 rows.
 
 | Model | Quant | Backend | Workload | Prefill tok/s | Decode tok/s | Peak GiB | Correctness | Artifact | Last updated | Notes |
 | --- | --- | --- | --- | ---: | ---: | ---: | --- | --- | --- | --- |
+| Qwen3.6-35B-A3B GGUF | gguf_ud_q3_k_m BF16 KV | `hip_gfx1100` Radeon Pro W7900 historical branch | 512/128 repeated-token bulk prefill + graph decode | 614.089 | 92.285 | 15.692 | finite and bit-identical logits across three measured runs; stable token `9707`; selected-kernel CPU-oracle and zero-scratch gates pass | [`2026-07-19-w7900-qwen36-q3-k-m-benchmark.json`](results/2026-07-19-w7900-qwen36-q3-k-m-benchmark.json) | 2026-07-19 | Historical correctness-first branch baseline; superseded as implementation evidence by the optimized merged Q3 route. |
+| Qwen3.6-35B-A3B GGUF | gguf_ud_q3_k_m BF16 KV | `hip_gfx1100` Radeon Pro W7900 historical branch | 1K/128 repeated-token bulk prefill + graph decode | 623.583 | 97.373 | 15.759 | finite and bit-identical logits across three measured runs; stable token `9707`; exact final positions and graph replay pass | [`2026-07-19-w7900-qwen36-q3-k-m-benchmark.json`](results/2026-07-19-w7900-qwen36-q3-k-m-benchmark.json) | 2026-07-19 | Same pinned model, compiler, and one-warmup/three-median protocol as the adjacent W7900 rows. |
+| Qwen3.6-35B-A3B GGUF | gguf_ud_q3_k_m BF16 KV | `hip_gfx1100` Radeon Pro W7900 historical branch | 4K/128 repeated-token bulk prefill + graph decode | 616.135 | 98.111 | 16.134 | finite and bit-identical logits across three measured runs; stable token `9707`; 4K final position and graph replay pass | [`2026-07-19-w7900-qwen36-q3-k-m-benchmark.json`](results/2026-07-19-w7900-qwen36-q3-k-m-benchmark.json) | 2026-07-19 | Descriptive same-model Vulkan comparison only; raw source sweeps remain in merged commit `d47e63cd`. |
 | Qwen3.6-35B-A3B GGUF | gguf_ud_q3_k_m BF16 KV | `hip_gfx1100` RX 7900 XTX GPU1 native rows | c=2 512/128 | 864.569 | 118.125 | 15.903 | all 129 sampled IDs (128 timed native decode steps) and stateful full logits are exact vs independent c=1 | [`2026-07-21-gpu1-q3-native-cn-retained.json`](results/2026-07-21-gpu1-q3-native-cn-retained.json) | 2026-07-21 | 59.062 tok/s/request; 16.865/17.543 ms p50/p95; aggregate is 1.167× retained c=1. |
 | Qwen3.6-35B-A3B GGUF | gguf_ud_q3_k_m BF16 KV | `hip_gfx1100` RX 7900 XTX GPU1 native rows | c=4 512/128 | 864.549 | 151.772 | 16.059 | exact generated IDs/full logits vs independent c=1; varied-prompt confirmation 151.638 tok/s | [`2026-07-21-gpu1-q3-native-cn-retained.json`](results/2026-07-21-gpu1-q3-native-cn-retained.json) | 2026-07-21 | 37.943 tok/s/request; 26.124/27.964 ms p50/p95; aggregate is 1.499× c=1. |
 | Qwen3.6-35B-A3B GGUF | gguf_ud_q3_k_m BF16 KV | `hip_gfx1100` RX 7900 XTX GPU1 native rows | c=8 512/128 | 863.901 | 207.780 | 16.372 | exact generated IDs/full logits vs independent c=1; rocprof shows indexed Conv/GDN, row-batched paged attention, selected-row MoE, row lm-head, and row argmax | [`2026-07-21-gpu1-q3-native-cn-retained.json`](results/2026-07-21-gpu1-q3-native-cn-retained.json) | 2026-07-21 | 25.973 tok/s/request; 38.547/39.917 ms p50/p95; 2.053× c=1; varied prompts confirm 210.640 tok/s. |
@@ -1165,6 +1174,123 @@ The dated records below preserve scoped retained rows plus diagnostic protocols,
 blockers, commands, and artifact links. Removed or superseded tables remain
 recoverable from the linked compact artifacts, changelog, and
 [`benchmarks/HISTORY.md`](HISTORY.md).
+
+### gfx1100 Laguna S 2.1 UD-Q2_K_XL target AR, 2026-07-23
+
+**Status: first retained exact W7900 target-only AR baseline.** Revision
+`09cca232f49e73f68fd09d4ace8509fa3201681e` runs the pinned
+`Laguna-S-2.1-UD-Q2_K_XL.gguf` (SHA-256
+`8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679`)
+directly from raw GGUF residency with BF16 KV and a 4-GiB safety reserve. The
+canonical protocol covers all ten `mtpbench-code-general-ja` prompts, all four
+categories and heldouts, prompt lengths 68-122, two balanced repetitions,
+greedy h16/h32, 128-row prompt chunks, and c=1 eager decode. Model load is
+excluded.
+
+| hipEngine route | Prefill tok/s | Median TTFT | Decode tok/s, h32 | E2E tok/s, h16 | E2E tok/s, h32 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Token-serial prefill + eager c=1 decode | 20.867 | 3.859 s | 19.582 | 3.265 | 5.591 |
+| Exact 128-row bulk prefill + same eager c=1 decode | **40.091** | **2.018 s** | **19.565** | **5.488** | **8.557** |
+| Bulk change vs serial | **+92.12% (1.921x)** | **-47.71%** | -0.090% | **+68.06%** | **+53.05%** |
+
+Both full-suite samples are stable: bulk prefill is `40.270/39.913 tok/s`, h32
+decode is `19.637/19.493 tok/s`, and h32 E2E is `8.592/8.522 output tok/s`.
+All 20 serial/bulk pairs are ID-exact at both horizons, every route repeats
+deterministically, and each category independently passes the declared
+prefill/decode/E2E guard. The independent Poolside first-token gate passes at
+KL `0.000156823` and top-1 `1.0`; the earlier full bulk artifact is bit-exact
+for logits, hidden state, DFlash taps, KV payload/metadata, and B+1 rows.
+Tracked peak ownership is **40,455,814,968 bytes (37.677 GiB)** across 1,460
+allocations and teardown returns tracked ownership exactly to zero.
+
+A separate cached `rocprofv3 --kernel-trace` correctness replay covers three
+exact 55-token bulk prefills and nine c=1 decode steps. All expected Q5_K
+embedding, Q5/Q6/Q8 projection, IQ2_XS/IQ3_XXS gate/up, IQ3_XXS/IQ4_XS down,
+global/SWA prefill+decode attention, Q4_K lm-head, and argmax symbols are
+present with zero scratch in the dominant kernels. Across this mixed dispatch
+profile, Q5/Q6/Q8 projections own 69.88% of kernel duration, IQ3 selected down
+16.65%, and IQ2 selected gate/up 9.73%; these shares are attribution, not timing
+substitutes for the unprofiled category run. Raw timing JSON SHA-256 is
+`82d8d03ebddea7b012865fb0145c43529a4c219532496fbe3eba45d202a4fd8c`;
+raw trace SHA-256 is
+`d53bff36d18345b8ee0ea1840aa2b1497e9d9c2578019c783f6f036e4daff1d5`.
+[Compact artifact](results/2026-07-23-gfx1100-laguna-q2-xl-target-ar.json).
+
+Exact benchmark command:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run python -u scripts/laguna_target_ar_bench.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --template tests/fixtures/laguna_poolside_v1_template.json --oracle tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json --oracle-logprobs tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy --bulk-correctness-artifact benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-bulk-correctness.json --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --output-horizons 16,32 --repetitions 2 --warmup-output-tokens 2 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-q2-xl-target-ar.json
+```
+
+##### Laguna Q2 XL c=1 decode D0
+
+A tracked-clean cached W7900 trace at `e6120872` attributes 16 true c=1 rows
+from the retained AR route. The stable 14 rows average **44.572 ms/token** in
+kernels across **1,055 dispatches/token**; median embedding-to-argmax span is
+**49.929 ms**. Generic dense-Q5 `prefill_out` aliases alone consume **27.303 ms
+/ 61.26% / 235 calls** at a **70.7 GB/s** active encoded-weight proxy. SWA
+decode is 4.237 ms, selected IQ3 down 4.021 ms, fused IQ2 gate/up 2.318 ms,
+dense Q6 2.006 ms, and the Q4 lm-head 1.618 ms. All 26 decode symbols are
+classified and scratch-free; final logits and lifecycle pass. This is a
+bottleneck diagnostic, not a new throughput claim. The authoritative canonical
+wall remains 19.596 tok/s above. [D0 artifact](results/2026-07-23-gfx1100-laguna-q2-xl-decode-d0-profile.json).
+
+A clean context extension keeps dense Q5 fixed at **27.3-27.4 ms/token**, but
+SWA grows from **4.237 ms** short to **27.823/27.903/27.927 ms** at
+512/1K/near-4K, and global attention grows to **2.988/5.922/22.713 ms**.
+Profiled child wall is **12.589/12.072/10.076 tok/s** at those three shapes.
+These are profiler diagnostics over a deterministic extended token stream, not
+retained public throughput rows. [Context D0 artifact](results/2026-07-23-gfx1100-laguna-q2-xl-decode-context-profile.json).
+
+No Q2-to-Q4 speed ratio is claimed: the retained Q4_K_M controls use a
+different tensor recipe on gfx1151.
+
+#### Laguna Q2 XL B4 DFlash decode
+
+**Status: retained decode win, explicit-only because fixed-32 E2E regresses.**
+The clean `6ba1ddec95e224c1cc337c69ac2c4ea611ff0472` run uses the same ten
+prompts, categories/heldouts, 128-row chunks, two balanced repetitions, and 32
+visible outputs as the Q4 DFlash protocol. It pairs the pinned Q2 XL target with
+`poolside/Laguna-S-2.1-DFlash@b0486d1` (BF16 safetensors SHA-256
+`f24f08781c697c19952c02fb2e7e9bdf2071b79a711c2a44b836a74b9b62a1f4`)
+and alternates true AR/DFlash in one resident process.
+
+| Route | Prefill tok/s | Median TTFT | Decode tok/s | E2E output tok/s |
+| --- | ---: | ---: | ---: | ---: |
+| True AR | 40.140 | 2.019 s | 19.596 | 8.569 |
+| B4 DFlash | 20.477 | 3.929 s | **29.452** | 6.070 |
+| DFlash / AR | **0.5101x** | **1.9462x wall** | **1.5030x (+50.30%)** | **0.7084x (-29.16%)** |
+
+The decode promotion gate passes: heldout is **1.3125x**, while
+`code/general_en/general_ja/mixed_ja_en` are
+**2.1039/1.1699/1.5722/1.1414x**. One low-density prompt,
+`mixed_ja_en_review`, is individually `0.9755x`, but its complete category and
+the heldout aggregate remain positive. Draft acceptance is **422/872 (48.39%)**
+over 218 cycles, with **1.7581 target rows/output**. Proposal, target verify,
+and post-verify residual total **2.676/18.003/0.370 s**.
+
+All 20 AR/DFlash pairs are exact, finite, target/drafter-state aligned, and
+repeat-deterministic; the Q2 Poolside KL/top-1 gate and lifecycle pass. Combined
+target+drafter residency is **42,369,140,733 bytes** and peak tracked ownership
+is **42,369,361,917 bytes (39.460 GiB)**; close returns to zero. A cached
+single-cycle dispatch trace confirms Q5 embedding, Q5/Q6/Q8 and IQ target
+families, B+1 rowtiles, BF16/F32 DFlash WMMA projections, norm/rope/Silu,
+`dflash_accept_chain_i32_kernel`, and top-k. Trace SHA-256 is
+`39279fe9bcee683af3751a81e6715b6881536503140dbb293a30129aafbd8d5f`.
+[Compact artifact](results/2026-07-23-gfx1100-laguna-q2-xl-dflash-b4.json).
+
+The result is retained as a **decode** performance win, not a default-route or
+fixed-32 E2E win. DFlash still seeds target captures serially, halving prefill
+throughput and making h32 E2E 29.16% slower. A stationary phase-rate estimate
+crosses AR near 122 outputs, but that is inferred rather than measured; a full
+long-horizon category/public-route gate is required before any routing
+threshold or default promotion.
+
+Exact benchmark command:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run python -u scripts/laguna_dflash_category_bench.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf /models/hipengine/Laguna-S-2.1-DFlash --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --template tests/fixtures/laguna_poolside_v1_template.json --oracle tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json --oracle-logprobs tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --candidate-budget 4 --output-tokens 32 --repetitions 2 --warmup-output-tokens 6 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --drafter-sha256 f24f08781c697c19952c02fb2e7e9bdf2071b79a711c2a44b836a74b9b62a1f4 --drafter-revision b0486d1586daa0d56435c508108171fc1c8daff9 --output /tmp/laguna-q2-xl-dflash-category.json
+```
 
 ### gfx1151 Laguna S 2.1 target AR, DFlash, and cold startup, 2026-07-23
 

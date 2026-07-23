@@ -177133,6 +177133,43 @@ performance claim.
 - Diagnostic serial->bulk wall times are `67.731->45.382 ms`, `91.160->49.000 ms`, `311.376->89.034 ms`, `2.5170->1.3362 s`, and `3.0036->1.5835 s`; the B+1 row is `226.856->73.334 ms`. These are correctness-shape diagnostics, not the retained AR throughput result. The owner reports `40,068,332,284` resident bytes, peak `40,455,999,288` tracked bytes / 1,466 allocations, and exact teardown to zero.
 - Accepted artifact: `benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-bulk-correctness.json`; raw output SHA-256 `6d2baf514743f6a1e89125ac1a9e2223ffa9884064858ef3d6806490df338122`. The tree must be committed clean before the canonical ten-prompt AR timing run.
 
+## 2026-07-23 — Establish the first retained Laguna Q2 XL AR baseline
+
+- Canonical tracked-clean W7900/gfx1100 command at `09cca232f49e73f68fd09d4ace8509fa3201681e` ran all ten `mtpbench-code-general-ja` prompts, all four categories plus heldouts, two balanced serial/bulk repetitions, greedy h16/h32, chunk 128, BF16 KV, direct raw-GGUF residency, cached builds, and the measured 4-GiB reserve. Exact command: `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run python -u scripts/laguna_target_ar_bench.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --template tests/fixtures/laguna_poolside_v1_template.json --oracle tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json --oracle-logprobs tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy --bulk-correctness-artifact benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-bulk-correctness.json --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --output-horizons 16,32 --repetitions 2 --warmup-output-tokens 2 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-q2-xl-target-ar.json`.
+- Exact 128-row bulk prefill measures **40.091 tok/s**, **2.018 s** median TTFT, **19.565 decode tok/s** at h32, and **5.488/8.557 E2E output tok/s** at h16/h32. Same-session token-serial is **20.867 tok/s**, **3.859 s**, **19.582 tok/s**, and **3.265/5.591**, so bulk improves prefill **1.921x (+92.12%)**, TTFT **-47.71%**, and h16/h32 E2E **+68.06%/+53.05%** while decode is neutral at **0.9991x**. Per-repetition bulk prefill is `40.270/39.913`, h32 decode `19.637/19.493`, and h32 E2E `8.592/8.522 tok/s`.
+- All 20 serial/bulk pairs are exact at both horizons, same-route repeats are deterministic, every category passes the predeclared guard, Poolside first-token KL/top-1 is `0.0001568229/1.0`, and the accepted bulk artifact already covers bit-exact logits/hidden/taps/KV/B+1. Peak tracked ownership is `40,455,814,968` bytes / 1,460 allocations; teardown returns tracked ownership to zero. Excluded model load is `10.270 s`. Raw timing JSON SHA-256 is `82d8d03ebddea7b012865fb0145c43529a4c219532496fbe3eba45d202a4fd8c`.
+- Cached `rocprofv3 --kernel-trace` replay (`bg-547`) passes greedy-4/repeat/teacher/taps/lifecycle and records 13,377 dispatches across 40 symbols. Three 55-token bulk prefills plus nine c1 decode steps contain every expected Q5 embedding, Q5/Q6/Q8 projection, IQ2/IQ3 gate-up, IQ3/IQ4 down, global/SWA prefill+decode attention, Q4 lm-head, and argmax symbol. Mixed-profile kernel duration is 69.88% Q5/Q6/Q8 projection, 16.65% IQ3 down, and 9.73% IQ2 gate/up; dominant kernels are scratch-free. Raw trace SHA-256 is `d53bff36d18345b8ee0ea1840aa2b1497e9d9c2578019c783f6f036e4daff1d5`.
+- Published `benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-target-ar.json` and updated the benchmark README/changelog. This is the first same-model Q2 XL performance row; no cross-device/cross-quant Q4 ratio is claimed. Matched Q2 XL DFlash compatibility/economics remains task #251.
+
+## 2026-07-23 — Admit the Laguna Q2 XL target into DFlash
+
+- RED proved the resident drafter hardcoded its target-owned query embedding library to Q4_K even though the target runner already exposes the registry-driven Q4/Q5/Q6/Q8 map. `LagunaDFlashResidentDrafter.propose()` now forwards that map, allowing the Q2 XL target's raw Q5_K embedding while preserving the existing Q4 route. The DFlash economics harness gains the same explicit direct-GGUF, safety-reserve, and quant-label ownership used by the retained Q2 AR harness; Q4 defaults are unchanged.
+- Downloaded the public pinned `poolside/Laguna-S-2.1-DFlash@b0486d1586daa0d56435c508108171fc1c8daff9` snapshot because the stale default cache path was absent on this W7900 host. `/models/hipengine/Laguna-S-2.1-DFlash/model.safetensors` is `2,229,962,896` bytes and SHA-256 `f24f08781c697c19952c02fb2e7e9bdf2071b79a711c2a44b836a74b9b62a1f4`, exactly matching the pinned drafter identity; the loader reads JSON/safetensors only and does not execute the repository's remote Python.
+- Real-model W7900 smoke loads the 40.119-GB Q2 target plus 2.250-GB drafter, runs one B4 cycle on `code_merge_intervals`, accepts all four drafts, and emits exact target-corrected IDs `[605,2825,268,1172,7024,69452]` versus true AR. Peak tracked ownership is `42,369,361,917` bytes / 1,320 allocations and teardown returns exactly to zero. Focused DFlash resident/category tests report `12 passed`; the complete DFlash bundle reports `37 passed, 1 skipped`; Ruff, py_compile, and diff checks pass. This establishes compatibility only; the clean full category economics run follows after committing the harness.
+
+## 2026-07-23 — Retain the Laguna Q2 XL B4 DFlash decode win
+
+- Canonical tracked-clean W7900/gfx1100 run at `6ba1ddec95e224c1cc337c69ac2c4ea611ff0472` alternated true AR and B4 DFlash across all ten `mtpbench-code-general-ja` prompts, all categories/heldouts, two repetitions, greedy fixed-32, BF16 KV, chunk 128, direct raw Q2 XL residency, cached builds, and the pinned BF16 drafter. Exact command: `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run python -u scripts/laguna_dflash_category_bench.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf /models/hipengine/Laguna-S-2.1-DFlash --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --template tests/fixtures/laguna_poolside_v1_template.json --oracle tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json --oracle-logprobs tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --candidate-budget 4 --output-tokens 32 --repetitions 2 --warmup-output-tokens 6 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --drafter-sha256 f24f08781c697c19952c02fb2e7e9bdf2071b79a711c2a44b836a74b9b62a1f4 --drafter-revision b0486d1586daa0d56435c508108171fc1c8daff9 --output /tmp/laguna-q2-xl-dflash-category.json`.
+- True AR measures **40.140 prefill tok/s**, **2.019 s median TTFT**, **19.596 decode tok/s**, and **8.569 fixed-32 E2E output tok/s**. DFlash measures **20.477**, **3.929 s**, **29.452**, and **6.070**, respectively. Thus target-corrected decode is a retained **1.5030x (+50.30%)** win, but serial target-capture prefill is **0.5101x (-48.99%)** and fixed-32 E2E is **0.7084x (-29.16%)**. Two full-suite DFlash decode samples are `29.537/29.367 tok/s`; AR samples are `19.665/19.527`.
+- Every promotion scope passes for decode: train **1.6662x**, heldout **1.3125x**, and `code/general_en/general_ja/mixed_ja_en` **2.1039/1.1699/1.5722/1.1414x**. The low-density `mixed_ja_en_review` prompt is individually `0.9755x`, disclosed rather than hidden. Acceptance is **422/872 (48.39%)** over 218 cycles, with 1,090 target rows (**1.7581/output**); proposal/target verify/residual are `2.676/18.003/0.370 s`.
+- All 20 AR/DFlash pairs are exact, finite, state-aligned, and repeat-deterministic; the Q2 Poolside oracle and lifecycle pass. Combined residency is `42,369,140,733` bytes; peak tracked ownership is `42,369,361,917` bytes / 1,460 allocations and returns to zero. Raw benchmark SHA-256 is `e7d294c22b0237706fa4afbdaa505f8f87824c9a2e02eae536d778485ad33a3f` (550,726 bytes); excluded target/drafter load is `10.204/0.793 s`, and total process wall is `197.984 s`.
+- Cached dispatch-only profile `bg-551` runs one exact full-accept B4 smoke plus matched AR and confirms every expected target Q5/IQ/B+1 and drafter WMMA/norm/rope/Silu/top-k/accept symbol, including `dflash_accept_chain_i32_kernel`; raw trace SHA-256 is `39279fe9bcee683af3751a81e6715b6881536503140dbb293a30129aafbd8d5f`. It is dispatch evidence, not a single-prompt speed claim.
+- Published `benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-dflash-b4.json` and updated the benchmark README/changelog. Decode passes the retained promotion rule, but the route remains explicit because measured h32 E2E regresses. A stationary phase-rate estimate crosses near 122 outputs, but that is inferred; a full long-horizon category/public-route gate is the concrete prerequisite for a default or routing threshold.
+
+## 2026-07-23 — Capture the Laguna Q2 XL c=1 decode D0
+
+- On tracked-clean `e6120872e1487644f9b14c5c67cd033368719e2b`, prebuilt every Laguna library outside the profiler and ran cached `rocprofv3 --kernel-trace` around one exact 69-token `code_merge_intervals` bulk prefill plus 16 true c=1 decode rows on W7900/gfx1100. Exact command: `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q2-xl-decode-profile-e6120872 --output-file laguna-q2-xl-decode16 -- uv run python -u /tmp/laguna_decode_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id code_merge_intervals --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 16 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --output /tmp/laguna-q2-xl-decode-profile-e6120872/bench.json`. The temporary child hash is `faf3bbfe...ffd`; it performs no JIT and the artifact preserves the full hash.
+- Discarding only the first two disclosed power/cache-warmup rows, the stable 14 rows have **1,055 dispatches/token**, **44.572 ms/token mean kernel sum**, **49.929 ms median embedding-to-argmax span**, and **5.415 ms / 10.8%** median span-minus-sum. Profiler child wall is **52.703 ms / 18.974 tok/s**; the authoritative full-suite no-profiler baseline remains **51.032 ms / 19.596 tok/s**. All 16 kernel sums/spans are recorded. Final logits are finite, generated IDs begin `[605,2825,268,1172,7024,69452]`, 40.068-GB residency closes exactly to zero, and every one of 26 decode symbols reports zero scratch.
+- Complete attribution names one dominant defect: generic raw-Q5 `prefill_out` aliases consume **27.303 ms/token / 61.26% / 235 launches** while reading a 1.931-GB active encoded-weight proxy at only **70.7 GB/s**. SWA decode is **4.237 ms / 9.51% / 36 calls** at positions 69-84; selected IQ3 down is **4.021 ms / 9.02% / 45 calls / 134.8 GB/s**; fused IQ2 dual+SiLU is already healthy at **2.318 ms / 5.20% / 360.9 GB/s**; Q6 dense is **2.006 ms / 4.50% / 221.4 GB/s**; the Q4 lm-head is **1.618 ms / 3.63% / 107.2 GB/s**. The complete active encoded-weight proxy is **4.144 GB/token**, not the older mixed-F16 Q4 estimate of 9-10 GB; it is explicitly not a DRAM counter.
+- Source/dispatch audit explains the profile. Laguna hardcodes `use_gemv_decode=False` for all raw linear calls. Exact Q6 pack8 decode is registered but therefore disabled; the exact Q4 pack8 decode module exists but generic dispatch never loads it; no dense Q5 sibling exists. IQ3 down is followed by 47 separate weighted reductions. Compared only as a tactics reference, the Qwen3.6 UD-Q3_K_M final D0 uses **671 launches, 8.825 ms kernels, and 11.347 ms profiled wall/token** after dedicated pack8 decode, selected dual+SiLU/weighted-tail fusion, and graph replay. Laguna is **5.05x** its kernel time and **1.57x** its launch count; quant/model ratios are not claimed.
+- Ranked work is now: (1) exact dense Q5 pack8 decode and c=1 Laguna routing, (2) short-context SWA decode, (3) weighted IQ3 down/tail fusion, (4) activate exact Q6/Q4 decode and improve Q4 top-1, then (5) Laguna graph replay. The decode 10.8% span gap reopens graph work after kernels even though prefill's 0.3% gap deferred it. **50 tok/s is credible but remains a target**: it needs 51.032 -> 20 ms, so the 61.3% Q5 route plus SWA/IQ3/lm-head/submission improvements must compound. Published diagnostic `benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-decode-d0-profile.json` and updated `docs/LAGUNA.md`; raw trace SHA-256 is `d0c90bc319d624d1ca1a7102c927c7101a38a2533b7722853f7ab162f922d92a` (5,044,231 bytes). DFlash/MTP tuning follows the improved AR baseline rather than optimizing against 19.6 tok/s.
+
+## 2026-07-23 — Extend Laguna Q2 XL decode D0 through near-4K
+
+- On tracked-clean `b4973769a230dc1a5a9c3a59b3f5233ebfc5f61d`, ran three cached W7900 traces after exact chunk-128 prefills of 512/1,024/3,968 deterministic tokens, followed by eight c=1 decode rows each. Command template: `HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q2-xl-decode-profile-b4973769-l{L} --output-file laguna-q2-xl-decode-l{L}-d8 -- uv run python -u /tmp/laguna_decode_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id mixed_ja_en_review --prompt-length {L} --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 8 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --output /tmp/laguna-q2-xl-decode-profile-b4973769-l{L}/bench.json`, for `{L}=512,1024,3968`. Prebuild remained outside profiling; temporary child SHA-256 is `ab9e7b87...6b95`.
+- Stable six-row kernel sum is **70.686/73.947/90.605 ms/token** at positions 512-519/1,024-1,031/3,968-3,975; dispatch span is **76.434/80.125/96.493 ms** and profiled child wall is **79.432/82.839/99.248 ms (12.589/12.072/10.076 tok/s)**. These are profiler shape diagnostics, not retained public throughput. Every row still has exactly 1,055 fully classified dispatches, every symbol is scratch-free, final logits are finite, and each 40,068,332,284-byte owner returns exactly to zero.
+- The regime split is decisive. Dense Q5 stays flat at **27.318/27.424/27.401 ms**. SWA grows from the short D0's 4.237 ms to **27.823 ms at 512**, then plateaus at **27.903/27.927 ms** because the physical window is 512. Global attention grows **2.988 -> 5.922 -> 22.713 ms** and is the second individual symbol near 4K. The span-minus-sum gap remains approximately **5.75/6.18/5.89 ms**, confirming a fixed launch/submission floor rather than hidden context-proportional host work.
+- Optimization order is therefore regime-aware: exact dense Q5 remains first for the canonical short suite, but the retained wave32-exact SWA prefill schedule must be adapted to c=1 before any 512+ target can approach 50 tok/s; near-4K subsequently needs global-attention work. The original D0's “short-context SWA” wording is superseded by this full context trace. Published `benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-decode-context-profile.json`, updated the Laguna plan and rollup, and retained all raw hashes: 512 `7c274378...58d4`, 1K `15bd2955...1f4`, near-4K `ff527da1...8fb`.
 ## 2026-07-23 — Audit Laguna prefill kernel-transfer candidates
 
 - Audited the merged in-tree selected/Q8/MMQ/router/metadata/attention catalog before AR-O1 implementation. After importing lazy quant families and refreshing gfx1151 aliases, all 17 inspected four-axis keys resolve: direct Q4T16 dual, exact fused-SiLU, Q8_1/dp4a split/fused; Q4T16 compact baseline/shared-X/DS4; Q4T16/Q6T16 compact down; IQ2 MMQ32; F32 router; count/prefix/scatter-gather/tile-map; weighted-lane sum; and contiguous prefill metadata. Focused static gate reports `15 passed` across T16, compact WMMA, IQ2 MMQ32, grouped metadata, and router registry/build/contract nodes.
@@ -177164,6 +177201,276 @@ performance claim.
 - Added `scripts/laguna_selected_q8_prefill_bench.py` for one-load, same-weight/scratch/token-stream, counterbalanced 16/32/55/64/122/128 inclusive timing. The screen includes quantization cost, requires every natural shape plus aggregate wall to improve, treats next-ID agreement as diagnostic, and cannot claim promotion without separate full-model quality.
 - Focused GREEN: five host contract/harness tests pass; the two-parameter production H3072/F1024/top-10 Q4 gate/up plus Q4/Q6 down GPU test passes, including finite Q8 output and relative-L2 <=0.05 versus exact split; Ruff, py_compile, and diff checks pass. ROCm is live on gfx1151. The required broad lineage command remains blocked by the already-recorded absent `/home/lhl/amd-gpu-tuning/reference/atlas` checkout. Clean committed same-session timing is next; no speed or quality claim is made in this unit.
 
+## 2026-07-19 — Qwen3.6 UD-Q3_K_M host oracle and compressed materialization
+
+### Scope and model inventory
+
+Started the correctness-first prerequisite for native Q3 execution from clean
+worktree `/home/lhl/hipEngine-q3-k-m` at `fb9a6e45`. The target file is
+`/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf` (17,104,402,720 bytes). Header and
+AR-map inspection finds 753 file tensors, 733 tensors in the intended 40-layer
+AR target, and 20 intentionally ignored tensors in trailing MTP block 40.
+The AR quant inventory is F32=361, Q8_0=250, IQ3_XXS=78, IQ4_XS=39, and Q6_K=5.
+The exact expert mix is more nuanced than the initial shorthand:
+
+- IQ3_XXS: 39 gate plus 39 up tensors (layers 0-38);
+- IQ4_XS: 37 down tensors plus layer-39 gate and up;
+- Q6_K: selected down in layers 34, 38, and 39, plus two root tensors.
+
+Host planning therefore stays projection-agnostic: every rank-3 IQ3_XXS or
+IQ4_XS selected-expert tensor remains raw GGUF bytes. Existing Q6_K handling is
+unchanged.
+
+### Oracle and RED/GREEN implementation
+
+Added a deterministic two-case fixture under
+`tests/fixtures/gguf/iq3_xxs_iq4_xs_dequant.json`. Expected FP32 values were
+generated outside hipEngine by compiling `/home/lhl/qwen-kernel/src/quants.h`
+at `52e240f9c6d91750d0e5e692976cfb67fd9bc603`; that header is the faithful
+llama.cpp `ggml-quants.c` port, cross-checked against local llama.cpp commit
+`1ebf790cda38d827559548f67b0469189690cc8c`.
+
+```bash
+g++ -std=c++17 -O2 /tmp/generate_hipengine_iq_fixture.cpp \
+  -o /tmp/generate_hipengine_iq_fixture
+/tmp/generate_hipengine_iq_fixture > /tmp/hipengine_iq_fixture.txt
+```
+
+RED was explicit. The IQ3 golden-oracle and partial-block tests failed with
+`NotImplementedError`; plugin resolution failed for `gguf_iq3_xxs`; and after
+placing the real-model tests in their own file (so the old missing 0.8B fixture's
+module skip could not hide them), both plan modes and device materialization
+failed on `blk.0.ffn_gate_exps.weight` as unsupported:
+
+```bash
+PYTHONPATH=. python3 -m pytest -q tests/test_gguf_quant_layout.py \
+  tests/test_model_quant_and_imports.py::test_builtin_mixed_gguf_quant_plugins_are_registered
+# 4 failed for the new IQ3 contracts; existing IQ4 external oracle passed
+
+PYTHONPATH=. python3 -m pytest -q tests/test_qwen36_q3_gguf_materialize.py
+# 3 failed at unsupported IQ3_XXS planning
+```
+
+GREEN adds:
+
+- canonical 256-entry IQ3_XXS grid and even-parity sign decoding in the
+  torch-free NumPy GGUF oracle;
+- `dequant_supported=True`, partial-block rejection, and exact FP32 output for
+  IQ3_XXS while retaining the existing exact IQ4_XS oracle;
+- registered `gguf_iq3_xxs` quant metadata;
+- raw `DType.INT8` resident planning/materialization for rank-3 IQ3_XXS and
+  IQ4_XS experts in both `decode_repack=False` and `True`; non-expert IQ
+  fallback behavior remains dense BF16;
+- tests for the exact 733-tensor AR boundary, 78/39 IQ inventory, compressed
+  device shape/byte count, plugin metadata, and GGML golden values.
+
+The copied IQ3 codebook was mechanically checked against all 256 source words:
+
+```text
+iq3_grid_words_exact 256
+```
+
+### Validation
+
+Focused CPU/reader/plugin plus real-model selected-device gate:
+
+```bash
+python3 -m compileall -q hipengine tests scripts
+PYTHONPATH=. python3 -m pytest -q \
+  tests/test_gguf_reader.py tests/test_gguf_quant_layout.py \
+  tests/test_model_quant_and_imports.py \
+  tests/test_qwen36_q3_gguf_materialize.py
+# 22 passed
+```
+
+A full W7900 device materialization, using
+`HIP_VISIBLE_DEVICES=0 PYTHONPATH=. python3` and
+`materialize_qwen35_gguf_weights(model, decode_repack=True)`, asserted every
+resident record and then freed it:
+
+```text
+materialized_weights 733
+layouts {'dense_f32': 361, 'gguf_q6_k_t16_v1': 4, 'gguf_q8_0_t16_v1': 250, 'raw_gguf': 118}
+allocation_bytes 16669411840
+iq_raw_records 117
+iq_raw_bytes 13576962048
+iq_dense_bf16_records 0
+elapsed=13.900 user=8.388 sys=5.567
+```
+
+The registry, CPU-fixture, and dry-run build smokes pass. `git diff --check`
+passes. No HIP kernel changed, so a kernel trace is not applicable to this host
+unit.
+
+The repository-wide `PYTHONPATH=. python3 -m pytest -q` guard was attempted once
+and reached 83% in 30 minutes before the harness timeout. It showed one early,
+unrelated baseline failure; focused rerun identifies
+`tests/test_benchmark_readme_sync.py::test_gfx1100_mtp_topline_publishes_graph_ar_correction`
+(5 passed, 1 failed) because the unchanged benchmark README lacks an expected
+heading. Per the focused-repair rule, the expensive broad suite was not restarted.
+The standard `scripts/check_fixtures.py` also retains an unrelated pre-existing
+schema failure on `tests/fixtures/cpu_reference/moe/moe_ffn_selected_gguf_q4_k.json`;
+`scripts/smoke.py --mode cpu-fixtures` passes all seven fixtures it owns. Neither
+baseline issue is in this change's files.
+
+No generation or performance claim is made yet. Next is native selected-expert
+IQ3_XXS/IQ4_XS decode, starting with exact single-row kernels and the CPU oracle
+above before any row-tile sweep.
+
+## 2026-07-19 — Qwen3.6 UD-Q3_K_M native execution and W7900 baseline
+
+### Accepted implementation units
+
+The correctness-first Q3 path is split into three reviewable commits:
+
+- `b84547ef` adds canonical `IQ3_XXS` host dequantization, quant registration,
+  and compressed rank-3 IQ3/IQ4 materialization. All 733 AR tensors occupy
+  `16,669,411,840` resident bytes; 117 IQ expert records remain raw compressed
+  blocks (`13,576,962,048` bytes), with zero IQ dense-BF16 records.
+- `8ece5a57` adds raw-weight, four-row selected-expert HIP kernels for fused
+  IQ3/IQ4 gate+up+SiLU and IQ4 down. Layers 34, 38, and 39 continue to reuse the
+  existing selected Q6_K down path. The ABI keeps `selected` on device and is
+  compatible with resident graph capture.
+- `44a1f963` routes bulk MoE prefill through the same fused IQ gate/up ABI with
+  `rows = tokens * top_k`, then reuses selected IQ4_XS/Q6_K down and the existing
+  shared/combine chain. It deliberately does not introduce a second weight
+  layout before end-to-end measurement.
+
+### Correctness gates
+
+The retained decode artifact is
+[`2026-07-19-gfx1100-qwen36-q3-selected-decode-kernels.json`](benchmarks/results/2026-07-19-gfx1100-qwen36-q3-selected-decode-kernels.json):
+
+- 76 focused regressions pass, including real-shape canonical CPU-oracle cases;
+- one all-40-layer eager step returns 2,048 finite, nonzero values;
+- independent eager and resident graph decode produce the same next token
+  (`513`);
+- the real-shape profiler trace contains IQ3 gate/up, IQ4 gate/up, and IQ4 down,
+  all with `Scratch_Size=0` (64/56/40 VGPR respectively).
+
+The retained prefill artifact is
+[`2026-07-19-gfx1100-qwen36-q3-prefill-correctness.json`](benchmarks/results/2026-07-19-gfx1100-qwen36-q3-prefill-correctness.json):
+
+- multi-token IQ3 and IQ4 fused gate/up agree with the canonical host oracle;
+- four-token bulk and token-serial prefill choose token `16` in both paths, with
+  KL divergence `0.000571618`;
+- fresh 512, 1K, and 4K bulk-prefill sessions reach positions 512, 1024, and
+  4096 without fallback, cursor, or non-finite failures.
+
+### Repeated benchmark protocol
+
+Measured from a tracked-clean worktree at `44a1f96362ab09c3` on the Radeon Pro
+W7900 (`gfx1100`, HIP device 0 / sysfs `card1`). The exact model is
+`/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf`, 17,104,402,720 bytes, SHA-256
+`8966dd0cd8c543c4228490a2a8b0e0814fc4f1e6a8e199ceed4de6754ae7b8e1`.
+The trailing MTP block is ignored; this measures the 40-layer AR target.
+
+The new IQ library was built once outside timing. Each retained shape then ran
+in its own right-sized process after `card1` reported at most 2% busy for three
+consecutive seconds. Each process used one discarded warmup and three measured
+runs; the table reports medians. The environment is the same hermetic TheRock
+HIP 7.15 / AMD clang 22 stack used by the July 19 baseline:
+
+```bash
+REPO=/home/lhl/hipEngine-q3-k-m
+PY=/home/lhl/mambaforge/envs/therock/bin/python3.12
+ROOT=$($PY -m rocm_sdk path --root)
+VER=/tmp/q3-hipcc-version-715.txt
+$ROOT/bin/hipcc --version > "$VER"
+
+# Prebuild once outside retained timing (512/1, warmup=0, measured=1), then:
+for SHAPE in 512/128 1K/128 4K/128; do
+  env -i \
+    HOME="$HOME" USER="$USER" LOGNAME="$USER" SHELL=/bin/bash TERM=xterm \
+    PATH="$ROOT/bin:/home/lhl/mambaforge/envs/therock/bin:/usr/local/bin:/usr/bin:/bin" \
+    LD_LIBRARY_PATH="$ROOT/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_libraries_gfx110X_all/lib" \
+    HIP_PATH="$ROOT" ROCM_PATH="$ROOT" HIP_LIB_PATH="$ROOT/lib" \
+    HIP_INCLUDE_PATH="$ROOT/include" HSA_OVERRIDE_GFX_VERSION=11.0.0 \
+    HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+    HIPENGINE_COMPILER_VERSION_FILE="$VER" HIPENGINE_GGUF_DECODE_REPACK=1 \
+    PYTHONPATH="$REPO" \
+    "$PY" "$REPO/scripts/qwen35_readme_sweep.py" \
+      --engine gguf \
+      --model /models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf \
+      --quant gguf_q3_k_m --backend hip_gfx1100 --token-id 9707 \
+      --workloads "$SHAPE" --warmup-runs 1 --measured-runs 3 \
+      --warmup-decode-tokens 1 --force-bulk-prefill \
+      --bulk-prefill-attention-mode bulk --use-wmma-prefill \
+      --use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 \
+      --compiler-version-file "$VER" --require-cached-build \
+      --json "RESULT.json"
+done
+```
+
+Production graph capture is excluded from steady decode time. All nine measured
+final logits are finite and bit-identical within each shape; all final token IDs
+are `9707`. Maximum prefill/decode stdev over median is `0.454%/0.226%`.
+
+| Workload | Prefill tok/s | Decode tok/s | Tracked peak GiB | Sampled HIP-used peak GiB |
+| --- | ---: | ---: | ---: | ---: |
+| 512/128 | **614.089** | **92.285** | 15.692 | 16.149 |
+| 1K/128 | **623.583** | **97.373** | 15.759 | 16.245 |
+| 4K/128 | **616.135** | **98.111** | 16.134 | 16.639 |
+
+### Same-Q3 baseline comparison
+
+The comparator is `/home/lhl/qwen-kernel/BASELINE-PERF.md`, measured earlier the
+same day on this W7900 and the exact same GGUF. It removes the prior Q3-versus-Q4
+model-quant confounder, but remains descriptive: hipEngine is HIP/BF16-KV and
+times the full prompt, while qwen-kernel is Vulkan with a different harness and
+times `prompt_length - 1` prefill tokens.
+
+| Workload | hipEngine pp | qwen-kernel pp | hipEngine pp delta | hipEngine tg | qwen-kernel tg | hipEngine tg delta | qwen tg / hip tg |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | 614.089 | 756.050 | -18.78% | 92.285 | 161.560 | -42.88% | 1.751x |
+| 1K/128 | 623.583 | 736.440 | -15.32% | 97.373 | 158.710 | -38.65% | 1.630x |
+| 4K/128 | 616.135 | 624.320 | -1.31% | 98.111 | 146.610 | -33.08% | 1.494x |
+
+Against the prior hipEngine Q4_K_M rows in the same baseline, Q3 decode is
+`-0.46%/-0.74%/-2.35%` rather than realizing the `6.77%` ideal active-byte
+advantage calculated during attribution. Q3 prefill is
+`-77.84%/-80.45%/-80.44%` versus the optimized Q4 path. The implementation is
+therefore functional and reproducible, but it does **not** replicate
+qwen-kernel's decode advantage yet.
+
+### Raw records and limitations
+
+Compact summary and comparison:
+[`2026-07-19-w7900-qwen36-q3-k-m-benchmark.json`](benchmarks/results/2026-07-19-w7900-qwen36-q3-k-m-benchmark.json).
+Byte-exact raw per-run records:
+
+- [`512/128`](benchmarks/results/2026-07-19-w7900-qwen36-q3-k-m-512-128-raw.json),
+  SHA-256 `5937fd9b183de752e8b7a0cf858bcef80910e4f5f14d57a1fecf3f434972c0c8`;
+- [`1K/128`](benchmarks/results/2026-07-19-w7900-qwen36-q3-k-m-1k-128-raw.json),
+  SHA-256 `5bbb1135f5e955b8f2fc9293a20d5c0e27695fbacb0fd3e380ef8b3ec22f70cd`;
+- [`4K/128`](benchmarks/results/2026-07-19-w7900-qwen36-q3-k-m-4k-128-raw.json),
+  SHA-256 `a63ea9067c7321b1bfca3e9a219deb4e4d57c4a0c857a4c3299c5c9f335cc9c8`.
+
+Known limits:
+
+1. Bulk prefill reuses the correctness-first four-row selected kernel for
+   `tokens * top_k` rows and has no grouped-expert weight reuse. The same expert
+   blocks are reread for independently routed rows.
+2. IQ weights intentionally stay in raw GGUF layout; no IQ-specific resident
+   decode repack or row-tile/codegen sweep has been accepted.
+3. This validates only W7900/gfx1100, BF16 KV, greedy repeated-token traffic,
+   and the 40-layer AR target. gfx1151/XTX, prompt-corpus quality, concurrency,
+   long context, and MTP remain unvalidated for Q3.
+4. The raw sweep files retain the generic
+   `diagnostic_retained_pending_rollup_gate` label because the README rollup
+   expects a different six-shape protocol. The compact artifact accepts only
+   this explicit three-shape local baseline.
+
+The next performance experiments remain bounded: sweep IQ row tiles/codegen with
+zero-spill gates, then test grouped expert reuse. Do not infer that porting the
+Vulkan local sizes verbatim will close the measured gap.
+
+## 2026-07-23 — Merge the historical W7900 Q3_K_M branch
+
+- Synced the five local Laguna Q2 XL benchmark commits with ten newer `origin/main` commits first (`31670d35`), preserving both benchmark rollups; the focused README/control/tokenizer gate passed with `15 passed, 5 skipped`.
+- Merged local branch `q3-k-m` at `d47e63cd`. Its four 2026-07-19 commits predate and are implementation-superseded by the optimized UD-Q3_K_M branch already merged through `f4c23b79`/`5c76b408`, so conflict resolution deliberately retains current-main quant metadata, materialization, selected-IQ kernels, routing, and tests instead of reintroducing the older duplicate `gguf_iq_selected_gemv` family.
+- Retained the branch's three compact evidence artifacts: selected-decode correctness, bulk-prefill correctness, and the W7900 512/1K/4K summary. The three 150-KiB source sweep packets are omitted from the repository tip under the compact-artifact policy but remain byte-recoverable from merged commit `d47e63cd` at the SHA-256 values recorded in the summary/earlier log. Updated root/GGUF/benchmark documentation to label **614.089/92.285**, **623.583/97.373**, and **616.135/98.111 prefill/decode tok/s** as historical measured-branch evidence, not current production performance.
+- Merge validation exposed one stale test helper monkeypatch for the direct cooperative-router symbol removed when routing moved behind registry resolution; deleting that unused patch restores the intended current-main test contract without runtime changes. The focused Q3/quant/materialization/compact-routing/README bundle reports **104 passed**; Ruff, three JSON parses, conflict-marker scan, and diff checks pass.
 ## 2026-07-23 — Replace GGUF Python BPE with sidecar-free HF tokenizers
 
 - RED required both Qwen and Laguna wrappers to expose a real `tokenizers.Tokenizer`, construct it from an in-memory synthetic GGUF inventory whose path does not exist, preserve Qwen NFC and Laguna non-normalization, keep user/control tokens atomic, and remove the Python `_bpe`/cache surface. Both nodes failed on the missing HF backend before implementation.
