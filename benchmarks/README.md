@@ -1488,11 +1488,22 @@ prefill **50.193 -> 53.178 tok/s (+5.948%)**, median TTFT **1.627 -> 1.535 s
 **5.77%/5.34%/5.96%/6.56%** and every category/horizon E2E improves. Decode is
 neutral within **0.062%**. All 320 teacher-forced full-logit comparisons are
 identical (`KL=0`, top-1 100%), all 30 free-running mode pairs are exact at
-both horizons (60 checks), repeated trajectories are deterministic, the Poolside
-oracle passes, and lifecycle returns to
-zero. gfx1100 and rows below 32 retain direct selected GEMV.
+both horizons (60 checks), repeated trajectories are deterministic, the
+Poolside oracle passes, and lifecycle returns to zero. gfx1100 and rows below
+32 retain direct selected GEMV.
 [Retained grouped-down shape gate](results/2026-07-23-gfx1151-laguna-prefill-grouped-down-ab.json).
 [Retained grouped-down category gate](results/2026-07-23-gfx1151-laguna-prefill-grouped-down-category.json).
+
+The follow-up untimed 256/512 routing replay closes the matrix-padding input.
+At 256 rows, natural M2/M4/M8/M16/M32 factors are
+**1.043/1.134/1.334/1.803/2.924x**; at 512 they are
+**1.022/1.068/1.165/1.379/1.867x**. Deterministic Zipf is
+**1.050/1.157/1.420/2.049/3.421x** and
+**1.025/1.075/1.182/1.465/2.134x**, while the fixed top-10 hot control is 1.0x.
+Complete natural per-layer/expert counts, selected-ID hashes, next IDs, build/
+model identity, and lifecycle pass. This admits M16 for a measured 256/512
+crossover screen; it does not admit blanket M32 or claim throughput.
+[Routing-crossover diagnostic](results/2026-07-23-gfx1151-laguna-routing-256-512.json).
 
 A matched Poolside llama.cpp `04b2b72c` control now uses the identical Laguna
 Q4_K_M model hash, deterministic token stream, BF16 KV, and 128-row microbatch.
