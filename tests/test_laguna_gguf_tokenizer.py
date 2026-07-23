@@ -5,9 +5,10 @@ import json
 from pathlib import Path
 
 import pytest
+from tokenizers import Tokenizer
 
 from hipengine.loading.gguf import GGUFReader
-from hipengine.tokenization.gguf import LagunaGGUFTokenizer, _pretokenize_laguna
+from hipengine.tokenization.gguf import LagunaGGUFTokenizer, bytes_to_unicode
 
 MODEL = Path("/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf")
 POOLSIDE_TEMPLATE_FIXTURE = (
@@ -22,16 +23,22 @@ def tokenizer() -> LagunaGGUFTokenizer:
     return LagunaGGUFTokenizer.from_gguf_info(GGUFReader(MODEL).info)
 
 
-def test_laguna_pretokenizer_keeps_lf_runs_as_boundaries() -> None:
-    assert _pretokenize_laguna("line 1\n\nline 2") == [
-        "line",
-        " ",
-        "1",
-        "\n\n",
-        "line",
-        " ",
-        "2",
-    ]
+def test_laguna_gguf_tokenizer_uses_hf_without_normalizing_text() -> None:
+    byte_tokens = tuple(bytes_to_unicode()[byte] for byte in range(256))
+    tokenizer = LagunaGGUFTokenizer(
+        tokens=("<stop>", "<think>", *byte_tokens, "Ã©"),
+        merges=("Ã ©",),
+        token_types=(3, 4, *([1] * 257)),
+        eos_token_id=0,
+    )
+
+    assert tokenizer.encoder_backend == "huggingface_tokenizers"
+    assert isinstance(tokenizer.encoder, Tokenizer)
+    assert tokenizer.encode("<think>") == [1]
+    assert tokenizer.encode("é") == [258]
+    assert tokenizer.encode("e\u0301") != [258]
+    assert not hasattr(tokenizer, "_bpe")
+    assert not hasattr(tokenizer, "_cache")
 
 
 def test_laguna_tokenizer_loads_special_contract(tokenizer: LagunaGGUFTokenizer) -> None:

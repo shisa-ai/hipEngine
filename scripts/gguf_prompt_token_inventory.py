@@ -124,7 +124,7 @@ def build_prompt_token_inventory(
         "model": str(model),
         "prompts_file": str(prompts_file),
         "prompt_render": prompt_render,
-        "tokenization": "hipengine.gguf.qwen35.byte_bpe_approx",
+        "tokenization": "hipengine.gguf.qwen35.hf_tokenizers_from_gguf",
         "tokenizer_model": tokenizer_model,
         "tokenizer_pre": tokenizer_pre,
         "eos_token_id": tokenizer.eos_token_id,
