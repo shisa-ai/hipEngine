@@ -20,6 +20,7 @@ from hipengine.runtime.laguna_gguf_runner import (
     capture_laguna_hidden_tap,
     capture_laguna_routing_rows,
     resolve_laguna_eager_kernel_plan,
+    resolve_laguna_q5_wave32x2_variants,
 )
 from tests._laguna_synthetic import make_laguna_info
 
@@ -59,6 +60,21 @@ class _FakeRuntime:
 
 def _config():
     return laguna_gguf_config_from_metadata(make_laguna_info())
+
+
+def test_laguna_q5_wave32x2_defaults_are_backend_qualified_and_rollbackable() -> None:
+    expected = (
+        "wave32x2_gemv_decode_bf16_bf16_out",
+        "wave32x2_gemv_decode_bf16_f32_out",
+    )
+    assert resolve_laguna_q5_wave32x2_variants("hip_gfx1100") == expected
+    assert resolve_laguna_q5_wave32x2_variants("hip_gfx1151") == (None, None)
+    assert resolve_laguna_q5_wave32x2_variants(
+        "hip_gfx1100", output=False, query_gate=False
+    ) == (None, None)
+    assert resolve_laguna_q5_wave32x2_variants(
+        "hip_gfx1151", output=True, query_gate=True
+    ) == expected
 
 
 def test_laguna_eager_plan_resolves_only_concrete_gfx1151_keys() -> None:

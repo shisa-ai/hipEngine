@@ -4,6 +4,11 @@
 # decode default. The wider token8 screen failed the every-category h16 gate and
 # was removed; other backends retain the separately registered baseline.
 LAGUNA_SWA_DECODE_VARIANT = "swa_context_token4_exact_spans"
+# Clean W7900 D12 leaf/profile/category evidence admits the exact local32
+# two-output Q5 schedules for c=1 attention output and query/gate projection.
+# Other backends retain the separately registered pack8 fallbacks.
+LAGUNA_Q5_WAVE32X2_OUTPUT = True
+LAGUNA_Q5_WAVE32X2_QUERY_GATE = True
 
 # Clean W7900 SOL-G5 p512/d24 evidence admits the state-bound composite GGUF
 # graph when at least 24 decode transitions amortize capture/instantiate/close.
@@ -64,6 +69,8 @@ GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS = True
 GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE = "baseline"
 
 __all__ = [
+    "LAGUNA_Q5_WAVE32X2_OUTPUT",
+    "LAGUNA_Q5_WAVE32X2_QUERY_GATE",
     "LAGUNA_SWA_DECODE_VARIANT",
     "GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS",
     "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
