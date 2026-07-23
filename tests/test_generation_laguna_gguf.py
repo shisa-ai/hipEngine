@@ -289,6 +289,33 @@ def test_laguna_text_prompt_uses_tokenizer_without_implicit_bos(generator) -> No
     assert output.telemetry.timing["tokenize_ms"] > 0.0
 
 
+def test_laguna_prepared_prompt_preserves_server_preprocessing_telemetry(generator) -> None:
+    from hipengine.generation.registry import PreparedPromptInput
+
+    _FakeSession.sequences = [(10,)]
+    prepared = PreparedPromptInput(
+        source_text="prompt",
+        token_ids=(7, 8),
+        tokenize_ms=1.25,
+        render_ms=0.75,
+        admission_prepare_ms=0.5,
+        tokenizer_identity="test.tokenizer",
+    )
+
+    output = generator.instance.generate_detailed(
+        _request(prompts=(prepared,), max_tokens=1)
+    )[0]
+
+    assert output.generated_token_ids == (10,)
+    assert ("prefill", (7, 8)) in _FakeSession.events
+    assert output.telemetry is not None
+    assert output.telemetry.timing is not None
+    assert output.telemetry.timing["tokenize_ms"] == 1.25
+    assert output.telemetry.timing["prompt_encode_ms"] == 1.25
+    assert output.telemetry.timing["render_ms"] == 0.75
+    assert output.telemetry.timing["admission_prepare_ms"] == 0.5
+
+
 def test_laguna_prepare_eagerly_materializes_pooled_session(generator) -> None:
     _FakeSession.sequences = [(10,)]
 

@@ -10,14 +10,51 @@ from pathlib import Path
 from typing import Any, Callable, Protocol
 
 
-PromptInput = str | tuple[int, ...]
+@dataclass(frozen=True)
+class PreparedPromptInput(Sequence[int]):
+    """Request-local exact IDs plus the text/timing that produced them."""
+
+    source_text: str
+    token_ids: tuple[int, ...]
+    tokenize_ms: float = 0.0
+    render_ms: float = 0.0
+    admission_prepare_ms: float = 0.0
+    tokenizer_identity: str | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "source_text", str(self.source_text))
+        object.__setattr__(self, "token_ids", _normalize_token_ids(self.token_ids))
+        object.__setattr__(self, "tokenize_ms", max(0.0, float(self.tokenize_ms)))
+        object.__setattr__(self, "render_ms", max(0.0, float(self.render_ms)))
+        object.__setattr__(
+            self,
+            "admission_prepare_ms",
+            max(0.0, float(self.admission_prepare_ms)),
+        )
+        object.__setattr__(
+            self,
+            "tokenizer_identity",
+            None if self.tokenizer_identity is None else str(self.tokenizer_identity),
+        )
+
+    @property
+    def token_count(self) -> int:
+        return len(self.token_ids)
+
+    def __len__(self) -> int:
+        return self.token_count
+
+    def __getitem__(self, index):
+        return self.token_ids[index]
+
+    def __str__(self) -> str:
+        return self.source_text
 
 
-def normalize_prompt_input(value: Any) -> PromptInput:
-    """Normalize one text or exact-token prompt without retokenizing it."""
+PromptInput = str | tuple[int, ...] | PreparedPromptInput
 
-    if isinstance(value, str):
-        return value
+
+def _normalize_token_ids(value: Sequence[Any]) -> tuple[int, ...]:
     if isinstance(value, (bytes, bytearray)) or not isinstance(value, Sequence):
         raise TypeError("prompt must be text or a sequence of token IDs")
     row = tuple(value)
@@ -32,6 +69,16 @@ def normalize_prompt_input(value: Any) -> PromptInput:
             raise ValueError("prompt token IDs must be non-negative")
         normalized.append(token_id)
     return tuple(normalized)
+
+
+def normalize_prompt_input(value: Any) -> PromptInput:
+    """Normalize one text or exact-token prompt without retokenizing it."""
+
+    if isinstance(value, str):
+        return value
+    if isinstance(value, PreparedPromptInput):
+        return value
+    return _normalize_token_ids(value)
 
 
 @dataclass(frozen=True)
@@ -171,7 +218,7 @@ class GenerationRequest:
         prompt = self.prompts[int(index)]
         if isinstance(prompt, str):
             return tuple(int(token) for token in encode_text(prompt))
-        return prompt
+        return tuple(int(token) for token in prompt)
 
 
 @dataclass(frozen=True)
