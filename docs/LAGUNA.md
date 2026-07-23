@@ -2363,7 +2363,7 @@ not matrix prefill as a class.
   `benchmarks/results/2026-07-23-gfx1151-laguna-f16-library-ceiling.json`.
   BF16 hidden values may be converted once to FP16 only through the quality
   lane and only if range/finite checks pass.
-- [ ] Develop a tiled matrix-core path for Q/K/V/gate and O at M=16..512.
+- [x] Develop and promote a tiled matrix-core path for Q/K/V/gate and O at M=16..512.
   Compare separate GEMMs with a resident composite QKV+gate layout; packing
   should happen once at materialization/cache build, never during inference.
   The first explicit leaf is registered: direct row-major source-F16 reads,
@@ -2398,17 +2398,23 @@ not matrix prefill as a class.
   compensated QKV/gate/O only to the 36 SWA layers and leave the 12 full-
   attention layers exact. Across all ten prompts and 320 teacher-forced steps,
   this diagnostic reaches maximum KL **0.043888**, top-1 **318/320 (99.375%)**,
-  and **1.2955x** prefill while every broader schedule still fails. Exact tiled
-  remains default. Evidence:
+  and **1.2955x** prefill while every broader schedule still fails. This
+  admitted the scoped route to the clean repeated gate below. Evidence:
   `benchmarks/results/2026-07-23-gfx1151-laguna-f16-wmma-comp-screen.json`.
-  The explicit `wmma_comp_swa` quality route is now wired: only SWA-layer
+  The clean three-repeat one-load gate promotes `wmma_comp_swa`: only SWA-layer
   QKV/gate/O at M>=16 resolve compensated WMMA, while all full-attention layers,
-  M2-15, rows=1, and `auto` remain exact. The generalized one-load harness
-  counterbalances `tiled`/`wmma_comp_swa`, validates the exact compensated shape
-  artifact, teacher-forces baseline top-1 across all ten prompts, reports full
-  trajectories, and requires KL/top-1, positive category wall, neutral decode,
-  Poolside oracle, deterministic repeats, and teardown. Its clean repeated gate
-  remains pending before any default or performance claim.
+  M2-15, and rows=1 remain exact. Exact tiled -> compensated moves weighted
+  prefill **53.388 -> 69.037 tok/s (+29.313%)**, median TTFT **1.529 -> 1.187 s
+  (-22.377%)**, and h16/h32 E2E **6.336/9.120 -> 7.413/10.183 output tok/s
+  (+17.004%/+11.663%)**; every category improves prefill **28.206-30.729%** and
+  E2E at both horizons, while decode is neutral. All 320 teacher-forced logits
+  are finite, maximum KL is **0.043888**, suite top-1 is **318/320 (99.375%)**,
+  every category is >=96.875%, the Poolside first-token oracle passes at KL
+  `4.2951e-5` with exact top-1, repeats are deterministic, and tracked ownership
+  returns exactly to zero. gfx1151 `auto` now selects this scoped route;
+  explicit `tiled`/`gemv` remain exact rollback, and unmeasured backends are
+  unchanged. Evidence:
+  `benchmarks/results/2026-07-23-gfx1151-laguna-f16-wmma-comp-swa-retained.json`.
 - [x] Account for residency explicitly. The candidate directly consumes the
   existing 5.61-GB row-major source-F16 allocations and allocates no persistent
   sidecar; only 4,096/10,240/17,408 B bounded per-block LDS is used at
@@ -2416,10 +2422,10 @@ not matrix prefill as a class.
 - [x] Select and close the first candidate's row threshold. Its measured M16
   crossover was a clean **1.803/1.364x** full/SWA win, with M2-15 exact tiled
   and rows=1 exact GEMV. The later quality rejection removed that `wmma`
-  threshold. The independent compensated screen also selects M16 and exposes
-  only the explicit `wmma_comp_swa` quality route; `auto` remains exact tiled.
-  Any promotion or removal follows the complete gate, and the rejected direct
-  `wmma` selector must not be revived.
+  threshold. The independent compensated screen also selects M16, and the
+  complete quality/category gate promotes scoped `wmma_comp_swa` as gfx1151
+  `auto`; exact `tiled`/`gemv` remain rollback and every ineligible layer/shape
+  stays exact. The rejected direct `wmma` selector must not be revived.
 
 A reassociated matrix path may be admitted without byte identity only through
 the quality lane below. A library control is a ceiling/diagnostic and must not
