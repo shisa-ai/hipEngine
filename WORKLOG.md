@@ -175939,3 +175939,37 @@ HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 \
   uv run python scripts/laguna_dflash_public_gate.py
 # accepted; 10/10 AR + 10/10 blocking + 10/10 streaming exact
 ```
+
+## 2026-07-23 — Audit the Laguna end-to-end completion boundary
+
+Audited the thread objective against implementation, focused tests, committed
+artifacts, benchmark rollups, and the final public DFlash gate. The completed
+product boundary is deliberately narrow: the pinned Laguna S 2.1 Q4_K_M target
+on gfx1151, c=1, at most 4K BF16 KV, raw greedy generation, public blocking and
+streaming Poolside-v1 reasoning/tools, plus the pinned safetensors B4 DFlash
+owner as an explicit opt-in. The target, parser, DFlash, capability, cancellation,
+and lifecycle deliverables all have accepted end-to-end artifacts; no missing
+runtime integration remains inside that boundary.
+
+Updated `docs/LAGUNA.md` to add a concrete deliverable-to-code/test/artifact
+audit, correct the stale statement that DFlash public integration remained,
+record the now-supported exact target/drafter identity binding, align the initial
+support wording with the declared KL/top-1 agreement gate plus mandatory
+trajectory disclosure, and replace pre-coding questions with the decisions
+actually taken. Added the document to the root README index.
+
+The audit does not erase or promote known limitations: Poolside free-running
+identity is 29/32 before one low-margin branch (31/32 teacher-forced top-1;
+first-token KL `6.6214e-6`), DFlash all-15-row candidate parity is 12/15 while
+admitted B4 is 12/12 top-k, BF16 DFlash GGUF is unsupported, contexts above 4K,
+c>1, graph replay, and broader sampling/processors are unadmitted, and DFlash
+remains default/performance-ineligible at 0.9469x. Cached target load is retained
+at 48.20 s median versus the original 227.51 s and the qualified 29.85-29.91 s
+Poolside readiness reference; overlapping sequential reads/uploads is future
+loader work, not a hidden completion claim.
+
+Validation was docs-only: re-read all changed sections, verified every linked
+Laguna artifact parses and has its recorded accepted/retained status, checked
+all referenced implementation/test/artifact paths are tracked, and ran
+`git diff --check`. No GPU benchmark or broad test rerun was warranted because
+this unit changes no runtime or measured value.

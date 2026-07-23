@@ -912,6 +912,7 @@ request examples, feature contracts, diagnostics, and current limitations.
 | [`docs/ROOFLINE.md`](docs/ROOFLINE.md) | RDNA3 / W7900 performance model and decision tree |
 | [`docs/IMPLEMENTATION.md`](docs/IMPLEMENTATION.md) | Implementation status and concrete milestones |
 | [`docs/API.md`](docs/API.md) | OpenAI-compatible server usage and endpoint support |
+| [`docs/LAGUNA.md`](docs/LAGUNA.md) | Laguna S 2.1 gfx1151 support contract, implementation record, DFlash boundary, and evidence index |
 | [`docs/PREFILL.md`](docs/PREFILL.md) | Native prefill implementation spec |
 | [`docs/SAMPLING.md`](docs/SAMPLING.md) | Normal sampling parameter support plan |
 | [`docs/MTP.md`](docs/MTP.md) | Multi-token prediction plan |
