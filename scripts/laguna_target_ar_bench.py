@@ -148,7 +148,12 @@ def _progress(completed: int, total: int, spec) -> None:
         )
 
 
-def _session(owner: LagunaGGUFResidentSession, args: argparse.Namespace):
+def _session(
+    owner: LagunaGGUFResidentSession,
+    args: argparse.Namespace,
+    *,
+    swa_prefill_variant: str | None = None,
+):
     assert owner.weights is not None
     return LagunaGGUFResidentSession(
         resident_weights=owner.weights,
@@ -158,6 +163,7 @@ def _session(owner: LagunaGGUFResidentSession, args: argparse.Namespace):
         compiler_version=_compiler_version(args.compiler_version_file),
         require_cached_build=args.require_cached_build,
         prefill_chunk_size=args.chunk_size,
+        swa_prefill_variant=swa_prefill_variant,
     )
 
 
@@ -233,14 +239,23 @@ def _normalized_log_probs(values: np.ndarray) -> np.ndarray:
     return logits - (maximum + math.log(float(np.exp(logits - maximum).sum())))
 
 
-def _oracle_gate(owner: LagunaGGUFResidentSession, args: argparse.Namespace) -> dict[str, Any]:
+def _oracle_gate(
+    owner: LagunaGGUFResidentSession,
+    args: argparse.Namespace,
+    *,
+    swa_prefill_variant: str | None = None,
+) -> dict[str, Any]:
     template = json.loads(args.template.read_text(encoding="utf-8"))
     oracle = json.loads(args.oracle.read_text(encoding="utf-8"))
     prompt_case = next(
         case for case in template["cases"] if case["name"] == oracle["prompt"]["case"]
     )
     prompt_ids = tuple(int(value) for value in prompt_case["token_ids"])
-    session = _session(owner, args)
+    session = _session(
+        owner,
+        args,
+        swa_prefill_variant=swa_prefill_variant,
+    )
     try:
         result = session.prefill(prompt_ids, use_bulk=True)
         logits = np.empty(session.config.vocab_size, dtype=np.float32)

@@ -96,12 +96,27 @@ F16_WMMA_COMP_SWA_COMPARISON = CategoryComparison(
     screen_requires_model=False,
     screen_candidate_variant="wmma_comp",
 )
+SWA_QROW2_COMPARISON = CategoryComparison(
+    name="swa_qrow2",
+    modes=("wave32_exact", "qrow2_32_exact"),
+    aggregate_key="qrow2_32_exact_vs_wave32_exact",
+    screen_kind="hipengine_laguna_prefill_ar_o5_swa_qrow2_ab",
+    screen_status="retained",
+    screen_decision_key="promotion",
+    require_positive_wall=True,
+    execution_mode="swa_prefill",
+)
+_SWA_PREFILL_VARIANTS = {
+    "wave32_exact": "swa_context_rows_wave32_exact_spans",
+    "qrow2_32_exact": "swa_context_rows_qrow2_32_exact_spans",
+}
 _COMPARISONS = {
     comparison.name: comparison
     for comparison in (
         GROUPED_DOWN_COMPARISON,
         GROUPED_COMBINE_COMPARISON,
         F16_WMMA_COMP_SWA_COMPARISON,
+        SWA_QROW2_COMPARISON,
     )
 }
 # Backward-compatible test/helper aliases for the retained grouped-down gate.
@@ -198,6 +213,12 @@ def _session_for_mode(
 ) -> LagunaGGUFResidentSession:
     if mode not in comparison.modes:
         raise ValueError(f"unknown Laguna {comparison.name} mode {mode!r}")
+    if comparison.execution_mode == "swa_prefill":
+        return _session(
+            owner,
+            args,
+            swa_prefill_variant=_SWA_PREFILL_VARIANTS[mode],
+        )
     session = _session(owner, args)
     if comparison.execution_mode == "selected_down":
         session.set_selected_down_mode(mode)
@@ -617,9 +638,13 @@ def _promotion_gate(
                 "every M16-512 full/SWA family faster and M128 weighted >=2x"
                 if comparison.execution_mode == "f16_prefill"
                 else (
-                    "direct fallback >=0.995x; rows>=32 grouped shapes and aggregate faster"
-                    if comparison.require_positive_wall
-                    else "each shape >=0.995x; aggregate >=0.998x; exact micro win"
+                    "exact matrix512/attention128 512/1K/4K output, KV, and wall win"
+                    if comparison.execution_mode == "swa_prefill"
+                    else (
+                        "direct fallback >=0.995x; rows>=32 grouped shapes and aggregate faster"
+                        if comparison.require_positive_wall
+                        else "each shape >=0.995x; aggregate >=0.998x; exact micro win"
+                    )
                 )
             ),
             "quality": "KL <= 0.05 and top-1 >= 90% suite-wide and per category",
@@ -804,6 +829,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         if comparison.execution_mode == "f16_prefill":
             with _f16_prefill_mode(comparison.modes[1]):
                 oracle = _oracle_gate(owner, args)
+        elif comparison.execution_mode == "swa_prefill":
+            oracle = _oracle_gate(
+                owner,
+                args,
+                swa_prefill_variant=_SWA_PREFILL_VARIANTS[comparison.modes[1]],
+            )
         else:
             oracle = _oracle_gate(owner, args)
         resident_nbytes = owner.resident_nbytes

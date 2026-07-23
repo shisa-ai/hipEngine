@@ -2550,7 +2550,10 @@ kernel-sum ceiling; global alone is **1.271x** and SWA alone **1.157x**. Evidenc
   by **1.118/1.217/1.145/1.092/1.163x**. A registered threshold wrapper keeps
   wave32 below 32 rows. This remains an explicit candidate until a clean
   matrix512/attention128 full-model screen and complete category/state/KV/
-  lifecycle gate pass; gfx1151's default is unchanged.
+  lifecycle gate pass; gfx1151's default is unchanged. The first clean
+  one-repeat model screen is exact for complete logits/hidden/KV/span/cursor and
+  improves 512/1K/4K prefill **1.339%/1.253%/1.079%**. It admits the required
+  repeated/context/category gates but is not by itself a retained claim.
 - [ ] For global layers, screen the existing torch-free AOTriton adapter as a
   ceiling, then implement/adapt a tiled causal GQA route only if the measured
   threshold warrants it. The rejected paired-head exact kernel is not a Flash

@@ -6,10 +6,12 @@ from types import SimpleNamespace
 
 import pytest
 
+import scripts.laguna_grouped_down_category_bench as benchmark
 from scripts.laguna_grouped_down_category_bench import (
     F16_WMMA_COMP_SWA_COMPARISON,
     GROUPED_COMBINE_COMPARISON,
     MODES,
+    SWA_QROW2_COMPARISON,
     _aggregate,
     _load_shape_screen,
     _mode_order,
@@ -152,6 +154,52 @@ def test_grouped_combine_category_loads_matching_screen(tmp_path) -> None:
     assert result["pass"] is True
     assert result["comparison"] == "grouped_combine"
     assert result["aggregate_speedup"] == pytest.approx(0.9997)
+
+
+def test_swa_qrow2_category_resolves_explicit_session_variants(monkeypatch) -> None:
+    calls: list[str | None] = []
+
+    def fake_session(_owner, _args, *, swa_prefill_variant=None):
+        calls.append(swa_prefill_variant)
+        return SimpleNamespace()
+
+    monkeypatch.setattr(benchmark, "_session", fake_session)
+    for mode in SWA_QROW2_COMPARISON.modes:
+        benchmark._session_for_mode(
+            object(),
+            SimpleNamespace(),
+            mode,
+            comparison=SWA_QROW2_COMPARISON,
+        )
+
+    assert calls == [
+        "swa_context_rows_wave32_exact_spans",
+        "swa_context_rows_qrow2_32_exact_spans",
+    ]
+
+
+def test_swa_qrow2_category_loads_exact_full_model_screen(tmp_path) -> None:
+    screen = tmp_path / "swa-qrow2-screen.json"
+    artifact = {
+        "kind": SWA_QROW2_COMPARISON.screen_kind,
+        "status": SWA_QROW2_COMPARISON.screen_status,
+        "pass": True,
+        "promotion": {"pass": True, "failed_checks": []},
+        "model": {"sha256": "model-sha"},
+        "repo": {"revision": "candidate-revision"},
+    }
+    screen.write_text(json.dumps(artifact), encoding="utf-8")
+    args = SimpleNamespace(shape_screen=screen, model_sha256="model-sha")
+
+    result = _load_shape_screen(args, comparison=SWA_QROW2_COMPARISON)
+
+    assert result["pass"] is True
+    assert result["comparison"] == "swa_qrow2"
+    assert SWA_QROW2_COMPARISON.modes == ("wave32_exact", "qrow2_32_exact")
+
+    artifact["model"]["sha256"] = "wrong-model"
+    screen.write_text(json.dumps(artifact), encoding="utf-8")
+    assert _load_shape_screen(args, comparison=SWA_QROW2_COMPARISON)["pass"] is False
 
 
 def test_f16_wmma_comp_swa_category_requires_matching_compensated_screen(

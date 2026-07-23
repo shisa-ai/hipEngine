@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 import scripts.laguna_target_ar_bench as benchmark
@@ -126,6 +128,36 @@ def test_paired_correctness_requires_serial_bulk_and_repeat_determinism() -> Non
     failed = _paired_correctness(rows, (4,))
     assert failed["pass"] is False
     assert failed["same_mode_repeat_deterministic"] is False
+
+
+def test_session_forwards_explicit_swa_prefill_variant(monkeypatch) -> None:
+    captured = {}
+
+    def fake_session(**kwargs):
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(benchmark, "LagunaGGUFResidentSession", fake_session)
+    owner = SimpleNamespace(weights=object(), runtime=object())
+    args = SimpleNamespace(
+        context_length=4096,
+        backend="hip_gfx1151",
+        compiler_version_file=None,
+        require_cached_build=True,
+        chunk_size=128,
+    )
+
+    benchmark._session(
+        owner,
+        args,
+        swa_prefill_variant="swa_context_rows_qrow2_32_exact_spans",
+    )
+
+    assert captured["swa_prefill_variant"] == (
+        "swa_context_rows_qrow2_32_exact_spans"
+    )
+    assert captured["resident_weights"] is owner.weights
+    assert captured["runtime"] is owner.runtime
 
 
 def test_f16_prefill_configuration_records_requested_and_resolved_strategy(
