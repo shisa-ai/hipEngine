@@ -1481,6 +1481,20 @@ The canonical D7 wall is **21.548 ms/token**, still **1.548 ms** above the 20-ms
 50 tok/s target. The clean short kernel sum is **17.268 ms** and median span is
 **20.715 ms**, so the target remains physically supported rather than achieved.
 
+A code-identical D7 residual analysis ranks short Q5 attention output, selected
+IQ2 dual+SiLU, retained Q5 query/gate, weighted IQ3 down, and token4 SWA at
+**2.646/2.317/2.171/2.134/2.119 ms/token**. The first family is 47 raw-Q5
+BF16-output projections at N3072 and K6144/K9216, local128/VGPR72/LDS1024/
+scratch0. Its current pack8 blocks reread a **304.35 MB/token** BF16 activation
+proxy around **836.96 MB/token** of encoded weights. One exact 16-output block
+would halve those activation reads and reduce the combined proxy **13.33%**;
+a traffic-proportional model saves **0.353 ms/token** and reaches only **47.181
+tok/s**, so this is a bounded D8 screen rather than a claim or a route to 50 by
+itself. Tile16 must be BF16-bit exact and improve both actual global/SWA shapes;
+tile32 is secondary and must also beat tile16 without spill. Near-4K remains
+global-attention dominated at **22.658 ms/token**. [D7 residual
+artifact](results/2026-07-23-gfx1100-laguna-q2-xl-d7-residual-profile.json).
+
 No Q2-to-Q4 speed ratio is claimed: the retained Q4_K_M controls use a
 different tensor recipe on gfx1151.
 
