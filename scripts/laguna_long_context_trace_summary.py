@@ -69,13 +69,17 @@ def _kernel_family(name: str) -> str:
         return "embedding"
     if "argmax_stage" in lowered:
         return "lm_head_argmax"
-    if "laguna_f16w_" in lowered and (
-        "gemv_kernel" in lowered or "tiled_exact_kernel" in lowered
+    if "laguna_f16w_" in lowered and any(
+        marker in lowered for marker in ("gemv_kernel", "tiled_exact_kernel", "wmma")
     ):
         return "source_f16_projection"
-    if "q4_k_t16_selected_dual" in lowered and "gemv_kernel" in lowered:
+    if "q4_k_t16_selected_dual" in lowered and any(
+        marker in lowered for marker in ("gemv_kernel", "grouped_smallm_kernel")
+    ):
         return "selected_q4_gate_up"
-    if "qk_t16_selected" in lowered and "gemv_kernel" in lowered:
+    if "qk_t16_selected" in lowered and any(
+        marker in lowered for marker in ("gemv_kernel", "grouped_smallm_kernel")
+    ):
         return "selected_q4_q6_down"
     if "laguna_global_attention_prefill" in lowered:
         return "global_attention"
@@ -117,6 +121,7 @@ def _kernel_family(name: str) -> str:
         for marker in (
             "silu",
             "weighted_sum",
+            "weighted_lanes",
             "bf16_add",
             "elementwise",
             "residual",
