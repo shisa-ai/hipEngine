@@ -42,6 +42,8 @@ from hipengine.tokenization.gguf import LagunaGGUFTokenizer
 _LAGUNA_INITIAL_CONTEXT = 4_096
 _LAGUNA_QUANT = "gguf_q4_k_m"
 _LAGUNA_EXECUTION_PATH = "laguna_eager_c1"
+_LAGUNA_RESIDENT_SESSION_TTL_SECONDS = 900.0
+_SAFE_RESIDENT_CACHE_ACTIONS = frozenset(("append_visible_only", "append_all"))
 
 
 @dataclass(frozen=True)
@@ -73,6 +75,9 @@ class LagunaGGUFGenerator:
     _weights: LagunaGGUFResidentWeights | None = field(default=None, init=False, repr=False)
     _session: LagunaGGUFResidentSession | None = field(default=None, init=False, repr=False)
     _session_recreate_pending: bool = field(default=False, init=False, repr=False)
+    _retained_session_key: str | None = field(default=None, init=False, repr=False)
+    _retained_token_ids: tuple[int, ...] = field(default=(), init=False, repr=False)
+    _retained_at: float | None = field(default=None, init=False, repr=False)
     _load_seconds: float | None = field(default=None, init=False, repr=False)
     _lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
     _closed: bool = field(default=False, init=False, repr=False)
@@ -85,6 +90,7 @@ class LagunaGGUFGenerator:
 
     supports_speculative_mtp = False
     supports_stream_many = False
+    supports_resident_session_kv = True
     supports_stream_logprobs = False
     chat_template_family = "poolside_v1"
     reasoning_parser_name = "poolside_v1"
@@ -386,6 +392,7 @@ class LagunaGGUFGenerator:
             session, self._session = self._session, None
             weights, self._weights = self._weights, None
             self._session_recreate_pending = False
+            self._clear_retained_session_locked()
             error: BaseException | None = None
             if provider is not None:
                 try:
@@ -455,15 +462,19 @@ class LagunaGGUFGenerator:
         with self._lock:
             self._prepare_locked()
             raise_if_generation_deadline_expired(request)
-            session, session_prepare_seconds, session_prepare_mode = (
-                self._acquire_session_locked()
-            )
+            (
+                session,
+                prefill_ids,
+                prefix_reused_tokens,
+                session_prepare_seconds,
+                session_prepare_mode,
+            ) = self._acquire_session_locked(request, prompt_ids)
             generated: list[int] = []
             prefill_started = time.perf_counter()
             prefill_seconds = 0.0
             decode_seconds = 0.0
             try:
-                result = session.prefill(prompt_ids)
+                result = session.prefill(prefill_ids)
                 prefill_seconds = time.perf_counter() - prefill_started
                 raise_if_generation_deadline_expired(request)
                 for step_index in range(int(request.max_tokens)):
@@ -483,7 +494,15 @@ class LagunaGGUFGenerator:
                         prompt_timing=prompt_timing,
                         session_prepare_seconds=session_prepare_seconds,
                         session_prepare_mode=session_prepare_mode,
+                        prefix_reused_tokens=prefix_reused_tokens,
                     )
+                    if finish is not None:
+                        self._retain_session_state_locked(
+                            session,
+                            request,
+                            prompt_ids,
+                            generated,
+                        )
                     yield _LagunaTokenStep(
                         token_id=token_id,
                         generated_ids=tuple(generated),
@@ -552,7 +571,9 @@ class LagunaGGUFGenerator:
 
     def _acquire_session_locked(
         self,
-    ) -> tuple[LagunaGGUFResidentSession, float, str]:
+        request: GenerationRequest,
+        prompt_ids: tuple[int, ...],
+    ) -> tuple[LagunaGGUFResidentSession, tuple[int, ...], int, float, str]:
         started = time.perf_counter()
         session = self._session
         if session is None:
@@ -563,16 +584,83 @@ class LagunaGGUFGenerator:
                 self._session_recreate_pending = True
                 raise
             self._session_recreate_pending = False
+            self._clear_retained_session_locked()
         else:
+            reused_tokens = self._reusable_prefix_tokens_locked(
+                session,
+                request,
+                prompt_ids,
+            )
+            if reused_tokens:
+                assert self._runtime is not None
+                self._runtime.device_synchronize()
+                return (
+                    session,
+                    prompt_ids[reused_tokens:],
+                    reused_tokens,
+                    time.perf_counter() - started,
+                    "reuse",
+                )
             mode = "reset"
             try:
                 session.reset_state()
                 assert self._runtime is not None
                 self._runtime.device_synchronize()
+                self._clear_retained_session_locked()
             except BaseException:
                 self._retire_session_locked(session, suppress_errors=True)
                 raise
-        return session, time.perf_counter() - started, mode
+        return session, prompt_ids, 0, time.perf_counter() - started, mode
+
+    def _reusable_prefix_tokens_locked(
+        self,
+        session: LagunaGGUFResidentSession,
+        request: GenerationRequest,
+        prompt_ids: tuple[int, ...],
+    ) -> int:
+        key = request.resident_session_key
+        retained = self._retained_token_ids
+        retained_at = self._retained_at
+        if (
+            key is None
+            or key != self._retained_session_key
+            or not retained
+            or retained_at is None
+            or time.monotonic() - retained_at > _LAGUNA_RESIDENT_SESSION_TTL_SECONDS
+            or len(prompt_ids) <= len(retained)
+            or prompt_ids[: len(retained)] != retained
+            or int(getattr(session, "position", -1)) != len(retained) - 1
+        ):
+            return 0
+        return len(retained)
+
+    def _retain_session_state_locked(
+        self,
+        session: LagunaGGUFResidentSession,
+        request: GenerationRequest,
+        prompt_ids: tuple[int, ...],
+        generated_ids: Sequence[int],
+    ) -> None:
+        key = request.resident_session_key
+        if (
+            key is None
+            or request.resident_session_cache_action not in _SAFE_RESIDENT_CACHE_ACTIONS
+            or not generated_ids
+        ):
+            self._clear_retained_session_locked()
+            return
+        retained = (*prompt_ids, *(int(token) for token in generated_ids[:-1]))
+        if int(getattr(session, "position", -1)) != len(retained) - 1:
+            self._clear_retained_session_locked()
+            return
+        self._retained_session_key = str(key)
+        self._retained_token_ids = tuple(retained)
+        self._retained_at = time.monotonic()
+
+    def _clear_retained_session_locked(self) -> None:
+        self._retained_session_key = None
+        self._retained_token_ids = ()
+        self._retained_at = None
 
     def _retire_session_locked(
         self,
@@ -583,6 +671,7 @@ class LagunaGGUFGenerator:
         if self._session is session:
             self._session = None
         self._session_recreate_pending = True
+        self._clear_retained_session_locked()
         try:
             session.close()
         except BaseException:
@@ -837,6 +926,7 @@ def _laguna_telemetry(
     prompt_timing: Mapping[str, float],
     session_prepare_seconds: float,
     session_prepare_mode: str,
+    prefix_reused_tokens: int = 0,
 ) -> GenerationTelemetry:
     suppressed = 0 if finish is None else _suppressed_suffix_length(finish)
     answer_tokens = max(0, len(generated_ids) - suppressed)
@@ -880,6 +970,8 @@ def _laguna_telemetry(
             "model": "laguna_gguf",
             "quant": _LAGUNA_QUANT,
             "session_prepare_mode": str(session_prepare_mode),
+            "resident_kv_reused": bool(prefix_reused_tokens),
+            "prefix_reused_tokens": max(0, int(prefix_reused_tokens)),
         },
     )
 

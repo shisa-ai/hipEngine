@@ -84,6 +84,12 @@ class SamplingParams:
     row_seeds: tuple[int, ...] = ()
     deadline_at: float | None = None
     cancellation_token: Any | None = field(default=None, compare=False, repr=False)
+    resident_session_key: str | None = field(default=None, compare=False, repr=False)
+    resident_session_cache_action: str | None = field(
+        default=None,
+        compare=False,
+        repr=False,
+    )
     logprobs: bool = False
     top_logprobs: int = 0
 
@@ -155,6 +161,18 @@ class SamplingParams:
         object.__setattr__(self, "row_seeds", tuple(int(seed) for seed in self.row_seeds))
         object.__setattr__(self, "deadline_at", None if self.deadline_at is None else float(self.deadline_at))
         object.__setattr__(self, "cancellation_token", self.cancellation_token)
+        object.__setattr__(
+            self,
+            "resident_session_key",
+            None if self.resident_session_key is None else str(self.resident_session_key),
+        )
+        object.__setattr__(
+            self,
+            "resident_session_cache_action",
+            None
+            if self.resident_session_cache_action is None
+            else str(self.resident_session_cache_action),
+        )
         object.__setattr__(self, "logprobs", bool(self.logprobs))
         object.__setattr__(self, "top_logprobs", int(self.top_logprobs))
         validate_sampling_params(self)
@@ -788,6 +806,8 @@ def _generation_request(prompt_tuple: tuple[Any, ...], params: SamplingParams):
         row_seeds=params.row_seeds,
         deadline_at=params.deadline_at,
         cancellation_token=params.cancellation_token,
+        resident_session_key=params.resident_session_key,
+        resident_session_cache_action=params.resident_session_cache_action,
         logprobs=params.logprobs,
         top_logprobs=params.top_logprobs,
     )

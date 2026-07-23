@@ -1397,7 +1397,7 @@ def _replay_capability_snapshot(config: ServerConfig, *, engine: Any | None = No
         },
         "sessions": {
             "resident_context": True,
-            "commit_policy": _session_commit_policy_capability(),
+            "commit_policy": _session_commit_policy_capability(engine=engine),
             "continuations": _session_continuation_capability(),
             "metadata": _session_metadata_capability(config.max_chat_sessions),
         },
@@ -1407,18 +1407,25 @@ def _replay_capability_snapshot(config: ServerConfig, *, engine: Any | None = No
     }
 
 
-def _session_commit_policy_capability() -> dict[str, Any]:
+def _session_commit_policy_capability(*, engine: Any | None = None) -> dict[str, Any]:
+    target = _model_chat_protocol_target(engine)
+    resident_kv = bool(getattr(target, "supports_resident_session_kv", False))
     return {
         "supported": True,
         "stateful": True,
-        "resident_state_reuse": False,
-        "storage": "app_local_transcript",
+        "resident_state_reuse": resident_kv,
+        "storage": (
+            "app_local_transcript_plus_single_resident_kv"
+            if resident_kv
+            else "app_local_transcript"
+        ),
         "default": "append_none",
         "stateful_default": _SESSION_STATEFUL_DEFAULT_COMMIT,
         "modes": list(_SESSION_COMMIT_MODES),
         "supported_endpoints": ["chat_completions"],
-        "supported_streaming": False,
-        "resident_kv_commit": False,
+        "supported_streaming": resident_kv,
+        "resident_kv_commit": resident_kv,
+        **({"resident_kv_capacity": 1} if resident_kv else {}),
         "visible_only_reprefill": False,
         "visible_only_replay": "rerender_app_local_transcript",
         "downgrade_visible_only_on": sorted(_SESSION_UNSAFE_VISIBLE_REASONS),
@@ -3500,7 +3507,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             }
         chat_request = _chat_request_from_diagnostic(config, request)
         _validate_session_request(chat_request)
-        unsupported_param = _unsupported_agentic_request_param(chat_request)
+        unsupported_param = _unsupported_agentic_request_param(
+            chat_request,
+            engine=engine,
+        )
         if unsupported_param is not None:
             raise OpenAIHTTPError(
                 400,
@@ -4088,6 +4098,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         deadline_at: float | None = None,
         cancellation_token: GenerationCancellationToken | None = None,
         prepared_thinking: _ThinkingControl | None = None,
+        resident_session_key: str | None = None,
     ) -> SamplingParams:
         stop_token_ids, stop_token_sequences = _stop_tokens_from_stop(request.stop, engine)
         uses_stored_chat_prompt = isinstance(request, ChatCompletionRequest) and request.continuation_id is not None
@@ -4184,6 +4195,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             seed=request.seed,
             deadline_at=deadline_at,
             cancellation_token=cancellation_token,
+            resident_session_key=resident_session_key,
+            resident_session_cache_action=(
+                _session_cache_action(request)
+                if resident_session_key is not None
+                and isinstance(request, ChatCompletionRequest)
+                else None
+            ),
             **thinking_budget,
         )
 
@@ -4205,6 +4223,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         cancellation_token: GenerationCancellationToken | None = None,
         fit_context_extra: Mapping[str, Any] | None = None,
         prepared_thinking: _ThinkingControl | None = None,
+        resident_session_key: str | None = None,
     ) -> _GeneratedBatch:
         generation_shape: dict[str, Any] | None = None
         try:
@@ -4225,6 +4244,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     deadline_at=deadline_at,
                     cancellation_token=cancellation_token,
                     prepared_thinking=prepared_thinking,
+                    resident_session_key=resident_session_key,
                 )
                 if _request_n(request) > 1:
                     sampling = replace(
@@ -4374,6 +4394,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         *,
         fit_context_extra: Mapping[str, Any] | None = None,
         prepared_thinking: _ThinkingControl | None = None,
+        resident_session_key: str | None = None,
     ) -> _GeneratedBatch:
         active_control = control or _request_control(config, request)
         try:
@@ -4385,6 +4406,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     cancellation_token=active_control.cancellation_token,
                     fit_context_extra=fit_context_extra,
                     prepared_thinking=prepared_thinking,
+                    resident_session_key=resident_session_key,
                 ),
                 active_control,
             )
@@ -5466,7 +5488,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             },
             "sessions": {
                 "resident_context": True,
-                "commit_policy": _session_commit_policy_capability(),
+                "commit_policy": _session_commit_policy_capability(engine=engine),
                 "continuations": _session_continuation_capability(),
                 "metadata": _session_metadata_capability(config.max_chat_sessions),
             },
@@ -5854,6 +5876,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 else _prepare_prompt_input(get_llm(), prompt)
             )
             fit_context_extra = prepared_prompt.fit_context_extra
+            resident_session_key = (
+                _resident_chat_session_key(auth_principal, request)
+                if _request_n(request) == 1
+                else None
+            )
             if request.stream:
                 control = replace(control, disconnected=None)
                 live_chat_logprobs = (
@@ -5874,6 +5901,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             prompt,
                             generation_prompt,
                             prepared_prompt.thinking,
+                            resident_session_key,
                             request,
                             control,
                             raw_request,
@@ -5891,6 +5919,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     control,
                     fit_context_extra=fit_context_extra,
                     prepared_thinking=prepared_prompt.thinking,
+                    resident_session_key=resident_session_key,
                 )
             except OpenAIHTTPError as exc:
                 await commit_chat_session_error(
@@ -6070,6 +6099,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         prompt: str,
         generation_prompt: PromptInput,
         prepared_thinking: _ThinkingControl | None,
+        resident_session_key: str | None,
         request: ChatCompletionRequest,
         control: _RequestControl,
         raw_request: Request,
@@ -6105,6 +6135,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             deadline_at=control.deadline_at,
                             cancellation_token=control.cancellation_token,
                             prepared_thinking=prepared_thinking,
+                            resident_session_key=resident_session_key,
                         )
                         sampling = replace(
                             sampling,
@@ -6291,6 +6322,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 request,
                 control,
                 prepared_thinking=prepared_thinking,
+                resident_session_key=resident_session_key,
             )
             scheduler_chunks_by_index = _scheduler_token_chunks_by_request(batch.scheduler_token_chunks)
             if include_hipengine:
@@ -6611,6 +6643,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         prompt: str,
         generation_prompt: PromptInput,
         prepared_thinking: _ThinkingControl | None,
+        resident_session_key: str | None,
         request: ChatCompletionRequest,
         control: _RequestControl,
         raw_request: Request,
@@ -6717,6 +6750,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         deadline_at=control.deadline_at,
                         cancellation_token=control.cancellation_token,
                         prepared_thinking=prepared_thinking,
+                        resident_session_key=resident_session_key,
                     )
                     generation_route = _generation_route_for_request(
                         config,
@@ -9947,7 +9981,7 @@ def _validate_generation_request(
             extra=extra,
         )
     _validate_session_request(request)
-    unsupported_param = _unsupported_agentic_request_param(request)
+    unsupported_param = _unsupported_agentic_request_param(request, engine=engine)
     if unsupported_param is not None:
         raise OpenAIHTTPError(
             400,
@@ -11057,14 +11091,24 @@ def _generation_route_for_request(
     )
 
 
-def _unsupported_agentic_request_param(request: CompletionRequest | ChatCompletionRequest) -> str | None:
+def _unsupported_agentic_request_param(
+    request: CompletionRequest | ChatCompletionRequest,
+    *,
+    engine: Any | None = None,
+) -> str | None:
     session = getattr(request, "session", None)
     if session is not None:
         if isinstance(session, Mapping):
             if "id" in session:
                 if not isinstance(request, ChatCompletionRequest):
                     return "session.id"
-                if request.stream:
+                if request.stream and not bool(
+                    getattr(
+                        _model_chat_protocol_target(engine),
+                        "supports_resident_session_kv",
+                        False,
+                    )
+                ):
                     return "stream"
                 if _request_n(request) != 1:
                     return "n"
@@ -11393,6 +11437,17 @@ def _session_id(request: CompletionRequest | ChatCompletionRequest) -> str | Non
             param="session.id",
         )
     return raw_id.strip()
+
+
+def _resident_chat_session_key(
+    auth_principal: str,
+    request: ChatCompletionRequest,
+) -> str | None:
+    session_id = _session_id(request)
+    if session_id is None:
+        return None
+    payload = f"{str(auth_principal)}\0{session_id}".encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
 
 
 def _session_cache_action(request: CompletionRequest | ChatCompletionRequest) -> str | None:

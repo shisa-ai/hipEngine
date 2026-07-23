@@ -101,6 +101,7 @@ class _FakeSession:
         self.runtime = runtime
         self.sequence: tuple[int, ...] | None = None
         self.index = 0
+        self.position = -1
         self.closed = False
         self.events.append(("open", self.context_length, self.backend))
 
@@ -112,6 +113,7 @@ class _FakeSession:
         self.events.append(("prefill", tuple(int(token) for token in token_ids)))
         self.sequence = self.sequences.pop(0)
         self.index = 0
+        self.position += len(tuple(token_ids))
         if self.prefill_hook is not None:
             self.prefill_hook()
         token = self.sequence[self.index]
@@ -123,12 +125,14 @@ class _FakeSession:
         assert self.sequence is not None
         token = self.sequence[self.index]
         self.index += 1
+        self.position += 1
         return self._result(token)
 
     def reset_state(self) -> None:
         self.events.append(("reset",))
         self.sequence = None
         self.index = 0
+        self.position = -1
 
     def close(self) -> None:
         self.closed = True
@@ -314,6 +318,79 @@ def test_laguna_prepared_prompt_preserves_server_preprocessing_telemetry(generat
     assert output.telemetry.timing["prompt_encode_ms"] == 1.25
     assert output.telemetry.timing["render_ms"] == 0.75
     assert output.telemetry.timing["admission_prepare_ms"] == 0.5
+
+
+def test_laguna_stateful_session_reuses_exact_committed_prefix_and_pending_token(generator) -> None:
+    _FakeSession.sequences = [(10, 11), (13,)]
+    session_fields = {
+        "resident_session_key": "principal-session-hash",
+        "resident_session_cache_action": "append_visible_only",
+    }
+
+    first = generator.instance.generate_detailed(
+        _request(max_tokens=2, **session_fields)
+    )[0]
+    second = generator.instance.generate_detailed(
+        _request(
+            prompts=((7, 8, 10, 11, 12),),
+            max_tokens=1,
+            **session_fields,
+        )
+    )[0]
+
+    assert first.generated_token_ids == (10, 11)
+    assert second.generated_token_ids == (13,)
+    assert [event for event in _FakeSession.events if event[0] == "prefill"] == [
+        ("prefill", (7, 8)),
+        ("prefill", (11, 12)),
+    ]
+    assert not any(event[0] == "reset" for event in _FakeSession.events)
+    assert second.telemetry is not None
+    assert second.telemetry.diagnostics is not None
+    assert second.telemetry.diagnostics["session_prepare_mode"] == "reuse"
+    assert second.telemetry.diagnostics["resident_kv_reused"] is True
+    assert second.telemetry.diagnostics["prefix_reused_tokens"] == 3
+
+
+@pytest.mark.parametrize(
+    ("second_key", "second_prompt", "first_cache_action"),
+    [
+        ("principal-session-hash", (7, 9, 10, 11, 12), "append_visible_only"),
+        ("different-principal-or-session", (7, 8, 10, 11, 12), "append_visible_only"),
+        ("principal-session-hash", (7, 8, 10, 11, 12), "append_none"),
+    ],
+)
+def test_laguna_stateful_session_falls_back_to_reset_on_unsafe_reuse(
+    generator,
+    second_key,
+    second_prompt,
+    first_cache_action,
+) -> None:
+    _FakeSession.sequences = [(10, 11), (13,)]
+    generator.instance.generate_detailed(
+        _request(
+            max_tokens=2,
+            resident_session_key="principal-session-hash",
+            resident_session_cache_action=first_cache_action,
+        )
+    )
+
+    second = generator.instance.generate_detailed(
+        _request(
+            prompts=(second_prompt,),
+            max_tokens=1,
+            resident_session_key=second_key,
+            resident_session_cache_action="append_visible_only",
+        )
+    )[0]
+
+    assert ("reset",) in _FakeSession.events
+    assert ("prefill", second_prompt) in _FakeSession.events
+    assert second.telemetry is not None
+    assert second.telemetry.diagnostics is not None
+    assert second.telemetry.diagnostics["session_prepare_mode"] == "reset"
+    assert second.telemetry.diagnostics["resident_kv_reused"] is False
+    assert second.telemetry.diagnostics["prefix_reused_tokens"] == 0
 
 
 def test_laguna_prepare_eagerly_materializes_pooled_session(generator) -> None:
