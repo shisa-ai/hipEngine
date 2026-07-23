@@ -172,13 +172,38 @@ class FakeLLM:
         return len(text.split())
 
     def tokenize(self, text: str) -> tuple[int, ...]:
-        self.tokenize_calls.append(str(text))
         if self.token_map is None:
             raise NotImplementedError("fake tokenization is not configured")
-        return tuple(self.token_map[str(text)])
+        prompt = str(text)
+        token_ids = tuple(self.token_map[prompt])
+        self.tokenize_calls.append(prompt)
+        return token_ids
 
     def detokenize(self, token_ids, *, skip_special: bool = False) -> str:
         return " ".join(f"T{int(token)}" for token in token_ids)
+
+
+class PromptPreparingFakeLLM(FakeLLM):
+    def __init__(self, *, stream: bool = False) -> None:
+        details = [
+            GenerationOutput(text="prepared reply", generated_token_ids=(901, 902))
+        ]
+        super().__init__(
+            stream_chunks=["prepared reply"] if stream else None,
+            detailed_outputs=None if stream else details,
+        )
+        self.count_token_calls: list[str] = []
+
+    def tokenize(self, text: str) -> tuple[int, ...]:
+        prompt = str(text)
+        self.tokenize_calls.append(prompt)
+        pieces = prompt.split()
+        return tuple(range(100, 100 + max(1, len(pieces))))
+
+    def count_tokens(self, text: str) -> int:
+        prompt = str(text)
+        self.count_token_calls.append(prompt)
+        return max(1, len(prompt.split()))
 
 
 class SpeculativeMTPFakeLLM(FakeLLM):
@@ -5461,6 +5486,115 @@ def test_request_control_maps_http_disconnect_to_cancelled_error() -> None:
             raise AssertionError("disconnect did not cancel request")
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    ("endpoint", "payload", "stream", "explicit_max_tokens"),
+    [
+        (
+            "/v1/completions",
+            {"model": "fake-model", "prompt": "hello prepared prompt", "max_tokens": 2},
+            False,
+            True,
+        ),
+        (
+            "/v1/completions",
+            {"model": "fake-model", "prompt": "hello prepared prompt", "stream": True},
+            True,
+            False,
+        ),
+        (
+            "/v1/chat/completions",
+            {
+                "model": "fake-model",
+                "messages": [{"role": "user", "content": "hello prepared prompt"}],
+                "max_tokens": 2,
+            },
+            False,
+            True,
+        ),
+        (
+            "/v1/chat/completions",
+            {
+                "model": "fake-model",
+                "messages": [{"role": "user", "content": "hello prepared prompt"}],
+                "stream": True,
+            },
+            True,
+            False,
+        ),
+    ],
+)
+def test_server_prepares_each_text_prompt_once_for_generation(
+    endpoint: str,
+    payload: dict[str, Any],
+    stream: bool,
+    explicit_max_tokens: bool,
+) -> None:
+    from hipengine.generation.registry import PreparedPromptInput
+
+    fake = PromptPreparingFakeLLM(stream=stream)
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            eager_load=False,
+            max_context_tokens=64,
+            chat_default_max_tokens=None,
+        ),
+        llm=fake,
+    )
+    response = TestClient(app).post(endpoint, json=payload)
+
+    assert response.status_code == 200
+    assert len(fake.calls) == 1
+    prepared = fake.calls[0][0][0]
+    assert isinstance(prepared, PreparedPromptInput)
+    assert tuple(prepared) == prepared.token_ids
+    assert str(prepared) == prepared.source_text
+    prompt_tokenize_calls = [
+        text for text in fake.tokenize_calls if "hello prepared prompt" in text
+    ]
+    prompt_count_calls = [
+        text for text in fake.count_token_calls if "hello prepared prompt" in text
+    ]
+    assert prompt_tokenize_calls == [prepared.source_text]
+    assert prompt_count_calls == []
+    assert prepared.tokenize_ms >= 0.0
+    assert fake.calls[0][1].max_tokens == (
+        2 if explicit_max_tokens else (16 if endpoint == "/v1/completions" else 64 - len(prepared) - 1)
+    )
+
+
+def test_server_reuses_one_prepared_prompt_for_n_choices() -> None:
+    from hipengine.generation.registry import PreparedPromptInput
+
+    fake = PromptPreparingFakeLLM()
+    fake.detailed_outputs = [
+        GenerationOutput(text="first", generated_token_ids=(901,)),
+        GenerationOutput(text="second", generated_token_ids=(902,)),
+    ]
+    app = create_app(
+        ServerConfig(model="fake-path", served_model_name="fake-model", eager_load=False),
+        llm=fake,
+    )
+    response = TestClient(app).post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "duplicate prepared prompt",
+            "max_tokens": 1,
+            "n": 2,
+        },
+    )
+
+    assert response.status_code == 200
+    prepared_rows = fake.calls[0][0]
+    assert len(prepared_rows) == 2
+    assert all(isinstance(row, PreparedPromptInput) for row in prepared_rows)
+    assert prepared_rows[0] is prepared_rows[1]
+    assert fake.tokenize_calls == ["duplicate prepared prompt"]
+    assert response.json()["usage"]["prompt_tokens"] == 2 * len(prepared_rows[0])
 
 
 def test_completions_endpoint_calls_llm_and_applies_stop() -> None:

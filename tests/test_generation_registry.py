@@ -10,10 +10,38 @@ from hipengine.generation import (
     DecodeState,
     FinishDetails,
     GenerationOutput,
+    GenerationRequest,
     GenerationStreamChunk,
     GenerationTelemetry,
+    PreparedPromptInput,
     TokenLogprob,
 )
+
+
+def test_prepared_prompt_survives_request_normalization_with_exact_timing() -> None:
+    prepared = PreparedPromptInput(
+        source_text="rendered prompt",
+        token_ids=(10, 20, 30),
+        tokenize_ms=1.25,
+        render_ms=0.75,
+        admission_prepare_ms=0.5,
+        tokenizer_identity="test.tokenizer",
+    )
+    request = GenerationRequest(
+        prompts=(prepared,),
+        max_tokens=1,
+        temperature=0.0,
+        top_p=1.0,
+        ignore_eos=False,
+    )
+
+    assert request.prompts == (prepared,)
+    assert request.prompts[0] is prepared
+    assert tuple(prepared) == (10, 20, 30)
+    assert prepared.token_count == 3
+    assert str(prepared) == "rendered prompt"
+    assert prepared.tokenize_ms == 1.25
+    assert request.prompt_token_ids(0, lambda _text: ()) == (10, 20, 30)
 
 
 def test_decode_state_stream_snapshot_normalizes_json_payload() -> None:

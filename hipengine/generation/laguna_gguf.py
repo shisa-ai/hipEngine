@@ -13,7 +13,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterator, Sequence
+from typing import Any, Iterator, Mapping, Sequence
 
 from hipengine.chat.poolside_v1 import (
     PoolsideV1ReasoningParser,
@@ -266,12 +266,12 @@ class LagunaGGUFGenerator:
         return [output.text for output in self.generate_detailed(request)]
 
     def generate_detailed(self, request: GenerationRequest) -> list[GenerationOutput]:
-        prompt_ids, tokenize_ms = self._prepare_request(request)
+        prompt_ids, prompt_timing = self._prepare_request(request)
         if request.max_tokens == 0:
             output = self._empty_output(
                 prompt_ids,
                 request,
-                tokenize_ms=tokenize_ms,
+                prompt_timing=prompt_timing,
             )
             self._record_outputs((output,), prompt_ids, request)
             return [output]
@@ -283,7 +283,7 @@ class LagunaGGUFGenerator:
         for step in self._token_steps(
             request,
             prompt_ids,
-            tokenize_ms=tokenize_ms,
+            prompt_timing=prompt_timing,
         ):
             generated_ids.append(step.token_id)
             final_telemetry = step.telemetry
@@ -313,12 +313,12 @@ class LagunaGGUFGenerator:
         self,
         request: GenerationRequest,
     ) -> Iterator[GenerationStreamChunk]:
-        prompt_ids, tokenize_ms = self._prepare_request(request)
+        prompt_ids, prompt_timing = self._prepare_request(request)
         if request.max_tokens == 0:
             output = self._empty_output(
                 prompt_ids,
                 request,
-                tokenize_ms=tokenize_ms,
+                prompt_timing=prompt_timing,
             )
             self._record_outputs((output,), prompt_ids, request)
             yield GenerationStreamChunk(
@@ -342,7 +342,7 @@ class LagunaGGUFGenerator:
         for step in self._token_steps(
             request,
             prompt_ids,
-            tokenize_ms=tokenize_ms,
+            prompt_timing=prompt_timing,
         ):
             pending.append(step.token_id)
             finish = step.finish_details
@@ -414,7 +414,7 @@ class LagunaGGUFGenerator:
     def _prepare_request(
         self,
         request: GenerationRequest,
-    ) -> tuple[tuple[int, ...], float]:
+    ) -> tuple[tuple[int, ...], dict[str, float]]:
         _validate_public_request(request)
         raise_if_generation_deadline_expired(request)
         prompt = request.prompts[0]
@@ -422,9 +422,24 @@ class LagunaGGUFGenerator:
             tokenize_started = time.perf_counter()
             prompt_ids = self.tokenize(prompt)
             tokenize_ms = (time.perf_counter() - tokenize_started) * 1_000.0
+            prompt_timing = {
+                "tokenize_ms": tokenize_ms,
+                "prompt_encode_ms": tokenize_ms,
+                "render_ms": 0.0,
+                "admission_prepare_ms": 0.0,
+            }
         else:
             prompt_ids = tuple(int(token) for token in prompt)
-            tokenize_ms = 0.0
+            tokenize_ms = max(0.0, float(getattr(prompt, "tokenize_ms", 0.0)))
+            prompt_timing = {
+                "tokenize_ms": tokenize_ms,
+                "prompt_encode_ms": tokenize_ms,
+                "render_ms": max(0.0, float(getattr(prompt, "render_ms", 0.0))),
+                "admission_prepare_ms": max(
+                    0.0,
+                    float(getattr(prompt, "admission_prepare_ms", 0.0)),
+                ),
+            }
         if not prompt_ids:
             raise ValueError("Laguna prompt tokenization produced no token IDs")
         required = len(prompt_ids) + max(0, int(request.max_tokens) - 1)
@@ -432,14 +447,14 @@ class LagunaGGUFGenerator:
             raise ValueError(
                 f"Laguna request requires {required} positions; public limit is {self.context_length}"
             )
-        return prompt_ids, tokenize_ms
+        return prompt_ids, prompt_timing
 
     def _token_steps(
         self,
         request: GenerationRequest,
         prompt_ids: tuple[int, ...],
         *,
-        tokenize_ms: float,
+        prompt_timing: Mapping[str, float],
     ) -> Iterator[_LagunaTokenStep]:
         with self._lock:
             self._prepare_locked()
@@ -469,7 +484,7 @@ class LagunaGGUFGenerator:
                         finish=finish,
                         prefill_seconds=prefill_seconds,
                         decode_seconds=decode_seconds,
-                        tokenize_ms=tokenize_ms,
+                        prompt_timing=prompt_timing,
                         session_prepare_seconds=session_prepare_seconds,
                         session_prepare_mode=session_prepare_mode,
                     )
@@ -583,7 +598,7 @@ class LagunaGGUFGenerator:
         prompt_ids: tuple[int, ...],
         request: GenerationRequest,
         *,
-        tokenize_ms: float,
+        prompt_timing: Mapping[str, float],
     ) -> GenerationOutput:
         finish = FinishDetails(
             reason="length",
@@ -600,7 +615,7 @@ class LagunaGGUFGenerator:
                 finish=finish,
                 prefill_seconds=0.0,
                 decode_seconds=0.0,
-                tokenize_ms=tokenize_ms,
+                prompt_timing=prompt_timing,
                 session_prepare_seconds=0.0,
                 session_prepare_mode="none",
             ),
@@ -797,7 +812,7 @@ def _laguna_telemetry(
     finish: FinishDetails | None,
     prefill_seconds: float,
     decode_seconds: float,
-    tokenize_ms: float,
+    prompt_timing: Mapping[str, float],
     session_prepare_seconds: float,
     session_prepare_mode: str,
 ) -> GenerationTelemetry:
@@ -816,7 +831,16 @@ def _laguna_telemetry(
         native_sampler_rows=False,
         event="completed" if finish is not None else "token",
         timing={
-            "tokenize_ms": max(0.0, float(tokenize_ms)),
+            "tokenize_ms": max(0.0, float(prompt_timing.get("tokenize_ms", 0.0))),
+            "prompt_encode_ms": max(
+                0.0,
+                float(prompt_timing.get("prompt_encode_ms", 0.0)),
+            ),
+            "render_ms": max(0.0, float(prompt_timing.get("render_ms", 0.0))),
+            "admission_prepare_ms": max(
+                0.0,
+                float(prompt_timing.get("admission_prepare_ms", 0.0)),
+            ),
             "session_prepare_ms": max(0.0, float(session_prepare_seconds)) * 1_000.0,
             "prefill_ms": float(prefill_seconds) * 1_000.0,
             "decode_ms": float(decode_seconds) * 1_000.0,

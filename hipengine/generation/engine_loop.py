@@ -383,7 +383,7 @@ class SubmitPollTextGenerator:
             tokenize_started = time.perf_counter() if isinstance(prompt, str) else None
             prompt_rows_list.append(tuple(self._runner.prompt_tokens(prompt)))
             tokenize_ms.append(
-                0.0
+                max(0.0, float(getattr(prompt, "tokenize_ms", 0.0)))
                 if tokenize_started is None
                 else max(0.0, (time.perf_counter() - tokenize_started) * 1_000.0)
             )

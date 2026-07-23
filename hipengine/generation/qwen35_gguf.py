@@ -109,7 +109,10 @@ def _encode_prompt_timed(
     prompt: PromptInput,
 ) -> tuple[list[int], float]:
     if not isinstance(prompt, str):
-        return [int(token) for token in prompt], 0.0
+        return [int(token) for token in prompt], max(
+            0.0,
+            float(getattr(prompt, "tokenize_ms", 0.0)),
+        )
     tokenize_started = time.perf_counter()
     token_ids = [int(token) for token in tokenizer.encode(prompt)]
     return token_ids, _timing_ms_since(tokenize_started)

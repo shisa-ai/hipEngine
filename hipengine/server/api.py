@@ -53,6 +53,7 @@ from hipengine.generation import (
     GenerationStreamChunk,
     GenerationTelemetry,
     NATIVE_GPU_SAMPLER_UNSUPPORTED_CAPABILITIES,
+    PreparedPromptInput,
     PromptInput,
     SPECULATIVE_MTP_INCOMPATIBLE_CONDITIONS,
     SPECULATIVE_MTP_INCOMPATIBLE_FIELDS,
@@ -1790,6 +1791,7 @@ class _GeneratedBatch:
     outputs: list[str]
     usage: dict[str, int]
     details: list[GenerationOutput]
+    prepared_prompts: tuple[PromptInput, ...] = ()
     scheduler_token_chunks: list[dict[str, Any]] | None = None
     generation_shape: dict[str, Any] | None = None
 
@@ -1807,6 +1809,8 @@ class _ChatContextRender:
     prompt: str
     render_request: ChatCompletionRequest
     prefix_messages: tuple[dict[str, Any], ...]
+    prepared_prompt: PromptInput | None = None
+    thinking: _ThinkingControl | None = None
     session_payload: dict[str, Any] | None = None
     fit_context_extra: dict[str, Any] | None = None
     reset_session_on_commit: bool = False
@@ -3337,7 +3341,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
 
     def chat_context_fit_payload(
         chat_request: ChatCompletionRequest,
-        prompt: str,
+        prompt: PromptInput,
         engine: Any,
     ) -> dict[str, Any]:
         max_context = effective_max_context_tokens(engine)
@@ -3349,7 +3353,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             chat_default_max_tokens=config.chat_default_max_tokens,
         )
         return _context_fit_payload(
-            prompt_tokens=_count_tokens_for_admission(engine, str(prompt)),
+            prompt_tokens=_prompt_token_count(engine, prompt),
             max_context_tokens=max_context,
             max_tokens=max_tokens,
         )
@@ -3358,14 +3362,20 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         request: ChatCompletionRequest,
         prefix_messages: Sequence[Mapping[str, Any]],
         engine: Any,
-    ) -> tuple[ChatCompletionRequest, str]:
+    ) -> tuple[ChatCompletionRequest, str, PromptInput, _ThinkingControl]:
         render_request = request
         if prefix_messages:
             render_request = _chat_request_with_messages(
                 request,
                 (*prefix_messages, *request.messages),
             )
-        return render_request, chat_prompt_for_request(render_request, engine)
+        prompt, thinking, prepared_prompt = _render_prepared_chat_prompt_for_request(
+            render_request,
+            chat_default_max_tokens=config.chat_default_max_tokens,
+            engine=engine,
+            max_context_tokens=effective_max_context_tokens(engine),
+        )
+        return render_request, prompt, prepared_prompt, thinking
 
     async def render_chat_context_for_request(
         request: ChatCompletionRequest,
@@ -3374,7 +3384,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         apply_context_policy: bool,
     ) -> _ChatContextRender:
         prefix_messages = tuple(await chat_session_prefix_messages(request))
-        render_request, prompt = chat_context_candidate(request, prefix_messages, engine)
+        render_request, prompt, prepared_prompt, thinking = chat_context_candidate(
+            request,
+            prefix_messages,
+            engine,
+        )
         effective_prefix = prefix_messages
         session_payload = _diagnostic_session_payload(request, effective_prefix)
         fit_context_extra = None if session_payload is None else {"session": session_payload}
@@ -3392,7 +3406,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 and prefix_messages
                 and effective_max_context_tokens(engine) is not None
             ):
-                prefixed_fit = chat_context_fit_payload(render_request, prompt, engine)
+                prefixed_fit = chat_context_fit_payload(
+                    render_request,
+                    prepared_prompt,
+                    engine,
+                )
                 if not prefixed_fit["fits"]:
                     candidate_drop_counts = (
                         (len(prefix_messages),)
@@ -3402,16 +3420,27 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     for drop_count in candidate_drop_counts:
                         candidate_prefix = prefix_messages[drop_count:]
                         try:
-                            candidate_request, candidate_prompt = chat_context_candidate(
+                            (
+                                candidate_request,
+                                candidate_prompt,
+                                candidate_prepared_prompt,
+                                candidate_thinking,
+                            ) = chat_context_candidate(
                                 request,
                                 candidate_prefix,
                                 engine,
                             )
                         except OpenAIHTTPError:
                             continue
-                        candidate_fit = chat_context_fit_payload(candidate_request, candidate_prompt, engine)
+                        candidate_fit = chat_context_fit_payload(
+                            candidate_request,
+                            candidate_prepared_prompt,
+                            engine,
+                        )
                         if candidate_fit["fits"]:
                             prompt = candidate_prompt
+                            prepared_prompt = candidate_prepared_prompt
+                            thinking = candidate_thinking
                             render_request = candidate_request
                             effective_prefix = candidate_prefix
                             dropped_message_count = drop_count
@@ -3432,6 +3461,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             prompt=prompt,
             render_request=render_request,
             prefix_messages=tuple(dict(item) for item in effective_prefix),
+            prepared_prompt=prepared_prompt,
+            thinking=thinking,
             session_payload=session_payload,
             fit_context_extra=fit_context_extra,
             reset_session_on_commit=reset_session,
@@ -4056,6 +4087,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         *,
         deadline_at: float | None = None,
         cancellation_token: GenerationCancellationToken | None = None,
+        prepared_thinking: _ThinkingControl | None = None,
     ) -> SamplingParams:
         stop_token_ids, stop_token_sequences = _stop_tokens_from_stop(request.stop, engine)
         uses_stored_chat_prompt = isinstance(request, ChatCompletionRequest) and request.continuation_id is not None
@@ -4065,6 +4097,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 request,
                 engine=engine,
                 max_context_tokens=effective_max_context_tokens(engine),
+                prepared_thinking=prepared_thinking,
             )
             if isinstance(request, ChatCompletionRequest) and not uses_stored_chat_prompt
             else {}
@@ -4171,6 +4204,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         deadline_at: float | None = None,
         cancellation_token: GenerationCancellationToken | None = None,
         fit_context_extra: Mapping[str, Any] | None = None,
+        prepared_thinking: _ThinkingControl | None = None,
     ) -> _GeneratedBatch:
         generation_shape: dict[str, Any] | None = None
         try:
@@ -4182,12 +4216,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
             async with session_lock:
                 engine = get_llm()
+                prompts = _prepare_prompt_inputs(engine, prompts)
+                admission_started = time.perf_counter()
                 sampling = sampling_params(
                     request,
                     prompts,
                     engine,
                     deadline_at=deadline_at,
                     cancellation_token=cancellation_token,
+                    prepared_thinking=prepared_thinking,
                 )
                 if _request_n(request) > 1:
                     sampling = replace(
@@ -4222,6 +4259,10 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             )
                         }
                     },
+                )
+                prompts = _with_admission_prepare_ms(
+                    prompts,
+                    (time.perf_counter() - admission_started) * 1_000.0,
                 )
             if _request_logprobs_enabled(request):
                 raw_outputs = await _generate_detailed(engine, tuple(prompts), sampling)
@@ -4319,6 +4360,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             outputs=outputs,
             usage=_usage(engine, prompts, outputs, details=details),
             details=details,
+            prepared_prompts=tuple(prompts),
             scheduler_token_chunks=scheduler_token_chunks,
             generation_shape=generation_shape,
         )
@@ -4331,6 +4373,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         control: _RequestControl | None = None,
         *,
         fit_context_extra: Mapping[str, Any] | None = None,
+        prepared_thinking: _ThinkingControl | None = None,
     ) -> _GeneratedBatch:
         active_control = control or _request_control(config, request)
         try:
@@ -4341,6 +4384,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     deadline_at=active_control.deadline_at,
                     cancellation_token=active_control.cancellation_token,
                     fit_context_extra=fit_context_extra,
+                    prepared_thinking=prepared_thinking,
                 ),
                 active_control,
             )
@@ -4401,12 +4445,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 route_unsupported_grammar=True,
             )
 
-            async def prepare_stream() -> tuple[Any, SamplingParams, str]:
+            async def prepare_stream() -> tuple[Any, SamplingParams, str, PromptInput]:
                 async with session_lock:
                     engine = get_llm()
+                    generation_prompt = _prepare_prompt_input(engine, prompt)
+                    admission_started = time.perf_counter()
                     sampling = sampling_params(
                         request,
-                        (prompt,),
+                        (generation_prompt,),
                         engine,
                         deadline_at=control.deadline_at,
                         cancellation_token=control.cancellation_token,
@@ -4426,7 +4472,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     _validate_context_budget(
                         effective_max_context_tokens(engine),
                         engine,
-                        (prompt,),
+                        (generation_prompt,),
                         sampling,
                         error_extra={
                             "hipengine": {
@@ -4439,11 +4485,17 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             }
                         },
                     )
-                    return engine, sampling, generation_route
+                    generation_prompt = _with_admission_prepare_ms(
+                        (generation_prompt,),
+                        (time.perf_counter() - admission_started) * 1_000.0,
+                    )[0]
+                    return engine, sampling, generation_route, generation_prompt
 
-            engine, sampling, generation_route = await _await_with_request_control(
-                prepare_stream(),
-                control,
+            engine, sampling, generation_route, generation_prompt = (
+                await _await_with_request_control(
+                    prepare_stream(),
+                    control,
+                )
             )
             if include_hipengine:
                 routing_metadata = _routing_response_metadata(
@@ -4454,7 +4506,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             token_accounting = _StreamTokenAccounting.for_engine(engine) if include_hipengine else None
             async for token in _iterate_with_request_control(
                 generation_batcher.stream(
-                    (prompt,),
+                    (generation_prompt,),
                     sampling,
                     route=generation_route,
                     error_extra=route_rejection_extra(
@@ -4697,7 +4749,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         finish_reason = _finish_reason_for_output(backend_detail, finish_reason, server_stop=server_stop)
         usage = _usage(
             engine,
-            (prompt,),
+            (generation_prompt,),
             [text],
             details=None if backend_detail is None else (backend_detail,),
             prefer_telemetry_counts=True,
@@ -5687,7 +5739,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         )
         if token_accounting is not None:
             response["hipengine"]["token_accounting"] = token_accounting
-        prompt_token_accounting = _exact_prompt_token_accounting(expanded_prompts)
+        prompt_token_accounting = _exact_prompt_token_accounting(batch.prepared_prompts)
         if prompt_token_accounting is not None:
             response["hipengine"]["prompt_token_accounting"] = prompt_token_accounting
         if batch.generation_shape is not None:
@@ -5771,10 +5823,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             phase="preparation",
                         )
                     if continuation is not None:
+                        continuation_prompt = continuation.resume_prompts()[0]
                         return _ChatContextRender(
-                            prompt=continuation.resume_prompts()[0],
+                            prompt=continuation_prompt,
                             render_request=request,
                             prefix_messages=(),
+                            prepared_prompt=_prepare_prompt_input(
+                                engine,
+                                continuation_prompt,
+                            ),
                         )
                     if not request.messages:
                         raise OpenAIHTTPError(
@@ -5791,6 +5848,11 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
 
             prepared_prompt = await _await_with_request_control(prepare_prompt(), control)
             prompt = prepared_prompt.prompt
+            generation_prompt = (
+                prepared_prompt.prepared_prompt
+                if prepared_prompt.prepared_prompt is not None
+                else _prepare_prompt_input(get_llm(), prompt)
+            )
             fit_context_extra = prepared_prompt.fit_context_extra
             if request.stream:
                 control = replace(control, disconnected=None)
@@ -5808,19 +5870,27 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 )
                 return StreamingResponse(
                     account_active_stream_cancellation(
-                        streamer(prompt, request, control, raw_request),
+                        streamer(
+                            prompt,
+                            generation_prompt,
+                            prepared_prompt.thinking,
+                            request,
+                            control,
+                            raw_request,
+                        ),
                         control,
                     ),
                     media_type="text/event-stream",
                 )
             n = _request_n(request)
-            prompts = tuple(prompt for _ in range(n))
+            prompts = tuple(generation_prompt for _ in range(n))
             try:
                 batch = await generate_with_request_control(
                     prompts,
                     request,
                     control,
                     fit_context_extra=fit_context_extra,
+                    prepared_thinking=prepared_prompt.thinking,
                 )
             except OpenAIHTTPError as exc:
                 await commit_chat_session_error(
@@ -5836,7 +5906,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             requested_cache_action = _session_cache_action(request)
             reasoning_initially_open = _reasoning_initially_open_for_prompt(
                 getattr(app.state, "hipengine_llm", None),
-                prompt,
+                generation_prompt,
             )
             for index, (output, detail) in enumerate(zip(batch.outputs, batch.details, strict=True)):
                 previous_text = "" if continuation is None else continuation.generated_texts[index]
@@ -5998,6 +6068,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
 
     async def stream_chat_completion_many(
         prompt: str,
+        generation_prompt: PromptInput,
+        prepared_thinking: _ThinkingControl | None,
         request: ChatCompletionRequest,
         control: _RequestControl,
         raw_request: Request,
@@ -6017,7 +6089,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         )
         try:
             n = _request_n(request)
-            prompts = tuple(prompt for _ in range(n))
+            prompts = tuple(generation_prompt for _ in range(n))
             if _chat_live_many_streaming_allowed(request):
 
                 async def prepare_many_stream() -> tuple[Any, SamplingParams] | None:
@@ -6032,6 +6104,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             engine,
                             deadline_at=control.deadline_at,
                             cancellation_token=control.cancellation_token,
+                            prepared_thinking=prepared_thinking,
                         )
                         sampling = replace(
                             sampling,
@@ -6213,7 +6286,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     yield "data: [DONE]\n\n"
                     return
 
-            batch = await generate_with_request_control(prompts, request, control)
+            batch = await generate_with_request_control(
+                prompts,
+                request,
+                control,
+                prepared_thinking=prepared_thinking,
+            )
             scheduler_chunks_by_index = _scheduler_token_chunks_by_request(batch.scheduler_token_chunks)
             if include_hipengine:
                 routing_metadata = _routing_response_metadata(
@@ -6531,6 +6609,8 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
 
     async def stream_chat_completion(
         prompt: str,
+        generation_prompt: PromptInput,
+        prepared_thinking: _ThinkingControl | None,
         request: ChatCompletionRequest,
         control: _RequestControl,
         raw_request: Request,
@@ -6620,21 +6700,23 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         splitter = _ReasoningSplitter(
             initially_open=_reasoning_initially_open_for_prompt(
                 getattr(app.state, "hipengine_llm", None),
-                prompt,
+                generation_prompt,
             )
         )
         buffer_tool_output = bool(request.tools)
 
         try:
-            async def prepare_stream() -> tuple[Any, SamplingParams, str]:
+            async def prepare_stream() -> tuple[Any, SamplingParams, str, PromptInput]:
                 async with session_lock:
                     engine = get_llm()
+                    admission_started = time.perf_counter()
                     sampling = sampling_params(
                         request,
-                        (prompt,),
+                        (generation_prompt,),
                         engine,
                         deadline_at=control.deadline_at,
                         cancellation_token=control.cancellation_token,
+                        prepared_thinking=prepared_thinking,
                     )
                     generation_route = _generation_route_for_request(
                         config,
@@ -6651,7 +6733,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     _validate_context_budget(
                         effective_max_context_tokens(engine),
                         engine,
-                        (prompt,),
+                        (generation_prompt,),
                         sampling,
                         error_extra={
                             "hipengine": {
@@ -6664,11 +6746,17 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             }
                         },
                     )
-                    return engine, sampling, generation_route
+                    admitted_prompt = _with_admission_prepare_ms(
+                        (generation_prompt,),
+                        (time.perf_counter() - admission_started) * 1_000.0,
+                    )[0]
+                    return engine, sampling, generation_route, admitted_prompt
 
-            engine, sampling, generation_route = await _await_with_request_control(
-                prepare_stream(),
-                control,
+            engine, sampling, generation_route, generation_prompt = (
+                await _await_with_request_control(
+                    prepare_stream(),
+                    control,
+                )
             )
             if include_hipengine:
                 routing_metadata = _routing_response_metadata(
@@ -6687,7 +6775,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             )
             async for token in _iterate_with_request_control(
                 generation_batcher.stream(
-                    (prompt,),
+                    (generation_prompt,),
                     sampling,
                     route=generation_route,
                     error_extra=route_rejection_extra(
@@ -7013,7 +7101,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             finish_reason = _finish_reason_for_output(backend_detail, finish_reason)
         usage = _usage(
             engine,
-            (prompt,),
+            (generation_prompt,),
             [text],
             details=None if backend_detail is None else (backend_detail,),
             prefer_telemetry_counts=True,
@@ -7037,7 +7125,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 tool_validation.parsed,
                 reasoning_initially_open=_reasoning_initially_open_for_prompt(
                     engine,
-                    prompt,
+                    generation_prompt,
                 ),
             )
             stream_finish_reason = "stop" if tool_validation.failed else "tool_calls" if parsed.tool_calls else finish_reason
@@ -8093,31 +8181,64 @@ def _render_chat_prompt_with_model_protocol(
     )
 
 
-def _render_chat_prompt_for_request(
+def _render_prepared_chat_prompt_for_request(
     request: ChatCompletionRequest,
     *,
     chat_default_max_tokens: int | None,
     engine: Any | None = None,
     max_context_tokens: int | None = None,
     validate_tool_transcript: bool = True,
-) -> tuple[str, _ThinkingControl]:
+) -> tuple[str, _ThinkingControl, PromptInput]:
+    render_ms = 0.0
+    encode_ms = 0.0
+
+    def render(thinking: _ThinkingControl) -> str:
+        nonlocal render_ms
+        started = time.perf_counter()
+        value = _render_chat_prompt_with_model_protocol(
+            request,
+            thinking=thinking,
+            engine=engine,
+            validate_tool_transcript=validate_tool_transcript,
+        )
+        render_ms += (time.perf_counter() - started) * 1_000.0
+        return value
+
+    def prepare(prompt: str) -> PromptInput:
+        nonlocal encode_ms
+        if engine is None:
+            return prompt
+        prepared = _prepare_prompt_input(engine, prompt)
+        if isinstance(prepared, PreparedPromptInput):
+            encode_ms += prepared.tokenize_ms
+        return prepared
+
+    def finish(
+        prompt: str,
+        thinking: _ThinkingControl,
+        prepared: PromptInput,
+    ) -> tuple[str, _ThinkingControl, PromptInput]:
+        if isinstance(prepared, PreparedPromptInput):
+            prepared = replace(
+                prepared,
+                tokenize_ms=encode_ms,
+                render_ms=render_ms,
+            )
+        return prompt, thinking, prepared
+
     thinking = _thinking_control_from_request(
         request,
         chat_default_max_tokens=chat_default_max_tokens,
     )
-    prompt = _render_chat_prompt_with_model_protocol(
-        request,
-        thinking=thinking,
-        engine=engine,
-        validate_tool_transcript=validate_tool_transcript,
-    )
+    prompt = render(thinking)
     if engine is None:
-        return prompt, thinking
+        return prompt, thinking, prompt
 
+    prepared = prepare(prompt)
     for _ in range(4):
         generation_budget = _thinking_generation_budget_for_prompt(
             request,
-            prompt,
+            prepared,
             engine,
             max_context_tokens,
             chat_default_max_tokens=chat_default_max_tokens,
@@ -8127,22 +8248,38 @@ def _render_chat_prompt_for_request(
             chat_default_max_tokens=chat_default_max_tokens,
             generation_budget=generation_budget,
         )
-        adjusted_prompt = _render_chat_prompt_with_model_protocol(
-            request,
-            thinking=adjusted,
-            engine=engine,
-            validate_tool_transcript=validate_tool_transcript,
-        )
-        if adjusted == thinking and adjusted_prompt == prompt:
-            return prompt, thinking
+        if adjusted == thinking:
+            return finish(prompt, thinking, prepared)
+        adjusted_prompt = render(adjusted)
+        if adjusted_prompt == prompt:
+            return finish(prompt, adjusted, prepared)
         thinking = adjusted
         prompt = adjusted_prompt
+        prepared = prepare(prompt)
+    return finish(prompt, thinking, prepared)
+
+
+def _render_chat_prompt_for_request(
+    request: ChatCompletionRequest,
+    *,
+    chat_default_max_tokens: int | None,
+    engine: Any | None = None,
+    max_context_tokens: int | None = None,
+    validate_tool_transcript: bool = True,
+) -> tuple[str, _ThinkingControl]:
+    prompt, thinking, _prepared = _render_prepared_chat_prompt_for_request(
+        request,
+        chat_default_max_tokens=chat_default_max_tokens,
+        engine=engine,
+        max_context_tokens=max_context_tokens,
+        validate_tool_transcript=validate_tool_transcript,
+    )
     return prompt, thinking
 
 
 def _thinking_generation_budget_for_prompt(
     request: ChatCompletionRequest,
-    prompt: str,
+    prompt: PromptInput,
     engine: Any,
     max_context_tokens: int | None,
     *,
@@ -9948,6 +10085,83 @@ def _prompt_token_count(engine: Any, prompt: PromptInput) -> int:
     return len(prompt)
 
 
+def _prompt_tokenizer_identity(engine: Any) -> str | None:
+    target = _model_chat_protocol_target(engine)
+    tokenizer = getattr(target, "tokenizer", None)
+    owner = tokenizer if tokenizer is not None else target
+    if owner is None:
+        return None
+    cls = type(owner)
+    return f"{cls.__module__}.{cls.__qualname__}"
+
+
+def _prepare_prompt_input(
+    engine: Any,
+    prompt: PromptInput,
+    *,
+    render_ms: float = 0.0,
+) -> PromptInput:
+    if isinstance(prompt, PreparedPromptInput):
+        if render_ms <= 0.0 or prompt.render_ms == float(render_ms):
+            return prompt
+        return replace(prompt, render_ms=max(0.0, float(render_ms)))
+    if not isinstance(prompt, str):
+        return normalize_prompt_input(prompt)
+    tokenizer = getattr(engine, "tokenize", None)
+    if not callable(tokenizer):
+        return prompt
+    started = time.perf_counter()
+    try:
+        token_ids = tuple(int(token) for token in tokenizer(prompt))
+    except (KeyError, NotImplementedError, TypeError, ValueError):
+        return prompt
+    tokenize_ms = (time.perf_counter() - started) * 1_000.0
+    return PreparedPromptInput(
+        source_text=prompt,
+        token_ids=token_ids,
+        tokenize_ms=tokenize_ms,
+        render_ms=max(0.0, float(render_ms)),
+        tokenizer_identity=_prompt_tokenizer_identity(engine),
+    )
+
+
+def _prepare_prompt_inputs(
+    engine: Any,
+    prompts: Sequence[PromptInput],
+) -> tuple[PromptInput, ...]:
+    prepared_by_text: dict[str, PromptInput] = {}
+    prepared: list[PromptInput] = []
+    for prompt in prompts:
+        if isinstance(prompt, str):
+            value = prepared_by_text.get(prompt)
+            if value is None:
+                value = _prepare_prompt_input(engine, prompt)
+                prepared_by_text[prompt] = value
+            prepared.append(value)
+        else:
+            prepared.append(_prepare_prompt_input(engine, prompt))
+    return tuple(prepared)
+
+
+def _with_admission_prepare_ms(
+    prompts: Sequence[PromptInput],
+    admission_prepare_ms: float,
+) -> tuple[PromptInput, ...]:
+    elapsed = max(0.0, float(admission_prepare_ms))
+    replaced: dict[int, PreparedPromptInput] = {}
+    result: list[PromptInput] = []
+    for prompt in prompts:
+        if not isinstance(prompt, PreparedPromptInput):
+            result.append(prompt)
+            continue
+        value = replaced.get(id(prompt))
+        if value is None:
+            value = replace(prompt, admission_prepare_ms=elapsed)
+            replaced[id(prompt)] = value
+        result.append(value)
+    return tuple(result)
+
+
 def _count_tokens_strict(engine: Any, text: str) -> int:
     counter = getattr(engine, "count_tokens", None)
     if not callable(counter):
@@ -10268,14 +10482,18 @@ def _thinking_budget_sampling_kwargs(
     *,
     engine: Any,
     max_context_tokens: int | None,
+    prepared_thinking: _ThinkingControl | None = None,
 ) -> dict[str, Any]:
-    _prompt, thinking = _render_chat_prompt_for_request(
-        request,
-        chat_default_max_tokens=config.chat_default_max_tokens,
-        engine=engine,
-        max_context_tokens=max_context_tokens,
-        validate_tool_transcript=False,
-    )
+    if prepared_thinking is None:
+        _prompt, thinking = _render_chat_prompt_for_request(
+            request,
+            chat_default_max_tokens=config.chat_default_max_tokens,
+            engine=engine,
+            max_context_tokens=max_context_tokens,
+            validate_tool_transcript=False,
+        )
+    else:
+        thinking = prepared_thinking
     if thinking.enabled is False or thinking.hard_think_cap is None:
         return {}
     close_text = thinking.hard_close_sequence or _THINKING_CLOSE_MARKER
@@ -12963,7 +13181,9 @@ def _usage(
 
 
 def _exact_prompt_token_accounting(prompts: Sequence[PromptInput]) -> dict[str, Any] | None:
-    if not prompts or any(isinstance(prompt, str) for prompt in prompts):
+    if not prompts or any(
+        isinstance(prompt, (str, PreparedPromptInput)) for prompt in prompts
+    ):
         return None
     rows = tuple(tuple(int(token) for token in prompt) for prompt in prompts)
     return {
@@ -13180,9 +13400,16 @@ def _looks_like_partial_json(text: str) -> bool:
     return False
 
 
-def _reasoning_initially_open_for_prompt(engine: Any | None, prompt: str) -> bool:
+def _reasoning_initially_open_for_prompt(
+    engine: Any | None,
+    prompt: PromptInput,
+) -> bool:
     target = _model_chat_protocol_target(engine)
     parser = getattr(target, "chat_reasoning_parser", None)
+    if not isinstance(prompt, str):
+        ids_detector = getattr(parser, "initially_open_ids", None)
+        if callable(ids_detector):
+            return bool(ids_detector(tuple(int(token) for token in prompt)))
     detector = getattr(parser, "initially_open", None)
     if not callable(detector):
         return False
