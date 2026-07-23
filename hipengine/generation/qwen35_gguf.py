@@ -4435,6 +4435,9 @@ class _GGUFResidentLoopRow:
     native_sampled: bool
     submitted_at: float
     tokenize_ms: float = 0.0
+    prompt_encode_ms: float = 0.0
+    render_ms: float = 0.0
+    admission_prepare_ms: float = 0.0
     native_sampler: bool = False
     prefill_tokens_seen: int = 0
     incremental_prefill: bool | None = None
@@ -5313,7 +5316,9 @@ class Qwen35GGUFResidentModelRunner:
         if len(ids) != len(values):
             raise ValueError("request_ids and tokenize_ms must have the same length")
         for request_id, value in zip(ids, values, strict=True):
-            self._row(request_id).tokenize_ms = value
+            row = self._row(request_id)
+            row.tokenize_ms = value
+            row.prompt_encode_ms = value
 
     def scheduler_max_new_tokens(self, request: GenerationRequest) -> int:
         if int(request.max_tokens) > 0:
@@ -5367,6 +5372,11 @@ class Qwen35GGUFResidentModelRunner:
                 raise ValueError(f"request_id {request_id} is already registered")
             if not prompt_ids:
                 raise ValueError("GGUF prompt tokenization produced no token IDs")
+            source_prompt = request.prompts[row_index]
+            prompt_encode_ms = max(
+                0.0,
+                float(getattr(source_prompt, "tokenize_ms", 0.0)),
+            )
             self._rows[request_id] = _GGUFResidentLoopRow(
                 request_id=request_id,
                 batch_id=batch_id,
@@ -5376,6 +5386,13 @@ class Qwen35GGUFResidentModelRunner:
                 native_greedy=native_greedy,
                 native_sampled=native_sampled,
                 submitted_at=now,
+                tokenize_ms=prompt_encode_ms,
+                prompt_encode_ms=prompt_encode_ms,
+                render_ms=max(0.0, float(getattr(source_prompt, "render_ms", 0.0))),
+                admission_prepare_ms=max(
+                    0.0,
+                    float(getattr(source_prompt, "admission_prepare_ms", 0.0)),
+                ),
                 native_sampler=native_sampler,
                 sampler_plan=plan,
             )
@@ -5957,6 +5974,9 @@ class Qwen35GGUFResidentModelRunner:
             generated_ids=[token],
             timing={
                 "tokenize_ms": float(row.tokenize_ms),
+                "prompt_encode_ms": float(row.prompt_encode_ms),
+                "render_ms": float(row.render_ms),
+                "admission_prepare_ms": float(row.admission_prepare_ms),
                 "prefill_ms": float(row.prefill_ms),
                 "prefill_chunk_count": float(row.prefill_chunk_count),
                 "request_total_ms": _timing_ms_since(row.submitted_at),
@@ -6271,6 +6291,9 @@ class Qwen35GGUFResidentModelRunner:
         token = int(getattr(result, "token_id"))
         timing = {
             "tokenize_ms": float(row.tokenize_ms),
+            "prompt_encode_ms": float(row.prompt_encode_ms),
+            "render_ms": float(row.render_ms),
+            "admission_prepare_ms": float(row.admission_prepare_ms),
             "prefill_ms": float(row.prefill_ms),
             "prefill_chunk_count": float(row.prefill_chunk_count),
             "request_total_ms": _timing_ms_since(row.submitted_at),
@@ -7074,6 +7097,9 @@ class Qwen35GGUFResidentModelRunner:
                 native_sampler_rows=False,
                 timing={
                     "tokenize_ms": float(row.tokenize_ms),
+                    "prompt_encode_ms": float(row.prompt_encode_ms),
+                    "render_ms": float(row.render_ms),
+                    "admission_prepare_ms": float(row.admission_prepare_ms),
                     "request_total_ms": _timing_ms_since(row.submitted_at),
                 },
                 diagnostics={"prefix_cache": self._prefix_request_telemetry(row)},

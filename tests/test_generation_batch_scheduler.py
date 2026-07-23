@@ -16494,13 +16494,35 @@ def test_submit_poll_text_generator_streams_native_events_through_resident_loop(
                 self.counts[int(request_id)] = count
                 text = f"row{row_index}:{count}"
                 self.text[int(request_id)].append(text)
+                token_id = 1000 + int(request_id) * 10 + count
+                generated_ids = tuple(
+                    1000 + int(request_id) * 10 + step
+                    for step in range(1, count + 1)
+                )
+                matched_stop = next(
+                    (
+                        tuple(sequence)
+                        for sequence in request.stop_token_sequences
+                        if len(sequence) <= len(generated_ids)
+                        and generated_ids[-len(sequence) :] == tuple(sequence)
+                    ),
+                    None,
+                )
                 generated.append(
                     GeneratedToken(
                         int(request_id),
-                        1000 + int(request_id) * 10 + count,
-                        finished=False,
+                        token_id,
+                        finished=matched_stop is not None,
                         stream_chunk=GenerationStreamChunk(
                             text=text,
+                            finish_details=(
+                                None
+                                if matched_stop is None
+                                else FinishDetails(
+                                    reason="stop",
+                                    stop_sequence=matched_stop,
+                                )
+                            ),
                             telemetry=GenerationTelemetry.from_decode_counts(
                                 prompt_tokens=len(request.prompts[row_index]),
                                 generated_tokens=count,
@@ -16508,6 +16530,9 @@ def test_submit_poll_text_generator_streams_native_events_through_resident_loop(
                                 request_id=str(request_id),
                                 phase="answer",
                                 execution_path="resident_test_stream",
+                            ),
+                            generated_token_ids=(
+                                generated_ids if matched_stop is not None else None
                             ),
                         ),
                     )
@@ -16579,6 +16604,45 @@ def test_submit_poll_text_generator_streams_native_events_through_resident_loop(
     assert adapter._loop.pending_count == 0
     assert adapter._loop.active_count == 0
     assert adapter._loop.completed == {}
+
+    exact_stop = list(
+        adapter.stream_detailed(
+            GenerationRequest(
+                prompts=((20,),),
+                max_tokens=3,
+                temperature=0.0,
+                top_p=1.0,
+                ignore_eos=True,
+                stop_token_sequences=((1011, 1012),),
+            )
+        )
+    )
+    assert [chunk.text for chunk in exact_stop] == [""]
+    assert exact_stop[0].finish_details is not None
+    assert exact_stop[0].finish_details.to_json_dict() == {
+        "reason": "stop",
+        "stop_sequence": [1011, 1012],
+    }
+    assert exact_stop[0].generated_token_ids == (1011, 1012)
+    assert exact_stop[0].telemetry is not None
+    assert exact_stop[0].telemetry.to_json_dict()["decode_state"]["execution_path"] == (
+        "resident_test_stream"
+    )
+
+    failed_prefix_iterator = adapter.stream_detailed(
+        GenerationRequest(
+            prompts=((30,),),
+            max_tokens=2,
+            temperature=0.0,
+            top_p=1.0,
+            ignore_eos=True,
+            stop_token_sequences=((1021, 1023),),
+        )
+    )
+    first_failed_prefix = next(failed_prefix_iterator)
+    assert first_failed_prefix.text == "row0:1"
+    assert inner.runner.counts[2] == 2
+    assert [chunk.text for chunk in failed_prefix_iterator] == ["row0:2"]
 
 
 def test_resident_stream_rechecks_completion_after_empty_racing_poll(monkeypatch) -> None:
