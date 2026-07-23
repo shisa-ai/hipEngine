@@ -2470,6 +2470,15 @@ next design must add score/token parallelism or online/split reduction rather
 than only remap the 128 head dimensions. Evidence:
 `benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-swa-decode-rejected.json`.
 
+The first IQ3 follow-up is retained. Applying the sibling selected-dual kernel's
+wave-uniform super-block base to selected down is address-only and bit-exact.
+Two actual `E256/K1024/N3072/top-10` paired medians improve **0.69%/0.75%**;
+clean family time falls **4.040 -> 4.002 ms (-0.94%)** and total kernel sum falls
+**0.20%**. The clean category suite is non-regressive with every route/category
+positive, but its 0.51% decode delta is not promoted as a new headline because
+it exceeds the physically attributable leaf gain. Evidence:
+`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-iq3-wave-base-retained.json`.
+
 A second clean D0 at `b4973769` extends the same synthetic canonical token
 stream to 512/1K/3,968 prompt tokens and profiles eight c=1 steps at each shape
 (six stable rows after two disclosed warmups):
@@ -2505,7 +2514,8 @@ Proceed in measured Amdahl order:
 2. **REJECTED:** direct one-wave and two-wave exact SWA prefill transfers are
    neutral/regressive; retain local128 and revisit only with token-parallel or
    online/split softmax while preserving `KVLiveSpans` and wrap fixtures;
-3. screen the landed weighted IQ3 selected-down and MoE-tail fusion patterns;
+3. **PARTIAL:** retain the exact IQ3 wave-uniform base (-0.94% family); screen
+   the larger routing-weighted IQ3 down/MoE-tail fusion next;
 4. reprofile at 128/512/1K/near-4K after SWA/IQ3, then address the 22.7-ms
    near-4K global-attention route; and
 5. admit Laguna-specific one-step graph replay only after kernel work. D1's

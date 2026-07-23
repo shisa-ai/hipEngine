@@ -3,6 +3,8 @@
 Last reviewed: **2026-07-23**
 
 Latest retained hipEngine revisions in this scoreboard:
+`89939a90b6efee417c8fb8e63946d35d0f09607f` for the exact W7900 Laguna S 2.1
+UD-Q2_K_XL IQ3 selected-down sub-window,
 `fc08ca0ed07576c2fcfd632b9a9f51e0d5397d4e` for the exact W7900 Laguna S 2.1
 UD-Q2_K_XL dense-decode default,
 `6ba1ddec95e224c1cc337c69ac2c4ea611ff0472` for the first W7900 Laguna S 2.1
@@ -1256,6 +1258,16 @@ short (**4.210 ms**) but **2.93%** slower at 512. Both pass exact 508-515
 wrap/eviction output gates, so this is a performance rejection rather than a
 correctness failure. [Rejection
 artifact](results/2026-07-23-gfx1100-laguna-q2-xl-swa-decode-rejected.json).
+
+The retained IQ3 address-only follow-up makes each selected-down wave's
+super-block base uniform. Two actual `E256/K1024/N3072/top-10` packets are
+bit-exact and improve paired medians **0.69%/0.75%**; clean rocprof moves the
+45-call family **4.040 -> 4.002 ms/token (-0.94%)** and total kernel sum **23.142
+-> 23.097 ms (-0.20%)**. The full clean suite is non-regressive with every
+category positive and h32 decode/E2E **+0.510%/+0.457%**, but the conservative
+**35.419 tok/s** headline stays unchanged because that separate-process wall
+delta exceeds the physically attributable leaf win. [Retained sub-window
+artifact](results/2026-07-23-gfx1100-laguna-q2-xl-iq3-wave-base-retained.json).
 
 A clean context extension from D0 keeps dense Q5 fixed at **27.3-27.4 ms/token**, but
 SWA grows from **4.237 ms** short to **27.823/27.903/27.927 ms** at
