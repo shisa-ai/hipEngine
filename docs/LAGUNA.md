@@ -1,6 +1,6 @@
 # Laguna S 2.1 Q4_K_M and DFlash on gfx1151
 
-Last updated: 2026-07-23
+Last updated: 2026-07-24
 
 Status: the declared gfx1151 c=1/4K support slice is complete. The pinned
 Q4_K_M target has all-resident torch-free loading, exact chunked prefill/B+1
@@ -2800,22 +2800,22 @@ Proceed in measured Amdahl order:
    query/gate, token4 SWA, and weighted IQ3 rank at
    **2.659/2.358/2.189/2.153/2.131 ms/token**, while SWA dominates from 512
    tokens and near-4K remains global-attention led; and
-16. **CORRECTNESS-ADMITTED (D10):** exact local256 token8 SWA preserves all
-   output bits/state, improves actual 80/512-token leaves **9.31%/6.10%**, and
-   reduces dirty short full-model SWA/span **13.10%/1.65%**. gfx1100 defaults
-   the candidate with explicit token4 rollback; task #284 owns clean
-   context/category retention.
+16. **REJECTED AND REMOVED (D10):** exact local256 token8 SWA improves every
+   clean short/512/1K/near-4K mechanical row, but the canonical suite fails
+   aggregate and every-category h16 non-regression. The token8 kernel, wrapper,
+   registry entry, tests, and selector are removed; token4 remains the gfx1100
+   default with baseline fallback.
 
-**50 tok/s is a credible W7900 target, not a current claim.** D9 must reduce the
-canonical **21.217 ms to 20 ms**, another **1.217 ms / 5.74% wall** or **6.08%
-throughput**. The clean short candidate kernel sum is **17.289 ms** and median
+**50 tok/s is a credible W7900 target, not a current claim.** Retained D9 must
+reduce the canonical **21.217 ms to 20 ms**, another **1.217 ms / 5.74% wall**
+or **6.08% throughput**. Its clean short kernel sum is **17.289 ms** and median
 span is **20.389 ms**, so the measured device window still does not impose a
-20-ms floor. The rejected tile16 traffic model was not cache-visible and ROCm
-graph replay regressed. D9 compounds the exact leaf wins but does not close the
-target alone. The near-4K profile remains led by global attention. Every
-retained candidate uses the full category/heldout suite and the same
-exact/quality lanes above. Laguna DFlash/MTP economics must use D9 or a later
-true-AR baseline rather than the historical D0 row.
+20-ms floor. The rejected tile16 traffic model was not cache-visible, ROCm graph
+replay regressed, and D10's positive mechanical/h32 diagnostics were not
+retainable after h16 category regressions. The near-4K profile remains led by
+global attention. Every retained candidate uses the full category/heldout suite
+and the same exact/quality lanes above. Laguna DFlash/MTP economics must use D9
+or a later true-AR baseline rather than the historical D0 row.
 
 ### D8 one-step graph replay (exact, performance-rejected, removed)
 
@@ -3105,7 +3105,7 @@ residual analysis below selects local256 token8 SWA rather than assuming it is
 family is only **0.121 ms/token** and 48 launches. Near-4K global attention
 remains a separate requirement.
 
-### D10 token8 exact SWA decode (selected design)
+### D10 token8 exact SWA decode (performance-rejected, removed)
 
 The retained clean D9 traces are runtime-code-identical to current `216bb0c4a`.
 Short Q5 attention output, selected IQ2 dual+SiLU, retained Q5 query/gate pair,
@@ -3122,7 +3122,7 @@ The complete candidate kernel sums are **17.289/30.534/33.452/50.236 ms**,
 spans are **20.389/33.798/36.712/53.618 ms**, and span-minus-sum residuals are
 **3.100/3.265/3.260/3.382 ms/token** across those contexts.
 
-D10 adds a separately registered
+D10 tested a separately registered
 `(hip_gfx1100, laguna_attention_decode, bf16,
 swa_context_token8_exact_spans)` sibling. One local256 block still owns one
 query head. Eight wave32 units compute eight independent 128-D dots using the
@@ -3183,11 +3183,36 @@ local256/VGPR24/SGPR128/static-LDS0/scratch0 (4,136 B launch-time dynamic LDS).
 Token4 -> token8 SWA falls **2.144 -> 1.863 ms/token (-13.10%)**, complete kernel
 sum **17.229 -> 16.969 ms (-1.513%)**, median span
 **20.323 -> 19.988 ms (-1.651%)**, and profiled child throughput rises
-**2.026%**. IDs, finite output, and lifecycle match. This is correctness and
-dirty execution admission, not retained throughput; task #284 must run clean
-short/512/1K/near-4K profiles and the complete category gate, and must remove
-token8/restore token4 on any failure. Evidence:
-`benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d10-swa-token8-correctness.json`.
+**2.026%**. IDs, finite output, and lifecycle match.
+
+Task #284's clean cached profiles confirm a real mechanical improvement at every
+context. Short/512/1K/near-4K SWA changes
+**2.143/13.114/13.128/13.140 -> 1.876/11.171/11.193/11.187 ms/token
+(-12.47%/-14.81%/-14.74%/-14.86%)**. Complete kernel sum improves
+**1.05%/6.38%/5.66%/3.84%**, span improves
+**0.70%/5.81%/5.32%/3.70%**, and profiled child throughput improves
+**0.91%/5.05%/5.80%/3.93%**. Every row preserves IDs, finite output, 775
+dispatches/token, and teardown.
+
+The predeclared canonical gate nevertheless rejects D10. Versus retained D9,
+token8 changes aggregate h16/h32 decode **47.576/47.132 -> 48.209/47.872
+tok/s (+1.331%/+1.569%)**, but h16/h32 E2E changes
+**6.909/12.038 -> 6.905/12.060 (-0.055%/+0.178%)**. General-English h16
+decode/E2E regress **0.535%/0.254%**; code and mixed h16 E2E regress
+**0.128%/0.017%**. Prefill and TTFT remain inside the 0.5% guard, h32 rows are
+positive, all 20 serial/bulk pairs and repeats are exact, Poolside KL/top-1 and
+accepted bulk state pass, and ownership returns to zero, but the required
+aggregate and every-category h16/h32 decode/E2E predicate is false.
+
+Accordingly the token8 kernel, wrapper, registry entry, tests, and backend
+selector are removed; retained token4 is again the gfx1100 default and the
+baseline span reader remains available. The post-removal focused bundle reports
+**69 passed**. Diagnostic D10 h32 was **47.872 tok/s / 20.889 ms/token**, but it
+is not a retained headline and does not reduce the current target gap. D9 remains
+**47.132 tok/s / 21.217 ms/token**, requiring **1.217 ms / 6.084% throughput**
+to reach 50. Token16 is not admitted from a candidate that failed the complete
+suite. Evidence:
+`benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d10-swa-token8-{correctness,rejected}.json`.
 
 ## Laguna DFlash Follow-on Plan
 

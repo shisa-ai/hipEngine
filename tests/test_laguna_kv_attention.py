@@ -88,7 +88,6 @@ def test_laguna_swa_build_plan_registry_and_validation(tmp_path) -> None:
         laguna_global_write_kv_rows_f32_spans,
         laguna_swa_attention_decode_bf16_spans,
         laguna_swa_attention_decode_token4_exact_bf16_spans,
-        laguna_swa_attention_decode_token8_exact_bf16_spans,
         laguna_swa_attention_prefill_bf16_spans,
         laguna_swa_attention_prefill_wave32_exact_bf16_spans,
         laguna_swa_write_kv_f32_spans,
@@ -135,15 +134,6 @@ def test_laguna_swa_build_plan_registry_and_validation(tmp_path) -> None:
             variant="swa_context_token4_exact_spans",
         )
         is laguna_swa_attention_decode_token4_exact_bf16_spans
-    )
-    assert (
-        resolve(
-            backend="hip_gfx1100",
-            layer="laguna_attention_decode",
-            quant="bf16",
-            variant="swa_context_token8_exact_spans",
-        )
-        is laguna_swa_attention_decode_token8_exact_bf16_spans
     )
     load_backend_kernel_package("hip_gfx1151")
     assert (
@@ -321,18 +311,12 @@ def test_laguna_kv_owner_allocates_12_global_36_bounded_rings_and_tears_down() -
     )
     assert (
         resolve_laguna_swa_decode_variant("hip_gfx1100")
-        == "swa_context_token8_exact_spans"
+        == "swa_context_token4_exact_spans"
     )
     assert resolve_laguna_swa_decode_variant("hip_gfx1151") == "swa_context_spans"
     assert (
         resolve_laguna_swa_decode_variant("hip_gfx1100", "swa_context_spans")
         == "swa_context_spans"
-    )
-    assert (
-        resolve_laguna_swa_decode_variant(
-            "hip_gfx1100", "swa_context_token8_exact_spans"
-        )
-        == "swa_context_token8_exact_spans"
     )
     assert resolve_laguna_swa_prefill_variant("hip_gfx1100") == "swa_context_rows_spans"
     assert (
@@ -441,7 +425,6 @@ def test_laguna_global_and_swa_token_serial_attention_match_cpu_across_wraps() -
     from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
         build_laguna_kv_attention,
         laguna_swa_attention_decode_token4_exact_bf16_spans,
-        laguna_swa_attention_decode_token8_exact_bf16_spans,
     )
     from hipengine.loading.materialize import float_array_to_bf16_bits
     from hipengine.quant.gguf import bf16_to_float32
@@ -490,7 +473,7 @@ def test_laguna_global_and_swa_token_serial_attention_match_cpu_across_wraps() -
     values = rng.normal(0.0, 0.12, size=(total_tokens, 8, 128)).astype(np.float32)
     keys_bf16 = bf16_to_float32(float_array_to_bf16_bits(keys))
     values_bf16 = bf16_to_float32(float_array_to_bf16_bits(values))
-    selected = {0, 1, 7, 8, 31, 63, 64, 65, 510, 511, 512, 513, 1024, 1025}
+    selected = {510, 511, 512, 513, 1024, 1025}
     allocations = []
     evicted_position = 700
     try:
@@ -499,58 +482,9 @@ def test_laguna_global_and_swa_token_serial_attention_match_cpu_across_wraps() -
         query_device = malloc(72 * 128 * 4, runtime=runtime)
         output_device = malloc(72 * 128 * 4, runtime=runtime)
         token4_output_device = malloc(72 * 128 * 4, runtime=runtime)
-        token8_output_device = malloc(72 * 128 * 4, runtime=runtime)
         allocations.extend(
-            (
-                key_device,
-                value_device,
-                query_device,
-                output_device,
-                token4_output_device,
-                token8_output_device,
-            )
+            (key_device, value_device, query_device, output_device, token4_output_device)
         )
-
-        empty_query = rng.normal(0.0, 0.12, size=(72, 128)).astype(np.float32)
-        copy_host_to_device(
-            query_device,
-            host_array_ptr(empty_query),
-            runtime=runtime,
-        )
-        empty_state = cache.layer(1)
-        for launch, output in (
-            (laguna_swa_attention_decode_token4_exact_bf16_spans, token4_output_device),
-            (laguna_swa_attention_decode_token8_exact_bf16_spans, token8_output_device),
-        ):
-            launch(
-                query_device.ptr,
-                empty_state.key_cache.ptr,
-                empty_state.value_cache.ptr,
-                output.ptr,
-                empty_state.spans,
-                empty_state.q_heads,
-                8,
-                128,
-                128**-0.5,
-                sliding_window=512,
-                library=kv_library,
-                runtime=runtime,
-            )
-        runtime.device_synchronize()
-        empty_token4 = np.empty_like(empty_query)
-        empty_token8 = np.empty_like(empty_query)
-        copy_device_to_host(
-            host_array_ptr(empty_token4),
-            token4_output_device,
-            runtime=runtime,
-        )
-        copy_device_to_host(
-            host_array_ptr(empty_token8),
-            token8_output_device,
-            runtime=runtime,
-        )
-        np.testing.assert_array_equal(empty_token8, empty_token4)
-        np.testing.assert_array_equal(empty_token8, np.zeros_like(empty_token8))
 
         for position in range(total_tokens):
             key_row = np.ascontiguousarray(keys[position])
@@ -582,8 +516,6 @@ def test_laguna_global_and_swa_token_serial_attention_match_cpu_across_wraps() -
             if position not in selected:
                 continue
             query = rng.normal(0.0, 0.12, size=(72, 128)).astype(np.float32)
-            if position == 8:
-                query[:] = np.linspace(-8.0, 8.0, 128, dtype=np.float32)
             copy_host_to_device(
                 query_device,
                 host_array_ptr(query),
@@ -612,24 +544,9 @@ def test_laguna_global_and_swa_token_serial_attention_match_cpu_across_wraps() -
                 library=kv_library,
                 runtime=runtime,
             )
-            laguna_swa_attention_decode_token8_exact_bf16_spans(
-                query_device.ptr,
-                swa_state.key_cache.ptr,
-                swa_state.value_cache.ptr,
-                token8_output_device.ptr,
-                swa_state.spans,
-                swa_state.q_heads,
-                8,
-                128,
-                128**-0.5,
-                sliding_window=512,
-                library=kv_library,
-                runtime=runtime,
-            )
             runtime.device_synchronize()
             actual = np.empty((72, 128), dtype=np.float32)
             token4_actual = np.empty_like(actual)
-            token8_actual = np.empty_like(actual)
             copy_device_to_host(
                 host_array_ptr(actual),
                 output_device,
@@ -640,13 +557,7 @@ def test_laguna_global_and_swa_token_serial_attention_match_cpu_across_wraps() -
                 token4_output_device,
                 runtime=runtime,
             )
-            copy_device_to_host(
-                host_array_ptr(token8_actual),
-                token8_output_device,
-                runtime=runtime,
-            )
             np.testing.assert_array_equal(token4_actual, actual)
-            np.testing.assert_array_equal(token8_actual, token4_actual)
             visible = np.arange(max(0, position - 511), position + 1)
             if position == 1025:
                 visible = visible[visible != evicted_position]
