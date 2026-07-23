@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-23
 
+- [current D3 diagnostic gfx1100 Laguna Q2 XL context profile] Radeon Pro W7900 current D3 at 512/1K/near-4K moves frozen-D0 profiled throughput **12.589/12.072/10.076 -> 18.476/17.418/13.485 tok/s (+46.76%/+44.29%/+33.84%)**; dense Q5 falls about 74% to 7.12 ms/token, while unchanged SWA is **27.776/27.846/27.901 ms** and now 41.71-58.99% of kernel sum, ranking token/score-parallel or split/online SWA next plus global attention near 4K; `benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-decode-context-d3-profile.json`.
+
 - [retained exact gfx1100 Laguna Q2 XL IQ3 weighted down] Radeon Pro W7900 Poolside Laguna S 2.1 UD-Q2_K_XL / ten-prompt h16/h32 target AR moves D2 -> D3 h32 decode **38.301 -> 38.840 tok/s (+1.407%)** and h32 E2E **11.403 -> 11.448 tok/s (+0.399%)** with prefill neutral at **43.266 -> 43.264 tok/s (-0.004%)**; exact IQ3 down+routing removes 45 launches/token, cuts the clean combined tail **2.392 -> 2.115 ms (-11.61%)**, and every category decode/E2E plus correctness/lifecycle gate passes; `benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-iq3-weighted-down-retained.json`.
 
 - [retained exact gfx1100 Laguna Q2 XL IQ3 K1024 default] Radeon Pro W7900 Poolside Laguna S 2.1 UD-Q2_K_XL / ten-prompt h16/h32 target AR moves D1 -> D2 h32 decode **35.419 -> 38.301 tok/s (+8.135%)**, prefill **40.401 -> 43.266 tok/s (+7.093%)**, and h32 E2E **10.618 -> 11.403 tok/s (+7.393%)** by removing four idle waves from exact K1024 selected-down; actual weights are bit-exact, the 45-call family falls **4.002 -> 2.258 ms/token (-43.57%)**, and every category/correctness/lifecycle gate passes; `benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-iq3-local128-retained.json`.

@@ -2531,6 +2531,18 @@ requires global attention work. All context rows are finite, lifecycle-exact,
 fully classified, and scratch-free. Evidence:
 `benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-decode-context-profile.json`.
 
+The clean D3 context rerun confirms what the retained dense/IQ3 work changed and
+what it did not. At 512/1K/near-4K, stable kernel sum is
+**47.088/50.102/66.900 ms/token**, median span is **51.450/54.520/71.395 ms**,
+and profiled throughput is **18.476/17.418/13.485 tok/s**. This is
+**+46.76%/+44.29%/+33.84%** versus D0 at the same regimes. Dense Q5 is now
+**7.12 ms/token**, but SWA remains **27.776/27.846/27.901 ms** and consumes
+**58.99%/55.58%/41.71%** of kernel sum; global attention remains
+**2.976/5.885/22.638 ms**. Thus token/score-parallel or split/online SWA is the
+mandatory next 512+ target, with global attention additionally mandatory near
+4K. Evidence:
+`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-decode-context-d3-profile.json`.
+
 The Qwen3.6 UD-Q3_K_M final D0 is a useful tactics comparison, not a model ratio:
 it uses 671 dispatches, 8.825 ms summed kernels, and 11.347 ms profiled wall per
 token on an RX 7900 XTX. D1 has now transferred its dedicated dense pack8
@@ -2550,9 +2562,12 @@ Proceed in measured Amdahl order:
 3. **DONE:** retain IQ3 wave-uniform addressing, K1024 local128, and the exact
    routing-weighted down composite; D3 removes 45 launches and improves h32
    decode 1.407% over D2;
-4. reprofile at 128/512/1K/near-4K after D3, then address the 22.7-ms
-   near-4K global-attention route; and
-5. admit Laguna-specific one-step graph replay only after kernel work. D3's
+4. **DONE:** reprofile at 512/1K/near-4K after D3; SWA is now 41.71-58.99%
+   of kernel sum and remains the mandatory next target, while near-4K global
+   attention remains 22.638 ms/token;
+5. build token/score-parallel or split/online SWA while preserving
+   `KVLiveSpans`, wrap, eviction, and exact reduction boundaries; and
+6. admit Laguna-specific one-step graph replay only after kernel work. D3's
    decode span still exceeds kernel sum by **4.15 ms**, so submission remains
    material but trails SWA plus the dense/selected matrix families in Amdahl
    order.
