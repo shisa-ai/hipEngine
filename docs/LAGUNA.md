@@ -2022,8 +2022,10 @@ byte-exact, but moved **86.429 -> 125.319 ms (0.6897x; +45.00%)** because
 halving per-head token parallelism outweighed K/V reuse. The kernel, export,
 wrapper, registry key, selector, and fixture extension were removed. A
 Flash/AOTriton route would reassociate softmax/value arithmetic and add a new
-cache adapter; defer it until admitted contexts beyond 4K or a new profile makes
-global attention dominant enough to justify that correctness surface. Evidence:
+cache adapter. The post-qrow2 profile now makes global dominant enough to reopen
+that surface, but the vendored AOTriton adapters mechanically reject Laguna's
+head-dim-128 geometry; continue only with an in-tree `KVLiveSpans`-aware tiled
+kernel. Evidence:
 `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-lpf5-global-pair-rejected.json`.
 
 LPF-6 is also closed as a profile-based defer for c=1. In the clean 4K trace,
@@ -2223,7 +2225,7 @@ Laguna scheduler and a useful small-M selected layout do not.
 | Qwen raw-Q8/Q8T16 MMQ and WMMA | Guarded correction, activation reuse, and tile schedules are useful references, but weight formats and admitted K/N shapes do not match Laguna Q4/Q6 selected experts. | Do not route or duplicate residency. Reuse only scheduler/correctness ideas in a Q4/Q6-specific kernel. |
 | 256-thread BF16-hidden/F32 router | Laguna already resolves `router_logits/f32/bf16_hidden` to this exact gfx1151 wrapper. | No AR-O1 work. Revisit only if a post-matrix profile makes router material. |
 | contiguous prefill metadata | The helper writes Qwen attention/GDN metadata, not Laguna's span/ring contract. Kernel-span residual is only 0.28-0.34%. | Do not port. Only the grouped-expert count/prefix/scatter metadata is relevant now. |
-| AOTriton | Torch-free adapter exists, but it does not directly consume Laguna's global/SWA `KVLiveSpans`, physical ring, eviction, and separate gate ABI. | Keep as an AR-O5 global-attention ceiling after matrix work; not an AR-O1 dependency. |
+| AOTriton | Torch-free adapter exists, but it does not directly consume Laguna's global/SWA `KVLiveSpans`, physical ring, eviction, and separate gate ABI. The vendored image/runtime also returns `hipErrorInvalidValue` for Laguna head-dim-128 at M128 and M512 while its GPU/head-dim-256 controls pass. | AR-O5 ceiling screen closed: do not add an adapter or shape-expansion route. Use only as design context for an in-tree raw-pointer head-dim-128 tiled kernel. |
 
 The first two screens are closed: exact fused Q4 dual-SiLU failed its strict
 same-session full-model screen, and inclusive direct Q8_1/dp4a failed the full
@@ -2530,6 +2532,21 @@ context target. Perfectly removing all 4K attention has only a **1.535x**
 kernel-sum ceiling; global alone is **1.271x** and SWA alone **1.157x**. Evidence:
 `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-post-matrix512-all-family-profile.json`.
 
+The clean cached post-qrow2 profile now measures **69.467/64.676/52.549 tok/s**
+at 512/1K/4K with kernel sum **7.356/15.800/77.821 s** and span-minus-sum
+only **0.140%/0.169%/0.156%**. Relative to the pre-qrow2 trace, SWA falls
+**9.38%/9.00%/8.99%**, complete attention falls **7.19%/6.18%/3.43%**, and
+kernel sum falls **0.95%/1.24%/1.20%**. Global remains flat within **0.27%**
+and is now the largest 4K attention family at **16.823 s / 21.62%**, versus
+SWA **9.703 s / 12.47%**; perfect global removal has a **1.276x** kernel-sum
+ceiling. The vendored AOTriton adapter passes its GPU check and a head-dim-256
+GQA control, but both native V3 and per-query-head V2 return
+`hipErrorInvalidValue` for Laguna's head-dim-128 geometry at M128, and V3 also
+fails a global-only M512 query tile. Direct adaptation is therefore blocked;
+any next route must be an in-tree raw-pointer head-dim-128 tiled causal kernel
+that consumes complete `KVLiveSpans`. Evidence:
+`benchmarks/results/2026-07-23-gfx1151-laguna-post-qrow2-global-screen.json`.
+
 - [x] Reprofile at 512/1K/4K after AR-O1 through AR-O3; repeat after any AR-O4
   promotion before final attention admission.
 - [x] For SWA, process multiple query rows per tile and reuse the 512-token K/V
@@ -2566,10 +2583,12 @@ kernel-sum ceiling; global alone is **1.271x** and SWA alone **1.157x**. Evidenc
   context-qualified selector; wave32 remains the automatic short/partial fallback
   and explicit rollback, and unmeasured backends remain unchanged. Evidence:
   `benchmarks/results/2026-07-23-gfx1151-laguna-swa-qrow2-retained.json`.
-- [ ] For global layers, screen the existing torch-free AOTriton adapter as a
-  ceiling, then implement/adapt a tiled causal GQA route only if the measured
-  threshold warrants it. The rejected paired-head exact kernel is not a Flash
-  attention test.
+- [x] For global layers, screen the existing torch-free AOTriton adapter as a
+  ceiling. The wrapper/runtime is healthy but has no executable head-dim-128
+  Laguna geometry, so direct adaptation is closed mechanically.
+- [ ] Implement an in-tree tiled causal GQA route now that the retained profile
+  measures global at 21.62% of 4K kernel sum. The rejected paired-head exact
+  kernel is not a Flash-attention test.
 - [ ] Preserve complete `KVLiveSpans`, physical SWA rings, absolute positions,
   eviction masks, BF16 K/V rounding, and the separate softplus output gate.
   Keep the exact global/SWA kernels as fallbacks below the selected threshold.
