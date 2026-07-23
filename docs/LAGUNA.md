@@ -14,7 +14,8 @@ reaches 49.641 prompt tok/s, while LPF-2/3 are measured rejections. The pre-LPF-
 suite DFlash B4 run was exact at 0.6538x true-AR decode, but is now stale because
 the promoted prefill routes change B+1 verification; DFlash remains off pending
 a post-prefill refresh. DFlash public integration, higher-budget draft candidate
-parity, LPF-5 global attention/LPF-6, and long-context admission remain.
+parity, the post-prefill DFlash refresh, and admission beyond the current 4K
+runtime scope remain.
 
 This document defines the correctness-first plan for running
 [`poolside/Laguna-S-2.1-GGUF`](https://huggingface.co/poolside/Laguna-S-2.1-GGUF),
@@ -1928,6 +1929,26 @@ The gfx1151 backend capability now selects wave32 exact automatically; explicit
 baseline selection remains a one-release rollback, and unmeasured backends keep
 the 128-thread route. Evidence:
 `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-lpf5-swa-wave32.json`.
+
+LPF-5 global attention is closed for the current 4K scope after an exact
+incremental rejection. A paired-query candidate kept each head's baseline
+reduction order while sharing K/V loads across adjacent heads in the six-head
+GQA group. The 3,968-prior + 128-current / 4K-capacity production leaf was
+byte-exact, but moved **86.429 -> 125.319 ms (0.6897x; +45.00%)** because
+halving per-head token parallelism outweighed K/V reuse. The kernel, export,
+wrapper, registry key, selector, and fixture extension were removed. A
+Flash/AOTriton route would reassociate softmax/value arithmetic and add a new
+cache adapter; defer it until admitted contexts beyond 4K or a new profile makes
+global attention dominant enough to justify that correctness surface. Evidence:
+`benchmarks/results/2026-07-23-gfx1151-laguna-prefill-lpf5-global-pair-rejected.json`.
+
+LPF-6 is also closed as a profile-based defer for c=1. In the clean 4K trace,
+kernel span exceeds kernel sum by only **0.302 s / 0.25%** across 35,233
+dispatches; the 128-row LPF-0 trace similarly has about **5.6 ms / 0.10%**
+residual per complete pass. Graph capture, host submission fusion, or metadata
+reuse therefore has a sub-percent ceiling after LPF-1/4/5, while packed
+multi-request prefill changes the c=1 product scope and belongs to a separate
+serving milestone. No LPF-6 runtime path or temporary flag is retained.
 
 Every LPF candidate is a registered variant with the current exact chain as its
 unfused rollback. Exact candidates pass byte comparison on lengths
