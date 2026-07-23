@@ -152,6 +152,7 @@ def _session(
     owner: LagunaGGUFResidentSession,
     args: argparse.Namespace,
     *,
+    global_prefill_variant: str | None = None,
     swa_prefill_variant: str | None = None,
 ):
     assert owner.weights is not None
@@ -163,6 +164,7 @@ def _session(
         compiler_version=_compiler_version(args.compiler_version_file),
         require_cached_build=args.require_cached_build,
         prefill_chunk_size=args.chunk_size,
+        global_prefill_variant=global_prefill_variant,
         swa_prefill_variant=swa_prefill_variant,
     )
 
@@ -243,6 +245,7 @@ def _oracle_gate(
     owner: LagunaGGUFResidentSession,
     args: argparse.Namespace,
     *,
+    global_prefill_variant: str | None = None,
     swa_prefill_variant: str | None = None,
 ) -> dict[str, Any]:
     template = json.loads(args.template.read_text(encoding="utf-8"))
@@ -254,6 +257,7 @@ def _oracle_gate(
     session = _session(
         owner,
         args,
+        global_prefill_variant=global_prefill_variant,
         swa_prefill_variant=swa_prefill_variant,
     )
     try:
