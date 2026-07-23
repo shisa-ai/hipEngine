@@ -106,6 +106,18 @@ SWA_QROW2_COMPARISON = CategoryComparison(
     require_positive_wall=False,
     execution_mode="swa_prefill",
 )
+SWA_QROW2_ONLINE_COMPARISON = CategoryComparison(
+    name="swa_qrow2_online",
+    modes=("qrow2_32_exact", "qrow2_online"),
+    aggregate_key="swa_qrow2_online_vs_qrow2_32_exact",
+    screen_kind="hipengine_laguna_swa_qrow2_online_full_model_screen",
+    screen_status="quality_lane_admitted",
+    screen_decision_key="correctness",
+    require_positive_wall=True,
+    execution_mode="swa_prefill",
+    require_exact_free_running=False,
+    screen_candidate_variant="swa_context_rows_qrow2_online_spans",
+)
 GLOBAL_QROW2_ONLINE_COMPARISON = CategoryComparison(
     name="global_qrow2_online",
     modes=("global_exact", "global_qrow2_online"),
@@ -124,6 +136,7 @@ _GLOBAL_PREFILL_VARIANTS = {
 _SWA_PREFILL_VARIANTS = {
     "wave32_exact": "swa_context_rows_wave32_exact_spans",
     "qrow2_32_exact": "swa_context_rows_qrow2_m128_c128_exact_spans",
+    "qrow2_online": "swa_context_rows_qrow2_online_spans",
 }
 _COMPARISONS = {
     comparison.name: comparison
@@ -132,6 +145,7 @@ _COMPARISONS = {
         GROUPED_COMBINE_COMPARISON,
         F16_WMMA_COMP_SWA_COMPARISON,
         SWA_QROW2_COMPARISON,
+        SWA_QROW2_ONLINE_COMPARISON,
         GLOBAL_QROW2_ONLINE_COMPARISON,
     )
 }
@@ -660,7 +674,11 @@ def _promotion_gate(
                 "every M16-512 full/SWA family faster and M128 weighted >=2x"
                 if comparison.execution_mode == "f16_prefill"
                 else (
-                    "exact matrix512/attention128 512/1K/4K output, KV, and wall win"
+                    (
+                        "quality-gated online SWA attention improves 512/1K/4K wall"
+                        if comparison.name == SWA_QROW2_ONLINE_COMPARISON.name
+                        else "exact matrix512/attention128 512/1K/4K output, KV, and wall win"
+                    )
                     if comparison.execution_mode == "swa_prefill"
                     else (
                         "quality-gated online global attention improves 512/1K/4K wall"
@@ -693,7 +711,9 @@ def _load_shape_screen(
     artifact = json.loads(args.shape_screen.read_text(encoding="utf-8"))
     decision = artifact.get(comparison.screen_decision_key, {})
     model = artifact.get("model", {})
-    candidate_variant = artifact.get("protocol", {}).get("candidate_variant")
+    candidate_variant = artifact.get("protocol", {}).get(
+        "candidate_variant"
+    ) or artifact.get("candidate", {}).get("variant")
     passed = bool(
         artifact.get("kind") == comparison.screen_kind
         and artifact.get("status") == comparison.screen_status
@@ -990,11 +1010,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     "full-attention layers; all 36 SWA layers and decode stay unchanged."
                     if comparison.execution_mode == "global_prefill"
                     else (
-                        "Adaptive grouped down stays BF16 throughout and falls back to "
-                        "direct below 32 rows."
-                        if comparison.require_positive_wall
-                        else "The candidate preserves both BF16 boundaries while removing "
-                        "one launch and the selected-output round trip for rows >=32."
+                        "Online SWA prefill changes softmax association only on the 36 "
+                        "sliding-attention layers; global attention and decode stay unchanged."
+                        if comparison.name == SWA_QROW2_ONLINE_COMPARISON.name
+                        else (
+                            "Adaptive grouped down stays BF16 throughout and falls back to "
+                            "direct below 32 rows."
+                            if comparison.require_positive_wall
+                            else "The candidate preserves both BF16 boundaries while removing "
+                            "one launch and the selected-output round trip for rows >=32."
+                        )
                     )
                 )
             ),
