@@ -375,6 +375,116 @@ def test_laguna_stream_matches_blocking_and_finishes_with_cumulative_ids(generat
     assert ("close",) not in _FakeSession.events
 
 
+def test_laguna_stream_emits_nonmatching_token_before_long_stop_holdback(generator) -> None:
+    _FakeSession.sequences = [(10, 11, 12)]
+    stream = generator.instance.stream_detailed(
+        _request(
+            max_tokens=3,
+            stop_token_sequences=((13, 14, 15, 16),),
+        )
+    )
+
+    first = next(stream)
+
+    assert first.text == "A"
+    assert not any(event[0] == "forward" for event in _FakeSession.events)
+    assert first.finish_details is None
+    assert first.generated_token_ids is None
+    assert "".join(chunk.text for chunk in stream) == "BC"
+
+
+def test_laguna_stream_flushes_failed_stop_prefix_at_first_safe_token(generator) -> None:
+    _FakeSession.sequences = [(13, 10, 11)]
+    stream = generator.instance.stream_detailed(
+        _request(max_tokens=3, stop_token_sequences=((13, 14, 15),))
+    )
+
+    first = next(stream)
+
+    assert first.text == "DA"
+    assert [event for event in _FakeSession.events if event[0] == "forward"] == [
+        ("forward", 13)
+    ]
+    assert "".join(chunk.text for chunk in stream) == "B"
+
+
+def test_laguna_stream_preserves_overlapping_stop_suffixes_and_blocking_text(generator) -> None:
+    sequence = (13, 14, 13, 14, 15)
+    stops = ((13, 14, 16), (13, 14, 15))
+    _FakeSession.sequences = [sequence, sequence]
+
+    chunks = list(
+        generator.instance.stream_detailed(
+            _request(max_tokens=len(sequence), stop_token_sequences=stops)
+        )
+    )
+    blocking = generator.instance.generate_detailed(
+        _request(max_tokens=len(sequence), stop_token_sequences=stops)
+    )[0]
+
+    assert [chunk.text for chunk in chunks] == ["DT14", ""]
+    assert "".join(chunk.text for chunk in chunks) == blocking.text == "DT14"
+    assert chunks[-1].finish_details is not None
+    assert chunks[-1].finish_details.stop_sequence == (13, 14, 15)
+    assert chunks[-1].generated_token_ids == sequence
+
+
+@pytest.mark.parametrize(
+    ("sequence", "stops", "min_tokens", "expected_text", "expected_stop"),
+    [
+        ((10, 11, 12), ((10, 11, 12), (10, 11, 13)), 0, "", (10, 11, 12)),
+        ((13, 14), ((14,), (13, 14)), 0, "D", (14,)),
+        ((13, 14), ((13, 14), (14,)), 0, "", (13, 14)),
+        ((13, 14), ((13, 14, 15),), 0, "DT14", ()),
+        ((10, 11, 12), ((10, 11),), 3, "ABC", ()),
+    ],
+)
+def test_laguna_stream_stop_edges_match_blocking(
+    generator,
+    sequence,
+    stops,
+    min_tokens,
+    expected_text,
+    expected_stop,
+) -> None:
+    _FakeSession.sequences = [sequence, sequence]
+    request = _request(
+        max_tokens=len(sequence),
+        min_tokens=min_tokens,
+        eos_token_id=2 if min_tokens else None,
+        stop_token_sequences=stops,
+    )
+
+    chunks = list(generator.instance.stream_detailed(request))
+    blocking = generator.instance.generate_detailed(request)[0]
+
+    assert "".join(chunk.text for chunk in chunks) == blocking.text == expected_text
+    assert chunks[-1].finish_details is not None
+    assert blocking.finish_details is not None
+    assert chunks[-1].finish_details.to_json_dict() == blocking.finish_details.to_json_dict()
+    assert chunks[-1].finish_details.stop_sequence == expected_stop
+    assert chunks[-1].generated_token_ids == sequence
+
+
+def test_laguna_prefix_aware_stream_keeps_split_utf8_valid(generator) -> None:
+    tokens = list(generator.tokenizer.tokens)
+    tokens[10], tokens[11], tokens[12] = "Ã", "©", "x"
+    generator.tokenizer.tokens = tuple(tokens)
+    generator.tokenizer.byte_decoder = {"Ã": 0xC3, "©": 0xA9, "x": 0x78}
+    _FakeSession.sequences = [(10, 11, 12)]
+    stream = generator.instance.stream_detailed(
+        _request(max_tokens=3, stop_token_sequences=((13, 14, 15, 16),))
+    )
+
+    first = next(stream)
+
+    assert first.text == "é"
+    assert [event for event in _FakeSession.events if event[0] == "forward"] == [
+        ("forward", 10)
+    ]
+    assert "".join(chunk.text for chunk in stream) == "x"
+
+
 def test_laguna_max_tokens_and_multitoken_stop_are_exact(generator) -> None:
     _FakeSession.sequences = [(10, 11), (10, 11, 12)]
 

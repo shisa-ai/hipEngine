@@ -333,11 +333,7 @@ class LagunaGGUFGenerator:
         pending: list[int] = []
         visible_parts: list[str] = []
         decoder = _IncrementalLagunaDecoder(self.tokenizer)
-        longest_sequence = max(
-            (len(sequence) for sequence in request.stop_token_sequences),
-            default=1,
-        )
-        hold_tokens = max(0, longest_sequence - 1)
+        stop_prefixes = _proper_stop_prefixes(request.stop_token_sequences)
         terminal_output: GenerationOutput | None = None
         for step in self._token_steps(
             request,
@@ -347,7 +343,7 @@ class LagunaGGUFGenerator:
             pending.append(step.token_id)
             finish = step.finish_details
             if finish is None:
-                safe_count = max(0, len(pending) - hold_tokens)
+                safe_count = _safe_pending_emit_count(pending, stop_prefixes)
                 safe_ids = pending[:safe_count]
                 del pending[:safe_count]
                 text = decoder.feed(_filter_output_specials(safe_ids, self.tokenizer))
@@ -646,6 +642,32 @@ class LagunaGGUFGenerator:
             "serial_decode_fallback": False,
             "throughput_claim_eligible": False,
         }
+
+
+def _proper_stop_prefixes(
+    stop_sequences: Sequence[Sequence[int]],
+) -> frozenset[tuple[int, ...]]:
+    return frozenset(
+        tuple(int(token) for token in sequence[:width])
+        for sequence in stop_sequences
+        for width in range(1, len(sequence))
+    )
+
+
+def _safe_pending_emit_count(
+    pending: Sequence[int],
+    stop_prefixes: frozenset[tuple[int, ...]],
+) -> int:
+    retained = max(
+        (
+            len(prefix)
+            for prefix in stop_prefixes
+            if len(prefix) <= len(pending)
+            and tuple(pending[-len(prefix) :]) == prefix
+        ),
+        default=0,
+    )
+    return len(pending) - retained
 
 
 class _IncrementalLagunaDecoder:
