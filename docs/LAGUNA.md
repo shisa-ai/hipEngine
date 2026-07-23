@@ -2318,13 +2318,16 @@ repeat either experiment unchanged.
   is now wired explicitly: it preserves all ten slot-order FMAs, rounds selected
   output to BF16, adds the BF16 shared output, and rounds again while removing
   one add launch and the routed-output round trip. The unfused registered chain
-  remains. A dirty counterbalanced full-model screen is exact and effectively
-  flat (**0.99964x** aggregate; shape medians **0.99817-1.00152x**), while the
-  production-shape combine sub-window improves **1.246-1.310x** at 32-128 rows.
-  A checked-in clean micro plus full-model screen now decides whether this exact
-  physical saving is retained by the performance-first policy; category
-  non-regression remains mandatory before any default promotion. Do not
-  introduce order-dependent atomics across ten experts.
+  remains. Clean detached evidence retains the physical candidate: the
+  production-shape combine sub-window is BF16-bit exact and improves
+  **1.249-1.313x** at every 32-128-row shape (**1.265x** aggregate GPU span),
+  while the five-repeat complete-model screen is non-regressive at **0.99972x**
+  aggregate with all 60 next IDs exact and shape ratios **0.99863-1.00102x**.
+  This is a launch/traffic claim, not a standalone model-wall win. The complete
+  ten-prompt category non-regression gate is now the only blocker to gfx1151
+  default promotion. Evidence:
+  `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-grouped-combine-screen.json`.
+  Do not introduce order-dependent atomics across ten experts.
 
 Stop rule: remove a candidate that is slower inclusively at every natural
 shape, or whose best applicable family speedup is below 2x with no material
