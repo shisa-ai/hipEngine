@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+from tokenizers import Tokenizer
 
 from hipengine.loading.gguf import GGUFReader
 from hipengine.tokenization.gguf import Qwen35GGUFTokenizer, bytes_to_unicode
@@ -45,6 +47,28 @@ def test_qwen35_gguf_tokenizer_normalizes_text_segments_to_nfc() -> None:
     assert tokenizer.encode("e\u0301") == [256]
     assert tokenizer.encode("é") == [256]
     assert tokenizer.encode("<e\u0301>") == [257]
+
+
+def test_qwen35_gguf_tokenizer_reconstructs_hf_encoder_without_sidecar(tmp_path) -> None:
+    synthetic = _synthetic_nfc_tokenizer()
+    info = SimpleNamespace(
+        path=tmp_path / "missing.gguf",
+        metadata={
+            "tokenizer.ggml.model": "gpt2",
+            "tokenizer.ggml.pre": "qwen35",
+            "tokenizer.ggml.tokens": synthetic.tokens,
+            "tokenizer.ggml.merges": synthetic.merges,
+            "tokenizer.ggml.token_type": synthetic.token_types,
+        },
+    )
+
+    tokenizer = Qwen35GGUFTokenizer.from_gguf_info(info)
+
+    assert tokenizer.encoder_backend == "huggingface_tokenizers"
+    assert isinstance(tokenizer.encoder, Tokenizer)
+    assert tokenizer.encode("e\u0301") == [256]
+    assert not hasattr(tokenizer, "_bpe")
+    assert not hasattr(tokenizer, "_cache")
 
 
 def test_qwen35moe_gguf_tokenizer_matches_hf_nfc_oracle() -> None:
@@ -112,7 +136,7 @@ def test_gguf_prompt_token_inventory_records_raw_token_ids() -> None:
 
     assert inventory["kind"] == "hipengine_gguf_prompt_token_inventory"
     assert inventory["prompt_render"] == "raw"
-    assert inventory["tokenization"] == "hipengine.gguf.qwen35.byte_bpe_approx"
+    assert inventory["tokenization"] == "hipengine.gguf.qwen35.hf_tokenizers_from_gguf"
     assert inventory["warning"].startswith("This records hipEngine GGUF tokenizer output only")
     row = inventory["prompts"][0]
     assert row["name"] == "answer"

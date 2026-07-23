@@ -4,7 +4,7 @@
   "model": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
   "prompts_file": "benchmarks/fixtures/llamacpp_mtp_bench_prompts.json",
   "prompt_render": "raw",
-  "tokenization": "hipengine.gguf.qwen35.byte_bpe_approx",
+  "tokenization": "hipengine.gguf.qwen35.hf_tokenizers_from_gguf",
   "tokenizer_model": "gpt2",
   "tokenizer_pre": "qwen35",
   "eos_token_id": 248046,
