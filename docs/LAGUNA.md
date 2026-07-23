@@ -2457,7 +2457,15 @@ and ring overwrite order. A low-level cached gfx1151 fixture seeds positions
 0..383, compares ordinary 128+2 chunks with one pending 130-row transaction,
 and matches every context/K/V/span byte through absolute positions
 **511/512/513**. The staged verifier remains fail-closed above one attention
-tile. Full-model 128/256/512 timing and state/KV gates remain pending, so the
+tile.
+
+`scripts/laguna_matrix_chunk_bench.py` now owns the clean promotion screen. It
+loads weights once, rotates M128/M256/M512 order at 512/1K/4K for at least two
+repetitions, fixes attention at 128 rows, excludes session construction and
+post-run hashing from timed prefill, and hashes final logits/hidden plus every
+visible K/V/span byte. A larger policy is eligible only if every length and the
+weighted wall improve, all fields/repeats are exact to M128, and each session
+plus final tracked ownership recovers. The clean run remains pending, so the
 128-row default and performance headline are unchanged.
 
 - [x] Add bounded 256/512-row scratch and admission accounting after AR-O1/O2
