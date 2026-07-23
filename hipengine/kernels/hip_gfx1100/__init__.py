@@ -9,10 +9,6 @@ LAGUNA_SWA_DECODE_VARIANT = "swa_context_token4_exact_spans"
 # Other backends retain the separately registered pack8 fallbacks.
 LAGUNA_Q5_WAVE32X2_OUTPUT = True
 LAGUNA_Q5_WAVE32X2_QUERY_GATE = True
-# D13's raw-Q5 shared pair+SiLU leaf is available for explicit correctness and
-# promotion gates. The resident-session selector remains default-off until the
-# complete W7900 context/category gate decides retention.
-LAGUNA_Q5_SHARED_SILU_SUPPORTED = True
 
 # Clean W7900 SOL-G5 p512/d24 evidence admits the state-bound composite GGUF
 # graph when at least 24 decode transitions amortize capture/instantiate/close.
@@ -73,7 +69,6 @@ GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS = True
 GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE = "baseline"
 
 __all__ = [
-    "LAGUNA_Q5_SHARED_SILU_SUPPORTED",
     "LAGUNA_Q5_WAVE32X2_OUTPUT",
     "LAGUNA_Q5_WAVE32X2_QUERY_GATE",
     "LAGUNA_SWA_DECODE_VARIANT",
