@@ -1,0 +1,895 @@
+{
+  "cancellation": {
+    "elapsed_seconds": 4.041430887999013,
+    "first_chunk_generated_ids": [],
+    "first_chunk_text_nonempty": true,
+    "state": {
+      "cycle_present": true,
+      "drafter_closed": false,
+      "drafter_context_tokens": 0,
+      "drafter_present": true,
+      "owner_ids": {
+        "cycle": 140474896708512,
+        "drafter": 140474896698288,
+        "target": 140474896698240
+      },
+      "provider_closed": false,
+      "provider_present": true,
+      "target_closed": false,
+      "target_position": -1,
+      "target_present": true
+    },
+    "state_reset": true
+  },
+  "capability_checks": {
+    "candidate_budget": true,
+    "configured": true,
+    "configured_provider": true,
+    "default_disabled": true,
+    "drafter_revision": true,
+    "drafter_sha256": true,
+    "economics_evidence": true,
+    "exactness": true,
+    "fallback_reason": true,
+    "no_performance_claim": true,
+    "policy": true,
+    "processed_target_verification": true,
+    "provider": true,
+    "request_field": true,
+    "serving_route": true,
+    "streaming": true,
+    "target_sha256": true
+  },
+  "category_checks": {
+    "code": true,
+    "general_en": true,
+    "general_ja": true,
+    "mixed_ja_en": true
+  },
+  "date": "2026-07-23",
+  "default_route": "ar",
+  "drafter": {
+    "candidate_budget": 4,
+    "path": "/home/lhl/.cache/huggingface/hub/models--poolside--Laguna-S-2.1-DFlash/snapshots/b0486d1586daa0d56435c508108171fc1c8daff9",
+    "revision": "b0486d1586daa0d56435c508108171fc1c8daff9",
+    "sha256": "f24f08781c697c19952c02fb2e7e9bdf2071b79a711c2a44b836a74b9b62a1f4"
+  },
+  "economics": {
+    "default_eligible": false,
+    "evidence": "benchmarks/results/2026-07-23-gfx1151-laguna-dflash-category-economics-post-prefill.json",
+    "fallback_reason": "d4_full_suite_speedup_0p9469x_below_1p10",
+    "performance_claim": false
+  },
+  "elapsed_seconds": 233.40086840093136,
+  "lifecycle": {
+    "after": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 79817890405,
+      "peak_allocations": 1883,
+      "total_allocated_bytes": 83305234561,
+      "total_freed_bytes": 83305234561
+    },
+    "before": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 0,
+      "peak_allocations": 0,
+      "total_allocated_bytes": 0,
+      "total_freed_bytes": 0
+    },
+    "checks": {
+      "provider_closed": true,
+      "provider_owners_released": true,
+      "tracked_allocations": true,
+      "tracked_bytes": true
+    }
+  },
+  "model": {
+    "backend": "hip_gfx1151",
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "model_capability": true,
+  "pass": true,
+  "performance_claim": false,
+  "prompt_rows": [
+    {
+      "ar_ids_sha256": "18a0d82c9b29b2ab6aad676248068e3e15e4f6abe3e7a97f12b18c4b4e4d31db",
+      "blocking_ids_sha256": "18a0d82c9b29b2ab6aad676248068e3e15e4f6abe3e7a97f12b18c4b4e4d31db",
+      "category": "code",
+      "checks": {
+        "ar_matches_fixed_oracle_stop_policy": true,
+        "blocking_execution_path": true,
+        "blocking_matches_true_ar": true,
+        "blocking_route": true,
+        "blocking_state_reset": true,
+        "blocking_streaming_ids_equal": true,
+        "blocking_streaming_text_equal": true,
+        "eot_markup_absent": true,
+        "owners_retained": true,
+        "stream_done": true,
+        "streaming_execution_path": true,
+        "streaming_matches_true_ar": true,
+        "streaming_state_reset": true
+      },
+      "expected_ids_sha256": "18a0d82c9b29b2ab6aad676248068e3e15e4f6abe3e7a97f12b18c4b4e4d31db",
+      "finish": {
+        "ar": {
+          "cache_action": "append_none",
+          "continuation_eligible": false,
+          "length_limit": 32,
+          "reason": "length",
+          "sampler_mode": "greedy_fast"
+        },
+        "blocking": {
+          "cache_action": "append_none",
+          "continuation_eligible": false,
+          "length_limit": 32,
+          "reason": "length",
+          "sampler_mode": "greedy_fast"
+        },
+        "streaming": {
+          "cache_action": "append_none",
+          "length_limit": 32,
+          "reason": "length",
+          "sampler_mode": "greedy_fast"
+        }
+      },
+      "id": "code_merge_intervals",
+      "output_tokens": 32,
+      "pass": true,
+      "prompt_ids_sha256": "fc37944bf6bc6193b490fd765b8466f1ebf40889f0f86a61dfc4b6b90350c815",
+      "prompt_tokens": 69,
+      "provider_diagnostics": {
+        "accepted_draft_tokens": 25,
+        "backend": "hip_gfx1151",
+        "candidate_budget": 4,
+        "cycles": 7,
+        "draft_tokens_proposed": 28,
+        "exactness_mode": "target_corrected_greedy",
+        "fallback_reason": "d4_full_suite_speedup_0p9469x_below_1p10",
+        "model": "laguna_gguf",
+        "performance_claim": false,
+        "provider": "dflash",
+        "quant": "gguf_q4_k_m",
+        "target_verify_rows": 35
+      },
+      "split": "train",
+      "streaming_ids_sha256": "18a0d82c9b29b2ab6aad676248068e3e15e4f6abe3e7a97f12b18c4b4e4d31db",
+      "timing_seconds": {
+        "ar": 52.23804469406605,
+        "blocking": 6.15483007999137,
+        "streaming": 5.384302543010563,
+        "total": 63.777249763021246
+      }
+    },
+    {
+      "ar_ids_sha256": "e93a415aa60bfe8206f89ec5a0d6c270bc88031e71dcb4b734f6c6f3654e6120",
+      "blocking_ids_sha256": "e93a415aa60bfe8206f89ec5a0d6c270bc88031e71dcb4b734f6c6f3654e6120",
+      "category": "code",
+      "checks": {
+        "ar_matches_fixed_oracle_stop_policy": true,
+        "blocking_execution_path": true,
+        "blocking_matches_true_ar": true,
+        "blocking_route": true,
+        "blocking_state_reset": true,
+        "blocking_streaming_ids_equal": true,
+        "blocking_streaming_text_equal": true,
+        "eot_markup_absent": true,
+        "owners_retained": true,
+        "stream_done": true,
+        "streaming_execution_path": true,
+        "streaming_matches_true_ar": true,
+        "streaming_state_reset": true
+      },
+      "expected_ids_sha256": "e93a415aa60bfe8206f89ec5a0d6c270bc88031e71dcb4b734f6c6f3654e6120",
+      "finish": {
+        "ar": {
+          "cache_action": "append_none",
+          "continuation_eligible": false,
+          "length_limit": 32,
+          "reason": "length",
+          "sampler_mode": "greedy_fast"
+        },
+        "blocking": {
+          "cache_action": "append_none",
+          "continuation_eligible": false,
+          "length_limit": 32,
+          "reason": "length",
+          "sampler_mode": "greedy_fast"
+        },
+        "streaming": {
+          "cache_action": "append_none",
+          "length_limit": 32,
+          "reason": "length",
+          "sampler_mode": "greedy_fast"
+        }
+      },
+      "id": "code_topological_sort",
+      "output_tokens": 32,
+      "pass": true,
+      "prompt_ids_sha256": "2945de3e6db2b5bfa7421e1670200e9d7e711305370ee3a7de19dffd26d84d89",
+      "prompt_tokens": 79,
+      "provider_diagnostics": {
+        "accepted_draft_tokens": 23,
+        "backend": "hip_gfx1151",
+        "candidate_budget": 4,
+        "cycles": 9,
+        "draft_tokens_proposed": 36,
+        "exactness_mode": "target_corrected_greedy",
+        "fallback_reason": "d4_full_suite_speedup_0p9469x_below_1p10",
+        "model": "laguna_gguf",
+        "performance_claim": false,
+        "provider": "dflash",
+        "quant": "gguf_q4_k_m",
+        "target_verify_rows": 45
+      },
+      "split": "train",
+      "streaming_ids_sha256": "e93a415aa60bfe8206f89ec5a0d6c270bc88031e71dcb4b734f6c6f3654e6120",
+      "timing_seconds": {
+        "ar": 3.4869994450127706,
+        "blocking": 6.373598348931409,
+        "streaming": 6.38416858506389,
+        "total": 16.244841119041666
+      }
+    },
+    {
+      "ar_ids_sha256": "ea2fa65ebd96e8e7e8291a6133f8e2460d59cfb606a88c5bef8ec11116f0c737",
+      "blocking_ids_sha256": "ea2fa65ebd96e8e7e8291a6133f8e2460d59cfb606a88c5bef8ec11116f0c737",
+      "category": "code",
+      "checks": {
+        "ar_matches_fixed_oracle_stop_policy": true,
+        "blocking_execution_path": true,
+        "blocking_matches_true_ar": true,
+        "blocking_route": true,
+        "blocking_state_reset": true,
+        "blocking_streaming_ids_equal": true,
+        "blocking_streaming_text_equal": true,
+        "eot_markup_absent": true,
+        "owners_retained": true,
+        "stream_done": true,
+        "streaming_execution_path": true,
+        "streaming_matches_true_ar": true,
+        "streaming_state_reset": true
+      },
+      "expected_ids_sha256": "ea2fa65ebd96e8e7e8291a6133f8e2460d59cfb606a88c5bef8ec11116f0c737",
+      "finish": {
+        "ar": {
+          "cache_action": "append_none",
+          "continuation_eligible": false,
+          "length_limit": 32,
+          "reason": "length",
+          "sampler_mode": "greedy_fast"
+        },
+        "blocking": {
+          "cache_action": "append_none",
+          "continuation_eligible": false,
+          "length_limit": 32,
+          "reason": "length",
+          "sampler_mode": "greedy_fast"
+        },
+        "streaming": {
+          "cache_action": "append_none",
+          "length_limit": 32,
+          "reason": "length",
+          "sampler_mode": "greedy_fast"
+        }
+      },
+      "id": "code_lru_cache",
+      "output_tokens": 32,
+      "pass": true,
+      "prompt_ids_sha256": "538847bc52dc839454728c8c4273915447c86430978ebdcd84038a483c05ad94",
+      "prompt_tokens": 75,
+      "provider_diagnostics": {
+        "accepted_draft_tokens": 24,
+        "backend": "hip_gfx1151",
+        "candidate_budget": 4,
+        "cycles": 8,
+        "draft_tokens_proposed": 32,
+        "exactness_mode": "target_corrected_greedy",
+        "fallback_reason": "d4_full_suite_speedup_0p9469x_below_1p10",
+        "model": "laguna_gguf",
+        "performance_claim": false,
+        "provider": "dflash",
+        "quant": "gguf_q4_k_m",
+        "target_verify_rows": 40
+      },
+      "split": "train",
+      "streaming_ids_sha256": "ea2fa65ebd96e8e7e8291a6133f8e2460d59cfb606a88c5bef8ec11116f0c737",
+      "timing_seconds": {
+        "ar": 3.415799914044328,
+        "blocking": 5.935573865077458,
+        "streaming": 5.948061401024461,
+        "total": 15.299507226096466
+      }
+    },
+    {
+      "ar_ids_sha256": "6650b106d2215d6afc22373ed7121f9e97c0524cfe1c5ca5376c1872475b802e",
+      "blocking_ids_sha256": "6650b106d2215d6afc22373ed7121f9e97c0524cfe1c5ca5376c1872475b802e",
+      "category": "code",
+      "checks": {
+        "ar_matches_fixed_oracle_stop_policy": true,
+        "blocking_execution_path": true,
+        "blocking_matches_true_ar": true,
+        "blocking_route": true,
+        "blocking_state_reset": true,
+        "blocking_streaming_ids_equal": true,
+        "blocking_streaming_text_equal": true,
+        "eot_markup_absent": true,
+        "owners_retained": true,
+        "stream_done": true,
+        "streaming_execution_path": true,
+        "streaming_matches_true_ar": true,
+        "streaming_state_reset": true
+      },
+      "expected_ids_sha256": "6650b106d2215d6afc22373ed7121f9e97c0524cfe1c5ca5376c1872475b802e",
+      "finish": {
+        "ar": {
+          "cache_action": "append_none",
+          "continuation_eligible": false,
+          "length_limit": 32,
+          "reason": "length",
+          "sampler_mode": "greedy_fast"
+        },
+        "blocking": {
+          "cache_action": "append_none",
+          "continuation_eligible": false,
+          "length_limit": 32,
+          "reason": "length",
+          "sampler_mode": "greedy_fast"
+        },
+        "streaming": {
+          "cache_action": "append_none",
+          "length_limit": 32,
+          "reason": "length",
+          "sampler_mode": "greedy_fast"
+        }
+      },
+      "id": "code_markdown_table",
+      "output_tokens": 32,
+      "pass": true,
+      "prompt_ids_sha256": "861ef412430472ecccfc8f0705286b5177f7a5874206497c081f7cca5ac765be",
+      "prompt_tokens": 83,
+      "provider_diagnostics": {
+        "accepted_draft_tokens": 25,
+        "backend": "hip_gfx1151",
+        "candidate_budget": 4,
+        "cycles": 7,
+        "draft_tokens_proposed": 28,
+        "exactness_mode": "target_corrected_greedy",
+        "fallback_reason": "d4_full_suite_speedup_0p9469x_below_1p10",
+        "model": "laguna_gguf",
+        "performance_claim": false,
+        "provider": "dflash",
+        "quant": "gguf_q4_k_m",
+        "target_verify_rows": 35
+      },
+      "split": "heldout",
+      "streaming_ids_sha256": "6650b106d2215d6afc22373ed7121f9e97c0524cfe1c5ca5376c1872475b802e",
+      "timing_seconds": {
+        "ar": 3.606203061994165,
+        "blocking": 6.250800381065346,
+        "streaming": 6.25855425093323,
+        "total": 16.115631061955355
+      }
+    },
+    {
+      "ar_ids_sha256": "129a26d63c61a79cfac0e1bc7c62b6cf985bddfe0167541e7962d2ddb8d3fc93",
+      "blocking_ids_sha256": "129a26d63c61a79cfac0e1bc7c62b6cf985bddfe0167541e7962d2ddb8d3fc93",
+      "category": "general_en",
+      "checks": {
+        "ar_matches_fixed_oracle_stop_policy": true,
+        "blocking_execution_path": true,
+        "blocking_matches_true_ar": true,
+        "blocking_route": true,
+        "blocking_state_reset": true,
+        "blocking_streaming_ids_equal": true,
+        "blocking_streaming_text_equal": true,
+        "eot_markup_absent": true,
+        "owners_retained": true,
+        "stream_done": true,
+        "streaming_execution_path": true,
+        "streaming_matches_true_ar": true,
+        "streaming_state_reset": true
+      },
+      "expected_ids_sha256": "129a26d63c61a79cfac0e1bc7c62b6cf985bddfe0167541e7962d2ddb8d3fc93",
+      "finish": {
+        "ar": {
+          "cache_action": "append_none",
+          "continuation_eligible": false,
+          "length_limit": 32,
+          "reason": "length",
+          "sampler_mode": "greedy_fast"
+        },
+        "blocking": {
+          "cache_action": "append_none",
+          "continuation_eligible": false,
+          "length_limit": 32,
+          "reason": "length",
+          "sampler_mode": "greedy_fast"
+        },
+        "streaming": {
+          "cache_action": "append_none",
+          "length_limit": 32,
+          "reason": "length",
+          "sampler_mode": "greedy_fast"
+        }
+      },
+      "id": "general_en_plan",
+      "output_tokens": 32,
+      "pass": true,
+      "prompt_ids_sha256": "41dc65427a062537f073f70a0a93534b2b80a9907ce4d5aff1792f356ac06c27",
+      "prompt_tokens": 68,
+      "provider_diagnostics": {
+        "accepted_draft_tokens": 21,
+        "backend": "hip_gfx1151",
+        "candidate_budget": 4,
+        "cycles": 11,
+        "draft_tokens_proposed": 44,
+        "exactness_mode": "target_corrected_greedy",
+        "fallback_reason": "d4_full_suite_speedup_0p9469x_below_1p10",
+        "model": "laguna_gguf",
+        "performance_claim": false,
+        "provider": "dflash",
+        "quant": "gguf_q4_k_m",
+        "target_verify_rows": 55
+      },
+      "split": "train",
+      "streaming_ids_sha256": "129a26d63c61a79cfac0e1bc7c62b6cf985bddfe0167541e7962d2ddb8d3fc93",
+      "timing_seconds": {
+        "ar": 3.2840503359911963,
+        "blocking": 6.064803794957697,
+        "streaming": 6.070865398040041,
+        "total": 15.41979003092274
+      }
+    },
+    {
+      "ar_ids_sha256": "f3d9694447ca81f26014a87d1426bf9d4fcb00e96f6c01f4970f821e0cb7c788",
+      "blocking_ids_sha256": "f3d9694447ca81f26014a87d1426bf9d4fcb00e96f6c01f4970f821e0cb7c788",
+      "category": "general_en",
+      "checks": {
+        "ar_matches_fixed_oracle_stop_policy": true,
+        "blocking_execution_path": true,
+        "blocking_matches_true_ar": true,
+        "blocking_route": true,
+        "blocking_state_reset": true,
+        "blocking_streaming_ids_equal": true,
+        "blocking_streaming_text_equal": true,
+        "eot_markup_absent": true,
+        "owners_retained": true,
+        "stream_done": true,
+        "streaming_execution_path": true,
+        "streaming_matches_true_ar": true,
+        "streaming_state_reset": true
+      },
+      "expected_ids_sha256": "f3d9694447ca81f26014a87d1426bf9d4fcb00e96f6c01f4970f821e0cb7c788",
+      "finish": {
+        "ar": {
+          "cache_action": "append_none",
+          "continuation_eligible": false,
+          "length_limit": 32,
+          "reason": "length",
+          "sampler_mode": "greedy_fast"
+        },
+        "blocking": {
+          "cache_action": "append_none",
+          "continuation_eligible": false,
+          "length_limit": 32,
+          "reason": "length",
+          "sampler_mode": "greedy_fast"
+        },
+        "streaming": {
+          "cache_action": "append_none",
+          "length_limit": 32,
+          "reason": "length",
+          "sampler_mode": "greedy_fast"
+        }
+      },
+      "id": "general_en_explain",
+      "output_tokens": 32,
+      "pass": true,
+      "prompt_ids_sha256": "6f2a45847af8a42b3cfabcc6435e35afd1600f95d0b66cea1227d11468b57406",
+      "prompt_tokens": 68,
+      "provider_diagnostics": {
+        "accepted_draft_tokens": 17,
+        "backend": "hip_gfx1151",
+        "candidate_budget": 4,
+        "cycles": 15,
+        "draft_tokens_proposed": 60,
+        "exactness_mode": "target_corrected_greedy",
+        "fallback_reason": "d4_full_suite_speedup_0p9469x_below_1p10",
+        "model": "laguna_gguf",
+        "performance_claim": false,
+        "provider": "dflash",
+        "quant": "gguf_q4_k_m",
+        "target_verify_rows": 75
+      },
+      "split": "heldout",
+      "streaming_ids_sha256": "f3d9694447ca81f26014a87d1426bf9d4fcb00e96f6c01f4970f821e0cb7c788",
+      "timing_seconds": {
+        "ar": 3.2902224760036916,
+        "blocking": 6.8077977320645005,
+        "streaming": 6.815731719019823,
+        "total": 16.913824182003736
+      }
+    },
+    {
+      "ar_ids_sha256": "b29caa8fa6ce8364da3b7dde2117167b72e0bb647303692318e5c35b4968f66f",
+      "blocking_ids_sha256": "b29caa8fa6ce8364da3b7dde2117167b72e0bb647303692318e5c35b4968f66f",
+      "category": "general_ja",
+      "checks": {
+        "ar_matches_fixed_oracle_stop_policy": true,
+        "blocking_execution_path": true,
+        "blocking_matches_true_ar": true,
+        "blocking_route": true,
+        "blocking_state_reset": true,
+        "blocking_streaming_ids_equal": true,
+        "blocking_streaming_text_equal": true,
+        "eot_markup_absent": true,
+        "owners_retained": true,
+        "stream_done": true,
+        "streaming_execution_path": true,
+        "streaming_matches_true_ar": true,
+        "streaming_state_reset": true
+      },
+      "expected_ids_sha256": "b29caa8fa6ce8364da3b7dde2117167b72e0bb647303692318e5c35b4968f66f",
+      "finish": {
+        "ar": {
+          "cache_action": "append_none",
+          "continuation_eligible": false,
+          "length_limit": 32,
+          "reason": "length",
+          "sampler_mode": "greedy_fast"
+        },
+        "blocking": {
+          "cache_action": "append_none",
+          "continuation_eligible": false,
+          "length_limit": 32,
+          "reason": "length",
+          "sampler_mode": "greedy_fast"
+        },
+        "streaming": {
+          "cache_action": "append_none",
+          "length_limit": 32,
+          "reason": "length",
+          "sampler_mode": "greedy_fast"
+        }
+      },
+      "id": "general_ja_plan",
+      "output_tokens": 32,
+      "pass": true,
+      "prompt_ids_sha256": "8854808764e68b83d55b2377804f23d9fd0f8a70ea2dd66216ad2f3b5e671e49",
+      "prompt_tokens": 97,
+      "provider_diagnostics": {
+        "accepted_draft_tokens": 20,
+        "backend": "hip_gfx1151",
+        "candidate_budget": 4,
+        "cycles": 11,
+        "draft_tokens_proposed": 44,
+        "exactness_mode": "target_corrected_greedy",
+        "fallback_reason": "d4_full_suite_speedup_0p9469x_below_1p10",
+        "model": "laguna_gguf",
+        "performance_claim": false,
+        "provider": "dflash",
+        "quant": "gguf_q4_k_m",
+        "target_verify_rows": 55
+      },
+      "split": "train",
+      "streaming_ids_sha256": "b29caa8fa6ce8364da3b7dde2117167b72e0bb647303692318e5c35b4968f66f",
+      "timing_seconds": {
+        "ar": 3.8714818169828504,
+        "blocking": 7.85936177498661,
+        "streaming": 7.862942539039068,
+        "total": 19.59386225405615
+      }
+    },
+    {
+      "ar_ids_sha256": "bac5e803485758a7fbaf69ee7db1cdbca23d62f719130f2f2e1a3fd3deafdaf0",
+      "blocking_ids_sha256": "bac5e803485758a7fbaf69ee7db1cdbca23d62f719130f2f2e1a3fd3deafdaf0",
+      "category": "general_ja",
+      "checks": {
+        "ar_matches_fixed_oracle_stop_policy": true,
+        "blocking_execution_path": true,
+        "blocking_matches_true_ar": true,
+        "blocking_route": true,
+        "blocking_state_reset": true,
+        "blocking_streaming_ids_equal": true,
+        "blocking_streaming_text_equal": true,
+        "eot_markup_absent": true,
+        "owners_retained": true,
+        "stream_done": true,
+        "streaming_execution_path": true,
+        "streaming_matches_true_ar": true,
+        "streaming_state_reset": true
+      },
+      "expected_ids_sha256": "bac5e803485758a7fbaf69ee7db1cdbca23d62f719130f2f2e1a3fd3deafdaf0",
+      "finish": {
+        "ar": {
+          "cache_action": "append_none",
+          "continuation_eligible": false,
+          "length_limit": 32,
+          "reason": "length",
+          "sampler_mode": "greedy_fast"
+        },
+        "blocking": {
+          "cache_action": "append_none",
+          "continuation_eligible": false,
+          "length_limit": 32,
+          "reason": "length",
+          "sampler_mode": "greedy_fast"
+        },
+        "streaming": {
+          "cache_action": "append_none",
+          "length_limit": 32,
+          "reason": "length",
+          "sampler_mode": "greedy_fast"
+        }
+      },
+      "id": "general_ja_explain",
+      "output_tokens": 32,
+      "pass": true,
+      "prompt_ids_sha256": "e94ede4868ffda0428b5de99c3ce90c4bffab9b3e84337d20d85e572d7639d37",
+      "prompt_tokens": 92,
+      "provider_diagnostics": {
+        "accepted_draft_tokens": 19,
+        "backend": "hip_gfx1151",
+        "candidate_budget": 4,
+        "cycles": 13,
+        "draft_tokens_proposed": 52,
+        "exactness_mode": "target_corrected_greedy",
+        "fallback_reason": "d4_full_suite_speedup_0p9469x_below_1p10",
+        "model": "laguna_gguf",
+        "performance_claim": false,
+        "provider": "dflash",
+        "quant": "gguf_q4_k_m",
+        "target_verify_rows": 65
+      },
+      "split": "heldout",
+      "streaming_ids_sha256": "bac5e803485758a7fbaf69ee7db1cdbca23d62f719130f2f2e1a3fd3deafdaf0",
+      "timing_seconds": {
+        "ar": 3.742541158106178,
+        "blocking": 7.9262925260700285,
+        "streaming": 7.934626532020047,
+        "total": 19.60353387403302
+      }
+    },
+    {
+      "ar_ids_sha256": "db94c4639e89051e892e0c0685f885a7b31c2510c529d512f1fbc3f3dce429a3",
+      "blocking_ids_sha256": "db94c4639e89051e892e0c0685f885a7b31c2510c529d512f1fbc3f3dce429a3",
+      "category": "mixed_ja_en",
+      "checks": {
+        "ar_matches_fixed_oracle_stop_policy": true,
+        "blocking_execution_path": true,
+        "blocking_matches_true_ar": true,
+        "blocking_route": true,
+        "blocking_state_reset": true,
+        "blocking_streaming_ids_equal": true,
+        "blocking_streaming_text_equal": true,
+        "eot_markup_absent": true,
+        "owners_retained": true,
+        "stream_done": true,
+        "streaming_execution_path": true,
+        "streaming_matches_true_ar": true,
+        "streaming_state_reset": true
+      },
+      "expected_ids_sha256": "db94c4639e89051e892e0c0685f885a7b31c2510c529d512f1fbc3f3dce429a3",
+      "finish": {
+        "ar": {
+          "cache_action": "append_none",
+          "continuation_eligible": false,
+          "length_limit": 32,
+          "reason": "length",
+          "sampler_mode": "greedy_fast"
+        },
+        "blocking": {
+          "cache_action": "append_none",
+          "continuation_eligible": false,
+          "length_limit": 32,
+          "reason": "length",
+          "sampler_mode": "greedy_fast"
+        },
+        "streaming": {
+          "cache_action": "append_none",
+          "length_limit": 32,
+          "reason": "length",
+          "sampler_mode": "greedy_fast"
+        }
+      },
+      "id": "mixed_ja_en_translate",
+      "output_tokens": 32,
+      "pass": true,
+      "prompt_ids_sha256": "e9788ba424064a6bc4ee75c5cd384bfb007cca48d7c00f5a4131125d7873dfef",
+      "prompt_tokens": 111,
+      "provider_diagnostics": {
+        "accepted_draft_tokens": 20,
+        "backend": "hip_gfx1151",
+        "candidate_budget": 4,
+        "cycles": 11,
+        "draft_tokens_proposed": 44,
+        "exactness_mode": "target_corrected_greedy",
+        "fallback_reason": "d4_full_suite_speedup_0p9469x_below_1p10",
+        "model": "laguna_gguf",
+        "performance_claim": false,
+        "provider": "dflash",
+        "quant": "gguf_q4_k_m",
+        "target_verify_rows": 55
+      },
+      "split": "train",
+      "streaming_ids_sha256": "db94c4639e89051e892e0c0685f885a7b31c2510c529d512f1fbc3f3dce429a3",
+      "timing_seconds": {
+        "ar": 4.138887668028474,
+        "blocking": 8.76989693089854,
+        "streaming": 8.77868726302404,
+        "total": 21.687542192987166
+      }
+    },
+    {
+      "ar_ids_sha256": "22954b4be568c402415764bb6ca0e29118ff17ecf4d0389377f4234e9527b509",
+      "blocking_ids_sha256": "22954b4be568c402415764bb6ca0e29118ff17ecf4d0389377f4234e9527b509",
+      "category": "mixed_ja_en",
+      "checks": {
+        "ar_matches_fixed_oracle_stop_policy": true,
+        "blocking_execution_path": true,
+        "blocking_matches_true_ar": true,
+        "blocking_route": true,
+        "blocking_state_reset": true,
+        "blocking_streaming_ids_equal": true,
+        "blocking_streaming_text_equal": true,
+        "eot_markup_absent": true,
+        "owners_retained": true,
+        "stream_done": true,
+        "streaming_execution_path": true,
+        "streaming_matches_true_ar": true,
+        "streaming_state_reset": true
+      },
+      "expected_ids_sha256": "22954b4be568c402415764bb6ca0e29118ff17ecf4d0389377f4234e9527b509",
+      "finish": {
+        "ar": {
+          "cache_action": "append_none",
+          "reason": "stop",
+          "sampler_mode": "greedy_fast",
+          "stop_sequence": [
+            24
+          ]
+        },
+        "blocking": {
+          "cache_action": "append_none",
+          "reason": "stop",
+          "sampler_mode": "greedy_fast",
+          "stop_sequence": [
+            24
+          ]
+        },
+        "streaming": {
+          "cache_action": "append_none",
+          "reason": "stop",
+          "sampler_mode": "greedy_fast",
+          "stop_sequence": [
+            24
+          ]
+        }
+      },
+      "id": "mixed_ja_en_review",
+      "output_tokens": 32,
+      "pass": true,
+      "prompt_ids_sha256": "0c16e1b8638b29335240144c2783ca8b1d49c70b3489ad15e457cf98118c1b1c",
+      "prompt_tokens": 122,
+      "provider_diagnostics": {
+        "accepted_draft_tokens": 18,
+        "backend": "hip_gfx1151",
+        "candidate_budget": 4,
+        "cycles": 13,
+        "draft_tokens_proposed": 52,
+        "exactness_mode": "target_corrected_greedy",
+        "fallback_reason": "d4_full_suite_speedup_0p9469x_below_1p10",
+        "model": "laguna_gguf",
+        "performance_claim": false,
+        "provider": "dflash",
+        "quant": "gguf_q4_k_m",
+        "target_verify_rows": 65
+      },
+      "split": "heldout",
+      "streaming_ids_sha256": "22954b4be568c402415764bb6ca0e29118ff17ecf4d0389377f4234e9527b509",
+      "timing_seconds": {
+        "ar": 4.3988455950748175,
+        "blocking": 9.880402792943642,
+        "streaming": 9.892824729904532,
+        "total": 24.172144680982456
+      }
+    }
+  ],
+  "provenance": {
+    "build_profile": null,
+    "collected_at": "2026-07-23T02:36:08.892324+00:00",
+    "command": [
+      "/home/lhl/hipEngine-main/.venv/bin/python3",
+      "scripts/laguna_dflash_public_gate.py"
+    ],
+    "configured_backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "dirty": true,
+    "environment": {
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIPENGINE_LAGUNA_PREFILL_CHUNK_SIZE": null
+    },
+    "git_branch": "main",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "hipengine_commit": "c4ac3c60a47ce474ce5aa160d7c3ff8eda1009b5",
+    "kind": "hipengine_artifact_provenance",
+    "kv_dtype": "bf16",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        37586027312,
+        75172054624
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 75173103200,
+      "value": "05caf641aa0d991c0e447450420c042bfab22ae248b1f12aba4bd3774c2024c8"
+    },
+    "model_path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "model_revision": null,
+    "profiler": null,
+    "quant": "gguf_q4_k_m",
+    "repetitions": 1,
+    "repo_root": "/home/lhl/hipEngine-main",
+    "resolved_backend": "hip_gfx1151",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "schema_version": 1,
+    "staged_dirty": false,
+    "target_arch": "gfx1151",
+    "timing_protocol": "public OpenAI c=1 AR/blocking-DFlash/streaming-DFlash wall",
+    "unstaged_dirty": false,
+    "untracked_count": 257,
+    "untracked_dirty": true,
+    "warmups": 0
+  },
+  "schema": 1,
+  "scope": "Laguna DFlash explicit public blocking/streaming correctness",
+  "split_checks": {
+    "heldout": true,
+    "train": true
+  },
+  "status": "accepted",
+  "support_decision": "opt_in_supported",
+  "workload": {
+    "ar_oracle": "/home/lhl/hipEngine-main/benchmarks/results/2026-07-23-gfx1151-laguna-dflash-category-economics-post-prefill.json",
+    "ar_oracle_sha256": "e874ac2345e437203784a1cdd4f6ef700e47c8eb577095f59bebc287fc8926ab",
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "heldout_prompt_ids": [
+      "code_markdown_table",
+      "general_en_explain",
+      "general_ja_explain",
+      "mixed_ja_en_review"
+    ],
+    "max_tokens": 32,
+    "prompt_count": 10,
+    "prompt_suite": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "protocol_eligible": true,
+    "routes_per_prompt": [
+      "true_ar",
+      "dflash_blocking",
+      "dflash_streaming"
+    ],
+    "train_prompt_ids": [
+      "code_lru_cache",
+      "code_merge_intervals",
+      "code_topological_sort",
+      "general_en_plan",
+      "general_ja_plan",
+      "mixed_ja_en_translate"
+    ]
+  }
+}

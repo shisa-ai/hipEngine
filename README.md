@@ -67,6 +67,12 @@ numbers below.
   guarded explicit non-streaming server route. Dense PARO DFlash and the shared
   speculative proposal/verify/commit infrastructure are available as retained
   runtime and benchmark paths.
+- The pinned Poolside Laguna S 2.1 Q4_K_M target is supported on gfx1151 for
+  torch-free c=1 blocking/streaming generation, Poolside-v1 reasoning/tool
+  parsing, and exact source-bound cached loading. Its matched BF16 DFlash B4
+  drafter is supported only as an explicit library/OpenAI opt-in; true AR stays
+  default because the canonical full-suite DFlash economics are `0.9469x` with
+  heldout and non-code regressions.
 - PARO BF16 KV has retained W7900 evidence through 128K, and **208 Ki is the
   recommended safe BF16 cap** on a physical 24 GB XTX. The all-layer 256K INT8
   layout fits its tracked-memory gate but fails Qwen3.6 fidelity. The milder

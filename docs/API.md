@@ -111,7 +111,9 @@ hipengine serve \
 Ordinary completion/chat requests still use target-only AR. Select the retained
 provider per request with `"speculative": true`, or with the explicit object
 `{"enabled":true,"provider":"dflash","candidate_budget":4}`. Both blocking
-and streaming c=1 routes are exposed. The current Laguna adapter admits only raw
+and streaming c=1 routes are supported for the pinned Laguna target/drafter on
+gfx1151; the canonical ten-prompt public gate is exact against true AR
+([artifact](../benchmarks/results/2026-07-23-gfx1151-laguna-dflash-public-e2e.json)). The current Laguna adapter admits only raw
 greedy target top-1 with BF16 KV; sampled/processed logits, logprobs, thinking
 budget controls, forced/suppressed tool controls, structured processors, custom
 EOS policy, non-BF16 KV, another provider, or another budget fail closed before
