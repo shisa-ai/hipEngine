@@ -3,6 +3,8 @@
 Last reviewed: **2026-07-23**
 
 Latest retained hipEngine revisions in this scoreboard:
+`1d6566de3f6ec394d6a3e34e2f37e2a70250368c` for the quality-gated gfx1151
+Laguna SWA qrow2 online-softmax prefill default,
 `7c211f2412872dab76de5edd70ec155c7ca88f75` for the post-global-online Laguna
 512/1K/4K all-family attribution,
 `60a1e8f104993b5d50374170959659080151f4e1` for the quality-gated gfx1151
@@ -1738,9 +1740,10 @@ three-repeat gate moves 512/1K/4K prefill **69.031/63.969/52.017 ->
 **0.066/0.192/0.811 s**, with complete logits/hidden/KV/span/cursor/repeat and
 lifecycle equality. The full category gate is exact across all 30
 free-running pairs and 320 teacher-forced steps and non-regressive at
-**0.999652x prefill** and **0.999917/0.999999x h16/h32 E2E**. gfx1151 now
-defaults to the context-qualified selector; wave32 and unmeasured-backend
-fallbacks remain. [Retained AR-O5 qrow2 gate](results/2026-07-23-gfx1151-laguna-swa-qrow2-retained.json).
+**0.999652x prefill** and **0.999917/0.999999x h16/h32 E2E**. gfx1151 first
+defaulted to this context-qualified selector; after the online promotion below
+it remains the primary exact rollback, with wave32 and unmeasured-backend
+fallbacks unchanged. [Retained AR-O5 qrow2 gate](results/2026-07-23-gfx1151-laguna-swa-qrow2-retained.json).
 
 The post-qrow2 cached trace measures **69.467/64.676/52.549 tok/s** and kernel
 sum **7.356/15.800/77.821 s** at 512/1K/4K. Versus the prior post-matrix trace,
@@ -1794,40 +1797,43 @@ deferred. SWA's **1.179x** perfect-removal ceiling admits one bounded online
 qrow2 screen before AR-O5 closes. This is attribution, not a new performance
 headline. [Post-global-online profile](results/2026-07-23-gfx1151-laguna-post-global-online-all-family-profile.json).
 
-The one admitted SWA follow-up leaf is promising but not yet retained. A wave32
-online-softmax qrow2 kernel replaces exact qrow2's two ring scans with one while
-preserving complete `KVLiveSpans`, physical ring mapping, positions, evictions,
-and BF16 K/V boundaries. Production M128/full-window improves **7.893 -> 2.552
-ms (3.093x)** and start508 wrap improves **8.676 -> 2.987 ms (2.904x)**;
-maximum absolute error is **3.45e-8**, synthetic KL **1.11e-15**, and top-1
-100%. Cached tracing confirms **2.559 ms**, local32/VGPR56/LDS0/scratch0. No
-backend default selects it; repeated full-model and complete category quality
-admission remain mandatory. [SWA online leaf screen](results/2026-07-23-gfx1151-laguna-swa-qrow2-online-leaf-screen.json).
+The final SWA follow-up is retained on gfx1151. Its wave32 online-softmax qrow2
+kernel replaces exact qrow2's two ring scans with one while preserving complete
+`KVLiveSpans`, physical ring mapping, positions, evictions, and BF16 K/V
+boundaries. Production M128/full-window improves **7.893 -> 2.552 ms (3.093x)**
+and start508 wrap improves **8.676 -> 2.987 ms (2.904x)**; cached tracing names
+the intended kernel at **2.559 ms**, local32/VGPR56/LDS0/scratch0. The repeated
+full-model gate improves 512/1K/4K **71.354/68.156/63.995 ->
+76.226/74.538/70.885 tok/s (+6.828%/+9.364%/+10.766%)** at maximum KL
+**0.016558** and top-1 **9/9**.
 
-The clean repeated full-model screen admits the SWA candidate to category
-quality testing. Exact -> online moves 512/1K/4K **71.354/68.156/63.995 ->
-76.226/74.538/70.885 tok/s (+6.828%/+9.364%/+10.766%)**, saving
-**0.459/1.286/6.221 seconds**. All nine full-vocabulary pairs are finite at
-maximum KL **0.016558**, top-1 is **9/9**, next IDs and cursors match, same-mode
-state repeats deterministically, and **91,364,226,692 allocated/freed bytes**
-return to zero. State hashes differ as declared for online softmax. No backend
-default changes before the complete ten-prompt gate.
-[SWA online model screen](results/2026-07-23-gfx1151-laguna-swa-qrow2-online-screen.json).
+The complete ten-prompt gate then improves weighted prefill **69.011 -> 69.761
+tok/s (+1.086%)**, TTFT **+0.083%**, and h16/h32 E2E **+0.616%/+0.420%**;
+every category is positive and decode is neutral. All 320 teacher-forced logits
+are finite at maximum KL **0.042924**, top-1 is **316/320 (98.75%)**, every
+category is at least 95.3125%, and the frozen Poolside oracle, deterministic
+repeats, and lifecycle pass. gfx1151 now selects online SWA prefill by backend
+capability; exact context-qualified qrow2 and wave32 remain explicit rollback,
+and unmeasured backends retain their prior defaults.
+[Retained SWA online gate](results/2026-07-23-gfx1151-laguna-swa-qrow2-online-retained.json).
 
 A read-only same-device/same-GGUF llama.cpp Vulkan pp512 profile now gives a
 concrete external control. The user's unprofiled `c0bc8591e` build measures
 **344.56 +/- 3.16 tok/s**; the instrumented Vulkan operation sum is **1.478897
 s** (**346.20 tok/s implied**) and reproduces that wall within **0.48%**, while
 perf-logger overhead lowers its own reported benchmark row to 316.13 tok/s.
-Against hipEngine's retained **71.456 tok/s / 7.150503 s kernel sum**, homologous
-selected gate/up, selected down, source-F16, attention, and dense/shared families
-are **5.687x/3.001x/3.192x/18.933x/10.179x** slower and explain **99.76%** of
-the kernel-sum gap. Source attribution shows expert-major 32x32 Q4/Q6 x Q8_1
-integer-dot MMQ, M16xK64 cooperative-matrix Flash Attention, and graph-pattern
-fusion. The transfer decision is not to copy unchecked Q8 numerics: hipEngine's
-prior Q8 gate/up route failed max KL at **0.171561**. Finish the current SWA
-quality decision, then prioritize a new quality-safe expert-major matrix path;
-submission-only work remains deferred at **0.144%** pp512 span residual.
+Against the profiled pre-SWA-online hipEngine default at **71.456 tok/s /
+7.150503 s kernel sum**, homologous selected gate/up, selected down, source-F16,
+attention, and dense/shared families are
+**5.687x/3.001x/3.192x/18.933x/10.179x** slower and explain **99.76%** of the
+kernel-sum gap. The newly promoted SWA-online screen reaches **76.226 tok/s** but
+remains **4.520x** behind the user's row. Source attribution shows expert-major
+32x32 Q4/Q6 x Q8_1 integer-dot MMQ, M16xK64 cooperative-matrix Flash Attention,
+and graph-pattern fusion. The transfer decision is not to copy unchecked Q8
+numerics: hipEngine's prior Q8 gate/up route failed max KL at **0.171561**. With
+the SWA quality decision complete, prioritize a new quality-safe expert-major
+matrix path; submission-only work remains deferred at **0.144%** pp512 span
+residual.
 [llama.cpp Vulkan pp512 profile](results/2026-07-23-gfx1151-laguna-llamacpp-vulkan-pp512-profile.json).
 
 The earlier post-LPF all-family profile established the pre-AR-O1 bottleneck.
