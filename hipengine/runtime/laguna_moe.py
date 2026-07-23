@@ -39,6 +39,7 @@ _ROUTER_LOGITS_VARIANT = "bf16_hidden"
 _ROUTER_SELECT_VARIANT = "correction_bias"
 _SELECTED_DUAL_VARIANT = "selected_dual_t16_gemv_decode_bf16_bf16_out"
 _SELECTED_DOWN_VARIANT = "selected_t16_gemv_decode_bf16_bf16_out"
+_SELECTED_WEIGHTED_DOWN_VARIANT = "selected_weighted_down_gemv_decode_bf16_bf16_out"
 _SILU_VARIANT = "out"
 _WEIGHTED_SUM_VARIANT = "out"
 _ADD_VARIANT = "add"
@@ -109,6 +110,8 @@ class LagunaMoEKernelPlan:
     selected_down_key: KernelKey
     selected_down_keys: Mapping[str, KernelKey]
     selected_down_routes: Mapping[str, LagunaMoESelectedRoute]
+    selected_weighted_down_keys: Mapping[str, KernelKey]
+    selected_weighted_down_routes: Mapping[str, LagunaMoESelectedRoute]
     routed_sum_key: KernelKey
     routed_sum_rows_key: KernelKey
     grouped_count_key: KernelKey
@@ -150,6 +153,7 @@ class LagunaMoEKernelPlan:
             *tuple(self.selected_gate_up_keys.values()),
             self.selected_silu_key,
             *tuple(self.selected_down_keys.values()),
+            *tuple(self.selected_weighted_down_keys.values()),
             self.routed_sum_key,
             self.routed_sum_rows_key,
             self.grouped_count_key,
@@ -429,6 +433,28 @@ def resolve_laguna_moe_plan(
     selected_downs = MappingProxyType(
         {quant: route.function for quant, route in selected_down_routes.items()}
     )
+    selected_weighted_down_keys = MappingProxyType(
+        {
+            "gguf_iq3_xxs": KernelKey(
+                backend,
+                "moe_linear",
+                "gguf_iq3_xxs",
+                _SELECTED_WEIGHTED_DOWN_VARIANT,
+            )
+        }
+    )
+    selected_weighted_down_routes = MappingProxyType(
+        {
+            quant: LagunaMoESelectedRoute(
+                key=key,
+                function=_resolve_exact(key),
+                abi="raw_iq_weighted",
+                allocation_name="raw",
+                library_key="selected_down_iq",
+            )
+            for quant, key in selected_weighted_down_keys.items()
+        }
+    )
     return LagunaMoEKernelPlan(
         backend=backend,
         hidden_size=config.hidden_size,
@@ -446,6 +472,8 @@ def resolve_laguna_moe_plan(
         selected_down_key=keys["selected_down"],
         selected_down_keys=selected_down_keys,
         selected_down_routes=selected_down_routes,
+        selected_weighted_down_keys=selected_weighted_down_keys,
+        selected_weighted_down_routes=selected_weighted_down_routes,
         routed_sum_key=keys["routed_sum"],
         routed_sum_rows_key=keys["routed_sum_rows"],
         shared_silu_key=keys["shared_silu"],
@@ -869,6 +897,70 @@ _SELECTED_DOWN_ABIS = MappingProxyType(
 )
 
 
+def _launch_weighted_selected_down_iq(
+    route: LagunaMoESelectedRoute,
+    plan: LagunaMoEKernelPlan,
+    weight_ptr: int,
+    scratch: LagunaMoEScratch,
+    *,
+    tokens: int,
+    stream: int,
+    runtime: HipRuntime | None,
+    libraries: Mapping[str, object] | None,
+) -> None:
+    route.function(
+        scratch.expert_intermediate.ptr,
+        scratch.selected_experts.ptr,
+        scratch.scaled_routing_weights.ptr,
+        weight_ptr,
+        scratch.routed_output.ptr,
+        tokens=tokens,
+        top_k=plan.top_k,
+        num_experts=plan.expert_count,
+        in_features=plan.expert_ffn_size,
+        out_features=plan.hidden_size,
+        **_stage_kwargs(route.library_key, libraries, stream=stream, runtime=runtime),
+    )
+
+
+_SELECTED_WEIGHTED_DOWN_ABIS = MappingProxyType(
+    {"raw_iq_weighted": _launch_weighted_selected_down_iq}
+)
+
+
+def _launch_weighted_selected_down(
+    layer: LagunaGGUFResidentLayerWeights,
+    scratch: LagunaMoEScratch,
+    *,
+    tokens: int,
+    stream: int,
+    runtime: HipRuntime | None,
+    libraries: Mapping[str, object] | None,
+) -> bool:
+    # The composite is a c=1 decode schedule. Bulk rows retain the independent
+    # selected projection plus row-wise weighted-sum fallback until measured.
+    if tokens != 1:
+        return False
+    plan = scratch.plan
+    weight = layer.weight("ffn_down_exps")
+    try:
+        route = plan.selected_weighted_down_routes[weight.spec.quant_key]
+        launch = _SELECTED_WEIGHTED_DOWN_ABIS[route.abi]
+    except KeyError:
+        return False
+    launch(
+        route,
+        plan,
+        weight.allocation(route.allocation_name).tensor.ptr,
+        scratch,
+        tokens=tokens,
+        stream=stream,
+        runtime=runtime,
+        libraries=libraries,
+    )
+    return True
+
+
 def _launch_selected_down(
     layer: LagunaGGUFResidentLayerWeights,
     scratch: LagunaMoEScratch,
@@ -1144,22 +1236,31 @@ def run_laguna_moe_c1(
         runtime=runtime,
         libraries=libraries,
     )
-    _launch_selected_down(
+    routed_down_weighted = _launch_weighted_selected_down(
         layer,
         scratch,
-        lanes=k,
+        tokens=1,
         stream=stream,
         runtime=runtime,
         libraries=libraries,
     )
-    plan.routed_sum(
-        scratch.expert_down.ptr,
-        scratch.scaled_routing_weights.ptr,
-        scratch.routed_output.ptr,
-        k,
-        h,
-        **_stage_kwargs("routed_sum", libraries, stream=stream, runtime=runtime),
-    )
+    if not routed_down_weighted:
+        _launch_selected_down(
+            layer,
+            scratch,
+            lanes=k,
+            stream=stream,
+            runtime=runtime,
+            libraries=libraries,
+        )
+        plan.routed_sum(
+            scratch.expert_down.ptr,
+            scratch.scaled_routing_weights.ptr,
+            scratch.routed_output.ptr,
+            k,
+            h,
+            **_stage_kwargs("routed_sum", libraries, stream=stream, runtime=runtime),
+        )
 
     shared_gate = layer.weight("ffn_gate_shexp")
     shared_up = layer.weight("ffn_up_shexp")
@@ -1176,7 +1277,7 @@ def run_laguna_moe_c1(
         runtime=runtime,
         libraries=libraries,
         use_wmma_prefill=False,
-        use_gemv_decode=False,
+        use_gemv_decode=True,
     )
     launch_gguf_linear(
         shared_up,
@@ -1190,7 +1291,7 @@ def run_laguna_moe_c1(
         runtime=runtime,
         libraries=libraries,
         use_wmma_prefill=False,
-        use_gemv_decode=False,
+        use_gemv_decode=True,
     )
     plan.shared_silu(
         scratch.shared_gate.ptr,
@@ -1212,7 +1313,7 @@ def run_laguna_moe_c1(
         runtime=runtime,
         libraries=libraries,
         use_wmma_prefill=False,
-        use_gemv_decode=False,
+        use_gemv_decode=True,
     )
     plan.add(
         scratch.routed_output.ptr,
@@ -1354,7 +1455,7 @@ def run_laguna_moe_rows(
         runtime=runtime,
         libraries=libraries,
         use_wmma_prefill=False,
-        use_gemv_decode=False,
+        use_gemv_decode=tokens == 1,
     )
     launch_gguf_linear(
         shared_up,
@@ -1368,7 +1469,7 @@ def run_laguna_moe_rows(
         runtime=runtime,
         libraries=libraries,
         use_wmma_prefill=False,
-        use_gemv_decode=False,
+        use_gemv_decode=tokens == 1,
     )
     plan.shared_silu(
         scratch.shared_gate.ptr,
@@ -1390,7 +1491,7 @@ def run_laguna_moe_rows(
         runtime=runtime,
         libraries=libraries,
         use_wmma_prefill=False,
-        use_gemv_decode=False,
+        use_gemv_decode=tokens == 1,
     )
     plan.add(
         scratch.routed_output.ptr,

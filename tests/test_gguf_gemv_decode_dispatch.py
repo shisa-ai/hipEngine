@@ -65,6 +65,10 @@ _Q8_EXACT_PREFILL_TILE8X4 = KernelKey(
 _Q6_PACK8_F32 = KernelKey(
     "hip_gfx1100", "linear", "gguf_q6_k", "pack8_gemv_bf16_f32_out"
 )
+_Q4_SCALAR = KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "gemv_bf16_f32_out")
+_Q4_GEMV_DECODE = KernelKey(
+    "hip_gfx1100", "linear", "gguf_q4_k", "pack8_gemv_decode_bf16_f32_out"
+)
 _Q8_WMMA_DUAL_PREFILL = KernelKey(
     "hip_gfx1100", "linear", "gguf_q8_0", "wmma_prefill_dual_gate_up_bf16_bf16_out"
 )
@@ -90,6 +94,7 @@ def _capture_launch(
     extra_keys: tuple[KernelKey, ...] = (),
     remove_keys: tuple[KernelKey, ...] = (),
     native_batch_decode: bool = False,
+    libraries=None,
 ):
     weight = _fake_weight(layout=layout, quant_key=quant_key)
     captured: dict[str, object] = {"key": None, "args": None, "kwargs": None}
@@ -136,6 +141,7 @@ def _capture_launch(
                 out_features=out_features,
                 output_dtype=output_dtype,
                 stream=7,
+                libraries=libraries,
                 runtime="runtime-sentinel",
                 use_gemv_decode=use_gemv_decode,
             )
@@ -350,8 +356,8 @@ def test_gemv_decode_fallback_when_registry_key_missing() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Q5_K / Q6_K dense decode opt-in (P9.B4b dense Q6_K kernel; legacy Q5_K
-# stays on the existing decoder, no P9 dense Q5_K kernel exists).
+# Q5_K / Q6_K dense decode opt-in. Q5_K uses the exact scale-hoisted
+# Laguna decode specialization; Q6_K keeps the P9.B4b specialization.
 # ---------------------------------------------------------------------------
 
 
@@ -361,6 +367,28 @@ def _q_decode_pack8(quant: str) -> KernelKey:
 
 def _q_gemv_decode(quant: str) -> KernelKey:
     return KernelKey("hip_gfx1100", "linear", quant, "pack8_gemv_decode_bf16_bf16_out")
+
+
+def test_raw_q4_k_only_jumps_to_pack8_when_decode_is_enabled() -> None:
+    key, _, _ = _capture_launch(
+        rows=1,
+        quant_key="gguf_q4_k",
+        layout=LAYOUT_RAW_GGUF,
+        output_dtype=GGUF_OUTPUT_F32,
+        use_gemv_decode=False,
+        extra_keys=(_Q4_SCALAR, _Q4_GEMV_DECODE),
+    )
+    assert key == _Q4_SCALAR
+
+    key, _, _ = _capture_launch(
+        rows=1,
+        quant_key="gguf_q4_k",
+        layout=LAYOUT_RAW_GGUF,
+        output_dtype=GGUF_OUTPUT_F32,
+        use_gemv_decode=True,
+        extra_keys=(_Q4_SCALAR, _Q4_GEMV_DECODE),
+    )
+    assert key == _Q4_GEMV_DECODE
 
 
 def test_gemv_decode_q6_k_opt_in_rewrites() -> None:
@@ -374,15 +402,29 @@ def test_gemv_decode_q6_k_opt_in_rewrites() -> None:
     assert key == _q_gemv_decode("gguf_q6_k")
 
 
-def test_gemv_decode_q5_k_falls_back_without_registered_kernel() -> None:
-    """Q5_K dense decode has no P9 kernel; opt-in is a no-op for it."""
-
-    set_gemv_decode_enabled(True)
+def test_gemv_decode_q5_k_opt_in_rewrites() -> None:
     key, _, _ = _capture_launch(
         rows=1,
         quant_key="gguf_q5_k",
         layout=LAYOUT_RAW_GGUF,
+        use_gemv_decode=True,
         extra_keys=(_q_decode_pack8("gguf_q5_k"), _q_gemv_decode("gguf_q5_k")),
-        remove_keys=(_q_gemv_decode("gguf_q5_k"),),
     )
-    assert key == _q_decode_pack8("gguf_q5_k")
+    assert key == _q_gemv_decode("gguf_q5_k")
+
+
+def test_variant_specific_library_overrides_quant_default() -> None:
+    decode_library = object()
+    key, _, kwargs = _capture_launch(
+        rows=1,
+        quant_key="gguf_q6_k",
+        layout=LAYOUT_RAW_GGUF,
+        use_gemv_decode=True,
+        libraries={
+            "gguf_q6_k": object(),
+            "gguf_q6_k:pack8_gemv_decode_bf16_bf16_out": decode_library,
+        },
+        extra_keys=(_q_decode_pack8("gguf_q6_k"), _q_gemv_decode("gguf_q6_k")),
+    )
+    assert key == _q_gemv_decode("gguf_q6_k")
+    assert kwargs["library"] is decode_library

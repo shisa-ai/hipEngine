@@ -29,6 +29,9 @@ _SYMBOL_IQ3_SELECTED = "hipengine_gguf_iq3_xxs_selected_gemv_bf16_bf16_out"
 _SYMBOL_IQ3_DUAL_SILU = (
     "hipengine_gguf_iq3_xxs_selected_dual_silu_gemv_bf16_bf16_out"
 )
+_SYMBOL_IQ3_WEIGHTED_DOWN = (
+    "hipengine_gguf_iq3_xxs_weighted_selected_down_bf16_bf16_out"
+)
 _SYMBOL_IQ4_SELECTED = "hipengine_gguf_iq4_xs_selected_gemv_bf16_bf16_out"
 _SYMBOL_IQ4_WEIGHTED_DOWN = (
     "hipengine_gguf_iq4_xs_weighted_selected_down_bf16_bf16_out"
@@ -175,6 +178,15 @@ def gguf_iq2_xs_selected_gemv_tile2_bf16_bf16_out(
     )
 
 
+def iq3_selected_default_threads(*, in_features: int) -> int:
+    if in_features <= 0 or in_features % _QK_K != 0:
+        raise ValueError("in_features must be positive and divisible by 256")
+    # K=1024 has exactly four wave32 work units.  Local128 preserves the
+    # local256 reduction order (the removed waves contribute only +0) while
+    # avoiding four idle waves.  Other rows retain the established schedule.
+    return 128 if in_features == 1024 else 256
+
+
 def gguf_iq3_xxs_selected_gemv_bf16_bf16_out(
     x_ptr: int,
     selected_ptr: int,
@@ -186,11 +198,16 @@ def gguf_iq3_xxs_selected_gemv_bf16_bf16_out(
     num_experts: int,
     in_features: int,
     out_features: int,
-    threads: int = 256,
+    threads: int = 0,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
+    launch_threads = (
+        iq3_selected_default_threads(in_features=in_features)
+        if threads == 0
+        else threads
+    )
     _launch_selected(
         _SYMBOL_IQ3_SELECTED,
         x_ptr,
@@ -202,7 +219,7 @@ def gguf_iq3_xxs_selected_gemv_bf16_bf16_out(
         num_experts=num_experts,
         in_features=in_features,
         out_features=out_features,
-        threads=threads,
+        threads=launch_threads,
         stream=stream,
         library=library,
         runtime=runtime,
@@ -457,6 +474,74 @@ def iq_weighted_down_default_threads(*, top_k: int, in_features: int) -> int:
     return 128 if tasks <= 128 else 256
 
 
+def gguf_iq3_xxs_weighted_selected_down_bf16_bf16_out(
+    x_ptr: int,
+    selected_ptr: int,
+    routing_weights_ptr: int,
+    qweight_ptr: int,
+    out_ptr: int,
+    *,
+    tokens: int,
+    top_k: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    threads: int = 0,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    if tokens <= 0:
+        raise ValueError("tokens must be positive")
+    if top_k <= 0:
+        raise ValueError("top_k must be positive")
+    if num_experts <= 0:
+        raise ValueError("num_experts must be positive")
+    launch_threads = (
+        iq3_selected_default_threads(in_features=in_features)
+        if threads == 0
+        else threads
+    )
+    _validate_shape(
+        in_features=in_features,
+        out_features=out_features,
+        threads=launch_threads,
+    )
+    library = library or build_gguf_iq_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_IQ3_WEIGHTED_DOWN)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(selected_ptr),
+        ctypes.c_void_p(routing_weights_ptr),
+        ctypes.c_void_p(qweight_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(tokens),
+        ctypes.c_int64(top_k),
+        ctypes.c_int64(num_experts),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_int64(launch_threads),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def gguf_iq4_xs_weighted_selected_down_bf16_bf16_out(
     x_ptr: int,
     selected_ptr: int,
@@ -653,6 +738,11 @@ def register_gguf_iq_gemv_kernels(*, replace: bool = True) -> None:
             gguf_iq3_xxs_selected_dual_silu_gemv_bf16_bf16_out,
         ),
         (
+            "gguf_iq3_xxs",
+            "selected_weighted_down_gemv_decode_bf16_bf16_out",
+            gguf_iq3_xxs_weighted_selected_down_bf16_bf16_out,
+        ),
+        (
             "gguf_iq4_xs",
             "selected_gemv_decode_bf16_bf16_out",
             gguf_iq4_xs_selected_gemv_bf16_bf16_out,
@@ -683,8 +773,10 @@ __all__ = [
     "gguf_iq2_xs_selected_gemv_tile2_bf16_bf16_out",
     "gguf_iq3_xxs_selected_dual_silu_gemv_bf16_bf16_out",
     "gguf_iq3_xxs_selected_gemv_bf16_bf16_out",
+    "gguf_iq3_xxs_weighted_selected_down_bf16_bf16_out",
     "gguf_iq4_xs_selected_gemv_bf16_bf16_out",
     "gguf_iq4_xs_weighted_selected_down_bf16_bf16_out",
+    "iq3_selected_default_threads",
     "iq_weighted_down_default_threads",
     "plan_gguf_iq_gemv_build",
     "register_gguf_iq_gemv_kernels",
