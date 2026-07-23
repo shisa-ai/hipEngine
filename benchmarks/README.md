@@ -1438,17 +1438,27 @@ artifact](results/2026-07-23-gfx1100-laguna-q2-xl-q5-query-gate-pair-retained.js
 
 The canonical D6 wall is **22.010 ms/token**, still **2.010 ms** above the 20-ms
 50 tok/s target. The clean short kernel sum is **17.689 ms** and median span is
-**21.274 ms**, so the target remains physically supported rather than achieved;
-no currently ranked single bounded leaf closes the remaining **10.05%** speedup
-requirement, and D6 must be reprofiled before selecting the next exact change.
+**21.274 ms**, so the target remains physically supported rather than achieved.
+
+A code-identical reanalysis of those retained traces ranks short attention-output
+Q5, selected IQ2, retained query/gate Q5, SWA, weighted IQ3, and attention K/V
+Q6 at **2.628/2.285/2.151/2.118/2.110/1.407 ms/token**. The Q6 leaf is exactly
+47 same-input K/V pairs at K3072/N1024: **94 launches/token**, **14.920 us**
+median per singleton, local128/VGPR48/SGPR128/LDS1024/scratch0. The selected D7
+candidate transfers the retained equal-width pair tactic through a separately
+registered `linear_pair/gguf_q6_k` key while keeping both singleton fallbacks.
+Even perfect one-side overlap saves at most **0.703 ms (3.98% kernel sum / 3.31%
+span)** and approximates **46.933 tok/s**, so it cannot reach 50 tok/s alone.
+This is attribution and candidate selection, not a new throughput claim. [D6
+residual profile](results/2026-07-23-gfx1100-laguna-q2-xl-d6-residual-profile.json).
 
 No Q2-to-Q4 speed ratio is claimed: the retained Q4_K_M controls use a
 different tensor recipe on gfx1151.
 
 #### Laguna Q2 XL B4 DFlash decode
 
-**Status: historical D0-relative decode win; current D5 comparison pending.**
-The clean `6ba1ddec95e224c1cc337c69ac2c4ea611ff0472` run predates D1/D2/D3/D4/D5 and
+**Status: historical D0-relative decode win; current D6 comparison pending.**
+The clean `6ba1ddec95e224c1cc337c69ac2c4ea611ff0472` run predates D1/D2/D3/D4/D5/D6 and
 uses the same ten prompts, categories/heldouts, 128-row chunks, two balanced
 repetitions, and 32
 visible outputs as the Q4 DFlash protocol. It pairs the pinned Q2 XL target with
@@ -1481,10 +1491,11 @@ families, B+1 rowtiles, BF16/F32 DFlash WMMA projections, norm/rope/Silu,
 [Compact artifact](results/2026-07-23-gfx1100-laguna-q2-xl-dflash-b4.json).
 
 The result is retained as a historical **D0-relative decode** win, not a
-current/default-route or fixed-32 E2E win. Current D5 AR reaches **44.501
+current/default-route or fixed-32 E2E win. Current D6 AR reaches **45.433
 tok/s**, above this old DFlash row's 29.452 tok/s, while the verifier should
 also benefit from D2's K1024 workgroup change, D3's weighted-down fusion, D4's
-token4 SWA, and D5's Q5 shared pair. A fresh matched category run is
+token4 SWA, D5's Q5 shared pair, and D6's Q5 query/gate pair. A fresh matched
+category run is
 therefore required before any current DFlash ratio is claimed. Independently,
 DFlash still seeds target captures serially and this capture reported h32 E2E
 29.16% slower; a full long-horizon category/public-route gate remains required
