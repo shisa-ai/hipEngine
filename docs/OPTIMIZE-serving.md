@@ -199,7 +199,7 @@ stable `S*` IDs belong in commits, artifacts, and `WORKLOG.md`.
 | S2 | #19 | Render/encode once into request-local prepared prompt ownership | **6 -> 1 prompt encodes; 8.17/8.70 ms isolated 4K blocking/streaming TTFT saved** | **complete** |
 | S3 | #20 | Prefix-aware stop-safe streaming holdback | **184.536/123.243 ms useful-content delay removed in deterministic nonmatch/failed-prefix lanes** | **complete** |
 | S4 | #21 | Exact stateful Laguna KV continuation | **2.347/10.044/21.306 s saved at exact 128/512/1K hits; canonical chat 1.671 -> 0.412 s** | **complete** |
-| S5 | #22 | Native scheduler-owned Laguna prefill/decode ticks | seconds under contention; c=1 exact first | pending |
+| S5 | #22 | Native scheduler-owned Laguna prefill/decode ticks | exact c=1 runner and hardware smoke complete; retained server load-shape artifact pending | in progress |
 | Q1 | #23 | Audit and port retained serving improvements to Qwen GGUF/PARO | only genuine Qwen deltas; do not duplicate native ownership | queued after S5 |
 
 The separate model-prefill campaign runs in parallel. S1-S5 may consume its
@@ -560,6 +560,34 @@ not add model/backend/quant branches to generic engine code.
   retained server artifact;
 - full pressure/overload/recovery/soak gates pass before changing the package
   default.
+
+### 2026-07-23 implementation checkpoint
+
+The default Laguna generator now exposes a two-slot native resident runner while
+keeping every physical model transition exact `c=1`. Scheduler admission binds a
+private session, prompt work is consumed in configured chunks, each decode work
+item emits one target token per selected row, request IDs own outputs, and
+cancel/reclaim returns the lease at a model-tick boundary. Existing S3 stop-safe
+streaming and S4 auth-scoped continuation remain active; the latter reuses the
+same session lease and evicts rather than duplicates its single retained state.
+Startup scratch reports the two already-resident slots instead of allocating a
+second temporary pool.
+
+Host gates cover two-prompt routing, delayed arrival, blocking/stream exactness,
+prefix-aware stops, explicit KV continuation, cancellation, bounded pending
+queue overload/recovery, 20-request ownership soak, scratch ownership, and zero
+live rows/two returned leases. On Radeon 8060S/gfx1151 with exact Poolside
+Laguna S 2.1 Q4_K_M, a scheduler smoke matched the three direct baseline IDs
+`[19, 110, 3091]`; under `protect_ttft`, request B was admitted and completed
+prefill after A's first token but before A completed. A separate capacity-one
+continuation smoke matched the next ID and byte-identical SHA-256
+`38f4d005...58087` across all **277,434,816 copied KV/span bytes**, with exact
+session/KV position 8 and `prefix_reused_tokens=7`.
+
+This is a correctness/ownership checkpoint, not a latency or policy promotion
+claim. S5 remains open for a retained, reproducible server load-shape artifact
+covering each scheduling policy plus queue/useful-TTFT/ITL/E2E percentiles,
+active occupancy, cancellation acknowledgement, and lifecycle memory.
 
 ---
 
