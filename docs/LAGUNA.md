@@ -2588,6 +2588,22 @@ At 512/1K/near-4K, kernel sum improves **2.13%/1.68%/1.18%**, span improves
 suite pass, promoting the D5 headline above. Evidence:
 `benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-q5-shared-pair-retained.json`.
 
+D5's clean short trace now ranks dense-Q5 BF16/F32, selected IQ2, SWA, and
+weighted IQ3 at **2.744/2.732/2.300/2.120/2.093 ms/token**. The F32 Q5 family
+is exactly 47 same-input attention query/gate pairs: 35 K3072 N9216+72 SWA
+layers and 12 K3072 N6144+48 global layers. Query weights consume 2.134 ms at
+a 392.3 GB/s encoded-weight proxy, but the tiny gates consume **0.598 ms and
+47 launches at only 10.93 GB/s**. The next RED candidate is therefore one
+registered unequal-width F32 `linear_pair` launch whose flattened pack grid
+maps each independent workgroup to query or gate and invokes the current exact
+singleton block body. Rows>1, registry misses, unsupported shapes, and
+unmeasured backends retain two singleton launches. Completely hiding the gate
+side is only a **0.598 ms / 3.28% kernel-sum / 2.72% span ceiling**, approximately
+**45.747 tok/s**, so this candidate cannot close 50 tok/s alone. Actual-weight
+SWA and global pairs, clean profile span, full category correctness, and
+lifecycle decide retention. Evidence:
+`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-d5-residual-profile.json`.
+
 The Qwen3.6 UD-Q3_K_M final D0 is a useful tactics comparison, not a model ratio:
 it uses 671 dispatches, 8.825 ms summed kernels, and 11.347 ms profiled wall per
 token on an RX 7900 XTX. D1 has now transferred its dedicated dense pack8
@@ -2617,7 +2633,8 @@ Proceed in measured Amdahl order:
 6. **DONE:** exact Q5 shared gate/up pairing removes 46 launches/token, reduces
    clean short Q5 10.62%, improves every context profile, and promotes D5 to
    44.501 tok/s;
-7. address near-4K global attention and the remaining dense-Q5 decode family;
+7. **NEXT:** exact unequal-width Q5 attention query/gate pairing, then
+   reprofile the remaining attention-output Q5 and near-4K global families;
    and
 8. admit Laguna-specific one-step graph replay only after kernel work. D5's
    short decode span still exceeds kernel sum by about **3.72 ms**, so
