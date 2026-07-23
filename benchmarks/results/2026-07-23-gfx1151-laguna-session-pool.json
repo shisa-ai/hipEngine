@@ -1,0 +1,381 @@
+{
+  "comparison": {
+    "median_prepare_saved_ms": 31.800440978258848,
+    "median_prepare_speedup": 54.14128881633841,
+    "median_ttft_saved_ms": 34.87732505891472,
+    "median_ttft_speedup": 1.0375677637917633
+  },
+  "correctness": {
+    "first_token_exact": true,
+    "first_token_id": 5887,
+    "lifecycle_recovered": true
+  },
+  "created_at": "2026-07-23T08:16:15.805415+00:00",
+  "fresh": {
+    "close_ms": {
+      "maximum": 6.11666904296726,
+      "median": 5.372962914407253,
+      "minimum": 5.22272102534771,
+      "values": [
+        5.22272102534771,
+        5.3416339214891195,
+        5.477620055899024,
+        5.372962914407253,
+        6.11666904296726
+      ]
+    },
+    "direct_ttft_ms": {
+      "maximum": 963.8524119509384,
+      "median": 963.2617040770128,
+      "minimum": 962.5560700660571,
+      "values": [
+        963.8524119509384,
+        962.9439070122316,
+        963.2617040770128,
+        962.5560700660571,
+        963.7720009777695
+      ]
+    },
+    "prefill_ms": {
+      "maximum": 932.1591729531065,
+      "median": 930.8258410310373,
+      "minimum": 930.1083239261061,
+      "values": [
+        932.1591729531065,
+        931.6284169908613,
+        930.8258410310373,
+        930.157216032967,
+        930.1083239261061
+      ]
+    },
+    "samples": 5,
+    "session_prepare_ms": {
+      "maximum": 33.6636770516634,
+      "median": 32.398854033090174,
+      "minimum": 31.31549002137035,
+      "values": [
+        31.69323899783194,
+        31.31549002137035,
+        32.435863045975566,
+        32.398854033090174,
+        33.6636770516634
+      ]
+    }
+  },
+  "gates": {
+    "every_paired_setup_improved": true,
+    "first_token_exact": true,
+    "lifecycle_recovered": true,
+    "median_direct_ttft_non_regressive": true
+  },
+  "kind": "hipengine_laguna_session_pool_benchmark",
+  "memory": {
+    "owner_resident_nbytes": 77125390396,
+    "pooled_resident_nbytes": 77125390396,
+    "tracked_after": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 77900355764,
+      "peak_allocations": 2023,
+      "total_allocated_bytes": 79837769184,
+      "total_freed_bytes": 79837769184
+    },
+    "tracked_before": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 0,
+      "peak_allocations": 0,
+      "total_allocated_bytes": 0,
+      "total_freed_bytes": 0
+    }
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "repacked_cache": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "paired": [
+    {
+      "fresh_prepare_ms": 31.69323899783194,
+      "fresh_ttft_ms": 963.8524119509384,
+      "pooled_prepare_ms": 0.598413054831326,
+      "pooled_ttft_ms": 928.3590620616451,
+      "prepare_saved_ms": 31.094825943000615,
+      "repetition": 0
+    },
+    {
+      "fresh_prepare_ms": 31.31549002137035,
+      "fresh_ttft_ms": 962.9439070122316,
+      "pooled_prepare_ms": 0.5929030012339354,
+      "pooled_ttft_ms": 926.8958650063723,
+      "prepare_saved_ms": 30.722587020136416,
+      "repetition": 1
+    },
+    {
+      "fresh_prepare_ms": 32.435863045975566,
+      "fresh_ttft_ms": 963.2617040770128,
+      "pooled_prepare_ms": 0.6032820092514157,
+      "pooled_ttft_ms": 928.3843790180981,
+      "prepare_saved_ms": 31.83258103672415,
+      "repetition": 2
+    },
+    {
+      "fresh_prepare_ms": 32.398854033090174,
+      "fresh_ttft_ms": 962.5560700660571,
+      "pooled_prepare_ms": 0.5880730459466577,
+      "pooled_ttft_ms": 930.9452549787238,
+      "prepare_saved_ms": 31.810780987143517,
+      "repetition": 3
+    },
+    {
+      "fresh_prepare_ms": 33.6636770516634,
+      "fresh_ttft_ms": 963.7720009777695,
+      "pooled_prepare_ms": 0.6486671045422554,
+      "pooled_ttft_ms": 934.0688770171255,
+      "prepare_saved_ms": 33.01500994712114,
+      "repetition": 4
+    }
+  ],
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "direct synchronized target first-token wall; resident model load excluded; fresh borrowing session versus reset borrowing session",
+  "platform": {
+    "backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "machine": "x86_64",
+    "target_arch": "gfx1151"
+  },
+  "pooled_reset": {
+    "direct_ttft_ms": {
+      "maximum": 934.0688770171255,
+      "median": 928.3843790180981,
+      "minimum": 926.8958650063723,
+      "values": [
+        928.3590620616451,
+        926.8958650063723,
+        928.3843790180981,
+        930.9452549787238,
+        934.0688770171255
+      ]
+    },
+    "prefill_ms": {
+      "maximum": 933.4202099125832,
+      "median": 927.7810970088467,
+      "minimum": 926.3029620051384,
+      "values": [
+        927.7606490068138,
+        926.3029620051384,
+        927.7810970088467,
+        930.3571819327772,
+        933.4202099125832
+      ]
+    },
+    "samples": 5,
+    "session_prepare_ms": {
+      "maximum": 0.6486671045422554,
+      "median": 0.598413054831326,
+      "minimum": 0.5880730459466577,
+      "values": [
+        0.598413054831326,
+        0.5929030012339354,
+        0.6032820092514157,
+        0.5880730459466577,
+        0.6486671045422554
+      ]
+    }
+  },
+  "protocol": {
+    "case": "no_thinking",
+    "context_length": 4096,
+    "load_seconds": 50.3635617881082,
+    "model_load_excluded": true,
+    "order": "fresh/reset alternating by repetition",
+    "prefill_chunk_size": 128,
+    "prompt_tokens": 46,
+    "rendered_sha256": "866a7a1aea31bb47d30b854ad38d13ccc8e7895c841a46e000cfe1b93a120cca",
+    "repetitions_per_mode": 5,
+    "synchronization": "device synchronize after construction/reset",
+    "template": "/tmp/hipengine-s1-bench-8ae07d693/tests/fixtures/laguna_poolside_v1_template.json",
+    "template_sha256": "51c6988d412398bd849274870a6a2948db507a5755c50690bec79a76401c752e",
+    "warmups_per_mode": 1
+  },
+  "provenance": {
+    "build_profile": "laguna_session_pool",
+    "collected_at": "2026-07-23T08:15:13.736713+00:00",
+    "command": [
+      "/home/lhl/.local/share/uv/python/cpython-3.10.20-linux-x86_64-gnu/bin/python3.10",
+      "scripts/laguna_session_pool_bench.py",
+      "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1151",
+      "--context-length",
+      "4096",
+      "--chunk-size",
+      "128",
+      "--warmups",
+      "1",
+      "--repetitions",
+      "5",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--repacked-cache",
+      "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+      "--model-sha256",
+      "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+      "--output",
+      "/tmp/2026-07-23-gfx1151-laguna-session-pool.json"
+    ],
+    "configured_backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "dirty": false,
+    "environment": {
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null,
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIP_VISIBLE_DEVICES": "0",
+      "ROCR_VISIBLE_DEVICES": null
+    },
+    "git_branch": null,
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "hipengine_commit": "8ae07d693b6f98d6c44aae90090df6c6d77e8d78",
+    "kind": "hipengine_artifact_provenance",
+    "kv_dtype": "bf16",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        37586027312,
+        75172054624
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 75173103200,
+      "value": "05caf641aa0d991c0e447450420c042bfab22ae248b1f12aba4bd3774c2024c8"
+    },
+    "model_path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "model_revision": null,
+    "profiler": null,
+    "quant": "Q4_K_M mixed GGUF v3",
+    "repetitions": 5,
+    "repo_root": "/tmp/hipengine-s1-bench-8ae07d693",
+    "resolved_backend": "hip_gfx1151",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "schema_version": 1,
+    "staged_dirty": false,
+    "target_arch": "gfx1151",
+    "timing_protocol": "alternating_synchronized_fresh_session_vs_reset_session",
+    "unstaged_dirty": false,
+    "untracked_count": 0,
+    "untracked_dirty": false,
+    "warmups": 1
+  },
+  "samples": [
+    {
+      "close_ms": 5.22272102534771,
+      "direct_ttft_ms": 963.8524119509384,
+      "first_token_id": 5887,
+      "mode": "fresh",
+      "order_index": 0,
+      "prefill_ms": 932.1591729531065,
+      "repetition": 0,
+      "session_prepare_ms": 31.69323899783194
+    },
+    {
+      "close_ms": null,
+      "direct_ttft_ms": 928.3590620616451,
+      "first_token_id": 5887,
+      "mode": "pooled_reset",
+      "order_index": 1,
+      "prefill_ms": 927.7606490068138,
+      "repetition": 0,
+      "session_prepare_ms": 0.598413054831326
+    },
+    {
+      "close_ms": null,
+      "direct_ttft_ms": 926.8958650063723,
+      "first_token_id": 5887,
+      "mode": "pooled_reset",
+      "order_index": 2,
+      "prefill_ms": 926.3029620051384,
+      "repetition": 1,
+      "session_prepare_ms": 0.5929030012339354
+    },
+    {
+      "close_ms": 5.3416339214891195,
+      "direct_ttft_ms": 962.9439070122316,
+      "first_token_id": 5887,
+      "mode": "fresh",
+      "order_index": 3,
+      "prefill_ms": 931.6284169908613,
+      "repetition": 1,
+      "session_prepare_ms": 31.31549002137035
+    },
+    {
+      "close_ms": 5.477620055899024,
+      "direct_ttft_ms": 963.2617040770128,
+      "first_token_id": 5887,
+      "mode": "fresh",
+      "order_index": 4,
+      "prefill_ms": 930.8258410310373,
+      "repetition": 2,
+      "session_prepare_ms": 32.435863045975566
+    },
+    {
+      "close_ms": null,
+      "direct_ttft_ms": 928.3843790180981,
+      "first_token_id": 5887,
+      "mode": "pooled_reset",
+      "order_index": 5,
+      "prefill_ms": 927.7810970088467,
+      "repetition": 2,
+      "session_prepare_ms": 0.6032820092514157
+    },
+    {
+      "close_ms": null,
+      "direct_ttft_ms": 930.9452549787238,
+      "first_token_id": 5887,
+      "mode": "pooled_reset",
+      "order_index": 6,
+      "prefill_ms": 930.3571819327772,
+      "repetition": 3,
+      "session_prepare_ms": 0.5880730459466577
+    },
+    {
+      "close_ms": 5.372962914407253,
+      "direct_ttft_ms": 962.5560700660571,
+      "first_token_id": 5887,
+      "mode": "fresh",
+      "order_index": 7,
+      "prefill_ms": 930.157216032967,
+      "repetition": 3,
+      "session_prepare_ms": 32.398854033090174
+    },
+    {
+      "close_ms": 6.11666904296726,
+      "direct_ttft_ms": 963.7720009777695,
+      "first_token_id": 5887,
+      "mode": "fresh",
+      "order_index": 8,
+      "prefill_ms": 930.1083239261061,
+      "repetition": 4,
+      "session_prepare_ms": 33.6636770516634
+    },
+    {
+      "close_ms": null,
+      "direct_ttft_ms": 934.0688770171255,
+      "first_token_id": 5887,
+      "mode": "pooled_reset",
+      "order_index": 9,
+      "prefill_ms": 933.4202099125832,
+      "repetition": 4,
+      "session_prepare_ms": 0.6486671045422554
+    }
+  ],
+  "schema": 1,
+  "status": "accepted"
+}

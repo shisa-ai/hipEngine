@@ -3,6 +3,8 @@
 Last reviewed: **2026-07-23**
 
 Latest retained hipEngine revisions in this scoreboard:
+`8ae07d693b6f98d6c44aae90090df6c6d77e8d78` for exact gfx1151 Laguna S 2.1
+resident-session pooling and setup telemetry,
 `6ba1ddec95e224c1cc337c69ac2c4ea611ff0472` for the first W7900 Laguna S 2.1
 UD-Q2_K_XL B4 DFlash decode win,
 `09cca232f49e73f68fd09d4ace8509fa3201681e` for the first W7900 Laguna S 2.1
@@ -1316,6 +1318,21 @@ top-1, and lifecycle recovery is exact.
 | LPF-1 change vs previous default | **+108.12% (2.081x)** | **-51.39%** | +0.030% | **+71.61%** | **+52.42%** |
 | Pre-LPF-5 LPF-1 tile + LPF-4 128-row chunks + same eager c=1 decode | 49.641 | 1.639 s | 16.390 | 6.042 | 8.811 |
 | LPF-4 paired change vs same-session 64-row control | **+2.27%** | **-3.15%** | -0.010% | **+1.49%** | **+1.08%** |
+
+The first serving-latency lane is now retained independently of model-kernel
+prefill. Clean revision `8ae07d693b6f98d6c44aae90090df6c6d77e8d78`
+alternates five synchronized fresh/reset first-token samples after one warmup on
+the exact Q4_K_M model, BF16 KV, 4K capacity, chunk 128, and frozen 46-token
+Poolside prompt. Generator-owned pooling moves median session preparation
+**32.399 -> 0.598 ms (-31.800 ms; 54.14x)** and direct preparation-plus-prefill
+TTFT **963.262 -> 928.384 ms (-34.877 ms; -3.621%)**. It also removes a
+**5.373 ms median** fresh-session close from each request tail. Every paired
+setup improves, first token ID `5887` is exact, median TTFT is non-regressive,
+and tracked lifecycle returns to zero. This is a direct resident first-token
+scope, not a replacement for the canonical ten-prompt AR table or real HTTP
+TTFT. `prepare()` constructs the pool during readiness; subsequent requests
+reset it under the c=1 lock and expose `session_prepare_ms`/mode telemetry.
+[Retained S1 session-pool artifact](results/2026-07-23-gfx1151-laguna-session-pool.json).
 
 LPF-1 changes prompt execution only; rows=1 decode stays on the original exact
 GEMV and is neutral. Every serial/tiled pair and same-route repeat is exact at
