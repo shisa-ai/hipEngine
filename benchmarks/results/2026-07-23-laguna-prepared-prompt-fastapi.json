@@ -1,0 +1,1156 @@
+{
+  "baseline_revision": "88205779d5f9d69d4393060d89718ae935de7869",
+  "candidate_revision": "0081d150c08a95423f29fec8fd26779f53c8f730",
+  "commands": {
+    "baseline": "cd /tmp/hipengine-s2-baseline-88205779d && PYTHONPATH=$PWD /home/lhl/hipEngine-main/.venv/bin/python /home/lhl/hipEngine-main/scripts/laguna_prepared_prompt_bench.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --repetitions 50 --warmups 5 --output /tmp/2026-07-23-laguna-prepared-prompt-baseline.json",
+    "candidate": "PYTHONPATH=. /home/lhl/hipEngine-main/.venv/bin/python scripts/laguna_prepared_prompt_bench.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --repetitions 50 --warmups 5 --output /tmp/2026-07-23-laguna-prepared-prompt-candidate.json"
+  },
+  "correctness": {
+    "complete_server_api_tests": "527 passed",
+    "focused_generation_tests": "125 passed",
+    "output_generated_token_ids": [
+      1
+    ],
+    "prompt_encoder_calls_exactly_one_candidate": true,
+    "prompt_usage_equal": true,
+    "response_text": "ready",
+    "suite_prompt_usage_equal": true
+  },
+  "date": "2026-07-23",
+  "hardware": {
+    "cpu": "AMD RYZEN AI MAX+ 395 w/ Radeon 8060S",
+    "gpu_used": false,
+    "logical_cpus": 32
+  },
+  "metrics": {
+    "blocking": {
+      "shapes": {
+        "1024": {
+          "end_to_end_ms_median": {
+            "delta": -2.21403397154063,
+            "new": 2.6908949948847294,
+            "old": 4.904928966425359,
+            "percent": -45.138960965507835
+          },
+          "prompt_encoder_calls": {
+            "new": [
+              1
+            ],
+            "old": [
+              6
+            ]
+          },
+          "prompt_encoder_ms_median": {
+            "delta": -3.110917692538351,
+            "new": 0.5652204854413867,
+            "old": 3.6761381779797375,
+            "percent": -84.62461262128048
+          },
+          "prompt_tokens": {
+            "new": [
+              1024
+            ],
+            "old": [
+              1024
+            ]
+          },
+          "useful_content_ttft_ms_median": {
+            "delta": -2.21403397154063,
+            "new": 2.6908949948847294,
+            "old": 4.904928966425359,
+            "percent": -45.138960965507835
+          }
+        },
+        "128": {
+          "end_to_end_ms_median": {
+            "delta": -0.37722254637628794,
+            "new": 1.337415014859289,
+            "old": 1.7146375612355769,
+            "percent": -22.000133142100264
+          },
+          "prompt_encoder_calls": {
+            "new": [
+              1
+            ],
+            "old": [
+              6
+            ]
+          },
+          "prompt_encoder_ms_median": {
+            "delta": -0.4912804579362273,
+            "new": 0.09388651233166456,
+            "old": 0.5851669702678919,
+            "percent": -83.95560291301423
+          },
+          "prompt_tokens": {
+            "new": [
+              128
+            ],
+            "old": [
+              128
+            ]
+          },
+          "useful_content_ttft_ms_median": {
+            "delta": -0.37722254637628794,
+            "new": 1.337415014859289,
+            "old": 1.7146375612355769,
+            "percent": -22.000133142100264
+          }
+        },
+        "4096": {
+          "end_to_end_ms_median": {
+            "delta": -8.166419458575547,
+            "new": 7.167410512920469,
+            "old": 15.333829971496016,
+            "percent": -53.25753235660018
+          },
+          "prompt_encoder_calls": {
+            "new": [
+              1
+            ],
+            "old": [
+              6
+            ]
+          },
+          "prompt_encoder_ms_median": {
+            "delta": -11.405433469917625,
+            "new": 2.1724964608438313,
+            "old": 13.577929930761456,
+            "percent": -83.99979619925763
+          },
+          "prompt_tokens": {
+            "new": [
+              4096
+            ],
+            "old": [
+              4096
+            ]
+          },
+          "useful_content_ttft_ms_median": {
+            "delta": -8.166419458575547,
+            "new": 7.167410512920469,
+            "old": 15.333829971496016,
+            "percent": -53.25753235660018
+          }
+        },
+        "512": {
+          "end_to_end_ms_median": {
+            "delta": -0.9726454154588282,
+            "new": 1.9244315335527062,
+            "old": 2.8970769490115345,
+            "percent": -33.57333728366066
+          },
+          "prompt_encoder_calls": {
+            "new": [
+              1
+            ],
+            "old": [
+              6
+            ]
+          },
+          "prompt_encoder_ms_median": {
+            "delta": -1.5891818329691887,
+            "new": 0.3026880440302193,
+            "old": 1.891869876999408,
+            "percent": -84.0005886393045
+          },
+          "prompt_tokens": {
+            "new": [
+              512
+            ],
+            "old": [
+              512
+            ]
+          },
+          "useful_content_ttft_ms_median": {
+            "delta": -0.9726454154588282,
+            "new": 1.9244315335527062,
+            "old": 2.8970769490115345,
+            "percent": -33.57333728366066
+          }
+        }
+      },
+      "suite10": {
+        "per_prompt": [
+          {
+            "end_to_end_ms_median": {
+              "delta": -0.19440450705587864,
+              "new": 0.9860705467872322,
+              "old": 1.1804750538431108,
+              "percent": -16.468328273687995
+            },
+            "id": "code_merge_intervals",
+            "prompt_encoder_calls": {
+              "new": [
+                1
+              ],
+              "old": [
+                6
+              ]
+            },
+            "prompt_encoder_ms_median": {
+              "delta": -0.244894006755203,
+              "new": 0.06173097062855959,
+              "old": 0.3066249773837626,
+              "percent": -79.8675987992658
+            },
+            "prompt_tokens": {
+              "new": [
+                69
+              ],
+              "old": [
+                69
+              ]
+            },
+            "useful_content_ttft_ms_median": {
+              "delta": -0.19440450705587864,
+              "new": 0.9860705467872322,
+              "old": 1.1804750538431108,
+              "percent": -16.468328273687995
+            }
+          },
+          {
+            "end_to_end_ms_median": {
+              "delta": -0.2670659450814128,
+              "new": 0.9962345357052982,
+              "old": 1.263300480786711,
+              "percent": -21.140334318174204
+            },
+            "id": "code_topological_sort",
+            "prompt_encoder_calls": {
+              "new": [
+                1
+              ],
+              "old": [
+                6
+              ]
+            },
+            "prompt_encoder_ms_median": {
+              "delta": -0.2867389121092856,
+              "new": 0.068719033151865,
+              "old": 0.3554579452611506,
+              "percent": -80.66746458533147
+            },
+            "prompt_tokens": {
+              "new": [
+                79
+              ],
+              "old": [
+                79
+              ]
+            },
+            "useful_content_ttft_ms_median": {
+              "delta": -0.2670659450814128,
+              "new": 0.9962345357052982,
+              "old": 1.263300480786711,
+              "percent": -21.140334318174204
+            }
+          },
+          {
+            "end_to_end_ms_median": {
+              "delta": -0.30038360273465514,
+              "new": 0.9947319631464779,
+              "old": 1.295115565881133,
+              "percent": -23.193575202710882
+            },
+            "id": "code_lru_cache",
+            "prompt_encoder_calls": {
+              "new": [
+                1
+              ],
+              "old": [
+                6
+              ]
+            },
+            "prompt_encoder_ms_median": {
+              "delta": -0.2841944806277752,
+              "new": 0.06510200910270214,
+              "old": 0.34929648973047733,
+              "percent": -81.3619629693571
+            },
+            "prompt_tokens": {
+              "new": [
+                75
+              ],
+              "old": [
+                75
+              ]
+            },
+            "useful_content_ttft_ms_median": {
+              "delta": -0.30038360273465514,
+              "new": 0.9947319631464779,
+              "old": 1.295115565881133,
+              "percent": -23.193575202710882
+            }
+          },
+          {
+            "end_to_end_ms_median": {
+              "delta": -0.3207320114597678,
+              "new": 0.9990700054913759,
+              "old": 1.3198020169511437,
+              "percent": -24.301524572654188
+            },
+            "id": "code_markdown_table",
+            "prompt_encoder_calls": {
+              "new": [
+                1
+              ],
+              "old": [
+                6
+              ]
+            },
+            "prompt_encoder_ms_median": {
+              "delta": -0.32177247339859605,
+              "new": 0.07179001113399863,
+              "old": 0.3935624845325947,
+              "percent": -81.75892927923292
+            },
+            "prompt_tokens": {
+              "new": [
+                83
+              ],
+              "old": [
+                83
+              ]
+            },
+            "useful_content_ttft_ms_median": {
+              "delta": -0.3207320114597678,
+              "new": 0.9990700054913759,
+              "old": 1.3198020169511437,
+              "percent": -24.301524572654188
+            }
+          },
+          {
+            "end_to_end_ms_median": {
+              "delta": -0.26107492158189416,
+              "new": 0.9894870454445481,
+              "old": 1.2505619670264423,
+              "percent": -20.87660815422623
+            },
+            "id": "general_en_plan",
+            "prompt_encoder_calls": {
+              "new": [
+                1
+              ],
+              "old": [
+                6
+              ]
+            },
+            "prompt_encoder_ms_median": {
+              "delta": -0.2730721025727689,
+              "new": 0.06222195224836469,
+              "old": 0.3352940548211336,
+              "percent": -81.44257216801601
+            },
+            "prompt_tokens": {
+              "new": [
+                68
+              ],
+              "old": [
+                68
+              ]
+            },
+            "useful_content_ttft_ms_median": {
+              "delta": -0.26107492158189416,
+              "new": 0.9894870454445481,
+              "old": 1.2505619670264423,
+              "percent": -20.87660815422623
+            }
+          },
+          {
+            "end_to_end_ms_median": {
+              "delta": -0.3062995383515954,
+              "new": 0.9695899789221585,
+              "old": 1.2758895172737539,
+              "percent": -24.00674464400948
+            },
+            "id": "general_en_explain",
+            "prompt_encoder_calls": {
+              "new": [
+                1
+              ],
+              "old": [
+                6
+              ]
+            },
+            "prompt_encoder_ms_median": {
+              "delta": -0.30933989910408854,
+              "new": 0.060583988670259714,
+              "old": 0.36992388777434826,
+              "percent": -83.6225800299721
+            },
+            "prompt_tokens": {
+              "new": [
+                68
+              ],
+              "old": [
+                68
+              ]
+            },
+            "useful_content_ttft_ms_median": {
+              "delta": -0.3062995383515954,
+              "new": 0.9695899789221585,
+              "old": 1.2758895172737539,
+              "percent": -24.00674464400948
+            }
+          },
+          {
+            "end_to_end_ms_median": {
+              "delta": -0.22753153461962938,
+              "new": 0.9889259818010032,
+              "old": 1.2164575164206326,
+              "percent": -18.704437396969674
+            },
+            "id": "general_ja_plan",
+            "prompt_encoder_calls": {
+              "new": [
+                1
+              ],
+              "old": [
+                6
+              ]
+            },
+            "prompt_encoder_ms_median": {
+              "delta": -0.2370454021729529,
+              "new": 0.05723204230889678,
+              "old": 0.29427744448184967,
+              "percent": -80.55167211008362
+            },
+            "prompt_tokens": {
+              "new": [
+                97
+              ],
+              "old": [
+                97
+              ]
+            },
+            "useful_content_ttft_ms_median": {
+              "delta": -0.22753153461962938,
+              "new": 0.9889259818010032,
+              "old": 1.2164575164206326,
+              "percent": -18.704437396969674
+            }
+          },
+          {
+            "end_to_end_ms_median": {
+              "delta": -0.20212994422763586,
+              "new": 1.0044944938272238,
+              "old": 1.2066244380548596,
+              "percent": -16.75168659384022
+            },
+            "id": "general_ja_explain",
+            "prompt_encoder_calls": {
+              "new": [
+                1
+              ],
+              "old": [
+                6
+              ]
+            },
+            "prompt_encoder_ms_median": {
+              "delta": -0.2652480616234243,
+              "new": 0.05533901276066899,
+              "old": 0.3205870743840933,
+              "percent": -82.73822708947782
+            },
+            "prompt_tokens": {
+              "new": [
+                92
+              ],
+              "old": [
+                92
+              ]
+            },
+            "useful_content_ttft_ms_median": {
+              "delta": -0.20212994422763586,
+              "new": 1.0044944938272238,
+              "old": 1.2066244380548596,
+              "percent": -16.75168659384022
+            }
+          },
+          {
+            "end_to_end_ms_median": {
+              "delta": -0.2270760014653206,
+              "new": 1.0297825210727751,
+              "old": 1.2568585225380957,
+              "percent": -18.066950049935937
+            },
+            "id": "mixed_ja_en_translate",
+            "prompt_encoder_calls": {
+              "new": [
+                1
+              ],
+              "old": [
+                6
+              ]
+            },
+            "prompt_encoder_ms_median": {
+              "delta": -0.29737805016338825,
+              "new": 0.07436447776854038,
+              "old": 0.37174252793192863,
+              "percent": -79.99570342886419
+            },
+            "prompt_tokens": {
+              "new": [
+                111
+              ],
+              "old": [
+                111
+              ]
+            },
+            "useful_content_ttft_ms_median": {
+              "delta": -0.2270760014653206,
+              "new": 1.0297825210727751,
+              "old": 1.2568585225380957,
+              "percent": -18.066950049935937
+            }
+          },
+          {
+            "end_to_end_ms_median": {
+              "delta": -0.32699399162083864,
+              "new": 1.0437935125082731,
+              "old": 1.3707875041291118,
+              "percent": -23.854462536013877
+            },
+            "id": "mixed_ja_en_review",
+            "prompt_encoder_calls": {
+              "new": [
+                1
+              ],
+              "old": [
+                6
+              ]
+            },
+            "prompt_encoder_ms_median": {
+              "delta": -0.35219587152823806,
+              "new": 0.08163799066096544,
+              "old": 0.4338338621892035,
+              "percent": -81.18219950627979
+            },
+            "prompt_tokens": {
+              "new": [
+                122
+              ],
+              "old": [
+                122
+              ]
+            },
+            "useful_content_ttft_ms_median": {
+              "delta": -0.32699399162083864,
+              "new": 1.0437935125082731,
+              "old": 1.3707875041291118,
+              "percent": -23.854462536013877
+            }
+          }
+        ],
+        "prompt_encoder_calls": {
+          "new": [
+            1
+          ],
+          "old": [
+            6
+          ]
+        },
+        "prompt_encoder_ms_pooled_median": {
+          "delta": -0.29264960903674364,
+          "new": 0.06456102710217237,
+          "old": 0.357210636138916,
+          "percent": -81.92634245161021
+        },
+        "request_count_per_revision": 500,
+        "useful_content_ttft_ms_pooled_median": {
+          "delta": -0.26717648142948747,
+          "new": 0.9976620203815401,
+          "old": 1.2648385018110275,
+          "percent": -21.12336721620487
+        }
+      }
+    },
+    "streaming": {
+      "shapes": {
+        "1024": {
+          "end_to_end_ms_median": {
+            "delta": -2.7974845725111663,
+            "new": 2.3716004798188806,
+            "old": 5.169085052330047,
+            "percent": -54.11953071366384
+          },
+          "prompt_encoder_calls": {
+            "new": [
+              1
+            ],
+            "old": [
+              6
+            ]
+          },
+          "prompt_encoder_ms_median": {
+            "delta": -3.1655100756324828,
+            "new": 0.5500420229509473,
+            "old": 3.71555209858343,
+            "percent": -85.19622364706841
+          },
+          "prompt_tokens": {
+            "new": [
+              1024
+            ],
+            "old": [
+              1024
+            ]
+          },
+          "useful_content_ttft_ms_median": {
+            "delta": -2.790681552141905,
+            "new": 2.3604294983670115,
+            "old": 5.151111050508916,
+            "percent": -54.17630341838957
+          }
+        },
+        "128": {
+          "end_to_end_ms_median": {
+            "delta": 0.07684947922825813,
+            "new": 1.4621239970438182,
+            "old": 1.38527451781556,
+            "percent": 5.547599283746463
+          },
+          "prompt_encoder_calls": {
+            "new": [
+              1
+            ],
+            "old": [
+              6
+            ]
+          },
+          "prompt_encoder_ms_median": {
+            "delta": -0.37315546069294214,
+            "new": 0.09921652963384986,
+            "old": 0.472371990326792,
+            "percent": -78.99610229530951
+          },
+          "prompt_tokens": {
+            "new": [
+              128
+            ],
+            "old": [
+              128
+            ]
+          },
+          "useful_content_ttft_ms_median": {
+            "delta": 0.06916950223967433,
+            "new": 1.4425020199269056,
+            "old": 1.3733325176872313,
+            "percent": 5.036617232085905
+          }
+        },
+        "4096": {
+          "end_to_end_ms_median": {
+            "delta": -8.711853588465601,
+            "new": 6.803747965022922,
+            "old": 15.515601553488523,
+            "percent": -56.14899015311998
+          },
+          "prompt_encoder_calls": {
+            "new": [
+              1
+            ],
+            "old": [
+              6
+            ]
+          },
+          "prompt_encoder_ms_median": {
+            "delta": -11.354653455782682,
+            "new": 2.1329675219021738,
+            "old": 13.487620977684855,
+            "percent": -84.1857394611611
+          },
+          "prompt_tokens": {
+            "new": [
+              4096
+            ],
+            "old": [
+              4096
+            ]
+          },
+          "useful_content_ttft_ms_median": {
+            "delta": -8.697196084540337,
+            "new": 6.785668956581503,
+            "old": 15.48286504112184,
+            "percent": -56.1730407223789
+          }
+        },
+        "512": {
+          "end_to_end_ms_median": {
+            "delta": -1.369274454191327,
+            "new": 1.6050520353019238,
+            "old": 2.974326489493251,
+            "percent": -46.0364542705134
+          },
+          "prompt_encoder_calls": {
+            "new": [
+              1
+            ],
+            "old": [
+              6
+            ]
+          },
+          "prompt_encoder_ms_median": {
+            "delta": -1.5790574252605438,
+            "new": 0.29048550641164184,
+            "old": 1.8695429316721857,
+            "percent": -84.46221793089174
+          },
+          "prompt_tokens": {
+            "new": [
+              512
+            ],
+            "old": [
+              512
+            ]
+          },
+          "useful_content_ttft_ms_median": {
+            "delta": -1.3686484890058637,
+            "new": 1.5927035128697753,
+            "old": 2.961352001875639,
+            "percent": -46.21701466556489
+          }
+        }
+      },
+      "suite10": {
+        "per_prompt": [
+          {
+            "end_to_end_ms_median": {
+              "delta": -0.26612996589392424,
+              "new": 0.9639590280130506,
+              "old": 1.2300889939069748,
+              "percent": -21.63501723957789
+            },
+            "id": "code_merge_intervals",
+            "prompt_encoder_calls": {
+              "new": [
+                1
+              ],
+              "old": [
+                6
+              ]
+            },
+            "prompt_encoder_ms_median": {
+              "delta": -0.2497136010788381,
+              "new": 0.060813967138528824,
+              "old": 0.31052756821736693,
+              "percent": -80.41592007832313
+            },
+            "prompt_tokens": {
+              "new": [
+                69
+              ],
+              "old": [
+                69
+              ]
+            },
+            "useful_content_ttft_ms_median": {
+              "delta": -0.26397546753287315,
+              "new": 0.9517265134491026,
+              "old": 1.2157019809819758,
+              "percent": -21.713830499778297
+            }
+          },
+          {
+            "end_to_end_ms_median": {
+              "delta": -0.31931401463225484,
+              "new": 0.9585139923729002,
+              "old": 1.277828007005155,
+              "percent": -24.98881014359914
+            },
+            "id": "code_topological_sort",
+            "prompt_encoder_calls": {
+              "new": [
+                1
+              ],
+              "old": [
+                6
+              ]
+            },
+            "prompt_encoder_ms_median": {
+              "delta": -0.2843250404112041,
+              "new": 0.06750650936737657,
+              "old": 0.35183154977858067,
+              "percent": -80.81283233130722
+            },
+            "prompt_tokens": {
+              "new": [
+                79
+              ],
+              "old": [
+                79
+              ]
+            },
+            "useful_content_ttft_ms_median": {
+              "delta": -0.3171100397594273,
+              "new": 0.9474779362790287,
+              "old": 1.264587976038456,
+              "percent": -25.076154903261873
+            }
+          },
+          {
+            "end_to_end_ms_median": {
+              "delta": -0.2583094756118953,
+              "new": 0.9466669871471822,
+              "old": 1.2049764627590775,
+              "percent": -21.43688973147533
+            },
+            "id": "code_lru_cache",
+            "prompt_encoder_calls": {
+              "new": [
+                1
+              ],
+              "old": [
+                6
+              ]
+            },
+            "prompt_encoder_ms_median": {
+              "delta": -0.26139989495277405,
+              "new": 0.06302900146692991,
+              "old": 0.32442889641970396,
+              "percent": -80.57232195944988
+            },
+            "prompt_tokens": {
+              "new": [
+                75
+              ],
+              "old": [
+                75
+              ]
+            },
+            "useful_content_ttft_ms_median": {
+              "delta": -0.2564755268394947,
+              "new": 0.935756484977901,
+              "old": 1.1922320118173957,
+              "percent": -21.51221610368712
+            }
+          },
+          {
+            "end_to_end_ms_median": {
+              "delta": -0.3486734931357205,
+              "new": 0.955042487476021,
+              "old": 1.3037159806117415,
+              "percent": -26.74458995065112
+            },
+            "id": "code_markdown_table",
+            "prompt_encoder_calls": {
+              "new": [
+                1
+              ],
+              "old": [
+                6
+              ]
+            },
+            "prompt_encoder_ms_median": {
+              "delta": -0.3164439112879336,
+              "new": 0.06874901009723544,
+              "old": 0.38519292138516903,
+              "percent": -82.1520577662717
+            },
+            "prompt_tokens": {
+              "new": [
+                83
+              ],
+              "old": [
+                83
+              ]
+            },
+            "useful_content_ttft_ms_median": {
+              "delta": -0.3474265104159713,
+              "new": 0.9432199876755476,
+              "old": 1.2906464980915189,
+              "percent": -26.91879696955839
+            }
+          },
+          {
+            "end_to_end_ms_median": {
+              "delta": -0.27472543297335505,
+              "new": 0.9759715176187456,
+              "old": 1.2506969505921006,
+              "percent": -21.96578738305035
+            },
+            "id": "general_en_plan",
+            "prompt_encoder_calls": {
+              "new": [
+                1
+              ],
+              "old": [
+                6
+              ]
+            },
+            "prompt_encoder_ms_median": {
+              "delta": -0.25991356233134866,
+              "new": 0.06117450539022684,
+              "old": 0.3210880677215755,
+              "percent": -80.94774875182438
+            },
+            "prompt_tokens": {
+              "new": [
+                68
+              ],
+              "old": [
+                68
+              ]
+            },
+            "useful_content_ttft_ms_median": {
+              "delta": -0.2612899988889694,
+              "new": 0.9641145006753504,
+              "old": 1.2254044995643198,
+              "percent": -21.322754974530323
+            }
+          },
+          {
+            "end_to_end_ms_median": {
+              "delta": -0.5101474816910923,
+              "new": 0.9739925153553486,
+              "old": 1.4841399970464408,
+              "percent": -34.3732722456323
+            },
+            "id": "general_en_explain",
+            "prompt_encoder_calls": {
+              "new": [
+                1
+              ],
+              "old": [
+                6
+              ]
+            },
+            "prompt_encoder_ms_median": {
+              "delta": -0.2727466053329408,
+              "new": 0.05958694964647293,
+              "old": 0.33233355497941375,
+              "percent": -82.0701374406313
+            },
+            "prompt_tokens": {
+              "new": [
+                68
+              ],
+              "old": [
+                68
+              ]
+            },
+            "useful_content_ttft_ms_median": {
+              "delta": -0.5066959420219064,
+              "new": 0.9631420252844691,
+              "old": 1.4698379673063755,
+              "percent": -34.47291152442315
+            }
+          },
+          {
+            "end_to_end_ms_median": {
+              "delta": -0.15032244846224785,
+              "new": 1.0187714942730963,
+              "old": 1.1690939427353442,
+              "percent": -12.858029878295019
+            },
+            "id": "general_ja_plan",
+            "prompt_encoder_calls": {
+              "new": [
+                1
+              ],
+              "old": [
+                6
+              ]
+            },
+            "prompt_encoder_ms_median": {
+              "delta": -0.22457598242908716,
+              "new": 0.057383032981306314,
+              "old": 0.2819590154103935,
+              "percent": -79.64844894291289
+            },
+            "prompt_tokens": {
+              "new": [
+                97
+              ],
+              "old": [
+                97
+              ]
+            },
+            "useful_content_ttft_ms_median": {
+              "delta": -0.14999648556113243,
+              "new": 1.00663403281942,
+              "old": 1.1566305183805525,
+              "percent": -12.968401159875054
+            }
+          },
+          {
+            "end_to_end_ms_median": {
+              "delta": -0.18796249059960246,
+              "new": 0.9729504818096757,
+              "old": 1.1609129724092782,
+              "percent": -16.190919997174134
+            },
+            "id": "general_ja_explain",
+            "prompt_encoder_calls": {
+              "new": [
+                1
+              ],
+              "old": [
+                6
+              ]
+            },
+            "prompt_encoder_ms_median": {
+              "delta": -0.22205605637282133,
+              "new": 0.054586969781666994,
+              "old": 0.2766430261544883,
+              "percent": -80.26808391288219
+            },
+            "prompt_tokens": {
+              "new": [
+                92
+              ],
+              "old": [
+                92
+              ]
+            },
+            "useful_content_ttft_ms_median": {
+              "delta": -0.18696003826335073,
+              "new": 0.9618249605409801,
+              "old": 1.1487849988043308,
+              "percent": -16.274589105702198
+            }
+          },
+          {
+            "end_to_end_ms_median": {
+              "delta": -0.25044498033821583,
+              "new": 0.9866165346466005,
+              "old": 1.2370615149848163,
+              "percent": -20.24515170058376
+            },
+            "id": "mixed_ja_en_translate",
+            "prompt_encoder_calls": {
+              "new": [
+                1
+              ],
+              "old": [
+                6
+              ]
+            },
+            "prompt_encoder_ms_median": {
+              "delta": -0.2984501188620925,
+              "new": 0.0724359997548163,
+              "old": 0.3708861186169088,
+              "percent": -80.46947671567185
+            },
+            "prompt_tokens": {
+              "new": [
+                111
+              ],
+              "old": [
+                111
+              ]
+            },
+            "useful_content_ttft_ms_median": {
+              "delta": -0.2506405580788851,
+              "new": 0.975275004748255,
+              "old": 1.22591556282714,
+              "percent": -20.445173034664098
+            }
+          },
+          {
+            "end_to_end_ms_median": {
+              "delta": -0.2928141038864851,
+              "new": 1.0031679412350059,
+              "old": 1.295982045121491,
+              "percent": -22.59399387427744
+            },
+            "id": "mixed_ja_en_review",
+            "prompt_encoder_calls": {
+              "new": [
+                1
+              ],
+              "old": [
+                6
+              ]
+            },
+            "prompt_encoder_ms_median": {
+              "delta": -0.32591255148872733,
+              "new": 0.07935351459309459,
+              "old": 0.4052660660818219,
+              "percent": -80.41940314413758
+            },
+            "prompt_tokens": {
+              "new": [
+                122
+              ],
+              "old": [
+                122
+              ]
+            },
+            "useful_content_ttft_ms_median": {
+              "delta": -0.2923685242421925,
+              "new": 0.9920515003614128,
+              "old": 1.2844200246036053,
+              "percent": -22.76268811150174
+            }
+          }
+        ],
+        "prompt_encoder_calls": {
+          "new": [
+            1
+          ],
+          "old": [
+            6
+          ]
+        },
+        "prompt_encoder_ms_pooled_median": {
+          "delta": -0.2768689882941544,
+          "new": 0.06331899203360081,
+          "old": 0.3401879803277552,
+          "percent": -81.38705783414338
+        },
+        "request_count_per_revision": 500,
+        "useful_content_ttft_ms_pooled_median": {
+          "delta": -0.2796350163407624,
+          "new": 0.9639739873819053,
+          "old": 1.2436090037226677,
+          "percent": -22.485766467088286
+        }
+      }
+    }
+  },
+  "model": {
+    "gguf": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "gguf_sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "name": "Poolside Laguna S 2.1",
+    "quant": "Q4_K_M",
+    "usage": "tokenizer metadata only"
+  },
+  "notes": [
+    "tokenize_ms is the compatibility alias of prompt_encode_ms; render_ms and admission_prepare_ms are separate and not double-counted",
+    "useful-content TTFT is in-process HTTP/SSE overhead with an immediate fake model, not Laguna model TTFT",
+    "the isolated 128-token streaming median is within overlapping p10-p90 noise; all larger shapes and both pooled ten-prompt modes improve"
+  ],
+  "protocol": {
+    "exact_rendered_prompt_token_shapes": [
+      128,
+      512,
+      1024,
+      4096
+    ],
+    "max_tokens": 1,
+    "modes": [
+      "blocking",
+      "streaming"
+    ],
+    "repetitions": 50,
+    "stream_usage": true,
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "suite_prompts": 10,
+    "warmups": 5
+  },
+  "raw_sha256": {
+    "baseline": "22fa854da5829cc33233259f6d41188e5fe345fb9626c30b1f8988709ad5d768",
+    "candidate": "badd0a2614a72546372f02623e6762d77a32026dee885e6d92c88ec9e8946df9"
+  },
+  "schema": "hipengine.benchmark.laguna_prepared_prompt.v1",
+  "scope": "FastAPI TestClient with immediate exact fake model; isolates Poolside render/tokenize/admission/usage/SSE and excludes GPU/model load/model execution",
+  "software": {
+    "fastapi": "0.139.0",
+    "python": "3.10.20",
+    "starlette": "1.3.1",
+    "tokenizers": "0.23.1"
+  },
+  "status": "retained_default"
+}

@@ -3,6 +3,8 @@
 Last reviewed: **2026-07-23**
 
 Latest retained hipEngine revisions in this scoreboard:
+`0081d150c08a95423f29fec8fd26779f53c8f730` for request-local exact Laguna
+prompt preparation and preprocessing telemetry,
 `8ae07d693b6f98d6c44aae90090df6c6d77e8d78` for exact gfx1151 Laguna S 2.1
 resident-session pooling and setup telemetry,
 `6ba1ddec95e224c1cc337c69ac2c4ea611ff0472` for the first W7900 Laguna S 2.1
@@ -1333,6 +1335,21 @@ scope, not a replacement for the canonical ten-prompt AR table or real HTTP
 TTFT. `prepare()` constructs the pool during readiness; subsequent requests
 reset it under the c=1 lock and expose `session_prepare_ms`/mode telemetry.
 [Retained S1 session-pool artifact](results/2026-07-23-gfx1151-laguna-session-pool.json).
+
+Serving lane S2 is also retained independently of GPU/model wall. Clean
+revision `0081d150c08a95423f29fec8fd26779f53c8f730` changes each blocking and
+streaming Poolside request from six full rendered-prompt encoder calls to one
+request-local exact-ID owner. In the FastAPI TestClient/immediate-model scope,
+4,096-token useful-content TTFT changes **15.334 -> 7.167 ms (-8.166 ms;
+-53.26%)** blocking and **15.483 -> 6.786 ms (-8.697 ms; -56.17%)** streaming.
+Across 500 requests/mode on the canonical ten-prompt suite, pooled median prompt
+encoder wall changes **0.357 -> 0.065 ms (-81.93%)** blocking and **0.340 ->
+0.063 ms (-81.39%)** streaming; useful-content TTFT changes **1.265 -> 0.998 ms
+(-21.12%)** and **1.244 -> 0.964 ms (-22.49%)**. Exact prompt usage matches and
+every candidate sample encodes the rendered prompt once. This CPU-only isolated
+scope uses the Q4_K_M GGUF for tokenizer metadata and an immediate deterministic
+fake response; it is not Laguna model TTFT. [Retained S2 prepared-prompt
+artifact](results/2026-07-23-laguna-prepared-prompt-fastapi.json).
 
 LPF-1 changes prompt execution only; rows=1 decode stays on the original exact
 GEMV and is neutral. Every serial/tiled pair and same-route repeat is exact at
