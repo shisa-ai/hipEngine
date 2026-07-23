@@ -2190,7 +2190,7 @@ Laguna scheduler and a useful small-M selected layout do not.
 
 | Existing family | Laguna compatibility | Decision |
 | --- | --- | --- |
-| direct Q4T16 dual + fused SiLU | Exact resident `tiles`, selected-ID, K3072/N1024, and BF16-output ABI match. The fused output is bit-identical to dual projection followed by the registered separate SiLU chain. | **First exact screen.** Route gate/up directly into `expert_intermediate`; retain the present split chain as fallback. No weight or scratch-layout change is needed. |
+| direct Q4T16 dual + fused SiLU | Exact resident `tiles`, selected-ID, K3072/N1024, and BF16-output ABI match. The fused output is bit-identical to dual projection followed by the registered separate SiLU chain. | **Screened and rejected as a runtime default.** Same-session full-model timing is exact but only +0.129% in aggregate and regresses rows 16/64. Candidate runtime wiring was removed; the registered leaf and its bit gate remain. |
 | direct Q4T16 Q8_1/dp4a + fused SiLU | Resident T16 and selected-ID ABI match. It needs one caller-owned GGML Q8_1 buffer of `rows * (K/32) * 36` bytes. This is quality-gated, not byte-exact. | **Second screen only.** Quantize each token row once before top-10 expansion and include quantization in timing. There is no qualified Q4/Q6 single-down peer; do not build one unless gate/up wins inclusively. |
 | group count/prefix/scatter-gather/tile-map + weighted-lane sum | Raw-pointer metadata and BF16 packed-row ABI are model-neutral; passing Laguna's already-scaled routing weights preserves normalized uncorrected sigmoid probabilities and the 2.5 scale. Registrations still carry Qwen/PARO names. | Reuse bodies through new generic registry aliases and Laguna-owned bounded scratch; do not call Qwen runner helpers or add model branches. |
 | Q4T16 dual and Q4T16/Q6T16 compact WMMA | Existing Laguna allocations match the kernel `tiles` layouts exactly. The output can return through `sorted_lanes`, a static lane-to-token map, and weighted-lane sum. | Replay control, not the default design. M16 padding is already 4.396x at 55 rows and 2.704x at 128. gfx1151 also has no admitted no-read compact-WMMA launch policy, so the current complete Qwen orchestration may read one device scalar. |
@@ -2201,11 +2201,12 @@ Laguna scheduler and a useful small-M selected layout do not.
 | contiguous prefill metadata | The helper writes Qwen attention/GDN metadata, not Laguna's span/ring contract. Kernel-span residual is only 0.28-0.34%. | Do not port. Only the grouped-expert count/prefix/scatter metadata is relevant now. |
 | AOTriton | Torch-free adapter exists, but it does not directly consume Laguna's global/SWA `KVLiveSpans`, physical ring, eviction, and separate gate ABI. | Keep as an AR-O5 global-attention ceiling after matrix work; not an AR-O1 dependency. |
 
-The ranked AR-O1 execution order is therefore: (1) exact fused Q4 dual-SiLU
-full-model A/B; (2) inclusive direct Q8_1/dp4a gate/up A/B through the quality
-lane; (3) preserve and extend the natural-routing replay to 256/512, then add a
-generic no-D2H grouping substrate and small-M Q4/Q6 kernels; and (4) admit
-M16/M32 only at a measured crossover. This deliberately excludes the rejected
+The first ranked item is now closed: exact fused Q4 dual-SiLU failed its strict
+same-session full-model screen and did not become a runtime route. The remaining
+AR-O1 order is therefore: (1) inclusive direct Q8_1/dp4a gate/up A/B through the
+quality lane; (2) preserve and extend the natural-routing replay to 256/512,
+then add a generic no-D2H grouping substrate and small-M Q4/Q6 kernels; and (3)
+admit M16/M32 only at a measured crossover. This deliberately excludes the rejected
 compact-pair route, raw-Q4 duplication, Q8T16 substitution, router retuning,
 metadata work, and attention work.
 
@@ -2228,10 +2229,18 @@ GEMVs over `rows * top_k`; the prior exact pair-reuse candidate lost 11.57%, and
 blanket M16 compact WMMA would execute 4.396x useful lanes at 55 rows. Do not
 repeat either experiment unchanged.
 
-- [ ] First screen already-landed primitives: exact Q4 dual+SiLU fusion and
-  direct Q8_1/dp4a for Q4 gate/up. Only if that wins inclusively should a
-  single-output Q4/Q6 down sibling be developed. Include activation-quantization
-  cost and full-model quality; a prequantized leaf win is not sufficient.
+- [ ] First screen already-landed primitives. **Exact Q4 dual+SiLU is complete
+  and rejected:** one-load, same-session, counterbalanced rows
+  16/32/55/64/122/128 are exact in all 36 timed IDs, but split -> fused median
+  rates are `46.380->46.300`, `48.917->49.000`, `49.088->49.137`,
+  `50.558->50.527`, `51.081->51.194`, and `51.412->51.549 tok/s`. Aggregate
+  wall improves only 0.129%, while rows 16/64 regress 0.172%/0.060%; the strict
+  all-shape gate fails, candidate runtime code is removed, and the original
+  split chain stays default. Next screen direct Q8_1/dp4a for Q4 gate/up. Only
+  if that wins inclusively should a single-output Q4/Q6 down sibling be
+  developed. Include activation-quantization cost and full-model quality; a
+  prequantized leaf win is not sufficient. Evidence:
+  `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-ar-o1-fused-silu-rejected.json`.
 - [ ] Build one device-resident expert grouping/scatter pass with no scalar D2H
   boundary. Quantize each producer activation once, not once per selected
   expert or output projection.

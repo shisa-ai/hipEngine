@@ -1272,6 +1272,17 @@ kernel-span residual is only **0.28-0.34%**. This is an attribution baseline,
 not a speedup claim, and ranks selected experts before source-F16 projections.
 [Current all-family profile](results/2026-07-23-gfx1151-laguna-prefill-current-main-all-family-profile.json).
 
+The first AR-O1 selected-expert screen rejects exact Q4T16 dual-SiLU fusion as
+a production route. In one resident session with counterbalanced split/fused
+order and three repetitions, all 36 next-token IDs match. Rows
+16/32/55/64/122/128 move **46.380/48.917/49.088/50.558/51.081/51.412 ->
+46.300/49.000/49.137/50.527/51.194/51.549 tok/s**. Aggregate measured wall is
+only **0.129%** better, while rows 16 and 64 regress **0.172%/0.060%**, failing
+the predeclared all-shape gate. Runtime selector code is removed; the existing
+registered leaf and bit-exact kernel test remain. The next AR-O1 screen is the
+inclusive Q8_1/dp4a gate/up path.
+[Rejected fused-SiLU screen](results/2026-07-23-gfx1151-laguna-prefill-ar-o1-fused-silu-rejected.json).
+
 A matched Poolside llama.cpp `04b2b72c` control now uses the identical Laguna
 Q4_K_M model hash, deterministic token stream, BF16 KV, and 128-row microbatch.
 Three alternating native `prompt_ms` samples measure
