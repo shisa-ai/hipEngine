@@ -1,0 +1,136 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-23T18:02:22+00:00",
+  "kind": "hipengine_laguna_global_qrow2_exact_rejection",
+  "status": "rejected",
+  "pass": true,
+  "performance_claim": true,
+  "scope": "Laguna 48-query-head/8-KV-head global prefill leaf with complete KVLiveSpans",
+  "repo": {
+    "base_revision": "14f59a828",
+    "candidate_committed": false,
+    "candidate_removed": true,
+    "candidate_diff_sha256": "0735d7bfb4334a4cd80cf15b957414a4adc5c04148ab7be9e8771ca75547dd29"
+  },
+  "platform": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "rocm": "TheRock HIP 7.15.0-0000000",
+    "gpu_max_hw_queues": 1
+  },
+  "candidate": {
+    "variant": "global_context_rows_qrow2_exact_spans",
+    "design": "one 256-thread workgroup owns two adjacent query rows and reuses each loaded BF16 K/V element across the pair while preserving the retained three-pass score, softmax, and value order",
+    "fallback": "global_context_rows_spans",
+    "math": "per-query causal visibility, 128-element reduction tree, max/denominator/output accumulation order, BF16 current/cache boundary, and complete KVLiveSpans are preserved"
+  },
+  "correctness": {
+    "pass": true,
+    "m128_outputs_byte_exact_at_all_six_prior_contexts": true,
+    "wrap_508_515_output_byte_exact": true,
+    "wrap_508_515_cursor_exact": true,
+    "kv_live_spans_consumed": true,
+    "focused_test": "tests/test_laguna_kv_attention.py::test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap"
+  },
+  "protocol": {
+    "rows": 128,
+    "context_capacity": 4096,
+    "prior_context_rows": [0, 128, 384, 896, 1920, 3968],
+    "iterations_per_sample": 5,
+    "repetitions": 7,
+    "balanced_order": true,
+    "timing": "HIP events around cached leaf launches; two untimed warmups per sample"
+  },
+  "measurements": [
+    {
+      "prior_rows": 0,
+      "baseline_median_ms": 0.9993141174316407,
+      "candidate_median_ms": 2.116668701171875,
+      "candidate_speedup": 0.47211614171986666,
+      "candidate_wall_regression_pct": 111.81228761997231,
+      "raw_sha256": "92bb0c6a0fae7e991fce93b74e3f8ba0ac557c306992d8e054f7a1b3ef5cdb22"
+    },
+    {
+      "prior_rows": 128,
+      "baseline_median_ms": 3.388173294067383,
+      "candidate_median_ms": 6.359457397460938,
+      "candidate_speedup": 0.5327771077493318,
+      "candidate_wall_regression_pct": 87.69575221135317,
+      "raw_sha256": "5b08258c86faf86a444422e77f92842ac12686ca0393dc7bb407002c06e5a971"
+    },
+    {
+      "prior_rows": 384,
+      "baseline_median_ms": 8.880270385742187,
+      "candidate_median_ms": 15.717546081542968,
+      "candidate_speedup": 0.5649908923232134,
+      "candidate_wall_regression_pct": 76.99400354721678,
+      "raw_sha256": "9673fce87cbcfdbe75fca31902b288a8b42d69a95408cca441226428865b6a52"
+    },
+    {
+      "prior_rows": 896,
+      "baseline_median_ms": 20.47579345703125,
+      "candidate_median_ms": 36.722381591796876,
+      "candidate_speedup": 0.5575834836813847,
+      "candidate_wall_regression_pct": 79.34534096985948,
+      "raw_sha256": "381a4ed991f12ef597bdba16148ee5b7399f2b816141a2d00a82e7943373287d"
+    },
+    {
+      "prior_rows": 1920,
+      "baseline_median_ms": 42.51006469726562,
+      "candidate_median_ms": 75.94974975585938,
+      "candidate_speedup": 0.5597130317600034,
+      "candidate_wall_regression_pct": 78.66298321758303,
+      "raw_sha256": "6095b1499c3e291c3de17cc0d77afb5eb19e7ecba7bf894804bd8084eef0f041"
+    },
+    {
+      "prior_rows": 3968,
+      "baseline_median_ms": 86.77753295898438,
+      "candidate_median_ms": 154.590380859375,
+      "candidate_speedup": 0.5613385029300278,
+      "candidate_wall_regression_pct": 78.14562777722954,
+      "raw_sha256": "d1661e5a7a608ba4532dcc44ad20acfb491ee6111b73c5d8cccf35c9dc0b72bb"
+    }
+  ],
+  "trace": {
+    "prior_rows": 3968,
+    "baseline_launches": 50,
+    "candidate_launches": 50,
+    "baseline_median_ms": 86.9765085,
+    "candidate_median_ms": 154.7211775,
+    "baseline": {
+      "symbol": "laguna_global_attention_prefill_bf16_kernel",
+      "workgroup": 256,
+      "grid_x": 12288,
+      "grid_y": 128,
+      "vgpr": 40,
+      "sgpr": 128,
+      "scratch_bytes": 0
+    },
+    "candidate": {
+      "symbol": "laguna_global_attention_prefill_qrow2_exact_bf16_kernel",
+      "workgroup": 256,
+      "grid_x": 12288,
+      "grid_y": 64,
+      "vgpr": 48,
+      "sgpr": 128,
+      "scratch_bytes": 0
+    },
+    "raw_sha256": "8a2147cf1a50dd03981722999e2b427b6800894d169399fc4a796b0830f88080"
+  },
+  "decision": {
+    "accepted": false,
+    "reason": "halving query-row workgroups does not offset doubled score/shared state and higher register pressure; the candidate regresses every measured context by 76.99% to 111.81%",
+    "action": "remove the kernel, C wrapper, Python wrapper, registry route, and tests; retain global_context_rows_spans",
+    "full_model_gate_run": false,
+    "full_model_gate_skip_reason": "the predeclared exact production-leaf screen failed decisively"
+  },
+  "commands": {
+    "micro": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python /tmp/laguna_global_qrow2_micro.py <prior_rows>",
+    "trace": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-global-qrow2-3968-trace --output-file epyc -- .venv/bin/python /tmp/laguna_global_qrow2_micro.py 3968"
+  },
+  "limitations": [
+    "This is a model-neutral production-shape kernel rejection, not a full-model throughput result.",
+    "The rejected kernel retains materialized score arrays and three-pass softmax; it does not test online-softmax or key-tiled Flash-style global attention."
+  ]
+}

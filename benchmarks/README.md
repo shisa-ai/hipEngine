@@ -1751,6 +1751,17 @@ adaptation is closed; the remaining global lane requires an in-tree
 `KVLiveSpans`-aware head-dim-128 tiled causal kernel. [Post-qrow2 profile and
 AOTriton screen](results/2026-07-23-gfx1151-laguna-post-qrow2-global-screen.json).
 
+The first in-tree exact global query-row reuse candidate is rejected before
+full-model timing. One 256-thread workgroup handled two adjacent query rows and
+halved grid Y while preserving causal visibility, BF16 boundaries, reduction and
+three-pass softmax order, and complete `KVLiveSpans`. All six M128/context4096
+screens are byte-exact, but prior-context 0/128/384/896/1920/3968 regresses
+**111.81%/87.70%/76.99%/79.35%/78.66%/78.15%**; the 4K leaf moves
+**86.778 -> 154.590 ms** while VGPR rises **40 -> 48**. The doubled whole-context
+score/shared state defeats the halved workgroup count. All candidate code is
+removed; key tiling without duplicated full score rows remains untested.
+[Rejected global qrow2](results/2026-07-23-gfx1151-laguna-global-qrow2-rejected.json).
+
 The earlier post-LPF all-family profile established the pre-AR-O1 bottleneck.
 Three alternating non-profiled repetitions measure
 **47.453/44.848/38.541 tok/s** at 512/1K/4K. One cached trace covers a 128-row
