@@ -1,0 +1,414 @@
+{
+  "command": [
+    "/home/lhl/.local/share/uv/python/cpython-3.10.20-linux-x86_64-gnu/bin/python3.10",
+    "scripts/laguna_long_context_profile.py",
+    "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "--backend",
+    "hip_gfx1151",
+    "--context-length",
+    "4096",
+    "--lengths",
+    "512,1024,4096",
+    "--chunk-size",
+    "128",
+    "--repetitions",
+    "1",
+    "--warmup-rows",
+    "128",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--require-cached-build",
+    "--repacked-cache",
+    "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+    "--model-sha256",
+    "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "--output",
+    "/tmp/laguna-lpf5-profile-child.json"
+  ],
+  "correctness": {
+    "boundary_fixture_evidence": [
+      "tests/test_laguna_cpu_reference.py::test_laguna_global_and_swa_masks_match_transformers_at_511_512_513",
+      "tests/test_laguna_kv_attention.py::test_laguna_global_and_swa_attention_match_cpu_across_wrap_and_eviction"
+    ],
+    "final_positions_exact": true,
+    "pass": true,
+    "repeat_next_token_deterministic": true,
+    "tracked_returned_to_baseline": true
+  },
+  "created_at": "2026-07-23T00:33:14.711538+00:00",
+  "derived_artifact_repairs": [
+    {
+      "kind": "attach_rocprof_summary",
+      "measurement_values_changed": false,
+      "source_child_sha256": "ad10c3726721ea9ecad0041ee6bd09d959c66b1f5e60dd085fb36cf4b206f600",
+      "source_trace_sha256": "7ca2217d19e1a6c90690a86a69a65f357ba352b25017aaa69aa98fd6ff313ea5"
+    }
+  ],
+  "kind": "hipengine_laguna_prefill_lpf5_long_context_profile",
+  "load": {
+    "resident_nbytes": 77125390396,
+    "seconds_excluded": 49.38058078708127
+  },
+  "memory": {
+    "gpu_free_after": 128681512960,
+    "gpu_free_before": 128844787712,
+    "hip_total_bytes": 128849018880,
+    "tracked_after": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 77125390396,
+      "peak_allocations": 1377,
+      "total_allocated_bytes": 77125390396,
+      "total_freed_bytes": 77125390396
+    },
+    "tracked_before": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 0,
+      "peak_allocations": 0,
+      "total_allocated_bytes": 0,
+      "total_freed_bytes": 0
+    }
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "repacked_cache": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+    "repacked_cache_manifest_sha256": "d328e0b73f8957eb051d3ed24d17a4aaf6a3d15fce3c45baf10c02f4de0cabfc",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "notes": [
+    "This is an attribution baseline, not a speedup or long-context support claim.",
+    "The deterministic stream repeats the longest canonical prompt without its leading BOS.",
+    "Run once under cached-only rocprofv3 and attach a raw-trace summary separately."
+  ],
+  "pass": true,
+  "performance_claim": false,
+  "platform": {
+    "backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "hip_total_bytes": 128849018880,
+    "machine": "x86_64",
+    "target_arch": "gfx1151"
+  },
+  "profiler": {
+    "attached_at": "2026-07-23T00:34:27.457101+00:00",
+    "attention_resources": [
+      {
+        "Grid_Size_X": "12288",
+        "Grid_Size_Y": "128",
+        "Kernel_Name": "(anonymous namespace)::laguna_global_attention_prefill_bf16_kernel(float const*, float const*, float const*, unsigned short const*, unsigned short const*, float*, int const*, long const*, long const*, unsigned char const*, long const*, long, long, long, long, long, long, float)",
+        "LDS_Block_Size": "0",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "40",
+        "Workgroup_Size_X": "256"
+      },
+      {
+        "Grid_Size_X": "9216",
+        "Grid_Size_Y": "128",
+        "Kernel_Name": "(anonymous namespace)::laguna_swa_attention_prefill_bf16_kernel(float const*, float const*, float const*, unsigned short const*, unsigned short const*, float*, int const*, long const*, long const*, unsigned char const*, long const*, long, long, long, long, long, long, float)",
+        "LDS_Block_Size": "1024",
+        "SGPR_Count": "128",
+        "Scratch_Size": "0",
+        "VGPR_Count": "16",
+        "Workgroup_Size_X": "128"
+      }
+    ],
+    "kind": "rocprofv3_kernel_trace_laguna_lpf5_long_context",
+    "lengths": {
+      "1024": {
+        "chunks_per_pass": [
+          8
+        ],
+        "dispatches_per_pass": [
+          8809
+        ],
+        "families": {
+          "global_attention": {
+            "calls_per_pass": [
+              96
+            ],
+            "median_duration_ns": 1011837081,
+            "median_share_of_kernel_sum": 0.03934224841570955
+          },
+          "swa_attention": {
+            "calls_per_pass": [
+              288
+            ],
+            "median_duration_ns": 5102837444,
+            "median_share_of_kernel_sum": 0.19840852061719647
+          }
+        },
+        "median_attention_duration_ns": 6114674525,
+        "median_attention_share_of_kernel_sum": 0.23775076903290604,
+        "median_kernel_span_ns": 25792078307,
+        "median_kernel_sum_ns": 25718842256,
+        "passes": 1
+      },
+      "4096": {
+        "chunks_per_pass": [
+          32
+        ],
+        "dispatches_per_pass": [
+          35233
+        ],
+        "families": {
+          "global_attention": {
+            "calls_per_pass": [
+              384
+            ],
+            "median_duration_ns": 16908133686,
+            "median_share_of_kernel_sum": 0.13964711113093708
+          },
+          "swa_attention": {
+            "calls_per_pass": [
+              1152
+            ],
+            "median_duration_ns": 25701179974,
+            "median_share_of_kernel_sum": 0.21227035476997544
+          }
+        },
+        "median_attention_duration_ns": 42609313660,
+        "median_attention_share_of_kernel_sum": 0.3519174659009125,
+        "median_kernel_span_ns": 121379477203,
+        "median_kernel_sum_ns": 121077575820,
+        "passes": 1
+      },
+      "512": {
+        "chunks_per_pass": [
+          4
+        ],
+        "dispatches_per_pass": [
+          4405
+        ],
+        "families": {
+          "global_attention": {
+            "calls_per_pass": [
+              48
+            ],
+            "median_duration_ns": 228176862,
+            "median_share_of_kernel_sum": 0.019553693191117685
+          },
+          "swa_attention": {
+            "calls_per_pass": [
+              144
+            ],
+            "median_duration_ns": 1667848271,
+            "median_share_of_kernel_sum": 0.14292682042612234
+          }
+        },
+        "median_attention_duration_ns": 1896025133,
+        "median_attention_share_of_kernel_sum": 0.16248051361724003,
+        "median_kernel_span_ns": 11704831883,
+        "median_kernel_sum_ns": 11669246304,
+        "passes": 1
+      }
+    },
+    "raw_csv_committed": false,
+    "raw_csv_path": "/tmp/hipengine-laguna-lpf5-trace-9fb6/gfx1151/2260602_kernel_trace.csv",
+    "raw_csv_sha256": "7ca2217d19e1a6c90690a86a69a65f357ba352b25017aaa69aa98fd6ff313ea5",
+    "segmentation": "request starts at its first Q4 embedding, includes every chunk, and ends at argmax stage 2; summed embedding Grid_Size_Y equals logical context length",
+    "warmup": {
+      "attention_duration_ns": 114786441,
+      "attention_share_of_kernel_sum": 0.045292428192653805,
+      "chunks": 1,
+      "dispatches": 1102,
+      "families": {
+        "global_attention": {
+          "calls": 12,
+          "duration_ns": 11874324,
+          "share_of_kernel_sum": 0.004685370174568838
+        },
+        "swa_attention": {
+          "calls": 36,
+          "duration_ns": 102912117,
+          "share_of_kernel_sum": 0.040607058018084966
+        }
+      },
+      "kernel_span_ns": 2542864010,
+      "kernel_sum_ns": 2534340630,
+      "length": 128
+    }
+  },
+  "protocol": {
+    "chunk_size": 128,
+    "chunks_per_length": {
+      "1024": 8,
+      "4096": 32,
+      "512": 4
+    },
+    "context_length": 4096,
+    "lengths": [
+      512,
+      1024,
+      4096
+    ],
+    "prompt_suite": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "repetitions": 1,
+    "timed_order": "ascending then alternating direction by repetition",
+    "timing_scope": "reset complete through synchronized first-token projection; load excluded",
+    "token_source": {
+      "category": "mixed_ja_en",
+      "extension": "repeat_without_leading_bos",
+      "prompt_id": "mixed_ja_en_review",
+      "requested_tokens": 4096,
+      "source_tokens": 122
+    },
+    "token_stream_sha256": "12f068e7d4d96062bcd911e14221d937037bc782c006f4502766fe9136cf0eb1",
+    "warmup_rows": 128
+  },
+  "provenance": {
+    "build_profile": "laguna_prefill_lpf5_long_context",
+    "collected_at": "2026-07-23T00:29:43.527926+00:00",
+    "command": [
+      "/home/lhl/.local/share/uv/python/cpython-3.10.20-linux-x86_64-gnu/bin/python3.10",
+      "scripts/laguna_long_context_profile.py",
+      "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1151",
+      "--context-length",
+      "4096",
+      "--lengths",
+      "512,1024,4096",
+      "--chunk-size",
+      "128",
+      "--repetitions",
+      "1",
+      "--warmup-rows",
+      "128",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--repacked-cache",
+      "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+      "--model-sha256",
+      "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+      "--output",
+      "/tmp/laguna-lpf5-profile-child.json"
+    ],
+    "configured_backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "dirty": true,
+    "environment": {
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null,
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIP_VISIBLE_DEVICES": null,
+      "ROCR_VISIBLE_DEVICES": null
+    },
+    "git_branch": "main",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "hipengine_commit": "9fb6bda7f810e3b6ad18603858b72a88bb75ad72",
+    "kind": "hipengine_artifact_provenance",
+    "kv_dtype": "bf16",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        37586027312,
+        75172054624
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 75173103200,
+      "value": "05caf641aa0d991c0e447450420c042bfab22ae248b1f12aba4bd3774c2024c8"
+    },
+    "model_path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "model_revision": null,
+    "profiler": null,
+    "quant": "gguf_q4_k_m",
+    "repetitions": 1,
+    "repo_root": "/home/lhl/hipEngine-main",
+    "resolved_backend": "hip_gfx1151",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "schema_version": 1,
+    "staged_dirty": false,
+    "target_arch": "gfx1151",
+    "timing_protocol": "prefill_only_512_1024_4096_chunk128",
+    "unstaged_dirty": false,
+    "untracked_count": 255,
+    "untracked_dirty": true,
+    "warmups": 1
+  },
+  "repo": {
+    "revision": "9fb6bda7f810e3b6ad18603858b72a88bb75ad72",
+    "tracked_clean": true,
+    "tracked_status": [],
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "rows": [
+    {
+      "chunks": 4,
+      "final_position": 511,
+      "length": 512,
+      "next_token_id": 2930,
+      "prefill_seconds": 11.707793741021305,
+      "prefill_tok_s": 43.73155278659161,
+      "repetition": 0
+    },
+    {
+      "chunks": 8,
+      "final_position": 1023,
+      "length": 1024,
+      "next_token_id": 95,
+      "prefill_seconds": 25.795359925017692,
+      "prefill_tok_s": 39.697061912552385,
+      "repetition": 0
+    },
+    {
+      "chunks": 32,
+      "final_position": 4095,
+      "length": 4096,
+      "next_token_id": 7772,
+      "prefill_seconds": 121.3826483929297,
+      "prefill_tok_s": 33.7445265384289,
+      "repetition": 0
+    }
+  ],
+  "schema": 1,
+  "scope": "Laguna S 2.1 c=1 prefill-only long-context attribution baseline",
+  "status": "accepted_attribution_baseline",
+  "timings": {
+    "1024": {
+      "length": 1024,
+      "median_seconds": 25.795359925017692,
+      "median_tok_s": 39.697061912552385,
+      "next_token_ids": [
+        95
+      ],
+      "repeat_deterministic": true,
+      "samples_seconds": [
+        25.795359925017692
+      ]
+    },
+    "4096": {
+      "length": 4096,
+      "median_seconds": 121.3826483929297,
+      "median_tok_s": 33.7445265384289,
+      "next_token_ids": [
+        7772
+      ],
+      "repeat_deterministic": true,
+      "samples_seconds": [
+        121.3826483929297
+      ]
+    },
+    "512": {
+      "length": 512,
+      "median_seconds": 11.707793741021305,
+      "median_tok_s": 43.73155278659161,
+      "next_token_ids": [
+        2930
+      ],
+      "repeat_deterministic": true,
+      "samples_seconds": [
+        11.707793741021305
+      ]
+    }
+  }
+}

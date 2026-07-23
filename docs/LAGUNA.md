@@ -1888,8 +1888,23 @@ complete-ID exact at both horizons, same-route repeats are deterministic, the
 Poolside gate remains KL `6.6214e-6` with exact top-1, and lifecycle recovery is
 exact. The larger bounded scratch adds **49.1 MiB** to resident ownership; the
 public session default is now 128 while an explicit 64-row constructor override
-remains available. LPF-5 long-context 512/1K/4K attribution is next. Evidence:
+remains available. Evidence:
 `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-lpf4-chunk128.json`.
+
+LPF-5 profiling now establishes that attention is the first viable remaining
+prefill target. One clean cached-only `rocprofv3` pass with the retained 128-row
+chunks reaches **43.732/39.697/33.745 tok/s** at 512/1K/4K. Attention grows from
+**1.896 s / 16.25%** of kernel sum at 512 to **6.115 s / 23.78%** at 1K and
+**42.609 s / 35.19%** at 4K. At 4K, 12 global layers consume **16.908 s
+(13.96%)** and 36 SWA layers consume **25.701 s (21.23%)** even though the SWA
+window is bounded at 512. The current 128-thread SWA body therefore has the
+strongest exact incremental target: it performs two serial token scans and a
+seven-barrier block reduction for every score. Global attention becomes a
+separate second target only after SWA is resolved. Final cursors, next IDs,
+511/512/513 boundary fixtures, tracked lifecycle, and trace segmentation pass;
+the raw trace has SHA-256 `7ca2217d...313ea5`. This is a one-pass attribution
+baseline, not a speedup or supported long-context throughput claim. Evidence:
+`benchmarks/results/2026-07-23-gfx1151-laguna-prefill-lpf5-long-context-profile.json`.
 
 Every LPF candidate is a registered variant with the current exact chain as its
 unfused rollback. Exact candidates pass byte comparison on lengths

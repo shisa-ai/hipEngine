@@ -175386,3 +175386,49 @@ uv run python scripts/laguna_long_context_trace_summary.py --help
 
 No long-context measurement or attention-change claim is made in this harness-
 only unit.
+
+## 2026-07-23 — Measure Laguna LPF-5 long-context attribution
+
+Ran the clean cached-only profile at `9fb6bda7f` on Radeon 8060S/gfx1151:
+
+```bash
+rocprofv3 --kernel-trace --output-format csv \
+  -d /tmp/hipengine-laguna-lpf5-trace-9fb6 -- \
+  env -u HIPENGINE_LAGUNA_DENSE_SHARED_PREFILL \
+  -u HIPENGINE_LAGUNA_SELECTED_PREFILL \
+  -u HIPENGINE_LAGUNA_F16_PREFILL HIPENGINE_HIP_ARCH=gfx1151 \
+  GPU_MAX_HW_QUEUES=1 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  uv run python -u scripts/laguna_long_context_profile.py \
+  /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf \
+  --backend hip_gfx1151 --context-length 4096 \
+  --lengths 512,1024,4096 --chunk-size 128 --repetitions 1 \
+  --warmup-rows 128 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --repacked-cache \
+  /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 \
+  --model-sha256 \
+  7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f \
+  --output /tmp/laguna-lpf5-profile-child.json
+```
+
+The retained 128-row route measures **43.732/39.697/33.745 tok/s** at
+512/1K/4K. Exact trace segmentation finds 4/8/32 chunks and
+4,405/8,809/35,233 dispatches. Attention grows from **1.896 s / 16.25%** of
+kernel sum at 512 to **6.115 s / 23.78%** at 1K and **42.609 s / 35.19%** at
+4K. The 4K split is global **16.908 s / 13.96%** and SWA **25.701 s / 21.23%**.
+The bounded 512-token SWA body is therefore the first viable LPF-5 target; it
+performs two serial token scans with a seven-barrier 128-thread reduction per
+score. Global attention is a second target only after SWA.
+
+All final cursors are exact and next IDs are finite/stable for the one sample;
+the existing CPU/GPU 511/512/513 and wrap/eviction fixtures remain the boundary
+gate. Tracked 77,125,390,396 bytes / 1,377 allocations return exactly to zero.
+Load is 49.381 s and excluded. The 14.1 MB raw trace remains under `/tmp` with
+SHA-256 `7ca2217d...313ea5`; the compact artifact SHA-256 is
+`b8af3e3d...862bfdca`:
+`benchmarks/results/2026-07-23-gfx1151-laguna-prefill-lpf5-long-context-profile.json`.
+
+This is retained one-pass attribution, not a speedup, repeated throughput row,
+or supported long-context claim.
