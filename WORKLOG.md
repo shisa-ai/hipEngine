@@ -175670,3 +175670,63 @@ uvx ruff check scripts/laguna_dflash_category_bench.py \
 git diff --check
 # clean
 ```
+
+## 2026-07-23 — Reject DFlash B4 after the post-prefill refresh
+
+Ran the complete current-default D4 gate from clean tracked revision `871a22dda`
+on the Radeon 8060S / gfx1151. The same resident process alternated true AR and
+pinned Poolside DFlash B4 over all ten canonical prompts, two repetitions, and
+32 visible outputs. Target load (49.957 s), drafter load (0.663 s), and JIT were
+excluded; total harness wall was 272.859 s.
+
+```bash
+env HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 \
+  uv run python -u scripts/laguna_dflash_category_bench.py \
+  /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf \
+  /home/lhl/.cache/huggingface/hub/models--poolside--Laguna-S-2.1-DFlash/snapshots/b0486d1586daa0d56435c508108171fc1c8daff9 \
+  --backend hip_gfx1151 --context-length 4096 --chunk-size 128 \
+  --candidate-budget 4 --output-tokens 32 --repetitions 2 \
+  --warmup-output-tokens 6 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 \
+  --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f \
+  --drafter-sha256 f24f08781c697c19952c02fb2e7e9bdf2071b79a711c2a44b836a74b9b62a1f4 \
+  --drafter-revision b0486d1586daa0d56435c508108171fc1c8daff9 \
+  --output /tmp/laguna-dflash-category-economics-post-prefill-retry.json
+```
+
+All 20 AR/DFlash pairs are exact, finite, state-aligned, and repeat-
+deterministic. The Poolside distribution remains KL `6.6214e-6` with exact
+top-1, and tracked ownership returns from 79,426,420,029 bytes to zero.
+
+Current full-suite decode is **16.347 AR vs 15.479 DFlash tok/s (0.9469x)**.
+Train is 1.0434x, heldout 0.8325x, code 1.2676x, general English 0.7580x,
+general Japanese 0.8398x, and mixed Japanese/English 0.8425x. LPF-1/5 reduce
+target verification **50.493 -> 32.688 s (-35.26%)** and improve DFlash decode
+**10.715 -> 15.479 tok/s (+44.46%)** relative to the historical pre-LPF run,
+with acceptance unchanged at 424/840 drafts. DFlash still fails the >1.10x full
+suite gate plus heldout and three category non-regression guards, so AR remains
+default and D5 remains deferred. Serial DFlash prompt capture also leaves TTFT
+at 4.783 s vs AR's 1.619 s and fixed-horizon E2E at 0.5066x.
+
+Strengthened the harness policy metadata to fail closed on heldout/category
+decode regressions and added focused coverage. The compact artifact records this
+as an offline derived-policy update from source SHA-256 `ec6431ae...a09f`; no
+measurement, output, acceptance, or correctness value changed. Final artifact:
+`benchmarks/results/2026-07-23-gfx1151-laguna-dflash-category-economics-post-prefill.json`
+(SHA-256 `e874ac23...fc8926ab`). Rollups and `docs/LAGUNA.md` now carry the current
+rejection instead of the stale pre-LPF decision.
+
+Validation:
+
+```bash
+uv run pytest -q tests/test_laguna_dflash_category_bench.py
+# 6 passed
+uvx ruff check scripts/laguna_dflash_category_bench.py \
+  tests/test_laguna_dflash_category_bench.py
+python3 -m compileall -q scripts/laguna_dflash_category_bench.py
+python3 -m json.tool \
+  benchmarks/results/2026-07-23-gfx1151-laguna-dflash-category-economics-post-prefill.json
+# clean; artifact promotion/correctness/lifecycle consistency passed
+```

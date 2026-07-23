@@ -3,6 +3,8 @@
 Last reviewed: **2026-07-23**
 
 Latest retained hipEngine revisions in this scoreboard:
+`871a22dda42cc612a3a77b2110ac0d1397b5426c` for the current post-prefill
+Laguna S 2.1 B4 DFlash economics decision,
 `bd8877fdf029a6c23880cc8fb4fb04401adf93a7` for the exact Laguna S 2.1
 LPF-5 wave32 SWA full-model gate,
 `9fb6bda7f810e3b6ad18603858b72a88bb75ad72` for the Laguna S 2.1 LPF-5
@@ -1129,9 +1131,9 @@ recoverable from the linked compact artifacts, changelog, and
 
 **Status: retained for exact target-only c=1 AR and loader startup; LPF-1's
 exact tile, LPF-4's 128-row chunks, and LPF-5's wave32-exact SWA reader are
-default. The matched B4 DFlash row is
-exact but stale after those target-verifier changes, so DFlash remains off
-pending refresh.** The AR protocol uses the
+default. The refreshed matched B4 DFlash row is exact and reaches **0.9469x**
+true-AR decode, but fails aggregate, heldout, and non-code economics, so DFlash
+remains off.** The AR protocol uses the
 full ten-prompt `mtpbench-code-general-ja` suite (`code`, `general_en`,
 `general_ja`, and
 `mixed_ja_en`), prompt lengths 68-122, greedy 16/32-token horizons, two
@@ -1234,7 +1236,32 @@ Artifacts: [retained LPF-1 hipEngine target AR](results/2026-07-23-gfx1151-lagun
 [previous bulk-GEMV hipEngine row](results/2026-07-22-gfx1151-laguna-s21-target-ar-retained.json),
 and [qualified Poolside baseline](results/2026-07-22-gfx1151-poolside-laguna-s21-target-ar-baseline.json).
 
-#### Pre-LPF-1 matched B4 DFlash economics (stale)
+#### Current post-prefill matched B4 DFlash economics
+
+The current-default clean run alternates true AR and pinned `b0486d1` B4 DFlash
+over all ten prompts, two repetitions, and 32 visible outputs. All **20/20**
+pairs are exact/finite/state-aligned and both routes repeat deterministically;
+the Poolside gate and lifecycle pass.
+
+| Scope | True AR decode tok/s | DFlash B4 decode tok/s | DFlash / AR | Draft acceptance | Target rows/output |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Full 10 prompts | **16.347** | 15.479 | **0.9469x** | 50.48% | 1.6935 |
+| Train, 6 prompts | 16.403 | 17.115 | 1.0434x | 58.33% | 1.5323 |
+| Heldout, 4 prompts | 16.263 | 13.538 | 0.8325x | 41.15% | 1.9355 |
+| `code` | 16.514 | **20.933** | **1.2676x** | 78.23% | 1.2500 |
+| `general_en` | 16.684 | 12.647 | 0.7580x | 36.54% | 2.0968 |
+| `general_ja` | 16.218 | 13.619 | 0.8398x | 40.63% | 1.9355 |
+| `mixed_ja_en` | 15.832 | 13.339 | 0.8425x | 39.58% | 1.9355 |
+
+LPF-1/5 cut target verification **50.493 -> 32.688 s (-35.26%)** and improve
+DFlash decode **10.715 -> 15.479 tok/s (+44.46%)** at unchanged 424/840 draft
+acceptance. Full-suite decode still misses the >1.10x gate. Median TTFT moves
+**1.619 -> 4.783 s** and E2E **8.860 -> 4.489 output tok/s (0.5066x)** because
+DFlash prompt capture remains serial. Code wins, but heldout and all non-code
+categories regress; AR remains default and public DFlash stays deferred.
+[Current diagnostic artifact](results/2026-07-23-gfx1151-laguna-dflash-category-economics-post-prefill.json).
+
+#### Pre-LPF-1 matched B4 DFlash economics (historical)
 
 At the pre-LPF-1 source, the admitted Poolside revision `b0486d1` BF16 drafter
 ran in one resident process against a true no-DFlash target path over the same

@@ -10,12 +10,11 @@ bulk-vs-serial, live Poolside-v1 reasoning/XML-tool, B4 draft top-k, and
 B1/B2/B4/B7/B15 target-cycle exactness gates pass, with one documented target-AR
 low-margin greedy-32 arithmetic split. LPF-1 exact tiled source-F16 prefill and
 LPF-4's 128-row chunk policy are retained; the pre-LPF-5 paired canonical row
-reaches 49.641 prompt tok/s, while LPF-2/3 are measured rejections. The pre-LPF-1 full-
-suite DFlash B4 run was exact at 0.6538x true-AR decode, but is now stale because
-the promoted prefill routes change B+1 verification; DFlash remains off pending
-a post-prefill refresh. DFlash public integration, higher-budget draft candidate
-parity, the post-prefill DFlash refresh, and admission beyond the current 4K
-runtime scope remain.
+reaches 49.641 prompt tok/s, while LPF-2/3 are measured rejections. The current
+post-prefill full-suite DFlash B4 run is exact and improves to **0.9469x** true-AR
+decode, but still fails aggregate, heldout, and three non-code category economics;
+DFlash remains off. DFlash public integration, higher-budget draft candidate
+parity, and admission beyond the current 4K runtime scope remain.
 
 This document defines the correctness-first plan for running
 [`poolside/Laguna-S-2.1-GGUF`](https://huggingface.co/poolside/Laguna-S-2.1-GGUF),
@@ -2190,6 +2189,31 @@ projection microbenchmarks. AR remains default and D5 stays deferred. Artifact:
 The artifact explicitly records an offline repair to the derived fixed-horizon
 state predicate using its exact raw cursors; no measurement value changed and
 the complete >5-minute GPU run was not repeated under the focused-repair rule.
+
+D4 is now refreshed after LPF-1/4/5. The clean current-default run again uses all
+ten prompts, two repetitions, B4, and 32 visible outputs, with exact paired IDs,
+finite logits, deterministic repeats, valid target/drafter cursors, the frozen
+Poolside gate, and exact lifecycle. Current economics are:
+
+| Scope | AR decode tok/s | DFlash B4 tok/s | Ratio | Draft acceptance | Target rows/output |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| full | 16.347 | 15.479 | **0.9469x** | 50.48% | 1.6935 |
+| train | 16.403 | 17.115 | 1.0434x | 58.33% | 1.5323 |
+| heldout | 16.263 | 13.538 | 0.8325x | 41.15% | 1.9355 |
+| code | 16.514 | 20.933 | **1.2676x** | 78.23% | 1.2500 |
+| general English | 16.684 | 12.647 | 0.7580x | 36.54% | 2.0968 |
+| general Japanese | 16.218 | 13.619 | 0.8398x | 40.63% | 1.9355 |
+| mixed Japanese/English | 15.832 | 13.339 | 0.8425x | 39.58% | 1.9355 |
+
+LPF-1/5 reduce target verification **50.493 -> 32.688 s (-35.26%)** and move
+full DFlash decode **10.715 -> 15.479 tok/s (+44.46%)** without changing the
+424/840 accepted drafts. That is a major verifier win, but the same-session true
+AR denominator remains **16.347 tok/s** and the required >1.10x full-suite gate
+still fails. Median TTFT is **1.619 -> 4.783 s** and fixed-horizon E2E is
+**8.860 -> 4.489 output tok/s (0.5066x)** because DFlash prompt capture remains
+serial. Code benefits materially; heldout and every non-code category regress.
+Keep AR default and D5 deferred. Evidence:
+`benchmarks/results/2026-07-23-gfx1151-laguna-dflash-category-economics-post-prefill.json`.
 
 ### D5 — Opt-in public/server integration
 
