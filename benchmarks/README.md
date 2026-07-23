@@ -5,8 +5,8 @@ Last reviewed: **2026-07-23**
 Latest retained hipEngine revisions in this scoreboard:
 `71f2af038cf5eea88f1997d178d815cfaad15681` for prefix-aware exact Laguna
 stop-safe streaming,
-`1686d52ba9c12c2c463d3e266f52f8534a76ca7b` for the exact adaptive Laguna
-Q4/Q6 grouped-small-M down shape gate (category promotion still pending),
+`a95adcac82d8ae0b018fe1167b5108422afa47a9` for the full exact Laguna
+Q4/Q6 grouped-small-M down category gate and gfx1151 default promotion,
 `0081d150c08a95423f29fec8fd26779f53c8f730` for request-local exact Laguna
 prompt preparation and preprocessing telemetry,
 `8ae07d693b6f98d6c44aae90090df6c6d77e8d78` for exact gfx1151 Laguna S 2.1
@@ -1473,18 +1473,26 @@ the independently tested leaf remains kernel-only evidence.
 [Positive selected-Q8 screen](results/2026-07-23-gfx1151-laguna-prefill-ar-o1-q8-dp4a-screen.json).
 [Rejected selected-Q8 category gate](results/2026-07-23-gfx1151-laguna-prefill-ar-o1-q8-dp4a-category-rejected.json).
 
-The quality-preserving AR-O1 follow-up passes its clean adaptive grouped-down
-shape gate. One deterministic device pass compacts active experts and routing
-metadata; exact C16xR4 Q4/Q6 down reuses each decoded T16 tile across up to four
-packed rows, restores lane order before weighted sum, and falls back to direct
-below 32 token rows. Three counterbalanced repetitions move direct -> adaptive
-at 16/32/55/64/122/128 from **46.447/48.907/49.018/50.461/51.084/51.413** to
-**46.409/50.194/51.159/52.889/54.447/54.969 tok/s**. The direct fallback is
-`0.99918x`; active grouped shapes gain **2.63-6.92%**; aggregate wall improves
-**24.7986 -> 23.5145 s (1.05461x)**. All 36 IDs agree and lifecycle returns to
-zero. This is retained candidate evidence, not a default promotion: the complete
-ten-prompt h16/h32 quality/E2E gate is still required.
+The quality-preserving AR-O1 follow-up passes both clean gates and is the
+backend-qualified gfx1151 default. One deterministic device pass compacts
+active experts and routing metadata; exact C16xR4 Q4/Q6 down reuses each decoded
+T16 tile across up to four packed rows, restores lane order before weighted
+sum, and falls back to direct below 32 token rows. The shape screen improves
+rows 32/55/64/122/128 by **2.63-6.92%** and aggregate wall by **5.461%** while
+rows 16 remains on the exact direct fallback.
+
+The one-load, three-repeat ten-prompt h16/h32 category gate moves weighted
+prefill **50.193 -> 53.178 tok/s (+5.948%)**, median TTFT **1.627 -> 1.535 s
+(-5.682%)**, and E2E **6.079/8.842 -> 6.312/9.087 output tok/s
+(+3.835%/+2.762%)**. Code/general_en/general_ja/mixed_ja_en prefill improves
+**5.77%/5.34%/5.96%/6.56%** and every category/horizon E2E improves. Decode is
+neutral within **0.062%**. All 320 teacher-forced full-logit comparisons are
+identical (`KL=0`, top-1 100%), all 30 free-running mode pairs are exact at
+both horizons (60 checks), repeated trajectories are deterministic, the Poolside
+oracle passes, and lifecycle returns to
+zero. gfx1100 and rows below 32 retain direct selected GEMV.
 [Retained grouped-down shape gate](results/2026-07-23-gfx1151-laguna-prefill-grouped-down-ab.json).
+[Retained grouped-down category gate](results/2026-07-23-gfx1151-laguna-prefill-grouped-down-category.json).
 
 A matched Poolside llama.cpp `04b2b72c` control now uses the identical Laguna
 Q4_K_M model hash, deterministic token stream, BF16 KV, and 128-row microbatch.

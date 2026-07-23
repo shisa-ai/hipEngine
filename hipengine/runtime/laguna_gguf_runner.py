@@ -64,6 +64,7 @@ from hipengine.runtime.laguna_moe import (
     LagunaMoEScratch,
     allocate_laguna_moe_scratch,
     resolve_laguna_moe_plan,
+    resolve_laguna_selected_down_mode,
     run_laguna_moe_c1,
     run_laguna_moe_rows,
     validate_laguna_moe_layer,
@@ -1188,7 +1189,7 @@ class LagunaGGUFResidentSession:
             self.backend,
             swa_prefill_variant,
         )
-        self.selected_down_mode = "direct"
+        self.selected_down_mode = resolve_laguna_selected_down_mode(self.backend)
         self.position = -1
         self.last_result: LagunaEagerTokenResult | None = None
         self.weights: LagunaGGUFResidentWeights | None = None
@@ -1317,13 +1318,10 @@ class LagunaGGUFResidentSession:
     def set_selected_down_mode(self, mode: str) -> None:
         """Select the explicit diagnostic sparse-down route for later row runs."""
 
-        value = str(mode)
-        if value not in {"direct", "grouped_smallm", "adaptive_grouped_smallm"}:
-            raise ValueError(
-                "selected down mode must be 'direct', 'grouped_smallm', or "
-                "'adaptive_grouped_smallm'"
-            )
-        self.selected_down_mode = value
+        self.selected_down_mode = resolve_laguna_selected_down_mode(
+            self.backend,
+            mode,
+        )
 
     @property
     def resident_nbytes(self) -> int:
