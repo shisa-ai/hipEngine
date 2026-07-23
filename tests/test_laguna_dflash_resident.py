@@ -102,6 +102,58 @@ def test_laguna_dflash_capture_owner_rejects_duplicate_depths() -> None:
         )
 
 
+def test_laguna_dflash_proposal_uses_target_embedding_library_map(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    device = Device("hip", 0)
+    drafter = object.__new__(LagunaDFlashResidentDrafter)
+    drafter._closed = False
+    drafter.config = SimpleNamespace(
+        vocab_size=16,
+        mask_token_id=15,
+        hidden_size=4,
+    )
+    drafter.candidate_budget = 1
+    drafter.query_rows = 2
+    drafter.backend = "hip_gfx1100"
+    drafter.runtime = object()
+    drafter.weights = object()
+    drafter.kv_cache = SimpleNamespace(position=-1)
+    drafter.query_token_ids = Tensor.from_handle(0x1000, (2,), DType.INT64, device)
+    drafter.query_positions = Tensor.from_handle(0x1100, (2,), DType.INT32, device)
+    drafter.query_embedding_bf16 = Tensor.from_handle(0x1200, (2, 4), DType.BF16, device)
+    drafter._buffer_for = lambda tensor: SimpleNamespace(
+        ptr=tensor.ptr,
+        nbytes=tensor.numel * tensor.dtype.itemsize,
+    )
+    q5_library = object()
+    embedding_libraries = {"gguf_q5_k": q5_library}
+    drafter.target = SimpleNamespace(
+        context_length=16,
+        weights=SimpleNamespace(root=lambda slot: SimpleNamespace(slot=slot)),
+        libraries=SimpleNamespace(
+            embedding=object(),
+            embedding_libraries=embedding_libraries,
+        ),
+    )
+    monkeypatch.setattr(laguna_dflash_module, "copy_host_to_device", lambda *_args, **_kwargs: None)
+    captured: dict[str, object] = {}
+
+    class _StopAfterEmbedding(RuntimeError):
+        pass
+
+    def capture_embedding(*_args, **kwargs) -> None:
+        captured["libraries"] = kwargs["libraries"]
+        raise _StopAfterEmbedding
+
+    monkeypatch.setattr(laguna_dflash_module, "launch_gguf_embedding", capture_embedding)
+
+    with pytest.raises(_StopAfterEmbedding):
+        drafter.propose(root_token_id=1, root_position=0)
+
+    assert captured["libraries"] is embedding_libraries
+
+
 def test_laguna_dflash_query_uses_bf16_norm_rotary_kernel(monkeypatch: pytest.MonkeyPatch) -> None:
     device = Device("hip", 0)
     next_ptr = iter(range(0x1000, 0x10000, 0x100))
