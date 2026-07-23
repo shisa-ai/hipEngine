@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-23T10:54:56.514662+00:00",
+  "kind": "hipengine_laguna_prefill_grouped_combine_clean_screen",
+  "status": "screen_passed_not_promoted",
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "Exact grouped weighted-reduction plus shared-add production-shape sub-window only; complete full-model wall is classified as non-regressive and the category gate remains required before default promotion.",
+  "repo": {
+    "revision": "d5f9e888ab439919020403712beec2fb73dfc6c9",
+    "tracked_clean": true,
+    "worktree": "/tmp/hipengine-laguna-combine-d5f9e888"
+  },
+  "platform": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "hip_total_bytes": 128849018880
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "kv_dtype": "bf16",
+    "repacked_cache_manifest_sha256": "d328e0b73f8957eb051d3ed24d17a4aaf6a3d15fce3c45baf10c02f4de0cabfc"
+  },
+  "candidate": {
+    "baseline": "adaptive_grouped_smallm: weighted_lanes_sum_out_bf16_f32w then gguf_bf16_add",
+    "candidate": "adaptive_grouped_smallm_fused: weighted_lanes_sum_shared_add_out_bf16_f32w",
+    "math": "Preserve ten slot-order F32 FMAs, round selected output to BF16, add BF16 shared output, then round final output to BF16.",
+    "physical_change": "Remove one launch plus the selected-output write/read round trip per sparse layer."
+  },
+  "micro": {
+    "pass": true,
+    "protocol": {
+      "rows": [32, 55, 64, 122, 128],
+      "top_k": 10,
+      "features": 3072,
+      "iterations_per_sample": 200,
+      "repetitions": 12,
+      "warmups": 20,
+      "timed_order": "counterbalanced by repetition"
+    },
+    "aggregate_gpu_span_speedup": 1.2651786985719489,
+    "shapes": {
+      "32": {"bit_exact": true, "gpu_span_speedup": 1.3128133842063614, "wall_speedup": 1.3121352462989884},
+      "55": {"bit_exact": true, "gpu_span_speedup": 1.2659819485440835, "wall_speedup": 1.2652193580257214},
+      "64": {"bit_exact": true, "gpu_span_speedup": 1.2848332464956334, "wall_speedup": 1.284399062254895},
+      "122": {"bit_exact": true, "gpu_span_speedup": 1.2491368074733697, "wall_speedup": 1.2488907097304405},
+      "128": {"bit_exact": true, "gpu_span_speedup": 1.2499714592674738, "wall_speedup": 1.2497746006568708}
+    },
+    "tracked_returned_to_baseline": true,
+    "raw_sha256": "d9e26e411bf8ad40ad585e249c309a09a6ff9e421a195a8407d680d4071d7ee8"
+  },
+  "full_model": {
+    "pass": true,
+    "protocol": {
+      "rows": [16, 32, 55, 64, 122, 128],
+      "repetitions": 5,
+      "warmups_per_shape_and_mode": 1,
+      "one_physical_chunk": true,
+      "prefill_chunk_size": 128,
+      "timed_order": "counterbalanced by shape and repetition",
+      "model_load_seconds_excluded": 53.030200468958355
+    },
+    "effective_speedup": 0.9997164506403992,
+    "baseline_profile_seconds": 39.22960266005248,
+    "candidate_profile_seconds": 39.24072934372816,
+    "shapes": {
+      "16": {"exact_next_token": true, "speedup": 0.9992908749042047, "route": "direct_fallback"},
+      "32": {"exact_next_token": true, "speedup": 1.0010222104719215, "route": "grouped_combine"},
+      "55": {"exact_next_token": true, "speedup": 0.9986264544232307, "route": "grouped_combine"},
+      "64": {"exact_next_token": true, "speedup": 1.0000268670195167, "route": "grouped_combine"},
+      "122": {"exact_next_token": true, "speedup": 0.9996690231074344, "route": "grouped_combine"},
+      "128": {"exact_next_token": true, "speedup": 1.00007113480936, "route": "grouped_combine"}
+    },
+    "all_60_next_ids_exact": true,
+    "tracked_returned_to_baseline": true,
+    "raw_sha256": "ff537f83110719498cbe140c8a1913ad0132fc4d9254dc1398dee53f4bd0b821"
+  },
+  "decision": {
+    "retain_candidate": true,
+    "promote_default": false,
+    "reason": "The exact physical sub-window improves at every production shape and removes a launch/round trip. Five-repeat complete-model wall is within 0.14% by shape and 0.03% aggregate, so it passes the predeclared non-regression screen but does not support a standalone wall claim.",
+    "next_gate": "Complete ten-prompt/four-category h16/h32 quality, exact trajectory, E2E, decode, and lifecycle non-regression."
+  },
+  "commands": {
+    "micro": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 .venv/bin/python -u scripts/laguna_grouped_combine_micro.py --backend hip_gfx1151 --rows 32,55,64,122,128 --iterations 200 --repetitions 12 --warmups 20 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --output /tmp/2026-07-23-gfx1151-laguna-grouped-combine-micro-clean.json",
+    "full_model": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 /home/lhl/hipEngine-main/.venv/bin/python -u scripts/laguna_grouped_down_prefill_bench.py /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --backend hip_gfx1151 --context-length 4096 --rows 16,32,55,64,122,128 --repetitions 5 --warmups 1 --comparison grouped_combine --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --repacked-cache /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 --model-sha256 7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f --output /tmp/2026-07-23-gfx1151-laguna-grouped-combine-fullmodel-clean.json"
+  }
+}
