@@ -34,6 +34,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_iq_gemv import (
     gguf_iq3_xxs_selected_gemv_bf16_bf16_out,
     gguf_iq4_xs_selected_gemv_bf16_bf16_out,
     gguf_iq4_xs_weighted_selected_down_bf16_bf16_out,
+    iq3_selected_default_threads,
     iq_weighted_down_default_threads,
     plan_gguf_iq_gemv_build,
 )
@@ -393,6 +394,11 @@ def test_iq_gemv_wrappers_validate_contract_before_loading() -> None:
             in_features=256,
             out_features=1,
         )
+    assert iq3_selected_default_threads(in_features=256) == 256
+    assert iq3_selected_default_threads(in_features=1024) == 128
+    assert iq3_selected_default_threads(in_features=2048) == 256
+    with pytest.raises(ValueError, match="divisible by 256"):
+        iq3_selected_default_threads(in_features=1023)
     assert iq_weighted_down_default_threads(top_k=8, in_features=512) == 128
     assert iq_weighted_down_default_threads(top_k=8, in_features=2048) == 256
 
@@ -478,6 +484,29 @@ def test_selected_iq_real_fixture_rows_match_cpu_oracle(
         np.max(np.abs(actual_f32 - expected_f32) / np.maximum(np.abs(expected_f32), 1.0))
     )
     assert max_rel <= 0.02
+
+
+def test_iq3_laguna_k1024_local128_is_bit_exact_to_local256(iq_library) -> None:
+    x_bf16 = _f32_to_bf16_u16(_make_x(2, 1024))
+    selected = np.asarray([2, 0, 2, 1, 1, 0], dtype=np.int64)
+    qweight = _make_iq3_weight(3, 19, 1024)
+    local256 = _run_selected(
+        gguf_iq3_xxs_selected_gemv_bf16_bf16_out,
+        iq_library,
+        x_bf16=x_bf16,
+        selected=selected,
+        qweight=qweight,
+        threads=256,
+    )
+    local128 = _run_selected(
+        gguf_iq3_xxs_selected_gemv_bf16_bf16_out,
+        iq_library,
+        x_bf16=x_bf16,
+        selected=selected,
+        qweight=qweight,
+        threads=128,
+    )
+    np.testing.assert_array_equal(local128, local256)
 
 
 def test_selected_iq_invalid_expert_emits_zero(iq_library) -> None:

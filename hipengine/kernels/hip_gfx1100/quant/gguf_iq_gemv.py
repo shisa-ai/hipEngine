@@ -175,6 +175,15 @@ def gguf_iq2_xs_selected_gemv_tile2_bf16_bf16_out(
     )
 
 
+def iq3_selected_default_threads(*, in_features: int) -> int:
+    if in_features <= 0 or in_features % _QK_K != 0:
+        raise ValueError("in_features must be positive and divisible by 256")
+    # K=1024 has exactly four wave32 work units.  Local128 preserves the
+    # local256 reduction order (the removed waves contribute only +0) while
+    # avoiding four idle waves.  Other rows retain the established schedule.
+    return 128 if in_features == 1024 else 256
+
+
 def gguf_iq3_xxs_selected_gemv_bf16_bf16_out(
     x_ptr: int,
     selected_ptr: int,
@@ -186,11 +195,16 @@ def gguf_iq3_xxs_selected_gemv_bf16_bf16_out(
     num_experts: int,
     in_features: int,
     out_features: int,
-    threads: int = 256,
+    threads: int = 0,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
+    launch_threads = (
+        iq3_selected_default_threads(in_features=in_features)
+        if threads == 0
+        else threads
+    )
     _launch_selected(
         _SYMBOL_IQ3_SELECTED,
         x_ptr,
@@ -202,7 +216,7 @@ def gguf_iq3_xxs_selected_gemv_bf16_bf16_out(
         num_experts=num_experts,
         in_features=in_features,
         out_features=out_features,
-        threads=threads,
+        threads=launch_threads,
         stream=stream,
         library=library,
         runtime=runtime,
@@ -685,6 +699,7 @@ __all__ = [
     "gguf_iq3_xxs_selected_gemv_bf16_bf16_out",
     "gguf_iq4_xs_selected_gemv_bf16_bf16_out",
     "gguf_iq4_xs_weighted_selected_down_bf16_bf16_out",
+    "iq3_selected_default_threads",
     "iq_weighted_down_default_threads",
     "plan_gguf_iq_gemv_build",
     "register_gguf_iq_gemv_kernels",
