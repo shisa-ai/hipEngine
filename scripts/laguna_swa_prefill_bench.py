@@ -75,6 +75,12 @@ def _hash_array(value: np.ndarray) -> str:
     return hashlib.sha256(memoryview(np.ascontiguousarray(value)).cast("B")).hexdigest()
 
 
+def _resident_weight_nbytes(weights: Any) -> int:
+    """Read the resident-weight contract used after timed child sessions close."""
+
+    return int(weights.resident_nbytes)
+
+
 def _aggregate(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {mode: {} for mode in MODES}
     for mode in MODES:
@@ -318,7 +324,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         file=sys.stderr,
                         flush=True,
                     )
-        resident_weight_nbytes = owner.weights.nbytes
+        resident_weight_nbytes = _resident_weight_nbytes(owner.weights)
     finally:
         if owner is not None:
             owner.close()

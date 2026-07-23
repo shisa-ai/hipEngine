@@ -175488,3 +175488,37 @@ python3 scripts/check_lineage.py --kind kernel --file '*laguna*' --diff stat
 ```
 
 No full-model promotion claim is made in this candidate unit.
+
+## 2026-07-23 — LPF-5 full-model gate completed timing but lost artifact
+
+The first clean full-model A/B at `61803a3dd` completed every expensive timed
+row and showed the expected material win:
+
+| length | baseline tok/s | wave32 tok/s | speedup |
+| ---: | ---: | ---: | ---: |
+| 512 | 43.742 | 47.331 | 1.0821x |
+| 1K | 39.742 | 44.844 | 1.1284x |
+| 4K | 33.792 | 38.536 | 1.1404x |
+
+The process then failed after all rows, while constructing the artifact, because
+the harness read nonexistent `owner.weights.nbytes` instead of the documented
+`owner.weights.resident_nbytes`. This is a harness-only post-timing failure, not
+a model/kernel failure, but no complete logits/hidden hashes, lifecycle record,
+or JSON survived process exit. The result is therefore directional and cannot
+promote the default.
+
+Fixed the property contract and added a unit regression that rejects an
+`nbytes`-only fake:
+
+```bash
+uv run pytest -q tests/test_laguna_swa_prefill_bench.py
+# 4 passed
+uvx ruff check scripts/laguna_swa_prefill_bench.py \
+  tests/test_laguna_swa_prefill_bench.py
+git diff --check
+# clean
+```
+
+A clean retry is required for the exact artifact. It repeats roughly six minutes
+of equivalent 512/1K/4K validation, so project policy requires explicit user
+approval before rerunning it.
