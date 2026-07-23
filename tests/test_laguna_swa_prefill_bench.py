@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from types import SimpleNamespace
+
+import pytest
 
 from scripts.laguna_swa_prefill_bench import (
     LENGTHS,
@@ -9,6 +12,7 @@ from scripts.laguna_swa_prefill_bench import (
     _correctness,
     _mode_order,
     _promotion_gate,
+    _resident_weight_nbytes,
 )
 
 
@@ -34,6 +38,12 @@ def _rows():
                     }
                 )
     return rows
+
+
+def test_lpf5_swa_reads_the_resident_weight_contract() -> None:
+    assert _resident_weight_nbytes(SimpleNamespace(resident_nbytes=123)) == 123
+    with pytest.raises(AttributeError):
+        _resident_weight_nbytes(SimpleNamespace(nbytes=123))
 
 
 def test_lpf5_swa_mode_order_balances_lengths_and_repetitions() -> None:
