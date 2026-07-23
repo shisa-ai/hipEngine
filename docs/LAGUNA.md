@@ -2092,28 +2092,38 @@ streams at 128/512/1K/4K with homologous in-process timing.
 
 ### What the retained profiles actually say
 
-The detailed LPF-0 trace predates the promoted LPF-1 source-F16 tile. At 55
-rows, source-F16 QKV/O occupied 68.99% of its 2.340 s kernel sum and selected
-Q4/Q6 experts occupied 26.45%. LPF-1 then reduced full-model 55-row time from
-about 2.34 s to about 1.13 s without changing selected-expert execution. Until a
-fresh all-family trace is collected, the best inference is therefore that
-selected experts now own roughly **55%** of short-prefill time, remaining
-source-F16 projections roughly **35%**, and everything else roughly **10%**.
-Those percentages are an Amdahl estimate, not a current measurement.
+AR-O0 now replaces the inferred post-LPF split with a clean cached all-family
+trace at current runtime revision `7ded0d5f`. The profiler covers a 128-row
+warmup plus 512/1K/4K passes, assigns every dispatch to a stable family, and
+leaves less than 0.001% in `other`. A separate alternating three-repetition run
+measures **47.453/44.848/38.541 tok/s** at 512/1K/4K; every next ID and final
+cursor repeats exactly and tracked ownership returns to zero.
 
-This changes the priority order. Perfectly eliminating either selected experts
-or source-F16 projections alone cannot deliver 4x. Even making both families
-10x faster gives only about 5.3x under the inferred 55/35/10 split. Reaching the
-upper end of the target requires both matrix engines plus cleanup of the new
-residual; it cannot come from another local fusion or launch tweak.
+| Current family share | 128 rows | 512 | 1K | 4K |
+| --- | ---: | ---: | ---: | ---: |
+| selected Q4 gate/up | 36.60% | 34.25% | 32.47% | 27.95% |
+| selected Q4/Q6 down | 20.17% | 18.98% | 18.01% | 15.50% |
+| **all selected experts** | **56.78%** | **53.23%** | **50.48%** | **43.45%** |
+| source-F16 projections | 33.40% | 30.82% | 29.12% | 25.02% |
+| dense/shared quant projections | 6.55% | 6.06% | 5.71% | 4.94% |
+| global + SWA attention | 2.46% | 9.17% | 14.01% | 26.01% |
+| all remaining kernels | 0.81% | 0.71% | 0.68% | 0.58% |
 
-The retained LPF-5 attribution is also stale for attention because it predates
-the promoted wave32 SWA body. Before that promotion, attention was 16.25/23.78/
-35.19% of 512/1K/4K kernel sum. The full-model wave32 win implies that attention
-is now roughly a tenth of 512-row time and about a quarter of 4K time, but a
-fresh trace must replace this inference. The prior LPF-6 trace found kernel-span
-minus kernel-sum at only 0.10-0.25%, so graph capture and host launch work stay
-last until a new trace proves otherwise.
+This confirms AR-O1 before AR-O2. Selected experts are the majority of kernel
+sum through 1K, and Q4 gate/up alone is larger than the complete source-F16
+family at every measured shape. Perfectly eliminating selected experts has only
+a 2.31x 4K ceiling and perfectly eliminating source-F16 only 1.33x; neither can
+deliver the campaign target alone. At 128 rows, making both families 10x faster
+would leave 18.84% of current time and yield about 5.3x, after which dense/shared
+projections become the next linear residual.
+
+The current wave32 SWA path reduces total attention from the pre-promotion
+16.25/23.78/35.19% to **9.17/14.01/26.01%** at 512/1K/4K. At 4K, global/SWA
+are now **15.92/10.09%**, so global—not SWA—is the later context target once
+matrix work lands. Kernel span exceeds kernel sum by only
+**0.28-0.34%** across all four shapes, keeping graph capture and host launch
+work last. Evidence:
+`benchmarks/results/2026-07-23-gfx1151-laguna-prefill-current-main-all-family-profile.json`.
 
 ### Target ladder
 
@@ -2140,10 +2150,10 @@ implementing against the pre-LPF attribution.
 
 #### AR-O0 — homologate controls and capture the current bottleneck
 
-- [ ] Run cached-build, prefill-only timing at rows/lengths 128, 512, 1K, and 4K
+- [x] Run cached-build, prefill-only timing at rows/lengths 128, 512, 1K, and 4K
   on the current merged revision. Use at least three balanced timing samples for
   candidate admission; a single profiler pass is sufficient for attribution.
-- [ ] Extend the trace summary to account for **all** kernel families, not only
+- [x] Extend the trace summary to account for **all** kernel families, not only
   global/SWA attention. Record kernel sum/span, calls, median/total duration,
   VGPR/SGPR, LDS, scratch, and row/chunk shape for selected Q4/Q6, source-F16,
   dense/shared, router, attention, norms, and metadata kernels.
