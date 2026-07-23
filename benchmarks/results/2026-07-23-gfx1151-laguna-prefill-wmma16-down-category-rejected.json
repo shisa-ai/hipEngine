@@ -1,0 +1,883 @@
+{
+  "aggregate": {
+    "adaptive_grouped_smallm": {
+      "overall": {
+        "horizons": {
+          "16": {
+            "decode_forward_calls": 900,
+            "decode_seconds": 71.26224386680406,
+            "decode_tok_s": 12.629408662491544,
+            "e2e_output_tok_s": 1.8814703088894893,
+            "output_tokens": 960,
+            "total_seconds": 510.23925036937
+          },
+          "32": {
+            "decode_forward_calls": 1860,
+            "decode_seconds": 147.78307203843724,
+            "decode_tok_s": 12.586015261045787,
+            "e2e_output_tok_s": 3.2722062563870034,
+            "output_tokens": 1920,
+            "total_seconds": 586.7600785410032
+          }
+        },
+        "prefill_seconds": 438.9770065025659,
+        "prefill_tok_s": 52.485664758537474,
+        "prompt_tokens": 23040,
+        "runs": 60,
+        "ttft_median_seconds": 7.2844057264737785
+      },
+      "shapes": {
+        "256": {
+          "horizons": {
+            "16": {
+              "decode_forward_calls": 450,
+              "decode_seconds": 32.07470560004003,
+              "decode_tok_s": 14.02974685446336,
+              "e2e_output_tok_s": 2.769174874036957,
+              "output_tokens": 480,
+              "total_seconds": 173.3368320290465
+            },
+            "32": {
+              "decode_forward_calls": 930,
+              "decode_seconds": 66.75039794563781,
+              "decode_tok_s": 13.932501207819033,
+              "e2e_output_tok_s": 4.615106724395964,
+              "output_tokens": 960,
+              "total_seconds": 208.01252437464427
+            }
+          },
+          "prefill_seconds": 141.26212642900646,
+          "prefill_tok_s": 54.36701396293724,
+          "prompt_tokens": 7680,
+          "runs": 30,
+          "ttft_median_seconds": 4.720712734037079
+        },
+        "512": {
+          "horizons": {
+            "16": {
+              "decode_forward_calls": 450,
+              "decode_seconds": 39.18753826676402,
+              "decode_tok_s": 11.483242375080671,
+              "e2e_output_tok_s": 1.4247448930898616,
+              "output_tokens": 480,
+              "total_seconds": 336.9024183403235
+            },
+            "32": {
+              "decode_forward_calls": 930,
+              "decode_seconds": 81.03267409279943,
+              "decode_tok_s": 11.476851904639785,
+              "e2e_output_tok_s": 2.534669833348508,
+              "output_tokens": 960,
+              "total_seconds": 378.7475541663589
+            }
+          },
+          "prefill_seconds": 297.71488007355947,
+          "prefill_tok_s": 51.592987210464074,
+          "prompt_tokens": 15360,
+          "runs": 30,
+          "ttft_median_seconds": 9.944874117500149
+        }
+      }
+    },
+    "wmma16_down": {
+      "overall": {
+        "horizons": {
+          "16": {
+            "decode_forward_calls": 900,
+            "decode_seconds": 71.22551544045564,
+            "decode_tok_s": 12.635921192488917,
+            "e2e_output_tok_s": 2.0318759300408265,
+            "output_tokens": 960,
+            "total_seconds": 472.46979296649806
+          },
+          "32": {
+            "decode_forward_calls": 1860,
+            "decode_seconds": 147.7562699674163,
+            "decode_tok_s": 12.588298286158505,
+            "e2e_output_tok_s": 3.497264271895606,
+            "output_tokens": 1920,
+            "total_seconds": 549.0005474934587
+          }
+        },
+        "prefill_seconds": 401.2442775260424,
+        "prefill_tok_s": 57.421379669407514,
+        "prompt_tokens": 23040,
+        "runs": 60,
+        "ttft_median_seconds": 6.650523744465318
+      },
+      "shapes": {
+        "256": {
+          "horizons": {
+            "16": {
+              "decode_forward_calls": 450,
+              "decode_seconds": 32.0499681456713,
+              "decode_tok_s": 14.040575577320112,
+              "e2e_output_tok_s": 2.9814543266284317,
+              "output_tokens": 480,
+              "total_seconds": 160.99525513872504
+            },
+            "32": {
+              "decode_forward_calls": 930,
+              "decode_seconds": 66.72594216873404,
+              "decode_tok_s": 13.937607619660898,
+              "e2e_output_tok_s": 4.906188835795776,
+              "output_tokens": 960,
+              "total_seconds": 195.67122916178778
+            }
+          },
+          "prefill_seconds": 128.94528699305374,
+          "prefill_tok_s": 59.56014507466039,
+          "prompt_tokens": 7680,
+          "runs": 30,
+          "ttft_median_seconds": 4.3134428124758415
+        },
+        "512": {
+          "horizons": {
+            "16": {
+              "decode_forward_calls": 450,
+              "decode_seconds": 39.17554729478434,
+              "decode_tok_s": 11.48675720121748,
+              "e2e_output_tok_s": 1.541056945930558,
+              "output_tokens": 480,
+              "total_seconds": 311.474537827773
+            },
+            "32": {
+              "decode_forward_calls": 930,
+              "decode_seconds": 81.03032779868226,
+              "decode_tok_s": 11.477184225523075,
+              "e2e_output_tok_s": 2.717012006059588,
+              "output_tokens": 960,
+              "total_seconds": 353.32931833167095
+            }
+          },
+          "prefill_seconds": 272.2989905329887,
+          "prefill_tok_s": 56.408582235045614,
+          "prompt_tokens": 15360,
+          "runs": 30,
+          "ttft_median_seconds": 9.108876964484807
+        }
+      }
+    },
+    "wmma16_down_vs_adaptive_grouped_smallm": {
+      "categories": {
+        "code": {
+          "horizons": {
+            "16": {
+              "decode_speedup": 1.000369505498787,
+              "e2e_speedup": 1.0795979997624368
+            },
+            "32": {
+              "decode_speedup": 1.0001214882066145,
+              "e2e_speedup": 1.068524152602313
+            }
+          },
+          "prefill_speedup": 1.0935986359779453,
+          "ttft_speedup": 1.0928343720635216
+        },
+        "general_en": {
+          "horizons": {
+            "16": {
+              "decode_speedup": 1.0006973530617271,
+              "e2e_speedup": 1.0793832792482005
+            },
+            "32": {
+              "decode_speedup": 1.0003785047569336,
+              "e2e_speedup": 1.0683865578967
+            }
+          },
+          "prefill_speedup": 1.0932498383682476,
+          "ttft_speedup": 1.0914273718350305
+        },
+        "general_ja": {
+          "horizons": {
+            "16": {
+              "decode_speedup": 1.0001522374380565,
+              "e2e_speedup": 1.0814876582191693
+            },
+            "32": {
+              "decode_speedup": 0.9998687012529602,
+              "e2e_speedup": 1.0699890430002912
+            }
+          },
+          "prefill_speedup": 1.0960739336262975,
+          "ttft_speedup": 1.0963973792788038
+        },
+        "mixed_ja_en": {
+          "horizons": {
+            "16": {
+              "decode_speedup": 1.0009898302547018,
+              "e2e_speedup": 1.0796533368922316
+            },
+            "32": {
+              "decode_speedup": 1.0004167848033618,
+              "e2e_speedup": 1.0684809075897637
+            }
+          },
+          "prefill_speedup": 1.0937037750010625,
+          "ttft_speedup": 1.0945456760516918
+        }
+      },
+      "overall": {
+        "horizons": {
+          "16": {
+            "decode_speedup": 1.0005156638898474,
+            "e2e_speedup": 1.0799404701954143
+          },
+          "32": {
+            "decode_speedup": 1.000181393798225,
+            "e2e_speedup": 1.0687786764875573
+          }
+        },
+        "prefill_speedup": 1.0940392949880124,
+        "ttft_speedup": 1.0953130920757916
+      },
+      "shape_categories": {
+        "256": {
+          "code": {
+            "horizons": {
+              "16": {
+                "decode_speedup": 1.0005536446656036,
+                "e2e_speedup": 1.0766299690410008
+              },
+              "32": {
+                "decode_speedup": 1.000291119663525,
+                "e2e_speedup": 1.063097126240382
+              }
+            },
+            "prefill_speedup": 1.0954620981261118,
+            "ttft_speedup": 1.0957056181744416
+          },
+          "general_en": {
+            "horizons": {
+              "16": {
+                "decode_speedup": 1.0010569036914865,
+                "e2e_speedup": 1.0761982976246838
+              },
+              "32": {
+                "decode_speedup": 1.0008218758185663,
+                "e2e_speedup": 1.0628679604452431
+              }
+            },
+            "prefill_speedup": 1.0947315452969304,
+            "ttft_speedup": 1.0942541522528964
+          },
+          "general_ja": {
+            "horizons": {
+              "16": {
+                "decode_speedup": 0.9997975350457954,
+                "e2e_speedup": 1.0775100145018233
+              },
+              "32": {
+                "decode_speedup": 0.9996986850192268,
+                "e2e_speedup": 1.0636110009576785
+              }
+            },
+            "prefill_speedup": 1.097025270970431,
+            "ttft_speedup": 1.096474071102378
+          },
+          "mixed_ja_en": {
+            "horizons": {
+              "16": {
+                "decode_speedup": 1.001897614935084,
+                "e2e_speedup": 1.0763302583814276
+              },
+              "32": {
+                "decode_speedup": 1.000729769825092,
+                "e2e_speedup": 1.0626877912958046
+              }
+            },
+            "prefill_speedup": 1.094936925486592,
+            "ttft_speedup": 1.094814722214064
+          }
+        },
+        "512": {
+          "code": {
+            "horizons": {
+              "16": {
+                "decode_speedup": 1.0002188463765034,
+                "e2e_speedup": 1.081130912174521
+              },
+              "32": {
+                "decode_speedup": 0.9999818049634683,
+                "e2e_speedup": 1.071526864678351
+              }
+            },
+            "prefill_speedup": 1.0927167091418137,
+            "ttft_speedup": 1.0937404396207018
+          },
+          "general_en": {
+            "horizons": {
+              "16": {
+                "decode_speedup": 1.0004032966640068,
+                "e2e_speedup": 1.081029110287713
+              },
+              "32": {
+                "decode_speedup": 1.000013484306904,
+                "e2e_speedup": 1.0714408995460631
+              }
+            },
+            "prefill_speedup": 1.0925479085827194,
+            "ttft_speedup": 1.0939980430632064
+          },
+          "general_ja": {
+            "horizons": {
+              "16": {
+                "decode_speedup": 1.0004424064826782,
+                "e2e_speedup": 1.0835449366990968
+              },
+              "32": {
+                "decode_speedup": 1.0000087118102887,
+                "e2e_speedup": 1.0735249151532118
+              }
+            },
+            "prefill_speedup": 1.0956234917629681,
+            "ttft_speedup": 1.0957264483315299
+          },
+          "mixed_ja_en": {
+            "horizons": {
+              "16": {
+                "decode_speedup": 1.0002470002519208,
+                "e2e_speedup": 1.0813730587474066
+              },
+              "32": {
+                "decode_speedup": 1.000158996581039,
+                "e2e_speedup": 1.0716935108005614
+              }
+            },
+            "prefill_speedup": 1.0931193126655467,
+            "ttft_speedup": 1.092992483323607
+          }
+        }
+      },
+      "shapes": {
+        "256": {
+          "horizons": {
+            "16": {
+              "decode_speedup": 1.0007718402170105,
+              "e2e_speedup": 1.076658016285555
+            },
+            "32": {
+              "decode_speedup": 1.000366510776902,
+              "e2e_speedup": 1.0630715883256003
+            }
+          },
+          "prefill_speedup": 1.0955198884982607,
+          "ttft_speedup": 1.094418759971335
+        },
+        "512": {
+          "horizons": {
+            "16": {
+              "decode_speedup": 1.0003060830749717,
+              "e2e_speedup": 1.0816371080919962
+            },
+            "32": {
+              "decode_speedup": 1.0000289557525053,
+              "e2e_speedup": 1.0719392207663556
+            }
+          },
+          "prefill_speedup": 1.0933381702621174,
+          "ttft_speedup": 1.0917782901530964
+        }
+      }
+    }
+  },
+  "command": [
+    "/home/lhl/.local/share/uv/python/cpython-3.10.20-linux-x86_64-gnu/bin/python3.10",
+    "scripts/laguna_wmma16_down_category_bench.py",
+    "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "--prompts",
+    "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "--screen",
+    "benchmarks/results/2026-07-23-gfx1151-laguna-prefill-wmma16-down-screen.json",
+    "--backend",
+    "hip_gfx1151",
+    "--context-length",
+    "4096",
+    "--rows",
+    "256,512",
+    "--output-horizons",
+    "16,32",
+    "--repetitions",
+    "3",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--require-cached-build",
+    "--repacked-cache",
+    "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+    "--model-sha256",
+    "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "--output",
+    "/tmp/2026-07-23-gfx1151-laguna-prefill-wmma16-down-category.json"
+  ],
+  "correctness": {
+    "pass": false,
+    "tracked_returned_to_baseline": true
+  },
+  "created_at": "2026-07-23T10:21:51.422027+00:00",
+  "free_running": {
+    "mismatch_occurrences": 69,
+    "nondeterministic": [],
+    "pairs": 60,
+    "pass": false,
+    "unique_mismatches": [
+      {
+        "horizon": 32,
+        "prompt_id": "code_lru_cache",
+        "repetitions": 3,
+        "rows": 256
+      },
+      {
+        "horizon": 16,
+        "prompt_id": "code_topological_sort",
+        "repetitions": 3,
+        "rows": 256
+      },
+      {
+        "horizon": 32,
+        "prompt_id": "code_topological_sort",
+        "repetitions": 3,
+        "rows": 256
+      },
+      {
+        "horizon": 16,
+        "prompt_id": "general_en_plan",
+        "repetitions": 3,
+        "rows": 256
+      },
+      {
+        "horizon": 32,
+        "prompt_id": "general_en_plan",
+        "repetitions": 3,
+        "rows": 256
+      },
+      {
+        "horizon": 16,
+        "prompt_id": "general_ja_explain",
+        "repetitions": 3,
+        "rows": 256
+      },
+      {
+        "horizon": 32,
+        "prompt_id": "general_ja_explain",
+        "repetitions": 3,
+        "rows": 256
+      },
+      {
+        "horizon": 32,
+        "prompt_id": "mixed_ja_en_review",
+        "repetitions": 3,
+        "rows": 256
+      },
+      {
+        "horizon": 16,
+        "prompt_id": "mixed_ja_en_translate",
+        "repetitions": 3,
+        "rows": 256
+      },
+      {
+        "horizon": 32,
+        "prompt_id": "mixed_ja_en_translate",
+        "repetitions": 3,
+        "rows": 256
+      },
+      {
+        "horizon": 16,
+        "prompt_id": "code_lru_cache",
+        "repetitions": 3,
+        "rows": 512
+      },
+      {
+        "horizon": 32,
+        "prompt_id": "code_lru_cache",
+        "repetitions": 3,
+        "rows": 512
+      },
+      {
+        "horizon": 16,
+        "prompt_id": "code_markdown_table",
+        "repetitions": 3,
+        "rows": 512
+      },
+      {
+        "horizon": 32,
+        "prompt_id": "code_markdown_table",
+        "repetitions": 3,
+        "rows": 512
+      },
+      {
+        "horizon": 16,
+        "prompt_id": "code_merge_intervals",
+        "repetitions": 3,
+        "rows": 512
+      },
+      {
+        "horizon": 32,
+        "prompt_id": "code_merge_intervals",
+        "repetitions": 3,
+        "rows": 512
+      },
+      {
+        "horizon": 32,
+        "prompt_id": "code_topological_sort",
+        "repetitions": 3,
+        "rows": 512
+      },
+      {
+        "horizon": 32,
+        "prompt_id": "general_en_explain",
+        "repetitions": 3,
+        "rows": 512
+      },
+      {
+        "horizon": 32,
+        "prompt_id": "general_ja_explain",
+        "repetitions": 3,
+        "rows": 512
+      },
+      {
+        "horizon": 16,
+        "prompt_id": "general_ja_plan",
+        "repetitions": 3,
+        "rows": 512
+      },
+      {
+        "horizon": 32,
+        "prompt_id": "general_ja_plan",
+        "repetitions": 3,
+        "rows": 512
+      },
+      {
+        "horizon": 16,
+        "prompt_id": "mixed_ja_en_review",
+        "repetitions": 3,
+        "rows": 512
+      },
+      {
+        "horizon": 32,
+        "prompt_id": "mixed_ja_en_review",
+        "repetitions": 3,
+        "rows": 512
+      }
+    ]
+  },
+  "kind": "hipengine_laguna_prefill_wmma16_down_category",
+  "load": {
+    "resident_nbytes": 77434444260,
+    "seconds_excluded": 48.737401586957276
+  },
+  "memory": {
+    "gpu_free_after": 128693403648,
+    "gpu_free_before": 128844787712,
+    "hip_total_bytes": 128849018880,
+    "tracked_after": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 77434444260,
+      "peak_allocations": 1401,
+      "total_allocated_bytes": 77434444260,
+      "total_freed_bytes": 77434444260
+    },
+    "tracked_before": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 0,
+      "peak_allocations": 0,
+      "total_allocated_bytes": 0,
+      "total_freed_bytes": 0
+    }
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "repacked_cache": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+    "repacked_cache_manifest_sha256": "d328e0b73f8957eb051d3ed24d17a4aaf6a3d15fce3c45baf10c02f4de0cabfc",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "notes": [
+    "All ten canonical prompts were independently extended from their own post-BOS token stream to exact 256 and 512 rows; all four categories contribute.",
+    "The candidate is consistently faster, but the quality and exact free-running gates fail; performance cannot promote an inexact route.",
+    "M32 uses the same reassociated WMMA arithmetic and has worse natural/Zipf padding, so the natural M16/M32 lane is closed without an M32 category run.",
+    "Retained adaptive_grouped_smallm remains the gfx1151 production default; M16 remains diagnostic-only pending selector cleanup after AR-O1 fusion bisection."
+  ],
+  "pass": false,
+  "performance_claim": false,
+  "performance_claim_scope": "rejected 256/512-row M16 T16-WMMA selected-down control; retained exact grouped-small-M remains default",
+  "platform": {
+    "backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "hip_total_bytes": 128849018880,
+    "machine": "x86_64",
+    "target_arch": "gfx1151"
+  },
+  "promotion": {
+    "failed_checks": [
+      "quality_gate_failed",
+      "free_running_gate_failed"
+    ],
+    "pass": false,
+    "thresholds": {
+      "aggregate_and_shape_e2e_speedup": ">1.0",
+      "decode_speedup_range": [
+        0.98,
+        1.02
+      ],
+      "free_running_mode_pairs_and_repeats": "exact",
+      "quality_max_kl": 0.05,
+      "shape_and_category_prefill_speedup": ">1.0",
+      "shape_category_e2e_floor": 0.98
+    }
+  },
+  "protocol": {
+    "accepted_screen": "/home/lhl/hipEngine-main/benchmarks/results/2026-07-23-gfx1151-laguna-prefill-wmma16-down-screen.json",
+    "accepted_screen_sha256": "02fdf84820bcff2faab5b742823d47ba7312803917832ef0e0e18d248182f6b1",
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "context_length": 4096,
+    "expanded_streams": {
+      "code_lru_cache:256": {
+        "rows": 256,
+        "sha256": "cf77d2dc5908cc865ade1a9c6e5aeef282ae19ce192c5535eead4da0a0626a2d"
+      },
+      "code_lru_cache:512": {
+        "rows": 512,
+        "sha256": "37b5163244db84a06d137b227acd1fb54fb9a0327af890bf63a0e890186161aa"
+      },
+      "code_markdown_table:256": {
+        "rows": 256,
+        "sha256": "258f3c16cae6a9b36b6a546bb8695a8b00475b106e245cc57be5b972c922260d"
+      },
+      "code_markdown_table:512": {
+        "rows": 512,
+        "sha256": "5d6bed51225d857a0a42169b203b574444404484dc037c89fa95b78e85139207"
+      },
+      "code_merge_intervals:256": {
+        "rows": 256,
+        "sha256": "272b26a0dab4b68c381b3f9f4a3ca17feb3c0a070103639aca1a830d1097b8a4"
+      },
+      "code_merge_intervals:512": {
+        "rows": 512,
+        "sha256": "020ff06c6a40d52a93e9bd85690f95e62196119019bafea65fe6722d1b31daed"
+      },
+      "code_topological_sort:256": {
+        "rows": 256,
+        "sha256": "43bff541f00837548ed469e42ce40194cb95d976f59cc3fb5b02ee3d35b1c369"
+      },
+      "code_topological_sort:512": {
+        "rows": 512,
+        "sha256": "0b84befd3cf6e1069d88623e517d42e6e313c613cc50819ef9f92f2c2ffd1a74"
+      },
+      "general_en_explain:256": {
+        "rows": 256,
+        "sha256": "70813521ba7cd0d8e1bd606f1ab73a61c4a7c1c5591cdd423d60bc24c51534f0"
+      },
+      "general_en_explain:512": {
+        "rows": 512,
+        "sha256": "838655ebab941d1772ec3b9f9cb2ae70857e5b9e10cb15ba8bb0669587ae7d87"
+      },
+      "general_en_plan:256": {
+        "rows": 256,
+        "sha256": "8a1b57e9615001bcf1ab3e1183ac46c51ddd5112f43428c84ff1b35d225683c7"
+      },
+      "general_en_plan:512": {
+        "rows": 512,
+        "sha256": "72154c756e2b7d1856d5f54007a44c073cee601043387fbf43e7ef859a3c565f"
+      },
+      "general_ja_explain:256": {
+        "rows": 256,
+        "sha256": "c7eab910d1dccd1bf81406b687f9a2bea58510eb3723e2de35bab521b4b2c569"
+      },
+      "general_ja_explain:512": {
+        "rows": 512,
+        "sha256": "aa898d81a1164d94c9b7843f95ca27a3a2c8ab69258340840d4900a61f5e66e1"
+      },
+      "general_ja_plan:256": {
+        "rows": 256,
+        "sha256": "1689c2f4a5e799158ed2a8189a34add138c7a93f611d94e2da59eec1ac17fa1d"
+      },
+      "general_ja_plan:512": {
+        "rows": 512,
+        "sha256": "e1ded3ad24adb685ab72c3be48832f59bfb172e6460fcf7df5ed0f92e11b6781"
+      },
+      "mixed_ja_en_review:256": {
+        "rows": 256,
+        "sha256": "7b676e9e018e23a5fbbfb532e371ae99c5a5a44adf98124275ff5e3a38c5edf5"
+      },
+      "mixed_ja_en_review:512": {
+        "rows": 512,
+        "sha256": "bc8bfde48180330d8eccc176d8aaa22a797f50b9f2ae8f86de8a3ff49a49e786"
+      },
+      "mixed_ja_en_translate:256": {
+        "rows": 256,
+        "sha256": "b09627c667a9df0bca6bc4a2530bfbb489e9bc5ecd3f38003caa8c32c6ebb8fe"
+      },
+      "mixed_ja_en_translate:512": {
+        "rows": 512,
+        "sha256": "36a80751f0a01aa55b0b62f0603a16cc13d5e6316e8d74832cf9adde484c0a8b"
+      }
+    },
+    "expansion": "repeat each prompt without repeating its leading BOS to exact rows",
+    "modes": [
+      "adaptive_grouped_smallm",
+      "wmma16_down"
+    ],
+    "one_physical_chunk": true,
+    "output_horizons": [
+      16,
+      32
+    ],
+    "prefill_chunk_size": 512,
+    "prompt_suite": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "repetitions": 3,
+    "rows": [
+      256,
+      512
+    ],
+    "timed_order": "counterbalanced by repetition, shape, and prompt",
+    "timing_scope": "reset and final-logit D2H excluded; prefill and each decode transition synchronized; model load excluded",
+    "warmups": 4
+  },
+  "provenance": {
+    "build_profile": "laguna_prefill_wmma16_down_category",
+    "collected_at": "2026-07-23T10:01:38.165613+00:00",
+    "command": [
+      "/home/lhl/.local/share/uv/python/cpython-3.10.20-linux-x86_64-gnu/bin/python3.10",
+      "scripts/laguna_wmma16_down_category_bench.py",
+      "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+      "--prompts",
+      "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "--screen",
+      "benchmarks/results/2026-07-23-gfx1151-laguna-prefill-wmma16-down-screen.json",
+      "--backend",
+      "hip_gfx1151",
+      "--context-length",
+      "4096",
+      "--rows",
+      "256,512",
+      "--output-horizons",
+      "16,32",
+      "--repetitions",
+      "3",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--repacked-cache",
+      "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+      "--model-sha256",
+      "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+      "--output",
+      "/tmp/2026-07-23-gfx1151-laguna-prefill-wmma16-down-category.json"
+    ],
+    "configured_backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "dirty": true,
+    "environment": {
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null,
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIP_VISIBLE_DEVICES": "0",
+      "ROCR_VISIBLE_DEVICES": null
+    },
+    "git_branch": "main",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "hipengine_commit": "01bc828d32096a62df7b15713c33f40816510f47",
+    "kind": "hipengine_artifact_provenance",
+    "kv_dtype": "bf16",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        37586027312,
+        75172054624
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 75173103200,
+      "value": "05caf641aa0d991c0e447450420c042bfab22ae248b1f12aba4bd3774c2024c8"
+    },
+    "model_path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "model_revision": null,
+    "profiler": null,
+    "quant": "gguf_q4_k_m",
+    "repetitions": 3,
+    "repo_root": "/home/lhl/hipEngine-main",
+    "resolved_backend": "hip_gfx1151",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "schema_version": 1,
+    "staged_dirty": false,
+    "target_arch": "gfx1151",
+    "timing_protocol": "one_load_counterbalanced_expanded_category_h16_h32",
+    "unstaged_dirty": false,
+    "untracked_count": 255,
+    "untracked_dirty": true,
+    "warmups": 4
+  },
+  "quality": {
+    "categories": {
+      "code": {
+        "finite": true,
+        "max_kl_divergence": 0.9818561075165667,
+        "pairs": 24,
+        "top1_agreement": 0.875
+      },
+      "general_en": {
+        "finite": true,
+        "max_kl_divergence": 1.3995682887488635e-05,
+        "pairs": 12,
+        "top1_agreement": 1.0
+      },
+      "general_ja": {
+        "finite": true,
+        "max_kl_divergence": 0.00972547312147799,
+        "pairs": 12,
+        "top1_agreement": 1.0
+      },
+      "mixed_ja_en": {
+        "finite": true,
+        "max_kl_divergence": 1.10017100608765,
+        "pairs": 12,
+        "top1_agreement": 0.75
+      }
+    },
+    "failed_checks": [
+      "max_kl_above_0.05",
+      "code_top1_below_0.9",
+      "mixed_ja_en_top1_below_0.9"
+    ],
+    "finite": true,
+    "max_kl_divergence": 1.10017100608765,
+    "pairs": 60,
+    "pass": false,
+    "thresholds": {
+      "max_kl_divergence": 0.05,
+      "minimum_each_category_top1_agreement": 0.9,
+      "minimum_suite_top1_agreement": 0.9
+    },
+    "top1_agreement": 0.9
+  },
+  "raw_output": {
+    "bytes": 324786,
+    "committed": false,
+    "omitted_fields": [
+      "runs",
+      "quality_pairs"
+    ],
+    "path": "/tmp/2026-07-23-gfx1151-laguna-prefill-wmma16-down-category.json",
+    "sha256": "fe40f63a8498406f67095eb50bc39ac5dc55c92f3657536c5c1876a44a40c1ec"
+  },
+  "repo": {
+    "revision": "01bc828d32096a62df7b15713c33f40816510f47",
+    "tracked_clean": true,
+    "tracked_status": [],
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "schema": 1,
+  "status": "rejected_category_gate"
+}
