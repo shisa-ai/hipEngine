@@ -2369,14 +2369,17 @@ not matrix prefill as a class.
   The first explicit leaf is registered: direct row-major source-F16 reads,
   BF16->F16 register conversion, F16 16x16x16 WMMA, FP32 accumulation, and
   FP32/BF16 output with no sidecar. Seeded M16-512 CPU-quality and cached
-  gfx1151 execution/resource gates pass. A checked-in clean screen now compares
-  every production full/SWA family to the exact tile and retained library
-  ceiling; that screen and full-model quality remain open, so no runtime
-  capability/default has changed.
-- [ ] Account for residency explicitly. Duplicating every source-F16 projection
-  would cost about 5.61 GB; prefer a replacement/composite device layout with
-  offsets usable by the exact rows=1 fallback, or justify the sidecar against
-  the 120 GiB admission budget.
+  gfx1151 execution/resource gates pass. The clean screen passes every
+  production full/SWA family: M128 exact -> WMMA is **12.772/18.505 ->
+  1.800/2.474 ms (7.094x/7.479x)**, while the weighted 12-full/36-SWA sum is
+  **819.423 -> 110.681 ms (7.403x)**. It remains below the inclusive library
+  ceiling and full-model quality stays open, so no runtime capability/default
+  has changed. Evidence:
+  `benchmarks/results/2026-07-23-gfx1151-laguna-f16-wmma-screen.json`.
+- [x] Account for residency explicitly. The candidate directly consumes the
+  existing 5.61-GB row-major source-F16 allocations and allocates no persistent
+  sidecar; only 4,096/10,240/17,408 B bounded per-block LDS is used at
+  M128/M256/M512. Rows=1 therefore keeps the same bytes and exact GEMV ABI.
 - [ ] Select the row threshold from measured shapes. Rows=1 must remain on the
   current exact GEMV, so decode performance and arithmetic stay unchanged.
 

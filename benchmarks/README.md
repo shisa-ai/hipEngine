@@ -3,8 +3,10 @@
 Last reviewed: **2026-07-23**
 
 Latest retained hipEngine revisions in this scoreboard:
-`b7a0d7751a96cac2c0c93530f4f1119a39bd0ad2` for the clean gfx1151 Laguna
-source-F16 rocBLAS/hipBLASLt matrix ceiling,
+`4f074642789b83eccda57ad70e3fd5a68dee1aaf` for the clean gfx1151 Laguna
+source-F16 custom-WMMA production-shape screen,
+`b7a0d7751a96cac2c0c93530f4f1119a39bd0ad2` for its preceding clean
+rocBLAS/hipBLASLt matrix ceiling,
 `fe59e77d065c7bf88cfa1635d71cd64b0e415005` for exact Laguna native
 scheduler ownership, cancellation acknowledgement, and the retained c1/c2
 server policy packet,
@@ -1779,6 +1781,22 @@ zero workspace, and tracked ownership returns to zero. This is a synthetic
 matrix ceiling selecting custom WMMA work, not a runtime route, quality result,
 or model-throughput change.
 [Source-F16 library ceiling](results/2026-07-23-gfx1151-laguna-f16-library-ceiling.json).
+
+The first clean direct-resident custom-WMMA screen passes every production
+M16/32/64/128/256/512 full/SWA family. The candidate reads the existing
+row-major F16 allocation, converts BF16 activations to F16 in registers, and
+uses bounded LDS only to share activation/weight fragments; there is no
+persistent sidecar or inference-time repack. At M128, exact -> WMMA moves
+full/SWA **12.772/18.505 -> 1.800/2.474 ms (7.094x/7.479x)** and the synthetic
+12-full/36-SWA sum **819.423 -> 110.681 ms (7.403x)**. Full/SWA speedups at
+M16/32/64/256/512 are **1.803/1.364x**, **3.105/2.529x**,
+**5.403/4.581x**, **9.904/10.507x**, and **9.895/11.138x**. It remains below
+the inclusive hipBLASLt ceiling at every shape; M128 reaches **0.628/0.523x**
+of the library-control throughput. The nonzero smoke has maximum KL
+`3.60e-16`, top-1 100%, all output finite, and tracked ownership returns
+exactly to zero. This admits the custom leaf to the complete model quality
+lane; it does not change the runtime route or model-throughput headline.
+[Source-F16 WMMA screen](results/2026-07-23-gfx1151-laguna-f16-wmma-screen.json).
 
 A matched Poolside llama.cpp `04b2b72c` control now uses the identical Laguna
 Q4_K_M model hash, deterministic token stream, BF16 KV, and 128-row microbatch.

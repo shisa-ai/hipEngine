@@ -1,0 +1,789 @@
+{
+  "command": [
+    "/home/lhl/.local/share/uv/python/cpython-3.10.20-linux-x86_64-gnu/bin/python3.10",
+    "scripts/laguna_f16_wmma_screen.py",
+    "--backend",
+    "hip_gfx1151",
+    "--rows",
+    "16,32,64,128,256,512",
+    "--iterations",
+    "1",
+    "--repetitions",
+    "7",
+    "--warmups",
+    "3",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--require-cached-build",
+    "--library-ceiling",
+    "benchmarks/results/2026-07-23-gfx1151-laguna-f16-library-ceiling.json",
+    "--output",
+    "benchmarks/results/2026-07-23-gfx1151-laguna-f16-wmma-screen.json"
+  ],
+  "correctness": {
+    "full_model_quality_gate_required": true,
+    "math_smoke": {
+      "max_abs": 3.725290298461914e-08,
+      "max_kl": 3.595303935923484e-16,
+      "pass": true,
+      "shape_mkn": [
+        16,
+        64,
+        35
+      ],
+      "top1_agreement": 1.0
+    },
+    "pass": true,
+    "tracked_returned_to_baseline": true
+  },
+  "created_at": "2026-07-23T12:26:57.009827+00:00",
+  "kind": "hipengine_laguna_f16_wmma_screen",
+  "memory": {
+    "gpu_free_after": 128695566336,
+    "gpu_free_before": 128844787712,
+    "hip_total_bytes": 128849018880,
+    "tracked_after": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 120733697,
+      "peak_allocations": 7,
+      "total_allocated_bytes": 120733697,
+      "total_freed_bytes": 120733697
+    },
+    "tracked_before": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 0,
+      "peak_allocations": 0,
+      "total_allocated_bytes": 0,
+      "total_freed_bytes": 0
+    }
+  },
+  "notes": [
+    "The candidate reads the existing row-major resident F16 allocation directly.",
+    "BF16 activations convert to F16 in registers; there is no persistent sidecar or inference-time repack.",
+    "Rows==1 and runtime defaults remain on the exact GEMV/tiled routes during this screen.",
+    "hipBLASLt values are imported from the retained clean library-ceiling artifact and are not remeasured."
+  ],
+  "pass": true,
+  "performance_claim": false,
+  "performance_claim_scope": "zero-data production geometry screen only; full model quality, trajectory, and E2E admission remains required",
+  "platform": {
+    "backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "hip_total_bytes": 128849018880,
+    "machine": "x86_64",
+    "target_arch": "gfx1151"
+  },
+  "protocol": {
+    "data": "zero timing buffers plus a seeded nonzero M16/K64/N35 math smoke",
+    "families": {
+      "full": [
+        "full_q",
+        "kv",
+        "kv",
+        "full_gate",
+        "full_o"
+      ],
+      "swa": [
+        "swa_q",
+        "kv",
+        "kv",
+        "swa_gate",
+        "swa_o"
+      ]
+    },
+    "iterations_per_sample": 1,
+    "library_ceiling": "benchmarks/results/2026-07-23-gfx1151-laguna-f16-library-ceiling.json",
+    "projection_shapes_kn": {
+      "full_gate": [
+        3072,
+        48
+      ],
+      "full_o": [
+        6144,
+        3072
+      ],
+      "full_q": [
+        3072,
+        6144
+      ],
+      "kv": [
+        3072,
+        1024
+      ],
+      "swa_gate": [
+        3072,
+        72
+      ],
+      "swa_o": [
+        9216,
+        3072
+      ],
+      "swa_q": [
+        3072,
+        9216
+      ]
+    },
+    "repetitions": 7,
+    "rows": [
+      16,
+      32,
+      64,
+      128,
+      256,
+      512
+    ],
+    "timed_order": "counterbalanced exact/WMMA by row/family/repetition",
+    "warmups": 3
+  },
+  "provenance": {
+    "build_profile": "laguna_f16_wmma_screen",
+    "collected_at": "2026-07-23T12:26:57.009674+00:00",
+    "command": [
+      "/home/lhl/.local/share/uv/python/cpython-3.10.20-linux-x86_64-gnu/bin/python3.10",
+      "scripts/laguna_f16_wmma_screen.py",
+      "--backend",
+      "hip_gfx1151",
+      "--rows",
+      "16,32,64,128,256,512",
+      "--iterations",
+      "1",
+      "--repetitions",
+      "7",
+      "--warmups",
+      "3",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--library-ceiling",
+      "benchmarks/results/2026-07-23-gfx1151-laguna-f16-library-ceiling.json",
+      "--output",
+      "benchmarks/results/2026-07-23-gfx1151-laguna-f16-wmma-screen.json"
+    ],
+    "configured_backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "dirty": true,
+    "environment": {
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null,
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIP_VISIBLE_DEVICES": "0",
+      "ROCR_VISIBLE_DEVICES": null
+    },
+    "git_branch": "main",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "hipengine_commit": "4f074642789b83eccda57ad70e3fd5a68dee1aaf",
+    "kind": "hipengine_artifact_provenance",
+    "kv_dtype": null,
+    "model_fingerprint": null,
+    "model_path": null,
+    "model_revision": null,
+    "profiler": null,
+    "quant": "source_f16_projection_geometry",
+    "repetitions": 7,
+    "repo_root": "/home/lhl/hipEngine-main",
+    "resolved_backend": "hip_gfx1151",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "schema_version": 1,
+    "staged_dirty": false,
+    "target_arch": "gfx1151",
+    "timing_protocol": "hip_event_counterbalanced_exact_vs_wmma_family_sequences",
+    "unstaged_dirty": false,
+    "untracked_count": 255,
+    "untracked_dirty": true,
+    "warmups": 3
+  },
+  "repo": {
+    "revision": "4f074642789b83eccda57ad70e3fd5a68dee1aaf",
+    "tracked_clean": true,
+    "tracked_status": [],
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "schema": 1,
+  "status": "quality_lane_admitted",
+  "summary": {
+    "failed_checks": [],
+    "m128_weighted_projection_sum": {
+      "exact_ms": 819.4233169555664,
+      "speedup": 7.403489332771765,
+      "wmma_ms": 110.68069124221802
+    },
+    "pass": true,
+    "policy": "quality-lane screen requires every production row/family faster than exact and the 12-full/36-SWA M128 sum at least 2x faster",
+    "shapes": {
+      "128": {
+        "families": {
+          "full": {
+            "exact_gpu_ms_median": 12.77157211303711,
+            "exact_gpu_ms_samples": [
+              12.562459945678711,
+              12.744080543518066,
+              12.729292869567871,
+              13.027813911437988,
+              12.77157211303711,
+              12.800259590148926,
+              12.796854019165039
+            ],
+            "exact_wall_ms_median": 12.776616960763931,
+            "exact_wall_ms_samples": [
+              12.567513971589506,
+              12.750377063639462,
+              12.734276941046119,
+              13.032816932536662,
+              12.776616960763931,
+              12.806872953660786,
+              12.802164070308208
+            ],
+            "library_inclusive_gpu_ms_median": 1.131548,
+            "wmma_gpu_ms_median": 1.8004189729690552,
+            "wmma_gpu_ms_samples": [
+              1.7273609638214111,
+              1.7953300476074219,
+              1.6391160488128662,
+              1.8004189729690552,
+              1.836287021636963,
+              1.8833739757537842,
+              1.9108250141143799
+            ],
+            "wmma_speedup_vs_exact": 7.093666699132603,
+            "wmma_speedup_vs_library_inclusive": 0.6284914883639412,
+            "wmma_wall_ms_median": 1.8055490218102932,
+            "wmma_wall_ms_samples": [
+              1.7321520717814565,
+              1.8002400174736977,
+              1.64393603336066,
+              1.8055490218102932,
+              1.8414270598441362,
+              1.888255006633699,
+              1.9156959606334567
+            ]
+          },
+          "swa": {
+            "exact_gpu_ms_median": 18.504568099975586,
+            "exact_gpu_ms_samples": [
+              18.450429916381836,
+              18.597026824951172,
+              18.618627548217773,
+              18.607160568237305,
+              18.504568099975586,
+              18.11083221435547,
+              18.365388870239258
+            ],
+            "exact_wall_ms_median": 18.509699031710625,
+            "exact_wall_ms_samples": [
+              18.45516706816852,
+              18.602123018354177,
+              18.62418500240892,
+              18.61213194206357,
+              18.509699031710625,
+              18.115899991244078,
+              18.37106898892671
+            ],
+            "library_inclusive_gpu_ms_median": 1.293078,
+            "wmma_gpu_ms_median": 2.4743239879608154,
+            "wmma_gpu_ms_samples": [
+              2.592665910720825,
+              2.4592158794403076,
+              2.449918031692505,
+              2.5469799041748047,
+              2.4743239879608154,
+              2.502135992050171,
+              2.312340021133423
+            ],
+            "wmma_speedup_vs_exact": 7.478635857718013,
+            "wmma_speedup_vs_library_inclusive": 0.5225984981318775,
+            "wmma_wall_ms_median": 2.47910397592932,
+            "wmma_wall_ms_samples": [
+              2.597555983811617,
+              2.4642469361424446,
+              2.454708912409842,
+              2.551881014369428,
+              2.47910397592932,
+              2.5072169955819845,
+              2.3174709640443325
+            ]
+          }
+        },
+        "rows": 128
+      },
+      "16": {
+        "families": {
+          "full": {
+            "exact_gpu_ms_median": 1.9953789710998535,
+            "exact_gpu_ms_samples": [
+              2.009161949157715,
+              2.012568950653076,
+              2.0403010845184326,
+              1.9953789710998535,
+              1.971653938293457,
+              1.9115010499954224,
+              1.9600720405578613
+            ],
+            "exact_wall_ms_median": 2.0003248937427998,
+            "exact_wall_ms_samples": [
+              2.0134299993515015,
+              2.017498016357422,
+              2.0451589953154325,
+              2.0003248937427998,
+              1.9767211051657796,
+              1.9162269309163094,
+              1.9649890018627048
+            ],
+            "library_inclusive_gpu_ms_median": 0.520282,
+            "wmma_gpu_ms_median": 1.1067930459976196,
+            "wmma_gpu_ms_samples": [
+              0.9141129851341248,
+              1.1591709852218628,
+              1.1373709440231323,
+              1.0737719535827637,
+              0.9763489961624146,
+              1.1067930459976196,
+              1.1514370441436768
+            ],
+            "wmma_speedup_vs_exact": 1.8028474052267807,
+            "wmma_speedup_vs_library_inclusive": 0.4700806549891523,
+            "wmma_wall_ms_median": 1.1115269735455513,
+            "wmma_wall_ms_samples": [
+              0.9196969913318753,
+              1.1655680136755109,
+              1.1424049735069275,
+              1.0786749189719558,
+              0.9811719646677375,
+              1.1115269735455513,
+              1.1564819142222404
+            ]
+          },
+          "swa": {
+            "exact_gpu_ms_median": 2.650925874710083,
+            "exact_gpu_ms_samples": [
+              2.6491639614105225,
+              2.667037010192871,
+              2.6968131065368652,
+              2.6463189125061035,
+              2.624034881591797,
+              2.6887569427490234,
+              2.650925874710083
+            ],
+            "exact_wall_ms_median": 2.6559160323813558,
+            "exact_wall_ms_samples": [
+              2.6559160323813558,
+              2.672086004167795,
+              2.7017929824069142,
+              2.651297952979803,
+              2.628966001793742,
+              2.6938170194625854,
+              2.655785996466875
+            ],
+            "library_inclusive_gpu_ms_median": 0.734417,
+            "wmma_gpu_ms_median": 1.9437209367752075,
+            "wmma_gpu_ms_samples": [
+              2.0802969932556152,
+              1.9635989665985107,
+              1.9149090051651,
+              1.8857719898223877,
+              1.9437209367752075,
+              2.1788010597229004,
+              1.7970459461212158
+            ],
+            "wmma_speedup_vs_exact": 1.3638407780430593,
+            "wmma_speedup_vs_library_inclusive": 0.3778407620686836,
+            "wmma_wall_ms_median": 1.9488990074023604,
+            "wmma_wall_ms_samples": [
+              2.084463951177895,
+              1.968555967323482,
+              1.9197040237486362,
+              1.8908990314230323,
+              1.9488990074023604,
+              2.1844409639015794,
+              1.8233830342069268
+            ]
+          }
+        },
+        "rows": 16
+      },
+      "256": {
+        "families": {
+          "full": {
+            "exact_gpu_ms_median": 25.361642837524414,
+            "exact_gpu_ms_samples": [
+              25.422283172607422,
+              25.228599548339844,
+              25.45774269104004,
+              25.285659790039062,
+              25.361642837524414,
+              25.461673736572266,
+              24.712387084960938
+            ],
+            "exact_wall_ms_median": 25.36558103747666,
+            "exact_wall_ms_samples": [
+              25.438728043809533,
+              25.233502965420485,
+              25.46245197299868,
+              25.290730060078204,
+              25.36558103747666,
+              25.4665199900046,
+              24.74172890651971
+            ],
+            "library_inclusive_gpu_ms_median": 1.643254,
+            "wmma_gpu_ms_median": 2.5606870651245117,
+            "wmma_gpu_ms_samples": [
+              2.5606870651245117,
+              2.6048500537872314,
+              2.5097908973693848,
+              2.6609139442443848,
+              2.566617012023926,
+              2.494241952896118,
+              2.415534019470215
+            ],
+            "wmma_speedup_vs_exact": 9.904233587516178,
+            "wmma_speedup_vs_library_inclusive": 0.6417238648097353,
+            "wmma_wall_ms_median": 2.5667980080470443,
+            "wmma_wall_ms_samples": [
+              2.5667980080470443,
+              2.611171919852495,
+              2.5147820124402642,
+              2.681824960745871,
+              2.5715180672705173,
+              2.4992520920932293,
+              2.4207840906456113
+            ]
+          },
+          "swa": {
+            "exact_gpu_ms_median": 36.481834411621094,
+            "exact_gpu_ms_samples": [
+              35.702335357666016,
+              36.5295295715332,
+              36.481834411621094,
+              36.555294036865234,
+              35.748863220214844,
+              36.59092330932617,
+              36.4325065612793
+            ],
+            "exact_wall_ms_median": 36.48717992473394,
+            "exact_wall_ms_samples": [
+              35.708979004994035,
+              36.53480904176831,
+              36.48717992473394,
+              36.560186999849975,
+              35.75401403941214,
+              36.59629391040653,
+              36.43742704298347
+            ],
+            "library_inclusive_gpu_ms_median": 1.999535,
+            "wmma_gpu_ms_median": 3.472238063812256,
+            "wmma_gpu_ms_samples": [
+              3.3450469970703125,
+              3.3448379039764404,
+              3.4869449138641357,
+              3.3768179416656494,
+              3.6382699012756348,
+              3.472238063812256,
+              3.835479974746704
+            ],
+            "wmma_speedup_vs_exact": 10.506720374917723,
+            "wmma_speedup_vs_library_inclusive": 0.575863452693293,
+            "wmma_wall_ms_median": 3.4771679202094674,
+            "wmma_wall_ms_samples": [
+              3.3501189900562167,
+              3.3496090909466147,
+              3.4920660546049476,
+              3.381627961061895,
+              3.643280011601746,
+              3.4771679202094674,
+              3.8404299411922693
+            ]
+          }
+        },
+        "rows": 256
+      },
+      "32": {
+        "families": {
+          "full": {
+            "exact_gpu_ms_median": 3.4989259243011475,
+            "exact_gpu_ms_samples": [
+              3.570659875869751,
+              3.5329089164733887,
+              3.4989259243011475,
+              3.5270979404449463,
+              3.3325328826904297,
+              3.394489049911499,
+              3.381175994873047
+            ],
+            "exact_wall_ms_median": 3.504037973470986,
+            "exact_wall_ms_samples": [
+              3.5773259587585926,
+              3.5378120373934507,
+              3.504037973470986,
+              3.532050992362201,
+              3.3373149344697595,
+              3.3993719844147563,
+              3.4064450301229954
+            ],
+            "library_inclusive_gpu_ms_median": 0.561065,
+            "wmma_gpu_ms_median": 1.1269149780273438,
+            "wmma_gpu_ms_samples": [
+              1.1758049726486206,
+              1.1269149780273438,
+              1.0677640438079834,
+              1.077260971069336,
+              1.0870000123977661,
+              1.1628220081329346,
+              1.294950008392334
+            ],
+            "wmma_speedup_vs_exact": 3.1048712569478765,
+            "wmma_speedup_vs_library_inclusive": 0.4978769569485536,
+            "wmma_wall_ms_median": 1.1328170076012611,
+            "wmma_wall_ms_samples": [
+              1.18204893078655,
+              1.1328170076012611,
+              1.0729249333962798,
+              1.0822420008480549,
+              1.0915889870375395,
+              1.1678730370476842,
+              1.2997500598430634
+            ]
+          },
+          "swa": {
+            "exact_gpu_ms_median": 5.073594093322754,
+            "exact_gpu_ms_samples": [
+              4.891406059265137,
+              4.899780750274658,
+              5.038928985595703,
+              5.089663982391357,
+              5.073594093322754,
+              5.083734035491943,
+              5.107256889343262
+            ],
+            "exact_wall_ms_median": 5.078863934613764,
+            "exact_wall_ms_samples": [
+              4.896503058262169,
+              4.904497996903956,
+              5.044069024734199,
+              5.094584077596664,
+              5.078863934613764,
+              5.088743986561894,
+              5.112448008731008
+            ],
+            "library_inclusive_gpu_ms_median": 0.770698,
+            "wmma_gpu_ms_median": 2.0062029361724854,
+            "wmma_gpu_ms_samples": [
+              1.9896489381790161,
+              2.147223949432373,
+              1.948734998703003,
+              2.2704169750213623,
+              2.0062029361724854,
+              2.152756929397583,
+              1.9234869480133057
+            ],
+            "wmma_speedup_vs_exact": 2.528953577848092,
+            "wmma_speedup_vs_library_inclusive": 0.3841575476259489,
+            "wmma_wall_ms_median": 2.011226024478674,
+            "wmma_wall_ms_samples": [
+              1.9947650143876672,
+              2.1521199960261583,
+              1.9536679610610008,
+              2.275401959195733,
+              2.011226024478674,
+              2.157901064492762,
+              1.928430050611496
+            ]
+          }
+        },
+        "rows": 32
+      },
+      "512": {
+        "families": {
+          "full": {
+            "exact_gpu_ms_median": 50.32875442504883,
+            "exact_gpu_ms_samples": [
+              50.43675994873047,
+              50.088462829589844,
+              50.32875442504883,
+              50.148399353027344,
+              50.59121322631836,
+              50.41816329956055,
+              50.25930404663086
+            ],
+            "exact_wall_ms_median": 50.34031695686281,
+            "exact_wall_ms_samples": [
+              50.442117964848876,
+              50.09407503530383,
+              50.34031695686281,
+              50.15435803215951,
+              50.598011002875865,
+              50.422901986166835,
+              50.26602803263813
+            ],
+            "library_inclusive_gpu_ms_median": 2.583908,
+            "wmma_gpu_ms_median": 5.086307048797607,
+            "wmma_gpu_ms_samples": [
+              5.258551120758057,
+              5.112076759338379,
+              5.250696182250977,
+              4.91843318939209,
+              4.866535186767578,
+              5.086307048797607,
+              5.053165912628174
+            ],
+            "wmma_speedup_vs_exact": 9.894950096838224,
+            "wmma_speedup_vs_library_inclusive": 0.5080125865800474,
+            "wmma_wall_ms_median": 5.091098020784557,
+            "wmma_wall_ms_samples": [
+              5.26368198916316,
+              5.117358057759702,
+              5.2557060262188315,
+              4.923832952044904,
+              4.8716559540480375,
+              5.091098020784557,
+              5.058246082626283
+            ]
+          },
+          "swa": {
+            "exact_gpu_ms_median": 72.06639862060547,
+            "exact_gpu_ms_samples": [
+              71.88531494140625,
+              72.97527313232422,
+              72.06639862060547,
+              71.8819351196289,
+              72.31735229492188,
+              71.48799896240234,
+              72.19407653808594
+            ],
+            "exact_wall_ms_median": 72.07195507362485,
+            "exact_wall_ms_samples": [
+              71.89029396977276,
+              72.98059109598398,
+              72.07195507362485,
+              71.88699801918119,
+              72.32240599114448,
+              71.49335904978216,
+              72.19953509047627
+            ],
+            "library_inclusive_gpu_ms_median": 2.981794,
+            "wmma_gpu_ms_median": 6.470426082611084,
+            "wmma_gpu_ms_samples": [
+              6.496915817260742,
+              6.769347190856934,
+              6.247969150543213,
+              6.361180782318115,
+              6.489582061767578,
+              6.470426082611084,
+              6.288084030151367
+            ],
+            "wmma_speedup_vs_exact": 11.137813445435992,
+            "wmma_speedup_vs_library_inclusive": 0.4608342575790191,
+            "wmma_wall_ms_median": 6.475526955910027,
+            "wmma_wall_ms_samples": [
+              6.501695956103504,
+              6.774337962269783,
+              6.253270083107054,
+              6.366040906868875,
+              6.4944729674607515,
+              6.475526955910027,
+              6.292502977885306
+            ]
+          }
+        },
+        "rows": 512
+      },
+      "64": {
+        "families": {
+          "full": {
+            "exact_gpu_ms_median": 6.639895915985107,
+            "exact_gpu_ms_samples": [
+              6.639895915985107,
+              6.630037784576416,
+              6.707823753356934,
+              6.608798980712891,
+              6.733431816101074,
+              6.669551849365234,
+              6.624427795410156
+            ],
+            "exact_wall_ms_median": 6.646196939982474,
+            "exact_wall_ms_samples": [
+              6.646196939982474,
+              6.635055993683636,
+              6.712791975587606,
+              6.613956997171044,
+              6.738370982930064,
+              6.674599950201809,
+              6.62946596276015
+            ],
+            "library_inclusive_gpu_ms_median": 0.714593,
+            "wmma_gpu_ms_median": 1.228945016860962,
+            "wmma_gpu_ms_samples": [
+              1.21664297580719,
+              1.2247780561447144,
+              1.2150399684906006,
+              1.313264012336731,
+              1.510113000869751,
+              1.3277709484100342,
+              1.228945016860962
+            ],
+            "wmma_speedup_vs_exact": 5.402923503400575,
+            "wmma_speedup_vs_library_inclusive": 0.5814686500989705,
+            "wmma_wall_ms_median": 1.2338869273662567,
+            "wmma_wall_ms_samples": [
+              1.2220439966768026,
+              1.229669083841145,
+              1.2202400248497725,
+              1.318285008892417,
+              1.5155150322243571,
+              1.332752057351172,
+              1.2338869273662567
+            ]
+          },
+          "swa": {
+            "exact_gpu_ms_median": 9.61884880065918,
+            "exact_gpu_ms_samples": [
+              9.609992027282715,
+              9.558454513549805,
+              9.535972595214844,
+              9.65395450592041,
+              9.638044357299805,
+              9.669262886047363,
+              9.61884880065918
+            ],
+            "exact_wall_ms_median": 9.623697027564049,
+            "exact_wall_ms_samples": [
+              9.61503095459193,
+              9.5636349869892,
+              9.541262057609856,
+              9.659143048338592,
+              9.643084020353854,
+              9.674823028035462,
+              9.623697027564049
+            ],
+            "library_inclusive_gpu_ms_median": 0.9458,
+            "wmma_gpu_ms_median": 2.0994999408721924,
+            "wmma_gpu_ms_samples": [
+              2.205777883529663,
+              2.00508189201355,
+              2.058582067489624,
+              1.921645998954773,
+              2.0994999408721924,
+              2.147149085998535,
+              2.1760830879211426
+            ],
+            "wmma_speedup_vs_exact": 4.5814951519661555,
+            "wmma_speedup_vs_library_inclusive": 0.45048822416593526,
+            "wmma_wall_ms_median": 2.1045709727331996,
+            "wmma_wall_ms_samples": [
+              2.2107799304649234,
+              2.0102739799767733,
+              2.0635640248656273,
+              1.9267480820417404,
+              2.1045709727331996,
+              2.1537940483540297,
+              2.181023941375315
+            ]
+          }
+        },
+        "rows": 64
+      }
+    }
+  }
+}
