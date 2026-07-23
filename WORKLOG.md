@@ -176007,3 +176007,21 @@ a separate source-bound variant plus fresh standalone-candidate, target-cycle,
 full-category economics, public-route, and lifecycle gates; file availability
 alone does not inherit the b048 claim. This is an artifact/docs audit only, not
 a runtime or performance result.
+
+## 2026-07-23 — Resolve the pre-fix published DFlash GGUF revision
+
+The delayed `bg-39` download supplied
+`poolside/Laguna-S-2.1-GGUF@19bafe9bde46a3c7f9c0b2ef10ecb8a0ef154a1e`.
+Its file is 2,233,764,000 bytes with SHA-256
+`24614292a4477f3ae5203c3875edcde0bc219f02616a9c9f65791e29b18a67ee`.
+Compared its complete 76-tensor payload against the canonical e08 object with
+the torch-free GGUF reader: every tensor and all **1,114,977,792 values are
+byte-exact**. The 224-byte file-size difference is header-only. Commit e08 adds
+four missing keys: `dflash.attention.sliding_window`, its six-layer pattern,
+`dflash.rope.dimension_count`, and `dflash.rope.scaling.type`.
+
+Thus 19bafe does not explain the published-GGUF versus b048 safetensors weight
+drift; both published GGUF revisions carry the same distinct linear weights.
+e08 remains the only canonical input because its DFlash execution metadata is
+complete. Recorded this relationship in `docs/LAGUNA.md`; no runtime, support,
+or benchmark claim changes.
