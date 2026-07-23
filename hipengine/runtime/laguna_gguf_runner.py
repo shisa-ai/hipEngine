@@ -57,6 +57,7 @@ from hipengine.runtime.gguf_linear import GGUF_OUTPUT_F32, launch_gguf_linear
 from hipengine.runtime.laguna_kv import (
     LagunaKVCache,
     allocate_laguna_kv_cache,
+    resolve_laguna_swa_decode_variant,
     resolve_laguna_swa_prefill_variant,
 )
 from hipengine.runtime.laguna_moe import (
@@ -1207,6 +1208,7 @@ class LagunaGGUFResidentSession:
         repacked_cache: LagunaGGUFRepackedCache | str | Path | None = None,
         model_sha256: str | None = None,
         prefill_chunk_size: int = 128,
+        swa_decode_variant: str | None = None,
         swa_prefill_variant: str | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
@@ -1214,6 +1216,10 @@ class LagunaGGUFResidentSession:
         self.backend = resolve_backend(backend)
         self.context_length = int(context_length)
         self.prefill_chunk_size = int(prefill_chunk_size)
+        self.swa_decode_variant = resolve_laguna_swa_decode_variant(
+            self.backend,
+            swa_decode_variant,
+        )
         self.swa_prefill_variant = resolve_laguna_swa_prefill_variant(
             self.backend,
             swa_prefill_variant,
@@ -1313,6 +1319,7 @@ class LagunaGGUFResidentSession:
                 backend=self.backend,
                 device=self.device,
                 runtime=self.runtime,
+                swa_decode_variant=self.swa_decode_variant,
                 swa_prefill_variant=self.swa_prefill_variant,
             )
             self.scratch = LagunaEagerScratch.allocate(config, runtime=self.runtime)

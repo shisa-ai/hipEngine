@@ -778,6 +778,154 @@ __device__ __forceinline__ float laguna_wave32_sum_128_exact(
   return sum;
 }
 
+__global__ __launch_bounds__(128) void laguna_swa_attention_decode_token4_exact_bf16_kernel(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* out,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t capacity,
+    int64_t sliding_window,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale) {
+  const int64_t q_head = static_cast<int64_t>(blockIdx.x);
+  const int64_t dim = static_cast<int64_t>(threadIdx.x);
+  const int64_t lane = dim & 31;
+  const int wave = static_cast<int>(dim >> 5);
+  if (q_head >= num_q_heads || dim >= head_dim) return;
+
+  const int64_t live_count = live_counts[0];
+  const int64_t query_position = row_positions[0];
+  const int64_t q_group = num_q_heads / num_kv_heads;
+  const int64_t kv_head = q_head / q_group;
+  const int64_t q_offset = q_head * head_dim;
+  const int64_t scan_slots = live_count < capacity ? live_count : capacity;
+  if (live_count <= 0 || query_position < 0) {
+    out[q_offset + dim] = 0.0f;
+    return;
+  }
+
+  // One block still owns one query head, so denominator and output additions
+  // remain in baseline logical-slot order. Four waves compute four independent
+  // 128-D dots concurrently with the exact stride64..1 reduction tree. Scores
+  // and physical slots stay in LDS, eliminating the baseline's second K/dot
+  // pass while retaining its BF16 loads and softmax arithmetic boundaries.
+  extern __shared__ uint8_t shared_raw[];
+  float* scores = reinterpret_cast<float*>(shared_raw);
+  int32_t* physical_slots = reinterpret_cast<int32_t*>(scores + capacity);
+  float* batch_weights = reinterpret_cast<float*>(physical_slots + capacity);
+  float* shared_max = batch_weights + 4;
+  float* shared_denom = shared_max + 1;
+
+  float q_values[4];
+#pragma unroll
+  for (int part = 0; part < 4; ++part) {
+    q_values[part] = query[q_offset + lane + part * 32];
+  }
+  if (dim == 0) {
+    *shared_max = -3.4028234663852886e38f;
+    *shared_denom = 0.0f;
+  }
+  __syncthreads();
+
+  for (int64_t slot_base = 0; slot_base < scan_slots; slot_base += 4) {
+    const int64_t logical_slot = slot_base + wave;
+    bool physical_valid = false;
+    int64_t physical_slot = -1;
+    if (logical_slot < scan_slots) {
+      const int64_t key_position = token_positions[logical_slot];
+      const bool visible = evict_mask[logical_slot] == 0 &&
+                           key_position >= 0 &&
+                           key_position <= query_position &&
+                           key_position > query_position - sliding_window;
+      if (visible) {
+        physical_slot = static_cast<int64_t>(base_offsets[logical_slot]);
+        physical_valid = physical_slot >= 0 && physical_slot < capacity;
+      }
+    }
+
+    float products[4] = {};
+    if (physical_valid) {
+      const int64_t key_base =
+          (physical_slot * num_kv_heads + kv_head) * head_dim;
+#pragma unroll
+      for (int part = 0; part < 4; ++part) {
+        const int64_t key_dim = lane + part * 32;
+        products[part] = laguna_ordered_mul_f32(
+            q_values[part],
+            laguna_bf16_bits_to_float(key_cache[key_base + key_dim]));
+      }
+    }
+    const float dot = laguna_wave32_sum_128_exact(
+        products[0], products[1], products[2], products[3]);
+    if (lane == 0 && logical_slot < scan_slots) {
+      // Store the unscaled dot. The baseline max pass rounds ``dot * scale``
+      // independently, while its weight pass may contract ``dot * scale -
+      // max``. Replaying those source expressions below preserves both paths.
+      scores[logical_slot] =
+          physical_valid ? dot : -3.4028234663852886e38f;
+      physical_slots[logical_slot] =
+          physical_valid ? static_cast<int32_t>(physical_slot) : -1;
+    }
+    __syncthreads();
+    if (dim == 0) {
+#pragma unroll
+      for (int item = 0; item < 4; ++item) {
+        const int64_t slot = slot_base + item;
+        if (slot < scan_slots && physical_slots[slot] >= 0) {
+          *shared_max = fmaxf(*shared_max, scores[slot] * scale);
+        }
+      }
+    }
+    __syncthreads();
+  }
+
+  float output_acc = 0.0f;
+  for (int64_t slot_base = 0; slot_base < scan_slots; slot_base += 4) {
+    if (dim == 0) {
+#pragma unroll
+      for (int item = 0; item < 4; ++item) {
+        const int64_t slot = slot_base + item;
+        const float weight =
+            slot < scan_slots && physical_slots[slot] >= 0
+                ? expf(scores[slot] * scale - *shared_max)
+                : 0.0f;
+        batch_weights[item] = weight;
+        if (slot < scan_slots && physical_slots[slot] >= 0) {
+          *shared_denom = laguna_ordered_add_f32(*shared_denom, weight);
+        }
+      }
+    }
+    __syncthreads();
+#pragma unroll
+    for (int item = 0; item < 4; ++item) {
+      const int64_t slot = slot_base + item;
+      if (slot < scan_slots) {
+        const int32_t physical_slot = physical_slots[slot];
+        if (physical_slot >= 0) {
+          const int64_t value_offset =
+              (static_cast<int64_t>(physical_slot) * num_kv_heads + kv_head) *
+                  head_dim +
+              dim;
+          output_acc = fmaf(
+              batch_weights[item],
+              laguna_bf16_bits_to_float(value_cache[value_offset]),
+              output_acc);
+        }
+      }
+    }
+    __syncthreads();
+  }
+
+  out[q_offset + dim] = output_acc / fmaxf(*shared_denom, 1.0e-20f);
+}
+
 __global__ __launch_bounds__(32) void laguna_swa_attention_prefill_wave32_exact_bf16_kernel(
     const float* query,
     const float* current_key,
@@ -1241,6 +1389,55 @@ extern "C" int hipengine_laguna_swa_attention_decode_bf16_spans(
       dim3(static_cast<unsigned int>(num_q_heads)),
       dim3(128),
       0,
+      stream,
+      query,
+      key_cache,
+      value_cache,
+      out,
+      base_offsets,
+      live_counts,
+      token_positions,
+      evict_mask,
+      row_positions,
+      capacity,
+      sliding_window,
+      num_q_heads,
+      num_kv_heads,
+      head_dim,
+      scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_laguna_swa_attention_decode_token4_exact_bf16_spans(
+    const float* query,
+    const uint16_t* key_cache,
+    const uint16_t* value_cache,
+    float* out,
+    const int32_t* base_offsets,
+    const int64_t* live_counts,
+    const int64_t* token_positions,
+    const uint8_t* evict_mask,
+    const int64_t* row_positions,
+    int64_t capacity,
+    int64_t sliding_window,
+    int64_t num_q_heads,
+    int64_t num_kv_heads,
+    int64_t head_dim,
+    float scale,
+    hipStream_t stream) {
+  if (capacity <= 0 || sliding_window <= 0 || sliding_window > capacity ||
+      num_q_heads <= 0 || num_kv_heads <= 0 ||
+      num_q_heads % num_kv_heads != 0 || head_dim != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const size_t shared_bytes =
+      static_cast<size_t>(capacity) * (sizeof(float) + sizeof(int32_t)) +
+      6 * sizeof(float);
+  hipLaunchKernelGGL(
+      laguna_swa_attention_decode_token4_exact_bf16_kernel,
+      dim3(static_cast<unsigned int>(num_q_heads)),
+      dim3(128),
+      shared_bytes,
       stream,
       query,
       key_cache,
