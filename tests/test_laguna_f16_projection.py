@@ -216,26 +216,6 @@ def test_laguna_f16_projection_runtime_forced_bulk_keeps_c1_gemv(monkeypatch) ->
     assert [name for name, _, _ in calls] == ["gemv", "tiled"]
 
 
-def test_laguna_f16_projection_runtime_forced_wmma_uses_measured_m16_threshold(
-    monkeypatch,
-) -> None:
-    from hipengine.runtime.f16_weight_linear import _prefill_strategy
-
-    monkeypatch.setenv("HIPENGINE_LAGUNA_F16_PREFILL", "wmma")
-    assert _prefill_strategy(
-        rows=1, activation_dtype="bf16", backend="hip_gfx1151"
-    ) is None
-    assert _prefill_strategy(
-        rows=15, activation_dtype="bf16", backend="hip_gfx1151"
-    ) == "tiled"
-    assert _prefill_strategy(
-        rows=16, activation_dtype="bf16", backend="hip_gfx1151"
-    ) == "wmma"
-    assert _prefill_strategy(
-        rows=512, activation_dtype="bf16", backend="hip_gfx1151"
-    ) == "wmma"
-
-
 def test_laguna_f16_projection_runtime_auto_uses_measured_gfx1151_threshold(
     monkeypatch,
 ) -> None:

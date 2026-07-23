@@ -1798,6 +1798,19 @@ exactly to zero. This admits the custom leaf to the complete model quality
 lane; it does not change the runtime route or model-throughput headline.
 [Source-F16 WMMA screen](results/2026-07-23-gfx1151-laguna-f16-wmma-screen.json).
 
+The complete AR-O2 model gate rejects that direct-resident WMMA schedule despite
+its wall win. Across three counterbalanced repetitions of all ten canonical
+prompts, tiled -> WMMA moves weighted prefill **53.447 -> 73.637 tok/s
+(+37.776%)**, TTFT **1.3651x** faster, and h16/h32 E2E **+21.289%/+14.439%**;
+every category improves and decode stays within 0.04%. However, maximum
+teacher-forced KL is **0.097062** (>0.05), even though suite top-1 is **317/320
+(99.06%)** and each category remains above 90%. Three prompt trajectories differ
+in all repetitions. The Poolside first-token oracle passes and tracked ownership
+returns exactly to zero. Exact tiled therefore remains the gfx1151 default; the
+runtime/category selector is removed and the independently tested WMMA leaf
+remains diagnostic only.
+[Rejected source-F16 WMMA category gate](results/2026-07-23-gfx1151-laguna-f16-wmma-category-rejected.json).
+
 A matched Poolside llama.cpp `04b2b72c` control now uses the identical Laguna
 Q4_K_M model hash, deterministic token stream, BF16 KV, and 128-row microbatch.
 Three alternating native `prompt_ms` samples measure

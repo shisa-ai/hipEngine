@@ -639,8 +639,6 @@ class LagunaEagerLibraries:
             "fp16_weight": self.f16_projection,
             "fp16_weight:tiled_bf16_f32_out": self.f16_projection_prefill,
             "fp16_weight:tiled_bf16_bf16_out": self.f16_projection_prefill,
-            "fp16_weight:wmma_bf16_f32_out": self.f16_projection_prefill,
-            "fp16_weight:wmma_bf16_bf16_out": self.f16_projection_prefill,
         }
 
     @property
