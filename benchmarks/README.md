@@ -3,6 +3,8 @@
 Last reviewed: **2026-07-23**
 
 Latest retained hipEngine revisions in this scoreboard:
+`6ba1ddec95e224c1cc337c69ac2c4ea611ff0472` for the first W7900 Laguna S 2.1
+UD-Q2_K_XL B4 DFlash decode win,
 `09cca232f49e73f68fd09d4ace8509fa3201681e` for the first W7900 Laguna S 2.1
 UD-Q2_K_XL target-only AR baseline,
 `7ded0d5f42b107d3bf10f1d096f8a93ae194be9b` for the current Laguna S 2.1
@@ -1214,8 +1216,54 @@ HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=
 ```
 
 No Q2-to-Q4 speed ratio is claimed: the retained Q4_K_M controls use a
-different tensor recipe on gfx1151. Matched Q2 XL DFlash compatibility and
-economics are a separate gate.
+different tensor recipe on gfx1151.
+
+#### Laguna Q2 XL B4 DFlash decode
+
+**Status: retained decode win, explicit-only because fixed-32 E2E regresses.**
+The clean `6ba1ddec95e224c1cc337c69ac2c4ea611ff0472` run uses the same ten
+prompts, categories/heldouts, 128-row chunks, two balanced repetitions, and 32
+visible outputs as the Q4 DFlash protocol. It pairs the pinned Q2 XL target with
+`poolside/Laguna-S-2.1-DFlash@b0486d1` (BF16 safetensors SHA-256
+`f24f08781c697c19952c02fb2e7e9bdf2071b79a711c2a44b836a74b9b62a1f4`)
+and alternates true AR/DFlash in one resident process.
+
+| Route | Prefill tok/s | Median TTFT | Decode tok/s | E2E output tok/s |
+| --- | ---: | ---: | ---: | ---: |
+| True AR | 40.140 | 2.019 s | 19.596 | 8.569 |
+| B4 DFlash | 20.477 | 3.929 s | **29.452** | 6.070 |
+| DFlash / AR | **0.5101x** | **1.9462x wall** | **1.5030x (+50.30%)** | **0.7084x (-29.16%)** |
+
+The decode promotion gate passes: heldout is **1.3125x**, while
+`code/general_en/general_ja/mixed_ja_en` are
+**2.1039/1.1699/1.5722/1.1414x**. One low-density prompt,
+`mixed_ja_en_review`, is individually `0.9755x`, but its complete category and
+the heldout aggregate remain positive. Draft acceptance is **422/872 (48.39%)**
+over 218 cycles, with **1.7581 target rows/output**. Proposal, target verify,
+and post-verify residual total **2.676/18.003/0.370 s**.
+
+All 20 AR/DFlash pairs are exact, finite, target/drafter-state aligned, and
+repeat-deterministic; the Q2 Poolside KL/top-1 gate and lifecycle pass. Combined
+target+drafter residency is **42,369,140,733 bytes** and peak tracked ownership
+is **42,369,361,917 bytes (39.460 GiB)**; close returns to zero. A cached
+single-cycle dispatch trace confirms Q5 embedding, Q5/Q6/Q8 and IQ target
+families, B+1 rowtiles, BF16/F32 DFlash WMMA projections, norm/rope/Silu,
+`dflash_accept_chain_i32_kernel`, and top-k. Trace SHA-256 is
+`39279fe9bcee683af3751a81e6715b6881536503140dbb293a30129aafbd8d5f`.
+[Compact artifact](results/2026-07-23-gfx1100-laguna-q2-xl-dflash-b4.json).
+
+The result is retained as a **decode** performance win, not a default-route or
+fixed-32 E2E win. DFlash still seeds target captures serially, halving prefill
+throughput and making h32 E2E 29.16% slower. A stationary phase-rate estimate
+crosses AR near 122 outputs, but that is inferred rather than measured; a full
+long-horizon category/public-route gate is required before any routing
+threshold or default promotion.
+
+Exact benchmark command:
+
+```bash
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run python -u scripts/laguna_dflash_category_bench.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf /models/hipengine/Laguna-S-2.1-DFlash --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --template tests/fixtures/laguna_poolside_v1_template.json --oracle tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json --oracle-logprobs tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --candidate-budget 4 --output-tokens 32 --repetitions 2 --warmup-output-tokens 6 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --drafter-sha256 f24f08781c697c19952c02fb2e7e9bdf2071b79a711c2a44b836a74b9b62a1f4 --drafter-revision b0486d1586daa0d56435c508108171fc1c8daff9 --output /tmp/laguna-q2-xl-dflash-category.json
+```
 
 ### gfx1151 Laguna S 2.1 target AR, DFlash, and cold startup, 2026-07-23
 
