@@ -2565,9 +2565,12 @@ Proceed in measured Amdahl order:
 4. **DONE:** reprofile at 512/1K/near-4K after D3; SWA is now 41.71-58.99%
    of kernel sum and remains the mandatory next target, while near-4K global
    attention remains 22.638 ms/token;
-5. build token/score-parallel or split/online SWA while preserving
-   `KVLiveSpans`, wrap, eviction, and exact reduction boundaries; and
-6. admit Laguna-specific one-step graph replay only after kernel work. D3's
+5. **PARTIAL:** token4 score-parallel SWA preserves `KVLiveSpans`, wrap,
+   eviction, and exact reduction/softmax boundaries; dirty full-model screens
+   cut SWA 50.22% short and 52.83% at 512, so gfx1100 selects it pending clean
+   traces and the canonical category gate;
+6. complete that clean D4 decision, then address near-4K global attention; and
+7. admit Laguna-specific one-step graph replay only after kernel work. D3's
    decode span still exceeds kernel sum by **4.15 ms**, so submission remains
    material but trails SWA plus the dense/selected matrix families in Amdahl
    order.

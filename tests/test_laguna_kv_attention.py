@@ -265,6 +265,7 @@ def _production_config() -> SimpleNamespace:
 def test_laguna_kv_owner_allocates_12_global_36_bounded_rings_and_tears_down() -> None:
     from hipengine.runtime.laguna_kv import (
         allocate_laguna_kv_cache,
+        resolve_laguna_swa_decode_variant,
         resolve_laguna_swa_prefill_variant,
     )
 
@@ -294,6 +295,11 @@ def test_laguna_kv_owner_allocates_12_global_36_bounded_rings_and_tears_down() -
     assert all(layer.spans.token_positions is not None for layer in cache.layers)
     assert all(layer.spans.evict_mask is not None for layer in cache.layers)
     assert all(
+        layer.attention_variant == "swa_context_spans"
+        for layer in cache.layers
+        if layer.attention_type == SLIDING_ATTENTION
+    )
+    assert all(
         layer.attention_prefill_variant == "swa_context_rows_wave32_exact_spans"
         for layer in cache.layers
         if layer.attention_type == SLIDING_ATTENTION
@@ -302,6 +308,15 @@ def test_laguna_kv_owner_allocates_12_global_36_bounded_rings_and_tears_down() -
     assert (
         resolve_laguna_swa_prefill_variant("hip_gfx1151")
         == "swa_context_rows_wave32_exact_spans"
+    )
+    assert (
+        resolve_laguna_swa_decode_variant("hip_gfx1100")
+        == "swa_context_token4_exact_spans"
+    )
+    assert resolve_laguna_swa_decode_variant("hip_gfx1151") == "swa_context_spans"
+    assert (
+        resolve_laguna_swa_decode_variant("hip_gfx1100", "swa_context_spans")
+        == "swa_context_spans"
     )
     assert resolve_laguna_swa_prefill_variant("hip_gfx1100") == "swa_context_rows_spans"
     assert (
