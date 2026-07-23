@@ -1321,12 +1321,17 @@ tok/s** h32 headline with every category's decode/E2E positive and all
 correctness/lifecycle gates passing. [D3 retained
 artifact](results/2026-07-23-gfx1100-laguna-q2-xl-iq3-weighted-down-retained.json).
 
-A clean context extension from D0 keeps dense Q5 fixed at **27.3-27.4 ms/token**, but
-SWA grows from **4.237 ms** short to **27.823/27.903/27.927 ms** at
-512/1K/near-4K, and global attention grows to **2.988/5.922/22.713 ms**.
-Profiled child wall is **12.589/12.072/10.076 tok/s** at those three shapes.
-These are profiler diagnostics over a deterministic extended token stream, not
-retained public throughput rows. [Context D0 artifact](results/2026-07-23-gfx1100-laguna-q2-xl-decode-context-profile.json).
+A clean D3 context extension confirms the changed Amdahl order. At
+512/1K/near-4K, stable kernel sum is **47.088/50.102/66.900 ms/token**, median
+dispatch span is **51.450/54.520/71.395 ms**, and profiled child throughput is
+**18.476/17.418/13.485 tok/s**. Versus the frozen D0 context trace, child
+throughput improves **46.76%/44.29%/33.84%**, primarily because dense Q5 falls
+about 74% to **7.12 ms/token**. SWA is unchanged at **27.776/27.846/27.901 ms**
+and now consumes **58.99%/55.58%/41.71%** of kernel sum; global attention is
+**2.976/5.885/22.638 ms**. These are profiler diagnostics over a deterministic
+extended token stream, not retained public throughput rows. [Current D3 context
+artifact](results/2026-07-23-gfx1100-laguna-q2-xl-decode-context-d3-profile.json);
+[frozen D0 context artifact](results/2026-07-23-gfx1100-laguna-q2-xl-decode-context-profile.json).
 
 No Q2-to-Q4 speed ratio is claimed: the retained Q4_K_M controls use a
 different tensor recipe on gfx1151.

@@ -1,0 +1,159 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_q2_xl_decode_context_profile",
+  "date": "2026-07-23",
+  "status": "accepted_diagnostic_profile",
+  "pass": true,
+  "performance_claim": false,
+  "purpose": "Current D3 Laguna UD-Q2_K_XL W7900 c=1 decode attribution at 512, 1K, and near-4K after exact dense decode, IQ3 K1024 local128, and IQ3 routing-weighted down.",
+  "provenance": {
+    "hipengine_commit": "44b6719e0",
+    "branch": "main",
+    "tracked_clean": true,
+    "command_template": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace -f csv -d /tmp/laguna-q2-xl-d3-context-fe89c210c-l{L} -o laguna-q2-xl-d3-l{L}-d8 -- uv run python -u /tmp/laguna_decode_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id mixed_ja_en_review --prompt-length {L} --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 8 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --output /tmp/laguna-q2-xl-d3-context-fe89c210c-l{L}/bench.json",
+    "length_values": [512, 1024, 3968],
+    "child_script_sha256": "ab9e7b87b540e97c7fb9511610352f64242cf78285183e5a4b0ed511281a6b95",
+    "compiler_version_sha256": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394",
+    "require_cached_build": true,
+    "prebuilt_outside_profiler": true,
+    "analysis_sha256": "da449a2c9a05e7722b4efe4223921ddd229a2e07f68c0cab8d7df23ecc4a8dd1"
+  },
+  "model": {
+    "id": "poolside/Laguna-S-2.1-UD-Q2_K_XL",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "quant": "UD-Q2_K_XL",
+    "kv_dtype": "bf16"
+  },
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "visible_device": 0,
+    "gpu_max_hw_queues": 1
+  },
+  "workload": {
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "shape_source_prompt": "mixed_ja_en_review",
+    "token_extension": "repeat_without_leading_bos",
+    "prefill_route": "bulk_exact_chunk128",
+    "prompt_lengths": [512, 1024, 3968],
+    "decode_steps_per_length": 8,
+    "discarded_warmup_steps": 2,
+    "stable_steps": 6,
+    "context_capacity": 4096
+  },
+  "baseline": {
+    "artifact": "benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-decode-context-profile.json",
+    "revision": "b4973769a230dc1a5a9c3a59b3f5233ebfc5f61d",
+    "label": "D0 generic dense decode plus unfused IQ3 down"
+  },
+  "contexts": [
+    {
+      "prompt_tokens": 512,
+      "dispatches_per_token": 1010,
+      "kernel_sum_ms_per_token": 47.087808833333334,
+      "dispatch_span_median_ms": 51.449582,
+      "span_minus_sum_median_ms": 4.3789665,
+      "profiled_child_wall_median_ms": 54.1240755119361,
+      "profiled_child_tok_s": 18.476066159863883,
+      "families_ms_per_token": {
+        "swa_attention_decode": 27.7759925,
+        "dense_q5": 7.123067666666667,
+        "global_attention_decode": 2.9755835,
+        "selected_iq2_dual_silu": 2.2837181666666666,
+        "selected_iq3_weighted_down": 2.1128616666666664,
+        "dense_q6": 2.035522666666667,
+        "other": 2.38868
+      },
+      "vs_d0_pct": {
+        "kernel_sum": -33.38441575310288,
+        "dispatch_span": -32.68731294165805,
+        "profiled_child_wall": -31.86108565387753,
+        "profiled_child_tok_s": 46.75901569554524,
+        "dense_q5": -73.92496694680213,
+        "swa_attention": -0.16882397134462268,
+        "global_attention": -0.41326804104734327
+      },
+      "trace_sha256": "e3cb02273eaf795493b79e7b31fc77a1ca2eb4e5b2c1f7e264ab7a4228aee02a",
+      "bench_sha256": "52ec5178b8f67aa64b692888f3c3119ae7072c4c638ce58aae0fcaf857cc8dbc"
+    },
+    {
+      "prompt_tokens": 1024,
+      "dispatches_per_token": 1010,
+      "kernel_sum_ms_per_token": 50.1015645,
+      "dispatch_span_median_ms": 54.519597,
+      "span_minus_sum_median_ms": 4.421826,
+      "profiled_child_wall_median_ms": 57.41327948635444,
+      "profiled_child_tok_s": 17.41757323299521,
+      "families_ms_per_token": {
+        "swa_attention_decode": 27.84642566666667,
+        "dense_q5": 7.131104666666667,
+        "global_attention_decode": 5.885086666666667,
+        "selected_iq2_dual_silu": 2.2899813333333334,
+        "selected_iq3_weighted_down": 2.1213366666666666,
+        "dense_q6": 2.0341805,
+        "other": 2.4007118333333333
+      },
+      "vs_d0_pct": {
+        "kernel_sum": -32.246642863442254,
+        "dispatch_span": -31.956802534161078,
+        "profiled_child_wall": -30.692832627697232,
+        "profiled_child_tok_s": 44.28522155987436,
+        "dense_q5": -73.99637531104327,
+        "swa_attention": -0.20399166343711972,
+        "global_attention": -0.6258509190763206
+      },
+      "trace_sha256": "beae6e66d6ce7443b7863ffb4697e451a3b44302aa410e645598afc6f9f1f29e",
+      "bench_sha256": "295c90ce5d4f6ab998afe1db0dfd7255a1c3961d9539eef110c8a4fa4dc93d76"
+    },
+    {
+      "prompt_tokens": 3968,
+      "dispatches_per_token": 1010,
+      "kernel_sum_ms_per_token": 66.90009433333334,
+      "dispatch_span_median_ms": 71.3951845,
+      "span_minus_sum_median_ms": 4.5086465,
+      "profiled_child_wall_median_ms": 74.15584300179034,
+      "profiled_child_tok_s": 13.485114045239253,
+      "families_ms_per_token": {
+        "swa_attention_decode": 27.9007315,
+        "global_attention_decode": 22.63803833333333,
+        "dense_q5": 7.1163058333333336,
+        "selected_iq2_dual_silu": 2.2913545,
+        "selected_iq3_weighted_down": 2.0978673333333333,
+        "dense_q6": 2.0326566666666667,
+        "other": 2.4307288333333337
+      },
+      "vs_d0_pct": {
+        "kernel_sum": -26.16317466556508,
+        "dispatch_span": -26.010107618095503,
+        "profiled_child_wall": -25.282474009647295,
+        "profiled_child_tok_s": 33.83740785650706,
+        "dense_q5": -74.02909967357789,
+        "swa_attention": -0.09424017216284053,
+        "global_attention": -0.3315649482965366
+      },
+      "trace_sha256": "8659d71d253689f8f4137f7cea74f5e6a6bbe5e657efcba429c5edae13735143",
+      "bench_sha256": "3d0906395cf3b6e43bff249a8ce886b0118af112cde2010fc1527d51f2b40ddd"
+    }
+  ],
+  "analysis": {
+    "current_regime_order": {
+      "512": ["swa_attention_decode", "dense_q5", "global_attention_decode", "selected_iq2_dual_silu", "selected_iq3_weighted_down"],
+      "1024": ["swa_attention_decode", "dense_q5", "global_attention_decode", "selected_iq2_dual_silu", "selected_iq3_weighted_down"],
+      "3968": ["swa_attention_decode", "global_attention_decode", "dense_q5", "selected_iq2_dual_silu", "selected_iq3_weighted_down"]
+    },
+    "swa_share_pct": {
+      "512": 58.988,
+      "1024": 55.580,
+      "3968": 41.705
+    },
+    "conclusion": "Exact dense/IQ3 work raises profiled D3 throughput 46.76%/44.29%/33.84% versus D0 at 512/1K/near-4K, but leaves SWA unchanged near 27.8-27.9 ms/token. SWA is now the mandatory next 512+ target; near-4K additionally requires global attention. Direct wave32/two-wave remaps are already rejected, so the next SWA design must add token/score parallelism or online/split reduction while preserving KVLiveSpans and wrap/eviction exactness."
+  },
+  "correctness": {
+    "all_generated_ids_finite": true,
+    "all_final_logits_finite": true,
+    "all_lifecycle_exact": true,
+    "all_dispatches_classified": true,
+    "all_decode_scratch_zero": true
+  }
+}
