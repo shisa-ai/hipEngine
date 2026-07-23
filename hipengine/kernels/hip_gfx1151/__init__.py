@@ -43,6 +43,11 @@ LAGUNA_F16_PREFILL_MIN_ROWS = 16
 # projection/MoE transactions while attention remains independently tiled at 128.
 # Other backends retain the 128-row runtime fallback until measured independently.
 LAGUNA_PREFILL_MATRIX_ROWS = 512
+# Clean AR-O5 repeated 512/1K/4K and complete ten-prompt category quality gates
+# admit online-softmax K/V reuse across adjacent query rows on all full-attention
+# prefill shapes. Exact global prefill remains the explicit rollback and every
+# unmeasured backend retains its prior default.
+LAGUNA_GLOBAL_PREFILL_VARIANT = "global_context_rows_qrow2_online_spans"
 # Clean AR-O5 repeated 512/1K/4K full-state and ten-prompt category gates admit
 # two-query-row reuse only for complete M128 attention tiles with >=128 prior
 # tokens. The policy delegates short/partial/empty-context rows to exact wave32;
@@ -263,6 +268,7 @@ __all__ = [
     "GGUF_ROUTER_F32_BF16_HIDDEN_THREADS",
     "LAGUNA_F16_PREFILL_MIN_ROWS",
     "LAGUNA_F16_PREFILL_STRATEGY",
+    "LAGUNA_GLOBAL_PREFILL_VARIANT",
     "LAGUNA_PREFILL_MATRIX_ROWS",
     "LAGUNA_SELECTED_DOWN_MODE",
     "LAGUNA_SWA_PREFILL_VARIANT",
