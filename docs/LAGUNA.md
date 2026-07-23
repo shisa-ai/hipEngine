@@ -2800,10 +2800,11 @@ Proceed in measured Amdahl order:
    query/gate, token4 SWA, and weighted IQ3 rank at
    **2.659/2.358/2.189/2.153/2.131 ms/token**, while SWA dominates from 512
    tokens and near-4K remains global-attention led; and
-16. **SELECTED (D10):** screen an exact local256 token8 SWA sibling. It halves
-   score/value loop batches and modeled block barriers without changing K/V
-   loads or arithmetic order. Task #283 implements/gates it and task #284 owns
-   clean context/category retention.
+16. **CORRECTNESS-ADMITTED (D10):** exact local256 token8 SWA preserves all
+   output bits/state, improves actual 80/512-token leaves **9.31%/6.10%**, and
+   reduces dirty short full-model SWA/span **13.10%/1.65%**. gfx1100 defaults
+   the candidate with explicit token4 rollback; task #284 owns clean
+   context/category retention.
 
 **50 tok/s is a credible W7900 target, not a current claim.** D9 must reduce the
 canonical **21.217 ms to 20 ms**, another **1.217 ms / 5.74% wall** or **6.08%
@@ -3157,8 +3158,36 @@ scratch, and faster cached actual short plus full-window leaves. Promotion then
 requires clean short/512/1K/near-4K kernel-sum/span wins and the complete
 category/state/KV/lifecycle gate. Do not widen to local512 token16 unless
 token8 is exact and positive but leaves a measured synchronization share;
-barrier arithmetic alone does not admit a larger block. Evidence:
+barrier arithmetic alone does not admit a larger block. Design evidence:
 `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d9-residual-profile.json`.
+
+Task #283 implements D10 as the gfx1100 candidate default while retaining
+explicit token4 and baseline registry fallbacks. The focused 69-test bundle is
+GREEN. Token4/token8 F32 output bits match at empty, short, adversarial,
+full-window, 510..513 wrap, repeated 1024/1025 wrap, reversed physical offsets,
+and explicit eviction; gfx1151 remains baseline. A 72-query-head production
+shape micro with reversed offsets, 20 warmups, 200 event-timed launches, and 15
+counterbalanced repetitions improves token4 -> token8 median
+**21.396 -> 19.405 us (-9.31%)** at 80 tokens and
+**169.465 -> 159.121 us (-6.10%)** at 512, with exact output and lifecycle.
+
+The shared-weight Q2 XL gate compares token4 and token8 through bulk prefill,
+all 48 post-layer hidden rows, 16 decode steps, reset/re-prefill, full logits,
+argmax ID/value bits, final/post-layer hidden, complete K/V plus every live-span
+field, and host/device cursors. Everything is exact and tracked ownership
+returns **40,455,911,848 bytes / 1,496 allocations** to zero. The dirty
+counterbalanced wall median improves **19.670 -> 19.381 ms/token (-1.465%)**.
+
+Matched cached dirty tracing names exactly 36 token8 calls at
+local256/VGPR24/SGPR128/static-LDS0/scratch0 (4,136 B launch-time dynamic LDS).
+Token4 -> token8 SWA falls **2.144 -> 1.863 ms/token (-13.10%)**, complete kernel
+sum **17.229 -> 16.969 ms (-1.513%)**, median span
+**20.323 -> 19.988 ms (-1.651%)**, and profiled child throughput rises
+**2.026%**. IDs, finite output, and lifecycle match. This is correctness and
+dirty execution admission, not retained throughput; task #284 must run clean
+short/512/1K/near-4K profiles and the complete category gate, and must remove
+token8/restore token4 on any failure. Evidence:
+`benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d10-swa-token8-correctness.json`.
 
 ## Laguna DFlash Follow-on Plan
 
