@@ -175590,3 +175590,38 @@ uvx ruff check hipengine/kernels/hip_gfx1151/__init__.py \
   tests/test_laguna_gguf_runner.py
 # clean
 ```
+
+## 2026-07-23 — Reject LPF-5 global pair and close LPF-6
+
+After promoting SWA, tested the strongest exact incremental global-attention
+follow-up before considering a reassociated Flash route. The candidate paired
+adjacent query heads inside each six-head GQA group, preserved each head's
+baseline score/max/denominator/value order, and reused every K/V load. The
+508..515 full-model fixture was byte-exact to baseline and scalar attention.
+
+The production-shaped 4K leaf used 3,968 committed prior rows, 128 current rows,
+48 Q / 8 KV heads, dim 128, two warmups, and eight alternating repetitions:
+
+```bash
+env HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
+  uv run python /tmp/laguna_global_pair_micro.py
+```
+
+Baseline samples span **85.368-87.110 ms** with **86.429 ms** median. Pair-exact
+spans **124.371-125.901 ms** with **125.319 ms** median: **0.6897x / +45.00%**.
+Halving per-head token parallelism costs more than shared K/V saves. Removed the
+kernel, export, wrapper, registry key, selector, and fixture extension before
+commit. Patch SHA-256 was `d289cf99...f7d8bf2`; compact rejection artifact:
+`benchmarks/results/2026-07-23-gfx1151-laguna-prefill-lpf5-global-pair-rejected.json`.
+
+A Flash/AOTriton adapter remains a qualitatively larger, reassociated path and
+is deferred until supported contexts exceed 4K or a future profile makes global
+attention dominant enough to justify a new oracle surface. LPF-5 is closed for
+the current scope with wave32 SWA retained.
+
+LPF-6 is closed without code. The clean 4K profile has only **0.302 s / 0.25%**
+kernel-span-minus-sum across 35,233 dispatches; the 128-row LPF-0 trace has
+about **5.6 ms / 0.10%** residual per complete pass. Graph/submission/metadata
+work therefore has a sub-percent c=1 ceiling after LPF-1/4/5. Packed prefill is
+a separate c>N serving scope. No temporary selector or runtime path remains.

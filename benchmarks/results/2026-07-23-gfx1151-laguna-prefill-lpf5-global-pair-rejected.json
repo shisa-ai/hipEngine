@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-23T10:12:00Z",
+  "kind": "hipengine_laguna_prefill_lpf5_global_pair_micro",
+  "status": "rejected",
+  "pass": false,
+  "performance_claim": false,
+  "scope": "production-shaped Laguna global-attention prefill leaf screen",
+  "repo": {
+    "candidate_base_revision": "667177484bbdd16e984b0345549d5cc34bdde5b8",
+    "candidate_source_committed": false,
+    "candidate_patch_sha256": "d289cf998137d2a7556fed9167f11413820b8568ab598fde11f9109d7f7d8bf2",
+    "candidate_removed_after_rejection": true
+  },
+  "platform": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151"
+  },
+  "workload": {
+    "model": "kernel-only synthetic Laguna S 2.1 production shape",
+    "quant": "BF16 KV with FP32 Q/K/V staging",
+    "random_seed": 987,
+    "context_capacity": 4096,
+    "prior_tokens": 3968,
+    "current_rows": 128,
+    "query_heads": 48,
+    "kv_heads": 8,
+    "head_dim": 128,
+    "global_layers_represented": 1,
+    "warmups_per_route": 2,
+    "repetitions": 8,
+    "order": "alternating baseline/pair-exact and reversed next repetition"
+  },
+  "routes": {
+    "baseline": {
+      "kernel": "laguna_global_attention_prefill_bf16_kernel",
+      "samples_seconds": [
+        0.08596886694431305,
+        0.0865857150638476,
+        0.08710979798343033,
+        0.08615823311265558,
+        0.08664140896871686,
+        0.08536848006770015,
+        0.0862879860214889,
+        0.08657060691621155
+      ],
+      "median_seconds": 0.08642929646885023
+    },
+    "pair_exact": {
+      "kernel": "laguna_global_attention_prefill_pair_exact_bf16_kernel",
+      "samples_seconds": [
+        0.12466673005837947,
+        0.12437088508158922,
+        0.1254051059950143,
+        0.12590060709044337,
+        0.12476516491733491,
+        0.12537280493415892,
+        0.12530350498855114,
+        0.12533540499862283
+      ],
+      "median_seconds": 0.125319454993587
+    }
+  },
+  "comparison": {
+    "pair_vs_baseline_speedup": 0.6896718188989339,
+    "pair_regression_percent": 44.99515565118439,
+    "decision": "reject_and_remove"
+  },
+  "correctness": {
+    "pass": true,
+    "output_array_equal": true,
+    "max_abs": 0.0,
+    "complete_kvlivespans": true
+  },
+  "command": [
+    "env",
+    "HIPENGINE_HIP_ARCH=gfx1151",
+    "GPU_MAX_HW_QUEUES=1",
+    "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt",
+    "uv",
+    "run",
+    "python",
+    "/tmp/laguna_global_pair_micro.py"
+  ],
+  "notes": [
+    "The candidate paired adjacent query heads within each six-head GQA group and reused K/V loads while preserving each head's baseline reduction order.",
+    "Halving per-head token parallelism outweighed K/V reuse; no full-model or profiler run was warranted.",
+    "Kernel body, export, wrapper, registry key, runtime selector, and fixture extension were removed before commit."
+  ]
+}

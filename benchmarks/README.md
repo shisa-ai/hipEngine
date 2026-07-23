@@ -1215,6 +1215,13 @@ reproduced **1.082/1.128/1.140x** before a post-timing harness failure. gfx1151
 therefore defaults to wave32 exact; explicit baseline and unmeasured-backend
 fallback remain. [Retained LPF-5 SWA gate](results/2026-07-23-gfx1151-laguna-prefill-lpf5-swa-wave32.json).
 
+The exact adjacent-head global-attention follow-up is rejected: at the
+3,968-prior + 128-current 4K leaf it moves **86.429 -> 125.319 ms (+45.00%)**
+despite byte-exact output, so all candidate code was removed. LPF-6 submission/
+graph work is deferred because the clean 4K kernel span minus sum is only
+**0.302 s / 0.25%** across 35,233 dispatches; packed prefill is a separate c>N
+serving scope. [Rejected global-pair artifact](results/2026-07-23-gfx1151-laguna-prefill-lpf5-global-pair-rejected.json).
+
 The matched clean Poolside llama.cpp `04b2b72c` raw-token diagnostic reports
 70.463/70.451 prompt tok/s and 19.063/18.882 native predicted tok/s at h16/h32,
 with 29.658 s readiness, 76.10 GB sampled GTT, and 1.11 GB sampled RSS. It is
