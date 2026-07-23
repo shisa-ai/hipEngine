@@ -1,0 +1,157 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_q2_xl_d5_residual_profile",
+  "date": "2026-07-23",
+  "status": "diagnostic_next_candidate",
+  "pass": true,
+  "performance_claim": false,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "rocm": "HIP 7.2.53211-3d9ef42",
+    "hipcc": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e"
+  },
+  "model": {
+    "id": "poolside/Laguna-S-2.1-UD-Q2_K_XL",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "kv_dtype": "bf16",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "source": {
+    "revision": "35b1602e50c3234f7676dea5c62a802f99a67a8e",
+    "tracked_clean": true,
+    "baseline_artifact": "benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-q5-shared-pair-retained.json",
+    "prompt_id": "code_merge_intervals",
+    "prompt_tokens": 69,
+    "decode_steps": 16,
+    "warmup_steps_excluded": 2,
+    "stable_steps": 14,
+    "dispatches_per_token": 964,
+    "kernel_sum_ms_per_token": 18.260269714285712,
+    "span_median_ms_per_token": 21.9805215,
+    "span_minus_sum_mean_ms_per_token": 3.738207357142857,
+    "profiled_child_median_tok_s": 41.20119014021344,
+    "trace_sha256": "37c64ed23df37c35eee5ba76083361b95f19b16241b7a2fcee74f1f4359db0f8",
+    "bench_sha256": "4a6149567eacee57ef5a509da4cb39fa3dcf3c95eb14779927712d931ae7ec22",
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q2-xl-q5-pair-profile-35b1602e5-short --output-file epyc -- .venv/bin/python -u /tmp/laguna_decode_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id code_merge_intervals --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 16 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --output /tmp/laguna-q2-xl-q5-pair-profile-35b1602e5-short/bench.json"
+  },
+  "families": [
+    {
+      "family": "dense_q5_bf16_out",
+      "ms_per_token": 2.7438016428571426,
+      "kernel_sum_share_pct": 15.026074016368776,
+      "calls_per_token": 49,
+      "scope": "47 attention-output projections plus layer-0 dense gate/up"
+    },
+    {
+      "family": "dense_q5_f32_out",
+      "ms_per_token": 2.7320540714285717,
+      "kernel_sum_share_pct": 14.961739964285304,
+      "calls_per_token": 94,
+      "scope": "47 attention query projections plus their 47 same-input attention gates"
+    },
+    {
+      "family": "selected_iq2_dual_silu",
+      "ms_per_token": 2.3001718571428573,
+      "kernel_sum_share_pct": 12.596593002913552,
+      "calls_per_token": 46
+    },
+    {
+      "family": "swa_attention_decode",
+      "ms_per_token": 2.120490785714286,
+      "kernel_sum_share_pct": 11.612592907405656,
+      "calls_per_token": 36
+    },
+    {
+      "family": "selected_iq3_weighted_down",
+      "ms_per_token": 2.093421928571429,
+      "kernel_sum_share_pct": 11.46435382021583,
+      "calls_per_token": 45
+    },
+    {
+      "family": "dense_q6_f32_out",
+      "ms_per_token": 1.4699045,
+      "kernel_sum_share_pct": 8.049741449602122,
+      "calls_per_token": 96
+    },
+    {
+      "family": "dense_q5_shared_pair",
+      "ms_per_token": 0.8901234285714286,
+      "kernel_sum_share_pct": 4.874645569309695,
+      "calls_per_token": 46
+    },
+    {
+      "family": "dense_q6_bf16_out",
+      "ms_per_token": 0.5892357857142857,
+      "kernel_sum_share_pct": 3.2268733974575623,
+      "calls_per_token": 50
+    },
+    {
+      "family": "global_attention_decode",
+      "ms_per_token": 0.5113670714285714,
+      "kernel_sum_share_pct": 2.800435477842418,
+      "calls_per_token": 12
+    },
+    {
+      "family": "all_other",
+      "ms_per_token": 2.809698642857141,
+      "kernel_sum_share_pct": 15.386950394599083,
+      "calls_per_token": 490
+    }
+  ],
+  "attention_q_gate_split": {
+    "same_input_pairs_per_token": 47,
+    "baseline_launches_per_token": 94,
+    "candidate_launches_per_token": 47,
+    "launches_removed_per_token": 47,
+    "swa": {
+      "layers": 35,
+      "query_shape": [9216, 3072],
+      "gate_shape": [72, 3072],
+      "query_ms_per_token": 1.7462737857142856,
+      "gate_ms_per_token": 0.4454524285714286
+    },
+    "global": {
+      "layers": 12,
+      "query_shape": [6144, 3072],
+      "gate_shape": [48, 3072],
+      "query_ms_per_token": 0.3874665,
+      "gate_ms_per_token": 0.15286135714285712
+    },
+    "query_total_ms_per_token": 2.133740285714286,
+    "gate_total_ms_per_token": 0.5983137857142857,
+    "query_encoded_weight_bytes_per_token": 836960256,
+    "gate_encoded_weight_bytes_per_token": 6538752,
+    "query_encoded_weight_proxy_gb_s": 392.25029475404085,
+    "gate_encoded_weight_proxy_gb_s": 10.928633362832905
+  },
+  "selected_candidate": {
+    "name": "exact_q5_attention_query_gate_pair_dispatch",
+    "registry_key": [
+      "hip_gfx1100",
+      "linear_pair",
+      "gguf_q5_k",
+      "pack8_gemv_decode_bf16_f32_f32_out"
+    ],
+    "scope": "47 rows=1 same-input Q5_K attention query/gate pairs with K3072 and unequal output widths",
+    "design": "one flattened pack grid maps each workgroup to either the query or gate tensor, invokes the existing exact Q5 singleton device block with that projection's output width, and returns separate F32 outputs without idle padding",
+    "fallback": "the separately registered query and gate singleton launches remain the unfused path for rows>1, registry misses, unsupported shapes, and unmeasured backends",
+    "red_gate": "synthetic K3072 N9216+72 and N6144+48 output must be F32 byte-exact to the two singleton launches; unsupported shapes must decline to singleton fallback",
+    "performance_gate": "actual-weight paired query+gate wall must improve in both SWA and global shapes; clean full-model kernel sum/span and canonical category decode/E2E must be non-regressive with exact IDs/state/KV/lifecycle",
+    "kernel_only_ceiling": {
+      "assumption": "the 0.598314 ms gate work overlaps completely without slowing query work; host launch savings excluded",
+      "max_savings_ms_per_token": 0.5983137857142857,
+      "kernel_sum_reduction_pct": 3.276587887670694,
+      "span_reduction_pct": 2.722018154638805,
+      "approx_h32_decode_tok_s": 45.74663315951103
+    }
+  },
+  "notes": [
+    "This artifact reuses an already-retained clean D5 trace and makes no new throughput claim.",
+    "Encoded-weight bandwidth is a source-byte proxy, not a hardware counter; activations, cache-line waste, and dequant compute are excluded.",
+    "The selected candidate is shape/quant/rows qualified and contains no prompt, token, category, or route-ID condition.",
+    "The query/gate pair cannot reach 50 tok/s by itself under its kernel-only ceiling; remaining attention-output Q5, IQ2/IQ3, and submission wall must be reprofiled after any retention."
+  ]
+}

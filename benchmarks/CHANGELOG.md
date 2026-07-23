@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-23
 
+- [D5 diagnostic gfx1100 Laguna Q2 XL residual profile] Radeon Pro W7900 current D5 attributes **2.744/2.732/2.300/2.120/2.093 ms/token** to dense-Q5 BF16, dense-Q5 F32, selected IQ2, SWA, and weighted IQ3; the 47 same-input Q5 attention query/gate pairs alone consume **2.732 ms / 94 launches**, selecting one unequal-width exact F32 pair dispatch with a **0.598 ms / 3.28% kernel-only ceiling** and no speedup claim; `benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-d5-residual-profile.json`.
+
 - [retained exact gfx1100 Laguna Q2 XL Q5 shared pair] Radeon Pro W7900 Poolside Laguna S 2.1 UD-Q2_K_XL / ten-prompt h16/h32 target AR moves D4 -> D5 h32 decode **43.081 -> 44.501 tok/s (+3.298%)** and h32 E2E **11.760 -> 11.860 tok/s (+0.849%)** with prefill neutral at **43.168 -> 43.167 tok/s (-0.003%)**; exact shared gate/up pairing removes 46 launches/token, cuts clean short dense Q5 **7.123 -> 6.366 ms (-10.62%)**, and every category decode/E2E plus correctness/lifecycle gate passes; `benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-q5-shared-pair-retained.json`.
 
 - [retained exact gfx1100 Laguna Q2 XL token4 SWA] Radeon Pro W7900 Poolside Laguna S 2.1 UD-Q2_K_XL / ten-prompt h16/h32 target AR moves D3 -> D4 h32 decode **38.840 -> 43.081 tok/s (+10.919%)** and h32 E2E **11.448 -> 11.760 tok/s (+2.724%)** with prefill within guard at **43.264 -> 43.168 tok/s (-0.223%)**; exact four-slot score parallelism cuts clean SWA **49.60% short and 52.80-53.03% at 512/1K/near-4K**, while every category decode/E2E plus correctness/lifecycle gate passes; `benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-swa-token4-retained.json`.

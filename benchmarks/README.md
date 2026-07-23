@@ -1381,6 +1381,18 @@ scratch0 resources. The complete category suite therefore promotes **44.501
 tok/s** h32 decode and **11.860 output tok/s** h32 E2E. [D5 retained
 artifact](results/2026-07-23-gfx1100-laguna-q2-xl-q5-shared-pair-retained.json).
 
+The same clean trace ranks D5's remaining short families: dense-Q5 BF16/F32,
+selected IQ2, SWA, and weighted IQ3 consume **2.744/2.732/2.300/2.120/2.093
+ms/token**. All 2.732 ms of Q5 F32 work is 47 same-input attention query/gate
+pairs: 35 K3072 N9216+72 SWA rows and 12 K3072 N6144+48 global rows. The gate
+side alone costs **0.598 ms / 47 launches** while reading only 6.54 MB at a
+10.93 GB/s encoded-weight proxy. The selected D6 candidate maps unequal query
+and gate pack ranges into one exact flattened `linear_pair` dispatch, preserving
+the two singleton launches as fallback. Perfectly hiding the gate side would
+save at most **3.28% of kernel sum / 2.72% of span** and approximate **45.747
+tok/s**, so this bounded candidate cannot reach 50 tok/s by itself. [D5
+residual profile](results/2026-07-23-gfx1100-laguna-q2-xl-d5-residual-profile.json).
+
 No Q2-to-Q4 speed ratio is claimed: the retained Q4_K_M controls use a
 different tensor recipe on gfx1151.
 
