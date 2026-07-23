@@ -263,9 +263,13 @@ class LagunaGGUFGenerator:
         return [output.text for output in self.generate_detailed(request)]
 
     def generate_detailed(self, request: GenerationRequest) -> list[GenerationOutput]:
-        prompt_ids = self._prepare_request(request)
+        prompt_ids, tokenize_ms = self._prepare_request(request)
         if request.max_tokens == 0:
-            output = self._empty_output(prompt_ids, request)
+            output = self._empty_output(
+                prompt_ids,
+                request,
+                tokenize_ms=tokenize_ms,
+            )
             self._record_outputs((output,), prompt_ids, request)
             return [output]
 
@@ -273,7 +277,11 @@ class LagunaGGUFGenerator:
         generated_ids: list[int] = []
         finish: FinishDetails | None = None
         final_telemetry: GenerationTelemetry | None = None
-        for step in self._token_steps(request, prompt_ids):
+        for step in self._token_steps(
+            request,
+            prompt_ids,
+            tokenize_ms=tokenize_ms,
+        ):
             generated_ids.append(step.token_id)
             final_telemetry = step.telemetry
             if step.finish_details is not None:
@@ -302,9 +310,13 @@ class LagunaGGUFGenerator:
         self,
         request: GenerationRequest,
     ) -> Iterator[GenerationStreamChunk]:
-        prompt_ids = self._prepare_request(request)
+        prompt_ids, tokenize_ms = self._prepare_request(request)
         if request.max_tokens == 0:
-            output = self._empty_output(prompt_ids, request)
+            output = self._empty_output(
+                prompt_ids,
+                request,
+                tokenize_ms=tokenize_ms,
+            )
             self._record_outputs((output,), prompt_ids, request)
             yield GenerationStreamChunk(
                 text="",
@@ -324,7 +336,11 @@ class LagunaGGUFGenerator:
         )
         hold_tokens = max(0, longest_sequence - 1)
         terminal_output: GenerationOutput | None = None
-        for step in self._token_steps(request, prompt_ids):
+        for step in self._token_steps(
+            request,
+            prompt_ids,
+            tokenize_ms=tokenize_ms,
+        ):
             pending.append(step.token_id)
             finish = step.finish_details
             if finish is None:
@@ -384,15 +400,20 @@ class LagunaGGUFGenerator:
             if error is not None:
                 raise error
 
-    def _prepare_request(self, request: GenerationRequest) -> tuple[int, ...]:
+    def _prepare_request(
+        self,
+        request: GenerationRequest,
+    ) -> tuple[tuple[int, ...], float]:
         _validate_public_request(request)
         raise_if_generation_deadline_expired(request)
         prompt = request.prompts[0]
-        prompt_ids = (
-            self.tokenize(prompt)
-            if isinstance(prompt, str)
-            else tuple(int(token) for token in prompt)
-        )
+        if isinstance(prompt, str):
+            tokenize_started = time.perf_counter()
+            prompt_ids = self.tokenize(prompt)
+            tokenize_ms = (time.perf_counter() - tokenize_started) * 1_000.0
+        else:
+            prompt_ids = tuple(int(token) for token in prompt)
+            tokenize_ms = 0.0
         if not prompt_ids:
             raise ValueError("Laguna prompt tokenization produced no token IDs")
         required = len(prompt_ids) + max(0, int(request.max_tokens) - 1)
@@ -400,12 +421,14 @@ class LagunaGGUFGenerator:
             raise ValueError(
                 f"Laguna request requires {required} positions; public limit is {self.context_length}"
             )
-        return prompt_ids
+        return prompt_ids, tokenize_ms
 
     def _token_steps(
         self,
         request: GenerationRequest,
         prompt_ids: tuple[int, ...],
+        *,
+        tokenize_ms: float,
     ) -> Iterator[_LagunaTokenStep]:
         with self._lock:
             self._prepare_locked()
@@ -433,6 +456,7 @@ class LagunaGGUFGenerator:
                         finish=finish,
                         prefill_seconds=prefill_seconds,
                         decode_seconds=decode_seconds,
+                        tokenize_ms=tokenize_ms,
                     )
                     yield _LagunaTokenStep(
                         token_id=token_id,
@@ -484,6 +508,8 @@ class LagunaGGUFGenerator:
         self,
         prompt_ids: tuple[int, ...],
         request: GenerationRequest,
+        *,
+        tokenize_ms: float,
     ) -> GenerationOutput:
         finish = FinishDetails(
             reason="length",
@@ -500,6 +526,7 @@ class LagunaGGUFGenerator:
                 finish=finish,
                 prefill_seconds=0.0,
                 decode_seconds=0.0,
+                tokenize_ms=tokenize_ms,
             ),
         )
 
@@ -694,6 +721,7 @@ def _laguna_telemetry(
     finish: FinishDetails | None,
     prefill_seconds: float,
     decode_seconds: float,
+    tokenize_ms: float,
 ) -> GenerationTelemetry:
     suppressed = 0 if finish is None else _suppressed_suffix_length(finish)
     answer_tokens = max(0, len(generated_ids) - suppressed)
@@ -710,6 +738,7 @@ def _laguna_telemetry(
         native_sampler_rows=False,
         event="completed" if finish is not None else "token",
         timing={
+            "tokenize_ms": max(0.0, float(tokenize_ms)),
             "prefill_ms": float(prefill_seconds) * 1_000.0,
             "decode_ms": float(decode_seconds) * 1_000.0,
         },

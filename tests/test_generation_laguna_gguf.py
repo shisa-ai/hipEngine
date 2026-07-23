@@ -225,6 +225,8 @@ def test_laguna_blocking_generation_suppresses_eot_and_retains_weights(generator
     assert state["execution_path"] == "laguna_eager_c1"
     assert state["prompt_tokens"] == 2
     assert state["generated_tokens"] == 3
+    assert output.telemetry.timing is not None
+    assert output.telemetry.timing["tokenize_ms"] == 0.0
     assert generator.weights.freed is False
     assert generator.materialize_calls[0][1]["repacked_cache"] == generator.cache
     assert _FakeSession.events[-1] == ("close",)
@@ -240,6 +242,9 @@ def test_laguna_text_prompt_uses_tokenizer_without_implicit_bos(generator) -> No
 
     assert output.generated_token_ids == (10,)
     assert ("prefill", (7, 8)) in _FakeSession.events
+    assert output.telemetry is not None
+    assert output.telemetry.timing is not None
+    assert output.telemetry.timing["tokenize_ms"] > 0.0
 
 
 def test_laguna_prepare_request_scratch_is_c1_and_reclaims_session(generator) -> None:
@@ -279,6 +284,9 @@ def test_laguna_stream_matches_blocking_and_finishes_with_cumulative_ids(generat
     assert chunks[-1].generated_token_ids == (10, 11, 24)
     assert chunks[-1].finish_details is not None
     assert chunks[-1].finish_details.stop_sequence == (24,)
+    assert chunks[-1].telemetry is not None
+    assert chunks[-1].telemetry.timing is not None
+    assert chunks[-1].telemetry.timing["tokenize_ms"] == 0.0
     assert all(chunk.finish_details is None for chunk in chunks[:-1])
     assert _FakeSession.events[-1] == ("close",)
 
@@ -349,11 +357,16 @@ def test_laguna_tokenizer_hooks_and_zero_token_request_do_not_load(generator) ->
     assert generator.instance.count_tokens("prompt") == 2
     assert generator.instance.detokenize((10, 11)) == "AB"
 
-    output = generator.instance.generate_detailed(_request(max_tokens=0))[0]
+    output = generator.instance.generate_detailed(
+        _request(prompts=("prompt",), max_tokens=0)
+    )[0]
     assert output.text == ""
     assert output.generated_token_ids == ()
     assert output.finish_details is not None
     assert output.finish_details.reason == "length"
+    assert output.telemetry is not None
+    assert output.telemetry.timing is not None
+    assert output.telemetry.timing["tokenize_ms"] > 0.0
     assert generator.materialize_calls == []
 
 

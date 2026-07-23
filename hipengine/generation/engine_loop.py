@@ -377,7 +377,17 @@ class SubmitPollTextGenerator:
         if not prompts:
             raise ValueError("submit_detailed requires at least one prompt")
         normalized = replace(request, prompts=prompts)
-        prompt_rows = tuple(self._runner.prompt_tokens(prompt) for prompt in prompts)
+        prompt_rows_list: list[tuple[int, ...]] = []
+        tokenize_ms: list[float] = []
+        for prompt in prompts:
+            tokenize_started = time.perf_counter() if isinstance(prompt, str) else None
+            prompt_rows_list.append(tuple(self._runner.prompt_tokens(prompt)))
+            tokenize_ms.append(
+                0.0
+                if tokenize_started is None
+                else max(0.0, (time.perf_counter() - tokenize_started) * 1_000.0)
+            )
+        prompt_rows = tuple(prompt_rows_list)
         max_new_tokens = int(self._runner.scheduler_max_new_tokens(normalized))
         request_ids: list[int] = []
         try:
@@ -400,6 +410,13 @@ class SubmitPollTextGenerator:
                 runner_request,
                 prompt_rows=prompt_rows,
             )
+            timing_observer = getattr(
+                self._runner,
+                "record_prompt_tokenize_ms",
+                None,
+            )
+            if callable(timing_observer):
+                timing_observer(request_ids, tokenize_ms)
         except Exception:
             for request_id in request_ids:
                 self._loop.cancel(request_id)

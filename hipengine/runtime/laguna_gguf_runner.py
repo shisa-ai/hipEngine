@@ -64,7 +64,6 @@ from hipengine.runtime.laguna_moe import (
     LagunaMoEScratch,
     allocate_laguna_moe_scratch,
     resolve_laguna_moe_plan,
-    resolve_laguna_selected_gate_up_mode,
     run_laguna_moe_c1,
     run_laguna_moe_rows,
     validate_laguna_moe_layer,
@@ -1170,7 +1169,6 @@ class LagunaGGUFResidentSession:
         model_sha256: str | None = None,
         prefill_chunk_size: int = 128,
         swa_prefill_variant: str | None = None,
-        selected_gate_up_mode: str | None = None,
     ) -> None:
         self.runtime = runtime or get_hip_runtime()
         self.device = device or Device("hip", 0)
@@ -1180,10 +1178,6 @@ class LagunaGGUFResidentSession:
         self.swa_prefill_variant = resolve_laguna_swa_prefill_variant(
             self.backend,
             swa_prefill_variant,
-        )
-        self.selected_gate_up_mode = resolve_laguna_selected_gate_up_mode(
-            self.backend,
-            selected_gate_up_mode,
         )
         self.position = -1
         self.last_result: LagunaEagerTokenResult | None = None
@@ -1303,15 +1297,6 @@ class LagunaGGUFResidentSession:
     @property
     def closed(self) -> bool:
         return self._closed
-
-    def set_selected_gate_up_mode(self, mode: str) -> None:
-        """Select a gate/up route between reset prefill/decode operations."""
-
-        self._check_open()
-        self.selected_gate_up_mode = resolve_laguna_selected_gate_up_mode(
-            self.backend,
-            mode,
-        )
 
     @property
     def config(self) -> LagunaGGUFConfig:
@@ -2159,7 +2144,6 @@ class LagunaGGUFResidentSession:
             layer,
             self.rows_moe_scratch,
             rows=rows,
-            selected_gate_up_mode=self.selected_gate_up_mode,
             stream=stream,
             runtime=self.runtime,
             libraries=self.libraries.moe,
@@ -2516,9 +2500,6 @@ class LagunaGGUFResidentSession:
             self.scratch.norm.ptr,
             layer,
             self.moe_scratch,
-            # AR decode stays on the exact split route; this temporary selector
-            # screens only the rows>1 prefill bottleneck.
-            selected_gate_up_mode="split",
             stream=stream,
             runtime=self.runtime,
             libraries=self.libraries.moe,

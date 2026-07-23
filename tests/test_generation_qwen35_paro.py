@@ -3278,6 +3278,10 @@ def test_qwen35_paro_resident_model_owner_keeps_stable_slots_and_native_c2(monke
         (121, 122, 123),
     ]
     assert [output.text for output in outputs] == ["T112T113T114", "T121T122T123"]
+    for output in outputs:
+        assert output.telemetry is not None
+        assert output.telemetry.timing is not None
+        assert output.telemetry.timing["tokenize_ms"] >= 0.0
     assert calls[0] == ("session_init", 4096, 4)
     assert [call for call in calls if call[0] == "prefill"] == [
         ("prefill", (0,), (10, 11), (0, 1), (0,), False),
