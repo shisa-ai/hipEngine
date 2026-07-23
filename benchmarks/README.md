@@ -1215,6 +1215,19 @@ Exact benchmark command:
 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. uv run python -u scripts/laguna_target_ar_bench.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --template tests/fixtures/laguna_poolside_v1_template.json --oracle tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json --oracle-logprobs tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy --bulk-correctness-artifact benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-bulk-correctness.json --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --output-horizons 16,32 --repetitions 2 --warmup-output-tokens 2 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-q2-xl-target-ar.json
 ```
 
+##### Laguna Q2 XL c=1 decode D0
+
+A tracked-clean cached W7900 trace at `e6120872` attributes 16 true c=1 rows
+from the retained AR route. The stable 14 rows average **44.572 ms/token** in
+kernels across **1,055 dispatches/token**; median embedding-to-argmax span is
+**49.929 ms**. Generic dense-Q5 `prefill_out` aliases alone consume **27.303 ms
+/ 61.26% / 235 calls** at a **70.7 GB/s** active encoded-weight proxy. SWA
+decode is 4.237 ms, selected IQ3 down 4.021 ms, fused IQ2 gate/up 2.318 ms,
+dense Q6 2.006 ms, and the Q4 lm-head 1.618 ms. All 26 decode symbols are
+classified and scratch-free; final logits and lifecycle pass. This is a
+bottleneck diagnostic, not a new throughput claim. The authoritative canonical
+wall remains 19.596 tok/s above. [D0 artifact](results/2026-07-23-gfx1100-laguna-q2-xl-decode-d0-profile.json).
+
 No Q2-to-Q4 speed ratio is claimed: the retained Q4_K_M controls use a
 different tensor recipe on gfx1151.
 

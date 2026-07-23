@@ -1,0 +1,1138 @@
+{
+  "schema": 2,
+  "status": "accepted_diagnostic_profile",
+  "performance_claim": false,
+  "date": "2026-07-23",
+  "purpose": "Current-main W7900 Laguna UD-Q2_K_XL c=1 decode D0 attribution and Qwen3.x transfer analysis before kernel changes.",
+  "provenance": {
+    "hipengine_commit": "e6120872e1487644f9b14c5c67cd033368719e2b",
+    "branch": "main",
+    "dirty": false,
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q2-xl-decode-profile-e6120872 --output-file laguna-q2-xl-decode16 -- uv run python -u /tmp/laguna_decode_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id code_merge_intervals --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 16 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --output /tmp/laguna-q2-xl-decode-profile-e6120872/bench.json",
+    "child_script_sha256": "faf3bbfe4e44b93db2a309deb0479613e53483ef2fc94577de364982c43eeffd",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+    "compiler_version_sha256": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394",
+    "require_cached_build": true
+  },
+  "model": {
+    "id": "poolside/Laguna-S-2.1-UD-Q2_K_XL",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "size_bytes": 39684584480,
+    "quant": "UD-Q2_K_XL",
+    "active_encoded_weight_bytes_proxy": 4143906560,
+    "profiled_kernel_assigned_weight_bytes_proxy": 4142617344,
+    "traffic_proxy_caveat": "Counts each full dense/router tensor once and 10/256 of each rank-3 expert tensor. It excludes activation/KV/cache traffic, metadata, dequant compute, cache effects, and selected-expert address variation; it is not a DRAM counter."
+  },
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "visible_device": 0,
+    "architecture": "gfx1100",
+    "cu_count": 96,
+    "wavefront_size": 32,
+    "gpu_max_hw_queues": 1
+  },
+  "workload": {
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_id": "code_merge_intervals",
+    "category": "code",
+    "prompt_tokens": 69,
+    "prompt_token_ids_sha256": "fc37944bf6bc6193b490fd765b8466f1ebf40889f0f86a61dfc4b6b90350c815",
+    "prefill_route": "bulk_exact_chunk128",
+    "decode_steps": 16,
+    "stable_decode_steps": 14,
+    "discarded_decode_steps": 2,
+    "discard_reason": "Power/cache warmup only; all 16 rows and the canonical full-suite AR wall remain disclosed.",
+    "context_capacity": 4096,
+    "decode_positions": [
+      69,
+      84
+    ]
+  },
+  "correctness": {
+    "finite_final_logits": true,
+    "generated_token_ids": [
+      605,
+      2825,
+      268,
+      1172,
+      7024,
+      69452,
+      56703,
+      1117,
+      268,
+      341,
+      558,
+      572,
+      9489,
+      95,
+      268,
+      370,
+      658
+    ],
+    "tracked_returned_to_baseline": true,
+    "resident_nbytes": 40068332284,
+    "canonical_full_suite_artifact": "benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-target-ar.json",
+    "canonical_gate_summary": "20/20 serial-bulk pairs exact, repeats deterministic, Poolside KL 0.0001568229/top-1 1.0, lifecycle exact."
+  },
+  "profile": {
+    "raw_dispatch_rows": 18395,
+    "raw_kernel_symbols": 40,
+    "segments": [
+      {
+        "rows": 69,
+        "dispatches": 1055
+      },
+      {
+        "rows": 1,
+        "dispatches": 1055
+      },
+      {
+        "rows": 1,
+        "dispatches": 1055
+      },
+      {
+        "rows": 1,
+        "dispatches": 1055
+      },
+      {
+        "rows": 1,
+        "dispatches": 1055
+      },
+      {
+        "rows": 1,
+        "dispatches": 1055
+      },
+      {
+        "rows": 1,
+        "dispatches": 1055
+      },
+      {
+        "rows": 1,
+        "dispatches": 1055
+      },
+      {
+        "rows": 1,
+        "dispatches": 1055
+      },
+      {
+        "rows": 1,
+        "dispatches": 1055
+      },
+      {
+        "rows": 1,
+        "dispatches": 1055
+      },
+      {
+        "rows": 1,
+        "dispatches": 1055
+      },
+      {
+        "rows": 1,
+        "dispatches": 1055
+      },
+      {
+        "rows": 1,
+        "dispatches": 1055
+      },
+      {
+        "rows": 1,
+        "dispatches": 1055
+      },
+      {
+        "rows": 1,
+        "dispatches": 1055
+      },
+      {
+        "rows": 1,
+        "dispatches": 1055
+      }
+    ],
+    "decode_dispatches_per_token": 1055,
+    "all_decode_kernel_sum_ms": [
+      44.496511,
+      44.023749,
+      44.289807,
+      44.198707,
+      44.301751,
+      44.323894,
+      44.422221,
+      44.463575,
+      44.503096,
+      44.571786,
+      44.680572,
+      44.71891,
+      44.7659,
+      44.902095,
+      44.903302,
+      44.957541
+    ],
+    "all_decode_kernel_span_ms": [
+      54.787247,
+      49.344548,
+      49.763459,
+      49.621709,
+      49.697022,
+      49.6557,
+      49.841716,
+      49.881021,
+      49.907592,
+      49.951193,
+      50.096373,
+      50.025149,
+      50.211574,
+      50.317276,
+      50.330762,
+      50.299195
+    ],
+    "stable_kernel_sum_ms_median": 44.537441,
+    "stable_kernel_sum_ms_mean": 44.571654071428576,
+    "stable_kernel_span_ms_median": 49.9293925,
+    "stable_kernel_span_ms_mean": 49.97141007142857,
+    "stable_span_minus_sum_ms_median": 5.415491,
+    "stable_span_minus_sum_share_of_span_pct": 10.846298600568794,
+    "profiled_child_wall_ms_median": 52.70268896128982,
+    "profiled_child_wall_ms_mean": 52.78896214440465,
+    "profiled_child_wall_tok_s_median": 18.974363921630278,
+    "canonical_full_suite_decode_tok_s": 19.59565729894165,
+    "canonical_full_suite_decode_ms_per_token": 51.03171507566676,
+    "families": [
+      {
+        "name": "dense_q5_bf16_out",
+        "ms_per_token_mean": 17.235619928571428,
+        "share_pct": 38.66946445593063,
+        "dispatches_per_token": 141.0,
+        "kernel_launch_median_us": 66.481,
+        "active_encoded_weight_bytes_proxy": 1087832064,
+        "effective_gb_s_proxy": 63.11534302266114,
+        "resources": {
+          "workgroup_size_values": [
+            128
+          ],
+          "vgpr_values": [
+            72
+          ],
+          "accum_vgpr_values": [
+            0
+          ],
+          "sgpr_values": [
+            128
+          ],
+          "lds_bytes_values": [
+            512
+          ],
+          "scratch_bytes_values": [
+            0
+          ]
+        },
+        "kernel_names": [
+          "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, unsigned short, 5>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int, int)"
+        ],
+        "rank": 1
+      },
+      {
+        "name": "dense_q5_f32_out",
+        "ms_per_token_mean": 10.066945857142857,
+        "share_pct": 22.58598220521503,
+        "dispatches_per_token": 94.0,
+        "kernel_launch_median_us": 81.6805,
+        "active_encoded_weight_bytes_proxy": 843499008,
+        "effective_gb_s_proxy": 83.78896836933988,
+        "resources": {
+          "workgroup_size_values": [
+            128
+          ],
+          "vgpr_values": [
+            56
+          ],
+          "accum_vgpr_values": [
+            0
+          ],
+          "sgpr_values": [
+            128
+          ],
+          "lds_bytes_values": [
+            512
+          ],
+          "scratch_bytes_values": [
+            0
+          ]
+        },
+        "kernel_names": [
+          "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, float, 5>(unsigned short const*, unsigned char const*, float*, int, int, int, int)"
+        ],
+        "rank": 2
+      },
+      {
+        "name": "swa_attention_decode",
+        "ms_per_token_mean": 4.236747285714285,
+        "share_pct": 9.505474665411027,
+        "dispatches_per_token": 36.0,
+        "kernel_launch_median_us": 117.521,
+        "active_encoded_weight_bytes_proxy": null,
+        "effective_gb_s_proxy": null,
+        "resources": {
+          "workgroup_size_values": [
+            128
+          ],
+          "vgpr_values": [
+            16
+          ],
+          "accum_vgpr_values": [
+            0
+          ],
+          "sgpr_values": [
+            128
+          ],
+          "lds_bytes_values": [
+            1024
+          ],
+          "scratch_bytes_values": [
+            0
+          ]
+        },
+        "kernel_names": [
+          "(anonymous namespace)::laguna_swa_attention_decode_bf16_kernel(float const*, unsigned short const*, unsigned short const*, float*, int const*, long const*, long const*, unsigned char const*, long const*, long, long, long, long, long, float)"
+        ],
+        "rank": 3
+      },
+      {
+        "name": "selected_iq3_down",
+        "ms_per_token_mean": 4.0211562857142855,
+        "share_pct": 9.02177935615797,
+        "dispatches_per_token": 45.0,
+        "kernel_launch_median_us": 89.24,
+        "active_encoded_weight_bytes_proxy": 541900800,
+        "effective_gb_s_proxy": 134.76243187194132,
+        "resources": {
+          "workgroup_size_values": [
+            256
+          ],
+          "vgpr_values": [
+            24
+          ],
+          "accum_vgpr_values": [
+            0
+          ],
+          "sgpr_values": [
+            128
+          ],
+          "lds_bytes_values": [
+            512
+          ],
+          "scratch_bytes_values": [
+            0
+          ]
+        },
+        "kernel_names": [
+          "(anonymous namespace)::gguf_iq3_xxs_selected_gemv_kernel(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)"
+        ],
+        "rank": 4
+      },
+      {
+        "name": "selected_iq2_dual_silu",
+        "ms_per_token_mean": 2.3182014285714287,
+        "share_pct": 5.201066634988194,
+        "dispatches_per_token": 46.0,
+        "kernel_launch_median_us": 50.241,
+        "active_encoded_weight_bytes_proxy": 836567040,
+        "effective_gb_s_proxy": 360.86900374120086,
+        "resources": {
+          "workgroup_size_values": [
+            64
+          ],
+          "vgpr_values": [
+            136
+          ],
+          "accum_vgpr_values": [
+            0
+          ],
+          "sgpr_values": [
+            128
+          ],
+          "lds_bytes_values": [
+            512
+          ],
+          "scratch_bytes_values": [
+            0
+          ]
+        },
+        "kernel_names": [
+          "(anonymous namespace)::gguf_iq2_xs_selected_dual_silu_gemv_tile2_kernel(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int, int, int, int, int)"
+        ],
+        "rank": 5
+      },
+      {
+        "name": "lm_head_q4",
+        "ms_per_token_mean": 1.6177052142857142,
+        "share_pct": 3.6294484644730733,
+        "dispatches_per_token": 1.0,
+        "kernel_launch_median_us": 1615.994,
+        "active_encoded_weight_bytes_proxy": 173408256,
+        "effective_gb_s_proxy": 107.19397728872818,
+        "resources": {
+          "workgroup_size_values": [
+            128
+          ],
+          "vgpr_values": [
+            16
+          ],
+          "accum_vgpr_values": [
+            0
+          ],
+          "sgpr_values": [
+            128
+          ],
+          "lds_bytes_values": [
+            512
+          ],
+          "scratch_bytes_values": [
+            0
+          ]
+        },
+        "kernel_names": [
+          "void (anonymous namespace)::gguf_q4_k_prefill_out_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, float*, int, int, int)"
+        ],
+        "rank": 6
+      },
+      {
+        "name": "dense_q6_f32_out",
+        "ms_per_token_mean": 1.3811814285714286,
+        "share_pct": 3.0987888094931546,
+        "dispatches_per_token": 96.0,
+        "kernel_launch_median_us": 14.0,
+        "active_encoded_weight_bytes_proxy": 265970880,
+        "effective_gb_s_proxy": 192.56766308760515,
+        "resources": {
+          "workgroup_size_values": [
+            128
+          ],
+          "vgpr_values": [
+            56
+          ],
+          "accum_vgpr_values": [
+            0
+          ],
+          "sgpr_values": [
+            128
+          ],
+          "lds_bytes_values": [
+            512
+          ],
+          "scratch_bytes_values": [
+            0
+          ]
+        },
+        "kernel_names": [
+          "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, float, 6>(unsigned short const*, unsigned char const*, float*, int, int, int, int)"
+        ],
+        "rank": 7
+      },
+      {
+        "name": "dense_q6_bf16_out",
+        "ms_per_token_mean": 0.6246165714285715,
+        "share_pct": 1.401376243357692,
+        "dispatches_per_token": 50.0,
+        "kernel_launch_median_us": 9.88,
+        "active_encoded_weight_bytes_proxy": 178053120,
+        "effective_gb_s_proxy": 285.0598721592858,
+        "resources": {
+          "workgroup_size_values": [
+            128
+          ],
+          "vgpr_values": [
+            72
+          ],
+          "accum_vgpr_values": [
+            0
+          ],
+          "sgpr_values": [
+            128
+          ],
+          "lds_bytes_values": [
+            512
+          ],
+          "scratch_bytes_values": [
+            0
+          ]
+        },
+        "kernel_names": [
+          "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, unsigned short, 6>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int, int)"
+        ],
+        "rank": 8
+      },
+      {
+        "name": "global_attention_decode",
+        "ms_per_token_mean": 0.5085767142857143,
+        "share_pct": 1.141031727184034,
+        "dispatches_per_token": 12.0,
+        "kernel_launch_median_us": 42.24,
+        "active_encoded_weight_bytes_proxy": null,
+        "effective_gb_s_proxy": null,
+        "resources": {
+          "workgroup_size_values": [
+            256
+          ],
+          "vgpr_values": [
+            40
+          ],
+          "accum_vgpr_values": [
+            0
+          ],
+          "sgpr_values": [
+            128
+          ],
+          "lds_bytes_values": [
+            0
+          ],
+          "scratch_bytes_values": [
+            0
+          ]
+        },
+        "kernel_names": [
+          "(anonymous namespace)::laguna_global_attention_decode_bf16_kernel(float const*, unsigned short const*, unsigned short const*, float*, int const*, long const*, long const*, unsigned char const*, long const*, long, long, long, long, long, float)"
+        ],
+        "rank": 9
+      },
+      {
+        "name": "add_rmsnorm",
+        "ms_per_token_mean": 0.39189821428571425,
+        "share_pct": 0.8792543656954608,
+        "dispatches_per_token": 48.0,
+        "kernel_launch_median_us": 8.12,
+        "active_encoded_weight_bytes_proxy": null,
+        "effective_gb_s_proxy": null,
+        "resources": {
+          "workgroup_size_values": [
+            256
+          ],
+          "vgpr_values": [
+            24
+          ],
+          "accum_vgpr_values": [
+            0
+          ],
+          "sgpr_values": [
+            128
+          ],
+          "lds_bytes_values": [
+            0
+          ],
+          "scratch_bytes_values": [
+            0
+          ]
+        },
+        "kernel_names": [
+          "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)"
+        ],
+        "rank": 10
+      },
+      {
+        "name": "router_select",
+        "ms_per_token_mean": 0.3901864285714286,
+        "share_pct": 0.8754138402540166,
+        "dispatches_per_token": 47.0,
+        "kernel_launch_median_us": 8.12,
+        "active_encoded_weight_bytes_proxy": null,
+        "effective_gb_s_proxy": null,
+        "resources": {
+          "workgroup_size_values": [
+            256
+          ],
+          "vgpr_values": [
+            32
+          ],
+          "accum_vgpr_values": [
+            0
+          ],
+          "sgpr_values": [
+            128
+          ],
+          "lds_bytes_values": [
+            512
+          ],
+          "scratch_bytes_values": [
+            0
+          ]
+        },
+        "kernel_names": [
+          "(anonymous namespace)::laguna_sigmoid_correction_topk_kernel(float const*, float const*, float*, float*, long*, float*, float*, long, long, float)"
+        ],
+        "rank": 11
+      },
+      {
+        "name": "rmsnorm",
+        "ms_per_token_mean": 0.3320687142857143,
+        "share_pct": 0.7450221922515049,
+        "dispatches_per_token": 49.0,
+        "kernel_launch_median_us": 6.721,
+        "active_encoded_weight_bytes_proxy": null,
+        "effective_gb_s_proxy": null,
+        "resources": {
+          "workgroup_size_values": [
+            256
+          ],
+          "vgpr_values": [
+            16
+          ],
+          "accum_vgpr_values": [
+            0
+          ],
+          "sgpr_values": [
+            128
+          ],
+          "lds_bytes_values": [
+            0
+          ],
+          "scratch_bytes_values": [
+            0
+          ]
+        },
+        "kernel_names": [
+          "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)"
+        ],
+        "rank": 12
+      },
+      {
+        "name": "router_projection",
+        "ms_per_token_mean": 0.322569,
+        "share_pct": 0.7237088385435845,
+        "dispatches_per_token": 47.0,
+        "kernel_launch_median_us": 6.84,
+        "active_encoded_weight_bytes_proxy": 147849216,
+        "effective_gb_s_proxy": 458.3491160030878,
+        "resources": {
+          "workgroup_size_values": [
+            256
+          ],
+          "vgpr_values": [
+            24
+          ],
+          "accum_vgpr_values": [
+            0
+          ],
+          "sgpr_values": [
+            128
+          ],
+          "lds_bytes_values": [
+            0
+          ],
+          "scratch_bytes_values": [
+            0
+          ]
+        },
+        "kernel_names": [
+          "void (anonymous namespace)::qwen35_router_logits_kernel<unsigned short, float>(unsigned short const*, float const*, float*, long, long)"
+        ],
+        "rank": 13
+      },
+      {
+        "name": "head_norm_rope",
+        "ms_per_token_mean": 0.19943,
+        "share_pct": 0.4474368388491983,
+        "dispatches_per_token": 48.0,
+        "kernel_launch_median_us": 4.12,
+        "active_encoded_weight_bytes_proxy": null,
+        "effective_gb_s_proxy": null,
+        "resources": {
+          "workgroup_size_values": [
+            256
+          ],
+          "vgpr_values": [
+            16
+          ],
+          "accum_vgpr_values": [
+            0
+          ],
+          "sgpr_values": [
+            128
+          ],
+          "lds_bytes_values": [
+            0
+          ],
+          "scratch_bytes_values": [
+            0
+          ]
+        },
+        "kernel_names": [
+          "gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long)"
+        ],
+        "rank": 14
+      },
+      {
+        "name": "residual_add",
+        "ms_per_token_mean": 0.19627678571428572,
+        "share_pct": 0.44036235541032687,
+        "dispatches_per_token": 95.0,
+        "kernel_launch_median_us": 2.12,
+        "active_encoded_weight_bytes_proxy": null,
+        "effective_gb_s_proxy": null,
+        "resources": {
+          "workgroup_size_values": [
+            256
+          ],
+          "vgpr_values": [
+            24
+          ],
+          "accum_vgpr_values": [
+            0
+          ],
+          "sgpr_values": [
+            128
+          ],
+          "lds_bytes_values": [
+            0
+          ],
+          "scratch_bytes_values": [
+            0
+          ]
+        },
+        "kernel_names": [
+          "gguf_bf16_add_kernel(unsigned short const*, unsigned short const*, unsigned short*, long)"
+        ],
+        "rank": 15
+      },
+      {
+        "name": "selected_reduce",
+        "ms_per_token_mean": 0.13545785714285713,
+        "share_pct": 0.3039103214024284,
+        "dispatches_per_token": 47.0,
+        "kernel_launch_median_us": 2.841,
+        "active_encoded_weight_bytes_proxy": null,
+        "effective_gb_s_proxy": null,
+        "resources": {
+          "workgroup_size_values": [
+            256
+          ],
+          "vgpr_values": [
+            8
+          ],
+          "accum_vgpr_values": [
+            0
+          ],
+          "sgpr_values": [
+            128
+          ],
+          "lds_bytes_values": [
+            0
+          ],
+          "scratch_bytes_values": [
+            0
+          ]
+        },
+        "kernel_names": [
+          "void (anonymous namespace)::weighted_sum_out_kernel<unsigned short, float>(unsigned short const*, float const*, unsigned short*, long, long)"
+        ],
+        "rank": 16
+      },
+      {
+        "name": "selected_iq4_down",
+        "ms_per_token_mean": 0.12522678571428572,
+        "share_pct": 0.2809561106114724,
+        "dispatches_per_token": 2.0,
+        "kernel_launch_median_us": 61.08,
+        "active_encoded_weight_bytes_proxy": 33423360,
+        "effective_gb_s_proxy": 266.90264234888133,
+        "resources": {
+          "workgroup_size_values": [
+            128
+          ],
+          "vgpr_values": [
+            72
+          ],
+          "accum_vgpr_values": [
+            0
+          ],
+          "sgpr_values": [
+            128
+          ],
+          "lds_bytes_values": [
+            512
+          ],
+          "scratch_bytes_values": [
+            0
+          ]
+        },
+        "kernel_names": [
+          "(anonymous namespace)::gguf_iq4_xs_selected_gemv_kernel(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)"
+        ],
+        "rank": 17
+      },
+      {
+        "name": "attention_gate",
+        "ms_per_token_mean": 0.1228922857142857,
+        "share_pct": 0.2757184768537958,
+        "dispatches_per_token": 48.0,
+        "kernel_launch_median_us": 2.52,
+        "active_encoded_weight_bytes_proxy": null,
+        "effective_gb_s_proxy": null,
+        "resources": {
+          "workgroup_size_values": [
+            256
+          ],
+          "vgpr_values": [
+            24
+          ],
+          "accum_vgpr_values": [
+            0
+          ],
+          "sgpr_values": [
+            128
+          ],
+          "lds_bytes_values": [
+            0
+          ],
+          "scratch_bytes_values": [
+            0
+          ]
+        },
+        "kernel_names": [
+          "void (anonymous namespace)::laguna_softplus_head_gate_kernel<unsigned short>(float const*, float const*, unsigned short*, long, long, long)"
+        ],
+        "rank": 18
+      },
+      {
+        "name": "swa_kv_write",
+        "ms_per_token_mean": 0.11562114285714285,
+        "share_pct": 0.259405097849529,
+        "dispatches_per_token": 36.0,
+        "kernel_launch_median_us": 3.24,
+        "active_encoded_weight_bytes_proxy": null,
+        "effective_gb_s_proxy": null,
+        "resources": {
+          "workgroup_size_values": [
+            256
+          ],
+          "vgpr_values": [
+            16
+          ],
+          "accum_vgpr_values": [
+            0
+          ],
+          "sgpr_values": [
+            128
+          ],
+          "lds_bytes_values": [
+            0
+          ],
+          "scratch_bytes_values": [
+            0
+          ]
+        },
+        "kernel_names": [
+          "(anonymous namespace)::laguna_swa_write_kv_f32_bf16_kernel(float const*, float const*, unsigned short*, unsigned short*, int const*, long*, long*, unsigned char*, long const*, long, long, long)"
+        ],
+        "rank": 19
+      },
+      {
+        "name": "dense_shared_silu",
+        "ms_per_token_mean": 0.08484914285714286,
+        "share_pct": 0.19036570355043894,
+        "dispatches_per_token": 48.0,
+        "kernel_launch_median_us": 1.72,
+        "active_encoded_weight_bytes_proxy": null,
+        "effective_gb_s_proxy": null,
+        "resources": {
+          "workgroup_size_values": [
+            256
+          ],
+          "vgpr_values": [
+            16
+          ],
+          "accum_vgpr_values": [
+            0
+          ],
+          "sgpr_values": [
+            128
+          ],
+          "lds_bytes_values": [
+            0
+          ],
+          "scratch_bytes_values": [
+            0
+          ]
+        },
+        "kernel_names": [
+          "void (anonymous namespace)::silu_mul_separate_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long)"
+        ],
+        "rank": 20
+      },
+      {
+        "name": "selected_iq3_dual_silu",
+        "ms_per_token_mean": 0.055440642857142855,
+        "share_pct": 0.12438542838974771,
+        "dispatches_per_token": 1.0,
+        "kernel_launch_median_us": 55.461,
+        "active_encoded_weight_bytes_proxy": 24084480,
+        "effective_gb_s_proxy": 434.4192050957974,
+        "resources": {
+          "workgroup_size_values": [
+            256
+          ],
+          "vgpr_values": [
+            40
+          ],
+          "accum_vgpr_values": [
+            0
+          ],
+          "sgpr_values": [
+            128
+          ],
+          "lds_bytes_values": [
+            512
+          ],
+          "scratch_bytes_values": [
+            0
+          ]
+        },
+        "kernel_names": [
+          "(anonymous namespace)::gguf_iq3_xxs_selected_dual_silu_gemv_kernel(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int, int, int, int, int)"
+        ],
+        "rank": 21
+      },
+      {
+        "name": "global_kv_write",
+        "ms_per_token_mean": 0.04585192857142857,
+        "share_pct": 0.1028723962048801,
+        "dispatches_per_token": 12.0,
+        "kernel_launch_median_us": 3.8,
+        "active_encoded_weight_bytes_proxy": null,
+        "effective_gb_s_proxy": null,
+        "resources": {
+          "workgroup_size_values": [
+            256
+          ],
+          "vgpr_values": [
+            16
+          ],
+          "accum_vgpr_values": [
+            0
+          ],
+          "sgpr_values": [
+            128
+          ],
+          "lds_bytes_values": [
+            0
+          ],
+          "scratch_bytes_values": [
+            0
+          ]
+        },
+        "kernel_names": [
+          "(anonymous namespace)::laguna_global_write_kv_f32_bf16_kernel(float const*, float const*, unsigned short*, unsigned short*, int const*, long*, long*, unsigned char*, long const*, long, long, long, long, long)"
+        ],
+        "rank": 22
+      },
+      {
+        "name": "dense_q8_f32_out",
+        "ms_per_token_mean": 0.024237285714285715,
+        "share_pct": 0.05437825052542162,
+        "dispatches_per_token": 2.0,
+        "kernel_launch_median_us": 12.14,
+        "active_encoded_weight_bytes_proxy": 6684672,
+        "effective_gb_s_proxy": 275.8011800001179,
+        "resources": {
+          "workgroup_size_values": [
+            128
+          ],
+          "vgpr_values": [
+            40
+          ],
+          "accum_vgpr_values": [
+            0
+          ],
+          "sgpr_values": [
+            128
+          ],
+          "lds_bytes_values": [
+            512
+          ],
+          "scratch_bytes_values": [
+            0
+          ]
+        },
+        "kernel_names": [
+          "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, float, 8>(unsigned short const*, unsigned char const*, float*, int, int, int, int)"
+        ],
+        "rank": 23
+      },
+      {
+        "name": "dense_q8_bf16_out",
+        "ms_per_token_mean": 0.008637142857142857,
+        "share_pct": 0.01937810708864731,
+        "dispatches_per_token": 1.0,
+        "kernel_launch_median_us": 8.6,
+        "active_encoded_weight_bytes_proxy": 3342336,
+        "effective_gb_s_proxy": 386.9724115117433,
+        "resources": {
+          "workgroup_size_values": [
+            128
+          ],
+          "vgpr_values": [
+            72
+          ],
+          "accum_vgpr_values": [
+            0
+          ],
+          "sgpr_values": [
+            128
+          ],
+          "lds_bytes_values": [
+            512
+          ],
+          "scratch_bytes_values": [
+            0
+          ]
+        },
+        "kernel_names": [
+          "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int, int)"
+        ],
+        "rank": 24
+      },
+      {
+        "name": "argmax",
+        "ms_per_token_mean": 0.006594285714285715,
+        "share_pct": 0.014794796943631488,
+        "dispatches_per_token": 2.0,
+        "kernel_launch_median_us": 3.3,
+        "active_encoded_weight_bytes_proxy": null,
+        "effective_gb_s_proxy": null,
+        "resources": {
+          "workgroup_size_values": [
+            256
+          ],
+          "vgpr_values": [
+            16
+          ],
+          "accum_vgpr_values": [
+            0
+          ],
+          "sgpr_values": [
+            128
+          ],
+          "lds_bytes_values": [
+            0
+          ],
+          "scratch_bytes_values": [
+            0
+          ]
+        },
+        "kernel_names": [
+          "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)",
+          "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)"
+        ],
+        "rank": 25
+      },
+      {
+        "name": "embedding",
+        "ms_per_token_mean": 0.0036657142857142856,
+        "share_pct": 0.008224317365112305,
+        "dispatches_per_token": 1.0,
+        "kernel_launch_median_us": 3.68,
+        "active_encoded_weight_bytes_proxy": 2112,
+        "effective_gb_s_proxy": 0.5761496492595479,
+        "resources": {
+          "workgroup_size_values": [
+            256
+          ],
+          "vgpr_values": [
+            16
+          ],
+          "accum_vgpr_values": [
+            0
+          ],
+          "sgpr_values": [
+            128
+          ],
+          "lds_bytes_values": [
+            0
+          ],
+          "scratch_bytes_values": [
+            0
+          ]
+        },
+        "kernel_names": [
+          "gguf_q5_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)"
+        ],
+        "rank": 26
+      }
+    ],
+    "complete_decode_dispatch_assignment": true,
+    "all_profiled_decode_scratch_zero": true
+  },
+  "qwen_comparison": {
+    "artifact": "benchmarks/results/2026-07-22-gpu1-q3-final-decode-d0-profile.json",
+    "qwen_model": "Qwen3.6-35B-A3B UD-Q3_K_M",
+    "qwen_hardware": "RX 7900 XTX/gfx1100 GPU1",
+    "qwen_kernel_ms_per_token": 8.8249255625,
+    "qwen_profiled_wall_ms_per_token": 11.347483567078598,
+    "qwen_dispatches_per_token": 671.0,
+    "laguna_to_qwen_kernel_time_ratio": 5.050654960856343,
+    "laguna_to_qwen_profiled_wall_ratio": 4.65204129464936,
+    "laguna_to_qwen_dispatch_ratio": 1.572280178837556,
+    "transfer_findings": [
+      "Qwen moved c=1 dense projections onto dedicated raw pack8 decode families and graph replay; Laguna explicitly forces use_gemv_decode=False and therefore keeps generic prefill aliases for every Q5/Q6/Q8 dense call.",
+      "Laguna already inherits the useful Qwen-style fused IQ2 dual+SiLU tile2 path, which reaches a 360.9 GB/s encoded-weight proxy and is not the first target.",
+      "Laguna IQ3 down remains an unfused selected GEMV plus 47 weighted-reduce launches; Qwen uses a weighted selected-down body and a later MoE-tail/next-RMS fusion.",
+      "Qwen graph replay reduced submission exposure, but Laguna first needs the 61.3% dense-Q5 family fixed; the measured 10.8% span gap then justifies a Laguna-specific graph-state gate."
+    ]
+  },
+  "ranked_handoff": [
+    {
+      "rank": 1,
+      "candidate": "dedicated exact dense Q5_K pack8 decode plus Laguna routing",
+      "measured_ms_per_token": 27.302565785714286,
+      "share_pct": 61.255446661145655,
+      "dispatches_per_token": 235,
+      "active_encoded_weight_bytes_proxy": 1931331072,
+      "effective_gb_s_proxy": 70.73807960607658,
+      "reason": "The generic prefill alias is 61.3% of kernel sum and only 70.7 GB/s by encoded-weight proxy; this is the clear first Amdahl route."
+    },
+    {
+      "rank": 2,
+      "candidate": "short-context SWA decode specialization",
+      "measured_ms_per_token": 4.236747285714285,
+      "reason": "Thirty-six fixed-shape launches average about 118 us at only 69-84 admitted tokens; this is latency/algorithm limited rather than weight bandwidth."
+    },
+    {
+      "rank": 3,
+      "candidate": "weighted IQ3_XXS selected down and tail fusion",
+      "measured_ms_per_token": 4.0211562857142855,
+      "reason": "The down family is 9.0% at 138.8 GB/s proxy and is followed by 47 separate weighted reductions; landed Qwen weighted-down/tail patterns should be screened."
+    },
+    {
+      "rank": 4,
+      "candidate": "activate landed exact Q4/Q6 pack8 decode routes and specialize Q4 lm-head top-1",
+      "measured_ms_per_token": 3.6235032142857144,
+      "reason": "Q6 exact decode bodies are registered but Laguna disables the selector; the Q4 body exists but is not loaded by generic dispatch. This is low-risk reuse after Q5."
+    },
+    {
+      "rank": 5,
+      "candidate": "Laguna-specific one-step graph replay",
+      "measured_ms_per_token": 5.415491,
+      "reason": "The stable dispatch span exceeds kernel sum by 5.42 ms (10.8%) over 1,055 launches. Re-open after dominant kernel changes with exact cursor/KV/address gates."
+    }
+  ],
+  "target_assessment": {
+    "fifty_tok_s_ms_budget": 20.0,
+    "canonical_current_ms_per_token": 51.03171507566676,
+    "required_wall_reduction_pct": 60.8086854021167,
+    "verdict": "50 tok/s is plausible on W7900 for this 4.14 GB active encoded-weight proxy, but not from one local tweak: the measured path needs dense-Q5 plus SWA/IQ3/lm-head and submission improvements. It is a target, not a claim."
+  },
+  "raw_evidence": {
+    "bench_json": {
+      "path": "/tmp/laguna-q2-xl-decode-profile-e6120872/bench.json",
+      "sha256": "c6d7c753629b02e9d363e2c8f0475519ac34fdbd28878324a8d81be11d172dd3",
+      "size_bytes": 2650
+    },
+    "kernel_trace_csv": {
+      "path": "/tmp/laguna-q2-xl-decode-profile-e6120872/laguna-q2-xl-decode16_kernel_trace.csv",
+      "sha256": "d0c90bc319d624d1ca1a7102c927c7101a38a2533b7722853f7ab162f922d92a",
+      "size_bytes": 5044231
+    },
+    "agent_info_csv": {
+      "path": "/tmp/laguna-q2-xl-decode-profile-e6120872/laguna-q2-xl-decode16_agent_info.csv",
+      "sha256": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00"
+    }
+  }
+}
