@@ -3386,6 +3386,83 @@ perturbs wall time, so its operator totals are attribution only. Complete
 protocol, commands, hashes, source references, ablations, and transfer ranking:
 `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-llamacpp-vulkan-review.json`.
 
+### D12 raw-Q5 wave32x2 decode (selected design)
+
+The source audit selects one precise transfer rather than copying Vulkan's
+arithmetic. hipEngine's retained Q5 leaf uses one local128 block for eight
+output columns. For every 256-value Q5 superblock, logical thread `t` visits
+`t` then `t+128`; the block hoists 8x8 `d*scale`/`dmin*min` coefficient pairs
+through 1,024 B LDS, executes two barriers, reduces four physical wave32
+partials independently, and lets thread 0 add logical waves 0,1,2,3. The D9
+attention-output and unequal query/gate uses of this body cost **2.659** and
+**2.189 ms/token**, respectively, or **28.04%** of the short kernel sum
+combined.
+
+The read-only llama.cpp Vulkan source uses a materially different raw-Q5
+geometry. On the W7900's reported subgroup size 64, AMD selects the subgroup-
+sized DMMV workgroup; `rm_kq=2` makes one subgroup compute two output rows,
+`K_PER_ITER=8` keeps a wider serial K slice in each lane, and `subgroupAdd`
+requires no cross-subgroup shared-memory exchange. That source uses F16 inputs,
+F32 output, and a different dot/FMA/reduction association, so its bits are not
+portable. The useful premise is only **one physical subgroup owns two output
+rows**. The same-build no-MMVQ result supports staying on raw weights, but it is
+a full-model ablation rather than a Q5-family speed claim.
+
+D12 therefore freezes a native-wave32, two-output schedule that reconstructs
+the current HIP arithmetic exactly:
+
+1. physical lane `l` maintains four logical partials for threads
+   `l,l+32,l+64,l+96` and two output columns;
+2. within each Q5 superblock, those partials visit
+   `[l,l+128]`, `[l+32,l+160]`, `[l+64,l+192]`, and
+   `[l+96,l+224]`, preserving every baseline logical thread's K sequence;
+3. lanes 0..7 produce the first output's eight coefficient pairs and lanes
+   8..15 the second's, then wave shuffles broadcast them without arithmetic
+   reassociation;
+4. each logical group runs the same offsets 16,8,4,2,1 shuffle tree, and lane 0
+   starts from `+0.0` and adds groups 0,1,2,3 before the unchanged F32 or
+   RNE-BF16 store; and
+5. the unequal pair maps query and gate as separate even tile ranges so no
+   two-output tile crosses buffers.
+
+The first implementation keys are
+`linear/gguf_q5_k/wave32x2_gemv_decode_bf16_bf16_out` and
+`linear_pair/gguf_q5_k/wave32x2_gemv_decode_bf16_f32_out`. Both are gfx1100,
+rows=1, role/shape-gated siblings. Current pack8 singleton/pair primitives stay
+registered for rows>1, gfx1151, registry or shape misses, shared-expert Q5,
+explicit rollback, and any failed family gate. D12 introduces no repack,
+sidecar, Q8_1 activation, post-op fusion, or tile16-style inter-output traffic
+sharing.
+
+This is not free traffic reduction. Pack8's `N/8` local128 workgroups and
+D12's `N/2` local32 workgroups execute the same total physical-wave count and
+the same encoded-weight/arithmetic work, but D12 rereads the small activation
+row four times as often. The nominal weight-plus-activation source proxy grows
+**80%** at every production shape. K6144/K9216 activations are only 12/18 KiB,
+so cache may hide those reads while D12 removes 1,024 B LDS, every superblock
+barrier, and the final cross-wave exchange; this is a hypothesis, not a waiver.
+Both actual-weight shapes must win.
+
+Admission is independent by family. The BF16-output key must be bit-exact and
+faster for both `blk.0` K6144/N3072 and `blk.1` K9216/N3072. The F32 unequal-
+pair key must be bit-exact and faster for both K3072 N6144+48 and N9216+72.
+Matched current controls use 50 warmups, 15 counterbalanced repetitions, and at
+least 200 launches/sample; both HIP-event and synchronized-wall medians must
+improve. Cached tracing must show local32, zero LDS/scratch, expected `N/2`
+workgroups, and preferably at most 96 VGPR. A failing family remains D9 even if
+the other passes. Synthetic/adversarial reduction fixtures, production weights,
+all 48 hidden rows, logits/argmax bits, complete K/V plus `KVLiveSpans`, reset,
+and lifecycle precede any clean model run.
+
+The Amdahl bound is finally large enough to matter. Canonical D9 is **21.217
+ms/token**. The two Q5 families total **4.848 ms/token**; a planning-only
+10/20/25/30% contraction models **48.234/49.389/49.988/50.601 tok/s**. Reaching
+20 ms requires **25.10%** of both measured families, or **45.76%** of attention
+output alone. These are ceilings, not claims, and clean short/512/1K/near-4K
+kernel-sum/span/child plus the complete category h16/h32 predicate still decide
+promotion. Frozen design, source hashes, traffic accounting, and RED/GREEN gate:
+`benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d12-q5-wave32x2-design.json`.
+
 ## Laguna DFlash Follow-on Plan
 
 DFlash work begins as architecture support during the target port but remains a
