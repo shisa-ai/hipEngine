@@ -1680,7 +1680,9 @@ def test_token_diagnostics_endpoints_handle_text_and_chat() -> None:
 
     tokenize = client.post("/v1/hipengine/tokenize", json={"text": "hello"})
     assert tokenize.status_code == 200
-    assert tokenize.json() == {
+    tokenize_body = tokenize.json()
+    assert tokenize_body.pop("timing")["tokenize_ms"] >= 0.0
+    assert tokenize_body == {
         "object": "hipengine.tokens",
         "text": "hello",
         "token_ids": [10, 11],
@@ -1699,6 +1701,7 @@ def test_token_diagnostics_endpoints_handle_text_and_chat() -> None:
     assert count_text.status_code == 200
     assert count_text.json()["token_count"] == 3
     assert count_text.json()["input_type"] == "text"
+    assert count_text.json()["timing"]["tokenize_ms"] >= 0.0
 
     chat_payload = {
         "messages": [

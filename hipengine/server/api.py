@@ -5431,12 +5431,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
     @app.post("/v1/hipengine/tokenize")
     async def tokenize(request: TokenizeRequest, _auth: None = Depends(require_auth)) -> dict[str, Any]:
         engine = get_llm()
+        tokenize_started = time.perf_counter()
         token_ids = await run_in_threadpool(_tokenize_text, engine, request.text)
+        tokenize_ms = max(0.0, (time.perf_counter() - tokenize_started) * 1_000.0)
         return {
             "object": "hipengine.tokens",
             "text": request.text,
             "token_ids": list(token_ids),
             "token_count": len(token_ids),
+            "timing": {"tokenize_ms": round(tokenize_ms, 3)},
         }
 
     @app.post("/v1/hipengine/detokenize")
@@ -5457,12 +5460,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         rendered = await diagnostic_render_for_request(request, engine)
         text = str(rendered["text"])
         input_type = str(rendered["input_type"])
+        tokenize_started = time.perf_counter()
         token_count = await run_in_threadpool(_count_tokens_strict, engine, text)
+        tokenize_ms = max(0.0, (time.perf_counter() - tokenize_started) * 1_000.0)
         response = {
             "object": "hipengine.count_tokens",
             "input_type": input_type,
             "text": text,
             "token_count": token_count,
+            "timing": {"tokenize_ms": round(tokenize_ms, 3)},
         }
         if rendered["session"] is not None:
             response["session"] = rendered["session"]

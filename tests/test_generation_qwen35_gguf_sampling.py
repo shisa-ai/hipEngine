@@ -2555,6 +2555,11 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
     assert [output.text for output in second] == ["BC"]
     assert [output.generated_token_ids for output in sampled] == [(1, 2)]
     assert [output.generated_token_ids for output in zero] == [()]
+    for output in (*first, *second, *sampled, *zero):
+        assert output.telemetry is not None
+        assert output.telemetry.timing is not None
+        assert "tokenize_ms" in output.telemetry.timing
+        assert output.telemetry.timing["tokenize_ms"] >= 0.0
     assert [call[0] for call in calls].count("runner_init") == 1
     assert [call[0] for call in calls].count("session_init") == 4
     packed_calls = [call for call in calls if call[0] == "step_batch_native"]
@@ -3691,6 +3696,9 @@ def test_gguf_generate_preserves_exact_token_prompt(monkeypatch) -> None:
     assert outputs[0].generated_token_ids == (1, 2)
     assert calls[0] == ("prefill", (30, 31, 32, 33), False)
     assert _decode_state(outputs[0])["prompt_tokens"] == 4
+    assert outputs[0].telemetry is not None
+    assert outputs[0].telemetry.timing is not None
+    assert outputs[0].telemetry.timing["tokenize_ms"] == 0.0
 
 
 def test_gguf_ar_c2_uses_packed_decode_when_prepared(monkeypatch) -> None:
@@ -5777,6 +5785,10 @@ def test_gguf_stream_detailed_emits_live_greedy_telemetry(monkeypatch) -> None:
     assert [chunk.text for chunk in chunks] == ["B", "C"]
     assert all(isinstance(chunk, GenerationStreamChunk) for chunk in chunks)
     assert [chunk.generated_token_ids for chunk in chunks] == [None, (1, 2)]
+    for chunk in chunks:
+        assert chunk.telemetry is not None
+        assert chunk.telemetry.timing is not None
+        assert chunk.telemetry.timing["tokenize_ms"] >= 0.0
     assert [_decode_state(chunk) for chunk in chunks] == [
         {
             "row_index": 0,

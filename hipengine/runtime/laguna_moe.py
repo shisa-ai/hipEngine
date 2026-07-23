@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 import math
-import os
 from types import MappingProxyType
 from typing import Callable
 
@@ -28,8 +27,6 @@ from hipengine.runtime.gguf_linear import launch_gguf_linear
 
 _QK_K = 256
 _T16_COLUMNS = 16
-_Q8_1_BLOCK = 32
-_Q8_1_BLOCK_BYTES = 36
 _BF16_NBYTES = 2
 _F32_NBYTES = 4
 _I64_NBYTES = 8
@@ -37,15 +34,10 @@ _I64_NBYTES = 8
 _ROUTER_LOGITS_VARIANT = "bf16_hidden"
 _ROUTER_SELECT_VARIANT = "correction_bias"
 _SELECTED_DUAL_VARIANT = "selected_dual_t16_gemv_decode_bf16_bf16_out"
-_SELECTED_DUAL_SILU_Q8_DP4A_VARIANT = (
-    "selected_dual_t16_silu_q8_1_dp4a_gemv_decode_bf16_bf16_out"
-)
 _SELECTED_DOWN_VARIANT = "selected_t16_gemv_decode_bf16_bf16_out"
 _SILU_VARIANT = "out"
 _WEIGHTED_SUM_VARIANT = "out"
 _ADD_VARIANT = "add"
-_ENV_SELECTED_GATE_UP = "HIPENGINE_LAGUNA_SELECTED_GATE_UP"
-_SELECTED_GATE_UP_MODES = frozenset({"split", "q8_dp4a"})
 
 
 @dataclass(frozen=True)
@@ -70,17 +62,11 @@ class LagunaMoEKernelPlan:
     expert_ffn_size: int
     shared_ffn_size: int
     routed_scaling_factor: float
-    selected_gate_up_mode: str
     router_logits_key: KernelKey
     router_select_key: KernelKey
     selected_gate_up_key: KernelKey
     selected_gate_up_keys: Mapping[str, KernelKey]
     selected_gate_up_routes: Mapping[str, LagunaMoESelectedRoute]
-    selected_gate_up_routes_by_mode: Mapping[
-        str, Mapping[str, LagunaMoESelectedRoute]
-    ]
-    activation_quant_key: KernelKey
-    activation_quant_keys: Mapping[str, KernelKey]
     selected_silu_key: KernelKey
     selected_down_key: KernelKey
     selected_down_keys: Mapping[str, KernelKey]
@@ -92,7 +78,6 @@ class LagunaMoEKernelPlan:
     router_logits: Callable
     router_select: Callable
     selected_gate_up: Callable
-    activation_quant: Callable
     selected_silu: Callable
     selected_down: Callable
     selected_downs: Mapping[str, Callable]
@@ -103,18 +88,10 @@ class LagunaMoEKernelPlan:
 
     @property
     def kernel_keys(self) -> tuple[KernelKey, ...]:
-        selected_gate_up_keys = tuple(
-            dict.fromkeys(
-                route.key
-                for routes in self.selected_gate_up_routes_by_mode.values()
-                for route in routes.values()
-            )
-        )
         return (
             self.router_logits_key,
             self.router_select_key,
-            *selected_gate_up_keys,
-            *tuple(self.activation_quant_keys.values()),
+            *tuple(self.selected_gate_up_keys.values()),
             self.selected_silu_key,
             *tuple(self.selected_down_keys.values()),
             self.routed_sum_key,
@@ -136,7 +113,6 @@ class LagunaMoEScratch:
     selected_experts: DeviceBuffer
     routing_weights: DeviceBuffer
     scaled_routing_weights: DeviceBuffer
-    q8_1_activation: DeviceBuffer
     expert_gate: DeviceBuffer
     expert_up: DeviceBuffer
     expert_intermediate: DeviceBuffer
@@ -157,7 +133,6 @@ class LagunaMoEScratch:
             self.selected_experts,
             self.routing_weights,
             self.scaled_routing_weights,
-            self.q8_1_activation,
             self.expert_gate,
             self.expert_up,
             self.expert_intermediate,
@@ -177,24 +152,6 @@ class LagunaMoEScratch:
     def free(self, *, runtime: HipRuntime | None = None) -> None:
         for buffer in reversed(self.buffers):
             free(buffer, runtime=runtime)
-
-
-def resolve_laguna_selected_gate_up_mode(
-    backend: str,
-    requested: str | None,
-) -> str:
-    """Resolve the temporary selected gate/up performance-screen route."""
-
-    if not backend:
-        raise ValueError("backend must be non-empty")
-    value = requested
-    if value is None:
-        value = os.environ.get(_ENV_SELECTED_GATE_UP, "split")
-    mode = value.strip().lower() or "split"
-    if mode not in _SELECTED_GATE_UP_MODES:
-        expected = ", ".join(sorted(_SELECTED_GATE_UP_MODES))
-        raise ValueError(f"{_ENV_SELECTED_GATE_UP} must be one of: {expected}")
-    return mode
 
 
 def resolve_laguna_moe_plan(
@@ -238,7 +195,6 @@ def resolve_laguna_moe_plan(
             "gguf_q4_k_t16_v1",
             _SELECTED_DUAL_VARIANT,
         ),
-        "activation_quant": KernelKey(backend, "activation_quant", "q8_1", "bf16"),
         "selected_silu": KernelKey(backend, "silu_mul_separate", "bf16", _SILU_VARIANT),
         "selected_down": KernelKey(
             backend,
@@ -251,43 +207,23 @@ def resolve_laguna_moe_plan(
         "shared_silu": KernelKey(backend, "silu_mul_separate", "bf16", _SILU_VARIANT),
         "add": KernelKey(backend, "elementwise", "bf16", _ADD_VARIANT),
     }
-    iq2_gate_up_key = KernelKey(
-        backend,
-        "moe_linear",
-        "gguf_iq2_xs",
-        "selected_dual_silu_gemv_decode_bf16_bf16_out",
-    )
-    iq3_gate_up_key = KernelKey(
-        backend,
-        "moe_linear",
-        "gguf_iq3_xxs",
-        "selected_dual_silu_gemv_decode_bf16_bf16_out",
-    )
     selected_gate_up_keys = MappingProxyType(
         {
             "gguf_q4_k_t16_v1": keys["selected_gate_up"],
-            "gguf_iq2_xs": iq2_gate_up_key,
-            "gguf_iq3_xxs": iq3_gate_up_key,
-        }
-    )
-    selected_gate_up_keys_by_mode = MappingProxyType(
-        {
-            "split": selected_gate_up_keys,
-            "q8_dp4a": MappingProxyType(
-                {
-                    "gguf_q4_k_t16_v1": KernelKey(
-                        backend,
-                        "moe_linear",
-                        "gguf_q4_k_t16_v1",
-                        _SELECTED_DUAL_SILU_Q8_DP4A_VARIANT,
-                    ),
-                    "gguf_iq2_xs": iq2_gate_up_key,
-                    "gguf_iq3_xxs": iq3_gate_up_key,
-                }
+            "gguf_iq2_xs": KernelKey(
+                backend,
+                "moe_linear",
+                "gguf_iq2_xs",
+                "selected_dual_silu_gemv_decode_bf16_bf16_out",
+            ),
+            "gguf_iq3_xxs": KernelKey(
+                backend,
+                "moe_linear",
+                "gguf_iq3_xxs",
+                "selected_dual_silu_gemv_decode_bf16_bf16_out",
             ),
         }
     )
-    activation_quant_keys = MappingProxyType({"q8_dp4a": keys["activation_quant"]})
     selected_down_keys = MappingProxyType(
         {
             "gguf_q4_k_t16_v1": KernelKey(
@@ -309,40 +245,23 @@ def resolve_laguna_moe_plan(
         }
     )
     functions = {name: _resolve_exact(key) for name, key in keys.items()}
-    selected_gate_up_route_specs_by_mode = {
-        "split": {
-            "gguf_q4_k_t16_v1": ("t16_dual", "tiles", "selected_gate_up"),
-            "gguf_iq2_xs": ("raw_iq_dual_silu", "raw", "selected_gate_up_iq"),
-            "gguf_iq3_xxs": ("raw_iq_dual_silu", "raw", "selected_gate_up_iq"),
-        },
-        "q8_dp4a": {
-            "gguf_q4_k_t16_v1": (
-                "t16_dual_silu_q8_dp4a",
-                "tiles",
-                "selected_gate_up",
-            ),
-            "gguf_iq2_xs": ("raw_iq_dual_silu", "raw", "selected_gate_up_iq"),
-            "gguf_iq3_xxs": ("raw_iq_dual_silu", "raw", "selected_gate_up_iq"),
-        },
+    selected_gate_up_route_specs = {
+        "gguf_q4_k_t16_v1": ("t16_dual", "tiles", "selected_gate_up"),
+        "gguf_iq2_xs": ("raw_iq_dual_silu", "raw", "selected_gate_up_iq"),
+        "gguf_iq3_xxs": ("raw_iq_dual_silu", "raw", "selected_gate_up_iq"),
     }
-    selected_gate_up_routes_by_mode = MappingProxyType(
+    selected_gate_up_routes = MappingProxyType(
         {
-            mode: MappingProxyType(
-                {
-                    quant: LagunaMoESelectedRoute(
-                        key=selected_gate_up_keys_by_mode[mode][quant],
-                        function=_resolve_exact(selected_gate_up_keys_by_mode[mode][quant]),
-                        abi=abi,
-                        allocation_name=allocation_name,
-                        library_key=library_key,
-                    )
-                    for quant, (abi, allocation_name, library_key) in route_specs.items()
-                }
+            quant: LagunaMoESelectedRoute(
+                key=selected_gate_up_keys[quant],
+                function=_resolve_exact(selected_gate_up_keys[quant]),
+                abi=abi,
+                allocation_name=allocation_name,
+                library_key=library_key,
             )
-            for mode, route_specs in selected_gate_up_route_specs_by_mode.items()
+            for quant, (abi, allocation_name, library_key) in selected_gate_up_route_specs.items()
         }
     )
-    selected_gate_up_routes = selected_gate_up_routes_by_mode["split"]
     selected_down_route_specs = {
         "gguf_q4_k_t16_v1": ("t16", "tiles", "selected_down"),
         "gguf_q6_k_t16_v1": ("t16", "tiles", "selected_down"),
@@ -372,15 +291,11 @@ def resolve_laguna_moe_plan(
         expert_ffn_size=config.expert_feed_forward_length,
         shared_ffn_size=config.expert_shared_feed_forward_length,
         routed_scaling_factor=config.expert_weights_scale,
-        selected_gate_up_mode=resolve_laguna_selected_gate_up_mode(backend, None),
         router_logits_key=keys["router_logits"],
         router_select_key=keys["router_select"],
         selected_gate_up_key=keys["selected_gate_up"],
         selected_gate_up_keys=selected_gate_up_keys,
         selected_gate_up_routes=selected_gate_up_routes,
-        selected_gate_up_routes_by_mode=selected_gate_up_routes_by_mode,
-        activation_quant_key=keys["activation_quant"],
-        activation_quant_keys=activation_quant_keys,
         selected_silu_key=keys["selected_silu"],
         selected_down_key=keys["selected_down"],
         selected_down_keys=selected_down_keys,
@@ -392,7 +307,6 @@ def resolve_laguna_moe_plan(
         router_logits=functions["router_logits"],
         router_select=functions["router_select"],
         selected_gate_up=functions["selected_gate_up"],
-        activation_quant=functions["activation_quant"],
         selected_silu=functions["selected_silu"],
         selected_down=functions["selected_down"],
         selected_downs=selected_downs,
@@ -426,7 +340,6 @@ def allocate_laguna_moe_scratch(
         rows * k * _I64_NBYTES,
         rows * k * _F32_NBYTES,
         rows * k * _F32_NBYTES,
-        rows * (h // _Q8_1_BLOCK) * _Q8_1_BLOCK_BYTES,
         rows * k * f * _BF16_NBYTES,
         rows * k * f * _BF16_NBYTES,
         rows * k * f * _BF16_NBYTES,
@@ -650,45 +563,6 @@ def _launch_selected_gate_up_t16(
     )
 
 
-def _launch_selected_gate_up_t16_silu_q8_dp4a(
-    route: LagunaMoESelectedRoute,
-    plan: LagunaMoEKernelPlan,
-    gate_ptr: int,
-    up_ptr: int,
-    hidden_ptr: int,
-    selected_ptr: int,
-    scratch: LagunaMoEScratch,
-    *,
-    x_rows: int,
-    lanes: int,
-    stream: int,
-    runtime: HipRuntime | None,
-    libraries: Mapping[str, object] | None,
-) -> None:
-    # Quantize each producer row once. The selected kernel maps its top-k lanes
-    # back to these x_rows rather than quantizing the expanded rows*top_k view.
-    plan.activation_quant(
-        hidden_ptr,
-        scratch.q8_1_activation.ptr,
-        x_rows,
-        plan.hidden_size,
-        **_stage_kwargs("gguf_q4_k", libraries, stream=stream, runtime=runtime),
-    )
-    route.function(
-        scratch.q8_1_activation.ptr,
-        selected_ptr,
-        gate_ptr,
-        up_ptr,
-        scratch.expert_intermediate.ptr,
-        x_rows,
-        lanes,
-        plan.expert_count,
-        plan.hidden_size,
-        plan.expert_ffn_size,
-        **_stage_kwargs(route.library_key, libraries, stream=stream, runtime=runtime),
-    )
-
-
 def _launch_selected_gate_up_iq(
     route: LagunaMoESelectedRoute,
     plan: LagunaMoEKernelPlan,
@@ -722,7 +596,6 @@ def _launch_selected_gate_up_iq(
 _SELECTED_GATE_UP_ABIS = MappingProxyType(
     {
         "t16_dual": _launch_selected_gate_up_t16,
-        "t16_dual_silu_q8_dp4a": _launch_selected_gate_up_t16_silu_q8_dp4a,
         "raw_iq_dual_silu": _launch_selected_gate_up_iq,
     }
 )
@@ -735,7 +608,6 @@ def _launch_selected_gate_up(
     *,
     x_rows: int,
     lanes: int,
-    mode: str,
     stream: int,
     runtime: HipRuntime | None,
     libraries: Mapping[str, object] | None,
@@ -744,7 +616,7 @@ def _launch_selected_gate_up(
     gate = layer.weight("ffn_gate_exps")
     up = layer.weight("ffn_up_exps")
     try:
-        route = plan.selected_gate_up_routes_by_mode[mode][gate.spec.quant_key]
+        route = plan.selected_gate_up_routes[gate.spec.quant_key]
         launch = _SELECTED_GATE_UP_ABIS[route.abi]
     except KeyError as exc:
         raise ValueError(
@@ -856,7 +728,6 @@ def run_laguna_moe_c1(
     layer: LagunaGGUFResidentLayerWeights,
     scratch: LagunaMoEScratch,
     *,
-    selected_gate_up_mode: str | None = None,
     stream: int = 0,
     runtime: HipRuntime | None = None,
     libraries: Mapping[str, object] | None = None,
@@ -864,11 +735,6 @@ def run_laguna_moe_c1(
     """Run the exact staged Laguna routed plus always-on shared expert path."""
 
     plan = scratch.plan
-    gate_up_mode = (
-        plan.selected_gate_up_mode
-        if selected_gate_up_mode is None
-        else resolve_laguna_selected_gate_up_mode(plan.backend, selected_gate_up_mode)
-    )
     if scratch.max_rows < 1:
         raise ValueError("Laguna MoE scratch cannot execute one row")
     validate_laguna_moe_layer(layer, plan)
@@ -910,7 +776,6 @@ def run_laguna_moe_c1(
         scratch,
         x_rows=1,
         lanes=k,
-        mode=gate_up_mode,
         stream=stream,
         runtime=runtime,
         libraries=libraries,
@@ -1001,7 +866,6 @@ def run_laguna_moe_rows(
     scratch: LagunaMoEScratch,
     *,
     rows: int,
-    selected_gate_up_mode: str | None = None,
     stream: int = 0,
     runtime: HipRuntime | None = None,
     libraries: Mapping[str, object] | None = None,
@@ -1009,11 +873,6 @@ def run_laguna_moe_rows(
     """Run exact row-batched sigmoid MoE with contiguous top-k expert lanes."""
 
     plan = scratch.plan
-    gate_up_mode = (
-        plan.selected_gate_up_mode
-        if selected_gate_up_mode is None
-        else resolve_laguna_selected_gate_up_mode(plan.backend, selected_gate_up_mode)
-    )
     tokens = int(rows)
     if tokens <= 0 or tokens > scratch.max_rows:
         raise ValueError(f"rows must be within [1, {scratch.max_rows}]")
@@ -1057,7 +916,6 @@ def run_laguna_moe_rows(
         scratch,
         x_rows=tokens,
         lanes=lanes,
-        mode=gate_up_mode,
         stream=stream,
         runtime=runtime,
         libraries=libraries,
@@ -1174,7 +1032,6 @@ __all__ = [
     "LagunaMoEScratch",
     "allocate_laguna_moe_scratch",
     "resolve_laguna_moe_plan",
-    "resolve_laguna_selected_gate_up_mode",
     "run_laguna_moe_c1",
     "run_laguna_moe_rows",
     "validate_laguna_moe_layer",
