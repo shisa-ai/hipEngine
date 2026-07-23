@@ -150,9 +150,13 @@ def test_session_forwards_explicit_swa_prefill_variant(monkeypatch) -> None:
     benchmark._session(
         owner,
         args,
+        global_prefill_variant="global_context_rows_qrow2_online_spans",
         swa_prefill_variant="swa_context_rows_qrow2_m128_c128_exact_spans",
     )
 
+    assert captured["global_prefill_variant"] == (
+        "global_context_rows_qrow2_online_spans"
+    )
     assert captured["swa_prefill_variant"] == (
         "swa_context_rows_qrow2_m128_c128_exact_spans"
     )

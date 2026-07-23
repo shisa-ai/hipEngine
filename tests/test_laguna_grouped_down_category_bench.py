@@ -9,6 +9,7 @@ import pytest
 import scripts.laguna_grouped_down_category_bench as benchmark
 from scripts.laguna_grouped_down_category_bench import (
     F16_WMMA_COMP_SWA_COMPARISON,
+    GLOBAL_QROW2_ONLINE_COMPARISON,
     GROUPED_COMBINE_COMPARISON,
     MODES,
     SWA_QROW2_COMPARISON,
@@ -200,6 +201,60 @@ def test_swa_qrow2_category_loads_exact_full_model_screen(tmp_path) -> None:
     artifact["model"]["sha256"] = "wrong-model"
     screen.write_text(json.dumps(artifact), encoding="utf-8")
     assert _load_shape_screen(args, comparison=SWA_QROW2_COMPARISON)["pass"] is False
+
+
+def test_global_qrow2_online_category_resolves_variants_and_screen(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    calls: list[str | None] = []
+
+    def fake_session(_owner, _args, *, global_prefill_variant=None):
+        calls.append(global_prefill_variant)
+        return SimpleNamespace()
+
+    monkeypatch.setattr(benchmark, "_session", fake_session)
+    for mode in GLOBAL_QROW2_ONLINE_COMPARISON.modes:
+        benchmark._session_for_mode(
+            object(),
+            SimpleNamespace(),
+            mode,
+            comparison=GLOBAL_QROW2_ONLINE_COMPARISON,
+        )
+    assert calls == [
+        "global_context_rows_spans",
+        "global_context_rows_qrow2_online_spans",
+    ]
+
+    screen = tmp_path / "global-online-screen.json"
+    artifact = {
+        "kind": GLOBAL_QROW2_ONLINE_COMPARISON.screen_kind,
+        "status": GLOBAL_QROW2_ONLINE_COMPARISON.screen_status,
+        "pass": True,
+        "promotion": {
+            "pass": True,
+            "failed_checks": [],
+            "effective_speedup": 1.17,
+        },
+        "model": {"sha256": "model-sha"},
+        "repo": {"revision": "candidate-revision"},
+    }
+    screen.write_text(json.dumps(artifact), encoding="utf-8")
+    args = SimpleNamespace(shape_screen=screen, model_sha256="model-sha")
+    result = _load_shape_screen(
+        args,
+        comparison=GLOBAL_QROW2_ONLINE_COMPARISON,
+    )
+    assert result["pass"] is True
+    assert result["comparison"] == "global_qrow2_online"
+    assert result["aggregate_speedup"] == pytest.approx(1.17)
+
+    artifact["model"]["sha256"] = "wrong-model"
+    screen.write_text(json.dumps(artifact), encoding="utf-8")
+    assert _load_shape_screen(
+        args,
+        comparison=GLOBAL_QROW2_ONLINE_COMPARISON,
+    )["pass"] is False
 
 
 def test_f16_wmma_comp_swa_category_requires_matching_compensated_screen(

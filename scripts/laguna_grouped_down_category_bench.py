@@ -106,6 +106,21 @@ SWA_QROW2_COMPARISON = CategoryComparison(
     require_positive_wall=False,
     execution_mode="swa_prefill",
 )
+GLOBAL_QROW2_ONLINE_COMPARISON = CategoryComparison(
+    name="global_qrow2_online",
+    modes=("global_exact", "global_qrow2_online"),
+    aggregate_key="global_qrow2_online_vs_global_exact",
+    screen_kind="hipengine_laguna_prefill_ar_o5_global_qrow2_online_ab",
+    screen_status="quality_lane_admitted",
+    screen_decision_key="promotion",
+    require_positive_wall=True,
+    execution_mode="global_prefill",
+    require_exact_free_running=False,
+)
+_GLOBAL_PREFILL_VARIANTS = {
+    "global_exact": "global_context_rows_spans",
+    "global_qrow2_online": "global_context_rows_qrow2_online_spans",
+}
 _SWA_PREFILL_VARIANTS = {
     "wave32_exact": "swa_context_rows_wave32_exact_spans",
     "qrow2_32_exact": "swa_context_rows_qrow2_m128_c128_exact_spans",
@@ -117,6 +132,7 @@ _COMPARISONS = {
         GROUPED_COMBINE_COMPARISON,
         F16_WMMA_COMP_SWA_COMPARISON,
         SWA_QROW2_COMPARISON,
+        GLOBAL_QROW2_ONLINE_COMPARISON,
     )
 }
 # Backward-compatible test/helper aliases for the retained grouped-down gate.
@@ -219,10 +235,16 @@ def _session_for_mode(
             args,
             swa_prefill_variant=_SWA_PREFILL_VARIANTS[mode],
         )
+    if comparison.execution_mode == "global_prefill":
+        return _session(
+            owner,
+            args,
+            global_prefill_variant=_GLOBAL_PREFILL_VARIANTS[mode],
+        )
     session = _session(owner, args)
     if comparison.execution_mode == "selected_down":
         session.set_selected_down_mode(mode)
-    elif comparison.execution_mode != "f16_prefill":
+    elif comparison.execution_mode not in {"f16_prefill", "global_prefill"}:
         raise ValueError(f"unknown Laguna execution mode {comparison.execution_mode!r}")
     return session
 
@@ -641,9 +663,13 @@ def _promotion_gate(
                     "exact matrix512/attention128 512/1K/4K output, KV, and wall win"
                     if comparison.execution_mode == "swa_prefill"
                     else (
-                        "direct fallback >=0.995x; rows>=32 grouped shapes and aggregate faster"
-                        if comparison.require_positive_wall
-                        else "each shape >=0.995x; aggregate >=0.998x; exact micro win"
+                        "quality-gated online global attention improves 512/1K/4K wall"
+                        if comparison.execution_mode == "global_prefill"
+                        else (
+                            "direct fallback >=0.995x; rows>=32 grouped shapes and aggregate faster"
+                            if comparison.require_positive_wall
+                            else "each shape >=0.995x; aggregate >=0.998x; exact micro win"
+                        )
                     )
                 )
             ),
@@ -835,6 +861,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 args,
                 swa_prefill_variant=_SWA_PREFILL_VARIANTS[comparison.modes[1]],
             )
+        elif comparison.execution_mode == "global_prefill":
+            oracle = _oracle_gate(
+                owner,
+                args,
+                global_prefill_variant=_GLOBAL_PREFILL_VARIANTS[comparison.modes[1]],
+            )
         else:
             oracle = _oracle_gate(owner, args)
         resident_nbytes = owner.resident_nbytes
@@ -954,11 +986,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "and rows==1 stays on GEMV."
                 if comparison.execution_mode == "f16_prefill"
                 else (
-                    "Adaptive grouped down stays BF16 throughout and falls back to "
-                    "direct below 32 rows."
-                    if comparison.require_positive_wall
-                    else "The candidate preserves both BF16 boundaries while removing "
-                    "one launch and the selected-output round trip for rows >=32."
+                    "Online global prefill changes softmax association only on the 12 "
+                    "full-attention layers; all 36 SWA layers and decode stay unchanged."
+                    if comparison.execution_mode == "global_prefill"
+                    else (
+                        "Adaptive grouped down stays BF16 throughout and falls back to "
+                        "direct below 32 rows."
+                        if comparison.require_positive_wall
+                        else "The candidate preserves both BF16 boundaries while removing "
+                        "one launch and the selected-output round trip for rows >=32."
+                    )
                 )
             ),
             "Teacher forcing feeds baseline-route top-1 IDs to both routes and compares "
