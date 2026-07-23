@@ -29,6 +29,8 @@ from hipengine.kernels.hip_gfx1100.linear.laguna_f16_projection import (
     laguna_f16w_tiled_bf16_f32_out,
     laguna_f16w_wmma_bf16_bf16_out,
     laguna_f16w_wmma_bf16_f32_out,
+    laguna_f16w_wmma_comp_bf16_bf16_out,
+    laguna_f16w_wmma_comp_bf16_f32_out,
 )
 from hipengine.loading.materialize import float_array_to_bf16_bits
 from scripts.laguna_f16_library_ceiling import (
@@ -50,6 +52,13 @@ DEFAULT_OUTPUT = (
     ROOT / "benchmarks/results/2026-07-23-gfx1151-laguna-f16-wmma-screen.json"
 )
 _MODES = ("exact", "wmma")
+_WMMA_VARIANTS = {
+    "wmma": (laguna_f16w_wmma_bf16_f32_out, laguna_f16w_wmma_bf16_bf16_out),
+    "wmma_comp": (
+        laguna_f16w_wmma_comp_bf16_f32_out,
+        laguna_f16w_wmma_comp_bf16_bf16_out,
+    ),
+}
 
 
 def _parse_args() -> argparse.Namespace:
@@ -60,6 +69,9 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--repetitions", type=int, default=7)
     parser.add_argument("--warmups", type=int, default=3)
     parser.add_argument("--seed", type=int, default=20260723)
+    parser.add_argument(
+        "--candidate-variant", choices=tuple(_WMMA_VARIANTS), default="wmma"
+    )
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--library-ceiling", type=Path, default=DEFAULT_LIBRARY_CEILING)
@@ -73,6 +85,7 @@ def _family_launches(
     runtime: HipRuntime,
     buffers,
     library,
+    candidate_variant: str = "wmma",
 ) -> dict[str, Callable[[], None]]:
     q_name = f"{family}_q"
     gate_name = f"{family}_gate"
@@ -114,15 +127,13 @@ def _family_launches(
             runtime=runtime,
         )
 
+    candidate_f32, candidate_bf16 = _WMMA_VARIANTS[candidate_variant]
     return {
         "exact": lambda: launch(
             laguna_f16w_tiled_bf16_f32_out,
             laguna_f16w_tiled_bf16_bf16_out,
         ),
-        "wmma": lambda: launch(
-            laguna_f16w_wmma_bf16_f32_out,
-            laguna_f16w_wmma_bf16_bf16_out,
-        ),
+        "wmma": lambda: launch(candidate_f32, candidate_bf16),
     }
 
 
@@ -137,6 +148,7 @@ def _math_smoke(
     buffers,
     library,
     seed: int,
+    candidate_variant: str = "wmma",
 ) -> dict[str, Any]:
     rng = np.random.default_rng(seed)
     rows, in_features, out_features = 16, 64, 35
@@ -168,7 +180,8 @@ def _math_smoke(
     copy_device_to_host(
         host_array_ptr(exact), buffers.out_f32, exact.nbytes, runtime=runtime
     )
-    laguna_f16w_wmma_bf16_f32_out(
+    candidate_f32, _ = _WMMA_VARIANTS[candidate_variant]
+    candidate_f32(
         buffers.x_bf16.ptr,
         buffers.weight_fp16.ptr,
         buffers.out_f32.ptr,
@@ -336,14 +349,23 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     }
     smoke: dict[str, Any] = {"pass": False}
     try:
-        smoke = _math_smoke(runtime, buffers, library, args.seed)
+        smoke = _math_smoke(
+            runtime, buffers, library, args.seed, args.candidate_variant
+        )
         if not smoke["pass"]:
             raise RuntimeError("Laguna source-F16 WMMA math smoke failed")
         for buffer in buffers.all():
             runtime.memset(buffer.ptr, 0, buffer.nbytes)
         for row_index, row in enumerate(rows):
             for family_index, family in enumerate(_FAMILIES):
-                launches = _family_launches(family, row, runtime, buffers, library)
+                launches = _family_launches(
+                    family,
+                    row,
+                    runtime,
+                    buffers,
+                    library,
+                    args.candidate_variant,
+                )
                 for _ in range(args.warmups):
                     for mode in _MODES:
                         launches[mode]()
@@ -426,6 +448,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "timed_order": "counterbalanced exact/WMMA by row/family/repetition",
             "data": "zero timing buffers plus a seeded nonzero M16/K64/N35 math smoke",
             "library_ceiling": str(args.library_ceiling),
+            "candidate_variant": args.candidate_variant,
         },
         "summary": summary,
         "correctness": {
