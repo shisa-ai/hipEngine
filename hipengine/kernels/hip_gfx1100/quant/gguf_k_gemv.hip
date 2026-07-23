@@ -849,6 +849,44 @@ __global__ void gguf_q5_k_pair_pack8_decode_out_kernel(
       block_mins);
 }
 
+// Decode-only unequal-width projection pair. Flattening both output-pack
+// ranges avoids the idle workgroups that a rectangular projection grid would
+// create for Laguna's wide attention query plus tiny per-head gate.
+template <typename scalar_t, typename out_t>
+__launch_bounds__(128, 4)
+__global__ void gguf_q5_k_unequal_pair_pack8_decode_out_kernel(
+    const scalar_t* __restrict__ x,
+    const uint8_t* __restrict__ qweight_a,
+    const uint8_t* __restrict__ qweight_b,
+    out_t* __restrict__ out_a,
+    out_t* __restrict__ out_b,
+    int rows,
+    int in_features,
+    int out_features_a,
+    int out_features_b) {
+  const int row = blockIdx.y;
+  if (row >= rows) return;
+  const int packs_a = out_features_a >> 3;
+  const int flat_pack = blockIdx.x;
+  const bool projection_b = flat_pack >= packs_a;
+  const int out_pack = projection_b ? flat_pack - packs_a : flat_pack;
+  const uint8_t* __restrict__ qweight = projection_b ? qweight_b : qweight_a;
+  out_t* __restrict__ out = projection_b ? out_b : out_a;
+  const int out_features = projection_b ? out_features_b : out_features_a;
+  __shared__ float block_scales[8 * 8];
+  __shared__ float block_mins[8 * 8];
+  gguf_q5_k_pack8_decode_out_block(
+      x + static_cast<int64_t>(row) * in_features,
+      qweight,
+      out,
+      row,
+      out_pack,
+      in_features,
+      out_features,
+      block_scales,
+      block_mins);
+}
+
 template <typename scalar_t, typename out_t, int qtype>
 __launch_bounds__(256, 2)
 __global__ void gguf_k_selected_pack8_prefill_out_kernel(
@@ -1204,6 +1242,42 @@ int launch_gguf_q5_k_pair_pack8_decode_out(
           static_cast<int>(rows),
           static_cast<int>(in_features),
           static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
+template <typename out_t>
+int launch_gguf_q5_k_unequal_pair_pack8_decode_out(
+    const uint16_t* x,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    out_t* out_a,
+    out_t* out_b,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features_a,
+    int64_t out_features_b,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || qweight_a == nullptr || qweight_b == nullptr ||
+      out_a == nullptr || out_b == nullptr || rows <= 0 || in_features <= 0 ||
+      (in_features % QK_K) != 0 || out_features_a <= 0 || out_features_b <= 0 ||
+      (out_features_a % 8) != 0 || (out_features_b % 8) != 0 || threads != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 grid(
+      static_cast<unsigned int>((out_features_a + out_features_b) / 8),
+      static_cast<unsigned int>(rows));
+  gguf_q5_k_unequal_pair_pack8_decode_out_kernel<uint16_t, out_t>
+      <<<grid, dim3(128), 0, stream>>>(
+          x,
+          qweight_a,
+          qweight_b,
+          out_a,
+          out_b,
+          static_cast<int>(rows),
+          static_cast<int>(in_features),
+          static_cast<int>(out_features_a),
+          static_cast<int>(out_features_b));
   return static_cast<int>(hipGetLastError());
 }
 
@@ -1598,6 +1672,16 @@ extern "C" int hipengine_gguf_q5_k_pair_pack8_gemv_decode_bf16_bf16_out(
   return launch_gguf_q5_k_pair_pack8_decode_out<uint16_t>(
       x, qweight_a, qweight_b, out_a, out_b, rows, in_features, out_features,
       threads, stream);
+}
+
+extern "C" int hipengine_gguf_q5_k_pair_pack8_gemv_decode_bf16_f32_out(
+    const uint16_t* x, const uint8_t* qweight_a, const uint8_t* qweight_b,
+    float* out_a, float* out_b, int64_t rows, int64_t in_features,
+    int64_t out_features_a, int64_t out_features_b, int64_t threads,
+    hipStream_t stream) {
+  return launch_gguf_q5_k_unequal_pair_pack8_decode_out<float>(
+      x, qweight_a, qweight_b, out_a, out_b, rows, in_features, out_features_a,
+      out_features_b, threads, stream);
 }
 
 #define HIPENGINE_GGUF_K_SELECTED_PACK8_DP4A_EXPORT(NAME, QTYPE) \
