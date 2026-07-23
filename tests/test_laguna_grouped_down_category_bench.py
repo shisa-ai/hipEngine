@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from scripts.laguna_grouped_down_category_bench import (
+    F16_WMMA_COMPARISON,
     GROUPED_COMBINE_COMPARISON,
     MODES,
     _aggregate,
@@ -151,6 +152,64 @@ def test_grouped_combine_category_loads_matching_screen(tmp_path) -> None:
     assert result["pass"] is True
     assert result["comparison"] == "grouped_combine"
     assert result["aggregate_speedup"] == pytest.approx(0.9997)
+
+
+def test_f16_wmma_category_loads_synthetic_screen_without_model_binding(
+    tmp_path,
+) -> None:
+    screen = tmp_path / "f16-screen.json"
+    screen.write_text(
+        json.dumps(
+            {
+                "kind": F16_WMMA_COMPARISON.screen_kind,
+                "status": F16_WMMA_COMPARISON.screen_status,
+                "pass": True,
+                "summary": {"pass": True, "failed_checks": []},
+                "repo": {"revision": "candidate-revision"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    args = SimpleNamespace(shape_screen=screen, model_sha256="model-sha")
+
+    result = _load_shape_screen(args, comparison=F16_WMMA_COMPARISON)
+
+    assert result["pass"] is True
+    assert result["comparison"] == "f16_wmma"
+    assert result["model_sha256"] is None
+
+
+def test_f16_wmma_category_reports_but_does_not_require_exact_trajectories() -> None:
+    comparison = F16_WMMA_COMPARISON
+    rows = _rows(
+        modes=comparison.modes,
+        baseline_prefill=2.0,
+        candidate_prefill=1.0,
+    )
+    for row in rows:
+        if row["mode"] == comparison.modes[1]:
+            for checkpoint in row["checkpoints"].values():
+                checkpoint["generated_token_ids"][-1] = 999
+    free_running = _paired_free_running(
+        rows,
+        HORIZONS,
+        comparison=comparison,
+    )
+    gate = _promotion_gate(
+        _aggregate(rows, HORIZONS, comparison=comparison),
+        free_running,
+        _teacher_forced_quality(_teacher_rows()),
+        {"pass": True},
+        {"pass": True},
+        horizons=HORIZONS,
+        recovered=True,
+        comparison=comparison,
+    )
+
+    assert free_running["all_pairs_exact"] is False
+    assert free_running["same_mode_repeat_deterministic"] is True
+    assert gate["pass"] is True
+    assert gate["policy"]["free_running_ids"].startswith("report complete")
 
 
 def test_grouped_down_category_gate_accepts_quality_and_full_model_win() -> None:

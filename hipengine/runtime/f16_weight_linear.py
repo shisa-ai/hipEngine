@@ -17,7 +17,7 @@ LAYOUT_DENSE_F16 = "dense_f16"
 SOURCE_QUANT_FP16 = "fp16"
 F16_WEIGHT = "fp16_weight"
 _ENV_PREFILL_MODE = "HIPENGINE_LAGUNA_F16_PREFILL"
-_PREFILL_MODES = frozenset({"auto", "gemv", "tiled"})
+_PREFILL_MODES = frozenset({"auto", "gemv", "tiled", "wmma"})
 
 
 def _variant(activation_dtype: str, output_dtype: str) -> str:
@@ -41,6 +41,8 @@ def _prefill_strategy(
         return None
     if mode == "tiled":
         return mode
+    if mode == "wmma":
+        return mode if rows >= 16 else "tiled"
     strategy = backend_package_capability(
         backend, "LAGUNA_F16_PREFILL_STRATEGY", None
     )
