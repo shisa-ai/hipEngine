@@ -24,6 +24,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
     gguf_q4_k_wmma_prefill_dual_bf16_bf16_out,
     register_gguf_q4_k_prefill_kernels,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_pack8_gemv import (
+    register_gguf_q4_k_pack8_gemv_kernels,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
     register_gguf_q6_k_pack8_gemv_kernels,
 )
@@ -785,10 +788,12 @@ def launch_gguf_linear(
             quant=dispatch.key.quant,
             variant=dispatch.key.variant,
         )
-        cached = (dispatch.abi, fn, dispatch.key.quant)
+        cached = (dispatch.abi, fn, dispatch.key.quant, dispatch.key.variant)
         _DISPATCH_RESOLVE_CACHE[cache_key] = cached
-    abi, fn, quant = cached
-    library = None if libraries is None else libraries.get(quant)
+    abi, fn, quant, variant = cached
+    library = None
+    if libraries is not None:
+        library = libraries.get(f"{quant}:{variant}", libraries.get(quant))
     kwargs = {"stream": stream, "runtime": runtime}
     if abi == "t16" and quant == "gguf_q8_0_t16_v1":
         q8_t16_threads = _resolve_q8_t16_threads(threads)
@@ -1598,9 +1603,15 @@ def _gemv_decode_dispatch(
     if dispatch.abi != "raw":
         return dispatch
     variant = dispatch.key.variant
-    if not variant.startswith("pack8_gemv_") or variant.startswith("pack8_gemv_decode_"):
+    if variant.startswith("pack8_gemv_") and not variant.startswith("pack8_gemv_decode_"):
+        suffix = variant[len("pack8_gemv_") :]
+    elif dispatch.key.quant == "gguf_q4_k" and variant.startswith("gemv_"):
+        # Raw Q4_K has no generic raw-pack8 registry key: jump directly from
+        # its scalar fallback to the separately registered decode family.
+        suffix = variant[len("gemv_") :]
+    else:
         return dispatch
-    rewritten_variant = f"pack8_gemv_decode_{variant[len('pack8_gemv_') :]}"
+    rewritten_variant = f"pack8_gemv_decode_{suffix}"
     rewritten_key = KernelKey(
         dispatch.key.backend,
         dispatch.key.layer,
@@ -1786,6 +1797,7 @@ def _ensure_linear_kernel_registered(key: KernelKey) -> None:
     register_gguf_k_gemv_kernels()
     register_gguf_q4_k_gemv_kernels()
     register_gguf_q4_k_prefill_kernels()
+    register_gguf_q4_k_pack8_gemv_kernels()
     register_gguf_q6_k_pack8_gemv_kernels()
     register_gguf_q6_k_t16_gemv_kernels()
     register_gguf_q8_0_mmq_prefill_kernels()

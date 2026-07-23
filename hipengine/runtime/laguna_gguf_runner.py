@@ -609,8 +609,11 @@ class LagunaEagerLibraries:
     dense_silu: object
     argmax: object
     q4_linear: object
+    q4_decode_linear: object
     q6_linear: object
+    q6_decode_linear: object
     q6_t16_linear: object
+    q8_decode_linear: object
     router_logits: object
     router_select: object
     selected_experts: object
@@ -638,9 +641,15 @@ class LagunaEagerLibraries:
     def linear(self) -> Mapping[str, object]:
         return {
             "gguf_q4_k": self.q4_linear,
+            "gguf_q4_k:pack8_gemv_decode_bf16_bf16_out": self.q4_decode_linear,
+            "gguf_q4_k:pack8_gemv_decode_bf16_f32_out": self.q4_decode_linear,
             "gguf_q5_k": self.q6_linear,
             "gguf_q6_k": self.q6_linear,
+            "gguf_q6_k:pack8_gemv_decode_bf16_bf16_out": self.q6_decode_linear,
+            "gguf_q6_k:pack8_gemv_decode_bf16_f32_out": self.q6_decode_linear,
             "gguf_q8_0": self.q6_linear,
+            "gguf_q8_0:pack8_gemv_decode_bf16_bf16_out": self.q8_decode_linear,
+            "gguf_q8_0:pack8_gemv_decode_bf16_f32_out": self.q8_decode_linear,
             "gguf_q6_k_t16_v1": self.q6_t16_linear,
         }
 
@@ -672,12 +681,13 @@ def _launch_laguna_f16_weight_linear(weight, *args, libraries, **kwargs) -> None
 
 
 def _launch_laguna_raw_weight_linear(weight, *args, libraries, **kwargs) -> None:
+    rows = int(args[2])
     launch_gguf_linear(
         weight,
         *args,
         libraries=libraries.linear,
         use_wmma_prefill=False,
-        use_gemv_decode=False,
+        use_gemv_decode=rows == 1,
         **kwargs,
     )
 
@@ -1122,11 +1132,20 @@ def load_laguna_eager_libraries(
     from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
         build_gguf_q4_k_gemv,
     )
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_pack8_gemv import (
+        build_gguf_q4_k_pack8_gemv,
+    )
     from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_embedding import (
         build_gguf_q6_k_embedding,
     )
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
+        build_gguf_q6_k_pack8_gemv,
+    )
     from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
         build_gguf_q6_k_t16_gemv,
+    )
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_pack8_gemv import (
+        build_gguf_q8_0_pack8_gemv,
     )
     from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
         build_gguf_t16_selected_gemv,
@@ -1152,8 +1171,11 @@ def load_laguna_eager_libraries(
             dense_silu=build_paro_silu(**kwargs),
             argmax=build_lm_head(**kwargs),
             q4_linear=build_gguf_q4_k_gemv(**kwargs),
+            q4_decode_linear=build_gguf_q4_k_pack8_gemv(**kwargs),
             q6_linear=build_gguf_k_gemv(**kwargs),
+            q6_decode_linear=build_gguf_q6_k_pack8_gemv(**kwargs),
             q6_t16_linear=build_gguf_q6_k_t16_gemv(**kwargs),
+            q8_decode_linear=build_gguf_q8_0_pack8_gemv(**kwargs),
             router_logits=build_qwen35_router(**kwargs),
             router_select=build_laguna_router(**kwargs),
             selected_experts=build_gguf_t16_selected_gemv(**kwargs),
@@ -2116,7 +2138,7 @@ class LagunaGGUFResidentSession:
                 libraries=linear_libraries,
                 runtime=self.runtime,
                 use_wmma_prefill=False,
-                use_gemv_decode=False,
+                use_gemv_decode=rows == 1,
             )
         self.kernel_plan.dense_silu(
             scratch.dense_gate.ptr,
@@ -2140,7 +2162,7 @@ class LagunaGGUFResidentSession:
             libraries=linear_libraries,
             runtime=self.runtime,
             use_wmma_prefill=False,
-            use_gemv_decode=False,
+            use_gemv_decode=rows == 1,
         )
         self.kernel_plan.add(
             scratch.post_attention.ptr,
@@ -2225,7 +2247,7 @@ class LagunaGGUFResidentSession:
             libraries=self.libraries.linear,
             runtime=self.runtime,
             use_wmma_prefill=False,
-            use_gemv_decode=False,
+            use_gemv_decode=True,
         )
         self.kernel_plan.argmax(
             scratch.logits.ptr,
@@ -2292,7 +2314,7 @@ class LagunaGGUFResidentSession:
             libraries=self.libraries.linear,
             runtime=self.runtime,
             use_wmma_prefill=False,
-            use_gemv_decode=False,
+            use_gemv_decode=rows == 1,
         )
         if stream:
             self.runtime.stream_synchronize(stream)
@@ -2475,7 +2497,7 @@ class LagunaGGUFResidentSession:
                 libraries=linear_libraries,
                 runtime=self.runtime,
                 use_wmma_prefill=False,
-                use_gemv_decode=False,
+                use_gemv_decode=True,
             )
         self.kernel_plan.dense_silu(
             scratch.dense_gate.ptr,
@@ -2499,7 +2521,7 @@ class LagunaGGUFResidentSession:
             libraries=linear_libraries,
             runtime=self.runtime,
             use_wmma_prefill=False,
-            use_gemv_decode=False,
+            use_gemv_decode=True,
         )
         self.kernel_plan.add(
             scratch.post_attention.ptr,
@@ -2577,7 +2599,7 @@ class LagunaGGUFResidentSession:
             libraries=self.libraries.linear,
             runtime=self.runtime,
             use_wmma_prefill=False,
-            use_gemv_decode=False,
+            use_gemv_decode=True,
         )
         self.kernel_plan.argmax(
             scratch.logits.ptr,

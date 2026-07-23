@@ -134,6 +134,10 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
     assert plan.grouped_prefix_active_key == KernelKey(
         "hip_gfx1151", "moe_group_prefix", "generic", "active_experts"
     )
+    assert set(plan.selected_weighted_down_keys) == {"gguf_iq3_xxs"}
+    assert plan.selected_weighted_down_keys["gguf_iq3_xxs"].variant == (
+        "selected_weighted_down_gemv_decode_bf16_bf16_out"
+    )
     assert all(key.backend == "hip_gfx1151" for key in plan.kernel_keys)
 
     sparse_sequence = LAGUNA_GGUF.decode_layer_sequence(

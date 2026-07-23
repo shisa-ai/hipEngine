@@ -1,0 +1,1342 @@
+{
+  "acceptance_policy": {
+    "candidate_vs_prior_default": {
+      "correctness_and_lifecycle": "pass",
+      "each_category_decode_and_e2e_pct_h16_h32": "> 0%",
+      "each_category_prefill_tok_s_pct": ">= -2%",
+      "suite_decode_tok_s_pct_h16_h32": ">= +10%",
+      "suite_e2e_output_tok_s_pct_h16_h32": "> 0%",
+      "suite_prefill_tok_s_pct": ">= -2%"
+    },
+    "disclosure": "The source harness serial-vs-bulk promotion gate reports false only for general_en prefill because the same dense decode kernels also accelerate the token-serial control. The retained comparison is prior default bulk vs candidate default bulk on the identical full suite; candidate bulk prefill improves in every category and all decode/E2E rows improve.",
+    "pass": true,
+    "source_serial_vs_bulk_promotion_gate": {
+      "failed_checks": [
+        "general_en:h16:prefill_speedup",
+        "general_en:h32:prefill_speedup"
+      ],
+      "pass": false,
+      "policy": {
+        "each_category": {
+          "decode_speedup": ">=0.98",
+          "e2e_speedup": ">=0.98",
+          "prefill_speedup": ">1.0"
+        },
+        "suite": {
+          "decode_speedup": ">=0.98",
+          "e2e_speedup": ">1.0",
+          "prefill_speedup": ">1.0"
+        }
+      }
+    }
+  },
+  "baseline_default_bulk": {
+    "h16": {
+      "decode_forward_calls": 300,
+      "decode_seconds": 15.208222032058984,
+      "decode_tok_s": 19.7261717620639,
+      "e2e_output_tok_s": 5.487847245501117,
+      "output_tokens": 320,
+      "total_seconds": 58.31066093582194
+    },
+    "h32": {
+      "decode_forward_calls": 620,
+      "decode_seconds": 31.689839354366995,
+      "decode_tok_s": 19.564630576600297,
+      "e2e_output_tok_s": 8.55703309091847,
+      "output_tokens": 640,
+      "total_seconds": 74.79227825812995
+    },
+    "prefill_tok_s": 40.09053881749464,
+    "ttft_median_seconds": 2.0178535880404525
+  },
+  "baseline_serial": {
+    "h16": {
+      "decode_forward_calls": 300,
+      "decode_seconds": 15.18782581423875,
+      "decode_tok_s": 19.75266267004108,
+      "e2e_output_tok_s": 3.2653656530603814,
+      "output_tokens": 320,
+      "total_seconds": 97.9982133700978
+    },
+    "h32": {
+      "decode_forward_calls": 620,
+      "decode_seconds": 31.6612758487463,
+      "decode_tok_s": 19.58228098456589,
+      "e2e_output_tok_s": 5.59090329401339,
+      "output_tokens": 640,
+      "total_seconds": 114.47166340460535
+    },
+    "prefill_tok_s": 20.86694738428065,
+    "ttft_median_seconds": 3.858824423979968
+  },
+  "candidate_default_bulk": {
+    "h16": {
+      "decode_forward_calls": 300,
+      "decode_seconds": 8.36314211646095,
+      "decode_tok_s": 35.871685046403556,
+      "e2e_output_tok_s": 6.257987811462803,
+      "output_tokens": 320,
+      "total_seconds": 51.134647372411564
+    },
+    "h32": {
+      "decode_forward_calls": 620,
+      "decode_seconds": 17.504564351169392,
+      "decode_tok_s": 35.419333355678795,
+      "e2e_output_tok_s": 10.617812411650695,
+      "output_tokens": 640,
+      "total_seconds": 60.27606960712001
+    },
+    "prefill_tok_s": 40.400729169090695,
+    "ttft_median_seconds": 1.9995582835399546
+  },
+  "candidate_default_bulk_repetitions": [
+    {
+      "h16_decode_tok_s": 36.06257819503508,
+      "h16_e2e_output_tok_s": 6.291291639017157,
+      "h32_decode_tok_s": 35.59424425483738,
+      "h32_e2e_output_tok_s": 10.673135874382801,
+      "prefill_tok_s": 40.61573622914881,
+      "repetition": 0
+    },
+    {
+      "h16_decode_tok_s": 35.682802198735985,
+      "h16_e2e_output_tok_s": 6.225034724105393,
+      "h32_decode_tok_s": 35.24613308247784,
+      "h32_e2e_output_tok_s": 10.563059522088974,
+      "prefill_tok_s": 40.187986482989594,
+      "repetition": 1
+    }
+  ],
+  "candidate_serial": {
+    "h16": {
+      "decode_forward_calls": 300,
+      "decode_seconds": 8.322394361486658,
+      "decode_tok_s": 36.047318472229904,
+      "e2e_output_tok_s": 6.18207619287909,
+      "output_tokens": 320,
+      "total_seconds": 51.762545464676805
+    },
+    "h32": {
+      "decode_forward_calls": 620,
+      "decode_seconds": 17.460134817520157,
+      "decode_tok_s": 35.509462354086104,
+      "e2e_output_tok_s": 10.508981859843056,
+      "output_tokens": 640,
+      "total_seconds": 60.9002859207103
+    },
+    "prefill_tok_s": 39.77886715668214,
+    "ttft_median_seconds": 2.0107773919589818
+  },
+  "candidate_vs_baseline_pct": {
+    "h16_decode_tok_s_pct": 81.84818361659848,
+    "h16_e2e_output_tok_s_pct": 14.03356419209809,
+    "h32_decode_tok_s_pct": 81.03757807745704,
+    "h32_e2e_output_tok_s_pct": 24.082871935125727,
+    "prefill_tok_s_pct": 0.773724576285062,
+    "ttft_wall_pct": -0.9066715548111004
+  },
+  "categories": {
+    "code": {
+      "baseline_default_bulk": {
+        "h16": {
+          "decode_forward_calls": 120,
+          "decode_seconds": 5.997304710675962,
+          "decode_tok_s": 20.008988335440886,
+          "e2e_output_tok_s": 6.038900344540639,
+          "output_tokens": 128,
+          "total_seconds": 21.195911953691393
+        },
+        "h32": {
+          "decode_forward_calls": 248,
+          "decode_seconds": 12.498287319322117,
+          "decode_tok_s": 19.842718739278514,
+          "e2e_output_tok_s": 9.242913476231765,
+          "output_tokens": 256,
+          "total_seconds": 27.696894562337548
+        },
+        "prefill_tok_s": 40.26684749559843,
+        "ttft_median_seconds": 1.9073674894752912
+      },
+      "candidate_default_bulk": {
+        "h16": {
+          "decode_forward_calls": 120,
+          "decode_seconds": 3.263832465861924,
+          "decode_tok_s": 36.76659303292701,
+          "e2e_output_tok_s": 6.980400365171567,
+          "output_tokens": 128,
+          "total_seconds": 18.337057088967413
+        },
+        "h32": {
+          "decode_forward_calls": 248,
+          "decode_seconds": 6.834227543207817,
+          "decode_tok_s": 36.28793428841483,
+          "e2e_output_tok_s": 11.68552134938113,
+          "output_tokens": 256,
+          "total_seconds": 21.907452166313305
+        },
+        "prefill_tok_s": 40.60179658318603,
+        "ttft_median_seconds": 1.8922343280282803
+      },
+      "candidate_vs_baseline_pct": {
+        "h16_decode_tok_s_pct": 83.7503846598993,
+        "h16_e2e_output_tok_s_pct": 15.59058714194672,
+        "h32_decode_tok_s_pct": 82.87783425858441,
+        "h32_e2e_output_tok_s_pct": 26.426817468653717,
+        "prefill_tok_s_pct": 0.8318234687337167,
+        "ttft_wall_pct": -0.7934056510092824
+      }
+    },
+    "general_en": {
+      "baseline_default_bulk": {
+        "h16": {
+          "decode_forward_calls": 60,
+          "decode_seconds": 2.984686468495056,
+          "decode_tok_s": 20.102614004295503,
+          "e2e_output_tok_s": 6.538934842150069,
+          "output_tokens": 64,
+          "total_seconds": 9.78752679831814
+        },
+        "h32": {
+          "decode_forward_calls": 124,
+          "decode_seconds": 6.218916616286151,
+          "decode_tok_s": 19.93916427103521,
+          "e2e_output_tok_s": 9.829702745161825,
+          "output_tokens": 128,
+          "total_seconds": 13.021756946109235
+        },
+        "prefill_tok_s": 39.983299153380784,
+        "ttft_median_seconds": 1.701484379475005
+      },
+      "candidate_default_bulk": {
+        "h16": {
+          "decode_forward_calls": 60,
+          "decode_seconds": 1.6183460623724386,
+          "decode_tok_s": 37.07488861315738,
+          "e2e_output_tok_s": 7.656641530902853,
+          "output_tokens": 64,
+          "total_seconds": 8.358756217290647
+        },
+        "h32": {
+          "decode_forward_calls": 124,
+          "decode_seconds": 3.3875128435902297,
+          "decode_tok_s": 36.60502726495335,
+          "e2e_output_tok_s": 12.638326734795559,
+          "output_tokens": 128,
+          "total_seconds": 10.127922998508438
+        },
+        "prefill_tok_s": 40.353627412648244,
+        "ttft_median_seconds": 1.6856657229945995
+      },
+      "candidate_vs_baseline_pct": {
+        "h16_decode_tok_s_pct": 84.42819727442041,
+        "h16_e2e_output_tok_s_pct": 17.09310026379267,
+        "h32_decode_tok_s_pct": 83.58355830453708,
+        "h32_e2e_output_tok_s_pct": 28.57282730157977,
+        "prefill_tok_s_pct": 0.9262073593447884,
+        "ttft_wall_pct": -0.9296974260372792
+      }
+    },
+    "general_ja": {
+      "baseline_default_bulk": {
+        "h16": {
+          "decode_forward_calls": 60,
+          "decode_seconds": 3.0760062729241326,
+          "decode_tok_s": 19.505811977087557,
+          "e2e_output_tok_s": 5.116039149055067,
+          "output_tokens": 64,
+          "total_seconds": 12.509677532827482
+        },
+        "h32": {
+          "decode_forward_calls": 124,
+          "decode_seconds": 6.40802690514829,
+          "decode_tok_s": 19.350730238098226,
+          "e2e_output_tok_s": 8.079941851333889,
+          "output_tokens": 128,
+          "total_seconds": 15.841698165051639
+        },
+        "prefill_tok_s": 40.069235993694434,
+        "ttft_median_seconds": 2.3581190914846957
+      },
+      "candidate_default_bulk": {
+        "h16": {
+          "decode_forward_calls": 60,
+          "decode_seconds": 1.7050873272819445,
+          "decode_tok_s": 35.18881352290921,
+          "e2e_output_tok_s": 5.779222921527659,
+          "output_tokens": 64,
+          "total_seconds": 11.074153198278509
+        },
+        "h32": {
+          "decode_forward_calls": 124,
+          "decode_seconds": 3.5660940115340054,
+          "decode_tok_s": 34.771938036109056,
+          "e2e_output_tok_s": 9.89550969314797,
+          "output_tokens": 128,
+          "total_seconds": 12.93515988253057
+        },
+        "prefill_tok_s": 40.345537666690895,
+        "ttft_median_seconds": 2.3404446995118633
+      },
+      "candidate_vs_baseline_pct": {
+        "h16_decode_tok_s_pct": 80.40168522204377,
+        "h16_e2e_output_tok_s_pct": 12.962836154119017,
+        "h32_decode_tok_s_pct": 79.69315683833548,
+        "h32_e2e_output_tok_s_pct": 22.470060740775686,
+        "prefill_tok_s_pct": 0.6895606221190231,
+        "ttft_wall_pct": -0.749512271736219
+      }
+    },
+    "mixed_ja_en": {
+      "baseline_default_bulk": {
+        "h16": {
+          "decode_forward_calls": 60,
+          "decode_seconds": 3.150224579963833,
+          "decode_tok_s": 19.046261140114918,
+          "e2e_output_tok_s": 4.319204126423597,
+          "output_tokens": 64,
+          "total_seconds": 14.817544650984928
+        },
+        "h32": {
+          "decode_forward_calls": 124,
+          "decode_seconds": 6.5646085136104375,
+          "decode_tok_s": 18.889169055993232,
+          "e2e_output_tok_s": 7.020650580427166,
+          "output_tokens": 128,
+          "total_seconds": 18.231928584631532
+        },
+        "prefill_tok_s": 39.940620224985125,
+        "ttft_median_seconds": 2.9169453214854
+      },
+      "candidate_default_bulk": {
+        "h16": {
+          "decode_forward_calls": 60,
+          "decode_seconds": 1.7758762609446421,
+          "decode_tok_s": 33.78613776169529,
+          "e2e_output_tok_s": 4.788741357366665,
+          "output_tokens": 64,
+          "total_seconds": 13.364680867874995
+        },
+        "h32": {
+          "decode_forward_calls": 124,
+          "decode_seconds": 3.7167299528373405,
+          "decode_tok_s": 33.362660611201726,
+          "e2e_output_tok_s": 8.362987878676403,
+          "output_tokens": 128,
+          "total_seconds": 15.305534559767693
+        },
+        "prefill_tok_s": 40.21122245182407,
+        "ttft_median_seconds": 2.896843695489224
+      },
+      "candidate_vs_baseline_pct": {
+        "h16_decode_tok_s_pct": 77.3898693982279,
+        "h16_e2e_output_tok_s_pct": 10.870920132498018,
+        "h32_decode_tok_s_pct": 76.62323055241164,
+        "h32_e2e_output_tok_s_pct": 19.11984199856822,
+        "prefill_tok_s_pct": 0.6775113288542967,
+        "ttft_wall_pct": -0.689132766669065
+      }
+    }
+  },
+  "clean_profile": {
+    "baseline_d0": {
+      "dense_q5_ms_per_token": 27.30336492857143,
+      "dispatch_span_median_ms": 49.929408,
+      "kernel_sum_mean_ms": 44.57192992857142,
+      "lm_head_q4_ms_per_token": 1.617861142857143,
+      "profiled_child_wall_mean_ms": 52.70302328571429
+    },
+    "candidate_vs_baseline_pct": {
+      "dense_q5": -73.87486219025922,
+      "kernel_sum": -48.07918418622788,
+      "lm_head_q4": -76.75399566341028,
+      "profiled_child_wall": -45.3159136799811
+    },
+    "dispatch_span_median_ms": 27.55362,
+    "dispatches_per_token": 1055,
+    "families": [
+      {
+        "calls_per_token": 141.0,
+        "family": "dense_q5_bf16_out",
+        "kernel_names": [
+          "void (anonymous namespace)::gguf_q5_k_pack8_decode_out_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)"
+        ],
+        "median_us": 17.241,
+        "ms_per_token": 4.384922071428572,
+        "rank": 1,
+        "resources": {
+          "LDS_Block_Size": [
+            1024
+          ],
+          "Scratch_Size": [
+            0
+          ],
+          "VGPR_Count": [
+            72
+          ],
+          "Workgroup_Size_X": [
+            128
+          ]
+        },
+        "share_pct": 18.94780613824456
+      },
+      {
+        "calls_per_token": 36.0,
+        "family": "swa_attention_decode",
+        "kernel_names": [
+          "(anonymous namespace)::laguna_swa_attention_decode_bf16_kernel(float const*, unsigned short const*, unsigned short const*, float*, int const*, long const*, long const*, unsigned char const*, long const*, long, long, long, long, long, float)"
+        ],
+        "median_us": 116.9015,
+        "ms_per_token": 4.211637571428572,
+        "rank": 2,
+        "resources": {
+          "LDS_Block_Size": [
+            1024
+          ],
+          "Scratch_Size": [
+            0
+          ],
+          "VGPR_Count": [
+            16
+          ],
+          "Workgroup_Size_X": [
+            128
+          ]
+        },
+        "share_pct": 18.19902176778642
+      },
+      {
+        "calls_per_token": 45.0,
+        "family": "selected_iq3_down",
+        "kernel_names": [
+          "(anonymous namespace)::gguf_iq3_xxs_selected_gemv_kernel(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)"
+        ],
+        "median_us": 89.761,
+        "ms_per_token": 4.039584357142857,
+        "rank": 3,
+        "resources": {
+          "LDS_Block_Size": [
+            512
+          ],
+          "Scratch_Size": [
+            0
+          ],
+          "VGPR_Count": [
+            24
+          ],
+          "Workgroup_Size_X": [
+            256
+          ]
+        },
+        "share_pct": 17.455557939548882
+      },
+      {
+        "calls_per_token": 94.0,
+        "family": "dense_q5_f32_out",
+        "kernel_names": [
+          "void (anonymous namespace)::gguf_q5_k_pack8_decode_out_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, float*, int, int, int)"
+        ],
+        "median_us": 24.98,
+        "ms_per_token": 2.7481196428571426,
+        "rank": 4,
+        "resources": {
+          "LDS_Block_Size": [
+            1024
+          ],
+          "Scratch_Size": [
+            0
+          ],
+          "VGPR_Count": [
+            48
+          ],
+          "Workgroup_Size_X": [
+            128
+          ]
+        },
+        "share_pct": 11.874974603732186
+      },
+      {
+        "calls_per_token": 46.0,
+        "family": "selected_iq2_dual_silu",
+        "kernel_names": [
+          "(anonymous namespace)::gguf_iq2_xs_selected_dual_silu_gemv_tile2_kernel(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int, int, int, int, int)"
+        ],
+        "median_us": 49.8205,
+        "ms_per_token": 2.295317214285714,
+        "rank": 5,
+        "resources": {
+          "LDS_Block_Size": [
+            512
+          ],
+          "Scratch_Size": [
+            0
+          ],
+          "VGPR_Count": [
+            136
+          ],
+          "Workgroup_Size_X": [
+            64
+          ]
+        },
+        "share_pct": 9.91835770251036
+      },
+      {
+        "calls_per_token": 96.0,
+        "family": "dense_q6_f32_out",
+        "kernel_names": [
+          "void (anonymous namespace)::gguf_q6_k_pack8_gemv_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, float*, long, long, long)"
+        ],
+        "median_us": 15.0,
+        "ms_per_token": 1.4673254285714286,
+        "rank": 6,
+        "resources": {
+          "LDS_Block_Size": [
+            1024
+          ],
+          "Scratch_Size": [
+            0
+          ],
+          "VGPR_Count": [
+            48
+          ],
+          "Workgroup_Size_X": [
+            128
+          ]
+        },
+        "share_pct": 6.3404998559598535
+      },
+      {
+        "calls_per_token": 50.0,
+        "family": "dense_q6_bf16_out",
+        "kernel_names": [
+          "void (anonymous namespace)::gguf_q6_k_pack8_gemv_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)"
+        ],
+        "median_us": 9.24,
+        "ms_per_token": 0.5826934285714285,
+        "rank": 7,
+        "resources": {
+          "LDS_Block_Size": [
+            1024
+          ],
+          "Scratch_Size": [
+            0
+          ],
+          "VGPR_Count": [
+            72
+          ],
+          "Workgroup_Size_X": [
+            128
+          ]
+        },
+        "share_pct": 2.5178924374825873
+      },
+      {
+        "calls_per_token": 12.0,
+        "family": "global_attention_decode",
+        "kernel_names": [
+          "(anonymous namespace)::laguna_global_attention_decode_bf16_kernel(float const*, unsigned short const*, unsigned short const*, float*, int const*, long const*, long const*, unsigned char const*, long const*, long, long, long, long, long, float)"
+        ],
+        "median_us": 41.861,
+        "ms_per_token": 0.5039381428571429,
+        "rank": 8,
+        "resources": {
+          "LDS_Block_Size": [
+            0
+          ],
+          "Scratch_Size": [
+            0
+          ],
+          "VGPR_Count": [
+            40
+          ],
+          "Workgroup_Size_X": [
+            256
+          ]
+        },
+        "share_pct": 2.1775808283437303
+      },
+      {
+        "calls_per_token": 47.0,
+        "family": "router_select",
+        "kernel_names": [
+          "(anonymous namespace)::laguna_sigmoid_correction_topk_kernel(float const*, float const*, float*, float*, long*, float*, float*, long, long, float)"
+        ],
+        "median_us": 8.2,
+        "ms_per_token": 0.39075121428571424,
+        "rank": 9,
+        "resources": {
+          "LDS_Block_Size": [
+            512
+          ],
+          "Scratch_Size": [
+            0
+          ],
+          "VGPR_Count": [
+            32
+          ],
+          "Workgroup_Size_X": [
+            256
+          ]
+        },
+        "share_pct": 1.6884857098856603
+      },
+      {
+        "calls_per_token": 48.0,
+        "family": "add_rmsnorm",
+        "kernel_names": [
+          "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)"
+        ],
+        "median_us": 8.08,
+        "ms_per_token": 0.38821157142857143,
+        "rank": 10,
+        "resources": {
+          "LDS_Block_Size": [
+            0
+          ],
+          "Scratch_Size": [
+            0
+          ],
+          "VGPR_Count": [
+            24
+          ],
+          "Workgroup_Size_X": [
+            256
+          ]
+        },
+        "share_pct": 1.6775115899962634
+      },
+      {
+        "calls_per_token": 1.0,
+        "family": "lm_head_q4",
+        "kernel_names": [
+          "void (anonymous namespace)::gguf_q4_k_pack8_gemv_kernel<unsigned short, float>(unsigned short const*, unsigned char const*, float*, long, long, long)"
+        ],
+        "median_us": 376.245,
+        "ms_per_token": 0.3760880714285714,
+        "rank": 11,
+        "resources": {
+          "LDS_Block_Size": [
+            1024
+          ],
+          "Scratch_Size": [
+            0
+          ],
+          "VGPR_Count": [
+            48
+          ],
+          "Workgroup_Size_X": [
+            128
+          ]
+        },
+        "share_pct": 1.6251244040953359
+      },
+      {
+        "calls_per_token": 49.0,
+        "family": "rmsnorm",
+        "kernel_names": [
+          "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)"
+        ],
+        "median_us": 6.8,
+        "ms_per_token": 0.33369278571428573,
+        "rank": 12,
+        "resources": {
+          "LDS_Block_Size": [
+            0
+          ],
+          "Scratch_Size": [
+            0
+          ],
+          "VGPR_Count": [
+            16
+          ],
+          "Workgroup_Size_X": [
+            256
+          ]
+        },
+        "share_pct": 1.4419289808234084
+      },
+      {
+        "calls_per_token": 47.0,
+        "family": "router_projection",
+        "kernel_names": [
+          "void (anonymous namespace)::qwen35_router_logits_kernel<unsigned short, float>(unsigned short const*, float const*, float*, long, long)"
+        ],
+        "median_us": 6.56,
+        "ms_per_token": 0.30863628571428575,
+        "rank": 13,
+        "resources": {
+          "LDS_Block_Size": [
+            0
+          ],
+          "Scratch_Size": [
+            0
+          ],
+          "VGPR_Count": [
+            24
+          ],
+          "Workgroup_Size_X": [
+            256
+          ]
+        },
+        "share_pct": 1.3336566565336747
+      },
+      {
+        "calls_per_token": 48.0,
+        "family": "head_norm_rope",
+        "kernel_names": [
+          "gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long)"
+        ],
+        "median_us": 4.12,
+        "ms_per_token": 0.2007397142857143,
+        "rank": 14,
+        "resources": {
+          "LDS_Block_Size": [
+            0
+          ],
+          "Scratch_Size": [
+            0
+          ],
+          "VGPR_Count": [
+            16
+          ],
+          "Workgroup_Size_X": [
+            256
+          ]
+        },
+        "share_pct": 0.8674218443506208
+      },
+      {
+        "calls_per_token": 95.0,
+        "family": "residual_add",
+        "kernel_names": [
+          "gguf_bf16_add_kernel(unsigned short const*, unsigned short const*, unsigned short*, long)"
+        ],
+        "median_us": 1.96,
+        "ms_per_token": 0.19282214285714286,
+        "rank": 15,
+        "resources": {
+          "LDS_Block_Size": [
+            0
+          ],
+          "Scratch_Size": [
+            0
+          ],
+          "VGPR_Count": [
+            24
+          ],
+          "Workgroup_Size_X": [
+            256
+          ]
+        },
+        "share_pct": 0.8332090109021577
+      },
+      {
+        "calls_per_token": 47.0,
+        "family": "selected_reduce",
+        "kernel_names": [
+          "void (anonymous namespace)::weighted_sum_out_kernel<unsigned short, float>(unsigned short const*, float const*, unsigned short*, long, long)"
+        ],
+        "median_us": 2.88,
+        "ms_per_token": 0.13595071428571429,
+        "rank": 16,
+        "resources": {
+          "LDS_Block_Size": [
+            0
+          ],
+          "Scratch_Size": [
+            0
+          ],
+          "VGPR_Count": [
+            8
+          ],
+          "Workgroup_Size_X": [
+            256
+          ]
+        },
+        "share_pct": 0.5874603326308055
+      },
+      {
+        "calls_per_token": 2.0,
+        "family": "selected_iq4_down",
+        "kernel_names": [
+          "(anonymous namespace)::gguf_iq4_xs_selected_gemv_kernel(unsigned short const*, long const*, unsigned char const*, unsigned short*, int, int, int, int, int)"
+        ],
+        "median_us": 61.1205,
+        "ms_per_token": 0.12415307142857143,
+        "rank": 17,
+        "resources": {
+          "LDS_Block_Size": [
+            512
+          ],
+          "Scratch_Size": [
+            0
+          ],
+          "VGPR_Count": [
+            72
+          ],
+          "Workgroup_Size_X": [
+            128
+          ]
+        },
+        "share_pct": 0.5364812169010336
+      },
+      {
+        "calls_per_token": 36.0,
+        "family": "swa_kv_write",
+        "kernel_names": [
+          "(anonymous namespace)::laguna_swa_write_kv_f32_bf16_kernel(float const*, float const*, unsigned short*, unsigned short*, int const*, long*, long*, unsigned char*, long const*, long, long, long)"
+        ],
+        "median_us": 3.24,
+        "ms_per_token": 0.11708457142857144,
+        "rank": 18,
+        "resources": {
+          "LDS_Block_Size": [
+            0
+          ],
+          "Scratch_Size": [
+            0
+          ],
+          "VGPR_Count": [
+            16
+          ],
+          "Workgroup_Size_X": [
+            256
+          ]
+        },
+        "share_pct": 0.5059373291177445
+      },
+      {
+        "calls_per_token": 48.0,
+        "family": "attention_gate",
+        "kernel_names": [
+          "void (anonymous namespace)::laguna_softplus_head_gate_kernel<unsigned short>(float const*, float const*, unsigned short*, long, long, long)"
+        ],
+        "median_us": 2.2,
+        "ms_per_token": 0.10874114285714286,
+        "rank": 19,
+        "resources": {
+          "LDS_Block_Size": [
+            0
+          ],
+          "Scratch_Size": [
+            0
+          ],
+          "VGPR_Count": [
+            24
+          ],
+          "Workgroup_Size_X": [
+            256
+          ]
+        },
+        "share_pct": 0.46988431277571974
+      },
+      {
+        "calls_per_token": 48.0,
+        "family": "dense_shared_silu",
+        "kernel_names": [
+          "void (anonymous namespace)::silu_mul_separate_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long)"
+        ],
+        "median_us": 1.7205,
+        "ms_per_token": 0.08550714285714285,
+        "rank": 20,
+        "resources": {
+          "LDS_Block_Size": [
+            0
+          ],
+          "Scratch_Size": [
+            0
+          ],
+          "VGPR_Count": [
+            16
+          ],
+          "Workgroup_Size_X": [
+            256
+          ]
+        },
+        "share_pct": 0.36948724285184087
+      },
+      {
+        "calls_per_token": 1.0,
+        "family": "selected_iq3_dual_silu",
+        "kernel_names": [
+          "(anonymous namespace)::gguf_iq3_xxs_selected_dual_silu_gemv_kernel(unsigned short const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, int, int, int, int, int)"
+        ],
+        "median_us": 55.301,
+        "ms_per_token": 0.05529785714285714,
+        "rank": 21,
+        "resources": {
+          "LDS_Block_Size": [
+            512
+          ],
+          "Scratch_Size": [
+            0
+          ],
+          "VGPR_Count": [
+            40
+          ],
+          "Workgroup_Size_X": [
+            256
+          ]
+        },
+        "share_pct": 0.23894907593234455
+      },
+      {
+        "calls_per_token": 12.0,
+        "family": "global_kv_write",
+        "kernel_names": [
+          "(anonymous namespace)::laguna_global_write_kv_f32_bf16_kernel(float const*, float const*, unsigned short*, unsigned short*, int const*, long*, long*, unsigned char*, long const*, long, long, long, long, long)"
+        ],
+        "median_us": 3.8,
+        "ms_per_token": 0.045569285714285715,
+        "rank": 22,
+        "resources": {
+          "LDS_Block_Size": [
+            0
+          ],
+          "Scratch_Size": [
+            0
+          ],
+          "VGPR_Count": [
+            16
+          ],
+          "Workgroup_Size_X": [
+            256
+          ]
+        },
+        "share_pct": 0.19691068108110343
+      },
+      {
+        "calls_per_token": 2.0,
+        "family": "dense_q8_f32_out",
+        "kernel_names": [
+          "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, float, 8>(unsigned short const*, unsigned char const*, float*, int, int, int, int)"
+        ],
+        "median_us": 12.48,
+        "ms_per_token": 0.024688785714285715,
+        "rank": 23,
+        "resources": {
+          "LDS_Block_Size": [
+            512
+          ],
+          "Scratch_Size": [
+            0
+          ],
+          "VGPR_Count": [
+            40
+          ],
+          "Workgroup_Size_X": [
+            128
+          ]
+        },
+        "share_pct": 0.10668338407905675
+      },
+      {
+        "calls_per_token": 1.0,
+        "family": "dense_q8_bf16_out",
+        "kernel_names": [
+          "void (anonymous namespace)::gguf_q8_0_pack8_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)"
+        ],
+        "median_us": 10.4405,
+        "ms_per_token": 0.0104745,
+        "rank": 24,
+        "resources": {
+          "LDS_Block_Size": [
+            512
+          ],
+          "Scratch_Size": [
+            0
+          ],
+          "VGPR_Count": [
+            96
+          ],
+          "Workgroup_Size_X": [
+            128
+          ]
+        },
+        "share_pct": 0.0452616471084475
+      },
+      {
+        "calls_per_token": 2.0,
+        "family": "argmax",
+        "kernel_names": [
+          "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)",
+          "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)"
+        ],
+        "median_us": 3.3,
+        "ms_per_token": 0.006554285714285715,
+        "rank": 25,
+        "resources": {
+          "LDS_Block_Size": [
+            0
+          ],
+          "Scratch_Size": [
+            0
+          ],
+          "VGPR_Count": [
+            16
+          ],
+          "Workgroup_Size_X": [
+            256
+          ]
+        },
+        "share_pct": 0.02832190243428696
+      },
+      {
+        "calls_per_token": 1.0,
+        "family": "embedding",
+        "kernel_names": [
+          "gguf_q5_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)"
+        ],
+        "median_us": 3.6605,
+        "ms_per_token": 0.003608642857142857,
+        "rank": 26,
+        "resources": {
+          "LDS_Block_Size": [
+            0
+          ],
+          "Scratch_Size": [
+            0
+          ],
+          "VGPR_Count": [
+            16
+          ],
+          "Workgroup_Size_X": [
+            256
+          ]
+        },
+        "share_pct": 0.015593404891920352
+      }
+    ],
+    "kernel_sum_mean_ms": 23.142109642857143,
+    "profiled_child_tok_s": 34.69792554584547,
+    "profiled_child_wall_mean_ms": 28.82016674681966,
+    "span_minus_kernel_sum_mean_ms": 4.433752285714285,
+    "workload": {
+      "decode_steps": 16,
+      "discarded_warmup_steps": 2,
+      "prompt_id": "code_merge_intervals",
+      "prompt_tokens": 69,
+      "stable_steps": 14
+    }
+  },
+  "correctness": {
+    "all_prompt_pairs_exact": true,
+    "full_model_quality_gate": {
+      "first_token_kl": 0.00015682291693663912,
+      "first_token_top1": 1.0,
+      "same_route_repeat_exact": true,
+      "serial_bulk_lengths": [
+        1,
+        2,
+        7,
+        55,
+        65
+      ],
+      "serial_bulk_logits_hidden_taps_kv_exact": true,
+      "teacher_forced_top1": 0.96875,
+      "verifier_exact": true,
+      "verifier_rows": 5
+    },
+    "pass": true,
+    "poolside_oracle": {
+      "candidate_top1": 94557,
+      "finite_logits": true,
+      "kl_divergence": 0.00015682291693663912,
+      "kl_threshold": 0.05,
+      "oracle_artifact": "/home/lhl/hipEngine-main/tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json",
+      "oracle_distribution": "/home/lhl/hipEngine-main/tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy",
+      "pass": true,
+      "reference_top1": 94557,
+      "top1_agreement": 1.0,
+      "top1_threshold": 0.9
+    },
+    "resident_nbytes": 40068332284,
+    "same_mode_repeat_deterministic": true,
+    "serial_bulk_suite": {
+      "pass": true,
+      "same_mode_repeat_deterministic": true,
+      "serial_bulk_pairs": [
+        {
+          "horizons_exact": {
+            "16": true,
+            "32": true
+          },
+          "pass": true,
+          "prompt_id": "code_lru_cache",
+          "repetition": 0
+        },
+        {
+          "horizons_exact": {
+            "16": true,
+            "32": true
+          },
+          "pass": true,
+          "prompt_id": "code_lru_cache",
+          "repetition": 1
+        },
+        {
+          "horizons_exact": {
+            "16": true,
+            "32": true
+          },
+          "pass": true,
+          "prompt_id": "code_markdown_table",
+          "repetition": 0
+        },
+        {
+          "horizons_exact": {
+            "16": true,
+            "32": true
+          },
+          "pass": true,
+          "prompt_id": "code_markdown_table",
+          "repetition": 1
+        },
+        {
+          "horizons_exact": {
+            "16": true,
+            "32": true
+          },
+          "pass": true,
+          "prompt_id": "code_merge_intervals",
+          "repetition": 0
+        },
+        {
+          "horizons_exact": {
+            "16": true,
+            "32": true
+          },
+          "pass": true,
+          "prompt_id": "code_merge_intervals",
+          "repetition": 1
+        },
+        {
+          "horizons_exact": {
+            "16": true,
+            "32": true
+          },
+          "pass": true,
+          "prompt_id": "code_topological_sort",
+          "repetition": 0
+        },
+        {
+          "horizons_exact": {
+            "16": true,
+            "32": true
+          },
+          "pass": true,
+          "prompt_id": "code_topological_sort",
+          "repetition": 1
+        },
+        {
+          "horizons_exact": {
+            "16": true,
+            "32": true
+          },
+          "pass": true,
+          "prompt_id": "general_en_explain",
+          "repetition": 0
+        },
+        {
+          "horizons_exact": {
+            "16": true,
+            "32": true
+          },
+          "pass": true,
+          "prompt_id": "general_en_explain",
+          "repetition": 1
+        },
+        {
+          "horizons_exact": {
+            "16": true,
+            "32": true
+          },
+          "pass": true,
+          "prompt_id": "general_en_plan",
+          "repetition": 0
+        },
+        {
+          "horizons_exact": {
+            "16": true,
+            "32": true
+          },
+          "pass": true,
+          "prompt_id": "general_en_plan",
+          "repetition": 1
+        },
+        {
+          "horizons_exact": {
+            "16": true,
+            "32": true
+          },
+          "pass": true,
+          "prompt_id": "general_ja_explain",
+          "repetition": 0
+        },
+        {
+          "horizons_exact": {
+            "16": true,
+            "32": true
+          },
+          "pass": true,
+          "prompt_id": "general_ja_explain",
+          "repetition": 1
+        },
+        {
+          "horizons_exact": {
+            "16": true,
+            "32": true
+          },
+          "pass": true,
+          "prompt_id": "general_ja_plan",
+          "repetition": 0
+        },
+        {
+          "horizons_exact": {
+            "16": true,
+            "32": true
+          },
+          "pass": true,
+          "prompt_id": "general_ja_plan",
+          "repetition": 1
+        },
+        {
+          "horizons_exact": {
+            "16": true,
+            "32": true
+          },
+          "pass": true,
+          "prompt_id": "mixed_ja_en_review",
+          "repetition": 0
+        },
+        {
+          "horizons_exact": {
+            "16": true,
+            "32": true
+          },
+          "pass": true,
+          "prompt_id": "mixed_ja_en_review",
+          "repetition": 1
+        },
+        {
+          "horizons_exact": {
+            "16": true,
+            "32": true
+          },
+          "pass": true,
+          "prompt_id": "mixed_ja_en_translate",
+          "repetition": 0
+        },
+        {
+          "horizons_exact": {
+            "16": true,
+            "32": true
+          },
+          "pass": true,
+          "prompt_id": "mixed_ja_en_translate",
+          "repetition": 1
+        }
+      ]
+    },
+    "tracked_lifecycle_returned_to_zero": true,
+    "tracked_peak_allocated_bytes": 40455814968
+  },
+  "date": "2026-07-23",
+  "hardware": {
+    "architecture": "gfx1100",
+    "cu_count": 96,
+    "device": "AMD Radeon Pro W7900",
+    "gpu_max_hw_queues": 1,
+    "visible_device": 0
+  },
+  "kind": "hipengine_gfx1100_laguna_q2_xl_dense_decode_retained",
+  "model": {
+    "id": "poolside/Laguna-S-2.1-UD-Q2_K_XL",
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "notes": [
+    "Every full-suite category improves default bulk prefill, h16/h32 decode, and h16/h32 E2E versus the retained D0 artifact.",
+    "The route is exact and promoted unconditionally for Laguna raw rows=1; rows>1 retain the existing exact prefill path and generic registry fallback.",
+    "The clean profile is dispatch attribution under rocprofv3, not a substitute for the unprofiled canonical wall measurement.",
+    "SWA and selected IQ3 down are now the largest individual remaining short-context families; long-context D0 already established SWA and global-attention growth."
+  ],
+  "pass": true,
+  "performance_claim": true,
+  "protocol": {
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "context_capacity": 4096,
+    "default_route": "exact_bulk_prefill_plus_exact_c1_decode",
+    "model_load_excluded": true,
+    "output_horizons": [
+      16,
+      32
+    ],
+    "prefill_chunk_size": 128,
+    "prompt_count": 10,
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_tokens_range": [
+      68,
+      122
+    ],
+    "repetitions": 2,
+    "warmup_output_tokens": 2
+  },
+  "provenance": {
+    "baseline_artifact": "benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-target-ar.json",
+    "baseline_artifact_sha256": "37ccc0b6266f13840785bf9f732f639ae41a5b0041c37ac9adb4e219ee73a7d1",
+    "baseline_revision": "09cca232f49e73f68fd09d4ace8509fa3201681e",
+    "benchmark_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u scripts/laguna_target_ar_bench.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --template tests/fixtures/laguna_poolside_v1_template.json --oracle tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json --oracle-logprobs tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy --bulk-correctness-artifact benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-bulk-correctness.json --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --output-horizons 16,32 --repetitions 2 --warmup-output-tokens 2 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-q2-xl-dense-decode-target-ar.json",
+    "candidate_dirty": false,
+    "candidate_raw_pass": true,
+    "candidate_raw_sha256": "35fa94ea2b556e8a9ca70f2662ce6743dcafb5f4d523b5c3f3bc9bff1368b522",
+    "candidate_raw_status": "accepted_correctness",
+    "candidate_revision": "fc08ca0ed07576c2fcfd632b9a9f51e0d5397d4e",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+    "compiler_version_sha256": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394",
+    "profile_bench_sha256": "7b0d199be8bfb1604a30f7daad31ae2e2082d4fbdb423adaa6a0215374e7f9c9",
+    "profile_child_script_sha256": "ab9e7b87b540e97c7fb9511610352f64242cf78285183e5a4b0ed511281a6b95",
+    "profile_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/laguna-q2-xl-dense-decode-profile-fc08ca0e --output-file laguna-q2-xl-dense-decode16 -- uv run python -u /tmp/laguna_decode_profile_child.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-id code_merge_intervals --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --decode-tokens 16 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --output /tmp/laguna-q2-xl-dense-decode-profile-fc08ca0e/bench.json",
+    "profile_trace_sha256": "18d02d7896c43d9a6986243e562e741ff520d279d2dcc2995f207c227c61515a",
+    "require_cached_build": true
+  },
+  "purpose": "Promote exact raw Q4/Q5/Q6/Q8 c=1 decode kernels on the W7900 Laguna Q2 XL target and retain full-suite AR throughput.",
+  "schema": 1,
+  "status": "retained_default_exact_dense_decode",
+  "validation": {
+    "focused_pytest": {
+      "failed": 0,
+      "passed": 113
+    },
+    "new_q5_kernel_bit_exact_to_existing_raw_pack8": true,
+    "new_q5_shapes": [
+      [
+        48,
+        3072
+      ],
+      [
+        72,
+        3072
+      ],
+      [
+        1024,
+        3072
+      ]
+    ],
+    "rocprof_expected_kernel_present": true,
+    "rocprof_q5_resources": {
+      "lds_bytes": 1024,
+      "scratch_bytes": 0,
+      "vgpr_bf16_bf16": 72,
+      "vgpr_bf16_f32": 48,
+      "workgroup_size": 128
+    }
+  }
+}

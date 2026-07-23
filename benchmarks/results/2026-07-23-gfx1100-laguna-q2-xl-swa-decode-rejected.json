@@ -1,0 +1,124 @@
+{
+  "schema": 1,
+  "kind": "hipengine_gfx1100_laguna_q2_xl_swa_decode_rejected",
+  "status": "rejected_and_removed",
+  "performance_claim": false,
+  "pass": false,
+  "date": "2026-07-23",
+  "purpose": "Screen reduction-order-exact one-wave and two-wave transfers of the retained SWA prefill schedule for Laguna c=1 decode.",
+  "model": {
+    "id": "poolside/Laguna-S-2.1-UD-Q2_K_XL",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "quant": "UD-Q2_K_XL",
+    "kv_dtype": "bf16"
+  },
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "visible_device": 0,
+    "architecture": "gfx1100",
+    "cu_count": 96,
+    "gpu_max_hw_queues": 1
+  },
+  "provenance": {
+    "base_revision": "b0abd0100a",
+    "candidate_dirty": true,
+    "compiler_version_file": "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+    "require_cached_build": true,
+    "wave32_patch_sha256": "f6b15d56ded2f6d63c4bfb9aa2e4c7b7d97fbc6fb3d3b9c6e05879866d2f0ffd",
+    "two_wave_patch_sha256": "1cc62b6f3277b154794da479ab2a3bfee4a4a1a4e42acb3b0329efd492ebbdbc",
+    "wave32_short_trace_sha256": "07ad74592ecdf41afb80cbd0198622d03fe6d0bc5725f5f4c7b58d0b657a5c2b",
+    "wave32_l512_trace_sha256": "ef818315b6df31a234332d4cd37c1a376f589c444cd6b5af84ed99664ec171ed",
+    "two_wave_short_trace_sha256": "45da1e3754e0a57a996c1249a5a1b5f8a8899ffc35c4b18bf32a244ec8cd1cc4",
+    "two_wave_l512_trace_sha256": "bfbf6cd6c224763fa903cfece0779cd35905bf0033e4ee713ed60fdaa5ed3700"
+  },
+  "protocol": {
+    "short_prompt_id": "code_merge_intervals",
+    "short_prompt_tokens": 69,
+    "long_prompt_id": "mixed_ja_en_review",
+    "long_prompt_tokens": 512,
+    "context_capacity": 4096,
+    "decode_steps_short": 16,
+    "decode_steps_long": 8,
+    "discarded_warmup_steps": 2,
+    "profile": "rocprofv3 kernel trace with prebuilt require-cached extension",
+    "full_category_run": false
+  },
+  "acceptance_policy": {
+    "exact_wrap_and_eviction_gate": true,
+    "short_swa_kernel_time": "must improve",
+    "l512_swa_kernel_time": "must be non-regressive",
+    "decision": "reject if either measured family gate fails",
+    "pass": false
+  },
+  "correctness": {
+    "pass": true,
+    "focused_pytest_passed": 7,
+    "baseline_vs_candidate_outputs_bit_exact": true,
+    "positions": [508, 509, 510, 511, 512, 513, 514, 515],
+    "ring_capacity": 512,
+    "explicit_eviction_position": 200,
+    "kv_live_spans_preserved": true,
+    "tracked_lifecycle_returned_to_baseline": true
+  },
+  "baseline_local128": {
+    "short": {
+      "swa_ms_per_token": 4.211637571428572,
+      "total_kernel_ms_per_token": 23.142109642857143,
+      "profiled_child_wall_ms_per_token": 28.82016674681966,
+      "workgroup_size": 128,
+      "vgpr": 16,
+      "lds_bytes": 1024,
+      "scratch_bytes": 0
+    },
+    "l512": {
+      "swa_ms_per_token": 27.82296433333333
+    }
+  },
+  "wave32_candidate": {
+    "short": {
+      "swa_ms_per_token": 4.274417,
+      "swa_change_pct": 1.4906180198723362,
+      "total_kernel_ms_per_token": 23.140888928571428,
+      "profiled_child_wall_ms_per_token": 30.050980351266585,
+      "workgroup_size": 32,
+      "vgpr": 32,
+      "lds_bytes": 0,
+      "scratch_bytes": 0
+    },
+    "l512": {
+      "swa_ms_per_token": 29.016474,
+      "swa_change_pct": 4.289656746735582
+    },
+    "decision": "rejected: SWA family regresses at both admitted regimes"
+  },
+  "two_wave_candidate": {
+    "short": {
+      "swa_ms_per_token": 4.210223285714285,
+      "swa_change_pct": -0.03358042306110809,
+      "total_kernel_ms_per_token": 23.06770457142857,
+      "profiled_child_wall_ms_per_token": 30.009333784359374,
+      "workgroup_size": 64,
+      "vgpr": 24,
+      "lds_bytes": 512,
+      "scratch_bytes": 0
+    },
+    "l512": {
+      "swa_ms_per_token": 28.637698166666667,
+      "swa_change_pct": 2.928278322799849
+    },
+    "decision": "rejected: short SWA is neutral and the physical-window regime regresses"
+  },
+  "unprofiled_short_d32_diagnostics": {
+    "baseline_ms_per_token": 26.78520039577658,
+    "wave32_ms_per_token": 26.55356255903219,
+    "two_wave_ms_per_token": 26.542756473645568,
+    "classification": "separate dirty-run noise diagnostic only; not retained because kernel-specific short and L512 gates fail"
+  },
+  "notes": [
+    "Both candidates preserve the baseline 128-element reduction association and exact output accumulation order.",
+    "The one-wave schedule removes barriers but serializes four head dimensions per lane; the two-wave schedule uses two dimensions per lane and reconstructs the stride64/stride32 tree through LDS.",
+    "The retained gfx1151 wave32 bulk-prefill result does not transfer to c=1 decode on W7900.",
+    "No full category run was warranted after the predeclared kernel-family screen failed, and all candidate code was removed."
+  ]
+}

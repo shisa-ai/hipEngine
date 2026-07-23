@@ -1,0 +1,198 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_q2_xl_iq3_weighted_down_retention",
+  "date": "2026-07-23",
+  "status": "retained_exact_default",
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "Radeon Pro W7900, Laguna S 2.1 UD-Q2_K_XL, BF16 KV, exact IQ3 routing-weighted c=1 down, cached 16-step profile, and canonical ten-prompt h16/h32 target-only AR suite",
+  "acceptance_policy": {
+    "registered_unfused_fallback": true,
+    "synthetic_and_actual_weight_bit_exact": true,
+    "clean_profile_combined_tail_improves": true,
+    "clean_profile_total_kernel_sum_improves": true,
+    "canonical_decode_improves": true,
+    "every_category_decode_and_e2e_improves": true,
+    "prefill_neutral": true,
+    "full_suite_correctness_lifecycle_pass": true,
+    "pass": true
+  },
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "rocm": "HIP 7.2.53211-3d9ef42",
+    "hipcc": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e"
+  },
+  "model": {
+    "id": "poolside/Laguna-S-2.1-UD-Q2_K_XL",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "kv_dtype": "bf16",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "change": {
+    "baseline_revision": "d27610bb9",
+    "candidate_revision": "fe89c210c9129d51a893beaab8c419aa87250fd5",
+    "baseline": "IQ3 selected-single local128 plus separate scaled weighted sum",
+    "candidate": "registered IQ3 routing-weighted local128 down composite for c=1",
+    "scope": "45 IQ3-down sparse layers; bulk rows and non-IQ3 down quants retain the unfused chain",
+    "dispatches_per_token": {
+      "baseline": 1055,
+      "candidate": 1010,
+      "change": -45
+    }
+  },
+  "actual_weight_microbench": {
+    "weight": "blk.1.ffn_down_exps.weight",
+    "shape": [256, 3072, 1024],
+    "top_k": 10,
+    "repetitions": 15,
+    "launches_per_sample": 300,
+    "counterbalanced": true,
+    "bf16_mismatches": 0,
+    "fallback_median_us": 65.03471,
+    "weighted_median_us": 52.81501333333333,
+    "unpaired_change_pct": -18.789499740471925,
+    "paired_median_change_pct": -18.125712199141685,
+    "raw_sha256": "8f66d7f05482055463f9fb1471ffc89d13e3891609d3dae8bbfa95505c19f945"
+  },
+  "clean_profile": {
+    "protocol": "16 c=1 rows after canonical 69-token code_merge_intervals bulk prefill; first two decode rows excluded; cached rocprofv3 kernel trace",
+    "stable_steps": 14,
+    "baseline": {
+      "dispatches_per_token": 1055,
+      "kernel_sum_ms_per_token": 21.30192028571429,
+      "dispatch_span_median_ms": 25.524132,
+      "iq3_selected_ms_per_token": 2.2581768571428573,
+      "all_selected_reduce_ms_per_token": 0.13422142857142857,
+      "trace_sha256": "bd7ad3b1ed4197e43d97099bdb111cbf723993dc6fd404bd799e560684ff18b6"
+    },
+    "candidate": {
+      "dispatches_per_token": 1010,
+      "kernel_sum_ms_per_token": 20.9972075,
+      "dispatch_span_median_ms": 25.0370535,
+      "iq3_weighted_ms_per_token": 2.1083459285714286,
+      "remaining_iq4_selected_reduce_ms_per_token": 0.006214285714285715,
+      "workgroup_size": 128,
+      "vgpr_count": 32,
+      "lds_bytes": 512,
+      "scratch_bytes": 0,
+      "kernel_name": "gguf_iq3_xxs_weighted_selected_down_kernel",
+      "trace_sha256": "ff03a596ddd948f8bb27fdd587cfcf45b48a508b4dd05cfcf8e36d34199e52e7",
+      "bench_sha256": "abdf719b5311a85369470156e1b865c93946e1d6ac8cc539c253a8e844d8bcaa",
+      "summary_sha256": "e61b301ae2d6f9aed9b836e91a1cd0c2b71921f536bbb14e498220997c44d957"
+    },
+    "change_pct": {
+      "combined_iq3_down_and_selected_reduce": -11.613370277333201,
+      "kernel_sum": -1.430447497818499,
+      "dispatch_span_median": -1.908305833867352
+    }
+  },
+  "canonical_full_suite": {
+    "protocol": {
+      "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+      "prompts": 10,
+      "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+      "prompt_token_range": [68, 122],
+      "output_horizons": [16, 32],
+      "repetitions": 2,
+      "prefill_chunk_size": 128,
+      "sampling": "greedy argmax",
+      "model_load_excluded": true
+    },
+    "aggregate_default_bulk": {
+      "baseline_d2": {
+        "prefill_tok_s": 43.26625236378099,
+        "ttft_median_seconds": 1.8647287045023404,
+        "h16_decode_tok_s": 38.82770392185919,
+        "h32_decode_tok_s": 38.30086907622188,
+        "h16_e2e_output_tok_s": 6.713494536719972,
+        "h32_e2e_output_tok_s": 11.402839416172961
+      },
+      "candidate_d3": {
+        "prefill_tok_s": 43.26448743282088,
+        "ttft_median_seconds": 1.8650274084648117,
+        "h16_decode_tok_s": 39.364406472316084,
+        "h32_decode_tok_s": 38.83971714459435,
+        "h16_e2e_output_tok_s": 6.728134280595653,
+        "h32_e2e_output_tok_s": 11.448315789510016
+      },
+      "candidate_vs_d2_pct": {
+        "prefill_tok_s": -0.004079232343201511,
+        "ttft_wall": 0.016018628433722704,
+        "h16_decode_tok_s": 1.3822670316457675,
+        "h32_decode_tok_s": 1.4068820926755432,
+        "h16_e2e_output_tok_s": 0.21806443418710408,
+        "h32_e2e_output_tok_s": 0.39881622179607223
+      },
+      "candidate_repetitions": {
+        "prefill_tok_s": [43.50895227987469, 43.02275439806285],
+        "h32_decode_tok_s": [38.974304517226415, 38.70605609638606],
+        "h32_e2e_output_tok_s": [11.505849362858259, 11.391354732367537]
+      }
+    },
+    "categories": {
+      "code": {
+        "prefill_tok_s": 43.5144038703707,
+        "h16_decode_tok_s": 40.367700475735326,
+        "h32_decode_tok_s": 39.807400124853295,
+        "h16_e2e_output_tok_s": 7.5130676795888025,
+        "h32_e2e_output_tok_s": 12.614375731719608,
+        "vs_d2_pct": {"prefill": -0.02590543828780989, "h16_decode": 1.3579508084197167, "h32_decode": 1.3178209222362014, "h16_e2e": 0.21555475570251836, "h32_e2e": 0.3865950824321063}
+      },
+      "general_en": {
+        "prefill_tok_s": 43.30268192905349,
+        "h16_decode_tok_s": 40.89772101672022,
+        "h32_decode_tok_s": 40.38735968020645,
+        "h16_e2e_output_tok_s": 8.259726532166573,
+        "h32_e2e_output_tok_s": 13.687448012525605,
+        "vs_d2_pct": {"prefill": 0.016499643218859106, "h16_decode": 1.3415819747039759, "h32_decode": 1.4483131818981976, "h16_e2e": 0.26738811157167586, "h32_e2e": 0.4865833521239926}
+      },
+      "general_ja": {
+        "prefill_tok_s": 43.17026866502929,
+        "h16_decode_tok_s": 38.61714788681516,
+        "h32_decode_tok_s": 38.121376186421465,
+        "h16_e2e_output_tok_s": 6.2077219981272815,
+        "h32_e2e_output_tok_s": 10.658855223464723,
+        "vs_d2_pct": {"prefill": 0.010209287473661455, "h16_decode": 1.5497662429519776, "h32_decode": 1.596664756545807, "h16_e2e": 0.24222591017739603, "h32_e2e": 0.4399253569920436}
+      },
+      "mixed_ja_en": {
+        "prefill_tok_s": 42.99417461509467,
+        "h16_decode_tok_s": 36.86327841627315,
+        "h32_decode_tok_s": 36.36355206153529,
+        "h16_e2e_output_tok_s": 5.13383519776013,
+        "h32_e2e_output_tok_s": 8.983284766403083,
+        "vs_d2_pct": {"prefill": 0.0007734250066837589, "h16_decode": 1.3034572419677204, "h32_decode": 1.3512597348184219, "h16_e2e": 0.17085538864336502, "h32_e2e": 0.3239729910883282}
+      }
+    }
+  },
+  "correctness": {
+    "focused_tests": "23 passed",
+    "synthetic_tokens_1_and_2_bf16_exact_to_unfused": true,
+    "actual_weight_bf16_exact_to_unfused": true,
+    "actual_q2_xl_layer_1_and_47_cpu_quant_oracles_pass": true,
+    "serial_bulk_pairs_exact": 20,
+    "same_mode_repeats_deterministic": true,
+    "poolside_first_token_kl": 0.00015682291693663912,
+    "poolside_first_token_top1_agreement": 1.0,
+    "accepted_bulk_state_artifact_pass": true,
+    "finite_logits": true,
+    "tracked_peak_allocated_bytes": 40455814968,
+    "tracked_returned_to_zero": true
+  },
+  "provenance": {
+    "candidate_tracked_clean": true,
+    "raw_canonical_sha256": "42f7e9248427dd8ce01e45dc4097dd6b13118487e01e685bbc3f7acba207c0ec",
+    "baseline_artifact": "benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-iq3-local128-retained.json",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+    "require_cached_build": true,
+    "canonical_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u scripts/laguna_target_ar_bench.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --template tests/fixtures/laguna_poolside_v1_template.json --oracle tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json --oracle-logprobs tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy --bulk-correctness-artifact benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-bulk-correctness.json --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --output-horizons 16,32 --repetitions 2 --warmup-output-tokens 2 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-q2-xl-iq3-weighted-target-ar.json"
+  },
+  "notes": [
+    "The harness's built-in bulk-vs-serial promotion predicate remains inapplicable because both modes use the same optimized c=1 decode and serial prompt prefill is faster; retention compares clean D2 bulk with clean D3 bulk on the identical full suite.",
+    "Bulk prefill is mechanically unchanged and measured neutral (-0.004% aggregate); all four category prefill deltas are within +/-0.026%.",
+    "No prompt, token ID, route ID, or candidate-conditioned behavior is present. Selection is a registry-resolved quant/shape execution policy and the unfused primitives remain registered."
+  ]
+}

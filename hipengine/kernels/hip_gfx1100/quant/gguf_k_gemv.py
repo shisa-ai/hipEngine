@@ -158,6 +158,12 @@ gguf_q5_k_gemv_bf16_fp16_out = _make_wrapper("gguf_q5_k", _symbol("gguf_q5_k", "
 gguf_q5_k_gemv_bf16_bf16_out = _make_wrapper("gguf_q5_k", _symbol("gguf_q5_k", "gemv_bf16_bf16_out"))
 gguf_q5_k_pack8_gemv_bf16_f32_out = _make_pack8_wrapper("gguf_q5_k", _symbol("gguf_q5_k", "pack8_gemv_bf16_f32_out"))
 gguf_q5_k_pack8_gemv_bf16_bf16_out = _make_pack8_wrapper("gguf_q5_k", _symbol("gguf_q5_k", "pack8_gemv_bf16_bf16_out"))
+gguf_q5_k_pack8_gemv_decode_bf16_f32_out = _make_pack8_wrapper(
+    "gguf_q5_k", _symbol("gguf_q5_k", "pack8_gemv_decode_bf16_f32_out")
+)
+gguf_q5_k_pack8_gemv_decode_bf16_bf16_out = _make_pack8_wrapper(
+    "gguf_q5_k", _symbol("gguf_q5_k", "pack8_gemv_decode_bf16_bf16_out")
+)
 gguf_q5_k_selected_gemv_bf16_bf16_out = _make_selected_wrapper("gguf_q5_k", _symbol("gguf_q5_k", "selected_gemv_bf16_bf16_out"))
 gguf_q5_k_selected_silu_gemv_bf16_bf16_out = _make_selected_silu_wrapper(
     "gguf_q5_k", _symbol("gguf_q5_k", "selected_silu_gemv_bf16_bf16_out")
@@ -455,6 +461,8 @@ _WRAPPERS = {
         "gemv_bf16_bf16_out": gguf_q5_k_gemv_bf16_bf16_out,
         "pack8_gemv_bf16_f32_out": gguf_q5_k_pack8_gemv_bf16_f32_out,
         "pack8_gemv_bf16_bf16_out": gguf_q5_k_pack8_gemv_bf16_bf16_out,
+        "pack8_gemv_decode_bf16_f32_out": gguf_q5_k_pack8_gemv_decode_bf16_f32_out,
+        "pack8_gemv_decode_bf16_bf16_out": gguf_q5_k_pack8_gemv_decode_bf16_bf16_out,
         "selected_gemv_bf16_bf16_out": gguf_q5_k_selected_gemv_bf16_bf16_out,
         "selected_silu_gemv_bf16_bf16_out": gguf_q5_k_selected_silu_gemv_bf16_bf16_out,
         "selected_pack8_gemv_bf16_bf16_out": gguf_q5_k_selected_pack8_gemv_bf16_bf16_out,
@@ -509,6 +517,8 @@ __all__ = [
     "gguf_q5_k_gemv_bf16_f32_out",
     "gguf_q5_k_gemv_bf16_fp16_out",
     "gguf_q5_k_gemv_bf16_bf16_out",
+    "gguf_q5_k_pack8_gemv_decode_bf16_bf16_out",
+    "gguf_q5_k_pack8_gemv_decode_bf16_f32_out",
     "gguf_q5_k_selected_gemv_bf16_bf16_out",
     "gguf_q5_k_selected_silu_gemv_bf16_bf16_out",
     "gguf_q5_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out",
