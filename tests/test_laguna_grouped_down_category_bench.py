@@ -13,6 +13,7 @@ from scripts.laguna_grouped_down_category_bench import (
     GROUPED_COMBINE_COMPARISON,
     MODES,
     SWA_QROW2_COMPARISON,
+    SWA_QROW2_ONLINE_COMPARISON,
     _aggregate,
     _load_shape_screen,
     _mode_order,
@@ -201,6 +202,57 @@ def test_swa_qrow2_category_loads_exact_full_model_screen(tmp_path) -> None:
     artifact["model"]["sha256"] = "wrong-model"
     screen.write_text(json.dumps(artifact), encoding="utf-8")
     assert _load_shape_screen(args, comparison=SWA_QROW2_COMPARISON)["pass"] is False
+
+
+def test_swa_qrow2_online_category_resolves_variants_and_screen(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    calls: list[str | None] = []
+
+    def fake_session(_owner, _args, *, swa_prefill_variant=None):
+        calls.append(swa_prefill_variant)
+        return SimpleNamespace()
+
+    monkeypatch.setattr(benchmark, "_session", fake_session)
+    for mode in SWA_QROW2_ONLINE_COMPARISON.modes:
+        benchmark._session_for_mode(
+            object(),
+            SimpleNamespace(),
+            mode,
+            comparison=SWA_QROW2_ONLINE_COMPARISON,
+        )
+    assert calls == [
+        "swa_context_rows_qrow2_m128_c128_exact_spans",
+        "swa_context_rows_qrow2_online_spans",
+    ]
+
+    screen = tmp_path / "swa-online-screen.json"
+    artifact = {
+        "kind": SWA_QROW2_ONLINE_COMPARISON.screen_kind,
+        "status": SWA_QROW2_ONLINE_COMPARISON.screen_status,
+        "pass": True,
+        "correctness": {"pass": True, "failed_checks": []},
+        "candidate": {"variant": "swa_context_rows_qrow2_online_spans"},
+        "model": {"sha256": "model-sha"},
+        "repo": {"revision": "candidate-revision"},
+    }
+    screen.write_text(json.dumps(artifact), encoding="utf-8")
+    args = SimpleNamespace(shape_screen=screen, model_sha256="model-sha")
+    result = _load_shape_screen(
+        args,
+        comparison=SWA_QROW2_ONLINE_COMPARISON,
+    )
+    assert result["pass"] is True
+    assert result["comparison"] == "swa_qrow2_online"
+    assert result["candidate_variant"] == "swa_context_rows_qrow2_online_spans"
+
+    artifact["candidate"]["variant"] = "wrong-variant"
+    screen.write_text(json.dumps(artifact), encoding="utf-8")
+    assert _load_shape_screen(
+        args,
+        comparison=SWA_QROW2_ONLINE_COMPARISON,
+    )["pass"] is False
 
 
 def test_global_qrow2_online_category_resolves_variants_and_screen(
