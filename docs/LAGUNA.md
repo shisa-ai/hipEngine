@@ -3527,6 +3527,55 @@ stays **48.987 tok/s / 20.414 ms/token**, still **0.414 ms / 2.068% throughput**
 from 50 tok/s. Evidence:
 `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d13-q5-shared-silu-{design,correctness,rejected}.json`.
 
+### D14 head norm + RoPE + BF16 KV append (exact, selected)
+
+The retained D12 traces expose a safer attention boundary than D13's doubled
+Q5 workgroup. Every layer launches the local256 F32 head RMSNorm+partial-RoPE
+kernel immediately before a local256 BF16 KV writer. Across short/512/1K/near-
+4K, the 48 head launches cost **0.203/0.202/0.202/0.189 ms/token**, the 12
+global plus 36 SWA writers cost **0.165/0.169/0.170/0.169 ms**, and the
+head-to-writer submission gaps cost **0.203/0.220/0.210/0.222 ms**. The complete
+adjacent window is **0.572-0.591 ms/token** and both controls are VGPR16,
+scratch-free kernels.
+
+D14 selects two gfx1100 c=1 siblings under
+`head_rmsnorm+partial_rotary+kv_write/laguna_f32_weight/{global,swa}_f32_bf16_spans`.
+The existing local256 one-block-per-head reduction and RoPE arithmetic remain
+unchanged. Query-head blocks are untouched. Each of the eight K-head blocks
+keeps the exact F32 rotated-key scratch store, converts that same register value
+directly into its BF16 cache row, and uses threads 0..127 after the reduction to
+convert the matching F32 value row. The first K-head block reproduces the
+complete global/SWA `KVLiveSpans` metadata update. Kernel completion still
+orders all blocks before attention, so no global producer counter or extra
+synchronization is introduced.
+
+This removes **48 standalone writers/token (775 -> 727 dispatches)** and the
+**196,608-byte/token** reread of just-produced F32 rotated keys while retaining
+the observable F32 key scratch, F32 value reads, BF16 K/V writes, and complete
+span ABI. The separate registered head and writer kernels remain mandatory for
+rows>1, gfx1151/unmeasured backends, registry/shape miss, explicit rollback,
+and unsupported capture modes.
+
+The bound is deliberately not a 50-tok/s claim. Paying all writer work inside
+the K-head blocks and removing only the short submission gaps saves
+**0.203 ms/token**, closes **49.12%** of D12's 0.414-ms gap, and models about
+**49.48 tok/s**. The impossible zero-increment ceiling also deletes the writer
+body, saves **0.369 ms**, and reaches only **49.89 tok/s**. The separately
+measured attention+softplus boundary is the next independent candidate; its
+zero-increment ceiling plus D14 models 50.66 tok/s, but the effects are not
+assumed additive.
+
+Admission requires bit-exact global partial-64 and SWA full-128 query/key
+outputs, BF16 K/V, and every `KVLiveSpans` field across page/ring boundaries;
+actual global layers 0/44 and SWA layers 1/47 must each improve inclusive HIP-
+event and synchronized-wall medians. Cached tracing must show local256,
+dynamic LDS1024, VGPR<=32, scratch0, 56/80 blocks, exactly 48 fused calls and no
+standalone writer. All-layer hidden/logit/KV/reset/lifecycle parity, improved
+clean short/512/1K/near-4K family/kernel-sum/span/child rows at 727 dispatches,
+and the complete category non-regression gate precede promotion. Any failure
+removes the route. Design evidence:
+`benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d14-head-kv-design.json`.
+
 ## Laguna DFlash Follow-on Plan
 
 DFlash work begins as architecture support during the target port but remains a
