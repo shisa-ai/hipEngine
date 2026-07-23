@@ -124,6 +124,14 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
         "gguf_q4_k_t16_v1",
         "gguf_q6_k_t16_v1",
     }
+    assert set(plan.expert_major_comp_keys) == {
+        "gguf_q4_k_t16_v1",
+        "gguf_q6_k_t16_v1",
+    }
+    assert all(
+        key.variant == "selected_t16_expert_major_wmma_comp_bf16_bf16_out"
+        for key in plan.expert_major_comp_keys.values()
+    )
     assert plan.grouped_weighted_sum_shared_add_key == KernelKey(
         "hip_gfx1151", "weighted_lanes_sum+shared_add", "bf16", "out"
     )
@@ -162,6 +170,12 @@ def test_laguna_selected_down_default_is_backend_qualified() -> None:
             "hip_gfx1151", "adaptive_grouped_smallm_fused"
         )
         == "adaptive_grouped_smallm_fused"
+    )
+    assert (
+        resolve_laguna_selected_down_mode(
+            "hip_gfx1151", "expert_major_wmma_comp"
+        )
+        == "expert_major_wmma_comp"
     )
     for rejected in ("wmma16_down", "adaptive_wmma16_down", "invalid"):
         with pytest.raises(ValueError, match="unsupported Laguna selected-down mode"):
@@ -236,6 +250,7 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
     bulk_scratch = None
     grouped_scratch = None
     fused_scratch = None
+    expert_major_scratch = None
     hidden_buffer = None
     bulk_hidden_buffer = None
     try:
@@ -397,6 +412,28 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
             _f32_to_bf16_u16(fused_actual),
             _f32_to_bf16_u16(grouped_actual),
         )
+        expert_major_scratch = allocate_laguna_moe_scratch(plan, max_rows=3)
+        expert_major_output = run_laguna_moe_rows(
+            bulk_hidden_buffer.ptr,
+            layer,
+            expert_major_scratch,
+            rows=3,
+            selected_down_mode="expert_major_wmma_comp",
+        )
+        expert_major_actual = _read_bf16(expert_major_output, (3, h))
+        assert np.isfinite(expert_major_actual).all()
+        ref = bulk_actual.astype(np.float64)
+        cand = expert_major_actual.astype(np.float64)
+        ref -= ref.max(axis=-1, keepdims=True)
+        cand -= cand.max(axis=-1, keepdims=True)
+        ref_logp = ref - np.log(np.exp(ref).sum(axis=-1, keepdims=True))
+        cand_logp = cand - np.log(np.exp(cand).sum(axis=-1, keepdims=True))
+        max_kl = float(
+            np.max(np.sum(np.exp(ref_logp) * (ref_logp - cand_logp), axis=-1))
+        )
+        assert max_kl <= 0.05
+        # The dedicated 51-row Q4/Q6 leaf fixture owns the >=90% top-1 gate;
+        # these three near-zero full-MoE rows only verify runtime composition.
         serial_actual = np.empty_like(bulk_actual)
         for row in range(3):
             copy_host_to_device(
@@ -415,6 +452,8 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
         assert grouped_scratch.grouped_active_experts.nbytes == e * np.dtype(np.int64).itemsize
         assert grouped_scratch.grouped_sorted_lanes.nbytes == 3 * k * np.dtype(np.int64).itemsize
     finally:
+        if expert_major_scratch is not None:
+            expert_major_scratch.free()
         if fused_scratch is not None:
             fused_scratch.free()
         if grouped_scratch is not None:

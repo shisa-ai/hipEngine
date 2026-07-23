@@ -1,0 +1,110 @@
+{
+  "schema": 1,
+  "created_at": "2026-07-24T06:12:00Z",
+  "kind": "hipengine_laguna_expert_major_wmma_leaf_screen",
+  "status": "leaf_screen_passed",
+  "pass": true,
+  "performance_claim": false,
+  "performance_claim_scope": "Synthetic zero-weight production-dimension leaf screen only; no full-model, category, or default-path claim.",
+  "repo": {
+    "base_revision": "85116dd5e59921a238b10e3ca68021d4d44330ea",
+    "candidate_state": "tracked source dirty; committed by the logical unit that owns this artifact"
+  },
+  "platform": {
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "hip_max_hw_queues": 1
+  },
+  "candidate": {
+    "registry_variant": "selected_t16_expert_major_wmma_comp_bf16_bf16_out",
+    "quants": [
+      "gguf_q4_k_t16_v1",
+      "gguf_q6_k_t16_v1"
+    ],
+    "semantics": "BF16 input, T16-resident Q4_K/Q6_K weights, independent K16 F16 WMMA partials, Kahan FP32 accumulation, BF16 output",
+    "runtime_scope": "explicit rows-only expert_major_wmma_comp mode; public backend default unchanged"
+  },
+  "correctness": {
+    "cpu_oracle_command": "PYTHONPATH=. .venv/bin/python -m pytest -q tests/test_gguf_k_t16_selected_wmma_prefill.py --tb=short",
+    "cpu_oracle_result": "37 passed",
+    "gate": "finite output; max softmax KL <= 0.05; top-1 agreement >= 90% for both Q4_K and Q6_K",
+    "runtime_composition_command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GPU_MAX_HW_QUEUES=1 .venv/bin/python -m pytest -q tests/test_laguna_moe_gpu.py::test_laguna_unfused_moe_matches_production_shape_quant_oracle --tb=short",
+    "runtime_composition_result": "Q4 case passed in the two-case run; repaired Q6 node passed on focused rerun; both stay within max softmax KL 0.05"
+  },
+  "micro_protocol": {
+    "weights": "device-resident zero-filled T16 bytes; prevents host generation cost while retaining complete kernel work",
+    "routes": "top-10 over 256 experts with deterministic expert-major compaction",
+    "rows": [32, 55, 64, 122, 128, 256, 512],
+    "samples": 7,
+    "launches_per_sample": 3,
+    "timing": "counterbalanced HIP-event medians",
+    "single_matrix_command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GPU_MAX_HW_QUEUES=1 .venv/bin/python /tmp/laguna_expert_major_wmma_micro.py",
+    "single_matrix_script_sha256": "37b738ec508d0a94943f025df2a69f35db3fe2843ade558626958dea77f0c9c4",
+    "gate_up_command": "PYTHONPATH=. HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GPU_MAX_HW_QUEUES=1 .venv/bin/python /tmp/laguna_expert_major_gateup_micro.py",
+    "gate_up_script_sha256": "d410526e61a66477a8616b5339591605ff6329c9e22eb7528115455ed83a2b2e"
+  },
+  "single_matrix_ms": {
+    "q4_k3072_n1024": {
+      "32": {"grouped_smallm": 3.290, "expert_major_comp": 3.831, "speedup": 0.859},
+      "55": {"grouped_smallm": 3.599, "expert_major_comp": 3.842, "speedup": 0.937},
+      "64": {"grouped_smallm": 3.780, "expert_major_comp": 3.850, "speedup": 0.982},
+      "122": {"grouped_smallm": 6.307, "expert_major_comp": 3.858, "speedup": 1.635},
+      "128": {"grouped_smallm": 6.864, "expert_major_comp": 3.860, "speedup": 1.778},
+      "256": {"grouped_smallm": 10.823, "expert_major_comp": 3.874, "speedup": 2.794},
+      "512": {"grouped_smallm": 18.894, "expert_major_comp": 7.148, "speedup": 2.643}
+    },
+    "q6_k1024_n3072": {
+      "32": {"grouped_smallm": 4.332, "expert_major_comp": 5.477, "speedup": 0.791},
+      "55": {"grouped_smallm": 4.618, "expert_major_comp": 5.462, "speedup": 0.845},
+      "64": {"grouped_smallm": 4.734, "expert_major_comp": 5.468, "speedup": 0.866},
+      "122": {"grouped_smallm": 7.777, "expert_major_comp": 5.477, "speedup": 1.420},
+      "128": {"grouped_smallm": 8.552, "expert_major_comp": 5.473, "speedup": 1.563},
+      "256": {"grouped_smallm": 13.049, "expert_major_comp": 5.481, "speedup": 2.381},
+      "512": {"grouped_smallm": 21.980, "expert_major_comp": 10.087, "speedup": 2.179}
+    }
+  },
+  "gate_up_subwindow_ms": {
+    "scope": "current direct dual Q4 gate/up versus packed-hidden gather plus two compensated expert-major Q4 launches",
+    "32": {"direct_dual": 5.326, "candidate": 5.063, "speedup": 1.052},
+    "55": {"direct_dual": 9.139, "candidate": 5.771, "speedup": 1.584},
+    "64": {"direct_dual": 10.633, "candidate": 6.007, "speedup": 1.770},
+    "122": {"direct_dual": 20.222, "candidate": 7.784, "speedup": 2.598},
+    "128": {"direct_dual": 21.183, "candidate": 7.795, "speedup": 2.717},
+    "256": {"direct_dual": 42.362, "candidate": 7.941, "speedup": 5.335},
+    "512": {"direct_dual": 84.624, "candidate": 14.648, "speedup": 5.777}
+  },
+  "trace": {
+    "command": "rocprofv3 --kernel-trace --output-format csv --output-directory <dir> --output-file gfx1151 -- .venv/bin/python /tmp/laguna_expert_major_{q4_or_q6}_trace.py",
+    "q4": {
+      "kernel": "gguf_k_t16_selected_expert_major_wmma_comp_kernel<unsigned short, 4>",
+      "duration_us": 177.893,
+      "workgroup_size": 32,
+      "vgpr_count": 184,
+      "sgpr_count": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0,
+      "csv_sha256": "0804fcd7cdd55c27c6a654dc7ce2af60056d1578236fbcf1aeed4aa141b824c3"
+    },
+    "q6": {
+      "kernel": "gguf_k_t16_selected_expert_major_wmma_comp_kernel<unsigned short, 6>",
+      "duration_us": 181.339,
+      "workgroup_size": 32,
+      "vgpr_count": 200,
+      "sgpr_count": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0,
+      "csv_sha256": "006a737dcaadc611498026d6bf7e9b6b40148779b9a30b05ac9382d8b9fabfd0"
+    }
+  },
+  "decision": {
+    "action": "retain_explicit_candidate_and_run_clean_full_model_shape_screen",
+    "reason": "The complete Q4 gate/up subwindow is positive at every required shape and reaches 5.78x at M512; Q6 down crosses over near M122, so the full chain must determine a conservative shape threshold before any category/default work.",
+    "default_changed": false
+  },
+  "limitations": [
+    "Zero-weight timings are a production-dimension scheduling screen, not a real-weight cache or model-wall claim.",
+    "The compensated path intentionally changes arithmetic; full-model and category quality gates remain mandatory.",
+    "High Q4/Q6 VGPR counts (184/200) are recorded and must remain part of the full-model interpretation."
+  ]
+}
