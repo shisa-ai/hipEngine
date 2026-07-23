@@ -574,8 +574,9 @@ Startup scratch reports the two already-resident slots instead of allocating a
 second temporary pool.
 
 Host gates cover two-prompt routing, delayed arrival, blocking/stream exactness,
-prefix-aware stops, explicit KV continuation, cancellation, bounded pending
-queue overload/recovery, 20-request ownership soak, scratch ownership, and zero
+prefix-aware stops, explicit KV continuation, cancellation whose dispatch stays
+unpublished until scheduler reclaim acknowledges it, bounded pending queue
+overload/recovery, 20-request ownership soak, scratch ownership, and zero
 live rows/two returned leases. On Radeon 8060S/gfx1151 with exact Poolside
 Laguna S 2.1 Q4_K_M, a scheduler smoke matched the three direct baseline IDs
 `[19, 110, 3091]`; under `protect_ttft`, request B was admitted and completed

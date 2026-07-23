@@ -393,6 +393,33 @@ def test_laguna_native_runner_streams_prefix_safe_exact_output(generator) -> Non
         adapter.close()
 
 
+def test_laguna_native_runner_acknowledges_dispatched_cancel_after_reclaim(generator) -> None:
+    _FakeSession.sequences = [(10, 11, 12)]
+    token = GenerationCancellationToken()
+    adapter = SubmitPollTextGenerator(generator.instance, capacity=2)
+    try:
+        submission = adapter.submit_detailed(
+            _request(max_tokens=3, cancellation_token=token)
+        )
+        adapter.poll(max_ticks=1)
+        adapter.poll(max_ticks=1)
+
+        token.cancel()
+        assert token.cancel_requested is True
+        assert token.cancelled is False
+        adapter.poll(max_ticks=1)
+
+        assert token.cancelled is True
+        assert adapter.generation_complete(submission)
+        output = adapter.take_result(submission)[0]
+        assert output.finish_details is not None
+        assert output.finish_details.reason == "cancelled"
+        assert adapter._runner.active_request_ids == ()
+        assert len(adapter._runner._available) == 2
+    finally:
+        adapter.close()
+
+
 def test_laguna_native_runner_cancels_between_decode_ticks_and_reclaims(generator) -> None:
     _FakeSession.sequences = [(10, 11, 12)]
     adapter = SubmitPollTextGenerator(generator.instance, capacity=2)
