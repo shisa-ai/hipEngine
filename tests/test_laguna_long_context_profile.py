@@ -144,6 +144,10 @@ def test_lpf5_trace_segments_requests_and_attributes_all_families() -> None:
         ("laguna_global_write_kv_rows_bf16_kernel", "prefill_kv_write"),
         ("laguna_sigmoid_correction_topk_f32_kernel", "router"),
         ("q4_k_pack8_gemv_kernel<unsigned short>", "dense_shared_quant_projection"),
+        (
+            "gguf_k_prefill_out_kernel<unsigned short, unsigned short, 6>",
+            "dense_shared_quant_projection",
+        ),
         ("silu_mul_separate_out_kernel<unsigned short>", "activation_reduce_residual"),
         ("gguf_rmsnorm_bf16_f32_weight_kernel", "norm_rope_gate"),
         ("unrecognized_kernel", "other"),

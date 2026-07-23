@@ -108,6 +108,7 @@ def _kernel_family(name: str) -> str:
             "q4_k_t16_gemv",
             "q5_k_t16_gemv",
             "q6_k_t16_gemv",
+            "gguf_k_prefill_out_kernel",
         )
     ):
         return "dense_shared_quant_projection"
