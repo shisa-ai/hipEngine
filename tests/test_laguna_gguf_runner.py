@@ -346,6 +346,19 @@ def test_laguna_projection_dispatches_by_resident_layout(monkeypatch) -> None:
     assert [name for name, _ in calls] == ["f16", "raw"]
     assert calls[0][1][1]["libraries"] is libraries.f16_linear
     assert calls[1][1][1]["libraries"] is libraries.linear
+    assert calls[1][1][1]["use_gemv_decode"] is False
+
+    runner_module.launch_laguna_weight_linear(
+        raw_weight,
+        1,
+        2,
+        1,
+        4,
+        8,
+        libraries=libraries,
+    )
+    assert calls[-1][1][1]["use_gemv_decode"] is True
+
     with pytest.raises(ValueError, match="resident layout"):
         runner_module.launch_laguna_weight_linear(
             SimpleNamespace(spec=SimpleNamespace(layout="unsupported")),
