@@ -70,10 +70,11 @@ def _request(
     prompt: Sequence[int],
     *,
     key: str,
+    max_tokens: int = 1,
 ) -> GenerationRequest:
     return GenerationRequest(
         prompts=(tuple(int(token) for token in prompt),),
-        max_tokens=1,
+        max_tokens=int(max_tokens),
         temperature=0.0,
         top_p=1.0,
         ignore_eos=True,
@@ -187,6 +188,7 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
     generator.bind_repacked_cache_source_sha256(args.model_sha256)
     load_started = time.perf_counter()
     rows: list[dict[str, Any]] = []
+    chat_result: dict[str, Any] | None = None
     try:
         generator.prepare(max_sequence_length=args.context_length)
         load_seconds = time.perf_counter() - load_started
@@ -242,6 +244,62 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
                         file=sys.stderr,
                         flush=True,
                     )
+
+        suite_row = json.loads(
+            next(
+                line
+                for line in args.prompts.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            )
+        )
+        first_messages = list(suite_row["messages"])
+        first_ids = generator.tokenize(
+            generator.render_chat_prompt(first_messages, enable_thinking=False)
+        )
+        chat_key = "canonical-chat-session"
+        chat_seed = generator.generate_detailed(
+            _request(first_ids, key=chat_key, max_tokens=4)
+        )[0]
+        if not chat_seed.text:
+            raise RuntimeError("canonical chat seed produced no visible text")
+        second_messages = [
+            *first_messages,
+            {"role": "assistant", "content": chat_seed.text},
+            {"role": "user", "content": "Continue with one concise sentence."},
+        ]
+        second_ids = generator.tokenize(
+            generator.render_chat_prompt(second_messages, enable_thinking=False)
+        )
+        retained = generator._retained_token_ids
+        if second_ids[: len(retained)] != retained:
+            raise RuntimeError(
+                "canonical rendered chat does not preserve the retained token prefix"
+            )
+        reuse_started = time.perf_counter()
+        chat_reuse = generator.generate_detailed(_request(second_ids, key=chat_key))[0]
+        reuse_wall_ms = (time.perf_counter() - reuse_started) * 1_000.0
+        reuse_state = _device_digest(generator)
+        control_started = time.perf_counter()
+        chat_control = generator.generate_detailed(
+            _request(second_ids, key="canonical-chat-control")
+        )[0]
+        control_wall_ms = (time.perf_counter() - control_started) * 1_000.0
+        control_state = _device_digest(generator)
+        if chat_reuse.generated_token_ids != chat_control.generated_token_ids:
+            raise RuntimeError("canonical chat continuation token mismatch")
+        if reuse_state != control_state:
+            raise RuntimeError("canonical chat continuation KV digest mismatch")
+        chat_result = {
+            "prompt_id": str(suite_row["id"]),
+            "first_prompt_tokens": len(first_ids),
+            "second_prompt_tokens": len(second_ids),
+            "retained_prefix_tokens": len(retained),
+            "seed_generated_token_ids": list(chat_seed.generated_token_ids or ()),
+            "seed_text": chat_seed.text,
+            "reuse": _timing(chat_reuse, reuse_wall_ms),
+            "control": _timing(chat_control, control_wall_ms),
+            "state_digest": reuse_state,
+        }
     finally:
         generator.close()
     tracked_after = memory_stats()
@@ -285,6 +343,7 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
         "suffix_tokens": args.suffix_tokens + 1,
         "rows": rows,
         "summaries": summaries,
+        "canonical_chat": chat_result,
         "lifecycle": {"before": tracked_before, "after": tracked_after, "recovered": recovered},
         "gates": {
             "all_ids_equal": all(item["all_ids_equal"] for item in summaries.values()),
@@ -294,6 +353,12 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
             ),
             "all_reuse_modes": all(item["all_reuse_modes"] for item in summaries.values()),
             "all_reuse_faster": all(item["speedup"] > 1.0 for item in summaries.values()),
+            "canonical_chat_exact": bool(
+                chat_result is not None
+                and chat_result["reuse"]["generated_token_ids"]
+                == chat_result["control"]["generated_token_ids"]
+                and chat_result["reuse"]["session_prepare_mode"] == "reuse"
+            ),
             "lifecycle_recovered": recovered,
         },
     }
