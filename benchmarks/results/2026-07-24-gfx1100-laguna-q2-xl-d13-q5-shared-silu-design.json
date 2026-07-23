@@ -1,0 +1,367 @@
+{
+  "baseline": {
+    "canonical_h32_decode_tok_s": 48.987,
+    "canonical_ms_per_token": 20.414,
+    "commit": "64437400facf5a16cee5baaa24c0f63a8788d4aa",
+    "name": "D12 retained raw-Q5 wave32x2",
+    "remaining_gap_ms_per_token": 0.414,
+    "retained_artifact": "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d12-q5-wave32x2-retained.json",
+    "retained_artifact_sha256": "c02d1351fc07572ea4cb23cc6693be19343537158c050394374f0a021ac84769",
+    "target_ms_per_token": 20.0,
+    "target_tok_s": 50.0
+  },
+  "candidate": {
+    "dispatch_effect": {
+      "candidate_launches_per_targeted_layer": 1,
+      "control_launches_per_targeted_layer": 2,
+      "expected_dispatches_per_token": 729,
+      "removed_launches_per_token": 46
+    },
+    "expected_resources_gate": {
+      "lds_bytes_max": 2048,
+      "scratch_bytes": 0,
+      "vgpr_max": 96,
+      "workgroup_size": 256
+    },
+    "name": "exact raw-Q5 shared gate/up pack8 + SiLU",
+    "registry_key": [
+      "hip_gfx1100",
+      "linear_pair+activation",
+      "gguf_q5_k",
+      "pack8_gemv_decode_bf16_silu_bf16_out"
+    ],
+    "schedule": [
+      "one local256 block owns one eight-column gate/up output pack",
+      "threads 0..127 execute the retained gate local128 pack8 schedule and threads 128..255 execute the retained up schedule with half-local k strides and reduction trees",
+      "each half preserves its existing Q5 coefficient hoist, [t,t+128] K order, four wave32 reductions, and serial wave 0..3 sum",
+      "gate and up totals round independently to BF16 before the existing g * sigmoid(g) * u expression and final BF16 round",
+      "the fused leaf writes shared_intermediate directly and does not materialize shared_gate/shared_up"
+    ],
+    "scope": {
+      "equal_width_pair": true,
+      "in_features": 3072,
+      "out_features": 1024,
+      "rows": 1,
+      "source_layout": "raw GGUF Q5_K",
+      "targeted_layers": 46
+    },
+    "traffic_effect": {
+      "bf16_gate_up_write_plus_read_removed_bytes_per_layer": 8192,
+      "bf16_gate_up_write_plus_read_removed_bytes_per_token": 376832,
+      "features": 1024,
+      "targeted_layers": 46
+    },
+    "unfused_fallback": "registered Q5 pack8 linear_pair plus silu_mul_separate; mandatory for rows>1, gfx1151, registry/shape miss, explicit rollback, and layer-47 Q6 shared gate/up"
+  },
+  "candidate_ranking": [
+    {
+      "candidate": "Q5 shared pack8 pair + exact SiLU",
+      "decision": "selected",
+      "rank": 1,
+      "reason": "block-local synchronization, 46 removable launches, measured stable pair-to-SiLU gaps at every context, and existing IQ/T16 exact dual-SiLU precedent"
+    },
+    {
+      "candidate": "Q5 attention output + add-RMSNorm",
+      "decision": "deferred",
+      "rank": 2,
+      "reason": "requires completion across 1,536 producer workgroups per layer; D11 showed self-resetting global producer counters can improve a local window without improving total kernel sum"
+    },
+    {
+      "candidate": "IQ3 weighted down + D9 aggregate tail",
+      "decision": "deferred",
+      "rank": 3,
+      "reason": "requires completion across 3,072 output workgroups and reorders the shared branch; weighted routing and the downstream D9 boundary are already independently fused"
+    },
+    {
+      "candidate": "new IQ2 geometry or integer-dot decode",
+      "decision": "closed_without_new_device_code_premise",
+      "rank": 4,
+      "reason": "retained branchless/pair16/local64/tile2 path already halves the original leaf; task32/local32 and inclusive Q8_1+sudot4 were measured rejections"
+    }
+  ],
+  "date": "2026-07-24",
+  "hardware": {
+    "architecture": "gfx1100",
+    "gpu": "AMD Radeon Pro W7900",
+    "queue_policy": "GPU_MAX_HW_QUEUES=1"
+  },
+  "implementation_gate": {
+    "micro": [
+      "50 warmups/mode, 15 counterbalanced repetitions, at least 300 launches/sample on actual blk.1 and blk.46 weights",
+      "both endpoint layers must improve HIP-event and synchronized wall against inclusive pair+separate-SiLU",
+      "trace must show local256, VGPR<=96, LDS<=2048, scratch0, and exactly 46 fused calls/token"
+    ],
+    "model": [
+      "all 48 post-layer hidden rows, full logits/argmax bits, final/post-layer hidden, complete K/V and KVLiveSpans, reset, and lifecycle exact",
+      "clean short/512/1K/near-4K kernel sum and dispatch span improve with 729 classified dispatches/token",
+      "complete ten-prompt/four-category counterbalanced h16/h32 gate is exact and non-regressive before default promotion"
+    ],
+    "red": [
+      "missing four-axis wrapper/key for the fused rank-2 Q5 pair",
+      "synthetic K3072/N1024 BF16 output must equal pack8 pair plus silu_mul_separate bit-for-bit, including adversarial sigmoid and BF16-boundary values",
+      "actual blk.1 and blk.46 shared weights must be BF16-bit exact",
+      "runtime plan must select only gfx1100 c1 raw-Q5 equal pairs; Q6, rows>1, gfx1151, and registry/shape misses must execute the unfused chain"
+    ],
+    "retention": "promote only after all gates; otherwise remove the fused route and retain D12 pair+separate fallback without default-off debt"
+  },
+  "kind": "hipengine_laguna_q2_xl_d13_q5_shared_silu_design",
+  "measured_ceiling": {
+    "interpretation": "The exact block-local fusion has a measured 0.175 ms/token gap-only opportunity and a strict 0.259 ms/token zero-increment post-op ceiling, materially closing 42.3-62.5% of D12's 0.414 ms gap. It cannot claim 50 tok/s before implementation; the modeled range is 49.41-49.62 tok/s.",
+    "same_silu_cost_launch_gap_model": {
+      "gap_closed_pct": 42.299689440993646,
+      "modeled_tok_s": 49.40985051014435,
+      "remaining_ms_per_token": 20.238879285714287,
+      "savings_ms": 0.1751207142857143
+    },
+    "short_inter_kernel_gap_ms_per_token": 0.1751207142857143,
+    "short_pair_ms_per_token": 0.915606,
+    "short_pair_to_silu_window_ms_per_token": 1.1745384285714286,
+    "short_targeted_silu_ms_per_token": 0.08381171428571428,
+    "zero_increment_postop_ceiling": {
+      "gap_closed_pct": 62.54406487232552,
+      "modeled_tok_s": 49.615313690021075,
+      "remaining_ms_per_token": 20.155067571428575,
+      "savings_ms": 0.25893242857142856
+    }
+  },
+  "model": {
+    "id": "unsloth/Laguna-S-2.1-UD-Q2_K_XL",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "shared_fallback_layers": 1,
+    "shared_q5_layers": 46
+  },
+  "performance_claim": false,
+  "rejected_geometry_transfer": {
+    "command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u /tmp/bench_laguna_d13_shared_geometry.py",
+    "harness_sha256": "8adcd564ef66ec81bf952f2e8b72d4e6945c13b457151e2e928232f0eab490a2",
+    "name": "two independent D12 wave32x2 singleton launches for Q5 shared gate/up",
+    "protocol": {
+      "counterbalanced_repetitions": 15,
+      "iterations_per_sample": 300,
+      "warmups_per_mode": 50
+    },
+    "raw_sha256": "c65dd35e58d06b0200945ca0e9115ccdb4ddf4eb18967bcac9e7e395cb8a2727",
+    "reason": "The smaller K3072/N1024 shared shape does not inherit D12's wide-projection win. Both actual endpoint layers are exact but approximately 39.8% slower than the retained one-launch pack8 pair before SiLU, so D13 preserves pack8 geometry and fuses only the post-op boundary.",
+    "rows": [
+      {
+        "event_delta_pct": 39.72898089938275,
+        "event_us": {
+          "pack8_pair": 16.05191707611084,
+          "two_wave32x2": 22.429180145263672
+        },
+        "exact_gate_up_bits": true,
+        "layer": 1,
+        "shape": {
+          "in_features": 3072,
+          "out_features": 1024
+        },
+        "wall_delta_pct": 39.82248698684292,
+        "wall_us": {
+          "pack8_pair": 16.114153355980914,
+          "two_wave32x2": 22.531209979206324
+        },
+        "weight_bytes_each": 2162688
+      },
+      {
+        "event_delta_pct": 39.79298052106497,
+        "event_us": {
+          "pack8_pair": 16.02436701456706,
+          "two_wave32x2": 22.400940259297688
+        },
+        "exact_gate_up_bits": true,
+        "layer": 46,
+        "shape": {
+          "in_features": 3072,
+          "out_features": 1024
+        },
+        "wall_delta_pct": 39.869215118982694,
+        "wall_us": {
+          "pack8_pair": 16.08865335583687,
+          "two_wave32x2": 22.503073172022898
+        },
+        "weight_bytes_each": 2162688
+      }
+    ]
+  },
+  "residual_profile": {
+    "analysis_command": "PYTHONPATH=. uv run python /tmp/analyze_laguna_d13_shared_window.py",
+    "analysis_harness_sha256": "7c98be05a1eefcc2e527f9b8a3b4fb1e33b252e939d61568ed9448b58d8ac5ee",
+    "analysis_output_sha256": "790c220cea023a899d635eda64d0ed3443c68778116565757043274f0d72ee80",
+    "dispatches_per_token": 775,
+    "note": "D12 candidate traces are the retained D12 executable route; later promotion changes capability defaults and documentation, not these kernel bodies.",
+    "shared_pair_silu_window": {
+      "canonical_model": {
+        "d12_ms_per_token": 20.414,
+        "required_savings_ms": 0.4140000000000015,
+        "same_silu_cost_launch_gap_model": {
+          "gap_closed_pct": 42.299689440993646,
+          "modeled_tok_s": 49.40985051014435,
+          "remaining_ms_per_token": 20.238879285714287,
+          "savings_ms": 0.1751207142857143
+        },
+        "target_ms_per_token": 20.0,
+        "zero_increment_postop_ceiling": {
+          "gap_closed_pct": 62.54406487232552,
+          "modeled_tok_s": 49.615313690021075,
+          "remaining_ms_per_token": 20.155067571428575,
+          "savings_ms": 0.25893242857142856
+        }
+      },
+      "kind": "laguna_q2_xl_d13_shared_pair_silu_window",
+      "profiles": [
+        {
+          "label": "short",
+          "means_ms_per_token": {
+            "gap_ms": 0.1751207142857143,
+            "pair_ms": 0.915606,
+            "silu_ms": 0.08381171428571428,
+            "window_ms": 1.1745384285714286
+          },
+          "median_per_layer_us": {
+            "gap": 3.798282608695652,
+            "pair": 19.90753260869565,
+            "silu": 1.8147934782608695,
+            "window": 25.53713043478261
+          },
+          "resources": [
+            [
+              "void (anonymous namespace)::gguf_q5_k_pair_pack8_decode_out_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, int, int, int)",
+              128,
+              72,
+              128,
+              1024,
+              0
+            ]
+          ],
+          "stable_tokens": 14,
+          "targeted_layers_per_token": 46,
+          "trace": "/tmp/laguna-q2-xl-d12-clean-338d3afca-short-candidate-v1/epyc_kernel_trace.csv",
+          "trace_sha256": "95024673f518c9b9a577ee9097155eade80500a685a39e4070f68e0203924306"
+        },
+        {
+          "label": "512",
+          "means_ms_per_token": {
+            "gap_ms": 0.17456816666666666,
+            "pair_ms": 0.9150136666666666,
+            "silu_ms": 0.077687,
+            "window_ms": 1.1672688333333334
+          },
+          "median_per_layer_us": {
+            "gap": 3.793945652173913,
+            "pair": 19.888858695652175,
+            "silu": 1.6900108695652174,
+            "window": 25.382793478260872
+          },
+          "resources": [
+            [
+              "void (anonymous namespace)::gguf_q5_k_pair_pack8_decode_out_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, int, int, int)",
+              128,
+              72,
+              128,
+              1024,
+              0
+            ]
+          ],
+          "stable_tokens": 6,
+          "targeted_layers_per_token": 46,
+          "trace": "/tmp/laguna-q2-xl-d12-clean-338d3afca-512-candidate-v1/epyc_kernel_trace.csv",
+          "trace_sha256": "67f8f6be2900cc8b0301cd73c090f3d0ec162e195e6987ae3e425f508e680f36"
+        },
+        {
+          "label": "1024",
+          "means_ms_per_token": {
+            "gap_ms": 0.17440233333333333,
+            "pair_ms": 0.9248978333333333,
+            "silu_ms": 0.08248783333333333,
+            "window_ms": 1.181788
+          },
+          "median_per_layer_us": {
+            "gap": 3.7870108695652176,
+            "pair": 20.10113043478261,
+            "silu": 1.7822065217391303,
+            "window": 25.66991304347826
+          },
+          "resources": [
+            [
+              "void (anonymous namespace)::gguf_q5_k_pair_pack8_decode_out_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, int, int, int)",
+              128,
+              72,
+              128,
+              1024,
+              0
+            ]
+          ],
+          "stable_tokens": 6,
+          "targeted_layers_per_token": 46,
+          "trace": "/tmp/laguna-q2-xl-d12-clean-338d3afca-1024-candidate-v1/epyc_kernel_trace.csv",
+          "trace_sha256": "625d1a2b59622fc9612c599d85ae0799969027f0475dc3dedf09cc0cc63fa9e9"
+        },
+        {
+          "label": "3968",
+          "means_ms_per_token": {
+            "gap_ms": 0.17538900000000002,
+            "pair_ms": 0.9175196666666666,
+            "silu_ms": 0.08153516666666667,
+            "window_ms": 1.1744438333333334
+          },
+          "median_per_layer_us": {
+            "gap": 3.785282608695652,
+            "pair": 19.92416304347826,
+            "silu": 1.775717391304348,
+            "window": 25.537771739130434
+          },
+          "resources": [
+            [
+              "void (anonymous namespace)::gguf_q5_k_pair_pack8_decode_out_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, int, int, int)",
+              128,
+              72,
+              128,
+              1024,
+              0
+            ]
+          ],
+          "stable_tokens": 6,
+          "targeted_layers_per_token": 46,
+          "trace": "/tmp/laguna-q2-xl-d12-clean-338d3afca-3968-candidate-v1/epyc_kernel_trace.csv",
+          "trace_sha256": "1438490d37a22c4e145c10ac7904cbd6343d074e8100dad8f096791e339dd9da"
+        }
+      ],
+      "schema": 1,
+      "source_revision": "338d3afca",
+      "traffic": {
+        "bf16_gate_up_write_plus_read_removed_bytes_per_layer": 8192,
+        "bf16_gate_up_write_plus_read_removed_bytes_per_token": 376832,
+        "features": 1024,
+        "targeted_layers": 46
+      }
+    },
+    "short_kernel_sum_ms_per_token": 16.48574592857143,
+    "short_leaders_ms_per_token": {
+      "q5_attention_output_wave32x2": 2.185993,
+      "q5_query_gate_wave32x2": 1.837708,
+      "q5_shared_gate_up_pair_pack8": 0.915606,
+      "selected_iq2_dual_silu": 2.35481,
+      "token4_swa": 2.150684,
+      "weighted_iq3_down": 2.146791
+    },
+    "short_span_ms_per_token": 19.566539,
+    "source_revision": "338d3afca"
+  },
+  "schema": 1,
+  "source_basis": {
+    "control_pair": "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip::gguf_q5_k_pair_pack8_decode_out_kernel",
+    "control_postop": "hipengine/kernels/hip_gfx1100/fused/paro_silu.hip::silu_mul_separate_out_kernel",
+    "exact_fused_precedent": "hipengine/kernels/hip_gfx1100/quant/gguf_iq_gemv.hip::{gguf_iq2_xs,gguf_iq3_xxs}_selected_dual_silu_gemv_kernel",
+    "lineage_check": "python3 scripts/check_lineage.py --kind kernel --file <gguf_k_gemv.hip|gguf_iq_gemv.hip> --diff stat -> no sources selected; this is a new in-tree specialization",
+    "runtime_boundary": "hipengine/runtime/laguna_moe.py::run_laguna_moe_c1_components",
+    "source_sha256": {
+      "gguf_iq_gemv.hip": "f6126e2af99dd6a6b8059caf44391100630a5cbdb026fcb275b0f260aca79971",
+      "gguf_k_gemv.hip": "4a4c2f689628cdea0c88529fd94050e89fe1c1f2481eca2767ad70c9ffc5c535",
+      "laguna_moe.py": "72d3dd8760b8be3c3182b66e79ef0c7056f92229ab4d8ede3d2a369baa0b9572",
+      "paro_silu.hip": "d432a70710d3b18d313fd85a3a1480ea7c9a00945dd5a98df0edd849fe713e0f"
+    }
+  },
+  "status": "selected_for_implementation"
+}

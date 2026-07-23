@@ -3497,6 +3497,51 @@ Evidence:
 Frozen design and source/traffic accounting:
 `benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d12-q5-wave32x2-design.json`.
 
+### D13 raw-Q5 shared pair + SiLU (exact, selected)
+
+The retained D12 traces leave one stable block-local post-op boundary that does
+not require another global producer counter. In every sparse token, 46 Q5
+shared-expert gate/up pairs are immediately followed by the separate BF16 SiLU
+kernel. At short/512/1K/near-4K, the pair costs
+**0.916/0.915/0.925/0.918 ms/token**, the targeted SiLU costs
+**0.084/0.078/0.082/0.082 ms**, and the pair-to-SiLU submission gap costs
+**0.175/0.175/0.174/0.175 ms**. The complete adjacent window is therefore
+**1.175-1.182 ms/token** and is context-independent. Layer 47 uses a different
+shared quant route and remains fallback.
+
+D12's wave32x2 geometry does **not** transfer to this smaller K3072/N1024
+shape. A 50-warmup, 15x300 counterbalanced actual-weight probe on layers 1 and
+46 found two exact wave32x2 singleton launches **39.73%/39.79% slower in HIP
+events** and **39.82%/39.87% slower in synchronized wall** than the retained
+one-launch pack8 pair. D13 therefore preserves the pack8 arithmetic and rejects
+another one-wave rewrite.
+
+The selected leaf is
+`linear_pair+activation/gguf_q5_k/pack8_gemv_decode_bf16_silu_bf16_out` on
+gfx1100 c=1. One local256 block owns an eight-column output pack: threads
+0..127 execute the current gate local128 schedule and threads 128..255 execute
+the current up schedule. Each half retains the exact coefficient hoist,
+`[t,t+128]` K order, four wave32 reductions, and serial wave 0..3 sum. Gate and
+up round independently to BF16 before the existing
+`g * sigmoid(g) * u` expression and final BF16 round. The leaf writes the
+shared intermediate directly, removes **46 launches/token** (**775 -> 729**),
+and avoids **376,832 bytes/token** of gate/up BF16 write-read traffic. The
+registered Q5 pair plus separate SiLU remains the mandatory rows>1, gfx1151,
+registry/shape-miss, explicit-rollback, and Q6 fallback.
+
+The measured opportunity is material but is not yet a performance claim. If
+the fused body pays the same SiLU arithmetic cost, removing only the measured
+submission gaps saves **0.175 ms/token**, closes **42.30%** of D12's 0.414-ms
+gap, and models **49.41 tok/s**. The strict zero-increment post-op ceiling is
+**0.259 ms/token**, **62.54%** of the gap and **49.62 tok/s**. D13 cannot claim
+50 tok/s by itself. Implementation requires BF16-bit synthetic and actual
+layer-1/layer-46 parity, local256/VGPR<=96/LDS<=2048/scratch0, positive
+inclusive event and wall micros for both layers, all-layer hidden/logit/KV/state
+parity, improved clean traces at all four contexts, and the complete category
+non-regression gate. Any failure removes the candidate rather than leaving a
+default-off route. Design evidence:
+`benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d13-q5-shared-silu-design.json`.
+
 ## Laguna DFlash Follow-on Plan
 
 DFlash work begins as architecture support during the target port but remains a
