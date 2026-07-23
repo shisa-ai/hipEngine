@@ -3,6 +3,8 @@
 Last reviewed: **2026-07-23**
 
 Latest retained hipEngine revisions in this scoreboard:
+`9fb6bda7f810e3b6ad18603858b72a88bb75ad72` for the Laguna S 2.1 LPF-5
+512/1K/4K long-context attribution profile,
 `8ceb7d3a0068822b23ba6729cd9c91cacb701309` for the exact Laguna S 2.1
 LPF-4 128-row chunk-policy and canonical target-AR gate,
 `6b14c2da60bd51d56373e31fe9e16e15f4e969d9` for the exact Laguna S 2.1
@@ -1190,6 +1192,15 @@ ownership rises only **49.1 MiB**. Artifacts: [LPF-0 profile and routing](result
 [LPF-1 same-session A/B](results/2026-07-23-gfx1151-laguna-prefill-lpf1-ab.json),
 [LPF-1 canonical category gate](results/2026-07-23-gfx1151-laguna-prefill-lpf1-tiled.json),
 and [LPF-4 chunk-policy gate](results/2026-07-23-gfx1151-laguna-prefill-lpf4-chunk128.json).
+
+LPF-5's clean one-pass attribution baseline uses the retained 128-row chunks at
+512/1K/4K. Prefill is **43.732/39.697/33.745 tok/s** while attention grows from
+**1.896 s / 16.25%** through **6.115 s / 23.78%** to **42.609 s / 35.19%** of
+kernel sum. At 4K, global/SWA own **16.908/25.701 s (13.96%/21.23%)**. Exact
+final cursors/IDs, the existing 511/512/513 CPU/GPU fixtures, trace segmentation,
+and lifecycle pass. This is diagnostic attribution—not a speedup, repeated
+throughput row, or long-context support claim—and ranks the bounded but serial
+SWA reader before global attention. [LPF-5 profile](results/2026-07-23-gfx1151-laguna-prefill-lpf5-long-context-profile.json).
 
 The matched clean Poolside llama.cpp `04b2b72c` raw-token diagnostic reports
 70.463/70.451 prompt tok/s and 19.063/18.882 native predicted tok/s at h16/h32,
