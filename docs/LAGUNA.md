@@ -361,11 +361,18 @@ GGUF tokenizer metadata:
 | EOT | 24 (`</assistant>`) |
 | padding | 9 |
 
-The tokenizer must preserve byte-BPE ID parity with the oracle. EOT 24 must stop
-generation and its textual marker must not leak into returned content. The GGUF
-contains a resolved chat template; use it rather than an unresolved Jinja
-`include`. Thinking/no-thinking and tool-call behavior are later public-surface
-gates, not assumptions made by the base completion path.
+The tokenizer must preserve byte-BPE ID parity with the oracle. The production
+encoder reconstructs Hugging Face `tokenizers` in memory from the GGUF
+vocabulary, merges, token types, and `laguna` pre-tokenizer recipe; it requires
+neither a `tokenizer.json` sidecar nor network access. Exact token-ID requests
+bypass encoding and report `timing.tokenize_ms = 0`; text generation and the
+token diagnostics endpoints expose measured `tokenize_ms` separately from
+model prefill/decode timing.
+
+EOT 24 must stop generation and its textual marker must not leak into returned
+content. The GGUF contains a resolved chat template; use it rather than an
+unresolved Jinja `include`. Thinking/no-thinking and tool-call behavior are
+later public-surface gates, not assumptions made by the base completion path.
 
 ## Matched Laguna DFlash Artifact
 
@@ -986,9 +993,11 @@ Implemented foundation (2026-07-22):
 
 - the model/config and strict 814-tensor mapping plugins are registered and
   covered by synthetic plus completed-artifact tests;
-- `LagunaGGUFTokenizer` loads the `gpt2`/`laguna` GGUF vocabulary, BOS 2, EOS 2,
-  EOT 24, PAD 9, SEP 8, MASK 12, UNK 0, BOS insertion, stop IDs, and the raw chat
-  template while suppressing EOT text under special-token skipping;
+- `LagunaGGUFTokenizer` reconstructs the HF Rust encoder directly from the
+  `gpt2`/`laguna` GGUF metadata, with BOS 2, EOS 2, EOT 24, PAD 9, SEP 8, MASK
+  12, UNK 0, BOS insertion, stop IDs, and the raw chat template while
+  suppressing EOT text under special-token skipping; the superseded Python BPE,
+  Python pre-tokenizer, and unbounded cache have been removed;
 - five checked-in prompt fixtures plus CRLF, newline/punctuation, and combining-
   mark boundaries match Poolside's HF fast tokenizer at revision
   `179ee67cf0fff5391c67fe1a392ea849fa6d643f`; an expanded 23-case local
