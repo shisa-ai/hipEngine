@@ -339,6 +339,11 @@ def gguf_q4_k_pack8_gemv_bf16_bf16_out(
 
 def register_gguf_q4_k_gemv_kernels(*, replace: bool = True) -> None:
     register(
+        KernelKey("hip_gfx1100", "activation_quant", "q8_1", "bf16"),
+        gguf_q4_k_quantize_bf16_q8_1,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "gemv_f32_f32_out"),
         gguf_q4_k_gemv_f32_f32_out,
         replace=replace,

@@ -2241,6 +2241,15 @@ repeat either experiment unchanged.
   developed. Include activation-quantization cost and full-model quality; a
   prequantized leaf win is not sufficient. Evidence:
   `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-ar-o1-fused-silu-rejected.json`.
+  The inclusive Q8 screen is now wired but remains default-off and unqualified:
+  `HIPENGINE_LAGUNA_SELECTED_GATE_UP=q8_dp4a` allocates one bounded
+  `rows * (K/32) * 36` workspace, quantizes each producer row once before
+  top-10 expansion, launches the existing fused Q4T16 q8_1/dp4a leaf, and
+  keeps c=1 AR decode on exact split. The same-session harness owns balanced
+  16/32/55/64/122/128 timing and treats next-ID agreement as diagnostic; it
+  cannot promote without the separate Poolside/category quality gate. Remove
+  this runtime route and scratch immediately if either inclusive performance
+  or quality fails.
 - [ ] Build one device-resident expert grouping/scatter pass with no scalar D2H
   boundary. Quantize each producer activation once, not once per selected
   expert or output projection.
