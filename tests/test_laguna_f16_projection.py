@@ -427,7 +427,7 @@ def test_laguna_f16_projection_tiled_is_bit_exact_to_gemv(rows: int) -> None:
     np.testing.assert_array_equal(actual_tiled_bf16, actual_gemv_bf16)
 
 
-@pytest.mark.parametrize("rows", [16, 17])
+@pytest.mark.parametrize("rows", [16, 17, 32, 64, 128, 256, 512])
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_laguna_f16_projection_wmma_passes_cpu_quality_gate(rows: int) -> None:
     from hipengine.core.hip import get_hip_runtime

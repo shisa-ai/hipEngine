@@ -271,8 +271,12 @@ __device__ inline half16_t load_bf16_half16(
 // One wave computes a 16-row x 16-column tile directly from the resident
 // row-major F16 source weight. BF16 activations are converted to F16 in
 // registers; no repack, sidecar, or inference-time staging is introduced.
-template <typename out_t>
-__launch_bounds__(kWmmaWave, 4)
+constexpr int kWmmaWavesPerBlock = 4;
+constexpr int kWmmaBlockThreads = kWmmaWave * kWmmaWavesPerBlock;
+constexpr int kWmmaBlockN = kWmmaTile * kWmmaWavesPerBlock;
+
+template <typename out_t, int ROW_TILES>
+__launch_bounds__(kWmmaBlockThreads, 2)
 __global__ void laguna_f16w_wmma_kernel(
     const uint16_t* __restrict__ x,
     const half_t* __restrict__ weight,
@@ -280,34 +284,175 @@ __global__ void laguna_f16w_wmma_kernel(
     int64_t rows,
     int64_t in_features,
     int64_t out_features) {
-  const int lane16 = threadIdx.x & 15;
-  const int half_id = threadIdx.x >> 4;
-  const int64_t row_base = static_cast<int64_t>(blockIdx.y) * kWmmaTile;
-  const int64_t col_base = static_cast<int64_t>(blockIdx.x) * kWmmaTile;
-  const int64_t load_row = row_base + lane16;
-  const int64_t load_col = col_base + lane16;
-  const bool valid_row = load_row < rows;
+  constexpr int rows_per_block = ROW_TILES * kWmmaTile;
+  __shared__ half_t x_tile[rows_per_block * kWmmaTile];
+  const int wave = threadIdx.x / kWmmaWave;
+  const int wave_lane = threadIdx.x & (kWmmaWave - 1);
+  const int lane16 = wave_lane & 15;
+  const int half_id = wave_lane >> 4;
+  const int64_t row_base =
+      static_cast<int64_t>(blockIdx.y) * rows_per_block;
+  const int64_t col_base = static_cast<int64_t>(blockIdx.x) * kWmmaBlockN;
+  const int64_t load_col = col_base + wave * kWmmaTile + lane16;
   const bool valid_col = load_col < out_features;
-  float8_t acc = zero_float8();
+  float8_t acc[ROW_TILES];
+#pragma unroll
+  for (int tile = 0; tile < ROW_TILES; ++tile) acc[tile] = zero_float8();
 
   for (int64_t k_base = 0; k_base < in_features; k_base += kWmmaTile) {
-    const half16_t a = load_bf16_half16(
-        x, load_row, k_base, in_features, valid_row);
+    if (threadIdx.x < rows_per_block) {
+      const int64_t load_row = row_base + threadIdx.x;
+      const half16_t values = load_bf16_half16(
+          x, load_row, k_base, in_features, load_row < rows);
+      *reinterpret_cast<half16_t*>(
+          x_tile + threadIdx.x * kWmmaTile) = values;
+    }
+    __syncthreads();
     const half16_t b = valid_col
         ? *reinterpret_cast<const half16_t*>(
               weight + load_col * in_features + k_base)
         : zero_half16();
-    acc = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a, b, acc);
+#pragma unroll
+    for (int tile = 0; tile < ROW_TILES; ++tile) {
+      const half16_t a = *reinterpret_cast<const half16_t*>(
+          x_tile + (tile * kWmmaTile + lane16) * kWmmaTile);
+      acc[tile] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
+          a, b, acc[tile]);
+    }
+    __syncthreads();
   }
 
   if (!valid_col) return;
 #pragma unroll
-  for (int j = 0; j < 8; ++j) {
-    const int64_t store_row = row_base + half_id + 2 * j;
-    if (store_row < rows) {
-      store_scalar(out, store_row * out_features + load_col, acc[j]);
+  for (int tile = 0; tile < ROW_TILES; ++tile) {
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      const int64_t store_row =
+          row_base + tile * kWmmaTile + half_id + 2 * j;
+      if (store_row < rows) {
+        store_scalar(out, store_row * out_features + load_col, acc[tile][j]);
+      }
     }
   }
+}
+
+template <typename out_t, int M_GROUPS, int N_GROUPS, int ROW_TILES>
+__launch_bounds__(kWmmaWave * M_GROUPS * N_GROUPS, 1)
+__global__ void laguna_f16w_wmma_large_kernel(
+    const uint16_t* __restrict__ x,
+    const half_t* __restrict__ weight,
+    out_t* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  constexpr int rows_per_wave = ROW_TILES * kWmmaTile;
+  constexpr int rows_per_block = M_GROUPS * rows_per_wave;
+  constexpr int cols_per_block = N_GROUPS * kWmmaTile;
+  constexpr int block_threads = kWmmaWave * M_GROUPS * N_GROUPS;
+  __shared__ half_t x_tile[rows_per_block * kWmmaTile];
+  __shared__ half_t w_tile[N_GROUPS * kWmmaTile * kWmmaTile];
+  const int wave = threadIdx.x / kWmmaWave;
+  const int wave_lane = threadIdx.x & (kWmmaWave - 1);
+  const int m_group = wave / N_GROUPS;
+  const int n_group = wave % N_GROUPS;
+  const int lane16 = wave_lane & 15;
+  const int half_id = wave_lane >> 4;
+  const int64_t row_base =
+      static_cast<int64_t>(blockIdx.y) * rows_per_block;
+  const int64_t col_base =
+      static_cast<int64_t>(blockIdx.x) * cols_per_block;
+  const int64_t store_col = col_base + n_group * kWmmaTile + lane16;
+  const bool valid_col = store_col < out_features;
+  float8_t acc[ROW_TILES];
+#pragma unroll
+  for (int tile = 0; tile < ROW_TILES; ++tile) acc[tile] = zero_float8();
+
+  for (int64_t k_base = 0; k_base < in_features; k_base += kWmmaTile) {
+    for (int row = threadIdx.x; row < rows_per_block;
+         row += block_threads) {
+      const int64_t load_row = row_base + row;
+      const half16_t values = load_bf16_half16(
+          x, load_row, k_base, in_features, load_row < rows);
+      *reinterpret_cast<half16_t*>(x_tile + row * kWmmaTile) = values;
+    }
+    constexpr int weight_fragments = N_GROUPS * kWmmaTile;
+    for (int fragment = threadIdx.x; fragment < weight_fragments;
+         fragment += block_threads) {
+      const int64_t load_col = col_base + fragment;
+      const half16_t values = load_col < out_features
+          ? *reinterpret_cast<const half16_t*>(
+                weight + load_col * in_features + k_base)
+          : zero_half16();
+      *reinterpret_cast<half16_t*>(
+          w_tile + fragment * kWmmaTile) = values;
+    }
+    __syncthreads();
+    const half16_t b = *reinterpret_cast<const half16_t*>(
+        w_tile + (n_group * kWmmaTile + lane16) * kWmmaTile);
+#pragma unroll
+    for (int tile = 0; tile < ROW_TILES; ++tile) {
+      const int row_in_block =
+          m_group * rows_per_wave + tile * kWmmaTile + lane16;
+      const half16_t a = *reinterpret_cast<const half16_t*>(
+          x_tile + row_in_block * kWmmaTile);
+      acc[tile] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
+          a, b, acc[tile]);
+    }
+    __syncthreads();
+  }
+
+  if (!valid_col) return;
+#pragma unroll
+  for (int tile = 0; tile < ROW_TILES; ++tile) {
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      const int64_t store_row = row_base + m_group * rows_per_wave +
+          tile * kWmmaTile + half_id + 2 * j;
+      if (store_row < rows) {
+        store_scalar(out, store_row * out_features + store_col, acc[tile][j]);
+      }
+    }
+  }
+}
+
+template <typename out_t, int M_GROUPS, int N_GROUPS, int ROW_TILES>
+int launch_wmma_large_shape(
+    const uint16_t* x,
+    const half_t* weight,
+    out_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  constexpr int rows_per_block = M_GROUPS * ROW_TILES * kWmmaTile;
+  constexpr int cols_per_block = N_GROUPS * kWmmaTile;
+  constexpr int block_threads = kWmmaWave * M_GROUPS * N_GROUPS;
+  laguna_f16w_wmma_large_kernel<out_t, M_GROUPS, N_GROUPS, ROW_TILES><<<
+      dim3((out_features + cols_per_block - 1) / cols_per_block,
+           (rows + rows_per_block - 1) / rows_per_block),
+      dim3(block_threads),
+      0,
+      stream>>>(x, weight, out, rows, in_features, out_features);
+  return hipGetLastError();
+}
+
+template <typename out_t, int ROW_TILES>
+int launch_wmma_shape(
+    const uint16_t* x,
+    const half_t* weight,
+    out_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  constexpr int rows_per_block = ROW_TILES * kWmmaTile;
+  laguna_f16w_wmma_kernel<out_t, ROW_TILES><<<
+      dim3((out_features + kWmmaBlockN - 1) / kWmmaBlockN,
+           (rows + rows_per_block - 1) / rows_per_block),
+      dim3(kWmmaBlockThreads),
+      0,
+      stream>>>(x, weight, out, rows, in_features, out_features);
+  return hipGetLastError();
 }
 
 template <typename out_t>
@@ -324,13 +469,28 @@ int launch_wmma(
       (in_features % kWmmaTile) != 0 || threads != 256) {
     return hipErrorInvalidValue;
   }
-  laguna_f16w_wmma_kernel<out_t><<<
-      dim3((out_features + kWmmaTile - 1) / kWmmaTile,
-           (rows + kWmmaTile - 1) / kWmmaTile),
-      dim3(kWmmaWave),
-      0,
-      stream>>>(x, weight, out, rows, in_features, out_features);
-  return hipGetLastError();
+  if (rows >= 512) {
+    return launch_wmma_large_shape<out_t, 4, 2, 8>(
+        x, weight, out, rows, in_features, out_features, stream);
+  }
+  if (rows >= 256) {
+    return launch_wmma_large_shape<out_t, 2, 4, 8>(
+        x, weight, out, rows, in_features, out_features, stream);
+  }
+  if (rows >= 128) {
+    return launch_wmma_shape<out_t, 8>(
+        x, weight, out, rows, in_features, out_features, stream);
+  }
+  if (rows >= 64) {
+    return launch_wmma_shape<out_t, 4>(
+        x, weight, out, rows, in_features, out_features, stream);
+  }
+  if (rows >= 32) {
+    return launch_wmma_shape<out_t, 2>(
+        x, weight, out, rows, in_features, out_features, stream);
+  }
+  return launch_wmma_shape<out_t, 1>(
+      x, weight, out, rows, in_features, out_features, stream);
 }
 
 int launch_triple_wmma(
