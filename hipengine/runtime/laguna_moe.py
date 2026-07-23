@@ -41,6 +41,17 @@ _ADD_VARIANT = "add"
 
 
 @dataclass(frozen=True)
+class LagunaMoESelectedRoute:
+    """One registry-resolved selected-expert ABI and resident allocation."""
+
+    key: KernelKey
+    function: Callable
+    abi: str
+    allocation_name: str
+    library_key: str
+
+
+@dataclass(frozen=True)
 class LagunaMoEKernelPlan:
     """Resolved registry plan and exact eager Laguna MoE dimensions."""
 
@@ -54,9 +65,12 @@ class LagunaMoEKernelPlan:
     router_logits_key: KernelKey
     router_select_key: KernelKey
     selected_gate_up_key: KernelKey
+    selected_gate_up_keys: Mapping[str, KernelKey]
+    selected_gate_up_routes: Mapping[str, LagunaMoESelectedRoute]
     selected_silu_key: KernelKey
     selected_down_key: KernelKey
     selected_down_keys: Mapping[str, KernelKey]
+    selected_down_routes: Mapping[str, LagunaMoESelectedRoute]
     routed_sum_key: KernelKey
     routed_sum_rows_key: KernelKey
     shared_silu_key: KernelKey
@@ -77,7 +91,7 @@ class LagunaMoEKernelPlan:
         return (
             self.router_logits_key,
             self.router_select_key,
-            self.selected_gate_up_key,
+            *tuple(self.selected_gate_up_keys.values()),
             self.selected_silu_key,
             *tuple(self.selected_down_keys.values()),
             self.routed_sum_key,
@@ -193,15 +207,81 @@ def resolve_laguna_moe_plan(
         "shared_silu": KernelKey(backend, "silu_mul_separate", "bf16", _SILU_VARIANT),
         "add": KernelKey(backend, "elementwise", "bf16", _ADD_VARIANT),
     }
+    selected_gate_up_keys = MappingProxyType(
+        {
+            "gguf_q4_k_t16_v1": keys["selected_gate_up"],
+            "gguf_iq2_xs": KernelKey(
+                backend,
+                "moe_linear",
+                "gguf_iq2_xs",
+                "selected_dual_silu_gemv_decode_bf16_bf16_out",
+            ),
+            "gguf_iq3_xxs": KernelKey(
+                backend,
+                "moe_linear",
+                "gguf_iq3_xxs",
+                "selected_dual_silu_gemv_decode_bf16_bf16_out",
+            ),
+        }
+    )
     selected_down_keys = MappingProxyType(
         {
-            quant: KernelKey(backend, "moe_linear", quant, _SELECTED_DOWN_VARIANT)
-            for quant in ("gguf_q4_k_t16_v1", "gguf_q6_k_t16_v1")
+            "gguf_q4_k_t16_v1": KernelKey(
+                backend, "moe_linear", "gguf_q4_k_t16_v1", _SELECTED_DOWN_VARIANT
+            ),
+            "gguf_q6_k_t16_v1": keys["selected_down"],
+            "gguf_iq3_xxs": KernelKey(
+                backend,
+                "moe_linear",
+                "gguf_iq3_xxs",
+                "selected_gemv_decode_bf16_bf16_out",
+            ),
+            "gguf_iq4_xs": KernelKey(
+                backend,
+                "moe_linear",
+                "gguf_iq4_xs",
+                "selected_gemv_decode_bf16_bf16_out",
+            ),
         }
     )
     functions = {name: _resolve_exact(key) for name, key in keys.items()}
+    selected_gate_up_route_specs = {
+        "gguf_q4_k_t16_v1": ("t16_dual", "tiles", "selected_gate_up"),
+        "gguf_iq2_xs": ("raw_iq_dual_silu", "raw", "selected_gate_up_iq"),
+        "gguf_iq3_xxs": ("raw_iq_dual_silu", "raw", "selected_gate_up_iq"),
+    }
+    selected_gate_up_routes = MappingProxyType(
+        {
+            quant: LagunaMoESelectedRoute(
+                key=selected_gate_up_keys[quant],
+                function=_resolve_exact(selected_gate_up_keys[quant]),
+                abi=abi,
+                allocation_name=allocation_name,
+                library_key=library_key,
+            )
+            for quant, (abi, allocation_name, library_key) in selected_gate_up_route_specs.items()
+        }
+    )
+    selected_down_route_specs = {
+        "gguf_q4_k_t16_v1": ("t16", "tiles", "selected_down"),
+        "gguf_q6_k_t16_v1": ("t16", "tiles", "selected_down"),
+        "gguf_iq3_xxs": ("raw_iq", "raw", "selected_down_iq"),
+        "gguf_iq4_xs": ("raw_iq", "raw", "selected_down_iq"),
+    }
+    selected_down_routes = MappingProxyType(
+        {
+            quant: LagunaMoESelectedRoute(
+                key=selected_down_keys[quant],
+                function=_resolve_exact(selected_down_keys[quant]),
+                abi=abi,
+                allocation_name=allocation_name,
+                library_key=library_key,
+            )
+            for quant, (abi, allocation_name, library_key) in selected_down_route_specs.items()
+        }
+    )
     selected_downs = MappingProxyType(
-        {quant: _resolve_exact(key) for quant, key in selected_down_keys.items()}
+        {quant: route.function for quant, route in selected_down_routes.items()}
     )
     return LagunaMoEKernelPlan(
         backend=backend,
@@ -214,9 +294,12 @@ def resolve_laguna_moe_plan(
         router_logits_key=keys["router_logits"],
         router_select_key=keys["router_select"],
         selected_gate_up_key=keys["selected_gate_up"],
+        selected_gate_up_keys=selected_gate_up_keys,
+        selected_gate_up_routes=selected_gate_up_routes,
         selected_silu_key=keys["selected_silu"],
         selected_down_key=keys["selected_down"],
         selected_down_keys=selected_down_keys,
+        selected_down_routes=selected_down_routes,
         routed_sum_key=keys["routed_sum"],
         routed_sum_rows_key=keys["routed_sum_rows"],
         shared_silu_key=keys["shared_silu"],
@@ -312,105 +395,332 @@ def validate_laguna_moe_layer(
         plan.expert_ffn_size,
         plan.shared_ffn_size,
     )
-    selected_down = layer.weight("ffn_down_exps")
-    selected_down_contracts = {
-        "gguf_q4_k_t16_v1": (
-            LAYOUT_GGUF_Q4_K_T16,
-            (e, h, (f // _QK_K) * 144),
-        ),
-        "gguf_q6_k_t16_v1": (
-            LAYOUT_GGUF_Q6_K_T16,
-            (e, h, (f // _QK_K) * 210),
-        ),
-    }
-    try:
-        selected_down_layout, selected_down_byte_shape = selected_down_contracts[
-            selected_down.spec.quant_key
-        ]
-    except KeyError as exc:
-        raise ValueError("ffn_down_exps must use a registered Q4_K or Q6_K T16 layout") from exc
-
-    shared_down = layer.weight("ffn_down_shexp")
-    shared_down_contracts = {
-        "gguf_q4_k": (LAYOUT_Q4_K_PACK8, (h, (sf // _QK_K) * 144)),
-        "gguf_q6_k": (LAYOUT_RAW_GGUF, (h, (sf // _QK_K) * 210)),
-    }
-    try:
-        shared_down_layout, shared_down_byte_shape = shared_down_contracts[
-            shared_down.spec.quant_key
-        ]
-    except KeyError as exc:
-        raise ValueError(
-            "ffn_down_shexp must use a registered Q4_K pack8 or raw Q6_K layout"
-        ) from exc
-
-    expected = {
+    dense_expected = {
         "ffn_gate_inp": ((e, h), LAYOUT_DENSE_F32, "f32", (e, h)),
         "exp_probs_b": ((e,), LAYOUT_DENSE_F32, "f32", (e,)),
-        "ffn_gate_exps": (
-            (e, f, h),
-            LAYOUT_GGUF_Q4_K_T16,
-            "gguf_q4_k_t16_v1",
-            (e, f, (h // _QK_K) * 144),
-        ),
-        "ffn_up_exps": (
-            (e, f, h),
-            LAYOUT_GGUF_Q4_K_T16,
-            "gguf_q4_k_t16_v1",
-            (e, f, (h // _QK_K) * 144),
-        ),
-        "ffn_down_exps": (
-            (e, h, f),
-            selected_down_layout,
-            selected_down.spec.quant_key,
-            selected_down_byte_shape,
-        ),
-        "ffn_gate_shexp": (
-            (sf, h),
-            LAYOUT_Q4_K_PACK8,
-            "gguf_q4_k",
-            (sf, (h // _QK_K) * 144),
-        ),
-        "ffn_up_shexp": (
-            (sf, h),
-            LAYOUT_Q4_K_PACK8,
-            "gguf_q4_k",
-            (sf, (h // _QK_K) * 144),
-        ),
-        "ffn_down_shexp": (
-            (h, sf),
-            shared_down_layout,
-            shared_down.spec.quant_key,
-            shared_down_byte_shape,
-        ),
     }
-    for name, (shape, layout, quant, byte_shape) in expected.items():
+    for name, (shape, layout, quant, byte_shape) in dense_expected.items():
         weight = layer.weight(name)
         source = weight.spec.source
-        if source.shape != shape:
-            raise ValueError(f"{name} shape must be {shape}, got {source.shape}")
-        if source.byte_shape != byte_shape:
+        if (
+            source.shape != shape
+            or source.byte_shape != byte_shape
+            or weight.spec.layout != layout
+            or weight.spec.quant_key != quant
+        ):
+            raise ValueError(f"{name} resident router contract mismatch")
+
+    quant_blocks = {
+        "gguf_q4_k": (_QK_K, 144),
+        "gguf_q4_k_t16_v1": (_QK_K, 144),
+        "gguf_q5_k": (_QK_K, 176),
+        "gguf_q6_k_t16_v1": (_QK_K, 210),
+        "gguf_q6_k": (_QK_K, 210),
+        "gguf_q8_0": (32, 34),
+        "gguf_iq2_xs": (_QK_K, 74),
+        "gguf_iq3_xxs": (_QK_K, 98),
+        "gguf_iq4_xs": (_QK_K, 136),
+    }
+    layouts_by_slot = {
+        "ffn_gate_exps": {
+            "gguf_q4_k_t16_v1": LAYOUT_GGUF_Q4_K_T16,
+            "gguf_iq2_xs": LAYOUT_RAW_GGUF,
+            "gguf_iq3_xxs": LAYOUT_RAW_GGUF,
+        },
+        "ffn_up_exps": {
+            "gguf_q4_k_t16_v1": LAYOUT_GGUF_Q4_K_T16,
+            "gguf_iq2_xs": LAYOUT_RAW_GGUF,
+            "gguf_iq3_xxs": LAYOUT_RAW_GGUF,
+        },
+        "ffn_down_exps": {
+            "gguf_q4_k_t16_v1": LAYOUT_GGUF_Q4_K_T16,
+            "gguf_q6_k_t16_v1": LAYOUT_GGUF_Q6_K_T16,
+            "gguf_iq3_xxs": LAYOUT_RAW_GGUF,
+            "gguf_iq4_xs": LAYOUT_RAW_GGUF,
+        },
+        "ffn_gate_shexp": {
+            "gguf_q4_k": LAYOUT_Q4_K_PACK8,
+            "gguf_q5_k": LAYOUT_RAW_GGUF,
+            "gguf_q6_k": LAYOUT_RAW_GGUF,
+        },
+        "ffn_up_shexp": {
+            "gguf_q4_k": LAYOUT_Q4_K_PACK8,
+            "gguf_q5_k": LAYOUT_RAW_GGUF,
+            "gguf_q6_k": LAYOUT_RAW_GGUF,
+        },
+        "ffn_down_shexp": {
+            "gguf_q4_k": LAYOUT_Q4_K_PACK8,
+            "gguf_q6_k": LAYOUT_RAW_GGUF,
+            "gguf_q8_0": LAYOUT_RAW_GGUF,
+        },
+    }
+    shapes = {
+        "ffn_gate_exps": (e, f, h),
+        "ffn_up_exps": (e, f, h),
+        "ffn_down_exps": (e, h, f),
+        "ffn_gate_shexp": (sf, h),
+        "ffn_up_shexp": (sf, h),
+        "ffn_down_shexp": (h, sf),
+    }
+    for name, shape in shapes.items():
+        weight = layer.weight(name)
+        quant = weight.spec.quant_key
+        expected_layout = layouts_by_slot[name].get(quant)
+        block = quant_blocks.get(quant)
+        if expected_layout is None or block is None:
+            raise ValueError(f"{name} has no registered Laguna quant/layout route: {quant}")
+        block_size, block_bytes = block
+        byte_shape = (*shape[:-1], (shape[-1] // block_size) * block_bytes)
+        if weight.spec.source.shape != shape or weight.spec.source.byte_shape != byte_shape:
             raise ValueError(
-                f"{name} raw byte shape/stride must be {byte_shape}, got {source.byte_shape}"
+                f"{name} raw shape/stride must be {shape}/{byte_shape}, got "
+                f"{weight.spec.source.shape}/{weight.spec.source.byte_shape}"
             )
-        if weight.spec.layout != layout or weight.spec.quant_key != quant:
+        if weight.spec.layout != expected_layout:
             raise ValueError(
-                f"{name} must use layout/quant {layout}/{quant}, got "
-                f"{weight.spec.layout}/{weight.spec.quant_key}"
+                f"{name} must use layout/quant {expected_layout}/{quant}, got "
+                f"{weight.spec.layout}/{quant}"
             )
 
+    gate_weight = layer.weight("ffn_gate_exps")
+    up_weight = layer.weight("ffn_up_exps")
+    if gate_weight.spec.quant_key != up_weight.spec.quant_key:
+        raise ValueError("Laguna routed gate/up expert formats must match")
+    try:
+        gate_up_route = plan.selected_gate_up_routes[gate_weight.spec.quant_key]
+    except KeyError as exc:
+        raise ValueError(
+            f"no Laguna selected gate/up route for {gate_weight.spec.quant_key!r}"
+        ) from exc
     q4_t16_nbytes = e * (f // _T16_COLUMNS) * (h // _QK_K) * GGUF_Q4_K_TILE16_BLOCK_BYTES
+    gate_up_nbytes = {
+        "gguf_q4_k_t16_v1": q4_t16_nbytes,
+        "gguf_iq2_xs": gate_weight.spec.source.nbytes,
+        "gguf_iq3_xxs": gate_weight.spec.source.nbytes,
+    }[gate_weight.spec.quant_key]
     for name in ("ffn_gate_exps", "ffn_up_exps"):
-        if layer.weight(name).allocation("tiles").buffer.nbytes != q4_t16_nbytes:
-            raise ValueError(f"{name} T16 allocation does not match rank-3 expert stride")
-    selected_down_tile_bytes = (
-        GGUF_Q4_K_TILE16_BLOCK_BYTES
-        if selected_down.spec.quant_key == "gguf_q4_k_t16_v1"
-        else GGUF_Q6_K_T16_BLOCK_BYTES
+        allocation = layer.weight(name).allocation(gate_up_route.allocation_name)
+        if allocation.buffer.nbytes != gate_up_nbytes:
+            raise ValueError(f"{name} allocation does not match rank-3 expert stride")
+
+    selected_down = layer.weight("ffn_down_exps")
+    try:
+        down_route = plan.selected_down_routes[selected_down.spec.quant_key]
+    except KeyError as exc:
+        raise ValueError(
+            f"no Laguna selected down route for {selected_down.spec.quant_key!r}"
+        ) from exc
+    selected_down_nbytes = {
+        "gguf_q4_k_t16_v1": (
+            e * (h // _T16_COLUMNS) * (f // _QK_K) * GGUF_Q4_K_TILE16_BLOCK_BYTES
+        ),
+        "gguf_q6_k_t16_v1": (
+            e * (h // _T16_COLUMNS) * (f // _QK_K) * GGUF_Q6_K_T16_BLOCK_BYTES
+        ),
+        "gguf_iq3_xxs": selected_down.spec.source.nbytes,
+        "gguf_iq4_xs": selected_down.spec.source.nbytes,
+    }[selected_down.spec.quant_key]
+    if selected_down.allocation(down_route.allocation_name).buffer.nbytes != selected_down_nbytes:
+        raise ValueError("ffn_down_exps allocation does not match rank-3 expert stride")
+
+
+def _launch_selected_gate_up_t16(
+    route: LagunaMoESelectedRoute,
+    plan: LagunaMoEKernelPlan,
+    gate_ptr: int,
+    up_ptr: int,
+    hidden_ptr: int,
+    selected_ptr: int,
+    scratch: LagunaMoEScratch,
+    *,
+    x_rows: int,
+    lanes: int,
+    stream: int,
+    runtime: HipRuntime | None,
+    libraries: Mapping[str, object] | None,
+) -> None:
+    route.function(
+        hidden_ptr,
+        selected_ptr,
+        gate_ptr,
+        up_ptr,
+        scratch.expert_gate.ptr,
+        scratch.expert_up.ptr,
+        x_rows,
+        lanes,
+        plan.expert_count,
+        plan.hidden_size,
+        plan.expert_ffn_size,
+        **_stage_kwargs(route.library_key, libraries, stream=stream, runtime=runtime),
     )
-    selected_down_nbytes = e * (h // _T16_COLUMNS) * (f // _QK_K) * selected_down_tile_bytes
-    if selected_down.allocation("tiles").buffer.nbytes != selected_down_nbytes:
-        raise ValueError("ffn_down_exps T16 allocation does not match rank-3 expert stride")
+    plan.selected_silu(
+        scratch.expert_gate.ptr,
+        scratch.expert_up.ptr,
+        scratch.expert_intermediate.ptr,
+        lanes,
+        plan.expert_ffn_size,
+        **_stage_kwargs("selected_silu", libraries, stream=stream, runtime=runtime),
+    )
+
+
+def _launch_selected_gate_up_iq(
+    route: LagunaMoESelectedRoute,
+    plan: LagunaMoEKernelPlan,
+    gate_ptr: int,
+    up_ptr: int,
+    hidden_ptr: int,
+    selected_ptr: int,
+    scratch: LagunaMoEScratch,
+    *,
+    x_rows: int,
+    lanes: int,
+    stream: int,
+    runtime: HipRuntime | None,
+    libraries: Mapping[str, object] | None,
+) -> None:
+    route.function(
+        hidden_ptr,
+        selected_ptr,
+        gate_ptr,
+        up_ptr,
+        scratch.expert_intermediate.ptr,
+        x_rows=x_rows,
+        rows=lanes,
+        num_experts=plan.expert_count,
+        in_features=plan.hidden_size,
+        out_features=plan.expert_ffn_size,
+        **_stage_kwargs(route.library_key, libraries, stream=stream, runtime=runtime),
+    )
+
+
+_SELECTED_GATE_UP_ABIS = MappingProxyType(
+    {
+        "t16_dual": _launch_selected_gate_up_t16,
+        "raw_iq_dual_silu": _launch_selected_gate_up_iq,
+    }
+)
+
+
+def _launch_selected_gate_up(
+    hidden_ptr: int,
+    layer: LagunaGGUFResidentLayerWeights,
+    scratch: LagunaMoEScratch,
+    *,
+    x_rows: int,
+    lanes: int,
+    stream: int,
+    runtime: HipRuntime | None,
+    libraries: Mapping[str, object] | None,
+) -> None:
+    plan = scratch.plan
+    gate = layer.weight("ffn_gate_exps")
+    up = layer.weight("ffn_up_exps")
+    try:
+        route = plan.selected_gate_up_routes[gate.spec.quant_key]
+        launch = _SELECTED_GATE_UP_ABIS[route.abi]
+    except KeyError as exc:
+        raise ValueError(
+            f"no Laguna selected gate/up route for {gate.spec.quant_key!r}"
+        ) from exc
+    launch(
+        route,
+        plan,
+        gate.allocation(route.allocation_name).tensor.ptr,
+        up.allocation(route.allocation_name).tensor.ptr,
+        hidden_ptr,
+        scratch.selected_experts.ptr,
+        scratch,
+        x_rows=x_rows,
+        lanes=lanes,
+        stream=stream,
+        runtime=runtime,
+        libraries=libraries,
+    )
+
+
+def _launch_selected_down_t16(
+    route: LagunaMoESelectedRoute,
+    plan: LagunaMoEKernelPlan,
+    weight_ptr: int,
+    scratch: LagunaMoEScratch,
+    *,
+    lanes: int,
+    stream: int,
+    runtime: HipRuntime | None,
+    libraries: Mapping[str, object] | None,
+) -> None:
+    route.function(
+        scratch.expert_intermediate.ptr,
+        scratch.selected_experts.ptr,
+        weight_ptr,
+        scratch.expert_down.ptr,
+        lanes,
+        lanes,
+        plan.expert_count,
+        plan.expert_ffn_size,
+        plan.hidden_size,
+        **_stage_kwargs(route.library_key, libraries, stream=stream, runtime=runtime),
+    )
+
+
+def _launch_selected_down_iq(
+    route: LagunaMoESelectedRoute,
+    plan: LagunaMoEKernelPlan,
+    weight_ptr: int,
+    scratch: LagunaMoEScratch,
+    *,
+    lanes: int,
+    stream: int,
+    runtime: HipRuntime | None,
+    libraries: Mapping[str, object] | None,
+) -> None:
+    route.function(
+        scratch.expert_intermediate.ptr,
+        scratch.selected_experts.ptr,
+        weight_ptr,
+        scratch.expert_down.ptr,
+        x_rows=lanes,
+        rows=lanes,
+        num_experts=plan.expert_count,
+        in_features=plan.expert_ffn_size,
+        out_features=plan.hidden_size,
+        **_stage_kwargs(route.library_key, libraries, stream=stream, runtime=runtime),
+    )
+
+
+_SELECTED_DOWN_ABIS = MappingProxyType(
+    {"t16": _launch_selected_down_t16, "raw_iq": _launch_selected_down_iq}
+)
+
+
+def _launch_selected_down(
+    layer: LagunaGGUFResidentLayerWeights,
+    scratch: LagunaMoEScratch,
+    *,
+    lanes: int,
+    stream: int,
+    runtime: HipRuntime | None,
+    libraries: Mapping[str, object] | None,
+) -> None:
+    plan = scratch.plan
+    weight = layer.weight("ffn_down_exps")
+    try:
+        route = plan.selected_down_routes[weight.spec.quant_key]
+        launch = _SELECTED_DOWN_ABIS[route.abi]
+    except KeyError as exc:
+        raise ValueError(
+            f"no Laguna selected down route for {weight.spec.quant_key!r}"
+        ) from exc
+    launch(
+        route,
+        plan,
+        weight.allocation(route.allocation_name).tensor.ptr,
+        scratch,
+        lanes=lanes,
+        stream=stream,
+        runtime=runtime,
+        libraries=libraries,
+    )
 
 
 def run_laguna_moe_c1(
@@ -428,25 +738,14 @@ def run_laguna_moe_c1(
     if scratch.max_rows < 1:
         raise ValueError("Laguna MoE scratch cannot execute one row")
     validate_laguna_moe_layer(layer, plan)
-    h, e, k, f, sf = (
+    h, e, k, sf = (
         plan.hidden_size,
         plan.expert_count,
         plan.top_k,
-        plan.expert_ffn_size,
         plan.shared_ffn_size,
     )
     router = layer.weight("ffn_gate_inp").allocation("raw").tensor.ptr
     correction = layer.weight("exp_probs_b").allocation("raw").tensor.ptr
-    gate_tiles = layer.weight("ffn_gate_exps").allocation("tiles").tensor.ptr
-    up_tiles = layer.weight("ffn_up_exps").allocation("tiles").tensor.ptr
-    down_weight = layer.weight("ffn_down_exps")
-    down_tiles = down_weight.allocation("tiles").tensor.ptr
-    try:
-        selected_down_fn = plan.selected_downs[down_weight.spec.quant_key]
-    except KeyError as exc:
-        raise ValueError(
-            f"no Laguna selected-down kernel for {down_weight.spec.quant_key!r}"
-        ) from exc
 
     plan.router_logits(
         hidden_bf16_ptr,
@@ -471,39 +770,23 @@ def run_laguna_moe_c1(
         plan.routed_scaling_factor,
         **_stage_kwargs("router_select", libraries, stream=stream, runtime=runtime),
     )
-    plan.selected_gate_up(
+    _launch_selected_gate_up(
         hidden_bf16_ptr,
-        scratch.selected_experts.ptr,
-        gate_tiles,
-        up_tiles,
-        scratch.expert_gate.ptr,
-        scratch.expert_up.ptr,
-        1,
-        k,
-        e,
-        h,
-        f,
-        **_stage_kwargs("selected_gate_up", libraries, stream=stream, runtime=runtime),
+        layer,
+        scratch,
+        x_rows=1,
+        lanes=k,
+        stream=stream,
+        runtime=runtime,
+        libraries=libraries,
     )
-    plan.selected_silu(
-        scratch.expert_gate.ptr,
-        scratch.expert_up.ptr,
-        scratch.expert_intermediate.ptr,
-        k,
-        f,
-        **_stage_kwargs("selected_silu", libraries, stream=stream, runtime=runtime),
-    )
-    selected_down_fn(
-        scratch.expert_intermediate.ptr,
-        scratch.selected_experts.ptr,
-        down_tiles,
-        scratch.expert_down.ptr,
-        k,
-        k,
-        e,
-        f,
-        h,
-        **_stage_kwargs("selected_down", libraries, stream=stream, runtime=runtime),
+    _launch_selected_down(
+        layer,
+        scratch,
+        lanes=k,
+        stream=stream,
+        runtime=runtime,
+        libraries=libraries,
     )
     plan.routed_sum(
         scratch.expert_down.ptr,
@@ -594,26 +877,15 @@ def run_laguna_moe_rows(
     if tokens <= 0 or tokens > scratch.max_rows:
         raise ValueError(f"rows must be within [1, {scratch.max_rows}]")
     validate_laguna_moe_layer(layer, plan)
-    h, e, k, f, sf = (
+    h, e, k, sf = (
         plan.hidden_size,
         plan.expert_count,
         plan.top_k,
-        plan.expert_ffn_size,
         plan.shared_ffn_size,
     )
     lanes = tokens * k
     router = layer.weight("ffn_gate_inp").allocation("raw").tensor.ptr
     correction = layer.weight("exp_probs_b").allocation("raw").tensor.ptr
-    gate_tiles = layer.weight("ffn_gate_exps").allocation("tiles").tensor.ptr
-    up_tiles = layer.weight("ffn_up_exps").allocation("tiles").tensor.ptr
-    down_weight = layer.weight("ffn_down_exps")
-    down_tiles = down_weight.allocation("tiles").tensor.ptr
-    try:
-        selected_down_fn = plan.selected_downs[down_weight.spec.quant_key]
-    except KeyError as exc:
-        raise ValueError(
-            f"no Laguna selected-down kernel for {down_weight.spec.quant_key!r}"
-        ) from exc
 
     plan.router_logits(
         hidden_bf16_ptr,
@@ -638,39 +910,23 @@ def run_laguna_moe_rows(
         plan.routed_scaling_factor,
         **_stage_kwargs("router_select", libraries, stream=stream, runtime=runtime),
     )
-    plan.selected_gate_up(
+    _launch_selected_gate_up(
         hidden_bf16_ptr,
-        scratch.selected_experts.ptr,
-        gate_tiles,
-        up_tiles,
-        scratch.expert_gate.ptr,
-        scratch.expert_up.ptr,
-        tokens,
-        lanes,
-        e,
-        h,
-        f,
-        **_stage_kwargs("selected_gate_up", libraries, stream=stream, runtime=runtime),
+        layer,
+        scratch,
+        x_rows=tokens,
+        lanes=lanes,
+        stream=stream,
+        runtime=runtime,
+        libraries=libraries,
     )
-    plan.selected_silu(
-        scratch.expert_gate.ptr,
-        scratch.expert_up.ptr,
-        scratch.expert_intermediate.ptr,
-        lanes,
-        f,
-        **_stage_kwargs("selected_silu", libraries, stream=stream, runtime=runtime),
-    )
-    selected_down_fn(
-        scratch.expert_intermediate.ptr,
-        scratch.selected_experts.ptr,
-        down_tiles,
-        scratch.expert_down.ptr,
-        lanes,
-        lanes,
-        e,
-        f,
-        h,
-        **_stage_kwargs("selected_down", libraries, stream=stream, runtime=runtime),
+    _launch_selected_down(
+        layer,
+        scratch,
+        lanes=lanes,
+        stream=stream,
+        runtime=runtime,
+        libraries=libraries,
     )
     plan.routed_sum_rows(
         scratch.expert_down.ptr,
