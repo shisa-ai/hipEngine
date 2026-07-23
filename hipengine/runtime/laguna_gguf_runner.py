@@ -614,6 +614,7 @@ class LagunaEagerLibraries:
     router_select: object
     selected_experts: object
     iq_selected_experts: object
+    moe_group: object
     routed_sum: object
 
     @property
@@ -652,6 +653,10 @@ class LagunaEagerLibraries:
             "selected_silu": self.dense_silu,
             "selected_down": self.selected_experts,
             "selected_down_iq": self.iq_selected_experts,
+            "grouped_metadata": self.moe_group,
+            "grouped_gather": self.moe_group,
+            "grouped_down": self.selected_experts,
+            "grouped_weighted_sum": self.routed_sum,
             "routed_sum": self.routed_sum,
             "routed_sum_rows": self.router_select,
             "shared_silu": self.dense_silu,
@@ -1104,6 +1109,9 @@ def load_laguna_eager_libraries(
         build_laguna_f16_projection_prefill,
     )
     from hipengine.kernels.hip_gfx1100.linear.lm_head import build_lm_head
+    from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
+        build_qwen35_moe_group_scatter,
+    )
     from hipengine.kernels.hip_gfx1100.moe.laguna_router import build_laguna_router
     from hipengine.kernels.hip_gfx1100.moe.router import build_qwen35_router
     from hipengine.kernels.hip_gfx1100.quant.gguf_iq_gemv import build_gguf_iq_gemv
@@ -1144,6 +1152,7 @@ def load_laguna_eager_libraries(
             router_select=build_laguna_router(**kwargs),
             selected_experts=build_gguf_t16_selected_gemv(**kwargs),
             iq_selected_experts=build_gguf_iq_gemv(**kwargs),
+            moe_group=build_qwen35_moe_group_scatter(**kwargs),
             routed_sum=build_paro_combine(**kwargs),
         )
 
@@ -1179,6 +1188,7 @@ class LagunaGGUFResidentSession:
             self.backend,
             swa_prefill_variant,
         )
+        self.selected_down_mode = "direct"
         self.position = -1
         self.last_result: LagunaEagerTokenResult | None = None
         self.weights: LagunaGGUFResidentWeights | None = None
@@ -1303,6 +1313,17 @@ class LagunaGGUFResidentSession:
         self._check_open()
         assert self.weights is not None
         return self.weights.config
+
+    def set_selected_down_mode(self, mode: str) -> None:
+        """Select the explicit diagnostic sparse-down route for later row runs."""
+
+        value = str(mode)
+        if value not in {"direct", "grouped_smallm", "adaptive_grouped_smallm"}:
+            raise ValueError(
+                "selected down mode must be 'direct', 'grouped_smallm', or "
+                "'adaptive_grouped_smallm'"
+            )
+        self.selected_down_mode = value
 
     @property
     def resident_nbytes(self) -> int:
@@ -2144,6 +2165,7 @@ class LagunaGGUFResidentSession:
             layer,
             self.rows_moe_scratch,
             rows=rows,
+            selected_down_mode=self.selected_down_mode,
             stream=stream,
             runtime=self.runtime,
             libraries=self.libraries.moe,

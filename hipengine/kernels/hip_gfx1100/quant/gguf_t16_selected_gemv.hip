@@ -651,6 +651,282 @@ __global__ __launch_bounds__(128, 2) void qk_t16_selected_pairreuse_compact_gemv
   }
 }
 
+constexpr int GROUPED_SMALLM_ROWS = 4;
+constexpr int GROUPED_SMALLM_COLS = 16;
+constexpr int GROUPED_SMALLM_WAVES = 4;
+constexpr int GROUPED_SMALLM_PERSISTENT_BLOCKS = 1048576;
+
+// Exact small-M grouped Q4 gate/up. One block owns one expert and four output
+// columns, then reuses each decoded weight across up to four compact rows. Each
+// row retains the direct kernel's K order, wave32 shuffle tree, and serial
+// wave-0..3 block reduction; only independent rows/columns are interleaved.
+template <typename scalar_t>
+__global__ __launch_bounds__(128, 2) void q4_k_t16_selected_dual_grouped_smallm_kernel(
+    const scalar_t* __restrict__ x,
+    const int64_t* __restrict__ expert_start_compact,
+    const int64_t* __restrict__ active_experts,
+    const int64_t* __restrict__ active_count_ptr,
+    const uint8_t* __restrict__ tiles_a,
+    const uint8_t* __restrict__ tiles_b,
+    scalar_t* __restrict__ out_a,
+    scalar_t* __restrict__ out_b,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts) {
+  const int tid = threadIdx.x;
+  const int wave = tid >> 5;
+  const int lane = tid & 31;
+  const int64_t out_groups = out_features / GROUPED_SMALLM_COLS;
+  const int64_t active_count = active_count_ptr[0];
+  if (active_count <= 0 || active_count > num_experts) return;
+  const int64_t total_tasks = out_groups * active_count;
+  const int64_t blocks_per_row = in_features / QK_K;
+  const int64_t out_tiles = out_features / T16_COLS;
+  __shared__ float wave_sums_a[
+      GROUPED_SMALLM_ROWS * GROUPED_SMALLM_WAVES * GROUPED_SMALLM_COLS];
+  __shared__ float wave_sums_b[
+      GROUPED_SMALLM_ROWS * GROUPED_SMALLM_WAVES * GROUPED_SMALLM_COLS];
+
+  for (int64_t task = blockIdx.x; task < total_tasks; task += gridDim.x) {
+    const int64_t active_idx = task / out_groups;
+    const int64_t out_group = task - active_idx * out_groups;
+    const int64_t expert_id = active_experts[active_idx];
+    if (expert_id < 0 || expert_id >= num_experts) continue;
+    const int64_t begin = expert_start_compact[expert_id];
+    const int64_t end = expert_start_compact[expert_id + 1];
+    if (begin >= end || begin < 0 || end > compact_rows) continue;
+    const int64_t col_base = out_group * GROUPED_SMALLM_COLS;
+    const int64_t out_tile = col_base / T16_COLS;
+    const int col_in_tile = static_cast<int>(col_base % T16_COLS);
+
+    for (int64_t row_base = begin; row_base < end; row_base += GROUPED_SMALLM_ROWS) {
+    float acc_a[GROUPED_SMALLM_ROWS][GROUPED_SMALLM_COLS] = {};
+    float acc_b[GROUPED_SMALLM_ROWS][GROUPED_SMALLM_COLS] = {};
+
+    for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
+      const uint8_t* __restrict__ tile_a = expert_tile_ptr<Q4_T16_BLOCK_BYTES>(
+          tiles_a, expert_id, out_tile, blk, out_tiles, blocks_per_row);
+      const uint8_t* __restrict__ tile_b = expert_tile_ptr<Q4_T16_BLOCK_BYTES>(
+          tiles_b, expert_id, out_tile, blk, out_tiles, blocks_per_row);
+      const int64_t k_base = blk * QK_K;
+      for (int k_in_block = tid; k_in_block < QK_K; k_in_block += blockDim.x) {
+        float xv[GROUPED_SMALLM_ROWS] = {};
+#pragma unroll
+        for (int row_idx = 0; row_idx < GROUPED_SMALLM_ROWS; ++row_idx) {
+          const int64_t row = row_base + row_idx;
+          if (row < end) {
+            xv[row_idx] = scalar_to_float<scalar_t>(
+                x[row * in_features + k_base + k_in_block]);
+          }
+        }
+#pragma unroll
+        for (int local_col = 0; local_col < GROUPED_SMALLM_COLS; ++local_col) {
+          const int col = col_in_tile + local_col;
+          const float wv_a = t16_q4_weight(tile_a, k_in_block, col);
+          const float wv_b = t16_q4_weight(tile_b, k_in_block, col);
+#pragma unroll
+          for (int row_idx = 0; row_idx < GROUPED_SMALLM_ROWS; ++row_idx) {
+            if (row_base + row_idx < end) {
+              acc_a[row_idx][local_col] += xv[row_idx] * wv_a;
+              acc_b[row_idx][local_col] += xv[row_idx] * wv_b;
+            }
+          }
+        }
+      }
+    }
+
+#pragma unroll
+    for (int row_idx = 0; row_idx < GROUPED_SMALLM_ROWS; ++row_idx) {
+#pragma unroll
+      for (int local_col = 0; local_col < GROUPED_SMALLM_COLS; ++local_col) {
+        GGUF_T16_WAVE_REDUCE(acc_a[row_idx][local_col]);
+        GGUF_T16_WAVE_REDUCE(acc_b[row_idx][local_col]);
+      }
+    }
+    if (lane == 0) {
+#pragma unroll
+      for (int row_idx = 0; row_idx < GROUPED_SMALLM_ROWS; ++row_idx) {
+#pragma unroll
+        for (int local_col = 0; local_col < GROUPED_SMALLM_COLS; ++local_col) {
+          const int idx =
+              (row_idx * GROUPED_SMALLM_WAVES + wave) * GROUPED_SMALLM_COLS +
+              local_col;
+          wave_sums_a[idx] = acc_a[row_idx][local_col];
+          wave_sums_b[idx] = acc_b[row_idx][local_col];
+        }
+      }
+    }
+    __syncthreads();
+
+    if (tid == 0) {
+#pragma unroll
+      for (int row_idx = 0; row_idx < GROUPED_SMALLM_ROWS; ++row_idx) {
+        const int64_t row = row_base + row_idx;
+        if (row < end) {
+#pragma unroll
+          for (int local_col = 0; local_col < GROUPED_SMALLM_COLS; ++local_col) {
+            float total_a = 0.0f;
+            float total_b = 0.0f;
+#pragma unroll
+            for (int wave_idx = 0; wave_idx < GROUPED_SMALLM_WAVES; ++wave_idx) {
+              const int idx =
+                  (row_idx * GROUPED_SMALLM_WAVES + wave_idx) *
+                      GROUPED_SMALLM_COLS +
+                  local_col;
+              total_a += wave_sums_a[idx];
+              total_b += wave_sums_b[idx];
+            }
+            const int64_t out_idx = row * out_features + col_base + local_col;
+            out_a[out_idx] = float_to_scalar<scalar_t>(total_a);
+            out_b[out_idx] = float_to_scalar<scalar_t>(total_b);
+          }
+        }
+      }
+    }
+      __syncthreads();
+    }
+  }
+}
+
+// Exact grouped Q4/Q6 single projection used by Laguna's down path. Four-row
+// buckets share each decoded 16-column T16 weight tile while preserving the
+// direct kernel's per-row accumulation/reduction association.
+template <typename scalar_t, int qtype>
+__global__ __launch_bounds__(128, 2) void qk_t16_selected_grouped_smallm_kernel(
+    const scalar_t* __restrict__ x,
+    const int64_t* __restrict__ expert_start_compact,
+    const int64_t* __restrict__ active_experts,
+    const int64_t* __restrict__ active_count_ptr,
+    const uint8_t* __restrict__ tiles,
+    scalar_t* __restrict__ out,
+    int64_t compact_rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t num_experts) {
+  static_assert(qtype == 4 || qtype == 6, "grouped small-M supports Q4 or Q6");
+  const int tid = threadIdx.x;
+  const int wave = tid >> 5;
+  const int lane = tid & 31;
+  const int64_t out_groups = out_features / GROUPED_SMALLM_COLS;
+  const int64_t active_count = active_count_ptr[0];
+  if (active_count <= 0 || active_count > num_experts) return;
+  const int64_t total_tasks = out_groups * active_count;
+  const int64_t blocks_per_row = in_features / QK_K;
+  const int64_t out_tiles = out_features / T16_COLS;
+  __shared__ float wave_sums[
+      GROUPED_SMALLM_ROWS * GROUPED_SMALLM_WAVES * GROUPED_SMALLM_COLS];
+
+  for (int64_t task = blockIdx.x; task < total_tasks; task += gridDim.x) {
+    const int64_t active_idx = task / out_groups;
+    const int64_t out_group = task - active_idx * out_groups;
+    const int64_t expert_id = active_experts[active_idx];
+    if (expert_id < 0 || expert_id >= num_experts) continue;
+    const int64_t begin = expert_start_compact[expert_id];
+    const int64_t end = expert_start_compact[expert_id + 1];
+    if (begin >= end || begin < 0 || end > compact_rows) continue;
+    const int64_t col_base = out_group * GROUPED_SMALLM_COLS;
+    const int64_t out_tile = col_base / T16_COLS;
+    const int col_in_tile = static_cast<int>(col_base % T16_COLS);
+
+    for (int64_t row_base = begin; row_base < end; row_base += GROUPED_SMALLM_ROWS) {
+    float acc[GROUPED_SMALLM_ROWS][GROUPED_SMALLM_COLS] = {};
+    for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
+      const uint8_t* __restrict__ tile;
+      if constexpr (qtype == 4) {
+        tile = expert_tile_ptr<Q4_T16_BLOCK_BYTES>(
+            tiles, expert_id, out_tile, blk, out_tiles, blocks_per_row);
+      } else {
+        tile = expert_tile_ptr<Q6_T16_BLOCK_BYTES>(
+            tiles, expert_id, out_tile, blk, out_tiles, blocks_per_row);
+      }
+      const int64_t k_base = blk * QK_K;
+      for (int k_in_block = tid; k_in_block < QK_K; k_in_block += blockDim.x) {
+        float xv[GROUPED_SMALLM_ROWS] = {};
+#pragma unroll
+        for (int row_idx = 0; row_idx < GROUPED_SMALLM_ROWS; ++row_idx) {
+          const int64_t row = row_base + row_idx;
+          if (row < end) {
+            xv[row_idx] = scalar_to_float<scalar_t>(
+                x[row * in_features + k_base + k_in_block]);
+          }
+        }
+#pragma unroll
+        for (int local_col = 0; local_col < GROUPED_SMALLM_COLS; ++local_col) {
+          const int col = col_in_tile + local_col;
+          float wv = 0.0f;
+          if constexpr (qtype == 4) {
+            wv = t16_q4_weight(tile, k_in_block, col);
+          } else {
+            const int g16 = k_in_block >> 4;
+            const float d =
+                fp16_bytes_to_float(tile + Q6_T16_D_OFFSET + col * 2);
+            const int8_t* __restrict__ scales =
+                reinterpret_cast<const int8_t*>(tile + Q6_T16_SCALE_OFFSET);
+            const float scale =
+                d * static_cast<float>(scales[g16 * T16_COLS + col]);
+            const float q =
+                static_cast<float>(t16_q6_quant(tile, k_in_block, col));
+            wv = scale * q;
+          }
+#pragma unroll
+          for (int row_idx = 0; row_idx < GROUPED_SMALLM_ROWS; ++row_idx) {
+            if (row_base + row_idx < end) {
+              acc[row_idx][local_col] += xv[row_idx] * wv;
+            }
+          }
+        }
+      }
+    }
+
+#pragma unroll
+    for (int row_idx = 0; row_idx < GROUPED_SMALLM_ROWS; ++row_idx) {
+#pragma unroll
+      for (int local_col = 0; local_col < GROUPED_SMALLM_COLS; ++local_col) {
+        GGUF_T16_WAVE_REDUCE(acc[row_idx][local_col]);
+      }
+    }
+    if (lane == 0) {
+#pragma unroll
+      for (int row_idx = 0; row_idx < GROUPED_SMALLM_ROWS; ++row_idx) {
+#pragma unroll
+        for (int local_col = 0; local_col < GROUPED_SMALLM_COLS; ++local_col) {
+          const int idx =
+              (row_idx * GROUPED_SMALLM_WAVES + wave) * GROUPED_SMALLM_COLS +
+              local_col;
+          wave_sums[idx] = acc[row_idx][local_col];
+        }
+      }
+    }
+    __syncthreads();
+
+    if (tid == 0) {
+#pragma unroll
+      for (int row_idx = 0; row_idx < GROUPED_SMALLM_ROWS; ++row_idx) {
+        const int64_t row = row_base + row_idx;
+        if (row < end) {
+#pragma unroll
+          for (int local_col = 0; local_col < GROUPED_SMALLM_COLS; ++local_col) {
+            float total = 0.0f;
+#pragma unroll
+            for (int wave_idx = 0; wave_idx < GROUPED_SMALLM_WAVES; ++wave_idx) {
+              const int idx =
+                  (row_idx * GROUPED_SMALLM_WAVES + wave_idx) *
+                      GROUPED_SMALLM_COLS +
+                  local_col;
+              total += wave_sums[idx];
+            }
+            out[row * out_features + col_base + local_col] =
+                float_to_scalar<scalar_t>(total);
+          }
+        }
+      }
+    }
+      __syncthreads();
+    }
+  }
+}
+
 template <typename scalar_t>
 __global__ __launch_bounds__(256, 2) void q4_k_t16_selected_dual_direct_gemv_kernel(
     const scalar_t* __restrict__ x,
@@ -1712,6 +1988,84 @@ int launch_qk_pairreuse_compact(const void* x,
 }
 
 template <typename scalar_t>
+int launch_q4_dual_grouped_smallm(const void* x,
+                                  const void* expert_start_compact,
+                                  const void* active_experts,
+                                  const void* active_count,
+                                  const void* tiles_a,
+                                  const void* tiles_b,
+                                  void* out_a,
+                                  void* out_b,
+                                  int64_t compact_rows,
+                                  int64_t in_features,
+                                  int64_t out_features,
+                                  int64_t num_experts,
+                                  hipStream_t stream) {
+  if (!x || !expert_start_compact || !active_experts || !active_count ||
+      !tiles_a || !tiles_b || !out_a || !out_b || compact_rows <= 0 ||
+      in_features <= 0 || out_features <= 0 || num_experts <= 0 ||
+      (in_features % QK_K) != 0 || (out_features % T16_COLS) != 0) {
+    return hipErrorInvalidValue;
+  }
+  const int64_t total_tasks =
+      (out_features / GROUPED_SMALLM_COLS) * num_experts;
+  const int64_t grid_blocks =
+      total_tasks < GROUPED_SMALLM_PERSISTENT_BLOCKS
+          ? total_tasks
+          : GROUPED_SMALLM_PERSISTENT_BLOCKS;
+  const dim3 block(128);
+  const dim3 grid(static_cast<unsigned int>(grid_blocks));
+  hipLaunchKernelGGL(
+      (q4_k_t16_selected_dual_grouped_smallm_kernel<scalar_t>), grid, block, 0,
+      stream, reinterpret_cast<const scalar_t*>(x),
+      reinterpret_cast<const int64_t*>(expert_start_compact),
+      reinterpret_cast<const int64_t*>(active_experts),
+      reinterpret_cast<const int64_t*>(active_count),
+      reinterpret_cast<const uint8_t*>(tiles_a),
+      reinterpret_cast<const uint8_t*>(tiles_b),
+      reinterpret_cast<scalar_t*>(out_a), reinterpret_cast<scalar_t*>(out_b),
+      compact_rows, in_features, out_features, num_experts);
+  return hipGetLastError();
+}
+
+template <typename scalar_t, int qtype>
+int launch_qk_grouped_smallm(const void* x,
+                             const void* expert_start_compact,
+                             const void* active_experts,
+                             const void* active_count,
+                             const void* tiles,
+                             void* out,
+                             int64_t compact_rows,
+                             int64_t in_features,
+                             int64_t out_features,
+                             int64_t num_experts,
+                             hipStream_t stream) {
+  if (!x || !expert_start_compact || !active_experts || !active_count ||
+      !tiles || !out || compact_rows <= 0 || in_features <= 0 ||
+      out_features <= 0 || num_experts <= 0 || (in_features % QK_K) != 0 ||
+      (out_features % T16_COLS) != 0) {
+    return hipErrorInvalidValue;
+  }
+  const int64_t total_tasks =
+      (out_features / GROUPED_SMALLM_COLS) * num_experts;
+  const int64_t grid_blocks =
+      total_tasks < GROUPED_SMALLM_PERSISTENT_BLOCKS
+          ? total_tasks
+          : GROUPED_SMALLM_PERSISTENT_BLOCKS;
+  const dim3 block(128);
+  const dim3 grid(static_cast<unsigned int>(grid_blocks));
+  hipLaunchKernelGGL(
+      (qk_t16_selected_grouped_smallm_kernel<scalar_t, qtype>), grid, block, 0,
+      stream, reinterpret_cast<const scalar_t*>(x),
+      reinterpret_cast<const int64_t*>(expert_start_compact),
+      reinterpret_cast<const int64_t*>(active_experts),
+      reinterpret_cast<const int64_t*>(active_count),
+      reinterpret_cast<const uint8_t*>(tiles), reinterpret_cast<scalar_t*>(out),
+      compact_rows, in_features, out_features, num_experts);
+  return hipGetLastError();
+}
+
+template <typename scalar_t>
 int launch_q4_dual_direct(const void* x,
                           const void* selected,
                           const void* tiles_a,
@@ -2087,6 +2441,38 @@ extern "C" int hipengine_gguf_q6_k_t16_selected_gemv_fp16_fp16_out(
   return launch_qk_direct<half_t, 6>(x, selected, tiles, out, x_rows, rows,
                                     in_features, out_features, num_experts,
                                     stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_t16_selected_dual_grouped_smallm_bf16_bf16_out(
+    const void* x, const void* expert_start_compact,
+    const void* active_experts, const void* active_count, const void* tiles_a,
+    const void* tiles_b, void* out_a, void* out_b, int64_t compact_rows,
+    int64_t in_features, int64_t out_features, int64_t num_experts,
+    hipStream_t stream) {
+  return launch_q4_dual_grouped_smallm<uint16_t>(
+      x, expert_start_compact, active_experts, active_count, tiles_a, tiles_b,
+      out_a, out_b, compact_rows, in_features, out_features, num_experts,
+      stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_t16_selected_grouped_smallm_bf16_bf16_out(
+    const void* x, const void* expert_start_compact,
+    const void* active_experts, const void* active_count, const void* tiles,
+    void* out, int64_t compact_rows, int64_t in_features,
+    int64_t out_features, int64_t num_experts, hipStream_t stream) {
+  return launch_qk_grouped_smallm<uint16_t, 4>(
+      x, expert_start_compact, active_experts, active_count, tiles, out,
+      compact_rows, in_features, out_features, num_experts, stream);
+}
+
+extern "C" int hipengine_gguf_q6_k_t16_selected_grouped_smallm_bf16_bf16_out(
+    const void* x, const void* expert_start_compact,
+    const void* active_experts, const void* active_count, const void* tiles,
+    void* out, int64_t compact_rows, int64_t in_features,
+    int64_t out_features, int64_t num_experts, hipStream_t stream) {
+  return launch_qk_grouped_smallm<uint16_t, 6>(
+      x, expert_start_compact, active_experts, active_count, tiles, out,
+      compact_rows, in_features, out_features, num_experts, stream);
 }
 
 extern "C" int hipengine_gguf_q4_k_t16_selected_dual_gemv_decode_compact_bf16_bf16_out(

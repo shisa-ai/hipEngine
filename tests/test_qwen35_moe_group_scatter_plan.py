@@ -1,12 +1,25 @@
 from __future__ import annotations
 
+import ctypes
+
+import numpy as np
 import pytest
+
+from hipengine.core.memory import (
+    copy_device_to_host,
+    copy_host_to_device,
+    free,
+    host_array_ptr,
+    malloc,
+)
 
 from hipengine.kernels.hip_gfx1100.moe import (
     plan_qwen35_moe_group_scatter_build,
     qwen35_moe_gather_packed_hidden_lowp,
+    qwen35_moe_group_compact_active,
     qwen35_moe_group_count,
     qwen35_moe_group_prefix,
+    qwen35_moe_group_prefix_active,
     qwen35_moe_group_scatter,
     qwen35_moe_group_scatter_gather_lowp,
     qwen35_moe_prefill_grouped_compact,
@@ -26,24 +39,94 @@ def test_qwen35_moe_group_scatter_registers_prefill_metadata_variants() -> None:
     register_qwen35_moe_group_scatter_kernels()
     register_qwen35_moe_prefill_kernels()
 
-    assert resolve(backend="hip_gfx1100", layer="moe_group_count", quant="w4_paro", variant="qwen35") is qwen35_moe_group_count
-    assert resolve(backend="hip_gfx1100", layer="moe_group_prefix", quant="w4_paro", variant="qwen35") is qwen35_moe_group_prefix
-    assert resolve(backend="hip_gfx1100", layer="moe_wmma_tile_map", quant="w4_paro", variant="qwen35") is qwen35_moe_wmma_tile_map
-    assert resolve(backend="hip_gfx1100", layer="moe_group_scatter", quant="w4_paro", variant="qwen35") is qwen35_moe_group_scatter
     assert (
-        resolve(backend="hip_gfx1100", layer="moe_group_scatter_gather", quant="w4_paro", variant="qwen35_lowp")
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_group_count",
+            quant="w4_paro",
+            variant="qwen35",
+        )
+        is qwen35_moe_group_count
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_group_prefix",
+            quant="w4_paro",
+            variant="qwen35",
+        )
+        is qwen35_moe_group_prefix
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_group_compact",
+            quant="generic",
+            variant="active_experts",
+        )
+        is qwen35_moe_group_compact_active
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_group_prefix",
+            quant="generic",
+            variant="active_experts",
+        )
+        is qwen35_moe_group_prefix_active
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_wmma_tile_map",
+            quant="w4_paro",
+            variant="qwen35",
+        )
+        is qwen35_moe_wmma_tile_map
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_group_scatter",
+            quant="w4_paro",
+            variant="qwen35",
+        )
+        is qwen35_moe_group_scatter
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_group_scatter_gather",
+            quant="w4_paro",
+            variant="qwen35_lowp",
+        )
         is qwen35_moe_group_scatter_gather_lowp
     )
     assert (
-        resolve(backend="hip_gfx1100", layer="moe_gather_packed_hidden", quant="w4_paro", variant="qwen35_lowp")
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_gather_packed_hidden",
+            quant="w4_paro",
+            variant="qwen35_lowp",
+        )
         is qwen35_moe_gather_packed_hidden_lowp
     )
     assert (
-        resolve(backend="hip_gfx1100", layer="moe_prefill", quant="w4_paro", variant="qwen35_grouped_compact")
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_prefill",
+            quant="w4_paro",
+            variant="qwen35_grouped_compact",
+        )
         is qwen35_moe_prefill_grouped_compact
     )
     assert (
-        resolve(backend="hip_gfx1100", layer="moe_prefill", quant="w4_paro", variant="qwen35_selected_c1_rows")
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_prefill",
+            quant="w4_paro",
+            variant="qwen35_selected_c1_rows",
+        )
         is qwen35_moe_prefill_selected_c1_rows
     )
 
@@ -71,6 +154,10 @@ def test_qwen35_moe_group_scatter_wrappers_validate_before_gpu_load() -> None:
     with pytest.raises(ValueError, match="pad_multiple"):
         qwen35_moe_group_prefix(0, 0, 0, 0, 1, 0)
     with pytest.raises(ValueError, match="num_experts"):
+        qwen35_moe_group_prefix_active(0, 0, 0, 0, 0)
+    with pytest.raises(ValueError, match="total_lanes"):
+        qwen35_moe_group_compact_active(0, 0, 0, 0, 0, 0, 0, 0, 0, 1)
+    with pytest.raises(ValueError, match="num_experts"):
         qwen35_moe_wmma_tile_map(0, 0, 0, 0, 0)
     with pytest.raises(ValueError, match="tile_capacity"):
         qwen35_moe_wmma_tile_map(0, 0, 0, 0, 1, tile_capacity=-1)
@@ -80,3 +167,126 @@ def test_qwen35_moe_group_scatter_wrappers_validate_before_gpu_load() -> None:
         qwen35_moe_group_scatter_gather_lowp(0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 4)
     with pytest.raises(ValueError, match="total_elements"):
         qwen35_moe_gather_packed_hidden_lowp(0, 0, 0, 0, 1, 1, 4)
+
+
+def _hip_available() -> bool:
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError:
+        return False
+    return True
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_group_compact_active_matches_stable_cpu_oracle() -> None:
+    selected = np.asarray([2, 1, 4, 1, 2, 4, 4, 1], dtype=np.int64)
+    weights = np.asarray([0.2, 0.1, 0.4, 0.3, 0.5, 0.6, 0.7, 0.8], dtype=np.float32)
+    expected_starts = np.asarray([0, 0, 3, 5, 5, 8], dtype=np.int64)
+    expected_active = np.asarray([1, 2, 4], dtype=np.int64)
+    expected_lanes = np.asarray([1, 3, 7, 0, 4, 2, 5, 6], dtype=np.int64)
+    buffers = []
+    try:
+        selected_buffer = malloc(selected.nbytes)
+        weights_buffer = malloc(weights.nbytes)
+        buffers.extend((selected_buffer, weights_buffer))
+        copy_host_to_device(selected_buffer, host_array_ptr(selected), selected.nbytes)
+        copy_host_to_device(weights_buffer, host_array_ptr(weights), weights.nbytes)
+        starts_buffer = malloc(expected_starts.nbytes)
+        active_buffer = malloc(5 * np.dtype(np.int64).itemsize)
+        active_count_buffer = malloc(np.dtype(np.int64).itemsize)
+        lanes_buffer = malloc(selected.nbytes)
+        experts_buffer = malloc(selected.nbytes)
+        sorted_weights_buffer = malloc(weights.nbytes)
+        buffers.extend(
+            (
+                starts_buffer,
+                active_buffer,
+                active_count_buffer,
+                lanes_buffer,
+                experts_buffer,
+                sorted_weights_buffer,
+            )
+        )
+
+        qwen35_moe_group_compact_active(
+            selected_buffer.ptr,
+            weights_buffer.ptr,
+            starts_buffer.ptr,
+            active_buffer.ptr,
+            active_count_buffer.ptr,
+            lanes_buffer.ptr,
+            experts_buffer.ptr,
+            sorted_weights_buffer.ptr,
+            selected.size,
+            5,
+        )
+        starts = np.empty_like(expected_starts)
+        active = np.empty(5, dtype=np.int64)
+        active_count = np.empty(1, dtype=np.int64)
+        lanes = np.empty_like(selected)
+        experts = np.empty_like(selected)
+        sorted_weights = np.empty_like(weights)
+        for array, buffer in (
+            (starts, starts_buffer),
+            (active, active_buffer),
+            (active_count, active_count_buffer),
+            (lanes, lanes_buffer),
+            (experts, experts_buffer),
+            (sorted_weights, sorted_weights_buffer),
+        ):
+            copy_device_to_host(host_array_ptr(array), buffer, array.nbytes)
+        np.testing.assert_array_equal(starts, expected_starts)
+        assert active_count.tolist() == [3]
+        np.testing.assert_array_equal(active[:3], expected_active)
+        np.testing.assert_array_equal(lanes, expected_lanes)
+        np.testing.assert_array_equal(experts, selected[expected_lanes])
+        np.testing.assert_array_equal(sorted_weights, weights[expected_lanes])
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_group_prefix_active_matches_compact_cpu_oracle() -> None:
+    counts = np.asarray([0, 3, 1, 0, 4], dtype=np.int32)
+    expected_starts = np.asarray([0, 0, 3, 4, 4, 8], dtype=np.int64)
+    expected_active = np.asarray([1, 2, 4], dtype=np.int64)
+    buffers = []
+    try:
+        counts_buffer = malloc(counts.nbytes)
+        buffers.append(counts_buffer)
+        copy_host_to_device(
+            counts_buffer, host_array_ptr(counts), counts.nbytes
+        )
+        starts_buffer = malloc(expected_starts.nbytes)
+        active_buffer = malloc(counts.size * np.dtype(np.int64).itemsize)
+        active_count_buffer = malloc(np.dtype(np.int64).itemsize)
+        buffers.extend((starts_buffer, active_buffer, active_count_buffer))
+
+        qwen35_moe_group_prefix_active(
+            counts_buffer.ptr,
+            starts_buffer.ptr,
+            active_buffer.ptr,
+            active_count_buffer.ptr,
+            counts.size,
+        )
+        starts = np.empty_like(expected_starts)
+        active = np.empty(counts.size, dtype=np.int64)
+        active_count = np.empty(1, dtype=np.int64)
+        copy_device_to_host(
+            host_array_ptr(starts), starts_buffer, starts.nbytes
+        )
+        copy_device_to_host(
+            host_array_ptr(active), active_buffer, active.nbytes
+        )
+        copy_device_to_host(
+            host_array_ptr(active_count),
+            active_count_buffer,
+            active_count.nbytes,
+        )
+        np.testing.assert_array_equal(starts, expected_starts)
+        assert active_count.tolist() == [3]
+        np.testing.assert_array_equal(active[: active_count[0]], expected_active)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer)
