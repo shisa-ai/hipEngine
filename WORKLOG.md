@@ -175145,3 +175145,41 @@ uvx ruff check hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.py \
   tests/test_laguna_moe_gpu.py
 # clean
 ```
+
+## 2026-07-23 — Add exact Laguna LPF-3 Q4 dual-prefill candidate
+
+Started LPF-3 with existing exact ABI reuse rather than a new WMMA body. Dense
+layer 0 and each sparse layer's always-on shared expert use Q4 pack8 gate/up
+weights with the same activation and output width. The diagnostic `dual` route
+calls the registered Q4 pack8 dual-prefill kernel into the existing separate
+gate/up buffers; unsupported pairs fall back to the unchanged singleton chain.
+Decode and selected routed experts are untouched. `auto` remains `split` through
+`HIPENGINE_LAGUNA_DENSE_SHARED_PREFILL=auto|split|dual` until balanced timing.
+
+The generic pair kernel already had bit-exact fixtures, so no new kernel RED was
+needed. Added Laguna integration coverage for the production H=3072/F=1024
+shared-expert path and a host orchestration fixture proving dense rows pair only
+gate/up before the unchanged SiLU, down, and residual add. Extended the generic
+pair dispatcher with optional held-library plumbing so cached-only Laguna runs
+do not perform compiler discovery or a second dynamic load inside the timed
+pair route.
+
+Validation:
+
+```bash
+env HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=1 uv run pytest -q \
+  tests/test_laguna_moe_gpu.py
+# 5 passed
+uv run pytest -q tests/test_laguna_gguf_runner.py \
+  -k 'dense_rows_dual_prefill or libraries or scratch'
+# 4 passed
+uv run pytest -q \
+  tests/test_gguf_linear_dispatch.py::test_wmma_prefill_pair_still_fuses_q4_k_pack8_dual_prefill
+# 1 passed
+uvx ruff check hipengine/runtime/gguf_linear.py hipengine/runtime/laguna_moe.py \
+  hipengine/runtime/laguna_gguf_runner.py tests/test_laguna_moe_gpu.py \
+  tests/test_laguna_gguf_runner.py
+# clean
+```
+
+This is candidate wiring only; no speed claim or default change is made.
