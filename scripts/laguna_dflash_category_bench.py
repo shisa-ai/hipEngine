@@ -56,7 +56,8 @@ DEFAULT_DRAFTER = Path(
 DEFAULT_DRAFTER_REVISION = "b0486d1586daa0d56435c508108171fc1c8daff9"
 DEFAULT_DRAFTER_SHA256 = "f24f08781c697c19952c02fb2e7e9bdf2071b79a711c2a44b836a74b9b62a1f4"
 DEFAULT_OUTPUT = (
-    ROOT / "benchmarks/results/2026-07-23-gfx1151-laguna-dflash-category-economics.json"
+    ROOT
+    / "benchmarks/results/2026-07-23-gfx1151-laguna-dflash-category-economics-post-prefill.json"
 )
 DEFAULT_HELDOUT_IDS = frozenset(
     (
@@ -69,6 +70,7 @@ DEFAULT_HELDOUT_IDS = frozenset(
 ADMITTED_BUDGET = 4
 DEFAULT_OUTPUT_TOKENS = 32
 DEFAULT_REPETITIONS = 2
+RETAINED_CHUNK_SIZE = 128
 
 
 def _parse_args() -> argparse.Namespace:
@@ -81,7 +83,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--oracle-logprobs", type=Path, default=DEFAULT_ORACLE_LOGPROBS)
     parser.add_argument("--backend", default="hip_gfx1151")
     parser.add_argument("--context-length", type=int, default=4096)
-    parser.add_argument("--chunk-size", type=int, default=64)
+    parser.add_argument("--chunk-size", type=int, default=RETAINED_CHUNK_SIZE)
     parser.add_argument("--candidate-budget", type=int, default=ADMITTED_BUDGET)
     parser.add_argument("--output-tokens", type=int, default=DEFAULT_OUTPUT_TOKENS)
     parser.add_argument("--repetitions", type=int, default=DEFAULT_REPETITIONS)
@@ -571,6 +573,10 @@ def _warmup(
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
+    if args.chunk_size != RETAINED_CHUNK_SIZE:
+        raise ValueError(
+            f"retained Laguna DFlash economics requires chunk size {RETAINED_CHUNK_SIZE}"
+        )
     if args.candidate_budget != ADMITTED_BUDGET:
         raise ValueError(f"retained Laguna DFlash economics requires admitted B{ADMITTED_BUDGET}")
     if args.output_tokens != DEFAULT_OUTPUT_TOKENS:
@@ -628,6 +634,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     drafter_load_seconds = 0.0
     target_resident_nbytes = 0
     drafter_resident_nbytes = 0
+    target_global_prefill_variant = ""
+    target_swa_prefill_variant = ""
     allocated_after_load_bytes = 0
     oracle_gate: dict[str, Any] = {}
     process_started = time.perf_counter()
@@ -645,6 +653,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     ) as target:
         runtime = target.runtime
         target_load_seconds = time.perf_counter() - target_started
+        target_global_prefill_variant = target.global_prefill_variant
+        target_swa_prefill_variant = target.swa_prefill_variant
         oracle_gate = _oracle_gate(target, args)
         drafter_started = time.perf_counter()
         with LagunaDFlashResidentDrafter(
@@ -803,6 +813,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "repetitions": args.repetitions,
             "context_length": args.context_length,
             "prefill_chunk_size": args.chunk_size,
+            "target_global_prefill_variant": target_global_prefill_variant,
+            "target_swa_prefill_variant": target_swa_prefill_variant,
             "sampling": "greedy argmax fixed horizon after stop",
             "same_session_ar_required": True,
             "speed_promotion_gate": ">1.10x true AR and exact/finite correctness",

@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from scripts.laguna_dflash_category_bench import (
+    RETAINED_CHUNK_SIZE,
     _aggregate_scope,
     _correctness,
     _fixed_horizon_state_aligned,
@@ -102,6 +103,10 @@ def _pairs(*, spec_decode_seconds: float = 0.8) -> list[dict[str, object]]:
         allocated_after_load_bytes=90,
         backend="hip_gfx1151",
     )
+
+
+def test_laguna_dflash_refresh_uses_promoted_chunk_policy() -> None:
+    assert RETAINED_CHUNK_SIZE == 128
 
 
 def test_laguna_dflash_fixed_horizon_accepts_prediction_or_committed_boundary() -> None:

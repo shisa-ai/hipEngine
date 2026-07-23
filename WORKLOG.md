@@ -175625,3 +175625,26 @@ kernel-span-minus-sum across 35,233 dispatches; the 128-row LPF-0 trace has
 about **5.6 ms / 0.10%** residual per complete pass. Graph/submission/metadata
 work therefore has a sub-percent c=1 ceiling after LPF-1/4/5. Packed prefill is
 a separate c>N serving scope. No temporary selector or runtime path remains.
+
+## 2026-07-23 — Prepare post-prefill Laguna DFlash economics refresh
+
+Updated the retained full-category AR/DFlash harness to measure the actual
+post-LPF defaults rather than silently pinning the old 64-row policy. The
+protocol now requires chunk 128, writes a new post-prefill artifact instead of
+overwriting historical evidence, and records resolved target global/SWA
+variants. On gfx1151 the expected target route is LPF-1 tiled F16 + LPF-4
+chunk128 + LPF-5 wave32-exact SWA; true AR remains the same-session control.
+
+Validation:
+
+```bash
+uv run pytest -q tests/test_laguna_dflash_category_bench.py
+# 5 passed
+uvx ruff check scripts/laguna_dflash_category_bench.py \
+  tests/test_laguna_dflash_category_bench.py
+python3 -m compileall -q scripts/laguna_dflash_category_bench.py
+uv run python scripts/laguna_dflash_category_bench.py --help
+# clean
+```
+
+No refreshed economics measurement is claimed in this harness-only unit.
