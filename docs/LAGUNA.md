@@ -2174,9 +2174,17 @@ implementing against the pre-LPF attribution.
   global/SWA attention. Record kernel sum/span, calls, median/total duration,
   VGPR/SGPR, LDS, scratch, and row/chunk shape for selected Q4/Q6, source-F16,
   dense/shared, router, attention, norms, and metadata kernels.
-- [ ] Preserve the 128-row real-routing histogram and add 256/512-row replays.
-  Report useful rows per `(layer, expert)`, padding factors for 2/4/8/16/32-row
-  tiles, and hot/Zipf as well as natural routing.
+- [x] Preserve the 128-row real-routing histogram and add 256/512-row replays.
+  Natural M2/M4/M8/M16/M32 padding factors are
+  **1.043/1.134/1.334/1.803/2.924x** at 256 rows and
+  **1.022/1.068/1.165/1.379/1.867x** at 512. The deterministic Zipf control is
+  **1.050/1.157/1.420/2.049/3.421x** and
+  **1.025/1.075/1.182/1.465/2.134x**; the top-10 hot control is exactly 1.0x
+  because 256/512 divide every tested tile. All natural useful-row counts are
+  retained per `(layer, expert)` and every lane/lifecycle gate passes. This
+  admits an M16 crossover screen at 256/512 but not blanket M32 on natural/Zipf
+  routing. Evidence:
+  `benchmarks/results/2026-07-23-gfx1151-laguna-routing-256-512.json`.
 - [x] Capture matched llama.cpp Laguna Q4_K_M 128/512/1K/4K controls with the
   same token streams and native prompt timing. Poolside reaches
   80.235/103.868/105.435/120.530 tok/s; model/token/KV/microbatch hashes match,
@@ -2214,8 +2222,9 @@ The first two screens are closed: exact fused Q4 dual-SiLU failed its strict
 same-session full-model screen, and inclusive direct Q8_1/dp4a failed the full
 quality lane. The exact no-D2H grouped-small-M Q4/Q6 down route is now promoted
 on gfx1151 after passing shape and category gates. The remaining AR-O1 order is
-therefore: (1) extend the natural-routing replay to 256/512; (2) admit an
-M16/M32 integer-MMQ/WMMA route only at a measured crossover; and (3) evaluate
+therefore: (1) screen M16 at 256/512 using the retained routing replay while
+keeping M32 hot-only unless timing overturns its padding bound; (2) admit an
+integer-MMQ/WMMA route only at a measured crossover; and (3) evaluate
 exact intermediate fusion after gate/up. This deliberately excludes the
 rejected compact-pair route, raw-Q4 duplication, Q8T16 substitution, router
 retuning, unrelated metadata work, and attention work.
@@ -2287,9 +2296,12 @@ repeat either experiment unchanged.
   and
   `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-grouped-down-category.json`.
 - [ ] Add an M16/M32 integer-MMQ/WMMA route only where measured occupancy pays
-  for padding. Use the landed IQ2 MMQ32 work as a scheduling reference, not as
-  a quant-format shortcut; Laguna Q4_K/Q6_K decode and scales need their own
-  oracle.
+  for padding. The retained replay narrows the first screen to M16: natural/
+  Zipf overhead falls to 1.803/2.049x at 256 and 1.379/1.465x at 512. Natural/
+  Zipf M32 remains 2.924/3.421x and 1.867/2.134x, so it is hot-only unless an
+  inclusive timing result overturns that bound. Use the landed IQ2 MMQ32 work
+  as a scheduling reference, not as a quant-format shortcut; Laguna Q4_K/Q6_K
+  decode and scales need their own oracle.
 - [ ] After gate/up, evaluate fused SiLU and routing-weighted down/combine to
   remove the largest expert intermediates. Keep the unfused staged chain
   registered and do not introduce order-dependent atomics across ten experts.
