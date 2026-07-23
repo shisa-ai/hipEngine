@@ -175291,3 +175291,64 @@ uv run python scripts/laguna_chunk_prefill_bench.py --help
 ```
 
 No performance measurement or default change is made in this harness-only unit.
+
+## 2026-07-23 — Promote Laguna LPF-4 128-row chunks
+
+Ran the predeclared clean gate at `8ceb7d3a0` on Radeon 8060S/gfx1151:
+
+```bash
+env -u HIPENGINE_LAGUNA_DENSE_SHARED_PREFILL \
+  -u HIPENGINE_LAGUNA_SELECTED_PREFILL \
+  -u HIPENGINE_LAGUNA_F16_PREFILL HIPENGINE_HIP_ARCH=gfx1151 \
+  GPU_MAX_HW_QUEUES=1 uv run python -u \
+  scripts/laguna_chunk_prefill_bench.py \
+  /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf \
+  --backend hip_gfx1151 --context-length 4096 --repetitions 2 \
+  --warmup-output-tokens 2 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --require-cached-build \
+  --repacked-cache \
+  /home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1 \
+  --model-sha256 \
+  7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f \
+  --output /tmp/laguna-prefill-lpf4-chunk128.json
+```
+
+The exact 128-row schedule wins every predeclared guard. Paired aggregate
+prefill moves **48.541 -> 49.641 tok/s (+2.27%)**, median TTFT **1.692 ->
+1.639 s (-3.15%)**, and h16/h32 E2E **5.954/8.717 -> 6.042/8.811
+(+1.49%/+1.08%)**. Decode changes by only **-0.014%/-0.010%**. Category
+prefill gains are code **+2.84%**, general_en **+1.09%**, general_ja **+2.34%**,
+and mixed_ja_en **+2.15%**; every category's h16/h32 E2E also improves
+(**+0.48% to +1.79%**).
+
+All 20 paired trajectories are complete-ID exact at h16/h32, both modes are
+repeat-deterministic, the Poolside distribution remains KL `6.6214e-6` with
+exact top-1, and 92,706,161,232 tracked allocated/freed bytes recover exactly to
+zero. Load was 49.938 s and excluded. One 128-row resident owner uses
+77,125,390,396 bytes, only **51,475,456 bytes / 49.1 MiB** above the prior
+64-row owner; measured peak rises **98.2 MiB**. Artifact SHA-256 is
+`c95b82a2...c79e887`:
+`benchmarks/results/2026-07-23-gfx1151-laguna-prefill-lpf4-chunk128.json`.
+
+RED/GREEN changed `LagunaGGUFResidentSession`'s public default from 64 to 128;
+an explicit 64-row constructor value remains available. Documentation and the
+benchmark rollup now identify LPF-2/3 as rejected, LPF-4 as promoted, and LPF-5
+long-context attribution as next. The refactor ledger now limits the still-public
+token-serial prompt path to an LPF-5 correctness oracle/rollback.
+
+Validation:
+
+```bash
+uv run pytest -q \
+  tests/test_laguna_gguf_runner.py \
+  tests/test_generation_laguna_gguf.py \
+  tests/test_laguna_chunk_prefill_bench.py
+# 27 passed, one third-party deprecation warning
+uvx ruff check hipengine/runtime/laguna_gguf_runner.py \
+  tests/test_laguna_gguf_runner.py scripts/laguna_chunk_prefill_bench.py \
+  tests/test_laguna_chunk_prefill_bench.py
+# clean
+git diff --check
+# clean
+```
