@@ -2725,15 +2725,23 @@ unfused/exact fallbacks, and no backend default selects the candidate.
 The Q4/Q6 CPU fixture passes finite/KL<=0.05/top-1>=90%, the complete synthetic
 MoE composition stays within KL 0.05, and cached gfx1151 tracing names both
 `<unsigned short,4>` and `<unsigned short,6>` kernels with local32, zero
-LDS/scratch, and high **184/200 VGPR** pressure. A seven-shape synthetic
-production-dimension screen shows why a full-model threshold decision is still
-required: packed gather plus both Q4 gate/up launches improves the current dual
-route at every M32-512 shape (**1.052x** at M32, **5.777x** at M512), while one
-Q6 down launch crosses from **0.791-0.866x** at M32-64 to **1.420-2.381x** at
-M122-256 and **2.179x** at M512. Retain the explicit candidate and run a clean
-same-weight M32/55/64/122/128/256/512 model screen before defining any adaptive
-selector or category gate. Evidence:
+LDS/scratch, and high **184/200 VGPR** pressure. The synthetic leaf screen is
 `benchmarks/results/2026-07-24-gfx1151-laguna-expert-major-wmma-leaf-screen.json`.
+
+The clean three-repeat same-weight M32/55/64/122/128/256/512 model screen moves
+retained -> explicit candidate throughput by **1.197/1.345/1.423/1.717/1.745/
+2.087/2.304x**. At M512 it reaches **176.001 tok/s**, **2.304x** the retained
+**76.395 tok/s**, leaving a **1.958x** gap to the user's 344.56 Vulkan row.
+The explicit all-shape candidate has max KL **0.017681** but only **18/21
+(85.714%)** top-1 because M122 differs in all three repeats. The shape-qualified
+M128+ policy excludes that failure: M128/M256/M512 are finite at max KL
+**0.001725**, top-1 **9/9**, exact cursor, deterministic logits/hidden/KV state,
+and exact lifecycle. Therefore only an adaptive route with retained exact
+fallback below 128 is admitted to the complete category gate; the public default
+is unchanged. The initial evaluator's all-shape top-1 rejection was repaired by
+applying quality to candidate-selected shapes without changing any measurement
+(`97564550b`). Evidence:
+`benchmarks/results/2026-07-24-gfx1151-laguna-expert-major-wmma-screen.json`.
 
 #### AR-O6 — submission and serving only after a new profile asks for it
 
