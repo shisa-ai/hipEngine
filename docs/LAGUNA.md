@@ -2588,7 +2588,15 @@ that consumes complete `KVLiveSpans`. Evidence:
   Laguna geometry, so direct adaptation is closed mechanically.
 - [ ] Implement an in-tree tiled causal GQA route now that the retained profile
   measures global at 21.62% of 4K kernel sum. The rejected paired-head exact
-  kernel is not a Flash-attention test.
+  kernel is not a Flash-attention test. An exact adjacent-query-row follow-up is
+  also closed: despite halving Y workgroups and reusing each BF16 K/V load, its
+  doubled score/shared state and VGPR **40 -> 48** regress every M128/context4096
+  leaf from prior context 0 through 3968 by **76.99-111.81%**; the 4K leaf moves
+  **86.778 -> 154.590 ms (+78.15%)**. All candidate code is removed. This still
+  materialized complete score rows and retained three-pass softmax, so the next
+  valid experiment must tile keys and avoid doubled whole-context score storage
+  rather than repeat unchanged query-row grouping. Evidence:
+  `benchmarks/results/2026-07-23-gfx1151-laguna-global-qrow2-rejected.json`.
 - [ ] Preserve complete `KVLiveSpans`, physical SWA rings, absolute positions,
   eviction masks, BF16 K/V rounding, and the separate softplus output gate.
   Keep the exact global/SWA kernels as fallbacks below the selected threshold.

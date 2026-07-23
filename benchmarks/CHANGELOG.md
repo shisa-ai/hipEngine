@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-23
 
+- [rejected and removed gfx1151 Laguna AR-O5 global qrow2] Radeon 8060S Poolside Laguna S 2.1 / exact M128/context4096 global prefill -> adjacent-query-row K/V reuse regresses prior-context 0/128/384/896/1920/3968 leaves **76.99-111.81%** and the 4K leaf **86.778 -> 154.590 ms (+78.15%)** while VGPR rises **40 -> 48** despite byte-exact output; full-model gate skipped, candidate removed, and key-tiled/online-softmax work remains untested; `benchmarks/results/2026-07-23-gfx1151-laguna-global-qrow2-rejected.json`.
+
 - [diagnostic gfx1151 Laguna post-qrow2 / blocked AOTriton global screen] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / retained qrow2 cuts SWA duration **9.38%/9.00%/8.99%** and complete kernel sum **0.95%/1.24%/1.20%** at 512/1K/4K while global stays flat and reaches **16.823 s / 21.62%** at 4K; AOTriton passes GPU and head-dim-256 controls but every head-dim-128 Laguna V3/V2 attempt returns `hipErrorInvalidValue`, closing direct adaptation without a runtime route; `benchmarks/results/2026-07-23-gfx1151-laguna-post-qrow2-global-screen.json`.
 
 - [retained exact gfx1151 Laguna AR-O5 SWA qrow2 default] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / context-qualified wave32 -> qrow2 moves repeated 512/1K/4K prefill **69.031/63.969/52.017 -> 69.647/64.745/52.557 tok/s (+0.893%/+1.212%/+1.040%)** with complete logits/hidden/KV/span/cursor/repeat/lifecycle equality; only M128 slices at start>=128 use qrow2, while the exact ten-prompt fallback gate is non-regressive at **0.999652x prefill** and **0.999917/0.999999x h16/h32 E2E**; `benchmarks/results/2026-07-23-gfx1151-laguna-swa-qrow2-retained.json`.
