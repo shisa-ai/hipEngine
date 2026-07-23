@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from scripts.laguna_long_context_profile import (
+    _parse_chunk_size,
     _parse_lengths,
     _summarize_samples,
     _timing_order,
@@ -21,12 +22,19 @@ from scripts.laguna_long_context_trace_summary import (
 
 def test_lpf5_length_parser_and_order_are_strict_and_balanced() -> None:
     assert _parse_lengths("512,1024,4096") == (512, 1024, 4096)
+    assert [_parse_chunk_size(value) for value in ("128", "256", "512")] == [
+        128,
+        256,
+        512,
+    ]
     assert _timing_order((512, 1024, 4096), 0) == (512, 1024, 4096)
     assert _timing_order((512, 1024, 4096), 1) == (4096, 1024, 512)
     with pytest.raises(argparse.ArgumentTypeError, match="positive"):
         _parse_lengths("512,0")
     with pytest.raises(argparse.ArgumentTypeError, match="distinct"):
         _parse_lengths("512,512")
+    with pytest.raises(argparse.ArgumentTypeError, match="128, 256, or 512"):
+        _parse_chunk_size("64")
 
 
 def test_lpf5_timing_summary_preserves_rates_and_repeat_ids() -> None:
@@ -139,8 +147,10 @@ def test_lpf5_trace_segments_requests_and_attributes_all_families() -> None:
     ("kernel_name", "family"),
     [
         ("laguna_f16w_tiled_exact_kernel<unsigned short, 16>", "source_f16_projection"),
+        ("laguna_f16w_wmma_kernel<unsigned short, 4, true>", "source_f16_projection"),
         ("q4_k_t16_selected_dual_direct_gemv_kernel<unsigned short>", "selected_q4_gate_up"),
         ("qk_t16_selected_direct_gemv_kernel<unsigned short, 6>", "selected_q4_q6_down"),
+        ("qk_t16_selected_grouped_smallm_kernel<unsigned short, 6>", "selected_q4_q6_down"),
         ("laguna_global_write_kv_rows_bf16_kernel", "prefill_kv_write"),
         ("laguna_sigmoid_correction_topk_f32_kernel", "router"),
         ("q4_k_pack8_gemv_kernel<unsigned short>", "dense_shared_quant_projection"),
@@ -149,6 +159,7 @@ def test_lpf5_trace_segments_requests_and_attributes_all_families() -> None:
             "dense_shared_quant_projection",
         ),
         ("silu_mul_separate_out_kernel<unsigned short>", "activation_reduce_residual"),
+        ("weighted_lanes_sum_shared_add_out_kernel<unsigned short>", "activation_reduce_residual"),
         ("gguf_rmsnorm_bf16_f32_weight_kernel", "norm_rope_gate"),
         ("unrecognized_kernel", "other"),
     ],

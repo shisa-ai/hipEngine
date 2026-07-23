@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Profile Laguna LPF-5 prefill at 512, 1K, and 4K context lengths."""
+"""Profile Laguna prefill at 512, 1K, and 4K matrix-chunk lengths."""
 
 from __future__ import annotations
 
@@ -37,9 +37,17 @@ from scripts.laguna_target_ar_bench import (
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_LENGTHS = (512, 1024, 4096)
 DEFAULT_CHUNK_SIZE = 128
+PROFILE_CHUNK_SIZES = (128, 256, 512)
 DEFAULT_OUTPUT = Path(
     "benchmarks/results/2026-07-23-gfx1151-laguna-prefill-lpf5-long-context-profile.json"
 )
+
+
+def _parse_chunk_size(value: str | int) -> int:
+    chunk_size = int(value)
+    if chunk_size not in PROFILE_CHUNK_SIZES:
+        raise argparse.ArgumentTypeError("matrix chunk size must be 128, 256, or 512")
+    return chunk_size
 
 
 def _parse_lengths(value: str) -> tuple[int, ...]:
@@ -58,7 +66,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--backend", default="hip_gfx1151")
     parser.add_argument("--context-length", type=int, default=max(DEFAULT_LENGTHS))
     parser.add_argument("--lengths", type=_parse_lengths, default=DEFAULT_LENGTHS)
-    parser.add_argument("--chunk-size", type=int, default=DEFAULT_CHUNK_SIZE)
+    parser.add_argument("--chunk-size", type=_parse_chunk_size, default=DEFAULT_CHUNK_SIZE)
     parser.add_argument("--repetitions", type=int, default=1)
     parser.add_argument("--warmup-rows", type=int, default=DEFAULT_CHUNK_SIZE)
     parser.add_argument("--compiler-version-file", type=Path)
@@ -99,10 +107,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     lengths = tuple(int(value) for value in args.lengths)
     if lengths != DEFAULT_LENGTHS:
         raise ValueError(f"retained LPF-5 profiling requires exact lengths {DEFAULT_LENGTHS}")
-    if args.chunk_size != DEFAULT_CHUNK_SIZE:
-        raise ValueError(
-            f"retained LPF-5 profiling requires chunk size {DEFAULT_CHUNK_SIZE}"
-        )
+    if args.chunk_size not in PROFILE_CHUNK_SIZES:
+        raise ValueError(f"Laguna profiling chunk size must be one of {PROFILE_CHUNK_SIZES}")
     if args.context_length < max(lengths):
         raise ValueError("largest LPF-5 length exceeds admitted context")
     if args.repetitions <= 0:
@@ -126,8 +132,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         quant="gguf_q4_k_m",
         kv_dtype="bf16",
         command=(str(Path(sys.executable).resolve()), *sys.argv),
-        build_profile="laguna_prefill_lpf5_long_context",
-        timing_protocol="prefill_only_512_1024_4096_chunk128",
+        build_profile=f"laguna_prefill_long_context_matrix{args.chunk_size}",
+        timing_protocol=f"prefill_only_512_1024_4096_matrix{args.chunk_size}_attention128",
         warmups=1,
         repetitions=args.repetitions,
     )
@@ -208,11 +214,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "schema": 1,
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "kind": "hipengine_laguna_prefill_lpf5_long_context_profile",
+        "kind": "hipengine_laguna_prefill_long_context_profile",
         "status": "accepted_attribution_baseline" if passed else "rejected",
         "pass": passed,
         "performance_claim": False,
-        "scope": "Laguna S 2.1 c=1 prefill-only long-context attribution baseline",
+        "scope": "Laguna S 2.1 c=1 prefill-only matrix-chunk attribution baseline",
         "provenance": provenance,
         "repo": repo,
         "model": {
@@ -234,6 +240,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "protocol": {
             "lengths": list(lengths),
             "chunk_size": args.chunk_size,
+            "matrix_rows": args.chunk_size,
+            "attention_rows": min(args.chunk_size, 128),
             "chunks_per_length": {
                 str(length): math.ceil(length / args.chunk_size) for length in lengths
             },
