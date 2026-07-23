@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from scripts.laguna_dflash_category_bench import (
@@ -9,6 +11,7 @@ from scripts.laguna_dflash_category_bench import (
     _fixed_horizon_state_aligned,
     _pair_rows,
     _promotion_gate,
+    _resolved_target_prefill_variants,
 )
 
 
@@ -107,6 +110,21 @@ def _pairs(*, spec_decode_seconds: float = 0.8) -> list[dict[str, object]]:
 
 def test_laguna_dflash_refresh_uses_promoted_chunk_policy() -> None:
     assert RETAINED_CHUNK_SIZE == 128
+    target = SimpleNamespace(
+        kv_cache=SimpleNamespace(
+            layers=(
+                SimpleNamespace(
+                    attention_type="full_attention",
+                    attention_prefill_variant="global_context_rows_spans",
+                ),
+            )
+        ),
+        swa_prefill_variant="swa_context_rows_wave32_exact_spans",
+    )
+    assert _resolved_target_prefill_variants(target) == (
+        "global_context_rows_spans",
+        "swa_context_rows_wave32_exact_spans",
+    )
 
 
 def test_laguna_dflash_fixed_horizon_accepts_prediction_or_committed_boundary() -> None:

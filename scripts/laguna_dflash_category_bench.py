@@ -23,6 +23,7 @@ from hipengine.benchmark.speculative import (
 )
 from hipengine.core.memory import memory_stats, reset_memory_stats
 from hipengine.loading.gguf import GGUFReader
+from hipengine.loading.laguna_gguf import FULL_ATTENTION
 from hipengine.runtime.laguna_gguf_runner import LagunaGGUFResidentSession
 from hipengine.speculative.laguna_dflash import (
     LagunaDFlashResidentCycle,
@@ -121,6 +122,19 @@ def _fixed_horizon_state_aligned(
         in (int(expected_prediction_position), int(expected_prediction_position) + 1)
         and int(drafter_context_tokens) == int(target_position) + 1
     )
+
+
+def _resolved_target_prefill_variants(
+    target: LagunaGGUFResidentSession,
+) -> tuple[str, str]:
+    if target.kv_cache is None:
+        raise RuntimeError("Laguna target KV cache is unavailable")
+    global_variant = next(
+        state.attention_prefill_variant
+        for state in target.kv_cache.layers
+        if state.attention_type == FULL_ATTENTION
+    )
+    return str(global_variant), str(target.swa_prefill_variant)
 
 
 def _reset_request(
@@ -653,8 +667,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     ) as target:
         runtime = target.runtime
         target_load_seconds = time.perf_counter() - target_started
-        target_global_prefill_variant = target.global_prefill_variant
-        target_swa_prefill_variant = target.swa_prefill_variant
+        (
+            target_global_prefill_variant,
+            target_swa_prefill_variant,
+        ) = _resolved_target_prefill_variants(target)
         oracle_gate = _oracle_gate(target, args)
         drafter_started = time.perf_counter()
         with LagunaDFlashResidentDrafter(
