@@ -37,8 +37,10 @@ from hipengine.loading.laguna_gguf import (
     laguna_gguf_config_from_metadata,
 )
 from hipengine.loading.laguna_gguf_materialize import (
+    DEFAULT_LAGUNA_SAFETY_RESERVE_BYTES,
     LAYOUT_DENSE_F16,
     LAYOUT_DENSE_F32,
+    LAYOUT_GGUF_Q6_K_T16,
     LAYOUT_Q4_K_PACK8,
     LAYOUT_RAW_GGUF,
     LagunaGGUFRepackedCache,
@@ -83,6 +85,36 @@ _F32_NBYTES = DType.FP32.itemsize
 _I32_NBYTES = DType.INT32.itemsize
 _I64_NBYTES = DType.INT64.itemsize
 _U8_NBYTES = DType.BOOL.itemsize
+_PROJECTION_LAYOUT_BY_QUANT = MappingProxyType(
+    {
+        "fp16": LAYOUT_DENSE_F16,
+        "gguf_q5_k": LAYOUT_RAW_GGUF,
+        "gguf_q6_k": LAYOUT_RAW_GGUF,
+        "gguf_q8_0": LAYOUT_RAW_GGUF,
+    }
+)
+_ROOT_LAYOUTS_BY_SLOT = MappingProxyType(
+    {
+        "token_embedding": MappingProxyType(
+            {"gguf_q4_k": LAYOUT_RAW_GGUF, "gguf_q5_k": LAYOUT_RAW_GGUF}
+        ),
+        "output_norm": MappingProxyType({"f32": LAYOUT_DENSE_F32}),
+        "lm_head": MappingProxyType(
+            {"gguf_q4_k": LAYOUT_RAW_GGUF, "gguf_q6_k_t16_v1": LAYOUT_GGUF_Q6_K_T16}
+        ),
+    }
+)
+_DENSE_MLP_LAYOUTS_BY_SLOT = MappingProxyType(
+    {
+        "ffn_gate": MappingProxyType(
+            {"gguf_q4_k": LAYOUT_Q4_K_PACK8, "gguf_q5_k": LAYOUT_RAW_GGUF}
+        ),
+        "ffn_up": MappingProxyType(
+            {"gguf_q4_k": LAYOUT_Q4_K_PACK8, "gguf_q5_k": LAYOUT_RAW_GGUF}
+        ),
+        "ffn_down": MappingProxyType({"gguf_q6_k": LAYOUT_RAW_GGUF}),
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -584,6 +616,13 @@ class LagunaEagerLibraries:
     routed_sum: object
 
     @property
+    def embedding_libraries(self) -> Mapping[str, object]:
+        return {
+            quant: self.embedding
+            for quant in ("gguf_q4_k", "gguf_q5_k", "gguf_q6_k", "gguf_q8_0")
+        }
+
+    @property
     def f16_linear(self) -> Mapping[str, object]:
         return {
             "fp16_weight": self.f16_projection,
@@ -595,7 +634,9 @@ class LagunaEagerLibraries:
     def linear(self) -> Mapping[str, object]:
         return {
             "gguf_q4_k": self.q4_linear,
+            "gguf_q5_k": self.q6_linear,
             "gguf_q6_k": self.q6_linear,
+            "gguf_q8_0": self.q6_linear,
             "gguf_q6_k_t16_v1": self.q6_t16_linear,
         }
 
@@ -613,6 +654,200 @@ class LagunaEagerLibraries:
             "shared_silu": self.dense_silu,
             "add": self.gguf_ops,
         }
+
+
+def _launch_laguna_f16_weight_linear(weight, *args, libraries, **kwargs) -> None:
+    launch_f16_weight_linear(weight, *args, libraries=libraries.f16_linear, **kwargs)
+
+
+def _launch_laguna_raw_weight_linear(weight, *args, libraries, **kwargs) -> None:
+    launch_gguf_linear(
+        weight,
+        *args,
+        libraries=libraries.linear,
+        use_wmma_prefill=False,
+        use_gemv_decode=False,
+        **kwargs,
+    )
+
+
+_LAGUNA_WEIGHT_LINEAR_LAUNCHERS = MappingProxyType(
+    {
+        LAYOUT_DENSE_F16: _launch_laguna_f16_weight_linear,
+        LAYOUT_RAW_GGUF: _launch_laguna_raw_weight_linear,
+    }
+)
+
+
+def launch_laguna_weight_linear(
+    weight,
+    x_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    activation_dtype: str = "bf16",
+    output_dtype: str = "bf16",
+    backend: str | None = None,
+    stream: int = 0,
+    libraries: LagunaEagerLibraries,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Dispatch one Laguna projection from its validated resident layout."""
+
+    try:
+        launch = _LAGUNA_WEIGHT_LINEAR_LAUNCHERS[weight.spec.layout]
+    except KeyError as exc:
+        raise ValueError(
+            f"unsupported Laguna projection resident layout {weight.spec.layout!r}"
+        ) from exc
+    launch(
+        weight,
+        x_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        activation_dtype=activation_dtype,
+        output_dtype=output_dtype,
+        backend=backend,
+        stream=stream,
+        libraries=libraries,
+        runtime=runtime,
+    )
+
+
+def _launch_laguna_f16_qkv(
+    q_weight,
+    k_weight,
+    v_weight,
+    x_ptr,
+    q_ptr,
+    k_ptr,
+    v_ptr,
+    rows,
+    in_features,
+    q_features,
+    k_features,
+    v_features,
+    *,
+    backend,
+    stream,
+    libraries,
+    runtime,
+) -> None:
+    launch_f16_weight_linear_triple(
+        q_weight,
+        k_weight,
+        v_weight,
+        x_ptr,
+        q_ptr,
+        k_ptr,
+        v_ptr,
+        rows,
+        in_features,
+        q_features,
+        k_features,
+        v_features,
+        backend=backend,
+        stream=stream,
+        libraries=libraries.f16_linear,
+        runtime=runtime,
+    )
+
+
+def _launch_laguna_raw_qkv(
+    q_weight,
+    k_weight,
+    v_weight,
+    x_ptr,
+    q_ptr,
+    k_ptr,
+    v_ptr,
+    rows,
+    in_features,
+    q_features,
+    k_features,
+    v_features,
+    *,
+    backend,
+    stream,
+    libraries,
+    runtime,
+) -> None:
+    for weight, out_ptr, out_features in (
+        (q_weight, q_ptr, q_features),
+        (k_weight, k_ptr, k_features),
+        (v_weight, v_ptr, v_features),
+    ):
+        launch_laguna_weight_linear(
+            weight,
+            x_ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            output_dtype="f32",
+            backend=backend,
+            stream=stream,
+            libraries=libraries,
+            runtime=runtime,
+        )
+
+
+_LAGUNA_QKV_LAUNCHERS = MappingProxyType(
+    {
+        (LAYOUT_DENSE_F16,) * 3: _launch_laguna_f16_qkv,
+        (LAYOUT_RAW_GGUF,) * 3: _launch_laguna_raw_qkv,
+    }
+)
+
+
+def launch_laguna_qkv(
+    q_weight,
+    k_weight,
+    v_weight,
+    x_ptr: int,
+    q_ptr: int,
+    k_ptr: int,
+    v_ptr: int,
+    rows: int,
+    in_features: int,
+    q_features: int,
+    k_features: int,
+    v_features: int,
+    *,
+    backend: str,
+    stream: int,
+    libraries: LagunaEagerLibraries,
+    runtime: HipRuntime | None,
+) -> None:
+    """Preserve the fused F16 QKV path and route raw quants independently."""
+
+    layouts = tuple(weight.spec.layout for weight in (q_weight, k_weight, v_weight))
+    try:
+        launch = _LAGUNA_QKV_LAUNCHERS[layouts]
+    except KeyError as exc:
+        raise ValueError(f"unsupported Laguna QKV resident layouts {layouts}") from exc
+    launch(
+        q_weight,
+        k_weight,
+        v_weight,
+        x_ptr,
+        q_ptr,
+        k_ptr,
+        v_ptr,
+        rows,
+        in_features,
+        q_features,
+        k_features,
+        v_features,
+        backend=backend,
+        stream=stream,
+        libraries=libraries,
+        runtime=runtime,
+    )
 
 
 @dataclass(frozen=True)
@@ -923,6 +1158,7 @@ class LagunaGGUFResidentSession:
         compiler_version: str | None = None,
         require_cached_build: bool = False,
         available_bytes: int | None = None,
+        safety_reserve_nbytes: int = DEFAULT_LAGUNA_SAFETY_RESERVE_BYTES,
         progress: Callable | None = None,
         repacked_cache: LagunaGGUFRepackedCache | str | Path | None = None,
         model_sha256: str | None = None,
@@ -1000,6 +1236,7 @@ class LagunaGGUFResidentSession:
                     reader,
                     context_length=self.context_length,
                     available_bytes=available_bytes,
+                    safety_reserve_nbytes=safety_reserve_nbytes,
                     device=self.device,
                     runtime=self.runtime,
                     backend=self.backend,
@@ -1126,7 +1363,7 @@ class LagunaGGUFResidentSession:
                 config.vocab_size,
                 backend=self.backend,
                 stream=stream,
-                libraries={"gguf_q4_k": self.libraries.embedding},
+                libraries=self.libraries.embedding_libraries,
                 runtime=self.runtime,
             )
             for layer_id in range(config.block_count):
@@ -1561,7 +1798,7 @@ class LagunaGGUFResidentSession:
                 config.vocab_size,
                 backend=self.backend,
                 stream=stream,
-                libraries={"gguf_q4_k": self.libraries.embedding},
+                libraries=self.libraries.embedding_libraries,
                 runtime=self.runtime,
             )
             for layer_id in range(config.block_count):
@@ -1667,7 +1904,6 @@ class LagunaGGUFResidentSession:
         heads = config.head_count(layer_id)
         q_width = heads * config.key_length
         kv_width = config.head_count_kv * config.key_length
-        f16_libraries = self.libraries.f16_linear
 
         self.kernel_plan.rmsnorm(
             scratch.hidden.ptr,
@@ -1680,7 +1916,7 @@ class LagunaGGUFResidentSession:
             library=self.libraries.gguf_ops,
             runtime=self.runtime,
         )
-        launch_f16_weight_linear_triple(
+        launch_laguna_qkv(
             layer.weight("attn_q"),
             layer.weight("attn_k"),
             layer.weight("attn_v"),
@@ -1695,21 +1931,20 @@ class LagunaGGUFResidentSession:
             kv_width,
             backend=self.backend,
             stream=stream,
-            libraries=f16_libraries,
+            libraries=self.libraries,
             runtime=self.runtime,
         )
-        launch_f16_weight_linear(
+        launch_laguna_weight_linear(
             layer.weight("attn_gate"),
             scratch.norm.ptr,
             scratch.gate_logits.ptr,
             rows,
             config.hidden_size,
             heads,
-            activation_dtype="bf16",
             output_dtype="f32",
             backend=self.backend,
             stream=stream,
-            libraries=f16_libraries,
+            libraries=self.libraries,
             runtime=self.runtime,
         )
         rope = self.full_rope if layer.attention_type == FULL_ATTENTION else self.swa_rope
@@ -1779,18 +2014,16 @@ class LagunaGGUFResidentSession:
             library=self.libraries.attention_gate,
             runtime=self.runtime,
         )
-        launch_f16_weight_linear(
+        launch_laguna_weight_linear(
             layer.weight("attn_output"),
             scratch.gated_context.ptr,
             scratch.attention_output.ptr,
             rows,
             q_width,
             config.hidden_size,
-            activation_dtype="bf16",
-            output_dtype="bf16",
             backend=self.backend,
             stream=stream,
-            libraries=f16_libraries,
+            libraries=self.libraries,
             runtime=self.runtime,
         )
         self.kernel_plan.add_rmsnorm(
@@ -2062,7 +2295,6 @@ class LagunaGGUFResidentSession:
         heads = config.head_count(layer_id)
         q_width = heads * config.key_length
         kv_width = config.head_count_kv * config.key_length
-        f16_libraries = self.libraries.f16_linear
 
         self.kernel_plan.rmsnorm(
             scratch.hidden.ptr,
@@ -2075,7 +2307,7 @@ class LagunaGGUFResidentSession:
             library=self.libraries.gguf_ops,
             runtime=self.runtime,
         )
-        launch_f16_weight_linear_triple(
+        launch_laguna_qkv(
             layer.weight("attn_q"),
             layer.weight("attn_k"),
             layer.weight("attn_v"),
@@ -2090,21 +2322,20 @@ class LagunaGGUFResidentSession:
             kv_width,
             backend=self.backend,
             stream=stream,
-            libraries=f16_libraries,
+            libraries=self.libraries,
             runtime=self.runtime,
         )
-        launch_f16_weight_linear(
+        launch_laguna_weight_linear(
             layer.weight("attn_gate"),
             scratch.norm.ptr,
             scratch.gate_logits.ptr,
             1,
             config.hidden_size,
             heads,
-            activation_dtype="bf16",
             output_dtype="f32",
             backend=self.backend,
             stream=stream,
-            libraries=f16_libraries,
+            libraries=self.libraries,
             runtime=self.runtime,
         )
         rope = self.full_rope if layer.attention_type == FULL_ATTENTION else self.swa_rope
@@ -2152,18 +2383,16 @@ class LagunaGGUFResidentSession:
             library=self.libraries.attention_gate,
             runtime=self.runtime,
         )
-        launch_f16_weight_linear(
+        launch_laguna_weight_linear(
             layer.weight("attn_output"),
             scratch.gated_context.ptr,
             scratch.attention_output.ptr,
             1,
             q_width,
             config.hidden_size,
-            activation_dtype="bf16",
-            output_dtype="bf16",
             backend=self.backend,
             stream=stream,
-            libraries=f16_libraries,
+            libraries=self.libraries,
             runtime=self.runtime,
         )
         self.kernel_plan.add_rmsnorm(
@@ -2351,36 +2580,53 @@ class LagunaGGUFResidentSession:
         config = self.weights.config
         if self.weights.backend != self.backend:
             raise ValueError("Laguna resident weights must share the session backend")
-        for slot in ("token_embedding", "output_norm", "lm_head"):
-            self.weights.root(slot)
+        root_shapes = {
+            "token_embedding": (config.vocab_size, config.hidden_size),
+            "output_norm": (config.hidden_size,),
+            "lm_head": (config.vocab_size, config.hidden_size),
+        }
+        for slot, shape in root_shapes.items():
+            weight = self.weights.root(slot)
+            _validate_laguna_weight_contract(
+                weight,
+                shape=shape,
+                layouts_by_quant=_ROOT_LAYOUTS_BY_SLOT[slot],
+                label=f"Laguna root {slot}",
+            )
         if len(self.weights.layers) != config.block_count:
             raise ValueError("Laguna resident layer count does not match GGUF metadata")
         for layer_id, layer in enumerate(self.weights.layers):
             heads = config.head_count(layer_id)
             expected_attention = {
-                "attn_norm": ((config.hidden_size,), LAYOUT_DENSE_F32),
-                "attn_q": ((heads * config.key_length, config.hidden_size), LAYOUT_DENSE_F16),
+                "attn_norm": ((config.hidden_size,), {"f32": LAYOUT_DENSE_F32}),
+                "attn_q": (
+                    (heads * config.key_length, config.hidden_size),
+                    _PROJECTION_LAYOUT_BY_QUANT,
+                ),
                 "attn_k": (
                     (config.head_count_kv * config.key_length, config.hidden_size),
-                    LAYOUT_DENSE_F16,
+                    _PROJECTION_LAYOUT_BY_QUANT,
                 ),
                 "attn_v": (
                     (config.head_count_kv * config.value_length, config.hidden_size),
-                    LAYOUT_DENSE_F16,
+                    _PROJECTION_LAYOUT_BY_QUANT,
                 ),
-                "attn_gate": ((heads, config.hidden_size), LAYOUT_DENSE_F16),
-                "attn_q_norm": ((config.key_length,), LAYOUT_DENSE_F32),
-                "attn_k_norm": ((config.key_length,), LAYOUT_DENSE_F32),
+                "attn_gate": ((heads, config.hidden_size), _PROJECTION_LAYOUT_BY_QUANT),
+                "attn_q_norm": ((config.key_length,), {"f32": LAYOUT_DENSE_F32}),
+                "attn_k_norm": ((config.key_length,), {"f32": LAYOUT_DENSE_F32}),
                 "attn_output": (
                     (config.hidden_size, heads * config.value_length),
-                    LAYOUT_DENSE_F16,
+                    _PROJECTION_LAYOUT_BY_QUANT,
                 ),
-                "ffn_norm": ((config.hidden_size,), LAYOUT_DENSE_F32),
+                "ffn_norm": ((config.hidden_size,), {"f32": LAYOUT_DENSE_F32}),
             }
-            for slot, (shape, layout) in expected_attention.items():
-                weight = layer.weight(slot)
-                if weight.spec.source.shape != shape or weight.spec.layout != layout:
-                    raise ValueError(f"Laguna layer {layer_id} {slot} resident contract mismatch")
+            for slot, (shape, layouts_by_quant) in expected_attention.items():
+                _validate_laguna_weight_contract(
+                    layer.weight(slot),
+                    shape=shape,
+                    layouts_by_quant=layouts_by_quant,
+                    label=f"Laguna layer {layer_id} {slot}",
+                )
             if layer.weight("attn_gate").spec.source.shape != (
                 heads,
                 config.hidden_size,
@@ -2389,14 +2635,18 @@ class LagunaGGUFResidentSession:
                     f"Laguna layer {layer_id} requires {PER_HEAD_GATE!r} attention gating"
                 )
             if layer.mlp_type == DENSE_MLP:
-                dense_expected = {
-                    "ffn_gate": LAYOUT_Q4_K_PACK8,
-                    "ffn_up": LAYOUT_Q4_K_PACK8,
-                    "ffn_down": LAYOUT_RAW_GGUF,
+                dense_shapes = {
+                    "ffn_gate": (config.feed_forward_length, config.hidden_size),
+                    "ffn_up": (config.feed_forward_length, config.hidden_size),
+                    "ffn_down": (config.hidden_size, config.feed_forward_length),
                 }
-                for slot, layout in dense_expected.items():
-                    if layer.weight(slot).spec.layout != layout:
-                        raise ValueError(f"Laguna dense layer {layer_id} {slot} layout mismatch")
+                for slot, shape in dense_shapes.items():
+                    _validate_laguna_weight_contract(
+                        layer.weight(slot),
+                        shape=shape,
+                        layouts_by_quant=_DENSE_MLP_LAYOUTS_BY_SLOT[slot],
+                        label=f"Laguna dense layer {layer_id} {slot}",
+                    )
             elif layer.mlp_type != SPARSE_MOE:
                 raise ValueError(f"unsupported Laguna MLP type {layer.mlp_type!r}")
             else:
@@ -2489,6 +2739,23 @@ class LagunaGGUFResidentSession:
     def _check_open(self) -> None:
         if self._closed:
             raise RuntimeError("Laguna GGUF resident session is closed")
+
+
+def _validate_laguna_weight_contract(
+    weight,
+    *,
+    shape: tuple[int, ...],
+    layouts_by_quant: Mapping[str, str],
+    label: str,
+) -> None:
+    source = weight.spec.source
+    quant = weight.spec.quant_key
+    expected_layout = layouts_by_quant.get(quant)
+    if source.shape != shape or expected_layout is None or weight.spec.layout != expected_layout:
+        raise ValueError(
+            f"{label} resident contract mismatch: shape={source.shape} "
+            f"layout/quant={weight.spec.layout}/{quant}"
+        )
 
 
 def _copy_i64(buffer: DeviceBuffer, value: int, runtime: HipRuntime) -> None:
