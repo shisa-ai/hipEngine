@@ -42,8 +42,9 @@ first two 35B-class model-loading surfaces are available on gfx1100 and gfx1151:
 [shisa-ai/Qwen3.6-35B-A3B-PARO-packed](https://huggingface.co/shisa-ai/Qwen3.6-35B-A3B-PARO-packed)
 (19.07 GiB, 4.68 bpw) in packed
 [ParoQuant](https://github.com/shisa-ai/paroquant) format, plus Qwen3.6 GGUF
-`Q4_K_M` / `Q4_K_S` files through the resident GGUF path. Older benchmark
-artifacts may still show the historical
+`Q4_K_M` / `Q4_K_S` files through the resident GGUF path, plus native
+`UD-Q3_K_M` execution with retained gfx1100 evidence. Older benchmark artifacts
+may still show the historical
 `Qwen3.6-35B-A3B-PARO-full4096-e5-packed` name or local MTP-BF16 assembly path;
 those rows use the same packed PARO architecture and remain the evidence for the
 numbers below.
@@ -729,6 +730,15 @@ As of v0.2.0, hipEngine includes resident Qwen3.6 GGUF support for `Q4_K_M` and
 `Q4_K_S` model files (with more formats planned). This is a major runtime path,
 not just a loader shim: GGUF has its own quant readers, bulk-prefill path,
 decode-repacked T16 layouts, and fast-path controls.
+
+The 40-layer `UD-Q3_K_M` target keeps resident `IQ3_XXS`/`IQ4_XS`
+selected-expert weights compressed and executes native gate/up and down kernels,
+bulk prefill, and graph decode. The merged W7900 branch preserves its first
+correctness-oriented baseline: **614.089/92.285**, **623.583/97.373**, and
+**616.135/98.111** prefill/decode tok/s at 512/128, 1K/128, and 4K/128. Those
+2026-07-19 measurements describe the historical branch implementation; the
+newer optimized direct/native Q3 route and current records are documented in
+[`benchmarks/README.md`](benchmarks/README.md#merged-ud-q3_k_m-gpu1-and-w7900-records).
 
 Current caveats:
 
