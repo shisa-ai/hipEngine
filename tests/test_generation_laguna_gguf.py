@@ -9,10 +9,13 @@ import pytest
 from hipengine.generation import (
     GenerationCancellationToken,
     GenerationCancelled,
+    EngineLoopConfig,
     GenerationDeadlineExceeded,
+    GenerationAdmissionRejected,
     GenerationKey,
     GenerationRequest,
     GenerationStreamChunk,
+    SubmitPollTextGenerator,
     registered_text_generators,
 )
 from hipengine.llm import LLM, SamplingParams
@@ -208,6 +211,219 @@ def test_laguna_generator_registers_concrete_gfx1151_key() -> None:
     assert GenerationKey("laguna_gguf", "hip_gfx1151", "gguf_q4_k_m") in set(
         registered_text_generators()
     )
+
+
+def test_laguna_native_runner_admits_later_prefill_between_decode_ticks(generator) -> None:
+    _FakeSession.sequences = [(10, 11, 12), (13, 14)]
+    adapter = SubmitPollTextGenerator(
+        generator.instance,
+        capacity=2,
+        config=EngineLoopConfig(
+            max_active_requests=2,
+            max_prefill_chunk_tokens=128,
+            prefill_decode_policy="protect_ttft",
+        ),
+    )
+    try:
+        assert type(adapter._runner).__name__ == "LagunaGGUFResidentModelRunner"
+        first = adapter.submit_detailed(_request(max_tokens=3))
+        first_prefill = adapter.poll(max_ticks=1)
+        first_decode = adapter.poll(max_ticks=1)
+        second = adapter.submit_detailed(
+            _request(prompts=((9, 8),), max_tokens=2)
+        )
+        delayed_arrival = adapter.poll(max_ticks=1)
+
+        assert any(event.work_kind is not None and event.work_kind.value == "prefill" for event in first_prefill)
+        assert [event.token_id for event in first_decode if event.kind == "token"] == [10]
+        assert any(event.request_id == second.request_ids[0] and event.kind == "admitted" for event in delayed_arrival)
+        assert any(
+            event.work_kind is not None
+            and event.work_kind.value == "prefill"
+            and event.request_ids == second.request_ids
+            for event in delayed_arrival
+        )
+        assert not adapter.generation_complete(first)
+
+        while not adapter.generation_complete(first) or not adapter.generation_complete(second):
+            adapter.poll(max_ticks=1)
+        first_output = adapter.take_result(first)[0]
+        second_output = adapter.take_result(second)[0]
+
+        assert first_output.text == "ABC"
+        assert first_output.generated_token_ids == (10, 11, 12)
+        assert second_output.text == "DT14"
+        assert second_output.generated_token_ids == (13, 14)
+        snapshot = adapter.live_loop_snapshot()
+        assert snapshot["runner"] == {
+            "kind": "laguna_resident_model_runner",
+            "capacity": 2,
+            "sessions": {
+                "resident": 2,
+                "active": 0,
+                "available": 2,
+                "retained": 0,
+            },
+            "active_request_ids": [],
+            "outputs_buffered": 0,
+            "closed": False,
+        }
+        assert snapshot["loop"]["requests"]["reclaimed_total"] == 2
+    finally:
+        adapter.close()
+
+
+def test_laguna_native_runner_routes_two_prompt_outputs_by_request_id(generator) -> None:
+    _FakeSession.sequences = [(10, 11), (13, 14)]
+    adapter = SubmitPollTextGenerator(generator.instance, capacity=2)
+    try:
+        outputs = adapter.generate_detailed(
+            _request(prompts=((7, 8), (9, 8)), max_tokens=2)
+        )
+
+        assert [output.text for output in outputs] == ["AB", "DT14"]
+        assert [output.generated_token_ids for output in outputs] == [
+            (10, 11),
+            (13, 14),
+        ]
+        assert generator.instance.last_batch_generation is not None
+        assert generator.instance.last_batch_generation["batch_size"] == 2
+        assert generator.instance.last_batch_generation["path"] == (
+            "laguna_resident_scheduler_c1"
+        )
+        assert outputs[0].telemetry is not None
+        assert outputs[0].telemetry.to_json_dict()["decode_state"]["execution_path"] == (
+            "laguna_resident_scheduler_c1"
+        )
+    finally:
+        adapter.close()
+
+
+def test_laguna_native_runner_recovers_after_pending_overload(generator) -> None:
+    _FakeSession.sequences = [(10,), (13,), (11,)]
+    adapter = SubmitPollTextGenerator(
+        generator.instance,
+        config=EngineLoopConfig(
+            max_active_requests=2,
+            max_pending_requests=2,
+            prefill_decode_policy="protect_ttft",
+        ),
+    )
+    try:
+        first = adapter.submit_detailed(_request(max_tokens=1))
+        second = adapter.submit_detailed(
+            _request(prompts=((9, 8),), max_tokens=1)
+        )
+        with pytest.raises(GenerationAdmissionRejected, match="pending request queue is full"):
+            adapter.submit_detailed(_request(max_tokens=1))
+
+        while not adapter.generation_complete(first) or not adapter.generation_complete(second):
+            adapter.poll(max_ticks=1)
+        assert adapter.take_result(first)[0].generated_token_ids == (10,)
+        assert adapter.take_result(second)[0].generated_token_ids == (13,)
+
+        recovered = adapter.generate_detailed(_request(max_tokens=1))[0]
+        assert recovered.generated_token_ids == (11,)
+        snapshot = adapter.live_loop_snapshot()
+        assert snapshot["loop"]["requests"]["reclaimed_total"] == 3
+        assert snapshot["runner"]["sessions"]["available"] == 2
+    finally:
+        adapter.close()
+
+
+def test_laguna_native_runner_soaks_without_losing_session_ownership(generator) -> None:
+    _FakeSession.sequences = [(10 + index % 4,) for index in range(20)]
+    adapter = SubmitPollTextGenerator(generator.instance, capacity=2)
+    try:
+        observed = [
+            adapter.generate_detailed(_request(max_tokens=1))[0].generated_token_ids
+            for _ in range(20)
+        ]
+        assert observed == [(10 + index % 4,) for index in range(20)]
+        snapshot = adapter.live_loop_snapshot()
+        assert snapshot["runner"]["sessions"] == {
+            "resident": 2,
+            "active": 0,
+            "available": 2,
+            "retained": 0,
+        }
+        assert snapshot["loop"]["requests"]["reclaimed_total"] == 20
+    finally:
+        adapter.close()
+    assert len([event for event in _FakeSession.events if event[0] == "close"]) == 2
+
+
+def test_laguna_native_runner_streams_prefix_safe_exact_output(generator) -> None:
+    _FakeSession.sequences = [(10, 11, 12)]
+    adapter = SubmitPollTextGenerator(generator.instance, capacity=2)
+    try:
+        chunks = list(
+            adapter.stream_detailed(
+                _request(max_tokens=3, stop_token_sequences=((10, 24),))
+            )
+        )
+
+        assert "".join(chunk.text for chunk in chunks) == "ABC"
+        assert chunks[0].text == "AB"
+        assert chunks[-1].finish_details is not None
+        assert chunks[-1].finish_details.reason == "length"
+        assert chunks[-1].generated_token_ids == (10, 11, 12)
+    finally:
+        adapter.close()
+
+
+def test_laguna_native_runner_cancels_between_decode_ticks_and_reclaims(generator) -> None:
+    _FakeSession.sequences = [(10, 11, 12)]
+    adapter = SubmitPollTextGenerator(generator.instance, capacity=2)
+    try:
+        submission = adapter.submit_detailed(_request(max_tokens=3))
+        adapter.poll(max_ticks=1)
+        adapter.poll(max_ticks=1)
+
+        assert adapter.cancel_submission(submission) == (True,)
+        assert adapter.generation_complete(submission)
+        output = adapter.take_result(submission)[0]
+        assert output.text == "A"
+        assert output.generated_token_ids == (10,)
+        assert output.finish_details is not None
+        assert output.finish_details.reason == "cancelled"
+        assert adapter._runner.active_request_ids == ()
+        assert len(adapter._runner._available) == 2
+    finally:
+        adapter.close()
+
+
+def test_laguna_native_runner_preserves_stateful_kv_continuation(generator) -> None:
+    _FakeSession.sequences = [(10, 11), (13,)]
+    adapter = SubmitPollTextGenerator(generator.instance, capacity=2)
+    try:
+        first = adapter.generate_detailed(
+            _request(
+                prompts=((1, 2, 3),),
+                max_tokens=2,
+                resident_session_key="principal:chat",
+                resident_session_cache_action="append_visible_only",
+            )
+        )[0]
+        second = adapter.generate_detailed(
+            _request(
+                prompts=((1, 2, 3, 10, 7),),
+                max_tokens=1,
+                resident_session_key="principal:chat",
+                resident_session_cache_action="append_visible_only",
+            )
+        )[0]
+
+        assert first.generated_token_ids == (10, 11)
+        assert second.generated_token_ids == (13,)
+        assert second.telemetry is not None
+        assert second.telemetry.diagnostics["resident_kv_reused"] is True
+        assert second.telemetry.diagnostics["prefix_reused_tokens"] == 4
+        assert second.telemetry.diagnostics["session_prepare_mode"] == "reuse"
+        calls = [event[1] for event in _FakeSession.events if event[0] == "prefill"]
+        assert calls == [(1, 2, 3), (7,)]
+    finally:
+        adapter.close()
 
 
 def test_laguna_generator_exposes_poolside_v1_chat_reasoning_contract(generator) -> None:
@@ -408,7 +624,30 @@ def test_laguna_prepare_eagerly_materializes_pooled_session(generator) -> None:
     assert output.telemetry.diagnostics["session_prepare_mode"] == "reset"
 
 
-def test_laguna_prepare_request_scratch_is_c1_and_reclaims_session(generator) -> None:
+def test_laguna_native_scratch_probe_reports_existing_resident_slots(generator) -> None:
+    adapter = SubmitPollTextGenerator(generator.instance, capacity=2)
+    try:
+        result = generator.instance.prepare_request_scratch(
+            max_prompt_tokens=55,
+            max_new_tokens=32,
+            max_batch_size=2,
+        )
+        assert result == {
+            "schema": 1,
+            "backend": "hip_gfx1151",
+            "execution_path": "laguna_resident_scheduler_c1",
+            "max_batch_size": 2,
+            "max_sequence_length": 86,
+            "resident_session_nbytes": 2_468,
+            "released_after_probe": False,
+        }
+        assert len([event for event in _FakeSession.events if event[0] == "open"]) == 2
+        assert not [event for event in _FakeSession.events if event[0] == "close"]
+    finally:
+        adapter.close()
+
+
+def test_laguna_prepare_request_scratch_sizes_resident_c1_slots(generator) -> None:
     _FakeSession.sequences = [(10,)]
 
     result = generator.instance.prepare_request_scratch(
@@ -427,11 +666,18 @@ def test_laguna_prepare_request_scratch_is_c1_and_reclaims_session(generator) ->
         "released_after_probe": True,
     }
     assert _FakeSession.events[-1] == ("close",)
-    with pytest.raises(NotImplementedError, match="batch size 1"):
+    two_rows = generator.instance.prepare_request_scratch(
+        max_prompt_tokens=55,
+        max_new_tokens=32,
+        max_batch_size=2,
+    )
+    assert two_rows["max_batch_size"] == 2
+    assert two_rows["resident_session_nbytes"] == 2_468
+    with pytest.raises(NotImplementedError, match="at most 2 active c=1 rows"):
         generator.instance.prepare_request_scratch(
             max_prompt_tokens=55,
             max_new_tokens=32,
-            max_batch_size=2,
+            max_batch_size=3,
         )
 
 
