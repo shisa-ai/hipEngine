@@ -2460,6 +2460,16 @@ The Q5 symbols are local128, VGPR48/72, LDS1024, and scratch0. Trace SHA-256 is
 `18d02d7896c43d9a6986243e562e741ff520d279d2dcc2995f207c227c61515a`.
 SWA and IQ3 down are now the two largest individual short-context families.
 
+Direct reduction-order-exact transfers of LPF-5's SWA prefill schedule do not
+improve c=1. One wave32 moves SWA **4.212 -> 4.274 ms (+1.49%)** short and
+**27.823 -> 29.016 ms (+4.29%)** at the 512-token physical window. A two-wave
+64-thread reconstruction is neutral short (**4.210 ms, -0.034%**) and regresses
+512 by **2.93%**. Both are bit-exact through positions 508-515 with an explicit
+live eviction; both are removed. SWA remains a long-context target, but the
+next design must add score/token parallelism or online/split reduction rather
+than only remap the 128 head dimensions. Evidence:
+`benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-swa-decode-rejected.json`.
+
 A second clean D0 at `b4973769` extends the same synthetic canonical token
 stream to 512/1K/3,968 prompt tokens and profiles eight c=1 steps at each shape
 (six stable rows after two disclosed warmups):
@@ -2492,9 +2502,9 @@ Proceed in measured Amdahl order:
 
 1. **DONE:** exact Q5 plus existing exact Q4/Q6/Q8 dense decode leaves reduce
    canonical D0 wall by 45.3% under profiling and full-suite wall by 44.8%;
-2. adapt the retained wave32-exact SWA prefill schedule to c=1 decode, where it
-   is 4.2 ms short and reaches 27.9 ms at its 512-token physical window, without
-   weakening `KVLiveSpans` or 511/512/513 wrap fixtures;
+2. **REJECTED:** direct one-wave and two-wave exact SWA prefill transfers are
+   neutral/regressive; retain local128 and revisit only with token-parallel or
+   online/split softmax while preserving `KVLiveSpans` and wrap fixtures;
 3. screen the landed weighted IQ3 selected-down and MoE-tail fusion patterns;
 4. reprofile at 128/512/1K/near-4K after SWA/IQ3, then address the 22.7-ms
    near-4K global-attention route; and

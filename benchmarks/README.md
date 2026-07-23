@@ -1249,6 +1249,14 @@ individual short-context families. The raw trace SHA-256 is
 this profile is attribution while the unprofiled full-suite D1 row above is the
 performance claim.
 
+Reduction-order-exact one-wave and two-wave SWA transfers are rejected and
+removed. The SWA family changes **4.212 -> 4.274 ms (+1.49%)** short and **27.823
+-> 29.016 ms (+4.29%)** at a 512-token window for wave32; two-wave is neutral
+short (**4.210 ms**) but **2.93%** slower at 512. Both pass exact 508-515
+wrap/eviction output gates, so this is a performance rejection rather than a
+correctness failure. [Rejection
+artifact](results/2026-07-23-gfx1100-laguna-q2-xl-swa-decode-rejected.json).
+
 A clean context extension from D0 keeps dense Q5 fixed at **27.3-27.4 ms/token**, but
 SWA grows from **4.237 ms** short to **27.823/27.903/27.927 ms** at
 512/1K/near-4K, and global attention grows to **2.988/5.922/22.713 ms**.

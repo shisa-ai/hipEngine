@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-23
 
+- [rejected gfx1100 Laguna Q2 XL SWA decode transfer] Radeon Pro W7900 one-wave/two-wave reduction-order-exact SWA schedules preserve exact positions 508-515 plus eviction but move the SWA family **4.212 -> 4.274/4.210 ms** short and **27.823 -> 29.016/28.638 ms (+4.29%/+2.93%)** at the 512-token physical window; both candidates are removed before a category run and local128 remains default; `benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-swa-decode-rejected.json`.
+
 - [retained exact gfx1100 Laguna Q2 XL dense decode] Radeon Pro W7900 Poolside Laguna S 2.1 UD-Q2_K_XL / ten-prompt h16/h32 target AR moves default-bulk h32 decode **19.565 -> 35.419 tok/s (+81.04%)** and E2E **8.557 -> 10.618 tok/s (+24.08%)**, while prefill improves **40.091 -> 40.401 tok/s (+0.774%)**; exact raw Q4/Q5/Q6/Q8 rows=1 leaves reduce clean kernel sum **44.572 -> 23.142 ms/token (-48.08%)**, all categories/E2E/correctness/lifecycle gates pass; `benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-dense-decode-retained.json`.
 
 - [rejected quality-lane gfx1151 Laguna AR-O1 candidate] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / three-repeat ten-prompt h16/h32 split -> selected-Q4 Q8_1/dp4a improves weighted prefill **4.070%**, E2E **2.650%/1.916%**, and every category with neutral decode, but maximum teacher-forced KL is **0.17156** (>0.05) despite 315/320 top-1 agreement; four prompts have deterministic free-running ID differences, so the env/session selector, Q8 scratch, runtime route, and harnesses are removed while exact split remains default; `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-ar-o1-q8-dp4a-category-rejected.json`.
