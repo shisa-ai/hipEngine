@@ -8,7 +8,7 @@ import math
 from types import MappingProxyType
 from typing import Callable
 
-from hipengine.core.hip import HipRuntime
+from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.memory import DeviceBuffer, free, malloc
 from hipengine.kernels.backends import load_backend_kernel_package
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
@@ -38,6 +38,10 @@ _SELECTED_DOWN_VARIANT = "selected_t16_gemv_decode_bf16_bf16_out"
 _SILU_VARIANT = "out"
 _WEIGHTED_SUM_VARIANT = "out"
 _ADD_VARIANT = "add"
+_SELECTED_DOWN_MODES = frozenset(
+    {"direct", "grouped_smallm", "adaptive_grouped_smallm"}
+)
+_GROUPED_SMALLM_MIN_ROWS = 32
 
 
 @dataclass(frozen=True)
@@ -73,6 +77,13 @@ class LagunaMoEKernelPlan:
     selected_down_routes: Mapping[str, LagunaMoESelectedRoute]
     routed_sum_key: KernelKey
     routed_sum_rows_key: KernelKey
+    grouped_count_key: KernelKey
+    grouped_prefix_active_key: KernelKey
+    grouped_scatter_key: KernelKey
+    grouped_compact_key: KernelKey
+    grouped_gather_key: KernelKey
+    grouped_smallm_down_keys: Mapping[str, KernelKey]
+    grouped_weighted_sum_key: KernelKey
     shared_silu_key: KernelKey
     add_key: KernelKey
     router_logits: Callable
@@ -83,6 +94,13 @@ class LagunaMoEKernelPlan:
     selected_downs: Mapping[str, Callable]
     routed_sum: Callable
     routed_sum_rows: Callable
+    grouped_count: Callable
+    grouped_prefix_active: Callable
+    grouped_scatter: Callable
+    grouped_compact: Callable
+    grouped_gather: Callable
+    grouped_smallm_downs: Mapping[str, Callable]
+    grouped_weighted_sum: Callable
     shared_silu: Callable
     add: Callable
 
@@ -96,6 +114,13 @@ class LagunaMoEKernelPlan:
             *tuple(self.selected_down_keys.values()),
             self.routed_sum_key,
             self.routed_sum_rows_key,
+            self.grouped_count_key,
+            self.grouped_prefix_active_key,
+            self.grouped_scatter_key,
+            self.grouped_compact_key,
+            self.grouped_gather_key,
+            *tuple(self.grouped_smallm_down_keys.values()),
+            self.grouped_weighted_sum_key,
             self.shared_silu_key,
             self.add_key,
         )
@@ -118,6 +143,15 @@ class LagunaMoEScratch:
     expert_intermediate: DeviceBuffer
     expert_down: DeviceBuffer
     routed_output: DeviceBuffer
+    grouped_counts: DeviceBuffer
+    grouped_scatter_offsets: DeviceBuffer
+    grouped_expert_start: DeviceBuffer
+    grouped_active_experts: DeviceBuffer
+    grouped_active_count: DeviceBuffer
+    grouped_sorted_lanes: DeviceBuffer
+    grouped_sorted_experts: DeviceBuffer
+    grouped_sorted_weights: DeviceBuffer
+    grouped_lane_to_row: DeviceBuffer
     shared_gate: DeviceBuffer
     shared_up: DeviceBuffer
     shared_intermediate: DeviceBuffer
@@ -138,6 +172,15 @@ class LagunaMoEScratch:
             self.expert_intermediate,
             self.expert_down,
             self.routed_output,
+            self.grouped_counts,
+            self.grouped_scatter_offsets,
+            self.grouped_expert_start,
+            self.grouped_active_experts,
+            self.grouped_active_count,
+            self.grouped_sorted_lanes,
+            self.grouped_sorted_experts,
+            self.grouped_sorted_weights,
+            self.grouped_lane_to_row,
             self.shared_gate,
             self.shared_up,
             self.shared_intermediate,
@@ -204,6 +247,27 @@ def resolve_laguna_moe_plan(
         ),
         "routed_sum": KernelKey(backend, "weighted_sum", "bf16", _WEIGHTED_SUM_VARIANT),
         "routed_sum_rows": KernelKey(backend, "weighted_sum", "bf16", "laguna_rows"),
+        "grouped_count": KernelKey(
+            backend, "moe_group_count", "generic", "selected_experts"
+        ),
+        "grouped_prefix_active": KernelKey(
+            backend, "moe_group_prefix", "generic", "active_experts"
+        ),
+        "grouped_scatter": KernelKey(
+            backend,
+            "moe_group_scatter_gather",
+            "generic",
+            "bf16_lane_rows",
+        ),
+        "grouped_compact": KernelKey(
+            backend, "moe_group_compact", "generic", "active_experts"
+        ),
+        "grouped_gather": KernelKey(
+            backend, "moe_gather_packed_hidden", "generic", "bf16_lanes"
+        ),
+        "grouped_weighted_sum": KernelKey(
+            backend, "weighted_lanes_sum", "bf16", _WEIGHTED_SUM_VARIANT
+        ),
         "shared_silu": KernelKey(backend, "silu_mul_separate", "bf16", _SILU_VARIANT),
         "add": KernelKey(backend, "elementwise", "bf16", _ADD_VARIANT),
     }
@@ -262,6 +326,20 @@ def resolve_laguna_moe_plan(
             for quant, (abi, allocation_name, library_key) in selected_gate_up_route_specs.items()
         }
     )
+    grouped_smallm_down_keys = MappingProxyType(
+        {
+            quant: KernelKey(
+                backend,
+                "moe_linear",
+                quant,
+                "selected_t16_grouped_smallm_bf16_bf16_out",
+            )
+            for quant in ("gguf_q4_k_t16_v1", "gguf_q6_k_t16_v1")
+        }
+    )
+    grouped_smallm_downs = MappingProxyType(
+        {quant: _resolve_exact(key) for quant, key in grouped_smallm_down_keys.items()}
+    )
     selected_down_route_specs = {
         "gguf_q4_k_t16_v1": ("t16", "tiles", "selected_down"),
         "gguf_q6_k_t16_v1": ("t16", "tiles", "selected_down"),
@@ -312,6 +390,20 @@ def resolve_laguna_moe_plan(
         selected_downs=selected_downs,
         routed_sum=functions["routed_sum"],
         routed_sum_rows=functions["routed_sum_rows"],
+        grouped_count_key=keys["grouped_count"],
+        grouped_prefix_active_key=keys["grouped_prefix_active"],
+        grouped_scatter_key=keys["grouped_scatter"],
+        grouped_compact_key=keys["grouped_compact"],
+        grouped_gather_key=keys["grouped_gather"],
+        grouped_smallm_down_keys=grouped_smallm_down_keys,
+        grouped_weighted_sum_key=keys["grouped_weighted_sum"],
+        grouped_count=functions["grouped_count"],
+        grouped_prefix_active=functions["grouped_prefix_active"],
+        grouped_scatter=functions["grouped_scatter"],
+        grouped_compact=functions["grouped_compact"],
+        grouped_gather=functions["grouped_gather"],
+        grouped_smallm_downs=grouped_smallm_downs,
+        grouped_weighted_sum=functions["grouped_weighted_sum"],
         shared_silu=functions["shared_silu"],
         add=functions["add"],
     )
@@ -345,6 +437,15 @@ def allocate_laguna_moe_scratch(
         rows * k * f * _BF16_NBYTES,
         rows * k * h * _BF16_NBYTES,
         rows * h * _BF16_NBYTES,
+        e * 4,
+        e * 4,
+        (e + 1) * _I64_NBYTES,
+        e * _I64_NBYTES,
+        _I64_NBYTES,
+        rows * k * _I64_NBYTES,
+        rows * k * _I64_NBYTES,
+        rows * k * _F32_NBYTES,
+        rows * k * _I64_NBYTES,
         rows * sf * _BF16_NBYTES,
         rows * sf * _BF16_NBYTES,
         rows * sf * _BF16_NBYTES,
@@ -723,6 +824,87 @@ def _launch_selected_down(
     )
 
 
+def _launch_grouped_smallm_down(
+    layer: LagunaGGUFResidentLayerWeights,
+    scratch: LagunaMoEScratch,
+    *,
+    tokens: int,
+    lanes: int,
+    stream: int,
+    runtime: HipRuntime | None,
+    libraries: Mapping[str, object] | None,
+) -> None:
+    """Group lane-order intermediates on device and run exact small-M down."""
+
+    plan = scratch.plan
+    weight = layer.weight("ffn_down_exps")
+    try:
+        grouped_down = plan.grouped_smallm_downs[weight.spec.quant_key]
+    except KeyError as exc:
+        raise ValueError(
+            f"no Laguna grouped small-M selected-down route for {weight.spec.quant_key!r}"
+        ) from exc
+    active_runtime = runtime or get_hip_runtime()
+    plan.grouped_compact(
+        scratch.selected_experts.ptr,
+        scratch.scaled_routing_weights.ptr,
+        scratch.grouped_expert_start.ptr,
+        scratch.grouped_active_experts.ptr,
+        scratch.grouped_active_count.ptr,
+        scratch.grouped_sorted_lanes.ptr,
+        scratch.grouped_sorted_experts.ptr,
+        scratch.grouped_sorted_weights.ptr,
+        lanes,
+        plan.expert_count,
+        **_stage_kwargs(
+            "grouped_metadata", libraries, stream=stream, runtime=active_runtime
+        ),
+    )
+    plan.grouped_gather(
+        scratch.expert_intermediate.ptr,
+        scratch.grouped_sorted_lanes.ptr,
+        scratch.expert_gate.ptr,
+        lanes * plan.expert_ffn_size,
+        lanes,
+        1,
+        plan.expert_ffn_size,
+        **_stage_kwargs(
+            "grouped_gather", libraries, stream=stream, runtime=active_runtime
+        ),
+    )
+    grouped_down(
+        scratch.expert_gate.ptr,
+        scratch.grouped_expert_start.ptr,
+        scratch.grouped_active_experts.ptr,
+        scratch.grouped_active_count.ptr,
+        weight.allocation("tiles").tensor.ptr,
+        scratch.expert_down.ptr,
+        lanes,
+        plan.expert_ffn_size,
+        plan.hidden_size,
+        plan.expert_count,
+        **_stage_kwargs(
+            "grouped_down", libraries, stream=stream, runtime=active_runtime
+        ),
+    )
+    plan.grouped_weighted_sum(
+        scratch.expert_down.ptr,
+        scratch.grouped_sorted_weights.ptr,
+        scratch.grouped_sorted_lanes.ptr,
+        scratch.grouped_lane_to_row.ptr,
+        scratch.routed_output.ptr,
+        tokens,
+        plan.top_k,
+        plan.hidden_size,
+        **_stage_kwargs(
+            "grouped_weighted_sum",
+            libraries,
+            stream=stream,
+            runtime=active_runtime,
+        ),
+    )
+
+
 def run_laguna_moe_c1(
     hidden_bf16_ptr: int,
     layer: LagunaGGUFResidentLayerWeights,
@@ -866,6 +1048,7 @@ def run_laguna_moe_rows(
     scratch: LagunaMoEScratch,
     *,
     rows: int,
+    selected_down_mode: str = "direct",
     stream: int = 0,
     runtime: HipRuntime | None = None,
     libraries: Mapping[str, object] | None = None,
@@ -874,6 +1057,11 @@ def run_laguna_moe_rows(
 
     plan = scratch.plan
     tokens = int(rows)
+    if selected_down_mode not in _SELECTED_DOWN_MODES:
+        raise ValueError(
+            "selected_down_mode must be one of "
+            f"{tuple(sorted(_SELECTED_DOWN_MODES))}"
+        )
     if tokens <= 0 or tokens > scratch.max_rows:
         raise ValueError(f"rows must be within [1, {scratch.max_rows}]")
     validate_laguna_moe_layer(layer, plan)
@@ -920,23 +1108,40 @@ def run_laguna_moe_rows(
         runtime=runtime,
         libraries=libraries,
     )
-    _launch_selected_down(
-        layer,
-        scratch,
-        lanes=lanes,
-        stream=stream,
-        runtime=runtime,
-        libraries=libraries,
+    use_grouped_smallm = selected_down_mode == "grouped_smallm" or (
+        selected_down_mode == "adaptive_grouped_smallm"
+        and tokens >= _GROUPED_SMALLM_MIN_ROWS
     )
-    plan.routed_sum_rows(
-        scratch.expert_down.ptr,
-        scratch.scaled_routing_weights.ptr,
-        scratch.routed_output.ptr,
-        tokens,
-        k,
-        h,
-        **_stage_kwargs("routed_sum_rows", libraries, stream=stream, runtime=runtime),
-    )
+    if use_grouped_smallm:
+        _launch_grouped_smallm_down(
+            layer,
+            scratch,
+            tokens=tokens,
+            lanes=lanes,
+            stream=stream,
+            runtime=runtime,
+            libraries=libraries,
+        )
+    else:
+        _launch_selected_down(
+            layer,
+            scratch,
+            lanes=lanes,
+            stream=stream,
+            runtime=runtime,
+            libraries=libraries,
+        )
+        plan.routed_sum_rows(
+            scratch.expert_down.ptr,
+            scratch.scaled_routing_weights.ptr,
+            scratch.routed_output.ptr,
+            tokens,
+            k,
+            h,
+            **_stage_kwargs(
+                "routed_sum_rows", libraries, stream=stream, runtime=runtime
+            ),
+        )
 
     shared_gate = layer.weight("ffn_gate_shexp")
     shared_up = layer.weight("ffn_up_shexp")

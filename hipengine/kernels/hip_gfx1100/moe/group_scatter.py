@@ -13,6 +13,8 @@ _SOURCE = Path(__file__).with_name("group_scatter.hip")
 _OUTPUT_NAME = "qwen35_moe_group_scatter.so"
 _SYMBOL_COUNT = "hipengine_qwen35_moe_group_count"
 _SYMBOL_PREFIX = "hipengine_qwen35_moe_group_prefix"
+_SYMBOL_PREFIX_ACTIVE = "hipengine_qwen35_moe_group_prefix_active"
+_SYMBOL_COMPACT_ACTIVE = "hipengine_qwen35_moe_group_compact_active"
 _SYMBOL_TILE_MAP = "hipengine_qwen35_moe_wmma_tile_map"
 _SYMBOL_SCATTER = "hipengine_qwen35_moe_group_scatter"
 _SYMBOL_SCATTER_GATHER = "hipengine_qwen35_moe_group_scatter_gather_lowp"
@@ -122,6 +124,98 @@ def qwen35_moe_group_prefix(
         ctypes.c_void_p(total_padded_ptr),
         ctypes.c_int64(num_experts),
         ctypes.c_int64(pad_multiple),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def qwen35_moe_group_prefix_active(
+    counts_ptr: int,
+    expert_start_ptr: int,
+    active_experts_ptr: int,
+    active_count_ptr: int,
+    num_experts: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Build compact starts plus a device-resident list of nonempty experts."""
+
+    _check_num_experts(num_experts)
+    library = library or build_qwen35_moe_group_scatter(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_PREFIX_ACTIVE)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(counts_ptr),
+        ctypes.c_void_p(expert_start_ptr),
+        ctypes.c_void_p(active_experts_ptr),
+        ctypes.c_void_p(active_count_ptr),
+        ctypes.c_int64(num_experts),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+def qwen35_moe_group_compact_active(
+    selected_experts_ptr: int,
+    routing_weights_ptr: int,
+    expert_start_ptr: int,
+    active_experts_ptr: int,
+    active_count_ptr: int,
+    sorted_lanes_ptr: int,
+    sorted_experts_ptr: int,
+    sorted_weights_ptr: int,
+    total_lanes: int,
+    num_experts: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Build exact compact expert metadata in one device-resident pass."""
+
+    _check_positive(total_lanes, "total_lanes")
+    _check_num_experts(num_experts)
+    if num_experts > 256:
+        raise ValueError("compact active num_experts must be <= 256")
+    library = library or build_qwen35_moe_group_scatter(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_COMPACT_ACTIVE)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(selected_experts_ptr),
+        ctypes.c_void_p(routing_weights_ptr),
+        ctypes.c_void_p(expert_start_ptr),
+        ctypes.c_void_p(active_experts_ptr),
+        ctypes.c_void_p(active_count_ptr),
+        ctypes.c_void_p(sorted_lanes_ptr),
+        ctypes.c_void_p(sorted_experts_ptr),
+        ctypes.c_void_p(sorted_weights_ptr),
+        ctypes.c_int64(total_lanes),
+        ctypes.c_int64(num_experts),
         ctypes.c_void_p(stream),
     )
     _check_launch(runtime, err)
@@ -332,17 +426,70 @@ def qwen35_moe_gather_packed_hidden_lowp(
 
 
 def register_qwen35_moe_group_scatter_kernels(*, replace: bool = True) -> None:
-    register(KernelKey("hip_gfx1100", "moe_group_count", "w4_paro", "qwen35"), qwen35_moe_group_count, replace=replace)
-    register(KernelKey("hip_gfx1100", "moe_group_prefix", "w4_paro", "qwen35"), qwen35_moe_group_prefix, replace=replace)
-    register(KernelKey("hip_gfx1100", "moe_wmma_tile_map", "w4_paro", "qwen35"), qwen35_moe_wmma_tile_map, replace=replace)
-    register(KernelKey("hip_gfx1100", "moe_group_scatter", "w4_paro", "qwen35"), qwen35_moe_group_scatter, replace=replace)
+    register(
+        KernelKey("hip_gfx1100", "moe_group_count", "w4_paro", "qwen35"),
+        qwen35_moe_group_count,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "moe_group_count", "generic", "selected_experts"),
+        qwen35_moe_group_count,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "moe_group_prefix", "w4_paro", "qwen35"),
+        qwen35_moe_group_prefix,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "moe_group_prefix", "generic", "active_experts"),
+        qwen35_moe_group_prefix_active,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "moe_group_compact", "generic", "active_experts"),
+        qwen35_moe_group_compact_active,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "moe_wmma_tile_map", "w4_paro", "qwen35"),
+        qwen35_moe_wmma_tile_map,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "moe_group_scatter", "w4_paro", "qwen35"),
+        qwen35_moe_group_scatter,
+        replace=replace,
+    )
     register(
         KernelKey("hip_gfx1100", "moe_group_scatter_gather", "w4_paro", "qwen35_lowp"),
         qwen35_moe_group_scatter_gather_lowp,
         replace=replace,
     )
     register(
-        KernelKey("hip_gfx1100", "moe_gather_packed_hidden", "w4_paro", "qwen35_lowp"),
+        KernelKey(
+            "hip_gfx1100",
+            "moe_group_scatter_gather",
+            "generic",
+            "bf16_lane_rows",
+        ),
+        qwen35_moe_group_scatter_gather_lowp,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_gather_packed_hidden",
+            "w4_paro",
+            "qwen35_lowp",
+        ),
+        qwen35_moe_gather_packed_hidden_lowp,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100", "moe_gather_packed_hidden", "generic", "bf16_lanes"
+        ),
         qwen35_moe_gather_packed_hidden_lowp,
         replace=replace,
     )

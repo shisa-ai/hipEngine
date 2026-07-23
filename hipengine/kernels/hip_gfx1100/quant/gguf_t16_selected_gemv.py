@@ -40,6 +40,15 @@ _Q4_DUAL_FP16 = "hipengine_gguf_q4_k_t16_selected_dual_gemv_decode_compact_fp16_
 _Q4_DUAL_PAIRREUSE_BF16 = (
     "hipengine_gguf_q4_k_t16_selected_dual_pairreuse_gemv_decode_compact_bf16_bf16_out"
 )
+_Q4_DUAL_GROUPED_SMALLM_BF16 = (
+    "hipengine_gguf_q4_k_t16_selected_dual_grouped_smallm_bf16_bf16_out"
+)
+_Q4_SINGLE_GROUPED_SMALLM_BF16 = (
+    "hipengine_gguf_q4_k_t16_selected_grouped_smallm_bf16_bf16_out"
+)
+_Q6_SINGLE_GROUPED_SMALLM_BF16 = (
+    "hipengine_gguf_q6_k_t16_selected_grouped_smallm_bf16_bf16_out"
+)
 _Q4_SINGLE_BF16 = "hipengine_gguf_q4_k_t16_selected_gemv_decode_compact_bf16_bf16_out"
 _Q4_SINGLE_FP16 = "hipengine_gguf_q4_k_t16_selected_gemv_decode_compact_fp16_fp16_out"
 _Q4_SINGLE_PAIRREUSE_BF16 = (
@@ -630,6 +639,46 @@ def gguf_q6_k_t16_selected_gemv_fp16_fp16_out(
     )
 
 
+def gguf_q4_k_t16_selected_dual_grouped_smallm_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    active_experts_ptr: int,
+    active_count_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features: int,
+    num_experts: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact BF16 Q4T16 gate/up over grouped 1/2/4/8-row buckets."""
+
+    _launch_grouped_dual(
+        _Q4_DUAL_GROUPED_SMALLM_BF16,
+        x_ptr,
+        expert_start_compact_ptr,
+        active_experts_ptr,
+        active_count_ptr,
+        tiles_a_ptr,
+        tiles_b_ptr,
+        out_a_ptr,
+        out_b_ptr,
+        compact_rows,
+        in_features,
+        out_features,
+        num_experts,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_q4_k_t16_selected_dual_gemv_decode_compact_bf16_bf16_out(
     x_ptr: int,
     expert_start_compact_ptr: int,
@@ -758,6 +807,42 @@ def gguf_q4_k_t16_selected_gemv_decode_compact_bf16_bf16_out(
         _Q4_SINGLE_BF16,
         x_ptr,
         expert_start_compact_ptr,
+        tiles_ptr,
+        out_ptr,
+        compact_rows,
+        in_features,
+        out_features,
+        num_experts,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q4_k_t16_selected_grouped_smallm_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    active_experts_ptr: int,
+    active_count_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features: int,
+    num_experts: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact BF16 Q4T16 down over grouped 1/2/4/8-row buckets."""
+
+    _launch_grouped_single(
+        _Q4_SINGLE_GROUPED_SMALLM_BF16,
+        x_ptr,
+        expert_start_compact_ptr,
+        active_experts_ptr,
+        active_count_ptr,
         tiles_ptr,
         out_ptr,
         compact_rows,
@@ -962,6 +1047,42 @@ def gguf_q6_k_t16_selected_gemv_decode_compact_bf16_bf16_out(
     )
 
 
+def gguf_q6_k_t16_selected_grouped_smallm_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    active_experts_ptr: int,
+    active_count_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features: int,
+    num_experts: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact BF16 Q6T16 down over grouped 1/2/4/8-row buckets."""
+
+    _launch_grouped_single(
+        _Q6_SINGLE_GROUPED_SMALLM_BF16,
+        x_ptr,
+        expert_start_compact_ptr,
+        active_experts_ptr,
+        active_count_ptr,
+        tiles_ptr,
+        out_ptr,
+        compact_rows,
+        in_features,
+        out_features,
+        num_experts,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_q6_k_t16_selected_pairreuse_gemv_decode_compact_bf16_bf16_out(
     x_ptr: int,
     expert_start_compact_ptr: int,
@@ -1026,6 +1147,68 @@ def gguf_q6_k_t16_selected_gemv_decode_compact_fp16_fp16_out(
     )
 
 
+def _launch_grouped_dual(
+    symbol: str,
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    active_experts_ptr: int,
+    active_count_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_a_ptr: int,
+    out_b_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features: int,
+    num_experts: int,
+    *,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_common(compact_rows, in_features, num_experts)
+    if out_features <= 0:
+        raise ValueError("out_features must be positive")
+    if out_features % _T16_COLS != 0:
+        raise ValueError("out_features must be a multiple of 16 (T16 tile)")
+    library = library or build_gguf_t16_selected_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(expert_start_compact_ptr),
+        ctypes.c_void_p(active_experts_ptr),
+        ctypes.c_void_p(active_count_ptr),
+        ctypes.c_void_p(tiles_a_ptr),
+        ctypes.c_void_p(tiles_b_ptr),
+        ctypes.c_void_p(out_a_ptr),
+        ctypes.c_void_p(out_b_ptr),
+        ctypes.c_int64(compact_rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_int64(num_experts),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def _launch_dual(
     symbol: str,
     x_ptr: int,
@@ -1079,6 +1262,62 @@ def _launch_dual(
         ctypes.c_int64(in_features),
         ctypes.c_int64(out_features_a),
         ctypes.c_int64(out_features_b),
+        ctypes.c_int64(num_experts),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def _launch_grouped_single(
+    symbol: str,
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    active_experts_ptr: int,
+    active_count_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features: int,
+    num_experts: int,
+    *,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_common(compact_rows, in_features, num_experts)
+    if out_features <= 0:
+        raise ValueError("out_features must be positive")
+    if out_features % _T16_COLS != 0:
+        raise ValueError("out_features must be a multiple of 16 (T16 tile)")
+    library = library or build_gguf_t16_selected_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(expert_start_compact_ptr),
+        ctypes.c_void_p(active_experts_ptr),
+        ctypes.c_void_p(active_count_ptr),
+        ctypes.c_void_p(tiles_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(compact_rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
         ctypes.c_int64(num_experts),
         ctypes.c_void_p(stream),
     )
@@ -1343,6 +1582,10 @@ def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
             gguf_q4_k_t16_selected_dual_gemv_decode_compact_fp16_fp16_out,
         ),
         (
+            "selected_dual_t16_grouped_smallm_bf16_bf16_out",
+            gguf_q4_k_t16_selected_dual_grouped_smallm_bf16_bf16_out,
+        ),
+        (
             "selected_dual_t16_pairreuse_gemv_decode_compact_bf16_bf16_out",
             gguf_q4_k_t16_selected_dual_pairreuse_gemv_decode_compact_bf16_bf16_out,
         ),
@@ -1421,6 +1664,27 @@ def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
             replace=replace,
         )
 
+    for quant_key, grouped_smallm_fn in (
+        (
+            "gguf_q4_k_t16_v1",
+            gguf_q4_k_t16_selected_grouped_smallm_bf16_bf16_out,
+        ),
+        (
+            "gguf_q6_k_t16_v1",
+            gguf_q6_k_t16_selected_grouped_smallm_bf16_bf16_out,
+        ),
+    ):
+        register(
+            KernelKey(
+                "hip_gfx1100",
+                "moe_linear",
+                quant_key,
+                "selected_t16_grouped_smallm_bf16_bf16_out",
+            ),
+            grouped_smallm_fn,
+            replace=replace,
+        )
+
     for quant_key, pairreuse_fn in (
         ("gguf_q5_k_t16_v1", gguf_q5_k_t16_selected_pairreuse_gemv_bf16_bf16_out),
         ("gguf_q6_k_t16_v1", gguf_q6_k_t16_selected_pairreuse_gemv_bf16_bf16_out),
@@ -1483,11 +1747,13 @@ __all__ = [
     "gguf_q4_k_t16_selected_dual_silu_q8_1_dp4a_gemv_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_gemv_decode_compact_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_gemv_decode_compact_fp16_fp16_out",
+    "gguf_q4_k_t16_selected_dual_grouped_smallm_bf16_bf16_out",
     "gguf_q4_k_t16_selected_dual_pairreuse_gemv_decode_compact_bf16_bf16_out",
     "gguf_q4_k_t16_selected_gemv_bf16_bf16_out",
     "gguf_q4_k_t16_selected_gemv_fp16_fp16_out",
     "gguf_q4_k_t16_selected_gemv_decode_compact_bf16_bf16_out",
     "gguf_q4_k_t16_selected_gemv_decode_compact_fp16_fp16_out",
+    "gguf_q4_k_t16_selected_grouped_smallm_bf16_bf16_out",
     "gguf_q4_k_t16_selected_pairreuse_gemv_decode_compact_bf16_bf16_out",
     "gguf_q5_k_t16_selected_gemv_bf16_bf16_out",
     "gguf_q5_k_t16_selected_pairreuse_gemv_bf16_bf16_out",
@@ -1501,6 +1767,7 @@ __all__ = [
     "gguf_q6_k_t16_selected_gemv_fp16_fp16_out",
     "gguf_q6_k_t16_selected_gemv_decode_compact_bf16_bf16_out",
     "gguf_q6_k_t16_selected_gemv_decode_compact_fp16_fp16_out",
+    "gguf_q6_k_t16_selected_grouped_smallm_bf16_bf16_out",
     "gguf_q6_k_t16_selected_pairreuse_gemv_decode_compact_bf16_bf16_out",
     "plan_gguf_t16_selected_gemv_build",
     "register_gguf_t16_selected_gemv_kernels",

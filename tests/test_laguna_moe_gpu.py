@@ -16,6 +16,7 @@ from hipengine.core.memory import (
     malloc,
 )
 from hipengine.kernels.cpu_reference import gguf_quant_gemv
+from hipengine.kernels.registry import KernelKey
 from hipengine.loading.laguna_gguf import (
     SLIDING_ATTENTION,
     SPARSE_MOE,
@@ -118,6 +119,13 @@ def test_laguna_model_moe_plan_resolves_production_contract_on_gfx1151() -> None
         "gguf_iq4_xs",
     }
     assert plan.selected_down_keys["gguf_q6_k_t16_v1"] == plan.selected_down_key
+    assert set(plan.grouped_smallm_down_keys) == {
+        "gguf_q4_k_t16_v1",
+        "gguf_q6_k_t16_v1",
+    }
+    assert plan.grouped_prefix_active_key == KernelKey(
+        "hip_gfx1151", "moe_group_prefix", "generic", "active_experts"
+    )
     assert all(key.backend == "hip_gfx1151" for key in plan.kernel_keys)
 
     sparse_sequence = LAGUNA_GGUF.decode_layer_sequence(
@@ -196,6 +204,7 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
     resident = {}
     scratch = None
     bulk_scratch = None
+    grouped_scratch = None
     hidden_buffer = None
     bulk_hidden_buffer = None
     try:
@@ -331,6 +340,19 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
             rows=3,
         )
         bulk_actual = _read_bf16(bulk_output, (3, h))
+        grouped_scratch = allocate_laguna_moe_scratch(plan, max_rows=3)
+        grouped_output = run_laguna_moe_rows(
+            bulk_hidden_buffer.ptr,
+            layer,
+            grouped_scratch,
+            rows=3,
+            selected_down_mode="grouped_smallm",
+        )
+        grouped_actual = _read_bf16(grouped_output, (3, h))
+        np.testing.assert_array_equal(
+            _f32_to_bf16_u16(grouped_actual),
+            _f32_to_bf16_u16(bulk_actual),
+        )
         serial_actual = np.empty_like(bulk_actual)
         for row in range(3):
             copy_host_to_device(
@@ -346,7 +368,11 @@ def test_laguna_unfused_moe_matches_production_shape_quant_oracle(
         )
         assert bulk_scratch.max_rows == 3
         assert bulk_scratch.selected_experts.nbytes == 3 * k * np.dtype(np.int64).itemsize
+        assert grouped_scratch.grouped_active_experts.nbytes == e * np.dtype(np.int64).itemsize
+        assert grouped_scratch.grouped_sorted_lanes.nbytes == 3 * k * np.dtype(np.int64).itemsize
     finally:
+        if grouped_scratch is not None:
+            grouped_scratch.free()
         if bulk_scratch is not None:
             bulk_scratch.free()
         if scratch is not None:

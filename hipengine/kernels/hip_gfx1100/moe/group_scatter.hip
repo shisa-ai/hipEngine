@@ -59,6 +59,80 @@ __global__ void qwen35_moe_group_prefix_kernel(
   }
 }
 
+__global__ void qwen35_moe_group_prefix_active_kernel(
+    const int32_t* __restrict__ counts,
+    int64_t* __restrict__ expert_start,
+    int64_t* __restrict__ active_experts,
+    int64_t* __restrict__ active_count,
+    int64_t num_experts) {
+  if (blockIdx.x != 0 || threadIdx.x != 0) {
+    return;
+  }
+  int64_t offset = 0;
+  int64_t active = 0;
+  for (int64_t expert = 0; expert < num_experts; ++expert) {
+    expert_start[expert] = offset;
+    const int64_t count = static_cast<int64_t>(counts[expert]);
+    if (count > 0) {
+      active_experts[active++] = expert;
+      offset += count;
+    }
+  }
+  expert_start[num_experts] = offset;
+  active_count[0] = active;
+}
+
+__global__ void qwen35_moe_group_compact_active_kernel(
+    const int64_t* __restrict__ selected_experts,
+    const float* __restrict__ routing_weights,
+    int64_t* __restrict__ expert_start,
+    int64_t* __restrict__ active_experts,
+    int64_t* __restrict__ active_count,
+    int64_t* __restrict__ sorted_lanes,
+    int64_t* __restrict__ sorted_experts,
+    float* __restrict__ sorted_weights,
+    int64_t total_lanes,
+    int64_t num_experts) {
+  extern __shared__ int64_t counts[];
+  const int64_t expert = threadIdx.x;
+  if (expert < num_experts) {
+    int64_t count = 0;
+    for (int64_t lane = 0; lane < total_lanes; ++lane) {
+      count += selected_experts[lane] == expert;
+    }
+    counts[expert] = count;
+  }
+  __syncthreads();
+
+  if (threadIdx.x == 0) {
+    int64_t offset = 0;
+    int64_t active = 0;
+    for (int64_t idx = 0; idx < num_experts; ++idx) {
+      expert_start[idx] = offset;
+      const int64_t count = counts[idx];
+      if (count > 0) {
+        active_experts[active++] = idx;
+        offset += count;
+      }
+    }
+    expert_start[num_experts] = offset;
+    active_count[0] = active;
+  }
+  __syncthreads();
+
+  if (expert < num_experts && counts[expert] > 0) {
+    int64_t out_idx = expert_start[expert];
+    for (int64_t lane = 0; lane < total_lanes; ++lane) {
+      if (selected_experts[lane] == expert) {
+        sorted_lanes[out_idx] = lane;
+        sorted_experts[out_idx] = expert;
+        sorted_weights[out_idx] = routing_weights[lane];
+        ++out_idx;
+      }
+    }
+  }
+}
+
 __global__ void qwen35_moe_wmma_tile_map_kernel(
     const int64_t* __restrict__ expert_start_compact,
     int64_t* __restrict__ wmma_expert_start,
@@ -276,6 +350,68 @@ extern "C" int hipengine_qwen35_moe_group_prefix(
       total_padded,
       num_experts,
       pad_multiple);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_moe_group_prefix_active(
+    const int32_t* counts,
+    int64_t* expert_start,
+    int64_t* active_experts,
+    int64_t* active_count,
+    int64_t num_experts,
+    hipStream_t stream) {
+  if (!counts || !expert_start || !active_experts || !active_count ||
+      num_experts <= 0 || num_experts > 1024) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      qwen35_moe_group_prefix_active_kernel,
+      dim3(1),
+      dim3(1),
+      0,
+      stream,
+      counts,
+      expert_start,
+      active_experts,
+      active_count,
+      num_experts);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_moe_group_compact_active(
+    const int64_t* selected_experts,
+    const float* routing_weights,
+    int64_t* expert_start,
+    int64_t* active_experts,
+    int64_t* active_count,
+    int64_t* sorted_lanes,
+    int64_t* sorted_experts,
+    float* sorted_weights,
+    int64_t total_lanes,
+    int64_t num_experts,
+    hipStream_t stream) {
+  if (!selected_experts || !routing_weights || !expert_start ||
+      !active_experts || !active_count || !sorted_lanes || !sorted_experts ||
+      !sorted_weights || total_lanes <= 0 || num_experts <= 0 ||
+      num_experts > 256) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      qwen35_moe_group_compact_active_kernel,
+      dim3(1),
+      dim3(256),
+      static_cast<size_t>(num_experts) * sizeof(int64_t),
+      stream,
+      selected_experts,
+      routing_weights,
+      expert_start,
+      active_experts,
+      active_count,
+      sorted_lanes,
+      sorted_experts,
+      sorted_weights,
+      total_lanes,
+      num_experts);
   return static_cast<int>(hipGetLastError());
 }
 

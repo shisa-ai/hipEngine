@@ -24,10 +24,12 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_selected_dual_silu_q8_1_dp4a_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_gemv_decode_compact_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_gemv_decode_compact_fp16_fp16_out,
+    gguf_q4_k_t16_selected_dual_grouped_smallm_bf16_bf16_out,
     gguf_q4_k_t16_selected_dual_pairreuse_gemv_decode_compact_bf16_bf16_out,
     gguf_q4_k_t16_selected_gemv_bf16_bf16_out,
     gguf_q4_k_t16_selected_gemv_fp16_fp16_out,
     gguf_q4_k_t16_selected_gemv_decode_compact_bf16_bf16_out,
+    gguf_q4_k_t16_selected_grouped_smallm_bf16_bf16_out,
     gguf_q4_k_t16_selected_pairreuse_gemv_decode_compact_bf16_bf16_out,
     gguf_q4_k_t16_selected_gemv_decode_compact_fp16_fp16_out,
     gguf_q5_k_t16_selected_gemv_bf16_bf16_out,
@@ -42,6 +44,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q6_k_t16_selected_gemv_fp16_fp16_out,
     gguf_q6_k_t16_selected_gemv_decode_compact_bf16_bf16_out,
     gguf_q6_k_t16_selected_gemv_decode_compact_fp16_fp16_out,
+    gguf_q6_k_t16_selected_grouped_smallm_bf16_bf16_out,
     gguf_q6_k_t16_selected_pairreuse_gemv_decode_compact_bf16_bf16_out,
     plan_gguf_t16_selected_gemv_build,
     register_gguf_t16_selected_gemv_kernels,
@@ -211,6 +214,120 @@ def _run_dual(fn, x_dev, expert_start, ta, tb, out_features_a, out_features_b, o
         return out_arr
     finally:
         for buf in (x_buf, es_buf, ta_buf, tb_buf, out_buf):
+            free(buf)
+
+
+def _run_grouped_dual(
+    fn,
+    x_dev,
+    expert_start,
+    ta,
+    tb,
+    out_features,
+    out_dtype,
+    library,
+) -> tuple[np.ndarray, np.ndarray]:
+    compact_rows = int(expert_start[-1])
+    in_features = x_dev.shape[1]
+    x_buf = malloc(x_dev.nbytes)
+    copy_host_to_device(x_buf, host_array_ptr(x_dev), x_dev.nbytes)
+    es_buf = malloc(expert_start.nbytes)
+    copy_host_to_device(es_buf, host_array_ptr(expert_start), expert_start.nbytes)
+    active = np.flatnonzero(np.diff(expert_start)).astype(np.int64)
+    active_count = np.asarray([active.size], dtype=np.int64)
+    active_buf = malloc(active.nbytes)
+    copy_host_to_device(active_buf, host_array_ptr(active), active.nbytes)
+    active_count_buf = malloc(active_count.nbytes)
+    copy_host_to_device(
+        active_count_buf, host_array_ptr(active_count), active_count.nbytes
+    )
+    ta_buf = malloc(ta.nbytes)
+    copy_host_to_device(ta_buf, host_array_ptr(ta), ta.nbytes)
+    tb_buf = malloc(tb.nbytes)
+    copy_host_to_device(tb_buf, host_array_ptr(tb), tb.nbytes)
+    out_a = np.zeros((compact_rows, out_features), dtype=out_dtype)
+    out_b = np.zeros((compact_rows, out_features), dtype=out_dtype)
+    out_a_buf = malloc(out_a.nbytes)
+    out_b_buf = malloc(out_b.nbytes)
+    try:
+        fn(
+            x_buf.ptr,
+            es_buf.ptr,
+            active_buf.ptr,
+            active_count_buf.ptr,
+            ta_buf.ptr,
+            tb_buf.ptr,
+            out_a_buf.ptr,
+            out_b_buf.ptr,
+            compact_rows,
+            in_features,
+            out_features,
+            len(expert_start) - 1,
+            library=library,
+        )
+        copy_device_to_host(host_array_ptr(out_a), out_a_buf, out_a.nbytes)
+        copy_device_to_host(host_array_ptr(out_b), out_b_buf, out_b.nbytes)
+        return out_a, out_b
+    finally:
+        for buf in (
+            x_buf,
+            es_buf,
+            active_buf,
+            active_count_buf,
+            ta_buf,
+            tb_buf,
+            out_a_buf,
+            out_b_buf,
+        ):
+            free(buf)
+
+
+def _run_grouped_smallm_single(
+    fn, x_dev, expert_start, tiles, out_features, out_dtype, library
+) -> np.ndarray:
+    compact_rows = int(expert_start[-1])
+    in_features = x_dev.shape[1]
+    x_buf = malloc(x_dev.nbytes)
+    copy_host_to_device(x_buf, host_array_ptr(x_dev), x_dev.nbytes)
+    es_buf = malloc(expert_start.nbytes)
+    copy_host_to_device(es_buf, host_array_ptr(expert_start), expert_start.nbytes)
+    active = np.flatnonzero(np.diff(expert_start)).astype(np.int64)
+    active_count = np.asarray([active.size], dtype=np.int64)
+    active_buf = malloc(active.nbytes)
+    copy_host_to_device(active_buf, host_array_ptr(active), active.nbytes)
+    active_count_buf = malloc(active_count.nbytes)
+    copy_host_to_device(
+        active_count_buf, host_array_ptr(active_count), active_count.nbytes
+    )
+    w_buf = malloc(tiles.nbytes)
+    copy_host_to_device(w_buf, host_array_ptr(tiles), tiles.nbytes)
+    out_arr = np.zeros((compact_rows, out_features), dtype=out_dtype)
+    out_buf = malloc(out_arr.nbytes)
+    try:
+        fn(
+            x_buf.ptr,
+            es_buf.ptr,
+            active_buf.ptr,
+            active_count_buf.ptr,
+            w_buf.ptr,
+            out_buf.ptr,
+            compact_rows,
+            in_features,
+            out_features,
+            tiles.shape[0],
+            library=library,
+        )
+        copy_device_to_host(host_array_ptr(out_arr), out_buf, out_arr.nbytes)
+        return out_arr
+    finally:
+        for buf in (
+            x_buf,
+            es_buf,
+            active_buf,
+            active_count_buf,
+            w_buf,
+            out_buf,
+        ):
             free(buf)
 
 
@@ -559,6 +676,7 @@ def test_p9_h3d_registry_keys_resolve() -> None:
             "selected_dual_t16_gemv_decode_compact_fp16_fp16_out",
             "selected_dual_t16_gemv_decode_bf16_bf16_out",
             "selected_dual_t16_gemv_decode_fp16_fp16_out",
+            "selected_dual_t16_grouped_smallm_bf16_bf16_out",
             "selected_dual_t16_silu_gemv_decode_bf16_bf16_out",
             "selected_dual_t16_q8_1_dp4a_gemv_decode_bf16_bf16_out",
             "selected_dual_t16_silu_q8_1_dp4a_gemv_decode_bf16_bf16_out",
@@ -566,6 +684,7 @@ def test_p9_h3d_registry_keys_resolve() -> None:
             "selected_t16_gemv_decode_compact_fp16_fp16_out",
             "selected_t16_gemv_decode_bf16_bf16_out",
             "selected_t16_gemv_decode_fp16_fp16_out",
+            "selected_t16_grouped_smallm_bf16_bf16_out",
         ),
         "gguf_q5_k_t16_v1": (
             "selected_t16_gemv_decode_compact_bf16_bf16_out",
@@ -579,6 +698,7 @@ def test_p9_h3d_registry_keys_resolve() -> None:
             "selected_t16_gemv_decode_compact_fp16_fp16_out",
             "selected_t16_gemv_decode_bf16_bf16_out",
             "selected_t16_gemv_decode_fp16_fp16_out",
+            "selected_t16_grouped_smallm_bf16_bf16_out",
         ),
     }.items():
         for variant in variants:
@@ -891,6 +1011,179 @@ def test_t16_compact_down_pairreuse_matches_direct_bits_beyond_64_lanes(
     )
 
     np.testing.assert_array_equal(candidate, reference)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_q4_q6_t16_grouped_smallm_matches_direct_bits_and_cpu_oracle(
+    t16_selected_library,
+) -> None:
+    """Grouped 1/2/4/8-row buckets must retain the direct reduction exactly."""
+
+    counts = [0, 1, 2, 4, 8, 3, 5]
+    expert_start = np.concatenate([[0], np.cumsum(counts)]).astype(np.int64)
+    selected = np.repeat(np.arange(len(counts), dtype=np.int64), counts)
+    rows = int(selected.size)
+    in_features, out_features = 512, 64
+    rng = np.random.default_rng(20260725)
+    x_bf16 = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+    )
+    x_ref = _bf16_u16_to_f32(x_bf16)
+
+    qa = _stack_experts(make_q4_k_weight, out_features, in_features, len(counts), seed=97)
+    qb = _stack_experts(make_q4_k_weight, out_features, in_features, len(counts), seed=101)
+    ta = repack_gguf_q4_k_tile16(qa).tiles
+    tb = repack_gguf_q4_k_tile16(qb).tiles
+    direct_a, direct_b = _run_direct_dual(
+        gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
+        x_bf16,
+        selected,
+        ta,
+        tb,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+    grouped_a, grouped_b = _run_grouped_dual(
+        gguf_q4_k_t16_selected_dual_grouped_smallm_bf16_bf16_out,
+        x_bf16,
+        expert_start,
+        ta,
+        tb,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+    np.testing.assert_array_equal(grouped_a, direct_a)
+    np.testing.assert_array_equal(grouped_b, direct_b)
+    expected_dual = _expected_dual(
+        x_ref, expert_start, qa, qb, out_features, out_features
+    )
+    actual_dual = np.concatenate(
+        [_bf16_u16_to_f32(grouped_a), _bf16_u16_to_f32(grouped_b)], axis=1
+    )
+    np.testing.assert_allclose(
+        actual_dual,
+        _bf16_u16_to_f32(_f32_to_bf16_u16(expected_dual)),
+        **_TOL,
+    )
+
+    q6 = _stack_experts(make_q6_k_weight, out_features, in_features, len(counts), seed=103)
+    t6 = repack_gguf_q6_k_tile16(q6).tiles
+    direct_down = _run_direct_single(
+        gguf_q6_k_t16_selected_gemv_bf16_bf16_out,
+        x_bf16,
+        selected,
+        t6,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+    grouped_down = _run_grouped_smallm_single(
+        gguf_q6_k_t16_selected_grouped_smallm_bf16_bf16_out,
+        x_bf16,
+        expert_start,
+        t6,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+    np.testing.assert_array_equal(grouped_down, direct_down)
+    expected_down = _expected_single(
+        x_ref, expert_start, q6, out_features, GGMLQuantizationType.Q6_K
+    )
+    np.testing.assert_allclose(
+        _bf16_u16_to_f32(grouped_down),
+        _bf16_u16_to_f32(_f32_to_bf16_u16(expected_down)),
+        **_TOL,
+    )
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_q4_q6_t16_grouped_smallm_matches_laguna_production_shape_bits(
+    t16_selected_library,
+) -> None:
+    counts = [1, 2, 4, 8]
+    expert_start = np.concatenate([[0], np.cumsum(counts)]).astype(np.int64)
+    selected = np.repeat(np.arange(len(counts), dtype=np.int64), counts)
+    rows = int(selected.size)
+    hidden_size, expert_ffn = 3_072, 1_024
+    rng = np.random.default_rng(20260726)
+    hidden_bf16 = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.1, size=(rows, hidden_size)).astype(np.float32)
+    )
+
+    gate = _stack_experts(
+        make_q4_k_weight, expert_ffn, hidden_size, len(counts), seed=107
+    )
+    up = _stack_experts(
+        make_q4_k_weight, expert_ffn, hidden_size, len(counts), seed=109
+    )
+    gate_tiles = repack_gguf_q4_k_tile16(gate).tiles
+    up_tiles = repack_gguf_q4_k_tile16(up).tiles
+    direct_gate, direct_up = _run_direct_dual(
+        gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out,
+        hidden_bf16,
+        selected,
+        gate_tiles,
+        up_tiles,
+        expert_ffn,
+        np.uint16,
+        t16_selected_library,
+    )
+    grouped_gate, grouped_up = _run_grouped_dual(
+        gguf_q4_k_t16_selected_dual_grouped_smallm_bf16_bf16_out,
+        hidden_bf16,
+        expert_start,
+        gate_tiles,
+        up_tiles,
+        expert_ffn,
+        np.uint16,
+        t16_selected_library,
+    )
+    np.testing.assert_array_equal(grouped_gate, direct_gate)
+    np.testing.assert_array_equal(grouped_up, direct_up)
+
+    intermediate_bf16 = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.1, size=(rows, expert_ffn)).astype(np.float32)
+    )
+    for builder, repack, direct_fn, grouped_fn in (
+        (
+            make_q4_k_weight,
+            repack_gguf_q4_k_tile16,
+            gguf_q4_k_t16_selected_gemv_bf16_bf16_out,
+            gguf_q4_k_t16_selected_grouped_smallm_bf16_bf16_out,
+        ),
+        (
+            make_q6_k_weight,
+            repack_gguf_q6_k_tile16,
+            gguf_q6_k_t16_selected_gemv_bf16_bf16_out,
+            gguf_q6_k_t16_selected_grouped_smallm_bf16_bf16_out,
+        ),
+    ):
+        weight = _stack_experts(
+            builder, hidden_size, expert_ffn, len(counts), seed=113
+        )
+        tiles = repack(weight).tiles
+        direct = _run_direct_single(
+            direct_fn,
+            intermediate_bf16,
+            selected,
+            tiles,
+            hidden_size,
+            np.uint16,
+            t16_selected_library,
+        )
+        grouped = _run_grouped_smallm_single(
+            grouped_fn,
+            intermediate_bf16,
+            expert_start,
+            tiles,
+            hidden_size,
+            np.uint16,
+            t16_selected_library,
+        )
+        np.testing.assert_array_equal(grouped, direct)
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
