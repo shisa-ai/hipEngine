@@ -104,68 +104,6 @@ def test_laguna_eager_scratch_is_bounded_by_max_head_width_and_frees() -> None:
     scratch.free(runtime=runtime)
 
 
-def test_laguna_dense_rows_dual_prefill_pairs_gate_up_before_down(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    session = runner_module.LagunaGGUFResidentSession.__new__(
-        runner_module.LagunaGGUFResidentSession
-    )
-    config = _config()
-    weights = {
-        "ffn_gate": object(),
-        "ffn_up": object(),
-        "ffn_down": object(),
-    }
-    layer = SimpleNamespace(weight=lambda name: weights[name])
-    scratch = SimpleNamespace(
-        norm=SimpleNamespace(ptr=0x1000),
-        dense_gate=SimpleNamespace(ptr=0x2000),
-        dense_up=SimpleNamespace(ptr=0x3000),
-        dense_intermediate=SimpleNamespace(ptr=0x4000),
-        dense_output=SimpleNamespace(ptr=0x5000),
-        post_attention=SimpleNamespace(ptr=0x6000),
-        hidden=SimpleNamespace(ptr=0x7000),
-    )
-    stage_calls: list[str] = []
-    session.backend = "hip_gfx1151"
-    session.runtime = object()
-    session.weights = SimpleNamespace(config=config)
-    session.rows_scratch = scratch
-    session.kernel_plan = SimpleNamespace(
-        dense_silu=lambda *_args, **_kwargs: stage_calls.append("silu"),
-        add=lambda *_args, **_kwargs: stage_calls.append("add"),
-    )
-    session.libraries = SimpleNamespace(
-        linear={},
-        dense_silu=object(),
-        gguf_ops=object(),
-    )
-    pair_calls: list[tuple] = []
-    linear_weights: list[object] = []
-    monkeypatch.setattr(
-        runner_module,
-        "laguna_dense_shared_prefill_strategy",
-        lambda _backend: "dual",
-    )
-    monkeypatch.setattr(
-        runner_module,
-        "launch_gguf_linear_pair",
-        lambda *args, **_kwargs: pair_calls.append(args) or True,
-    )
-    monkeypatch.setattr(
-        runner_module,
-        "launch_gguf_linear",
-        lambda weight, *_args, **_kwargs: linear_weights.append(weight),
-    )
-
-    session._run_dense_ffn_rows(layer, rows=3, stream=7)
-
-    assert len(pair_calls) == 1
-    assert pair_calls[0][:2] == (weights["ffn_gate"], weights["ffn_up"])
-    assert linear_weights == [weights["ffn_down"]]
-    assert stage_calls == ["silu", "add"]
-
-
 def test_laguna_eager_scratch_cleans_partial_allocation_failure() -> None:
     runtime = _FakeRuntime(fail_malloc_at=9)
 

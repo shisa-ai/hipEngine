@@ -775,7 +775,6 @@ def launch_gguf_linear_pair(
     out_features_b: int | None = None,
     backend: str | None = None,
     stream: int = 0,
-    libraries: Mapping[str, ctypes.CDLL] | None = None,
     runtime=None,
     use_wmma_prefill: bool | None = None,
     use_gemv_decode: bool | None = None,
@@ -801,7 +800,6 @@ def launch_gguf_linear_pair(
     use_wmma = _resolve_use_wmma_prefill(use_wmma_prefill)
     use_gemv = _resolve_use_gemv_decode(use_gemv_decode)
     out_features_b = out_features if out_features_b is None else int(out_features_b)
-    library = None if libraries is None else libraries.get(weight_a.spec.quant_key)
 
     cache_key = (
         generation(),
@@ -842,7 +840,6 @@ def launch_gguf_linear_pair(
             in_features,
             out_features,
             stream=stream,
-            library=library,
             runtime=runtime,
         )
         return True
@@ -872,7 +869,6 @@ def launch_gguf_linear_pair(
                 out_features_b,
                 threads=_Q8_T16_ROWTILE_THREADS,
                 stream=stream,
-                library=library,
                 runtime=runtime,
             )
             return True
@@ -888,7 +884,6 @@ def launch_gguf_linear_pair(
             out_features_b,
             threads=_resolve_q8_t16_threads(threads),
             stream=stream,
-            library=library,
             runtime=runtime,
         )
         return True
@@ -904,7 +899,6 @@ def launch_gguf_linear_pair(
             in_features,
             out_features,
             stream=stream,
-            library=library,
             runtime=runtime,
         )
         return True
@@ -924,7 +918,6 @@ def launch_gguf_linear_pair(
             in_features,
             out_features,
             stream=stream,
-            library=library,
             runtime=runtime,
         )
         return True

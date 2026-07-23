@@ -5,13 +5,12 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 import math
-import os
 from types import MappingProxyType
 from typing import Callable
 
 from hipengine.core.hip import HipRuntime
 from hipengine.core.memory import DeviceBuffer, free, malloc
-from hipengine.kernels.backends import backend_package_capability, load_backend_kernel_package
+from hipengine.kernels.backends import load_backend_kernel_package
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
 from hipengine.loading.laguna_gguf import LagunaGGUFConfig, SPARSE_MOE
 from hipengine.loading.laguna_gguf_materialize import (
@@ -24,7 +23,7 @@ from hipengine.loading.laguna_gguf_materialize import (
 )
 from hipengine.quant.gguf_q4_k import GGUF_Q4_K_TILE16_BLOCK_BYTES
 from hipengine.quant.gguf_t16 import GGUF_Q6_K_T16_BLOCK_BYTES
-from hipengine.runtime.gguf_linear import launch_gguf_linear, launch_gguf_linear_pair
+from hipengine.runtime.gguf_linear import launch_gguf_linear
 
 _QK_K = 256
 _T16_COLUMNS = 16
@@ -39,8 +38,6 @@ _SELECTED_DOWN_VARIANT = "selected_t16_gemv_decode_bf16_bf16_out"
 _SILU_VARIANT = "out"
 _WEIGHTED_SUM_VARIANT = "out"
 _ADD_VARIANT = "add"
-_LAGUNA_DENSE_SHARED_PREFILL_ENV = "HIPENGINE_LAGUNA_DENSE_SHARED_PREFILL"
-_LAGUNA_DENSE_SHARED_PREFILL_STRATEGIES = frozenset({"auto", "split", "dual"})
 
 
 @dataclass(frozen=True)
@@ -580,31 +577,6 @@ def run_laguna_moe_c1(
     return scratch.output
 
 
-def laguna_dense_shared_prefill_strategy(backend: str) -> str:
-    """Resolve exact Q4 pack8 gate/up pairing with an explicit split rollback."""
-
-    requested = os.environ.get(_LAGUNA_DENSE_SHARED_PREFILL_ENV, "auto").strip().lower()
-    if not requested:
-        requested = "auto"
-    if requested not in _LAGUNA_DENSE_SHARED_PREFILL_STRATEGIES:
-        choices = "|".join(sorted(_LAGUNA_DENSE_SHARED_PREFILL_STRATEGIES))
-        raise ValueError(f"{_LAGUNA_DENSE_SHARED_PREFILL_ENV} must be one of {choices}")
-    if requested != "auto":
-        return requested
-    selected = str(
-        backend_package_capability(
-            backend,
-            "LAGUNA_DENSE_SHARED_PREFILL_STRATEGY",
-            "split",
-        )
-    ).strip().lower()
-    if selected not in _LAGUNA_DENSE_SHARED_PREFILL_STRATEGIES - {"auto"}:
-        raise RuntimeError(
-            "backend LAGUNA_DENSE_SHARED_PREFILL_STRATEGY must resolve to split or dual"
-        )
-    return selected
-
-
 def run_laguna_moe_rows(
     hidden_bf16_ptr: int,
     layer: LagunaGGUFResidentLayerWeights,
@@ -713,53 +685,34 @@ def run_laguna_moe_rows(
     shared_gate = layer.weight("ffn_gate_shexp")
     shared_up = layer.weight("ffn_up_shexp")
     shared_down = layer.weight("ffn_down_shexp")
-    paired = False
-    if laguna_dense_shared_prefill_strategy(plan.backend) == "dual":
-        paired = launch_gguf_linear_pair(
-            shared_gate,
-            shared_up,
-            hidden_bf16_ptr,
-            scratch.shared_gate.ptr,
-            scratch.shared_up.ptr,
-            tokens,
-            h,
-            sf,
-            backend=plan.backend,
-            stream=stream,
-            libraries=libraries,
-            runtime=runtime,
-            use_wmma_prefill=False,
-            use_gemv_decode=False,
-        )
-    if not paired:
-        launch_gguf_linear(
-            shared_gate,
-            hidden_bf16_ptr,
-            scratch.shared_gate.ptr,
-            tokens,
-            h,
-            sf,
-            backend=plan.backend,
-            stream=stream,
-            runtime=runtime,
-            libraries=libraries,
-            use_wmma_prefill=False,
-            use_gemv_decode=False,
-        )
-        launch_gguf_linear(
-            shared_up,
-            hidden_bf16_ptr,
-            scratch.shared_up.ptr,
-            tokens,
-            h,
-            sf,
-            backend=plan.backend,
-            stream=stream,
-            runtime=runtime,
-            libraries=libraries,
-            use_wmma_prefill=False,
-            use_gemv_decode=False,
-        )
+    launch_gguf_linear(
+        shared_gate,
+        hidden_bf16_ptr,
+        scratch.shared_gate.ptr,
+        tokens,
+        h,
+        sf,
+        backend=plan.backend,
+        stream=stream,
+        runtime=runtime,
+        libraries=libraries,
+        use_wmma_prefill=False,
+        use_gemv_decode=False,
+    )
+    launch_gguf_linear(
+        shared_up,
+        hidden_bf16_ptr,
+        scratch.shared_up.ptr,
+        tokens,
+        h,
+        sf,
+        backend=plan.backend,
+        stream=stream,
+        runtime=runtime,
+        libraries=libraries,
+        use_wmma_prefill=False,
+        use_gemv_decode=False,
+    )
     plan.shared_silu(
         scratch.shared_gate.ptr,
         scratch.shared_up.ptr,
@@ -822,7 +775,6 @@ __all__ = [
     "LagunaMoEKernelPlan",
     "LagunaMoEScratch",
     "allocate_laguna_moe_scratch",
-    "laguna_dense_shared_prefill_strategy",
     "resolve_laguna_moe_plan",
     "run_laguna_moe_c1",
     "run_laguna_moe_rows",

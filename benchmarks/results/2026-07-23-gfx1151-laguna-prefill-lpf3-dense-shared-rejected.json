@@ -1,0 +1,461 @@
+{
+  "command": [
+    "/home/lhl/.local/share/uv/python/cpython-3.10.20-linux-x86_64-gnu/bin/python3.10",
+    "scripts/laguna_dense_shared_prefill_bench.py",
+    "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "--backend",
+    "hip_gfx1151",
+    "--context-length",
+    "4096",
+    "--repetitions",
+    "3",
+    "--warmups",
+    "1",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--require-cached-build",
+    "--repacked-cache",
+    "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+    "--model-sha256",
+    "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+    "--output",
+    "/tmp/laguna-prefill-lpf3-dense-shared-ab.json"
+  ],
+  "correctness": {
+    "all_modes_and_repetitions_exact_next_token": true,
+    "pass": true,
+    "tracked_returned_to_baseline": true
+  },
+  "created_at": "2026-07-23T00:08:02.990491+00:00",
+  "kind": "hipengine_laguna_prefill_lpf3_dense_shared_ab",
+  "load": {
+    "resident_nbytes": 77125390396,
+    "seconds_excluded": 48.53204050299246
+  },
+  "memory": {
+    "gpu_free_after": 128694095872,
+    "gpu_free_before": 128844787712,
+    "hip_total_bytes": 128849018880,
+    "tracked_after": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 77125390396,
+      "peak_allocations": 1377,
+      "total_allocated_bytes": 77125390396,
+      "total_freed_bytes": 77125390396
+    },
+    "tracked_before": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 0,
+      "peak_allocations": 0,
+      "total_allocated_bytes": 0,
+      "total_freed_bytes": 0
+    }
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "quant": "Q4_K_M mixed GGUF v3",
+    "repacked_cache": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+    "repacked_cache_manifest_sha256": "d328e0b73f8957eb051d3ed24d17a4aaf6a3d15fce3c45baf10c02f4de0cabfc",
+    "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f"
+  },
+  "notes": [
+    "Split and dual spans share one resident model, runtime, token stream, and bounded scratch owner.",
+    "The candidate pairs dense-layer and shared-expert Q4 gate/up projections into separate exact output buffers.",
+    "The separate canonical category artifact must own free-running h16/h32 and E2E promotion gates.",
+    "Run rocprofv3 separately with cached builds; do not profile model JIT compilation."
+  ],
+  "pass": false,
+  "performance_claim": false,
+  "performance_claim_scope": "same-session Laguna split dense/shared Q4 gate/up prefill versus exact dual-projection candidate; LPF-1 tiled F16 default active; one physical chunk; model load excluded",
+  "platform": {
+    "backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "hip_total_bytes": 128849018880,
+    "machine": "x86_64",
+    "target_arch": "gfx1151"
+  },
+  "promotion": {
+    "dual_profile_seconds": 25.352323231869377,
+    "effective_profile_tokens": 1251,
+    "effective_speedup": 0.9929277787241566,
+    "failed_checks": [
+      "candidate_not_faster_at_every_profile_shape",
+      "effective_profile_not_faster"
+    ],
+    "pass": false,
+    "policy": "candidate median strictly faster at every retained profile shape",
+    "slower_or_equal_rows": [
+      16,
+      32,
+      55,
+      64,
+      122,
+      128
+    ],
+    "split_profile_seconds": 25.17302599211689
+  },
+  "protocol": {
+    "candidate_selection": "process-local HIPENGINE_LAGUNA_DENSE_SHARED_PREFILL=dual only inside candidate spans",
+    "context_length": 4096,
+    "control_selection": "process-local HIPENGINE_LAGUNA_DENSE_SHARED_PREFILL=split only inside control spans",
+    "f16_prefill_selection": "gfx1151 retained LPF-1 backend default",
+    "modes": [
+      "split",
+      "dual"
+    ],
+    "one_physical_chunk": true,
+    "prefill_chunk_size": 128,
+    "prompt_suite": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "repetitions": 3,
+    "rows": [
+      16,
+      32,
+      55,
+      64,
+      122,
+      128
+    ],
+    "timed_order": "alternating split/dual per shape and reversed next repetition",
+    "timing_scope": "reset complete through synchronized first-token projection; load excluded",
+    "token_source": {
+      "category": "mixed_ja_en",
+      "extension": "repeat_without_leading_bos",
+      "prompt_id": "mixed_ja_en_review",
+      "requested_tokens": 128,
+      "source_tokens": 122
+    },
+    "token_stream_sha256": "baaa51ff256f4fbbdfb34b59681e57b5b9b842b94f11cb08660763c24019f422",
+    "warmups_per_shape_and_mode": 1
+  },
+  "provenance": {
+    "build_profile": "laguna_prefill_lpf3_dense_shared_ab",
+    "collected_at": "2026-07-23T00:06:06.437035+00:00",
+    "command": [
+      "/home/lhl/.local/share/uv/python/cpython-3.10.20-linux-x86_64-gnu/bin/python3.10",
+      "scripts/laguna_dense_shared_prefill_bench.py",
+      "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1151",
+      "--context-length",
+      "4096",
+      "--repetitions",
+      "3",
+      "--warmups",
+      "1",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--repacked-cache",
+      "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.hipengine-repacked-v1",
+      "--model-sha256",
+      "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+      "--output",
+      "/tmp/laguna-prefill-lpf3-dense-shared-ab.json"
+    ],
+    "configured_backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "dirty": true,
+    "environment": {
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null,
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIP_VISIBLE_DEVICES": null,
+      "ROCR_VISIBLE_DEVICES": null
+    },
+    "git_branch": "main",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "hipengine_commit": "e2bd2fe3cb333c7e1a2ab62475002213bb9b83d3",
+    "kind": "hipengine_artifact_provenance",
+    "kv_dtype": "bf16",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        37586027312,
+        75172054624
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 75173103200,
+      "value": "05caf641aa0d991c0e447450420c042bfab22ae248b1f12aba4bd3774c2024c8"
+    },
+    "model_path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+    "model_revision": null,
+    "profiler": null,
+    "quant": "gguf_q4_k_m",
+    "repetitions": 3,
+    "repo_root": "/home/lhl/hipEngine-main",
+    "resolved_backend": "hip_gfx1151",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "schema_version": 1,
+    "staged_dirty": false,
+    "target_arch": "gfx1151",
+    "timing_protocol": "same_session_balanced_split_vs_dual_dense_shared_q4_prefill",
+    "unstaged_dirty": false,
+    "untracked_count": 255,
+    "untracked_dirty": true,
+    "warmups": 12
+  },
+  "repo": {
+    "revision": "e2bd2fe3cb333c7e1a2ab62475002213bb9b83d3",
+    "tracked_clean": true,
+    "tracked_status": [],
+    "untracked_shared_tree_artifacts_excluded": true
+  },
+  "schema": 1,
+  "shapes": {
+    "122": {
+      "dual": {
+        "max_seconds": 2.453460752032697,
+        "median_seconds": 2.4533709179377183,
+        "median_tok_s": 49.72749905364987,
+        "min_seconds": 2.452654973953031,
+        "rows": 122,
+        "samples_seconds": [
+          2.4533709179377183,
+          2.453460752032697,
+          2.452654973953031
+        ]
+      },
+      "dual_vs_split_speedup": 0.9931094186508619,
+      "exact_next_token": true,
+      "next_token_ids": {
+        "dual": [
+          79,
+          79,
+          79
+        ],
+        "split": [
+          79,
+          79,
+          79
+        ]
+      },
+      "rows": 122,
+      "split": {
+        "max_seconds": 2.4378341649426147,
+        "median_seconds": 2.436465766048059,
+        "median_tok_s": 50.07252788036652,
+        "min_seconds": 2.434547438984737,
+        "rows": 122,
+        "samples_seconds": [
+          2.4378341649426147,
+          2.434547438984737,
+          2.436465766048059
+        ]
+      }
+    },
+    "128": {
+      "dual": {
+        "max_seconds": 2.561400401056744,
+        "median_seconds": 2.561179886921309,
+        "median_tok_s": 49.97696594980825,
+        "min_seconds": 2.5608659019926563,
+        "rows": 128,
+        "samples_seconds": [
+          2.561400401056744,
+          2.5608659019926563,
+          2.561179886921309
+        ]
+      },
+      "dual_vs_split_speedup": 0.9920550442461747,
+      "exact_next_token": true,
+      "next_token_ids": {
+        "dual": [
+          81,
+          81,
+          81
+        ],
+        "split": [
+          81,
+          81,
+          81
+        ]
+      },
+      "rows": 128,
+      "split": {
+        "max_seconds": 2.542392289964482,
+        "median_seconds": 2.540831426042132,
+        "median_tok_s": 50.3772106594991,
+        "min_seconds": 2.539597635040991,
+        "rows": 128,
+        "samples_seconds": [
+          2.539597635040991,
+          2.540831426042132,
+          2.542392289964482
+        ]
+      }
+    },
+    "16": {
+      "dual": {
+        "max_seconds": 0.34826288209296763,
+        "median_seconds": 0.34794242901261896,
+        "median_tok_s": 45.984618907801334,
+        "min_seconds": 0.3477205850649625,
+        "rows": 16,
+        "samples_seconds": [
+          0.3477205850649625,
+          0.34826288209296763,
+          0.34794242901261896
+        ]
+      },
+      "dual_vs_split_speedup": 0.9937375558593536,
+      "exact_next_token": true,
+      "next_token_ids": {
+        "dual": [
+          638,
+          638,
+          638
+        ],
+        "split": [
+          638,
+          638,
+          638
+        ]
+      },
+      "rows": 16,
+      "split": {
+        "max_seconds": 0.34600039606448263,
+        "median_seconds": 0.34576345898676664,
+        "median_tok_s": 46.27440981440542,
+        "min_seconds": 0.3456562489736825,
+        "rows": 16,
+        "samples_seconds": [
+          0.34600039606448263,
+          0.3456562489736825,
+          0.34576345898676664
+        ]
+      }
+    },
+    "32": {
+      "dual": {
+        "max_seconds": 0.6620422749547288,
+        "median_seconds": 0.6610959679819643,
+        "median_tok_s": 48.40447007668485,
+        "min_seconds": 0.6608035580720752,
+        "rows": 32,
+        "samples_seconds": [
+          0.6620422749547288,
+          0.6610959679819643,
+          0.6608035580720752
+        ]
+      },
+      "dual_vs_split_speedup": 0.9934063824404274,
+      "exact_next_token": true,
+      "next_token_ids": {
+        "dual": [
+          99,
+          99,
+          99
+        ],
+        "split": [
+          99,
+          99,
+          99
+        ]
+      },
+      "rows": 32,
+      "split": {
+        "max_seconds": 0.6571155660785735,
+        "median_seconds": 0.6567369539989159,
+        "median_tok_s": 48.72574903109964,
+        "min_seconds": 0.656714795040898,
+        "rows": 32,
+        "samples_seconds": [
+          0.656714795040898,
+          0.6571155660785735,
+          0.6567369539989159
+        ]
+      }
+    },
+    "55": {
+      "dual": {
+        "max_seconds": 1.137677937047556,
+        "median_seconds": 1.1374824829399586,
+        "median_tok_s": 48.35239295979835,
+        "min_seconds": 1.1368374039884657,
+        "rows": 55,
+        "samples_seconds": [
+          1.1368374039884657,
+          1.1374824829399586,
+          1.137677937047556
+        ]
+      },
+      "dual_vs_split_speedup": 0.9934335244287127,
+      "exact_next_token": true,
+      "next_token_ids": {
+        "dual": [
+          83,
+          83,
+          83
+        ],
+        "split": [
+          83,
+          83,
+          83
+        ]
+      },
+      "rows": 55,
+      "split": {
+        "max_seconds": 1.132613666006364,
+        "median_seconds": 1.130013232002966,
+        "median_tok_s": 48.67199643539717,
+        "min_seconds": 1.1288336449069902,
+        "rows": 55,
+        "samples_seconds": [
+          1.132613666006364,
+          1.130013232002966,
+          1.1288336449069902
+        ]
+      }
+    },
+    "64": {
+      "dual": {
+        "max_seconds": 1.290956258890219,
+        "median_seconds": 1.2893765459302813,
+        "median_tok_s": 49.63639225640187,
+        "min_seconds": 1.2891920719994232,
+        "rows": 64,
+        "samples_seconds": [
+          1.2891920719994232,
+          1.2893765459302813,
+          1.290956258890219
+        ]
+      },
+      "dual_vs_split_speedup": 0.9932587140908812,
+      "exact_next_token": true,
+      "next_token_ids": {
+        "dual": [
+          35403,
+          35403,
+          35403
+        ],
+        "split": [
+          35403,
+          35403,
+          35403
+        ]
+      },
+      "rows": 64,
+      "split": {
+        "max_seconds": 1.2815727699780837,
+        "median_seconds": 1.2806844899896532,
+        "median_tok_s": 49.9732764004326,
+        "min_seconds": 1.2796520490664989,
+        "rows": 64,
+        "samples_seconds": [
+          1.2815727699780837,
+          1.2806844899896532,
+          1.2796520490664989
+        ]
+      }
+    }
+  },
+  "status": "rejected"
+}

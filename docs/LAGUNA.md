@@ -1859,14 +1859,22 @@ direct reduction, and has a weaker bound than the already rejected no-padding
 candidate. LPF-3 is next. Evidence:
 `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-lpf2-compact-pair-rejected.json`.
 
-LPF-3 is in progress with the narrowest exact candidate first. The existing
-Q4 pack8 dual-prefill ABI now optionally pairs gate/up for dense layer 0 and
-all 47 shared experts, sharing each activation load while preserving separate
-output buffers and the established Q4 arithmetic. `HIPENGINE_LAGUNA_DENSE_SHARED_PREFILL=dual`
-is diagnostic; `auto` still resolves to `split`, and any unsupported pair falls
-back to the two registered singleton launches. Production-shape shared-expert
-outputs and the dense-row orchestration fixture are exact. Balanced full-model
-timing must decide whether the pair is retained before raw/T16 WMMA work.
+LPF-3 is closed as a measured rejection under the current resident contract.
+The existing exact Q4 pack8 dual-prefill ABI paired gate/up for dense layer 0
+and all 47 shared experts, but balanced full-model timing regressed every shape:
+16 rows moved **46.274 -> 45.985 tok/s (-0.63%)**, 55 rows moved **48.672 ->
+48.352 (-0.66%)**, and 128 rows moved **50.377 -> 49.977 (-0.79%)**. The
+weighted profile was **0.9929x / -0.71%**; all 36 next-token results agreed and
+lifecycle recovery was exact. The selector, route, generic held-library change,
+and temporary harness were removed. A real Q4/Q6 WMMA route is not a viable
+incremental follow-up here: Laguna materializes dense/shared Q4 as pack8 and Q6
+down as raw GGUF, while the in-tree Matrix-Core families require raw/T16
+residency and use reassociated arithmetic. Changing all 48 layers' replacement
+contract plus cache for a family that owned only about 71 ms of the pre-LPF-1
+55-row span has a best-case post-LPF-1 ceiling near 6%; it is deferred until a
+future resident-layout project or a new profile makes it dominant. LPF-4 chunk
+policy is next. Evidence:
+`benchmarks/results/2026-07-23-gfx1151-laguna-prefill-lpf3-dense-shared-rejected.json`.
 
 Every LPF candidate is a registered variant with the current exact chain as its
 unfused rollback. Exact candidates pass byte comparison on lengths
