@@ -19,6 +19,8 @@ Examples:
 
 ## 2026-07-23
 
+- [positive quality-lane gfx1151 Laguna AR-O1 screen; not promoted] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / quantizer-inclusive selected-Q4 gate/up rows 16/32/55/64/122/128 moves split -> Q8_1/dp4a **46.365/48.916/49.011/50.381/50.925/51.184 -> 47.527/50.435/50.784/52.260/52.964/53.316 tok/s (+2.51% to +4.17%; +3.773% aggregate)** with all 36 next IDs agreeing and exact lifecycle; frozen Poolside diagnostic KL is `1.2837e-4` with exact first top-1 and 31/32 teacher-forced top-1, but split remains default pending full category/long-context/trace gates; `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-ar-o1-q8-dp4a-screen.json`.
+
 - [rejected exact gfx1151 Laguna AR-O1 screen] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / one-chunk rows 16/32/55/64/122/128 moves split -> fused-SiLU aggregate wall **24.786 -> 24.754 s (+0.129%)**, but rows 16/64 regress **0.172%/0.060%** despite all 36 IDs matching; the strict all-shape gate fails, runtime candidate wiring is removed, and split remains default; `benchmarks/results/2026-07-23-gfx1151-laguna-prefill-ar-o1-fused-silu-rejected.json`.
 
 - [new matched external control; diagnostic, not promoted] Radeon 8060S Poolside llama.cpp `04b2b72c` / Laguna S 2.1 Q4_K_M / exact shared token stream / BF16 KV / ubatch128 measures native 128/512/1K/4K prompt prefill at **80.235/103.868/105.435/120.530 tok/s**; versus hipEngine's balanced 512/1K/4K **47.453/44.848/38.541 tok/s** this is a qualified **2.189/2.351/3.127x**, with exact prompt counts/repeated sampled IDs and complete build/clocks/memory provenance but no eligible cross-engine speed claim due final bookkeeping/context-rounding differences; `benchmarks/results/2026-07-23-gfx1151-poolside-laguna-prefill-matched-control.json`.

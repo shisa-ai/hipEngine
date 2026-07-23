@@ -158,6 +158,7 @@ def _session(owner: LagunaGGUFResidentSession, args: argparse.Namespace):
         compiler_version=_compiler_version(args.compiler_version_file),
         require_cached_build=args.require_cached_build,
         prefill_chunk_size=args.chunk_size,
+        selected_gate_up_mode=getattr(args, "selected_gate_up_mode", None),
     )
 
 
