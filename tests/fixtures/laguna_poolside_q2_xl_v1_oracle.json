@@ -1,0 +1,213 @@
+{
+  "schema": 1,
+  "captured_at": "2026-07-23",
+  "purpose": "Poolside Laguna S 2.1 UD-Q2_K_XL target-only correctness oracle for hipEngine",
+  "source": {
+    "repository": "poolside llama.cpp laguna branch",
+    "commit": "04b2b72cb54048ead292884adbe11f284e3ec950",
+    "checkout": "/tmp/poolside-llama-laguna",
+    "checkout_clean": true,
+    "server_binary": "build-hip-gfx1100/bin/llama-server",
+    "server_binary_sha256": "7effcb8074386fb8c613f7bfb4ce0201830d1c89d5993dcc87c16de526eba3cb",
+    "server_version": "1 (04b2b72c)",
+    "compiler": "GNU 16.1.1",
+    "build_type": "Release",
+    "build_backend": "GGML_HIP=ON",
+    "build_target": "AMDGPU_TARGETS=gfx1100",
+    "build_workaround": "CMAKE_CXX_FLAGS='-include cmath'"
+  },
+  "model": {
+    "repository": "unsloth/Laguna-S-2.1-GGUF",
+    "file": "Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "local_path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "bytes": 39684584480,
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679",
+    "quant": "UD-Q2_K_XL",
+    "tensor_count": 814,
+    "vocab_size": 100352
+  },
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "gpu_arch": "gfx1100",
+    "processor": "AMD Ryzen 9 5950X 16-Core Processor",
+    "vram_bytes": 48301604864,
+    "kernel": "Linux 7.1.3-2-cachyos x86_64"
+  },
+  "server": {
+    "environment": {
+      "HIP_VISIBLE_DEVICES": "0",
+      "GPU_MAX_HW_QUEUES": "1"
+    },
+    "command": "/tmp/poolside-llama-laguna/build-hip-gfx1100/bin/llama-server -m /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --host 127.0.0.1 --port 18081 -c 4096 -ngl 999 -fa off --jinja --parallel 1 --no-warmup --no-repack --no-mmap --cache-ram 0 --metrics -lv 4",
+    "context_length": 4096,
+    "target_only": true,
+    "flash_attention": false,
+    "repack": false,
+    "mmap": false,
+    "prompt_cache_bytes": 0,
+    "fresh_start_ready_seconds": [
+      11.644549856078811,
+      3.812481413013302
+    ],
+    "greedy_fresh_start_ready_seconds": [
+      3.8123480300419033,
+      3.8124582619639114
+    ],
+    "load_note": "--no-mmap selects Poolside pinned asynchronous ROCm upload; warm page cache affects later readiness."
+  },
+  "prompt": {
+    "template_fixture": "laguna_poolside_v1_template.json",
+    "case": "oracle_no_thinking",
+    "rendered_sha256": "ea42d7342ac80ab94e826ed2cbbe1a81637599bed909f72436d6e73fc9a5ff7f",
+    "token_ids_i32le_sha256": "4159bfb36657e9aa03497074bbf02766fc9cd4a7e12091238481cbd2d6b18cbc",
+    "token_count": 55,
+    "pass_as_token_ids": true,
+    "note": "Passing exact token IDs avoids llama-server adding a second BOS."
+  },
+  "sampling": {
+    "temperature": 0.0,
+    "top_k": 0,
+    "top_p": 1.0,
+    "min_p": 0.0,
+    "typical_p": 1.0,
+    "repeat_penalty": 1.0,
+    "frequency_penalty": 0.0,
+    "presence_penalty": 0.0,
+    "dry_multiplier": 0.0,
+    "seed": 4242
+  },
+  "first_token": {
+    "id": 94557,
+    "text": "Deterministic",
+    "logprob": -0.00036663576611317694,
+    "full_distribution": {
+      "semantics": "Pre-sampler full-vocabulary softmax log-probabilities, equivalent to raw logits up to the shared additive log-normalizer",
+      "path": "laguna_poolside_q2_xl_v1_first_token_logprobs.npy",
+      "dtype": "float32",
+      "shape": [
+        100352
+      ],
+      "index": "token_id",
+      "count": 100352,
+      "finite_count": 100352,
+      "probability_sum_float64": 1.000005549529746,
+      "dense_bytes_sha256": "a74d1553e3a6fdc6f49b5e62e801a239870cf2de0e6590dff0aba9f6f870a5a0",
+      "npy_sha256": "ebc8127264a3c2d8f20a93366590e9e9551266742536c1b798fc67a03aa44f84",
+      "fresh_process_repeat_exact": true,
+      "fresh_process_repeat_changed_values": 0,
+      "fresh_process_repeat_max_abs_delta": 0.0
+    },
+    "top10": [
+      {
+        "id": 94557,
+        "text": "Deterministic",
+        "logprob": -0.00036663576611317694
+      },
+      {
+        "id": 355,
+        "text": "**",
+        "logprob": -8.779430389404297
+      },
+      {
+        "id": 674,
+        "text": "In",
+        "logprob": -10.097280502319336
+      },
+      {
+        "id": 72337,
+        "text": " Deterministic",
+        "logprob": -10.141845703125
+      },
+      {
+        "id": 48428,
+        "text": "Determin",
+        "logprob": -10.185012817382812
+      },
+      {
+        "id": 785,
+        "text": "The",
+        "logprob": -10.668359756469727
+      },
+      {
+        "id": 102,
+        "text": "A",
+        "logprob": -11.359336853027344
+      },
+      {
+        "id": 110,
+        "text": "I",
+        "logprob": -11.80616569519043
+      },
+      {
+        "id": 97,
+        "text": "<",
+        "logprob": -11.876476287841797
+      },
+      {
+        "id": 57209,
+        "text": "-deterministic",
+        "logprob": -11.970438003540039
+      }
+    ]
+  },
+  "greedy32": {
+    "token_ids": [
+      94557,
+      3505,
+      3011,
+      515,
+      2407,
+      365,
+      2291,
+      10723,
+      1687,
+      948,
+      1482,
+      4217,
+      81,
+      53551,
+      2027,
+      565,
+      17124,
+      20104,
+      8326,
+      565,
+      4141,
+      4428,
+      832,
+      1504,
+      4019,
+      81,
+      845,
+      882,
+      81,
+      509,
+      3175,
+      632
+    ],
+    "text": "Deterministic unit tests are essential in software engineering because they ensure consistent, repeatable results by eliminating variability caused by external factors like network latency, system time, or random data",
+    "stop_type": "limit",
+    "fresh_process_repeat_exact": true,
+    "fresh_process_repeat_count": 2,
+    "measured_runs": [
+      {
+        "prompt_tokens": 55,
+        "prompt_tokens_per_second": 37.878892228353244,
+        "decode_tokens": 32,
+        "decode_tokens_per_second": 46.28524730062991
+      },
+      {
+        "prompt_tokens": 55,
+        "prompt_tokens_per_second": 37.43773424109629,
+        "decode_tokens": 32,
+        "decode_tokens_per_second": 47.02300306531201
+      }
+    ]
+  },
+  "known_oracle_constraints": [
+    "The accepted Poolside oracle uses -fa off and source raw quant kernels on gfx1100.",
+    "Accepted repetitions each use a fresh server process because the pinned reference has a known same-process state-reset limitation.",
+    "At greedy step 25 the fresh serial reference chooses token 4019, while an independently fresh 79-token teacher-forced prefill chooses token 3062 over 4019 by 0.1139603 log-probability. hipEngine also chooses 3062, so complete free-running IDs are reported separately from the KL/top-1 quality gate.",
+    "This artifact is correctness evidence; readiness and inference timings are external diagnostics, not retained hipEngine performance."
+  ]
+}
