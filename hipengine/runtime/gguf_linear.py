@@ -901,15 +901,18 @@ def launch_gguf_linear_pair(
     out_features_b: int | None = None,
     backend: str | None = None,
     stream: int = 0,
+    libraries: Mapping[str, ctypes.CDLL] | None = None,
     runtime=None,
     use_wmma_prefill: bool | None = None,
     use_gemv_decode: bool | None = None,
     threads: int = 0,
+    registered_decode_only: bool = False,
 ) -> bool:
     """Launch a supported pair of GGUF projections, returning True when fused.
 
-    The pair fast paths cover Q8_0 dual decode GEMV, Q4_K pack8 dual prefill,
-    and the P8.2 raw-Q4_K dual WMMA prefill. There is still no Q8_0 dual WMMA
+    The pair fast paths cover registered exact raw decode pairs, Q8_0 dual
+    decode GEMV, Q4_K pack8 dual prefill, and the P8.2 raw-Q4_K dual WMMA
+    prefill. There is still no Q8_0 dual WMMA
     prefill; when ``use_wmma_prefill`` would otherwise route Q8_0 rows>1 to
     the WMMA family, the pair function returns ``False`` so the caller falls
     back to two singletons that each take the WMMA path via
@@ -920,6 +923,9 @@ def launch_gguf_linear_pair(
     the pair is fused through :func:`gguf_q8_0_pack8_dual_gate_up_gemv_decode_bf16_bf16_out`
     (P9.B3); the output layout matches the legacy ``gguf_q8_0_dual_gemv``
     concatenated layout that ``silu_mul_dual_out_*`` consumes downstream.
+    ``registered_decode_only`` restricts resolution to the four-axis
+    ``linear_pair`` key and otherwise returns ``False`` for explicit singleton
+    fallback.
     """
 
     resolved_backend = _weight_backend(weight_a, weight_b, backend=backend)
@@ -940,6 +946,7 @@ def launch_gguf_linear_pair(
         resolved_backend,
         use_wmma,
         use_gemv,
+        bool(registered_decode_only),
     )
     pair_kind = _PAIR_DISPATCH_RESOLVE_CACHE.get(cache_key)
     if pair_kind is None:
@@ -952,6 +959,8 @@ def launch_gguf_linear_pair(
             out_features_b=out_features_b,
             backend=resolved_backend,
             use_wmma=use_wmma,
+            use_gemv=use_gemv,
+            registered_decode_only=bool(registered_decode_only),
         )
         _PAIR_DISPATCH_RESOLVE_CACHE[cache_key] = pair_kind
 
@@ -1014,6 +1023,36 @@ def launch_gguf_linear_pair(
         )
         return True
 
+    if pair_kind == "registered_raw_decode_pair":
+        pair_key = KernelKey(
+            resolved_backend,
+            "linear_pair",
+            weight_a.spec.quant_key,
+            "pack8_gemv_decode_bf16_bf16_out",
+        )
+        pair_fn = resolve(
+            backend=pair_key.backend,
+            layer=pair_key.layer,
+            quant=pair_key.quant,
+            variant=pair_key.variant,
+        )
+        pair_kwargs = {"stream": stream, "runtime": runtime}
+        pair_library = None if libraries is None else libraries.get(pair_key.quant)
+        if pair_library is not None:
+            pair_kwargs["library"] = pair_library
+        pair_fn(
+            x_ptr,
+            weight_a.allocation("raw").tensor.ptr,
+            weight_b.allocation("raw").tensor.ptr,
+            out_a_ptr,
+            out_b_ptr,
+            rows,
+            in_features,
+            out_features,
+            **pair_kwargs,
+        )
+        return True
+
     if pair_kind == "q8_raw_dual":
         gguf_q8_0_dual_gemv_bf16_bf16_out(
             x_ptr,
@@ -1060,6 +1099,8 @@ def _resolve_gguf_linear_pair_kind(
     out_features_b: int,
     backend: str,
     use_wmma: bool,
+    use_gemv: bool,
+    registered_decode_only: bool,
 ) -> str:
     dispatch_a = _pack8_decode_dispatch(
         resolve_gguf_linear_dispatch(weight_a, backend=backend, rows=rows),
@@ -1114,6 +1155,26 @@ def _resolve_gguf_linear_pair_kind(
         ):
             return "none"
         return "q8_t16_dual_split"
+
+    registered_pair_key = KernelKey(
+        backend,
+        "linear_pair",
+        dispatch_a.key.quant,
+        "pack8_gemv_decode_bf16_bf16_out",
+    )
+    if (
+        use_gemv
+        and rows == 1
+        and out_features_b == out_features
+        and dispatch_a.abi == "raw"
+        and dispatch_b.abi == "raw"
+        and dispatch_a.key.quant == dispatch_b.key.quant
+        and is_registered(registered_pair_key)
+    ):
+        return "registered_raw_decode_pair"
+
+    if registered_decode_only:
+        return "none"
 
     q8_decode = KernelKey(backend, "linear", "gguf_q8_0", "pack8_gemv_bf16_bf16_out")
     if rows == 1 and out_features_b == out_features and dispatch_a.key == q8_decode and dispatch_b.key == q8_decode:

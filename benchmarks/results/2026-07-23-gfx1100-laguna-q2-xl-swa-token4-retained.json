@@ -1,0 +1,213 @@
+{
+  "schema": 1,
+  "kind": "hipengine_laguna_q2_xl_swa_token4_retention",
+  "date": "2026-07-23",
+  "status": "retained_exact_default",
+  "pass": true,
+  "performance_claim": true,
+  "performance_claim_scope": "Radeon Pro W7900, Laguna S 2.1 UD-Q2_K_XL, BF16 KV, exact token4 SWA decode, cached short/512/1K/near-4K profiles, and canonical ten-prompt h16/h32 target-only AR suite",
+  "acceptance_policy": {
+    "baseline_registered_and_explicitly_selectable": true,
+    "wrap_and_eviction_byte_exact": true,
+    "clean_short_swa_and_total_improve": true,
+    "clean_512_1k_near4k_swa_and_total_improve": true,
+    "canonical_decode_and_e2e_improve": true,
+    "every_category_decode_and_e2e_improves": true,
+    "prefill_non_regressive_within_half_percent": true,
+    "full_suite_correctness_lifecycle_pass": true,
+    "pass": true
+  },
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "rocm": "HIP 7.2.53211-3d9ef42",
+    "hipcc": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e"
+  },
+  "model": {
+    "id": "poolside/Laguna-S-2.1-UD-Q2_K_XL",
+    "path": "/models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf",
+    "quant": "UD-Q2_K_XL",
+    "kv_dtype": "bf16",
+    "sha256": "8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679"
+  },
+  "change": {
+    "baseline_revision": "44b6719e0",
+    "candidate_revision": "73a2583beecc0a92964e9885fc15a2b28802eddf",
+    "baseline": "one local128 query-head block scans every SWA slot twice with one 128-D reduction tree per slot",
+    "candidate": "four wave32 units compute four exact slot dots concurrently, retain unscaled dots and physical slots in 4,120 B dynamic LDS, then consume baseline-order softmax and values without a second K/dot pass",
+    "runtime_policy": "gfx1100 backend capability selects token4; gfx1151 and unmeasured backends retain baseline; session and KV owner expose explicit baseline rollback",
+    "dispatches_per_token": {
+      "baseline": 1010,
+      "candidate": 1010,
+      "change": 0
+    }
+  },
+  "correctness": {
+    "focused_tests": "18 passed",
+    "positions_byte_exact": [510, 511, 512, 513, 1024, 1025],
+    "reversed_physical_offsets_exact": true,
+    "explicit_eviction_position": 700,
+    "complete_kv_live_spans_preserved": true,
+    "d32_generated_ids_exact": true,
+    "serial_bulk_pairs_exact": 20,
+    "same_mode_repeats_deterministic": true,
+    "poolside_first_token_kl": 0.00015682291693663912,
+    "poolside_first_token_top1_agreement": 1.0,
+    "accepted_bulk_state_artifact_pass": true,
+    "finite_logits": true,
+    "tracked_peak_allocated_bytes": 40455814968,
+    "tracked_returned_to_zero": true
+  },
+  "focused_trace": {
+    "calls": 6,
+    "baseline_median_us": 792.7465,
+    "candidate_median_us": 237.7215,
+    "change_pct": -70.01292342507976,
+    "speedup": 3.3347698882936547,
+    "candidate_workgroup": 128,
+    "candidate_vgpr": 24,
+    "candidate_dynamic_lds_bytes": 4120,
+    "candidate_static_lds_reported_bytes": 0,
+    "candidate_scratch_bytes": 0,
+    "trace_sha256": "69fad1a94f99efa21a4c6d056505f863d6c8a2fa949a797222f1bdfb76034ce4"
+  },
+  "clean_profiles": {
+    "protocol": "canonical prompt stream, cached rocprofv3; two warmup rows excluded at every shape",
+    "baseline_artifacts": [
+      "benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-iq3-weighted-down-retained.json",
+      "benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-decode-context-d3-profile.json"
+    ],
+    "rows": [
+      {
+        "prompt_tokens": 69,
+        "stable_steps": 14,
+        "swa_ms": {"baseline": 4.201814642857142, "candidate": 2.117838, "change_pct": -49.59706269765588},
+        "kernel_sum_ms": {"baseline": 20.9972075, "candidate": 18.98300514285714, "change_pct": -9.592715398668405},
+        "span_median_ms": {"baseline": 25.0370535, "candidate": 22.877656, "change_pct": -8.624806828806742},
+        "profiled_child_tok_s": {"baseline": 36.0487350342755, "candidate": 39.133176644540995, "change_pct": 8.556310248702982},
+        "trace_sha256": "7fa40b3d31f864346d990f60bebaafebc1d9a2aa3bfd4843e7630c4b23e03059"
+      },
+      {
+        "prompt_tokens": 512,
+        "stable_steps": 6,
+        "swa_ms": {"baseline": 27.7759925, "candidate": 13.110659, "change_pct": -52.798593965634176},
+        "kernel_sum_ms": {"baseline": 47.087808833333334, "candidate": 32.449134, "change_pct": -31.08803572735084},
+        "span_median_ms": {"baseline": 51.449582, "candidate": 36.5941125, "change_pct": -28.873839052764318},
+        "profiled_child_tok_s": {"baseline": 18.476066159863883, "candidate": 25.5999639511616, "change_pct": 38.55743819955124},
+        "trace_sha256": "2848b8fce2d77b69cbf75bf86d480d2018a119204501464efd5756042db2ee4a"
+      },
+      {
+        "prompt_tokens": 1024,
+        "stable_steps": 6,
+        "swa_ms": {"baseline": 27.84642566666667, "candidate": 13.0964935, "change_pct": -52.96885260330899},
+        "kernel_sum_ms": {"baseline": 50.1015645, "candidate": 35.33696366666666, "change_pct": -29.469340889211825},
+        "span_median_ms": {"baseline": 54.519597, "candidate": 39.5550635, "change_pct": -27.44798994020443},
+        "profiled_child_tok_s": {"baseline": 17.41757323299521, "candidate": 23.95275213117854, "change_pct": 37.52060525747254},
+        "trace_sha256": "1d57a23d6ff381edd61c665aa878200ee033183bd4badab97f53bdf9a3959d5d"
+      },
+      {
+        "prompt_tokens": 3968,
+        "stable_steps": 6,
+        "swa_ms": {"baseline": 27.9007315, "candidate": 13.104215333333334, "change_pct": -53.032717678626696},
+        "kernel_sum_ms": {"baseline": 66.90009433333334, "candidate": 52.07099766666666, "change_pct": -22.166032521239654},
+        "span_median_ms": {"baseline": 71.3951845, "candidate": 56.4019715, "change_pct": -21.000314103817463},
+        "profiled_child_tok_s": {"baseline": 13.485114045239253, "candidate": 16.925076909790175, "change_pct": 25.509334611562707},
+        "trace_sha256": "cb09d70781c9f7576ac46dd3fe27d7fef6d0c32fd08746362dda427e598656c5"
+      }
+    ],
+    "summary_sha256": "7bc88bc013dc718b9afb363d0d1f80c26211d029a61cd7c169fe78f52e4e63aa"
+  },
+  "canonical_full_suite": {
+    "protocol": {
+      "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+      "prompts": 10,
+      "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+      "prompt_token_range": [68, 122],
+      "output_horizons": [16, 32],
+      "repetitions": 2,
+      "prefill_chunk_size": 128,
+      "sampling": "greedy argmax",
+      "model_load_excluded": true
+    },
+    "aggregate_default_bulk": {
+      "baseline_d3": {
+        "prefill_tok_s": 43.26448743282088,
+        "ttft_median_seconds": 1.8650274084648117,
+        "h16_decode_tok_s": 39.364406472316084,
+        "h32_decode_tok_s": 38.83971714459435,
+        "h16_e2e_output_tok_s": 6.728134280595653,
+        "h32_e2e_output_tok_s": 11.448315789510016
+      },
+      "candidate_d4": {
+        "prefill_tok_s": 43.16801217912563,
+        "ttft_median_seconds": 1.870103976514656,
+        "h16_decode_tok_s": 43.3370043398724,
+        "h32_decode_tok_s": 43.08064998521836,
+        "h16_e2e_output_tok_s": 6.815452135597879,
+        "h32_e2e_output_tok_s": 11.760111587997997
+      },
+      "candidate_vs_d3_pct": {
+        "prefill_tok_s": -0.22298947571041117,
+        "ttft_wall": 0.27219803992173386,
+        "h16_decode_tok_s": 10.091852573339665,
+        "h32_decode_tok_s": 10.919062115812173,
+        "h16_e2e_output_tok_s": 1.297801907046603,
+        "h32_e2e_output_tok_s": 2.7235080183032334
+      },
+      "candidate_repetitions": {
+        "prefill_tok_s": [43.43230181808323, 42.90691954070886],
+        "h32_decode_tok_s": [43.330835213365845, 42.83333722989271],
+        "h32_e2e_output_tok_s": [11.831131300452288, 11.689939419748384]
+      }
+    },
+    "categories": {
+      "code": {
+        "prefill_tok_s": 43.37116087442566,
+        "h16_decode_tok_s": 44.021268893328745,
+        "h32_decode_tok_s": 43.75255173930596,
+        "h16_e2e_output_tok_s": 7.602433552401951,
+        "h32_e2e_output_tok_s": 12.943020468783478,
+        "vs_d3_pct": {"prefill": -0.3291852425963526, "h16_decode": 9.05072217276668, "h32_decode": 9.91059853715377, "h16_e2e": 1.1894724848005023, "h32_e2e": 2.6053190744705024}
+      },
+      "general_en": {
+        "prefill_tok_s": 43.187981817520686,
+        "h16_decode_tok_s": 44.36720780033516,
+        "h32_decode_tok_s": 44.09024277293903,
+        "h16_e2e_output_tok_s": 8.365577239335046,
+        "h32_e2e_output_tok_s": 14.04978138549209,
+        "vs_d3_pct": {"prefill": -0.26487992526820214, "h16_decode": 8.48332546988746, "h32_decode": 9.168420817930656, "h16_e2e": 1.2815279871100982, "h32_e2e": 2.6471945145282616}
+      },
+      "general_ja": {
+        "prefill_tok_s": 43.09661554863406,
+        "h16_decode_tok_s": 42.88520588147169,
+        "h32_decode_tok_s": 42.62893630341635,
+        "h16_e2e_output_tok_s": 6.292972740958995,
+        "h32_e2e_output_tok_s": 10.959079888136621,
+        "vs_d3_pct": {"prefill": -0.1706107436271087, "h16_decode": 11.052235155133626, "h32_decode": 11.824232406909928, "h16_e2e": 1.3733015566327111, "h32_e2e": 2.8166689421859736}
+      },
+      "mixed_ja_en": {
+        "prefill_tok_s": 42.9499322504,
+        "h16_decode_tok_s": 41.519577376979086,
+        "h32_decode_tok_s": 41.30393502170915,
+        "h16_e2e_output_tok_s": 5.205391783918453,
+        "h32_e2e_output_tok_s": 9.240557717960197,
+        "vs_d3_pct": {"prefill": -0.10290316092993468, "h16_decode": 12.631266563232302, "h32_decode": 13.586084637203832, "h16_e2e": 1.393823202379818, "h32_e2e": 2.863907337317184}
+      }
+    }
+  },
+  "provenance": {
+    "candidate_tracked_clean": true,
+    "raw_canonical_sha256": "1f11dd3b4dc4097a705a245fe77da581f533615fa13c9b70b59ca3966112eda7",
+    "baseline_artifact": "benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-iq3-weighted-down-retained.json",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version-laguna-iq2.txt",
+    "require_cached_build": true,
+    "canonical_command": "HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 GPU_MAX_HW_QUEUES=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version-laguna-iq2.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. uv run python -u scripts/laguna_target_ar_bench.py /models/gguf/Laguna-S-2.1-UD-Q2_K_XL.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --template tests/fixtures/laguna_poolside_v1_template.json --oracle tests/fixtures/laguna_poolside_q2_xl_v1_oracle.json --oracle-logprobs tests/fixtures/laguna_poolside_q2_xl_v1_first_token_logprobs.npy --bulk-correctness-artifact benchmarks/results/2026-07-23-gfx1100-laguna-q2-xl-bulk-correctness.json --backend hip_gfx1100 --context-length 4096 --chunk-size 128 --output-horizons 16,32 --repetitions 2 --warmup-output-tokens 2 --compiler-version-file /tmp/hipengine-hipcc-version-laguna-iq2.txt --require-cached-build --direct-gguf --safety-reserve-gib 4 --model-sha256 8fe1170f012723f6f7d6c9b08d8f928b0b3d8bffc32926f33a930148a1d62679 --quant-label UD-Q2_K_XL --output /tmp/laguna-q2-xl-swa-token4-target-ar.json"
+  },
+  "notes": [
+    "The source harness bulk-vs-serial predicate remains inapplicable because both modes use the same c=1 decode while token-serial prompt prefill is faster. Retention compares clean D3 bulk with clean D4 bulk on the identical suite.",
+    "The decode-only route does not change prompt prefill; measured bulk prefill is within -0.33% in every category and aggregate h16/h32 E2E improves.",
+    "No prompt, token ID, route ID, or candidate-conditioned behavior is present. The selector is architecture-qualified backend capability metadata with explicit baseline rollback."
+  ]
+}
