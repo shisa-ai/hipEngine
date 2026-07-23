@@ -1836,6 +1836,20 @@ matrix path; submission-only work remains deferred at **0.144%** pp512 span
 residual.
 [llama.cpp Vulkan pp512 profile](results/2026-07-23-gfx1151-laguna-llamacpp-vulkan-pp512-profile.json).
 
+The first Vulkan-transfer expert-major Q4/Q6 WMMA route proves that decoded
+weight reuse survives gfx1151 scheduling but rejects all-layer promotion on
+quality. Its clean M32/55/64/122/128/256/512 screen improves **1.197/1.345/
+1.423/1.717/1.745/2.087/2.304x** and reaches **176.001 tok/s at M512**. A
+shape-qualified M128+ route then moves uniformly-M128 category prefill **73.046
+-> 130.557 tok/s (1.787x)**, TTFT **1.792x**, and h16/h32 E2E
+**1.400x/1.261x**, with every category positive and neutral decode. The complete
+320-step quality lane nevertheless reaches maximum KL **0.527791** (>0.05),
+although top-1 is **314/320 (98.125%)**, each category remains above 96.875%,
+and Poolside fallback, deterministic repeats, and lifecycle pass. Exact
+grouped-small-M remains default; the registered leaf is retained only for a
+full-suite component/layer-scope bisection.
+[Rejected expert-major category gate](results/2026-07-24-gfx1151-laguna-expert-major-wmma-category-rejected.json).
+
 The earlier post-LPF all-family profile established the pre-AR-O1 bottleneck.
 Three alternating non-profiled repetitions measure
 **47.453/44.848/38.541 tok/s** at 512/1K/4K. One cached trace covers a 128-row

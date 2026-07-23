@@ -17,6 +17,10 @@ Examples:
 - [lineage target] Qwen3.5-PARO / w4a16 / 512/128: prefill 1300 -> 2557 tok/s (+96.7%) due to compact WMMA; `~/amd-gpu-tuning/docs/OPTIMAL.md`.
 ```
 
+## 2026-07-24
+
+- [rejected quality-lane gfx1151 Laguna expert-major Q4/Q6 WMMA] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / exact adaptive grouped-small-M -> adaptive-M128 expert-major compensated WMMA improves uniformly-M128 ten-prompt weighted prefill **73.046 -> 130.557 tok/s (+78.731%)**, TTFT **1.758 -> 0.981 s (1.792x)**, and h16/h32 E2E **+40.048%/+26.142%** with every category faster and neutral decode, but maximum teacher-forced KL is **0.527791** (>0.05) despite **314/320** top-1; exact grouped remains default and the leaf stays diagnostic for component/layer-scope bisection; `benchmarks/results/2026-07-24-gfx1151-laguna-expert-major-wmma-category-rejected.json`.
+
 ## 2026-07-23
 
 - [retained quality-gated gfx1151 Laguna AR-O5 SWA online prefill] Radeon 8060S Poolside Laguna S 2.1 Q4_K_M / retained exact qrow2 -> online SWA qrow2 improves repeated 512/1K/4K **71.354/68.156/63.995 -> 76.226/74.538/70.885 tok/s (+6.828%/+9.364%/+10.766%)** and complete-category prefill **69.011 -> 69.761 tok/s (+1.086%)**, with h16/h32 E2E **+0.616%/+0.420%**, max KL **0.042924**, top-1 **316/320**, every category positive, and Poolside/repeat/lifecycle pass; `benchmarks/results/2026-07-23-gfx1151-laguna-swa-qrow2-online-retained.json`.
