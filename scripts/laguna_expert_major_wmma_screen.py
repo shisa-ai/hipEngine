@@ -217,13 +217,13 @@ def _summarize(
             },
         }
 
-    finite = all(bool(item["finite"]) for item in comparisons)
-    max_kl = max(float(item["kl_divergence"]) for item in comparisons)
-    top1 = sum(bool(item["top1_agreement"]) for item in comparisons) / len(comparisons)
-    quality_pass = bool(
-        finite
-        and max_kl <= 0.05
-        and top1 >= 0.9
+    explicit_finite = all(bool(item["finite"]) for item in comparisons)
+    explicit_max_kl = max(float(item["kl_divergence"]) for item in comparisons)
+    explicit_top1 = sum(bool(item["top1_agreement"]) for item in comparisons) / len(comparisons)
+    explicit_quality_pass = bool(
+        explicit_finite
+        and explicit_max_kl <= 0.05
+        and explicit_top1 >= 0.9
         and all_cursor_exact
         and deterministic
     )
@@ -234,6 +234,9 @@ def _summarize(
     policies: dict[str, Any] = {}
     for threshold in ROWS:
         candidate_rows = tuple(row for row in ROWS if row >= threshold)
+        selected_comparisons = tuple(
+            item for item in comparisons if int(item["rows"]) >= threshold
+        )
         every_selected_shape_positive = all(
             float(shapes[str(row)]["expert_major_comp_vs_retained_speedup"]) > 1.0
             for row in candidate_rows
@@ -247,7 +250,28 @@ def _summarize(
             for row in ROWS
         )
         speedup = baseline_sum / adaptive_sum
-        eligible = bool(every_selected_shape_positive and speedup > 1.0)
+        selected_finite = all(bool(item["finite"]) for item in selected_comparisons)
+        selected_max_kl = max(
+            float(item["kl_divergence"]) for item in selected_comparisons
+        )
+        selected_top1 = sum(
+            bool(item["top1_agreement"]) for item in selected_comparisons
+        ) / len(selected_comparisons)
+        selected_cursor_exact = all(
+            bool(item["cursor_exact"]) for item in selected_comparisons
+        )
+        selected_quality_pass = bool(
+            selected_finite
+            and selected_max_kl <= 0.05
+            and selected_top1 >= 0.9
+            and selected_cursor_exact
+            and deterministic
+        )
+        eligible = bool(
+            every_selected_shape_positive
+            and speedup > 1.0
+            and selected_quality_pass
+        )
         if eligible:
             threshold_candidates.append(threshold)
         policies[str(threshold)] = {
@@ -256,33 +280,56 @@ def _summarize(
             "every_selected_shape_positive": every_selected_shape_positive,
             "adaptive_median_sum_seconds": adaptive_sum,
             "speedup_vs_retained": speedup,
+            "quality": {
+                "pass": selected_quality_pass,
+                "finite": selected_finite,
+                "max_kl": selected_max_kl,
+                "top1_agreement": selected_top1,
+                "cursor_exact": selected_cursor_exact,
+                "same_mode_state_deterministic": deterministic,
+            },
             "eligible": eligible,
         }
     selected_threshold = min(threshold_candidates) if threshold_candidates else None
+    selected_quality = (
+        policies[str(selected_threshold)]["quality"]
+        if selected_threshold is not None
+        else {
+            "pass": False,
+            "finite": explicit_finite,
+            "max_kl": explicit_max_kl,
+            "top1_agreement": explicit_top1,
+            "cursor_exact": all_cursor_exact,
+            "same_mode_state_deterministic": deterministic,
+        }
+    )
     failed: list[str] = []
-    if not quality_pass:
-        failed.append("full_model_quality_or_determinism_failed")
     if selected_threshold is None:
-        failed.append("no_nonregressive_adaptive_threshold")
+        failed.append("no_quality_safe_nonregressive_adaptive_threshold")
     return {
         "pass": not failed,
         "failed_checks": failed,
         "shapes": shapes,
         "quality": {
-            "pass": quality_pass,
-            "finite": finite,
-            "max_kl": max_kl,
-            "top1_agreement": top1,
+            **selected_quality,
+            "selected_threshold_rows": selected_threshold,
+            "policy": "for candidate-selected shapes: finite logits; KL<=0.05; top-1>=90%; exact cursor; deterministic logits/hidden/KV state",
+        },
+        "explicit_candidate_quality": {
+            "pass": explicit_quality_pass,
+            "finite": explicit_finite,
+            "max_kl": explicit_max_kl,
+            "top1_agreement": explicit_top1,
             "cursor_exact": all_cursor_exact,
             "same_mode_state_deterministic": deterministic,
-            "policy": "finite logits; KL<=0.05; top-1>=90%; exact cursor; deterministic logits/hidden/KV state",
+            "note": "diagnostic only; rows below the selected adaptive threshold use the retained exact route",
         },
         "threshold": {
             "selected_rows": selected_threshold,
             "eligible_rows": threshold_candidates,
             "policies": policies,
             "retained_median_sum_seconds": baseline_sum,
-            "policy": "choose the smallest threshold whose selected shapes and aggregate wall are all positive",
+            "policy": "choose the smallest threshold whose candidate-selected shapes pass quality, improve individually, and improve aggregate wall",
         },
     }
 
