@@ -10,6 +10,7 @@ from scripts.laguna_dflash_category_bench import (
     _correctness,
     _fixed_horizon_state_aligned,
     _pair_rows,
+    _parse_args,
     _promotion_gate,
     _resolved_target_prefill_variants,
 )
@@ -106,6 +107,30 @@ def _pairs(*, spec_decode_seconds: float = 0.8) -> list[dict[str, object]]:
         allocated_after_load_bytes=90,
         backend="hip_gfx1151",
     )
+
+
+def test_laguna_dflash_accepts_direct_target_residency_options(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "laguna_dflash_category_bench.py",
+            "/models/target.gguf",
+            "/models/drafter",
+            "--direct-gguf",
+            "--safety-reserve-gib",
+            "4",
+            "--quant-label",
+            "UD-Q2_K_XL",
+        ],
+    )
+
+    args = _parse_args()
+
+    assert args.direct_gguf is True
+    assert args.safety_reserve_gib == pytest.approx(4.0)
+    assert args.quant_label == "UD-Q2_K_XL"
 
 
 def test_laguna_dflash_refresh_uses_promoted_chunk_policy() -> None:

@@ -92,7 +92,10 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--repacked-cache", type=Path, default=DEFAULT_CACHE)
+    parser.add_argument("--direct-gguf", action="store_true")
+    parser.add_argument("--safety-reserve-gib", type=float, default=8.0)
     parser.add_argument("--model-sha256", default=DEFAULT_MODEL_SHA256)
+    parser.add_argument("--quant-label", default="Q4_K_M mixed GGUF v3 / hipEngine repacked-v1")
     parser.add_argument("--drafter-sha256", default=DEFAULT_DRAFTER_SHA256)
     parser.add_argument("--drafter-revision", default=DEFAULT_DRAFTER_REVISION)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
@@ -620,6 +623,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
     if args.warmup_output_tokens <= args.candidate_budget:
         raise ValueError("warmup output tokens must exceed the candidate budget")
+    if args.safety_reserve_gib <= 0.0:
+        raise ValueError("--safety-reserve-gib must be positive")
     if not args.model.is_file():
         raise FileNotFoundError(f"Laguna target model not found: {args.model}")
     if not args.drafter.is_dir():
@@ -648,7 +653,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         resolved_backend=args.backend,
         target_arch=args.backend.removeprefix("hip_"),
         model_path=args.model,
-        quant="gguf_q4_k_m",
+        quant=args.quant_label,
         kv_dtype="bf16",
         command=(str(Path(sys.executable).resolve()), *sys.argv),
         build_profile="laguna_dflash_category_economics_b4",
@@ -677,8 +682,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         backend=args.backend,
         compiler_version=compiler_version,
         require_cached_build=args.require_cached_build,
+        safety_reserve_nbytes=int(args.safety_reserve_gib * 2**30),
         progress=_progress,
-        repacked_cache=args.repacked_cache,
+        repacked_cache=None if args.direct_gguf else args.repacked_cache,
         model_sha256=args.model_sha256,
         prefill_chunk_size=args.chunk_size,
     ) as target:
@@ -810,7 +816,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         target_name="poolside/Laguna-S-2.1-GGUF",
         target_path=str(args.model.resolve()),
         target_revision=args.model_sha256,
-        target_quant="Q4_K_M mixed GGUF v3 / hipEngine repacked-v1",
+        target_quant=args.quant_label,
         drafter_name="poolside/Laguna-S-2.1-DFlash",
         drafter_path=str(args.drafter.resolve()),
         drafter_revision=args.drafter_revision,
@@ -851,6 +857,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "repetitions": args.repetitions,
             "context_length": args.context_length,
             "prefill_chunk_size": args.chunk_size,
+            "target_direct_gguf": bool(args.direct_gguf),
+            "target_safety_reserve_gib": float(args.safety_reserve_gib),
             "target_global_prefill_variant": target_global_prefill_variant,
             "target_swa_prefill_variant": target_swa_prefill_variant,
             "sampling": "greedy argmax fixed horizon after stop",
@@ -881,7 +889,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "pass": correctness_passed,
             "performance_claim": bool(promotion["pass"]),
             "performance_claim_scope": (
-                "Laguna S 2.1 Q4_K_M + matched DFlash BF16 B4, c=1, canonical "
+                f"Laguna S 2.1 {args.quant_label} + matched DFlash BF16 B4, c=1, canonical "
                 "10-prompt four-category train+heldout suite, fixed 32-token horizon"
             ),
             "provenance": provenance,
